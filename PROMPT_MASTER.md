@@ -67,9 +67,8 @@ movimento bancario e scrittura contabile sono prove distinte. Possono condivider
 
 La destinazione definitiva usa **Google Drive per gli originali** e **Google
 Sheets/Excel collegato a Drive per registri, progressivi, indici e relazioni**.
-Il nuovo runtime non deve richiedere MongoDB. Le variabili Mongo elencate
-nell'appendice sono soltanto compatibilità transitoria dell'applicazione attuale:
-non sono ammesse nella ricostruzione e si rimuovono dopo cutover provato.
+Il runtime usa esclusivamente Drive/Sheets. Non esistono backend alternativi,
+fallback legacy o variabili di configurazione per archivi diversi.
 
 Workbook: `Ceraldi ERP - Registro dati`.
 
@@ -332,9 +331,8 @@ endpoint morto.
 ## 22. Configurazione e variabili
 
 Tutte le variabili riconosciute dal codice sono elencate nell'appendice generata.
-Il nome non implica che la variabile sia ammessa nella destinazione: quelle
-Mongo/DR sono `transitorie-vietate-nel-target`. I valori sensibili non sono mai
-stampati. Ogni variabile nuova richiede descrizione, tipo, default sicuro,
+I valori sensibili non sono mai stampati. Ogni variabile nuova richiede
+descrizione, tipo, default sicuro,
 ambiente, proprietario, rotazione se segreta, test startup e rimozione quando
 non ha più consumer.
 
@@ -354,8 +352,7 @@ CI verde, commit servito in `/api/health`, controllo live di dati e job.
 
 Gate Drive-only: tutti i fogli presenti e versionati; conteggi, digest, somme e
 relazioni equivalenti; scrittura/lettura riuscite; ricostruzione completa da
-Drive in ambiente isolato; rollback provato; produzione `DATA_BACKEND=sheets`;
-solo allora disabilitare e rimuovere MongoDB e le sue variabili.
+Drive in ambiente isolato; rollback provato; nessun backend alternativo attivo.
 
 ## 24. Procedura di sviluppo e pubblicazione
 
@@ -513,8 +510,7 @@ si rigenerano dal codice e non si correggono a mano.
 | `CHROMIUM_PATH` | test-tooling | configurazione | non dichiarato in Settings | `scripts/collaudo_ui.mjs` |
 | `CORS_ALLOWED_ORIGINS` | sicurezza | configurazione | `str` / `''` | `app/config.py` |
 | `CORS_ORIGINS` | sicurezza | configurazione | `str` / `'*'` | `app/config.py` |
-| `DATA_BACKEND` | app-runtime | configurazione | `str` / `'sheets'` | `app/config.py`, `render.yaml` |
-| `DB_NAME` | app-runtime | configurazione | `str` / `'Gestionale'` | `app/config.py`, `app/scripts/create_indexes.py`, `backend/tests/test_corrispettivi_ingest.py`, `scripts/archivia_prima_nota_salari_fuori_periodo.py`, `scripts/bonifica_pos_numia.py`, `scripts/e2e_distruttivo_server.py` |
+| `CREDENTIALS_ENCRYPTION_KEY` | app-runtime | configurazione | non dichiarato in Settings | `render.yaml` |
 | `DEBUG` | app-runtime | configurazione | `bool` / `False` | `app/config.py` |
 | `DEFAULT_USER_EMAIL` | app-runtime | configurazione | `str` / `'admin@ceraldi.it'` | `app/config.py` |
 | `DEFAULT_USER_ID` | app-runtime | configurazione | `str` / `'admin'` | `app/config.py` |
@@ -531,7 +527,6 @@ si rigenerano dal codice e non si correggono a mano.
 | `DRIVE_PAYPAL_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `DRIVE_PRESENZE_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `DRIVE_VERBALI_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
-| `DR_SOURCE_DB_NAME` | transitorie-vietate-nel-target | configurazione | non dichiarato in Settings | `scripts/verifica_ripristino_mongodb.py` |
 | `E2E_BASE_URL` | test-tooling | configurazione | non dichiarato in Settings | `frontend/scripts/audit-destructive-e2e.cjs`, `frontend/scripts/audit-pages-e2e.cjs` |
 | `E2E_FRONTEND_DIST` | test-tooling | configurazione | non dichiarato in Settings | `scripts/e2e_distruttivo_server.py` |
 | `EMAIL_ADDRESS` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/routers/configurazioni.py`, `app/routers/learning_machine.py`, `app/services/gmail_search.py` |
@@ -614,17 +609,6 @@ si rigenerano dal codice e non si correggono a mano.
 | `LOG_LEVEL` | app-runtime | configurazione | `str` / `'INFO'` | `app/config.py` |
 | `MAX_CONCURRENT_IMPORTS` | app-runtime | configurazione | `int` / `5` | `app/config.py` |
 | `MAX_UPLOAD_SIZE_MB` | app-runtime | configurazione | `int` / `50` | `app/config.py` |
-| `MONGODB_ATLAS_URI` | transitorie-vietate-nel-target | configurazione | `Optional[str]` / `None` | `app/config.py`, `scripts/bonifica_pos_numia.py`, `scripts/e2e_distruttivo_server.py` |
-| `MONGODB_CONNECT_TIMEOUT_MS` | transitorie-vietate-nel-target | configurazione | `int` / `5000` | `app/config.py` |
-| `MONGODB_MAX_IDLE_TIME_MS` | transitorie-vietate-nel-target | configurazione | `int` / `120000` | `app/config.py` |
-| `MONGODB_MAX_POOL_SIZE` | transitorie-vietate-nel-target | configurazione | `int` / `50` | `app/config.py` |
-| `MONGODB_MIN_POOL_SIZE` | transitorie-vietate-nel-target | configurazione | `int` / `0` | `app/config.py` |
-| `MONGODB_SOCKET_TIMEOUT_MS` | transitorie-vietate-nel-target | configurazione | `int` / `20000` | `app/config.py` |
-| `MONGODB_TIMEOUT_MS` | transitorie-vietate-nel-target | configurazione | `int` / `5000` | `app/config.py` |
-| `MONGODB_URI` | transitorie-vietate-nel-target | configurazione | non dichiarato in Settings | `scripts/archivia_prima_nota_salari_fuori_periodo.py` |
-| `MONGODB_WAIT_QUEUE_TIMEOUT_MS` | transitorie-vietate-nel-target | configurazione | `int` / `5000` | `app/config.py` |
-| `MONGO_URI` | transitorie-vietate-nel-target | configurazione | non dichiarato in Settings | `scripts/archivia_prima_nota_salari_fuori_periodo.py` |
-| `MONGO_URL` | transitorie-vietate-nel-target | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/scripts/create_indexes.py`, `app/utils/crypto.py`, `backend/tests/test_corrispettivi_ingest.py`, `scripts/archivia_prima_nota_salari_fuori_periodo.py`, `scripts/bonifica_pos_numia.py`, `scripts/e2e_distruttivo_server.py` |
 | `NODE_ENV` | app-runtime | configurazione | non dichiarato in Settings | `frontend/plugins/health-check/health-endpoints.js` |
 | `NOLEGGIO_GIORNI_SENZA_FATTURA` | feature-job | configurazione | non dichiarato in Settings | `app/services/noleggio/controlli.py` |
 | `OPENAI_API_KEY` | ai | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `app/routers/settings_router.py`, `app/services/chat_ai_engine.py` |
@@ -646,7 +630,7 @@ si rigenerano dal codice e non si correggono a mano.
 | `PROCESS_ROLE` | app-runtime | configurazione | non dichiarato in Settings | `app/main.py`, `render.yaml` |
 | `PYTHONUTF8` | app-runtime | configurazione | non dichiarato in Settings | `render.yaml` |
 | `PYTHON_VERSION` | app-runtime | configurazione | non dichiarato in Settings | `render.yaml` |
-| `REACT_APP_BACKEND_URL` | app-runtime | configurazione | non dichiarato in Settings | `backend/tests/test_corrispettivi_ingest.py`, `backend/tests/test_fase2_fase3_fase4.py` |
+| `REACT_APP_BACKEND_URL` | app-runtime | configurazione | non dichiarato in Settings | `backend/tests/test_fase2_fase3_fase4.py` |
 | `RELOAD` | app-runtime | configurazione | `bool` / `False` | `app/config.py` |
 | `RENDER` | app-runtime | configurazione | non dichiarato in Settings | `app/main.py`, `app/utils/session_cookie.py` |
 | `RENDER_GIT_COMMIT` | app-runtime | configurazione | non dichiarato in Settings | `app/main.py` |
@@ -660,6 +644,7 @@ si rigenerano dal codice e non si correggono a mano.
 | `RUN_STARTUP_SEED_DATA` | feature-job | configurazione | `bool` / `False` | `app/config.py` |
 | `SCHEDULER_LEASE_SECONDS` | feature-job | configurazione | `int` / `21600` | `app/config.py` |
 | `SECRET_KEY` | sicurezza | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `app/routers/auth.py`, `scripts/e2e_distruttivo_server.py` |
+| `SHEETS_REGISTRY_NAME` | app-runtime | configurazione | `str` / `'GestionaleCloud'` | `app/config.py`, `render.yaml` |
 | `SMOKE_ANNO` | test-tooling | configurazione | non dichiarato in Settings | `scripts/smoke_app.py` |
 | `SMOKE_AUTH_TOKEN` | test-tooling | segreta | non dichiarato in Settings | `scripts/smoke_app.py` |
 | `SMOKE_TIMEOUT` | test-tooling | configurazione | non dichiarato in Settings | `scripts/smoke_app.py` |
@@ -714,7 +699,7 @@ Gli alias senza valore vanno configurati nel secret/config store di Render. Non 
 
 ## Appendice D — Tutti i router e tutti gli endpoint
 
-Route table sorgente: **1137**; attivi da ricreare: **739**; quarantena: **398** (`verificare` 371, `admin-only` 27).
+Route table sorgente: **1137**; attivi da ricreare: **737**; quarantena: **400** (`verificare` 373, `admin-only` 27).
 
 `attivo` significa da ricreare con contratto e test; `quarantena` significa non esporre nel nuovo runtime finché consumer, autorizzazione e test non sono provati. L'elenco è completo e include entrambe le categorie.
 
@@ -1505,8 +1490,8 @@ Route table sorgente: **1137**; attivi da ricreare: **739**; quarantena: **398**
 - **attivo** — `GET /api/fiscal/crosswalk` — in uso: FE
 - **attivo** — `GET /api/fiscal/declarations` — in uso: FE
 - **attivo** — `GET /api/fiscal/documents/{document_id}/content` — in uso: FE
-- **attivo** — `GET /api/fiscal/dossier.pdf` — in uso: FE
-- **attivo** — `GET /api/fiscal/evidence-package.zip` — in uso: FE
+- **quarantena: verificare** — `GET /api/fiscal/dossier.pdf` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/fiscal/evidence-package.zip` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **attivo** — `GET /api/fiscal/evidence/{entity_type}/{entity_id}` — in uso: FE, scheduler
 - **quarantena: verificare** — `GET /api/fiscal/f24-documents` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **attivo** — `GET /api/fiscal/f24-rows` — in uso: FE

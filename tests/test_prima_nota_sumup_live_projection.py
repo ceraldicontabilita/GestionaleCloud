@@ -1,6 +1,6 @@
 import asyncio
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.routers.prima_nota_module import banca, cassa, stats
 from app.services.prima_nota_sumup_projection import (
@@ -41,7 +41,7 @@ def _riga_cassa(data, ident="cassa-sumup-oggi", importo=116.90):
 
 
 def test_proiezione_sumup_aggiorna_la_risposta_senza_riscrivere_il_db():
-    db = AsyncMongoMockClient()["sumup_live_projection_test"]
+    db = MemorySheetsClient()["sumup_live_projection_test"]
     oggi = giorno_corrente_negozio()
     _run(db["chiusure_pos_manuali"].insert_one(_evidenza(oggi)))
     _run(db["prima_nota_cassa"].insert_one(_riga_cassa(oggi)))
@@ -59,7 +59,7 @@ def test_proiezione_sumup_aggiorna_la_risposta_senza_riscrivere_il_db():
 
 
 def test_proiezione_sumup_non_accorpa_due_righe_ambigue():
-    db = AsyncMongoMockClient()["sumup_live_ambiguous_test"]
+    db = MemorySheetsClient()["sumup_live_ambiguous_test"]
     oggi = giorno_corrente_negozio()
     _run(db["chiusure_pos_manuali"].insert_one(_evidenza(oggi)))
     _run(db["prima_nota_cassa"].insert_many([
@@ -75,7 +75,7 @@ def test_proiezione_sumup_non_accorpa_due_righe_ambigue():
 
 
 def test_dashboard_usa_il_totale_sumup_live_senza_modificare_la_riga(monkeypatch):
-    db = AsyncMongoMockClient()["sumup_live_dashboard_test"]
+    db = MemorySheetsClient()["sumup_live_dashboard_test"]
     oggi = giorno_corrente_negozio()
     monkeypatch.setattr(stats.Database, "get_db", staticmethod(lambda: db))
     _run(db["chiusure_pos_manuali"].insert_one(_evidenza(oggi)))
@@ -93,7 +93,7 @@ def test_dashboard_usa_il_totale_sumup_live_senza_modificare_la_riga(monkeypatch
 
 
 def test_endpoint_cassa_mostra_il_totale_sumup_live_e_conserva_lo_snapshot(monkeypatch):
-    db = AsyncMongoMockClient()["sumup_live_cassa_endpoint_test"]
+    db = MemorySheetsClient()["sumup_live_cassa_endpoint_test"]
     oggi = giorno_corrente_negozio()
     monkeypatch.setattr(cassa.Database, "get_db", staticmethod(lambda: db))
     async def saldi_prima_della_proiezione(*_args, **_kwargs):
@@ -130,7 +130,7 @@ def test_endpoint_cassa_mostra_il_totale_sumup_live_e_conserva_lo_snapshot(monke
 
 
 def test_periodo_sumup_corregge_11_e_aggiunge_12_senza_scrivere(monkeypatch):
-    db = AsyncMongoMockClient()["sumup_period_projection_test"]
+    db = MemorySheetsClient()["sumup_period_projection_test"]
     _run(db["prima_nota_cassa"].insert_one(_riga_cassa(
         "2026-08-11", ident="legacy-11", importo=116.90
     )))
@@ -164,7 +164,7 @@ def test_periodo_sumup_corregge_11_e_aggiunge_12_senza_scrivere(monkeypatch):
 
 
 def test_dashboard_applica_tutte_le_giornate_sumup_del_periodo(monkeypatch):
-    db = AsyncMongoMockClient()["sumup_dashboard_period_test"]
+    db = MemorySheetsClient()["sumup_dashboard_period_test"]
     monkeypatch.setattr(stats.Database, "get_db", staticmethod(lambda: db))
     _run(db["prima_nota_cassa"].insert_one(_riga_cassa(
         "2026-08-11", ident="legacy-dashboard-11", importo=116.90
@@ -191,7 +191,7 @@ def test_dashboard_applica_tutte_le_giornate_sumup_del_periodo(monkeypatch):
 
 
 def test_credito_sumup_esclude_solo_transazioni_con_payout_riconciliato(monkeypatch):
-    db = AsyncMongoMockClient()["sumup_open_credit_test"]
+    db = MemorySheetsClient()["sumup_open_credit_test"]
     monkeypatch.setattr(banca.Database, "get_db", staticmethod(lambda: db))
 
     transazioni = [

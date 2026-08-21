@@ -19,7 +19,7 @@
       "Ogni risposta deve includere stato, motivazione, fonti interne utilizzate e livello di affidabilita."
     ],
     "nota_implementazione": "La base di conoscenza è distinta dal motore operativo della chat. La sezione implementazione_chat_intelligente definisce backend, strumenti, memoria, frontend e sicurezza.",
-    "source_revision": "a6e2b21c03a3f00b161b682f52760d75df5b970f",
+    "source_revision": "dab420af25349d8482af3fb179c187c1ad62f538",
     "repository": "ceraldicontabilita/GestionaleCloud"
   },
   "regola_decisionale_globale": {
@@ -808,7 +808,7 @@
         "Il backend carica le regole pertinenti della base di conoscenza.",
         "Il modello AI riceve domanda, contesto e strumenti autorizzati.",
         "Il modello richiede al backend i dati necessari tramite strumenti controllati.",
-        "Il backend interroga l'archivio operativo selezionato da DATA_BACKEND e legge gli originali autorizzati da Drive.",
+        "Il backend interroga i registri Sheets e legge gli originali autorizzati da Drive.",
         "Il modello costruisce una risposta motivata con fonti, affidabilità e dati mancanti.",
         "Il backend salva domanda, risposta, strumenti usati e decisioni.",
         "Il frontend mostra la risposta e le eventuali azioni proposte."
@@ -850,7 +850,7 @@
           "Ogni chiamata deve essere registrata.",
           "Gli strumenti di lettura devono essere separati da quelli con effetti sui dati.",
           "Gli strumenti con effetti devono richiedere conferma esplicita dell'utente.",
-          "Il modello non può costruire query libere contro MongoDB, Sheets o Drive."
+          "Il modello non può costruire query libere contro Sheets o Drive."
         ],
         "strumenti_minimi": [
           "cerca_documenti",
@@ -1090,8 +1090,8 @@
   "storage_operativo": {
     "stato_corrente": "google_drive_sheets",
     "backend_predefinito": "sheets",
-    "compatibilita": "mongodb_solo_con_DATA_BACKEND_mongodb",
-    "regola": "La chat interroga soltanto strumenti backend autorizzati. Drive/Sheets è l'archivio operativo; non esiste fallback automatico a MongoDB.",
+    "compatibilita": "nessun_backend_alternativo",
+    "regola": "La chat interroga soltanto strumenti backend autorizzati. Drive/Sheets è l'unico archivio operativo; non esiste fallback alternativo.",
     "cartelle_canoniche": [
       "REGISTRO DATI",
       "PARTENOPAY",

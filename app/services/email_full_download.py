@@ -15,7 +15,7 @@ from typing import Dict, Any, List, Optional, Tuple
 import logging
 import hashlib
 import base64
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from app.services.sheets_document_store import SheetDatabase
 
 logger = logging.getLogger(__name__)
 
@@ -32,10 +32,10 @@ def get_email_credentials():
     email_password = settings.EMAIL_PASSWORD or settings.EMAIL_APP_PASSWORD or settings.GMAIL_APP_PASSWORD or ""
     return email_user, email_password
 
-# Mapping categoria -> collezione MongoDB
+# Mapping categoria -> foglio Sheets
 CATEGORY_COLLECTIONS = {
     "f24": "f24_email_attachments",
-    "fattura": "fatture_email_attachments", 
+    "fattura": "fatture_email_attachments",
     "busta_paga": "cedolini_email_attachments",
     "estratto_conto": "estratti_email_attachments",
     "quietanza": "quietanze_email_attachments",
@@ -125,28 +125,28 @@ def categorize_document(filename: str, subject: str = "", body: str = "") -> str
     Categorizza un documento in base al nome file, oggetto e contenuto.
     """
     text_to_check = f"{filename} {subject} {body}".lower()
-    
+
     for category, patterns in DOCUMENT_PATTERNS.items():
         for pattern in patterns:
             if re.search(pattern, text_to_check, re.IGNORECASE):
                 return category
-    
+
     return "altro"
 
 
 def extract_period_from_text(text: str) -> Dict[str, Any]:
     """Estrae mese e anno dal testo."""
     result = {"mese": None, "anno": None}
-    
+
     # Pattern mese/anno
     mesi_it = {
         "gennaio": 1, "febbraio": 2, "marzo": 3, "aprile": 4,
         "maggio": 5, "giugno": 6, "luglio": 7, "agosto": 8,
         "settembre": 9, "ottobre": 10, "novembre": 11, "dicembre": 12
     }
-    
+
     text_lower = text.lower()
-    
+
     # Pattern 1: "gennaio 2025", "febbraio 2024"
     for mese_nome, mese_num in mesi_it.items():
         pattern = rf'{mese_nome}\s*[/_\-]?\s*(\d{{4}})'
@@ -155,7 +155,7 @@ def extract_period_from_text(text: str) -> Dict[str, Any]:
             result["mese"] = mese_num
             result["anno"] = int(match.group(1))
             return result
-    
+
     # Pattern 2: "01/2025"
     match = re.search(r'(\d{1,2})[/_\-](\d{4})', text)
     if match:
@@ -165,12 +165,12 @@ def extract_period_from_text(text: str) -> Dict[str, Any]:
             result["mese"] = mese
             result["anno"] = anno
             return result
-    
+
     # Pattern 3: "2025" solo anno
     match = re.search(r'20(2[0-9])', text)
     if match:
         result["anno"] = int(f"20{match.group(1)}")
-    
+
     return result
 
 
@@ -179,8 +179,8 @@ class EmailFullDownloader:
     Scarica TUTTI gli allegati PDF dalla posta e li salva nel database.
     Supporta deduplicazione e categorizzazione automatica.
     """
-    
-    def __init__(self, db: AsyncIOMotorDatabase):
+
+    def __init__(self, db: SheetDatabase):
         self.db = db
         self.connection = None
         self.stats = {
@@ -192,7 +192,7 @@ class EmailFullDownloader:
         }
         self._cached_keywords = None  # Cache per le parole chiave
         self._cached_trusted_senders = None  # Cache mittenti attendibili "generico"
-    
+
     async def _load_admin_keywords(self) -> list:
         """
         Carica le parole chiave amministrative dal database.
@@ -201,7 +201,7 @@ class EmailFullDownloader:
         # Usa cache se disponibile
         if self._cached_keywords is not None:
             return self._cached_keywords
-        
+
         try:
             config = await self.db["config"].find_one({"tipo": "parole_chiave"})
             if config:
@@ -210,17 +210,17 @@ class EmailFullDownloader:
                 for key in ["generale", "fatture", "f24", "buste_paga", "estratti_conto", "verbali", "altro"]:
                     if key in config and isinstance(config[key], list):
                         keywords.extend(config[key])
-                
+
                 # Rimuovi duplicati e valori vuoti
                 keywords = list(set(kw.strip() for kw in keywords if kw and kw.strip()))
-                
+
                 if keywords:
                     self._cached_keywords = keywords
                     logger.info(f"Caricate {len(keywords)} parole chiave da Admin")
                     return keywords
         except Exception as e:
             logger.warning(f"Errore caricamento parole chiave da DB: {e}")
-        
+
         # Fallback: parole chiave di default se non configurate
         default_keywords = [
             # Fatture (escluse da Gmail ma utili per categorizzazione)
@@ -289,7 +289,7 @@ class EmailFullDownloader:
             email_user, email_password = get_email_credentials()
             if not email_user or not email_password:
                 raise Exception("Credenziali email non configurate")
-            
+
             self.connection = imaplib.IMAP4_SSL(IMAP_SERVER)
             self.connection.login(email_user, email_password)
             logger.info(f"Connesso a {IMAP_SERVER} come {email_user}")
@@ -298,7 +298,7 @@ class EmailFullDownloader:
             logger.error(f"Errore connessione IMAP: {e}")
             self.stats["errors"].append(f"Connessione: {str(e)}")
             return False
-    
+
     def disconnect(self):
         """Disconnette dal server IMAP."""
         if self.connection:
@@ -307,7 +307,7 @@ class EmailFullDownloader:
             except Exception as e:
                 logger.warning(f"Errore durante disconnessione IMAP: {e}")
             self.connection = None
-    
+
     async def check_duplicate(self, pdf_hash: str) -> bool:
         """Verifica se un PDF con questo hash esiste già, anche CROSS-CANALE
         (P2-1): oltre alle collezioni allegati email, controlla `documents_inbox`
@@ -326,7 +326,7 @@ class EmailFullDownloader:
                         f"{altrove['collezione']} — salto reinserimento allegato")
             return True
         return False
-    
+
     async def save_pdf_to_db(
         self,
         pdf_content: bytes,
@@ -340,17 +340,17 @@ class EmailFullDownloader:
         Ritorna l'ID del documento salvato o None se duplicato.
         """
         pdf_hash = calculate_pdf_hash(pdf_content)
-        
+
         # Verifica duplicato
         if await self.check_duplicate(pdf_hash):
             self.stats["pdfs_duplicates"] += 1
             logger.debug(f"PDF duplicato saltato: {filename}")
             return None
-        
+
         # Prepara documento
         doc_id = str(uuid.uuid4())
         pdf_base64 = base64.b64encode(pdf_content).decode('utf-8')
-        
+
         document = {
             "id": doc_id,
             "filename": filename,
@@ -370,30 +370,30 @@ class EmailFullDownloader:
             "created_at": datetime.now(timezone.utc).isoformat(),
             "processed": False
         }
-        
+
         # Determina collezione
         collection_name = CATEGORY_COLLECTIONS.get(category, "documenti_non_associati")
-        
+
         # Salva nel database
         result = await self.db[collection_name].insert_one(document)
-        
+
         if not result.inserted_id:
             logger.error(f"Inserimento fallito per {filename} in {collection_name}")
             return None
-        
+
         self.stats["pdfs_downloaded"] += 1
         self.stats["pdfs_by_category"][category] = self.stats["pdfs_by_category"].get(category, 0) + 1
-        
+
         logger.info(f"PDF salvato: {filename} -> {collection_name}")
         return doc_id
-    
+
     def extract_pdfs_from_email(self, msg: email.message.Message) -> List[Tuple[str, bytes]]:
         """
         Estrae SOLO i PDF da un'email.
         ESCLUDE: PNG, JPG, immagini, firme digitali, XML.
         """
         pdfs = []
-        
+
         # Estensioni da ESCLUDERE completamente
         EXCLUDED_EXTENSIONS = {
             # Firme digitali
@@ -405,29 +405,29 @@ class EmailFullDownloader:
             # Altri
             '.zip', '.rar', '.7z', '.exe', '.dll'
         }
-        
+
         if msg.is_multipart():
             for part in msg.walk():
                 content_type = part.get_content_type()
                 content_disposition = str(part.get("Content-Disposition", ""))
-                
+
                 # Verifica se è un PDF
                 filename = part.get_filename()
                 if filename:
                     filename = decode_mime_header(filename)
-                    
+
                     # Salta file esclusi
                     ext = os.path.splitext(filename.lower())[1]
                     if ext in EXCLUDED_EXTENSIONS:
                         logger.debug(f"File escluso (estensione): {filename}")
                         continue
-                
+
                 # SOLO PDF veri - niente immagini
                 is_pdf = (
                     content_type == "application/pdf" or
                     (filename and filename.lower().endswith(".pdf"))
                 )
-                
+
                 if is_pdf:
                     try:
                         content = part.get_payload(decode=True)
@@ -448,9 +448,9 @@ class EmailFullDownloader:
                         pdfs.append((decode_mime_header(filename), content))
                 except Exception:
                     pass
-        
+
         return pdfs
-    
+
     async def process_email(self, email_uid: bytes, msg: email.message.Message, source_folder: str = "INBOX") -> int:
         """
         Processa una singola email ed estrae i PDF.
@@ -458,12 +458,12 @@ class EmailFullDownloader:
         REGOLA: le fatture NON vengono scaricate da Gmail (solo PEC o import manuale).
         """
         pdfs_saved = 0
-        
+
         # Estrai info email
         subject = decode_mime_header(msg.get("Subject", ""))
         from_addr = decode_mime_header(msg.get("From", ""))
         date_str = msg.get("Date", "")
-        
+
         # Estrai body per categorizzazione
         body = ""
         if msg.is_multipart():
@@ -479,22 +479,22 @@ class EmailFullDownloader:
                 body = msg.get_payload(decode=True).decode('utf-8', errors='replace')
             except Exception:
                 pass
-        
+
         # ============================================================
         # FILTRO PAROLE CHIAVE AMMINISTRATIVE DA DATABASE
         # Carica le parole chiave configurate dall'utente in /admin
         # ============================================================
         admin_keywords = await self._load_admin_keywords()
-        
+
         # Combina testo ricercabile: oggetto + corpo + nomi allegati + NOME CARTELLA
         # Il nome della cartella è fondamentale: se l'utente ha spostato
         # un'email nella cartella "verbale", quell'email È un verbale
         search_text = f"{subject} {body}".lower()
-        
+
         # Aggiungi il nome della cartella di origine al testo di ricerca
         # Così email nella cartella "verbale" matchano la keyword "verbale"
         search_text += f" {source_folder}".lower()
-        
+
         # Estrai anche i nomi degli allegati
         attachment_names = []
         if msg.is_multipart():
@@ -502,12 +502,12 @@ class EmailFullDownloader:
                 filename = part.get_filename()
                 if filename:
                     attachment_names.append(decode_mime_header(filename).lower())
-        
+
         search_text += " " + " ".join(attachment_names)
-        
+
         # Verifica se contiene almeno UNA parola chiave amministrativa
         has_admin_keyword = any(kw.lower() in search_text for kw in admin_keywords)
-        
+
         if not has_admin_keyword:
             # Email non amministrativa - SALTA
             logger.debug(f"Email saltata (no keyword): {subject[:50]} [{source_folder}]")
@@ -531,23 +531,23 @@ class EmailFullDownloader:
             "from": from_addr,
             "date": date_str
         }
-        
+
         # Estrai tutti i PDF
         pdfs = self.extract_pdfs_from_email(msg)
-        
+
         for filename, content in pdfs:
             # Categorizza
             category = categorize_document(filename, subject, body)
-            
+
             # REGOLA BUSINESS: le fatture NON si scaricano da Gmail
             # Le fatture arrivano SOLO via PEC (Aruba) o import manuale XML
             if category == "fattura":
                 logger.debug(f"[Gmail] Fattura saltata (solo PEC): {filename} da {from_addr}")
                 continue
-            
+
             # Estrai periodo
             period_info = extract_period_from_text(f"{filename} {subject}")
-            
+
             # Salva nel database con cartella di origine
             doc_id = await self.save_pdf_to_db(
                 pdf_content=content,
@@ -556,12 +556,12 @@ class EmailFullDownloader:
                 email_info={**email_info, "source_folder": source_folder},
                 period_info=period_info
             )
-            
+
             if doc_id:
                 pdfs_saved += 1
-        
+
         return pdfs_saved
-    
+
     def _list_all_folders(self) -> List[str]:
         """
         Lista TUTTE le cartelle/label Gmail disponibili.
@@ -571,7 +571,7 @@ class EmailFullDownloader:
             status, folder_list = self.connection.list()
             if status != "OK":
                 return ["INBOX"]
-            
+
             folders = []
             for f in folder_list:
                 try:
@@ -585,15 +585,15 @@ class EmailFullDownloader:
                             folder_name = parts[-1].strip()
                     else:
                         folder_name = decoded.split()[-1]
-                    
+
                     if folder_name and folder_name not in ('[Gmail]',):
                         folders.append(folder_name)
                 except Exception:
                     continue
-            
+
             logger.info(f"[Gmail] Trovate {len(folders)} cartelle totali")
             return folders if folders else ["INBOX"]
-            
+
         except Exception as e:
             logger.warning(f"[Gmail] Errore lista cartelle: {e}")
             return ["INBOX"]
@@ -616,7 +616,7 @@ class EmailFullDownloader:
             status, _ = self.connection.select(f'"{folder}"')
             if status != "OK":
                 return 0
-            
+
             # Per INBOX e cartelle di sistema Gmail: usa filtro data
             # Per cartelle utente: prendi TUTTO (sono archivi organizzati)
             gmail_system = ('[Gmail]' in folder or folder == 'INBOX')
@@ -624,40 +624,40 @@ class EmailFullDownloader:
                 search_criteria = f'(SINCE "{since_date}")'
             else:
                 search_criteria = 'ALL'
-            
+
             status, messages = self.connection.search(None, search_criteria)
             if status != "OK" or not messages[0]:
                 return 0
-            
+
             email_ids = messages[0].split()
             if not email_ids:
                 return 0
-            
+
             logger.info(f"[Gmail] 📁 {folder}: {len(email_ids)} email da processare")
-            
+
             for email_uid in email_ids[:batch_size]:
                 try:
                     status, msg_data = self.connection.fetch(email_uid, "(RFC822)")
                     if status != "OK":
                         continue
-                    
+
                     raw_email = msg_data[0][1]
                     msg = email.message_from_bytes(raw_email)
-                    
+
                     saved = await self.process_email(email_uid, msg, source_folder=folder)
                     pdfs_in_folder += saved
                     self.stats["emails_processed"] += 1
-                    
+
                 except Exception as e:
                     logger.debug(f"[Gmail] Errore email in {folder}: {e}")
                     self.stats["errors"].append(f"{folder}: {str(e)[:80]}")
-            
+
             if pdfs_in_folder > 0:
                 logger.info(f"[Gmail] ✅ {folder}: {pdfs_in_folder} PDF salvati")
-                
+
         except Exception as e:
             logger.debug(f"[Gmail] Cartella {folder} non accessibile: {e}")
-        
+
         return pdfs_in_folder
 
     async def download_all_emails(
@@ -668,7 +668,7 @@ class EmailFullDownloader:
     ) -> Dict[str, Any]:
         """
         Scarica documenti amministrativi da Gmail.
-        
+
         REGOLE BUSINESS:
         - Scansiona TUTTE le cartelle (non solo INBOX)
         - Le FATTURE non vengono scaricate da Gmail (arrivano solo via PEC o import manuale)
@@ -678,33 +678,33 @@ class EmailFullDownloader:
         """
         if not self.connect():
             return {"success": False, "error": "Connessione IMAP fallita", "stats": self.stats}
-        
+
         # Aggiungi stats per cartelle
         self.stats["cartelle_scansionate"] = 0
         self.stats["cartelle_con_documenti"] = 0
         self.stats["cartelle_totali"] = 0
-        
+
         try:
             since_date = (datetime.now() - timedelta(days=days_back)).strftime("%d-%b-%Y")
-            
+
             if folder == "ALL_FOLDERS":
                 # Scansiona TUTTE le cartelle
                 all_folders = self._list_all_folders()
                 self.stats["cartelle_totali"] = len(all_folders)
-                
+
                 # INBOX prima, poi le altre
                 if "INBOX" in all_folders:
                     all_folders.remove("INBOX")
                     all_folders.insert(0, "INBOX")
-                
+
                 logger.info(f"[Gmail] Avvio scansione di {len(all_folders)} cartelle...")
-                
+
                 for idx, f_name in enumerate(all_folders):
                     pdfs = await self._scan_single_folder(f_name, since_date, batch_size)
                     self.stats["cartelle_scansionate"] += 1
                     if pdfs > 0:
                         self.stats["cartelle_con_documenti"] += 1
-                    
+
                     # Log progresso ogni 50 cartelle
                     if (idx + 1) % 50 == 0:
                         logger.info(
@@ -716,52 +716,52 @@ class EmailFullDownloader:
                 self.stats["cartelle_totali"] = 1
                 await self._scan_single_folder(folder, since_date, batch_size)
                 self.stats["cartelle_scansionate"] = 1
-            
+
             logger.info(
                 f"[Gmail] ✅ Scansione completata: "
                 f"{self.stats['cartelle_scansionate']} cartelle, "
                 f"{self.stats['emails_processed']} email, "
                 f"{self.stats['pdfs_downloaded']} PDF scaricati"
             )
-            
+
             return {
                 "success": True,
                 "stats": self.stats
             }
-            
+
         except Exception as e:
             logger.error(f"Errore download email: {e}")
             return {"success": False, "error": str(e), "stats": self.stats}
-        
+
         finally:
             self.disconnect()
-    
+
     async def download_single_day(self, target_date: datetime) -> Dict[str, Any]:
         """
         Scarica email di un singolo giorno specifico da TUTTE le cartelle.
         """
         if not self.connect():
             return {"success": False, "error": "Connessione IMAP fallita"}
-        
+
         try:
             date_str = target_date.strftime("%d-%b-%Y")
             next_date_str = (target_date + timedelta(days=1)).strftime("%d-%b-%Y")
-            
+
             all_folders = self._list_all_folders()
             logger.info(f"[Gmail] Scansione giorno {date_str} su {len(all_folders)} cartelle")
-            
+
             for folder in all_folders:
                 try:
                     status, _ = self.connection.select(f'"{folder}"')
                     if status != "OK":
                         continue
-                    
+
                     search_criteria = f'(SINCE "{date_str}" BEFORE "{next_date_str}")'
                     status, messages = self.connection.search(None, search_criteria)
-                    
+
                     if status != "OK" or not messages[0]:
                         continue
-                    
+
                     email_ids = messages[0].split()
                     for email_uid in email_ids:
                         try:
@@ -774,15 +774,15 @@ class EmailFullDownloader:
                             logger.debug(f"Errore email in {folder}: {e}")
                 except Exception:
                     continue
-            
+
             return {"success": True, "stats": self.stats}
-            
+
         finally:
             self.disconnect()
 
 
 async def associate_pdf_to_document(
-    db: AsyncIOMotorDatabase,
+    db: SheetDatabase,
     pdf_id: str,
     source_collection: str,
     target_document_id: str,
@@ -797,7 +797,7 @@ async def associate_pdf_to_document(
         pdf_doc = await db[source_collection].find_one({"id": pdf_id})
         if not pdf_doc:
             return False
-        
+
         # Aggiorna documento destinazione con il PDF
         result = await db[target_collection].update_one(
             {"id": target_document_id},
@@ -809,7 +809,7 @@ async def associate_pdf_to_document(
                 }
             }
         )
-        
+
         if result.modified_count > 0:
             # Marca il PDF come associato
             await db[source_collection].update_one(
@@ -824,16 +824,16 @@ async def associate_pdf_to_document(
                 }
             )
             return True
-        
+
         return False
-        
+
     except Exception as e:
         logger.error(f"Errore associazione PDF: {e}")
         return False
 
 
 async def get_documenti_non_associati(
-    db: AsyncIOMotorDatabase,
+    db: SheetDatabase,
     category: str = None,
     limit: int = 100
 ) -> List[Dict[str, Any]]:
@@ -843,7 +843,7 @@ async def get_documenti_non_associati(
     query = {"associato": False}
     if category:
         query["category"] = category
-    
+
     # Cerca in tutte le collezioni di allegati
     results = []
     for coll_name in CATEGORY_COLLECTIONS.values():
@@ -851,21 +851,21 @@ async def get_documenti_non_associati(
             query,
             {"_id": 0, "pdf_data": 0}  # Escludi PDF pesante
         ).limit(limit)
-        
+
         async for doc in cursor:
             doc["source_collection"] = coll_name
             results.append(doc)
-    
+
     return results[:limit]
 
 
-async def smart_auto_associate(db: AsyncIOMotorDatabase) -> Dict[str, int]:
+async def smart_auto_associate(db: SheetDatabase) -> Dict[str, int]:
     """
     Tenta di associare automaticamente i PDF ai documenti esistenti
     basandosi su filename, periodo e categoria.
     """
     stats = {"associated": 0, "skipped": 0, "errors": 0}
-    
+
     # ========== ASSOCIAZIONE CEDOLINI (BUSTE PAGA) ==========
     # Pattern filename: "Busta paga - Vespa Vincenzo - Settembre 2024 - 2.pdf"
     mesi_it = {
@@ -873,29 +873,29 @@ async def smart_auto_associate(db: AsyncIOMotorDatabase) -> Dict[str, int]:
         "maggio": 5, "giugno": 6, "luglio": 7, "agosto": 8,
         "settembre": 9, "ottobre": 10, "novembre": 11, "dicembre": 12
     }
-    
+
     cursor = db["cedolini_email_attachments"].find({"associato": False})
     async for pdf_doc in cursor:
         try:
             filename = pdf_doc.get("filename", "")
-            
+
             # Estrai nome dipendente e periodo dal filename
             # Pattern: "Busta paga - COGNOME NOME - MESE ANNO"
             import re
             match = re.search(r'[Bb]usta\s*[Pp]aga\s*-\s*([^-]+)\s*-\s*(\w+)\s*(\d{4})', filename)
-            
+
             if match:
                 nome_completo = match.group(1).strip()
                 mese_str = match.group(2).lower()
                 anno = int(match.group(3))
                 mese = mesi_it.get(mese_str, pdf_doc.get("mese"))
-                
+
                 # Cerca dipendente per nome/cognome
                 parts = nome_completo.split()
                 if len(parts) >= 2:
                     cognome = parts[0]
                     nome = " ".join(parts[1:])
-                    
+
                     # Cerca cedolino corrispondente
                     cedolino = await db["cedolini"].find_one({
                         "mese": mese,
@@ -906,7 +906,7 @@ async def smart_auto_associate(db: AsyncIOMotorDatabase) -> Dict[str, int]:
                             {"pdf_data": {"$exists": False}}
                         ]
                     })
-                    
+
                     if not cedolino:
                         # Cerca anche per nome dipendente
                         cedolino = await db["cedolini"].find_one({
@@ -919,7 +919,7 @@ async def smart_auto_associate(db: AsyncIOMotorDatabase) -> Dict[str, int]:
                                 {"pdf_data": {"$exists": False}}
                             ]
                         })
-                    
+
                     if cedolino:
                         # Associa
                         await db["cedolini"].update_one(
@@ -942,19 +942,19 @@ async def smart_auto_associate(db: AsyncIOMotorDatabase) -> Dict[str, int]:
                         stats["associated"] += 1
                         logger.info(f"Cedolino associato: {filename} -> {cedolino['id']}")
                         continue
-            
+
             stats["skipped"] += 1
-            
+
         except Exception as e:
             logger.error(f"Errore auto-associazione cedolino: {e}")
             stats["errors"] += 1
-    
+
     # ========== ASSOCIAZIONE F24 ==========
     cursor = db["f24_email_attachments"].find({"associato": False})
     async for pdf_doc in cursor:
         try:
             filename = pdf_doc.get("filename", "")
-            
+
             # Cerca F24 con lo stesso filename che non ha ancora pdf_data
             f24 = await db["f24_unificato"].find_one({
                 "$and": [
@@ -970,7 +970,7 @@ async def smart_auto_associate(db: AsyncIOMotorDatabase) -> Dict[str, int]:
                     ]}
                 ]
             })
-            
+
             if f24:
                 await db["f24_unificato"].update_one(
                     {"id": f24["id"]},
@@ -993,15 +993,15 @@ async def smart_auto_associate(db: AsyncIOMotorDatabase) -> Dict[str, int]:
                 logger.info(f"F24 associato: {filename}")
             else:
                 stats["skipped"] += 1
-                
+
         except Exception as e:
             logger.error(f"Errore auto-associazione F24: {e}")
             stats["errors"] += 1
-    
+
     return stats
 
 
-async def smart_auto_associate_v2(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
+async def smart_auto_associate_v2(db: SheetDatabase) -> Dict[str, Any]:
     """
     Versione migliorata dell'auto-associazione che:
     1. Lavora con la collezione documents_inbox esistente
@@ -1016,43 +1016,43 @@ async def smart_auto_associate_v2(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
         "documents_inbox_processed": 0,
         "errors": []
     }
-    
-    # ========== ARCHITETTURA MONGODB-ONLY ==========
+
+    # ========== ARCHITETTURA DRIVE/SHEETS ==========
     # Questa funzione è DEPRECATA per la migrazione legacy.
-    # Tutti i nuovi flussi devono usare pdf_data già presente in MongoDB.
+    # Tutti i nuovi flussi devono usare pdf_data già presente in Drive/Sheets.
     # Le funzioni sottostanti sono mantenute per retrocompatibilità con dati esistenti.
-    
+
     # ========== 1. SKIP AGGIORNAMENTO DA FILESYSTEM ==========
     # I nuovi documenti devono già avere pdf_data
     # Questo blocco è deprecato ma mantenuto per riferimento
     logger.info("Migrazione payslips da filesystem deprecata - usa pdf_data direttamente")
-    
+
     # ========== 2. PROCESSA DOCUMENTS_INBOX ==========
     # Marca i documenti processati e li collega dove possibile
-    
+
     mesi_it = {
         "gennaio": 1, "febbraio": 2, "marzo": 3, "aprile": 4,
         "maggio": 5, "giugno": 6, "luglio": 7, "agosto": 8,
         "settembre": 9, "ottobre": 10, "novembre": 11, "dicembre": 12
     }
-    
-    # 2a. Processa F24 da documents_inbox (MongoDB-only)
+
+    # 2a. Processa F24 da documents_inbox (Drive/Sheets)
     cursor = db["documents_inbox"].find({
         "category": "f24",
         "status": {"$ne": "associato"},
         "pdf_data": {"$exists": True, "$nin": [None, ""]}
     })
-    
+
     async for doc in cursor:
         try:
             filename = doc.get("filename", "")
             pdf_data = doc.get("pdf_data", "")
-            
+
             # Estrai periodo dal filename (es: F24_IVA_09_2025, F24_dicembre_2025)
             period_match = re.search(r'(\d{2})_(\d{4})|(\w+)_(\d{4})', filename)
             mese = None
             anno = None
-            
+
             if period_match:
                 if period_match.group(1):  # Pattern numerico: 09_2025
                     mese = int(period_match.group(1))
@@ -1061,7 +1061,7 @@ async def smart_auto_associate_v2(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
                     mese_str = period_match.group(3).lower()
                     mese = mesi_it.get(mese_str)
                     anno = int(period_match.group(4))
-            
+
             # Cerca F24 corrispondente
             query = {}
             if mese and anno:
@@ -1072,19 +1072,19 @@ async def smart_auto_associate_v2(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
                     {"file_name": {"$regex": filename[:20], "$options": "i"}},
                     {"filename": {"$regex": filename[:20], "$options": "i"}}
                 ]}
-            
+
             f24 = await db["f24_unificato"].find_one(query)
-            
+
             if f24 and pdf_data:
-                # Architettura MongoDB-only: usa pdf_data già presente
+                # Architettura Drive/Sheets: usa pdf_data già presente
                 await db["f24_unificato"].update_one(
                     {"id": f24["id"]},
                     {"$set": {
-                        "pdf_data": pdf_data,  # MongoDB-only
+                        "pdf_data": pdf_data,  # Drive/Sheets
                         "pdf_hash": calculate_pdf_hash(base64.b64decode(pdf_data)) if pdf_data else None
                     }}
                 )
-                
+
                 await db["documents_inbox"].update_one(
                     {"id": doc["id"]},
                     {"$set": {
@@ -1097,45 +1097,45 @@ async def smart_auto_associate_v2(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
                 stats["f24_associated"] += 1
                 stats["documents_inbox_processed"] += 1
                 logger.info(f"F24 associato: {filename}")
-            
+
         except Exception as e:
             logger.error(f"Errore associazione F24: {e}")
             stats["errors"].append(f"F24 {doc.get('id')}: {str(e)}")
-    
-    # 2b. Processa Fatture da documents_inbox (MongoDB-only)
+
+    # 2b. Processa Fatture da documents_inbox (Drive/Sheets)
     cursor = db["documents_inbox"].find({
         "category": "fattura",
         "status": {"$ne": "associato"},
         "pdf_data": {"$exists": True, "$nin": [None, ""]}
     })
-    
+
     async for doc in cursor:
         try:
             filename = doc.get("filename", "")
             pdf_data = doc.get("pdf_data", "")
             email_subject = doc.get("email_subject", "")
-            
+
             # Estrai numero fattura dal filename o subject
             # Pattern comuni: FT_001_2025, Fattura_123, n_456
             num_match = re.search(r'(?:FT|fattura|n)[_\s\-]?(\d+)', filename + " " + email_subject, re.IGNORECASE)
-            
+
             invoice = None
             if num_match:
                 num = num_match.group(1)
                 invoice = await db["invoices"].find_one({
                     "invoice_number": {"$regex": num, "$options": "i"}
                 })
-            
+
             if invoice and pdf_data:
-                # Architettura MongoDB-only: usa pdf_data già presente
+                # Architettura Drive/Sheets: usa pdf_data già presente
                 await db["invoices"].update_one(
                     {"id": invoice["id"]},
                     {"$set": {
-                        "pdf_data": pdf_data,  # MongoDB-only
+                        "pdf_data": pdf_data,  # Drive/Sheets
                         "pdf_hash": calculate_pdf_hash(base64.b64decode(pdf_data)) if pdf_data else None
                     }}
                 )
-                
+
                 await db["documents_inbox"].update_one(
                     {"id": doc["id"]},
                     {"$set": {
@@ -1148,24 +1148,24 @@ async def smart_auto_associate_v2(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
                 stats["fatture_associated"] += 1
                 stats["documents_inbox_processed"] += 1
                 logger.info(f"Fattura associata: {filename}")
-            
+
         except Exception as e:
             logger.error(f"Errore associazione fattura: {e}")
             stats["errors"].append(f"Fattura {doc.get('id')}: {str(e)}")
-    
+
     return stats
 
 
-async def populate_payslips_pdf_data(db: AsyncIOMotorDatabase) -> Dict[str, int]:
+async def populate_payslips_pdf_data(db: SheetDatabase) -> Dict[str, int]:
     """
     DEPRECATO: Funzione di migrazione legacy per popolare pdf_data da filesystem.
     I nuovi documenti devono già avere pdf_data quando vengono scaricati dalle email.
     Mantenuta per retrocompatibilità con dati esistenti.
     """
     stats = {"updated": 0, "skipped": 0, "errors": 0, "deprecated": True}
-    
+
     logger.warning("populate_payslips_pdf_data è DEPRECATO. I nuovi flussi usano pdf_data direttamente.")
-    
+
     # Cerca payslips che hanno solo pdf_data mancante (per migrazione)
     cursor = db["cedolini"].find({
         "$or": [
@@ -1174,21 +1174,21 @@ async def populate_payslips_pdf_data(db: AsyncIOMotorDatabase) -> Dict[str, int]
             {"pdf_data": {"$exists": False}}
         ]
     })
-    
+
     async for payslip in cursor:
         try:
             # Se non ha pdf_data, lo salta - i nuovi documenti devono averlo
             stats["skipped"] += 1
             continue
-            
+
         except Exception as e:
             logger.error(f"Errore popolamento payslip: {e}")
             stats["errors"] += 1
-    
+
     return stats
 
 
-async def get_documents_inbox_stats(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
+async def get_documents_inbox_stats(db: SheetDatabase) -> Dict[str, Any]:
     """
     Statistiche sulla collezione documents_inbox.
     """
@@ -1198,29 +1198,29 @@ async def get_documents_inbox_stats(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
             "count": {"$sum": 1}
         }}
     ]
-    
+
     stats = {
         "by_category": {},
         "by_status": {},
         "total": await db["documents_inbox"].count_documents({})
     }
-    
+
     async for doc in db["documents_inbox"].aggregate(pipeline):
         cat = doc["_id"].get("category", "unknown")
         status = doc["_id"].get("status", "unknown")
         count = doc["count"]
-        
+
         if cat not in stats["by_category"]:
             stats["by_category"][cat] = {"total": 0, "nuovo": 0, "processato": 0, "associato": 0}
         stats["by_category"][cat]["total"] += count
         stats["by_category"][cat][status] = stats["by_category"][cat].get(status, 0) + count
-        
+
         stats["by_status"][status] = stats["by_status"].get(status, 0) + count
-    
+
     return stats
 
 
-async def sync_filesystem_pdfs_to_db(db: AsyncIOMotorDatabase, base_dir: str = "/tmp/documents") -> Dict[str, Any]:
+async def sync_filesystem_pdfs_to_db(db: SheetDatabase, base_dir: str = "/tmp/documents") -> Dict[str, Any]:
     """
     Scansiona i PDF sul filesystem e li sincronizza con documents_inbox.
     Per ogni file:
@@ -1235,7 +1235,7 @@ async def sync_filesystem_pdfs_to_db(db: AsyncIOMotorDatabase, base_dir: str = "
         "duplicates_skipped": 0,
         "errors": []
     }
-    
+
     # Mapping directory -> categoria
     DIR_TO_CATEGORY = {
         "F24": "f24",
@@ -1249,29 +1249,29 @@ async def sync_filesystem_pdfs_to_db(db: AsyncIOMotorDatabase, base_dir: str = "
         "Cartelle Esattoriali": "cartella_esattoriale",
         "Altri": "altro"
     }
-    
+
     for dir_name, category in DIR_TO_CATEGORY.items():
         dir_path = os.path.join(base_dir, dir_name)
         if not os.path.exists(dir_path):
             continue
-        
+
         for filename in os.listdir(dir_path):
             if not filename.lower().endswith('.pdf'):
                 continue
-            
+
             filepath = os.path.join(dir_path, filename)
             stats["files_scanned"] += 1
-            
+
             try:
                 # Leggi e calcola hash
                 with open(filepath, "rb") as f:
                     content = f.read()
-                
+
                 file_hash = calculate_pdf_hash(content)
-                
+
                 # Controlla se esiste già per hash
                 existing = await db["documents_inbox"].find_one({"file_hash": file_hash})
-                
+
                 if existing:
                     # Aggiorna il filepath se diverso
                     if existing.get("filepath") != filepath:
@@ -1283,7 +1283,7 @@ async def sync_filesystem_pdfs_to_db(db: AsyncIOMotorDatabase, base_dir: str = "
                     else:
                         stats["duplicates_skipped"] += 1
                     continue
-                
+
                 # Nuovo documento - aggiungi
                 doc_id = str(uuid.uuid4())
                 new_doc = {
@@ -1300,7 +1300,7 @@ async def sync_filesystem_pdfs_to_db(db: AsyncIOMotorDatabase, base_dir: str = "
                     "source": "filesystem_sync",
                     "synced_at": datetime.now(timezone.utc).isoformat()
                 }
-                
+
                 await db["documents_inbox"].insert_one(new_doc)
                 stats["new_added"] += 1
 
@@ -1318,50 +1318,50 @@ async def sync_filesystem_pdfs_to_db(db: AsyncIOMotorDatabase, base_dir: str = "
                     }, db, source_module="email_full_download")
                 except Exception:
                     logger.exception("Errore propagazione evento documento.acquisito (fs sync)")
-                
+
             except Exception as e:
                 logger.error(f"Errore sync file {filepath}: {e}")
                 stats["errors"].append(f"{filename}: {str(e)}")
-    
+
     return stats
 
 
-async def associate_f24_from_filesystem(db: AsyncIOMotorDatabase) -> Dict[str, int]:
+async def associate_f24_from_filesystem(db: SheetDatabase) -> Dict[str, int]:
     """
     Associa i PDF F24 dal filesystem ai record f24_commercialista.
     Usa pattern matching su periodo e tipo tributo.
     """
     stats = {"associated": 0, "skipped": 0, "errors": 0}
-    
+
     mesi_it = {
         "gennaio": 1, "febbraio": 2, "marzo": 3, "aprile": 4,
         "maggio": 5, "giugno": 6, "luglio": 7, "agosto": 8,
         "settembre": 9, "ottobre": 10, "novembre": 11, "dicembre": 12
     }
-    
+
     # Trova tutti gli F24 in documents_inbox con file esistente
     cursor = db["documents_inbox"].find({
         "category": "f24",
         "file_exists": True,
         "status": {"$ne": "associato"}
     })
-    
+
     async for doc in cursor:
         try:
             filename = doc.get("filename", "")
             filepath = doc.get("filepath", "")
-            
+
             if not filepath or not os.path.exists(filepath):
                 stats["skipped"] += 1
                 continue
-            
+
             # Estrai info dal filename
             # Pattern comuni: F24_IVA_09_2025, F24_ravv_II_acc_Ires_2023
-            
+
             mese = None
             anno = None
             tributo_pattern = None
-            
+
             # Pattern 1: mese numerico/anno (IVA_09_2025, IVA_11.25)
             match = re.search(r'(\d{1,2})[._](\d{2,4})', filename)
             if match:
@@ -1372,13 +1372,13 @@ async def associate_f24_from_filesystem(db: AsyncIOMotorDatabase) -> Dict[str, i
                 anno = int(a)
                 if 1 <= m <= 12:
                     mese = m
-            
+
             # Pattern 2: anno esplicito
             if not anno:
                 match = re.search(r'20(2[0-9])', filename)
                 if match:
                     anno = int(f"20{match.group(1)}")
-            
+
             # Identifica tipo tributo
             filename_lower = filename.lower()
             if "iva" in filename_lower:
@@ -1391,29 +1391,29 @@ async def associate_f24_from_filesystem(db: AsyncIOMotorDatabase) -> Dict[str, i
                 tributo_pattern = "tributi_locali"
             elif "1040" in filename_lower or "ritenute" in filename_lower:
                 tributo_pattern = "ritenute"
-            
+
             # Cerca F24 corrispondente
             query = {"$or": [
                 {"pdf_data": None},
                 {"pdf_data": ""},
                 {"pdf_data": {"$exists": False}}
             ]}
-            
+
             if mese and anno:
                 query["mese"] = mese
                 query["anno"] = anno
             elif anno:
                 query["anno"] = anno
-            
+
             f24 = await db["f24_unificato"].find_one(query)
-            
+
             if f24:
                 # Leggi PDF e associa
                 with open(filepath, "rb") as f:
                     pdf_content = f.read()
-                
+
                 pdf_base64 = base64.b64encode(pdf_content).decode('utf-8')
-                
+
                 await db["f24_unificato"].update_one(
                     {"id": f24["id"]},
                     {"$set": {
@@ -1423,7 +1423,7 @@ async def associate_f24_from_filesystem(db: AsyncIOMotorDatabase) -> Dict[str, i
                         "pdf_filename": filename
                     }}
                 )
-                
+
                 await db["documents_inbox"].update_one(
                     {"id": doc["id"]},
                     {"$set": {
@@ -1433,33 +1433,33 @@ async def associate_f24_from_filesystem(db: AsyncIOMotorDatabase) -> Dict[str, i
                         "associated_at": datetime.now(timezone.utc).isoformat()
                     }}
                 )
-                
+
                 stats["associated"] += 1
                 logger.info(f"F24 associato: {filename} -> {f24['id']}")
             else:
                 stats["skipped"] += 1
-                
+
         except Exception as e:
             logger.error(f"Errore associazione F24: {e}")
             stats["errors"] += 1
-    
+
     return stats
 
 
-async def process_cedolini_to_prima_nota(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
+async def process_cedolini_to_prima_nota(db: SheetDatabase) -> Dict[str, Any]:
     """
     Processa i cedolini scaricati ed estrae i dati per prima_nota_salari.
     Usa PyMuPDF per estrarre testo e pattern matching per i dati.
     """
     import fitz  # PyMuPDF
-    
+
     stats = {
         "processed": 0,
         "created_prima_nota": 0,
         "skipped": 0,
         "errors": []
     }
-    
+
     mesi_it = {
         "gennaio": 1, "febbraio": 2, "marzo": 3, "aprile": 4,
         "maggio": 5, "giugno": 6, "luglio": 7, "agosto": 8,
@@ -1467,32 +1467,32 @@ async def process_cedolini_to_prima_nota(db: AsyncIOMotorDatabase) -> Dict[str, 
         "gen": 1, "feb": 2, "mar": 3, "apr": 4, "mag": 5, "giu": 6,
         "lug": 7, "ago": 8, "set": 9, "ott": 10, "nov": 11, "dic": 12
     }
-    
+
     # Trova cedolini non processati
     cursor = db["cedolini_email_attachments"].find({
         "processed": {"$ne": True},
         "pdf_data": {"$exists": True, "$ne": None}
     })
-    
+
     async for cedolino in cursor:
         try:
             # Decodifica PDF
             pdf_bytes = base64.b64decode(cedolino["pdf_data"])
-            
+
             # Estrai testo con PyMuPDF
             doc = fitz.open(stream=pdf_bytes, filetype="pdf")
             text = ""
             for page in doc:
                 text += page.get_text()
             doc.close()
-            
+
             if not text.strip():
                 stats["skipped"] += 1
                 continue
-            
+
             # Estrai dati dal testo
             parsed_data = {}
-            
+
             # Nome dipendente - pattern specifico per cedolini italiani
             # La riga tipica è: "31/12/2019 VESPA VINCENZO  26/12/1967 VSPVCN67T26F839P"
             # Cerchiamo data + NOME COGNOME + data_nascita + codice_fiscale
@@ -1507,19 +1507,19 @@ async def process_cedolini_to_prima_nota(db: AsyncIOMotorDatabase) -> Dict[str, 
                 if match:
                     parsed_data['dipendente_nome'] = match.group(1).strip().title()
                     break
-            
+
             # Se non trovato nel testo, usa il filename
             if not parsed_data.get('dipendente_nome'):
                 filename = cedolino.get("filename", "")
                 match = re.search(r'(?:Busta paga|Cedolino)[^\w-]*-?\s*([A-Za-z]+\s+[A-Za-z]+)', filename, re.IGNORECASE)
                 if match:
                     parsed_data['dipendente_nome'] = match.group(1).strip().title()
-            
+
             # Codice Fiscale
             cf_match = re.search(r'([A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z])', text)
             if cf_match:
                 parsed_data['codice_fiscale'] = cf_match.group(1)
-            
+
             # Periodo (mese/anno) - pattern specifico per cedolini
             # Pattern: "DICEMBRE  2019" o "NOVEMBRE 2024"
             mese_pattern = r'(GENNAIO|FEBBRAIO|MARZO|APRILE|MAGGIO|GIUGNO|LUGLIO|AGOSTO|SETTEMBRE|OTTOBRE|NOVEMBRE|DICEMBRE)\s+(\d{4})'
@@ -1528,7 +1528,7 @@ async def process_cedolini_to_prima_nota(db: AsyncIOMotorDatabase) -> Dict[str, 
                 mese_nome = match.group(1).lower()
                 parsed_data['mese'] = mesi_it.get(mese_nome[:3])
                 parsed_data['anno'] = int(match.group(2))
-            
+
             # Importi
             # Netto - pattern per cedolini italiani: cerca dopo "TOTALE NETTO" o simili
             # Il formato può essere "1.035,00+" o "1035,00"
@@ -1551,7 +1551,7 @@ async def process_cedolini_to_prima_nota(db: AsyncIOMotorDatabase) -> Dict[str, 
                         pass
                 if parsed_data.get('netto'):
                     break
-            
+
             # Lordo / Totale Competenze
             lordo_match = re.search(r'TOTALE\s+COMPETENZE\s*([\d.,]+)', text, re.IGNORECASE)
             if lordo_match:
@@ -1560,7 +1560,7 @@ async def process_cedolini_to_prima_nota(db: AsyncIOMotorDatabase) -> Dict[str, 
                     parsed_data['lordo'] = float(val)
                 except Exception:
                     pass
-            
+
             # INPS (Ritenute Previdenziali)
             inps_match = re.search(r'RITENUTE\s+PREVIDENZIALI\s*([\d.,]+)', text, re.IGNORECASE)
             if inps_match:
@@ -1569,7 +1569,7 @@ async def process_cedolini_to_prima_nota(db: AsyncIOMotorDatabase) -> Dict[str, 
                     parsed_data['inps'] = float(val)
                 except Exception:
                     pass
-            
+
             # IRPEF (Ritenute Fiscali)
             irpef_match = re.search(r'RITENUTE\s+FISCALI\s*([\d.,]+)', text, re.IGNORECASE)
             if irpef_match:
@@ -1578,7 +1578,7 @@ async def process_cedolini_to_prima_nota(db: AsyncIOMotorDatabase) -> Dict[str, 
                     parsed_data['irpef'] = float(val)
                 except Exception:
                     pass
-            
+
             # Se abbiamo abbastanza dati, crea record in prima_nota_salari
             from app.services.salari_periodo import periodo_ammesso_in_prima_nota
             if (
@@ -1595,16 +1595,16 @@ async def process_cedolini_to_prima_nota(db: AsyncIOMotorDatabase) -> Dict[str, 
                         {"codice_fiscale": parsed_data.get('codice_fiscale', '')}
                     ]
                 })
-                
+
                 dipendente_id = dipendente["id"] if dipendente else None
-                
+
                 # Verifica se esiste già in prima_nota_salari
                 existing = await db["prima_nota_salari"].find_one({
                     "dipendente_nome": {"$regex": parsed_data['dipendente_nome'], "$options": "i"},
                     "mese": parsed_data.get('mese'),
                     "anno": parsed_data.get('anno')
                 })
-                
+
                 if not existing:
                     # Crea nuovo record
                     salario_doc = {
@@ -1622,11 +1622,11 @@ async def process_cedolini_to_prima_nota(db: AsyncIOMotorDatabase) -> Dict[str, 
                         "source": "email_cedolino_auto",
                         "created_at": datetime.now(timezone.utc).isoformat()
                     }
-                    
+
                     await db["prima_nota_salari"].insert_one(salario_doc)
                     stats["created_prima_nota"] += 1
                     logger.info(f"Prima nota salari creata: {parsed_data['dipendente_nome']} {parsed_data.get('mese')}/{parsed_data.get('anno')} - €{parsed_data.get('netto')}")
-            
+
             # Aggiorna cedolino come processato
             await db["cedolini_email_attachments"].update_one(
                 {"id": cedolino["id"]},
@@ -1637,9 +1637,9 @@ async def process_cedolini_to_prima_nota(db: AsyncIOMotorDatabase) -> Dict[str, 
                 }}
             )
             stats["processed"] += 1
-            
+
         except Exception as e:
             logger.error(f"Errore processing cedolino {cedolino.get('filename')}: {e}")
             stats["errors"].append(f"{cedolino.get('filename')}: {str(e)}")
-    
+
     return stats

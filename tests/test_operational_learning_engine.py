@@ -3,7 +3,7 @@ from copy import deepcopy
 from datetime import date
 
 import pytest
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.db_collections import (
     COLL_CASE_MEMORY,
@@ -28,7 +28,7 @@ def _run(coro):
 
 
 def _database():
-    return AsyncMongoMockClient()["gestionale_test"]
+    return MemorySheetsClient()["gestionale_test"]
 
 
 def test_expected_vs_actual_usa_centesimi_esatti():

@@ -16,7 +16,9 @@ def load_json(path: Path):
 
 
 def repository_json_files() -> list[Path]:
-    excluded_parts = {".git", ".pytest_cache", "node_modules", "dist", "tmp"}
+    excluded_parts = {
+        ".claude", ".git", ".pytest_cache", "node_modules", "dist", "tmp",
+    }
     result: list[Path] = []
     for path in ROOT.rglob("*.json"):
         parts = path.relative_to(ROOT).parts
@@ -86,7 +88,7 @@ def test_conoscenza_operativa_e_valutazioni_restano_di_sola_lettura():
     assert kb["meta"]["versione"] == "5.0-drive-sheets-operational"
     assert kb["storage_operativo"]["stato_corrente"] == "google_drive_sheets"
     assert kb["storage_operativo"]["backend_predefinito"] == "sheets"
-    assert kb["storage_operativo"]["compatibilita"] == "mongodb_solo_con_DATA_BACKEND_mongodb"
+    assert kb["storage_operativo"]["compatibilita"] == "nessun_backend_alternativo"
 
     evals = load_json(ROOT / "gestionale_mcp/evals/read_only_evals.json")
     assert len({item["id"] for item in evals}) == len(evals)

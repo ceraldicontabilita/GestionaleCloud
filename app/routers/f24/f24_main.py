@@ -62,22 +62,22 @@ async def upload_f24_zip(
     """
     if not file.filename.lower().endswith('.zip'):
         raise HTTPException(status_code=400, detail="Il file deve essere un archivio ZIP")
-    
+
     db = Database.get_db()
-    
+
     # Leggi il contenuto del file ZIP
     try:
         zip_content = await file.read()
         zip_file = zipfile.ZipFile(io.BytesIO(zip_content))
     except zipfile.BadZipFile:
         raise HTTPException(status_code=400, detail="File ZIP non valido o corrotto")
-    
+
     # Estrai info sui PDF nel ZIP
     pdf_files = [f for f in zip_file.namelist() if f.lower().endswith('.pdf') and not f.startswith('__MACOSX')]
-    
+
     if not pdf_files:
         raise HTTPException(status_code=400, detail="Nessun file PDF trovato nel ZIP")
-    
+
     results = {
         "total": len(pdf_files),
         "imported": 0,
@@ -85,23 +85,23 @@ async def upload_f24_zip(
         "errors": 0,
         "details": []
     }
-    
+
     # Recupera tutti gli hash esistenti per controllo duplicati veloce
     existing_hashes = set()
     existing_docs = await db["f24_unificato"].find({}, {"file_hash": 1, "_id": 0}).to_list(10000)
     for doc in existing_docs:
         if doc.get("file_hash"):
             existing_hashes.add(doc["file_hash"])
-    
+
     # Processa ogni PDF
     for pdf_name in pdf_files:
         try:
             # Estrai il contenuto del PDF
             pdf_content = zip_file.read(pdf_name)
-            
+
             # Calcola hash SHA256 per controllo duplicati
             file_hash = hashlib.sha256(pdf_content).hexdigest()
-            
+
             # Controlla se è un duplicato
             if file_hash in existing_hashes:
                 results["duplicates"] += 1
@@ -111,41 +111,41 @@ async def upload_f24_zip(
                     "message": "File già presente nel sistema"
                 })
                 continue
-            
+
             # Genera ID univoco
             file_id = str(uuid4())
             safe_filename = os.path.basename(pdf_name).replace(" ", "_")
             stored_filename = f"{file_id}_{safe_filename}"
-            
-            # Architettura MongoDB-only: salva PDF come Base64
+
+            # Architettura Drive/Sheets: salva PDF come Base64
             import base64
             pdf_base64 = base64.b64encode(pdf_content).decode('utf-8')
-            
+
             # Crea record nel database con pdf_data
             doc = {
                 "id": file_id,
                 "original_filename": pdf_name,
                 "stored_filename": stored_filename,
-                "pdf_data": pdf_base64,  # Architettura MongoDB-only
+                "pdf_data": pdf_base64,  # Architettura Drive/Sheets
                 "file_hash": file_hash,
                 "file_size": len(pdf_content),
                 "status": "pending",  # pending, processed, error
                 "imported_from_zip": file.filename,
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
-            
+
             from app.services.f24_canonico import salva_f24
 
             file_id = await salva_f24(db, doc, source="f24_upload_zip")
             existing_hashes.add(file_hash)  # Aggiungi all'elenco per evitare duplicati nello stesso upload
-            
+
             results["imported"] += 1
             results["details"].append({
                 "file": pdf_name,
                 "status": "imported",
                 "id": file_id
             })
-            
+
         except Exception as e:
             logger.error(f"Errore elaborazione {pdf_name}: {e}")
             results["errors"] += 1
@@ -154,9 +154,9 @@ async def upload_f24_zip(
                 "status": "error",
                 "message": str(e)
             })
-    
+
     zip_file.close()
-    
+
     return results
 
 
@@ -174,7 +174,7 @@ async def upload_f24_multiple(
     - Salva i file e crea record nel database
     """
     db = Database.get_db()
-    
+
     results = {
         "total": len(files),
         "imported": 0,
@@ -182,14 +182,14 @@ async def upload_f24_multiple(
         "errors": 0,
         "details": []
     }
-    
+
     # Recupera hash esistenti
     existing_hashes = set()
     existing_docs = await db["f24_unificato"].find({}, {"file_hash": 1, "_id": 0}).to_list(10000)
     for doc in existing_docs:
         if doc.get("file_hash"):
             existing_hashes.add(doc["file_hash"])
-    
+
     for file in files:
         try:
             # Verifica che sia un PDF
@@ -201,13 +201,13 @@ async def upload_f24_multiple(
                     "message": "Il file non è un PDF"
                 })
                 continue
-            
+
             # Leggi contenuto
             pdf_content = await file.read()
-            
+
             # Calcola hash
             file_hash = hashlib.sha256(pdf_content).hexdigest()
-            
+
             # Controlla duplicati
             if file_hash in existing_hashes:
                 results["duplicates"] += 1
@@ -217,39 +217,39 @@ async def upload_f24_multiple(
                     "message": "File già presente nel sistema"
                 })
                 continue
-            
-            # Architettura MongoDB-only: salva PDF come Base64
+
+            # Architettura Drive/Sheets: salva PDF come Base64
             import base64
             file_id = str(uuid4())
             safe_filename = os.path.basename(file.filename).replace(" ", "_")
             stored_filename = f"{file_id}_{safe_filename}"
-            
+
             pdf_base64 = base64.b64encode(pdf_content).decode('utf-8')
-            
+
             # Crea record con pdf_data
             doc = {
                 "id": file_id,
                 "original_filename": file.filename,
                 "stored_filename": stored_filename,
-                "pdf_data": pdf_base64,  # Architettura MongoDB-only
+                "pdf_data": pdf_base64,  # Architettura Drive/Sheets
                 "file_hash": file_hash,
                 "file_size": len(pdf_content),
                 "status": "pending",
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
-            
+
             from app.services.f24_canonico import salva_f24
 
             file_id = await salva_f24(db, doc, source="f24_upload_multiple")
             existing_hashes.add(file_hash)
-            
+
             results["imported"] += 1
             results["details"].append({
                 "file": file.filename,
                 "status": "imported",
                 "id": file_id
             })
-            
+
         except Exception as e:
             logger.error(f"Errore upload {file.filename}: {e}")
             results["errors"] += 1
@@ -258,7 +258,7 @@ async def upload_f24_multiple(
                 "status": "error",
                 "message": str(e)
             })
-    
+
     return results
 
 
@@ -274,7 +274,7 @@ async def get_f24_documents(
     """Lista dei documenti PDF F24 caricati."""
     db = Database.get_db()
     docs = await db["f24_unificato"].find(
-        {}, 
+        {},
         {"_id": 0}
     ).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
     return docs
@@ -290,14 +290,14 @@ async def delete_f24_document(
 ) -> Dict[str, Any]:
     """Elimina un documento F24."""
     db = Database.get_db()
-    
+
     doc = await db["f24_unificato"].find_one({"id": doc_id})
     if not doc:
         raise HTTPException(status_code=404, detail="Documento non trovato")
-    
-    # Architettura MongoDB-only: elimina solo dal database
+
+    # Architettura Drive/Sheets: elimina solo dal database
     await db["f24_unificato"].delete_one({"id": doc_id})
-    
+
     return {"success": True, "message": "Documento eliminato"}
 
 
@@ -313,13 +313,13 @@ async def get_f24_forms(
 ) -> List[Dict[str, Any]]:
     """Get list of F24 forms dalla collezione unificata."""
     db = Database.get_db()
-    
+
     # Escludi eliminati
     forms_raw = await db[COLL_F24].find(
         {"status": {"$ne": "eliminato"}},
         {"_id": 0}
     ).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
-    
+
     # Trasforma nel formato legacy per compatibilità frontend
     forms = []
     for f in forms_raw:
@@ -336,7 +336,7 @@ async def get_f24_forms(
             "sezione_erario": f.get("sezione_erario", []),
             "sezione_inps": f.get("sezione_inps", [])
         })
-    
+
     return forms
 
 
@@ -351,7 +351,7 @@ async def create_f24(
 ) -> Dict[str, Any]:
     """Create new F24 form."""
     db = Database.get_db()
-    
+
     f24 = {
         "id": str(uuid4()),
         "tipo": data.get("tipo", "F24"),
@@ -366,7 +366,7 @@ async def create_f24(
         "user_id": current_user.get("user_id"),
         "created_at": datetime.now(timezone.utc).isoformat()
     }
-    
+
     from app.services.f24_canonico import salva_f24
 
     f24["id"] = await salva_f24(db, f24, source="f24_manual_create")
@@ -413,23 +413,23 @@ async def upload_f24_pdf(
     import base64
     from app.services.parser_f24 import parse_f24_commercialista
     from app.db_collections import COLL_F24
-    
+
     if not file.filename.lower().endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Solo file PDF supportati")
-    
+
     db = Database.get_db()
     pdf_bytes = await file.read()
-    
+
     # Salva temporaneamente il PDF per il parser
     with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
         tmp_file.write(pdf_bytes)
         tmp_path = tmp_file.name
-    
+
     try:
         parsed = parse_f24_commercialista(tmp_path)
     finally:
         os.unlink(tmp_path)
-    
+
     if "error" in parsed and parsed["error"]:
         return {
             "success": False,
@@ -442,11 +442,11 @@ async def upload_f24_pdf(
         richiedi_quadratura_f24(parsed)
     except ValueError as exc:
         return {"success": False, "error": str(exc), "filename": file.filename}
-    
+
     totali = parsed.get("totali", {})
     dati = parsed.get("dati_generali", {})
     data_scadenza = dati.get("data_versamento")
-    
+
     # Check duplicati
     existing = await db[COLL_F24].find_one({
         "$or": [
@@ -454,7 +454,7 @@ async def upload_f24_pdf(
             {"file_name": file.filename}
         ]
     })
-    
+
     if existing:
         return {
             "success": False,
@@ -462,7 +462,7 @@ async def upload_f24_pdf(
             "existing_id": existing.get("id"),
             "filename": file.filename
         }
-    
+
     # Crea documento nel formato f24_commercialista
     f24_id = str(uuid4())
     f24_doc = {
@@ -485,13 +485,13 @@ async def upload_f24_pdf(
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
-    
+
     from app.services.f24_canonico import salva_f24
 
     f24_id = await salva_f24(db, f24_doc, source="f24_upload_pdf")
-    
+
     logger.info(f"F24 importato: {f24_id} - €{totali.get('saldo_netto', totali.get('saldo_finale', 0)):.2f}")
-    
+
     return {
         "success": True,
         "id": f24_id,
@@ -540,12 +540,12 @@ async def update_f24(
 ) -> Dict[str, Any]:
     """Update F24 form."""
     db = Database.get_db()
-    
+
     update_data = {k: v for k, v in data.items() if k not in ["id", "_id"]}
     update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
-    
+
     await db[COLL_F24].update_one({"id": f24_id}, {"$set": update_data})
-    
+
     return await get_f24(f24_id, current_user)
 
 
@@ -578,16 +578,16 @@ async def get_alerts_scadenze(
     db = Database.get_db()
     alerts = []
     today = datetime.now(timezone.utc).date()
-    
+
     # Get unpaid F24s
     f24_list = await db[COLL_F24].find({"status": {"$ne": "paid"}}, {"_id": 0}).to_list(1000)
-    
+
     for f24 in f24_list:
         try:
             scadenza_str = f24.get("scadenza") or f24.get("data_versamento")
             if not scadenza_str:
                 continue
-            
+
             # Parse date
             if isinstance(scadenza_str, str):
                 scadenza_str = scadenza_str.replace("Z", "+00:00")
@@ -602,13 +602,13 @@ async def get_alerts_scadenze(
                 scadenza = scadenza_str.date()
             else:
                 continue
-            
+
             giorni_mancanti = (scadenza - today).days
-            
+
             # Determine severity
             severity = None
             messaggio = ""
-            
+
             if giorni_mancanti < 0:
                 severity = "critical"
                 messaggio = f"⚠️ SCADUTO da {abs(giorni_mancanti)} giorni!"
@@ -621,7 +621,7 @@ async def get_alerts_scadenze(
             elif giorni_mancanti <= 7:
                 severity = "medium"
                 messaggio = f"📅 Scade tra {giorni_mancanti} giorni"
-            
+
             if severity:
                 alerts.append({
                     "f24_id": f24.get("id"),
@@ -634,11 +634,11 @@ async def get_alerts_scadenze(
                     "messaggio": messaggio,
                     "codici_tributo": f24.get("codici_tributo", [])
                 })
-                
+
         except Exception as e:
             logger.error(f"Error parsing F24 date: {e}")
             continue
-    
+
     alerts.sort(key=lambda x: x["giorni_mancanti"])
     return alerts
 
@@ -656,15 +656,15 @@ async def get_f24_dashboard(
     Stats on paid/unpaid, totals by tax code.
     """
     db = Database.get_db()
-    
+
     all_f24 = await db[COLL_F24].find({}, {"_id": 0}).to_list(10000)
-    
+
     pagati = [f for f in all_f24 if stato_evidenza_pagamento(f)["pagato"]]
     non_pagati = [f for f in all_f24 if not stato_evidenza_pagamento(f)["pagato"]]
-    
+
     totale_pagato = sum(float(f.get("importo", 0) or 0) for f in pagati)
     totale_da_pagare = sum(float(f.get("importo", 0) or 0) for f in non_pagati)
-    
+
     # Group by tax code
     per_codice = {}
     for f24 in all_f24:
@@ -687,7 +687,7 @@ async def get_f24_dashboard(
                 per_codice[cod]["pagato"] += importo
             else:
                 per_codice[cod]["da_pagare"] += importo
-    
+
     # Count active alerts
     today = datetime.now(timezone.utc).date()
     alert_attivi = 0
@@ -707,12 +707,12 @@ async def get_f24_dashboard(
                     scadenza = scadenza_str.date()
                 else:
                     continue
-                
+
                 if (scadenza - today).days <= 7:
                     alert_attivi += 1
             except Exception:
                 pass
-    
+
     return {
         "totale_f24": len(all_f24),
         "pagati": {"count": len(pagati), "totale": round(totale_pagato, 2)},
@@ -734,15 +734,15 @@ async def riconcilia_f24(
 ) -> Dict[str, Any]:
     """Manual reconciliation of F24 with bank movement."""
     db = Database.get_db()
-    
+
     f24 = await db[COLL_F24].find_one({"id": f24_id}, {"_id": 0})
     if not f24:
         return {"success": False, "error": "F24 non trovato"}
-    
+
     movimento = await db["estratto_conto_movimenti"].find_one({"id": movimento_bancario_id}, {"_id": 0})
     if not movimento:
         return {"success": False, "error": "Movimento bancario non trovato"}
-    
+
     importo_f24 = float(
         f24.get("importo")
         or f24.get("importo_totale")
@@ -755,16 +755,16 @@ async def riconcilia_f24(
         or movimento.get("uscite")
         or 0
     ))
-    
+
     if abs(importo_f24 - importo_mov) > 1:
         return {
             "success": False,
             "error": f"Importi non corrispondenti: F24 €{importo_f24:.2f} vs Movimento €{importo_mov:.2f}",
             "warning": True
         }
-    
+
     now = datetime.now(timezone.utc).isoformat()
-    
+
     data_banca = (
         movimento.get("data_contabile")
         or movimento.get("data")
@@ -783,7 +783,7 @@ async def riconcilia_f24(
             "reconciled_at": now
         }}
     )
-    
+
     await db["estratto_conto_movimenti"].update_one(
         {"id": movimento_bancario_id},
         {"$set": {
@@ -793,7 +793,7 @@ async def riconcilia_f24(
             "reconciled_at": now
         }}
     )
-    
+
     return {
         "success": True,
         "message": "F24 riconciliato con movimento bancario",
@@ -813,9 +813,9 @@ async def mark_f24_paid(
 ) -> Dict[str, Any]:
     """Registra una dichiarazione manuale, non una prova bancaria."""
     db = Database.get_db()
-    
+
     now = datetime.now(timezone.utc).isoformat()
-    
+
     result = await db[COLL_F24].update_one(
         {"id": f24_id},
         {"$set": {
@@ -828,10 +828,10 @@ async def mark_f24_paid(
             "updated_at": now
         }}
     )
-    
+
     if result.matched_count == 0:
         return {"success": False, "error": "F24 non trovato"}
-    
+
     return {
         "success": True,
         "message": "Pagamento dichiarato; resta da verificare sul movimento bancario",
@@ -889,11 +889,11 @@ async def upload_quietanza_f24(
     """
     Upload e parsing di una quietanza F24 PDF.
     Estrae automaticamente tutti i dati e li salva nel database.
-    Architettura MongoDB-only: salva PDF come Base64.
+    Architettura Drive/Sheets: salva PDF come Base64.
     """
     if not file.filename.lower().endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Il file deve essere un PDF")
-    
+
     content = await file.read()
     db = Database.get_db()
     from app.services.f24_canonico import importa_quietanza
@@ -926,18 +926,18 @@ async def list_quietanze_f24(
 ) -> Dict[str, Any]:
     """Lista quietanze F24 con filtri."""
     db = Database.get_db()
-    
+
     query = {}
-    
+
     # Filtro per anno
     if anno:
         query["dati_generali.data_pagamento"] = {"$regex": f"^{anno}"}
-    
+
     # Filtro per anno e mese
     if anno and mese:
         mese_str = f"{mese:02d}"
         query["dati_generali.data_pagamento"] = {"$regex": f"^{anno}-{mese_str}"}
-    
+
     # Ricerca testuale
     if search:
         query["$or"] = [
@@ -945,14 +945,14 @@ async def list_quietanze_f24(
             {"dati_generali.ragione_sociale": {"$regex": search, "$options": "i"}},
             {"dati_generali.protocollo_telematico": {"$regex": search, "$options": "i"}}
         ]
-    
+
     # Query con esclusione _id
     quietanze = await db["quietanze_f24"].find(
         query, {"_id": 0}
     ).sort("dati_generali.data_pagamento", -1).skip(skip).limit(limit).to_list(limit)
-    
+
     totale = await db["quietanze_f24"].count_documents(query)
-    
+
     # Statistiche
     stats_pipeline = [
         {"$group": {
@@ -965,7 +965,7 @@ async def list_quietanze_f24(
     ]
     stats_result = await db["quietanze_f24"].aggregate(stats_pipeline).to_list(1)
     stats = stats_result[0] if stats_result else {}
-    
+
     return {
         "quietanze": quietanze,
         "totale": totale,
@@ -985,14 +985,14 @@ async def list_quietanze_f24(
 async def get_quietanza_f24(f24_id: str) -> Dict[str, Any]:
     """Dettaglio completo di una quietanza F24."""
     db = Database.get_db()
-    
+
     quietanza = await db["quietanze_f24"].find_one({"id": f24_id}, {"_id": 0})
     if not quietanza:
         raise HTTPException(status_code=404, detail="Quietanza non trovata")
-    
+
     # Genera riepilogo
     quietanza["summary"] = generate_f24_summary(quietanza)
-    
+
     return quietanza
 
 
@@ -1003,15 +1003,15 @@ async def get_quietanza_f24(f24_id: str) -> Dict[str, Any]:
 async def delete_quietanza_f24(f24_id: str) -> Dict[str, Any]:
     """Elimina una quietanza F24."""
     db = Database.get_db()
-    
+
     quietanza = await db["quietanze_f24"].find_one({"id": f24_id})
     if not quietanza:
         raise HTTPException(status_code=404, detail="Quietanza non trovata")
-    
+
     # Elimina file fisico
-    # Architettura MongoDB-only: elimina solo da database
+    # Architettura Drive/Sheets: elimina solo da database
     await db["quietanze_f24"].delete_one({"id": f24_id})
-    
+
     return {
         "success": True,
         "message": "Quietanza eliminata con successo"
@@ -1025,7 +1025,7 @@ async def delete_quietanza_f24(f24_id: str) -> Dict[str, Any]:
 async def statistiche_tributi_quietanze() -> Dict[str, Any]:
     """Statistiche aggregate per tipo di tributo dalle quietanze."""
     db = Database.get_db()
-    
+
     # Tributi Erario
     erario_pipeline = [
         {"$unwind": "$sezione_erario"},
@@ -1038,7 +1038,7 @@ async def statistiche_tributi_quietanze() -> Dict[str, Any]:
         {"$sort": {"totale_debito": -1}}
     ]
     erario_stats = await db["quietanze_f24"].aggregate(erario_pipeline).to_list(50)
-    
+
     # Contributi INPS
     inps_pipeline = [
         {"$unwind": "$sezione_inps"},
@@ -1050,7 +1050,7 @@ async def statistiche_tributi_quietanze() -> Dict[str, Any]:
         {"$sort": {"totale_debito": -1}}
     ]
     inps_stats = await db["quietanze_f24"].aggregate(inps_pipeline).to_list(20)
-    
+
     return {
         "erario": [{"codice": s["_id"], "debito": round(s["totale_debito"], 2), "credito": round(s.get("totale_credito", 0), 2), "count": s["count"]} for s in erario_stats],
         "inps": [{"causale": s["_id"], "totale": round(s["totale_debito"], 2), "count": s["count"]} for s in inps_stats]

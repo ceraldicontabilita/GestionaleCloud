@@ -48,23 +48,14 @@ Documento originale
 5. Un alert senza lista dei record interessati non è utile.
 6. Le pagine collegate devono mostrare lo stesso stato senza ricaricamenti o
    manutenzioni manuali.
-7. Drive è la destinazione dell'archivio operativo portabile; nessun lock-in
-   definitivo su MongoDB.
+7. Drive/Sheets è l'unico archivio operativo portabile.
 
 ## Stato dell'architettura dati
 
-Il codice supporta due backend, ma non li alterna automaticamente:
-
-- `sheets`: registro operativo predefinito su Google Sheets/Drive, con cache
-  asincrona nel processo applicativo;
-- `mongodb`: compatibilità transitoria attivabile solo con
-  `DATA_BACKEND=mongodb` per controllare o migrare dati storici.
-
-In modalità Sheets mancare l'ID del registro o della cartella Drive è un
-errore di configurazione, non un motivo per ripiegare su MongoDB. La migrazione
-storica è conclusa solo dopo copia completa, confronto conteggi/hash,
-ricostruzione e prova di scrittura; prima di allora i dati Mongo non si
-cancellano.
+Il codice usa un solo backend: registro operativo Google Sheets/Drive, con
+cache asincrona ricostruibile nel processo applicativo. La mancanza dell'ID del
+registro o della cartella Drive è un errore di configurazione e non attiva
+fallback. Conteggi, hash, ricostruzione e prova di scrittura sono gate di avvio.
 
 ## Fonti dati per dominio
 

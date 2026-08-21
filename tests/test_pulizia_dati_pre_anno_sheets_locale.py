@@ -1,18 +1,17 @@
-"""Collaudo distruttivo su MongoDB locale usa-e-getta (mongomock).
+"""Collaudo distruttivo sul registro Sheets effimero dei test.
 
-Il database esiste solo nella memoria del processo di test, non usa Atlas,
-non legge MONGO_URL e viene eliminato esplicitamente al termine.
+Il registro esiste solo nella memoria del processo e viene eliminato al termine.
 """
 import asyncio
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.routers.prima_nota_module import manutenzione
 
 
-def test_pulizia_su_mongodb_usa_e_getta_preserva_paghe(monkeypatch):
+def test_pulizia_su_sheets_usa_e_getta_preserva_paghe(monkeypatch):
     async def scenario():
-        client = AsyncMongoMockClient()
+        client = MemorySheetsClient()
         nome_db = "usa_e_getta_pulizia_pregressi"
         db = client[nome_db]
         monkeypatch.setattr(
@@ -64,7 +63,7 @@ def test_pulizia_su_mongodb_usa_e_getta_preserva_paghe(monkeypatch):
 
 def test_migrazione_una_tantum_verifica_e_non_si_ripete(monkeypatch):
     async def scenario():
-        client = AsyncMongoMockClient()
+        client = MemorySheetsClient()
         nome_db = "usa_e_getta_migrazione_una_tantum"
         db = client[nome_db]
         monkeypatch.setattr(

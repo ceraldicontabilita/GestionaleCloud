@@ -1,12 +1,12 @@
 import asyncio
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.routers.invoices.corrispettivi_helpers import ingest_corrispettivo_parsed
 
 
 def test_zip_reimport_ripara_prima_nota_mancante_senza_duplicarla():
-    db = AsyncMongoMockClient()["corrispettivi-duplicate-repair"]
+    db = MemorySheetsClient()["corrispettivi-duplicate-repair"]
     parsed = {
         "corrispettivo_key": "IT01234567890_2026-08-13_RT001_42",
         "data": "2026-08-13",
@@ -47,4 +47,3 @@ def test_zip_reimport_ripara_prima_nota_mancante_senza_duplicarla():
     assert secondo["accounting_repaired"] is False
     assert len(righe) == 1
     assert record["prima_nota_cassa_id"] == righe[0]["id"]
-

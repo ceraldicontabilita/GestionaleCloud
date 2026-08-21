@@ -8,7 +8,7 @@ import uuid
 import logging
 from datetime import datetime, timezone
 from typing import Dict, Any
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from app.services.sheets_document_store import SheetDatabase
 
 logger = logging.getLogger(__name__)
 FORNITORI_NOLEGGIO = ["ARVAL", "LEASYS", "ALD", "ALPHABET", "ATHLON", "LEASEPLAN"]
@@ -34,7 +34,7 @@ def _is_fornitore_noleggio(fattura: Dict[str, Any]) -> bool:
     return any(f in n for f in FORNITORI_NOLEGGIO)
 
 
-async def processa_fattura_per_verbali(db: AsyncIOMotorDatabase, fattura: Dict[str, Any]) -> Dict[str, Any]:
+async def processa_fattura_per_verbali(db: SheetDatabase, fattura: Dict[str, Any]) -> Dict[str, Any]:
     if not _is_fornitore_noleggio(fattura):
         return {"skip": True}
     result = {"verbali_trovati": [], "verbali_creati": 0, "verbali_aggiornati": 0}

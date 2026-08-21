@@ -8,7 +8,7 @@ import io
 
 import pandas as pd
 import pytest
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.services import fatture_report_ae as report_ae
 
@@ -18,7 +18,7 @@ def _run(awaitable):
 
 
 def _db():
-    return AsyncMongoMockClient()["report_ae_test"]
+    return MemorySheetsClient()["report_ae_test"]
 
 
 def _riga(

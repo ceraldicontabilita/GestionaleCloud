@@ -36,9 +36,9 @@ async def list_f24_models(anno: int = None) -> Dict[str, Any]:
     import time
     logger.info(f"=== /models endpoint called (anno={anno}) ===")
     t_start = time.time()
-    
+
     db = Database.get_db()
-    
+
     try:
         # Primary: quietanze_f24 (ha dati completi con pagamenti reali)
         q_filter = {}
@@ -48,7 +48,7 @@ async def list_f24_models(anno: int = None) -> Dict[str, Any]:
             q_filter,
             {"_id": 0, "pdf_data": 0}
         ).sort("created_at", -1).to_list(500)
-        
+
         # Secondary: f24_unificato (per eventuali F24 non ancora pagati)
         u_filter = {"status": {"$ne": "eliminato"}}
         if anno:
@@ -68,11 +68,11 @@ async def list_f24_models(anno: int = None) -> Dict[str, Any]:
             for f in f24_uni
             if f.get("quietanza_id")
         }
-        
+
         # Trasforma quietanze nel formato atteso dal frontend
         f24s = []
         seen_ids = set()
-        
+
         for q in quietanze:
             dati = q.get("dati_generali", {})
             totali = q.get("totali", {})
@@ -87,7 +87,7 @@ async def list_f24_models(anno: int = None) -> Dict[str, Any]:
             seen_ids.add(dedup_key)
             if qid:
                 seen_ids.add(qid)
-            
+
             evidenza = stato_evidenza_pagamento(
                 f24_per_quietanza.get(str(qid), q)
             )
@@ -113,7 +113,7 @@ async def list_f24_models(anno: int = None) -> Dict[str, Any]:
                 "totale_credito": totali.get("totale_credito", 0),
                 "source": "quietanza"
             })
-        
+
         # Aggiungi f24_unificato (solo quelli non presenti)
         for f in f24_uni:
             fid = f.get("id", "")
@@ -124,10 +124,10 @@ async def list_f24_models(anno: int = None) -> Dict[str, Any]:
             dati = f.get("dati_generali", {})
             data_vers = f.get("data_versamento") or f.get("data_pagamento") or dati.get("data_versamento")
             saldo = f.get("totale_versato", 0) or totali.get("saldo_netto", 0) or 0
-            
+
             if not data_vers and not saldo:
                 continue  # Skip documenti completamente vuoti
-            
+
             evidenza = stato_evidenza_pagamento(f)
             f24s.append({
                 "id": fid,
@@ -144,15 +144,15 @@ async def list_f24_models(anno: int = None) -> Dict[str, Any]:
                 "pagamento_verificato_banca": evidenza["verificato_banca"],
                 "source": "f24_unificato"
             })
-        
+
         # Sort by date desc
         f24s.sort(key=lambda x: x.get("data_scadenza") or "", reverse=True)
-        
+
         logger.info(f"F24 models query took {time.time() - t_start:.2f}s for {len(f24s)} items (quietanze: {len(quietanze)}, f24_uni: {len(f24_uni)})")
     except Exception as e:
         logger.error(f"F24 models query error: {e}")
         f24s = []
-    
+
     return {
         "f24s": f24s,
         "count": len(f24s),
@@ -172,31 +172,31 @@ async def get_scadenze_prossime_public(
     Returns the next F24s sorted by due date with summary info.
     """
     from datetime import timezone
-    
+
     db = Database.get_db()
     today = datetime.now(timezone.utc).date()
-    
+
     scadenze = []
     totale_importo = 0
-    
+
     # Get unpaid F24s dalla collezione unificata
     f24_list = await db[F24_COLLECTION].find(
         {"status": {"$nin": ["pagato", "eliminato"]}},
         {"_id": 0}
     ).to_list(500)
-    
+
     for f24 in f24_list:
         try:
             dati = f24.get("dati_generali", {})
             totali = f24.get("totali", {})
-            
+
             scadenza_str = dati.get("data_scadenza")
             if not scadenza_str:
                 # Usa created_at come fallback
                 scadenza_str = f24.get("created_at", "")[:10] if f24.get("created_at") else None
                 if not scadenza_str:
                     continue
-            
+
             if isinstance(scadenza_str, str):
                 scadenza_str = scadenza_str.replace("Z", "+00:00")
                 if "T" in scadenza_str:
@@ -213,13 +213,13 @@ async def get_scadenze_prossime_public(
                 scadenza = scadenza_str.date()
             else:
                 continue
-            
+
             giorni_mancanti = (scadenza - today).days
-            
+
             if giorni_mancanti <= giorni:
                 importo = float(totali.get("saldo_netto", 0) or 0)
                 totale_importo += importo
-                
+
                 # Determina tipo dal primo codice tributo
                 tipo_display = "F24"
                 sezione_erario = f24.get("sezione_erario", [])
@@ -229,7 +229,7 @@ async def get_scadenze_prossime_public(
                         tipo_display = "IVA"
                     elif first_code.startswith("10"):
                         tipo_display = "IRPEF"
-                
+
                 scadenze.append({
                     "id": f24.get("id"),
                     "tipo": tipo_display,
@@ -240,10 +240,10 @@ async def get_scadenze_prossime_public(
                 })
         except Exception:
             continue
-    
+
     # Sort by date (closest first)
     scadenze.sort(key=lambda x: x["giorni_mancanti"])
-    
+
     return {
         "scadenze": scadenze[:limit],
         "totale": len(scadenze),
@@ -258,36 +258,36 @@ async def upload_f24_pdf(
 ) -> Dict[str, Any]:
     """
     Carica PDF F24 ed estrae automaticamente i dati.
-    
+
     **Supporta:**
     - F24 Ordinario
     - F24 Semplificato
     - F24 contributi INPS
-    
+
     Estrae: codice tributo, importo, periodo riferimento, scadenza
     Usa parser basato su coordinate PyMuPDF per maggiore affidabilità.
     """
     import tempfile
     import os
     from app.services.parser_f24 import parse_f24_commercialista
-    
+
     if not file.filename.lower().endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Solo file PDF supportati")
-    
+
     pdf_bytes = await file.read()
-    
+
     # Salva temporaneamente il PDF per il parser
     with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
         tmp_file.write(pdf_bytes)
         tmp_path = tmp_file.name
-    
+
     try:
         # Parse PDF usando il parser robusto basato su coordinate
         parsed = parse_f24_commercialista(tmp_path)
     finally:
         # Rimuovi file temporaneo
         os.unlink(tmp_path)
-    
+
     if "error" in parsed and parsed["error"]:
         return {
             "success": False,
@@ -300,13 +300,13 @@ async def upload_f24_pdf(
         richiedi_quadratura_f24(parsed)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
-    
+
     # Get database
     db = Database.get_db()
-    
+
     # Convert data_versamento to data_scadenza
     data_scadenza = parsed.get("dati_generali", {}).get("data_versamento")
-    
+
     # Converti formato tributi per compatibilità con frontend
     tributi_erario = []
     for t in parsed.get("sezione_erario", []):
@@ -324,7 +324,7 @@ async def upload_f24_pdf(
             "descrizione": t.get("descrizione", ""),
             "riferimento": t.get("periodo_riferimento", "")
         })
-    
+
     tributi_inps = []
     for t in parsed.get("sezione_inps", []):
         tributi_inps.append({
@@ -340,7 +340,7 @@ async def upload_f24_pdf(
             "importo": t.get("importo_debito", 0),
             "descrizione": t.get("descrizione", "")
         })
-    
+
     tributi_regioni = []
     for t in parsed.get("sezione_regioni", []):
         tributi_regioni.append({
@@ -354,7 +354,7 @@ async def upload_f24_pdf(
             "importo": t.get("importo_debito", 0),
             "descrizione": t.get("descrizione", "")
         })
-    
+
     tributi_imu = []
     for t in parsed.get("sezione_tributi_locali", []):
         tributi_imu.append({
@@ -368,7 +368,7 @@ async def upload_f24_pdf(
             "importo": t.get("importo_debito", 0),
             "descrizione": t.get("descrizione", "")
         })
-    
+
     # Aggiungi anche INAIL se presente
     for t in parsed.get("sezione_inail", []):
         tributi_inps.append({
@@ -384,9 +384,9 @@ async def upload_f24_pdf(
             "importo": t.get("importo_debito", 0),
             "descrizione": t.get("descrizione", "")
         })
-    
+
     totali = parsed.get("totali", {})
-    
+
     # Create F24 record
     f24_id = str(uuid.uuid4())
     f24_record = {
@@ -411,7 +411,7 @@ async def upload_f24_pdf(
         "source": "pdf_upload",
         "created_at": datetime.now(timezone.utc).isoformat()
     }
-    
+
     # Check for duplicates nella collezione unificata
     existing = await db[F24_COLLECTION].find_one({
         "$or": [
@@ -419,10 +419,10 @@ async def upload_f24_pdf(
             {"file_name": file.filename}
         ]
     })
-    
+
     if existing:
         raise HTTPException(status_code=409, detail="F24 già presente nel sistema")
-    
+
     # Converto al formato f24_commercialista
     f24_doc = {
         "id": f24_id,
@@ -444,14 +444,14 @@ async def upload_f24_pdf(
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
-    
+
     # Anche il vecchio endpoint pubblico passa dall'unico writer canonico.
     from app.services.f24_canonico import salva_f24
 
     f24_id = await salva_f24(db, f24_doc, source="f24_public_upload")
-    
+
     logger.info(f"F24 importato: {f24_id} - Scadenza {data_scadenza} - €{totali.get('saldo_finale', 0):.2f}")
-    
+
     return {
         "success": True,
         "id": f24_id,
@@ -473,20 +473,20 @@ async def upload_f24_pdf(
 async def get_f24_pdf(f24_id: str):
     """Restituisce il PDF originale dell'F24."""
     db = Database.get_db()
-    
+
     f24 = await db[F24_COLLECTION].find_one({"id": f24_id})
-    
+
     if not f24:
         raise HTTPException(status_code=404, detail="F24 non trovato")
-    
-    # Architettura MongoDB-only: cerca PDF solo in pdf_data
+
+    # Architettura Drive/Sheets: cerca PDF solo in pdf_data
     pdf_data = f24.get("pdf_data")
     filename = f24.get("file_name", f24.get("filename", f"F24_{f24_id}.pdf"))
     pdf_bytes = None
-    
+
     if pdf_data:
         pdf_bytes = base64.b64decode(pdf_data)
-    
+
     # Se non trovato, cerca in f24_models (collezione legacy con pdf_data)
     if not pdf_bytes and filename:
         models_doc = await db["f24_unificato"].find_one(
@@ -501,7 +501,7 @@ async def get_f24_pdf(f24_id: str):
                 {"$set": {"pdf_data": models_doc["pdf_data"]}}
             )
             logger.info(f"PDF F24 recuperato da f24_models e copiato in f24_commercialista: {filename}")
-    
+
     # Se ancora non trovato, cerca in documents_inbox
     if not pdf_bytes and filename:
         inbox_doc = await db["documents_inbox"].find_one(
@@ -520,10 +520,10 @@ async def get_f24_pdf(f24_id: str):
                     {"id": f24_id},
                     {"$set": {"pdf_data": base64.b64encode(pdf_bytes).decode('utf-8')}}
                 )
-    
+
     if not pdf_bytes:
         raise HTTPException(status_code=404, detail="PDF non disponibile per questo F24")
-    
+
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -538,7 +538,7 @@ async def get_f24_pdf(f24_id: str):
 async def mark_f24_pagato(f24_id: str) -> Dict[str, str]:
     """Registra la dichiarazione manuale; la banca resta da verificare."""
     db = Database.get_db()
-    
+
     result = await db[F24_COLLECTION].update_one(
         {"id": f24_id},
         {"$set": {
@@ -551,10 +551,10 @@ async def mark_f24_pagato(f24_id: str) -> Dict[str, str]:
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }}
     )
-    
+
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="F24 non trovato")
-    
+
     return {
         "message": "Pagamento dichiarato; resta da verificare sul movimento bancario",
         "id": f24_id,
@@ -566,9 +566,9 @@ async def mark_f24_pagato(f24_id: str) -> Dict[str, str]:
 async def update_f24_model(f24_id: str, data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     """Aggiorna un modello F24."""
     db = Database.get_db()
-    
+
     update_data = {"updated_at": datetime.now(timezone.utc).isoformat()}
-    
+
     # Campi modificabili (mappo al nuovo schema)
     if "data_scadenza" in data:
         update_data["dati_generali.data_scadenza"] = data["data_scadenza"]
@@ -587,15 +587,15 @@ async def update_f24_model(f24_id: str, data: Dict[str, Any] = Body(...)) -> Dic
         update_data["note"] = data["note"]
     if "saldo_finale" in data:
         update_data["totali.saldo_netto"] = data["saldo_finale"]
-    
+
     result = await db[F24_COLLECTION].update_one(
         {"id": f24_id},
         {"$set": update_data}
     )
-    
+
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="F24 non trovato")
-    
+
     return {"message": "F24 aggiornato", "id": f24_id}
 
 
@@ -604,16 +604,16 @@ async def update_f24_model(f24_id: str, data: Dict[str, Any] = Body(...)) -> Dic
 async def delete_f24_model(f24_id: str) -> Dict[str, str]:
     """Elimina un modello F24 (soft delete)."""
     db = Database.get_db()
-    
+
     # Soft delete invece di hard delete
     result = await db[F24_COLLECTION].update_one(
         {"id": f24_id},
         {"$set": {"status": "eliminato", "eliminato_at": datetime.now(timezone.utc).isoformat()}}
     )
-    
+
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="F24 non trovato")
-    
+
     return {"message": "F24 eliminato", "id": f24_id}
 
 
@@ -631,22 +631,22 @@ async def upload_f24_pdf_overwrite(
     import tempfile
     import os
     from app.services.parser_f24 import parse_f24_commercialista
-    
+
     if not file.filename.lower().endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Solo file PDF supportati")
-    
+
     pdf_bytes = await file.read()
-    
+
     # Salva temporaneamente il PDF per il parser
     with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
         tmp_file.write(pdf_bytes)
         tmp_path = tmp_file.name
-    
+
     try:
         parsed = parse_f24_commercialista(tmp_path)
     finally:
         os.unlink(tmp_path)
-    
+
     if "error" in parsed and parsed["error"]:
         return {
             "success": False,
@@ -659,13 +659,13 @@ async def upload_f24_pdf_overwrite(
         richiedi_quadratura_f24(parsed)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
-    
+
     db = Database.get_db()
-    
+
     # Convert data_versamento to data_scadenza
     data_scadenza = parsed.get("dati_generali", {}).get("data_versamento")
     totali = parsed.get("totali", {})
-    
+
     # Check for existing nella collezione unificata
     existing = await db[F24_COLLECTION].find_one({
         "$or": [
@@ -673,7 +673,7 @@ async def upload_f24_pdf_overwrite(
             {"file_name": file.filename}
         ]
     })
-    
+
     if existing and not overwrite:
         return {
             "success": False,
@@ -681,9 +681,9 @@ async def upload_f24_pdf_overwrite(
             "existing_id": existing.get("id"),
             "filename": file.filename
         }
-    
+
     f24_id = existing.get("id") if existing else str(uuid.uuid4())
-    
+
     # Converti formato tributi per compatibilità con frontend
     tributi_erario = []
     for t in parsed.get("sezione_erario", []):
@@ -701,7 +701,7 @@ async def upload_f24_pdf_overwrite(
             "descrizione": t.get("descrizione", ""),
             "riferimento": t.get("periodo_riferimento", "")
         })
-    
+
     tributi_inps = []
     for t in parsed.get("sezione_inps", []):
         tributi_inps.append({
@@ -717,7 +717,7 @@ async def upload_f24_pdf_overwrite(
             "importo": t.get("importo_debito", 0),
             "descrizione": t.get("descrizione", "")
         })
-    
+
     # Aggiungi INAIL se presente
     for t in parsed.get("sezione_inail", []):
         tributi_inps.append({
@@ -733,7 +733,7 @@ async def upload_f24_pdf_overwrite(
             "importo": t.get("importo_debito", 0),
             "descrizione": t.get("descrizione", "")
         })
-    
+
     tributi_regioni = []
     for t in parsed.get("sezione_regioni", []):
         tributi_regioni.append({
@@ -747,7 +747,7 @@ async def upload_f24_pdf_overwrite(
             "importo": t.get("importo_debito", 0),
             "descrizione": t.get("descrizione", "")
         })
-    
+
     tributi_imu = []
     for t in parsed.get("sezione_tributi_locali", []):
         tributi_imu.append({
@@ -761,7 +761,7 @@ async def upload_f24_pdf_overwrite(
             "importo": t.get("importo_debito", 0),
             "descrizione": t.get("descrizione", "")
         })
-    
+
     # Converto al formato f24_commercialista
     f24_doc = {
         "id": f24_id,
@@ -782,7 +782,7 @@ async def upload_f24_pdf_overwrite(
         "pdf_data": base64.b64encode(pdf_bytes).decode('utf-8'),
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
-    
+
     from app.services.f24_canonico import salva_f24
 
     if not existing:
@@ -794,9 +794,9 @@ async def upload_f24_pdf_overwrite(
         existing_id=f24_id if existing else None,
     )
     action = "aggiornato" if existing else "creato"
-    
+
     logger.info(f"F24 {action}: {f24_id} - €{totali.get('saldo_netto', totali.get('saldo_finale', 0)):.2f}")
-    
+
     return {
         "success": True,
         "action": action,
@@ -805,4 +805,3 @@ async def upload_f24_pdf_overwrite(
         "saldo_finale": totali.get("saldo_netto", totali.get("saldo_finale", 0)),
         "filename": file.filename
     }
-

@@ -1,13 +1,13 @@
 import asyncio
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.routers.prima_nota_module import manutenzione
 
 
 def test_annulla_solo_falso_match_e_conserva_associazione_corretta(monkeypatch):
     async def scenario():
-        db = AsyncMongoMockClient()["annulla_falso_match"]
+        db = MemorySheetsClient()["annulla_falso_match"]
         await db.invoices.insert_many([
             {
                 "id": "carta-56", "supplier_vat": "05851861210",

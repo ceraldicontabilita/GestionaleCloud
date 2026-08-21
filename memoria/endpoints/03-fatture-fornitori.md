@@ -108,7 +108,7 @@ Intercetta i 5 endpoint più fragili di fatture_upload. Filosofia diversa dal le
 **Logica codice**: carica fino a 10k doc, raggruppa in memoria, ordina per `_invoice_score` + updated_at, elimina i doppioni e arricchisce il keeper con campi mancanti (imponibile, iva, linee, xml_content…).
 
 ### GET /api/fatture/{invoice_id} — dettaglio (EFFETTIVO)
-**Cosa fa**: delega a `fatture_module.crud.get_fattura_dettaglio` (fattura + righe + allegati, lookup anche per ObjectId).
+**Cosa fa**: delega a `fatture_module.crud.get_fattura_dettaglio` (fattura + righe + allegati, lookup anche per identificatore interno).
 
 ### PUT /api/fatture/{invoice_id} — update (EFFETTIVO)
 **Cosa fa**: delega a `fatture_module.crud.update_fattura` (whitelist: pagato, data_pagamento, metodo_pagamento, riconciliato, note).
@@ -178,7 +178,7 @@ Montato prima di invoices_main per correggere le regressioni più visibili senza
 - **GET /api/invoices/export-excel** — genera XLSX (openpyxl) dalle fatture di `InvoiceService.list_invoices` (colonne Data/Numero/Fornitore/P.IVA/Imponibile/IVA/Totale/Stato/Metodo) come StreamingResponse.
 
 ### GET /api/invoices/{invoice_id} — dettaglio (EFFETTIVO, catch-all)
-**Cosa fa**: ritorna il documento `invoices` per `id`, con fallback lookup per `_id` ObjectId; 404 se assente.
+**Cosa fa**: ritorna il documento `invoices` per `id`, con fallback lookup per `_id` identificatore interno; 404 se assente.
 **Note**: fondamentale: nel legacy questo path era rotto (vedi anomalie invoices_main).
 
 ---
@@ -416,13 +416,13 @@ Router composto in `__init__.py` con `add_api_route` (rotte statiche prima delle
 
 ### GET /api/fatture-ricevute/fattura/{fattura_id}/view-assoinvoice — vista ASSO (crud.py)
 **Cosa fa**: renderizza la fattura in HTML con il foglio di stile ufficiale AssoSoftware.
-**Logica codice**: lookup tollerante (id → COL → _id ObjectId); XML da disco (`xml_file_path`, con estrazione grezza da P7M cercando `<?xml`) o dai campi `xml_raw`/`xml_content`; trasformazione XSLT (lxml, `static/FoglioStileAssoSoftware.xsl`); fallback HTML generico (`generate_invoice_html`) con righe da `dettaglio_righe_fatture` o `linee`.
+**Logica codice**: lookup tollerante (id → COL → _id identificatore interno); XML da disco (`xml_file_path`, con estrazione grezza da P7M cercando `<?xml`) o dai campi `xml_raw`/`xml_content`; trasformazione XSLT (lxml, `static/FoglioStileAssoSoftware.xsl`); fallback HTML generico (`generate_invoice_html`) con righe da `dettaglio_righe_fatture` o `linee`.
 
 ### GET /api/fatture-ricevute/fattura/{fattura_id}/pdf/{allegato_id} — download allegato (crud.py)
 **Cosa fa**: decodifica il base64 dell'allegato da `allegati_fatture` e lo restituisce come PDF attachment.
 
 ### GET /api/fatture-ricevute/fattura/{fattura_id} — dettaglio (crud.py)
-**Cosa fa**: fattura (lookup id → invoices → ObjectId) + righe (`dettaglio_righe_fatture`) + allegati (senza base64).
+**Cosa fa**: fattura (lookup id → invoices → identificatore interno) + righe (`dettaglio_righe_fatture`) + allegati (senza base64).
 
 ### PUT /api/fatture-ricevute/fattura/{fattura_id} — update (crud.py)
 **Cosa fa**: aggiorna solo pagato, data_pagamento, metodo_pagamento, riconciliato, note su `invoices`.
@@ -610,7 +610,7 @@ Lavora principalmente sulla collection `invoices` (fatture non pagate = scadenze
 
 ## schede_tecniche.py (`/api/schede-tecniche`) — schede tecniche prodotti (HACCP)
 
-Estrae i prodotti dalle fatture XML su disco (`/tmp/uploads/pec_xml`, lookup via `fatture_passive.xml_filename` o glob per P.IVA), usa Claude (haiku, via client Anthropic) per identificare brand/sito/URL PDF, scarica i PDF (httpx) o li cerca negli allegati Gmail (IMAP sincrono in `asyncio.to_thread`), e archivia tutto in `schede_tecniche` (PDF come Binary in MongoDB). Job asincroni in `schede_tecniche_jobs`.
+Estrae i prodotti dalle fatture XML su disco (`/tmp/uploads/pec_xml`, lookup via `fatture_passive.xml_filename` o glob per P.IVA), usa Claude (haiku, via client Anthropic) per identificare brand/sito/URL PDF, scarica i PDF (httpx) o li cerca negli allegati Gmail (IMAP sincrono in `asyncio.to_thread`), e archivia tutto in `schede_tecniche` (PDF come Binary in Drive/Sheets). Job asincroni in `schede_tecniche_jobs`.
 
 ### POST /api/schede-tecniche/popola-fornitore/{fornitore_id} — anagrafica da XML su disco
 **Cosa fa**: legge i file XML delle fatture del fornitore, estrae il blocco CedentePrestatore (telefono, email, indirizzo…) e aggiorna SOLO i campi mancanti in `fornitori`.
@@ -629,7 +629,7 @@ Estrae i prodotti dalle fatture XML su disco (`/tmp/uploads/pec_xml`, lookup via
 ### DELETE /api/schede-tecniche/{scheda_id} — elimina scheda.
 
 ### GET /api/schede-tecniche/prodotti/{fornitore_id} — prodotti estratti dagli XML (max 30)
-**Note**: il lookup fornitore usa `{"_id": fornitore_id}` come alternativa (stringa vs ObjectId): di fatto funziona solo il match su `id`.
+**Note**: il lookup fornitore usa `{"_id": fornitore_id}` come alternativa (stringa vs identificatore interno): di fatto funziona solo il match su `id`.
 
 ---
 

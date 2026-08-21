@@ -4,7 +4,7 @@ import io
 import json
 import zipfile
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.services import partenopay_archive_import as mod
 
@@ -36,7 +36,7 @@ def _archive():
 
 
 def test_dry_run_non_scrive_e_verifica_hash():
-    db = AsyncMongoMockClient()["test"]
+    db = MemorySheetsClient()["test"]
     result = asyncio.run(mod.import_partenopay_archive(db, _archive(), dry_run=True))
     assert result["success"] is True
     assert result["records"] == 1
@@ -45,7 +45,7 @@ def test_dry_run_non_scrive_e_verifica_hash():
 
 
 def test_import_idempotente_e_pagato_solo_con_quietanza(monkeypatch):
-    db = AsyncMongoMockClient()["test"]
+    db = MemorySheetsClient()["test"]
 
     monkeypatch.setattr("app.services.email_drive_archive.archive_document_copy",
                         lambda *_args, **_kwargs: {"status": "archived", "area": "verbali"})
@@ -71,7 +71,7 @@ def test_hash_errato_blocca_import():
     with zipfile.ZipFile(out, "w") as archive:
         for name in src.namelist():
             archive.writestr(name, json.dumps(payload) if name.endswith("data.json") else src.read(name))
-    db = AsyncMongoMockClient()["test"]
+    db = MemorySheetsClient()["test"]
     result = asyncio.run(mod.import_partenopay_archive(db, out.getvalue(), dry_run=False))
     assert result["success"] is False
     assert result["integrity_errors"][0]["errore"] == "sha256_non_coincide"
@@ -79,7 +79,7 @@ def test_hash_errato_blocca_import():
 
 
 def test_retry_non_riarchivia_documento_gia_copiato(monkeypatch):
-    db = AsyncMongoMockClient()["test"]
+    db = MemorySheetsClient()["test"]
     calls = []
 
     monkeypatch.setattr(
@@ -101,7 +101,7 @@ def test_pagamento_senza_quietanza_resta_in_attesa_quietanza(monkeypatch):
     with zipfile.ZipFile(out, "w") as archive:
         archive.writestr("package_clean/data.json", json.dumps(payload))
         archive.writestr("package_clean/documenti/MANIFEST_SHA256.csv", "file,sha256\n")
-    db = AsyncMongoMockClient()["test"]
+    db = MemorySheetsClient()["test"]
     result = asyncio.run(mod.import_partenopay_archive(db, out.getvalue(), dry_run=False))
     assert result["success"] is True
     verbale = asyncio.run(db["verbali_noleggio"].find_one({}))

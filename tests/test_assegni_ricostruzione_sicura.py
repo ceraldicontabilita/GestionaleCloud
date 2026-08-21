@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 from fastapi import HTTPException
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.routers.bank import assegni as assegni_router
 
@@ -17,7 +17,7 @@ def _run(coro):
 
 def test_ricostruzione_assegni_e_solo_anteprima(monkeypatch):
     async def scenario():
-        db = AsyncMongoMockClient()["test_ricostruzione_assegni"]
+        db = MemorySheetsClient()["test_ricostruzione_assegni"]
         monkeypatch.setattr(assegni_router.Database, "get_db", staticmethod(lambda: db))
         await db.assegni.insert_one({
             "id": "ASS-1", "importo": 120.0, "beneficiario": "",
@@ -52,7 +52,7 @@ def test_ricostruzione_assegni_e_solo_anteprima(monkeypatch):
 
 def test_ricostruzione_diretta_e_disabilitata(monkeypatch):
     async def scenario():
-        db = AsyncMongoMockClient()["test_ricostruzione_bloccata"]
+        db = MemorySheetsClient()["test_ricostruzione_bloccata"]
         monkeypatch.setattr(assegni_router.Database, "get_db", staticmethod(lambda: db))
         with pytest.raises(HTTPException) as exc:
             await assegni_router.ricostruisci_dati_assegni(dry_run=False)

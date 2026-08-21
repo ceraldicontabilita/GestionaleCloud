@@ -384,11 +384,11 @@ async def get_paypal_statements(
     query = {}
     if anno:
         query["anno"] = anno
-    
+
     statements = await db[COLL_PAYPAL_STATEMENTS].find(
         query, {"_id": 0}
     ).sort("periodo_inizio", -1).limit(limit).to_list(limit)
-    
+
     tx_query: Dict[str, Any] = {"source": "paypal_api"}
     if anno:
         tx_query["data"] = {"$regex": f"^{anno}"}
@@ -560,7 +560,7 @@ async def get_paypal_transactions(
     """Restituisce le transazioni PayPal."""
     db = Database.get_db()
     query = {}
-    
+
     if anno:
         query["data"] = {"$regex": f"^{anno}"}
     if anno and mese:
@@ -577,7 +577,7 @@ async def get_paypal_transactions(
     _backfill_controparte(transactions)
 
     # ── Conversioni valuta (eventi T02xx) ──────────────────────────────────
-    # Un pagamento in valuta estera (es. MongoDB in USD) genera DUE gambe di
+    # Un pagamento in valuta estera (per esempio un servizio SaaS in USD) genera DUE gambe di
     # conversione T0200: -EUR e +USD. In lista compariva quindi una "seconda
     # riga" senza controparte con un importo diverso (l'EUR reale) accanto al
     # pagamento USD mostrato col simbolo €. Qui accoppiamo le gambe al
@@ -639,7 +639,7 @@ async def get_paypal_transactions(
     utili = [t for t in transactions if not t.get("is_conversione")]
     totale_pagamenti = sum(_importo_eur(t) for t in utili if _importo_eur(t) < 0)
     totale_accrediti = sum(_importo_eur(t) for t in utili if _importo_eur(t) > 0)
-    
+
     return {
         "transactions": transactions,
         "totale": len(transactions),
@@ -675,17 +675,17 @@ async def paypal_dashboard(
 ):
     """Dashboard riepilogativa PayPal."""
     db = Database.get_db()
-    
+
     # Conta statements
     stmt_query = {"anno": anno} if anno else {}
     total_statements = await db[COLL_PAYPAL_STATEMENTS].count_documents(stmt_query)
-    
+
     # Conta transazioni
     tx_query = {}
     if anno:
         tx_query["data"] = {"$regex": f"^{anno}"}
     total_transactions = await db[COLL_PAYPAL_TRANSACTIONS].count_documents(tx_query)
-    
+
     # Carica entrambe le gambe: per le operazioni in valuta l'importo EUR e'
     # sulla conversione T02 collegata al pagamento originale. Filtrare subito
     # solo i valori negativi faceva sommare pagamento estero e conversione.
@@ -727,7 +727,7 @@ async def paypal_dashboard(
     _backfill_controparte(pagamenti)
 
     totale_speso = sum(float(p.get("importo_eur", p.get("lordo", 0)) or 0) for p in pagamenti)
-    
+
     # Top fornitori
     fornitori_map = {}
     for p in pagamenti:
@@ -736,9 +736,9 @@ async def paypal_dashboard(
             fornitori_map[nome] = {'nome': nome, 'totale': 0.0, 'count': 0}
         fornitori_map[nome]['totale'] += float(p.get("importo_eur", p.get("lordo", 0)) or 0)
         fornitori_map[nome]['count'] += 1
-    
+
     top_fornitori = sorted(fornitori_map.values(), key=lambda x: x['totale'])[:10]
-    
+
     # Per tipo
     tipo_map = {}
     for p in pagamenti:
@@ -747,7 +747,7 @@ async def paypal_dashboard(
             tipo_map[tipo] = {'tipo': tipo, 'totale': 0.0, 'count': 0}
         tipo_map[tipo]['totale'] += float(p.get("importo_eur", p.get("lordo", 0)) or 0)
         tipo_map[tipo]['count'] += 1
-    
+
     # Riconciliazione con estratto conto — conta entrambi i flag: il percorso
     # statement scrive riconciliato_banca, il percorso API sync scrive
     # riconciliato_con_estratto_banca (stessa unificazione già fatta nel
@@ -760,7 +760,7 @@ async def paypal_dashboard(
             {"riconciliato_con_estratto_banca": True},
         ]}]}
     )
-    
+
     # Transazioni in estratto conto bancario con PayPal
     # Stessa logica della riconciliazione: descrizione O descrizione_originale,
     # e rispetta il filtro anno selezionato (prima contava sempre tutto).
@@ -777,7 +777,7 @@ async def paypal_dashboard(
         ec_query, {"_id": 0}
     ).to_list(5000)
     ec_paypal = len(_deduplica_movimenti_banca_paypal(ec_paypal_raw))
-    
+
     return {
         "total_statements": total_statements,
         "total_transactions": total_transactions,
@@ -799,10 +799,10 @@ async def paypal_dashboard(
 async def import_paypal_pdf(file: UploadFile = File(...)):
     """Importa un PDF PayPal e applica soltanto i match univoci end-to-end."""
     from app.services.paypal_statement_import import import_paypal_statement_pdf
-    
+
     if not file.filename.lower().endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Solo file PDF accettati")
-    
+
     content = await file.read()
     db = Database.get_db()
     try:
@@ -814,12 +814,12 @@ async def import_paypal_pdf(file: UploadFile = File(...)):
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    
+
     result['collegamenti_prima'] = await riprocessa_collegamenti_paypal(db)
     ric_result = await _auto_riconcilia(db, applica=True)
     result['riconciliazione'] = ric_result
     result['collegamenti_dopo'] = await riprocessa_collegamenti_paypal(db)
-    
+
     return result
 
 
@@ -827,10 +827,10 @@ async def import_paypal_pdf(file: UploadFile = File(...)):
 async def import_all_local_pdfs():
     """Importa PDF locali e applica soltanto i match univoci end-to-end."""
     from app.parsers.paypal_msr_parser import parse_paypal_msr
-    
+
     db = Database.get_db()
     files = [f for f in os.listdir(UPLOAD_DIR) if f.lower().endswith('.pdf')]
-    
+
     results = {
         'totale_files': len(files),
         'importati': 0,
@@ -838,7 +838,7 @@ async def import_all_local_pdfs():
         'transazioni_duplicate': 0,
         'errori': []
     }
-    
+
     for fname in sorted(files):
         file_path = os.path.join(UPLOAD_DIR, fname)
         try:
@@ -852,12 +852,12 @@ async def import_all_local_pdfs():
                 results['errori'].append(f"{fname}: {parsed['errors']}")
         except Exception as e:
             results['errori'].append(f"{fname}: {str(e)}")
-    
+
     results['collegamenti_prima'] = await riprocessa_collegamenti_paypal(db)
     ric_result = await _auto_riconcilia(db, applica=True)
     results['riconciliazione'] = ric_result
     results['collegamenti_dopo'] = await riprocessa_collegamenti_paypal(db)
-    
+
     return results
 
 
@@ -1001,7 +1001,7 @@ async def _auto_riconcilia(
         tx for tx in _pagamenti_paypal_in_euro(paypal_txs)
         if not anno or (_data_documento(tx) and _data_documento(tx).year == anno)
     ]
-    
+
     # Cerca su descrizione_originale E descrizione (entrambi i campi)
     banca_query: Dict[str, Any] = {"$and": [
         {"$or": [
@@ -1023,7 +1023,7 @@ async def _auto_riconcilia(
         movimento for movimento in banca_paypal_canonici
         if not movimento.get("riconciliato") and not movimento.get("paypal_transaction_id")
     ]
-    
+
     anteprima = _proposte_riconciliazione_banca(paypal_txs, banca_paypal)
     riconciliati = 0
     for proposta in anteprima["proposte"] if applica else []:
@@ -1061,7 +1061,7 @@ async def _auto_riconcilia(
         )
         await finalizza_transazione_paypal_se_completa(db, tx_id)
         riconciliati += 1
-    
+
     return {
         "totale_paypal": len(paypal_txs),
         "totale_banca": len(banca_paypal),
@@ -1091,7 +1091,7 @@ async def paypal_report(anno: Optional[int] = None):
         tx_query, {"_id": 0}
     ).sort("data", -1).to_list(5000)
     pagamenti = _pagamenti_paypal_in_euro(transazioni)
-    
+
     # Raggruppa per fornitore
     fornitori = {}
     for p in pagamenti:
@@ -1113,7 +1113,7 @@ async def paypal_report(anno: Optional[int] = None):
             'descrizione': p.get('descrizione', ''),
             'transaction_id': p.get('transaction_id', '')
         })
-    
+
     # Raggruppa per mese
     mesi = {}
     for p in pagamenti:
@@ -1122,10 +1122,10 @@ async def paypal_report(anno: Optional[int] = None):
             mesi[mese_key] = {'mese': mese_key, 'totale': 0.0, 'count': 0}
         mesi[mese_key]['totale'] += p['importo_report_eur']
         mesi[mese_key]['count'] += 1
-    
+
     sorted_fornitori = sorted(fornitori.values(), key=lambda x: x['totale'])
     sorted_mesi = sorted(mesi.values(), key=lambda x: x['mese'])
-    
+
     return {
         "anno": anno,
         "totale_speso": round(sum(p['importo_report_eur'] for p in pagamenti), 2),
@@ -1300,7 +1300,7 @@ async def dettaglio_transazione_paypal(transaction_id: str) -> Dict[str, Any]:
 
     if not fatture_collegate and email_controparte:
         # STRATEGIA C: l'email della controparte è salvata in qualche fattura?
-        # Raro ma capita per fornitori SaaS/digitali (Spotify, MongoDB, ecc.)
+        # Raro ma capita per fornitori SaaS/digitali esteri.
         fatture_collegate = await db[COLL_INVOICES].find(
             {
                 "$or": [

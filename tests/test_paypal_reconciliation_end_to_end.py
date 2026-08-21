@@ -1,6 +1,6 @@
 import asyncio
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.services.paypal_reconciliation_links import (
     associa_transazione_univoca,
@@ -59,7 +59,7 @@ async def _seed_identity(db):
 
 def test_importo_api_senza_lordo_collega_sui_due_lati_ma_attende_banca():
     async def scenario():
-        db = AsyncMongoMockClient().db
+        db = MemorySheetsClient().db
         await _seed_identity(db)
         await db.invoices.insert_one(_invoice())
         await db.paypal_transactions.insert_one(_transaction())
@@ -86,7 +86,7 @@ def test_importo_api_senza_lordo_collega_sui_due_lati_ma_attende_banca():
 
 def test_barbetta_senza_numero_fattura_collega_per_nome_importo_data_univoci():
     async def scenario():
-        db = AsyncMongoMockClient().db
+        db = MemorySheetsClient().db
         await db.invoices.insert_one({
             **_invoice("INV-BARBETTA"),
             "invoice_number": "5874-2026-FE",
@@ -119,7 +119,7 @@ def test_barbetta_senza_numero_fattura_collega_per_nome_importo_data_univoci():
 
 def test_paypal_senza_numero_non_sceglie_tra_due_fatture_compatibili():
     async def scenario():
-        db = AsyncMongoMockClient().db
+        db = MemorySheetsClient().db
         base = {
             **_invoice(), "supplier_name": "Barbetta Roberto",
             "total_amount": 23.10, "invoice_date": "2026-08-05",
@@ -143,7 +143,7 @@ def test_paypal_senza_numero_non_sceglie_tra_due_fatture_compatibili():
 
 def test_estratto_prima_fattura_dopo_chiude_catena_e_prima_nota_una_sola_volta():
     async def scenario():
-        db = AsyncMongoMockClient().db
+        db = MemorySheetsClient().db
         await _seed_identity(db)
         transaction = {
             **_transaction(),
@@ -198,7 +198,7 @@ def test_estratto_prima_fattura_dopo_chiude_catena_e_prima_nota_una_sola_volta()
 
 def test_fattura_prima_estratto_dopo_finalizza_appena_arriva_la_banca():
     async def scenario():
-        db = AsyncMongoMockClient().db
+        db = MemorySheetsClient().db
         await _seed_identity(db)
         await db.invoices.insert_one(_invoice())
         transaction = _transaction()
@@ -228,7 +228,7 @@ def test_fattura_prima_estratto_dopo_finalizza_appena_arriva_la_banca():
 
 def test_finalizzazione_paypal_archivia_la_proiezione_ec_duplicata():
     async def scenario():
-        db = AsyncMongoMockClient().db
+        db = MemorySheetsClient().db
         await _seed_identity(db)
         await db.invoices.insert_one(_invoice())
         await db.paypal_transactions.insert_one({
@@ -273,7 +273,7 @@ def test_finalizzazione_paypal_archivia_la_proiezione_ec_duplicata():
 
 def test_riprocessa_backfill_movimento_storico_collegato_solo_dal_lato_banca():
     async def scenario():
-        db = AsyncMongoMockClient().db
+        db = MemorySheetsClient().db
         await _seed_identity(db)
         await db.invoices.insert_one(_invoice())
         await db.paypal_transactions.insert_one({
@@ -303,7 +303,7 @@ def test_riprocessa_backfill_movimento_storico_collegato_solo_dal_lato_banca():
 
 def test_stessa_fattura_non_puo_essere_riutilizzata_da_due_transazioni():
     async def scenario():
-        db = AsyncMongoMockClient().db
+        db = MemorySheetsClient().db
         await _seed_identity(db)
         invoice = _invoice()
         first_tx = _transaction("PAY-FIRST")
@@ -323,7 +323,7 @@ def test_stessa_fattura_non_puo_essere_riutilizzata_da_due_transazioni():
 
 def test_pending_reversed_e_righe_non_balance_affecting_non_vengono_associate():
     async def scenario():
-        db = AsyncMongoMockClient().db
+        db = MemorySheetsClient().db
         await _seed_identity(db)
         await db.invoices.insert_one(_invoice())
         rows = [
@@ -345,7 +345,7 @@ def test_pending_reversed_e_righe_non_balance_affecting_non_vengono_associate():
 
 def test_fattura_gia_pagata_da_altra_evidenza_non_viene_riutilizzata():
     async def scenario():
-        db = AsyncMongoMockClient().db
+        db = MemorySheetsClient().db
         await _seed_identity(db)
         await db.invoices.insert_one({
             **_invoice(), "pagato": True, "stato_pagamento": "pagata",
@@ -366,7 +366,7 @@ def test_fattura_gia_pagata_da_altra_evidenza_non_viene_riutilizzata():
 
 def test_riconciliazione_banca_unifica_due_importazioni_della_stessa_riga():
     async def scenario():
-        db = AsyncMongoMockClient().db
+        db = MemorySheetsClient().db
         await db.paypal_transactions.insert_one({
             **_transaction(), "importo": -42.62, "data": "2026-07-15",
             "invoice_id_fornitore": "FT-NON-PRESENTE",

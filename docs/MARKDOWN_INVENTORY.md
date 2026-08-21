@@ -98,7 +98,6 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 
 ## Regola architetturale
 
-La destinazione operativa è Drive/Sheets: originali in Google Drive e registri
-in Google Sheets/Excel collegato a Drive. MongoDB è una compatibilità esplicita
-senza fallback automatico, mantenuta soltanto per verificare e migrare i dati
-storici; i documenti che lo indicano come database primario non sono autorità.
+Drive/Sheets è l'unico archivio operativo: originali in Google Drive e registri
+in Google Sheets/Excel collegato a Drive. Non esistono fallback di persistenza;
+i documenti storici che descrivono altre architetture non sono autorità.

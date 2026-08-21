@@ -16,7 +16,7 @@ Salvaguardie:
   - salta le fatture senza `categoria_contabile` (non rimappabili in automatico);
   - salta quelle con `centro_costo_manuale=True` (assegnazione manuale da preservare).
 
-Uso (richiede .env con MONGO_URL raggiungibile; NON eseguibile dal sandbox):
+Uso (richiede l'accesso al registro Google Sheets configurato):
     python -m app.scripts.migra_cdc_4_settori            # dry-run
     python -m app.scripts.migra_cdc_4_settori --esegui   # esegue
 """

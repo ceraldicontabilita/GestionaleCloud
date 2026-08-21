@@ -46,7 +46,7 @@ PATTERNS: List[Tuple[str, re.Pattern]] = [
     ("bonifico",         re.compile(r"bonifico|sepa|contabil.*banc", re.I)),
     ("scontrino",        re.compile(r"scontr|corrispet|sc\d{3,}", re.I)),
     ("satispay",         re.compile(r"satispay|^sav\d|sav[_\-]\d|^rcp_sav", re.I)),
-    ("fattura_servizi",  re.compile(r"mongodb.*atlas|aws[_\-\s].*invoic|google.*cloud|godaddy|namecheap", re.I)),
+    ("fattura_servizi",  re.compile(r"atlas.*invoic|aws[_\-\s].*invoic|google.*cloud|godaddy|namecheap", re.I)),
     ("fattura_estera",   re.compile(r"^invoice[_\-\s]|invoice_\w+_", re.I)),
     ("ricevuta_estera",  re.compile(r"^receipt[_\-\s]|receipt_\w+_", re.I)),
     ("estratto_conto",   re.compile(r"estratto[_\-\s]?conto|^estratto_|e\.c\.[_\-\s]|^ec[_\-\s]\d", re.I)),

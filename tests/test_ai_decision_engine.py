@@ -1,13 +1,13 @@
 """Policy L0-L4, approvazioni umane e interruttore globale.
 
-I test usano un database MongoDB esclusivamente in memoria: nessuna rete,
+I test usano un registro Sheets esclusivamente in memoria: nessuna rete,
 credenziale o collection reale viene letta o modificata.
 """
 
 import asyncio
 
 import pytest
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.agents.decision_engine import (
     cambia_stato_decisione,
@@ -26,7 +26,7 @@ from app.agents.orchestrator import run_agenti
 
 
 def _db():
-    return AsyncMongoMockClient()["gestionale_ai_test"]
+    return MemorySheetsClient()["gestionale_ai_test"]
 
 
 def _proposta(**override):

@@ -22,7 +22,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from app.services.sheets_document_store import SheetDatabase
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 # 1. PIPELINE F24
 # ============================================================
 
-async def processa_f24_da_email(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
+async def processa_f24_da_email(db: SheetDatabase) -> Dict[str, Any]:
     """
     Processa tutti gli F24 PDF scaricati da Gmail.
     Estrae codici tributo, periodi, importi e salva nella collezione canonica
@@ -39,20 +39,20 @@ async def processa_f24_da_email(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
     e gli F24 email non comparivano nel modulo F24 principale).
     """
     stats = {"processati": 0, "errori": 0, "gia_processati": 0, "nuovi": 0}
-    
+
     cursor = db["f24_email_attachments"].find({"processed": {"$ne": True}})
     docs = await cursor.to_list(length=500)
     logger.info(f"[PIPELINE-F24] {len(docs)} F24 da processare")
-    
+
     for doc in docs:
         try:
             pdf_data = doc.get("pdf_data")
             if not pdf_data:
                 continue
-            
+
             pdf_bytes = base64.b64decode(pdf_data)
             filename = doc.get("filename", "f24.pdf")
-            
+
             # Prova parser enhanced (con LLM)
             parsed = None
             try:
@@ -60,7 +60,7 @@ async def processa_f24_da_email(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
                 parsed = await parse_f24_enhanced(pdf_bytes, "application/pdf")
             except Exception as e:
                 logger.debug(f"[PIPELINE-F24] Enhanced parser non disponibile: {e}")
-            
+
             # Fallback: parser base (PyMuPDF)
             if not parsed or not parsed.get("success"):
                 try:
@@ -68,7 +68,7 @@ async def processa_f24_da_email(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
                     parsed = parse_quietanza_f24(pdf_content=pdf_bytes)
                 except Exception as e:
                     logger.debug(f"[PIPELINE-F24] Base parser fallito: {e}")
-            
+
             if parsed and (parsed.get("success") or parsed.get("sezione_erario")):
                 # Salva in f24_commercialista
                 f24_doc = {
@@ -80,7 +80,7 @@ async def processa_f24_da_email(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
                     "email_from": doc.get("email_from", ""),
                     "email_date": doc.get("email_date", ""),
                     "source_folder": doc.get("email_info", {}).get("source_folder", ""),
-                    
+
                     # Dati estratti
                     "sezione_erario": parsed.get("sezione_erario", []),
                     "sezione_inps": parsed.get("sezione_inps", []),
@@ -90,7 +90,7 @@ async def processa_f24_da_email(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
                     "contribuente": parsed.get("contribuente", {}),
                     "data_pagamento": parsed.get("data_pagamento"),
                     "periodo": parsed.get("periodo"),
-                    
+
                     "status": "da_pagare",
                     "riconciliato": False,
                     "source": "gmail_scan",
@@ -98,7 +98,7 @@ async def processa_f24_da_email(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
                     "anno": doc.get("anno"),
                     "mese": doc.get("mese"),
                 }
-                
+
                 # Dedup per hash — collezione canonica f24_unificato
                 existing = await db["f24_unificato"].find_one({"pdf_hash": doc.get("pdf_hash")})
                 if not existing:
@@ -109,18 +109,18 @@ async def processa_f24_da_email(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
                     logger.info(f"[PIPELINE-F24] Salvato: {filename}")
                 else:
                     stats["gia_processati"] += 1
-            
+
             # Marca come processato
             await db["f24_email_attachments"].update_one(
                 {"id": doc["id"]},
                 {"$set": {"processed": True, "processed_at": datetime.now(timezone.utc).isoformat()}}
             )
             stats["processati"] += 1
-            
+
         except Exception as e:
             logger.error(f"[PIPELINE-F24] Errore: {e}")
             stats["errori"] += 1
-    
+
     logger.info(f"[PIPELINE-F24] Completato: {stats}")
     return stats
 
@@ -129,27 +129,27 @@ async def processa_f24_da_email(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
 # 2. PIPELINE CEDOLINI → DIPENDENTI
 # ============================================================
 
-async def processa_cedolini_da_email(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
+async def processa_cedolini_da_email(db: SheetDatabase) -> Dict[str, Any]:
     """
     Processa cedolini PDF scaricati da Gmail.
     Estrae dati dipendente (nome, CF, netto, lordo, mese/anno).
     Aggiorna/crea record in 'cedolini' e li linka ai dipendenti.
     """
     stats = {"processati": 0, "errori": 0, "nuovi_cedolini": 0, "aggiornati": 0}
-    
+
     cursor = db["cedolini_email_attachments"].find({"processed": {"$ne": True}})
     docs = await cursor.to_list(length=200)
     logger.info(f"[PIPELINE-CEDOLINI] {len(docs)} cedolini da processare")
-    
+
     for doc in docs:
         try:
             pdf_data = doc.get("pdf_data")
             if not pdf_data:
                 continue
-            
+
             pdf_bytes = base64.b64decode(pdf_data)
             filename = doc.get("filename", "cedolino.pdf")
-            
+
             # Parse con enhanced parser
             parsed = None
             try:
@@ -157,7 +157,7 @@ async def processa_cedolini_da_email(db: AsyncIOMotorDatabase) -> Dict[str, Any]
                 parsed = await parse_cedolino_enhanced(pdf_bytes, "application/pdf")
             except Exception as e:
                 logger.debug(f"[PIPELINE-CEDOLINI] Parser: {e}")
-            
+
             # Fallback: parse base da testo
             if not parsed or not parsed.get("success"):
                 try:
@@ -165,20 +165,20 @@ async def processa_cedolini_da_email(db: AsyncIOMotorDatabase) -> Dict[str, Any]
                     parsed = await processa_tutti_cedolini_pdf(db, pdf_data, filename)
                 except Exception as e:
                     logger.debug(f"[PIPELINE-CEDOLINI] Base parser: {e}")
-            
+
             if parsed and parsed.get("success"):
                 cedolini_data = parsed.get("cedolini", [parsed.get("data", {})])
-                
+
                 for ced_data in cedolini_data:
                     cf = ced_data.get("codice_fiscale", "")
                     mese = ced_data.get("mese") or doc.get("mese")
                     anno = ced_data.get("anno") or doc.get("anno")
-                    
+
                     if cf and mese and anno:
                         # Cerca cedolino esistente
                         dedup_key = f"{cf}_{mese:02d}_{anno}" if isinstance(mese, int) else f"{cf}_{mese}_{anno}"
                         existing = await db["cedolini"].find_one({"dedup_key": dedup_key})
-                        
+
                         if existing:
                             # Aggiorna con PDF
                             await db["cedolini"].update_one(
@@ -237,7 +237,7 @@ async def processa_cedolini_da_email(db: AsyncIOMotorDatabase) -> Dict[str, Any]
                                 }, db, source_module="pipeline_cedolini_email")
                             except Exception:
                                 logger.exception(f"[PIPELINE-CEDOLINI] Errore propagazione evento per {cf}")
-                    
+
                     # Aggiorna dipendente con ultimo cedolino
                     if cf:
                         await db["dipendenti"].update_one(
@@ -248,18 +248,18 @@ async def processa_cedolini_da_email(db: AsyncIOMotorDatabase) -> Dict[str, Any]
                                 "updated_at": datetime.now(timezone.utc).isoformat()
                             }}
                         )
-            
+
             # Marca come processato
             await db["cedolini_email_attachments"].update_one(
                 {"id": doc["id"]},
                 {"$set": {"processed": True, "processed_at": datetime.now(timezone.utc).isoformat()}}
             )
             stats["processati"] += 1
-            
+
         except Exception as e:
             logger.error(f"[PIPELINE-CEDOLINI] Errore: {e}")
             stats["errori"] += 1
-    
+
     logger.info(f"[PIPELINE-CEDOLINI] Completato: {stats}")
     return stats
 
@@ -268,10 +268,10 @@ async def processa_cedolini_da_email(db: AsyncIOMotorDatabase) -> Dict[str, Any]
 # 3. PIPELINE VERBALI → VEICOLO → DIPENDENTE → TRATTENUTE
 # ============================================================
 
-async def processa_verbali_da_email(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
+async def processa_verbali_da_email(db: SheetDatabase) -> Dict[str, Any]:
     """
     Processa verbali PDF scaricati da Gmail.
-    
+
     Flusso:
     1. Estrae targa dal PDF/filename/subject/folder
     2. Collega al veicolo in veicoli_noleggio
@@ -283,32 +283,32 @@ async def processa_verbali_da_email(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
         "processati": 0, "errori": 0, "nuovi_verbali": 0,
         "con_targa": 0, "con_driver": 0, "pagati": 0, "trattenute_create": 0
     }
-    
+
     cursor = db["verbali_email_attachments"].find({"processed": {"$ne": True}})
     docs = await cursor.to_list(length=500)
     logger.info(f"[PIPELINE-VERBALI] {len(docs)} verbali da processare")
-    
+
     # Carica veicoli per lookup targa → driver
     veicoli_by_targa = {}
     async for v in db["veicoli_noleggio"].find({}, {"_id": 0}):
         if v.get("targa"):
             veicoli_by_targa[v["targa"].upper()] = v
-    
+
     for doc in docs:
         try:
             filename = doc.get("filename", "")
             subject = doc.get("email_subject", "")
             source_folder = doc.get("email_info", {}).get("source_folder", "") if isinstance(doc.get("email_info"), dict) else ""
-            
+
             # Estrai targa da: filename, subject, folder, PDF content
             targa = _extract_targa_from_text(f"{filename} {subject} {source_folder}")
-            
+
             # Estrai numero verbale dal nome cartella email o filename
             numero_verbale = _extract_numero_verbale(filename, subject, source_folder)
-            
+
             if not numero_verbale:
                 numero_verbale = f"VERB-{doc['id'][:8]}"
-            
+
             # Dedup
             existing = await db["verbali_noleggio"].find_one({
                 "$or": [
@@ -316,7 +316,7 @@ async def processa_verbali_da_email(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
                     {"pdf_hash": doc.get("pdf_hash")}
                 ]
             })
-            
+
             if existing:
                 # Aggiorna con PDF se mancante
                 if not existing.get("pdf_data"):
@@ -334,7 +334,7 @@ async def processa_verbali_da_email(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
                 veicolo_info = {}
                 driver_id = None
                 driver_nome = None
-                
+
                 if targa:
                     stats["con_targa"] += 1
                     veicolo = veicoli_by_targa.get(targa.upper())
@@ -344,7 +344,7 @@ async def processa_verbali_da_email(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
                         driver_nome = veicolo.get("driver")
                         if driver_id:
                             stats["con_driver"] += 1
-                
+
                 # Crea record verbale
                 verbale_doc = {
                     "id": str(uuid.uuid4()),
@@ -352,21 +352,21 @@ async def processa_verbali_da_email(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
                     "targa": targa,
                     "driver": driver_nome,
                     "driver_id": driver_id,
-                    
+
                     "pdf_data": doc.get("pdf_data"),
                     "pdf_filename": filename,
                     "pdf_hash": doc.get("pdf_hash"),
-                    
+
                     "email_subject": subject,
                     "email_from": doc.get("email_from", ""),
                     "email_date": doc.get("email_date", ""),
                     "cartella_email": source_folder,
-                    
+
                     "veicolo_marca": veicolo_info.get("marca"),
                     "veicolo_modello": veicolo_info.get("modello"),
                     "fornitore_noleggio": veicolo_info.get("fornitore_noleggio"),
                     "contratto": veicolo_info.get("contratto"),
-                    
+
                     "importo": None,  # Sarà estratto dal PDF con parser
                     "data_verbale": None,
                     "stato": "da_scaricare" if not doc.get("pdf_data") else "salvato",
@@ -374,59 +374,59 @@ async def processa_verbali_da_email(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
                     "quietanza_pdf": None,
                     "data_pagamento": None,
                     "metodo_pagamento": None,
-                    
+
                     "trattenuta_cedolino": False,
                     "trattenuta_mese": None,
                     "trattenuta_anno": None,
-                    
+
                     "source": "gmail_scan",
                     "created_at": datetime.now(timezone.utc).isoformat(),
                 }
-                
+
                 await db["verbali_noleggio"].insert_one(verbale_doc)
                 stats["nuovi_verbali"] += 1
                 logger.info(f"[PIPELINE-VERBALI] Nuovo: {numero_verbale} | Targa: {targa} | Driver: {driver_nome or 'N/A'}")
-            
+
             # Marca come processato
             await db["verbali_email_attachments"].update_one(
                 {"id": doc["id"]},
                 {"$set": {"processed": True, "processed_at": datetime.now(timezone.utc).isoformat()}}
             )
             stats["processati"] += 1
-            
+
         except Exception as e:
             logger.error(f"[PIPELINE-VERBALI] Errore: {e}")
             stats["errori"] += 1
-    
+
     # FASE 2: Cerca quietanze per verbali non pagati
     stats_quietanze = await _cerca_quietanze_verbali(db)
     stats.update(stats_quietanze)
-    
+
     logger.info(f"[PIPELINE-VERBALI] Completato: {stats}")
     return stats
 
 
-async def _cerca_quietanze_verbali(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
+async def _cerca_quietanze_verbali(db: SheetDatabase) -> Dict[str, Any]:
     """
     Cerca quietanze di pagamento per verbali non ancora pagati.
     Controlla: quietanze_email_attachments, estratto_conto_movimenti, PagoPA.
     """
     stats = {"quietanze_trovate": 0, "trattenute_create": 0}
-    
+
     # Verbali da pagare
     verbali_da_pagare = await db["verbali_noleggio"].find(
         {"quietanza_ricevuta": False, "stato": {"$in": ["salvato", "da_pagare", "identificato"]}},
         {"_id": 0}
     ).to_list(500)
-    
+
     if not verbali_da_pagare:
         return stats
-    
+
     logger.info(f"[PIPELINE-VERBALI] Cercando quietanze per {len(verbali_da_pagare)} verbali...")
-    
+
     for verbale in verbali_da_pagare:
         numero = verbale.get("numero_verbale", "")
-        
+
         # 1. Cerca nelle quietanze email (PayPal, bonifici, PagoPA)
         quietanza = await db["quietanze_email_attachments"].find_one({
             "$or": [
@@ -434,7 +434,7 @@ async def _cerca_quietanze_verbali(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
                 {"filename": {"$regex": numero, "$options": "i"}},
             ]
         })
-        
+
         # 2. Cerca nell'estratto conto (movimenti bancari)
         if not quietanza and verbale.get("importo"):
             mov = await db["estratto_conto_movimenti"].find_one({
@@ -443,10 +443,10 @@ async def _cerca_quietanze_verbali(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
             })
             if mov:
                 quietanza = {"source": "estratto_conto", "id": mov.get("id"), "data": mov.get("data")}
-        
+
         if quietanza:
             data_pagamento = quietanza.get("email_date") or quietanza.get("data") or datetime.now(timezone.utc).isoformat()
-            
+
             await db["verbali_noleggio"].update_one(
                 {"id": verbale["id"]},
                 {"$set": {
@@ -460,17 +460,17 @@ async def _cerca_quietanze_verbali(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
                 }}
             )
             stats["quietanze_trovate"] += 1
-            
+
             # Crea trattenuta sulla busta paga del driver
             if verbale.get("driver_id") and verbale.get("importo"):
                 await _crea_trattenuta_verbale(db, verbale, data_pagamento)
                 stats["trattenute_create"] += 1
-    
+
     return stats
 
 
 async def _crea_trattenuta_verbale(
-    db: AsyncIOMotorDatabase, 
+    db: SheetDatabase,
     verbale: dict,
     data_pagamento: str
 ) -> None:
@@ -513,7 +513,7 @@ async def _crea_trattenuta_verbale(
                 f"cedolino suggerito {trattenuta['mese_cedolino_suggerito']}"
             ),
         )
-        
+
         # Aggiorna verbale
         await db["verbali_noleggio"].update_one(
             {"id": verbale["id"]},
@@ -523,7 +523,7 @@ async def _crea_trattenuta_verbale(
                 "trattenuta_anno": anno_trattenuta,
             }}
         )
-        
+
         logger.info(
             f"[PIPELINE-VERBALI] Trattenuta creata: {verbale.get('numero_verbale')} "
             f"→ {verbale.get('driver')} | €{verbale.get('importo',0)} | {mese_trattenuta}/{anno_trattenuta}"
@@ -536,26 +536,26 @@ async def _crea_trattenuta_verbale(
 # 4. PIPELINE QUIETANZE → PROVA PAGAMENTO F24
 # ============================================================
 
-async def processa_quietanze_da_email(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
+async def processa_quietanze_da_email(db: SheetDatabase) -> Dict[str, Any]:
     """
     Processa quietanze PDF scaricate da Gmail.
     Cerca il F24 corrispondente e lo marca come pagato.
     """
     stats = {"processati": 0, "errori": 0, "f24_pagati": 0}
-    
+
     cursor = db["quietanze_email_attachments"].find({"processed": {"$ne": True}})
     docs = await cursor.to_list(length=200)
     logger.info(f"[PIPELINE-QUIETANZE] {len(docs)} quietanze da processare")
-    
+
     for doc in docs:
         try:
             pdf_data = doc.get("pdf_data")
             if not pdf_data:
                 continue
-            
+
             pdf_bytes = base64.b64decode(pdf_data)
             filename = doc.get("filename", "quietanza.pdf")
-            
+
             # Parse quietanza per estrarre codici tributo pagati
             parsed = None
             try:
@@ -563,7 +563,7 @@ async def processa_quietanze_da_email(db: AsyncIOMotorDatabase) -> Dict[str, Any
                 parsed = parse_quietanza_f24(pdf_content=pdf_bytes)
             except Exception as e:
                 logger.debug(f"[PIPELINE-QUIETANZE] Parser: {e}")
-            
+
             if parsed and parsed.get("success"):
                 # Salva in f24_quietanze
                 quietanza_doc = {
@@ -580,22 +580,22 @@ async def processa_quietanze_da_email(db: AsyncIOMotorDatabase) -> Dict[str, Any
                     "f24_associati": [],
                     "imported_at": datetime.now(timezone.utc).isoformat(),
                 }
-                
+
                 existing = await db["f24_quietanze"].find_one({"pdf_hash": doc.get("pdf_hash")})
                 if not existing:
                     await db["f24_quietanze"].insert_one(quietanza_doc)
                     logger.info(f"[PIPELINE-QUIETANZE] Salvata: {filename}")
-            
+
             await db["quietanze_email_attachments"].update_one(
                 {"id": doc["id"]},
                 {"$set": {"processed": True, "processed_at": datetime.now(timezone.utc).isoformat()}}
             )
             stats["processati"] += 1
-            
+
         except Exception as e:
             logger.error(f"[PIPELINE-QUIETANZE] Errore: {e}")
             stats["errori"] += 1
-    
+
     logger.info(f"[PIPELINE-QUIETANZE] Completato: {stats}")
     return stats
 
@@ -618,7 +618,7 @@ def _extract_numero_verbale(filename: str, subject: str, folder: str) -> Optiona
     Pattern comuni: A25110648977, T23260465978, S22280043251, ZL18173182511
     """
     text = f"{filename} {subject} {folder}"
-    
+
     # Pattern verbali italiani
     patterns = [
         r'\b([A-Z]\d{11,14})\b',           # A25110648977
@@ -626,18 +626,18 @@ def _extract_numero_verbale(filename: str, subject: str, folder: str) -> Optiona
         r'\b(\d{7,10})\b',                   # 0007016241
         r'verbale\s*(?:n\.?|nr\.?|numero)?\s*(\S+)',  # Verbale N. XXXX
     ]
-    
+
     for pattern in patterns:
         match = re.search(pattern, text, re.IGNORECASE)
         if match:
             return match.group(1)
-    
+
     # Usa il nome della cartella se sembra un numero verbale
     folder_clean = folder.strip()
     if folder_clean and re.match(r'^[A-Z0-9]', folder_clean) and len(folder_clean) > 5:
         if not any(c in folder_clean.lower() for c in ['inbox', 'gmail', 'sent', 'draft', 'spam']):
             return folder_clean
-    
+
     return None
 
 
@@ -645,13 +645,13 @@ def _extract_numero_verbale(filename: str, subject: str, folder: str) -> Optiona
 # PIPELINE MASTER — Esegue tutto in sequenza
 # ============================================================
 
-async def esegui_pipeline_completa(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
+async def esegui_pipeline_completa(db: SheetDatabase) -> Dict[str, Any]:
     """
     Esegue l'intero pipeline di processamento post-download.
     Chiamato automaticamente dopo ogni scansione Gmail.
     """
     logger.info("[PIPELINE] ▶️ Avvio pipeline post-download completa...")
-    
+
     from app.config import settings
 
     risultati = {}
@@ -682,14 +682,14 @@ async def esegui_pipeline_completa(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
             risultati["verbali"] = {"errore": str(e)}
     else:
         risultati["verbali"] = {"saltato": "canale email verbali spento (ENABLE_EMAIL_VERBALI_SYNC)"}
-    
+
     # 4. Quietanze
     try:
         risultati["quietanze"] = await processa_quietanze_da_email(db)
     except Exception as e:
         logger.error(f"[PIPELINE] Errore Quietanze: {e}")
         risultati["quietanze"] = {"errore": str(e)}
-    
+
     # 5. Riconciliazione verbali con banca/PagoPA
     try:
         from app.services.verbali_pagamento_finder import riconcilia_verbali_strict
@@ -697,7 +697,7 @@ async def esegui_pipeline_completa(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"[PIPELINE] Errore Riconciliazione: {e}")
         risultati["riconciliazione_verbali"] = {"errore": str(e)}
-    
+
     logger.info(f"[PIPELINE] ✅ Pipeline completata: {risultati}")
     return risultati
 
@@ -706,7 +706,7 @@ async def esegui_pipeline_completa(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
 # 5. RICONCILIAZIONE VERBALI → BANCA / PagoPA / PayPal
 # ============================================================
 
-async def riconcilia_verbali_con_banca(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
+async def riconcilia_verbali_con_banca(db: SheetDatabase) -> Dict[str, Any]:
     """Compatibilita: usa esclusivamente la riconciliazione probatoria strict."""
     from app.services.verbali_pagamento_finder import riconcilia_verbali_strict
 
@@ -714,11 +714,11 @@ async def riconcilia_verbali_con_banca(db: AsyncIOMotorDatabase) -> Dict[str, An
 
 
 async def _legacy_riconcilia_verbali_con_banca_non_usare(
-    db: AsyncIOMotorDatabase,
+    db: SheetDatabase,
 ) -> Dict[str, Any]:
     """
     Riconcilia verbali con movimenti bancari, PagoPA e PayPal.
-    
+
     ALGORITMO:
     1. Carica verbali non pagati con importo
     2. Carica movimenti bancari con keyword "comune", "verbale", "multa", "sanzione"
@@ -736,13 +736,13 @@ async def _legacy_riconcilia_verbali_con_banca_non_usare(
         "non_riconciliati": 0,
         "errori": 0
     }
-    
+
     # 1. Carica verbali non pagati
     verbali = await db["verbali_noleggio"].find(
         {"stato": {"$nin": ["pagato", "riconciliato"]}, "importo": {"$gt": 0}},
         {"_id": 0}
     ).to_list(500)
-    
+
     stats["verbali_da_riconciliare"] = len(verbali)
     if not verbali:
         # Prova anche quelli senza importo ma con numero verbale
@@ -751,9 +751,9 @@ async def _legacy_riconcilia_verbali_con_banca_non_usare(
             {"_id": 0}
         ).to_list(500)
         stats["verbali_da_riconciliare"] = len(verbali)
-    
+
     logger.info(f"[RICONCILIAZIONE] {len(verbali)} verbali da riconciliare")
-    
+
     # 2. Carica movimenti bancari potenzialmente legati a verbali
     movimenti_verbali = await db["estratto_conto_movimenti"].find(
         {"$or": [
@@ -763,24 +763,24 @@ async def _legacy_riconcilia_verbali_con_banca_non_usare(
         ]},
         {"_id": 0}
     ).to_list(1000)
-    
+
     logger.info(f"[RICONCILIAZIONE] {len(movimenti_verbali)} movimenti bancari candidati")
-    
+
     # 3. Carica quietanze email (PagoPA, PayPal, ricevute)
     quietanze = await db["quietanze_email_attachments"].find(
         {},
         {"_id": 0, "pdf_data": 0}
     ).to_list(200)
-    
+
     # Indice movimenti per importo (con tolleranza)
     movimenti_usati = set()
-    
+
     for verbale in verbali:
         try:
             numero = verbale.get("numero_verbale", "")
             importo = float(verbale.get("importo") or 0)
             matched = False
-            
+
             # --- STRATEGIA 1: Match per numero verbale nella descrizione bancaria ---
             if numero and len(numero) > 5:
                 for mov in movimenti_verbali:
@@ -789,7 +789,7 @@ async def _legacy_riconcilia_verbali_con_banca_non_usare(
                     desc = (mov.get("descrizione", "") + " " + mov.get("causale", "")).lower()
                     if numero.lower() in desc:
                         await _marca_verbale_pagato(
-                            db, verbale, 
+                            db, verbale,
                             data_pagamento=mov.get("data_contabile") or mov.get("data_valuta") or mov.get("data"),
                             metodo="bonifico_bancario",
                             riferimento_banca=mov.get("id"),
@@ -799,7 +799,7 @@ async def _legacy_riconcilia_verbali_con_banca_non_usare(
                         stats["riconciliati_banca"] += 1
                         matched = True
                         break
-            
+
             # --- STRATEGIA 2: Match per importo esatto (±0.05€) ---
             if not matched and importo > 0:
                 for mov in movimenti_verbali:
@@ -818,7 +818,7 @@ async def _legacy_riconcilia_verbali_con_banca_non_usare(
                         stats["riconciliati_banca"] += 1
                         matched = True
                         break
-            
+
             # --- STRATEGIA 3: Match con quietanze email (PagoPA/PayPal) ---
             if not matched:
                 for q in quietanze:
@@ -834,20 +834,20 @@ async def _legacy_riconcilia_verbali_con_banca_non_usare(
                         stats["riconciliati_pagopa" if "pagopa" in q_subject else "riconciliati_quietanza"] += 1
                         matched = True
                         break
-            
+
             if not matched:
                 stats["non_riconciliati"] += 1
-                
+
         except Exception as e:
             logger.error(f"[RICONCILIAZIONE] Errore verbale {numero}: {e}")
             stats["errori"] += 1
-    
+
     logger.info(f"[RICONCILIAZIONE] Completato: {stats}")
     return stats
 
 
 async def _marca_verbale_pagato(
-    db: AsyncIOMotorDatabase,
+    db: SheetDatabase,
     verbale: dict,
     data_pagamento: str,
     metodo: str,
@@ -855,7 +855,7 @@ async def _marca_verbale_pagato(
     importo_pagato: float = 0
 ) -> None:
     """Marca un verbale come pagato e crea trattenuta se ha driver."""
-    
+
     update = {
         "stato": "pagato",
         "quietanza_ricevuta": True,
@@ -865,20 +865,20 @@ async def _marca_verbale_pagato(
         "importo_pagato": importo_pagato,
         "riconciliato_at": datetime.now(timezone.utc).isoformat()
     }
-    
+
     if importo_pagato > 0 and not verbale.get("importo"):
         update["importo"] = importo_pagato
-    
+
     await db["verbali_noleggio"].update_one(
         {"id": verbale["id"]},
         {"$set": update}
     )
-    
+
     logger.info(
         f"[RICONCILIAZIONE] ✅ Verbale {verbale.get('numero_verbale','')} → PAGATO "
         f"| €{importo_pagato} | {metodo} | {data_pagamento}"
     )
-    
+
     # Crea trattenuta busta paga se ha driver
     if verbale.get("driver_id") and (importo_pagato > 0 or float(verbale.get("importo", 0) or 0) > 0):
         importo_trattenuta = importo_pagato if importo_pagato > 0 else float(verbale.get("importo", 0))
@@ -890,7 +890,7 @@ async def _marca_verbale_pagato(
 # 6. SCARICA PDF MANCANTI DAI FOLDER GMAIL
 # ============================================================
 
-async def scarica_pdf_verbali_mancanti(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
+async def scarica_pdf_verbali_mancanti(db: SheetDatabase) -> Dict[str, Any]:
     """
     Scarica i PDF dei verbali che hanno il numero (dalla cartella Gmail)
     ma non hanno il pdf_data. Va nella cartella Gmail specifica e scarica gli allegati.
@@ -899,9 +899,9 @@ async def scarica_pdf_verbali_mancanti(db: AsyncIOMotorDatabase) -> Dict[str, An
     import email as email_mod
     from email.header import decode_header
     import base64
-    
+
     stats = {"da_scaricare": 0, "scaricati": 0, "errori": 0}
-    
+
     # Trova verbali senza PDF ma con nome cartella
     verbali = await db["verbali_noleggio"].find(
         {
@@ -910,55 +910,55 @@ async def scarica_pdf_verbali_mancanti(db: AsyncIOMotorDatabase) -> Dict[str, An
         },
         {"_id": 0}
     ).to_list(100)
-    
+
     stats["da_scaricare"] = len(verbali)
     if not verbali:
         return stats
-    
+
     logger.info(f"[SCARICA-PDF] {len(verbali)} verbali senza PDF da scaricare")
-    
+
     # Connetti a Gmail
     from app.config import settings
     email_user = settings.EMAIL_USER or settings.IMAP_USER or ""
     email_pass = settings.EMAIL_PASSWORD or settings.IMAP_PASSWORD or ""
-    
+
     if not email_user or not email_pass:
         logger.error("[SCARICA-PDF] Credenziali Gmail non configurate")
         return stats
-    
+
     try:
         import asyncio
-        
+
         def _download_pdfs_sync(verbali_list):
             results = {}
             mail = imaplib.IMAP4_SSL("imap.gmail.com")
             mail.login(email_user, email_pass)
-            
+
             for verbale in verbali_list:
                 folder = verbale.get("cartella_email", "")
                 if not folder:
                     continue
-                
+
                 try:
                     status, _ = mail.select(f'"{folder}"')
                     if status != "OK":
                         continue
-                    
+
                     # Cerca tutte le email nella cartella
                     status, msgs = mail.search(None, "ALL")
                     if status != "OK" or not msgs[0]:
                         continue
-                    
+
                     email_ids = msgs[0].split()
                     pdfs_found = []
-                    
+
                     for eid in email_ids:
                         st, data = mail.fetch(eid, "(RFC822)")
                         if st != "OK":
                             continue
-                        
+
                         msg = email_mod.message_from_bytes(data[0][1])
-                        
+
                         for part in msg.walk():
                             fn = part.get_filename()
                             if fn:
@@ -970,7 +970,7 @@ async def scarica_pdf_verbali_mancanti(db: AsyncIOMotorDatabase) -> Dict[str, An
                                         fn_decoded = fn_decoded.decode(decoded[0][1] or 'utf-8', errors='replace')
                                 except Exception:
                                     pass
-                                
+
                                 if fn_decoded.lower().endswith('.pdf'):
                                     payload = part.get_payload(decode=True)
                                     if payload and len(payload) > 500:
@@ -979,22 +979,22 @@ async def scarica_pdf_verbali_mancanti(db: AsyncIOMotorDatabase) -> Dict[str, An
                                             "data": base64.b64encode(payload).decode('ascii'),
                                             "size": len(payload)
                                         })
-                    
+
                     if pdfs_found:
                         # Usa il PDF più grande (di solito il verbale, non la relata)
                         best_pdf = max(pdfs_found, key=lambda x: x["size"])
                         results[verbale["id"]] = best_pdf
-                        
+
                 except Exception as e:
                     logger.debug(f"[SCARICA-PDF] Errore cartella {folder}: {e}")
-            
+
             mail.logout()
             return results
-        
+
         # Esegui in thread
         import asyncio
         results = await asyncio.to_thread(_download_pdfs_sync, verbali)
-        
+
         # Salva i PDF nel database
         for verbale in verbali:
             if verbale["id"] in results:
@@ -1009,11 +1009,11 @@ async def scarica_pdf_verbali_mancanti(db: AsyncIOMotorDatabase) -> Dict[str, An
                 )
                 stats["scaricati"] += 1
                 logger.info(f"[SCARICA-PDF] {verbale.get('numero_verbale','')}: {pdf_info['filename']} ({pdf_info['size']} bytes)")
-    
+
     except Exception as e:
         logger.error(f"[SCARICA-PDF] Errore: {e}")
         stats["errori"] += 1
-    
+
     logger.info(f"[SCARICA-PDF] Completato: {stats}")
     return stats
 
@@ -1022,7 +1022,7 @@ async def scarica_pdf_verbali_mancanti(db: AsyncIOMotorDatabase) -> Dict[str, An
 # 7. MATCHING MIGLIORATO VERBALI → BANCA
 # ============================================================
 
-async def riconcilia_verbali_avanzato(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
+async def riconcilia_verbali_avanzato(db: SheetDatabase) -> Dict[str, Any]:
     """Compatibilita: vieta i match storici basati sul solo importo/data."""
     from app.services.verbali_pagamento_finder import riconcilia_verbali_strict
 
@@ -1030,7 +1030,7 @@ async def riconcilia_verbali_avanzato(db: AsyncIOMotorDatabase) -> Dict[str, Any
 
 
 async def _legacy_riconcilia_verbali_avanzato_non_usare(
-    db: AsyncIOMotorDatabase,
+    db: SheetDatabase,
 ) -> Dict[str, Any]:
     """
     Riconciliazione avanzata verbali ↔ banca con 5 strategie:
@@ -1047,15 +1047,15 @@ async def _legacy_riconcilia_verbali_avanzato_non_usare(
         "match_multiplo": 0, "non_riconciliati": 0,
         "trattenute_create": 0, "errori": 0
     }
-    
+
     # Verbali non pagati con importo
     verbali = await db["verbali_noleggio"].find(
         {"stato": {"$nin": ["pagato", "riconciliato"]}, "importo": {"$gt": 0}},
         {"_id": 0}
     ).to_list(500)
-    
+
     stats["verbali_analizzati"] = len(verbali)
-    
+
     # Movimenti bancari candidati (più ampio)
     movimenti = await db["estratto_conto_movimenti"].find(
         {"$or": [
@@ -1065,19 +1065,19 @@ async def _legacy_riconcilia_verbali_avanzato_non_usare(
         ]},
         {"_id": 0}
     ).to_list(5000)
-    
+
     # Quietanze
     quietanze = await db["quietanze_email_attachments"].find({}, {"_id": 0, "pdf_data": 0}).to_list(200)
-    
+
     movimenti_usati = set()
-    
+
     for verbale in verbali:
         try:
             numero = verbale.get("numero_verbale", "")
             importo = float(verbale.get("importo", 0))
             data_verb = verbale.get("data_verbale", "")
             matched = False
-            
+
             # STRATEGIA 1: Numero verbale nella descrizione
             if numero and len(numero) > 5:
                 for mov in movimenti:
@@ -1085,7 +1085,7 @@ async def _legacy_riconcilia_verbali_avanzato_non_usare(
                         continue
                     desc = str(mov.get("descrizione", "")).lower() + " " + str(mov.get("causale", "")).lower()
                     if numero.lower() in desc:
-                        await _marca_verbale_pagato(db, verbale, 
+                        await _marca_verbale_pagato(db, verbale,
                             data_pagamento=mov.get("data_contabile") or mov.get("data_valuta") or mov.get("data"),
                             metodo="bonifico_bancario", riferimento_banca=mov.get("id"),
                             importo_pagato=abs(float(mov.get("importo", 0))))
@@ -1093,7 +1093,7 @@ async def _legacy_riconcilia_verbali_avanzato_non_usare(
                         stats["match_numero"] += 1
                         matched = True
                         break
-            
+
             # STRATEGIA 2: Importo esatto + beneficiario "Comune"
             if not matched and importo > 0:
                 for mov in movimenti:
@@ -1102,7 +1102,7 @@ async def _legacy_riconcilia_verbali_avanzato_non_usare(
                     mov_importo = abs(float(mov.get("importo", 0)))
                     desc = str(mov.get("descrizione", "")).lower()
                     benef = str(mov.get("beneficiario", "")).lower()
-                    
+
                     if abs(mov_importo - importo) <= 0.10 and ("comune" in desc or "comune" in benef):
                         await _marca_verbale_pagato(db, verbale,
                             data_pagamento=mov.get("data_contabile") or mov.get("data_valuta") or mov.get("data"),
@@ -1112,21 +1112,21 @@ async def _legacy_riconcilia_verbali_avanzato_non_usare(
                         stats["match_importo_comune"] += 1
                         matched = True
                         break
-            
+
             # STRATEGIA 3: Importo + data ravvicinata (entro 90gg dal verbale)
             if not matched and importo > 0 and data_verb:
                 try:
                     from datetime import datetime as dt
                     if isinstance(data_verb, str) and len(data_verb) >= 10:
                         verb_date = dt.strptime(data_verb[:10], "%Y-%m-%d")
-                        
+
                         for mov in movimenti:
                             if mov.get("id") in movimenti_usati:
                                 continue
                             mov_importo = abs(float(mov.get("importo", 0)))
                             if abs(mov_importo - importo) > 0.10:
                                 continue
-                            
+
                             mov_date_str = mov.get("data_contabile") or mov.get("data_valuta") or ""
                             try:
                                 if "/" in mov_date_str:
@@ -1136,7 +1136,7 @@ async def _legacy_riconcilia_verbali_avanzato_non_usare(
                                     mov_date = dt.strptime(mov_date_str[:10], "%Y-%m-%d")
                                 else:
                                     continue
-                                
+
                                 diff = abs((mov_date - verb_date).days)
                                 if diff <= 90:  # Pagato entro 90 giorni
                                     await _marca_verbale_pagato(db, verbale,
@@ -1151,7 +1151,7 @@ async def _legacy_riconcilia_verbali_avanzato_non_usare(
                                 continue
                 except Exception:
                     pass
-            
+
             # STRATEGIA 4: Quietanze email
             if not matched:
                 for q in quietanze:
@@ -1164,12 +1164,12 @@ async def _legacy_riconcilia_verbali_avanzato_non_usare(
                         stats["match_quietanza"] += 1
                         matched = True
                         break
-            
+
             if not matched:
                 stats["non_riconciliati"] += 1
-                
+
         except Exception as e:
             stats["errori"] += 1
-    
+
     logger.info(f"[RICONCILIAZIONE-AVZ] Completato: {stats}")
     return stats

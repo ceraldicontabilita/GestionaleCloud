@@ -380,7 +380,7 @@ API autenticate e versionate
 - Router: validazione, auth/RBAC e contratto HTTP; niente query dirette sparse.
 - Servizi: regole di dominio, idempotenza, matching e scritture atomiche.
 - Adapter: Gmail, Drive, provider e fogli; retry, rate limit, watermark e lock.
-- Archivio: originali su Drive; registri e indici su Sheets/Excel; nessun MongoDB nel target.
+- Archivio: originali su Drive; registri e indici su Sheets/Excel; nessun Drive/Sheets nel target.
 - Osservabilità: `run_id`, contatori, errori strutturati, durata, watermark e audit trail.
 
 ## Regole di dipendenza
@@ -484,7 +484,7 @@ def render_migration() -> str:
 7. Ricostruire un ambiente vuoto usando soltanto Drive/Sheets e originali.
 8. Provare scrittura/lettura, scheduler Gmail, POS/provider e navigazione bidirezionale.
 9. Fermare le scritture transitorie, eseguire delta finale e cambiare runtime.
-10. Monitorare, conservare rollback e disabilitare MongoDB solo dopo gate verdi.
+10. Monitorare, conservare rollback e disabilitare Drive/Sheets solo dopo gate verdi.
 
 Il cutover non autorizza eliminazione dei dati sorgente. La dismissione è una
 decisione separata con backup, target esatti e prova di recupero.
@@ -592,7 +592,7 @@ def render_kickoff_prompt() -> str:
 1. Verifica prima MANIFEST.json e MANIFEST.sha256.
 2. Leggi 00_START_HERE.md e poi integralmente 01_MASTER/PROMPT_MASTER.md.
 3. Implementa esclusivamente le 65 pagine in 03_PAGINE e gli endpoint marcati attivi in 05_API; conserva gli endpoint in quarantena solo come decision log, senza esporli.
-4. Usa Google Drive per gli originali e Google Sheets/Excel collegato a Drive per i registri. MongoDB non fa parte del target.
+4. Usa Google Drive per gli originali e Google Sheets/Excel collegato a Drive per i registri. Drive/Sheets non fa parte del target.
 5. Mantieni un solo writer per concetto, canonical_id, operation_id, relazioni bidirezionali, centesimi esatti, provenienza e idempotenza.
 6. Gmail deve usare in:anywhere, paginazione completa, Europe/Rome, Gmail IDs e SHA-256 senza spostare o eliminare gli originali.
 7. Non eseguire pagamenti, non eliminare originali e non associare definitivamente casi ambigui. Mostra candidati e scelta manuale.
@@ -822,7 +822,7 @@ def build_package(package_root: Path) -> dict[str, Any]:
 
 Questi documenti completano il dominio ma non prevalgono sul Prompt Master.
 Le descrizioni di implementazioni transitorie servono a evitare regressioni,
-non autorizzano a ricreare MongoDB, pipeline duplicate o endpoint in quarantena.
+non autorizzano a ricreare Drive/Sheets, pipeline duplicate o endpoint in quarantena.
 """
     write_text(package_root, "08_RIFERIMENTI_CONTESTO/README.md", context_intro)
     for relative in inventory_markdown_paths():

@@ -1,7 +1,7 @@
 """
 Servizio Download Documenti da Email
-Scarica automaticamente allegati dalle email e li salva su MongoDB Atlas.
-IMPORTANTE: Tutto va salvato su MongoDB, NIENTE filesystem!
+Scarica automaticamente allegati dalle email e li salva su Google Sheets.
+IMPORTANTE: Tutto va salvato su Drive/Sheets, NIENTE filesystem!
 Supporta: F24, Fatture, Buste Paga, Estratti Conto, Quietanze
 """
 
@@ -162,14 +162,14 @@ def categorize_document(filename: str, subject: str = "", sender: str = "", sear
     # manteniamo anche una versione lessicale normalizzata.
     filename_words = re.sub(r"[_\-.]+", " ", filename_lower)
     subject_words = re.sub(r"[_\-.]+", " ", subject_lower)
-    
+
     # Se ci sono parole chiave specifiche dalla ricerca, usa quelle per determinare la categoria
     if search_keywords:
         for kw in search_keywords:
             kw_lower = kw.lower()
             if kw_lower in subject_lower or kw_lower in filename_lower:
                 return get_category_from_keyword(kw)
-    
+
     # Cartelle Esattoriali — 'cartella' + 'esattor' controllati come sottostringhe
     # indipendenti (non l'intera frase con spazio) perché i nomi file reali usano
     # separatori diversi, es. "cartella_esattoriale_2024.pdf".
@@ -259,33 +259,33 @@ def extract_document_period(content: bytes, category: str, filename: str) -> Opt
     """
     Estrae il periodo di riferimento da un documento PDF.
     Questo permette di identificare documenti con stesso nome ma periodi diversi.
-    
+
     Returns:
         Dict con mese, anno e identificatore univoco del periodo
         None se non riesce a estrarre
     """
     import re
-    
+
     period_info = {
         "mese": None,
         "anno": None,
         "periodo_raw": None,
         "identificatore_periodo": None
     }
-    
+
     try:
         # Prova a estrarre testo dal PDF
         import pdfplumber
         import io
-        
+
         text = ""
         with pdfplumber.open(io.BytesIO(content)) as pdf:
             for page in pdf.pages[:3]:  # Solo prime 3 pagine per velocità
                 page_text = page.extract_text() or ""
                 text += page_text + "\n"
-        
+
         text_lower = text.lower()
-        
+
         # Dizionari comuni per i mesi
         mesi_it = {
             'gennaio': 1, 'febbraio': 2, 'marzo': 3, 'aprile': 4,
@@ -296,10 +296,10 @@ def extract_document_period(content: bytes, category: str, filename: str) -> Opt
             'gen': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'mag': 5, 'giu': 6,
             'lug': 7, 'ago': 8, 'set': 9, 'ott': 10, 'nov': 11, 'dic': 12
         }
-        
+
         # Pattern comuni per periodi
         # Formato: "GENNAIO 2026", "01/2026", "2026-01", "Mese: 01 Anno: 2026"
-        
+
         # Pattern 1: "GENNAIO 2026" o "gennaio 2026"
         for mese_nome, mese_num in mesi_it.items():
             pattern = rf'{mese_nome}\s+(\d{{4}})'
@@ -309,7 +309,7 @@ def extract_document_period(content: bytes, category: str, filename: str) -> Opt
                 period_info["anno"] = int(match.group(1))
                 period_info["periodo_raw"] = f"{mese_nome} {match.group(1)}"
                 break
-        
+
         # Pattern 2: "01/2026" o "1/2026" (mese/anno)
         if not period_info["mese"]:
             match = re.search(r'\b(\d{1,2})/(\d{4})\b', text)
@@ -320,7 +320,7 @@ def extract_document_period(content: bytes, category: str, filename: str) -> Opt
                     period_info["mese"] = mese
                     period_info["anno"] = anno
                     period_info["periodo_raw"] = f"{mese:02d}/{anno}"
-        
+
         # Pattern 3: Per F24 cerca "Scadenza DD/MM/YYYY"
         if category == "f24" and not period_info["mese"]:
             match = re.search(r'scadenza\s+(\d{2})/(\d{2})/(\d{4})', text_lower)
@@ -328,7 +328,7 @@ def extract_document_period(content: bytes, category: str, filename: str) -> Opt
                 period_info["mese"] = int(match.group(2))
                 period_info["anno"] = int(match.group(3))
                 period_info["periodo_raw"] = f"scadenza_{match.group(1)}/{match.group(2)}/{match.group(3)}"
-        
+
         # Pattern 4: Per estratti conto cerca "DAL DD/MM/YYYY AL DD/MM/YYYY"
         if category == "estratto_conto" and not period_info["mese"]:
             match = re.search(r'dal\s+\d{2}/(\d{2})/(\d{4})\s+al\s+\d{2}/(\d{2})/(\d{4})', text_lower)
@@ -337,7 +337,7 @@ def extract_document_period(content: bytes, category: str, filename: str) -> Opt
                 period_info["mese"] = int(match.group(3))
                 period_info["anno"] = int(match.group(4))
                 period_info["periodo_raw"] = f"{match.group(3)}/{match.group(4)}"
-        
+
         # Pattern 5: Per Nexi cerca date nel formato "DD MMM YYYY"
         if not period_info["mese"]:
             for mese_short_key, mese_num in mesi_short.items():
@@ -348,7 +348,7 @@ def extract_document_period(content: bytes, category: str, filename: str) -> Opt
                     period_info["anno"] = int(match.group(1))
                     period_info["periodo_raw"] = f"{mese_short_key}_{match.group(1)}"
                     break
-        
+
         # Pattern 6: Per IVA cerca "LIQUIDAZIONE IVA MESE/TRIMESTRE"
         if not period_info["mese"]:
             # IVA mensile: "liquidazione iva gennaio", "iva mese di febbraio"
@@ -367,7 +367,7 @@ def extract_document_period(content: bytes, category: str, filename: str) -> Opt
                         period_info["anno"] = int(anno_str)
                         period_info["periodo_raw"] = f"iva_{mese_str}_{anno_str}"
                         break
-            
+
             # IVA trimestrale: "1° trimestre", "I trimestre", "primo trimestre"
             if not period_info["mese"]:
                 trimestre_map = {
@@ -384,7 +384,7 @@ def extract_document_period(content: bytes, category: str, filename: str) -> Opt
                         if match.group(2):
                             period_info["anno"] = int(match.group(2))
                         period_info["periodo_raw"] = f"trim_{trim_key}"
-        
+
         # Pattern 7: Per bonifici cerca "DATA ESECUZIONE/VALUTA DD/MM/YYYY"
         if not period_info["mese"]:
             bonifico_patterns = [
@@ -399,7 +399,7 @@ def extract_document_period(content: bytes, category: str, filename: str) -> Opt
                     period_info["anno"] = int(match.group(3))
                     period_info["periodo_raw"] = f"bonifico_{match.group(1)}/{match.group(2)}/{match.group(3)}"
                     break
-        
+
         # Pattern 8: Data generica DD/MM/YYYY (ultima risorsa per qualsiasi documento)
         if not period_info["mese"]:
             # Cerca tutte le date nel documento e usa la più recente
@@ -414,34 +414,34 @@ def extract_document_period(content: bytes, category: str, filename: str) -> Opt
                         period_info["anno"] = y
                         period_info["periodo_raw"] = f"data_{day}/{month}/{year}"
                         break
-        
+
         # Pattern 9: Cerca anno nel filename se non trovato
         if not period_info["anno"]:
             match = re.search(r'20(\d{2})', filename)
             if match:
                 period_info["anno"] = int(f"20{match.group(1)}")
-        
+
         # Crea identificatore univoco del periodo
         if period_info["mese"] and period_info["anno"]:
             period_info["identificatore_periodo"] = f"{period_info['anno']:04d}_{period_info['mese']:02d}"
         elif period_info["anno"]:
             period_info["identificatore_periodo"] = f"{period_info['anno']:04d}_00"
-        
+
     except Exception as e:
         logger.debug(f"Impossibile estrarre periodo da {filename}: {e}")
-    
+
     return period_info if period_info["identificatore_periodo"] else None
 
 
 class EmailDocumentDownloader:
     """Classe per scaricare documenti dalle email via IMAP."""
-    
+
     def __init__(self, email_user: str, email_password: str, imap_server: str = "imap.gmail.com"):
         self.email_user = email_user
         self.email_password = email_password
         self.imap_server = imap_server
         self.connection = None
-        
+
     def connect(self) -> bool:
         """Connette al server IMAP."""
         try:
@@ -452,7 +452,7 @@ class EmailDocumentDownloader:
         except Exception as e:
             logger.error(f"Errore connessione IMAP: {e}")
             return False
-    
+
     def disconnect(self):
         """Disconnette dal server IMAP."""
         if self.connection:
@@ -483,7 +483,7 @@ class EmailDocumentDownloader:
         """Ordina gli ID email per data di arrivo (dal più recente al più vecchio)."""
         if not email_ids or not self.connection:
             return email_ids
-        
+
         id_date_pairs = []
         # Processa in batch per efficienza
         batch_size = 50
@@ -511,16 +511,16 @@ class EmailDocumentDownloader:
                 # Fallback: usa gli IDs come sono (ordinati numericamente = ordine arrivo)
                 for eid in batch:
                     id_date_pairs.append((eid, datetime.min.replace(tzinfo=timezone.utc)))
-        
+
         if not id_date_pairs:
             return email_ids
-        
+
         # Ordina per data discendente (più recente prima)
         id_date_pairs.sort(key=lambda x: x[1], reverse=True)
         return [uid for uid, _ in id_date_pairs]
 
     def search_emails_with_attachments(
-        self, 
+        self,
         folder: str = "INBOX",
         since_date: Optional[str] = None,
         search_criteria: Optional[str] = None,
@@ -539,11 +539,11 @@ class EmailDocumentDownloader:
         """
         if not self.connection:
             return []
-        
+
         try:
             self.connection.select(folder)
             all_email_ids = []
-            
+
             # 1. Cerca per mittenti FROM standard
             if allowed_senders:
                 for sender in allowed_senders:
@@ -558,7 +558,7 @@ class EmailDocumentDownloader:
                             all_email_ids.extend(messages[0].split())
                     except Exception as e:
                         logger.debug(f"Ricerca mittente {sender}: {e}")
-            
+
             # 2. Cerca per parole chiave (mittenti che potrebbero cambiare indirizzo)
             if keyword_senders:
                 for email_addr, keywords in keyword_senders:
@@ -585,7 +585,7 @@ class EmailDocumentDownloader:
                                     all_email_ids.extend(messages[0].split())
                             except Exception as e2:
                                 logger.debug(f"Ricerca keyword '{kw}': {e2}")
-            
+
             # 3. Se nessun filtro, usa search_keywords generici
             if not allowed_senders and not keyword_senders:
                 criteria = []
@@ -602,12 +602,12 @@ class EmailDocumentDownloader:
                         for i in range(len(keyword_criteria) - 2, -1, -1):
                             or_expr = f'(OR {keyword_criteria[i]} {or_expr})'
                         criteria.append(or_expr)
-                
+
                 search_string = ' '.join(criteria) if criteria else 'ALL'
                 status, messages = self.connection.search(None, search_string)
                 if status == 'OK' and messages[0]:
                     all_email_ids = messages[0].split()
-            
+
             # Rimuovi duplicati mantenendo l'ordine
             seen_set = set()
             unique_ids = []
@@ -615,24 +615,24 @@ class EmailDocumentDownloader:
                 if eid not in seen_set:
                     seen_set.add(eid)
                     unique_ids.append(eid)
-            
+
             # Limita
             if len(unique_ids) > limit:
                 unique_ids = unique_ids[-limit:]
-            
+
             # Ordina per data (più recente prima)
             if unique_ids:
                 unique_ids = self.sort_email_ids_by_date(unique_ids)
-            
+
             logger.info(f"Trovate {len(unique_ids)} email uniche (ordinate per data)")
             return unique_ids
-            
+
         except Exception as e:
             logger.error(f"Errore ricerca email: {e}")
             return []
-    
+
     def download_attachments_from_email(
-        self, 
+        self,
         email_id: bytes,
         allowed_extensions: List[str] = ['.pdf', '.xml', '.xlsx', '.xls', '.csv', '.p7m'],
         search_keywords: List[str] = None
@@ -643,40 +643,40 @@ class EmailDocumentDownloader:
         """
         if not self.connection:
             return []
-        
+
         documents = []
-        
+
         try:
             status, msg_data = self.connection.fetch(email_id, '(RFC822)')
-            
+
             if status != 'OK':
                 return []
-            
+
             for response_part in msg_data:
                 if isinstance(response_part, tuple):
                     msg = email.message_from_bytes(response_part[1])
-                    
+
                     # Estrai metadati email
                     subject = decode_mime_header(msg.get('Subject', ''))
                     sender = decode_mime_header(msg.get('From', ''))
                     date_str = msg.get('Date', '')
                     message_id = msg.get('Message-ID', str(uuid.uuid4()))
-                    
+
                     # Parse data
                     try:
                         email_date = email.utils.parsedate_to_datetime(date_str)
                     except Exception:
                         email_date = datetime.now(timezone.utc)
-                    
+
                     # Cerca allegati
                     for part in msg.walk():
                         if part.get_content_maintype() == 'multipart':
                             continue
-                        
+
                         filename = part.get_filename()
                         if not filename:
                             continue
-                        
+
                         filename = decode_mime_header(filename)
 
                         # Mai i file tecnici del circuito PEC/SDI
@@ -687,22 +687,22 @@ class EmailDocumentDownloader:
                         ext = os.path.splitext(filename)[1].lower()
                         if ext not in allowed_extensions:
                             continue
-                        
+
                         # Scarica contenuto
                         content = part.get_payload(decode=True)
                         if not content:
                             continue
-                        
+
                         # Calcola hash per evitare duplicati
                         file_hash = calculate_file_hash(content)
-                        
+
                         # Categorizza documento
                         category = categorize_document(filename, subject, sender, search_keywords)
-                        
+
                         # Se non riesce a categorizzare, usa "altro"
                         if category is None:
                             category = "altro"
-                        
+
                         # NUOVO: Estrai periodo dal documento per identificazione intelligente
                         # Applica a TUTTI i PDF, non solo categorie specifiche
                         period_info = None
@@ -713,24 +713,24 @@ class EmailDocumentDownloader:
                                     logger.info(f"📅 Periodo estratto da {filename}: {period_info.get('periodo_raw', 'N/D')} (cat: {category})")
                             except Exception as e:
                                 logger.debug(f"Errore estrazione periodo: {e}")
-                        
+
                         # Assicurati che la cartella esista
                         ensure_category_folder(category)
-                        
+
                         # Genera nome file univoco
                         timestamp = email_date.strftime('%Y%m%d_%H%M%S')
                         safe_filename = re.sub(r'[^\w\-_\.]', '_', filename)
                         unique_filename = f"{timestamp}_{safe_filename}"
-                        
-                        # IMPORTANTE: Salva contenuto PDF come base64 in MongoDB
-                        # NO FILESYSTEM - TUTTO SU MONGODB ATLAS
+
+                        # IMPORTANTE: Salva contenuto PDF come base64 in Drive/Sheets
+                        # Nessuna copia locale: metadati nel registro Sheets.
                         pdf_base64 = base64.b64encode(content).decode('utf-8')
-                        
+
                         documents.append({
                             "id": str(uuid.uuid4()),
                             "filename": filename,
                             "filename_saved": unique_filename,
-                            "pdf_data": pdf_base64,  # Contenuto PDF in MongoDB!
+                            "pdf_data": pdf_base64,  # Contenuto PDF in Drive/Sheets!
                             "category": category,
                             "category_label": CATEGORIES.get(category, category.replace("_", " ").title()),
                             "size_bytes": len(content),
@@ -749,14 +749,14 @@ class EmailDocumentDownloader:
                             "processed": False,
                             "processed_to": None  # dove è stato caricato
                         })
-                        
-                        logger.info(f"Salvato su MongoDB: {filename} -> {category}")
-            
+
+                        logger.info(f"Salvato su Drive/Sheets: {filename} -> {category}")
+
         except Exception as e:
             logger.error(f"Errore download allegati: {e}")
-        
+
         return documents
-    
+
     def download_all_attachments(
         self,
         folder: str = "INBOX",
@@ -769,7 +769,7 @@ class EmailDocumentDownloader:
         """
         Scarica tutti gli allegati dalle email.
         Ritorna (lista documenti, statistiche).
-        
+
         Args:
             search_keywords: Lista di parole chiave per filtrare le email
             allowed_senders: Lista di mittenti autorizzati (cerca per FROM)
@@ -782,31 +782,31 @@ class EmailDocumentDownloader:
             "documents_found": 0,
             "by_category": {}
         }
-        
+
         email_ids = self.search_emails_with_attachments(
-            folder, 
-            since_date, 
+            folder,
+            since_date,
             limit=limit,
             search_keywords=search_keywords,
             allowed_senders=allowed_senders,
             keyword_senders=keyword_senders
         )
         stats["emails_checked"] = len(email_ids)
-        
+
         for email_id in email_ids:
             docs = self.download_attachments_from_email(email_id, search_keywords=search_keywords)
             all_documents.extend(docs)
-            
+
             for doc in docs:
                 cat = doc["category"]
                 stats["by_category"][cat] = stats["by_category"].get(cat, 0) + 1
-        
+
         stats["documents_found"] = len(all_documents)
         stats["documents_ignored_not_relevant"] = sum(
             1 for doc in all_documents if not is_relevant_email_document(doc)
         )
         all_documents = [doc for doc in all_documents if is_relevant_email_document(doc)]
-        
+
         return all_documents, stats
 
 
@@ -825,7 +825,7 @@ async def download_documents_from_email(
     """
     Funzione principale per scaricare documenti da email.
 
-    DIZIONARIO EMAIL: Usa una collezione MongoDB (email_message_index) per tracciare
+    DIZIONARIO EMAIL: Usa una foglio Sheets (email_message_index) per tracciare
     i Message-ID già scaricati, evitando di riscaricare email già elaborate.
 
     Args:
@@ -840,12 +840,12 @@ async def download_documents_from_email(
             anche quando l'email con l'allegato esisteva davvero (bug 18/07/2026).
     """
     from datetime import timedelta
-    
+
     # Calcola data "since"
     since_date = (datetime.now() - timedelta(days=since_days)).strftime("%d-%b-%Y")
-    
+
     downloader = EmailDocumentDownloader(email_user, email_password)
-    
+
     if not downloader.connect():
         return {
             "success": False,
@@ -853,7 +853,7 @@ async def download_documents_from_email(
             "documents": [],
             "stats": {}
         }
-    
+
     try:
         # === DIZIONARIO EMAIL: carica Message-IDs già visti ===
         seen_message_ids = set()
@@ -873,7 +873,7 @@ async def download_documents_from_email(
             logger.info(f"Dizionario email: {len(seen_message_ids)} messaggi già visti")
         except Exception as e:
             logger.warning(f"Errore caricamento dizionario email: {e}")
-        
+
         # Ottieni lista email IDs dal server (già ordinati per data - più recente prima)
         downloader.connection.select(folder)
         all_email_ids = downloader.search_emails_with_attachments(
@@ -884,11 +884,11 @@ async def download_documents_from_email(
             allowed_senders=allowed_senders,
             keyword_senders=keyword_senders
         )
-        
+
         # === FILTRAGGIO CON DIZIONARIO: controlla Message-ID prima di scaricare ===
         new_email_ids = []
         skipped_by_dict = 0
-        
+
         for email_id in all_email_ids:
             msg_id = downloader.fetch_message_id(email_id)
             if not ignore_dict and msg_id and msg_id in seen_message_ids:
@@ -896,21 +896,21 @@ async def download_documents_from_email(
                 logger.debug(f"Già nel dizionario: {msg_id}")
             else:
                 new_email_ids.append((email_id, msg_id))
-        
+
         logger.info(f"Email da scaricare: {len(new_email_ids)}, già nel dizionario: {skipped_by_dict}")
-        
+
         # Scarica allegati solo per email nuove
         all_docs_raw = []
         for email_id, msg_id in new_email_ids:
             docs = downloader.download_attachments_from_email(
-                email_id, 
+                email_id,
                 search_keywords=search_keywords
             )
             # Aggiungi message_id a ogni documento
             for doc in docs:
                 doc["email_message_id"] = msg_id or doc.get("email_message_id", "")
             all_docs_raw.extend(docs)
-            
+
             # Aggiungi al dizionario anche se non ha allegati (per non ri-controllare)
             if msg_id:
                 subject = ""
@@ -946,7 +946,7 @@ async def download_documents_from_email(
             if FILE_FATTURA_SDI_RE.fullmatch(str(doc.get("filename") or "").strip()):
                 doc["category"] = "fattura_xml"
                 doc["category_label"] = "Fattura elettronica XML"
-        
+
         stats = {
             "emails_found": len(all_email_ids),
             "skipped_by_dict": skipped_by_dict,
@@ -958,15 +958,15 @@ async def download_documents_from_email(
         for doc in all_docs_raw:
             cat = doc.get("category", "altro")
             stats["by_category"][cat] = stats["by_category"].get(cat, 0) + 1
-        
+
         # Salva nel database evitando duplicati con logica intelligente
         new_documents = []
         duplicates = 0
         period_duplicates = 0
-        
+
         for doc in all_docs_raw:
             is_duplicate = False
-            
+
             # METODO 1: Controllo hash (file identico byte per byte)
             existing_hash = await db["documents_inbox"].find_one({"file_hash": doc["file_hash"]})
             if existing_hash:
@@ -1000,11 +1000,11 @@ async def download_documents_from_email(
                     if size_ratio < 0.1:
                         is_duplicate = True
                         period_duplicates += 1
-            
+
             if is_duplicate:
                 duplicates += 1
                 continue
-            
+
             from app.constants.tipi_documento import set_tassonomia_documento
             doc_to_insert = set_tassonomia_documento(
                 dict(doc),
@@ -1012,7 +1012,7 @@ async def download_documents_from_email(
                 label=doc.get("category_label"),
             )
             await db["documents_inbox"].insert_one(doc_to_insert.copy())
-            
+
             if doc.get("identificatore_periodo"):
                 logger.info(f"Nuovo documento: {doc['filename']} - Periodo: {doc.get('periodo_raw', 'N/D')} - Cat: {doc['category']}")
             else:
@@ -1034,19 +1034,19 @@ async def download_documents_from_email(
                 logger.exception("Errore propagazione evento documento.acquisito")
 
             new_documents.append(doc)
-        
+
         stats["new_documents"] = len(new_documents)
         stats["duplicates_skipped"] = duplicates
         stats["period_duplicates"] = period_duplicates
         stats["search_keywords"] = search_keywords
-        
+
         # === PARSING AUTOMATICO CON AI ===
         ai_parsed = 0
         ai_errors = 0
-        
+
         try:
             from app.services.ai_integration_service import process_document_with_ai
-            
+
             for doc in new_documents:
                 try:
                     category = doc.get("category", "altro")
@@ -1057,9 +1057,9 @@ async def download_documents_from_email(
                         doc_type = "f24"
                     elif category == "busta_paga":
                         doc_type = "busta_paga"
-                    
+
                     pdf_data = base64.b64decode(doc.get("pdf_data", ""))
-                    
+
                     if pdf_data:
                         result = await process_document_with_ai(
                             db=db,
@@ -1073,19 +1073,19 @@ async def download_documents_from_email(
                 except Exception as e:
                     ai_errors += 1
                     logger.warning(f"AI parsing error per {doc.get('filename')}: {e}")
-                    
+
         except ImportError:
             pass
-        
+
         stats["ai_parsed"] = ai_parsed
         stats["ai_errors"] = ai_errors
-        
+
         return {
             "success": True,
             "documents": new_documents,
             "stats": stats
         }
-        
+
     finally:
         downloader.disconnect()
 

@@ -82,7 +82,7 @@ Gap corrente da correggere:
 - `/api/documenti/drive/index/document/{document_id}` risolve metadati e link,
   ma manca un endpoint autenticato che trasmetta il contenuto Drive al viewer;
 - `/api/documenti/documento/{doc_id}/download` è ancora descritto e implementato
-  come MongoDB-only: deve diventare Drive-first con fallback legacy controllato;
+  come Drive/Sheets: deve diventare Drive-first con fallback legacy controllato;
 - il monitor giornaliero affidabile usa il downloader generico su `INBOX`, mentre
   la copertura di tutte le cartelle esiste in `email_full_download.py`: occorre
   unificare i due comportamenti senza creare un terzo downloader.
@@ -576,7 +576,7 @@ deve usare lo stesso viewer canonico.
 Rendere `/api/documenti/documento/{doc_id}/download` coerente con l’architettura
 Drive-first: prima risolvere il documento canonico Drive, poi usare un fallback
 legacy esplicito quando i byte esistono soltanto nello storico. Non chiedere una
-nuova migrazione MongoDB come unica soluzione per un file già presente su Drive.
+nuova migrazione Drive/Sheets come unica soluzione per un file già presente su Drive.
 
 Il pulsante `Apri su Drive` può esistere come azione secondaria, ma l’azione
 principale deve essere `Visualizza nel Gestionale`.

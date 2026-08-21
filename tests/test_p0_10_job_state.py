@@ -1,4 +1,4 @@
-"""P0.10 — Lo stato del job batch_reprocessing è persistito su MongoDB
+"""P0.10 — Lo stato del job batch_reprocessing è persistito su Drive/Sheets
 (collezione job_state), quindi sopravvive a restart/multi-worker invece di
 vivere in una variabile globale di processo."""
 import asyncio

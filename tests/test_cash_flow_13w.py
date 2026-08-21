@@ -4,7 +4,7 @@ import asyncio
 import inspect
 from datetime import date
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 import app.agents.cash_flow_shadow as agent_mod
 import app.services.cash_flow_13w_service as service_mod
@@ -13,7 +13,7 @@ from app.services.cash_flow_13w_service import calcola_cash_flow_13_settimane
 
 
 def _db():
-    return AsyncMongoMockClient()["cash_flow_13w_test"]
+    return MemorySheetsClient()["cash_flow_13w_test"]
 
 
 async def _saldo_fisso(db, collection, query, anno=None):

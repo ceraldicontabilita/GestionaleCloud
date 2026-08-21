@@ -1,6 +1,6 @@
 import asyncio
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.routers.bank import estratto_conto
 from app.routers.prima_nota_module import banca, cassa
@@ -14,7 +14,7 @@ def _run(coro):
 
 def test_versamento_manuale_crea_attesa_e_non_pagamento_confermato(monkeypatch):
     async def scenario():
-        db = AsyncMongoMockClient()["test_versamento_attesa"]
+        db = MemorySheetsClient()["test_versamento_attesa"]
         monkeypatch.setattr(cassa.Database, "get_db", staticmethod(lambda: db))
 
         result = await cassa.create_prima_nota_cassa({
@@ -42,7 +42,7 @@ def test_versamento_manuale_crea_attesa_e_non_pagamento_confermato(monkeypatch):
 
 def test_estratto_conto_completa_attesa_senza_creare_doppione(monkeypatch):
     async def scenario():
-        db = AsyncMongoMockClient()["test_versamento_riconciliato"]
+        db = MemorySheetsClient()["test_versamento_riconciliato"]
         monkeypatch.setattr(cassa.Database, "get_db", staticmethod(lambda: db))
         monkeypatch.setattr(
             riconciliazione_bancaria.Database, "get_db", staticmethod(lambda: db)
@@ -96,7 +96,7 @@ def test_storno_non_viene_scambiato_per_nuovo_versamento():
 
 def test_neutralizza_solo_versamenti_generati_dal_vecchio_riparatore(monkeypatch):
     async def scenario():
-        db = AsyncMongoMockClient()["test_neutralizza_versamenti_ec"]
+        db = MemorySheetsClient()["test_neutralizza_versamenti_ec"]
         monkeypatch.setattr(manutenzione.Database, "get_db", staticmethod(lambda: db))
         source_auto = "estratto_conto_auto_versamento_riparazione"
         await db["prima_nota_cassa"].insert_many([

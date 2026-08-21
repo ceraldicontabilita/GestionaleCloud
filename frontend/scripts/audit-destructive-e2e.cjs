@@ -1,6 +1,6 @@
 /**
  * Collaudo distruttivo in browser contro scripts/e2e_distruttivo_server.py.
- * Il server usa router reali + MongoDB in memoria: nessuna richiesta puo'
+ * Il server usa router reali + Drive/Sheets in memoria: nessuna richiesta puo'
  * raggiungere Atlas o la produzione.
  */
 const { createHmac } = require('crypto');

@@ -7,8 +7,8 @@ from .constants import CAMPI_OBBLIGATORI_P0, CAMPI_CONSIGLIATI
 from app.utils.iban import valida_iban as _valida_iban_condiviso
 
 
-def clean_mongo_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
-    """Rimuove _id da un documento MongoDB per la serializzazione JSON."""
+def clean_record(doc: Dict[str, Any]) -> Dict[str, Any]:
+    """Rimuove l'identificatore interno per la serializzazione JSON."""
     if doc and "_id" in doc:
         del doc["_id"]
     return doc
@@ -17,7 +17,7 @@ def clean_mongo_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
 def valida_fornitore(fornitore: Dict[str, Any]) -> Dict[str, Any]:
     """
     Valida un fornitore e restituisce i problemi trovati.
-    
+
     Returns:
         {
             "valido": bool,
@@ -28,38 +28,38 @@ def valida_fornitore(fornitore: Dict[str, Any]) -> Dict[str, Any]:
     """
     problemi_p0: List[str] = []
     problemi_p1: List[str] = []
-    
+
     # Controllo campi obbligatori P0
     if not fornitore.get("partita_iva"):
         problemi_p0.append("Partita IVA mancante")
-    
+
     denominazione = fornitore.get("denominazione") or fornitore.get("ragione_sociale") or ""
     if not denominazione:
         problemi_p0.append("Denominazione/Ragione Sociale mancante")
-    
+
     if not fornitore.get("metodo_pagamento"):
         problemi_p0.append("Metodo di pagamento non impostato")
-    
+
     # Per bonifico, serve IBAN
     if fornitore.get("metodo_pagamento") == "bonifico":
         if not fornitore.get("iban"):
             problemi_p0.append("IBAN mancante (richiesto per bonifico)")
-    
+
     # Controllo campi consigliati P1
     if not fornitore.get("email") and not fornitore.get("pec"):
         problemi_p1.append("Email/PEC mancante")
-    
+
     if not fornitore.get("telefono"):
         problemi_p1.append("Telefono mancante")
-    
+
     if not fornitore.get("indirizzo"):
         problemi_p1.append("Indirizzo mancante")
-    
+
     # Calcola completezza
     campi_totali = CAMPI_OBBLIGATORI_P0 + CAMPI_CONSIGLIATI
     campi_compilati = sum(1 for c in campi_totali if fornitore.get(c))
     completezza = round((campi_compilati / len(campi_totali)) * 100, 1)
-    
+
     return {
         "valido": len(problemi_p0) == 0,
         "problemi_p0": problemi_p0,
@@ -83,7 +83,7 @@ def valida_iban(iban: str) -> bool:
 def estrai_denominazione(fornitore: Dict[str, Any]) -> str:
     """Estrae la denominazione da un fornitore, cercando in vari campi."""
     return (
-        fornitore.get("denominazione") or 
+        fornitore.get("denominazione") or
         fornitore.get("ragione_sociale") or
         fornitore.get("supplier_name") or
         fornitore.get("nome") or

@@ -16,7 +16,7 @@ import uuid
 import logging
 import io
 
-from pymongo.errors import DuplicateKeyError
+from app.services.sheets_document_store import DuplicateRecordError
 
 from app.database import Database
 from app.services.categorizzazione_contabile import (
@@ -47,14 +47,14 @@ async def get_piano_conti_esteso() -> Dict[str, Any]:
     necessarie per una contabilità precisa.
     """
     db = Database.get_db()
-    
+
     # Verifica se il piano esteso è già nel DB
     conti_db = await db["piano_conti"].find({}, {"_id": 0}).to_list(500)
-    
+
     # Crea lista completa
     conti_completi = []
     codici_esistenti = {c.get("codice") for c in conti_db}
-    
+
     # Aggiungi conti mancanti
     for codice, info in PIANO_CONTI_ESTESO.items():
         if codice in codici_esistenti:
@@ -72,10 +72,10 @@ async def get_piano_conti_esteso() -> Dict[str, Any]:
                 "saldo": 0,
                 "nuovo": True
             })
-    
+
     # Ordina per codice
     conti_completi.sort(key=lambda x: x.get("codice", ""))
-    
+
     # Raggruppa per categoria
     grouped = {}
     for conto in conti_completi:
@@ -83,7 +83,7 @@ async def get_piano_conti_esteso() -> Dict[str, Any]:
         if cat not in grouped:
             grouped[cat] = []
         grouped[cat].append(conto)
-    
+
     return {
         "conti": conti_completi,
         "grouped": grouped,
@@ -100,11 +100,11 @@ async def inizializza_piano_conti_esteso(_admin: Dict[str, Any] = Depends(get_cu
     Preserva i saldi esistenti.
     """
     db = Database.get_db()
-    
+
     conti_aggiunti = 0
     conti_aggiornati = 0
     now = datetime.now(timezone.utc).isoformat()
-    
+
     for codice, info in PIANO_CONTI_ESTESO.items():
         # Un solo upsert elimina la finestra find-then-insert che poteva
         # duplicare un conto quando due richieste inizializzavano il piano in
@@ -130,7 +130,7 @@ async def inizializza_piano_conti_esteso(_admin: Dict[str, Any] = Depends(get_cu
                 },
                 upsert=True,
             )
-        except DuplicateKeyError:
+        except DuplicateRecordError:
             # Un altro processo ha appena inserito lo stesso codice. Il dato
             # esiste gia': completiamo soltanto l'aggiornamento descrittivo.
             result = await db["piano_conti"].update_one(
@@ -141,7 +141,7 @@ async def inizializza_piano_conti_esteso(_admin: Dict[str, Any] = Depends(get_cu
             conti_aggiunti += 1
         elif result.modified_count:
             conti_aggiornati += 1
-    
+
     return {
         "success": True,
         "conti_aggiunti": conti_aggiunti,
@@ -236,7 +236,7 @@ async def aggiorna_saldo_conto(db, codice_conto: str, importo: float, tipo: str)
     """Aggiorna il saldo di un conto nel piano dei conti."""
     # Crea il conto se non esiste
     conto = await db["piano_conti"].find_one({"codice": codice_conto})
-    
+
     if not conto:
         info = PIANO_CONTI_ESTESO.get(codice_conto, {
             "nome": f"Conto {codice_conto}",
@@ -253,10 +253,10 @@ async def aggiorna_saldo_conto(db, codice_conto: str, importo: float, tipo: str)
             "created_at": datetime.now(timezone.utc).isoformat()
         }
         await db["piano_conti"].insert_one(conto.copy())
-    
+
     categoria = conto.get("categoria", "")
     saldo_attuale = float(conto.get("saldo", 0) or 0)
-    
+
     # Regola contabile:
     # ATTIVO e COSTI: DARE aumenta, AVERE diminuisce
     # PASSIVO, PN e RICAVI: AVERE aumenta, DARE diminuisce
@@ -264,7 +264,7 @@ async def aggiorna_saldo_conto(db, codice_conto: str, importo: float, tipo: str)
         nuovo_saldo = saldo_attuale + importo if tipo == "dare" else saldo_attuale - importo
     else:
         nuovo_saldo = saldo_attuale + importo if tipo == "avere" else saldo_attuale - importo
-    
+
     await db["piano_conti"].update_one(
         {"codice": codice_conto},
         {"$set": {"saldo": nuovo_saldo, "updated_at": datetime.now(timezone.utc).isoformat()}}
@@ -279,7 +279,7 @@ async def calcola_imposte_realtime(
 ) -> Dict[str, Any]:
     """
     Calcola IRES e IRAP in tempo reale basandosi sui dati contabili.
-    
+
     Restituisce:
     - Utile civilistico
     - Variazioni fiscali in aumento/diminuzione
@@ -292,12 +292,12 @@ async def calcola_imposte_realtime(
     """
     db = Database.get_db()
     calcolatore = CalcolatoreImposte(regione)
-    
+
     try:
         risultato = await calcolatore.calcola_imposte_da_db(db, anno)
-        
+
         anno_label = anno if anno else "tutti gli anni"
-        
+
         # Converti in dict per JSON
         return {
             "anno": anno,
@@ -357,9 +357,9 @@ async def get_bilancio_dettagliato() -> Dict[str, Any]:
     - Calcolo imposte integrato
     """
     db = Database.get_db()
-    
+
     conti = await db["piano_conti"].find({}, {"_id": 0}).to_list(1000)
-    
+
     bilancio = {
         "stato_patrimoniale": {
             "attivo": {"voci": [], "totale": 0},
@@ -380,42 +380,42 @@ async def get_bilancio_dettagliato() -> Dict[str, Any]:
         },
         "data_generazione": datetime.now(timezone.utc).isoformat()
     }
-    
+
     # Mappa deducibilità per codice conto
     deducibilita_map = {
         "05.02.07": {"ires": 80, "irap": 80, "nota": "Telefonia - 80% deducibile"},
         "05.02.11": {"ires": 20, "irap": 20, "nota": "Carburante uso promiscuo - 20% deducibile"},
         "05.06.05": {"ires": 0, "irap": 100, "nota": "IMU - non deducibile IRES"},
     }
-    
+
     for conto in conti:
         codice = conto.get("codice", "")
         nome = conto.get("nome", "")
         categoria = conto.get("categoria", "")
         saldo = float(conto.get("saldo", 0) or 0)
-        
+
         voce = {
             "codice": codice,
             "nome": nome,
             "saldo": saldo
         }
-        
+
         if categoria == "attivo":
             bilancio["stato_patrimoniale"]["attivo"]["voci"].append(voce)
             bilancio["stato_patrimoniale"]["attivo"]["totale"] += saldo
-            
+
         elif categoria == "passivo":
             bilancio["stato_patrimoniale"]["passivo"]["voci"].append(voce)
             bilancio["stato_patrimoniale"]["passivo"]["totale"] += saldo
-            
+
         elif categoria == "patrimonio_netto":
             bilancio["stato_patrimoniale"]["patrimonio_netto"]["voci"].append(voce)
             bilancio["stato_patrimoniale"]["patrimonio_netto"]["totale"] += saldo
-            
+
         elif categoria == "ricavi":
             bilancio["conto_economico"]["ricavi"]["voci"].append(voce)
             bilancio["conto_economico"]["ricavi"]["totale"] += saldo
-            
+
         elif categoria == "costi":
             # Aggiungi info deducibilità
             ded_info = deducibilita_map.get(codice, {"ires": 100, "irap": 100, "nota": ""})
@@ -424,12 +424,12 @@ async def get_bilancio_dettagliato() -> Dict[str, Any]:
             voce["nota_fiscale"] = ded_info["nota"]
             voce["importo_deducibile_ires"] = saldo * ded_info["ires"] / 100
             voce["importo_deducibile_irap"] = saldo * ded_info["irap"] / 100
-            
+
             bilancio["conto_economico"]["costi"]["voci"].append(voce)
             bilancio["conto_economico"]["costi"]["totale"] += saldo
             bilancio["conto_economico"]["costi"]["totale_deducibile_ires"] += voce["importo_deducibile_ires"]
             bilancio["conto_economico"]["costi"]["totale_deducibile_irap"] += voce["importo_deducibile_irap"]
-            
+
             # Raggruppa per sottocategoria (prime 5 cifre del codice)
             sottocategoria = codice[:5]
             if sottocategoria not in bilancio["conto_economico"]["costi"]["per_categoria"]:
@@ -440,14 +440,14 @@ async def get_bilancio_dettagliato() -> Dict[str, Any]:
                 }
             bilancio["conto_economico"]["costi"]["per_categoria"][sottocategoria]["voci"].append(voce)
             bilancio["conto_economico"]["costi"]["per_categoria"][sottocategoria]["totale"] += saldo
-    
+
     # Calcola risultati
     bilancio["conto_economico"]["risultato_operativo"] = (
         bilancio["conto_economico"]["ricavi"]["totale"] -
         bilancio["conto_economico"]["costi"]["totale"]
     )
     bilancio["conto_economico"]["utile_ante_imposte"] = bilancio["conto_economico"]["risultato_operativo"]
-    
+
     # Arrotonda tutti i valori
     def arrotonda_nested(obj):
         if isinstance(obj, dict):
@@ -459,9 +459,9 @@ async def get_bilancio_dettagliato() -> Dict[str, Any]:
         elif isinstance(obj, list):
             for item in obj:
                 arrotonda_nested(item)
-    
+
     arrotonda_nested(bilancio)
-    
+
     return bilancio
 
 
@@ -491,7 +491,7 @@ async def preview_categorizzazione(
     """
     categorizzatore = get_categorizzatore()
     result = categorizzatore.categorizza_linea(descrizione, fornitore)
-    
+
     return {
         "input": {
             "descrizione": descrizione,
@@ -528,7 +528,7 @@ async def get_statistiche_categorizzazione() -> Dict[str, Any]:
     Mostra distribuzione per categoria, deducibilità media, etc.
     """
     db = Database.get_db()
-    
+
     # Aggregazione per categoria
     pipeline = [
         {"$match": {"categoria_contabile": {"$exists": True}}},
@@ -541,9 +541,9 @@ async def get_statistiche_categorizzazione() -> Dict[str, Any]:
         }},
         {"$sort": {"totale_importo": -1}}
     ]
-    
+
     risultati = await db["invoices"].aggregate(pipeline).to_list(100)
-    
+
     # Totali
     totale_fatture = await db["invoices"].count_documents({"categoria_contabile": {"$exists": True}})
     totale_non_categorizzate = await db["invoices"].count_documents({
@@ -552,7 +552,7 @@ async def get_statistiche_categorizzazione() -> Dict[str, Any]:
             {"categoria_contabile": None}
         ]
     })
-    
+
     return {
         "distribuzione_categorie": [
             {
@@ -583,35 +583,35 @@ async def export_pdf_dichiarazione(
     Include: Bilancio, Calcolo IRES, Calcolo IRAP, Variazioni Fiscali.
     """
     db = Database.get_db()
-    
+
     # Raccogli dati
     calcolatore = CalcolatoreImposte(regione=regione)
-    
+
     # Calcola imposte dal database filtrate per anno
     risultato = await calcolatore.calcola_imposte_da_db(db, anno)
-    
+
     # Crea PDF
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=1.5*cm, bottomMargin=1.5*cm)
     styles = getSampleStyleSheet()
-    
+
     # Stili personalizzati
     title_style = ParagraphStyle('Title', parent=styles['Heading1'], fontSize=18, alignment=TA_CENTER, spaceAfter=20)
     heading_style = ParagraphStyle('Heading', parent=styles['Heading2'], fontSize=14, spaceAfter=10, spaceBefore=15)
     subheading_style = ParagraphStyle('SubHeading', parent=styles['Heading3'], fontSize=12, spaceAfter=8)
     normal_style = ParagraphStyle('Normal', parent=styles['Normal'], fontSize=10)
     right_style = ParagraphStyle('Right', parent=styles['Normal'], fontSize=10, alignment=TA_RIGHT)
-    
+
     elements = []
-    
+
     # Intestazione
     elements.append(Paragraph(f"PROSPETTO DICHIARAZIONE REDDITI - ANNO {anno}", title_style))
     elements.append(Paragraph(f"Generato il {datetime.now().strftime('%d-%m-%Y %H:%M')}", normal_style))
     elements.append(Spacer(1, 20))
-    
+
     # Sezione 1: Riepilogo Imposte
     elements.append(Paragraph("1. RIEPILOGO IMPOSTE", heading_style))
-    
+
     riepilogo_data = [
         ["Descrizione", "Importo €"],
         ["Utile Civilistico", f"{risultato.utile_civilistico:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")],
@@ -622,7 +622,7 @@ async def export_pdf_dichiarazione(
         ["TOTALE IMPOSTE", f"{risultato.totale_imposte:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")],
         ["Aliquota Effettiva", f"{risultato.aliquota_effettiva:.2f}%"],
     ]
-    
+
     t = Table(riepilogo_data, colWidths=[10*cm, 5*cm])
     t.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1e3a5f')),
@@ -637,10 +637,10 @@ async def export_pdf_dichiarazione(
     ]))
     elements.append(t)
     elements.append(Spacer(1, 20))
-    
+
     # Sezione 2: Variazioni IRES in Aumento
     elements.append(Paragraph("2. VARIAZIONI FISCALI IRES - IN AUMENTO", heading_style))
-    
+
     if risultato.variazioni_aumento_ires:
         var_aum_data = [["Descrizione", "Norma", "Importo €"]]
         for v in risultato.variazioni_aumento_ires:
@@ -650,7 +650,7 @@ async def export_pdf_dichiarazione(
                 f"{v.importo:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
             ])
         var_aum_data.append(["TOTALE VARIAZIONI IN AUMENTO", "", f"{risultato.totale_variazioni_aumento_ires:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")])
-        
+
         t = Table(var_aum_data, colWidths=[8*cm, 4*cm, 3*cm])
         t.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#d4380d')),
@@ -665,12 +665,12 @@ async def export_pdf_dichiarazione(
         elements.append(t)
     else:
         elements.append(Paragraph("Nessuna variazione in aumento", normal_style))
-    
+
     elements.append(Spacer(1, 15))
-    
+
     # Sezione 3: Variazioni IRES in Diminuzione
     elements.append(Paragraph("3. VARIAZIONI FISCALI IRES - IN DIMINUZIONE", heading_style))
-    
+
     if risultato.variazioni_diminuzione_ires:
         var_dim_data = [["Descrizione", "Norma", "Importo €"]]
         for v in risultato.variazioni_diminuzione_ires:
@@ -680,7 +680,7 @@ async def export_pdf_dichiarazione(
                 f"{v.importo:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
             ])
         var_dim_data.append(["TOTALE VARIAZIONI IN DIMINUZIONE", "", f"{risultato.totale_variazioni_diminuzione_ires:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")])
-        
+
         t = Table(var_dim_data, colWidths=[8*cm, 4*cm, 3*cm])
         t.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#389e0d')),
@@ -695,13 +695,13 @@ async def export_pdf_dichiarazione(
         elements.append(t)
     else:
         elements.append(Paragraph("Nessuna variazione in diminuzione", normal_style))
-    
+
     elements.append(PageBreak())
-    
+
     # Sezione 4: Dettaglio IRAP
     elements.append(Paragraph("4. CALCOLO IRAP - DETTAGLIO", heading_style))
     elements.append(Paragraph(f"Regione: {regione.upper()} - Aliquota: {calcolatore.aliquota_irap}%", subheading_style))
-    
+
     irap_data = [
         ["Voce", "Importo €"],
         ["Valore della Produzione", f"{risultato.valore_produzione_irap:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")],
@@ -709,7 +709,7 @@ async def export_pdf_dichiarazione(
         ["Base Imponibile", f"{risultato.base_imponibile_irap:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")],
         [f"IRAP Dovuta ({calcolatore.aliquota_irap}%)", f"{risultato.irap_dovuta:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")],
     ]
-    
+
     t = Table(irap_data, colWidths=[10*cm, 5*cm])
     t.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#722ed1')),
@@ -722,10 +722,10 @@ async def export_pdf_dichiarazione(
     ]))
     elements.append(t)
     elements.append(Spacer(1, 20))
-    
+
     # Sezione 5: Quadro Riassuntivo IRES
     elements.append(Paragraph("5. QUADRO RIASSUNTIVO IRES", heading_style))
-    
+
     quadro_data = [
         ["Rigo", "Descrizione", "Importo €"],
         ["RF1", "Utile/Perdita Civilistico", f"{risultato.utile_civilistico:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")],
@@ -734,7 +734,7 @@ async def export_pdf_dichiarazione(
         ["RF63", "Reddito Imponibile", f"{risultato.reddito_imponibile_ires:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")],
         ["RN4", "IRES Lorda (24%)", f"{risultato.ires_dovuta:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")],
     ]
-    
+
     t = Table(quadro_data, colWidths=[2*cm, 9*cm, 4*cm])
     t.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1890ff')),
@@ -746,24 +746,24 @@ async def export_pdf_dichiarazione(
     ]))
     elements.append(t)
     elements.append(Spacer(1, 30))
-    
+
     # Note finali
     elements.append(Paragraph("NOTE", heading_style))
     note_text = f"""
     • Calcolo basato sui saldi attuali del Piano dei Conti al {datetime.now().strftime('%d-%m-%Y')}
-    • Variazioni fiscali automatiche applicate per: Telefonia (20% indeducibile IRES), 
+    • Variazioni fiscali automatiche applicate per: Telefonia (20% indeducibile IRES),
       Carburanti auto (80% indeducibile), Noleggio auto a lungo termine (limite deducibilità)
     • Aliquota IRAP regione {regione.upper()}: {calcolatore.aliquota_irap}%
     • Il presente prospetto è generato automaticamente e non sostituisce la consulenza professionale
     """
     elements.append(Paragraph(note_text, normal_style))
-    
+
     # Genera PDF
     doc.build(elements)
-    
+
     buffer.seek(0)
     filename = f"dichiarazione_redditi_{anno}.pdf"
-    
+
     return StreamingResponse(
         buffer,
         media_type="application/pdf",

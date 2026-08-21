@@ -1,13 +1,13 @@
 import asyncio
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.routers.invoices import fatture_upload
 
 
 def test_metodo_fornitore_cassa_non_prova_il_pagamento(monkeypatch):
     async def scenario():
-        db = AsyncMongoMockClient()["test_fattura_cassa_provvisoria"]
+        db = MemorySheetsClient()["test_fattura_cassa_provvisoria"]
         await db["fornitori"].insert_one({
             "partita_iva": "01234567890",
             "metodo_pagamento": "cassa",

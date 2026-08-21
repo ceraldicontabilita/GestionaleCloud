@@ -1,7 +1,7 @@
 import asyncio
 import copy
 import re
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.services import ai_document_parser
 from app.services import verbali_document_import as mod
@@ -180,7 +180,7 @@ def test_verbale_collega_veicolo_ma_non_deduce_driver_dalla_sola_targa(monkeypat
 
 
 def test_driver_richiede_assegnazione_storica_compatibile_con_la_data():
-    db = AsyncMongoMockClient()["verbale-driver-temporale"]
+    db = MemorySheetsClient()["verbale-driver-temporale"]
     _run(db["veicoli_noleggio"].insert_one({
         "id": "car-1", "targa": "AB123CD", "driver_id": "driver-corrente",
     }))

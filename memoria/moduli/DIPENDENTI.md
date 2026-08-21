@@ -35,7 +35,7 @@ rimozione: tenerne conto leggendo il resto del documento come storico.
 
 Un'analisi precedente in questa sessione aveva concluso che l'HR fosse interamente spostato
 sull'app esterna **AppDipendenti** (https://appdipendenti.onrender.com, stesso cluster
-MongoDB Atlas condiviso), con solo un'anagrafica in sola lettura rimasta in questo repo.
+Google Drive/Sheets condiviso), con solo un'anagrafica in sola lettura rimasta in questo repo.
 **Verifica più approfondita smentisce parzialmente questa conclusione**: il backend
 `app/routers/employees/dipendenti.py` (2760 righe) ha CRUD completo e attivo — contratti,
 buste paga, libretti sanitari, turni, portale dipendenti, libro unico, TFR
@@ -63,7 +63,7 @@ dipendente a 6 schede richiesto dalla spec non esiste come UI in questo repo.
    dati in un fascicolo unico a 6 schede come richiesto dalla spec — funzionalità backend
    "orfana" di UI.
 2. **Duplicazione di responsabilità con AppDipendenti non chiarita**: sia questo repo che
-   AppDipendenti scrivono sullo stesso cluster MongoDB condiviso; non è stato verificato se
+   AppDipendenti scrivono sullo stesso cluster Drive/Sheets condiviso; non è stato verificato se
    le due app scrivono sulle stesse collezioni in modo coordinato o se esiste rischio di
    sovrascrittura concorrente. Questo va chiarito con l'utente prima di ulteriori sviluppi
    HR in questo repo — potrebbe essere debito tecnico da una migrazione parziale mai

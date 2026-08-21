@@ -3,7 +3,7 @@
 import asyncio
 from datetime import datetime, timezone
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 import app.agents.contabile_shadow as agent_mod
 from app.agents.contabile_shadow import ContabileShadow
@@ -11,7 +11,7 @@ from app.services.contabile_shadow_service import leggi_snapshot_contabile
 
 
 def _db():
-    return AsyncMongoMockClient()["contabile_shadow_test"]
+    return MemorySheetsClient()["contabile_shadow_test"]
 
 
 async def _report(db, checks, eseguito_at="2026-07-20T08:00:00+00:00"):

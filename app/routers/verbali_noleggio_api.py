@@ -34,10 +34,10 @@ async def get_verbale_dettaglio(numero_verbale: str) -> Dict[str, Any]:
     Supporta numeri con slash come S/2259.
     """
     db = Database.get_db()
-    
+
     # Normalizza il numero verbale
     numero_clean = numero_verbale.strip()
-    
+
     # Cerca in vari modi (incluso vecchio numero)
     verbale = await db[COLLECTION].find_one({
         "$or": [
@@ -49,7 +49,7 @@ async def get_verbale_dettaglio(numero_verbale: str) -> Dict[str, Any]:
             {"numero_verbale": {"$regex": f"^{numero_clean}$", "$options": "i"}}
         ]
     })
-    
+
     if not verbale:
         # Prova anche nella collection completi
         verbale = await db["verbali_noleggio_completi"].find_one({
@@ -59,13 +59,13 @@ async def get_verbale_dettaglio(numero_verbale: str) -> Dict[str, Any]:
                 {"id": numero_verbale}
             ]
         })
-    
+
     if not verbale:
         raise HTTPException(status_code=404, detail=f"Verbale {numero_verbale} non trovato")
-    
+
     # Rimuovi _id per serializzazione
     verbale.pop("_id", None)
-    
+
     # Arricchisci con dati driver se disponibile
     if verbale.get("driver_id"):
         driver = await db["dipendenti"].find_one({"id": verbale["driver_id"]})
@@ -75,19 +75,19 @@ async def get_verbale_dettaglio(numero_verbale: str) -> Dict[str, Any]:
                 "cognome": driver.get("cognome"),
                 "codice_fiscale": driver.get("codice_fiscale")
             }
-    
+
     # Arricchisci con dati veicolo se disponibile
     if verbale.get("targa"):
         veicolo = await db.veicoli_noleggio.find_one({"targa": verbale["targa"]})
         if veicolo:
             veicolo.pop("_id", None)
             verbale["veicolo_dettaglio"] = veicolo
-    
+
     from app.services.verbali_pdf_service import collect_verbale_pdfs, pdf_metadata
     verbale["pdf_disponibili"] = pdf_metadata(
         await collect_verbale_pdfs(db, verbale, include_content=False)
     )
-    
+
     # Cerca fattura associata (per noleggiatori come ARVAL, Leasys, ALD)
     if not verbale.get("fattura_id") and verbale.get("targa"):
         targa = verbale["targa"]
@@ -99,17 +99,17 @@ async def get_verbale_dettaglio(numero_verbale: str) -> Dict[str, Any]:
             ]
         }, {"_id": 1, "id": 1, "supplier_name": 1, "invoice_number": 1, "total_amount": 1, "invoice_date": 1})
         if fattura:
-            # Usa l'id UUID se disponibile, altrimenti l'ObjectId come stringa
+            # Usa l'ID applicativo, con ripiego sull'ID interno del registro.
             fid = fattura.get("id") or str(fattura.get("_id", ""))
             verbale["fattura_id"] = fid
             verbale["fattura_fornitore"] = fattura.get("supplier_name")
             verbale["fattura_numero"] = fattura.get("invoice_number")
             verbale["fattura_importo"] = fattura.get("total_amount")
-    
+
     # Non inviare pdf_data nel response (troppo grande)
     verbale.pop("pdf_data", None)
     verbale.pop("quietanza_pdf", None)
-    
+
     return verbale
 
 
@@ -126,11 +126,11 @@ async def upload_quietanza_verbale(verbale_id: str, data: Dict[str, Any] = Body(
     Accetta: pdf_base64, importo_pagato, data_pagamento, metodo.
     """
     db = Database.get_db()
-    
+
     verbale = await db[COLLECTION].find_one({"id": verbale_id})
     if not verbale:
         raise HTTPException(status_code=404, detail="Verbale non trovato")
-    
+
     update = {
         "stato": "pagato",
         "quietanza_ricevuta": True,
@@ -138,13 +138,13 @@ async def upload_quietanza_verbale(verbale_id: str, data: Dict[str, Any] = Body(
         "metodo_pagamento": data.get("metodo", "bollettino_manuale"),
         "importo_pagato": float(data.get("importo_pagato", 0)),
     }
-    
+
     if data.get("pdf_base64"):
         update["quietanza_pdf"] = data["pdf_base64"]
         update["quietanza_filename"] = data.get("filename", "quietanza.pdf")
-    
+
     await db[COLLECTION].update_one({"id": verbale_id}, {"$set": update})
-    
+
     # Crea nota presenze per consulente del lavoro
     driver_id = verbale.get("driver_id") or verbale.get("driver_cf")
     if driver_id:
@@ -152,7 +152,7 @@ async def upload_quietanza_verbale(verbale_id: str, data: Dict[str, Any] = Body(
         dt = datetime.now(timezone.utc)
         mese_nota = dt.month + 1 if dt.month < 12 else 1
         anno_nota = dt.year if dt.month < 12 else dt.year + 1
-        
+
         nota = {
             "id": str(__import__("uuid").uuid4()),
             "dipendente_id": driver_id,

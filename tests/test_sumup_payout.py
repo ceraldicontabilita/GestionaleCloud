@@ -7,7 +7,7 @@ ricavi di un importo gia' dichiarato dal corrispettivo XML.
 import asyncio
 
 import pytest
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.services import sumup_payout, sumup_sync
 from app.services.scritture_contabili import registra_chiusura_pos_reale
@@ -22,7 +22,7 @@ def _run(awaitable):
 
 
 def _db():
-    return AsyncMongoMockClient()["sumup_payout_test"]
+    return MemorySheetsClient()["sumup_payout_test"]
 
 
 @pytest.fixture(autouse=True)

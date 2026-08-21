@@ -3,7 +3,7 @@
 import asyncio
 from datetime import date
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 import app.agents.tesoreria_shadow as agente_mod
 import app.services.tesoreria_shadow_service as servizio_mod
@@ -12,7 +12,7 @@ from app.services.tesoreria_shadow_service import leggi_snapshot_tesoreria
 
 
 def _db():
-    return AsyncMongoMockClient()["tesoreria_shadow_test"]
+    return MemorySheetsClient()["tesoreria_shadow_test"]
 
 
 async def _semina(db):

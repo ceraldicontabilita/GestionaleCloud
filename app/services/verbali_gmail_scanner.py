@@ -19,7 +19,7 @@ from email.header import decode_header
 from email.parser import BytesParser
 from email.policy import default as default_policy
 from typing import Dict, Any, List, Set
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from app.services.sheets_document_store import SheetDatabase
 
 from app.config import settings
 
@@ -55,7 +55,7 @@ def _normalize_filename(value: str) -> str:
     return re.sub(r"\s+", " ", _decode(value or "")).strip()
 
 
-async def get_senders_whitelist(db: AsyncIOMotorDatabase) -> Set[str]:
+async def get_senders_whitelist(db: SheetDatabase) -> Set[str]:
     # Collezione canonica unica `mittenti_email` (con union legacy per
     # retro-compatibilità) tramite l'accessor condiviso (P2-2).
     try:
@@ -73,7 +73,7 @@ async def get_senders_whitelist(db: AsyncIOMotorDatabase) -> Set[str]:
     return set()
 
 
-async def _gmail_credentials(db: AsyncIOMotorDatabase):
+async def _gmail_credentials(db: SheetDatabase):
     """Usa prima le credenziali salvate dall'Admin, poi quelle d'ambiente."""
     user = password = None
     try:
@@ -92,7 +92,7 @@ async def _gmail_credentials(db: AsyncIOMotorDatabase):
     )
 
 
-async def scan_gmail_verbali(db: AsyncIOMotorDatabase, days_back: int = 7, mark_as_read: bool = False) -> Dict[str, Any]:
+async def scan_gmail_verbali(db: SheetDatabase, days_back: int = 7, mark_as_read: bool = False) -> Dict[str, Any]:
     stats = {
         "email_scansionate": 0, "email_match": 0,
         "verbali_nuovi": 0, "verbali_aggiornati": 0, "errori": [],

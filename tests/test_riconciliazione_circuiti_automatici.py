@@ -1,6 +1,6 @@
 import asyncio
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.services import riconciliazione_bancaria as mod
 
@@ -14,7 +14,7 @@ async def _noop(*args, **kwargs):
 
 
 def _patch_db(monkeypatch, name):
-    db = AsyncMongoMockClient()[name]
+    db = MemorySheetsClient()[name]
     monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
     monkeypatch.setattr(mod, "_propaga_fattura_pagata", _noop)
     monkeypatch.setattr(mod, "_registra_match_partita_aperta", _noop)

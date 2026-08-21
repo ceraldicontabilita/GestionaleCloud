@@ -1,12 +1,12 @@
 import asyncio
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.routers.bank import assegni as assegni_router
 
 
 async def _scenario_importo_diverso_di_un_centesimo(monkeypatch):
-    db = AsyncMongoMockClient()["test_assegni_verifica_centesimo"]
+    db = MemorySheetsClient()["test_assegni_verifica_centesimo"]
     await db["assegni"].insert_one({
         "id": "a1",
         "numero": "0208770985",
@@ -35,7 +35,7 @@ async def _scenario_importo_diverso_di_un_centesimo(monkeypatch):
 
 
 async def _scenario_suggerimento_richiede_numero_e_importo(monkeypatch):
-    db = AsyncMongoMockClient()["test_assegni_verifica_riferimento"]
+    db = MemorySheetsClient()["test_assegni_verifica_riferimento"]
     await db["assegni"].insert_one({
         "id": "a1",
         "numero": "0208770985",

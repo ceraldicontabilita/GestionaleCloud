@@ -1,5 +1,5 @@
 """
-Field Normalizer - Normalizza campi MongoDB con nomi inconsistenti.
+Field Normalizer - Normalizza campi Drive/Sheets con nomi inconsistenti.
 Gestisce i vari formati legacy e li converte in formato standard.
 """
 from typing import Dict, Any, Optional, List
@@ -8,14 +8,14 @@ from datetime import datetime
 
 class FieldNormalizer:
     """
-    Normalizza documenti MongoDB con campi inconsistenti.
+    Normalizza documenti Drive/Sheets con campi inconsistenti.
     """
-    
+
     # === MAPPING CAMPI FATTURE ===
     FATTURA_FIELDS = {
         # numero documento
         "numero_documento": ["numero_documento", "invoice_number", "numero_fattura", "numero", "doc_number"],
-        # data documento  
+        # data documento
         "data_documento": ["data_documento", "invoice_date", "data_fattura", "data", "date"],
         # importo totale
         "importo_totale": ["importo_totale", "total_amount", "totale", "importo", "amount"],
@@ -34,7 +34,7 @@ class FieldNormalizer:
         "data_pagamento": ["data_pagamento", "payment_date", "paid_date"],
         "metodo_pagamento": ["metodo_pagamento", "payment_method", "metodo"],
     }
-    
+
     # === MAPPING CAMPI DIPENDENTI ===
     DIPENDENTE_FIELDS = {
         "nome": ["nome", "first_name", "firstname"],
@@ -48,7 +48,7 @@ class FieldNormalizer:
         "reparto": ["reparto", "department", "settore"],
         "in_carico": ["in_carico", "active", "attivo", "is_active"],
     }
-    
+
     # === MAPPING CAMPI MOVIMENTI BANCA ===
     MOVIMENTO_BANCA_FIELDS = {
         "data": ["data", "date", "data_operazione", "data_movimento"],
@@ -60,7 +60,7 @@ class FieldNormalizer:
         "avere": ["avere", "credit", "entrata", "accredito"],
         "saldo": ["saldo", "balance", "saldo_progressivo"],
     }
-    
+
     # === MAPPING CAMPI FORNITORI ===
     FORNITORE_FIELDS = {
         "ragione_sociale": ["ragione_sociale", "name", "nome", "denominazione"],
@@ -74,25 +74,25 @@ class FieldNormalizer:
         "telefono": ["telefono", "phone", "tel"],
         "iban": ["iban", "bank_account"],
     }
-    
+
     @classmethod
     def normalize_document(cls, doc: Dict[str, Any], field_mapping: Dict[str, List[str]]) -> Dict[str, Any]:
         """
         Normalizza un documento usando il mapping specificato.
-        
+
         Args:
             doc: Documento originale
             field_mapping: Mapping campo_standard -> [varianti]
-            
+
         Returns:
             Documento normalizzato
         """
         if not doc:
             return {}
-            
+
         normalized = {}
         used_keys = set()
-        
+
         for standard_field, variants in field_mapping.items():
             value = None
             for variant in variants:
@@ -101,24 +101,24 @@ class FieldNormalizer:
                     used_keys.add(variant)
                     break
             normalized[standard_field] = value
-        
+
         # Copia campi non mappati (come _id, created_at, etc.)
         for key, value in doc.items():
             if key not in used_keys and key not in normalized:
                 if key != "_id":  # Escludi sempre _id
                     normalized[key] = value
-                    
+
         return normalized
-    
+
     @classmethod
     def normalize_fattura(cls, doc: Dict[str, Any]) -> Dict[str, Any]:
         """Normalizza un documento fattura."""
         normalized = cls.normalize_document(doc, cls.FATTURA_FIELDS)
-        
+
         # Assicura che l'ID sia presente
         if not normalized.get("id"):
             normalized["id"] = str(doc.get("_id", "")) or doc.get("id")
-            
+
         # Estrai anno dalla data se presente
         if normalized.get("data_documento") and not normalized.get("anno"):
             try:
@@ -129,31 +129,31 @@ class FieldNormalizer:
                     normalized["anno"] = data.year
             except Exception:
                 pass
-                
+
         return normalized
-    
+
     @classmethod
     def normalize_dipendente(cls, doc: Dict[str, Any]) -> Dict[str, Any]:
         """Normalizza un documento dipendente."""
         normalized = cls.normalize_document(doc, cls.DIPENDENTE_FIELDS)
-        
+
         if not normalized.get("id"):
             normalized["id"] = str(doc.get("_id", "")) or doc.get("id")
-            
+
         # Nome completo
         if normalized.get("nome") and normalized.get("cognome"):
             normalized["nome_completo"] = f"{normalized['nome']} {normalized['cognome']}"
-            
+
         return normalized
-    
+
     @classmethod
     def normalize_movimento_banca(cls, doc: Dict[str, Any]) -> Dict[str, Any]:
         """Normalizza un movimento bancario."""
         normalized = cls.normalize_document(doc, cls.MOVIMENTO_BANCA_FIELDS)
-        
+
         if not normalized.get("id"):
             normalized["id"] = str(doc.get("_id", "")) or doc.get("id")
-            
+
         # Calcola dare/avere da importo se mancanti
         importo = normalized.get("importo", 0)
         if importo and not normalized.get("dare") and not normalized.get("avere"):
@@ -163,28 +163,28 @@ class FieldNormalizer:
             else:
                 normalized["dare"] = 0
                 normalized["avere"] = importo
-                
+
         return normalized
-    
+
     @classmethod
     def normalize_fornitore(cls, doc: Dict[str, Any]) -> Dict[str, Any]:
         """Normalizza un documento fornitore."""
         normalized = cls.normalize_document(doc, cls.FORNITORE_FIELDS)
-        
+
         if not normalized.get("id"):
             normalized["id"] = str(doc.get("_id", "")) or doc.get("id")
-            
+
         return normalized
-    
+
     @classmethod
     def normalize_list(cls, docs: List[Dict[str, Any]], normalizer_func) -> List[Dict[str, Any]]:
         """
         Normalizza una lista di documenti.
-        
+
         Args:
             docs: Lista documenti
             normalizer_func: Funzione di normalizzazione (es. normalize_fattura)
-            
+
         Returns:
             Lista documenti normalizzati
         """

@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 from fastapi import HTTPException
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.routers.operazioni_module import smart
 from app.routers.bank import estratto_conto
@@ -51,7 +51,7 @@ def test_semantic_contract_separates_automatic_classification_from_ambiguous_tar
 
 def test_manual_bank_payment_supports_many_invoices_and_is_idempotent(monkeypatch):
     async def scenario():
-        db = AsyncMongoMockClient()["bank_many"]
+        db = MemorySheetsClient()["bank_many"]
         await db.estratto_conto_movimenti.insert_one({
             "id": "M1", "data": "2026-07-17", "importo": -300.00,
             "descrizione": "LEASYS SALDO FATTURE 000001 000002",
@@ -94,7 +94,7 @@ def test_manual_bank_payment_supports_many_invoices_and_is_idempotent(monkeypatc
 
 def test_many_invoice_allocation_rejects_non_square_total_before_writes(monkeypatch):
     async def scenario():
-        db = AsyncMongoMockClient()["bank_many_invalid"]
+        db = MemorySheetsClient()["bank_many_invalid"]
         await db.estratto_conto_movimenti.insert_one({"id": "M1", "importo": -300.0})
         await db.invoices.insert_many([
             {"id": "F1", "supplier_vat": "0123", "total_amount": 100.0},
@@ -120,7 +120,7 @@ def test_many_invoice_allocation_rejects_non_square_total_before_writes(monkeypa
 
 def test_bank_api_reports_loaded_rows_separately_from_real_total(monkeypatch):
     async def scenario():
-        db = AsyncMongoMockClient()["bank_totals"]
+        db = MemorySheetsClient()["bank_totals"]
         await db.estratto_conto_movimenti.insert_many([
             {"id": f"M{i}", "data": "2026-08-10", "importo": i + 1}
             for i in range(60)
@@ -136,7 +136,7 @@ def test_bank_api_reports_loaded_rows_separately_from_real_total(monkeypatch):
 
 def test_import_orchestrator_can_apply_unique_referenced_invoice_set(monkeypatch):
     async def scenario():
-        db = AsyncMongoMockClient()["bank_auto_many"]
+        db = MemorySheetsClient()["bank_auto_many"]
         await db.estratto_conto_movimenti.insert_one({
             "id": "M1", "data": "2026-07-17", "importo": -300,
             "descrizione": "ADDEBITO DIRETTO SDD LEASYS SALDO FATTURE 000001 000002",
@@ -155,7 +155,7 @@ def test_import_orchestrator_can_apply_unique_referenced_invoice_set(monkeypatch
 
 def test_anomaly_analysis_is_read_only(monkeypatch):
     async def scenario():
-        db = AsyncMongoMockClient()["bank_anomalies"]
+        db = MemorySheetsClient()["bank_anomalies"]
         await db.estratto_conto_movimenti.insert_many([
             {"id": "M1", "data": "2026-01-01", "fingerprint": "same", "importo": -10},
             {"id": "M2", "data": "2026-01-02", "fingerprint": "same", "importo": -10},

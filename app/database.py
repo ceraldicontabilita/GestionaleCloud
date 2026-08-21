@@ -1,8 +1,6 @@
-"""Database runtime selected explicitly through ``DATA_BACKEND``."""
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+"""Accesso unico al registro operativo Google Drive/Sheets."""
 from typing import Any, Optional
 import logging
-import os
 from .config import settings
 from .db_collections import (
     COLL_ADMIN_ANOMALIES,
@@ -17,19 +15,10 @@ from .db_collections import (
 logger = logging.getLogger(__name__)
 
 
-def scrub_mongo_runtime_configuration() -> None:
-    """Rimuove URI/credenziali Mongo dal processo dopo il cutover Sheets."""
-    for name in tuple(os.environ):
-        if name.upper().startswith(("MONGO_", "MONGODB_")):
-            os.environ.pop(name, None)
-    settings.MONGODB_ATLAS_URI = None
-    settings.MONGO_URL = ""
-
-
 class Database:
-    """Connection manager for the configured Sheets or MongoDB runtime."""
-    
-    client: Optional[AsyncIOMotorClient] = None
+    """Gestore del registro Drive/Sheets condiviso dall'applicazione."""
+
+    client: Optional[Any] = None
     db: Optional[Any] = None
 
     @classmethod
@@ -39,71 +28,25 @@ class Database:
         Called on application startup.
         """
         try:
-            if settings.DATA_BACKEND.strip().lower() == "sheets":
-                from app.services.sheets_runtime_database import SheetsRuntimeDatabase
+            from app.services.sheets_runtime_database import SheetsRuntimeDatabase
 
-                runtime = SheetsRuntimeDatabase(settings.DB_NAME, {
-                    "GOOGLE_SHEETS_LEDGER_ID": settings.GOOGLE_SHEETS_LEDGER_ID,
-                    "GOOGLE_SHEETS_LEDGER_FOLDER_ID": settings.GOOGLE_SHEETS_LEDGER_FOLDER_ID,
-                })
-                await runtime.hydrate()
-                cls.client = runtime._client
-                cls.db = runtime
-                scrub_mongo_runtime_configuration()
-                logger.info(
-                    "Connected to Google Sheets ledger %s; MongoDB esterno disattivato",
-                    settings.GOOGLE_SHEETS_LEDGER_ID,
-                )
-                return
-
-            mongo_uri = settings.MONGODB_ATLAS_URI or settings.MONGO_URL
-
-            if mongo_uri and mongo_uri.startswith("mongomock://"):
-                from mongomock_motor import AsyncMongoMockClient
-
-                cls.client = AsyncMongoMockClient()
-                cls.db = cls.client[settings.DB_NAME]
-                if settings.RUN_STARTUP_INDEX_MIGRATIONS:
-                    await cls._create_indexes()
-                if settings.RUN_STARTUP_SEED_DATA:
-                    await cls._ensure_builtin_senders()
-                logger.info("Connected to isolated in-memory MongoDB for local testing")
-                return
-
-            logger.info("Connecting to MongoDB Atlas...")
-            cls.client = AsyncIOMotorClient(
-                mongo_uri,
-                maxPoolSize=settings.MONGODB_MAX_POOL_SIZE,
-                minPoolSize=settings.MONGODB_MIN_POOL_SIZE,
-                serverSelectionTimeoutMS=settings.MONGODB_TIMEOUT_MS,
-                connectTimeoutMS=settings.MONGODB_CONNECT_TIMEOUT_MS,
-                socketTimeoutMS=settings.MONGODB_SOCKET_TIMEOUT_MS,
-                waitQueueTimeoutMS=settings.MONGODB_WAIT_QUEUE_TIMEOUT_MS,
-                maxIdleTimeMS=settings.MONGODB_MAX_IDLE_TIME_MS,
-                retryReads=True,
-                retryWrites=True,
-                tz_aware=True,
-                uuidRepresentation="standard",
-                appname="GestionaleCloud",
-            )
-            cls.db = cls.client[settings.DB_NAME]
-            
-            # Test connection
-            await cls.client.admin.command('ping')
-            logger.info(f"✅ Connected to MongoDB database: {settings.DB_NAME}")
-            
-            # Provisioning e migrazioni non appartengono al lifecycle web:
-            # 144 create_index sequenziali ad ogni avvio rallentavano il deploy
-            # e rendevano ogni replica capace di mutare lo schema.
+            runtime = SheetsRuntimeDatabase(settings.SHEETS_REGISTRY_NAME, {
+                "GOOGLE_SHEETS_LEDGER_ID": settings.GOOGLE_SHEETS_LEDGER_ID,
+                "GOOGLE_SHEETS_LEDGER_FOLDER_ID": settings.GOOGLE_SHEETS_LEDGER_FOLDER_ID,
+            })
+            await runtime.hydrate()
+            cls.client = runtime
+            cls.db = runtime
             if settings.RUN_STARTUP_INDEX_MIGRATIONS:
                 await cls._create_indexes()
-
             if settings.RUN_STARTUP_SEED_DATA:
-                # Operazione idempotente ma comunque separata dallo startup.
                 await cls._ensure_builtin_senders()
-            
+            logger.info(
+                "Registro operativo Google Sheets connesso: %s",
+                settings.GOOGLE_SHEETS_LEDGER_ID,
+            )
         except Exception as e:
-            logger.error("Error connecting to configured database backend: %s", e)
+            logger.error("Connessione al registro Drive/Sheets fallita: %s", e)
             raise
 
     @classmethod
@@ -124,7 +67,7 @@ class Database:
         created = 0
         skipped = 0
         failures = []
-        
+
         async def _safe_index(collection_name, keys, **kwargs):
             nonlocal created, skipped, failures
             try:
@@ -143,7 +86,7 @@ class Database:
                     kwargs.get("name") or keys,
                     exc,
                 )
-        
+
         # --- Invoices ---
         await _safe_index(Collections.INVOICES, "invoice_key", unique=True, sparse=True, name="idx_invoice_key_unique")
         await _safe_index(Collections.INVOICES, [("fornitore_piva", 1), ("invoice_date", -1)], name="idx_invoices_fornitore_data")
@@ -161,11 +104,11 @@ class Database:
             "fatture_report_ae", [("anno", 1), ("modalita_pagamento_xml", 1), ("netto_pagare", 1)],
             name="idx_fatture_report_ae_assegni",
         )
-        
+
         # --- Employees ---
         await _safe_index(Collections.EMPLOYEES, "codice_fiscale", unique=True, sparse=True, name="idx_employees_cf_unique")
         await _safe_index(Collections.EMPLOYEES, "attivo", name="idx_employees_attivo")
-        
+
         # --- Prima Nota ---
         await _safe_index(Collections.CASH_MOVEMENTS, [("data", -1)], name="idx_pn_cassa_data")
         await _safe_index(Collections.CASH_MOVEMENTS, [("anno", 1), ("tipo", 1)], name="idx_pn_cassa_anno_tipo")
@@ -183,7 +126,7 @@ class Database:
         # Conti scandiva il dizionario per ogni riga del documento.
         await _safe_index("dizionario_articoli", [("descrizione", 1)],
                           name="idx_dizionario_descrizione")
-        
+
         # --- Estratto Conto ---
         await _safe_index(
             Collections.BANK_STATEMENTS, "id", unique=True,
@@ -207,13 +150,13 @@ class Database:
             "prima_nota_banca", "payment_operation_id",
             unique=True, sparse=True, name="idx_pn_banca_payment_operation_unique",
         )
-        
+
         # --- F24 ---
         await _safe_index(Collections.F24_MODELS, [("periodo", 1), ("stato", 1)], name="idx_f24_periodo_stato")
-        
+
         # --- Cedolini ---
         await _safe_index(Collections.PAYSLIPS, [("employee_id", 1), ("anno", 1), ("mese", 1)], name="idx_cedolini_emp_anno_mese")
-        
+
         # --- Fornitori ---
         await _safe_index(Collections.SUPPLIERS, "partita_iva", unique=True, sparse=True, name="idx_fornitori_piva_unique")
         # I fornitori storici e quelli del nuovo gestionale convivono nella
@@ -234,26 +177,26 @@ class Database:
             partialFilterExpression={"match_key": {"$type": "string"}},
             name="idx_fornitori_match_key_unique",
         )
-        
+
         # --- Anno indexes ---
         await _safe_index(Collections.INVOICES, "anno", name="idx_invoices_anno")
         await _safe_index(Collections.CASH_MOVEMENTS, "anno", name="idx_pn_cassa_anno")
         await _safe_index("prima_nota_banca", "anno", name="idx_pn_banca_anno")
-        
+
         # --- Timestamps ---
         await _safe_index(Collections.INVOICES, [("created_at", -1)], name="idx_invoices_created_at")
         await _safe_index(Collections.BANK_STATEMENTS, [("created_at", -1)], name="idx_ec_created_at")
-        
+
         # --- Riconciliazione ---
         await _safe_index(Collections.BANK_STATEMENTS, [("stato_riconciliazione", 1), ("data", -1)], name="idx_ec_riconciliazione_data")
-        
+
         # --- Corrispettivi ---
         await _safe_index(Collections.CORRISPETTIVI, [("data", -1)], name="idx_corrispettivi_data")
         await _safe_index(Collections.F24_MODELS, "anno", name="idx_f24_anno")
-        
+
         # --- Warehouse ---
         await _safe_index(Collections.WAREHOUSE_PRODUCTS, [("nome", 1)], name="idx_warehouse_nome")
-        
+
         # --- PayPal ---
         await _safe_index("paypal_transactions", "transaction_id", unique=True, name="idx_paypal_txn_id")
         await _safe_index("paypal_transactions", "paypal_account_id", name="idx_paypal_account")
@@ -774,18 +717,20 @@ class Database:
         Called on application shutdown.
         """
         if cls.client:
-            logger.info("Closing %s database runtime...", settings.DATA_BACKEND)
+            logger.info("Chiusura cache del registro Drive/Sheets...")
             cls.client.close()
-            logger.info("✅ MongoDB connection closed")
+            logger.info("Cache del registro Drive/Sheets chiusa")
+        cls.client = None
+        cls.db = None
 
     @classmethod
     def get_db(cls) -> Any:
         """
         Get database instance.
-        
+
         Returns:
-            AsyncIOMotorDatabase: MongoDB database instance
-            
+            Registro documentale Drive/Sheets.
+
         Raises:
             RuntimeError: If database is not connected
         """
@@ -797,25 +742,25 @@ class Database:
     def get_collection(cls, collection_name: str):
         """
         Get a collection from the database.
-        
+
         Args:
             collection_name: Name of the collection
-            
+
         Returns:
-            AsyncIOMotorCollection: MongoDB collection instance
+            Foglio documentale richiesto.
         """
         db = cls.get_db()
         return db[collection_name]
 
 
 # Convenience function for dependency injection
-async def get_database() -> AsyncIOMotorDatabase:
+async def get_database() -> Any:
     """
     FastAPI dependency to get database instance.
-    
+
     Usage:
         @router.get("/endpoint")
-        async def endpoint(db: AsyncIOMotorDatabase = Depends(get_database)):
+        async def endpoint(db = Depends(get_database)):
             ...
     """
     return Database.get_db()
@@ -837,7 +782,7 @@ from app.db_collections import (
 
 
 class Collections:
-    """MongoDB collection names - LEGACY. Usare db_collections.py per nuovi sviluppi."""
+    """Alias storici dei nomi dei fogli; usare ``db_collections.py``."""
     # Core (nessun corrispondente in db_collections.py)
     USERS = "users"
 

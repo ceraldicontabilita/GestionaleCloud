@@ -1,4 +1,4 @@
-"""MCP gateway tests use synthetic HTTP responses only: never MongoDB or production."""
+"""MCP gateway tests use synthetic HTTP responses only: never Drive/Sheets or production."""
 
 from __future__ import annotations
 

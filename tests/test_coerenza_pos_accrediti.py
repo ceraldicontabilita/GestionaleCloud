@@ -1,7 +1,7 @@
 """Quadratura POS: il giorno viene dalla descrizione dell'estratto conto."""
 import asyncio
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.routers import pos_corrispettivi_check as pc
 
@@ -12,7 +12,7 @@ def _run(coro):
 
 def test_somma_circuiti_sul_giorno_del_riferimento_non_sulla_data_contabile():
     async def scenario():
-        db = AsyncMongoMockClient()["test_accrediti_giorno_operazione"]
+        db = MemorySheetsClient()["test_accrediti_giorno_operazione"]
         await db["estratto_conto_movimenti"].insert_many([
             {
                 "data": "2026-07-07", "importo": 1000.20,
@@ -88,7 +88,7 @@ def test_somma_circuiti_sul_giorno_del_riferimento_non_sulla_data_contabile():
 
 def test_esclude_righe_numia_che_non_sono_accrediti_pos_giornalieri():
     async def scenario():
-        db = AsyncMongoMockClient()["test_esclusioni_numia"]
+        db = MemorySheetsClient()["test_esclusioni_numia"]
         await db["estratto_conto_movimenti"].insert_many([
             {"data": "2026-07-09", "importo": 0.02,
              "descrizione_originale": "INC.POS CARTE CREDIT - REMUNERAZIONE DCC 06/26 NUMIA"},
@@ -111,7 +111,7 @@ def test_esclude_righe_numia_che_non_sono_accrediti_pos_giornalieri():
 
 def test_riferimento_operazione_fuori_periodo_non_viene_contato():
     async def scenario():
-        db = AsyncMongoMockClient()["test_periodo_giorno_operazione"]
+        db = MemorySheetsClient()["test_periodo_giorno_operazione"]
         await db["estratto_conto_movimenti"].insert_one({
             "data": "2026-07-01", "importo": 700.00,
             "descrizione_originale": (
@@ -128,7 +128,7 @@ def test_riferimento_operazione_fuori_periodo_non_viene_contato():
 
 def test_unifica_copie_stessa_liquidazione_ma_non_due_date_contabili_distinte():
     async def scenario():
-        db = AsyncMongoMockClient()["test_dedup_accrediti_pos"]
+        db = MemorySheetsClient()["test_dedup_accrediti_pos"]
         causale = (
             "INC.POS CARTE CREDIT - NUMIA-AMEX DEL 14/07/26 "
             "PDV 3757283/00012 CERALDI CAFFE' NA"
@@ -172,7 +172,7 @@ def test_unifica_copie_stessa_liquidazione_ma_non_due_date_contabili_distinte():
 
 def test_riepilogo_mensile_usa_pos_reale_giorno_vendita_e_deduplica(monkeypatch):
     async def scenario():
-        db = AsyncMongoMockClient()["test_riepilogo_mensile_canonico"]
+        db = MemorySheetsClient()["test_riepilogo_mensile_canonico"]
         await db["corrispettivi"].insert_one({
             "data": "2026-07-14", "totale": 150.00,
             "pagato_contanti": 45.00, "pagato_elettronico": 105.00,
@@ -224,7 +224,7 @@ def test_riconoscimento_causale_richiede_numia_incasso_e_giorno():
 
 def test_controllo_due_fasi_certifica_solo_match_da_estratto_conto(monkeypatch):
     async def scenario():
-        db = AsyncMongoMockClient()["test_badge_riconciliazione_banca"]
+        db = MemorySheetsClient()["test_badge_riconciliazione_banca"]
         await db["corrispettivi"].insert_one({
             "data": "2026-07-06",
             "pagato_elettronico": 1400.00,
@@ -267,7 +267,7 @@ def test_controllo_due_fasi_certifica_solo_match_da_estratto_conto(monkeypatch):
 
 def test_controllo_due_fasi_non_certifica_un_importo_solo_trascritto(monkeypatch):
     async def scenario():
-        db = AsyncMongoMockClient()["test_nessun_badge_senza_banca"]
+        db = MemorySheetsClient()["test_nessun_badge_senza_banca"]
         await db["corrispettivi"].insert_one({
             "data": "2026-07-05",
             "pagato_elettronico": 1000.00,
@@ -296,7 +296,7 @@ def test_controllo_due_fasi_non_certifica_un_importo_solo_trascritto(monkeypatch
 
 def test_due_fasi_separa_numia_da_sumup_e_non_usa_xml_come_pos(monkeypatch):
     async def scenario():
-        db = AsyncMongoMockClient()["test_due_circuiti_reali"]
+        db = MemorySheetsClient()["test_due_circuiti_reali"]
         await db["corrispettivi"].insert_one({
             "data": "2026-08-03", "pagato_elettronico": 1629.50,
             "stato": "definitivo_xml", "entity_status": "active",
@@ -345,7 +345,7 @@ def test_due_fasi_separa_numia_da_sumup_e_non_usa_xml_come_pos(monkeypatch):
 
 def test_due_fasi_xml_senza_terminali_non_inventa_numia_o_sumup(monkeypatch):
     async def scenario():
-        db = AsyncMongoMockClient()["test_xml_non_e_pos"]
+        db = MemorySheetsClient()["test_xml_non_e_pos"]
         await db["corrispettivi"].insert_one({
             "data": "2026-08-01", "pagato_elettronico": 1620.70,
             "stato": "definitivo_xml", "entity_status": "active",
@@ -369,7 +369,7 @@ def test_due_fasi_xml_senza_terminali_non_inventa_numia_o_sumup(monkeypatch):
 
 def test_due_fasi_sumup_zero_esplicito_non_attende_un_payout(monkeypatch):
     async def scenario():
-        db = AsyncMongoMockClient()["test_sumup_zero_esplicito"]
+        db = MemorySheetsClient()["test_sumup_zero_esplicito"]
         await db["chiusure_pos_manuali"].insert_one({
             "data": "2026-08-02", "importo": 0,
             "gestore": "sumup", "source": "api_sumup",
@@ -391,7 +391,7 @@ def test_due_fasi_sumup_zero_esplicito_non_attende_un_payout(monkeypatch):
 def test_controllo_due_fasi_legge_e_somma_xml_drive_storici(monkeypatch):
     """I record Drive legacy usano pagato_pos e non avevano stato definitivo_xml."""
     async def scenario():
-        db = AsyncMongoMockClient()["test_xml_drive_legacy"]
+        db = MemorySheetsClient()["test_xml_drive_legacy"]
         await db["corrispettivi"].insert_many([
             {
                 "data": "2026-01-02", "totale": 1000.00,

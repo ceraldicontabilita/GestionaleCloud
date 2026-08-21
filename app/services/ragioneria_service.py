@@ -37,17 +37,17 @@ def calcola_sconto_incondizionato(prezzo_lordo: float, percentuale_sconto: float
     """
     Calcola sconto incondizionato (già nel prezzo concordato).
     L'IVA si calcola sul prezzo scontato.
-    
+
     Args:
         prezzo_lordo: Prezzo prima dello sconto
         percentuale_sconto: Percentuale di sconto (es: 10 per 10%)
-    
+
     Returns:
         Dict con prezzo_netto, importo_sconto, base_imponibile_iva
     """
     importo_sconto = prezzo_lordo * (percentuale_sconto / 100)
     prezzo_netto = prezzo_lordo - importo_sconto
-    
+
     return {
         "prezzo_lordo": round(prezzo_lordo, 2),
         "percentuale_sconto": percentuale_sconto,
@@ -62,15 +62,15 @@ def genera_nota_credito_sconto(sconto_data: Dict[str, Any], fornitore_cliente: s
     """
     Genera una nota di credito per sconto condizionato (fine anno, volume, ecc).
     Usato quando lo sconto matura DOPO la fattura originale.
-    
+
     Art. 26 DPR 633/72 - Variazioni dell'imponibile e dell'imposta
     """
     importo = sconto_data.get("importo", 0)
     aliquota_iva = sconto_data.get("aliquota_iva", 22)
-    
+
     # Calcola IVA da stornare
     iva_storno = importo * (aliquota_iva / 100)
-    
+
     return {
         "id": str(uuid4()),
         "tipo_documento": "TD04",  # Nota di credito
@@ -94,7 +94,7 @@ def genera_nota_credito_sconto(sconto_data: Dict[str, Any], fornitore_cliente: s
 def genera_nota_credito_reso(reso_data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Genera nota di credito per reso merce.
-    
+
     Il reso di vendita comporta:
     - Storno del ricavo
     - Storno del credito cliente
@@ -103,9 +103,9 @@ def genera_nota_credito_reso(reso_data: Dict[str, Any]) -> Dict[str, Any]:
     importo = reso_data.get("importo", 0)
     aliquota_iva = reso_data.get("aliquota_iva", 22)
     quantita = reso_data.get("quantita", 1)
-    
+
     iva_storno = importo * (aliquota_iva / 100)
-    
+
     return {
         "id": str(uuid4()),
         "tipo_documento": "TD04",
@@ -131,7 +131,7 @@ def genera_nota_credito_reso(reso_data: Dict[str, Any]) -> Dict[str, Any]:
 def genera_storno_contabile(movimento_originale: Dict[str, Any], motivo: str) -> Dict[str, Any]:
     """
     Genera uno storno contabile (movimento opposto).
-    
+
     Lo storno è una registrazione di rettifica:
     - Storno totale: movimento opposto completo
     - Storno parziale: solo la quota eccedente
@@ -157,25 +157,25 @@ def genera_storno_contabile(movimento_originale: Dict[str, Any], motivo: str) ->
 def verifica_fattura_in_corrispettivo(fattura: Dict[str, Any], corrispettivi: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     """
     Verifica se una fattura emessa è relativa a un corrispettivo già emesso.
-    
+
     PRINCIPIO CONTABILE:
     Se il cliente chiede fattura DOPO lo scontrino, l'IVA è già stata assolta
     con il corrispettivo. La fattura viene emessa ma NON va conteggiata
     nel calcolo IVA periodica (duplicazione).
-    
+
     Returns:
         Dict con info corrispettivo correlato o None
     """
     data_fattura = fattura.get("data_documento", "")
     importo_fattura = fattura.get("totale", 0)
-    
+
     # Tolleranza importo (per arrotondamenti)
     tolleranza = 0.05
-    
+
     for corr in corrispettivi:
         data_corr = corr.get("data", "")
         importo_corr = corr.get("totale", 0)
-        
+
         # Stesso giorno e stesso importo (con tolleranza)
         if data_corr == data_fattura[:10]:  # Confronta solo la data
             if abs(importo_fattura - importo_corr) <= tolleranza:
@@ -185,7 +185,7 @@ def verifica_fattura_in_corrispettivo(fattura: Dict[str, Any], corrispettivi: Li
                     "importo_corrispettivo": importo_corr,
                     "match_type": "same_day_same_amount"
                 }
-    
+
     return None
 
 
@@ -193,7 +193,7 @@ def marca_fattura_gia_in_corrispettivo(fattura_id: str, corrispettivo_id: str) -
     """
     Marca una fattura come già inclusa in un corrispettivo.
     Questa fattura NON deve essere conteggiata nel calcolo IVA.
-    
+
     Returns:
         Dict con i campi da aggiornare sulla fattura
     """
@@ -211,23 +211,23 @@ async def calcola_iva_debito_corretto(db, anno: int, mese: int) -> Dict[str, Any
     Calcola l'IVA a debito corretta escludendo:
     1. Fatture emesse già incluse nei corrispettivi
     2. Note di credito (che riducono il debito)
-    
+
     Args:
-        db: Database MongoDB
+        db: Registro Sheets
         anno: Anno di riferimento
         mese: Mese di riferimento (1-12)
-    
+
     Returns:
         Dict con IVA da corrispettivi, fatture emesse (escl. duplicati), totale
     """
-    
+
     # Range date del mese
     primo_giorno = f"{anno}-{str(mese).zfill(2)}-01"
     if mese == 12:
         ultimo_giorno = f"{anno}-12-31"
     else:
         ultimo_giorno = f"{anno}-{str(mese+1).zfill(2)}-01"
-    
+
     # 1. IVA da corrispettivi
     pipeline_corr = [
         {"$match": {
@@ -240,10 +240,10 @@ async def calcola_iva_debito_corretto(db, anno: int, mese: int) -> Dict[str, Any
             "count": {"$sum": 1}
         }}
     ]
-    
+
     result_corr = await db["corrispettivi"].aggregate(pipeline_corr).to_list(1)
     iva_corrispettivi = result_corr[0]["totale_iva"] if result_corr else 0
-    
+
     # 2. IVA da fatture emesse (ESCLUDENDO quelle già in corrispettivo)
     pipeline_fatt = [
         {"$match": {
@@ -261,10 +261,10 @@ async def calcola_iva_debito_corretto(db, anno: int, mese: int) -> Dict[str, Any
             "count": {"$sum": 1}
         }}
     ]
-    
+
     result_fatt = await db["fatture_emesse"].aggregate(pipeline_fatt).to_list(1)
     iva_fatture_emesse = result_fatt[0]["totale_iva"] if result_fatt else 0
-    
+
     # 3. Note di credito emesse (riducono IVA a debito)
     pipeline_nc = [
         {"$match": {
@@ -276,13 +276,13 @@ async def calcola_iva_debito_corretto(db, anno: int, mese: int) -> Dict[str, Any
             "totale_iva_storno": {"$sum": {"$abs": "$iva"}}
         }}
     ]
-    
+
     result_nc = await db["fatture_emesse"].aggregate(pipeline_nc).to_list(1)
     iva_note_credito = result_nc[0]["totale_iva_storno"] if result_nc else 0
-    
+
     # Totale IVA a debito
     totale_iva_debito = iva_corrispettivi + iva_fatture_emesse - iva_note_credito
-    
+
     return {
         "anno": anno,
         "mese": mese,
@@ -301,7 +301,7 @@ async def calcola_iva_debito_corretto(db, anno: int, mese: int) -> Dict[str, Any
 def valida_registrazione_contabile(movimento: Dict[str, Any]) -> Dict[str, Any]:
     """
     Valida una registrazione contabile secondo principi OIC.
-    
+
     Verifica:
     - Principio della competenza economica
     - Quadratura dare/avere
@@ -309,18 +309,18 @@ def valida_registrazione_contabile(movimento: Dict[str, Any]) -> Dict[str, Any]:
     """
     errori = []
     warnings = []
-    
+
     # Verifica campi obbligatori
     campi_obbligatori = ["data", "importo", "descrizione"]
     for campo in campi_obbligatori:
         if not movimento.get(campo):
             errori.append(f"Campo obbligatorio mancante: {campo}")
-    
+
     # Verifica importo positivo o nullo solo con descrizione appropriata
     importo = movimento.get("importo", 0)
     if importo == 0 and "storno" not in movimento.get("descrizione", "").lower():
         warnings.append("Importo zero - verificare se corretto")
-    
+
     # Verifica data non futura
     data_mov = movimento.get("data", "")
     if data_mov:
@@ -330,7 +330,7 @@ def valida_registrazione_contabile(movimento: Dict[str, Any]) -> Dict[str, Any]:
                 warnings.append("Data movimento nel futuro")
         except Exception:
             errori.append("Formato data non valido")
-    
+
     return {
         "valido": len(errori) == 0,
         "errori": errori,
@@ -351,13 +351,13 @@ def arrotonda_monetario(valore: float, decimali: int = 2) -> float:
 def scorporo_iva(totale_ivato: float, aliquota: int = 22) -> Dict[str, float]:
     """
     Scorporo IVA da un importo lordo.
-    
+
     Formula: Imponibile = Totale / (1 + aliquota/100)
     """
     divisore = 1 + (aliquota / 100)
     imponibile = totale_ivato / divisore
     iva = totale_ivato - imponibile
-    
+
     return {
         "totale_ivato": arrotonda_monetario(totale_ivato),
         "imponibile": arrotonda_monetario(imponibile),

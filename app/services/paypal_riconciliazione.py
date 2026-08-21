@@ -9,7 +9,7 @@ usati dal mapping anagrafico e dai verbali PagoPA.
 import re
 import logging
 from typing import Dict, Any, List
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from app.services.sheets_document_store import SheetDatabase
 
 logger = logging.getLogger(__name__)
 
@@ -56,42 +56,42 @@ def normalize_string(s: str) -> str:
 def match_fornitore(paypal_name: str, fornitore_name: str) -> float:
     """
     Calcola score di matching tra nome PayPal e fornitore.
-    
+
     Returns:
         Float 0-1, dove 1 è match perfetto
     """
     if not paypal_name or not fornitore_name:
         return 0.0
-    
+
     paypal_norm = normalize_string(paypal_name)
     fornitore_norm = normalize_string(fornitore_name)
-    
+
     # Match esatto
     if paypal_norm == fornitore_norm:
         return 1.0
-    
+
     # Uno contiene l'altro
     if paypal_norm in fornitore_norm or fornitore_norm in paypal_norm:
         return 0.9
-    
+
     # Check mappatura conosciuta
     for paypal_key, fornitore_variants in PAYPAL_TO_FORNITORE_MAP.items():
         if normalize_string(paypal_key) in paypal_norm:
             for variant in fornitore_variants:
                 if normalize_string(variant) in fornitore_norm:
                     return 0.95
-    
+
     # Check parole comuni
     paypal_words = set(paypal_norm.split())
     fornitore_words = set(fornitore_norm.split())
     common = paypal_words & fornitore_words
     if common:
         return len(common) / max(len(paypal_words), len(fornitore_words))
-    
+
     return 0.0
 
 
-async def riconcilia_multe_pagopa(db: AsyncIOMotorDatabase, transazioni_pagopa: List[Dict[str, Any]]) -> Dict[str, int]:
+async def riconcilia_multe_pagopa(db: SheetDatabase, transazioni_pagopa: List[Dict[str, Any]]) -> Dict[str, int]:
     """Le multe CdS non vanno su invoices, ma su verbali_noleggio (fase 3)."""
     from app.services.verbali_pagamento_finder import trova_pagamento_verbale, applica_pagamento_a_verbale
     stats = {"totale": len(transazioni_pagopa), "riconciliati": 0}

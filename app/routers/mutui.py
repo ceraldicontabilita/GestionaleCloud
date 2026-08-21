@@ -19,7 +19,6 @@ from fastapi.responses import JSONResponse
 from typing import List, Optional
 from datetime import datetime, timedelta, timezone
 import uuid
-from bson import ObjectId
 import logging
 
 from app.database import Database
@@ -35,7 +34,7 @@ def get_db():
 
 
 def serialize_doc(doc):
-    """Serializza documento MongoDB rimuovendo _id o convertendolo"""
+    """Serializza documento Drive/Sheets rimuovendo _id o convertendolo"""
     if doc is None:
         return None
     if "_id" in doc:
@@ -57,16 +56,16 @@ async def get_mutui(
     """
     try:
         db = get_db()
-        
+
         # Query mutui
         mutui = await db.mutui.find().skip(skip).limit(limit).to_list(length=limit)
-        
+
         # Serializza
         mutui = [serialize_doc(m) for m in mutui]
-        
+
         # Conta totale
         total_count = await db.mutui.count_documents({})
-        
+
         # Calcola statistiche aggregate
         stats = {
             "totale_mutui": total_count,
@@ -77,7 +76,7 @@ async def get_mutui(
             "rate_pagate": 0,
             "rate_da_pagare": 0
         }
-        
+
         for mutuo in mutui:
             stats["importo_totale_accordato"] += mutuo.get("importo_accordato", 0)
             stats["debito_residuo_totale"] += mutuo.get("debito_residuo_totale", 0)
@@ -85,7 +84,7 @@ async def get_mutui(
             stats["rate_totali"] += mutuo.get("totale_rate", 0)
             stats["rate_pagate"] += mutuo.get("rate_pagate", 0)
             stats["rate_da_pagare"] += mutuo.get("rate_da_pagare", 0)
-        
+
         return {
             "success": True,
             "data": mutui,
@@ -96,7 +95,7 @@ async def get_mutui(
             },
             "statistiche": stats
         }
-        
+
     except Exception as e:
         logger.error(f"Errore get_mutui: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -118,7 +117,7 @@ async def get_statistiche_mutui():
     """
     try:
         db = get_db()
-        
+
         # Aggrega dati da tutti i mutui
         pipeline = [
             {
@@ -137,9 +136,9 @@ async def get_statistiche_mutui():
                 }
             }
         ]
-        
+
         result = await db.mutui.aggregate(pipeline).to_list(length=1)
-        
+
         if not result:
             return {
                 "success": True,
@@ -153,10 +152,10 @@ async def get_statistiche_mutui():
                     "prossime_scadenze": []
                 }
             }
-        
+
         stats = result[0]
         stats.pop("_id", None)
-        
+
         # Calcola percentuali
         if stats["importo_totale_accordato"] > 0:
             stats["percentuale_completamento"] = round(
@@ -164,23 +163,23 @@ async def get_statistiche_mutui():
             )
         else:
             stats["percentuale_completamento"] = 0
-        
+
         if stats["rate_pagate"] > 0:
             stats["percentuale_riconciliazione"] = round(
                 (stats.get("rate_riconciliate", 0) / stats["rate_pagate"]) * 100, 2
             )
         else:
             stats["percentuale_riconciliazione"] = 0
-        
+
         # Trova prossime scadenze (prossimi 30 giorni)
         oggi = datetime.now()
-        
+
         # Query per rate "Da pagare"
         mutui_con_scadenze = await db.mutui.find(
             {"rate.stato": "Da pagare"},
             {"mutuo_id": 1, "nome": 1, "rate": 1}
         ).to_list(length=100)
-        
+
         prossime_scadenze = []
         for mutuo in mutui_con_scadenze:
             for rata in mutuo.get("rate", []):
@@ -197,16 +196,16 @@ async def get_statistiche_mutui():
                             })
                     except Exception:
                         pass
-        
+
         # Ordina per data
         prossime_scadenze.sort(key=lambda x: datetime.strptime(x["data_scadenza"], "%d/%m/%Y"))
         stats["prossime_scadenze"] = prossime_scadenze[:10]
-        
+
         return {
             "success": True,
             "data": stats
         }
-        
+
     except Exception as e:
         logger.error(f"Errore get_statistiche_mutui: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -219,20 +218,20 @@ async def get_mutuo_by_id(mutuo_id: str):
     """
     try:
         db = get_db()
-        
+
         mutuo = await db.mutui.find_one({"mutuo_id": mutuo_id})
-        
+
         if not mutuo:
             raise HTTPException(
                 status_code=404,
                 detail=f"Mutuo {mutuo_id} non trovato"
             )
-        
+
         return {
             "success": True,
             "data": serialize_doc(mutuo)
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -247,18 +246,18 @@ async def get_rate_mutuo(mutuo_id: str):
     """
     try:
         db = get_db()
-        
+
         mutuo = await db.mutui.find_one(
             {"mutuo_id": mutuo_id},
             {"rate": 1, "nome": 1, "mutuo_id": 1}
         )
-        
+
         if not mutuo:
             raise HTTPException(
                 status_code=404,
                 detail=f"Mutuo {mutuo_id} non trovato"
             )
-        
+
         return {
             "success": True,
             "data": {
@@ -267,7 +266,7 @@ async def get_rate_mutuo(mutuo_id: str):
                 "rate": mutuo.get("rate", [])
             }
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -288,7 +287,7 @@ async def riconcilia_mutui_con_estratto_conto(
 ):
     """
     Riconcilia automaticamente le rate dei mutui con i movimenti bancari
-    
+
     Parametri:
     - data_inizio: data inizio ricerca (DD/MM/YYYY)
     - data_fine: data fine ricerca (DD/MM/YYYY)
@@ -297,38 +296,38 @@ async def riconcilia_mutui_con_estratto_conto(
     """
     try:
         db = get_db()
-        
+
         # Query per mutui con rate pagate non ancora riconciliate
         mutui = await db.mutui.find({}).to_list(length=None)
-        
+
         riconciliazioni = {
             "totale_rate_processate": 0,
             "riconciliazioni_automatiche": 0,
             "riconciliazioni_manuali_richieste": 0,
             "dettagli": []
         }
-        
+
         for mutuo in mutui:
             mutuo_id = mutuo["mutuo_id"]
-            
+
             for rata in mutuo.get("rate", []):
                 if rata["stato"] != "Pagata" or rata.get("riconciliata", False):
                     continue
-                
+
                 riconciliazioni["totale_rate_processate"] += 1
-                
+
                 # Cerca movimento bancario corrispondente
                 try:
                     data_rata = datetime.strptime(rata["data_scadenza"], "%d/%m/%Y")
                 except Exception:
                     continue
-                    
+
                 data_min = (data_rata - timedelta(days=tolleranza_giorni)).strftime("%Y-%m-%d")
                 data_max = (data_rata + timedelta(days=tolleranza_giorni)).strftime("%Y-%m-%d")
-                
+
                 importo_min = rata["importo_totale"] - tolleranza_importo
                 importo_max = rata["importo_totale"] + tolleranza_importo
-                
+
                 # Query movimenti bancari. L'estratto conto salva SEMPRE
                 # importi POSITIVI con tipo entrata/uscita: la vecchia query
                 # cercava importi negativi e non trovava MAI nulla (gap
@@ -352,12 +351,12 @@ async def riconcilia_mutui_con_estratto_conto(
                     candidati = await db.estratto_conto_movimenti.find(query_no_desc).to_list(2)
                     if len(candidati) == 1:
                         movimento = candidati[0]
-                
+
                 if movimento:
                     # MATCH TROVATO - Riconcilia automaticamente
                     movimento_id = str(movimento["_id"])
                     data_movimento = movimento.get("data_valuta") or movimento.get("data", "")
-                    
+
                     # Aggiorna rata nel mutuo
                     await db.mutui.update_one(
                         {
@@ -376,7 +375,7 @@ async def riconcilia_mutui_con_estratto_conto(
                             }
                         }
                     )
-                    
+
                     # Marca movimento come riconciliato
                     await db.estratto_conto_movimenti.update_one(
                         {"_id": movimento["_id"]},
@@ -389,7 +388,7 @@ async def riconcilia_mutui_con_estratto_conto(
                             }
                         }
                     )
-                    
+
                     riconciliazioni["riconciliazioni_automatiche"] += 1
                     riconciliazioni["dettagli"].append({
                         "mutuo_id": mutuo_id,
@@ -401,7 +400,7 @@ async def riconcilia_mutui_con_estratto_conto(
                         "data_movimento": data_movimento,
                         "status": "riconciliato_automaticamente"
                     })
-                    
+
                     # G2: Crea movimento prima_nota_banca per la rata pagata
                     try:
                         mov_mutuo = {
@@ -429,7 +428,7 @@ async def riconcilia_mutui_con_estratto_conto(
                         )
                     except Exception as e_mutuo:
                         logger.warning(f"Prima nota mutuo fallita: {e_mutuo}")
-                    
+
                 else:
                     # Nessun match - richiede riconciliazione manuale
                     riconciliazioni["riconciliazioni_manuali_richieste"] += 1
@@ -441,17 +440,17 @@ async def riconcilia_mutui_con_estratto_conto(
                         "importo": rata["importo_totale"],
                         "status": "richiede_riconciliazione_manuale"
                     })
-        
+
         # Ricalcola percentuali riconciliazione per ogni mutuo
         async for mutuo in db.mutui.find():
             rate_pagate = mutuo.get("rate_pagate", 0)
             rate_riconciliate = sum(1 for r in mutuo.get("rate", []) if r.get("riconciliata"))
-            
+
             if rate_pagate > 0:
                 perc = round((rate_riconciliate / rate_pagate) * 100, 2)
             else:
                 perc = 0
-                
+
             await db.mutui.update_one(
                 {"mutuo_id": mutuo["mutuo_id"]},
                 {"$set": {
@@ -459,13 +458,13 @@ async def riconcilia_mutui_con_estratto_conto(
                     "percentuale_riconciliazione": perc
                 }}
             )
-        
+
         return {
             "success": True,
             "message": "Riconciliazione completata",
             "data": riconciliazioni
         }
-        
+
     except Exception as e:
         logger.error(f"Errore riconcilia_mutui: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -483,18 +482,17 @@ async def riconcilia_rata_manuale(
     """
     try:
         db = get_db()
-        
+
         # Verifica esistenza movimento
-        try:
-            movimento = await db.estratto_conto_movimenti.find_one({"_id": ObjectId(movimento_id)})
-        except Exception:
-            movimento = await db.estratto_conto_movimenti.find_one({"id": movimento_id})
-            
+        movimento = await db.estratto_conto_movimenti.find_one({"$or": [
+            {"_id": movimento_id}, {"id": movimento_id},
+        ]})
+
         if not movimento:
             raise HTTPException(status_code=404, detail="Movimento bancario non trovato")
-        
+
         data_movimento = movimento.get("data_valuta") or movimento.get("data", "")
-        
+
         # Aggiorna rata
         result = await db.mutui.update_one(
             {
@@ -513,10 +511,10 @@ async def riconcilia_rata_manuale(
                 }
             }
         )
-        
+
         if result.modified_count == 0:
             raise HTTPException(status_code=404, detail="Rata non trovata o già riconciliata")
-        
+
         # Marca movimento come riconciliato
         await db.estratto_conto_movimenti.update_one(
             {"_id": movimento["_id"]},
@@ -529,14 +527,14 @@ async def riconcilia_rata_manuale(
                 }
             }
         )
-        
+
         # Ricalcola percentuale
         mutuo = await db.mutui.find_one({"mutuo_id": mutuo_id})
         if mutuo:
             rate_pagate = mutuo.get("rate_pagate", 0)
             rate_riconciliate = sum(1 for r in mutuo.get("rate", []) if r.get("riconciliata"))
             perc = round((rate_riconciliate / rate_pagate) * 100, 2) if rate_pagate > 0 else 0
-            
+
             await db.mutui.update_one(
                 {"mutuo_id": mutuo_id},
                 {"$set": {
@@ -544,12 +542,12 @@ async def riconcilia_rata_manuale(
                     "percentuale_riconciliazione": perc
                 }}
             )
-        
+
         return {
             "success": True,
             "message": "Rata riconciliata manualmente"
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -568,7 +566,7 @@ async def create_mutuo(mutuo_data: dict):
     """
     try:
         db = get_db()
-        
+
         # Verifica che mutuo_id non esista già
         existing = await db.mutui.find_one({"mutuo_id": mutuo_data.get("mutuo_id")})
         if existing:
@@ -576,20 +574,20 @@ async def create_mutuo(mutuo_data: dict):
                 status_code=400,
                 detail=f"Mutuo con ID {mutuo_data.get('mutuo_id')} già esistente"
             )
-        
+
         # Aggiungi timestamp
         mutuo_data["created_at"] = datetime.now()
         mutuo_data["updated_at"] = datetime.now()
-        
+
         result = await db.mutui.insert_one(mutuo_data)
-        
+
         return {
             "success": True,
             "message": "Mutuo creato con successo",
             "mutuo_id": mutuo_data["mutuo_id"],
             "id": str(result.inserted_id)
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -604,28 +602,28 @@ async def update_mutuo(mutuo_id: str, update_data: dict):
     """
     try:
         db = get_db()
-        
+
         # Rimuovi campi che non devono essere aggiornati
         update_data.pop("_id", None)
         update_data.pop("mutuo_id", None)
         update_data.pop("created_at", None)
-        
+
         # Aggiungi timestamp aggiornamento
         update_data["updated_at"] = datetime.now()
-        
+
         result = await db.mutui.update_one(
             {"mutuo_id": mutuo_id},
             {"$set": update_data}
         )
-        
+
         if result.matched_count == 0:
             raise HTTPException(status_code=404, detail=f"Mutuo {mutuo_id} non trovato")
-        
+
         return {
             "success": True,
             "message": "Mutuo aggiornato con successo"
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -640,20 +638,19 @@ async def delete_mutuo(mutuo_id: str):
     """
     try:
         db = get_db()
-        
+
         result = await db.mutui.delete_one({"mutuo_id": mutuo_id})
-        
+
         if result.deleted_count == 0:
             raise HTTPException(status_code=404, detail=f"Mutuo {mutuo_id} non trovato")
-        
+
         return {
             "success": True,
             "message": "Mutuo eliminato con successo"
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Errore delete_mutuo: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-

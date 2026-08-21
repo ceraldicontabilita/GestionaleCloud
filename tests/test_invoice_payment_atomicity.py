@@ -3,7 +3,7 @@ import asyncio
 
 import pytest
 from fastapi import HTTPException
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.services.invoice_payments import (
     ManualInvoicePaymentRequest,
@@ -12,7 +12,7 @@ from app.services.invoice_payments import (
 
 
 def test_retry_identico_non_duplica_movimento_ne_importo_pagato():
-    db = AsyncMongoMockClient()["invoice_payment_idempotency"]
+    db = MemorySheetsClient()["invoice_payment_idempotency"]
     asyncio.run(db["invoices"].insert_one({
         "id": "fatt-1", "total_amount": 100.0, "importo_pagato": 0,
         "tipo_documento": "TD01",
@@ -33,7 +33,7 @@ def test_retry_identico_non_duplica_movimento_ne_importo_pagato():
 
 
 def test_cassa_e_banca_hanno_chiavi_idempotenza_distinte():
-    db = AsyncMongoMockClient()["invoice_payment_methods"]
+    db = MemorySheetsClient()["invoice_payment_methods"]
     asyncio.run(db["invoices"].insert_one({
         "id": "fatt-2", "total_amount": 200.0, "importo_pagato": 0,
         "tipo_documento": "TD01",
@@ -57,7 +57,7 @@ def test_cassa_e_banca_hanno_chiavi_idempotenza_distinte():
 
 
 def test_importo_superiore_al_residuo_e_bloccato_senza_scritture():
-    db = AsyncMongoMockClient()["invoice_payment_overpayment"]
+    db = MemorySheetsClient()["invoice_payment_overpayment"]
     asyncio.run(db["invoices"].insert_one({
         "id": "fatt-3", "total_amount": 100.0, "importo_pagato": 40.0,
         "tipo_documento": "TD01",
@@ -77,7 +77,7 @@ def test_importo_superiore_al_residuo_e_bloccato_senza_scritture():
 
 
 def test_parziale_senza_scadenza_o_chiave_idempotenza_e_bloccato():
-    db = AsyncMongoMockClient()["invoice_payment_ambiguous_partial"]
+    db = MemorySheetsClient()["invoice_payment_ambiguous_partial"]
     asyncio.run(db["invoices"].insert_one({
         "id": "fatt-4", "total_amount": 100.0, "importo_pagato": 0,
         "tipo_documento": "TD01",

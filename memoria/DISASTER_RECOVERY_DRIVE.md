@@ -12,7 +12,7 @@ registri, progressivi, identità, relazioni e provenienza.
 
 ## Obiettivi
 
-- ricostruire il registro senza dipendere da MongoDB;
+- ricostruire il registro senza dipendere da Drive/Sheets;
 - non modificare o perdere documenti originali;
 - provare completezza, integrità e leggibilità;
 - mantenere identificativi e relazioni stabili;
@@ -52,7 +52,7 @@ Le credenziali non devono essere salvate nel repository o nel workbook.
 7. Reimportare i registri mantenendo progressivi e ID canonici.
 8. Ricostruire le relazioni soltanto dopo la presenza di entrambe le entità.
 9. Eseguire conteggi e confronti per foglio, anno, importo e stato.
-10. Avviare l'app in ambiente di prova con `DATA_BACKEND=sheets`.
+10. Avviare l'app in ambiente di prova con `SHEETS_REGISTRY_NAME=GestionaleCloud`.
 11. Verificare i flussi end-to-end e solo dopo riaprire le scritture.
 
 ## Criteri di accettazione
@@ -72,9 +72,9 @@ workbook precedente tramite la cronologia/versione copiata. Non eliminare
 registri o backend transitori finché il nuovo archivio non supera tutti i
 criteri.
 
-## Fase transitoria MongoDB
+## Fase transitoria Drive/Sheets
 
-MongoDB può restare disponibile solo come sorgente temporanea di confronto
+Drive/Sheets può restare disponibile solo come sorgente temporanea di confronto
 durante la migrazione. Non è il piano di disaster recovery finale. La sua
 dismissione è autorizzabile soltanto dopo una ricostruzione completa da
 Drive/Sheets provata in ambiente isolato e dopo il cutover verificato in

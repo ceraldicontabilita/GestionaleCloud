@@ -44,8 +44,8 @@ async def _run_ledger_job(job_id: str, action: str) -> None:
                     upsert=True,
                 )
         elif action == "audit":
-            from app.services.google_sheets_ledger import migration_audit
-            result = await migration_audit(db, config)
+            from app.services.google_sheets_ledger import registry_audit
+            result = await registry_audit(db, config)
         else:
             from app.services.google_sheets_ledger import restore_all
             result = await restore_all(db, config, apply=False)
@@ -222,13 +222,13 @@ async def restore_google_sheets_ledger(
 
 @router.get("/google-sheets-ledger/migration-audit")
 async def audit_google_sheets_migration() -> Dict[str, Any]:
-    """Gate read-only: indica se Mongo puo essere disattivato senza perdite."""
-    from app.services.google_sheets_ledger import migration_audit
+    """Gate read-only: verifica completezza e coerenza del registro Sheets."""
+    from app.services.google_sheets_ledger import registry_audit
     db = Database.get_db()
     config = await db["system_settings"].find_one(
         {"key": "google_sheets_ledger"}, {"_id": 0},
     ) or {}
-    return await migration_audit(db, config)
+    return await registry_audit(db, config)
 
 @router.get("/bank-supplier-rules")
 async def list_bank_supplier_rules() -> List[Dict[str, Any]]:
@@ -319,7 +319,7 @@ async def get_stats(
 ) -> Dict[str, Any]:
     """Get statistics for main collections."""
     db = Database.get_db()
-    
+
     stats = {
         "invoices": await db["invoices"].count_documents({}),
         "suppliers": await db["fornitori"].count_documents({}),
@@ -329,7 +329,7 @@ async def get_stats(
         "prima_nota_banca": await db["prima_nota_banca"].count_documents({}),
         "f24": await db["f24_unificato"].count_documents({})
     }
-    
+
     return stats
 
 
@@ -402,7 +402,7 @@ async def reset_collections(
     """
     db = Database.get_db()
     deleted_stats = {}
-    
+
     # Protect critical collections
     protected = {
         "users", "system_settings", "settings", "sistema_stato",
@@ -410,7 +410,7 @@ async def reset_collections(
         "prima_nota_migrazioni_audit", "migration_runs",
         "scheduler_leases", "admin_destructive_audit",
     }
-    
+
     targets = list(dict.fromkeys(selected or []))
     if not targets:
         raise HTTPException(status_code=422, detail="Seleziona almeno una collection")
@@ -426,14 +426,14 @@ async def reset_collections(
             detail={"message": "Collection protetta o non valida", "collections": invalid},
         )
     existing_collections = set(await db.list_collection_names())
-    
+
     for col in targets:
         if col not in existing_collections:
             continue
-            
+
         result = await db[col].delete_many({})
         deleted_stats[col] = {"deleted": result.deleted_count}
-        
+
     audit_id = str(uuid.uuid4())
     await db["admin_destructive_audit"].insert_one({
         "id": audit_id,

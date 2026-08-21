@@ -1,9 +1,4 @@
-"""Bootstrap asincrono e condiviso della chiave JWT.
-
-Evita accessi sincroni a Mongo durante l'import di ``config``. Su piu'
-repliche, il documento con ``_id=auth_secret`` rende l'inizializzazione
-atomica e tutte le istanze convergono sulla stessa chiave.
-"""
+"""Bootstrap asincrono e condiviso della chiave JWT su Google Sheets."""
 from datetime import datetime, timezone
 import logging
 import secrets
@@ -45,6 +40,6 @@ async def initialize_auth_secret(db, cfg: Settings = settings) -> str:
     if not value:
         raise RuntimeError("Impossibile inizializzare la chiave JWT condivisa")
 
-    cfg.set_runtime_auth_secret(value, source="mongodb")
-    logger.info("Chiave JWT inizializzata da sorgente condivisa MongoDB")
-    return "mongodb"
+    cfg.set_runtime_auth_secret(value, source="sheets")
+    logger.info("Chiave JWT inizializzata dal registro Google Sheets")
+    return "sheets"

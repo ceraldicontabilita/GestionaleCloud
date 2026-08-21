@@ -10,7 +10,7 @@ from copy import deepcopy
 
 import pytest
 from fastapi import HTTPException
-from pymongo.errors import DuplicateKeyError
+from app.services.sheets_document_store import DuplicateRecordError
 
 import app.routers.accounting.piano_conti as pc
 import app.routers.accounting.contabilita_avanzata as ca
@@ -174,7 +174,7 @@ def test_creazione_concorrente_restituisce_conflitto_anziche_errore_500(monkeypa
             return None
 
         async def insert_one(self, document):
-            raise DuplicateKeyError("codice duplicato")
+            raise DuplicateRecordError("codice duplicato")
 
     class _DuplicateDb:
         def __getitem__(self, name):
@@ -215,4 +215,3 @@ def test_inizializzazione_piano_esteso_usa_upsert_atomico(monkeypatch):
 
     assert [doc["codice"] for doc in db.collection.docs] == ["05.02.03"]
     assert sum(result["conti_aggiunti"] for result in risultati) == 1
-

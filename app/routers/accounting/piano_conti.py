@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 import uuid
 import logging
 
-from pymongo.errors import DuplicateKeyError
+from app.services.sheets_document_store import DuplicateRecordError
 
 from app.database import Database
 from app.utils.error_handler import handle_errors
@@ -25,7 +25,7 @@ COLLECTION_REGOLE_CATEGORIZZAZIONE = "regole_categorizzazione"
 # ============== STRUTTURA PIANO DEI CONTI ==============
 # Basato sulla ragioneria generale italiana:
 # - Gruppo (2 cifre): 01-99
-# - Sottogruppo (2 cifre): 01-99  
+# - Sottogruppo (2 cifre): 01-99
 # - Conto (2 cifre): 01-99
 # - Sottoconto (6 cifre): 000001-999999
 # Formato codice: GG.SS.CC.SSSSSS
@@ -502,7 +502,7 @@ async def _calcola_saldi_piano_conti(db, anno: str = None) -> Dict[str, float]:
 async def inizializza_piano_conti_base(db) -> List[Dict[str, Any]]:
     """Inizializza il piano base in modo idempotente anche in concorrenza.
 
-    Ogni conto usa un ``_id`` interno deterministico. MongoDB protegge ``_id``
+    Ogni conto usa un ``_id`` interno deterministico. Drive/Sheets protegge ``_id``
     con un indice univoco nativo, quindi due endpoint concorrenti non possono
     inserire due copie dello stesso conto neppure prima della creazione
     dell'indice univoco applicativo su ``codice``.
@@ -532,7 +532,7 @@ async def inizializza_piano_conti_base(db) -> List[Dict[str, Any]]:
                     {"$setOnInsert": conto},
                     upsert=True,
                 )
-            except DuplicateKeyError:
+            except DuplicateRecordError:
                 # Un'altra richiesta ha completato lo stesso upsert tra la
                 # ricerca e l'inserimento: il record corretto esiste già.
                 logger.info(
@@ -549,21 +549,21 @@ async def inizializza_piano_conti_base(db) -> List[Dict[str, Any]]:
 async def create_conto(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     """Crea un nuovo conto nel piano dei conti."""
     db = Database.get_db()
-    
+
     codice = str(data.get("codice") or "").strip()
     nome = str(data.get("nome") or "").strip()
     categoria = str(data.get("categoria") or "").strip()
-    
+
     if not codice or not nome or not categoria:
         raise HTTPException(status_code=400, detail="Codice, nome e categoria sono obbligatori")
-    
+
     # Verifica unicità codice
     existing = await db[COLLECTION_PIANO_CONTI].find_one({"codice": codice})
     if existing:
         raise HTTPException(status_code=409, detail=f"Conto con codice {codice} già esistente")
-    
+
     now = datetime.now(timezone.utc).isoformat()
-    
+
     conto = {
         "id": str(uuid.uuid4()),
         "codice": codice,
@@ -577,10 +577,10 @@ async def create_conto(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
         "created_at": now,
         "updated_at": now
     }
-    
+
     try:
         await db[COLLECTION_PIANO_CONTI].insert_one(conto.copy())
-    except DuplicateKeyError:
+    except DuplicateRecordError:
         # La ricerca preventiva migliora il messaggio nel caso ordinario, ma
         # due richieste simultanee possono entrambe arrivare all'insert. Il
         # vincolo univoco su ``codice`` resta la fonte atomica di verita'.
@@ -589,7 +589,7 @@ async def create_conto(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
             detail=f"Conto con codice {codice} gia' esistente",
         )
     conto.pop("_id", None)
-    
+
     return {"success": True, "conto": conto}
 
 
@@ -598,23 +598,23 @@ async def create_conto(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
 async def update_conto(conto_id: str, data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     """Aggiorna un conto esistente."""
     db = Database.get_db()
-    
+
     update_data = {
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
-    
+
     for field in ["nome", "categoria", "natura", "attivo"]:
         if field in data:
             update_data[field] = data[field]
-    
+
     result = await db[COLLECTION_PIANO_CONTI].update_one(
         {"id": conto_id},
         {"$set": update_data}
     )
-    
+
     if result.modified_count == 0:
         raise HTTPException(status_code=404, detail="Conto non trovato")
-    
+
     return {"success": True, "message": "Conto aggiornato"}
 
 
@@ -623,17 +623,17 @@ async def update_conto(conto_id: str, data: Dict[str, Any] = Body(...)) -> Dict[
 async def delete_conto(conto_id: str) -> Dict[str, Any]:
     """Elimina un conto (se non ha movimenti)."""
     db = Database.get_db()
-    
+
     # Verifica che non ci siano movimenti
     movimenti = await db[COLLECTION_MOVIMENTI_CONTABILI].count_documents({"conto_id": conto_id})
     if movimenti > 0:
         raise HTTPException(status_code=400, detail=f"Impossibile eliminare: il conto ha {movimenti} movimenti")
-    
+
     result = await db[COLLECTION_PIANO_CONTI].delete_one({"id": conto_id})
-    
+
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Conto non trovato")
-    
+
     return {"success": True, "message": "Conto eliminato"}
 
 
@@ -644,13 +644,13 @@ async def delete_conto(conto_id: str) -> Dict[str, Any]:
 async def get_regole_categorizzazione() -> Dict[str, Any]:
     """Ottiene le regole di categorizzazione automatica."""
     db = Database.get_db()
-    
+
     regole = await db[COLLECTION_REGOLE_CATEGORIZZAZIONE].find({}, {"_id": 0}).to_list(100)
-    
+
     # Se non esistono regole, inizializza con quelle base
     if not regole:
         regole = await inizializza_regole_base(db)
-    
+
     return {"regole": regole, "totale": len(regole)}
 
 
@@ -662,19 +662,19 @@ async def inizializza_regole_base(db) -> List[Dict[str, Any]]:
         {"tipo": "fornitore", "pattern": "ENI|EDISON", "conto_dare": "05.02.02", "conto_avere": "02.01.01", "descrizione": "Utenze gas"},
         {"tipo": "fornitore", "pattern": "TELECOM|TIM|VODAFONE|WIND", "conto_dare": "05.02.01", "conto_avere": "02.01.01", "descrizione": "Telefonia"},
         {"tipo": "fornitore", "pattern": "ALIMENTARI|FOOD|DISTRIBUZIONE", "conto_dare": "05.01.01", "conto_avere": "02.01.01", "descrizione": "Acquisto merci"},
-        
+
         # Regole per tipo documento
         {"tipo": "tipo_documento", "pattern": "TD01", "conto_dare": "05.01.01", "conto_avere": "02.01.01", "descrizione": "Fattura acquisto merce"},
         {"tipo": "tipo_documento", "pattern": "TD04", "conto_dare": "02.01.01", "conto_avere": "05.01.01", "descrizione": "Nota di credito ricevuta"},
-        
+
         # Regole per pagamento
         {"tipo": "pagamento", "pattern": "contanti|cassa", "conto_dare": "02.01.01", "conto_avere": "01.01.01", "descrizione": "Pagamento in contanti"},
         {"tipo": "pagamento", "pattern": "banca|bonifico", "conto_dare": "02.01.01", "conto_avere": "01.01.02", "descrizione": "Pagamento tramite banca"},
     ]
-    
+
     now = datetime.now(timezone.utc).isoformat()
     regole = []
-    
+
     for r in regole_base:
         regola = {
             "id": str(uuid.uuid4()),
@@ -687,16 +687,13 @@ async def inizializza_regole_base(db) -> List[Dict[str, Any]]:
             "created_at": now
         }
         regole.append(regola)
-    
+
     if regole:
-        # PyMongo/Motor aggiunge ``_id`` agli stessi dizionari passati a
-        # insert_many. Se restituiamo quella lista a FastAPI, l'ObjectId non e
-        # serializzabile e la prima apertura del Piano dei Conti termina in
-        # HTTP 500. Persistiamo copie e manteniamo la risposta JSON pura.
+        # Persistiamo copie e manteniamo la risposta JSON separata dai record.
         await db[COLLECTION_REGOLE_CATEGORIZZAZIONE].insert_many(
             [regola.copy() for regola in regole]
         )
-    
+
     return regole
 
 
@@ -705,7 +702,7 @@ async def inizializza_regole_base(db) -> List[Dict[str, Any]]:
 async def create_regola(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     """Crea una nuova regola di categorizzazione."""
     db = Database.get_db()
-    
+
     now = datetime.now(timezone.utc).isoformat()
     regola = {
         "id": str(uuid.uuid4()),
@@ -717,10 +714,10 @@ async def create_regola(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
         "attiva": True,
         "created_at": now
     }
-    
+
     await db[COLLECTION_REGOLE_CATEGORIZZAZIONE].insert_one(regola.copy())
     regola.pop("_id", None)
-    
+
     return {"success": True, "regola": regola}
 
 
@@ -759,25 +756,25 @@ async def registra_fattura_contabilita(data: Dict[str, Any] = Body(...)) -> Dict
 
 async def determina_conti_fattura(db, fattura: Dict[str, Any]) -> Dict[str, Dict[str, str]]:
     """Determina i conti da utilizzare per una fattura basandosi sulle regole."""
-    
+
     # Conti di default
     conti = {
         "costo": {"codice": "05.01.01", "nome": "Acquisto merci"},
         "iva_credito": {"codice": "01.04.01", "nome": "IVA a credito"},
         "debito_fornitore": {"codice": "02.01.01", "nome": "Debiti v/fornitori"}
     }
-    
+
     # Cerca regole applicabili
     fornitore = (fattura.get("supplier_name") or fattura.get("cedente_denominazione") or "").upper()
-    
+
     regole = await db[COLLECTION_REGOLE_CATEGORIZZAZIONE].find({"attiva": True}).to_list(100)
-    
+
     import re
     for regola in regole:
         pattern = regola.get("pattern", "")
         if not pattern:
             continue
-        
+
         # Applica regola per fornitore
         if regola.get("tipo") == "fornitore":
             if re.search(pattern, fornitore, re.IGNORECASE):
@@ -786,7 +783,7 @@ async def determina_conti_fattura(db, fattura: Dict[str, Any]) -> Dict[str, Dict
                     if conto:
                         conti["costo"] = {"codice": conto["codice"], "nome": conto["nome"]}
                 break
-    
+
     return conti
 
 
@@ -794,20 +791,20 @@ async def aggiorna_saldo_conto(db, codice_conto: str, importo: float, tipo: str)
     """Aggiorna il saldo di un conto."""
     # Per conti ATTIVO e COSTI: DARE aumenta, AVERE diminuisce
     # Per conti PASSIVO, PN e RICAVI: AVERE aumenta, DARE diminuisce
-    
+
     conto = await db[COLLECTION_PIANO_CONTI].find_one({"codice": codice_conto})
     if not conto:
         return
-    
+
     categoria = conto.get("categoria", "")
     saldo_attuale = float(conto.get("saldo", 0))
-    
+
     # Determina se aumentare o diminuire
     if categoria in ["attivo", "costi"]:
         nuovo_saldo = saldo_attuale + importo if tipo == "dare" else saldo_attuale - importo
     else:  # passivo, patrimonio_netto, ricavi
         nuovo_saldo = saldo_attuale + importo if tipo == "avere" else saldo_attuale - importo
-    
+
     await db[COLLECTION_PIANO_CONTI].update_one(
         {"codice": codice_conto},
         {"$set": {"saldo": nuovo_saldo, "updated_at": datetime.now(timezone.utc).isoformat()}}
@@ -1120,7 +1117,7 @@ async def get_movimenti_contabili(
 ) -> Dict[str, Any]:
     """Ottiene i movimenti contabili."""
     db = Database.get_db()
-    
+
     query = {}
     if data_da:
         query["data_documento"] = {"$gte": data_da}
@@ -1129,13 +1126,13 @@ async def get_movimenti_contabili(
             query["data_documento"]["$lte"] = data_a
         else:
             query["data_documento"] = {"$lte": data_a}
-    
+
     movimenti = await db[COLLECTION_MOVIMENTI_CONTABILI].find(
         query, {"_id": 0}
     ).sort("data_registrazione", -1).skip(skip).limit(limit).to_list(limit)
-    
+
     totale = await db[COLLECTION_MOVIMENTI_CONTABILI].count_documents(query)
-    
+
     return {
         "movimenti": movimenti,
         "totale": totale,

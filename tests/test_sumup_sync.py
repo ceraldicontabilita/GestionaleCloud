@@ -8,7 +8,7 @@ serale al giorno dopo.
 import asyncio
 
 import pytest
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.services import sumup_sync
 from app.services.sumup_sync import (
@@ -28,7 +28,7 @@ def _run(awaitable):
 
 
 def _db():
-    return AsyncMongoMockClient()["sumup_sync_test"]
+    return MemorySheetsClient()["sumup_sync_test"]
 
 
 def _tx(tid, importo, *, timestamp="2026-08-06T10:00:00Z", tipo="PAYMENT",

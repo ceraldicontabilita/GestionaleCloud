@@ -1,6 +1,6 @@
 import asyncio
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.services.f24_bank_reconciliation import riconcilia_f24_tributi_banca
 
@@ -29,7 +29,7 @@ def _f24():
 
 def test_servizio_associa_solo_il_codice_tributo_pagato_e_marca_la_prova_bancaria():
     async def scenario():
-        db = AsyncMongoMockClient()["f24_service_partial"]
+        db = MemorySheetsClient()["f24_service_partial"]
         await db.f24_unificato.insert_one(_f24())
         await db.estratto_conto_movimenti.insert_one({
             "id": "mov-2001",
@@ -63,7 +63,7 @@ def test_servizio_associa_solo_il_codice_tributo_pagato_e_marca_la_prova_bancari
 
 def test_servizio_non_sceglie_fra_due_f24_compatibili():
     async def scenario():
-        db = AsyncMongoMockClient()["f24_service_ambiguous"]
+        db = MemorySheetsClient()["f24_service_ambiguous"]
         uno = _f24()
         due = {**_f24(), "id": "f24-altro"}
         await db.f24_unificato.insert_many([uno, due])

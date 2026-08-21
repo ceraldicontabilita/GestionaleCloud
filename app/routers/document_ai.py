@@ -29,7 +29,7 @@ async def extract_from_file(
 ):
     """
     Estrae dati strutturati da un documento caricato.
-    
+
     - **file**: File PDF o immagine
     - **document_type**: Tipo documento (f24, busta_paga, estratto_conto, fattura, generico). Auto-detect se non specificato.
     - **model**: Modello LLM (default: gpt-4o)
@@ -38,13 +38,13 @@ async def extract_from_file(
     try:
         # Leggi file
         content = await file.read()
-        
+
         if len(content) == 0:
             raise HTTPException(status_code=400, detail="File vuoto")
-        
+
         if len(content) > 20 * 1024 * 1024:  # 20MB max
             raise HTTPException(status_code=400, detail="File troppo grande (max 20MB)")
-        
+
         # Processa documento
         result = await process_document(
             file_data=content,
@@ -52,11 +52,11 @@ async def extract_from_file(
             document_type=document_type,
             model=model
         )
-        
+
         # Salva nel DB se richiesto
         if save_to_db and result.get("structured_data", {}).get("success"):
             db = await get_database()
-            
+
             # Controllo duplicati per filename: sulla CANONICA e sull'archivio
             # legacy extracted_documents (P1 §5.8, in dismissione)
             existing = await db["documenti_classificati"].find_one(
@@ -90,7 +90,7 @@ async def extract_from_file(
             }
             await db["documenti_classificati"].insert_one(doc)
             result["saved_to_db"] = True
-            
+
             # Salva ANCHE nelle collection del gestionale
             from app.services.document_data_saver import save_extracted_data_to_gestionale
             source_info = {"filename": file.filename, "upload_type": "manual"}
@@ -98,9 +98,9 @@ async def extract_from_file(
                 db, result.get("structured_data", {}), source_info
             )
             result["gestionale_save"] = gestionale_result
-        
+
         return result
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -124,7 +124,7 @@ async def extract_from_base64(
             document_type=document_type,
             model=model
         )
-        
+
         if save_to_db and result.get("structured_data", {}).get("success"):
             db = await get_database()
             # Scrive nella CANONICA documenti_classificati (P1 §5.8), come /extract
@@ -143,9 +143,9 @@ async def extract_from_base64(
             }
             await db["documenti_classificati"].insert_one(doc)
             result["saved_to_db"] = True
-        
+
         return result
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -158,13 +158,13 @@ async def extract_text_only(file: UploadFile = File(...)):
     """
     try:
         content = await file.read()
-        
+
         if not file.filename.lower().endswith(".pdf"):
             raise HTTPException(status_code=400, detail="Solo file PDF supportati")
-        
+
         text = extract_text_from_pdf(content)
         doc_type = detect_document_type(text)
-        
+
         return {
             "filename": file.filename,
             "text": text,
@@ -172,7 +172,7 @@ async def extract_text_only(file: UploadFile = File(...)):
             "detected_type": doc_type,
             "ocr_used": "OCR" in text
         }
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -207,7 +207,7 @@ async def get_extracted_documents(
 ):
     """
     Recupera i documenti estratti salvati nel database.
-    
+
     - **include_file**: Se True, include il file_base64 (più pesante)
     """
     db = await get_database()
@@ -247,7 +247,7 @@ async def get_extracted_documents(
     documents.sort(key=lambda d: d.get("created_at") or "", reverse=True)
     documents = documents[skip: skip + limit]
 
-    # Converti ObjectId in stringa
+    # Espone l'identificativo stabile del registro come stringa.
     for doc in documents:
         if "_id" in doc:
             doc["id"] = str(doc["_id"])
@@ -274,22 +274,14 @@ async def delete_extracted_document(doc_id: str):
     """
     Elimina un documento estratto dal database.
     """
-    from bson import ObjectId
-    from bson.errors import InvalidId
-    
     db = await get_database()
-
-    try:
-        oid = ObjectId(doc_id)
-    except (InvalidId, TypeError):
-        raise HTTPException(status_code=400, detail="ID documento non valido")
 
     # P1 §5.8: il documento può stare nella canonica (nuovi upload) o nella
     # legacy extracted_documents (archivio pre-migrazione)
     result = await db["documenti_classificati"].delete_one(
-        {"_id": oid, "fonte": "upload_ai"})
+        {"_id": doc_id, "fonte": "upload_ai"})
     if result.deleted_count == 0:
-        result = await db["extracted_documents"].delete_one({"_id": oid})
+        result = await db["extracted_documents"].delete_one({"_id": doc_id})
 
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Documento non trovato")
@@ -307,21 +299,18 @@ async def process_classified_email(
     Legge il PDF da documents_classified e estrae i dati.
     """
     db = await get_database()
-    
+
     # Trova il documento classificato
-    from bson import ObjectId
-    from bson.errors import InvalidId
-    try:
-        doc = await db["documenti_classificati"].find_one({"_id": ObjectId(email_id)})
-    except Exception:
-        doc = await db["documenti_classificati"].find_one({"msg_id": email_id})
-    
+    doc = await db["documenti_classificati"].find_one({"$or": [
+        {"_id": email_id}, {"msg_id": email_id},
+    ]})
+
     if not doc:
         raise HTTPException(status_code=404, detail="Documento non trovato")
-    
+
     if "pdf_base64" not in doc:
         raise HTTPException(status_code=400, detail="Documento senza PDF allegato")
-    
+
     # Determina tipo documento dalla categoria email
     category_to_type = {
         "f24": "f24",
@@ -330,7 +319,7 @@ async def process_classified_email(
         "fatture": "fattura"
     }
     doc_type = category_to_type.get(doc.get("tipo"), None)
-    
+
     # Processa
     result = await process_document_from_base64(
         base64_data=doc["pdf_base64"],
@@ -338,7 +327,7 @@ async def process_classified_email(
         document_type=doc_type,
         model=model
     )
-    
+
     # Aggiorna il documento classificato con i dati estratti
     if result.get("structured_data", {}).get("success"):
         await db["documenti_classificati"].update_one(
@@ -353,7 +342,7 @@ async def process_classified_email(
             }
         )
         result["document_updated"] = True
-    
+
     return result
 
 
@@ -367,21 +356,21 @@ async def process_all_classified_documents(
     """
     Processa TUTTI i documenti classificati usando Document AI.
     Estrae dati strutturati e li salva nelle collection del gestionale.
-    
+
     - **process_all**: Se True, riprocessa anche documenti già processati
     - **document_types**: Tipi da processare separati da virgola (es: "f24,buste_paga")
     - **save_to_gestionale**: Se True, salva i dati estratti nelle collection appropriate
     - **model**: Modello LLM da usare
     """
     from app.services.email_classifier_service import process_documents_with_ai
-    
+
     db = await get_database()
-    
+
     # Parse document_types se fornito
     types_list = None
     if document_types:
         types_list = [t.strip() for t in document_types.split(",")]
-    
+
     result = await process_documents_with_ai(
         db=db,
         process_all=process_all,
@@ -389,7 +378,7 @@ async def process_all_classified_documents(
         save_to_gestionale=save_to_gestionale,
         model=model
     )
-    
+
     return result
 
 
@@ -399,7 +388,7 @@ async def get_classified_documents_stats():
     Statistiche sui documenti classificati e il loro stato di processamento AI.
     """
     db = await get_database()
-    
+
     # Pipeline aggregazione. Esclude gli upload manuali (fonte upload_ai,
     # già processati per definizione): queste stats descrivono lo stato di
     # processamento della pipeline email — stessi numeri di prima del
@@ -418,15 +407,15 @@ async def get_classified_documents_stats():
         },
         {"$sort": {"totale": -1}}
     ]
-    
+
     stats = await db["documenti_classificati"].aggregate(pipeline).to_list(length=100)
-    
+
     # Totali
     totale_docs = sum(s["totale"] for s in stats)
     totale_con_pdf = sum(s["con_pdf"] for s in stats)
     totale_processati = sum(s["ai_processati"] for s in stats)
     totale_da_processare = sum(s["ai_non_processati"] for s in stats)
-    
+
     return {
         "totali": {
             "documenti": totale_docs,
@@ -447,9 +436,9 @@ async def reprocess_and_save_all(
     Utile dopo aggiornamenti ai prompt o per riassociare i dati.
     """
     from app.services.email_classifier_service import process_documents_with_ai
-    
+
     db = await get_database()
-    
+
     result = await process_documents_with_ai(
         db=db,
         process_all=True,  # Riprocessa tutto
@@ -457,5 +446,5 @@ async def reprocess_and_save_all(
         save_to_gestionale=True,
         model=model
     )
-    
+
     return result

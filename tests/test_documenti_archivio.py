@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 from fastapi import HTTPException
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.routers import documenti
 
@@ -12,7 +12,7 @@ def _run(awaitable):
 
 
 def _db(monkeypatch):
-    db = AsyncMongoMockClient()["archivio_documenti_test"]
+    db = MemorySheetsClient()["archivio_documenti_test"]
     monkeypatch.setattr(documenti.Database, "get_db", staticmethod(lambda: db))
     return db
 

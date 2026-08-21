@@ -1,6 +1,6 @@
 import asyncio
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.routers import partite_aperte_api, riconciliazione_stats_api
 
@@ -16,7 +16,7 @@ def _run_stats(db, monkeypatch, anno=None):
 
 def test_dashboard_relazionale_legge_stato_live_e_quadra(monkeypatch):
     async def prepara():
-        db = AsyncMongoMockClient()["test_dashboard_relazionale"]
+        db = MemorySheetsClient()["test_dashboard_relazionale"]
         await db["estratto_conto_movimenti"].insert_many([
             {"id": "m1", "importo": 100, "riconciliato": True},
             {"id": "m2", "importo": -30, "riconciliato": False},
@@ -55,7 +55,7 @@ def test_dashboard_relazionale_legge_stato_live_e_quadra(monkeypatch):
 
 def test_dashboard_relazionale_diminuisce_i_pendenti_dopo_riconciliazione(monkeypatch):
     async def prepara():
-        db = AsyncMongoMockClient()["test_transizione_dashboard_relazionale"]
+        db = MemorySheetsClient()["test_transizione_dashboard_relazionale"]
         await db["estratto_conto_movimenti"].insert_many([
             {"id": "m1", "importo": -10, "riconciliato": False},
             {"id": "m2", "importo": -20, "riconciliato": False},
@@ -80,7 +80,7 @@ def test_dashboard_relazionale_diminuisce_i_pendenti_dopo_riconciliazione(monkey
 
 def test_dashboard_relazionale_filtra_anno_sulle_fonti_contabili(monkeypatch):
     async def prepara():
-        db = AsyncMongoMockClient()["test_dashboard_relazionale_anno"]
+        db = MemorySheetsClient()["test_dashboard_relazionale_anno"]
         await db["estratto_conto_movimenti"].insert_many([
             {"id": "m25", "data": "31/12/2025", "importo": -25, "riconciliato": True},
             {"id": "m26", "data": "2026-01-02", "importo": -26, "riconciliato": False},
@@ -118,7 +118,7 @@ def test_dashboard_relazionale_filtra_anno_sulle_fonti_contabili(monkeypatch):
 
 def test_partite_aperte_stats_e_lista_rispettano_anno(monkeypatch):
     async def scenario():
-        db = AsyncMongoMockClient()["test_partite_anno"]
+        db = MemorySheetsClient()["test_partite_anno"]
         await db["partite_aperte"].insert_many([
             {
                 "id": "pa25",

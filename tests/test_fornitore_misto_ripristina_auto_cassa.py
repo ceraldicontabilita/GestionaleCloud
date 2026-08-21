@@ -1,13 +1,13 @@
 import asyncio
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.routers.prima_nota_module import manutenzione
 
 
 def test_fornitore_misto_rimette_provvisoria_solo_auto_cassa(monkeypatch):
     async def scenario():
-        db = AsyncMongoMockClient()["test_fornitore_misto"]
+        db = MemorySheetsClient()["test_fornitore_misto"]
         monkeypatch.setattr(
             manutenzione.Database, "get_db", staticmethod(lambda: db)
         )

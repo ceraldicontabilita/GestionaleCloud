@@ -9,7 +9,7 @@ un fake DB che cede realmente il controllo all'event loop
 (await asyncio.sleep(0)) a ogni operazione — senza questo yield, due
 coroutine lanciate con asyncio.gather in puro Python non si
 intreccerebbero mai e il test non proverebbe nulla sull'interleaving
-reale che avviene con Motor/pymongo su una connessione di rete vera."""
+reale che avviene con archivio Sheets su una connessione di rete vera."""
 import asyncio
 
 from app.services import scritture_contabili as sc
@@ -50,7 +50,7 @@ class _RaceyColl:
         return _Result()
 
     async def find_one_and_update(self, query, update, upsert=False):
-        # UN SOLO yield per l'intera operazione: in MongoDB reale
+        # UN SOLO yield per l'intera operazione: in registro Sheets concorrente
         # find_one_and_update è atomica (un solo round-trip), quindi qui il
         # controllo e l'eventuale scrittura avvengono senza cedere di nuovo
         # il controllo — è esattamente il comportamento che il fix in

@@ -14,7 +14,6 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from bson import ObjectId
 
 from app.database import Database
 from app.db_collections import (
@@ -215,11 +214,7 @@ def _candidate(category: str, doc: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _target_query(target_id: str) -> Dict[str, Any]:
-    choices: List[Dict[str, Any]] = [{"id": target_id}]
-    try:
-        choices.append({"_id": ObjectId(target_id)})
-    except Exception:
-        choices.append({"_id": target_id})
+    choices: List[Dict[str, Any]] = [{"id": target_id}, {"_id": target_id}]
     return {"$or": choices}
 
 

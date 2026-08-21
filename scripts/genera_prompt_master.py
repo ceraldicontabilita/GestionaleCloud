@@ -180,9 +180,8 @@ movimento bancario e scrittura contabile sono prove distinte. Possono condivider
 
 La destinazione definitiva usa **Google Drive per gli originali** e **Google
 Sheets/Excel collegato a Drive per registri, progressivi, indici e relazioni**.
-Il nuovo runtime non deve richiedere MongoDB. Le variabili Mongo elencate
-nell'appendice sono soltanto compatibilità transitoria dell'applicazione attuale:
-non sono ammesse nella ricostruzione e si rimuovono dopo cutover provato.
+Il runtime usa esclusivamente Drive/Sheets. Non esistono backend alternativi,
+fallback legacy o variabili di configurazione per archivi diversi.
 
 Workbook: `Ceraldi ERP - Registro dati`.
 
@@ -445,9 +444,8 @@ endpoint morto.
 ## 22. Configurazione e variabili
 
 Tutte le variabili riconosciute dal codice sono elencate nell'appendice generata.
-Il nome non implica che la variabile sia ammessa nella destinazione: quelle
-Mongo/DR sono `transitorie-vietate-nel-target`. I valori sensibili non sono mai
-stampati. Ogni variabile nuova richiede descrizione, tipo, default sicuro,
+I valori sensibili non sono mai stampati. Ogni variabile nuova richiede
+descrizione, tipo, default sicuro,
 ambiente, proprietario, rotazione se segreta, test startup e rimozione quando
 non ha più consumer.
 
@@ -467,8 +465,7 @@ CI verde, commit servito in `/api/health`, controllo live di dati e job.
 
 Gate Drive-only: tutti i fogli presenti e versionati; conteggi, digest, somme e
 relazioni equivalenti; scrittura/lettura riuscite; ricostruzione completa da
-Drive in ambiente isolato; rollback provato; produzione `DATA_BACKEND=sheets`;
-solo allora disabilitare e rimuovere MongoDB e le sue variabili.
+Drive in ambiente isolato; rollback provato; nessun backend alternativo attivo.
 
 ## 24. Procedura di sviluppo e pubblicazione
 

@@ -1,7 +1,7 @@
 import asyncio
 from datetime import datetime, timezone
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.services import paypal_api_sync as sync_module
 from app.routers import paypal_api as api_router
@@ -49,7 +49,7 @@ def test_extract_conserva_stato_evento_riferimento_banca_e_balance_affecting():
 
 def test_sync_scarto_riga_tecnica_duplicata_non_balance_affecting(monkeypatch):
     async def scenario():
-        db = AsyncMongoMockClient().db
+        db = MemorySheetsClient().db
 
         async def fake_sync_period(start, end):
             return [_api_row("Y"), _api_row("N")]
@@ -71,7 +71,7 @@ def test_sync_scarto_riga_tecnica_duplicata_non_balance_affecting(monkeypatch):
 
 def test_riconcilia_intervallo_che_attraversa_due_anni(monkeypatch):
     async def scenario():
-        db = AsyncMongoMockClient().db
+        db = MemorySheetsClient().db
         anni = []
         link_calls = []
 

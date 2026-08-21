@@ -14,7 +14,7 @@ il trasferimento cassa->banca del giorno di vendita, sommando i circuiti.
 import asyncio
 
 import pytest
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.routers.bank import estratto_conto as modulo
 from app.services.scritture_contabili import (
@@ -65,7 +65,7 @@ def _run(awaitable):
 
 @pytest.fixture
 def db(monkeypatch):
-    finto = AsyncMongoMockClient()["accrediti_numia_test"]
+    finto = MemorySheetsClient()["accrediti_numia_test"]
     monkeypatch.setattr(modulo.Database, "get_db", staticmethod(lambda: finto))
     return finto
 

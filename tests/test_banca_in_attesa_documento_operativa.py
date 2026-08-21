@@ -1,6 +1,6 @@
 import asyncio
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.routers.prima_nota_module import banca
 
@@ -10,7 +10,7 @@ def _run(awaitable):
 
 
 def test_coda_esclude_gia_collegati_e_mostra_i_candidati(monkeypatch):
-    db = AsyncMongoMockClient()["banca_in_attesa_documento_test"]
+    db = MemorySheetsClient()["banca_in_attesa_documento_test"]
     monkeypatch.setattr(banca.Database, "get_db", staticmethod(lambda: db))
     _run(db["estratto_conto_movimenti"].insert_many([
         {

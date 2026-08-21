@@ -2,7 +2,7 @@
 Motore AI della Chat Intelligente — agent loop con strumenti tipizzati.
 
 Architettura (da app/knowledge/chat_kb.json, "implementazione_chat_intelligente"):
-- il modello AI NON ha accesso diretto a MongoDB: interroga i dati solo
+- il modello AI NON ha accesso diretto a Drive/Sheets: interroga i dati solo
   tramite gli strumenti definiti qui, con parametri validati, proiezioni
   di campo limitate e tetti sul numero di risultati;
 - ogni chiamata a uno strumento viene registrata in chat_tool_calls;
@@ -42,7 +42,7 @@ ANTHROPIC_DEFAULT_MODEL = "claude-sonnet-5"
 def is_configured() -> bool:
     """True se un provider AI e' configurato nell'ambiente.
 
-    La chiave cifrata in MongoDB viene verificata da ``api_key_configurata``.
+    La chiave cifrata in Drive/Sheets viene verificata da ``api_key_configurata``.
     """
     return bool(
         os.getenv("OPENAI_API_KEY", "").strip()

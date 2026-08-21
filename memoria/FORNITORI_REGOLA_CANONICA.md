@@ -57,7 +57,7 @@ correlati) indipendentemente dal backend selezionato.
 
 ## Migrazione
 
-Durante la transizione i record possono essere letti dal backend MongoDB, ma
+Durante la transizione i record possono essere letti dal backend Drive/Sheets, ma
 la destinazione è il foglio `Fornitori`. La migrazione conserva gli ID canonici
 e viene verificata per conteggio, identità fiscale, relazioni e capacità di
 ricostruzione prima del cutover.

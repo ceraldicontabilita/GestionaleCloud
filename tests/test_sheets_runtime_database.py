@@ -100,12 +100,14 @@ def test_runtime_espone_stato_sistema_per_checkpoint_import():
     assert runtime["sistema_stato"] is not None
 
 
-def test_runtime_espone_il_client_in_memoria_e_non_una_collection():
+def test_runtime_espone_la_transazione_atomica_del_registro():
     runtime = SheetsRuntimeDatabase("test", {"GOOGLE_SHEETS_LEDGER_ID": "SHEET-1"})
-
-    assert runtime.client is runtime._client
-    with pytest.raises(NotImplementedError):
-        run(runtime.client.start_session())
+    runtime.loading = True
+    async def scenario():
+        async with runtime.transaction():
+            await runtime["sistema_stato"].insert_one({"id": "atomic-1"})
+    run(scenario())
+    assert run(runtime["sistema_stato"].count_documents({"id": "atomic-1"})) == 1
 
 
 def test_runtime_memorizza_il_foglio_scoperto_per_le_scritture(monkeypatch):
