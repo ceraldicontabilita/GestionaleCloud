@@ -14,12 +14,14 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.database import Collections
+from app.db_collections import COLL_ENTITY_RELATIONS
 from app.routers.bonifici_module.classification import (
     classifica_destinazione_dipendente,
 )
 from app.services.bonifici_pdf_ingest import arricchisci_nomi_salari_da_cedolini
 from app.services.identity_matching import nome_presente_nel_testo, nome_tokens
 from app.services.accounting_relation_writers import record_salary_reconciliation
+from app.services.entity_relations import relation_key
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +87,26 @@ def _importo_residuo(riga: Dict[str, Any]) -> float:
     atteso = _importo_atteso(riga)
     pagato = round(abs(float(riga.get("importo_bonifico") or 0)), 2)
     return round(max(0.0, atteso - pagato), 2)
+
+
+def _movimento_ids_stipendio(riga: Dict[str, Any]) -> List[str]:
+    """Riferimenti bancari espliciti, deduplicati e nell'ordine sorgente."""
+    result: List[str] = []
+    values = riga.get("movimenti_bancari_ids") or []
+    if not isinstance(values, list):
+        values = [values]
+    for value in values:
+        text = str(value or "").strip()
+        if text and text not in result:
+            result.append(text)
+    for field in (
+        "estratto_conto_id", "movimento_estratto_conto_id",
+        "movimento_bancario_id", "bank_movement_id",
+    ):
+        text = str(riga.get(field) or "").strip()
+        if text and text not in result:
+            result.append(text)
+    return result
 
 
 def _anagrafica_fallback_da_salari(righe: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -168,12 +190,150 @@ def _candidati_univoci(
     return candidati
 
 
+async def recupera_relazioni_stipendi_mancanti(
+    db,
+    *,
+    anno: Optional[int] = None,
+    stipendio_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Ricrea soltanto relazioni stipendio gia' dimostrate dalle sorgenti.
+
+    La presenza dell'ID bancario sulla riga salario e' necessaria ma non
+    sufficiente: il movimento deve esistere, essere un'uscita e superare le
+    stesse verifiche di identita', periodo/data e residuo dell'associazione
+    ordinaria. La funzione non modifica salari o movimenti ed e' idempotente.
+    """
+    filtro: Dict[str, Any] = {}
+    if anno:
+        filtro["anno"] = int(anno)
+    if stipendio_id:
+        filtro["id"] = stipendio_id
+    righe = await db["prima_nota_salari"].find(
+        filtro, {"_id": 0}
+    ).to_list(5000)
+
+    result: Dict[str, Any] = {
+        "righe_esaminate": len(righe),
+        "riferimenti_bancari_esaminati": 0,
+        "relazioni_recuperate": 0,
+        "relazioni_gia_presenti": 0,
+        "riferimenti_non_verificati": 0,
+        "errori": 0,
+    }
+    for riga in righe:
+        salary_id = str(riga.get("id") or "").strip()
+        movement_ids = _movimento_ids_stipendio(riga)
+        if not salary_id or not movement_ids:
+            continue
+
+        movimenti: List[Dict[str, Any]] = []
+        for movement_id in movement_ids:
+            result["riferimenti_bancari_esaminati"] += 1
+            movimento = await db["estratto_conto_movimenti"].find_one(
+                {"id": movement_id}, {"_id": 0}
+            )
+            if not movimento:
+                result["riferimenti_non_verificati"] += 1
+                continue
+            try:
+                importo_grezzo = float(movimento.get("importo") or 0)
+            except (TypeError, ValueError):
+                result["riferimenti_non_verificati"] += 1
+                continue
+            if importo_grezzo == 0 or not (
+                movimento.get("tipo") == "uscita" or importo_grezzo < 0
+            ):
+                result["riferimenti_non_verificati"] += 1
+                continue
+            movimenti.append(movimento)
+
+        riga_verifica = dict(riga)
+        riga_verifica["riconciliato"] = False
+        riga_verifica["importo_bonifico"] = 0.0
+        for movimento in sorted(
+            movimenti,
+            key=lambda item: (
+                str(item.get("data") or ""), str(item.get("id") or "")
+            ),
+        ):
+            importo = round(abs(float(movimento.get("importo") or 0)), 2)
+            descrizione = (
+                movimento.get("descrizione_originale")
+                or movimento.get("descrizione")
+                or ""
+            )
+            candidati = _candidati_univoci(
+                descrizione,
+                importo,
+                [riga_verifica],
+                data_movimento=movimento.get("data") or "",
+                dipendente_id=riga.get("dipendente_id"),
+                allow_partial=True,
+            )
+            if len(candidati) != 1:
+                result["riferimenti_non_verificati"] += 1
+                continue
+
+            movement_id = str(movimento.get("id") or "").strip()
+            key = relation_key(
+                "bank_movement", movement_id, "allocates_salary_payment",
+                "salary_entry", salary_id,
+            )
+            try:
+                existing = await db[COLL_ENTITY_RELATIONS].find_one({
+                    "relation_key": key,
+                    "status": {"$ne": "revoked"},
+                })
+                await record_salary_reconciliation(
+                    db,
+                    salary_entry=riga,
+                    movement=movimento,
+                    amount=importo,
+                    employee_name=_nome_riga_stipendio(riga),
+                )
+                if existing:
+                    result["relazioni_gia_presenti"] += 1
+                else:
+                    result["relazioni_recuperate"] += 1
+            except Exception:
+                result["errori"] += 1
+                logger.exception(
+                    "Errore recupero relazione stipendio %s / movimento %s",
+                    salary_id,
+                    movement_id,
+                )
+                continue
+
+            pagato = round(
+                float(riga_verifica.get("importo_bonifico") or 0) + importo, 2
+            )
+            riga_verifica["importo_bonifico"] = pagato
+            riga_verifica["riconciliato"] = (
+                abs(_importo_atteso(riga_verifica) - pagato) <= 0.009
+            )
+    return result
+
+
 async def associa_bonifici_stipendi(
     db, stipendio_id: Optional[str] = None, anno: Optional[int] = None,
     allow_partial: bool = True,
 ) -> Dict[str, Any]:
     """Riconcilia solo match bancari certi e univoci."""
     nomi_arricchiti = await arricchisci_nomi_salari_da_cedolini(db)
+    try:
+        recupero_relazioni = await recupera_relazioni_stipendi_mancanti(
+            db, anno=anno, stipendio_id=stipendio_id,
+        )
+    except Exception:
+        logger.exception("Errore generale nel recupero relazioni stipendio")
+        recupero_relazioni = {
+            "righe_esaminate": 0,
+            "riferimenti_bancari_esaminati": 0,
+            "relazioni_recuperate": 0,
+            "relazioni_gia_presenti": 0,
+            "riferimenti_non_verificati": 0,
+            "errori": 1,
+        }
     filtro: Dict[str, Any] = {"riconciliato": {"$ne": True}}
     if stipendio_id:
         filtro["id"] = stipendio_id
@@ -337,6 +497,7 @@ async def associa_bonifici_stipendi(
         "righe_pendenti_esaminate": len(righe),
         "nomi_arricchiti_da_cedolini": nomi_arricchiti,
         "match_ambigui_ignorati": ambigui,
+        "recupero_relazioni": recupero_relazioni,
         "dettaglio": dettaglio,
     }
 
@@ -350,17 +511,7 @@ async def riconciliazione_salario_verificata(db, riga: Dict[str, Any]) -> bool:
     if atteso <= 0 or abs(atteso - importo_registrato) > 0.009:
         return False
 
-    movimento_ids: List[str] = []
-    for value in riga.get("movimenti_bancari_ids") or []:
-        if value and value not in movimento_ids:
-            movimento_ids.append(value)
-    for key in (
-        "estratto_conto_id", "movimento_estratto_conto_id",
-        "movimento_bancario_id", "bank_movement_id",
-    ):
-        value = riga.get(key)
-        if value and value not in movimento_ids:
-            movimento_ids.append(value)
+    movimento_ids = _movimento_ids_stipendio(riga)
     if not movimento_ids:
         return False
 

@@ -248,13 +248,38 @@ def _first(document: Dict[str, Any], names: Iterable[str]) -> Any:
     return ""
 
 
+def sheet_cell_value(value: Any) -> Any:
+    """Converte un valore di indice in una cella scalare accettata da Sheets.
+
+    Il payload completo resta in ``payload_json``. Le colonne di indice devono
+    invece contenere soltanto stringhe, numeri o booleani: passare un ``dict``
+    (come ``entity_relations.source``) produce un errore HTTP 400 e impedisce
+    la persistenza dell'intera relazione.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, (str, bool, int, float)):
+        return value
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return str(value)
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        default=_json_default,
+        separators=(",", ":"),
+    )
+
+
 def row_for_document(document: Dict[str, Any], progressivo: str) -> List[Any]:
     payload = {key: value for key, value in document.items() if key != "_id"}
     raw_date = _first(document, ("data", "invoice_date", "data_documento", "date", "created_at"))
     data_value = str(raw_date)[:10] if raw_date else ""
     anno = document.get("anno") or (data_value[:4] if re.match(r"^\d{4}", data_value) else "")
     amount = _first(document, ("importo", "total_amount", "importo_totale", "amount", "lordo"))
-    return [
+    index_values = [
         progressivo,
         canonical_id(document),
         operation_id(document),
@@ -270,7 +295,8 @@ def row_for_document(document: Dict[str, Any], progressivo: str) -> List[Any]:
         _first(document, ("source", "fonte")),
         _first(document, ("file_hash", "pdf_hash", "fingerprint")),
         str(_first(document, ("updated_at", "created_at"))),
-    ] + payload_chunks(payload)
+    ]
+    return [sheet_cell_value(value) for value in index_values] + payload_chunks(payload)
 
 
 def next_progressive(prefix: str, values: Iterable[str]) -> int:
