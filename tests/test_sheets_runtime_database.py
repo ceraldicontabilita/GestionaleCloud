@@ -1,8 +1,10 @@
 import asyncio
+import os
 
 import pytest
 
 from app.services import sheets_runtime_database as runtime_module
+from app.services.pos_disk_table import PosDiskTable
 from app.services.sheets_runtime_database import SheetsRuntimeDatabase
 
 
@@ -127,6 +129,64 @@ def test_runtime_espone_stato_sistema_per_checkpoint_import():
     runtime = SheetsRuntimeDatabase("test", {"GOOGLE_SHEETS_LEDGER_ID": "SHEET-1"})
 
     assert runtime["sistema_stato"] is not None
+
+
+def test_runtime_pos_usa_cache_sqlite_effimera_e_indicizzata():
+    runtime = SheetsRuntimeDatabase(
+        "test", {"GOOGLE_SHEETS_LEDGER_ID": "SHEET-1"},
+    )
+    runtime.loading = True
+    table = runtime["pos_terminal_transactions"]
+
+    assert isinstance(table, PosDiskTable)
+    assert os.path.exists(table.path)
+
+    first = [
+        {
+            "_id": f"row-{index}",
+            "id": f"POS-{index}",
+            "operation_key": f"op-{index}",
+            "transaction_key": f"tx-{index}",
+            "legacy_transaction_key": f"legacy-{index}",
+            "data": "2026-08-05" if index < 1500 else "2026-08-06",
+            "importo": 1.0,
+            "stato": "APPROVED",
+        }
+        for index in range(2000)
+    ]
+    run(table.hydrate_documents(first[:1000], copy_documents=False))
+    run(table.hydrate_documents(
+        first[1000:], copy_documents=False, append=True,
+    ))
+
+    assert run(table.estimated_document_count()) == 2000
+    matched = run(table.find(
+        {
+            "$or": [
+                {"operation_key": {"$in": ["op-12", "op-1900"]}},
+                {"transaction_key": {"$in": ["tx-800"]}},
+            ],
+        },
+        {"_id": 0, "id": 1, "data": 1},
+    ).to_list(None))
+    assert {item["id"] for item in matched} == {
+        "POS-12", "POS-800", "POS-1900",
+    }
+    assert run(table.count_documents({"data": {"$in": ["2026-08-05"]}})) == 1500
+
+    run(table.insert_many([{
+        "id": "POS-2000", "operation_key": "op-2000",
+        "transaction_key": "tx-2000", "data": "2026-08-06",
+        "importo": 2.0, "stato": "APPROVED",
+    }]))
+    run(table.update_one(
+        {"id": "POS-2000"}, {"$set": {"importo": 3.0}},
+    ))
+    assert run(table.find_one({"id": "POS-2000"}))["importo"] == 3.0
+
+    path = table.path
+    runtime.close()
+    assert not os.path.exists(path)
 
 
 def test_runtime_espone_la_transazione_atomica_del_registro():

@@ -23,7 +23,8 @@ from app.services.google_sheets_ledger import (
     sync_collection_streaming,
     upsert_documents,
 )
-from app.services.sheets_document_store import SheetDatabase
+from app.services.pos_disk_table import PosDiskTable
+from app.services.sheets_document_store import SheetDatabase, SheetTable
 
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,11 @@ class SheetsRuntimeDatabase(SheetDatabase):
             ContextVar(f"sheets_write_batch_{id(self)}", default=None)
         )
         self.hydration_result: dict[str, Any] | None = None
+
+    def __getitem__(self, name: str) -> SheetTable:
+        if name == "pos_terminal_transactions":
+            return self._tables.setdefault(name, PosDiskTable(self, name))
+        return super().__getitem__(name)
 
     async def hydrate(self) -> dict[str, Any]:
         provision = not bool(
