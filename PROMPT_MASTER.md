@@ -283,6 +283,14 @@ derivarlo dal numero. Il PDF verbale è sempre associabile manualmente. Stati:
 `documento salvato`, `da verificare`, `attesa pagamento`, `attesa quietanza`,
 `pagato documentale`, `riconciliato banca`.
 
+La riconciliazione non prende mai il primo risultato restituito da PayPal,
+Gmail o banca: deduplica per ID esterno e applica il collegamento solo quando
+resta un candidato univoco con riferimento strutturato e importo esatto al
+centesimo. Ricevuta/quietanza e movimento bancario sono due attese separate.
+La sola banca mantiene `attesa quietanza`; la sola ricevuta produce `pagato
+documentale`; soltanto entrambe producono `riconciliato banca`. Il job continua
+a cercare la prova mancante anche dopo aver collegato la prima.
+
 ## 16. Contabilità, bilancio e controlli
 
 Piano conti CEE ufficiale, registrazioni Dare/Avere bilanciate, libro giornale
