@@ -52,6 +52,10 @@ def _sessione(session) -> Dict[str, Any]:
     return {"session": session} if session is not None else {}
 
 from app.services import conti_pos
+from app.services.expectation_policy import (
+    expectation_evidence_fields,
+    expectation_fields,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -653,6 +657,7 @@ async def registra_chiusura_pos_reale(
             "circuito": circuito,
             "quota_pos_fonte": "chiusura_manuale",
             "trasferimento_id": trasferimento_id,
+            "operation_id": trasferimento_id,
             "updated_at": now,
             "status": "active",
             "deleted": False,
@@ -675,6 +680,7 @@ async def registra_chiusura_pos_reale(
                 "circuito": circuito,
                 "quota_pos_fonte": "chiusura_manuale",
                 "trasferimento_id": trasferimento_id,
+                "operation_id": trasferimento_id,
             }
             if corr_id:
                 nuovo_movimento_cassa["corrispettivo_id"] = corr_id
@@ -706,6 +712,7 @@ async def registra_chiusura_pos_reale(
             "circuito": circuito,
             "quota_pos_fonte": "chiusura_manuale",
             "trasferimento_id": trasferimento_id,
+            "operation_id": trasferimento_id,
             "giorno_vendita": data,
             "riconciliato": quadrato,
             # Credito POS atteso finche' l'accredito reale non lo conferma:
@@ -716,6 +723,12 @@ async def registra_chiusura_pos_reale(
             "updated_at": now,
             "status": "active",
             "deleted": False,
+            **expectation_fields(
+                expectation_type="pos_bank_credit",
+                owner="pos_terminal",
+                source_fact_id=chiusura_id,
+                satisfied=quadrato,
+            ),
         }
         if corr_id:
             banca_fields["corrispettivo_id"] = corr_id
@@ -739,9 +752,15 @@ async def registra_chiusura_pos_reale(
                 "circuito": circuito,
                 "quota_pos_fonte": "chiusura_manuale",
                 "trasferimento_id": trasferimento_id,
+                "operation_id": trasferimento_id,
                 "giorno_vendita": data,
                 "riconciliato": False,
                 "in_transito": True,
+                **expectation_fields(
+                    expectation_type="pos_bank_credit",
+                    owner="pos_terminal",
+                    source_fact_id=chiusura_id,
+                ),
             }
             if corr_id:
                 nuovo_movimento_banca["corrispettivo_id"] = corr_id
@@ -930,6 +949,7 @@ async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Opti
             "quota_pos_fonte": "terminale_reale",
             "gestore": circuito, "circuito": circuito.upper(),
             "trasferimento_id": trasferimento_id,
+            "operation_id": trasferimento_id,
             "anno": anno, "mese": mese,
         }
         cassa_pos_id, _ = await _scrivi_se_assente(db, "cassa", cassa_query, {
@@ -954,6 +974,11 @@ async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Opti
             "giorno_vendita": data,
             "riconciliato": False,
             "in_transito": True,
+            **expectation_fields(
+                expectation_type="pos_bank_credit",
+                owner="pos_terminal",
+                source_fact_id=f"pos-close:{circuito}:{data}",
+            ),
         })
         scritti[circuito] = {"cassa": cassa_pos_id, "banca": banca_pos_id}
         esito["prima_nota_cassa_uscita_pos_id"] = cassa_pos_id
@@ -1012,6 +1037,20 @@ async def riconcilia_accredito_pos_ec(db, mov_ec: Dict[str, Any]) -> bool:
     if not trasferimento:
         # nessun trasferimento per quel giorno (corrispettivo mancante?):
         # l'EC resta non riconciliato e il collaudo lo evidenzierà
+        await db["estratto_conto_movimenti"].update_one(
+            {"id": ec_id},
+            {"$set": {
+                "riconciliato": False,
+                "importato_prima_nota": False,
+                "stato_riconciliazione": "da_verificare",
+                "tipo_riconciliazione": "evidenza_senza_attesa",
+                "dettagli_riconciliazione": {
+                    "giorno_vendita": giorno_vendita,
+                    "importo_accreditato": importo,
+                    "attese_candidate": 0,
+                },
+            }},
+        )
         return False
 
     # Lo scheduler riesamina le righe aperte. Sommare il valore gia'
@@ -1043,7 +1082,11 @@ async def riconcilia_accredito_pos_ec(db, mov_ec: Dict[str, Any]) -> bool:
         {"$set": {"accreditato_ec": accreditato,
                   "riconciliato": bool(riconciliato),
                   "tipo_riconciliazione": "accredito_pos_ec" if riconciliato else None,
-                  "data_ultimo_accredito": data_acc},
+                  "data_ultimo_accredito": data_acc,
+                  **expectation_evidence_fields(
+                      satisfied=riconciliato,
+                      evidence_ids=estratto_conto_ids,
+                  )},
          "$addToSet": {"estratto_conto_ids": ec_id}})
 
     dettagli = {"prima_nota_id": trasferimento["id"],
@@ -1072,16 +1115,18 @@ async def riconcilia_accredito_pos_ec(db, mov_ec: Dict[str, Any]) -> bool:
 
 def query_accrediti_pos_ec(anno: int) -> Dict[str, Any]:
     """Filtro canonico per riconoscere gli accrediti POS nell'estratto conto."""
+    from app.services.pos_evidence import ACCREDITO_POS_BANK_QUERY_PATTERN
+
     return {
         "data": {"$regex": f"^{anno}"},
         "tipo": {"$ne": "uscita"},
         "$or": [
             {"descrizione_originale": {
-                "$regex": "(?:INC\\.POS|INCAS\\. TRAMITE P\\.O\\.S).*NUMIA.*DEL [0-9]{2}/[0-9]{2}/[0-9]{2}",
+                "$regex": ACCREDITO_POS_BANK_QUERY_PATTERN,
                 "$options": "i",
             }},
             {"descrizione": {
-                "$regex": "(?:INC\\.POS|INCAS\\. TRAMITE P\\.O\\.S).*NUMIA.*DEL [0-9]{2}/[0-9]{2}/[0-9]{2}",
+                "$regex": ACCREDITO_POS_BANK_QUERY_PATTERN,
                 "$options": "i",
             }},
         ],
@@ -1140,7 +1185,14 @@ def raggruppa_accrediti_pos_per_giorno(
 
 
 async def recupera_pos_storico_da_estratto(db, anno: int) -> Dict[str, Any]:
-    """Popola Numia da EC solo quando non esiste la chiusura serale manuale."""
+    """Ricollega le prove EC alle attese POS gia' create dalla fonte POS.
+
+    Nome mantenuto per compatibilita' con router e job esistenti. La regola
+    definitiva e' pero' l'opposto del vecchio backfill: l'estratto conto e'
+    un'evidenza futura e non puo' creare la chiusura del terminale, il credito
+    verso il gestore o la relativa aspettativa bancaria. Se l'attesa manca,
+    le righe EC restano visibili ``DA_VERIFICARE``.
+    """
     movimenti = await _leggi_tutti(
         db["estratto_conto_movimenti"].find(query_accrediti_pos_ec(anno), {"_id": 0}),
         20000,
@@ -1151,51 +1203,56 @@ async def recupera_pos_storico_da_estratto(db, anno: int) -> Dict[str, Any]:
         for movimento in movimenti
         if movimento.get("id")
     }
-    creati = aggiornati = saltati_manuali = riconciliati = 0
+    riconciliati = senza_attesa = attese_ambigue = 0
     dettagli = []
     for giorno, evidenza in sorted(gruppi.items()):
-        filtro = {"data": giorno, **filtro_gestore_pos(conti_pos.NUMIA)}
-        precedente = await db["chiusure_pos_manuali"].find_one(filtro, {"_id": 0})
-        if precedente and not precedente.get("recupero_storico_estratto"):
-            saltati_manuali += 1
+        candidati = await _leggi_tutti(db["prima_nota_banca"].find({
+            "source": "trasferimento_pos",
+            "$and": [
+                {"$or": [{"giorno_vendita": giorno}, {"data": giorno}]},
+                filtro_gestore_pos(conti_pos.NUMIA),
+            ],
+            "status": {"$nin": ["deleted", "archived"]},
+        }), 3)
+        if len(candidati) != 1:
+            stato = (
+                "evidenza_senza_attesa" if not candidati
+                else "attese_pos_ambigue"
+            )
+            senza_attesa += int(not candidati)
+            attese_ambigue += int(len(candidati) > 1)
+            await db["estratto_conto_movimenti"].update_many(
+                {"id": {"$in": evidenza["estratto_conto_ids"]}},
+                {"$set": {
+                    "riconciliato": False,
+                    "importato_prima_nota": False,
+                    "stato_riconciliazione": "da_verificare",
+                    "tipo_riconciliazione": stato,
+                    "dettagli_riconciliazione": {
+                        "giorno_vendita": giorno,
+                        "importo_accreditato": evidenza["totale"],
+                        "attese_candidate": len(candidati),
+                    },
+                }},
+            )
+            dettagli.append({"data": giorno, **evidenza, "action": stato})
             continue
-        esito = await registra_chiusura_pos_reale(
-            db,
-            giorno,
-            evidenza["totale"],
-            gestore=conti_pos.NUMIA,
-            fonte=FONTE_EXCEL,
-            note="Recupero storico dagli accrediti POS dell'estratto conto",
-            actor={"sub": "system-pos-bank-backfill"},
-        )
-        await db["chiusure_pos_manuali"].update_one(
-            filtro,
-            {"$set": {
-                "recupero_storico_estratto": True,
-                "estratto_conto_ids": evidenza["estratto_conto_ids"],
-            }},
-        )
-        # Il primo passaggio dell'import puo' avere incontrato l'accredito
-        # prima che esistesse la riga giornaliera attesa. Ora che il totale
-        # unico del giorno vendita e' stato creato, ricolleghiamo subito tutte
-        # le sue componenti bancarie (BNCMT/AMEX/INTER e relativi PDV). Senza
-        # questo secondo passaggio la riga compariva come "attesa POS" ma
-        # restava aperta fino allo scheduler successivo.
+
+        # L'attesa esiste gia': le componenti BNCMT/AMEX/INTER/PGBNT la
+        # soddisfano come un unico totale del giorno vendita.
         for estratto_id in evidenza["estratto_conto_ids"]:
             movimento = movimenti_per_id.get(str(estratto_id))
             if movimento and await riconcilia_accredito_pos_ec(db, movimento):
                 riconciliati += 1
-        if precedente:
-            aggiornati += int(esito.get("action") != "noop")
-        else:
-            creati += 1
-        dettagli.append({"data": giorno, **evidenza, "action": esito.get("action")})
+        dettagli.append({"data": giorno, **evidenza, "action": "ricollegata"})
     return {
         "anno": anno,
         "giorni_bancari": len(gruppi),
-        "creati": creati,
-        "aggiornati": aggiornati,
-        "saltati_per_chiusura_manuale": saltati_manuali,
+        "creati": 0,
+        "aggiornati": 0,
+        "saltati_per_chiusura_manuale": 0,
+        "giorni_senza_attesa": senza_attesa,
+        "giorni_con_attese_ambigue": attese_ambigue,
         "componenti_bancarie_ricollegate": riconciliati,
         "dettagli": dettagli,
     }
@@ -1218,7 +1275,7 @@ async def bonifica_accrediti_pos_numia(
 
     La bonifica e' idempotente e conservativa:
 
-    * ricostruisce, se manca, la coppia Cassa/Banca NUMIA del giorno vendita;
+    * usa soltanto la coppia Cassa/Banca creata dalla fonte POS autorevole;
     * riconcilia al centesimo il totale giornaliero con le righe EC canoniche;
     * archivia (mai elimina) le vecchie copie individuali di Prima Nota;
     * salva prima una fotografia nella collezione di audit;

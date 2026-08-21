@@ -2,7 +2,7 @@
 
 <!-- gestionalecloud-doc
 status: current
-reviewed_at: 2026-08-20
+reviewed_at: 2026-08-21
 storage_architecture: drive-only
 -->
 
@@ -68,6 +68,11 @@ comandi. Ogni pagina deve aiutare a capire subito:
 | Da verificare | arancio | Mancano dati o vi sono più candidati. |
 | Errore | rosso | Il flusso non può proseguire senza correzione. |
 | Informativo | grigio/blu | Non richiede un'azione immediata. |
+
+Gli stati di processo sono obbligatoriamente distinti. `ATTESO`,
+`DA_VERIFICARE`, `IN_ELABORAZIONE` ed `ERRORE` sono aperti; `SODDISFATTO`,
+`NON_APPLICABILE` e `SUPERATO` sono terminali positivi. La UI non mostra un
+processo come chiuso finché una sua attesa obbligatoria è aperta.
 
 Non usare il colore come unica informazione: ogni badge deve avere testo
 esplicito. `Attesa quietanza` è lo stato documentale corretto per i verbali;

@@ -1222,10 +1222,10 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
         except Exception as e:
             logger.error(f"Errore sync generico estratto conto -> prima nota: {e}")
 
-    # Recupero storico richiesto dall'utente: dopo avere salvato tutte le
-    # righe, somma i circuiti NUMIA dello stesso giorno vendita (causale DEL)
-    # e popola il POS provvisorio solo se non esiste gia' il totale manuale.
-    # L'XML RT non partecipa mai a questa scrittura.
+    # Dopo avere salvato tutte le righe, somma le componenti NUMIA dello stesso
+    # giorno vendita (causale DEL) e prova a soddisfare l'attesa POS gia'
+    # generata dalla chiusura del terminale. L'estratto conto e' una prova:
+    # non crea mai la chiusura o un credito POS mancante.
     if fonte_ufficiale and records_to_insert:
         try:
             from app.services.scritture_contabili import recupera_pos_storico_da_estratto
@@ -1240,7 +1240,7 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
             ]
             pos_storico = {"anni": esiti_pos}
         except Exception as e:
-            logger.error(f"Errore recupero storico POS da estratto conto: {e}")
+            logger.error(f"Errore riconciliazione POS da estratto conto: {e}")
 
     # ── EVENTO: pubblica sul bus unico per matching automatico ──
     try:

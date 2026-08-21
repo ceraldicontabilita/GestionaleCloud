@@ -20,11 +20,11 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 
 ## Riepilogo
 
-- Correnti: **34**
+- Correnti: **35**
 - Riferimento: **25**
 - Generati: **5**
 - Storici: **3**
-- Totale: **67**
+- Totale: **68**
 
 ## Elenco completo
 
@@ -52,6 +52,7 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 | `docs/PIANO_OPERATIVO_GESTIONALE.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/PROMPT_CEDOLINI_NETTO_DRIVE_SALARI.md` | `current` | Autorità operativa corrente |
 | `docs/PROMPT_GESTIONALE_MITTENTI_TRIBUTI_DICHIARAZIONI_PARTENOPAY.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `docs/REGOLA_FISSA_ATTESE.md` | `current` | Autorità operativa corrente |
 | `docs/obsidian-integration/ARCHITETTURA.md` | `current` | Autorità operativa corrente |
 | `docs/obsidian-integration/MAPPA_COLLEGAMENTI.md` | `current` | Autorità operativa corrente |
 | `docs/obsidian-integration/MODELLO_NOTE.md` | `current` | Autorità operativa corrente |
@@ -100,7 +101,6 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 
 ## Regola architetturale
 
-La destinazione operativa è Drive/Sheets: originali in Google Drive e registri
-in Google Sheets/Excel collegato a Drive. legacy DB è stato rimosso e non è più
-supportato: tutte le procedure di verifica e migrazione devono usare esclusivamente
-Drive/Sheets; i documenti che indicavano legacy DB come database primario sono storici.
+Drive/Sheets è l'unico archivio operativo: originali in Google Drive e registri
+in Google Sheets/Excel collegato a Drive. Non esistono fallback di persistenza;
+i documenti storici che descrivono altre architetture non sono autorità.

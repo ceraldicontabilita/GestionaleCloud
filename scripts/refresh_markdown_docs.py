@@ -35,6 +35,7 @@ CURRENT = {
     "docs/MCP_GESTIONALE_RUNBOOK.md",
     "docs/MCP_GESTIONALE_SPEC.md",
     "docs/PROMPT_CEDOLINI_NETTO_DRIVE_SALARI.md",
+    "docs/REGOLA_FISSA_ATTESE.md",
     "docs/rt-locale-drive.md",
     "frontend/README.md",
     "memoria/DISASTER_RECOVERY_DRIVE.md",
@@ -74,6 +75,7 @@ def tracked_markdown() -> list[str]:
     paths.discard("memoria/MAPPA_COLLEZIONI.md")
     paths.add("memoria/DISASTER_RECOVERY_DRIVE.md")
     paths.add("docs/MARKDOWN_INVENTORY.md")
+    paths.add("docs/REGOLA_FISSA_ATTESE.md")
     return sorted(path for path in paths if (ROOT / path).exists() or path == "docs/MARKDOWN_INVENTORY.md")
 
 

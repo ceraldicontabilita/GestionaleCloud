@@ -2,7 +2,7 @@
 
 <!-- gestionalecloud-doc
 status: current
-reviewed_at: 2026-08-20
+reviewed_at: 2026-08-21
 storage_architecture: drive-only
 -->
 
@@ -11,6 +11,8 @@ Aggiornato il 20/08/2026 sul codice di `main` del repository canonico
 
 Prima di ogni intervento leggere `PROMPT_MASTER.md`: è la specifica normativa
 unica. Questo file è soltanto il punto di ingresso operativo per Claude.
+Leggere e applicare anche `docs/REGOLA_FISSA_ATTESE.md` per qualsiasi flusso
+che crea obblighi, attese, prove o riconciliazioni.
 
 Questo file contiene le regole operative per chi modifica il progetto. Il
 codice corrente, i test e la configurazione effettiva di produzione hanno
@@ -43,6 +45,10 @@ precedenza sui report storici.
 2. Codice, test e configurazione live correnti.
 3. `PROMPT_MASTER.md` per tutte le regole normative e i divieti.
 4. `page_catalog.json` e mappe generate per la superficie tecnica.
+
+Una prova successiva non crea mai l'obbligo che dovrebbe dimostrare. Il fatto
+autorevole crea subito l'attesa; la prova la soddisfa o la lascia
+`DA_VERIFICARE`.
 
 I JSON in `memoria/pagine/` e `memoria/popup/` sono mappe tecniche generate:
 si aggiornano con `scripts/refresh_json_docs.py`, non a mano.

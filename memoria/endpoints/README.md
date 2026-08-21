@@ -2,12 +2,12 @@
 
 <!-- gestionalecloud-doc
 status: reference
-reviewed_at: 2026-08-20
+reviewed_at: 2026-08-21
 storage_architecture: drive-only
 -->
 
 > [!IMPORTANT]
-> Documento di riferimento del dominio. Per persistenza e cutover vale l'architettura Drive-only descritta nei documenti correnti; eventuali nomi legacy/collection restano contesto storico. legacy DB è rimosso e non va usato.
+> Documento di riferimento del dominio. Per persistenza e cutover vale l'architettura Drive-only descritta nei documenti correnti; eventuali nomi di collection restano soltanto contesto storico.
 
 > ⚠️ **Aggiornamento lug 2026**: la mappa endpoint aggiornata e rigenerabile è
 > `memoria/MAPPA_ENDPOINT_COMPLETA.md` (ogni endpoint reale con uso frontend) +

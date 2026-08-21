@@ -437,6 +437,11 @@ def test_l_accredito_e_riconosciuto_con_entrambi_i_marchi():
 
     assert riconosce("NUMIA INCAS. TRAMITE P.O.S. DEL 06/08/26") is True
     assert riconosce("NEXI INC. POS CARTE CREDIT DEL 06/08/26") is True
+    # Causali reali Banco BPM prive del vecchio prefisso descrittivo.
+    assert riconosce("NUMIA-AMEX DEL 30/03/26 PDV 3757283/00011") is True
+    assert riconosce("NUMIA-INTER DEL 30/03/26 PDV 3757283/00011") is True
+    assert riconosce("NUMIA-BNCMT DEL 30/03/26 PDV 3757283/00011") is True
+    assert riconosce("NUMIA-PGBNT DEL 12/01/26 PDV 3757283/00011") is True
 
 
 def test_le_righe_che_non_sono_accrediti_restano_escluse():
@@ -445,6 +450,7 @@ def test_le_righe_che_non_sono_accrediti_restano_escluse():
 
     assert riconosce("NEXI PAGAMENTO COMMISSIONI DEL 06/08/26") is False
     assert riconosce("FATTURA NUMIA INCAS. TRAMITE P.O.S. DEL 06/08/26") is False
+    assert riconosce("SPESA CON CARTA DI CREDITO NEXI DEL 06/08/26") is False
     assert riconosce("BONIFICO DA CLIENTE DEL 06/08/26") is False
     # Senza giorno operativo non si sa quale trasferimento chiuderebbe.
     assert riconosce("NEXI INCAS. TRAMITE P.O.S. senza giorno") is False

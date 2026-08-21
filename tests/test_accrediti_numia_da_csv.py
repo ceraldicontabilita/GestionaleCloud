@@ -31,11 +31,11 @@ RAPPORTO = "5462 - 03406 - 178800005462"
 # Le cinque righe REALI del 06/08/2026: vendite del 05/08, due PDV, tre
 # circuiti. Somma: 14.00 + 16.60 + 16.50 + 523.00 + 244.00 = 814.10.
 ACCREDITI_NUMIA = [
-    ("INCAS. TRAMITE P.O.S - NUMIA-BNCMT DEL 05/08/26 PDV 3757283/00011 CERALDI CAFFE NA", "14,00"),
-    ("INCAS. TRAMITE P.O.S - NUMIA-BNCMT DEL 05/08/26 PDV 3757283/00012 CERALDI CAFFE' NA", "16,60"),
-    ("INC.POS CARTE CREDIT - NUMIA-AMEX DEL 05/08/26 PDV 3757283/00011 CERALDI CAFFE NA", "16,50"),
-    ("INC.POS CARTE CREDIT - NUMIA-INTER DEL 05/08/26 PDV 3757283/00011 CERALDI CAFFE NA", "523,00"),
-    ("INC.POS CARTE CREDIT - NUMIA-INTER DEL 05/08/26 PDV 3757283/00012 CERALDI CAFFE' NA", "244,00"),
+    ("NUMIA-BNCMT DEL 05/08/26 PDV 3757283/00011 CERALDI CAFFE NA", "14,00"),
+    ("NUMIA-BNCMT DEL 05/08/26 PDV 3757283/00012 CERALDI CAFFE' NA", "16,60"),
+    ("NUMIA-AMEX DEL 05/08/26 PDV 3757283/00011 CERALDI CAFFE NA", "16,50"),
+    ("NUMIA-INTER DEL 05/08/26 PDV 3757283/00011 CERALDI CAFFE NA", "523,00"),
+    ("NUMIA-INTER DEL 05/08/26 PDV 3757283/00012 CERALDI CAFFE' NA", "244,00"),
 ]
 TOTALE_GIORNO = 814.10
 
@@ -139,10 +139,9 @@ def test_senza_trasferimento_l_accredito_resta_aperto_e_non_inventa_nulla(db):
     assert movimento.get("riconciliato") is not True
 
 
-def test_recupero_ufficiale_crea_un_totale_giornaliero_e_lo_riconcilia(db):
-    """Quando l'estratto ufficiale arriva prima dell'attesa POS, il secondo
-    passaggio crea una sola riga per il giorno vendita e collega tutte le
-    componenti bancarie senza aspettare lo scheduler."""
+def test_l_estratto_non_crea_l_attesa_pos_che_dovrebbe_provare(db):
+    """La banca e' evidenza futura: senza il fatto terminale non inventa il
+    credito POS, ma conserva il gruppo esatto in una coda verificabile."""
     for indice, (descrizione, importo) in enumerate(ACCREDITI_NUMIA):
         _run(db["estratto_conto_movimenti"].insert_one({
             "id": f"ec-pos-{indice}",
@@ -156,18 +155,16 @@ def test_recupero_ufficiale_crea_un_totale_giornaliero_e_lo_riconcilia(db):
     esito = _run(recupera_pos_storico_da_estratto(db, 2026))
 
     assert esito["giorni_bancari"] == 1
-    assert esito["creati"] == 1
-    assert esito["componenti_bancarie_ricollegate"] == 5
+    assert esito["creati"] == 0
+    assert esito["giorni_senza_attesa"] == 1
+    assert esito["componenti_bancarie_ricollegate"] == 0
     trasferimenti = _run(db["prima_nota_banca"].find({
         "source": "trasferimento_pos", "gestore": "numia",
     }).to_list(10))
-    assert len(trasferimenti) == 1
-    assert trasferimenti[0]["data"] == "2026-08-05"
-    assert trasferimenti[0]["importo"] == TOTALE_GIORNO
-    assert trasferimenti[0]["accreditato_ec"] == TOTALE_GIORNO
-    assert trasferimenti[0]["riconciliato"] is True
+    assert trasferimenti == []
     assert _run(db["estratto_conto_movimenti"].count_documents({
-        "riconciliato": True,
+        "tipo_riconciliazione": "evidenza_senza_attesa",
+        "stato_riconciliazione": "da_verificare",
     })) == 5
 
 

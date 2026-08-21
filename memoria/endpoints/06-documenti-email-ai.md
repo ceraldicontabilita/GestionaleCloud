@@ -2,12 +2,12 @@
 
 <!-- gestionalecloud-doc
 status: reference
-reviewed_at: 2026-08-20
+reviewed_at: 2026-08-21
 storage_architecture: drive-only
 -->
 
 > [!IMPORTANT]
-> Documento di riferimento del dominio. Per persistenza e cutover vale l'architettura Drive-only descritta nei documenti correnti; eventuali nomi legacy/collection restano contesto storico. legacy DB è rimosso e non va usato.
+> Documento di riferimento del dominio. Per persistenza e cutover vale l'architettura Drive-only descritta nei documenti correnti; eventuali nomi di collection restano soltanto contesto storico.
 
 Documentazione dei router: email_download, documenti, documenti_non_associati, documents_inbox_classify, document_ai, ai_parser, enhanced_parser, email_scanner, email_drive_sheets, import_manuale, import_templates, chat_router, learning_machine, learning_universal, learning_machine_cdc.
 

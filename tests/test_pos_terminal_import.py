@@ -163,6 +163,36 @@ def test_reimport_periodo_sovrapposto_non_duplica_operazioni(monkeypatch):
     assert count == 2
 
 
+def test_import_terminale_crea_subito_l_attesa_bancaria():
+    async def scenario():
+        db = MemorySheetsClient()["pos_expectation_test"]
+        content = (
+            "Data e ora;Codice autorizzazione;Importo;Tipo transazione;"
+            "Stato operazione;ID Transazione\n"
+            "05/08/2026 09:00:00;A1;10,00;Acquisto;Acquisto approvato;TX-A\n"
+            "05/08/2026 10:00:00;A2;20,00;Acquisto;Acquisto approvato;TX-B\n"
+        ).encode("utf-8")
+
+        await importa_pos_terminal_file(db, content, "Export_Agosto_2026.csv")
+        banca = await db["prima_nota_banca"].find_one({
+            "source": "trasferimento_pos", "giorno_vendita": "2026-08-05",
+        })
+        cassa = await db["prima_nota_cassa"].find_one({
+            "source": "corrispettivo_import", "data": "2026-08-05",
+            "tipo": "uscita",
+        })
+        return banca, cassa
+
+    banca, cassa = asyncio.run(scenario())
+    assert banca["importo"] == 30.0
+    assert banca["record_role"] == "expectation"
+    assert banca["expectation_type"] == "pos_bank_credit"
+    assert banca["expectation_owner"] == "pos_terminal"
+    assert banca["expectation_status"] == "ATTESO"
+    assert banca["source_fact_id"]
+    assert banca["operation_id"] == cassa["operation_id"]
+
+
 def test_import_pos_grande_spezza_le_scritture_in_batch_limitati(monkeypatch):
     async def scenario():
         db = MemorySheetsClient()["pos_chunk_test"]
