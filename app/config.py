@@ -18,7 +18,9 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     ENVIRONMENT: str = "production"
     # Google Drive conserva gli originali e Google Sheets i registri
-    # operativi. Non esistono backend dati alternativi.
+    # operativi. DATA_BACKEND esiste ancora come attributo per compatibilità
+    # e deve essere 'sheets' in produzione.
+    DATA_BACKEND: str = "sheets"
     SHEETS_REGISTRY_NAME: str = "GestionaleCloud"
 
     # Server
@@ -26,8 +28,28 @@ class Settings(BaseSettings):
     PORT: int = 8000
     RELOAD: bool = False
 
-    # Le riparazioni dati sono migrazioni operative, non attivita' di bootstrap.
-    # Un riavvio dell'app non deve modificare registrazioni contabili.
+    # MongoDB (DEPRECATO)
+    # Nota: MongoDB è stato rimosso come backend supportato. Le variabili
+    # qui presenti restano per retrocompatibilità locale ma non devono essere
+    # usate in produzione. In produzione il backend operativo è "sheets".
+    MONGODB_ATLAS_URI: Optional[str] = None  # DEPRECATO
+    MONGO_URL: Optional[str] = None          # DEPRECATO
+
+    # Nome logico del database (mantiene compatibilità con codice storico)
+    DB_NAME: str = "Gestionale"
+
+    # I parametri pool/timeouts relativi a MongoDB restano visibili ma non
+    # influenzano il runtime quando DATA_BACKEND='sheets'. Non usarli in
+    # produzione. (DEPRECATO)
+    MONGODB_MAX_POOL_SIZE: int = 50
+    MONGODB_MIN_POOL_SIZE: int = 0
+    MONGODB_TIMEOUT_MS: int = 5000
+    MONGODB_CONNECT_TIMEOUT_MS: int = 5000
+    MONGODB_SOCKET_TIMEOUT_MS: int = 20000
+    MONGODB_WAIT_QUEUE_TIMEOUT_MS: int = 5000
+    MONGODB_MAX_IDLE_TIME_MS: int = 120000
+
+    # Le riparazioni dati e migrazioni all'avvio restano disabilitate per default.
     RUN_STARTUP_DATA_REPAIRS: bool = False
     RUN_STARTUP_INDEX_MIGRATIONS: bool = False
     RUN_STARTUP_SEED_DATA: bool = False
@@ -364,7 +386,11 @@ class Settings(BaseSettings):
         return self.ENVIRONMENT == "production"
 
     def validate_required_secrets(self) -> dict[str, bool]:
-        """Validate required and optional secrets."""
+        """Validate required and optional secrets.
+
+        Questo runtime supporta esclusivamente Google Sheets/Drive come archive
+        operativo. Le verifiche qui sono limitate a ciò che serve per Sheets.
+        """
         return {
             'database': bool(
                 self.GOOGLE_SHEETS_LEDGER_ID or self.GOOGLE_SHEETS_LEDGER_FOLDER_ID
@@ -400,18 +426,25 @@ class Settings(BaseSettings):
             else:
                 logger.warning(f"⚠️ {msg}")
 
-        if not (
-            self.GOOGLE_SHEETS_LEDGER_ID
-            or self.GOOGLE_SHEETS_LEDGER_FOLDER_ID
-        ):
-            msg = (
-                "Configurare GOOGLE_SHEETS_LEDGER_ID oppure "
-                "GOOGLE_SHEETS_LEDGER_FOLDER_ID."
-            )
-            if fail_fast:
-                errors.append(msg)
+        backend = self.DATA_BACKEND.strip().lower()
+        # Production runtime supports only 'sheets'. Any other value is invalid.
+        if backend != "sheets":
+            errors.append("DATA_BACKEND non supportato: il runtime corrente supporta solo 'sheets' (Google Sheets/Drive). Tutti i riferimenti a 'mongodb' sono deprecati.")
+
+        # Check database configuration for Sheets. Sheets is the operational backend;
+        # absence of sheets configuration is a production error.
+        if backend == "sheets":
+            if self.GOOGLE_SHEETS_LEDGER_ID or self.GOOGLE_SHEETS_LEDGER_FOLDER_ID:
+                pass
             else:
-                logger.error(msg)
+                msg = (
+                    "DATA_BACKEND=sheets richiede GOOGLE_SHEETS_LEDGER_ID oppure "
+                    "GOOGLE_SHEETS_LEDGER_FOLDER_ID; non esiste fallback su MongoDB."
+                )
+                if fail_fast:
+                    errors.append(msg)
+                else:
+                    logger.error(msg)
 
         if self.is_production and not (self.SHEETS_REGISTRY_NAME or "").strip():
             msg = "SHEETS_REGISTRY_NAME non configurato in produzione."
