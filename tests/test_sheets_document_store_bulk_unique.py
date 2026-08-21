@@ -75,3 +75,26 @@ def test_insert_many_rispetta_indice_sparse_e_valori_annidati():
         run(table.insert_many([
             {"external": {"amount": [10, 20], "date": "2026-07-01"}},
         ]))
+
+
+def test_in_query_gestisce_valori_scalari_e_array():
+    database = SheetDatabase("test")
+    table = database["records"]
+    run(table.insert_many([
+        {"id": "one", "key": "A", "tags": ["x", "y"]},
+        {"id": "two", "key": "B", "tags": ["z"]},
+    ]))
+
+    by_key = run(
+        table.find(
+            {"key": {"$in": ["B", "C"]}}, {"_id": 0, "id": 1},
+        ).to_list(10)
+    )
+    by_tag = run(
+        table.find(
+            {"tags": {"$in": ["y"]}}, {"_id": 0, "id": 1},
+        ).to_list(10)
+    )
+
+    assert by_key == [{"id": "two"}]
+    assert by_tag == [{"id": "one"}]
