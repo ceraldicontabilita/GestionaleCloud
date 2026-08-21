@@ -52,10 +52,13 @@ const expectationLabel = expectation => {
 };
 
 export default function AttiAmministrativi() {
+  const initialSearch = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search).get('search') || ''
+    : '';
   const { anno } = useAnnoGlobale();
   const [selectedYear, setSelectedYear] = useState('');
   const [area, setArea] = useState('tutti');
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(initialSearch);
   const [reviewOnly, setReviewOnly] = useState(false);
   const [payload, setPayload] = useState({ items: [], counts: {}, total: 0, requires_review: 0, overview: {} });
   const [loading, setLoading] = useState(true);

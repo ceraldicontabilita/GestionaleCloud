@@ -1,6 +1,7 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
 
 import api from '../api';
 import DriveDocumentIndex from './DriveDocumentIndex';
@@ -25,6 +26,9 @@ const validation = {
 };
 
 describe('Indice documentale Drive', () => {
+  const renderIndex = (route = '/documenti/drive') => render(
+    <MemoryRouter initialEntries={[route]}><DriveDocumentIndex /></MemoryRouter>
+  );
   beforeEach(() => {
     vi.clearAllMocks();
     api.get.mockImplementation(url => {
@@ -41,7 +45,7 @@ describe('Indice documentale Drive', () => {
   });
 
   it('mostra la quadratura booleana e non importa dati', async () => {
-    render(<DriveDocumentIndex />);
+    renderIndex();
     expect(await screen.findByText('Verifica booleana: TUTTO VERO')).toBeInTheDocument();
     expect(screen.getByText('941')).toBeInTheDocument();
     expect(screen.getByText('1297')).toBeInTheDocument();
@@ -50,7 +54,7 @@ describe('Indice documentale Drive', () => {
   });
 
   it('naviga ai documenti F24 mantenendo distinta la prova bancaria', async () => {
-    render(<DriveDocumentIndex />);
+    renderIndex();
     await screen.findByText('Verifica booleana: TUTTO VERO');
     fireEvent.click(screen.getByRole('button', { name: /F24 e tributi/i }));
     await waitFor(() => expect(api.get).toHaveBeenCalledWith(
@@ -62,7 +66,26 @@ describe('Indice documentale Drive', () => {
 
   it('mostra un errore esplicito quando l archivio Drive non e configurato', async () => {
     api.get.mockRejectedValueOnce({ response: { data: { detail: 'Indice Drive non configurato' } } });
-    render(<DriveDocumentIndex />);
+    renderIndex();
     expect(await screen.findByRole('alert')).toHaveTextContent('Indice Drive non configurato');
+  });
+
+  it('apre una cartella cliccata come indice tabellare leggibile', async () => {
+    api.get.mockImplementation(url => {
+      if (url.endsWith('/status')) return Promise.resolve({ data: { documents: 1, validation } });
+      if (url.endsWith('/overview')) return Promise.resolve({ data: { validation } });
+      if (url.endsWith('/search')) return Promise.resolve({ data: { results: [{
+        document_id: 'DOC-A', subject: 'Pane Giuseppina', year: '2023',
+        display_title: 'Domanda Rottamazione-quater', document_type_label: 'Definizione agevolata AdeR',
+        filename: 'PNAGPP58D48F839K_R-DA-2023.pdf', summary: 'Richiesta presentata ad AdeR',
+        status: 'VERIFICATO', drive_path: 'CARTELLE ESATTORIALI/file.pdf',
+      }] } });
+      return Promise.resolve({ data: { results: [] } });
+    });
+    renderIndex('/documenti/drive?folder=CARTELLE%20ESATTORIALI');
+    expect(await screen.findByText(/Contenuto cartella:/)).toBeInTheDocument();
+    expect(await screen.findByText('Pane Giuseppina')).toBeInTheDocument();
+    expect(screen.getByText('Domanda Rottamazione-quater')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Correggi / associa' })).toBeInTheDocument();
   });
 });

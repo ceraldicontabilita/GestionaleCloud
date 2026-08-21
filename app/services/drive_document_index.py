@@ -138,6 +138,7 @@ def _parse_index_xlsx(content: bytes) -> list[dict[str, Any]]:
 
 
 def _public_record(record: dict[str, Any]) -> dict[str, Any]:
+    display = _record_display_fields(record)
     return {
         "document_id": record.get("ID documento"),
         "domain": record.get("Dominio"),
@@ -152,6 +153,64 @@ def _public_record(record: dict[str, Any]) -> dict[str, Any]:
         "source_path": record.get("Percorso nel pacchetto"),
         "status": record.get("Stato"),
         "document_number": record.get("Numero documento"),
+        **display,
+    }
+
+
+def _record_display_fields(record: dict[str, Any]) -> dict[str, Any]:
+    """Etichette operative sintetiche; non fingono dati non letti dal PDF."""
+    filename = str(record.get("Nome file") or "")
+    path = str(record.get("Percorso Drive") or "")
+    extension = _norm(record.get("Estensione")).lstrip(".")
+    searchable = f"{filename} {path} {record.get('Categoria') or ''}"
+    normalized = _norm(searchable)
+    words = re.sub(r"[_-]+", " ", normalized)
+    from app.services.personal_family_registry import match_family_person
+    person = match_family_person(searchable)
+    subject = person["display_name"] if person else (
+        "Ceraldi Group Srl" if "ceraldi group" in normalized or "04523831214" in normalized else "Da identificare"
+    )
+    if extension == "zip":
+        document_type = "Pacchetto sorgente"
+        if "archivio fiscale pulito" in words:
+            title = "Archivio fiscale verificato 2019-2026"
+        elif "partenopay" in normalized:
+            title = "Pacchetto PartenoPay completo"
+        elif "5 mittenti" in words:
+            title = "Raccolta PEC dei 5 mittenti"
+        else:
+            title = "Archivio ZIP originale"
+        summary = "Contenitore di originali: consultare i singoli atti estratti nell'indice operativo."
+    elif "r da 2023" in words or "definizione agevolata" in words:
+        document_type = "Definizione agevolata AdeR"
+        title = "Domanda Rottamazione-quater"
+        summary = "Richiesta presentata ad AdeR: attendere esito, piano/importo e successive prove di pagamento."
+    elif "verbale" in normalized or "polizia locale" in normalized:
+        document_type = "Verbale"
+        title = "Verbale Codice della strada"
+        summary = "Estrarre numero, targa, date, importi, soggetti e scadenze; il pagamento resta da provare."
+    elif "tari" in normalized or "tares" in normalized or "tarsu" in normalized:
+        document_type = "Tributo locale"
+        title = "TARI / tributo locale"
+        summary = "Estrarre contribuente, posizione, immobile, anno, importi e scadenze."
+    elif "dimission" in normalized or "unilav" in normalized:
+        document_type = "Rapporto di lavoro"
+        title = "Dimissioni / comunicazione lavoro"
+        summary = "Documento aziendale da collegare al dipendente; non prova pagamenti."
+    elif "cartelle esattoriali" in normalized or "agenzia riscossione" in normalized:
+        document_type = "Atto AdeR"
+        title = "Atto Agenzia Entrate-Riscossione"
+        summary = "Leggere numeri di cartella/avviso, contribuente, importi, stato e relazioni documentali."
+    else:
+        document_type = str(record.get("Categoria") or "Documento")
+        title = document_type
+        summary = "Metadati catalogati; aprire l'originale o la sezione associata per la lavorazione."
+    return {
+        "display_title": title,
+        "subject": subject,
+        "document_type_label": document_type,
+        "summary": summary,
+        "is_source_package": extension == "zip",
     }
 
 
@@ -305,12 +364,21 @@ def search_records(
             continue
         if status and _norm(record.get("Stato")) != _norm(status):
             continue
-        if query and query not in _norm(" ".join(str(value or "") for value in record.values())):
+        display = _record_display_fields(record)
+        if query and query not in _norm(" ".join([
+            *(str(value or "") for value in record.values()),
+            *(str(value or "") for value in display.values()),
+        ])):
             continue
         matches.append(_public_record(record))
-        if len(matches) >= limit:
-            break
-    return matches
+    matches.sort(key=lambda item: (
+        item.get("is_source_package", False),
+        _norm(item.get("subject")),
+        str(item.get("year") or "9999"),
+        _norm(item.get("document_type_label")),
+        _norm(item.get("filename")),
+    ))
+    return matches[:limit]
 
 
 def _resolve_path_sync(service, root_id: str, drive_path: str) -> dict[str, Any]:

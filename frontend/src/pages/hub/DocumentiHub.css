@@ -79,7 +79,9 @@
 .documenti-hub__drive-sync .is-spinning { animation: documenti-drive-spin 900ms linear infinite; }
 .documenti-hub__drive-total { min-width: 2.5rem; padding: .4rem .65rem; border-radius: 999px; background: #edf5ff; color: #155fa0 !important; text-align: center; font-weight: 700; }
 .documenti-hub__drive-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: .6rem; }
-.documenti-hub__drive-card { display: flex; align-items: center; gap: .65rem; min-width: 0; padding: .7rem .8rem; border-radius: 12px; background: #f6f8fa; }
+.documenti-hub__drive-card { display: flex; align-items: center; gap: .65rem; min-width: 0; padding: .7rem .8rem; border: 1px solid transparent; border-radius: 12px; background: #f6f8fa; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.documenti-hub__drive-card:hover { border-color: #60a5fa; background: #eff6ff; box-shadow: 0 5px 15px rgba(37, 99, 235, .10); }
+.documenti-hub__drive-card:focus-visible { outline: 3px solid rgba(37, 99, 235, .28); outline-offset: 2px; }
 .documenti-hub__drive-card strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .documenti-hub__drive-dot { width: .65rem; height: .65rem; flex: 0 0 .65rem; border-radius: 50%; background: #81909e; }
 .documenti-hub__drive-dot.is-pronto { background: #16865c; }

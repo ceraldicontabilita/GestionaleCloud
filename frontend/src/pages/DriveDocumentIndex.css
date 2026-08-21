@@ -24,6 +24,19 @@
 .drive-index__row-actions { display: flex; gap: 6px; }
 .drive-index__row-actions button { min-height: 34px; padding: 6px 10px; }
 .drive-index__row-actions button.is-secondary { border: 1px solid #bfdbfe; background: #eff6ff; color: #1d4ed8; }
+.drive-index__row-actions button.is-correct { border: 1px solid #fed7aa; background: #fff7ed; color: #9a3412; }
+.drive-index__folder-filter { margin-bottom: 10px; padding: 10px 12px; border-radius: 9px; background: #eff6ff; color: #1e3a8a; font-size: 13px; }
+.drive-index__table-wrap { overflow-x: auto; }
+.drive-index__table { width: 100%; min-width: 1080px; border-collapse: collapse; font-size: 12px; }
+.drive-index__table th { padding: 10px; border-bottom: 2px solid #cbd5e1; background: #f8fafc; color: #475569; text-align: left; text-transform: uppercase; }
+.drive-index__table td { max-width: 330px; padding: 11px 10px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+.drive-index__table tr:hover td { background: #f8fbff; }
+.drive-index__table tr.is-package td { background: #fafafa; color: #64748b; }
+.drive-index__table td strong, .drive-index__table td small, .drive-index__table td span { display: block; }
+.drive-index__table td strong { color: #0f172a; font-size: 13px; }
+.drive-index__table td small { max-width: 320px; margin-top: 4px; overflow: hidden; color: #64748b; text-overflow: ellipsis; white-space: nowrap; }
+.drive-index__status { display: inline-block !important; padding: 4px 7px; border-radius: 999px; background: #dcfce7; color: #166534; font-size: 10px; font-weight: 800; }
+.drive-index__status.is-package { background: #e2e8f0; color: #475569; }
 .drive-index__error { margin-top: 12px; padding: 10px 12px; border-radius: 9px; background: #fef2f2; color: #b91c1c; }
 .drive-index__empty { padding: 24px 0; color: #64748b; text-align: center; }
 .drive-index__stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }

@@ -1,5 +1,5 @@
 import React, { lazy, Suspense, useEffect, useState } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Archive, FileWarning, Search, Upload } from 'lucide-react';
 import api from '../../api';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
@@ -56,6 +56,7 @@ const getTabFromPath = pathname => {
 export default function DocumentiHub() {
   const { anno } = useAnnoGlobale();
   const location = useLocation();
+  const navigate = useNavigate();
   const initTab = getTabFromPath(location.pathname);
   const [, setHs] = useHashState({ tab: initTab });
   const activeTab = getTabFromPath(location.pathname);
@@ -131,13 +132,19 @@ export default function DocumentiHub() {
           </div>
           <div className="documenti-hub__drive-grid">
             {driveCatalog.folders.map(folder => (
-              <article className="documenti-hub__drive-card" key={folder.area}>
+              <button
+                type="button"
+                className="documenti-hub__drive-card"
+                key={folder.area}
+                onClick={() => navigate(`/documenti/drive?folder=${encodeURIComponent(folder.label)}`)}
+                aria-label={`Apri indice della cartella ${folder.label}`}
+              >
                 <span className={`documenti-hub__drive-dot is-${folder.status}`} aria-hidden="true" />
                 <div>
                   <strong>{folder.label}</strong>
-                  <small>{folder.mode === 'automatico' ? 'Parser disponibile' : 'Archivio catalogato'}</small>
+                  <small>{folder.mode === 'automatico' ? 'Verde · dati estratti dal parser' : 'Blu · archivio da consultare'}</small>
                 </div>
-              </article>
+              </button>
             ))}
           </div>
         </section>

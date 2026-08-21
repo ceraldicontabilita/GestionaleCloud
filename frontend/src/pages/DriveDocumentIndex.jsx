@@ -3,6 +3,7 @@ import {
   BadgeCheck, Database, ExternalLink, FileCheck2, FileText,
   LoaderCircle, ReceiptText, Search, ShieldCheck, X,
 } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../api';
 import './DriveDocumentIndex.css';
 
@@ -27,8 +28,11 @@ const CHECK_LABELS = {
 const euro = value => new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(value || 0);
 
 export default function DriveDocumentIndex() {
-  const [activeTab, setActiveTab] = useState('overview');
-  const [query, setQuery] = useState('');
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const folderQuery = searchParams.get('folder') || '';
+  const [activeTab, setActiveTab] = useState(folderQuery ? 'documents' : 'overview');
+  const [query, setQuery] = useState(folderQuery);
   const [year, setYear] = useState('');
   const [taxCode, setTaxCode] = useState('');
   const [status, setStatus] = useState(null);
@@ -123,6 +127,13 @@ export default function DriveDocumentIndex() {
         {opening === document.document_id ? <LoaderCircle className="is-spinning" size={16} /> : <ExternalLink size={16} />}
         Apri originale
       </button>
+      <button
+        type="button"
+        className="is-correct"
+        onClick={() => navigate(`/documenti/atti?search=${encodeURIComponent(document.document_number || document.filename || '')}`)}
+      >
+        Correggi / associa
+      </button>
     </div>
   );
 
@@ -195,17 +206,23 @@ export default function DriveDocumentIndex() {
       )}
 
       {activeTab === 'documents' && (
-        <div className="drive-index__results">
-          {results.map(document => (
-            <article key={document.document_id} className="drive-index__row">
-              <div className="drive-index__main">
-                <strong title={document.filename}>{document.filename}</strong>
-                <span>{document.domain} / {document.category || 'Documento'} / {document.year || 'anno non indicato'}</span>
-                <small title={document.drive_path}>{document.drive_path}</small>
-              </div>
-              <div className="drive-index__meta"><code>{document.sha256?.slice(0, 12)}...</code>{documentButton(document)}</div>
-            </article>
-          ))}
+        <div className="drive-index__results drive-index__table-wrap">
+          {folderQuery && <div className="drive-index__folder-filter">Contenuto cartella: <strong>{folderQuery}</strong> · verde significa parser attivo, blu solo catalogazione.</div>}
+          <table className="drive-index__table">
+            <thead><tr><th>Persona / soggetto</th><th>Anno</th><th>Atto</th><th>Informazioni utili</th><th>Stato</th><th>Azioni</th></tr></thead>
+            <tbody>
+              {results.map(document => (
+                <tr key={document.document_id} className={document.is_source_package ? 'is-package' : ''}>
+                  <td><strong>{document.subject || 'Da identificare'}</strong><small>{document.domain || 'Archivio Drive'}</small></td>
+                  <td>{document.year || '—'}</td>
+                  <td><strong>{document.display_title || document.document_type_label || 'Documento'}</strong><small title={document.filename}>{document.filename}</small></td>
+                  <td><span>{document.summary}</span><small title={document.drive_path}>{document.drive_path}</small></td>
+                  <td><span className={`drive-index__status ${document.is_source_package ? 'is-package' : ''}`}>{document.is_source_package ? 'PACCHETTO SORGENTE' : (document.status || 'CATALOGATO')}</span></td>
+                  <td>{documentButton(document)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 

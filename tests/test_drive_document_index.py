@@ -108,7 +108,29 @@ def test_parses_and_filters_document_index():
         "size_bytes": 123, "sha256": "a" * 64,
         "drive_path": r"F24\2026\quietanza.pdf", "source_zip": None,
         "source_path": None, "status": "CARICATO_UNICO", "document_number": None,
+        "display_title": "QUIETANZA", "subject": "Da identificare",
+        "document_type_label": "QUIETANZA",
+        "summary": "Metadati catalogati; aprire l'originale o la sezione associata per la lavorazione.",
+        "is_source_package": False,
     }]
+
+
+def test_indice_sintetizza_ader_per_persona_e_separa_i_pacchetti_zip():
+    records = [{
+        "ID documento": "DOC-A", "Dominio": "CARTELLE ESATTORIALI",
+        "Categoria": "AGENZIA RISCOSSIONE - PEC", "Anno": "2023",
+        "Nome file": "PNAGPP58D48F839K_R-DA-2023_MODELLO_DEFINIZIONE_AGEVOLATA.pdf",
+        "Estensione": ".pdf", "Percorso Drive": "CARTELLE ESATTORIALI/2023/file.pdf",
+    }, {
+        "ID documento": "DOC-Z", "Dominio": "PACCHETTI", "Categoria": "FISCALE",
+        "Anno": "2019", "Nome file": "CERALDI_GROUP_ARCHIVIO_FISCALE_PULITO_PER_ANNO_2019_2026.zip",
+        "Estensione": ".zip", "Percorso Drive": "00_PACCHETTI ORIGINALI VERIFICATI/FISCALE/file.zip",
+    }]
+    result = search_records(records, limit=10)
+    assert result[0]["subject"] == "Pane Giuseppina"
+    assert result[0]["display_title"] == "Domanda Rottamazione-quater"
+    assert result[1]["is_source_package"] is True
+    assert result[1]["display_title"] == "Archivio fiscale verificato 2019-2026"
 
 
 def test_rejects_workbook_without_required_headers():
