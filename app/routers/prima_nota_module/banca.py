@@ -622,7 +622,18 @@ async def movimenti_in_attesa_documento(anno: Optional[int] = None) -> Dict[str,
     db = Database.get_db()
 
     query: Dict[str, Any] = {
-        "stato_riconciliazione": "in_attesa_documento",
+        # Gli estratti gia' presenti nel registro Sheets possono essere
+        # anteriori all'introduzione di ``stato_riconciliazione``.  Erano
+        # movimenti reali e non riconciliati, ma la query precedente li
+        # nascondeva e mostrava falsamente "nessun movimento".  In coda
+        # entrano quindi anche gli stati legacy aperti; i collegamenti reali
+        # vengono comunque esclusi piu' sotto tramite i campi di evidenza.
+        "$or": [
+            {"stato_riconciliazione": "in_attesa_documento"},
+            {"stato_riconciliazione": "da_verificare"},
+            {"stato_riconciliazione": {"$in": [None, ""]}},
+            {"stato_riconciliazione": {"$exists": False}},
+        ],
         "riconciliato": {"$ne": True},
         "classificato_contabilmente": {"$ne": True},
     }

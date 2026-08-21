@@ -1038,7 +1038,19 @@ async def _sync_corrispettivi_impl(anno: int = None) -> Dict:
 
     query = {}
     if anno:
-        query["anno"] = anno
+        # Il registro Drive/Sheets contiene anche corrispettivi storici
+        # importati prima dell'introduzione del campo ``anno``.  Filtrare solo
+        # su quel campo rendeva invisibili proprio le righe valide che hanno
+        # ``data=YYYY-MM-DD`` e lasciava Prima Nota Cassa completamente vuota
+        # dopo l'idratazione del registro.  La data fiscale resta la fonte
+        # autorevole; ``anno`` e' soltanto un indice opzionale.
+        inizio = f"{int(anno)}-01-01"
+        fine = f"{int(anno)}-12-31"
+        query["$or"] = [
+            {"anno": int(anno)},
+            {"anno": {"$in": [None, ""]}, "data": {"$gte": inizio, "$lte": fine}},
+            {"anno": {"$exists": False}, "data": {"$gte": inizio, "$lte": fine}},
+        ]
 
     corrispettivi = await db["corrispettivi"].find(query, {"_id": 0}).to_list(5000)
 
