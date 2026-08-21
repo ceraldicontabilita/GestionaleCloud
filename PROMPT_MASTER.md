@@ -610,10 +610,11 @@ si rigenerano dal codice e non si correggono a mano.
 | `GOOGLE_DRIVE_ESTRATTI_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `GOOGLE_DRIVE_ESTRATTI_FOLDER_IDS` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `GOOGLE_DRIVE_FATTURE_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
+| `GOOGLE_DRIVE_INBOX_FOLDER_ID` | drive-sheets | configurazione | non dichiarato in Settings | `render_workflows/calderone.py` |
 | `GOOGLE_DRIVE_QUIETANZE_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `GOOGLE_DRIVE_SA_FILE` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `GOOGLE_DRIVE_SA_JSON` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
-| `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py`, `render.yaml` |
+| `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py`, `render.yaml`, `render_workflows/calderone.py` |
 | `GOOGLE_REDIRECT_URI` | app-runtime | configurazione | `str` / `'/api/auth/google/callback'` | `app/config.py` |
 | `GOOGLE_SERVICE_ACCOUNT_JSON_BONIFICI` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `GOOGLE_SERVICE_ACCOUNT_JSON_CEDOLINI` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
@@ -729,6 +730,7 @@ Questa tabella è l'inventario canonico degli alias di cartella. Gli ID sono con
 | `GOOGLE_DRIVE_ESTRATTI_FOLDER_ID` | `None` | `app/config.py` |
 | `GOOGLE_DRIVE_ESTRATTI_FOLDER_IDS` | `None` | `app/config.py` |
 | `GOOGLE_DRIVE_FATTURE_FOLDER_ID` | `None` | `app/config.py` |
+| `GOOGLE_DRIVE_INBOX_FOLDER_ID` | `non dichiarato` | `render_workflows/calderone.py` |
 | `GOOGLE_DRIVE_QUIETANZE_FOLDER_ID` | `None` | `app/config.py` |
 
 Gli alias senza valore vanno configurati nel secret/config store di Render. Non creare cartelle parallele per aggirare un alias mancante; risolvere e documentare la cartella canonica.
