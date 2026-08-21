@@ -48,6 +48,23 @@ non devono importare due volte lo stesso originale.
 non trasmette ancora il documento: il task resta senza scritture, spostamenti o
 cancellazioni fino al collaudo e alla conferma dell'ingestione autenticata.
 
+### Come è protetto l'import reale
+
+Il task `calderone_documenti_ingest` non parte automaticamente. Per funzionare
+devono essere vere contemporaneamente tutte queste condizioni:
+
+1. `ENABLE_RENDER_CANONICAL_INGEST=true` sul Workflow;
+2. lo stesso `RENDER_INGEST_SHARED_SECRET` sul Workflow e sul Gestionale;
+3. avvio esplicito del task con `confirm=true`;
+4. hash assente dall'indice canonico;
+5. famiglia documentale classificata con parser pronto;
+6. anteprima del Gestionale riuscita e token breve valido.
+
+Render invia prima il file all'anteprima dedicata e solo dopo, se non è un
+duplicato e non ci sono errori bloccanti, all'import canonico. Trasmette anche
+l'ID del file Drive, l'ID della cartella di provenienza e l'hash della sorgente.
+Non sposta e non cancella l'originale.
+
 ### Legenda colori delle cartelle
 
 | Colore | Significato operativo |

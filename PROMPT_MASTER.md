@@ -575,6 +575,7 @@ si rigenerano dal codice e non si correggono a mano.
 | `ENABLE_EMAIL_F24_SYNC` | feature-job | configurazione | `bool` / `True` | `app/config.py` |
 | `ENABLE_EMAIL_VERBALI_SYNC` | feature-job | configurazione | `bool` / `True` | `app/config.py` |
 | `ENABLE_GMAIL_IMAP` | feature-job | configurazione | `bool` / `True` | `app/config.py` |
+| `ENABLE_RENDER_CANONICAL_INGEST` | feature-job | configurazione | non dichiarato in Settings | `render_workflows/document_ingest.py` |
 | `ENABLE_SCHEDULER` | feature-job | configurazione | `bool` / `True` | `app/config.py`, `render.yaml` |
 | `ENABLE_SMTP_EMAIL` | feature-job | configurazione | `bool` / `False` | `app/config.py` |
 | `ENVIRONMENT` | app-runtime | configurazione | `str` / `'production'` | `app/config.py`, `app/utils/session_cookie.py`, `scripts/e2e_distruttivo_server.py` |
@@ -662,6 +663,7 @@ si rigenerano dal codice e non si correggono a mano.
 | `RELOAD` | app-runtime | configurazione | `bool` / `False` | `app/config.py` |
 | `RENDER` | app-runtime | configurazione | non dichiarato in Settings | `app/main.py`, `app/utils/session_cookie.py` |
 | `RENDER_GIT_COMMIT` | app-runtime | configurazione | non dichiarato in Settings | `app/main.py` |
+| `RENDER_INGEST_SHARED_SECRET` | app-runtime | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `render_workflows/document_ingest.py` |
 | `RENDER_SERVICE_ID` | app-runtime | configurazione | non dichiarato in Settings | `app/main.py`, `app/utils/session_cookie.py` |
 | `REQUEST_TIMEOUT_SECONDS` | app-runtime | configurazione | `int` / `300` | `app/config.py` |
 | `RT_DRIVE_INBOX` | app-runtime | configurazione | non dichiarato in Settings | `scripts/sync_rt_to_drive.py` |

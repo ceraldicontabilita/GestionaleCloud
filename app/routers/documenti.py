@@ -2857,6 +2857,40 @@ async def anteprima_upload_documento_automatico(
     )
 
 
+@router.post("/upload-auto/render/preview")
+@handle_errors
+async def anteprima_upload_documento_render(
+    file: UploadFile = File(...),
+) -> Dict[str, Any]:
+    """Ponte Render: riusa integralmente l'anteprima canonica esistente."""
+    return await anteprima_upload_documento_automatico(file=file)
+
+
+@router.post("/upload-auto/render")
+@handle_errors
+async def upload_documento_render(
+    file: UploadFile = File(...),
+    preview_token: Optional[str] = Header(None, alias="X-Document-Preview-Token"),
+    drive_file_id: Optional[str] = Header(None, alias="X-Source-Drive-File-ID"),
+    drive_parent_id: Optional[str] = Header(None, alias="X-Source-Drive-Parent-ID"),
+    source_sha256: Optional[str] = Header(None, alias="X-Source-SHA256"),
+    archive_member: Optional[str] = Header(None, alias="X-Source-Archive-Member"),
+) -> Dict[str, Any]:
+    """Ponte autenticato Render verso lo stesso upload-auto del Gestionale."""
+    from urllib.parse import unquote
+
+    file.source_context = {
+        "channel": "render_calderone",
+        "drive_file_id": drive_file_id,
+        "drive_parent_id": drive_parent_id,
+        "source_sha256": source_sha256,
+        "archive_member": unquote(archive_member or "") or None,
+    }
+    return await upload_documento_automatico(
+        file=file, preview_token=preview_token,
+    )
+
+
 @router.post("/upload-auto")
 @handle_errors
 async def upload_documento_automatico(

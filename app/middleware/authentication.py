@@ -12,12 +12,18 @@ from fastapi import Request, HTTPException
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from jose import jwt, JWTError
+import hmac
 import logging
 
 from app.config import settings
 from app.utils.session_cookie import SESSION_COOKIE_SECURE
 
 logger = logging.getLogger(__name__)
+
+RENDER_INGEST_PATHS = {
+    "/api/documenti/upload-auto/render/preview",
+    "/api/documenti/upload-auto/render",
+}
 
 # Paths that don't require authentication
 PUBLIC_PATHS = {
@@ -96,6 +102,27 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         
         # Allow OPTIONS (CORS preflight)
         if method == "OPTIONS":
+            return await call_next(request)
+
+        # Credenziale macchina-a-macchina, valida esclusivamente per il ponte
+        # documentale Render. Se manca la configurazione il canale resta chiuso.
+        if path in RENDER_INGEST_PATHS:
+            expected = (settings.RENDER_INGEST_SHARED_SECRET or "").strip()
+            supplied = request.headers.get("X-Render-Ingest-Token", "").strip()
+            if not expected:
+                return JSONResponse(
+                    status_code=503,
+                    content={"detail": "Render document ingest non configurato"},
+                )
+            if not supplied or not hmac.compare_digest(supplied, expected):
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "Credenziale Render non valida"},
+                )
+            request.state.user_id = "render-document-ingest"
+            request.state.user_email = "render-document-ingest@internal"
+            request.state.user_role = "admin"
+            request.state.auth_method = "render_shared_secret"
             return await call_next(request)
         
         # Allow public paths

@@ -116,6 +116,51 @@ def test_admin_resta_esplicito(monkeypatch):
     assert response.json()["role"] == ADMIN
 
 
+def test_ponte_render_accetta_solo_segreto_dedicato_sugli_endpoint_esatti(monkeypatch):
+    monkeypatch.setattr(settings, "RENDER_INGEST_SHARED_SECRET", "r" * 40)
+    app = FastAPI()
+    app.add_middleware(AuthenticationMiddleware)
+
+    @app.post("/api/documenti/upload-auto/render/preview")
+    async def render_preview(request: Request):
+        return {
+            "user_id": request.state.user_id,
+            "auth_method": request.state.auth_method,
+        }
+
+    client = TestClient(app)
+    assert client.post("/api/documenti/upload-auto/render/preview").status_code == 401
+    assert client.post(
+        "/api/documenti/upload-auto/render/preview",
+        headers={"X-Render-Ingest-Token": "sbagliato"},
+    ).status_code == 401
+    accepted = client.post(
+        "/api/documenti/upload-auto/render/preview",
+        headers={"X-Render-Ingest-Token": "r" * 40},
+    )
+    assert accepted.status_code == 200
+    assert accepted.json() == {
+        "user_id": "render-document-ingest",
+        "auth_method": "render_shared_secret",
+    }
+
+
+def test_ponte_render_fail_closed_se_segreto_non_configurato(monkeypatch):
+    monkeypatch.setattr(settings, "RENDER_INGEST_SHARED_SECRET", None)
+    app = FastAPI()
+    app.add_middleware(AuthenticationMiddleware)
+
+    @app.post("/api/documenti/upload-auto/render")
+    async def render_upload():
+        return {"ok": True}
+
+    response = TestClient(app).post(
+        "/api/documenti/upload-auto/render",
+        headers={"X-Render-Ingest-Token": "qualsiasi"},
+    )
+    assert response.status_code == 503
+
+
 def test_middleware_blocca_se_registro_revoche_non_disponibile(monkeypatch):
     async def _registro_non_disponibile(_db, _token):
         raise token_blacklist.TokenBlacklistUnavailable("simulato")
