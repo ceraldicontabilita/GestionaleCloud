@@ -1377,21 +1377,24 @@ async def restore_all(
     else:
         workbook = await asyncio.to_thread(_existing_workbook_sync, config)
     definitions = workbook.pop("sheet_definitions")
-    if provision:
-        rows_by_sheet = [
-            await asyncio.to_thread(
+    results = []
+    for sheet in definitions:
+        if provision:
+            rows = await asyncio.to_thread(
                 _read_sheet_rows_sync, workbook["spreadsheet_id"], sheet,
             )
-            for sheet in definitions
-        ]
-    else:
-        rows_by_sheet = await asyncio.to_thread(
-            _read_sheet_rows_batch_sync,
-            workbook["spreadsheet_id"],
-            definitions,
-        )
-    results = []
-    for sheet, rows in zip(definitions, rows_by_sheet):
+        else:
+            # Il registro runtime puo' contenere decine di migliaia di righe
+            # POS. Una sola batchGet per tutti i fogli manteneva in memoria,
+            # insieme alla cache gia ricostruita, anche tutte le risposte JSON
+            # ancora da elaborare. Leggere un foglio alla volta conserva la
+            # stessa atomicita' di ogni archivio e riduce il picco di memoria.
+            rows_for_sheet = await asyncio.to_thread(
+                _read_sheet_rows_batch_sync,
+                workbook["spreadsheet_id"],
+                (sheet,),
+            )
+            rows = rows_for_sheet[0]
         valid = 0
         errors = []
         seen_progressive = set()
@@ -1447,7 +1450,8 @@ async def restore_all(
             )
             if can_bulk_hydrate:
                 await table.hydrate_documents(
-                    payload for _identity, payload in pending_documents
+                    (payload for _identity, payload in pending_documents),
+                    copy_documents=False,
                 )
             else:
                 for identity_filter, storage_payload in pending_documents:
