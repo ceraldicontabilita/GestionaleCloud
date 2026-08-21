@@ -73,6 +73,7 @@ const groupF24Rows = rows => {
     ...group,
     debit_amount: Math.round(group.debit_amount * 100) / 100,
     credit_amount: Math.round(group.credit_amount * 100) / 100,
+    net_amount: Math.round((group.debit_amount - group.credit_amount) * 100) / 100,
     search_blob: group.rows.map(searchableText).join(' '),
   }));
 };
@@ -353,7 +354,7 @@ export default function SituazioneFiscale() {
                   <strong>Protocollo {item.protocol || 'non indicato'}</strong>
                   <span>{item.payment_date || 'Data non indicata'} · {item.rows.length} righe tributo</span>
                 </div>
-                <div className="fiscal-f24-totals"><span><small>Totale debiti</small><strong>{euro(item.debit_amount)}</strong></span><span><small>Totale crediti</small><strong>{euro(item.credit_amount)}</strong></span></div>
+                <div className="fiscal-f24-totals"><span><small>Totale debiti</small><strong>{euro(item.debit_amount)}</strong></span><span><small>Totale crediti</small><strong>{euro(item.credit_amount)}</strong></span><span><small>Saldo delega</small><strong>{euro(item.net_amount)}</strong></span></div>
                 <Badge variant="info">{String(item.payment_status || item.evidence_state || 'DOCUMENTO F24').replaceAll('_', ' ')}</Badge>
               </summary>
               <div className="fiscal-f24-sheet">
@@ -362,7 +363,7 @@ export default function SituazioneFiscale() {
                 <div className="fiscal-f24-table-wrap"><table className="fiscal-f24-table">
                   <thead><tr><th>Codice</th><th>Descrizione</th><th>Periodo</th><th>Debito</th><th>Credito</th></tr></thead>
                   <tbody>{item.rows.map((row, rowIndex) => <tr key={row.id || `${entityId}-${rowIndex}`}><td><strong>{row.tax_code || '—'}</strong></td><td>{row.description || row.section || 'Tributo F24'}</td><td>{row.reference_period || '—'}</td><td>{euro(row.debit_amount)}</td><td>{euro(row.credit_amount)}</td></tr>)}</tbody>
-                  <tfoot><tr><th colSpan="3">Totale documento</th><th>{euro(item.debit_amount)}</th><th>{euro(item.credit_amount)}</th></tr></tfoot>
+                  <tfoot><tr><th colSpan="3">Totali documento</th><th>{euro(item.debit_amount)}</th><th>{euro(item.credit_amount)}</th></tr><tr><th colSpan="3">Saldo delega (debiti − crediti)</th><th colSpan="2">{euro(item.net_amount)}</th></tr></tfoot>
                 </table></div>
                 <div className="fiscal-evidence"><strong>{item.documentary_payment_status === 'QUIETANZA_PRESENTE' ? 'Quietanza documentale presente' : 'Modello F24 presente'} · riscontro bancario da verificare</strong></div>
                 <div className="fiscal-actions"><Button size="sm" variant="secondary" disabled={!item.document_id} onClick={() => openDriveDocument(item.document_id)}>Apri PDF Drive</Button></div>
