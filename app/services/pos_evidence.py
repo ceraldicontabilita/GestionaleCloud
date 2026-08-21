@@ -4,11 +4,27 @@ import re
 
 
 _GIORNO_POS_RE = re.compile(r"DEL\s+(\d{2})/(\d{2})/(\d{2})\b", re.IGNORECASE)
+_CAUSALE_ACCREDITO_POS_PATTERN = (
+    r"(?:"
+    r"INC\s*\.\s*POS\s+CARTE\s+CREDIT"
+    r"|INCAS\s*\.\s*TRAMITE\s+P\s*\.\s*O\s*\.\s*S"
+    r"|(?:NUMIA|NEXI)\s*-\s*(?:AMEX|INTER|BNCMT|PGBNT)"
+    r")"
+)
 _CAUSALE_ACCREDITO_POS_RE = re.compile(
-    r"(?:INC\s*\.\s*POS\s+CARTE\s+CREDIT|INCAS\s*\.\s*TRAMITE\s+P\s*\.\s*O\s*\.\s*S)",
+    _CAUSALE_ACCREDITO_POS_PATTERN,
     re.IGNORECASE,
 )
-_CAUSALI_NUMIA_ESCLUSE = ("REMUNERAZIONE DCC", "COMMISSION", "FATTURA NUMIA")
+ACCREDITO_POS_BANK_QUERY_PATTERN = (
+    rf"{_CAUSALE_ACCREDITO_POS_PATTERN}.*"
+    r"DEL\s+[0-9]{2}/[0-9]{2}/[0-9]{2}\b"
+)
+_CAUSALI_NUMIA_ESCLUSE = (
+    "REMUNERAZIONE DCC",
+    "COMMISSION",
+    "FATTURA NUMIA",
+    "SPESA CON CARTA",
+)
 
 # In estratto conto lo stesso circuito compare con due marchi: NUMIA e' la
 # societa' che esegue l'accredito, NEXI il gestore del terminale. Pretendere
@@ -31,8 +47,15 @@ def _e_accredito_pos_numia_con_giorno(descrizione: str) -> bool:
     """Accetta solo un accredito reale del circuito, con giorno esplicito.
 
     Vale per entrambi i marchi con cui compare in estratto conto (NUMIA e
-    NEXI): sono lo stesso circuito, e scartarne uno lascerebbe trasferimenti
-    POS eternamente non riconciliati.
+    NEXI) e per le causali operative Banco BPM realmente osservate, anche
+    quando non hanno il prefisso storico ``INC.POS``/``INCAS. TRAMITE P.O.S``::
+
+        NUMIA-INTER DEL 30/03/26 ...
+        NUMIA-AMEX DEL 30/03/26 ...
+        NUMIA-BNCMT DEL 30/03/26 ...
+        NUMIA-PGBNT DEL 12/01/26 ...
+
+    Commissioni, fatture del gestore e spese carta restano escluse.
     """
     testo = descrizione or ""
     testo_upper = testo.upper()

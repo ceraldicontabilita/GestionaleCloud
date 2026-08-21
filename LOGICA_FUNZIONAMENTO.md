@@ -2,7 +2,7 @@
 
 <!-- gestionalecloud-doc
 status: current
-reviewed_at: 2026-08-20
+reviewed_at: 2026-08-21
 storage_architecture: drive-only
 -->
 
@@ -32,6 +32,11 @@ Prima Nota, riconciliazione, stato e prove
 
 L'automazione esegue solo operazioni deterministiche. Se più candidati sono
 plausibili, conserva il documento, mostra l'elenco e richiede una scelta.
+
+La regola trasversale obbligatoria è `docs/REGOLA_FISSA_ATTESE.md`: il fatto
+owner crea subito obblighi e attese; le evidenze future possono soltanto
+soddisfarle o lasciarle aperte. Nessun processo è chiuso se una sua attesa
+obbligatoria è ancora `ATTESO`, `DA_VERIFICARE`, `IN_ELABORAZIONE` o `ERRORE`.
 
 ## 2. Archivio Drive-only
 
@@ -161,8 +166,9 @@ Prima Nota Banca: entrata attesa "Versamento da Cassa"
 
 Le due righe condividono `operation_id`. Quando il movimento compare
 nell'estratto conto, l'entrata attesa viene riconciliata: non viene creata una
-terza registrazione. La stessa regola vale se il versamento nasce da inserimento
-manuale in Cassa o dall'import dell'estratto.
+terza registrazione. Il fatto owner è il versamento registrato in Cassa; se la
+banca arriva senza quell'attesa resta `DA_VERIFICARE` e non inventa il
+versamento mancante.
 
 ### POS e SumUp
 
@@ -172,6 +178,9 @@ manuale in Cassa o dall'import dell'estratto.
 - Commissioni e scostamenti restano componenti identificabili.
 - L'accredito riconcilia gli attesi tramite ID del gestore e composizione del
   lotto; non sostituisce o duplica i corrispettivi.
+- Numia accorpa per giorno vendita letto da `DEL gg/mm/aa` le componenti
+  `AMEX`, `INTER`, `BNCMT` e `PGBNT`; commissioni, fatture gestore e spese carta
+  restano escluse. Senza una sola attesa terminale la banca non crea il POS.
 
 ### Estratto conto
 

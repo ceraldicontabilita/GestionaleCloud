@@ -2,12 +2,12 @@
 
 <!-- gestionalecloud-doc
 status: reference
-reviewed_at: 2026-08-20
+reviewed_at: 2026-08-21
 storage_architecture: drive-only
 -->
 
 > [!IMPORTANT]
-> Documento di riferimento del dominio. Per persistenza vale l'architettura Drive/Sheets descritta nei documenti correnti; eventuali nomi di collection restano soltanto contesto storico.
+> Documento di riferimento del dominio. Per persistenza e cutover vale l'architettura Drive-only descritta nei documenti correnti; eventuali nomi di collection restano soltanto contesto storico.
 
 Documentazione dei router: `app/routers/prima_nota_module/` (prefisso `/api/prima-nota`), `app/routers/accounting/prima_nota_automation.py` (`/api/prima-nota-auto`), `app/routers/accounting/prima_nota_salari.py` (`/api/prima-nota-salari`), `app/routers/accounting/prima_nota_salari_v2.py` (`/api/prima-nota-salari-v2`), `app/routers/dati_provvisori.py` (`/api`).
 

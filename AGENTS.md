@@ -14,6 +14,8 @@ Queste istruzioni valgono per l'intero repository.
   e sincronizza `origin/main` prima di intervenire.
 - Leggi `PROMPT_MASTER.md`, `CLAUDE.md`, `PRODUCT.md`, `DESIGN.md` e
   `LOGICA_FUNZIONAMENTO.md` prima di modificare il prodotto.
+- Applica sempre `docs/REGOLA_FISSA_ATTESE.md`: il fatto owner crea obblighi e
+  attese; le prove future possono solo soddisfarli o lasciarli da verificare.
 - Per cedolini, salari e bonifici applica integralmente
   `docs/PROMPT_CEDOLINI_NETTO_DRIVE_SALARI.md`.
 - Codice, test, configurazione corrente e dati sorgente verificabili prevalgono

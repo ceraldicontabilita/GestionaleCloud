@@ -2,7 +2,7 @@
 
 <!-- gestionalecloud-doc
 status: current
-reviewed_at: 2026-08-20
+reviewed_at: 2026-08-21
 storage_architecture: drive-only
 -->
 
@@ -49,6 +49,14 @@ Documento originale
 6. Le pagine collegate devono mostrare lo stesso stato senza ricaricamenti o
    manutenzioni manuali.
 7. Drive/Sheets è l'unico archivio operativo portabile.
+
+## Motore delle attese
+
+Ogni fatto validato crea immediatamente le attese obbligatorie del proprio
+flusso. Documenti e movimenti arrivati dopo sono evidenze: soddisfano un'attesa
+esistente, non la inventano. Il processo è chiuso soltanto quando tutte le
+attese obbligatorie sono `SODDISFATTO`, `NON_APPLICABILE` o `SUPERATO`.
+Dettagli e test richiesti sono in `docs/REGOLA_FISSA_ATTESE.md`.
 
 ## Stato dell'architettura dati
 

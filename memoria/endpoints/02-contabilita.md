@@ -2,12 +2,12 @@
 
 <!-- gestionalecloud-doc
 status: reference
-reviewed_at: 2026-08-20
+reviewed_at: 2026-08-21
 storage_architecture: drive-only
 -->
 
 > [!IMPORTANT]
-> Documento di riferimento del dominio. Per persistenza vale l'architettura Drive/Sheets descritta nei documenti correnti; eventuali nomi di collection restano soltanto contesto storico.
+> Documento di riferimento del dominio. Per persistenza e cutover vale l'architettura Drive-only descritta nei documenti correnti; eventuali nomi di collection restano soltanto contesto storico.
 
 Documentazione generata dalla lettura diretta del codice (luglio 2026). Prefissi reali da `app/router_registry.py`.
 
