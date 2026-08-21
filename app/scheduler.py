@@ -1130,11 +1130,9 @@ def start_scheduler():
         'interval', minutes=30,
         id="automazioni_prima_nota",
         name="Automazioni Prima Nota: corrispettivi + provvisori + riconciliazione (ogni 30 min)",
-        # Il primo giro deve partire subito dopo che Drive/Sheets e' stato
-        # idratato. Senza ``next_run_time`` un deploy attendeva 30 minuti e,
-        # se nel frattempo il processo veniva riavviato, Cassa e Banca
-        # restavano vuote pur avendo gia' tutte le fonti nel registro.
-        next_run_time=datetime.now(timezone.utc),
+        # Non eseguire il giro completo durante lo startup: l'idratazione
+        # Drive/Sheets e le automazioni insieme superano la memoria del piano
+        # Render Starter. Il primo giro segue il normale intervallo.
         replace_existing=True,
     )
 
