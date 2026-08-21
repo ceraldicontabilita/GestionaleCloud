@@ -3011,6 +3011,15 @@ async def upload_documento_automatico(
     logger.info(f"Upload automatico: {filename} -> tipo rilevato: {tipo_rilevato}")
 
     if tipo_rilevato == "archivio_zip":
+        # Uno ZIP fiscale puo generare centinaia di versioni, pagine e prove.
+        # Il runtime Drive/Sheets sa consolidarle per collezione e scriverle in
+        # blocchi; senza questo contesto ogni singola pagina consuma una
+        # richiesta e supera rapidamente la quota Google di 60 write/minuto.
+        db = Database.get_db()
+        batch_writes = getattr(db, "batch_writes", None)
+        if callable(batch_writes):
+            async with batch_writes():
+                return await _process_zip_upload(filename, content)
         return await _process_zip_upload(filename, content)
 
     # Se non riconosciuto, salva in inbox

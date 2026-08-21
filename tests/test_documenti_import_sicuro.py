@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import io
 import zipfile
+from contextlib import asynccontextmanager
 
 import pytest
 from fastapi import HTTPException, UploadFile
@@ -177,3 +178,33 @@ def test_zip_invia_lipe_al_registro_fiscale(monkeypatch):
     assert result["imported"] == 1
     assert calls[0]["category_hint"] == "lipe"
     assert calls[0]["source_metadata"]["archive_path"].endswith("LIPE_2026.pdf")
+
+
+def test_upload_zip_usa_batch_writes_del_runtime(monkeypatch):
+    state = {"active": False, "processed": False}
+
+    class RuntimeDb:
+        @asynccontextmanager
+        async def batch_writes(self):
+            state["active"] = True
+            try:
+                yield
+            finally:
+                state["active"] = False
+
+    async def fake_process(filename, content):
+        assert filename == "archivio.zip"
+        assert content.startswith(b"PK")
+        assert state["active"] is True
+        state["processed"] = True
+        return {"success": True, "imported": 1}
+
+    monkeypatch.setattr(documenti.Database, "get_db", staticmethod(lambda: RuntimeDb()))
+    monkeypatch.setattr(documenti, "_process_zip_upload", fake_process)
+    payload = b"PK\x03\x04archivio"
+    upload = UploadFile(filename="archivio.zip", file=io.BytesIO(payload))
+
+    result = asyncio.run(documenti.upload_documento_automatico(file=upload))
+
+    assert result["success"] is True
+    assert state == {"active": False, "processed": True}
