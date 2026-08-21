@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
@@ -40,8 +40,10 @@ export default function AttiAmministrativi() {
   const [selectedYear, setSelectedYear] = useState('');
   const [area, setArea] = useState('tutti');
   const [search, setSearch] = useState('');
-  const [payload, setPayload] = useState({ items: [], counts: {}, total: 0, requires_review: 0 });
+  const [reviewOnly, setReviewOnly] = useState(false);
+  const [payload, setPayload] = useState({ items: [], counts: {}, total: 0, requires_review: 0, overview: {} });
   const [loading, setLoading] = useState(true);
+  const resultsRef = useRef(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -50,17 +52,18 @@ export default function AttiAmministrativi() {
       if (area !== 'tutti') params.area = area;
       if (selectedYear) params.anno = selectedYear;
       if (search.trim()) params.search = search.trim();
+      if (reviewOnly) params.review_only = true;
       const response = await api.get('/api/documenti/amministrativi', { params });
-      setPayload(response.data || { items: [], counts: {}, total: 0, requires_review: 0 });
+      setPayload(response.data || { items: [], counts: {}, total: 0, requires_review: 0, overview: {} });
     } catch (error) {
-      setPayload({ items: [], counts: {}, total: 0, requires_review: 0 });
+      setPayload({ items: [], counts: {}, total: 0, requires_review: 0, overview: {} });
       toast.error('Atti amministrativi non disponibili', {
         description: error.response?.data?.detail || error.message,
       });
     } finally {
       setLoading(false);
     }
-  }, [area, search, selectedYear]);
+  }, [area, reviewOnly, search, selectedYear]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -78,20 +81,38 @@ export default function AttiAmministrativi() {
   };
 
   const selectedAreaLabel = useMemo(() => AREA_LABELS[area], [area]);
+  const overview = payload.overview || {};
+  const overviewCounts = overview.counts || payload.counts || {};
+  const hasActiveFilters = area !== 'tutti' || Boolean(selectedYear) || Boolean(search.trim()) || reviewOnly;
+
+  const openSection = (nextArea, onlyReview = false) => {
+    setArea(nextArea);
+    setSelectedYear('');
+    setSearch('');
+    setReviewOnly(onlyReview);
+    window.setTimeout(() => {
+      if (typeof resultsRef.current?.scrollIntoView === 'function') {
+        resultsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 0);
+  };
+
+  const resetFilters = () => openSection('tutti', false);
+
   return (
     <div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 12, marginBottom: 16 }}>
-        <StatCard label="Atti trovati" value={payload.total || 0} accent="primary" />
-        <StatCard label="Verbali/PagoPA" value={payload.counts?.verbali || 0} accent="danger" />
-        <StatCard label="TARI" value={payload.counts?.tributi_locali || 0} accent="warning" />
-        <StatCard label="AdeR" value={payload.counts?.riscossione || 0} accent="primary" />
-        <StatCard label="Dimissioni" value={payload.counts?.personale || 0} accent="accent" />
-        <StatCard label="Da verificare" value={payload.requires_review || 0} accent="warning" />
+        <StatCard label="Atti in archivio" value={overview.total ?? payload.total ?? 0} subtext="Apri tutti" accent="primary" onClick={() => openSection('tutti')} />
+        <StatCard label="Verbali/PagoPA" value={overviewCounts.verbali || 0} subtext="Apri sezione" accent="danger" onClick={() => openSection('verbali')} />
+        <StatCard label="TARI" value={overviewCounts.tributi_locali || 0} subtext="Apri sezione" accent="warning" onClick={() => openSection('tributi_locali')} />
+        <StatCard label="AdeR" value={overviewCounts.riscossione || 0} subtext="Apri sezione" accent="primary" onClick={() => openSection('riscossione')} />
+        <StatCard label="Dimissioni" value={overviewCounts.personale || 0} subtext="Apri sezione" accent="accent" onClick={() => openSection('personale')} />
+        <StatCard label="Da verificare" value={overview.requires_review ?? payload.requires_review ?? 0} subtext="Apri controlli" accent="warning" onClick={() => openSection('tutti', true)} />
       </div>
 
       <Card bodyStyle={{ padding: 16, marginBottom: 16 }}>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'end' }}>
-          <label>Area<br /><select value={area} onChange={event => setArea(event.target.value)} style={{ padding: 9 }}>
+          <label>Area<br /><select value={area} onChange={event => { setArea(event.target.value); setReviewOnly(false); }} style={{ padding: 9 }}>
             {AREAS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select></label>
           <label>Anno<br /><select value={selectedYear} onChange={event => setSelectedYear(event.target.value)} style={{ padding: 9 }}>
@@ -104,16 +125,19 @@ export default function AttiAmministrativi() {
             <input value={search} onChange={event => setSearch(event.target.value)} style={{ padding: 9, width: '100%' }} placeholder="es. codice fiscale, verbale, contribuente" />
           </label>
           <Button variant="secondary" onClick={load} disabled={loading}>Aggiorna</Button>
+          {hasActiveFilters && <Button variant="ghost" onClick={resetFilters} disabled={loading}>Rimuovi filtri</Button>}
         </div>
       </Card>
 
+      <div ref={resultsRef} />
       <Card bodyStyle={{ padding: 16 }}>
-        <h3 style={{ marginTop: 0 }}>{selectedAreaLabel} · {selectedYear || 'tutti gli anni'}</h3>
+        <h3 style={{ marginTop: 0 }}>{reviewOnly ? 'Da verificare' : selectedAreaLabel} · {selectedYear || 'tutti gli anni'} · {payload.total || 0} risultati</h3>
         <p style={{ color: '#475569' }}>
           Gli avvisi indicano un'obbligazione; PEC e moduli provano la trasmissione. Nessuno di questi documenti prova da solo il pagamento o chiude automaticamente un rapporto di lavoro.
         </p>
         {loading && <p>Caricamento…</p>}
-        {!loading && payload.items.length === 0 && <p>Nessun atto importato per i filtri selezionati. Carica lo ZIP da “Carica documenti”.</p>}
+        {!loading && payload.items.length === 0 && hasActiveFilters && <p>Nessun risultato per i filtri selezionati. Usa “Rimuovi filtri” oppure scegli una card per aprire la sezione dedicata.</p>}
+        {!loading && payload.items.length === 0 && !hasActiveFilters && <p>Nessun atto amministrativo disponibile nell'archivio.</p>}
         {payload.items.map(item => {
           const metadata = item.parsed_metadata || {};
           return <article key={item.id} style={{ padding: '14px 0', borderTop: '1px solid #e2e8f0' }}>

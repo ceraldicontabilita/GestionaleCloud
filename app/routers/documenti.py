@@ -536,6 +536,7 @@ async def lista_atti_amministrativi(
     area: Optional[str] = Query(None),
     anno: Optional[int] = Query(None, ge=2018, le=2100),
     search: Optional[str] = Query(None, max_length=120),
+    review_only: bool = Query(False),
     limit: int = Query(200, ge=1, le=500),
 ) -> Dict[str, Any]:
     """Vista documentale di verbali, TARI/AdeR e cessazioni.
@@ -572,10 +573,13 @@ async def lista_atti_amministrativi(
             {"parsed_metadata.numeri_cartella": matcher},
             {"source_context.archive_path": matcher},
         ]})
+    if review_only:
+        clauses.append({"parsed_metadata.requires_review": True})
 
     query: Dict[str, Any] = {"$and": clauses}
     projection = {"_id": 0, **_ARCHIVE_PAYLOAD_FIELDS}
     db = Database.get_db()
+    filtered_total = await db["documents_inbox"].count_documents(query)
     documents = await db["documents_inbox"].find(query, projection).sort(
         [("downloaded_at", -1), ("id", -1)]
     ).limit(limit).to_list(limit)
@@ -586,21 +590,38 @@ async def lista_atti_amministrativi(
         for group, group_categories in _ADMINISTRATIVE_CATEGORIES.items()
         for category in group_categories
     }
-    counts = {key: 0 for key in _ADMINISTRATIVE_CATEGORIES}
-    requires_review = 0
+    filtered_counts = {key: 0 for key in _ADMINISTRATIVE_CATEGORIES}
+    filtered_requires_review = 0
     for item in documents:
         item["administrative_area"] = category_to_area.get(item.get("category"))
         group = item.get("administrative_area")
         if group:
-            counts[group] += 1
+            filtered_counts[group] += 1
         if (item.get("parsed_metadata") or {}).get("requires_review"):
-            requires_review += 1
+            filtered_requires_review += 1
+
+    overview_counts = {
+        group: await db["documents_inbox"].count_documents({
+            "category": {"$in": sorted(group_categories)},
+        })
+        for group, group_categories in _ADMINISTRATIVE_CATEGORIES.items()
+    }
+    all_categories = sorted(set().union(*_ADMINISTRATIVE_CATEGORIES.values()))
+    overview_requires_review = await db["documents_inbox"].count_documents({
+        "category": {"$in": all_categories},
+        "parsed_metadata.requires_review": True,
+    })
 
     return {
         "items": documents,
-        "counts": counts,
-        "total": len(documents),
-        "requires_review": requires_review,
+        "counts": filtered_counts,
+        "total": filtered_total,
+        "requires_review": filtered_requires_review,
+        "overview": {
+            "counts": overview_counts,
+            "total": sum(overview_counts.values()),
+            "requires_review": overview_requires_review,
+        },
         "payment_evidence_count": sum(bool(item.get("is_payment_evidence")) for item in documents),
         "areas": {key: sorted(value) for key, value in _ADMINISTRATIVE_CATEGORIES.items()},
     }

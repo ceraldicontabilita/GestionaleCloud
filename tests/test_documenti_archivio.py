@@ -129,6 +129,60 @@ def test_archivio_espone_anomalie_senza_correggere_record(monkeypatch):
     assert persisted["status"] == "errore"
 
 
+def test_atti_amministrativi_separa_totali_archivio_dai_risultati_filtrati(monkeypatch):
+    db = _db(monkeypatch)
+    _run(db.documents_inbox.insert_many([
+        {
+            "id": "verbale-1",
+            "filename": "verbale.pdf",
+            "category": "verbale_codice_strada",
+            "parsed_metadata": {"numero_verbale": "V-001"},
+        },
+        {
+            "id": "tari-1",
+            "filename": "tari.pdf",
+            "category": "tari_avviso",
+            "parsed_metadata": {"protocollo": "T-001", "requires_review": True},
+        },
+    ]))
+
+    result = _run(documenti.lista_atti_amministrativi(
+        area="verbali",
+        anno=None,
+        search="inesistente",
+        review_only=False,
+        limit=500,
+    ))
+
+    assert result["total"] == 0
+    assert result["items"] == []
+    assert result["overview"] == {
+        "counts": {"verbali": 1, "tributi_locali": 1, "riscossione": 0, "personale": 0},
+        "total": 2,
+        "requires_review": 1,
+    }
+
+
+def test_atti_amministrativi_card_da_verificare_filtra_i_controlli(monkeypatch):
+    db = _db(monkeypatch)
+    _run(db.documents_inbox.insert_many([
+        {"id": "ok", "filename": "ok.pdf", "category": "tari_avviso", "parsed_metadata": {}},
+        {"id": "review", "filename": "review.pdf", "category": "tari_avviso", "parsed_metadata": {"requires_review": True}},
+    ]))
+
+    result = _run(documenti.lista_atti_amministrativi(
+        area=None,
+        anno=None,
+        search=None,
+        review_only=True,
+        limit=500,
+    ))
+
+    assert result["total"] == 1
+    assert [item["id"] for item in result["items"]] == ["review"]
+    assert result["overview"]["total"] == 2
+
+
 @pytest.mark.parametrize(
     ("categoria", "status"),
     [("inesistente", None), (None, "pagato")],

@@ -29,6 +29,14 @@ export function StatCard({
     <div
       className="ds-statcard"
       onClick={onClick || undefined}
+      onKeyDown={onClick ? event => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onClick(event);
+        }
+      } : undefined}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
       style={{
         background: COLORS.card,
         border: `1px solid ${COLORS.border}`,
