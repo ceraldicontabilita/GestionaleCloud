@@ -1,15 +1,13 @@
 """
-DEPRECATO: verifica ripristino MongoDB
+DEPRECATO: verifica ripristino legacy DB
 
-Questo script era usato per verificare ripristini MongoDB in modalità sola-
-lettura. MongoDB è stato rimosso come backend supportato; questo script è
-mantenuto solo a fini storici. Non eseguire nello stesso ambiente di produzione.
+Questo script era usato per verificare ripristini di backend legacy in modalità sola-lettura. Il backend storico è stato rimosso come supportato; questo script è mantenuto solo a fini storici. Non eseguire nello stesso ambiente di produzione.
 """
 
 import sys
 
 if __name__ == "__main__":
-    print("ERROR: script deprecato — MongoDB non è più supportato. Non eseguire.")
+    print("ERROR: script deprecato — backend legacy non più supportato. Non eseguire.")
     sys.exit(1)
 
 from __future__ import annotations

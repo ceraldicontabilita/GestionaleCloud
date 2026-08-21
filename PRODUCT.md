@@ -56,12 +56,7 @@ Il codice usa un unico backend supportato in produzione:
 
 - `sheets`: registro operativo su Google Sheets/Drive, con cache asincrona nel processo applicativo.
 
-MongoDB non è più supportato come backend operativo. Qualsiasi riferimento a `DATA_BACKEND=mongodb`, variabili MONGODB_* o script di provisioning è deprecato e va considerato storico o per strumenti di migrazione isolati e controllati. In produzione configurare sempre esplicitamente il registro Drive/Sheets.
-In modalità Sheets mancare l'ID del registro o della cartella Drive è un
-errore di configurazione, non un motivo per ripiegare su MongoDB. La migrazione
-storica è conclusa solo dopo copia completa, confronto conteggi/hash,
-ricostruzione e prova di scrittura; prima di allora i dati Mongo non si
-cancellano.
+In produzione configurare sempre esplicitamente il registro Drive/Sheets. In modalità Sheets, la mancanza dell'ID del registro o della cartella Drive è un errore di configurazione. La migrazione storica è conclusa solo dopo copia completa, confronto conteggi/hash, ricostruzione e prova di scrittura; prima di allora i dati storici non si cancellano.
 
 ## Fonti dati per dominio
 
