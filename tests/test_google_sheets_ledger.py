@@ -109,6 +109,14 @@ def test_progressivo_e_operation_id_restano_separati():
     assert ledger.next_progressive("ECM", ["ECM-00000002", "ALT-999", "ECM-00000009"]) == 10
 
 
+def test_riga_pulisce_tutti_i_chunk_residui_negli_update():
+    row = ledger.row_for_document({"id": "DOC-1", "filename": "prova.pdf"}, "DOC-00000001")
+
+    assert len(row) == len(ledger.HEADERS)
+    assert ledger.decode_payload("".join(row[15:]))["id"] == "DOC-1"
+    assert all(value == "" for value in row[16:])
+
+
 def test_relazione_usa_solo_celle_scalari_e_conserva_il_payload_strutturato():
     document = {
         "relation_key": "bank_movement|M1|allocates_salary_payment|salary_entry|S1",
