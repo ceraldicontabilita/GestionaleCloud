@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1142 · tenere: 740 · verificare: 375 · admin-only (migrazione/manutenzione): 27
+**Totale endpoint:** 1143 · tenere: 741 · verificare: 375 · admin-only (migrazione/manutenzione): 27
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -405,6 +405,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/documenti-non-associati/statistiche` | documenti_non_associati | sì | — | — | — | — | tenere | in uso: FE |
 | `DELETE /api/documenti-non-associati/{documento_id}` | documenti_non_associati | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/documenti/amministrativi` | documenti | sì | — | — | — | sì | tenere | in uso: FE |
+| `GET /api/documenti/amministrativi/familiari` | documenti | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/documenti/cartelle-email` | documenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/documenti/categorie` | documenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `DELETE /api/documenti/documento/{doc_id}` | documenti | sì | — | — | — | — | tenere | in uso: FE |
