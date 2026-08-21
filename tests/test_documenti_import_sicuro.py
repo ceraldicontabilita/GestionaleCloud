@@ -131,3 +131,49 @@ def test_zip_valido_riusa_il_flusso_canonico_per_ogni_file(monkeypatch):
     assert result["imported"] == 1
     assert result["skipped"] == 1
     assert result["partial"] is True
+
+
+def test_categoria_fiscale_zip_accetta_solo_documento_completo():
+    root = "ARCHIVIO/01_DICHIARAZIONI_FISCALI"
+    assert documenti._fiscal_category_from_archive_path(
+        f"{root}/LIPE/2026/LIPE_2026_407141844.pdf"
+    ) == "lipe"
+    assert documenti._fiscal_category_from_archive_path(
+        f"{root}/770/2025/770_2025_imposta_2024.pdf"
+    ) == "modello_770"
+    assert documenti._fiscal_category_from_archive_path(
+        f"{root}/770/2025/componenti_originali/protocollo/01_Frontespizio.pdf"
+    ) is None
+    assert documenti._fiscal_category_from_archive_path(
+        f"{root}/Percipienti/2025/Percipienti_2025.csv"
+    ) is None
+
+
+def test_zip_invia_lipe_al_registro_fiscale(monkeypatch):
+    calls = []
+    db = MemorySheetsClient()["documenti_import_fiscale_zip"]
+
+    class FakeFiscalIngestion:
+        def __init__(self, received_db):
+            assert received_db is db
+
+        async def ingest(self, **kwargs):
+            calls.append(kwargs)
+            return {"status": "inserted", "document_id": "doc-lipe"}
+
+    monkeypatch.setattr(documenti.Database, "get_db", staticmethod(lambda: db))
+    import app.services.fiscal_document_ingestion as fiscal_ingestion
+    monkeypatch.setattr(fiscal_ingestion, "FiscalDocumentIngestionService", FakeFiscalIngestion)
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(
+            "ARCHIVIO/01_DICHIARAZIONI_FISCALI/LIPE/2026/LIPE_2026.pdf",
+            b"%PDF-1.4 documento lipe",
+        )
+
+    result = asyncio.run(documenti._process_zip_upload("fiscale.zip", buffer.getvalue()))
+
+    assert result["imported"] == 1
+    assert calls[0]["category_hint"] == "lipe"
+    assert calls[0]["source_metadata"]["archive_path"].endswith("LIPE_2026.pdf")
