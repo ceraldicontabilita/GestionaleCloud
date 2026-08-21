@@ -340,9 +340,29 @@ async def importa_pos_terminal_file(db, content: bytes, filename: str, *, drive_
         "legacy_transaction_key": 1,
         **{field: 1 for field in immutable_fields + mutable_fields},
     }
+    # Il registro puo' contenere anni di transazioni. Caricare una copia di
+    # tutto il foglio per importare un singolo mese faceva superare la memoria
+    # del processo Render. Cerchiamo soltanto le identita presenti nel file
+    # corrente, includendo la chiave legacy per i periodi gia archiviati.
+    candidate_keys = sorted({
+        str(key)
+        for item in parsed["transactions"]
+        for key in (
+            item.get("operation_key"), item.get("transaction_key"),
+            item.get("legacy_transaction_key"),
+        )
+        if key
+    })
     existing_rows = await db["pos_terminal_transactions"].find(
-        {}, projection,
-    ).to_list(250000)
+        {
+            "$or": [
+                {"operation_key": {"$in": candidate_keys}},
+                {"transaction_key": {"$in": candidate_keys}},
+                {"legacy_transaction_key": {"$in": candidate_keys}},
+            ],
+        },
+        projection,
+    ).to_list(len(candidate_keys))
     existing_by_key: Dict[str, Dict[str, Any]] = {}
     for row in existing_rows:
         for key in (
@@ -442,8 +462,10 @@ async def importa_pos_terminal_file(db, content: bytes, filename: str, *, drive_
     async with _write_batch():
         # La cache e' gia aggiornata dentro il batch: una sola scansione
         # sostituisce una query per ogni giorno del file.
+        affected_date_values = sorted(data for data in affected_dates if data)
         all_rows = await db["pos_terminal_transactions"].find(
-            {}, {"_id": 0, "data": 1, "stato": 1, "importo": 1}
+            {"data": {"$in": affected_date_values}},
+            {"_id": 0, "data": 1, "stato": 1, "importo": 1},
         ).to_list(250000)
         totals_by_date: defaultdict[str, float] = defaultdict(float)
         for row in all_rows:
@@ -452,7 +474,7 @@ async def importa_pos_terminal_file(db, content: bytes, filename: str, *, drive_
                 totals_by_date[data_iso] += float(row.get("importo") or 0)
 
         totals: Dict[str, float] = {}
-        for data_iso in sorted(data for data in affected_dates if data):
+        for data_iso in affected_date_values:
             total = round(totals_by_date.get(data_iso, 0), 2)
             if total < 0:
                 raise ValueError(f"Totale POS negativo per {data_iso}")

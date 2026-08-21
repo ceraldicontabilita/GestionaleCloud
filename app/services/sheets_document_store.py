@@ -207,7 +207,19 @@ def _matches_condition(values: list[Any], condition: Any) -> bool:
                 return False
         elif operator == "$in":
             candidates = list(expected or [])
-            if not any(any(_equals(value, candidate) for candidate in candidates) for value in values):
+            candidate_markers = {
+                _hashable_unique_value(candidate) for candidate in candidates
+            }
+
+            def included(value: Any) -> bool:
+                if isinstance(value, list):
+                    return any(
+                        _hashable_unique_value(item) in candidate_markers
+                        for item in value
+                    )
+                return _hashable_unique_value(value) in candidate_markers
+
+            if not any(included(value) for value in values):
                 return False
         elif operator == "$nin":
             candidates = list(expected or [])
