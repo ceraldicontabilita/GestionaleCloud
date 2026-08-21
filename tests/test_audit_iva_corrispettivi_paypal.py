@@ -34,7 +34,7 @@ def test_iva_mese_corrente_non_espone_importi_parziali():
 
 
 def test_iva_annuale_non_somma_mesi_futuri(monkeypatch):
-    async def fake_month(_self, _anno, mese):
+    async def fake_month(_self, _anno, mese, **_kwargs):
         calculated = mese == 1
         return {
             "iva_credito": {
@@ -55,6 +55,11 @@ def test_iva_annuale_non_somma_mesi_futuri(monkeypatch):
         }
 
     monkeypatch.setattr(verifica_coerenza_router.Database, "get_db", lambda: object())
+    from app.services import lipe_verifica
+    monkeypatch.setattr(
+        lipe_verifica, "list_lipe_monthly_evidence",
+        lambda *_args, **_kwargs: asyncio.sleep(0, result={m: {"stato": "LIPE_NON_PRESENTE"} for m in range(1, 13)}),
+    )
     monkeypatch.setattr(
         verifica_coerenza_router.VerificaCoerenza,
         "verifica_coerenza_iva_tra_pagine",

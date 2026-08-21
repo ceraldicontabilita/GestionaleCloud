@@ -1145,7 +1145,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/verbali-riconciliazione/scan-email` | verbali_riconciliazione | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
 | `POST /api/verbali-riconciliazione/scan-fatture-verbali` | verbali_riconciliazione | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
 | `POST /api/verbali-riconciliazione/scan-gmail-attendibili` | verbali_riconciliazione | — | sì | — | — | sì | tenere | in uso: scheduler |
-| `GET /api/verifica-coerenza/completa/{anno}` | verifica_coerenza | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/verifica-coerenza/completa/{anno}` | verifica_coerenza | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/verifica-coerenza/confronto-iva-completo/{anno}` | verifica_coerenza | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/verifica-coerenza/discrepanze/{anno}` | verifica_coerenza | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/verifica-coerenza/iva/{anno}/{mese}` | verifica_coerenza | sì | — | — | — | — | tenere | in uso: FE |
