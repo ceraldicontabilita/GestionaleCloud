@@ -161,3 +161,46 @@ def test_reimport_periodo_sovrapposto_non_duplica_operazioni(monkeypatch):
     assert second["inserted"] == 0
     assert second["unchanged"] == 2
     assert count == 2
+
+
+def test_import_pos_grande_spezza_le_scritture_in_batch_limitati(monkeypatch):
+    async def scenario():
+        db = MemorySheetsClient()["pos_chunk_test"]
+        calls = 0
+
+        from contextlib import asynccontextmanager
+
+        @asynccontextmanager
+        async def batch_writes():
+            nonlocal calls
+            calls += 1
+            yield
+
+        db.batch_writes = batch_writes
+
+        async def no_op_chiusura(*_args, **_kwargs):
+            return {"success": True}
+
+        from app.services import scritture_contabili
+        monkeypatch.setattr(
+            scritture_contabili, "registra_chiusura_pos_reale", no_op_chiusura,
+        )
+        header = (
+            "Data e ora;Codice autorizzazione;Importo;Tipo transazione;"
+            "Stato operazione;ID Transazione\n"
+        )
+        rows = "".join(
+            f"01/06/2026 09:{index % 60:02d}:00;A{index};10,00;Acquisto;"
+            f"Acquisto approvato;TX-{index}\n"
+            for index in range(600)
+        )
+        result = await importa_pos_terminal_file(
+            db, (header + rows).encode("utf-8"), "mese_grande.csv",
+        )
+        return calls, result
+
+    calls, result = asyncio.run(scenario())
+    # 600 inserimenti = 3 batch (250 + 250 + 100), piu' il batch finale
+    # per totale giornaliero e registro dell'import.
+    assert calls == 4
+    assert result["inserted"] == 600

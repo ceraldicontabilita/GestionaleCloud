@@ -35,7 +35,7 @@ plausibili, conserva il documento, mostra l'elenco e richiede una scelta.
 
 ## 2. Archivio Drive-only
 
-La destinazione operativa è:
+Drive/Sheets è l'unico archivio operativo. La destinazione operativa è:
 
 - Google Drive per documenti originali e allegati;
 - Google Sheets/Excel collegato a Drive per registri strutturati;

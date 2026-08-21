@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 from pathlib import Path
+import asyncio
 import os
 import re
 import base64
@@ -3523,3 +3524,73 @@ async def upload_documento_automatico(
         result["message"] = f"Errore durante l'importazione: {str(e)}"
 
     return result
+
+
+@router.post("/upload-auto/queue", status_code=202)
+@handle_errors
+async def accoda_upload_documento_voluminoso(
+    file: UploadFile = File(...),
+    preview_token: Optional[str] = Header(None, alias="X-Document-Preview-Token"),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Accoda gli export POS voluminosi senza tenere aperto il gateway HTTP."""
+    filename = Path(file.filename or "documento").name
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail=f"File vuoto: {filename}")
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail=f"File oltre il limite di 50 MB: {filename}")
+
+    tipo_rilevato = detect_document_type(filename, content)
+    if tipo_rilevato != "pos_terminal" or "commissioni_" in filename.lower():
+        raise HTTPException(
+            status_code=400,
+            detail="La coda asincrona e' riservata agli export transazioni POS.",
+        )
+
+    from app.services.document_import_preview import verify_confirmation_token
+
+    digest = hashlib.sha256(content).hexdigest()
+    if not preview_token or not verify_confirmation_token(
+        preview_token, digest, tipo_rilevato,
+    ):
+        raise HTTPException(
+            status_code=428,
+            detail="Anteprima obbligatoria mancante, scaduta o riferita a un file diverso.",
+        )
+
+    from app.services.document_import_jobs import enqueue_pos_import
+
+    job = await enqueue_pos_import(
+        Database.get_db(), content=content, filename=filename,
+    )
+    return {
+        "success": True,
+        "tipo_rilevato": tipo_rilevato,
+        "workflow": "POS_NUMIA_ASYNC_OPERATION_ID_V2",
+        "message": (
+            "Import POS completato."
+            if job.get("status") == "completed"
+            else "Import POS avviato in coda; la pagina controlla automaticamente l'esito."
+        ),
+        **job,
+    }
+
+
+@router.get("/upload-auto/jobs/{job_id}")
+@handle_errors
+async def stato_upload_documento_voluminoso(
+    job_id: str,
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Espone soltanto stato ed esito del job autenticato, mai il file sorgente."""
+    from app.services.document_import_jobs import get_import_job
+
+    job = await get_import_job(Database.get_db(), job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Import non trovato")
+    return {
+        "success": job.get("status") == "completed",
+        "workflow": "POS_NUMIA_ASYNC_OPERATION_ID_V2",
+        **job,
+    }

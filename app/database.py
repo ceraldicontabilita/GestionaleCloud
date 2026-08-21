@@ -33,7 +33,7 @@ class Database:
             backend = settings.DATA_BACKEND.strip().lower()
             if backend != "sheets":
                 raise RuntimeError(
-                    "DATA_BACKEND 'legacy DB' non è più supportato. Usare DATA_BACKEND=sheets "
+                    "DATA_BACKEND non supportato. Usare DATA_BACKEND=sheets "
                     "e configurare GOOGLE_SHEETS_LEDGER_ID o GOOGLE_SHEETS_LEDGER_FOLDER_ID."
                 )
 
@@ -45,11 +45,13 @@ class Database:
                 "GOOGLE_SHEETS_LEDGER_FOLDER_ID": settings.GOOGLE_SHEETS_LEDGER_FOLDER_ID,
             })
             await runtime.hydrate()
-            cls.client = runtime._client
+            # Il runtime Sheets è sia archivio sia risorsa da chiudere. Non
+            # espone un driver separato: conservarlo direttamente evita di
+            # dipendere da attributi interni inesistenti durante lo startup.
+            cls.client = runtime
             cls.db = runtime
-            scrub_mongo_runtime_configuration()
             logger.info(
-                "Connected to Google Sheets ledger %s; legacy DB support disabled",
+                "Connected to Google Sheets ledger %s",
                 settings.GOOGLE_SHEETS_LEDGER_ID,
             )
             return

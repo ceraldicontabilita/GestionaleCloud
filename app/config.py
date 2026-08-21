@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     LEGACY_DB_ATLAS_URI: Optional[str] = None  # DEPRECATO (usare solo per audit offline)
     MONGO_URL: Optional[str] = None          # DEPRECATO (mantienuto per compatibilità degli script legacy)
 
-    # Nome logico del database (mantiene compatibilità con codice storico)
+    # Nome logico del database/registro (mantiene compatibilità con codice storico)
     DB_NAME: str = "Gestionale"
 
     # I parametri pool/timeouts relativi a legacy DB restano visibili ma non
@@ -48,7 +48,6 @@ class Settings(BaseSettings):
     LEGACY_DB_SOCKET_TIMEOUT_MS: int = 20000
     LEGACY_DB_WAIT_QUEUE_TIMEOUT_MS: int = 5000
     LEGACY_DB_MAX_IDLE_TIME_MS: int = 120000
-
     # Le riparazioni dati e migrazioni all'avvio restano disabilitate per default.
     RUN_STARTUP_DATA_REPAIRS: bool = False
     RUN_STARTUP_INDEX_MIGRATIONS: bool = False
@@ -429,7 +428,7 @@ class Settings(BaseSettings):
         backend = self.DATA_BACKEND.strip().lower()
         # Production runtime supports only 'sheets'. Any other value is invalid.
         if backend != "sheets":
-            errors.append("DATA_BACKEND non supportato: il runtime corrente supporta solo 'sheets' (Google Sheets/Drive). Tutti i riferimenti a 'legacy DB' sono deprecati.")
+            errors.append("DATA_BACKEND non supportato: il runtime corrente supporta solo 'sheets' (Google Sheets/Drive).")
 
         # Check database configuration for Sheets. Sheets is the operational backend;
         # absence of sheets configuration is a production error.
@@ -439,7 +438,7 @@ class Settings(BaseSettings):
             else:
                 msg = (
                     "DATA_BACKEND=sheets richiede GOOGLE_SHEETS_LEDGER_ID oppure "
-                    "GOOGLE_SHEETS_LEDGER_FOLDER_ID; non esiste fallback su legacy DB."
+                    "GOOGLE_SHEETS_LEDGER_FOLDER_ID; non esiste fallback di persistenza."
                 )
                 if fail_fast:
                     errors.append(msg)

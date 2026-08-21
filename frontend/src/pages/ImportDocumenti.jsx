@@ -83,6 +83,23 @@ export function descriviProvaFiscale(data = {}) {
   return parts.join(' • ');
 }
 
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+export async function attendiImportDocumentale(jobId, maxWaitMs = 15 * 60 * 1000) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < maxWaitMs) {
+    const response = await api.get(`/api/documenti/upload-auto/jobs/${encodeURIComponent(jobId)}`, {
+      timeout: 10000,
+      __noRetry: true,
+    });
+    const job = response.data || {};
+    if (job.status === 'completed') return job.result || {};
+    if (job.status === 'failed') throw new Error(job.error || 'Import POS non riuscito');
+    await sleep(2000);
+  }
+  throw new Error('Import POS ancora in corso oltre il tempo previsto. Puoi ricaricare la pagina senza duplicare i dati.');
+}
+
 /**
  * ImportDocumenti - Pagina SEMPLIFICATA
  *
@@ -225,25 +242,56 @@ export default function ImportDocumenti() {
         const formData = new FormData();
         formData.append('file', fileInfo.file);
 
-        // Endpoint unico che rileva e processa automaticamente
-        const res = await api.post('/api/documenti/upload-auto', formData, {
+        const operazioniPos = Number(fileInfo.preview?.parsed?.operazioni || 0);
+        const usaCodaPos =
+          fileInfo.preview?.tipo_rilevato === 'pos_terminal' &&
+          !fileInfo.name.toLowerCase().includes('commissioni_') &&
+          operazioniPos >= 500;
+        const endpoint = usaCodaPos
+          ? '/api/documenti/upload-auto/queue'
+          : '/api/documenti/upload-auto';
+        const res = await api.post(endpoint, formData, {
           headers: {
             'Content-Type': 'multipart/form-data',
             'X-Document-Preview-Token': fileInfo.previewToken,
           },
         });
 
-        const tipo = res.data?.tipo_rilevato || res.data?.detected_type || 'auto';
-        const esito = classificaEsitoUpload(res.data);
+        let importData = res.data || {};
+        if (usaCodaPos && importData.status !== 'completed') {
+          const completed = await attendiImportDocumentale(importData.job_id);
+          importData = {
+            ...importData,
+            ...completed,
+            success: true,
+            status: 'completed',
+            imported: completed.inserted || 0,
+            duplicates: completed.unchanged || 0,
+            data: completed,
+            message: `POS Numia importato: ${completed.inserted || 0} operazioni nuove, ${completed.updated || 0} aggiornate, ${completed.unchanged || 0} gia presenti.`,
+          };
+        } else if (usaCodaPos && importData.status === 'completed') {
+          const completed = importData.result || {};
+          importData = {
+            ...importData,
+            ...completed,
+            imported: completed.inserted || 0,
+            duplicates: completed.unchanged || 0,
+            data: completed,
+          };
+        }
+
+        const tipo = importData?.tipo_rilevato || importData?.detected_type || 'auto';
+        const esito = classificaEsitoUpload(importData);
 
         uploadResults.push({
           file: fileInfo.name,
           tipo,
           status: esito.status,
           message: esito.message,
-          workflow: res.data?.workflow,
-          evidenceSummary: descriviProvaFiscale(res.data),
-          details: res.data,
+          workflow: importData?.workflow,
+          evidenceSummary: descriviProvaFiscale(importData),
+          details: importData,
         });
         setFiles(prev =>
           prev.map((f, idx) =>
