@@ -100,6 +100,7 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 
 ## Regola architetturale
 
-Drive/Sheets è l'unico archivio operativo: originali in Google Drive e registri
-in Google Sheets/Excel collegato a Drive. Non esistono fallback di persistenza;
-i documenti storici che descrivono altre architetture non sono autorità.
+La destinazione operativa è Drive/Sheets: originali in Google Drive e registri
+in Google Sheets/Excel collegato a Drive. MongoDB è stato rimosso e non è più
+supportato: tutte le procedure di verifica e migrazione devono usare esclusivamente
+Drive/Sheets; i documenti che indicavano MongoDB come database primario sono storici.

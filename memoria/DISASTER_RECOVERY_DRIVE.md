@@ -72,10 +72,6 @@ workbook precedente tramite la cronologia/versione copiata. Non eliminare
 registri o backend transitori finché il nuovo archivio non supera tutti i
 criteri.
 
-## Fase transitoria Drive/Sheets
+## Stato attuale
 
-Drive/Sheets può restare disponibile solo come sorgente temporanea di confronto
-durante la migrazione. Non è il piano di disaster recovery finale. La sua
-dismissione è autorizzabile soltanto dopo una ricostruzione completa da
-Drive/Sheets provata in ambiente isolato e dopo il cutover verificato in
-produzione.
+MongoDB è stato rimosso e non è più parte della procedura di disaster recovery. La ricostruzione e il ripristino devono basarsi esclusivamente su Drive/Sheets: tutte le verifiche, i confronti di conteggi e hash e i test end-to-end vanno eseguiti con `DATA_BACKEND=sheets`. Non usare variabili, script o collezioni MongoDB.

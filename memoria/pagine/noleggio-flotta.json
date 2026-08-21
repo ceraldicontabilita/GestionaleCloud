@@ -46,7 +46,7 @@
   "archivio_dati": {
     "stato_corrente": "google_drive_sheets",
     "backend_predefinito": "sheets",
-    "compatibilita": "nessun_backend_alternativo",
+    "compatibilita": "nessuna - MongoDB rimosso; Drive-only",
     "fallback_automatico": "disabilitato"
   },
   "regole_di_lettura": [

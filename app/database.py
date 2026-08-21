@@ -26,25 +26,36 @@ class Database:
         """
         Create database connection.
         Called on application startup.
+
+        NOTE: MongoDB support has been removed. This method only supports the
+        Sheets runtime (Google Sheets/Drive). Attempts to select 'mongodb' as
+        DATA_BACKEND will raise a RuntimeError.
         """
         try:
+            backend = settings.DATA_BACKEND.strip().lower()
+            if backend != "sheets":
+                raise RuntimeError(
+                    "DATA_BACKEND 'mongodb' non è più supportato. Usare DATA_BACKEND=sheets "
+                    "e configurare GOOGLE_SHEETS_LEDGER_ID o GOOGLE_SHEETS_LEDGER_FOLDER_ID."
+                )
+
+            # Sheets runtime
             from app.services.sheets_runtime_database import SheetsRuntimeDatabase
 
-            runtime = SheetsRuntimeDatabase(settings.SHEETS_REGISTRY_NAME, {
+            runtime = SheetsRuntimeDatabase(settings.DB_NAME, {
                 "GOOGLE_SHEETS_LEDGER_ID": settings.GOOGLE_SHEETS_LEDGER_ID,
                 "GOOGLE_SHEETS_LEDGER_FOLDER_ID": settings.GOOGLE_SHEETS_LEDGER_FOLDER_ID,
             })
             await runtime.hydrate()
-            cls.client = runtime
+            cls.client = runtime._client
             cls.db = runtime
-            if settings.RUN_STARTUP_INDEX_MIGRATIONS:
-                await cls._create_indexes()
-            if settings.RUN_STARTUP_SEED_DATA:
-                await cls._ensure_builtin_senders()
+            scrub_mongo_runtime_configuration()
             logger.info(
-                "Registro operativo Google Sheets connesso: %s",
+                "Connected to Google Sheets ledger %s; MongoDB support disabled",
                 settings.GOOGLE_SHEETS_LEDGER_ID,
             )
+            return
+
         except Exception as e:
             logger.error("Connessione al registro Drive/Sheets fallita: %s", e)
             raise

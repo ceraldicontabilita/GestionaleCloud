@@ -19,9 +19,11 @@ Gli altri documenti sono guide di lettura, riferimenti di dominio o mappe genera
 
 ## Stato aggiornato al 20/08/2026
 
-Google Sheets è l'unico registro operativo e Drive conserva gli originali.
-Non esiste fallback: in produzione l'avvio
-richiede l'ID del registro o della sua cartella Drive.
+Il repository usa `DATA_BACKEND=sheets` come backend operativo: Google Sheets è il registro operativo e Drive conserva gli originali. In produzione configurare esplicitamente il registro o la cartella Drive del ledger.
+
+Il passaggio dei dati storici si considera concluso soltanto dopo confronto di
+conteggi e hash, ricostruzione completa e prova di scrittura. Fino a quella
+verifica non cancellare dati storici senza autorizzazione e checklist di cutover approvata.
 
 Il registro Drive crea questa struttura:
 
@@ -39,8 +41,7 @@ DICHIARAZIONI/
 Browser React/Vite
   -> API FastAPI same-origin
      -> servizi di dominio e motore unico Prima Nota
-        -> registri Google Sheets
-           -> originali Google Drive
+        -> backend dati: Google Sheets/Drive (registri operativi)
 
 Google Drive / Gmail autorizzato / API esterne
   -> import, parser, deduplica, identità canonica

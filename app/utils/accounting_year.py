@@ -1,7 +1,9 @@
-"""Filtri coerenti per i registri contabili annuali.
+"""
+DEPRECATO: helper filtri anno (formati Mongo)
 
-I dati storici contengono date ISO, date italiane e oggetti ``datetime``.
-Questo helper impedisce alle pagine di applicare criteri annuali divergenti.
+Questo modulo produce filtri compatibili con le query MongoDB storiche. Con
+la rimozione di MongoDB questo helper è deprecato; resta disponibile per
+compatibilità con codice legacy ma non va usato in nuovi flussi.
 """
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, Optional
