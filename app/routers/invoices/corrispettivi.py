@@ -873,7 +873,10 @@ async def cleanup_duplicati_forte(anno: int = Query(None, description="Anno (opz
 
 @router.post("/rebuild-prima-nota")
 @handle_errors
-async def rebuild_prima_nota(anno: int = Query(None, description="Anno (opzionale). Se omesso ricostruisce tutti gli anni")) -> Dict[str, Any]:
+async def rebuild_prima_nota(
+    anno: int = Query(None, description="Anno (opzionale). Se omesso ricostruisce tutti gli anni"),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
     """
     Rigenera i movimenti Prima Nota (cassa + banca POS) partendo dai corrispettivi esistenti.
     - Elimina i movimenti con source=corrispettivo_* nel periodo
