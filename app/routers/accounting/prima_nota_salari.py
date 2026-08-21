@@ -934,6 +934,99 @@ async def import_bonifici(file: UploadFile = File(...)) -> Dict[str, Any]:
     }
 
 
+@router.post("/import-salari-verificati")
+async def import_salari_verificati(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """Importa netti cedolino verificati senza caricare pandas/openpyxl.
+
+    Il payload e' idempotente per dipendente, periodo, importo e sorgente. Ogni
+    riga resta una busta dovuta e non viene mai trasformata in pagamento.
+    """
+    db = Database.get_db()
+    righe = data.get("righe") or []
+    if not isinstance(righe, list) or not righe:
+        raise HTTPException(status_code=400, detail="righe deve essere una lista non vuota")
+    if len(righe) > 5000:
+        raise HTTPException(status_code=413, detail="Massimo 5000 righe per richiesta")
+
+    created = 0
+    duplicates = 0
+    skipped = 0
+    errors: List[str] = []
+    totale = 0.0
+    dipendenti_toccati = set()
+
+    for idx, row in enumerate(righe, 1):
+        try:
+            if not isinstance(row, dict):
+                raise ValueError("riga non valida")
+            dipendente = normalize_name(str(row.get("employee") or row.get("dipendente") or ""))
+            anno = int(row.get("year") or row.get("anno"))
+            mese = int(row.get("month") or row.get("mese"))
+            importo = _importo_positivo(row.get("net_amount", row.get("importo_busta")))
+            status = str(row.get("status") or "NETTO_VERIFICATO_DA_CEDOLINO").strip().upper()
+            source_url = str(row.get("source") or "").strip()
+
+            if not dipendente or dipendente == "NAN":
+                raise ValueError("dipendente mancante")
+            if status != "NETTO_VERIFICATO_DA_CEDOLINO":
+                skipped += 1
+                continue
+            if importo is None or importo <= 0:
+                raise ValueError("netto mancante o non positivo")
+            if not periodo_ammesso_in_prima_nota(anno, mese):
+                skipped += 1
+                continue
+
+            import_key = _chiave_busta_excel(dipendente, anno, mese, importo)
+            if await db["prima_nota_salari"].find_one({"import_key": import_key}, {"_id": 0, "id": 1}):
+                duplicates += 1
+                continue
+
+            now = datetime.now(timezone.utc).isoformat()
+            new_record = {
+                "id": str(uuid.uuid4()),
+                "dipendente": dipendente,
+                "anno": anno,
+                "mese": mese,
+                "mese_nome": MESI_NOMI[mese - 1],
+                "importo_busta": round(importo, 2),
+                "importo_busta_documentato": round(importo, 2),
+                "importo_bonifico": 0,
+                "importo_bonifico_documentato": 0,
+                "saldo": round(-importo, 2),
+                "progressivo": 0,
+                "riconciliato": False,
+                "tipo": "busta",
+                "source": "indice_cedolini_drive",
+                "source_url": source_url or None,
+                "document_status": status,
+                "payment_status": "DA_ASSEGNARE",
+                "import_key": import_key,
+                "descrizione": "Netto verificato dal cedolino; pagamento da assegnare",
+                "created_at": now,
+                "updated_at": now,
+            }
+            await db["prima_nota_salari"].insert_one(new_record.copy())
+            created += 1
+            totale += importo
+            dipendenti_toccati.add(dipendente)
+        except Exception as exc:
+            errors.append(f"Riga {idx}: {exc}")
+
+    for dipendente in sorted(dipendenti_toccati):
+        await ricalcola_progressivi_tutti(db, None, dipendente)
+
+    return {
+        "success": not errors,
+        "created": created,
+        "duplicates": duplicates,
+        "skipped": skipped,
+        "righe_file": len(righe),
+        "totale_importato": round(totale, 2),
+        "errors": errors[:20],
+    }
+
+
 async def ricalcola_progressivi_tutti(db, anno_inizio: int = None, dipendente_filtro: str = None, anni_esclusi: List[int] = None):
     """
     Ricalcola saldi e progressivi per tutti i dipendenti o uno specifico.

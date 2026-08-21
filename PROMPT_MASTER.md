@@ -779,6 +779,7 @@ Route table sorgente: **1137**; attivi da ricreare: **737**; quarantena: **400**
 - **quarantena: verificare** — `GET /api/prima-nota-salari/export-excel` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **attivo** — `POST /api/prima-nota-salari/import-bonifici` — in uso: FE
 - **attivo** — `POST /api/prima-nota-salari/import-paghe` — in uso: FE
+- **attivo** — `POST /api/prima-nota-salari/import-salari-verificati` — import JSON idempotente dei netti verificati da Drive, senza pandas/openpyxl
 - **quarantena: verificare** — `DELETE /api/prima-nota-salari/pulisci-righe-vuote` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **attivo** — `POST /api/prima-nota-salari/ricalcola-progressivi` — in uso: FE
 - **attivo** — `GET /api/prima-nota-salari/salari` — in uso: FE
