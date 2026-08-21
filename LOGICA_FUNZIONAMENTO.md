@@ -71,8 +71,11 @@ QUIETANZE/
 DICHIARAZIONI/
 ```
 
-I file originali non si spostano né si eliminano automaticamente. L'indice
-conserva Drive ID, percorso, origine, hash e data di acquisizione.
+I file originali non vengono eliminati automaticamente. Nel workflow
+`00 - CALDERONE`, Render sposta atomicamente il contenitore originale dopo un
+esito completo: `99 - ELABORATE`, `90 - DA ELABORARE` oppure `98 - ERRORI`.
+Un ZIP parziale resta in `01 - IN ARRIVO`. L'indice conserva Drive ID,
+percorso, origine, hash e data di acquisizione.
 
 ### Stato dell'archivio
 

@@ -136,8 +136,10 @@ La procedura amministrativa deve essere eseguita in quest'ordine:
 7. verifica live del commit in produzione;
 8. conferma dell'assenza di backend alternativi e variabili obsolete.
 
-I documenti originali su Drive non vengono spostati o eliminati dalla
-migrazione del registro.
+I documenti originali su Drive non vengono eliminati dalla migrazione del
+registro. Nel solo workflow Calderone, dopo un esito completo e verificato,
+l'originale viene spostato fra le cartelle operative dello stesso Calderone
+secondo [docs/RUNBOOK-RENDER-CALDERONE.md](docs/RUNBOOK-RENDER-CALDERONE.md).
 
 ## Albero del repository
 

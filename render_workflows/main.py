@@ -10,9 +10,19 @@ from urllib.request import Request, urlopen
 from render_sdk import Retry, Workflows
 
 try:
-    from .document_ingest import ingest_document_inbox, scan_document_inbox_preview
+    from .document_ingest import (
+        ingest_document_inbox,
+        lifecycle_preflight,
+        reconcile_document_lifecycle,
+        scan_document_inbox_preview,
+    )
 except ImportError:  # Render avvia main.py dalla root directory del Workflow.
-    from document_ingest import ingest_document_inbox, scan_document_inbox_preview
+    from document_ingest import (
+        ingest_document_inbox,
+        lifecycle_preflight,
+        reconcile_document_lifecycle,
+        scan_document_inbox_preview,
+    )
 
 
 PRODUCTION_HEALTH_URL = "https://impresasemplice.online/api/health"
@@ -81,6 +91,32 @@ def calderone_documenti_ingest(
     """Invia solo file nuovi e riconosciuti dopo doppia conferma esplicita."""
     return ingest_document_inbox(
         confirm=confirm, max_documents=max_documents,
+    )
+
+
+@app.task(
+    name="calderone_lifecycle_preflight",
+    plan="starter",
+    retry=Retry(max_retries=0, wait_duration_ms=0),
+    timeout_seconds=300,
+)
+def calderone_lifecycle_preflight() -> dict[str, Any]:
+    """Controlla cartelle e permessi Drive senza eseguire spostamenti."""
+    return lifecycle_preflight()
+
+
+@app.task(
+    name="calderone_lifecycle_reconcile",
+    plan="starter",
+    retry=Retry(max_retries=0, wait_duration_ms=0),
+    timeout_seconds=7200,
+)
+def calderone_lifecycle_reconcile(
+    confirm_move: bool = False, max_sources: int = 100,
+) -> dict[str, Any]:
+    """Sposta il pregresso già indicizzato senza ritrasmettere documenti."""
+    return reconcile_document_lifecycle(
+        confirm_move=confirm_move, max_sources=max_sources,
     )
 
 
