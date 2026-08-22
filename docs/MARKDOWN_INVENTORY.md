@@ -21,12 +21,12 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 
 ## Riepilogo
 
-- Correnti: **26**
+- Correnti: **27**
 - Riferimento: **28**
 - Pianificati: **7**
 - Generati: **5**
 - Storici: **6**
-- Totale: **72**
+- Totale: **73**
 
 ## Elenco completo
 
@@ -46,6 +46,7 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 | `PROMPT_MASTER.md` | `current` | Autorità operativa corrente |
 | `README.md` | `current` | Autorità operativa corrente |
 | `archive/legacy-audit/README.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `docs/ADR-001-HACCP-LOTTI-DRIVE-SHEETS.md` | `current` | Autorità operativa corrente |
 | `docs/ADR-005-INGESTIONE-DOCUMENTALE-UNIVERSALE-RENDER.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/FISCAL_ACCOUNTING_POLICY.md` | `current` | Autorità operativa corrente |
 | `docs/GUIDA-SEMPLICE-FLUSSO-ATOMICO-RENDER.md` | `historical` | Snapshot/audit datato, conservato come evidenza |

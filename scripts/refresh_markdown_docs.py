@@ -30,6 +30,7 @@ CURRENT = {
     "PROMPT_MASTER.md",
     "PRODUCT.md",
     "README.md",
+    "docs/ADR-001-HACCP-LOTTI-DRIVE-SHEETS.md",
     "docs/FISCAL_ACCOUNTING_POLICY.md",
     "docs/MARKDOWN_INVENTORY.md",
     "docs/MCP_GESTIONALE_RUNBOOK.md",
