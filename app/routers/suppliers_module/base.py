@@ -370,38 +370,54 @@ async def list_suppliers(
         # (schema inglese), cedente_piva (schema italiano), fornitore_partita_iva.
         # Prima cedente_piva mancava: i fornitori con sole fatture in schema
         # italiano risultavano "0 fatture / mai fatturato".
-        _piva_expr = {"$ifNull": ["$supplier_vat",
-                     {"$ifNull": ["$cedente_piva", "$fornitore_partita_iva"]}]}
-        _amount_expr = {"$toDouble": {"$ifNull": ["$importo_totale", {"$ifNull": ["$total_amount", 0]}]}}
-        _paid_expr = {"$or": [
-            {"$eq": ["$pagato", True]},
-            {"$in": [{"$toLower": {"$ifNull": ["$stato_pagamento", ""]}}, ["pagata", "paid"]]},
-        ]}
-        _excluded_financial_expr = {"$eq": ["$esclusa_da_cassa_banca", True]}
-        stats_pipeline = [
-            {"$match": {"$or": [
-                {"supplier_vat": {"$exists": True, "$nin": [None, ""]}},
-                {"cedente_piva": {"$exists": True, "$nin": [None, ""]}},
-                {"fornitore_partita_iva": {"$exists": True, "$nin": [None, ""]}}
-            ]}},
-            {"$group": {
-                "_id": _piva_expr,
-                "fatture_count": {"$sum": 1},
-                "fatture_totale": {"$sum": _amount_expr},
-                "fatture_pagate": {"$sum": {"$cond": [_paid_expr, _amount_expr, 0]}},
-                "fatture_non_pagate": {"$sum": {"$cond": [
-                    {"$or": [_paid_expr, _excluded_financial_expr]}, 0, _amount_expr
-                ]}},
-                "fatture_escluse_cassa_banca": {"$sum": {"$cond": [
-                    _excluded_financial_expr, _amount_expr, 0
-                ]}},
-                "prima_fattura_data": {"$min": {"$ifNull": ["$data_documento", "$invoice_date"]}},
-                "ultima_fattura_data": {"$max": {"$ifNull": ["$data_documento", "$invoice_date"]}}
-            }}
-        ]
-
         try:
-            invoice_stats = await db["invoices"].aggregate(stats_pipeline, allowDiskUse=True).to_list(5000)
+            invoice_rows = await db["invoices"].find(
+                {"$or": [
+                    {"supplier_vat": {"$exists": True, "$nin": [None, ""]}},
+                    {"cedente_piva": {"$exists": True, "$nin": [None, ""]}},
+                    {"fornitore_partita_iva": {"$exists": True, "$nin": [None, ""]}},
+                ]}, {"_id": 0},
+            ).to_list(10000)
+            grouped_stats: Dict[str, Dict[str, Any]] = {}
+            for invoice in invoice_rows:
+                piva = (invoice.get("supplier_vat") or invoice.get("cedente_piva")
+                        or invoice.get("fornitore_partita_iva"))
+                key = _normalized_supplier_key(piva)
+                if not key:
+                    continue
+                raw_amount = invoice.get("importo_totale")
+                if raw_amount in (None, ""):
+                    raw_amount = invoice.get("total_amount", 0)
+                try:
+                    amount = float(str(raw_amount or 0).replace(",", "."))
+                except (TypeError, ValueError):
+                    amount = 0.0
+                paid_status = str(invoice.get("stato_pagamento") or "").strip().lower()
+                paid = invoice.get("pagato") is True or paid_status in {"pagata", "paid"}
+                excluded = invoice.get("esclusa_da_cassa_banca") is True
+                date_value = invoice.get("data_documento") or invoice.get("invoice_date")
+                stat = grouped_stats.setdefault(key, {
+                    "_id": piva, "fatture_count": 0, "fatture_totale": 0.0,
+                    "fatture_pagate": 0.0, "fatture_non_pagate": 0.0,
+                    "fatture_escluse_cassa_banca": 0.0,
+                    "prima_fattura_data": None, "ultima_fattura_data": None,
+                })
+                stat["fatture_count"] += 1
+                stat["fatture_totale"] += amount
+                if paid:
+                    stat["fatture_pagate"] += amount
+                elif not excluded:
+                    stat["fatture_non_pagate"] += amount
+                if excluded:
+                    stat["fatture_escluse_cassa_banca"] += amount
+                if date_value:
+                    date_text = str(date_value)
+                    if not stat["prima_fattura_data"] or date_text < stat["prima_fattura_data"]:
+                        stat["prima_fattura_data"] = date_text
+                    if not stat["ultima_fattura_data"] or date_text > stat["ultima_fattura_data"]:
+                        stat["ultima_fattura_data"] = date_text
+
+            invoice_stats = list(grouped_stats.values())
 
             for stat in invoice_stats:
                 piva = stat.get("_id")
