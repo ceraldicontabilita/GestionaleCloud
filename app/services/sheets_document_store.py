@@ -368,10 +368,32 @@ def evaluate_expression(expression: Any, document: dict[str, Any], variables: di
         return resolved[1] if resolved[0] else resolved[2]
     if operator in {"$eq", "$ne", "$gt", "$gte", "$lt", "$lte"}:
         left, right = resolved[0], resolved[1]
-        return {
-            "$eq": left == right, "$ne": left != right, "$gt": left > right,
-            "$gte": left >= right, "$lt": left < right, "$lte": left <= right,
-        }[operator]
+        # Non costruire un dizionario con tutti i confronti: Python ne
+        # valuterebbe ogni valore anche quando serve soltanto ``$eq``. Con
+        # dati contabili opzionali, per esempio ``None == True``, le
+        # espressioni inutili ``None > True`` sollevavano TypeError e
+        # interrompevano l'intera aggregazione.
+        if operator == "$eq":
+            return left == right
+        if operator == "$ne":
+            return left != right
+        try:
+            if operator == "$gt":
+                return left > right
+            if operator == "$gte":
+                return left >= right
+            if operator == "$lt":
+                return left < right
+            return left <= right
+        except TypeError:
+            left_key, right_key = _comparable(left), _comparable(right)
+            if operator == "$gt":
+                return left_key > right_key
+            if operator == "$gte":
+                return left_key >= right_key
+            if operator == "$lt":
+                return left_key < right_key
+            return left_key <= right_key
     if operator == "$and":
         return all(resolved)
     if operator == "$or":
