@@ -101,7 +101,7 @@ progressivo proprio e conserva il payload ricostruibile.
 
 ## Albero funzionale
 
-Il catalogo macchina contiene 65 schermate operative.
+Il catalogo macchina contiene 66 schermate operative.
 
 I riferimenti più delicati del catalogo sono:
 
@@ -157,6 +157,8 @@ Ceraldi ERP
 │   ├── OpenAPI e mittenti email
 │   ├── Learning Machine e agenti
 │   └── Impostazioni F24/AI
+├── HACCP e produzione
+│   └── Tracciabilità, ricezioni, registri, ricette, produzioni e attrezzature
 └── Amministrazione
     ├── Sistema e Registro Drive
     ├── MFA ed utenti

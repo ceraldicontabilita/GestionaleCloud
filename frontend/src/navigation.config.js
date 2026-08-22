@@ -26,6 +26,7 @@ import {
   Clock,
   Menu,
   ArrowLeftRight,
+  ShieldCheck,
 } from 'lucide-react';
 
 export const APP_DIPENDENTI_URL = 'https://appdipendenti.onrender.com';
@@ -39,6 +40,7 @@ export const NAV_PRINCIPALI = [
   { to: '/prima-nota', label: 'Prima Nota', Icon: BookOpen },
   { to: '/fornitori', label: 'Fornitori', Icon: Building2 },
   { to: '/riconciliazione', label: 'Riconciliazione', Icon: Landmark },
+  { to: '/tracciabilita', label: 'Tracciabilità', Icon: ShieldCheck },
 ];
 
 // Voci secondarie: dropdown "Altro" su desktop + resto del menù mobile.

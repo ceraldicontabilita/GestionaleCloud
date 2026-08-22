@@ -59,6 +59,9 @@ Corrispettivi             F24                    Quietanze F24
 PayPal                    Scadenze fornitori     Relazioni
 Codici tributo            Import PartenoPay      Email PartenoPay
 Verbali PartenoPay
+HACCP righe acquisto      HACCP lotti              HACCP movimenti lotti
+HACCP registri            HACCP attese              HACCP attrezzature
+HACCP ricette             HACCP produzioni
 ```
 
 Sotto la radice Drive il sistema riconosce la tassonomia:

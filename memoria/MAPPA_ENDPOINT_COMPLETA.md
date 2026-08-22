@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1145 endpoint** in **112 gruppi**.
+> Totale **1164 endpoint** in **112 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 699 · ext esterni = 83 · — da verificare = 363
+**Riepilogo uso:** ✓ frontend = 720 · ext esterni = 81 · — da verificare = 363
 
 ## AI Parser  (11)
 
@@ -681,13 +681,6 @@
 | POST | `/api/documenti-inbox/import-f24-from-inbox` | ✓ | documents_inbox_classify |
 | GET | `/api/documenti-inbox/statistics` | — | documents_inbox_classify |
 
-## ERP Bridge  (2)
-
-| Metodo | Path | FE | File |
-|---|---|:-:|---|
-| POST | `/api/erp/ponte/fattura-ricevuta` | ext | erp_bridge |
-| GET | `/api/erp/ponte/status` | ext | erp_bridge |
-
 ## Email Download  (41)
 
 | Metodo | Path | FE | File |
@@ -993,6 +986,32 @@
 | DELETE | `/api/gestione-riservata/movimenti/{movimento_id}` | ✓ | gestione_riservata |
 | GET | `/api/gestione-riservata/riepilogo` | ✓ | gestione_riservata |
 | GET | `/api/gestione-riservata/volume-affari-reale` | — | gestione_riservata |
+
+## HACCP e Tracciabilita  (21)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| GET | `/api/haccp/equipment` | ✓ | haccp |
+| POST | `/api/haccp/equipment` | ✓ | haccp |
+| PATCH | `/api/haccp/equipment/{equipment_id}` | ✓ | haccp |
+| GET | `/api/haccp/expectations` | ✓ | haccp |
+| GET | `/api/haccp/lots` | ✓ | haccp |
+| POST | `/api/haccp/lots` | ✓ | haccp |
+| POST | `/api/haccp/lots/{lot_id}/movements` | ✓ | haccp |
+| GET | `/api/haccp/lots/{lot_id}/trace` | ✓ | haccp |
+| GET | `/api/haccp/overview` | ✓ | haccp |
+| GET | `/api/haccp/productions` | ✓ | haccp |
+| POST | `/api/haccp/productions` | ✓ | haccp |
+| GET | `/api/haccp/purchase-lines` | ✓ | haccp |
+| GET | `/api/haccp/recipes` | ✓ | haccp |
+| POST | `/api/haccp/recipes` | ✓ | haccp |
+| PUT | `/api/haccp/recipes/{recipe_id}` | ✓ | haccp |
+| GET | `/api/haccp/register-types` | ✓ | haccp |
+| GET | `/api/haccp/registers` | ✓ | haccp |
+| POST | `/api/haccp/registers` | ✓ | haccp |
+| POST | `/api/haccp/registers/{entry_id}/resolve` | ✓ | haccp |
+| POST | `/api/haccp/sync-invoices` | ✓ | haccp |
+| GET | `/api/haccp/sync-preview` | ✓ | haccp |
 
 ## IVA  (20)
 

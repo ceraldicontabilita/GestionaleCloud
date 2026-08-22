@@ -42,12 +42,6 @@ PUBLIC_PATHS = {
     "/api/auth/mfa/verify-login",  # challenge firmata + OTP, non ancora una sessione
     # RIMOSSO: "/api/auth/register" — ora richiede autenticazione (admin crea utenti)
 
-    # Integrazioni esterne: chiamanti che non possono avere un nostro JWT.
-    # Il webhook WhatsApp legacy è stato disattivato; il ponte ERP resta
-    # l'unica integrazione esterna pubblicamente raggiungibile e usa
-    # ERP_BRIDGE_SECRET come protezione dedicata.
-    "/api/erp/ponte/fattura-ricevuta",
-
     # Pagine legali: già pubbliche in versione non-/api (bypass generico
     # "non è /api/"), whitelistate anche qui per coerenza sulla variante
     # /api/ usata da eventuali link esterni (revisione app Meta ecc.).

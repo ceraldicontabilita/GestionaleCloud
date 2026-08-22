@@ -138,6 +138,38 @@ class Database:
         await _safe_index("dizionario_articoli", [("descrizione", 1)],
                           name="idx_dizionario_descrizione")
 
+        # --- Tracciabilita HACCP ---
+        await _safe_index("haccp_purchase_lines", "canonical_id", unique=True,
+                          name="idx_haccp_purchase_line_unique")
+        await _safe_index("haccp_purchase_lines", [("anno", 1), ("status", 1)],
+                          name="idx_haccp_purchase_lines_year_status")
+        await _safe_index("haccp_lots", "canonical_id", unique=True,
+                          name="idx_haccp_lot_unique")
+        await _safe_index("haccp_lots", [("expiry_date", 1), ("status", 1)],
+                          name="idx_haccp_lots_expiry_status")
+        await _safe_index("haccp_lot_movements", "canonical_id", unique=True,
+                          name="idx_haccp_lot_movement_unique")
+        await _safe_index("haccp_lot_movements", [("lot_id", 1), ("created_at", -1)],
+                          name="idx_haccp_lot_movements_lot_date")
+        await _safe_index("haccp_register_entries", "canonical_id", unique=True,
+                          name="idx_haccp_register_entry_unique")
+        await _safe_index("haccp_register_entries", [("anno", 1), ("register_type", 1), ("event_date", -1)],
+                          name="idx_haccp_register_year_type_date")
+        await _safe_index("haccp_expectations", "canonical_id", unique=True,
+                          name="idx_haccp_expectation_unique")
+        await _safe_index("haccp_expectations", [("anno", 1), ("status", 1)],
+                          name="idx_haccp_expectation_year_status")
+        await _safe_index("haccp_equipment", "canonical_id", unique=True,
+                          name="idx_haccp_equipment_unique")
+        await _safe_index("haccp_recipes", "canonical_id", unique=True,
+                          name="idx_haccp_recipe_unique")
+        await _safe_index("haccp_recipes", [("status", 1), ("name_normalized", 1)],
+                          name="idx_haccp_recipe_status_name")
+        await _safe_index("haccp_productions", "canonical_id", unique=True,
+                          name="idx_haccp_production_unique")
+        await _safe_index("haccp_productions", [("anno", 1), ("production_date", -1)],
+                          name="idx_haccp_production_year_date")
+
         # --- Estratto Conto ---
         await _safe_index(
             Collections.BANK_STATEMENTS, "id", unique=True,

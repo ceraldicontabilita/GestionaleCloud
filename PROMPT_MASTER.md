@@ -291,6 +291,25 @@ chiusura. Ogni totale ha formula e drill-down. Simulazioni non scrivono sul
 consuntivo. Chiusura esercizio richiede checklist, anteprima, conferma forte,
 audit e rollback.
 
+### 16.1 Tracciabilità alimentare e HACCP
+
+L'area `/tracciabilita` assorbe il dominio operativo del precedente progetto
+Lotti senza applicazione o archivio parallelo. Fatture, fornitori, prodotti,
+corrispettivi e ordini restano le entità canoniche di GestionaleCloud.
+
+Le fatture alimentano in anteprima le righe di ricezione; numero lotto,
+scadenza e quantità ricevuta provengono dall'XML o dall'osservazione umana e
+non vengono mai inventati. I registri comprendono temperature positive,
+negative e di cottura, sanificazione, disinfestazione, controllo olio,
+ricezione merce, anomalie, allergeni, schede tecniche, formazione,
+manutenzioni, chiusure e collaudi. Le soglie applicate restano congelate nel
+record storico. Ogni non conformità crea immediatamente un'attesa correttiva.
+
+Le ricette sono versionate, con ingredienti, allergeni, resa, shelf-life e
+conservazione espliciti. Ogni produzione seleziona i lotti ingredienti,
+registra consumi idempotenti e crea il lotto prodotto collegato. Gelati,
+semilavorati e recuperi controllati sono tipi dello stesso processo produttivo.
+
 ## 17. UX e accessibilità
 
 Navigazione per moduli, anno globale coerente, layout semplice. Stati loading,
@@ -393,7 +412,7 @@ test e necessario a una route/job/integratore attivo. Audit datati e vecchi
 porting non restano nel repository: Git conserva la storia. Le mappe generate
 si rigenerano dal codice e non si correggono a mano.
 
-## Appendice A — Tutte le 65 pagine
+## Appendice A — Tutte le 66 pagine
 
 1. **Login** — `/login` — accesso `public` — modulo `accesso` — Login sicuro, sessione, MFA e redirect alla destinazione autorizzata. Fonte UI: `frontend/src/pages/Login.jsx`; mappa: `memoria/pagine/login.json`.
 2. **Gestione riservata** — `/gestione-riservata` — accesso `reserved` — modulo `accesso` — Area riservata separata, con accesso dedicato e movimenti auditabili. Fonte UI: `frontend/src/pages/GestioneRiservata.jsx`; mappa: `memoria/pagine/gestione-riservata.json`.
@@ -460,6 +479,7 @@ si rigenerano dal codice e non si correggono a mano.
 63. **Indice documentale Drive** — `/documenti/drive` — accesso `authenticated` — modulo `documenti` — Indice Drive autorevole per metadati, hash, percorso e stato indicizzazione. Fonte UI: `frontend/src/pages/DriveDocumentIndex.jsx`; mappa: `memoria/pagine/documenti-drive.json`.
 64. **Atti amministrativi** — `/documenti/atti` — accesso `authenticated` — modulo `documenti` — Atti amministrativi con ente, protocollo, originale, scadenze e notifiche. Fonte UI: `frontend/src/pages/AttiAmministrativi.jsx`; mappa: `memoria/pagine/documenti-atti.json`.
 65. **Situazione fiscale** — `/situazione-fiscale` — accesso `authenticated` — modulo `contabilita` — Situazione fiscale unificata con F24, dichiarazioni, quietanze e anomalie. Fonte UI: `frontend/src/pages/SituazioneFiscale.jsx`; mappa: `memoria/pagine/situazione-fiscale.json`.
+66. **Tracciabilità e HACCP** — `/tracciabilita` — accesso `authenticated` — modulo `tracciabilita` — Ricezioni, lotti, registri, attese correttive, ricette, produzioni e attrezzature collegate alle entità canoniche. Fonte UI: `frontend/src/pages/TracciabilitaHACCP.jsx`; mappa: `memoria/pagine/tracciabilita-haccp.json`.
 
 ## Appendice B — Fogli e progressivi Drive/Sheets
 
@@ -487,6 +507,14 @@ si rigenerano dal codice e non si correggono a mano.
 | Import PartenoPay | `partenopay_import_runs` | `PPR` |
 | Email PartenoPay | `verbali_email_archive` | `PPE` |
 | Verbali PartenoPay | `verbali_noleggio` | `PPV` |
+| HACCP righe acquisto | `haccp_purchase_lines` | `HPL` |
+| HACCP lotti | `haccp_lots` | `HLT` |
+| HACCP movimenti lotti | `haccp_lot_movements` | `HLM` |
+| HACCP registri | `haccp_register_entries` | `HRE` |
+| HACCP attese | `haccp_expectations` | `HEX` |
+| HACCP attrezzature | `haccp_equipment` | `HEQ` |
+| HACCP ricette | `haccp_recipes` | `HRC` |
+| HACCP produzioni | `haccp_productions` | `HPR` |
 
 ## Appendice C — Tutte le variabili rilevate
 
@@ -580,7 +608,6 @@ si rigenerano dal codice e non si correggono a mano.
 | `ENABLE_SCHEDULER` | feature-job | configurazione | `bool` / `True` | `app/config.py`, `render.yaml` |
 | `ENABLE_SMTP_EMAIL` | feature-job | configurazione | `bool` / `False` | `app/config.py` |
 | `ENVIRONMENT` | app-runtime | configurazione | `str` / `'production'` | `app/config.py`, `app/utils/session_cookie.py`, `scripts/e2e_distruttivo_server.py` |
-| `ERP_BRIDGE_SECRET` | app-runtime | segreta | non dichiarato in Settings | `app/routers/erp_bridge.py` |
 | `FAIL_FAST_SECRETS` | app-runtime | segreta | non dichiarato in Settings | `app/config.py`, `render.yaml` |
 | `FISCAL_COMPANY_ID` | azienda-fiscale | configurazione | `str` / `'04523831214'` | `app/config.py` |
 | `FONTS_DIR` | app-runtime | configurazione | `Path` / `Path('fonts')` | `app/config.py` |
@@ -734,7 +761,7 @@ Gli alias senza valore vanno configurati nel secret/config store di Render. Non 
 
 ## Appendice D — Tutti i router e tutti gli endpoint
 
-Route table sorgente: **1145**; attivi da ricreare: **743**; quarantena: **402** (`verificare` 375, `admin-only` 27).
+Route table sorgente: **1164**; attivi da ricreare: **764**; quarantena: **400** (`verificare` 373, `admin-only` 27).
 
 `attivo` significa da ricreare con contratto e test; `quarantena` significa non esporre nel nuovo runtime finché consumer, autorizzazione e test non sono provati. L'elenco è completo e include entrambe le categorie.
 
@@ -1375,11 +1402,6 @@ Route table sorgente: **1145**; attivi da ricreare: **743**; quarantena: **402**
 - **attivo** — `POST /api/dipendenti/{dipendente_id}/invita-portale` — in uso: FE
 - **attivo** — `GET /api/dipendenti/{dipendente_id}/report-ferie-permessi` — in uso: FE
 
-### Router `erp_bridge` (2)
-
-- **quarantena: verificare** — `POST /api/erp/ponte/fattura-ricevuta` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/erp/ponte/status` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-
 ### Router `f24.email_f24` (7)
 
 - **quarantena: verificare** — `GET /api/f24-email/allegati` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
@@ -1586,6 +1608,30 @@ Route table sorgente: **1145**; attivi da ricreare: **743**; quarantena: **402**
 - **attivo** — `PUT /api/gestione-riservata/movimenti/{movimento_id}` — in uso: FE
 - **attivo** — `GET /api/gestione-riservata/riepilogo` — in uso: FE, chat
 - **quarantena: verificare** — `GET /api/gestione-riservata/volume-affari-reale` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+
+### Router `haccp` (21)
+
+- **attivo** — `GET /api/haccp/equipment` — in uso: FE
+- **attivo** — `POST /api/haccp/equipment` — in uso: FE
+- **attivo** — `PATCH /api/haccp/equipment/{equipment_id}` — in uso: FE
+- **attivo** — `GET /api/haccp/expectations` — in uso: FE
+- **attivo** — `GET /api/haccp/lots` — in uso: FE
+- **attivo** — `POST /api/haccp/lots` — in uso: FE
+- **attivo** — `POST /api/haccp/lots/{lot_id}/movements` — in uso: FE
+- **attivo** — `GET /api/haccp/lots/{lot_id}/trace` — in uso: FE
+- **attivo** — `GET /api/haccp/overview` — in uso: FE
+- **attivo** — `GET /api/haccp/productions` — in uso: FE
+- **attivo** — `POST /api/haccp/productions` — in uso: FE
+- **attivo** — `GET /api/haccp/purchase-lines` — in uso: FE
+- **attivo** — `GET /api/haccp/recipes` — in uso: FE
+- **attivo** — `POST /api/haccp/recipes` — in uso: FE
+- **attivo** — `PUT /api/haccp/recipes/{recipe_id}` — in uso: FE
+- **attivo** — `GET /api/haccp/register-types` — in uso: FE
+- **attivo** — `GET /api/haccp/registers` — in uso: FE
+- **attivo** — `POST /api/haccp/registers` — in uso: FE
+- **attivo** — `POST /api/haccp/registers/{entry_id}/resolve` — in uso: FE
+- **attivo** — `POST /api/haccp/sync-invoices` — in uso: FE
+- **attivo** — `GET /api/haccp/sync-preview` — in uso: FE
 
 ### Router `invoices.corrispettivi` (24)
 

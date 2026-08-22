@@ -1,7 +1,6 @@
 """P1 §5.4 — Consolidamento fatture passive su `invoices`: mapping schema legacy
-→ canonico, salva idempotente per invoice_key, ponte ERP e crud sulla canonica."""
+→ canonico, salvataggio idempotente e nessun archivio parallelo."""
 import asyncio
-from pathlib import Path
 
 from app.services.fatture_canonico import (
     invoice_key, mappa_fattura_passiva, salva_invoice_passiva, COLL,
@@ -71,11 +70,3 @@ def test_salta_se_dati_insufficienti():
     # senza numero o P.IVA la chiave non è affidabile -> non inserisce
     assert _run(salva_invoice_passiva(db, {"data": "2026-01-01"})) is None
     assert len(db.c.docs) == 0
-
-
-def test_ponte_erp_e_crud_scrivono_leggono_invoices():
-    bridge = Path("app/routers/erp_bridge.py").read_text(encoding="utf-8")
-    assert 'db["invoices"].update_one' in bridge
-    assert 'db["fatture_passive"].update_one' not in bridge
-    crud = Path("app/routers/fatture_module/crud.py").read_text(encoding="utf-8")
-    assert 'db["fatture_passive"].find' not in crud

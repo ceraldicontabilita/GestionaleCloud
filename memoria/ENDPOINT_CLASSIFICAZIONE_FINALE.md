@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1145 · tenere: 743 · verificare: 375 · admin-only (migrazione/manutenzione): 27
+**Totale endpoint:** 1164 · tenere: 764 · verificare: 373 · admin-only (migrazione/manutenzione): 27
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -501,8 +501,6 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/email-scanner/scansiona` | email_scanner | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/email-scanner/scansiona-e-associa` | email_scanner | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/email-scanner/statistiche` | email_scanner | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
-| `POST /api/erp/ponte/fattura-ricevuta` | erp_bridge | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/erp/ponte/status` | erp_bridge | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/estratto-conto-movimenti/categorie` | bank.estratto_conto | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `DELETE /api/estratto-conto-movimenti/clear` | bank.estratto_conto | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/estratto-conto-movimenti/export-excel` | bank.estratto_conto | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
@@ -705,6 +703,27 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `PUT /api/gestione-riservata/movimenti/{movimento_id}` | gestione_riservata | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/gestione-riservata/riepilogo` | gestione_riservata | sì | — | sì | — | sì | tenere | in uso: FE, chat |
 | `GET /api/gestione-riservata/volume-affari-reale` | gestione_riservata | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/haccp/equipment` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
+| `POST /api/haccp/equipment` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
+| `PATCH /api/haccp/equipment/{equipment_id}` | haccp | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/haccp/expectations` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
+| `GET /api/haccp/lots` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
+| `POST /api/haccp/lots` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
+| `POST /api/haccp/lots/{lot_id}/movements` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
+| `GET /api/haccp/lots/{lot_id}/trace` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
+| `GET /api/haccp/overview` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
+| `GET /api/haccp/productions` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
+| `POST /api/haccp/productions` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
+| `GET /api/haccp/purchase-lines` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
+| `GET /api/haccp/recipes` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
+| `POST /api/haccp/recipes` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
+| `PUT /api/haccp/recipes/{recipe_id}` | haccp | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/haccp/register-types` | haccp | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/haccp/registers` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
+| `POST /api/haccp/registers` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
+| `POST /api/haccp/registers/{entry_id}/resolve` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
+| `POST /api/haccp/sync-invoices` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
+| `GET /api/haccp/sync-preview` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/invoices` | invoices.invoices_main | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/invoices/bank-pending` | invoices.invoices_main | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/invoices/by-month/{year}/{month}` | invoices.invoices_main | sì | — | — | — | — | tenere | in uso: FE |
