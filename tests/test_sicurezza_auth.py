@@ -114,8 +114,6 @@ class TestAllowlistCongelata:
         # Autenticazione necessaria prima di una sessione valida
         "/api/auth/login", "/api/auth/logout", "/api/auth/verify",
         "/api/auth/pin-login", "/api/auth/mfa/verify-login",
-        # Integrazioni esterne con auth propria (ERP bridge, non WhatsApp legacy)
-        "/api/erp/ponte/fattura-ricevuta",
         # Pagine legali
         "/api/privacy", "/api/terms", "/api/data-deletion",
         # OpenAPI docs

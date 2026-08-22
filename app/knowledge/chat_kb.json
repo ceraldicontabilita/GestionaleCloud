@@ -2,7 +2,7 @@
   "meta": {
     "nome": "Ceraldi ERP — Logica completa per la chat intelligente",
     "versione": "5.0-drive-sheets-operational",
-    "aggiornato_al": "2026-08-20",
+    "aggiornato_al": "2026-08-22",
     "azienda": {
       "nome": "Ceraldi Caffe / Ceraldi Group SRL",
       "settore": "bar/caffetteria",
@@ -19,7 +19,7 @@
       "Ogni risposta deve includere stato, motivazione, fonti interne utilizzate e livello di affidabilita."
     ],
     "nota_implementazione": "La base di conoscenza è distinta dal motore operativo della chat. La sezione implementazione_chat_intelligente definisce backend, strumenti, memoria, frontend e sicurezza.",
-    "source_revision": "6c5f03630ee6fb741c2ef7d9fe2597860437dffb",
+    "source_revision": "e8c56bfd28c6e657aa41605bcac360dfb5b85549",
     "repository": "ceraldicontabilita/GestionaleCloud"
   },
   "regola_decisionale_globale": {

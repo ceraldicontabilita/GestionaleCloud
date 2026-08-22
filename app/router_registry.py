@@ -40,7 +40,6 @@ def register_all_routers(app: FastAPI) -> None:
 # ─── Auth & Public ───────────────────────────────────────────────────────────
 def _register_auth(app: FastAPI):
     from app.routers import auth, mfa, public_api, pin_login
-    from app.routers.erp_bridge import router as erp_bridge_router
     from app.routers.legal_pages import router as legal_router
 
     app.include_router(public_api.router, prefix="/api", tags=["API ERP protetta"])
@@ -52,11 +51,6 @@ def _register_auth(app: FastAPI):
     app.include_router(auth.router, tags=["Authentication"])
     app.include_router(pin_login.router, prefix="/api/auth", tags=["PIN Login"])
     app.include_router(mfa.router, prefix="/api/auth", tags=["MFA"])
-    # ERP Bridge: ponte inbound dall'app esterna collegata allo stesso DB
-    # (ceraldiapp.it) che invia al gestionale le fatture importate dalla PEC.
-    # NON rimuovere: endpoint chiamato dall'altra app.
-    # Il router ha già prefix interno "/api/erp/ponte", quindi NO prefix qui.
-    app.include_router(erp_bridge_router)
     app.include_router(legal_router, tags=["Legal"])
 
     # Le notifiche operative usano esclusivamente Telegram. Non registrare
@@ -170,12 +164,14 @@ def _register_bank(app: FastAPI):
 
 # ─── Warehouse Module ────────────────────────────────────────────────────────
 def _register_warehouse(app: FastAPI):
-    # Giacenze/prodotti/inventario sono competenza dell'app HACCP (ceraldiapp.it):
-    # qui resta SOLO il Dizionario Articoli, strumento contabile usato dalle
-    # fatture. Le collection condivise non vengono toccate.
+    # Il dizionario articoli resta la fonte prodotti contabile. La ricezione e
+    # i lotti sono ora integrati nativamente nel registro Drive/Sheets, senza
+    # ponte esterno o database MongoDB.
     from app.routers.warehouse import dizionario_articoli
+    from app.routers import haccp
 
     app.include_router(dizionario_articoli.router, prefix="/api/dizionario-articoli", tags=["Dizionario Articoli"])
+    app.include_router(haccp.router, prefix="/api/haccp", tags=["HACCP e Tracciabilita"])
 
 
 # ─── Invoices Module ─────────────────────────────────────────────────────────

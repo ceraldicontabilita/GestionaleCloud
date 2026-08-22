@@ -25,6 +25,7 @@ PAGE_FILE_BY_PATH = {
     "/": "dashboard.json",
     "/login": "login.json",
     "/gestione-riservata": "gestione-riservata.json",
+    "/tracciabilita": "tracciabilita-haccp.json",
     "/rapido": "inserimento-rapido.json",
     "/fatture": "fatture.json",
     "/fatture/corrispettivi": "corrispettivi.json",

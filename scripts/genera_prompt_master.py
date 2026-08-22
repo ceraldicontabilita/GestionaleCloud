@@ -82,6 +82,7 @@ PAGE_PURPOSES = {
     63: "Indice Drive autorevole per metadati, hash, percorso e stato indicizzazione.",
     64: "Atti amministrativi con ente, protocollo, originale, scadenze e notifiche.",
     65: "Situazione fiscale unificata con F24, dichiarazioni, quietanze e anomalie.",
+    66: "Ricezioni, lotti, registri, attese correttive, ricette, produzioni e attrezzature collegate alle entità canoniche.",
 }
 
 
@@ -108,6 +109,14 @@ SHEETS = [
     ("Import PartenoPay", "partenopay_import_runs", "PPR"),
     ("Email PartenoPay", "verbali_email_archive", "PPE"),
     ("Verbali PartenoPay", "verbali_noleggio", "PPV"),
+    ("HACCP righe acquisto", "haccp_purchase_lines", "HPL"),
+    ("HACCP lotti", "haccp_lots", "HLT"),
+    ("HACCP movimenti lotti", "haccp_lot_movements", "HLM"),
+    ("HACCP registri", "haccp_register_entries", "HRE"),
+    ("HACCP attese", "haccp_expectations", "HEX"),
+    ("HACCP attrezzature", "haccp_equipment", "HEQ"),
+    ("HACCP ricette", "haccp_recipes", "HRC"),
+    ("HACCP produzioni", "haccp_productions", "HPR"),
 ]
 
 
@@ -404,6 +413,25 @@ chiusura. Ogni totale ha formula e drill-down. Simulazioni non scrivono sul
 consuntivo. Chiusura esercizio richiede checklist, anteprima, conferma forte,
 audit e rollback.
 
+### 16.1 Tracciabilità alimentare e HACCP
+
+L'area `/tracciabilita` assorbe il dominio operativo del precedente progetto
+Lotti senza applicazione o archivio parallelo. Fatture, fornitori, prodotti,
+corrispettivi e ordini restano le entità canoniche di GestionaleCloud.
+
+Le fatture alimentano in anteprima le righe di ricezione; numero lotto,
+scadenza e quantità ricevuta provengono dall'XML o dall'osservazione umana e
+non vengono mai inventati. I registri comprendono temperature positive,
+negative e di cottura, sanificazione, disinfestazione, controllo olio,
+ricezione merce, anomalie, allergeni, schede tecniche, formazione,
+manutenzioni, chiusure e collaudi. Le soglie applicate restano congelate nel
+record storico. Ogni non conformità crea immediatamente un'attesa correttiva.
+
+Le ricette sono versionate, con ingredienti, allergeni, resa, shelf-life e
+conservazione espliciti. Ogni produzione seleziona i lotti ingredienti,
+registra consumi idempotenti e crea il lotto prodotto collegato. Gelati,
+semilavorati e recuperi controllati sono tipi dello stesso processo produttivo.
+
 ## 17. UX e accessibilità
 
 Navigazione per moduli, anno globale coerente, layout semplice. Stati loading,
@@ -599,9 +627,9 @@ def sensitive(name: str) -> str:
 def render_pages() -> str:
     catalog = __import__("json").loads((ROOT / "page_catalog.json").read_text(encoding="utf-8"))
     pages = catalog["pages"]
-    if len(pages) != 65 or set(PAGE_PURPOSES) != set(range(1, 66)):
+    if len(pages) != 66 or set(PAGE_PURPOSES) != set(range(1, 67)):
         raise RuntimeError("Catalogo o contratti pagina incompleti")
-    lines = ["## Appendice A — Tutte le 65 pagine", ""]
+    lines = ["## Appendice A — Tutte le 66 pagine", ""]
     for page in sorted(pages, key=lambda value: value["id"]):
         lines.append(
             f"{page['id']}. **{page['label']}** — `{page['path']}` — accesso `{page['access']}` — "

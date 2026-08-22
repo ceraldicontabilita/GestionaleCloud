@@ -1,4 +1,4 @@
-"""Contratti operativi specifici delle 65 pagine canoniche di GestionaleCloud.
+"""Contratti operativi specifici delle 66 pagine canoniche di GestionaleCloud.
 
 Questi contenuti descrivono il comportamento target della ricostruzione pulita.
 Non sono una fotografia delle sole chiamate frontend: definiscono fonti, effetti,
@@ -948,6 +948,23 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["F24, dichiarazione, quietanza e pagamento bancario non sono intercambiabili; nessuna associazione per importo solo."],
         ["Ricerca per anno/codice raggiunge tutte le prove; ogni anomalia ha lista e tutte le somme quadrano alle righe origine."],
     ),
+    66: page(
+        ["fatture passive canoniche 2026", "righe merce XML", "fornitori e prodotti canonici", "registri HACCP Drive/Sheets"],
+        ["righe acquisto e lotti", "registri e attese correttive", "ricette versionate", "produzioni e consumi lotti", "attrezzature", "audit"],
+        [
+            "Mostrare anteprima idempotente delle righe merce senza scrivere e senza duplicare fatture o fornitori.",
+            "Importare le righe solo su conferma amministratore, conservando fattura, documento, hash e identita sorgente.",
+            "Registrare uno o piu lotti con numero, scadenza e quantita osservati; poi registrare consumi/scarti con saldo.",
+            "Registrare temperature, sanificazioni, disinfestazioni, olio, anomalie e controlli con soglie storiche congelate.",
+            "Creare subito un'attesa correttiva per ogni non conformita e chiuderla solo con evidenza e audit.",
+            "Versionare ricette, allergeni, resa e shelf-life; collegare ogni produzione ai lotti ingredienti e al lotto prodotto.",
+            "Gestire attrezzature e reparti nello stesso modulo, senza reintrodurre pagine o archivi paralleli.",
+        ],
+        ["Sincronizzazioni, controlli e produzioni sono idempotenti; soglie e stati derivano dal dominio e non da React."],
+        ["Fattura/riga merce ↔ ricezione ↔ lotto ingrediente ↔ ricetta/versione ↔ produzione/lotto prodotto ↔ consumo/scarto ↔ audit."],
+        ["Nessun MongoDB o ponte esterno; sola lettura non scrive; import massivo e attrezzature admin-only; Decimal e saldi mai negativi."],
+        ["Retry senza duplicati; non conformita con attesa; ricette versionate; produzioni tracciate; suite API/UI e build verdi."],
+    ),
 }
 
 
@@ -955,9 +972,9 @@ REQUIRED_FIELDS = {"sources", "writes", "flow", "automations", "links", "guards"
 
 
 def validate_page_logic() -> None:
-    if set(PAGE_LOGIC) != set(range(1, 66)):
-        missing = sorted(set(range(1, 66)) - set(PAGE_LOGIC))
-        extra = sorted(set(PAGE_LOGIC) - set(range(1, 66)))
+    if set(PAGE_LOGIC) != set(range(1, 67)):
+        missing = sorted(set(range(1, 67)) - set(PAGE_LOGIC))
+        extra = sorted(set(PAGE_LOGIC) - set(range(1, 67)))
         raise RuntimeError(f"Logica pagine incompleta: mancanti={missing}, extra={extra}")
     for page_id, value in PAGE_LOGIC.items():
         if set(value) != REQUIRED_FIELDS:
