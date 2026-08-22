@@ -1,5 +1,11 @@
 # ADR-001: Fusione completa Lotti nel dominio HACCP Drive/Sheets
 
+<!-- gestionalecloud-doc
+status: current
+reviewed_at: 2026-08-21
+storage_architecture: drive-only
+-->
+
 **Stato:** Accettata
 **Data:** 2026-08-22
 **Decisore:** Ceraldi Group
