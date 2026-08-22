@@ -25,6 +25,7 @@ _FRONTEND_DIST = os.path.realpath(os.path.join(_PROJECT_ROOT, "frontend", "dist"
 _FRONTEND_PUBLIC = os.path.realpath(os.path.join(_PROJECT_ROOT, "frontend", "public"))
 SALARI_SYNC_MARKER = "sync_prima_nota_salari_da_cedolini_2018_20260804_v1"
 SALARY_RELATIONS_RECOVERY_MARKER = "recover_salary_relations_20260821_v1"
+SUPPLIER_METHODS_RECOVERY_MARKER = "recover_supplier_payment_methods_20260822_v1"
 
 
 @asynccontextmanager
@@ -453,6 +454,44 @@ async def lifespan(app: FastAPI):
                 )
         except Exception:
             logger.exception("Impossibile registrare il fallimento del recupero stipendi")
+
+    # Ripristina i metodi fornitore persi soltanto quando esiste una prova
+    # esplicita nello storico o nel dizionario persistente. Il servizio crea
+    # una copia completa della riga prima di ogni modifica e non deduce nulla
+    # da fatture, importi o movimenti finanziari.
+    if Database.get_db() is not None:
+        try:
+            db = Database.get_db()
+            marker = SUPPLIER_METHODS_RECOVERY_MARKER
+            run = await db["migration_runs"].find_one({"id": marker})
+            if not run or run.get("status") != "completed":
+                from app.services.supplier_payment_method_recovery import (
+                    recover_supplier_payment_methods,
+                )
+
+                result = await recover_supplier_payment_methods(db, apply=True)
+                await db["migration_runs"].update_one(
+                    {"id": marker},
+                    {"$set": {
+                        "id": marker,
+                        "status": "completed",
+                        "finished_at": datetime.now(timezone.utc).isoformat(),
+                        "result": result,
+                    }},
+                    upsert=True,
+                )
+                try:
+                    from app.middleware.performance import cache
+                    await cache.clear_pattern("suppliers_list")
+                except Exception:
+                    logger.warning("Cache fornitori non invalidata dopo il recupero")
+                logger.info(
+                    "Recupero metodi fornitori: ripristinati=%s senza_fonte=%s conflitti=%s",
+                    result.get("ripristinati", 0), result.get("senza_fonte", 0),
+                    result.get("conflitti", 0),
+                )
+        except Exception:
+            logger.exception("Recupero metodi fornitori non completato")
 
     logger.info("Application startup complete")
     yield
