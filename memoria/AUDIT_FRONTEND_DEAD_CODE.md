@@ -3,16 +3,16 @@
 > Generato da `scripts/audit_frontend_dead_code.py` seguendo il grafo di import reale a partire da `main.jsx`/`App.jsx`/`navigation.config.js` (import statici, `import()` dinamici, `lazy(() => import(...))`, re-export `export {X} from`/`export * from`).
 > NON modificare a mano: rilancia lo script.
 
-**Totale file analizzati:** 203
+**Totale file analizzati:** 205
 
 | Classificazione | File |
 |---|---:|
 | ENTRYPOINT | 3 |
-| ROUTE_ATTIVA | 28 |
+| ROUTE_ATTIVA | 29 |
 | COMPONENTE_USATO | 94 |
 | MODALE_USATO | 3 |
 | HOOK_USATO | 3 |
-| TEST_ONLY | 49 |
+| TEST_ONLY | 50 |
 | DINAMICO_DA_VERIFICARE | 22 |
 | ORFANO_ELIMINABILE | 1 |
 
@@ -58,7 +58,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | File | Classificazione | Importato da (n. file) |
 |---|---|---:|
 | `frontend/src/App.jsx` | ENTRYPOINT | 1 |
-| `frontend/src/api.js` | COMPONENTE_USATO | 107 |
+| `frontend/src/api.js` | COMPONENTE_USATO | 108 |
 | `frontend/src/components/AgentiPanel.jsx` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/components/AssociaAssegnoFattura.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/components/AssociaMovimentoBanca.jsx` | COMPONENTE_USATO | 2 |
@@ -96,7 +96,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/components/ds/StatCard.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/ds/Table.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/components/ds/Tabs.jsx` | COMPONENTE_USATO | 1 |
-| `frontend/src/components/ds/index.js` | COMPONENTE_USATO | 61 |
+| `frontend/src/components/ds/index.js` | COMPONENTE_USATO | 62 |
 | `frontend/src/components/layout/TopNav.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/ui/ConfirmDialog.jsx` | MODALE_USATO | 27 |
 | `frontend/src/components/ui/alert.jsx` | COMPONENTE_USATO | 1 |
@@ -123,9 +123,9 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/components/ui/toaster.jsx` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/components/ui/toggle.jsx` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/components/ui/tooltip.jsx` | DINAMICO_DA_VERIFICARE | 0 |
-| `frontend/src/contexts/AnnoContext.jsx` | COMPONENTE_USATO | 51 |
+| `frontend/src/contexts/AnnoContext.jsx` | COMPONENTE_USATO | 52 |
 | `frontend/src/contexts/AnnoContext.test.jsx` | TEST_ONLY | 0 |
-| `frontend/src/contexts/AuthContext.jsx` | COMPONENTE_USATO | 7 |
+| `frontend/src/contexts/AuthContext.jsx` | COMPONENTE_USATO | 8 |
 | `frontend/src/contexts/AuthContext.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/contexts/UploadContext.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/domain/suppliers.js` | COMPONENTE_USATO | 2 |
@@ -137,7 +137,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/hooks/useWebSocket.js` | HOOK_USATO | 1 |
 | `frontend/src/hooks/useWebSocket.test.js` | TEST_ONLY | 0 |
 | `frontend/src/lib/queryClient.js` | COMPONENTE_USATO | 2 |
-| `frontend/src/lib/utils.js` | COMPONENTE_USATO | 99 |
+| `frontend/src/lib/utils.js` | COMPONENTE_USATO | 100 |
 | `frontend/src/lib/utils.test.js` | TEST_ONLY | 0 |
 | `frontend/src/main.jsx` | ENTRYPOINT | 0 |
 | `frontend/src/navigation.config.js` | ENTRYPOINT | 0 |
@@ -234,6 +234,8 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/pages/Scadenze.jsx` | ROUTE_ATTIVA | 1 |
 | `frontend/src/pages/SituazioneFiscale.jsx` | ROUTE_ATTIVA | 2 |
 | `frontend/src/pages/SituazioneFiscale.test.jsx` | TEST_ONLY | 0 |
+| `frontend/src/pages/TracciabilitaHACCP.jsx` | ROUTE_ATTIVA | 2 |
+| `frontend/src/pages/TracciabilitaHACCP.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/pages/Utenti.jsx` | ROUTE_ATTIVA | 1 |
 | `frontend/src/pages/UtileObiettivo.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/VerbaliRiconciliazione.jsx` | COMPONENTE_USATO | 1 |
