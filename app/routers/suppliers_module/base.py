@@ -789,6 +789,8 @@ async def update_supplier(supplier_id: str, data: Dict[str, Any] = Body(...)) ->
     
     # Se metodo cambiato, salva nello storico
     if metodo_configurato:
+        from app.utils.iva_calculator import save_supplier_payment_method
+
         old_supplier = await db[Collections.SUPPLIERS].find_one(
             _filtro_fornitore(supplier_id),
             {"metodo_pagamento": 1, "denominazione": 1}
@@ -800,6 +802,17 @@ async def update_supplier(supplier_id: str, data: Dict[str, Any] = Body(...)) ->
                 "dal": data.get("metodo_pagamento_dal", datetime.now(timezone.utc).strftime("%Y-%m-%d")),
                 "registrato_il": datetime.now(timezone.utc).isoformat(),
             }}}
+        )
+        supplier_vat = (
+            supplier.get("partita_iva") or supplier.get("piva")
+            or supplier.get("vat_number") or ""
+        )
+        await save_supplier_payment_method(
+            db,
+            supplier_vat,
+            (old_supplier or {}).get("denominazione", ""),
+            data["metodo_pagamento"],
+            username="gestionale-fornitori",
         )
     
     if result.matched_count == 0:

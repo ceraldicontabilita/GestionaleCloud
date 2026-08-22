@@ -6,6 +6,7 @@ IVA Credito: da Fatture (acquisti)
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 import logging
+import uuid
 import calendar
 
 logger = logging.getLogger(__name__)
@@ -255,10 +256,12 @@ async def save_supplier_payment_method(db, supplier_vat: str, supplier_name: str
         now = datetime.now(timezone.utc).isoformat()
         
         # Upsert nel dizionario principale
+        dictionary_id = f"supplier-payment-method:{supplier_vat}"
         await db["supplier_payment_methods"].update_one(
             {"supplier_vat": supplier_vat},
             {
                 "$set": {
+                    "id": dictionary_id,
                     "supplier_name": supplier_name,
                     "payment_method": payment_method,
                     "updated_at": now,
@@ -273,6 +276,7 @@ async def save_supplier_payment_method(db, supplier_vat: str, supplier_name: str
         
         # Backup nello storico
         history_doc = {
+            "id": f"supplier-payment-history:{supplier_vat}:{uuid.uuid4()}",
             "supplier_vat": supplier_vat,
             "supplier_name": supplier_name,
             "payment_method": payment_method,
