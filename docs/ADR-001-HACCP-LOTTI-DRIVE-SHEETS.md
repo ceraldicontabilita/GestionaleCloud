@@ -14,8 +14,8 @@ storage_architecture: drive-only
 
 Il repository storico Lotti contiene tracciabilità, temperature, sanificazioni,
 disinfestazioni, anomalie, controllo olio, ricette, produzioni, gelati, scorte,
-ricezione merce e funzioni amministrative. La persistenza MongoDB originaria non
-è più disponibile e GestionaleCloud usa esclusivamente Google Drive/Sheets.
+ricezione merce e funzioni amministrative. La persistenza storica non è più
+disponibile e GestionaleCloud usa esclusivamente Google Drive/Sheets.
 
 Fatture, fornitori, corrispettivi, prodotti e ordini possiedono già identità e
 flussi canonici in GestionaleCloud. Copiare i rispettivi router Lotti creerebbe
@@ -32,14 +32,15 @@ database paralleli:
 - ogni non conformità crea subito un'attesa di azione correttiva;
 - ricette e produzioni sono versionate e collegate ai consumi dei lotti;
 - attrezzature, allergeni, shelf-life e provenienza restano campi espliciti;
-- nessun dato viene inventato quando il vecchio MongoDB non è recuperabile.
+- nessun dato viene inventato quando la fonte storica non è recuperabile.
 
 ## Alternative considerate
 
 ### Copia integrale del vecchio backend
 
-Rifiutata: reintrodurrebbe MongoDB, duplicati di fatture/fornitori e oltre
-settanta router con contratti incompatibili con autorizzazione e audit correnti.
+Rifiutata: reintrodurrebbe un archivio parallelo, duplicati di
+fatture/fornitori e oltre settanta router con contratti incompatibili con
+autorizzazione e audit correnti.
 
 ### Applicazione Lotti separata
 
@@ -53,7 +54,7 @@ dedicati del registro Drive/Sheets.
 ## Conseguenze
 
 - La ricostruzione parte dal workbook e dagli originali Drive.
-- Gli storici MongoDB cancellati non vengono ricreati artificialmente.
+- Gli storici privi di una fonte verificabile non vengono ricreati artificialmente.
 - Le funzioni Lotti sono organizzate per processo, non per vecchio router.
 - Ogni scrittura è autenticata, idempotente, auditata e coperta da test.
 - La pubblicazione richiede suite backend/frontend, CI e verifica del commit live.

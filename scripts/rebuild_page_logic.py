@@ -962,7 +962,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ],
         ["Sincronizzazioni, controlli e produzioni sono idempotenti; soglie e stati derivano dal dominio e non da React."],
         ["Fattura/riga merce ↔ ricezione ↔ lotto ingrediente ↔ ricetta/versione ↔ produzione/lotto prodotto ↔ consumo/scarto ↔ audit."],
-        ["Nessun MongoDB o ponte esterno; sola lettura non scrive; import massivo e attrezzature admin-only; Decimal e saldi mai negativi."],
+        ["Nessun archivio parallelo o ponte esterno; sola lettura non scrive; import massivo e attrezzature admin-only; Decimal e saldi mai negativi."],
         ["Retry senza duplicati; non conformita con attesa; ricette versionate; produzioni tracciate; suite API/UI e build verdi."],
     ),
 }
