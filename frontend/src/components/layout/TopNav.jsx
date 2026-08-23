@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, memo, useEffect } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { Link, NavLink, useLocation } from 'react-router-dom';
 import { ChevronDown, Bell, MoreHorizontal, LogOut } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '../../api';
@@ -525,13 +525,13 @@ const NotificationBellMinimal = memo(function NotificationBellMinimal() {
             {hasAlerts && (
               <span style={{ fontSize: 11, fontWeight: 600, color: COLORS.textMuted }}>
                 {critical > 0 && (
-                  <span style={{ color: COLORS.danger, marginRight: 6 }}>CRIT {critical}</span>
+                  <Link to="/dashboard/alerts?severita=critical" onClick={() => setOpen(false)} style={{ color: COLORS.danger, marginRight: 6 }}>CRIT {critical}</Link>
                 )}
                 {warning > 0 && (
-                  <span style={{ color: COLORS.warning, marginRight: 6 }}>WARN {warning}</span>
+                  <Link to="/dashboard/alerts?severita=warning" onClick={() => setOpen(false)} style={{ color: COLORS.warning, marginRight: 6 }}>WARN {warning}</Link>
                 )}
                 {(summary.per_severita?.info || 0) > 0 && (
-                  <span style={{ color: COLORS.info }}>INFO {summary.per_severita.info}</span>
+                  <Link to="/dashboard/alerts?severita=info" onClick={() => setOpen(false)} style={{ color: COLORS.info }}>INFO {summary.per_severita.info}</Link>
                 )}
               </span>
             )}
@@ -558,13 +558,17 @@ const NotificationBellMinimal = memo(function NotificationBellMinimal() {
                   Alert critici recenti
                 </div>
                 {summary.critical_recenti.map((a, i) => (
-                  <div
+                  <Link
                     key={a.id || i}
+                    to={a.link || `/dashboard/alerts?id=${encodeURIComponent(a.id || '')}`}
+                    onClick={() => setOpen(false)}
                     style={{
                       padding: '10px 16px',
                       borderBottom: `1px solid ${COLORS.gray[50]}`,
                       fontSize: 12,
                       color: COLORS.gray[700],
+                      display: 'block',
+                      textDecoration: 'none',
                     }}
                   >
                     <div style={{ fontWeight: 600, marginBottom: 2 }}>
@@ -578,7 +582,7 @@ const NotificationBellMinimal = memo(function NotificationBellMinimal() {
                     {a.modulo && (
                       <div style={{ fontSize: 10, color: COLORS.textSubtle, marginTop: 2 }}>{a.modulo}</div>
                     )}
-                  </div>
+                  </Link>
                 ))}
               </>
             ) : (
@@ -586,25 +590,28 @@ const NotificationBellMinimal = memo(function NotificationBellMinimal() {
                 {Object.entries(summary.per_modulo || {})
                   .slice(0, 8)
                   .map(([modulo, count]) => (
-                    <div
+                    <Link
                       key={modulo}
+                      to={`/dashboard/alerts?modulo=${encodeURIComponent(modulo)}`}
+                      onClick={() => setOpen(false)}
                       style={{
                         display: 'flex',
                         justifyContent: 'space-between',
                         padding: '6px 0',
                         borderBottom: `1px solid ${COLORS.gray[50]}`,
+                        textDecoration: 'none',
                       }}
                     >
                       <span style={{ textTransform: 'capitalize' }}>{modulo}</span>
                       <span style={{ fontWeight: 700, color: COLORS.primary }}>{count}</span>
-                    </div>
+                    </Link>
                   ))}
               </div>
             )}
           </div>
 
-          <a
-            href="/"
+          <Link
+            to="/dashboard/alerts"
             onClick={() => setOpen(false)}
             style={{
               display: 'block',
@@ -621,8 +628,8 @@ const NotificationBellMinimal = memo(function NotificationBellMinimal() {
               borderTop: `1px solid ${COLORS.gray[100]}`,
             }}
           >
-            Apri Dashboard
-          </a>
+            Apri tutti gli alert ({totale})
+          </Link>
         </div>
       )}
     </div>
