@@ -17,6 +17,12 @@ AMBIGUOUS = "AMBIGUO"
 NOTHING_DUE_DOCUMENTED = "NULLA_DOVUTO_ERARIO_DOCUMENTATO"
 WAITING_RECEIPT = "F24_COMMERCIALISTA_IN_ATTESA_QUIETANZA"
 SOURCE_REVIEW = "PROVE_F24_DA_VERIFICARE"
+DECLARATION_READY = "PRONTO_PER_VERIFICA_CAMPI"
+DECLARATION_VERSION_REVIEW = "IDENTITA_DICHIARANTE_E_VERSIONE_DA_VERIFICARE"
+SUPPORTED_DECLARATIONS = {
+    "MODELLO_770", "LIPE", "DICHIARAZIONE_IVA", "REDDITI_SC", "DICHIARAZIONE_IRAP",
+}
+VERSION_SENSITIVE_DECLARATIONS = SUPPORTED_DECLARATIONS - {"LIPE"}
 
 
 def _text(value: Any) -> str:
@@ -117,6 +123,51 @@ def group_model_rows(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
         "normalized_tax_rows": values,
         "source": "MODELLO_F24_DRIVE",
     } for document_id, values in grouped.items()]
+
+
+def annotate_declaration_certainty(
+    declarations: Iterable[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Blocca il doppio conteggio quando identita' o versione non sono provate.
+
+    Il solo tipo dichiarazione e anno d'imposta non permettono di stabilire se
+    due PDF appartengano a soggetti diversi, siano invii separati oppure una
+    dichiarazione integrativa. Finche' il PDF non fornisce tale identita',
+    nessuna delle versioni concorrenti entra nel registro automatico dovuto.
+    """
+    items = [dict(item) for item in declarations]
+    grouped: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    for item in items:
+        document_type = str(item.get("document_type") or "")
+        tax_year = str(item.get("tax_year") or "")
+        if document_type in VERSION_SENSITIVE_DECLARATIONS and tax_year:
+            grouped[(document_type, tax_year)].append(item)
+
+    for item in items:
+        supported = item.get("document_type") in SUPPORTED_DECLARATIONS
+        identity_confirmed = (
+            item.get("relation_state") == "CONFERMATA_NOME_UNIVOCO_E_INDICE_VERIFICATO"
+        )
+        siblings = grouped.get((
+            str(item.get("document_type") or ""), str(item.get("tax_year") or ""),
+        ), [])
+        if supported and identity_confirmed and len(siblings) <= 1:
+            item["field_check_status"] = DECLARATION_READY
+            item["declaration_set_status"] = "UNICA_PER_TIPO_E_ANNO_IMPOSTA"
+            item["related_document_ids"] = []
+        elif supported and identity_confirmed and len(siblings) > 1:
+            item["field_check_status"] = DECLARATION_VERSION_REVIEW
+            item["declaration_set_status"] = "PIU_DICHIARAZIONI_STESSO_TIPO_E_ANNO_IMPOSTA"
+            item["related_document_ids"] = sorted(
+                str(sibling.get("document_id") or "")
+                for sibling in siblings
+                if sibling.get("document_id") != item.get("document_id")
+            )
+        else:
+            item["field_check_status"] = "PARSER_SPECIFICO_NON_DISPONIBILE"
+            item["declaration_set_status"] = "IDENTITA_O_PARSER_NON_DISPONIBILE"
+            item["related_document_ids"] = []
+    return items
 
 
 def reconcile_f24_sources(drive_rows: Iterable[dict[str, Any]],

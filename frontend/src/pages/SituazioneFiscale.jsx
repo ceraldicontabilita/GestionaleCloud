@@ -344,9 +344,11 @@ export default function SituazioneFiscale() {
           <StatCard label="F24 commercialista" value={certaintyMeta.sources?.commercialista_f24_documents || 0} accent="primary" />
           <StatCard label="Quietanze Drive" value={certaintyMeta.sources?.quietanza_drive_rows || 0} accent="primary" />
           <StatCard label="Dichiarazioni" value={certaintyMeta.declarations?.documents || 0} accent="primary" />
+          <StatCard label="Identità/versione da verificare" value={certaintyMeta.declarations?.identity_or_version_review || 0} accent="warning" />
         </div>}
         {tab === 'confronto-fonti' && certaintyMeta?.declarations?.requires_review && <div style={{ margin: '0 0 14px', padding: '10px 12px', borderRadius: 8, background: '#fffbeb', color: '#92400e' }}>
           <strong>Verifica dichiarazioni disponibile per i modelli supportati.</strong> Ogni valore conserva pagina e testo sorgente; le righe non univoche restano da verificare e non vengono collegate per il solo importo.
+          {(certaintyMeta.declarations?.identity_or_version_review || 0) > 0 && <div style={{ marginTop: 4 }}><strong>{certaintyMeta.declarations.identity_or_version_review} dichiarazioni escluse dal totale automatico:</strong> esistono più PDF dello stesso tipo e anno d’imposta; occorre provare dal documento il dichiarante e quale versione sia valida.</div>}
         </div>}
         {tab === 'confronto-fonti' && (certaintyMeta?.declaration_items || []).length > 0 && <section aria-labelledby="obligation-register-heading" className="fiscal-record" style={{ marginBottom: 18 }}>
           <div className="fiscal-record-header">

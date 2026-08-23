@@ -267,7 +267,11 @@ async def source_certainty(
     """Confronta F24 del commercialista e quietanze Drive su identita' fiscali forti."""
     from app.services.drive_document_index import list_declarations as list_drive_declarations
     from app.services.drive_document_index import list_tax_obligations
-    from app.services.fiscal_source_certainty import group_model_rows, reconcile_f24_sources
+    from app.services.fiscal_source_certainty import (
+        annotate_declaration_certainty,
+        group_model_rows,
+        reconcile_f24_sources,
+    )
 
     drive_payload = await asyncio.to_thread(
         list_tax_obligations, offset=0, limit=5000,
@@ -289,7 +293,7 @@ async def source_certainty(
     accountant_documents = group_model_rows(model_rows)
     result = reconcile_f24_sources(receipt_rows, accountant_documents)
     declarations = declaration_payload["results"]
-    declaration_items = [{
+    declaration_items = annotate_declaration_certainty([{
         "document_id": item.get("document_id"),
         "document_type": item.get("document_type"),
         "filing_year": item.get("filing_year"),
@@ -297,15 +301,7 @@ async def source_certainty(
         "filename": item.get("filename"),
         "protocol": item.get("protocol"),
         "relation_state": item.get("relation_state"),
-        "field_check_status": (
-            "PRONTO_PER_VERIFICA_CAMPI"
-            if item.get("document_type") in {
-                "MODELLO_770", "LIPE", "DICHIARAZIONE_IVA", "REDDITI_SC", "DICHIARAZIONE_IRAP",
-            }
-            and item.get("relation_state") == "CONFERMATA_NOME_UNIVOCO_E_INDICE_VERIFICATO"
-            else "PARSER_SPECIFICO_NON_DISPONIBILE"
-        ),
-    } for item in declarations]
+    } for item in declarations])
     result.update({
         "year": year,
         "sources": {
@@ -319,6 +315,15 @@ async def source_certainty(
             "with_verified_identity": sum(
                 item.get("relation_state") == "CONFERMATA_NOME_UNIVOCO_E_INDICE_VERIFICATO"
                 for item in declarations
+            ),
+            "ready_for_field_check": sum(
+                item.get("field_check_status") == "PRONTO_PER_VERIFICA_CAMPI"
+                for item in declaration_items
+            ),
+            "identity_or_version_review": sum(
+                item.get("field_check_status")
+                == "IDENTITA_DICHIARANTE_E_VERSIONE_DA_VERIFICARE"
+                for item in declaration_items
             ),
             "field_level_reconciled": 0,
             "status": "DATI_DICHIARAZIONE_NON_ANCORA_ESTRATTI"
