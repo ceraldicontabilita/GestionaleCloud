@@ -1,6 +1,6 @@
 from app.services.fiscal_source_certainty import (
     AMBIGUOUS, CERTAIN, DIFFERENT, MISSING_ACCOUNTANT, MISSING_OFFICIAL,
-    group_model_rows, reconcile_f24_sources,
+    annotate_declaration_certainty, group_model_rows, reconcile_f24_sources,
 )
 
 
@@ -87,3 +87,44 @@ def test_receipt_without_accountant_model_is_paid_but_source_review_remains():
     result = reconcile_f24_sources([_drive("Q1")], [])
     assert result["items"][0]["status"] == MISSING_ACCOUNTANT
     assert result["items"][0]["erario_state"] == "NULLA_DOVUTO_ERARIO_DOCUMENTATO"
+
+
+def test_same_declaration_type_and_tax_year_are_not_double_counted_without_identity():
+    declarations = [{
+        "document_id": "REDDITI-ORIGINALE", "document_type": "REDDITI_SC",
+        "tax_year": 2022,
+        "relation_state": "CONFERMATA_NOME_UNIVOCO_E_INDICE_VERIFICATO",
+    }, {
+        "document_id": "REDDITI-INTEGRATIVA", "document_type": "REDDITI_SC",
+        "tax_year": 2022,
+        "relation_state": "CONFERMATA_NOME_UNIVOCO_E_INDICE_VERIFICATO",
+    }]
+
+    result = annotate_declaration_certainty(declarations)
+
+    assert {item["field_check_status"] for item in result} == {
+        "IDENTITA_DICHIARANTE_E_VERSIONE_DA_VERIFICARE",
+    }
+    assert all(item["declaration_set_status"] ==
+               "PIU_DICHIARAZIONI_STESSO_TIPO_E_ANNO_IMPOSTA" for item in result)
+    assert result[0]["related_document_ids"] == ["REDDITI-INTEGRATIVA"]
+
+
+def test_unique_supported_declaration_remains_ready_for_field_check():
+    result = annotate_declaration_certainty([{
+        "document_id": "IRAP-2024", "document_type": "DICHIARAZIONE_IRAP",
+        "tax_year": 2024,
+        "relation_state": "CONFERMATA_NOME_UNIVOCO_E_INDICE_VERIFICATO",
+    }])
+
+    assert result[0]["field_check_status"] == "PRONTO_PER_VERIFICA_CAMPI"
+    assert result[0]["declaration_set_status"] == "UNICA_PER_TIPO_E_ANNO_IMPOSTA"
+
+
+def test_multiple_lipe_same_year_remain_separate_periodic_declarations():
+    result = annotate_declaration_certainty([{
+        "document_id": f"LIPE-{quarter}", "document_type": "LIPE", "tax_year": 2024,
+        "relation_state": "CONFERMATA_NOME_UNIVOCO_E_INDICE_VERIFICATO",
+    } for quarter in range(1, 5)])
+
+    assert all(item["field_check_status"] == "PRONTO_PER_VERIFICA_CAMPI" for item in result)

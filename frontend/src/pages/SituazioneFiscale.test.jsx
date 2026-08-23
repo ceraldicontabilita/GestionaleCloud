@@ -50,7 +50,7 @@ describe('Situazione fiscale collegata all indice Drive', () => {
         }],
         certain: 1, requires_review: 0,
         sources: { commercialista_f24_documents: 1, quietanza_drive_rows: 2 },
-        declarations: { documents: 60, field_level_reconciled: 0, requires_review: true },
+        declarations: { documents: 60, field_level_reconciled: 0, requires_review: true, identity_or_version_review: 2 },
         declaration_items: [{
           document_id: 'DOC-770', document_type: 'MODELLO_770', filing_year: 2025,
           filename: '770_2025.pdf', relation_state: 'CONFERMATA_NOME_UNIVOCO_E_INDICE_VERIFICATO',
@@ -155,6 +155,7 @@ describe('Situazione fiscale collegata all indice Drive', () => {
     expect(screen.getByText('DRIVE-Q-1')).toBeInTheDocument();
     expect(screen.getAllByText('CONCORDANTE')).toHaveLength(2);
     expect(screen.getByText(/Verifica dichiarazioni disponibile per i modelli supportati/)).toBeInTheDocument();
+    expect(screen.getByText(/2 dichiarazioni escluse dal totale automatico/)).toBeInTheDocument();
     expect(screen.getByText(/Il solo importo non conferma mai un collegamento/)).toBeInTheDocument();
     expect(api.get).toHaveBeenCalledWith('/api/fiscal/source-certainty');
 
