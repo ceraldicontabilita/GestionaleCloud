@@ -90,6 +90,60 @@ def test_parser_layout_non_conferma_una_quadratura_errata():
     assert parsed["confidence"] == 0.7
 
 
+def test_layout_non_trasforma_25_82_della_descrizione_vp7_in_importo():
+    def word(text, x, y):
+        return {"text": text, "x0": x, "y0": y, "x1": x + 8, "y1": y + 8}
+
+    layout = [
+        word("VP1", 108, 158), word("0", 155, 158), word("1", 170, 158),
+        word("VP4", 108, 230), word("100", 376, 230), word(",00", 393, 230),
+        word("VP5", 108, 254), word("20", 503, 254), word(",00", 536, 254),
+        word("VP6", 108, 278), word("80", 376, 278), word(",00", 393, 278),
+        word("VP7", 108, 302), word("25,82", 260, 302),
+        word("VP14", 108, 470), word("80", 376, 470), word(",00", 393, 470),
+    ]
+    parsed = parse_lipe_page(
+        "VP7 Debito periodo precedente non superiore 25,82 euro", layout_words=layout,
+    )
+    assert "vp7_cents" not in parsed["values"]
+    assert parsed["quadrature"] == {"vp6": True, "vp14": True}
+
+
+def test_vp13_acconto_riduce_il_saldo_vp14():
+    def word(text, x, y):
+        return {"text": text, "x0": x, "y0": y, "x1": x + 8, "y1": y + 8}
+
+    layout = [
+        word("VP1", 108, 158), word("1", 155, 158), word("2", 170, 158),
+        word("VP4", 108, 230), word("9.436", 376, 230), word(",28", 393, 230),
+        word("VP5", 108, 254), word("5.942", 503, 254), word(",93", 536, 254),
+        word("VP6", 108, 278), word("3.493", 376, 278), word(",35", 393, 278),
+        word("VP8", 108, 326), word("417", 503, 326), word(",93", 536, 326),
+        word("VP13", 108, 446), word("1.671", 503, 446), word(",64", 536, 446),
+        word("VP14", 108, 470), word("1.403", 376, 470), word(",78", 393, 470),
+    ]
+    parsed = parse_lipe_page("VP1 VP4 VP5 VP6 VP8 VP13 VP14", layout_words=layout)
+    assert parsed["values"]["vp13_cents"] == 167164
+    assert parsed["quadrature"] == {"vp6": True, "vp14": True}
+
+
+def test_vp4_nativo_vuoto_vale_zero_e_quadra_il_credito():
+    def word(text, x, y):
+        return {"text": text, "x0": x, "y0": y, "x1": x + 8, "y1": y + 8}
+
+    layout = [
+        word("VP1", 108, 158), word("0", 155, 158), word("4", 170, 158),
+        word("VP4", 108, 230),
+        word("VP5", 108, 254), word("283", 503, 254), word(",85", 536, 254),
+        word("VP6", 108, 278), word("283", 503, 278), word(",85", 536, 278),
+        word("VP14", 108, 470), word("283", 503, 470), word(",85", 536, 470),
+    ]
+    parsed = parse_lipe_page("VP1 VP4 VP5 VP6 VP14", layout_words=layout)
+    assert parsed["values"]["vp4_cents"] == 0
+    assert parsed["raw_evidence"]["VP4"] == "VP4 casella_vuota=0"
+    assert parsed["quadrature"] == {"vp6": True, "vp14": True}
+
+
 def test_lipe_duplicata_resta_ambigua_con_provenienza():
     async def scenario():
         db = MemorySheetsClient().db

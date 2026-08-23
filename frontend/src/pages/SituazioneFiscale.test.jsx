@@ -157,4 +157,35 @@ describe('Situazione fiscale collegata all indice Drive', () => {
     expect(screen.getAllByText('CONCORDANTE')).toHaveLength(3);
     expect(api.get).toHaveBeenCalledWith('/api/fiscal/declarations/DOC-770/field-certainty');
   });
+
+  it('mostra LIPE, crediti e confronto gestionale senza creare un falso F24', async () => {
+    api.get.mockImplementation(path => {
+      if (path === '/api/fiscal/summary') return Promise.resolve({ data: { drive_index: { available: true, counts: {} } } });
+      if (path === '/api/fiscal/source-certainty') return Promise.resolve({ data: {
+        items: [], certain: 0, requires_review: 0,
+        sources: { commercialista_f24_documents: 0, quietanza_drive_rows: 0 },
+        declarations: { documents: 1, requires_review: true },
+        declaration_items: [{ document_id: 'DOC-LIPE', document_type: 'LIPE', filing_year: 2026, filename: 'LIPE_2026.pdf', field_check_status: 'PRONTO_PER_VERIFICA_CAMPI' }],
+      } });
+      if (path === '/api/fiscal/declarations/DOC-LIPE/field-certainty') return Promise.resolve({ data: {
+        source: { sha256: '1234567890abcdef' },
+        extraction: { document_type: 'LIPE', field_level_status: 'ESTRATTO_CON_CERTEZZA', extracted_with_certainty: 1, declared_fields: [{
+          id: 'M1', reference_period: '2026-01', page_number: 2,
+          values: { vp4_cents: 504743, vp5_cents: 1277961, vp6_cents: 773218, vp6_side: 'credito', vp14_cents: 773218, vp14_side: 'credito' },
+          f24_expectation: 'NESSUN_F24_A_DEBITO_ATTESO_CREDITO_LIPE',
+        }] },
+        reconciliation: { items: [], counts: {}, requires_review: 0, all_certain: false },
+        management_reconciliation: { items: [{ id: 'G1', period: '2026-01', field: 'VP4', declared_cents: 504743, management_cents: 504743, status: 'CONCORDANTE' }] },
+      } });
+      return Promise.resolve({ data: { items: [] } });
+    });
+
+    render(<MemoryRouter initialEntries={['/situazione-fiscale/confronto-fonti']}><SituazioneFiscale /></MemoryRouter>);
+    fireEvent.click(await screen.findByRole('button', { name: 'Verifica campi e F24' }));
+
+    expect((await screen.findAllByText('2026-01')).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/NESSUN F24 A DEBITO ATTESO CREDITO LIPE/)).toBeInTheDocument();
+    expect(screen.getAllByText(/732,18/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('CONCORDANTE')).toHaveLength(1);
+  });
 });

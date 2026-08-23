@@ -5,7 +5,10 @@ from app.services.declaration_field_certainty import (
     MISSING_F24,
     NOT_EXTRACTED,
     REVIEW,
+    extract_annual_iva_fields,
     extract_770_tax_rows,
+    extract_lipe_fields,
+    reconcile_lipe_management,
     reconcile_declaration_tax_rows,
 )
 
@@ -115,3 +118,77 @@ def test_rejected_rows_are_never_compared_to_f24():
     }])
     assert result["items"][0]["status"] == NOT_EXTRACTED
     assert result["certain"] == 0
+
+
+def _word(text, x, y, width=8):
+    return {"text": text, "x0": x, "y0": y, "x1": x + width, "y1": y + 8}
+
+
+def test_lipe_layout_quadrato_creates_f24_only_for_vp14_debit(monkeypatch):
+    from app.services import declaration_field_certainty as certainty
+
+    words = [
+        _word("VP1", 108, 158), _word("0", 155, 158), _word("1", 170, 158),
+        _word("VP4", 108, 230), _word("100", 376, 230), _word(",", 390, 230), _word("00", 398, 230),
+        _word("VP5", 108, 254), _word("20", 503, 254), _word(",", 520, 254), _word("00", 528, 254),
+        _word("VP6", 108, 278), _word("80", 376, 278), _word(",", 390, 278), _word("00", 398, 278),
+        _word("VP14", 108, 470), _word("80", 376, 470), _word(",", 390, 470), _word("00", 398, 470),
+    ]
+    monkeypatch.setattr(certainty, "_fitz_pages", lambda _content: [(2, "VP1 VP4 VP5 VP6 VP14", words)])
+    result = extract_lipe_fields(b"pdf", document_id="LIPE-1", tax_year=2026)
+
+    assert result["field_level_status"] == CERTAIN
+    assert result["declared_fields"][0]["quadrature"] == {"vp6": True, "vp14": True}
+    assert result["tax_rows"][0]["tax_code"] == "6001"
+    assert result["tax_rows"][0]["reference_period"] == "2026-01"
+    assert result["tax_rows"][0]["debit_amount"] == 80.0
+
+
+def test_annual_iva_requires_repeated_vl_vx_values_to_match(monkeypatch):
+    from app.services import declaration_field_certainty as certainty
+
+    def row(field, y, raw, x=500):
+        return [_word(field, 108, y, 18), _word(raw, x, y, 35)]
+
+    page_vl = sum((row(field, y, raw) for field, y, raw in (
+        ("VL32", 100, ",00"), ("VL33", 120, "4.676,00"),
+        ("VL38", 140, ",00"), ("VL39", 160, "4.676,00"),
+    )), [])
+    page_vx = sum((row(field, y, raw) for field, y, raw in (
+        ("VX1", 100, ",00"), ("VX2", 120, "4.676,00"),
+    )), [])
+    monkeypatch.setattr(certainty, "_fitz_pages", lambda _content: [
+        (9, "QUADRO VL", page_vl), (11, "QUADRO VX", page_vx),
+    ])
+    result = extract_annual_iva_fields(b"pdf", document_id="IVA-1", tax_year=2025)
+
+    assert result["field_level_status"] == CERTAIN
+    assert result["quadrature"] == {"vl_debit": True, "vl_credit": True, "vx_debit": True, "vx_credit": True}
+    assert next(item for item in result["declared_fields"] if item["field"] == "VX2")["value_cents"] == 467600
+    assert result["tax_rows"] == []
+    assert result["f24_expectation"] == "NESSUN_F24_6099_A_DEBITO_ATTESO"
+
+
+def test_lipe_management_compares_sales_and_purchase_vat_at_exact_cents():
+    extraction = {
+        "declared_fields": [{
+            "id": "M1", "reference_period": "2026-01", "page_number": 2,
+            "extraction_status": CERTAIN,
+            "values": {"vp4_cents": 504743, "vp5_cents": 1277961},
+            "raw_evidence": {"VP4": "VP4 5.047,43", "VP5": "VP5 12.779,61"},
+        }],
+    }
+    exact = reconcile_lipe_management(extraction, {"2026-01": {
+        "periodo": "2026-01", "stato_calcolo": "CALCOLATA",
+        "iva_vendite_cents": 504743, "iva_acquisti_competenza_cents": 1277961,
+        "fonte": "calcolo_canonico", "fonte_calcolo": "iva_liquidation_query_v2",
+    }})
+    assert exact["all_certain"] is True
+    assert exact["counts"] == {EXACT: 2}
+
+    mismatch = reconcile_lipe_management(extraction, {"2026-01": {
+        "periodo": "2026-01", "stato_calcolo": "CALCOLATA",
+        "iva_vendite_cents": 504744, "iva_acquisti_competenza_cents": 1277961,
+    }})
+    assert mismatch["all_certain"] is False
+    assert mismatch["counts"]["DISCORDANTE"] == 1
