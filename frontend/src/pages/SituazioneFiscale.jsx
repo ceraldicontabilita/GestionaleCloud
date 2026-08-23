@@ -277,7 +277,7 @@ export default function SituazioneFiscale() {
               return <article key={declaration.document_id || declaration.filename} className="fiscal-record">
                 <div className="fiscal-record-header">
                   <div><strong>{declaration.document_type} · {declaration.filing_year || 'anno da verificare'}</strong><div className="fiscal-muted">{declaration.filename}</div></div>
-                  <Badge variant={check?.reconciliation?.all_certain ? 'success' : 'warning'}>{check?.extraction?.field_level_status || String(declaration.field_check_status || 'DA_VERIFICARE').replaceAll('_', ' ')}</Badge>
+                  <Badge variant={check?.extraction?.field_level_status === 'ESTRATTO_CON_CERTEZZA' ? 'success' : 'warning'}>{check?.extraction?.field_level_status || String(declaration.field_check_status || 'DA_VERIFICARE').replaceAll('_', ' ')}</Badge>
                 </div>
                 <div className="fiscal-actions" style={{ marginTop: 10 }}>
                   <Button size="sm" variant="primary" disabled={!declaration.document_id || declaration.field_check_status !== 'PRONTO_PER_VERIFICA_CAMPI' || checkingDeclaration === declaration.document_id} onClick={() => checkDeclarationFields(declaration.document_id)}>
@@ -288,17 +288,17 @@ export default function SituazioneFiscale() {
                 {check && <div style={{ marginTop: 12 }}>
                   <div className="fiscal-data-grid">
                     <span><small>Righe estratte con certezza</small><strong>{check.extraction?.extracted_with_certainty || 0}</strong></span>
-                    <span><small>Concordanti con F24</small><strong>{check.reconciliation?.counts?.CONCORDANTE || 0}</strong></span>
-                    <span><small>Da verificare</small><strong>{check.reconciliation?.requires_review || 0}</strong></span>
+                    <span><small>Pagati con quietanza</small><strong>{check.reconciliation?.erario_counts?.NULLA_DOVUTO_ERARIO_DOCUMENTATO || 0}</strong></span>
+                    <span><small>Ancora dovuti / da verificare</small><strong>{check.reconciliation?.requires_review || 0}</strong></span>
                     <span><small>Hash originale</small><strong title={check.source?.sha256}>{String(check.source?.sha256 || '').slice(0, 12)}…</strong></span>
                   </div>
                   {rows.length > 0 && <div className="fiscal-f24-table-wrap" style={{ marginTop: 10 }}><table className="fiscal-f24-table">
-                    <thead><tr><th>Pagina / sorgente</th><th>Codice</th><th>Periodo</th><th>Versato</th><th>Interessi</th><th>Esito F24</th></tr></thead>
+                    <thead><tr><th>Pagina / sorgente</th><th>Codice</th><th>Periodo</th><th>Debito dichiarato</th><th>Credito dichiarato</th><th>Interessi</th><th>Stato verso Erario</th></tr></thead>
                     <tbody>{rows.map(row => <tr key={row.id}>
                       <td><strong>Pag. {row.declaration_row?.page_number || '—'}</strong><div className="fiscal-muted" title={row.declaration_row?.source_text}>{row.declaration_row?.certainty_reason?.replaceAll('_', ' ')}</div></td>
                       <td>{row.declaration_row?.tax_code || '—'}</td><td>{row.declaration_row?.reference_period || '—'}</td>
-                      <td>{euro(row.declaration_row?.paid_amount ?? row.declaration_row?.debit_amount)}</td><td>{euro(row.declaration_row?.interest_amount ?? 0)}</td>
-                      <td><Badge variant={row.status === 'CONCORDANTE' ? 'success' : 'warning'}>{row.status.replaceAll('_', ' ')}</Badge>{row.candidate_count > 1 && <div>{row.candidate_count} candidati esatti</div>}</td>
+                      <td>{euro(row.declaration_row?.paid_amount ?? row.declaration_row?.debit_amount)}</td><td>{euro(row.declaration_row?.credit_amount ?? 0)}</td><td>{euro(row.declaration_row?.interest_amount ?? 0)}</td>
+                      <td><Badge variant={row.erario_state === 'NULLA_DOVUTO_ERARIO_DOCUMENTATO' ? 'success' : 'warning'}>{String(row.erario_state || row.status).replaceAll('_', ' ')}</Badge>{row.aggregate_match && <div>{row.f24_rows?.length || 0} quietanze/F24 sommati</div>}{row.candidate_count > 1 && !row.aggregate_match && <div>{row.candidate_count} candidati esatti</div>}{row.related_candidate_count > 0 && row.erario_state !== 'NULLA_DOVUTO_ERARIO_DOCUMENTATO' && <div>{row.related_candidate_count} righe stesso codice/anno · debiti {euro(row.related_debit_amount)} · crediti {euro(row.related_credit_amount)}</div>}</td>
                     </tr>)}</tbody>
                   </table></div>}
                   {check.extraction?.document_type === 'LIPE' && declaredFields.length > 0 && <div className="fiscal-f24-table-wrap" style={{ marginTop: 10 }}><table className="fiscal-f24-table">
@@ -311,10 +311,14 @@ export default function SituazioneFiscale() {
                       <td><Badge variant={module.f24_expectation === 'F24_MENSILE_ATTESO' ? 'warning' : 'success'}>{String(module.f24_expectation || 'DA VERIFICARE').replaceAll('_', ' ')}</Badge></td>
                     </tr>)}</tbody>
                   </table></div>}
-                  {check.extraction?.document_type === 'DICHIARAZIONE_IVA' && declaredFields.length > 0 && <div className="fiscal-f24-table-wrap" style={{ marginTop: 10 }}><table className="fiscal-f24-table">
+                  {['DICHIARAZIONE_IVA', 'REDDITI_SC', 'DICHIARAZIONE_IRAP'].includes(check.extraction?.document_type) && declaredFields.length > 0 && <div className="fiscal-f24-table-wrap" style={{ marginTop: 10 }}><table className="fiscal-f24-table">
                     <thead><tr><th>Campo</th><th>Valore</th><th>Pagina</th><th>Prova</th></tr></thead>
                     <tbody>{declaredFields.map(field => <tr key={field.id}><td><strong>{field.field}</strong></td><td>{euro(field.value)}</td><td>{field.page_number}</td><td>{field.source_text}</td></tr>)}</tbody>
                   </table></div>}
+                  {check.extraction?.f24_expectation && <div style={{ marginTop: 10, padding: '9px 12px', borderRadius: 8, background: check.extraction.field_level_status === 'ESTRATTO_CON_CERTEZZA' ? '#ecfdf5' : '#fffbeb', color: check.extraction.field_level_status === 'ESTRATTO_CON_CERTEZZA' ? '#166534' : '#92400e' }}>
+                    <strong>Esito dichiarazione:</strong> {String(check.extraction.f24_expectation).replaceAll('_', ' ')}
+                    {check.extraction.version_warning && <div style={{ marginTop: 4 }}>{check.extraction.version_warning}</div>}
+                  </div>}
                   {managementRows.length > 0 && <div className="fiscal-f24-table-wrap" style={{ marginTop: 10 }}><table className="fiscal-f24-table">
                     <thead><tr><th>Periodo</th><th>Campo</th><th>Dichiarazione</th><th>Gestionale</th><th>Esito</th></tr></thead>
                     <tbody>{managementRows.map(row => <tr key={row.id}><td>{row.period}</td><td>{row.field}</td><td>{euro(row.declared_cents == null ? null : row.declared_cents / 100)}</td><td>{euro(row.management_cents == null ? null : row.management_cents / 100)}</td><td><Badge variant={row.status === 'CONCORDANTE' ? 'success' : 'warning'}>{row.status.replaceAll('_', ' ')}</Badge></td></tr>)}</tbody>
