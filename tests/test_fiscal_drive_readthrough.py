@@ -63,14 +63,18 @@ def test_f24_rows_sort_mixed_date_formats_chronologically(monkeypatch):
 
 
 def test_paid_obligations_read_documentary_payments_from_drive(monkeypatch):
-    monkeypatch.setattr(drive_document_index, "list_documented_tax_payments", lambda **_kwargs: {
+    calls = []
+    def _list_tax_obligations(**kwargs):
+        calls.append(kwargs)
+        return {
         "items": [{
             "id": "drive-paid-1", "document_id": "DOC-Q", "ordinal": 1,
             "source_kind": "DRIVE_EXCEL_INDEX_F24_ROW", "tax_code": "1001",
             "payment_status": "DOCUMENTATO_DA_QUIETANZA", "bank_status": "DA_VERIFICARE",
         }],
         "total": 1,
-    })
+        }
+    monkeypatch.setattr(drive_document_index, "list_tax_obligations", _list_tax_obligations)
 
     payload = asyncio.run(fiscal_control.obligations(status="PAID_ON_TIME", limit=5000, _admin={}))
 
@@ -79,6 +83,7 @@ def test_paid_obligations_read_documentary_payments_from_drive(monkeypatch):
         "drive_excel_index": 1, "canonical": "google_drive", "drive_warning": None,
     }
     assert payload["items"][0]["bank_status"] == "DA_VERIFICARE"
+    assert calls == [{"status": "PAID_ON_TIME", "offset": 0, "limit": 5000}]
 
 
 def test_declarations_read_from_drive(monkeypatch):

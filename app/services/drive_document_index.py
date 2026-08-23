@@ -800,7 +800,7 @@ def list_documented_tax_payments(
 
 
 def list_tax_obligations(
-    service=None, *, offset: int = 0, limit: int = 5000,
+    service=None, *, status: str | None = None, offset: int = 0, limit: int = 5000,
 ) -> dict[str, Any]:
     """Deleghe F24 complete, con debiti e crediti e stato prova esplicito.
 
@@ -808,8 +808,35 @@ def list_tax_obligations(
     renderebbe falsi i totali e il saldo della quietanza visualizzata.
     """
     rows = list_f24_rows(service=service, offset=0, limit=5000)["items"]
+    normalized_status = _norm(status)
+    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        grouped[str(row.get("document_id") or row.get("id") or "")].append(row)
+
+    selected_document_ids: set[str] = set(grouped)
+    if normalized_status in {"to_pay", "da_pagare"}:
+        selected_document_ids = {
+            document_id for document_id, document_rows in grouped.items()
+            if document_rows
+            and not any(
+                item.get("evidence_state") == "QUIETANZA_DOCUMENTALE_NON_PROVA_BANCARIA"
+                for item in document_rows
+            )
+            and sum(_amount(item.get("debit_amount")) - _amount(item.get("credit_amount"))
+                    for item in document_rows) > 0
+        }
+    elif normalized_status in {"paid_on_time", "documented", "quietanza_presente"}:
+        selected_document_ids = {
+            document_id for document_id, document_rows in grouped.items()
+            if any(
+                item.get("evidence_state") == "QUIETANZA_DOCUMENTALE_NON_PROVA_BANCARIA"
+                for item in document_rows
+            )
+        }
     items = []
     for row in rows:
+        if str(row.get("document_id") or row.get("id") or "") not in selected_document_ids:
+            continue
         documentary = row.get("evidence_state") == "QUIETANZA_DOCUMENTALE_NON_PROVA_BANCARIA"
         items.append({
             **row,
@@ -822,6 +849,7 @@ def list_tax_obligations(
         "total": len(items),
         "offset": offset,
         "limit": limit,
+        "status": status,
         "source": "drive_excel_index",
     }
 

@@ -326,6 +326,15 @@ def test_tax_obligations_keep_complete_f24_delegations_and_evidence_states_disti
     assert credito["credit_amount"] == 25
     assert quietanza["bank_status"] == modello["bank_status"] == credito["bank_status"] == "DA_VERIFICARE"
 
+    due = list_tax_obligations(status="TO_PAY")
+    assert due["total"] == 2
+    assert {item["document_id"] for item in due["items"]} == {"DOC-M"}
+    assert {item["tax_code"] for item in due["items"]} == {"6001", "6099"}
+
+    paid = list_tax_obligations(status="PAID_ON_TIME")
+    assert paid["total"] == 1
+    assert paid["items"][0]["document_id"] == "DOC-Q"
+
 
 def test_declarations_use_canonical_types_and_verified_document_identity(monkeypatch):
     from app.services import drive_document_index as index

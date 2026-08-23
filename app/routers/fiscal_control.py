@@ -150,9 +150,10 @@ async def obligations(status: str | None = None, limit: int = Query(200, ge=1, l
                       _admin: Dict[str, Any] = Depends(get_current_admin_user)):
     drive_warning = None
     try:
-        from app.services.drive_document_index import list_documented_tax_payments, list_tax_obligations
-        loader = list_documented_tax_payments if status == "PAID_ON_TIME" else list_tax_obligations
-        drive_payload = await asyncio.to_thread(loader, offset=0, limit=limit)
+        from app.services.drive_document_index import list_tax_obligations
+        drive_payload = await asyncio.to_thread(
+            list_tax_obligations, status=status, offset=0, limit=limit,
+        )
         drive_items = drive_payload["items"]
         drive_total = drive_payload["total"]
     except (RuntimeError, ValueError) as exc:
