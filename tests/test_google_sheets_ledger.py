@@ -445,6 +445,7 @@ def test_upsert_incrementale_aggiorna_e_accoda_senza_riscrivere_il_foglio(monkey
     assert update["range"].endswith(f"A2:{ledger.LAST_COLUMN}2")
     assert update["values"][0][0] == f"{target.prefix}-00000007"
     appended = calls["append"]["body"]["values"][0]
+    assert calls["append"]["range"].endswith("!A:B")
     assert appended[0] == f"{target.prefix}-00000008"
     assert appended[1] == "INV-2"
 
@@ -483,6 +484,87 @@ def test_upsert_incrementale_spezza_grandi_import_in_blocchi(monkeypatch):
 
     assert result["aggiunte"] == 1001
     assert append_sizes == [500, 500, 1]
+
+
+def test_restore_ignora_righe_fisicamente_vuote_tra_record(monkeypatch):
+    target = ledger.dynamic_sheet("blank_separators")
+    payload = {"id": "DOC-1", "amount": 10}
+    row = ledger.row_for_document(payload, f"{target.prefix}-00000001")
+
+    monkeypatch.setattr(ledger, "_existing_workbook_sync", lambda _config: {
+        "spreadsheet_id": "SHEET-1",
+        "spreadsheet_url": "https://example.invalid/sheet",
+        "folder_id": "",
+        "ledger_folder_id": "",
+        "archive_tree": {},
+        "sheet_definitions": [target],
+    })
+    monkeypatch.setattr(
+        ledger, "_read_sheet_rows_batch_sync",
+        lambda _spreadsheet_id, _definitions: [[[], row]],
+    )
+
+    result = asyncio.run(ledger.restore_all(object(), apply=False, provision=False))
+
+    restored = result["fogli"][0]
+    assert restored["valide"] == 1
+    assert restored["numero_errori"] == 0
+
+
+def test_riparazione_righe_laterali_copia_valida_e_pulisce_atomicamente(monkeypatch):
+    target = ledger.LedgerSheet("Prima Nota Banca", "prima_nota_banca", "BAN")
+    canonical = ledger.row_for_document({"id": "BAN-1"}, "BAN-00000001")
+    shifted = [""] * 14 + ledger.row_for_document(
+        {"id": "BAN-2", "importo": 25}, "BAN-00000002",
+    )
+    captured = {}
+
+    class Request:
+        def __init__(self, result=None):
+            self.result = result or {}
+
+        def execute(self):
+            return self.result
+
+    class Values:
+        def get(self, **_kwargs):
+            return Request({"values": [canonical, shifted]})
+
+    class Spreadsheets:
+        def get(self, **_kwargs):
+            return Request({"sheets": [{"properties": {
+                "sheetId": 42, "title": target.title,
+                "gridProperties": {"rowCount": 100, "columnCount": 93},
+            }}]})
+
+        def values(self):
+            return Values()
+
+        def batchUpdate(self, **kwargs):
+            captured.update(kwargs)
+            return Request()
+
+    class Service:
+        def spreadsheets(self):
+            return Spreadsheets()
+
+    monkeypatch.setattr(ledger, "_sheets_service", lambda: Service())
+
+    result = ledger._repair_lateral_rows_sync("SHEET-1", [target])
+
+    assert result == {
+        "riparate": 1,
+        "fogli": [{"foglio": target.title, "righe": 1}],
+    }
+    requests = captured["body"]["requests"]
+    write = requests[0]["updateCells"]
+    assert write["range"]["startRowIndex"] == 3
+    values = write["rows"][0]["values"]
+    assert values[0]["userEnteredValue"]["stringValue"] == "BAN-00000002"
+    assert values[1]["userEnteredValue"]["stringValue"] == "BAN-2"
+    clear = requests[1]["repeatCell"]["range"]
+    assert clear["startRowIndex"] == 2
+    assert clear["startColumnIndex"] == 14
 
 
 def test_rimozione_incrementale_svuota_solo_le_righe_richieste(monkeypatch):

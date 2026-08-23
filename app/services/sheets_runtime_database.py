@@ -58,6 +58,7 @@ class SheetsRuntimeDatabase(SheetDatabase):
         try:
             result = await restore_all(
                 self, self._config, apply=True, provision=provision,
+                repair_lateral=not provision,
             )
         finally:
             self.loading = False
@@ -72,6 +73,14 @@ class SheetsRuntimeDatabase(SheetDatabase):
             for item in result["fogli"]
         }
         self.hydration_result = result
+        repaired = int(
+            (result.get("riparazione_righe_laterali") or {}).get("riparate") or 0
+        )
+        if repaired:
+            logger.warning(
+                "Riparazione registro Sheets completata: %s righe laterali recuperate",
+                repaired,
+            )
         if errors:
             # Una singola riga storica malformata non deve rendere invisibili
             # tutte le altre registrazioni valide. ``restore_all`` conserva la
