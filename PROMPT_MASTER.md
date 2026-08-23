@@ -761,7 +761,7 @@ Gli alias senza valore vanno configurati nel secret/config store di Render. Non 
 
 ## Appendice D — Tutti i router e tutti gli endpoint
 
-Route table sorgente: **1164**; attivi da ricreare: **764**; quarantena: **400** (`verificare` 373, `admin-only` 27).
+Route table sorgente: **1165**; attivi da ricreare: **765**; quarantena: **400** (`verificare` 373, `admin-only` 27).
 
 `attivo` significa da ricreare con contratto e test; `quarantena` significa non esporre nel nuovo runtime finché consumer, autorizzazione e test non sono provati. L'elenco è completo e include entrambe le categorie.
 
@@ -1542,7 +1542,7 @@ Route table sorgente: **1164**; attivi da ricreare: **764**; quarantena: **400**
 - **quarantena: verificare** — `POST /api/finanziaria/costo` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **attivo** — `GET /api/finanziaria/summary` — in uso: FE
 
-### Router `fiscal_control` (21)
+### Router `fiscal_control` (22)
 
 - **attivo** — `GET /api/fiscal/ader-snapshots` — in uso: FE
 - **attivo** — `POST /api/fiscal/ader-snapshots/dry-run` — in uso: FE
@@ -1563,6 +1563,7 @@ Route table sorgente: **1164**; attivi da ricreare: **764**; quarantena: **400**
 - **attivo** — `GET /api/fiscal/obligations` — in uso: FE
 - **quarantena: verificare** — `POST /api/fiscal/ravvedimento/calculate` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **attivo** — `GET /api/fiscal/review` — in uso: FE
+- **attivo** — `GET /api/fiscal/source-certainty` — in uso: FE
 - **attivo** — `GET /api/fiscal/summary` — in uso: FE, chat
 - **quarantena: verificare** — `POST /api/fiscal/vat-credit-chain/rebuild` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 
