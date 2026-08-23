@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import { descriviPagamento, puoAssociareAssegno } from './ArchivioFattureRicevute';
+import { FILTRO_FATTURE_ANOMALE, descriviPagamento, puoAssociareAssegno } from './ArchivioFattureRicevute';
+
+describe('navigazione contatore fatture anomale', () => {
+  it('apre esclusivamente il filtro backend delle anomalie e azzera i filtri incompatibili', () => {
+    expect(FILTRO_FATTURE_ANOMALE).toEqual({
+      mese: '', fornitore: '', stato: 'anomala', search: '',
+    });
+  });
+});
 
 describe('descriviPagamento', () => {
   it('non trasforma lo stato storico pagata in una prova di pagamento', () => {
