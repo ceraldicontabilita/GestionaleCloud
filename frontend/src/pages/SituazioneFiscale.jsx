@@ -274,15 +274,24 @@ export default function SituazioneFiscale() {
       const rows = check.reconciliation?.items || [];
       if (!rows.length) noDebit += 1;
       const management = check.management_reconciliation;
-      const managementState = management?.all_certain
-        ? 'CONCORDANTE_CON_GESTIONALE'
-        : management?.items?.some(item => item.status === 'DISCORDANTE')
-          ? 'DISCORDANTE_DAL_GESTIONALE'
-          : management ? 'GESTIONALE_NON_VERIFICABILE' : 'CONFRONTO_GESTIONALE_NON_DISPONIBILE';
       rows.forEach(row => {
         const amount = Number(row.declaration_row?.debit_amount ?? row.declaration_row?.paid_amount ?? 0);
+        const managementItem = management?.items?.find(item =>
+          item.declaration_tax_row_id === row.declaration_row?.id);
+        const managementStatus = managementItem?.status;
+        const managementState = managementItem
+          ? managementStatus === 'CONCORDANTE'
+            ? 'CONCORDANTE_CON_GESTIONALE'
+            : managementStatus === 'DISCORDANTE'
+              ? 'DISCORDANTE_DAL_GESTIONALE'
+              : 'GESTIONALE_NON_VERIFICABILE'
+          : management?.all_certain
+            ? 'CONCORDANTE_CON_GESTIONALE'
+            : management?.items?.some(item => item.status === 'DISCORDANTE')
+              ? 'DISCORDANTE_DAL_GESTIONALE'
+              : management ? 'GESTIONALE_NON_VERIFICABILE' : 'CONFRONTO_GESTIONALE_NON_DISPONIBILE';
         obligations.push({
-          id: row.id, declaration, row, amount, managementState,
+          id: row.id, declaration, row, amount, managementState, managementItem,
           paid: row.erario_state === 'NULLA_DOVUTO_ERARIO_DOCUMENTATO',
           review: row.erario_state === 'IMPORTO_DICHIARAZIONE_DA_VERIFICARE'
             || row.erario_state === 'IN_ATTESA_VERIFICA_F24_AMBIGUO',
@@ -423,7 +432,7 @@ export default function SituazioneFiscale() {
                   </div>}
                   {managementRows.length > 0 && <div className="fiscal-f24-table-wrap" style={{ marginTop: 10 }}><table className="fiscal-f24-table">
                     <thead><tr><th>Periodo</th><th>Campo</th><th>Dichiarazione</th><th>Gestionale</th><th>Esito</th></tr></thead>
-                    <tbody>{managementRows.map(row => <tr key={row.id}><td>{row.period}</td><td>{row.field}</td><td>{euro(row.declared_cents == null ? null : row.declared_cents / 100)}</td><td>{euro(row.management_cents == null ? null : row.management_cents / 100)}</td><td><Badge variant={row.status === 'CONCORDANTE' ? 'success' : 'warning'}>{row.status.replaceAll('_', ' ')}</Badge></td></tr>)}</tbody>
+                    <tbody>{managementRows.map(row => <tr key={row.id}><td>{row.period}</td><td>{row.field || row.tax_code || '—'}</td><td>{euro(row.declared_cents == null ? null : row.declared_cents / 100)}</td><td>{euro(row.management_cents == null ? null : row.management_cents / 100)}</td><td><Badge variant={row.status === 'CONCORDANTE' ? 'success' : 'warning'}>{row.status.replaceAll('_', ' ')}</Badge></td></tr>)}</tbody>
                   </table></div>}
                   {check.management_warning && <div className="fiscal-muted" style={{ marginTop: 8 }}>Dati gestionali non confrontabili: {check.management_warning}</div>}
                 </div>}

@@ -11,6 +11,7 @@ from app.services.declaration_field_certainty import (
     extract_redditi_sc_fields,
     extract_770_tax_rows,
     extract_lipe_fields,
+    reconcile_770_management,
     reconcile_lipe_management,
     reconcile_declaration_tax_rows,
 )
@@ -70,6 +71,56 @@ def test_770_ignores_same_numeric_shape_outside_st_sv_context():
     )
     assert result["tax_rows"] == []
     assert result["rejected_rows"] == []
+
+
+def test_770_management_sums_only_proven_xml_withholdings_for_code_1040():
+    extraction = {"tax_rows": [{
+        "id": "DECL-1040-2024-06", "tax_code": "1040",
+        "reference_period": "2024-06", "withholding_amount": 284.00,
+        "debit_amount": 284.00,
+    }]}
+    result = reconcile_770_management(extraction, [{
+        "id": "RIT-1", "periodo_ritenuta": "2024-06", "importo_cents": 10000,
+        "projection_source": "documenti_import_auto", "source_document_id": "XML-1",
+    }, {
+        "id": "RIT-2", "periodo_ritenuta": "2024-06", "importo_cents": 18400,
+        "projection_source": "documenti_import_auto", "source_document_id": "XML-2",
+    }])
+
+    assert result["all_certain"] is True
+    assert result["counts"] == {EXACT: 1}
+    assert result["items"][0]["management_cents"] == 28400
+    assert result["items"][0]["difference_cents"] == 0
+
+
+def test_770_management_does_not_infer_unsupported_tax_codes():
+    extraction = {"tax_rows": [{
+        "id": "DECL-1001", "tax_code": "1001", "reference_period": "2024-06",
+        "withholding_amount": 284.00, "debit_amount": 284.00,
+    }]}
+    result = reconcile_770_management(extraction, [{
+        "id": "RIT-1", "periodo_ritenuta": "2024-06", "importo_cents": 28400,
+        "projection_source": "documenti_import_auto", "source_document_id": "XML-1",
+    }])
+
+    assert result["all_certain"] is False
+    assert result["items"][0]["status"] == "GESTIONALE_NON_VERIFICABILE"
+    assert result["items"][0]["management_cents"] is None
+
+
+def test_770_management_rejects_withholdings_without_complete_xml_provenance():
+    extraction = {"tax_rows": [{
+        "id": "DECL-1040", "tax_code": "1040", "reference_period": "2024-06",
+        "withholding_amount": 284.00, "debit_amount": 284.00,
+    }]}
+    result = reconcile_770_management(extraction, [{
+        "id": "RIT-1", "periodo_ritenuta": "2024-06", "importo_cents": 28400,
+        "projection_source": "documenti_import_auto",
+    }])
+
+    assert result["all_certain"] is False
+    assert result["items"][0]["status"] == "GESTIONALE_NON_VERIFICABILE"
+    assert result["items"][0]["reason"] == "ritenute_gestionali_senza_provenienza_xml_completa"
 
 
 def test_declaration_rows_match_f24_only_on_full_fiscal_signature():
