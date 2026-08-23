@@ -80,6 +80,49 @@ const groupF24Rows = rows => {
   }));
 };
 
+export const resolveDeclarationVersions = (declarations = [], checks = {}) => {
+  const groups = new Map();
+  declarations.forEach(item => {
+    const key = item.document_type === 'LIPE' || !item.tax_year
+      ? `${item.document_type || 'UNKNOWN'}:${item.document_id}`
+      : `${item.document_type || ''}:${item.tax_year || ''}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(item);
+  });
+  const selectedIds = new Set();
+  const states = {};
+  let resolvedGroups = 0;
+  let unresolvedGroups = 0;
+  groups.forEach(group => {
+    if (group.length === 1) {
+      selectedIds.add(group[0].document_id);
+      states[group[0].document_id] = 'VERSIONE_UNICA';
+      return;
+    }
+    const evidence = group.map(item => ({ item, extraction: checks[item.document_id]?.extraction }));
+    const complete = evidence.every(({ item, extraction }) => extraction && !checks[item.document_id]?.error
+      && extraction.declaration_identity_proven && extraction.taxpayer_tax_code
+      && extraction.declaration_filing_date && extraction.declaration_identifier);
+    const taxpayerCodes = new Set(evidence.map(({ extraction }) => extraction?.taxpayer_tax_code).filter(Boolean));
+    const ordered = [...evidence].sort((a, b) =>
+      String(b.extraction?.declaration_filing_date || '').localeCompare(String(a.extraction?.declaration_filing_date || '')));
+    const latest = ordered[0];
+    const latestDateUnique = ordered.length > 1
+      && latest.extraction?.declaration_filing_date > ordered[1].extraction?.declaration_filing_date;
+    const latestIsExplicitIntegration = String(latest.extraction?.submission_kind || '').startsWith('DICHIARAZIONE_INTEGRATIVA_CODICE_');
+    if (complete && taxpayerCodes.size === 1 && latestDateUnique && latestIsExplicitIntegration) {
+      selectedIds.add(latest.item.document_id);
+      group.forEach(item => { states[item.document_id] = item.document_id === latest.item.document_id
+        ? 'VERSIONE_INTEGRATIVA_PIU_RECENTE_SELEZIONATA' : 'SOSTITUITA_DA_INTEGRATIVA_PIU_RECENTE'; });
+      resolvedGroups += 1;
+    } else {
+      group.forEach(item => { states[item.document_id] = 'IDENTITA_O_VERSIONE_NON_PROVATA'; });
+      unresolvedGroups += 1;
+    }
+  });
+  return { selectedIds, states, resolvedGroups, unresolvedGroups };
+};
+
 export default function SituazioneFiscale() {
   const location = useLocation();
   const tab = TABS.find(([id]) => location.pathname.endsWith(`/${id}`))?.[0] || 'tributi';
@@ -213,7 +256,7 @@ export default function SituazioneFiscale() {
 
   const checkAllDeclarations = async () => {
     const declarations = (certaintyMeta?.declaration_items || []).filter(item =>
-      item.document_id && item.field_check_status === 'PRONTO_PER_VERIFICA_CAMPI');
+      item.document_id && ['PRONTO_PER_VERIFICA_CAMPI', 'PRONTO_PER_VERIFICA_IDENTITA_VERSIONE'].includes(item.field_check_status));
     if (!declarations.length) return;
     setCheckingAllDeclarations(true);
     setDeclarationCheckProgress({ completed: 0, total: declarations.length, failed: 0 });
@@ -262,6 +305,7 @@ export default function SituazioneFiscale() {
   const resetListFilters = () => { setListQuery(''); setListYear(''); setListStatus(''); setPage(1); };
   const obligationRegister = useMemo(() => {
     const declarations = certaintyMeta?.declaration_items || [];
+    const versionResolution = resolveDeclarationVersions(declarations, declarationChecks);
     const obligations = [];
     let processed = 0;
     let noDebit = 0;
@@ -271,6 +315,7 @@ export default function SituazioneFiscale() {
       if (!check) return;
       if (check.error) { failed += 1; return; }
       processed += 1;
+      if (!versionResolution.selectedIds.has(declaration.document_id)) return;
       const rows = check.reconciliation?.items || [];
       if (!rows.length) noDebit += 1;
       const management = check.management_reconciliation;
@@ -302,7 +347,7 @@ export default function SituazioneFiscale() {
     const review = obligations.filter(item => item.review);
     const due = obligations.filter(item => !item.paid && !item.review);
     return {
-      obligations, processed, noDebit, failed,
+      obligations, processed, noDebit, failed, versionResolution,
       unprocessed: Math.max(0, declarations.length - processed - failed),
       paid: paid.length, due: due.length, review: review.length,
       expectedAmount: obligations.reduce((sum, item) => sum + item.amount, 0),
@@ -364,6 +409,8 @@ export default function SituazioneFiscale() {
             <span><small>Dichiarazioni elaborate</small><strong>{obligationRegister.processed}/{certaintyMeta.declaration_items.length}</strong></span>
             <span><small>Senza debiti estratti</small><strong>{obligationRegister.noDebit}</strong></span>
             <span><small>Non elaborate / errore</small><strong>{obligationRegister.unprocessed + obligationRegister.failed}</strong></span>
+            <span><small>Gruppi versione risolti</small><strong>{obligationRegister.versionResolution.resolvedGroups}</strong></span>
+            <span><small>Gruppi versione non risolti</small><strong>{obligationRegister.versionResolution.unresolvedGroups}</strong></span>
           </div>
           {obligationRegister.obligations.length > 0 && <div className="fiscal-f24-table-wrap" style={{ marginTop: 12 }}><table className="fiscal-f24-table">
             <thead><tr><th>Dichiarazione</th><th>Tributo / periodo</th><th>Importo dovuto</th><th>F24 commercialista</th><th>Stato Erario</th><th>Confronto gestionale</th></tr></thead>
@@ -392,8 +439,9 @@ export default function SituazioneFiscale() {
                   <div><strong>{declaration.document_type} · {declaration.filing_year || 'anno da verificare'}</strong><div className="fiscal-muted">{declaration.filename}</div></div>
                   <Badge variant={check?.extraction?.field_level_status === 'ESTRATTO_CON_CERTEZZA' ? 'success' : 'warning'}>{check?.extraction?.field_level_status || String(declaration.field_check_status || 'DA_VERIFICARE').replaceAll('_', ' ')}</Badge>
                 </div>
+                {obligationRegister.versionResolution.states[declaration.document_id] && <div style={{ marginTop: 6 }}><Badge variant={obligationRegister.versionResolution.selectedIds.has(declaration.document_id) ? 'success' : 'warning'}>{obligationRegister.versionResolution.states[declaration.document_id].replaceAll('_', ' ')}</Badge></div>}
                 <div className="fiscal-actions" style={{ marginTop: 10 }}>
-                  <Button size="sm" variant="primary" disabled={!declaration.document_id || declaration.field_check_status !== 'PRONTO_PER_VERIFICA_CAMPI' || checkingDeclaration === declaration.document_id} onClick={() => checkDeclarationFields(declaration.document_id)}>
+                  <Button size="sm" variant="primary" disabled={!declaration.document_id || !['PRONTO_PER_VERIFICA_CAMPI', 'PRONTO_PER_VERIFICA_IDENTITA_VERSIONE'].includes(declaration.field_check_status) || checkingDeclaration === declaration.document_id} onClick={() => checkDeclarationFields(declaration.document_id)}>
                     {checkingDeclaration === declaration.document_id ? 'Verifica…' : 'Verifica campi e F24'}
                   </Button>
                   <Button size="sm" variant="secondary" disabled={!declaration.document_id} onClick={() => openDriveDocument(declaration.document_id)}>Apri originale Drive</Button>

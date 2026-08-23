@@ -321,7 +321,7 @@ async def source_certainty(
                 for item in declaration_items
             ),
             "identity_or_version_review": sum(
-                item.get("field_check_status")
+                item.get("version_resolution_status")
                 == "IDENTITA_DICHIARANTE_E_VERSIONE_DA_VERIFICARE"
                 for item in declaration_items
             ),

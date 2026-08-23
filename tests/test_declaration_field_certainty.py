@@ -324,6 +324,25 @@ def test_redditi_sc_uses_rx1_after_declared_credits_reduce_rn_balance(monkeypatc
     assert result["f24_expectation"] == "F24_2003_ATTESO"
 
 
+def test_declaration_identity_uses_only_explicit_ade_footer_evidence(monkeypatch):
+    from app.services import declaration_field_certainty as certainty
+
+    footer = (
+        "Soggetto: CERALDI GROUP S.R.L. ( 04523831214 )\n"
+        "Identificativo dichiarazione: 16534127910 - 0000001 del 5/8/2024"
+    )
+    monkeypatch.setattr(certainty, "_fitz_pages", lambda _content: [
+        (2, footer, []), (3, footer, []),
+    ])
+
+    result = certainty._declaration_identity_metadata(b"pdf")
+
+    assert result["declaration_identity_proven"] is True
+    assert result["taxpayer_tax_code"] == "04523831214"
+    assert result["declaration_identifier"] == "16534127910-0000001"
+    assert result["declaration_filing_date"] == "2024-08-05"
+
+
 def test_irap_certifies_balance_from_complete_ir21_ir27_quadrature(monkeypatch):
     from app.services import declaration_field_certainty as certainty
 
