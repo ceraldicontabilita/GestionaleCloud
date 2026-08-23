@@ -10,6 +10,7 @@ const TABS = [
   ['tributi', 'Tributi'],
   ['tributi-pagati', 'Tributi pagati'],
   ['dichiarazioni', 'Dichiarazioni'],
+  ['confronto-fonti', 'Confronto fonti'],
   ['f24', 'F24 e crediti'],
   ['codici-tributo', 'Codici tributo'],
   ['crosswalk-riscossione', 'Crosswalk riscossione'],
@@ -43,6 +44,7 @@ const endpointFor = (tab, f24Filters = {}, taxCodeFilters = {}) => {
   return ({
     tributi: '/api/fiscal/obligations?limit=5000',
     'tributi-pagati': '/api/fiscal/obligations?status=PAID_ON_TIME&limit=5000',
+    'confronto-fonti': '/api/fiscal/source-certainty',
     'crosswalk-riscossione': '/api/fiscal/crosswalk',
     riscossione: '/api/fiscal/collections',
     ader: '/api/fiscal/ader-snapshots',
@@ -84,6 +86,7 @@ export default function SituazioneFiscale() {
   const [summary, setSummary] = useState(null);
   const [items, setItems] = useState([]);
   const [tabMeta, setTabMeta] = useState(null);
+  const [certaintyMeta, setCertaintyMeta] = useState(null);
   const [aderRelated, setAderRelated] = useState({ ratePlans: [], settlements: [] });
   const [loading, setLoading] = useState(true);
   const [f24Year, setF24Year] = useState('');
@@ -131,11 +134,13 @@ export default function SituazioneFiscale() {
         setTaxCodeOptions(payload.filters || { tax_types: [], contexts: [] });
         setTabSources(payload.sources || null);
         setTabMeta(payload.latest_import || null);
+        setCertaintyMeta(tab === 'confronto-fonti' ? payload : null);
         setAderRelated({ ratePlans: payload.rate_plans || [], settlements: payload.settlements || [] });
       } else {
         const error = dataResult.reason;
         setItems([]);
         setTabSources(null);
+        setCertaintyMeta(null);
         toast.error(`${TABS.find(([id]) => id === tab)?.[1] || 'Sezione fiscale'} non disponibile`, {
           description: error.response?.data?.detail || error.message,
         });
@@ -238,6 +243,16 @@ export default function SituazioneFiscale() {
         {tabSources && (tab === 'tributi' || tab === 'f24' || tab === 'dichiarazioni' || tab === 'tributi-pagati') && <div style={{ margin: '0 0 14px', padding: '10px 12px', borderRadius: 8, background: '#ecfdf5', color: '#166534' }}>
           <strong>Archivio canonico:</strong> Google Drive · indice {tabSources.drive_excel_index || 0}
           {tabSources.drive_warning && <div style={{ color: '#92400e', marginTop: 4 }}>Drive non disponibile: {tabSources.drive_warning}</div>}
+        </div>}
+        {tab === 'confronto-fonti' && certaintyMeta && <div className="fiscal-stats" style={{ marginBottom: 16 }}>
+          <StatCard label="Concordanti" value={certaintyMeta.certain || 0} accent="success" />
+          <StatCard label="Da verificare" value={certaintyMeta.requires_review || 0} accent="warning" />
+          <StatCard label="F24 commercialista" value={certaintyMeta.sources?.commercialista_f24_documents || 0} accent="primary" />
+          <StatCard label="Quietanze Drive" value={certaintyMeta.sources?.quietanza_drive_rows || 0} accent="primary" />
+          <StatCard label="Dichiarazioni" value={certaintyMeta.declarations?.documents || 0} accent="primary" />
+        </div>}
+        {tab === 'confronto-fonti' && certaintyMeta?.declarations?.requires_review && <div style={{ margin: '0 0 14px', padding: '10px 12px', borderRadius: 8, background: '#fffbeb', color: '#92400e' }}>
+          <strong>Dichiarazioni presenti ma non ancora confrontabili campo per campo.</strong> Il PDF è identificato e collegato all’originale Drive; imponibili, imposte e crediti devono ancora essere estratti prima di dichiarare la concordanza con il gestionale.
         </div>}
         {tab === 'f24' && <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'end', marginBottom: 14 }}>
           <label>Anno<br /><select value={f24Year} onChange={event => setF24Year(event.target.value)} style={{ padding: 8 }}>
@@ -345,6 +360,16 @@ export default function SituazioneFiscale() {
         <div className="fiscal-records">
         {visibleItems.map((item, index) => {
           const entityId = item.id || item.collection_number || item.code || `row-${index}`;
+          if (tab === 'confronto-fonti') return <article key={entityId} className="fiscal-record">
+            <div className="fiscal-record-header"><strong>{item.accountant_document?.filename || item.official_document?.filename || 'Documento fiscale'}</strong><Badge variant={item.requires_review ? 'warning' : 'success'}>{String(item.status || '').replaceAll('_', ' ')}</Badge></div>
+            <div className="fiscal-data-grid">
+              <span><small>Fonte commercialista</small><strong>{item.accountant_document?.document_id || 'Mancante'}</strong></span>
+              <span><small>Quietanza Drive</small><strong>{item.official_document?.document_id || 'Mancante'}</strong></span>
+              <span><small>Righe fiscali</small><strong>{item.accountant_document?.row_count ?? item.official_document?.row_count ?? 0}</strong></span>
+              <span><small>Candidati esatti</small><strong>{item.candidate_count || 0}</strong></span>
+            </div>
+            <div className="fiscal-muted" style={{ marginTop: 8 }}>Regola: codice tributo + periodo + sezione + ente + debito/credito in centesimi. Il solo importo non conferma mai un collegamento.</div>
+          </article>;
           if (item.is_f24_group) return <article key={entityId} className="fiscal-record fiscal-f24-record">
             <details>
               <summary className="fiscal-f24-summary">
