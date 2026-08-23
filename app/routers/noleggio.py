@@ -663,11 +663,13 @@ async def associa_fattura_a_veicolo(
 @router.get("/riepilogo-controlli")
 @handle_errors
 async def get_riepilogo_controlli(
-    anno: Optional[int] = Query(None, description="Anno per le fatture non associate")
+    anno: Optional[int] = Query(None, description="Anno per le fatture non associate"),
+    offset: int = Query(0, ge=0, description="Prima voce da restituire per ogni controllo"),
+    limit: int = Query(10, ge=1, le=200, description="Voci per controllo"),
 ) -> Dict[str, Any]:
     """
     Cruscotto di controllo del noleggio: in un colpo solo i conteggi e le
-    prime 10 voci di tutto ciò che richiede attenzione — verbali non
+    una pagina delle voci di tutto ciò che richiede attenzione — verbali non
     pagati/chiusi (unione delle due fonti, dedup per numero_verbale come
     _get_verbali_completi_per_targa ma senza filtro targa), trattenute
     da confermare, contratti cessati, auto senza driver, fatture non
@@ -675,7 +677,6 @@ async def get_riepilogo_controlli(
     Riconciliazione bancaria e alert NOL_* aperti del motore alert.
     """
     db = Database.get_db()
-    LIMITE_VOCI = 10
     STATI_VERBALE_CHIUSI = ("pagato", "chiuso")
 
     # ── 1) Verbali aperti: unione posta + fatture, dedup numero_verbale ──
@@ -740,7 +741,7 @@ async def get_riepilogo_controlli(
     trattenute_count = await db["trattenute_dipendenti"].count_documents(query_trattenute)
     trattenute_items = await db["trattenute_dipendenti"].find(
         query_trattenute, proiezione_trattenute
-    ).sort("created_at", -1).to_list(LIMITE_VOCI)
+    ).sort("created_at", -1).skip(offset).limit(limit).to_list(limit)
 
     # ── 3) Contratti cessati/chiusi ──
     query_cessati = {"stato_contratto": {"$in": ["cessato", "chiuso"]}}
@@ -751,7 +752,7 @@ async def get_riepilogo_controlli(
     cessati_count = await db[COLLECTION].count_documents(query_cessati)
     cessati_items = await db[COLLECTION].find(
         query_cessati, proiezione_veicolo
-    ).sort("data_fine", -1).to_list(LIMITE_VOCI)
+    ).sort("data_fine", -1).skip(offset).limit(limit).to_list(limit)
 
     # ── 4) Auto senza driver (contratto non cessato) ──
     # $in con None copre sia campo assente sia campo nullo/vuoto.
@@ -763,7 +764,7 @@ async def get_riepilogo_controlli(
     senza_driver_count = await db[COLLECTION].count_documents(query_senza_driver)
     senza_driver_items = await db[COLLECTION].find(
         query_senza_driver, proiezione_veicolo
-    ).sort("targa", 1).to_list(LIMITE_VOCI)
+    ).sort("targa", 1).skip(offset).limit(limit).to_list(limit)
 
     # ── 5) Fatture non associate: riusa l'endpoint esistente ──
     dati_fatture = await get_fatture_non_associate(anno=anno)
@@ -789,7 +790,7 @@ async def get_riepilogo_controlli(
     }
     pagamenti_items = await db["invoices"].find(
         query_pagamenti, proiezione_pagamenti
-    ).sort("invoice_date", -1).to_list(50)
+    ).sort("invoice_date", -1).skip(offset).limit(limit).to_list(limit)
 
     # ── 7) Alert NOL_* aperti dal motore alert (collection 'alerts') ──
     query_alert = {"codice": {"$regex": "^NOL_"}, "stato": "aperto"}
@@ -800,14 +801,14 @@ async def get_riepilogo_controlli(
     alert_count = await db["alerts"].count_documents(query_alert)
     alert_items = await db["alerts"].find(
         query_alert, proiezione_alert
-    ).sort("created_at", -1).to_list(LIMITE_VOCI)
+    ).sort("created_at", -1).skip(offset).limit(limit).to_list(limit)
 
     sezioni = {
-        "verbali_aperti": {"count": len(verbali_aperti), "items": verbali_aperti[:LIMITE_VOCI]},
+        "verbali_aperti": {"count": len(verbali_aperti), "items": verbali_aperti[offset:offset + limit]},
         "trattenute_da_confermare": {"count": trattenute_count, "items": trattenute_items},
         "contratti_cessati": {"count": cessati_count, "items": cessati_items},
         "auto_senza_driver": {"count": senza_driver_count, "items": senza_driver_items},
-        "fatture_non_associate": {"count": len(fatture_items), "items": fatture_items[:LIMITE_VOCI]},
+        "fatture_non_associate": {"count": len(fatture_items), "items": fatture_items[offset:offset + limit]},
         "pagamenti_non_riconciliati": {
             "count": pagamenti_count,
             "items": pagamenti_items,
@@ -823,6 +824,7 @@ async def get_riepilogo_controlli(
         "totale_segnalazioni": sum(s["count"] for s in sezioni.values()),
         "anno_pagamenti": anno_pagamenti,
         "anno": anno,
+        "pagination": {"offset": offset, "limit": limit},
     }
 
 
