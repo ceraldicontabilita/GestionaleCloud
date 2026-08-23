@@ -73,6 +73,29 @@ def test_770_ignores_same_numeric_shape_outside_st_sv_context():
     assert result["rejected_rows"] == []
 
 
+def test_770_extracts_real_drive_layout_with_tax_code_before_amount_row():
+    text = """[PAGINA 4]
+QUADRO ST
+1001     16  02  2024
+1 2 6 7 8
+01  2024         4.544,54                     4.544,54                   ST3
+3848     18  11  2024
+1 2 6 7 8
+11 2024            22,14                        22,26           0,12      ST9
+X 1001     24  03  2025
+1 2 6 7 8
+06 2024            20,48                        20,81           0,32      ST10
+"""
+    result = extract_770_tax_rows(text, document_id="DECL-REAL-770")
+
+    assert result["extracted_with_certainty"] == 2
+    assert result["requires_review"] == 1
+    assert result["tax_rows"][0]["tax_code"] == "1001"
+    assert result["tax_rows"][0]["reference_period"] == "2024-01"
+    assert result["tax_rows"][1]["interest_amount"] == 0.12
+    assert result["rejected_rows"][0]["tax_code"] == "1001"
+
+
 def test_770_management_sums_only_proven_xml_withholdings_for_code_1040():
     extraction = {"tax_rows": [{
         "id": "DECL-1040-2024-06", "tax_code": "1040",
@@ -253,7 +276,7 @@ def _money_row(field, y, amount, *, x=518):
     return [_word(field, 107, y, 24), _word(integer, x, y + 6, 28), _word(",00", 549, y + 6, 18)]
 
 
-def test_redditi_sc_certifies_ires_only_when_rn_and_rx_repeat_the_same_balance(monkeypatch):
+def test_redditi_sc_certifies_ires_from_rx1_final_debit(monkeypatch):
     from app.services import declaration_field_certainty as certainty
 
     rn = sum((_money_row(field, y, amount) for field, y, amount in (
@@ -276,7 +299,7 @@ def test_redditi_sc_certifies_ires_only_when_rn_and_rx_repeat_the_same_balance(m
     assert result["tax_rows"][0]["debit_amount"] == 6005.0
 
 
-def test_redditi_sc_keeps_internal_rn_rx_disagreement_in_review(monkeypatch):
+def test_redditi_sc_uses_rx1_after_declared_credits_reduce_rn_balance(monkeypatch):
     from app.services import declaration_field_certainty as certainty
 
     rn = sum((_money_row(field, y, amount) for field, y, amount in (
@@ -288,14 +311,17 @@ def test_redditi_sc_keeps_internal_rn_rx_disagreement_in_review(monkeypatch):
         _word(",00", 478, 106, 18),
     ]
     monkeypatch.setattr(certainty, "_fitz_pages", lambda _content: [
+        (2, "TIPO DI DICHIARAZIONE", [_word("2", 400, 85, 6)]),
         (6, "QUADRO RN", rn), (55, "QUADRO RX", rx),
     ])
-    result = extract_redditi_sc_fields(b"pdf", document_id="REDDITI-INCOERENTE", tax_year=2022)
+    result = extract_redditi_sc_fields(b"pdf", document_id="REDDITI-INTEGRATIVA", tax_year=2022)
 
-    assert result["field_level_status"] == REVIEW
+    assert result["field_level_status"] == CERTAIN
     assert result["quadrature"]["rn23_rx1_debit"] is False
-    assert result["tax_rows"] == []
-    assert result["f24_expectation"] == "SALDO_IRES_NON_DETERMINABILE"
+    assert result["tax_rows"][0]["debit_amount"] == 7707.0
+    assert result["tax_rows"][0]["source_text"] == "RX1_DEBITO 7.707,00"
+    assert result["submission_kind"] == "DICHIARAZIONE_INTEGRATIVA_CODICE_2"
+    assert result["f24_expectation"] == "F24_2003_ATTESO"
 
 
 def test_irap_certifies_balance_from_complete_ir21_ir27_quadrature(monkeypatch):
@@ -377,6 +403,53 @@ def test_multiple_quietanze_same_code_and_year_close_the_erario_debt():
     assert item["erario_state"] == "NULLA_DOVUTO_ERARIO_DOCUMENTATO"
     assert result["certain"] == 1
     assert result["requires_review"] == 0
+
+
+def test_ires_quietanze_are_summed_and_cover_declared_balance_with_visible_surplus():
+    extraction = {
+        "tax_rows": [{
+            "id": "DEBITO-IRES", "tax_code": "2003", "reference_period": "2019",
+            "debit_amount": 6005, "credit_amount": 0,
+        }],
+        "rejected_rows": [],
+    }
+    quietanze = [
+        {"id": f"RATA-{index}", "tax_code": "2003", "reference_period": f"0{index}/2019",
+         "debit_amount": 2009.67, "credit_amount": 0,
+         "payment_status": "DOCUMENTATO_DA_QUIETANZA"}
+        for index in range(1, 4)
+    ]
+
+    item = reconcile_declaration_tax_rows(extraction, quietanze)["items"][0]
+
+    assert item["status"] == "COPERTO_DA_QUIETANZE_F24"
+    assert item["erario_state"] == "NULLA_DOVUTO_ERARIO_DOCUMENTATO"
+    assert item["documentary_payment_proven"] is True
+    assert item["coverage_match"] is True
+    assert item["coverage_surplus_amount"] == 24.01
+    assert len(item["f24_rows"]) == 3
+
+
+def test_irap_partial_quietanza_does_not_close_declared_balance():
+    extraction = {
+        "tax_rows": [{
+            "id": "DEBITO-IRAP", "tax_code": "3800", "reference_period": "2022",
+            "debit_amount": 12061, "credit_amount": 0,
+        }],
+        "rejected_rows": [],
+    }
+    result = reconcile_declaration_tax_rows(extraction, [{
+        "id": "ACCONTO-PARZIALE", "tax_code": "3800", "reference_period": "2022",
+        "debit_amount": 6000, "credit_amount": 0,
+        "documentary_payment_status": "QUIETANZA_PRESENTE",
+    }])
+
+    item = result["items"][0]
+    assert item["status"] == CANDIDATE_F24
+    assert item["erario_state"] == "IN_ATTESA_QUADRATURA_F24"
+    assert item["documentary_payment_proven"] is False
+    assert item["coverage_match"] is False
+    assert item["related_debit_amount"] == 6000
 
 
 def test_accountant_f24_without_quietanza_does_not_claim_payment():
