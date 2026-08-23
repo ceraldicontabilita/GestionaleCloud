@@ -1,7 +1,7 @@
 # MAPPA ROUTER — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py — leggendo la route table reale di `register_all_routers`.
-> Totale **1167 endpoint** in **112 prefissi**.
+> Totale **1170 endpoint** in **113 prefissi**.
 
 Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app collegata / webhook / chatbot / scheduler / API pubblica) · `—` nessun riferimento noto (candidato verifica).
 
@@ -59,7 +59,7 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/f24-riconciliazione` | 23 | ✓ | bank.riconciliazione_f24_banca, f24.f24_riconciliazione |
 | `/api/fatture` | 17 | ✓ | invoices.fatture_drive, invoices.fatture_upload |
 | `/api/fatture-estere` | 3 | ✓ | fatture_estera_verifica |
-| `/api/fatture-ricevute` | 23 | ✓ | fatture_module.crud, fatture_module.export_selezione, fatture_module.pagamento |
+| `/api/fatture-ricevute` | 24 | ✓ | fatture_module.crud, fatture_module.export_selezione, fatture_module.pagamento |
 | `/api/finanziamenti-soci` | 4 | ✓ | finanziamenti_soci |
 | `/api/finanziaria` | 4 | ✓ | finanziaria |
 | `/api/fiscal` | 23 | ✓ | fiscal_control |
@@ -68,6 +68,7 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/genera-proposte` | 1 | — | dati_provvisori |
 | `/api/gestione-riservata` | 7 | ✓ | gestione_riservata |
 | `/api/haccp` | 21 | ✓ | haccp |
+| `/api/integrations` | 2 | — | lotti_integration |
 | `/api/invoices` | 8 | ✓ | invoices.invoices_emesse, invoices.invoices_main |
 | `/api/iva` | 20 | ✓ | iva |
 | `/api/learning-machine` | 7 | ✓ | learning_machine |

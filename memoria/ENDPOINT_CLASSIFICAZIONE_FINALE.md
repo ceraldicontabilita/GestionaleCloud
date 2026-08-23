@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1167 · tenere: 768 · verificare: 372 · admin-only (migrazione/manutenzione): 27
+**Totale endpoint:** 1170 · tenere: 770 · verificare: 373 · admin-only (migrazione/manutenzione): 27
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -609,6 +609,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/fatture-ricevute/export-selezione` | fatture_module.export_selezione | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/fatture-ricevute/fattura/{fattura_id}` | fatture_module.crud | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
 | `PUT /api/fatture-ricevute/fattura/{fattura_id}` | fatture_module.crud | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
+| `GET /api/fatture-ricevute/fattura/{fattura_id}/candidati-bancari` | fatture_module.pagamento | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/fatture-ricevute/fattura/{fattura_id}/documenti-pagamento` | fatture_module.crud | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/fatture-ricevute/fattura/{fattura_id}/pdf/{allegato_id}` | fatture_module.crud | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/fatture-ricevute/fattura/{fattura_id}/storia` | fatture_module.crud | sì | — | — | — | — | tenere | in uso: FE |
@@ -619,7 +620,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/fatture-ricevute/lista-paypal` | fatture_module.pagamento | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/fatture-ricevute/paga-manuale` | fatture_module.pagamento | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/fatture-ricevute/pulisci-duplicati` | fatture_module.crud | — | sì | — | — | — | tenere | in uso: scheduler |
-| `POST /api/fatture-ricevute/riconcilia-con-estratto-conto` | fatture_module.pagamento | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/fatture-ricevute/riconcilia-con-estratto-conto` | fatture_module.pagamento | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/fatture-ricevute/riconcilia-paypal` | fatture_module.pagamento | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/fatture-ricevute/statistiche` | fatture_module.crud | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/fatture-ricevute/verifica-incoerenze-estratto-conto` | fatture_module.pagamento | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
@@ -727,6 +728,8 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/haccp/registers/{entry_id}/resolve` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/haccp/sync-invoices` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/haccp/sync-preview` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
+| `GET /api/integrations/lotti/invoices` | lotti_integration | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/integrations/lotti/invoices/{source_id}` | lotti_integration | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/invoices` | invoices.invoices_main | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/invoices/bank-pending` | invoices.invoices_main | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/invoices/by-month/{year}/{month}` | invoices.invoices_main | sì | — | — | — | — | tenere | in uso: FE |

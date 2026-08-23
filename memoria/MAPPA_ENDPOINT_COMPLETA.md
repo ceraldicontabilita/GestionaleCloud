@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1167 endpoint** in **112 gruppi**.
+> Totale **1170 endpoint** in **113 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 723 · ext esterni = 81 · — da verificare = 363
+**Riepilogo uso:** ✓ frontend = 725 · ext esterni = 81 · — da verificare = 364
 
 ## AI Parser  (11)
 
@@ -876,7 +876,7 @@
 | GET | `/api/fatture-estere/da-verificare` | ✓ | fatture_estera_verifica |
 | POST | `/api/fatture-estere/{fattura_id}/verifica` | ✓ | fatture_estera_verifica |
 
-## Fatture Ricevute  (23)
+## Fatture Ricevute  (24)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -889,6 +889,7 @@
 | POST | `/api/fatture-ricevute/export-selezione` | ✓ | fatture_module.export_selezione |
 | GET | `/api/fatture-ricevute/fattura/{fattura_id}` | ✓ | fatture_module.crud |
 | PUT | `/api/fatture-ricevute/fattura/{fattura_id}` | ✓ | fatture_module.crud |
+| GET | `/api/fatture-ricevute/fattura/{fattura_id}/candidati-bancari` | ✓ | fatture_module.pagamento |
 | GET | `/api/fatture-ricevute/fattura/{fattura_id}/documenti-pagamento` | ✓ | fatture_module.crud |
 | GET | `/api/fatture-ricevute/fattura/{fattura_id}/pdf/{allegato_id}` | ✓ | fatture_module.crud |
 | GET | `/api/fatture-ricevute/fattura/{fattura_id}/storia` | ✓ | fatture_module.crud |
@@ -899,7 +900,7 @@
 | GET | `/api/fatture-ricevute/lista-paypal` | — | fatture_module.pagamento |
 | POST | `/api/fatture-ricevute/paga-manuale` | ✓ | fatture_module.pagamento |
 | POST | `/api/fatture-ricevute/pulisci-duplicati` | — | fatture_module.crud |
-| POST | `/api/fatture-ricevute/riconcilia-con-estratto-conto` | — | fatture_module.pagamento |
+| POST | `/api/fatture-ricevute/riconcilia-con-estratto-conto` | ✓ | fatture_module.pagamento |
 | POST | `/api/fatture-ricevute/riconcilia-paypal` | — | fatture_module.pagamento |
 | GET | `/api/fatture-ricevute/statistiche` | ✓ | fatture_module.crud |
 | GET | `/api/fatture-ricevute/verifica-incoerenze-estratto-conto` | — | fatture_module.pagamento |
@@ -1051,6 +1052,13 @@
 | POST | `/api/rapido/presenza` | ✓ | rapido |
 | GET | `/api/rapido/ultimi-inserimenti` | ✓ | rapido |
 | POST | `/api/rapido/versamento-banca` | ✓ | rapido |
+
+## Integrazione Lotti  (2)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| GET | `/api/integrations/lotti/invoices` | — | lotti_integration |
+| GET | `/api/integrations/lotti/invoices/{source_id}` | — | lotti_integration |
 
 ## Invoices  (4)
 
