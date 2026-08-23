@@ -145,6 +145,8 @@ export default function SituazioneFiscale() {
   const [uploadCategory, setUploadCategory] = useState('automatica');
   const [uploading, setUploading] = useState(false);
   const declarationInput = useRef(null);
+  const [uploadingF24Model, setUploadingF24Model] = useState(false);
+  const accountantF24Input = useRef(null);
   const [taxCodeQuery, setTaxCodeQuery] = useState('');
   const [taxCodeType, setTaxCodeType] = useState('');
   const [taxCodeContext, setTaxCodeContext] = useState('');
@@ -242,6 +244,26 @@ export default function SituazioneFiscale() {
     } catch (error) {
       toast.error('Caricamento non riuscito', { description: error.response?.data?.detail || error.message });
     } finally { setUploading(false); }
+  };
+
+  const uploadAccountantF24 = async event => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    const data = new FormData();
+    data.append('file', file);
+    data.append('anno', f24Year || declarationYear || String(new Date().getFullYear()));
+    data.append('note', 'Caricato manualmente come modello F24 ricevuto dal commercialista');
+    setUploadingF24Model(true);
+    try {
+      const response = await api.post('/api/documenti-fiscali/upload-f24-commercialista', data, { headers: { 'Content-Type': 'multipart/form-data' } });
+      toast.success(response.data?.duplicate ? 'Modello F24 già presente' : 'Modello F24 del commercialista acquisito', {
+        description: 'Il modello è registrato come importo atteso. Il pagamento sarà provato solo dalla quietanza AdE.',
+      });
+      await load();
+    } catch (error) {
+      toast.error('Caricamento F24 non riuscito', { description: error.response?.data?.detail || error.message });
+    } finally { setUploadingF24Model(false); }
   };
 
   const checkDeclarationFields = async documentId => {
@@ -387,6 +409,7 @@ export default function SituazioneFiscale() {
           <StatCard label="Concordanti" value={certaintyMeta.certain || 0} accent="success" />
           <StatCard label="Da verificare" value={certaintyMeta.requires_review || 0} accent="warning" />
           <StatCard label="F24 commercialista" value={certaintyMeta.sources?.commercialista_f24_documents || 0} accent="primary" />
+          <StatCard label="Modelli F24 senza provenienza" value={certaintyMeta.sources?.unattributed_f24_model_documents || 0} accent="warning" />
           <StatCard label="Quietanze Drive" value={certaintyMeta.sources?.quietanza_drive_rows || 0} accent="primary" />
           <StatCard label="Dichiarazioni" value={certaintyMeta.declarations?.documents || 0} accent="primary" />
           <StatCard label="Identità/versione da verificare" value={certaintyMeta.declarations?.identity_or_version_review || 0} accent="warning" />
@@ -398,9 +421,15 @@ export default function SituazioneFiscale() {
         {tab === 'confronto-fonti' && (certaintyMeta?.declaration_items || []).length > 0 && <section aria-labelledby="obligation-register-heading" className="fiscal-record" style={{ marginBottom: 18 }}>
           <div className="fiscal-record-header">
             <div><h4 id="obligation-register-heading" style={{ margin: 0 }}>Registro automatico dovuto / pagato</h4><div className="fiscal-muted">Dichiarazioni → F24 commercialista → quietanze Drive → dati gestionali disponibili</div></div>
-            <Button variant="primary" onClick={checkAllDeclarations} disabled={checkingAllDeclarations}>
-              {checkingAllDeclarations ? `Verifica ${declarationCheckProgress.completed}/${declarationCheckProgress.total}` : 'Verifica tutte le dichiarazioni'}
-            </Button>
+            <div className="fiscal-actions">
+              <input ref={accountantF24Input} type="file" accept="application/pdf,.pdf" hidden onChange={uploadAccountantF24} disabled={uploadingF24Model} />
+              <Button variant="secondary" onClick={() => accountantF24Input.current?.click()} disabled={uploadingF24Model}>
+                {uploadingF24Model ? 'Caricamento F24…' : 'Inserisci F24 commercialista'}
+              </Button>
+              <Button variant="primary" onClick={checkAllDeclarations} disabled={checkingAllDeclarations}>
+                {checkingAllDeclarations ? `Verifica ${declarationCheckProgress.completed}/${declarationCheckProgress.total}` : 'Verifica tutte le dichiarazioni'}
+              </Button>
+            </div>
           </div>
           <div className="fiscal-data-grid" style={{ marginTop: 12 }}>
             <span><small>Pagati con quietanza</small><strong>{obligationRegister.paid} · {euro(obligationRegister.paidAmount)}</strong></span>
@@ -418,7 +447,7 @@ export default function SituazioneFiscale() {
               <td><strong>{item.declaration.document_type}</strong><div className="fiscal-muted">{item.declaration.filename}</div></td>
               <td><strong>{item.row.declaration_row?.tax_code || '—'}</strong><div>{item.row.declaration_row?.reference_period || '—'}</div></td>
               <td>{euro(item.amount)}</td>
-              <td><Badge variant={item.row.accountant_f24_present ? 'info' : 'warning'}>{item.row.accountant_f24_present ? 'PRESENTE' : 'NON TROVATO'}</Badge></td>
+              <td><Badge variant={item.row.accountant_f24_present ? 'info' : 'warning'}>{item.row.accountant_f24_present ? 'PRESENTE' : 'NON TROVATO'}</Badge>{item.row.unattributed_f24_model_present && <div className="fiscal-muted">Modello simile presente, ma provenienza commercialista non provata</div>}</td>
               <td><Badge variant={item.paid ? 'success' : 'warning'}>{String(item.row.erario_state || item.row.status).replaceAll('_', ' ')}</Badge>{item.row.coverage_match && <div>{item.row.f24_rows?.length || 0} quietanze sommate · netto {euro((item.row.related_debit_amount || 0) - (item.row.related_credit_amount || 0))}</div>}{item.row.coverage_surplus_amount > 0 && <div className="fiscal-muted">Eccedenza quietanzata da verificare: {euro(item.row.coverage_surplus_amount)}</div>}</td>
               <td><Badge variant={item.managementState === 'CONCORDANTE_CON_GESTIONALE' ? 'success' : 'warning'}>{item.managementState.replaceAll('_', ' ')}</Badge></td>
             </tr>)}</tbody>

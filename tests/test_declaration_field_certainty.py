@@ -151,6 +151,7 @@ def test_declaration_rows_match_f24_only_on_full_fiscal_signature():
     result = reconcile_declaration_tax_rows(extraction, [{
         "id": "F24-ROW-1", "tax_code": "1001", "reference_period": "06/2024",
         "debit_amount": 1806.92, "credit_amount": 0,
+        "documentary_payment_status": "QUIETANZA_PRESENTE",
     }])
 
     first = next(item for item in result["items"] if item["declaration_row"]["reference_period"] == "2024-06")
@@ -179,6 +180,7 @@ def test_duplicate_f24_candidates_remain_ambiguous():
     f24 = {
         "tax_code": "1001", "reference_period": "2024-08",
         "debit_amount": 1446.57, "credit_amount": 0,
+        "documentary_payment_status": "QUIETANZA_PRESENTE",
     }
     result = reconcile_declaration_tax_rows(extraction, [{"id": "A", **f24}, {"id": "B", **f24}])
     assert result["items"][0]["status"] == AMBIGUOUS_F24
@@ -374,6 +376,7 @@ def test_annual_credit_matches_f24_even_when_index_keeps_installment_month():
     result = reconcile_declaration_tax_rows(extraction, [{
         "id": "F24-CREDITO", "tax_code": "2003", "reference_period": "01/2023",
         "debit_amount": 0, "credit_amount": 2916,
+        "source_role": "MODELLO_F24_COMMERCIALISTA",
     }])
 
     assert result["items"][0]["status"] == EXACT
@@ -391,6 +394,7 @@ def test_annual_installments_are_candidates_not_false_missing_f24():
     result = reconcile_declaration_tax_rows(extraction, [{
         "id": "RATA-1", "tax_code": "2003", "reference_period": "03/2019",
         "debit_amount": 2009.67, "credit_amount": 0,
+        "source_role": "MODELLO_F24_COMMERCIALISTA",
     }])
 
     assert result["items"][0]["status"] == CANDIDATE_F24
@@ -493,6 +497,27 @@ def test_accountant_f24_without_quietanza_does_not_claim_payment():
     assert result["requires_review"] == 1
 
 
+def test_unattributed_printable_f24_is_not_claimed_as_accountant_source():
+    extraction = {
+        "tax_rows": [{
+            "id": "DEBITO-IRES", "tax_code": "2003", "reference_period": "2024",
+            "debit_amount": 1000, "credit_amount": 0,
+        }],
+        "rejected_rows": [],
+    }
+    result = reconcile_declaration_tax_rows(extraction, [{
+        "id": "STAMPABILE", "tax_code": "2003", "reference_period": "2024",
+        "debit_amount": 1000, "credit_amount": 0,
+        "payment_status": "MODELLO_F24_PRESENTE",
+        "source_role": "MODELLO_F24_SENZA_PROVENIENZA",
+    }])
+
+    item = result["items"][0]
+    assert item["accountant_f24_present"] is False
+    assert item["unattributed_f24_model_present"] is True
+    assert item["erario_state"] == "IN_ATTESA_F24"
+
+
 def test_quietanza_wins_when_same_accountant_model_is_also_indexed():
     extraction = {
         "tax_rows": [{
@@ -505,7 +530,8 @@ def test_quietanza_wins_when_same_accountant_model_is_also_indexed():
               "debit_amount": 1000, "credit_amount": 0}
     result = reconcile_declaration_tax_rows(extraction, [
         {"id": "MODELLO-COMMERCIALISTA", **common,
-         "payment_status": "MODELLO_F24_PRESENTE"},
+         "payment_status": "MODELLO_F24_PRESENTE",
+         "source_role": "MODELLO_F24_COMMERCIALISTA"},
         {"id": "QUIETANZA-AE", **common,
          "payment_status": "DOCUMENTATO_DA_QUIETANZA",
          "documentary_payment_status": "QUIETANZA_PRESENTE"},

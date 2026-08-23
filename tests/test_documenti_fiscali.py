@@ -150,6 +150,27 @@ def test_upload_dedup_stesso_file(fake_db):
     assert len(inbox.docs) == 0  # nessuna copia nel registro
 
 
+def test_upload_f24_commercialista_usa_solo_drive(fake_db, monkeypatch):
+    from app.services import drive_f24_model_upload
+
+    captured = {}
+    def _fake_upload(**kwargs):
+        captured.update(kwargs)
+        return {"success": True, "duplicate": False, "document_id": "DOC-F24",
+                "storage": "google_drive", "payment_proven": False, "tax_rows": 2}
+    monkeypatch.setattr(drive_f24_model_upload, "upload_f24_accountant_model", _fake_upload)
+    result = _run(df.upload_f24_commercialista_drive(
+        file=_FakeUpload("predisposto.pdf", b"%PDF-1.4 f24"), anno=2026,
+        note="ricevuto dal commercialista",
+    ))
+
+    assert result["storage"] == "google_drive"
+    assert result["payment_proven"] is False
+    assert captured["filing_year"] == 2026
+    assert captured["note"] == "ricevuto dal commercialista"
+    assert len(fake_db[1].docs) == 0
+
+
 def test_lista_filtra_per_categoria(fake_db):
     _db, inbox = fake_db
     _run(inbox.insert_one({"id": "legacy-iva", "company_id": df.settings.FISCAL_COMPANY_ID,

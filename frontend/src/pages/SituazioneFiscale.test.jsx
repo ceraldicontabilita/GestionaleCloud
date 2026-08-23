@@ -9,6 +9,7 @@ vi.mock('../api', () => ({ default: { get: vi.fn(), post: vi.fn() } }));
 describe('Situazione fiscale collegata all indice Drive', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    api.post.mockResolvedValue({ data: { success: true, duplicate: false, payment_proven: false } });
     api.get.mockImplementation(path => {
       if (path === '/api/fiscal/summary') return Promise.resolve({ data: {
         counts: { documents: 0, obligations: 0, payments: 0, collection_claims: 0, ader_snapshots: 0 },
@@ -49,7 +50,7 @@ describe('Situazione fiscale collegata all indice Drive', () => {
           official_document: { document_id: 'DRIVE-Q-1', filename: 'quietanza-drive.pdf', row_count: 2 },
         }],
         certain: 1, requires_review: 0,
-        sources: { commercialista_f24_documents: 1, quietanza_drive_rows: 2 },
+        sources: { commercialista_f24_documents: 1, quietanza_drive_rows: 2, unattributed_f24_model_documents: 19 },
         declarations: { documents: 60, field_level_reconciled: 0, requires_review: true, identity_or_version_review: 2 },
         declaration_items: [{
           document_id: 'DOC-770', document_type: 'MODELLO_770', filing_year: 2025,
@@ -157,6 +158,8 @@ describe('Situazione fiscale collegata all indice Drive', () => {
     expect(screen.getByText(/Verifica dichiarazioni disponibile per i modelli supportati/)).toBeInTheDocument();
     expect(screen.getByText(/2 dichiarazioni escluse dal totale automatico/)).toBeInTheDocument();
     expect(screen.getByText(/Il solo importo non conferma mai un collegamento/)).toBeInTheDocument();
+    expect(screen.getByText('Modelli F24 senza provenienza')).toBeInTheDocument();
+    expect(screen.getByText('19')).toBeInTheDocument();
     expect(api.get).toHaveBeenCalledWith('/api/fiscal/source-certainty');
 
     fireEvent.click(screen.getByRole('button', { name: 'Verifica campi e F24' }));
@@ -178,6 +181,22 @@ describe('Situazione fiscale collegata all indice Drive', () => {
     expect(screen.getByText('CONCORDANTE CON GESTIONALE')).toBeInTheDocument();
     expect(screen.getByText('PRESENTE')).toBeInTheDocument();
     expect(api.get).toHaveBeenCalledWith('/api/fiscal/declarations/DOC-770/field-certainty');
+  });
+
+  it('acquisisce un F24 del commercialista come modello atteso e non come pagamento', async () => {
+    const { container } = render(<MemoryRouter initialEntries={['/situazione-fiscale/confronto-fonti']}><SituazioneFiscale /></MemoryRouter>);
+
+    expect(await screen.findByRole('button', { name: 'Inserisci F24 commercialista' })).toBeEnabled();
+    const input = container.querySelector('input[type="file"]');
+    fireEvent.change(input, { target: { files: [new File(['%PDF-1.4 model'], 'f24-commercialista.pdf', { type: 'application/pdf' })] } });
+
+    expect(api.post).toHaveBeenCalledWith(
+      '/api/documenti-fiscali/upload-f24-commercialista', expect.any(FormData),
+      { headers: { 'Content-Type': 'multipart/form-data' } },
+    );
+    const form = api.post.mock.calls[0][1];
+    expect(form.get('anno')).toBe('2026');
+    expect(form.get('file').name).toBe('f24-commercialista.pdf');
   });
 
   it('mostra LIPE, crediti e confronto gestionale senza creare un falso F24', async () => {

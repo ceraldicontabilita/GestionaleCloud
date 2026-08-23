@@ -11,6 +11,7 @@ def test_source_certainty_uses_only_drive_index_and_splits_models_from_receipts(
             "payment_year": "2024", "tax_code": "2003", "reference_period": "2024",
             "section": "ERARIO", "entity": "", "debit_amount": 1000, "credit_amount": 0,
             "payment_status": "MODELLO_F24_PRESENTE", "documentary_payment_status": "DA_VERIFICARE",
+            "source_role": "MODELLO_F24_COMMERCIALISTA",
         },
         {
             "id": "RECEIPT-ROW", "document_id": "Q-1", "filename": "quietanza.pdf",
@@ -38,6 +39,8 @@ def test_source_certainty_uses_only_drive_index_and_splits_models_from_receipts(
     assert result["sources"] == {
         "quietanza_drive_rows": 1,
         "commercialista_f24_documents": 1,
+        "unattributed_f24_model_documents": 0,
+        "unattributed_f24_model_rows": 0,
         "declaration_documents": 0,
         "canonical": "google_drive",
     }

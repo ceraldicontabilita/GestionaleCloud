@@ -761,7 +761,7 @@ Gli alias senza valore vanno configurati nel secret/config store di Render. Non 
 
 ## Appendice D — Tutti i router e tutti gli endpoint
 
-Route table sorgente: **1166**; attivi da ricreare: **766**; quarantena: **400** (`verificare` 373, `admin-only` 27).
+Route table sorgente: **1167**; attivi da ricreare: **768**; quarantena: **399** (`verificare` 372, `admin-only` 27).
 
 `attivo` significa da ricreare con contratto e test; `quarantena` significa non esporre nel nuovo runtime finché consumer, autorizzazione e test non sono provati. L'elenco è completo e include entrambe le categorie.
 
@@ -1276,10 +1276,11 @@ Route table sorgente: **1166**; attivi da ricreare: **766**; quarantena: **400**
 - **attivo** — `POST /api/documenti/upload-auto/render` — in uso: FE
 - **attivo** — `POST /api/documenti/upload-auto/render/preview` — in uso: FE
 
-### Router `documenti_fiscali` (2)
+### Router `documenti_fiscali` (3)
 
 - **quarantena: verificare** — `GET /api/documenti-fiscali/lista` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **attivo** — `POST /api/documenti-fiscali/upload` — in uso: FE
+- **attivo** — `POST /api/documenti-fiscali/upload-f24-commercialista` — in uso: FE
 
 ### Router `documenti_non_associati` (9)
 
@@ -1802,7 +1803,7 @@ Route table sorgente: **1166**; attivi da ricreare: **766**; quarantena: **400**
 - **quarantena: verificare** — `GET /api/noleggio/fatture-non-associate` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **attivo** — `POST /api/noleggio/fatture/{fattura_id}/associa-veicolo` — in uso: FE
 - **attivo** — `GET /api/noleggio/fornitori` — in uso: FE
-- **quarantena: verificare** — `GET /api/noleggio/riepilogo-controlli` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **attivo** — `GET /api/noleggio/riepilogo-controlli` — in uso: FE
 - **attivo** — `GET /api/noleggio/veicoli` — in uso: FE
 - **attivo** — `POST /api/noleggio/veicoli` — in uso: FE
 - **attivo** — `DELETE /api/noleggio/veicoli/{targa}` — in uso: FE

@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1166 · tenere: 767 · verificare: 372 · admin-only (migrazione/manutenzione): 27
+**Totale endpoint:** 1167 · tenere: 768 · verificare: 372 · admin-only (migrazione/manutenzione): 27
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -390,6 +390,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/document-ai/reprocess-and-save` | document_ai | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/documenti-fiscali/lista` | documenti_fiscali | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/documenti-fiscali/upload` | documenti_fiscali | sì | — | — | — | sì | tenere | in uso: FE |
+| `POST /api/documenti-fiscali/upload-f24-commercialista` | documenti_fiscali | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/documenti-inbox/auto-classify` | documents_inbox_classify | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/documenti-inbox/cross-check-f24` | documents_inbox_classify | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/documenti-inbox/import-dipendenti-from-cu` | documents_inbox_classify | sì | — | — | — | — | tenere | in uso: FE |
@@ -552,7 +553,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/f24-riconciliazione/alerts/{alert_id}/conferma-elimina` | f24.f24_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/f24-riconciliazione/alerts/{alert_id}/ignora` | f24.f24_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/f24-riconciliazione/commercialista` | f24.f24_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/f24-riconciliazione/commercialista/upload` | f24.f24_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/f24-riconciliazione/commercialista/upload` | f24.f24_riconciliazione | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `DELETE /api/f24-riconciliazione/commercialista/{f24_id}` | f24.f24_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/f24-riconciliazione/commercialista/{f24_id}` | f24.f24_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `PUT /api/f24-riconciliazione/commercialista/{f24_id}` | f24.f24_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |

@@ -48,6 +48,29 @@ async def upload_documento_fiscale(
     return {**result, "categoria": categoria, "storage": "google_drive"}
 
 
+@router.post("/upload-f24-commercialista")
+async def upload_f24_commercialista_drive(
+    file: UploadFile = File(...), anno: int = Form(...), note: Optional[str] = Form(None),
+    _admin: Dict[str, Any] = Depends(get_current_admin_mfa_user),
+) -> Dict[str, Any]:
+    content = await file.read()
+    if not content:
+        raise HTTPException(400, "File vuoto")
+    try:
+        import asyncio
+        from app.services.drive_f24_model_upload import upload_f24_accountant_model
+
+        return await asyncio.to_thread(
+            upload_f24_accountant_model, content=content,
+            filename=file.filename or "f24-commercialista.pdf",
+            filing_year=anno, note=note,
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+
 @router.get("/lista")
 async def lista_documenti_fiscali(
     categoria: Optional[str] = Query(None), limit: int = Query(200, le=1000),

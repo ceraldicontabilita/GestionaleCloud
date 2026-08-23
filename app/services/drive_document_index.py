@@ -240,13 +240,30 @@ def _date_sort_key(value: Any) -> str:
 
 def _is_documentary_payment(row: dict[str, Any]) -> bool:
     """Una quietanza prova documentalmente il pagamento, non il riscontro bancario."""
-    document_type = _norm(row.get("Tipo documento"))
-    source_path = _norm(row.get("Percorso Drive"))
-    return (
-        "quietanza" in document_type
-        or "formato stampabile" in document_type
-        or "formato_stampabile" in source_path
-    )
+    document_type = re.sub(r"[_-]+", " ", _norm(row.get("Tipo documento")))
+    protocol = re.sub(r"\D", "", str(row.get("Protocollo") or ""))
+    # Il vecchio indice etichettava questi PDF come "Formato stampabile
+    # (considerato quietanza)". Il contenuto e' invece una delega F24 con gli
+    # estremi bancari ancora da compilare: non prova un versamento eseguito.
+    if "stampabile" in document_type:
+        return False
+    return "quietanza" in document_type and len(protocol) >= 12
+
+
+def _f24_source_role(row: dict[str, Any]) -> tuple[str, str]:
+    if _is_documentary_payment(row):
+        return "QUIETANZA_UFFICIALE_ADE", "TIPO_QUIETANZA_E_PROTOCOLLO_TELEMATICO_PRESENTI"
+    document_type = re.sub(r"[_-]+", " ", _norm(row.get("Tipo documento")))
+    provenance = _norm(" ".join(str(row.get(key) or "") for key in (
+        "Fonte", "Provenienza", "Mittente", "Percorso Drive",
+    )))
+    if "commercialista" in provenance:
+        return "MODELLO_F24_COMMERCIALISTA", "PROVENIENZA_COMMERCIALISTA_ESPLICITA_NON_PROVA_PAGAMENTO"
+    if "stampabile" in document_type:
+        return "MODELLO_F24_SENZA_PROVENIENZA", "FORMATO_STAMPABILE_SENZA_PROTOCOLLO_NON_PROVA_PAGAMENTO"
+    if "modello f24" in document_type:
+        return "MODELLO_F24_SENZA_PROVENIENZA", "TIPO_MODELLO_F24_PROVENIENZA_NON_PROVATA"
+    return "MODELLO_F24_DA_VERIFICARE", "PROVA_QUIETANZA_E_PROTOCOLLO_NON_COMPLETA"
 
 
 def _declaration_type(value: Any, filename: Any = None) -> str:
@@ -654,6 +671,7 @@ def list_f24_documents(
         if not document:
             continue
         codes = sorted({str(row.get("Codice tributo") or "") for row in rows if row.get("Codice tributo")})
+        source_role, evidence_reason = _f24_source_role(rows[0])
         results.append({
             "document": _public_record(document),
             "payment_year": rows[0].get("Anno pagamento"),
@@ -669,6 +687,8 @@ def list_f24_documents(
                 if _is_documentary_payment(rows[0])
                 else "MODELLO_F24_NON_PROVA_BANCARIA"
             ),
+            "source_role": source_role,
+            "evidence_reason": evidence_reason,
         })
     results.sort(key=lambda item: (_date_sort_key(item.get("payment_date")), item["document"]["filename"]), reverse=True)
     return {"returned": min(len(results), limit), "total_matching": len(results), "results": results[:limit]}
@@ -698,6 +718,7 @@ def list_f24_rows(
         if credits_only and credit <= 0:
             continue
         document = by_id.get(current_document_id, {})
+        source_role, evidence_reason = _f24_source_role(row)
         matches.append({
             "id": _stable_f24_row_id(row, ordinal),
             "document_id": current_document_id,
@@ -726,6 +747,8 @@ def list_f24_rows(
                 if _is_documentary_payment(row)
                 else "MODELLO_F24_NON_PROVA_BANCARIA"
             ),
+            "source_role": source_role,
+            "evidence_reason": evidence_reason,
         })
     matches.sort(key=lambda item: (
         _date_sort_key(item.get("payment_date")), str(item.get("filename") or ""),

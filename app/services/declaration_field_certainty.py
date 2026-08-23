@@ -826,9 +826,22 @@ def reconcile_declaration_tax_rows(extraction: dict[str, Any],
 
     all_f24_rows = list(f24_rows)
     receipt_rows = [item for item in all_f24_rows if documentary_paid(item)]
-    model_rows = [item for item in all_f24_rows if not documentary_paid(item)]
+    model_rows = [
+        item for item in all_f24_rows
+        if not documentary_paid(item) and (
+            str(item.get("source_role") or "").upper() == "MODELLO_F24_COMMERCIALISTA"
+            or str(item.get("payment_status") or "").upper() in {
+                "PREDISPOSTO_DAL_COMMERCIALISTA", "MODELLO_F24_COMMERCIALISTA",
+            }
+        )
+    ]
+    unattributed_model_rows = [
+        item for item in all_f24_rows
+        if not documentary_paid(item) and item not in model_rows
+    ]
     receipt_by_signature, receipt_by_code_period = indexes(receipt_rows)
     model_by_signature, model_by_code_period = indexes(model_rows)
+    unattributed_by_signature, unattributed_by_code_period = indexes(unattributed_model_rows)
 
     items = []
     for row in extraction.get("tax_rows") or []:
@@ -871,6 +884,8 @@ def reconcile_declaration_tax_rows(extraction: dict[str, Any],
             model_debit_cents == signature[2] and model_credit_cents == signature[3]
         )
         model_match = len(model_candidates) == 1 or model_aggregate_matches
+        unattributed_candidates = unattributed_by_signature.get(signature, [])
+        unattributed_related = unattributed_by_code_period.get((tax_code, period), [])
         if receipt_match:
             status, erario_state, receipt_proven = EXACT, NOTHING_DUE_DOCUMENTED, True
         elif coverage_match:
@@ -910,6 +925,8 @@ def reconcile_declaration_tax_rows(extraction: dict[str, Any],
             "related_debit_amount": (related_debit_cents if related else model_debit_cents) / 100,
             "related_credit_amount": (related_credit_cents if related else model_credit_cents) / 100,
             "accountant_f24_present": bool(model_candidates or model_related),
+            "unattributed_f24_model_present": bool(unattributed_candidates or unattributed_related),
+            "unattributed_f24_model_count": len(unattributed_related),
             "rule": "codice_tributo+periodo+somma_netto_quietanze_cents",
         })
     for row in extraction.get("rejected_rows") or []:
