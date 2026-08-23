@@ -139,13 +139,17 @@ async def get_tutte_scadenze(
     
     if not anno:
         anno = oggi.year
-    if not mese:
-        mese = oggi.month
+    mese_richiesto = mese
     
     scadenze = []
     
     # 1. Scadenze fiscali fisse
-    scadenze_fiscali = _genera_scadenze_fiscali(anno, mese, include_passate)
+    mesi_fiscali = [mese_richiesto] if mese_richiesto else range(1, 13)
+    scadenze_fiscali = []
+    for mese_fiscale in mesi_fiscali:
+        scadenze_fiscali.extend(
+            _genera_scadenze_fiscali(anno, mese_fiscale, include_passate)
+        )
     if tipo:
         scadenze_fiscali = [s for s in scadenze_fiscali if s["tipo"] == tipo]
     scadenze.extend(scadenze_fiscali)
@@ -156,15 +160,32 @@ async def get_tutte_scadenze(
         scadenze.extend(fatture_scadenza)
     
     # 3. Notifiche custom salvate
+    prefisso_periodo = (
+        f"^{anno:04d}-{mese_richiesto:02d}-"
+        if mese_richiesto
+        else f"^{anno:04d}-"
+    )
+    query_custom = {"data_scadenza": {"$regex": prefisso_periodo}}
+    if not include_passate:
+        query_custom["completata"] = False
     notifiche_custom = await db["notifiche_scadenze"].find(
-        {"completata": False} if not include_passate else {},
+        query_custom,
         {"_id": 0}
-    ).to_list(100)
+    ).to_list(None)
     
     for n in notifiche_custom:
+        data_scadenza = str(n.get("data_scadenza") or "")
+        if not data_scadenza.startswith(f"{anno:04d}-"):
+            continue
+        if mese_richiesto and not data_scadenza.startswith(
+            f"{anno:04d}-{mese_richiesto:02d}-"
+        ):
+            continue
+        if tipo and n.get("tipo", "CUSTOM") != tipo:
+            continue
         scadenze.append({
             "id": n.get("id"),
-            "data": n.get("data_scadenza"),
+            "data": data_scadenza,
             "tipo": n.get("tipo", "CUSTOM"),
             "descrizione": n.get("descrizione"),
             "importo": n.get("importo"),
