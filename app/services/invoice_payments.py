@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.services.sheets_document_store import DuplicateRecordError
 
 from app.services.scritture_contabili import _sessione, _transazione_registro
+from app.services.prima_nota_integrity import totale_pagabile_al_fornitore
 
 
 COL_SCADENZIARIO = "scadenziario_fornitori"
@@ -306,6 +307,15 @@ def _compact(value: Any) -> str:
     return re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
 
 
+def _supplier_payable_residual(invoice: Dict[str, Any]) -> float:
+    payable = totale_pagabile_al_fornitore(invoice)
+    try:
+        paid = abs(float(invoice.get("importo_pagato") or 0))
+    except (TypeError, ValueError):
+        paid = 0.0
+    return max(0.0, round(payable - paid, 2))
+
+
 def _invoice_supplier(invoice: Dict[str, Any]) -> str:
     return str(
         invoice.get("supplier_name")
@@ -340,11 +350,7 @@ async def find_invoice_bank_candidates(db, fattura_id: str) -> Dict[str, Any]:
     if not invoice:
         raise HTTPException(status_code=404, detail="Fattura non trovata")
 
-    residual = abs(float(
-        invoice.get("importo_residuo")
-        if invoice.get("importo_residuo") is not None
-        else invoice.get("total_amount") or invoice.get("importo_totale") or 0
-    ))
+    residual = _supplier_payable_residual(invoice)
     if residual <= 0:
         return {"fattura_id": fattura_id, "importo_residuo": 0, "candidati": []}
 
@@ -474,11 +480,7 @@ async def reconcile_invoice_bank_movement(
     if linked_invoice and linked_invoice != req.fattura_id:
         raise HTTPException(status_code=409, detail="Movimento gia' collegato a un'altra fattura")
 
-    residual = abs(float(
-        invoice.get("importo_residuo")
-        if invoice.get("importo_residuo") is not None
-        else invoice.get("total_amount") or invoice.get("importo_totale") or 0
-    ))
+    residual = _supplier_payable_residual(invoice)
     bank_amount = abs(float(movement.get("importo") or movement.get("amount") or 0))
     if residual <= 0 or abs(residual - bank_amount) > 0.005:
         raise HTTPException(
