@@ -153,6 +153,111 @@ def test_import_orchestrator_can_apply_unique_referenced_invoice_set(monkeypatch
     run(scenario())
 
 
+def test_auto_match_unique_supplier_amount_reconciles_without_operator():
+    async def scenario():
+        db = MemorySheetsClient()["bank_auto_supplier"]
+        await db.estratto_conto_movimenti.insert_one({
+            "id": "M-FERRANTINI", "data": "2026-08-06", "importo": -1332.24,
+            "tipo": "uscita", "descrizione": "BONIFICO FULVIO FERRANTINI",
+        })
+        await db.invoices.insert_one({
+            "id": "F-FERRANTINI", "invoice_number": "FPR 105/26",
+            "invoice_date": "2026-08-06", "supplier_name": "FULVIO FERRANTINI",
+            "supplier_vat": "04997201217", "total_amount": 1332.24,
+        })
+
+        result = await reconcile_deterministic_invoice_allocations(
+            db, movement_ids=["M-FERRANTINI"],
+        )
+
+        assert result["allocati_identita"] == 1
+        invoice = await db.invoices.find_one({"id": "F-FERRANTINI"}, {"_id": 0})
+        movement = await db.estratto_conto_movimenti.find_one({"id": "M-FERRANTINI"}, {"_id": 0})
+        assert invoice["pagato"] is True
+        assert movement["fattura_id"] == "F-FERRANTINI"
+        assert movement["tipo_riconciliazione"] == "automatico_fattura_identita"
+
+    run(scenario())
+
+
+def test_auto_match_amount_only_stays_unconfirmed():
+    async def scenario():
+        db = MemorySheetsClient()["bank_auto_amount_only"]
+        await db.estratto_conto_movimenti.insert_one({
+            "id": "M1", "data": "2026-08-06", "importo": -1332.24,
+            "tipo": "uscita", "descrizione": "BONIFICO GENERICO",
+        })
+        await db.invoices.insert_one({
+            "id": "F1", "invoice_number": "FPR 105/26",
+            "invoice_date": "2026-08-06", "supplier_name": "FULVIO FERRANTINI",
+            "total_amount": 1332.24,
+        })
+
+        result = await reconcile_deterministic_invoice_allocations(db, movement_ids=["M1"])
+
+        assert result["allocati_identita"] == 0
+        assert not (await db.invoices.find_one({"id": "F1"})).get("pagato")
+        assert not (await db.estratto_conto_movimenti.find_one({"id": "M1"})).get("riconciliato")
+
+    run(scenario())
+
+
+def test_auto_match_duplicate_same_supplier_amount_stays_ambiguous():
+    async def scenario():
+        db = MemorySheetsClient()["bank_auto_ambiguous"]
+        await db.estratto_conto_movimenti.insert_one({
+            "id": "M1", "data": "2026-08-06", "importo": -100,
+            "tipo": "uscita", "descrizione": "BONIFICO ALFA FORNITURE",
+        })
+        await db.invoices.insert_many([
+            {"id": "F1", "invoice_number": "A-1", "invoice_date": "2026-08-01", "supplier_name": "ALFA FORNITURE", "total_amount": 100},
+            {"id": "F2", "invoice_number": "A-2", "invoice_date": "2026-08-02", "supplier_name": "ALFA FORNITURE", "total_amount": 100},
+        ])
+
+        result = await reconcile_deterministic_invoice_allocations(db, movement_ids=["M1"])
+
+        assert result["allocati_identita"] == 0
+        assert result["ambigui_identita"] == 1
+        assert not (await db.estratto_conto_movimenti.find_one({"id": "M1"})).get("riconciliato")
+
+    run(scenario())
+
+
+def test_auto_match_withholding_closes_supplier_net_and_leaves_tax_due():
+    async def scenario():
+        db = MemorySheetsClient()["bank_auto_withholding"]
+        await db.estratto_conto_movimenti.insert_one({
+            "id": "M-NETTO", "data": "2026-08-06", "importo": -3206.40,
+            "tipo": "uscita", "descrizione": "BONIFICO STUDIO ALFA FPR 105/26",
+        })
+        await db.invoices.insert_one({
+            "id": "F-RIT", "invoice_number": "FPR 105/26",
+            "invoice_date": "2026-08-01", "supplier_name": "STUDIO ALFA",
+            "total_amount": 3806.40, "ritenuta_importo": 600.0,
+            "pagamento_rate_totale": 3206.40,
+        })
+        await db.ritenute_acconto.insert_one({
+            "id": "RIT-F-RIT", "fattura_id": "F-RIT", "importo": 600.0,
+            "periodo_ritenuta": "2026-08", "stato": "da_pagare",
+        })
+
+        result = await reconcile_deterministic_invoice_allocations(
+            db, movement_ids=["M-NETTO"],
+        )
+
+        assert result["allocati_identita"] == 1
+        invoice = await db.invoices.find_one({"id": "F-RIT"}, {"_id": 0})
+        withholding = await db.ritenute_acconto.find_one({"id": "RIT-F-RIT"}, {"_id": 0})
+        assert invoice["pagato"] is True
+        assert invoice["totale_pagabile_fornitore"] == 3206.40
+        assert invoice["ritenuta_non_pagabile_fornitore"] == 600.0
+        assert invoice["importo_residuo"] == 0
+        assert withholding["stato"] == "da_pagare"
+        assert not withholding.get("data_pagamento")
+
+    run(scenario())
+
+
 def test_anomaly_analysis_is_read_only(monkeypatch):
     async def scenario():
         db = MemorySheetsClient()["bank_anomalies"]
