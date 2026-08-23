@@ -35,5 +35,20 @@ describe('Gestione IVA per periodo', () => {
     expect(source).not.toContain('ultimoRic');
     expect(source).not.toContain('Fatture lette');
   });
+
+  it('non conserva i conteggi del periodo precedente durante un cambio o un errore', () => {
+    expect(source).toContain("Un cambio di mese/anno non deve lasciare visibili i valori del periodo");
+    expect(source).toContain('setDati(null);');
+    expect(source).toContain('setCorrispettivi([]);');
+    expect(source).toContain('Caricamento dati del periodo…');
+    expect(source).toContain('Dati del periodo non disponibili');
+    expect(source).toContain('Caricamento conteggi IVA del periodo…');
+    expect(source).toContain('<div role="status" style={STILI.vuoto}>');
+    expect(source).toContain('setErrorePeriodo(dettaglio);');
+    expect(source).toContain('iva-periodo-non-disponibile');
+    expect(source).toContain('non vengono mostrati valori zero né dati del periodo precedente');
+    expect(source).toContain('Elenco fatture non disponibile per il periodo selezionato.');
+    expect(source).toContain('Corrispettivi non disponibili per il periodo selezionato.');
+  });
 });
 

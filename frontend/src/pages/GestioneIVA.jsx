@@ -49,6 +49,7 @@ export default function GestioneIVA() {
   const [dati, setDati] = useState(null);
   const [corrispettivi, setCorrispettivi] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [errorePeriodo, setErrorePeriodo] = useState('');
   const [ricalcolo, setRicalcolo] = useState(false);
   const [msg, setMsg] = useState(null);
 
@@ -182,6 +183,12 @@ export default function GestioneIVA() {
 
   const carica = async () => {
     setLoading(true);
+    setErrorePeriodo('');
+    // Un cambio di mese/anno non deve lasciare visibili i valori del periodo
+    // precedente sotto la nuova intestazione mentre la richiesta e' in corso
+    // o se una delle due fonti fallisce.
+    setDati(null);
+    setCorrispettivi([]);
     try {
       const start = vistaAnnuale
         ? `${anno}-01-01`
@@ -199,7 +206,9 @@ export default function GestioneIVA() {
       setDati(fattureRes.data);
       setCorrispettivi(Array.isArray(corrispettiviRes.data) ? corrispettiviRes.data : []);
     } catch (e) {
-      setMsg({ tipo: 'errore', testo: 'Errore: ' + (e.response?.data?.detail || e.message) });
+      const dettaglio = e.response?.data?.detail || e.message || 'errore sconosciuto';
+      setErrorePeriodo(dettaglio);
+      setMsg({ tipo: 'errore', testo: 'Dati IVA del periodo non disponibili: ' + dettaglio });
     } finally {
       setLoading(false);
     }
@@ -352,7 +361,11 @@ export default function GestioneIVA() {
         <div>
           <strong>{vistaAnnuale ? `Tutto il ${anno}` : `${MESI_FULL[mese]} ${anno}`}</strong>
           <span>
-            {fatture.length} fatture · {corrispettiviUnici.length} giornate XML
+            {loading
+              ? 'Caricamento dati del periodo…'
+              : errorePeriodo
+                ? 'Dati del periodo non disponibili'
+              : `${fatture.length} fatture · ${corrispettiviUnici.length} giornate XML`}
           </span>
         </div>
         <div className="iva-command-actions">
@@ -389,14 +402,22 @@ export default function GestioneIVA() {
         </div>
       </div>
 
-      <div className="iva-kpi-grid">
-        <div><span>Fatture nel periodo</span><strong>{dati?.totale ?? fatture.length}</strong></div>
-        <div><span>IVA esposta</span><strong>{formatEuro(dati?.totale_iva_esposta || 0)}</strong></div>
-        <div><span>IVA detraibile</span><strong>{formatEuro(dati?.totale_iva_detraibile || 0)}</strong></div>
-        <div data-testid="iva-totale-disponibile"><span>Ancora disponibile</span><strong>{formatEuro(dati?.totale_iva_disponibile || 0)}</strong></div>
-        <div><span>IVA corrispettivi</span><strong>{formatEuro(totaliCorrispettivi.iva)}</strong></div>
-        <div><span>Da verificare</span><strong>{dati?.totale_da_verificare || 0}</strong></div>
-      </div>
+      {loading ? (
+        <div role="status" style={STILI.vuoto}>Caricamento conteggi IVA del periodo…</div>
+      ) : errorePeriodo ? (
+        <div data-testid="iva-periodo-non-disponibile" style={STILI.vuoto}>
+          Conteggi IVA non disponibili: non vengono mostrati valori zero né dati del periodo precedente.
+        </div>
+      ) : (
+        <div className="iva-kpi-grid">
+          <div><span>Fatture nel periodo</span><strong>{dati?.totale ?? fatture.length}</strong></div>
+          <div><span>IVA esposta</span><strong>{formatEuro(dati?.totale_iva_esposta || 0)}</strong></div>
+          <div><span>IVA detraibile</span><strong>{formatEuro(dati?.totale_iva_detraibile || 0)}</strong></div>
+          <div data-testid="iva-totale-disponibile"><span>Ancora disponibile</span><strong>{formatEuro(dati?.totale_iva_disponibile || 0)}</strong></div>
+          <div><span>IVA corrispettivi</span><strong>{formatEuro(totaliCorrispettivi.iva)}</strong></div>
+          <div><span>Da verificare</span><strong>{dati?.totale_da_verificare || 0}</strong></div>
+        </div>
+      )}
 
       {/* ── Calcola pregresso (persistente) ───────────────────────────── */}
       {msg && (
@@ -415,10 +436,14 @@ export default function GestioneIVA() {
             <h3 id="iva-fatture-periodo">Fatture di acquisto del periodo</h3>
             <p>IVA esposta, percentuale di detraibilità e IVA effettivamente detraibile.</p>
           </div>
-          <Badge variant="info">{dati?.totale ?? fatture.length} fatture</Badge>
+          <Badge variant={errorePeriodo ? 'danger' : 'info'}>
+            {errorePeriodo ? 'Non disponibile' : `${dati?.totale ?? fatture.length} fatture`}
+          </Badge>
         </div>
         {loading ? (
           <div style={STILI.vuoto}>Caricamento…</div>
+        ) : errorePeriodo ? (
+          <div style={STILI.vuoto}>Elenco fatture non disponibile per il periodo selezionato.</div>
         ) : fatture.length === 0 ? (
           <div style={STILI.vuoto}>
             Nessuna fattura attribuita a {vistaAnnuale ? `tutto il ${anno}` : `${MESI_FULL[mese]} ${anno}`}.
@@ -484,7 +509,9 @@ export default function GestioneIVA() {
             </p>
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            <Badge variant="info">{corrispettiviUnici.length} giornate</Badge>
+            <Badge variant={errorePeriodo ? 'danger' : 'info'}>
+              {errorePeriodo ? 'Non disponibile' : `${corrispettiviUnici.length} giornate`}
+            </Badge>
             {duplicatiCorrispettiviEsclusi > 0 && (
               <Badge variant="neutral">{duplicatiCorrispettiviEsclusi} copie escluse</Badge>
             )}
@@ -492,6 +519,8 @@ export default function GestioneIVA() {
         </div>
         {loading ? (
           <div style={STILI.vuoto}>Caricamento…</div>
+        ) : errorePeriodo ? (
+          <div style={STILI.vuoto}>Corrispettivi non disponibili per il periodo selezionato.</div>
         ) : corrispettiviUnici.length === 0 ? (
           <div style={STILI.vuoto}>Nessun corrispettivo XML nel periodo selezionato.</div>
         ) : (
