@@ -63,7 +63,7 @@ async def alerts_summary() -> Dict[str, Any]:
     critical_recenti = await db["alerts"].find(
         {**query_open, "severita": "critical"},
         {"_id": 0, "id": 1, "codice": 1, "titolo": 1, "dettaglio": 1,
-         "modulo": 1, "severita": 1, "created_at": 1, "entita_id": 1}
+         "modulo": 1, "severita": 1, "created_at": 1, "entita_id": 1, "link": 1}
     ).sort("created_at", -1).limit(5).to_list(5)
 
     totale = sum(per_severita.values())
@@ -78,27 +78,46 @@ async def alerts_summary() -> Dict[str, Any]:
 @router.get("/lista")
 async def lista_alerts(
     tipo: Optional[str] = Query(None, description="Filtra per tipo alert"),
+    severita: Optional[str] = Query(None, description="Filtra per severità"),
+    modulo: Optional[str] = Query(None, description="Filtra per modulo"),
+    alert_id: Optional[str] = Query(None, description="Apre un alert preciso"),
+    stato: Optional[str] = Query(None, pattern="^(aperto|risolto)$"),
     letto: Optional[bool] = Query(None, description="Filtra per letto/non letto"),
     risolto: Optional[bool] = Query(None, description="Filtra per risolto/non risolto"),
-    limit: int = Query(50, ge=1, le=200)
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
 ) -> Dict[str, Any]:
     """
     Lista tutti gli alert di sistema.
     """
     db = Database.get_db()
     
-    query = {}
+    query: Dict[str, Any] = {}
     if tipo:
         query["tipo"] = tipo
+    if severita:
+        query["severita"] = severita
+    if modulo:
+        query["modulo"] = modulo
+    if alert_id:
+        query["id"] = alert_id
+    if stato == "aperto":
+        query["$or"] = [
+            {"stato": "aperto"},
+            {"stato": {"$exists": False}, "risolto": {"$ne": True}},
+        ]
+    elif stato == "risolto":
+        query["$or"] = [{"stato": "risolto"}, {"risolto": True}]
     if letto is not None:
         query["letto"] = letto
     if risolto is not None:
         query["risolto"] = risolto
-    
+
+    totale_filtrato = await db["alerts"].count_documents(query)
     alerts = await db["alerts"].find(
         query,
         {"_id": 0}
-    ).sort("created_at", -1).limit(limit).to_list(limit)
+    ).sort("created_at", -1).skip(offset).limit(limit).to_list(limit)
     
     # Statistiche
     totale = await db["alerts"].count_documents({})
@@ -119,10 +138,16 @@ async def lista_alerts(
         "alerts": alerts,
         "stats": {
             "totale": totale,
+            "totale_filtrato": totale_filtrato,
             "non_letti": non_letti,
             "non_risolti": non_risolti,
             "per_tipo": per_tipo
-        }
+        },
+        "pagination": {
+            "offset": offset,
+            "limit": limit,
+            "has_more": offset + len(alerts) < totale_filtrato,
+        },
     }
 
 
