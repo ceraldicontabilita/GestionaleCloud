@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import re
 from collections import Counter, defaultdict
+from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any, Iterable
 
@@ -119,6 +120,39 @@ def _fitz_pages(content: bytes) -> list[tuple[int, str, list[dict[str, Any]]]]:
     finally:
         document.close()
     return pages
+
+
+def _declaration_identity_metadata(content: bytes) -> dict[str, Any]:
+    """Estrae solo identificatori espliciti stampati nel PDF dell'Agenzia."""
+    taxpayer_codes: set[str] = set()
+    declaration_ids: set[str] = set()
+    filing_dates: set[str] = set()
+    for _page_number, text, _words in _fitz_pages(content):
+        for match in re.finditer(
+            r"Soggetto:\s*.*?\(\s*([A-Z0-9 ]{11,32})\s*\)", text, re.I,
+        ):
+            value = re.sub(r"\s+", "", match.group(1)).upper()
+            if re.fullmatch(r"(?:\d{11}|[A-Z0-9]{16})", value):
+                taxpayer_codes.add(value)
+        for match in re.finditer(
+            r"Identificativo\s+dichiarazione:\s*([0-9 ]+)\s*-\s*([0-9 ]+)\s+del\s+"
+            r"(\d{1,2}/\d{1,2}/\d{4})", text, re.I,
+        ):
+            identifier = re.sub(r"\s+", "", match.group(1))
+            progressive = re.sub(r"\s+", "", match.group(2))
+            declaration_ids.add(f"{identifier}-{progressive}")
+            try:
+                filing_dates.add(datetime.strptime(match.group(3), "%d/%m/%Y").date().isoformat())
+            except ValueError:
+                pass
+    certain = len(taxpayer_codes) == 1 and len(declaration_ids) == 1 and len(filing_dates) == 1
+    return {
+        "taxpayer_tax_code": next(iter(taxpayer_codes)) if len(taxpayer_codes) == 1 else None,
+        "declaration_identifier": next(iter(declaration_ids)) if len(declaration_ids) == 1 else None,
+        "declaration_filing_date": next(iter(filing_dates)) if len(filing_dates) == 1 else None,
+        "declaration_identity_proven": certain,
+        "declaration_identity_rule": "soggetto+identificativo_dichiarazione+data_stampati_nel_pdf_ade",
+    }
 
 
 def _row_identity(document_id: str, page_number: int | None, ordinal: int, raw: str) -> str:
@@ -755,6 +789,7 @@ def extract_declaration_fields(content: bytes, *, document_type: str, document_i
             content, document_id=document_id, filename=filename, sha256=digest, tax_year=tax_year,
         )
     if result is not None:
+        result.update(_declaration_identity_metadata(content))
         for row in result.get("tax_rows") or []:
             if _cents(row.get("debit_amount")) > 0:
                 row.setdefault("erario_state", PENDING_F24)

@@ -18,6 +18,7 @@ NOTHING_DUE_DOCUMENTED = "NULLA_DOVUTO_ERARIO_DOCUMENTATO"
 WAITING_RECEIPT = "F24_COMMERCIALISTA_IN_ATTESA_QUIETANZA"
 SOURCE_REVIEW = "PROVE_F24_DA_VERIFICARE"
 DECLARATION_READY = "PRONTO_PER_VERIFICA_CAMPI"
+DECLARATION_VERSION_READY = "PRONTO_PER_VERIFICA_IDENTITA_VERSIONE"
 DECLARATION_VERSION_REVIEW = "IDENTITA_DICHIARANTE_E_VERSIONE_DA_VERIFICARE"
 SUPPORTED_DECLARATIONS = {
     "MODELLO_770", "LIPE", "DICHIARAZIONE_IVA", "REDDITI_SC", "DICHIARAZIONE_IRAP",
@@ -156,8 +157,13 @@ def annotate_declaration_certainty(
             item["declaration_set_status"] = "UNICA_PER_TIPO_E_ANNO_IMPOSTA"
             item["related_document_ids"] = []
         elif supported and identity_confirmed and len(siblings) > 1:
-            item["field_check_status"] = DECLARATION_VERSION_REVIEW
+            # Il PDF deve essere estratto per provare codice fiscale, data di
+            # presentazione e natura ordinaria/integrativa. Resta escluso dai
+            # totali fino alla risoluzione del gruppo, ma non viene piu'
+            # reso tecnicamente non verificabile.
+            item["field_check_status"] = DECLARATION_VERSION_READY
             item["declaration_set_status"] = "PIU_DICHIARAZIONI_STESSO_TIPO_E_ANNO_IMPOSTA"
+            item["version_resolution_status"] = DECLARATION_VERSION_REVIEW
             item["related_document_ids"] = sorted(
                 str(sibling.get("document_id") or "")
                 for sibling in siblings

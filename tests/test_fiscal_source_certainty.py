@@ -103,6 +103,9 @@ def test_same_declaration_type_and_tax_year_are_not_double_counted_without_ident
     result = annotate_declaration_certainty(declarations)
 
     assert {item["field_check_status"] for item in result} == {
+        "PRONTO_PER_VERIFICA_IDENTITA_VERSIONE",
+    }
+    assert {item["version_resolution_status"] for item in result} == {
         "IDENTITA_DICHIARANTE_E_VERSIONE_DA_VERIFICARE",
     }
     assert all(item["declaration_set_status"] ==

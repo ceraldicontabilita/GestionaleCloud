@@ -3,7 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import api from '../api';
-import SituazioneFiscale from './SituazioneFiscale';
+import SituazioneFiscale, { resolveDeclarationVersions } from './SituazioneFiscale';
 
 vi.mock('../api', () => ({ default: { get: vi.fn(), post: vi.fn() } }));
 describe('Situazione fiscale collegata all indice Drive', () => {
@@ -241,5 +241,34 @@ describe('Situazione fiscale collegata all indice Drive', () => {
     expect(screen.getByText('RX1_CREDITO')).toBeInTheDocument();
     expect(screen.getByText(/NESSUN F24 2003 A DEBITO ATTESO CREDITO IRES/)).toBeInTheDocument();
     expect(screen.getByText(/dichiarazioni successive/)).toBeInTheDocument();
+  });
+});
+
+describe('selezione probatoria della versione dichiarativa', () => {
+  const declarations = [
+    { document_id: 'ORD', document_type: 'REDDITI_SC', tax_year: 2022 },
+    { document_id: 'INT', document_type: 'REDDITI_SC', tax_year: 2022 },
+  ];
+
+  it('seleziona solo l integrativa successiva quando identita e date sono provate', () => {
+    const common = { declaration_identity_proven: true, taxpayer_tax_code: '04523831214' };
+    const result = resolveDeclarationVersions(declarations, {
+      ORD: { extraction: { ...common, document_id: 'ORD', declaration_identifier: 'A-1', declaration_filing_date: '2023-11-29', submission_kind: 'ORDINARIA_O_NON_DETERMINATA' } },
+      INT: { extraction: { ...common, document_id: 'INT', declaration_identifier: 'B-1', declaration_filing_date: '2024-08-05', submission_kind: 'DICHIARAZIONE_INTEGRATIVA_CODICE_2' } },
+    });
+
+    expect([...result.selectedIds]).toEqual(['INT']);
+    expect(result.states.ORD).toBe('SOSTITUITA_DA_INTEGRATIVA_PIU_RECENTE');
+    expect(result.resolvedGroups).toBe(1);
+  });
+
+  it('non sceglie una versione se il codice fiscale non coincide', () => {
+    const result = resolveDeclarationVersions(declarations, {
+      ORD: { extraction: { document_id: 'ORD', declaration_identity_proven: true, taxpayer_tax_code: '04523831214', declaration_identifier: 'A-1', declaration_filing_date: '2023-11-29' } },
+      INT: { extraction: { document_id: 'INT', declaration_identity_proven: true, taxpayer_tax_code: '99999999999', declaration_identifier: 'B-1', declaration_filing_date: '2024-08-05', submission_kind: 'DICHIARAZIONE_INTEGRATIVA_CODICE_2' } },
+    });
+
+    expect(result.selectedIds.size).toBe(0);
+    expect(result.unresolvedGroups).toBe(1);
   });
 });
