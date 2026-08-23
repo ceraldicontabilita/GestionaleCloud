@@ -256,7 +256,7 @@ def test_documented_tax_payments_only_include_quietanze_and_keep_bank_unverified
         "Protocollo": "26060212304532735/000001",
         "Codice tributo": "6099", "Debito": 0, "Credito": 1604.90,
     }, {
-        "ID documento": "DOC-S", "Tipo documento": "Modello F24",
+        "ID documento": "DOC-S", "Tipo documento": "Formato stampabile (considerato quietanza)",
         "Percorso Drive": r"F24\formato_stampabile\formato-stampabile.pdf",
         "Codice tributo": "1704", "Debito": 0, "Credito": 25,
     }, {
@@ -272,14 +272,20 @@ def test_documented_tax_payments_only_include_quietanze_and_keep_bank_unverified
 
     payload = list_documented_tax_payments()
 
-    assert payload["total"] == 3
-    assert {item["tax_code"] for item in payload["items"]} == {"3918", "6099", "1704"}
+    assert payload["total"] == 2
+    assert {item["tax_code"] for item in payload["items"]} == {"3918", "6099"}
     protocol_rows = [item for item in payload["items"] if item["document_id"] == "DOC-Q"]
     assert sum(item["debit_amount"] for item in protocol_rows) == 3574
     assert sum(item["credit_amount"] for item in protocol_rows) == 1604.90
     assert sum(item["debit_amount"] - item["credit_amount"] for item in protocol_rows) == 1969.10
     assert all(item["payment_status"] == "DOCUMENTATO_DA_QUIETANZA" for item in payload["items"])
     assert all(item["bank_status"] == "DA_VERIFICARE" for item in payload["items"])
+
+    all_rows = list_tax_obligations()["items"]
+    printable = next(item for item in all_rows if item["document_id"] == "DOC-S")
+    assert printable["documentary_payment_status"] == "DA_VERIFICARE"
+    assert printable["source_role"] == "MODELLO_F24_SENZA_PROVENIENZA"
+    assert printable["evidence_reason"] == "FORMATO_STAMPABILE_SENZA_PROTOCOLLO_NON_PROVA_PAGAMENTO"
 
 
 def test_tax_obligations_keep_complete_f24_delegations_and_evidence_states_distinct(monkeypatch):
@@ -294,6 +300,7 @@ def test_tax_obligations_keep_complete_f24_delegations_and_evidence_states_disti
     }]
     rows = [{
         "ID documento": "DOC-Q", "Tipo documento": "Quietanza AE",
+        "Protocollo": "26060212304532735/000001",
         "Codice tributo": "1001", "Debito": 100, "Credito": 0,
     }, {
         "ID documento": "DOC-M", "Tipo documento": "Modello F24",
@@ -314,6 +321,7 @@ def test_tax_obligations_keep_complete_f24_delegations_and_evidence_states_disti
     modello = next(item for item in payload["items"] if item["tax_code"] == "6001")
     credito = next(item for item in payload["items"] if item["tax_code"] == "6099")
     assert quietanza["documentary_payment_status"] == "QUIETANZA_PRESENTE"
+    assert quietanza["source_role"] == "QUIETANZA_UFFICIALE_ADE"
     assert modello["documentary_payment_status"] == "DA_VERIFICARE"
     assert credito["credit_amount"] == 25
     assert quietanza["bank_status"] == modello["bank_status"] == credito["bank_status"] == "DA_VERIFICARE"

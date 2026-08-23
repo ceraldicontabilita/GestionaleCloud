@@ -288,7 +288,12 @@ async def source_certainty(
     ]
     model_rows = [
         row for row in all_rows
+        if row.get("source_role") == "MODELLO_F24_COMMERCIALISTA"
+    ]
+    unattributed_model_rows = [
+        row for row in all_rows
         if row.get("documentary_payment_status") != "QUIETANZA_PRESENTE"
+        and row.get("source_role") != "MODELLO_F24_COMMERCIALISTA"
     ]
     accountant_documents = group_model_rows(model_rows)
     result = reconcile_f24_sources(receipt_rows, accountant_documents)
@@ -307,6 +312,11 @@ async def source_certainty(
         "sources": {
             "quietanza_drive_rows": len(receipt_rows),
             "commercialista_f24_documents": len(accountant_documents),
+            "unattributed_f24_model_documents": len({
+                str(row.get("document_id") or "") for row in unattributed_model_rows
+                if row.get("document_id")
+            }),
+            "unattributed_f24_model_rows": len(unattributed_model_rows),
             "declaration_documents": len(declarations),
             "canonical": "google_drive",
         },
