@@ -1629,11 +1629,12 @@ export default function Fornitori() {
     if (ok === false) return;
     const payload = { metodo_pagamento: newMetodo };
     try {
-      await api.put(`/api/suppliers/${supplierId}`, payload);
+      const response = await api.put(`/api/suppliers/${supplierId}`, payload);
+      const confirmed = response.data?.supplier || payload;
 
       // Aggiorna lo stato locale immediatamente
       setSuppliers(prev =>
-        prev.map(s => (idFornitore(s) === supplierId ? { ...s, ...payload } : s))
+        prev.map(s => (idFornitore(s) === supplierId ? { ...s, ...confirmed } : s))
       );
     } catch (error) {
       toast.error(
@@ -1652,10 +1653,13 @@ export default function Fornitori() {
     });
     if (ok === false) return;
     try {
-      await api.put(`/api/suppliers/${supplierId}`, { esclude_magazzino: nuovoValore });
+      const response = await api.put(`/api/suppliers/${supplierId}`, {
+        esclude_magazzino: nuovoValore,
+      });
+      const confirmed = response.data?.supplier || { esclude_magazzino: nuovoValore };
       setSuppliers(prev =>
         prev.map(s =>
-          idFornitore(s) === supplierId ? { ...s, esclude_magazzino: nuovoValore } : s
+          idFornitore(s) === supplierId ? { ...s, ...confirmed } : s
         )
       );
     } catch (error) {

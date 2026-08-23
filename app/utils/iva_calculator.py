@@ -253,27 +253,12 @@ async def save_supplier_payment_method(db, supplier_vat: str, supplier_name: str
         return False
     
     try:
+        import asyncio
+
         now = datetime.now(timezone.utc).isoformat()
         
         # Upsert nel dizionario principale
         dictionary_id = f"supplier-payment-method:{supplier_vat}"
-        await db["supplier_payment_methods"].update_one(
-            {"supplier_vat": supplier_vat},
-            {
-                "$set": {
-                    "id": dictionary_id,
-                    "supplier_name": supplier_name,
-                    "payment_method": payment_method,
-                    "updated_at": now,
-                    "updated_by": username
-                },
-                "$setOnInsert": {
-                    "created_at": now
-                }
-            },
-            upsert=True
-        )
-        
         # Backup nello storico
         history_doc = {
             "id": f"supplier-payment-history:{supplier_vat}:{uuid.uuid4()}",
@@ -284,7 +269,26 @@ async def save_supplier_payment_method(db, supplier_vat: str, supplier_name: str
             "changed_by": username,
             "action": "upsert"
         }
-        await db["supplier_payment_history"].insert_one(history_doc.copy())
+        # Dizionario corrente e audit sono fogli indipendenti: persistendoli
+        # insieme evitiamo due attese di rete consecutive senza rinunciare ad
+        # alcuna prova storica.
+        await asyncio.gather(
+            db["supplier_payment_methods"].update_one(
+                {"supplier_vat": supplier_vat},
+                {
+                    "$set": {
+                        "id": dictionary_id,
+                        "supplier_name": supplier_name,
+                        "payment_method": payment_method,
+                        "updated_at": now,
+                        "updated_by": username,
+                    },
+                    "$setOnInsert": {"created_at": now},
+                },
+                upsert=True,
+            ),
+            db["supplier_payment_history"].insert_one(history_doc.copy()),
+        )
         
         logger.info(f"✅ DIZIONARIO: Salvato {supplier_name} ({supplier_vat}) → {payment_method}")
         return True

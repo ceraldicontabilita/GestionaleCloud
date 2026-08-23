@@ -595,7 +595,11 @@ async def list_suppliers_filtered(
         stato_anagrafica=stato_anagrafica,
         giorni_nuovo=giorni_nuovo,
         prodotto=prodotto,
-        use_cache=False
+        # La lista standard e' gia materializzata e invalidata ad ogni
+        # modifica. Evitiamo di rileggere e riaggregare tutte le fatture a
+        # ogni apertura della pagina; ricerca e filtri avanzati continuano a
+        # bypassare automaticamente la cache in list_suppliers.
+        use_cache=True
     )
     
     # Contatori COERENTI col filtro attivo: i badge devono descrivere il
@@ -791,34 +795,33 @@ async def update_supplier(supplier_id: str, data: Dict[str, Any] = Body(...)) ->
     
     supplier = await db[Collections.SUPPLIERS].find_one(
         _filtro_fornitore(supplier_id),
-        {"partita_iva": 1, "piva": 1, "vat_number": 1,
-         "esclude_cassa_banca": 1, "cessato": 1}
+        {"partita_iva": 1, "piva": 1, "vat_number": 1, "id": 1,
+         "denominazione": 1, "ragione_sociale": 1,
+         "metodo_pagamento": 1, "esclude_cassa_banca": 1, "cessato": 1}
     )
     
     if not supplier:
         raise HTTPException(status_code=404, detail="Fornitore non trovato")
     
+    supplier_update: Dict[str, Any] = {"$set": data}
+    if metodo_configurato:
+        # Una sola scrittura sul foglio Fornitori: prima il metodo e poi lo
+        # storico venivano persistiti con due round-trip distinti.
+        supplier_update["$push"] = {"storico_metodi_pagamento": {
+            "metodo": data["metodo_pagamento"],
+            "dal": data.get("metodo_pagamento_dal", datetime.now(timezone.utc).strftime("%Y-%m-%d")),
+            "registrato_il": datetime.now(timezone.utc).isoformat(),
+        }}
+
     result = await db[Collections.SUPPLIERS].update_one(
         _filtro_fornitore(supplier_id),
-        {"$set": data}
+        supplier_update
     )
     
     # Se metodo cambiato, salva nello storico
     if metodo_configurato:
         from app.utils.iva_calculator import save_supplier_payment_method
 
-        old_supplier = await db[Collections.SUPPLIERS].find_one(
-            _filtro_fornitore(supplier_id),
-            {"metodo_pagamento": 1, "denominazione": 1}
-        )
-        await db[Collections.SUPPLIERS].update_one(
-            _filtro_fornitore(supplier_id),
-            {"$push": {"storico_metodi_pagamento": {
-                "metodo": data["metodo_pagamento"],
-                "dal": data.get("metodo_pagamento_dal", datetime.now(timezone.utc).strftime("%Y-%m-%d")),
-                "registrato_il": datetime.now(timezone.utc).isoformat(),
-            }}}
-        )
         supplier_vat = (
             supplier.get("partita_iva") or supplier.get("piva")
             or supplier.get("vat_number") or ""
@@ -826,13 +829,17 @@ async def update_supplier(supplier_id: str, data: Dict[str, Any] = Body(...)) ->
         await save_supplier_payment_method(
             db,
             supplier_vat,
-            (old_supplier or {}).get("denominazione", ""),
+            supplier.get("denominazione") or supplier.get("ragione_sociale", ""),
             data["metodo_pagamento"],
             username="gestionale-fornitori",
         )
     
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Fornitore non trovato")
+
+    # La cache contiene anche metodo e flag magazzino: senza invalidazione la
+    # modifica confermata poteva ricomparire col vecchio valore al refresh.
+    await cache.clear_pattern(SUPPLIERS_CACHE_KEY)
 
     esclusione_sync = {"fatture_aggiornate": 0, "movimenti_auto_rimossi": 0}
     if "esclude_cassa_banca" in data:
@@ -925,8 +932,13 @@ async def update_supplier(supplier_id: str, data: Dict[str, Any] = Body(...)) ->
     except Exception as _ev:
         logger.debug(f"[SuppliersModule] Event Bus fornitore.updated: {_ev}")
 
+    updated_supplier = await db[Collections.SUPPLIERS].find_one(
+        _filtro_fornitore(supplier_id), {"_id": 0}
+    )
+
     return {
         "message": "Fornitore aggiornato con successo",
+        "supplier": _legacy_supplier_view(updated_supplier or {}),
         "alerts_risolti": alerts_risolti,
         "prodotti_rimossi_magazzino": prodotti_rimossi,
         **esclusione_sync,
