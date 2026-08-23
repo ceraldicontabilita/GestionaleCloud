@@ -181,6 +181,10 @@ const MESI = [
   { value: '12', label: 'Dicembre' },
 ];
 
+export const FILTRO_FATTURE_ANOMALE = Object.freeze({
+  mese: '', fornitore: '', stato: 'anomala', search: '',
+});
+
 export default function ArchivioFatture() {
   const isMobile = useIsMobile();
   const navigate = useNavigate();
@@ -554,7 +558,16 @@ export default function ArchivioFatture() {
           <StatCard
             label="Anomale"
             value={statistiche.fatture_anomale}
+            subtext="Apri le fatture da correggere"
             accent={statistiche.fatture_anomale > 0 ? 'danger' : 'success'}
+            onClick={() => {
+              setHsMany(FILTRO_FATTURE_ANOMALE);
+              setDebouncedSearch('');
+              setPagina(1);
+              window.setTimeout(() => {
+                document.getElementById('filtro-stato-fatture')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }, 0);
+            }}
           />
         </div>
       )}
