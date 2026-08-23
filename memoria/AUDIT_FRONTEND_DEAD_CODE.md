@@ -3,13 +3,13 @@
 > Generato da `scripts/audit_frontend_dead_code.py` seguendo il grafo di import reale a partire da `main.jsx`/`App.jsx`/`navigation.config.js` (import statici, `import()` dinamici, `lazy(() => import(...))`, re-export `export {X} from`/`export * from`).
 > NON modificare a mano: rilancia lo script.
 
-**Totale file analizzati:** 205
+**Totale file analizzati:** 204
 
 | Classificazione | File |
 |---|---:|
 | ENTRYPOINT | 3 |
 | ROUTE_ATTIVA | 29 |
-| COMPONENTE_USATO | 94 |
+| COMPONENTE_USATO | 93 |
 | MODALE_USATO | 3 |
 | HOOK_USATO | 3 |
 | TEST_ONLY | 50 |
@@ -71,7 +71,6 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/components/DriveImportControls.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/components/ErrorBoundary.jsx` | COMPONENTE_USATO | 3 |
 | `frontend/src/components/ErrorBoundary.test.jsx` | TEST_ONLY | 0 |
-| `frontend/src/components/ExportButton.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/InAttesaDocumento.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/components/InAttesaDocumento.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/components/InstallAppButton.jsx` | COMPONENTE_USATO | 1 |
