@@ -22,7 +22,6 @@ from app.db_collections import (
     COLL_TAX_CREDIT_MOVEMENTS, COLL_TAX_OBLIGATIONS, COLL_TAX_PAYMENTS,
     COLL_TAX_RATE_INSTALLMENTS, COLL_TAX_RATE_PLANS,
     COLL_TAX_SETTLEMENT_APPLICATIONS,
-    COLL_F24,
 )
 from app.services.fiscal_agents import AdvisorBriefGenerator, FiscalControlAgent, buildTaxEvidencePackage, buildTaxReviewDossier, load_review_data
 from app.services.fiscal_domain import rebuild_vat_credit_chain, reconstruct_collection_state
@@ -267,27 +266,28 @@ async def source_certainty(
 ):
     """Confronta F24 del commercialista e quietanze Drive su identita' fiscali forti."""
     from app.services.drive_document_index import list_declarations as list_drive_declarations
-    from app.services.drive_document_index import list_f24_rows
-    from app.services.fiscal_source_certainty import reconcile_f24_sources
+    from app.services.drive_document_index import list_tax_obligations
+    from app.services.fiscal_source_certainty import group_model_rows, reconcile_f24_sources
 
     drive_payload = await asyncio.to_thread(
-        list_f24_rows, year=str(year) if year else None, offset=0, limit=5000,
+        list_tax_obligations, offset=0, limit=5000,
     )
     declaration_payload = await asyncio.to_thread(
         list_drive_declarations, year=str(year) if year else None, limit=5000,
     )
-    query: dict[str, Any] = {"status": {"$ne": "eliminato"}}
+    all_rows = drive_payload["items"]
     if year:
-        query["$or"] = [
-            {"anno": year}, {"anno": str(year)},
-            {"periodo_riferimento": {"$regex": str(year)}},
-            {"data_scadenza": {"$regex": f"^{year}"}},
-        ]
-    db = Database.get_db()
-    accountant_documents = await db[COLL_F24].find(
-        query, {"_id": 0, "pdf_data": 0},
-    ).to_list(5000)
-    result = reconcile_f24_sources(drive_payload["items"], accountant_documents)
+        all_rows = [row for row in all_rows if str(row.get("payment_year") or "") == str(year)]
+    receipt_rows = [
+        row for row in all_rows
+        if row.get("documentary_payment_status") == "QUIETANZA_PRESENTE"
+    ]
+    model_rows = [
+        row for row in all_rows
+        if row.get("documentary_payment_status") != "QUIETANZA_PRESENTE"
+    ]
+    accountant_documents = group_model_rows(model_rows)
+    result = reconcile_f24_sources(receipt_rows, accountant_documents)
     declarations = declaration_payload["results"]
     declaration_items = [{
         "document_id": item.get("document_id"),
@@ -309,10 +309,10 @@ async def source_certainty(
     result.update({
         "year": year,
         "sources": {
-            "quietanza_drive_rows": len(drive_payload["items"]),
+            "quietanza_drive_rows": len(receipt_rows),
             "commercialista_f24_documents": len(accountant_documents),
             "declaration_documents": len(declarations),
-            "canonical": "drive_sheets",
+            "canonical": "google_drive",
         },
         "declarations": {
             "documents": len(declarations),
@@ -343,7 +343,7 @@ async def declaration_field_certainty(
     )
     from app.services.drive_document_index import (
         build_drive_service,
-        list_f24_rows,
+        list_tax_obligations,
         load_declaration_pdf,
     )
 
@@ -360,7 +360,7 @@ async def declaration_field_certainty(
             tax_year=source["declaration"].get("tax_year"),
         )
         f24_payload = await asyncio.to_thread(
-            list_f24_rows, service, offset=0, limit=5000,
+            list_tax_obligations, service, offset=0, limit=5000,
         )
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc

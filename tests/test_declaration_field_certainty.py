@@ -348,3 +348,28 @@ def test_accountant_f24_without_quietanza_does_not_claim_payment():
     assert item["erario_state"] == "F24_TROVATO_PROVA_PAGAMENTO_DA_VERIFICARE"
     assert result["certain"] == 0
     assert result["requires_review"] == 1
+
+
+def test_quietanza_wins_when_same_accountant_model_is_also_indexed():
+    extraction = {
+        "tax_rows": [{
+            "id": "DEBITO-IRES", "tax_code": "2003", "reference_period": "2024",
+            "debit_amount": 1000, "credit_amount": 0,
+        }],
+        "rejected_rows": [],
+    }
+    common = {"tax_code": "2003", "reference_period": "2024",
+              "debit_amount": 1000, "credit_amount": 0}
+    result = reconcile_declaration_tax_rows(extraction, [
+        {"id": "MODELLO-COMMERCIALISTA", **common,
+         "payment_status": "MODELLO_F24_PRESENTE"},
+        {"id": "QUIETANZA-AE", **common,
+         "payment_status": "DOCUMENTATO_DA_QUIETANZA",
+         "documentary_payment_status": "QUIETANZA_PRESENTE"},
+    ])
+
+    item = result["items"][0]
+    assert item["erario_state"] == "NULLA_DOVUTO_ERARIO_DOCUMENTATO"
+    assert item["f24_row"]["id"] == "QUIETANZA-AE"
+    assert item["accountant_f24_present"] is True
+    assert result["requires_review"] == 0

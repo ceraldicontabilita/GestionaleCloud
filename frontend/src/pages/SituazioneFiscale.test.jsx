@@ -38,6 +38,7 @@ describe('Situazione fiscale collegata all indice Drive', () => {
       if (path === '/api/fiscal/source-certainty') return Promise.resolve({ data: {
         items: [{
           id: 'certainty:COMM-F24-1', status: 'CONCORDANTE', requires_review: false,
+          erario_state: 'NULLA_DOVUTO_ERARIO_DOCUMENTATO',
           candidate_count: 1,
           accountant_document: { document_id: 'COMM-F24-1', filename: 'f24-commercialista.pdf', row_count: 2 },
           official_document: { document_id: 'DRIVE-Q-1', filename: 'quietanza-drive.pdf', row_count: 2 },
@@ -156,7 +157,7 @@ describe('Situazione fiscale collegata all indice Drive', () => {
     expect(await screen.findByText('Pag. 7')).toBeInTheDocument();
     expect(screen.getByText(/446,57/)).toBeInTheDocument();
     expect(screen.getAllByText('CONCORDANTE')).toHaveLength(2);
-    expect(screen.getByText('NULLA DOVUTO ERARIO DOCUMENTATO')).toBeInTheDocument();
+    expect(screen.getAllByText('NULLA DOVUTO ERARIO DOCUMENTATO').length).toBeGreaterThanOrEqual(2);
     expect(api.get).toHaveBeenCalledWith('/api/fiscal/declarations/DOC-770/field-certainty');
   });
 
