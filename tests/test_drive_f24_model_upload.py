@@ -22,6 +22,22 @@ def test_f24_index_rows_preserve_debits_credits_and_explicit_source(monkeypatch)
     assert row["Fonte"] == "UPLOAD_GESTIONALE_COMMERCIALISTA"
 
 
+def test_email_source_is_written_on_every_tax_row(monkeypatch):
+    monkeypatch.setattr(upload, "normalize_f24_evidence_rows", lambda _parsed: [{
+        "section": "REGIONI", "row_kind": "TRIBUTO", "tax_code": "3800",
+        "description": "IRAP saldo", "reference_period": "2025",
+        "debit_amount": 800.0, "credit_amount": 0,
+    }])
+
+    [row] = upload._f24_index_values(
+        "DOC-EMAIL", "def", "02_F24_COMMERCIALISTA/2026/EMAIL/f24.pdf", {}, 2026,
+        "EMAIL_COMMERCIALISTA_VERIFICATA:studio@example.it",
+    )
+
+    assert row["Fonte"] == "EMAIL_COMMERCIALISTA_VERIFICATA:studio@example.it"
+    assert row["Protocollo"] == ""
+
+
 def test_duplicate_is_reused_without_writing_drive(monkeypatch):
     content = b"%PDF-existing"
     digest = hashlib.sha256(content).hexdigest()

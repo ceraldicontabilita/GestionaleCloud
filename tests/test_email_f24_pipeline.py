@@ -6,6 +6,32 @@ from app.services.sheets_document_store import MemorySheetsClient
 from app.routers.f24 import email_f24
 
 
+def test_download_email_f24_scrive_direttamente_su_drive_senza_database(monkeypatch):
+    async def scenario():
+        async def download(**_kwargs):
+            return {"success": True, "totale_email": 1, "totale_allegati": 1, "allegati": []}
+
+        from app.services import drive_f24_email_import
+        monkeypatch.setattr(email_f24, "download_and_process_emails", download)
+        monkeypatch.setattr(
+            email_f24.Database, "get_db",
+            staticmethod(lambda: (_ for _ in ()).throw(AssertionError("database non ammesso"))),
+        )
+        monkeypatch.setattr(drive_f24_email_import, "import_downloaded_accountant_attachments", lambda result: {
+            "success": True, "imported_count": 1, "storage": "google_drive",
+            "payment_proven": False, "imported": [{"document_id": "DOC-DRIVE"}],
+        })
+
+        result = await email_f24.scarica_email_allegati(giorni=30)
+
+        assert result["storage"] == "google_drive"
+        assert result["payment_proven"] is False
+        assert result["imported"][0]["document_id"] == "DOC-DRIVE"
+        assert "quietanza AdE" in result["message"]
+
+    asyncio.run(scenario())
+
+
 def test_email_quietanza_non_viene_scambiata_per_modello_f24(monkeypatch):
     async def scenario():
         db = MemorySheetsClient()["test_email_quietanza"]
