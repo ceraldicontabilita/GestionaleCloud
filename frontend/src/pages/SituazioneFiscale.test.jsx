@@ -24,6 +24,7 @@ describe('Situazione fiscale collegata all indice Drive', () => {
         reconciliation: { all_certain: true, requires_review: 0, counts: { CONCORDANTE: 1 }, erario_counts: { NULLA_DOVUTO_ERARIO_DOCUMENTATO: 1 }, items: [{
           id: 'match-1', status: 'CONCORDANTE', candidate_count: 1,
           erario_state: 'NULLA_DOVUTO_ERARIO_DOCUMENTATO', documentary_payment_proven: true,
+          accountant_f24_present: true,
           declaration_row: { page_number: 7, tax_code: '1001', reference_period: '2024-08', paid_amount: 1446.57, interest_amount: 0, certainty_reason: 'versamento_ordinario_importi_uguali', source_text: '08 2024 1.446,57 1.446,57' },
         }] },
       } });
@@ -155,9 +156,22 @@ describe('Situazione fiscale collegata all indice Drive', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Verifica campi e F24' }));
     expect(await screen.findByText('Pag. 7')).toBeInTheDocument();
-    expect(screen.getByText(/446,57/)).toBeInTheDocument();
+    expect(screen.getAllByText(/446,57/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('CONCORDANTE')).toHaveLength(2);
     expect(screen.getAllByText('NULLA DOVUTO ERARIO DOCUMENTATO').length).toBeGreaterThanOrEqual(2);
+    expect(api.get).toHaveBeenCalledWith('/api/fiscal/declarations/DOC-770/field-certainty');
+  });
+
+  it('costruisce con un solo comando il registro dovuto pagato di tutte le dichiarazioni', async () => {
+    render(<MemoryRouter initialEntries={['/situazione-fiscale/confronto-fonti']}><SituazioneFiscale /></MemoryRouter>);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Verifica tutte le dichiarazioni' }));
+
+    expect(await screen.findByRole('heading', { name: 'Registro automatico dovuto / pagato' })).toBeInTheDocument();
+    expect((await screen.findAllByText(/MODELLO_770/)).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('NULLA DOVUTO ERARIO DOCUMENTATO').length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText('CONFRONTO GESTIONALE NON DISPONIBILE')).toBeInTheDocument();
+    expect(screen.getByText('PRESENTE')).toBeInTheDocument();
     expect(api.get).toHaveBeenCalledWith('/api/fiscal/declarations/DOC-770/field-certainty');
   });
 

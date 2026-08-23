@@ -89,6 +89,8 @@ export default function SituazioneFiscale() {
   const [certaintyMeta, setCertaintyMeta] = useState(null);
   const [declarationChecks, setDeclarationChecks] = useState({});
   const [checkingDeclaration, setCheckingDeclaration] = useState(null);
+  const [checkingAllDeclarations, setCheckingAllDeclarations] = useState(false);
+  const [declarationCheckProgress, setDeclarationCheckProgress] = useState({ completed: 0, total: 0, failed: 0 });
   const [aderRelated, setAderRelated] = useState({ ratePlans: [], settlements: [] });
   const [loading, setLoading] = useState(true);
   const [f24Year, setF24Year] = useState('');
@@ -209,6 +211,36 @@ export default function SituazioneFiscale() {
     } finally { setCheckingDeclaration(null); }
   };
 
+  const checkAllDeclarations = async () => {
+    const declarations = (certaintyMeta?.declaration_items || []).filter(item =>
+      item.document_id && item.field_check_status === 'PRONTO_PER_VERIFICA_CAMPI');
+    if (!declarations.length) return;
+    setCheckingAllDeclarations(true);
+    setDeclarationCheckProgress({ completed: 0, total: declarations.length, failed: 0 });
+    let cursor = 0;
+    let failed = 0;
+    const worker = async () => {
+      while (cursor < declarations.length) {
+        const declaration = declarations[cursor++];
+        try {
+          const response = await api.get(`/api/fiscal/declarations/${encodeURIComponent(declaration.document_id)}/field-certainty`);
+          setDeclarationChecks(current => ({ ...current, [declaration.document_id]: response.data }));
+        } catch (error) {
+          failed += 1;
+          setDeclarationChecks(current => ({ ...current, [declaration.document_id]: {
+            error: error.response?.data?.detail || error.message || 'Verifica non riuscita',
+          } }));
+        } finally {
+          setDeclarationCheckProgress(current => ({ ...current, completed: current.completed + 1, failed }));
+        }
+      }
+    };
+    await Promise.all([worker(), worker()]);
+    setCheckingAllDeclarations(false);
+    if (failed) toast.warning(`Verifica completata con ${failed} documenti da riprovare`);
+    else toast.success('Registro dichiarazioni aggiornato da Drive');
+  };
+
   const driveCounts = summary?.drive_index?.counts || {};
   const activeLabel = useMemo(() => TABS.find(([id]) => id === tab)?.[1], [tab]);
   const displayItems = useMemo(() => {
@@ -228,6 +260,47 @@ export default function SituazioneFiscale() {
   const pageCount = Math.max(1, Math.ceil(filteredItems.length / pageSize));
   const visibleItems = filteredItems.slice((Math.min(page, pageCount) - 1) * pageSize, Math.min(page, pageCount) * pageSize);
   const resetListFilters = () => { setListQuery(''); setListYear(''); setListStatus(''); setPage(1); };
+  const obligationRegister = useMemo(() => {
+    const declarations = certaintyMeta?.declaration_items || [];
+    const obligations = [];
+    let processed = 0;
+    let noDebit = 0;
+    let failed = 0;
+    declarations.forEach(declaration => {
+      const check = declarationChecks[declaration.document_id];
+      if (!check) return;
+      if (check.error) { failed += 1; return; }
+      processed += 1;
+      const rows = check.reconciliation?.items || [];
+      if (!rows.length) noDebit += 1;
+      const management = check.management_reconciliation;
+      const managementState = management?.all_certain
+        ? 'CONCORDANTE_CON_GESTIONALE'
+        : management?.items?.some(item => item.status === 'DISCORDANTE')
+          ? 'DISCORDANTE_DAL_GESTIONALE'
+          : management ? 'GESTIONALE_NON_VERIFICABILE' : 'CONFRONTO_GESTIONALE_NON_DISPONIBILE';
+      rows.forEach(row => {
+        const amount = Number(row.declaration_row?.debit_amount ?? row.declaration_row?.paid_amount ?? 0);
+        obligations.push({
+          id: row.id, declaration, row, amount, managementState,
+          paid: row.erario_state === 'NULLA_DOVUTO_ERARIO_DOCUMENTATO',
+          review: row.erario_state === 'IMPORTO_DICHIARAZIONE_DA_VERIFICARE'
+            || row.erario_state === 'IN_ATTESA_VERIFICA_F24_AMBIGUO',
+        });
+      });
+    });
+    const paid = obligations.filter(item => item.paid);
+    const review = obligations.filter(item => item.review);
+    const due = obligations.filter(item => !item.paid && !item.review);
+    return {
+      obligations, processed, noDebit, failed,
+      unprocessed: Math.max(0, declarations.length - processed - failed),
+      paid: paid.length, due: due.length, review: review.length,
+      expectedAmount: obligations.reduce((sum, item) => sum + item.amount, 0),
+      paidAmount: paid.reduce((sum, item) => sum + item.amount, 0),
+      dueAmount: due.reduce((sum, item) => sum + item.amount, 0),
+    };
+  }, [certaintyMeta, declarationChecks]);
   return (
     <PageLayout title="Situazione fiscale" icon="⚖️"
       subtitle="Obblighi, pagamenti, cartelle e prove restano distinti e verificabili"
@@ -266,6 +339,35 @@ export default function SituazioneFiscale() {
         {tab === 'confronto-fonti' && certaintyMeta?.declarations?.requires_review && <div style={{ margin: '0 0 14px', padding: '10px 12px', borderRadius: 8, background: '#fffbeb', color: '#92400e' }}>
           <strong>Verifica dichiarazioni disponibile per i modelli supportati.</strong> Ogni valore conserva pagina e testo sorgente; le righe non univoche restano da verificare e non vengono collegate per il solo importo.
         </div>}
+        {tab === 'confronto-fonti' && (certaintyMeta?.declaration_items || []).length > 0 && <section aria-labelledby="obligation-register-heading" className="fiscal-record" style={{ marginBottom: 18 }}>
+          <div className="fiscal-record-header">
+            <div><h4 id="obligation-register-heading" style={{ margin: 0 }}>Registro automatico dovuto / pagato</h4><div className="fiscal-muted">Dichiarazioni → F24 commercialista → quietanze Drive → dati gestionali disponibili</div></div>
+            <Button variant="primary" onClick={checkAllDeclarations} disabled={checkingAllDeclarations}>
+              {checkingAllDeclarations ? `Verifica ${declarationCheckProgress.completed}/${declarationCheckProgress.total}` : 'Verifica tutte le dichiarazioni'}
+            </Button>
+          </div>
+          <div className="fiscal-data-grid" style={{ marginTop: 12 }}>
+            <span><small>Pagati con quietanza</small><strong>{obligationRegister.paid} · {euro(obligationRegister.paidAmount)}</strong></span>
+            <span><small>Ancora dovuti</small><strong>{obligationRegister.due} · {euro(obligationRegister.dueAmount)}</strong></span>
+            <span><small>Da verificare</small><strong>{obligationRegister.review}</strong></span>
+            <span><small>Dichiarazioni elaborate</small><strong>{obligationRegister.processed}/{certaintyMeta.declaration_items.length}</strong></span>
+            <span><small>Senza debiti estratti</small><strong>{obligationRegister.noDebit}</strong></span>
+            <span><small>Non elaborate / errore</small><strong>{obligationRegister.unprocessed + obligationRegister.failed}</strong></span>
+          </div>
+          {obligationRegister.obligations.length > 0 && <div className="fiscal-f24-table-wrap" style={{ marginTop: 12 }}><table className="fiscal-f24-table">
+            <thead><tr><th>Dichiarazione</th><th>Tributo / periodo</th><th>Importo dovuto</th><th>F24 commercialista</th><th>Stato Erario</th><th>Confronto gestionale</th></tr></thead>
+            <tbody>{obligationRegister.obligations.map(item => <tr key={item.id}>
+              <td><strong>{item.declaration.document_type}</strong><div className="fiscal-muted">{item.declaration.filename}</div></td>
+              <td><strong>{item.row.declaration_row?.tax_code || '—'}</strong><div>{item.row.declaration_row?.reference_period || '—'}</div></td>
+              <td>{euro(item.amount)}</td>
+              <td><Badge variant={item.row.accountant_f24_present ? 'info' : 'warning'}>{item.row.accountant_f24_present ? 'PRESENTE' : 'NON TROVATO'}</Badge></td>
+              <td><Badge variant={item.paid ? 'success' : 'warning'}>{String(item.row.erario_state || item.row.status).replaceAll('_', ' ')}</Badge></td>
+              <td><Badge variant={item.managementState === 'CONCORDANTE_CON_GESTIONALE' ? 'success' : 'warning'}>{item.managementState.replaceAll('_', ' ')}</Badge></td>
+            </tr>)}</tbody>
+            <tfoot><tr><th colSpan="2">Totale debiti dichiarati elaborati</th><th>{euro(obligationRegister.expectedAmount)}</th><th colSpan="3">Calcolo al centesimo; nessun collegamento per solo importo</th></tr></tfoot>
+          </table></div>}
+          {declarationCheckProgress.failed > 0 && <div className="fiscal-muted" style={{ marginTop: 8 }}>{declarationCheckProgress.failed} documenti non elaborati: restano esplicitamente da verificare.</div>}
+        </section>}
         {tab === 'confronto-fonti' && (certaintyMeta?.declaration_items || []).length > 0 && <section aria-labelledby="declaration-certainty-heading" style={{ marginBottom: 18 }}>
           <h4 id="declaration-certainty-heading" style={{ margin: '0 0 10px' }}>Dichiarazioni → F24 Drive</h4>
           <div style={{ display: 'grid', gap: 12 }}>
