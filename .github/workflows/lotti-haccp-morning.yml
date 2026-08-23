@@ -1,0 +1,59 @@
+name: Lotti HACCP mattutino
+
+on:
+  schedule:
+    # GitHub usa UTC. Le due finestre coprono ora legale e solare; il backend
+    # decide in Europe/Rome, ignora i tentativi anticipati e deduplica gli altri.
+    - cron: "0,10,20,30,40,50 5,6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lotti-haccp-morning
+  cancel-in-progress: false
+
+jobs:
+  run:
+    name: Risveglia e verifica CeraldiApp
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Richiama l'orchestratore idempotente
+        env:
+          AUTOMATION_SECRET: ${{ secrets.LOTTI_AUTOMATION_SECRET }}
+          ENDPOINT: https://lotti-backend-2wwb.onrender.com/api/scheduler/morning/run
+        run: |
+          test -n "$AUTOMATION_SECRET"
+          response_file="$(mktemp)"
+          code=$(curl --silent --show-error --location \
+            --retry 8 --retry-delay 10 --retry-all-errors \
+            --connect-timeout 30 --max-time 180 \
+            --output "$response_file" --write-out "%{http_code}" \
+            --request POST \
+            --header "X-Automation-Key: $AUTOMATION_SECRET" \
+            "$ENDPOINT")
+          test "$code" = "200"
+          python - "$response_file" <<'PY'
+          import json
+          import sys
+
+          with open(sys.argv[1], encoding="utf-8") as handle:
+              payload = json.load(handle)
+          if not payload.get("ok"):
+              raise SystemExit(f"Automazione non riuscita: {payload}")
+          execution = payload.get("execution") or {}
+          print(json.dumps({
+              "ok": payload.get("ok"),
+              "skipped": payload.get("skipped"),
+              "reason": payload.get("reason"),
+              "date": execution.get("date"),
+              "attempt": execution.get("attempt"),
+              "status": execution.get("status"),
+              "modules": {
+                  name: item.get("status")
+                  for name, item in (execution.get("modules") or {}).items()
+              },
+          }, ensure_ascii=False, sort_keys=True))
+          PY
