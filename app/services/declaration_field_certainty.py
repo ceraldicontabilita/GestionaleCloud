@@ -14,14 +14,15 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Iterable
 
 
-PARSER_VERSION = "770-st-sv-v1"
+PARSER_VERSION = "770-st-sv-v2-drive-layout"
 LIPE_PARSER_VERSION = "lipe-vp-v4-drive-layout"
 IVA_PARSER_VERSION = "iva-vl-vx-v1-drive-layout"
-REDDITI_SC_PARSER_VERSION = "redditi-sc-rn-rx-v1-drive-layout"
+REDDITI_SC_PARSER_VERSION = "redditi-sc-rn-rx-v2-rx1-payable"
 IRAP_PARSER_VERSION = "irap-ir-v1-drive-layout"
 CERTAIN = "ESTRATTO_CON_CERTEZZA"
 REVIEW = "DA_VERIFICARE"
 EXACT = "CONCORDANTE"
+COVERED_BY_F24 = "COPERTO_DA_QUIETANZE_F24"
 MISSING_F24 = "MANCANTE_F24"
 AMBIGUOUS_F24 = "AMBIGUO_F24"
 NOT_EXTRACTED = "NON_ESTRAIBILE_CON_CERTEZZA"
@@ -42,6 +43,17 @@ _ROW_RE = re.compile(
     r"(?P<flags>(?:[A-Z]\s+)*)?(?P<tax_code>\d{4})\s+"
     r"(?P<day>0[1-9]|[12]\d|3[01])\s+(?P<payment_month>0[1-9]|1[0-2])\s+"
     r"(?P<payment_year>20\d{2})\s*$"
+)
+_770_CODE_LINE_RE = re.compile(
+    r"^\s*(?P<flags>(?:[A-Z]\s+)*)?(?P<tax_code>\d{4})\s+"
+    r"(?P<day>0?[1-9]|[12]\d|3[01])\s+(?P<payment_month>0?[1-9]|1[0-2])\s+"
+    r"(?P<payment_year>20\d{2})\s*$"
+)
+_770_AMOUNT_LINE_RE = re.compile(
+    r"^\s*(?P<month>0?[1-9]|1[0-2])\s+(?P<year>20\d{2})\s+"
+    r"(?P<amounts>\d[\d.]*,\d{2}(?:\s+\d[\d.]*,\d{2}){0,5})\s+"
+    r"(?P<row_label>(?:ST|SV)\d+)\s*$",
+    re.I,
 )
 
 
@@ -270,9 +282,27 @@ def _declared_field(document_id: str, document_type: str, field: str, item: dict
 
 def extract_redditi_sc_fields(content: bytes, *, document_id: str, tax_year: int | None,
                               filename: str | None = None, sha256: str | None = None) -> dict[str, Any]:
-    """Certifica il saldo IRES solo se RN23/RN24 e RX1 coincidono."""
+    """Certifica il saldo IRES dalla colonna debito/credito del quadro RX1.
+
+    RN23/RN24 descrivono valori a monte del saldo finale e possono differire
+    da RX1 per crediti, eccedenze o altre compensazioni dichiarative. Il valore
+    da attendere in F24 e' quindi RX1, mantenendo RN come prova di contesto.
+    """
     found: dict[str, dict[str, Any]] = {}
-    for page_number, _text, words in _fitz_pages(content):
+    submission_kind = "ORDINARIA_O_NON_DETERMINATA"
+    for page_number, page_text, words in _fitz_pages(content):
+        if "TIPO DI DICHIARAZIONE" in " ".join(page_text.upper().split()):
+            version_codes = [
+                str(word.get("text") or "").strip()
+                for word in words
+                if 385 <= float(word.get("x0") or 0) <= 415
+                and 80 <= float(word.get("y0") or 0) <= 100
+                and str(word.get("text") or "").strip() in {"1", "2"}
+            ]
+            if "2" in version_codes:
+                submission_kind = "DICHIARAZIONE_INTEGRATIVA_CODICE_2"
+            elif "1" in version_codes:
+                submission_kind = "DICHIARAZIONE_INTEGRATIVA_CODICE_1"
         for field in ("RN17", "RN23", "RN24"):
             amount, raw = _native_field_amount(words, field)
             if amount is not None:
@@ -289,8 +319,10 @@ def extract_redditi_sc_fields(content: bytes, *, document_id: str, tax_year: int
     complete = required.issubset(found)
     debit_pair = complete and found["RN23"]["cents"] == found["RX1_DEBITO"]["cents"]
     credit_pair = complete and found["RN24"]["cents"] == found["RX1_CREDITO"]["cents"]
-    exclusive = complete and not (found["RN23"]["cents"] > 0 and found["RN24"]["cents"] > 0)
-    certain = bool(complete and debit_pair and credit_pair and exclusive)
+    exclusive = complete and not (
+        found["RX1_DEBITO"]["cents"] > 0 and found["RX1_CREDITO"]["cents"] > 0
+    )
+    certain = bool(complete and exclusive)
     fields = [
         _declared_field(
             document_id, "REDDITI_SC", field, item, filename=filename, sha256=sha256,
@@ -298,9 +330,9 @@ def extract_redditi_sc_fields(content: bytes, *, document_id: str, tax_year: int
         ) for field, item in sorted(found.items())
     ]
     tax_rows: list[dict[str, Any]] = []
-    debit = found.get("RN23", {}).get("cents") if certain else None
+    debit = found.get("RX1_DEBITO", {}).get("cents") if certain else None
     if debit:
-        source = found["RN23"]
+        source = found["RX1_DEBITO"]
         tax_rows.append({
             "id": _row_identity(document_id, source["page_number"], 2003, source["source_text"]),
             "document_id": document_id, "filename": filename, "sha256": sha256,
@@ -308,9 +340,9 @@ def extract_redditi_sc_fields(content: bytes, *, document_id: str, tax_year: int
             "parser_version": REDDITI_SC_PARSER_VERSION, "tax_code": "2003",
             "reference_period": str(tax_year or ""), "debit_amount": debit / 100,
             "credit_amount": 0.0, "extraction_status": CERTAIN,
-            "certainty_reason": "rn23_ripetuto_identico_in_rx1_colonna_debito",
+            "certainty_reason": "rx1_colonna_debito_saldo_finale_dichiarazione",
         })
-    credit = found.get("RN24", {}).get("cents") if certain else None
+    credit = found.get("RX1_CREDITO", {}).get("cents") if certain else None
     return {
         "document_id": document_id, "document_type": "REDDITI_SC",
         "parser_version": REDDITI_SC_PARSER_VERSION, "tax_year": tax_year,
@@ -321,12 +353,18 @@ def extract_redditi_sc_fields(content: bytes, *, document_id: str, tax_year: int
         "field_level_status": CERTAIN if certain else REVIEW,
         "quadrature": {"rn23_rx1_debit": debit_pair, "rn24_rx1_credit": credit_pair,
                         "debit_credit_exclusive": exclusive},
+        "payable_source": "RX1_DEBITO",
+        "submission_kind": submission_kind,
         "f24_expectation": "F24_2003_ATTESO" if debit else (
             "NESSUN_F24_2003_A_DEBITO_ATTESO_CREDITO_IRES" if credit
             else "NESSUN_SALDO_IRES_A_DEBITO_ATTESO" if certain
             else "SALDO_IRES_NON_DETERMINABILE"
         ),
-        "version_warning": "Verificare eventuali dichiarazioni successive dello stesso periodo d'imposta",
+        "version_warning": (
+            "Il PDF e' marcato come dichiarazione integrativa codice 2; sostituzione/versione da confermare nel gruppo dello stesso periodo d'imposta"
+            if submission_kind == "DICHIARAZIONE_INTEGRATIVA_CODICE_2"
+            else "Verificare eventuali dichiarazioni successive dello stesso periodo d'imposta"
+        ),
     }
 
 
@@ -571,13 +609,12 @@ def reconcile_770_management(extraction: dict[str, Any],
 
 def _certain_770_amounts(amounts: list[Decimal], flags: str) -> tuple[bool, dict[str, Decimal], str]:
     """Assegna significato solo quando il modello si auto-verifica al centesimo."""
-    ravvedimento = "X" in flags.upper().split()
-    if not ravvedimento and len(amounts) == 1:
+    if len(amounts) == 1:
         return True, {"withholding": amounts[0], "paid": amounts[0], "interest": Decimal("0")}, "versamento_ordinario_unico"
-    if not ravvedimento and len(amounts) == 2 and amounts[0] == amounts[1]:
+    if len(amounts) == 2 and amounts[0] == amounts[1]:
         return True, {"withholding": amounts[0], "paid": amounts[1], "interest": Decimal("0")}, "versamento_ordinario_importi_uguali"
-    if ravvedimento and len(amounts) == 3 and amounts[1] - amounts[0] == amounts[2]:
-        return True, {"withholding": amounts[0], "paid": amounts[1], "interest": amounts[2]}, "ravvedimento_quadrato_al_centesimo"
+    if len(amounts) == 3 and amounts[1] - amounts[0] == amounts[2]:
+        return True, {"withholding": amounts[0], "paid": amounts[1], "interest": amounts[2]}, "versamento_quadrato_al_centesimo"
     return False, {}, "colonne_o_aritmetica_non_univoche"
 
 
@@ -585,6 +622,54 @@ def extract_770_tax_rows(text: str, *, document_id: str, filename: str | None = 
                          sha256: str | None = None) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
     rejected: list[dict[str, Any]] = []
+    seen_signatures: set[tuple[Any, ...]] = set()
+
+    def add_candidate(*, page_number: int | None, ordinal: int, raw: str,
+                      month: str, year: str, amounts_text: str, flags: str,
+                      tax_code: str, day: str, payment_month: str,
+                      payment_year: str) -> None:
+        amounts = [_decimal(value) for value in re.findall(r"\d[\d.]*,\d{2}", amounts_text)]
+        normalized_month = f"{int(month):02d}"
+        normalized_day = f"{int(day):02d}"
+        normalized_payment_month = f"{int(payment_month):02d}"
+        signature = (
+            page_number, tax_code, normalized_month, year,
+            normalized_day, normalized_payment_month, payment_year,
+            tuple(amounts), " ".join(flags.split()),
+        )
+        if signature in seen_signatures:
+            return
+        seen_signatures.add(signature)
+        certain, semantics, reason = _certain_770_amounts(amounts, flags)
+        base = {
+            "document_id": document_id,
+            "filename": filename,
+            "sha256": sha256,
+            "page_number": page_number,
+            "source_text": raw,
+            "parser_version": PARSER_VERSION,
+            "tax_code": tax_code,
+            "reference_period": f"{year}-{normalized_month}",
+            "payment_date": f"{payment_year}-{normalized_payment_month}-{normalized_day}",
+            "flags": " ".join(flags.split()),
+            "raw_amounts": [_money(value) for value in amounts],
+            "certainty_reason": reason,
+        }
+        base["id"] = _row_identity(document_id, page_number, ordinal, raw)
+        if not certain:
+            rejected.append({**base, "extraction_status": REVIEW})
+            return
+        paid = semantics["paid"]
+        rows.append({
+            **base,
+            "extraction_status": CERTAIN,
+            "withholding_amount": _money(semantics["withholding"]),
+            "paid_amount": _money(paid),
+            "interest_amount": _money(semantics["interest"]),
+            "debit_amount": _money(paid),
+            "credit_amount": 0.0,
+        })
+
     for page_number, page_text in _page_sections(text):
         # La stessa forma numerica puo' comparire in altri quadri: il contesto
         # ST/SV e' parte obbligatoria della prova semantica.
@@ -592,37 +677,39 @@ def extract_770_tax_rows(text: str, *, document_id: str, filename: str | None = 
             continue
         for ordinal, match in enumerate(_ROW_RE.finditer(page_text), start=1):
             raw = match.group(0).strip()
-            amounts = [_decimal(value) for value in re.findall(r"\d[\d.]*,\d{2}", match.group("amounts"))]
-            certain, semantics, reason = _certain_770_amounts(amounts, match.group("flags") or "")
-            base = {
-                "document_id": document_id,
-                "filename": filename,
-                "sha256": sha256,
-                "page_number": page_number,
-                "source_text": raw,
-                "parser_version": PARSER_VERSION,
-                "tax_code": match.group("tax_code"),
-                "reference_period": f"{match.group('year')}-{match.group('month')}",
-                "payment_date": f"{match.group('payment_year')}-{match.group('payment_month')}-{match.group('day')}",
-                "flags": " ".join((match.group("flags") or "").split()),
-                "raw_amounts": [_money(value) for value in amounts],
-                "certainty_reason": reason,
-            }
-            identity = "|".join((document_id, str(page_number or ""), str(ordinal), raw))
-            base["id"] = f"declaration-tax-row:{hashlib.sha256(identity.encode('utf-8')).hexdigest()[:24]}"
-            if not certain:
-                rejected.append({**base, "extraction_status": REVIEW})
+            add_candidate(
+                page_number=page_number, ordinal=ordinal, raw=raw,
+                month=match.group("month"), year=match.group("year"),
+                amounts_text=match.group("amounts"), flags=match.group("flags") or "",
+                tax_code=match.group("tax_code"), day=match.group("day"),
+                payment_month=match.group("payment_month"),
+                payment_year=match.group("payment_year"),
+            )
+
+        # Nei PDF reali dell'archivio Drive il codice/versamento precede la
+        # riga importi, con le intestazioni di colonna interposte. La label STn
+        # o SVn e' obbligatoria per evitare di catturare numeri del frontespizio.
+        lines = page_text.splitlines()
+        for line_index, line in enumerate(lines):
+            code = _770_CODE_LINE_RE.match(line)
+            if not code:
                 continue
-            paid = semantics["paid"]
-            rows.append({
-                **base,
-                "extraction_status": CERTAIN,
-                "withholding_amount": _money(semantics["withholding"]),
-                "paid_amount": _money(paid),
-                "interest_amount": _money(semantics["interest"]),
-                "debit_amount": _money(paid),
-                "credit_amount": 0.0,
-            })
+            for amount_index in range(line_index + 1, min(line_index + 21, len(lines))):
+                if _770_CODE_LINE_RE.match(lines[amount_index]):
+                    break
+                amount = _770_AMOUNT_LINE_RE.match(lines[amount_index])
+                if not amount:
+                    continue
+                raw = f"{line.strip()}\n{lines[amount_index].strip()}"
+                add_candidate(
+                    page_number=page_number, ordinal=10_000 + line_index, raw=raw,
+                    month=amount.group("month"), year=amount.group("year"),
+                    amounts_text=amount.group("amounts"), flags=code.group("flags") or "",
+                    tax_code=code.group("tax_code"), day=code.group("day"),
+                    payment_month=code.group("payment_month"),
+                    payment_year=code.group("payment_year"),
+                )
+                break
     return {
         "document_id": document_id,
         "document_type": "MODELLO_770",
@@ -729,9 +816,18 @@ def reconcile_declaration_tax_rows(extraction: dict[str, Any],
         aggregate_matches = bool(related) and (
             related_debit_cents == signature[2] and related_credit_cents == signature[3]
         )
+        declared_net_cents = signature[2] - signature[3]
+        receipt_net_cents = related_debit_cents - related_credit_cents
+        coverage_match = (
+            tax_code in {"2003", "3800"}
+            and signature[2] > 0
+            and signature[3] == 0
+            and bool(related)
+            and receipt_net_cents >= declared_net_cents
+        )
         receipt_match = len(candidates) == 1 or aggregate_matches
         exact_row = candidates[0] if len(candidates) == 1 else None
-        matched_rows = related if aggregate_matches else ([exact_row] if exact_row else [])
+        matched_rows = related if aggregate_matches or coverage_match else ([exact_row] if exact_row else [])
         model_candidates = model_by_signature.get(signature, [])
         model_related = model_by_code_period.get((tax_code, period), [])
         model_debit_cents = sum(_cents(item.get("debit_amount")) for item in model_related)
@@ -742,6 +838,8 @@ def reconcile_declaration_tax_rows(extraction: dict[str, Any],
         model_match = len(model_candidates) == 1 or model_aggregate_matches
         if receipt_match:
             status, erario_state, receipt_proven = EXACT, NOTHING_DUE_DOCUMENTED, True
+        elif coverage_match:
+            status, erario_state, receipt_proven = COVERED_BY_F24, NOTHING_DUE_DOCUMENTED, True
         elif len(candidates) > 1:
             status, erario_state, receipt_proven = AMBIGUOUS_F24, PENDING_F24_REVIEW, False
         elif related:
@@ -764,6 +862,12 @@ def reconcile_declaration_tax_rows(extraction: dict[str, Any],
             "f24_row": exact_row,
             "f24_rows": matched_rows,
             "aggregate_match": len(matched_rows) > 1,
+            "coverage_match": coverage_match,
+            "coverage_surplus_amount": max(receipt_net_cents - declared_net_cents, 0) / 100 if coverage_match else 0,
+            "coverage_note": (
+                "DEBITO_COPERTO_ECCEDENZA_QUIETANZE_DA_VERIFICARE"
+                if coverage_match and receipt_net_cents > declared_net_cents else None
+            ),
             "erario_state": erario_state,
             "documentary_payment_proven": receipt_proven,
             "candidate_count": len(candidates) or len(model_candidates),
@@ -771,7 +875,7 @@ def reconcile_declaration_tax_rows(extraction: dict[str, Any],
             "related_debit_amount": (related_debit_cents if related else model_debit_cents) / 100,
             "related_credit_amount": (related_credit_cents if related else model_credit_cents) / 100,
             "accountant_f24_present": bool(model_candidates or model_related),
-            "rule": "codice_tributo+periodo+somma_debito_cents+somma_credito_cents",
+            "rule": "codice_tributo+periodo+somma_netto_quietanze_cents",
         })
     for row in extraction.get("rejected_rows") or []:
         items.append({
@@ -796,6 +900,9 @@ def reconcile_declaration_tax_rows(extraction: dict[str, Any],
             "exact_cents": True,
             "bank_payment_proven": False,
             "accountant_f24_is_not_payment_proof": True,
-            "nothing_due_requires_exact_documentary_receipt": True,
+            "nothing_due_requires_documentary_receipt": True,
+            "annual_balance_coverage_codes": ["2003", "3800"],
+            "annual_balance_coverage_requires_same_code_and_tax_year": True,
+            "coverage_surplus_is_reported_separately": True,
         },
     }
