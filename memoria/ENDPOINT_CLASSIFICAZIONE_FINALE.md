@@ -1093,7 +1093,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/suppliers/correggi-nomi-mancanti` | suppliers_module.bulk | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/suppliers/dizionario-metodi-pagamento` | suppliers_module.validation | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/suppliers/elimina-senza-fatture` | suppliers_module.bulk | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/suppliers/filtered` | suppliers_module.base | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/suppliers/filtered` | suppliers_module.base | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/suppliers/import-excel` | suppliers_module.import_export | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/suppliers/payment-methods` | suppliers_module.validation | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/suppliers/payment-terms` | suppliers_module.validation | sì | — | — | — | — | tenere | in uso: FE |
@@ -1109,7 +1109,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/suppliers/validazione-p0` | suppliers_module.validation | sì | — | — | — | — | tenere | in uso: FE |
 | `DELETE /api/suppliers/{supplier_id}` | suppliers_module.base | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/suppliers/{supplier_id}` | suppliers_module.base | sì | — | — | — | — | tenere | in uso: FE |
-| `PUT /api/suppliers/{supplier_id}` | suppliers_module.base | sì | — | — | — | — | tenere | in uso: FE |
+| `PUT /api/suppliers/{supplier_id}` | suppliers_module.base | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/suppliers/{supplier_id}/dati-da-fatture` | suppliers_module.base | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/suppliers/{supplier_id}/fatturato` | suppliers_module.base | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/suppliers/{supplier_id}/fatture` | suppliers_module.base | sì | — | — | — | — | tenere | in uso: FE |
