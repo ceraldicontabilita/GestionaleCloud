@@ -26,6 +26,17 @@ describe('Situazione fiscale collegata all indice Drive', () => {
         }],
         sources: { drive_excel_index: 1, canonical: 'google_drive' },
       } });
+      if (path === '/api/fiscal/source-certainty') return Promise.resolve({ data: {
+        items: [{
+          id: 'certainty:COMM-F24-1', status: 'CONCORDANTE', requires_review: false,
+          candidate_count: 1,
+          accountant_document: { document_id: 'COMM-F24-1', filename: 'f24-commercialista.pdf', row_count: 2 },
+          official_document: { document_id: 'DRIVE-Q-1', filename: 'quietanza-drive.pdf', row_count: 2 },
+        }],
+        certain: 1, requires_review: 0,
+        sources: { commercialista_f24_documents: 1, quietanza_drive_rows: 2 },
+        declarations: { documents: 60, field_level_reconciled: 0, requires_review: true },
+      } });
       return Promise.resolve({ data: { items: [] } });
     });
   });
@@ -114,5 +125,17 @@ describe('Situazione fiscale collegata all indice Drive', () => {
 
     expect(await screen.findByText('Pagamento ancora consultabile')).toBeInTheDocument();
     expect(screen.getByText('Riepilogo temporaneamente non disponibile; i dati della sezione restano consultabili.')).toBeInTheDocument();
+  });
+
+  it('mostra il confronto bidirezionale senza certificare corrispondenze per solo importo', async () => {
+    render(<MemoryRouter initialEntries={['/situazione-fiscale/confronto-fonti']}><SituazioneFiscale /></MemoryRouter>);
+
+    expect(await screen.findByText('f24-commercialista.pdf')).toBeInTheDocument();
+    expect(screen.getByText('COMM-F24-1')).toBeInTheDocument();
+    expect(screen.getByText('DRIVE-Q-1')).toBeInTheDocument();
+    expect(screen.getAllByText('CONCORDANTE')).toHaveLength(2);
+    expect(screen.getByText(/Dichiarazioni presenti ma non ancora confrontabili campo per campo/)).toBeInTheDocument();
+    expect(screen.getByText(/Il solo importo non conferma mai un collegamento/)).toBeInTheDocument();
+    expect(api.get).toHaveBeenCalledWith('/api/fiscal/source-certainty');
   });
 });

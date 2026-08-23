@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1164 · tenere: 764 · verificare: 373 · admin-only (migrazione/manutenzione): 27
+**Totale endpoint:** 1165 · tenere: 765 · verificare: 373 · admin-only (migrazione/manutenzione): 27
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -666,6 +666,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/fiscal/obligations` | fiscal_control | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/fiscal/ravvedimento/calculate` | fiscal_control | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/fiscal/review` | fiscal_control | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/fiscal/source-certainty` | fiscal_control | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/fiscal/summary` | fiscal_control | sì | — | sì | — | sì | tenere | in uso: FE, chat |
 | `POST /api/fiscal/vat-credit-chain/rebuild` | fiscal_control | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/fiscalita/agevolazioni` | fiscalita_italiana | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |

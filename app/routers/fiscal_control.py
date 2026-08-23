@@ -22,6 +22,7 @@ from app.db_collections import (
     COLL_TAX_CREDIT_MOVEMENTS, COLL_TAX_OBLIGATIONS, COLL_TAX_PAYMENTS,
     COLL_TAX_RATE_INSTALLMENTS, COLL_TAX_RATE_PLANS,
     COLL_TAX_SETTLEMENT_APPLICATIONS,
+    COLL_F24,
 )
 from app.services.fiscal_agents import AdvisorBriefGenerator, FiscalControlAgent, buildTaxEvidencePackage, buildTaxReviewDossier, load_review_data
 from app.services.fiscal_domain import rebuild_vat_credit_chain, reconstruct_collection_state
@@ -257,6 +258,58 @@ async def declarations(
             "drive_warning": drive_warning,
         },
     }
+
+
+@router.get("/source-certainty")
+async def source_certainty(
+    year: int | None = Query(None, ge=2000, le=2100),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+):
+    """Confronta F24 del commercialista e quietanze Drive su identita' fiscali forti."""
+    from app.services.drive_document_index import list_declarations as list_drive_declarations
+    from app.services.drive_document_index import list_f24_rows
+    from app.services.fiscal_source_certainty import reconcile_f24_sources
+
+    drive_payload = await asyncio.to_thread(
+        list_f24_rows, year=str(year) if year else None, offset=0, limit=5000,
+    )
+    declaration_payload = await asyncio.to_thread(
+        list_drive_declarations, year=str(year) if year else None, limit=5000,
+    )
+    query: dict[str, Any] = {"status": {"$ne": "eliminato"}}
+    if year:
+        query["$or"] = [
+            {"anno": year}, {"anno": str(year)},
+            {"periodo_riferimento": {"$regex": str(year)}},
+            {"data_scadenza": {"$regex": f"^{year}"}},
+        ]
+    db = Database.get_db()
+    accountant_documents = await db[COLL_F24].find(
+        query, {"_id": 0, "pdf_data": 0},
+    ).to_list(5000)
+    result = reconcile_f24_sources(drive_payload["items"], accountant_documents)
+    declarations = declaration_payload["results"]
+    result.update({
+        "year": year,
+        "sources": {
+            "quietanza_drive_rows": len(drive_payload["items"]),
+            "commercialista_f24_documents": len(accountant_documents),
+            "declaration_documents": len(declarations),
+            "canonical": "drive_sheets",
+        },
+        "declarations": {
+            "documents": len(declarations),
+            "with_verified_identity": sum(
+                item.get("relation_state") == "CONFERMATA_NOME_UNIVOCO_E_INDICE_VERIFICATO"
+                for item in declarations
+            ),
+            "field_level_reconciled": 0,
+            "status": "DATI_DICHIARAZIONE_NON_ANCORA_ESTRATTI"
+            if declarations else "DICHIARAZIONI_MANCANTI",
+            "requires_review": bool(declarations),
+        },
+    })
+    return result
 
 
 @router.get("/f24-documents")
