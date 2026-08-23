@@ -91,7 +91,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/ai-parser/statistiche` | ai_parser | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/ai-parser/test` | ai_parser | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/alerts/fornitori-senza-metodo` | alerts | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/alerts/lista` | alerts | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/alerts/lista` | alerts | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/alerts/risolvi-fornitore/{fornitore_piva}` | alerts | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/alerts/summary` | alerts | sì | — | — | — | — | tenere | in uso: FE |
 | `DELETE /api/alerts/{alert_id}` | alerts | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
