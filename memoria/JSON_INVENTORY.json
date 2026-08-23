@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "updated_at": "2026-08-23",
-  "source_revision": "ded01328fa4472d46df35aaeb18ac99319873ea2",
+  "source_revision": "b09b50a9cf244cb8750a2988fce14350b249b4ed",
   "scope": "Tutti i file JSON del repository esclusi artefatti, cache e dipendenze.",
   "hash_mode": "canonical_json_utf8",
   "total_excluding_self": 114,
@@ -46,7 +46,7 @@
       "category": "configurazione_tecnica",
       "policy": "modificare_solo_se_richiesto_dal_codice",
       "valid_json": true,
-      "sha256": "d9eab8c2dc265ae408c33e6c37539b2bcdedd988e441df023bcf50dfbd1bbfbc"
+      "sha256": "db6030a24585877c24e03a22edf70a331991ed1f7060d3f79de4467defc9c32a"
     },
     {
       "path": "gestionale_mcp/evals/read_only_evals.json",
