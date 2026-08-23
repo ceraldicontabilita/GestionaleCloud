@@ -389,6 +389,13 @@ async def riconcilia_fattura_con_estratto_conto(
     return await reconcile_invoice_bank_movement(Database.get_db(), payload)
 
 
+async def candidati_bancari_fattura(fattura_id: str) -> Dict[str, Any]:
+    """Elenca movimenti bancari compatibili; non crea collegamenti."""
+    from app.services.invoice_payments import find_invoice_bank_candidates
+
+    return await find_invoice_bank_candidates(Database.get_db(), fattura_id)
+
+
 async def verifica_incoerenze_estratto_conto() -> Dict[str, Any]:
     """Verifica incoerenze tra fatture e estratto conto."""
     db = Database.get_db()

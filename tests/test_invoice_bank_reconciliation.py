@@ -7,6 +7,7 @@ from app.services.sheets_document_store import MemorySheetsClient
 
 from app.services.invoice_payments import (
     InvoiceBankReconciliationRequest,
+    find_invoice_bank_candidates,
     reconcile_invoice_bank_movement,
 )
 
@@ -48,3 +49,35 @@ def test_differenza_un_centesimo_o_numero_assente_bloccano(bank_amount, descript
         asyncio.run(reconcile_invoice_bank_movement(db, req))
     assert exc.value.status_code == 409
     assert asyncio.run(db["audit_riconciliazioni"].count_documents({})) == 0
+
+
+def test_candidati_bancari_mostrano_match_forte_e_non_collegano_da_soli():
+    db = _db(number="FPR 105/26", invoice_amount=1332.24,
+             bank_amount=-1332.24, description="BONIFICO FULVIO FERRANTINI")
+    asyncio.run(db["invoices"].update_one({"id": "f-1"}, {"$set": {
+        "supplier_name": "FULVIO FERRANTINI", "invoice_date": "2026-08-06",
+    }}))
+    asyncio.run(db["estratto_conto_movimenti"].update_one({"id": "ec-1"}, {"$set": {
+        "data": "2026-08-06", "tipo": "uscita",
+    }}))
+
+    result = asyncio.run(find_invoice_bank_candidates(db, "f-1"))
+
+    assert result["totale_candidati"] == 1
+    assert result["candidati"][0]["livello"] == "forte"
+    assert result["candidati"][0]["richiede_conferma"] is True
+    assert asyncio.run(db["estratto_conto_movimenti"].find_one({"id": "ec-1"})).get("fattura_id") is None
+
+
+def test_candidato_con_numero_fattura_e_importo_e_verificato():
+    db = _db(number="FPR 105/26", invoice_amount=1332.24,
+             bank_amount=-1332.24, description="BONIFICO FATTURA FPR 105/26")
+    asyncio.run(db["invoices"].update_one({"id": "f-1"}, {"$set": {"invoice_date": "2026-08-06"}}))
+    asyncio.run(db["estratto_conto_movimenti"].update_one({"id": "ec-1"}, {"$set": {
+        "data": "2026-08-07", "tipo": "uscita",
+    }}))
+
+    candidate = asyncio.run(find_invoice_bank_candidates(db, "f-1"))["candidati"][0]
+
+    assert candidate["livello"] == "verificato"
+    assert candidate["richiede_conferma"] is False
