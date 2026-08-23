@@ -1,11 +1,14 @@
 from app.services.declaration_field_certainty import (
     AMBIGUOUS_F24,
+    CANDIDATE_F24,
     CERTAIN,
     EXACT,
     MISSING_F24,
     NOT_EXTRACTED,
     REVIEW,
     extract_annual_iva_fields,
+    extract_irap_fields,
+    extract_redditi_sc_fields,
     extract_770_tax_rows,
     extract_lipe_fields,
     reconcile_lipe_management,
@@ -192,3 +195,156 @@ def test_lipe_management_compares_sales_and_purchase_vat_at_exact_cents():
     }})
     assert mismatch["all_certain"] is False
     assert mismatch["counts"]["DISCORDANTE"] == 1
+
+
+def _money_row(field, y, amount, *, x=518):
+    integer = str(amount).replace(",00", "")
+    return [_word(field, 107, y, 24), _word(integer, x, y + 6, 28), _word(",00", 549, y + 6, 18)]
+
+
+def test_redditi_sc_certifies_ires_only_when_rn_and_rx_repeat_the_same_balance(monkeypatch):
+    from app.services import declaration_field_certainty as certainty
+
+    rn = sum((_money_row(field, y, amount) for field, y, amount in (
+        ("RN17", 100, "22.715,00"), ("RN23", 130, "6.005,00"), ("RN24", 160, "0,00"),
+    )), [])
+    rx = [
+        _word("RX1", 107, 100, 20),
+        _word("6.005", 377, 106, 28), _word(",00", 406, 106, 18),
+        _word(",00", 478, 106, 18),
+    ]
+    monkeypatch.setattr(certainty, "_fitz_pages", lambda _content: [
+        (6, "QUADRO RN", rn), (16, "QUADRO RX", rx),
+    ])
+    result = extract_redditi_sc_fields(b"pdf", document_id="REDDITI-1", tax_year=2019)
+
+    assert result["field_level_status"] == CERTAIN
+    assert result["quadrature"]["rn23_rx1_debit"] is True
+    assert result["tax_rows"][0]["tax_code"] == "2003"
+    assert result["tax_rows"][0]["reference_period"] == "2019"
+    assert result["tax_rows"][0]["debit_amount"] == 6005.0
+
+
+def test_redditi_sc_keeps_internal_rn_rx_disagreement_in_review(monkeypatch):
+    from app.services import declaration_field_certainty as certainty
+
+    rn = sum((_money_row(field, y, amount) for field, y, amount in (
+        ("RN23", 130, "14.077,00"), ("RN24", 160, "0,00"),
+    )), [])
+    rx = [
+        _word("RX1", 107, 100, 20),
+        _word("7.707", 377, 106, 28), _word(",00", 406, 106, 18),
+        _word(",00", 478, 106, 18),
+    ]
+    monkeypatch.setattr(certainty, "_fitz_pages", lambda _content: [
+        (6, "QUADRO RN", rn), (55, "QUADRO RX", rx),
+    ])
+    result = extract_redditi_sc_fields(b"pdf", document_id="REDDITI-INCOERENTE", tax_year=2022)
+
+    assert result["field_level_status"] == REVIEW
+    assert result["quadrature"]["rn23_rx1_debit"] is False
+    assert result["tax_rows"] == []
+    assert result["f24_expectation"] == "SALDO_IRES_NON_DETERMINABILE"
+
+
+def test_irap_certifies_balance_from_complete_ir21_ir27_quadrature(monkeypatch):
+    from app.services import declaration_field_certainty as certainty
+
+    values = {
+        "IR21": "8.476,00", "IR22": "0,00", "IR23": "3.619,00",
+        "IR24": "3.619,00", "IR25": "3.312,00", "IR26": "5.164,00",
+        "IR27": "0,00", "IR28": "0,00", "IR29": "0,00", "IR30": "0,00",
+    }
+    words = sum((_money_row(field, 100 + index * 30, amount)
+                 for index, (field, amount) in enumerate(values.items())), [])
+    monkeypatch.setattr(certainty, "_fitz_pages", lambda _content: [(5, "QUADRO IR", words)])
+    result = extract_irap_fields(b"pdf", document_id="IRAP-1", tax_year=2024)
+
+    assert result["field_level_status"] == CERTAIN
+    assert result["quadrature"]["calculated_balance_cents"] == 516400
+    assert result["quadrature"]["declared_balance_cents"] == 516400
+    assert result["tax_rows"][0]["tax_code"] == "3800"
+    assert result["tax_rows"][0]["debit_amount"] == 5164.0
+
+
+def test_annual_credit_matches_f24_even_when_index_keeps_installment_month():
+    extraction = {
+        "tax_rows": [{
+            "id": "CREDITO-IRES", "tax_code": "2003", "reference_period": "2023",
+            "debit_amount": 0, "credit_amount": 2916,
+        }],
+        "rejected_rows": [],
+    }
+    result = reconcile_declaration_tax_rows(extraction, [{
+        "id": "F24-CREDITO", "tax_code": "2003", "reference_period": "01/2023",
+        "debit_amount": 0, "credit_amount": 2916,
+    }])
+
+    assert result["items"][0]["status"] == EXACT
+    assert result["items"][0]["f24_row"]["id"] == "F24-CREDITO"
+
+
+def test_annual_installments_are_candidates_not_false_missing_f24():
+    extraction = {
+        "tax_rows": [{
+            "id": "DEBITO-IRES", "tax_code": "2003", "reference_period": "2019",
+            "debit_amount": 6005, "credit_amount": 0,
+        }],
+        "rejected_rows": [],
+    }
+    result = reconcile_declaration_tax_rows(extraction, [{
+        "id": "RATA-1", "tax_code": "2003", "reference_period": "03/2019",
+        "debit_amount": 2009.67, "credit_amount": 0,
+    }])
+
+    assert result["items"][0]["status"] == CANDIDATE_F24
+    assert result["items"][0]["related_candidate_count"] == 1
+    assert result["items"][0]["related_debit_amount"] == 2009.67
+
+
+def test_multiple_quietanze_same_code_and_year_close_the_erario_debt():
+    extraction = {
+        "tax_rows": [{
+            "id": "DEBITO-IRES", "tax_code": "2003", "reference_period": "2019",
+            "debit_amount": 6005, "credit_amount": 0,
+        }],
+        "rejected_rows": [],
+    }
+    result = reconcile_declaration_tax_rows(extraction, [
+        {"id": "RATA-1", "tax_code": "2003", "reference_period": "01/2019",
+         "debit_amount": 3000, "credit_amount": 0,
+         "payment_status": "DOCUMENTATO_DA_QUIETANZA"},
+        {"id": "RATA-2", "tax_code": "2003", "reference_period": "02/2019",
+         "debit_amount": 3005, "credit_amount": 0,
+         "documentary_payment_status": "QUIETANZA_PRESENTE"},
+    ])
+
+    item = result["items"][0]
+    assert item["status"] == EXACT
+    assert item["aggregate_match"] is True
+    assert item["documentary_payment_proven"] is True
+    assert item["erario_state"] == "NULLA_DOVUTO_ERARIO_DOCUMENTATO"
+    assert result["certain"] == 1
+    assert result["requires_review"] == 0
+
+
+def test_accountant_f24_without_quietanza_does_not_claim_payment():
+    extraction = {
+        "tax_rows": [{
+            "id": "DEBITO-IRAP", "tax_code": "3800", "reference_period": "2024",
+            "debit_amount": 5164, "credit_amount": 0,
+        }],
+        "rejected_rows": [],
+    }
+    result = reconcile_declaration_tax_rows(extraction, [{
+        "id": "F24-COMMERCIALISTA", "tax_code": "3800", "reference_period": "2024",
+        "debit_amount": 5164, "credit_amount": 0,
+        "payment_status": "PREDISPOSTO_DAL_COMMERCIALISTA",
+    }])
+
+    item = result["items"][0]
+    assert item["status"] == EXACT
+    assert item["documentary_payment_proven"] is False
+    assert item["erario_state"] == "F24_TROVATO_PROVA_PAGAMENTO_DA_VERIFICARE"
+    assert result["certain"] == 0
+    assert result["requires_review"] == 1

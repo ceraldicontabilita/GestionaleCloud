@@ -299,7 +299,9 @@ async def source_certainty(
         "relation_state": item.get("relation_state"),
         "field_check_status": (
             "PRONTO_PER_VERIFICA_CAMPI"
-            if item.get("document_type") in {"MODELLO_770", "LIPE", "DICHIARAZIONE_IVA"}
+            if item.get("document_type") in {
+                "MODELLO_770", "LIPE", "DICHIARAZIONE_IVA", "REDDITI_SC", "DICHIARAZIONE_IRAP",
+            }
             and item.get("relation_state") == "CONFERMATA_NOME_UNIVOCO_E_INDICE_VERIFICATO"
             else "PARSER_SPECIFICO_NON_DISPONIBILE"
         ),
