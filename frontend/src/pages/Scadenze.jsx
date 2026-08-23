@@ -19,6 +19,7 @@ export default function Scadenze() {
   const [alertWidget, setAlertWidget] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [loadError, setLoadError] = useState('');
   const [filtroTipo, setFiltroTipo] = useState('');
   const [includePassate, setIncludePassate] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -44,7 +45,10 @@ export default function Scadenze() {
   const loadData = async (append = false) => {
     try {
       if (append) setLoadingMore(true);
-      else setLoading(true);
+      else {
+        setLoading(true);
+        setLoadError('');
+      }
       const params = new URLSearchParams();
       params.append('anno', anno);
       if (filtroTipo) params.append('tipo', filtroTipo);
@@ -65,6 +69,16 @@ export default function Scadenze() {
       setDocumentiRiconciliare(docRiconcRes.data);
     } catch (error) {
       console.error('Error loading scadenze:', error);
+      const dettaglio = error.response?.data?.detail || error.message || 'Errore sconosciuto';
+      if (append) {
+        toast.error(`Impossibile caricare altre scadenze: ${dettaglio}`);
+      } else {
+        // Anno e filtri possono essere appena cambiati: non lasciare a video
+        // righe del periodo precedente sotto la nuova intestazione.
+        setScadenze([]);
+        setTotaleScadenze(0);
+        setLoadError(dettaglio);
+      }
     } finally {
       if (append) setLoadingMore(false);
       else setLoading(false);
@@ -470,6 +484,21 @@ export default function Scadenze() {
           {loading ? (
             <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted }}>
               ⏳ Caricamento...
+            </div>
+          ) : loadError ? (
+            <div
+              role="alert"
+              style={{ padding: 40, textAlign: 'center', color: COLORS.danger }}
+            >
+              <div style={{ marginBottom: 12 }}>
+                Scadenze non disponibili per l'anno e i filtri selezionati.
+              </div>
+              <div style={{ marginBottom: 16, color: COLORS.textMuted, fontSize: 13 }}>
+                {loadError}
+              </div>
+              <Button variant="secondary" onClick={() => loadData()}>
+                Riprova
+              </Button>
             </div>
           ) : scadenze.length === 0 ? (
             <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted }}>
