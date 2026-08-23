@@ -15,9 +15,10 @@ def run(coro):
 def test_runtime_idrata_e_persistenza_write_through(monkeypatch):
     calls = []
 
-    async def fake_restore(db, config, apply=False, provision=True):
+    async def fake_restore(db, config, apply=False, provision=True, repair_lateral=False):
         assert apply is True
         assert provision is False
+        assert repair_lateral is True
         await db["invoices"].insert_one({"id": "INV-1", "total_amount": 10})
         return {
             "fogli": [
@@ -50,7 +51,8 @@ def test_runtime_idrata_e_persistenza_write_through(monkeypatch):
 
 
 def test_runtime_non_nasconde_i_dati_validi_per_una_riga_anomala(monkeypatch):
-    async def fake_restore(db, config, apply=False, provision=True):
+    async def fake_restore(db, config, apply=False, provision=True, repair_lateral=False):
+        assert repair_lateral is True
         await db["invoices"].insert_one({"id": "INV-VALIDA", "total_amount": 10})
         return {
             "spreadsheet_id": "SHEET-1",
@@ -202,7 +204,8 @@ def test_runtime_espone_la_transazione_atomica_del_registro():
 def test_runtime_memorizza_il_foglio_scoperto_per_le_scritture(monkeypatch):
     calls = []
 
-    async def fake_restore(db, config, apply=False, provision=True):
+    async def fake_restore(db, config, apply=False, provision=True, repair_lateral=False):
+        assert repair_lateral is False
         assert apply is True
         assert provision is True
         return {

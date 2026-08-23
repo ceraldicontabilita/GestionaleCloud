@@ -947,7 +947,11 @@ def _upsert_documents_sync(
     for offset in range(0, len(appended), write_batch_rows):
         sheets.spreadsheets().values().append(
             spreadsheetId=spreadsheet_id,
-            range=f"'{sheet.title}'!A:{LAST_COLUMN}",
+            # A:B identifica senza ambiguita la tabella verticale tramite le
+            # due colonne chiave. Con A:CA Google Sheets puo interpretare i
+            # payload molto larghi come tabelle laterali e accodare il record
+            # verso destra nella stessa riga.
+            range=f"'{sheet.title}'!A:B",
             valueInputOption="RAW",
             insertDataOption="INSERT_ROWS",
             body={"values": appended[offset:offset + write_batch_rows]},
@@ -1338,6 +1342,137 @@ def _read_sheet_rows_sync(spreadsheet_id: str, sheet: LedgerSheet) -> List[List[
     return _read_existing_sync(spreadsheet_id, sheet)
 
 
+def _column_letter(number: int) -> str:
+    result = ""
+    while number > 0:
+        number, remainder = divmod(number - 1, 26)
+        result = chr(65 + remainder) + result
+    return result
+
+
+def _cell_data(value: Any) -> Dict[str, Any]:
+    if value in (None, ""):
+        return {}
+    if isinstance(value, bool):
+        return {"userEnteredValue": {"boolValue": value}}
+    if isinstance(value, (int, float)):
+        return {"userEnteredValue": {"numberValue": value}}
+    return {"userEnteredValue": {"stringValue": str(value)}}
+
+
+def _repair_lateral_rows_sync(
+    spreadsheet_id: str, definitions: Iterable[LedgerSheet],
+) -> Dict[str, Any]:
+    """Riporta in A:CA i record accodati lateralmente dal vecchio append.
+
+    La riparazione e' idempotente, valida payload e identita prima di scrivere
+    e applica copia+pulizia in una singola batchUpdate per foglio.
+    """
+    service = _sheets_service()
+    metadata = _execute_read_request(lambda: service.spreadsheets().get(
+        spreadsheetId=spreadsheet_id,
+        fields="sheets.properties(sheetId,title,gridProperties)",
+    ))
+    by_title = {item.title: item for item in definitions}
+    repaired = []
+    total = 0
+    for item in metadata.get("sheets", []):
+        properties = item.get("properties", {})
+        sheet = by_title.get(properties.get("title"))
+        column_count = int(properties.get("gridProperties", {}).get("columnCount") or 0)
+        if sheet is None or column_count <= len(HEADERS):
+            continue
+        rows = _execute_read_request(lambda: service.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id,
+            range=f"'{sheet.title}'!A2:{_column_letter(column_count)}",
+        )).get("values", [])
+        canonical_ids = {
+            str(row[1]).strip() for row in rows
+            if len(row) > 1 and str(row[0] or "").strip() and str(row[1] or "").strip()
+        }
+        progressives = [
+            str(row[0]).strip() for row in rows
+            if len(row) > 1 and str(row[0] or "").strip() and str(row[1] or "").strip()
+        ]
+        lateral = []
+        pattern = re.compile(rf"^{re.escape(sheet.prefix)}-\d{{8}}$")
+        for row_number, row in enumerate(rows, start=2):
+            if len(row) > 1 and str(row[0] or "").strip() and str(row[1] or "").strip():
+                continue
+            offset = next(
+                (index for index, value in enumerate(row)
+                 if index > 0 and pattern.match(str(value or "").strip())),
+                -1,
+            )
+            if offset < 0:
+                continue
+            if any(str(value or "").strip() for value in row[:offset]):
+                raise RuntimeError(f"Riga laterale ambigua in {sheet.title}:{row_number}")
+            key = str(row[offset + 1] if len(row) > offset + 1 else "").strip()
+            encoded = "".join(str(value or "") for value in row[offset + 15:offset + len(HEADERS)])
+            payload = decode_payload(encoded)
+            if not key or canonical_id(payload) != key:
+                raise RuntimeError(f"Identita laterale non valida in {sheet.title}:{row_number}")
+            if key in canonical_ids or any(entry[2] == key for entry in lateral):
+                raise RuntimeError(f"Identita laterale duplicata in {sheet.title}: {key}")
+            lateral.append((row_number, offset, key, payload))
+        if not lateral:
+            continue
+        sequence = next_progressive(sheet.prefix, progressives)
+        start_row = len(rows) + 2
+        end_row = start_row + len(lateral) - 1
+        current_rows = int(properties.get("gridProperties", {}).get("rowCount") or 0)
+        requests: List[Dict[str, Any]] = []
+        if end_row > current_rows:
+            requests.append({"updateSheetProperties": {
+                "properties": {"sheetId": properties["sheetId"], "gridProperties": {"rowCount": end_row}},
+                "fields": "gridProperties.rowCount",
+            }})
+        output_rows = []
+        for _row_number, _offset, _key, payload in lateral:
+            progressive = format_progressive(sheet.prefix, sequence)
+            sequence += 1
+            output_rows.append({
+                "values": [_cell_data(value) for value in row_for_document(payload, progressive)]
+            })
+        requests.append({"updateCells": {
+            "range": {
+                "sheetId": properties["sheetId"],
+                "startRowIndex": start_row - 1,
+                "endRowIndex": end_row,
+                "startColumnIndex": 0,
+                "endColumnIndex": len(HEADERS),
+            },
+            "rows": output_rows,
+            "fields": "userEnteredValue",
+        }})
+        for row_number, offset, _key, _payload in lateral:
+            requests.append({"repeatCell": {
+                "range": {
+                    "sheetId": properties["sheetId"],
+                    "startRowIndex": row_number - 1,
+                    "endRowIndex": row_number,
+                    "startColumnIndex": offset,
+                    "endColumnIndex": min(column_count, offset + len(HEADERS)),
+                },
+                "cell": {},
+                "fields": "userEnteredValue",
+            }})
+        requests.append({"updateSheetProperties": {
+            "properties": {
+                "sheetId": properties["sheetId"],
+                "gridProperties": {"columnCount": len(HEADERS)},
+            },
+            "fields": "gridProperties.columnCount",
+        }})
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id, body={"requests": requests},
+        ).execute()
+        total += len(lateral)
+        repaired.append({"foglio": sheet.title, "righe": len(lateral)})
+    return {"riparate": total, "fogli": repaired}
+
+
 def _execute_read_request(request_factory, *, max_attempts: int = 6):
     """Riprova le sole letture temporaneamente limitate da Google Sheets.
 
@@ -1443,7 +1578,7 @@ def _read_sheet_row_chunk_sync(
 
 async def restore_all(
     db, config: Optional[Dict[str, Any]] = None, *, apply: bool = False,
-    provision: bool = True,
+    provision: bool = True, repair_lateral: bool = False,
 ) -> Dict[str, Any]:
     """Valida o ricostruisce le collezioni dal payload JSON dei fogli.
 
@@ -1455,6 +1590,11 @@ async def restore_all(
     else:
         workbook = await asyncio.to_thread(_existing_workbook_sync, config)
     definitions = tuple(workbook.pop("sheet_definitions"))
+    lateral_repair = {"riparate": 0, "fogli": []}
+    if repair_lateral:
+        lateral_repair = await asyncio.to_thread(
+            _repair_lateral_rows_sync, workbook["spreadsheet_id"], definitions,
+        )
     results = []
     prefetched_rows: Dict[str, List[List[Any]]] = {}
     batch_size = 8
@@ -1491,6 +1631,10 @@ async def restore_all(
             pending_documents: List[tuple[Dict[str, Any], Dict[str, Any]]] = []
             for offset, row in enumerate(rows):
                 index = start_row + offset
+                # L'API mantiene gli slot vuoti tra due righe valorizzate.
+                # Sono separatori fisici, non record corrotti.
+                if not any(str(value or "").strip() for value in row):
+                    continue
                 if len(row) < len(HEADERS):
                     row = list(row) + [""] * (len(HEADERS) - len(row))
                 progressive = str(row[0] or "").strip()
@@ -1587,5 +1731,6 @@ async def restore_all(
         })
     return {
         **workbook, "apply": apply, "schema_version": SCHEMA_VERSION,
+        "riparazione_righe_laterali": lateral_repair,
         "fogli": results,
     }
