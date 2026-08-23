@@ -2269,39 +2269,11 @@ SUPPORTED_UPLOAD_SUFFIXES = {
 }
 
 
-def _pdf_text_for_detection(file_content: bytes, max_pages: int = 3) -> str:
-    """Estrae poco testo senza affidarsi ai byte compressi del PDF."""
-    extracted = ""
-    try:
-        import io
-        from pypdf import PdfReader
+def _pdf_text_for_detection(file_content: bytes, max_pages: int = 5) -> str:
+    """Legge apertura e coda del PDF confrontando PyPDF e PyMuPDF."""
+    from app.services.pdf_text_extraction import extract_pdf_text
 
-        reader = PdfReader(io.BytesIO(file_content))
-        extracted = "\n".join(
-            (page.extract_text() or "")
-            for page in reader.pages[:max_pages]
-        )
-    except Exception:
-        extracted = ""
-
-    if extracted.strip():
-        return extracted
-
-    try:
-        import fitz
-
-        document = fitz.open(stream=file_content, filetype="pdf")
-        try:
-            pages = []
-            for page in document[:max_pages]:
-                pages.append(page.get_text("text") or "")
-            extracted = "\n".join(pages)
-        finally:
-            document.close()
-    except Exception:
-        extracted = ""
-
-    return extracted
+    return extract_pdf_text(file_content, max_pages=max_pages, include_tail=True)
 
 
 def _spreadsheet_text_for_detection(filename: str, file_content: bytes) -> str:

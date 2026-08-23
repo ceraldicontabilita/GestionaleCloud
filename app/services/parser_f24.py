@@ -222,18 +222,16 @@ def extract_text_from_pdf(pdf_path: str = None, pdf_content: bytes = None) -> st
     Supporta sia filepath che bytes (architettura Drive/Sheets).
     """
     try:
+        from app.services.pdf_text_extraction import extract_pdf_text
+
         if pdf_content:
-            doc = fitz.open(stream=pdf_content, filetype="pdf")
+            content = pdf_content
         elif pdf_path:
-            doc = fitz.open(pdf_path)
+            with open(pdf_path, "rb") as stream:
+                content = stream.read()
         else:
             return ""
-
-        all_text = []
-        for page in doc:
-            all_text.append(page.get_text())
-        doc.close()
-        return "\n".join(all_text)
+        return extract_pdf_text(content, max_pages=None, include_tail=False)
     except Exception as e:
         logger.error(f"Errore estrazione PDF: {e}")
         return ""
