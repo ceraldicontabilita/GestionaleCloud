@@ -443,6 +443,7 @@ export default function SituazioneFiscale() {
               <span><small>Righe fiscali</small><strong>{item.accountant_document?.row_count ?? item.official_document?.row_count ?? 0}</strong></span>
               <span><small>Candidati esatti</small><strong>{item.candidate_count || 0}</strong></span>
             </div>
+            <div style={{ marginTop: 8 }}><Badge variant={item.erario_state === 'NULLA_DOVUTO_ERARIO_DOCUMENTATO' ? 'success' : 'warning'}>{String(item.erario_state || 'PROVE F24 DA VERIFICARE').replaceAll('_', ' ')}</Badge></div>
             <div className="fiscal-muted" style={{ marginTop: 8 }}>Regola: codice tributo + periodo + sezione + ente + debito/credito in centesimi. Il solo importo non conferma mai un collegamento.</div>
           </article>;
           if (item.is_f24_group) return <article key={entityId} className="fiscal-record fiscal-f24-record">

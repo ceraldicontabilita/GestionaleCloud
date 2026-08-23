@@ -14,6 +14,9 @@ DIFFERENT = "DIFFERENZA"
 MISSING_ACCOUNTANT = "MANCANTE_COMMERCIALISTA"
 MISSING_OFFICIAL = "MANCANTE_QUIETANZA"
 AMBIGUOUS = "AMBIGUO"
+NOTHING_DUE_DOCUMENTED = "NULLA_DOVUTO_ERARIO_DOCUMENTATO"
+WAITING_RECEIPT = "F24_COMMERCIALISTA_IN_ATTESA_QUIETANZA"
+SOURCE_REVIEW = "PROVE_F24_DA_VERIFICARE"
 
 
 def _text(value: Any) -> str:
@@ -96,6 +99,26 @@ def normalize_accountant_documents(documents: Iterable[dict[str, Any]]) -> list[
     return normalized
 
 
+def group_model_rows(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Converte i modelli F24 indicizzati in Drive in documenti commercialista.
+
+    La funzione non promuove mai un modello a quietanza: conserva soltanto le
+    righe fiscali necessarie al confronto bidirezionale con la prova ufficiale.
+    """
+    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        document_id = str(row.get("document_id") or row.get("ID documento") or "").strip()
+        if document_id:
+            grouped[document_id].append(row)
+    return [{
+        "id": document_id,
+        "filename": values[0].get("filename") or values[0].get("Nome file"),
+        "protocollo": values[0].get("protocol") or values[0].get("Protocollo"),
+        "normalized_tax_rows": values,
+        "source": "MODELLO_F24_DRIVE",
+    } for document_id, values in grouped.items()]
+
+
 def reconcile_f24_sources(drive_rows: Iterable[dict[str, Any]],
                           accountant_documents: Iterable[dict[str, Any]]) -> dict[str, Any]:
     official = group_drive_rows(drive_rows)
@@ -136,6 +159,11 @@ def reconcile_f24_sources(drive_rows: Iterable[dict[str, Any]],
                 if receipt else None
             ),
             "candidate_count": len(candidates),
+            "erario_state": (
+                NOTHING_DUE_DOCUMENTED if status == CERTAIN
+                else WAITING_RECEIPT if status == MISSING_OFFICIAL
+                else SOURCE_REVIEW
+            ),
             "rule": "codice+periodo+sezione+ente+debito_cents+credito_cents",
         })
 
@@ -152,6 +180,7 @@ def reconcile_f24_sources(drive_rows: Iterable[dict[str, Any]],
             "accountant_document": None,
             "official_document": {key: value for key, value in receipt.items() if key != "row_signatures"},
             "candidate_count": 0,
+            "erario_state": NOTHING_DUE_DOCUMENTED,
             "rule": "codice+periodo+sezione+ente+debito_cents+credito_cents",
         })
 

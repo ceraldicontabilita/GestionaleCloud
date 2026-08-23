@@ -604,18 +604,26 @@ def reconcile_declaration_tax_rows(extraction: dict[str, Any],
         payment = str(item.get("payment_status") or "").upper()
         return documentary == "QUIETANZA_PRESENTE" or payment == "DOCUMENTATO_DA_QUIETANZA"
 
-    by_signature: dict[tuple[str, str, int, int], list[dict[str, Any]]] = defaultdict(list)
-    by_code_period: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
-    for row in f24_rows:
-        tax_code = str(row.get("tax_code") or row.get("Codice tributo") or "").strip()
-        period = _tax_period(tax_code, row.get("reference_period") or row.get("Periodo tributo"))
-        signature = (
-            tax_code, period,
-            _cents(row.get("debit_amount") if "debit_amount" in row else row.get("Debito")),
-            _cents(row.get("credit_amount") if "credit_amount" in row else row.get("Credito")),
-        )
-        by_signature[signature].append(row)
-        by_code_period[(tax_code, period)].append(row)
+    def indexes(rows: Iterable[dict[str, Any]]):
+        by_signature: dict[tuple[str, str, int, int], list[dict[str, Any]]] = defaultdict(list)
+        by_code_period: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+        for item in rows:
+            tax_code = str(item.get("tax_code") or item.get("Codice tributo") or "").strip()
+            period = _tax_period(tax_code, item.get("reference_period") or item.get("Periodo tributo"))
+            signature = (
+                tax_code, period,
+                _cents(item.get("debit_amount") if "debit_amount" in item else item.get("Debito")),
+                _cents(item.get("credit_amount") if "credit_amount" in item else item.get("Credito")),
+            )
+            by_signature[signature].append(item)
+            by_code_period[(tax_code, period)].append(item)
+        return by_signature, by_code_period
+
+    all_f24_rows = list(f24_rows)
+    receipt_rows = [item for item in all_f24_rows if documentary_paid(item)]
+    model_rows = [item for item in all_f24_rows if not documentary_paid(item)]
+    receipt_by_signature, receipt_by_code_period = indexes(receipt_rows)
+    model_by_signature, model_by_code_period = indexes(model_rows)
 
     items = []
     for row in extraction.get("tax_rows") or []:
@@ -625,8 +633,8 @@ def reconcile_declaration_tax_rows(extraction: dict[str, Any],
             tax_code, period,
             _cents(row.get("debit_amount")), _cents(row.get("credit_amount")),
         )
-        candidates = by_signature.get(signature, [])
-        related = by_code_period.get((tax_code, period), [])
+        candidates = receipt_by_signature.get(signature, [])
+        related = receipt_by_code_period.get((tax_code, period), [])
         related_debit_cents = sum(
             _cents(item.get("debit_amount") if "debit_amount" in item else item.get("Debito"))
             for item in related
@@ -638,35 +646,48 @@ def reconcile_declaration_tax_rows(extraction: dict[str, Any],
         aggregate_matches = bool(related) and (
             related_debit_cents == signature[2] and related_credit_cents == signature[3]
         )
-        aggregate_receipts_proven = aggregate_matches and all(documentary_paid(item) for item in related)
-        status = (
-            EXACT if len(candidates) == 1 or aggregate_matches
-            else AMBIGUOUS_F24 if candidates
-            else CANDIDATE_F24 if related else MISSING_F24
-        )
+        receipt_match = len(candidates) == 1 or aggregate_matches
         exact_row = candidates[0] if len(candidates) == 1 else None
-        receipt_proven = documentary_paid(exact_row) if exact_row else aggregate_receipts_proven
-        erario_state = (
-            NOTHING_DUE_DOCUMENTED if status == EXACT and receipt_proven
-            else F24_WITHOUT_RECEIPT if status == EXACT
-            else PENDING_F24_REVIEW if status == AMBIGUOUS_F24
-            else PENDING_F24_QUADRATURE if status == CANDIDATE_F24
-            else PENDING_F24
+        matched_rows = related if aggregate_matches else ([exact_row] if exact_row else [])
+        model_candidates = model_by_signature.get(signature, [])
+        model_related = model_by_code_period.get((tax_code, period), [])
+        model_debit_cents = sum(_cents(item.get("debit_amount")) for item in model_related)
+        model_credit_cents = sum(_cents(item.get("credit_amount")) for item in model_related)
+        model_aggregate_matches = bool(model_related) and (
+            model_debit_cents == signature[2] and model_credit_cents == signature[3]
         )
+        model_match = len(model_candidates) == 1 or model_aggregate_matches
+        if receipt_match:
+            status, erario_state, receipt_proven = EXACT, NOTHING_DUE_DOCUMENTED, True
+        elif len(candidates) > 1:
+            status, erario_state, receipt_proven = AMBIGUOUS_F24, PENDING_F24_REVIEW, False
+        elif related:
+            status, erario_state, receipt_proven = CANDIDATE_F24, PENDING_F24_QUADRATURE, False
+        elif model_match:
+            status, erario_state, receipt_proven = EXACT, F24_WITHOUT_RECEIPT, False
+            exact_row = model_candidates[0] if len(model_candidates) == 1 else None
+            matched_rows = model_related if model_aggregate_matches else ([exact_row] if exact_row else [])
+        elif len(model_candidates) > 1:
+            status, erario_state, receipt_proven = AMBIGUOUS_F24, PENDING_F24_REVIEW, False
+        elif model_related:
+            status, erario_state, receipt_proven = CANDIDATE_F24, PENDING_F24_QUADRATURE, False
+        else:
+            status, erario_state, receipt_proven = MISSING_F24, PENDING_F24, False
         items.append({
             "id": f"declaration-match:{row['id']}",
             "status": status,
             "requires_review": erario_state != NOTHING_DUE_DOCUMENTED,
             "declaration_row": row,
             "f24_row": exact_row,
-            "f24_rows": related if aggregate_matches else ([exact_row] if exact_row else []),
-            "aggregate_match": aggregate_matches and len(related) > 1,
+            "f24_rows": matched_rows,
+            "aggregate_match": len(matched_rows) > 1,
             "erario_state": erario_state,
             "documentary_payment_proven": receipt_proven,
-            "candidate_count": len(candidates),
-            "related_candidate_count": len(related),
-            "related_debit_amount": related_debit_cents / 100,
-            "related_credit_amount": related_credit_cents / 100,
+            "candidate_count": len(candidates) or len(model_candidates),
+            "related_candidate_count": len(related) or len(model_related),
+            "related_debit_amount": (related_debit_cents if related else model_debit_cents) / 100,
+            "related_credit_amount": (related_credit_cents if related else model_credit_cents) / 100,
+            "accountant_f24_present": bool(model_candidates or model_related),
             "rule": "codice_tributo+periodo+somma_debito_cents+somma_credito_cents",
         })
     for row in extraction.get("rejected_rows") or []:

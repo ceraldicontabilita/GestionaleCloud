@@ -1,6 +1,6 @@
 from app.services.fiscal_source_certainty import (
     AMBIGUOUS, CERTAIN, DIFFERENT, MISSING_ACCOUNTANT, MISSING_OFFICIAL,
-    reconcile_f24_sources,
+    group_model_rows, reconcile_f24_sources,
 )
 
 
@@ -62,3 +62,28 @@ def test_duplicate_accountant_documents_are_ambiguous_not_confirmed():
     assert result["certain"] == 0
     assert result["requires_review"] == 2
     assert {item["status"] for item in result["items"]} == {AMBIGUOUS}
+
+
+def test_drive_model_rows_are_grouped_without_becoming_receipts():
+    documents = group_model_rows([
+        {"document_id": "MODEL-1", "filename": "commercialista.pdf", "tax_code": "2003",
+         "reference_period": "2024", "debit_amount": 1000, "credit_amount": 0},
+        {"document_id": "MODEL-1", "filename": "commercialista.pdf", "tax_code": "3800",
+         "reference_period": "2024", "debit_amount": 500, "credit_amount": 0},
+    ])
+
+    assert len(documents) == 1
+    assert documents[0]["id"] == "MODEL-1"
+    assert documents[0]["source"] == "MODELLO_F24_DRIVE"
+    assert len(documents[0]["normalized_tax_rows"]) == 2
+
+
+def test_accountant_model_without_receipt_remains_due():
+    result = reconcile_f24_sources([], [_accountant("F1")])
+    assert result["items"][0]["erario_state"] == "F24_COMMERCIALISTA_IN_ATTESA_QUIETANZA"
+
+
+def test_receipt_without_accountant_model_is_paid_but_source_review_remains():
+    result = reconcile_f24_sources([_drive("Q1")], [])
+    assert result["items"][0]["status"] == MISSING_ACCOUNTANT
+    assert result["items"][0]["erario_state"] == "NULLA_DOVUTO_ERARIO_DOCUMENTATO"
