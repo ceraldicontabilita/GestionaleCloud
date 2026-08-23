@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1166 · tenere: 766 · verificare: 373 · admin-only (migrazione/manutenzione): 27
+**Totale endpoint:** 1166 · tenere: 767 · verificare: 372 · admin-only (migrazione/manutenzione): 27
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -787,10 +787,10 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/noleggio/controllo-canoni` | noleggio | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/noleggio/drivers` | noleggio | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/noleggio/export-pdf-costi` | noleggio | sì | — | — | — | sì | tenere | in uso: FE |
-| `GET /api/noleggio/fatture-non-associate` | noleggio | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/noleggio/fatture-non-associate` | noleggio | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/noleggio/fatture/{fattura_id}/associa-veicolo` | noleggio | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/noleggio/fornitori` | noleggio | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/noleggio/riepilogo-controlli` | noleggio | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/noleggio/riepilogo-controlli` | noleggio | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/noleggio/veicoli` | noleggio | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/noleggio/veicoli` | noleggio | sì | — | — | — | — | tenere | in uso: FE |
 | `DELETE /api/noleggio/veicoli/{targa}` | noleggio | sì | — | — | — | — | tenere | in uso: FE |

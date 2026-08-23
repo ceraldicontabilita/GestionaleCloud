@@ -15,4 +15,12 @@ describe('confini operativi della pagina Noleggio', () => {
     expect(source).toContain('questa relazione non modifica lo stato del pagamento');
     expect(source).not.toContain('🔗 Associa');
   });
+
+  it('apre tutti i casi dei controlli senza troncare la lista', () => {
+    expect(source).toContain("limit: '50'");
+    expect(source).toContain('offset: String(currentItems.length)');
+    expect(source).toContain('Mostra altri');
+    expect(source).toContain('Impossibile caricare tutti i casi');
+    expect(source).toContain('La conferma resta sempre manuale.');
+  });
 });

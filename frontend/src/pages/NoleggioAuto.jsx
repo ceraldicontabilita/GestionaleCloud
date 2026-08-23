@@ -74,6 +74,7 @@ export default function NoleggioAuto() {
   // Se l'API fallisce o è vuota il pannello semplicemente non appare.
   const [controlli, setControlli] = useState(null);
   const [controlloAperto, setControlloAperto] = useState(null);
+  const [controlloLoading, setControlloLoading] = useState(false);
   const [fatturaPagamento, setFatturaPagamento] = useState(null);
   // Stato per lookup OpenAPI
   const [lookupLoading, setLookupLoading] = useState(false);
@@ -129,6 +130,26 @@ export default function NoleggioAuto() {
   useEffect(() => {
     fetchControlli();
   }, [fetchControlli]);
+
+  const loadControllo = useCallback(async (key, append = false) => {
+    const currentItems = append ? (controlli?.[key]?.items || []) : [];
+    setControlloLoading(true);
+    try {
+      const params = new URLSearchParams({ offset: String(currentItems.length), limit: '50' });
+      if (annoFiltro) params.set('anno', String(annoFiltro));
+      const response = await api.get(`/api/noleggio/riepilogo-controlli?${params}`);
+      const section = response.data?.[key] || { count: 0, items: [] };
+      setControlli(previous => ({
+        ...(previous || {}),
+        [key]: { ...section, items: [...currentItems, ...(section.items || [])] },
+      }));
+      setControlloAperto(key);
+    } catch (requestError) {
+      toast.error(requestError.response?.data?.detail || 'Impossibile caricare tutti i casi');
+    } finally {
+      setControlloLoading(false);
+    }
+  }, [annoFiltro, controlli]);
 
   const openFattureNonAssociate = async () => {
     setModalFattureNonAssociate({ open: true, loading: true, fatture: [], errore: '' });
@@ -349,6 +370,13 @@ export default function NoleggioAuto() {
     }
   };
 
+  const istruzioneControllo = {
+    trattenute_da_confermare: 'Verifica verbale, driver e importo; conferma la trattenuta soltanto dalla sezione Verbali Noleggio.',
+    auto_senza_driver: 'Trova la targa nell’elenco veicoli e usa Modifica per assegnare il driver corretto con decorrenza documentata.',
+    pagamenti_non_riconciliati: 'Scegli una fattura: vedrai gli addebiti reali trovati nell’estratto conto e le prove che coincidono. La conferma resta sempre manuale.',
+    alert_aperti: 'Apri il registro degli alert per leggere la prova mancante e l’eventuale azione consentita.',
+  };
+
   return (
     <div style={{ maxWidth: 1400, margin: '0 auto' }}>
       {/* Header — stile uniforme al resto delle pagine (STYLES.header) */}
@@ -398,7 +426,9 @@ export default function NoleggioAuto() {
                   onClick={() =>
                     chip.onClick
                       ? chip.onClick()
-                      : setControlloAperto(attivo ? null : chip.key)
+                      : attivo
+                        ? setControlloAperto(null)
+                        : loadControllo(chip.key)
                   }
                   style={{
                     display: 'inline-flex',
@@ -441,10 +471,15 @@ export default function NoleggioAuto() {
                 paddingTop: 8,
               }}
             >
-              {controlloAperto === 'pagamenti_non_riconciliati' && (
+              {istruzioneControllo[controlloAperto] && (
                 <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 8 }}>
-                  Scegli una fattura: vedrai gli addebiti reali trovati nell’estratto conto e
-                  le prove che coincidono. La conferma resta sempre manuale.
+                  {istruzioneControllo[controlloAperto]}
+                  {controlloAperto === 'trattenute_da_confermare' && (
+                    <button type="button" onClick={() => navigate('/noleggio/verbali')} style={{ marginLeft: 8, border: 0, background: 'transparent', color: COLORS.primary, fontWeight: 700, cursor: 'pointer' }}>Apri Verbali</button>
+                  )}
+                  {controlloAperto === 'alert_aperti' && (
+                    <button type="button" onClick={() => navigate('/dashboard/alerts')} style={{ marginLeft: 8, border: 0, background: 'transparent', color: COLORS.primary, fontWeight: 700, cursor: 'pointer' }}>Apri alert</button>
+                  )}
                 </div>
               )}
               {(controlli?.[controlloAperto]?.items || []).map((item, i) => (
@@ -480,12 +515,14 @@ export default function NoleggioAuto() {
               ))}
               {(controlli?.[controlloAperto]?.count || 0) >
                 (controlli?.[controlloAperto]?.items || []).length && (
-                <div style={{ fontSize: 11, color: COLORS.textSubtle, marginTop: 6 }}>
-                  … e altre{' '}
-                  {(controlli?.[controlloAperto]?.count || 0) -
-                    (controlli?.[controlloAperto]?.items || []).length}{' '}
-                  voci
-                </div>
+                <button
+                  type="button"
+                  disabled={controlloLoading}
+                  onClick={() => loadControllo(controlloAperto, true)}
+                  style={{ marginTop: 8, padding: '6px 10px', borderRadius: 7, border: `1px solid ${COLORS.primary}`, background: '#fff', color: COLORS.primary, fontWeight: 700, cursor: controlloLoading ? 'wait' : 'pointer' }}
+                >
+                  {controlloLoading ? 'Caricamento…' : `Mostra altri ${(controlli?.[controlloAperto]?.count || 0) - (controlli?.[controlloAperto]?.items || []).length} casi`}
+                </button>
               )}
             </div>
           )}
