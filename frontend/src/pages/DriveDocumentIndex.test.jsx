@@ -64,6 +64,18 @@ describe('Indice documentale Drive', () => {
     expect(screen.getByText(/pagamento bancario non confermato/i)).toBeInTheDocument();
   });
 
+  it('apre dai contatori la lista esatta dei casi', async () => {
+    renderIndex();
+    await screen.findByText('Verifica booleana: TUTTO VERO');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Apri 1297 righe tributo' }));
+
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith(
+      '/api/documenti/drive/index/f24', expect.any(Object)
+    ));
+    expect(await screen.findByText('f24.pdf')).toBeInTheDocument();
+  });
+
   it('mostra un errore esplicito quando l archivio Drive non e configurato', async () => {
     api.get.mockRejectedValueOnce({ response: { data: { detail: 'Indice Drive non configurato' } } });
     renderIndex();

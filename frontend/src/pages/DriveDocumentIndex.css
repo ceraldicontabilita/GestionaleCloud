@@ -40,7 +40,10 @@
 .drive-index__error { margin-top: 12px; padding: 10px 12px; border-radius: 9px; background: #fef2f2; color: #b91c1c; }
 .drive-index__empty { padding: 24px 0; color: #64748b; text-align: center; }
 .drive-index__stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
-.drive-index__stats article { display: grid; grid-template-columns: auto 1fr; gap: 2px 9px; align-items: center; padding: 14px; border: 1px solid #e2e8f0; border-radius: 12px; background: #f8fafc; }
+.drive-index__stats article, .drive-index__stats button { display: grid; grid-template-columns: auto 1fr; gap: 2px 9px; align-items: center; padding: 14px; border: 1px solid #e2e8f0; border-radius: 12px; background: #f8fafc; }
+.drive-index__stats button { cursor: pointer; font: inherit; text-align: left; }
+.drive-index__stats button:hover { border-color: #2563eb; box-shadow: 0 4px 14px rgba(37, 99, 235, .12); }
+.drive-index__stats button:focus-visible { outline: 3px solid rgba(37, 99, 235, .3); outline-offset: 2px; }
 .drive-index__stats svg { grid-row: span 2; color: #2563eb; }
 .drive-index__stats strong { color: #0f172a; font-size: 22px; }
 .drive-index__stats span { color: #64748b; font-size: 12px; }
