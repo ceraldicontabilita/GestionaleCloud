@@ -39,8 +39,6 @@ async def scarica_email_allegati(
     - Commercialista (rosaria.marotta@email.it): F24 fiscali
     - Consulenti lavoro (ferrantini): F24 contributivi
     """
-    db = Database.get_db()
-
     # Download email
     result = await download_and_process_emails(
         email_address=EMAIL_ADDRESS,
@@ -51,50 +49,18 @@ async def scarica_email_allegati(
     if not result.get("success"):
         raise HTTPException(status_code=500, detail=result.get("errori", ["Errore sconosciuto"]))
 
-    # Log del download
-    log_entry = {
-        "id": datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S"),
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "giorni_cercati": giorni,
-        "email_trovate": result.get("totale_email", 0),
-        "allegati_scaricati": result.get("totale_allegati", 0),
-        "allegati_fiscali": result.get("allegati_fiscali", 0),
-        "allegati_contributivi": result.get("allegati_contributivi", 0)
-    }
-    await db[COLL_EMAIL_LOG].insert_one(log_entry.copy())
+    # Il flusso attivo scrive direttamente nel Drive canonico. Il mittente
+    # configurato prova la provenienza del modello F24, mai il pagamento.
+    import asyncio
+    from app.services.drive_f24_email_import import import_downloaded_accountant_attachments
 
-    # Salva info allegati nel database
-    allegati_processati = []
-    for allegato in result.get("allegati", []):
-        # Verifica se già processato
-        existing = await db[COLL_ALLEGATI].find_one({
-            "original_filename": allegato["original_filename"],
-            "email_date": allegato["email_date"],
-            "email_from": allegato["email_from"]
-        }, {"_id": 0})
-
-        if existing:
-            allegato["status"] = "già_presente"
-            allegati_processati.append(allegato)
-            continue
-
-        # Salva nel database
-        allegato["status"] = "da_processare"
-        allegato["processato"] = False
-        allegato_copy = {k: v for k, v in allegato.items()}  # Copia per evitare modifica
-        await db[COLL_ALLEGATI].insert_one(allegato_copy.copy())
-        allegati_processati.append(allegato)
-
+    imported = await asyncio.to_thread(import_downloaded_accountant_attachments, result)
     return {
-        "success": True,
-        "message": f"Download completato: {result.get('totale_allegati', 0)} allegati da {result.get('totale_email', 0)} email",
-        "statistiche": {
-            "email_trovate": result.get("totale_email", 0),
-            "allegati_totali": result.get("totale_allegati", 0),
-            "allegati_fiscali": result.get("allegati_fiscali", 0),
-            "allegati_contributivi": result.get("allegati_contributivi", 0)
-        },
-        "allegati": allegati_processati
+        **imported,
+        "message": (
+            f"Acquisiti {imported['imported_count']} modelli F24 nel Drive canonico; "
+            "pagamento in attesa di quietanza AdE"
+        ),
     }
 
 

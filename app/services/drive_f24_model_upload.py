@@ -26,7 +26,8 @@ def _safe_filename(value: str) -> str:
 
 
 def _f24_index_values(document_id: str, digest: str, drive_path: str,
-                      parsed: dict[str, Any], filing_year: int) -> list[dict[str, Any]]:
+                      parsed: dict[str, Any], filing_year: int,
+                      source_label: str = "UPLOAD_GESTIONALE_COMMERCIALISTA") -> list[dict[str, Any]]:
     values = []
     for row in normalize_f24_evidence_rows(parsed):
         values.append({
@@ -47,13 +48,14 @@ def _f24_index_values(document_id: str, digest: str, drive_path: str,
             "Percorso Drive": drive_path,
             "Pagina": row.get("page_number"),
             "Testo sorgente": row.get("source_text"),
-            "Fonte": "UPLOAD_GESTIONALE_COMMERCIALISTA",
+            "Fonte": source_label,
         })
     return values
 
 
 def upload_f24_accountant_model(*, content: bytes, filename: str, filing_year: int,
-                                note: str | None = None, service=None) -> dict[str, Any]:
+                                note: str | None = None, service=None,
+                                source_metadata: dict[str, Any] | None = None) -> dict[str, Any]:
     if not content.startswith(b"%PDF"):
         raise ValueError("PDF non valido")
     if not 2000 <= int(filing_year) <= 2100:
@@ -72,14 +74,31 @@ def upload_f24_accountant_model(*, content: bytes, filename: str, filing_year: i
         }
 
     parsed = parse_f24_evidence(content, document_kind=PARSER_KIND_PRINTABLE)
+    source_metadata = source_metadata or {}
+    sender = str(source_metadata.get("email_from") or "").strip().lower()
+    source_kind = str(source_metadata.get("source_kind") or "manual_upload").strip().lower()
+    email_source = source_kind == "trusted_accountant_email" and bool(sender)
+    source_label = (
+        f"EMAIL_COMMERCIALISTA_VERIFICATA:{sender}"
+        if email_source else "UPLOAD_GESTIONALE_COMMERCIALISTA"
+    )
     folders = ["02_F24_COMMERCIALISTA", str(filing_year)]
+    if email_source:
+        folders.append("EMAIL")
     parent = source["root_id"]
     for name in folders:
         parent = _folder(service, parent, name)
 
     from googleapiclient.http import MediaIoBaseUpload
+    description_parts = [note or "Fonte dichiarata: commercialista"]
+    if email_source:
+        description_parts.extend(filter(None, [
+            f"Mittente verificato: {sender}",
+            f"Oggetto: {source_metadata.get('email_subject') or ''}",
+            f"Data email: {source_metadata.get('email_date') or ''}",
+        ]))
     created = service.files().create(
-        body={"name": filename, "parents": [parent], "description": note or "Fonte dichiarata: commercialista"},
+        body={"name": filename, "parents": [parent], "description": "\n".join(description_parts)},
         media_body=MediaIoBaseUpload(io.BytesIO(content), mimetype="application/pdf", resumable=False),
         fields="id,name,size,webViewLink", supportsAllDrives=True,
     ).execute()
@@ -95,13 +114,16 @@ def upload_f24_accountant_model(*, content: bytes, filename: str, filing_year: i
             "Categoria": "MODELLO_F24_COMMERCIALISTA", "Anno": filing_year,
             "Nome file": filename, "Estensione": ".pdf", "Dimensione byte": len(content),
             "SHA-256": digest, "Percorso Drive": drive_path,
-            "Cartella Drive": "/".join(folders), "ZIP origine": "UPLOAD_GESTIONALE",
+            "Cartella Drive": "/".join(folders),
+            "ZIP origine": "EMAIL_COMMERCIALISTA" if email_source else "UPLOAD_GESTIONALE",
             "Percorso nel pacchetto": filename, "Stato": "ATTIVO", "Numero documento": "",
         }
         documents.append([document_values.get(header, "") for header in document_headers])
         f24_sheet = workbook["F24_RIGHE"]
         f24_headers = [str(cell.value or "") for cell in f24_sheet[1]]
-        rows = _f24_index_values(document_id, digest, drive_path, parsed, int(filing_year))
+        rows = _f24_index_values(
+            document_id, digest, drive_path, parsed, int(filing_year), source_label,
+        )
         if not rows:
             raise ValueError("Nessuna riga tributaria F24 estratta")
         for row in rows:
@@ -136,4 +158,6 @@ def upload_f24_accountant_model(*, content: bytes, filename: str, filing_year: i
         "sha256": digest, "drive_path": drive_path, "drive_file_id": verified["id"],
         "drive_url": verified.get("webViewLink"), "tax_rows": len(rows),
         "storage": "google_drive", "payment_proven": False,
+        "source_provenance": "TRUSTED_ACCOUNTANT_EMAIL" if email_source else "MANUAL_ACCOUNTANT_UPLOAD",
+        "source_sender": sender or None,
     }
