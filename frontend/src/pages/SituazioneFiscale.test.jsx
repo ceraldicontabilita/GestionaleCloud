@@ -18,6 +18,14 @@ describe('Situazione fiscale collegata all indice Drive', () => {
           documentary_payment_documents: 320, declarations: 60,
         } },
       } });
+      if (path === '/api/fiscal/declarations/DOC-770/field-certainty') return Promise.resolve({ data: {
+        source: { sha256: 'abcdef1234567890' },
+        extraction: { field_level_status: 'ESTRATTO_CON_CERTEZZA', extracted_with_certainty: 1 },
+        reconciliation: { all_certain: true, requires_review: 0, counts: { CONCORDANTE: 1 }, items: [{
+          id: 'match-1', status: 'CONCORDANTE', candidate_count: 1,
+          declaration_row: { page_number: 7, tax_code: '1001', reference_period: '2024-08', paid_amount: 1446.57, interest_amount: 0, certainty_reason: 'versamento_ordinario_importi_uguali', source_text: '08 2024 1.446,57 1.446,57' },
+        }] },
+      } });
       if (path.startsWith('/api/fiscal/declarations')) return Promise.resolve({ data: {
         items: [{
           id: 'DOC-770', document_id: 'DOC-770', source_kind: 'DRIVE_EXCEL_INDEX_DECLARATION',
@@ -36,6 +44,11 @@ describe('Situazione fiscale collegata all indice Drive', () => {
         certain: 1, requires_review: 0,
         sources: { commercialista_f24_documents: 1, quietanza_drive_rows: 2 },
         declarations: { documents: 60, field_level_reconciled: 0, requires_review: true },
+        declaration_items: [{
+          document_id: 'DOC-770', document_type: 'MODELLO_770', filing_year: 2025,
+          filename: '770_2025.pdf', relation_state: 'CONFERMATA_NOME_UNIVOCO_E_INDICE_VERIFICATO',
+          field_check_status: 'PRONTO_PER_VERIFICA_CAMPI',
+        }],
       } });
       return Promise.resolve({ data: { items: [] } });
     });
@@ -134,8 +147,14 @@ describe('Situazione fiscale collegata all indice Drive', () => {
     expect(screen.getByText('COMM-F24-1')).toBeInTheDocument();
     expect(screen.getByText('DRIVE-Q-1')).toBeInTheDocument();
     expect(screen.getAllByText('CONCORDANTE')).toHaveLength(2);
-    expect(screen.getByText(/Dichiarazioni presenti ma non ancora confrontabili campo per campo/)).toBeInTheDocument();
+    expect(screen.getByText(/Verifica dichiarazioni disponibile per i modelli supportati/)).toBeInTheDocument();
     expect(screen.getByText(/Il solo importo non conferma mai un collegamento/)).toBeInTheDocument();
     expect(api.get).toHaveBeenCalledWith('/api/fiscal/source-certainty');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Verifica campi e F24' }));
+    expect(await screen.findByText('Pag. 7')).toBeInTheDocument();
+    expect(screen.getByText(/446,57/)).toBeInTheDocument();
+    expect(screen.getAllByText('CONCORDANTE')).toHaveLength(3);
+    expect(api.get).toHaveBeenCalledWith('/api/fiscal/declarations/DOC-770/field-certainty');
   });
 });

@@ -16,6 +16,7 @@ from app.services.drive_document_index import (
     list_declarations,
     list_f24_rows,
     list_tax_obligations,
+    load_declaration_pdf,
     search_records,
     validate_relations,
 )
@@ -353,3 +354,40 @@ def test_declarations_use_canonical_types_and_verified_document_identity(monkeyp
     all_items = list_declarations(year="2026")["results"]
     lipe = next(entry for entry in all_items if entry["document_type"] == "LIPE")
     assert lipe["tax_year"] == 2026
+
+
+def test_load_declaration_pdf_requires_exact_index_relation_and_hash(monkeypatch):
+    from app.services import drive_document_index as index
+    from app.services import fiscal_document_ingestion
+    import hashlib
+
+    content = b"%PDF-1.4\noriginale dichiarazione"
+    digest = hashlib.sha256(content).hexdigest()
+    document = {
+        "ID documento": "DOC-770", "Nome file": "770_2025.pdf", "Estensione": ".pdf",
+        "SHA-256": digest, "Percorso Drive": r"DICHIARAZIONI\770_2025.pdf",
+    }
+    catalog = {
+        "documents": [document], "f24_rows": [], "duplicates": [],
+        "declarations": [{
+            "Anno": "2025", "Tipo": "770", "Protocollo": "T251",
+            "Percorso archivio": "02_ANNI/2025/DICHIARAZIONI/770_2025.pdf",
+        }],
+    }
+    monkeypatch.setattr(index, "load_full_catalog", lambda service=None: ({"root_id": "ROOT"}, catalog))
+    monkeypatch.setattr(index, "_resolve_path_sync", lambda *_args: {
+        "id": "DRIVE-PDF", "webViewLink": "https://drive.example/770",
+    })
+    monkeypatch.setattr(fiscal_document_ingestion, "download_drive_file", lambda *_args: content)
+
+    result = load_declaration_pdf("DOC-770", service=object())
+    assert result["sha256"] == digest
+    assert result["declaration"]["document_type"] == "MODELLO_770"
+    assert result["drive_file_id"] == "DRIVE-PDF"
+
+    catalog["declarations"].append({
+        "Anno": "2025", "Tipo": "770", "Protocollo": "T252",
+        "Percorso archivio": "ALTRO/770_2025.pdf",
+    })
+    with pytest.raises(ValueError, match="assente o ambigua"):
+        load_declaration_pdf("DOC-770", service=object())

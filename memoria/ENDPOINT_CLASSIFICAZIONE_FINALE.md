@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1165 · tenere: 765 · verificare: 373 · admin-only (migrazione/manutenzione): 27
+**Totale endpoint:** 1166 · tenere: 766 · verificare: 373 · admin-only (migrazione/manutenzione): 27
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -657,6 +657,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/fiscal/collections/{claim_id}/events` | fiscal_control | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/fiscal/crosswalk` | fiscal_control | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/fiscal/declarations` | fiscal_control | sì | — | — | — | sì | tenere | in uso: FE |
+| `GET /api/fiscal/declarations/{document_id}/field-certainty` | fiscal_control | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/fiscal/documents/{document_id}/content` | fiscal_control | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/fiscal/dossier.pdf` | fiscal_control | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/fiscal/evidence-package.zip` | fiscal_control | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |

@@ -847,6 +847,54 @@ def list_declarations(
     return {"returned": min(len(results), limit), "total_matching": len(results), "results": results[:limit]}
 
 
+def load_declaration_pdf(document_id: str, service=None) -> dict[str, Any]:
+    """Scarica un originale dichiarativo solo dopo il legame univoco dell'indice."""
+    service = service or build_drive_service()
+    source, catalog = load_full_catalog(service)
+    documents = [
+        row for row in catalog["documents"]
+        if _norm(row.get("ID documento")) == _norm(document_id)
+    ]
+    if len(documents) != 1:
+        raise ValueError(f"Documento dichiarativo assente o ambiguo: {document_id}")
+    document = documents[0]
+    declaration_rows = [
+        row for row in catalog["declarations"]
+        if _basename(row.get("Percorso archivio")) == _basename(document.get("Nome file"))
+    ]
+    if len(declaration_rows) != 1:
+        raise ValueError(
+            f"Relazione dichiarazione-documento assente o ambigua: {document_id} ({len(declaration_rows)})"
+        )
+    public = _public_record(document)
+    if _norm(public.get("extension")).lstrip(".") != "pdf":
+        raise ValueError(f"Originale dichiarativo non PDF: {document_id}")
+    metadata = _resolve_path_sync(service, source["root_id"], str(document.get("Percorso Drive") or ""))
+    from app.services.fiscal_document_ingestion import download_drive_file
+
+    content = download_drive_file(service, metadata["id"])
+    digest = hashlib.sha256(content).hexdigest()
+    expected = str(document.get("SHA-256") or "").strip().casefold()
+    if expected and digest.casefold() != expected:
+        raise ValueError(f"Hash originale Drive non coincide con l'indice: {document_id}")
+    declaration = declaration_rows[0]
+    canonical_type = _declaration_type(declaration.get("Tipo"), declaration.get("Percorso archivio"))
+    return {
+        "content": content,
+        "document": public,
+        "declaration": {
+            "document_id": document_id,
+            "document_type": canonical_type,
+            "filing_year": declaration.get("Anno"),
+            "protocol": declaration.get("Protocollo"),
+            "archive_path": declaration.get("Percorso archivio"),
+        },
+        "drive_file_id": metadata["id"],
+        "drive_url": metadata.get("webViewLink") or f"https://drive.google.com/open?id={metadata['id']}",
+        "sha256": digest,
+    }
+
+
 def get_document(document_id: str, service=None) -> dict[str, Any]:
     service = service or build_drive_service()
     source, catalog = load_full_catalog(service)

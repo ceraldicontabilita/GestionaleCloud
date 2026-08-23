@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1165 endpoint** in **112 gruppi**.
+> Totale **1166 endpoint** in **112 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 721 · ext esterni = 81 · — da verificare = 363
+**Riepilogo uso:** ✓ frontend = 722 · ext esterni = 81 · — da verificare = 363
 
 ## AI Parser  (11)
 
@@ -1556,7 +1556,7 @@
 | GET | `/api/settings/user-preferences` | — | settings |
 | PUT | `/api/settings/user-preferences` | — | settings |
 
-## Situazione fiscale  (22)
+## Situazione fiscale  (23)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -1570,6 +1570,7 @@
 | POST | `/api/fiscal/collections/{claim_id}/events` | ✓ | fiscal_control |
 | GET | `/api/fiscal/crosswalk` | ✓ | fiscal_control |
 | GET | `/api/fiscal/declarations` | ✓ | fiscal_control |
+| GET | `/api/fiscal/declarations/{document_id}/field-certainty` | ✓ | fiscal_control |
 | GET | `/api/fiscal/documents/{document_id}/content` | — | fiscal_control |
 | GET | `/api/fiscal/dossier.pdf` | — | fiscal_control |
 | GET | `/api/fiscal/evidence-package.zip` | — | fiscal_control |
