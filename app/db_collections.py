@@ -231,8 +231,8 @@ COLL_RIMANENZE = "rimanenze"
 COLL_WAREHOUSE_CONFIG = "warehouse_config"
 
 # Tracciabilita alimentare / HACCP. Questi fogli appartengono al runtime
-# Drive/Sheets di GestionaleCloud: non sono una riattivazione del vecchio
-# database MongoDB e non duplicano fatture, fornitori o prodotti canonici.
+# Drive/Sheets di GestionaleCloud e non duplicano fatture, fornitori o prodotti
+# canonici in archivi paralleli.
 COLL_HACCP_PURCHASE_LINES = "haccp_purchase_lines"
 COLL_HACCP_LOTS = "haccp_lots"
 COLL_HACCP_LOT_MOVEMENTS = "haccp_lot_movements"

@@ -166,7 +166,7 @@ def _register_bank(app: FastAPI):
 def _register_warehouse(app: FastAPI):
     # Il dizionario articoli resta la fonte prodotti contabile. La ricezione e
     # i lotti sono ora integrati nativamente nel registro Drive/Sheets, senza
-    # ponte esterno o database MongoDB.
+    # ponti esterni o archivi paralleli.
     from app.routers.warehouse import dizionario_articoli
     from app.routers import haccp
 
