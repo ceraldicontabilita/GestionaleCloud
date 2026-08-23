@@ -26,6 +26,7 @@ from .crud import (
 from .pagamento import (
     paga_fattura_manuale, cambia_metodo_pagamento_fattura,
     riconcilia_fattura_con_estratto_conto, verifica_incoerenze_estratto_conto,
+    candidati_bancari_fattura,
     aggiorna_metodi_pagamento_da_fornitori, backfill_autoroute_da_metodo_fornitore,
     riconcilia_fatture_paypal, lista_fatture_paypal, import_paypal_file
 )
@@ -71,6 +72,7 @@ router.add_api_route("/fattura/{fattura_id}/storia", storia_fattura, methods=["G
 router.add_api_route("/fattura/{fattura_id}/view-assoinvoice", view_fattura_assoinvoice, methods=["GET"])
 router.add_api_route("/fattura/{fattura_id}/xml-originale", download_xml_originale, methods=["GET"])
 router.add_api_route("/fattura/{fattura_id}/documenti-pagamento", get_documenti_pagamento_fattura, methods=["GET"])
+router.add_api_route("/fattura/{fattura_id}/candidati-bancari", candidati_bancari_fattura, methods=["GET"])
 router.add_api_route("/fattura/{fattura_id}/pdf/{allegato_id}", download_pdf_allegato, methods=["GET"])
 router.add_api_route("/fattura/{fattura_id}", get_fattura_dettaglio, methods=["GET"])
 router.add_api_route("/fattura/{fattura_id}", update_fattura, methods=["PUT"])

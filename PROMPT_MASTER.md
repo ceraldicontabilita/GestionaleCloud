@@ -664,6 +664,7 @@ si rigenerano dal codice e non si correggono a mano.
 | `LOG_FILE` | app-runtime | configurazione | `Optional[Path]` / `None` | `app/config.py` |
 | `LOG_FORMAT` | app-runtime | configurazione | `str` / `'json'` | `app/config.py` |
 | `LOG_LEVEL` | app-runtime | configurazione | `str` / `'INFO'` | `app/config.py` |
+| `LOTTI_INTEGRATION_KEY` | app-runtime | configurazione | non dichiarato in Settings | `app/routers/lotti_integration.py` |
 | `MAX_CONCURRENT_IMPORTS` | app-runtime | configurazione | `int` / `5` | `app/config.py` |
 | `MAX_UPLOAD_SIZE_MB` | app-runtime | configurazione | `int` / `50` | `app/config.py` |
 | `NODE_ENV` | app-runtime | configurazione | non dichiarato in Settings | `frontend/plugins/health-check/health-endpoints.js` |
@@ -761,7 +762,7 @@ Gli alias senza valore vanno configurati nel secret/config store di Render. Non 
 
 ## Appendice D — Tutti i router e tutti gli endpoint
 
-Route table sorgente: **1167**; attivi da ricreare: **768**; quarantena: **399** (`verificare` 372, `admin-only` 27).
+Route table sorgente: **1170**; attivi da ricreare: **770**; quarantena: **400** (`verificare` 373, `admin-only` 27).
 
 `attivo` significa da ricreare con contratto e test; `quarantena` significa non esporre nel nuovo runtime finché consumer, autorizzazione e test non sono provati. L'elenco è completo e include entrambe le categorie.
 
@@ -1517,15 +1518,16 @@ Route table sorgente: **1167**; attivi da ricreare: **768**; quarantena: **399**
 
 - **attivo** — `POST /api/fatture-ricevute/export-selezione` — in uso: FE
 
-### Router `fatture_module.pagamento` (9)
+### Router `fatture_module.pagamento` (10)
 
 - **quarantena: verificare** — `POST /api/fatture-ricevute/aggiorna-metodi-pagamento` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **quarantena: admin-only** — `POST /api/fatture-ricevute/backfill-autoroute` — endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7)
 - **quarantena: verificare** — `POST /api/fatture-ricevute/cambia-metodo-pagamento` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **attivo** — `GET /api/fatture-ricevute/fattura/{fattura_id}/candidati-bancari` — in uso: FE
 - **quarantena: verificare** — `POST /api/fatture-ricevute/import-paypal` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **quarantena: verificare** — `GET /api/fatture-ricevute/lista-paypal` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **attivo** — `POST /api/fatture-ricevute/paga-manuale` — in uso: FE
-- **quarantena: verificare** — `POST /api/fatture-ricevute/riconcilia-con-estratto-conto` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **attivo** — `POST /api/fatture-ricevute/riconcilia-con-estratto-conto` — in uso: FE
 - **quarantena: verificare** — `POST /api/fatture-ricevute/riconcilia-paypal` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **quarantena: verificare** — `GET /api/fatture-ricevute/verifica-incoerenze-estratto-conto` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 
@@ -1749,6 +1751,11 @@ Route table sorgente: **1167**; attivi da ricreare: **768**; quarantena: **399**
 - **quarantena: verificare** — `GET /data-deletion` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **quarantena: verificare** — `GET /privacy` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **quarantena: verificare** — `GET /terms` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+
+### Router `lotti_integration` (2)
+
+- **quarantena: verificare** — `GET /api/integrations/lotti/invoices` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/integrations/lotti/invoices/{source_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 
 ### Router `mfa` (6)
 

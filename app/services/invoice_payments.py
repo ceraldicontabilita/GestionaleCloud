@@ -1,5 +1,5 @@
 """Servizio atomico per i pagamenti manuali delle fatture passive."""
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import hashlib
 import math
 import uuid
@@ -304,6 +304,142 @@ async def register_manual_invoice_payment(db, req: ManualInvoicePaymentRequest) 
 
 def _compact(value: Any) -> str:
     return re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
+
+
+def _invoice_supplier(invoice: Dict[str, Any]) -> str:
+    return str(
+        invoice.get("supplier_name")
+        or invoice.get("fornitore_ragione_sociale")
+        or invoice.get("cedente_nome")
+        or invoice.get("fornitore")
+        or ""
+    )
+
+
+def _meaningful_supplier_tokens(value: Any) -> list[str]:
+    ignored = {
+        "srl", "spa", "sas", "snc", "societa", "ditta", "group", "italia",
+        "di", "del", "della", "dei", "e",
+    }
+    return [
+        token for token in re.findall(r"[a-z0-9]+", str(value or "").lower())
+        if len(token) >= 4 and token not in ignored
+    ]
+
+
+async def find_invoice_bank_candidates(db, fattura_id: str) -> Dict[str, Any]:
+    """Restituisce bonifici compatibili senza trasformarli in pagamenti.
+
+    L'importo al centesimo e' il filtro di ingresso. Numero fattura, identita'
+    del fornitore, P.IVA e IBAN sono prove ulteriori esposte all'operatore.
+    Nessun candidato viene riconciliato da questa lettura.
+    """
+    invoice = await db[COL_FATTURE_RICEVUTE].find_one(
+        {"id": fattura_id}, {"_id": 0},
+    )
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Fattura non trovata")
+
+    residual = abs(float(
+        invoice.get("importo_residuo")
+        if invoice.get("importo_residuo") is not None
+        else invoice.get("total_amount") or invoice.get("importo_totale") or 0
+    ))
+    if residual <= 0:
+        return {"fattura_id": fattura_id, "importo_residuo": 0, "candidati": []}
+
+    invoice_date = str(invoice.get("invoice_date") or invoice.get("data_fattura") or "")[:10]
+    query: Dict[str, Any] = {"riconciliato": {"$ne": True}}
+    try:
+        start = datetime.strptime(invoice_date, "%Y-%m-%d")
+        query["data"] = {
+            "$gte": invoice_date,
+            "$lte": (start + timedelta(days=370)).strftime("%Y-%m-%d"),
+        }
+    except ValueError:
+        pass
+
+    movements = await db["estratto_conto_movimenti"].find(
+        query, {"_id": 0},
+    ).sort("data", -1).to_list(10000)
+
+    number = str(
+        invoice.get("invoice_number") or invoice.get("numero_documento")
+        or invoice.get("numero_fattura") or ""
+    )
+    supplier = _invoice_supplier(invoice)
+    supplier_tokens = _meaningful_supplier_tokens(supplier)
+    vat = _compact(invoice.get("supplier_vat") or invoice.get("fornitore_partita_iva"))
+    iban = _compact(
+        invoice.get("supplier_iban") or invoice.get("fornitore_iban")
+        or invoice.get("iban")
+    )
+    candidates = []
+    for movement in movements:
+        try:
+            amount = abs(float(movement.get("importo") or movement.get("amount") or 0))
+        except (TypeError, ValueError):
+            continue
+        if abs(amount - residual) > 0.005:
+            continue
+        movement_type = str(movement.get("tipo") or "").lower()
+        raw_amount = float(movement.get("importo") or movement.get("amount") or 0)
+        if movement_type in {"entrata", "accredito", "incasso"} or (
+            raw_amount > 0 and movement_type and movement_type not in {"uscita", "addebito", "pagamento"}
+        ):
+            continue
+
+        description = " ".join(str(movement.get(key) or "") for key in (
+            "descrizione_originale", "descrizione", "causale", "beneficiario",
+            "controparte", "iban_beneficiario",
+        ))
+        compact_description = _compact(description)
+        reasons = ["importo_residuo_esatto"]
+        number_match = bool(_compact(number)) and _compact(number) in compact_description
+        matched_tokens = [token for token in supplier_tokens if token in compact_description]
+        supplier_match = bool(matched_tokens) and (
+            len(supplier_tokens) == 1 or len(matched_tokens) >= min(2, len(supplier_tokens))
+        )
+        vat_match = bool(vat) and vat in compact_description
+        movement_iban = _compact(
+            movement.get("iban_beneficiario") or movement.get("iban_controparte")
+            or movement.get("iban")
+        )
+        iban_match = bool(iban) and (iban == movement_iban or iban in compact_description)
+        if number_match:
+            reasons.append("numero_fattura_in_causale")
+        if supplier_match:
+            reasons.append("fornitore_in_causale")
+        if vat_match:
+            reasons.append("partita_iva_in_causale")
+        if iban_match:
+            reasons.append("iban_fornitore")
+
+        level = "verificato" if number_match else (
+            "forte" if supplier_match or vat_match or iban_match else "solo_importo"
+        )
+        candidates.append({
+            "movimento_id": movement.get("id"),
+            "data": str(movement.get("data") or "")[:10],
+            "importo": amount,
+            "descrizione": description.strip(),
+            "livello": level,
+            "motivi": reasons,
+            "numero_fattura_presente": number_match,
+            "richiede_conferma": not number_match,
+        })
+
+    order = {"verificato": 0, "forte": 1, "solo_importo": 2}
+    candidates.sort(key=lambda item: item["data"], reverse=True)
+    candidates.sort(key=lambda item: order[item["livello"]])
+    return {
+        "fattura_id": fattura_id,
+        "numero_fattura": number,
+        "fornitore": supplier,
+        "importo_residuo": residual,
+        "candidati": candidates[:50],
+        "totale_candidati": len(candidates),
+    }
 
 
 async def reconcile_invoice_bank_movement(
