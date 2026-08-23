@@ -95,4 +95,17 @@ describe('Coda operativa Prima Nota Banca', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Mostra altri 1 movimenti' }));
     expect(screen.getByText('MOVIMENTO CENTOUNO')).toBeInTheDocument();
   });
+
+  it('non nasconde la coda quando il caricamento fallisce e permette di riprovare', async () => {
+    api.get
+      .mockRejectedValueOnce({ response: { data: { detail: 'Archivio banca temporaneamente non disponibile' } } })
+      .mockResolvedValueOnce(risposta);
+
+    render(<InAttesaDocumento anno={2026} />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Impossibile verificare i movimenti in attesa di documento.');
+    expect(screen.getByRole('alert')).toHaveTextContent('Archivio banca temporaneamente non disponibile');
+    fireEvent.click(screen.getByRole('button', { name: 'Riprova' }));
+    expect(await screen.findByText("1 movimenti dell'estratto conto aspettano il documento")).toBeInTheDocument();
+  });
 });

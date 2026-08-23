@@ -22,24 +22,36 @@ export default function InAttesaDocumento({ anno, onRicarica }) {
   const [limiteVisibile, setLimiteVisibile] = useState(100);
   const [messaggio, setMessaggio] = useState('');
   const [errore, setErrore] = useState('');
+  const [erroreCaricamento, setErroreCaricamento] = useState('');
   const codaRef = useRef(null);
   const confirm = useConfirm();
 
   const carica = useCallback(async () => {
+    setErroreCaricamento('');
     try {
       const { data } = await api.get(`/api/prima-nota/banca/in-attesa-documento?anno=${anno}`);
       setDati(data);
-    } catch {
+    } catch (e) {
       setDati(null);
+      setErroreCaricamento(
+        e.response?.data?.detail || e.response?.data?.message || 'Coda documenti banca non disponibile',
+      );
     }
   }, [anno]);
 
   useEffect(() => {
     setLimiteVisibile(100);
+    setErroreCaricamento('');
     let vivo = true;
     api.get(`/api/prima-nota/banca/in-attesa-documento?anno=${anno}`)
       .then(({ data }) => { if (vivo) setDati(data); })
-      .catch(() => { if (vivo) setDati(null); });
+      .catch((e) => {
+        if (!vivo) return;
+        setDati(null);
+        setErroreCaricamento(
+          e.response?.data?.detail || e.response?.data?.message || 'Coda documenti banca non disponibile',
+        );
+      });
     return () => { vivo = false; };
   }, [anno]);
 
@@ -81,7 +93,18 @@ export default function InAttesaDocumento({ anno, onRicarica }) {
     }
   };
 
-  if (!dati) return null;
+  if (!dati) {
+    if (!erroreCaricamento) return null;
+    return (
+      <div role="alert" style={{ margin: '12px 0', padding: '12px 14px', borderRadius: 10, border: '1px solid #fecaca', background: '#fef2f2', color: '#991b1b' }}>
+        <strong>Impossibile verificare i movimenti in attesa di documento.</strong>
+        <div style={{ marginTop: 5, fontSize: 12.5 }}>{erroreCaricamento}</div>
+        <button type="button" onClick={carica} style={{ marginTop: 8, padding: '6px 10px', borderRadius: 7, border: '1px solid #991b1b', background: '#fff', color: '#991b1b', fontWeight: 700, cursor: 'pointer' }}>
+          Riprova
+        </button>
+      </div>
+    );
+  }
 
   const quanti = dati.totale || 0;
   const tuttoAPosto = quanti === 0;
