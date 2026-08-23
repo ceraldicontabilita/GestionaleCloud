@@ -73,4 +73,26 @@ describe('Coda operativa Prima Nota Banca', () => {
       .toBeInTheDocument();
     expect(screen.queryByText(/copre tutto l'estratto conto/i)).not.toBeInTheDocument();
   });
+
+  it('rende navigabili anche i movimenti oltre i primi cento', async () => {
+    const movimenti = Array.from({ length: 101 }, (_, indice) => ({
+      id: `ec-${indice}`,
+      data: '2026-08-07',
+      tipo: 'uscita',
+      importo: indice + 1,
+      descrizione: indice === 100 ? 'MOVIMENTO CENTOUNO' : `Movimento ${indice + 1}`,
+      motivo_sospensione: 'Documento ancora da individuare',
+      candidati: [],
+    }));
+    api.get.mockResolvedValue({
+      data: { totale: movimenti.length, effetto_sul_saldo: -5151, movimenti },
+    });
+
+    render(<InAttesaDocumento anno={2026} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Agganciali' }));
+
+    expect(screen.queryByText('MOVIMENTO CENTOUNO')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Mostra altri 1 movimenti' }));
+    expect(screen.getByText('MOVIMENTO CENTOUNO')).toBeInTheDocument();
+  });
 });

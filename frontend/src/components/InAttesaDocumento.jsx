@@ -19,6 +19,7 @@ export default function InAttesaDocumento({ anno, onRicarica }) {
   const [dati, setDati] = useState(null);
   const [aperto, setAperto] = useState(false);
   const [busy, setBusy] = useState('');
+  const [limiteVisibile, setLimiteVisibile] = useState(100);
   const [messaggio, setMessaggio] = useState('');
   const [errore, setErrore] = useState('');
   const codaRef = useRef(null);
@@ -34,6 +35,7 @@ export default function InAttesaDocumento({ anno, onRicarica }) {
   }, [anno]);
 
   useEffect(() => {
+    setLimiteVisibile(100);
     let vivo = true;
     api.get(`/api/prima-nota/banca/in-attesa-documento?anno=${anno}`)
       .then(({ data }) => { if (vivo) setDati(data); })
@@ -147,7 +149,7 @@ export default function InAttesaDocumento({ anno, onRicarica }) {
 
       {aperto && (
         <div ref={codaRef} tabIndex={-1} aria-label="Operazioni da agganciare" style={{ marginTop: 12, outline: 'none' }}>
-          {(dati.movimenti || []).slice(0, 100).map((m) => (
+          {(dati.movimenti || []).slice(0, limiteVisibile).map((m) => (
             <article
               key={m.id}
               style={{
@@ -200,10 +202,18 @@ export default function InAttesaDocumento({ anno, onRicarica }) {
               ))}
             </article>
           ))}
-          {quanti > 100 && (
-            <p style={{ fontSize: 12, color: '#78350f', margin: '7px 0 0' }}>
-              Mostrati i primi 100 di {quanti}.
-            </p>
+          {(dati.movimenti || []).length > limiteVisibile && (
+            <button
+              type="button"
+              onClick={() => setLimiteVisibile((valore) => valore + 100)}
+              style={{
+                marginTop: 9, padding: '7px 11px', borderRadius: 7,
+                border: '1px solid #fcd34d', background: '#fff', color: '#92400e',
+                fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+              }}
+            >
+              Mostra altri {Math.min(100, (dati.movimenti || []).length - limiteVisibile)} movimenti
+            </button>
           )}
         </div>
       )}
