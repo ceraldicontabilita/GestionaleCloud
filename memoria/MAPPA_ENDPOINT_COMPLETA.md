@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1166 endpoint** in **112 gruppi**.
+> Totale **1167 endpoint** in **112 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 722 · ext esterni = 81 · — da verificare = 363
+**Riepilogo uso:** ✓ frontend = 723 · ext esterni = 81 · — da verificare = 363
 
 ## AI Parser  (11)
 
@@ -664,12 +664,13 @@
 | GET | `/api/documenti-non-associati/statistiche` | ✓ | documenti_non_associati |
 | DELETE | `/api/documenti-non-associati/{documento_id}` | ✓ | documenti_non_associati |
 
-## Documenti fiscali  (2)
+## Documenti fiscali  (3)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
 | GET | `/api/documenti-fiscali/lista` | — | documenti_fiscali |
 | POST | `/api/documenti-fiscali/upload` | ✓ | documenti_fiscali |
+| POST | `/api/documenti-fiscali/upload-f24-commercialista` | ✓ | documenti_fiscali |
 
 ## Documents Inbox  (5)
 
