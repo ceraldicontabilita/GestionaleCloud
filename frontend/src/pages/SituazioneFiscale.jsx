@@ -87,6 +87,8 @@ export default function SituazioneFiscale() {
   const [items, setItems] = useState([]);
   const [tabMeta, setTabMeta] = useState(null);
   const [certaintyMeta, setCertaintyMeta] = useState(null);
+  const [declarationChecks, setDeclarationChecks] = useState({});
+  const [checkingDeclaration, setCheckingDeclaration] = useState(null);
   const [aderRelated, setAderRelated] = useState({ ratePlans: [], settlements: [] });
   const [loading, setLoading] = useState(true);
   const [f24Year, setF24Year] = useState('');
@@ -197,6 +199,16 @@ export default function SituazioneFiscale() {
     } finally { setUploading(false); }
   };
 
+  const checkDeclarationFields = async documentId => {
+    setCheckingDeclaration(documentId);
+    try {
+      const response = await api.get(`/api/fiscal/declarations/${encodeURIComponent(documentId)}/field-certainty`);
+      setDeclarationChecks(current => ({ ...current, [documentId]: response.data }));
+    } catch (error) {
+      toast.error('Verifica campi dichiarazione non riuscita', { description: error.response?.data?.detail || error.message });
+    } finally { setCheckingDeclaration(null); }
+  };
+
   const driveCounts = summary?.drive_index?.counts || {};
   const activeLabel = useMemo(() => TABS.find(([id]) => id === tab)?.[1], [tab]);
   const displayItems = useMemo(() => {
@@ -252,8 +264,46 @@ export default function SituazioneFiscale() {
           <StatCard label="Dichiarazioni" value={certaintyMeta.declarations?.documents || 0} accent="primary" />
         </div>}
         {tab === 'confronto-fonti' && certaintyMeta?.declarations?.requires_review && <div style={{ margin: '0 0 14px', padding: '10px 12px', borderRadius: 8, background: '#fffbeb', color: '#92400e' }}>
-          <strong>Dichiarazioni presenti ma non ancora confrontabili campo per campo.</strong> Il PDF è identificato e collegato all’originale Drive; imponibili, imposte e crediti devono ancora essere estratti prima di dichiarare la concordanza con il gestionale.
+          <strong>Verifica dichiarazioni disponibile per i modelli supportati.</strong> Ogni valore conserva pagina e testo sorgente; le righe non univoche restano da verificare e non vengono collegate per il solo importo.
         </div>}
+        {tab === 'confronto-fonti' && (certaintyMeta?.declaration_items || []).length > 0 && <section aria-labelledby="declaration-certainty-heading" style={{ marginBottom: 18 }}>
+          <h4 id="declaration-certainty-heading" style={{ margin: '0 0 10px' }}>Dichiarazioni → F24 Drive</h4>
+          <div style={{ display: 'grid', gap: 12 }}>
+            {certaintyMeta.declaration_items.map(declaration => {
+              const check = declarationChecks[declaration.document_id];
+              const rows = check?.reconciliation?.items || [];
+              return <article key={declaration.document_id || declaration.filename} className="fiscal-record">
+                <div className="fiscal-record-header">
+                  <div><strong>{declaration.document_type} · {declaration.filing_year || 'anno da verificare'}</strong><div className="fiscal-muted">{declaration.filename}</div></div>
+                  <Badge variant={check?.reconciliation?.all_certain ? 'success' : 'warning'}>{check?.extraction?.field_level_status || String(declaration.field_check_status || 'DA_VERIFICARE').replaceAll('_', ' ')}</Badge>
+                </div>
+                <div className="fiscal-actions" style={{ marginTop: 10 }}>
+                  <Button size="sm" variant="primary" disabled={!declaration.document_id || declaration.field_check_status !== 'PRONTO_PER_VERIFICA_CAMPI' || checkingDeclaration === declaration.document_id} onClick={() => checkDeclarationFields(declaration.document_id)}>
+                    {checkingDeclaration === declaration.document_id ? 'Verifica…' : 'Verifica campi e F24'}
+                  </Button>
+                  <Button size="sm" variant="secondary" disabled={!declaration.document_id} onClick={() => openDriveDocument(declaration.document_id)}>Apri originale Drive</Button>
+                </div>
+                {check && <div style={{ marginTop: 12 }}>
+                  <div className="fiscal-data-grid">
+                    <span><small>Righe estratte con certezza</small><strong>{check.extraction?.extracted_with_certainty || 0}</strong></span>
+                    <span><small>Concordanti con F24</small><strong>{check.reconciliation?.counts?.CONCORDANTE || 0}</strong></span>
+                    <span><small>Da verificare</small><strong>{check.reconciliation?.requires_review || 0}</strong></span>
+                    <span><small>Hash originale</small><strong title={check.source?.sha256}>{String(check.source?.sha256 || '').slice(0, 12)}…</strong></span>
+                  </div>
+                  {rows.length > 0 && <div className="fiscal-f24-table-wrap" style={{ marginTop: 10 }}><table className="fiscal-f24-table">
+                    <thead><tr><th>Pagina / sorgente</th><th>Codice</th><th>Periodo</th><th>Versato</th><th>Interessi</th><th>Esito F24</th></tr></thead>
+                    <tbody>{rows.map(row => <tr key={row.id}>
+                      <td><strong>Pag. {row.declaration_row?.page_number || '—'}</strong><div className="fiscal-muted" title={row.declaration_row?.source_text}>{row.declaration_row?.certainty_reason?.replaceAll('_', ' ')}</div></td>
+                      <td>{row.declaration_row?.tax_code || '—'}</td><td>{row.declaration_row?.reference_period || '—'}</td>
+                      <td>{euro(row.declaration_row?.paid_amount)}</td><td>{euro(row.declaration_row?.interest_amount)}</td>
+                      <td><Badge variant={row.status === 'CONCORDANTE' ? 'success' : 'warning'}>{row.status.replaceAll('_', ' ')}</Badge>{row.candidate_count > 1 && <div>{row.candidate_count} candidati esatti</div>}</td>
+                    </tr>)}</tbody>
+                  </table></div>}
+                </div>}
+              </article>;
+            })}
+          </div>
+        </section>}
         {tab === 'f24' && <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'end', marginBottom: 14 }}>
           <label>Anno<br /><select value={f24Year} onChange={event => setF24Year(event.target.value)} style={{ padding: 8 }}>
             <option value="">Tutti</option>{[2026, 2025, 2024, 2023, 2022, 2021, 2020, 2019].map(year => <option key={year}>{year}</option>)}
