@@ -182,10 +182,18 @@ export default function DriveDocumentIndex() {
       {activeTab === 'overview' && overview && (
         <div className="drive-index__overview">
           <div className="drive-index__stats">
-            <article><FileText /><strong>{overview.validation.counts.documents}</strong><span>Documenti</span></article>
-            <article><ReceiptText /><strong>{overview.validation.counts.f24_documents}</strong><span>Documenti F24</span></article>
-            <article><Database /><strong>{overview.validation.counts.f24_rows}</strong><span>Righe tributo</span></article>
-            <article><FileCheck2 /><strong>{overview.validation.counts.declarations}</strong><span>Dichiarazioni</span></article>
+            <button type="button" onClick={() => setActiveTab('documents')} aria-label={`Apri ${overview.validation.counts.documents} documenti`}>
+              <FileText /><strong>{overview.validation.counts.documents}</strong><span>Documenti</span>
+            </button>
+            <button type="button" onClick={() => setActiveTab('f24')} aria-label={`Apri ${overview.validation.counts.f24_documents} documenti F24`}>
+              <ReceiptText /><strong>{overview.validation.counts.f24_documents}</strong><span>Documenti F24</span>
+            </button>
+            <button type="button" onClick={() => setActiveTab('f24')} aria-label={`Apri ${overview.validation.counts.f24_rows} righe tributo`}>
+              <Database /><strong>{overview.validation.counts.f24_rows}</strong><span>Righe tributo</span>
+            </button>
+            <button type="button" onClick={() => setActiveTab('declarations')} aria-label={`Apri ${overview.validation.counts.declarations} dichiarazioni`}>
+              <FileCheck2 /><strong>{overview.validation.counts.declarations}</strong><span>Dichiarazioni</span>
+            </button>
           </div>
           <div className={`drive-index__boolean ${overview.validation.all_true ? 'is-ok' : 'is-error'}`}>
             <h3><ShieldCheck size={20} /> Verifica booleana: {overview.validation.all_true ? 'TUTTO VERO' : 'ANOMALIE'}</h3>
