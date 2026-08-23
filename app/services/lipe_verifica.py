@@ -130,8 +130,18 @@ def parse_lipe_page(
         amount, raw, side = _layout_amount(layout_words or [], field)
         if amount is not None:
             layout_fields += 1
-        if amount is None:
+        # Con coordinate native una casella vuota resta vuota. Il fallback
+        # lineare potrebbe catturare numeri presenti nella descrizione del
+        # rigo (es. "25,82 euro" in VP7) e trasformarli in falsi importi.
+        if amount is None and not layout_words:
             amount, raw = _field_amount(lines, field)
+        if amount is None and layout_words and field in {"VP4", "VP5"} and any(
+            str(word.get("text") or "").strip().upper() == field for word in layout_words
+        ):
+            # Nei modelli AdE una casella monetaria presente ma vuota vale
+            # zero. La regola e' limitata a VP4/VP5, necessari alla prima
+            # quadratura, e richiede l'etichetta nativa del campo.
+            amount, raw = 0, f"{field} casella_vuota=0"
         if amount is not None:
             values[f"{field.lower()}_cents"] = amount
             raw_evidence[field] = raw or ""
@@ -148,7 +158,9 @@ def parse_lipe_page(
         net = values["vp6_cents"] * (1 if value_sides["vp6_side"] == "debito" else -1)
         net += values.get("vp7_cents", 0)
         net -= sum(values.get(f"vp{number}_cents", 0) for number in range(8, 12))
-        net += values.get("vp12_cents", 0) + values.get("vp13_cents", 0)
+        # VP12 (interessi) aumenta il dovuto; VP13 (acconto gia' dovuto)
+        # riduce invece il saldo residuo esposto in VP14.
+        net += values.get("vp12_cents", 0) - values.get("vp13_cents", 0)
         quadrature["vp14"] = (
             abs(net) == values["vp14_cents"]
             and value_sides.get("vp14_side") == ("debito" if net >= 0 else "credito")

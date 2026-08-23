@@ -879,13 +879,18 @@ def load_declaration_pdf(document_id: str, service=None) -> dict[str, Any]:
         raise ValueError(f"Hash originale Drive non coincide con l'indice: {document_id}")
     declaration = declaration_rows[0]
     canonical_type = _declaration_type(declaration.get("Tipo"), declaration.get("Percorso archivio"))
+    filing_year = int(declaration.get("Anno")) if str(declaration.get("Anno") or "").isdigit() else declaration.get("Anno")
+    tax_year = filing_year if canonical_type == "LIPE" else (
+        filing_year - 1 if isinstance(filing_year, int) else None
+    )
     return {
         "content": content,
         "document": public,
         "declaration": {
             "document_id": document_id,
             "document_type": canonical_type,
-            "filing_year": declaration.get("Anno"),
+            "filing_year": filing_year,
+            "tax_year": tax_year,
             "protocol": declaration.get("Protocollo"),
             "archive_path": declaration.get("Percorso archivio"),
         },

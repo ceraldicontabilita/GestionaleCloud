@@ -383,6 +383,7 @@ def test_load_declaration_pdf_requires_exact_index_relation_and_hash(monkeypatch
     result = load_declaration_pdf("DOC-770", service=object())
     assert result["sha256"] == digest
     assert result["declaration"]["document_type"] == "MODELLO_770"
+    assert result["declaration"]["tax_year"] == 2024
     assert result["drive_file_id"] == "DRIVE-PDF"
 
     catalog["declarations"].append({

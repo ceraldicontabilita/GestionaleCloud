@@ -299,7 +299,7 @@ async def source_certainty(
         "relation_state": item.get("relation_state"),
         "field_check_status": (
             "PRONTO_PER_VERIFICA_CAMPI"
-            if item.get("document_type") == "MODELLO_770"
+            if item.get("document_type") in {"MODELLO_770", "LIPE", "DICHIARAZIONE_IVA"}
             and item.get("relation_state") == "CONFERMATA_NOME_UNIVOCO_E_INDICE_VERIFICATO"
             else "PARSER_SPECIFICO_NON_DISPONIBILE"
         ),
@@ -336,6 +336,7 @@ async def declaration_field_certainty(
     """Estrae campi dichiarativi tracciati e li confronta con le righe F24 Drive."""
     from app.services.declaration_field_certainty import (
         extract_declaration_fields,
+        reconcile_lipe_management,
         reconcile_declaration_tax_rows,
     )
     from app.services.drive_document_index import (
@@ -354,6 +355,7 @@ async def declaration_field_certainty(
             document_id=document_id,
             filename=source["document"].get("filename"),
             sha256=source["sha256"],
+            tax_year=source["declaration"].get("tax_year"),
         )
         f24_payload = await asyncio.to_thread(
             list_f24_rows, service, offset=0, limit=5000,
@@ -364,6 +366,26 @@ async def declaration_field_certainty(
         raise HTTPException(503, str(exc)) from exc
 
     reconciliation = reconcile_declaration_tax_rows(extraction, f24_payload["items"])
+    management_reconciliation = None
+    management_warning = None
+    if extraction.get("document_type") == "LIPE":
+        from app.services.iva_liquidation_query import get_iva_period_snapshot
+
+        tax_year = extraction.get("tax_year")
+        months = sorted({
+            int(item["month"]) for item in extraction.get("declared_fields") or []
+            if item.get("month") and tax_year
+        })
+        try:
+            db = Database.get_db()
+            snapshots_list = await asyncio.gather(*[
+                get_iva_period_snapshot(db, anno=int(tax_year), mese=month)
+                for month in months
+            ])
+            snapshots = {item["periodo"]: item for item in snapshots_list}
+            management_reconciliation = reconcile_lipe_management(extraction, snapshots)
+        except Exception as exc:  # la prova dichiarazione/F24 resta consultabile
+            management_warning = str(exc)
     return {
         "source": {
             "document": source["document"],
@@ -375,6 +397,8 @@ async def declaration_field_certainty(
         },
         "extraction": extraction,
         "reconciliation": reconciliation,
+        "management_reconciliation": management_reconciliation,
+        "management_warning": management_warning,
     }
 
 

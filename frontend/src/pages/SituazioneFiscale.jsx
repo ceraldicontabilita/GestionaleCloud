@@ -272,6 +272,8 @@ export default function SituazioneFiscale() {
             {certaintyMeta.declaration_items.map(declaration => {
               const check = declarationChecks[declaration.document_id];
               const rows = check?.reconciliation?.items || [];
+              const declaredFields = check?.extraction?.declared_fields || [];
+              const managementRows = check?.management_reconciliation?.items || [];
               return <article key={declaration.document_id || declaration.filename} className="fiscal-record">
                 <div className="fiscal-record-header">
                   <div><strong>{declaration.document_type} · {declaration.filing_year || 'anno da verificare'}</strong><div className="fiscal-muted">{declaration.filename}</div></div>
@@ -295,10 +297,29 @@ export default function SituazioneFiscale() {
                     <tbody>{rows.map(row => <tr key={row.id}>
                       <td><strong>Pag. {row.declaration_row?.page_number || '—'}</strong><div className="fiscal-muted" title={row.declaration_row?.source_text}>{row.declaration_row?.certainty_reason?.replaceAll('_', ' ')}</div></td>
                       <td>{row.declaration_row?.tax_code || '—'}</td><td>{row.declaration_row?.reference_period || '—'}</td>
-                      <td>{euro(row.declaration_row?.paid_amount)}</td><td>{euro(row.declaration_row?.interest_amount)}</td>
+                      <td>{euro(row.declaration_row?.paid_amount ?? row.declaration_row?.debit_amount)}</td><td>{euro(row.declaration_row?.interest_amount ?? 0)}</td>
                       <td><Badge variant={row.status === 'CONCORDANTE' ? 'success' : 'warning'}>{row.status.replaceAll('_', ' ')}</Badge>{row.candidate_count > 1 && <div>{row.candidate_count} candidati esatti</div>}</td>
                     </tr>)}</tbody>
                   </table></div>}
+                  {check.extraction?.document_type === 'LIPE' && declaredFields.length > 0 && <div className="fiscal-f24-table-wrap" style={{ marginTop: 10 }}><table className="fiscal-f24-table">
+                    <thead><tr><th>Periodo / pagina</th><th>VP4 IVA esigibile</th><th>VP5 IVA detratta</th><th>VP6 saldo mese</th><th>VP14 saldo finale</th><th>Attesa F24</th></tr></thead>
+                    <tbody>{declaredFields.map(module => <tr key={module.id}>
+                      <td><strong>{module.reference_period || '—'}</strong><div className="fiscal-muted">Pag. {module.page_number}</div></td>
+                      <td>{euro((module.values?.vp4_cents || 0) / 100)}</td><td>{euro((module.values?.vp5_cents || 0) / 100)}</td>
+                      <td>{module.values?.vp6_side || '—'} {euro((module.values?.vp6_cents || 0) / 100)}</td>
+                      <td>{module.values?.vp14_side || '—'} {euro((module.values?.vp14_cents || 0) / 100)}</td>
+                      <td><Badge variant={module.f24_expectation === 'F24_MENSILE_ATTESO' ? 'warning' : 'success'}>{String(module.f24_expectation || 'DA VERIFICARE').replaceAll('_', ' ')}</Badge></td>
+                    </tr>)}</tbody>
+                  </table></div>}
+                  {check.extraction?.document_type === 'DICHIARAZIONE_IVA' && declaredFields.length > 0 && <div className="fiscal-f24-table-wrap" style={{ marginTop: 10 }}><table className="fiscal-f24-table">
+                    <thead><tr><th>Campo</th><th>Valore</th><th>Pagina</th><th>Prova</th></tr></thead>
+                    <tbody>{declaredFields.map(field => <tr key={field.id}><td><strong>{field.field}</strong></td><td>{euro(field.value)}</td><td>{field.page_number}</td><td>{field.source_text}</td></tr>)}</tbody>
+                  </table></div>}
+                  {managementRows.length > 0 && <div className="fiscal-f24-table-wrap" style={{ marginTop: 10 }}><table className="fiscal-f24-table">
+                    <thead><tr><th>Periodo</th><th>Campo</th><th>Dichiarazione</th><th>Gestionale</th><th>Esito</th></tr></thead>
+                    <tbody>{managementRows.map(row => <tr key={row.id}><td>{row.period}</td><td>{row.field}</td><td>{euro(row.declared_cents == null ? null : row.declared_cents / 100)}</td><td>{euro(row.management_cents == null ? null : row.management_cents / 100)}</td><td><Badge variant={row.status === 'CONCORDANTE' ? 'success' : 'warning'}>{row.status.replaceAll('_', ' ')}</Badge></td></tr>)}</tbody>
+                  </table></div>}
+                  {check.management_warning && <div className="fiscal-muted" style={{ marginTop: 8 }}>Dati gestionali non confrontabili: {check.management_warning}</div>}
                 </div>}
               </article>;
             })}
