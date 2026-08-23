@@ -100,10 +100,11 @@ async def get_scadenze_noslash(
     mese: int = Query(None),
     tipo: str = Query(None, description="Filtra per tipo: IVA, F24, FATTURA, INPS"),
     include_passate: bool = Query(False),
-    limit: int = Query(20)
+    limit: int = Query(20, ge=1, le=500),
+    offset: int = Query(0, ge=0),
 ) -> Dict[str, Any]:
     """Alias /api/scadenze (senza slash)"""
-    return await get_tutte_scadenze(anno=anno, mese=mese, tipo=tipo, include_passate=include_passate, limit=limit)
+    return await get_tutte_scadenze(anno=anno, mese=mese, tipo=tipo, include_passate=include_passate, limit=limit, offset=offset)
 
 
 @router.get("/", include_in_schema=False)
@@ -113,10 +114,11 @@ async def get_scadenze_slash(
     mese: int = Query(None),
     tipo: str = Query(None, description="Filtra per tipo: IVA, F24, FATTURA, INPS"),
     include_passate: bool = Query(False),
-    limit: int = Query(20)
+    limit: int = Query(20, ge=1, le=500),
+    offset: int = Query(0, ge=0),
 ) -> Dict[str, Any]:
     """Alias /api/scadenze/ (con slash)"""
-    return await get_tutte_scadenze(anno=anno, mese=mese, tipo=tipo, include_passate=include_passate, limit=limit)
+    return await get_tutte_scadenze(anno=anno, mese=mese, tipo=tipo, include_passate=include_passate, limit=limit, offset=offset)
 
 
 @router.get("/tutte")
@@ -126,7 +128,8 @@ async def get_tutte_scadenze(
     mese: int = Query(None),
     tipo: str = Query(None, description="Filtra per tipo: IVA, F24, FATTURA, INPS"),
     include_passate: bool = Query(False),
-    limit: int = Query(20)
+    limit: int = Query(20, ge=1, le=500),
+    offset: int = Query(0, ge=0),
 ) -> Dict[str, Any]:
     """
     Ottiene tutte le scadenze (fiscali + fatture da pagare + notifiche custom).
@@ -188,8 +191,9 @@ async def get_tutte_scadenze(
     prossime_7gg = [s for s in scadenze if _is_prossimi_giorni(s.get("data"), 7)]
 
     return {
-        "scadenze": scadenze[:limit],
+        "scadenze": scadenze[offset:offset + limit],
         "totale": len(scadenze),
+        "pagination": {"offset": offset, "limit": limit},
         "statistiche": {
             "urgenti": len(urgenti),
             "prossimi_7_giorni": len(prossime_7gg),

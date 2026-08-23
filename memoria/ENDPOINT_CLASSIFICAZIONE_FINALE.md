@@ -1056,7 +1056,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/scadenze/dashboard-widget` | scadenze | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/scadenze/iva-mensile/{anno}` | scadenze | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/scadenze/prossime` | scadenze | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/scadenze/tutte` | scadenze | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/scadenze/tutte` | scadenze | sì | — | — | — | sì | tenere | in uso: FE |
 | `DELETE /api/scadenze/{notifica_id}` | scadenze | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/settings` | settings | sì | — | — | — | — | tenere | in uso: FE |
 | `PUT /api/settings` | settings | sì | — | — | — | — | tenere | in uso: FE |

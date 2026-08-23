@@ -15,8 +15,10 @@ export default function Scadenze() {
   const navigate = useNavigate();
   const confirm = useConfirm();
   const [scadenze, setScadenze] = useState([]);
+  const [totaleScadenze, setTotaleScadenze] = useState(0);
   const [alertWidget, setAlertWidget] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [filtroTipo, setFiltroTipo] = useState('');
   const [includePassate, setIncludePassate] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -39,14 +41,16 @@ export default function Scadenze() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [anno, filtroTipo, includePassate]);
 
-  const loadData = async () => {
+  const loadData = async (append = false) => {
     try {
-      setLoading(true);
+      if (append) setLoadingMore(true);
+      else setLoading(true);
       const params = new URLSearchParams();
       params.append('anno', anno);
       if (filtroTipo) params.append('tipo', filtroTipo);
       params.append('include_passate', includePassate);
       params.append('limit', '50');
+      params.append('offset', append ? String(scadenze.length) : '0');
 
       const [scadenzeRes, alertRes, docRiconcRes] = await Promise.all([
         api.get(`/api/scadenze/tutte?${params}`),
@@ -54,13 +58,16 @@ export default function Scadenze() {
         api.get('/api/email-scanner/statistiche').catch(() => ({ data: null })),
       ]);
 
-      setScadenze(scadenzeRes.data.scadenze || []);
+      const nuoveScadenze = scadenzeRes.data.scadenze || [];
+      setScadenze(precedenti => append ? [...precedenti, ...nuoveScadenze] : nuoveScadenze);
+      setTotaleScadenze(Number(scadenzeRes.data.totale || 0));
       setAlertWidget(alertRes.data);
       setDocumentiRiconciliare(docRiconcRes.data);
     } catch (error) {
       console.error('Error loading scadenze:', error);
     } finally {
-      setLoading(false);
+      if (append) setLoadingMore(false);
+      else setLoading(false);
     }
   };
 
@@ -435,7 +442,7 @@ export default function Scadenze() {
             <span>Mostra scadenze passate</span>
           </label>
 
-          <Button variant="secondary" onClick={loadData}>
+          <Button variant="secondary" onClick={() => loadData()}>
             🔄 Aggiorna
           </Button>
         </div>
@@ -457,7 +464,7 @@ export default function Scadenze() {
               fontWeight: 'bold',
             }}
           >
-            📋 Tutte le Scadenze ({scadenze.length})
+            📋 Tutte le Scadenze ({totaleScadenze})
           </div>
 
           {loading ? (
@@ -646,6 +653,15 @@ export default function Scadenze() {
                   },
                 ]}
               />
+              {scadenze.length < totaleScadenze && (
+                <div style={{ padding: 14, textAlign: 'center' }}>
+                  <Button variant="secondary" onClick={() => loadData(true)} disabled={loadingMore}>
+                    {loadingMore
+                      ? 'Caricamento…'
+                      : `Mostra altre ${Math.min(50, totaleScadenze - scadenze.length)} scadenze`}
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </div>

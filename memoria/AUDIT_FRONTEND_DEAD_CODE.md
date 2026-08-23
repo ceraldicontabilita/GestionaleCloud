@@ -3,7 +3,7 @@
 > Generato da `scripts/audit_frontend_dead_code.py` seguendo il grafo di import reale a partire da `main.jsx`/`App.jsx`/`navigation.config.js` (import statici, `import()` dinamici, `lazy(() => import(...))`, re-export `export {X} from`/`export * from`).
 > NON modificare a mano: rilancia lo script.
 
-**Totale file analizzati:** 207
+**Totale file analizzati:** 208
 
 | Classificazione | File |
 |---|---:|
@@ -12,7 +12,7 @@
 | COMPONENTE_USATO | 94 |
 | MODALE_USATO | 3 |
 | HOOK_USATO | 3 |
-| TEST_ONLY | 52 |
+| TEST_ONLY | 53 |
 | DINAMICO_DA_VERIFICARE | 22 |
 | ORFANO_ELIMINABILE | 1 |
 
@@ -233,6 +233,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/pages/RiconciliazioneUnificata.safety.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/pages/Ritenute.jsx` | ROUTE_ATTIVA | 1 |
 | `frontend/src/pages/Scadenze.jsx` | ROUTE_ATTIVA | 1 |
+| `frontend/src/pages/Scadenze.pagination.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/pages/SituazioneFiscale.jsx` | ROUTE_ATTIVA | 2 |
 | `frontend/src/pages/SituazioneFiscale.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/pages/TracciabilitaHACCP.jsx` | ROUTE_ATTIVA | 2 |
