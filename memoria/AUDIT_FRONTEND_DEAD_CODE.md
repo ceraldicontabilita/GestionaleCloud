@@ -3,16 +3,16 @@
 > Generato da `scripts/audit_frontend_dead_code.py` seguendo il grafo di import reale a partire da `main.jsx`/`App.jsx`/`navigation.config.js` (import statici, `import()` dinamici, `lazy(() => import(...))`, re-export `export {X} from`/`export * from`).
 > NON modificare a mano: rilancia lo script.
 
-**Totale file analizzati:** 204
+**Totale file analizzati:** 207
 
 | Classificazione | File |
 |---|---:|
 | ENTRYPOINT | 3 |
 | ROUTE_ATTIVA | 29 |
-| COMPONENTE_USATO | 93 |
+| COMPONENTE_USATO | 94 |
 | MODALE_USATO | 3 |
 | HOOK_USATO | 3 |
-| TEST_ONLY | 50 |
+| TEST_ONLY | 52 |
 | DINAMICO_DA_VERIFICARE | 22 |
 | ORFANO_ELIMINABILE | 1 |
 
@@ -58,7 +58,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | File | Classificazione | Importato da (n. file) |
 |---|---|---:|
 | `frontend/src/App.jsx` | ENTRYPOINT | 1 |
-| `frontend/src/api.js` | COMPONENTE_USATO | 108 |
+| `frontend/src/api.js` | COMPONENTE_USATO | 110 |
 | `frontend/src/components/AgentiPanel.jsx` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/components/AssociaAssegnoFattura.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/components/AssociaMovimentoBanca.jsx` | COMPONENTE_USATO | 2 |
@@ -95,7 +95,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/components/ds/StatCard.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/ds/Table.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/components/ds/Tabs.jsx` | COMPONENTE_USATO | 1 |
-| `frontend/src/components/ds/index.js` | COMPONENTE_USATO | 62 |
+| `frontend/src/components/ds/index.js` | COMPONENTE_USATO | 63 |
 | `frontend/src/components/layout/TopNav.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/ui/ConfirmDialog.jsx` | MODALE_USATO | 27 |
 | `frontend/src/components/ui/alert.jsx` | COMPONENTE_USATO | 1 |
@@ -136,7 +136,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/hooks/useWebSocket.js` | HOOK_USATO | 1 |
 | `frontend/src/hooks/useWebSocket.test.js` | TEST_ONLY | 0 |
 | `frontend/src/lib/queryClient.js` | COMPONENTE_USATO | 2 |
-| `frontend/src/lib/utils.js` | COMPONENTE_USATO | 100 |
+| `frontend/src/lib/utils.js` | COMPONENTE_USATO | 101 |
 | `frontend/src/lib/utils.test.js` | TEST_ONLY | 0 |
 | `frontend/src/main.jsx` | ENTRYPOINT | 0 |
 | `frontend/src/navigation.config.js` | ENTRYPOINT | 0 |
@@ -144,6 +144,8 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/pages/AdminOperationalBoundary.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/pages/Agenti.jsx` | ROUTE_ATTIVA | 2 |
 | `frontend/src/pages/Agenti.test.jsx` | TEST_ONLY | 0 |
+| `frontend/src/pages/Alerts.jsx` | COMPONENTE_USATO | 2 |
+| `frontend/src/pages/Alerts.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/pages/ArchivioBonifici.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/ArchivioBonifici.safety.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/pages/ArchivioFattureRicevute.jsx` | COMPONENTE_USATO | 2 |
@@ -246,7 +248,8 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/pages/hub/AdminElaborazioni.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/hub/AdminHub.jsx` | ROUTE_ATTIVA | 1 |
 | `frontend/src/pages/hub/ContabilitaHub.jsx` | ROUTE_ATTIVA | 1 |
-| `frontend/src/pages/hub/DashboardHub.jsx` | ROUTE_ATTIVA | 1 |
+| `frontend/src/pages/hub/DashboardHub.jsx` | ROUTE_ATTIVA | 2 |
+| `frontend/src/pages/hub/DashboardHub.navigation.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/pages/hub/DocumentiHub.jsx` | ROUTE_ATTIVA | 1 |
 | `frontend/src/pages/hub/FattureHub.jsx` | ROUTE_ATTIVA | 1 |
 | `frontend/src/pages/hub/FornitoriHub.jsx` | ROUTE_ATTIVA | 1 |
