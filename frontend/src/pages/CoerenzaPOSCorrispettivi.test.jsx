@@ -215,6 +215,34 @@ describe('Vista canonica POS e banca', () => {
     expect(screen.getByText('ACCREDITO BANCA')).toBeInTheDocument();
     expect(screen.getByText('DIFF. BANCA−POS')).toBeInTheDocument();
   });
+
+  it('apre dai contatori la lista esatta dei giorni con problemi', async () => {
+    api.get.mockImplementation(url => {
+      if (url.includes('/verifica-coerenza')) return Promise.resolve({ data: {
+        riepilogo: {}, riepilogo_giornaliero: [], anomalie: [], anomalie_count: 0,
+      } });
+      if (url.includes('/riepilogo-mensile')) return Promise.resolve({ data: { mesi: [], totali: {} } });
+      if (url.includes('/sumup/')) return Promise.resolve({ data: { configured: false } });
+      return Promise.resolve({ data: {
+        statistiche: { fase2_ok: 1, fase2_mancante: 1, fase2_saldo_finale: -25 },
+        giorni: [
+          { data: '2026-08-01', stato_serale: 'ok', stato_accredito: 'ok', stato_corrispettivo: 'ok', pos_manuale_presente: true },
+          { data: '2026-08-02', stato_serale: 'ok', stato_accredito: 'mancante', stato_corrispettivo: 'ok', pos_manuale_presente: true },
+        ],
+        riepilogo_settimanale: [],
+      } });
+    });
+    window.HTMLElement.prototype.scrollIntoView = vi.fn();
+
+    render(<CoerenzaPOSCorrispettivi />);
+
+    expect(await screen.findByRole('button', { name: /XML mancanti/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Accrediti circuito mancanti/ })).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: /Saldo da verificare/ }));
+    expect(await screen.findByText('1 / 2 giorni')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Solo problemi' })).toHaveStyle({ background: '#0f2744' });
+    await waitFor(() => expect(window.HTMLElement.prototype.scrollIntoView).toHaveBeenCalled());
+  });
 });
 
 describe('CellaCircuito', () => {

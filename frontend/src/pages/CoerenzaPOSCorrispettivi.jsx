@@ -70,7 +70,13 @@ export default function CoerenzaPOSCorrispettivi() {
   const [dueFasi, setDueFasi] = useState(null);
   const [sumup, setSumup] = useState(null);
   const [tab, setTab] = useState('due_fasi');  // nuovo tab default
+  const [focusProblemiRequest, setFocusProblemiRequest] = useState(0);
   const [err, setErr] = useState('');
+
+  const apriProblemiDueFasi = () => {
+    setTab('due_fasi');
+    setFocusProblemiRequest(value => value + 1);
+  };
 
   useEffect(() => {
     loadDati();
@@ -195,7 +201,9 @@ export default function CoerenzaPOSCorrispettivi() {
             icon={<AlertTriangle size={18} />}
             label="Saldo da verificare"
             value={formatEuro(statsPos.fase2_saldo_finale || 0)}
+            subtext="Apri i giorni da controllare"
             accent={Math.abs(statsPos.fase2_saldo_finale || 0) > 0.01 ? 'danger' : 'success'}
+            onClick={apriProblemiDueFasi}
           />
           <StatCard
             icon={<CreditCard size={18} />}
@@ -259,6 +267,7 @@ export default function CoerenzaPOSCorrispettivi() {
           dati={dueFasi}
           isMobile={isMobile}
           onReload={loadDati}
+          focusProblemiRequest={focusProblemiRequest}
         />
       )}
 
@@ -526,7 +535,7 @@ export default function CoerenzaPOSCorrispettivi() {
 //
 // Basato sulla specifica utente (spiegazione_coerenza.xlsx).
 // ═══════════════════════════════════════════════════════════════════════════
-function ControlloDueFasi({ dati, isMobile, onReload }) {
+function ControlloDueFasi({ dati, isMobile, onReload, focusProblemiRequest = 0 }) {
   const stats = dati?.statistiche || {};
   const giorni = dati?.giorni || [];
   const riepilogoSettimanale = dati?.riepilogo_settimanale || [];
@@ -536,6 +545,18 @@ function ControlloDueFasi({ dati, isMobile, onReload }) {
   const [modalAperta, setModalAperta] = useState(false);
   const [importAperto, setImportAperto] = useState(false);
   const [vista, setVista] = useState('giornaliero'); // giornaliero | settimanale
+
+  const apriProblemi = () => {
+    setVista('giornaliero');
+    setFiltroStato('problemi');
+    window.setTimeout(() => {
+      document.getElementById('pos-giorni-da-verificare')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 0);
+  };
+
+  useEffect(() => {
+    if (focusProblemiRequest > 0) apriProblemi();
+  }, [focusProblemiRequest]);
 
   const giorniFiltrati = giorni.filter(g => {
     const statoSumUp = (g.fase2_per_circuito || {}).sumup?.stato;
@@ -630,6 +651,7 @@ function ControlloDueFasi({ dati, isMobile, onReload }) {
           value={stats.fase0_manca_xml || 0}
           subtext={`${stats.fase0_provvisori || 0} provvisori · ${stats.fase0_definitivi_xml || 0} definitivi`}
           accent="accent"
+          onClick={apriProblemi}
         />
         <StatCard
           icon={<Calendar size={16} />}
@@ -658,11 +680,12 @@ function ControlloDueFasi({ dati, isMobile, onReload }) {
           value={formatEuro(stats.importo_tot_mancante_banca)}
           subtext={`NUMIA/BPM: ${stats.fase2_mancante || 0} giorni · SumUp payout: ${stats.fase2_sumup_in_attesa_payout || 0}`}
           accent="danger"
+          onClick={apriProblemi}
         />
       </div>
 
       {/* Vista + Filtro */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+      <div id="pos-giorni-da-verificare" style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center', scrollMarginTop: 16 }}>
         {[
           { k: 'giornaliero', l: 'Giornaliero' },
           { k: 'settimanale', l: 'Settimana per settimana' },
