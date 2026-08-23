@@ -7,8 +7,9 @@ import { Badge, Button, Card, StatCard } from '../components/ds';
 import './SituazioneFiscale.css';
 
 const TABS = [
-  ['tributi', 'Tributi'],
-  ['tributi-pagati', 'Tributi pagati'],
+  ['tributi', 'Da pagare'],
+  ['tributi-pagati', 'Pagati con quietanza'],
+  ['tutti-tributi', 'Tutti i tributi F24'],
   ['dichiarazioni', 'Dichiarazioni'],
   ['confronto-fonti', 'Confronto fonti'],
   ['f24', 'F24 e crediti'],
@@ -42,8 +43,9 @@ const endpointFor = (tab, f24Filters = {}, taxCodeFilters = {}) => {
     return `/api/documenti/tax-codes?${params.toString()}`;
   }
   return ({
-    tributi: '/api/fiscal/obligations?limit=5000',
+    tributi: '/api/fiscal/obligations?status=TO_PAY&limit=5000',
     'tributi-pagati': '/api/fiscal/obligations?status=PAID_ON_TIME&limit=5000',
+    'tutti-tributi': '/api/fiscal/obligations?limit=5000',
     'confronto-fonti': '/api/fiscal/source-certainty',
     'crosswalk-riscossione': '/api/fiscal/crosswalk',
     riscossione: '/api/fiscal/collections',
@@ -57,7 +59,7 @@ const searchableText = item => Object.values(item || {}).filter(value => ['strin
 const itemYear = item => String(item.payment_year || item.filing_year || item.tax_year || item.year || item.notification_date || item.payment_date || '').slice(0, 4);
 const itemStatus = item => item.documentary_payment_status || item.evidence_state || item.calculated_business_status || item.business_status || item.payment_status || item.status || '';
 const PAGE_SIZES = [25, 50, 100];
-const F24_GROUPED_TABS = new Set(['tributi', 'tributi-pagati', 'f24']);
+const F24_GROUPED_TABS = new Set(['tributi', 'tributi-pagati', 'tutti-tributi', 'f24']);
 const groupF24Rows = rows => {
   const groups = new Map();
   rows.forEach(row => {
@@ -401,7 +403,7 @@ export default function SituazioneFiscale() {
       </Card>}
       <Card bodyStyle={{ padding: 16 }}>
         <div className="fiscal-section-heading"><div><h3>{activeLabel}</h3><p>{filteredItems.length} {F24_GROUPED_TABS.has(tab) ? 'documenti' : 'risultati'} su {displayItems.length}{F24_GROUPED_TABS.has(tab) && ` · ${items.length} righe tributo`}</p></div></div>
-        {tabSources && (tab === 'tributi' || tab === 'f24' || tab === 'dichiarazioni' || tab === 'tributi-pagati') && <div style={{ margin: '0 0 14px', padding: '10px 12px', borderRadius: 8, background: '#ecfdf5', color: '#166534' }}>
+        {tabSources && (tab === 'tributi' || tab === 'f24' || tab === 'dichiarazioni' || tab === 'tributi-pagati' || tab === 'tutti-tributi') && <div style={{ margin: '0 0 14px', padding: '10px 12px', borderRadius: 8, background: '#ecfdf5', color: '#166534' }}>
           <strong>Archivio canonico:</strong> Google Drive · indice {tabSources.drive_excel_index || 0}
           {tabSources.drive_warning && <div style={{ color: '#92400e', marginTop: 4 }}>Drive non disponibile: {tabSources.drive_warning}</div>}
         </div>}
@@ -664,7 +666,7 @@ export default function SituazioneFiscale() {
           const technicalLabel = String(labelForClaim(item) || '');
           const title = tab === 'f24' ? `${item.tax_code || item.section || 'Riga F24'} · ${item.reference_period || 'periodo non indicato'}`
             : tab === 'dichiarazioni' ? `${item.document_type} · ${item.filing_year || 'anno da verificare'}`
-              : ((tab === 'tributi' || tab === 'tributi-pagati') && item.source_kind === 'DRIVE_EXCEL_INDEX_F24_ROW') ? `${item.tax_code || 'Codice non indicato'} · ${item.description || item.section || 'Tributo F24'}`
+              : ((tab === 'tributi' || tab === 'tributi-pagati' || tab === 'tutti-tributi') && item.source_kind === 'DRIVE_EXCEL_INDEX_F24_ROW') ? `${item.tax_code || 'Codice non indicato'} · ${item.description || item.section || 'Tributo F24'}`
                 : (technicalLabel.startsWith('drive-f24-row:') ? (item.description || item.tax_code || 'Tributo F24') : (technicalLabel || item.code || item.version_id || 'Record fiscale'));
           return <article key={entityId} className="fiscal-record">
             <div className="fiscal-record-header"><strong>{title}</strong>
@@ -684,7 +686,7 @@ export default function SituazioneFiscale() {
               {item.filename && <div style={{ marginTop: 4 }}>{item.filename}</div>}
               {item.evidence_state && <div style={{ marginTop: 4 }}><strong>{item.evidence_state === 'MODELLO_F24_NON_PROVA_BANCARIA' ? 'Modello F24: pagamento bancario da verificare' : 'Quietanza documentale: banca da verificare'}</strong></div>}
             </div>}
-            {(tab === 'tributi' || tab === 'tributi-pagati') && item.source_kind === 'DRIVE_EXCEL_INDEX_F24_ROW' && <div className="fiscal-record-body">
+            {(tab === 'tributi' || tab === 'tributi-pagati' || tab === 'tutti-tributi') && item.source_kind === 'DRIVE_EXCEL_INDEX_F24_ROW' && <div className="fiscal-record-body">
               <div className="fiscal-data-grid"><span><small>Periodo</small><strong>{item.reference_period || 'Non indicato'}</strong></span><span><small>Debito</small><strong>{euro(item.debit_amount)}</strong></span><span><small>Credito</small><strong>{euro(item.credit_amount)}</strong></span><span><small>Data</small><strong>{item.payment_date || 'Non indicata'}</strong></span></div>
               <div className="fiscal-file" title={item.filename}>{item.filename || 'Nome file non disponibile'}{item.protocol && <> · protocollo {item.protocol}</>}</div>
               <div className="fiscal-evidence"><strong>{item.documentary_payment_status === 'QUIETANZA_PRESENTE' ? 'Quietanza documentale presente' : 'Modello F24 presente'} · riscontro bancario da verificare</strong></div>

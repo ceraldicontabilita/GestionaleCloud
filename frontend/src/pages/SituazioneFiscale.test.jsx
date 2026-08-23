@@ -7,6 +7,19 @@ import SituazioneFiscale, { resolveDeclarationVersions } from './SituazioneFisca
 
 vi.mock('../api', () => ({ default: { get: vi.fn(), post: vi.fn() } }));
 describe('Situazione fiscale collegata all indice Drive', () => {
+  it('apre per impostazione predefinita la lista da pagare', async () => {
+    api.get.mockImplementation(path => Promise.resolve({ data: path === '/api/fiscal/summary'
+      ? { drive_index: { available: true, counts: {} } }
+      : { items: [] } }));
+
+    render(<MemoryRouter initialEntries={['/situazione-fiscale']}><SituazioneFiscale /></MemoryRouter>);
+
+    expect(await screen.findByRole('heading', { name: 'Da pagare' })).toBeInTheDocument();
+    expect(api.get).toHaveBeenCalledWith('/api/fiscal/obligations?status=TO_PAY&limit=5000');
+    expect(screen.getByRole('link', { name: 'Pagati con quietanza' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Tutti i tributi F24' })).toBeInTheDocument();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     api.post.mockResolvedValue({ data: { success: true, duplicate: false, payment_proven: false } });
