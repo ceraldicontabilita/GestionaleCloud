@@ -338,6 +338,7 @@ async def declaration_field_certainty(
     """Estrae campi dichiarativi tracciati e li confronta con le righe F24 Drive."""
     from app.services.declaration_field_certainty import (
         extract_declaration_fields,
+        reconcile_770_management,
         reconcile_lipe_management,
         reconcile_declaration_tax_rows,
     )
@@ -386,6 +387,22 @@ async def declaration_field_certainty(
             ])
             snapshots = {item["periodo"]: item for item in snapshots_list}
             management_reconciliation = reconcile_lipe_management(extraction, snapshots)
+        except Exception as exc:  # la prova dichiarazione/F24 resta consultabile
+            management_warning = str(exc)
+    elif extraction.get("document_type") == "MODELLO_770":
+        periods = sorted({
+            str(item.get("reference_period") or "")
+            for item in extraction.get("tax_rows") or []
+            if item.get("reference_period")
+        })
+        try:
+            db = Database.get_db()
+            records = [] if not periods else await db["ritenute_acconto"].find(
+                {"periodo_ritenuta": {"$in": periods}},
+                {"_id": 0, "id": 1, "periodo_ritenuta": 1, "importo": 1,
+                 "importo_cents": 1, "source_document_id": 1, "projection_source": 1},
+            ).to_list(10000)
+            management_reconciliation = reconcile_770_management(extraction, records)
         except Exception as exc:  # la prova dichiarazione/F24 resta consultabile
             management_warning = str(exc)
     return {

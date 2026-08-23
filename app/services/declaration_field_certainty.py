@@ -486,6 +486,89 @@ def reconcile_lipe_management(extraction: dict[str, Any],
     }
 
 
+def reconcile_770_management(extraction: dict[str, Any],
+                             withholding_records: Iterable[dict[str, Any]]) -> dict[str, Any]:
+    """Confronta il 770 con ritenute 1040 nate dagli XML delle fatture.
+
+    Il gestionale non possiede una base probatoria equivalente per gli altri
+    codici del 770: quei codici restano esplicitamente non verificabili.
+    """
+    def record_cents(record: dict[str, Any]) -> int:
+        return int(record.get("importo_cents") or _cents(record.get("importo")))
+
+    by_period: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    unreliable_periods: set[str] = set()
+    for record in withholding_records:
+        period = str(record.get("periodo_ritenuta") or "").strip()
+        if not re.fullmatch(r"20\d{2}-(?:0[1-9]|1[0-2])", period):
+            continue
+        reliable = (
+            record.get("projection_source") == "documenti_import_auto"
+            and bool(record.get("source_document_id"))
+            and record_cents(record) > 0
+        )
+        if reliable:
+            by_period[period].append(record)
+        else:
+            unreliable_periods.add(period)
+
+    items: list[dict[str, Any]] = []
+    for row in extraction.get("tax_rows") or []:
+        tax_code = str(row.get("tax_code") or "")
+        period = str(row.get("reference_period") or "")
+        declared = _cents(row.get("withholding_amount") or row.get("debit_amount"))
+        records = by_period.get(period, [])
+        management = sum(record_cents(record) for record in records)
+        if tax_code != "1040":
+            status = MANAGEMENT_UNAVAILABLE
+            reason = "codice_770_senza_base_gestionale_equivalente"
+            management_value = None
+        elif period in unreliable_periods:
+            status = MANAGEMENT_UNAVAILABLE
+            reason = "ritenute_gestionali_senza_provenienza_xml_completa"
+            management_value = None
+        elif not records:
+            status = MANAGEMENT_UNAVAILABLE
+            reason = "nessuna_ritenuta_xml_nel_periodo"
+            management_value = None
+        else:
+            status = EXACT if declared == management else DISCORDANT
+            reason = "codice_1040+periodo+somma_ritenute_xml_cents"
+            management_value = management
+        items.append({
+            "id": f"770-management:{row['id']}",
+            "declaration_tax_row_id": row["id"],
+            "tax_code": tax_code,
+            "period": period,
+            "declared_cents": declared,
+            "management_cents": management_value,
+            "difference_cents": (
+                management_value - declared if management_value is not None else None
+            ),
+            "status": status,
+            "requires_review": status != EXACT,
+            "reason": reason,
+            "management_record_ids": [
+                str(record.get("id") or record.get("source_document_id")) for record in records
+            ],
+            "management_source": "ritenute_acconto_da_xml_fatture" if records else None,
+        })
+    counts = Counter(item["status"] for item in items)
+    return {
+        "items": items,
+        "counts": dict(sorted(counts.items())),
+        "certain": counts[EXACT],
+        "requires_review": sum(item["requires_review"] for item in items),
+        "all_certain": bool(items) and all(not item["requires_review"] for item in items),
+        "semantics": {
+            "supported_tax_codes": ["1040"],
+            "source_requires_invoice_xml": True,
+            "exact_cents": True,
+            "unsupported_codes_are_not_inferred": True,
+        },
+    }
+
+
 def _certain_770_amounts(amounts: list[Decimal], flags: str) -> tuple[bool, dict[str, Decimal], str]:
     """Assegna significato solo quando il modello si auto-verifica al centesimo."""
     ravvedimento = "X" in flags.upper().split()
