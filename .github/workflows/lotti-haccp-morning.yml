@@ -25,7 +25,10 @@ jobs:
           AUTOMATION_SECRET: ${{ secrets.LOTTI_AUTOMATION_SECRET }}
           ENDPOINT: https://lotti-backend-2wwb.onrender.com/api/scheduler/morning/run
         run: |
-          test -n "$AUTOMATION_SECRET"
+          if [ -z "$AUTOMATION_SECRET" ]; then
+            echo "::warning::LOTTI_AUTOMATION_SECRET non configurato — step saltato."
+            exit 0
+          fi
           response_file="$(mktemp)"
           code=$(curl --silent --show-error --location \
             --retry 8 --retry-delay 10 --retry-all-errors \
