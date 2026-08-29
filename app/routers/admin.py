@@ -82,6 +82,121 @@ async def get_google_sheets_ledger_job(job_id: str = Path(...)) -> Dict[str, Any
     return job
 
 
+_supabase_migration_jobs: Dict[str, Dict[str, Any]] = {}
+
+
+async def _run_supabase_migration_job(job_id: str) -> None:
+    """Copia ogni documento gia' idratato in memoria (backend attivo, in
+    produzione Sheets) dentro gestionale.documents su Supabase.
+
+    Sola lettura dalla cache di processo gia' caricata all'avvio: nessuna
+    nuova chiamata all'API Google Sheets/Drive, quindi non consuma la quota
+    e non rallenta il traffico applicativo in corso. Scrittura idempotente
+    (upsert per collection+id su Supabase): rilanciabile senza duplicare
+    nulla se si interrompe o va rieseguita. Non cambia DATA_BACKEND e non
+    tocca la sorgente Sheets: la produzione continua a servire dal backend
+    attivo finche' non si decide esplicitamente, e separatamente, il
+    cutover.
+    """
+    job = _supabase_migration_jobs[job_id]
+    try:
+        from app.config import settings
+        from app.services.supabase_runtime_database import SupabaseRuntimeDatabase
+
+        origine = Database.get_db()
+        if isinstance(origine, SupabaseRuntimeDatabase):
+            raise RuntimeError("Il backend attivo e' gia' Supabase: niente da migrare")
+
+        nomi = await origine.list_collection_names()
+        destinazione = SupabaseRuntimeDatabase(
+            "gestionale_migrazione", {"SUPABASE_DB_URL": settings.SUPABASE_DB_URL},
+        )
+        dettaglio: List[Dict[str, Any]] = []
+        errori: List[Dict[str, Any]] = []
+        totale = 0
+        try:
+            for nome in nomi:
+                documenti = await origine[nome].find({}).to_list(None)
+                if not documenti:
+                    dettaglio.append({"collezione": nome, "righe": 0})
+                    continue
+                try:
+                    scritte = await destinazione.bulk_seed(nome, documenti)
+                except Exception as exc:  # noqa: BLE001 - una collezione non deve bloccare le altre
+                    logger.error("[SUPABASE-MIGRATE] collezione=%s errore: %s", nome, exc)
+                    errori.append({"collezione": nome, "errore": str(exc)})
+                    continue
+                dettaglio.append({"collezione": nome, "righe": scritte})
+                totale += scritte
+        finally:
+            destinazione.close()
+
+        job.update(
+            status="completed" if not errori else "completed_con_errori",
+            result={
+                "backend_origine": type(origine).__name__,
+                "collezioni": len(dettaglio),
+                "righe_totali": totale,
+                "dettaglio": dettaglio,
+                "errori": errori,
+            },
+        )
+    except Exception as exc:
+        logger.exception("Migrazione Supabase fallita")
+        job.update(status="failed", error=str(exc))
+    finally:
+        job["finished_at"] = datetime.now(timezone.utc).isoformat()
+
+
+@router.post("/supabase-migration/jobs")
+async def avvia_migrazione_supabase(
+    payload: Dict[str, Any] = Body(...),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Avvia la copia una tantum da Sheets a Supabase (gestionale.documents).
+
+    Richiede conferma esplicita nel body per evitare avvii accidentali.
+    Non modifica DATA_BACKEND: e' una copia di sola preparazione, verificabile
+    prima di qualsiasi decisione di cutover.
+    """
+    if payload.get("conferma") != "MIGRA":
+        raise HTTPException(
+            status_code=400,
+            detail="Conferma mancante: inviare {\"conferma\": \"MIGRA\"} nel body",
+        )
+    from app.config import settings
+    if not str(settings.SUPABASE_DB_URL or "").strip():
+        raise HTTPException(
+            status_code=503,
+            detail="SUPABASE_DB_URL non configurato su questo ambiente: impostarlo nelle variabili d'ambiente prima di avviare la migrazione",
+        )
+    running = next(
+        (item for item in _supabase_migration_jobs.values() if item["status"] == "running"),
+        None,
+    )
+    if running:
+        return running
+    job_id = str(uuid.uuid4())
+    job = {
+        "job_id": job_id, "status": "running",
+        "started_at": datetime.now(timezone.utc).isoformat(),
+    }
+    _supabase_migration_jobs[job_id] = job
+    asyncio.create_task(_run_supabase_migration_job(job_id))
+    return job
+
+
+@router.get("/supabase-migration/jobs/{job_id}")
+async def stato_migrazione_supabase(
+    job_id: str = Path(...),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    job = _supabase_migration_jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Elaborazione non trovata o server riavviato")
+    return job
+
+
 @router.get("/google-sheets-ledger/manifest")
 async def google_sheets_ledger_manifest() -> Dict[str, Any]:
     """Elenco stabile dei fogli e dei relativi progressivi."""

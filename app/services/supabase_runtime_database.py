@@ -179,6 +179,13 @@ class SupabaseRuntimeDatabase(SheetDatabase):
             return
         await self._upsert_documents(collection_name, after)
 
+    async def bulk_seed(self, collection_name: str, documents: list[dict[str, Any]]) -> int:
+        """Scrive in blocco documenti gia' pronti (usato dalla migrazione da
+        Sheets, non dal traffico applicativo ordinario). Upsert idempotente
+        per (collection, id): rilanciabile senza duplicare nulla."""
+        await self._upsert_documents(collection_name, documents)
+        return len(documents)
+
     async def _upsert_documents(self, collection_name: str, documents: list[dict[str, Any]]) -> None:
         if not documents:
             return
