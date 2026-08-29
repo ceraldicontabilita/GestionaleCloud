@@ -395,6 +395,7 @@ export default function Admin() {
     { key: 'collaudo', label: 'Collaudo', icon: '🧪' },
     { key: 'bank-rules', label: 'Riferimenti bancari', icon: '🏦' },
     { key: 'drive-ledger', label: 'Registro Drive', icon: '📊' },
+    { key: 'supabase-migration', label: 'Migrazione Supabase', icon: '🐘' },
   ];
 
   return (
@@ -938,6 +939,8 @@ export default function Admin() {
 
       {activeTab === 'drive-ledger' && <GoogleSheetsLedgerTab />}
 
+      {activeTab === 'supabase-migration' && <SupabaseMigrationTab />}
+
       {activeTab === 'bank-rules' && (
         <Card title="Riferimenti bancari ricorrenti">
           <p style={{ fontSize: 13, color: COLORS.textMuted }}>
@@ -1360,6 +1363,85 @@ function GoogleSheetsLedgerTab() {
         <Card title={result.action === 'cleanup' ? 'Pulizia duplicati completata' : 'Anteprima pulizia duplicati'}>
           <div>{result.gruppi_md5 || 0} gruppi MD5 · {result.copie_selezionate || 0} copie selezionate · {result.copie_senza_permesso || 0} senza permesso</div>
           {result.action === 'cleanup' && <strong>{result.spostate_nel_cestino || 0} file spostati nel Cestino Drive</strong>}
+        </Card>
+      )}
+    </div>
+  );
+}
+
+
+function SupabaseMigrationTab() {
+  const [conferma, setConferma] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [esito, setEsito] = useState(null); // { status, result?, error? } | null
+
+  async function avvia() {
+    setBusy(true);
+    setEsito(null);
+    try {
+      let job = (await api.post('/api/admin/supabase-migration/jobs', { conferma })).data;
+      while (job.status === 'running') {
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        job = (await api.get(`/api/admin/supabase-migration/jobs/${job.job_id}`)).data;
+      }
+      setEsito(job);
+      if (job.status === 'completed') toast.success(`Migrazione completata: ${job.result?.righe_totali ?? 0} righe copiate su Supabase`);
+      else if (job.status === 'completed_con_errori') toast.error(`Migrazione completata con ${job.result?.errori?.length ?? 0} collezioni in errore`);
+      else toast.error(job.error || 'Migrazione non riuscita');
+    } catch (error) {
+      toast.error(error.response?.data?.detail || error.message || 'Migrazione non riuscita');
+    } finally {
+      setBusy(false);
+      setConferma('');
+    }
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 16 }}>
+      <Card title="Migrazione dati Sheets → Supabase (preparazione)">
+        <p style={{ fontSize: 13, color: COLORS.textMuted, lineHeight: 1.6 }}>
+          Copia una tantum di tutti i dati già in memoria (backend attivo, oggi Google Sheets)
+          dentro Supabase (tabella gestionale.documents). Legge solo dalla cache di processo:
+          nessuna nuova chiamata a Google Sheets/Drive, quindi non consuma la quota API e non
+          rallenta l'app in uso. Non modifica il backend attivo né i dati sorgente: la produzione
+          continua a servire da Sheets finché non si decide, separatamente, il passaggio. Operazione
+          idempotente: si può rilanciare senza duplicare nulla.
+        </p>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
+          <Input
+            value={conferma}
+            onChange={e => setConferma(e.target.value)}
+            placeholder='Scrivi MIGRA per confermare'
+            style={{ maxWidth: 260 }}
+          />
+          <Button variant="primary" onClick={avvia} disabled={busy || conferma.trim() !== 'MIGRA'}>
+            {busy ? (<><Loader2 size={14} className="animate-spin" style={{ marginRight: 6 }} />Migrazione in corso...</>) : 'Avvia migrazione'}
+          </Button>
+        </div>
+      </Card>
+      {esito && (
+        <Card title={esito.status === 'failed' ? 'Migrazione non riuscita' : 'Esito migrazione'}>
+          {esito.status === 'failed' && <div style={{ color: COLORS.danger }}>{esito.error}</div>}
+          {esito.result && (
+            <>
+              <div style={{ marginBottom: 10, color: esito.status === 'completed' ? COLORS.success : COLORS.danger }}>
+                <strong>{esito.status === 'completed' ? 'COMPLETATA SENZA ERRORI' : 'COMPLETATA CON ERRORI'}</strong>
+                <div>{esito.result.collezioni} collezioni · {esito.result.righe_totali} righe totali copiate su Supabase</div>
+              </div>
+              {(esito.result.dettaglio || []).map(item => (
+                <div key={item.collezione} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${COLORS.border}` }}>
+                  <span>{item.collezione}</span>
+                  <strong>{item.righe}</strong>
+                </div>
+              ))}
+              {(esito.result.errori || []).map(item => (
+                <div key={item.collezione} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', color: COLORS.danger }}>
+                  <span>{item.collezione}</span>
+                  <span>{item.errore}</span>
+                </div>
+              ))}
+            </>
+          )}
         </Card>
       )}
     </div>
