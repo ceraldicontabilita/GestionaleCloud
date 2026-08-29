@@ -1,6 +1,6 @@
 import React, { lazy, Suspense, useEffect, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { Archive, FileWarning, Search, Upload } from 'lucide-react';
+import { Archive, ExternalLink, FileWarning, Search, Upload } from 'lucide-react';
 import api from '../../api';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
 import { useHashState } from '../../hooks/useHashState';
@@ -62,6 +62,7 @@ export default function DocumentiHub() {
   const activeTab = getTabFromPath(location.pathname);
   const [visitedTabs, setVisitedTabs] = useState(() => new Set([initTab]));
   const [driveCatalog, setDriveCatalog] = useState(null);
+  const [driveFolderLinks, setDriveFolderLinks] = useState({});
 
   useEffect(() => {
     const tab = getTabFromPath(location.pathname);
@@ -87,6 +88,29 @@ export default function DocumentiHub() {
     };
 
     loadAndSyncDrive();
+    return () => { active = false; };
+  }, []);
+
+  // Link Drive reali (webViewLink + nome live): endpoint riservato agli admin.
+  // Chi non e' admin resta con la sola ricerca interna (fallback sotto).
+  useEffect(() => {
+    let active = true;
+
+    const loadFolderLinks = async () => {
+      try {
+        const response = await api.get('/api/documenti/drive/folders');
+        if (!active) return;
+        const links = {};
+        for (const folder of response.data?.folders || []) {
+          links[folder.area] = folder;
+        }
+        setDriveFolderLinks(links);
+      } catch (error) {
+        if (active) setDriveFolderLinks({});
+      }
+    };
+
+    loadFolderLinks();
     return () => { active = false; };
   }, []);
 
@@ -131,21 +155,37 @@ export default function DocumentiHub() {
             </div>
           </div>
           <div className="documenti-hub__drive-grid">
-            {driveCatalog.folders.map(folder => (
-              <button
-                type="button"
-                className="documenti-hub__drive-card"
-                key={folder.area}
-                onClick={() => navigate(`/documenti/drive?folder=${encodeURIComponent(folder.label)}`)}
-                aria-label={`Apri indice della cartella ${folder.label}`}
-              >
-                <span className={`documenti-hub__drive-dot is-${folder.status}`} aria-hidden="true" />
-                <div>
-                  <strong>{folder.label}</strong>
-                  <small>{folder.mode === 'automatico' ? 'Verde · dati estratti dal parser' : 'Blu · archivio da consultare'}</small>
-                </div>
-              </button>
-            ))}
+            {driveCatalog.folders.map(folder => {
+              const link = driveFolderLinks[folder.area];
+              // Il nome live da Drive prevale su quello salvato nel registro:
+              // le cartelle su Drive non sono ancora normalizzate e possono
+              // essere state rinominate dopo la configurazione dell'area.
+              const displayLabel = link?.live_name || folder.label;
+              const renamed = link?.live_name && link.live_name !== folder.label;
+              return (
+                <button
+                  type="button"
+                  className="documenti-hub__drive-card"
+                  key={folder.area}
+                  onClick={() => {
+                    if (link?.url) {
+                      window.open(link.url, '_blank', 'noopener,noreferrer');
+                    } else {
+                      navigate(`/documenti/drive?folder=${encodeURIComponent(folder.label)}`);
+                    }
+                  }}
+                  aria-label={link?.url ? `Apri la cartella Drive ${displayLabel}` : `Apri indice della cartella ${displayLabel}`}
+                  title={renamed ? `Etichetta interna: ${folder.label}` : undefined}
+                >
+                  <span className={`documenti-hub__drive-dot is-${folder.status}`} aria-hidden="true" />
+                  <div>
+                    <strong>{displayLabel}</strong>
+                    <small>{folder.mode === 'automatico' ? 'Verde · dati estratti dal parser' : 'Blu · archivio da consultare'}</small>
+                  </div>
+                  {link?.url && <ExternalLink size={14} className="documenti-hub__drive-external" aria-hidden="true" />}
+                </button>
+              );
+            })}
           </div>
         </section>
       )}

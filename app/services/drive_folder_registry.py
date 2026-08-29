@@ -99,6 +99,30 @@ def get_generic_documents_folder_id() -> str | None:
     return None
 
 
+def get_configured_entries() -> list[dict[str, Any]]:
+    """Voci con folder ID, per risoluzione admin del link Drive reale.
+
+    Non e' mai raggiungibile dal catalogo pubblico: solo un endpoint protetto
+    da `richiedi_admin` puo' chiamarla (vedi app/routers/documenti.py).
+    """
+    seen: set[str] = set()
+    result: list[dict[str, Any]] = []
+    for entry in _registry_entries():
+        area = _slug(entry.get("area") or entry.get("label"))
+        if not area or area in seen:
+            continue
+        folder_id = str(entry.get("folder_id") or "").strip()
+        if not folder_id:
+            continue
+        seen.add(area)
+        result.append({
+            "area": area,
+            "label": str(entry.get("label") or area.replace("_", " ").title()).strip(),
+            "folder_id": folder_id,
+        })
+    return result
+
+
 def get_public_catalog() -> dict[str, Any]:
     """Restituisce etichette e stato, senza includere mai i folder ID."""
     folders: list[dict[str, Any]] = []

@@ -41,6 +41,73 @@ async def catalogo_cartelle_drive() -> Dict[str, Any]:
     return get_public_catalog()
 
 
+_drive_folder_links_cache: Dict[str, Any] = {"at": 0.0, "data": None}
+_DRIVE_FOLDER_LINKS_TTL_SECONDI = 600
+
+
+@router.get("/drive/folders")
+async def cartelle_drive_con_link_reale(
+    _admin: Dict[str, Any] = Depends(richiedi_admin),
+) -> Dict[str, Any]:
+    """Risolve il link Drive reale e il nome live delle cartelle configurate.
+
+    A differenza di /drive/catalog (pubblico, senza ID) questo endpoint e'
+    riservato agli admin: espone webViewLink e nome corrente su Drive, utile
+    perche' l'etichetta salvata nel registro puo' non corrispondere piu' al
+    nome reale della cartella (rinominata/spostata su Drive nel frattempo).
+    Cache in-process di 10 minuti per non interrogare Drive ad ogni apertura
+    della pagina Documenti.
+    """
+    now = datetime.now(timezone.utc).timestamp()
+    cached = _drive_folder_links_cache["data"]
+    if cached is not None and now - _drive_folder_links_cache["at"] < _DRIVE_FOLDER_LINKS_TTL_SECONDI:
+        return cached
+
+    from app.services.drive_folder_registry import get_configured_entries
+    entries = get_configured_entries()
+    if not entries:
+        result = {"folders": []}
+        _drive_folder_links_cache["at"] = now
+        _drive_folder_links_cache["data"] = result
+        return result
+
+    from app.services.drive_document_index import build_drive_service
+
+    def _resolve_sync() -> List[Dict[str, Any]]:
+        try:
+            service = build_drive_service()
+        except RuntimeError as exc:
+            logger.warning("[DRIVE-FOLDERS] credenziali Drive non disponibili: %s", exc)
+            return []
+        resolved: List[Dict[str, Any]] = []
+        for entry in entries:
+            try:
+                metadata = service.files().get(
+                    fileId=entry["folder_id"],
+                    fields="id,name,trashed,webViewLink",
+                    supportsAllDrives=True,
+                ).execute()
+            except Exception as exc:  # noqa: BLE001 - una cartella non deve bloccare le altre
+                logger.warning("[DRIVE-FOLDERS] area=%s errore: %s", entry["area"], exc)
+                continue
+            if metadata.get("trashed"):
+                continue
+            resolved.append({
+                "area": entry["area"],
+                "label": entry["label"],
+                "live_name": metadata.get("name"),
+                "url": metadata.get("webViewLink")
+                or f"https://drive.google.com/drive/folders/{entry['folder_id']}",
+            })
+        return resolved
+
+    folders = await asyncio.to_thread(_resolve_sync)
+    result = {"folders": folders}
+    _drive_folder_links_cache["at"] = now
+    _drive_folder_links_cache["data"] = result
+    return result
+
+
 @router.get("/drive/index/status")
 async def stato_indice_documentale_drive(
     _admin: Dict[str, Any] = Depends(richiedi_admin),
