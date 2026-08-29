@@ -17,11 +17,19 @@ class Settings(BaseSettings):
     APP_VERSION: str = "2.0.0"
     DEBUG: bool = False
     ENVIRONMENT: str = "production"
-    # Google Drive conserva gli originali e Google Sheets i registri
-    # operativi. DATA_BACKEND esiste ancora come attributo per compatibilità
-    # e deve essere 'sheets' in produzione.
+    # Google Drive conserva gli originali; Google Sheets è stato il registro
+    # operativo storico. DATA_BACKEND supporta oggi anche 'supabase' (Postgres
+    # reale, stesso modello documentale — vedi
+    # app/services/supabase_runtime_database.py) come sostituto write-through
+    # di Sheets, a parità di interfaccia find/update_one/insert_one usata dal
+    # resto del codice.
     DATA_BACKEND: str = "sheets"
     SHEETS_REGISTRY_NAME: str = "GestionaleCloud"
+    # Richiesta solo quando DATA_BACKEND=supabase. Connection string Postgres
+    # diretta al progetto Supabase (usare la service role / connection string
+    # "session pooler" da Project Settings → Database — MAI la anon key).
+    # Va impostata come variabile d'ambiente su Render, non nel codice.
+    SUPABASE_DB_URL: Optional[str] = None
 
     # Server
     HOST: str = "0.0.0.0"
@@ -316,7 +324,7 @@ class Settings(BaseSettings):
           (o `CORS_ORIGINS`/`ALLOWED_ORIGINS`/`FRONTEND_URL`), usa quelli.
         - Se non c'è nulla di esplicito e le credenziali sono attive,
           NON aprire a `*`: restituisci lista vuota (nessun sito esterno
-          autorizzato) e logga un warning, così l'app resta chiusa finché
+          autorizzato) e logga un warning, cosi l'app resta chiusa finché
           non si imposta il dominio reale.
         - `*` è concesso solo quando le credenziali sono disattivate.
 
@@ -411,9 +419,10 @@ class Settings(BaseSettings):
                 logger.warning(f"⚠️ {msg}")
 
         backend = self.DATA_BACKEND.strip().lower()
-        # Production runtime supports only 'sheets'. Any other value is invalid.
-        if backend != "sheets":
-            errors.append("DATA_BACKEND non supportato: il runtime corrente supporta solo 'sheets' (Google Sheets/Drive).")
+        # Production runtime supports 'sheets' (storico) e 'supabase' (Postgres
+        # reale). Qualunque altro valore resta invalido.
+        if backend not in ("sheets", "supabase"):
+            errors.append("DATA_BACKEND non supportato: il runtime corrente supporta 'sheets' (Google Sheets/Drive) o 'supabase' (Postgres).")
 
         # Check database configuration for Sheets. Sheets is the operational backend;
         # absence of sheets configuration is a production error.
@@ -429,6 +438,16 @@ class Settings(BaseSettings):
                     errors.append(msg)
                 else:
                     logger.error(msg)
+
+        if backend == "supabase" and not (self.SUPABASE_DB_URL or "").strip():
+            msg = (
+                "DATA_BACKEND=supabase richiede SUPABASE_DB_URL (connection string "
+                "Postgres del progetto Supabase); non esiste fallback di persistenza."
+            )
+            if fail_fast:
+                errors.append(msg)
+            else:
+                logger.error(msg)
 
         if self.is_production and not (self.SHEETS_REGISTRY_NAME or "").strip():
             msg = "SHEETS_REGISTRY_NAME non configurato in produzione."
