@@ -683,6 +683,31 @@ def start_scheduler():
         except Exception as e:
             logger.error(f"[SCHEDULER-BONIFICI-PDF] errore: {e}")
 
+    # ── SumUp: sincronizzazione indipendente ogni 30 minuti ────────────────
+    # Prima faceva parte di _automazioni_prima_nota_job: se quel giro si
+    # allungava (es. smaltimento di un arretrato di riconciliazione), SumUp
+    # restava bloccata in coda insieme a tutto il resto. Ora ha un lock e un
+    # orario tutti suoi, cosi' la sincronizzazione SumUp non dipende piu'
+    # dalla durata delle altre automazioni.
+    async def _sumup_sync_job():
+        from app.database import Database
+        from app.services import sumup_sync
+
+        try:
+            oggi = datetime.now().date()
+            r = await sumup_sync.sincronizza(
+                Database.get_db(), (oggi - timedelta(days=30)).isoformat(), oggi.isoformat()
+            )
+            logger.info(
+                "[SCHEDULER-SUMUP] giornate=%s lordo=%s netto=%s",
+                len(r.get("giornate") or []), r.get("totale_lordo", 0),
+                r.get("totale_netto", 0),
+            )
+        except sumup_sync.SumUpNonConfigurato:
+            logger.info("[SCHEDULER-SUMUP] credenziali non configurate")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-SUMUP] errore: {e}")
+
     # ── Automazioni Prima Nota: le ex funzioni "manuali" girano da sole ────
     # 1. corrispettivi → prima nota cassa (idempotente)
     # 2. fatture provvisorie → cassa/banca secondo il metodo fornitore
@@ -690,24 +715,6 @@ def start_scheduler():
     async def _automazioni_prima_nota_job():
         from datetime import datetime as _dt
         anno_corrente = _dt.now().year
-        try:
-            from datetime import timedelta as _td
-            from app.database import Database
-            from app.services import sumup_sync
-
-            oggi = _dt.now().date()
-            r = await sumup_sync.sincronizza(
-                Database.get_db(), (oggi - _td(days=30)).isoformat(), oggi.isoformat()
-            )
-            logger.info(
-                "[SCHEDULER-SUMUP-PN] giornate=%s lordo=%s netto=%s",
-                len(r.get("giornate") or []), r.get("totale_lordo", 0),
-                r.get("totale_netto", 0),
-            )
-        except sumup_sync.SumUpNonConfigurato:
-            logger.info("[SCHEDULER-SUMUP-PN] credenziali non configurate")
-        except Exception as e:
-            logger.error(f"[SCHEDULER-SUMUP-PN] errore: {e}")
         try:
             from app.database import Database
             from app.services.scritture_contabili import bonifica_accrediti_pos_numia
@@ -812,6 +819,13 @@ def start_scheduler():
         except Exception as e:
             logger.error(f"[SCHEDULER-PAYPAL-ASSOCIA] errore: {e}")
 
+    scheduler.add_job(
+        _sumup_sync_job,
+        'interval', minutes=30,
+        next_run_time=avvio + timedelta(minutes=3),
+        id="sumup_sync", name="Sincronizzazione SumUp (ogni 30 min)",
+        replace_existing=True,
+    )
     scheduler.add_job(
         _scan_gmail_verbali_job,
         'interval', minutes=30,
