@@ -31,11 +31,24 @@ class Database:
         """
         try:
             backend = settings.DATA_BACKEND.strip().lower()
-            if backend != "sheets":
+            if backend not in ("sheets", "supabase"):
                 raise RuntimeError(
-                    "DATA_BACKEND non supportato. Usare DATA_BACKEND=sheets "
-                    "e configurare GOOGLE_SHEETS_LEDGER_ID o GOOGLE_SHEETS_LEDGER_FOLDER_ID."
+                    "DATA_BACKEND non supportato. Usare 'sheets' (con "
+                    "GOOGLE_SHEETS_LEDGER_ID/GOOGLE_SHEETS_LEDGER_FOLDER_ID) oppure "
+                    "'supabase' (con SUPABASE_DB_URL)."
                 )
+
+            if backend == "supabase":
+                from app.services.supabase_runtime_database import SupabaseRuntimeDatabase
+
+                runtime = SupabaseRuntimeDatabase(settings.DB_NAME, {
+                    "SUPABASE_DB_URL": settings.SUPABASE_DB_URL,
+                })
+                await runtime.hydrate()
+                cls.client = runtime
+                cls.db = runtime
+                logger.info("Connected to Supabase (Postgres) ledger")
+                return
 
             # Sheets runtime
             from app.services.sheets_runtime_database import SheetsRuntimeDatabase
@@ -57,7 +70,7 @@ class Database:
             return
 
         except Exception as e:
-            logger.error("Connessione al registro Drive/Sheets fallita: %s", e)
+            logger.error("Connessione al registro dati fallita: %s", e)
             raise
 
     @classmethod
