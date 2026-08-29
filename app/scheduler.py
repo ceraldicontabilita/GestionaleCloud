@@ -815,6 +815,7 @@ def start_scheduler():
     scheduler.add_job(
         _scan_gmail_verbali_job,
         'interval', minutes=30,
+        next_run_time=avvio + timedelta(minutes=6),
         id="scan_gmail_verbali", name="Scan Gmail Verbali CdS (ogni 30 min)",
         replace_existing=True,
     )
@@ -877,6 +878,7 @@ def start_scheduler():
     scheduler.add_job(
         _link_verbali_fatture_job,
         'interval', minutes=60,
+        next_run_time=avvio + timedelta(minutes=9),
         id="link_verbali_fatture", name="Link Verbali ↔ Fatture (ogni 60 min)",
         replace_existing=True,
     )
@@ -974,6 +976,7 @@ def start_scheduler():
     scheduler.add_job(
         _mittenti_email_job,
         'interval', hours=1,
+        next_run_time=avvio + timedelta(minutes=27),
         id="mittenti_email_sync",
         name="Documenti da mittenti email attendibili: fatture estere XML + altri tipi (ogni ora)",
         replace_existing=True,
@@ -993,6 +996,7 @@ def start_scheduler():
     scheduler.add_job(
         _drive_documenti_job,
         'interval', minutes=15,
+        next_run_time=avvio + timedelta(minutes=11),
         id="drive_documenti_ingest",
         name="Verifica indice documentale Drive in sola lettura (ogni 15 minuti)",
         replace_existing=True,
@@ -1128,11 +1132,17 @@ def start_scheduler():
     scheduler.add_job(
         _automazioni_prima_nota_job,
         'interval', minutes=30,
+        # Sfasato rispetto agli altri job da 30/60 minuti (scan_gmail_verbali,
+        # google_sheets_ledger_sync) cosi' non competono mai per il lock Sheets
+        # nello stesso istante: prima di questa modifica il job restava sempre
+        # rinviato ("un'altra automazione Sheets e' in esecuzione") perche' partiva
+        # sempre allo stesso secondo di un altro job da 30 minuti.
+        next_run_time=avvio + timedelta(minutes=13),
         id="automazioni_prima_nota",
         name="Automazioni Prima Nota: corrispettivi + provvisori + riconciliazione (ogni 30 min)",
         # Non eseguire il giro completo durante lo startup: l'idratazione
         # Drive/Sheets e le automazioni insieme superano la memoria del piano
-        # Render Starter. Il primo giro segue il normale intervallo.
+        # Render Starter. Il primo giro segue il normale intervallo (sfasato, v. sopra).
         replace_existing=True,
     )
 
@@ -1166,6 +1176,7 @@ def start_scheduler():
     scheduler.add_job(
         _google_sheets_ledger_job,
         'interval', minutes=30,
+        next_run_time=avvio + timedelta(minutes=23),
         id="google_sheets_ledger_sync",
         name="Registro Google Sheets portabile (ogni 30 minuti)",
         replace_existing=True,
@@ -1308,6 +1319,7 @@ def start_scheduler():
         gmail_full_scan_task,
         'interval',
         hours=1,
+        next_run_time=avvio + timedelta(minutes=35),
         id="gmail_full_scan",
         name="Gmail Full Scan Multi-Cartella (ogni ora)",
         replace_existing=True
