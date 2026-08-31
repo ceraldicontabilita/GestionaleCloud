@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1170 · tenere: 770 · verificare: 373 · admin-only (migrazione/manutenzione): 27
+**Totale endpoint:** 1173 · tenere: 771 · verificare: 373 · admin-only (migrazione/manutenzione): 29
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -61,6 +61,8 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `DELETE /api/admin/rollback/{sezione}` | admin_rollback | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/admin/rollback/{sezione}/conta` | admin_rollback | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/admin/stats` | admin | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/admin/supabase-migration/jobs` | admin | sì | — | — | sì | sì | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
+| `GET /api/admin/supabase-migration/jobs/{job_id}` | admin | sì | — | — | sì | sì | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
 | `GET /api/admin/year-opening-balances/{year}` | admin | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `PUT /api/admin/year-opening-balances/{year}` | admin | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/agenti/automazioni/ferma` | agenti | sì | — | — | — | — | tenere | in uso: FE |
@@ -419,6 +421,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/documenti/drive/fiscal/discover` | documenti | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/documenti/drive/fiscal/status` | documenti | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/documenti/drive/fiscal/sync` | documenti | sì | — | — | — | sì | tenere | in uso: FE |
+| `GET /api/documenti/drive/folders` | documenti | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/documenti/drive/index/declarations` | documenti | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/documenti/drive/index/document/{document_id}` | documenti | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/documenti/drive/index/f24` | documenti | sì | — | — | — | — | tenere | in uso: FE |

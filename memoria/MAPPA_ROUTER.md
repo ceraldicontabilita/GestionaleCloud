@@ -1,13 +1,13 @@
 # MAPPA ROUTER — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py — leggendo la route table reale di `register_all_routers`.
-> Totale **1170 endpoint** in **113 prefissi**.
+> Totale **1173 endpoint** in **113 prefissi**.
 
 Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app collegata / webhook / chatbot / scheduler / API pubblica) · `—` nessun riferimento noto (candidato verifica).
 
 | Prefisso | Endpoint | FE | Moduli (file router) |
 |---|---:|:-:|---|
-| `/api/admin` | 32 | ✓ | admin, admin_export, admin_rollback |
+| `/api/admin` | 34 | ✓ | admin, admin_export, admin_rollback |
 | `/api/agenti` | 16 | ext | agenti |
 | `/api/ai-parser` | 11 | ext | ai_parser |
 | `/api/alerts` | 7 | ✓ | alerts |
@@ -44,7 +44,7 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/dipendenti` | 28 | ✓ | employees.dipendenti |
 | `/api/dizionario-articoli` | 11 | ✓ | warehouse.dizionario_articoli |
 | `/api/document-ai` | 10 | — | document_ai |
-| `/api/documenti` | 51 | ✓ | documenti |
+| `/api/documenti` | 52 | ✓ | documenti |
 | `/api/documenti-fiscali` | 3 | ✓ | documenti_fiscali |
 | `/api/documenti-inbox` | 5 | ✓ | documents_inbox_classify |
 | `/api/documenti-non-associati` | 9 | ✓ | documenti_non_associati |

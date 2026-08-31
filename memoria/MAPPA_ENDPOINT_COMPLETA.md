@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1170 endpoint** in **113 gruppi**.
+> Totale **1173 endpoint** in **113 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 725 · ext esterni = 81 · — da verificare = 364
+**Riepilogo uso:** ✓ frontend = 728 · ext esterni = 81 · — da verificare = 364
 
 ## AI Parser  (11)
 
@@ -53,7 +53,7 @@
 | PUT | `/api/warehouse/products/{product_id}` | ✓ | public_api |
 | DELETE | `/api/warehouse/products/{product_id}` | ✓ | public_api |
 
-## Admin  (23)
+## Admin  (25)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -78,6 +78,8 @@
 | POST | `/api/admin/noleggio/backfill-dati-gestionali` | — | admin |
 | POST | `/api/admin/reset-collections` | — | admin |
 | GET | `/api/admin/stats` | ✓ | admin |
+| POST | `/api/admin/supabase-migration/jobs` | ✓ | admin |
+| GET | `/api/admin/supabase-migration/jobs/{job_id}` | ✓ | admin |
 | GET | `/api/admin/year-opening-balances/{year}` | — | admin |
 | PUT | `/api/admin/year-opening-balances/{year}` | — | admin |
 
@@ -594,7 +596,7 @@
 | POST | `/api/document-ai/process-classified-email` | — | document_ai |
 | POST | `/api/document-ai/reprocess-and-save` | — | document_ai |
 
-## Documenti  (51)
+## Documenti  (52)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -612,6 +614,7 @@
 | POST | `/api/documenti/drive/fiscal/discover` | — | documenti |
 | GET | `/api/documenti/drive/fiscal/status` | — | documenti |
 | POST | `/api/documenti/drive/fiscal/sync` | — | documenti |
+| GET | `/api/documenti/drive/folders` | ✓ | documenti |
 | GET | `/api/documenti/drive/index/declarations` | ✓ | documenti |
 | GET | `/api/documenti/drive/index/document/{document_id}` | — | documenti |
 | GET | `/api/documenti/drive/index/f24` | ✓ | documenti |
