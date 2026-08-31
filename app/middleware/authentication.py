@@ -14,6 +14,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from jose import jwt, JWTError
 import hmac
 import logging
+import os
 
 from app.config import settings
 from app.utils.session_cookie import SESSION_COOKIE_SECURE
@@ -24,6 +25,8 @@ RENDER_INGEST_PATHS = {
     "/api/documenti/upload-auto/render/preview",
     "/api/documenti/upload-auto/render",
 }
+
+LOTTI_INTEGRATION_PREFIX = "/api/integrations/lotti/"
 
 # Paths that don't require authentication
 PUBLIC_PATHS = {
@@ -117,6 +120,30 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             request.state.user_email = "render-document-ingest@internal"
             request.state.user_role = "admin"
             request.state.auth_method = "render_shared_secret"
+            return await call_next(request)
+
+        # Il ponte Lotti e' un canale macchina-a-macchina: non ha una
+        # sessione utente JWT, ma non e' pubblico. Il middleware valida qui
+        # la stessa chiave privata che il router ricontrolla prima di leggere
+        # le fatture, cosi' nessun endpoint del prefisso puo' bypassare
+        # accidentalmente l'autenticazione globale.
+        if path.startswith(LOTTI_INTEGRATION_PREFIX):
+            expected = (os.environ.get("LOTTI_INTEGRATION_KEY") or "").strip()
+            supplied = request.headers.get("X-Lotti-Key", "").strip()
+            if not expected:
+                return JSONResponse(
+                    status_code=503,
+                    content={"detail": "Integrazione Lotti non configurata"},
+                )
+            if not supplied or not hmac.compare_digest(supplied, expected):
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "Chiave integrazione Lotti non valida"},
+                )
+            request.state.user_id = "lotti-integration"
+            request.state.user_email = "lotti-integration@internal"
+            request.state.user_role = "admin"
+            request.state.auth_method = "lotti_shared_secret"
             return await call_next(request)
         
         # Allow public paths
