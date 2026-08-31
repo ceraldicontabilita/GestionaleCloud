@@ -664,7 +664,7 @@ si rigenerano dal codice e non si correggono a mano.
 | `LOG_FILE` | app-runtime | configurazione | `Optional[Path]` / `None` | `app/config.py` |
 | `LOG_FORMAT` | app-runtime | configurazione | `str` / `'json'` | `app/config.py` |
 | `LOG_LEVEL` | app-runtime | configurazione | `str` / `'INFO'` | `app/config.py` |
-| `LOTTI_INTEGRATION_KEY` | app-runtime | configurazione | non dichiarato in Settings | `app/routers/lotti_integration.py` |
+| `LOTTI_INTEGRATION_KEY` | app-runtime | configurazione | non dichiarato in Settings | `app/routers/lotti_integration.py`, `render.yaml` |
 | `MAX_CONCURRENT_IMPORTS` | app-runtime | configurazione | `int` / `5` | `app/config.py` |
 | `MAX_UPLOAD_SIZE_MB` | app-runtime | configurazione | `int` / `50` | `app/config.py` |
 | `NODE_ENV` | app-runtime | configurazione | non dichiarato in Settings | `frontend/plugins/health-check/health-endpoints.js` |
@@ -763,7 +763,7 @@ Gli alias senza valore vanno configurati nel secret/config store di Render. Non 
 
 ## Appendice D — Tutti i router e tutti gli endpoint
 
-Route table sorgente: **1170**; attivi da ricreare: **770**; quarantena: **400** (`verificare` 373, `admin-only` 27).
+Route table sorgente: **1173**; attivi da ricreare: **771**; quarantena: **402** (`verificare` 373, `admin-only` 29).
 
 `attivo` significa da ricreare con contratto e test; `quarantena` significa non esporre nel nuovo runtime finché consumer, autorizzazione e test non sono provati. L'elenco è completo e include entrambe le categorie.
 
@@ -870,7 +870,7 @@ Route table sorgente: **1170**; attivi da ricreare: **770**; quarantena: **400**
 - **attivo** — `POST /api/regole/fornitore` — in uso: FE
 - **attivo** — `POST /api/regole/upload-regole` — in uso: FE
 
-### Router `admin` (23)
+### Router `admin` (25)
 
 - **attivo** — `GET /api/admin/bank-supplier-rules` — in uso: FE
 - **attivo** — `POST /api/admin/bank-supplier-rules` — in uso: FE
@@ -893,6 +893,8 @@ Route table sorgente: **1170**; attivi da ricreare: **770**; quarantena: **400**
 - **quarantena: admin-only** — `POST /api/admin/noleggio/backfill-dati-gestionali` — endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7)
 - **quarantena: admin-only** — `POST /api/admin/reset-collections` — endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7)
 - **attivo** — `GET /api/admin/stats` — in uso: FE
+- **quarantena: admin-only** — `POST /api/admin/supabase-migration/jobs` — endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7)
+- **quarantena: admin-only** — `GET /api/admin/supabase-migration/jobs/{job_id}` — endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7)
 - **quarantena: verificare** — `GET /api/admin/year-opening-balances/{year}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **quarantena: verificare** — `PUT /api/admin/year-opening-balances/{year}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 
@@ -1224,7 +1226,7 @@ Route table sorgente: **1170**; attivi da ricreare: **770**; quarantena: **400**
 - **quarantena: verificare** — `POST /api/document-ai/process-classified-email` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **quarantena: verificare** — `POST /api/document-ai/reprocess-and-save` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 
-### Router `documenti` (51)
+### Router `documenti` (52)
 
 - **attivo** — `GET /api/documenti/amministrativi` — in uso: FE
 - **attivo** — `GET /api/documenti/amministrativi/familiari` — in uso: FE
@@ -1240,6 +1242,7 @@ Route table sorgente: **1170**; attivi da ricreare: **770**; quarantena: **400**
 - **attivo** — `POST /api/documenti/drive/fiscal/discover` — in uso: FE
 - **attivo** — `GET /api/documenti/drive/fiscal/status` — in uso: FE
 - **attivo** — `POST /api/documenti/drive/fiscal/sync` — in uso: FE
+- **attivo** — `GET /api/documenti/drive/folders` — in uso: FE
 - **attivo** — `GET /api/documenti/drive/index/declarations` — in uso: FE
 - **attivo** — `GET /api/documenti/drive/index/document/{document_id}` — in uso: FE
 - **attivo** — `GET /api/documenti/drive/index/f24` — in uso: FE
