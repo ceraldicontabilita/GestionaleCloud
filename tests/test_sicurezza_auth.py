@@ -13,7 +13,11 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from app.middleware.authentication import PUBLIC_PATHS, PUBLIC_PREFIXES
+from app.middleware.authentication import (
+    LOTTI_INTEGRATION_PREFIX,
+    PUBLIC_PATHS,
+    PUBLIC_PREFIXES,
+)
 
 
 class TestPublicPaths:
@@ -97,6 +101,37 @@ class TestPublicPrefixes:
     def test_bank_non_pubblico(self):
         """Banca non deve essere pubblica."""
         assert "/api/bank/" not in PUBLIC_PREFIXES
+
+    def test_ponte_lotti_non_e_un_prefisso_pubblico(self):
+        assert LOTTI_INTEGRATION_PREFIX not in PUBLIC_PREFIXES
+
+
+def test_ponte_lotti_accetta_solo_la_chiave_macchina(monkeypatch):
+    """La route server-to-server passa il middleware solo con la chiave esatta."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from app.middleware.authentication import AuthenticationMiddleware
+
+    monkeypatch.setenv("LOTTI_INTEGRATION_KEY", "chiave-test-lotti")
+    app = FastAPI()
+    app.add_middleware(AuthenticationMiddleware)
+
+    @app.get("/api/integrations/lotti/prova")
+    async def prova():
+        return {"ok": True}
+
+    with TestClient(app) as client:
+        assert client.get("/api/integrations/lotti/prova").status_code == 401
+        assert client.get(
+            "/api/integrations/lotti/prova",
+            headers={"X-Lotti-Key": "sbagliata"},
+        ).status_code == 401
+        accepted = client.get(
+            "/api/integrations/lotti/prova",
+            headers={"X-Lotti-Key": "chiave-test-lotti"},
+        )
+        assert accepted.status_code == 200
+        assert accepted.json() == {"ok": True}
 
 
 class TestAllowlistCongelata:
