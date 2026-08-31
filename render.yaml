@@ -51,6 +51,10 @@ services:
         sync: false
       - key: CREDENTIALS_ENCRYPTION_KEY
         sync: false
+      # Chiave server-to-server usata esclusivamente dalla proiezione read-only
+      # delle fatture verso Lotti. Il valore resta nella dashboard Render.
+      - key: LOTTI_INTEGRATION_KEY
+        sync: false
       - key: SUMUP_API_KEY
         sync: false
       - key: SUMUP_MERCHANT_CODE
