@@ -76,3 +76,30 @@ def test_projection_fails_closed_without_secret(sheet_db, monkeypatch):
             anno=2026, skip=0, limit=50, x_lotti_key="anything"
         ))
     assert exc.value.status_code == 503
+
+
+def test_employee_projection_uses_stable_identity_and_filters_inactive(sheet_db, monkeypatch):
+    monkeypatch.setenv("LOTTI_INTEGRATION_KEY", "secret-test")
+    run(sheet_db["dipendenti"].insert_many([
+        {
+            "id": "dip-1", "nome": "Anna", "cognome": "Rossi",
+            "codice_fiscale": "rssnna00a00f839x", "mansione": "Pasticcere",
+            "attivo": True, "in_carico": True,
+        },
+        {"id": "dip-2", "nome_completo": "Mario Verdi", "attivo": False},
+        {"id": "dip-3", "nome_completo": "Record unificato", "merged_into": "dip-1"},
+    ]))
+
+    result = run(lotti_integration.list_employees_for_lotti("secret-test"))
+
+    assert result["total"] == 1
+    assert result["data"] == [{
+        "source_id": "dip-1",
+        "nome": "Anna",
+        "cognome": "Rossi",
+        "nome_completo": "Anna Rossi",
+        "codice_fiscale": "RSSNNA00A00F839X",
+        "mansione": "Pasticcere",
+        "matricola": "",
+        "source": "gestionalecloud",
+    }]
