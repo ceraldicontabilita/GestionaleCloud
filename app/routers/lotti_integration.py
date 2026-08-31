@@ -1,9 +1,8 @@
-"""Proiezione read-only delle fatture Sheets per CeraldiApp/Lotti.
+"""Proiezione read-only dei dati GestionaleCloud necessari a CeraldiApp/Lotti.
 
-GestionaleCloud resta l'unico punto che legge e indicizza Drive. Lotti riceve
-solo documenti gia' idratati dal registro Google Sheets e li importa con un
-identificativo e un hash stabili. In questo modo un secondo giro non duplica
-fatture, lotti o giacenze.
+GestionaleCloud resta proprietario dei dati contabili e del personale. Lotti
+riceve soltanto proiezioni con identificativi stabili e conserva la propria
+copia operativa su Supabase, senza dipendere da Drive o fogli di calcolo.
 """
 
 from __future__ import annotations
@@ -97,7 +96,7 @@ def _projection(document: dict[str, Any], *, include_xml: bool) -> dict[str, Any
         "document_type": _text(document.get("tipo_documento") or "TD01"),
         "lines": _portable(lines if isinstance(lines, list) else []),
         "has_xml": bool(xml_raw),
-        "source": "gestionalecloud_sheets",
+        "source": "gestionalecloud",
     }
     hash_payload = dict(projected)
     hash_payload["xml_sha256"] = hashlib.sha256(xml_raw.encode("utf-8")).hexdigest() if xml_raw else ""
@@ -129,6 +128,50 @@ async def _documents() -> list[dict[str, Any]]:
     ]
 
 
+async def _employees() -> list[dict[str, Any]]:
+    db = Database.get_db()
+    docs = await db["dipendenti"].find(
+        {
+            "merged_into": {"$exists": False},
+            "attivo": {"$ne": False},
+            "in_carico": {"$ne": False},
+        },
+        {
+            "_id": 0, "id": 1, "nome": 1, "cognome": 1,
+            "nome_completo": 1, "codice_fiscale": 1, "mansione": 1,
+            "qualifica": 1, "matricola": 1, "codice_dipendente": 1,
+        },
+    ).to_list(1000)
+    result = []
+    seen = set()
+    for doc in docs:
+        employee_id = _text(doc.get("id"))
+        fiscal_code = _text(doc.get("codice_fiscale")).upper()
+        if not employee_id:
+            continue
+        dedup_key = fiscal_code or employee_id
+        if dedup_key in seen:
+            continue
+        seen.add(dedup_key)
+        full_name = _text(doc.get("nome_completo"))
+        first_name = _text(doc.get("nome"))
+        last_name = _text(doc.get("cognome"))
+        if not full_name:
+            full_name = " ".join(x for x in (first_name, last_name) if x)
+        result.append({
+            "source_id": employee_id,
+            "nome": first_name or full_name,
+            "cognome": last_name,
+            "nome_completo": full_name,
+            "codice_fiscale": fiscal_code,
+            "mansione": _text(doc.get("mansione") or doc.get("qualifica")),
+            "matricola": _text(doc.get("matricola") or doc.get("codice_dipendente")),
+            "source": "gestionalecloud",
+        })
+    result.sort(key=lambda item: (item["nome_completo"].casefold(), item["source_id"]))
+    return result
+
+
 @router.get("/invoices")
 async def list_invoices_for_lotti(
     anno: Optional[int] = Query(None, ge=2000, le=2100),
@@ -136,7 +179,7 @@ async def list_invoices_for_lotti(
     limit: int = Query(200, ge=1, le=500),
     x_lotti_key: Optional[str] = Header(None, alias="X-Lotti-Key"),
 ) -> dict[str, Any]:
-    """Elenco paginato senza XML, letto dalla collection Sheets ``invoices``."""
+    """Elenco paginato delle fatture disponibili per Lotti."""
     _authorized(x_lotti_key)
     projected = [_projection(doc, include_xml=False) for doc in await _documents()]
     if anno is not None:
@@ -151,9 +194,19 @@ async def get_invoice_for_lotti(
     source_id: str,
     x_lotti_key: Optional[str] = Header(None, alias="X-Lotti-Key"),
 ) -> dict[str, Any]:
-    """Dettaglio con XML originale, sempre proveniente dal record Sheets."""
+    """Dettaglio della fattura con XML originale quando disponibile."""
     _authorized(x_lotti_key)
     for document in await _documents():
         if _source_id(document) == source_id:
             return _projection(document, include_xml=True)
     raise HTTPException(status_code=404, detail="Fattura non trovata")
+
+
+@router.get("/employees")
+async def list_employees_for_lotti(
+    x_lotti_key: Optional[str] = Header(None, alias="X-Lotti-Key"),
+) -> dict[str, Any]:
+    """Dipendenti attivi con ID GestionaleCloud e codice fiscale verificabile."""
+    _authorized(x_lotti_key)
+    data = await _employees()
+    return {"data": data, "total": len(data), "source": "gestionalecloud"}
