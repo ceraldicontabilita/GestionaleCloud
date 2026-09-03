@@ -1,52 +1,39 @@
-"""Runtime Supabase (Postgres) del gestionale.
+"""Runtime documentale Supabase del gestionale.
 
-Sostituto write-through di ``SheetsRuntimeDatabase``: stesso modello
-documentale (una "collezione" e' un insieme di documenti JSON, interrogati
-in memoria con la stessa semantica find/update_one/insert_one già usata da
-tutto il codice applicativo), ma persistito su una tabella Postgres reale
-(``gestionale.documents``) invece che su Google Sheets.
+Mantiene la stessa interfaccia in memoria del precedente registro Sheets, ma
+persiste ogni modifica nella tabella privata ``gestionale.documents``. Il
+server non usa la password Postgres né la service-role: chiama esclusivamente
+quattro RPC minimali protette da una chiave applicativa separata, conservata
+nel secret store di Render.
 
-Deliberatamente NON cambia la semantica di interrogazione: all'avvio l'intera
-collezione viene caricata in memoria (come oggi con Sheets) e ogni mutazione
-viene scritta subito su Postgres. Questo rende lo scambio di backend a basso
-rischio — la logica applicativa esistente (fuzzy matching fornitori,
-classificazione movimenti bancari, regole F24/IVA, ecc.) non cambia di una
-riga. Una futura ottimizzazione (query SQL dirette su jsonb invece di
-caricare tutto in RAM) è possibile in un secondo momento, senza toccare
-ancora il resto del codice, cambiando solo questa classe.
-
-ATTENZIONE — non ancora verificato contro il progetto Supabase reale da
-questa sessione: qui non è disponibile la connection string (va impostata
-solo su Render, mai in questo codice o in chat). Prima di usarlo in
-produzione: test con dati reali, `python -m pytest -q`, verifica live di
-almeno una collezione critica (es. `estratto_conto_movimenti`) in modalità
-lettura, poi cutover secondo la checklist di CLAUDE.md.
+La logica applicativa resta invariata: all'avvio i documenti vengono idratati
+in memoria e le mutazioni sono propagate immediatamente a Supabase. Gli
+upsert sono idempotenti sulla coppia ``(collection, id)``.
 """
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from typing import Any
 
-from app.services.sheets_document_store import SheetDatabase, SheetTable
+import aiohttp
 
-try:
-    import asyncpg
-except ImportError:  # pragma: no cover - dipendenza opzionale finché non attivata
-    asyncpg = None
+from app.services.sheets_document_store import SheetDatabase
 
 logger = logging.getLogger(__name__)
 
-_SCHEMA = "gestionale"
-_TABLE = f"{_SCHEMA}.documents"
+_PAGE_SIZE = 1000
+_WRITE_CHUNK_SIZE = 200
 
 
 def _json_default(value: Any) -> str:
     from datetime import date, datetime
     from decimal import Decimal
+
     if isinstance(value, (datetime, date)):
         return value.isoformat()
     if isinstance(value, Decimal):
@@ -54,89 +41,155 @@ def _json_default(value: Any) -> str:
     return str(value)
 
 
-def _encode(document: dict[str, Any]) -> str:
-    payload = {k: v for k, v in document.items() if k != "_id"}
-    return json.dumps(payload, ensure_ascii=False, default=_json_default)
+def _normalise_document(document: dict[str, Any]) -> dict[str, Any]:
+    """Converte il documento nello stesso JSON che verra' salvato da Postgres."""
+    return json.loads(json.dumps(document, ensure_ascii=False, default=_json_default))
+
+
+def documents_digest(documents: list[dict[str, Any]]) -> str:
+    """Impronta deterministica usata per il collaudo della migrazione."""
+    canonical = [
+        json.dumps(
+            _normalise_document(document),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        for document in sorted(documents, key=lambda item: str(item.get("_id", "")))
+    ]
+    return hashlib.sha256("\n".join(canonical).encode("utf-8")).hexdigest()
 
 
 class SupabaseRuntimeDatabase(SheetDatabase):
-    """Archivio documentale con persistenza write-through su Postgres/Supabase."""
+    """Archivio documentale con persistenza write-through su Supabase."""
 
     def __init__(self, name: str, config: dict[str, Any]):
         super().__init__(name, mutation_hook=self._write_through)
-        if asyncpg is None:
-            raise RuntimeError(
-                "Pacchetto 'asyncpg' mancante: aggiungerlo a backend/requirements.txt "
-                "prima di usare DATA_BACKEND=supabase."
+        self._url = str(config.get("SUPABASE_URL") or "").strip().rstrip("/")
+        self._publishable_key = str(
+            config.get("SUPABASE_PUBLISHABLE_KEY") or ""
+        ).strip()
+        self._runtime_secret = str(
+            config.get("SUPABASE_RUNTIME_SECRET") or ""
+        ).strip()
+        missing = [
+            name
+            for name, value in (
+                ("SUPABASE_URL", self._url),
+                ("SUPABASE_PUBLISHABLE_KEY", self._publishable_key),
+                ("SUPABASE_RUNTIME_SECRET", self._runtime_secret),
             )
-        self._dsn = str(config.get("SUPABASE_DB_URL") or "").strip()
-        if not self._dsn:
-            raise RuntimeError("SUPABASE_DB_URL mancante per il runtime Supabase.")
-        self._pool: "asyncpg.Pool | None" = None
+            if not value
+        ]
+        if missing:
+            raise RuntimeError(
+                "Configurazione runtime Supabase incompleta: " + ", ".join(missing)
+            )
+
+        self._session: aiohttp.ClientSession | None = None
         self._known_collections: set[str] = set()
         self._remote_write_lock = asyncio.Lock()
         self._write_batch: ContextVar[dict[str, dict[str, Any]] | None] = (
             ContextVar(f"supabase_write_batch_{id(self)}", default=None)
         )
 
-    async def _get_pool(self) -> "asyncpg.Pool":
-        if self._pool is None:
-            # statement_cache_size=0: i pgbouncer/pooler di Supabase in modalità
-            # transazione non supportano prepared statement persistenti.
-            self._pool = await asyncpg.create_pool(
-                dsn=self._dsn, min_size=1, max_size=10, statement_cache_size=0,
+    async def _get_session(self) -> aiohttp.ClientSession:
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=120),
+                headers={
+                    "apikey": self._publishable_key,
+                    "x-gc-api-key": self._runtime_secret,
+                    "Content-Type": "application/json",
+                },
             )
-        return self._pool
+        return self._session
+
+    async def _rpc(self, function_name: str, payload: dict[str, Any]) -> Any:
+        session = await self._get_session()
+        url = f"{self._url}/rest/v1/rpc/{function_name}"
+        async with session.post(url, json=payload) as response:
+            body = await response.text()
+            if response.status >= 400:
+                try:
+                    detail = (json.loads(body).get("message") or "errore remoto")[:240]
+                except (TypeError, ValueError, AttributeError):
+                    detail = "errore remoto"
+                raise RuntimeError(
+                    f"Supabase RPC {function_name} fallita "
+                    f"(HTTP {response.status}): {detail}"
+                )
+            if not body:
+                return None
+            return json.loads(body)
+
+    async def _manifest(self) -> list[dict[str, Any]]:
+        result = await self._rpc("gc_collection_manifest", {})
+        if not isinstance(result, list):
+            raise RuntimeError("Manifest Supabase non valido")
+        return result
+
+    async def _fetch_collection_documents(
+        self, collection_name: str, *, expected_count: int | None = None,
+    ) -> list[dict[str, Any]]:
+        documents: list[dict[str, Any]] = []
+        offset = 0
+        while expected_count is None or offset < expected_count:
+            page = await self._rpc(
+                "gc_fetch_collection",
+                {
+                    "p_collection": collection_name,
+                    "p_offset": offset,
+                    "p_limit": _PAGE_SIZE,
+                },
+            )
+            if not isinstance(page, list):
+                raise RuntimeError(
+                    f"Risposta Supabase non valida per {collection_name}"
+                )
+            documents.extend(page)
+            if len(page) < _PAGE_SIZE:
+                break
+            offset += len(page)
+        return documents
 
     async def hydrate(self) -> dict[str, Any]:
-        """Carica ogni collezione presente su Postgres nella cache in memoria.
-
-        Stesso contratto di ``SheetsRuntimeDatabase.hydrate()``: al termine,
-        ``self[collection]`` risponde a find/update_one/insert_one dalla
-        cache, con ogni scrittura successiva propagata subito su Postgres.
-        """
-        pool = await self._get_pool()
+        """Carica tutte le collezioni Supabase nella cache applicativa."""
+        manifest = await self._manifest()
         self.loading = True
         totale_righe = 0
         dettaglio: list[dict[str, Any]] = []
         try:
-            async with pool.acquire() as conn:
-                collections = [
-                    r["collection"] for r in await conn.fetch(
-                        f"SELECT DISTINCT collection FROM {_TABLE} ORDER BY collection"
+            for item in manifest:
+                collection_name = str(item.get("collection") or "").strip()
+                expected_count = int(item.get("row_count") or 0)
+                if not collection_name:
+                    continue
+                documents = await self._fetch_collection_documents(
+                    collection_name, expected_count=expected_count,
+                )
+                if len(documents) != expected_count:
+                    raise RuntimeError(
+                        f"Idratazione incompleta per {collection_name}: "
+                        f"attese {expected_count}, lette {len(documents)}"
                     )
-                ]
-                for collection_name in collections:
-                    rows = await conn.fetch(
-                        f"SELECT id, data FROM {_TABLE} WHERE collection = $1",
-                        collection_name,
+                if documents:
+                    await self[collection_name].hydrate_documents(
+                        documents, copy_documents=False,
                     )
-                    documents = []
-                    errori = 0
-                    for row in rows:
-                        try:
-                            payload = json.loads(row["data"])
-                        except (TypeError, ValueError):
-                            errori += 1
-                            continue
-                        payload["_id"] = row["id"]
-                        documents.append(payload)
-                    if documents:
-                        await self[collection_name].hydrate_documents(
-                            documents, copy_documents=False,
-                        )
-                    self._known_collections.add(collection_name)
-                    totale_righe += len(documents)
-                    dettaglio.append({
-                        "collezione": collection_name,
-                        "valide": len(documents),
-                        "numero_errori": errori,
-                    })
+                self._known_collections.add(collection_name)
+                totale_righe += len(documents)
+                dettaglio.append({
+                    "collezione": collection_name,
+                    "valide": len(documents),
+                    "numero_errori": 0,
+                })
         finally:
             self.loading = False
         logger.info(
             "Archivio Supabase idratato: %s righe in %s collezioni",
-            totale_righe, len(dettaglio),
+            totale_righe,
+            len(dettaglio),
         )
         return {"fogli": dettaglio, "righe": totale_righe}
 
@@ -174,52 +227,86 @@ class SupabaseRuntimeDatabase(SheetDatabase):
         after: list[dict[str, Any]],
     ) -> None:
         if method in {"delete_one", "delete_many", "find_one_and_delete"}:
-            ids = [str(document.get("_id")) for document in before]
-            await self._delete_ids(collection_name, ids)
+            await self._delete_ids(
+                collection_name,
+                [str(document.get("_id")) for document in before],
+            )
             return
         await self._upsert_documents(collection_name, after)
 
-    async def bulk_seed(self, collection_name: str, documents: list[dict[str, Any]]) -> int:
-        """Scrive in blocco documenti gia' pronti (usato dalla migrazione da
-        Sheets, non dal traffico applicativo ordinario). Upsert idempotente
-        per (collection, id): rilanciabile senza duplicare nulla."""
+    async def bulk_seed(
+        self, collection_name: str, documents: list[dict[str, Any]],
+    ) -> int:
+        """Upsert idempotente in blocchi, usato dalla migrazione controllata."""
         await self._upsert_documents(collection_name, documents)
         return len(documents)
 
-    async def _upsert_documents(self, collection_name: str, documents: list[dict[str, Any]]) -> None:
+    async def mirror_collection(
+        self, collection_name: str, documents: list[dict[str, Any]],
+    ) -> int:
+        """Allinea esattamente una collezione, eliminando solo gli ID obsoleti.
+
+        Serve alla copia di preparazione: una seconda esecuzione produce la
+        stessa destinazione anche quando la sorgente ha cancellato record.
+        """
+        remote_documents = await self._fetch_collection_documents(collection_name)
+        source_ids = {str(item.get("_id")) for item in documents}
+        stale_ids = [
+            str(item.get("_id"))
+            for item in remote_documents
+            if str(item.get("_id")) not in source_ids
+        ]
+        for start in range(0, len(stale_ids), _WRITE_CHUNK_SIZE):
+            await self._delete_ids(
+                collection_name,
+                stale_ids[start:start + _WRITE_CHUNK_SIZE],
+            )
+        await self._upsert_documents(collection_name, documents)
+        return len(documents)
+
+    async def verify_collection(
+        self, collection_name: str, source_documents: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Rilegge la destinazione e confronta conteggio e contenuto canonico."""
+        remote_documents = await self._fetch_collection_documents(collection_name)
+        source_digest = documents_digest(source_documents)
+        remote_digest = documents_digest(remote_documents)
+        return {
+            "righe_origine": len(source_documents),
+            "righe_destinazione": len(remote_documents),
+            "impronta_origine": source_digest,
+            "impronta_destinazione": remote_digest,
+            "coincide": (
+                len(source_documents) == len(remote_documents)
+                and source_digest == remote_digest
+            ),
+        }
+
+    async def _upsert_documents(
+        self, collection_name: str, documents: list[dict[str, Any]],
+    ) -> None:
         if not documents:
             return
-        pool = await self._get_pool()
-        rows = [
-            (collection_name, str(document.get("_id")), _encode(document))
-            for document in documents
-        ]
-        async with pool.acquire() as conn:
-            await conn.executemany(
-                f"""
-                INSERT INTO {_TABLE} (collection, id, data)
-                VALUES ($1, $2, $3::jsonb)
-                ON CONFLICT (collection, id)
-                DO UPDATE SET data = EXCLUDED.data
-                """,
-                rows,
+        normalised = [_normalise_document(document) for document in documents]
+        for start in range(0, len(normalised), _WRITE_CHUNK_SIZE):
+            chunk = normalised[start:start + _WRITE_CHUNK_SIZE]
+            await self._rpc(
+                "gc_upsert_documents",
+                {"p_collection": collection_name, "p_documents": chunk},
             )
 
     async def _delete_ids(self, collection_name: str, ids: list[str]) -> None:
-        ids = [i for i in ids if i and i != "None"]
-        if not ids:
+        clean_ids = [item for item in ids if item and item != "None"]
+        if not clean_ids:
             return
-        pool = await self._get_pool()
-        async with pool.acquire() as conn:
-            await conn.execute(
-                f"DELETE FROM {_TABLE} WHERE collection = $1 AND id = ANY($2::text[])",
-                collection_name, ids,
-            )
+        await self._rpc(
+            "gc_delete_documents",
+            {"p_collection": collection_name, "p_ids": clean_ids},
+        )
 
     @asynccontextmanager
     async def batch_writes(self):
-        """Accorpa le mutazioni di uno stesso job in una sola scrittura per
-        collezione — stessa semantica di ``SheetsRuntimeDatabase.batch_writes``."""
+        """Accorpa le mutazioni di uno stesso job per collezione."""
         current = self._write_batch.get()
         if current is not None:
             yield None
@@ -247,6 +334,11 @@ class SupabaseRuntimeDatabase(SheetDatabase):
 
     def close(self) -> None:
         super().close()
-        if self._pool is not None:
-            pool, self._pool = self._pool, None
-            asyncio.ensure_future(pool.close())
+        if self._session is not None and not self._session.closed:
+            session, self._session = self._session, None
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                asyncio.run(session.close())
+            else:
+                loop.create_task(session.close())

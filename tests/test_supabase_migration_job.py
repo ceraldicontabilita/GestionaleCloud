@@ -1,6 +1,6 @@
 """Job di migrazione una tantum Sheets -> Supabase (app/routers/admin.py).
 
-Copre: guardie sull'avvio del job (conferma esplicita, SUPABASE_DB_URL
+Copre: guardie sull'avvio del job (conferma esplicita, collegamento Supabase
 configurato, riuso del job gia' in corso), isolamento degli errori per
 singola collezione, blocco se il backend attivo e' gia' Supabase, e
 correttezza del conteggio righe riportato a fine job.
@@ -50,6 +50,20 @@ class FakeSupabaseRuntimeDatabase:
         FakeSupabaseRuntimeDatabase.scritture[collection_name] = list(documents)
         return len(documents)
 
+    async def mirror_collection(self, collection_name, documents):
+        return await self.bulk_seed(collection_name, documents)
+
+    async def verify_collection(self, collection_name, documents):
+        remote = FakeSupabaseRuntimeDatabase.scritture.get(collection_name, [])
+        coincide = remote == list(documents)
+        return {
+            "righe_origine": len(documents),
+            "righe_destinazione": len(remote),
+            "impronta_origine": "origine",
+            "impronta_destinazione": "origine" if coincide else "diversa",
+            "coincide": coincide,
+        }
+
     def close(self):
         FakeSupabaseRuntimeDatabase.closed = True
 
@@ -80,6 +94,16 @@ def _job_manuale():
     return job_id
 
 
+def _configura_supabase(monkeypatch, *, completo=True):
+    monkeypatch.setattr(settings, "SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setattr(settings, "SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test")
+    monkeypatch.setattr(
+        settings,
+        "SUPABASE_RUNTIME_SECRET",
+        "runtime-test-secret" if completo else "",
+    )
+
+
 # ---------------------------------------------------------------- avvio ----
 
 def test_avvio_richiede_conferma_esplicita():
@@ -88,15 +112,15 @@ def test_avvio_richiede_conferma_esplicita():
     assert exc.value.status_code == 400
 
 
-def test_avvio_richiede_supabase_db_url_configurato(monkeypatch):
-    monkeypatch.setattr(settings, "SUPABASE_DB_URL", "")
+def test_avvio_richiede_collegamento_supabase_completo(monkeypatch):
+    _configura_supabase(monkeypatch, completo=False)
     with pytest.raises(HTTPException) as exc:
         asyncio.run(avvia_migrazione_supabase(payload={"conferma": "MIGRA"}, _admin={}))
     assert exc.value.status_code == 503
 
 
 def test_avvio_valido_crea_un_job_in_esecuzione(monkeypatch):
-    monkeypatch.setattr(settings, "SUPABASE_DB_URL", "postgresql://test/dsn")
+    _configura_supabase(monkeypatch)
     monkeypatch.setattr(Database, "db", _origine_con_dati())
     # Non lasciamo girare il task reale: verifichiamo solo la risposta
     # sincrona dell'endpoint (creazione job), non l'esecuzione in background.
@@ -108,7 +132,7 @@ def test_avvio_valido_crea_un_job_in_esecuzione(monkeypatch):
 
 
 def test_seconda_richiesta_mentre_gira_riusa_lo_stesso_job(monkeypatch):
-    monkeypatch.setattr(settings, "SUPABASE_DB_URL", "postgresql://test/dsn")
+    _configura_supabase(monkeypatch)
     monkeypatch.setattr(Database, "db", _origine_con_dati())
     monkeypatch.setattr("app.routers.admin.asyncio.create_task", lambda coro: coro.close())
 
@@ -126,7 +150,7 @@ def test_job_id_sconosciuto_da_404():
 # ------------------------------------------------------------ esecuzione ---
 
 def test_migrazione_copia_tutte_le_collezioni_e_riporta_i_conteggi(monkeypatch):
-    monkeypatch.setattr(settings, "SUPABASE_DB_URL", "postgresql://test/dsn")
+    _configura_supabase(monkeypatch)
     monkeypatch.setattr(Database, "db", _origine_con_dati())
     job_id = _job_manuale()
 
@@ -144,7 +168,7 @@ def test_migrazione_copia_tutte_le_collezioni_e_riporta_i_conteggi(monkeypatch):
 
 
 def test_errore_su_una_collezione_non_blocca_le_altre(monkeypatch):
-    monkeypatch.setattr(settings, "SUPABASE_DB_URL", "postgresql://test/dsn")
+    _configura_supabase(monkeypatch)
     monkeypatch.setattr(Database, "db", _origine_con_dati())
     FakeSupabaseRuntimeDatabase.fallisci_su = {"fatture"}
     job_id = _job_manuale()
@@ -161,7 +185,7 @@ def test_errore_su_una_collezione_non_blocca_le_altre(monkeypatch):
 
 
 def test_blocca_se_il_backend_attivo_e_gia_supabase(monkeypatch):
-    monkeypatch.setattr(settings, "SUPABASE_DB_URL", "postgresql://test/dsn")
+    _configura_supabase(monkeypatch)
     monkeypatch.setattr(Database, "db", FakeSupabaseRuntimeDatabase("gestionale", {}))
     job_id = _job_manuale()
 
