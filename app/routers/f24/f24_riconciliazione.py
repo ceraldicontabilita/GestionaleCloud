@@ -823,98 +823,18 @@ async def verifica_codice_tributo(
     mese: Optional[str] = Query(None)
 ) -> Dict[str, Any]:
     """
-    Verifica se un codice tributo è stato pagato.
-    Cerca nelle quietanze F24 caricate.
+    Verifica se un codice tributo è stato pagato, sul registro UNICO:
+    righe dei modelli `f24_unificato` + quietanze reali (`fiscal_documents`
+    di tipo quietanza e collezione storica) + addebiti bancari I24.
+
+    [AUDIT 03/09/2026] Prima leggeva solo `quietanze_f24` (collezione
+    inesistente in produzione) e rispondeva "in attesa" anche per versamenti
+    del 2019: ora ogni riga espone esito, quietanze e addebiti collegati o
+    compatibili (vedi `app/services/f24_controllo_incrociato.py`).
     """
-    db = Database.get_db()
+    from app.services.f24_controllo_incrociato import verifica_codice
 
-    # Costruisci pattern di ricerca
-    periodo_pattern = ""
-    if mese and anno:
-        periodo_pattern = f"{mese}/{anno}"
-    elif anno:
-        periodo_pattern = anno
-
-    # Cerca nelle quietanze
-    query = {
-        "$or": [
-            {"sezione_erario.codice_tributo": codice_tributo},
-            {"sezione_inps.causale": codice_tributo},
-            {"sezione_regioni.codice_tributo": codice_tributo}
-        ]
-    }
-
-    quietanze = await db[COLL_QUIETANZE].find(query, {"_id": 0}).to_list(100)
-
-    quietanza_ids = [q.get("id") for q in quietanze if q.get("id")]
-    modelli_collegati = await db[COLL_F24_COMMERCIALISTA].find(
-        {"quietanza_id": {"$in": quietanza_ids}},
-        {"_id": 0},
-    ).to_list(1000) if quietanza_ids else []
-    modello_per_quietanza = {
-        str(f.get("quietanza_id")): f
-        for f in modelli_collegati
-        if f.get("quietanza_id")
-    }
-
-    risultati = []
-    for q in quietanze:
-        evidenza = stato_evidenza_pagamento(
-            modello_per_quietanza.get(str(q.get("id")), q)
-        )
-        # Cerca il codice specifico nelle sezioni
-        for sezione in ["sezione_erario", "sezione_inps", "sezione_regioni"]:
-            for item in q.get(sezione, []):
-                codice = item.get("codice_tributo") or item.get("causale")
-                periodo = item.get("periodo_riferimento", "")
-
-                if codice == codice_tributo:
-                    if periodo_pattern and periodo_pattern not in periodo:
-                        continue
-
-                    risultati.append({
-                        "quietanza_id": q.get("id"),
-                        "data_quietanza": (
-                            q.get("data_pagamento")
-                            or q.get("dati_generali", {}).get("data_pagamento")
-                        ),
-                        "data_pagamento": evidenza["data_pagamento"],
-                        "pagato": evidenza["pagato"],
-                        "pagamento_verificato_banca": evidenza["verificato_banca"],
-                        "stato_evidenza_pagamento": evidenza["stato"],
-                        "codice_tributo": codice,
-                        "periodo": periodo,
-                        "importo_debito": item.get("importo_debito", 0),
-                        "importo_credito": item.get("importo_credito", 0),
-                        "descrizione": item.get("descrizione", "")
-                    })
-
-    is_pagato = any(r["pagamento_verificato_banca"] for r in risultati)
-
-    # Cerca anche in F24 commercialista per vedere se è in attesa
-    f24_attesa = await db[COLL_F24_COMMERCIALISTA].find({
-        "status": "da_pagare",
-        "$or": [
-            {"sezione_erario.codice_tributo": codice_tributo},
-            {"sezione_inps.causale": codice_tributo},
-            {"sezione_regioni.codice_tributo": codice_tributo}
-        ]
-    }, {"_id": 0, "id": 1, "dati_generali.data_versamento": 1, "totali.saldo_netto": 1}).to_list(10)
-
-    return {
-        "codice_tributo": codice_tributo,
-        "periodo_cercato": periodo_pattern or "tutti",
-        "pagato": is_pagato,
-        "pagamenti": risultati,
-        "quietanze_da_verificare_banca": sum(
-            1 for r in risultati if not r["pagamento_verificato_banca"]
-        ),
-        "in_attesa": [{
-            "f24_id": f["id"],
-            "scadenza": f.get("dati_generali", {}).get("data_versamento"),
-            "importo": f.get("totali", {}).get("saldo_netto", 0)
-        } for f in f24_attesa]
-    }
+    return await verifica_codice(Database.get_db(), codice_tributo, anno=anno, mese=mese)
 
 
 # ============================================

@@ -3,6 +3,12 @@ import { CalendarDays, FileCheck2 } from 'lucide-react';
 import { Badge } from '../../components/ds';
 import { COLORS, formatDateIT, formatEuro } from '../../lib/utils';
 
+// Data ISO → gg/mm/aaaa (regola del titolare: date sempre gg/mm/aaaa).
+export function giornoIT(iso) {
+  const parti = String(iso || '').slice(0, 10).split('-');
+  return parti.length === 3 ? `${parti[2]}/${parti[1]}/${parti[0]}` : String(iso || '');
+}
+
 const cardStyle = {
   background: COLORS.card,
   border: `1px solid ${COLORS.border}`,
@@ -191,14 +197,29 @@ export function ScadenzeIvaMensili({ anno, dati, loading, error }) {
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 10 }}>
             {scadenze.map((s) => {
+              const datiMancanti = s.stato === 'DATI_MANCANTI';
               const nonCalcolato = s.stato === 'NON_CALCOLATO' || s.saldo_cents == null;
               const aDebito = Boolean(s.da_versare_effettivo ?? s.da_versare);
+              const giorniMancanti = s.giorni_senza_corrispettivo || [];
               return (
-                <article key={s.mese} style={{ padding: 12, border: `1px solid ${COLORS.border}`, borderLeft: `4px solid ${nonCalcolato ? COLORS.textMuted : aDebito ? COLORS.warning : COLORS.success}`, borderRadius: 8, background: COLORS.bgAlt }}>
+                <article key={s.mese} data-testid={`iva-scadenza-mese-${s.mese}`} style={{ padding: 12, border: `1px solid ${COLORS.border}`, borderLeft: `4px solid ${datiMancanti ? COLORS.danger : nonCalcolato ? COLORS.textMuted : aDebito ? COLORS.warning : COLORS.success}`, borderRadius: 8, background: COLORS.bgAlt }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
                     <strong>{s.mese_nome}</strong>
-                    {s.fonte === 'stima' && <Badge variant="neutral">Stima</Badge>}
+                    {datiMancanti && <Badge variant="danger">Dati mancanti</Badge>}
+                    {!datiMancanti && s.fonte === 'stima' && <Badge variant="neutral">Stima</Badge>}
                   </div>
+                  {datiMancanti && (
+                    <div role="alert" style={{ marginTop: 6, fontSize: 11, color: COLORS.danger }}>
+                      {(s.motivi || []).includes('archivio_fatture_vuoto') && <div>Archivio fatture vuoto.</div>}
+                      {(s.motivi || []).includes('nessun_corrispettivo_nel_mese') && <div>Nessun corrispettivo del mese.</div>}
+                      {giorniMancanti.length > 0 && (
+                        <div>
+                          Giorni senza chiusura RT: {giorniMancanti.length}{s.giorni_mese ? ` su ${s.giorni_mese}` : ''}
+                          {' — '}{giorniMancanti.map(giornoIT).join(', ')}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <div style={{ marginTop: 7, fontSize: 11, color: COLORS.textMuted }}>Scadenza {formatDateIT(s.data_scadenza)}</div>
                   <div style={{ marginTop: 8, display: 'grid', gap: 3, fontSize: 12 }}>
                     <span>Debito: <strong>{nonCalcolato ? '—' : formatEuro(s.iva_debito)}</strong></span>

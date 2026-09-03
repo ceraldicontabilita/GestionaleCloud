@@ -19,6 +19,7 @@ import { useConfirm } from '../components/ui/ConfirmDialog';
 import { toast } from 'sonner';
 import { PageLayout } from '../components/PageLayout';
 import DocumentViewerModal from '../components/DocumentViewerModal';
+import AvvisoBonarioF24 from '../components/AvvisoBonarioF24';
 
 const RiconciliazionePaypalLazy = lazy(() => import('./RiconciliazionePaypal.jsx'));
 
@@ -1996,6 +1997,7 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
   if (f24Validi.length === 0) {
     return (
       <div>
+      <AvvisoBonarioF24 />
       <TabellaAnalisiF24 anno={anno} />
       <div style={{ padding: 60, textAlign: 'center', color: '#94a3b8' }}>
         <div style={{ fontSize: 48, marginBottom: 12, opacity: 0.5 }}>📄</div>
@@ -2103,6 +2105,7 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
 
   return (
     <div>
+      <AvvisoBonarioF24 />
       <TabellaAnalisiF24 anno={anno} />
       <div style={{ padding: 16, background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
         <div

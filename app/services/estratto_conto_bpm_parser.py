@@ -269,7 +269,13 @@ def riconcilia_f24_con_estratto(f24_list: List[Dict], movimenti_f24: List[Dict])
         
         for idx, mov in enumerate(movimenti_disponibili):
             mov_importo = abs(mov.get("importo", 0))
-            mov_data_str = mov.get("data_contabile") or mov.get("f24_info", {}).get("data_incasso")
+            # I movimenti canonici di `estratto_conto_movimenti` hanno la data
+            # in `data` (mai `data_contabile`): senza questo fallback nessun
+            # addebito I24 reale poteva essere riconciliato.
+            mov_data_str = (
+                mov.get("data_contabile") or mov.get("data")
+                or mov.get("f24_info", {}).get("data_incasso")
+            )
             
             if mov_data_str:
                 try:

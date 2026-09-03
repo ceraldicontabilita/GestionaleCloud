@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1149 endpoint** in **112 gruppi**.
+> Totale **1151 endpoint** in **112 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 705 · ext esterni = 81 · — da verificare = 363
+**Riepilogo uso:** ✓ frontend = 707 · ext esterni = 81 · — da verificare = 363
 
 ## AI Parser  (11)
 
@@ -759,13 +759,14 @@
 | POST | `/api/estratto-conto-movimenti/ripara-versamenti-cassa` | ✓ | bank.estratto_conto |
 | DELETE | `/api/estratto-conto-movimenti/{movimento_id}` | ✓ | bank.estratto_conto |
 
-## F24  (24)
+## F24  (26)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
 | GET | `/api/f24` | ✓ | f24.f24_main |
 | POST | `/api/f24` | ✓ | f24.f24_main |
 | GET | `/api/f24/alerts/scadenze` | ✓ | f24.f24_main |
+| POST | `/api/f24/avviso-bonario/controllo` | ✓ | f24.avviso_bonario |
 | GET | `/api/f24/codici/all` | ✓ | f24.f24_main |
 | GET | `/api/f24/codici/{codice}` | ✓ | f24.f24_main |
 | GET | `/api/f24/dashboard/summary` | ✓ | f24.f24_main |
@@ -779,6 +780,7 @@
 | GET | `/api/f24/quietanze/{f24_id}` | ✓ | f24.f24_main |
 | DELETE | `/api/f24/quietanze/{f24_id}` | ✓ | f24.f24_main |
 | POST | `/api/f24/riconcilia` | ✓ | f24.f24_main |
+| POST | `/api/f24/riconcilia-addebiti` | ✓ | f24.avviso_bonario |
 | POST | `/api/f24/upload` | ✓ | f24.f24_main |
 | POST | `/api/f24/upload-multiple` | ✓ | f24.f24_main |
 | POST | `/api/f24/upload-pdf` | ✓ | f24.f24_main |

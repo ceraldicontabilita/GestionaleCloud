@@ -1103,6 +1103,12 @@ async def leggi_fascicolo_f24(codice_fiscale: str, mese: int, anno: int,
     return {"success": True, "fascicolo": fascicolo}
 
 
+# Interroga avviso bonario + aggancio addebiti/quietanze (PR 11/12): route
+# statiche, quindi PRIMA della dinamica qui sotto.
+from app.routers.f24.avviso_bonario import router as avviso_bonario_router  # noqa: E402
+
+router.include_router(avviso_bonario_router)
+
 # Registrata per ULTIMA di proposito: una route dinamica a un segmento
 # cattura qualunque path statico definito dopo di lei (era il caso di
 # GET /quietanze, che non veniva mai raggiunta).

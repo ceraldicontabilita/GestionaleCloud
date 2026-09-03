@@ -7,7 +7,7 @@ import { formatEuro, formatDateIT, COLORS, MESI_FULL } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
 import { Button, Badge } from '../components/ds';
 import { useConfirm } from '../components/ui/ConfirmDialog';
-import { ConfrontoIvaCommercialista, ScadenzeIvaMensili } from './iva/IvaAuditSections';
+import { ConfrontoIvaCommercialista, ScadenzeIvaMensili, giornoIT } from './iva/IvaAuditSections';
 import './GestioneIVA.css';
 
 /**
@@ -600,6 +600,35 @@ export default function GestioneIVA() {
               <span style={STILI.voceLabel}>Indetraibile</span>
               <strong>{formatEuro(dashboard.iva_indetraibile || 0)}</strong>
             </div>
+          </div>
+        )}
+
+        {dashboard?.stato_liquidazione === 'DATI_MANCANTI' && (
+          <div
+            role="alert"
+            data-testid="iva-dati-mancanti"
+            style={{ marginTop: 8, padding: 12, borderRadius: 8, background: '#fdf3e7', border: '1px solid #c4894a', color: '#6f583a', fontSize: 13 }}
+          >
+            <strong>Liquidazione non calcolabile: dati mancanti.</strong>{' '}
+            Un mese senza chiusure RT o senza fatture in archivio non è «IVA 0 €», è un mese non caricato.
+            <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+              {(dashboard.motivi || []).includes('archivio_fatture_vuoto') && (
+                <li>Archivio fatture vuoto: IVA acquisti non determinabile.</li>
+              )}
+              {(dashboard.motivi || []).includes('archivio_fatture_non_verificabile') && (
+                <li>Archivio fatture non verificabile: IVA acquisti non determinabile.</li>
+              )}
+              {(dashboard.motivi || []).includes('nessun_corrispettivo_nel_mese') && (
+                <li>Nessun corrispettivo del mese in archivio.</li>
+              )}
+              {(dashboard.giorni_senza_corrispettivo || []).length > 0 && (
+                <li>
+                  Giorni senza chiusura RT: {dashboard.giorni_senza_corrispettivo.length}
+                  {dashboard.giorni_mese ? ` su ${dashboard.giorni_mese}` : ''} —{' '}
+                  {dashboard.giorni_senza_corrispettivo.map(giornoIT).join(', ')}
+                </li>
+              )}
+            </ul>
           </div>
         )}
 

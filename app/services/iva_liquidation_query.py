@@ -1,6 +1,7 @@
 """Fonte unica in lettura per calcoli, conteggi e scadenze IVA mensili."""
 from __future__ import annotations
 
+import calendar
 from datetime import date
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any, Dict
@@ -55,6 +56,7 @@ async def corrispettivi_periodo(db, periodo: str) -> Dict[str, Any]:
     total_cents = 0
     included = 0
     iva_non_verificabile = 0
+    giorni_coperti: set[str] = set()
     for doc in sorted(docs, key=lambda item: str(item.get("created_at") or "")):
         key = str(doc.get("corrispettivo_key") or "").strip()
         if not key:
@@ -67,17 +69,42 @@ async def corrispettivi_periodo(db, periodo: str) -> Dict[str, Any]:
             continue
         seen.add(key)
         included += 1
+        giorni_coperti.add(str(doc.get("data") or "")[:10])
         iva_cents = _iva_corrispettivo_cents(doc)
         total_cents += iva_cents
         if iva_cents == 0 and money_cents(doc.get("totale") or doc.get("totale_complessivo")) > 0:
             iva_non_verificabile += 1
+    # Giorni del mese senza alcuna chiusura RT: un giorno senza documento non
+    # e' "IVA 0", e' un giorno non caricato (regola PR 9 dell'audit).
+    year, month = map(int, periodo.split("-"))
+    giorni_mese = calendar.monthrange(year, month)[1]
+    giorni_senza = [
+        f"{periodo}-{giorno:02d}" for giorno in range(1, giorni_mese + 1)
+        if f"{periodo}-{giorno:02d}" not in giorni_coperti
+    ]
     return {
         "iva_vendite_cents": total_cents,
         "iva_vendite": euros(total_cents),
         "corrispettivi_inclusi": included,
         "corrispettivi_duplicati_esclusi": max(0, len(docs) - included),
         "corrispettivi_iva_non_verificabile": iva_non_verificabile,
+        "giorni_mese": giorni_mese,
+        "giorni_con_corrispettivo": len(giorni_coperti),
+        "giorni_senza_corrispettivo": giorni_senza,
     }
+
+
+async def archivio_fatture_vuoto(db) -> bool | None:
+    """True se l'archivio `invoices` non contiene alcun documento.
+
+    None quando non e' verificabile (backend che non risponde): in quel caso
+    la liquidazione NON viene dichiarata attendibile.
+    """
+    try:
+        campione = await db["invoices"].find({}, {"_id": 0, "id": 1}).to_list(1)
+    except Exception:  # noqa: BLE001 - fail-closed, mai "archivio pieno" per supposizione
+        return None
+    return len(campione) == 0
 
 
 def _previous_period(periodo: str) -> str:
@@ -115,6 +142,9 @@ async def get_iva_period_snapshot(
             "credito_periodo_cents": None,
             "fonte": "periodo_non_concluso",
             "fonte_calcolo": SERVICE_VERSION,
+            "attendibile": False,
+            "motivi": ["periodo_non_concluso"],
+            "giorni_senza_corrispettivo": [],
             "conteggi": {
                 "fatture_periodo_attribuito": 0,
                 "fatture_incluse_calcolo": 0,
@@ -160,6 +190,20 @@ async def get_iva_period_snapshot(
     balance_cents = sales_cents - purchases_cents - previous_credit_cents
     source = "calcolo_canonico"
     status = liq.CALCOLATA
+    # Onesta' della liquidazione (PR 9): un mese concluso senza chiusure RT
+    # per alcuni giorni, o senza alcuna fattura in archivio, non e' un mese
+    # "calcolato" a zero: e' un mese con dati mancanti.
+    fatture_assenti = await archivio_fatture_vuoto(db)
+    motivi: list[str] = []
+    if fatture_assenti is None:
+        motivi.append("archivio_fatture_non_verificabile")
+    elif fatture_assenti:
+        motivi.append("archivio_fatture_vuoto")
+    if sales["corrispettivi_inclusi"] == 0:
+        motivi.append("nessun_corrispettivo_nel_mese")
+    if sales["giorni_senza_corrispettivo"]:
+        motivi.append("giorni_senza_corrispettivo")
+    attendibile = not motivi
     if confirmed:
         source = "liquidazione_confermata"
         status = str(confirmed.get("stato") or liq.CONFERMATA)
@@ -167,9 +211,26 @@ async def get_iva_period_snapshot(
         purchases_cents = money_cents(confirmed.get("iva_acquisti"))
         previous_credit_cents = money_cents(confirmed.get("credito_precedente"))
         balance_cents = money_cents(confirmed.get("saldo"))
+        attendibile = True
+    elif motivi:
+        # La provenienza resta il calcolo canonico (stima); e' lo STATO a
+        # dire che il mese non e' attendibile.
+        status = "DATI_MANCANTI"
     elif sales.get("corrispettivi_iva_non_verificabile"):
         status = "NON_VERIFICABILE"
         source = "corrispettivi_iva_mancante"
+        attendibile = False
+
+    if status == "DATI_MANCANTI":
+        # Nessun saldo: le cifre parziali restano visibili come tali, ma non
+        # esiste un "debito del periodo" da esporre come calcolato.
+        if sales["corrispettivi_inclusi"] == 0:
+            sales_cents = None
+        if fatture_assenti is not False:
+            purchases_cents = None
+            competence_purchases_cents = None
+            available_purchases_cents = None
+        balance_cents = None
 
     counts = {
         "fatture_periodo_attribuito": len(invoices),
@@ -189,30 +250,40 @@ async def get_iva_period_snapshot(
             if item.get("stato_detrazione_iva") not in (None, "", "NON_VALUTATA", "DA_VERIFICARE")
         ),
     }
+    def _euros(cents: int | None) -> float | None:
+        return None if cents is None else euros(cents)
+
+    debit_cents = None if balance_cents is None else max(balance_cents, 0)
+    credit_cents = None if balance_cents is None else max(-balance_cents, 0)
     return {
+        # `sales` porta i conteggi dei corrispettivi; le cifre IVA esplicite
+        # qui sotto hanno la precedenza (None quando il mese non e' calcolato).
+        **sales,
         "periodo": periodo,
         "stato_calcolo": status,
+        "attendibile": attendibile,
+        "motivi": motivi,
+        "archivio_fatture_vuoto": fatture_assenti,
         "iva_vendite_cents": sales_cents,
         "iva_acquisti_cents": purchases_cents,
         "iva_acquisti_competenza_cents": competence_purchases_cents,
         "iva_acquisti_disponibile_cents": available_purchases_cents,
         "credito_precedente_cents": previous_credit_cents,
         "saldo_cents": balance_cents,
-        "debito_periodo_cents": max(balance_cents, 0),
-        "credito_periodo_cents": max(-balance_cents, 0),
-        "iva_vendite": euros(sales_cents),
-        "iva_acquisti": euros(purchases_cents),
-        "iva_acquisti_competenza": euros(competence_purchases_cents),
-        "iva_acquisti_disponibile": euros(available_purchases_cents),
+        "debito_periodo_cents": debit_cents,
+        "credito_periodo_cents": credit_cents,
+        "iva_vendite": _euros(sales_cents),
+        "iva_acquisti": _euros(purchases_cents),
+        "iva_acquisti_competenza": _euros(competence_purchases_cents),
+        "iva_acquisti_disponibile": _euros(available_purchases_cents),
         "credito_precedente": euros(previous_credit_cents),
-        "saldo": euros(balance_cents),
-        "debito_periodo": euros(max(balance_cents, 0)),
-        "credito_periodo": euros(max(-balance_cents, 0)),
+        "saldo": _euros(balance_cents),
+        "debito_periodo": _euros(debit_cents),
+        "credito_periodo": _euros(credit_cents),
         "fonte": source,
         "fonte_calcolo": SERVICE_VERSION,
         "conteggi": counts,
         "fatture_escluse": available_excluded,
         "fatture_escluse_competenza": competence_excluded,
-        **sales,
         **deadline,
     }
