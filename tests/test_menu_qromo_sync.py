@@ -112,6 +112,11 @@ class _Query:
     def neq(self, *_):
         return self
 
+    def is_(self, colonna, valore):
+        # Il filtro della cancellazione e' registrato come payload
+        self.payload = ("is", colonna, valore)
+        return self
+
     def insert(self, rows):
         self.op, self.payload = "insert", list(rows)
         return self
@@ -168,6 +173,24 @@ def test_sincronizza_cancella_in_ordine_fk_safe_e_reinserisce(finto):
     assert inseriti["menu_products"][0]["price"] == "1.20€"
     # menu_allergens mai toccata
     assert all(tab != "menu_allergens" for _, tab, _ in finto.chiamate)
+
+
+def test_sincronizza_preserva_le_righe_create_da_lotti(finto):
+    """Le tre cancellazioni filtrano ``origine IS NULL``: categoria
+    "Produzione Ceraldi", sottocategorie e prodotti con origine="lotti"
+    (app/lotti/servizi/menu_bridge.py) non vengono toccati."""
+    _run(qs.sincronizza(sottodominio="test", dry_run=False))
+    cancellazioni = [(tab, filtro) for op, tab, filtro in finto.chiamate if op == "delete"]
+    assert cancellazioni == [
+        ("menu_products", ("is", "origine", "null")),
+        ("menu_subcategories", ("is", "origine", "null")),
+        ("menu_categories", ("is", "origine", "null")),
+    ]
+    # Le righe reinserite da Qromo restano senza origine (cosi' la prossima
+    # sincronizzazione le sostituisce di nuovo)
+    for op, _, rows in finto.chiamate:
+        if op == "insert":
+            assert all("origine" not in r for r in rows)
 
 
 def test_inserimento_a_lotti(finto, monkeypatch):

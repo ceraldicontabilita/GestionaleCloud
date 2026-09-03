@@ -174,6 +174,32 @@ sempre la sorgente persistente.
   `Menu/frontend` (CRA, `PUBLIC_URL=/menu` in `.env.production`, tracciato
   apposta; build compilata su Render). Voce "Menu" nel menu Altro = link a
   pagina intera su `/menu/admin`.
+- **Prodotti da Lotti [03/09/2026, richiesta del titolare]**: ogni ricetta di
+  Lotti viene replicata nel Menu con la stessa foto; il titolare sceglie se
+  compare nel menu pubblico. Ponte `app/lotti/servizi/menu_bridge.py`
+  (`pubblica_prodotto_nel_menu` / `rimuovi_prodotto_dal_menu`, client
+  sincrono del Menu eseguito con `asyncio.to_thread`), agganciato in
+  `app/lotti/routers/ricette.py` a `POST /lotti/api/ricette`, `PUT`/`PATCH`
+  `/ricette/{id}`, `/prezzo-vendita`, `/reparto`, `POST /ricette/{id}/upload-foto`,
+  `DELETE /ricette/{id}`; l'esito va nella risposta come `menu_sync`
+  (`pubblicato` | `aggiornato` | `rimosso` | `non_configurato` senza
+  `MENU_SUPABASE_URL` | `errore`) e non fa mai fallire l'endpoint Lotti.
+  Campi: ricetta `menu_pubblico` (bool, default False, checkbox "Mostra nel
+  menu pubblico" in `FormRicetta.jsx`; `PATCH` lo accetta) → `menu_products.
+  visible`; `menu_products.origine = "lotti"`, `lotti_ref = "ricetta:<id>"`
+  (chiave idempotente: update se esiste, altrimenti insert con id ≥ 1.000.000
+  per non collidere con gli id Qromo). Categoria "Produzione Ceraldi" +
+  sottocategoria per reparto (Pasticceria/Rosticceria/Bar/Altro), create al
+  volo con `origine = "lotti"`. Prezzo `"3.50€"` da `prezzo_vendita`,
+  allergeni Lotti → 14 id UE (`MAPPA_ALLERGENI_MENU`), descrizione = `descrizione`
+  o `note`. Foto: byte da `foto_files` copiati nel bucket `menu-images` al
+  percorso `lotti/<foto_id>.<jpg|png|webp>` (upsert), URL pubblico in `image`;
+  non si ricarica se la riga punta già allo stesso `foto_id`. Il menu
+  pubblico (`GET /menu/api/menu/`, `/subcategories/{id}`, `/products/{id}`,
+  `/search`) esclude `visible=false`; `/admin/products/all` e il CRUD admin
+  espongono/accettano `visible`. La sync Qromo cancella solo le righe con
+  `origine IS NULL`: le righe di Lotti sopravvivono. Test:
+  `app/lotti/tests/test_menu_bridge.py`, `tests/test_menu_public_visible.py`.
 
 ## App portate pari pari — `app/lotti/` + `frontend_lotti/`, `app/menu/` + `frontend_menu/`, `app/hr/` + `frontend_hr/`
 

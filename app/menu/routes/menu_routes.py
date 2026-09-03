@@ -36,12 +36,20 @@ def subcat_in(data: dict) -> dict:
     return out
 
 
+def _visibile(row: dict) -> bool:
+    """Righe senza la chiave (vecchi dati/fixture) = visibili."""
+    return row.get("visible") is not False
+
+
 def prod_out(row: dict) -> dict:
     return {
         "id": row["id"], "category_id": row["category_id"], "subcategory_id": row["subcategory_id"],
         "name": row["name"], "nameIT": row["name_it"], "price": row["price"],
         "description": row.get("description"), "descriptionIT": row.get("description_it"),
         "allergens": row.get("allergens") or [], "image": row.get("image"),
+        # visible/origine: prodotti creati da Lotti (origine "lotti") nascono con
+        # visible = scelta del titolare in Lotti ("menu_pubblico").
+        "visible": _visibile(row), "origine": row.get("origine"),
     }
 
 
@@ -51,6 +59,7 @@ def prod_in(data: dict) -> dict:
         "description": data.get("description"), "description_it": data.get("descriptionIT"),
         "allergens": data.get("allergens") if data.get("allergens") is not None else [],
         "image": data.get("image"),
+        "visible": data.get("visible") is not False,
     }
     if "category_id" in data and data["category_id"] is not None:
         out["category_id"] = data["category_id"]
@@ -66,10 +75,15 @@ def allergen_out(row: dict) -> dict:
     }
 
 
+def _prodotti_pubblici(rows) -> list:
+    """Il menu pubblico esclude le righe con visible=false."""
+    return [prod_out(r) for r in rows if _visibile(r)]
+
+
 def _fetch_all():
     categories = [cat_out(r) for r in supabase.table("menu_categories").select("*").order("id").execute().data]
     subcategories = [subcat_out(r) for r in supabase.table("menu_subcategories").select("*").order("id").execute().data]
-    products = [prod_out(r) for r in supabase.table("menu_products").select("*").order("id").execute().data]
+    products = _prodotti_pubblici(supabase.table("menu_products").select("*").order("id").execute().data)
     return categories, subcategories, products
 
 
@@ -118,7 +132,7 @@ async def get_category(category_id: int):
     category = cat_out(res.data[0])
 
     subcategories = [subcat_out(r) for r in supabase.table("menu_subcategories").select("*").eq("category_id", category_id).order("id").execute().data]
-    products = [prod_out(r) for r in supabase.table("menu_products").select("*").eq("category_id", category_id).order("id").execute().data]
+    products = _prodotti_pubblici(supabase.table("menu_products").select("*").eq("category_id", category_id).order("id").execute().data)
 
     for subcategory in subcategories:
         subcategory['items'] = [p for p in products if p.get('subcategory_id') == subcategory.get('id')]
@@ -135,7 +149,7 @@ async def get_subcategory(subcategory_id: int):
         raise HTTPException(status_code=404, detail="Subcategory not found")
     subcategory = subcat_out(res.data[0])
 
-    products = [prod_out(r) for r in supabase.table("menu_products").select("*").eq("subcategory_id", subcategory_id).order("id").execute().data]
+    products = _prodotti_pubblici(supabase.table("menu_products").select("*").eq("subcategory_id", subcategory_id).order("id").execute().data)
 
     subcategory['items'] = products
     return subcategory
@@ -145,7 +159,7 @@ async def get_subcategory(subcategory_id: int):
 async def get_product(product_id: int):
     """Get a specific product"""
     res = supabase.table("menu_products").select("*").eq("id", product_id).limit(1).execute()
-    if not res.data:
+    if not res.data or not _visibile(res.data[0]):
         raise HTTPException(status_code=404, detail="Product not found")
     return prod_out(res.data[0])
 
@@ -171,7 +185,7 @@ async def search_products(q: str, limit: int = 20):
         .limit(limit)
         .execute()
     )
-    products = [prod_out(r) for r in res.data]
+    products = _prodotti_pubblici(res.data)
     return {"results": products, "count": len(products)}
 
 
@@ -308,7 +322,8 @@ async def update_product(product_id: int, product: ProductUpdate, username: str 
 
     update_data = {}
     field_map = {"name": "name", "nameIT": "name_it", "price": "price", "description": "description",
-                 "descriptionIT": "description_it", "allergens": "allergens", "image": "image"}
+                 "descriptionIT": "description_it", "allergens": "allergens", "image": "image",
+                 "visible": "visible"}
     for api_field, db_field in field_map.items():
         if api_field in data:
             update_data[db_field] = data[api_field]

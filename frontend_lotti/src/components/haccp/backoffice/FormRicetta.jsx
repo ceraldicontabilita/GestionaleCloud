@@ -3,6 +3,7 @@
 // (eredita scheda, proposta ingredienti, foto, rivendita, allergeni, food cost).
 import { useState, useEffect, useRef } from "react";
 import axios from "axios";
+import { Globe } from "lucide-react";
 import { conferma } from "../../../utils/conferma";
 import { stampaDoc } from "../../../utils/stampa";
 import PinKeypad from "../shared/PinKeypad";
@@ -503,15 +504,21 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onElimina, r
         origine_ingredienti: origineIngredienti || "manuale",
         // Prodotto di rivendita: "" = lo produciamo noi
         fornitore_rivendita: form.fornitore_rivendita || "",
+        // Menu digitale (Enzo 03/09/2026): la ricetta va SEMPRE anche nel Menu
+        // con la stessa foto; questo flag decide se i clienti la vedono.
+        menu_pubblico: !!form.menu_pubblico,
         ...(form.ricetta_base_id && { ricetta_base_id: form.ricetta_base_id,
                                        ricetta_base_nome: form.ricetta_base_nome || "" }),
       };
       let creata = null;
+      let menuSync = null;
       if (ricetta?.id) {
-        await axios.put(`${API}/ricette/${ricetta.id}`, payload);
+        const ru = await axios.put(`${API}/ricette/${ricetta.id}`, payload);
+        menuSync = ru.data?.menu_sync || null;
       } else {
         const rr = await axios.post(`${API}/ricette`, payload);
         creata = rr.data;
+        menuSync = creata?.menu_sync || null;
       }
       // Foto scelta PRIMA del salvataggio (ricetta nuova): parte adesso
       const idFoto = ricetta?.id || creata?.id;
@@ -523,7 +530,11 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onElimina, r
           toast("Ricetta salvata, ma la foto non è partita: riaprila e ricaricala", "warn");
         }
       }
-      toast("Ricetta salvata ✅");
+      if (menuSync?.esito === "errore") {
+        toast("Ricetta salvata, ma il Menu digitale non è stato aggiornato: riprova con «Aggiorna ricetta»", "warn");
+      } else {
+        toast("Ricetta salvata ✅");
+      }
       onSalvato();
     } catch (e) {
       const d = e?.response?.data?.detail;
@@ -632,6 +643,23 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onElimina, r
             <input type="number" min="0" step="0.01" value={form.prezzo_vendita} onChange={e=>setField("prezzo_vendita",e.target.value)} placeholder="0.00" style={inp}/>
           </div>
         </div>
+        {/* Menu digitale (richiesta Enzo 03/09/2026): ogni ricetta finisce
+            comunque nel Menu con la stessa foto; qui decide lui se i clienti
+            la vedono nel menu pubblico (QR al tavolo). */}
+        <label style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",borderRadius:10,cursor:"pointer",
+          border:"1.5px solid", borderColor: form.menu_pubblico ? "var(--primary)" : "var(--border)",
+          background: form.menu_pubblico ? "var(--primary-soft)" : "var(--card)"}}>
+          <input type="checkbox" checked={!!form.menu_pubblico}
+            onChange={e=>setField("menu_pubblico",e.target.checked)}
+            style={{width:20,height:20,flexShrink:0,accentColor:"var(--primary)",cursor:"pointer"}}/>
+          <Globe size={18} color="var(--primary)" style={{flexShrink:0}} aria-hidden="true" />
+          <span style={{display:"flex",flexDirection:"column",gap:2,minWidth:0}}>
+            <span style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>Mostra nel menu pubblico (Menu digitale)</span>
+            <span style={{fontSize:12,fontWeight:600,color:"var(--text-2)"}}>
+              La ricetta va comunque nel Menu con la stessa foto: spunta per farla vedere ai clienti.
+            </span>
+          </span>
+        </label>
       </div>
 
       {/* Variante di una ricetta esistente (solo nuova ricetta): scegli la

@@ -500,6 +500,39 @@ class RicettaCreate(BaseModel):
     allergeni_auto: Optional[List[str]] = []  # allergeni calcolati dal frontend
     allergeni: Optional[List[str]] = []  # allergeni manuali
     allergeni_confermati: bool = False  # True solo dopo una modifica umana esplicita
+    # Menu digitale (richiesta titolare 03/09/2026): la ricetta e' sempre
+    # replicata nel Menu, questo flag decide se compare nel menu PUBBLICO.
+    # None in aggiornamento = lascia il valore gia' salvato; in creazione = False.
+    menu_pubblico: Optional[bool] = None
+
+
+# ─── Ponte verso il Menu digitale ────────────────────────────────────────────
+async def _sincronizza_menu(ricetta_id: str) -> dict:
+    """Replica la ricetta nel Menu (app/lotti/servizi/menu_bridge.py).
+    Mai un'eccezione verso l'endpoint: l'esito finisce nella risposta come
+    ``menu_sync`` (``pubblicato`` / ``aggiornato`` / ``non_configurato`` / ``errore``)."""
+    try:
+        from app.lotti.servizi import menu_bridge
+
+        ricetta = await db.ricette.find_one({"id": ricetta_id}, {"_id": 0})
+        if not ricetta:
+            return {"esito": "errore", "errore": "ricetta non trovata"}
+        return await menu_bridge.pubblica_prodotto_nel_menu(
+            ricetta, visibile=bool(ricetta.get("menu_pubblico")), db=db
+        )
+    except Exception as e:
+        _LOG_INIT.exception("Lotti->Menu: sincronizzazione ricetta %s fallita", ricetta_id)
+        return {"esito": "errore", "errore": str(e)}
+
+
+async def _rimuovi_dal_menu(ricetta_id: str) -> dict:
+    try:
+        from app.lotti.servizi import menu_bridge
+
+        return await menu_bridge.rimuovi_prodotto_dal_menu(menu_bridge.lotti_ref_ricetta(ricetta_id))
+    except Exception as e:
+        _LOG_INIT.exception("Lotti->Menu: rimozione ricetta %s fallita", ricetta_id)
+        return {"esito": "errore", "errore": str(e)}
 
 
 # ─── Helper reparti e nomi ────────────────────────────────────────────────────
@@ -2224,6 +2257,7 @@ async def create_ricetta(item: RicettaCreate):
     # Enzo non li salva dal tab allergeni (decisione 04/07/2026).
     doc["allergeni_da_confermare"] = bool(nomi_ing) and not item.allergeni_confermati
     doc["reparto"] = reparto
+    doc["menu_pubblico"] = bool(item.menu_pubblico)
     doc.setdefault("visibile_tablet", True)
     doc.setdefault("ricetta_operativa", True)
 
@@ -2244,7 +2278,7 @@ async def create_ricetta(item: RicettaCreate):
             doc["foto_url"] = foto_variante
 
     # Ritorna il doc completo (non obj che non ha i campi extra)
-    return {**doc, "id": doc["id"]}
+    return {**doc, "id": doc["id"], "menu_sync": await _sincronizza_menu(doc["id"])}
 
 
 @router.put("/ricette/{ricetta_id}", response_model=Ricetta)
@@ -2257,6 +2291,9 @@ async def update_ricetta(ricetta_id: str, item: RicettaCreate, _admin=Depends(re
 
     payload = item.model_dump()
     allergeni_confermati = bool(payload.pop("allergeni_confermati", False))
+    # Flag Menu non inviato = non toccare la scelta gia' fatta dal titolare.
+    if payload.get("menu_pubblico") is None:
+        payload.pop("menu_pubblico", None)
 
     # Ricalcola SEMPRE gli allergeni dagli ingredienti (auto), salvo override manuale esplicito
     nomi_ing = estrai_nomi_ingredienti(payload)
@@ -2282,7 +2319,8 @@ async def update_ricetta(ricetta_id: str, item: RicettaCreate, _admin=Depends(re
     r = await db.ricette.update_one({"id": ricetta_id}, {"$set": payload})
     if r.matched_count == 0:
         raise HTTPException(404, "Ricetta non trovata")
-    return await db.ricette.find_one({"id": ricetta_id}, {"_id": 0})
+    aggiornata = await db.ricette.find_one({"id": ricetta_id}, {"_id": 0})
+    return {**aggiornata, "menu_sync": await _sincronizza_menu(ricetta_id)}
 
 
 @router.post("/backfill-allergeni-verificato")
@@ -2609,7 +2647,10 @@ async def delete_ricetta(ricetta_id: str, _admin=Depends(require_admin)):
     r = await db.ricette.delete_one({"id": ricetta_id})
     if r.deleted_count == 0:
         raise HTTPException(404, "Ricetta non trovata")
-    return {"message": "Eliminata con successo", "recuperabile": True}
+    return {
+        "message": "Eliminata con successo", "recuperabile": True,
+        "menu_sync": await _rimuovi_dal_menu(ricetta_id),
+    }
 
 
 _BASE_NOME_RE = re.compile(r"\s*\(\s*base\s*\)\s*$", re.IGNORECASE)
@@ -2806,7 +2847,7 @@ async def deduplica_ricette_base(
 @router.put("/ricette/{ricetta_id}/prezzo-vendita")
 async def set_prezzo_vendita(ricetta_id: str, prezzo: float = Query(...)):
     await db.ricette.update_one({"id": ricetta_id}, {"$set": {"prezzo_vendita": prezzo}})
-    return {"ok": True, "prezzo_vendita": prezzo}
+    return {"ok": True, "prezzo_vendita": prezzo, "menu_sync": await _sincronizza_menu(ricetta_id)}
 
 
 @router.put("/ricette/{ricetta_id}/reparto")
@@ -2816,7 +2857,8 @@ async def aggiorna_reparto(ricetta_id: str, reparto: str = Query(...)):
     r = await db.ricette.update_one({"id": ricetta_id}, {"$set": {"reparto": reparto}})
     if r.matched_count == 0:
         raise HTTPException(404, "Ricetta non trovata")
-    return await db.ricette.find_one({"id": ricetta_id}, {"_id": 0})
+    aggiornata = await db.ricette.find_one({"id": ricetta_id}, {"_id": 0})
+    return {**aggiornata, "menu_sync": await _sincronizza_menu(ricetta_id)}
 
 
 @router.put("/ricette/{ricetta_id}/foto")
@@ -2988,7 +3030,8 @@ async def upload_foto(ricetta_id: str, file: UploadFile = File(...)):
     # ad ogni upload per invalidare cache browser/React sulla stessa ricetta.
     foto_url = f"/api/foto/{foto_id}?v={versione}"
     await db.ricette.update_one({"id": ricetta_id}, {"$set": {"foto_url": foto_url}})
-    return {"success": True, "foto_url": foto_url}
+    # Stessa immagine anche nel Menu digitale (copia su Storage + aggiornamento riga).
+    return {"success": True, "foto_url": foto_url, "menu_sync": await _sincronizza_menu(ricetta_id)}
 
 
 @router.get("/foto/{foto_id}")
@@ -3060,10 +3103,13 @@ async def aggiorna_campo_ricetta(ricetta_id: str, body: dict):
         "nome",
         "ricetta_base_nome",
         "ingredienti",
+        "menu_pubblico",
     }
     update = {k: v for k, v in body.items() if k in campi_permessi}
     if not update:
         raise HTTPException(400, "Nessun campo valido da aggiornare")
+    if "menu_pubblico" in update:
+        update["menu_pubblico"] = bool(update["menu_pubblico"])
     # Sincronizza pezzi_ricetta_base ↔ porzioni
     if "pezzi_ricetta_base" in update and "porzioni" not in update:
         update["porzioni"] = update["pezzi_ricetta_base"]
@@ -3072,7 +3118,7 @@ async def aggiorna_campo_ricetta(ricetta_id: str, body: dict):
     r = await db.ricette.update_one({"id": ricetta_id}, {"$set": update})
     if r.matched_count == 0:
         raise HTTPException(404, "Ricetta non trovata")
-    return {"success": True, "aggiornato": update}
+    return {"success": True, "aggiornato": update, "menu_sync": await _sincronizza_menu(ricetta_id)}
 
 
 class SchedaEditoriale(BaseModel):
