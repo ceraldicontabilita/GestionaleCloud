@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1531 · tenere: 1127 · verificare: 371 · admin-only (migrazione/manutenzione): 33
+**Totale endpoint:** 1531 · tenere: 991 · verificare: 507 · admin-only (migrazione/manutenzione): 33
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -734,40 +734,40 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/hr/accessi/{dipendente_id}/pin` | app.hr.routers.employees.accessi | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/hr/accessi/{dipendente_id}/pin/genera` | app.hr.routers.employees.accessi | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/hr/accessi/{dipendente_id}/ruolo` | app.hr.routers.employees.accessi | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/admin/migrazione-appdipendenti` | app.hr.routers.admin_hr | sì | — | — | sì | sì | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
-| `GET /api/hr/admin/migrazione-appdipendenti/{job_id}` | app.hr.routers.admin_hr | sì | sì | — | sì | sì | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
-| `GET /api/hr/admin/stato-dati` | app.hr.routers.admin_hr | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/attendance/assenze/{employee_id}` | app.hr.routers.attendance | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/attendance/batch-insert` | app.hr.routers.attendance | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/attendance/dashboard-presenze` | app.hr.routers.attendance | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/attendance/dipendenti-in-carico` | app.hr.routers.attendance | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/attendance/genera-pdf-consulente` | app.hr.routers.attendance | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/attendance/month-grid` | app.hr.routers.attendance | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/attendance/note-presenze/{anno}/{mese}` | app.hr.routers.attendance | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/attendance/ore-lavorate/{employee_id}` | app.hr.routers.attendance | sì | — | — | — | — | tenere | in uso: FE |
-| `DELETE /api/hr/attendance/presenza` | app.hr.routers.attendance | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/attendance/presenze-mese` | app.hr.routers.attendance | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/attendance/richiesta-assenza` | app.hr.routers.attendance | sì | — | — | — | — | tenere | in uso: FE |
-| `PUT /api/hr/attendance/richiesta-assenza/{richiesta_id}/approva` | app.hr.routers.attendance | sì | — | — | — | — | tenere | in uso: FE |
-| `PUT /api/hr/attendance/richiesta-assenza/{richiesta_id}/rifiuta` | app.hr.routers.attendance | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/attendance/richieste-pending` | app.hr.routers.attendance | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/attendance/saldo-ferie/{employee_id}` | app.hr.routers.attendance | sì | — | — | — | — | tenere | in uso: FE |
-| `PUT /api/hr/attendance/set-in-carico/{employee_id}` | app.hr.routers.attendance | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/attendance/set-nota-presenza` | app.hr.routers.attendance | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/attendance/set-presenza` | app.hr.routers.attendance | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/attendance/timbratura` | app.hr.routers.attendance | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/attendance/timbrature/giorno/{data}` | app.hr.routers.attendance | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/attendance/timbrature/{employee_id}` | app.hr.routers.attendance | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/attendance/tipologie-giustificativi` | app.hr.routers.attendance | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/hr/admin/migrazione-appdipendenti` | app.hr.routers.admin_hr | — | — | — | sì | sì | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
+| `GET /api/hr/admin/migrazione-appdipendenti/{job_id}` | app.hr.routers.admin_hr | — | sì | — | sì | sì | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
+| `GET /api/hr/admin/stato-dati` | app.hr.routers.admin_hr | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/attendance/assenze/{employee_id}` | app.hr.routers.attendance | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/attendance/batch-insert` | app.hr.routers.attendance | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/attendance/dashboard-presenze` | app.hr.routers.attendance | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/attendance/dipendenti-in-carico` | app.hr.routers.attendance | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/attendance/genera-pdf-consulente` | app.hr.routers.attendance | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/attendance/month-grid` | app.hr.routers.attendance | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/attendance/note-presenze/{anno}/{mese}` | app.hr.routers.attendance | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/attendance/ore-lavorate/{employee_id}` | app.hr.routers.attendance | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `DELETE /api/hr/attendance/presenza` | app.hr.routers.attendance | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/attendance/presenze-mese` | app.hr.routers.attendance | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/attendance/richiesta-assenza` | app.hr.routers.attendance | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `PUT /api/hr/attendance/richiesta-assenza/{richiesta_id}/approva` | app.hr.routers.attendance | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `PUT /api/hr/attendance/richiesta-assenza/{richiesta_id}/rifiuta` | app.hr.routers.attendance | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/attendance/richieste-pending` | app.hr.routers.attendance | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/attendance/saldo-ferie/{employee_id}` | app.hr.routers.attendance | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `PUT /api/hr/attendance/set-in-carico/{employee_id}` | app.hr.routers.attendance | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/attendance/set-nota-presenza` | app.hr.routers.attendance | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/attendance/set-presenza` | app.hr.routers.attendance | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/attendance/timbratura` | app.hr.routers.attendance | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/attendance/timbrature/giorno/{data}` | app.hr.routers.attendance | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/attendance/timbrature/{employee_id}` | app.hr.routers.attendance | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/attendance/tipologie-giustificativi` | app.hr.routers.attendance | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/hr/auth/dipendenti-attivi` | app.hr.routers.pin_login | sì | — | sì | — | sì | tenere | in uso: FE, chat |
 | `POST /api/hr/auth/pin-login` | app.hr.routers.pin_login | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/hr/auth/pin-login/health` | app.hr.routers.pin_login | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/buste-paga/competenze` | app.hr.routers.employees.buste_paga | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/buste-paga/lista` | app.hr.routers.employees.buste_paga | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/buste-paga/riepilogo-mensile/{competenza}` | app.hr.routers.employees.buste_paga | sì | — | — | — | sì | tenere | in uso: FE |
-| `POST /api/hr/buste-paga/salva` | app.hr.routers.employees.buste_paga | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/buste-paga/upload` | app.hr.routers.employees.buste_paga | sì | — | — | — | — | tenere | in uso: FE |
-| `DELETE /api/hr/buste-paga/{competenza}/{nome}` | app.hr.routers.employees.buste_paga | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/hr/buste-paga/competenze` | app.hr.routers.employees.buste_paga | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/buste-paga/lista` | app.hr.routers.employees.buste_paga | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/buste-paga/riepilogo-mensile/{competenza}` | app.hr.routers.employees.buste_paga | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/buste-paga/salva` | app.hr.routers.employees.buste_paga | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/buste-paga/upload` | app.hr.routers.employees.buste_paga | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `DELETE /api/hr/buste-paga/{competenza}/{nome}` | app.hr.routers.employees.buste_paga | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/hr/cedolini` | app.hr.routers.cedolini | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/hr/cedolini` | app.hr.routers.cedolini | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/hr/cedolini/acconti/dipendente/{dipendente_id}` | app.hr.routers.cedolini | sì | — | — | — | — | tenere | in uso: FE |
@@ -814,12 +814,12 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/hr/contracts/types` | app.hr.routers.employees.employee_contracts | sì | — | — | — | — | tenere | in uso: FE |
 | `DELETE /api/hr/contracts/{contract_id}` | app.hr.routers.employees.employee_contracts | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/hr/diagnostica` | app.hr.routers.diagnostica | sì | — | — | — | sì | tenere | in uso: FE |
-| `GET /api/hr/dimissioni` | app.hr.routers.dimissioni | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/dimissioni/associa-dimissioni-dipendenti` | app.hr.routers.dimissioni | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/dimissioni/cerca-email-dimissioni` | app.hr.routers.dimissioni | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/dimissioni/stats` | app.hr.routers.dimissioni | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/dipendenti` | app.hr.routers.employees.dipendenti | sì | — | — | — | sì | tenere | in uso: FE |
-| `POST /api/hr/dipendenti` | app.hr.routers.employees.dipendenti | sì | — | — | — | sì | tenere | in uso: FE |
+| `GET /api/hr/dimissioni` | app.hr.routers.dimissioni | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/dimissioni/associa-dimissioni-dipendenti` | app.hr.routers.dimissioni | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/dimissioni/cerca-email-dimissioni` | app.hr.routers.dimissioni | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/dimissioni/stats` | app.hr.routers.dimissioni | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/dipendenti` | app.hr.routers.employees.dipendenti | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/dipendenti` | app.hr.routers.employees.dipendenti | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/hr/dipendenti-cloud/_unif_diag` | app.hr.routers.dipendenti_cloud | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/hr/dipendenti-cloud/_unif_esegui` | app.hr.routers.dipendenti_cloud | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/hr/dipendenti-cloud/alerts` | app.hr.routers.dipendenti_cloud | sì | — | — | — | sì | tenere | in uso: FE |
@@ -913,98 +913,98 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/hr/dipendenti-cloud/turni-preferenze` | app.hr.routers.dipendenti_cloud | sì | — | — | — | — | tenere | in uso: FE |
 | `DELETE /api/hr/dipendenti-cloud/turni/{turno_id}` | app.hr.routers.dipendenti_cloud | sì | — | — | — | — | tenere | in uso: FE |
 | `PUT /api/hr/dipendenti-cloud/turni/{turno_id}` | app.hr.routers.dipendenti_cloud | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/dipendenti/bulk-upsert` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/dipendenti/bulk-upsert/preview` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/dipendenti/buste-paga` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/dipendenti/buste-paga` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/dipendenti/buste-paga/dipendente/{dipendente_id}` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/dipendenti/buste-paga/dipendente/{dipendente_id}/import` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/dipendenti/buste-paga/import` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/dipendenti/buste-paga/scan` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/dipendenti/by-google-email` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/dipendenti/contratti` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/dipendenti/contratti` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/dipendenti/contratti` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/dipendenti/contratti/import-excel` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/dipendenti/contratti/scadenze` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `DELETE /api/hr/dipendenti/contratti/{contratto_id}` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `PUT /api/hr/dipendenti/contratti/{contratto_id}` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/dipendenti/contratti/{contratto_id}/termina` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/dipendenti/duplicati` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/dipendenti/duplicati/auto-merge` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/dipendenti/duplicati/merge` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/dipendenti/invita-multipli` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/dipendenti/libretti-sanitari` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/dipendenti/libretti-sanitari/all` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/dipendenti/libretti-sanitari/genera-da-dipendenti` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/dipendenti/libretti-sanitari/import-excel` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/dipendenti/libretti-sanitari/scadenze` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `DELETE /api/hr/dipendenti/libretti-sanitari/{libretto_id}` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `PUT /api/hr/dipendenti/libretti-sanitari/{libretto_id}` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/dipendenti/libretti/scadenze` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/dipendenti/libro-unico/export-excel` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/dipendenti/libro-unico/presenze` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/dipendenti/libro-unico/salaries` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `DELETE /api/hr/dipendenti/libro-unico/salaries/{salary_id}` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `PUT /api/hr/dipendenti/libro-unico/salaries/{salary_id}` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/dipendenti/libro-unico/upload` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/dipendenti/mansioni` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/dipendenti/portale/stats` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/dipendenti/report-ferie-permessi-tutti` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/dipendenti/stats` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/dipendenti/sync-iban` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/dipendenti/tipi-contratto` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/dipendenti/tipi-turno` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/dipendenti/turni/salva` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/dipendenti/turni/settimana` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `DELETE /api/hr/dipendenti/{dipendente_id}` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/dipendenti/{dipendente_id}` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `PUT /api/hr/dipendenti/{dipendente_id}` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/dipendenti/{dipendente_id}/fascicolo` | app.hr.routers.employees.fascicolo_dipendente | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/dipendenti/{dipendente_id}/invita-portale` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/dipendenti/{dipendente_id}/kpi` | app.hr.routers.employees.fascicolo_dipendente | sì | — | — | — | — | tenere | in uso: FE |
-| `PUT /api/hr/dipendenti/{dipendente_id}/libretto` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/dipendenti/{dipendente_id}/report-ferie-permessi` | app.hr.routers.employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/giustificativi` | app.hr.routers.employees.giustificativi | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/giustificativi/aggiorna-riepilogo` | app.hr.routers.employees.giustificativi | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/giustificativi/alert-limiti` | app.hr.routers.employees.giustificativi | sì | — | — | — | — | tenere | in uso: FE |
-| `PUT /api/hr/giustificativi/codice/{codice}` | app.hr.routers.employees.giustificativi | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/giustificativi/dipendente/{employee_id}/giustificativi` | app.hr.routers.employees.giustificativi | sì | — | — | — | — | tenere | in uso: FE |
-| `PUT /api/hr/giustificativi/dipendente/{employee_id}/giustificativi/limiti` | app.hr.routers.employees.giustificativi | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/giustificativi/dipendente/{employee_id}/riporto-ferie` | app.hr.routers.employees.giustificativi | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/giustificativi/dipendente/{employee_id}/saldo-ferie` | app.hr.routers.employees.giustificativi | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/giustificativi/init-giustificativi` | app.hr.routers.employees.giustificativi | sì | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
-| `GET /api/hr/giustificativi/presenze-mensili/{employee_id}` | app.hr.routers.employees.giustificativi | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/giustificativi/riepilogo-limiti` | app.hr.routers.employees.giustificativi | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/giustificativi/riepilogo-progressivo/{employee_id}` | app.hr.routers.employees.giustificativi | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/giustificativi/saldi-finali-tutti` | app.hr.routers.employees.giustificativi | sì | — | — | — | — | tenere | in uso: FE |
-| `DELETE /api/hr/giustificativi/saldi-finali/{employee_id}` | app.hr.routers.employees.giustificativi | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/giustificativi/saldi-finali/{employee_id}` | app.hr.routers.employees.giustificativi | sì | — | — | — | — | tenere | in uso: FE |
-| `PUT /api/hr/giustificativi/saldi-finali/{employee_id}/periodo` | app.hr.routers.employees.giustificativi | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/giustificativi/salva-saldi-finali` | app.hr.routers.employees.giustificativi | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/giustificativi/sync-giustificativi-da-cedolini` | app.hr.routers.employees.giustificativi | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/giustificativi/upload-libro-unico` | app.hr.routers.employees.giustificativi | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/giustificativi/valida-giustificativo` | app.hr.routers.employees.giustificativi | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/health` | app.hr.router_registry | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/hr/dipendenti/bulk-upsert` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/dipendenti/bulk-upsert/preview` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/dipendenti/buste-paga` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/dipendenti/buste-paga` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/dipendenti/buste-paga/dipendente/{dipendente_id}` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/dipendenti/buste-paga/dipendente/{dipendente_id}/import` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/dipendenti/buste-paga/import` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/dipendenti/buste-paga/scan` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/dipendenti/by-google-email` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/dipendenti/contratti` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/dipendenti/contratti` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/dipendenti/contratti` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/dipendenti/contratti/import-excel` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/dipendenti/contratti/scadenze` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `DELETE /api/hr/dipendenti/contratti/{contratto_id}` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `PUT /api/hr/dipendenti/contratti/{contratto_id}` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/dipendenti/contratti/{contratto_id}/termina` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/dipendenti/duplicati` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/dipendenti/duplicati/auto-merge` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/dipendenti/duplicati/merge` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/dipendenti/invita-multipli` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/dipendenti/libretti-sanitari` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/dipendenti/libretti-sanitari/all` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/dipendenti/libretti-sanitari/genera-da-dipendenti` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/dipendenti/libretti-sanitari/import-excel` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/dipendenti/libretti-sanitari/scadenze` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `DELETE /api/hr/dipendenti/libretti-sanitari/{libretto_id}` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `PUT /api/hr/dipendenti/libretti-sanitari/{libretto_id}` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/dipendenti/libretti/scadenze` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/dipendenti/libro-unico/export-excel` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/dipendenti/libro-unico/presenze` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/dipendenti/libro-unico/salaries` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `DELETE /api/hr/dipendenti/libro-unico/salaries/{salary_id}` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `PUT /api/hr/dipendenti/libro-unico/salaries/{salary_id}` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/dipendenti/libro-unico/upload` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/dipendenti/mansioni` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/dipendenti/portale/stats` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/dipendenti/report-ferie-permessi-tutti` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/dipendenti/stats` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/dipendenti/sync-iban` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/dipendenti/tipi-contratto` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/dipendenti/tipi-turno` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/dipendenti/turni/salva` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/dipendenti/turni/settimana` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `DELETE /api/hr/dipendenti/{dipendente_id}` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/dipendenti/{dipendente_id}` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `PUT /api/hr/dipendenti/{dipendente_id}` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/dipendenti/{dipendente_id}/fascicolo` | app.hr.routers.employees.fascicolo_dipendente | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/dipendenti/{dipendente_id}/invita-portale` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/dipendenti/{dipendente_id}/kpi` | app.hr.routers.employees.fascicolo_dipendente | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `PUT /api/hr/dipendenti/{dipendente_id}/libretto` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/dipendenti/{dipendente_id}/report-ferie-permessi` | app.hr.routers.employees.dipendenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/giustificativi` | app.hr.routers.employees.giustificativi | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/giustificativi/aggiorna-riepilogo` | app.hr.routers.employees.giustificativi | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/giustificativi/alert-limiti` | app.hr.routers.employees.giustificativi | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `PUT /api/hr/giustificativi/codice/{codice}` | app.hr.routers.employees.giustificativi | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/giustificativi/dipendente/{employee_id}/giustificativi` | app.hr.routers.employees.giustificativi | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `PUT /api/hr/giustificativi/dipendente/{employee_id}/giustificativi/limiti` | app.hr.routers.employees.giustificativi | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/giustificativi/dipendente/{employee_id}/riporto-ferie` | app.hr.routers.employees.giustificativi | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/giustificativi/dipendente/{employee_id}/saldo-ferie` | app.hr.routers.employees.giustificativi | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/giustificativi/init-giustificativi` | app.hr.routers.employees.giustificativi | — | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
+| `GET /api/hr/giustificativi/presenze-mensili/{employee_id}` | app.hr.routers.employees.giustificativi | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/giustificativi/riepilogo-limiti` | app.hr.routers.employees.giustificativi | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/giustificativi/riepilogo-progressivo/{employee_id}` | app.hr.routers.employees.giustificativi | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/giustificativi/saldi-finali-tutti` | app.hr.routers.employees.giustificativi | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `DELETE /api/hr/giustificativi/saldi-finali/{employee_id}` | app.hr.routers.employees.giustificativi | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/giustificativi/saldi-finali/{employee_id}` | app.hr.routers.employees.giustificativi | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `PUT /api/hr/giustificativi/saldi-finali/{employee_id}/periodo` | app.hr.routers.employees.giustificativi | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/giustificativi/salva-saldi-finali` | app.hr.routers.employees.giustificativi | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/giustificativi/sync-giustificativi-da-cedolini` | app.hr.routers.employees.giustificativi | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/giustificativi/upload-libro-unico` | app.hr.routers.employees.giustificativi | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/giustificativi/valida-giustificativo` | app.hr.routers.employees.giustificativi | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/health` | app.hr.router_registry | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/hr/notifiche` | app.hr.routers.notifiche | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/hr/notifiche/conteggio` | app.hr.routers.notifiche | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
 | `POST /api/hr/notifiche/{notifica_id}/letta` | app.hr.routers.notifiche | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/paghe/acconti` | app.hr.routers.libro_unico_parser | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/paghe/acconti/{busta_id}` | app.hr.routers.libro_unico_parser | sì | — | — | — | — | tenere | in uso: FE |
-| `DELETE /api/hr/paghe/acconti/{busta_id}/{acconto_id}` | app.hr.routers.libro_unico_parser | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/paghe/buste-paga` | app.hr.routers.libro_unico_parser | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/paghe/distinte-f24` | app.hr.routers.f24_parser | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/paghe/f24/lista` | app.hr.routers.f24_parser | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/paghe/import-f24` | app.hr.routers.f24_parser | sì | — | — | — | sì | tenere | in uso: FE |
-| `POST /api/hr/paghe/import-libro-unico` | app.hr.routers.libro_unico_parser | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/paghe/parse-f24` | app.hr.routers.f24_parser | sì | — | — | — | sì | tenere | in uso: FE |
-| `POST /api/hr/paghe/parse-libro-unico` | app.hr.routers.libro_unico_parser | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/paghe/parse-libro-unico/dipendente/{indice}` | app.hr.routers.libro_unico_parser | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/paghe/presenze-mensili` | app.hr.routers.libro_unico_parser | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/paghe/presenze-mensili/{codice_fiscale}/{periodo}` | app.hr.routers.libro_unico_parser | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/paghe/riconcilia-f24` | app.hr.routers.f24_parser | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
-| `POST /api/hr/paghe/riconcilia-stipendi` | app.hr.routers.libro_unico_parser | sì | — | — | — | sì | tenere | in uso: FE |
-| `GET /api/hr/paghe/tributi-pagati` | app.hr.routers.f24_parser | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/hr/paghe/acconti` | app.hr.routers.libro_unico_parser | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/paghe/acconti/{busta_id}` | app.hr.routers.libro_unico_parser | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `DELETE /api/hr/paghe/acconti/{busta_id}/{acconto_id}` | app.hr.routers.libro_unico_parser | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/paghe/buste-paga` | app.hr.routers.libro_unico_parser | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/paghe/distinte-f24` | app.hr.routers.f24_parser | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/paghe/f24/lista` | app.hr.routers.f24_parser | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/paghe/import-f24` | app.hr.routers.f24_parser | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/paghe/import-libro-unico` | app.hr.routers.libro_unico_parser | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/paghe/parse-f24` | app.hr.routers.f24_parser | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/paghe/parse-libro-unico` | app.hr.routers.libro_unico_parser | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/paghe/parse-libro-unico/dipendente/{indice}` | app.hr.routers.libro_unico_parser | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/paghe/presenze-mensili` | app.hr.routers.libro_unico_parser | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/paghe/presenze-mensili/{codice_fiscale}/{periodo}` | app.hr.routers.libro_unico_parser | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/paghe/riconcilia-f24` | app.hr.routers.f24_parser | — | sì | — | — | sì | tenere | in uso: scheduler |
+| `POST /api/hr/paghe/riconcilia-stipendi` | app.hr.routers.libro_unico_parser | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/paghe/tributi-pagati` | app.hr.routers.f24_parser | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/hr/portale/buste` | app.hr.routers.portale_buste | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/hr/portale/buste/{cedolino_id}` | app.hr.routers.portale_buste | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/hr/portale/buste/{cedolino_id}/contesta` | app.hr.routers.portale_buste | sì | — | — | — | — | tenere | in uso: FE |
@@ -1026,21 +1026,21 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/hr/richieste` | app.hr.routers.richieste | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/hr/richieste/mie` | app.hr.routers.richieste | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/hr/richieste/{richiesta_id}/risolvi` | app.hr.routers.richieste | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/salari-v2/ferie-rol` | app.hr.routers.salari_unificati_v2 | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/salari-v2/non-pagati` | app.hr.routers.salari_unificati_v2 | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/salari-v2/pagamento` | app.hr.routers.salari_unificati_v2 | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
-| `POST /api/hr/salari-v2/riconcilia-banca` | app.hr.routers.salari_unificati_v2 | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/salari-v2/riepilogo` | app.hr.routers.salari_unificati_v2 | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/salari-v2/saldo/{codice_fiscale}` | app.hr.routers.salari_unificati_v2 | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/shifts/assegnazioni` | app.hr.routers.employees.shifts | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/shifts/assegnazioni` | app.hr.routers.employees.shifts | sì | — | — | — | — | tenere | in uso: FE |
-| `DELETE /api/hr/shifts/assegnazioni/{assegnazione_id}` | app.hr.routers.employees.shifts | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/shifts/schedule` | app.hr.routers.employees.shifts | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/shifts/schedule` | app.hr.routers.employees.shifts | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/hr/shifts/tipi` | app.hr.routers.employees.shifts | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/hr/shifts/tipi` | app.hr.routers.employees.shifts | sì | — | — | — | — | tenere | in uso: FE |
-| `DELETE /api/hr/shifts/tipi/{turno_id}` | app.hr.routers.employees.shifts | sì | — | — | — | — | tenere | in uso: FE |
-| `PUT /api/hr/shifts/tipi/{turno_id}` | app.hr.routers.employees.shifts | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/hr/salari-v2/ferie-rol` | app.hr.routers.salari_unificati_v2 | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/salari-v2/non-pagati` | app.hr.routers.salari_unificati_v2 | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/salari-v2/pagamento` | app.hr.routers.salari_unificati_v2 | — | sì | — | — | sì | tenere | in uso: scheduler |
+| `POST /api/hr/salari-v2/riconcilia-banca` | app.hr.routers.salari_unificati_v2 | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/salari-v2/riepilogo` | app.hr.routers.salari_unificati_v2 | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/salari-v2/saldo/{codice_fiscale}` | app.hr.routers.salari_unificati_v2 | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/shifts/assegnazioni` | app.hr.routers.employees.shifts | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/shifts/assegnazioni` | app.hr.routers.employees.shifts | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `DELETE /api/hr/shifts/assegnazioni/{assegnazione_id}` | app.hr.routers.employees.shifts | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/shifts/schedule` | app.hr.routers.employees.shifts | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/shifts/schedule` | app.hr.routers.employees.shifts | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/hr/shifts/tipi` | app.hr.routers.employees.shifts | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/hr/shifts/tipi` | app.hr.routers.employees.shifts | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `DELETE /api/hr/shifts/tipi/{turno_id}` | app.hr.routers.employees.shifts | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `PUT /api/hr/shifts/tipi/{turno_id}` | app.hr.routers.employees.shifts | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/hr/tfr/accantonamento` | app.hr.routers.tfr | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/hr/tfr/acconti` | app.hr.routers.tfr | sì | — | — | — | — | tenere | in uso: FE |
 | `DELETE /api/hr/tfr/acconti/{acconto_id}` | app.hr.routers.tfr | sì | — | — | — | — | tenere | in uso: FE |

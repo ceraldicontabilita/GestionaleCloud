@@ -29,13 +29,12 @@ def build_app():
 
 
 def frontend_refs():
-    refs = set()
-    for root, _, files in os.walk("frontend/src"):
-        for f in files:
-            if f.endswith((".js", ".jsx", ".ts", ".tsx")):
-                txt = open(os.path.join(root, f), encoding="utf-8", errors="ignore").read()
-                for m in re.findall(r"/api/[a-zA-Z0-9_\-/${}.]+", txt):
-                    refs.add(m)
+    # Risolve anche costanti prefisso e baseURL axios (scripts/frontend_api_refs.py).
+    try:
+        from scripts.frontend_api_refs import frontend_api_refs
+    except ImportError:  # eseguito come `python scripts/...`
+        from frontend_api_refs import frontend_api_refs
+    refs = frontend_api_refs("frontend/src")
 
     def norm(p):
         p = re.sub(r"\$\{[^}]*\}", ":x", p)

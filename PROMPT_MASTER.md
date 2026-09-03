@@ -787,7 +787,7 @@ Gli alias senza valore vanno configurati nel secret/config store di Render. Non 
 
 ## Appendice D — Tutti i router e tutti gli endpoint
 
-Route table sorgente: **1530**; attivi da ricreare: **1126**; quarantena: **404** (`verificare` 371, `admin-only` 33).
+Route table sorgente: **1530**; attivi da ricreare: **991**; quarantena: **539** (`verificare` 506, `admin-only` 33).
 
 `attivo` significa da ricreare con contratto e test; `quarantena` significa non esporre nel nuovo runtime finché consumer, autorizzazione e test non sono provati. L'elenco è completo e include entrambe le categorie.
 
@@ -987,38 +987,38 @@ Route table sorgente: **1530**; attivi da ricreare: **1126**; quarantena: **404*
 
 ### Router `app.hr.router_registry` (1)
 
-- **attivo** — `GET /api/hr/health` — in uso: FE
+- **quarantena: verificare** — `GET /api/hr/health` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 
 ### Router `app.hr.routers.admin_hr` (3)
 
 - **quarantena: admin-only** — `POST /api/hr/admin/migrazione-appdipendenti` — endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7)
 - **quarantena: admin-only** — `GET /api/hr/admin/migrazione-appdipendenti/{job_id}` — endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7)
-- **attivo** — `GET /api/hr/admin/stato-dati` — in uso: FE
+- **quarantena: verificare** — `GET /api/hr/admin/stato-dati` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 
 ### Router `app.hr.routers.attendance` (22)
 
-- **attivo** — `GET /api/hr/attendance/assenze/{employee_id}` — in uso: FE
-- **attivo** — `POST /api/hr/attendance/batch-insert` — in uso: FE
-- **attivo** — `GET /api/hr/attendance/dashboard-presenze` — in uso: FE
-- **attivo** — `GET /api/hr/attendance/dipendenti-in-carico` — in uso: FE
-- **attivo** — `POST /api/hr/attendance/genera-pdf-consulente` — in uso: FE
-- **attivo** — `GET /api/hr/attendance/month-grid` — in uso: FE
-- **attivo** — `GET /api/hr/attendance/note-presenze/{anno}/{mese}` — in uso: FE
-- **attivo** — `GET /api/hr/attendance/ore-lavorate/{employee_id}` — in uso: FE
-- **attivo** — `DELETE /api/hr/attendance/presenza` — in uso: FE
-- **attivo** — `GET /api/hr/attendance/presenze-mese` — in uso: FE
-- **attivo** — `POST /api/hr/attendance/richiesta-assenza` — in uso: FE
-- **attivo** — `PUT /api/hr/attendance/richiesta-assenza/{richiesta_id}/approva` — in uso: FE
-- **attivo** — `PUT /api/hr/attendance/richiesta-assenza/{richiesta_id}/rifiuta` — in uso: FE
-- **attivo** — `GET /api/hr/attendance/richieste-pending` — in uso: FE
-- **attivo** — `GET /api/hr/attendance/saldo-ferie/{employee_id}` — in uso: FE
-- **attivo** — `PUT /api/hr/attendance/set-in-carico/{employee_id}` — in uso: FE
-- **attivo** — `POST /api/hr/attendance/set-nota-presenza` — in uso: FE
-- **attivo** — `POST /api/hr/attendance/set-presenza` — in uso: FE
-- **attivo** — `POST /api/hr/attendance/timbratura` — in uso: FE
-- **attivo** — `GET /api/hr/attendance/timbrature/giorno/{data}` — in uso: FE
-- **attivo** — `GET /api/hr/attendance/timbrature/{employee_id}` — in uso: FE
-- **attivo** — `GET /api/hr/attendance/tipologie-giustificativi` — in uso: FE
+- **quarantena: verificare** — `GET /api/hr/attendance/assenze/{employee_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/attendance/batch-insert` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/attendance/dashboard-presenze` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/attendance/dipendenti-in-carico` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/attendance/genera-pdf-consulente` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/attendance/month-grid` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/attendance/note-presenze/{anno}/{mese}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/attendance/ore-lavorate/{employee_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `DELETE /api/hr/attendance/presenza` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/attendance/presenze-mese` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/attendance/richiesta-assenza` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `PUT /api/hr/attendance/richiesta-assenza/{richiesta_id}/approva` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `PUT /api/hr/attendance/richiesta-assenza/{richiesta_id}/rifiuta` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/attendance/richieste-pending` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/attendance/saldo-ferie/{employee_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `PUT /api/hr/attendance/set-in-carico/{employee_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/attendance/set-nota-presenza` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/attendance/set-presenza` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/attendance/timbratura` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/attendance/timbrature/giorno/{data}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/attendance/timbrature/{employee_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/attendance/tipologie-giustificativi` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 
 ### Router `app.hr.routers.cedolini` (22)
 
@@ -1051,10 +1051,10 @@ Route table sorgente: **1530**; attivi da ricreare: **1126**; quarantena: **404*
 
 ### Router `app.hr.routers.dimissioni` (4)
 
-- **attivo** — `GET /api/hr/dimissioni` — in uso: FE
-- **attivo** — `POST /api/hr/dimissioni/associa-dimissioni-dipendenti` — in uso: FE
-- **attivo** — `POST /api/hr/dimissioni/cerca-email-dimissioni` — in uso: FE
-- **attivo** — `GET /api/hr/dimissioni/stats` — in uso: FE
+- **quarantena: verificare** — `GET /api/hr/dimissioni` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/dimissioni/associa-dimissioni-dipendenti` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/dimissioni/cerca-email-dimissioni` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/dimissioni/stats` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 
 ### Router `app.hr.routers.dipendenti_cloud` (93)
 
@@ -1163,66 +1163,66 @@ Route table sorgente: **1530**; attivi da ricreare: **1126**; quarantena: **404*
 
 ### Router `app.hr.routers.employees.buste_paga` (6)
 
-- **attivo** — `GET /api/hr/buste-paga/competenze` — in uso: FE
-- **attivo** — `GET /api/hr/buste-paga/lista` — in uso: FE
-- **attivo** — `GET /api/hr/buste-paga/riepilogo-mensile/{competenza}` — in uso: FE
-- **attivo** — `POST /api/hr/buste-paga/salva` — in uso: FE
-- **attivo** — `POST /api/hr/buste-paga/upload` — in uso: FE
-- **attivo** — `DELETE /api/hr/buste-paga/{competenza}/{nome}` — in uso: FE
+- **quarantena: verificare** — `GET /api/hr/buste-paga/competenze` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/buste-paga/lista` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/buste-paga/riepilogo-mensile/{competenza}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/buste-paga/salva` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/buste-paga/upload` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `DELETE /api/hr/buste-paga/{competenza}/{nome}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 
 ### Router `app.hr.routers.employees.dipendenti` (51)
 
-- **attivo** — `GET /api/hr/dipendenti` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti/bulk-upsert` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti/bulk-upsert/preview` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti/buste-paga` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti/buste-paga` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti/buste-paga/dipendente/{dipendente_id}` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti/buste-paga/dipendente/{dipendente_id}/import` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti/buste-paga/import` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti/buste-paga/scan` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti/by-google-email` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti/contratti` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti/contratti` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti/contratti/import-excel` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti/contratti/scadenze` — in uso: FE
-- **attivo** — `DELETE /api/hr/dipendenti/contratti/{contratto_id}` — in uso: FE
-- **attivo** — `PUT /api/hr/dipendenti/contratti/{contratto_id}` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti/contratti/{contratto_id}/termina` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti/duplicati` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti/duplicati/auto-merge` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti/duplicati/merge` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti/invita-multipli` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti/libretti-sanitari` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti/libretti-sanitari/all` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti/libretti-sanitari/genera-da-dipendenti` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti/libretti-sanitari/import-excel` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti/libretti-sanitari/scadenze` — in uso: FE
-- **attivo** — `DELETE /api/hr/dipendenti/libretti-sanitari/{libretto_id}` — in uso: FE
-- **attivo** — `PUT /api/hr/dipendenti/libretti-sanitari/{libretto_id}` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti/libretti/scadenze` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti/libro-unico/export-excel` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti/libro-unico/presenze` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti/libro-unico/salaries` — in uso: FE
-- **attivo** — `DELETE /api/hr/dipendenti/libro-unico/salaries/{salary_id}` — in uso: FE
-- **attivo** — `PUT /api/hr/dipendenti/libro-unico/salaries/{salary_id}` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti/libro-unico/upload` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti/mansioni` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti/portale/stats` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti/report-ferie-permessi-tutti` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti/stats` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti/sync-iban` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti/tipi-contratto` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti/tipi-turno` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti/turni/salva` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti/turni/settimana` — in uso: FE
-- **attivo** — `DELETE /api/hr/dipendenti/{dipendente_id}` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti/{dipendente_id}` — in uso: FE
-- **attivo** — `PUT /api/hr/dipendenti/{dipendente_id}` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti/{dipendente_id}/invita-portale` — in uso: FE
-- **attivo** — `PUT /api/hr/dipendenti/{dipendente_id}/libretto` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti/{dipendente_id}/report-ferie-permessi` — in uso: FE
+- **quarantena: verificare** — `GET /api/hr/dipendenti` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/dipendenti` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/dipendenti/bulk-upsert` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/dipendenti/bulk-upsert/preview` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/dipendenti/buste-paga` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/dipendenti/buste-paga` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/dipendenti/buste-paga/dipendente/{dipendente_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/dipendenti/buste-paga/dipendente/{dipendente_id}/import` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/dipendenti/buste-paga/import` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/dipendenti/buste-paga/scan` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/dipendenti/by-google-email` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/dipendenti/contratti` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/dipendenti/contratti` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/dipendenti/contratti/import-excel` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/dipendenti/contratti/scadenze` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `DELETE /api/hr/dipendenti/contratti/{contratto_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `PUT /api/hr/dipendenti/contratti/{contratto_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/dipendenti/contratti/{contratto_id}/termina` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/dipendenti/duplicati` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/dipendenti/duplicati/auto-merge` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/dipendenti/duplicati/merge` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/dipendenti/invita-multipli` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/dipendenti/libretti-sanitari` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/dipendenti/libretti-sanitari/all` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/dipendenti/libretti-sanitari/genera-da-dipendenti` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/dipendenti/libretti-sanitari/import-excel` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/dipendenti/libretti-sanitari/scadenze` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `DELETE /api/hr/dipendenti/libretti-sanitari/{libretto_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `PUT /api/hr/dipendenti/libretti-sanitari/{libretto_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/dipendenti/libretti/scadenze` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/dipendenti/libro-unico/export-excel` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/dipendenti/libro-unico/presenze` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/dipendenti/libro-unico/salaries` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `DELETE /api/hr/dipendenti/libro-unico/salaries/{salary_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `PUT /api/hr/dipendenti/libro-unico/salaries/{salary_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/dipendenti/libro-unico/upload` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/dipendenti/mansioni` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/dipendenti/portale/stats` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/dipendenti/report-ferie-permessi-tutti` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/dipendenti/stats` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/dipendenti/sync-iban` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/dipendenti/tipi-contratto` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/dipendenti/tipi-turno` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/dipendenti/turni/salva` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/dipendenti/turni/settimana` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `DELETE /api/hr/dipendenti/{dipendente_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/dipendenti/{dipendente_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `PUT /api/hr/dipendenti/{dipendente_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/dipendenti/{dipendente_id}/invita-portale` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `PUT /api/hr/dipendenti/{dipendente_id}/libretto` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/dipendenti/{dipendente_id}/report-ferie-permessi` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 
 ### Router `app.hr.routers.employees.employee_contracts` (23)
 
@@ -1252,65 +1252,65 @@ Route table sorgente: **1530**; attivi da ricreare: **1126**; quarantena: **404*
 
 ### Router `app.hr.routers.employees.fascicolo_dipendente` (2)
 
-- **attivo** — `GET /api/hr/dipendenti/{dipendente_id}/fascicolo` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti/{dipendente_id}/kpi` — in uso: FE
+- **quarantena: verificare** — `GET /api/hr/dipendenti/{dipendente_id}/fascicolo` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/dipendenti/{dipendente_id}/kpi` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 
 ### Router `app.hr.routers.employees.giustificativi` (20)
 
-- **attivo** — `GET /api/hr/giustificativi` — in uso: FE
-- **attivo** — `POST /api/hr/giustificativi/aggiorna-riepilogo` — in uso: FE
-- **attivo** — `GET /api/hr/giustificativi/alert-limiti` — in uso: FE
-- **attivo** — `PUT /api/hr/giustificativi/codice/{codice}` — in uso: FE
-- **attivo** — `GET /api/hr/giustificativi/dipendente/{employee_id}/giustificativi` — in uso: FE
-- **attivo** — `PUT /api/hr/giustificativi/dipendente/{employee_id}/giustificativi/limiti` — in uso: FE
-- **attivo** — `POST /api/hr/giustificativi/dipendente/{employee_id}/riporto-ferie` — in uso: FE
-- **attivo** — `GET /api/hr/giustificativi/dipendente/{employee_id}/saldo-ferie` — in uso: FE
+- **quarantena: verificare** — `GET /api/hr/giustificativi` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/giustificativi/aggiorna-riepilogo` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/giustificativi/alert-limiti` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `PUT /api/hr/giustificativi/codice/{codice}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/giustificativi/dipendente/{employee_id}/giustificativi` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `PUT /api/hr/giustificativi/dipendente/{employee_id}/giustificativi/limiti` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/giustificativi/dipendente/{employee_id}/riporto-ferie` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/giustificativi/dipendente/{employee_id}/saldo-ferie` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **quarantena: admin-only** — `POST /api/hr/giustificativi/init-giustificativi` — endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7)
-- **attivo** — `GET /api/hr/giustificativi/presenze-mensili/{employee_id}` — in uso: FE
-- **attivo** — `GET /api/hr/giustificativi/riepilogo-limiti` — in uso: FE
-- **attivo** — `GET /api/hr/giustificativi/riepilogo-progressivo/{employee_id}` — in uso: FE
-- **attivo** — `GET /api/hr/giustificativi/saldi-finali-tutti` — in uso: FE
-- **attivo** — `DELETE /api/hr/giustificativi/saldi-finali/{employee_id}` — in uso: FE
-- **attivo** — `GET /api/hr/giustificativi/saldi-finali/{employee_id}` — in uso: FE
-- **attivo** — `PUT /api/hr/giustificativi/saldi-finali/{employee_id}/periodo` — in uso: FE
-- **attivo** — `POST /api/hr/giustificativi/salva-saldi-finali` — in uso: FE
-- **attivo** — `POST /api/hr/giustificativi/sync-giustificativi-da-cedolini` — in uso: FE
-- **attivo** — `POST /api/hr/giustificativi/upload-libro-unico` — in uso: FE
-- **attivo** — `POST /api/hr/giustificativi/valida-giustificativo` — in uso: FE
+- **quarantena: verificare** — `GET /api/hr/giustificativi/presenze-mensili/{employee_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/giustificativi/riepilogo-limiti` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/giustificativi/riepilogo-progressivo/{employee_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/giustificativi/saldi-finali-tutti` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `DELETE /api/hr/giustificativi/saldi-finali/{employee_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/giustificativi/saldi-finali/{employee_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `PUT /api/hr/giustificativi/saldi-finali/{employee_id}/periodo` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/giustificativi/salva-saldi-finali` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/giustificativi/sync-giustificativi-da-cedolini` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/giustificativi/upload-libro-unico` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/giustificativi/valida-giustificativo` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 
 ### Router `app.hr.routers.employees.shifts` (9)
 
-- **attivo** — `GET /api/hr/shifts/assegnazioni` — in uso: FE
-- **attivo** — `POST /api/hr/shifts/assegnazioni` — in uso: FE
-- **attivo** — `DELETE /api/hr/shifts/assegnazioni/{assegnazione_id}` — in uso: FE
-- **attivo** — `GET /api/hr/shifts/schedule` — in uso: FE
-- **attivo** — `POST /api/hr/shifts/schedule` — in uso: FE
-- **attivo** — `GET /api/hr/shifts/tipi` — in uso: FE
-- **attivo** — `POST /api/hr/shifts/tipi` — in uso: FE
-- **attivo** — `DELETE /api/hr/shifts/tipi/{turno_id}` — in uso: FE
-- **attivo** — `PUT /api/hr/shifts/tipi/{turno_id}` — in uso: FE
+- **quarantena: verificare** — `GET /api/hr/shifts/assegnazioni` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/shifts/assegnazioni` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `DELETE /api/hr/shifts/assegnazioni/{assegnazione_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/shifts/schedule` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/shifts/schedule` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/shifts/tipi` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/shifts/tipi` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `DELETE /api/hr/shifts/tipi/{turno_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `PUT /api/hr/shifts/tipi/{turno_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 
 ### Router `app.hr.routers.f24_parser` (6)
 
-- **attivo** — `GET /api/hr/paghe/distinte-f24` — in uso: FE
-- **attivo** — `GET /api/hr/paghe/f24/lista` — in uso: FE
-- **attivo** — `POST /api/hr/paghe/import-f24` — in uso: FE
-- **attivo** — `POST /api/hr/paghe/parse-f24` — in uso: FE
-- **attivo** — `POST /api/hr/paghe/riconcilia-f24` — in uso: FE, scheduler
-- **attivo** — `GET /api/hr/paghe/tributi-pagati` — in uso: FE
+- **quarantena: verificare** — `GET /api/hr/paghe/distinte-f24` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/paghe/f24/lista` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/paghe/import-f24` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/paghe/parse-f24` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **attivo** — `POST /api/hr/paghe/riconcilia-f24` — in uso: scheduler
+- **quarantena: verificare** — `GET /api/hr/paghe/tributi-pagati` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 
 ### Router `app.hr.routers.libro_unico_parser` (10)
 
-- **attivo** — `GET /api/hr/paghe/acconti` — in uso: FE
-- **attivo** — `POST /api/hr/paghe/acconti/{busta_id}` — in uso: FE
-- **attivo** — `DELETE /api/hr/paghe/acconti/{busta_id}/{acconto_id}` — in uso: FE
-- **attivo** — `GET /api/hr/paghe/buste-paga` — in uso: FE
-- **attivo** — `POST /api/hr/paghe/import-libro-unico` — in uso: FE
-- **attivo** — `POST /api/hr/paghe/parse-libro-unico` — in uso: FE
-- **attivo** — `POST /api/hr/paghe/parse-libro-unico/dipendente/{indice}` — in uso: FE
-- **attivo** — `GET /api/hr/paghe/presenze-mensili` — in uso: FE
-- **attivo** — `GET /api/hr/paghe/presenze-mensili/{codice_fiscale}/{periodo}` — in uso: FE
-- **attivo** — `POST /api/hr/paghe/riconcilia-stipendi` — in uso: FE
+- **quarantena: verificare** — `GET /api/hr/paghe/acconti` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/paghe/acconti/{busta_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `DELETE /api/hr/paghe/acconti/{busta_id}/{acconto_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/paghe/buste-paga` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/paghe/import-libro-unico` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/paghe/parse-libro-unico` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/paghe/parse-libro-unico/dipendente/{indice}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/paghe/presenze-mensili` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/paghe/presenze-mensili/{codice_fiscale}/{periodo}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/hr/paghe/riconcilia-stipendi` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 
 ### Router `app.hr.routers.notifiche` (3)
 
@@ -1356,12 +1356,12 @@ Route table sorgente: **1530**; attivi da ricreare: **1126**; quarantena: **404*
 
 ### Router `app.hr.routers.salari_unificati_v2` (6)
 
-- **attivo** — `GET /api/hr/salari-v2/ferie-rol` — in uso: FE
-- **attivo** — `GET /api/hr/salari-v2/non-pagati` — in uso: FE
-- **attivo** — `POST /api/hr/salari-v2/pagamento` — in uso: FE, scheduler
-- **attivo** — `POST /api/hr/salari-v2/riconcilia-banca` — in uso: FE
-- **attivo** — `GET /api/hr/salari-v2/riepilogo` — in uso: FE
-- **attivo** — `GET /api/hr/salari-v2/saldo/{codice_fiscale}` — in uso: FE
+- **quarantena: verificare** — `GET /api/hr/salari-v2/ferie-rol` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/salari-v2/non-pagati` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **attivo** — `POST /api/hr/salari-v2/pagamento` — in uso: scheduler
+- **quarantena: verificare** — `POST /api/hr/salari-v2/riconcilia-banca` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/salari-v2/riepilogo` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/hr/salari-v2/saldo/{codice_fiscale}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 
 ### Router `app.hr.routers.tfr` (28)
 

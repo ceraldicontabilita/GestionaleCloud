@@ -45,11 +45,12 @@ def _walk_texts(root, exts):
 
 
 def frontend_refs():
-    refs = set()
-    for _, txt in _walk_texts("frontend/src", (".js", ".jsx", ".ts", ".tsx")):
-        for m in re.findall(r"/api/[a-zA-Z0-9_\-/${}.]+", txt):
-            refs.add(m)
-    return refs
+    # Risolve anche costanti prefisso e baseURL axios (scripts/frontend_api_refs.py).
+    try:
+        from scripts.frontend_api_refs import frontend_api_refs
+    except ImportError:  # eseguito come `python scripts/...`
+        from frontend_api_refs import frontend_api_refs
+    return frontend_api_refs("frontend/src")
 
 
 def _norm(p):
