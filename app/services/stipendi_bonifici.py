@@ -5,11 +5,23 @@ l'identita' completa del dipendente e l'importo e' positivo e non supera il
 residuo della busta. Sono ammessi piu' acconti; la riga si chiude soltanto
 quando la loro somma raggiunge il netto. Non esistono fallback per ordine del
 database, solo cognome o semplice vicinanza dell'importo.
+
+Competenza del bonifico (LOGICA_FUNZIONAMENTO.md §7, audit 03/09/2026 PR 13):
+senza periodo esplicito in causale, un bonifico eseguito PRIMA del giorno 25
+paga il cedolino del mese precedente (il saldo di gennaio arriva il 20
+febbraio); dal 25 in poi paga il mese corrente. La vecchia finestra
+[20/M, 15/M+1] agganciava il saldo di gennaio pagato il 20/02 alla busta di
+febbraio: ``riallinea_competenza_bonifici_stipendi`` sposta (o stacca) i
+bonifici gia' registrati sul mese sbagliato.
 """
 from __future__ import annotations
 
+import argparse
+import asyncio
+import json
 import logging
 import re
+import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -21,9 +33,14 @@ from app.routers.bonifici_module.classification import (
 from app.services.bonifici_pdf_ingest import arricchisci_nomi_salari_da_cedolini
 from app.services.identity_matching import nome_presente_nel_testo, nome_tokens
 from app.services.accounting_relation_writers import record_salary_reconciliation
-from app.services.entity_relations import relation_key
+from app.services.entity_relations import relation_key, revoke_entity_relation
 
 logger = logging.getLogger(__name__)
+
+# Giorno del mese da cui un bonifico senza periodo in causale si riferisce al
+# mese corrente invece che al precedente (LOGICA_FUNZIONAMENTO.md §7).
+GIORNO_CAMBIO_COMPETENZA = 25
+MOTIVO_RIALLINEO_COMPETENZA = "riallineo_competenza_bonifici_stipendi_2026-09-03"
 
 _FAVORE_RE = re.compile(
     r"FAVORE\s+([A-Za-zÀ-ÿ'\. ]+?)(?:\s+NOTPROVIDE\b.*)?\s*(?:-|$)",
@@ -61,6 +78,27 @@ def estrai_periodo_causale(descrizione: str) -> Optional[Tuple[int, int]]:
         if match:
             return mese, int(match.group(1))
     return None
+
+
+def competenza_bonifico_stipendio(data_movimento: Any) -> Optional[Tuple[int, int]]:
+    """``(mese, anno)`` del cedolino pagato da un bonifico senza periodo in causale.
+
+    Prima del giorno 25 il bonifico e' il saldo/acconto del mese PRECEDENTE
+    (20/02/2026 -> 01/2026); dal 25 in poi e' del mese corrente (30/03/2026
+    -> 03/2026). ``None`` se la data non e' leggibile.
+    """
+    try:
+        data = datetime.fromisoformat(str(data_movimento or "")[:10])
+    except (TypeError, ValueError):
+        return None
+    if data.day < GIORNO_CAMBIO_COMPETENZA:
+        return (12, data.year - 1) if data.month == 1 else (data.month - 1, data.year)
+    return data.month, data.year
+
+
+def periodo_atteso_bonifico(descrizione: str, data_movimento: Any) -> Optional[Tuple[int, int]]:
+    """Periodo dichiarato in causale, altrimenti quello dedotto dalla data."""
+    return estrai_periodo_causale(descrizione) or competenza_bonifico_stipendio(data_movimento)
 
 
 def _nome_riga_stipendio(riga: Dict[str, Any]) -> str:
@@ -136,9 +174,13 @@ def _candidati_univoci(
     dipendente_id: Optional[str] = None,
     allow_partial: bool = True,
 ) -> List[Dict[str, Any]]:
-    """Nome completo + importo entro il residuo + periodo, se presente."""
+    """Nome completo + importo entro il residuo + periodo di competenza.
+
+    Il periodo e' quello scritto in causale; altrimenti lo decide la data del
+    bonifico con la regola del giorno 25 (``competenza_bonifico_stipendio``).
+    """
     nome_favore = estrai_nome_favore(descrizione)
-    periodo = estrai_periodo_causale(descrizione)
+    periodo = periodo_atteso_bonifico(descrizione, data_movimento)
     candidati: List[Dict[str, Any]] = []
     for riga in righe:
         if riga.get("riconciliato") is True:
@@ -163,31 +205,311 @@ def _candidati_univoci(
         )
         if not nome_ok or len(_tokens(nome_riga)) < 2:
             continue
-        if periodo and (
-            int(riga.get("mese") or 0), int(riga.get("anno") or 0)
-        ) != periodo:
+        # Senza periodo (ne' in causale ne' da una data leggibile) non si
+        # sceglie una busta "a caso": nessun candidato.
+        if periodo is None:
             continue
-        if not periodo:
-            # Senza periodo esplicito in causale, la data deve cadere nella
-            # finestra paga dal 20 del mese al 15 del mese successivo.
-            try:
-                mese_riga = int(riga.get("mese") or 0)
-                anno_riga = int(riga.get("anno") or 0)
-                data_mov = datetime.fromisoformat(str(data_movimento)[:10])
-                if not 1 <= mese_riga <= 12:
-                    continue
-                inizio = datetime(anno_riga, mese_riga, 20)
-                fine = (
-                    datetime(anno_riga + 1, 1, 15)
-                    if mese_riga == 12
-                    else datetime(anno_riga, mese_riga + 1, 15)
-                )
-                if not inizio <= data_mov <= fine:
-                    continue
-            except (TypeError, ValueError):
-                continue
+        try:
+            periodo_riga = (int(riga.get("mese") or 0), int(riga.get("anno") or 0))
+        except (TypeError, ValueError):
+            continue
+        if periodo_riga != periodo:
+            continue
         candidati.append(riga)
     return candidati
+
+
+# ── Riallineamento della competenza dei bonifici gia' registrati (PR 13) ────
+
+def _chiave_dipendente(riga: Dict[str, Any]) -> Tuple[str, ...]:
+    """Identita' del dipendente della riga: id anagrafico, altrimenti il nome."""
+    dipendente_id = str(riga.get("dipendente_id") or "").strip()
+    if dipendente_id:
+        return ("id", dipendente_id)
+    return ("nome",) + tuple(sorted(_tokens(_nome_riga_stipendio(riga))))
+
+
+def _periodo_riga(riga: Dict[str, Any]) -> Optional[Tuple[int, int]]:
+    try:
+        periodo = (int(riga.get("mese") or 0), int(riga.get("anno") or 0))
+    except (TypeError, ValueError):
+        return None
+    return periodo if 1 <= periodo[0] <= 12 and periodo[1] >= 2000 else None
+
+
+def _importo_movimento(movimento: Dict[str, Any]) -> float:
+    try:
+        return round(abs(float(movimento.get("importo") or 0)), 2)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _campi_riga_da_movimenti(
+    riga: Dict[str, Any], movimenti: List[Dict[str, Any]], now: str,
+) -> Dict[str, Any]:
+    """Stato di pagamento della riga ricalcolato dai movimenti collegati.
+
+    Stessa forma scritta da ``associa_bonifici_stipendi``; una riga senza
+    movimenti torna allo stato iniziale dell'import (bonifico 0, saldo
+    negativo pari al netto, nessuno stato bonifico).
+    """
+    busta = _importo_atteso(riga)
+    ordinati = sorted(movimenti, key=lambda m: (str(m.get("data") or ""), str(m.get("id") or "")))
+    pagato = round(sum(_importo_movimento(m) for m in ordinati), 2)
+    if not ordinati:
+        return {
+            "movimenti_bancari_ids": [],
+            "importo_bonifico": 0,
+            "saldo": round(-busta, 2),
+            "riconciliato": False,
+            "stato_bonifico": None,
+            "pagato_con": None,
+            "data_pagamento": None,
+            "updated_at": now,
+        }
+    saldo = round(busta - pagato, 2)
+    completata = abs(saldo) <= 0.009
+    return {
+        "movimenti_bancari_ids": [str(m.get("id")) for m in ordinati],
+        "importo_bonifico": pagato,
+        "saldo": 0.0 if completata else saldo,
+        "riconciliato": completata,
+        "stato_bonifico": "riconciliato" if completata else "parzialmente_riconciliato",
+        "pagato_con": "bonifico",
+        "data_pagamento": str(ordinati[-1].get("data") or "")[:10],
+        "updated_at": now,
+    }
+
+
+async def riallinea_competenza_bonifici_stipendi(
+    db,
+    *,
+    dry_run: bool = True,
+    anno: Optional[int] = None,
+    actor: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Porta ogni bonifico gia' collegato sulla busta del periodo giusto.
+
+    Per ogni riferimento bancario di ``prima_nota_salari`` ricalcola il
+    periodo atteso (causale, altrimenti regola del giorno 25). Se la riga
+    e' di un altro periodo:
+
+    - ``spostamenti``: esiste UNA sola riga dello stesso dipendente per il
+      periodo atteso con residuo capiente -> il bonifico passa a quella
+      (importi, saldo, stato, ``movimenti_bancari_ids``, ``stipendio_id``
+      sul movimento, relazione ``allocates_salary_payment`` revocata e
+      ricreata);
+    - ``senza_destinazione``: la riga del periodo atteso non esiste (es.
+      gennaio 2026 assente in prima nota) -> il bonifico viene STACCATO
+      dalla riga sbagliata e il movimento torna da riconciliare: quando la
+      riga giusta verra' creata, l'associazione ordinaria lo aggancera' da
+      sola. Non si inventa un cedolino;
+    - ``ambigui``: piu' righe candidate (mensile + tredicesima dello stesso
+      mese) -> nessuna scelta automatica, resta com'e'.
+
+    Idempotente: una seconda esecuzione non trova piu' nulla da fare.
+    ``dry_run=True`` non scrive niente.
+    """
+    filtro: Dict[str, Any] = {}
+    if anno:
+        filtro["anno"] = int(anno)
+    righe = await db["prima_nota_salari"].find(filtro, {"_id": 0}).to_list(20000)
+    if anno:
+        # Le destinazioni possono stare nell'anno precedente (bonifico di
+        # gennaio -> dicembre): servono anche quelle righe.
+        righe_prec = await db["prima_nota_salari"].find(
+            {"anno": int(anno) - 1}, {"_id": 0}
+        ).to_list(20000)
+        righe = righe + [r for r in righe_prec if r.get("id") not in {x.get("id") for x in righe}]
+    per_id = {str(r.get("id")): r for r in righe if r.get("id")}
+    per_dipendente_periodo: Dict[Tuple[Any, ...], List[Dict[str, Any]]] = {}
+    for riga in righe:
+        periodo = _periodo_riga(riga)
+        if periodo:
+            per_dipendente_periodo.setdefault((_chiave_dipendente(riga), periodo), []).append(riga)
+
+    # Stato simulato: id riga -> lista movimenti attualmente collegati.
+    movimenti_cache: Dict[str, Optional[Dict[str, Any]]] = {}
+
+    async def _movimento(movimento_id: str) -> Optional[Dict[str, Any]]:
+        if movimento_id not in movimenti_cache:
+            movimenti_cache[movimento_id] = await db["estratto_conto_movimenti"].find_one(
+                {"id": movimento_id}, {"_id": 0}
+            )
+        return movimenti_cache[movimento_id]
+
+    collegati: Dict[str, List[Dict[str, Any]]] = {}
+    esito: Dict[str, Any] = {
+        "dry_run": dry_run,
+        "motivo": MOTIVO_RIALLINEO_COMPETENZA,
+        "regola": f"causale esplicita, altrimenti giorno < {GIORNO_CAMBIO_COMPETENZA} = mese precedente",
+        "righe_esaminate": len(righe),
+        "movimenti_esaminati": 0,
+        "coerenti": 0,
+        "riferimenti_non_verificati": 0,
+        "spostamenti": [],
+        "senza_destinazione": [],
+        "ambigui": [],
+    }
+    righe_toccate: set = set()
+    movimenti_da_staccare: List[Tuple[Dict[str, Any], Dict[str, Any], Tuple[int, int]]] = []
+
+    for riga in sorted(righe, key=lambda r: (int(r.get("anno") or 0), int(r.get("mese") or 0), str(r.get("id")))):
+        riga_id = str(riga.get("id") or "")
+        ids = _movimento_ids_stipendio(riga)
+        if not riga_id or not ids:
+            continue
+        for movimento_id in ids:
+            movimento = await _movimento(movimento_id)
+            esito["movimenti_esaminati"] += 1
+            if not movimento:
+                esito["riferimenti_non_verificati"] += 1
+                continue
+            collegati.setdefault(riga_id, []).append(movimento)
+
+    for riga_id, movimenti in list(collegati.items()):
+        riga = per_id[riga_id]
+        periodo_riga = _periodo_riga(riga)
+        for movimento in list(movimenti):
+            descrizione = movimento.get("descrizione_originale") or movimento.get("descrizione") or ""
+            atteso = periodo_atteso_bonifico(descrizione, movimento.get("data"))
+            if atteso is None or periodo_riga is None or atteso == periodo_riga:
+                esito["coerenti"] += 1
+                continue
+            importo = _importo_movimento(movimento)
+            sintesi = {
+                "movimento_id": movimento.get("id"),
+                "data": str(movimento.get("data") or "")[:10],
+                "importo": importo,
+                "dipendente": _nome_riga_stipendio(riga),
+                "da": {"id": riga_id, "mese": periodo_riga[0], "anno": periodo_riga[1]},
+                "periodo_atteso": {"mese": atteso[0], "anno": atteso[1]},
+            }
+            candidate = [
+                r for r in per_dipendente_periodo.get((_chiave_dipendente(riga), atteso), [])
+                if str(r.get("id")) != riga_id
+            ]
+            capienti = []
+            for candidata in candidate:
+                cid = str(candidata.get("id"))
+                pagato = round(sum(_importo_movimento(m) for m in collegati.get(cid, [])), 2)
+                residuo = round(_importo_atteso(candidata) - pagato, 2)
+                if importo - residuo <= 0.009 and residuo > 0:
+                    capienti.append(candidata)
+            if len(capienti) > 1:
+                esito["ambigui"].append({**sintesi, "candidate": [str(c.get("id")) for c in capienti]})
+                continue
+            if not capienti:
+                esito["senza_destinazione"].append(sintesi)
+                movimenti.remove(movimento)
+                movimenti_da_staccare.append((riga, movimento, atteso))
+                righe_toccate.add(riga_id)
+                continue
+            destinazione = capienti[0]
+            dest_id = str(destinazione.get("id"))
+            movimenti.remove(movimento)
+            collegati.setdefault(dest_id, []).append(movimento)
+            righe_toccate.update({riga_id, dest_id})
+            esito["spostamenti"].append({
+                **sintesi,
+                "a": {"id": dest_id, "mese": atteso[0], "anno": atteso[1]},
+            })
+
+    esito["totale_da_riallineare"] = len(esito["spostamenti"]) + len(esito["senza_destinazione"])
+    if dry_run:
+        return esito
+
+    now = datetime.now(timezone.utc).isoformat()
+    relazioni_revocate = relazioni_create = 0
+    for riga_id in sorted(righe_toccate):
+        riga = per_id[riga_id]
+        await db["prima_nota_salari"].update_one(
+            {"id": riga_id},
+            {"$set": {
+                **_campi_riga_da_movimenti(riga, collegati.get(riga_id, []), now),
+                "riallineo_competenza": MOTIVO_RIALLINEO_COMPETENZA,
+            }},
+        )
+        riga.update(_campi_riga_da_movimenti(riga, collegati.get(riga_id, []), now))
+
+    for spostamento in esito["spostamenti"]:
+        movimento = movimenti_cache[spostamento["movimento_id"]]
+        origine, destinazione = per_id[spostamento["da"]["id"]], per_id[spostamento["a"]["id"]]
+        await db["estratto_conto_movimenti"].update_one(
+            {"id": movimento["id"]},
+            {"$set": {
+                "stipendio_id": destinazione["id"],
+                "dipendente": _nome_riga_stipendio(destinazione),
+                "riallineo_competenza": MOTIVO_RIALLINEO_COMPETENZA,
+                "riallineo_competenza_at": now,
+                "updated_at": now,
+            }},
+        )
+        if await revoke_entity_relation(
+            db, source_type="bank_movement", source_id=str(movimento["id"]),
+            relation_type="allocates_salary_payment", target_type="salary_entry",
+            target_id=str(origine["id"]), actor=actor or "riallineo_competenza",
+        ):
+            relazioni_revocate += 1
+        try:
+            await record_salary_reconciliation(
+                db, salary_entry=destinazione, movement=movimento,
+                amount=spostamento["importo"], employee_name=_nome_riga_stipendio(destinazione),
+            )
+            relazioni_create += 1
+        except Exception:
+            logger.exception(
+                "Errore relazione stipendio %s / movimento %s nel riallineo",
+                destinazione.get("id"), movimento.get("id"),
+            )
+
+    for riga, movimento, atteso in movimenti_da_staccare:
+        await db["estratto_conto_movimenti"].update_one(
+            {"id": movimento["id"]},
+            {"$set": {
+                "riconciliato": False,
+                "stipendio_id": None,
+                "tipo_riconciliazione": None,
+                "categoria": "Stipendi",
+                "riallineo_competenza": MOTIVO_RIALLINEO_COMPETENZA,
+                "riallineo_competenza_at": now,
+                "riallineo_periodo_atteso": f"{atteso[0]:02d}/{atteso[1]}",
+                "updated_at": now,
+            }},
+        )
+        if await revoke_entity_relation(
+            db, source_type="bank_movement", source_id=str(movimento["id"]),
+            relation_type="allocates_salary_payment", target_type="salary_entry",
+            target_id=str(riga["id"]), actor=actor or "riallineo_competenza",
+        ):
+            relazioni_revocate += 1
+
+    esito.update({
+        "eseguita_at": now,
+        "righe_aggiornate": len(righe_toccate),
+        "spostamenti_applicati": len(esito["spostamenti"]),
+        "movimenti_staccati": len(movimenti_da_staccare),
+        "relazioni_revocate": relazioni_revocate,
+        "relazioni_create": relazioni_create,
+    })
+    if righe_toccate:
+        try:
+            await db["prima_nota_migrazioni_audit"].insert_one({
+                "id": str(uuid.uuid4()),
+                "migrazione": MOTIVO_RIALLINEO_COMPETENZA,
+                "actor": actor or "sistema",
+                "created_at": now,
+                "risultato": {k: v for k, v in esito.items() if k not in ("spostamenti", "senza_destinazione", "ambigui")},
+                "spostamenti": esito["spostamenti"],
+                "senza_destinazione": esito["senza_destinazione"],
+            })
+        except Exception:  # pragma: no cover - l'audit non deve bloccare il riallineo
+            logger.exception("Audit del riallineo competenza stipendi non scritto")
+        logger.warning(
+            "[riallineo competenza stipendi] spostati %s, staccati %s, righe aggiornate %s",
+            len(esito["spostamenti"]), len(movimenti_da_staccare), len(righe_toccate),
+        )
+    return esito
 
 
 async def recupera_relazioni_stipendi_mancanti(
@@ -320,6 +642,18 @@ async def associa_bonifici_stipendi(
 ) -> Dict[str, Any]:
     """Riconcilia solo match bancari certi e univoci."""
     nomi_arricchiti = await arricchisci_nomi_salari_da_cedolini(db)
+    # Prima di associare altro, i bonifici gia' collegati devono stare sul
+    # periodo giusto (regola del giorno 25): e' lo stesso motore, non un
+    # comando di manutenzione a parte. Solo nelle esecuzioni batch.
+    riallineo_competenza: Optional[Dict[str, Any]] = None
+    if not stipendio_id:
+        try:
+            riallineo_competenza = await riallinea_competenza_bonifici_stipendi(
+                db, dry_run=False, anno=anno, actor="associa_bonifici_stipendi",
+            )
+        except Exception:
+            logger.exception("Riallineo competenza bonifici stipendi non completato")
+            riallineo_competenza = {"errore": True}
     try:
         recupero_relazioni = await recupera_relazioni_stipendi_mancanti(
             db, anno=anno, stipendio_id=stipendio_id,
@@ -498,6 +832,7 @@ async def associa_bonifici_stipendi(
         "nomi_arricchiti_da_cedolini": nomi_arricchiti,
         "match_ambigui_ignorati": ambigui,
         "recupero_relazioni": recupero_relazioni,
+        "riallineo_competenza": riallineo_competenza,
         "dettaglio": dettaglio,
     }
 
@@ -544,3 +879,37 @@ async def riconciliazione_salario_verificata(db, riga: Dict[str, Any]) -> bool:
             totale_verificato = round(totale_verificato + importo, 2)
             riga_verifica["importo_bonifico"] = totale_verificato
     return abs(atteso - totale_verificato) <= 0.009
+
+
+# ── CLI ──────────────────────────────────────────────────────────────────────
+
+async def _main_async(dry_run: bool, anno: Optional[int]) -> Dict[str, Any]:
+    from app.database import Database
+
+    await Database.connect_db()
+    try:
+        return await riallinea_competenza_bonifici_stipendi(
+            Database.get_db(), dry_run=dry_run, anno=anno, actor="cli",
+        )
+    finally:
+        await Database.close_db()
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Riallinea la competenza dei bonifici stipendio gia' collegati "
+            "(regola del giorno 25). Default: solo analisi."
+        ),
+    )
+    parser.add_argument("--applica", action="store_true", help="scrive davvero le modifiche")
+    parser.add_argument("--anno", type=int, default=None, help="limita a un anno contabile")
+    args = parser.parse_args(argv)
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    risultato = asyncio.run(_main_async(dry_run=not args.applica, anno=args.anno))
+    print(json.dumps(risultato, indent=2, ensure_ascii=False, default=str))
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())

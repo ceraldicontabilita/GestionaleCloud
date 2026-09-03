@@ -2022,16 +2022,35 @@ async def export_estratto_conto_excel(
 
 @router.post("/riconcilia-stipendi")
 @handle_errors
-async def riconcilia_stipendi_automatico(anno: Optional[int] = Query(None)) -> Dict[str, Any]:
+async def riconcilia_stipendi_automatico(
+    anno: Optional[int] = Query(None),
+    dry_run: bool = Query(
+        False,
+        description=(
+            "True = solo analisi del riallineo di competenza dei bonifici gia' "
+            "collegati (regola del giorno 25), senza scrivere nulla"
+        ),
+    ),
+) -> Dict[str, Any]:
     """
     Riconcilia automaticamente i bonifici stipendio con la prima nota salari.
     Cerca i movimenti "VOSTRA DISPOSIZIONE" con nomi di dipendenti e li collega.
+
+    Con ``dry_run=true`` restituisce soltanto l'analisi del riallineo di
+    competenza (audit 03/09/2026, PR 13): quali bonifici stanno sul mese
+    sbagliato e dove andrebbero. Con ``dry_run=false`` il riallineo viene
+    applicato e poi parte l'associazione ordinaria (stesso motore).
     """
     db = Database.get_db()
     # Unico motore autorizzato: nome completo nella causale, importo esatto,
     # periodo/data compatibili e candidato univoco. Il vecchio percorso per
     # singola parola/cognome non deve mai essere raggiunto.
-    from app.services.stipendi_bonifici import associa_bonifici_stipendi
+    from app.services.stipendi_bonifici import (
+        associa_bonifici_stipendi,
+        riallinea_competenza_bonifici_stipendi,
+    )
+    if dry_run:
+        return await riallinea_competenza_bonifici_stipendi(db, dry_run=True, anno=anno)
     return await associa_bonifici_stipendi(db, anno=anno)
     
     # Carica nomi dipendenti dalla prima_nota_salari (fonte più affidabile)
