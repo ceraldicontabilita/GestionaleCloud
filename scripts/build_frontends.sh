@@ -31,10 +31,12 @@ for dir in frontend_*/; do
   [ -f "$dir/package.json" ] || continue
   echo "== $dir"
   if [ -f "$dir/package-lock.json" ]; then
-    npm --prefix "$dir" ci --legacy-peer-deps
+    npm --prefix "$dir" ci --include=dev --legacy-peer-deps
   else
-    npm --prefix "$dir" install --legacy-peer-deps
+    npm --prefix "$dir" install --include=dev --legacy-peer-deps
   fi
+  # --include=dev: su Render NODE_ENV=production e npm salterebbe le devDependencies
+  # (vite, react-scripts, craco): il build fallirebbe con "Cannot find module".
   # CI=false: le build CRA non devono fallire per i warning ESLint (stessa
   # scelta della CI originale di Lotti); per Vite la variabile e' innocua.
   CI=false npm --prefix "$dir" run build
