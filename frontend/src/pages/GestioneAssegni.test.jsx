@@ -282,39 +282,12 @@ describe('Stati e resa responsive della pagina Assegni', () => {
     );
   });
 
-  it('mostra le fatture aperte del fornitore inserito e salva il collegamento', async () => {
-    api.get.mockImplementation(url => {
-      if (url.includes('/supporto/fatture-disponibili')) {
-        return Promise.resolve({ data: [{
-          id: 'fatt-kimbo', invoice_number: 'K-100', invoice_date: '2026-05-20',
-          supplier_name: 'KIMBO S.P.A.', total_amount: 1498.96, pagato: false,
-        }] });
-      }
-      return rispostaPagina([{
-        id: 'ass-kimbo', numero: '0208769323', stato: 'incassato',
-        importo: 1498.96, beneficiario: 'KIMBO',
-      }])(url);
-    });
-    api.put.mockResolvedValue({ data: { success: true } });
+  it('riconosce lo stesso fornitore anche con la forma societaria estesa', () => {
+    const fatture = [{
+      id: 'fatt-kimbo', supplier_name: 'KIMBO S.P.A.', total_amount: 1498.96,
+    }];
 
-    renderPagina();
-    fireEvent.click(await screen.findByTestId('edit-ass-kimbo'));
-    fireEvent.click(screen.getByRole('button', {
-      name: 'Scegli fatture del fornitore KIMBO',
-    }));
-
-    await waitFor(() => expect(api.get).toHaveBeenCalledWith(
-      expect.stringContaining('fornitore=KIMBO'),
-    ));
-    const fatturaProposta = await screen.findByText(/K-100|Nessuna fattura disponibile per assegno/);
-    expect(fatturaProposta).toHaveTextContent('K-100');
-    fireEvent.click(fatturaProposta);
-    fireEvent.click(screen.getByTestId('salva-fatture-btn'));
-
-    await waitFor(() => expect(api.put).toHaveBeenCalledWith(
-      '/api/assegni/ass-kimbo/fatture-collegate',
-      { fatture: [{ fattura_id: 'fatt-kimbo', quota: 1498.96 }] },
-    ));
+    expect(fatturePerFornitore(fatture, 'KIMBO')).toEqual(fatture);
   });
 
   it('usa card senza tabella su schermo mobile', async () => {

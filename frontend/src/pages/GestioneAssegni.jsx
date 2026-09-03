@@ -66,7 +66,11 @@ export const normalizzaIdentitaFornitore = value =>
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^A-Z0-9]+/gi, ' ')
     .trim()
-    .toUpperCase();
+    .toUpperCase()
+    .replace(/\b(S R L|S P A|S A S|S N C|S C A R L)\b/g, ' ')
+    .split(/\s+/)
+    .filter(parola => parola && !['SRL', 'SPA', 'SAS', 'SNC', 'SS', 'SCARL'].includes(parola))
+    .join(' ');
 
 export const fatturePerFornitore = (elenco, nome, piva = '') => {
   const pivaNormalizzata = String(piva || '').replace(/\s/g, '').toUpperCase();

@@ -609,7 +609,7 @@ describe('Fatture provvisorie in attesa banca', () => {
       '/api/prima-nota/provvisori/assegni-proposti',
       { params: { fattura_id: 'fatt-generica', frammento: '' } },
     ));
-    expect(await screen.findByLabelText('Ultime 5 cifre e suffisso assegno')).toBeInTheDocument();
+    expect(await screen.findByLabelText('Finale assegno nel formato 123-01')).toBeInTheDocument();
   });
 
   it('riconosce la RiBa bancaria e non propone un assegno', () => {
