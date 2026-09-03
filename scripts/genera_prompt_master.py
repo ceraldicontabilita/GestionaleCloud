@@ -83,6 +83,16 @@ PAGE_PURPOSES = {
     64: "Atti amministrativi con ente, protocollo, originale, scadenze e notifiche.",
     65: "Situazione fiscale unificata con F24, dichiarazioni, quietanze e anomalie.",
     66: "Ricezioni, lotti, registri, attese correttive, ricette, produzioni e attrezzature collegate alle entità canoniche.",
+    67: "Area gestione HR (ex AppDipendenti): anagrafica, presenze, ferie, turni, timbrature, buste paga, TFR, contratti, documenti e accessi con PIN personale dei dipendenti.",
+    68: "Portale dipendenti su smartphone: login tocca-il-nome + PIN personale, timbrature, turni, buste paga, documenti, richieste e avvisi; l'amministratore accede dal login unico del gestionale.",
+    69: "Menu digitale pubblico di Ceraldi Caffè (QR al tavolo): categorie, sottocategorie, prodotti con allergeni, IT/EN, carrello e invio dell'ordine con sala, coperto e metodo di pagamento; nessuna sessione.",
+    70: "Ordini del menu in tempo reale su quattro colonne (nuovi, in corso, pronti, completati) con avanzamento e annullo.",
+    71: "Cassa: ordini al banco dal catalogo, sala e coperto, incasso contanti/POS e coda degli ordini da incassare.",
+    72: "Monitor cucina: ticket degli ordini nuovi e in preparazione con minuti trascorsi, inizio e pronto.",
+    73: "Magazzino bar condiviso con Lotti (collezione unica): giacenze, soglie minime, carichi, scarichi e storico movimenti.",
+    74: "Sale del locale: abilitazione ordini, coperto a persona e blocco contanti per gli ordini dal QR.",
+    75: "Gestione del menu (admin/operatore): categorie, sottocategorie, prodotti con allergeni e immagini deduplicate, QR menu/WiFi, backup JSON e migrazione dal vecchio Supabase (solo admin).",
+    76: "Banco per chi entra dal portale dipendenti (token PIN): ordini, cassa, cucina e magazzino bar senza il layout del gestionale.",
 }
 
 
@@ -627,9 +637,9 @@ def sensitive(name: str) -> str:
 def render_pages() -> str:
     catalog = __import__("json").loads((ROOT / "page_catalog.json").read_text(encoding="utf-8"))
     pages = catalog["pages"]
-    if len(pages) != 66 or set(PAGE_PURPOSES) != set(range(1, 67)):
+    if len(pages) != len(PAGE_PURPOSES) or set(PAGE_PURPOSES) != set(range(1, len(pages) + 1)):
         raise RuntimeError("Catalogo o contratti pagina incompleti")
-    lines = ["## Appendice A — Tutte le 66 pagine", ""]
+    lines = [f"## Appendice A — Tutte le {len(pages)} pagine", ""]
     for page in sorted(pages, key=lambda value: value["id"]):
         lines.append(
             f"{page['id']}. **{page['label']}** — `{page['path']}` — accesso `{page['access']}` — "

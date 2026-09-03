@@ -94,6 +94,11 @@ def read_json(relative: str) -> dict[str, Any]:
     return json.loads((ROOT / relative).read_text(encoding="utf-8"))
 
 
+def _numero_pagine() -> int:
+    """Pagine canoniche correnti (dal catalogo, non un numero cablato)."""
+    return len(read_json("page_catalog.json")["pages"])
+
+
 def normalize_dynamic_path(value: str) -> str:
     value = re.sub(r"\$\{[^}]+\}", "{param}", value)
     value = re.sub(r"\s+", "", value)
@@ -371,7 +376,7 @@ Registri Google Sheets/Excel + entity_relations
         ↓ servizi di dominio / writer contabile unico
 API autenticate e versionate
         ↓
-66 pagine semplici + popup accessibili + audit/notifiche
+__N_PAGINE__ pagine semplici + popup accessibili + audit/notifiche
 ```
 
 ## Confini
@@ -387,7 +392,7 @@ API autenticate e versionate
 
 Frontend → API → servizi → repository/adapter. Sono vietati bypass, doppie
 pipeline e import che scrivono direttamente in registri contabili.
-"""
+""".replace("__N_PAGINE__", str(_numero_pagine()))
 
 
 def render_data_model() -> str:
@@ -591,7 +596,7 @@ def render_kickoff_prompt() -> str:
 
 1. Verifica prima MANIFEST.json e MANIFEST.sha256.
 2. Leggi 00_START_HERE.md e poi integralmente 01_MASTER/PROMPT_MASTER.md.
-3. Implementa esclusivamente le 66 pagine in 03_PAGINE e gli endpoint marcati attivi in 05_API; conserva gli endpoint in quarantena solo come decision log, senza esporli.
+3. Implementa esclusivamente le __N_PAGINE__ pagine in 03_PAGINE e gli endpoint marcati attivi in 05_API; conserva gli endpoint in quarantena solo come decision log, senza esporli.
 4. Usa Google Drive per gli originali e Google Sheets/Excel collegato a Drive per i registri. Drive/Sheets non fa parte del target.
 5. Mantieni un solo writer per concetto, canonical_id, operation_id, relazioni bidirezionali, centesimi esatti, provenienza e idempotenza.
 6. Gmail deve usare in:anywhere, paginazione completa, Europe/Rome, Gmail IDs e SHA-256 senza spostare o eliminare gli originali.
@@ -601,7 +606,7 @@ def render_kickoff_prompt() -> str:
 10. Considera completato solo con tutti i gate di 07_TEST_E_ACCETTAZIONE e ricostruzione Drive-only verificata.
 
 Non inventare dati, importi, credenziali, cartelle o regole. Se manca un fatto, dichiaralo e crea uno stato da verificare; non colmare il vuoto con una supposizione.
-"""
+""".replace("__N_PAGINE__", str(_numero_pagine()))
 
 
 def render_html_index(pages: list[dict[str, Any]], endpoints: list[dict[str, str]]) -> str:
@@ -622,7 +627,7 @@ def render_html_index(pages: list[dict[str, Any]], endpoints: list[dict[str, str
             f'<td><code>{html.escape(endpoint["method"] + " " + endpoint["path"])}</code></td>'
             f'<td>{html.escape(endpoint["router"])}</td><td>{html.escape(endpoint["reason"])}</td></tr>'
         )
-    return """<!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GestionaleCloud Rebuild Kit</title><style>body{font:15px system-ui;margin:0;background:#f4f7fb;color:#102a43}main{max-width:1400px;margin:auto;padding:24px}h1{margin-bottom:8px}nav a{margin-right:14px}input{width:100%;padding:12px;margin:18px 0;border:1px solid #9fb3c8;border-radius:8px}table{width:100%;border-collapse:collapse;background:#fff;margin-bottom:30px}th,td{padding:9px;border-bottom:1px solid #d9e2ec;text-align:left;vertical-align:top}th{position:sticky;top:0;background:#102a43;color:white}code{font-size:12px}a{color:#0758c9}</style></head><body><main><h1>GestionaleCloud — Rebuild Kit</h1><p>Indice navigabile di pagine ed endpoint. Aprire prima <a href="00_START_HERE.md">START HERE</a> e <a href="01_MASTER/PROMPT_MASTER.md">PROMPT MASTER</a>.</p><nav><a href="#pagine">66 pagine</a><a href="#api">API complete</a><a href="06_CONFIG/VARIABLES.json">Variabili</a><a href="MANIFEST.json">Manifest</a></nav><input id="q" type="search" placeholder="Cerca pagina, route, router, endpoint o stato"><h2 id="pagine">Pagine</h2><table><thead><tr><th>#</th><th>Pagina</th><th>Route</th><th>Modulo</th></tr></thead><tbody>""" + "".join(page_rows) + """</tbody></table><h2 id="api">Endpoint</h2><table><thead><tr><th>Stato</th><th>Endpoint</th><th>Router</th><th>Motivo</th></tr></thead><tbody>""" + "".join(endpoint_rows) + """</tbody></table></main><script>const q=document.getElementById('q');q.addEventListener('input',()=>{const v=q.value.toLowerCase();document.querySelectorAll('tbody tr').forEach(r=>r.hidden=!r.dataset.search.includes(v));});</script></body></html>"""
+    return """<!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GestionaleCloud Rebuild Kit</title><style>body{font:15px system-ui;margin:0;background:#f4f7fb;color:#102a43}main{max-width:1400px;margin:auto;padding:24px}h1{margin-bottom:8px}nav a{margin-right:14px}input{width:100%;padding:12px;margin:18px 0;border:1px solid #9fb3c8;border-radius:8px}table{width:100%;border-collapse:collapse;background:#fff;margin-bottom:30px}th,td{padding:9px;border-bottom:1px solid #d9e2ec;text-align:left;vertical-align:top}th{position:sticky;top:0;background:#102a43;color:white}code{font-size:12px}a{color:#0758c9}</style></head><body><main><h1>GestionaleCloud — Rebuild Kit</h1><p>Indice navigabile di pagine ed endpoint. Aprire prima <a href="00_START_HERE.md">START HERE</a> e <a href="01_MASTER/PROMPT_MASTER.md">PROMPT MASTER</a>.</p><nav><a href="#pagine">""" + f"{len(pages)} pagine" + """</a><a href="#api">API complete</a><a href="06_CONFIG/VARIABLES.json">Variabili</a><a href="MANIFEST.json">Manifest</a></nav><input id="q" type="search" placeholder="Cerca pagina, route, router, endpoint o stato"><h2 id="pagine">Pagine</h2><table><thead><tr><th>#</th><th>Pagina</th><th>Route</th><th>Modulo</th></tr></thead><tbody>""" + "".join(page_rows) + """</tbody></table><h2 id="api">Endpoint</h2><table><thead><tr><th>Stato</th><th>Endpoint</th><th>Router</th><th>Motivo</th></tr></thead><tbody>""" + "".join(endpoint_rows) + """</tbody></table></main><script>const q=document.getElementById('q');q.addEventListener('input',()=>{const v=q.value.toLowerCase();document.querySelectorAll('tbody tr').forEach(r=>r.hidden=!r.dataset.search.includes(v));});</script></body></html>"""
 
 
 def source_fingerprint(paths: list[Path]) -> str:
@@ -641,8 +646,8 @@ def build_package(package_root: Path) -> dict[str, Any]:
     validate_page_logic()
     catalog = read_json("page_catalog.json")
     pages = sorted(catalog["pages"], key=lambda item: item["id"])
-    if len(pages) != 66 or [page["id"] for page in pages] != list(range(1, 67)):
-        raise RuntimeError("Il catalogo non contiene esattamente le 66 pagine canoniche")
+    if [page["id"] for page in pages] != list(range(1, len(pages) + 1)):
+        raise RuntimeError("Il catalogo non contiene le pagine canoniche numerate in sequenza")
 
     endpoints = parse_endpoints()
     variables = configuration_inventory()

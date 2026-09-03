@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1171 endpoint** in **113 gruppi**.
+> Totale **1574 endpoint** in **139 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 728 · ext esterni = 81 · — da verificare = 362
+**Riepilogo uso:** ✓ frontend = 968 · ext esterni = 81 · — da verificare = 525
 
 ## AI Parser  (11)
 
@@ -1015,6 +1015,481 @@
 | POST | `/api/haccp/sync-invoices` | ✓ | haccp |
 | GET | `/api/haccp/sync-preview` | ✓ | haccp |
 
+## HR · Accessi  (6)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| GET | `/api/hr/accessi` | ✓ | app.hr.routers.employees.accessi |
+| POST | `/api/hr/accessi/genera-mancanti` | ✓ | app.hr.routers.employees.accessi |
+| POST | `/api/hr/accessi/{dipendente_id}/pin` | ✓ | app.hr.routers.employees.accessi |
+| DELETE | `/api/hr/accessi/{dipendente_id}/pin` | ✓ | app.hr.routers.employees.accessi |
+| POST | `/api/hr/accessi/{dipendente_id}/pin/genera` | ✓ | app.hr.routers.employees.accessi |
+| POST | `/api/hr/accessi/{dipendente_id}/ruolo` | ✓ | app.hr.routers.employees.accessi |
+
+## HR · Amministrazione  (3)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| POST | `/api/hr/admin/migrazione-appdipendenti` | — | app.hr.routers.admin_hr |
+| GET | `/api/hr/admin/migrazione-appdipendenti/{job_id}` | — | app.hr.routers.admin_hr |
+| GET | `/api/hr/admin/stato-dati` | — | app.hr.routers.admin_hr |
+
+## HR · Buste Paga  (6)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| GET | `/api/hr/buste-paga/competenze` | — | app.hr.routers.employees.buste_paga |
+| GET | `/api/hr/buste-paga/lista` | — | app.hr.routers.employees.buste_paga |
+| GET | `/api/hr/buste-paga/riepilogo-mensile/{competenza}` | — | app.hr.routers.employees.buste_paga |
+| POST | `/api/hr/buste-paga/salva` | — | app.hr.routers.employees.buste_paga |
+| POST | `/api/hr/buste-paga/upload` | — | app.hr.routers.employees.buste_paga |
+| DELETE | `/api/hr/buste-paga/{competenza}/{nome}` | — | app.hr.routers.employees.buste_paga |
+
+## HR · Cedolini  (22)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| POST | `/api/hr/cedolini` | ✓ | app.hr.routers.cedolini |
+| GET | `/api/hr/cedolini` | ✓ | app.hr.routers.cedolini |
+| GET | `/api/hr/cedolini/acconti/dipendente/{dipendente_id}` | — | app.hr.routers.cedolini |
+| POST | `/api/hr/cedolini/acconti/scan-estratto-conto` | — | app.hr.routers.cedolini |
+| POST | `/api/hr/cedolini/conferma` | — | app.hr.routers.cedolini |
+| POST | `/api/hr/cedolini/correggi-problematici` | — | app.hr.routers.cedolini |
+| GET | `/api/hr/cedolini/dipendente/{dipendente_id}` | — | app.hr.routers.cedolini |
+| GET | `/api/hr/cedolini/dipendente/{dipendente_id}/acconti-banca` | — | app.hr.routers.cedolini |
+| POST | `/api/hr/cedolini/dipendente/{dipendente_id}/applica-trattenuta/{trattenuta_id}` | — | app.hr.routers.cedolini |
+| POST | `/api/hr/cedolini/dipendente/{dipendente_id}/applica-tutte-trattenute` | — | app.hr.routers.cedolini |
+| GET | `/api/hr/cedolini/dipendente/{dipendente_id}/trattenute` | — | app.hr.routers.cedolini |
+| POST | `/api/hr/cedolini/import-drive` | ✓ | app.hr.routers.cedolini |
+| POST | `/api/hr/cedolini/import-gmail` | — | app.hr.routers.cedolini |
+| GET | `/api/hr/cedolini/incompleti` | — | app.hr.routers.cedolini |
+| POST | `/api/hr/cedolini/incompleti/{cedolino_id}/completa` | — | app.hr.routers.cedolini |
+| GET | `/api/hr/cedolini/lista/{anno}/{mese}` | — | app.hr.routers.cedolini |
+| GET | `/api/hr/cedolini/problematici` | — | app.hr.routers.cedolini |
+| GET | `/api/hr/cedolini/riepilogo-mensile/{anno}/{mese}` | — | app.hr.routers.cedolini |
+| GET | `/api/hr/cedolini/simulazione-f24` | ✓ | app.hr.routers.cedolini |
+| POST | `/api/hr/cedolini/stima` | — | app.hr.routers.cedolini |
+| GET | `/api/hr/cedolini/{cedolino_id}` | — | app.hr.routers.cedolini |
+| GET | `/api/hr/cedolini/{cedolino_id}/download` | — | app.hr.routers.cedolini |
+
+## HR · Contratti  (23)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| GET | `/api/hr/contracts/acconti-tfr` | ✓ | app.hr.routers.employees.employee_contracts |
+| GET | `/api/hr/contracts/acconti-tfr/{employee_id}` | ✓ | app.hr.routers.employees.employee_contracts |
+| POST | `/api/hr/contracts/carica-firmato/{contract_id}` | ✓ | app.hr.routers.employees.employee_contracts |
+| GET | `/api/hr/contracts/ccnl` | ✓ | app.hr.routers.employees.employee_contracts |
+| POST | `/api/hr/contracts/ccnl/suggerisci` | ✓ | app.hr.routers.employees.employee_contracts |
+| GET | `/api/hr/contracts/ccnl/verifica-tranche` | ✓ | app.hr.routers.employees.employee_contracts |
+| GET | `/api/hr/contracts/ccnl/{ccnl_id}/livello/{livello}` | ✓ | app.hr.routers.employees.employee_contracts |
+| POST | `/api/hr/contracts/cedolini/importa-libro-unico` | ✓ | app.hr.routers.employees.employee_contracts |
+| GET | `/api/hr/contracts/download/{contract_id}` | ✓ | app.hr.routers.employees.employee_contracts |
+| GET | `/api/hr/contracts/employee/{employee_id}` | ✓ | app.hr.routers.employees.employee_contracts |
+| POST | `/api/hr/contracts/finalizza/{contract_id}` | ✓ | app.hr.routers.employees.employee_contracts |
+| POST | `/api/hr/contracts/genera-massivo` | ✓ | app.hr.routers.employees.employee_contracts |
+| POST | `/api/hr/contracts/generate/{employee_id}` | ✓ | app.hr.routers.employees.employee_contracts |
+| GET | `/api/hr/contracts/pdf/{contract_id}/{versione}` | ✓ | app.hr.routers.employees.employee_contracts |
+| POST | `/api/hr/contracts/pec/{contract_id}` | ✓ | app.hr.routers.employees.employee_contracts |
+| GET | `/api/hr/contracts/profilo-retributivo/{employee_id}` | ✓ | app.hr.routers.employees.employee_contracts |
+| POST | `/api/hr/contracts/send/{contract_id}` | ✓ | app.hr.routers.employees.employee_contracts |
+| POST | `/api/hr/contracts/sign/{contract_id}` | ✓ | app.hr.routers.employees.employee_contracts |
+| GET | `/api/hr/contracts/sign/{contract_id}/status` | ✓ | app.hr.routers.employees.employee_contracts |
+| POST | `/api/hr/contracts/template/{contract_type}` | ✓ | app.hr.routers.employees.employee_contracts |
+| GET | `/api/hr/contracts/templates` | ✓ | app.hr.routers.employees.employee_contracts |
+| GET | `/api/hr/contracts/types` | ✓ | app.hr.routers.employees.employee_contracts |
+| DELETE | `/api/hr/contracts/{contract_id}` | ✓ | app.hr.routers.employees.employee_contracts |
+
+## HR · Diagnostica  (2)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| GET | `/api/hr/diagnostica` | ✓ | app.hr.routers.diagnostica |
+| GET | `/api/hr/health` | — | app.hr.router_registry |
+
+## HR · Dimissioni  (4)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| GET | `/api/hr/dimissioni` | — | app.hr.routers.dimissioni |
+| POST | `/api/hr/dimissioni/associa-dimissioni-dipendenti` | — | app.hr.routers.dimissioni |
+| POST | `/api/hr/dimissioni/cerca-email-dimissioni` | — | app.hr.routers.dimissioni |
+| GET | `/api/hr/dimissioni/stats` | — | app.hr.routers.dimissioni |
+
+## HR · Dipendenti  (52)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| GET | `/api/hr/dipendenti` | ✓ | app.hr.routers.employees.dipendenti |
+| POST | `/api/hr/dipendenti` | ✓ | app.hr.routers.employees.dipendenti |
+| POST | `/api/hr/dipendenti/bulk-upsert` | — | app.hr.routers.employees.dipendenti |
+| POST | `/api/hr/dipendenti/bulk-upsert/preview` | — | app.hr.routers.employees.dipendenti |
+| GET | `/api/hr/dipendenti/buste-paga` | — | app.hr.routers.employees.dipendenti |
+| POST | `/api/hr/dipendenti/buste-paga` | — | app.hr.routers.employees.dipendenti |
+| GET | `/api/hr/dipendenti/buste-paga/dipendente/{dipendente_id}` | — | app.hr.routers.employees.dipendenti |
+| POST | `/api/hr/dipendenti/buste-paga/dipendente/{dipendente_id}/import` | — | app.hr.routers.employees.dipendenti |
+| POST | `/api/hr/dipendenti/buste-paga/import` | — | app.hr.routers.employees.dipendenti |
+| GET | `/api/hr/dipendenti/buste-paga/scan` | — | app.hr.routers.employees.dipendenti |
+| GET | `/api/hr/dipendenti/by-google-email` | — | app.hr.routers.employees.dipendenti |
+| GET | `/api/hr/dipendenti/contratti` | — | app.hr.routers.employees.dipendenti |
+| GET | `/api/hr/dipendenti/contratti` | — | app.hr.routers.employees.dipendenti |
+| POST | `/api/hr/dipendenti/contratti` | — | app.hr.routers.employees.dipendenti |
+| POST | `/api/hr/dipendenti/contratti/import-excel` | — | app.hr.routers.employees.dipendenti |
+| GET | `/api/hr/dipendenti/contratti/scadenze` | — | app.hr.routers.employees.dipendenti |
+| PUT | `/api/hr/dipendenti/contratti/{contratto_id}` | — | app.hr.routers.employees.dipendenti |
+| DELETE | `/api/hr/dipendenti/contratti/{contratto_id}` | — | app.hr.routers.employees.dipendenti |
+| POST | `/api/hr/dipendenti/contratti/{contratto_id}/termina` | — | app.hr.routers.employees.dipendenti |
+| GET | `/api/hr/dipendenti/duplicati` | — | app.hr.routers.employees.dipendenti |
+| POST | `/api/hr/dipendenti/duplicati/auto-merge` | — | app.hr.routers.employees.dipendenti |
+| POST | `/api/hr/dipendenti/duplicati/merge` | — | app.hr.routers.employees.dipendenti |
+| POST | `/api/hr/dipendenti/invita-multipli` | — | app.hr.routers.employees.dipendenti |
+| POST | `/api/hr/dipendenti/libretti-sanitari` | — | app.hr.routers.employees.dipendenti |
+| GET | `/api/hr/dipendenti/libretti-sanitari/all` | — | app.hr.routers.employees.dipendenti |
+| POST | `/api/hr/dipendenti/libretti-sanitari/genera-da-dipendenti` | — | app.hr.routers.employees.dipendenti |
+| POST | `/api/hr/dipendenti/libretti-sanitari/import-excel` | — | app.hr.routers.employees.dipendenti |
+| GET | `/api/hr/dipendenti/libretti-sanitari/scadenze` | — | app.hr.routers.employees.dipendenti |
+| PUT | `/api/hr/dipendenti/libretti-sanitari/{libretto_id}` | — | app.hr.routers.employees.dipendenti |
+| DELETE | `/api/hr/dipendenti/libretti-sanitari/{libretto_id}` | — | app.hr.routers.employees.dipendenti |
+| GET | `/api/hr/dipendenti/libretti/scadenze` | — | app.hr.routers.employees.dipendenti |
+| GET | `/api/hr/dipendenti/libro-unico/export-excel` | — | app.hr.routers.employees.dipendenti |
+| GET | `/api/hr/dipendenti/libro-unico/presenze` | — | app.hr.routers.employees.dipendenti |
+| GET | `/api/hr/dipendenti/libro-unico/salaries` | — | app.hr.routers.employees.dipendenti |
+| PUT | `/api/hr/dipendenti/libro-unico/salaries/{salary_id}` | — | app.hr.routers.employees.dipendenti |
+| DELETE | `/api/hr/dipendenti/libro-unico/salaries/{salary_id}` | — | app.hr.routers.employees.dipendenti |
+| POST | `/api/hr/dipendenti/libro-unico/upload` | — | app.hr.routers.employees.dipendenti |
+| GET | `/api/hr/dipendenti/mansioni` | — | app.hr.routers.employees.dipendenti |
+| GET | `/api/hr/dipendenti/portale/stats` | — | app.hr.routers.employees.dipendenti |
+| GET | `/api/hr/dipendenti/report-ferie-permessi-tutti` | — | app.hr.routers.employees.dipendenti |
+| GET | `/api/hr/dipendenti/stats` | — | app.hr.routers.employees.dipendenti |
+| POST | `/api/hr/dipendenti/sync-iban` | — | app.hr.routers.employees.dipendenti |
+| GET | `/api/hr/dipendenti/tipi-contratto` | — | app.hr.routers.employees.dipendenti |
+| GET | `/api/hr/dipendenti/tipi-turno` | — | app.hr.routers.employees.dipendenti |
+| POST | `/api/hr/dipendenti/turni/salva` | — | app.hr.routers.employees.dipendenti |
+| GET | `/api/hr/dipendenti/turni/settimana` | — | app.hr.routers.employees.dipendenti |
+| GET | `/api/hr/dipendenti/{dipendente_id}` | — | app.hr.routers.employees.dipendenti |
+| PUT | `/api/hr/dipendenti/{dipendente_id}` | — | app.hr.routers.employees.dipendenti |
+| DELETE | `/api/hr/dipendenti/{dipendente_id}` | — | app.hr.routers.employees.dipendenti |
+| POST | `/api/hr/dipendenti/{dipendente_id}/invita-portale` | — | app.hr.routers.employees.dipendenti |
+| PUT | `/api/hr/dipendenti/{dipendente_id}/libretto` | — | app.hr.routers.employees.dipendenti |
+| GET | `/api/hr/dipendenti/{dipendente_id}/report-ferie-permessi` | — | app.hr.routers.employees.dipendenti |
+
+## HR · Dipendenti Cloud  (93)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| GET | `/api/hr/dipendenti-cloud/_unif_diag` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/_unif_esegui` | ✓ | app.hr.routers.dipendenti_cloud |
+| GET | `/api/hr/dipendenti-cloud/alerts` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/alerts/{alert_id}/risolvi` | ✓ | app.hr.routers.dipendenti_cloud |
+| GET | `/api/hr/dipendenti-cloud/assegnazioni-turni` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/assegnazioni-turni` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/assegnazioni-turni/migra` | ✓ | app.hr.routers.dipendenti_cloud |
+| GET | `/api/hr/dipendenti-cloud/bonifici-da-associare` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/bonifici-da-associare/{bonifico_id}/associa` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/bonifici-da-associare/{bonifico_id}/ignora` | ✓ | app.hr.routers.dipendenti_cloud |
+| GET | `/api/hr/dipendenti-cloud/bonifici-da-associare/{bonifico_id}/pdf` | ✓ | app.hr.routers.dipendenti_cloud |
+| GET | `/api/hr/dipendenti-cloud/buste-paga` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/buste-paga` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/buste-paga/genera` | ✓ | app.hr.routers.dipendenti_cloud |
+| PUT | `/api/hr/dipendenti-cloud/buste-paga/{busta_id}/paga` | ✓ | app.hr.routers.dipendenti_cloud |
+| GET | `/api/hr/dipendenti-cloud/cedolini/cerca-voce` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/cedolini/riscansiona` | ✓ | app.hr.routers.dipendenti_cloud |
+| GET | `/api/hr/dipendenti-cloud/dashboard/stats` | ✓ | app.hr.routers.dipendenti_cloud |
+| GET | `/api/hr/dipendenti-cloud/dipendenti` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/dipendenti` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/dipendenti/importa-anagrafica` | ✓ | app.hr.routers.dipendenti_cloud |
+| GET | `/api/hr/dipendenti-cloud/dipendenti/{dipendente_id}` | ✓ | app.hr.routers.dipendenti_cloud |
+| PUT | `/api/hr/dipendenti-cloud/dipendenti/{dipendente_id}` | ✓ | app.hr.routers.dipendenti_cloud |
+| DELETE | `/api/hr/dipendenti-cloud/dipendenti/{dipendente_id}` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/dipendenti/{dipendente_id}/cessa` | ✓ | app.hr.routers.dipendenti_cloud |
+| GET | `/api/hr/dipendenti-cloud/documenti` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/documenti` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/documenti/upload-massivo` | ✓ | app.hr.routers.dipendenti_cloud |
+| DELETE | `/api/hr/dipendenti-cloud/documenti/{documento_id}` | ✓ | app.hr.routers.dipendenti_cloud |
+| GET | `/api/hr/dipendenti-cloud/documenti/{documento_id}/file` | ✓ | app.hr.routers.dipendenti_cloud |
+| GET | `/api/hr/dipendenti-cloud/ferie` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/ferie` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/ferie-giorno` | ✓ | app.hr.routers.dipendenti_cloud |
+| DELETE | `/api/hr/dipendenti-cloud/ferie/{ferie_id}` | ✓ | app.hr.routers.dipendenti_cloud |
+| PUT | `/api/hr/dipendenti-cloud/ferie/{ferie_id}/approva` | ✓ | app.hr.routers.dipendenti_cloud |
+| PUT | `/api/hr/dipendenti-cloud/ferie/{ferie_id}/rifiuta` | ✓ | app.hr.routers.dipendenti_cloud |
+| GET | `/api/hr/dipendenti-cloud/missioni` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/missioni` | ✓ | app.hr.routers.dipendenti_cloud |
+| DELETE | `/api/hr/dipendenti-cloud/missioni/{missione_id}` | ✓ | app.hr.routers.dipendenti_cloud |
+| PUT | `/api/hr/dipendenti-cloud/missioni/{missione_id}/approva` | ✓ | app.hr.routers.dipendenti_cloud |
+| GET | `/api/hr/dipendenti-cloud/onomastici` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/onomastici` | ✓ | app.hr.routers.dipendenti_cloud |
+| GET | `/api/hr/dipendenti-cloud/onomastici/settimana` | ✓ | app.hr.routers.dipendenti_cloud |
+| GET | `/api/hr/dipendenti-cloud/ordine-dipendenti` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/ordine-dipendenti` | ✓ | app.hr.routers.dipendenti_cloud |
+| GET | `/api/hr/dipendenti-cloud/paghe` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/paghe` | ✓ | app.hr.routers.dipendenti_cloud |
+| DELETE | `/api/hr/dipendenti-cloud/paghe` | ✓ | app.hr.routers.dipendenti_cloud |
+| GET | `/api/hr/dipendenti-cloud/paghe/associazioni-bonifici` | ✓ | app.hr.routers.dipendenti_cloud |
+| GET | `/api/hr/dipendenti-cloud/paghe/associazioni-bonifici/export-excel` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/paghe/conferma-associazione` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/paghe/correggi-acconti-cedolino` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/paghe/importa-bonifici-drive` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/paghe/importa-email` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/paghe/importa-excel-salari` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/paghe/importa-lul` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/paghe/importa-pagamenti` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/paghe/importa-prima-nota` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/paghe/importa-storico-pagamenti` | ✓ | app.hr.routers.dipendenti_cloud |
+| GET | `/api/hr/dipendenti-cloud/paghe/in-attesa` | ✓ | app.hr.routers.dipendenti_cloud |
+| GET | `/api/hr/dipendenti-cloud/paghe/pagamento-esito/{key}/pdf` | ✓ | app.hr.routers.dipendenti_cloud |
+| GET | `/api/hr/dipendenti-cloud/paghe/prima-nota` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/paghe/sincronizza` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/paghe/sincronizza-bonifici-storici` | ✓ | app.hr.routers.dipendenti_cloud |
+| GET | `/api/hr/dipendenti-cloud/paghe/storico-pagamenti` | ✓ | app.hr.routers.dipendenti_cloud |
+| GET | `/api/hr/dipendenti-cloud/presenze` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/presenze` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/presenze/batch` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/presenze/consolida-da-turni` | ✓ | app.hr.routers.dipendenti_cloud |
+| GET | `/api/hr/dipendenti-cloud/presenze/email-commercialista` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/presenze/email-commercialista` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/presenze/invia-commercialista` | ✓ | app.hr.routers.dipendenti_cloud |
+| GET | `/api/hr/dipendenti-cloud/presenze/invii` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/presenze/pdf` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/presenze/pdf-riepilogo` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/presenze/riepilogo-dati` | ✓ | app.hr.routers.dipendenti_cloud |
+| PUT | `/api/hr/dipendenti-cloud/presenze/{presenza_id}` | ✓ | app.hr.routers.dipendenti_cloud |
+| DELETE | `/api/hr/dipendenti-cloud/presenze/{presenza_id}` | ✓ | app.hr.routers.dipendenti_cloud |
+| GET | `/api/hr/dipendenti-cloud/prestiti` | ✓ | app.hr.routers.dipendenti_cloud |
+| DELETE | `/api/hr/dipendenti-cloud/prestiti/{prestito_id}` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/riduzioni-orario` | ✓ | app.hr.routers.dipendenti_cloud |
+| GET | `/api/hr/dipendenti-cloud/riduzioni-orario/scadenze` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/seed-data` | ✓ | app.hr.routers.dipendenti_cloud |
+| GET | `/api/hr/dipendenti-cloud/turni` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/turni` | ✓ | app.hr.routers.dipendenti_cloud |
+| GET | `/api/hr/dipendenti-cloud/turni-chiusura-pomeridiana` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/turni-chiusura-pomeridiana` | ✓ | app.hr.routers.dipendenti_cloud |
+| GET | `/api/hr/dipendenti-cloud/turni-config` | ✓ | app.hr.routers.dipendenti_cloud |
+| POST | `/api/hr/dipendenti-cloud/turni-config` | ✓ | app.hr.routers.dipendenti_cloud |
+| GET | `/api/hr/dipendenti-cloud/turni-disponibilita-bar` | ✓ | app.hr.routers.dipendenti_cloud |
+| GET | `/api/hr/dipendenti-cloud/turni-preferenze` | ✓ | app.hr.routers.dipendenti_cloud |
+| PUT | `/api/hr/dipendenti-cloud/turni/{turno_id}` | ✓ | app.hr.routers.dipendenti_cloud |
+| DELETE | `/api/hr/dipendenti-cloud/turni/{turno_id}` | ✓ | app.hr.routers.dipendenti_cloud |
+
+## HR · F24 Parser  (6)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| GET | `/api/hr/paghe/distinte-f24` | — | app.hr.routers.f24_parser |
+| GET | `/api/hr/paghe/f24/lista` | — | app.hr.routers.f24_parser |
+| POST | `/api/hr/paghe/import-f24` | — | app.hr.routers.f24_parser |
+| POST | `/api/hr/paghe/parse-f24` | — | app.hr.routers.f24_parser |
+| POST | `/api/hr/paghe/riconcilia-f24` | — | app.hr.routers.f24_parser |
+| GET | `/api/hr/paghe/tributi-pagati` | — | app.hr.routers.f24_parser |
+
+## HR · Fascicolo  (2)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| GET | `/api/hr/dipendenti/{dipendente_id}/fascicolo` | — | app.hr.routers.employees.fascicolo_dipendente |
+| GET | `/api/hr/dipendenti/{dipendente_id}/kpi` | — | app.hr.routers.employees.fascicolo_dipendente |
+
+## HR · Giustificativi  (20)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| GET | `/api/hr/giustificativi` | — | app.hr.routers.employees.giustificativi |
+| POST | `/api/hr/giustificativi/aggiorna-riepilogo` | — | app.hr.routers.employees.giustificativi |
+| GET | `/api/hr/giustificativi/alert-limiti` | — | app.hr.routers.employees.giustificativi |
+| PUT | `/api/hr/giustificativi/codice/{codice}` | — | app.hr.routers.employees.giustificativi |
+| GET | `/api/hr/giustificativi/dipendente/{employee_id}/giustificativi` | — | app.hr.routers.employees.giustificativi |
+| PUT | `/api/hr/giustificativi/dipendente/{employee_id}/giustificativi/limiti` | — | app.hr.routers.employees.giustificativi |
+| POST | `/api/hr/giustificativi/dipendente/{employee_id}/riporto-ferie` | — | app.hr.routers.employees.giustificativi |
+| GET | `/api/hr/giustificativi/dipendente/{employee_id}/saldo-ferie` | — | app.hr.routers.employees.giustificativi |
+| POST | `/api/hr/giustificativi/init-giustificativi` | — | app.hr.routers.employees.giustificativi |
+| GET | `/api/hr/giustificativi/presenze-mensili/{employee_id}` | — | app.hr.routers.employees.giustificativi |
+| GET | `/api/hr/giustificativi/riepilogo-limiti` | — | app.hr.routers.employees.giustificativi |
+| GET | `/api/hr/giustificativi/riepilogo-progressivo/{employee_id}` | — | app.hr.routers.employees.giustificativi |
+| GET | `/api/hr/giustificativi/saldi-finali-tutti` | — | app.hr.routers.employees.giustificativi |
+| GET | `/api/hr/giustificativi/saldi-finali/{employee_id}` | — | app.hr.routers.employees.giustificativi |
+| DELETE | `/api/hr/giustificativi/saldi-finali/{employee_id}` | — | app.hr.routers.employees.giustificativi |
+| PUT | `/api/hr/giustificativi/saldi-finali/{employee_id}/periodo` | — | app.hr.routers.employees.giustificativi |
+| POST | `/api/hr/giustificativi/salva-saldi-finali` | — | app.hr.routers.employees.giustificativi |
+| POST | `/api/hr/giustificativi/sync-giustificativi-da-cedolini` | — | app.hr.routers.employees.giustificativi |
+| POST | `/api/hr/giustificativi/upload-libro-unico` | — | app.hr.routers.employees.giustificativi |
+| POST | `/api/hr/giustificativi/valida-giustificativo` | — | app.hr.routers.employees.giustificativi |
+
+## HR · Libro Unico  (10)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| GET | `/api/hr/paghe/acconti` | — | app.hr.routers.libro_unico_parser |
+| POST | `/api/hr/paghe/acconti/{busta_id}` | — | app.hr.routers.libro_unico_parser |
+| DELETE | `/api/hr/paghe/acconti/{busta_id}/{acconto_id}` | — | app.hr.routers.libro_unico_parser |
+| GET | `/api/hr/paghe/buste-paga` | — | app.hr.routers.libro_unico_parser |
+| POST | `/api/hr/paghe/import-libro-unico` | — | app.hr.routers.libro_unico_parser |
+| POST | `/api/hr/paghe/parse-libro-unico` | — | app.hr.routers.libro_unico_parser |
+| POST | `/api/hr/paghe/parse-libro-unico/dipendente/{indice}` | — | app.hr.routers.libro_unico_parser |
+| GET | `/api/hr/paghe/presenze-mensili` | — | app.hr.routers.libro_unico_parser |
+| GET | `/api/hr/paghe/presenze-mensili/{codice_fiscale}/{periodo}` | — | app.hr.routers.libro_unico_parser |
+| POST | `/api/hr/paghe/riconcilia-stipendi` | — | app.hr.routers.libro_unico_parser |
+
+## HR · Login portale  (3)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| GET | `/api/hr/auth/dipendenti-attivi` | ✓ | app.hr.routers.pin_login |
+| POST | `/api/hr/auth/pin-login` | ✓ | app.hr.routers.pin_login |
+| GET | `/api/hr/auth/pin-login/health` | ✓ | app.hr.routers.pin_login |
+
+## HR · Notifiche  (3)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| GET | `/api/hr/notifiche` | ✓ | app.hr.routers.notifiche |
+| GET | `/api/hr/notifiche/conteggio` | ✓ | app.hr.routers.notifiche |
+| POST | `/api/hr/notifiche/{notifica_id}/letta` | ✓ | app.hr.routers.notifiche |
+
+## HR · Portale Buste  (7)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| GET | `/api/hr/portale/buste` | ✓ | app.hr.routers.portale_buste |
+| GET | `/api/hr/portale/buste/{cedolino_id}` | ✓ | app.hr.routers.portale_buste |
+| POST | `/api/hr/portale/buste/{cedolino_id}/contesta` | ✓ | app.hr.routers.portale_buste |
+| GET | `/api/hr/portale/buste/{cedolino_id}/modulo-contestazione` | ✓ | app.hr.routers.portale_buste |
+| GET | `/api/hr/portale/buste/{cedolino_id}/pdf` | ✓ | app.hr.routers.portale_buste |
+| POST | `/api/hr/portale/buste/{cedolino_id}/presa-visione` | ✓ | app.hr.routers.portale_buste |
+| GET | `/api/hr/portale/buste/{cedolino_id}/storico-accessi` | ✓ | app.hr.routers.portale_buste |
+
+## HR · Portale Documenti  (10)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| GET | `/api/hr/portale/documenti` | ✓ | app.hr.routers.portale_documenti |
+| POST | `/api/hr/portale/documenti/admin/upload` | ✓ | app.hr.routers.portale_documenti |
+| GET | `/api/hr/portale/documenti/modulo/{tipo}` | ✓ | app.hr.routers.portale_documenti |
+| POST | `/api/hr/portale/documenti/regolamento/accetta` | ✓ | app.hr.routers.portale_documenti |
+| GET | `/api/hr/portale/documenti/regolamento/file` | ✓ | app.hr.routers.portale_documenti |
+| GET | `/api/hr/portale/documenti/regolamento/stato` | ✓ | app.hr.routers.portale_documenti |
+| GET | `/api/hr/portale/documenti/tipi` | ✓ | app.hr.routers.portale_documenti |
+| POST | `/api/hr/portale/documenti/upload` | ✓ | app.hr.routers.portale_documenti |
+| DELETE | `/api/hr/portale/documenti/{doc_id}` | ✓ | app.hr.routers.portale_documenti |
+| GET | `/api/hr/portale/documenti/{doc_id}/file` | ✓ | app.hr.routers.portale_documenti |
+
+## HR · Presenze  (22)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| GET | `/api/hr/attendance/assenze/{employee_id}` | — | app.hr.routers.attendance |
+| POST | `/api/hr/attendance/batch-insert` | — | app.hr.routers.attendance |
+| GET | `/api/hr/attendance/dashboard-presenze` | — | app.hr.routers.attendance |
+| GET | `/api/hr/attendance/dipendenti-in-carico` | — | app.hr.routers.attendance |
+| POST | `/api/hr/attendance/genera-pdf-consulente` | — | app.hr.routers.attendance |
+| GET | `/api/hr/attendance/month-grid` | — | app.hr.routers.attendance |
+| GET | `/api/hr/attendance/note-presenze/{anno}/{mese}` | — | app.hr.routers.attendance |
+| GET | `/api/hr/attendance/ore-lavorate/{employee_id}` | — | app.hr.routers.attendance |
+| DELETE | `/api/hr/attendance/presenza` | — | app.hr.routers.attendance |
+| GET | `/api/hr/attendance/presenze-mese` | — | app.hr.routers.attendance |
+| POST | `/api/hr/attendance/richiesta-assenza` | — | app.hr.routers.attendance |
+| PUT | `/api/hr/attendance/richiesta-assenza/{richiesta_id}/approva` | — | app.hr.routers.attendance |
+| PUT | `/api/hr/attendance/richiesta-assenza/{richiesta_id}/rifiuta` | — | app.hr.routers.attendance |
+| GET | `/api/hr/attendance/richieste-pending` | — | app.hr.routers.attendance |
+| GET | `/api/hr/attendance/saldo-ferie/{employee_id}` | — | app.hr.routers.attendance |
+| PUT | `/api/hr/attendance/set-in-carico/{employee_id}` | — | app.hr.routers.attendance |
+| POST | `/api/hr/attendance/set-nota-presenza` | — | app.hr.routers.attendance |
+| POST | `/api/hr/attendance/set-presenza` | — | app.hr.routers.attendance |
+| POST | `/api/hr/attendance/timbratura` | — | app.hr.routers.attendance |
+| GET | `/api/hr/attendance/timbrature/giorno/{data}` | — | app.hr.routers.attendance |
+| GET | `/api/hr/attendance/timbrature/{employee_id}` | — | app.hr.routers.attendance |
+| GET | `/api/hr/attendance/tipologie-giustificativi` | — | app.hr.routers.attendance |
+
+## HR · Richieste  (4)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| POST | `/api/hr/richieste` | ✓ | app.hr.routers.richieste |
+| GET | `/api/hr/richieste` | ✓ | app.hr.routers.richieste |
+| GET | `/api/hr/richieste/mie` | ✓ | app.hr.routers.richieste |
+| POST | `/api/hr/richieste/{richiesta_id}/risolvi` | ✓ | app.hr.routers.richieste |
+
+## HR · Salari V2  (6)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| GET | `/api/hr/salari-v2/ferie-rol` | — | app.hr.routers.salari_unificati_v2 |
+| GET | `/api/hr/salari-v2/non-pagati` | — | app.hr.routers.salari_unificati_v2 |
+| POST | `/api/hr/salari-v2/pagamento` | — | app.hr.routers.salari_unificati_v2 |
+| POST | `/api/hr/salari-v2/riconcilia-banca` | — | app.hr.routers.salari_unificati_v2 |
+| GET | `/api/hr/salari-v2/riepilogo` | — | app.hr.routers.salari_unificati_v2 |
+| GET | `/api/hr/salari-v2/saldo/{codice_fiscale}` | — | app.hr.routers.salari_unificati_v2 |
+
+## HR · TFR  (28)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| POST | `/api/hr/tfr/accantonamento` | ✓ | app.hr.routers.tfr |
+| POST | `/api/hr/tfr/acconti` | ✓ | app.hr.routers.tfr |
+| PUT | `/api/hr/tfr/acconti/{acconto_id}` | ✓ | app.hr.routers.tfr |
+| DELETE | `/api/hr/tfr/acconti/{acconto_id}` | ✓ | app.hr.routers.tfr |
+| POST | `/api/hr/tfr/acconti/{acconto_id}/annulla-riconciliazione-banca` | ✓ | app.hr.routers.tfr |
+| GET | `/api/hr/tfr/acconti/{acconto_id}/candidati-banca` | ✓ | app.hr.routers.tfr |
+| POST | `/api/hr/tfr/acconti/{acconto_id}/riconcilia-banca` | ✓ | app.hr.routers.tfr |
+| GET | `/api/hr/tfr/acconti/{dipendente_id}` | ✓ | app.hr.routers.tfr |
+| POST | `/api/hr/tfr/calcola-batch/{anno}` | ✓ | app.hr.routers.tfr |
+| POST | `/api/hr/tfr/calcolo-lordo-da-netto` | ✓ | app.hr.routers.tfr |
+| POST | `/api/hr/tfr/calcolo-netto-da-lordo` | ✓ | app.hr.routers.tfr |
+| POST | `/api/hr/tfr/cedolini/{cedolino_id}/annulla-scalatura-acconti` | ✓ | app.hr.routers.tfr |
+| GET | `/api/hr/tfr/cedolini/{cedolino_id}/preview-scalatura-acconti` | ✓ | app.hr.routers.tfr |
+| POST | `/api/hr/tfr/cedolini/{cedolino_id}/scala-acconti` | ✓ | app.hr.routers.tfr |
+| POST | `/api/hr/tfr/liquidazione` | ✓ | app.hr.routers.tfr |
+| GET | `/api/hr/tfr/parse-payslips` | ✓ | app.hr.routers.tfr |
+| GET | `/api/hr/tfr/riepilogo-aziendale` | ✓ | app.hr.routers.tfr |
+| GET | `/api/hr/tfr/simulazione-parametri` | ✓ | app.hr.routers.tfr |
+| PUT | `/api/hr/tfr/simulazione-parametri` | ✓ | app.hr.routers.tfr |
+| GET | `/api/hr/tfr/simulazione/{dipendente_id}` | ✓ | app.hr.routers.tfr |
+| GET | `/api/hr/tfr/simulazione/{dipendente_id}/liquidazione` | ✓ | app.hr.routers.tfr |
+| PUT | `/api/hr/tfr/simulazione/{dipendente_id}/liquidazione-override` | ✓ | app.hr.routers.tfr |
+| POST | `/api/hr/tfr/simulazione/{dipendente_id}/periodi` | ✓ | app.hr.routers.tfr |
+| PUT | `/api/hr/tfr/simulazione/{dipendente_id}/periodi/{periodo_id}` | ✓ | app.hr.routers.tfr |
+| DELETE | `/api/hr/tfr/simulazione/{dipendente_id}/periodi/{periodo_id}` | ✓ | app.hr.routers.tfr |
+| POST | `/api/hr/tfr/simulazione/{dipendente_id}/rate` | ✓ | app.hr.routers.tfr |
+| GET | `/api/hr/tfr/situazione/{dipendente_id}` | ✓ | app.hr.routers.tfr |
+| GET | `/api/hr/tfr/storico-tfr/{dipendente_id}` | ✓ | app.hr.routers.tfr |
+
+## HR · Timbrature  (6)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| POST | `/api/hr/timbrature` | ✓ | app.hr.routers.timbrature |
+| GET | `/api/hr/timbrature` | ✓ | app.hr.routers.timbrature |
+| GET | `/api/hr/timbrature/mie/oggi` | ✓ | app.hr.routers.timbrature |
+| GET | `/api/hr/timbrature/riepilogo` | ✓ | app.hr.routers.timbrature |
+| GET | `/api/hr/timbrature/sede` | ✓ | app.hr.routers.timbrature |
+| POST | `/api/hr/timbrature/sede` | ✓ | app.hr.routers.timbrature |
+
+## HR · Turni  (22)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| GET | `/api/hr/shifts/assegnazioni` | — | app.hr.routers.employees.shifts |
+| POST | `/api/hr/shifts/assegnazioni` | — | app.hr.routers.employees.shifts |
+| DELETE | `/api/hr/shifts/assegnazioni/{assegnazione_id}` | — | app.hr.routers.employees.shifts |
+| GET | `/api/hr/shifts/schedule` | — | app.hr.routers.employees.shifts |
+| POST | `/api/hr/shifts/schedule` | — | app.hr.routers.employees.shifts |
+| GET | `/api/hr/shifts/tipi` | — | app.hr.routers.employees.shifts |
+| POST | `/api/hr/shifts/tipi` | — | app.hr.routers.employees.shifts |
+| PUT | `/api/hr/shifts/tipi/{turno_id}` | — | app.hr.routers.employees.shifts |
+| DELETE | `/api/hr/shifts/tipi/{turno_id}` | — | app.hr.routers.employees.shifts |
+| GET | `/api/hr/turni` | ✓ | app.hr.routers.turni |
+| GET | `/api/hr/turni/azienda/settimana` | ✓ | app.hr.routers.turni |
+| GET | `/api/hr/turni/disponibilita-bar` | ✓ | app.hr.routers.turni |
+| POST | `/api/hr/turni/disponibilita-bar` | ✓ | app.hr.routers.turni |
+| DELETE | `/api/hr/turni/disponibilita-bar/{disp_id}` | ✓ | app.hr.routers.turni |
+| POST | `/api/hr/turni/genera` | — | app.hr.routers.turni |
+| GET | `/api/hr/turni/miei/corrente` | — | app.hr.routers.turni |
+| GET | `/api/hr/turni/preferenza-riposo` | ✓ | app.hr.routers.turni |
+| POST | `/api/hr/turni/preferenza-riposo` | ✓ | app.hr.routers.turni |
+| GET | `/api/hr/turni/{settimana_inizio}` | — | app.hr.routers.turni |
+| PUT | `/api/hr/turni/{settimana_inizio}/cella` | — | app.hr.routers.turni |
+| POST | `/api/hr/turni/{settimana_inizio}/pubblica` | — | app.hr.routers.turni |
+| POST | `/api/hr/turni/{settimana_inizio}/sblocca` | — | app.hr.routers.turni |
+
 ## IVA  (20)
 
 | Metodo | Path | FE | File |
@@ -1122,6 +1597,64 @@
 | GET | `/api/auth/mfa/status` | ext | mfa |
 | POST | `/api/auth/mfa/step-up` | ext | mfa |
 | POST | `/api/auth/mfa/verify-login` | ext | mfa |
+
+## Menu · Gestione  (23)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| GET | `/api/menu/admin/backup/esporta` | ✓ | app.menu.routers.gestione |
+| POST | `/api/menu/admin/backup/ripristina` | ✓ | app.menu.routers.gestione |
+| POST | `/api/menu/admin/categorie` | ✓ | app.menu.routers.gestione |
+| PUT | `/api/menu/admin/categorie/{categoria_id}` | ✓ | app.menu.routers.gestione |
+| DELETE | `/api/menu/admin/categorie/{categoria_id}` | ✓ | app.menu.routers.gestione |
+| POST | `/api/menu/admin/immagini` | ✓ | app.menu.routers.gestione |
+| GET | `/api/menu/admin/immagini` | ✓ | app.menu.routers.gestione |
+| DELETE | `/api/menu/admin/immagini/{immagine_id}` | ✓ | app.menu.routers.gestione |
+| POST | `/api/menu/admin/migrazione-qromo` | ✓ | app.menu.routers.gestione |
+| GET | `/api/menu/admin/migrazione-qromo/{job_id}` | ✓ | app.menu.routers.gestione |
+| GET | `/api/menu/admin/prodotti` | ✓ | app.menu.routers.gestione |
+| POST | `/api/menu/admin/prodotti` | ✓ | app.menu.routers.gestione |
+| PUT | `/api/menu/admin/prodotti/{prodotto_id}` | ✓ | app.menu.routers.gestione |
+| DELETE | `/api/menu/admin/prodotti/{prodotto_id}` | ✓ | app.menu.routers.gestione |
+| GET | `/api/menu/admin/qrcode/config` | ✓ | app.menu.routers.gestione |
+| PUT | `/api/menu/admin/qrcode/config` | ✓ | app.menu.routers.gestione |
+| POST | `/api/menu/admin/sale` | ✓ | app.menu.routers.gestione |
+| PUT | `/api/menu/admin/sale/{sala_id}` | ✓ | app.menu.routers.gestione |
+| DELETE | `/api/menu/admin/sale/{sala_id}` | ✓ | app.menu.routers.gestione |
+| POST | `/api/menu/admin/sottocategorie` | ✓ | app.menu.routers.gestione |
+| PUT | `/api/menu/admin/sottocategorie/{sotto_id}` | ✓ | app.menu.routers.gestione |
+| DELETE | `/api/menu/admin/sottocategorie/{sotto_id}` | ✓ | app.menu.routers.gestione |
+| GET | `/api/menu/admin/stato-dati` | ✓ | app.menu.routers.gestione |
+
+## Menu · Pubblico  (8)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| GET | `/api/menu/pubblico/` | ✓ | app.menu.routers.pubblico |
+| GET | `/api/menu/pubblico/allergeni` | ✓ | app.menu.routers.pubblico |
+| GET | `/api/menu/pubblico/cerca` | ✓ | app.menu.routers.pubblico |
+| GET | `/api/menu/pubblico/immagini/{immagine_id}` | ✓ | app.menu.routers.pubblico |
+| POST | `/api/menu/pubblico/ordini` | ✓ | app.menu.routers.pubblico |
+| GET | `/api/menu/pubblico/ordini/{ordine_id}` | ✓ | app.menu.routers.pubblico |
+| GET | `/api/menu/pubblico/qrcode/config` | ✓ | app.menu.routers.pubblico |
+| GET | `/api/menu/pubblico/sale` | ✓ | app.menu.routers.pubblico |
+
+## Menu · Staff  (12)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| GET | `/api/menu/staff/magazzino/articoli` | ✓ | app.menu.routers.staff |
+| POST | `/api/menu/staff/magazzino/articoli` | ✓ | app.menu.routers.staff |
+| PUT | `/api/menu/staff/magazzino/articoli/{articolo_id}` | ✓ | app.menu.routers.staff |
+| DELETE | `/api/menu/staff/magazzino/articoli/{articolo_id}` | ✓ | app.menu.routers.staff |
+| POST | `/api/menu/staff/magazzino/articoli/{articolo_id}/movimento` | ✓ | app.menu.routers.staff |
+| GET | `/api/menu/staff/magazzino/movimenti` | ✓ | app.menu.routers.staff |
+| GET | `/api/menu/staff/ordini` | ✓ | app.menu.routers.staff |
+| POST | `/api/menu/staff/ordini` | ✓ | app.menu.routers.staff |
+| DELETE | `/api/menu/staff/ordini/{ordine_id}` | ✓ | app.menu.routers.staff |
+| PATCH | `/api/menu/staff/ordini/{ordine_id}/pagamento` | ✓ | app.menu.routers.staff |
+| PATCH | `/api/menu/staff/ordini/{ordine_id}/stato` | ✓ | app.menu.routers.staff |
+| GET | `/api/menu/staff/sale` | ✓ | app.menu.routers.staff |
 
 ## Multi-Pagamento  (6)
 

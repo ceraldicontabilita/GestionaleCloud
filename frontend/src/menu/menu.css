@@ -1,0 +1,49 @@
+/* ===== Modulo Menu digitale (ex app Menu) — Tailwind scoped + token shadcn ===== */
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --menu-background: 0 0% 100%;
+  --menu-foreground: 0 0% 3.9%;
+  --menu-card: 0 0% 100%;
+  --menu-card-foreground: 0 0% 3.9%;
+  --menu-popover: 0 0% 100%;
+  --menu-popover-foreground: 0 0% 3.9%;
+  --menu-primary: 150 15% 37%;          /* salvia #5b7a6b */
+  --menu-primary-foreground: 0 0% 98%;
+  --menu-secondary: 40 33% 96%;         /* crema */
+  --menu-secondary-foreground: 0 0% 9%;
+  --menu-muted: 40 33% 96%;
+  --menu-muted-foreground: 0 0% 45.1%;
+  --menu-accent: 40 33% 96%;
+  --menu-accent-foreground: 0 0% 9%;
+  --menu-destructive: 6 60% 56%;        /* terracotta */
+  --menu-destructive-foreground: 0 0% 98%;
+  --menu-border: 40 27% 87%;            /* sabbia #e6e0d4 */
+  --menu-input: 40 27% 87%;
+  --menu-ring: 150 15% 37%;
+  --menu-radius: 0.5rem;
+}
+
+/* Reset minimo (al posto del preflight di Tailwind) limitato al modulo e ai
+   contenuti in portale (dialog, sheet, select) che portano la stessa classe. */
+.menu-root, .menu-root *, .menu-root *::before, .menu-root *::after {
+  box-sizing: border-box;
+  border-width: 0;
+  border-style: solid;
+  border-color: hsl(var(--menu-border));
+}
+.menu-root { line-height: 1.5; color: hsl(var(--menu-foreground)); -webkit-tap-highlight-color: transparent; }
+.menu-root h1, .menu-root h2, .menu-root h3, .menu-root h4, .menu-root p, .menu-root ul, .menu-root ol { margin: 0; color: inherit; }
+.menu-root ul, .menu-root ol { padding: 0; list-style: none; }
+.menu-root button { background: transparent; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; }
+.menu-root button:disabled { cursor: not-allowed; }
+.menu-root img, .menu-root svg { display: block; vertical-align: middle; }
+.menu-root input, .menu-root select, .menu-root textarea { font: inherit; color: inherit; margin: 0; }
+.menu-root a { color: inherit; text-decoration: none; }
+.menu-root table { border-collapse: collapse; }
+.menu-root table th, .menu-root table td { background: transparent; border: 0; }
+.menu-root table tbody tr:hover td { background: transparent; }
+/* Le utility Tailwind (.bg-*, .border-*) devono vincere sulle regole globali
+   per elemento di index.css: specificita' rafforzata tramite lo scope. */
+.menu-root .bg-transparent { background-color: transparent; }

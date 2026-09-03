@@ -35,6 +35,23 @@ services:
         value: "1"
       - key: FAIL_FAST_SECRETS
         value: "true"
+      # Archivio unico: Supabase (decisione del titolare 03/09/2026, fusione
+      # delle app). Le tre SUPABASE_* restano nella dashboard Render.
+      - key: DATA_BACKEND
+        value: "supabase"
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: SUPABASE_RUNTIME_SECRET
+        sync: false
+      # Modulo HR (ex AppDipendenti): DSN Postgres della vecchia app, usata
+      # SOLO dalla migrazione una-tantum (POST /api/hr/admin/migrazione-appdipendenti).
+      - key: APPDIPENDENTI_DB_URL
+        sync: false
+      # Sessione del portale dipendenti (dispositivo condiviso): 7 giorni.
+      - key: HR_PORTALE_TOKEN_EXPIRE_MINUTES
+        value: "10080"
       - key: SHEETS_REGISTRY_NAME
         value: "GestionaleCloud"
       - key: PROCESS_ROLE

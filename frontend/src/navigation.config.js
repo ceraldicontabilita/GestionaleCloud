@@ -29,8 +29,6 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 
-export const APP_DIPENDENTI_URL = 'https://appdipendenti.onrender.com';
-
 // Voci principali: barra desktop + prima parte del menù mobile.
 // Assegni e PayPal non sono pagine di primo livello: sono sezioni interne
 // dell'hub Riconciliazione e restano raggiungibili dai suoi tab.
@@ -58,7 +56,8 @@ export const NAV_ALTRO = [
   { to: '/ritenute', label: 'Ritenute', Icon: Receipt },
   { to: '/salari', label: 'Cedolini paga', Icon: Users },
   { to: '/strumenti', label: 'Strumenti', Icon: Wrench },
-  { to: null, href: APP_DIPENDENTI_URL, label: 'HR', Icon: Users, external: true },
+  { to: '/menu/ordini', label: 'Menu', Icon: Menu },
+  { to: '/hr', label: 'HR', Icon: Users, adminOnly: true },
   { to: '/impostazioni-ai', label: 'Assistente AI', Icon: Bot, adminOnly: true },
   { to: '/utenti', label: 'Utenti', Icon: Users, adminOnly: true },
   { to: '/admin', label: 'Admin', Icon: Settings, adminOnly: true },

@@ -2,8 +2,8 @@
   "_meta": {
     "schema_version": 2,
     "document_type": "popup_source_map",
-    "updated_at": "2026-08-22",
-    "source_revision": "e8c56bfd28c6e657aa41605bcac360dfb5b85549",
+    "updated_at": "2026-08-20",
+    "source_revision": "1809d4e996055a3e7bcec5522f8e29ccdf7c5b57",
     "generator": "scripts/refresh_json_docs.py",
     "verification": "static_source_map"
   },
@@ -21,6 +21,7 @@
     "/api/noleggio/fatture-non-associate{param}",
     "/api/noleggio/fatture/{param}/associa-veicolo",
     "/api/noleggio/fornitori",
+    "/api/noleggio/riepilogo-controlli",
     "/api/noleggio/riepilogo-controlli{param}",
     "/api/noleggio/veicoli",
     "/api/noleggio/veicoli/{param}",

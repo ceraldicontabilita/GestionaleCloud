@@ -1,0 +1,40 @@
+{
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "page_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "1809d4e996055a3e7bcec5522f8e29ccdf7c5b57",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "pagina": "Menu · Monitor cucina",
+  "route": "/menu/cucina",
+  "catalog_id": 72,
+  "modulo": "menu",
+  "accesso": "authenticated",
+  "stato_audit": "unverified",
+  "scopo": "Mappa tecnica della schermata «Menu · Monitor cucina». Il comportamento operativo effettivo è definito dai sorgenti e dai test correnti, non da descrizioni storiche.",
+  "frontend": {
+    "component": "frontend/src/menu/MenuHub.jsx",
+    "entry": "frontend/src/main.jsx",
+    "file_verificati": [
+      "frontend/src/main.jsx",
+      "frontend/src/menu/MenuHub.jsx"
+    ]
+  },
+  "backend": {
+    "file_verificati": [],
+    "endpoint_rilevati_nei_sorgenti": []
+  },
+  "archivio_dati": {
+    "stato_corrente": "google_drive_sheets",
+    "backend_predefinito": "sheets",
+    "compatibilita": "nessun_backend_alternativo",
+    "fallback_automatico": "disabilitato"
+  },
+  "regole_di_lettura": [
+    "HTTP 200 non prova il corretto funzionamento della schermata.",
+    "Gli endpoint elencati sono riferimenti statici rilevati nei sorgenti.",
+    "Associazioni automatiche solo con identità e provenienza certe."
+  ]
+}

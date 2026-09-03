@@ -1,0 +1,253 @@
+"""
+Event Bus Sincrono — Gestionale Ceraldi Group
+==============================================
+Orchestra la comunicazione tra moduli.
+Ogni operazione CRUD significativa chiama propagate_event() che
+esegue gli handler registrati in modo sincrono.
+
+Utilizzo nei router:
+    from app.hr.services.event_bus import propagate_event
+    
+    # Dopo aver salvato una fattura:
+    await propagate_event("fattura.created", {
+        "fattura_id": fattura["id"],
+        "fornitore_piva": fattura.get("fornitore_piva"),
+        "totale": fattura.get("total_amount"),
+        ...
+    }, db)
+"""
+import logging
+from typing import Dict, Any, List, Callable, Awaitable
+from datetime import datetime, timezone
+
+logger = logging.getLogger(__name__)
+
+# ============================================================
+# REGISTRO HANDLER
+# ============================================================
+# Mappa: event_type -> lista di handler async
+_handlers: Dict[str, List[Callable]] = {}
+
+
+def register_handler(event_type: str, handler: Callable[..., Awaitable]):
+    """Registra un handler per un tipo di evento."""
+    if event_type not in _handlers:
+        _handlers[event_type] = []
+    _handlers[event_type].append(handler)
+    logger.debug(f"Handler registrato per '{event_type}': {handler.__name__}")
+
+
+# ============================================================
+# TIPI DI EVENTO SUPPORTATI
+# ============================================================
+class EventTypes:
+    """Costanti per i tipi di evento del gestionale."""
+    
+    # Fatture
+    FATTURA_CREATED = "fattura.created"
+    FATTURA_UPDATED = "fattura.updated"
+    FATTURA_PAGATA = "fattura.pagata"
+    FATTURA_DELETED = "fattura.deleted"
+    
+    # Fornitori
+    FORNITORE_CREATED = "fornitore.created"
+    FORNITORE_UPDATED = "fornitore.updated"
+    
+    # F24
+    F24_ACQUISITO = "f24.acquisito"
+    F24_PAGATO = "f24.pagato"
+    F24_RICONCILIATO = "f24.riconciliato"
+    
+    # Cedolini
+    CEDOLINO_IMPORTATO = "cedolino.importato"
+    CEDOLINO_PAGATO = "cedolino.pagato"
+    CEDOLINO_RICONCILIATO = "cedolino.riconciliato"
+    
+    # Banca
+    MOVIMENTO_BANCA_IMPORTATO = "movimento_banca.importato"
+    MOVIMENTO_BANCA_CLASSIFICATO = "movimento_banca.classificato"
+    
+    # Cassa
+    MOVIMENTO_CASSA_CREATO = "movimento_cassa.creato"
+    MOVIMENTO_CASSA_CONFERMATO = "movimento_cassa.confermato"
+    
+    # Corrispettivi
+    CORRISPETTIVO_REGISTRATO = "corrispettivo.registrato"
+    
+    # Trasferimenti
+    TRASFERIMENTO_CREATO = "trasferimento.creato"
+    
+    # Riconciliazione
+    MATCH_CONFERMATO = "match.confermato"
+    MATCH_RESPINTO = "match.respinto"
+    
+    # Dipendenti
+    DIPENDENTE_CREATED = "dipendente.created"
+    DIPENDENTE_UPDATED = "dipendente.updated"
+    DIPENDENTE_CESSATO = "dipendente.cessato"
+    
+    # Documenti
+    DOCUMENTO_ACQUISITO = "documento.acquisito"
+    DOCUMENTO_CLASSIFICATO = "documento.classificato"
+    DOCUMENTO_INSTRADATO = "documento.instradato"
+    
+    # Partite
+    PARTITA_CREATA = "partita.creata"
+    PARTITA_CHIUSA = "partita.chiusa"
+    PARTITA_PARZIALE = "partita.parziale"
+
+
+# ============================================================
+# DISPATCHER PRINCIPALE
+# ============================================================
+async def propagate_event(
+    event_type: str,
+    payload: Dict[str, Any],
+    db,
+    source_module: str = "",
+    user: str = "sistema"
+) -> List[Dict[str, Any]]:
+    """
+    Propaga un evento a tutti gli handler registrati.
+    
+    Args:
+        event_type: tipo evento (da EventTypes)
+        payload: dati dell'evento
+        db: istanza database Motor
+        source_module: modulo che ha generato l'evento
+        user: utente o "sistema"
+    
+    Returns:
+        Lista di risultati dagli handler
+    """
+    results = []
+    handlers = _handlers.get(event_type, [])
+    
+    if not handlers:
+        logger.debug(f"Nessun handler per evento '{event_type}'")
+        return results
+    
+    # Arricchisci payload con metadati
+    event_context = {
+        "event_type": event_type,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "source_module": source_module,
+        "user": user,
+        **payload
+    }
+    
+    for handler in handlers:
+        try:
+            result = await handler(event_context, db)
+            if result:
+                results.append({
+                    "handler": handler.__name__,
+                    "success": True,
+                    "result": result
+                })
+        except Exception as e:
+            logger.error(
+                f"Errore in handler '{handler.__name__}' per evento "
+                f"'{event_type}': {e}",
+                exc_info=True
+            )
+            results.append({
+                "handler": handler.__name__,
+                "success": False,
+                "error": str(e)
+            })
+    
+    logger.info(
+        f"Evento '{event_type}' propagato: "
+        f"{len(handlers)} handler, "
+        f"{sum(1 for r in results if r.get('success'))} ok, "
+        f"{sum(1 for r in results if not r.get('success'))} errori"
+    )
+    
+    return results
+
+
+# ============================================================
+# HELPER PER REGISTRAZIONE BATCH
+# ============================================================
+def register_all_handlers():
+    """
+    Registra tutti gli handler dei moduli.
+    Chiamare all'avvio dell'app (in main.py dopo connect_db).
+
+    Gli handler vengono importati qui per evitare import circolari.
+    """
+    logger.info("Registrazione handler event bus...")
+
+    # --- Fase 3: Banca ↔ Riconciliazione (Chat 9b) ---
+    try:
+        from app.hr.services.handlers.banca_handlers import (
+            on_movimento_banca_cerca_match,
+            on_match_confermato_propaga,
+            on_movimento_banca_audit,
+        )
+        register_handler(EventTypes.MOVIMENTO_BANCA_IMPORTATO, on_movimento_banca_cerca_match)
+        register_handler(EventTypes.MOVIMENTO_BANCA_IMPORTATO, on_movimento_banca_audit)
+        register_handler(EventTypes.MATCH_CONFERMATO, on_match_confermato_propaga)
+    except Exception as e:
+        logger.warning(f"Handler banca non registrati: {e}")
+
+    # --- Fase 4: F24 (Chat 9c) ---
+    try:
+        from app.hr.services.handlers.f24_handlers import (
+            on_f24_acquisito_crea_partita,
+            on_f24_pagato_risolvi,
+        )
+        register_handler(EventTypes.F24_ACQUISITO, on_f24_acquisito_crea_partita)
+        register_handler(EventTypes.F24_PAGATO, on_f24_pagato_risolvi)
+    except Exception as e:
+        logger.warning(f"Handler F24 non registrati: {e}")
+
+    # --- Fase 5: Cedolini (Chat 9c) ---
+    try:
+        from app.hr.services.handlers.cedolino_handlers import (
+            on_cedolino_importato,
+            on_cedolino_pagato_risolvi,
+        )
+        register_handler(EventTypes.CEDOLINO_IMPORTATO, on_cedolino_importato)
+        register_handler(EventTypes.CEDOLINO_PAGATO, on_cedolino_pagato_risolvi)
+    except Exception as e:
+        logger.warning(f"Handler cedolini non registrati: {e}")
+
+    # --- Dipendenti (Chat 9d) ---
+    try:
+        from app.hr.services.handlers.dipendente_handlers import (
+            on_dipendente_created,
+            on_dipendente_updated_risolvi,
+            on_dipendente_cessato,
+        )
+        register_handler(EventTypes.DIPENDENTE_CREATED, on_dipendente_created)
+        register_handler(EventTypes.DIPENDENTE_UPDATED, on_dipendente_updated_risolvi)
+        register_handler(EventTypes.DIPENDENTE_CESSATO, on_dipendente_cessato)
+    except Exception as e:
+        logger.warning(f"Handler dipendenti non registrati: {e}")
+
+    # --- Documenti/Inbox (Chat 9d) ---
+    try:
+        from app.hr.services.handlers.documento_handlers import (
+            on_documento_acquisito,
+            on_documento_instradato,
+        )
+        register_handler(EventTypes.DOCUMENTO_ACQUISITO, on_documento_acquisito)
+        register_handler(EventTypes.DOCUMENTO_INSTRADATO, on_documento_instradato)
+    except Exception as e:
+        logger.warning(f"Handler documenti non registrati: {e}")
+
+    registered = sum(len(h) for h in _handlers.values())
+    logger.info(f"Event bus pronto: {registered} handler registrati per {len(_handlers)} tipi evento")
+
+
+# ============================================================
+# UTILITY: lista eventi registrati (per debug/admin)
+# ============================================================
+def get_registered_events() -> Dict[str, List[str]]:
+    """Ritorna mappa evento -> nomi handler registrati."""
+    return {
+        event_type: [h.__name__ for h in handlers]
+        for event_type, handlers in _handlers.items()
+    }

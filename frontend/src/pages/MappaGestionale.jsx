@@ -20,8 +20,7 @@ import {
   Settings,
   ShieldCheck,
   Users,
-  WalletCards,
-} from 'lucide-react';
+  WalletCards, Menu } from 'lucide-react';
 
 const STAGES = [
   {
@@ -201,24 +200,35 @@ const AREAS = [
   {
     id: 'dipendenti',
     title: 'Dipendenti',
-    route: null,
-    external: 'https://appdipendenti.onrender.com',
+    route: '/hr',
     Icon: Users,
-    color: '#2563eb',
+    color: '#5b7a6b',
     group: 'HR',
-    purpose: 'Fascicolo HR esterno (gestionale dedicato) con anagrafica, IBAN, cedolini, presenze, verbali e trattenute. Qui restano solo cedolini e TFR.',
+    purpose: 'Modulo HR integrato (ex AppDipendenti): anagrafica, turni, timbrature, ferie, buste paga, TFR, contratti e portale dipendenti con PIN personale.',
     pages: ['Anagrafica', 'Cedolini', 'Verbali', 'Movimenti', 'Giustificativi'],
     inputs: ['Cedolini', 'Presenze', 'Bonifici stipendio', 'Verbali driver'],
     outputs: ['Fascicolo dipendente', 'Alert HR', 'Note consulente', 'Storico paghe'],
     links: ['cedolini', 'verbali', 'riconciliazione'],
   },
   {
+    id: 'menu',
+    title: 'Menu digitale',
+    route: '/menu/ordini',
+    Icon: Menu,
+    color: '#5b7a6b',
+    group: 'Locale',
+    purpose: 'Menu digitale integrato (ex app Menu): menu pubblico con QR al tavolo, ordini, cassa, monitor cucina, sale e coperto, magazzino bar condiviso con Lotti, immagini e backup.',
+    pages: ['Ordini', 'Cassa', 'Cucina', 'Magazzino bar', 'Sale', 'Gestione menu'],
+    inputs: ['Ordini dal QR', 'Ordini di cassa', 'Catalogo prodotti', 'Immagini', 'Magazzino bar Lotti'],
+    outputs: ['Ordini in lavorazione', 'Incassi cassa', 'Menu pubblico aggiornato', 'QR menu/WiFi', 'Backup JSON'],
+    links: ['dipendenti'],
+  },
+  {
     id: 'cedolini',
     title: 'Cedolini',
-    route: null,
-    external: 'https://appdipendenti.onrender.com',
+    route: '/hr/buste-paga',
     Icon: WalletCards,
-    color: '#0ea5e9',
+    color: '#8a6f47',
     group: 'HR',
     purpose: 'Estrae netto, lordo, fiscale, previdenziale, ratei, TFR, presenze ed eventi particolari.',
     pages: ['Cedolini', 'Parser Zucchetti', 'Sezione fiscale', 'Ratei', 'TFR', 'Stato pagamento'],

@@ -24,7 +24,14 @@ OPERATORE = "operatore"
 SOLA_LETTURA = "sola_lettura"
 NON_AUTORIZZATO = "non_autorizzato"
 
-RUOLI_VALIDI = {ADMIN, OPERATORE, SOLA_LETTURA}
+# Ruoli del modulo HR (portale dipendenti). Passano il middleware SOLO sui
+# percorsi /api/hr/ (vedi middleware/authentication.py): non sono utenti del
+# gestionale e non ricevono mai privilegi di scrittura o amministrazione.
+DIPENDENTE = "dipendente"
+RESPONSABILE_TURNI = "responsabile_turni"
+RUOLI_HR = {DIPENDENTE, RESPONSABILE_TURNI}
+
+RUOLI_VALIDI = {ADMIN, OPERATORE, SOLA_LETTURA} | RUOLI_HR
 
 # Metodi che modificano dati: vietati alla sola lettura.
 METODI_SCRITTURA = {"POST", "PUT", "PATCH", "DELETE"}

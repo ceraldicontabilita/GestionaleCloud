@@ -66,6 +66,11 @@ async def lifespan(app: FastAPI):
         and process_role != "web"
         and settings.ENVIRONMENT.lower() not in {"test", "testing"}
     )
+    # Modulo HR (ex AppDipendenti): handler eventi, seed TFR, job periodici.
+    from app.hr.startup import avvia_modulo_hr
+
+    await avvia_modulo_hr(scheduler_attivo=scheduler_attivo)
+
     if scheduler_attivo:
         try:
             from app.scheduler import start_scheduler
@@ -510,6 +515,9 @@ async def lifespan(app: FastAPI):
             stop_scheduler()
         except Exception:
             pass
+    from app.hr.startup import arresta_modulo_hr
+
+    arresta_modulo_hr()
     await Database.close_db()
     logger.info("Shutdown complete")
 

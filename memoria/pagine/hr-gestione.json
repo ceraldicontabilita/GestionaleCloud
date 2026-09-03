@@ -1,0 +1,52 @@
+{
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "page_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "1809d4e996055a3e7bcec5522f8e29ccdf7c5b57",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "pagina": "HR · Gestione dipendenti",
+  "route": "/hr",
+  "catalog_id": 67,
+  "modulo": "hr",
+  "accesso": "admin",
+  "stato_audit": "unverified",
+  "scopo": "Mappa tecnica della schermata «HR · Gestione dipendenti». Il comportamento operativo effettivo è definito dai sorgenti e dai test correnti, non da descrizioni storiche.",
+  "frontend": {
+    "component": "frontend/src/hr/HRApp.jsx",
+    "entry": "frontend/src/main.jsx",
+    "file_verificati": [
+      "frontend/src/hr/HRApp.jsx",
+      "frontend/src/main.jsx"
+    ]
+  },
+  "backend": {
+    "file_verificati": [],
+    "endpoint_rilevati_nei_sorgenti": [
+      "/api/hr/accessi",
+      "/api/hr/accessi/genera-mancanti",
+      "/api/hr/accessi/{param}/pin",
+      "/api/hr/accessi/{param}/pin/genera",
+      "/api/hr/accessi/{param}/ruolo",
+      "/api/hr/cedolini/import-drive",
+      "/api/hr/cedolini/simulazione-f24",
+      "/api/hr/contracts/generate/{param}",
+      "/api/hr/diagnostica",
+      "/api/hr/dipendenti-cloud/assegnazioni-turni",
+      "/api/hr/dipendenti-cloud/turni"
+    ]
+  },
+  "archivio_dati": {
+    "stato_corrente": "google_drive_sheets",
+    "backend_predefinito": "sheets",
+    "compatibilita": "nessun_backend_alternativo",
+    "fallback_automatico": "disabilitato"
+  },
+  "regole_di_lettura": [
+    "HTTP 200 non prova il corretto funzionamento della schermata.",
+    "Gli endpoint elencati sono riferimenti statici rilevati nei sorgenti.",
+    "Associazioni automatiche solo con identità e provenienza certe."
+  ]
+}

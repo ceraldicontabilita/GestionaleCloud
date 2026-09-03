@@ -24,6 +24,8 @@ def register_all_routers(app: FastAPI) -> None:
     _register_core(app)
     _register_email(app)
     _register_noleggio(app)
+    _register_hr(app)
+    _register_menu(app)
 
     # Sistema relazionale (Chat 9e)
     try:
@@ -368,3 +370,17 @@ def _register_noleggio(app: FastAPI):
     app.include_router(admin_export.router, prefix="/api", tags=["Admin Export"])
 
 
+
+
+def _register_hr(app: FastAPI):
+    """Modulo HR (ex AppDipendenti): tutto sotto /api/hr, vedi app/hr/router_registry.py."""
+    from app.hr.router_registry import register_hr_routers
+
+    register_hr_routers(app)
+
+
+def _register_menu(app: FastAPI):
+    """Modulo Menu digitale (ex app Menu): tutto sotto /api/menu, vedi app/menu/router_registry.py."""
+    from app.menu.router_registry import register_menu_routers
+
+    register_menu_routers(app)
