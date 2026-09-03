@@ -633,6 +633,38 @@ async def ricostruisci_archivio_drive_lotto(
             gc.collect()
 
 
+_STATI_RICOSTRUZIONE_INCOMPLETA = {"pending", "processing"}
+
+
+async def riprendi_ricostruzione_se_incompleta(
+    db, *, batch_size: int = 20,
+) -> Dict[str, Any]:
+    """Job periodico: porta a termine da sola una ricostruzione lasciata a meta'.
+
+    Audit 03/09/2026: la ricostruzione avviata il 21/08 era ferma a
+    ``processing`` (64 fatture su 754) perche' il lotto successivo veniva
+    lanciato solo da un click in Admin; nel frattempo l'archivio ``invoices``
+    era vuoto e costi, IVA a credito e debiti fornitori risultavano zero.
+    Se lo stato salvato e' ``pending`` o ``processing`` esegue il lotto
+    seguente (riprendibile dal cursore, idempotente, senza spostare file);
+    con qualsiasi altro stato (``ok``, ``error``, mai avviata) non fa nulla.
+    """
+    if _rebuild_lock.locked() or _sync_lock.locked():
+        return {"status": "running", "message": "Sincronizzazione o ricostruzione in corso"}
+    if not is_configured():
+        return {"status": "not_configured", "message": "Drive fatture non configurato"}
+    state = await db[_SYNC_STATE_COLLECTION].find_one({"_id": _SYNC_STATE_ID}) or {}
+    previous = state.get("last_rebuild_result") or {}
+    stato = previous.get("status")
+    if stato not in _STATI_RICOSTRUZIONE_INCOMPLETA:
+        return {"status": "skipped", "stato_precedente": stato}
+    logger.info(
+        "[DRIVE-FATTURE] ricostruzione incompleta (%s, %s/%s): riprendo un lotto",
+        stato, previous.get("processed"), previous.get("total"),
+    )
+    return await ricostruisci_archivio_drive_lotto(db, batch_size=batch_size)
+
+
 async def ricostruisci_archivio_drive(db) -> Dict[str, Any]:
     """Rilegge tutti gli XML Drive e ricostruisce i record mancanti.
 
