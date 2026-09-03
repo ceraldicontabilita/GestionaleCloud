@@ -64,47 +64,6 @@ async def del_pin(dipendente_id: str, _: Dict[str, Any] = Depends(require_roles(
     return {"ok": True, "dipendente_id": dipendente_id, "pin_impostato": False}
 
 
-def _pin_casuale() -> str:
-    """PIN a 6 cifre generato con il modulo secrets (mai prevedibile)."""
-    import secrets
-    return "".join(secrets.choice("0123456789") for _ in range(6))
-
-
-@router.post("/{dipendente_id}/pin/genera", summary="Genera un nuovo PIN casuale (admin)")
-async def genera_pin(dipendente_id: str, _: Dict[str, Any] = Depends(require_roles("admin"))):
-    """Il PIN viene restituito UNA sola volta in chiaro all'amministratore,
-    che lo consegna al dipendente; nel database resta solo l'hash."""
-    pin = _pin_casuale()
-    ok = await auth_dip.imposta_pin(dipendente_id, pin)
-    if not ok:
-        raise HTTPException(404, "Dipendente non trovato")
-    return {"ok": True, "dipendente_id": dipendente_id, "pin": pin, "pin_impostato": True}
-
-
-@router.post("/genera-mancanti", summary="Genera un PIN a tutti i dipendenti attivi senza PIN (admin)")
-async def genera_pin_mancanti(_: Dict[str, Any] = Depends(require_roles("admin"))) -> Dict[str, Any]:
-    """Prima attivazione del portale: un PIN per ciascun dipendente attivo che
-    non ne ha uno. L'elenco (nome + PIN) e' mostrato una sola volta, da
-    stampare o consegnare; chi ha gia' un PIN non viene toccato."""
-    db = Database.get_db()
-    generati = []
-    async for d in db[Collections.EMPLOYEES].find(
-        {"attivo": {"$ne": False}, "merged_into": {"$exists": False},
-         "stato": {"$nin": ["cessato", "dimesso", "archiviato"]},
-         "pin_hash": {"$exists": False}},
-        {"_id": 0, "id": 1, "nome_completo": 1, "nome": 1, "cognome": 1},
-    ):
-        if not d.get("id"):
-            continue
-        pin = _pin_casuale()
-        if await auth_dip.imposta_pin(d["id"], pin):
-            nome = (d.get("nome_completo") or f"{d.get('nome', '')} {d.get('cognome', '')}").strip()
-            generati.append({"id": d["id"], "nome_completo": nome, "pin": pin})
-    generati.sort(key=lambda x: x["nome_completo"].lower())
-    logger.info("PIN portale generati per %d dipendenti", len(generati))
-    return {"ok": True, "generati": generati, "totale": len(generati)}
-
-
 @router.post("/{dipendente_id}/ruolo", summary="Imposta ruolo applicativo (admin)")
 async def set_ruolo(
     dipendente_id: str,

@@ -1,0 +1,79 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+:root{
+  /* Design unico Ceraldi: stessa palette verde salvia della gestione.
+     I nomi delle variabili restano per compatibilità col resto del foglio. */
+  --violet:#5b7a6b; --violet-d:#3f5a4e; --navy:#3f5a4e; --navy-2:#45614f;
+  --bg:#faf7f0; --card:#fffefb; --ink:#2a3329; --muted:#6b7669;
+  --line:#e6e0d4; --ok:#3d8168; --warn:#c4894a; --danger:#d35f4e;
+  --radius:16px; --shadow:0 4px 18px rgba(63,90,78,.10);
+}
+.pt-root h1,.pt-head h1,.card h3,.login h2{font-family:'Fraunces',Georgia,serif;letter-spacing:-.01em}
+*{box-sizing:border-box}
+.pt-root{font-family:'Plus Jakarta Sans',system-ui,sans-serif;background:var(--bg);
+  color:var(--ink);min-height:100vh;max-width:540px;margin:0 auto;position:relative;padding-bottom:78px}
+.pt-head{background:linear-gradient(135deg,var(--violet),var(--navy));color:#fff;
+  padding:18px 18px 16px;position:sticky;top:0;z-index:5}
+.pt-head h1{margin:0;font-size:18px;font-weight:800;letter-spacing:-.3px}
+.pt-head .sub{opacity:.85;font-size:13px;margin-top:2px}
+.pt-head .logout{position:absolute;right:14px;top:16px;background:rgba(255,255,255,.16);
+  border:none;color:#fff;border-radius:10px;padding:7px 10px;font-size:12px;font-weight:600}
+.pt-body{padding:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  box-shadow:var(--shadow);padding:14px;margin-bottom:12px}
+.card h3{margin:0 0 10px;font-size:15px;font-weight:700}
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.muted{color:var(--muted);font-size:13px}
+.pill{display:inline-block;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700}
+.pill.ok{background:#e7f6ec;color:var(--ok)} .pill.warn{background:#fdf0dd;color:var(--warn)}
+.pill.info{background:#e8efe9;color:var(--violet)} .pill.danger{background:#fdeaea;color:var(--danger)}
+.pill.muted{background:#eee;color:#666}
+.btn{background:var(--violet);color:#fff;border:none;border-radius:12px;padding:12px 14px;
+  font-weight:700;font-size:14px;width:100%;font-family:inherit}
+.btn:active{background:var(--violet-d)} .btn.sec{background:#e8efe9;color:var(--violet)}
+.btn.gh{background:transparent;border:1px solid var(--line);color:var(--ink)}
+.btn.sm{width:auto;padding:8px 12px;font-size:13px;border-radius:10px}
+.input,select,textarea{width:100%;padding:12px;border:1px solid var(--line);border-radius:12px;
+  font-family:inherit;font-size:14px;background:#fff;color:var(--ink);margin-top:6px}
+label{font-size:13px;font-weight:600;display:block;margin-top:10px}
+.tabbar{position:fixed;bottom:0;left:0;right:0;max-width:540px;margin:0 auto;background:#fff;
+  border-top:1px solid var(--line);display:flex;justify-content:space-around;padding:8px 4px 10px;z-index:6}
+.tab{background:none;border:none;display:flex;flex-direction:column;align-items:center;gap:3px;
+  color:var(--muted);font-size:10px;font-weight:600;font-family:inherit;flex:1;position:relative;min-width:0;white-space:nowrap}
+.tab.active{color:var(--violet)}
+.tab .dot{position:absolute;top:-2px;right:22%;background:var(--danger);color:#fff;border-radius:999px;
+  font-size:9px;padding:1px 5px;font-weight:700}
+/* login */
+.login{display:flex;flex-direction:column;justify-content:center;min-height:100vh;padding:24px}
+.login .brand{text-align:center;margin-bottom:26px}
+.login .brand .logo{width:64px;height:64px;border-radius:18px;margin:0 auto 12px;
+  background:linear-gradient(135deg,var(--violet),var(--navy));display:flex;align-items:center;
+  justify-content:center;color:#fff}
+.login h2{text-align:center;margin:0 0 4px;font-size:20px;font-weight:800}
+.pinpad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px}
+.pinpad button{padding:16px;font-size:20px;font-weight:700;border:1px solid var(--line);
+  background:#fff;border-radius:14px;font-family:inherit}
+.pin-dots{display:flex;justify-content:center;gap:10px;margin:14px 0}
+.pin-dots i{width:13px;height:13px;border-radius:50%;background:var(--line);display:block}
+.pin-dots i.on{background:var(--violet)}
+/* selettore nomi login: tocco al posto della tastiera, tocchi grandi per mani sporche/impegnate */
+.nomi-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px}
+.nome-tile{width:auto;padding:16px 10px;font-size:14px;min-height:52px}
+/* turni grid */
+.tgrid{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.tgrid table{border-collapse:collapse;width:100%;font-size:12px}
+.tgrid th,.tgrid td{border:1px solid var(--line);padding:6px 7px;text-align:center;white-space:nowrap}
+.tgrid th{background:#eef3ef;font-weight:700;position:sticky;left:0}
+.tgrid td.name{text-align:left;font-weight:600;background:#faf7f0;position:sticky;left:0}
+.t-lunga{background:#e8efe9;color:var(--violet);font-weight:700;border-radius:6px;padding:2px 4px}
+.t-riposo{color:var(--muted)} .t-indisp{background:#fdeaea;color:var(--danger);border-radius:6px;padding:2px 4px}
+.t-lav{background:#e7f6ec;color:var(--ok);border-radius:6px;padding:2px 4px}
+.daycard{display:flex;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--line)}
+.daycard:last-child{border-bottom:none}
+.empty{text-align:center;color:var(--muted);padding:30px 10px;font-size:14px}
+.err{background:#fdeaea;color:var(--danger);padding:10px;border-radius:10px;font-size:13px;margin-top:8px}
+.pt-connerr{position:sticky;top:0;z-index:7;background:var(--danger);color:#fff;font-size:13px;font-weight:700;
+  padding:9px 14px;display:flex;align-items:center;justify-content:center;gap:10px;text-align:center}
+.pt-connerr button{background:#fff;color:var(--danger);border:none;border-radius:8px;padding:5px 10px;
+  font-weight:700;font-size:12px;font-family:inherit}
+.spin{text-align:center;padding:30px;color:var(--muted)}

@@ -82,7 +82,11 @@ def tracked_markdown() -> list[str]:
     return sorted(path for path in paths if (ROOT / path).exists() or path == "docs/MARKDOWN_INVENTORY.md")
 
 
-APP_PORTATE_PARI_PARI = ("app/lotti/", "frontend_lotti/")
+APP_PORTATE_PARI_PARI = (
+    "app/lotti/", "frontend_lotti/",
+    "app/menu/", "frontend_menu/",
+    "app/hr/", "frontend_hr/",
+)
 
 
 def classify(path: str) -> str:

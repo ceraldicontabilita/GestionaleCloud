@@ -2,8 +2,8 @@
 
 Usato da `genera_mappa.py` e `genera_classificazione_endpoint.py` (colonna
 FE). Prima veniva cercato solo il testo letterale `/api/...`: un modulo che
-compone gli URL da una costante (`const HR_API = "/api" + "/hr"`,
-``const API = `${HR_API}/dipendenti-cloud` ``, ``hrApi.get(`${API}/dipendenti`)``)
+compone gli URL da una costante (`const BASE = "/api" + "/fatture"`,
+``const API = `${BASE}/ricevute` ``, ``api.get(`${API}/elenco`)``)
 o da un client axios con `baseURL` (`api.get("/portale/buste")`) risultava
 "mai usato dal frontend" pur essendo la parte piu' chiamata dell'app.
 
@@ -23,7 +23,7 @@ _CONST = re.compile(r"const\s+([A-Z][A-Z0-9_]*)\s*=\s*([\"'`][^;\n]*[\"'`])\s*;"
 _CONCAT = re.compile(r"[\"'`]\s*\+\s*[\"'`]")
 _TEMPLATE_VAR = re.compile(r"\$\{([A-Z][A-Z0-9_]*)\}")
 _BASEURL = re.compile(r"baseURL:\s*([^,}\n]+)")
-_API_CALL = re.compile(r"\b(?:api|hrApi)\.(?:get|post|put|delete|patch|request)\(\s*([\"'`])(/[^\"'`]*)\1")
+_API_CALL = re.compile(r"\bapi\.(?:get|post|put|delete|patch|request)\(\s*([\"'`])(/[^\"'`]*)\1")
 _API_REF = re.compile(r"/api/[a-zA-Z0-9_\-/${}.]+")
 
 

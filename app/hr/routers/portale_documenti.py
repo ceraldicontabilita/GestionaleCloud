@@ -7,7 +7,7 @@ Il dipendente vede/scarica SOLO i propri documenti. Può:
   - scaricare ciò che l'azienda ha caricato per lui (Certificazione Unica, Unilav).
 
 L'azienda (admin) carica per un dipendente i documenti riservati (CU, Unilav, ecc.).
-Tutti i file sono salvati su Mongo (base64) nella collezione esistente `documenti_cloud`,
+Tutti i file sono salvati su MongoDB (base64) nella collezione esistente `documenti_cloud`,
 così non dipendono dal disco effimero di Render.
 """
 import base64

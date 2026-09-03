@@ -67,18 +67,27 @@ async def lifespan(app: FastAPI):
         and process_role != "web"
         and settings.ENVIRONMENT.lower() not in {"test", "testing"}
     )
-    # Modulo HR (ex AppDipendenti): handler eventi, seed TFR, job periodici.
-    from app.hr.startup import avvia_modulo_hr
-
-    await avvia_modulo_hr(scheduler_attivo=scheduler_attivo)
-
-    # App Lotti (HACCP) portata pari pari: Starlette non propaga lo startup
-    # alle sub-app montate, quindi il suo avvio (seed operatori, scheduler,
-    # cataloghi) va richiamato da qui. Un errore non ferma il gestionale.
+    # App portate pari pari (Lotti, HR = AppDipendenti, Menu): Starlette non
+    # propaga lo startup alle sub-app montate, quindi il loro avvio (seed,
+    # scheduler APScheduler propri, cataloghi) va richiamato da qui. Ogni
+    # funzione avvia_* cattura le proprie eccezioni: un errore non ferma mai il
+    # gestionale. HR e Lotti hanno uno scheduler proprio: partono solo quando
+    # anche quello dell'ERP e' attivo (mai nel ruolo "web" o nei test).
     if scheduler_attivo:
         from app.lotti.embed import avvia_lotti
 
         await avvia_lotti()
+
+        from app.hr.embed import avvia_hr
+
+        await avvia_hr()
+
+    try:
+        from app.menu.embed import avvia_menu
+
+        await avvia_menu()
+    except Exception as e:
+        logger.warning(f"Sotto-applicazione Menu non avviata: {e}")
 
     if scheduler_attivo:
         try:
@@ -524,12 +533,19 @@ async def lifespan(app: FastAPI):
             stop_scheduler()
         except Exception:
             pass
-    from app.hr.startup import arresta_modulo_hr
-
-    arresta_modulo_hr()
     from app.lotti.embed import arresta_lotti
 
     await arresta_lotti()
+    if scheduler_attivo:
+        from app.hr.embed import arresta_hr
+
+        await arresta_hr()
+    try:
+        from app.menu.embed import arresta_menu
+
+        await arresta_menu()
+    except Exception:
+        pass
     await Database.close_db()
     logger.info("Shutdown complete")
 
@@ -747,6 +763,33 @@ app.mount("/lotti", lotti_app, name="lotti")
 _LOTTI_SAIMA = os.path.join(_LOTTI_BUILD, "saima")
 if os.path.isdir(_LOTTI_SAIMA):
     app.mount("/saima", StaticFiles(directory=_LOTTI_SAIMA), name="lotti-saima")
+
+# App Menu (menu digitale Ceraldi Caffe') portata pari pari: backend originale
+# (app/menu, proprio login admin username/password) montato a /menu ->
+# /menu/api/...; il build CRA di frontend_menu (PUBLIC_URL=/menu) e' servito
+# dalla stessa sub-app (app/menu/server.py monta da solo il build se la
+# cartella esiste all'import: qui si registra solo l'esito nel log).
+from app.menu.embed import menu_app  # noqa: E402
+from app.menu.server import FRONTEND_BUILD_DIR as _MENU_BUILD  # noqa: E402
+
+if os.path.isdir(_MENU_BUILD):
+    logger.info("Frontend Menu montato da %s", _MENU_BUILD)
+else:
+    logger.warning("Frontend Menu non trovato (%s): /menu serve solo le API", _MENU_BUILD)
+app.mount("/menu", menu_app, name="menu")
+
+# App HR (AppDipendenti) portata pari pari: backend originale (app/hr, proprio
+# login a PIN) montato a /hr -> /hr/api/...; il build Vite di frontend_hr
+# (base /hr/) e' servito dalla stessa sub-app con fallback SPA per i deep link
+# (/hr/portale, /hr/dipendenti/...).
+from app.hr.embed import hr_app, monta_frontend as _monta_frontend_hr  # noqa: E402
+
+_HR_BUILD = os.path.join(_PROJECT_ROOT, "frontend_hr", "dist")
+if _monta_frontend_hr(Path(_HR_BUILD)):
+    logger.info("Frontend HR montato da %s", _HR_BUILD)
+else:
+    logger.warning("Frontend HR non trovato (%s): /hr serve solo le API", _HR_BUILD)
+app.mount("/hr", hr_app, name="hr")
 
 if os.path.isdir(_FRONTEND_DIST):
     assets_path = os.path.join(_FRONTEND_DIST, "assets")

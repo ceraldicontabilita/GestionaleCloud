@@ -84,3 +84,8 @@ app/static/tracciabilita/uploads/
 # sono già esclusi da frontend_lotti/.gitignore.
 !frontend_lotti/.env.production
 !frontend_lotti/public/uploads/
+
+# Menu originale (frontend_menu/): stesso criterio di frontend_lotti — .env.production
+# contiene solo PUBLIC_URL e percorsi relativi (nessun segreto) e deve restare tracciato;
+# build/ e node_modules/ sono gia' esclusi da frontend_menu/.gitignore.
+!frontend_menu/.env.production

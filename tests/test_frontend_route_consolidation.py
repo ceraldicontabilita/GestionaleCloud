@@ -13,7 +13,8 @@ def test_router_registra_famiglie_canoniche_non_140_alias():
     source = _read("main.jsx")
     # Sono comprese login, root e 404: le varianti anno/mese/tab sono gestite
     # dagli hub tramite wildcard e non devono tornare a moltiplicare le route.
-    # +4 con il modulo HR (portale, turni responsabile, /hr e /hr/:page).
+    # HR, Menu e Lotti non sono route di questa SPA: sono app portate pari
+    # pari, servite a pagina intera dal backend (/hr/, /menu/, /lotti/).
     assert source.count("path:") <= 40
     for canonical in (
         'path: "contabilita/*"',

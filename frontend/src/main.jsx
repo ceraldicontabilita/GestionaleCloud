@@ -13,7 +13,6 @@ import { ConfirmProvider } from "./components/ui/ConfirmDialog.jsx";
 import { Toaster } from "./components/ui/sonner.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import Login from "./pages/Login.jsx";
-import HRGate from "./hr/HRGate.jsx";
 import { COLORS } from "./lib/utils.js";
 
 const PageLoader = () => (
@@ -56,13 +55,9 @@ const CedoliniSalari = lazy(() => import("./pages/CedoliniSalari.jsx"));
 const SituazioneFiscale = lazy(() => import("./pages/SituazioneFiscale.jsx"));
 const TracciabilitaHACCP = lazy(() => import("./pages/TracciabilitaHACCP.jsx"));
 
-// === MODULO HR (ex AppDipendenti): area gestione /hr e portale dipendenti /portale ===
-const HRApp = lazy(() => import("./hr/HRApp.jsx"));
-const PortaleDipendente = lazy(() => import("./hr/PortaleDipendente.jsx"));
-// === MODULO MENU (ex app Menu): menu pubblico /menu (QR al tavolo), area operativa /menu/<sezione>,
-// banco per il portale dipendenti /menu-banco ===
-const MenuPubblico = lazy(() => import("./menu/MenuPubblico.jsx"));
-const MenuHub = lazy(() => import("./menu/MenuHub.jsx"));
+// HR (AppDipendenti), Menu e Lotti NON sono pagine di questa SPA: sono app
+// portate pari pari, servite dal backend a /hr/, /menu/ e /lotti/ (link a
+// pagina intera in navigation.config.js).
 
 const LazyPage = ({ children }) => (
   <Suspense fallback={<PageLoader />}>{children}</Suspense>
@@ -82,14 +77,6 @@ const AuthenticatedApp = () => (
 const router = createBrowserRouter([
   { path: "/login", element: <Login /> },
   { path: "/gestione-riservata", element: <LazyPage><GestioneRiservata /></LazyPage> },
-  // Portale dipendenti: login con PIN personale, fuori dalla sessione del gestionale.
-  { path: "/portale", element: <LazyPage><PortaleDipendente /></LazyPage> },
-  // Pagina Turni per il responsabile turni (token del portale, non del gestionale).
-  { path: "/hr-turni", element: <LazyPage><HRGate roles={["responsabile_turni"]}><HRApp page="turni" /></HRGate></LazyPage> },
-  // Menu digitale dei clienti (QR al tavolo): pubblico, nessuna sessione.
-  { path: "/menu", element: <LazyPage><MenuPubblico /></LazyPage> },
-  // Banco (ordini, cassa, cucina, magazzino bar) per chi entra dal portale dipendenti.
-  { path: "/menu-banco/*", element: <LazyPage><HRGate roles={["dipendente", "responsabile_turni"]}><MenuHub standalone /></HRGate></LazyPage> },
   {
     path: "/",
     element: <AuthenticatedApp />,
@@ -124,9 +111,6 @@ const router = createBrowserRouter([
       { path: "situazione-fiscale/*", element: <RequireAdmin><LazyPage><SituazioneFiscale /></LazyPage></RequireAdmin> },
       { path: "fatture-estere-verifica", element: <LazyPage><FattureEstereVerifica /></LazyPage> },
       { path: "tracciabilita", element: <LazyPage><TracciabilitaHACCP /></LazyPage> },
-      { path: "hr", element: <RequireAdmin><LazyPage><HRApp page="dashboard" /></LazyPage></RequireAdmin> },
-      { path: "hr/:page", element: <RequireAdmin><LazyPage><HRApp /></LazyPage></RequireAdmin> },
-      { path: "menu/*", element: <LazyPage><MenuHub /></LazyPage> },
 
       // Un solo punto di compatibilità per vecchi preferiti; altrimenti 404 reale.
       { path: "*", element: <LazyPage><LegacyRouteResolver /></LazyPage> },

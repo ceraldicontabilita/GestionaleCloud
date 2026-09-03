@@ -10,7 +10,7 @@ import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
-from typing import Any as AsyncIOMotorDatabase  # il tipo motor non esiste piu: il runtime e il registro unico del gestionale
+from motor.motor_asyncio import AsyncIOMotorDatabase
 
 logger = logging.getLogger(__name__)
 

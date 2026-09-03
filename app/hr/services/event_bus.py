@@ -179,6 +179,23 @@ def register_all_handlers():
     """
     logger.info("Registrazione handler event bus...")
 
+    # --- Fase 2: Fatture ↔ Fornitori ↔ Prima Nota (Chat 9) ---
+    try:
+        from app.hr.services.handlers.fattura_handlers import (
+            on_fattura_created_crea_partita,
+            on_fattura_created_alert_fornitore,
+            on_fattura_created_audit,
+            on_fattura_pagata_risolvi,
+            on_fornitore_aggiornato_risolvi,
+        )
+        register_handler(EventTypes.FATTURA_CREATED, on_fattura_created_crea_partita)
+        register_handler(EventTypes.FATTURA_CREATED, on_fattura_created_alert_fornitore)
+        register_handler(EventTypes.FATTURA_CREATED, on_fattura_created_audit)
+        register_handler(EventTypes.FATTURA_PAGATA, on_fattura_pagata_risolvi)
+        register_handler(EventTypes.FORNITORE_UPDATED, on_fornitore_aggiornato_risolvi)
+    except Exception as e:
+        logger.warning(f"Handler fatture non registrati: {e}")
+
     # --- Fase 3: Banca ↔ Riconciliazione (Chat 9b) ---
     try:
         from app.hr.services.handlers.banca_handlers import (
@@ -214,6 +231,20 @@ def register_all_handlers():
     except Exception as e:
         logger.warning(f"Handler cedolini non registrati: {e}")
 
+    # --- Fase 6: Corrispettivi (Chat 9c) ---
+    try:
+        from app.hr.services.handlers.corrispettivo_handlers import on_corrispettivo_split
+        register_handler(EventTypes.CORRISPETTIVO_REGISTRATO, on_corrispettivo_split)
+    except Exception as e:
+        logger.warning(f"Handler corrispettivi non registrati: {e}")
+
+    # --- Fase 7: Trasferimenti (Chat 9c) ---
+    try:
+        from app.hr.services.handlers.trasferimento_handlers import on_trasferimento_crea_lato_opposto
+        register_handler(EventTypes.TRASFERIMENTO_CREATO, on_trasferimento_crea_lato_opposto)
+    except Exception as e:
+        logger.warning(f"Handler trasferimenti non registrati: {e}")
+
     # --- Dipendenti (Chat 9d) ---
     try:
         from app.hr.services.handlers.dipendente_handlers import (
@@ -226,6 +257,13 @@ def register_all_handlers():
         register_handler(EventTypes.DIPENDENTE_CESSATO, on_dipendente_cessato)
     except Exception as e:
         logger.warning(f"Handler dipendenti non registrati: {e}")
+
+    # --- Magazzino (Chat 9d) ---
+    try:
+        from app.hr.services.handlers.magazzino_handlers import on_fattura_righe_magazzino
+        register_handler(EventTypes.FATTURA_CREATED, on_fattura_righe_magazzino)
+    except Exception as e:
+        logger.warning(f"Handler magazzino non registrati: {e}")
 
     # --- Documenti/Inbox (Chat 9d) ---
     try:

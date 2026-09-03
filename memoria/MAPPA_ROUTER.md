@@ -1,7 +1,7 @@
 # MAPPA ROUTER — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py — leggendo la route table reale di `register_all_routers`.
-> Totale **1574 endpoint** in **115 prefissi**.
+> Totale **1171 endpoint** in **113 prefissi**.
 
 Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app collegata / webhook / chatbot / scheduler / API pubblica) · `—` nessun riferimento noto (candidato verifica).
 
@@ -68,13 +68,11 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/genera-proposte` | 1 | — | dati_provvisori |
 | `/api/gestione-riservata` | 7 | ✓ | gestione_riservata |
 | `/api/haccp` | 21 | ✓ | haccp |
-| `/api/hr` | 360 | ✓ | app.hr.router_registry, app.hr.routers.admin_hr, app.hr.routers.attendance, app.hr.routers.cedolini, app.hr.routers.diagnostica, app.hr.routers.dimissioni, app.hr.routers.dipendenti_cloud, app.hr.routers.employees.accessi, app.hr.routers.employees.buste_paga, app.hr.routers.employees.dipendenti, app.hr.routers.employees.employee_contracts, app.hr.routers.employees.fascicolo_dipendente, app.hr.routers.employees.giustificativi, app.hr.routers.employees.shifts, app.hr.routers.f24_parser, app.hr.routers.libro_unico_parser, app.hr.routers.notifiche, app.hr.routers.pin_login, app.hr.routers.portale_buste, app.hr.routers.portale_documenti, app.hr.routers.richieste, app.hr.routers.salari_unificati_v2, app.hr.routers.tfr, app.hr.routers.timbrature, app.hr.routers.turni |
 | `/api/integrations` | 3 | — | lotti_integration |
 | `/api/invoices` | 8 | ✓ | invoices.invoices_emesse, invoices.invoices_main |
 | `/api/iva` | 20 | ✓ | iva |
 | `/api/learning-machine` | 7 | ✓ | learning_machine |
 | `/api/learning-universal` | 5 | ✓ | learning_universal |
-| `/api/menu` | 43 | ✓ | app.menu.routers.gestione, app.menu.routers.pubblico, app.menu.routers.staff |
 | `/api/mutui` | 13 | ✓ | mutui, mutui_parser |
 | `/api/nexi` | 4 | ✓ | nexi_carta |
 | `/api/noleggio` | 14 | ✓ | noleggio |

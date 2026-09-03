@@ -16,8 +16,10 @@ def load_json(path: Path):
 
 
 def repository_json_files() -> list[Path]:
+    # "build" = output CRA delle app portate pari pari (frontend_lotti,
+    # frontend_menu): compilato su Render, mai versionato, come "dist".
     excluded_parts = {
-        ".claude", ".git", ".pytest_cache", "node_modules", "dist", "tmp",
+        ".claude", ".git", ".pytest_cache", "node_modules", "dist", "build", "tmp",
     }
     result: list[Path] = []
     for path in ROOT.rglob("*.json"):
@@ -32,7 +34,7 @@ def repository_json_files() -> list[Path]:
 
 def test_catalogo_e_mappe_pagina_hanno_la_stessa_revisione():
     assert CATALOG["schema_version"] == 2
-    assert len(CATALOG["pages"]) == 76
+    assert len(CATALOG["pages"]) == 66
     revision = CATALOG["source_revision"]
 
     for page in CATALOG["pages"]:

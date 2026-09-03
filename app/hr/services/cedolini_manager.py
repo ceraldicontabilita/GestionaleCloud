@@ -35,10 +35,10 @@ async def processa_cedolino_completo(
     4. Riconciliazione automatica
     
     Args:
-        db: Database Mongo
+        db: Database MongoDB
         cedolino_data: Dati estratti dal parser
         filename: Nome file PDF
-        pdf_data: Contenuto PDF in Base64 (architettura Mongo-only)
+        pdf_data: Contenuto PDF in Base64 (architettura MongoDB-only)
         
     Returns:
         Risultato del processamento
@@ -150,7 +150,7 @@ async def processa_cedolino_completo(
             "ore_lavorate": cedolino_data.get("ore_lavorate", 0),
             "iban": cedolino_data.get("iban"),
             "filename": filename,
-            "pdf_data": pdf_data,  # Architettura Mongo-only
+            "pdf_data": pdf_data,  # Architettura MongoDB-only
             "formato": cedolino_data.get("formato_rilevato"),
             "updated_at": datetime.now(timezone.utc).isoformat()
         }
@@ -413,11 +413,11 @@ async def processa_tutti_cedolini_pdf(db, pdf_data: str, filename: str) -> Dict[
     Processa un file PDF di cedolini con flusso completo.
     Gestisce PDF multi-pagina con più dipendenti.
     
-    Architettura Mongo-only: accetta pdf_data in Base64.
+    Architettura MongoDB-only: accetta pdf_data in Base64.
     Usa Document AI come prima scelta (più accurato), con fallback al parser regex.
     
     Args:
-        db: Database Mongo
+        db: Database MongoDB
         pdf_data: Contenuto PDF in Base64
         filename: Nome del file PDF
     """

@@ -14,6 +14,12 @@ import re
 
 APP = pathlib.Path(__file__).resolve().parent.parent / "app"
 
+# App esterne portate pari pari dentro il gestionale (Lotti, Menu, AppDipendenti):
+# codice di QUELLE app, con la loro autenticazione (PIN/JWT propri, montate a
+# /lotti, /menu, /hr fuori dal prefisso /api/ del gestionale). Il censimento
+# riguarda il cookie di sessione dell'ERP, non il loro.
+APP_PORTATE_PARI_PARI = {"lotti", "menu", "hr"}
+
 # File noti che impostano il cookie "access_token" (censiti in questo test:
 # se in futuro se ne aggiunge un altro, va aggiunto anche qui).
 FILE_ATTESI = {
@@ -29,6 +35,8 @@ def _trova_set_cookie_access_token():
     tutto app/, con gli argomenti passati (per verificarne i flag)."""
     trovati = []
     for p in APP.rglob("*.py"):
+        if p.relative_to(APP).parts[0] in APP_PORTATE_PARI_PARI:
+            continue
         testo = p.read_text(encoding="utf-8")
         for m in re.finditer(r"set_cookie\s*\((.*?)\)", testo, re.DOTALL):
             blocco = m.group(1)

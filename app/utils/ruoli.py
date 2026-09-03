@@ -24,14 +24,11 @@ OPERATORE = "operatore"
 SOLA_LETTURA = "sola_lettura"
 NON_AUTORIZZATO = "non_autorizzato"
 
-# Ruoli del modulo HR (portale dipendenti). Passano il middleware SOLO sui
-# percorsi /api/hr/ (vedi middleware/authentication.py): non sono utenti del
-# gestionale e non ricevono mai privilegi di scrittura o amministrazione.
-DIPENDENTE = "dipendente"
-RESPONSABILE_TURNI = "responsabile_turni"
-RUOLI_HR = {DIPENDENTE, RESPONSABILE_TURNI}
-
-RUOLI_VALIDI = {ADMIN, OPERATORE, SOLA_LETTURA} | RUOLI_HR
+# I ruoli del portale dipendenti (dipendente, responsabile_turni) NON sono
+# ruoli del gestionale: appartengono ad AppDipendenti, montata pari pari a
+# /hr con il proprio login e il proprio JWT (app/hr). Un token di quel
+# portale non e' mai valido su /api/ del gestionale.
+RUOLI_VALIDI = {ADMIN, OPERATORE, SOLA_LETTURA}
 
 # Metodi che modificano dati: vietati alla sola lettura.
 METODI_SCRITTURA = {"POST", "PUT", "PATCH", "DELETE"}

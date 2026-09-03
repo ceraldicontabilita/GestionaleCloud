@@ -42,7 +42,7 @@ def parse_data(value: str) -> Optional[str]:
 def extract_text_from_pdf(pdf_path: str = None, pdf_content: bytes = None) -> str:
     """
     Estrae tutto il testo da un PDF.
-    Supporta sia filepath (legacy) che bytes (architettura Mongo-only).
+    Supporta sia filepath (legacy) che bytes (architettura MongoDB-only).
     """
     try:
         if pdf_content:
@@ -64,11 +64,11 @@ def extract_text_from_pdf(pdf_path: str = None, pdf_content: bytes = None) -> st
 def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict[str, Any]:
     """
     Parsa una quietanza F24 ed estrae tutti i dati strutturati.
-    Supporta sia filepath (legacy) che bytes (Mongo-only).
+    Supporta sia filepath (legacy) che bytes (MongoDB-only).
     
     Args:
         pdf_path: Percorso file PDF (legacy)
-        pdf_content: Contenuto PDF in bytes (architettura Mongo-only)
+        pdf_content: Contenuto PDF in bytes (architettura MongoDB-only)
     
     Returns:
         Dict con:

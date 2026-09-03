@@ -41,6 +41,13 @@ FILE_ESENTI = {
     os.path.normpath(os.path.join(APP_DIR, "routers", "suppliers_module", "base.py")),
 }
 
+# App esterne portate pari pari dentro il gestionale (Lotti, Menu, AppDipendenti):
+# hanno il proprio archivio e i propri nomi di collection (es. `staff` in
+# AppDipendenti); non toccano le collection Drive/Sheets dell'ERP.
+CARTELLE_APP_PORTATE_PARI_PARI = {
+    os.path.normpath(os.path.join(APP_DIR, nome)) for nome in ("lotti", "menu", "hr")
+}
+
 PATTERN = re.compile(
     r'db\[\s*["\'](' + "|".join(re.escape(c) for c in COLLEZIONI_DEPRECATE) + r')["\']\s*\]'
     r'|db\.get_collection\(\s*["\'](' + "|".join(re.escape(c) for c in COLLEZIONI_DEPRECATE) + r')["\']\s*\)'
@@ -52,6 +59,8 @@ def _tutti_i_file_py():
     for root, dirs, files in os.walk(APP_DIR):
         dirs[:] = [d for d in dirs if d not in ("__pycache__",)]
         if os.path.normpath(root).startswith(os.path.normpath(os.path.join(APP_DIR, "scripts"))):
+            continue
+        if any(os.path.normpath(root).startswith(c) for c in CARTELLE_APP_PORTATE_PARI_PARI):
             continue
         for f in files:
             if f.endswith(".py"):

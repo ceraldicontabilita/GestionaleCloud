@@ -99,8 +99,8 @@ class EventBus:
         Args:
             event_type:   Tipo di evento (es. "fattura.importata")
             payload:      Dizionario con i dati dell'evento
-            db:           Istanza database Mongo
-            save_to_db:   Se True, salva l'evento e i risultati in Mongo
+            db:           Istanza database MongoDB
+            save_to_db:   Se True, salva l'evento e i risultati in MongoDB
             max_retries:  Numero massimo di tentativi per handler in errore
 
         Returns:
@@ -126,7 +126,7 @@ class EventBus:
 
         logger.info(f"[EventBus] Evento '{event_type}' → {len(handlers)} handler(s)")
 
-        # Salva evento in Mongo (se richiesto)
+        # Salva evento in MongoDB (se richiesto)
         evento_doc = None
         if save_to_db and db is not None:
             try:
@@ -211,7 +211,7 @@ class EventBus:
                     except Exception:
                         pass
 
-        # Aggiorna stato evento in Mongo
+        # Aggiorna stato evento in MongoDB
         if save_to_db and db is not None and evento_doc is not None:
             try:
                 await db["eventi_sistema"].update_one(

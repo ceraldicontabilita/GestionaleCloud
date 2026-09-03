@@ -19,16 +19,7 @@ from app.hr.database import Database, Collections
 
 logger = logging.getLogger(__name__)
 
-# Ruoli assegnabili dal portale. "admin" NON e' tra questi: l'amministratore
-# e' l'utente del gestionale (login unico con PIN + MFA), e un token con ruolo
-# admin firmato dallo stesso segreto aprirebbe tutto il gestionale. Un vecchio
-# ruolo_app="admin" in anagrafica vale come "dipendente".
-RUOLI_VALIDI = {"dipendente", "responsabile_turni"}
-
-
-def ruolo_portale(dip: Dict[str, Any]) -> str:
-    ruolo = dip.get("ruolo_app", "dipendente")
-    return ruolo if ruolo in RUOLI_VALIDI else "dipendente"
+RUOLI_VALIDI = {"dipendente", "responsabile_turni", "admin"}
 
 
 def hash_pin(pin: str) -> str:
@@ -52,7 +43,7 @@ def crea_token_dipendente(dip: Dict[str, Any]) -> str:
     payload = {
         "sub": dip["id"],
         "name": dip.get("nome_completo", ""),
-        "role": ruolo_portale(dip),
+        "role": dip.get("ruolo_app", "dipendente"),
         "tipo": "dipendente",
         "exp": expire,
         "iat": datetime.now(timezone.utc),
@@ -95,7 +86,7 @@ async def login_dipendente_per_nome(nome: str, pin: str) -> Optional[Dict[str, A
         "token_type": "bearer",
         "user_id": dip["id"],
         "name": dip.get("nome_completo", ""),
-        "role": ruolo_portale(dip),
+        "role": dip.get("ruolo_app", "dipendente"),
         "tipo": "dipendente",
         "auth_method": "pin_dipendente",
     }
@@ -233,7 +224,7 @@ async def login_dipendente(dipendente_id: str, pin: str) -> Optional[Dict[str, A
         "token_type": "bearer",
         "user_id": dip["id"],
         "name": dip.get("nome_completo", ""),
-        "role": ruolo_portale(dip),
+        "role": dip.get("ruolo_app", "dipendente"),
         "tipo": "dipendente",
         "auth_method": "pin_dipendente",
     }
