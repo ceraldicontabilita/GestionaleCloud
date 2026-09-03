@@ -3,16 +3,16 @@
 > Generato da `scripts/audit_frontend_dead_code.py` seguendo il grafo di import reale a partire da `main.jsx`/`App.jsx`/`navigation.config.js` (import statici, `import()` dinamici, `lazy(() => import(...))`, re-export `export {X} from`/`export * from`).
 > NON modificare a mano: rilancia lo script.
 
-**Totale file analizzati:** 205
+**Totale file analizzati:** 208
 
 | Classificazione | File |
 |---|---:|
 | ENTRYPOINT | 3 |
 | ROUTE_ATTIVA | 27 |
-| COMPONENTE_USATO | 95 |
+| COMPONENTE_USATO | 96 |
 | MODALE_USATO | 3 |
 | HOOK_USATO | 3 |
-| TEST_ONLY | 51 |
+| TEST_ONLY | 53 |
 | DINAMICO_DA_VERIFICARE | 22 |
 | ORFANO_ELIMINABILE | 1 |
 
@@ -58,16 +58,18 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | File | Classificazione | Importato da (n. file) |
 |---|---|---:|
 | `frontend/src/App.jsx` | ENTRYPOINT | 1 |
-| `frontend/src/api.js` | COMPONENTE_USATO | 108 |
+| `frontend/src/api.js` | COMPONENTE_USATO | 110 |
 | `frontend/src/components/AgentiPanel.jsx` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/components/AssociaAssegnoFattura.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/components/AssociaBonificoFattura.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/AssociaMovimentoBanca.jsx` | COMPONENTE_USATO | 2 |
+| `frontend/src/components/AvvisoBonarioF24.jsx` | COMPONENTE_USATO | 2 |
+| `frontend/src/components/AvvisoBonarioF24.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/components/ChatIntelligente.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/CopiaTesto.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/CopyLinkButton.jsx` | COMPONENTE_USATO | 5 |
 | `frontend/src/components/DocumentImportLink.jsx` | COMPONENTE_USATO | 2 |
-| `frontend/src/components/DocumentViewerModal.jsx` | MODALE_USATO | 8 |
+| `frontend/src/components/DocumentViewerModal.jsx` | MODALE_USATO | 9 |
 | `frontend/src/components/DriveImportControls.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/components/DriveImportControls.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/components/ErrorBoundary.jsx` | COMPONENTE_USATO | 3 |
@@ -137,7 +139,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/hooks/useWebSocket.js` | HOOK_USATO | 1 |
 | `frontend/src/hooks/useWebSocket.test.js` | TEST_ONLY | 0 |
 | `frontend/src/lib/queryClient.js` | COMPONENTE_USATO | 2 |
-| `frontend/src/lib/utils.js` | COMPONENTE_USATO | 100 |
+| `frontend/src/lib/utils.js` | COMPONENTE_USATO | 101 |
 | `frontend/src/lib/utils.test.js` | TEST_ONLY | 0 |
 | `frontend/src/main.jsx` | ENTRYPOINT | 0 |
 | `frontend/src/navigation.config.js` | ENTRYPOINT | 0 |
@@ -258,8 +260,9 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/pages/hub/StrumentiHub.jsx` | ROUTE_ATTIVA | 1 |
 | `frontend/src/pages/hub/VeicoliHub.jsx` | ROUTE_ATTIVA | 2 |
 | `frontend/src/pages/hub/VeicoliHub.test.jsx` | TEST_ONLY | 0 |
-| `frontend/src/pages/iva/IvaAuditSections.jsx` | COMPONENTE_USATO | 2 |
+| `frontend/src/pages/iva/IvaAuditSections.jsx` | COMPONENTE_USATO | 3 |
 | `frontend/src/pages/iva/IvaAuditSections.test.jsx` | TEST_ONLY | 0 |
+| `frontend/src/pages/iva/IvaDatiMancanti.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/stores/primaNotaStore.js` | DINAMICO_DA_VERIFICARE | 1 |
 | `frontend/src/test/setup.js` | DINAMICO_DA_VERIFICARE | 0 |
 
