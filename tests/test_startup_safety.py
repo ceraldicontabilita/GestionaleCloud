@@ -104,6 +104,55 @@ def test_health_check_segnala_righe_sheets_escluse_senza_nascondere_i_dati(monke
     assert response["hydration_errors"] == 2
 
 
+def test_health_check_verifica_idratazione_supabase(monkeypatch):
+    from app.config import settings
+    from app.main import settings as main_settings
+    from app.services.supabase_runtime_database import SupabaseRuntimeDatabase
+
+    assert main_settings is settings  # stesso singleton importato da main.py
+    monkeypatch.setattr(settings, "DATA_BACKEND", "supabase")
+
+    database = SupabaseRuntimeDatabase("test", {
+        "SUPABASE_URL": "https://example.supabase.co",
+        "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_test",
+        "SUPABASE_RUNTIME_SECRET": "runtime-secret-test",
+    })
+    database.hydration_result = {
+        "fogli": [{"collezione": "fatture", "valide": 15234, "numero_errori": 0}],
+    }
+    monkeypatch.setattr(Database, "db", database)
+
+    response = asyncio.run(health_check())
+
+    assert response["status"] == "healthy"
+    assert response["storage"] == "supabase"
+    assert response["hydrated_rows"] == 15234
+    assert response["hydration_errors"] == 0
+
+
+def test_health_check_supabase_prima_dellidratazione_e_unhealthy(monkeypatch):
+    from app.config import settings
+    from app.services.supabase_runtime_database import SupabaseRuntimeDatabase
+
+    monkeypatch.setattr(settings, "DATA_BACKEND", "supabase")
+
+    database = SupabaseRuntimeDatabase("test", {
+        "SUPABASE_URL": "https://example.supabase.co",
+        "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_test",
+        "SUPABASE_RUNTIME_SECRET": "runtime-secret-test",
+    })
+    # hydrate() non e' ancora stato chiamato: hydration_result resta None
+    # (attributo reale, non una SheetTable delegata da __getattr__).
+    monkeypatch.setattr(Database, "db", database)
+
+    response = asyncio.run(health_check())
+    payload = json.loads(response.body)
+
+    assert response.status_code == 503
+    assert payload["status"] == "unhealthy"
+    assert payload["database"] == "unreachable"
+
+
 def test_riparazioni_dati_startup_disabilitate_per_default():
     cfg = Settings()
     assert cfg.SHEETS_REGISTRY_NAME == "GestionaleCloud"

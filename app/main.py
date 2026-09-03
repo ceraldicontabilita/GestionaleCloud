@@ -676,7 +676,7 @@ async def health_check():
     return {
         "status": "healthy" if hydration_errors == 0 else "degraded",
         "database": "connected" if Database.db is not None else "disconnected",
-        "storage": "drive_sheets",
+        "storage": "supabase" if settings.DATA_BACKEND.strip().lower() == "supabase" else "drive_sheets",
         "hydrated_rows": hydration_rows,
         "hydration_errors": hydration_errors,
         "version": settings.APP_VERSION,
