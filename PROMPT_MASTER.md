@@ -412,7 +412,7 @@ test e necessario a una route/job/integratore attivo. Audit datati e vecchi
 porting non restano nel repository: Git conserva la storia. Le mappe generate
 si rigenerano dal codice e non si correggono a mano.
 
-## Appendice A — Tutte le 66 pagine
+## Appendice A — Tutte le 68 pagine
 
 1. **Login** — `/login` — accesso `public` — modulo `accesso` — Login sicuro, sessione, MFA e redirect alla destinazione autorizzata. Fonte UI: `frontend/src/pages/Login.jsx`; mappa: `memoria/pagine/login.json`.
 2. **Gestione riservata** — `/gestione-riservata` — accesso `reserved` — modulo `accesso` — Area riservata separata, con accesso dedicato e movimenti auditabili. Fonte UI: `frontend/src/pages/GestioneRiservata.jsx`; mappa: `memoria/pagine/gestione-riservata.json`.
@@ -480,6 +480,8 @@ si rigenerano dal codice e non si correggono a mano.
 64. **Atti amministrativi** — `/documenti/atti` — accesso `authenticated` — modulo `documenti` — Atti amministrativi con ente, protocollo, originale, scadenze e notifiche. Fonte UI: `frontend/src/pages/AttiAmministrativi.jsx`; mappa: `memoria/pagine/documenti-atti.json`.
 65. **Situazione fiscale** — `/situazione-fiscale` — accesso `authenticated` — modulo `contabilita` — Situazione fiscale unificata con F24, dichiarazioni, quietanze e anomalie. Fonte UI: `frontend/src/pages/SituazioneFiscale.jsx`; mappa: `memoria/pagine/situazione-fiscale.json`.
 66. **Tracciabilità e HACCP** — `/tracciabilita` — accesso `authenticated` — modulo `tracciabilita` — Ricezioni, lotti, registri, attese correttive, ricette, produzioni e attrezzature collegate alle entità canoniche. Fonte UI: `frontend/src/pages/TracciabilitaHACCP.jsx`; mappa: `memoria/pagine/tracciabilita-haccp.json`.
+67. **HR · Gestione dipendenti** — `/hr` — accesso `admin` — modulo `hr` — Area gestione HR (ex AppDipendenti): anagrafica, presenze, ferie, turni, timbrature, buste paga, TFR, contratti, documenti e accessi con PIN personale dei dipendenti. Fonte UI: `frontend/src/hr/HRApp.jsx`; mappa: `memoria/pagine/hr-gestione.json`.
+68. **HR · Portale dipendenti** — `/portale` — accesso `public` — modulo `portale` — Portale dipendenti su smartphone: login tocca-il-nome + PIN personale, timbrature, turni, buste paga, documenti, richieste e avvisi; l'amministratore accede dal login unico del gestionale. Fonte UI: `frontend/src/hr/PortaleDipendente.jsx`; mappa: `memoria/pagine/hr-portale.json`.
 
 ## Appendice B — Fogli e progressivi Drive/Sheets
 
@@ -524,7 +526,7 @@ si rigenerano dal codice e non si correggono a mano.
 |---|---|---|---|---|
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | sicurezza | segreta | `int` / valore non riportato | `app/config.py` |
 | `ADER_MICRO_RESIDUAL_THRESHOLD_CENTS` | azienda-fiscale | configurazione | `int` / `500` | `app/config.py` |
-| `ADMIN_EMAIL` | sicurezza | configurazione | non dichiarato in Settings | `app/routers/auth.py`, `app/routers/pin_login.py`, `scripts/e2e_distruttivo_server.py` |
+| `ADMIN_EMAIL` | sicurezza | configurazione | non dichiarato in Settings | `app/hr/services/email_smtp.py`, `app/routers/auth.py`, `app/routers/pin_login.py`, `scripts/e2e_distruttivo_server.py` |
 | `ADMIN_PASSWORD` | sicurezza | segreta | non dichiarato in Settings | `app/routers/auth.py`, `scripts/e2e_distruttivo_server.py` |
 | `ADMIN_PASSWORD_HASH` | sicurezza | segreta | non dichiarato in Settings | `app/routers/auth.py` |
 | `ADMIN_PIN` | sicurezza | segreta | non dichiarato in Settings | `app/routers/pin_login.py`, `app/services/utenti_pin.py` |
@@ -536,9 +538,10 @@ si rigenerano dal codice e non si correggono a mano.
 | `ALLOWED_METHODS` | sicurezza | configurazione | `str` / `'*'` | `app/config.py` |
 | `ALLOWED_ORIGINS` | sicurezza | configurazione | `str` / `'*'` | `app/config.py` |
 | `ALLOW_CREDENTIALS` | sicurezza | configurazione | `bool` / `True` | `app/config.py` |
-| `ANTHROPIC_API_KEY` | ai | segreta | non dichiarato in Settings | `app/routers/ai_parser.py`, `app/routers/fornitori_learning.py`, `app/routers/settings_router.py`, `app/services/ai_categorizzazione.py`, `app/services/ai_document_parser.py`, `app/services/chat_ai_engine.py`, `app/services/document_ai_extractor.py`, `app/services/enhanced_document_parser.py`, `app/services/llm_document_parser.py` |
+| `ANTHROPIC_API_KEY` | ai | segreta | non dichiarato in Settings | `app/hr/services/document_ai_extractor.py`, `app/routers/ai_parser.py`, `app/routers/fornitori_learning.py`, `app/routers/settings_router.py`, `app/services/ai_categorizzazione.py`, `app/services/ai_document_parser.py`, `app/services/chat_ai_engine.py`, `app/services/document_ai_extractor.py`, `app/services/enhanced_document_parser.py`, `app/services/llm_document_parser.py` |
 | `ANTHROPIC_DOCUMENT_MODEL` | ai | configurazione | non dichiarato in Settings | `app/services/anthropic_llm_client.py` |
 | `ANTHROPIC_MODEL` | ai | configurazione | non dichiarato in Settings | `app/routers/settings_router.py`, `app/services/anthropic_llm_client.py`, `app/services/chat_ai_engine.py` |
+| `APPDIPENDENTI_DB_URL` | app-runtime | configurazione | non dichiarato in Settings | `app/hr/routers/admin_hr.py`, `render.yaml` |
 | `APP_NAME` | app-runtime | configurazione | `str` / `'Azienda in Cloud ERP'` | `app/config.py` |
 | `APP_VERSION` | app-runtime | configurazione | `str` / `'2.0.0'` | `app/config.py` |
 | `AUDIT_BASE_URL` | app-runtime | configurazione | non dichiarato in Settings | `frontend/scripts/audit-layout.cjs`, `frontend/scripts/audit-operation-index.cjs`, `frontend/scripts/audit-viewer.cjs` |
@@ -552,24 +555,28 @@ si rigenerano dal codice e non si correggono a mano.
 | `AZIENDA_IBAN` | azienda-fiscale | configurazione | non dichiarato in Settings | `app/config/azienda.py` |
 | `AZIENDA_INDIRIZZO` | azienda-fiscale | configurazione | non dichiarato in Settings | `app/config/azienda.py` |
 | `AZIENDA_PEC` | azienda-fiscale | configurazione | non dichiarato in Settings | `app/config/azienda.py` |
-| `AZIENDA_PIVA` | azienda-fiscale | configurazione | non dichiarato in Settings | `app/config/azienda.py` |
+| `AZIENDA_PIVA` | azienda-fiscale | configurazione | non dichiarato in Settings | `app/config/azienda.py`, `app/hr/routers/portale_buste.py` |
 | `AZIENDA_PROVINCIA` | azienda-fiscale | configurazione | non dichiarato in Settings | `app/config/azienda.py` |
-| `AZIENDA_RAGIONE_SOCIALE` | azienda-fiscale | configurazione | non dichiarato in Settings | `app/config/azienda.py` |
+| `AZIENDA_RAGIONE_SOCIALE` | azienda-fiscale | configurazione | non dichiarato in Settings | `app/config/azienda.py`, `app/hr/routers/portale_buste.py` |
+| `AZIENDA_SEDE` | azienda-fiscale | configurazione | non dichiarato in Settings | `app/hr/routers/portale_buste.py` |
 | `AZIENDA_TEL` | azienda-fiscale | configurazione | non dichiarato in Settings | `app/config/azienda.py` |
 | `BACKEND_URL` | app-runtime | configurazione | non dichiarato in Settings | `scripts/smoke_app.py` |
 | `BASE_URL` | test-tooling | configurazione | non dichiarato in Settings | `scripts/collaudo_ui.mjs` |
 | `CACHE_TTL_SECONDS` | app-runtime | configurazione | `int` / `3600` | `app/config.py` |
 | `CHROMIUM_PATH` | test-tooling | configurazione | non dichiarato in Settings | `scripts/collaudo_ui.mjs` |
+| `COMMERCIALISTA_EMAIL` | app-runtime | configurazione | non dichiarato in Settings | `app/hr/routers/dipendenti_cloud/__init__.py` |
 | `CORS_ALLOWED_ORIGINS` | sicurezza | configurazione | `str` / `''` | `app/config.py` |
 | `CORS_ORIGINS` | sicurezza | configurazione | `str` / `'*'` | `app/config.py` |
 | `CREDENTIALS_ENCRYPTION_KEY` | app-runtime | configurazione | non dichiarato in Settings | `render.yaml` |
-| `DATA_BACKEND` | app-runtime | configurazione | `str` / `'sheets'` | `app/config.py` |
+| `DATA_BACKEND` | app-runtime | configurazione | `str` / `'sheets'` | `app/config.py`, `render.yaml` |
 | `DB_NAME` | app-runtime | configurazione | `str` / `'Gestionale'` | `app/config.py` |
 | `DEBUG` | app-runtime | configurazione | `bool` / `False` | `app/config.py` |
 | `DEFAULT_USER_EMAIL` | app-runtime | configurazione | `str` / `'admin@ceraldi.it'` | `app/config.py` |
 | `DEFAULT_USER_ID` | app-runtime | configurazione | `str` / `'admin'` | `app/config.py` |
 | `DEV` | app-runtime | configurazione | non dichiarato in Settings | `frontend/src/components/ErrorBoundary.jsx` |
+| `DRIVE_BONIFICI_FOLDER_ID` | drive-sheets | configurazione | non dichiarato in Settings | `app/hr/routers/dipendenti_cloud/__init__.py` |
 | `DRIVE_CARTE_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
+| `DRIVE_CEDOLINI_FOLDER_ID` | drive-sheets | configurazione | non dichiarato in Settings | `app/hr/services/google_drive_sa.py` |
 | `DRIVE_DOCUMENT_INDEX_ROOT_FOLDER_ID` | drive-sheets | configurazione | `str` / `'1tmVu6fl7qhJbLcGCHT3wEQzrvFAElc9h'` | `app/config.py` |
 | `DRIVE_ESTRATTI_ANNO_MINIMO` | drive-sheets | configurazione | `int` / `2026` | `app/config.py` |
 | `DRIVE_ESTRATTI_BATCH_SIZE` | drive-sheets | configurazione | `int` / `1` | `app/config.py`, `render.yaml` |
@@ -583,10 +590,10 @@ si rigenerano dal codice e non si correggono a mano.
 | `DRIVE_VERBALI_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `E2E_BASE_URL` | test-tooling | configurazione | non dichiarato in Settings | `frontend/scripts/audit-destructive-e2e.cjs`, `frontend/scripts/audit-pages-e2e.cjs` |
 | `E2E_FRONTEND_DIST` | test-tooling | configurazione | non dichiarato in Settings | `scripts/e2e_distruttivo_server.py` |
-| `EMAIL_ADDRESS` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/routers/configurazioni.py`, `app/routers/learning_machine.py`, `app/services/gmail_search.py` |
-| `EMAIL_APP_PASSWORD` | gmail-email | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `app/routers/configurazioni.py`, `app/routers/learning_machine.py`, `app/services/gmail_search.py` |
-| `EMAIL_PASSWORD` | gmail-email | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `app/routers/commercialista.py`, `app/routers/configurazioni.py`, `app/routers/learning_machine.py`, `app/services/gmail_search.py`, `app/services/pagopa_scanner.py` |
-| `EMAIL_USER` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/routers/commercialista.py`, `app/routers/configurazioni.py`, `app/services/gmail_search.py`, `app/services/pagopa_scanner.py` |
+| `EMAIL_ADDRESS` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/hr/routers/dimissioni.py`, `app/routers/configurazioni.py`, `app/routers/learning_machine.py`, `app/services/gmail_search.py` |
+| `EMAIL_APP_PASSWORD` | gmail-email | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `app/hr/routers/dimissioni.py`, `app/routers/configurazioni.py`, `app/routers/learning_machine.py`, `app/services/gmail_search.py` |
+| `EMAIL_PASSWORD` | gmail-email | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `app/hr/routers/cedolini.py`, `app/routers/commercialista.py`, `app/routers/configurazioni.py`, `app/routers/learning_machine.py`, `app/services/gmail_search.py`, `app/services/pagopa_scanner.py` |
+| `EMAIL_USER` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/hr/routers/cedolini.py`, `app/routers/commercialista.py`, `app/routers/configurazioni.py`, `app/services/gmail_search.py`, `app/services/pagopa_scanner.py` |
 | `ENABLE_ASYNC_IMPORTS` | feature-job | configurazione | `bool` / `True` | `app/config.py` |
 | `ENABLE_CACHING` | feature-job | configurazione | `bool` / `True` | `app/config.py` |
 | `ENABLE_DOCUMENT_AI` | feature-job | configurazione | `bool` / `False` | `app/config.py` |
@@ -621,11 +628,13 @@ si rigenerano dal codice e non si correggono a mano.
 | `GESTIONALE_MCP_LOG_LEVEL` | mcp | configurazione | non dichiarato in Settings | `gestionale_mcp/config.py` |
 | `GESTIONALE_MCP_RESOURCE_SERVER_URL` | mcp | configurazione | non dichiarato in Settings | `gestionale_mcp/config.py` |
 | `GESTIONE_RISERVATA_CODE` | app-runtime | configurazione | non dichiarato in Settings | `app/routers/gestione_riservata.py`, `scripts/e2e_distruttivo_server.py` |
-| `GMAIL_ACCOUNT_AMMINISTRATIVO` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py` |
-| `GMAIL_APP_PASSWORD` | gmail-email | segreta | `Optional[str]` / valore non riportato | `app/config.py` |
+| `GMAIL_ACCOUNT_AMMINISTRATIVO` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/hr/services/email_smtp.py` |
+| `GMAIL_APP_PASSWORD` | gmail-email | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `app/hr/services/email_smtp.py` |
 | `GMAIL_APP_PASSWORD_AMMINISTRATIVO` | gmail-email | segreta | `Optional[str]` / valore non riportato | `app/config.py` |
 | `GMAIL_EMAIL` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `GMAIL_IMAP_ENABLED` | gmail-email | configurazione | `bool` / `False` | `app/config.py` |
+| `GMAIL_RELAY_SECRET` | gmail-email | segreta | non dichiarato in Settings | `app/hr/services/email_smtp.py` |
+| `GMAIL_RELAY_URL` | gmail-email | configurazione | non dichiarato in Settings | `app/hr/services/email_smtp.py` |
 | `GOOGLE_API_KEY` | ai | segreta | `Optional[str]` / valore non riportato | `app/config.py` |
 | `GOOGLE_CLIENT_ID` | app-runtime | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `GOOGLE_CLIENT_SECRET` | app-runtime | segreta | `Optional[str]` / valore non riportato | `app/config.py` |
@@ -642,9 +651,10 @@ si rigenerano dal codice e non si correggono a mano.
 | `GOOGLE_DRIVE_INBOX_FOLDER_ID` | drive-sheets | configurazione | non dichiarato in Settings | `render_workflows/calderone.py`, `render_workflows/document_ingest.py` |
 | `GOOGLE_DRIVE_QUIETANZE_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `GOOGLE_DRIVE_SA_FILE` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
-| `GOOGLE_DRIVE_SA_JSON` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
-| `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py`, `render.yaml`, `render_workflows/calderone.py`, `render_workflows/document_ingest.py` |
+| `GOOGLE_DRIVE_SA_JSON` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/hr/services/google_drive_sa.py` |
+| `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/hr/services/google_drive_sa.py`, `render.yaml`, `render_workflows/calderone.py`, `render_workflows/document_ingest.py` |
 | `GOOGLE_REDIRECT_URI` | app-runtime | configurazione | `str` / `'/api/auth/google/callback'` | `app/config.py` |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | drive-sheets | configurazione | non dichiarato in Settings | `app/hr/services/google_drive_sa.py` |
 | `GOOGLE_SERVICE_ACCOUNT_JSON_BONIFICI` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `GOOGLE_SERVICE_ACCOUNT_JSON_CEDOLINI` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `GOOGLE_SERVICE_ACCOUNT_JSON_CORRISPETTIVI` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
@@ -654,11 +664,14 @@ si rigenerano dal codice e non si correggono a mano.
 | `GOOGLE_SHEETS_LEDGER_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `GOOGLE_SHEETS_LEDGER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py`, `render.yaml` |
 | `HOST` | app-runtime | configurazione | `str` / `'0.0.0.0'` | `app/config.py` |
-| `IMAP_HOST` | gmail-email | configurazione | `str` / `'imap.gmail.com'` | `app/config.py`, `app/routers/settings_router.py`, `app/services/pagopa_scanner.py` |
-| `IMAP_PASSWORD` | gmail-email | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `app/routers/settings_router.py`, `app/services/pagopa_scanner.py` |
-| `IMAP_PORT` | gmail-email | configurazione | `int` / `993` | `app/config.py`, `app/services/pagopa_scanner.py` |
-| `IMAP_SERVER` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/routers/learning_machine.py`, `app/services/email_full_download.py`, `app/services/verbali_email_scanner.py` |
-| `IMAP_USER` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/routers/settings_router.py`, `app/services/pagopa_scanner.py` |
+| `HR_PORTALE_TOKEN_EXPIRE_MINUTES` | app-runtime | segreta | non dichiarato in Settings | `app/hr/config.py`, `render.yaml` |
+| `IMAP_EMAIL` | gmail-email | configurazione | non dichiarato in Settings | `app/hr/routers/dipendenti_cloud/__init__.py` |
+| `IMAP_HOST` | gmail-email | configurazione | `str` / `'imap.gmail.com'` | `app/config.py`, `app/hr/routers/dipendenti_cloud/__init__.py`, `app/routers/settings_router.py`, `app/services/pagopa_scanner.py` |
+| `IMAP_PASS` | gmail-email | configurazione | non dichiarato in Settings | `app/hr/routers/dipendenti_cloud/__init__.py` |
+| `IMAP_PASSWORD` | gmail-email | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `app/hr/routers/cedolini.py`, `app/hr/routers/dipendenti_cloud/__init__.py`, `app/routers/settings_router.py`, `app/services/pagopa_scanner.py` |
+| `IMAP_PORT` | gmail-email | configurazione | `int` / `993` | `app/config.py`, `app/hr/routers/dipendenti_cloud/__init__.py`, `app/services/pagopa_scanner.py` |
+| `IMAP_SERVER` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/hr/routers/dimissioni.py`, `app/hr/routers/dipendenti_cloud/__init__.py`, `app/routers/learning_machine.py`, `app/services/email_full_download.py`, `app/services/verbali_email_scanner.py` |
+| `IMAP_USER` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/hr/routers/cedolini.py`, `app/hr/routers/dipendenti_cloud/__init__.py`, `app/routers/settings_router.py`, `app/services/pagopa_scanner.py` |
 | `IVA_ALIQUOTE` | app-runtime | configurazione | `list[float]` / `[4.0, 5.0, 10.0, 22.0]` | `app/config.py` |
 | `LOCALAPPDATA` | app-runtime | configurazione | non dichiarato in Settings | `scripts/sync_rt_to_drive.py` |
 | `LOG_FILE` | app-runtime | configurazione | `Optional[Path]` / `None` | `app/config.py` |
@@ -681,6 +694,11 @@ si rigenerano dal codice e non si correggono a mano.
 | `PAYPAL_MODE` | integrazioni | configurazione | non dichiarato in Settings | `app/services/paypal_integration.py` |
 | `PAYPAL_SECRET_KEY` | integrazioni | segreta | non dichiarato in Settings | `app/services/paypal_integration.py` |
 | `PAYPAL_WEBHOOK_ID` | integrazioni | configurazione | non dichiarato in Settings | `app/routers/paypal_api.py` |
+| `PEC_DEST` | app-runtime | configurazione | non dichiarato in Settings | `app/hr/routers/portale_buste.py` |
+| `PEC_HOST` | app-runtime | configurazione | non dichiarato in Settings | `app/hr/routers/portale_buste.py`, `app/hr/services/email_smtp.py` |
+| `PEC_PASSWORD` | app-runtime | segreta | non dichiarato in Settings | `app/hr/routers/portale_buste.py`, `app/hr/services/email_smtp.py` |
+| `PEC_PORT` | app-runtime | configurazione | non dichiarato in Settings | `app/hr/routers/portale_buste.py`, `app/hr/services/email_smtp.py` |
+| `PEC_USER` | app-runtime | configurazione | non dichiarato in Settings | `app/hr/routers/portale_buste.py`, `app/hr/services/email_smtp.py` |
 | `PIN_HASH_ADMIN` | sicurezza | segreta | non dichiarato in Settings | `app/routers/pin_login.py` |
 | `PLAYWRIGHT_CHROMIUM` | app-runtime | configurazione | non dichiarato in Settings | `frontend/scripts/audit-destructive-e2e.cjs`, `frontend/scripts/audit-layout.cjs`, `frontend/scripts/audit-operation-index.cjs`, `frontend/scripts/audit-pages-e2e.cjs`, `frontend/scripts/audit-viewer.cjs` |
 | `PORT` | app-runtime | configurazione | `int` / `8000` | `app/config.py` |
@@ -694,6 +712,7 @@ si rigenerano dal codice e non si correggono a mano.
 | `RENDER_GIT_COMMIT` | app-runtime | configurazione | non dichiarato in Settings | `app/main.py` |
 | `RENDER_INGEST_SHARED_SECRET` | app-runtime | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `render_workflows/document_ingest.py` |
 | `RENDER_SERVICE_ID` | app-runtime | configurazione | non dichiarato in Settings | `app/main.py`, `app/utils/session_cookie.py` |
+| `REQUEST_NOTIFY_EMAIL` | app-runtime | configurazione | non dichiarato in Settings | `app/hr/routers/richieste.py` |
 | `REQUEST_TIMEOUT_SECONDS` | app-runtime | configurazione | `int` / `300` | `app/config.py` |
 | `RT_DRIVE_INBOX` | app-runtime | configurazione | non dichiarato in Settings | `scripts/sync_rt_to_drive.py` |
 | `RT_LOCAL_BASE_URL` | app-runtime | configurazione | non dichiarato in Settings | `scripts/sync_rt_to_drive.py` |
@@ -710,20 +729,21 @@ si rigenerano dal codice e non si correggono a mano.
 | `SMOKE_DEPLOY_WAIT_SECONDS` | test-tooling | configurazione | non dichiarato in Settings | `scripts/smoke_app.py` |
 | `SMOKE_EXPECTED_COMMIT` | test-tooling | configurazione | non dichiarato in Settings | `scripts/smoke_app.py` |
 | `SMOKE_TIMEOUT` | test-tooling | configurazione | non dichiarato in Settings | `scripts/smoke_app.py` |
+| `SMTP_EMAIL` | gmail-email | configurazione | non dichiarato in Settings | `app/hr/routers/employees/employee_contracts.py`, `app/hr/routers/portale_buste.py`, `app/hr/services/email_smtp.py` |
 | `SMTP_ENABLED` | gmail-email | configurazione | `bool` / `False` | `app/config.py` |
 | `SMTP_FROM_EMAIL` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/routers/commercialista.py` |
-| `SMTP_HOST` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/routers/commercialista.py` |
-| `SMTP_PASSWORD` | gmail-email | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `app/routers/commercialista.py` |
-| `SMTP_PORT` | gmail-email | configurazione | `Optional[int]` / `587` | `app/config.py`, `app/routers/commercialista.py` |
-| `SMTP_USER` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/routers/commercialista.py` |
+| `SMTP_HOST` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/hr/routers/employees/employee_contracts.py`, `app/hr/routers/portale_buste.py`, `app/hr/services/email_smtp.py`, `app/routers/commercialista.py` |
+| `SMTP_PASSWORD` | gmail-email | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `app/hr/routers/employees/employee_contracts.py`, `app/hr/routers/portale_buste.py`, `app/hr/services/email_smtp.py`, `app/routers/commercialista.py` |
+| `SMTP_PORT` | gmail-email | configurazione | `Optional[int]` / `587` | `app/config.py`, `app/hr/routers/employees/employee_contracts.py`, `app/hr/routers/portale_buste.py`, `app/hr/services/email_smtp.py`, `app/routers/commercialista.py` |
+| `SMTP_USER` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/hr/routers/employees/employee_contracts.py`, `app/hr/routers/portale_buste.py`, `app/hr/services/email_smtp.py`, `app/routers/commercialista.py` |
 | `SMTP_USERNAME` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/routers/commercialista.py` |
 | `STATIC_FILES_DIR` | app-runtime | configurazione | `Path` / `Path('static')` | `app/config.py` |
 | `SUMUP_API_BASE` | integrazioni | configurazione | `str` / `'https://api.sumup.com'` | `app/config.py` |
 | `SUMUP_API_KEY` | integrazioni | segreta | `str` / valore non riportato | `app/config.py`, `render.yaml` |
 | `SUMUP_MERCHANT_CODE` | integrazioni | configurazione | `str` / `''` | `app/config.py`, `render.yaml` |
-| `SUPABASE_PUBLISHABLE_KEY` | app-runtime | configurazione | `Optional[str]` / `None` | `app/config.py` |
-| `SUPABASE_RUNTIME_SECRET` | app-runtime | segreta | `Optional[str]` / valore non riportato | `app/config.py` |
-| `SUPABASE_URL` | app-runtime | configurazione | `Optional[str]` / `None` | `app/config.py` |
+| `SUPABASE_PUBLISHABLE_KEY` | app-runtime | configurazione | `Optional[str]` / `None` | `app/config.py`, `render.yaml` |
+| `SUPABASE_RUNTIME_SECRET` | app-runtime | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `render.yaml` |
+| `SUPABASE_URL` | app-runtime | configurazione | `Optional[str]` / `None` | `app/config.py`, `render.yaml` |
 | `TELEGRAM_BOT_TOKEN` | integrazioni | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `app/services/telegram_notifications.py` |
 | `TELEGRAM_CHAT_ID` | integrazioni | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/services/telegram_notifications.py` |
 | `TEMPLATES_DIR` | app-runtime | configurazione | `Path` / `Path('templates')` | `app/config.py` |
@@ -740,7 +760,9 @@ Questa tabella è l'inventario canonico degli alias di cartella. Gli ID sono con
 
 | Variabile cartella | Default dichiarato | Sorgenti/consumer |
 |---|---|---|
+| `DRIVE_BONIFICI_FOLDER_ID` | `non dichiarato` | `app/hr/routers/dipendenti_cloud/__init__.py` |
 | `DRIVE_CARTE_FOLDER_ID` | `None` | `app/config.py` |
+| `DRIVE_CEDOLINI_FOLDER_ID` | `non dichiarato` | `app/hr/services/google_drive_sa.py` |
 | `DRIVE_DOCUMENT_INDEX_ROOT_FOLDER_ID` | `'1tmVu6fl7qhJbLcGCHT3wEQzrvFAElc9h'` | `app/config.py` |
 | `DRIVE_F24_FOLDER_ID` | `None` | `app/config.py` |
 | `DRIVE_FISCAL_ROOT_FOLDER_ID` | `'1f48bounfoOyHL_kqpHAp2GAnFfEpHvVa'` | `app/config.py` |
@@ -765,7 +787,7 @@ Gli alias senza valore vanno configurati nel secret/config store di Render. Non 
 
 ## Appendice D — Tutti i router e tutti gli endpoint
 
-Route table sorgente: **1171**; attivi da ricreare: **771**; quarantena: **400** (`verificare` 371, `admin-only` 29).
+Route table sorgente: **1530**; attivi da ricreare: **1126**; quarantena: **404** (`verificare` 371, `admin-only` 33).
 
 `attivo` significa da ricreare con contratto e test; `quarantena` significa non esporre nel nuovo runtime finché consumer, autorizzazione e test non sono provati. L'elenco è completo e include entrambe le categorie.
 
@@ -962,6 +984,440 @@ Route table sorgente: **1171**; attivi da ricreare: **771**; quarantena: **400**
 
 - **attivo** — `POST /api/anagrafica-fornitori/popola-fornitore/{fornitore_id}` — in uso: FE
 - **attivo** — `POST /api/anagrafica-fornitori/popola-tutti` — in uso: FE
+
+### Router `app.hr.router_registry` (1)
+
+- **attivo** — `GET /api/hr/health` — in uso: FE
+
+### Router `app.hr.routers.admin_hr` (3)
+
+- **quarantena: admin-only** — `POST /api/hr/admin/migrazione-appdipendenti` — endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7)
+- **quarantena: admin-only** — `GET /api/hr/admin/migrazione-appdipendenti/{job_id}` — endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7)
+- **attivo** — `GET /api/hr/admin/stato-dati` — in uso: FE
+
+### Router `app.hr.routers.attendance` (22)
+
+- **attivo** — `GET /api/hr/attendance/assenze/{employee_id}` — in uso: FE
+- **attivo** — `POST /api/hr/attendance/batch-insert` — in uso: FE
+- **attivo** — `GET /api/hr/attendance/dashboard-presenze` — in uso: FE
+- **attivo** — `GET /api/hr/attendance/dipendenti-in-carico` — in uso: FE
+- **attivo** — `POST /api/hr/attendance/genera-pdf-consulente` — in uso: FE
+- **attivo** — `GET /api/hr/attendance/month-grid` — in uso: FE
+- **attivo** — `GET /api/hr/attendance/note-presenze/{anno}/{mese}` — in uso: FE
+- **attivo** — `GET /api/hr/attendance/ore-lavorate/{employee_id}` — in uso: FE
+- **attivo** — `DELETE /api/hr/attendance/presenza` — in uso: FE
+- **attivo** — `GET /api/hr/attendance/presenze-mese` — in uso: FE
+- **attivo** — `POST /api/hr/attendance/richiesta-assenza` — in uso: FE
+- **attivo** — `PUT /api/hr/attendance/richiesta-assenza/{richiesta_id}/approva` — in uso: FE
+- **attivo** — `PUT /api/hr/attendance/richiesta-assenza/{richiesta_id}/rifiuta` — in uso: FE
+- **attivo** — `GET /api/hr/attendance/richieste-pending` — in uso: FE
+- **attivo** — `GET /api/hr/attendance/saldo-ferie/{employee_id}` — in uso: FE
+- **attivo** — `PUT /api/hr/attendance/set-in-carico/{employee_id}` — in uso: FE
+- **attivo** — `POST /api/hr/attendance/set-nota-presenza` — in uso: FE
+- **attivo** — `POST /api/hr/attendance/set-presenza` — in uso: FE
+- **attivo** — `POST /api/hr/attendance/timbratura` — in uso: FE
+- **attivo** — `GET /api/hr/attendance/timbrature/giorno/{data}` — in uso: FE
+- **attivo** — `GET /api/hr/attendance/timbrature/{employee_id}` — in uso: FE
+- **attivo** — `GET /api/hr/attendance/tipologie-giustificativi` — in uso: FE
+
+### Router `app.hr.routers.cedolini` (22)
+
+- **attivo** — `GET /api/hr/cedolini` — in uso: FE
+- **attivo** — `POST /api/hr/cedolini` — in uso: FE
+- **attivo** — `GET /api/hr/cedolini/acconti/dipendente/{dipendente_id}` — in uso: FE
+- **attivo** — `POST /api/hr/cedolini/acconti/scan-estratto-conto` — in uso: FE
+- **attivo** — `POST /api/hr/cedolini/conferma` — in uso: FE
+- **attivo** — `POST /api/hr/cedolini/correggi-problematici` — in uso: FE
+- **attivo** — `GET /api/hr/cedolini/dipendente/{dipendente_id}` — in uso: FE
+- **attivo** — `GET /api/hr/cedolini/dipendente/{dipendente_id}/acconti-banca` — in uso: FE
+- **attivo** — `POST /api/hr/cedolini/dipendente/{dipendente_id}/applica-trattenuta/{trattenuta_id}` — in uso: FE
+- **attivo** — `POST /api/hr/cedolini/dipendente/{dipendente_id}/applica-tutte-trattenute` — in uso: FE
+- **attivo** — `GET /api/hr/cedolini/dipendente/{dipendente_id}/trattenute` — in uso: FE
+- **attivo** — `POST /api/hr/cedolini/import-drive` — in uso: FE
+- **attivo** — `POST /api/hr/cedolini/import-gmail` — in uso: FE
+- **attivo** — `GET /api/hr/cedolini/incompleti` — in uso: FE
+- **attivo** — `POST /api/hr/cedolini/incompleti/{cedolino_id}/completa` — in uso: FE
+- **attivo** — `GET /api/hr/cedolini/lista/{anno}/{mese}` — in uso: FE
+- **attivo** — `GET /api/hr/cedolini/problematici` — in uso: FE
+- **attivo** — `GET /api/hr/cedolini/riepilogo-mensile/{anno}/{mese}` — in uso: FE
+- **attivo** — `GET /api/hr/cedolini/simulazione-f24` — in uso: FE
+- **attivo** — `POST /api/hr/cedolini/stima` — in uso: FE
+- **attivo** — `GET /api/hr/cedolini/{cedolino_id}` — in uso: FE
+- **attivo** — `GET /api/hr/cedolini/{cedolino_id}/download` — in uso: FE
+
+### Router `app.hr.routers.diagnostica` (1)
+
+- **attivo** — `GET /api/hr/diagnostica` — in uso: FE
+
+### Router `app.hr.routers.dimissioni` (4)
+
+- **attivo** — `GET /api/hr/dimissioni` — in uso: FE
+- **attivo** — `POST /api/hr/dimissioni/associa-dimissioni-dipendenti` — in uso: FE
+- **attivo** — `POST /api/hr/dimissioni/cerca-email-dimissioni` — in uso: FE
+- **attivo** — `GET /api/hr/dimissioni/stats` — in uso: FE
+
+### Router `app.hr.routers.dipendenti_cloud` (93)
+
+- **attivo** — `GET /api/hr/dipendenti-cloud/_unif_diag` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/_unif_esegui` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti-cloud/alerts` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/alerts/{alert_id}/risolvi` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti-cloud/assegnazioni-turni` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/assegnazioni-turni` — in uso: FE
+- **quarantena: admin-only** — `POST /api/hr/dipendenti-cloud/assegnazioni-turni/migra` — endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7)
+- **attivo** — `GET /api/hr/dipendenti-cloud/bonifici-da-associare` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/bonifici-da-associare/{bonifico_id}/associa` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/bonifici-da-associare/{bonifico_id}/ignora` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti-cloud/bonifici-da-associare/{bonifico_id}/pdf` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti-cloud/buste-paga` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/buste-paga` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/buste-paga/genera` — in uso: FE
+- **attivo** — `PUT /api/hr/dipendenti-cloud/buste-paga/{busta_id}/paga` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti-cloud/cedolini/cerca-voce` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/cedolini/riscansiona` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti-cloud/dashboard/stats` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti-cloud/dipendenti` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/dipendenti` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/dipendenti/importa-anagrafica` — in uso: FE
+- **attivo** — `DELETE /api/hr/dipendenti-cloud/dipendenti/{dipendente_id}` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti-cloud/dipendenti/{dipendente_id}` — in uso: FE
+- **attivo** — `PUT /api/hr/dipendenti-cloud/dipendenti/{dipendente_id}` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/dipendenti/{dipendente_id}/cessa` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti-cloud/documenti` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/documenti` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/documenti/upload-massivo` — in uso: FE
+- **attivo** — `DELETE /api/hr/dipendenti-cloud/documenti/{documento_id}` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti-cloud/documenti/{documento_id}/file` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti-cloud/ferie` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/ferie` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/ferie-giorno` — in uso: FE
+- **attivo** — `DELETE /api/hr/dipendenti-cloud/ferie/{ferie_id}` — in uso: FE
+- **attivo** — `PUT /api/hr/dipendenti-cloud/ferie/{ferie_id}/approva` — in uso: FE
+- **attivo** — `PUT /api/hr/dipendenti-cloud/ferie/{ferie_id}/rifiuta` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti-cloud/missioni` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/missioni` — in uso: FE
+- **attivo** — `DELETE /api/hr/dipendenti-cloud/missioni/{missione_id}` — in uso: FE
+- **attivo** — `PUT /api/hr/dipendenti-cloud/missioni/{missione_id}/approva` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti-cloud/onomastici` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/onomastici` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti-cloud/onomastici/settimana` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti-cloud/ordine-dipendenti` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/ordine-dipendenti` — in uso: FE
+- **attivo** — `DELETE /api/hr/dipendenti-cloud/paghe` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti-cloud/paghe` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/paghe` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti-cloud/paghe/associazioni-bonifici` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti-cloud/paghe/associazioni-bonifici/export-excel` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/paghe/conferma-associazione` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/paghe/correggi-acconti-cedolino` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/paghe/importa-bonifici-drive` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/paghe/importa-email` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/paghe/importa-excel-salari` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/paghe/importa-lul` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/paghe/importa-pagamenti` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/paghe/importa-prima-nota` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/paghe/importa-storico-pagamenti` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti-cloud/paghe/in-attesa` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti-cloud/paghe/pagamento-esito/{key}/pdf` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti-cloud/paghe/prima-nota` — in uso: FE, scheduler, chat
+- **attivo** — `POST /api/hr/dipendenti-cloud/paghe/sincronizza` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/paghe/sincronizza-bonifici-storici` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti-cloud/paghe/storico-pagamenti` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti-cloud/presenze` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/presenze` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/presenze/batch` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/presenze/consolida-da-turni` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti-cloud/presenze/email-commercialista` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/presenze/email-commercialista` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/presenze/invia-commercialista` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti-cloud/presenze/invii` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/presenze/pdf` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/presenze/pdf-riepilogo` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/presenze/riepilogo-dati` — in uso: FE
+- **attivo** — `DELETE /api/hr/dipendenti-cloud/presenze/{presenza_id}` — in uso: FE
+- **attivo** — `PUT /api/hr/dipendenti-cloud/presenze/{presenza_id}` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti-cloud/prestiti` — in uso: FE
+- **attivo** — `DELETE /api/hr/dipendenti-cloud/prestiti/{prestito_id}` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/riduzioni-orario` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti-cloud/riduzioni-orario/scadenze` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/seed-data` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti-cloud/turni` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/turni` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti-cloud/turni-chiusura-pomeridiana` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/turni-chiusura-pomeridiana` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti-cloud/turni-config` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti-cloud/turni-config` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti-cloud/turni-disponibilita-bar` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti-cloud/turni-preferenze` — in uso: FE
+- **attivo** — `DELETE /api/hr/dipendenti-cloud/turni/{turno_id}` — in uso: FE
+- **attivo** — `PUT /api/hr/dipendenti-cloud/turni/{turno_id}` — in uso: FE
+
+### Router `app.hr.routers.employees.accessi` (6)
+
+- **attivo** — `GET /api/hr/accessi` — in uso: FE
+- **attivo** — `POST /api/hr/accessi/genera-mancanti` — in uso: FE
+- **attivo** — `DELETE /api/hr/accessi/{dipendente_id}/pin` — in uso: FE
+- **attivo** — `POST /api/hr/accessi/{dipendente_id}/pin` — in uso: FE
+- **attivo** — `POST /api/hr/accessi/{dipendente_id}/pin/genera` — in uso: FE
+- **attivo** — `POST /api/hr/accessi/{dipendente_id}/ruolo` — in uso: FE
+
+### Router `app.hr.routers.employees.buste_paga` (6)
+
+- **attivo** — `GET /api/hr/buste-paga/competenze` — in uso: FE
+- **attivo** — `GET /api/hr/buste-paga/lista` — in uso: FE
+- **attivo** — `GET /api/hr/buste-paga/riepilogo-mensile/{competenza}` — in uso: FE
+- **attivo** — `POST /api/hr/buste-paga/salva` — in uso: FE
+- **attivo** — `POST /api/hr/buste-paga/upload` — in uso: FE
+- **attivo** — `DELETE /api/hr/buste-paga/{competenza}/{nome}` — in uso: FE
+
+### Router `app.hr.routers.employees.dipendenti` (51)
+
+- **attivo** — `GET /api/hr/dipendenti` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti/bulk-upsert` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti/bulk-upsert/preview` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti/buste-paga` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti/buste-paga` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti/buste-paga/dipendente/{dipendente_id}` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti/buste-paga/dipendente/{dipendente_id}/import` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti/buste-paga/import` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti/buste-paga/scan` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti/by-google-email` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti/contratti` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti/contratti` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti/contratti/import-excel` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti/contratti/scadenze` — in uso: FE
+- **attivo** — `DELETE /api/hr/dipendenti/contratti/{contratto_id}` — in uso: FE
+- **attivo** — `PUT /api/hr/dipendenti/contratti/{contratto_id}` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti/contratti/{contratto_id}/termina` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti/duplicati` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti/duplicati/auto-merge` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti/duplicati/merge` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti/invita-multipli` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti/libretti-sanitari` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti/libretti-sanitari/all` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti/libretti-sanitari/genera-da-dipendenti` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti/libretti-sanitari/import-excel` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti/libretti-sanitari/scadenze` — in uso: FE
+- **attivo** — `DELETE /api/hr/dipendenti/libretti-sanitari/{libretto_id}` — in uso: FE
+- **attivo** — `PUT /api/hr/dipendenti/libretti-sanitari/{libretto_id}` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti/libretti/scadenze` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti/libro-unico/export-excel` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti/libro-unico/presenze` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti/libro-unico/salaries` — in uso: FE
+- **attivo** — `DELETE /api/hr/dipendenti/libro-unico/salaries/{salary_id}` — in uso: FE
+- **attivo** — `PUT /api/hr/dipendenti/libro-unico/salaries/{salary_id}` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti/libro-unico/upload` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti/mansioni` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti/portale/stats` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti/report-ferie-permessi-tutti` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti/stats` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti/sync-iban` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti/tipi-contratto` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti/tipi-turno` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti/turni/salva` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti/turni/settimana` — in uso: FE
+- **attivo** — `DELETE /api/hr/dipendenti/{dipendente_id}` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti/{dipendente_id}` — in uso: FE
+- **attivo** — `PUT /api/hr/dipendenti/{dipendente_id}` — in uso: FE
+- **attivo** — `POST /api/hr/dipendenti/{dipendente_id}/invita-portale` — in uso: FE
+- **attivo** — `PUT /api/hr/dipendenti/{dipendente_id}/libretto` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti/{dipendente_id}/report-ferie-permessi` — in uso: FE
+
+### Router `app.hr.routers.employees.employee_contracts` (23)
+
+- **attivo** — `GET /api/hr/contracts/acconti-tfr` — in uso: FE
+- **attivo** — `GET /api/hr/contracts/acconti-tfr/{employee_id}` — in uso: FE
+- **attivo** — `POST /api/hr/contracts/carica-firmato/{contract_id}` — in uso: FE
+- **attivo** — `GET /api/hr/contracts/ccnl` — in uso: FE
+- **attivo** — `POST /api/hr/contracts/ccnl/suggerisci` — in uso: FE
+- **attivo** — `GET /api/hr/contracts/ccnl/verifica-tranche` — in uso: FE
+- **attivo** — `GET /api/hr/contracts/ccnl/{ccnl_id}/livello/{livello}` — in uso: FE
+- **attivo** — `POST /api/hr/contracts/cedolini/importa-libro-unico` — in uso: FE
+- **attivo** — `GET /api/hr/contracts/download/{contract_id}` — in uso: FE
+- **attivo** — `GET /api/hr/contracts/employee/{employee_id}` — in uso: FE
+- **attivo** — `POST /api/hr/contracts/finalizza/{contract_id}` — in uso: FE
+- **attivo** — `POST /api/hr/contracts/genera-massivo` — in uso: FE
+- **attivo** — `POST /api/hr/contracts/generate/{employee_id}` — in uso: FE
+- **attivo** — `GET /api/hr/contracts/pdf/{contract_id}/{versione}` — in uso: FE
+- **attivo** — `POST /api/hr/contracts/pec/{contract_id}` — in uso: FE
+- **attivo** — `GET /api/hr/contracts/profilo-retributivo/{employee_id}` — in uso: FE
+- **attivo** — `POST /api/hr/contracts/send/{contract_id}` — in uso: FE
+- **attivo** — `POST /api/hr/contracts/sign/{contract_id}` — in uso: FE
+- **attivo** — `GET /api/hr/contracts/sign/{contract_id}/status` — in uso: FE
+- **attivo** — `POST /api/hr/contracts/template/{contract_type}` — in uso: FE
+- **attivo** — `GET /api/hr/contracts/templates` — in uso: FE
+- **attivo** — `GET /api/hr/contracts/types` — in uso: FE
+- **attivo** — `DELETE /api/hr/contracts/{contract_id}` — in uso: FE
+
+### Router `app.hr.routers.employees.fascicolo_dipendente` (2)
+
+- **attivo** — `GET /api/hr/dipendenti/{dipendente_id}/fascicolo` — in uso: FE
+- **attivo** — `GET /api/hr/dipendenti/{dipendente_id}/kpi` — in uso: FE
+
+### Router `app.hr.routers.employees.giustificativi` (20)
+
+- **attivo** — `GET /api/hr/giustificativi` — in uso: FE
+- **attivo** — `POST /api/hr/giustificativi/aggiorna-riepilogo` — in uso: FE
+- **attivo** — `GET /api/hr/giustificativi/alert-limiti` — in uso: FE
+- **attivo** — `PUT /api/hr/giustificativi/codice/{codice}` — in uso: FE
+- **attivo** — `GET /api/hr/giustificativi/dipendente/{employee_id}/giustificativi` — in uso: FE
+- **attivo** — `PUT /api/hr/giustificativi/dipendente/{employee_id}/giustificativi/limiti` — in uso: FE
+- **attivo** — `POST /api/hr/giustificativi/dipendente/{employee_id}/riporto-ferie` — in uso: FE
+- **attivo** — `GET /api/hr/giustificativi/dipendente/{employee_id}/saldo-ferie` — in uso: FE
+- **quarantena: admin-only** — `POST /api/hr/giustificativi/init-giustificativi` — endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7)
+- **attivo** — `GET /api/hr/giustificativi/presenze-mensili/{employee_id}` — in uso: FE
+- **attivo** — `GET /api/hr/giustificativi/riepilogo-limiti` — in uso: FE
+- **attivo** — `GET /api/hr/giustificativi/riepilogo-progressivo/{employee_id}` — in uso: FE
+- **attivo** — `GET /api/hr/giustificativi/saldi-finali-tutti` — in uso: FE
+- **attivo** — `DELETE /api/hr/giustificativi/saldi-finali/{employee_id}` — in uso: FE
+- **attivo** — `GET /api/hr/giustificativi/saldi-finali/{employee_id}` — in uso: FE
+- **attivo** — `PUT /api/hr/giustificativi/saldi-finali/{employee_id}/periodo` — in uso: FE
+- **attivo** — `POST /api/hr/giustificativi/salva-saldi-finali` — in uso: FE
+- **attivo** — `POST /api/hr/giustificativi/sync-giustificativi-da-cedolini` — in uso: FE
+- **attivo** — `POST /api/hr/giustificativi/upload-libro-unico` — in uso: FE
+- **attivo** — `POST /api/hr/giustificativi/valida-giustificativo` — in uso: FE
+
+### Router `app.hr.routers.employees.shifts` (9)
+
+- **attivo** — `GET /api/hr/shifts/assegnazioni` — in uso: FE
+- **attivo** — `POST /api/hr/shifts/assegnazioni` — in uso: FE
+- **attivo** — `DELETE /api/hr/shifts/assegnazioni/{assegnazione_id}` — in uso: FE
+- **attivo** — `GET /api/hr/shifts/schedule` — in uso: FE
+- **attivo** — `POST /api/hr/shifts/schedule` — in uso: FE
+- **attivo** — `GET /api/hr/shifts/tipi` — in uso: FE
+- **attivo** — `POST /api/hr/shifts/tipi` — in uso: FE
+- **attivo** — `DELETE /api/hr/shifts/tipi/{turno_id}` — in uso: FE
+- **attivo** — `PUT /api/hr/shifts/tipi/{turno_id}` — in uso: FE
+
+### Router `app.hr.routers.f24_parser` (6)
+
+- **attivo** — `GET /api/hr/paghe/distinte-f24` — in uso: FE
+- **attivo** — `GET /api/hr/paghe/f24/lista` — in uso: FE
+- **attivo** — `POST /api/hr/paghe/import-f24` — in uso: FE
+- **attivo** — `POST /api/hr/paghe/parse-f24` — in uso: FE
+- **attivo** — `POST /api/hr/paghe/riconcilia-f24` — in uso: FE, scheduler
+- **attivo** — `GET /api/hr/paghe/tributi-pagati` — in uso: FE
+
+### Router `app.hr.routers.libro_unico_parser` (10)
+
+- **attivo** — `GET /api/hr/paghe/acconti` — in uso: FE
+- **attivo** — `POST /api/hr/paghe/acconti/{busta_id}` — in uso: FE
+- **attivo** — `DELETE /api/hr/paghe/acconti/{busta_id}/{acconto_id}` — in uso: FE
+- **attivo** — `GET /api/hr/paghe/buste-paga` — in uso: FE
+- **attivo** — `POST /api/hr/paghe/import-libro-unico` — in uso: FE
+- **attivo** — `POST /api/hr/paghe/parse-libro-unico` — in uso: FE
+- **attivo** — `POST /api/hr/paghe/parse-libro-unico/dipendente/{indice}` — in uso: FE
+- **attivo** — `GET /api/hr/paghe/presenze-mensili` — in uso: FE
+- **attivo** — `GET /api/hr/paghe/presenze-mensili/{codice_fiscale}/{periodo}` — in uso: FE
+- **attivo** — `POST /api/hr/paghe/riconcilia-stipendi` — in uso: FE
+
+### Router `app.hr.routers.notifiche` (3)
+
+- **attivo** — `GET /api/hr/notifiche` — in uso: FE
+- **attivo** — `GET /api/hr/notifiche/conteggio` — in uso: FE, scheduler
+- **attivo** — `POST /api/hr/notifiche/{notifica_id}/letta` — in uso: FE
+
+### Router `app.hr.routers.pin_login` (3)
+
+- **attivo** — `GET /api/hr/auth/dipendenti-attivi` — in uso: FE, chat
+- **attivo** — `POST /api/hr/auth/pin-login` — in uso: FE
+- **attivo** — `GET /api/hr/auth/pin-login/health` — in uso: FE
+
+### Router `app.hr.routers.portale_buste` (7)
+
+- **attivo** — `GET /api/hr/portale/buste` — in uso: FE
+- **attivo** — `GET /api/hr/portale/buste/{cedolino_id}` — in uso: FE
+- **attivo** — `POST /api/hr/portale/buste/{cedolino_id}/contesta` — in uso: FE
+- **attivo** — `GET /api/hr/portale/buste/{cedolino_id}/modulo-contestazione` — in uso: FE
+- **attivo** — `GET /api/hr/portale/buste/{cedolino_id}/pdf` — in uso: FE
+- **attivo** — `POST /api/hr/portale/buste/{cedolino_id}/presa-visione` — in uso: FE
+- **attivo** — `GET /api/hr/portale/buste/{cedolino_id}/storico-accessi` — in uso: FE
+
+### Router `app.hr.routers.portale_documenti` (10)
+
+- **attivo** — `GET /api/hr/portale/documenti` — in uso: FE
+- **attivo** — `POST /api/hr/portale/documenti/admin/upload` — in uso: FE
+- **attivo** — `GET /api/hr/portale/documenti/modulo/{tipo}` — in uso: FE
+- **attivo** — `POST /api/hr/portale/documenti/regolamento/accetta` — in uso: FE
+- **attivo** — `GET /api/hr/portale/documenti/regolamento/file` — in uso: FE
+- **attivo** — `GET /api/hr/portale/documenti/regolamento/stato` — in uso: FE
+- **attivo** — `GET /api/hr/portale/documenti/tipi` — in uso: FE, scheduler
+- **attivo** — `POST /api/hr/portale/documenti/upload` — in uso: FE
+- **attivo** — `DELETE /api/hr/portale/documenti/{doc_id}` — in uso: FE
+- **attivo** — `GET /api/hr/portale/documenti/{doc_id}/file` — in uso: FE
+
+### Router `app.hr.routers.richieste` (4)
+
+- **attivo** — `GET /api/hr/richieste` — in uso: FE
+- **attivo** — `POST /api/hr/richieste` — in uso: FE
+- **attivo** — `GET /api/hr/richieste/mie` — in uso: FE
+- **attivo** — `POST /api/hr/richieste/{richiesta_id}/risolvi` — in uso: FE
+
+### Router `app.hr.routers.salari_unificati_v2` (6)
+
+- **attivo** — `GET /api/hr/salari-v2/ferie-rol` — in uso: FE
+- **attivo** — `GET /api/hr/salari-v2/non-pagati` — in uso: FE
+- **attivo** — `POST /api/hr/salari-v2/pagamento` — in uso: FE, scheduler
+- **attivo** — `POST /api/hr/salari-v2/riconcilia-banca` — in uso: FE
+- **attivo** — `GET /api/hr/salari-v2/riepilogo` — in uso: FE
+- **attivo** — `GET /api/hr/salari-v2/saldo/{codice_fiscale}` — in uso: FE
+
+### Router `app.hr.routers.tfr` (28)
+
+- **attivo** — `POST /api/hr/tfr/accantonamento` — in uso: FE
+- **attivo** — `POST /api/hr/tfr/acconti` — in uso: FE
+- **attivo** — `DELETE /api/hr/tfr/acconti/{acconto_id}` — in uso: FE
+- **attivo** — `PUT /api/hr/tfr/acconti/{acconto_id}` — in uso: FE
+- **attivo** — `POST /api/hr/tfr/acconti/{acconto_id}/annulla-riconciliazione-banca` — in uso: FE
+- **attivo** — `GET /api/hr/tfr/acconti/{acconto_id}/candidati-banca` — in uso: FE
+- **attivo** — `POST /api/hr/tfr/acconti/{acconto_id}/riconcilia-banca` — in uso: FE
+- **attivo** — `GET /api/hr/tfr/acconti/{dipendente_id}` — in uso: FE
+- **attivo** — `POST /api/hr/tfr/calcola-batch/{anno}` — in uso: FE
+- **attivo** — `POST /api/hr/tfr/calcolo-lordo-da-netto` — in uso: FE
+- **attivo** — `POST /api/hr/tfr/calcolo-netto-da-lordo` — in uso: FE
+- **attivo** — `POST /api/hr/tfr/cedolini/{cedolino_id}/annulla-scalatura-acconti` — in uso: FE
+- **attivo** — `GET /api/hr/tfr/cedolini/{cedolino_id}/preview-scalatura-acconti` — in uso: FE
+- **attivo** — `POST /api/hr/tfr/cedolini/{cedolino_id}/scala-acconti` — in uso: FE
+- **attivo** — `POST /api/hr/tfr/liquidazione` — in uso: FE
+- **attivo** — `GET /api/hr/tfr/parse-payslips` — in uso: FE
+- **attivo** — `GET /api/hr/tfr/riepilogo-aziendale` — in uso: FE
+- **attivo** — `GET /api/hr/tfr/simulazione-parametri` — in uso: FE
+- **attivo** — `PUT /api/hr/tfr/simulazione-parametri` — in uso: FE
+- **attivo** — `GET /api/hr/tfr/simulazione/{dipendente_id}` — in uso: FE
+- **attivo** — `GET /api/hr/tfr/simulazione/{dipendente_id}/liquidazione` — in uso: FE
+- **attivo** — `PUT /api/hr/tfr/simulazione/{dipendente_id}/liquidazione-override` — in uso: FE
+- **attivo** — `POST /api/hr/tfr/simulazione/{dipendente_id}/periodi` — in uso: FE
+- **attivo** — `DELETE /api/hr/tfr/simulazione/{dipendente_id}/periodi/{periodo_id}` — in uso: FE
+- **attivo** — `PUT /api/hr/tfr/simulazione/{dipendente_id}/periodi/{periodo_id}` — in uso: FE
+- **attivo** — `POST /api/hr/tfr/simulazione/{dipendente_id}/rate` — in uso: FE
+- **attivo** — `GET /api/hr/tfr/situazione/{dipendente_id}` — in uso: FE
+- **attivo** — `GET /api/hr/tfr/storico-tfr/{dipendente_id}` — in uso: FE
+
+### Router `app.hr.routers.timbrature` (6)
+
+- **attivo** — `GET /api/hr/timbrature` — in uso: FE, scheduler, chat
+- **attivo** — `POST /api/hr/timbrature` — in uso: FE
+- **attivo** — `GET /api/hr/timbrature/mie/oggi` — in uso: FE
+- **attivo** — `GET /api/hr/timbrature/riepilogo` — in uso: FE, scheduler, chat
+- **attivo** — `GET /api/hr/timbrature/sede` — in uso: FE
+- **attivo** — `POST /api/hr/timbrature/sede` — in uso: FE
+
+### Router `app.hr.routers.turni` (13)
+
+- **attivo** — `GET /api/hr/turni` — in uso: FE, scheduler, chat
+- **attivo** — `GET /api/hr/turni/azienda/settimana` — in uso: FE
+- **attivo** — `GET /api/hr/turni/disponibilita-bar` — in uso: FE
+- **attivo** — `POST /api/hr/turni/disponibilita-bar` — in uso: FE
+- **attivo** — `DELETE /api/hr/turni/disponibilita-bar/{disp_id}` — in uso: FE
+- **attivo** — `POST /api/hr/turni/genera` — in uso: FE, scheduler, chat
+- **attivo** — `GET /api/hr/turni/miei/corrente` — in uso: FE
+- **attivo** — `GET /api/hr/turni/preferenza-riposo` — in uso: FE
+- **attivo** — `POST /api/hr/turni/preferenza-riposo` — in uso: FE
+- **attivo** — `GET /api/hr/turni/{settimana_inizio}` — in uso: FE, scheduler
+- **attivo** — `PUT /api/hr/turni/{settimana_inizio}/cella` — in uso: FE
+- **attivo** — `POST /api/hr/turni/{settimana_inizio}/pubblica` — in uso: FE
+- **attivo** — `POST /api/hr/turni/{settimana_inizio}/sblocca` — in uso: FE
 
 ### Router `auth` (3)
 

@@ -28,6 +28,11 @@ RENDER_INGEST_PATHS = {
 
 LOTTI_INTEGRATION_PREFIX = "/api/integrations/lotti/"
 
+# Modulo HR (portale dipendenti): login pubblico del portale e perimetro
+# delle sessioni dipendente. Definiti nel modulo, letti qui.
+from app.hr.router_registry import HR_PREFIX, HR_PUBLIC_PATHS  # noqa: E402
+HR_ALLOWED_OUTSIDE = {"/api/auth/logout"}
+
 # Paths that don't require authentication
 PUBLIC_PATHS = {
     # Health checks
@@ -147,7 +152,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         
         # Allow public paths
-        if path in PUBLIC_PATHS:
+        if path in PUBLIC_PATHS or path in HR_PUBLIC_PATHS:
             return await call_next(request)
         
         # Allow public prefixes
@@ -241,13 +246,20 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             # assente/sconosciuto viene rifiutato senza privilegi impliciti.
             from app.utils.ruoli import (
                 normalizza_ruolo, METODI_SCRITTURA, PREFISSI_SOLO_ADMIN,
-                RUOLI_VALIDI, SOLA_LETTURA, ADMIN,
+                RUOLI_VALIDI, RUOLI_HR, SOLA_LETTURA, ADMIN,
             )
             ruolo = normalizza_ruolo(payload.get("role"))
             if ruolo not in RUOLI_VALIDI:
                 return JSONResponse(
                     status_code=403,
                     content={"detail": "Ruolo utente non valido"},
+                )
+            # Un dipendente (o il responsabile turni) ha una sessione del
+            # portale HR: vale solo per il modulo HR, mai per i dati contabili.
+            if ruolo in RUOLI_HR and not path.startswith(HR_PREFIX + "/") and path not in HR_ALLOWED_OUTSIDE:
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "Sessione del portale dipendenti: accesso al gestionale non consentito"},
                 )
 
             # Store only normalized user info in request state.

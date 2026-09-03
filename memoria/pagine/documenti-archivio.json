@@ -2,8 +2,8 @@
   "_meta": {
     "schema_version": 2,
     "document_type": "page_source_map",
-    "updated_at": "2026-08-22",
-    "source_revision": "e8c56bfd28c6e657aa41605bcac360dfb5b85549",
+    "updated_at": "2026-09-03",
+    "source_revision": "8566e5d017bdab4db5071e0212ed2891cd66ac87",
     "generator": "scripts/refresh_json_docs.py",
     "verification": "static_source_map"
   },
@@ -36,6 +36,7 @@
     "endpoint_rilevati_nei_sorgenti": [
       "/api/documenti/documento/{param}/download",
       "/api/documenti/drive/catalog",
+      "/api/documenti/drive/folders",
       "/api/documenti/lista"
     ]
   },

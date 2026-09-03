@@ -1,4 +1,4 @@
-"""Contratti operativi specifici delle 66 pagine canoniche di GestionaleCloud.
+"""Contratti operativi specifici delle pagine canoniche di GestionaleCloud (page_catalog.json).
 
 Questi contenuti descrivono il comportamento target della ricostruzione pulita.
 Non sono una fotografia delle sole chiamate frontend: definiscono fonti, effetti,
@@ -965,6 +965,36 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Nessun archivio parallelo o ponte esterno; sola lettura non scrive; import massivo e attrezzature admin-only; Decimal e saldi mai negativi."],
         ["Retry senza duplicati; non conformita con attesa; ricette versionate; produzioni tracciate; suite API/UI e build verdi."],
     ),
+    67: page(
+        ["anagrafica hr_dipendenti", "hr_cedolini e hr_paghe_mensili", "hr_presenze_cloud/timbrature", "hr_turni_config e assegnazioni", "hr_ferie_cloud e richieste", "hr_documenti_cloud", "contratti e template", "blob PDF in gestionale.blobs"],
+        ["anagrafica e accessi (pin_hash, ruolo_app)", "turni e indisponibilita", "presenze e timbrature", "ferie/permessi", "cedolini, bonifici e stati pagamento", "TFR", "contratti e fascicolo", "alert e notifiche HR", "audit"],
+        [
+            "Aprire il modulo HR con la sessione unica del gestionale (solo admin): stessi dati dell'ex AppDipendenti sotto /api/hr.",
+            "Gestire anagrafica, presenze, ferie, turni data-driven, timbrature geolocalizzate, buste paga, bonifici, TFR, documenti e assunzione.",
+            "Generare e azzerare i PIN personali del portale dalla pagina Accessi: il PIN e' mostrato una sola volta e salvato solo come hash.",
+            "Assegnare il ruolo portale (dipendente o responsabile turni); l'amministratore non e' un ruolo del portale.",
+            "Leggere i PDF (cedolini, bonifici, documenti) dall'archivio binari separato, mai dalla cache in memoria del registro.",
+        ],
+        ["Scadenzario contratti/prova e sincronizzazione paghe periodica; catene evento cedolino/ferie/cessazione dell'event bus HR."],
+        ["Dipendente ↔ cedolino ↔ bonifico/pagamento ↔ TFR ↔ contratto ↔ documenti ↔ turni/presenze ↔ alert."],
+        ["Solo admin (operatore/sola lettura secondo il middleware unico); nessun PIN in chiaro; collezioni hr_* separate da quelle contabili fino al ritiro del router dipendenti storico."],
+        ["Generazione PIN idempotente (chi lo ha non viene toccato); login dipendente con quel PIN; PDF scaricabili; suite HR verde."],
+    ),
+    68: page(
+        ["elenco pubblico id+nome dei dipendenti attivi con PIN", "hr_dipendenti (pin_hash, ruolo_app)", "turni settimana azienda", "cedolini e documenti del dipendente", "richieste, notifiche, timbrature"],
+        ["timbrature entrata/uscita in sede", "preferenze riposo e disponibilita bar", "richieste ferie/permessi/cambio turno", "accettazioni busta paga", "audit accessi"],
+        [
+            "Toccare il proprio nome e digitare il PIN personale: token di 7 giorni con ruolo dipendente o responsabile turni, mai admin.",
+            "Timbrare solo entro il raggio della sede; vedere i propri turni e quelli dei colleghi in sola lettura.",
+            "Consultare buste paga e documenti personali; inviare richieste e preferenze; ricevere avvisi.",
+            "Il bottone Accesso amministratore porta al login unico del gestionale (PIN + MFA), non a un secondo PIN.",
+            "Il responsabile turni raggiunge la sola pagina Turni dell'area gestione (/hr-turni).",
+        ],
+        ["Timbratura → presenze reali; richiesta approvata → indisponibilita turni; notifiche al responsabile turni."],
+        ["Dipendente ↔ timbrature ↔ turni ↔ richieste ↔ buste paga ↔ documenti."],
+        ["Sessione del portale valida solo su /api/hr; blocco tentativi PIN (5 in 5 minuti); nessun dato di altri dipendenti."],
+        ["Login con PIN generato dall'admin; 401 con PIN errato; 403 fuori da /api/hr; timbratura fuori sede rifiutata."],
+    ),
 }
 
 
@@ -972,9 +1002,10 @@ REQUIRED_FIELDS = {"sources", "writes", "flow", "automations", "links", "guards"
 
 
 def validate_page_logic() -> None:
-    if set(PAGE_LOGIC) != set(range(1, 67)):
-        missing = sorted(set(range(1, 67)) - set(PAGE_LOGIC))
-        extra = sorted(set(PAGE_LOGIC) - set(range(1, 67)))
+    attesi = set(range(1, max(PAGE_LOGIC) + 1))
+    if set(PAGE_LOGIC) != attesi:
+        missing = sorted(attesi - set(PAGE_LOGIC))
+        extra = sorted(set(PAGE_LOGIC) - attesi)
         raise RuntimeError(f"Logica pagine incompleta: mancanti={missing}, extra={extra}")
     for page_id, value in PAGE_LOGIC.items():
         if set(value) != REQUIRED_FIELDS:

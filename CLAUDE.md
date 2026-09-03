@@ -55,10 +55,24 @@ si aggiornano con `scripts/refresh_json_docs.py`, non a mano.
 
 ## Archivio dati: stato reale e destinazione
 
-### Stato attuale
+### Decisione 03/09/2026 (titolare): Supabase è l'archivio unico
+
+- Il titolare ha deciso di fondere le app del gruppo (AppDipendenti, Menu,
+  Lotti) dentro GestionaleCloud e di usare **Supabase** (progetto
+  `GestionaleCloud`, tabella `gestionale.documents` + `gestionale.blobs`)
+  come unico archivio: `render.yaml` imposta `DATA_BACKEND=supabase`.
+- Il runtime Sheets resta nel codice solo come fallback di sviluppo; la
+  sezione "Destinazione Drive-only" qui sotto descrive l'assetto precedente
+  ed è superata per la persistenza dei dati (Drive resta la fonte degli
+  originali documentali, non il database).
+- I PDF del modulo HR (cedolini, bonifici, documenti: ~350 MB in base64) NON
+  vengono idratati in memoria: vivono in `gestionale.blobs` e l'adattatore
+  `app/hr/db_adapter.py` li carica solo su richiesta.
+
+### Stato precedente
 
 - Il default del codice è `DATA_BACKEND=sheets`.
-- legacy DB è stato rimosso come backend supportato e non va usato in produzione. Drive/Sheets è l'unico backend operativo.
+- legacy DB è stato rimosso come backend supportato e non va usato in produzione.
 - Qualsiasi riferimento, variabile o script relativo a legacy DB è deprecato. Strumenti o script storici devono essere isolati, marcati come "legacy / solo per migrazione" e usati unicamente in procedure controllate e verificabili.
 - La migrazione dei dati storici richiede confronto di conteggi e hash, ricostruzione completa e prove di scrittura; fino a verifica completa i dati storici non devono essere cancellati senza autorizzazione e checklist di cutover approvata.
 
@@ -102,6 +116,34 @@ Regole del cutover:
 
 La memoria del processo è soltanto una cache ricostruibile: Drive/Sheets resta
 sempre la sorgente persistente.
+
+## Modulo HR (ex AppDipendenti) — `app/hr/` e `frontend/src/hr/`
+
+- Tutto il backend di AppDipendenti vive in `app/hr/` e risponde sotto
+  `/api/hr/...` (stessi percorsi dell'app originale spostati di un livello:
+  `/api/hr/dipendenti-cloud`, `/api/hr/cedolini`, `/api/hr/portale/...`).
+  Registrazione in `app/hr/router_registry.py`, avvio in `app/hr/startup.py`
+  (handler eventi, seed TFR, job periodici solo con scheduler attivo).
+- Database: `app/hr/database.py` → `HRDatabase` (collezioni `hr_<nome>` nel
+  registro unico + blob fuori memoria). Nessuna connessione separata.
+- **PIN unificato**: l'amministratore usa SOLO il login del gestionale
+  (`/login`, `PIN_HASH_ADMIN`, MFA). Il portale dipendenti (`/portale`) fa
+  login con tocca-il-nome + PIN personale (`POST /api/hr/auth/pin-login`
+  `{dipendente_id, pin}`), token 7 giorni con ruolo `dipendente` o
+  `responsabile_turni`, **mai** `admin`. Il middleware globale lascia passare
+  questi ruoli solo su `/api/hr/`.
+- PIN dei dipendenti: generati dall'admin (`POST /api/hr/accessi/{id}/pin/genera`
+  o `POST /api/hr/accessi/genera-mancanti`), mostrati una sola volta, salvati
+  solo come hash. Nessun PIN nel codice, nella chat o nei file.
+- Frontend: `frontend/src/hr/HRApp.jsx` (rotte `/hr`, `/hr/:page`, solo admin),
+  `frontend/src/hr/PortaleDipendente.jsx` (`/portale`, pubblico), `/hr-turni`
+  per il responsabile turni. Voce "HR" nel menu principale.
+- Migrazione dati dalla vecchia app: `app/hr/migrazione_appdipendenti.py`
+  (CLI o `POST /api/hr/admin/migrazione-appdipendenti`, DSN solo dall'env
+  `APPDIPENDENTI_DB_URL`), idempotente, con confronto dei conteggi.
+- Da fare (fase successiva): ritirare `app/routers/employees/dipendenti.py`
+  e le collezioni contabili `dipendenti`/`cedolini` duplicate a favore del
+  modulo HR (un solo sistema per funzione), poi portare Menu e Lotti.
 
 ## Canali operativi e conoscenza
 

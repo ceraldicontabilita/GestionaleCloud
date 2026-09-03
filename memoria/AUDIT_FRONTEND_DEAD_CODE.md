@@ -3,13 +3,13 @@
 > Generato da `scripts/audit_frontend_dead_code.py` seguendo il grafo di import reale a partire da `main.jsx`/`App.jsx`/`navigation.config.js` (import statici, `import()` dinamici, `lazy(() => import(...))`, re-export `export {X} from`/`export * from`).
 > NON modificare a mano: rilancia lo script.
 
-**Totale file analizzati:** 209
+**Totale file analizzati:** 212
 
 | Classificazione | File |
 |---|---:|
 | ENTRYPOINT | 3 |
 | ROUTE_ATTIVA | 29 |
-| COMPONENTE_USATO | 95 |
+| COMPONENTE_USATO | 98 |
 | MODALE_USATO | 3 |
 | HOOK_USATO | 3 |
 | TEST_ONLY | 53 |
@@ -136,6 +136,9 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/hooks/usePrimaNota.js` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/hooks/useWebSocket.js` | HOOK_USATO | 1 |
 | `frontend/src/hooks/useWebSocket.test.js` | TEST_ONLY | 0 |
+| `frontend/src/hr/HRApp.jsx` | COMPONENTE_USATO | 1 |
+| `frontend/src/hr/HRGate.jsx` | COMPONENTE_USATO | 1 |
+| `frontend/src/hr/PortaleDipendente.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/lib/queryClient.js` | COMPONENTE_USATO | 2 |
 | `frontend/src/lib/utils.js` | COMPONENTE_USATO | 102 |
 | `frontend/src/lib/utils.test.js` | TEST_ONLY | 0 |

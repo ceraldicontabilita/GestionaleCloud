@@ -39,6 +39,7 @@
     "react-window": "^2.2.4",
     "recharts": "^3.6.0",
     "sonner": "^2.0.7",
+    "sortablejs": "^1.15.6",
     "zustand": "^5.0.9"
   },
   "resolutions": {

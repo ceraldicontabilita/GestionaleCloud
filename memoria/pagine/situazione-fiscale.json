@@ -2,8 +2,8 @@
   "_meta": {
     "schema_version": 2,
     "document_type": "page_source_map",
-    "updated_at": "2026-08-22",
-    "source_revision": "e8c56bfd28c6e657aa41605bcac360dfb5b85549",
+    "updated_at": "2026-09-03",
+    "source_revision": "8566e5d017bdab4db5071e0212ed2891cd66ac87",
     "generator": "scripts/refresh_json_docs.py",
     "verification": "static_source_map"
   },
@@ -26,15 +26,18 @@
     "file_verificati": [],
     "endpoint_rilevati_nei_sorgenti": [
       "/api/documenti-fiscali/upload",
+      "/api/documenti-fiscali/upload-f24-commercialista",
       "/api/documenti/drive/index/document/{param}",
       "/api/documenti/tax-codes",
       "/api/fiscal/ader-snapshots",
       "/api/fiscal/collections",
       "/api/fiscal/crosswalk",
       "/api/fiscal/declarations",
+      "/api/fiscal/declarations/{param}",
       "/api/fiscal/documents/{param}",
       "/api/fiscal/f24-rows",
       "/api/fiscal/obligations",
+      "/api/fiscal/source-certainty",
       "/api/fiscal/summary"
     ]
   },

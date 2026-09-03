@@ -26,6 +26,8 @@ PAGE_FILE_BY_PATH = {
     "/login": "login.json",
     "/gestione-riservata": "gestione-riservata.json",
     "/tracciabilita": "tracciabilita-haccp.json",
+    "/hr": "hr-gestione.json",
+    "/portale": "hr-portale.json",
     "/rapido": "inserimento-rapido.json",
     "/fatture": "fatture.json",
     "/fatture/corrispettivi": "corrispettivi.json",
