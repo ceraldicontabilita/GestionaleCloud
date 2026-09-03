@@ -25,9 +25,14 @@ services:
     # DATA_BACKEND, 03/09/2026): il Build Command va incollato una volta in
     # Settings del servizio. scripts/build_frontends.sh compila tutte le
     # cartelle frontend_*/ presenti, quindi il comando non cambia piu'.
+    # Identico al Build Command impostato in dashboard (che NON recepisce
+    # render.yaml): `npm --prefix frontend run build` compila il gestionale e
+    # poi, tramite scripts/build_frontends.sh --apps, tutte le cartelle
+    # frontend_*/ delle app portate pari pari. Nessuna modifica in dashboard.
     buildCommand: >-
       pip install -r backend/requirements.txt &&
-      bash scripts/build_frontends.sh
+      npm --prefix frontend install --include=dev --legacy-peer-deps &&
+      npm --prefix frontend run build
     # Il piano Starter dispone di 512 MiB: due interpreti Python completi
     # duplicano il registro Sheets in memoria e superano il limite. FastAPI e
     # APScheduler vivono quindi nello stesso processo; PROCESS_ROLE=combined
