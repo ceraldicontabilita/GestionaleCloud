@@ -817,7 +817,7 @@ Gli alias senza valore vanno configurati nel secret/config store di Render. Non 
 
 ## Appendice D — Tutti i router e tutti gli endpoint
 
-Route table sorgente: **1149**; attivi da ricreare: **747**; quarantena: **402** (`verificare` 372, `admin-only` 30).
+Route table sorgente: **1151**; attivi da ricreare: **756**; quarantena: **395** (`verificare` 365, `admin-only` 30).
 
 `attivo` significa da ricreare con contratto e test; `quarantena` significa non esporre nel nuovo runtime finché consumer, autorizzazione e test non sono provati. L'elenco è completo e include entrambe le categorie.
 
@@ -1458,6 +1458,11 @@ Route table sorgente: **1149**; attivi da ricreare: **747**; quarantena: **402**
 - **attivo** — `POST /api/dipendenti/{dipendente_id}/invita-portale` — in uso: FE
 - **attivo** — `GET /api/dipendenti/{dipendente_id}/report-ferie-permessi` — in uso: FE
 
+### Router `f24.avviso_bonario` (2)
+
+- **attivo** — `POST /api/f24/avviso-bonario/controllo` — in uso: FE
+- **attivo** — `POST /api/f24/riconcilia-addebiti` — in uso: FE
+
 ### Router `f24.email_f24` (7)
 
 - **quarantena: verificare** — `GET /api/f24-email/allegati` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
@@ -1512,13 +1517,13 @@ Route table sorgente: **1149**; attivi da ricreare: **747**; quarantena: **402**
 - **quarantena: verificare** — `GET /api/f24-riconciliazione/alerts` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **quarantena: verificare** — `POST /api/f24-riconciliazione/alerts/{alert_id}/conferma-elimina` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **quarantena: verificare** — `POST /api/f24-riconciliazione/alerts/{alert_id}/ignora` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/f24-riconciliazione/commercialista` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/f24-riconciliazione/commercialista/upload` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `DELETE /api/f24-riconciliazione/commercialista/{f24_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/f24-riconciliazione/commercialista/{f24_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `PUT /api/f24-riconciliazione/commercialista/{f24_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `PUT /api/f24-riconciliazione/commercialista/{f24_id}/pagato` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/f24-riconciliazione/commercialista/{f24_id}/pdf` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **attivo** — `GET /api/f24-riconciliazione/commercialista` — in uso: FE
+- **attivo** — `POST /api/f24-riconciliazione/commercialista/upload` — in uso: FE
+- **attivo** — `DELETE /api/f24-riconciliazione/commercialista/{f24_id}` — in uso: FE
+- **attivo** — `GET /api/f24-riconciliazione/commercialista/{f24_id}` — in uso: FE
+- **attivo** — `PUT /api/f24-riconciliazione/commercialista/{f24_id}` — in uso: FE
+- **attivo** — `PUT /api/f24-riconciliazione/commercialista/{f24_id}/pagato` — in uso: FE
+- **attivo** — `GET /api/f24-riconciliazione/commercialista/{f24_id}/pdf` — in uso: FE
 - **quarantena: verificare** — `GET /api/f24-riconciliazione/dashboard` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **quarantena: verificare** — `POST /api/f24-riconciliazione/fix-campo-anno` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **quarantena: verificare** — `GET /api/f24-riconciliazione/quietanze` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare

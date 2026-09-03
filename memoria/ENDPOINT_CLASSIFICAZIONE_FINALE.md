@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1149 · tenere: 747 · verificare: 372 · admin-only (migrazione/manutenzione): 30
+**Totale endpoint:** 1151 · tenere: 756 · verificare: 365 · admin-only (migrazione/manutenzione): 30
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -553,13 +553,13 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/f24-riconciliazione/alerts` | f24.f24_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/f24-riconciliazione/alerts/{alert_id}/conferma-elimina` | f24.f24_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/f24-riconciliazione/alerts/{alert_id}/ignora` | f24.f24_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/f24-riconciliazione/commercialista` | f24.f24_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/f24-riconciliazione/commercialista/upload` | f24.f24_riconciliazione | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `DELETE /api/f24-riconciliazione/commercialista/{f24_id}` | f24.f24_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/f24-riconciliazione/commercialista/{f24_id}` | f24.f24_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `PUT /api/f24-riconciliazione/commercialista/{f24_id}` | f24.f24_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `PUT /api/f24-riconciliazione/commercialista/{f24_id}/pagato` | f24.f24_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/f24-riconciliazione/commercialista/{f24_id}/pdf` | f24.f24_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/f24-riconciliazione/commercialista` | f24.f24_riconciliazione | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/f24-riconciliazione/commercialista/upload` | f24.f24_riconciliazione | sì | — | — | — | sì | tenere | in uso: FE |
+| `DELETE /api/f24-riconciliazione/commercialista/{f24_id}` | f24.f24_riconciliazione | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/f24-riconciliazione/commercialista/{f24_id}` | f24.f24_riconciliazione | sì | — | — | — | — | tenere | in uso: FE |
+| `PUT /api/f24-riconciliazione/commercialista/{f24_id}` | f24.f24_riconciliazione | sì | — | — | — | — | tenere | in uso: FE |
+| `PUT /api/f24-riconciliazione/commercialista/{f24_id}/pagato` | f24.f24_riconciliazione | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/f24-riconciliazione/commercialista/{f24_id}/pdf` | f24.f24_riconciliazione | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/f24-riconciliazione/dashboard` | f24.f24_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/f24-riconciliazione/estratti-conto` | bank.riconciliazione_f24_banca | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/f24-riconciliazione/fix-campo-anno` | f24.f24_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
@@ -574,6 +574,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/f24-riconciliazione/upload-estratto-bpm` | bank.riconciliazione_f24_banca | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/f24-riconciliazione/verifica-codice/{codice_tributo}` | f24.f24_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/f24/alerts/scadenze` | f24.f24_main | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/f24/avviso-bonario/controllo` | f24.avviso_bonario | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/f24/codici/all` | f24.f24_main | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/f24/codici/{codice}` | f24.f24_main | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/f24/dashboard/summary` | f24.f24_main | sì | — | — | — | — | tenere | in uso: FE |
@@ -590,6 +591,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `DELETE /api/f24/quietanze/{f24_id}` | f24.f24_main | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/f24/quietanze/{f24_id}` | f24.f24_main | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/f24/riconcilia` | f24.f24_main | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
+| `POST /api/f24/riconcilia-addebiti` | f24.avviso_bonario | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/f24/upload` | f24.f24_main | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/f24/upload-multiple` | f24.f24_main | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/f24/upload-pdf` | f24.f24_main | sì | — | — | — | sì | tenere | in uso: FE |

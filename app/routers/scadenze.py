@@ -326,9 +326,14 @@ async def get_scadenze_iva_mensile(anno: int) -> Dict[str, Any]:
             "importo_versamento_cents": snapshot.get("debito_periodo_cents"),
             "a_credito": snapshot.get("credito_periodo"),
             "a_credito_cents": snapshot.get("credito_periodo_cents"),
-            "stato": snapshot["stato_calcolo"] if snapshot["stato_calcolo"] == "NON_CALCOLATO" else (
+            "stato": snapshot["stato_calcolo"] if snapshot["stato_calcolo"] in ("NON_CALCOLATO", "DATI_MANCANTI") else (
                 "da_versare" if (snapshot.get("saldo_cents") or 0) > 0 else "a_credito"
             ),
+            "attendibile": snapshot.get("attendibile"),
+            "motivi": snapshot.get("motivi") or [],
+            "giorni_senza_corrispettivo": snapshot.get("giorni_senza_corrispettivo") or [],
+            "giorni_con_corrispettivo": snapshot.get("giorni_con_corrispettivo"),
+            "giorni_mese": snapshot.get("giorni_mese"),
             "giorni_mancanti": _giorni_mancanti(snapshot["scadenza_legale"]),
             "fonte": "stima" if snapshot["fonte"] == "calcolo_canonico" else snapshot["fonte"],
             "fonte_calcolo": snapshot["fonte_calcolo"],

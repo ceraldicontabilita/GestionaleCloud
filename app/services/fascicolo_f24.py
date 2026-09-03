@@ -25,6 +25,7 @@ from app.engines import tributi_engine as te
 
 COLL_F24 = "f24_unificato"
 COLL_QUIETANZE = "quietanze_f24"
+COLL_FISCAL_DOCUMENTS = "fiscal_documents"
 COLL_CEDOLINI = "cedolini"
 COLL_FASCICOLI = "fascicoli_f24"
 
@@ -109,6 +110,21 @@ async def costruisci_fascicolo(
         {"_id": 0},
     ).to_list(200)
     quietanza_ids = [q.get("id") for q in quietanze if q.get("id")]
+    # Quietanze reali dell'indice fiscale (`fiscal_documents`, categoria
+    # quietanza_f24) agganciate ai modelli del fascicolo o referenziate da
+    # `f24.quietanza_id`: registro unico, non solo la collezione storica.
+    f24_ids_periodo = {str(f.get("id")) for f in f24s if f.get("id")}
+    quietanza_ids_f24 = {str(f.get("quietanza_id")) for f in f24s if f.get("quietanza_id")}
+    fiscal = await db[COLL_FISCAL_DOCUMENTS].find(
+        {"category": "quietanza_f24"}, {"_id": 0, "pdf_data": 0},
+    ).to_list(5000)
+    for q in fiscal:
+        qid = q.get("id")
+        if not qid or qid in quietanza_ids:
+            continue
+        collegati = {str(v) for v in ([q.get("f24_id")] + list(q.get("f24_associati") or [])) if v}
+        if str(qid) in quietanza_ids_f24 or collegati & f24_ids_periodo:
+            quietanza_ids.append(qid)
 
     # --- Cedolini del periodo (azienda) associabili (§15) ---
     cedolini = await db[COLL_CEDOLINI].find(

@@ -519,7 +519,7 @@ def reconcile_lipe_management(extraction: dict[str, Any],
         period = str(module.get("reference_period") or "")
         snapshot = snapshots.get(period) or {}
         source_status = str(snapshot.get("stato_calcolo") or "")
-        source_reliable = source_status not in {"", "NON_CALCOLATO", "NON_VERIFICABILE"}
+        source_reliable = source_status not in {"", "NON_CALCOLATO", "NON_VERIFICABILE", "DATI_MANCANTI"}
         pairs = (
             ("VP4", module.get("values", {}).get("vp4_cents"), snapshot.get("iva_vendite_cents")),
             ("VP5", module.get("values", {}).get("vp5_cents"), snapshot.get("iva_acquisti_competenza_cents")),

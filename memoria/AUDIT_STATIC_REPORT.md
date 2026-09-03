@@ -5,7 +5,7 @@ Generato da `scripts/audit_static.py`.
 
 ## Sintesi
 
-- P1: 374
+- P1: 376
 - P2: 19
 - P3: 67
 - INFO: 16
@@ -458,19 +458,19 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/accounting/contabilita_gestionale.py:560`
+- File: `app/routers/accounting/contabilita_gestionale.py:600`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/accounting/contabilita_gestionale.py:820`
+- File: `app/routers/accounting/contabilita_gestionale.py:860`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/accounting/contabilita_gestionale.py:1196`
+- File: `app/routers/accounting/contabilita_gestionale.py:1236`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -542,55 +542,61 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/admin.py:60`
+- File: `app/routers/admin.py:61`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/admin.py:323`
+- File: `app/routers/admin.py:324`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/admin.py:346`
+- File: `app/routers/admin.py:347`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/admin.py:385`
+- File: `app/routers/admin.py:386`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
-
-### P1 - collection
-
-- File: `app/routers/admin.py:399`
-
-- Dettaglio: collection fornitori deprecata: usare costante che punta a fornitori
 
 ### P1 - collection
 
 - File: `app/routers/admin.py:400`
 
+- Dettaglio: collection fornitori deprecata: usare costante che punta a fornitori
+
+### P1 - collection
+
+- File: `app/routers/admin.py:401`
+
 - Dettaglio: collection dipendenti deprecata: usare dipendenti
 
 ### P1 - collection
 
-- File: `app/routers/admin.py:461`
+- File: `app/routers/admin.py:462`
 
 - Dettaglio: collection fornitori deprecata: usare costante che punta a fornitori
 
 ### P1 - collection
 
-- File: `app/routers/admin.py:463`
+- File: `app/routers/admin.py:464`
 
 - Dettaglio: collection dipendenti deprecata: usare dipendenti
 
 ### P1 - body
 
-- File: `app/routers/admin.py:643`
+- File: `app/routers/admin.py:594`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/routers/admin.py:680`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -860,19 +866,13 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/bank/estratto_conto.py:2023`
+- File: `app/routers/bank/estratto_conto.py:2264`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/bank/estratto_conto.py:2245`
-
-- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
-
-### P1 - body
-
-- File: `app/routers/bank/estratto_conto.py:2285`
+- File: `app/routers/bank/estratto_conto.py:2304`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -1400,6 +1400,18 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
+- File: `app/routers/f24/avviso_bonario.py:42`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/routers/f24/avviso_bonario.py:58`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
 - File: `app/routers/f24/email_f24.py:33`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
@@ -1496,19 +1508,19 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/f24/f24_riconciliazione.py:1033`
+- File: `app/routers/f24/f24_riconciliazione.py:953`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/f24/f24_riconciliazione.py:1135`
+- File: `app/routers/f24/f24_riconciliazione.py:1055`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/f24/f24_riconciliazione.py:1427`
+- File: `app/routers/f24/f24_riconciliazione.py:1347`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -1826,37 +1838,37 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/iva.py:937`
+- File: `app/routers/iva.py:942`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/iva.py:949`
+- File: `app/routers/iva.py:954`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/iva.py:961`
+- File: `app/routers/iva.py:966`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/iva.py:973`
+- File: `app/routers/iva.py:978`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/iva.py:985`
+- File: `app/routers/iva.py:990`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/iva.py:996`
+- File: `app/routers/iva.py:1001`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -2042,7 +2054,7 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/scadenze.py:413`
+- File: `app/routers/scadenze.py:418`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -2804,7 +2816,7 @@ Generato da `scripts/audit_static.py`.
 
 ### P3 - fetch-race
 
-- File: `frontend/src/pages/RiconciliazioneUnificata.jsx:327`
+- File: `frontend/src/pages/RiconciliazioneUnificata.jsx:328`
 
 - Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
 
