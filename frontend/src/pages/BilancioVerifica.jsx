@@ -1,9 +1,13 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { formatEuro, formatDateIT, COLORS, BORDER_RADIUS, FONT } from '../lib/utils';
 import { PageLayout, PageLoading } from '../components/PageLayout';
 import { Button, Badge, StatCard, Input, Select, TableWrap, Table, Th, Td } from '../components/ds';
+import LinkContropartita, {
+  ROTTE_CONTROPARTITA, PALETTE_CONTROPARTITA, rottaDocumentoOrigine,
+} from '../components/LinkContropartita';
 import {
   FileText,
   Download,
@@ -44,9 +48,44 @@ export default function BilancioVerifica() {
   const [expandedConti, setExpandedConti] = useState(new Set());
   const [showSaldi, setShowSaldi] = useState(true); // mostra saldo dare/avere separati
 
+  // Deep-link dal Bilancio (audit 03/09/2026 §6, PR 16):
+  // /contabilita/verifica?conto=<codice operativo o CEE> → il conto viene
+  // cercato, il suo gruppo aperto, la riga evidenziata e portata a video.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const contoRichiesto = searchParams.get('conto') || '';
+  const [contoEvidenziato, setContoEvidenziato] = useState('');
+  const rigaEvidenziataRef = useRef(null);
+
   useEffect(() => {
     loadData();
   }, [anno, dettaglio]);
+
+  useEffect(() => {
+    if (!contoRichiesto || loading || !data?.conti) return;
+    const trovato = data.conti.find(
+      c => c.codice === contoRichiesto || c.codice_ufficiale === contoRichiesto
+    );
+    if (!trovato) {
+      setContoEvidenziato('');
+      return;
+    }
+    setSearch('');
+    setFiltroTipo('tutti');
+    setExpandedConti(prev => new Set([...prev, trovato.codice.substring(0, 2)]));
+    setContoEvidenziato(trovato.codice);
+    const t = setTimeout(() => {
+      rigaEvidenziataRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+    }, 100);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contoRichiesto, data, loading]);
+
+  const chiudiEvidenza = () => {
+    setContoEvidenziato('');
+    const p = new URLSearchParams(searchParams);
+    p.delete('conto');
+    setSearchParams(p, { replace: true });
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -445,6 +484,9 @@ export default function BilancioVerifica() {
                   <Th align="center" style={{ width: 50 }}>
                     Mov.
                   </Th>
+                  <Th align="center" style={{ width: 120 }}>
+                    Giornale
+                  </Th>
                 </tr>
               </thead>
               <tbody>
@@ -499,6 +541,7 @@ export default function BilancioVerifica() {
                         <Td align="center" style={{ color: COLORS.textMuted, fontSize: 12 }}>
                           {gruppo.conti.reduce((s, c) => s + c.n_movimenti, 0)}
                         </Td>
+                        <Td></Td>
                       </tr>
 
                       {/* Righe conti (se espanso) */}
@@ -508,12 +551,18 @@ export default function BilancioVerifica() {
                             variant: 'neutral',
                             label: conto.tipo,
                           };
+                          const evidenziato = contoEvidenziato === conto.codice;
                           return (
                             <React.Fragment key={conto.codice}>
                               <tr
+                                ref={evidenziato ? rigaEvidenziataRef : null}
+                                data-testid={`conto-${conto.codice}`}
                                 style={{
-                                  background: idx % 2 === 0 ? COLORS.card : COLORS.gray[50],
+                                  background: evidenziato
+                                    ? PALETTE_CONTROPARTITA.evidenza
+                                    : idx % 2 === 0 ? COLORS.card : COLORS.gray[50],
                                   borderBottom: `1px solid ${COLORS.gray[100]}`,
+                                  outline: evidenziato ? `2px solid ${PALETTE_CONTROPARTITA.salvia}` : 'none',
                                 }}
                               >
                                 <Td
@@ -526,7 +575,15 @@ export default function BilancioVerifica() {
                                 >
                                   {conto.codice}
                                 </Td>
-                                <Td style={{ color: COLORS.text }}>{conto.nome}</Td>
+                                <Td style={{ color: COLORS.text }}>
+                                  {conto.nome}
+                                  {conto.codice_ufficiale && (
+                                    <div style={{ fontSize: 11, color: COLORS.textMuted }}>
+                                      CEE {conto.codice_ufficiale}
+                                      {conto.nome_ufficiale ? ` — ${conto.nome_ufficiale}` : ''}
+                                    </div>
+                                  )}
+                                </Td>
                                 <Td align="center">
                                   <Badge variant={tc.variant}>{tc.label}</Badge>
                                 </Td>
@@ -579,12 +636,23 @@ export default function BilancioVerifica() {
                                 <Td align="center" style={{ fontSize: 12, color: COLORS.textMuted }}>
                                   {conto.n_movimenti}
                                 </Td>
+                                <Td align="center">
+                                  {/* Conto → libro giornale (solo le scritture di questo conto) */}
+                                  <LinkContropartita
+                                    to={ROTTE_CONTROPARTITA.giornaleConto(conto.codice, anno)}
+                                    compatto
+                                    testId={`link-giornale-${conto.codice}`}
+                                    title={`Libro giornale ${anno} · conto ${conto.codice} ${conto.nome} · ${conto.n_movimenti} scritture · dare ${formatEuro(conto.dare)} / avere ${formatEuro(conto.avere)}`}
+                                  >
+                                    Giornale
+                                  </LinkContropartita>
+                                </Td>
                               </tr>
                               {/* Dettaglio movimenti */}
                               {dettaglio && conto.movimenti?.length > 0 && (
                                 <tr>
                                   <td
-                                    colSpan={showSaldi ? 8 : 6}
+                                    colSpan={showSaldi ? 9 : 7}
                                     style={{ padding: '0 0 0 48px', background: COLORS.bgAlt }}
                                   >
                                     <Table style={{ fontSize: 12 }}>
@@ -598,6 +666,7 @@ export default function BilancioVerifica() {
                                           <Th align="right" style={{ padding: '4px 8px' }}>
                                             Avere
                                           </Th>
+                                          <Th style={{ padding: '4px 8px' }}>Vai a</Th>
                                         </tr>
                                       </thead>
                                       <tbody>
@@ -608,6 +677,9 @@ export default function BilancioVerifica() {
                                             </Td>
                                             <Td style={{ padding: '3px 8px', color: COLORS.gray[700] }}>
                                               {m.descrizione}
+                                              {m.numero_registrazione != null && (
+                                                <span style={{ color: COLORS.textMuted }}> · prot. n. {m.numero_registrazione}</span>
+                                              )}
                                             </Td>
                                             <Td
                                               align="right"
@@ -622,6 +694,34 @@ export default function BilancioVerifica() {
                                               style={{ padding: '3px 8px', color: COLORS.danger }}
                                             >
                                               {m.avere > 0 ? formatEuro(m.avere) : ''}
+                                            </Td>
+                                            <Td style={{ padding: '3px 8px' }}>
+                                              <span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap' }}>
+                                                {m.scrittura_id && (
+                                                  <LinkContropartita
+                                                    to={ROTTE_CONTROPARTITA.giornaleScrittura(m.scrittura_id)}
+                                                    compatto
+                                                    testId={`link-scrittura-${m.scrittura_id}`}
+                                                    title={`Scrittura ${m.scrittura_id} · prot. n. ${m.numero_registrazione ?? '—'} · ${formatDateIT(m.data)}`}
+                                                  >
+                                                    Scrittura
+                                                  </LinkContropartita>
+                                                )}
+                                                {(() => {
+                                                  const doc = rottaDocumentoOrigine(m.fonte_documento);
+                                                  return doc ? (
+                                                    <LinkContropartita
+                                                      to={doc.to}
+                                                      esterno={doc.esterno}
+                                                      compatto
+                                                      testId={`link-documento-${m.scrittura_id || mi}`}
+                                                      title={`${m.fonte_documento.tipo} ${m.fonte_documento.numero || m.fonte_documento.id} · origine della scrittura`}
+                                                    >
+                                                      {doc.etichetta}
+                                                    </LinkContropartita>
+                                                  ) : null;
+                                                })()}
+                                              </span>
                                             </Td>
                                           </tr>
                                         ))}

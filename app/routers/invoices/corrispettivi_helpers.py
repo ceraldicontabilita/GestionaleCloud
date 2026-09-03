@@ -206,6 +206,21 @@ async def _create_prima_nota_movements(db, corr_doc: Dict[str, Any]) -> Dict[str
     return await registra_corrispettivo(db, corr_doc)
 
 
+async def _registra_in_partita_doppia(db, corr_doc: Dict[str, Any]) -> Dict[str, Any]:
+    """Libro giornale in partita doppia (audit 03/09/2026 §2, PR 8): dopo la
+    Prima Nota, il corrispettivo entra da solo nel registro UNICO
+    `movimenti_contabili` tramite `registrazione_contabile` (idempotente per
+    documento; i provvisori senza XML vengono rimandati all'arrivo dell'XML).
+    Best-effort: un errore contabile non blocca mai l'import."""
+    try:
+        from app.services.registrazione_contabile import registra_documento_import
+        return await registra_documento_import(db, "corrispettivo", corr_doc)
+    except Exception:
+        logger.exception("Registrazione in partita doppia fallita per il corrispettivo %s",
+                         corr_doc.get("id"))
+        return {"stato": "errore"}
+
+
 
 
 async def ingest_corrispettivo_parsed(
@@ -288,6 +303,9 @@ async def ingest_corrispettivo_parsed(
                         "prima_nota_banca_id": pn.get("prima_nota_banca_id"),
                     }},
                 )
+                # Stessa idempotenza per il libro giornale: un vecchio import
+                # interrotto puo' aver lasciato il corrispettivo senza scrittura.
+                await _registra_in_partita_doppia(db, existing)
             return {
                 "action": "duplicate",
                 "corrispettivo_id": existing.get("id"),
@@ -324,6 +342,7 @@ async def ingest_corrispettivo_parsed(
         )
 
         await _check_coerenza_pos(db, corr_doc)
+        await _registra_in_partita_doppia(db, corr_doc)
 
         return {
             "action": "updated",
@@ -399,6 +418,7 @@ async def ingest_corrispettivo_parsed(
                 f"cassa={pn.get('prima_nota_cassa_id')} banca={pn.get('prima_nota_banca_id')}")
 
     await _check_coerenza_pos(db, corr_doc)
+    await _registra_in_partita_doppia(db, corr_doc)
 
     return {
         "action": "created",

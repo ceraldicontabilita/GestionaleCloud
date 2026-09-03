@@ -1241,12 +1241,12 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
     except Exception:
         logger.exception(f"Storia fattura: hook import fallito per {invoice_key}")
 
-    # LIBRO GIORNALE — hook DISATTIVATO (A7, scelta utente 2026-07-13): il
-    # registro parallelo scritture_contabili non riceve più scritture; il
-    # libro giornale/mastro legge il registro UNICO movimenti_contabili, che
-    # la fattura raggiunge alla registrazione contabile (motore §6.1,
-    # "Registra fatture" dal Piano dei Conti). scritture_contabili resta come
-    # archivio storico. Vedi LOGICA_LIBRO_MASTRO.md.
+    # LIBRO GIORNALE: il registro UNICO movimenti_contabili (motore §6.1) si
+    # alimenta DOPO l'event bus qui sotto — vedi `_registra_in_partita_doppia`
+    # (audit 03/09/2026 §2, PR 8) — perche' il handler di classificazione
+    # (app/handlers/learning.py) scrive prima `iva_detraibile` sulla fattura.
+    # Il vecchio registro parallelo scritture_contabili resta solo archivio
+    # storico (A7, scelta utente 2026-07-13). Vedi LOGICA_LIBRO_MASTRO.md.
 
     # --- EVENT BUS: propaga evento fattura creata (upload manuale) ---
     # Fuori dalla transazione per design: è già gestita come fail-safe/
@@ -1280,6 +1280,8 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
         }, db, source_module="fatture_upload_manuale")
     except Exception:
         logger.exception("Errore propagazione evento fattura.created (upload manuale)")
+
+    await _registra_in_partita_doppia(db, invoice.get("id"))
 
     try:
         await _riscontra_anticipo_pendente(db, invoice)
@@ -2020,9 +2022,35 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
             invoice.get("invoice_number"),
         )
 
+    # 8. Libro giornale (partita doppia) — audit 03/09/2026 §2, PR 8.
+    await _registra_in_partita_doppia(db, invoice["id"])
+
     return {"status": "imported", "filename": filename,
             "invoice_number": parsed.get("invoice_number"),
             "supplier": parsed.get("supplier_name"), "id": invoice["id"]}
+
+
+async def _registra_in_partita_doppia(db, fattura_id: Optional[str]) -> Dict[str, Any]:
+    """Registrazione automatica nel libro giornale (motore unico
+    `registrazione_contabile`, idempotente per documento).
+
+    Rilegge la fattura dal database perche' i handler dell'event bus
+    (classificazione centro di costo → `iva_detraibile`) l'hanno appena
+    arricchita: senza IVA detraibile classificata il motore, per regola,
+    non crea credito IVA e lascia la fattura `da_verificare`. Best-effort:
+    nessun errore contabile blocca l'import.
+    """
+    if not fattura_id:
+        return {"stato": "saltato", "motivo": "fattura senza id"}
+    try:
+        from app.services.registrazione_contabile import registra_documento_import
+        fattura_db = await db[Collections.INVOICES].find_one({"id": fattura_id}, {"_id": 0})
+        if not fattura_db:
+            return {"stato": "saltato", "motivo": "fattura non trovata"}
+        return await registra_documento_import(db, "fattura", fattura_db)
+    except Exception:
+        logger.exception("Registrazione in partita doppia fallita per la fattura %s", fattura_id)
+        return {"stato": "errore"}
 
 
 async def process_fattura_estera_pdf(db, pdf_base64: str, filename: str,

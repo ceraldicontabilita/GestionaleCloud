@@ -9,6 +9,9 @@ import AssociaMovimentoBanca from '../components/AssociaMovimentoBanca';
 import AssociaAssegnoFattura from '../components/AssociaAssegnoFattura';
 import DocumentViewerModal from '../components/DocumentViewerModal';
 import DocumentImportLink from '../components/DocumentImportLink';
+import LinkContropartita, {
+  ROTTE_CONTROPARTITA, movimentoEstrattoContoDi,
+} from '../components/LinkContropartita';
 import FinanziamentoSoci from './FinanziamentoSoci';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import {
@@ -109,6 +112,26 @@ export function nomeFornitoreMovimento(movimento = {}) {
   const descrizione = String(movimento.descrizione || '');
   const separatore = descrizione.indexOf(' - ');
   return separatore >= 0 ? descrizione.slice(separatore + 3).trim() : '';
+}
+
+/**
+ * Prima Nota Banca → movimento dell'estratto conto collegato (audit
+ * 03/09/2026 §6, PR 16: prima `estratto_conto_id` serviva solo al badge e
+ * alla ricerca, nessun link). Tooltip con tipo, id, data e importo.
+ */
+export function LinkEstrattoConto({ movimento = {}, compatto = true }) {
+  const idMovimento = movimentoEstrattoContoDi(movimento);
+  if (!idMovimento) return null;
+  return (
+    <LinkContropartita
+      to={ROTTE_CONTROPARTITA.movimentoBanca(idMovimento)}
+      compatto={compatto}
+      testId={`link-estratto-conto-${movimento.id || idMovimento}`}
+      title={`Movimento estratto conto ${idMovimento} · ${formatDateIT(movimento.data_riconciliazione || movimento.data || '')} · ${eur(Math.abs(movimento.importo || 0))} · da Prima Nota Banca`}
+    >
+      <Landmark size={13} aria-hidden="true" /> Estratto conto
+    </LinkContropartita>
+  );
 }
 
 export function dataDocumentoMovimento(movimento = {}) {
@@ -1030,6 +1053,7 @@ function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRip
                       <span style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
                         {badgeDocumento(m)}
                         {badgeRiconciliazione(m)}
+                        {tipo === 'banca' && <LinkEstrattoConto movimento={m} />}
                         {bottoniRiga(m)}
                       </span>
                     </div>
@@ -1119,6 +1143,7 @@ function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRip
                     <span style={{ display: 'inline-flex', gap: 5, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
                       {badgeDocumento(m) || '—'}
                       {badgeRiconciliazione(m)}
+                      {tipo === 'banca' && <LinkEstrattoConto movimento={m} />}
                     </span>
                   </td>
                   {tipo === 'cassa' && (

@@ -19,6 +19,7 @@ vi.mock('../contexts/AnnoContext', () => ({
 vi.mock('react-router-dom', () => ({
   useNavigate: () => vi.fn(),
   useLocation: () => ({ pathname: '/contabilita/bilancio' }),
+  Link: ({ to, children, ...props }) => <a href={to} {...props}>{children}</a>,
 }));
 vi.mock('sonner', () => ({
   toast: { warning: vi.fn(), error: vi.fn() },

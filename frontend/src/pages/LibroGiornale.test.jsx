@@ -1,6 +1,7 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
 
 import api from '../api';
 import LibroGiornale from './LibroGiornale';
@@ -67,7 +68,7 @@ describe('LibroGiornale', () => {
   it('mostra il registro anche se il controllo accessorio dei 60 giorni fallisce', async () => {
     mockResponses({ controlloFallisce: true });
 
-    render(<LibroGiornale />);
+    render(<MemoryRouter><LibroGiornale /></MemoryRouter>);
 
     expect(await screen.findByText('1 scritture')).toBeInTheDocument();
     expect(screen.getByText('Registrazione test')).toBeInTheDocument();
@@ -76,7 +77,7 @@ describe('LibroGiornale', () => {
   it('mostra un errore esplicito senza dati obsoleti se Giornale o Mastro falliscono', async () => {
     api.get.mockRejectedValue(new Error('servizio non disponibile'));
 
-    render(<LibroGiornale />);
+    render(<MemoryRouter><LibroGiornale /></MemoryRouter>);
 
     expect(await screen.findByText(/Impossibile caricare Libro Giornale e Libro Mastro/)).toBeInTheDocument();
     expect(screen.queryByText('Registrazione test')).not.toBeInTheDocument();
@@ -104,14 +105,14 @@ describe('LibroGiornale', () => {
       return Promise.resolve({ data: { conforme: true } });
     });
 
-    render(<LibroGiornale />);
+    render(<MemoryRouter><LibroGiornale /></MemoryRouter>);
 
     expect(await screen.findByText(/mostrate 1 scritture su 9/)).toBeInTheDocument();
     expect(screen.getByTestId('alert-qualita-giornale')).toHaveTextContent('1 scritture sbilanciate');
   });
 
   it('non espone il reimport dalla pagina del registro definitivo', async () => {
-    render(<LibroGiornale />);
+    render(<MemoryRouter><LibroGiornale /></MemoryRouter>);
     await screen.findByText('1 scritture');
     expect(screen.queryByTestId('import-giornale')).not.toBeInTheDocument();
     expect(api.post).not.toHaveBeenCalled();

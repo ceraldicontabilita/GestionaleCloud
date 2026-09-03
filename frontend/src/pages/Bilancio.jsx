@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import LinkContropartita, { ROTTE_CONTROPARTITA } from '../components/LinkContropartita';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { formatEuro, COLORS, BORDER_RADIUS, FONT } from '../lib/utils';
@@ -7,6 +8,18 @@ import { PageLayout, PageSection, PageGrid, PageLoading, PageError } from '../co
 import { Button, Select, TableWrap, Table, Th, Td, Input } from '../components/ds';
 import { FileText, Download, TrendingUp, TrendingDown, Scale, Trash2, Plus } from 'lucide-react';
 import { toast } from 'sonner';
+
+// Voce del bilancio → conto operativo del registro in partita doppia
+// (motore unico app/services/registrazione_contabile.py, conti fissi).
+export const CONTI_VERIFICA = {
+  cassa: '01.01.01',
+  banca: '01.01.02',
+  crediti_clienti: '01.02.01',
+  debiti_fornitori: '02.01.01',
+  fondo_tfr: '02.04.01',
+  ricavi_corrispettivi: '04.01.02',
+  acquisti_merci: '05.01.01',
+};
 
 export default function Bilancio() {
   const { anno } = useAnnoGlobale();
@@ -142,6 +155,29 @@ export default function Bilancio() {
     }
   };
 
+  // Audit 03/09/2026 §6 (PR 16): da ogni voce del bilancio si arriva al
+  // conto del bilancio di verifica (registro in partita doppia) e da lì al
+  // libro giornale e al documento. I codici sono i conti OPERATIVI fissi del
+  // motore unico `registrazione_contabile` (01.01.01 Cassa, 01.01.02 Banca,
+  // 01.02.01 Crediti v/clienti, 02.01.01 Debiti v/fornitori, 02.04.01 TFR,
+  // 04.01.02 Ricavi vendite bar, 05.01.01 Acquisto merci), convertiti in CEE
+  // dal backend (`codice_ufficiale`).
+  const LinkVerifica = ({ conto }) => {
+    const codice = CONTI_VERIFICA[conto];
+    if (!codice) return null;
+    return (
+      <LinkContropartita
+        to={ROTTE_CONTROPARTITA.verificaConto(codice)}
+        compatto
+        testId={`link-verifica-${conto}`}
+        title={`Bilancio di verifica ${anno} · conto ${codice} · scritture in partita doppia che compongono questa voce`}
+        style={{ marginLeft: 8 }}
+      >
+        Verifica
+      </LinkContropartita>
+    );
+  };
+
   // §6.2: riclassificazione sui CODICI UFFICIALI del piano dei conti (CEE del bilancio).
   const renderVociUfficiali = (vociUfficiali, titolo) => {
     if (!vociUfficiali) return null;
@@ -212,13 +248,13 @@ export default function Bilancio() {
               <Table>
                 <tbody>
                   <tr>
-                    <Td style={{ color: COLORS.gray[700] }}>Cassa</Td>
+                    <Td style={{ color: COLORS.gray[700] }}>Cassa <LinkVerifica conto="cassa" /></Td>
                     <Td align="right" mono style={{ fontWeight: 500 }}>
                       {formatEuro(attivo.disponibilita_liquide.cassa)}
                     </Td>
                   </tr>
                   <tr>
-                    <Td style={{ color: COLORS.gray[700] }}>Banca</Td>
+                    <Td style={{ color: COLORS.gray[700] }}>Banca <LinkVerifica conto="banca" /></Td>
                     <Td align="right" mono style={{ fontWeight: 500 }}>
                       {formatEuro(attivo.disponibilita_liquide.banca)}
                     </Td>
@@ -239,7 +275,7 @@ export default function Bilancio() {
               <Table>
                 <tbody>
                   <tr>
-                    <Td style={{ color: COLORS.gray[700] }}>Crediti vs Clienti</Td>
+                    <Td style={{ color: COLORS.gray[700] }}>Crediti vs Clienti <LinkVerifica conto="crediti_clienti" /></Td>
                     <Td align="right" mono style={{ fontWeight: 500 }}>
                       {formatEuro(attivo.crediti.crediti_vs_clienti)}
                     </Td>
@@ -332,14 +368,14 @@ export default function Bilancio() {
               <Table>
                 <tbody>
                   <tr>
-                    <Td style={{ color: COLORS.gray[700] }}>Debiti vs Fornitori</Td>
+                    <Td style={{ color: COLORS.gray[700] }}>Debiti vs Fornitori <LinkVerifica conto="debiti_fornitori" /></Td>
                     <Td align="right" mono style={{ fontWeight: 500 }}>
                       {formatEuro(passivo.debiti.debiti_vs_fornitori)}
                     </Td>
                   </tr>
                   {passivo.fondo_tfr > 0 && (
                     <tr>
-                      <Td style={{ color: COLORS.gray[700] }}>Fondo TFR</Td>
+                      <Td style={{ color: COLORS.gray[700] }}>Fondo TFR <LinkVerifica conto="fondo_tfr" /></Td>
                       <Td align="right" mono style={{ fontWeight: 500 }}>
                         {formatEuro(passivo.fondo_tfr)}
                       </Td>
@@ -576,7 +612,7 @@ export default function Bilancio() {
               <tbody>
                 <tr>
                   <Td style={{ color: COLORS.gray[700], fontSize: 15 }}>
-                    Corrispettivi (Imponibile)
+                    Corrispettivi (Imponibile) <LinkVerifica conto="ricavi_corrispettivi" />
                   </Td>
                   <Td align="right" mono style={{ fontWeight: 500, fontSize: 16 }}>
                     {formatEuro(ricavi.corrispettivi)}
@@ -629,7 +665,7 @@ export default function Bilancio() {
             <Table>
               <tbody>
                 <tr>
-                  <Td style={{ color: COLORS.gray[700], fontSize: 15 }}>Acquisti (Imponibile)</Td>
+                  <Td style={{ color: COLORS.gray[700], fontSize: 15 }}>Acquisti (Imponibile) <LinkVerifica conto="acquisti_merci" /></Td>
                   <Td align="right" mono style={{ fontWeight: 500, fontSize: 16 }}>
                     {formatEuro(costi.acquisti)}
                   </Td>

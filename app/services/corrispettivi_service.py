@@ -271,6 +271,15 @@ class CorrispettiviService:
 
         logger.info(f"Corrispettivo created: {corr_id}")
 
+        # Libro giornale in partita doppia (audit 03/09/2026 §2, PR 8): stesso
+        # aggancio del caricamento diretto (corrispettivi_helpers), motore
+        # unico registrazione_contabile, idempotente, mai bloccante.
+        try:
+            from app.routers.invoices.corrispettivi_helpers import _registra_in_partita_doppia
+            await _registra_in_partita_doppia(self.db, corr_doc)
+        except Exception as _pd:  # noqa: BLE001
+            logger.warning(f"[CorrispettiviService] partita doppia non registrata: {_pd}")
+
         # ── EVENTO: pubblica sul bus unico per prima nota e check POS ──
         try:
             from app.services.event_bus import propagate_event, EventTypes

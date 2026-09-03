@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1151 · tenere: 756 · verificare: 365 · admin-only (migrazione/manutenzione): 30
+**Totale endpoint:** 1152 · tenere: 757 · verificare: 365 · admin-only (migrazione/manutenzione): 30
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -521,7 +521,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/f24` | f24.f24_main | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/f24` | f24.f24_main | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/f24-analisi/doppi-pagamenti` | f24_analisi | — | — | sì | — | — | tenere | in uso: chat |
-| `GET /api/f24-analisi/tabella` | f24_analisi | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/f24-analisi/tabella` | f24_analisi | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/f24-analisi/{f24_id}` | f24_analisi | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/f24-analisi/{f24_id}/associazione` | f24_analisi | — | — | sì | — | sì | tenere | in uso: chat |
 | `POST /api/f24-email-settings/aggiungi-mittente` | f24_email_settings | sì | — | — | — | — | tenere | in uso: FE |
@@ -564,7 +564,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/f24-riconciliazione/estratti-conto` | bank.riconciliazione_f24_banca | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/f24-riconciliazione/fix-campo-anno` | f24.f24_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/f24-riconciliazione/movimenti-f24-banca` | bank.riconciliazione_f24_banca | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/f24-riconciliazione/quietanze` | f24.f24_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/f24-riconciliazione/quietanze` | f24.f24_riconciliazione | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/f24-riconciliazione/quietanze/upload-multiplo` | f24.f24_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/f24-riconciliazione/quietanze/{quietanza_id}` | f24.f24_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/f24-riconciliazione/riconcilia-f24` | bank.riconciliazione_f24_banca | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
@@ -877,6 +877,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/piano-conti/movimenti` | accounting.piano_conti | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/piano-conti/registra-corrispettivi` | accounting.piano_conti | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/piano-conti/registra-fattura` | accounting.piano_conti | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/piano-conti/registra-pregresso` | accounting.piano_conti | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/piano-conti/registra-tutte-fatture` | accounting.piano_conti | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/piano-conti/regole` | accounting.piano_conti | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/piano-conti/regole` | accounting.piano_conti | sì | — | — | — | — | tenere | in uso: FE |

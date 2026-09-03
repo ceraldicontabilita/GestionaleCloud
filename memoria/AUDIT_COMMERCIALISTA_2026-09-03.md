@@ -240,6 +240,23 @@ piano dei conti, saldo 0 ovunque. Nelle scritture di Prima Nota il campo
   `memoria/PIANO_CONTI_UFFICIALE_CERALDI.md` con i conti POS. Test: nessuna
   riga scritta da `scritture_contabili.scrivi_movimento` senza `conto_contabile`
   valido in `piano_conti_ufficiale`.
+- **stato 03/09/2026: fatta PR 8** — `registrazione_contabile.registra_documento_import`
+  (mai solleva, annota `registrazione_contabile_esito` sul documento sorgente)
+  è agganciato in `fatture_upload.import_parsed_invoice` e nell'upload manuale
+  (dopo l'event bus, perché il handler di classificazione scrive prima
+  `iva_detraibile`), in `corrispettivi_helpers.ingest_corrispettivo_parsed`
+  (creato/aggiornato/duplicato riparato) e in `CorrispettiviService.process_xml`
+  (Drive). Ogni scrittura porta `idempotency_key = reg:<tipo>:<id>` (unica in
+  Postgres, migrazione PR 5); un rifiuto remoto → `gia_registrato`, mai
+  seconda scrittura. Corrispettivi provvisori (senza XML) rimandati; importo
+  cambiato dopo la registrazione → `da_verificare`, mai riscritto. Recupero
+  del pregresso: `POST /api/piano-conti/registra-pregresso?dry_run=` (admin,
+  idempotente) + `?dry_run=` sui due endpoint esistenti. Bug reale corretto
+  nello stesso giro: il motore leggeva `pagato_contante` (singolare, assente
+  su 1218/1218 corrispettivi) invece di `pagato_contanti` → ogni giornata
+  contanti+POS finiva "da_verificare". Test:
+  `tests/test_registrazione_automatica_partita_doppia.py` (import 1 corrispettivo
+  + 1 fattura → 2 scritture bilanciate → bilancio REGISTRO_VUOTO → QUADRA).
 - **PR 8 (media)** — registrazione automatica: all'import fattura/corrispettivo
   chiamare `registra_fattura`/`registra_corrispettivo` di
   `app/services/registrazione_contabile.py` (idempotenti per `hash`), così il
@@ -503,6 +520,25 @@ Route reali (`frontend/src/main.jsx:88-110`): `/fatture/*`, `/prima-nota/*`,
 | Libro giornale (scrittura) → documento origine (fattura/corrispettivo) | espande le righe Dare/Avere; `fonte_documento`/`invoice_key` non mostrati né linkati | **No** | `LibroGiornale.jsx:194-290`; il backend accetta `?invoice_key=` (`contabilita_gestionale.py:1024`) ma nessuna pagina lo passa |
 | IVA (mese) → fatture incluse / corrispettivi del mese | lista fatture per periodo (`/api/iva/fatture?periodo=`) | Parziale (fatture sì, corrispettivi no, F24 IVA no) | `GestioneIVA.jsx:200-201` |
 | F24 (riga tabella) → quietanza / addebito banca | icona "🧾 Quietanza" testuale | **No** | `RiconciliazioneUnificata.jsx:1967` |
+
+**stato 03/09/2026: fatta PR 16** — componente unico
+`frontend/src/components/LinkContropartita.jsx` (`ROTTE_CONTROPARTITA`, palette
+salvia/sabbia). Link: Prima Nota Banca → `/riconciliazione/banca?movimento=`
+(campi `estratto_conto_id`/`movimento_estratto_conto_id`/`movimento_bancario_id`/
+`estratto_conto_ids`); Riconciliazione (righe, card, pannello del movimento
+richiesto via `?movimento=`) → `/fatture?invoice_id=` e
+`/prima-nota#sezione=banca&selected=` da `collegamenti` (nuovo campo di
+`semanticizza_risultato`: `fattura_id`, `prima_nota_banca_id`, `stipendio_id`,
+`assegno_id`, `f24_ids`); Scadenze → movimento pagante (`pagamento.
+movimento_bancario_id` da `scadenziario_fornitori.evidenze_pagamento[].evidenza_id`
+= `banca:<EC>:<fattura>` o dalla fattura; le pagate entrano con
+`include_passate`); Bilancio → `/contabilita/verifica?conto=` →
+`/contabilita/giornale?conto=&data_da=&data_a=` / `?scrittura=` → documento
+(`fonte_documento`, nuovi campi `codice_ufficiale`, `scrittura_id` nel
+bilancio di verifica, filtro `conto` nel libro giornale); F24 →
+`documento_collegato.quietanza_url` (fiscal_documents / quietanze_f24) e
+`movimento_bancario_id`. Test: `frontend/src/pages/LinkContropartite.navigation.test.jsx`,
+`tests/test_link_contropartite_campi.py`.
 
 **Link mancanti da aggiungere (PR 16, media, solo frontend + 2 endpoint di
 lettura)**: (1) Prima Nota → EC (`/riconciliazione/banca?movimento=<estratto_conto_id>`);

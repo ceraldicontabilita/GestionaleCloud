@@ -81,6 +81,28 @@ async def scan_doppi_pagamenti() -> Dict[str, Any]:
     }
 
 
+def _movimenti_banca_f24(f24: Dict[str, Any]) -> list:
+    """Id dei movimenti di estratto conto che hanno pagato il modello, nei
+    nomi scritti dal registro unico F24/banca (PR 12):
+    ``movimento_bancario_id`` (patch_pagamento_banca), ``allocazioni_banca[]
+    .movimento_id`` (pagamenti parziali/multipli), ``movimento_bancario.id``."""
+    ids: list = []
+    principale = f24.get("movimento_bancario_id")
+    if principale:
+        ids.append(str(principale))
+    for alloc in f24.get("allocazioni_banca") or []:
+        if isinstance(alloc, dict) and alloc.get("movimento_id"):
+            ids.append(str(alloc["movimento_id"]))
+    movimento = f24.get("movimento_bancario")
+    if isinstance(movimento, dict) and (movimento.get("id") or movimento.get("fingerprint")):
+        ids.append(str(movimento.get("id") or movimento.get("fingerprint")))
+    visti: list = []
+    for mid in ids:
+        if mid not in visti:
+            visti.append(mid)
+    return visti
+
+
 @router.get("/tabella")
 async def tabella_analisi(anno: Optional[int] = Query(None, ge=2000, le=2100)) -> Dict[str, Any]:
     """Tabella §20 della specifica: una riga per F24 con periodo di
@@ -122,11 +144,34 @@ async def tabella_analisi(anno: Optional[int] = Query(None, ge=2000, le=2100)) -
                 duplicazione.setdefault(ir, "collegato_no_duplicato")
                 duplicazione.setdefault(io, "collegato_no_duplicato")
 
+    # Audit 03/09/2026 §6 (PR 16): dal modello F24 si deve arrivare alla
+    # quietanza e all'addebito bancario. La quietanza puo' vivere in
+    # `fiscal_documents` (PDF servito da /api/fiscal/documents/{id}/content)
+    # o nella collezione storica `quietanze_f24`: una sola query per fonte.
+    quietanza_ids = sorted({
+        str(docs[i].get("quietanza_id")) for i in indici if docs[i].get("quietanza_id")
+    })
+    fonte_quietanza: Dict[str, str] = {}
+    if quietanza_ids:
+        for coll in ("fiscal_documents", "quietanze_f24"):
+            try:
+                trovate = await db[coll].find(
+                    {"id": {"$in": quietanza_ids}}, {"_id": 0, "id": 1}
+                ).to_list(len(quietanza_ids))
+            except Exception as exc:  # noqa: BLE001 - arricchimento, mai bloccante
+                logger.warning("Quietanze non leggibili da %s: %s", coll, exc)
+                trovate = []
+            for q in trovate:
+                fonte_quietanza.setdefault(str(q.get("id")), coll)
+
     righe = []
     for i in indici:
         a = analisi[i]
         d = docs[i]
         dup = duplicazione.get(i, "no")
+        quietanza_id = d.get("quietanza_id")
+        fonte = fonte_quietanza.get(str(quietanza_id)) if quietanza_id else None
+        movimenti_banca = _movimenti_banca_f24(d)
         motivi = []
         if a["tipo_versamento"] != "ordinario":
             motivi.append(f"{a['tipo_versamento']} (causali: {', '.join(a['causali_inps']) or '—'})")
@@ -160,8 +205,19 @@ async def tabella_analisi(anno: Optional[int] = Query(None, ge=2000, le=2100)) -
                 if isinstance(r, dict) and (r.get("codice_tributo") or r.get("causale"))
             }),
             "documento_collegato": {
-                "quietanza_id": d.get("quietanza_id"),
+                "quietanza_id": quietanza_id,
                 "protocollo_quietanza": d.get("protocollo_quietanza"),
+                "quietanza_fonte": fonte,
+                "quietanza_url": (
+                    f"/api/fiscal/documents/{quietanza_id}/content"
+                    if fonte == "fiscal_documents"
+                    else f"/api/f24-riconciliazione/quietanze/{quietanza_id}"
+                    if fonte == "quietanze_f24" else None
+                ),
+                "movimento_bancario_id": movimenti_banca[0] if movimenti_banca else None,
+                "movimenti_bancari_ids": movimenti_banca,
+                "pagamento_verificato_banca": bool(d.get("pagamento_verificato_banca")),
+                "data_pagamento_effettivo": d.get("data_pagamento_effettivo"),
             },
             "possibile_duplicazione": dup,
             "saldo_finale": a["saldo_finale"],

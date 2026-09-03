@@ -3,16 +3,16 @@
 > Generato da `scripts/audit_frontend_dead_code.py` seguendo il grafo di import reale a partire da `main.jsx`/`App.jsx`/`navigation.config.js` (import statici, `import()` dinamici, `lazy(() => import(...))`, re-export `export {X} from`/`export * from`).
 > NON modificare a mano: rilancia lo script.
 
-**Totale file analizzati:** 208
+**Totale file analizzati:** 210
 
 | Classificazione | File |
 |---|---:|
 | ENTRYPOINT | 3 |
 | ROUTE_ATTIVA | 27 |
-| COMPONENTE_USATO | 96 |
+| COMPONENTE_USATO | 97 |
 | MODALE_USATO | 3 |
 | HOOK_USATO | 3 |
-| TEST_ONLY | 53 |
+| TEST_ONLY | 54 |
 | DINAMICO_DA_VERIFICARE | 22 |
 | ORFANO_ELIMINABILE | 1 |
 
@@ -58,7 +58,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | File | Classificazione | Importato da (n. file) |
 |---|---|---:|
 | `frontend/src/App.jsx` | ENTRYPOINT | 1 |
-| `frontend/src/api.js` | COMPONENTE_USATO | 110 |
+| `frontend/src/api.js` | COMPONENTE_USATO | 111 |
 | `frontend/src/components/AgentiPanel.jsx` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/components/AssociaAssegnoFattura.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/components/AssociaBonificoFattura.jsx` | COMPONENTE_USATO | 1 |
@@ -77,6 +77,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/components/InAttesaDocumento.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/components/InAttesaDocumento.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/components/InstallAppButton.jsx` | COMPONENTE_USATO | 1 |
+| `frontend/src/components/LinkContropartita.jsx` | COMPONENTE_USATO | 7 |
 | `frontend/src/components/LinkedEvidencePanel.jsx` | ORFANO_ELIMINABILE | 0 |
 | `frontend/src/components/ModalFattura.jsx` | MODALE_USATO | 7 |
 | `frontend/src/components/NotificationBell.jsx` | DINAMICO_DA_VERIFICARE | 0 |
@@ -160,7 +161,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/pages/BatchReprocessing.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/Bilancio.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/pages/Bilancio.test.jsx` | TEST_ONLY | 0 |
-| `frontend/src/pages/BilancioVerifica.jsx` | COMPONENTE_USATO | 2 |
+| `frontend/src/pages/BilancioVerifica.jsx` | COMPONENTE_USATO | 3 |
 | `frontend/src/pages/BilancioVerifica.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/pages/BudgetPrevisionale.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/CalendarioFiscale.jsx` | COMPONENTE_USATO | 2 |
@@ -208,8 +209,9 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/pages/LearningMachine.jsx` | ROUTE_ATTIVA | 1 |
 | `frontend/src/pages/LearningMachineUniversale.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/LegacyRouteResolver.jsx` | ROUTE_ATTIVA | 1 |
-| `frontend/src/pages/LibroGiornale.jsx` | COMPONENTE_USATO | 2 |
+| `frontend/src/pages/LibroGiornale.jsx` | COMPONENTE_USATO | 3 |
 | `frontend/src/pages/LibroGiornale.test.jsx` | TEST_ONLY | 0 |
+| `frontend/src/pages/LinkContropartite.navigation.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/pages/Login.jsx` | ROUTE_ATTIVA | 1 |
 | `frontend/src/pages/MFAAdmin.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/pages/MFAAdmin.test.jsx` | TEST_ONLY | 0 |
@@ -223,17 +225,17 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/pages/PianoDeiConti.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/pages/PianoDeiConti.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/pages/PrevisioniAcquisti.jsx` | COMPONENTE_USATO | 1 |
-| `frontend/src/pages/PrimaNota.jsx` | COMPONENTE_USATO | 2 |
+| `frontend/src/pages/PrimaNota.jsx` | COMPONENTE_USATO | 3 |
 | `frontend/src/pages/PrimaNota.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/pages/PuliziaPrimaNota.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/RegoleCategorizzazione.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/RiconciliazionePaypal.jsx` | COMPONENTE_USATO | 3 |
 | `frontend/src/pages/RiconciliazionePaypal.test.jsx` | TEST_ONLY | 0 |
-| `frontend/src/pages/RiconciliazioneUnificata.jsx` | COMPONENTE_USATO | 2 |
+| `frontend/src/pages/RiconciliazioneUnificata.jsx` | COMPONENTE_USATO | 3 |
 | `frontend/src/pages/RiconciliazioneUnificata.rentalScope.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/pages/RiconciliazioneUnificata.safety.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/pages/Ritenute.jsx` | ROUTE_ATTIVA | 1 |
-| `frontend/src/pages/Scadenze.jsx` | ROUTE_ATTIVA | 1 |
+| `frontend/src/pages/Scadenze.jsx` | ROUTE_ATTIVA | 2 |
 | `frontend/src/pages/Scadenze.pagination.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/pages/SituazioneFiscale.jsx` | ROUTE_ATTIVA | 2 |
 | `frontend/src/pages/SituazioneFiscale.test.jsx` | TEST_ONLY | 0 |

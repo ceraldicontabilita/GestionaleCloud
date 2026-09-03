@@ -111,6 +111,11 @@ async def _bilancio_verifica_da_registro(
                     "descrizione": scrittura.get("descrizione") or "Scrittura contabile",
                     "dare": round(dare, 2), "avere": round(avere, 2),
                     "numero_registrazione": scrittura.get("numero_registrazione"),
+                    # Audit 03/09/2026 §6 (PR 16): dal conto si deve arrivare
+                    # alla scrittura del giornale e da li' al documento.
+                    "scrittura_id": str(scrittura.get("id") or ""),
+                    "tipo": scrittura.get("tipo"),
+                    "fonte_documento": scrittura.get("fonte_documento"),
                 })
         for codice in conti_toccati:
             conti[codice]["n_movimenti"] += 1
@@ -129,10 +134,16 @@ async def _bilancio_verifica_da_registro(
     for codice in sorted(conti):
         conto = conti[codice]
         saldo = round(conto["dare"] - conto["avere"], 2)
+        codice_ufficiale = operativo_a_ufficiale(codice)
         voce = {
             "codice": codice,
             "nome": conto["nome"],
             "tipo": conto["tipo"],
+            # Conto CEE ufficiale accanto al codice operativo (regola
+            # vincolante: il piano dei conti e' solo quello CEE); serve al
+            # link Bilancio → bilancio di verifica (PR 16).
+            "codice_ufficiale": codice_ufficiale,
+            "nome_ufficiale": descrizione_ufficiale(codice_ufficiale) if codice_ufficiale else None,
             "dare": round(conto["dare"], 2),
             "avere": round(conto["avere"], 2),
             "saldo": saldo,
@@ -926,6 +937,15 @@ async def duplica_budget(
 #    Vedi memoria/LOGICA_LIBRO_MASTRO.md
 # ============================================
 
+def _scrittura_movimenta_conto(scrittura: Dict[str, Any], conto: str) -> bool:
+    """True se almeno una riga della scrittura e' sul conto (operativo o CEE)."""
+    for riga in scrittura.get("righe") or []:
+        codice = str(riga.get("conto_codice") or riga.get("conto") or "").strip()
+        if codice and (codice == conto or operativo_a_ufficiale(codice) == conto):
+            return True
+    return False
+
+
 def _query_periodo_giornale(
     data_da: Optional[str] = None,
     data_a: Optional[str] = None,
@@ -1061,6 +1081,7 @@ async def get_libro_giornale(
     data_da: Optional[str] = Query(None, description="Data inizio (YYYY-MM-DD)"),
     data_a: Optional[str] = Query(None, description="Data fine (YYYY-MM-DD)"),
     invoice_key: Optional[str] = Query(None, description="Filtra per chiave fattura"),
+    conto: Optional[str] = Query(None, description="Solo le scritture che movimentano questo conto (codice operativo)"),
     limit: int = Query(500, ge=1, le=10000, description="Max scritture da restituire"),
 ) -> Dict[str, Any]:
     """Libro giornale: elenco cronologico delle scritture in partita doppia.
@@ -1068,16 +1089,29 @@ async def get_libro_giornale(
     A7 (scelta utente 2026-07-13): legge il registro UNICO `movimenti_contabili`
     (motore registrazione_contabile §6.1: fatture, corrispettivi, TFR,
     ammortamenti), non più il registro parallelo `scritture_contabili`
-    (rimasto come archivio storico)."""
+    (rimasto come archivio storico).
+
+    ``conto`` (PR 16, drill-down dal bilancio di verifica): tiene solo le
+    scritture con almeno una riga su quel conto; il filtro e' applicato in
+    memoria sul periodo richiesto perche' le righe sono un array annidato."""
     db = Database.get_db()
     match = _query_periodo_giornale(data_da, data_a, invoice_key)
     collection = db["movimenti_contabili"]
-    scritture = await collection.find(
-        match, {"_id": 0}
-    ).sort([("data_documento", 1), ("data", 1), ("numero_registrazione", 1)]).to_list(limit)
-    totale_disponibile = await _conta_documenti_giornale(
-        collection, match, len(scritture)
-    )
+    conto = conto.strip() if isinstance(conto, str) and conto.strip() else None
+    if conto:
+        tutte = await collection.find(
+            match, {"_id": 0}
+        ).sort([("data_documento", 1), ("data", 1), ("numero_registrazione", 1)]).to_list(100000)
+        filtrate = [s for s in tutte if _scrittura_movimenta_conto(s, conto)]
+        scritture = filtrate[:limit]
+        totale_disponibile = len(filtrate)
+    else:
+        scritture = await collection.find(
+            match, {"_id": 0}
+        ).sort([("data_documento", 1), ("data", 1), ("numero_registrazione", 1)]).to_list(limit)
+        totale_disponibile = await _conta_documenti_giornale(
+            collection, match, len(scritture)
+        )
     qualita = _qualita_scritture_giornale(scritture)
     for s in scritture:
         for r in (s.get("righe") or []):

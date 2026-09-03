@@ -1,6 +1,7 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
 
 import api from '../api';
 import BilancioVerifica from './BilancioVerifica';
@@ -60,7 +61,7 @@ describe('BilancioVerifica', () => {
   });
 
   it('mostra patrimonio netto e dichiara la fonte contabile unica', async () => {
-    render(<BilancioVerifica />);
+    render(<MemoryRouter><BilancioVerifica /></MemoryRouter>);
 
     expect(await screen.findByText(/1 PN/)).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Patrimonio netto' })).toBeInTheDocument();
@@ -82,7 +83,7 @@ describe('BilancioVerifica', () => {
       },
     });
 
-    render(<BilancioVerifica />);
+    render(<MemoryRouter><BilancioVerifica /></MemoryRouter>);
 
     expect(await screen.findByText(/2 scritture sbilanciate/)).toBeInTheDocument();
     expect(screen.getByText(/totali annuali coincidono solo per compensazione/)).toBeInTheDocument();
@@ -116,7 +117,7 @@ describe('BilancioVerifica', () => {
       },
     });
 
-    render(<BilancioVerifica />);
+    render(<MemoryRouter><BilancioVerifica /></MemoryRouter>);
 
     expect(await screen.findByText('REGISTRO VUOTO')).toBeInTheDocument();
     expect(screen.getByText(/Nessuna scrittura in partita doppia per l'anno 2026/)).toBeInTheDocument();
@@ -129,7 +130,7 @@ describe('BilancioVerifica', () => {
   it('rimuove i dati precedenti se il caricamento fallisce', async () => {
     api.get.mockRejectedValue(new Error('servizio non disponibile'));
 
-    render(<BilancioVerifica />);
+    render(<MemoryRouter><BilancioVerifica /></MemoryRouter>);
 
     expect(await screen.findByText(/Errore nel caricamento del bilancio di verifica/)).toBeInTheDocument();
     expect(screen.queryByText('Capitale sociale')).not.toBeInTheDocument();
