@@ -85,6 +85,18 @@ async def get_google_sheets_ledger_job(job_id: str = Path(...)) -> Dict[str, Any
 _supabase_migration_jobs: Dict[str, Dict[str, Any]] = {}
 
 
+def _supabase_runtime_config(settings: Any) -> Dict[str, str]:
+    return {
+        "SUPABASE_URL": str(settings.SUPABASE_URL or "").strip(),
+        "SUPABASE_PUBLISHABLE_KEY": str(
+            settings.SUPABASE_PUBLISHABLE_KEY or ""
+        ).strip(),
+        "SUPABASE_RUNTIME_SECRET": str(
+            settings.SUPABASE_RUNTIME_SECRET or ""
+        ).strip(),
+    }
+
+
 async def _run_supabase_migration_job(job_id: str) -> None:
     """Copia ogni documento gia' idratato in memoria (backend attivo, in
     produzione Sheets) dentro gestionale.documents su Supabase.
@@ -109,7 +121,7 @@ async def _run_supabase_migration_job(job_id: str) -> None:
 
         nomi = await origine.list_collection_names()
         destinazione = SupabaseRuntimeDatabase(
-            "gestionale_migrazione", {"SUPABASE_DB_URL": settings.SUPABASE_DB_URL},
+            "gestionale_migrazione", _supabase_runtime_config(settings),
         )
         dettaglio: List[Dict[str, Any]] = []
         errori: List[Dict[str, Any]] = []
@@ -117,16 +129,22 @@ async def _run_supabase_migration_job(job_id: str) -> None:
         try:
             for nome in nomi:
                 documenti = await origine[nome].find({}).to_list(None)
-                if not documenti:
-                    dettaglio.append({"collezione": nome, "righe": 0})
-                    continue
                 try:
-                    scritte = await destinazione.bulk_seed(nome, documenti)
+                    scritte = await destinazione.mirror_collection(nome, documenti)
+                    verifica = await destinazione.verify_collection(nome, documenti)
+                    if not verifica["coincide"]:
+                        raise RuntimeError(
+                            "verifica conteggio/impronta non coincidente"
+                        )
                 except Exception as exc:  # noqa: BLE001 - una collezione non deve bloccare le altre
                     logger.error("[SUPABASE-MIGRATE] collezione=%s errore: %s", nome, exc)
                     errori.append({"collezione": nome, "errore": str(exc)})
                     continue
-                dettaglio.append({"collezione": nome, "righe": scritte})
+                dettaglio.append({
+                    "collezione": nome,
+                    "righe": scritte,
+                    "verifica": verifica,
+                })
                 totale += scritte
         finally:
             destinazione.close()
@@ -165,10 +183,13 @@ async def avvia_migrazione_supabase(
             detail="Conferma mancante: inviare {\"conferma\": \"MIGRA\"} nel body",
         )
     from app.config import settings
-    if not str(settings.SUPABASE_DB_URL or "").strip():
+    if not all(_supabase_runtime_config(settings).values()):
         raise HTTPException(
             status_code=503,
-            detail="SUPABASE_DB_URL non configurato su questo ambiente: impostarlo nelle variabili d'ambiente prima di avviare la migrazione",
+            detail=(
+                "Collegamento Supabase incompleto: configurare URL, chiave "
+                "pubblicabile e secret runtime prima di avviare la migrazione"
+            ),
         )
     running = next(
         (item for item in _supabase_migration_jobs.values() if item["status"] == "running"),

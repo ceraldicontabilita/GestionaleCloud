@@ -591,6 +591,27 @@ describe('Fatture provvisorie in attesa banca', () => {
     ));
   });
 
+  it('propone il collegamento assegno anche per una fattura generica in attesa banca', async () => {
+    api.get.mockResolvedValue({ data: { candidati: [], message: 'Inserisci il numero assegno.' } });
+    render(<Provvisori
+      provvisori={[]}
+      attesaBanca={[{
+        fattura_id: 'fatt-generica', fattura_numero: '88', fattura_data: '2026-08-08',
+        fornitore: 'KIMBO S.P.A.', importo: 1498.96,
+        fonte_metodo: 'operatore_prima_nota',
+      }]}
+      onRicarica={vi.fn()}
+    />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Associa assegno alla fattura 88' }));
+
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith(
+      '/api/prima-nota/provvisori/assegni-proposti',
+      { params: { fattura_id: 'fatt-generica', frammento: '' } },
+    ));
+    expect(await screen.findByLabelText('Finale assegno nel formato 123-01')).toBeInTheDocument();
+  });
+
   it('riconosce la RiBa bancaria e non propone un assegno', () => {
     render(<Provvisori
       provvisori={[]}

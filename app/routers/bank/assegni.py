@@ -470,6 +470,7 @@ async def list_assegni(
 async def fatture_disponibili_per_assegno(
     anno: int = Query(..., ge=2000, le=2100),
     limit: int = Query(1000, ge=1, le=2000),
+    fornitore: Optional[str] = Query(None, min_length=2, max_length=160),
 ) -> List[Dict[str, Any]]:
     """Elenco leggero delle fatture aperte associabili a un assegno.
 
@@ -492,6 +493,33 @@ async def fatture_disponibili_per_assegno(
             {"paid": {"$ne": True}},
         ]
     }
+    nome_fornitore = str(fornitore or "").strip()
+    if nome_fornitore:
+        # Ricerca server-side sicura: ogni parola significativa digitata deve
+        # comparire in almeno un campo identita del fornitore. re.escape evita
+        # che l'input dell'utente diventi una regex Mongo arbitraria.
+        parole_ignorate = {
+            "SRL", "SPA", "SAS", "SNC", "SS", "SCARL", "COOP", "SOCIETA",
+            "LIMITATA", "PER", "AZIONI", "FORNITORE", "DITTA",
+        }
+        parole = [
+            parola for parola in re.findall(r"[A-Z0-9]+", nome_fornitore.upper())
+            if len(parola) >= 3 and parola not in parole_ignorate
+        ][:6]
+        if not parole:
+            parole = [nome_fornitore]
+        campi_fornitore = (
+            "supplier_name", "cedente_denominazione", "fornitore_ragione_sociale",
+            "supplier_vat", "cedente_piva", "fornitore_partita_iva",
+        )
+        for parola in parole:
+            pattern = re.escape(parola)
+            query["$and"].append({
+                "$or": [
+                    {campo: {"$regex": pattern, "$options": "i"}}
+                    for campo in campi_fornitore
+                ]
+            })
     projection = {
         "_id": 0,
         "id": 1,
@@ -504,6 +532,7 @@ async def fatture_disponibili_per_assegno(
         "data_documento": 1,
         "supplier_name": 1,
         "cedente_denominazione": 1,
+        "fornitore_ragione_sociale": 1,
         "supplier_vat": 1,
         "cedente_piva": 1,
         "fornitore_partita_iva": 1,

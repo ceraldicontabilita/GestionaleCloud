@@ -282,6 +282,14 @@ describe('Stati e resa responsive della pagina Assegni', () => {
     );
   });
 
+  it('riconosce lo stesso fornitore anche con la forma societaria estesa', () => {
+    const fatture = [{
+      id: 'fatt-kimbo', supplier_name: 'KIMBO S.P.A.', total_amount: 1498.96,
+    }];
+
+    expect(fatturePerFornitore(fatture, 'KIMBO')).toEqual(fatture);
+  });
+
   it('usa card senza tabella su schermo mobile', async () => {
     window.innerWidth = 375;
     api.get.mockImplementation(rispostaPagina([

@@ -35,19 +35,21 @@ class Database:
                 raise RuntimeError(
                     "DATA_BACKEND non supportato. Usare 'sheets' (con "
                     "GOOGLE_SHEETS_LEDGER_ID/GOOGLE_SHEETS_LEDGER_FOLDER_ID) oppure "
-                    "'supabase' (con SUPABASE_DB_URL)."
+                    "'supabase' (con le tre variabili SUPABASE_* del runtime)."
                 )
 
             if backend == "supabase":
                 from app.services.supabase_runtime_database import SupabaseRuntimeDatabase
 
                 runtime = SupabaseRuntimeDatabase(settings.DB_NAME, {
-                    "SUPABASE_DB_URL": settings.SUPABASE_DB_URL,
+                    "SUPABASE_URL": settings.SUPABASE_URL,
+                    "SUPABASE_PUBLISHABLE_KEY": settings.SUPABASE_PUBLISHABLE_KEY,
+                    "SUPABASE_RUNTIME_SECRET": settings.SUPABASE_RUNTIME_SECRET,
                 })
                 await runtime.hydrate()
                 cls.client = runtime
                 cls.db = runtime
-                logger.info("Connected to Supabase (Postgres) ledger")
+                logger.info("Connected to private Supabase ledger")
                 return
 
             # Sheets runtime

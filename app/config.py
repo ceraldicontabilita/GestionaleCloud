@@ -17,19 +17,17 @@ class Settings(BaseSettings):
     APP_VERSION: str = "2.0.0"
     DEBUG: bool = False
     ENVIRONMENT: str = "production"
-    # Google Drive conserva gli originali; Google Sheets è stato il registro
-    # operativo storico. DATA_BACKEND supporta oggi anche 'supabase' (Postgres
-    # reale, stesso modello documentale — vedi
-    # app/services/supabase_runtime_database.py) come sostituto write-through
-    # di Sheets, a parità di interfaccia find/update_one/insert_one usata dal
-    # resto del codice.
+    # Google Drive conserva soltanto gli originali documentali; Supabase e' il
+    # registro operativo strutturato. ``sheets`` resta temporaneamente
+    # disponibile esclusivamente come sorgente di rollback durante il cutover.
     DATA_BACKEND: str = "sheets"
     SHEETS_REGISTRY_NAME: str = "GestionaleCloud"
-    # Richiesta solo quando DATA_BACKEND=supabase. Connection string Postgres
-    # diretta al progetto Supabase (usare la service role / connection string
-    # "session pooler" da Project Settings → Database — MAI la anon key).
-    # Va impostata come variabile d'ambiente su Render, non nel codice.
-    SUPABASE_DB_URL: Optional[str] = None
+    # Credenziali server-to-server del runtime Supabase. La publishable key non
+    # concede da sola accesso ai dati; ogni RPC richiede anche il secret
+    # applicativo separato conservato esclusivamente nel secret store Render.
+    SUPABASE_URL: Optional[str] = None
+    SUPABASE_PUBLISHABLE_KEY: Optional[str] = None
+    SUPABASE_RUNTIME_SECRET: Optional[str] = None
 
     # Server
     HOST: str = "0.0.0.0"
@@ -439,10 +437,18 @@ class Settings(BaseSettings):
                 else:
                     logger.error(msg)
 
-        if backend == "supabase" and not (self.SUPABASE_DB_URL or "").strip():
+        if backend == "supabase" and not all(
+            str(value or "").strip()
+            for value in (
+                self.SUPABASE_URL,
+                self.SUPABASE_PUBLISHABLE_KEY,
+                self.SUPABASE_RUNTIME_SECRET,
+            )
+        ):
             msg = (
-                "DATA_BACKEND=supabase richiede SUPABASE_DB_URL (connection string "
-                "Postgres del progetto Supabase); non esiste fallback di persistenza."
+                "DATA_BACKEND=supabase richiede SUPABASE_URL, "
+                "SUPABASE_PUBLISHABLE_KEY e SUPABASE_RUNTIME_SECRET; "
+                "non esiste fallback di persistenza."
             )
             if fail_fast:
                 errors.append(msg)
