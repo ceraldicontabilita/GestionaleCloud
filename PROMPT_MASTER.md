@@ -700,7 +700,7 @@ si rigenerano dal codice e non si correggono a mano.
 | `MENU_ADMIN_USERNAME` | app-runtime | configurazione | non dichiarato in Settings | `app/menu/routes/qrcode_routes.py`, `render.yaml` |
 | `MENU_JWT_SECRET` | app-runtime | segreta | non dichiarato in Settings | `app/menu/routes/qrcode_routes.py`, `render.yaml` |
 | `MENU_SUPABASE_KEY` | app-runtime | configurazione | non dichiarato in Settings | `render.yaml` |
-| `MENU_SUPABASE_URL` | app-runtime | configurazione | non dichiarato in Settings | `render.yaml` |
+| `MENU_SUPABASE_URL` | app-runtime | configurazione | non dichiarato in Settings | `app/lotti/servizi/menu_bridge.py`, `render.yaml` |
 | `MONGO_URL` | app-runtime | configurazione | non dichiarato in Settings | `app/lotti/scripts/fix_fornitori_acquaviva.py`, `app/lotti/scripts/import_acquaviva_definitivo.py`, `app/lotti/scripts/import_listino_2026.py`, `app/lotti/scripts/import_ricette_excel.py`, `app/lotti/scripts/scrape_acquaviva_images.py`, `app/lotti/scripts/scrape_vandemoortele_acquaviva.py`, `app/lotti/tests/test_iteration54_features.py`, `app/lotti/utils/shared.py` |
 | `NODE_ENV` | app-runtime | configurazione | non dichiarato in Settings | `frontend/plugins/health-check/health-endpoints.js`, `frontend_lotti/craco.config.js` |
 | `NOLEGGIO_GIORNI_SENZA_FATTURA` | feature-job | configurazione | non dichiarato in Settings | `app/services/noleggio/controlli.py` |
@@ -817,7 +817,7 @@ Gli alias senza valore vanno configurati nel secret/config store di Render. Non 
 
 ## Appendice D — Tutti i router e tutti gli endpoint
 
-Route table sorgente: **1148**; attivi da ricreare: **747**; quarantena: **401** (`verificare` 371, `admin-only` 30).
+Route table sorgente: **1149**; attivi da ricreare: **747**; quarantena: **402** (`verificare` 372, `admin-only` 30).
 
 `attivo` significa da ricreare con contratto e test; `quarantena` significa non esporre nel nuovo runtime finché consumer, autorizzazione e test non sono provati. L'elenco è completo e include entrambe le categorie.
 
@@ -922,12 +922,13 @@ Route table sorgente: **1148**; attivi da ricreare: **747**; quarantena: **401**
 - **attivo** — `POST /api/regole/fornitore` — in uso: FE
 - **attivo** — `POST /api/regole/upload-regole` — in uso: FE
 
-### Router `admin` (25)
+### Router `admin` (26)
 
 - **attivo** — `GET /api/admin/bank-supplier-rules` — in uso: FE
 - **attivo** — `POST /api/admin/bank-supplier-rules` — in uso: FE
 - **attivo** — `POST /api/admin/bank-supplier-rules/reprocess/{year}` — in uso: FE
 - **attivo** — `DELETE /api/admin/bank-supplier-rules/{rule_id}` — in uso: FE
+- **quarantena: verificare** — `POST /api/admin/bonifica-prima-nota-doppioni` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **quarantena: admin-only** — `DELETE /api/admin/cleanup-trattenute-disciplinari` — endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7)
 - **quarantena: verificare** — `GET /api/admin/collections` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **attivo** — `GET /api/admin/dashboard-summary` — in uso: FE

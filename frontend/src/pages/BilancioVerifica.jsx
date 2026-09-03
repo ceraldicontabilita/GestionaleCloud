@@ -161,6 +161,7 @@ export default function BilancioVerifica() {
     if (!data) return null;
     const { totali, quadratura, riepilogo } = data;
     const qualita = data.qualita_registro || {};
+    const registroVuoto = data.stato === 'REGISTRO_VUOTO' || qualita.registro_vuoto === true;
     const anomalieRegistro =
       (qualita.scritture_sbilanciate || 0) +
       (qualita.scritture_senza_righe || 0) +
@@ -195,7 +196,7 @@ export default function BilancioVerifica() {
           value={<span style={{ fontFamily: FONT.mono }}>{formatEuro(totali.saldo_avere)}</span>}
         />
         <StatCard
-          accent={quadratura ? 'success' : 'danger'}
+          accent={registroVuoto ? 'warning' : quadratura ? 'success' : 'danger'}
           label="VALIDAZIONE REGISTRO"
           value={
             <span
@@ -204,15 +205,21 @@ export default function BilancioVerifica() {
                 alignItems: 'center',
                 gap: 6,
                 fontSize: 20,
-                color: quadratura ? COLORS.success : COLORS.danger,
+                color: registroVuoto
+                  ? COLORS.warning
+                  : quadratura
+                    ? COLORS.success
+                    : COLORS.danger,
               }}
             >
               {quadratura ? <CheckCircle size={20} /> : <AlertTriangle size={20} />}
-              {quadratura
-                ? 'OK'
-                : anomalieRegistro > 0
-                  ? `${anomalieRegistro} anomalie`
-                  : formatEuro(totali.sbilancio)}
+              {registroVuoto
+                ? 'REGISTRO VUOTO'
+                : quadratura
+                  ? 'OK'
+                  : anomalieRegistro > 0
+                    ? `${anomalieRegistro} anomalie`
+                    : formatEuro(totali.sbilancio)}
             </span>
           }
           subtext={
@@ -262,7 +269,30 @@ export default function BilancioVerifica() {
         <>
           <SummaryCards />
 
-          {data.qualita_registro && !data.qualita_registro.registro_valido && (
+          {(data.stato === 'REGISTRO_VUOTO' || data.qualita_registro?.registro_vuoto) && (
+            <div
+              role="alert"
+              style={{
+                marginTop: 16,
+                padding: '12px 14px',
+                borderRadius: BORDER_RADIUS.md,
+                border: `1px solid ${COLORS.warning}`,
+                background: COLORS.warningLight,
+                color: COLORS.text,
+                fontSize: 13,
+                lineHeight: 1.5,
+              }}
+            >
+              <strong>Registro vuoto:</strong>{' '}
+              {data.messaggio ||
+                `nessuna scrittura in partita doppia per l'anno ${anno}: non c'è alcuna quadratura da verificare.`}
+            </div>
+          )}
+
+          {data.qualita_registro &&
+            !data.qualita_registro.registro_valido &&
+            data.stato !== 'REGISTRO_VUOTO' &&
+            !data.qualita_registro.registro_vuoto && (
             <div
               role="alert"
               style={{
@@ -650,7 +680,16 @@ export default function BilancioVerifica() {
                     {data.conti.reduce((s, c) => s + c.n_movimenti, 0)}
                   </td>
                 </tr>
-                <tr style={{ background: data.quadratura ? COLORS.successLight : COLORS.dangerLight }}>
+                <tr
+                  style={{
+                    background:
+                      data.stato === 'REGISTRO_VUOTO'
+                        ? COLORS.warningLight
+                        : data.quadratura
+                          ? COLORS.successLight
+                          : COLORS.dangerLight,
+                  }}
+                >
                   <td
                     colSpan={showSaldi ? 8 : 6}
                     style={{
@@ -658,14 +697,21 @@ export default function BilancioVerifica() {
                       textAlign: 'center',
                       fontWeight: 600,
                       fontSize: 14,
-                      color: data.quadratura ? COLORS.success : COLORS.danger,
+                      color:
+                        data.stato === 'REGISTRO_VUOTO'
+                          ? COLORS.warning
+                          : data.quadratura
+                            ? COLORS.success
+                            : COLORS.danger,
                     }}
                   >
-                    {data.quadratura
-                      ? '✓ Il bilancio di verifica quadra — Totale Dare = Totale Avere'
-                      : data.qualita_registro && !data.qualita_registro.registro_valido
-                        ? '✗ REGISTRO NON VALIDO — verificare le anomalie prima di usare i saldi'
-                      : `✗ SBILANCIO: ${formatEuro(data.totali.sbilancio)} — Verificare le registrazioni`}
+                    {data.stato === 'REGISTRO_VUOTO'
+                      ? '— REGISTRO VUOTO: nessuna scrittura in partita doppia, nessuna quadratura da verificare'
+                      : data.quadratura
+                        ? '✓ Il bilancio di verifica quadra — Totale Dare = Totale Avere'
+                        : data.qualita_registro && !data.qualita_registro.registro_valido
+                          ? '✗ REGISTRO NON VALIDO — verificare le anomalie prima di usare i saldi'
+                          : `✗ SBILANCIO: ${formatEuro(data.totali.sbilancio)} — Verificare le registrazioni`}
                   </td>
                 </tr>
               </tfoot>

@@ -198,6 +198,12 @@ piano dei conti, saldo 0 ovunque. Nelle scritture di Prima Nota il campo
 
 **Fix**
 
+- **stato 03/09/2026: in corso PR 5/6** — codice in `app/services/scritture_contabili.py`
+  (chiavi `idempotency_key`), `app/services/supabase_runtime_database.py`
+  (rifiuti RPC → cache riallineata), `app/services/bonifica_prima_nota_doppioni.py`
+  + `POST /api/admin/bonifica-prima-nota-doppioni?dry_run=`, migrazione
+  `supabase/migrations/20260903_idempotency_key.sql` (da applicare DOPO la
+  bonifica), bilancio di verifica con stato `REGISTRO_VUOTO`.
 - **PR 5 (alta)** — unicità in Postgres: aggiungere una colonna generata
   `idempotency_key text` su `gestionale.documents` (da `data->>'idempotency_key'`)
   con indice **unico** `(collection, idempotency_key) where idempotency_key is not null`;
