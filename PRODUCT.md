@@ -157,8 +157,8 @@ Ceraldi ERP
 │   ├── OpenAPI e mittenti email
 │   ├── Learning Machine e agenti
 │   └── Impostazioni F24/AI
-├── HACCP e produzione
-│   └── Tracciabilità, ricezioni, registri, ricette, produzioni e attrezzature
+├── App del gruppo portate pari pari (pagina intera, login proprio)
+│   └── HACCP Lotti (/lotti), HR (/hr), Menu (/menu)
 └── Amministrazione
     ├── Sistema e Registro Drive
     ├── MFA ed utenti

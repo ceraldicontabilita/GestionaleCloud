@@ -168,14 +168,14 @@ def _register_bank(app: FastAPI):
 
 # ─── Warehouse Module ────────────────────────────────────────────────────────
 def _register_warehouse(app: FastAPI):
-    # Il dizionario articoli resta la fonte prodotti contabile. La ricezione e
-    # i lotti sono ora integrati nativamente nel registro Drive/Sheets, senza
-    # ponti esterni o archivi paralleli.
+    # Il dizionario articoli resta la fonte prodotti contabile. Ricezione
+    # merce, lotti, registri HACCP, ricette e produzioni NON sono piu' un
+    # modulo del gestionale (router /api/haccp rimosso il 03/09/2026 su ordine
+    # del titolare): li gestisce l'app Lotti originale montata a /lotti, che
+    # legge le fatture dal feed /api/integrations/lotti/* (lotti_integration).
     from app.routers.warehouse import dizionario_articoli
-    from app.routers import haccp
 
     app.include_router(dizionario_articoli.router, prefix="/api/dizionario-articoli", tags=["Dizionario Articoli"])
-    app.include_router(haccp.router, prefix="/api/haccp", tags=["HACCP e Tracciabilita"])
 
 
 # ─── Invoices Module ─────────────────────────────────────────────────────────

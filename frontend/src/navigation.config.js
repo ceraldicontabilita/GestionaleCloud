@@ -38,7 +38,9 @@ export const NAV_PRINCIPALI = [
   { to: '/prima-nota', label: 'Prima Nota', Icon: BookOpen },
   { to: '/fornitori', label: 'Fornitori', Icon: Building2 },
   { to: '/riconciliazione', label: 'Riconciliazione', Icon: Landmark },
-  { to: '/tracciabilita', label: 'Tracciabilità', Icon: ShieldCheck },
+  // "Tracciabilità" (/tracciabilita, HACCP nativo) rimossa il 03/09/2026 su
+  // ordine del titolare: doppione dell'app Lotti, che vive a /lotti (voce
+  // "HACCP Lotti" nel menu Altro).
 ];
 
 // Voci secondarie: dropdown "Altro" su desktop + resto del menù mobile.
@@ -54,7 +56,8 @@ export const NAV_ALTRO = [
   { to: '/noleggio', label: 'Noleggi', Icon: Car },
   { to: '/scadenze', label: 'Scadenze', Icon: Clock },
   { to: '/ritenute', label: 'Ritenute', Icon: Receipt },
-  { to: '/salari', label: 'Cedolini paga', Icon: Users },
+  // "Cedolini paga" (/salari) rimossa il 03/09/2026: doppione dell'app HR
+  // (AppDipendenti) che vive a /hr (voce "HR" qui sotto).
   { to: '/strumenti', label: 'Strumenti', Icon: Wrench },
   // App del gruppo portate pari pari dentro il gestionale (decisione del
   // titolare 03/09/2026): ognuna e' un documento a se', con il proprio login,

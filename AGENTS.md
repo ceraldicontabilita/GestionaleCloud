@@ -34,7 +34,9 @@ Queste istruzioni valgono per l'intero repository.
 - Se il netto è vuoto, il valore resta nullo. Non inferire zero e non scegliere
   il numero più vicino.
 - Soltanto lo stato `NETTO_VERIFICATO_DA_CEDOLINO` alimenta automaticamente
-  `/salari` e i bonifici da assegnare.
+  la Prima Nota salari (`/api/prima-nota-salari`, riconciliazione stipendi)
+  e i bonifici da assegnare. La pagina `/salari` non esiste più (03/09/2026):
+  i cedolini si consultano nell'app HR a `/hr`.
 - Una riga salariale indica un importo dovuto, non prova un pagamento. Pagato e
   riconciliato richiedono evidenza bancaria reale e relazione auditabile.
 - Un duplicato certo richiede hash identico. Nome, dipendente, mese e importo

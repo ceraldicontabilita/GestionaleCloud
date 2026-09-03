@@ -1,12 +1,17 @@
 # ADR-001: Fusione completa Lotti nel dominio HACCP Drive/Sheets
 
 <!-- gestionalecloud-doc
-status: current
+status: historical
 reviewed_at: 2026-08-21
 storage_architecture: drive-only
 -->
 
-**Stato:** Accettata
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
+**Stato:** Superata il 03/09/2026 — il modulo nativo `/tracciabilita` è stato
+rimosso su ordine del titolare; l'app Lotti originale è montata pari pari a
+`/lotti` (vedi `CLAUDE.md`). Conservato come documento storico.
 **Data:** 2026-08-22
 **Decisore:** Ceraldi Group
 

@@ -17,9 +17,9 @@ PAGES = CATALOG["pages"]
 MAIN = (ROOT / "frontend/src/main.jsx").read_text(encoding="utf-8")
 
 
-def test_catalogo_contiene_esattamente_le_66_schermate_numerate():
-    assert [page["id"] for page in PAGES] == list(range(1, 67))
-    assert len({page["path"] for page in PAGES}) == 66
+def test_catalogo_contiene_esattamente_le_64_schermate_numerate():
+    assert [page["id"] for page in PAGES] == list(range(1, 65))
+    assert len({page["path"] for page in PAGES}) == 64
     assert all(page["audit_status"] in {"unverified", "in_review", "verified"} for page in PAGES)
 
 
@@ -118,7 +118,7 @@ def test_tutte_le_route_del_catalogo_sono_coperte_da_una_route_react_reale():
 
 def test_vecchie_url_non_vengono_piu_spacciate_per_schermate_canoniche():
     paths = {page["path"] for page in PAGES}
-    assert paths.isdisjoint({"/magazzino", "/dipendenti", "/cedolini"})
+    assert paths.isdisjoint({"/magazzino", "/dipendenti", "/cedolini", "/salari", "/tracciabilita"})
 
 
 def test_il_prompt_master_e_il_catalogo_macchina_non_divergono():
@@ -129,5 +129,5 @@ def test_il_prompt_master_e_il_catalogo_macchina_non_divergono():
         flags=re.MULTILINE,
     )
     documented = {int(identifier): path for identifier, path in rows}
-    assert len(documented) == 66
+    assert len(documented) == 64
     assert documented == {page["id"]: page["path"] for page in PAGES}

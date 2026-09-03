@@ -576,7 +576,7 @@ Non contiene dati reali, credenziali, allegati fiscali o una copia del vecchio c
 1. `00_PROMPT_DA_INCOLLARE.txt`
 2. `01_MASTER/PROMPT_MASTER.md`
 3. `02_ARCHITETTURA/`
-4. `03_PAGINE/INDICE_PAGINE.md` e le 65 schede
+4. `03_PAGINE/INDICE_PAGINE.md` e le {counts['pages']} schede
 5. `04_POPUP/INDICE_POPUP.md`
 6. `05_API/ENDPOINTS.md`
 7. `06_CONFIG/`

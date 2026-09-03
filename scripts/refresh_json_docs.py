@@ -25,7 +25,6 @@ PAGE_FILE_BY_PATH = {
     "/": "dashboard.json",
     "/login": "login.json",
     "/gestione-riservata": "gestione-riservata.json",
-    "/tracciabilita": "tracciabilita-haccp.json",
     "/rapido": "inserimento-rapido.json",
     "/fatture": "fatture.json",
     "/fatture/corrispettivi": "corrispettivi.json",
@@ -177,7 +176,6 @@ def module_for(path: str) -> str:
         "gestione-riservata": "accesso",
         "rapido": "dashboard",
         "fatture-estere-verifica": "fatture",
-        "salari": "personale",
         "ritenute": "personale",
         "verbali-noleggio": "noleggio",
         "iva": "contabilita",
@@ -300,7 +298,7 @@ def rewrite_page_docs(catalog: dict, revision: str, updated_at: str) -> set[str]
             "pagina": title,
             "route_storica_o_interna": route,
             "catalog_status": "non_canonical",
-            "scopo": "Componente incorporato o percorso storico; non è una delle 65 schermate canoniche.",
+            "scopo": "Componente incorporato o percorso storico; non è una delle 64 schermate canoniche.",
             "file_verificati": sorted(set(frontend + backend)),
             "endpoint_rilevati_nei_sorgenti": endpoints_for(frontend + backend),
         })
@@ -381,7 +379,7 @@ def rewrite_catalog(catalog: dict, revision: str, updated_at: str) -> None:
         "updated_at": updated_at,
         "source_revision": revision,
         "description": (
-            "Catalogo canonico delle 65 schermate. HTTP 200 non prova il funzionamento: "
+            "Catalogo canonico delle 64 schermate. HTTP 200 non prova il funzionamento: "
             "componenti, route, dati e relazioni devono essere collaudati."
         ),
         "storage_state": {

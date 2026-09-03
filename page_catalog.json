@@ -3,8 +3,8 @@
   "application": "GestionaleCloud - Ceraldi ERP",
   "production_url": "https://impresasemplice.online",
   "updated_at": "2026-08-20",
-  "source_revision": "b5371cb04ccb6934934fb2f5ca39d8f796546634",
-  "description": "Catalogo canonico delle 65 schermate. HTTP 200 non prova il funzionamento: componenti, route, dati e relazioni devono essere collaudati.",
+  "source_revision": "2d4e15c916bef540d2c511b93e503d8ee388bca7",
+  "description": "Catalogo canonico delle 64 schermate. HTTP 200 non prova il funzionamento: componenti, route, dati e relazioni devono essere collaudati.",
   "storage_state": {
     "current": "google_drive_sheets",
     "registry": "sheets",
@@ -122,18 +122,6 @@
     },
     {
       "id": 10,
-      "label": "Cedolini e salari",
-      "path": "/salari",
-      "component": "frontend/src/pages/CedoliniSalari.jsx",
-      "entry": "frontend/src/main.jsx",
-      "access": "authenticated",
-      "audit_status": "unverified",
-      "module": "personale",
-      "documentation_file": "memoria/pagine/salari.json",
-      "component_status": "reachable_from_router"
-    },
-    {
-      "id": 11,
       "label": "Flotta noleggio",
       "path": "/noleggio",
       "component": "frontend/src/pages/NoleggioAuto.jsx",
@@ -145,7 +133,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 12,
+      "id": 11,
       "label": "Verbali noleggio",
       "path": "/noleggio/verbali",
       "component": "frontend/src/pages/VerbaliRiconciliazione.jsx",
@@ -157,7 +145,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 13,
+      "id": 12,
       "label": "Costi noleggio",
       "path": "/noleggio/costi",
       "component": "frontend/src/pages/hub/VeicoliHub.jsx",
@@ -169,7 +157,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 14,
+      "id": 13,
       "label": "Dettaglio verbale",
       "path": "/verbali-noleggio/:identificativo",
       "e2e_path": "/verbali-noleggio/COLLAUDO-E2E",
@@ -185,7 +173,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 15,
+      "id": 14,
       "label": "Piano dei Conti",
       "path": "/contabilita",
       "component": "frontend/src/pages/PianoDeiConti.jsx",
@@ -197,7 +185,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 16,
+      "id": 15,
       "label": "Bilancio",
       "path": "/contabilita/bilancio",
       "component": "frontend/src/pages/Bilancio.jsx",
@@ -209,7 +197,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 17,
+      "id": 16,
       "label": "Verifica Bilancio",
       "path": "/contabilita/verifica",
       "component": "frontend/src/pages/BilancioVerifica.jsx",
@@ -221,7 +209,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 18,
+      "id": 17,
       "label": "Libro Giornale",
       "path": "/contabilita/giornale",
       "component": "frontend/src/pages/LibroGiornale.jsx",
@@ -233,7 +221,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 19,
+      "id": 18,
       "label": "Controllo mensile",
       "path": "/contabilita/controllo",
       "component": "frontend/src/pages/ControlloMensile.jsx",
@@ -245,7 +233,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 20,
+      "id": 19,
       "label": "Calendario fiscale",
       "path": "/contabilita/calendario",
       "component": "frontend/src/pages/CalendarioFiscale.jsx",
@@ -257,7 +245,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 21,
+      "id": 20,
       "label": "Cespiti",
       "path": "/contabilita/cespiti",
       "component": "frontend/src/pages/GestioneCespiti.jsx",
@@ -269,7 +257,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 22,
+      "id": 21,
       "label": "Finanziaria",
       "path": "/contabilita/finanziaria",
       "component": "frontend/src/pages/Finanziaria.jsx",
@@ -281,7 +269,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 23,
+      "id": 22,
       "label": "Chiusura esercizio",
       "path": "/contabilita/chiusura",
       "component": "frontend/src/pages/ChiusuraEsercizio.jsx",
@@ -293,7 +281,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 24,
+      "id": 23,
       "label": "Budget",
       "path": "/contabilita/budget",
       "component": "frontend/src/pages/BudgetPrevisionale.jsx",
@@ -305,7 +293,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 25,
+      "id": 24,
       "label": "Mutui",
       "path": "/contabilita/mutui",
       "component": "frontend/src/pages/Mutui.jsx",
@@ -317,7 +305,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 26,
+      "id": 25,
       "label": "Contabilita avanzata",
       "path": "/contabilita/avanzata",
       "component": "frontend/src/pages/ContabilitaAvanzata.jsx",
@@ -329,7 +317,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 27,
+      "id": 26,
       "label": "Utile obiettivo",
       "path": "/contabilita/utile",
       "component": "frontend/src/pages/UtileObiettivo.jsx",
@@ -341,7 +329,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 28,
+      "id": 27,
       "label": "Previsioni acquisti",
       "path": "/contabilita/previsioni-acquisti",
       "component": "frontend/src/pages/PrevisioniAcquisti.jsx",
@@ -353,7 +341,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 29,
+      "id": 28,
       "label": "Learning Machine",
       "path": "/learning-machine",
       "component": "frontend/src/pages/LearningMachine.jsx",
@@ -365,7 +353,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 30,
+      "id": 29,
       "label": "Scadenze",
       "path": "/scadenze",
       "component": "frontend/src/pages/Scadenze.jsx",
@@ -377,7 +365,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 31,
+      "id": 30,
       "label": "Ritenute",
       "path": "/ritenute",
       "component": "frontend/src/pages/Ritenute.jsx",
@@ -389,7 +377,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 32,
+      "id": 31,
       "label": "Riconciliazione dashboard",
       "path": "/riconciliazione",
       "component": "frontend/src/pages/RiconciliazioneUnificata.jsx",
@@ -401,7 +389,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 33,
+      "id": 32,
       "label": "Riconciliazione banca",
       "path": "/riconciliazione/banca",
       "component": "frontend/src/pages/RiconciliazioneUnificata.jsx",
@@ -413,7 +401,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 34,
+      "id": 33,
       "label": "Riconciliazione F24",
       "path": "/riconciliazione/f24",
       "component": "frontend/src/pages/RiconciliazioneUnificata.jsx",
@@ -425,7 +413,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 35,
+      "id": 34,
       "label": "Riconciliazione stipendi",
       "path": "/riconciliazione/stipendi",
       "component": "frontend/src/pages/RiconciliazioneUnificata.jsx",
@@ -437,7 +425,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 36,
+      "id": 35,
       "label": "Riconciliazione documenti",
       "path": "/riconciliazione/documenti",
       "component": "frontend/src/pages/RiconciliazioneUnificata.jsx",
@@ -449,7 +437,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 37,
+      "id": 36,
       "label": "Archivio bonifici",
       "path": "/riconciliazione/archivio-bonifici",
       "component": "frontend/src/pages/ArchivioBonifici.jsx",
@@ -461,7 +449,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 38,
+      "id": 37,
       "label": "Assegni",
       "path": "/riconciliazione/assegni",
       "component": "frontend/src/pages/GestioneAssegni.jsx",
@@ -473,7 +461,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 39,
+      "id": 38,
       "label": "PayPal",
       "path": "/riconciliazione/paypal",
       "component": "frontend/src/pages/RiconciliazionePaypal.jsx",
@@ -485,7 +473,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 40,
+      "id": 39,
       "label": "Coerenza POS",
       "path": "/riconciliazione/coerenza-pos",
       "component": "frontend/src/pages/CoerenzaPOSCorrispettivi.jsx",
@@ -497,7 +485,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 41,
+      "id": 40,
       "label": "Import documenti",
       "path": "/documenti/import",
       "component": "frontend/src/pages/ImportDocumenti.jsx",
@@ -509,7 +497,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 42,
+      "id": 41,
       "label": "Archivio documenti",
       "path": "/documenti/archivio",
       "component": "frontend/src/pages/Documenti.jsx",
@@ -521,7 +509,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 43,
+      "id": 42,
       "label": "Verifica coerenza",
       "path": "/strumenti",
       "component": "frontend/src/pages/VerificaCoerenza.jsx",
@@ -533,7 +521,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 44,
+      "id": 43,
       "label": "Movimenti banca",
       "path": "/riconciliazione/movimenti-banca",
       "component": "frontend/src/pages/VerificaMovimentiBanca.jsx",
@@ -545,7 +533,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 45,
+      "id": 44,
       "label": "Commercialista",
       "path": "/strumenti/commercialista",
       "component": "frontend/src/pages/Commercialista.jsx",
@@ -557,7 +545,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 46,
+      "id": 45,
       "label": "Pianificazione",
       "path": "/strumenti/pianificazione",
       "component": "frontend/src/pages/Pianificazione.jsx",
@@ -569,7 +557,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 47,
+      "id": 46,
       "label": "Visure",
       "path": "/strumenti/visure",
       "component": "frontend/src/pages/Visure.jsx",
@@ -581,7 +569,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 48,
+      "id": 47,
       "label": "Agenti AI",
       "path": "/agenti",
       "component": "frontend/src/pages/Agenti.jsx",
@@ -593,7 +581,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 49,
+      "id": 48,
       "label": "Impostazioni F24 email",
       "path": "/impostazioni-f24-email",
       "component": "frontend/src/pages/ImpostazioniF24Email.jsx",
@@ -605,7 +593,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 50,
+      "id": 49,
       "label": "Impostazioni AI",
       "path": "/impostazioni-ai",
       "component": "frontend/src/pages/ImpostazioniAI.jsx",
@@ -617,7 +605,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 51,
+      "id": 50,
       "label": "Integrazione OpenAPI",
       "path": "/integrazioni",
       "component": "frontend/src/pages/IntegrazioniOpenAPI.jsx",
@@ -629,7 +617,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 52,
+      "id": 51,
       "label": "Riconciliazione PagoPA",
       "path": "/riconciliazione/pagopa",
       "component": "frontend/src/pages/GestionePagoPA.jsx",
@@ -641,7 +629,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 53,
+      "id": 52,
       "label": "Mittenti Email attendibili",
       "path": "/integrazioni/mittenti-email",
       "component": "frontend/src/pages/MittentiEmail.jsx",
@@ -653,7 +641,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 54,
+      "id": 53,
       "label": "Admin sistema",
       "path": "/admin",
       "component": "frontend/src/pages/Admin.jsx",
@@ -665,7 +653,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 55,
+      "id": 54,
       "label": "Admin MFA",
       "path": "/admin/mfa",
       "component": "frontend/src/pages/MFAAdmin.jsx",
@@ -677,7 +665,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 56,
+      "id": 55,
       "label": "Elaborazioni amministrative",
       "path": "/admin/elaborazioni",
       "component": "frontend/src/pages/hub/AdminElaborazioni.jsx",
@@ -689,7 +677,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 57,
+      "id": 56,
       "label": "Elaborazioni legacy",
       "path": "/admin/batch-processor",
       "component": "frontend/src/pages/hub/AdminElaborazioni.jsx",
@@ -701,7 +689,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 58,
+      "id": 57,
       "label": "Utenti",
       "path": "/utenti",
       "component": "frontend/src/pages/Utenti.jsx",
@@ -713,7 +701,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 59,
+      "id": 58,
       "label": "Mappa gestionale",
       "path": "/mappa-gestionale",
       "component": "frontend/src/pages/MappaGestionale.jsx",
@@ -725,7 +713,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 60,
+      "id": 59,
       "label": "Gestione IVA",
       "path": "/iva",
       "component": "frontend/src/pages/GestioneIVA.jsx",
@@ -737,7 +725,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 61,
+      "id": 60,
       "label": "Verifica fatture estere",
       "path": "/fatture-estere-verifica",
       "component": "frontend/src/pages/FattureEstereVerifica.jsx",
@@ -749,7 +737,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 62,
+      "id": 61,
       "label": "Dati ISA",
       "path": "/contabilita/dati-isa",
       "component": "frontend/src/pages/DatiIsa.jsx",
@@ -761,7 +749,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 63,
+      "id": 62,
       "label": "Indice documentale Drive",
       "path": "/documenti/drive",
       "component": "frontend/src/pages/DriveDocumentIndex.jsx",
@@ -776,7 +764,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 64,
+      "id": 63,
       "label": "Atti amministrativi",
       "path": "/documenti/atti",
       "component": "frontend/src/pages/AttiAmministrativi.jsx",
@@ -788,7 +776,7 @@
       "component_status": "reachable_from_router"
     },
     {
-      "id": 65,
+      "id": 64,
       "label": "Situazione fiscale",
       "path": "/situazione-fiscale",
       "component": "frontend/src/pages/SituazioneFiscale.jsx",
@@ -800,18 +788,6 @@
       ],
       "module": "contabilita",
       "documentation_file": "memoria/pagine/situazione-fiscale.json",
-      "component_status": "reachable_from_router"
-    },
-    {
-      "id": 66,
-      "label": "Tracciabilità e HACCP",
-      "path": "/tracciabilita",
-      "component": "frontend/src/pages/TracciabilitaHACCP.jsx",
-      "entry": "frontend/src/main.jsx",
-      "access": "authenticated",
-      "audit_status": "in_review",
-      "module": "tracciabilita",
-      "documentation_file": "memoria/pagine/tracciabilita-haccp.json",
       "component_status": "reachable_from_router"
     }
   ]

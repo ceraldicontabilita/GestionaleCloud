@@ -30,7 +30,8 @@ CURRENT = {
     "PROMPT_MASTER.md",
     "PRODUCT.md",
     "README.md",
-    "docs/ADR-001-HACCP-LOTTI-DRIVE-SHEETS.md",
+    # docs/ADR-001-HACCP-LOTTI-DRIVE-SHEETS.md: superato il 03/09/2026 (modulo
+    # HACCP nativo rimosso, Lotti portata pari pari a /lotti) -> historical.
     "docs/FISCAL_ACCOUNTING_POLICY.md",
     "docs/MARKDOWN_INVENTORY.md",
     "docs/MCP_GESTIONALE_RUNBOOK.md",

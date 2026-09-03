@@ -8,8 +8,10 @@ storage_architecture: drive-only
 
 ```text
 Correggi e rendi verificabile l'intero flusso cedolini di GestionaleCloud usando
-Google Drive come archivio canonico dei PDF e la pagina `/salari` come vista
-contabile dei soli importi dimostrati.
+Google Drive come archivio canonico dei PDF e la Prima Nota salari
+(`/api/prima-nota-salari`) come vista contabile dei soli importi dimostrati.
+(La pagina `/salari` è stata rimossa il 03/09/2026: i cedolini si consultano
+nell'app HR a `/hr`.)
 
 ============================================================
 1. VERIFICA INIZIALE
@@ -18,8 +20,8 @@ contabile dei soli importi dimostrati.
 - Sincronizza il repository canonico `ceraldicontabilita/GestionaleCloud` e
   verifica `origin/main`, stato locale, test e configurazione Drive corrente.
 - Preserva tutte le modifiche locali non pertinenti.
-- Riusa `Documenti`, la pipeline cedolini, `prima_nota_salari`, la pagina
-  `/salari` e gli indici Drive esistenti; non creare un archivio parallelo.
+- Riusa `Documenti`, la pipeline cedolini, `prima_nota_salari` e gli indici
+  Drive esistenti; non creare un archivio parallelo.
 - Non usare filename, importi vicini, OCR isolato o dati aggregati come prova
   del netto del cedolino.
 

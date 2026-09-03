@@ -34,7 +34,7 @@ def repository_json_files() -> list[Path]:
 
 def test_catalogo_e_mappe_pagina_hanno_la_stessa_revisione():
     assert CATALOG["schema_version"] == 2
-    assert len(CATALOG["pages"]) == 66
+    assert len(CATALOG["pages"]) == 64
     revision = CATALOG["source_revision"]
 
     for page in CATALOG["pages"]:
