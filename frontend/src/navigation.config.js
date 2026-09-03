@@ -58,6 +58,9 @@ export const NAV_ALTRO = [
   { to: '/strumenti', label: 'Strumenti', Icon: Wrench },
   { to: '/menu/ordini', label: 'Menu', Icon: Menu },
   { to: '/hr', label: 'HR', Icon: Users, adminOnly: true },
+  // App Lotti (HACCP) portata pari pari dentro il gestionale: documento a se',
+  // con il proprio login a PIN, servita dal backend Lotti montato a /lotti.
+  { href: '/lotti/', label: 'HACCP Lotti', Icon: ShieldCheck, external: true },
   { to: '/impostazioni-ai', label: 'Assistente AI', Icon: Bot, adminOnly: true },
   { to: '/utenti', label: 'Utenti', Icon: Users, adminOnly: true },
   { to: '/admin', label: 'Admin', Icon: Settings, adminOnly: true },

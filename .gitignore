@@ -77,3 +77,10 @@ frontend/package-lock.json
 # Dati reali importati: MAI nel repository
 app/uploads/
 app/static/tracciabilita/uploads/
+
+# Lotti (frontend_lotti/): il file .env.production contiene solo PUBLIC_URL e
+# percorsi relativi (nessun segreto) e public/uploads/ sono foto prodotto statiche
+# committate nel repo Lotti — devono restare tracciate. build/ e node_modules/
+# sono già esclusi da frontend_lotti/.gitignore.
+!frontend_lotti/.env.production
+!frontend_lotti/public/uploads/

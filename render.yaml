@@ -16,10 +16,14 @@ services:
     plan: starter
     branch: main
     autoDeploy: true
+    # frontend_lotti = app Lotti (HACCP) portata pari pari: build CRA propria,
+    # servita dal backend Lotti montato a /lotti (vedi app/lotti/embed.py).
     buildCommand: >-
       pip install -r backend/requirements.txt &&
       npm --prefix frontend install --include=dev --legacy-peer-deps &&
-      npm --prefix frontend run build
+      npm --prefix frontend run build &&
+      npm --prefix frontend_lotti ci --legacy-peer-deps &&
+      CI=false npm --prefix frontend_lotti run build
     # Il piano Starter dispone di 512 MiB: due interpreti Python completi
     # duplicano il registro Sheets in memoria e superano il limite. FastAPI e
     # APScheduler vivono quindi nello stesso processo; PROCESS_ROLE=combined

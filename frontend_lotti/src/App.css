@@ -1,0 +1,44 @@
+/* App.css — layout principale */
+
+[data-testid="importa-da-fatture-btn"],
+[data-testid="valorizza-sconti-btn"] {
+  display: none !important;
+}
+
+/* Home a card come unica navigazione */
+nav.g-nav-bar,
+.g-nav-bar,
+.g-nav-inner {
+  display: none !important;
+  height: 0 !important;
+  max-height: 0 !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: 0 !important;
+}
+
+/* Nasconde il selettore HACCP nell'header (HACCP si apre dalla card Home).
+   Selettore preciso sul bottone reale, così non si tocca per sbaglio Home o gli alert. */
+.g-app-header [data-testid="haccp-dropdown-btn"],
+.g-app-header .g-haccp-btn {
+  display: none !important;
+}
+
+/* Header pulito: logo+titolo a sinistra, azioni a destra, niente sovrapposizioni. */
+.g-app-header {
+  min-height: 64px !important;
+  flex-wrap: nowrap !important;
+}
+
+.g-page {
+  padding-top: 12px !important;
+}
+
+/* Telefoni stretti: niente caratteri sovrapposti nell'header.
+   Il sottotitolo "Tracciabilità HACCP" sparisce e i bottoni Guida/Esci
+   restano solo icona: il brand non finisce mai sotto la lente Cerca. */
+@media (max-width: 640px) {
+  .g-app-header .g-brand-sub { display: none !important; }
+  .g-app-header .g-header-btn-label { display: none !important; }
+}

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Ceraldi - Home Card</title>
+  <style>
+    :root{--bg:#f5efe4;--card:#fffaf2;--ink:#2b2118;--muted:#786b5d;--line:#eadcc8;--brand:#7a4b28;--green:#3f5a4e;--red:#b4483b;--shadow:0 18px 44px rgba(70,45,20,.12)}
+    *{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:radial-gradient(circle at top left,#fff8eb,var(--bg));color:var(--ink)}
+    header{position:sticky;top:0;z-index:2;background:rgba(245,239,228,.92);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);padding:18px 22px;display:flex;justify-content:space-between;gap:16px;align-items:center}
+    h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:14px;margin-top:4px}.pill{background:#fff;border:1px solid var(--line);border-radius:999px;padding:10px 14px;font-weight:800;color:var(--green)}
+    main{max-width:1180px;margin:0 auto;padding:24px}.hero{background:linear-gradient(135deg,#fffaf2,#f1dfc3);border:1px solid var(--line);box-shadow:var(--shadow);border-radius:28px;padding:24px;margin-bottom:22px;display:flex;justify-content:space-between;gap:18px;align-items:flex-end}
+    .hero h2{font-size:30px;margin:0 0 8px}.hero p{margin:0;color:var(--muted);max-width:680px}.grid{display:grid;grid-template-columns:repeat(5,minmax(150px,1fr));gap:16px}.card{min-height:164px;text-decoration:none;color:inherit;background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow);border-radius:26px;padding:20px;display:flex;flex-direction:column;justify-content:space-between;transition:.15s}.card:active,.card:hover{transform:translateY(-2px);border-color:#d7b98f}.ico{font-size:40px}.card h3{margin:12px 0 5px;font-size:20px}.card p{margin:0;color:var(--muted);font-size:14px;line-height:1.35}.badge{align-self:flex-start;margin-top:12px;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:900;background:#f7ead7;color:var(--brand)}.badge.red{background:#ffe7e3;color:var(--red)}.badge.green{background:#eaf4ef;color:var(--green)}
+    .quick{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:18px}.quick a{background:#2f493f;color:#fff;text-align:center;text-decoration:none;padding:16px;border-radius:18px;font-weight:900}
+    @media(max-width:920px){.grid{grid-template-columns:repeat(2,1fr)}.quick{grid-template-columns:1fr}header,.hero{align-items:flex-start;flex-direction:column}.hero h2{font-size:24px}}
+  </style>
+</head>
+<body>
+<header>
+  <div><h1>Ceraldi Group</h1><div class="sub">Home operativa a card - tablet e laboratorio</div></div>
+  <div class="pill">Render collegato a Lotti</div>
+</header>
+<main>
+  <section class="hero">
+    <div><h2>Accesso rapido</h2><p>Card grandi per entrare subito nelle funzioni: produzione, magazzino, ricette, fatture, ordini e impostazioni. Ogni card apre una sezione gia presente nell'app Lotti.</p></div>
+    <div class="quick"><a href="./#tablet/pasticceria">Produci Babà</a><a href="./#ordini">Ordini sospesi</a><a href="./#fatture">Import XML</a></div>
+  </section>
+  <section class="grid">
+    <a class="card" href="./#tablet/pasticceria"><div><div class="ico">🥐</div><h3>Pasticceria</h3><p>PIN operatore, produzione rapida, scarico ingredienti.</p></div><span class="badge green">Laboratorio</span></a>
+    <a class="card" href="./#tablet/rosticceria"><div><div class="ico">🍕</div><h3>Rosticceria</h3><p>Rustici, pizzette, tavola salata e lotti produzione.</p></div><span class="badge green">Reparto</span></a>
+    <a class="card" href="./#tablet/bar"><div><div class="ico">☕</div><h3>Bar</h3><p>Magazzino bar, vendita banco e prodotti banco.</p></div><span class="badge">Banco</span></a>
+    <a class="card" href="./#tablet/magazzino"><div><div class="ico">📦</div><h3>Magazzino</h3><p>Carico, scarico, giacenze e movimenti rapidi.</p></div><span class="badge red">Scorte</span></a>
+    <a class="card" href="./#ricette"><div><div class="ico">📋</div><h3>Ricette</h3><p>Ricette, clona variante, ingredienti, food cost.</p></div><span class="badge">Allergeni</span></a>
+    <a class="card" href="./#fatture"><div><div class="ico">🧾</div><h3>Fatture XML</h3><p>Import fatture, fornitori, catalogo e carico merce.</p></div><span class="badge">Import</span></a>
+    <a class="card" href="./#ordini"><div><div class="ico">🛒</div><h3>Ordini</h3><p>Catalogo ordinabile, carrello e invio fornitore.</p></div><span class="badge red">Sospesi</span></a>
+    <a class="card" href="./#allergeni"><div><div class="ico">⚠️</div><h3>Allergeni</h3><p>Registro allergeni e schede tecniche collegate.</p></div><span class="badge">HACCP</span></a>
+    <a class="card" href="./#lotti"><div><div class="ico">🏷️</div><h3>Lotti</h3><p>Tracciabilità, scadenze, produzione e lotti fornitore.</p></div><span class="badge">FIFO</span></a>
+    <a class="card" href="./#personale"><div><div class="ico">⚙️</div><h3>Impostazioni</h3><p>Personale, PIN, permessi, dati azienda e reparti.</p></div><span class="badge">Setup</span></a>
+  </section>
+</main>
+</body>
+</html>

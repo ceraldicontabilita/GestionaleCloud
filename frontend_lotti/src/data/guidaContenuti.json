@@ -1,0 +1,1075 @@
+{
+ "aggiornata_il": "01/09/2026",
+ "sezioni": [
+  {
+   "id": "come-si-entra",
+   "gruppo": "Per iniziare",
+   "titolo": "Come si entra (PIN, ruoli, uscita)",
+   "indirizzo": "",
+   "scopo": "L'app si apre col tuo PIN personale. Una volta inserito, puoi passare liberamente tra Pasticceria, Rosticceria, Bar, Lavagna e Magazzino senza digitarlo a ogni cambio. La persona resta identificata per due ore; le pagine di amministrazione restano riservate agli amministratori.",
+   "passi": [
+    "Inserisci il PIN sul tastierino: con 6 cifre entra da solo, con 4 premi Conferma.",
+     "Il bottone «Esci» in alto a destra chiude tutto: al rientro serve di nuovo il PIN.",
+     "Sui tablet il PIN identifica la persona che lavora. Per «Preleva» e «OK preso» viene chiesta una nuova conferma solo se sono trascorsi più di 10 minuti dall'ultima conferma."
+   ],
+   "bottoni": [
+    [
+     "«Esci» (in alto a destra)",
+     "chiude la sessione e azzera il cancello delle 2 ore (chiede conferma)",
+     "logout completo"
+    ],
+    [
+     "«🔒 Esci gestionale» (dal tablet)",
+     "esce dal kiosk verso il gestionale: serve il PIN amministratore (non richiesto se già inserito nelle ultime 2 ore)",
+     "POST /api/tablet-operatori/logout"
+    ]
+   ]
+  },
+  {
+   "id": "navigazione",
+   "gruppo": "Per iniziare",
+   "titolo": "Come ci si muove nell'app",
+   "indirizzo": "",
+   "scopo": "In alto c'è la barra con le pagine principali: Dashboard, Ricette, Lotti, Gelati, Ordini, Fornitori. Le pagine meno usate stanno nel menu «Altro» (Configura, Dizionario, Listini, Corrispettivi, Backoffice, Controllo Dati, Cataloghi web, Collaudi, Controllo prelievi, Storico, Guida) e tutti i registri di legge stanno nel menu «Conformità HACCP». ATTENZIONE sul telefono: la barra scorre in orizzontale — se non vedi «Altro», trascina la barra verso sinistra, oppure usa le card della Home che portano alle stesse pagine.",
+   "passi": [
+    "Il bottone «Home» ti riporta sempre alla Dashboard.",
+    "Il numeretto rosso su «Ordini» dice quante bozze d'ordine aspettano di essere confermate.",
+    "Il bottone «Guida» apre questa guida; il «?» in basso a sinistra riavvia il giro guidato dell'app.",
+    "«Gestionale» apre l'altra app del gruppo (impresasemplice.online) in una scheda nuova."
+   ],
+   "bottoni": [
+    [
+     "Menu «Altro»",
+     "apre l'elenco delle pagine secondarie",
+     "#configura, #dizionario, #prodotti, #corrispettivi, #backoffice, #controllo_dati, #cataloghi_esterni, #collaudi, #movimenti_magazzino, #storico_produzioni, #guida"
+    ],
+    [
+     "Menu «Conformità HACCP»",
+     "tutti i registri di legge in un menu",
+     "#disinfestazione, #sanificazione, #temp_negative, #temp_positive, #anomalie, #controllo_olio, #temp_cottura, #ricezione_merce, #manuale, #registro_haccp, #allergeni, #schede_tecniche, #personale"
+    ]
+   ]
+  },
+  {
+   "id": "supervisore",
+   "gruppo": "Per iniziare",
+   "titolo": "Il semaforo Supervisore (gli alert)",
+   "indirizzo": "in alto, su ogni pagina",
+   "scopo": "Il bottone col semaforo in alto controlla DA SOLO tutti gli obblighi HACCP e i dati dell'app: se è verde con «OK» sei in regola, altrimenti dice quanti avvisi ci sono. Tocchi un avviso e ti porta ESATTAMENTE dove sistemare il problema; se l'avviso ha un elenco (es. le ricette da completare), tocchi la voce e si apre quella scheda precisa. La ✕ nasconde l'avviso per oggi — ma NON esiste sugli avvisi rossi critici (temperature non registrate, libretti scaduti): quelli sono obblighi di legge e spariscono solo risolvendo il problema.",
+   "passi": [
+    "Aprilo ogni mattina: è il modo più rapido per sapere cosa manca.",
+    "Gli avvisi si aggiornano da soli ogni 5 minuti e quando cambi qualcosa sui lotti.",
+    "Se nascondi un avviso con la ✕ e il problema peggiora (es. i lotti scaduti aumentano), l'avviso riappare da solo."
+   ],
+   "bottoni": [
+    [
+     "Bottone semaforo («OK» o «N alert»)",
+     "apre il pannello con tutti i controlli",
+     "GET /api/supervisor/stato"
+    ],
+    [
+     "Tocco su un avviso",
+     "naviga alla pagina da sistemare; con elenco, la voce apre la scheda esatta",
+     "route dell'avviso"
+    ],
+    [
+     "«✕» (solo avvisi non critici)",
+     "nasconde per oggi; riappare se il problema cambia",
+     "POST /api/supervisor/alerts/{id}/silenzia"
+    ],
+    [
+     "«Ricontrolla» (in fondo)",
+     "rilancia subito tutti i controlli",
+     "GET /api/supervisor/stato"
+    ]
+   ]
+  },
+  {
+   "id": "dashboard",
+   "gruppo": "Per iniziare",
+   "titolo": "Dashboard (la Home)",
+   "indirizzo": "#dashboard",
+   "scopo": "La Home del mattino: i numeri che contano (spesa ultimi 30 giorni, prodotti sotto scorta, lotti scaduti, ordini da convalidare, produzione di oggi) e le card per andare ovunque. OGNI numero è toccabile: tocchi «Sotto scorta» e vai al Backoffice, tocchi «Lotti scaduti» e vai ai Lotti.",
+   "passi": [
+    "«Operazioni di oggi»: le card dei tablet di reparto (Pasticceria, Rosticceria, Bar, Banco vendita, Magazzino, Gelati, Lotti).",
+    "«Cataloghi fornitori»: accessi diretti ad Acquaviva, SAIMA e MEPA.",
+    "«Area ufficio»: Ricette, Fatture XML, Acquisti & Ordini, Fornitori.",
+    "«Archivio»: Materie prime, Lotti totali, Ricezione merce, e (solo admin) Impostazioni, Controllo Dati, Collaudi da fare, Listini e cataloghi.",
+    "«Strumenti avanzati»: il Registro pesce si apre direttamente qui dentro."
+   ],
+   "bottoni": [
+    [
+     "«Aggiorna»",
+     "ricarica tutti i numeri della pagina",
+     "GET /api/supervisor/cruscotto"
+    ],
+    [
+     "Card KPI (Spesa, Sotto scorta, Scaduti, Ordini, Prodotti oggi)",
+     "aprono la pagina del dato",
+     "#fatture, #backoffice, #lotti, #ordini, #storico_produzioni"
+    ],
+    [
+     "Card «Collaudi da fare» (solo admin)",
+     "la lista dei test da spuntare dopo ogni modifica",
+     "#collaudi"
+    ]
+   ]
+  },
+  {
+   "id": "importa-fatture",
+   "gruppo": "Ufficio",
+   "titolo": "Importa Fatture",
+   "indirizzo": "#fatture",
+   "scopo": "Da ogni fattura XML nascono fornitori, prodotti, prezzi, giacenze e lotti. Puoi caricare i file a mano, anche più file insieme, oppure ricevere le fatture già registrate nel GestionaleCloud. Se la stessa fattura arriva più volte, viene riconosciuta e non viene duplicata.",
+   "passi": [
+    "Trascina i file nella zona tratteggiata (o toccala per sceglierli) e premi «Importa Fatture».",
+    "Se ci sono fornitori MAI visti prima, l'app te li mostra PRIMA di importare: per ognuno scegli «Completo» (magazzino + lotti + ricette), «Solo magazzino» (es. bibite) o «Escludi» (servizi, non-food).",
+    "La barra in basso mostra l'avanzamento e continua anche se cambi pagina.",
+    "In fondo trovi l'elenco delle fatture importate: «Assosoftware» le apre formattate come un documento vero."
+   ],
+   "bottoni": [
+    [
+     "Riquadro «Aggiornamento fatture»",
+     "mostra quante fatture sono state ricevute e l'ultimo aggiornamento",
+     ""
+    ],
+    [
+     "«Aggiorna ora»",
+     "controlla subito se nel GestionaleCloud ci sono nuove fatture",
+     ""
+    ],
+    [
+     "«Importa Fatture»",
+     "controlla i fornitori nuovi e poi importa in background",
+     "POST /api/fatture/prescan-fornitori + POST /api/fatture/importa-async"
+    ],
+    [
+     "«Salva e importa» (nel pannello fornitori nuovi)",
+     "salva le classificazioni scelte e parte",
+     "POST /api/fornitori/tipo-fornitura"
+    ],
+    [
+     "«Aggiorna Materie (ultimi 10 giorni)»",
+     "riallinea le materie prime dalle fatture recenti",
+     "POST /api/aggiorna-materie-da-fatture"
+    ],
+    [
+     "«Pulizia Dati Spazzatura»",
+     "toglie le righe non-prodotto da Materie/Dizionario/Lotti (chiede conferma)",
+     "POST /api/pulizia-dati-spazzatura"
+    ],
+    [
+     "«Assosoftware» / «Visualizza» (per fattura)",
+     "apre la fattura in bella copia in un'altra scheda",
+     "GET /api/fatture/{id}/visualizza"
+    ],
+    [
+     "Cestino (per fattura)",
+     "elimina la fattura (chiede conferma)",
+     "DELETE /api/fatture/{id}"
+    ]
+   ]
+  },
+  {
+   "id": "fornitori",
+   "gruppo": "Ufficio",
+   "titolo": "Fornitori",
+   "indirizzo": "#fornitori",
+   "scopo": "L'anagrafica di tutti i fornitori arrivati dalle fatture. Per ognuno decidi cosa deve alimentare col selettore a tre posizioni: «Mag. + Lotti» (alimenti tracciati), «Solo mag.» (magazzino senza lotti), «Escluso» (servizi, vernici, cancelleria — le sue fatture non sporcano i dati). L'icona documento apre la SCHEDA ANAGRAFICA completa: più la compili, migliori sono i dati che l'app tira fuori per ricette e ordini — email e cellulare per gli ordini WhatsApp, il sito per le schede tecniche, i giorni di consegna e di CHIUSURA per non farti trovare scoperto, e il pannello «Qualità dati per le ricette» che ti dice quanto i suoi prodotti sono collegati alle tue ricette.",
+   "passi": [
+    "I fornitori NUOVI compaiono nel banner giallo in alto: «Auto-classifica» sistema da solo quelli evidenti, gli altri li decidi tu con «Includi»/«Escludi».",
+    "Nella scheda anagrafica trovi anche: le rimanenze in giacenza, il Tracker Colli Omaggio (quanti colli pagati, quanti omaggi maturati e quanto valgono) e tutte le sue fatture, toccabili.",
+    "Il «Registro Qualifica Fornitori — HACCP» è il registro di legge: ✓ approva, ✕ sospende."
+   ],
+   "bottoni": [
+    [
+     "Selettore «Mag. + Lotti» / «Solo mag.» / «Escluso»",
+     "decide cosa popola quel fornitore",
+     "POST /api/fornitori/tipo-fornitura"
+    ],
+    [
+     "Icona documento (riga fornitore)",
+     "apre la scheda anagrafica completa",
+     "GET /api/fornitori/{nome}/anagrafica"
+    ],
+    [
+     "«Salva scheda fornitore»",
+     "salva contatti, sito, giorni di consegna/chiusura, ordine minimo, pagamento",
+     "PUT /api/fornitori-anagrafica/{nome}"
+    ],
+    [
+     "«WhatsApp» (se c'è il cellulare)",
+     "apre la chat già intestata per l'ordine",
+     "link wa.me"
+    ],
+    [
+     "Checkbox «☕ Colazione» / «🌾 Senza glutine»",
+     "manda i prodotti del fornitore nei preset del tablet",
+     "salvate con la scheda"
+    ],
+    [
+     "«Auto-classifica» (banner nuovi)",
+     "classifica in automatico i fornitori evidenti",
+     "POST /api/fornitori/auto-classifica-horeca"
+    ],
+    [
+     "✓ / ✕ (Registro Qualifica)",
+     "approva o sospende la qualifica HACCP",
+     "POST /api/haccp-auto-manuale/qualifica-fornitore"
+    ]
+   ]
+  },
+  {
+   "id": "materie-prime",
+   "gruppo": "Ufficio",
+   "titolo": "Materie Prime",
+   "indirizzo": "#materie",
+   "scopo": "Tutto quello che hai comprato, fornitore per fornitore, con date e prezzi VERI dalle fatture. Tocchi un fornitore e si apre l'elenco dei suoi prodotti. Su ogni prodotto, l'icona documento apre la scheda dove puoi incollare il sito del produttore (l'app ne estrae gli ingredienti) o fotografare l'etichetta: composizione e allergeni letti dalla foto finiscono nelle ricette che usano quel prodotto.",
+   "passi": [
+    "Il menu del periodo (ultimo mese → tutti) decide quanto indietro guardare.",
+    "La ricerca apre da sola tutte le card e trova sia prodotti che fornitori."
+   ],
+   "bottoni": [
+    [
+     "Select periodo",
+     "cambia la finestra temporale",
+     "GET /api/materie-prime/da-fatture?mesi=…"
+    ],
+    [
+     "Icona documento (prodotto)",
+     "scheda/fonte: sito produttore, foto etichetta, allergeni",
+     "modale dedicata"
+    ]
+   ]
+  },
+  {
+   "id": "dizionario",
+   "gruppo": "Ufficio",
+   "titolo": "Dizionario Ingredienti",
+   "indirizzo": "#dizionario",
+   "scopo": "Qui insegni all'app come si chiamano DAVVERO le cose — ed è la pagina che ti dà la certezza del matching esatto nelle ricette. Ogni riga XML dei fornitori Magazzino+Lotti arriva qui con prezzo, quantità e unità COME IN FATTURA, e il sistema ti PROPONE già il nome canonico: se è giusto tocchi il bottone verde «Conferma proposta» e hai finito; se è sbagliato lo correggi tu («van.» → Vaniglia). Quando scrivi a mano, l'autocomplete suggerisce i nomi già usati, così niente doppioni per un refuso.",
+   "passi": [
+    "Il filtro «Da associare» mostra solo le righe ancora scoperte; «Solo Magazzino+Lotti» (attivo di default) nasconde i fornitori che non contano per le ricette.",
+    "Le righe nuove arrivano da sole a ogni fattura, e il Supervisore ti ricorda quante ne restano («N righe fattura da battezzare»).",
+    "Battezzarle tutte = ogni prodotto in fattura aggancia l'ingrediente giusto nelle ricette."
+   ],
+   "bottoni": [
+    [
+     "«Conferma proposta» (verde)",
+     "accetta il nome proposto dal sistema: un tocco e la riga esce dall'elenco",
+     "POST /api/normalizzazione/correggi-mapping"
+    ],
+    [
+     "«Conferma» / «Aggiorna»",
+     "salva il nome scritto o corretto da te (con autocomplete dei nomi già usati)",
+     "POST /api/normalizzazione/correggi-mapping"
+    ],
+    [
+     "Checkbox «Solo Magazzino+Lotti»",
+     "solo i fornitori che alimentano lotti e ricette",
+     "GET /api/food-cost/dizionario?solo_completi=true"
+    ],
+    [
+     "«Completa dati storici» (solo admin)",
+     "riempie prezzo/quantità/unità sulle righe vecchie leggendo l'ultima fattura che le cita (una tantum)",
+     "POST /api/food-cost/backfill-dati-riga-dizionario"
+    ]
+   ]
+  },
+  {
+   "id": "ricette",
+   "gruppo": "Ufficio",
+   "titolo": "Ricette",
+   "indirizzo": "#ricette",
+   "scopo": "Il ricettario di casa. Ogni card ha due azioni: «🏭 Produci» registra una produzione col numero di lotto già pronto, «✏️ Apri ricetta» apre il form completo (dentro ci sono anche Procedimento, Stampa ed Elimina). Nel form gli ingredienti si cercano con l'autocomplete che pesca DALLE TUE FATTURE, e il food cost si calcola coi prezzi reali pagati — mai numeri inventati. Gli allergeni si rilevano da soli con «Rileva dagli ingredienti»: tu controlli, correggi se serve e salvi. Il sistema ricorda l'ORIGINE degli ingredienti di ogni ricetta (scritti da te / proposti in automatico / ereditati): sulle ricette tue o ereditate non propone mai nulla da solo.",
+   "passi": [
+    "FOTO SUBITO: anche su una ricetta NUOVA puoi premere «🖼️ Aggiungi foto» o «📸 Scatta foto» — la vedi in anteprima e si salva insieme alla ricetta quando premi Salva.",
+    "VARIANTE DI UNA RICETTA: in «+ Nuova ricetta», scegli la ricetta di riferimento dalla tendina e premi «🧬 Eredita scheda» — arrivano ingredienti, reparto e pezzi, e il NOME parte già con quello della base: tu aggiungi solo la variante (es. «Arancini di riso » → «ai funghi»). Se togli la ricetta di riferimento, il nome auto-inserito sparisce.",
+    "PRODOTTO COMPRATO: se il prodotto non lo fai tu (es. coda di aragosta), scegli il fornitore dalla tendina «🛒 Comprato da…». Con un fornitore scelto non vengono proposti ingredienti di produzione.",
+    "«✨ Proponi» compila gli ingredienti tipici dal nome, GUSTI COMPRESI: «babà panna e pistacchio» → base babà + Panna + Pistacchio. Sulle ricette nuove la proposta parte da sola appena scrivi il nome.",
+    "«📷 Leggi etichetta» fotografa l'etichetta di un prodotto e ne estrae gli ingredienti.",
+    "«🕐 Calcola scadenza stimata» stima la shelf-life dagli ingredienti e dal metodo di conservazione (Ambiente / Frigo 0-4°C / Abbattitore + / Freezer −18°C)."
+   ],
+   "bottoni": [
+    [
+     "«🏭 Produci» (card)",
+     "registra pezzi, data e destinazione: nasce il lotto tracciato",
+     "POST /api/registra-produzione-lotto"
+    ],
+    [
+     "«✏️ Apri ricetta» (card)",
+     "apre il form completo della ricetta",
+     "PUT /api/ricette/{id}"
+    ],
+    [
+     "«🧬 Eredita scheda» (solo nuova ricetta)",
+     "copia ingredienti/reparto/pezzi dalla ricetta di riferimento e pre-compila il nome",
+     "GET /api/ricette/{id}"
+    ],
+    [
+     "«🖼️ Aggiungi foto» / «📸 Scatta foto»",
+     "foto della ricetta (su ricetta nuova parte insieme al Salva)",
+     "POST /api/ricette/{id}/upload-foto"
+    ],
+    [
+     "Tendina «🛒 Comprato da…»",
+     "segna il prodotto come rivendita di quel fornitore",
+     "GET /api/fornitori (elenco) · salvato con la ricetta"
+    ],
+    [
+     "«✨ Proponi»",
+     "ingredienti tipici dal nome (AI → base curata → tua ricetta più simile), coi gusti letti dal nome",
+     "POST /api/food-cost/suggerisci-ingredienti"
+    ],
+    [
+     "«📋 Procedimento» (nel form)",
+     "editor della scheda stampabile (procedimento a passi, varianti, punto critico)",
+     "PUT /api/ricette/{id}/scheda"
+    ],
+    [
+     "«Calcola» (Food cost)",
+     "costo totale e per porzione dai prezzi di fattura",
+     "GET /api/food-cost/calcola/{id}"
+    ],
+    [
+     "«Rileva dagli ingredienti» (Allergeni)",
+     "propone gli allergeni; tu confermi con «Salva allergeni»",
+     "POST /api/food-cost/auto-rileva-allergeni-ricetta/{id}"
+    ],
+    [
+     "«Calcola» (Valori nutrizionali)",
+     "kcal e valori per 100 g dagli ingredienti a peso",
+     "POST /api/food-cost/calcola-nutrizionale/{id}"
+    ],
+    [
+     "«🖨️ Stampa» (nel form)",
+     "stampa la scheda della ricetta",
+     "GET /api/ricette/{id}/pdf-scheda"
+    ],
+    [
+     "«🗑 Elimina» (nel form)",
+     "chiude il form e chiede conferma in primo piano",
+     "DELETE /api/ricette/{id}"
+    ],
+    [
+     "«💾 Aggiorna ricetta» / «✨ Crea ricetta»",
+     "salva tutto (e carica la foto in attesa, se c'è)",
+     "PUT /api/ricette/{id} · POST /api/ricette"
+    ]
+   ]
+  },
+  {
+   "id": "lotti",
+   "gruppo": "Ufficio",
+   "titolo": "Lotti",
+   "indirizzo": "#lotti",
+   "scopo": "La tracciabilità di legge: ogni produzione ha il suo lotto, con dentro gli ingredienti usati, i lotti dei fornitori scalati (FIFO: si consuma sempre il più vecchio) e le fatture di provenienza. Tocchi un lotto e vedi TUTTO: allergeni, ingredienti tracciati, quale fornitore e quale fattura. Da qui parte anche il recall: tocchi un ingrediente e l'app ti dice in quali produzioni è finito — quello che chiede l'ASL in caso di richiamo.",
+   "passi": [
+    "La «Ricerca tracciabilità ASL» trova per qualsiasi estremo: numero lotto, prodotto, fornitore, lotto del fornitore, data.",
+    "Il banner rosso dei lotti scaduti ha «Smalti Tutti»: smaltimento documentato in un tocco.",
+    "«🗄 Archivio» mostra i lotti scaduti da oltre 30 giorni (restano per la tracciabilità, non si cancellano).",
+    "«Report HACCP PDF» e «Registro ASL» producono i documenti pronti per un controllo."
+   ],
+   "bottoni": [
+    [
+     "«Report HACCP PDF»",
+     "report mensile consolidato (temperature, sanificazione, anomalie, lotti, firme)",
+     "GET /api/report-haccp/mensile"
+    ],
+    [
+     "«Registro ASL»",
+     "registro lotti per periodo, conforme Reg. CE 178/2002",
+     "GET /api/registro-lotti-asl"
+    ],
+    [
+     "«Smalti Tutti» (banner scaduti)",
+     "smaltimento documentato di tutti gli scaduti",
+     "POST /api/lotti/smalti-batch"
+    ],
+    [
+     "Dettaglio lotto — «Apri ricetta» / «Apri recall» / «Registro HACCP» / «Apri fattura»",
+     "ogni dato collegato si apre con un tocco (la fattura nel visualizzatore, la ricetta in modifica)",
+     "#ricette · #lotti · #registro_haccp · GET /api/fatture/{id}/visualizza"
+    ],
+    [
+     "«Stampa report» (dettaglio lotto)",
+     "documento A4 del lotto: dati, ingredienti, provenienza FIFO, cronologia (diverso dall'etichetta)",
+     "GET /api/stampa/report-lotto/{id}"
+    ],
+    [
+     "«Smaltisci» / «Sposta» / «Congela» / «Recupera» (dettaglio)",
+     "azioni tracciate col motivo a TENDINA (mani sporche, mai tastiera)",
+     "PATCH/POST /api/lotti/{id}/…"
+    ],
+    [
+     "Icona stampante (card)",
+     "stampa l'etichetta del lotto",
+     "GET /api/stampa/lotto/{numero}"
+    ]
+   ]
+  },
+  {
+   "id": "ordini",
+   "gruppo": "Acquisti",
+   "titolo": "Ordini",
+   "indirizzo": "#ordini",
+   "scopo": "Tutto il flusso del comprare, in sei schede in fondo alla pagina. «Riordini» ti dice cosa sta finendo: sotto soglia, richieste dei dipendenti dalla lavagna, avvisi festività (a ridosso di una festa le quantità proposte RADDOPPIANO, come farebbe un magazziniere) e il confronto incassi-ordini dai corrispettivi. «Catalogo» sono i prodotti che hai già comprato, con giacenza e soglia correggibili direttamente dalla card. «Confronto» mette i fornitori uno contro l'altro sui prezzi veri. «Carrello» raccoglie tutto — anche quello che aggiungi dai cataloghi Saima, Bindi, Tre Marie: è UN SOLO carrello. «Giacenze» è l'inventario rapido. «Da inviare» crea le bozze, le confermi riga per riga e scarichi il PDF da mandare al fornitore.",
+   "passi": [
+    "Giro tipo in 3 tocchi: vedi il prodotto (Catalogo o Riordini) → regoli la quantità con −/+ → «+ Aggiungi» → Carrello → «Crea bozze ordine».",
+    "In «Da inviare» le righe sono GIÀ tutte spuntate: togli solo quelle che NON vuoi ordinare, poi «Conferma e scarica PDF».",
+    "Nel Carrello il fornitore col prezzo MIGLIORE è già scelto («il migliore è già scelto ✓», ★ nel menu): cambi solo se vuoi.",
+    "Il riordino automatico ragiona su DUE segnali: sotto soglia, oppure il consumo reale degli ultimi 28 giorni non copre 7 giorni.",
+    "Le bevande e gli alcolici si comprano e confrontano a CARTONE/UNITÀ, mai a kg o litro."
+   ],
+   "bottoni": [
+    [
+     "−/+ e «+ Aggiungi» (riga Riordini)",
+     "scegli TU la quantità prima di aggiungere al carrello",
+     "locale"
+    ],
+    [
+     "«+ Aggiungi tutti» (Riordini)",
+     "tutti i sotto-soglia nel carrello con la quantità mancante",
+     "locale"
+    ],
+    [
+     "«✎ correggi giacenza / soglia» (card Catalogo)",
+     "rettifica giacenza contata e soglia minima dalla card",
+     "POST /api/magazzino-bar/prodotti/{id}/rettifica · PATCH …/soglia"
+    ],
+    [
+     "Chip dei cataloghi (fondo filtri Catalogo)",
+     "un bottone per ogni catalogo fornitore (Acquaviva, SAIMA, MePA, Il Pasticcere, Tre Marie, Alfa, Sammontana, Bindi + fonti web) — stesso carrello",
+     "#prodotti/{catalogo}"
+    ],
+    [
+     "«Crea bozze ordine · € tot» (Carrello)",
+     "una bozza per ogni fornitore, poi vai su Da inviare",
+     "POST /api/ordini-fornitori"
+    ],
+    [
+     "«Conferma e scarica PDF (invio manuale)»",
+     "conferma le righe spuntate (già tutte) e apre il PDF per il fornitore",
+     "PUT …/conferma-righe → POST …/invia → GET …/pdf"
+    ]
+   ]
+  },
+  {
+   "id": "confronto",
+   "gruppo": "Acquisti",
+   "titolo": "Confronto prezzi",
+   "indirizzo": "#comparatore (o Ordini → Confronto)",
+   "scopo": "Ogni prodotto con tutti i fornitori che te lo vendono, ai prezzi VERI delle fatture. Il badge verde −N% è il risparmio tra il fornitore più caro e il più economico: tocchi la card e vedi il dettaglio fornitore per fornitore con la scritta «MIGLIORE» su chi conviene. Occhio ai numeri assurdi (−97%): quasi sempre è la stessa merce letta con confezioni diverse tra le fatture, non uno sconto vero.",
+   "passi": [
+    "«Solo con più fornitori» nasconde i prodotti che compri da uno solo (lì non c'è niente da confrontare).",
+    "Le bevande si confrontano a cartone, non a kg."
+   ],
+   "bottoni": [
+    [
+     "Card prodotto",
+     "apre il dettaglio: miglior prezzo, risparmio vs peggiore, prezzi per fornitore",
+     "GET /api/food-cost/confronto-prezzi"
+    ],
+    [
+     "Icona refresh",
+     "azzera ricerca e filtri",
+     "locale"
+    ]
+   ]
+  },
+  {
+   "id": "cataloghi",
+   "gruppo": "Acquisti",
+   "titolo": "Cataloghi fornitori (Saima, Bindi, Tre Marie…)",
+   "indirizzo": "#prodotti → tab dei cataloghi",
+   "scopo": "I cataloghi COMPLETI dei fornitori, sfogliabili per categoria con le foto. La regola d'oro: se un prodotto ha il PREZZO VERDE con «✓ già comprato», vuol dire che è già passato dalle tue fatture e quello è il prezzo vero che hai pagato; se non ha prezzo, non l'hai mai comprato — puoi ordinarlo lo stesso. «+ Aggiungi all'ordine» mette il prodotto nello STESSO carrello della pagina Ordini. La stella ★ marca un prodotto come preferito per la colazione (entra in tutte e 4 le stagioni).",
+   "passi": [
+    "Saima e MePA si aggiornano da soli dal sito del fornitore («Aggiorna Catalogo»).",
+    "Il Pasticcere, Tre Marie e Bindi hanno il bottone «Importa dal catalogo PDF»: carica i listini ufficiali già pronti (ripremerlo NON crea doppioni).",
+    "«Ricettari SAIMA» raccoglie i PDF di ricette dei fornitori, consultabili e scaricabili.",
+    "«Cataloghi Fornitori (web)» (menu Altro, solo admin): incolli nome e sito di un fornitore nuovo e l'app prova a scaricarne il catalogo da sola."
+   ],
+   "bottoni": [
+    [
+     "«+ Aggiungi all'ordine» / «✓ Nel carrello»",
+     "mette nel carrello unico di Ordini (anche senza prezzo)",
+     "carrello condiviso"
+    ],
+    [
+     "★/☆",
+     "preferito colazione, in tutte le stagioni",
+     "POST /api/colazione-acquaviva/preferito"
+    ],
+    [
+     "«Aggiorna Catalogo» (Saima/MePA)",
+     "riscarica il catalogo dal sito",
+     "POST /api/{fornitore}/scraping/avvia"
+    ],
+    [
+     "«Importa dal catalogo PDF …» (Pasticcere/Tre Marie/Bindi)",
+     "importa i prodotti dal listino ufficiale",
+     "POST /api/catalogo-forno/importa-precaricato"
+    ],
+    [
+     "«Usa in ricette» (dettaglio prodotto)",
+     "mette il prodotto nel dizionario per il food cost",
+     "PATCH /api/food-cost/dizionario/{id}/aggiorna"
+    ],
+    [
+     "«Sincronizza» (Cataloghi web, admin)",
+     "scarica il catalogo dal sito del fornitore indicato",
+     "POST /api/fonti-catalogo/{id}/sincronizza"
+    ]
+   ]
+  },
+  {
+   "id": "listini-vendita",
+   "gruppo": "Acquisti",
+   "titolo": "Listini e cataloghi",
+   "indirizzo": "#prodotti",
+   "scopo": "I TUOI prezzi e i cataloghi fornitori, in quattro schede. «Listino»: generi il listino prezzi (miglior prezzo/media/ultimo, con sconto a scelta) e lo scarichi in PDF da mandare ai clienti. «Prodotti e cataloghi»: gestisci i prodotti che vendi, coi prezzi e i margini, e consulti Acquaviva, SAIMA, MEPA e gli altri cataloghi. «Magazzino prodotti»: decidi cosa appare in magazzino e con che nome. «Sconti merce»: il registro degli omaggi ricevuti, con quanto valgono.",
+   "passi": [
+    "Nel Listino, «Aggiorna dalle fatture» riporta i prezzi presenti nelle fatture registrate.",
+    "In Prodotti e cataloghi, «Imposta Prezzi (N)» sistema in blocco i prodotti rimasti senza prezzo.",
+    "In Sconti merce, «Importa da Fatture» + «Valorizza da Fatture» fanno quasi tutto da soli."
+   ],
+   "bottoni": [
+    [
+     "«Calcola» + «⬇ Scarica PDF» (Listino)",
+     "genera il listino e lo scarica",
+     "GET /api/listino/calcola · GET /api/listino/calcola-pdf"
+    ],
+    [
+     "«↻ Aggiorna dalle fatture» (Catalogo prezzi)",
+     "aggiorna le voci dalle fatture",
+     "POST /api/listino/sync-da-fatture"
+    ],
+    [
+      "«Aggiorna costi» (Prodotti e cataloghi)",
+     "costi aggiornati dai food cost delle ricette",
+     "POST /api/prodotti-vendita/sync-da-ricette"
+    ],
+    [
+     "«Salva» / «Auto» (Magazzino prodotti)",
+     "salva l'override di nome/categoria o torna all'automatico",
+     "POST /api/magazzino/override-prodotto · POST /api/magazzino/reset-override"
+    ],
+    [
+     "«Importa da Fatture» (Sconti merce)",
+     "estrae gli sconti merce dalle fatture",
+     "POST /api/sconti-merce/importa-da-fatture"
+    ]
+   ]
+  },
+  {
+   "id": "corrispettivi",
+   "gruppo": "Acquisti",
+   "titolo": "Corrispettivi",
+   "indirizzo": "#corrispettivi",
+   "scopo": "Gli incassi veri, confrontati con lo stesso periodo dell'anno scorso, e la domanda che conta: «gli ordini sono giustificati dall'incasso?» — il pannello mette a confronto quanto incassi e quanto spendi in ordini, con l'incidenza percentuale. In più: le festività in arrivo (per anticipare gli ordini) e la previsione del mese basata sul tuo storico.",
+   "passi": [
+    "Carichi gli XML dei corrispettivi telematici con «Importa XML corrispettivi».",
+    "Il selettore giorno/settimana/mese cambia il dettaglio dell'andamento."
+   ],
+   "bottoni": [
+    [
+     "«Importa XML corrispettivi»",
+     "carica i file telematici (anche più insieme)",
+     "POST /api/corrispettivi/importa-xml"
+    ],
+    [
+     "KPI «Oggi/Settimana/Mese/Anno»",
+     "incasso col confronto sull'anno precedente",
+     "GET /api/corrispettivi/riepilogo"
+    ],
+    [
+     "Pannello «Ordini giustificati dall'incasso?»",
+     "incasso vs spesa ordini con incidenza",
+     "GET /api/corrispettivi/correlazione-ordini"
+    ]
+   ]
+  },
+  {
+   "id": "tablet",
+   "gruppo": "Tablet di reparto",
+   "titolo": "Tablet: postazioni e produzioni",
+   "indirizzo": "#tablet/pasticceria, /rosticceria, /bar",
+   "scopo": "Il tablet del reparto: griglia di card coi tuoi prodotti, tocchi e registri la produzione. Prima di farti produrre, l'app ti avvisa se hai già pezzi PRONTI in frigo o abbattitore («Ne hai già N pronti, non ancora al banco») e ti fa mandare al banco quelli, anche in parte, prima di produrne altri. Scegli quantità e destinazione (Frigo, Banco, Abbattitore), l'etichetta si stampa da sola se vuoi, e alla fine vedi il report: da quali lotti fornitore ha scalato gli ingredienti (FIFO), cosa si è esaurito e se è partito un ordine automatico.",
+   "passi": [
+    "Il PIN d'ingresso è personale: ogni produzione dice chi l'ha fatta.",
+    "«🥐 Dividi nei gusti»: se il prodotto è una base (es. cornetti vuoti), dividi la giacenza nei gusti secondo le proporzioni della colazione attiva.",
+    "Se la ricetta ha sotto-ricette, il bottone diventa «Avanti →» e scegli il lotto di ogni componente.",
+    "«📦 Richiedi merce» manda la richiesta alla lavagna del magazzino, da qualsiasi reparto."
+   ],
+   "bottoni": [
+    [
+     "Card prodotto (tocco)",
+     "apre la registrazione produzione",
+     "POST /api/registra-produzione-lotto"
+    ],
+    [
+     "«🛒 N» / «🛒 Tutto (N)» (giacenza pronta)",
+     "manda al banco i pezzi già pronti (anche parziali)",
+     "POST /api/lotti/{id}/manda-al-banco"
+    ],
+    [
+     "«🥐 Dividi nei gusti»",
+     "divide la base nei gusti della colazione e manda al banco",
+     "POST /api/farciture/{lotto}/dividi-e-manda-al-banco"
+    ],
+    [
+     "«☕ Colazione» (pasticceria)",
+     "il template colazione della stagione: spunta e avvia",
+     "POST /api/colazione-acquaviva/registra"
+    ],
+    [
+     "«🌾 Senza Glutine» (pasticceria)",
+     "catalogo senza glutine: manda al banco o ordina",
+     "POST /api/vendita-banco/registra · POST /api/ordini-fornitori"
+    ],
+    [
+     "«📦 Richiedi merce»",
+     "richiesta sulla lavagna del magazzino (cartoni o pezzi)",
+     "POST /api/magazzino-bar/richieste"
+    ],
+    [
+     "«📋 N task»",
+     "le cose da fare oggi del reparto, con «✓ Fatto»",
+     "GET /api/task-dipendenti/oggi"
+    ]
+   ]
+  },
+  {
+   "id": "magazzino-tablet",
+   "gruppo": "Tablet di reparto",
+   "titolo": "Tablet Magazzino (lavagna e prelievi)",
+   "indirizzo": "#tablet/magazzino",
+   "scopo": "Lavagna e Magazzino sono disponibili a tutti gli operatori abilitati. Le richieste dei reparti arrivano qui e si aggiornano da sole. «✓ OK preso» evade la richiesta e scarica la giacenza; nella scheda «Preleva» registri un prelievo manuale. Il passaggio tra le sezioni non richiede un nuovo PIN. Il PIN viene chiesto soltanto al primo prelievo e poi di nuovo dopo 10 minuti, così ogni movimento conserva il nome corretto.",
+   "passi": [
+    "Il bar può chiedere rifornimenti direttamente dalla lavagna con «➕ Chiedi rifornimento».",
+    "Ogni movimento finisce nel registro «Controllo prelievi» (menu Altro) con nome e ora."
+   ],
+   "bottoni": [
+    [
+     "«✓ OK preso» (richiesta)",
+     "evade e scarica lo stock",
+     "PUT /api/magazzino-bar/richieste/{id}/ok"
+    ],
+    [
+     "«Scarica» (scheda Preleva)",
+     "registra il prelievo col tuo nome",
+     "POST /api/magazzino/scarico"
+    ],
+    [
+     "«✕» (richiesta)",
+     "annulla la richiesta",
+     "DELETE /api/magazzino-bar/richieste/{id}"
+    ]
+   ]
+  },
+  {
+   "id": "vendita-banco",
+   "gruppo": "Tablet di reparto",
+   "titolo": "Banco vendita (registro invenduto)",
+   "indirizzo": "#tablet/vendita",
+   "scopo": "La sera, per ogni prodotto mandato al banco oggi, segni quanti pezzi sono RIMASTI: il venduto lo calcola l'app. La barra colorata ti dice subito se la giornata è andata bene. Da qui vedi anche le statistiche (per prodotto o per giorno, con l'indice di venduto) e gli SPRECHI: quanti pezzi buttati e quanto ti sono costati in materie prime.",
+   "passi": [
+    "I preset 0-1-2-3-5-10 e «Tutti» velocizzano l'inserimento.",
+    "Un record chiuso si può riaprire con «Modifica»."
+   ],
+   "bottoni": [
+    [
+     "«✓ Salva — N invenduti, N venduti»",
+     "chiude il conteggio del prodotto",
+     "PUT /api/vendita-banco/{id}/invenduto"
+    ],
+    [
+     "«Statistiche»",
+     "venduto/invenduto per periodo e reparto",
+     "GET /api/vendita-banco/statistiche"
+    ],
+    [
+     "«Sprechi»",
+     "pezzi buttati e costo materie prime sprecate",
+     "GET /api/vendita-banco/report-sprechi"
+    ]
+   ]
+  },
+  {
+   "id": "gelati",
+   "gruppo": "Tablet di reparto",
+   "titolo": "Gelati",
+   "indirizzo": "#gelati",
+   "scopo": "Il laboratorio gelati: scegli la ricetta base (Ceraldi o Galatea), scrivi i grammi totali da produrre e l'app scala tutti gli ingredienti. Con la frutta fa il conto giusto: toglie dall'acqua solo la parte acquosa del frutto. Il ciclo dell'invenduto è completo: il gelato che rientra dal banco va in giacenza e puoi RECUPERARLO nel rinfuso successivo — la ricetta si ricalcola solo sul nuovo da produrre.",
+   "passi": [
+    "«Invenduti»: registri i rientri dal banco (gusto, grammi, data).",
+    "«Riepilogo»: quanto rientra, quanto recuperi, quanto butti — per settimana, mese o anno."
+   ],
+   "bottoni": [
+    [
+     "«Registra produzione»",
+     "salva la produzione con eventuali recuperi",
+     "POST /api/gelati/produzioni"
+    ],
+    [
+     "«♻️ Riutilizza» / «🗑 Dismetti» (invenduto)",
+     "decide il destino del rientro",
+     "POST /api/gelati/invenduti/{id}/esito"
+    ],
+    [
+     "«+ In giacenza»",
+     "registra un rientro dal banco",
+     "POST /api/gelati/invenduti"
+    ]
+   ]
+  },
+  {
+   "id": "temperature",
+   "gruppo": "Registri HACCP",
+   "titolo": "Temperature (positive e negative)",
+   "indirizzo": "#temp_positive · #temp_negative",
+   "scopo": "Le schede mensili di legge: frigoriferi (0/+4 °C) e congelatori (−22/−18 °C), una colonna per apparecchio e un quadretto per giorno. I FRIGORIFERI si compilano toccando il quadretto e scrivendo la temperatura: se è fuori range, l'app PRETENDE l'azione correttiva prima di salvare. I CONGELATORI si compilano da soli (rilevazione automatica notturna). Toccando l'intestazione di una colonna rinomini o elimini l'apparecchio.",
+   "passi": [
+    "«🔧 Periodi» riapplica manutenzioni e chiusure configurate (i giorni chiusi non contano come mancanze).",
+    "«Stampa» produce la scheda del mese da mettere nel raccoglitore."
+   ],
+   "bottoni": [
+    [
+     "Quadretto giorno (solo positive)",
+     "registra la temperatura; fuori range → azione correttiva obbligatoria",
+     "POST /api/temperature-positive/scheda/{anno}/{frigo}/registra"
+    ],
+    [
+     "«Aggiungi Frigorifero» / «Aggiungi Congelatore»",
+     "nuovo apparecchio in griglia",
+     "POST /api/attrezzature/frigo · /congelatore"
+    ],
+    [
+     "Intestazione colonna",
+     "rinomina (✓) o elimina (✕) l'apparecchio",
+     "PUT/DELETE /api/attrezzature/…"
+    ]
+   ]
+  },
+  {
+   "id": "sanificazione-disinfestazione",
+   "gruppo": "Registri HACCP",
+   "titolo": "Sanificazione e Disinfestazione",
+   "indirizzo": "#sanificazione · #disinfestazione",
+   "scopo": "SANIFICAZIONE: la scheda mensile delle pulizie — una X per attrezzatura per giorno, con «Marca tutto» per spuntare l'intera giornata, poi «Salva». La scheda «Apparecchi Refrigeranti» mostra il calendario pulizie di frigo e congelatori (sola consultazione). DISINFESTAZIONE: il registro annuale del pest control — l'intervento mensile della ditta esterna e il controllo di ogni apparecchio (tocca la card, scegli «OK» o «Richiede intervento»).",
+   "passi": [
+    "Entrambe le pagine hanno «PDF» per l'esportazione del registro.",
+    "Se la scheda del mese è vuota, si popola da sola alla prima apertura."
+   ],
+   "bottoni": [
+    [
+     "«Salva» (Sanificazione)",
+     "salva le spunte del mese",
+     "PUT /api/sanificazione/scheda/{anno}/{mese}"
+    ],
+    [
+     "«Registra Intervento» (Disinfestazione)",
+     "l'intervento mensile della ditta",
+     "POST /api/disinfestazione/registra-intervento"
+    ],
+    [
+     "Card apparecchio (Disinfestazione)",
+     "controllo mensile: OK o richiede intervento",
+     "POST /api/disinfestazione/registra-monitoraggio"
+    ]
+   ]
+  },
+  {
+   "id": "anomalie",
+   "gruppo": "Registri HACCP",
+   "titolo": "Anomalie",
+   "indirizzo": "#anomalie",
+   "scopo": "Il registro delle non conformità: guasti, temperature sballate, attrezzature in disuso. Ogni anomalia ha il suo percorso: Aperta → «Prendi in carico» → «Segna come risolta», con l'azione correttiva documentata (obbligo di legge). Se l'anomalia riguarda un frigo, l'app aggancia da sola i lotti che c'erano dentro in quel momento.",
+   "passi": [
+    "«Nuova Anomalia»: categoria, attrezzatura, priorità e descrizione — le chip rapide compilano l'attrezzatura in un tocco.",
+    "«Report PDF» stampa il registro dell'anno."
+   ],
+   "bottoni": [
+    [
+     "«Registra Anomalia»",
+     "salva la segnalazione",
+     "POST /api/anomalie/registra"
+    ],
+    [
+     "«Prendi in carico» / «Segna come risolta»",
+     "avanza lo stato",
+     "PUT /api/anomalie/{id}"
+    ],
+    [
+     "«Report PDF»",
+     "report annuale",
+     "GET /api/anomalie/report-pdf/{anno}"
+    ]
+   ]
+  },
+  {
+   "id": "olio-cottura",
+   "gruppo": "Registri HACCP",
+   "titolo": "Olio frittura e Temperature di cottura",
+   "indirizzo": "#controllo_olio · #temp_cottura",
+   "scopo": "OLIO: il controllo giornaliero delle friggitrici — temperatura (max 175 °C), colore su scala 1-5, odore, test polarità (max 25%): se qualcosa è fuori norma l'app chiede l'azione correttiva e ti dice se l'olio va sostituito. COTTURA: la temperatura al cuore dei prodotti (≥ 75 °C, oppure ≥ 70 °C se abbatti subito) — sotto soglia, azione correttiva obbligatoria.",
+   "passi": [
+    "In cottura puoi scegliere il prodotto dal ricettario o scriverlo libero.",
+    "Le statistiche a 30 giorni (conformità %, sostituzioni) sono in cima alle pagine."
+   ],
+   "bottoni": [
+    [
+     "«Registra Controllo» (olio)",
+     "salva il controllo; l'esito CONFORME/NON CONFORME lo calcola l'app",
+     "POST /api/controllo-olio/registra"
+    ],
+    [
+     "«Registra Temperatura» (cottura)",
+     "salva la misurazione al cuore",
+     "POST /api/temperature-cottura/registra"
+    ]
+   ]
+  },
+  {
+   "id": "ricezione",
+   "gruppo": "Registri HACCP",
+   "titolo": "Ricezione merce e reclami",
+   "indirizzo": "#ricezione_merce",
+   "scopo": "Il controllo all'arrivo della merce. La parte comoda: i prodotti arrivati vengono LETTI DALLE FATTURE — per ognuno tocchi «Conforme» e hai registrato in un secondo, oppure «Non conforme» e compili temperatura, imballaggio, etichettatura e l'azione (anche «Merce RESPINTA al fornitore»). C'è anche la registrazione manuale per la merce senza fattura, e la scheda «Reclami» per seguire le contestazioni ai fornitori.",
+   "passi": [
+    "I range di temperatura sono per tipo merce: refrigerato 0/+4, congelato −25/−15, surgelato −25/−18, fresco 0/+8.",
+    "L'azione correttiva è una TENDINA coi motivi pronti (mani sporche, niente tastiera): la scrittura libera solo scegliendo «Altro».",
+    "Quando registri la ricezione, il toast ti dice se l'ordine fornitore risulta chiuso o parziale."
+   ],
+   "bottoni": [
+    [
+     "«Conforme» (riga da fattura)",
+     "registra la ricezione conforme in un tocco",
+     "POST /api/ricezione-merce/registra"
+    ],
+    [
+     "«Non conforme»",
+     "apre il pannello con la non conformità già spuntata",
+     "POST /api/ricezione-merce/registra"
+    ],
+    [
+     "«Prendi in carico» / «Segna risolto» (Reclami)",
+     "avanza il reclamo",
+     "PATCH /api/reclami-fornitori/{id}/stato"
+    ]
+   ]
+  },
+  {
+   "id": "manuale-registro",
+   "gruppo": "Registri HACCP",
+   "titolo": "Manuale HACCP e Registro HACCP",
+   "indirizzo": "#manuale · #registro_haccp",
+   "scopo": "MANUALE: genera il Manuale di Autocontrollo completo (21 sezioni) coi TUOI dati veri — scegli anno, periodo e sezioni, «Visualizza e Stampa» e ce l'hai pronto per il consulente o per l'ASL, anche condivisibile su WhatsApp. REGISTRO: il cruscotto di tutte le registrazioni obbligatorie — quante temperature oggi, sanificazioni, anomalie aperte, libretti sanitari in scadenza, organico per postazione — con la stampa del registro per periodo.",
+   "passi": [
+    "Nel Registro, il banner rosso dei libretti scaduti compare da solo quando serve.",
+    "«Genera e stampa» apre il documento in un'altra scheda: poi Ctrl+P (o Condividi → Stampa dal telefono)."
+   ],
+   "bottoni": [
+    [
+     "«Visualizza e Stampa» (Manuale)",
+     "genera il manuale con i filtri scelti",
+     "GET /api/manuale-haccp/genera-manuale"
+    ],
+    [
+     "«Condividi» (Manuale)",
+     "WhatsApp o email col link del manuale",
+     "wa.me / mailto"
+    ],
+    [
+     "«Stampa registro» (Registro)",
+     "documento del periodo con le sezioni scelte",
+     "GET /api/manuale-haccp/genera-manuale"
+    ]
+   ]
+  },
+  {
+   "id": "allergeni",
+   "gruppo": "Registri HACCP",
+   "titolo": "Registro Allergeni",
+   "indirizzo": "#allergeni",
+   "scopo": "La matrice di legge: tutte le ricette contro i 14 allergeni europei, pronta da stampare ed esporre. Il sistema rileva gli allergeni DA SOLO dagli ingredienti; a te resta la conferma: apri la ricetta segnalata, controlli, salvi — e quella vale come verifica umana (davanti a un controllo fa la differenza). Ogni ricetta ha anche il QR code da esporre: il cliente lo inquadra e vede gli allergeni.",
+   "passi": [
+    "Il pannello «N ricette senza allergeni dichiarati» elenca quelle da completare: «Auto-rileva Tutte» le sistema in blocco.",
+    "«Modifica» apre i 14 chip per la correzione manuale."
+   ],
+   "bottoni": [
+    [
+     "«Auto-rileva Tutte»",
+     "rilevamento automatico su tutte le ricette scoperte",
+     "POST /api/food-cost/auto-rileva-allergeni-tutte"
+    ],
+    [
+     "«Salva» (dopo Modifica)",
+     "salva la selezione manuale — vale come conferma umana",
+     "POST /api/food-cost/aggiorna-allergeni-ricetta"
+    ],
+    [
+     "Icona QR",
+     "il QR code allergeni della ricetta, con «Stampa QR»",
+     "modale locale"
+    ],
+    [
+     "«Stampa»",
+     "stampa la matrice completa",
+     "stampa del browser"
+    ]
+   ]
+  },
+  {
+   "id": "schede-tecniche",
+   "gruppo": "Registri HACCP",
+   "titolo": "Schede Tecniche",
+   "indirizzo": "#schede_tecniche",
+   "scopo": "L'archivio delle schede tecniche e di sicurezza dei prodotti che compri. Per ogni prodotto senza scheda: «Cerca su Google» apre la ricerca già scritta giusta, trovi il PDF ufficiale del produttore, incolli il link e salvi. I prodotti NUOVI dalle ultime fatture compaiono nel banner in alto, già pronti da completare.",
+   "passi": [
+    "Il contatore «X / Y con scheda» ti dice a che punto sei.",
+    "I link salvati si aprono con un tocco (Tecnica / Sicurezza)."
+   ],
+   "bottoni": [
+    [
+     "«Cerca su Google»",
+     "apre Google con la ricerca già pronta per quel prodotto",
+     "GET /api/schede-tecniche/query-ricerca"
+    ],
+    [
+     "«Salva scheda»",
+     "salva il link del PDF (tipo Tecnica o Sicurezza)",
+     "POST /api/schede-tecniche/salva"
+    ]
+   ]
+  },
+  {
+   "id": "personale",
+   "gruppo": "Amministrazione",
+   "titolo": "Personale e Impostazioni",
+   "indirizzo": "#personale — solo admin",
+   "scopo": "I dati dell'azienda (finiscono su tutti i PDF), i PIN degli operatori, i nuovi dipendenti dal gestionale da abilitare al tablet, i libretti sanitari con le scadenze (l'app avvisa 30 giorni prima), e la configurazione delle stampanti.",
+   "passi": [
+    "«Mostra PIN» (col PIN amministratore) fa vedere i PIN di tutti in chiaro.",
+    "I dipendenti nuovi registrati sul Gestionale Cloud compaiono qui: assegni PIN e postazione con «Abilita»."
+   ],
+   "bottoni": [
+    [
+     "«Salva dati azienda»",
+     "ragione sociale, P.IVA, SDI, responsabile HACCP…",
+     "PUT /api/azienda"
+    ],
+    [
+     "«Imposta» (PIN operatore)",
+     "reset del PIN (minimo 4 cifre)",
+     "PATCH /api/tablet-operatori/{id}"
+    ],
+    [
+     "«Abilita» / «Ignora» (nuovi dipendenti)",
+     "abilita al tablet o ignora",
+     "POST /api/tablet-operatori/abilita-dipendente"
+    ],
+    [
+     "«Salva» (libretti sanitari)",
+     "mansione, postazione e scadenza libretto",
+     "PATCH /api/tablet-operatori/{id}"
+    ]
+   ]
+  },
+  {
+   "id": "controllo-dati",
+   "gruppo": "Amministrazione",
+   "titolo": "Controllo Dati",
+   "indirizzo": "#controllo_dati — solo admin",
+   "scopo": "Controlla che fatture, ingredienti e lotti siano collegati correttamente. Se trova qualcosa da sistemare, puoi toccare la voce e aprire direttamente la fattura, la ricetta o il lotto interessato.",
+   "passi": [
+    "«Aggiorna» rilancia tutti i controlli.",
+    "Il pannello «Pulizia dati inutilizzati» mostra prima cosa può essere rimosso e chiede conferma; gli elementi recuperabili vengono spostati nel cestino.",
+    "«Pulisci e rigenera riordini» rifà le bozze automatiche con le scorte di oggi (le manuali non si toccano)."
+   ],
+   "bottoni": [
+    [
+     "Campione toccabile (in ogni card)",
+     "apre LA COSA segnalata: fattura, ricetta o lotto",
+     "visualizzatore fattura / #ricette / #lotti"
+    ],
+    [
+     "«Apri area»",
+     "la pagina generale del controllo",
+     "route del controllo"
+    ],
+    [
+     "«Analizza» → «Conferma pulizia»",
+     "pulizia guidata dei dati inutilizzati",
+     "POST /api/diagnostic/pulizia-collezioni"
+    ],
+    [
+     "«Rebuild catalogo prodotti»",
+     "ricostruisce il catalogo master",
+     "POST /api/prodotti-master/rebuild"
+    ]
+   ]
+  },
+  {
+   "id": "collaudi",
+   "gruppo": "Amministrazione",
+   "titolo": "Collaudi da fare",
+   "indirizzo": "#collaudi — solo admin (anche card in Home)",
+   "scopo": "Ogni modifica fatta all'app lascia qui i suoi test: li esegui dal telefono seguendo i passi numerati e li spunti. «Funziona» = a posto; «Non funziona» = bug da segnalare in chat, e resta segnato finché non viene sistemato. Così niente resta collaudato solo a parole.",
+   "passi": [
+    "Il filtro «Solo da fare» nasconde quelli già spuntati.",
+    "I collaudi sono raggruppati per area (Ordini, Supervisore, Cataloghi…)."
+   ],
+   "bottoni": [
+    [
+     "«Funziona»",
+     "collaudo superato, con data e nome",
+     "POST /api/collaudi/{id}/stato?stato=fatto"
+    ],
+    [
+     "«Non funziona»",
+     "segnato come fallito: è un bug da riferire",
+     "POST /api/collaudi/{id}/stato?stato=fallito"
+    ],
+    [
+     "«Rimetti tra i da fare»",
+     "riapre il collaudo",
+     "POST /api/collaudi/{id}/stato?stato=da_fare"
+    ]
+   ]
+  },
+  {
+   "id": "altri-admin",
+   "gruppo": "Amministrazione",
+   "titolo": "Configura, Backup, Stampanti, Controllo prelievi, Storico",
+   "indirizzo": "#configura · #backup · #stampanti · #movimenti_magazzino · #storico_produzioni",
+   "scopo": "CONFIGURA: una lista guidata per completare le impostazioni iniziali. BACKUP: crea una copia di sicurezza con un tocco, la prepara automaticamente ogni notte e permette il ripristino senza perdere la copia precedente. STAMPANTI: assegna ogni stampante al reparto e al documento corretto. CONTROLLO PRELIEVI: mostra chi ha prelevato cosa e quando. STORICO: raccoglie tutte le produzioni e permette di esportarle.",
+   "passi": [
+    "Nel Backup, il ripristino chiede doppia conferma e prima si salva da solo.",
+    "Nelle Stampanti, «Stampa automatica» richiede il print-agent sul PC del negozio."
+   ],
+   "bottoni": [
+    [
+     "«Backup Ora»",
+     "crea subito una copia di sicurezza",
+     "POST /api/backup/esegui"
+    ],
+    [
+     "«Sì, ripristina»",
+     "ripristina dal file scelto (prima fa un backup di sicurezza)",
+     "POST /api/backup/ripristina/{file}"
+    ],
+    [
+     "«Salva» (stampante)",
+     "salva IP, porta, reparto e categorie di stampa",
+     "PUT /api/stampanti/{id}"
+    ],
+    [
+     "«Esporta CSV» (Storico)",
+     "scarica le produzioni del periodo",
+     "file locale"
+    ]
+   ]
+  }
+ ]
+}

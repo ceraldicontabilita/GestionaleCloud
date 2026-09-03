@@ -138,3 +138,7 @@ xlrd==2.0.2
 yarl==1.23.0
 zipp==3.23.0
 anthropic>=0.25.0
+
+# --- modulo Lotti (app/lotti): API Mongo in memoria + tipi bson usati dal document store Supabase
+pymongo==4.5.0
+mongomock-motor==0.0.36

@@ -21,12 +21,12 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 
 ## Riepilogo
 
-- Correnti: **27**
+- Correnti: **28**
 - Riferimento: **28**
 - Pianificati: **7**
 - Generati: **5**
 - Storici: **6**
-- Totale: **73**
+- Totale: **74**
 
 ## Elenco completo
 
@@ -71,6 +71,7 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 | `docs/obsidian-integration/templates/RUN_GIORNALIERO.md` | `planned` | Specifica approvata ma non ancora completamente operativa |
 | `docs/rt-locale-drive.md` | `current` | Autorità operativa corrente |
 | `frontend/README.md` | `current` | Autorità operativa corrente |
+| `frontend_lotti/README.md` | `current` | Autorità operativa corrente |
 | `memoria/AUDIT_FRONTEND_DEAD_CODE.md` | `generated` | Artefatto meccanico; rigenerare dalla sorgente indicata |
 | `memoria/AUDIT_STATIC_REPORT.md` | `generated` | Artefatto meccanico; rigenerare dalla sorgente indicata |
 | `memoria/DISASTER_RECOVERY_DRIVE.md` | `current` | Autorità operativa corrente |

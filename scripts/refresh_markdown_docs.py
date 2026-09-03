@@ -82,9 +82,16 @@ def tracked_markdown() -> list[str]:
     return sorted(path for path in paths if (ROOT / path).exists() or path == "docs/MARKDOWN_INVENTORY.md")
 
 
+APP_PORTATE_PARI_PARI = ("app/lotti/", "frontend_lotti/")
+
+
 def classify(path: str) -> str:
     if path in GENERATED:
         return "generated"
+    # Documentazione delle app portate pari pari dentro il gestionale: e' la
+    # documentazione corrente di QUELLA app, non uno snapshot storico dell'ERP.
+    if path.startswith(APP_PORTATE_PARI_PARI):
+        return "current"
     if (
         path in CURRENT
         or path.startswith(".github/agents/")

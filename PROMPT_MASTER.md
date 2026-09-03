@@ -534,10 +534,14 @@ si rigenerano dal codice e non si correggono a mano.
 |---|---|---|---|---|
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | sicurezza | segreta | `int` / valore non riportato | `app/config.py` |
 | `ADER_MICRO_RESIDUAL_THRESHOLD_CENTS` | azienda-fiscale | configurazione | `int` / `500` | `app/config.py` |
-| `ADMIN_EMAIL` | sicurezza | configurazione | non dichiarato in Settings | `app/hr/services/email_smtp.py`, `app/routers/auth.py`, `app/routers/pin_login.py`, `scripts/e2e_distruttivo_server.py` |
-| `ADMIN_PASSWORD` | sicurezza | segreta | non dichiarato in Settings | `app/routers/auth.py`, `scripts/e2e_distruttivo_server.py` |
-| `ADMIN_PASSWORD_HASH` | sicurezza | segreta | non dichiarato in Settings | `app/routers/auth.py` |
+| `ADMIN_EMAIL` | sicurezza | configurazione | non dichiarato in Settings | `app/hr/services/email_smtp.py`, `app/hr_originale/routers/auth.py`, `app/hr_originale/services/email_smtp.py`, `app/routers/auth.py`, `app/routers/pin_login.py`, `scripts/e2e_distruttivo_server.py` |
+| `ADMIN_PASSWORD` | sicurezza | segreta | non dichiarato in Settings | `app/hr_originale/routers/auth.py`, `app/menu_originale/routes/qrcode_routes.py`, `app/routers/auth.py`, `scripts/e2e_distruttivo_server.py` |
+| `ADMIN_PASSWORD_HASH` | sicurezza | segreta | non dichiarato in Settings | `app/hr_originale/routers/auth.py`, `app/routers/auth.py` |
 | `ADMIN_PIN` | sicurezza | segreta | non dichiarato in Settings | `app/routers/pin_login.py`, `app/services/utenti_pin.py` |
+| `ADMIN_PIN_INIZIALE` | sicurezza | segreta | non dichiarato in Settings | `app/lotti/routers/tablet_operatori.py` |
+| `ADMIN_PIN_RECOVERY` | sicurezza | segreta | non dichiarato in Settings | `app/lotti/routers/tablet_operatori.py` |
+| `ADMIN_TOKEN_EXPIRE_MINUTES` | sicurezza | segreta | non dichiarato in Settings | `app/hr_originale/routers/pin_login.py` |
+| `ADMIN_USERNAME` | sicurezza | configurazione | non dichiarato in Settings | `app/menu_originale/routes/qrcode_routes.py` |
 | `AI_L2_MAX_FINANCIAL_IMPACT` | app-runtime | configurazione | non dichiarato in Settings | `app/agents/decision_engine.py` |
 | `AI_L2_MIN_CONFIDENCE` | app-runtime | configurazione | non dichiarato in Settings | `app/agents/decision_engine.py` |
 | `ALGORITHM` | app-runtime | configurazione | `str` / `'HS256'` | `app/config.py` |
@@ -546,45 +550,59 @@ si rigenerano dal codice e non si correggono a mano.
 | `ALLOWED_METHODS` | sicurezza | configurazione | `str` / `'*'` | `app/config.py` |
 | `ALLOWED_ORIGINS` | sicurezza | configurazione | `str` / `'*'` | `app/config.py` |
 | `ALLOW_CREDENTIALS` | sicurezza | configurazione | `bool` / `True` | `app/config.py` |
-| `ANTHROPIC_API_KEY` | ai | segreta | non dichiarato in Settings | `app/hr/services/document_ai_extractor.py`, `app/routers/ai_parser.py`, `app/routers/fornitori_learning.py`, `app/routers/settings_router.py`, `app/services/ai_categorizzazione.py`, `app/services/ai_document_parser.py`, `app/services/chat_ai_engine.py`, `app/services/document_ai_extractor.py`, `app/services/enhanced_document_parser.py`, `app/services/llm_document_parser.py` |
+| `ANTHROPIC_API_KEY` | ai | segreta | non dichiarato in Settings | `app/hr/services/document_ai_extractor.py`, `app/hr_originale/services/document_ai_extractor.py`, `app/lotti/routers/food_cost.py`, `app/lotti/routers/ingredienti.py`, `app/lotti/routers/normalizzazione.py`, `app/lotti/routers/schede_tecniche.py`, `app/lotti/routers/scheduler.py`, `app/routers/ai_parser.py`, `app/routers/fornitori_learning.py`, `app/routers/settings_router.py`, `app/services/ai_categorizzazione.py`, `app/services/ai_document_parser.py`, `app/services/chat_ai_engine.py`, `app/services/document_ai_extractor.py`, `app/services/enhanced_document_parser.py`, `app/services/llm_document_parser.py` |
 | `ANTHROPIC_DOCUMENT_MODEL` | ai | configurazione | non dichiarato in Settings | `app/services/anthropic_llm_client.py` |
 | `ANTHROPIC_MODEL` | ai | configurazione | non dichiarato in Settings | `app/routers/settings_router.py`, `app/services/anthropic_llm_client.py`, `app/services/chat_ai_engine.py` |
 | `APPDIPENDENTI_DB_URL` | app-runtime | configurazione | non dichiarato in Settings | `app/hr/routers/admin_hr.py`, `render.yaml` |
 | `APP_NAME` | app-runtime | configurazione | `str` / `'Azienda in Cloud ERP'` | `app/config.py` |
 | `APP_VERSION` | app-runtime | configurazione | `str` / `'2.0.0'` | `app/config.py` |
 | `AUDIT_BASE_URL` | app-runtime | configurazione | non dichiarato in Settings | `frontend/scripts/audit-layout.cjs`, `frontend/scripts/audit-operation-index.cjs`, `frontend/scripts/audit-viewer.cjs` |
+| `AUTH_ENFORCE` | app-runtime | configurazione | non dichiarato in Settings | `app/lotti/auth.py` |
+| `AUTH_GOOGLE_EMAILS` | app-runtime | configurazione | non dichiarato in Settings | `app/lotti/auth.py` |
+| `AUTH_LOCK_SECONDS` | app-runtime | configurazione | non dichiarato in Settings | `app/lotti/auth.py` |
+| `AUTH_MAX_FAILS` | app-runtime | configurazione | non dichiarato in Settings | `app/lotti/auth.py` |
+| `AUTH_SECRET` | app-runtime | segreta | non dichiarato in Settings | `app/lotti/auth.py` |
 | `AUTH_TOKEN` | test-tooling | segreta | non dichiarato in Settings | `scripts/collaudo_ui.mjs` |
+| `AUTH_TOKEN_TTL_H` | test-tooling | segreta | non dichiarato in Settings | `app/lotti/auth.py` |
+| `AUTOMATION_SECRET` | app-runtime | segreta | non dichiarato in Settings | `app/lotti/auth.py` |
+| `AZIENDA_ATTIVITA` | azienda-fiscale | configurazione | non dichiarato in Settings | `app/lotti/azienda.py` |
 | `AZIENDA_BANCA` | azienda-fiscale | configurazione | non dichiarato in Settings | `app/config/azienda.py` |
 | `AZIENDA_BIC` | azienda-fiscale | configurazione | non dichiarato in Settings | `app/config/azienda.py` |
 | `AZIENDA_CAP` | azienda-fiscale | configurazione | non dichiarato in Settings | `app/config/azienda.py` |
-| `AZIENDA_CF` | azienda-fiscale | configurazione | non dichiarato in Settings | `app/config/azienda.py` |
+| `AZIENDA_CF` | azienda-fiscale | configurazione | non dichiarato in Settings | `app/config/azienda.py`, `app/lotti/azienda.py` |
 | `AZIENDA_CITTA` | azienda-fiscale | configurazione | non dichiarato in Settings | `app/config/azienda.py` |
-| `AZIENDA_EMAIL` | azienda-fiscale | configurazione | non dichiarato in Settings | `app/config/azienda.py` |
+| `AZIENDA_CODICE_DESTINATARIO` | azienda-fiscale | configurazione | non dichiarato in Settings | `app/lotti/azienda.py` |
+| `AZIENDA_EMAIL` | azienda-fiscale | configurazione | non dichiarato in Settings | `app/config/azienda.py`, `app/lotti/azienda.py` |
 | `AZIENDA_IBAN` | azienda-fiscale | configurazione | non dichiarato in Settings | `app/config/azienda.py` |
-| `AZIENDA_INDIRIZZO` | azienda-fiscale | configurazione | non dichiarato in Settings | `app/config/azienda.py` |
+| `AZIENDA_INDIRIZZO` | azienda-fiscale | configurazione | non dichiarato in Settings | `app/config/azienda.py`, `app/lotti/azienda.py` |
+| `AZIENDA_NOME` | azienda-fiscale | configurazione | non dichiarato in Settings | `app/lotti/azienda.py` |
 | `AZIENDA_PEC` | azienda-fiscale | configurazione | non dichiarato in Settings | `app/config/azienda.py` |
-| `AZIENDA_PIVA` | azienda-fiscale | configurazione | non dichiarato in Settings | `app/config/azienda.py`, `app/hr/routers/portale_buste.py` |
+| `AZIENDA_PIVA` | azienda-fiscale | configurazione | non dichiarato in Settings | `app/config/azienda.py`, `app/hr/routers/portale_buste.py`, `app/hr_originale/routers/portale_buste.py`, `app/lotti/azienda.py` |
 | `AZIENDA_PROVINCIA` | azienda-fiscale | configurazione | non dichiarato in Settings | `app/config/azienda.py` |
-| `AZIENDA_RAGIONE_SOCIALE` | azienda-fiscale | configurazione | non dichiarato in Settings | `app/config/azienda.py`, `app/hr/routers/portale_buste.py` |
-| `AZIENDA_SEDE` | azienda-fiscale | configurazione | non dichiarato in Settings | `app/hr/routers/portale_buste.py` |
-| `AZIENDA_TEL` | azienda-fiscale | configurazione | non dichiarato in Settings | `app/config/azienda.py` |
-| `BACKEND_URL` | app-runtime | configurazione | non dichiarato in Settings | `scripts/smoke_app.py` |
+| `AZIENDA_RAGIONE_SOCIALE` | azienda-fiscale | configurazione | non dichiarato in Settings | `app/config/azienda.py`, `app/hr/routers/portale_buste.py`, `app/hr_originale/routers/portale_buste.py` |
+| `AZIENDA_RESP_HACCP` | azienda-fiscale | configurazione | non dichiarato in Settings | `app/lotti/azienda.py` |
+| `AZIENDA_SEDE` | azienda-fiscale | configurazione | non dichiarato in Settings | `app/hr/routers/portale_buste.py`, `app/hr_originale/routers/portale_buste.py` |
+| `AZIENDA_STUDIO` | azienda-fiscale | configurazione | non dichiarato in Settings | `app/lotti/azienda.py` |
+| `AZIENDA_TEL` | azienda-fiscale | configurazione | non dichiarato in Settings | `app/config/azienda.py`, `app/lotti/azienda.py` |
+| `BACKEND_URL` | app-runtime | configurazione | non dichiarato in Settings | `app/menu_originale/routes/qrcode_routes.py`, `scripts/smoke_app.py` |
+| `BACKUP_DIR` | app-runtime | configurazione | non dichiarato in Settings | `app/lotti/routers/backup.py` |
 | `BASE_URL` | test-tooling | configurazione | non dichiarato in Settings | `scripts/collaudo_ui.mjs` |
 | `CACHE_TTL_SECONDS` | app-runtime | configurazione | `int` / `3600` | `app/config.py` |
 | `CHROMIUM_PATH` | test-tooling | configurazione | non dichiarato in Settings | `scripts/collaudo_ui.mjs` |
-| `COMMERCIALISTA_EMAIL` | app-runtime | configurazione | non dichiarato in Settings | `app/hr/routers/dipendenti_cloud/__init__.py` |
+| `COMMERCIALISTA_EMAIL` | app-runtime | configurazione | non dichiarato in Settings | `app/hr/routers/dipendenti_cloud/__init__.py`, `app/hr_originale/routers/dipendenti_cloud/__init__.py` |
 | `CORS_ALLOWED_ORIGINS` | sicurezza | configurazione | `str` / `''` | `app/config.py` |
-| `CORS_ORIGINS` | sicurezza | configurazione | `str` / `'*'` | `app/config.py` |
+| `CORS_ORIGINS` | sicurezza | configurazione | `str` / `'*'` | `app/config.py`, `app/lotti/server.py`, `app/menu_originale/server.py` |
 | `CREDENTIALS_ENCRYPTION_KEY` | app-runtime | configurazione | non dichiarato in Settings | `render.yaml` |
 | `DATA_BACKEND` | app-runtime | configurazione | `str` / `'sheets'` | `app/config.py`, `render.yaml` |
-| `DB_NAME` | app-runtime | configurazione | `str` / `'Gestionale'` | `app/config.py` |
+| `DB_NAME` | app-runtime | configurazione | `str` / `'Gestionale'` | `app/config.py`, `app/hr_originale/config.py`, `app/hr_originale/database.py`, `app/lotti/run_locale_test.py`, `app/lotti/scripts/fix_fornitori_acquaviva.py`, `app/lotti/scripts/import_acquaviva_definitivo.py`, `app/lotti/scripts/import_listino_2026.py`, `app/lotti/scripts/import_ricette_excel.py`, `app/lotti/scripts/scrape_acquaviva_images.py`, `app/lotti/scripts/scrape_vandemoortele_acquaviva.py`, `app/lotti/tests/test_iteration54_features.py`, `app/lotti/utils/shared.py` |
 | `DEBUG` | app-runtime | configurazione | `bool` / `False` | `app/config.py` |
 | `DEFAULT_USER_EMAIL` | app-runtime | configurazione | `str` / `'admin@ceraldi.it'` | `app/config.py` |
 | `DEFAULT_USER_ID` | app-runtime | configurazione | `str` / `'admin'` | `app/config.py` |
 | `DEV` | app-runtime | configurazione | non dichiarato in Settings | `frontend/src/components/ErrorBoundary.jsx` |
-| `DRIVE_BONIFICI_FOLDER_ID` | drive-sheets | configurazione | non dichiarato in Settings | `app/hr/routers/dipendenti_cloud/__init__.py` |
+| `DIGEST_GIORNI` | app-runtime | configurazione | non dichiarato in Settings | `app/lotti/routers/digest.py` |
+| `DRIVE_BONIFICI_FOLDER_ID` | drive-sheets | configurazione | non dichiarato in Settings | `app/hr/routers/dipendenti_cloud/__init__.py`, `app/hr_originale/routers/dipendenti_cloud/__init__.py` |
 | `DRIVE_CARTE_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
-| `DRIVE_CEDOLINI_FOLDER_ID` | drive-sheets | configurazione | non dichiarato in Settings | `app/hr/services/google_drive_sa.py` |
+| `DRIVE_CEDOLINI_FOLDER_ID` | drive-sheets | configurazione | non dichiarato in Settings | `app/hr/services/google_drive_sa.py`, `app/hr_originale/services/google_drive_sa.py` |
 | `DRIVE_DOCUMENT_INDEX_ROOT_FOLDER_ID` | drive-sheets | configurazione | `str` / `'1tmVu6fl7qhJbLcGCHT3wEQzrvFAElc9h'` | `app/config.py` |
 | `DRIVE_ESTRATTI_ANNO_MINIMO` | drive-sheets | configurazione | `int` / `2026` | `app/config.py` |
 | `DRIVE_ESTRATTI_BATCH_SIZE` | drive-sheets | configurazione | `int` / `1` | `app/config.py`, `render.yaml` |
@@ -598,10 +616,10 @@ si rigenerano dal codice e non si correggono a mano.
 | `DRIVE_VERBALI_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `E2E_BASE_URL` | test-tooling | configurazione | non dichiarato in Settings | `frontend/scripts/audit-destructive-e2e.cjs`, `frontend/scripts/audit-pages-e2e.cjs` |
 | `E2E_FRONTEND_DIST` | test-tooling | configurazione | non dichiarato in Settings | `scripts/e2e_distruttivo_server.py` |
-| `EMAIL_ADDRESS` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/hr/routers/dimissioni.py`, `app/routers/configurazioni.py`, `app/routers/learning_machine.py`, `app/services/gmail_search.py` |
-| `EMAIL_APP_PASSWORD` | gmail-email | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `app/hr/routers/dimissioni.py`, `app/routers/configurazioni.py`, `app/routers/learning_machine.py`, `app/services/gmail_search.py` |
-| `EMAIL_PASSWORD` | gmail-email | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `app/hr/routers/cedolini.py`, `app/routers/commercialista.py`, `app/routers/configurazioni.py`, `app/routers/learning_machine.py`, `app/services/gmail_search.py`, `app/services/pagopa_scanner.py` |
-| `EMAIL_USER` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/hr/routers/cedolini.py`, `app/routers/commercialista.py`, `app/routers/configurazioni.py`, `app/services/gmail_search.py`, `app/services/pagopa_scanner.py` |
+| `EMAIL_ADDRESS` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/hr/routers/dimissioni.py`, `app/hr_originale/routers/dimissioni.py`, `app/routers/configurazioni.py`, `app/routers/learning_machine.py`, `app/services/gmail_search.py` |
+| `EMAIL_APP_PASSWORD` | gmail-email | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `app/hr/routers/dimissioni.py`, `app/hr_originale/routers/dimissioni.py`, `app/routers/configurazioni.py`, `app/routers/learning_machine.py`, `app/services/gmail_search.py` |
+| `EMAIL_PASSWORD` | gmail-email | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `app/hr/routers/cedolini.py`, `app/hr_originale/routers/cedolini.py`, `app/routers/commercialista.py`, `app/routers/configurazioni.py`, `app/routers/learning_machine.py`, `app/services/gmail_search.py`, `app/services/pagopa_scanner.py` |
+| `EMAIL_USER` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/hr/routers/cedolini.py`, `app/hr_originale/routers/cedolini.py`, `app/routers/commercialista.py`, `app/routers/configurazioni.py`, `app/services/gmail_search.py`, `app/services/pagopa_scanner.py` |
 | `ENABLE_ASYNC_IMPORTS` | feature-job | configurazione | `bool` / `True` | `app/config.py` |
 | `ENABLE_CACHING` | feature-job | configurazione | `bool` / `True` | `app/config.py` |
 | `ENABLE_DOCUMENT_AI` | feature-job | configurazione | `bool` / `False` | `app/config.py` |
@@ -618,6 +636,7 @@ si rigenerano dal codice e non si correggono a mano.
 | `ENABLE_EMAIL_F24_SYNC` | feature-job | configurazione | `bool` / `True` | `app/config.py` |
 | `ENABLE_EMAIL_VERBALI_SYNC` | feature-job | configurazione | `bool` / `True` | `app/config.py` |
 | `ENABLE_GMAIL_IMAP` | feature-job | configurazione | `bool` / `True` | `app/config.py` |
+| `ENABLE_HEALTH_CHECK` | feature-job | configurazione | non dichiarato in Settings | `frontend_lotti/craco.config.js` |
 | `ENABLE_RENDER_CANONICAL_INGEST` | feature-job | configurazione | non dichiarato in Settings | `render_workflows/document_ingest.py` |
 | `ENABLE_RENDER_DRIVE_MOVES` | feature-job | configurazione | non dichiarato in Settings | `render_workflows/document_ingest.py` |
 | `ENABLE_SCHEDULER` | feature-job | configurazione | `bool` / `True` | `app/config.py`, `render.yaml` |
@@ -629,6 +648,7 @@ si rigenerano dal codice e non si correggono a mano.
 | `FROM_EMAIL` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/routers/commercialista.py` |
 | `FRONTEND_URL` | app-runtime | configurazione | `Optional[str]` / `None` | `app/config.py`, `scripts/smoke_app.py` |
 | `GEMINI_API_KEY` | ai | segreta | `Optional[str]` / valore non riportato | `app/config.py` |
+| `GESTIONALECLOUD_API_URL` | app-runtime | configurazione | non dichiarato in Settings | `app/lotti/routers/gestionale_fatture.py`, `app/lotti/routers/tablet_operatori.py` |
 | `GESTIONALE_MCP_API_BASE_URL` | mcp | configurazione | non dichiarato in Settings | `gestionale_mcp/config.py` |
 | `GESTIONALE_MCP_API_TOKEN` | mcp | segreta | non dichiarato in Settings | `gestionale_mcp/config.py` |
 | `GESTIONALE_MCP_HOST` | mcp | configurazione | non dichiarato in Settings | `gestionale_mcp/config.py` |
@@ -636,15 +656,15 @@ si rigenerano dal codice e non si correggono a mano.
 | `GESTIONALE_MCP_LOG_LEVEL` | mcp | configurazione | non dichiarato in Settings | `gestionale_mcp/config.py` |
 | `GESTIONALE_MCP_RESOURCE_SERVER_URL` | mcp | configurazione | non dichiarato in Settings | `gestionale_mcp/config.py` |
 | `GESTIONE_RISERVATA_CODE` | app-runtime | configurazione | non dichiarato in Settings | `app/routers/gestione_riservata.py`, `scripts/e2e_distruttivo_server.py` |
-| `GMAIL_ACCOUNT_AMMINISTRATIVO` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/hr/services/email_smtp.py` |
-| `GMAIL_APP_PASSWORD` | gmail-email | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `app/hr/services/email_smtp.py` |
+| `GMAIL_ACCOUNT_AMMINISTRATIVO` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/hr/services/email_smtp.py`, `app/hr_originale/services/email_smtp.py` |
+| `GMAIL_APP_PASSWORD` | gmail-email | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `app/hr/services/email_smtp.py`, `app/hr_originale/services/email_smtp.py` |
 | `GMAIL_APP_PASSWORD_AMMINISTRATIVO` | gmail-email | segreta | `Optional[str]` / valore non riportato | `app/config.py` |
 | `GMAIL_EMAIL` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `GMAIL_IMAP_ENABLED` | gmail-email | configurazione | `bool` / `False` | `app/config.py` |
-| `GMAIL_RELAY_SECRET` | gmail-email | segreta | non dichiarato in Settings | `app/hr/services/email_smtp.py` |
-| `GMAIL_RELAY_URL` | gmail-email | configurazione | non dichiarato in Settings | `app/hr/services/email_smtp.py` |
+| `GMAIL_RELAY_SECRET` | gmail-email | segreta | non dichiarato in Settings | `app/hr/services/email_smtp.py`, `app/hr_originale/services/email_smtp.py` |
+| `GMAIL_RELAY_URL` | gmail-email | configurazione | non dichiarato in Settings | `app/hr/services/email_smtp.py`, `app/hr_originale/services/email_smtp.py` |
 | `GOOGLE_API_KEY` | ai | segreta | `Optional[str]` / valore non riportato | `app/config.py` |
-| `GOOGLE_CLIENT_ID` | app-runtime | configurazione | `Optional[str]` / `None` | `app/config.py` |
+| `GOOGLE_CLIENT_ID` | app-runtime | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/lotti/auth.py` |
 | `GOOGLE_CLIENT_SECRET` | app-runtime | segreta | `Optional[str]` / valore non riportato | `app/config.py` |
 | `GOOGLE_DRIVE_AVVISI_BONARI_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `GOOGLE_DRIVE_BONIFICI_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
@@ -659,10 +679,10 @@ si rigenerano dal codice e non si correggono a mano.
 | `GOOGLE_DRIVE_INBOX_FOLDER_ID` | drive-sheets | configurazione | non dichiarato in Settings | `render_workflows/calderone.py`, `render_workflows/document_ingest.py` |
 | `GOOGLE_DRIVE_QUIETANZE_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `GOOGLE_DRIVE_SA_FILE` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
-| `GOOGLE_DRIVE_SA_JSON` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/hr/services/google_drive_sa.py` |
-| `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/hr/services/google_drive_sa.py`, `render.yaml`, `render_workflows/calderone.py`, `render_workflows/document_ingest.py` |
+| `GOOGLE_DRIVE_SA_JSON` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/hr/services/google_drive_sa.py`, `app/hr_originale/services/google_drive_sa.py` |
+| `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/hr/services/google_drive_sa.py`, `app/hr_originale/services/google_drive_sa.py`, `render.yaml`, `render_workflows/calderone.py`, `render_workflows/document_ingest.py` |
 | `GOOGLE_REDIRECT_URI` | app-runtime | configurazione | `str` / `'/api/auth/google/callback'` | `app/config.py` |
-| `GOOGLE_SERVICE_ACCOUNT_JSON` | drive-sheets | configurazione | non dichiarato in Settings | `app/hr/services/google_drive_sa.py` |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | drive-sheets | configurazione | non dichiarato in Settings | `app/hr/services/google_drive_sa.py`, `app/hr_originale/services/google_drive_sa.py` |
 | `GOOGLE_SERVICE_ACCOUNT_JSON_BONIFICI` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `GOOGLE_SERVICE_ACCOUNT_JSON_CEDOLINI` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `GOOGLE_SERVICE_ACCOUNT_JSON_CORRISPETTIVI` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
@@ -673,22 +693,33 @@ si rigenerano dal codice e non si correggono a mano.
 | `GOOGLE_SHEETS_LEDGER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py`, `render.yaml` |
 | `HOST` | app-runtime | configurazione | `str` / `'0.0.0.0'` | `app/config.py` |
 | `HR_PORTALE_TOKEN_EXPIRE_MINUTES` | app-runtime | segreta | non dichiarato in Settings | `app/hr/config.py`, `render.yaml` |
-| `IMAP_EMAIL` | gmail-email | configurazione | non dichiarato in Settings | `app/hr/routers/dipendenti_cloud/__init__.py` |
-| `IMAP_HOST` | gmail-email | configurazione | `str` / `'imap.gmail.com'` | `app/config.py`, `app/hr/routers/dipendenti_cloud/__init__.py`, `app/routers/settings_router.py`, `app/services/pagopa_scanner.py` |
-| `IMAP_PASS` | gmail-email | configurazione | non dichiarato in Settings | `app/hr/routers/dipendenti_cloud/__init__.py` |
-| `IMAP_PASSWORD` | gmail-email | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `app/hr/routers/cedolini.py`, `app/hr/routers/dipendenti_cloud/__init__.py`, `app/routers/settings_router.py`, `app/services/pagopa_scanner.py` |
-| `IMAP_PORT` | gmail-email | configurazione | `int` / `993` | `app/config.py`, `app/hr/routers/dipendenti_cloud/__init__.py`, `app/services/pagopa_scanner.py` |
-| `IMAP_SERVER` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/hr/routers/dimissioni.py`, `app/hr/routers/dipendenti_cloud/__init__.py`, `app/routers/learning_machine.py`, `app/services/email_full_download.py`, `app/services/verbali_email_scanner.py` |
-| `IMAP_USER` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/hr/routers/cedolini.py`, `app/hr/routers/dipendenti_cloud/__init__.py`, `app/routers/settings_router.py`, `app/services/pagopa_scanner.py` |
+| `IMAP_EMAIL` | gmail-email | configurazione | non dichiarato in Settings | `app/hr/routers/dipendenti_cloud/__init__.py`, `app/hr_originale/routers/dipendenti_cloud/__init__.py` |
+| `IMAP_HOST` | gmail-email | configurazione | `str` / `'imap.gmail.com'` | `app/config.py`, `app/hr/routers/dipendenti_cloud/__init__.py`, `app/hr_originale/routers/dipendenti_cloud/__init__.py`, `app/routers/settings_router.py`, `app/services/pagopa_scanner.py` |
+| `IMAP_PASS` | gmail-email | configurazione | non dichiarato in Settings | `app/hr/routers/dipendenti_cloud/__init__.py`, `app/hr_originale/routers/dipendenti_cloud/__init__.py` |
+| `IMAP_PASSWORD` | gmail-email | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `app/hr/routers/cedolini.py`, `app/hr/routers/dipendenti_cloud/__init__.py`, `app/hr_originale/routers/cedolini.py`, `app/hr_originale/routers/dipendenti_cloud/__init__.py`, `app/routers/settings_router.py`, `app/services/pagopa_scanner.py` |
+| `IMAP_PORT` | gmail-email | configurazione | `int` / `993` | `app/config.py`, `app/hr/routers/dipendenti_cloud/__init__.py`, `app/hr_originale/routers/dipendenti_cloud/__init__.py`, `app/services/pagopa_scanner.py` |
+| `IMAP_SERVER` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/hr/routers/dimissioni.py`, `app/hr/routers/dipendenti_cloud/__init__.py`, `app/hr_originale/routers/dimissioni.py`, `app/hr_originale/routers/dipendenti_cloud/__init__.py`, `app/routers/learning_machine.py`, `app/services/email_full_download.py`, `app/services/verbali_email_scanner.py` |
+| `IMAP_USER` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/hr/routers/cedolini.py`, `app/hr/routers/dipendenti_cloud/__init__.py`, `app/hr_originale/routers/cedolini.py`, `app/hr_originale/routers/dipendenti_cloud/__init__.py`, `app/routers/settings_router.py`, `app/services/pagopa_scanner.py` |
 | `IVA_ALIQUOTE` | app-runtime | configurazione | `list[float]` / `[4.0, 5.0, 10.0, 22.0]` | `app/config.py` |
+| `JWT_SECRET` | app-runtime | segreta | non dichiarato in Settings | `app/hr_originale/config.py`, `app/menu_originale/routes/qrcode_routes.py` |
 | `LOCALAPPDATA` | app-runtime | configurazione | non dichiarato in Settings | `scripts/sync_rt_to_drive.py` |
 | `LOG_FILE` | app-runtime | configurazione | `Optional[Path]` / `None` | `app/config.py` |
 | `LOG_FORMAT` | app-runtime | configurazione | `str` / `'json'` | `app/config.py` |
 | `LOG_LEVEL` | app-runtime | configurazione | `str` / `'INFO'` | `app/config.py` |
-| `LOTTI_INTEGRATION_KEY` | app-runtime | configurazione | non dichiarato in Settings | `app/middleware/authentication.py`, `app/routers/lotti_integration.py`, `render.yaml` |
+| `LOTTI_ADMIN_PIN` | app-runtime | segreta | non dichiarato in Settings | `app/lotti/scripts/associa_immagini_ricettario.py` |
+| `LOTTI_AUTH_SECRET` | app-runtime | segreta | non dichiarato in Settings | `app/lotti/auth.py` |
+| `LOTTI_DB_NAME` | app-runtime | configurazione | non dichiarato in Settings | `app/lotti/db.py`, `app/lotti/routers/diagnostic.py`, `app/lotti/supabase_document_store.py` |
+| `LOTTI_DB_SECRET` | app-runtime | segreta | non dichiarato in Settings | `app/lotti/auth.py`, `app/lotti/scripts/migrate_recovered_json_to_supabase.py`, `app/lotti/supabase_document_store.py` |
+| `LOTTI_INTEGRATION_KEY` | app-runtime | configurazione | non dichiarato in Settings | `app/lotti/routers/gestionale_fatture.py`, `app/lotti/routers/tablet_operatori.py`, `app/middleware/authentication.py`, `app/routers/lotti_integration.py`, `render.yaml` |
+| `LOTTI_SUPABASE_ANON_KEY` | app-runtime | configurazione | non dichiarato in Settings | `app/lotti/scripts/migrate_recovered_json_to_supabase.py`, `app/lotti/supabase_document_store.py` |
+| `LOTTI_SUPABASE_URL` | app-runtime | configurazione | non dichiarato in Settings | `app/lotti/db.py`, `app/lotti/scripts/migrate_recovered_json_to_supabase.py`, `app/lotti/supabase_document_store.py` |
 | `MAX_CONCURRENT_IMPORTS` | app-runtime | configurazione | `int` / `5` | `app/config.py` |
 | `MAX_UPLOAD_SIZE_MB` | app-runtime | configurazione | `int` / `50` | `app/config.py` |
-| `NODE_ENV` | app-runtime | configurazione | non dichiarato in Settings | `frontend/plugins/health-check/health-endpoints.js` |
+| `MENU_ADMIN_PASSWORD` | app-runtime | segreta | non dichiarato in Settings | `app/menu_originale/routes/qrcode_routes.py` |
+| `MENU_ADMIN_USERNAME` | app-runtime | configurazione | non dichiarato in Settings | `app/menu_originale/routes/qrcode_routes.py` |
+| `MENU_JWT_SECRET` | app-runtime | segreta | non dichiarato in Settings | `app/menu_originale/routes/qrcode_routes.py` |
+| `MONGO_URL` | app-runtime | configurazione | non dichiarato in Settings | `app/hr_originale/config.py`, `app/hr_originale/database.py`, `app/lotti/scripts/fix_fornitori_acquaviva.py`, `app/lotti/scripts/import_acquaviva_definitivo.py`, `app/lotti/scripts/import_listino_2026.py`, `app/lotti/scripts/import_ricette_excel.py`, `app/lotti/scripts/scrape_acquaviva_images.py`, `app/lotti/scripts/scrape_vandemoortele_acquaviva.py`, `app/lotti/tests/test_iteration54_features.py`, `app/lotti/utils/shared.py` |
+| `NODE_ENV` | app-runtime | configurazione | non dichiarato in Settings | `frontend/plugins/health-check/health-endpoints.js`, `frontend_lotti/craco.config.js` |
 | `NOLEGGIO_GIORNI_SENZA_FATTURA` | feature-job | configurazione | non dichiarato in Settings | `app/services/noleggio/controlli.py` |
 | `OPENAI_API_KEY` | ai | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `app/routers/settings_router.py`, `app/services/chat_ai_engine.py` |
 | `OPENAI_MODEL` | ai | configurazione | non dichiarato in Settings | `app/routers/settings_router.py`, `app/services/chat_ai_engine.py` |
@@ -697,31 +728,37 @@ si rigenerano dal codice e non si correggono a mano.
 | `OPENAPI_IT_ENV` | integrazioni | configurazione | `str` / `'production'` | `app/config.py`, `app/routers/openapi_it.py` |
 | `OPENAPI_IT_KEY` | integrazioni | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/routers/openapi_it.py` |
 | `OUT_DIR` | test-tooling | configurazione | non dichiarato in Settings | `scripts/collaudo_ui.mjs` |
-| `PAYPAL_CLIENT_ID` | integrazioni | configurazione | `str` / `''` | `app/config.py`, `app/services/paypal_integration.py` |
-| `PAYPAL_CLIENT_SECRET` | integrazioni | segreta | `str` / valore non riportato | `app/config.py` |
+| `PAYPAL_CLIENT_ID` | integrazioni | configurazione | `str` / `''` | `app/config.py`, `app/hr_originale/routers/contabilita.py`, `app/services/paypal_integration.py` |
+| `PAYPAL_CLIENT_SECRET` | integrazioni | segreta | `str` / valore non riportato | `app/config.py`, `app/hr_originale/routers/contabilita.py` |
+| `PAYPAL_ENV` | integrazioni | configurazione | non dichiarato in Settings | `app/hr_originale/routers/contabilita.py` |
 | `PAYPAL_MODE` | integrazioni | configurazione | non dichiarato in Settings | `app/services/paypal_integration.py` |
 | `PAYPAL_SECRET_KEY` | integrazioni | segreta | non dichiarato in Settings | `app/services/paypal_integration.py` |
 | `PAYPAL_WEBHOOK_ID` | integrazioni | configurazione | non dichiarato in Settings | `app/routers/paypal_api.py` |
-| `PEC_DEST` | app-runtime | configurazione | non dichiarato in Settings | `app/hr/routers/portale_buste.py` |
-| `PEC_HOST` | app-runtime | configurazione | non dichiarato in Settings | `app/hr/routers/portale_buste.py`, `app/hr/services/email_smtp.py` |
-| `PEC_PASSWORD` | app-runtime | segreta | non dichiarato in Settings | `app/hr/routers/portale_buste.py`, `app/hr/services/email_smtp.py` |
-| `PEC_PORT` | app-runtime | configurazione | non dichiarato in Settings | `app/hr/routers/portale_buste.py`, `app/hr/services/email_smtp.py` |
-| `PEC_USER` | app-runtime | configurazione | non dichiarato in Settings | `app/hr/routers/portale_buste.py`, `app/hr/services/email_smtp.py` |
+| `PEC_DEST` | app-runtime | configurazione | non dichiarato in Settings | `app/hr/routers/portale_buste.py`, `app/hr_originale/routers/portale_buste.py` |
+| `PEC_HOST` | app-runtime | configurazione | non dichiarato in Settings | `app/hr/routers/portale_buste.py`, `app/hr/services/email_smtp.py`, `app/hr_originale/routers/portale_buste.py`, `app/hr_originale/services/email_smtp.py` |
+| `PEC_PASSWORD` | app-runtime | segreta | non dichiarato in Settings | `app/hr/routers/portale_buste.py`, `app/hr/services/email_smtp.py`, `app/hr_originale/routers/portale_buste.py`, `app/hr_originale/services/email_smtp.py` |
+| `PEC_PORT` | app-runtime | configurazione | non dichiarato in Settings | `app/hr/routers/portale_buste.py`, `app/hr/services/email_smtp.py`, `app/hr_originale/routers/portale_buste.py`, `app/hr_originale/services/email_smtp.py` |
+| `PEC_USER` | app-runtime | configurazione | non dichiarato in Settings | `app/hr/routers/portale_buste.py`, `app/hr/services/email_smtp.py`, `app/hr_originale/routers/portale_buste.py`, `app/hr_originale/services/email_smtp.py` |
+| `PIN_ADMIN_USERNAME` | sicurezza | segreta | non dichiarato in Settings | `app/hr_originale/config.py` |
+| `PIN_CODE` | sicurezza | segreta | non dichiarato in Settings | `app/hr_originale/config.py` |
 | `PIN_HASH_ADMIN` | sicurezza | segreta | non dichiarato in Settings | `app/routers/pin_login.py` |
 | `PLAYWRIGHT_CHROMIUM` | app-runtime | configurazione | non dichiarato in Settings | `frontend/scripts/audit-destructive-e2e.cjs`, `frontend/scripts/audit-layout.cjs`, `frontend/scripts/audit-operation-index.cjs`, `frontend/scripts/audit-pages-e2e.cjs`, `frontend/scripts/audit-viewer.cjs` |
 | `PORT` | app-runtime | configurazione | `int` / `8000` | `app/config.py` |
 | `POS_ACCREDITO_WEEKEND` | feature-job | configurazione | non dichiarato in Settings | `app/utils/pos_accredito.py` |
 | `PROCESS_ROLE` | app-runtime | configurazione | non dichiarato in Settings | `app/main.py`, `render.yaml` |
+| `PUBLIC_URL` | app-runtime | configurazione | non dichiarato in Settings | `frontend_lotti/src/components/haccp/ManualeView.jsx`, `frontend_lotti/src/components/haccp/RegistroAllergeniView.jsx` |
 | `PYTHONUTF8` | app-runtime | configurazione | non dichiarato in Settings | `render.yaml` |
 | `PYTHON_VERSION` | app-runtime | configurazione | non dichiarato in Settings | `render.yaml` |
 | `QROMO_SOTTODOMINIO` | app-runtime | configurazione | non dichiarato in Settings | `app/menu/migrazione_qromo.py` |
-| `REACT_APP_BACKEND_URL` | app-runtime | configurazione | non dichiarato in Settings | `backend/tests/test_fase2_fase3_fase4.py` |
+| `REACT_APP_BACKEND_URL` | app-runtime | configurazione | non dichiarato in Settings | `app/lotti/routers/manuale_haccp.py`, `app/lotti/tests/conftest.py`, `app/lotti/tests/test_email_ordini_iter66.py`, `app/lotti/tests/test_giacenze_iter69.py`, `app/lotti/tests/test_iteration46_features.py`, `app/lotti/tests/test_iteration47_features.py`, `app/lotti/tests/test_iteration48_features.py`, `app/lotti/tests/test_iteration52_features.py`, `app/lotti/tests/test_iteration53_features.py`, `app/lotti/tests/test_iteration55_bugfixes.py`, `app/lotti/tests/test_iteration56_nutritional.py`, `app/lotti/tests/test_iteration57_bom.py`, `app/lotti/tests/test_iteration72_bugfixes.py`, `app/lotti/tests/test_magazzino_bar_iter68.py`, `app/lotti/tests/test_magazzino_unificato_iter71.py`, `app/lotti/tests/test_ordini_fornitori.py`, `app/lotti/tests/test_ordini_fornitori_iter70.py`, `app/lotti/tests/test_p1_p2_features.py`, `app/lotti/tests/test_prezzi_alert_iter67.py`, `backend/tests/test_fase2_fase3_fase4.py`, `frontend_lotti/src/App.js`, `frontend_lotti/src/components/haccp/BackofficeView.jsx`, `frontend_lotti/src/components/haccp/ControlloOlioView.jsx`, `frontend_lotti/src/components/haccp/CorrispettiviView.jsx`, `frontend_lotti/src/components/haccp/ListinoView.jsx`, `frontend_lotti/src/components/haccp/MagazzinoBarView.jsx`, `frontend_lotti/src/components/haccp/ProdottiVenditaView.jsx`, `frontend_lotti/src/components/haccp/RicetteDashboardView.jsx`, `frontend_lotti/src/components/haccp/RicezioneMerceView.jsx`, `frontend_lotti/src/components/haccp/SaimaRicettariView.jsx`, `frontend_lotti/src/components/haccp/TabletHome.jsx`, `frontend_lotti/src/components/haccp/TabletView.jsx`, `frontend_lotti/src/components/haccp/TemperatureCotturaView.jsx`, `frontend_lotti/src/components/haccp/backoffice/FormRicetta.jsx`, `frontend_lotti/src/components/haccp/backoffice/TabFornitori.jsx`, `frontend_lotti/src/components/haccp/backoffice/TabProdotti.jsx`, `frontend_lotti/src/components/haccp/lotti/ModalDettaglioLotto.jsx`, `frontend_lotti/src/utils/constants.js` |
+| `REACT_APP_GESTIONALE_URL` | app-runtime | configurazione | non dichiarato in Settings | `frontend_lotti/src/layouts/AppLayout.jsx` |
 | `RELOAD` | app-runtime | configurazione | `bool` / `False` | `app/config.py` |
 | `RENDER` | app-runtime | configurazione | non dichiarato in Settings | `app/main.py`, `app/utils/session_cookie.py` |
+| `RENDER_EXTERNAL_URL` | app-runtime | configurazione | non dichiarato in Settings | `app/lotti/routers/scheduler.py` |
 | `RENDER_GIT_COMMIT` | app-runtime | configurazione | non dichiarato in Settings | `app/main.py` |
 | `RENDER_INGEST_SHARED_SECRET` | app-runtime | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `render_workflows/document_ingest.py` |
 | `RENDER_SERVICE_ID` | app-runtime | configurazione | non dichiarato in Settings | `app/main.py`, `app/utils/session_cookie.py` |
-| `REQUEST_NOTIFY_EMAIL` | app-runtime | configurazione | non dichiarato in Settings | `app/hr/routers/richieste.py` |
+| `REQUEST_NOTIFY_EMAIL` | app-runtime | configurazione | non dichiarato in Settings | `app/hr/routers/richieste.py`, `app/hr_originale/routers/richieste.py` |
 | `REQUEST_TIMEOUT_SECONDS` | app-runtime | configurazione | `int` / `300` | `app/config.py` |
 | `RT_DRIVE_INBOX` | app-runtime | configurazione | non dichiarato in Settings | `scripts/sync_rt_to_drive.py` |
 | `RT_LOCAL_BASE_URL` | app-runtime | configurazione | non dichiarato in Settings | `scripts/sync_rt_to_drive.py` |
@@ -730,7 +767,7 @@ si rigenerano dal codice e non si correggono a mano.
 | `RUN_STARTUP_INDEX_MIGRATIONS` | feature-job | configurazione | `bool` / `False` | `app/config.py` |
 | `RUN_STARTUP_SEED_DATA` | feature-job | configurazione | `bool` / `False` | `app/config.py` |
 | `SCHEDULER_LEASE_SECONDS` | feature-job | configurazione | `int` / `21600` | `app/config.py` |
-| `SECRET_KEY` | sicurezza | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `app/routers/auth.py`, `scripts/e2e_distruttivo_server.py` |
+| `SECRET_KEY` | sicurezza | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `app/hr_originale/routers/auth.py`, `app/routers/auth.py`, `scripts/e2e_distruttivo_server.py` |
 | `SHEETS_REGISTRY_NAME` | app-runtime | configurazione | `str` / `'GestionaleCloud'` | `app/config.py`, `render.yaml` |
 | `SMOKE_ANNO` | test-tooling | configurazione | non dichiarato in Settings | `scripts/smoke_app.py` |
 | `SMOKE_AUTH_TOKEN` | test-tooling | segreta | non dichiarato in Settings | `scripts/smoke_app.py` |
@@ -738,27 +775,32 @@ si rigenerano dal codice e non si correggono a mano.
 | `SMOKE_DEPLOY_WAIT_SECONDS` | test-tooling | configurazione | non dichiarato in Settings | `scripts/smoke_app.py` |
 | `SMOKE_EXPECTED_COMMIT` | test-tooling | configurazione | non dichiarato in Settings | `scripts/smoke_app.py` |
 | `SMOKE_TIMEOUT` | test-tooling | configurazione | non dichiarato in Settings | `scripts/smoke_app.py` |
-| `SMTP_EMAIL` | gmail-email | configurazione | non dichiarato in Settings | `app/hr/routers/employees/employee_contracts.py`, `app/hr/routers/portale_buste.py`, `app/hr/services/email_smtp.py` |
+| `SMTP_EMAIL` | gmail-email | configurazione | non dichiarato in Settings | `app/hr/routers/employees/employee_contracts.py`, `app/hr/routers/portale_buste.py`, `app/hr/services/email_smtp.py`, `app/hr_originale/routers/employees/employee_contracts.py`, `app/hr_originale/routers/portale_buste.py`, `app/hr_originale/services/email_smtp.py` |
 | `SMTP_ENABLED` | gmail-email | configurazione | `bool` / `False` | `app/config.py` |
 | `SMTP_FROM_EMAIL` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/routers/commercialista.py` |
-| `SMTP_HOST` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/hr/routers/employees/employee_contracts.py`, `app/hr/routers/portale_buste.py`, `app/hr/services/email_smtp.py`, `app/routers/commercialista.py` |
-| `SMTP_PASSWORD` | gmail-email | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `app/hr/routers/employees/employee_contracts.py`, `app/hr/routers/portale_buste.py`, `app/hr/services/email_smtp.py`, `app/routers/commercialista.py` |
-| `SMTP_PORT` | gmail-email | configurazione | `Optional[int]` / `587` | `app/config.py`, `app/hr/routers/employees/employee_contracts.py`, `app/hr/routers/portale_buste.py`, `app/hr/services/email_smtp.py`, `app/routers/commercialista.py` |
-| `SMTP_USER` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/hr/routers/employees/employee_contracts.py`, `app/hr/routers/portale_buste.py`, `app/hr/services/email_smtp.py`, `app/routers/commercialista.py` |
+| `SMTP_HOST` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/hr/routers/employees/employee_contracts.py`, `app/hr/routers/portale_buste.py`, `app/hr/services/email_smtp.py`, `app/hr_originale/routers/employees/employee_contracts.py`, `app/hr_originale/routers/portale_buste.py`, `app/hr_originale/services/email_smtp.py`, `app/routers/commercialista.py` |
+| `SMTP_PASSWORD` | gmail-email | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `app/hr/routers/employees/employee_contracts.py`, `app/hr/routers/portale_buste.py`, `app/hr/services/email_smtp.py`, `app/hr_originale/routers/employees/employee_contracts.py`, `app/hr_originale/routers/portale_buste.py`, `app/hr_originale/services/email_smtp.py`, `app/routers/commercialista.py` |
+| `SMTP_PORT` | gmail-email | configurazione | `Optional[int]` / `587` | `app/config.py`, `app/hr/routers/employees/employee_contracts.py`, `app/hr/routers/portale_buste.py`, `app/hr/services/email_smtp.py`, `app/hr_originale/routers/employees/employee_contracts.py`, `app/hr_originale/routers/portale_buste.py`, `app/hr_originale/services/email_smtp.py`, `app/routers/commercialista.py` |
+| `SMTP_USER` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/hr/routers/employees/employee_contracts.py`, `app/hr/routers/portale_buste.py`, `app/hr/services/email_smtp.py`, `app/hr_originale/routers/employees/employee_contracts.py`, `app/hr_originale/routers/portale_buste.py`, `app/hr_originale/services/email_smtp.py`, `app/routers/commercialista.py` |
 | `SMTP_USERNAME` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/routers/commercialista.py` |
 | `STATIC_FILES_DIR` | app-runtime | configurazione | `Path` / `Path('static')` | `app/config.py` |
 | `SUMUP_API_BASE` | integrazioni | configurazione | `str` / `'https://api.sumup.com'` | `app/config.py` |
 | `SUMUP_API_KEY` | integrazioni | segreta | `str` / valore non riportato | `app/config.py`, `render.yaml` |
 | `SUMUP_MERCHANT_CODE` | integrazioni | configurazione | `str` / `''` | `app/config.py`, `render.yaml` |
+| `SUPABASE_DB_URL` | app-runtime | configurazione | non dichiarato in Settings | `app/hr_originale/database.py` |
 | `SUPABASE_PUBLISHABLE_KEY` | app-runtime | configurazione | `Optional[str]` / `None` | `app/config.py`, `render.yaml` |
 | `SUPABASE_RUNTIME_SECRET` | app-runtime | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `render.yaml` |
 | `SUPABASE_URL` | app-runtime | configurazione | `Optional[str]` / `None` | `app/config.py`, `render.yaml` |
 | `TELEGRAM_BOT_TOKEN` | integrazioni | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `app/services/telegram_notifications.py` |
 | `TELEGRAM_CHAT_ID` | integrazioni | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/services/telegram_notifications.py` |
 | `TEMPLATES_DIR` | app-runtime | configurazione | `Path` / `Path('templates')` | `app/config.py` |
+| `TEST_PIN_ADMIN` | app-runtime | segreta | non dichiarato in Settings | `app/lotti/tests/test_iteration72_bugfixes.py` |
+| `TEST_PIN_OP1` | app-runtime | segreta | non dichiarato in Settings | `app/lotti/tests/test_iteration72_bugfixes.py`, `app/lotti/tests/test_magazzino_bar_iter68.py` |
+| `TEST_PIN_OP2` | app-runtime | segreta | non dichiarato in Settings | `app/lotti/tests/test_iteration72_bugfixes.py` |
 | `UPLOAD_FOLDER` | app-runtime | configurazione | `Path` / `Path('uploads')` | `app/config.py` |
 | `VERBALE_TEST_ID` | test-tooling | configurazione | non dichiarato in Settings | `scripts/collaudo_ui.mjs` |
 | `VERBALI_EMAIL_SCAN_HOUR` | feature-job | configurazione | `int` / `6` | `app/config.py` |
+| `VITE_API_URL` | app-runtime | configurazione | non dichiarato in Settings | `frontend_hr/src/PortaleDipendente.jsx` |
 | `VITE_BACKEND_URL` | app-runtime | configurazione | non dichiarato in Settings | `frontend/vite.config.js` |
 
 Regole: alias duplicati Drive/email vanno migrati verso un nome canonico e poi rimossi; una variabile senza consumer non va mantenuta; tutte le variabili `transitorie-vietate-nel-target` sono escluse dalla ricostruzione Drive-only.
@@ -769,9 +811,9 @@ Questa tabella è l'inventario canonico degli alias di cartella. Gli ID sono con
 
 | Variabile cartella | Default dichiarato | Sorgenti/consumer |
 |---|---|---|
-| `DRIVE_BONIFICI_FOLDER_ID` | `non dichiarato` | `app/hr/routers/dipendenti_cloud/__init__.py` |
+| `DRIVE_BONIFICI_FOLDER_ID` | `non dichiarato` | `app/hr/routers/dipendenti_cloud/__init__.py`, `app/hr_originale/routers/dipendenti_cloud/__init__.py` |
 | `DRIVE_CARTE_FOLDER_ID` | `None` | `app/config.py` |
-| `DRIVE_CEDOLINI_FOLDER_ID` | `non dichiarato` | `app/hr/services/google_drive_sa.py` |
+| `DRIVE_CEDOLINI_FOLDER_ID` | `non dichiarato` | `app/hr/services/google_drive_sa.py`, `app/hr_originale/services/google_drive_sa.py` |
 | `DRIVE_DOCUMENT_INDEX_ROOT_FOLDER_ID` | `'1tmVu6fl7qhJbLcGCHT3wEQzrvFAElc9h'` | `app/config.py` |
 | `DRIVE_F24_FOLDER_ID` | `None` | `app/config.py` |
 | `DRIVE_FISCAL_ROOT_FOLDER_ID` | `'1f48bounfoOyHL_kqpHAp2GAnFfEpHvVa'` | `app/config.py` |
