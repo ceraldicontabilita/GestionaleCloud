@@ -124,11 +124,22 @@ async def salva_immagine(content: bytes, filename: str, content_type: str) -> Di
     """Salva i byte nell'archivio binari (deduplicato per contenuto) e la
     scheda in ``menu_immagini``. Ricaricare lo stesso file non duplica nulla."""
     immagine_id = id_immagine(content)
-    esistente = await uno(COLL_IMMAGINI, {"id": immagine_id})
-    if esistente:
-        return esistente
     dati = base64.b64encode(content).decode("ascii")
     key = blob_key(dati)
+    esistente = await uno(COLL_IMMAGINI, {"id": immagine_id})
+    if esistente:
+        # La scheda puo' esistere senza il file: e' successo alle immagini
+        # importate mentre il gestionale girava ancora su Sheets (archivio
+        # binari solo in memoria, perso al riavvio) e poi copiate su Supabase.
+        # In quel caso il file va riscritto, altrimenti resta un 404 per sempre.
+        stato = await blobs().stats(key)
+        if int(stato.get("count") or 0) > 0 and esistente.get("blob_key") == key:
+            return esistente
+        await blobs().put(key, dati)
+        if esistente.get("blob_key") != key:
+            await aggiorna(COLL_IMMAGINI, {"id": immagine_id}, {"blob_key": key})
+            esistente["blob_key"] = key
+        return esistente
     await blobs().put(key, dati)
     doc = {
         "id": immagine_id,

@@ -7,6 +7,7 @@ sessione del portale dipendenti lavora al banco ma non nella gestione ->
 immagini deduplicate per contenuto -> backup JSON esportato e ripristinato ->
 magazzino bar condiviso con movimenti.
 """
+import asyncio
 import io
 import json
 
@@ -137,6 +138,31 @@ def test_perimetro_ruoli(client, monkeypatch):
     assert job.status_code == 200 and job.json()["status"] in ("queued", "running")
     assert c.get(f"/api/menu/admin/migrazione-qromo/{job.json()['id']}", headers=ADMIN).status_code == 200
     assert c.get("/api/menu/admin/migrazione-qromo/inesistente", headers=ADMIN).status_code == 404
+
+
+def test_immagine_con_scheda_ma_senza_file_viene_riscritta(client):
+    """Scheda in menu_immagini senza il blob (immagini importate su Sheets con
+    l'archivio binari in memoria, poi copiate su Supabase): ricaricare lo
+    stesso contenuto deve riscrivere il file, non rispondere 'gia' presente'."""
+    from app.menu import storage
+
+    c, _ = client
+    png = b"\x89PNG\r\n\x1a\n" + b"1" * 64
+    up = c.post("/api/menu/admin/immagini", files={"file": ("foto.png", io.BytesIO(png), "image/png")}, headers=OPERATORE)
+    assert up.status_code == 201, up.text
+    url = up.json()["url"]
+    assert c.get(url).status_code == 200
+
+    # Il file sparisce, la scheda resta: e' esattamente lo stato trovato in produzione.
+    scheda = asyncio.run(storage.uno(storage.COLL_IMMAGINI, {"id": up.json()["id"]}))
+    asyncio.run(storage.blobs().delete([scheda["blob_key"]]))
+    assert c.get(url).status_code == 404
+
+    di_nuovo = c.post("/api/menu/admin/immagini", files={"file": ("foto.png", io.BytesIO(png), "image/png")}, headers=OPERATORE)
+    assert di_nuovo.status_code in (200, 201)
+    assert di_nuovo.json()["id"] == up.json()["id"]
+    servita = c.get(url)
+    assert servita.status_code == 200 and servita.content == png
 
 
 def test_immagini_deduplicate_e_backup(client):
