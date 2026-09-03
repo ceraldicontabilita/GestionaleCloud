@@ -16,14 +16,18 @@ services:
     plan: starter
     branch: main
     autoDeploy: true
-    # frontend_lotti = app Lotti (HACCP) portata pari pari: build CRA propria,
-    # servita dal backend Lotti montato a /lotti (vedi app/lotti/embed.py).
+    # App portate pari pari, ognuna con la propria build servita dal proprio
+    # backend montato come sub-app (vedi app/<app>/embed.py):
+    # - frontend_lotti = Lotti (HACCP), build CRA, montata a /lotti;
+    # - frontend_menu  = Menu digitale, build CRA (PUBLIC_URL=/menu), a /menu;
+    # - frontend_hr    = AppDipendenti, build Vite (base /hr/), a /hr.
+    # ATTENZIONE: la dashboard Render NON recepisce da sola questo file (vedi
+    # DATA_BACKEND, 03/09/2026): il Build Command va incollato una volta in
+    # Settings del servizio. scripts/build_frontends.sh compila tutte le
+    # cartelle frontend_*/ presenti, quindi il comando non cambia piu'.
     buildCommand: >-
       pip install -r backend/requirements.txt &&
-      npm --prefix frontend install --include=dev --legacy-peer-deps &&
-      npm --prefix frontend run build &&
-      npm --prefix frontend_lotti ci --legacy-peer-deps &&
-      CI=false npm --prefix frontend_lotti run build
+      bash scripts/build_frontends.sh
     # Il piano Starter dispone di 512 MiB: due interpreti Python completi
     # duplicano il registro Sheets in memoria e superano il limite. FastAPI e
     # APScheduler vivono quindi nello stesso processo; PROCESS_ROLE=combined
@@ -49,13 +53,44 @@ services:
         sync: false
       - key: SUPABASE_RUNTIME_SECRET
         sync: false
-      # Modulo HR (ex AppDipendenti): DSN Postgres della vecchia app, usata
-      # SOLO dalla migrazione una-tantum (POST /api/hr/admin/migrazione-appdipendenti).
+      # --- App Lotti (HACCP) portata pari pari (app/lotti, montata a /lotti):
+      # progetto Supabase `Lotti-HACCP` (tabella lotti_documents + RPC lotti_*)
+      # e segreto JWT proprio (fallback AUTH_SECRET). Senza LOTTI_SUPABASE_URL
+      # l'archivio di Lotti resta in memoria (non persistente).
+      - key: LOTTI_SUPABASE_URL
+        sync: false
+      - key: LOTTI_SUPABASE_ANON_KEY
+        sync: false
+      - key: LOTTI_DB_SECRET
+        sync: false
+      - key: LOTTI_AUTH_SECRET
+        sync: false
+      # --- App Menu portata pari pari (app/menu, montata a /menu): tabelle
+      # menu_* nel progetto Supabase `Lotti-HACCP` (client PostgREST), segreto
+      # JWT del login admin e credenziali dell'unico utente amministratore.
+      - key: MENU_SUPABASE_URL
+        sync: false
+      - key: MENU_SUPABASE_KEY
+        sync: false
+      - key: MENU_JWT_SECRET
+        sync: false
+      - key: MENU_ADMIN_USERNAME
+        sync: false
+      - key: MENU_ADMIN_PASSWORD
+        sync: false
+      # --- AppDipendenti portata pari pari (app/hr, montata a /hr): DSN
+      # Postgres/Supabase (asyncpg) delle tabelle app_* dell'app originale,
+      # segreto JWT del suo login e PIN dell'amministratore HR.
+      - key: HR_SUPABASE_DB_URL
+        sync: false
+      - key: HR_JWT_SECRET
+        sync: false
+      - key: HR_PIN_CODE
+        sync: false
+      # DSN Postgres della vecchia AppDipendenti: resta come fallback di
+      # HR_SUPABASE_DB_URL (stesso database).
       - key: APPDIPENDENTI_DB_URL
         sync: false
-      # Sessione del portale dipendenti (dispositivo condiviso): 7 giorni.
-      - key: HR_PORTALE_TOKEN_EXPIRE_MINUTES
-        value: "10080"
       - key: SHEETS_REGISTRY_NAME
         value: "GestionaleCloud"
       - key: PROCESS_ROLE
