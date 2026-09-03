@@ -112,6 +112,11 @@ async def _scenario_fatture_disponibili(monkeypatch):
             "total_amount": 200.0, "pagato": True,
         },
         {
+            "id": "f2-aperta", "invoice_key": "K2-APERTA", "invoice_number": "11/B",
+            "invoice_date": "2026-06-03", "supplier_name": "Fornitore B",
+            "total_amount": 210.0, "pagato": False,
+        },
+        {
             "id": "f3", "invoice_key": "K3", "invoice_number": "12",
             "invoice_date": "2025-06-02", "supplier_name": "Fornitore C",
             "total_amount": 300.0, "pagato": False,
@@ -124,7 +129,7 @@ async def _scenario_fatture_disponibili(monkeypatch):
     )
 
     righe = await assegni_router.fatture_disponibili_per_assegno(
-        anno=2026, limit=1000,
+        anno=2026, limit=1000, fornitore="Fornitore A",
     )
 
     assert len(righe) == 1

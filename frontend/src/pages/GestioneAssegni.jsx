@@ -256,6 +256,7 @@ export default function GestioneAssegni() {
       const params = new URLSearchParams();
       params.append('anno', anno);
       params.append('limit', '1000');
+      if (beneficiario.trim().length >= 2) params.append('fornitore', beneficiario.trim());
       // IMPORTANTE: se c'è un beneficiario, filtra SOLO quelle del beneficiario
       // Endpoint leggero: restituisce solo i campi necessari al modale e non
       // trascina XML/PDF e metadati completi delle fatture.
@@ -287,6 +288,10 @@ export default function GestioneAssegni() {
           fornitore.split(' ').some(word => benefLower.includes(word) && word.length > 3)
         );
       };
+
+      // Difesa anche nel browser: il backend restringe gia la query, ma una
+      // risposta legacy o in cache non deve esporre documenti di altri fornitori.
+      if (benefLower) filtered = filtered.filter(stessoBeneficiario);
 
       // Prima le fatture con importo piu vicino all'assegno: quando il
       // beneficiario non e ancora noto, la candidata utile resta subito
@@ -575,8 +580,8 @@ export default function GestioneAssegni() {
     try {
       // Schema canonico (PROMPT_MASTER.md, sezione 10): l'assegno mantiene il
       // suo importo nominale, ogni fattura riceve una quota. Il backend
-      // aggiorna importo_pagato/assegni_collegati sulle fatture e lo stato
-      // dell'assegno (assegnato/parzialmente_assegnato) coerentemente.
+      // aggiorna assegni_collegati e l'intento di pagamento sulle fatture.
+      // Pagato e Prima Nota Banca cambiano solo in presenza del movimento EC.
       await api.put(`/api/assegni/${editingAssegnoForFatture.id}/fatture-collegate`, {
         fatture: selectedFatture.map(f => ({ fattura_id: f.id, quota: f.quota ?? f.importo })),
       });
@@ -584,6 +589,9 @@ export default function GestioneAssegni() {
       setShowFattureModal(false);
       setEditingAssegnoForFatture(null);
       setSelectedFatture([]);
+      setEditingId(null);
+      setEditForm({});
+      toast.success('Fatture collegate. Il pagamento reale sarà confermato dal riscontro bancario.');
       loadData();
     } catch (error) {
       toast.error('Errore: ' + (error.response?.data?.detail || error.message));
@@ -3226,10 +3234,9 @@ export default function GestioneAssegni() {
         </div>
       )}
 
-      {/* Modale legacy disattivato: il collegamento operativo e' automatico.
-          Il codice resta temporaneamente solo per leggere vecchi collegamenti
-          durante la migrazione, ma non viene mai esposto all'utente. */}
-      {false && showFattureModal && (
+      {/* Collegamento manuale esplicito: il fornitore restringe i documenti
+          e la conferma crea il legame canonico assegno-fattura. */}
+      {showFattureModal && (
         <div
           style={{
             position: 'fixed',
