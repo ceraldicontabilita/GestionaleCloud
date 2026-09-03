@@ -9,6 +9,11 @@ import re
 from fastapi import HTTPException
 
 from app.services.entity_relations import upsert_entity_relation
+from app.services.identity_matching import (
+    alias_fornitore,
+    soggetto_causale_bancaria,
+    soggetto_pagante_coerente,
+)
 from app.services.payment_allocation_validator import (
     existing_invoice_allocations_cents,
     invoice_total_cents,
@@ -370,11 +375,62 @@ def _identity_evidence(
         priority, rule = 2, "iban_o_piva+importo"
     else:
         priority, rule = 1, "fornitore+importo"
-    return {
+    evidence = {
         "priority": priority,
         "rule": rule,
         "quota_cents": residual_cents,
+        "proposta": False,
     }
+    if priority == 1:
+        # Audit 03/09/2026 (PR 4): con la sola identita' "token del fornitore"
+        # il soggetto pagante scritto in causale deve essere lo stesso
+        # fornitore della fattura. "AMAZON PAYMENTS EUROPE S.C.A." non paga
+        # in automatico una fattura di "Amazon Business EU S.a.r.l": resta
+        # una proposta da confermare in "Scegli fattura".
+        movement_text = _movement_text(movement)
+        supplier_name = str(
+            invoice.get("supplier_name") or invoice.get("fornitore")
+            or invoice.get("fornitore_ragione_sociale")
+            or invoice.get("cedente_denominazione") or invoice.get("cedente_nome") or ""
+        )
+        coerente = soggetto_pagante_coerente(
+            supplier_name, movement_text, alias=alias_fornitore(invoice),
+        )
+        evidence["soggetto_causale"] = soggetto_causale_bancaria(movement_text)
+        evidence["soggetto_coerente"] = coerente
+        if coerente is False:
+            evidence.update({
+                "priority": 0,
+                "rule": "fornitore+importo:soggetto_pagante_diverso",
+                "proposta": True,
+            })
+    return evidence
+
+
+async def _proponi_scelta_fattura(
+    db, movement: Dict[str, Any], invoices: List[Dict[str, Any]], soggetto: Any,
+) -> bool:
+    """Coda "Scegli fattura" per gli abbinamenti con soggetto pagante diverso.
+
+    Riusa l'unico scrittore di ``operazioni_da_confermare`` del motore
+    storico (idempotente per movimento, alert solo alla creazione).
+    """
+    from app.services.riconciliazione_bancaria import proponi_scelta_fattura
+
+    fornitori = ", ".join(dict.fromkeys(
+        str(
+            invoice.get("supplier_name") or invoice.get("fornitore")
+            or invoice.get("cedente_denominazione") or ""
+        )
+        for invoice in invoices
+    ))
+    motivo = (
+        f"Importo al centesimo ma soggetto pagante diverso: la causale dichiara "
+        f"'{soggetto or '?'}', la fattura e' di '{fornitori}'. Conferma manuale necessaria."
+    )
+    return await proponi_scelta_fattura(
+        db, movement, invoices, motivo=motivo, match_type="soggetto_pagante_diverso",
+    )
 
 
 async def _reconcile_unique_identity_matches(
@@ -400,14 +456,26 @@ async def _reconcile_unique_identity_matches(
 
     choices = []
     ambiguous_movements = 0
+    proposed_movements = 0
     for movement in eligible_movements:
         edges = []
+        proposals = []
         movement_cents = abs(to_cents(movement.get("importo")))
         for invoice in invoices_by_residual.get(movement_cents, []):
             evidence = _identity_evidence(movement, invoice)
-            if evidence:
-                edges.append({"movement": movement, "invoice": invoice, **evidence})
+            if not evidence:
+                continue
+            edge = {"movement": movement, "invoice": invoice, **evidence}
+            (proposals if evidence.get("proposta") else edges).append(edge)
         if not edges:
+            if proposals:
+                # Nessuna prova forte: il candidato con soggetto pagante
+                # diverso va scelto da un operatore, mai applicato.
+                await _proponi_scelta_fattura(
+                    db, movement, [edge["invoice"] for edge in proposals],
+                    proposals[0].get("soggetto_causale"),
+                )
+                proposed_movements += 1
             continue
         best_priority = max(edge["priority"] for edge in edges)
         best = [edge for edge in edges if edge["priority"] == best_priority]
@@ -454,6 +522,7 @@ async def _reconcile_unique_identity_matches(
         "collegati_count": len(linked),
         "ambigui_movimento": ambiguous_movements,
         "ambigui_fattura": ambiguous_invoices,
+        "proposte_soggetto_diverso": proposed_movements,
     }
 
 
@@ -516,4 +585,5 @@ async def reconcile_deterministic_invoice_allocations(
     stats["ambigui_identita"] = (
         identity["ambigui_movimento"] + identity["ambigui_fattura"]
     )
+    stats["proposte_soggetto_diverso"] = identity["proposte_soggetto_diverso"]
     return stats

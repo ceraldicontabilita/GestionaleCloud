@@ -40,6 +40,11 @@ import re
 import itertools
 
 from app.database import Database, Collections
+from app.services.identity_matching import (
+    alias_fornitore,
+    soggetto_causale_bancaria,
+    soggetto_pagante_coerente,
+)
 from app.services.payment_invoice_matching import amounts_equal_to_cent
 from app.services.prima_nota_integrity import totale_pagabile_al_fornitore
 from app.services.scritture_contabili import scrivi_movimento
@@ -772,16 +777,26 @@ def _evidenza_sdd_fattura_banca(
     data_fattura = fattura.get("data") or fattura.get("invoice_date") or ""
     giorni = _giorni_pagamento_plausibili(data_movimento, data_fattura)
     data_coerente = giorni is not None and 0 <= giorni <= 62
+    # Audit 03/09/2026 (PR 4): il marchio in comune non basta. Se la causale
+    # dichiara un soggetto diverso ("AMAZON PAYMENTS EUROPE S.C.A." per una
+    # fattura di "Amazon Business EU S.a.r.l"), l'abbinamento resta proposta.
+    soggetto_coerente = soggetto_pagante_coerente(
+        fornitore, testo, alias=alias_fornitore(fattura),
+    )
+    prove_base = bool(
+        sdd and not collettore and importo_esatto
+        and fornitore_presente and data_coerente
+    )
     return {
         "sdd": sdd,
         "collettore_escluso": collettore,
         "importo_esatto": importo_esatto,
         "fornitore_presente": fornitore_presente,
         "giorni_da_fattura": giorni,
-        "auto_ammesso": bool(
-            sdd and not collettore and importo_esatto
-            and fornitore_presente and data_coerente
-        ),
+        "soggetto_causale": soggetto_causale_bancaria(testo),
+        "soggetto_coerente": soggetto_coerente,
+        "bloccato_da_soggetto": prove_base and soggetto_coerente is False,
+        "auto_ammesso": prove_base and soggetto_coerente is not False,
     }
 
 
@@ -850,16 +865,79 @@ def _evidenza_pagamento_fornitore_banca(
     # L'estratto puo' essere importato prima dell'XML: sono ammessi pochi
     # giorni negativi, non abbinamenti cross-esercizio arbitrari.
     data_coerente = giorni is not None and -7 <= giorni <= 400
+    soggetto_coerente = soggetto_pagante_coerente(
+        fornitore, str(descrizione or ""), alias=alias_fornitore(fattura),
+    )
+    prove_base = bool(
+        diretto and importo_esatto and fornitore_presente and data_coerente
+    )
     return {
         "strumento": strumento,
         "strumento_diretto": diretto,
         "importo_esatto": importo_esatto,
         "fornitore_presente": fornitore_presente,
         "giorni_da_fattura": giorni,
-        "auto_ammesso": bool(
-            diretto and importo_esatto and fornitore_presente and data_coerente
-        ),
+        "soggetto_causale": soggetto_causale_bancaria(str(descrizione or "")),
+        "soggetto_coerente": soggetto_coerente,
+        "bloccato_da_soggetto": prove_base and soggetto_coerente is False,
+        "auto_ammesso": prove_base and soggetto_coerente is not False,
     }
+
+
+async def proponi_scelta_fattura(
+    db, movimento: Dict[str, Any], fatture: List[Dict[str, Any]], *,
+    motivo: str, match_type: str, confidence: str = "medio",
+    now: Optional[str] = None,
+) -> bool:
+    """Unico modo per mettere un movimento in coda "Scegli fattura".
+
+    Scrive una sola operazione da confermare per movimento (idempotente) con
+    le fatture candidate e il motivo del dubbio; genera l'alert soltanto se
+    l'operazione e' nuova. Non tocca fattura, movimento o Prima Nota.
+    Ritorna True se ha creato davvero la proposta.
+    """
+    mov_id = str(movimento.get("id") or movimento.get("_id") or "")
+    if not mov_id or not fatture:
+        return False
+    descrizione = str(
+        movimento.get("descrizione_originale") or movimento.get("descrizione") or ""
+    )
+    try:
+        importo = abs(float(movimento.get("importo") or 0))
+    except (TypeError, ValueError):
+        importo = 0.0
+    operazione = {
+        "id": str(uuid.uuid4()),
+        "tipo": "riconciliazione_dubbio",
+        "movimento_ec_id": mov_id,
+        "data": movimento.get("data"),
+        "importo": importo,
+        "descrizione": descrizione,
+        "tipo_movimento": movimento.get("tipo") or "uscita",
+        "match_type": match_type,
+        "confidence": confidence,
+        "dettagli": {
+            "fatture_candidate": [
+                {
+                    "id": str(f.get("id") or f.get("_id")),
+                    "numero": f.get("numero_fattura") or f.get("invoice_number"),
+                    "fornitore": f.get("cedente_denominazione") or f.get("supplier_name"),
+                    "importo": f.get("importo_totale") or f.get("total_amount"),
+                    "data": f.get("data") or f.get("invoice_date"),
+                }
+                for f in fatture[:10]
+            ],
+            "soggetto_causale": soggetto_causale_bancaria(descrizione),
+            "strumento_bancario": classifica_strumento_bancario(descrizione),
+            "motivo_dubbio": motivo,
+        },
+        "stato": "da_confermare",
+        "created_at": now or datetime.now(timezone.utc).isoformat(),
+    }
+    creata = await _crea_operazione_da_confermare_idempotente(db, operazione)
+    if creata:
+        await _alert_match_ambiguo(db, mov_id, motivo)
+    return creata
 
 
 def extract_invoice_number(descrizione: str) -> Optional[str]:
@@ -1393,7 +1471,32 @@ async def riconcilia_movimenti_banca(
                         or pagamento_diretto["auto_ammesso"]
                     ):
                         filtrate.append((fattura, score))
+                # Fatture che avrebbero tutte le prove (SDD/strumento
+                # diretto, importo al centesimo, data) ma con un soggetto
+                # pagante diverso in causale: mai automatiche, sempre
+                # proposte in "Scegli fattura" (audit 03/09/2026, PR 4).
+                bloccate_da_soggetto = [
+                    fattura for fattura, _score in fatture_scored
+                    if evidenze_fatture[str(fattura.get("id") or fattura.get("_id"))]["sdd"]["bloccato_da_soggetto"]
+                    or evidenze_fatture[str(fattura.get("id") or fattura.get("_id"))]["pagamento_diretto"]["bloccato_da_soggetto"]
+                ]
                 fatture_scored = filtrate
+                if not fatture_scored and bloccate_da_soggetto:
+                    soggetto = soggetto_causale_bancaria(descrizione) or "?"
+                    fornitori_bloccati = ", ".join(dict.fromkeys(
+                        str(f.get("cedente_denominazione") or f.get("supplier_name") or "")
+                        for f in bloccate_da_soggetto
+                    ))
+                    motivo = (
+                        f"Importo al centesimo ma soggetto pagante diverso: la causale "
+                        f"dichiara '{soggetto}', la fattura e' di '{fornitori_bloccati}'. "
+                        "Conferma manuale necessaria."
+                    )
+                    await proponi_scelta_fattura(
+                        db, mov, bloccate_da_soggetto, motivo=motivo,
+                        match_type="soggetto_pagante_diverso", now=now,
+                    )
+                    results["dubbi"] += 1
 
                 # Per canoni/utenze ricorrenti dello stesso importo, abbina la
                 # fattura antecedente piu' vicina. Se due candidate hanno la

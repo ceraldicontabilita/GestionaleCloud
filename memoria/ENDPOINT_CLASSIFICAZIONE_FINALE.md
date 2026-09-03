@@ -514,7 +514,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/estratto-conto-movimenti/pulizia-non-in-csv` | bank.estratto_conto | — | — | — | sì | sì | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
 | `POST /api/estratto-conto-movimenti/reimport` | bank.estratto_conto | — | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
 | `POST /api/estratto-conto-movimenti/ricategorizza-batch` | bank.estratto_conto | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/estratto-conto-movimenti/riconcilia-stipendi` | bank.estratto_conto | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/estratto-conto-movimenti/riconcilia-stipendi` | bank.estratto_conto | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/estratto-conto-movimenti/riepilogo` | bank.estratto_conto | — | — | sì | — | sì | tenere | in uso: chat |
 | `POST /api/estratto-conto-movimenti/ripara-versamenti-cassa` | bank.estratto_conto | sì | — | — | — | sì | tenere | in uso: FE |
 | `DELETE /api/estratto-conto-movimenti/{movimento_id}` | bank.estratto_conto | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |

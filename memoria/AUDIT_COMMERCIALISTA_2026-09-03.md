@@ -129,6 +129,16 @@ Altri controlli sull'intero insieme:
 
 - Due motori paralleli decidono "fattura pagata da banca": `app/services/bank_payment_allocations.py:380-458` (`_reconcile_unique_identity_matches`, con controllo date e P.IVA/IBAN) e `app/services/riconciliazione_bancaria.py:1446` (`ric_auto_identita_unica`, quello che ha scritto le 25 righe). Il secondo aggiorna `prima_nota_banca` + `invoices` + `audit_log` ma non sempre `scadenziario_fornitori`/`partite_aperte` (12 righe senza) né `estratto_conto_movimenti.riconciliato` (18 righe). Regola canonica del repo: *un solo sistema per funzione*.
 - **Fix (PR 2, alta)**: far scrivere `riconciliazione_bancaria.py` attraverso `persist_bank_invoice_allocations` (`bank_payment_allocations.py:119`) che già aggiorna in un colpo solo fattura, movimento EC, partita aperta e scadenza; eliminare il ramo `ric_auto_identita_unica`. Test: `tests/test_riconciliazione_unica_scrive_tutti_gli_stati.py` — dato un EC + fattura, dopo la riconciliazione `prima_nota_banca.riconciliato`, `estratto_conto_movimenti.riconciliato`, `scadenziario_fornitori.pagato`, `partite_aperte.stato` devono coincidere; dato un EC datato prima della fattura, nessuna associazione.
+- **stato 03/09/2026: fatte PR 3 e PR 4** — PR 3: `app/services/assegni_estratto_conto.py`
+  (`chiave_idempotenza_assegno` = `assegno:<estratto_conto_id>:banca_uscita`,
+  scrittura via `scrivi_movimento_se_assente`), bonifica dei 4 doppioni in
+  `app/services/bonifica_prima_nota_doppioni_assegni.py` esposta dallo stesso
+  `POST /api/admin/bonifica-prima-nota-doppioni?dry_run=` (registro `banca_assegni`).
+  PR 4: `identity_matching.soggetto_pagante_coerente` usato da
+  `bank_payment_allocations._identity_evidence` e da
+  `riconciliazione_bancaria._evidenza_sdd_fattura_banca` /
+  `_evidenza_pagamento_fornitore_banca`: soggetto diverso → proposta
+  `operazioni_da_confermare` (`match_type = soggetto_pagante_diverso`).
 - **Fix (PR 3, alta)** doppioni assegni: in `app/routers/bank/assegni.py` / `app/services/assegni_estratto_conto.py` la scrittura in Prima Nota deve passare da `scrivi_movimento_se_assente` con chiave `estratto_conto_id` (unicità per movimento). Test: due chiamate consecutive con lo stesso EC → una sola riga.
 - **Fix (PR 4, media)** identità fornitore: in `_identity_evidence` (riga 353-360) un match "solo token fornitore" (priorità 1) con più SDD dello stesso creditore nello stesso giorno deve finire in `operazioni_da_confermare`, non essere applicato; per gli SDD usare il mandato (`PK)K,…`) o l'IBAN come identità. Test con i 3 SDD Amazon del 16/02/2026.
 
@@ -435,6 +445,17 @@ archivi (12/12, 12/12, 12/12, 13/13). Discrepanze:
 
 **Fix**
 
+- **stato 03/09/2026: fatta PR 13** — `app/services/stipendi_bonifici.py`:
+  `competenza_bonifico_stipendio` (giorno < 25 → mese precedente, dal 25 →
+  mese corrente; la causale esplicita vince), usata da `_candidati_univoci`;
+  `riallinea_competenza_bonifici_stipendi` (dry-run/applica, idempotente:
+  sposta il bonifico sulla riga del periodo giusto o lo stacca se la riga
+  non esiste, riallinea `importo_bonifico/saldo/stato_bonifico/
+  movimenti_bancari_ids`, `stipendio_id` sul movimento e le `entity_relations`)
+  eseguito da ogni giro batch di `associa_bonifici_stipendi`; analisi con
+  `POST /api/estratto-conto/riconcilia-stipendi?dry_run=true`, CLI
+  `python -m app.services.stipendi_bonifici [--applica] [--anno]`. Capezzuto
+  430 del 20/02 resta "senza destinazione" finché la riga 01/2026 non esiste (PR 15).
 - **PR 13 (alta)** — periodo del bonifico: in `_candidati_univoci` sostituire
   la finestra con la regola documentata: data < 25/M → competenza M−1,
   ≥ 25/M → M, e in ogni caso preferire la busta **più vecchia con residuo

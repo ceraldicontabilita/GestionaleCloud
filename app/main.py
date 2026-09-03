@@ -123,23 +123,35 @@ async def lifespan(app: FastAPI):
     # dalla chiave idempotency_key e dall'indice in Postgres. NON sta sotto
     # RUN_STARTUP_DATA_REPAIRS (false in produzione, dove quel blocco non e'
     # mai stato eseguito): gira da sola al primo avvio dopo il deploy.
+    # Stessa regola per gli assegni registrati due volte in Prima Nota Banca
+    # (audit §1, PR 3): chiave assegno:<estratto_conto_id>:banca_uscita.
     try:
         db = Database.get_db()
-        bonifica_marker = "bonifica_prima_nota_doppioni_20260903_v1"
-        bonifica_run = (
-            await db["migration_runs"].find_one({"id": bonifica_marker})
-            if db is not None else {"status": "completed"}
+        from app.services.bonifica_prima_nota_doppioni import applica as applica_bonifica
+        from app.services.bonifica_prima_nota_doppioni_assegni import (
+            applica as applica_bonifica_assegni,
         )
-        if not bonifica_run or bonifica_run.get("status") != "completed":
-            from app.services.bonifica_prima_nota_doppioni import applica as applica_bonifica
 
+        bonifiche_avvio = (
+            ("bonifica_prima_nota_doppioni_20260903_v1",
+             "Bonifica doppioni Prima Nota (corrispettivi/POS)", applica_bonifica),
+            ("bonifica_prima_nota_doppioni_assegni_20260903_v1",
+             "Bonifica doppioni Prima Nota (assegni)", applica_bonifica_assegni),
+        )
+        for bonifica_marker, bonifica_nome, bonifica_fn in bonifiche_avvio:
+            bonifica_run = (
+                await db["migration_runs"].find_one({"id": bonifica_marker})
+                if db is not None else {"status": "completed"}
+            )
+            if bonifica_run and bonifica_run.get("status") == "completed":
+                continue
             bonifica_status = "failed"
             try:
-                bonifica_result = await applica_bonifica(db, actor="migrazione_avvio")
+                bonifica_result = await bonifica_fn(db, actor="migrazione_avvio")
                 bonifica_status = "completed"
             except Exception as exc:
                 bonifica_result = {"success": False, "reason": str(exc)}
-                logger.exception("Bonifica doppioni Prima Nota non completata")
+                logger.exception("%s non completata", bonifica_nome)
             await db["migration_runs"].update_one(
                 {"id": bonifica_marker},
                 {"$set": {
@@ -152,14 +164,15 @@ async def lifespan(app: FastAPI):
             )
             if bonifica_status == "completed":
                 logger.info(
-                    "Bonifica doppioni Prima Nota completata: %s",
+                    "%s completata: %s", bonifica_nome,
                     {k: bonifica_result.get(k) for k in (
                         "righe_marcate", "totale_righe_marcate",
                         "chiavi_assegnate", "corrispettivi_riallineati",
+                        "riferimenti_riallineati",
                     ) if k in bonifica_result},
                 )
     except Exception:
-        logger.exception("Bonifica doppioni Prima Nota all'avvio non eseguita")
+        logger.exception("Bonifiche doppioni Prima Nota all'avvio non eseguite")
 
     # Operazione una tantum autorizzata: elimina i dati operativi antecedenti
     # al 2026 solo in produzione Render, dopo backup separato per collection.

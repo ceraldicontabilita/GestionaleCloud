@@ -14,7 +14,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, List, Optional
 
 from app.routers.bank.assegni_auto_match import TOLL, _f, _load_open_invoices_by_piva
-from app.services.scritture_contabili import scrivi_movimento
+from app.services.scritture_contabili import (
+    FILTRO_MOVIMENTO_ATTIVO,
+    scrivi_movimento_se_assente,
+)
 from app.services.assegni_fattura_intent import capienza_assegno_fattura
 from app.services.payment_allocation_validator import (
     is_credit_note,
@@ -32,6 +35,20 @@ _PATTERN_NUMERO = (
     r"\bASSEGNO\s*N[.]?\s*(\d{6,})\b",
     r"\bVOSTRO\s+ASSEGNO\s+(\d{6,})\b",
 )
+
+
+def chiave_idempotenza_assegno(estratto_conto_id: Any) -> Optional[str]:
+    """``assegno:<estratto_conto_id>:banca_uscita``.
+
+    Una sola riga ATTIVA di Prima Nota Banca per movimento di estratto
+    conto di un assegno. E' la chiave che Postgres rende unica per
+    collezione (indice parziale di ``supabase/migrations/
+    20260903_idempotency_key.sql``), quindi vale anche tra processi con
+    cache diverse: e' cosi' che i 4 assegni dell'audit 03/09/2026 (§1) sono
+    stati scritti due volte, 14:07 e 14:33 dello stesso giorno.
+    """
+    ec_id = str(estratto_conto_id or "").strip()
+    return f"assegno:{ec_id}:banca_uscita" if ec_id else None
 
 
 def estrai_numero_assegno(descrizione: str) -> Optional[str]:
@@ -507,19 +524,22 @@ async def _garantisci_prima_nota(
     db, assegno: Dict[str, Any], movimento: Dict[str, Any], fattura_id: Optional[str], now: str,
 ) -> str:
     ec_id = movimento.get("id")
-    esistente = await db["prima_nota_banca"].find_one({
+    chiave = chiave_idempotenza_assegno(ec_id)
+    query_esistente = {
         "$or": [
             {"movimento_estratto_conto_id": ec_id}, {"estratto_conto_id": ec_id},
             {"assegno_id": assegno["id"]},
         ],
-        "status": {"$nin": ["deleted", "archived"]},
-    }, {"_id": 0})
+        **FILTRO_MOVIMENTO_ATTIVO,
+    }
+    esistente = await db["prima_nota_banca"].find_one(query_esistente, {"_id": 0})
     fields = {
         "tipo": "uscita", "type": "uscita", "importo": round(_f(assegno.get("importo")), 2),
         "amount": round(_f(assegno.get("importo")), 2), "categoria": "Assegni",
         "category": "Assegni", "assegno_id": assegno["id"],
         "assegno_numero": assegno.get("numero"), "numero_assegno": assegno.get("numero"),
         "estratto_conto_id": ec_id, "movimento_estratto_conto_id": ec_id,
+        "idempotency_key": chiave,
         "riconciliato": True, "data_riconciliazione": _data_iso(movimento.get("data")),
         "updated_at": now,
     }
@@ -528,12 +548,19 @@ async def _garantisci_prima_nota(
     if esistente:
         await db["prima_nota_banca"].update_one({"id": esistente["id"]}, {"$set": fields})
         return esistente["id"]
-    return await scrivi_movimento(db, "banca", {
+    # Scrittura idempotente per movimento di estratto conto: la guardia in
+    # memoria qui sopra vale per un solo processo; ``idempotency_key`` e'
+    # rifiutata da Postgres se un altro processo ha gia' scritto la riga
+    # (audit 03/09/2026, PR 3: 4 assegni registrati due volte, 4.853,99 EUR).
+    pn_id, gia_presente = await scrivi_movimento_se_assente(db, "banca", query_esistente, {
         **fields,
         "id": str(uuid.uuid4()), "data": _data_iso(movimento.get("data")),
         "descrizione": f"Assegno n. {assegno.get('numero', '')} - riscontro estratto conto",
         "source": "assegno_estratto_conto", "created_at": now,
     })
+    if gia_presente and pn_id:
+        await db["prima_nota_banca"].update_one({"id": pn_id}, {"$set": fields})
+    return pn_id
 
 
 async def sincronizza_assegni_da_estratto_conto(

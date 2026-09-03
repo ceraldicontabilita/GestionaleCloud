@@ -599,23 +599,28 @@ async def bonifica_prima_nota_doppioni(
     dry_run: bool = Query(True, description="True = solo analisi; False = marca le copie"),
     current_user: Dict[str, Any] = Depends(richiedi_admin),
 ) -> Dict[str, Any]:
-    """Audit del commercialista 03/09/2026, PR 5.
+    """Audit del commercialista 03/09/2026, PR 5 e PR 3.
 
-    Stesso ``corrispettivo_id`` scritto due volte da processi con cache
-    diverse. Con ``dry_run=true`` ritorna conteggi e importi per registro
-    (cassa entrate, cassa uscite POS, banca crediti POS) e l'elenco delle
-    coppie; con ``dry_run=false`` marca la copia piu' recente
-    ``entity_status="deleted"`` + ``duplicate_of`` e assegna
-    ``idempotency_key`` (prerequisito della migrazione
-    ``supabase/migrations/20260903_idempotency_key.sql``).
+    Stesso ``corrispettivo_id`` (PR 5) o stesso ``estratto_conto_id`` di un
+    assegno (PR 3, registro logico ``banca_assegni``) scritto due volte da
+    processi con cache diverse. Con ``dry_run=true`` ritorna conteggi e
+    importi per registro (cassa entrate, cassa uscite POS, banca crediti
+    POS, banca assegni) e l'elenco delle coppie; con ``dry_run=false``
+    marca la copia piu' recente ``entity_status="deleted"`` +
+    ``duplicate_of`` e assegna ``idempotency_key`` (prerequisito della
+    migrazione ``supabase/migrations/20260903_idempotency_key.sql``).
     """
     from app.services.bonifica_prima_nota_doppioni import esegui
-
-    return await esegui(
-        Database.get_db(),
-        dry_run=dry_run,
-        actor=current_user.get("sub") or current_user.get("username") or "admin",
+    from app.services.bonifica_prima_nota_doppioni_assegni import (
+        esegui as esegui_assegni,
+        integra_nel_report,
     )
+
+    db = Database.get_db()
+    actor = current_user.get("sub") or current_user.get("username") or "admin"
+    esito_corrispettivi = await esegui(db, dry_run=dry_run, actor=actor)
+    esito_assegni = await esegui_assegni(db, dry_run=dry_run, actor=actor)
+    return integra_nel_report(esito_corrispettivi, esito_assegni)
 
 
 # ============================================================================
