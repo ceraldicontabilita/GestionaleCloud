@@ -115,8 +115,8 @@ export const eliminaImmagine = (id) => data(menuApi.delete(`${ADMIN}/immagini/${
 export const esportaBackup = () => data(menuApi.get(`${ADMIN}/backup/esporta`));
 export const ripristinaBackup = (json) => data(menuApi.post(`${ADMIN}/backup/ripristina`, json));
 export const statoDati = () => data(menuApi.get(`${ADMIN}/stato-dati`));
-export const avviaMigrazione = (body) => data(menuApi.post(`${ADMIN}/migrazione-menu`, body));
-export const statoMigrazione = (id) => data(menuApi.get(`${ADMIN}/migrazione-menu/${id}`));
+export const avviaSincronizzazioneQromo = (body) => data(menuApi.post(`${ADMIN}/migrazione-qromo`, body));
+export const statoSincronizzazioneQromo = (id) => data(menuApi.get(`${ADMIN}/migrazione-qromo/${id}`));
 
 /** "3,50" / "3.50€" -> 3.5 */
 export const prezzoNumero = (price) => parseFloat(String(price ?? '').replace('€', '').trim().replace(',', '.')) || 0;

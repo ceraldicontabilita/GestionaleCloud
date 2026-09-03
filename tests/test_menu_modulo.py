@@ -113,8 +113,16 @@ def test_ordine_dal_tavolo_fino_alla_cassa(client):
     assert c.patch(f"/api/menu/staff/ordini/{o['id']}/stato", json={"status": "boh"}, headers=DIPENDENTE).status_code == 400
 
 
-def test_perimetro_ruoli(client):
+def test_perimetro_ruoli(client, monkeypatch):
     c, _ = client
+    # Il perimetro non deve mai toccare la rete reale: la sincronizzazione da
+    # Qromo qui serve solo a verificare chi puo' avviarla, non il suo esito.
+    import app.menu.migrazione_qromo as migrazione_qromo
+
+    async def _finta_sincronizzazione(**_kwargs):
+        return {"dry_run": True, "sottodominio": "test", "tabelle": {}, "immagini_scaricate": 0, "immagini_non_scaricate": 0, "coincide": True}
+
+    monkeypatch.setattr(migrazione_qromo, "sincronizza", _finta_sincronizzazione)
     # Il portale dipendenti lavora al banco ma non entra nella gestione del menu.
     assert c.get("/api/menu/staff/sale", headers=DIPENDENTE).status_code == 200
     assert c.get("/api/menu/admin/prodotti", headers=DIPENDENTE).status_code == 403
@@ -122,10 +130,13 @@ def test_perimetro_ruoli(client):
     assert c.get("/api/menu/staff/ordini", headers=LETTURA).status_code == 200
     assert c.post("/api/menu/staff/ordini", json={"items": [{"name": "x", "price": "1"}]}, headers=LETTURA).status_code == 403
     assert c.get("/api/menu/admin/prodotti", headers=LETTURA).status_code == 403
-    # Ripristino e migrazione: solo admin.
+    # Ripristino e sincronizzazione da Qromo: solo admin.
     assert c.post("/api/menu/admin/backup/ripristina", json={"formato": "x"}, headers=OPERATORE).status_code == 403
-    assert c.post("/api/menu/admin/migrazione-menu", json={}, headers=OPERATORE).status_code == 403
-    assert c.post("/api/menu/admin/migrazione-menu", json={}, headers=ADMIN).status_code == 503
+    assert c.post("/api/menu/admin/migrazione-qromo", json={}, headers=OPERATORE).status_code == 403
+    job = c.post("/api/menu/admin/migrazione-qromo", json={"dry_run": True}, headers=ADMIN)
+    assert job.status_code == 200 and job.json()["status"] in ("queued", "running")
+    assert c.get(f"/api/menu/admin/migrazione-qromo/{job.json()['id']}", headers=ADMIN).status_code == 200
+    assert c.get("/api/menu/admin/migrazione-qromo/inesistente", headers=ADMIN).status_code == 404
 
 
 def test_immagini_deduplicate_e_backup(client):

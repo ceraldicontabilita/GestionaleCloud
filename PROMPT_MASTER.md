@@ -688,8 +688,6 @@ si rigenerano dal codice e non si correggono a mano.
 | `LOTTI_INTEGRATION_KEY` | app-runtime | configurazione | non dichiarato in Settings | `app/middleware/authentication.py`, `app/routers/lotti_integration.py`, `render.yaml` |
 | `MAX_CONCURRENT_IMPORTS` | app-runtime | configurazione | `int` / `5` | `app/config.py` |
 | `MAX_UPLOAD_SIZE_MB` | app-runtime | configurazione | `int` / `50` | `app/config.py` |
-| `MENU_SUPABASE_KEY` | app-runtime | configurazione | non dichiarato in Settings | `app/menu/migrazione_menu.py`, `app/menu/routers/gestione.py`, `render.yaml` |
-| `MENU_SUPABASE_URL` | app-runtime | configurazione | non dichiarato in Settings | `app/menu/migrazione_menu.py`, `app/menu/routers/gestione.py`, `render.yaml` |
 | `NODE_ENV` | app-runtime | configurazione | non dichiarato in Settings | `frontend/plugins/health-check/health-endpoints.js` |
 | `NOLEGGIO_GIORNI_SENZA_FATTURA` | feature-job | configurazione | non dichiarato in Settings | `app/services/noleggio/controlli.py` |
 | `OPENAI_API_KEY` | ai | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `app/routers/settings_router.py`, `app/services/chat_ai_engine.py` |
@@ -716,6 +714,7 @@ si rigenerano dal codice e non si correggono a mano.
 | `PROCESS_ROLE` | app-runtime | configurazione | non dichiarato in Settings | `app/main.py`, `render.yaml` |
 | `PYTHONUTF8` | app-runtime | configurazione | non dichiarato in Settings | `render.yaml` |
 | `PYTHON_VERSION` | app-runtime | configurazione | non dichiarato in Settings | `render.yaml` |
+| `QROMO_SOTTODOMINIO` | app-runtime | configurazione | non dichiarato in Settings | `app/menu/migrazione_qromo.py` |
 | `REACT_APP_BACKEND_URL` | app-runtime | configurazione | non dichiarato in Settings | `backend/tests/test_fase2_fase3_fase4.py` |
 | `RELOAD` | app-runtime | configurazione | `bool` / `False` | `app/config.py` |
 | `RENDER` | app-runtime | configurazione | non dichiarato in Settings | `app/main.py`, `app/utils/session_cookie.py` |
@@ -1439,8 +1438,8 @@ Route table sorgente: **1573**; attivi da ricreare: **1032**; quarantena: **541*
 - **attivo** — `GET /api/menu/admin/immagini` — in uso: FE
 - **attivo** — `POST /api/menu/admin/immagini` — in uso: FE
 - **attivo** — `DELETE /api/menu/admin/immagini/{immagine_id}` — in uso: FE
-- **quarantena: admin-only** — `POST /api/menu/admin/migrazione-menu` — endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7)
-- **quarantena: admin-only** — `GET /api/menu/admin/migrazione-menu/{job_id}` — endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7)
+- **quarantena: admin-only** — `POST /api/menu/admin/migrazione-qromo` — endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7)
+- **quarantena: admin-only** — `GET /api/menu/admin/migrazione-qromo/{job_id}` — endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7)
 - **attivo** — `GET /api/menu/admin/prodotti` — in uso: FE, scheduler
 - **attivo** — `POST /api/menu/admin/prodotti` — in uso: FE
 - **attivo** — `DELETE /api/menu/admin/prodotti/{prodotto_id}` — in uso: FE

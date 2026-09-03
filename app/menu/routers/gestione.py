@@ -1,5 +1,5 @@
 """Gestione del menu (``admin`` e ``operatore``): catalogo, sale, QR/WiFi,
-immagini, backup. Ripristino e migrazione: solo ``admin``."""
+immagini, backup. Ripristino e sincronizzazione da Qromo: solo ``admin``."""
 import asyncio
 import logging
 import mimetypes
@@ -223,8 +223,8 @@ async def stato_dati():
 _jobs: Dict[str, Dict[str, Any]] = {}
 
 
-async def _esegui_migrazione(job_id: str, dry_run: bool, con_immagini: bool) -> None:
-    from app.menu.migrazione_menu import migra
+async def _esegui_sincronizzazione(job_id: str, sottodominio: str, dry_run: bool, con_immagini: bool) -> None:
+    from app.menu.migrazione_qromo import sincronizza
 
     job = _jobs[job_id]
     job["status"] = "running"
@@ -233,38 +233,38 @@ async def _esegui_migrazione(job_id: str, dry_run: bool, con_immagini: bool) -> 
         job["avanzamento"][nome] = n
 
     try:
-        job["esito"] = await migra(
-            os.environ["MENU_SUPABASE_URL"], os.environ["MENU_SUPABASE_KEY"],
-            dry_run=dry_run, con_immagini=con_immagini, progress=_progress,
+        job["esito"] = await sincronizza(
+            sottodominio=sottodominio, dry_run=dry_run, con_immagini=con_immagini, progress=_progress,
         )
         job["status"] = "done" if job["esito"]["coincide"] else "mismatch"
     except Exception as exc:
-        logger.exception("Migrazione Menu fallita")
+        logger.exception("Sincronizzazione da Qromo fallita")
         job["status"] = "failed"
         job["errore"] = str(exc)[:500]
     finally:
         job["finito_il"] = datetime.now(timezone.utc).isoformat()
 
 
-@router.post("/migrazione-menu", summary="Importa i dati dal vecchio Supabase dell'app Menu (solo admin)")
-async def avvia_migrazione(payload: Dict[str, Any] = Body(default={}), utente=Depends(require_menu_admin)):
-    if not (os.environ.get("MENU_SUPABASE_URL") and os.environ.get("MENU_SUPABASE_KEY")):
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "MENU_SUPABASE_URL / MENU_SUPABASE_KEY non configurate su Render")
+@router.post("/migrazione-qromo", summary="Sincronizza il catalogo dal menu digitale Qromo (solo admin)")
+async def avvia_sincronizzazione(payload: Dict[str, Any] = Body(default={}), utente=Depends(require_menu_admin)):
     if any(j["status"] == "running" for j in _jobs.values()):
-        raise HTTPException(status.HTTP_409_CONFLICT, "Una migrazione e' gia' in corso")
+        raise HTTPException(status.HTTP_409_CONFLICT, "Una sincronizzazione e' gia' in corso")
+    from app.menu.migrazione_qromo import SOTTODOMINIO_DEFAULT
+
     job_id = uuid.uuid4().hex[:12]
     _jobs[job_id] = {
         "id": job_id, "status": "queued", "dry_run": bool(payload.get("dry_run", False)),
+        "sottodominio": str(payload.get("sottodominio") or SOTTODOMINIO_DEFAULT),
         "con_immagini": bool(payload.get("con_immagini", True)),
         "avanzamento": {}, "avviato_il": datetime.now(timezone.utc).isoformat(), "avviato_da": nome_utente(utente),
     }
-    asyncio.create_task(_esegui_migrazione(job_id, _jobs[job_id]["dry_run"], _jobs[job_id]["con_immagini"]))
+    asyncio.create_task(_esegui_sincronizzazione(job_id, _jobs[job_id]["sottodominio"], _jobs[job_id]["dry_run"], _jobs[job_id]["con_immagini"]))
     return _jobs[job_id]
 
 
-@router.get("/migrazione-menu/{job_id}", summary="Stato di una migrazione")
-async def stato_migrazione(job_id: str):
+@router.get("/migrazione-qromo/{job_id}", summary="Stato di una sincronizzazione")
+async def stato_sincronizzazione(job_id: str):
     job = _jobs.get(job_id)
     if not job:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Migrazione non trovata")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Sincronizzazione non trovata")
     return job

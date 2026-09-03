@@ -172,11 +172,20 @@ sempre la sorgente persistente.
   `--menu-*`), voce "Menu" nel menu principale.
 - Backup: un solo JSON scaricabile (`GET /api/menu/admin/backup/esporta`,
   immagini comprese) e ripristino da file; niente archivi sul disco di Render.
-- Migrazione dal vecchio Supabase dell'app Menu: `app/menu/migrazione_menu.py`
-  (PostgREST, env `MENU_SUPABASE_URL`/`MENU_SUPABASE_KEY` solo su Render),
-  idempotente, scarica le immagini nell'archivio e confronta i conteggi.
+- **[03/09/2026] Il menu vero si gestisce su Qromo** (`ceraldicaffe.qromo.it`),
+  non nel vecchio Supabase dell'app Menu (dati incompleti: senza molte foto
+  e allergeni). `app/menu/migrazione_qromo.py` legge il catalogo pubblicato
+  su Qromo (categorie/sottocategorie/prodotti/prezzi/allergeni/immagini sono
+  incorporati come costanti JavaScript nella home del menu, letti da lì:
+  nessuna API Qromo documentata, nessun login), esclude le sottocategorie
+  interne di cassa `BANCO - *` (stesso prodotto, prezzo diverso da quello
+  pubblicato al cliente) e riduce i 39 tag allergene/dietetici di Qromo ai
+  14 allergeni UE gestiti dal modulo. Idempotente (sostituisce per intero
+  categorie/sottocategorie/prodotti a ogni giro: Qromo resta l'unico punto
+  in cui modificare il catalogo), scarica le immagini nell'archivio a
+  contenuto e confronta i conteggi. Nessuna env da configurare su Render.
   Dalla scheda Backup della pagina Gestione menu: prima "solo prova", poi
-  reale. Dopo il cutover i servizi Render del vecchio Menu si spengono.
+  "Sincronizza ora"; ripetibile ogni volta che il menu cambia su Qromo.
 
 ## Canali operativi e conoscenza
 

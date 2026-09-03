@@ -1,7 +1,7 @@
 /**
  * Gestione del menu (admin/operatore): catalogo (categorie, sottocategorie,
  * prodotti con allergeni e immagine), immagini caricate, QR code menu/WiFi,
- * backup JSON e migrazione dal vecchio Supabase dell'app Menu (solo admin).
+ * backup JSON e sincronizzazione del catalogo da Qromo (solo admin).
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
@@ -11,10 +11,10 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
-  aggiornaCategoria, aggiornaProdotto, aggiornaSottocategoria, avviaMigrazione, caricaImmagine, caricaMenu, configQr,
+  aggiornaCategoria, aggiornaProdotto, aggiornaSottocategoria, avviaSincronizzazioneQromo, caricaImmagine, caricaMenu, configQr,
   creaCategoria, creaProdotto, creaSottocategoria, eAdmin, elencoImmagini, eliminaCategoria, eliminaImmagine,
   eliminaProdotto, eliminaSottocategoria, esportaBackup, messaggioErrore, prodottiPiatti, ripristinaBackup,
-  salvaConfigQr, statoDati, statoMigrazione,
+  salvaConfigQr, statoDati, statoSincronizzazioneQromo,
 } from '../api';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -432,7 +432,7 @@ function BackupPannello({ ruolo }) {
 
   useEffect(() => {
     if (!job || !['queued', 'running'].includes(job.status)) return undefined;
-    const iv = setInterval(() => statoMigrazione(job.id).then(setJob).catch(() => {}), 2000);
+    const iv = setInterval(() => statoSincronizzazioneQromo(job.id).then(setJob).catch(() => {}), 2000);
     return () => clearInterval(iv);
   }, [job]);
   useEffect(() => { if (job && !['queued', 'running'].includes(job.status)) caricaStato(); }, [job, caricaStato]);
@@ -460,10 +460,10 @@ function BackupPannello({ ruolo }) {
       caricaStato();
     } catch (err) { toast.error('Errore', { description: err instanceof SyntaxError ? 'File non valido' : messaggioErrore(err, 'Ripristino non riuscito') }); } finally { setRipristinando(false); }
   };
-  const migra = async () => {
-    if (!dryRun && !window.confirm('Importare i dati dal vecchio Supabase del menu? Le collezioni del menu verranno sostituite con quelle della sorgente (il magazzino bar compreso).')) return;
-    try { setJob(await avviaMigrazione({ dry_run: dryRun, con_immagini: true })); }
-    catch (err) { toast.error('Errore', { description: messaggioErrore(err, 'Migrazione non avviata') }); }
+  const sincronizza = async () => {
+    if (!dryRun && !window.confirm('Sincronizzare il catalogo da Qromo? Categorie, sottocategorie e prodotti attuali verranno sostituiti con quelli pubblicati su Qromo in questo momento (le sale, gli ordini e la configurazione QR non vengono toccati).')) return;
+    try { setJob(await avviaSincronizzazioneQromo({ dry_run: dryRun, con_immagini: true })); }
+    catch (err) { toast.error('Errore', { description: messaggioErrore(err, 'Sincronizzazione non avviata') }); }
   };
 
   return (
@@ -493,10 +493,10 @@ function BackupPannello({ ruolo }) {
       </Card>
       {admin && (
         <Card>
-          <CardHeader><CardTitle>Importa dal vecchio menu (Supabase dell'app Menu)</CardTitle><CardDescription>Legge le tabelle menu_* e il magazzino bar di Lotti dalla sorgente configurata su Render (MENU_SUPABASE_URL / MENU_SUPABASE_KEY), scarica le immagini nell'archivio e confronta i conteggi. La sorgente non viene mai modificata.</CardDescription></CardHeader>
+          <CardHeader><CardTitle>Sincronizza da Qromo</CardTitle><CardDescription>Il menu vero si gestisce su Qromo (ceraldicaffe.qromo.it): questo pulsante legge categorie, sottocategorie, prodotti, prezzi, allergeni e foto pubblicati in questo momento e li porta qui, scaricando le immagini nell'archivio (deduplicate). Qromo non viene mai modificato. Le sottocategorie interne "BANCO" (listino di cassa, prezzi diversi) restano escluse.</CardDescription></CardHeader>
           <CardContent className="space-y-3">
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} /> Solo prova (conta senza scrivere)</label>
-            <Button onClick={migra} disabled={job && ['queued', 'running'].includes(job.status)} className={BTN}>{job && ['queued', 'running'].includes(job.status) ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> In corso...</> : dryRun ? 'Avvia prova' : 'Avvia importazione'}</Button>
+            <Button onClick={sincronizza} disabled={job && ['queued', 'running'].includes(job.status)} className={BTN}>{job && ['queued', 'running'].includes(job.status) ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> In corso...</> : dryRun ? 'Avvia prova' : 'Sincronizza ora'}</Button>
             {job && (
               <div className="text-sm border border-[#e6e0d4] rounded-lg p-3 space-y-1">
                 <p><strong>Stato:</strong> {job.status}{job.dry_run ? ' (prova)' : ''} — avviata {dataOra(job.avviato_il)}</p>

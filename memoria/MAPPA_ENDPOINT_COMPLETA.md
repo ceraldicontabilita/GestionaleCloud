@@ -1610,8 +1610,8 @@
 | POST | `/api/menu/admin/immagini` | ✓ | app.menu.routers.gestione |
 | GET | `/api/menu/admin/immagini` | ✓ | app.menu.routers.gestione |
 | DELETE | `/api/menu/admin/immagini/{immagine_id}` | ✓ | app.menu.routers.gestione |
-| POST | `/api/menu/admin/migrazione-menu` | ✓ | app.menu.routers.gestione |
-| GET | `/api/menu/admin/migrazione-menu/{job_id}` | ✓ | app.menu.routers.gestione |
+| POST | `/api/menu/admin/migrazione-qromo` | ✓ | app.menu.routers.gestione |
+| GET | `/api/menu/admin/migrazione-qromo/{job_id}` | ✓ | app.menu.routers.gestione |
 | GET | `/api/menu/admin/prodotti` | ✓ | app.menu.routers.gestione |
 | POST | `/api/menu/admin/prodotti` | ✓ | app.menu.routers.gestione |
 | PUT | `/api/menu/admin/prodotti/{prodotto_id}` | ✓ | app.menu.routers.gestione |

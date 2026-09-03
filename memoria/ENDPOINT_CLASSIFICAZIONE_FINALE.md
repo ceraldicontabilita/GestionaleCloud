@@ -1139,8 +1139,8 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/menu/admin/immagini` | app.menu.routers.gestione | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/menu/admin/immagini` | app.menu.routers.gestione | sì | — | — | — | sì | tenere | in uso: FE |
 | `DELETE /api/menu/admin/immagini/{immagine_id}` | app.menu.routers.gestione | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/menu/admin/migrazione-menu` | app.menu.routers.gestione | sì | — | — | sì | sì | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
-| `GET /api/menu/admin/migrazione-menu/{job_id}` | app.menu.routers.gestione | sì | sì | — | sì | sì | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
+| `POST /api/menu/admin/migrazione-qromo` | app.menu.routers.gestione | sì | — | — | sì | sì | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
+| `GET /api/menu/admin/migrazione-qromo/{job_id}` | app.menu.routers.gestione | sì | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
 | `GET /api/menu/admin/prodotti` | app.menu.routers.gestione | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
 | `POST /api/menu/admin/prodotti` | app.menu.routers.gestione | sì | — | — | — | sì | tenere | in uso: FE |
 | `DELETE /api/menu/admin/prodotti/{prodotto_id}` | app.menu.routers.gestione | sì | — | — | — | — | tenere | in uso: FE |
