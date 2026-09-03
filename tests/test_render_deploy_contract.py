@@ -28,8 +28,18 @@ def test_render_builds_backend_and_frontend_from_source():
     assert service["name"] == "GestionaleCloud"
     assert service["runtime"] == "python"
     assert "pip install -r backend/requirements.txt" in build_command
-    assert "npm --prefix frontend install --include=dev --legacy-peer-deps" in build_command
-    assert "npm --prefix frontend run build" in build_command
+    # Le build dei frontend (gestionale + app portate pari pari) sono
+    # delegate a uno script versionato: il comando in dashboard resta stabile.
+    assert "bash scripts/build_frontends.sh" in build_command
+    script = (ROOT / "scripts" / "build_frontends.sh").read_text(encoding="utf-8")
+    assert "npm --prefix frontend install --include=dev --legacy-peer-deps" in script
+    assert "npm --prefix frontend run build" in script
+    # Ogni app portata pari pari (frontend_lotti, frontend_menu, frontend_hr)
+    # viene compilata con la propria toolchain dallo stesso script.
+    assert "for dir in frontend_*/" in script
+    assert 'run build' in script
+    for app_frontend in ("frontend_lotti",):
+        assert (ROOT / app_frontend / "package.json").is_file(), app_frontend
 
 
 def test_render_serves_the_combined_app_with_health_check():
