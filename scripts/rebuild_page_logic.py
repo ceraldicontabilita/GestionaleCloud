@@ -182,20 +182,6 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Anteprima e applicazione restituiscono gli stessi target; secondo passaggio trova zero copie certe e rollback ripristina la visibilità."],
     ),
     10: page(
-        ["Dipendenti", "Cedolini", "Bonifici", "Movimenti bancari", "documenti paghe"],
-        ["periodo cedolino", "note/descrizione persistenti", "relazioni pagamento e Prima Nota salari"],
-        [
-            "Conservare ogni cedolino come documento distinto anche se dipendente, mese e tipo coincidono.",
-            "Per un bonifico effettuato prima del giorno 25 proporre il mese precedente; dal giorno 25 proporre il mese corrente, senza confermare se il cedolino non esiste.",
-            "Mostrare per dipendente cedolini, bonifici, residui e documenti; il campo descrizione deve sopravvivere a refresh e filtri.",
-            "Confermare l'associazione con identità dipendente/IBAN, periodo, importo e provenienza; i candidati multipli richiedono scelta.",
-        ],
-        ["Import paghe/bonifici idempotente e proposta automatica del periodo secondo la regola del giorno 25."],
-        ["Cedolino ↔ dipendente ↔ bonifico ↔ movimento banca ↔ Prima Nota salari, tutti navigabili."],
-        ["Importo uguale non basta; non scartare cedolini legittimi dello stesso mese; il periodo proposto non è conferma."],
-        ["Dopo refresh restano periodo, nota e collegamenti; la somma riconciliata per dipendente coincide con i bonifici confermati."],
-    ),
-    11: page(
         ["Fatture di noleggio", "veicoli", "contratti", "storico driver", "dati automotive opzionali"],
         ["anagrafica veicolo completa", "contratto", "assegnazioni driver con intervallo", "relazioni fatture"],
         [
@@ -209,7 +195,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Niente form manuali incompleti quando i dati sono già nelle fatture; assenza di fattura recente non è automaticamente un errore."],
         ["Ogni veicolo mostrato ha targa e fonte; fatture e driver corretti sono raggiungibili e una nuova scansione non duplica costi."],
     ),
-    12: page(
+    11: page(
         ["Verbali PartenoPay/Drive/Gmail", "veicoli", "storico driver", "pagamenti", "quietanze"],
         ["verbale canonico", "associazione veicolo/driver", "stato pagamento", "attesa quietanza"],
         [
@@ -223,7 +209,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Mai associare driver per importo; mai chiamare fattura la quietanza; originali Gmail/Drive non vengono spostati o eliminati."],
         ["Importo mostrato coincide col PDF; casi certi si completano da soli, ambigui restano nella lista con candidati e motivo."],
     ),
-    13: page(
+    12: page(
         ["veicoli", "fatture noleggio", "pedaggi", "verbali", "bolli", "riparazioni"],
         ["Nessuna scrittura primaria: vista costi derivata ed eventuali classificazioni con audit."],
         [
@@ -236,7 +222,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Non duplicare lo stesso costo presente in fattura e pagamento; un pagamento non è una nuova componente di costo."],
         ["Somma categorie uguale al totale veicolo e ogni centesimo è spiegato da una riga origine."],
     ),
-    14: page(
+    13: page(
         ["verbale identificato dalla route", "PDF e metadati", "relazioni veicolo/driver/pagamento/quietanza"],
         ["correzioni verificate", "associazioni manuali esplicite", "richiesta nuova lettura OCR"],
         [
@@ -250,7 +236,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Non sostituire il dato del PDF senza provenienza; associazioni ambigue non diventano definitive."],
         ["Il fascicolo ricostruisce tutta la storia del verbale e il viewer si apre/chiude senza lasciare overlay bloccanti."],
     ),
-    15: page(
+    14: page(
         ["piano dei conti versionato", "regole di classificazione", "scritture e righe giornale"],
         ["conto/sottoconto", "validità temporale", "regole approvate"],
         [
@@ -263,7 +249,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Mai cancellare conti usati; nessuna riclassificazione retroattiva silenziosa."],
         ["Gerarchia senza cicli; ogni saldo apre le scritture origine e un conto disattivato resta nello storico."],
     ),
-    16: page(
+    15: page(
         ["scritture giornale valide", "piano dei conti", "periodo/anno globale"],
         ["Nessuna scrittura primaria; eventuale snapshot firmato solo come report."],
         [
@@ -276,7 +262,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Non usare totali Prima Nota non contabilizzati come bilancio; errore fonte non diventa zero."],
         ["Dare uguale Avere e utile/perdita riconciliabile al centesimo con il giornale."],
     ),
-    17: page(
+    16: page(
         ["bilancio calcolato", "giornale", "piano conti", "check di quadratura"],
         ["stato e nota di risoluzione dell'anomalia, senza alterare direttamente la contabilità"],
         [
@@ -289,7 +275,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Contatori sempre cliccabili; nessuna correzione contabile direttamente dalla card di allerta."],
         ["Ogni anomalia è riproducibile e scompare solo quando la condizione non esiste più."],
     ),
-    18: page(
+    17: page(
         ["scritture giornale", "righe Dare/Avere", "piano conti", "documenti e operation_id"],
         ["scritture manuali bilanciate", "storni e rettifiche, mai sovrascrittura dello storico"],
         [
@@ -302,7 +288,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Una scrittura sbilanciata o priva di conto valido non può essere registrata; progressivi non si riciclano."],
         ["Per ogni scrittura Dare=Avere e sequenza progressiva senza duplicati; storno navigabile in entrambe le direzioni."],
     ),
-    19: page(
+    18: page(
         ["KPI mensili", "Prima Nota", "corrispettivi/POS", "fatture", "F24", "giornale"],
         ["stato controllo, assegnatario e nota; nessuna scrittura contabile diretta"],
         [
@@ -315,7 +301,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Niente pulsanti generici di pulizia; nessun alert senza lista e criterio."],
         ["Tutti i controlli hanno fonte e risultato riproducibile; stato mensile coincide con i dettagli."],
     ),
-    20: page(
+    19: page(
         ["scadenze fiscali", "F24", "dichiarazioni", "quietanze", "atti e notifiche"],
         ["stato operativo, promemoria e relazione al documento; non il pagamento"],
         [
@@ -328,7 +314,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Non inventare importi o scadenze da OCR incerto; fonte assente resta da verificare."],
         ["Ogni scadenza apre la prova e il calendario distingue scaduto, imminente, completato e da verificare."],
     ),
-    21: page(
+    20: page(
         ["fatture cespitabili", "cespiti", "categorie e aliquote", "documenti origine"],
         ["scheda cespite", "piano ammortamento", "dismissione", "scritture collegate"],
         [
@@ -341,7 +327,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Non capitalizzare automaticamente per parola/importo; non modificare rate di esercizi chiusi senza rettifica."],
         ["Costo storico, fondo, quota e residuo quadrano al centesimo; ogni cespite ha documento e data di entrata in funzione."],
     ),
-    22: page(
+    21: page(
         ["saldi banca/cassa", "crediti/debiti", "mutui", "finanziamenti soci", "scadenze"],
         ["Nessuna scrittura primaria; classificazioni finanziarie tracciate quando necessarie."],
         [
@@ -354,7 +340,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Niente saldi inventati o cache non datata; trasferimenti interni non sono flussi economici."],
         ["Ogni indicatore è riconciliabile alle fonti e finanziamenti soci non risultano duplicati tra banca e ledger."],
     ),
-    23: page(
+    22: page(
         ["check mensili", "bilancio", "giornale", "IVA/F24", "stato esercizio"],
         ["evento di chiusura", "snapshot e hash", "eventuale riapertura/rettifica"],
         [
@@ -368,7 +354,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Nessuna chiusura automatica o con checklist rossa; nessuna cancellazione di dati originari."],
         ["Chiusura impossibile senza conferma forte; esercizio chiuso produce lo stesso snapshot da sorgenti immutate."],
     ),
-    24: page(
+    23: page(
         ["budget versionato", "piano conti/centri", "consuntivo giornale", "anno globale"],
         ["versione budget, righe mensili, note e stato approvazione"],
         [
@@ -381,7 +367,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Budget e simulazioni non generano scritture reali; una versione approvata non si modifica in silenzio."],
         ["Totali mensili/annuali coerenti e scostamento uguale a consuntivo meno budget al centesimo."],
     ),
-    25: page(
+    24: page(
         ["contratti mutuo/PDF", "mutui", "piano rate", "movimenti bancari", "giornale"],
         ["mutuo e rate", "relazione rata-movimento", "scritture capitale/interessi"],
         [
@@ -394,7 +380,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Importo uguale non basta; non contabilizzare l'intera rata come costo; nessun pagamento automatico."],
         ["Somma capitale rimborsato più residuo coincide col capitale; rata riconciliata apre il movimento esatto."],
     ),
-    26: page(
+    25: page(
         ["viste contabili derivate", "giornale", "piano conti", "periodi e dimensioni"],
         ["Nessuna scrittura; preferenze/report eventualmente salvati."],
         [
@@ -407,7 +393,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Nessun indicatore senza formula; errore fonte non diventa zero; niente scritture dalla vista analitica."],
         ["Totali delle analisi coincidono con il giornale filtrato e ogni dato è spiegabile."],
     ),
-    27: page(
+    26: page(
         ["consuntivi", "budget", "costi/ricavi ricorrenti", "parametri utente"],
         ["scenario di simulazione separato, mai scritture o budget approvati"],
         [
@@ -420,7 +406,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Nessuna scrittura, ordine o pagamento; risultati sono simulazioni e devono essere etichettati."],
         ["Stessi input producono stesso risultato; esportazione riporta tutte le ipotesi e la data base."],
     ),
-    28: page(
+    27: page(
         ["storico acquisti", "fatture/scadenze", "budget", "fornitori", "parametri previsionali"],
         ["scenario/previsione e note, non ordini o scritture"],
         [
@@ -433,7 +419,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Non creare ordini, pagamenti o fatture; valori con storico insufficiente restano non stimati."],
         ["Ogni previsione espone la serie origine e la somma per periodo è riproducibile."],
     ),
-    29: page(
+    28: page(
         ["casi riconciliati e rifiutati", "regole approvate", "feature/provenienza del suggerimento"],
         ["suggerimento, confidenza, approvazione/revoca e versione regola"],
         [
@@ -446,7 +432,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Nessun auto-apprendimento da associazioni ambigue; nessuna regola opaca o pagamento automatico."],
         ["Regola approvata applicata solo nel perimetro; revoca impedisce nuove applicazioni e mantiene audit storico."],
     ),
-    30: page(
+    29: page(
         ["fatture e note credito", "pagamenti confermati/parziali", "fornitori", "scadenze"],
         ["scadenza, sollecito/promemoria interno, relazione a pagamento"],
         [
@@ -459,7 +445,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Metodo previsto o disposizione non azzerano il residuo; importo simile non associa automaticamente."],
         ["Residui sommati coincidono con archivio fatture e ogni stato apre le prove che lo giustificano."],
     ),
-    31: page(
+    30: page(
         ["fatture/compensi con ritenuta", "percipienti", "F24 e codici tributo", "quietanze"],
         ["ritenuta per documento/periodo", "relazioni F24", "stato versamento documentale/bancario"],
         [
@@ -472,7 +458,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Non creare F24 dal solo totale; non trattare quietanza come movimento bancario."],
         ["Somma ritenute per codice/periodo coincide con righe F24 collegate e differenze sono elencate."],
     ),
-    32: page(
+    31: page(
         ["casi di riconciliazione di banca, F24, stipendi, documenti, assegni, PayPal e PagoPA"],
         ["Nessuna associazione diretta dalla dashboard; solo filtri/priorità del caso."],
         [
@@ -485,7 +471,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Nessun contatore non navigabile; nessuna conferma massiva di casi ambigui."],
         ["Conteggi dashboard uguali alle liste e tornano a zero solo quando i casi sono realmente risolti."],
     ),
-    33: page(
+    32: page(
         ["movimenti bancari immutabili", "fatture", "Prima Nota", "PayPal/assegni/bonifici/F24/PagoPA"],
         ["caso/candidati", "relazione confermata", "scrittura contabile tramite writer unico"],
         [
@@ -499,7 +485,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Mai associare per importo solo; commissione ignorata è riconciliazione classificata, non pagamento fattura."],
         ["Secondo import nuovi=0; ogni conferma è visibile in entrambe le pagine e l'importo resta al centesimo."],
     ),
-    34: page(
+    33: page(
         ["F24 unificato", "righe tributo", "PDF", "Quietanze F24", "movimenti bancari", "codici tributo"],
         ["relazioni F24-quietanza-banca", "stato per modello e riga tributo"],
         [
@@ -513,7 +499,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Non ricostruire un F24 dalla sola quietanza; non mostrare pagato banca senza movimento; crediti e debiti conservano segno."],
         ["Ogni F24 Drive compare nella pagina, ricerca bidirezionale funziona e somme righe quadrano col totale documento."],
     ),
-    35: page(
+    34: page(
         ["Cedolini", "Dipendenti/IBAN", "Bonifici", "Movimenti bancari", "Prima Nota salari"],
         ["candidati periodo/dipendente", "relazioni confermate e stato pagamento"],
         [
@@ -526,7 +512,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["La regola del giorno 25 propone, non conferma; importo solo o nome parziale non bastano."],
         ["Periodo/descrizione persistono; pagamento confermato apre cedolino e banca in entrambe le direzioni."],
     ),
-    36: page(
+    35: page(
         ["Documenti inbox/Drive", "classificazioni", "entità candidate", "relazioni"],
         ["classificazione approvata", "relazione documento-entità", "stato elaborazione"],
         [
@@ -539,7 +525,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["OCR basso, PDF cifrato o fonte incompleta restano in revisione; mai creare record contabile da contenuto ambiguo."],
         ["Ogni documento ha stato e destinazione; secondo processamento non crea una seconda entità."],
     ),
-    37: page(
+    36: page(
         ["bonifici importati", "movimenti bancari", "dipendenti/fatture", "note e periodi"],
         ["descrizione e periodo persistenti", "relazioni salario/fattura/banca"],
         [
@@ -552,7 +538,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Nessuna associazione definitiva per stesso importo; bonifici ricorrenti distinti non sono duplicati."],
         ["Nota e periodo restano dopo reload; contatori e liste coincidono e ogni associato apre le prove."],
     ),
-    38: page(
+    37: page(
         ["assegni", "movimenti bancari", "fatture", "documenti/prove"],
         ["stato assegno", "relazioni a una o più fatture", "incasso/addebito bancario confermato"],
         [
@@ -566,7 +552,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Assegni diversi con stesso importo o fattura non sono copie; emissione/disposizione non prova l'addebito."],
         ["Ogni assegno resta distinto e navigabile; somma fatture compatibile e stato banca supportato dal movimento esatto."],
     ),
-    39: page(
+    38: page(
         ["transazioni PayPal", "movimenti bancari SDD PayPal", "fatture", "Prima Nota"],
         ["relazioni transazione-fattura-banca", "stato riconciliazione", "note"],
         [
@@ -580,7 +566,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Non confrontare USD ed EUR senza cambio/prova; commissione e acquisto non sono la stessa riga; importo solo non basta."],
         ["Un acquisto PayPal con fattura e addebito SDD produce tre record collegati con lo stesso operation_id; il secondo sync non duplica transazioni."],
     ),
-    40: page(
+    39: page(
         [
             "Corrispettivi RT XML: quota elettronica fiscale complessiva, non separabile per gestore",
             "Numia: chiusure manuali/batch ed export ufficiali Banco BPM CSV/XLSX con transazioni, terminale, MID e punto vendita",
@@ -622,7 +608,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
             "Aggiorna senza modifiche restituisce gli stessi record; un reimport o sync non duplica transazioni, crediti o accrediti.",
         ],
     ),
-    41: page(
+    40: page(
         ["file/ZIP caricati", "catalogo parser", "Drive e document inbox"],
         ["originali Drive", "Documenti", "import run", "record di dominio tramite servizi"],
         [
@@ -636,7 +622,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Protezione ZIP traversal/bombe; nessun 'carica senza salvare'; un errore non annulla i file validi né elimina originali."],
         ["Reimport dello stesso ZIP: nuovi=0; ogni file ha esito e i corrispettivi validi compaiono una volta in Cassa."],
     ),
-    42: page(
+    41: page(
         ["indice Documenti", "metadati Drive", "relazioni a entità", "stato elaborazione"],
         ["metadati/etichette controllate", "richiesta di riprocessamento", "nessuna modifica all'originale"],
         [
@@ -649,7 +635,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Nessuna eliminazione/spostamento automatico; stesso hash in cartelle di ciclo vita può essere provenienza valida."],
         ["Ricerca trova il documento e apre originale/record; conteggi filtri coerenti con paginazione."],
     ),
-    43: page(
+    42: page(
         ["risultati di controlli versionati", "registri canonici", "stato risoluzioni"],
         ["presa in carico, nota, eccezione motivata e audit"],
         [
@@ -662,7 +648,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Nessun alert solo numerico; nessun comando distruttivo generico; errore tecnico separato da anomalia dati."],
         ["Ogni alert è navigabile e riproducibile; contatori coincidono con liste dopo refresh."],
     ),
-    44: page(
+    43: page(
         ["movimenti bancari originali", "classificazioni", "candidati entità", "operation_id"],
         ["classificazione e relazione, mai modifica della riga bancaria originale"],
         [
@@ -675,7 +661,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Mai troncare causale o sovrascrivere il movimento; mai associare per importo solo."],
         ["Classificazione resta dopo refresh e apre l'entità; una seconda conferma non crea altra scrittura."],
     ),
-    45: page(
+    44: page(
         ["registri contabili/fiscali", "documenti Drive", "quadrature e periodo selezionato"],
         ["fascicolo/export immutabile con manifest, non modifiche ai dati origine"],
         [
@@ -688,7 +674,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Nessun dato inventato, segreto o duplicato; export non modifica né sposta Drive."],
         ["ZIP/fascicolo integro, una radice, hash validi, totali uguali alle fonti e documenti apribili."],
     ),
-    46: page(
+    45: page(
         ["scadenze e anomalie", "atti/documenti", "utenti/assegnatari", "notifiche"],
         ["attività, assegnazione, stato, nota e promemoria"],
         [
@@ -701,7 +687,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Nessuna operazione esterna o pagamento automatico; una notifica inviata non completa l'attività."],
         ["Ogni attività ha fonte e proprietario; promemoria una sola volta per finestra configurata."],
     ),
-    47: page(
+    46: page(
         ["soggetti/fornitori", "visure già archiviate", "metadati e scadenza documento"],
         ["richiesta preparata o documento visura importato; nessun acquisto automatico"],
         [
@@ -714,7 +700,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Non eseguire richieste esterne o addebiti automaticamente; non mostrare una richiesta come documento ricevuto."],
         ["Documenti esistenti apribili; richiesta e ricevuta hanno stati distinti e audit completi."],
     ),
-    48: page(
+    47: page(
         ["catalogo automazioni", "permessi", "run e log", "decisioni proposte"],
         ["configurazione agente", "approvazione/rifiuto proposta", "audit run"],
         [
@@ -727,7 +713,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Nessun accesso a segreti in UI/log; nessuna estensione autonoma dei permessi o esecuzione di pagamenti."],
         ["Run riproducibile e tracciato; agente disattivato non parte e una proposta ambigua non modifica dati."],
     ),
-    49: page(
+    48: page(
         ["configurazione query/mittenti F24", "stato connessione Gmail", "ultimo watermark/run"],
         ["query e mittenti validati", "configurazione scheduler non segreta"],
         [
@@ -740,7 +726,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Mai spostare/eliminare/segnare lette le email; nessuna password/token restituita alla UI."],
         ["Test trova gli stessi messaggi della query completa; secondo run senza novità importa zero allegati."],
     ),
-    50: page(
+    49: page(
         ["configurazione modello/provider non sensibile", "stato secret reference", "health e limiti"],
         ["riferimenti a segreti, modello/limiti e policy; mai valore del segreto"],
         [
@@ -753,7 +739,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Nessuna chiave in codice, fogli, log, API o ZIP; AI non conferma associazioni contabili ambigue."],
         ["Secret non leggibile dalla UI; health fallito blocca l'uso ma non altera dati."],
     ),
-    51: page(
+    50: page(
         ["client API", "scope/ruoli", "OpenAPI", "rate limit e utilizzo token"],
         ["client e scope", "hash/metadata token", "revoca/rotazione e audit"],
         [
@@ -766,7 +752,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Token mai persistito in chiaro o mostrato nuovamente; nessuno scope amministrativo implicito."],
         ["Client senza scope riceve 403; token revocato non funziona; OpenAPI coincide con router pubblicati."],
     ),
-    52: page(
+    51: page(
         ["avvisi PagoPA", "IUV/ente", "ricevute", "movimenti bancari", "documenti"],
         ["relazioni avviso-ricevuta-banca", "stato del caso"],
         [
@@ -779,7 +765,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Nessun pagamento automatico; importo solo non basta; IUV conflittuale richiede scelta."],
         ["IUV univoco collega avviso/ricevuta; pagamento banca apre il movimento e secondo import non duplica."],
     ),
-    53: page(
+    52: page(
         ["mittenti/alias configurati", "tipi documento", "statistiche/errori ingest"],
         ["regola mittente-canale-documento, priorità e audit"],
         [
@@ -792,7 +778,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Mittente noto non rende vero ogni allegato; wrapper PEC e alias vanno conservati come provenienza."],
         ["Regola attiva classifica solo il perimetro previsto e il test mostra esattamente i messaggi coinvolti."],
     ),
-    54: page(
+    53: page(
         ["health servizi/provider", "job/run", "errori", "configurazione non sensibile", "audit"],
         ["comandi amministrativi protetti", "retry/cancel controllato", "note operative"],
         [
@@ -805,7 +791,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Nessun segreto, stack trace sensibile o pulsante inutilizzabile; admin non significa autorizzazione automatica al pagamento."],
         ["Ogni stato è datato e verificabile; retry non duplica record e un errore apre il dettaglio utile."],
     ),
-    55: page(
+    54: page(
         ["utente amministratore", "stato enrollment MFA", "recovery policy", "audit"],
         ["enrollment/revoca MFA nel provider", "recovery code hash", "audit step-up"],
         [
@@ -818,7 +804,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Secret MFA mai nei log/fogli/ZIP; nessuna disattivazione senza step-up e motivo."],
         ["Codice errato non attiva MFA; dopo attivazione il login richiede secondo fattore e revoca è auditata."],
     ),
-    56: page(
+    55: page(
         ["definizioni job", "import run", "record/errori per elemento", "checkpoint"],
         ["run batch, progresso, risultato per record e retry selettivo"],
         [
@@ -831,7 +817,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Nessun batch senza dettaglio; retry totale non duplica successi; errori di un file non cancellano altri risultati."],
         ["Secondo run identico non crea nuovi record; progresso e conteggi finali coincidono con il dettaglio."],
     ),
-    57: page(
+    56: page(
         ["route legacy e mappa di redirect", "permessi utente"],
         ["Nessuna scrittura; solo audit del redirect se necessario."],
         [
@@ -843,7 +829,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Nessun componente, router o writer duplicato; parametri sconosciuti vengono scartati."],
         ["Stesso contenuto e autorizzazioni della pagina canonica; nessuna chiamata a endpoint legacy paralleli."],
     ),
-    58: page(
+    57: page(
         ["utenti", "ruoli/permessi", "stato sessioni", "audit sicurezza"],
         ["profilo, ruolo, attivazione/disattivazione", "invito/reset tramite provider"],
         [
@@ -856,7 +842,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Nessuna auto-elevazione; password/PIN mai leggibili; non cancellare l'ultimo amministratore attivo."],
         ["Ruolo applicato da API e UI; utente disattivato non accede e storico resta attribuito."],
     ),
-    59: page(
+    58: page(
         ["page_catalog", "router frontend/backend", "health e stato audit"],
         ["Nessuna scrittura applicativa; artefatto generato e fingerprint."],
         [
@@ -869,7 +855,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["HTTP 200 non equivale a funzionamento; nessuna pagina scoperta fuori catalogo."],
         ["Catalogo contiene esattamente le route canoniche e ogni link risolve con il ruolo previsto."],
     ),
-    60: page(
+    59: page(
         ["fatture con classificazione IVA", "corrispettivi", "liquidazioni IVA", "F24", "crediti precedenti"],
         ["classificazione detraibilità", "versione liquidazione", "conferma/rettifica"],
         [
@@ -882,7 +868,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["IVA esposta non è automaticamente detraibile; F24 e quietanza non sono movimento banca; nessun valore stimato come reale."],
         ["Totali riconciliabili alle righe incluse e una rettifica crea nuova versione con differenze esplicite."],
     ),
-    61: page(
+    60: page(
         ["fatture estere", "anagrafiche paese/valuta", "documenti integrazione/autofattura", "classificazione IVA"],
         ["stato verifica", "trattamento IVA motivato", "relazioni integrazione/autofattura"],
         [
@@ -895,7 +881,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Non inventare cambio o trattamento; valuta/importo originale e controvalore restano distinti."],
         ["Ogni fattura ha stato motivato e documenti collegati; totali IVA usano solo classificazioni confermate."],
     ),
-    62: page(
+    61: page(
         ["bilancio/giornale", "fatture/corrispettivi", "personale/cespiti", "mappatura campi ISA"],
         ["snapshot ISA derivato, mapping/versione e note; nessuna modifica alle fonti"],
         [
@@ -908,7 +894,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Nessun valore inventato o zero al posto di fonte mancante; niente invio automatico."],
         ["Ogni valore è tracciabile e la somma delle righe origine coincide; mancanti restano espliciti."],
     ),
-    63: page(
+    62: page(
         ["Google Drive canonico", "metadati/hash/permessi", "indice Documenti", "watermark scansione"],
         ["indice Drive e stato indicizzazione; mai contenuto originale"],
         [
@@ -921,7 +907,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Errore permessi è esplicito; nessuna pulizia automatica; MD5/SHA esatto è requisito minimo per copia certa."],
         ["Conteggi verificabili per cartella, file apribili e seconda scansione senza nuovi record se Drive non cambia."],
     ),
-    64: page(
+    63: page(
         ["documenti atti", "enti/protocolli", "scadenze", "notifiche e relazioni"],
         ["atto canonico, metadati verificati, scadenze e stato pratica"],
         [
@@ -934,7 +920,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Nessuna risposta/invio esterno automatico; non cancellare l'originale dopo elaborazione."],
         ["Ogni atto ha originale, protocollo e stato; alert apre l'atto e scompare solo a condizione risolta."],
     ),
-    65: page(
+    64: page(
         ["F24/righe tributo", "dichiarazioni", "quietanze", "movimenti banca", "scadenze/anomalie", "indice Drive"],
         ["Nessuna scrittura fiscale primaria; note/stato verifica e relazioni tramite servizi di dominio"],
         [
@@ -947,23 +933,6 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ["Tributo ↔ F24/PDF ↔ dichiarazione ↔ quietanza ↔ banca ↔ scadenza e documento Drive."],
         ["F24, dichiarazione, quietanza e pagamento bancario non sono intercambiabili; nessuna associazione per importo solo."],
         ["Ricerca per anno/codice raggiunge tutte le prove; ogni anomalia ha lista e tutte le somme quadrano alle righe origine."],
-    ),
-    66: page(
-        ["fatture passive canoniche 2026", "righe merce XML", "fornitori e prodotti canonici", "registri HACCP Drive/Sheets"],
-        ["righe acquisto e lotti", "registri e attese correttive", "ricette versionate", "produzioni e consumi lotti", "attrezzature", "audit"],
-        [
-            "Mostrare anteprima idempotente delle righe merce senza scrivere e senza duplicare fatture o fornitori.",
-            "Importare le righe solo su conferma amministratore, conservando fattura, documento, hash e identita sorgente.",
-            "Registrare uno o piu lotti con numero, scadenza e quantita osservati; poi registrare consumi/scarti con saldo.",
-            "Registrare temperature, sanificazioni, disinfestazioni, olio, anomalie e controlli con soglie storiche congelate.",
-            "Creare subito un'attesa correttiva per ogni non conformita e chiuderla solo con evidenza e audit.",
-            "Versionare ricette, allergeni, resa e shelf-life; collegare ogni produzione ai lotti ingredienti e al lotto prodotto.",
-            "Gestire attrezzature e reparti nello stesso modulo, senza reintrodurre pagine o archivi paralleli.",
-        ],
-        ["Sincronizzazioni, controlli e produzioni sono idempotenti; soglie e stati derivano dal dominio e non da React."],
-        ["Fattura/riga merce ↔ ricezione ↔ lotto ingrediente ↔ ricetta/versione ↔ produzione/lotto prodotto ↔ consumo/scarto ↔ audit."],
-        ["Nessun archivio parallelo o ponte esterno; sola lettura non scrive; import massivo e attrezzature admin-only; Decimal e saldi mai negativi."],
-        ["Retry senza duplicati; non conformita con attesa; ricette versionate; produzioni tracciate; suite API/UI e build verdi."],
     ),
 
 }

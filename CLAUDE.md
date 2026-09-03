@@ -216,6 +216,34 @@ sempre la sorgente persistente.
 - Fase successiva: consolidare i dati delle app nel progetto Supabase
   `GestionaleCloud`.
 
+## Doppioni rimossi il 03/09/2026: HACCP nativo e pagina «Cedolini paga»
+
+- **Ordine del titolare** («elimina bottone Tracciabilità e codice associato,
+  `/salari` e `/tracciabilita`»), regola «un solo sistema per funzione».
+- **HACCP nativo eliminato**: voce «Tracciabilità» della TopNav, route
+  `/tracciabilita` + `frontend/src/pages/TracciabilitaHACCP.jsx`, router
+  `app/routers/haccp.py` (`/api/haccp/*`), servizi
+  `app/services/haccp_traceability.py` e `haccp_operations.py`, costanti
+  `COLL_HACCP_*` in `app/db_collections.py`, indici `haccp_*` in
+  `app/database.py`, fogli `haccp_*` di `PROMPT_MASTER.md`, i test
+  `tests/test_haccp_*.py` e la pagina 66 del catalogo. Al suo posto c'è l'app
+  Lotti a `/lotti`. **Resta** `app/routers/lotti_integration.py`
+  (`/api/integrations/lotti/*`): è il feed fatture letto da
+  `app/lotti/routers/gestionale_fatture.py`. `docs/ADR-001-HACCP-LOTTI-DRIVE-
+  SHEETS.md` è conservato come documento storico.
+- **Pagina «Cedolini paga» eliminata**: voce nel menu Altro, route `/salari`,
+  `frontend/src/pages/CedoliniSalari.jsx` (+ test), pagina 10 del catalogo;
+  in `MappaGestionale.jsx` l'area «Cedolini» apre `/hr/`. Con lei sono spariti
+  i soli endpoint che esistevano per quella pagina: `GET /api/prima-nota-salari/
+  salari-ricostruiti`, `GET .../export-appdipendenti/preview` e `.../download`
+  (+ `app/services/appdipendenti_export.py`). **Resta tutto il resto** del
+  router `/api/prima-nota-salari` (Prima Nota salari, import paghe/bonifici,
+  PDF cedolino/bonifico per riga, riconcilia — usati da `primaNotaStore.js`,
+  dal MCP e dai test), l'ingestione cedolini (`drive_cedolini`,
+  `email_download`, `sync_prima_nota_salari_da_cedolini` in `app/main.py`),
+  F24, TFR e `app/routers/employees/dipendenti.py`.
+- Il catalogo canonico conta ora **64** schermate (id contigui).
+
 ## Canali operativi e conoscenza
 
 - Telegram è l'unico canale attivo per alert e notifiche operative.

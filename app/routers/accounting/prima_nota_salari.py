@@ -13,7 +13,7 @@ Struttura dati:
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Body, Depends
 from fastapi.responses import StreamingResponse
 from typing import Dict, Any, List, Optional
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 import uuid
 import logging
 import io
@@ -1084,40 +1084,6 @@ async def import_salari_verificati(data: Dict[str, Any] = Body(...)) -> Dict[str
     }
 
 
-@router.get("/salari-ricostruiti")
-async def get_salari_ricostruiti(
-    anno: Optional[int] = Query(None),
-    dipendente: Optional[str] = Query(None),
-) -> List[Dict[str, Any]]:
-    """Prospetto storico documentale: non genera scritture di prima nota."""
-    query: Dict[str, Any] = {}
-    if anno:
-        query["anno"] = anno
-    if dipendente:
-        query["dipendente"] = {"$regex": dipendente, "$options": "i"}
-    db = Database.get_db()
-    salari = await db["salari_ricostruiti"].find(
-        query, {"_id": 0}
-    ).sort([("anno", -1), ("mese_ordine", 1), ("dipendente", 1), ("workbook_row", 1)]).to_list(5000)
-    cedolini = await db["cedolini"].find(
-        {}, {"_id": 0, "id": 1, "filename": 1, "nome_dipendente": 1, "anno": 1, "mese": 1, "tipo_cedolino": 1}
-    ).to_list(10000)
-    per_filename: Dict[str, List[Dict[str, Any]]] = {}
-    for cedolino in cedolini:
-        filename = str(cedolino.get("filename") or "").strip().casefold()
-        if filename:
-            per_filename.setdefault(filename, []).append(cedolino)
-    for salario in salari:
-        candidati = per_filename.get(str(salario.get("fonte_cedolino") or "").strip().casefold(), [])
-        if len(candidati) == 1:
-            salario["cedolino_id"] = candidati[0].get("id")
-            salario["cedolino_disponibile"] = bool(candidati[0].get("id"))
-        else:
-            salario["cedolino_disponibile"] = False
-            salario["cedolino_associazione_ambigua"] = len(candidati) > 1
-    return salari
-
-
 @router.post("/import-salari-ricostruiti")
 async def import_salari_ricostruiti(
     data: Dict[str, Any] = Body(...),
@@ -1711,59 +1677,4 @@ async def export_prima_nota_salari_excel(
         output,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
-    )
-
-
-def _appdipendenti_range(
-    anno: Optional[int],
-    mese: Optional[int],
-    data_da: Optional[date],
-    data_a: Optional[date],
-) -> tuple[date, date]:
-    if data_da and data_a:
-        return data_da, data_a
-    if anno and mese:
-        first = date(anno, mese, 1)
-        last = date(anno + 1, 1, 1) if mese == 12 else date(anno, mese + 1, 1)
-        return first, last.replace(day=1) - timedelta(days=1)
-    if anno:
-        return date(anno, 1, 1), date(anno, 12, 31)
-    return date(2000, 1, 1), date(2100, 12, 31)
-
-
-@router.get("/export-appdipendenti/preview")
-async def preview_export_appdipendenti(
-    anno: Optional[int] = Query(None, ge=2000, le=2100),
-    mese: Optional[int] = Query(None, ge=1, le=12),
-    data_da: Optional[date] = Query(None),
-    data_a: Optional[date] = Query(None),
-):
-    """Riepilogo dell'export senza modificare il database."""
-    from app.services.appdipendenti_export import build_export_from_db
-
-    data_inizio, data_fine = _appdipendenti_range(anno, mese, data_da, data_a)
-    _, summary = await build_export_from_db(Database.get_db(), data_inizio, data_fine)
-    return summary
-
-
-@router.get("/export-appdipendenti/download")
-async def download_export_appdipendenti(
-    anno: Optional[int] = Query(None, ge=2000, le=2100),
-    mese: Optional[int] = Query(None, ge=1, le=12),
-    data_da: Optional[date] = Query(None),
-    data_a: Optional[date] = Query(None),
-):
-    """Scarica ZIP con PDF originali e i due workbook AppDipendenti."""
-    from app.services.appdipendenti_export import build_export_from_db
-
-    data_inizio, data_fine = _appdipendenti_range(anno, mese, data_da, data_a)
-    content, _ = await build_export_from_db(Database.get_db(), data_inizio, data_fine)
-    filename = f"export_appdipendenti_{data_inizio.isoformat()}_{data_fine.isoformat()}.zip"
-    return StreamingResponse(
-        io.BytesIO(content),
-        media_type="application/zip",
-        headers={
-            "Content-Disposition": f'attachment; filename="{filename}"',
-            "Cache-Control": "no-store",
-        },
     )

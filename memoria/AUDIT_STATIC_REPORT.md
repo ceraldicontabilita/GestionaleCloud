@@ -5,9 +5,9 @@ Generato da `scripts/audit_static.py`.
 
 ## Sintesi
 
-- P1: 383
+- P1: 374
 - P2: 19
-- P3: 69
+- P3: 67
 - INFO: 16
 
 ## Findings
@@ -512,13 +512,13 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/accounting/prima_nota_salari.py:1274`
+- File: `app/routers/accounting/prima_nota_salari.py:1240`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/accounting/prima_nota_salari.py:1477`
+- File: `app/routers/accounting/prima_nota_salari.py:1443`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -1652,60 +1652,6 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/haccp.py:166`
-
-- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
-
-### P1 - body
-
-- File: `app/routers/haccp.py:217`
-
-- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
-
-### P1 - body
-
-- File: `app/routers/haccp.py:263`
-
-- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
-
-### P1 - body
-
-- File: `app/routers/haccp.py:320`
-
-- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
-
-### P1 - body
-
-- File: `app/routers/haccp.py:349`
-
-- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
-
-### P1 - body
-
-- File: `app/routers/haccp.py:404`
-
-- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
-
-### P1 - body
-
-- File: `app/routers/haccp.py:472`
-
-- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
-
-### P1 - body
-
-- File: `app/routers/haccp.py:501`
-
-- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
-
-### P1 - body
-
-- File: `app/routers/haccp.py:544`
-
-- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
-
-### P1 - body
-
 - File: `app/routers/invoices/corrispettivi.py:62`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
@@ -2666,12 +2612,6 @@ Generato da `scripts/audit_static.py`.
 
 ### P3 - fetch-race
 
-- File: `frontend/src/pages/CedoliniSalari.jsx:103`
-
-- Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
-
-### P3 - fetch-race
-
 - File: `frontend/src/pages/ChiusuraEsercizio.jsx:54`
 
 - Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
@@ -2883,12 +2823,6 @@ Generato da `scripts/audit_static.py`.
 ### P3 - fetch-race
 
 - File: `frontend/src/pages/SituazioneFiscale.jsx:171`
-
-- Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
-
-### P3 - fetch-race
-
-- File: `frontend/src/pages/TracciabilitaHACCP.jsx:81`
 
 - Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
 

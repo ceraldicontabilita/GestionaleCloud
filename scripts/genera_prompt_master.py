@@ -26,63 +26,61 @@ PAGE_PURPOSES = {
     7: "Anagrafica fornitori univoca, fatture, residui, IBAN, metodo e merge controllato.",
     8: "Prima Nota Cassa/Banca/SumUp/Soci come viste coerenti del ledger, raggruppate per giorno.",
     9: "Audit Prima Nota con liste esatte, dry-run, correzione deterministica e rollback.",
-    10: "Dipendenti, cedolini, periodi e pagamenti con regola temporale del giorno 25.",
-    11: "Flotta ricostruita da fatture di noleggio, contratti, targhe e storico driver.",
-    12: "Riconciliazione verbali, veicoli, driver, pagamenti, quietanze e documenti.",
-    13: "Costi noleggio per veicolo: canoni, pedaggi, verbali, bollo e riparazioni.",
-    14: "Fascicolo del verbale con PDF, importo, targa, trasgressore, driver e prove.",
-    15: "Piano dei conti gerarchico, regole versionate e movimenti collegati.",
-    16: "Bilancio calcolato da scritture valide, quadratura e drill-down.",
-    17: "Verifica bilancio con anomalie spiegate e link alla scrittura origine.",
-    18: "Libro giornale progressivo, bilanciato, filtrabile, esportabile e auditabile.",
-    19: "Controllo mensile con lista per ogni anomalia e stato di risoluzione.",
-    20: "Calendario fiscale con fonte, scadenza, stato, promemoria e documento collegato.",
-    21: "Cespiti, documento origine, ammortamenti Decimal, dismissioni e storia.",
-    22: "Posizione finanziaria, flussi, debiti, crediti e finanziamenti soci non duplicati.",
-    23: "Chiusura esercizio con checklist, anteprima, conferma forte, audit e rollback.",
-    24: "Budget versionato e confronto consuntivo per mese, conto e centro.",
-    25: "Mutui, rate, quota capitale/interessi, banca e residuo riconciliato.",
-    26: "Analisi contabili avanzate come viste derivate, con formule e drill-down.",
-    27: "Simulazione utile obiettivo separata dai consuntivi e senza scritture reali.",
-    28: "Previsioni acquisti basate su storico e scadenze, senza ordini automatici.",
-    29: "Suggerimenti di apprendimento con evidenza, confidenza, approvazione e revoca.",
-    30: "Scadenziario fornitori con residui, parziali, prove e alert navigabili.",
-    31: "Ritenute per percipiente, periodo, aliquota, F24 e quadratura annuale.",
-    32: "Indice unico delle riconciliazioni con code, stati e contatori navigabili.",
-    33: "Riconciliazione bancaria deterministica, candidati motivati e operation_id.",
-    34: "F24 con PDF, righe tributo, quietanza, banca e ricerca per codice.",
-    35: "Riconciliazione stipendi per dipendente, IBAN, periodo e regola del giorno 25.",
-    36: "Riconciliazione documenti con originale, classificazione, candidati e provenienza.",
-    37: "Archivio bonifici con CRO/TRN, beneficiario, periodo, descrizione e associazioni persistenti.",
-    38: "Assegni distinti per numero/data/importo, fatture collegate e casi ambigui.",
-    39: "PayPal interconnesso con banca, fatture, Prima Nota e prove tramite operation_id.",
-    40: "Coerenza fra corrispettivi, POS, commissioni, giorni di vendita e accrediti.",
-    41: "Import documenti/ZIP con validazione, salvataggio reale, hash e report.",
-    42: "Archivio documenti indicizzati con metadati, originale, relazioni e viewer.",
-    43: "Controlli di coerenza riproducibili con query, lista, severita e risoluzione.",
-    44: "Movimenti banca con riga fonte, classificazione e stato di associazione.",
-    45: "Fascicolo per commercialista con registri, documenti, manifest e quadrature.",
-    46: "Pianificazione di attivita e adempimenti derivati, assegnati e notificati.",
-    47: "Visure con soggetto, tipo, stato e documento, senza richieste esterne automatiche.",
-    48: "Agenti e automazioni con scopo, permessi, run, log, esito e disattivazione.",
-    49: "Configurazione ingest email F24, query, mittenti, test e ultima scansione.",
-    50: "Configurazione AI tramite riferimenti a segreti, modello, limiti e health.",
-    51: "Integrazioni API con scope, token ruotabili, OpenAPI, rate limit e revoca.",
-    52: "PagoPA con IUV, ente, avviso, ricevuta, banca e scelta nei casi ambigui.",
-    53: "Mittenti email attendibili con canale, documento atteso, priorita e audit.",
-    54: "Admin con salute, job, errori, configurazione non sensibile e azioni protette.",
-    55: "MFA amministrativa, enrollment, revoca, recovery e step-up authentication.",
-    56: "Elaborazioni batch idempotenti con progresso, errori per record e retry selettivo.",
-    57: "Alias legacy temporaneo verso elaborazioni, senza componente o router duplicato.",
-    58: "Utenti, ruoli, attivazione, reset sicuro e audit senza auto-elevazione.",
-    59: "Mappa gestionale generata dal catalogo con moduli, route, flussi e health.",
-    60: "IVA, liquidazioni, fatture, corrispettivi, F24, periodi e quadrature.",
-    61: "Fatture estere, paese, valuta, integrazione/autofattura e trattamento IVA.",
-    62: "Dati ISA derivati, tracciabili, quadrati ed esportabili senza valori inventati.",
-    63: "Indice Drive autorevole per metadati, hash, percorso e stato indicizzazione.",
-    64: "Atti amministrativi con ente, protocollo, originale, scadenze e notifiche.",
-    65: "Situazione fiscale unificata con F24, dichiarazioni, quietanze e anomalie.",
-    66: "Ricezioni, lotti, registri, attese correttive, ricette, produzioni e attrezzature collegate alle entità canoniche.",
+    10: "Flotta ricostruita da fatture di noleggio, contratti, targhe e storico driver.",
+    11: "Riconciliazione verbali, veicoli, driver, pagamenti, quietanze e documenti.",
+    12: "Costi noleggio per veicolo: canoni, pedaggi, verbali, bollo e riparazioni.",
+    13: "Fascicolo del verbale con PDF, importo, targa, trasgressore, driver e prove.",
+    14: "Piano dei conti gerarchico, regole versionate e movimenti collegati.",
+    15: "Bilancio calcolato da scritture valide, quadratura e drill-down.",
+    16: "Verifica bilancio con anomalie spiegate e link alla scrittura origine.",
+    17: "Libro giornale progressivo, bilanciato, filtrabile, esportabile e auditabile.",
+    18: "Controllo mensile con lista per ogni anomalia e stato di risoluzione.",
+    19: "Calendario fiscale con fonte, scadenza, stato, promemoria e documento collegato.",
+    20: "Cespiti, documento origine, ammortamenti Decimal, dismissioni e storia.",
+    21: "Posizione finanziaria, flussi, debiti, crediti e finanziamenti soci non duplicati.",
+    22: "Chiusura esercizio con checklist, anteprima, conferma forte, audit e rollback.",
+    23: "Budget versionato e confronto consuntivo per mese, conto e centro.",
+    24: "Mutui, rate, quota capitale/interessi, banca e residuo riconciliato.",
+    25: "Analisi contabili avanzate come viste derivate, con formule e drill-down.",
+    26: "Simulazione utile obiettivo separata dai consuntivi e senza scritture reali.",
+    27: "Previsioni acquisti basate su storico e scadenze, senza ordini automatici.",
+    28: "Suggerimenti di apprendimento con evidenza, confidenza, approvazione e revoca.",
+    29: "Scadenziario fornitori con residui, parziali, prove e alert navigabili.",
+    30: "Ritenute per percipiente, periodo, aliquota, F24 e quadratura annuale.",
+    31: "Indice unico delle riconciliazioni con code, stati e contatori navigabili.",
+    32: "Riconciliazione bancaria deterministica, candidati motivati e operation_id.",
+    33: "F24 con PDF, righe tributo, quietanza, banca e ricerca per codice.",
+    34: "Riconciliazione stipendi per dipendente, IBAN, periodo e regola del giorno 25.",
+    35: "Riconciliazione documenti con originale, classificazione, candidati e provenienza.",
+    36: "Archivio bonifici con CRO/TRN, beneficiario, periodo, descrizione e associazioni persistenti.",
+    37: "Assegni distinti per numero/data/importo, fatture collegate e casi ambigui.",
+    38: "PayPal interconnesso con banca, fatture, Prima Nota e prove tramite operation_id.",
+    39: "Coerenza fra corrispettivi, POS, commissioni, giorni di vendita e accrediti.",
+    40: "Import documenti/ZIP con validazione, salvataggio reale, hash e report.",
+    41: "Archivio documenti indicizzati con metadati, originale, relazioni e viewer.",
+    42: "Controlli di coerenza riproducibili con query, lista, severita e risoluzione.",
+    43: "Movimenti banca con riga fonte, classificazione e stato di associazione.",
+    44: "Fascicolo per commercialista con registri, documenti, manifest e quadrature.",
+    45: "Pianificazione di attivita e adempimenti derivati, assegnati e notificati.",
+    46: "Visure con soggetto, tipo, stato e documento, senza richieste esterne automatiche.",
+    47: "Agenti e automazioni con scopo, permessi, run, log, esito e disattivazione.",
+    48: "Configurazione ingest email F24, query, mittenti, test e ultima scansione.",
+    49: "Configurazione AI tramite riferimenti a segreti, modello, limiti e health.",
+    50: "Integrazioni API con scope, token ruotabili, OpenAPI, rate limit e revoca.",
+    51: "PagoPA con IUV, ente, avviso, ricevuta, banca e scelta nei casi ambigui.",
+    52: "Mittenti email attendibili con canale, documento atteso, priorita e audit.",
+    53: "Admin con salute, job, errori, configurazione non sensibile e azioni protette.",
+    54: "MFA amministrativa, enrollment, revoca, recovery e step-up authentication.",
+    55: "Elaborazioni batch idempotenti con progresso, errori per record e retry selettivo.",
+    56: "Alias legacy temporaneo verso elaborazioni, senza componente o router duplicato.",
+    57: "Utenti, ruoli, attivazione, reset sicuro e audit senza auto-elevazione.",
+    58: "Mappa gestionale generata dal catalogo con moduli, route, flussi e health.",
+    59: "IVA, liquidazioni, fatture, corrispettivi, F24, periodi e quadrature.",
+    60: "Fatture estere, paese, valuta, integrazione/autofattura e trattamento IVA.",
+    61: "Dati ISA derivati, tracciabili, quadrati ed esportabili senza valori inventati.",
+    62: "Indice Drive autorevole per metadati, hash, percorso e stato indicizzazione.",
+    63: "Atti amministrativi con ente, protocollo, originale, scadenze e notifiche.",
+    64: "Situazione fiscale unificata con F24, dichiarazioni, quietanze e anomalie.",
 }
 
 
@@ -109,14 +107,6 @@ SHEETS = [
     ("Import PartenoPay", "partenopay_import_runs", "PPR"),
     ("Email PartenoPay", "verbali_email_archive", "PPE"),
     ("Verbali PartenoPay", "verbali_noleggio", "PPV"),
-    ("HACCP righe acquisto", "haccp_purchase_lines", "HPL"),
-    ("HACCP lotti", "haccp_lots", "HLT"),
-    ("HACCP movimenti lotti", "haccp_lot_movements", "HLM"),
-    ("HACCP registri", "haccp_register_entries", "HRE"),
-    ("HACCP attese", "haccp_expectations", "HEX"),
-    ("HACCP attrezzature", "haccp_equipment", "HEQ"),
-    ("HACCP ricette", "haccp_recipes", "HRC"),
-    ("HACCP produzioni", "haccp_productions", "HPR"),
 ]
 
 
@@ -415,22 +405,17 @@ audit e rollback.
 
 ### 16.1 Tracciabilità alimentare e HACCP
 
-L'area `/tracciabilita` assorbe il dominio operativo del precedente progetto
-Lotti senza applicazione o archivio parallelo. Fatture, fornitori, prodotti,
+La tracciabilità alimentare NON è un modulo nativo del gestionale: dal
+03/09/2026 (ordine del titolare, regola «un solo sistema per funzione»)
+l'area `/tracciabilita`, il router `/api/haccp` e i fogli `haccp_*` sono
+stati rimossi. Ricezioni, lotti, registri, ricette, produzioni e
+attrezzature vivono nell'app Lotti originale montata pari pari a
+`/lotti` (login e archivio propri). Il gestionale le fornisce soltanto
+il feed fatture `/api/integrations/lotti/*`; fatture, fornitori, prodotti,
 corrispettivi e ordini restano le entità canoniche di GestionaleCloud.
-
-Le fatture alimentano in anteprima le righe di ricezione; numero lotto,
-scadenza e quantità ricevuta provengono dall'XML o dall'osservazione umana e
-non vengono mai inventati. I registri comprendono temperature positive,
-negative e di cottura, sanificazione, disinfestazione, controllo olio,
-ricezione merce, anomalie, allergeni, schede tecniche, formazione,
-manutenzioni, chiusure e collaudi. Le soglie applicate restano congelate nel
-record storico. Ogni non conformità crea immediatamente un'attesa correttiva.
-
-Le ricette sono versionate, con ingredienti, allergeni, resa, shelf-life e
-conservazione espliciti. Ogni produzione seleziona i lotti ingredienti,
-registra consumi idempotenti e crea il lotto prodotto collegato. Gelati,
-semilavorati e recuperi controllati sono tipi dello stesso processo produttivo.
+Allo stesso modo la pagina «Cedolini paga» (`/salari`) è stata sostituita
+dall'app HR (AppDipendenti) montata a `/hr`: nel gestionale restano solo
+l'ingestione cedolini, la Prima Nota salari e la riconciliazione stipendi.
 
 ## 17. UX e accessibilità
 

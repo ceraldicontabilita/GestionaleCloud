@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1171 · tenere: 771 · verificare: 371 · admin-only (migrazione/manutenzione): 29
+**Totale endpoint:** 1147 · tenere: 747 · verificare: 371 · admin-only (migrazione/manutenzione): 29
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -707,27 +707,6 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `PUT /api/gestione-riservata/movimenti/{movimento_id}` | gestione_riservata | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/gestione-riservata/riepilogo` | gestione_riservata | sì | — | sì | — | sì | tenere | in uso: FE, chat |
 | `GET /api/gestione-riservata/volume-affari-reale` | gestione_riservata | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/haccp/equipment` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
-| `POST /api/haccp/equipment` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
-| `PATCH /api/haccp/equipment/{equipment_id}` | haccp | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/haccp/expectations` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
-| `GET /api/haccp/lots` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
-| `POST /api/haccp/lots` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
-| `POST /api/haccp/lots/{lot_id}/movements` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
-| `GET /api/haccp/lots/{lot_id}/trace` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
-| `GET /api/haccp/overview` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
-| `GET /api/haccp/productions` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
-| `POST /api/haccp/productions` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
-| `GET /api/haccp/purchase-lines` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
-| `GET /api/haccp/recipes` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
-| `POST /api/haccp/recipes` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
-| `PUT /api/haccp/recipes/{recipe_id}` | haccp | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/haccp/register-types` | haccp | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/haccp/registers` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
-| `POST /api/haccp/registers` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
-| `POST /api/haccp/registers/{entry_id}/resolve` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
-| `POST /api/haccp/sync-invoices` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
-| `GET /api/haccp/sync-preview` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/integrations/lotti/employees` | lotti_integration | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/integrations/lotti/invoices` | lotti_integration | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/integrations/lotti/invoices/{source_id}` | lotti_integration | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
@@ -917,8 +896,6 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/previsioni-acquisti/statistiche` | previsioni_acquisti | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/prima-nota-salari/consolida-record` | accounting.prima_nota_salari | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/prima-nota-salari/dipendenti-lista` | accounting.prima_nota_salari | sì | — | — | — | sì | tenere | in uso: FE |
-| `GET /api/prima-nota-salari/export-appdipendenti/download` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/prima-nota-salari/export-appdipendenti/preview` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/prima-nota-salari/export-excel` | accounting.prima_nota_salari | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/prima-nota-salari/import-bonifici` | accounting.prima_nota_salari | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/prima-nota-salari/import-paghe` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
@@ -927,7 +904,6 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `DELETE /api/prima-nota-salari/pulisci-righe-vuote` | accounting.prima_nota_salari | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/prima-nota-salari/ricalcola-progressivi` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/prima-nota-salari/salari` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/prima-nota-salari/salari-ricostruiti` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/prima-nota-salari/salari/aggiustamento` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
 | `DELETE /api/prima-nota-salari/salari/reset` | accounting.prima_nota_salari | sì | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
 | `GET /api/prima-nota-salari/salari/riepilogo` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |

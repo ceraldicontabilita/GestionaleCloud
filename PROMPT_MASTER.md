@@ -293,22 +293,17 @@ audit e rollback.
 
 ### 16.1 Tracciabilità alimentare e HACCP
 
-L'area `/tracciabilita` assorbe il dominio operativo del precedente progetto
-Lotti senza applicazione o archivio parallelo. Fatture, fornitori, prodotti,
+La tracciabilità alimentare NON è un modulo nativo del gestionale: dal
+03/09/2026 (ordine del titolare, regola «un solo sistema per funzione»)
+l'area `/tracciabilita`, il router `/api/haccp` e i fogli `haccp_*` sono
+stati rimossi. Ricezioni, lotti, registri, ricette, produzioni e
+attrezzature vivono nell'app Lotti originale montata pari pari a
+`/lotti` (login e archivio propri). Il gestionale le fornisce soltanto
+il feed fatture `/api/integrations/lotti/*`; fatture, fornitori, prodotti,
 corrispettivi e ordini restano le entità canoniche di GestionaleCloud.
-
-Le fatture alimentano in anteprima le righe di ricezione; numero lotto,
-scadenza e quantità ricevuta provengono dall'XML o dall'osservazione umana e
-non vengono mai inventati. I registri comprendono temperature positive,
-negative e di cottura, sanificazione, disinfestazione, controllo olio,
-ricezione merce, anomalie, allergeni, schede tecniche, formazione,
-manutenzioni, chiusure e collaudi. Le soglie applicate restano congelate nel
-record storico. Ogni non conformità crea immediatamente un'attesa correttiva.
-
-Le ricette sono versionate, con ingredienti, allergeni, resa, shelf-life e
-conservazione espliciti. Ogni produzione seleziona i lotti ingredienti,
-registra consumi idempotenti e crea il lotto prodotto collegato. Gelati,
-semilavorati e recuperi controllati sono tipi dello stesso processo produttivo.
+Allo stesso modo la pagina «Cedolini paga» (`/salari`) è stata sostituita
+dall'app HR (AppDipendenti) montata a `/hr`: nel gestionale restano solo
+l'ingestione cedolini, la Prima Nota salari e la riconciliazione stipendi.
 
 ## 17. UX e accessibilità
 
@@ -412,7 +407,7 @@ test e necessario a una route/job/integratore attivo. Audit datati e vecchi
 porting non restano nel repository: Git conserva la storia. Le mappe generate
 si rigenerano dal codice e non si correggono a mano.
 
-## Appendice A — Tutte le 66 pagine
+## Appendice A — Tutte le 64 pagine
 
 1. **Login** — `/login` — accesso `public` — modulo `accesso` — Login sicuro, sessione, MFA e redirect alla destinazione autorizzata. Fonte UI: `frontend/src/pages/Login.jsx`; mappa: `memoria/pagine/login.json`.
 2. **Gestione riservata** — `/gestione-riservata` — accesso `reserved` — modulo `accesso` — Area riservata separata, con accesso dedicato e movimenti auditabili. Fonte UI: `frontend/src/pages/GestioneRiservata.jsx`; mappa: `memoria/pagine/gestione-riservata.json`.
@@ -423,63 +418,61 @@ si rigenerano dal codice e non si correggono a mano.
 7. **Fornitori** — `/fornitori` — accesso `authenticated` — modulo `fornitori` — Anagrafica fornitori univoca, fatture, residui, IBAN, metodo e merge controllato. Fonte UI: `frontend/src/pages/Fornitori.jsx`; mappa: `memoria/pagine/fornitori.json`.
 8. **Prima Nota** — `/prima-nota` — accesso `authenticated` — modulo `prima-nota` — Prima Nota Cassa/Banca/SumUp/Soci come viste coerenti del ledger, raggruppate per giorno. Fonte UI: `frontend/src/pages/PrimaNota.jsx`; mappa: `memoria/pagine/prima-nota.json`.
 9. **Pulizia Prima Nota** — `/prima-nota/pulizia` — accesso `authenticated` — modulo `prima-nota` — Audit Prima Nota con liste esatte, dry-run, correzione deterministica e rollback. Fonte UI: `frontend/src/pages/PuliziaPrimaNota.jsx`; mappa: `memoria/pagine/prima-nota-pulizia.json`.
-10. **Cedolini e salari** — `/salari` — accesso `authenticated` — modulo `personale` — Dipendenti, cedolini, periodi e pagamenti con regola temporale del giorno 25. Fonte UI: `frontend/src/pages/CedoliniSalari.jsx`; mappa: `memoria/pagine/salari.json`.
-11. **Flotta noleggio** — `/noleggio` — accesso `authenticated` — modulo `noleggio` — Flotta ricostruita da fatture di noleggio, contratti, targhe e storico driver. Fonte UI: `frontend/src/pages/NoleggioAuto.jsx`; mappa: `memoria/pagine/noleggio-flotta.json`.
-12. **Verbali noleggio** — `/noleggio/verbali` — accesso `authenticated` — modulo `noleggio` — Riconciliazione verbali, veicoli, driver, pagamenti, quietanze e documenti. Fonte UI: `frontend/src/pages/VerbaliRiconciliazione.jsx`; mappa: `memoria/pagine/noleggio-verbali.json`.
-13. **Costi noleggio** — `/noleggio/costi` — accesso `authenticated` — modulo `noleggio` — Costi noleggio per veicolo: canoni, pedaggi, verbali, bollo e riparazioni. Fonte UI: `frontend/src/pages/hub/VeicoliHub.jsx`; mappa: `memoria/pagine/noleggio-costi.json`.
-14. **Dettaglio verbale** — `/verbali-noleggio/:identificativo` — accesso `authenticated` — modulo `noleggio` — Fascicolo del verbale con PDF, importo, targa, trasgressore, driver e prove. Fonte UI: `frontend/src/pages/DettaglioVerbale.jsx`; mappa: `memoria/pagine/dettaglio-verbale.json`.
-15. **Piano dei Conti** — `/contabilita` — accesso `authenticated` — modulo `contabilita` — Piano dei conti gerarchico, regole versionate e movimenti collegati. Fonte UI: `frontend/src/pages/PianoDeiConti.jsx`; mappa: `memoria/pagine/contabilita-piano-conti.json`.
-16. **Bilancio** — `/contabilita/bilancio` — accesso `authenticated` — modulo `contabilita` — Bilancio calcolato da scritture valide, quadratura e drill-down. Fonte UI: `frontend/src/pages/Bilancio.jsx`; mappa: `memoria/pagine/contabilita-bilancio.json`.
-17. **Verifica Bilancio** — `/contabilita/verifica` — accesso `authenticated` — modulo `contabilita` — Verifica bilancio con anomalie spiegate e link alla scrittura origine. Fonte UI: `frontend/src/pages/BilancioVerifica.jsx`; mappa: `memoria/pagine/contabilita-verifica.json`.
-18. **Libro Giornale** — `/contabilita/giornale` — accesso `authenticated` — modulo `contabilita` — Libro giornale progressivo, bilanciato, filtrabile, esportabile e auditabile. Fonte UI: `frontend/src/pages/LibroGiornale.jsx`; mappa: `memoria/pagine/contabilita-giornale.json`.
-19. **Controllo mensile** — `/contabilita/controllo` — accesso `authenticated` — modulo `contabilita` — Controllo mensile con lista per ogni anomalia e stato di risoluzione. Fonte UI: `frontend/src/pages/ControlloMensile.jsx`; mappa: `memoria/pagine/contabilita-controllo.json`.
-20. **Calendario fiscale** — `/contabilita/calendario` — accesso `authenticated` — modulo `contabilita` — Calendario fiscale con fonte, scadenza, stato, promemoria e documento collegato. Fonte UI: `frontend/src/pages/CalendarioFiscale.jsx`; mappa: `memoria/pagine/contabilita-calendario.json`.
-21. **Cespiti** — `/contabilita/cespiti` — accesso `authenticated` — modulo `contabilita` — Cespiti, documento origine, ammortamenti Decimal, dismissioni e storia. Fonte UI: `frontend/src/pages/GestioneCespiti.jsx`; mappa: `memoria/pagine/contabilita-cespiti.json`.
-22. **Finanziaria** — `/contabilita/finanziaria` — accesso `authenticated` — modulo `contabilita` — Posizione finanziaria, flussi, debiti, crediti e finanziamenti soci non duplicati. Fonte UI: `frontend/src/pages/Finanziaria.jsx`; mappa: `memoria/pagine/contabilita-finanziaria.json`.
-23. **Chiusura esercizio** — `/contabilita/chiusura` — accesso `authenticated` — modulo `contabilita` — Chiusura esercizio con checklist, anteprima, conferma forte, audit e rollback. Fonte UI: `frontend/src/pages/ChiusuraEsercizio.jsx`; mappa: `memoria/pagine/contabilita-chiusura.json`.
-24. **Budget** — `/contabilita/budget` — accesso `authenticated` — modulo `contabilita` — Budget versionato e confronto consuntivo per mese, conto e centro. Fonte UI: `frontend/src/pages/BudgetPrevisionale.jsx`; mappa: `memoria/pagine/contabilita-budget.json`.
-25. **Mutui** — `/contabilita/mutui` — accesso `authenticated` — modulo `contabilita` — Mutui, rate, quota capitale/interessi, banca e residuo riconciliato. Fonte UI: `frontend/src/pages/Mutui.jsx`; mappa: `memoria/pagine/contabilita-mutui.json`.
-26. **Contabilita avanzata** — `/contabilita/avanzata` — accesso `authenticated` — modulo `contabilita` — Analisi contabili avanzate come viste derivate, con formule e drill-down. Fonte UI: `frontend/src/pages/ContabilitaAvanzata.jsx`; mappa: `memoria/pagine/contabilita-avanzata.json`.
-27. **Utile obiettivo** — `/contabilita/utile` — accesso `authenticated` — modulo `contabilita` — Simulazione utile obiettivo separata dai consuntivi e senza scritture reali. Fonte UI: `frontend/src/pages/UtileObiettivo.jsx`; mappa: `memoria/pagine/contabilita-utile.json`.
-28. **Previsioni acquisti** — `/contabilita/previsioni-acquisti` — accesso `authenticated` — modulo `contabilita` — Previsioni acquisti basate su storico e scadenze, senza ordini automatici. Fonte UI: `frontend/src/pages/PrevisioniAcquisti.jsx`; mappa: `memoria/pagine/contabilita-previsioni-acquisti.json`.
-29. **Learning Machine** — `/learning-machine` — accesso `authenticated` — modulo `strumenti` — Suggerimenti di apprendimento con evidenza, confidenza, approvazione e revoca. Fonte UI: `frontend/src/pages/LearningMachine.jsx`; mappa: `memoria/pagine/learning-machine.json`.
-30. **Scadenze** — `/scadenze` — accesso `authenticated` — modulo `contabilita` — Scadenziario fornitori con residui, parziali, prove e alert navigabili. Fonte UI: `frontend/src/pages/Scadenze.jsx`; mappa: `memoria/pagine/scadenze.json`.
-31. **Ritenute** — `/ritenute` — accesso `authenticated` — modulo `personale` — Ritenute per percipiente, periodo, aliquota, F24 e quadratura annuale. Fonte UI: `frontend/src/pages/Ritenute.jsx`; mappa: `memoria/pagine/ritenute.json`.
-32. **Riconciliazione dashboard** — `/riconciliazione` — accesso `authenticated` — modulo `riconciliazione` — Indice unico delle riconciliazioni con code, stati e contatori navigabili. Fonte UI: `frontend/src/pages/RiconciliazioneUnificata.jsx`; mappa: `memoria/pagine/riconciliazione-bancaria.json`.
-33. **Riconciliazione banca** — `/riconciliazione/banca` — accesso `authenticated` — modulo `riconciliazione` — Riconciliazione bancaria deterministica, candidati motivati e operation_id. Fonte UI: `frontend/src/pages/RiconciliazioneUnificata.jsx`; mappa: `memoria/pagine/riconciliazione-banca.json`.
-34. **Riconciliazione F24** — `/riconciliazione/f24` — accesso `authenticated` — modulo `riconciliazione` — F24 con PDF, righe tributo, quietanza, banca e ricerca per codice. Fonte UI: `frontend/src/pages/RiconciliazioneUnificata.jsx`; mappa: `memoria/pagine/riconciliazione-f24.json`.
-35. **Riconciliazione stipendi** — `/riconciliazione/stipendi` — accesso `authenticated` — modulo `riconciliazione` — Riconciliazione stipendi per dipendente, IBAN, periodo e regola del giorno 25. Fonte UI: `frontend/src/pages/RiconciliazioneUnificata.jsx`; mappa: `memoria/pagine/riconciliazione-stipendi.json`.
-36. **Riconciliazione documenti** — `/riconciliazione/documenti` — accesso `authenticated` — modulo `riconciliazione` — Riconciliazione documenti con originale, classificazione, candidati e provenienza. Fonte UI: `frontend/src/pages/RiconciliazioneUnificata.jsx`; mappa: `memoria/pagine/riconciliazione-documenti.json`.
-37. **Archivio bonifici** — `/riconciliazione/archivio-bonifici` — accesso `authenticated` — modulo `riconciliazione` — Archivio bonifici con CRO/TRN, beneficiario, periodo, descrizione e associazioni persistenti. Fonte UI: `frontend/src/pages/ArchivioBonifici.jsx`; mappa: `memoria/pagine/archivio-bonifici.json`.
-38. **Assegni** — `/riconciliazione/assegni` — accesso `authenticated` — modulo `riconciliazione` — Assegni distinti per numero/data/importo, fatture collegate e casi ambigui. Fonte UI: `frontend/src/pages/GestioneAssegni.jsx`; mappa: `memoria/pagine/assegni.json`.
-39. **PayPal** — `/riconciliazione/paypal` — accesso `authenticated` — modulo `riconciliazione` — PayPal interconnesso con banca, fatture, Prima Nota e prove tramite operation_id. Fonte UI: `frontend/src/pages/RiconciliazionePaypal.jsx`; mappa: `memoria/pagine/riconciliazione-paypal.json`.
-40. **Coerenza POS** — `/riconciliazione/coerenza-pos` — accesso `authenticated` — modulo `riconciliazione` — Coerenza fra corrispettivi, POS, commissioni, giorni di vendita e accrediti. Fonte UI: `frontend/src/pages/CoerenzaPOSCorrispettivi.jsx`; mappa: `memoria/pagine/coerenza-pos.json`.
-41. **Import documenti** — `/documenti/import` — accesso `authenticated` — modulo `documenti` — Import documenti/ZIP con validazione, salvataggio reale, hash e report. Fonte UI: `frontend/src/pages/ImportDocumenti.jsx`; mappa: `memoria/pagine/documenti-import.json`.
-42. **Archivio documenti** — `/documenti/archivio` — accesso `authenticated` — modulo `documenti` — Archivio documenti indicizzati con metadati, originale, relazioni e viewer. Fonte UI: `frontend/src/pages/Documenti.jsx`; mappa: `memoria/pagine/documenti-archivio.json`.
-43. **Verifica coerenza** — `/strumenti` — accesso `authenticated` — modulo `strumenti` — Controlli di coerenza riproducibili con query, lista, severita e risoluzione. Fonte UI: `frontend/src/pages/VerificaCoerenza.jsx`; mappa: `memoria/pagine/strumenti-verifica.json`.
-44. **Movimenti banca** — `/riconciliazione/movimenti-banca` — accesso `authenticated` — modulo `riconciliazione` — Movimenti banca con riga fonte, classificazione e stato di associazione. Fonte UI: `frontend/src/pages/VerificaMovimentiBanca.jsx`; mappa: `memoria/pagine/strumenti-movimenti-banca.json`.
-45. **Commercialista** — `/strumenti/commercialista` — accesso `authenticated` — modulo `strumenti` — Fascicolo per commercialista con registri, documenti, manifest e quadrature. Fonte UI: `frontend/src/pages/Commercialista.jsx`; mappa: `memoria/pagine/strumenti-commercialista.json`.
-46. **Pianificazione** — `/strumenti/pianificazione` — accesso `authenticated` — modulo `strumenti` — Pianificazione di attivita e adempimenti derivati, assegnati e notificati. Fonte UI: `frontend/src/pages/Pianificazione.jsx`; mappa: `memoria/pagine/strumenti-pianificazione.json`.
-47. **Visure** — `/strumenti/visure` — accesso `authenticated` — modulo `strumenti` — Visure con soggetto, tipo, stato e documento, senza richieste esterne automatiche. Fonte UI: `frontend/src/pages/Visure.jsx`; mappa: `memoria/pagine/strumenti-visure.json`.
-48. **Agenti AI** — `/agenti` — accesso `authenticated` — modulo `strumenti` — Agenti e automazioni con scopo, permessi, run, log, esito e disattivazione. Fonte UI: `frontend/src/pages/Agenti.jsx`; mappa: `memoria/pagine/agenti.json`.
-49. **Impostazioni F24 email** — `/impostazioni-f24-email` — accesso `authenticated` — modulo `integrazioni` — Configurazione ingest email F24, query, mittenti, test e ultima scansione. Fonte UI: `frontend/src/pages/ImpostazioniF24Email.jsx`; mappa: `memoria/pagine/impostazioni-f24-email.json`.
-50. **Impostazioni AI** — `/impostazioni-ai` — accesso `admin` — modulo `integrazioni` — Configurazione AI tramite riferimenti a segreti, modello, limiti e health. Fonte UI: `frontend/src/pages/ImpostazioniAI.jsx`; mappa: `memoria/pagine/impostazioni-ai.json`.
-51. **Integrazione OpenAPI** — `/integrazioni` — accesso `authenticated` — modulo `integrazioni` — Integrazioni API con scope, token ruotabili, OpenAPI, rate limit e revoca. Fonte UI: `frontend/src/pages/IntegrazioniOpenAPI.jsx`; mappa: `memoria/pagine/integrazioni-openapi.json`.
-52. **Riconciliazione PagoPA** — `/riconciliazione/pagopa` — accesso `authenticated` — modulo `riconciliazione` — PagoPA con IUV, ente, avviso, ricevuta, banca e scelta nei casi ambigui. Fonte UI: `frontend/src/pages/GestionePagoPA.jsx`; mappa: `memoria/pagine/integrazioni-pagopa.json`.
-53. **Mittenti Email attendibili** — `/integrazioni/mittenti-email` — accesso `authenticated` — modulo `integrazioni` — Mittenti email attendibili con canale, documento atteso, priorita e audit. Fonte UI: `frontend/src/pages/MittentiEmail.jsx`; mappa: `memoria/pagine/integrazioni-mittenti-email.json`.
-54. **Admin sistema** — `/admin` — accesso `admin` — modulo `admin` — Admin con salute, job, errori, configurazione non sensibile e azioni protette. Fonte UI: `frontend/src/pages/Admin.jsx`; mappa: `memoria/pagine/admin.json`.
-55. **Admin MFA** — `/admin/mfa` — accesso `admin` — modulo `admin` — MFA amministrativa, enrollment, revoca, recovery e step-up authentication. Fonte UI: `frontend/src/pages/MFAAdmin.jsx`; mappa: `memoria/pagine/admin-mfa.json`.
-56. **Elaborazioni amministrative** — `/admin/elaborazioni` — accesso `admin` — modulo `admin` — Elaborazioni batch idempotenti con progresso, errori per record e retry selettivo. Fonte UI: `frontend/src/pages/hub/AdminElaborazioni.jsx`; mappa: `memoria/pagine/admin-batch-reprocessing.json`.
-57. **Elaborazioni legacy** — `/admin/batch-processor` — accesso `admin` — modulo `admin` — Alias legacy temporaneo verso elaborazioni, senza componente o router duplicato. Fonte UI: `frontend/src/pages/hub/AdminElaborazioni.jsx`; mappa: `memoria/pagine/admin-batch-processor.json`.
-58. **Utenti** — `/utenti` — accesso `admin` — modulo `admin` — Utenti, ruoli, attivazione, reset sicuro e audit senza auto-elevazione. Fonte UI: `frontend/src/pages/Utenti.jsx`; mappa: `memoria/pagine/utenti.json`.
-59. **Mappa gestionale** — `/mappa-gestionale` — accesso `authenticated` — modulo `strumenti` — Mappa gestionale generata dal catalogo con moduli, route, flussi e health. Fonte UI: `frontend/src/pages/MappaGestionale.jsx`; mappa: `memoria/pagine/mappa-gestionale.json`.
-60. **Gestione IVA** — `/iva` — accesso `authenticated` — modulo `contabilita` — IVA, liquidazioni, fatture, corrispettivi, F24, periodi e quadrature. Fonte UI: `frontend/src/pages/GestioneIVA.jsx`; mappa: `memoria/pagine/iva.json`.
-61. **Verifica fatture estere** — `/fatture-estere-verifica` — accesso `authenticated` — modulo `fatture` — Fatture estere, paese, valuta, integrazione/autofattura e trattamento IVA. Fonte UI: `frontend/src/pages/FattureEstereVerifica.jsx`; mappa: `memoria/pagine/fatture-estere-verifica.json`.
-62. **Dati ISA** — `/contabilita/dati-isa` — accesso `authenticated` — modulo `contabilita` — Dati ISA derivati, tracciabili, quadrati ed esportabili senza valori inventati. Fonte UI: `frontend/src/pages/DatiIsa.jsx`; mappa: `memoria/pagine/contabilita-dati-isa.json`.
-63. **Indice documentale Drive** — `/documenti/drive` — accesso `authenticated` — modulo `documenti` — Indice Drive autorevole per metadati, hash, percorso e stato indicizzazione. Fonte UI: `frontend/src/pages/DriveDocumentIndex.jsx`; mappa: `memoria/pagine/documenti-drive.json`.
-64. **Atti amministrativi** — `/documenti/atti` — accesso `authenticated` — modulo `documenti` — Atti amministrativi con ente, protocollo, originale, scadenze e notifiche. Fonte UI: `frontend/src/pages/AttiAmministrativi.jsx`; mappa: `memoria/pagine/documenti-atti.json`.
-65. **Situazione fiscale** — `/situazione-fiscale` — accesso `authenticated` — modulo `contabilita` — Situazione fiscale unificata con F24, dichiarazioni, quietanze e anomalie. Fonte UI: `frontend/src/pages/SituazioneFiscale.jsx`; mappa: `memoria/pagine/situazione-fiscale.json`.
-66. **Tracciabilità e HACCP** — `/tracciabilita` — accesso `authenticated` — modulo `tracciabilita` — Ricezioni, lotti, registri, attese correttive, ricette, produzioni e attrezzature collegate alle entità canoniche. Fonte UI: `frontend/src/pages/TracciabilitaHACCP.jsx`; mappa: `memoria/pagine/tracciabilita-haccp.json`.
+10. **Flotta noleggio** — `/noleggio` — accesso `authenticated` — modulo `noleggio` — Flotta ricostruita da fatture di noleggio, contratti, targhe e storico driver. Fonte UI: `frontend/src/pages/NoleggioAuto.jsx`; mappa: `memoria/pagine/noleggio-flotta.json`.
+11. **Verbali noleggio** — `/noleggio/verbali` — accesso `authenticated` — modulo `noleggio` — Riconciliazione verbali, veicoli, driver, pagamenti, quietanze e documenti. Fonte UI: `frontend/src/pages/VerbaliRiconciliazione.jsx`; mappa: `memoria/pagine/noleggio-verbali.json`.
+12. **Costi noleggio** — `/noleggio/costi` — accesso `authenticated` — modulo `noleggio` — Costi noleggio per veicolo: canoni, pedaggi, verbali, bollo e riparazioni. Fonte UI: `frontend/src/pages/hub/VeicoliHub.jsx`; mappa: `memoria/pagine/noleggio-costi.json`.
+13. **Dettaglio verbale** — `/verbali-noleggio/:identificativo` — accesso `authenticated` — modulo `noleggio` — Fascicolo del verbale con PDF, importo, targa, trasgressore, driver e prove. Fonte UI: `frontend/src/pages/DettaglioVerbale.jsx`; mappa: `memoria/pagine/dettaglio-verbale.json`.
+14. **Piano dei Conti** — `/contabilita` — accesso `authenticated` — modulo `contabilita` — Piano dei conti gerarchico, regole versionate e movimenti collegati. Fonte UI: `frontend/src/pages/PianoDeiConti.jsx`; mappa: `memoria/pagine/contabilita-piano-conti.json`.
+15. **Bilancio** — `/contabilita/bilancio` — accesso `authenticated` — modulo `contabilita` — Bilancio calcolato da scritture valide, quadratura e drill-down. Fonte UI: `frontend/src/pages/Bilancio.jsx`; mappa: `memoria/pagine/contabilita-bilancio.json`.
+16. **Verifica Bilancio** — `/contabilita/verifica` — accesso `authenticated` — modulo `contabilita` — Verifica bilancio con anomalie spiegate e link alla scrittura origine. Fonte UI: `frontend/src/pages/BilancioVerifica.jsx`; mappa: `memoria/pagine/contabilita-verifica.json`.
+17. **Libro Giornale** — `/contabilita/giornale` — accesso `authenticated` — modulo `contabilita` — Libro giornale progressivo, bilanciato, filtrabile, esportabile e auditabile. Fonte UI: `frontend/src/pages/LibroGiornale.jsx`; mappa: `memoria/pagine/contabilita-giornale.json`.
+18. **Controllo mensile** — `/contabilita/controllo` — accesso `authenticated` — modulo `contabilita` — Controllo mensile con lista per ogni anomalia e stato di risoluzione. Fonte UI: `frontend/src/pages/ControlloMensile.jsx`; mappa: `memoria/pagine/contabilita-controllo.json`.
+19. **Calendario fiscale** — `/contabilita/calendario` — accesso `authenticated` — modulo `contabilita` — Calendario fiscale con fonte, scadenza, stato, promemoria e documento collegato. Fonte UI: `frontend/src/pages/CalendarioFiscale.jsx`; mappa: `memoria/pagine/contabilita-calendario.json`.
+20. **Cespiti** — `/contabilita/cespiti` — accesso `authenticated` — modulo `contabilita` — Cespiti, documento origine, ammortamenti Decimal, dismissioni e storia. Fonte UI: `frontend/src/pages/GestioneCespiti.jsx`; mappa: `memoria/pagine/contabilita-cespiti.json`.
+21. **Finanziaria** — `/contabilita/finanziaria` — accesso `authenticated` — modulo `contabilita` — Posizione finanziaria, flussi, debiti, crediti e finanziamenti soci non duplicati. Fonte UI: `frontend/src/pages/Finanziaria.jsx`; mappa: `memoria/pagine/contabilita-finanziaria.json`.
+22. **Chiusura esercizio** — `/contabilita/chiusura` — accesso `authenticated` — modulo `contabilita` — Chiusura esercizio con checklist, anteprima, conferma forte, audit e rollback. Fonte UI: `frontend/src/pages/ChiusuraEsercizio.jsx`; mappa: `memoria/pagine/contabilita-chiusura.json`.
+23. **Budget** — `/contabilita/budget` — accesso `authenticated` — modulo `contabilita` — Budget versionato e confronto consuntivo per mese, conto e centro. Fonte UI: `frontend/src/pages/BudgetPrevisionale.jsx`; mappa: `memoria/pagine/contabilita-budget.json`.
+24. **Mutui** — `/contabilita/mutui` — accesso `authenticated` — modulo `contabilita` — Mutui, rate, quota capitale/interessi, banca e residuo riconciliato. Fonte UI: `frontend/src/pages/Mutui.jsx`; mappa: `memoria/pagine/contabilita-mutui.json`.
+25. **Contabilita avanzata** — `/contabilita/avanzata` — accesso `authenticated` — modulo `contabilita` — Analisi contabili avanzate come viste derivate, con formule e drill-down. Fonte UI: `frontend/src/pages/ContabilitaAvanzata.jsx`; mappa: `memoria/pagine/contabilita-avanzata.json`.
+26. **Utile obiettivo** — `/contabilita/utile` — accesso `authenticated` — modulo `contabilita` — Simulazione utile obiettivo separata dai consuntivi e senza scritture reali. Fonte UI: `frontend/src/pages/UtileObiettivo.jsx`; mappa: `memoria/pagine/contabilita-utile.json`.
+27. **Previsioni acquisti** — `/contabilita/previsioni-acquisti` — accesso `authenticated` — modulo `contabilita` — Previsioni acquisti basate su storico e scadenze, senza ordini automatici. Fonte UI: `frontend/src/pages/PrevisioniAcquisti.jsx`; mappa: `memoria/pagine/contabilita-previsioni-acquisti.json`.
+28. **Learning Machine** — `/learning-machine` — accesso `authenticated` — modulo `strumenti` — Suggerimenti di apprendimento con evidenza, confidenza, approvazione e revoca. Fonte UI: `frontend/src/pages/LearningMachine.jsx`; mappa: `memoria/pagine/learning-machine.json`.
+29. **Scadenze** — `/scadenze` — accesso `authenticated` — modulo `contabilita` — Scadenziario fornitori con residui, parziali, prove e alert navigabili. Fonte UI: `frontend/src/pages/Scadenze.jsx`; mappa: `memoria/pagine/scadenze.json`.
+30. **Ritenute** — `/ritenute` — accesso `authenticated` — modulo `personale` — Ritenute per percipiente, periodo, aliquota, F24 e quadratura annuale. Fonte UI: `frontend/src/pages/Ritenute.jsx`; mappa: `memoria/pagine/ritenute.json`.
+31. **Riconciliazione dashboard** — `/riconciliazione` — accesso `authenticated` — modulo `riconciliazione` — Indice unico delle riconciliazioni con code, stati e contatori navigabili. Fonte UI: `frontend/src/pages/RiconciliazioneUnificata.jsx`; mappa: `memoria/pagine/riconciliazione-bancaria.json`.
+32. **Riconciliazione banca** — `/riconciliazione/banca` — accesso `authenticated` — modulo `riconciliazione` — Riconciliazione bancaria deterministica, candidati motivati e operation_id. Fonte UI: `frontend/src/pages/RiconciliazioneUnificata.jsx`; mappa: `memoria/pagine/riconciliazione-banca.json`.
+33. **Riconciliazione F24** — `/riconciliazione/f24` — accesso `authenticated` — modulo `riconciliazione` — F24 con PDF, righe tributo, quietanza, banca e ricerca per codice. Fonte UI: `frontend/src/pages/RiconciliazioneUnificata.jsx`; mappa: `memoria/pagine/riconciliazione-f24.json`.
+34. **Riconciliazione stipendi** — `/riconciliazione/stipendi` — accesso `authenticated` — modulo `riconciliazione` — Riconciliazione stipendi per dipendente, IBAN, periodo e regola del giorno 25. Fonte UI: `frontend/src/pages/RiconciliazioneUnificata.jsx`; mappa: `memoria/pagine/riconciliazione-stipendi.json`.
+35. **Riconciliazione documenti** — `/riconciliazione/documenti` — accesso `authenticated` — modulo `riconciliazione` — Riconciliazione documenti con originale, classificazione, candidati e provenienza. Fonte UI: `frontend/src/pages/RiconciliazioneUnificata.jsx`; mappa: `memoria/pagine/riconciliazione-documenti.json`.
+36. **Archivio bonifici** — `/riconciliazione/archivio-bonifici` — accesso `authenticated` — modulo `riconciliazione` — Archivio bonifici con CRO/TRN, beneficiario, periodo, descrizione e associazioni persistenti. Fonte UI: `frontend/src/pages/ArchivioBonifici.jsx`; mappa: `memoria/pagine/archivio-bonifici.json`.
+37. **Assegni** — `/riconciliazione/assegni` — accesso `authenticated` — modulo `riconciliazione` — Assegni distinti per numero/data/importo, fatture collegate e casi ambigui. Fonte UI: `frontend/src/pages/GestioneAssegni.jsx`; mappa: `memoria/pagine/assegni.json`.
+38. **PayPal** — `/riconciliazione/paypal` — accesso `authenticated` — modulo `riconciliazione` — PayPal interconnesso con banca, fatture, Prima Nota e prove tramite operation_id. Fonte UI: `frontend/src/pages/RiconciliazionePaypal.jsx`; mappa: `memoria/pagine/riconciliazione-paypal.json`.
+39. **Coerenza POS** — `/riconciliazione/coerenza-pos` — accesso `authenticated` — modulo `riconciliazione` — Coerenza fra corrispettivi, POS, commissioni, giorni di vendita e accrediti. Fonte UI: `frontend/src/pages/CoerenzaPOSCorrispettivi.jsx`; mappa: `memoria/pagine/coerenza-pos.json`.
+40. **Import documenti** — `/documenti/import` — accesso `authenticated` — modulo `documenti` — Import documenti/ZIP con validazione, salvataggio reale, hash e report. Fonte UI: `frontend/src/pages/ImportDocumenti.jsx`; mappa: `memoria/pagine/documenti-import.json`.
+41. **Archivio documenti** — `/documenti/archivio` — accesso `authenticated` — modulo `documenti` — Archivio documenti indicizzati con metadati, originale, relazioni e viewer. Fonte UI: `frontend/src/pages/Documenti.jsx`; mappa: `memoria/pagine/documenti-archivio.json`.
+42. **Verifica coerenza** — `/strumenti` — accesso `authenticated` — modulo `strumenti` — Controlli di coerenza riproducibili con query, lista, severita e risoluzione. Fonte UI: `frontend/src/pages/VerificaCoerenza.jsx`; mappa: `memoria/pagine/strumenti-verifica.json`.
+43. **Movimenti banca** — `/riconciliazione/movimenti-banca` — accesso `authenticated` — modulo `riconciliazione` — Movimenti banca con riga fonte, classificazione e stato di associazione. Fonte UI: `frontend/src/pages/VerificaMovimentiBanca.jsx`; mappa: `memoria/pagine/strumenti-movimenti-banca.json`.
+44. **Commercialista** — `/strumenti/commercialista` — accesso `authenticated` — modulo `strumenti` — Fascicolo per commercialista con registri, documenti, manifest e quadrature. Fonte UI: `frontend/src/pages/Commercialista.jsx`; mappa: `memoria/pagine/strumenti-commercialista.json`.
+45. **Pianificazione** — `/strumenti/pianificazione` — accesso `authenticated` — modulo `strumenti` — Pianificazione di attivita e adempimenti derivati, assegnati e notificati. Fonte UI: `frontend/src/pages/Pianificazione.jsx`; mappa: `memoria/pagine/strumenti-pianificazione.json`.
+46. **Visure** — `/strumenti/visure` — accesso `authenticated` — modulo `strumenti` — Visure con soggetto, tipo, stato e documento, senza richieste esterne automatiche. Fonte UI: `frontend/src/pages/Visure.jsx`; mappa: `memoria/pagine/strumenti-visure.json`.
+47. **Agenti AI** — `/agenti` — accesso `authenticated` — modulo `strumenti` — Agenti e automazioni con scopo, permessi, run, log, esito e disattivazione. Fonte UI: `frontend/src/pages/Agenti.jsx`; mappa: `memoria/pagine/agenti.json`.
+48. **Impostazioni F24 email** — `/impostazioni-f24-email` — accesso `authenticated` — modulo `integrazioni` — Configurazione ingest email F24, query, mittenti, test e ultima scansione. Fonte UI: `frontend/src/pages/ImpostazioniF24Email.jsx`; mappa: `memoria/pagine/impostazioni-f24-email.json`.
+49. **Impostazioni AI** — `/impostazioni-ai` — accesso `admin` — modulo `integrazioni` — Configurazione AI tramite riferimenti a segreti, modello, limiti e health. Fonte UI: `frontend/src/pages/ImpostazioniAI.jsx`; mappa: `memoria/pagine/impostazioni-ai.json`.
+50. **Integrazione OpenAPI** — `/integrazioni` — accesso `authenticated` — modulo `integrazioni` — Integrazioni API con scope, token ruotabili, OpenAPI, rate limit e revoca. Fonte UI: `frontend/src/pages/IntegrazioniOpenAPI.jsx`; mappa: `memoria/pagine/integrazioni-openapi.json`.
+51. **Riconciliazione PagoPA** — `/riconciliazione/pagopa` — accesso `authenticated` — modulo `riconciliazione` — PagoPA con IUV, ente, avviso, ricevuta, banca e scelta nei casi ambigui. Fonte UI: `frontend/src/pages/GestionePagoPA.jsx`; mappa: `memoria/pagine/integrazioni-pagopa.json`.
+52. **Mittenti Email attendibili** — `/integrazioni/mittenti-email` — accesso `authenticated` — modulo `integrazioni` — Mittenti email attendibili con canale, documento atteso, priorita e audit. Fonte UI: `frontend/src/pages/MittentiEmail.jsx`; mappa: `memoria/pagine/integrazioni-mittenti-email.json`.
+53. **Admin sistema** — `/admin` — accesso `admin` — modulo `admin` — Admin con salute, job, errori, configurazione non sensibile e azioni protette. Fonte UI: `frontend/src/pages/Admin.jsx`; mappa: `memoria/pagine/admin.json`.
+54. **Admin MFA** — `/admin/mfa` — accesso `admin` — modulo `admin` — MFA amministrativa, enrollment, revoca, recovery e step-up authentication. Fonte UI: `frontend/src/pages/MFAAdmin.jsx`; mappa: `memoria/pagine/admin-mfa.json`.
+55. **Elaborazioni amministrative** — `/admin/elaborazioni` — accesso `admin` — modulo `admin` — Elaborazioni batch idempotenti con progresso, errori per record e retry selettivo. Fonte UI: `frontend/src/pages/hub/AdminElaborazioni.jsx`; mappa: `memoria/pagine/admin-batch-reprocessing.json`.
+56. **Elaborazioni legacy** — `/admin/batch-processor` — accesso `admin` — modulo `admin` — Alias legacy temporaneo verso elaborazioni, senza componente o router duplicato. Fonte UI: `frontend/src/pages/hub/AdminElaborazioni.jsx`; mappa: `memoria/pagine/admin-batch-processor.json`.
+57. **Utenti** — `/utenti` — accesso `admin` — modulo `admin` — Utenti, ruoli, attivazione, reset sicuro e audit senza auto-elevazione. Fonte UI: `frontend/src/pages/Utenti.jsx`; mappa: `memoria/pagine/utenti.json`.
+58. **Mappa gestionale** — `/mappa-gestionale` — accesso `authenticated` — modulo `strumenti` — Mappa gestionale generata dal catalogo con moduli, route, flussi e health. Fonte UI: `frontend/src/pages/MappaGestionale.jsx`; mappa: `memoria/pagine/mappa-gestionale.json`.
+59. **Gestione IVA** — `/iva` — accesso `authenticated` — modulo `contabilita` — IVA, liquidazioni, fatture, corrispettivi, F24, periodi e quadrature. Fonte UI: `frontend/src/pages/GestioneIVA.jsx`; mappa: `memoria/pagine/iva.json`.
+60. **Verifica fatture estere** — `/fatture-estere-verifica` — accesso `authenticated` — modulo `fatture` — Fatture estere, paese, valuta, integrazione/autofattura e trattamento IVA. Fonte UI: `frontend/src/pages/FattureEstereVerifica.jsx`; mappa: `memoria/pagine/fatture-estere-verifica.json`.
+61. **Dati ISA** — `/contabilita/dati-isa` — accesso `authenticated` — modulo `contabilita` — Dati ISA derivati, tracciabili, quadrati ed esportabili senza valori inventati. Fonte UI: `frontend/src/pages/DatiIsa.jsx`; mappa: `memoria/pagine/contabilita-dati-isa.json`.
+62. **Indice documentale Drive** — `/documenti/drive` — accesso `authenticated` — modulo `documenti` — Indice Drive autorevole per metadati, hash, percorso e stato indicizzazione. Fonte UI: `frontend/src/pages/DriveDocumentIndex.jsx`; mappa: `memoria/pagine/documenti-drive.json`.
+63. **Atti amministrativi** — `/documenti/atti` — accesso `authenticated` — modulo `documenti` — Atti amministrativi con ente, protocollo, originale, scadenze e notifiche. Fonte UI: `frontend/src/pages/AttiAmministrativi.jsx`; mappa: `memoria/pagine/documenti-atti.json`.
+64. **Situazione fiscale** — `/situazione-fiscale` — accesso `authenticated` — modulo `contabilita` — Situazione fiscale unificata con F24, dichiarazioni, quietanze e anomalie. Fonte UI: `frontend/src/pages/SituazioneFiscale.jsx`; mappa: `memoria/pagine/situazione-fiscale.json`.
 
 ## Appendice B — Fogli e progressivi Drive/Sheets
 
@@ -507,14 +500,6 @@ si rigenerano dal codice e non si correggono a mano.
 | Import PartenoPay | `partenopay_import_runs` | `PPR` |
 | Email PartenoPay | `verbali_email_archive` | `PPE` |
 | Verbali PartenoPay | `verbali_noleggio` | `PPV` |
-| HACCP righe acquisto | `haccp_purchase_lines` | `HPL` |
-| HACCP lotti | `haccp_lots` | `HLT` |
-| HACCP movimenti lotti | `haccp_lot_movements` | `HLM` |
-| HACCP registri | `haccp_register_entries` | `HRE` |
-| HACCP attese | `haccp_expectations` | `HEX` |
-| HACCP attrezzature | `haccp_equipment` | `HEQ` |
-| HACCP ricette | `haccp_recipes` | `HRC` |
-| HACCP produzioni | `haccp_productions` | `HPR` |
 
 ## Appendice C — Tutte le variabili rilevate
 
@@ -832,7 +817,7 @@ Gli alias senza valore vanno configurati nel secret/config store di Render. Non 
 
 ## Appendice D — Tutti i router e tutti gli endpoint
 
-Route table sorgente: **1171**; attivi da ricreare: **771**; quarantena: **400** (`verificare` 371, `admin-only` 29).
+Route table sorgente: **1147**; attivi da ricreare: **747**; quarantena: **400** (`verificare` 371, `admin-only` 29).
 
 `attivo` significa da ricreare con contratto e test; `quarantena` significa non esporre nel nuovo runtime finché consumer, autorizzazione e test non sono provati. L'elenco è completo e include entrambe le categorie.
 
@@ -903,12 +888,10 @@ Route table sorgente: **1171**; attivi da ricreare: **771**; quarantena: **400**
 - **attivo** — `DELETE /api/piano-conti/{conto_id}` — in uso: FE
 - **attivo** — `PUT /api/piano-conti/{conto_id}` — in uso: FE
 
-### Router `accounting.prima_nota_salari` (23)
+### Router `accounting.prima_nota_salari` (20)
 
 - **quarantena: verificare** — `POST /api/prima-nota-salari/consolida-record` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **attivo** — `GET /api/prima-nota-salari/dipendenti-lista` — in uso: FE
-- **attivo** — `GET /api/prima-nota-salari/export-appdipendenti/download` — in uso: FE
-- **attivo** — `GET /api/prima-nota-salari/export-appdipendenti/preview` — in uso: FE
 - **quarantena: verificare** — `GET /api/prima-nota-salari/export-excel` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **attivo** — `POST /api/prima-nota-salari/import-bonifici` — in uso: FE
 - **attivo** — `POST /api/prima-nota-salari/import-paghe` — in uso: FE
@@ -917,7 +900,6 @@ Route table sorgente: **1171**; attivi da ricreare: **771**; quarantena: **400**
 - **quarantena: verificare** — `DELETE /api/prima-nota-salari/pulisci-righe-vuote` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **attivo** — `POST /api/prima-nota-salari/ricalcola-progressivi` — in uso: FE
 - **attivo** — `GET /api/prima-nota-salari/salari` — in uso: FE
-- **attivo** — `GET /api/prima-nota-salari/salari-ricostruiti` — in uso: FE
 - **attivo** — `POST /api/prima-nota-salari/salari/aggiustamento` — in uso: FE
 - **quarantena: admin-only** — `DELETE /api/prima-nota-salari/salari/reset` — endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7)
 - **attivo** — `GET /api/prima-nota-salari/salari/riepilogo` — in uso: FE
@@ -1683,30 +1665,6 @@ Route table sorgente: **1171**; attivi da ricreare: **771**; quarantena: **400**
 - **attivo** — `PUT /api/gestione-riservata/movimenti/{movimento_id}` — in uso: FE
 - **attivo** — `GET /api/gestione-riservata/riepilogo` — in uso: FE, chat
 - **quarantena: verificare** — `GET /api/gestione-riservata/volume-affari-reale` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-
-### Router `haccp` (21)
-
-- **attivo** — `GET /api/haccp/equipment` — in uso: FE
-- **attivo** — `POST /api/haccp/equipment` — in uso: FE
-- **attivo** — `PATCH /api/haccp/equipment/{equipment_id}` — in uso: FE
-- **attivo** — `GET /api/haccp/expectations` — in uso: FE
-- **attivo** — `GET /api/haccp/lots` — in uso: FE
-- **attivo** — `POST /api/haccp/lots` — in uso: FE
-- **attivo** — `POST /api/haccp/lots/{lot_id}/movements` — in uso: FE
-- **attivo** — `GET /api/haccp/lots/{lot_id}/trace` — in uso: FE
-- **attivo** — `GET /api/haccp/overview` — in uso: FE
-- **attivo** — `GET /api/haccp/productions` — in uso: FE
-- **attivo** — `POST /api/haccp/productions` — in uso: FE
-- **attivo** — `GET /api/haccp/purchase-lines` — in uso: FE
-- **attivo** — `GET /api/haccp/recipes` — in uso: FE
-- **attivo** — `POST /api/haccp/recipes` — in uso: FE
-- **attivo** — `PUT /api/haccp/recipes/{recipe_id}` — in uso: FE
-- **attivo** — `GET /api/haccp/register-types` — in uso: FE
-- **attivo** — `GET /api/haccp/registers` — in uso: FE
-- **attivo** — `POST /api/haccp/registers` — in uso: FE
-- **attivo** — `POST /api/haccp/registers/{entry_id}/resolve` — in uso: FE
-- **attivo** — `POST /api/haccp/sync-invoices` — in uso: FE
-- **attivo** — `GET /api/haccp/sync-preview` — in uso: FE
 
 ### Router `invoices.corrispettivi` (24)
 

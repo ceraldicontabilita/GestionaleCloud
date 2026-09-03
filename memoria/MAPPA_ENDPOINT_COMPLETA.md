@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1171 endpoint** in **113 gruppi**.
+> Totale **1147 endpoint** in **112 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 728 · ext esterni = 81 · — da verificare = 362
+**Riepilogo uso:** ✓ frontend = 705 · ext esterni = 81 · — da verificare = 361
 
 ## AI Parser  (11)
 
@@ -989,32 +989,6 @@
 | GET | `/api/gestione-riservata/riepilogo` | ✓ | gestione_riservata |
 | GET | `/api/gestione-riservata/volume-affari-reale` | — | gestione_riservata |
 
-## HACCP e Tracciabilita  (21)
-
-| Metodo | Path | FE | File |
-|---|---|:-:|---|
-| GET | `/api/haccp/equipment` | ✓ | haccp |
-| POST | `/api/haccp/equipment` | ✓ | haccp |
-| PATCH | `/api/haccp/equipment/{equipment_id}` | ✓ | haccp |
-| GET | `/api/haccp/expectations` | ✓ | haccp |
-| GET | `/api/haccp/lots` | ✓ | haccp |
-| POST | `/api/haccp/lots` | ✓ | haccp |
-| POST | `/api/haccp/lots/{lot_id}/movements` | ✓ | haccp |
-| GET | `/api/haccp/lots/{lot_id}/trace` | ✓ | haccp |
-| GET | `/api/haccp/overview` | ✓ | haccp |
-| GET | `/api/haccp/productions` | ✓ | haccp |
-| POST | `/api/haccp/productions` | ✓ | haccp |
-| GET | `/api/haccp/purchase-lines` | ✓ | haccp |
-| GET | `/api/haccp/recipes` | ✓ | haccp |
-| POST | `/api/haccp/recipes` | ✓ | haccp |
-| PUT | `/api/haccp/recipes/{recipe_id}` | ✓ | haccp |
-| GET | `/api/haccp/register-types` | ✓ | haccp |
-| GET | `/api/haccp/registers` | ✓ | haccp |
-| POST | `/api/haccp/registers` | ✓ | haccp |
-| POST | `/api/haccp/registers/{entry_id}/resolve` | ✓ | haccp |
-| POST | `/api/haccp/sync-invoices` | ✓ | haccp |
-| GET | `/api/haccp/sync-preview` | ✓ | haccp |
-
 ## IVA  (20)
 
 | Metodo | Path | FE | File |
@@ -1443,14 +1417,12 @@
 | POST | `/api/prima-nota/unifica-categorie` | — | prima_nota_module.manutenzione |
 | GET | `/api/prima-nota/verifica-metodo-fattura/{fattura_id}` | — | prima_nota_module.manutenzione |
 
-## Prima Nota Salari  (23)
+## Prima Nota Salari  (20)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
 | POST | `/api/prima-nota-salari/consolida-record` | — | accounting.prima_nota_salari |
 | GET | `/api/prima-nota-salari/dipendenti-lista` | ✓ | accounting.prima_nota_salari |
-| GET | `/api/prima-nota-salari/export-appdipendenti/download` | ✓ | accounting.prima_nota_salari |
-| GET | `/api/prima-nota-salari/export-appdipendenti/preview` | — | accounting.prima_nota_salari |
 | GET | `/api/prima-nota-salari/export-excel` | — | accounting.prima_nota_salari |
 | POST | `/api/prima-nota-salari/import-bonifici` | ✓ | accounting.prima_nota_salari |
 | POST | `/api/prima-nota-salari/import-paghe` | ✓ | accounting.prima_nota_salari |
@@ -1459,7 +1431,6 @@
 | DELETE | `/api/prima-nota-salari/pulisci-righe-vuote` | — | accounting.prima_nota_salari |
 | POST | `/api/prima-nota-salari/ricalcola-progressivi` | ✓ | accounting.prima_nota_salari |
 | GET | `/api/prima-nota-salari/salari` | ✓ | accounting.prima_nota_salari |
-| GET | `/api/prima-nota-salari/salari-ricostruiti` | ✓ | accounting.prima_nota_salari |
 | POST | `/api/prima-nota-salari/salari/aggiustamento` | ✓ | accounting.prima_nota_salari |
 | DELETE | `/api/prima-nota-salari/salari/reset` | ✓ | accounting.prima_nota_salari |
 | GET | `/api/prima-nota-salari/salari/riepilogo` | ✓ | accounting.prima_nota_salari |

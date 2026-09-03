@@ -26,9 +26,9 @@ def test_rebuild_kit_is_complete_integral_and_single_root(tmp_path: Path):
         assert f"{prefix}00_START_HERE.md" in names
         assert f"{prefix}00_PROMPT_DA_INCOLLARE.txt" in names
         assert f"{prefix}01_MASTER/PROMPT_MASTER.md" in names
-        assert len([name for name in names if name.startswith(f"{prefix}03_PAGINE/") and Path(name).name[:2].isdigit() and name.endswith(".md")]) == 66
+        assert len([name for name in names if name.startswith(f"{prefix}03_PAGINE/") and Path(name).name[:2].isdigit() and name.endswith(".md")]) == 64
         logic_names = [name for name in names if name.startswith(f"{prefix}03_PAGINE/LOGICA_JSON/") and name.endswith(".json")]
-        assert len(logic_names) == 66
+        assert len(logic_names) == 64
         page_names = [name for name in names if name.startswith(f"{prefix}03_PAGINE/") and Path(name).name[:2].isdigit() and name.endswith(".md")]
         for name in page_names:
             document = archive.read(name).decode("utf-8")
@@ -44,10 +44,10 @@ def test_rebuild_kit_is_complete_integral_and_single_root(tmp_path: Path):
         endpoints = json.loads(archive.read(f"{prefix}05_API/ENDPOINTS.json"))
         variables = json.loads(archive.read(f"{prefix}06_CONFIG/VARIABLES.json"))
 
-    assert manifest["counts"]["pages"] == 66
-    assert manifest["counts"]["page_logic_contracts"] == 66
+    assert manifest["counts"]["pages"] == 64
+    assert manifest["counts"]["page_logic_contracts"] == 64
     assert manifest["counts"]["popups"] == 36
-    assert manifest["counts"]["sheets"] == 30
+    assert manifest["counts"]["sheets"] == 22
     assert spec["active_endpoints"] + spec["quarantined_endpoints"] == manifest["counts"]["endpoints"]
     assert len(endpoints) == manifest["counts"]["endpoints"]
     assert len(variables) == manifest["counts"]["variables"]

@@ -51,13 +51,13 @@ const LearningMachine = lazy(() => import("./pages/LearningMachine.jsx"));
 const LegacyRouteResolver = lazy(() => import("./pages/LegacyRouteResolver.jsx"));
 const GestioneIVA = lazy(() => import("./pages/GestioneIVA.jsx"));
 const FattureEstereVerifica = lazy(() => import("./pages/FattureEstereVerifica.jsx"));
-const CedoliniSalari = lazy(() => import("./pages/CedoliniSalari.jsx"));
 const SituazioneFiscale = lazy(() => import("./pages/SituazioneFiscale.jsx"));
-const TracciabilitaHACCP = lazy(() => import("./pages/TracciabilitaHACCP.jsx"));
 
 // HR (AppDipendenti), Menu e Lotti NON sono pagine di questa SPA: sono app
 // portate pari pari, servite dal backend a /hr/, /menu/ e /lotti/ (link a
-// pagina intera in navigation.config.js).
+// pagina intera in navigation.config.js). Le vecchie pagine native
+// "Cedolini paga" (/salari) e "Tracciabilità" (/tracciabilita) sono state
+// rimosse il 03/09/2026: erano doppioni di /hr e /lotti.
 
 const LazyPage = ({ children }) => (
   <Suspense fallback={<PageLoader />}>{children}</Suspense>
@@ -89,7 +89,6 @@ const router = createBrowserRouter([
       { path: "fatture/*", element: <LazyPage><FattureHub /></LazyPage> },
       { path: "fornitori/*", element: <LazyPage><FornitoriHub /></LazyPage> },
       { path: "prima-nota/*", element: <LazyPage><PrimaNotaHub /></LazyPage> },
-      { path: "salari", element: <LazyPage><CedoliniSalari /></LazyPage> },
       { path: "noleggio/*", element: <LazyPage><VeicoliHub /></LazyPage> },
       { path: "verbali-noleggio/:numeroVerbale", element: <LazyPage><DettaglioVerbale /></LazyPage> },
       { path: "verbali-noleggio/:prefisso/:numero", element: <LazyPage><DettaglioVerbale /></LazyPage> },
@@ -110,7 +109,6 @@ const router = createBrowserRouter([
       { path: "iva/*", element: <LazyPage><GestioneIVA /></LazyPage> },
       { path: "situazione-fiscale/*", element: <RequireAdmin><LazyPage><SituazioneFiscale /></LazyPage></RequireAdmin> },
       { path: "fatture-estere-verifica", element: <LazyPage><FattureEstereVerifica /></LazyPage> },
-      { path: "tracciabilita", element: <LazyPage><TracciabilitaHACCP /></LazyPage> },
 
       // Un solo punto di compatibilità per vecchi preferiti; altrimenti 404 reale.
       { path: "*", element: <LazyPage><LegacyRouteResolver /></LazyPage> },

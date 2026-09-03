@@ -216,7 +216,7 @@ riferimenti, valuta e importo sono compatibili in modo deterministico.
 
 Il dato appare nella pagina del proprio dominio e nelle pagine collegate:
 
-- cedolini e pagamenti → `/salari` e riconciliazione stipendi;
+- cedolini e pagamenti → Prima Nota salari, riconciliazione stipendi e app HR (`/hr`);
 - estratti conto e bonifici → movimenti banca e riconciliazione;
 - F24 e dichiarazioni → situazione fiscale;
 - cartelle, avvisi e verbali → atti amministrativi/PagoPA;

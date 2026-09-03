@@ -228,7 +228,10 @@ const AREAS = [
   {
     id: 'cedolini',
     title: 'Cedolini',
-    route: '/salari',
+    // La pagina nativa /salari e' stata rimossa il 03/09/2026: i cedolini si
+    // gestiscono nell'app HR (AppDipendenti) portata pari pari a /hr.
+    route: null,
+    external: '/hr/',
     Icon: WalletCards,
     color: '#8a6f47',
     group: 'HR',
