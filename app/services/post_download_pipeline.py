@@ -9,7 +9,8 @@ Processa automaticamente i documenti scaricati da Gmail/PEC:
 4. Quietanze → link a F24 → marca come pagato
 
 REGOLE BUSINESS:
-- Le FATTURE arrivano SOLO via PEC o import manuale XML
+- Le FATTURE arrivano SOLO da Google Drive (`drive_invoice_ingest.py`):
+  una fattura italiana trovata via email è un'anomalia, non una seconda fonte
 - I verbali si associano al dipendente tramite: verbale → targa → veicolo → driver
 - L'importo del verbale pagato diventa trattenuta sulla busta paga del driver
 """

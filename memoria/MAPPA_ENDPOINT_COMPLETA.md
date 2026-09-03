@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1173 endpoint** in **113 gruppi**.
+> Totale **1171 endpoint** in **113 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 728 · ext esterni = 81 · — da verificare = 364
+**Riepilogo uso:** ✓ frontend = 728 · ext esterni = 81 · — da verificare = 362
 
 ## AI Parser  (11)
 
@@ -685,7 +685,7 @@
 | POST | `/api/documenti-inbox/import-f24-from-inbox` | ✓ | documents_inbox_classify |
 | GET | `/api/documenti-inbox/statistics` | — | documents_inbox_classify |
 
-## Email Download  (41)
+## Email Download  (38)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -714,9 +714,6 @@
 | GET | `/api/email-download/pdf/{collection}/{pdf_id}` | — | email_download |
 | POST | `/api/email-download/popola-pdf-payslips` | — | email_download |
 | POST | `/api/email-download/processa-cedolini` | — | email_download |
-| POST | `/api/email-download/processa-fatture-email` | — | email_download |
-| POST | `/api/email-download/processa-fatture-email/batch` | — | email_download |
-| GET | `/api/email-download/processa-fatture-email/status` | — | email_download |
 | POST | `/api/email-download/processa-pipeline` | — | email_download |
 | DELETE | `/api/email-download/pulisci-duplicati` | — | email_download |
 | POST | `/api/email-download/pulizia-non-attendibili` | — | email_download |
@@ -1056,10 +1053,11 @@
 | GET | `/api/rapido/ultimi-inserimenti` | ✓ | rapido |
 | POST | `/api/rapido/versamento-banca` | ✓ | rapido |
 
-## Integrazione Lotti  (2)
+## Integrazione Lotti  (3)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
+| GET | `/api/integrations/lotti/employees` | — | lotti_integration |
 | GET | `/api/integrations/lotti/invoices` | — | lotti_integration |
 | GET | `/api/integrations/lotti/invoices/{source_id}` | — | lotti_integration |
 

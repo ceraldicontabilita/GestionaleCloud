@@ -1,7 +1,7 @@
 # MAPPA ROUTER — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py — leggendo la route table reale di `register_all_routers`.
-> Totale **1173 endpoint** in **113 prefissi**.
+> Totale **1171 endpoint** in **113 prefissi**.
 
 Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app collegata / webhook / chatbot / scheduler / API pubblica) · `—` nessun riferimento noto (candidato verifica).
 
@@ -48,7 +48,7 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/documenti-fiscali` | 3 | ✓ | documenti_fiscali |
 | `/api/documenti-inbox` | 5 | ✓ | documents_inbox_classify |
 | `/api/documenti-non-associati` | 9 | ✓ | documenti_non_associati |
-| `/api/email-download` | 41 | ✓ | email_download |
+| `/api/email-download` | 38 | ✓ | email_download |
 | `/api/email-scanner` | 5 | ✓ | email_scanner |
 | `/api/estratto-conto-movimenti` | 15 | ✓ | bank.estratto_conto |
 | `/api/f24` | 27 | ✓ | drive_quietanze, f24.f24_main |
@@ -68,7 +68,7 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/genera-proposte` | 1 | — | dati_provvisori |
 | `/api/gestione-riservata` | 7 | ✓ | gestione_riservata |
 | `/api/haccp` | 21 | ✓ | haccp |
-| `/api/integrations` | 2 | — | lotti_integration |
+| `/api/integrations` | 3 | — | lotti_integration |
 | `/api/invoices` | 8 | ✓ | invoices.invoices_emesse, invoices.invoices_main |
 | `/api/iva` | 20 | ✓ | iva |
 | `/api/learning-machine` | 7 | ✓ | learning_machine |

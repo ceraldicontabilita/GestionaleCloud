@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1173 · tenere: 771 · verificare: 373 · admin-only (migrazione/manutenzione): 29
+**Totale endpoint:** 1171 · tenere: 771 · verificare: 371 · admin-only (migrazione/manutenzione): 29
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -484,9 +484,6 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/email-download/pdf/{collection}/{pdf_id}` | email_download | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/email-download/popola-pdf-payslips` | email_download | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/email-download/processa-cedolini` | email_download | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/email-download/processa-fatture-email` | email_download | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/email-download/processa-fatture-email/batch` | email_download | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/email-download/processa-fatture-email/status` | email_download | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/email-download/processa-pipeline` | email_download | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `DELETE /api/email-download/pulisci-duplicati` | email_download | — | sì | — | — | — | tenere | in uso: scheduler |
 | `POST /api/email-download/pulizia-non-attendibili` | email_download | — | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
@@ -731,6 +728,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/haccp/registers/{entry_id}/resolve` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/haccp/sync-invoices` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/haccp/sync-preview` | haccp | sì | — | — | — | sì | tenere | in uso: FE |
+| `GET /api/integrations/lotti/employees` | lotti_integration | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/integrations/lotti/invoices` | lotti_integration | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/integrations/lotti/invoices/{source_id}` | lotti_integration | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/invoices` | invoices.invoices_main | sì | — | — | — | sì | tenere | in uso: FE |
