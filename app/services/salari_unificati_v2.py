@@ -443,6 +443,8 @@ async def processa_cedolino_v2(
             "tfr_accantonato": dati_extra.get("tfr_accantonato", 0),
             # Ore
             "ore_lavorate": cedolino_data.get("ore_lavorate", 0),
+            "giorni_lavorati": cedolino_data.get("giorni_lavorati", 0),
+            "livello": cedolino_data.get("livello"),
             # Pagamento
             "iban": cedolino_data.get("iban"),
             "pagato": False,
@@ -473,14 +475,25 @@ async def processa_cedolino_v2(
             cedolino_record["pdf_data"] = pdf_data
             cedolino_record["pdf_disponibile"] = True
         
-        # Upsert per evitare duplicati
+        # Upsert per evitare duplicati. Il registro `cedolini` del gestionale
+        # resta perche' la Prima Nota salari (sotto) e i riscontri bonifico si
+        # appoggiano a questi campi; l'archivio che gli UTENTI vedono e' pero'
+        # l'app HR (/hr): ogni busta letta qui viene depositata anche la'.
         await db["cedolini"].update_one(
             cedolino_filter,
             {"$set": cedolino_record},
             upsert=True
         )
         result["cedolino_id"] = cedolino_id
-        
+
+        # HR e' l'unico archivio cedolini per gli utenti (decisione 03/09/2026):
+        # deposito nella tabella app_cedolini dell'app HR, mai bloccante.
+        try:
+            from app.services.hr_cedolini_deposito import deposita_cedolino_in_hr
+            result["deposito_hr"] = (await deposita_cedolino_in_hr(cedolino_record)).get("esito")
+        except Exception:
+            logger.exception("Deposito cedolino in HR fallito (canale V2): flusso contabile invariato")
+
         # --- 3. Prima Nota Salari ---
         # Bug corretto 15/07/2026 (audit funzionale): questo controllo
         # cercava solo {codice_fiscale, mese, anno, tipo:"stipendio"} — il

@@ -847,6 +847,8 @@ async def create_busta_paga(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
     
+    # Registro del gestionale (Prima Nota salari); l'archivio che gli utenti
+    # vedono e' l'app HR: la busta viene depositata in app_cedolini (sotto).
     if existing:
         await db["cedolini"].update_one(
             {"id": existing["id"]},
@@ -858,6 +860,23 @@ async def create_busta_paga(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
         busta["created_at"] = datetime.now(timezone.utc).isoformat()
         await db["cedolini"].insert_one(busta.copy())
 
+    try:
+        from app.services.hr_cedolini_deposito import deposita_cedolino_in_hr
+        # L'identita' HR e' il codice fiscale: letto dall'anagrafica del gestionale.
+        dip = await db["dipendenti"].find_one(
+            {"id": data["dipendente_id"]},
+            {"_id": 0, "codice_fiscale": 1, "nome_completo": 1, "nome": 1, "cognome": 1},
+        ) or {}
+        await deposita_cedolino_in_hr({
+            **busta,
+            "codice_fiscale": dip.get("codice_fiscale"),
+            "nome_dipendente": dip.get("nome_completo")
+            or f"{dip.get('cognome', '')} {dip.get('nome', '')}".strip(),
+        })
+    except Exception:
+        logger.exception("Deposito busta paga in HR fallito: flusso invariato")
+
+    if not existing:
         # --- EVENT BUS: propaga evento cedolino importato (busta-paga creata) ---
         # Solo per CREAZIONE, non per UPDATE (evita doppi alert su modifiche)
         try:

@@ -244,6 +244,51 @@ sempre la sorgente persistente.
   F24, TFR e `app/routers/employees/dipendenti.py`.
 - Il catalogo canonico conta ora **64** schermate (id contigui).
 
+## Cedolini: un solo sistema (HR)
+
+- **[03/09/2026, decisione del titolare]** «Il gestionale scarica i dati dalla
+  posta … portare i cedolini in HR; niente ponte; a cosa serve una sezione
+  cedolini nel gestionale e un'altra in HR?». L'archivio cedolini che gli
+  utenti vedono è **solo l'app HR** (`/hr`, tabella `public.app_cedolini`
+  del Postgres HR, DSN `HR_SUPABASE_DB_URL` → fallback `APPDIPENDENTI_DB_URL`,
+  `SUPABASE_DB_URL`, già dichiarate in `render.yaml`).
+- Il gestionale continua a **scaricare** le buste (Drive:
+  `app/services/drive_cedolini_ingest.py`; email: `app/routers/email_download.py`
+  → `processa_nuovi_documenti` → `cedolini_manager` → `salari_unificati_v2`)
+  e a ricavarne la **Prima Nota salari**: per questo il registro interno
+  `cedolini` resta scritto, ma non ha più una pagina propria.
+- **Deposito in HR**: `app/services/hr_cedolini_deposito.py::
+  deposita_cedolino_in_hr(cedolino)` è richiamato, protetto da try/except,
+  subito dopo OGNI scrittura di un cedolino nel gestionale
+  (`salari_unificati_v2.processa_cedolino_v2`, `cedolini_manager.
+  processa_cedolino_completo`, `post_download_pipeline.processa_cedolini_da_email`,
+  `upload_ai_processor.process_upload_cedolino`, `ai_integration_service`,
+  `document_data_saver.save_busta_paga_to_gestionale`, `email_full_download.
+  smart_auto_associate`, `POST /api/dipendenti/buste-paga`, `POST
+  /api/prima-nota-salari/salari/{id}/cedolino-pdf`). Scrive con asyncpg
+  direttamente in `app_cedolini` (`id text` + `doc jsonb`, stessa forma
+  dell'adattatore `app/hr/db_supabase.py`) senza toccare `app/hr/**`.
+- Forma del documento = quella dei 1291 cedolini già in HR: `mese`/`anno`
+  interi, `competenza` `"YYYY-MM"`, `tipo_cedolino` `ordinario` (il "mensile"
+  del gestionale) / `tredicesima` / `quattordicesima`, `netto`, `lordo`,
+  `competenze`, `trattenute`, `nome_dipendente` = `dipendente_nome`,
+  `filename`/`pdf_filename`, `pdf_data` base64, `fonte` = `gestionale_cloud`,
+  `parser_template` solo se è un modello noto all'HR (`zucchetti_new`,
+  `zucchetti_classic`, `csc_napoli`, `teamsystem`), `giorni_lavorati`,
+  `livello`; `dipendente_id`/`nome` risolti da `app_dipendenti` per codice
+  fiscale (mai gli id del gestionale). Provenienza conservata in
+  `gestionale_cedolino_id`, `gestionale_source`, `cedolino_dedup_key`.
+- **Dedup, mai sovrascrittura**: un cedolino HR esistente con la stessa
+  `cedolino_dedup_key`, oppure stesso (CF maiuscolo, anno, mese, tipo), non
+  viene toccato (`esito: gia_presente`); 13ª/14ª dello stesso mese restano
+  buste distinte. Senza DSN il deposito è un no-op segnalato una volta nel
+  log (`hr_non_configurato`); un errore di rete non ferma mai l'ingestione.
+- **Backfill**: `POST /api/prima-nota-salari/deposita-cedolini-in-hr` (admin,
+  `?dry_run=true` per contare senza scrivere) deposita tutto il registro
+  `cedolini` e ritorna `inseriti`/`gia_presenti`/`errori`/`saltati`; da shell
+  `python -m app.services.hr_cedolini_deposito --dry-run`. Test:
+  `tests/test_hr_cedolini_deposito.py`.
+
 ## Canali operativi e conoscenza
 
 - Telegram è l'unico canale attivo per alert e notifiche operative.

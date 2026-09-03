@@ -205,6 +205,19 @@ async def processa_cedolino_completo(
             await db["riepilogo_cedolini"].insert_one(dict(cedolino_record))
         result["cedolino_salvato"] = True
 
+        # HR e' l'archivio cedolini che gli utenti vedono (decisione 03/09/2026):
+        # anche il canale V1 di riserva deposita la busta letta in app_cedolini.
+        # Il riepilogo qui sopra resta per la Prima Nota salari. Mai bloccante.
+        try:
+            from app.services.hr_cedolini_deposito import deposita_cedolino_in_hr
+            result["deposito_hr"] = (await deposita_cedolino_in_hr({
+                **cedolino_record,
+                "giorni_lavorati": cedolino_data.get("giorni_lavorati"),
+                "livello": cedolino_data.get("livello"),
+            })).get("esito")
+        except Exception:
+            logger.exception("Deposito cedolino in HR fallito (canale V1): flusso contabile invariato")
+
         # ============================================
         # 3. PRIMA NOTA SALARI
         # ============================================
@@ -425,6 +438,8 @@ def _summary_cedolino(
         "totale_trattenute": summary.get("trattenute") or 0,
         "tfr_quota": summary.get("tfr_quota") or 0,
         "ore_lavorate": summary.get("ore_lavorate") or 0,
+        "giorni_lavorati": summary.get("giorni_lavorati") or 0,
+        "livello": summary.get("livello"),
         "formato_rilevato": summary.get("template") or "multi_template",
         "ferie_permessi": {
             "ferie_residuo": summary.get("ferie_residuo") or 0,
