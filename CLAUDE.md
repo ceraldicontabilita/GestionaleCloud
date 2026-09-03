@@ -65,8 +65,11 @@ si aggiornano con `scripts/refresh_json_docs.py`, non a mano.
   sezione "Destinazione Drive-only" qui sotto descrive l'assetto precedente
   ed è superata per la persistenza dei dati (Drive resta la fonte degli
   originali documentali, non il database).
-- I PDF del modulo HR (cedolini, bonifici, documenti: ~350 MB in base64) NON
-  vengono idratati in memoria: vivono in `gestionale.blobs` e l'adattatore
+- I PDF del modulo HR (cedolini, bonifici, documenti: ~500 MB in base64 nel
+  vecchio database, di cui ~800 copie duplicate) NON vengono idratati in
+  memoria: vivono in `gestionale.blobs` con chiave = SHA-256 del contenuto e
+  conteggio dei riferimenti (un PDF identico citato da più documenti occupa
+  spazio una volta sola; sparisce solo all'ultimo riferimento). L'adattatore
   `app/hr/db_adapter.py` li carica solo su richiesta.
 
 ### Stato precedente

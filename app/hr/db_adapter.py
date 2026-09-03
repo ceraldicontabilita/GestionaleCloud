@@ -11,10 +11,11 @@ Due compiti, entrambi trasparenti per i router:
 
 2. **Scarico dei binari** — i campi in ``BLOB_FIELDS`` (PDF/DOCX in base64)
    non entrano mai nel documento in memoria: vengono salvati nel
-   ``BlobStore`` e il documento conserva solo un marcatore
-   ``_blobs = {campo: chiave}``. In lettura il contenuto viene riagganciato
-   documento per documento, solo se la proiezione lo richiede. Le
-   proiezioni ``{"pdf_data": 0}`` gia' presenti ovunque nel codice HR
+   ``BlobStore`` (chiave = impronta del contenuto: un PDF identico citato da
+   piu' documenti e' salvato una volta sola) e il documento conserva solo un
+   marcatore ``_blobs = {campo: chiave}``. In lettura il contenuto viene
+   riagganciato documento per documento, solo se la proiezione lo richiede.
+   Le proiezioni ``{"pdf_data": 0}`` gia' presenti ovunque nel codice HR
    diventano quindi anche il modo per non leggere i blob.
 
 Copre il sottoinsieme dell'API motor realmente usato dal modulo HR
@@ -183,6 +184,11 @@ class HRCollection:
     async def estimated_document_count(self, *args, **kwargs) -> int:
         return await self._inner.estimated_document_count(*args, **kwargs)
 
+    async def count_with_blobs(self) -> int:
+        """Documenti che citano almeno un binario (le chiavi sono condivise,
+        quindi non si contano i blob per collezione ma i documenti)."""
+        return await self._inner.count_documents({MARKER: {"$exists": True}})
+
     async def distinct(self, key: str, selector: Optional[Dict[str, Any]] = None, *args, **kwargs) -> List[Any]:
         if key in BLOB_FIELDS:
             raise NotImplementedError(f"distinct su campo binario '{key}' non supportato")
@@ -205,7 +211,7 @@ class HRCollection:
         if blobs:
             markers = dict(cleaned.get(MARKER) or {})
             for field, data in blobs.items():
-                key = blob_key(self.name, cleaned["_id"], field)
+                key = blob_key(data)
                 await self._blobs.put(key, data)
                 markers[field] = key
             cleaned[MARKER] = markers
@@ -249,9 +255,14 @@ class HRCollection:
             if op in ("$set", "$setOnInsert") and isinstance(payload, dict):
                 cleaned, blobs = strip_blobs(payload)
                 for field, data in blobs.items():
-                    key = blob_key(self.name, target["_id"], field)
+                    key = blob_key(data)
+                    old = markers.get(field)
+                    if old == key:
+                        continue  # stesso contenuto: nessun nuovo riferimento
                     await self._blobs.put(key, data)
                     markers[field] = key
+                    if old:
+                        await self._blobs.delete([old])
                 # Un $set esplicito a None equivale a rimuovere il binario.
                 for field in BLOB_FIELDS:
                     if field in payload and payload[field] is None:
@@ -332,10 +343,11 @@ class HRCollection:
         cleaned["_id"] = target["_id"]
         markers: Dict[str, str] = {}
         for field, data in blobs.items():
-            key = blob_key(self.name, target["_id"], field)
-            await self._blobs.put(key, data)
+            key = blob_key(data)
             markers[field] = key
-        stale = [key for field, key in old_markers.items() if field not in markers]
+            if old_markers.get(field) != key:
+                await self._blobs.put(key, data)
+        stale = [key for field, key in old_markers.items() if markers.get(field) != key]
         if stale:
             await self._blobs.delete(stale)
         if markers:

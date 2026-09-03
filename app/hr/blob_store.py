@@ -7,12 +7,18 @@ cache del processo (Render Starter, 512 MiB). Qui vivono in una tabella
 separata ``gestionale.blobs`` letta solo su richiesta, tramite le stesse RPC
 protette dalla chiave runtime.
 
-Una chiave blob e' ``<collezione>/<_id>/<campo>`` ed e' salvata nel documento
-sotto ``_blobs`` (vedi ``db_adapter``): cosi' il documento resta piccolo e il
-contenuto si recupera anche quando la proiezione toglie ``_id``.
+La chiave di un blob e' l'impronta SHA-256 del suo contenuto
+(``sha256:<hex>``): lo stesso PDF citato da piu' documenti (per esempio la
+stessa distinta di bonifici copiata su ogni bonifico, o un bonifico presente
+sia in ``bonifici`` sia in ``pagamenti_esiti``) occupa spazio UNA sola volta.
+L'archivio conta i riferimenti: ``put`` ne aggiunge uno, ``delete`` ne toglie
+uno e cancella davvero solo all'ultimo. Il documento conserva la chiave sotto
+``_blobs`` (vedi ``db_adapter``), cosi' resta piccolo e il contenuto si
+recupera anche quando la proiezione toglie ``_id``.
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 from typing import Any, Awaitable, Callable, Dict, Iterable, List, Optional
 
@@ -21,12 +27,14 @@ logger = logging.getLogger(__name__)
 Rpc = Callable[[str, Dict[str, Any]], Awaitable[Any]]
 
 
-def blob_key(collection: str, doc_id: Any, field: str) -> str:
-    return f"{collection}/{doc_id}/{field}"
+def blob_key(data: str) -> str:
+    """Chiave a contenuto: stessa stringa base64 -> stessa chiave."""
+    return "sha256:" + hashlib.sha256(data.encode("utf-8")).hexdigest()
 
 
 class BlobStore:
-    """Interfaccia minima: put/get/delete/stats."""
+    """Interfaccia minima: put (aggiunge un riferimento), get, delete (toglie
+    un riferimento, cancella all'ultimo), stats."""
 
     persistent: bool = False
 
@@ -69,7 +77,8 @@ class SupabaseBlobStore(BlobStore):
 
     async def stats(self, prefix: str) -> Dict[str, int]:
         result = await self._rpc("gc_blob_stats", {"p_prefix": prefix}) or {}
-        return {"count": int(result.get("count", 0)), "bytes": int(result.get("bytes", 0))}
+        return {"count": int(result.get("count", 0)), "bytes": int(result.get("bytes", 0)),
+                "refs": int(result.get("refs", 0))}
 
 
 class MemoryBlobStore(BlobStore):
@@ -79,9 +88,11 @@ class MemoryBlobStore(BlobStore):
 
     def __init__(self):
         self._data: Dict[str, str] = {}
+        self._refs: Dict[str, int] = {}
 
     async def put(self, key: str, data: str) -> None:
         self._data[key] = data
+        self._refs[key] = self._refs.get(key, 0) + 1
 
     async def get(self, key: str) -> Optional[str]:
         return self._data.get(key)
@@ -89,13 +100,19 @@ class MemoryBlobStore(BlobStore):
     async def delete(self, keys: Iterable[str]) -> int:
         removed = 0
         for key in keys:
-            if self._data.pop(key, None) is not None:
+            if key not in self._refs:
+                continue
+            self._refs[key] -= 1
+            if self._refs[key] <= 0:
+                self._refs.pop(key, None)
+                self._data.pop(key, None)
                 removed += 1
         return removed
 
     async def stats(self, prefix: str) -> Dict[str, int]:
         keys: List[str] = [k for k in self._data if k.startswith(prefix)]
-        return {"count": len(keys), "bytes": sum(len(self._data[k]) for k in keys)}
+        return {"count": len(keys), "bytes": sum(len(self._data[k]) for k in keys),
+                "refs": sum(self._refs[k] for k in keys)}
 
 
 def blob_store_per_runtime(runtime: Any) -> BlobStore:

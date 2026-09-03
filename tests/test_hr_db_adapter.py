@@ -11,7 +11,7 @@ import asyncio
 
 import pytest
 
-from app.hr.blob_store import MemoryBlobStore
+from app.hr.blob_store import MemoryBlobStore, blob_key
 from app.hr.db_adapter import HRDatabase, MARKER, rewrite_selector, wanted_blob_fields, inner_projection
 from app.services.sheets_document_store import SheetDatabase
 
@@ -41,8 +41,8 @@ def test_insert_scarica_il_pdf_e_lascia_solo_il_marcatore(hr):
     _run(db.cedolini.insert_one({"id": "c1", "mese": 3, "pdf_data": "JVBERi0x"}))
     grezzo = _run(inner["hr_cedolini"].find_one({"id": "c1"}))
     assert "pdf_data" not in grezzo
-    assert grezzo[MARKER] == {"pdf_data": "cedolini/c1/pdf_data"}
-    assert _run(store.get("cedolini/c1/pdf_data")) == "JVBERi0x"
+    assert grezzo[MARKER] == {"pdf_data": blob_key("JVBERi0x")}
+    assert _run(store.get(blob_key("JVBERi0x"))) == "JVBERi0x"
 
 
 def test_lettura_riaggancia_il_pdf_solo_se_richiesto(hr):
@@ -87,10 +87,12 @@ def test_update_set_e_unset_tengono_allineato_lo_store(hr):
     _run(db.documenti_cloud.update_one({"id": "doc1"}, {"$set": {"file_data": "AAA", "nome": "x.pdf"}}))
     grezzo = _run(inner["hr_documenti_cloud"].find_one({"id": "doc1"}))
     assert grezzo["nome"] == "x.pdf" and "file_data" not in grezzo
-    assert _run(store.get("documenti_cloud/doc1/file_data")) == "AAA"
+    assert _run(store.get(blob_key("AAA"))) == "AAA"
     assert _run(db.documenti_cloud.find_one({"id": "doc1"}))["file_data"] == "AAA"
+    _run(db.documenti_cloud.update_one({"id": "doc1"}, {"$set": {"file_data": "BBB"}}))
+    assert _run(store.get(blob_key("AAA"))) is None and _run(store.get(blob_key("BBB"))) == "BBB"
     _run(db.documenti_cloud.update_one({"id": "doc1"}, {"$unset": {"file_data": ""}}))
-    assert _run(store.get("documenti_cloud/doc1/file_data")) is None
+    assert _run(store.get(blob_key("BBB"))) is None
     assert MARKER not in _run(inner["hr_documenti_cloud"].find_one({"id": "doc1"}))
 
 
@@ -100,17 +102,40 @@ def test_upsert_senza_corrispondenza_crea_il_documento_con_il_blob(hr):
     assert r.upserted_id
     doc = _run(db.bonifici.find_one({"key": "k1"}))
     assert doc["importo"] == 10 and doc["creato"] is True and doc["pdf_data"] == "B"
-    assert _run(store.stats("bonifici/"))["count"] == 1
+    assert _run(store.stats(""))["count"] == 1
 
 
 def test_delete_rimuove_anche_i_blob(hr):
     db, _, store = hr
     _run(db.cedolini.insert_many([{"id": "a", "pdf_data": "1"}, {"id": "b", "pdf_data": "2"}, {"id": "c"}]))
     _run(db.cedolini.delete_one({"id": "a"}))
-    assert _run(store.stats("cedolini/"))["count"] == 1
+    assert _run(store.stats(""))["count"] == 1
     _run(db.cedolini.delete_many({}))
     assert _run(db.cedolini.count_documents({})) == 0
-    assert _run(store.stats("cedolini/"))["count"] == 0
+    assert _run(store.stats(""))["count"] == 0
+
+
+def test_pdf_identici_occupano_spazio_una_sola_volta(hr):
+    """La stessa distinta copiata su piu' bonifici, e lo stesso bonifico in
+    piu' tabelle: un solo blob, con un riferimento per documento."""
+    db, _, store = hr
+    distinta = "JVBERi0xLjQK" * 10
+    _run(db.bonifici.insert_many([{"id": f"b{i}", "pdf_data": distinta} for i in range(3)]))
+    _run(db.pagamenti_esiti.insert_one({"id": "e1", "pdf_data": distinta}))
+    stats = _run(store.stats(""))
+    assert stats["count"] == 1 and stats["refs"] == 4
+    assert _run(db.bonifici.count_with_blobs()) == 3
+    # Cancellare un documento non toglie il PDF agli altri.
+    _run(db.bonifici.delete_one({"id": "b0"}))
+    assert _run(db.pagamenti_esiti.find_one({"id": "e1"}))["pdf_data"] == distinta
+    assert _run(store.stats(""))["refs"] == 3
+    # Riscrivere lo stesso contenuto non aggiunge riferimenti.
+    _run(db.bonifici.update_one({"id": "b1"}, {"$set": {"pdf_data": distinta}}))
+    assert _run(store.stats(""))["refs"] == 3
+    # L'ultimo riferimento cancella davvero il file.
+    _run(db.bonifici.delete_many({}))
+    _run(db.pagamenti_esiti.delete_many({}))
+    assert _run(store.stats("")) == {"count": 0, "bytes": 0, "refs": 0}
 
 
 def test_update_senza_blob_passa_dritto_al_runtime(hr):

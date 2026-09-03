@@ -7,8 +7,10 @@ gestionale, collezioni ``hr_<nome>``, con i PDF spostati in
 
 Regole (CLAUDE.md "cutover"): idempotente per identita' (stesso ``_id`` ->
 stesso documento, mai un doppione), confronto dei conteggi sorgente/
-destinazione per ogni tabella e per i binari, mai cancellazione della
-sorgente. Si puo' rieseguire: ogni blocco cancella e reinserisce i propri id.
+destinazione per ogni tabella e per i documenti con binari, mai
+cancellazione della sorgente. Si puo' rieseguire: ogni blocco cancella e
+reinserisce i propri id. I PDF identici (stessa distinta su piu' bonifici,
+stesso bonifico in piu' tabelle) finiscono nell'archivio una sola volta.
 
 Uso da riga di comando (con le env del gestionale: DATA_BACKEND=supabase e
 SUPABASE_*; la DSN sorgente e' la ``SUPABASE_DB_URL`` di AppDipendenti):
@@ -112,11 +114,9 @@ async def migra_tabella(conn, hr_db: Any, runtime: Any, tabella: str, *, dry_run
 
     destinazione = {
         "documenti": await collection.count_documents({}),
-        "binari": (await hr_db.blobs.stats(f"{nome}/"))["count"],
+        "binari": await collection.count_with_blobs(),
     }
-    # I binari si contano per documento in sorgente e per chiave in
-    # destinazione: un documento con due campi binari produce due chiavi.
-    coincide = destinazione["documenti"] == atteso["documenti"] and destinazione["binari"] >= atteso["binari"]
+    coincide = destinazione == atteso
     return {"collezione": nome, "sorgente": atteso, "destinazione": destinazione, "coincide": coincide}
 
 
@@ -167,9 +167,16 @@ async def stato_destinazione() -> Dict[str, Any]:
         out.append({
             "collezione": nome,
             "documenti": await hr_db[nome].count_documents({}),
-            "binari": (await hr_db.blobs.stats(f"{nome}/"))["count"],
+            "documenti_con_binari": await hr_db[nome].count_with_blobs(),
         })
-    return {"collezioni": out, "binari_persistenti": hr_db.blobs.persistent}
+    archivio = await hr_db.blobs.stats("")
+    return {
+        "collezioni": out,
+        "binari_persistenti": hr_db.blobs.persistent,
+        # file distinti salvati vs riferimenti dai documenti: la differenza
+        # e' lo spazio risparmiato dalla deduplicazione a contenuto.
+        "archivio_binari": archivio,
+    }
 
 
 def _main() -> None:
