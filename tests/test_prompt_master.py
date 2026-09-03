@@ -13,8 +13,8 @@ PROMPT = (ROOT / "PROMPT_MASTER.md").read_text(encoding="utf-8")
 
 
 def test_prompt_master_copre_catalogo_fogli_e_regole_atomiche():
-    assert len(master.PAGE_PURPOSES) == 76
-    assert set(master.PAGE_PURPOSES) == set(range(1, 77))
+    assert len(master.PAGE_PURPOSES) == 66
+    assert set(master.PAGE_PURPOSES) == set(range(1, 67))
     assert len(master.SHEETS) == 30
     normalized = re.sub(r"\s+", " ", PROMPT)
     for required in (

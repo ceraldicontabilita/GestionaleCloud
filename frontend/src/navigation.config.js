@@ -56,10 +56,11 @@ export const NAV_ALTRO = [
   { to: '/ritenute', label: 'Ritenute', Icon: Receipt },
   { to: '/salari', label: 'Cedolini paga', Icon: Users },
   { to: '/strumenti', label: 'Strumenti', Icon: Wrench },
-  { to: '/menu/ordini', label: 'Menu', Icon: Menu },
-  { to: '/hr', label: 'HR', Icon: Users, adminOnly: true },
-  // App Lotti (HACCP) portata pari pari dentro il gestionale: documento a se',
-  // con il proprio login a PIN, servita dal backend Lotti montato a /lotti.
+  // App del gruppo portate pari pari dentro il gestionale (decisione del
+  // titolare 03/09/2026): ognuna e' un documento a se', con il proprio login,
+  // servita a pagina intera dal backend originale montato a /menu, /hr, /lotti.
+  { href: '/menu/admin', label: 'Menu', Icon: Menu, external: true },
+  { href: '/hr/', label: 'HR', Icon: Users, external: true, adminOnly: true },
   { href: '/lotti/', label: 'HACCP Lotti', Icon: ShieldCheck, external: true },
   { to: '/impostazioni-ai', label: 'Assistente AI', Icon: Bot, adminOnly: true },
   { to: '/utenti', label: 'Utenti', Icon: Users, adminOnly: true },

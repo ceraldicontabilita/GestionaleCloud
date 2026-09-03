@@ -120,74 +120,62 @@ Regole del cutover:
 La memoria del processo è soltanto una cache ricostruibile: Drive/Sheets resta
 sempre la sorgente persistente.
 
-## Modulo HR (ex AppDipendenti) — `app/hr/` e `frontend/src/hr/`
+## HR (AppDipendenti) portata pari pari — `app/hr/` + `frontend_hr/` a `/hr`
 
-- Tutto il backend di AppDipendenti vive in `app/hr/` e risponde sotto
-  `/api/hr/...` (stessi percorsi dell'app originale spostati di un livello:
-  `/api/hr/dipendenti-cloud`, `/api/hr/cedolini`, `/api/hr/portale/...`).
-  Registrazione in `app/hr/router_registry.py`, avvio in `app/hr/startup.py`
-  (handler eventi, seed TFR, job periodici solo con scheduler attivo).
-- Database: `app/hr/database.py` → `HRDatabase` (collezioni `hr_<nome>` nel
-  registro unico + blob fuori memoria). Nessuna connessione separata.
-- **PIN unificato**: l'amministratore usa SOLO il login del gestionale
-  (`/login`, `PIN_HASH_ADMIN`, MFA). Il portale dipendenti (`/portale`) fa
-  login con tocca-il-nome + PIN personale (`POST /api/hr/auth/pin-login`
-  `{dipendente_id, pin}`), token 7 giorni con ruolo `dipendente` o
-  `responsabile_turni`, **mai** `admin`. Il middleware globale lascia passare
-  questi ruoli solo su `/api/hr/`.
-- PIN dei dipendenti: generati dall'admin (`POST /api/hr/accessi/{id}/pin/genera`
-  o `POST /api/hr/accessi/genera-mancanti`), mostrati una sola volta, salvati
-  solo come hash. Nessun PIN nel codice, nella chat o nei file.
-- Frontend: `frontend/src/hr/HRApp.jsx` (rotte `/hr`, `/hr/:page`, solo admin),
-  `frontend/src/hr/PortaleDipendente.jsx` (`/portale`, pubblico), `/hr-turni`
-  per il responsabile turni. Voce "HR" nel menu principale.
-- Migrazione dati dalla vecchia app: `app/hr/migrazione_appdipendenti.py`
-  (CLI o `POST /api/hr/admin/migrazione-appdipendenti`, DSN solo dall'env
-  `APPDIPENDENTI_DB_URL`), idempotente, con confronto dei conteggi.
-- Da fare (fase successiva): ritirare `app/routers/employees/dipendenti.py`
-  e le collezioni contabili `dipendenti`/`cedolini` duplicate a favore del
-  modulo HR (un solo sistema per funzione), poi portare Lotti.
+- **[03/09/2026]** I moduli riscritti `app/hr` + `frontend/src/hr` (rotte
+  `/api/hr/...`, `/hr`, `/portale`, PIN unificato) sono stati **eliminati**:
+  al loro posto c'è l'app AppDipendenti originale, così com'era. `app/hr/` =
+  copia di `AppDipendenti/backend/app` con i soli import riscritti nel
+  namespace `app.hr.*` (`app/hr/embed.py`: `hr_app`, `avvia_hr`/`arresta_hr`
+  richiamati dal lifespan di `app/main.py` solo con scheduler attivo — ha un
+  suo APScheduler — e `monta_frontend`). Montata in `app/main.py` a `/hr`
+  PRIMA del catch-all della SPA dell'ERP: API a `/hr/api/...`
+  (`/hr/api/health`, `/hr/api/auth/pin-login`, `/hr/api/dipendenti-cloud/...`).
+- **Login proprio**, non quello del gestionale: tocca-il-nome + PIN personale
+  per i dipendenti, "Accesso amministratore" con il PIN dell'env `HR_PIN_CODE`;
+  JWT firmato con `HR_JWT_SECRET` (sessione dipendente 7 giorni, admin 2 ore).
+  Il middleware del gestionale non c'entra: `/hr/...` è fuori da `/api/`.
+  I ruoli `dipendente`/`responsabile_turni` non esistono più in
+  `app/utils/ruoli.py`.
+- Dati: Postgres/Supabase dell'app originale via `HR_SUPABASE_DB_URL`
+  (fallback `APPDIPENDENTI_DB_URL`, poi `SUPABASE_DB_URL`), tabelle `app_<nome>`
+  con colonna `doc jsonb` (adattatore Mongo→Postgres `app/hr/db_supabase.py`).
+  Nessun dato HR nel registro Drive/Sheets/`gestionale.documents`.
+- `frontend_hr/` = copia di `AppDipendenti/frontend` (Vite, `base: '/hr/'`,
+  build in `frontend_hr/dist` compilata su Render, non committata): gestione
+  desktop a `/hr/`, portale mobile a `/hr/portale`. Voce "HR" (solo admin)
+  nel menu Altro = link a pagina intera.
 
-## Modulo Menu (ex app Menu) — `app/menu/` e `frontend/src/menu/`
+## Menu portato pari pari — `app/menu/` + `frontend_menu/` a `/menu`
 
-- Backend sotto `/api/menu` (`app/menu/router_registry.py`) in tre perimetri:
-  `/pubblico` (clienti dal QR, nessuna sessione: menu, allergeni, sale, invio
-  ordine, stato ordine, immagini), `/staff` (ordini, cassa, cucina, magazzino
-  bar: qualunque sessione valida, anche del portale dipendenti), `/admin`
-  (catalogo, sale, QR/WiFi, immagini, backup, stato dati: `admin`/`operatore`;
-  ripristino e migrazione solo `admin`). Nessun login separato: sessione
-  unica del gestionale (`app/menu/auth.py`).
-- Dati nel registro unico: collezioni `menu_categories`, `menu_subcategories`,
-  `menu_products`, `menu_allergens`, `menu_qrcode_config`, `menu_orders`,
-  `menu_sale`, `menu_warehouse_movements`, `menu_immagini`; il **magazzino
-  bar** e' la collezione `magazzino_bar_prodotti` di Lotti (unico magazzino
-  condiviso, campi di Lotti `nome/unita/stock`). Immagini nell'archivio
-  binari a contenuto (`gestionale.blobs`), servite da
-  `GET /api/menu/pubblico/immagini/{id}`: niente bucket Storage.
-- Frontend: `/menu` = menu pubblico (`MenuPubblico.jsx`), `/menu/<sezione>` =
-  area operativa nel layout del gestionale (`MenuHub.jsx`: ordini, cassa,
-  cucina, magazzino, sale, gestione), `/menu-banco` = stesse schermate di
-  banco per chi entra dal portale dipendenti (token PIN). Tailwind e' attivo
-  SOLO per `src/menu/**` (`tailwind.config.cjs`, preflight spento, token
-  `--menu-*`), voce "Menu" nel menu principale.
-- Backup: un solo JSON scaricabile (`GET /api/menu/admin/backup/esporta`,
-  immagini comprese) e ripristino da file; niente archivi sul disco di Render.
-- **[03/09/2026] Il menu vero si gestisce su Qromo** (`ceraldicaffe.qromo.it`),
-  non nel vecchio Supabase dell'app Menu (dati incompleti: senza molte foto
-  e allergeni). `app/menu/migrazione_qromo.py` legge il catalogo pubblicato
-  su Qromo (categorie/sottocategorie/prodotti/prezzi/allergeni/immagini sono
-  incorporati come costanti JavaScript nella home del menu, letti da lì:
-  nessuna API Qromo documentata, nessun login), esclude le sottocategorie
-  interne di cassa `BANCO - *` (stesso prodotto, prezzo diverso da quello
-  pubblicato al cliente) e riduce i 39 tag allergene/dietetici di Qromo ai
-  14 allergeni UE gestiti dal modulo. Idempotente (sostituisce per intero
-  categorie/sottocategorie/prodotti a ogni giro: Qromo resta l'unico punto
-  in cui modificare il catalogo), scarica le immagini nell'archivio a
-  contenuto e confronta i conteggi. Nessuna env da configurare su Render.
-  Dalla scheda Backup della pagina Gestione menu: prima "solo prova", poi
-  "Sincronizza ora"; ripetibile ogni volta che il menu cambia su Qromo.
+- **[03/09/2026]** Il modulo riscritto `app/menu` + `frontend/src/menu`
+  (rotte `/api/menu/...`, Tailwind, `/menu-banco`) è stato **eliminato**: al
+  suo posto c'è l'app Menu originale. `app/menu/` = copia di `Menu/backend`
+  con import nel namespace `app.menu.*` (`app/menu/embed.py`: `menu_app`,
+  `avvia_menu`/`arresta_menu` no-op). `app/menu/server.py` monta da solo il
+  build `frontend_menu/build` se esiste; `app/main.py` monta `menu_app` a
+  `/menu` PRIMA del catch-all della SPA: API a `/menu/api/...`
+  (`/menu/api/health`, `/menu/api/admin/login`).
+- **Login admin proprio** username/password (`MENU_ADMIN_USERNAME`,
+  `MENU_ADMIN_PASSWORD`, JWT `MENU_JWT_SECRET`), pagina `/menu/admin/login`.
+- Dati nel progetto Supabase `Lotti-HACCP`, tabelle `menu_*`
+  (`menu_categories`, `menu_subcategories`, `menu_products`, `menu_allergens`,
+  `menu_orders`, `menu_sale`, ...) via client PostgREST `MENU_SUPABASE_URL` /
+  `MENU_SUPABASE_KEY`; immagini nel bucket Storage `menu-images`.
+- **Il menu vero si gestisce su Qromo** (`ceraldicaffe.qromo.it`): bottone
+  "Sincronizza da Qromo" nel tab Prodotti dell'area admin →
+  `POST /menu/api/admin/sync-qromo` (`app/menu/qromo_sync.py`, aggiunta
+  GestionaleCloud: legge le costanti JavaScript della home Qromo, esclude le
+  sottocategorie di cassa `BANCO - *`, riduce gli allergeni ai 14 UE,
+  sostituisce per intero categorie/sottocategorie/prodotti; `GET
+  .../sync-qromo/preview` = prova a secco). Test: `tests/test_menu_qromo_sync.py`.
+- URL del menu per i clienti (QR al tavolo):
+  `https://gestionalecloud.onrender.com/menu/`. `frontend_menu/` = copia di
+  `Menu/frontend` (CRA, `PUBLIC_URL=/menu` in `.env.production`, tracciato
+  apposta; build compilata su Render). Voce "Menu" nel menu Altro = link a
+  pagina intera su `/menu/admin`.
 
-## App portate pari pari — `app/lotti/` + `frontend_lotti/` (e poi Menu, HR)
+## App portate pari pari — `app/lotti/` + `frontend_lotti/`, `app/menu/` + `frontend_menu/`, `app/hr/` + `frontend_hr/`
 
 - **[03/09/2026, decisione del titolare]** Le app del gruppo NON vanno
   ricostruite dentro il gestionale: si prende il repository originale e lo si
@@ -215,10 +203,18 @@ sempre la sorgente persistente.
   vivono in `app/lotti/tests` (`AUTH_SECRET=test python -m pytest app/lotti/tests`).
   La guardia `tests/test_drive_only_architecture.py` esclude `app/lotti`
   (usa l'API Mongo in memoria per progetto, non è l'archivio dell'ERP).
-- Fase successiva: portare allo stesso modo il Menu originale (`Menu/`) e
-  AppDipendenti (`AppDipendenti/`) al posto dei moduli riscritti `app/menu`,
-  `frontend/src/menu`, `app/hr`, `frontend/src/hr`; poi consolidare i dati
-  delle app nel progetto Supabase `GestionaleCloud`.
+- **Menu e HR: fatto (03/09/2026)**, vedi le due sezioni qui sopra. I moduli
+  riscritti `app/menu`, `frontend/src/menu`, `app/hr`, `frontend/src/hr`
+  non esistono più (con i loro test, le pagine 67-76 di `page_catalog.json`
+  e le voci `/hr`, `/portale`, `/menu*` del router React). Le guardie
+  `tests/test_drive_only_architecture.py`, `tests/test_csrf_cookie_guard.py` e
+  `tests/test_no_hardcoded_deprecated_collections.py` escludono `app/lotti`,
+  `app/menu`, `app/hr` (codice di app esterne, non dell'ERP); i test delle
+  app restano quelli originali (`app/lotti/tests`, `app/hr/tests`).
+  `render.yaml` compila anche `frontend_menu` e `frontend_hr` e dichiara le
+  env `LOTTI_*`, `MENU_*`, `HR_*` (`sync: false`).
+- Fase successiva: consolidare i dati delle app nel progetto Supabase
+  `GestionaleCloud`.
 
 ## Canali operativi e conoscenza
 

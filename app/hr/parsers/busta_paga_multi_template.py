@@ -1144,7 +1144,7 @@ def parse_page2_ore_lavorate(text: str) -> Dict[str, Any]:
 
 
 def parse_busta_paga_from_bytes(pdf_bytes: bytes) -> Dict[str, Any]:
-    """Parse busta paga da bytes (per upload via API o dati da Mongo)."""
+    """Parse busta paga da bytes (per upload via API o dati da MongoDB)."""
     import tempfile
     import os
     

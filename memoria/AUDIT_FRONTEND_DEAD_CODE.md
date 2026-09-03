@@ -3,14 +3,14 @@
 > Generato da `scripts/audit_frontend_dead_code.py` seguendo il grafo di import reale a partire da `main.jsx`/`App.jsx`/`navigation.config.js` (import statici, `import()` dinamici, `lazy(() => import(...))`, re-export `export {X} from`/`export * from`).
 > NON modificare a mano: rilancia lo script.
 
-**Totale file analizzati:** 233
+**Totale file analizzati:** 209
 
 | Classificazione | File |
 |---|---:|
 | ENTRYPOINT | 3 |
 | ROUTE_ATTIVA | 29 |
-| COMPONENTE_USATO | 118 |
-| MODALE_USATO | 4 |
+| COMPONENTE_USATO | 95 |
+| MODALE_USATO | 3 |
 | HOOK_USATO | 3 |
 | TEST_ONLY | 53 |
 | DINAMICO_DA_VERIFICARE | 22 |
@@ -136,34 +136,10 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/hooks/usePrimaNota.js` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/hooks/useWebSocket.js` | HOOK_USATO | 1 |
 | `frontend/src/hooks/useWebSocket.test.js` | TEST_ONLY | 0 |
-| `frontend/src/hr/HRApp.jsx` | COMPONENTE_USATO | 1 |
-| `frontend/src/hr/HRGate.jsx` | COMPONENTE_USATO | 1 |
-| `frontend/src/hr/PortaleDipendente.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/lib/queryClient.js` | COMPONENTE_USATO | 2 |
-| `frontend/src/lib/utils.js` | COMPONENTE_USATO | 114 |
+| `frontend/src/lib/utils.js` | COMPONENTE_USATO | 102 |
 | `frontend/src/lib/utils.test.js` | TEST_ONLY | 0 |
 | `frontend/src/main.jsx` | ENTRYPOINT | 0 |
-| `frontend/src/menu/MenuHub.jsx` | COMPONENTE_USATO | 1 |
-| `frontend/src/menu/MenuPubblico.jsx` | COMPONENTE_USATO | 1 |
-| `frontend/src/menu/api.js` | COMPONENTE_USATO | 8 |
-| `frontend/src/menu/pagine/Cassa.jsx` | COMPONENTE_USATO | 1 |
-| `frontend/src/menu/pagine/Cucina.jsx` | COMPONENTE_USATO | 1 |
-| `frontend/src/menu/pagine/Gestione.jsx` | COMPONENTE_USATO | 1 |
-| `frontend/src/menu/pagine/Magazzino.jsx` | COMPONENTE_USATO | 1 |
-| `frontend/src/menu/pagine/Ordini.jsx` | COMPONENTE_USATO | 1 |
-| `frontend/src/menu/pagine/Sale.jsx` | COMPONENTE_USATO | 1 |
-| `frontend/src/menu/ui/button.jsx` | COMPONENTE_USATO | 5 |
-| `frontend/src/menu/ui/card.jsx` | COMPONENTE_USATO | 1 |
-| `frontend/src/menu/ui/checkbox.jsx` | COMPONENTE_USATO | 1 |
-| `frontend/src/menu/ui/dialog.jsx` | MODALE_USATO | 4 |
-| `frontend/src/menu/ui/input.jsx` | COMPONENTE_USATO | 5 |
-| `frontend/src/menu/ui/label.jsx` | COMPONENTE_USATO | 4 |
-| `frontend/src/menu/ui/select.jsx` | COMPONENTE_USATO | 3 |
-| `frontend/src/menu/ui/sheet.jsx` | COMPONENTE_USATO | 1 |
-| `frontend/src/menu/ui/switch.jsx` | COMPONENTE_USATO | 1 |
-| `frontend/src/menu/ui/table.jsx` | COMPONENTE_USATO | 2 |
-| `frontend/src/menu/ui/tabs.jsx` | COMPONENTE_USATO | 1 |
-| `frontend/src/menu/ui/textarea.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/navigation.config.js` | ENTRYPOINT | 0 |
 | `frontend/src/pages/Admin.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/AdminOperationalBoundary.test.jsx` | TEST_ONLY | 0 |

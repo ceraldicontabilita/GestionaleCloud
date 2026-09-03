@@ -598,10 +598,10 @@ async def ignora_alert(
 
 
 # ============================================================
-# SEED: inserire definizioni alert in Mongo
+# SEED: inserire definizioni alert in MongoDB
 # ============================================================
 async def seed_alert_definitions(db):
-    """Inserisce/aggiorna il catalogo alert_definitions in Mongo."""
+    """Inserisce/aggiorna il catalogo alert_definitions in MongoDB."""
     for codice, dati in ALERT_CATALOG.items():
         await db[COLL_ALERT_DEFINITIONS].update_one(
             {"codice": codice},

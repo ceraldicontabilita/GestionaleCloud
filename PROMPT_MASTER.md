@@ -412,7 +412,7 @@ test e necessario a una route/job/integratore attivo. Audit datati e vecchi
 porting non restano nel repository: Git conserva la storia. Le mappe generate
 si rigenerano dal codice e non si correggono a mano.
 
-## Appendice A — Tutte le 76 pagine
+## Appendice A — Tutte le 66 pagine
 
 1. **Login** — `/login` — accesso `public` — modulo `accesso` — Login sicuro, sessione, MFA e redirect alla destinazione autorizzata. Fonte UI: `frontend/src/pages/Login.jsx`; mappa: `memoria/pagine/login.json`.
 2. **Gestione riservata** — `/gestione-riservata` — accesso `reserved` — modulo `accesso` — Area riservata separata, con accesso dedicato e movimenti auditabili. Fonte UI: `frontend/src/pages/GestioneRiservata.jsx`; mappa: `memoria/pagine/gestione-riservata.json`.
@@ -480,16 +480,6 @@ si rigenerano dal codice e non si correggono a mano.
 64. **Atti amministrativi** — `/documenti/atti` — accesso `authenticated` — modulo `documenti` — Atti amministrativi con ente, protocollo, originale, scadenze e notifiche. Fonte UI: `frontend/src/pages/AttiAmministrativi.jsx`; mappa: `memoria/pagine/documenti-atti.json`.
 65. **Situazione fiscale** — `/situazione-fiscale` — accesso `authenticated` — modulo `contabilita` — Situazione fiscale unificata con F24, dichiarazioni, quietanze e anomalie. Fonte UI: `frontend/src/pages/SituazioneFiscale.jsx`; mappa: `memoria/pagine/situazione-fiscale.json`.
 66. **Tracciabilità e HACCP** — `/tracciabilita` — accesso `authenticated` — modulo `tracciabilita` — Ricezioni, lotti, registri, attese correttive, ricette, produzioni e attrezzature collegate alle entità canoniche. Fonte UI: `frontend/src/pages/TracciabilitaHACCP.jsx`; mappa: `memoria/pagine/tracciabilita-haccp.json`.
-67. **HR · Gestione dipendenti** — `/hr` — accesso `admin` — modulo `hr` — Area gestione HR (ex AppDipendenti): anagrafica, presenze, ferie, turni, timbrature, buste paga, TFR, contratti, documenti e accessi con PIN personale dei dipendenti. Fonte UI: `frontend/src/hr/HRApp.jsx`; mappa: `memoria/pagine/hr-gestione.json`.
-68. **HR · Portale dipendenti** — `/portale` — accesso `public` — modulo `portale` — Portale dipendenti su smartphone: login tocca-il-nome + PIN personale, timbrature, turni, buste paga, documenti, richieste e avvisi; l'amministratore accede dal login unico del gestionale. Fonte UI: `frontend/src/hr/PortaleDipendente.jsx`; mappa: `memoria/pagine/hr-portale.json`.
-69. **Menu · Menu pubblico (QR)** — `/menu` — accesso `public` — modulo `menu` — Menu digitale pubblico di Ceraldi Caffè (QR al tavolo): categorie, sottocategorie, prodotti con allergeni, IT/EN, carrello e invio dell'ordine con sala, coperto e metodo di pagamento; nessuna sessione. Fonte UI: `frontend/src/menu/MenuPubblico.jsx`; mappa: `memoria/pagine/menu-pubblico.json`.
-70. **Menu · Ordini** — `/menu/ordini` — accesso `authenticated` — modulo `menu` — Ordini del menu in tempo reale su quattro colonne (nuovi, in corso, pronti, completati) con avanzamento e annullo. Fonte UI: `frontend/src/menu/MenuHub.jsx`; mappa: `memoria/pagine/menu-ordini.json`.
-71. **Menu · Cassa** — `/menu/cassa` — accesso `authenticated` — modulo `menu` — Cassa: ordini al banco dal catalogo, sala e coperto, incasso contanti/POS e coda degli ordini da incassare. Fonte UI: `frontend/src/menu/MenuHub.jsx`; mappa: `memoria/pagine/menu-cassa.json`.
-72. **Menu · Monitor cucina** — `/menu/cucina` — accesso `authenticated` — modulo `menu` — Monitor cucina: ticket degli ordini nuovi e in preparazione con minuti trascorsi, inizio e pronto. Fonte UI: `frontend/src/menu/MenuHub.jsx`; mappa: `memoria/pagine/menu-cucina.json`.
-73. **Menu · Magazzino bar** — `/menu/magazzino` — accesso `authenticated` — modulo `menu` — Magazzino bar condiviso con Lotti (collezione unica): giacenze, soglie minime, carichi, scarichi e storico movimenti. Fonte UI: `frontend/src/menu/MenuHub.jsx`; mappa: `memoria/pagine/menu-magazzino.json`.
-74. **Menu · Sale** — `/menu/sale` — accesso `authenticated` — modulo `menu` — Sale del locale: abilitazione ordini, coperto a persona e blocco contanti per gli ordini dal QR. Fonte UI: `frontend/src/menu/MenuHub.jsx`; mappa: `memoria/pagine/menu-sale.json`.
-75. **Menu · Gestione menu** — `/menu/gestione` — accesso `authenticated` — modulo `menu` — Gestione del menu (admin/operatore): categorie, sottocategorie, prodotti con allergeni e immagini deduplicate, QR menu/WiFi, backup JSON e migrazione dal vecchio Supabase (solo admin). Fonte UI: `frontend/src/menu/MenuHub.jsx`; mappa: `memoria/pagine/menu-gestione.json`.
-76. **Menu · Banco portale dipendenti** — `/menu-banco` — accesso `public` — modulo `menu` — Banco per chi entra dal portale dipendenti (token PIN): ordini, cassa, cucina e magazzino bar senza il layout del gestionale. Fonte UI: `frontend/src/menu/MenuHub.jsx`; mappa: `memoria/pagine/menu-banco.json`.
 
 ## Appendice B — Fogli e progressivi Drive/Sheets
 
@@ -534,12 +524,14 @@ si rigenerano dal codice e non si correggono a mano.
 |---|---|---|---|---|
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | sicurezza | segreta | `int` / valore non riportato | `app/config.py` |
 | `ADER_MICRO_RESIDUAL_THRESHOLD_CENTS` | azienda-fiscale | configurazione | `int` / `500` | `app/config.py` |
-| `ADMIN_EMAIL` | sicurezza | configurazione | non dichiarato in Settings | `app/hr/services/email_smtp.py`, `app/routers/auth.py`, `app/routers/pin_login.py`, `scripts/e2e_distruttivo_server.py` |
-| `ADMIN_PASSWORD` | sicurezza | segreta | non dichiarato in Settings | `app/routers/auth.py`, `scripts/e2e_distruttivo_server.py` |
-| `ADMIN_PASSWORD_HASH` | sicurezza | segreta | non dichiarato in Settings | `app/routers/auth.py` |
+| `ADMIN_EMAIL` | sicurezza | configurazione | non dichiarato in Settings | `app/hr/routers/auth.py`, `app/hr/services/email_smtp.py`, `app/routers/auth.py`, `app/routers/pin_login.py`, `scripts/e2e_distruttivo_server.py` |
+| `ADMIN_PASSWORD` | sicurezza | segreta | non dichiarato in Settings | `app/hr/routers/auth.py`, `app/menu/routes/qrcode_routes.py`, `app/routers/auth.py`, `scripts/e2e_distruttivo_server.py` |
+| `ADMIN_PASSWORD_HASH` | sicurezza | segreta | non dichiarato in Settings | `app/hr/routers/auth.py`, `app/routers/auth.py` |
 | `ADMIN_PIN` | sicurezza | segreta | non dichiarato in Settings | `app/routers/pin_login.py`, `app/services/utenti_pin.py` |
 | `ADMIN_PIN_INIZIALE` | sicurezza | segreta | non dichiarato in Settings | `app/lotti/routers/tablet_operatori.py` |
 | `ADMIN_PIN_RECOVERY` | sicurezza | segreta | non dichiarato in Settings | `app/lotti/routers/tablet_operatori.py` |
+| `ADMIN_TOKEN_EXPIRE_MINUTES` | sicurezza | segreta | non dichiarato in Settings | `app/hr/routers/pin_login.py` |
+| `ADMIN_USERNAME` | sicurezza | configurazione | non dichiarato in Settings | `app/menu/routes/qrcode_routes.py` |
 | `AI_L2_MAX_FINANCIAL_IMPACT` | app-runtime | configurazione | non dichiarato in Settings | `app/agents/decision_engine.py` |
 | `AI_L2_MIN_CONFIDENCE` | app-runtime | configurazione | non dichiarato in Settings | `app/agents/decision_engine.py` |
 | `ALGORITHM` | app-runtime | configurazione | `str` / `'HS256'` | `app/config.py` |
@@ -551,7 +543,7 @@ si rigenerano dal codice e non si correggono a mano.
 | `ANTHROPIC_API_KEY` | ai | segreta | non dichiarato in Settings | `app/hr/services/document_ai_extractor.py`, `app/lotti/routers/food_cost.py`, `app/lotti/routers/ingredienti.py`, `app/lotti/routers/normalizzazione.py`, `app/lotti/routers/schede_tecniche.py`, `app/lotti/routers/scheduler.py`, `app/routers/ai_parser.py`, `app/routers/fornitori_learning.py`, `app/routers/settings_router.py`, `app/services/ai_categorizzazione.py`, `app/services/ai_document_parser.py`, `app/services/chat_ai_engine.py`, `app/services/document_ai_extractor.py`, `app/services/enhanced_document_parser.py`, `app/services/llm_document_parser.py` |
 | `ANTHROPIC_DOCUMENT_MODEL` | ai | configurazione | non dichiarato in Settings | `app/services/anthropic_llm_client.py` |
 | `ANTHROPIC_MODEL` | ai | configurazione | non dichiarato in Settings | `app/routers/settings_router.py`, `app/services/anthropic_llm_client.py`, `app/services/chat_ai_engine.py` |
-| `APPDIPENDENTI_DB_URL` | app-runtime | configurazione | non dichiarato in Settings | `app/hr/routers/admin_hr.py`, `render.yaml` |
+| `APPDIPENDENTI_DB_URL` | app-runtime | configurazione | non dichiarato in Settings | `render.yaml` |
 | `APP_NAME` | app-runtime | configurazione | `str` / `'Azienda in Cloud ERP'` | `app/config.py` |
 | `APP_VERSION` | app-runtime | configurazione | `str` / `'2.0.0'` | `app/config.py` |
 | `AUDIT_BASE_URL` | app-runtime | configurazione | non dichiarato in Settings | `frontend/scripts/audit-layout.cjs`, `frontend/scripts/audit-operation-index.cjs`, `frontend/scripts/audit-viewer.cjs` |
@@ -582,14 +574,14 @@ si rigenerano dal codice e non si correggono a mano.
 | `AZIENDA_SEDE` | azienda-fiscale | configurazione | non dichiarato in Settings | `app/hr/routers/portale_buste.py` |
 | `AZIENDA_STUDIO` | azienda-fiscale | configurazione | non dichiarato in Settings | `app/lotti/azienda.py` |
 | `AZIENDA_TEL` | azienda-fiscale | configurazione | non dichiarato in Settings | `app/config/azienda.py`, `app/lotti/azienda.py` |
-| `BACKEND_URL` | app-runtime | configurazione | non dichiarato in Settings | `scripts/smoke_app.py` |
+| `BACKEND_URL` | app-runtime | configurazione | non dichiarato in Settings | `app/menu/routes/qrcode_routes.py`, `scripts/smoke_app.py` |
 | `BACKUP_DIR` | app-runtime | configurazione | non dichiarato in Settings | `app/lotti/routers/backup.py` |
 | `BASE_URL` | test-tooling | configurazione | non dichiarato in Settings | `scripts/collaudo_ui.mjs` |
 | `CACHE_TTL_SECONDS` | app-runtime | configurazione | `int` / `3600` | `app/config.py` |
 | `CHROMIUM_PATH` | test-tooling | configurazione | non dichiarato in Settings | `scripts/collaudo_ui.mjs` |
 | `COMMERCIALISTA_EMAIL` | app-runtime | configurazione | non dichiarato in Settings | `app/hr/routers/dipendenti_cloud/__init__.py` |
 | `CORS_ALLOWED_ORIGINS` | sicurezza | configurazione | `str` / `''` | `app/config.py` |
-| `CORS_ORIGINS` | sicurezza | configurazione | `str` / `'*'` | `app/config.py`, `app/lotti/server.py` |
+| `CORS_ORIGINS` | sicurezza | configurazione | `str` / `'*'` | `app/config.py`, `app/lotti/server.py`, `app/menu/server.py` |
 | `CREDENTIALS_ENCRYPTION_KEY` | app-runtime | configurazione | non dichiarato in Settings | `render.yaml` |
 | `DATA_BACKEND` | app-runtime | configurazione | `str` / `'sheets'` | `app/config.py`, `render.yaml` |
 | `DB_NAME` | app-runtime | configurazione | `str` / `'Gestionale'` | `app/config.py`, `app/lotti/run_locale_test.py`, `app/lotti/scripts/fix_fornitori_acquaviva.py`, `app/lotti/scripts/import_acquaviva_definitivo.py`, `app/lotti/scripts/import_listino_2026.py`, `app/lotti/scripts/import_ricette_excel.py`, `app/lotti/scripts/scrape_acquaviva_images.py`, `app/lotti/scripts/scrape_vandemoortele_acquaviva.py`, `app/lotti/tests/test_iteration54_features.py`, `app/lotti/utils/shared.py` |
@@ -690,9 +682,12 @@ si rigenerano dal codice e non si correggono a mano.
 | `GOOGLE_SHEETS_LEDGER_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `GOOGLE_SHEETS_LEDGER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py`, `render.yaml` |
 | `HOST` | app-runtime | configurazione | `str` / `'0.0.0.0'` | `app/config.py` |
-| `HR_JWT_SECRET` | app-runtime | segreta | non dichiarato in Settings | `render.yaml` |
+| `HR_ADMIN_EMAIL` | app-runtime | configurazione | non dichiarato in Settings | `app/hr/routers/auth.py` |
+| `HR_ADMIN_PASSWORD` | app-runtime | segreta | non dichiarato in Settings | `app/hr/routers/auth.py` |
+| `HR_ADMIN_PASSWORD_HASH` | app-runtime | segreta | non dichiarato in Settings | `app/hr/routers/auth.py` |
+| `HR_ADMIN_TOKEN_EXPIRE_MINUTES` | app-runtime | segreta | non dichiarato in Settings | `app/hr/routers/pin_login.py` |
+| `HR_JWT_SECRET` | app-runtime | segreta | non dichiarato in Settings | `app/hr/routers/auth.py`, `render.yaml` |
 | `HR_PIN_CODE` | app-runtime | segreta | non dichiarato in Settings | `render.yaml` |
-| `HR_PORTALE_TOKEN_EXPIRE_MINUTES` | app-runtime | segreta | non dichiarato in Settings | `app/hr/config.py` |
 | `HR_SUPABASE_DB_URL` | app-runtime | configurazione | non dichiarato in Settings | `render.yaml` |
 | `IMAP_EMAIL` | gmail-email | configurazione | non dichiarato in Settings | `app/hr/routers/dipendenti_cloud/__init__.py` |
 | `IMAP_HOST` | gmail-email | configurazione | `str` / `'imap.gmail.com'` | `app/config.py`, `app/hr/routers/dipendenti_cloud/__init__.py`, `app/routers/settings_router.py`, `app/services/pagopa_scanner.py` |
@@ -702,6 +697,7 @@ si rigenerano dal codice e non si correggono a mano.
 | `IMAP_SERVER` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/hr/routers/dimissioni.py`, `app/hr/routers/dipendenti_cloud/__init__.py`, `app/routers/learning_machine.py`, `app/services/email_full_download.py`, `app/services/verbali_email_scanner.py` |
 | `IMAP_USER` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/hr/routers/cedolini.py`, `app/hr/routers/dipendenti_cloud/__init__.py`, `app/routers/settings_router.py`, `app/services/pagopa_scanner.py` |
 | `IVA_ALIQUOTE` | app-runtime | configurazione | `list[float]` / `[4.0, 5.0, 10.0, 22.0]` | `app/config.py` |
+| `JWT_SECRET` | app-runtime | segreta | non dichiarato in Settings | `app/menu/routes/qrcode_routes.py` |
 | `LOCALAPPDATA` | app-runtime | configurazione | non dichiarato in Settings | `scripts/sync_rt_to_drive.py` |
 | `LOG_FILE` | app-runtime | configurazione | `Optional[Path]` / `None` | `app/config.py` |
 | `LOG_FORMAT` | app-runtime | configurazione | `str` / `'json'` | `app/config.py` |
@@ -715,9 +711,9 @@ si rigenerano dal codice e non si correggono a mano.
 | `LOTTI_SUPABASE_URL` | app-runtime | configurazione | non dichiarato in Settings | `app/lotti/db.py`, `app/lotti/scripts/migrate_recovered_json_to_supabase.py`, `app/lotti/supabase_document_store.py`, `render.yaml` |
 | `MAX_CONCURRENT_IMPORTS` | app-runtime | configurazione | `int` / `5` | `app/config.py` |
 | `MAX_UPLOAD_SIZE_MB` | app-runtime | configurazione | `int` / `50` | `app/config.py` |
-| `MENU_ADMIN_PASSWORD` | app-runtime | segreta | non dichiarato in Settings | `render.yaml` |
-| `MENU_ADMIN_USERNAME` | app-runtime | configurazione | non dichiarato in Settings | `render.yaml` |
-| `MENU_JWT_SECRET` | app-runtime | segreta | non dichiarato in Settings | `render.yaml` |
+| `MENU_ADMIN_PASSWORD` | app-runtime | segreta | non dichiarato in Settings | `app/menu/routes/qrcode_routes.py`, `render.yaml` |
+| `MENU_ADMIN_USERNAME` | app-runtime | configurazione | non dichiarato in Settings | `app/menu/routes/qrcode_routes.py`, `render.yaml` |
+| `MENU_JWT_SECRET` | app-runtime | segreta | non dichiarato in Settings | `app/menu/routes/qrcode_routes.py`, `render.yaml` |
 | `MENU_SUPABASE_KEY` | app-runtime | configurazione | non dichiarato in Settings | `render.yaml` |
 | `MENU_SUPABASE_URL` | app-runtime | configurazione | non dichiarato in Settings | `render.yaml` |
 | `MONGO_URL` | app-runtime | configurazione | non dichiarato in Settings | `app/lotti/scripts/fix_fornitori_acquaviva.py`, `app/lotti/scripts/import_acquaviva_definitivo.py`, `app/lotti/scripts/import_listino_2026.py`, `app/lotti/scripts/import_ricette_excel.py`, `app/lotti/scripts/scrape_acquaviva_images.py`, `app/lotti/scripts/scrape_vandemoortele_acquaviva.py`, `app/lotti/tests/test_iteration54_features.py`, `app/lotti/utils/shared.py` |
@@ -730,8 +726,9 @@ si rigenerano dal codice e non si correggono a mano.
 | `OPENAPI_IT_ENV` | integrazioni | configurazione | `str` / `'production'` | `app/config.py`, `app/routers/openapi_it.py` |
 | `OPENAPI_IT_KEY` | integrazioni | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/routers/openapi_it.py` |
 | `OUT_DIR` | test-tooling | configurazione | non dichiarato in Settings | `scripts/collaudo_ui.mjs` |
-| `PAYPAL_CLIENT_ID` | integrazioni | configurazione | `str` / `''` | `app/config.py`, `app/services/paypal_integration.py` |
-| `PAYPAL_CLIENT_SECRET` | integrazioni | segreta | `str` / valore non riportato | `app/config.py` |
+| `PAYPAL_CLIENT_ID` | integrazioni | configurazione | `str` / `''` | `app/config.py`, `app/hr/routers/contabilita.py`, `app/services/paypal_integration.py` |
+| `PAYPAL_CLIENT_SECRET` | integrazioni | segreta | `str` / valore non riportato | `app/config.py`, `app/hr/routers/contabilita.py` |
+| `PAYPAL_ENV` | integrazioni | configurazione | non dichiarato in Settings | `app/hr/routers/contabilita.py` |
 | `PAYPAL_MODE` | integrazioni | configurazione | non dichiarato in Settings | `app/services/paypal_integration.py` |
 | `PAYPAL_SECRET_KEY` | integrazioni | segreta | non dichiarato in Settings | `app/services/paypal_integration.py` |
 | `PAYPAL_WEBHOOK_ID` | integrazioni | configurazione | non dichiarato in Settings | `app/routers/paypal_api.py` |
@@ -745,11 +742,10 @@ si rigenerano dal codice e non si correggono a mano.
 | `PORT` | app-runtime | configurazione | `int` / `8000` | `app/config.py` |
 | `POS_ACCREDITO_WEEKEND` | feature-job | configurazione | non dichiarato in Settings | `app/utils/pos_accredito.py` |
 | `PROCESS_ROLE` | app-runtime | configurazione | non dichiarato in Settings | `app/main.py`, `render.yaml` |
-| `PUBLIC_URL` | app-runtime | configurazione | non dichiarato in Settings | `frontend_lotti/src/components/haccp/ManualeView.jsx`, `frontend_lotti/src/components/haccp/RegistroAllergeniView.jsx` |
+| `PUBLIC_URL` | app-runtime | configurazione | non dichiarato in Settings | `frontend_lotti/src/components/haccp/ManualeView.jsx`, `frontend_lotti/src/components/haccp/RegistroAllergeniView.jsx`, `frontend_menu/src/App.js`, `frontend_menu/src/pages/AdminDashboard.jsx`, `frontend_menu/src/pages/HomePage.jsx` |
 | `PYTHONUTF8` | app-runtime | configurazione | non dichiarato in Settings | `render.yaml` |
 | `PYTHON_VERSION` | app-runtime | configurazione | non dichiarato in Settings | `render.yaml` |
-| `QROMO_SOTTODOMINIO` | app-runtime | configurazione | non dichiarato in Settings | `app/menu/migrazione_qromo.py` |
-| `REACT_APP_BACKEND_URL` | app-runtime | configurazione | non dichiarato in Settings | `app/lotti/routers/manuale_haccp.py`, `app/lotti/tests/conftest.py`, `app/lotti/tests/test_email_ordini_iter66.py`, `app/lotti/tests/test_giacenze_iter69.py`, `app/lotti/tests/test_iteration46_features.py`, `app/lotti/tests/test_iteration47_features.py`, `app/lotti/tests/test_iteration48_features.py`, `app/lotti/tests/test_iteration52_features.py`, `app/lotti/tests/test_iteration53_features.py`, `app/lotti/tests/test_iteration55_bugfixes.py`, `app/lotti/tests/test_iteration56_nutritional.py`, `app/lotti/tests/test_iteration57_bom.py`, `app/lotti/tests/test_iteration72_bugfixes.py`, `app/lotti/tests/test_magazzino_bar_iter68.py`, `app/lotti/tests/test_magazzino_unificato_iter71.py`, `app/lotti/tests/test_ordini_fornitori.py`, `app/lotti/tests/test_ordini_fornitori_iter70.py`, `app/lotti/tests/test_p1_p2_features.py`, `app/lotti/tests/test_prezzi_alert_iter67.py`, `backend/tests/test_fase2_fase3_fase4.py`, `frontend_lotti/src/App.js`, `frontend_lotti/src/components/haccp/BackofficeView.jsx`, `frontend_lotti/src/components/haccp/ControlloOlioView.jsx`, `frontend_lotti/src/components/haccp/CorrispettiviView.jsx`, `frontend_lotti/src/components/haccp/ListinoView.jsx`, `frontend_lotti/src/components/haccp/MagazzinoBarView.jsx`, `frontend_lotti/src/components/haccp/ProdottiVenditaView.jsx`, `frontend_lotti/src/components/haccp/RicetteDashboardView.jsx`, `frontend_lotti/src/components/haccp/RicezioneMerceView.jsx`, `frontend_lotti/src/components/haccp/SaimaRicettariView.jsx`, `frontend_lotti/src/components/haccp/TabletHome.jsx`, `frontend_lotti/src/components/haccp/TabletView.jsx`, `frontend_lotti/src/components/haccp/TemperatureCotturaView.jsx`, `frontend_lotti/src/components/haccp/backoffice/FormRicetta.jsx`, `frontend_lotti/src/components/haccp/backoffice/TabFornitori.jsx`, `frontend_lotti/src/components/haccp/backoffice/TabProdotti.jsx`, `frontend_lotti/src/components/haccp/lotti/ModalDettaglioLotto.jsx`, `frontend_lotti/src/utils/constants.js` |
+| `REACT_APP_BACKEND_URL` | app-runtime | configurazione | non dichiarato in Settings | `app/lotti/routers/manuale_haccp.py`, `app/lotti/tests/conftest.py`, `app/lotti/tests/test_email_ordini_iter66.py`, `app/lotti/tests/test_giacenze_iter69.py`, `app/lotti/tests/test_iteration46_features.py`, `app/lotti/tests/test_iteration47_features.py`, `app/lotti/tests/test_iteration48_features.py`, `app/lotti/tests/test_iteration52_features.py`, `app/lotti/tests/test_iteration53_features.py`, `app/lotti/tests/test_iteration55_bugfixes.py`, `app/lotti/tests/test_iteration56_nutritional.py`, `app/lotti/tests/test_iteration57_bom.py`, `app/lotti/tests/test_iteration72_bugfixes.py`, `app/lotti/tests/test_magazzino_bar_iter68.py`, `app/lotti/tests/test_magazzino_unificato_iter71.py`, `app/lotti/tests/test_ordini_fornitori.py`, `app/lotti/tests/test_ordini_fornitori_iter70.py`, `app/lotti/tests/test_p1_p2_features.py`, `app/lotti/tests/test_prezzi_alert_iter67.py`, `backend/tests/test_fase2_fase3_fase4.py`, `frontend_lotti/src/App.js`, `frontend_lotti/src/components/haccp/BackofficeView.jsx`, `frontend_lotti/src/components/haccp/ControlloOlioView.jsx`, `frontend_lotti/src/components/haccp/CorrispettiviView.jsx`, `frontend_lotti/src/components/haccp/ListinoView.jsx`, `frontend_lotti/src/components/haccp/MagazzinoBarView.jsx`, `frontend_lotti/src/components/haccp/ProdottiVenditaView.jsx`, `frontend_lotti/src/components/haccp/RicetteDashboardView.jsx`, `frontend_lotti/src/components/haccp/RicezioneMerceView.jsx`, `frontend_lotti/src/components/haccp/SaimaRicettariView.jsx`, `frontend_lotti/src/components/haccp/TabletHome.jsx`, `frontend_lotti/src/components/haccp/TabletView.jsx`, `frontend_lotti/src/components/haccp/TemperatureCotturaView.jsx`, `frontend_lotti/src/components/haccp/backoffice/FormRicetta.jsx`, `frontend_lotti/src/components/haccp/backoffice/TabFornitori.jsx`, `frontend_lotti/src/components/haccp/backoffice/TabProdotti.jsx`, `frontend_lotti/src/components/haccp/lotti/ModalDettaglioLotto.jsx`, `frontend_lotti/src/utils/constants.js`, `frontend_menu/src/components/CartDrawer.jsx`, `frontend_menu/src/components/admin/BackupManager.jsx`, `frontend_menu/src/components/admin/ImageUploadManager.jsx`, `frontend_menu/src/components/admin/ProductManager.jsx`, `frontend_menu/src/context/CartContext.jsx`, `frontend_menu/src/context/MenuContext.jsx`, `frontend_menu/src/hooks/useAdminAuth.js`, `frontend_menu/src/pages/AdminDashboard.jsx`, `frontend_menu/src/pages/AdminLoginPage.jsx`, `frontend_menu/src/pages/AdminQRCodePage.jsx`, `frontend_menu/src/pages/admin/CounterPage.jsx`, `frontend_menu/src/pages/admin/KitchenMonitorPage.jsx`, `frontend_menu/src/pages/admin/OrdersPage.jsx`, `frontend_menu/src/pages/admin/SalePage.jsx`, `frontend_menu/src/pages/admin/WarehousePage.jsx` |
 | `REACT_APP_GESTIONALE_URL` | app-runtime | configurazione | non dichiarato in Settings | `frontend_lotti/src/layouts/AppLayout.jsx` |
 | `RELOAD` | app-runtime | configurazione | `bool` / `False` | `app/config.py` |
 | `RENDER` | app-runtime | configurazione | non dichiarato in Settings | `app/main.py`, `app/utils/session_cookie.py` |
@@ -766,7 +762,7 @@ si rigenerano dal codice e non si correggono a mano.
 | `RUN_STARTUP_INDEX_MIGRATIONS` | feature-job | configurazione | `bool` / `False` | `app/config.py` |
 | `RUN_STARTUP_SEED_DATA` | feature-job | configurazione | `bool` / `False` | `app/config.py` |
 | `SCHEDULER_LEASE_SECONDS` | feature-job | configurazione | `int` / `21600` | `app/config.py` |
-| `SECRET_KEY` | sicurezza | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `app/routers/auth.py`, `scripts/e2e_distruttivo_server.py` |
+| `SECRET_KEY` | sicurezza | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `app/hr/routers/auth.py`, `app/routers/auth.py`, `scripts/e2e_distruttivo_server.py` |
 | `SHEETS_REGISTRY_NAME` | app-runtime | configurazione | `str` / `'GestionaleCloud'` | `app/config.py`, `render.yaml` |
 | `SMOKE_ANNO` | test-tooling | configurazione | non dichiarato in Settings | `scripts/smoke_app.py` |
 | `SMOKE_AUTH_TOKEN` | test-tooling | segreta | non dichiarato in Settings | `scripts/smoke_app.py` |
@@ -798,6 +794,7 @@ si rigenerano dal codice e non si correggono a mano.
 | `UPLOAD_FOLDER` | app-runtime | configurazione | `Path` / `Path('uploads')` | `app/config.py` |
 | `VERBALE_TEST_ID` | test-tooling | configurazione | non dichiarato in Settings | `scripts/collaudo_ui.mjs` |
 | `VERBALI_EMAIL_SCAN_HOUR` | feature-job | configurazione | `int` / `6` | `app/config.py` |
+| `VITE_API_URL` | app-runtime | configurazione | non dichiarato in Settings | `frontend_hr/src/PortaleDipendente.jsx` |
 | `VITE_BACKEND_URL` | app-runtime | configurazione | non dichiarato in Settings | `frontend/vite.config.js` |
 
 Regole: alias duplicati Drive/email vanno migrati verso un nome canonico e poi rimossi; una variabile senza consumer non va mantenuta; tutte le variabili `transitorie-vietate-nel-target` sono escluse dalla ricostruzione Drive-only.
@@ -835,7 +832,7 @@ Gli alias senza valore vanno configurati nel secret/config store di Render. Non 
 
 ## Appendice D — Tutti i router e tutti gli endpoint
 
-Route table sorgente: **1573**; attivi da ricreare: **1032**; quarantena: **541** (`verificare` 506, `admin-only` 35).
+Route table sorgente: **1171**; attivi da ricreare: **771**; quarantena: **400** (`verificare` 371, `admin-only` 29).
 
 `attivo` significa da ricreare con contratto e test; `quarantena` significa non esporre nel nuovo runtime finché consumer, autorizzazione e test non sono provati. L'elenco è completo e include entrambe le categorie.
 
@@ -1032,492 +1029,6 @@ Route table sorgente: **1573**; attivi da ricreare: **1032**; quarantena: **541*
 
 - **attivo** — `POST /api/anagrafica-fornitori/popola-fornitore/{fornitore_id}` — in uso: FE
 - **attivo** — `POST /api/anagrafica-fornitori/popola-tutti` — in uso: FE
-
-### Router `app.hr.router_registry` (1)
-
-- **quarantena: verificare** — `GET /api/hr/health` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-
-### Router `app.hr.routers.admin_hr` (3)
-
-- **quarantena: admin-only** — `POST /api/hr/admin/migrazione-appdipendenti` — endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7)
-- **quarantena: admin-only** — `GET /api/hr/admin/migrazione-appdipendenti/{job_id}` — endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7)
-- **quarantena: verificare** — `GET /api/hr/admin/stato-dati` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-
-### Router `app.hr.routers.attendance` (22)
-
-- **quarantena: verificare** — `GET /api/hr/attendance/assenze/{employee_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/attendance/batch-insert` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/attendance/dashboard-presenze` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/attendance/dipendenti-in-carico` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/attendance/genera-pdf-consulente` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/attendance/month-grid` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/attendance/note-presenze/{anno}/{mese}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/attendance/ore-lavorate/{employee_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `DELETE /api/hr/attendance/presenza` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/attendance/presenze-mese` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/attendance/richiesta-assenza` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `PUT /api/hr/attendance/richiesta-assenza/{richiesta_id}/approva` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `PUT /api/hr/attendance/richiesta-assenza/{richiesta_id}/rifiuta` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/attendance/richieste-pending` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/attendance/saldo-ferie/{employee_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `PUT /api/hr/attendance/set-in-carico/{employee_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/attendance/set-nota-presenza` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/attendance/set-presenza` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/attendance/timbratura` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/attendance/timbrature/giorno/{data}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/attendance/timbrature/{employee_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/attendance/tipologie-giustificativi` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-
-### Router `app.hr.routers.cedolini` (22)
-
-- **attivo** — `GET /api/hr/cedolini` — in uso: FE
-- **attivo** — `POST /api/hr/cedolini` — in uso: FE
-- **attivo** — `GET /api/hr/cedolini/acconti/dipendente/{dipendente_id}` — in uso: FE
-- **attivo** — `POST /api/hr/cedolini/acconti/scan-estratto-conto` — in uso: FE
-- **attivo** — `POST /api/hr/cedolini/conferma` — in uso: FE
-- **attivo** — `POST /api/hr/cedolini/correggi-problematici` — in uso: FE
-- **attivo** — `GET /api/hr/cedolini/dipendente/{dipendente_id}` — in uso: FE
-- **attivo** — `GET /api/hr/cedolini/dipendente/{dipendente_id}/acconti-banca` — in uso: FE
-- **attivo** — `POST /api/hr/cedolini/dipendente/{dipendente_id}/applica-trattenuta/{trattenuta_id}` — in uso: FE
-- **attivo** — `POST /api/hr/cedolini/dipendente/{dipendente_id}/applica-tutte-trattenute` — in uso: FE
-- **attivo** — `GET /api/hr/cedolini/dipendente/{dipendente_id}/trattenute` — in uso: FE
-- **attivo** — `POST /api/hr/cedolini/import-drive` — in uso: FE
-- **attivo** — `POST /api/hr/cedolini/import-gmail` — in uso: FE
-- **attivo** — `GET /api/hr/cedolini/incompleti` — in uso: FE
-- **attivo** — `POST /api/hr/cedolini/incompleti/{cedolino_id}/completa` — in uso: FE
-- **attivo** — `GET /api/hr/cedolini/lista/{anno}/{mese}` — in uso: FE
-- **attivo** — `GET /api/hr/cedolini/problematici` — in uso: FE
-- **attivo** — `GET /api/hr/cedolini/riepilogo-mensile/{anno}/{mese}` — in uso: FE
-- **attivo** — `GET /api/hr/cedolini/simulazione-f24` — in uso: FE
-- **attivo** — `POST /api/hr/cedolini/stima` — in uso: FE
-- **attivo** — `GET /api/hr/cedolini/{cedolino_id}` — in uso: FE
-- **attivo** — `GET /api/hr/cedolini/{cedolino_id}/download` — in uso: FE
-
-### Router `app.hr.routers.diagnostica` (1)
-
-- **attivo** — `GET /api/hr/diagnostica` — in uso: FE
-
-### Router `app.hr.routers.dimissioni` (4)
-
-- **quarantena: verificare** — `GET /api/hr/dimissioni` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/dimissioni/associa-dimissioni-dipendenti` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/dimissioni/cerca-email-dimissioni` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/dimissioni/stats` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-
-### Router `app.hr.routers.dipendenti_cloud` (93)
-
-- **attivo** — `GET /api/hr/dipendenti-cloud/_unif_diag` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/_unif_esegui` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti-cloud/alerts` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/alerts/{alert_id}/risolvi` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti-cloud/assegnazioni-turni` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/assegnazioni-turni` — in uso: FE
-- **quarantena: admin-only** — `POST /api/hr/dipendenti-cloud/assegnazioni-turni/migra` — endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7)
-- **attivo** — `GET /api/hr/dipendenti-cloud/bonifici-da-associare` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/bonifici-da-associare/{bonifico_id}/associa` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/bonifici-da-associare/{bonifico_id}/ignora` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti-cloud/bonifici-da-associare/{bonifico_id}/pdf` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti-cloud/buste-paga` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/buste-paga` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/buste-paga/genera` — in uso: FE
-- **attivo** — `PUT /api/hr/dipendenti-cloud/buste-paga/{busta_id}/paga` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti-cloud/cedolini/cerca-voce` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/cedolini/riscansiona` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti-cloud/dashboard/stats` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti-cloud/dipendenti` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/dipendenti` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/dipendenti/importa-anagrafica` — in uso: FE
-- **attivo** — `DELETE /api/hr/dipendenti-cloud/dipendenti/{dipendente_id}` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti-cloud/dipendenti/{dipendente_id}` — in uso: FE
-- **attivo** — `PUT /api/hr/dipendenti-cloud/dipendenti/{dipendente_id}` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/dipendenti/{dipendente_id}/cessa` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti-cloud/documenti` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/documenti` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/documenti/upload-massivo` — in uso: FE
-- **attivo** — `DELETE /api/hr/dipendenti-cloud/documenti/{documento_id}` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti-cloud/documenti/{documento_id}/file` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti-cloud/ferie` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/ferie` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/ferie-giorno` — in uso: FE
-- **attivo** — `DELETE /api/hr/dipendenti-cloud/ferie/{ferie_id}` — in uso: FE
-- **attivo** — `PUT /api/hr/dipendenti-cloud/ferie/{ferie_id}/approva` — in uso: FE
-- **attivo** — `PUT /api/hr/dipendenti-cloud/ferie/{ferie_id}/rifiuta` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti-cloud/missioni` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/missioni` — in uso: FE
-- **attivo** — `DELETE /api/hr/dipendenti-cloud/missioni/{missione_id}` — in uso: FE
-- **attivo** — `PUT /api/hr/dipendenti-cloud/missioni/{missione_id}/approva` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti-cloud/onomastici` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/onomastici` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti-cloud/onomastici/settimana` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti-cloud/ordine-dipendenti` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/ordine-dipendenti` — in uso: FE
-- **attivo** — `DELETE /api/hr/dipendenti-cloud/paghe` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti-cloud/paghe` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/paghe` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti-cloud/paghe/associazioni-bonifici` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti-cloud/paghe/associazioni-bonifici/export-excel` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/paghe/conferma-associazione` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/paghe/correggi-acconti-cedolino` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/paghe/importa-bonifici-drive` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/paghe/importa-email` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/paghe/importa-excel-salari` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/paghe/importa-lul` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/paghe/importa-pagamenti` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/paghe/importa-prima-nota` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/paghe/importa-storico-pagamenti` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti-cloud/paghe/in-attesa` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti-cloud/paghe/pagamento-esito/{key}/pdf` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti-cloud/paghe/prima-nota` — in uso: FE, scheduler, chat
-- **attivo** — `POST /api/hr/dipendenti-cloud/paghe/sincronizza` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/paghe/sincronizza-bonifici-storici` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti-cloud/paghe/storico-pagamenti` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti-cloud/presenze` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/presenze` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/presenze/batch` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/presenze/consolida-da-turni` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti-cloud/presenze/email-commercialista` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/presenze/email-commercialista` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/presenze/invia-commercialista` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti-cloud/presenze/invii` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/presenze/pdf` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/presenze/pdf-riepilogo` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/presenze/riepilogo-dati` — in uso: FE
-- **attivo** — `DELETE /api/hr/dipendenti-cloud/presenze/{presenza_id}` — in uso: FE
-- **attivo** — `PUT /api/hr/dipendenti-cloud/presenze/{presenza_id}` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti-cloud/prestiti` — in uso: FE
-- **attivo** — `DELETE /api/hr/dipendenti-cloud/prestiti/{prestito_id}` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/riduzioni-orario` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti-cloud/riduzioni-orario/scadenze` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/seed-data` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti-cloud/turni` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/turni` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti-cloud/turni-chiusura-pomeridiana` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/turni-chiusura-pomeridiana` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti-cloud/turni-config` — in uso: FE
-- **attivo** — `POST /api/hr/dipendenti-cloud/turni-config` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti-cloud/turni-disponibilita-bar` — in uso: FE
-- **attivo** — `GET /api/hr/dipendenti-cloud/turni-preferenze` — in uso: FE
-- **attivo** — `DELETE /api/hr/dipendenti-cloud/turni/{turno_id}` — in uso: FE
-- **attivo** — `PUT /api/hr/dipendenti-cloud/turni/{turno_id}` — in uso: FE
-
-### Router `app.hr.routers.employees.accessi` (6)
-
-- **attivo** — `GET /api/hr/accessi` — in uso: FE
-- **attivo** — `POST /api/hr/accessi/genera-mancanti` — in uso: FE
-- **attivo** — `DELETE /api/hr/accessi/{dipendente_id}/pin` — in uso: FE
-- **attivo** — `POST /api/hr/accessi/{dipendente_id}/pin` — in uso: FE
-- **attivo** — `POST /api/hr/accessi/{dipendente_id}/pin/genera` — in uso: FE
-- **attivo** — `POST /api/hr/accessi/{dipendente_id}/ruolo` — in uso: FE
-
-### Router `app.hr.routers.employees.buste_paga` (6)
-
-- **quarantena: verificare** — `GET /api/hr/buste-paga/competenze` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/buste-paga/lista` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/buste-paga/riepilogo-mensile/{competenza}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/buste-paga/salva` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/buste-paga/upload` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `DELETE /api/hr/buste-paga/{competenza}/{nome}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-
-### Router `app.hr.routers.employees.dipendenti` (51)
-
-- **quarantena: verificare** — `GET /api/hr/dipendenti` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/dipendenti` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/dipendenti/bulk-upsert` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/dipendenti/bulk-upsert/preview` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/dipendenti/buste-paga` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/dipendenti/buste-paga` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/dipendenti/buste-paga/dipendente/{dipendente_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/dipendenti/buste-paga/dipendente/{dipendente_id}/import` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/dipendenti/buste-paga/import` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/dipendenti/buste-paga/scan` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/dipendenti/by-google-email` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/dipendenti/contratti` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/dipendenti/contratti` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/dipendenti/contratti/import-excel` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/dipendenti/contratti/scadenze` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `DELETE /api/hr/dipendenti/contratti/{contratto_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `PUT /api/hr/dipendenti/contratti/{contratto_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/dipendenti/contratti/{contratto_id}/termina` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/dipendenti/duplicati` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/dipendenti/duplicati/auto-merge` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/dipendenti/duplicati/merge` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/dipendenti/invita-multipli` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/dipendenti/libretti-sanitari` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/dipendenti/libretti-sanitari/all` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/dipendenti/libretti-sanitari/genera-da-dipendenti` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/dipendenti/libretti-sanitari/import-excel` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/dipendenti/libretti-sanitari/scadenze` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `DELETE /api/hr/dipendenti/libretti-sanitari/{libretto_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `PUT /api/hr/dipendenti/libretti-sanitari/{libretto_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/dipendenti/libretti/scadenze` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/dipendenti/libro-unico/export-excel` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/dipendenti/libro-unico/presenze` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/dipendenti/libro-unico/salaries` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `DELETE /api/hr/dipendenti/libro-unico/salaries/{salary_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `PUT /api/hr/dipendenti/libro-unico/salaries/{salary_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/dipendenti/libro-unico/upload` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/dipendenti/mansioni` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/dipendenti/portale/stats` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/dipendenti/report-ferie-permessi-tutti` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/dipendenti/stats` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/dipendenti/sync-iban` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/dipendenti/tipi-contratto` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/dipendenti/tipi-turno` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/dipendenti/turni/salva` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/dipendenti/turni/settimana` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `DELETE /api/hr/dipendenti/{dipendente_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/dipendenti/{dipendente_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `PUT /api/hr/dipendenti/{dipendente_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/dipendenti/{dipendente_id}/invita-portale` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `PUT /api/hr/dipendenti/{dipendente_id}/libretto` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/dipendenti/{dipendente_id}/report-ferie-permessi` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-
-### Router `app.hr.routers.employees.employee_contracts` (23)
-
-- **attivo** — `GET /api/hr/contracts/acconti-tfr` — in uso: FE
-- **attivo** — `GET /api/hr/contracts/acconti-tfr/{employee_id}` — in uso: FE
-- **attivo** — `POST /api/hr/contracts/carica-firmato/{contract_id}` — in uso: FE
-- **attivo** — `GET /api/hr/contracts/ccnl` — in uso: FE
-- **attivo** — `POST /api/hr/contracts/ccnl/suggerisci` — in uso: FE
-- **attivo** — `GET /api/hr/contracts/ccnl/verifica-tranche` — in uso: FE
-- **attivo** — `GET /api/hr/contracts/ccnl/{ccnl_id}/livello/{livello}` — in uso: FE
-- **attivo** — `POST /api/hr/contracts/cedolini/importa-libro-unico` — in uso: FE
-- **attivo** — `GET /api/hr/contracts/download/{contract_id}` — in uso: FE
-- **attivo** — `GET /api/hr/contracts/employee/{employee_id}` — in uso: FE
-- **attivo** — `POST /api/hr/contracts/finalizza/{contract_id}` — in uso: FE
-- **attivo** — `POST /api/hr/contracts/genera-massivo` — in uso: FE
-- **attivo** — `POST /api/hr/contracts/generate/{employee_id}` — in uso: FE
-- **attivo** — `GET /api/hr/contracts/pdf/{contract_id}/{versione}` — in uso: FE
-- **attivo** — `POST /api/hr/contracts/pec/{contract_id}` — in uso: FE
-- **attivo** — `GET /api/hr/contracts/profilo-retributivo/{employee_id}` — in uso: FE
-- **attivo** — `POST /api/hr/contracts/send/{contract_id}` — in uso: FE
-- **attivo** — `POST /api/hr/contracts/sign/{contract_id}` — in uso: FE
-- **attivo** — `GET /api/hr/contracts/sign/{contract_id}/status` — in uso: FE
-- **attivo** — `POST /api/hr/contracts/template/{contract_type}` — in uso: FE
-- **attivo** — `GET /api/hr/contracts/templates` — in uso: FE
-- **attivo** — `GET /api/hr/contracts/types` — in uso: FE
-- **attivo** — `DELETE /api/hr/contracts/{contract_id}` — in uso: FE
-
-### Router `app.hr.routers.employees.fascicolo_dipendente` (2)
-
-- **quarantena: verificare** — `GET /api/hr/dipendenti/{dipendente_id}/fascicolo` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/dipendenti/{dipendente_id}/kpi` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-
-### Router `app.hr.routers.employees.giustificativi` (20)
-
-- **quarantena: verificare** — `GET /api/hr/giustificativi` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/giustificativi/aggiorna-riepilogo` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/giustificativi/alert-limiti` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `PUT /api/hr/giustificativi/codice/{codice}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/giustificativi/dipendente/{employee_id}/giustificativi` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `PUT /api/hr/giustificativi/dipendente/{employee_id}/giustificativi/limiti` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/giustificativi/dipendente/{employee_id}/riporto-ferie` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/giustificativi/dipendente/{employee_id}/saldo-ferie` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: admin-only** — `POST /api/hr/giustificativi/init-giustificativi` — endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7)
-- **quarantena: verificare** — `GET /api/hr/giustificativi/presenze-mensili/{employee_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/giustificativi/riepilogo-limiti` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/giustificativi/riepilogo-progressivo/{employee_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/giustificativi/saldi-finali-tutti` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `DELETE /api/hr/giustificativi/saldi-finali/{employee_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/giustificativi/saldi-finali/{employee_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `PUT /api/hr/giustificativi/saldi-finali/{employee_id}/periodo` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/giustificativi/salva-saldi-finali` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/giustificativi/sync-giustificativi-da-cedolini` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/giustificativi/upload-libro-unico` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/giustificativi/valida-giustificativo` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-
-### Router `app.hr.routers.employees.shifts` (9)
-
-- **quarantena: verificare** — `GET /api/hr/shifts/assegnazioni` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/shifts/assegnazioni` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `DELETE /api/hr/shifts/assegnazioni/{assegnazione_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/shifts/schedule` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/shifts/schedule` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/shifts/tipi` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/shifts/tipi` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `DELETE /api/hr/shifts/tipi/{turno_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `PUT /api/hr/shifts/tipi/{turno_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-
-### Router `app.hr.routers.f24_parser` (6)
-
-- **quarantena: verificare** — `GET /api/hr/paghe/distinte-f24` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/paghe/f24/lista` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/paghe/import-f24` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/paghe/parse-f24` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **attivo** — `POST /api/hr/paghe/riconcilia-f24` — in uso: scheduler
-- **quarantena: verificare** — `GET /api/hr/paghe/tributi-pagati` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-
-### Router `app.hr.routers.libro_unico_parser` (10)
-
-- **quarantena: verificare** — `GET /api/hr/paghe/acconti` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/paghe/acconti/{busta_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `DELETE /api/hr/paghe/acconti/{busta_id}/{acconto_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/paghe/buste-paga` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/paghe/import-libro-unico` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/paghe/parse-libro-unico` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/paghe/parse-libro-unico/dipendente/{indice}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/paghe/presenze-mensili` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/paghe/presenze-mensili/{codice_fiscale}/{periodo}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/hr/paghe/riconcilia-stipendi` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-
-### Router `app.hr.routers.notifiche` (3)
-
-- **attivo** — `GET /api/hr/notifiche` — in uso: FE
-- **attivo** — `GET /api/hr/notifiche/conteggio` — in uso: FE, scheduler
-- **attivo** — `POST /api/hr/notifiche/{notifica_id}/letta` — in uso: FE
-
-### Router `app.hr.routers.pin_login` (3)
-
-- **attivo** — `GET /api/hr/auth/dipendenti-attivi` — in uso: FE, chat
-- **attivo** — `POST /api/hr/auth/pin-login` — in uso: FE
-- **attivo** — `GET /api/hr/auth/pin-login/health` — in uso: FE
-
-### Router `app.hr.routers.portale_buste` (7)
-
-- **attivo** — `GET /api/hr/portale/buste` — in uso: FE
-- **attivo** — `GET /api/hr/portale/buste/{cedolino_id}` — in uso: FE
-- **attivo** — `POST /api/hr/portale/buste/{cedolino_id}/contesta` — in uso: FE
-- **attivo** — `GET /api/hr/portale/buste/{cedolino_id}/modulo-contestazione` — in uso: FE
-- **attivo** — `GET /api/hr/portale/buste/{cedolino_id}/pdf` — in uso: FE
-- **attivo** — `POST /api/hr/portale/buste/{cedolino_id}/presa-visione` — in uso: FE
-- **attivo** — `GET /api/hr/portale/buste/{cedolino_id}/storico-accessi` — in uso: FE
-
-### Router `app.hr.routers.portale_documenti` (10)
-
-- **attivo** — `GET /api/hr/portale/documenti` — in uso: FE
-- **attivo** — `POST /api/hr/portale/documenti/admin/upload` — in uso: FE
-- **attivo** — `GET /api/hr/portale/documenti/modulo/{tipo}` — in uso: FE
-- **attivo** — `POST /api/hr/portale/documenti/regolamento/accetta` — in uso: FE
-- **attivo** — `GET /api/hr/portale/documenti/regolamento/file` — in uso: FE
-- **attivo** — `GET /api/hr/portale/documenti/regolamento/stato` — in uso: FE
-- **attivo** — `GET /api/hr/portale/documenti/tipi` — in uso: FE, scheduler
-- **attivo** — `POST /api/hr/portale/documenti/upload` — in uso: FE
-- **attivo** — `DELETE /api/hr/portale/documenti/{doc_id}` — in uso: FE
-- **attivo** — `GET /api/hr/portale/documenti/{doc_id}/file` — in uso: FE
-
-### Router `app.hr.routers.richieste` (4)
-
-- **attivo** — `GET /api/hr/richieste` — in uso: FE
-- **attivo** — `POST /api/hr/richieste` — in uso: FE
-- **attivo** — `GET /api/hr/richieste/mie` — in uso: FE
-- **attivo** — `POST /api/hr/richieste/{richiesta_id}/risolvi` — in uso: FE
-
-### Router `app.hr.routers.salari_unificati_v2` (6)
-
-- **quarantena: verificare** — `GET /api/hr/salari-v2/ferie-rol` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/salari-v2/non-pagati` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **attivo** — `POST /api/hr/salari-v2/pagamento` — in uso: scheduler
-- **quarantena: verificare** — `POST /api/hr/salari-v2/riconcilia-banca` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/salari-v2/riepilogo` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/hr/salari-v2/saldo/{codice_fiscale}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-
-### Router `app.hr.routers.tfr` (28)
-
-- **attivo** — `POST /api/hr/tfr/accantonamento` — in uso: FE
-- **attivo** — `POST /api/hr/tfr/acconti` — in uso: FE
-- **attivo** — `DELETE /api/hr/tfr/acconti/{acconto_id}` — in uso: FE
-- **attivo** — `PUT /api/hr/tfr/acconti/{acconto_id}` — in uso: FE
-- **attivo** — `POST /api/hr/tfr/acconti/{acconto_id}/annulla-riconciliazione-banca` — in uso: FE
-- **attivo** — `GET /api/hr/tfr/acconti/{acconto_id}/candidati-banca` — in uso: FE
-- **attivo** — `POST /api/hr/tfr/acconti/{acconto_id}/riconcilia-banca` — in uso: FE
-- **attivo** — `GET /api/hr/tfr/acconti/{dipendente_id}` — in uso: FE
-- **attivo** — `POST /api/hr/tfr/calcola-batch/{anno}` — in uso: FE
-- **attivo** — `POST /api/hr/tfr/calcolo-lordo-da-netto` — in uso: FE
-- **attivo** — `POST /api/hr/tfr/calcolo-netto-da-lordo` — in uso: FE
-- **attivo** — `POST /api/hr/tfr/cedolini/{cedolino_id}/annulla-scalatura-acconti` — in uso: FE
-- **attivo** — `GET /api/hr/tfr/cedolini/{cedolino_id}/preview-scalatura-acconti` — in uso: FE
-- **attivo** — `POST /api/hr/tfr/cedolini/{cedolino_id}/scala-acconti` — in uso: FE
-- **attivo** — `POST /api/hr/tfr/liquidazione` — in uso: FE
-- **attivo** — `GET /api/hr/tfr/parse-payslips` — in uso: FE
-- **attivo** — `GET /api/hr/tfr/riepilogo-aziendale` — in uso: FE
-- **attivo** — `GET /api/hr/tfr/simulazione-parametri` — in uso: FE
-- **attivo** — `PUT /api/hr/tfr/simulazione-parametri` — in uso: FE
-- **attivo** — `GET /api/hr/tfr/simulazione/{dipendente_id}` — in uso: FE
-- **attivo** — `GET /api/hr/tfr/simulazione/{dipendente_id}/liquidazione` — in uso: FE
-- **attivo** — `PUT /api/hr/tfr/simulazione/{dipendente_id}/liquidazione-override` — in uso: FE
-- **attivo** — `POST /api/hr/tfr/simulazione/{dipendente_id}/periodi` — in uso: FE
-- **attivo** — `DELETE /api/hr/tfr/simulazione/{dipendente_id}/periodi/{periodo_id}` — in uso: FE
-- **attivo** — `PUT /api/hr/tfr/simulazione/{dipendente_id}/periodi/{periodo_id}` — in uso: FE
-- **attivo** — `POST /api/hr/tfr/simulazione/{dipendente_id}/rate` — in uso: FE
-- **attivo** — `GET /api/hr/tfr/situazione/{dipendente_id}` — in uso: FE
-- **attivo** — `GET /api/hr/tfr/storico-tfr/{dipendente_id}` — in uso: FE
-
-### Router `app.hr.routers.timbrature` (6)
-
-- **attivo** — `GET /api/hr/timbrature` — in uso: FE, scheduler, chat
-- **attivo** — `POST /api/hr/timbrature` — in uso: FE
-- **attivo** — `GET /api/hr/timbrature/mie/oggi` — in uso: FE
-- **attivo** — `GET /api/hr/timbrature/riepilogo` — in uso: FE, scheduler, chat
-- **attivo** — `GET /api/hr/timbrature/sede` — in uso: FE
-- **attivo** — `POST /api/hr/timbrature/sede` — in uso: FE
-
-### Router `app.hr.routers.turni` (13)
-
-- **attivo** — `GET /api/hr/turni` — in uso: FE, scheduler, chat
-- **attivo** — `GET /api/hr/turni/azienda/settimana` — in uso: FE
-- **attivo** — `GET /api/hr/turni/disponibilita-bar` — in uso: FE
-- **attivo** — `POST /api/hr/turni/disponibilita-bar` — in uso: FE
-- **attivo** — `DELETE /api/hr/turni/disponibilita-bar/{disp_id}` — in uso: FE
-- **attivo** — `POST /api/hr/turni/genera` — in uso: FE, scheduler, chat
-- **attivo** — `GET /api/hr/turni/miei/corrente` — in uso: FE
-- **attivo** — `GET /api/hr/turni/preferenza-riposo` — in uso: FE
-- **attivo** — `POST /api/hr/turni/preferenza-riposo` — in uso: FE
-- **attivo** — `GET /api/hr/turni/{settimana_inizio}` — in uso: FE, scheduler
-- **attivo** — `PUT /api/hr/turni/{settimana_inizio}/cella` — in uso: FE
-- **attivo** — `POST /api/hr/turni/{settimana_inizio}/pubblica` — in uso: FE
-- **attivo** — `POST /api/hr/turni/{settimana_inizio}/sblocca` — in uso: FE
-
-### Router `app.menu.routers.gestione` (23)
-
-- **attivo** — `GET /api/menu/admin/backup/esporta` — in uso: FE
-- **attivo** — `POST /api/menu/admin/backup/ripristina` — in uso: FE
-- **attivo** — `POST /api/menu/admin/categorie` — in uso: FE
-- **attivo** — `DELETE /api/menu/admin/categorie/{categoria_id}` — in uso: FE
-- **attivo** — `PUT /api/menu/admin/categorie/{categoria_id}` — in uso: FE
-- **attivo** — `GET /api/menu/admin/immagini` — in uso: FE
-- **attivo** — `POST /api/menu/admin/immagini` — in uso: FE
-- **attivo** — `DELETE /api/menu/admin/immagini/{immagine_id}` — in uso: FE
-- **quarantena: admin-only** — `POST /api/menu/admin/migrazione-qromo` — endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7)
-- **quarantena: admin-only** — `GET /api/menu/admin/migrazione-qromo/{job_id}` — endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7)
-- **attivo** — `GET /api/menu/admin/prodotti` — in uso: FE, scheduler
-- **attivo** — `POST /api/menu/admin/prodotti` — in uso: FE
-- **attivo** — `DELETE /api/menu/admin/prodotti/{prodotto_id}` — in uso: FE
-- **attivo** — `PUT /api/menu/admin/prodotti/{prodotto_id}` — in uso: FE
-- **attivo** — `GET /api/menu/admin/qrcode/config` — in uso: FE
-- **attivo** — `PUT /api/menu/admin/qrcode/config` — in uso: FE
-- **attivo** — `POST /api/menu/admin/sale` — in uso: FE
-- **attivo** — `DELETE /api/menu/admin/sale/{sala_id}` — in uso: FE
-- **attivo** — `PUT /api/menu/admin/sale/{sala_id}` — in uso: FE
-- **attivo** — `POST /api/menu/admin/sottocategorie` — in uso: FE
-- **attivo** — `DELETE /api/menu/admin/sottocategorie/{sotto_id}` — in uso: FE
-- **attivo** — `PUT /api/menu/admin/sottocategorie/{sotto_id}` — in uso: FE
-- **attivo** — `GET /api/menu/admin/stato-dati` — in uso: FE
-
-### Router `app.menu.routers.pubblico` (8)
-
-- **attivo** — `GET /api/menu/pubblico/` — in uso: FE
-- **attivo** — `GET /api/menu/pubblico/allergeni` — in uso: FE
-- **attivo** — `GET /api/menu/pubblico/cerca` — in uso: FE, scheduler, chat
-- **attivo** — `GET /api/menu/pubblico/immagini/{immagine_id}` — in uso: FE
-- **attivo** — `POST /api/menu/pubblico/ordini` — in uso: FE
-- **attivo** — `GET /api/menu/pubblico/ordini/{ordine_id}` — in uso: FE
-- **attivo** — `GET /api/menu/pubblico/qrcode/config` — in uso: FE
-- **attivo** — `GET /api/menu/pubblico/sale` — in uso: FE, scheduler
-
-### Router `app.menu.routers.staff` (12)
-
-- **attivo** — `GET /api/menu/staff/magazzino/articoli` — in uso: FE
-- **attivo** — `POST /api/menu/staff/magazzino/articoli` — in uso: FE
-- **attivo** — `DELETE /api/menu/staff/magazzino/articoli/{articolo_id}` — in uso: FE
-- **attivo** — `PUT /api/menu/staff/magazzino/articoli/{articolo_id}` — in uso: FE
-- **attivo** — `POST /api/menu/staff/magazzino/articoli/{articolo_id}/movimento` — in uso: FE, scheduler, chat
-- **attivo** — `GET /api/menu/staff/magazzino/movimenti` — in uso: FE, scheduler, chat
-- **attivo** — `GET /api/menu/staff/ordini` — in uso: FE
-- **attivo** — `POST /api/menu/staff/ordini` — in uso: FE
-- **attivo** — `DELETE /api/menu/staff/ordini/{ordine_id}` — in uso: FE
-- **attivo** — `PATCH /api/menu/staff/ordini/{ordine_id}/pagamento` — in uso: FE, scheduler, chat
-- **attivo** — `PATCH /api/menu/staff/ordini/{ordine_id}/stato` — in uso: FE, scheduler, chat
-- **attivo** — `GET /api/menu/staff/sale` — in uso: FE, scheduler
 
 ### Router `auth` (3)
 

@@ -50,7 +50,7 @@ async def log_evento(
         azione: tipo azione (creato, aggiornato, stato_aggiornato, eliminato,
                 riconciliato, match_confermato, alert_generato, ...)
         entita_id: id dell'entità coinvolta
-        entita_collection: nome collezione Mongo
+        entita_collection: nome collezione MongoDB
         db: istanza database Motor
         vecchio_stato: stato prima della modifica (campi rilevanti)
         nuovo_stato: stato dopo la modifica

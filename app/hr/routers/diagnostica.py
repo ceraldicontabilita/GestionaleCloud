@@ -36,11 +36,13 @@ COLLEZIONI = [
 ]
 
 # Variabili d'ambiente: (nome, obbligatoria?, a cosa serve)
+# Dentro GestionaleCloud i nomi sono prefissati HR_ (vedi config.py/database.py):
+# il controllo accetta sia il nome prefissato sia quello originale (fallback).
 ENV_VARS = [
-    ("MONGO_URL", True, "Connessione database"),
-    ("JWT_SECRET", True, "Firma token login"),
-    ("PIN_CODE", True, "PIN amministratore"),
-    ("DB_NAME", False, "Nome database"),
+    ("HR_SUPABASE_DB_URL|APPDIPENDENTI_DB_URL|SUPABASE_DB_URL|HR_MONGO_URL|MONGO_URL", True, "Connessione database"),
+    ("HR_JWT_SECRET|JWT_SECRET", True, "Firma token login"),
+    ("HR_PIN_CODE|PIN_CODE", True, "PIN amministratore"),
+    ("HR_DB_NAME|DB_NAME", False, "Nome database (solo Mongo)"),
     ("IMAP_HOST", False, "Import documenti da Gmail"),
     ("IMAP_USER", False, "Import documenti da Gmail"),
     ("IMAP_PASSWORD", False, "Import documenti da Gmail (App Password)"),
@@ -63,9 +65,9 @@ async def diagnostica() -> Dict[str, Any]:
     try:
         db = Database.get_db()
         await db.command("ping")
-        add("Database", "Connessione Mongo", "ok", "Connesso")
+        add("Database", "Connessione MongoDB", "ok", "Connesso")
     except Exception as e:
-        add("Database", "Connessione Mongo", "err", str(e)[:200])
+        add("Database", "Connessione MongoDB", "err", str(e)[:200])
 
     # ---- COLLEZIONI LEGGIBILI ----
     if db is not None:
@@ -78,7 +80,7 @@ async def diagnostica() -> Dict[str, Any]:
 
     # ---- VARIABILI D'AMBIENTE ----
     for nome, obbligatoria, scopo in ENV_VARS:
-        presente = bool(os.getenv(nome))
+        presente = any(os.getenv(n) for n in nome.split("|"))
         if presente:
             add("Configurazione", nome, "ok", f"impostata · {scopo}")
         else:

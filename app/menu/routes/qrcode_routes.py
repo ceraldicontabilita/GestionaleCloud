@@ -1,0 +1,183 @@
+from fastapi import APIRouter, HTTPException, Depends, Header
+from app.menu.models.qrcode_models import QRCodeConfig, QRCodeConfigUpdate, AdminLogin, AdminLoginResponse, WiFiConfig
+from datetime import datetime, timedelta
+import os
+import jwt
+import qrcode
+from io import BytesIO
+import base64
+from fastapi.responses import JSONResponse
+
+from app.menu.supabase_client import supabase
+
+CONFIG_ID = "qrcode_config"
+
+router = APIRouter(prefix="/api/qrcode", tags=["QR Code Management"])
+
+# JWT Secret (in production, use env variable)
+# Dentro GestionaleCloud le env sono namespaced MENU_*; le versioni senza prefisso restano come fallback.
+SECRET_KEY = os.environ.get("MENU_JWT_SECRET") or os.environ.get("JWT_SECRET", "ceraldi_secret_key_change_in_production")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 480  # 8 hours
+
+# Admin credentials (in production, hash passwords and use database)
+ADMIN_USERNAME = os.environ.get("MENU_ADMIN_USERNAME") or os.environ.get("ADMIN_USERNAME", "admin")
+ADMIN_PASSWORD = os.environ.get("MENU_ADMIN_PASSWORD") or os.environ.get("ADMIN_PASSWORD", "Ceraldi2024!")
+
+def create_access_token(data: dict):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+def verify_token(authorization: str = Header(None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Invalid authorization header")
+    
+    token = authorization.replace("Bearer ", "")
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username = payload.get("sub")
+        if username is None:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        return username
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+@router.post("/login", response_model=AdminLoginResponse)
+async def admin_login(login_data: AdminLogin):
+    """Admin login endpoint"""
+    if login_data.username == ADMIN_USERNAME and login_data.password == ADMIN_PASSWORD:
+        access_token = create_access_token(data={"sub": login_data.username})
+        return AdminLoginResponse(
+            success=True,
+            token=access_token,
+            message="Login successful"
+        )
+    else:
+        return AdminLoginResponse(
+            success=False,
+            message="Invalid credentials"
+        )
+
+def _get_config_row():
+    res = supabase.table("menu_qrcode_config").select("*").eq("id", CONFIG_ID).limit(1).execute()
+    return res.data[0] if res.data else None
+
+
+@router.get("/config")
+async def get_qrcode_config():
+    """Get current QR code configuration (public endpoint)"""
+    config = _get_config_row()
+
+    if not config:
+        # Return default config
+        default_config = {
+            "id": CONFIG_ID,
+            "menu_url": f"{os.environ.get('BACKEND_URL', 'http://localhost:3000')}",
+            "wifi": {
+                "ssid": "Ceraldi_Caffe_WiFi",
+                "password": "ceraldi2024",
+                "security": "WPA",
+                "hidden": False
+            },
+            "updated_at": datetime.utcnow().isoformat()
+        }
+        supabase.table("menu_qrcode_config").insert(default_config).execute()
+        return default_config
+
+    return config
+
+@router.put("/config")
+async def update_qrcode_config(
+    config_update: QRCodeConfigUpdate,
+    username: str = Depends(verify_token)
+):
+    """Update QR code configuration (protected endpoint)"""
+    current_config = _get_config_row()
+
+    if not current_config:
+        raise HTTPException(status_code=404, detail="Configuration not found")
+
+    update_data = {}
+    if config_update.menu_url is not None:
+        update_data["menu_url"] = config_update.menu_url
+    if config_update.wifi is not None:
+        update_data["wifi"] = config_update.wifi.dict()
+
+    update_data["updated_at"] = datetime.utcnow().isoformat()
+    update_data["updated_by"] = username
+
+    supabase.table("menu_qrcode_config").update(update_data).eq("id", CONFIG_ID).execute()
+
+    updated_config = _get_config_row()
+
+    return {
+        "success": True,
+        "message": "Configuration updated successfully",
+        "config": updated_config
+    }
+
+@router.get("/generate/menu")
+async def generate_menu_qr():
+    """Generate QR code for menu URL"""
+    config = _get_config_row()
+    if not config:
+        raise HTTPException(status_code=404, detail="Configuration not found")
+
+    # Generate QR code
+    qr = qrcode.QRCode(version=1, box_size=10, border=5)
+    qr.add_data(config["menu_url"])
+    qr.make(fit=True)
+
+    img = qr.make_image(fill_color="black", back_color="white")
+
+    # Convert to base64
+    buffered = BytesIO()
+    img.save(buffered, format="PNG")
+    img_str = base64.b64encode(buffered.getvalue()).decode()
+
+    return {
+        "qr_code": f"data:image/png;base64,{img_str}",
+        "url": config["menu_url"]
+    }
+
+@router.get("/generate/wifi")
+async def generate_wifi_qr():
+    """Generate QR code for WiFi access"""
+    config = _get_config_row()
+    if not config:
+        raise HTTPException(status_code=404, detail="Configuration not found")
+
+    wifi = config["wifi"]
+    
+    # WiFi QR code format: WIFI:T:WPA;S:ssid;P:password;H:false;;
+    wifi_string = f"WIFI:T:{wifi['security']};S:{wifi['ssid']};P:{wifi['password']};H:{'true' if wifi.get('hidden', False) else 'false'};;"
+    
+    # Generate QR code
+    qr = qrcode.QRCode(version=1, box_size=10, border=5)
+    qr.add_data(wifi_string)
+    qr.make(fit=True)
+    
+    img = qr.make_image(fill_color="black", back_color="white")
+    
+    # Convert to base64
+    buffered = BytesIO()
+    img.save(buffered, format="PNG")
+    img_str = base64.b64encode(buffered.getvalue()).decode()
+    
+    return {
+        "qr_code": f"data:image/png;base64,{img_str}",
+        "wifi": {
+            "ssid": wifi["ssid"],
+            "security": wifi["security"]
+        }
+    }
+
+@router.get("/verify")
+async def verify_admin_token(username: str = Depends(verify_token)):
+    """Verify if token is still valid"""
+    return {"valid": True, "username": username}

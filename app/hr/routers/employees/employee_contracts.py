@@ -27,7 +27,7 @@ from app.hr.services.docx_converter import docx_to_pdf, DocxConversionError
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-COLL_TEMPLATES = "contract_templates"   # template .docx persistenti (Mongo-first)
+COLL_TEMPLATES = "contract_templates"   # template .docx persistenti (MongoDB-first)
 
 # Directory effimere (solo file temporanei di lavorazione): /tmp è scrivibile su Render.
 CONTRACTS_DIR = "/tmp/uploads/contracts"
@@ -59,7 +59,7 @@ def ensure_dirs():
 async def _resolve_template(ct: Dict[str, str]) -> str:
     """Risolve il percorso del template .docx.
 
-    Priorità Mongo-first: se il template è salvato in `contract_templates`
+    Priorità MongoDB-first: se il template è salvato in `contract_templates`
     (persistente tra i deploy), lo scrive in un file temporaneo e ritorna quel
     path; altrimenti usa il file su disco in TEMPLATES_DIR (effimero su Render).
     """
@@ -452,7 +452,7 @@ async def ccnl_suggerisci(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
 @router.get("/templates")
 @handle_errors
 async def list_templates() -> List[Dict[str, Any]]:
-    """Elenco template con disponibilità (Mongo-first, poi disco)."""
+    """Elenco template con disponibilità (MongoDB-first, poi disco)."""
     ensure_dirs()
     db = Database.get_db()
     in_mongo = {d["tipo"] async for d in db[COLL_TEMPLATES].find({}, {"_id": 0, "tipo": 1})}
@@ -471,7 +471,7 @@ async def list_templates() -> List[Dict[str, Any]]:
 @router.post("/template/{contract_type}")
 @handle_errors
 async def upload_template(contract_type: str, file: UploadFile = File(...)) -> Dict[str, Any]:
-    """Carica/sostituisce un template .docx (salvato su Mongo, persistente)."""
+    """Carica/sostituisce un template .docx (salvato su MongoDB, persistente)."""
     ct = next((c for c in CONTRACT_TYPES if c["id"] == contract_type), None)
     if not ct:
         raise HTTPException(400, f"Tipo contratto non valido: {contract_type}")
@@ -501,7 +501,7 @@ ACCESSORI_AUTO = ["regolamento", "informativa_privacy", "informativa_152"]
 
 
 async def _template_disponibile(db, ct_id: str) -> bool:
-    """True se il template (Mongo o disco) per quel tipo è caricato."""
+    """True se il template (MongoDB o disco) per quel tipo è caricato."""
     ct = next((c for c in CONTRACT_TYPES if c["id"] == ct_id), None)
     if not ct:
         return False
@@ -726,7 +726,7 @@ async def genera_massivo(data: Dict[str, Any] = Body(default={})) -> Dict[str, A
 async def download_contract(contract_id: str):
     """
     Download a generated contract.
-    Architettura Mongo-first: priorità a file_data da Mongo.
+    Architettura MongoDB-first: priorità a file_data da MongoDB.
     """
     import base64
     from fastapi.responses import Response
@@ -737,7 +737,7 @@ async def download_contract(contract_id: str):
     if not contract:
         raise HTTPException(status_code=404, detail="Contratto non trovato")
     
-    # Priorità: file_data da Mongo (architettura Mongo-first)
+    # Priorità: file_data da MongoDB (architettura MongoDB-first)
     file_data = contract.get("file_data")
     if file_data:
         content = base64.b64decode(file_data)
@@ -777,7 +777,7 @@ async def get_employee_contracts(employee_id: str) -> List[Dict[str, Any]]:
 async def delete_contract(contract_id: str) -> Dict[str, Any]:
     """
     Delete a generated contract.
-    Architettura Mongo-first: elimina dal database.
+    Architettura MongoDB-first: elimina dal database.
     """
     db = Database.get_db()
     contract = await db["employee_contracts"].find_one({"id": contract_id}, {"_id": 0})
@@ -785,7 +785,7 @@ async def delete_contract(contract_id: str) -> Dict[str, Any]:
     if not contract:
         raise HTTPException(status_code=404, detail="Contratto non trovato")
     
-    # Delete record from Mongo (architettura Mongo-first)
+    # Delete record from MongoDB (architettura MongoDB-first)
     await db["employee_contracts"].delete_one({"id": contract_id})
     
     # Cleanup opzionale: tenta eliminazione file locale se esiste (per retrocompatibilità)
@@ -795,7 +795,7 @@ async def delete_contract(contract_id: str) -> Dict[str, Any]:
             if os.path.exists(filepath):
                 os.remove(filepath)
         except Exception:
-            pass  # Ignora errori filesystem, il dato importante è su Mongo
+            pass  # Ignora errori filesystem, il dato importante è su MongoDB
     
     return {"success": True, "message": "Contratto eliminato"}
 
@@ -1108,15 +1108,14 @@ async def _get_contract_pdf(contract: Dict[str, Any]) -> bytes:
 def _bundle_to_pdf(documenti: List[Dict[str, Any]]) -> bytes:
     """Converte ogni .docx (contratto + accessori) in PDF e li unisce in un unico
     PDF: così la firma per accettazione copre tutti i documenti in una sola volta."""
-    import fitz  # PyMuPDF, gia' usato dal gestionale per i PDF
-    unito = fitz.open()
+    from PyPDF2 import PdfMerger
+    merger = PdfMerger()
     for d in documenti:
-        with fitz.open(stream=_docx_bytes_to_pdf(d["data"], d.get("filename", "documento.docx")), filetype="pdf") as parte:
-            unito.insert_pdf(parte)
-    try:
-        return unito.tobytes()
-    finally:
-        unito.close()
+        merger.append(io.BytesIO(_docx_bytes_to_pdf(d["data"], d.get("filename", "documento.docx"))))
+    out = io.BytesIO()
+    merger.write(out)
+    merger.close()
+    return out.getvalue()
 
 
 @router.post("/sign/{contract_id}")

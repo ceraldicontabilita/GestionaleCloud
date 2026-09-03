@@ -21,12 +21,12 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 
 ## Riepilogo
 
-- Correnti: **28**
+- Correnti: **29**
 - Riferimento: **28**
 - Pianificati: **7**
 - Generati: **5**
 - Storici: **6**
-- Totale: **74**
+- Totale: **75**
 
 ## Elenco completo
 
@@ -72,6 +72,7 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 | `docs/rt-locale-drive.md` | `current` | Autorità operativa corrente |
 | `frontend/README.md` | `current` | Autorità operativa corrente |
 | `frontend_lotti/README.md` | `current` | Autorità operativa corrente |
+| `frontend_menu/README.md` | `current` | Autorità operativa corrente |
 | `memoria/AUDIT_FRONTEND_DEAD_CODE.md` | `generated` | Artefatto meccanico; rigenerare dalla sorgente indicata |
 | `memoria/AUDIT_STATIC_REPORT.md` | `generated` | Artefatto meccanico; rigenerare dalla sorgente indicata |
 | `memoria/DISASTER_RECOVERY_DRIVE.md` | `current` | Autorità operativa corrente |

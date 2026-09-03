@@ -1,28 +1,48 @@
-"""Identita' e permessi per il portale dipendenti.
-
-Il token e' SEMPRE obbligatorio: nessun accesso anonimo. Usato da tutti gli
-endpoint del portale (buste paga, richieste, turni, timbrature).
-
-Ruoli applicativi (campo ``ruolo_app`` sul documento dipendente, o ``role``
-nel JWT):
-  - "dipendente"          -> accede solo ai propri dati
-  - "responsabile_turni"  -> gestisce turni e richieste turno
-  - "admin"               -> tutto (e' lo stesso admin del gestionale)
 """
-from typing import Any, Dict
+Identità & permessi per il portale dipendenti.
 
-from fastapi import Depends, HTTPException, Request, status
+A differenza di utils/dependencies.get_current_user (che ha un bypass admin
+quando manca il token), qui il token è SEMPRE obbligatorio: nessun accesso
+anonimo. Usato da tutti gli endpoint del portale (buste paga, richieste, turni).
 
-from app.hr.utils.dependencies import _payload_or_401
+Ruoli applicativi (campo `ruolo_app` sul documento dipendente, o role nel JWT):
+  - "dipendente"          → accede solo ai propri dati
+  - "responsabile_turni"  → Luigi: gestisce turni e richieste turno
+  - "admin"               → Enzo: tutto
+"""
+from typing import Dict, Any, List
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from jose import jwt, JWTError
+
+from app.hr.config import settings
+
+_bearer = HTTPBearer(auto_error=True)
 
 RUOLI_VALIDI = {"dipendente", "responsabile_turni", "admin"}
 
 
-async def get_identity(request: Request) -> Dict[str, Any]:
-    """Identita' corrente dal JWT. 401 se assente/invalido (nessun bypass)."""
-    payload = _payload_or_401(request)
+def decode_token(token: str) -> Dict[str, Any]:
+    try:
+        return jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token non valido o scaduto",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
+async def get_identity(
+    credentials: HTTPAuthorizationCredentials = Depends(_bearer),
+) -> Dict[str, Any]:
+    """Identità corrente dal JWT. 401 se assente/invalido (nessun bypass)."""
+    payload = decode_token(credentials.credentials)
+    sub = payload.get("sub")
+    if not sub:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token senza soggetto")
     return {
-        "id": payload["sub"],
+        "id": sub,
         "role": payload.get("role", "dipendente"),
         "tipo": payload.get("tipo", "dipendente"),
         "name": payload.get("name"),
@@ -36,7 +56,10 @@ def require_roles(*roles: str):
 
     async def _checker(identity: Dict[str, Any] = Depends(get_identity)) -> Dict[str, Any]:
         if identity.get("role") not in allowed:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permessi insufficienti")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Permessi insufficienti",
+            )
         return identity
 
     return _checker

@@ -26,16 +26,6 @@ PAGE_FILE_BY_PATH = {
     "/login": "login.json",
     "/gestione-riservata": "gestione-riservata.json",
     "/tracciabilita": "tracciabilita-haccp.json",
-    "/hr": "hr-gestione.json",
-    "/portale": "hr-portale.json",
-    "/menu": "menu-pubblico.json",
-    "/menu/ordini": "menu-ordini.json",
-    "/menu/cassa": "menu-cassa.json",
-    "/menu/cucina": "menu-cucina.json",
-    "/menu/magazzino": "menu-magazzino.json",
-    "/menu/sale": "menu-sale.json",
-    "/menu/gestione": "menu-gestione.json",
-    "/menu-banco": "menu-banco.json",
     "/rapido": "inserimento-rapido.json",
     "/fatture": "fatture.json",
     "/fatture/corrispettivi": "corrispettivi.json",
@@ -199,7 +189,6 @@ def module_for(path: str) -> str:
         "learning-machine": "strumenti",
         "scadenze": "contabilita",
         "agenti": "strumenti",
-        "menu-banco": "menu",
     }.get(head, head)
 
 
@@ -488,8 +477,10 @@ def rewrite_mcp_evals() -> None:
 
 
 def json_files() -> list[Path]:
+    # "build" = output CRA delle app portate pari pari (frontend_lotti,
+    # frontend_menu): compilato su Render, mai versionato, come "dist".
     excluded_parts = {
-        ".claude", ".git", ".pytest_cache", "node_modules", "dist", "tmp",
+        ".claude", ".git", ".pytest_cache", "node_modules", "dist", "build", "tmp",
     }
     # Solo i file tracciati da git (come refresh_markdown_docs.py): copie di
     # lavoro non ancora committate non appartengono all'inventario.

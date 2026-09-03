@@ -13,7 +13,7 @@ FORBIDDEN_TOKEN = "mongo" + "db"
 # 03/09/2026): conservano il proprio codice, compresa l'API Mongo in memoria
 # (mongomock) di Lotti. Non sono l'archivio del gestionale, la guardia non le
 # riguarda.
-APP_PORTATE_PARI_PARI = {"lotti"}
+APP_PORTATE_PARI_PARI = {"lotti", "menu", "hr"}
 
 
 def test_drive_only_product_has_no_forbidden_backend_references():
