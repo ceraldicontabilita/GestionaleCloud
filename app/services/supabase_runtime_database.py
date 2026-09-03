@@ -60,6 +60,53 @@ def documents_digest(documents: list[dict[str, Any]]) -> str:
     return hashlib.sha256("\n".join(canonical).encode("utf-8")).hexdigest()
 
 
+class DocumentoDuplicatoRemoto(RuntimeError):
+    """Postgres ha rifiutato uno o piu' documenti per ``idempotency_key`` gia' usata.
+
+    Viene sollevata SOLO nel percorso write-through diretto (fuori da
+    ``batch_writes``), dopo che la cache in memoria e' stata riallineata alla
+    riga esistente: chi scrive puo' cosi' restituire l'id gia' presente
+    invece di quello mai persistito. Espone, per chiave, l'id e il documento
+    esistente (``id_esistente_per_chiave``, ``documento_esistente_per_chiave``).
+    """
+
+    def __init__(self, collection_name: str, rifiuti: list[dict[str, Any]]):
+        self.collection_name = collection_name
+        self.rifiuti = rifiuti
+        self.id_esistente_per_chiave = {
+            str(item.get("idempotency_key")): item.get("id_esistente")
+            for item in rifiuti
+        }
+        self.documento_esistente_per_chiave = {
+            str(item.get("idempotency_key")): item.get("documento_esistente") or {}
+            for item in rifiuti
+        }
+        dettaglio = ", ".join(
+            f"{item.get('idempotency_key')} -> {item.get('id_esistente')}"
+            for item in rifiuti
+        )
+        super().__init__(
+            f"Supabase ha rifiutato {len(rifiuti)} documenti in "
+            f"{collection_name} per idempotency_key gia' usata: {dettaglio}"
+        )
+
+
+def _rifiuti_da_risposta(result: Any) -> list[dict[str, Any]]:
+    """Estrae l'elenco dei rifiuti dalla risposta di ``gc_upsert_documents``.
+
+    La versione storica dell'RPC restituisce un intero (righe scritte) o
+    nulla; quella con la regola di unicita' restituisce
+    ``{"upserted": n, "rejected": [{id_rifiutato, id_esistente,
+    idempotency_key, documento_esistente}]}``.
+    """
+    if not isinstance(result, dict):
+        return []
+    rejected = result.get("rejected")
+    if not isinstance(rejected, list):
+        return []
+    return [item for item in rejected if isinstance(item, dict) and item.get("id_rifiutato")]
+
+
 class SupabaseRuntimeDatabase(SheetDatabase):
     """Archivio documentale con persistenza write-through su Supabase."""
 
@@ -235,14 +282,68 @@ class SupabaseRuntimeDatabase(SheetDatabase):
                 [str(document.get("_id")) for document in before],
             )
             return
-        await self._upsert_documents(collection_name, after)
+        rifiuti = await self._upsert_documents(collection_name, after)
+        if rifiuti:
+            # Fuori dal batch il chiamante e' ancora in attesa della
+            # mutazione: la cache e' gia' stata riallineata, l'eccezione gli
+            # consegna la riga esistente.
+            raise DocumentoDuplicatoRemoto(collection_name, rifiuti)
+
+    def _riallinea_cache_dopo_rifiuto(
+        self, collection_name: str, rifiuti: list[dict[str, Any]],
+    ) -> None:
+        """La cache non deve tenere una copia che Postgres non ha accettato.
+
+        Per ogni rifiuto: il documento rifiutato sparisce dalla cache e al
+        suo posto entra quello esistente (se l'RPC lo ha restituito). Se
+        l'RPC non lo ha restituito, il documento resta ma marcato
+        ``entity_status="deleted"`` + ``duplicate_of``, cosi' nessuna lettura
+        lo somma. In ogni caso il rifiuto e' loggato a ERROR con id e chiave.
+        """
+        table = self[collection_name]
+        documents = table._documents
+        for item in rifiuti:
+            id_rifiutato = str(item.get("id_rifiutato"))
+            id_esistente = item.get("id_esistente")
+            chiave = item.get("idempotency_key")
+            esistente = item.get("documento_esistente")
+            logger.error(
+                "Supabase ha rifiutato %s/%s: idempotency_key %s gia' usata dalla "
+                "riga %s (scritta da un altro processo); cache riallineata",
+                collection_name, id_rifiutato, chiave, id_esistente,
+            )
+            indice = next(
+                (i for i, doc in enumerate(documents) if str(doc.get("_id")) == id_rifiutato),
+                None,
+            )
+            if isinstance(esistente, dict) and esistente:
+                esistente = dict(esistente)
+                esistente.setdefault("_id", id_esistente)
+                gia_in_cache = any(
+                    str(doc.get("_id")) == str(esistente.get("_id")) for doc in documents
+                )
+                if indice is not None and gia_in_cache:
+                    del documents[indice]
+                elif indice is not None:
+                    documents[indice] = esistente
+                elif not gia_in_cache:
+                    documents.append(esistente)
+                continue
+            if indice is not None:
+                documents[indice].update({
+                    "entity_status": "deleted",
+                    "status": "deleted",
+                    "deleted": True,
+                    "duplicate_of": id_esistente,
+                    "deleted_reason": "idempotency_key_rifiutata_da_postgres",
+                })
 
     async def bulk_seed(
         self, collection_name: str, documents: list[dict[str, Any]],
     ) -> int:
         """Upsert idempotente in blocchi, usato dalla migrazione controllata."""
-        await self._upsert_documents(collection_name, documents)
-        return len(documents)
+        rifiuti = await self._upsert_documents(collection_name, documents)
+        return len(documents) - len(rifiuti)
 
     async def mirror_collection(
         self, collection_name: str, documents: list[dict[str, Any]],
@@ -287,16 +388,27 @@ class SupabaseRuntimeDatabase(SheetDatabase):
 
     async def _upsert_documents(
         self, collection_name: str, documents: list[dict[str, Any]],
-    ) -> None:
+    ) -> list[dict[str, Any]]:
+        """Upsert a blocchi; ritorna i documenti rifiutati per chiave doppia.
+
+        Quando l'RPC segnala un rifiuto la cache viene riallineata subito
+        (``_riallinea_cache_dopo_rifiuto``): nessuna copia divergente resta
+        in memoria, qualunque sia il chiamante.
+        """
         if not documents:
-            return
+            return []
         normalised = [_normalise_document(document) for document in documents]
+        rifiuti: list[dict[str, Any]] = []
         for start in range(0, len(normalised), _WRITE_CHUNK_SIZE):
             chunk = normalised[start:start + _WRITE_CHUNK_SIZE]
-            await self._rpc(
+            result = await self._rpc(
                 "gc_upsert_documents",
                 {"p_collection": collection_name, "p_documents": chunk},
             )
+            rifiuti.extend(_rifiuti_da_risposta(result))
+        if rifiuti:
+            self._riallinea_cache_dopo_rifiuto(collection_name, rifiuti)
+        return rifiuti
 
     async def _delete_ids(self, collection_name: str, ids: list[str]) -> None:
         clean_ids = [item for item in ids if item and item != "None"]
@@ -328,6 +440,10 @@ class SupabaseRuntimeDatabase(SheetDatabase):
                         if deletes:
                             await self._delete_ids(collection_name, deletes)
                         if upserts:
+                            # Nel batch il chiamante ha gia' proseguito: il
+                            # rifiuto riallinea la cache e resta nel log a
+                            # ERROR, non puo' piu' essere consegnato a chi
+                            # ha scritto.
                             await self._upsert_documents(collection_name, upserts)
                 finally:
                     self._write_batch.reset(token)

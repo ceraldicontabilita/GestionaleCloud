@@ -171,21 +171,74 @@ async def scrivi_movimento(db, registro: str, mov: Dict[str, Any]) -> str:
         raise ScritturaNonValida(f"registro sconosciuto: {registro}")
     doc = _prepara_documento(mov)
     operation_hash = doc.get("operation_hash") or calcola_operation_hash(registro, doc)
-    if operation_hash:
-        doc["operation_hash"] = operation_hash
-        collection = db[REGISTRI[registro]]
-        query = {"operation_hash": operation_hash, "status": {"$nin": ["deleted", "archived"]}}
-        if hasattr(collection, "find_one_and_update"):
-            precedente = await collection.find_one_and_update(
-                query, {"$setOnInsert": doc}, upsert=True,
-            )
-        else:  # fake minimali dei test storici
-            precedente = await collection.find_one(query)
-            if precedente is None:
-                await collection.insert_one(dict(doc))
-        return (precedente or doc).get("id")
-    await db[REGISTRI[registro]].insert_one(dict(doc))
-    return doc["id"]
+    try:
+        if operation_hash:
+            doc["operation_hash"] = operation_hash
+            collection = db[REGISTRI[registro]]
+            query = {"operation_hash": operation_hash, "status": {"$nin": ["deleted", "archived"]}}
+            if hasattr(collection, "find_one_and_update"):
+                precedente = await collection.find_one_and_update(
+                    query, {"$setOnInsert": doc}, upsert=True,
+                )
+            else:  # fake minimali dei test storici
+                precedente = await collection.find_one(query)
+                if precedente is None:
+                    await collection.insert_one(dict(doc))
+            return (precedente or doc).get("id")
+        await db[REGISTRI[registro]].insert_one(dict(doc))
+        return doc["id"]
+    except Exception as exc:  # noqa: BLE001 - solo il rifiuto per chiave
+        chiave = doc.get("idempotency_key")
+        if not (chiave and _e_rifiuto_remoto_per_chiave(exc)):
+            raise
+        # Un altro processo ha gia' scritto questa identita': Postgres ha
+        # rifiutato la riga e il runtime ha riallineato la cache. Si torna
+        # l'id della riga esistente, come per un duplicato in-process.
+        esistente = getattr(exc, "id_esistente_per_chiave", {}).get(chiave)
+        documento = getattr(exc, "documento_esistente_per_chiave", {}).get(chiave) or {}
+        logger.error(
+            "Scrittura %s rifiutata da Postgres: chiave %s gia' usata dalla riga %s",
+            registro, chiave, esistente,
+        )
+        return documento.get("id") or esistente
+
+
+FILTRO_MOVIMENTO_ATTIVO: Dict[str, Any] = {
+    "status": {"$nin": ["deleted", "archived"]},
+    "entity_status": {"$ne": "deleted"},
+}
+
+
+def chiave_idempotenza_corrispettivo(
+    corrispettivo_id: Any, tipo: str, gestore: Any = None,
+) -> Optional[str]:
+    """Chiave deterministica di ogni scrittura derivata da un corrispettivo.
+
+    E' la stessa chiave che Postgres rende UNICA per collezione (indice
+    parziale su ``(collection, idempotency_key)`` tra le righe attive, vedi
+    ``supabase/migrations/20260903_idempotency_key.sql``): due processi con
+    cache diverse non possono piu' scrivere entrambi la stessa giornata.
+
+    - ``cassa_entrata``  -> ``corr:<id>:cassa_entrata`` (una per corrispettivo);
+    - ``cassa_uscita``   -> ``corr:<id>:cassa_uscita:<gestore>`` (una per circuito);
+    - ``banca_credito``  -> ``corr:<id>:banca_credito:<gestore>`` (una per circuito).
+
+    Senza ``corrispettivo_id`` non esiste una chiave: si torna alla sola
+    guardia storica per data/matricola, non si inventa un'identita'.
+    """
+    corr_id = str(corrispettivo_id or "").strip()
+    if not corr_id:
+        return None
+    if tipo == "cassa_entrata":
+        return f"corr:{corr_id}:cassa_entrata"
+    if tipo in ("cassa_uscita", "banca_credito"):
+        return f"corr:{corr_id}:{tipo}:{normalizza_gestore_pos(gestore)}"
+    raise ValueError(f"tipo di scrittura sconosciuto: {tipo!r}")
+
+
+def _e_rifiuto_remoto_per_chiave(exc: BaseException) -> bool:
+    """True se il runtime Supabase ha rifiutato la riga per chiave gia' usata."""
+    return type(exc).__name__ == "DocumentoDuplicatoRemoto"
 
 
 async def _scrivi_se_assente(db, registro: str, query_esistente: Dict[str, Any],
@@ -201,19 +254,55 @@ async def _scrivi_se_assente(db, registro: str, query_esistente: Dict[str, Any],
     (vietato dalla regola canonica POS). L'upsert atomico chiede al database
     stesso di fare "controlla e scrivi" come un'unica azione indivisibile.
 
+    Tre livelli di guardia, dal piu' vicino al piu' lontano:
+
+    1. ``idempotency_key`` (se il movimento ne ha una): una riga attiva con la
+       stessa chiave nella cache vince sempre, anche se la guardia storica
+       per data/matricola non la riconoscerebbe;
+    2. la guardia storica ``query_esistente`` in upsert atomico (processo);
+    3. il rifiuto di Postgres: se un ALTRO processo ha gia' scritto la chiave
+       (cache diversa, deploy sovrapposto, scheduler + web), il runtime
+       Supabase segnala il rifiuto, ripristina la cache e qui si restituisce
+       l'id della riga esistente invece di quella mai scritta.
+
     Ritorna (id_movimento, era_gia_esistente).
     """
     if registro not in REGISTRI:
         raise ScritturaNonValida(f"registro sconosciuto: {registro}")
     doc = _prepara_documento(mov)
-    precedente = await db[REGISTRI[registro]].find_one_and_update(
-        query_esistente,
-        {"$setOnInsert": doc},
-        upsert=True,
-    )
+    collection = db[REGISTRI[registro]]
+    chiave = doc.get("idempotency_key")
+    if chiave:
+        per_chiave = await collection.find_one(
+            {"idempotency_key": chiave, **FILTRO_MOVIMENTO_ATTIVO},
+        )
+        if per_chiave:
+            return per_chiave.get("id"), True
+    try:
+        precedente = await collection.find_one_and_update(
+            query_esistente,
+            {"$setOnInsert": doc},
+            upsert=True,
+        )
+    except Exception as exc:  # noqa: BLE001 - solo il rifiuto per chiave
+        if not (chiave and _e_rifiuto_remoto_per_chiave(exc)):
+            raise
+        esistente = getattr(exc, "id_esistente_per_chiave", {}).get(chiave)
+        documento = getattr(exc, "documento_esistente_per_chiave", {}).get(chiave) or {}
+        logger.error(
+            "Scrittura %s rifiutata da Postgres: chiave %s gia' usata dalla riga %s "
+            "(scritta da un altro processo); restituita la riga esistente",
+            registro, chiave, esistente,
+        )
+        return documento.get("id") or esistente, True
     if precedente:
         return precedente.get("id"), True
     return doc["id"], False
+
+
+def _campo_chiave(chiave: Optional[str]) -> Dict[str, str]:
+    """``{"idempotency_key": chiave}`` oppure niente, mai una chiave vuota."""
+    return {"idempotency_key": chiave} if chiave else {}
 
 
 async def scrivi_movimento_se_assente(
@@ -765,6 +854,12 @@ async def registra_chiusura_pos_reale(
             }
             if corr_id:
                 nuovo_movimento_cassa["corrispettivo_id"] = corr_id
+                # Stessa identita' della riga che scriverebbe
+                # registra_corrispettivo: i due flussi non possono creare
+                # due uscite POS per lo stesso circuito e giorno.
+                nuovo_movimento_cassa["idempotency_key"] = (
+                    chiave_idempotenza_corrispettivo(corr_id, "cassa_uscita", gestore)
+                )
             cassa_id = await scrivi_movimento(
                 db, "cassa", nuovo_movimento_cassa
             )
@@ -845,6 +940,9 @@ async def registra_chiusura_pos_reale(
             }
             if corr_id:
                 nuovo_movimento_banca["corrispettivo_id"] = corr_id
+                nuovo_movimento_banca["idempotency_key"] = (
+                    chiave_idempotenza_corrispettivo(corr_id, "banca_credito", gestore)
+                )
             banca_id = await scrivi_movimento(
                 db, "banca", nuovo_movimento_banca
             )
@@ -959,6 +1057,8 @@ async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Opti
         },
         {
             "corrispettivo_id": corr_doc.get("id"),
+            **_campo_chiave(chiave_idempotenza_corrispettivo(
+                corr_doc.get("id"), "cassa_entrata")),
             "data": data, "tipo": "entrata", "importo": totale,
             "descrizione": f"Corrispettivi {data}",
             "categoria": "Corrispettivi", "source": "corrispettivo_import",
@@ -1035,6 +1135,8 @@ async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Opti
         }
         cassa_pos_id, _ = await _scrivi_se_assente(db, "cassa", cassa_query, {
             **comune, "tipo": "uscita",
+            **_campo_chiave(chiave_idempotenza_corrispettivo(
+                corr_doc.get("id"), "cassa_uscita", circuito)),
             "descrizione": (f"POS {conti_pos.sigla(circuito)} "
                             f"{conti_pos.data_italiana(data)} → Banca"),
             "categoria": conti_pos.categoria_uscita_pos(circuito),
@@ -1045,6 +1147,8 @@ async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Opti
         # reale chiudera'.
         banca_pos_id, _ = await _scrivi_se_assente(db, "banca", banca_query, {
             **comune, "tipo": "entrata",
+            **_campo_chiave(chiave_idempotenza_corrispettivo(
+                corr_doc.get("id"), "banca_credito", circuito)),
             "descrizione": (f"Credito verso {etichetta_circuito} — POS "
                             f"{conti_pos.data_italiana(data)}"),
             "categoria": "Corrispettivi POS", "source": "trasferimento_pos",

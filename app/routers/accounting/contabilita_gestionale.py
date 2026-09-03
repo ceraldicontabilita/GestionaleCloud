@@ -146,28 +146,65 @@ async def _bilancio_verifica_da_registro(
 
     totale_dare = round(sum(v["dare"] for v in risultato), 2)
     totale_avere = round(sum(v["avere"] for v in risultato), 2)
-    backlog_fatture = await db[Collections.INVOICES].count_documents({
+    # Audit del commercialista 03/09/2026 (§2, PR 6): con ZERO scritture il
+    # registro non "quadra" (0 = 0 non e' una prova) e non e' "completo".
+    # In quel caso ogni documento sorgente dell'anno e' per definizione non
+    # registrato: il backlog conta corrispettivi e fatture senza fidarsi dei
+    # flag ``registrat*_contabilita``, che senza scritture non possono
+    # essere veri.
+    registro_vuoto = len(scritture) == 0
+    filtro_fatture: Dict[str, Any] = {
         "status": {"$nin": ["deleted", "archived"]},
         "$or": [
             {"invoice_date": {"$regex": f"^{anno_str}"}},
             {"data_fattura": {"$regex": f"^{anno_str}"}},
             {"data_documento": {"$regex": f"^{anno_str}"}},
         ],
-        "registrata_contabilita": {"$ne": True},
-    })
-    backlog_corrispettivi = await db[Collections.CORRISPETTIVI].count_documents({
+    }
+    filtro_corrispettivi: Dict[str, Any] = {
         "entity_status": {"$ne": "deleted"},
         "data": {"$regex": f"^{anno_str}"},
-        "registrato_contabilita": {"$ne": True},
-    })
+    }
+    if not registro_vuoto:
+        filtro_fatture["registrata_contabilita"] = {"$ne": True}
+        filtro_corrispettivi["registrato_contabilita"] = {"$ne": True}
+    backlog_fatture = await db[Collections.INVOICES].count_documents(filtro_fatture)
+    backlog_corrispettivi = await db[Collections.CORRISPETTIVI].count_documents(
+        filtro_corrispettivi
+    )
     backlog_totale = backlog_fatture + backlog_corrispettivi
-    quadratura_totali = abs(totale_dare - totale_avere) < 0.01
+    quadratura_totali = abs(totale_dare - totale_avere) < 0.01 and not registro_vuoto
     registro_valido = (
-        not scritture_sbilanciate
+        not registro_vuoto
+        and not scritture_sbilanciate
         and scritture_senza_righe == 0
         and righe_non_numeriche == 0
         and righe_senza_conto == 0
     )
+    quadratura = quadratura_totali and registro_valido
+    completo = backlog_totale == 0 and registro_valido
+    if registro_vuoto:
+        stato = "REGISTRO_VUOTO"
+        messaggio = (
+            f"Nessuna scrittura in partita doppia per l'anno {anno}: il libro "
+            "giornale definitivo e' vuoto, quindi non esiste alcuna quadratura "
+            f"da verificare. Restano da registrare {backlog_totale} documenti "
+            f"({backlog_fatture} fatture e {backlog_corrispettivi} corrispettivi)."
+        )
+    elif not registro_valido:
+        stato = "REGISTRO_NON_VALIDO"
+        messaggio = "Il registro contiene scritture non valide: verificare le anomalie prima di usare i saldi."
+    elif not quadratura_totali:
+        stato = "SBILANCIO"
+        messaggio = f"Totale Dare e Totale Avere differiscono di {round(totale_dare - totale_avere, 2)}."
+    elif not completo:
+        stato = "QUADRA_INCOMPLETO"
+        messaggio = (
+            f"Il registro quadra ma restano {backlog_totale} documenti da registrare."
+        )
+    else:
+        stato = "QUADRA"
+        messaggio = "Il bilancio di verifica quadra e tutti i documenti sono registrati."
     return {
         "success": True,
         "anno": anno,
@@ -182,10 +219,13 @@ async def _bilancio_verifica_da_registro(
             "saldo_avere": round(sum(v["saldo_avere"] for v in risultato), 2),
             "sbilancio": round(totale_dare - totale_avere, 2),
         },
-        "quadratura": quadratura_totali and registro_valido,
+        "quadratura": quadratura,
+        "stato": stato,
+        "messaggio": messaggio,
         "qualita_registro": {
             "quadratura_totali": quadratura_totali,
             "registro_valido": registro_valido,
+            "registro_vuoto": registro_vuoto,
             "scritture_sbilanciate": len(scritture_sbilanciate),
             "dettaglio_scritture_sbilanciate": scritture_sbilanciate[:50],
             "scritture_senza_righe": scritture_senza_righe,
@@ -197,7 +237,7 @@ async def _bilancio_verifica_da_registro(
             "fatture_da_registrare": backlog_fatture,
             "corrispettivi_da_registrare": backlog_corrispettivi,
             "documenti_da_registrare": backlog_totale,
-            "completo": backlog_totale == 0 and registro_valido,
+            "completo": completo,
         },
         "riepilogo": {
             "n_conti": len(risultato),

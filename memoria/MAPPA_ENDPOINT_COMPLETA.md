@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1148 endpoint** in **112 gruppi**.
+> Totale **1149 endpoint** in **112 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 705 · ext esterni = 81 · — da verificare = 362
+**Riepilogo uso:** ✓ frontend = 705 · ext esterni = 81 · — da verificare = 363
 
 ## AI Parser  (11)
 
@@ -53,7 +53,7 @@
 | PUT | `/api/warehouse/products/{product_id}` | ✓ | public_api |
 | DELETE | `/api/warehouse/products/{product_id}` | ✓ | public_api |
 
-## Admin  (25)
+## Admin  (26)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -61,6 +61,7 @@
 | POST | `/api/admin/bank-supplier-rules` | ✓ | admin |
 | POST | `/api/admin/bank-supplier-rules/reprocess/{year}` | ✓ | admin |
 | DELETE | `/api/admin/bank-supplier-rules/{rule_id}` | ✓ | admin |
+| POST | `/api/admin/bonifica-prima-nota-doppioni` | — | admin |
 | DELETE | `/api/admin/cleanup-trattenute-disciplinari` | — | admin |
 | GET | `/api/admin/collections` | — | admin |
 | GET | `/api/admin/dashboard-summary` | ✓ | admin |

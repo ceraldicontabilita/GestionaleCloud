@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1148 · tenere: 747 · verificare: 371 · admin-only (migrazione/manutenzione): 30
+**Totale endpoint:** 1149 · tenere: 747 · verificare: 372 · admin-only (migrazione/manutenzione): 30
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -35,6 +35,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/admin/bank-supplier-rules` | admin | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/admin/bank-supplier-rules/reprocess/{year}` | admin | sì | — | — | — | — | tenere | in uso: FE |
 | `DELETE /api/admin/bank-supplier-rules/{rule_id}` | admin | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/admin/bonifica-prima-nota-doppioni` | admin | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `DELETE /api/admin/cleanup-trattenute-disciplinari` | admin | — | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
 | `GET /api/admin/collections` | admin | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/admin/dashboard-summary` | admin | sì | — | — | — | — | tenere | in uso: FE |

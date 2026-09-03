@@ -89,6 +89,43 @@ describe('BilancioVerifica', () => {
     expect(screen.getByText(/REGISTRO NON VALIDO/)).toBeInTheDocument();
   });
 
+  it('mostra REGISTRO VUOTO invece di "quadra" quando non ci sono scritture', async () => {
+    api.get.mockResolvedValue({
+      data: {
+        ...baseResponse,
+        conti: [],
+        totali: { dare: 0, avere: 0, saldo_dare: 0, saldo_avere: 0, sbilancio: 0 },
+        quadratura: false,
+        stato: 'REGISTRO_VUOTO',
+        messaggio:
+          "Nessuna scrittura in partita doppia per l'anno 2026: restano da registrare 4 documenti.",
+        qualita_registro: {
+          ...baseResponse.qualita_registro,
+          quadratura_totali: false,
+          registro_valido: false,
+          registro_vuoto: true,
+        },
+        completezza_registro: {
+          scritture_registrate: 0,
+          fatture_da_registrare: 2,
+          corrispettivi_da_registrare: 2,
+          documenti_da_registrare: 4,
+          completo: false,
+        },
+        riepilogo: { ...baseResponse.riepilogo, n_conti: 0, n_conti_patrimonio_netto: 0 },
+      },
+    });
+
+    render(<BilancioVerifica />);
+
+    expect(await screen.findByText('REGISTRO VUOTO')).toBeInTheDocument();
+    expect(screen.getByText(/Nessuna scrittura in partita doppia per l'anno 2026/)).toBeInTheDocument();
+    expect(screen.getByText(/nessuna quadratura da verificare/)).toBeInTheDocument();
+    expect(screen.queryByText(/bilancio di verifica quadra/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/REGISTRO NON VALIDO/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/scritture sbilanciate/)).not.toBeInTheDocument();
+  });
+
   it('rimuove i dati precedenti se il caricamento fallisce', async () => {
     api.get.mockRejectedValue(new Error('servizio non disponibile'));
 

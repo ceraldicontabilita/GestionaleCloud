@@ -8,6 +8,7 @@ import uuid
 
 from app.database import Database
 from app.utils.dependencies import get_current_user, get_current_admin_user
+from app.utils.ruoli import richiedi_admin
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -584,6 +585,37 @@ async def reset_collections(
         "deleted_collections": deleted_stats,
         "audit_id": audit_id,
     }
+
+
+# ============================================================================
+# BONIFICA: doppioni di Prima Nota derivati dai corrispettivi (audit 03/09/2026)
+# ============================================================================
+
+@router.post(
+    "/bonifica-prima-nota-doppioni",
+    summary="Marca (mai cancella) le copie doppie di corrispettivi/POS in Prima Nota",
+)
+async def bonifica_prima_nota_doppioni(
+    dry_run: bool = Query(True, description="True = solo analisi; False = marca le copie"),
+    current_user: Dict[str, Any] = Depends(richiedi_admin),
+) -> Dict[str, Any]:
+    """Audit del commercialista 03/09/2026, PR 5.
+
+    Stesso ``corrispettivo_id`` scritto due volte da processi con cache
+    diverse. Con ``dry_run=true`` ritorna conteggi e importi per registro
+    (cassa entrate, cassa uscite POS, banca crediti POS) e l'elenco delle
+    coppie; con ``dry_run=false`` marca la copia piu' recente
+    ``entity_status="deleted"`` + ``duplicate_of`` e assegna
+    ``idempotency_key`` (prerequisito della migrazione
+    ``supabase/migrations/20260903_idempotency_key.sql``).
+    """
+    from app.services.bonifica_prima_nota_doppioni import esegui
+
+    return await esegui(
+        Database.get_db(),
+        dry_run=dry_run,
+        actor=current_user.get("sub") or current_user.get("username") or "admin",
+    )
 
 
 # ============================================================================
