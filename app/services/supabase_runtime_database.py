@@ -92,6 +92,7 @@ class SupabaseRuntimeDatabase(SheetDatabase):
         self._write_batch: ContextVar[dict[str, dict[str, Any]] | None] = (
             ContextVar(f"supabase_write_batch_{id(self)}", default=None)
         )
+        self.hydration_result: dict[str, Any] | None = None
 
     async def _get_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
@@ -191,7 +192,9 @@ class SupabaseRuntimeDatabase(SheetDatabase):
             totale_righe,
             len(dettaglio),
         )
-        return {"fogli": dettaglio, "righe": totale_righe}
+        result = {"fogli": dettaglio, "righe": totale_righe}
+        self.hydration_result = result
+        return result
 
     async def _write_through(
         self,

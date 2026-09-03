@@ -62,6 +62,23 @@ def test_hydrate_carica_collezioni_e_documenti():
     assert {item["_id"] for item in documents} == {"f1", "f2"}
 
 
+def test_hydrate_registra_hydration_result_per_lhealth_check():
+    # Prima dell'idratazione l'attributo deve essere un vero None su
+    # istanza, non delegato a SheetDatabase.__getattr__ (che restituirebbe
+    # una SheetTable e romperebbe /api/health con un AttributeError).
+    runtime = FakeRestSupabase({
+        "fatture": [{"_id": "f1", "numero": 1}],
+    })
+    assert runtime.hydration_result is None
+
+    result = asyncio.run(runtime.hydrate())
+
+    assert runtime.hydration_result == result
+    assert runtime.hydration_result["fogli"] == [
+        {"collezione": "fatture", "valide": 1, "numero_errori": 0},
+    ]
+
+
 def test_mutazioni_e_batch_vengono_persistiti():
     runtime = FakeRestSupabase()
 
