@@ -128,7 +128,7 @@ function uniqueProblems(problems) {
 
         const positions = await rows.evaluateAll(elements => elements.map(row => {
           const view = [...row.querySelectorAll('button')].find(button => button.textContent.trim() === 'Vedi');
-          const link = [...row.querySelectorAll('button')].find(button => button.textContent.trim() === 'Abbina');
+          const link = [...row.querySelectorAll('button')].find(button => button.textContent.trim() === 'Assegno');
           const viewRect = view?.getBoundingClientRect();
           const linkRect = link?.getBoundingClientRect();
           return {
@@ -147,19 +147,19 @@ function uniqueProblems(problems) {
           problems.push({ type: 'layout', detail: 'Una fattura non espone il pulsante Vedi' });
         }
         if (invoices.some(position => !Number.isFinite(position.linkX))) {
-          problems.push({ type: 'layout', detail: 'Una fattura pagabile non espone il pulsante Abbina' });
+          problems.push({ type: 'layout', detail: 'Una fattura pagabile non espone il pulsante Assegno' });
         }
         if (!sameColumn(positions.map(position => position.viewX).filter(Number.isFinite))) {
           problems.push({ type: 'layout', detail: 'I pulsanti Vedi non sono allineati nella stessa colonna' });
         }
         if (!sameColumn(invoices.map(position => position.linkX).filter(Number.isFinite))) {
-          problems.push({ type: 'layout', detail: 'I pulsanti Abbina non sono allineati nella stessa colonna' });
+          problems.push({ type: 'layout', detail: 'I pulsanti Assegno non sono allineati nella stessa colonna' });
         }
         if (invoices.some(position => Math.abs(position.viewY - position.linkY) > 1)) {
           problems.push({ type: 'layout', detail: 'Vedi e Abbina non sono centrati sulla stessa riga' });
         }
         if (!credit || Number.isFinite(credit.linkX)) {
-          problems.push({ type: 'accounting', detail: 'La nota di credito espone ancora Abbina assegno' });
+          problems.push({ type: 'accounting', detail: 'La nota di credito espone ancora Assegno' });
         }
       }
     } catch (error) {
