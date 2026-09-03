@@ -25,8 +25,8 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 - Riferimento: **28**
 - Pianificati: **7**
 - Generati: **5**
-- Storici: **7**
-- Totale: **75**
+- Storici: **8**
+- Totale: **76**
 
 ## Elenco completo
 
@@ -73,6 +73,7 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 | `frontend/README.md` | `current` | Autorità operativa corrente |
 | `frontend_lotti/README.md` | `current` | Autorità operativa corrente |
 | `frontend_menu/README.md` | `current` | Autorità operativa corrente |
+| `memoria/AUDIT_COMMERCIALISTA_2026-09-03.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `memoria/AUDIT_FRONTEND_DEAD_CODE.md` | `generated` | Artefatto meccanico; rigenerare dalla sorgente indicata |
 | `memoria/AUDIT_STATIC_REPORT.md` | `generated` | Artefatto meccanico; rigenerare dalla sorgente indicata |
 | `memoria/DISASTER_RECOVERY_DRIVE.md` | `current` | Autorità operativa corrente |

@@ -1079,6 +1079,36 @@ def start_scheduler():
         replace_existing=True,
     )
 
+    # Ripresa automatica della ricostruzione fatture da Drive (audit
+    # 03/09/2026): un lotto lasciato a meta' (stato pending/processing) viene
+    # portato avanti da solo, un lotto alla volta, finche' non risulta ok.
+    async def _drive_ricostruzione_ripresa_job():
+        from app.database import Database
+        from app.services import drive_invoice_ingest
+        try:
+            r = await drive_invoice_ingest.riprendi_ricostruzione_se_incompleta(
+                Database.get_db(),
+            )
+            if r.get("status") != "skipped":
+                logger.info(
+                    "[SCHEDULER-DRIVE-RICOSTRUZIONE] "
+                    f"{ {k: r.get(k) for k in ('status', 'processed', 'total', 'imported', 'duplicates', 'errors')} }"
+                )
+        except Exception as e:
+            logger.error(f"[SCHEDULER-DRIVE-RICOSTRUZIONE] errore: {e}")
+
+    scheduler.add_job(
+        _drive_ricostruzione_ripresa_job,
+        'interval', minutes=2,
+        next_run_time=avvio + timedelta(seconds=90),
+        misfire_grace_time=60,
+        coalesce=True,
+        max_instances=1,
+        id="drive_fatture_ricostruzione_ripresa",
+        name="Ripresa ricostruzione fatture Drive incompleta (ogni 2 min)",
+        replace_existing=True,
+    )
+
     # COLLAUDO AUTOMATICO (richiesta utente 18/07/2026): ogni notte tutti gli
     # invarianti contabili vengono verificati; le violazioni diventano alert
     # COLLAUDO_INVARIANTE in dashboard, i check tornati puliti li risolvono.
