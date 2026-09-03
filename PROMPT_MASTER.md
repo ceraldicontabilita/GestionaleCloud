@@ -721,7 +721,9 @@ si rigenerano dal codice e non si correggono a mano.
 | `SUMUP_API_BASE` | integrazioni | configurazione | `str` / `'https://api.sumup.com'` | `app/config.py` |
 | `SUMUP_API_KEY` | integrazioni | segreta | `str` / valore non riportato | `app/config.py`, `render.yaml` |
 | `SUMUP_MERCHANT_CODE` | integrazioni | configurazione | `str` / `''` | `app/config.py`, `render.yaml` |
-| `SUPABASE_DB_URL` | app-runtime | configurazione | `Optional[str]` / `None` | `app/config.py` |
+| `SUPABASE_PUBLISHABLE_KEY` | app-runtime | configurazione | `Optional[str]` / `None` | `app/config.py` |
+| `SUPABASE_RUNTIME_SECRET` | app-runtime | segreta | `Optional[str]` / valore non riportato | `app/config.py` |
+| `SUPABASE_URL` | app-runtime | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `TELEGRAM_BOT_TOKEN` | integrazioni | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `app/services/telegram_notifications.py` |
 | `TELEGRAM_CHAT_ID` | integrazioni | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/services/telegram_notifications.py` |
 | `TEMPLATES_DIR` | app-runtime | configurazione | `Path` / `Path('templates')` | `app/config.py` |
