@@ -20,7 +20,8 @@ sottocategorie, ``menusItems`` = prodotti, ``menusItemsAllergens`` +
 
 Idempotente: sostituzione integrale delle tre tabelle (cancellazione in ordine
 FK-safe: prodotti, sottocategorie, categorie; poi inserimento a lotti).
-``menu_allergens`` non viene toccata.
+``menu_allergens`` non viene toccata; nemmeno le righe con ``origine`` valorizzata
+(prodotti/categorie creati da Lotti, ``origine = "lotti"``).
 
 Endpoint (protetti da ``verify_token`` dell'app):
     POST /api/admin/sync-qromo          body {"dry_run": bool}
@@ -236,10 +237,15 @@ def trasforma_catalogo(dati: Dict[str, Any]) -> Dict[str, List[Dict[str, Any]]]:
 
 def _sostituisci_tabelle(righe: Dict[str, List[Dict[str, Any]]]) -> None:
     """Cancella e reinserisce nell'ordine che rispetta le foreign key
-    (stesso meccanismo di ``/api/admin/seed-once``)."""
-    supabase.table(TABELLA_PRODOTTI).delete().neq("id", -1).execute()
-    supabase.table(TABELLA_SOTTOCATEGORIE).delete().neq("id", -1).execute()
-    supabase.table(TABELLA_CATEGORIE).delete().neq("id", -1).execute()
+    (stesso meccanismo di ``/api/admin/seed-once``).
+
+    Cancella SOLO le righe senza ``origine`` (quelle di Qromo/seed): la
+    categoria "Produzione Ceraldi", le sue sottocategorie e i prodotti creati
+    da Lotti (``origine = "lotti"``, vedi app/lotti/servizi/menu_bridge.py)
+    sopravvivono alla sincronizzazione."""
+    supabase.table(TABELLA_PRODOTTI).delete().is_("origine", "null").execute()
+    supabase.table(TABELLA_SOTTOCATEGORIE).delete().is_("origine", "null").execute()
+    supabase.table(TABELLA_CATEGORIE).delete().is_("origine", "null").execute()
 
     for tabella, chiave in (
         (TABELLA_CATEGORIE, "categories"),

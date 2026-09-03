@@ -20,6 +20,8 @@ class ProductBase(BaseModel):
     descriptionIT: Optional[str] = None
     allergens: List[str] = []
     image: Optional[str] = None
+    # False = nascosto dal menu pubblico (resta visibile nell'area admin).
+    visible: bool = True
 
 
 class Product(ProductBase):
@@ -41,6 +43,7 @@ class ProductUpdate(BaseModel):
     descriptionIT: Optional[str] = None
     allergens: Optional[List[str]] = None
     image: Optional[str] = None
+    visible: Optional[bool] = None
 
 
 class SubcategoryBase(BaseModel):
