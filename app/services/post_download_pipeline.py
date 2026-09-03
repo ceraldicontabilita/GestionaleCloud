@@ -192,6 +192,16 @@ async def processa_cedolini_da_email(db: SheetDatabase) -> Dict[str, Any]:
                                 }}
                             )
                             stats["aggiornati"] += 1
+                            # HR e' l'archivio che gli utenti vedono: la busta (ora
+                            # con il PDF) va depositata anche in app_cedolini se
+                            # ancora manca la'. Mai bloccante.
+                            try:
+                                from app.services.hr_cedolini_deposito import deposita_cedolino_in_hr
+                                await deposita_cedolino_in_hr({
+                                    **existing, "pdf_data": pdf_data, "pdf_filename": filename,
+                                })
+                            except Exception:
+                                logger.exception("[PIPELINE-CEDOLINI] deposito HR fallito (aggiornamento)")
                         else:
                             # Prima di questo fix il ramo "nuovo cedolino"
                             # incrementava solo il contatore senza mai salvare
@@ -199,12 +209,14 @@ async def processa_cedolini_da_email(db: SheetDatabase) -> Dict[str, Any]:
                             # creato in DB nonostante l'anagrafica dipendente
                             # venisse comunque aggiornata sotto.
                             nuovo_cedolino_id = str(uuid.uuid4())
-                            await db["cedolini"].insert_one({
+                            nuovo_cedolino = {
                                 "id": nuovo_cedolino_id,
                                 "dedup_key": dedup_key,
                                 "codice_fiscale": cf,
+                                "nome_dipendente": ced_data.get("nome_dipendente") or ced_data.get("dipendente_nome"),
                                 "mese": mese,
                                 "anno": anno,
+                                "tipo_cedolino": ced_data.get("tipo_cedolino"),
                                 "netto": ced_data.get("netto"),
                                 "lordo": ced_data.get("lordo"),
                                 "pagata": False,
@@ -213,8 +225,16 @@ async def processa_cedolini_da_email(db: SheetDatabase) -> Dict[str, Any]:
                                 "pdf_hash": doc.get("pdf_hash"),
                                 "source": "email_pipeline",
                                 "created_at": datetime.now(timezone.utc).isoformat(),
-                            })
+                            }
+                            # Registro del gestionale (serve alla Prima Nota salari);
+                            # l'archivio che gli utenti vedono e' l'app HR, sotto.
+                            await db["cedolini"].insert_one(dict(nuovo_cedolino))
                             stats["nuovi_cedolini"] += 1
+                            try:
+                                from app.services.hr_cedolini_deposito import deposita_cedolino_in_hr
+                                await deposita_cedolino_in_hr(nuovo_cedolino)
+                            except Exception:
+                                logger.exception("[PIPELINE-CEDOLINI] deposito HR fallito (nuovo cedolino)")
 
                             # Propaga CEDOLINO_IMPORTATO (crea partita aperta stipendio +
                             # alert dipendente non trovato) — prima solo il percorso di

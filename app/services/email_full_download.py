@@ -940,6 +940,15 @@ async def smart_auto_associate(db: SheetDatabase) -> Dict[str, int]:
                             }}
                         )
                         stats["associated"] += 1
+                        # L'archivio che gli utenti vedono e' l'app HR: la busta,
+                        # ora con il PDF, viene depositata in app_cedolini se manca.
+                        try:
+                            from app.services.hr_cedolini_deposito import deposita_cedolino_in_hr
+                            await deposita_cedolino_in_hr({
+                                **cedolino, "pdf_data": pdf_doc["pdf_data"], "pdf_filename": filename,
+                            })
+                        except Exception:
+                            logger.exception("Deposito cedolino in HR fallito (associazione PDF email)")
                         logger.info(f"Cedolino associato: {filename} -> {cedolino['id']}")
                         continue
 

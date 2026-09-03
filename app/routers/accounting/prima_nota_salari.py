@@ -395,24 +395,36 @@ async def allega_cedolino_pdf(
 
     cedolino_id = (cedolino or {}).get("id") or salario.get("cedolino_id") or str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
+    cedolino_doc = {
+        "id": cedolino_id,
+        "dipendente_id": salario.get("dipendente_id"),
+        "nome_dipendente": nome,
+        "codice_fiscale": salario.get("codice_fiscale"),
+        "mese": salario.get("mese"),
+        "anno": salario.get("anno"),
+        "tipo_cedolino": salario.get("tipo_cedolino"),
+        "periodo": f"{int(salario.get('mese') or 0):02d}/{salario.get('anno')}",
+        "filename": file.filename or "cedolino.pdf",
+        "pdf_data": base64.b64encode(content).decode("ascii"),
+        "pdf_disponibile": True,
+        "source": "upload_manuale_pagina_salari",
+        "updated_at": now,
+    }
+    # Registro del gestionale (collegato alla riga di Prima Nota); l'archivio
+    # che gli utenti vedono e' l'app HR: deposito in app_cedolini, mai bloccante.
     await db["cedolini"].update_one(
         {"id": cedolino_id},
-        {"$set": {
-            "id": cedolino_id,
-            "dipendente_id": salario.get("dipendente_id"),
-            "nome_dipendente": nome,
-            "codice_fiscale": salario.get("codice_fiscale"),
-            "mese": salario.get("mese"),
-            "anno": salario.get("anno"),
-            "periodo": f"{int(salario.get('mese') or 0):02d}/{salario.get('anno')}",
-            "filename": file.filename or "cedolino.pdf",
-            "pdf_data": base64.b64encode(content).decode("ascii"),
-            "pdf_disponibile": True,
-            "source": "upload_manuale_pagina_salari",
-            "updated_at": now,
-        }},
+        {"$set": cedolino_doc},
         upsert=True,
     )
+    deposito_hr = None
+    try:
+        from app.services.hr_cedolini_deposito import deposita_cedolino_in_hr
+        deposito_hr = (await deposita_cedolino_in_hr({
+            **cedolino_doc, "netto": salario.get("importo_busta"),
+        })).get("esito")
+    except Exception:
+        logger.exception("Deposito cedolino in HR fallito (allegato manuale): flusso invariato")
     await db["prima_nota_salari"].update_one(
         {"id": record_id},
         {"$set": {"cedolino_id": cedolino_id, "updated_at": now}},
@@ -421,8 +433,25 @@ async def allega_cedolino_pdf(
         "success": True,
         "record_id": record_id,
         "cedolino_id": cedolino_id,
+        "deposito_hr": deposito_hr,
         "message": "Cedolino allegato; gli importi della riga non sono stati modificati",
     }
+
+
+@router.post("/deposita-cedolini-in-hr")
+async def backfill_deposita_cedolini_in_hr(
+    dry_run: bool = Query(False, description="Conta senza scrivere nulla nell'archivio HR"),
+    _current_user: dict = Depends(get_current_admin_user),
+) -> dict:
+    """Backfill: deposita ogni cedolino del registro del gestionale in HR.
+
+    Un solo sistema cedolini (decisione del titolare 03/09/2026): l'archivio
+    che gli utenti vedono e' `app_cedolini` dell'app HR. Le buste gia'
+    presenti la' non vengono mai sovrascritte. Ritorna i conteggi per esito.
+    """
+    from app.services.hr_cedolini_deposito import deposita_tutti_i_cedolini
+
+    return await deposita_tutti_i_cedolini(Database.get_db(), dry_run=dry_run)
 
 
 @router.post("/salari/{record_id}/bonifico-pdf")

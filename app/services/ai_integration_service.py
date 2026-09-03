@@ -201,6 +201,7 @@ async def process_document_with_ai(
                         "dipendente_id": dip_id,
                         "employee_id": dip_id,
                         "dipendente_nome": update_data.get("dipendente_nome"),
+                        "codice_fiscale": parsed.get("dipendente", {}).get("codice_fiscale"),
                         "mese": mese,
                         "anno": anno,
                         "lordo": parsed.get("retribuzione", {}).get("lordo_totale", 0),
@@ -212,9 +213,16 @@ async def process_document_with_ai(
                         "documents_inbox_id": document_id,
                         "created_at": datetime.now(timezone.utc).isoformat()
                     }
+                    # Registro del gestionale; l'archivio che gli utenti vedono
+                    # e' l'app HR (deposito in app_cedolini, mai bloccante).
                     await db["cedolini"].insert_one(cedolino_db)
                     result["saved_to"] = "cedolini"
                     logger.info(f"📋 Cedolino salvato: {update_data.get('dipendente_nome')} {mese}/{anno}")
+                    try:
+                        from app.services.hr_cedolini_deposito import deposita_cedolino_in_hr
+                        result["deposito_hr"] = (await deposita_cedolino_in_hr(cedolino_db)).get("esito")
+                    except Exception:
+                        logger.exception("Deposito cedolino in HR fallito (parser email AI): flusso invariato")
             
             elif detected_type == "f24" and parsed.get("totali", {}).get("totale_debito"):
                 # L'output AI non è una quietanza validata: resta nell'inbox

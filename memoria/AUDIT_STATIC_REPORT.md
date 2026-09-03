@@ -494,31 +494,31 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/accounting/prima_nota_salari.py:428`
+- File: `app/routers/accounting/prima_nota_salari.py:457`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/accounting/prima_nota_salari.py:607`
+- File: `app/routers/accounting/prima_nota_salari.py:636`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/accounting/prima_nota_salari.py:729`
+- File: `app/routers/accounting/prima_nota_salari.py:758`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/accounting/prima_nota_salari.py:1240`
+- File: `app/routers/accounting/prima_nota_salari.py:1269`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/accounting/prima_nota_salari.py:1443`
+- File: `app/routers/accounting/prima_nota_salari.py:1472`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -1388,13 +1388,13 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/employees/dipendenti.py:1270`
+- File: `app/routers/employees/dipendenti.py:1289`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/employees/dipendenti.py:1454`
+- File: `app/routers/employees/dipendenti.py:1473`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 

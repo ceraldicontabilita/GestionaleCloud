@@ -121,7 +121,14 @@ async def save_busta_paga_to_gestionale(db, data: Dict[str, Any], source_info: D
         if existing:
             return {"status": "duplicate", "message": "Cedolino già presente", "id": str(existing.get("_id"))}
 
+        # Registro del gestionale (Prima Nota salari); l'archivio che gli utenti
+        # vedono e' l'app HR: deposito in app_cedolini, mai bloccante.
         result = await db["cedolini"].insert_one(doc)
+        try:
+            from app.services.hr_cedolini_deposito import deposita_cedolino_in_hr
+            await deposita_cedolino_in_hr(doc)
+        except Exception:
+            logger.exception("Deposito cedolino in HR fallito (Document AI): flusso invariato")
 
         # Aggiorna/crea anagrafica dipendente
         if dipendente.get("codice_fiscale"):

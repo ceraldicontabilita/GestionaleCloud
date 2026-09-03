@@ -230,9 +230,21 @@ async def process_upload_cedolino(
             "created_at": datetime.now(timezone.utc).isoformat()
         }
         
+        # Registro del gestionale (Prima Nota salari); l'archivio che gli utenti
+        # vedono e' l'app HR: la stessa busta viene depositata in app_cedolini.
         await db[COLL_CEDOLINI].insert_one(cedolino_doc)
         result["success"] = True
         result["document_id"] = cedolino_doc["id"]
+        try:
+            from app.services.hr_cedolini_deposito import deposita_cedolino_in_hr
+            result["deposito_hr"] = (await deposita_cedolino_in_hr({
+                **cedolino_doc,
+                "netto": cedolino_doc.get("netto_pagato"),
+                "lordo": cedolino_doc.get("lordo_totale"),
+                "formato": parsed.get("template"),
+            })).get("esito")
+        except Exception:
+            logger.exception("Deposito cedolino in HR fallito (upload AI): flusso invariato")
         result["message"] = f"Cedolino {periodo.get('mese')}/{periodo.get('anno')} - {nome_completo} - €{parsed.get('netto', {}).get('netto_pagato', 0):.2f}"
         
         logger.info(f"✅ Cedolino processato: {filename}")
