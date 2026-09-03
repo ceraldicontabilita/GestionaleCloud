@@ -56,6 +56,7 @@ export const NAV_ALTRO = [
   { to: '/ritenute', label: 'Ritenute', Icon: Receipt },
   { to: '/salari', label: 'Cedolini paga', Icon: Users },
   { to: '/strumenti', label: 'Strumenti', Icon: Wrench },
+  { to: '/menu/ordini', label: 'Menu', Icon: Menu },
   { to: '/hr', label: 'HR', Icon: Users, adminOnly: true },
   { to: '/impostazioni-ai', label: 'Assistente AI', Icon: Bot, adminOnly: true },
   { to: '/utenti', label: 'Utenti', Icon: Users, adminOnly: true },

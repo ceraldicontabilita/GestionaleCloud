@@ -17,9 +17,9 @@ PAGES = CATALOG["pages"]
 MAIN = (ROOT / "frontend/src/main.jsx").read_text(encoding="utf-8")
 
 
-def test_catalogo_contiene_esattamente_le_68_schermate_numerate():
-    assert [page["id"] for page in PAGES] == list(range(1, 69))
-    assert len({page["path"] for page in PAGES}) == 68
+def test_catalogo_contiene_esattamente_le_76_schermate_numerate():
+    assert [page["id"] for page in PAGES] == list(range(1, 77))
+    assert len({page["path"] for page in PAGES}) == 76
     assert all(page["audit_status"] in {"unverified", "in_review", "verified"} for page in PAGES)
 
 
@@ -129,5 +129,5 @@ def test_il_prompt_master_e_il_catalogo_macchina_non_divergono():
         flags=re.MULTILINE,
     )
     documented = {int(identifier): path for identifier, path in rows}
-    assert len(documented) == 68
+    assert len(documented) == 76
     assert documented == {page["id"]: page["path"] for page in PAGES}

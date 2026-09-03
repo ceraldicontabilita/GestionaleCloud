@@ -20,8 +20,7 @@ import {
   Settings,
   ShieldCheck,
   Users,
-  WalletCards,
-} from 'lucide-react';
+  WalletCards, Menu } from 'lucide-react';
 
 const STAGES = [
   {
@@ -210,6 +209,19 @@ const AREAS = [
     inputs: ['Cedolini', 'Presenze', 'Bonifici stipendio', 'Verbali driver'],
     outputs: ['Fascicolo dipendente', 'Alert HR', 'Note consulente', 'Storico paghe'],
     links: ['cedolini', 'verbali', 'riconciliazione'],
+  },
+  {
+    id: 'menu',
+    title: 'Menu digitale',
+    route: '/menu/ordini',
+    Icon: Menu,
+    color: '#5b7a6b',
+    group: 'Locale',
+    purpose: 'Menu digitale integrato (ex app Menu): menu pubblico con QR al tavolo, ordini, cassa, monitor cucina, sale e coperto, magazzino bar condiviso con Lotti, immagini e backup.',
+    pages: ['Ordini', 'Cassa', 'Cucina', 'Magazzino bar', 'Sale', 'Gestione menu'],
+    inputs: ['Ordini dal QR', 'Ordini di cassa', 'Catalogo prodotti', 'Immagini', 'Magazzino bar Lotti'],
+    outputs: ['Ordini in lavorazione', 'Incassi cassa', 'Menu pubblico aggiornato', 'QR menu/WiFi', 'Backup JSON'],
+    links: ['dipendenti'],
   },
   {
     id: 'cedolini',

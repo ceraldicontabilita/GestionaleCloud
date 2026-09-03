@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1531 · tenere: 991 · verificare: 507 · admin-only (migrazione/manutenzione): 33
+**Totale endpoint:** 1574 · tenere: 1032 · verificare: 507 · admin-only (migrazione/manutenzione): 35
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -1131,6 +1131,49 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/learning-universal/status` | learning_universal | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/learning-universal/suggestions/{module}` | learning_universal | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/learning-universal/train/all` | learning_universal | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/menu/admin/backup/esporta` | app.menu.routers.gestione | sì | — | — | — | sì | tenere | in uso: FE |
+| `POST /api/menu/admin/backup/ripristina` | app.menu.routers.gestione | sì | — | — | — | sì | tenere | in uso: FE |
+| `POST /api/menu/admin/categorie` | app.menu.routers.gestione | sì | — | — | — | sì | tenere | in uso: FE |
+| `DELETE /api/menu/admin/categorie/{categoria_id}` | app.menu.routers.gestione | sì | — | — | — | — | tenere | in uso: FE |
+| `PUT /api/menu/admin/categorie/{categoria_id}` | app.menu.routers.gestione | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/menu/admin/immagini` | app.menu.routers.gestione | sì | — | — | — | sì | tenere | in uso: FE |
+| `POST /api/menu/admin/immagini` | app.menu.routers.gestione | sì | — | — | — | sì | tenere | in uso: FE |
+| `DELETE /api/menu/admin/immagini/{immagine_id}` | app.menu.routers.gestione | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/menu/admin/migrazione-menu` | app.menu.routers.gestione | sì | — | — | sì | sì | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
+| `GET /api/menu/admin/migrazione-menu/{job_id}` | app.menu.routers.gestione | sì | sì | — | sì | sì | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
+| `GET /api/menu/admin/prodotti` | app.menu.routers.gestione | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
+| `POST /api/menu/admin/prodotti` | app.menu.routers.gestione | sì | — | — | — | sì | tenere | in uso: FE |
+| `DELETE /api/menu/admin/prodotti/{prodotto_id}` | app.menu.routers.gestione | sì | — | — | — | — | tenere | in uso: FE |
+| `PUT /api/menu/admin/prodotti/{prodotto_id}` | app.menu.routers.gestione | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/menu/admin/qrcode/config` | app.menu.routers.gestione | sì | — | — | — | sì | tenere | in uso: FE |
+| `PUT /api/menu/admin/qrcode/config` | app.menu.routers.gestione | sì | — | — | — | sì | tenere | in uso: FE |
+| `POST /api/menu/admin/sale` | app.menu.routers.gestione | sì | — | — | — | sì | tenere | in uso: FE |
+| `DELETE /api/menu/admin/sale/{sala_id}` | app.menu.routers.gestione | sì | — | — | — | — | tenere | in uso: FE |
+| `PUT /api/menu/admin/sale/{sala_id}` | app.menu.routers.gestione | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/menu/admin/sottocategorie` | app.menu.routers.gestione | sì | — | — | — | sì | tenere | in uso: FE |
+| `DELETE /api/menu/admin/sottocategorie/{sotto_id}` | app.menu.routers.gestione | sì | — | — | — | — | tenere | in uso: FE |
+| `PUT /api/menu/admin/sottocategorie/{sotto_id}` | app.menu.routers.gestione | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/menu/admin/stato-dati` | app.menu.routers.gestione | sì | — | — | — | sì | tenere | in uso: FE |
+| `GET /api/menu/pubblico/` | app.menu.routers.pubblico | sì | — | — | — | sì | tenere | in uso: FE |
+| `GET /api/menu/pubblico/allergeni` | app.menu.routers.pubblico | sì | — | — | — | sì | tenere | in uso: FE |
+| `GET /api/menu/pubblico/cerca` | app.menu.routers.pubblico | sì | sì | sì | — | sì | tenere | in uso: FE, scheduler, chat |
+| `GET /api/menu/pubblico/immagini/{immagine_id}` | app.menu.routers.pubblico | sì | — | — | — | sì | tenere | in uso: FE |
+| `POST /api/menu/pubblico/ordini` | app.menu.routers.pubblico | sì | — | — | — | sì | tenere | in uso: FE |
+| `GET /api/menu/pubblico/ordini/{ordine_id}` | app.menu.routers.pubblico | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/menu/pubblico/qrcode/config` | app.menu.routers.pubblico | sì | — | — | — | sì | tenere | in uso: FE |
+| `GET /api/menu/pubblico/sale` | app.menu.routers.pubblico | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
+| `GET /api/menu/staff/magazzino/articoli` | app.menu.routers.staff | sì | — | — | — | sì | tenere | in uso: FE |
+| `POST /api/menu/staff/magazzino/articoli` | app.menu.routers.staff | sì | — | — | — | sì | tenere | in uso: FE |
+| `DELETE /api/menu/staff/magazzino/articoli/{articolo_id}` | app.menu.routers.staff | sì | — | — | — | — | tenere | in uso: FE |
+| `PUT /api/menu/staff/magazzino/articoli/{articolo_id}` | app.menu.routers.staff | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/menu/staff/magazzino/articoli/{articolo_id}/movimento` | app.menu.routers.staff | sì | sì | sì | — | sì | tenere | in uso: FE, scheduler, chat |
+| `GET /api/menu/staff/magazzino/movimenti` | app.menu.routers.staff | sì | sì | sì | — | sì | tenere | in uso: FE, scheduler, chat |
+| `GET /api/menu/staff/ordini` | app.menu.routers.staff | sì | — | — | — | sì | tenere | in uso: FE |
+| `POST /api/menu/staff/ordini` | app.menu.routers.staff | sì | — | — | — | sì | tenere | in uso: FE |
+| `DELETE /api/menu/staff/ordini/{ordine_id}` | app.menu.routers.staff | sì | — | — | — | — | tenere | in uso: FE |
+| `PATCH /api/menu/staff/ordini/{ordine_id}/pagamento` | app.menu.routers.staff | sì | sì | sì | — | sì | tenere | in uso: FE, scheduler, chat |
+| `PATCH /api/menu/staff/ordini/{ordine_id}/stato` | app.menu.routers.staff | sì | sì | sì | — | sì | tenere | in uso: FE, scheduler, chat |
+| `GET /api/menu/staff/sale` | app.menu.routers.staff | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
 | `GET /api/mutui` | mutui | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/mutui/` | mutui | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/mutui/` | mutui | sì | — | — | — | — | tenere | in uso: FE |

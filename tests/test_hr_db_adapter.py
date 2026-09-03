@@ -11,7 +11,7 @@ import asyncio
 
 import pytest
 
-from app.hr.blob_store import MemoryBlobStore, blob_key
+from app.services.blob_store import MemoryBlobStore, blob_key
 from app.hr.db_adapter import HRDatabase, MARKER, rewrite_selector, wanted_blob_fields, inner_projection
 from app.services.sheets_document_store import SheetDatabase
 

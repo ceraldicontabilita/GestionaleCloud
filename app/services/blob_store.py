@@ -1,4 +1,4 @@
-"""Archivio dei contenuti binari del modulo HR (PDF in base64).
+"""Archivio dei contenuti binari del gestionale (PDF e immagini in base64).
 
 Il runtime documentale del gestionale tiene TUTTI i documenti in memoria e
 li scrive su ``gestionale.documents``. I PDF di cedolini, bonifici e

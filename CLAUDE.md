@@ -146,7 +146,37 @@ sempre la sorgente persistente.
   `APPDIPENDENTI_DB_URL`), idempotente, con confronto dei conteggi.
 - Da fare (fase successiva): ritirare `app/routers/employees/dipendenti.py`
   e le collezioni contabili `dipendenti`/`cedolini` duplicate a favore del
-  modulo HR (un solo sistema per funzione), poi portare Menu e Lotti.
+  modulo HR (un solo sistema per funzione), poi portare Lotti.
+
+## Modulo Menu (ex app Menu) — `app/menu/` e `frontend/src/menu/`
+
+- Backend sotto `/api/menu` (`app/menu/router_registry.py`) in tre perimetri:
+  `/pubblico` (clienti dal QR, nessuna sessione: menu, allergeni, sale, invio
+  ordine, stato ordine, immagini), `/staff` (ordini, cassa, cucina, magazzino
+  bar: qualunque sessione valida, anche del portale dipendenti), `/admin`
+  (catalogo, sale, QR/WiFi, immagini, backup, stato dati: `admin`/`operatore`;
+  ripristino e migrazione solo `admin`). Nessun login separato: sessione
+  unica del gestionale (`app/menu/auth.py`).
+- Dati nel registro unico: collezioni `menu_categories`, `menu_subcategories`,
+  `menu_products`, `menu_allergens`, `menu_qrcode_config`, `menu_orders`,
+  `menu_sale`, `menu_warehouse_movements`, `menu_immagini`; il **magazzino
+  bar** e' la collezione `magazzino_bar_prodotti` di Lotti (unico magazzino
+  condiviso, campi di Lotti `nome/unita/stock`). Immagini nell'archivio
+  binari a contenuto (`gestionale.blobs`), servite da
+  `GET /api/menu/pubblico/immagini/{id}`: niente bucket Storage.
+- Frontend: `/menu` = menu pubblico (`MenuPubblico.jsx`), `/menu/<sezione>` =
+  area operativa nel layout del gestionale (`MenuHub.jsx`: ordini, cassa,
+  cucina, magazzino, sale, gestione), `/menu-banco` = stesse schermate di
+  banco per chi entra dal portale dipendenti (token PIN). Tailwind e' attivo
+  SOLO per `src/menu/**` (`tailwind.config.cjs`, preflight spento, token
+  `--menu-*`), voce "Menu" nel menu principale.
+- Backup: un solo JSON scaricabile (`GET /api/menu/admin/backup/esporta`,
+  immagini comprese) e ripristino da file; niente archivi sul disco di Render.
+- Migrazione dal vecchio Supabase dell'app Menu: `app/menu/migrazione_menu.py`
+  (PostgREST, env `MENU_SUPABASE_URL`/`MENU_SUPABASE_KEY` solo su Render),
+  idempotente, scarica le immagini nell'archivio e confronta i conteggi.
+  Dalla scheda Backup della pagina Gestione menu: prima "solo prova", poi
+  reale. Dopo il cutover i servizi Render del vecchio Menu si spengono.
 
 ## Canali operativi e conoscenza
 

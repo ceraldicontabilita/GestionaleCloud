@@ -49,6 +49,12 @@ services:
       # SOLO dalla migrazione una-tantum (POST /api/hr/admin/migrazione-appdipendenti).
       - key: APPDIPENDENTI_DB_URL
         sync: false
+      # Modulo Menu: sorgente della migrazione una-tantum dal vecchio Supabase
+      # dell'app Menu (POST /api/menu/admin/migrazione-menu). Solo per l'import.
+      - key: MENU_SUPABASE_URL
+        sync: false
+      - key: MENU_SUPABASE_KEY
+        sync: false
       # Sessione del portale dipendenti (dispositivo condiviso): 7 giorni.
       - key: HR_PORTALE_TOKEN_EXPIRE_MINUTES
         value: "10080"

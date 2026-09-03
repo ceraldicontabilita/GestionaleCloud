@@ -2,8 +2,8 @@
   "_meta": {
     "schema_version": 2,
     "document_type": "page_source_map",
-    "updated_at": "2026-09-03",
-    "source_revision": "8566e5d017bdab4db5071e0212ed2891cd66ac87",
+    "updated_at": "2026-08-20",
+    "source_revision": "70d4065bac34089b35ba7308d62800a7e76b03eb",
     "generator": "scripts/refresh_json_docs.py",
     "verification": "static_source_map"
   },
@@ -25,18 +25,17 @@
   "backend": {
     "file_verificati": [],
     "endpoint_rilevati_nei_sorgenti": [
+      "/api/hr/accessi",
+      "/api/hr/accessi/genera-mancanti",
+      "/api/hr/accessi/{param}/pin",
+      "/api/hr/accessi/{param}/pin/genera",
+      "/api/hr/accessi/{param}/ruolo",
       "/api/hr/cedolini/import-drive",
       "/api/hr/cedolini/simulazione-f24",
-      "/api/hr/contabilita",
-      "/api/hr/contabilita/fatture",
-      "/api/hr/contracts",
       "/api/hr/contracts/generate/{param}",
       "/api/hr/diagnostica",
-      "/api/hr/dipendenti-cloud",
       "/api/hr/dipendenti-cloud/assegnazioni-turni",
-      "/api/hr/dipendenti-cloud/turni",
-      "/api/hr/tfr",
-      "/api/hr/timbrature"
+      "/api/hr/dipendenti-cloud/turni"
     ]
   },
   "archivio_dati": {

@@ -412,7 +412,7 @@ test e necessario a una route/job/integratore attivo. Audit datati e vecchi
 porting non restano nel repository: Git conserva la storia. Le mappe generate
 si rigenerano dal codice e non si correggono a mano.
 
-## Appendice A — Tutte le 68 pagine
+## Appendice A — Tutte le 76 pagine
 
 1. **Login** — `/login` — accesso `public` — modulo `accesso` — Login sicuro, sessione, MFA e redirect alla destinazione autorizzata. Fonte UI: `frontend/src/pages/Login.jsx`; mappa: `memoria/pagine/login.json`.
 2. **Gestione riservata** — `/gestione-riservata` — accesso `reserved` — modulo `accesso` — Area riservata separata, con accesso dedicato e movimenti auditabili. Fonte UI: `frontend/src/pages/GestioneRiservata.jsx`; mappa: `memoria/pagine/gestione-riservata.json`.
@@ -482,6 +482,14 @@ si rigenerano dal codice e non si correggono a mano.
 66. **Tracciabilità e HACCP** — `/tracciabilita` — accesso `authenticated` — modulo `tracciabilita` — Ricezioni, lotti, registri, attese correttive, ricette, produzioni e attrezzature collegate alle entità canoniche. Fonte UI: `frontend/src/pages/TracciabilitaHACCP.jsx`; mappa: `memoria/pagine/tracciabilita-haccp.json`.
 67. **HR · Gestione dipendenti** — `/hr` — accesso `admin` — modulo `hr` — Area gestione HR (ex AppDipendenti): anagrafica, presenze, ferie, turni, timbrature, buste paga, TFR, contratti, documenti e accessi con PIN personale dei dipendenti. Fonte UI: `frontend/src/hr/HRApp.jsx`; mappa: `memoria/pagine/hr-gestione.json`.
 68. **HR · Portale dipendenti** — `/portale` — accesso `public` — modulo `portale` — Portale dipendenti su smartphone: login tocca-il-nome + PIN personale, timbrature, turni, buste paga, documenti, richieste e avvisi; l'amministratore accede dal login unico del gestionale. Fonte UI: `frontend/src/hr/PortaleDipendente.jsx`; mappa: `memoria/pagine/hr-portale.json`.
+69. **Menu · Menu pubblico (QR)** — `/menu` — accesso `public` — modulo `menu` — Menu digitale pubblico di Ceraldi Caffè (QR al tavolo): categorie, sottocategorie, prodotti con allergeni, IT/EN, carrello e invio dell'ordine con sala, coperto e metodo di pagamento; nessuna sessione. Fonte UI: `frontend/src/menu/MenuPubblico.jsx`; mappa: `memoria/pagine/menu-pubblico.json`.
+70. **Menu · Ordini** — `/menu/ordini` — accesso `authenticated` — modulo `menu` — Ordini del menu in tempo reale su quattro colonne (nuovi, in corso, pronti, completati) con avanzamento e annullo. Fonte UI: `frontend/src/menu/MenuHub.jsx`; mappa: `memoria/pagine/menu-ordini.json`.
+71. **Menu · Cassa** — `/menu/cassa` — accesso `authenticated` — modulo `menu` — Cassa: ordini al banco dal catalogo, sala e coperto, incasso contanti/POS e coda degli ordini da incassare. Fonte UI: `frontend/src/menu/MenuHub.jsx`; mappa: `memoria/pagine/menu-cassa.json`.
+72. **Menu · Monitor cucina** — `/menu/cucina` — accesso `authenticated` — modulo `menu` — Monitor cucina: ticket degli ordini nuovi e in preparazione con minuti trascorsi, inizio e pronto. Fonte UI: `frontend/src/menu/MenuHub.jsx`; mappa: `memoria/pagine/menu-cucina.json`.
+73. **Menu · Magazzino bar** — `/menu/magazzino` — accesso `authenticated` — modulo `menu` — Magazzino bar condiviso con Lotti (collezione unica): giacenze, soglie minime, carichi, scarichi e storico movimenti. Fonte UI: `frontend/src/menu/MenuHub.jsx`; mappa: `memoria/pagine/menu-magazzino.json`.
+74. **Menu · Sale** — `/menu/sale` — accesso `authenticated` — modulo `menu` — Sale del locale: abilitazione ordini, coperto a persona e blocco contanti per gli ordini dal QR. Fonte UI: `frontend/src/menu/MenuHub.jsx`; mappa: `memoria/pagine/menu-sale.json`.
+75. **Menu · Gestione menu** — `/menu/gestione` — accesso `authenticated` — modulo `menu` — Gestione del menu (admin/operatore): categorie, sottocategorie, prodotti con allergeni e immagini deduplicate, QR menu/WiFi, backup JSON e migrazione dal vecchio Supabase (solo admin). Fonte UI: `frontend/src/menu/MenuHub.jsx`; mappa: `memoria/pagine/menu-gestione.json`.
+76. **Menu · Banco portale dipendenti** — `/menu-banco` — accesso `public` — modulo `menu` — Banco per chi entra dal portale dipendenti (token PIN): ordini, cassa, cucina e magazzino bar senza il layout del gestionale. Fonte UI: `frontend/src/menu/MenuHub.jsx`; mappa: `memoria/pagine/menu-banco.json`.
 
 ## Appendice B — Fogli e progressivi Drive/Sheets
 
@@ -680,6 +688,8 @@ si rigenerano dal codice e non si correggono a mano.
 | `LOTTI_INTEGRATION_KEY` | app-runtime | configurazione | non dichiarato in Settings | `app/middleware/authentication.py`, `app/routers/lotti_integration.py`, `render.yaml` |
 | `MAX_CONCURRENT_IMPORTS` | app-runtime | configurazione | `int` / `5` | `app/config.py` |
 | `MAX_UPLOAD_SIZE_MB` | app-runtime | configurazione | `int` / `50` | `app/config.py` |
+| `MENU_SUPABASE_KEY` | app-runtime | configurazione | non dichiarato in Settings | `app/menu/migrazione_menu.py`, `app/menu/routers/gestione.py`, `render.yaml` |
+| `MENU_SUPABASE_URL` | app-runtime | configurazione | non dichiarato in Settings | `app/menu/migrazione_menu.py`, `app/menu/routers/gestione.py`, `render.yaml` |
 | `NODE_ENV` | app-runtime | configurazione | non dichiarato in Settings | `frontend/plugins/health-check/health-endpoints.js` |
 | `NOLEGGIO_GIORNI_SENZA_FATTURA` | feature-job | configurazione | non dichiarato in Settings | `app/services/noleggio/controlli.py` |
 | `OPENAI_API_KEY` | ai | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `app/routers/settings_router.py`, `app/services/chat_ai_engine.py` |
@@ -787,7 +797,7 @@ Gli alias senza valore vanno configurati nel secret/config store di Render. Non 
 
 ## Appendice D — Tutti i router e tutti gli endpoint
 
-Route table sorgente: **1530**; attivi da ricreare: **991**; quarantena: **539** (`verificare` 506, `admin-only` 33).
+Route table sorgente: **1573**; attivi da ricreare: **1032**; quarantena: **541** (`verificare` 506, `admin-only` 35).
 
 `attivo` significa da ricreare con contratto e test; `quarantena` significa non esporre nel nuovo runtime finché consumer, autorizzazione e test non sono provati. L'elenco è completo e include entrambe le categorie.
 
@@ -1418,6 +1428,58 @@ Route table sorgente: **1530**; attivi da ricreare: **991**; quarantena: **539**
 - **attivo** — `PUT /api/hr/turni/{settimana_inizio}/cella` — in uso: FE
 - **attivo** — `POST /api/hr/turni/{settimana_inizio}/pubblica` — in uso: FE
 - **attivo** — `POST /api/hr/turni/{settimana_inizio}/sblocca` — in uso: FE
+
+### Router `app.menu.routers.gestione` (23)
+
+- **attivo** — `GET /api/menu/admin/backup/esporta` — in uso: FE
+- **attivo** — `POST /api/menu/admin/backup/ripristina` — in uso: FE
+- **attivo** — `POST /api/menu/admin/categorie` — in uso: FE
+- **attivo** — `DELETE /api/menu/admin/categorie/{categoria_id}` — in uso: FE
+- **attivo** — `PUT /api/menu/admin/categorie/{categoria_id}` — in uso: FE
+- **attivo** — `GET /api/menu/admin/immagini` — in uso: FE
+- **attivo** — `POST /api/menu/admin/immagini` — in uso: FE
+- **attivo** — `DELETE /api/menu/admin/immagini/{immagine_id}` — in uso: FE
+- **quarantena: admin-only** — `POST /api/menu/admin/migrazione-menu` — endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7)
+- **quarantena: admin-only** — `GET /api/menu/admin/migrazione-menu/{job_id}` — endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7)
+- **attivo** — `GET /api/menu/admin/prodotti` — in uso: FE, scheduler
+- **attivo** — `POST /api/menu/admin/prodotti` — in uso: FE
+- **attivo** — `DELETE /api/menu/admin/prodotti/{prodotto_id}` — in uso: FE
+- **attivo** — `PUT /api/menu/admin/prodotti/{prodotto_id}` — in uso: FE
+- **attivo** — `GET /api/menu/admin/qrcode/config` — in uso: FE
+- **attivo** — `PUT /api/menu/admin/qrcode/config` — in uso: FE
+- **attivo** — `POST /api/menu/admin/sale` — in uso: FE
+- **attivo** — `DELETE /api/menu/admin/sale/{sala_id}` — in uso: FE
+- **attivo** — `PUT /api/menu/admin/sale/{sala_id}` — in uso: FE
+- **attivo** — `POST /api/menu/admin/sottocategorie` — in uso: FE
+- **attivo** — `DELETE /api/menu/admin/sottocategorie/{sotto_id}` — in uso: FE
+- **attivo** — `PUT /api/menu/admin/sottocategorie/{sotto_id}` — in uso: FE
+- **attivo** — `GET /api/menu/admin/stato-dati` — in uso: FE
+
+### Router `app.menu.routers.pubblico` (8)
+
+- **attivo** — `GET /api/menu/pubblico/` — in uso: FE
+- **attivo** — `GET /api/menu/pubblico/allergeni` — in uso: FE
+- **attivo** — `GET /api/menu/pubblico/cerca` — in uso: FE, scheduler, chat
+- **attivo** — `GET /api/menu/pubblico/immagini/{immagine_id}` — in uso: FE
+- **attivo** — `POST /api/menu/pubblico/ordini` — in uso: FE
+- **attivo** — `GET /api/menu/pubblico/ordini/{ordine_id}` — in uso: FE
+- **attivo** — `GET /api/menu/pubblico/qrcode/config` — in uso: FE
+- **attivo** — `GET /api/menu/pubblico/sale` — in uso: FE, scheduler
+
+### Router `app.menu.routers.staff` (12)
+
+- **attivo** — `GET /api/menu/staff/magazzino/articoli` — in uso: FE
+- **attivo** — `POST /api/menu/staff/magazzino/articoli` — in uso: FE
+- **attivo** — `DELETE /api/menu/staff/magazzino/articoli/{articolo_id}` — in uso: FE
+- **attivo** — `PUT /api/menu/staff/magazzino/articoli/{articolo_id}` — in uso: FE
+- **attivo** — `POST /api/menu/staff/magazzino/articoli/{articolo_id}/movimento` — in uso: FE, scheduler, chat
+- **attivo** — `GET /api/menu/staff/magazzino/movimenti` — in uso: FE, scheduler, chat
+- **attivo** — `GET /api/menu/staff/ordini` — in uso: FE
+- **attivo** — `POST /api/menu/staff/ordini` — in uso: FE
+- **attivo** — `DELETE /api/menu/staff/ordini/{ordine_id}` — in uso: FE
+- **attivo** — `PATCH /api/menu/staff/ordini/{ordine_id}/pagamento` — in uso: FE, scheduler, chat
+- **attivo** — `PATCH /api/menu/staff/ordini/{ordine_id}/stato` — in uso: FE, scheduler, chat
+- **attivo** — `GET /api/menu/staff/sale` — in uso: FE, scheduler
 
 ### Router `auth` (3)
 

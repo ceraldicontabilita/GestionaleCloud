@@ -28,6 +28,14 @@ PAGE_FILE_BY_PATH = {
     "/tracciabilita": "tracciabilita-haccp.json",
     "/hr": "hr-gestione.json",
     "/portale": "hr-portale.json",
+    "/menu": "menu-pubblico.json",
+    "/menu/ordini": "menu-ordini.json",
+    "/menu/cassa": "menu-cassa.json",
+    "/menu/cucina": "menu-cucina.json",
+    "/menu/magazzino": "menu-magazzino.json",
+    "/menu/sale": "menu-sale.json",
+    "/menu/gestione": "menu-gestione.json",
+    "/menu-banco": "menu-banco.json",
     "/rapido": "inserimento-rapido.json",
     "/fatture": "fatture.json",
     "/fatture/corrispettivi": "corrispettivi.json",
@@ -191,6 +199,7 @@ def module_for(path: str) -> str:
         "learning-machine": "strumenti",
         "scadenze": "contabilita",
         "agenti": "strumenti",
+        "menu-banco": "menu",
     }.get(head, head)
 
 

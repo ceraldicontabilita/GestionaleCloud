@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1531 endpoint** in **136 gruppi**.
+> Totale **1574 endpoint** in **139 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 925 · ext esterni = 81 · — da verificare = 525
+**Riepilogo uso:** ✓ frontend = 968 · ext esterni = 81 · — da verificare = 525
 
 ## AI Parser  (11)
 
@@ -1597,6 +1597,64 @@
 | GET | `/api/auth/mfa/status` | ext | mfa |
 | POST | `/api/auth/mfa/step-up` | ext | mfa |
 | POST | `/api/auth/mfa/verify-login` | ext | mfa |
+
+## Menu · Gestione  (23)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| GET | `/api/menu/admin/backup/esporta` | ✓ | app.menu.routers.gestione |
+| POST | `/api/menu/admin/backup/ripristina` | ✓ | app.menu.routers.gestione |
+| POST | `/api/menu/admin/categorie` | ✓ | app.menu.routers.gestione |
+| PUT | `/api/menu/admin/categorie/{categoria_id}` | ✓ | app.menu.routers.gestione |
+| DELETE | `/api/menu/admin/categorie/{categoria_id}` | ✓ | app.menu.routers.gestione |
+| POST | `/api/menu/admin/immagini` | ✓ | app.menu.routers.gestione |
+| GET | `/api/menu/admin/immagini` | ✓ | app.menu.routers.gestione |
+| DELETE | `/api/menu/admin/immagini/{immagine_id}` | ✓ | app.menu.routers.gestione |
+| POST | `/api/menu/admin/migrazione-menu` | ✓ | app.menu.routers.gestione |
+| GET | `/api/menu/admin/migrazione-menu/{job_id}` | ✓ | app.menu.routers.gestione |
+| GET | `/api/menu/admin/prodotti` | ✓ | app.menu.routers.gestione |
+| POST | `/api/menu/admin/prodotti` | ✓ | app.menu.routers.gestione |
+| PUT | `/api/menu/admin/prodotti/{prodotto_id}` | ✓ | app.menu.routers.gestione |
+| DELETE | `/api/menu/admin/prodotti/{prodotto_id}` | ✓ | app.menu.routers.gestione |
+| GET | `/api/menu/admin/qrcode/config` | ✓ | app.menu.routers.gestione |
+| PUT | `/api/menu/admin/qrcode/config` | ✓ | app.menu.routers.gestione |
+| POST | `/api/menu/admin/sale` | ✓ | app.menu.routers.gestione |
+| PUT | `/api/menu/admin/sale/{sala_id}` | ✓ | app.menu.routers.gestione |
+| DELETE | `/api/menu/admin/sale/{sala_id}` | ✓ | app.menu.routers.gestione |
+| POST | `/api/menu/admin/sottocategorie` | ✓ | app.menu.routers.gestione |
+| PUT | `/api/menu/admin/sottocategorie/{sotto_id}` | ✓ | app.menu.routers.gestione |
+| DELETE | `/api/menu/admin/sottocategorie/{sotto_id}` | ✓ | app.menu.routers.gestione |
+| GET | `/api/menu/admin/stato-dati` | ✓ | app.menu.routers.gestione |
+
+## Menu · Pubblico  (8)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| GET | `/api/menu/pubblico/` | ✓ | app.menu.routers.pubblico |
+| GET | `/api/menu/pubblico/allergeni` | ✓ | app.menu.routers.pubblico |
+| GET | `/api/menu/pubblico/cerca` | ✓ | app.menu.routers.pubblico |
+| GET | `/api/menu/pubblico/immagini/{immagine_id}` | ✓ | app.menu.routers.pubblico |
+| POST | `/api/menu/pubblico/ordini` | ✓ | app.menu.routers.pubblico |
+| GET | `/api/menu/pubblico/ordini/{ordine_id}` | ✓ | app.menu.routers.pubblico |
+| GET | `/api/menu/pubblico/qrcode/config` | ✓ | app.menu.routers.pubblico |
+| GET | `/api/menu/pubblico/sale` | ✓ | app.menu.routers.pubblico |
+
+## Menu · Staff  (12)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| GET | `/api/menu/staff/magazzino/articoli` | ✓ | app.menu.routers.staff |
+| POST | `/api/menu/staff/magazzino/articoli` | ✓ | app.menu.routers.staff |
+| PUT | `/api/menu/staff/magazzino/articoli/{articolo_id}` | ✓ | app.menu.routers.staff |
+| DELETE | `/api/menu/staff/magazzino/articoli/{articolo_id}` | ✓ | app.menu.routers.staff |
+| POST | `/api/menu/staff/magazzino/articoli/{articolo_id}/movimento` | ✓ | app.menu.routers.staff |
+| GET | `/api/menu/staff/magazzino/movimenti` | ✓ | app.menu.routers.staff |
+| GET | `/api/menu/staff/ordini` | ✓ | app.menu.routers.staff |
+| POST | `/api/menu/staff/ordini` | ✓ | app.menu.routers.staff |
+| DELETE | `/api/menu/staff/ordini/{ordine_id}` | ✓ | app.menu.routers.staff |
+| PATCH | `/api/menu/staff/ordini/{ordine_id}/pagamento` | ✓ | app.menu.routers.staff |
+| PATCH | `/api/menu/staff/ordini/{ordine_id}/stato` | ✓ | app.menu.routers.staff |
+| GET | `/api/menu/staff/sale` | ✓ | app.menu.routers.staff |
 
 ## Multi-Pagamento  (6)
 

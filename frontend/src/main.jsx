@@ -59,6 +59,10 @@ const TracciabilitaHACCP = lazy(() => import("./pages/TracciabilitaHACCP.jsx"));
 // === MODULO HR (ex AppDipendenti): area gestione /hr e portale dipendenti /portale ===
 const HRApp = lazy(() => import("./hr/HRApp.jsx"));
 const PortaleDipendente = lazy(() => import("./hr/PortaleDipendente.jsx"));
+// === MODULO MENU (ex app Menu): menu pubblico /menu (QR al tavolo), area operativa /menu/<sezione>,
+// banco per il portale dipendenti /menu-banco ===
+const MenuPubblico = lazy(() => import("./menu/MenuPubblico.jsx"));
+const MenuHub = lazy(() => import("./menu/MenuHub.jsx"));
 
 const LazyPage = ({ children }) => (
   <Suspense fallback={<PageLoader />}>{children}</Suspense>
@@ -82,6 +86,10 @@ const router = createBrowserRouter([
   { path: "/portale", element: <LazyPage><PortaleDipendente /></LazyPage> },
   // Pagina Turni per il responsabile turni (token del portale, non del gestionale).
   { path: "/hr-turni", element: <LazyPage><HRGate roles={["responsabile_turni"]}><HRApp page="turni" /></HRGate></LazyPage> },
+  // Menu digitale dei clienti (QR al tavolo): pubblico, nessuna sessione.
+  { path: "/menu", element: <LazyPage><MenuPubblico /></LazyPage> },
+  // Banco (ordini, cassa, cucina, magazzino bar) per chi entra dal portale dipendenti.
+  { path: "/menu-banco/*", element: <LazyPage><HRGate roles={["dipendente", "responsabile_turni"]}><MenuHub standalone /></HRGate></LazyPage> },
   {
     path: "/",
     element: <AuthenticatedApp />,
@@ -118,6 +126,7 @@ const router = createBrowserRouter([
       { path: "tracciabilita", element: <LazyPage><TracciabilitaHACCP /></LazyPage> },
       { path: "hr", element: <RequireAdmin><LazyPage><HRApp page="dashboard" /></LazyPage></RequireAdmin> },
       { path: "hr/:page", element: <RequireAdmin><LazyPage><HRApp /></LazyPage></RequireAdmin> },
+      { path: "menu/*", element: <LazyPage><MenuHub /></LazyPage> },
 
       // Un solo punto di compatibilità per vecchi preferiti; altrimenti 404 reale.
       { path: "*", element: <LazyPage><LegacyRouteResolver /></LazyPage> },

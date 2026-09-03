@@ -28,7 +28,7 @@ from __future__ import annotations
 import uuid
 from typing import Any, AsyncIterator, Dict, Iterable, List, Optional, Tuple
 
-from app.hr.blob_store import BlobStore, blob_key
+from app.services.blob_store import BlobStore, blob_key
 
 PREFIX = "hr_"
 BLOB_FIELDS: Tuple[str, ...] = ("pdf_data", "file_data", "pdf_firmato_dipendente", "pdf_definitivo")

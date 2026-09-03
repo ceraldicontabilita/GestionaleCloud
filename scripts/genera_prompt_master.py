@@ -85,6 +85,14 @@ PAGE_PURPOSES = {
     66: "Ricezioni, lotti, registri, attese correttive, ricette, produzioni e attrezzature collegate alle entità canoniche.",
     67: "Area gestione HR (ex AppDipendenti): anagrafica, presenze, ferie, turni, timbrature, buste paga, TFR, contratti, documenti e accessi con PIN personale dei dipendenti.",
     68: "Portale dipendenti su smartphone: login tocca-il-nome + PIN personale, timbrature, turni, buste paga, documenti, richieste e avvisi; l'amministratore accede dal login unico del gestionale.",
+    69: "Menu digitale pubblico di Ceraldi Caffè (QR al tavolo): categorie, sottocategorie, prodotti con allergeni, IT/EN, carrello e invio dell'ordine con sala, coperto e metodo di pagamento; nessuna sessione.",
+    70: "Ordini del menu in tempo reale su quattro colonne (nuovi, in corso, pronti, completati) con avanzamento e annullo.",
+    71: "Cassa: ordini al banco dal catalogo, sala e coperto, incasso contanti/POS e coda degli ordini da incassare.",
+    72: "Monitor cucina: ticket degli ordini nuovi e in preparazione con minuti trascorsi, inizio e pronto.",
+    73: "Magazzino bar condiviso con Lotti (collezione unica): giacenze, soglie minime, carichi, scarichi e storico movimenti.",
+    74: "Sale del locale: abilitazione ordini, coperto a persona e blocco contanti per gli ordini dal QR.",
+    75: "Gestione del menu (admin/operatore): categorie, sottocategorie, prodotti con allergeni e immagini deduplicate, QR menu/WiFi, backup JSON e migrazione dal vecchio Supabase (solo admin).",
+    76: "Banco per chi entra dal portale dipendenti (token PIN): ordini, cassa, cucina e magazzino bar senza il layout del gestionale.",
 }
 
 

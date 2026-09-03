@@ -31,7 +31,11 @@ LOTTI_INTEGRATION_PREFIX = "/api/integrations/lotti/"
 # Modulo HR (portale dipendenti): login pubblico del portale e perimetro
 # delle sessioni dipendente. Definiti nel modulo, letti qui.
 from app.hr.router_registry import HR_PREFIX, HR_PUBLIC_PATHS  # noqa: E402
+from app.menu.router_registry import MENU_PUBLIC_PREFIX, MENU_STAFF_PREFIX  # noqa: E402
 HR_ALLOWED_OUTSIDE = {"/api/auth/logout"}
+# Una sessione del portale dipendenti vale nel modulo HR e nelle schermate
+# operative del menu (cassa, cucina, ordini, magazzino bar): mai altrove.
+PREFISSI_SESSIONE_PORTALE = (HR_PREFIX + "/", MENU_STAFF_PREFIX + "/", MENU_PUBLIC_PREFIX + "/")
 
 # Paths that don't require authentication
 PUBLIC_PATHS = {
@@ -154,6 +158,10 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         # Allow public paths
         if path in PUBLIC_PATHS or path in HR_PUBLIC_PATHS:
             return await call_next(request)
+        # Menu digitale dei clienti (QR al tavolo): lettura del menu, invio
+        # ordine, stato del proprio ordine, immagini. Nessuna sessione.
+        if path == MENU_PUBLIC_PREFIX or path.startswith(MENU_PUBLIC_PREFIX + "/"):
+            return await call_next(request)
         
         # Allow public prefixes
         for prefix in PUBLIC_PREFIXES:
@@ -256,7 +264,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                 )
             # Un dipendente (o il responsabile turni) ha una sessione del
             # portale HR: vale solo per il modulo HR, mai per i dati contabili.
-            if ruolo in RUOLI_HR and not path.startswith(HR_PREFIX + "/") and path not in HR_ALLOWED_OUTSIDE:
+            if ruolo in RUOLI_HR and not path.startswith(PREFISSI_SESSIONE_PORTALE) and path not in HR_ALLOWED_OUTSIDE:
                 return JSONResponse(
                     status_code=403,
                     content={"detail": "Sessione del portale dipendenti: accesso al gestionale non consentito"},

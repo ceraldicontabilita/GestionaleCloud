@@ -10,7 +10,7 @@ import logging
 from typing import Optional
 
 from app.database import Database as _GestionaleDatabase
-from app.hr.blob_store import BlobStore, blob_store_per_runtime
+from app.services.blob_store import BlobStore, blob_store_per_runtime
 from app.hr.db_adapter import HRDatabase
 
 logger = logging.getLogger(__name__)

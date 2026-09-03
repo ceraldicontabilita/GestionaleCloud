@@ -2,8 +2,8 @@
   "schema_version": 2,
   "application": "GestionaleCloud - Ceraldi ERP",
   "production_url": "https://impresasemplice.online",
-  "updated_at": "2026-09-03",
-  "source_revision": "8566e5d017bdab4db5071e0212ed2891cd66ac87",
+  "updated_at": "2026-08-20",
+  "source_revision": "70d4065bac34089b35ba7308d62800a7e76b03eb",
   "description": "Catalogo canonico delle 65 schermate. HTTP 200 non prova il funzionamento: componenti, route, dati e relazioni devono essere collaudati.",
   "storage_state": {
     "current": "google_drive_sheets",
@@ -836,6 +836,102 @@
       "audit_status": "unverified",
       "module": "portale",
       "documentation_file": "memoria/pagine/hr-portale.json",
+      "component_status": "reachable_from_router"
+    },
+    {
+      "id": 69,
+      "label": "Menu · Menu pubblico (QR)",
+      "path": "/menu",
+      "component": "frontend/src/menu/MenuPubblico.jsx",
+      "entry": "frontend/src/main.jsx",
+      "access": "public",
+      "audit_status": "unverified",
+      "module": "menu",
+      "documentation_file": "memoria/pagine/menu-pubblico.json",
+      "component_status": "reachable_from_router"
+    },
+    {
+      "id": 70,
+      "label": "Menu · Ordini",
+      "path": "/menu/ordini",
+      "component": "frontend/src/menu/MenuHub.jsx",
+      "entry": "frontend/src/main.jsx",
+      "access": "authenticated",
+      "audit_status": "unverified",
+      "module": "menu",
+      "documentation_file": "memoria/pagine/menu-ordini.json",
+      "component_status": "reachable_from_router"
+    },
+    {
+      "id": 71,
+      "label": "Menu · Cassa",
+      "path": "/menu/cassa",
+      "component": "frontend/src/menu/MenuHub.jsx",
+      "entry": "frontend/src/main.jsx",
+      "access": "authenticated",
+      "audit_status": "unverified",
+      "module": "menu",
+      "documentation_file": "memoria/pagine/menu-cassa.json",
+      "component_status": "reachable_from_router"
+    },
+    {
+      "id": 72,
+      "label": "Menu · Monitor cucina",
+      "path": "/menu/cucina",
+      "component": "frontend/src/menu/MenuHub.jsx",
+      "entry": "frontend/src/main.jsx",
+      "access": "authenticated",
+      "audit_status": "unverified",
+      "module": "menu",
+      "documentation_file": "memoria/pagine/menu-cucina.json",
+      "component_status": "reachable_from_router"
+    },
+    {
+      "id": 73,
+      "label": "Menu · Magazzino bar",
+      "path": "/menu/magazzino",
+      "component": "frontend/src/menu/MenuHub.jsx",
+      "entry": "frontend/src/main.jsx",
+      "access": "authenticated",
+      "audit_status": "unverified",
+      "module": "menu",
+      "documentation_file": "memoria/pagine/menu-magazzino.json",
+      "component_status": "reachable_from_router"
+    },
+    {
+      "id": 74,
+      "label": "Menu · Sale",
+      "path": "/menu/sale",
+      "component": "frontend/src/menu/MenuHub.jsx",
+      "entry": "frontend/src/main.jsx",
+      "access": "authenticated",
+      "audit_status": "unverified",
+      "module": "menu",
+      "documentation_file": "memoria/pagine/menu-sale.json",
+      "component_status": "reachable_from_router"
+    },
+    {
+      "id": 75,
+      "label": "Menu · Gestione menu",
+      "path": "/menu/gestione",
+      "component": "frontend/src/menu/MenuHub.jsx",
+      "entry": "frontend/src/main.jsx",
+      "access": "authenticated",
+      "audit_status": "unverified",
+      "module": "menu",
+      "documentation_file": "memoria/pagine/menu-gestione.json",
+      "component_status": "reachable_from_router"
+    },
+    {
+      "id": 76,
+      "label": "Menu · Banco portale dipendenti",
+      "path": "/menu-banco",
+      "component": "frontend/src/menu/MenuHub.jsx",
+      "entry": "frontend/src/main.jsx",
+      "access": "public",
+      "audit_status": "unverified",
+      "module": "menu",
+      "documentation_file": "memoria/pagine/menu-banco.json",
       "component_status": "reachable_from_router"
     }
   ]

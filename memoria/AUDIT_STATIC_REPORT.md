@@ -5,7 +5,7 @@ Generato da `scripts/audit_static.py`.
 
 ## Sintesi
 
-- P1: 384
+- P1: 391
 - P2: 6
 - P3: 70
 - INFO: 16
@@ -2366,13 +2366,55 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - delete-confirm
 
-- File: `frontend/src/hr/PortaleDipendente.jsx:119`
+- File: `frontend/src/hr/PortaleDipendente.jsx:120`
 
 - Dettaglio: DELETE senza confirm vicino.
 
 ### P1 - delete-confirm
 
-- File: `frontend/src/hr/PortaleDipendente.jsx:129`
+- File: `frontend/src/hr/PortaleDipendente.jsx:130`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend/src/menu/api.js:82`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend/src/menu/api.js:87`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend/src/menu/api.js:95`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend/src/menu/api.js:98`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend/src/menu/api.js:102`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend/src/menu/api.js:105`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend/src/menu/api.js:114`
 
 - Dettaglio: DELETE senza confirm vicino.
 
@@ -2522,7 +2564,7 @@ Generato da `scripts/audit_static.py`.
 
 ### P3 - fetch-race
 
-- File: `frontend/src/hr/PortaleDipendente.jsx:178`
+- File: `frontend/src/hr/PortaleDipendente.jsx:179`
 
 - Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
 
