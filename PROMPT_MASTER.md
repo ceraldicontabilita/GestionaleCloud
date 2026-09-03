@@ -664,7 +664,7 @@ si rigenerano dal codice e non si correggono a mano.
 | `LOG_FILE` | app-runtime | configurazione | `Optional[Path]` / `None` | `app/config.py` |
 | `LOG_FORMAT` | app-runtime | configurazione | `str` / `'json'` | `app/config.py` |
 | `LOG_LEVEL` | app-runtime | configurazione | `str` / `'INFO'` | `app/config.py` |
-| `LOTTI_INTEGRATION_KEY` | app-runtime | configurazione | non dichiarato in Settings | `app/routers/lotti_integration.py`, `render.yaml` |
+| `LOTTI_INTEGRATION_KEY` | app-runtime | configurazione | non dichiarato in Settings | `app/middleware/authentication.py`, `app/routers/lotti_integration.py`, `render.yaml` |
 | `MAX_CONCURRENT_IMPORTS` | app-runtime | configurazione | `int` / `5` | `app/config.py` |
 | `MAX_UPLOAD_SIZE_MB` | app-runtime | configurazione | `int` / `50` | `app/config.py` |
 | `NODE_ENV` | app-runtime | configurazione | non dichiarato in Settings | `frontend/plugins/health-check/health-endpoints.js` |
@@ -763,7 +763,7 @@ Gli alias senza valore vanno configurati nel secret/config store di Render. Non 
 
 ## Appendice D — Tutti i router e tutti gli endpoint
 
-Route table sorgente: **1173**; attivi da ricreare: **771**; quarantena: **402** (`verificare` 373, `admin-only` 29).
+Route table sorgente: **1171**; attivi da ricreare: **771**; quarantena: **400** (`verificare` 371, `admin-only` 29).
 
 `attivo` significa da ricreare con contratto e test; `quarantena` significa non esporre nel nuovo runtime finché consumer, autorizzazione e test non sono provati. L'elenco è completo e include entrambe le categorie.
 
@@ -1325,7 +1325,7 @@ Route table sorgente: **1173**; attivi da ricreare: **771**; quarantena: **402**
 - **attivo** — `GET /api/f24/quietanze/drive/status` — in uso: FE, scheduler
 - **attivo** — `POST /api/f24/quietanze/drive/sync` — in uso: FE, scheduler
 
-### Router `email_download` (41)
+### Router `email_download` (38)
 
 - **quarantena: verificare** — `POST /api/email-download/associa-documento` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **quarantena: verificare** — `POST /api/email-download/associa-f24-filesystem` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
@@ -1352,9 +1352,6 @@ Route table sorgente: **1173**; attivi da ricreare: **771**; quarantena: **402**
 - **quarantena: verificare** — `GET /api/email-download/pdf/{collection}/{pdf_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **quarantena: verificare** — `POST /api/email-download/popola-pdf-payslips` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **quarantena: verificare** — `POST /api/email-download/processa-cedolini` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/email-download/processa-fatture-email` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/email-download/processa-fatture-email/batch` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/email-download/processa-fatture-email/status` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **quarantena: verificare** — `POST /api/email-download/processa-pipeline` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **attivo** — `DELETE /api/email-download/pulisci-duplicati` — in uso: scheduler
 - **quarantena: admin-only** — `POST /api/email-download/pulizia-non-attendibili` — endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7)
@@ -1756,8 +1753,9 @@ Route table sorgente: **1173**; attivi da ricreare: **771**; quarantena: **402**
 - **quarantena: verificare** — `GET /privacy` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **quarantena: verificare** — `GET /terms` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 
-### Router `lotti_integration` (2)
+### Router `lotti_integration` (3)
 
+- **quarantena: verificare** — `GET /api/integrations/lotti/employees` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **quarantena: verificare** — `GET /api/integrations/lotti/invoices` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **quarantena: verificare** — `GET /api/integrations/lotti/invoices/{source_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 
