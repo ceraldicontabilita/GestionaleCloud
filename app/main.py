@@ -114,6 +114,53 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.exception("Riparazione dati startup non completata")
 
+    # Audit da commercialista 03/09/2026 (§2): 77 giornate di corrispettivi,
+    # 58 uscite POS e 56 trasferimenti POS registrati due volte in Prima Nota
+    # perche' la guardia di idempotenza viveva solo nella cache del singolo
+    # processo. Una tantum, registrata in migration_runs: la copia piu'
+    # recente di ogni coppia viene marcata (soft-delete reversibile con
+    # duplicate_of), mai cancellata; da qui in poi l'unicita' e' garantita
+    # dalla chiave idempotency_key e dall'indice in Postgres. NON sta sotto
+    # RUN_STARTUP_DATA_REPAIRS (false in produzione, dove quel blocco non e'
+    # mai stato eseguito): gira da sola al primo avvio dopo il deploy.
+    try:
+        db = Database.get_db()
+        bonifica_marker = "bonifica_prima_nota_doppioni_20260903_v1"
+        bonifica_run = (
+            await db["migration_runs"].find_one({"id": bonifica_marker})
+            if db is not None else {"status": "completed"}
+        )
+        if not bonifica_run or bonifica_run.get("status") != "completed":
+            from app.services.bonifica_prima_nota_doppioni import applica as applica_bonifica
+
+            bonifica_status = "failed"
+            try:
+                bonifica_result = await applica_bonifica(db, actor="migrazione_avvio")
+                bonifica_status = "completed"
+            except Exception as exc:
+                bonifica_result = {"success": False, "reason": str(exc)}
+                logger.exception("Bonifica doppioni Prima Nota non completata")
+            await db["migration_runs"].update_one(
+                {"id": bonifica_marker},
+                {"$set": {
+                    "id": bonifica_marker,
+                    "status": bonifica_status,
+                    "finished_at": datetime.now(timezone.utc).isoformat(),
+                    "result": bonifica_result,
+                }},
+                upsert=True,
+            )
+            if bonifica_status == "completed":
+                logger.info(
+                    "Bonifica doppioni Prima Nota completata: %s",
+                    {k: bonifica_result.get(k) for k in (
+                        "righe_marcate", "totale_righe_marcate",
+                        "chiavi_assegnate", "corrispettivi_riallineati",
+                    ) if k in bonifica_result},
+                )
+    except Exception:
+        logger.exception("Bonifica doppioni Prima Nota all'avvio non eseguita")
+
     # Operazione una tantum autorizzata: elimina i dati operativi antecedenti
     # al 2026 solo in produzione Render, dopo backup separato per collection.
     # Cedolini, prima nota salari e bonifici collegati sono esclusi e verificati.
@@ -311,43 +358,6 @@ async def lifespan(app: FastAPI):
                     upsert=True,
                 )
 
-            # Audit da commercialista 03/09/2026 (§2): 77 giornate di
-            # corrispettivi, 58 uscite POS e 56 trasferimenti POS registrati
-            # due volte in Prima Nota perche' la guardia di idempotenza viveva
-            # solo nella cache del singolo processo. Una tantum: la copia piu'
-            # recente di ogni coppia viene marcata (soft-delete reversibile con
-            # duplicate_of), mai cancellata; da qui in poi l'unicita' e'
-            # garantita dalla chiave idempotency_key e dall'indice in Postgres.
-            bonifica_marker = "bonifica_prima_nota_doppioni_20260903_v1"
-            bonifica_run = await db["migration_runs"].find_one({"id": bonifica_marker})
-            if not bonifica_run or bonifica_run.get("status") != "completed":
-                from app.services.bonifica_prima_nota_doppioni import applica as applica_bonifica
-
-                bonifica_status = "failed"
-                try:
-                    bonifica_result = await applica_bonifica(db, actor="migrazione_avvio")
-                    bonifica_status = "completed"
-                except Exception as exc:
-                    bonifica_result = {"success": False, "reason": str(exc)}
-                    logger.exception("Bonifica doppioni Prima Nota non completata")
-                await db["migration_runs"].update_one(
-                    {"id": bonifica_marker},
-                    {"$set": {
-                        "id": bonifica_marker,
-                        "status": bonifica_status,
-                        "finished_at": datetime.now(timezone.utc).isoformat(),
-                        "result": bonifica_result,
-                    }},
-                    upsert=True,
-                )
-                if bonifica_status == "completed":
-                    logger.info(
-                        "Bonifica doppioni Prima Nota completata: %s",
-                        {k: bonifica_result.get(k) for k in (
-                            "righe_marcate", "totale_righe_marcate",
-                            "chiavi_assegnate", "corrispettivi_riallineati",
-                        ) if k in bonifica_result},
-                    )
         except Exception as e:
             logger.error("Pulizia pregressi/riparazione metodo non completata: %s", e)
 
