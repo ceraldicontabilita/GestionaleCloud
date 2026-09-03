@@ -24,12 +24,46 @@ Requisiti §6.1 garantiti:
 Riusa gli helper canonici di `piano_conti` (determina_conti_fattura, aggiorna_saldo_conto)
 via import pigro per evitare import circolari.
 """
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
+logger = logging.getLogger(__name__)
+
 COLL_MOVIMENTI = "movimenti_contabili"
 COLL_PIANO_CONTI = "piano_conti"
+
+# Audit del commercialista 03/09/2026 §2 (PR 8): oltre alla guardia
+# ``find_one`` (valida in un solo processo), ogni scrittura porta una
+# ``idempotency_key`` naturale che Postgres rende UNICA tra le righe attive
+# (indice ``documents_idempotency_key_uidx``, migrazione
+# supabase/migrations/20260903_idempotency_key.sql): due processi che
+# registrano lo stesso documento nello stesso istante producono UNA sola
+# scrittura, l'altra viene rifiutata e riallineata al documento esistente.
+_PREFISSO_CHIAVE = "reg"
+
+
+def chiave_idempotenza(tipo_documento: str, documento_id: str) -> str:
+    """Chiave naturale della scrittura: ``reg:<tipo>:<id documento>``."""
+    return f"{_PREFISSO_CHIAVE}:{tipo_documento}:{documento_id}"
+
+
+def _documento_esistente_da_rifiuto(exc: BaseException, chiave: Optional[str]) -> Optional[Dict[str, Any]]:
+    """Se ``exc`` e' il rifiuto di Postgres per ``idempotency_key`` gia'
+    usata (``DocumentoDuplicatoRemoto`` del runtime Supabase), restituisce
+    la scrittura gia' esistente per quella chiave; altrimenti ``None``.
+    Confronto per nome per non importare il runtime nel motore contabile."""
+    if not chiave or type(exc).__name__ != "DocumentoDuplicatoRemoto":
+        return None
+    esistenti = getattr(exc, "documento_esistente_per_chiave", None) or {}
+    ids = getattr(exc, "id_esistente_per_chiave", None) or {}
+    if chiave not in ids and chiave not in esistenti:
+        return None
+    doc = dict(esistenti.get(chiave) or {})
+    doc.setdefault("id", ids.get(chiave))
+    doc.pop("_id", None)
+    return doc
 
 # Conti fissi corrispettivi (schema CEE)
 _C_CASSA = ("01.01.01", "Cassa")
@@ -41,6 +75,19 @@ _ALIQUOTA_CORRISPETTIVI = 0.10  # ristorazione (parametro storico, invariato)
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _primo_importo(doc: Dict[str, Any], *chiavi: str) -> float:
+    """Primo importo presente (non None) tra le chiavi indicate, come float."""
+    for chiave in chiavi:
+        valore = doc.get(chiave)
+        if valore is None or valore == "":
+            continue
+        try:
+            return float(valore)
+        except (TypeError, ValueError):
+            continue
+    return 0.0
 
 
 def _anno_da_data(data: Optional[str]) -> Optional[int]:
@@ -82,9 +129,25 @@ async def _audit(db, azione: str, entita_id: str, dettaglio: str) -> None:
 
 
 async def _scrivi_movimento(db, movimento: Dict[str, Any], saldi: list) -> Dict[str, Any]:
-    """Inserisce il movimento e aggiorna i saldi dei conti (una sola volta)."""
+    """Inserisce il movimento e aggiorna i saldi dei conti (una sola volta).
+
+    Se Postgres rifiuta la riga perche' la ``idempotency_key`` e' gia' usata
+    (scrittura fatta nel frattempo da un altro processo), NON aggiorna i
+    saldi e restituisce la scrittura esistente con ``gia_registrato=True``.
+    """
     from app.routers.accounting.piano_conti import aggiorna_saldo_conto
-    await db[COLL_MOVIMENTI].insert_one(movimento.copy())
+    try:
+        await db[COLL_MOVIMENTI].insert_one(movimento.copy())
+    except Exception as exc:  # noqa: BLE001 - solo il rifiuto per chiave e' gestito
+        esistente = _documento_esistente_da_rifiuto(exc, movimento.get("idempotency_key"))
+        if esistente is None:
+            raise
+        logger.warning(
+            "Scrittura %s gia' presente (chiave %s, id %s): nessuna seconda registrazione",
+            movimento.get("tipo"), movimento.get("idempotency_key"), esistente.get("id"),
+        )
+        esistente["gia_registrato"] = True
+        return esistente
     for codice, importo, verso in saldi:
         if importo:
             await aggiorna_saldo_conto(db, codice, importo, verso)
@@ -177,6 +240,7 @@ async def registra_fattura(db, fattura: Dict[str, Any], *, force: bool = False,
         "totale_dare": round(costo_contabile + iva_detraibile, 2),
         "totale_avere": round(importo_totale, 2),
         "stato": "registrato", "created_at": now,
+        "idempotency_key": chiave_idempotenza("fattura", fattura_id),
     }
     if extra_movimento:
         movimento.update(extra_movimento)
@@ -190,6 +254,8 @@ async def registra_fattura(db, fattura: Dict[str, Any], *, force: bool = False,
     if extra_fattura:
         patch.update(extra_fattura)
     await db["invoices"].update_one({"id": fattura_id}, {"$set": patch})
+    if mov.get("gia_registrato"):
+        return {"stato": "gia_registrato", "movimento_id": mov.get("id")}
     return {"stato": "registrato", "movimento": mov}
 
 
@@ -236,8 +302,14 @@ async def registra_corrispettivo(db, corr: Dict[str, Any], *, force: bool = Fals
             "stato": "da_verificare",
             "motivo": "totale, imponibile e IVA del corrispettivo non quadrano",
         }
-    cassa = float(corr.get("pagato_contante", corr.get("pagato_cassa", 0)) or 0)
-    pos = float(corr.get("pagato_elettronico", 0) or 0)
+    # Nomi reali dei campi (verificati sui 1218 corrispettivi in archivio il
+    # 03/09/2026): `pagato_contanti` (plurale, scritto dal parser XML e dai
+    # servizi) e `pagato_elettronico`; `pagato_contante`/`pagato_cassa`/
+    # `pagato_pos` restano come ripiego per record storici. Prima si leggeva
+    # SOLO il singolare `pagato_contante`, assente ovunque: ogni giornata con
+    # contanti + POS finiva "da_verificare" (ripartizione non quadrata).
+    cassa = _primo_importo(corr, "pagato_contanti", "pagato_contante", "pagato_cassa")
+    pos = _primo_importo(corr, "pagato_elettronico", "pagato_pos")
     if cassa + pos == 0:
         cassa = totale
     elif abs(round(cassa + pos - totale, 2)) > 0.01:
@@ -276,44 +348,205 @@ async def registra_corrispettivo(db, corr: Dict[str, Any], *, force: bool = Fals
         "righe": righe,
         "totale_dare": round(cassa + pos, 2), "totale_avere": round(totale, 2),
         "stato": "registrato", "created_at": now,
+        "idempotency_key": chiave_idempotenza("corrispettivo", corr_id),
     }
     mov = await _scrivi_movimento(db, movimento, saldi)
     await db["corrispettivi"].update_one(
         {"id": corr_id},
         {"$set": {"registrato_contabilita": True, "movimento_contabile_id": mov["id"]}})
+    if mov.get("gia_registrato"):
+        return {"stato": "gia_registrato", "movimento_id": mov.get("id")}
     return {"stato": "registrato", "movimento": mov}
 
 
-async def registra_tutte_fatture(db) -> Dict[str, Any]:
+# Stesso predicato "documento attivo" del bilancio di verifica
+# (contabilita_gestionale._bilancio_verifica_da_registro): un documento
+# cancellato o archiviato non va mai registrato nel libro giornale.
+_FILTRO_FATTURE_DA_REGISTRARE: Dict[str, Any] = {
+    "status": {"$nin": ["deleted", "archived"]},
+    "entity_status": {"$ne": "deleted"},
+    "registrata_contabilita": {"$ne": True},
+}
+_FILTRO_CORRISPETTIVI_DA_REGISTRARE: Dict[str, Any] = {
+    "status": {"$nin": ["deleted", "archived"]},
+    "entity_status": {"$ne": "deleted"},
+    "registrato_contabilita": {"$ne": True},
+}
+# Un corrispettivo provvisorio (chiusura manuale serale in attesa dell'XML
+# del registratore telematico) non e' ancora un documento fiscale: entra nel
+# libro giornale solo quando arriva l'XML (stato definitivo) — altrimenti la
+# scrittura nascerebbe su un totale che l'XML potrebbe correggere.
+_STATI_CORRISPETTIVO_PROVVISORIO = {"provvisorio", "manca_xml"}
+
+
+def _corrispettivo_registrabile(corr: Dict[str, Any]) -> bool:
+    if str(corr.get("stato") or "") in _STATI_CORRISPETTIVO_PROVVISORIO:
+        return False
+    if corr.get("stato_import") == "archivio_storico":
+        return False
+    if corr.get("status") in {"archiviata", "archived", "deleted"}:
+        return False
+    return corr.get("entity_status") != "deleted"
+
+
+def _riepilogo_esiti(esiti: list) -> Dict[str, int]:
+    conteggio: Dict[str, int] = {}
+    for stato in esiti:
+        conteggio[stato] = conteggio.get(stato, 0) + 1
+    return conteggio
+
+
+async def registra_tutte_fatture(db, *, dry_run: bool = False) -> Dict[str, Any]:
+    """Registra (idempotente) tutte le fatture attive non ancora nel libro
+    giornale. ``dry_run=True`` conta soltanto, senza scrivere nulla."""
     fatture = await db["invoices"].find(
-        {"$or": [{"registrata_contabilita": {"$ne": True}},
-                 {"registrata_contabilita": {"$exists": False}}]}, {"_id": 0}).to_list(5000)
-    registrate, errori = 0, []
+        dict(_FILTRO_FATTURE_DA_REGISTRARE), {"_id": 0}).to_list(5000)
+    if dry_run:
+        return {"success": True, "dry_run": True, "fatture_processate": len(fatture),
+                "da_registrare": len(fatture), "registrate": 0, "errori": []}
+    registrate, errori, esiti = 0, [], []
     for f in fatture:
         try:
             r = await registra_fattura(db, f)
+            esiti.append(r.get("stato") or "sconosciuto")
             if r.get("stato") == "registrato":
                 registrate += 1
         except Exception as e:  # noqa: BLE001 - raccolgo e riporto, non silenzio
+            esiti.append("errore")
             errori.append(f"Fattura {f.get('invoice_number', 'N/A')}: {e}")
-    return {"success": True, "fatture_processate": len(fatture),
-            "registrate": registrate, "errori": errori[:20]}
+    return {"success": True, "dry_run": False, "fatture_processate": len(fatture),
+            "registrate": registrate, "esiti": _riepilogo_esiti(esiti),
+            "errori": errori[:20]}
 
 
-async def registra_tutti_corrispettivi(db) -> Dict[str, Any]:
-    corrispettivi = await db["corrispettivi"].find(
-        {"$or": [{"registrato_contabilita": {"$ne": True}},
-                 {"registrato_contabilita": {"$exists": False}}]}, {"_id": 0}).to_list(5000)
-    registrati, errori = 0, []
+async def registra_tutti_corrispettivi(db, *, dry_run: bool = False) -> Dict[str, Any]:
+    """Registra (idempotente) tutti i corrispettivi definitivi non ancora nel
+    libro giornale. ``dry_run=True`` conta soltanto, senza scrivere nulla."""
+    trovati = await db["corrispettivi"].find(
+        dict(_FILTRO_CORRISPETTIVI_DA_REGISTRARE), {"_id": 0}).to_list(5000)
+    corrispettivi = [c for c in trovati if _corrispettivo_registrabile(c)]
+    provvisori = len(trovati) - len(corrispettivi)
+    if dry_run:
+        return {"success": True, "dry_run": True,
+                "corrispettivi_processati": len(corrispettivi),
+                "da_registrare": len(corrispettivi), "provvisori_esclusi": provvisori,
+                "registrati": 0, "errori": []}
+    registrati, errori, esiti = 0, [], []
     for c in corrispettivi:
         try:
             r = await registra_corrispettivo(db, c)
+            esiti.append(r.get("stato") or "sconosciuto")
             if r.get("stato") == "registrato":
                 registrati += 1
         except Exception as e:  # noqa: BLE001
+            esiti.append("errore")
             errori.append(f"Corrispettivo {c.get('id', 'N/A')}: {e}")
-    return {"success": True, "corrispettivi_processati": len(corrispettivi),
-            "registrati": registrati, "errori": errori[:20]}
+    return {"success": True, "dry_run": False,
+            "corrispettivi_processati": len(corrispettivi),
+            "provvisori_esclusi": provvisori,
+            "registrati": registrati, "esiti": _riepilogo_esiti(esiti),
+            "errori": errori[:20]}
+
+
+async def registra_pregresso(db, *, dry_run: bool = False) -> Dict[str, Any]:
+    """Recupero del pregresso non registrato: UN solo giro che riusa le due
+    funzioni massive (fatture + corrispettivi). Idempotente: rilanciarlo non
+    crea seconde scritture. ``dry_run`` restituisce solo i conteggi."""
+    fatture = await registra_tutte_fatture(db, dry_run=dry_run)
+    corrispettivi = await registra_tutti_corrispettivi(db, dry_run=dry_run)
+    return {
+        "success": True,
+        "dry_run": dry_run,
+        "fatture": fatture,
+        "corrispettivi": corrispettivi,
+        "da_registrare": (
+            fatture.get("da_registrare", fatture.get("fatture_processate", 0))
+            + corrispettivi.get("da_registrare", corrispettivi.get("corrispettivi_processati", 0))
+        ),
+        "registrate": fatture.get("registrate", 0) + corrispettivi.get("registrati", 0),
+        "errori": (fatture.get("errori") or []) + (corrispettivi.get("errori") or []),
+    }
+
+
+_COLLEZIONE_PER_TIPO = {"fattura": "invoices", "corrispettivo": "corrispettivi"}
+
+
+async def registra_documento_import(db, tipo_documento: str, documento: Dict[str, Any]) -> Dict[str, Any]:
+    """Aggancio UNICO per le pipeline di import (fatture XML, corrispettivi RT).
+
+    Audit 03/09/2026 §2 (PR 8): il libro giornale si alimenta da solo
+    all'arrivo del documento (art. 2216 c.c., 60 giorni) invece di aspettare
+    il comando manuale "Registra fatture". Regole:
+    - non solleva MAI: un errore contabile non deve bloccare l'import
+      (viene loggato e annotato sul documento sorgente);
+    - idempotente: stesso documento due volte → una sola scrittura;
+    - un corrispettivo provvisorio viene rimandato all'arrivo dell'XML;
+    - se la scrittura esiste gia' ma l'importo del documento e' cambiato
+      (es. XML che sostituisce un totale manuale), NON riscrive: segnala
+      ``da_verificare`` sul documento, perche' una correzione del libro
+      giornale e' una scelta del contabile, non dell'import.
+    """
+    collezione = _COLLEZIONE_PER_TIPO.get(tipo_documento)
+    doc_id = (documento or {}).get("id")
+    if not collezione or not doc_id:
+        return {"stato": "saltato", "motivo": "documento senza id o tipo sconosciuto"}
+    if tipo_documento == "corrispettivo" and not _corrispettivo_registrabile(documento):
+        return {"stato": "rimandato", "motivo": "corrispettivo provvisorio o archiviato"}
+    try:
+        if tipo_documento == "fattura":
+            esito = await registra_fattura(db, documento)
+        else:
+            esito = await registra_corrispettivo(db, documento)
+        if esito.get("stato") == "gia_registrato" and esito.get("movimento_id"):
+            esito = await _verifica_importo_scrittura(db, documento, esito)
+    except Exception as exc:  # noqa: BLE001 - mai bloccare l'import
+        logger.exception("Registrazione contabile automatica fallita per %s %s",
+                         tipo_documento, doc_id)
+        esito = {"stato": "errore", "motivo": str(exc)}
+
+    stato = esito.get("stato")
+    if stato in {"da_verificare", "saltato", "errore"}:
+        logger.warning("Registrazione contabile %s %s: %s (%s)",
+                       tipo_documento, doc_id, stato, esito.get("motivo"))
+        try:
+            await db[collezione].update_one(
+                {"id": doc_id},
+                {"$set": {"registrazione_contabile_esito": {
+                    "stato": stato, "motivo": esito.get("motivo"), "at": _now(),
+                }}},
+            )
+        except Exception:  # noqa: BLE001
+            logger.warning("Impossibile annotare l'esito contabile su %s %s", collezione, doc_id)
+    elif stato in {"registrato", "gia_registrato"}:
+        try:
+            await db[collezione].update_one(
+                {"id": doc_id}, {"$unset": {"registrazione_contabile_esito": ""}})
+        except Exception:  # noqa: BLE001
+            pass
+    return esito
+
+
+async def _verifica_importo_scrittura(db, documento: Dict[str, Any], esito: Dict[str, Any]) -> Dict[str, Any]:
+    """Scrittura gia' presente: confronta l'importo registrato con quello
+    del documento (un XML puo' sostituire un totale manuale)."""
+    mov = await db[COLL_MOVIMENTI].find_one(
+        {"id": esito["movimento_id"]}, {"_id": 0, "importo_totale": 1, "id": 1})
+    if not mov:
+        return esito
+    importo_doc = float(
+        documento.get("totale") or documento.get("total_amount")
+        or documento.get("importo_totale") or 0)
+    importo_reg = float(mov.get("importo_totale") or 0)
+    if importo_doc > 0 and abs(round(importo_doc - importo_reg, 2)) > 0.01:
+        return {
+            "stato": "da_verificare",
+            "movimento_id": esito["movimento_id"],
+            "motivo": (
+                f"scrittura gia' registrata per {importo_reg:.2f} ma il documento "
+                f"vale ora {importo_doc:.2f}: correggere a mano nel libro giornale"
+            ),
+        }
+    return esito
 
 
 async def ricostruisci_fatture(db) -> Dict[str, Any]:

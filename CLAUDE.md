@@ -359,6 +359,20 @@ sempre la sorgente persistente.
   `app/services/mapping_piano_conti.py`.
 - Motore unico Prima Nota: `app/services/scritture_contabili.py`. Non creare
   nuovi `insert_one` diretti per scritture contabili.
+- Libro giornale in partita doppia (`movimenti_contabili`): motore unico
+  `app/services/registrazione_contabile.py`, alimentato **automaticamente**
+  all'import di fatture (`fatture_upload`) e corrispettivi RT
+  (`corrispettivi_helpers`, `CorrispettiviService`) tramite
+  `registra_documento_import` (idempotente per documento con
+  `idempotency_key = reg:<tipo>:<id>`, mai bloccante, esito negativo annotato
+  in `registrazione_contabile_esito`). Il pregresso si recupera con
+  `POST /api/piano-conti/registra-pregresso?dry_run=` (admin). Non aggiungere
+  altri punti di scrittura.
+- Navigazione tra contropartite: un solo componente
+  `frontend/src/components/LinkContropartita.jsx` (`ROTTE_CONTROPARTITA`); i
+  deep-link letti dalle pagine sono `/fatture?invoice_id=`,
+  `/riconciliazione/banca?movimento=`, `/prima-nota#sezione=banca&selected=`,
+  `/contabilita/verifica?conto=`, `/contabilita/giornale?conto=|scrittura=`.
 - Ricavi: solo corrispettivi RT. Le fatture ricevute sono costi; gli accrediti
   POS e i payout non sono nuovi ricavi.
 - POS: corrispettivo XML, chiusura terminale e accredito bancario sono tre

@@ -3,7 +3,7 @@
   "application": "GestionaleCloud - Ceraldi ERP",
   "production_url": "https://impresasemplice.online",
   "updated_at": "2026-08-20",
-  "source_revision": "a140f993696cf0fb738914cef99adb9115ac958e",
+  "source_revision": "a65bab6878d901a2722574b587cf2c0b6aa29a3a",
   "description": "Catalogo canonico delle 64 schermate. HTTP 200 non prova il funzionamento: componenti, route, dati e relazioni devono essere collaudati.",
   "storage_state": {
     "current": "google_drive_sheets",

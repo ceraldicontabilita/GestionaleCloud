@@ -3,7 +3,7 @@
     "schema_version": 2,
     "document_type": "page_source_map",
     "updated_at": "2026-08-20",
-    "source_revision": "a140f993696cf0fb738914cef99adb9115ac958e",
+    "source_revision": "a65bab6878d901a2722574b587cf2c0b6aa29a3a",
     "generator": "scripts/refresh_json_docs.py",
     "verification": "static_source_map"
   },
@@ -43,6 +43,7 @@
       "/api/operazioni-da-confermare/smart/cerca-stipendi",
       "/api/operazioni-da-confermare/smart/conferma-f24",
       "/api/operazioni-da-confermare/smart/ignora",
+      "/api/operazioni-da-confermare/smart/movimento/{param}",
       "/api/operazioni-da-confermare/smart/riconcilia-manuale",
       "/api/operazioni-da-confermare/smart/riconcilia-stipendio",
       "/api/paypal-api/status",

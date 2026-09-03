@@ -6,6 +6,7 @@ import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { formatEuro, formatDateIT, formatDateGGMM, COLORS, SHADOWS, BORDER_RADIUS, useIsMobile } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
 import ModalFattura from '../components/ModalFattura';
+import LinkContropartita, { ROTTE_CONTROPARTITA } from '../components/LinkContropartita';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import { Button, Badge, StatCard, Input, Select, RowActions, RowActionButton, ListaAdattiva } from '../components/ds';
 
@@ -663,7 +664,28 @@ export default function Scadenze() {
                             pagamento è /api/fatture-ricevute/paga-manuale e vuole
                             una fattura vera; su scadenze fiscali (IVA/F24/INPS,
                             senza fattura_id) passava un id inesistente e falliva. */}
-                        {!paidIds.has(s.id) &&
+                        {/* Scadenza → movimento bancario che l'ha pagata (audit
+                            03/09/2026 §6, PR 16): il backend espone
+                            `pagamento.movimento_bancario_id` letto dalle evidenze
+                            dello scadenzario o dalla fattura riconciliata. */}
+                        {s.pagamento?.movimento_bancario_id && (
+                          <div style={{ marginTop: 4 }}>
+                            <LinkContropartita
+                              to={ROTTE_CONTROPARTITA.movimentoBanca(s.pagamento.movimento_bancario_id)}
+                              compatto
+                              testId={`link-movimento-pagante-${s.id}`}
+                              title={`Movimento estratto conto ${s.pagamento.movimento_bancario_id} · ${formatDateIT(s.pagamento.data_pagamento || '')} · ${s.pagamento.metodo || 'banca'} · pagamento della fattura ${s.numero_fattura || ''}`}
+                            >
+                              Movimento che l'ha pagata
+                            </LinkContropartita>
+                          </div>
+                        )}
+                        {s.pagata && !paidIds.has(s.id) && (
+                          <Badge variant="success" style={{ marginTop: 4 }}>
+                            ✓ Pagata{s.pagamento?.data_pagamento ? ` il ${formatDateIT(s.pagamento.data_pagamento)}` : ''}
+                          </Badge>
+                        )}
+                        {!paidIds.has(s.id) && !s.pagata &&
                           (s.tipo === 'FATTURA' || s.source === 'fattura') &&
                           (s.fattura_id || s.id) && (
                             <Button

@@ -817,7 +817,7 @@ Gli alias senza valore vanno configurati nel secret/config store di Render. Non 
 
 ## Appendice D — Tutti i router e tutti gli endpoint
 
-Route table sorgente: **1151**; attivi da ricreare: **756**; quarantena: **395** (`verificare` 365, `admin-only` 30).
+Route table sorgente: **1152**; attivi da ricreare: **757**; quarantena: **395** (`verificare` 365, `admin-only` 30).
 
 `attivo` significa da ricreare con contratto e test; `quarantena` significa non esporre nel nuovo runtime finché consumer, autorizzazione e test non sono provati. L'elenco è completo e include entrambe le categorie.
 
@@ -873,7 +873,7 @@ Route table sorgente: **1151**; attivi da ricreare: **756**; quarantena: **395**
 - **quarantena: verificare** — `GET /api/contabilita-gestionale/partitario/fornitori` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **quarantena: verificare** — `GET /api/contabilita-gestionale/partitario/fornitori/{piva}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 
-### Router `accounting.piano_conti` (12)
+### Router `accounting.piano_conti` (13)
 
 - **attivo** — `GET /api/piano-conti/` — in uso: FE
 - **attivo** — `POST /api/piano-conti/` — in uso: FE
@@ -882,6 +882,7 @@ Route table sorgente: **1151**; attivi da ricreare: **756**; quarantena: **395**
 - **attivo** — `GET /api/piano-conti/movimenti` — in uso: FE
 - **attivo** — `POST /api/piano-conti/registra-corrispettivi` — in uso: FE
 - **attivo** — `POST /api/piano-conti/registra-fattura` — in uso: FE
+- **attivo** — `POST /api/piano-conti/registra-pregresso` — in uso: FE
 - **attivo** — `POST /api/piano-conti/registra-tutte-fatture` — in uso: FE
 - **attivo** — `GET /api/piano-conti/regole` — in uso: FE
 - **attivo** — `POST /api/piano-conti/regole` — in uso: FE

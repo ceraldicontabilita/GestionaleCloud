@@ -2,7 +2,7 @@
 Piano dei Conti Router - Contabilità Generale
 Gestione del piano dei conti secondo i principi di ragioneria italiana.
 """
-from fastapi import APIRouter, HTTPException, Body
+from fastapi import APIRouter, HTTPException, Body, Depends, Query
 from typing import Dict, Any, List
 from datetime import datetime, timezone
 import uuid
@@ -11,6 +11,7 @@ import logging
 from app.services.sheets_document_store import DuplicateRecordError
 
 from app.database import Database
+from app.utils.dependencies import get_current_admin_user
 from app.utils.error_handler import handle_errors
 from app.utils.parsing import safe_float
 from app.services.liquidita_service import calcola_liquidita
@@ -1224,21 +1225,44 @@ async def get_bilancio(anno: str = None) -> Dict[str, Any]:
 
 @router.post("/registra-tutte-fatture")
 @handle_errors
-async def registra_tutte_fatture_contabilita() -> Dict[str, Any]:
+async def registra_tutte_fatture_contabilita(
+    dry_run: bool = Query(False, description="Solo conteggio, nessuna scrittura"),
+) -> Dict[str, Any]:
     """
     Registra tutte le fatture non ancora registrate in contabilità.
     Delega al MOTORE UNICO `app.services.registrazione_contabile` (P1 §6.1).
     """
     from app.services.registrazione_contabile import registra_tutte_fatture
-    return await registra_tutte_fatture(Database.get_db())
+    return await registra_tutte_fatture(Database.get_db(), dry_run=bool(dry_run is True))
 
 
 @router.post("/registra-corrispettivi")
 @handle_errors
-async def registra_corrispettivi_contabilita() -> Dict[str, Any]:
+async def registra_corrispettivi_contabilita(
+    dry_run: bool = Query(False, description="Solo conteggio, nessuna scrittura"),
+) -> Dict[str, Any]:
     """
     Registra i corrispettivi in contabilità (Cassa/Banca -> Ricavi + IVA a debito).
     Delega al MOTORE UNICO `app.services.registrazione_contabile` (P1 §6.1).
     """
     from app.services.registrazione_contabile import registra_tutti_corrispettivi
-    return await registra_tutti_corrispettivi(Database.get_db())
+    return await registra_tutti_corrispettivi(Database.get_db(), dry_run=bool(dry_run is True))
+
+
+@router.post("/registra-pregresso")
+@handle_errors
+async def registra_pregresso_contabilita(
+    dry_run: bool = Query(False, description="Solo conteggio, nessuna scrittura"),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Recupero del PREGRESSO non registrato (audit 03/09/2026 §2, PR 8).
+
+    Dal deploy della registrazione automatica ogni fattura/corrispettivo
+    entra nel libro giornale al momento dell'import; questo comando, riservato
+    all'amministratore e idempotente, registra in un solo giro tutto cio' che
+    era arrivato prima (riusa `/registra-tutte-fatture` e
+    `/registra-corrispettivi`: un solo motore, nessun sistema parallelo).
+    `?dry_run=true` restituisce solo i conteggi senza scrivere.
+    """
+    from app.services.registrazione_contabile import registra_pregresso
+    return await registra_pregresso(Database.get_db(), dry_run=bool(dry_run is True))

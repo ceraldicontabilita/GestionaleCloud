@@ -28,8 +28,38 @@ from app.services.payment_allocation_validator import (
 logger = logging.getLogger(__name__)
 
 
+def collegamenti_movimento(movement: Dict[str, Any]) -> Dict[str, Any]:
+    """Contropartite gia' collegate a un movimento di estratto conto, nei nomi
+    dei campi verificati sui dati reali il 03/09/2026 (audit §6, PR 16):
+    ``prima_nota_banca_id`` (91 movimenti), ``fattura_id``/``fattura_ids``,
+    ``stipendio_id`` (prima_nota_salari), ``assegno_id``, ``f24_ids``
+    (riconciliazione F24 banca), ``paypal_transaction_id``. Solo lettura:
+    la UI li usa per il bottone "Vai a ...", mai per dedurre un pagamento."""
+    fatture = [str(v) for v in (movement.get("fattura_ids") or []) if v]
+    principale = movement.get("fattura_id")
+    if principale and str(principale) not in fatture:
+        fatture.insert(0, str(principale))
+    f24 = [str(v) for v in (movement.get("f24_ids") or []) if v]
+    for chiave in ("f24_id", "f24_riconciliato_id"):
+        if movement.get(chiave) and str(movement[chiave]) not in f24:
+            f24.append(str(movement[chiave]))
+    return {
+        "fattura_id": fatture[0] if fatture else None,
+        "fattura_ids": fatture,
+        "prima_nota_banca_id": movement.get("prima_nota_banca_id") or None,
+        "stipendio_id": movement.get("stipendio_id") or None,
+        "assegno_id": movement.get("assegno_id") or None,
+        "f24_ids": f24,
+        "paypal_transaction_id": movement.get("paypal_transaction_id") or None,
+        "riconciliato": bool(movement.get("riconciliato")),
+        "tipo_riconciliazione": movement.get("tipo_riconciliazione"),
+    }
+
+
 def semanticizza_risultato(result: Dict[str, Any], movement: Dict[str, Any]) -> Dict[str, Any]:
     """Aggiunge il contratto decisionale comune richiesto dalla UI."""
+    result["collegamenti"] = collegamenti_movimento(movement)
+    result.setdefault("movimento_id", movement.get("id"))
     classification = classify_bank_movement(movement)
     if classification:
         result["tipo"] = classification["tipo"]

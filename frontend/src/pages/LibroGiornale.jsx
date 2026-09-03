@@ -1,8 +1,38 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import api from '../api';
 import { toast } from 'sonner';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
-import { COLORS, useIsMobile } from '../lib/utils.js';
+import { COLORS, formatDateIT, useIsMobile } from '../lib/utils.js';
+import LinkContropartita, {
+  PALETTE_CONTROPARTITA, rottaDocumentoOrigine,
+} from '../components/LinkContropartita';
+
+/**
+ * Scrittura → documento d'origine (fattura / corrispettivo). Audit
+ * 03/09/2026 §6 (PR 16): `fonte_documento` era salvato ma mai mostrato.
+ */
+function DocumentoOrigine({ scrittura, compatto = true }) {
+  const fonte = scrittura?.fonte_documento;
+  const doc = rottaDocumentoOrigine(fonte);
+  if (!doc) return null;
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+      <span style={{ fontSize: 11.5, color: COLORS.textMuted }}>
+        Origine: {fonte.tipo} {fonte.numero || fonte.id}
+      </span>
+      <LinkContropartita
+        to={doc.to}
+        esterno={doc.esterno}
+        compatto={compatto}
+        testId={`link-documento-${scrittura.id}`}
+        title={`${fonte.tipo} ${fonte.numero || ''} · id ${fonte.id} · ${formatDateIT(scrittura.data_documento || scrittura.data || '')} · origine della scrittura n. ${scrittura.numero_registrazione}`}
+      >
+        {doc.etichetta}
+      </LinkContropartita>
+    </span>
+  );
+}
 
 /**
  * Libro Giornale e Libro Mastro (art. 2216 c.c.) — registro UNICO
@@ -30,13 +60,26 @@ export default function LibroGiornale() {
   const [espansa, setEspansa] = useState(null); // id scrittura espansa
   const [controllo60, setControllo60] = useState(null);
 
+  // Deep-link dal bilancio di verifica (audit 03/09/2026 §6, PR 16):
+  //   ?conto=<codice>&data_da=&data_a=  → solo le scritture di quel conto
+  //   ?scrittura=<id>                   → scrittura aperta ed evidenziata
+  const [searchParams, setSearchParams] = useSearchParams();
+  const contoFiltro = searchParams.get('conto') || '';
+  const scritturaRichiesta = searchParams.get('scrittura') || '';
+  const dataDaParam = searchParams.get('data_da') || '';
+  const dataAParam = searchParams.get('data_a') || '';
+  const rigaEvidenziataRef = useRef(null);
+
   const carica = useCallback(async () => {
     setLoading(true);
     setRegisterError(null);
     setGiornale(null);
     setMastro(null);
     try {
-      const range = `data_da=${anno}-01-01&data_a=${anno}-12-31`;
+      const dataDa = dataDaParam || `${anno}-01-01`;
+      const dataA = dataAParam || `${anno}-12-31`;
+      const range = `data_da=${dataDa}&data_a=${dataA}`;
+      const filtroConto = contoFiltro ? `&conto=${encodeURIComponent(contoFiltro)}` : '';
       const controlloPromise = api
         .get('/api/contabilita-gestionale/libro-giornale/controllo-60-giorni')
         .catch(e => {
@@ -47,7 +90,7 @@ export default function LibroGiornale() {
           return null;
         });
       const [g, m, c60] = await Promise.all([
-        api.get(`/api/contabilita-gestionale/libro-giornale?${range}&limit=2000`),
+        api.get(`/api/contabilita-gestionale/libro-giornale?${range}&limit=2000${filtroConto}`),
         api.get(`/api/contabilita-gestionale/libro-mastro?${range}`),
         controlloPromise,
       ]);
@@ -62,9 +105,34 @@ export default function LibroGiornale() {
     } finally {
       setLoading(false);
     }
-  }, [anno]);
+  }, [anno, contoFiltro, dataDaParam, dataAParam]);
 
   useEffect(() => { carica(); }, [carica]);
+
+  // Scrittura richiesta: aperta, evidenziata e portata a video appena caricata.
+  useEffect(() => {
+    if (!scritturaRichiesta || loading || !giornale?.scritture) return;
+    const trovata = giornale.scritture.find(s => s.id === scritturaRichiesta);
+    if (!trovata) return;
+    setVista('giornale');
+    setEspansa(trovata.id);
+    const t = setTimeout(() => {
+      rigaEvidenziataRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+    }, 100);
+    return () => clearTimeout(t);
+  }, [scritturaRichiesta, giornale, loading]);
+
+  const rimuoviFiltri = () => {
+    const p = new URLSearchParams(searchParams);
+    ['conto', 'scrittura', 'data_da', 'data_a'].forEach(k => p.delete(k));
+    setSearchParams(p, { replace: true });
+  };
+
+  const stileRigaScrittura = (s, base) => (
+    s.id === scritturaRichiesta
+      ? { ...base, background: PALETTE_CONTROPARTITA.evidenza, outline: `2px solid ${PALETTE_CONTROPARTITA.salvia}` }
+      : base
+  );
 
   const esporta = async () => {
     try {
@@ -126,6 +194,23 @@ export default function LibroGiornale() {
         Provvisoria finché non vengono confermate. L'export permette di ricostruire
         la contabilità pari pari, come registrata all'epoca dei fatti.
       </p>
+
+      {(contoFiltro || scritturaRichiesta) && (
+        <div data-testid="filtro-contropartita" style={{
+          display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap',
+          padding: '8px 12px', marginBottom: 14, borderRadius: 8,
+          background: PALETTE_CONTROPARTITA.salviaChiara,
+          border: `1px solid ${PALETTE_CONTROPARTITA.bordo}`, color: PALETTE_CONTROPARTITA.salviaScura, fontSize: 13,
+        }}>
+          {contoFiltro && <span>Solo le scritture del conto <strong>{contoFiltro}</strong>
+            {dataDaParam || dataAParam ? ` dal ${formatDateIT(dataDaParam)} al ${formatDateIT(dataAParam)}` : ''}
+            {giornale ? ` · ${giornale.totale_disponibile ?? giornale.totale} scritture` : ''}</span>}
+          {scritturaRichiesta && <span>Scrittura <strong>{scritturaRichiesta}</strong> in evidenza</span>}
+          <Link to="/contabilita/giornale" onClick={rimuoviFiltri} style={{ color: PALETTE_CONTROPARTITA.sabbia, fontWeight: 700 }}>
+            Rimuovi filtro
+          </Link>
+        </div>
+      )}
 
       {/* Controllo 60 giorni (DPR 600/73 art. 22) */}
       {controllo60 && !controllo60.conforme && (
@@ -194,13 +279,14 @@ export default function LibroGiornale() {
               {(giornale?.scritture || []).map(s => (
                 <div
                   key={s.id}
+                  ref={s.id === scritturaRichiesta ? rigaEvidenziataRef : null}
                   onClick={() => setEspansa(espansa === s.id ? null : s.id)}
                   data-testid={`scrittura-${s.numero_registrazione}`}
-                  style={{
+                  style={stileRigaScrittura(s, {
                     background: 'white', borderRadius: 12, border: `1px solid ${COLORS.border}`,
                     borderLeft: '4px solid #0f2744', boxShadow: '0 1px 2px rgba(15,39,68,0.06)',
                     padding: '10px 12px', cursor: 'pointer', minWidth: 0,
-                  }}
+                  })}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                     <div style={{ minWidth: 0 }}>
@@ -225,6 +311,9 @@ export default function LibroGiornale() {
                   </div>
                   {espansa === s.id && (
                     <div style={{ marginTop: 8, borderTop: `1px solid ${COLORS.border}`, paddingTop: 6 }}>
+                      <div style={{ marginBottom: 6 }} onClick={e => e.stopPropagation()}>
+                        <DocumentoOrigine scrittura={s} />
+                      </div>
                       {(s.righe || []).map((r, i) => (
                         <div key={i} style={{ fontSize: 11.5, color: '#475569', padding: '3px 0', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                           <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
@@ -257,11 +346,12 @@ export default function LibroGiornale() {
               <tbody>
                 {(giornale?.scritture || []).map(s => (
                   <React.Fragment key={s.id}>
-                    <tr style={{ borderBottom: `1px solid ${COLORS.border}`, cursor: 'pointer' }}
+                    <tr style={stileRigaScrittura(s, { borderBottom: `1px solid ${COLORS.border}`, cursor: 'pointer' })}
+                      ref={s.id === scritturaRichiesta ? rigaEvidenziataRef : null}
                       onClick={() => setEspansa(espansa === s.id ? null : s.id)}
                       data-testid={`scrittura-${s.numero_registrazione}`}>
                       <td style={{ ...td, fontWeight: 700 }}>{s.numero_registrazione}</td>
-                      <td style={td}>{s.data_documento || s.data}</td>
+                      <td style={td}>{formatDateIT(s.data_documento || s.data)}</td>
                       <td style={td}>{s.tipo}</td>
                       <td style={td}>{s.descrizione}</td>
                       <td style={{ ...td, textAlign: 'right' }}>€ {eur(s.totale_dare)}</td>
@@ -270,6 +360,12 @@ export default function LibroGiornale() {
                         {espansa === s.id ? '▲' : '▼'}
                       </td>
                     </tr>
+                    {espansa === s.id && rottaDocumentoOrigine(s.fonte_documento) && (
+                      <tr style={{ background: COLORS.bgAlt, fontSize: 12 }}>
+                        <td style={td}></td>
+                        <td style={td} colSpan={6}><DocumentoOrigine scrittura={s} /></td>
+                      </tr>
+                    )}
                     {espansa === s.id && (s.righe || []).map((r, i) => (
                       <tr key={i} style={{ background: COLORS.bgAlt, fontSize: 12 }}>
                         <td style={td}></td>
@@ -288,9 +384,11 @@ export default function LibroGiornale() {
           )}
           {(giornale?.scritture || []).length === 0 && (
             <div style={{ color: COLORS.textMuted, padding: 24, textAlign: 'center' }}>
-              Nessuna scrittura definitiva per il {anno}. Le scritture nascono dalla
-              registrazione contabile (Piano dei Conti → Registra fatture) e dalle
-              operazioni di TFR e ammortamenti.
+              Nessuna scrittura definitiva per il {anno}{contoFiltro ? ` sul conto ${contoFiltro}` : ''}.
+              Le scritture nascono da sole all'arrivo di fatture e corrispettivi
+              (registrazione automatica), dal comando "Registra pregresso" del
+              Piano dei Conti per i documenti importati prima, e dalle operazioni
+              di TFR e ammortamenti.
             </div>
           )}
         </>

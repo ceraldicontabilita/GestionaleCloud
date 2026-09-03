@@ -5,7 +5,7 @@ Generato da `scripts/audit_static.py`.
 
 ## Sintesi
 
-- P1: 376
+- P1: 378
 - P2: 19
 - P3: 67
 - INFO: 16
@@ -458,31 +458,37 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/accounting/contabilita_gestionale.py:600`
+- File: `app/routers/accounting/contabilita_gestionale.py:611`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/accounting/contabilita_gestionale.py:860`
+- File: `app/routers/accounting/contabilita_gestionale.py:871`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/accounting/contabilita_gestionale.py:1236`
+- File: `app/routers/accounting/contabilita_gestionale.py:1270`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/accounting/piano_conti.py:1225`
+- File: `app/routers/accounting/piano_conti.py:1226`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/accounting/piano_conti.py:1236`
+- File: `app/routers/accounting/piano_conti.py:1239`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/routers/accounting/piano_conti.py:1252`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -1772,37 +1778,37 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/invoices/fatture_upload.py:1619`
+- File: `app/routers/invoices/fatture_upload.py:1621`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/invoices/fatture_upload.py:2141`
+- File: `app/routers/invoices/fatture_upload.py:2169`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/invoices/fatture_upload.py:2237`
+- File: `app/routers/invoices/fatture_upload.py:2265`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/invoices/fatture_upload.py:2340`
+- File: `app/routers/invoices/fatture_upload.py:2368`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/invoices/fatture_upload.py:2483`
+- File: `app/routers/invoices/fatture_upload.py:2511`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/invoices/fatture_upload.py:2663`
+- File: `app/routers/invoices/fatture_upload.py:2691`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -2054,7 +2060,7 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/scadenze.py:418`
+- File: `app/routers/scadenze.py:423`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -2336,6 +2342,12 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - delete-confirm
 
+- File: `frontend/src/pages/BilancioVerifica.jsx:86`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
 - File: `frontend/src/pages/Fornitori.jsx:1718`
 
 - Dettaglio: DELETE senza confirm vicino.
@@ -2600,13 +2612,13 @@ Generato da `scripts/audit_static.py`.
 
 ### P3 - fetch-race
 
-- File: `frontend/src/pages/Bilancio.jsx:70`
+- File: `frontend/src/pages/Bilancio.jsx:83`
 
 - Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
 
 ### P3 - fetch-race
 
-- File: `frontend/src/pages/BilancioVerifica.jsx:54`
+- File: `frontend/src/pages/BilancioVerifica.jsx:93`
 
 - Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
 
@@ -2750,7 +2762,7 @@ Generato da `scripts/audit_static.py`.
 
 ### P3 - fetch-race
 
-- File: `frontend/src/pages/LibroGiornale.jsx:50`
+- File: `frontend/src/pages/LibroGiornale.jsx:93`
 
 - Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
 
@@ -2798,7 +2810,7 @@ Generato da `scripts/audit_static.py`.
 
 ### P3 - fetch-race
 
-- File: `frontend/src/pages/PrimaNota.jsx:402`
+- File: `frontend/src/pages/PrimaNota.jsx:425`
 
 - Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
 
@@ -2816,7 +2828,7 @@ Generato da `scripts/audit_static.py`.
 
 ### P3 - fetch-race
 
-- File: `frontend/src/pages/RiconciliazioneUnificata.jsx:328`
+- File: `frontend/src/pages/RiconciliazioneUnificata.jsx:470`
 
 - Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
 
@@ -2828,7 +2840,7 @@ Generato da `scripts/audit_static.py`.
 
 ### P3 - fetch-race
 
-- File: `frontend/src/pages/Scadenze.jsx:60`
+- File: `frontend/src/pages/Scadenze.jsx:61`
 
 - Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
 

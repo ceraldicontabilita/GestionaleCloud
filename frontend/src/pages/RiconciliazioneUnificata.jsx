@@ -20,6 +20,9 @@ import { toast } from 'sonner';
 import { PageLayout } from '../components/PageLayout';
 import DocumentViewerModal from '../components/DocumentViewerModal';
 import AvvisoBonarioF24 from '../components/AvvisoBonarioF24';
+import LinkContropartita, {
+  ROTTE_CONTROPARTITA, PALETTE_CONTROPARTITA,
+} from '../components/LinkContropartita';
 
 const RiconciliazionePaypalLazy = lazy(() => import('./RiconciliazionePaypal.jsx'));
 
@@ -60,6 +63,124 @@ const BANK_ANOMALY_LABELS = {
     'Le quote collegate non coincidono al centesimo con l\'importo del movimento.',
 };
 
+/**
+ * Movimento di estratto conto → contropartite (audit 03/09/2026 §6, PR 16):
+ * il backend espone `collegamenti` (fattura_id, prima_nota_banca_id,
+ * stipendio_id, f24_ids…) letti dai campi reali del movimento; per un
+ * movimento ancora da confermare la fattura PROPOSTA dall'analisi ha il suo
+ * link, etichettato come proposta (mai spacciata per collegamento certo).
+ */
+export function linksContropartitaMovimento(m = {}) {
+  const c = m.collegamenti || {};
+  const links = [];
+  const tipoFattura = ['fattura', 'fattura_sdd', 'fattura_bonifico'].includes(m.tipo);
+  const fatturaProposta = tipoFattura ? m.suggerimenti?.[0]?.id : null;
+  const fatturaId = c.fattura_id || fatturaProposta;
+  if (fatturaId) {
+    links.push({
+      key: 'fattura',
+      to: ROTTE_CONTROPARTITA.fattura(fatturaId),
+      etichetta: c.fattura_id ? 'Vai alla fattura' : 'Fattura proposta',
+      title: `Fattura ${m.numero_fattura || m.suggerimenti?.[0]?.numero || fatturaId} · ${c.fattura_id ? 'collegata al movimento' : 'proposta dall\'analisi, da confermare'}`,
+    });
+  }
+  if (c.prima_nota_banca_id) {
+    links.push({
+      key: 'prima-nota',
+      to: ROTTE_CONTROPARTITA.primaNotaBanca(c.prima_nota_banca_id),
+      etichetta: 'Prima Nota Banca',
+      title: `Riga di Prima Nota Banca ${c.prima_nota_banca_id} · ${formatDateIT(m.data || '')} · ${formatEuro(Math.abs(m.importo || 0))}`,
+    });
+  }
+  return links;
+}
+
+function LinksContropartita({ m }) {
+  const links = linksContropartitaMovimento(m);
+  if (!links.length) return null;
+  const id = m.movimento_id || m.id;
+  return (
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }} onClick={e => e.stopPropagation()}>
+      {links.map(l => (
+        <LinkContropartita key={l.key} to={l.to} compatto testId={`link-${l.key}-${id}`} title={l.title}>
+          {l.etichetta}
+        </LinkContropartita>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Pannello del movimento richiesto via deep-link
+ * `/riconciliazione/banca?movimento=<id estratto conto>` (da Prima Nota,
+ * Scadenze, F24): il record viene caricato e mostrato in evidenza con le
+ * sue contropartite, anche se non è nella coda "da confermare".
+ */
+export function PannelloMovimentoRichiesto({ id, richiesta, onChiudi }) {
+  if (!id) return null;
+  const dati = richiesta?.dati || {};
+  const links = linksContropartitaMovimento(dati);
+  const c = dati.collegamenti || {};
+  return (
+    <div
+      data-testid="movimento-richiesto"
+      style={{
+        padding: 14, borderBottom: '1px solid #e2e8f0',
+        background: PALETTE_CONTROPARTITA.evidenza,
+        borderLeft: `4px solid ${PALETTE_CONTROPARTITA.salvia}`,
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <strong style={{ color: PALETTE_CONTROPARTITA.salviaScura, fontSize: 14 }}>
+          Movimento estratto conto {id}
+        </strong>
+        <button
+          type="button"
+          onClick={onChiudi}
+          style={{ background: 'white', border: `1px solid ${PALETTE_CONTROPARTITA.bordo}`, borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: 12, color: PALETTE_CONTROPARTITA.salviaScura, fontWeight: 700 }}
+        >
+          Chiudi
+        </button>
+      </div>
+      {richiesta?.stato === 'caricamento' && (
+        <div style={{ fontSize: 12.5, color: '#64748b', marginTop: 4 }}>Caricamento del movimento…</div>
+      )}
+      {richiesta?.stato === 'errore' && (
+        <div style={{ fontSize: 12.5, color: '#b91c1c', marginTop: 4 }}>
+          Movimento non trovato nell'estratto conto: {richiesta.errore}
+        </div>
+      )}
+      {richiesta?.stato === 'ok' && (
+        <>
+          <div style={{ fontSize: 13, marginTop: 4, color: '#0f172a' }}>
+            {formatDateIT(dati.data || '')} · {formatEuro(Math.abs(dati.importo || 0))} · {dati.descrizione || '—'}
+          </div>
+          <div style={{ fontSize: 12, color: '#475569', marginTop: 2 }}>
+            Tipo: {dati.tipo || 'non riconosciuto'} · {c.riconciliato ? 'riconciliato' : 'non riconciliato'}
+            {c.tipo_riconciliazione ? ` (${c.tipo_riconciliazione})` : ''}
+            {c.stipendio_id ? ` · stipendio ${c.stipendio_id}` : ''}
+            {c.assegno_id ? ` · assegno ${c.assegno_id}` : ''}
+            {(c.f24_ids || []).length ? ` · F24 ${c.f24_ids.join(', ')}` : ''}
+          </div>
+          {links.length ? (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+              {links.map(l => (
+                <LinkContropartita key={l.key} to={l.to} testId={`link-${l.key}-richiesto`} title={l.title}>
+                  {l.etichetta}
+                </LinkContropartita>
+              ))}
+            </div>
+          ) : (
+            <div style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>
+              Nessuna contropartita collegata a questo movimento.
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 export function descriviAnomaliaBanca(motivo = {}) {
   const descrizione = BANK_ANOMALY_LABELS[motivo.codice]
     || 'Anomalia bancaria da verificare nel dettaglio.';
@@ -95,6 +216,27 @@ export default function RiconciliazioneUnificata() {
   const navigate = useNavigate();
   const location = useLocation();
   const ambitoNoleggio = new URLSearchParams(location.search).get('ambito') === 'noleggio';
+
+  // Deep-link "?movimento=<id estratto conto>" (audit 03/09/2026 §6, PR 16):
+  // carica il singolo movimento dall'endpoint esistente e lo mostra in
+  // evidenza nel tab Banca con le contropartite collegate.
+  const movimentoRichiestoId = new URLSearchParams(location.search).get('movimento') || '';
+  const [movimentoRichiesto, setMovimentoRichiesto] = useState(null);
+  useEffect(() => {
+    if (!movimentoRichiestoId) {
+      setMovimentoRichiesto(null);
+      return undefined;
+    }
+    let attivo = true;
+    setMovimentoRichiesto({ stato: 'caricamento' });
+    api
+      .get(`/api/operazioni-da-confermare/smart/movimento/${encodeURIComponent(movimentoRichiestoId)}`)
+      .then(r => { if (attivo) setMovimentoRichiesto({ stato: 'ok', dati: r.data || {} }); })
+      .catch(e => {
+        if (attivo) setMovimentoRichiesto({ stato: 'errore', errore: e.response?.data?.detail || e.message });
+      });
+    return () => { attivo = false; };
+  }, [movimentoRichiestoId]);
 
   // Ottieni tab dall'URL (es. /riconciliazione-unificata/banca -> banca)
   const getTabFromPath = () => {
@@ -1004,6 +1146,13 @@ export default function RiconciliazioneUnificata() {
         {activeTab === 'dashboard' && (
           <DashboardTab stats={stats} reconciliationStats={reconciliationStats} />
         )}
+        {activeTab === 'banca' && movimentoRichiestoId && (
+          <PannelloMovimentoRichiesto
+            id={movimentoRichiestoId}
+            richiesta={movimentoRichiesto}
+            onChiudi={() => navigate('/riconciliazione/banca')}
+          />
+        )}
         {activeTab === 'banca' && (
           <MovimentiTab
             movimenti={movimentiBancaFiltrati}
@@ -1301,6 +1450,7 @@ function MovimentiTab({
                           📄 Fattura: {numeroFattura}
                         </div>
                       )}
+                      <LinksContropartita m={m} />
                       {(m.suggerimenti || []).length > 1 && (
                         <div style={{ marginTop: 4, fontSize: 11, color: '#334155' }}>
                           {m.suggerimenti.map(item => (
@@ -1594,6 +1744,7 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onVediProva, processin
               📄 Fattura: {numeroFattura}
             </div>
           )}
+          <LinksContropartita m={movimento} />
 
           {/* Info assegno se presente */}
           {movimento.numero_assegno && (
@@ -1810,7 +1961,7 @@ const STILI_DUP_F24 = {
   no: { label: 'No', bg: '#f1f5f9', color: '#64748b' },
 };
 
-function TabellaAnalisiF24({ anno }) {
+export function TabellaAnalisiF24({ anno }) {
   const [righe, setRighe] = useState(null);
   const [loading, setLoading] = useState(false);
   const [errore, setErrore] = useState(null);
@@ -1965,7 +2116,36 @@ function TabellaAnalisiF24({ anno }) {
                       {(r.causali_inps || []).join(', ') || '—'}
                     </td>
                     <td style={{ ...cella, whiteSpace: 'nowrap' }}>
-                      {r.documento_collegato?.quietanza_id ? '🧾 Quietanza' : '—'}
+                      {/* F24 → quietanza (PDF) e → addebito in estratto conto
+                          (audit 03/09/2026 §6, PR 16; campi del registro
+                          unico F24/quietanze/banca, PR 12) */}
+                      <span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap' }}>
+                        {r.documento_collegato?.quietanza_id && (
+                          <LinkContropartita
+                            to={r.documento_collegato.quietanza_url}
+                            esterno
+                            compatto
+                            testId={`link-quietanza-${r.f24_id}`}
+                            title={`Quietanza ${r.documento_collegato.quietanza_id}${r.documento_collegato.protocollo_quietanza ? ` · protocollo ${r.documento_collegato.protocollo_quietanza}` : ''} · F24 ${r.periodo_competenza || ''}`}
+                          >
+                            🧾 Quietanza
+                          </LinkContropartita>
+                        )}
+                        {r.documento_collegato?.quietanza_id && !r.documento_collegato?.quietanza_url && (
+                          <span title="Quietanza registrata sul modello ma non trovata nell'archivio documenti">🧾 Quietanza</span>
+                        )}
+                        {r.documento_collegato?.movimento_bancario_id && (
+                          <LinkContropartita
+                            to={ROTTE_CONTROPARTITA.movimentoBanca(r.documento_collegato.movimento_bancario_id)}
+                            compatto
+                            testId={`link-movimento-f24-${r.f24_id}`}
+                            title={`Addebito in estratto conto ${r.documento_collegato.movimento_bancario_id} · ${formatDateIT(r.documento_collegato.data_pagamento_effettivo || r.data_pagamento || '')} · ${r.documento_collegato.pagamento_verificato_banca ? 'verificato in banca' : 'da verificare'}`}
+                          >
+                            Banca
+                          </LinkContropartita>
+                        )}
+                        {!r.documento_collegato?.quietanza_id && !r.documento_collegato?.movimento_bancario_id && '—'}
+                      </span>
                     </td>
                     <td style={cella}>
                       <span style={{ padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700, background: dup.bg, color: dup.color, whiteSpace: 'nowrap' }}>
