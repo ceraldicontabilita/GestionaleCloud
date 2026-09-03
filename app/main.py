@@ -6,6 +6,7 @@ FastAPI + Google Drive/Sheets | GestionaleCloud
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 import os
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -70,6 +71,14 @@ async def lifespan(app: FastAPI):
     from app.hr.startup import avvia_modulo_hr
 
     await avvia_modulo_hr(scheduler_attivo=scheduler_attivo)
+
+    # App Lotti (HACCP) portata pari pari: Starlette non propaga lo startup
+    # alle sub-app montate, quindi il suo avvio (seed operatori, scheduler,
+    # cataloghi) va richiamato da qui. Un errore non ferma il gestionale.
+    if scheduler_attivo:
+        from app.lotti.embed import avvia_lotti
+
+        await avvia_lotti()
 
     if scheduler_attivo:
         try:
@@ -518,6 +527,9 @@ async def lifespan(app: FastAPI):
     from app.hr.startup import arresta_modulo_hr
 
     arresta_modulo_hr()
+    from app.lotti.embed import arresta_lotti
+
+    await arresta_lotti()
     await Database.close_db()
     logger.info("Shutdown complete")
 
@@ -716,6 +728,25 @@ class _HashedAssets(StaticFiles):
         response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
         return response
 
+
+# App Lotti (HACCP) portata pari pari dentro il gestionale: backend originale
+# (app/lotti, proprio login a PIN) montato a /lotti -> /lotti/api/...; il
+# frontend originale (build CRA di frontend_lotti, PUBLIC_URL=/lotti) e' servito
+# dalla stessa sub-app. Va montata PRIMA del catch-all del frontend del
+# gestionale, altrimenti /lotti/... finirebbe nella SPA dell'ERP.
+from app.lotti.embed import lotti_app, monta_frontend as _monta_frontend_lotti  # noqa: E402
+
+_LOTTI_BUILD = os.path.join(_PROJECT_ROOT, "frontend_lotti", "build")
+if _monta_frontend_lotti(Path(_LOTTI_BUILD)):
+    logger.info("Frontend Lotti montato da %s", _LOTTI_BUILD)
+else:
+    logger.warning("Frontend Lotti non trovato (%s): /lotti serve solo le API", _LOTTI_BUILD)
+app.mount("/lotti", lotti_app, name="lotti")
+# Le foto delle ricette SAIMA sono referenziate dai dati come /saima/... (radice
+# della pagina, non del prefisso): si servono dalla stessa build.
+_LOTTI_SAIMA = os.path.join(_LOTTI_BUILD, "saima")
+if os.path.isdir(_LOTTI_SAIMA):
+    app.mount("/saima", StaticFiles(directory=_LOTTI_SAIMA), name="lotti-saima")
 
 if os.path.isdir(_FRONTEND_DIST):
     assets_path = os.path.join(_FRONTEND_DIST, "assets")

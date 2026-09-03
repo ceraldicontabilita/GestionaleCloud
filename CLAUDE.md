@@ -187,6 +187,39 @@ sempre la sorgente persistente.
   Dalla scheda Backup della pagina Gestione menu: prima "solo prova", poi
   "Sincronizza ora"; ripetibile ogni volta che il menu cambia su Qromo.
 
+## App portate pari pari — `app/lotti/` + `frontend_lotti/` (e poi Menu, HR)
+
+- **[03/09/2026, decisione del titolare]** Le app del gruppo NON vanno
+  ricostruite dentro il gestionale: si prende il repository originale e lo si
+  porta dentro così com'è ("voglio l'app così come era"). Ogni app è un
+  documento a sé: backend originale montato come sub-app FastAPI a
+  `/<app>` (rotte `/<app>/api/...`, **proprio login**), frontend originale
+  compilato con la propria toolchain e servito a `/<app>/` dalla stessa
+  sub-app. Nessuna contaminazione di stile con il layout dell'ERP.
+- **Lotti (HACCP)**: `app/lotti/` = copia di `Lotti/backend` con i soli import
+  riscritti nel namespace `app.lotti.*` (`app/lotti/embed.py`: `lotti_app`,
+  `avvia_lotti`/`arresta_lotti` richiamati dal lifespan di `app/main.py`
+  perché Starlette non propaga lo startup alle sub-app, `monta_frontend`).
+  Montata in `app/main.py` PRIMA del catch-all della SPA dell'ERP. Env
+  namespaced per non collidere con quelle del gestionale:
+  `LOTTI_SUPABASE_URL`, `LOTTI_SUPABASE_ANON_KEY`, `LOTTI_DB_SECRET`
+  (progetto Supabase `Lotti-HACCP`, tabella `lotti_documents` + RPC
+  `lotti_*`), `LOTTI_AUTH_SECRET` (fallback `AUTH_SECRET`), `LOTTI_DB_NAME`.
+  Senza `LOTTI_SUPABASE_URL` l'archivio è in memoria (mongomock, non
+  persistente: solo test/sviluppo). Il PIN admin di Lotti resta quello di
+  Lotti. `frontend_lotti/` = copia di `Lotti/frontend` (CRA), build con
+  `PUBLIC_URL=/lotti`, `REACT_APP_BACKEND_URL=/lotti` (`.env.production`,
+  tracciato apposta); le foto SAIMA sono referenziate dai dati come
+  `/saima/...` e vengono servite dall'host da `frontend_lotti/build/saima`.
+  Voce "HACCP Lotti" nel menu Altro (link a pagina intera). I test originali
+  vivono in `app/lotti/tests` (`AUTH_SECRET=test python -m pytest app/lotti/tests`).
+  La guardia `tests/test_drive_only_architecture.py` esclude `app/lotti`
+  (usa l'API Mongo in memoria per progetto, non è l'archivio dell'ERP).
+- Fase successiva: portare allo stesso modo il Menu originale (`Menu/`) e
+  AppDipendenti (`AppDipendenti/`) al posto dei moduli riscritti `app/menu`,
+  `frontend/src/menu`, `app/hr`, `frontend/src/hr`; poi consolidare i dati
+  delle app nel progetto Supabase `GestionaleCloud`.
+
 ## Canali operativi e conoscenza
 
 - Telegram è l'unico canale attivo per alert e notifiche operative.

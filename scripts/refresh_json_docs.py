@@ -491,6 +491,14 @@ def json_files() -> list[Path]:
     excluded_parts = {
         ".claude", ".git", ".pytest_cache", "node_modules", "dist", "tmp",
     }
+    # Solo i file tracciati da git (come refresh_markdown_docs.py): copie di
+    # lavoro non ancora committate non appartengono all'inventario.
+    tracked = set(
+        subprocess.run(
+            ["git", "ls-files", "--cached", "--", "*.json"],
+            cwd=ROOT, capture_output=True, text=True, check=True,
+        ).stdout.split("\n")
+    )
     result: list[Path] = []
     for path in ROOT.rglob("*.json"):
         relative_path = path.relative_to(ROOT)
@@ -498,6 +506,8 @@ def json_files() -> list[Path]:
         if any(part in excluded_parts for part in parts):
             continue
         if any(part.startswith(".codex") or part.startswith(".verify") for part in parts):
+            continue
+        if relative_path.as_posix() not in tracked:
             continue
         result.append(path)
     return sorted(result)

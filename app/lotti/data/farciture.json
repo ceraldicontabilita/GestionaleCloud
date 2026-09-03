@@ -1,0 +1,41 @@
+{
+  "_descrizione": "Configurazione farciture (richiesta Enzo 03/07/2026): quando un prodotto-base (es. Cornetto Vuoto) viene diviso nei gusti al momento dello scarico dalla giacenza frigo/abbattitore, questa mappa dice quali ingredienti scaricare e quanti grammi per ciascun gusto. Gli ingredienti sono nomi CANONICI (gli stessi del dizionario/FIFO ricette, NON descrizioni-fattura grezze): la ricerca del lotto in giacenza passa dallo stesso motore usato dalle ricette (nome_mapping/dizionario_prodotti), quindi 'Amarena' trova sia l'amarena di un fornitore sia quella di un altro, comunque sia scritta in fattura. 'ingredienti_alternativi' = prova il primo nome; se non c'e' giacenza per quello, prova il successivo (stesso concetto, nome canonico diverso: es. la crema di nocciola scritta come marca 'Nuppy' su una fattura deve comunque risultare canonicalizzata come uno di questi nomi).",
+  "_aggiornato_il": "2026-07-03",
+  "_dose_ipotesi_da_confermare": "Enzo ha detto 'le dosi di farcitura sono 20 grammi' in generale. Per i gusti con UN solo ingrediente (crema, cioccolato, marmellata) e' inequivocabile: 20g. Per 'crema e amarena' (2 ingredienti) ho ipotizzato 20g DI CIASCUNO (40g totali a pezzo) finche' Enzo non conferma o corregge.",
+  "farciture": {
+    "crema": {
+      "componenti": [
+        {"ingredienti_alternativi": ["Crema Pasticcera"], "dose_g": 20}
+      ]
+    },
+    "cioccolato": {
+      "componenti": [
+        {"ingredienti_alternativi": ["Cioccolato Nocciola"], "dose_g": 20}
+      ]
+    },
+    "marmellata": {
+      "componenti": [
+        {"ingredienti_alternativi": ["Marmellata Albicocca"], "dose_g": 20}
+      ]
+    },
+    "crema e amarena": {
+      "componenti": [
+        {"ingredienti_alternativi": ["Crema Pasticcera"], "dose_g": 20},
+        {"ingredienti_alternativi": ["Amarena", "Visciola"], "dose_g": 20}
+      ]
+    },
+    "panna e fragoline": {
+      "_nota": "Esempio dato da Enzo come modello del formato — nessun prodotto reale lo usa ancora.",
+      "componenti": [
+        {"ingredienti_alternativi": ["Panna"], "dose_g": 20},
+        {"ingredienti_alternativi": ["Fragoline"], "dose_g": 20}
+      ]
+    }
+  },
+  "prodotti_base": {
+    "Cornetto Vuoto": {
+      "_nota": "Gusti collegati: parole cercate (a confini di parola, non sottostringa nuda) nel nome degli item Colazione che iniziano per 'Cornetto' per abbinarli al gusto giusto.",
+      "gusti_collegati": ["crema", "cioccolato", "marmellata", "crema e amarena"]
+    }
+  }
+}

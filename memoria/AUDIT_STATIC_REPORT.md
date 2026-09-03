@@ -5,9 +5,9 @@ Generato da `scripts/audit_static.py`.
 
 ## Sintesi
 
-- P1: 391
-- P2: 6
-- P3: 70
+- P1: 445
+- P2: 19
+- P3: 71
 - INFO: 16
 
 ## Findings
@@ -423,6 +423,330 @@ Generato da `scripts/audit_static.py`.
 ### P1 - body
 
 - File: `app/hr/routers/turni.py:210`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/attendance.py:365`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/attendance.py:887`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/attendance.py:974`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/attendance.py:1310`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/attendance.py:1347`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/attendance.py:1427`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/cedolini.py:483`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/cedolini.py:692`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/cedolini.py:931`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/cedolini.py:1006`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/cedolini.py:1278`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/cedolini.py:1365`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/dimissioni.py:184`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/dimissioni.py:305`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/employees/buste_paga.py:86`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/employees/dipendenti.py:330`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/employees/dipendenti.py:1405`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/employees/dipendenti.py:1708`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/employees/dipendenti.py:1882`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/employees/dipendenti.py:2142`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/employees/dipendenti.py:2304`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/employees/dipendenti.py:2488`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/employees/employee_contracts.py:385`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/employees/employee_contracts.py:471`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/employees/employee_contracts.py:910`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/employees/employee_contracts.py:937`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/employees/giustificativi.py:108`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/employees/giustificativi.py:1088`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/employees/giustificativi.py:1318`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/employees/staff.py:78`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/employees/staff.py:116`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/employees/staff.py:129`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/notifiche.py:44`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/portale_buste.py:280`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/portale_buste.py:318`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/portale_documenti.py:69`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/portale_documenti.py:151`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/portale_documenti.py:277`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/tfr.py:121`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/tfr.py:225`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/tfr.py:435`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/tfr.py:655`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/tfr.py:801`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/tfr.py:1110`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/tfr.py:1179`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/tfr.py:1523`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/tfr.py:1886`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/tfr.py:1902`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/tfr.py:1991`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/tfr.py:2088`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/tfr.py:2340`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/tfr.py:2397`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/turni.py:176`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/hr_originale/routers/turni.py:210`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -2456,6 +2780,84 @@ Generato da `scripts/audit_static.py`.
 
 ### P2 - timezone
 
+- File: `app/lotti/routers/corrispettivi.py:171`
+
+- Dettaglio: Sostituire con datetime.now(timezone.utc).
+
+### P2 - timezone
+
+- File: `app/lotti/routers/corrispettivi.py:553`
+
+- Dettaglio: Sostituire con datetime.now(timezone.utc).
+
+### P2 - timezone
+
+- File: `app/menu_originale/routes/admin_routes.py:98`
+
+- Dettaglio: Sostituire con datetime.now(timezone.utc).
+
+### P2 - timezone
+
+- File: `app/menu_originale/routes/order_routes.py:120`
+
+- Dettaglio: Sostituire con datetime.now(timezone.utc).
+
+### P2 - timezone
+
+- File: `app/menu_originale/routes/order_routes.py:133`
+
+- Dettaglio: Sostituire con datetime.now(timezone.utc).
+
+### P2 - timezone
+
+- File: `app/menu_originale/routes/qrcode_routes.py:29`
+
+- Dettaglio: Sostituire con datetime.now(timezone.utc).
+
+### P2 - timezone
+
+- File: `app/menu_originale/routes/qrcode_routes.py:87`
+
+- Dettaglio: Sostituire con datetime.now(timezone.utc).
+
+### P2 - timezone
+
+- File: `app/menu_originale/routes/qrcode_routes.py:111`
+
+- Dettaglio: Sostituire con datetime.now(timezone.utc).
+
+### P2 - timezone
+
+- File: `app/menu_originale/routes/sale_routes.py:46`
+
+- Dettaglio: Sostituire con datetime.now(timezone.utc).
+
+### P2 - timezone
+
+- File: `app/menu_originale/routes/warehouse_routes.py:51`
+
+- Dettaglio: Sostituire con datetime.now(timezone.utc).
+
+### P2 - timezone
+
+- File: `app/menu_originale/routes/warehouse_routes.py:85`
+
+- Dettaglio: Sostituire con datetime.now(timezone.utc).
+
+### P2 - timezone
+
+- File: `app/menu_originale/routes/warehouse_routes.py:132`
+
+- Dettaglio: Sostituire con datetime.now(timezone.utc).
+
+### P2 - timezone
+
+- File: `app/menu_originale/routes/warehouse_routes.py:182`
+
+- Dettaglio: Sostituire con datetime.now(timezone.utc).
+
+### P2 - timezone
+
 - File: `app/routers/learning_universal.py:114`
 
 - Dettaglio: Sostituire con datetime.now(timezone.utc).
@@ -2493,6 +2895,12 @@ Generato da `scripts/audit_static.py`.
 ### P3 - legacy-presenze-import-pdf
 
 - File: `app/hr/routers/attendance.py:1110`
+
+- Dettaglio: Riferimento legacy a import PDF presenze. Deve restare bloccato dal router 410 e non usato come flusso primario.
+
+### P3 - legacy-presenze-import-pdf
+
+- File: `app/hr_originale/routers/attendance.py:1110`
 
 - Dettaglio: Riferimento legacy a import PDF presenze. Deve restare bloccato dal router 410 e non usato come flusso primario.
 

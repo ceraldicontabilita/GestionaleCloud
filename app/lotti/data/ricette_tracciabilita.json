@@ -1,0 +1,1921 @@
+[
+ {
+  "nome": "arancini",
+  "ingredienti": [
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "Sedano L.F.183/A",
+    "allergene": true
+   },
+   {
+    "nome": "carote",
+    "allergene": false
+   },
+   {
+    "nome": "olio extravergine oliva",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "babà",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "margarina crema",
+    "allergene": true
+   },
+   {
+    "nome": "tuorlo d'uovo pastorizzato",
+    "allergene": true
+   },
+   {
+    "nome": "LIEVITO x 2.5kg",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "babà misù",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "margarina crema",
+    "allergene": true
+   },
+   {
+    "nome": "tuorlo d'uovo pastorizzato",
+    "allergene": true
+   },
+   {
+    "nome": "LIEVITO x 2.5kg",
+    "allergene": false
+   },
+   {
+    "nome": "MASCARPONE G.250 YMA",
+    "allergene": true
+   },
+   {
+    "nome": "LATTE 1000 INT.UHT YMA",
+    "allergene": true
+   },
+   {
+    "nome": "amido",
+    "allergene": true
+   },
+   {
+    "nome": "cioccolato",
+    "allergene": true
+   },
+   {
+    "nome": "panna",
+    "allergene": true
+   }
+  ]
+ },
+ {
+  "nome": "biscotto di pasta frolla al cioccolato",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "STRUTTO RAFFINATO I B VERDE",
+    "allergene": false
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "zucchero semolato",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "brioche",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "margarina crema",
+    "allergene": true
+   },
+   {
+    "nome": "LIEVITO x 2.5kg",
+    "allergene": false
+   },
+   {
+    "nome": "tuorlo d'uovo pastorizzato",
+    "allergene": true
+   },
+   {
+    "nome": "AROMA CROISSANT",
+    "allergene": false
+   },
+   {
+    "nome": "LATTE 1000 INT.UHT YMA",
+    "allergene": true
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "brioche mignon",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "margarina crema",
+    "allergene": true
+   },
+   {
+    "nome": "LIEVITO x 2.5kg",
+    "allergene": false
+   },
+   {
+    "nome": "tuorlo d'uovo pastorizzato",
+    "allergene": true
+   },
+   {
+    "nome": "AROMA CROISSANT",
+    "allergene": false
+   },
+   {
+    "nome": "LATTE 1000 INT.UHT YMA",
+    "allergene": true
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "cannolo siciliano",
+  "ingredienti": [
+   {
+    "nome": "CANNOLI MAX SCURI x 100pz",
+    "allergene": true
+   },
+   {
+    "nome": "RICOTTA OMOGENEIZZATA II 5KG",
+    "allergene": true
+   }
+  ]
+ },
+ {
+  "nome": "caprese cioccolato",
+  "ingredienti": [
+   {
+    "nome": "cioccolato",
+    "allergene": true
+   },
+   {
+    "nome": "nuppy nocciola 12kg",
+    "allergene": true
+   },
+   {
+    "nome": "GOCCINE MIGNON DI SURROGATO FONDENTE 1000/HG DA KG 12",
+    "allergene": false
+   },
+   {
+    "nome": "zucchero semolato",
+    "allergene": false
+   },
+   {
+    "nome": "margarina sfoglia",
+    "allergene": true
+   },
+   {
+    "nome": "mix cake nature da kg 10 (4830)",
+    "allergene": true
+   }
+  ]
+ },
+ {
+  "nome": "caprese limone",
+  "ingredienti": [
+   {
+    "nome": "nuppy nocciola 12kg",
+    "allergene": true
+   },
+   {
+    "nome": "cioccolato",
+    "allergene": true
+   },
+   {
+    "nome": "zucchero semolato",
+    "allergene": false
+   },
+   {
+    "nome": "margarina sfoglia",
+    "allergene": true
+   },
+   {
+    "nome": "mix cake nature da kg 10 (4830)",
+    "allergene": true
+   }
+  ]
+ },
+ {
+  "nome": "cassatina",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "zucchero semolato",
+    "allergene": false
+   },
+   {
+    "nome": "LIEVITO x 2.5kg",
+    "allergene": false
+   },
+   {
+    "nome": "mix cake nature da kg 10 (4830)",
+    "allergene": true
+   },
+   {
+    "nome": "tuorlo d'uovo pastorizzato",
+    "allergene": true
+   },
+   {
+    "nome": "RICOTTA TIPO ROMA",
+    "allergene": true
+   },
+   {
+    "nome": "PASSATA VISCIOLA LABO GARDEN FRUIT DA KG 12,5",
+    "allergene": false
+   },
+   {
+    "nome": "cioccolato",
+    "allergene": true
+   }
+  ]
+ },
+ {
+  "nome": "cervellatine",
+  "ingredienti": [
+   {
+    "nome": "salame",
+    "allergene": true
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "olio extravergine oliva",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "cheesecake",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "STRUTTO RAFFINATO I B VERDE",
+    "allergene": false
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "zucchero semolato",
+    "allergene": false
+   },
+   {
+    "nome": "tuorlo d'uovo pastorizzato",
+    "allergene": true
+   }
+  ]
+ },
+ {
+  "nome": "coda di aragosta",
+  "ingredienti": [
+   {
+    "nome": "coda d'aragosta",
+    "allergene": true
+   }
+  ]
+ },
+ {
+  "nome": "cornetto alla crema",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "margarina crema",
+    "allergene": true
+   },
+   {
+    "nome": "LIEVITO x 2.5kg",
+    "allergene": false
+   },
+   {
+    "nome": "tuorlo d'uovo pastorizzato",
+    "allergene": true
+   },
+   {
+    "nome": "AROMA CROISSANT",
+    "allergene": false
+   },
+   {
+    "nome": "LATTE 1000 INT.UHT YMA",
+    "allergene": true
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "cornetto alla crema amarena",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "margarina crema",
+    "allergene": true
+   },
+   {
+    "nome": "LIEVITO x 2.5kg",
+    "allergene": false
+   },
+   {
+    "nome": "uova",
+    "allergene": true
+   },
+   {
+    "nome": "AROMA CROISSANT",
+    "allergene": false
+   },
+   {
+    "nome": "LATTE 1000 INT.UHT YMA",
+    "allergene": true
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "amido",
+    "allergene": true
+   },
+   {
+    "nome": "AMARENA NATURALE INTERA IN SCIROPPO DA KG 3",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "cornetto brioche",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "margarina crema",
+    "allergene": true
+   },
+   {
+    "nome": "LIEVITO x 2.5kg",
+    "allergene": false
+   },
+   {
+    "nome": "uova",
+    "allergene": true
+   },
+   {
+    "nome": "AROMA CROISSANT",
+    "allergene": false
+   },
+   {
+    "nome": "LATTE 1000 INT.UHT YMA",
+    "allergene": true
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "cornetto ischitano",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "margarina crema",
+    "allergene": true
+   },
+   {
+    "nome": "LIEVITO x 2.5kg",
+    "allergene": false
+   },
+   {
+    "nome": "uova",
+    "allergene": true
+   },
+   {
+    "nome": "AROMA CROISSANT",
+    "allergene": false
+   },
+   {
+    "nome": "LATTE 1000 INT.UHT YMA",
+    "allergene": true
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "margarina sfoglia",
+    "allergene": true
+   },
+   {
+    "nome": "amido",
+    "allergene": true
+   },
+   {
+    "nome": "AMARENA INTERA TANTOFRUTTO CAL16/18 IN SCIROPPO KG2,75(02004275)",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "cornetto mignon",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "margarina sfoglia",
+    "allergene": true
+   },
+   {
+    "nome": "LIEVITO x 2.5kg",
+    "allergene": false
+   },
+   {
+    "nome": "tuorlo d'uovo pastorizzato",
+    "allergene": true
+   },
+   {
+    "nome": "AROMA CROISSANT",
+    "allergene": false
+   },
+   {
+    "nome": "LATTE 1000 INT.UHT YMA",
+    "allergene": true
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "cornetto sfoglia",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "margarina sfoglia",
+    "allergene": true
+   },
+   {
+    "nome": "LIEVITO x 2.5kg",
+    "allergene": false
+   },
+   {
+    "nome": "uova",
+    "allergene": true
+   },
+   {
+    "nome": "AROMA CROISSANT",
+    "allergene": false
+   },
+   {
+    "nome": "LATTE 1000 INT.UHT YMA",
+    "allergene": true
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "crema chantilly",
+  "ingredienti": [
+   {
+    "nome": "amido",
+    "allergene": true
+   },
+   {
+    "nome": "LATTE 1000 INT.UHT YMA",
+    "allergene": true
+   },
+   {
+    "nome": "zucchero semolato",
+    "allergene": false
+   },
+   {
+    "nome": "tuorlo d'uovo pastorizzato",
+    "allergene": true
+   }
+  ]
+ },
+ {
+  "nome": "crema pasticciera",
+  "ingredienti": [
+   {
+    "nome": "amido",
+    "allergene": true
+   },
+   {
+    "nome": "zucchero semolato",
+    "allergene": false
+   },
+   {
+    "nome": "tuorlo d'uovo pastorizzato",
+    "allergene": true
+   },
+   {
+    "nome": "LATTE 1000 INT.UHT YMA",
+    "allergene": true
+   }
+  ]
+ },
+ {
+  "nome": "crocche",
+  "ingredienti": [
+   {
+    "nome": "patata da consumo l.469/93",
+    "allergene": false
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "olio extravergine oliva",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "crostatina albicocca",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "STRUTTO RAFFINATO I B VERDE",
+    "allergene": false
+   },
+   {
+    "nome": "PASSATA ALBICOCCA x 10kg",
+    "allergene": false
+   },
+   {
+    "nome": "zucchero semolato",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "crostatina cioccolato",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "STRUTTO RAFFINATO I B VERDE",
+    "allergene": false
+   },
+   {
+    "nome": "zucchero semolato",
+    "allergene": false
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "crostone di ricotta",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "RICOTTA OMOGENEIZZATA II 5KG",
+    "allergene": true
+   }
+  ]
+ },
+ {
+  "nome": "delizia al limone",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "amido",
+    "allergene": true
+   },
+   {
+    "nome": "tuorlo d'uovo pastorizzato",
+    "allergene": true
+   },
+   {
+    "nome": "zucchero semolato",
+    "allergene": false
+   },
+   {
+    "nome": "panna",
+    "allergene": true
+   }
+  ]
+ },
+ {
+  "nome": "fagioli uccelletto",
+  "ingredienti": [
+   {
+    "nome": "FAGIOLI BORLOTTI da KG.3X6",
+    "allergene": false
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "olio extravergine oliva",
+    "allergene": false
+   },
+   {
+    "nome": "SALAME NAPOLI SV. SENDERO",
+    "allergene": true
+   },
+   {
+    "nome": "Pomod Ciliegine L.197-004081-0002379",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "fiocco di neve",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "margarina sfoglia",
+    "allergene": true
+   },
+   {
+    "nome": "LIEVITO x 2.5kg",
+    "allergene": false
+   },
+   {
+    "nome": "uova",
+    "allergene": true
+   },
+   {
+    "nome": "AROMA CROISSANT",
+    "allergene": false
+   },
+   {
+    "nome": "LATTE 1000 INT.UHT YMA",
+    "allergene": true
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "panna",
+    "allergene": true
+   },
+   {
+    "nome": "RICOTTA OMOGENEIZZATA II 5KG",
+    "allergene": true
+   }
+  ]
+ },
+ {
+  "nome": "focaccia bianca",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "LIEVITO x 2.5kg",
+    "allergene": false
+   },
+   {
+    "nome": "STRUTTO RAFFINATO I B VERDE",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "focaccia margherita",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "LIEVITO x 2.5kg",
+    "allergene": false
+   },
+   {
+    "nome": "STRUTTO RAFFINATO I B VERDE",
+    "allergene": false
+   },
+   {
+    "nome": "pomodori",
+    "allergene": false
+   },
+   {
+    "nome": "FIORI E PROVOLA",
+    "allergene": true
+   }
+  ]
+ },
+ {
+  "nome": "francesina cioccolato",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "margarina sfoglia",
+    "allergene": true
+   },
+   {
+    "nome": "zucchero semolato",
+    "allergene": false
+   },
+   {
+    "nome": "amido",
+    "allergene": true
+   },
+   {
+    "nome": "LATTE 1000 INT.UHT YMA",
+    "allergene": true
+   },
+   {
+    "nome": "cioccolato",
+    "allergene": true
+   },
+   {
+    "nome": "tuorlo d'uovo pastorizzato",
+    "allergene": true
+   }
+  ]
+ },
+ {
+  "nome": "francesina crema",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "margarina sfoglia",
+    "allergene": true
+   },
+   {
+    "nome": "zucchero semolato",
+    "allergene": false
+   },
+   {
+    "nome": "amido",
+    "allergene": true
+   },
+   {
+    "nome": "LATTE 1000 INT.UHT YMA",
+    "allergene": true
+   },
+   {
+    "nome": "tuorlo d'uovo pastorizzato",
+    "allergene": true
+   }
+  ]
+ },
+ {
+  "nome": "friarielli in padella",
+  "ingredienti": [
+   {
+    "nome": "Friarielli Orig.Campania L.51/F FVI/49",
+    "allergene": false
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "olio extravergine oliva",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "frittatina",
+  "ingredienti": [
+   {
+    "nome": "PASTA DE CECCO Mafaldine",
+    "allergene": true
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "LATTE 1000 INT.UHT YMA",
+    "allergene": true
+   },
+   {
+    "nome": "margarina sfoglia",
+    "allergene": true
+   },
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "carote",
+    "allergene": false
+   },
+   {
+    "nome": "PISELLI BONDUELLE GR.580X12",
+    "allergene": true
+   },
+   {
+    "nome": "olio extravergine oliva",
+    "allergene": false
+   },
+   {
+    "nome": "basilico / rosmarino /prezzemolo",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "funghi trifolati",
+  "ingredienti": [
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "olio extravergine oliva",
+    "allergene": false
+   },
+   {
+    "nome": "basilico / rosmarino /prezzemolo",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "krans cioccolato",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "margarina crema",
+    "allergene": true
+   },
+   {
+    "nome": "LIEVITO x 2.5kg",
+    "allergene": false
+   },
+   {
+    "nome": "uova",
+    "allergene": true
+   },
+   {
+    "nome": "AROMA CROISSANT",
+    "allergene": false
+   },
+   {
+    "nome": "LATTE 1000 INT.UHT YMA",
+    "allergene": true
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "krans uvetta",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "margarina crema",
+    "allergene": true
+   },
+   {
+    "nome": "LIEVITO x 2.5kg",
+    "allergene": false
+   },
+   {
+    "nome": "uova",
+    "allergene": true
+   },
+   {
+    "nome": "AROMA CROISSANT",
+    "allergene": false
+   },
+   {
+    "nome": "LATTE 1000 INT.UHT YMA",
+    "allergene": true
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "UVA DA KG 1 SULTANINA AUSTRALIANA VINTAGE",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "melanzana al forno",
+  "ingredienti": [
+   {
+    "nome": "melanzane",
+    "allergene": false
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "olio extravergine oliva",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "melanzane fritta involtino",
+  "ingredienti": [
+   {
+    "nome": "melanzane",
+    "allergene": false
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "olio extravergine oliva",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "melanzane in padella",
+  "ingredienti": [
+   {
+    "nome": "melanzane",
+    "allergene": false
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "olio extravergine oliva",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "pan di spagna",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "zucchero semolato",
+    "allergene": false
+   },
+   {
+    "nome": "tuorlo d'uovo pastorizzato",
+    "allergene": true
+   },
+   {
+    "nome": "margarina crema",
+    "allergene": true
+   }
+  ]
+ },
+ {
+  "nome": "panna",
+  "ingredienti": [
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "pasta choux",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "uova",
+    "allergene": true
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "margarina crema",
+    "allergene": true
+   }
+  ]
+ },
+ {
+  "nome": "pasta di mandorle",
+  "ingredienti": []
+ },
+ {
+  "nome": "pasta frolla basi abbattute",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "STRUTTO RAFFINATO I B VERDE",
+    "allergene": false
+   },
+   {
+    "nome": "zucchero semolato",
+    "allergene": false
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "pasta frolla fresca",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "STRUTTO RAFFINATO I B VERDE",
+    "allergene": false
+   },
+   {
+    "nome": "zucchero semolato",
+    "allergene": false
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "pasta sfoglia",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "margarina crema",
+    "allergene": true
+   }
+  ]
+ },
+ {
+  "nome": "pasticcino crema",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "STRUTTO RAFFINATO I B VERDE",
+    "allergene": false
+   },
+   {
+    "nome": "zucchero semolato",
+    "allergene": false
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "LATTE 1000 INT.UHT YMA",
+    "allergene": true
+   },
+   {
+    "nome": "amido",
+    "allergene": true
+   },
+   {
+    "nome": "tuorlo d'uovo pastorizzato",
+    "allergene": true
+   }
+  ]
+ },
+ {
+  "nome": "pasticcino limone",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "STRUTTO RAFFINATO I B VERDE",
+    "allergene": false
+   },
+   {
+    "nome": "zucchero semolato",
+    "allergene": false
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "pasticcino pistacchio",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "STRUTTO RAFFINATO I B VERDE",
+    "allergene": false
+   },
+   {
+    "nome": "zucchero semolato",
+    "allergene": false
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "nuppy pistacchio piu' 6kg",
+    "allergene": true
+   }
+  ]
+ },
+ {
+  "nome": "pastiera",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "STRUTTO RAFFINATO I B VERDE",
+    "allergene": false
+   },
+   {
+    "nome": "zucchero a velo",
+    "allergene": false
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "LATTE 1000 INT.UHT YMA",
+    "allergene": true
+   },
+   {
+    "nome": "uova",
+    "allergene": true
+   }
+  ]
+ },
+ {
+  "nome": "peperoni in padella",
+  "ingredienti": [
+   {
+    "nome": "Peperoni L.031-004226-0000007",
+    "allergene": false
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "olio extravergine oliva",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "pizza farcita friarielli",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "LIEVITO x 2.5kg",
+    "allergene": false
+   },
+   {
+    "nome": "STRUTTO RAFFINATO I B VERDE",
+    "allergene": false
+   },
+   {
+    "nome": "PASSATA POMODORO G.700 TORRENTE",
+    "allergene": false
+   },
+   {
+    "nome": "FIORI E PROVOLA",
+    "allergene": true
+   }
+  ]
+ },
+ {
+  "nome": "pizza margherita",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "LIEVITO x 2.5kg",
+    "allergene": false
+   },
+   {
+    "nome": "STRUTTO RAFFINATO I B VERDE",
+    "allergene": false
+   },
+   {
+    "nome": "POMODORI PELATI KG.3 TORRENTE",
+    "allergene": false
+   },
+   {
+    "nome": "FIORI E PROVOLA",
+    "allergene": true
+   }
+  ]
+ },
+ {
+  "nome": "pizza parigina",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "LIEVITO x 2.5kg",
+    "allergene": false
+   },
+   {
+    "nome": "STRUTTO RAFFINATO I B VERDE",
+    "allergene": false
+   },
+   {
+    "nome": "pomodori",
+    "allergene": false
+   },
+   {
+    "nome": "sottilette",
+    "allergene": true
+   },
+   {
+    "nome": "margarina sfoglia",
+    "allergene": true
+   }
+  ]
+ },
+ {
+  "nome": "polpettine di carne",
+  "ingredienti": [
+   {
+    "nome": "olio extravergine oliva",
+    "allergene": false
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "porchetta di ariccia",
+  "ingredienti": [
+   {
+    "nome": "porch.montagna1/2 senfter",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "prosciutto cotto",
+  "ingredienti": [
+   {
+    "nome": "p.cotto verde rosafino",
+    "allergene": true
+   }
+  ]
+ },
+ {
+  "nome": "prosciutto crudo dissossato",
+  "ingredienti": [
+   {
+    "nome": "P.CRUDO S/O ASSISI",
+    "allergene": true
+   }
+  ]
+ },
+ {
+  "nome": "prussiana",
+  "ingredienti": [
+   {
+    "nome": "FARINA 00 CAPUTO RINFORZ.KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "zucchero semolato",
+    "allergene": false
+   },
+   {
+    "nome": "margarina crema",
+    "allergene": true
+   }
+  ]
+ },
+ {
+  "nome": "ragù di pomodoro",
+  "ingredienti": [
+   {
+    "nome": "POMODORI PELATI KG.3 TORRENTE",
+    "allergene": false
+   },
+   {
+    "nome": "olio extravergine oliva",
+    "allergene": false
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "ricotta zuccherata",
+  "ingredienti": [
+   {
+    "nome": "Ricotta Zuccherata Congelata",
+    "allergene": true
+   }
+  ]
+ },
+ {
+  "nome": "rustico",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "RICOTTA TIPO ROMA",
+    "allergene": true
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "wrustel",
+    "allergene": true
+   },
+   {
+    "nome": "salame",
+    "allergene": true
+   },
+   {
+    "nome": "STRUTTO RAFFINATO I B VERDE",
+    "allergene": false
+   },
+   {
+    "nome": "zucchero semolato",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "salame milanese",
+  "ingredienti": []
+ },
+ {
+  "nome": "salame napoletano",
+  "ingredienti": [
+   {
+    "nome": "SALAME NAPOLI SV. SENDERO",
+    "allergene": true
+   }
+  ]
+ },
+ {
+  "nome": "salpicon di carne",
+  "ingredienti": [
+   {
+    "nome": "olio extravergine oliva",
+    "allergene": false
+   },
+   {
+    "nome": "salame",
+    "allergene": true
+   },
+   {
+    "nome": "PISELLI BONDUELLE GR.580X12",
+    "allergene": true
+   },
+   {
+    "nome": "basilico / rosmarino /prezzemolo",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "salsa cruda di pomodoro",
+  "ingredienti": [
+   {
+    "nome": "pomodori",
+    "allergene": false
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "olio extravergine oliva",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "salsiccia di tacchino",
+  "ingredienti": [
+   {
+    "nome": "basilico / rosmarino /prezzemolo",
+    "allergene": false
+   },
+   {
+    "nome": "olio extravergine oliva",
+    "allergene": false
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "salumi misti",
+  "ingredienti": [
+   {
+    "nome": "porch.montagna1/2 senfter",
+    "allergene": false
+   },
+   {
+    "nome": "wrustel",
+    "allergene": true
+   },
+   {
+    "nome": "salame",
+    "allergene": true
+   },
+   {
+    "nome": "granapadano",
+    "allergene": true
+   }
+  ]
+ },
+ {
+  "nome": "scarole ripassate",
+  "ingredienti": [
+   {
+    "nome": "Scarola Lisci L.FATT. 130",
+    "allergene": false
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "olio extravergine oliva",
+    "allergene": false
+   },
+   {
+    "nome": "basilico / rosmarino /prezzemolo",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "sfogliatella frolla",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "zucchero semolato",
+    "allergene": false
+   },
+   {
+    "nome": "uova",
+    "allergene": true
+   },
+   {
+    "nome": "semola",
+    "allergene": true
+   },
+   {
+    "nome": "gelatina neutra",
+    "allergene": false
+   },
+   {
+    "nome": "STRUTTO RAFFINATO I B VERDE",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "sfogliatella riccia",
+  "ingredienti": [
+   {
+    "nome": "TAPPI PER RICCE GRANDI DA GR 55/60 SURGELATO",
+    "allergene": true
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "zucchero semolato",
+    "allergene": false
+   },
+   {
+    "nome": "uova",
+    "allergene": true
+   },
+   {
+    "nome": "semola",
+    "allergene": true
+   },
+   {
+    "nome": "STRUTTO RAFFINATO I B VERDE",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "strudel al cioccolato",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "margarina crema",
+    "allergene": true
+   },
+   {
+    "nome": "LATTE 1000 INT.UHT YMA",
+    "allergene": true
+   },
+   {
+    "nome": "zucchero semolato",
+    "allergene": false
+   },
+   {
+    "nome": "amido",
+    "allergene": true
+   },
+   {
+    "nome": "uova",
+    "allergene": true
+   },
+   {
+    "nome": "cioccolato",
+    "allergene": true
+   }
+  ]
+ },
+ {
+  "nome": "strudel di mele",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "margarina crema",
+    "allergene": true
+   },
+   {
+    "nome": "LATTE 1000 INT.UHT YMA",
+    "allergene": true
+   },
+   {
+    "nome": "zucchero semolato",
+    "allergene": false
+   },
+   {
+    "nome": "amido",
+    "allergene": true
+   },
+   {
+    "nome": "uova",
+    "allergene": true
+   },
+   {
+    "nome": "aromi",
+    "allergene": true
+   }
+  ]
+ },
+ {
+  "nome": "tiramisù",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "zucchero semolato",
+    "allergene": false
+   },
+   {
+    "nome": "uova",
+    "allergene": true
+   },
+   {
+    "nome": "MASCARPONE G.250 YMA",
+    "allergene": true
+   },
+   {
+    "nome": "panna",
+    "allergene": true
+   },
+   {
+    "nome": "cioccolato",
+    "allergene": true
+   }
+  ]
+ },
+ {
+  "nome": "treccia",
+  "ingredienti": [
+   {
+    "nome": "FARINA 0/MAN. CAPUTO DA KG.25",
+    "allergene": true
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "zucchero semolato",
+    "allergene": false
+   },
+   {
+    "nome": "LIEVITO x 2.5kg",
+    "allergene": false
+   },
+   {
+    "nome": "AROMA CROISSANT",
+    "allergene": false
+   },
+   {
+    "nome": "LATTE 1000 INT.UHT YMA",
+    "allergene": true
+   },
+   {
+    "nome": "uova",
+    "allergene": true
+   },
+   {
+    "nome": "margarina crema",
+    "allergene": true
+   }
+  ]
+ },
+ {
+  "nome": "vesuvio",
+  "ingredienti": [
+   {
+    "nome": "TAPPI PER RICCE GRANDI DA GR 55/60 SURGELATO",
+    "allergene": true
+   },
+   {
+    "nome": "STRUTTO RAFFINATO I B VERDE",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "wrustel di suino",
+  "ingredienti": [
+   {
+    "nome": "wrustel",
+    "allergene": true
+   }
+  ]
+ },
+ {
+  "nome": "zucca al forno",
+  "ingredienti": [
+   {
+    "nome": "Zucchine L.0950-04/21-000040IT",
+    "allergene": false
+   },
+   {
+    "nome": "olio extravergine oliva",
+    "allergene": false
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "basilico / rosmarino /prezzemolo",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "zucchine alla scapece",
+  "ingredienti": [
+   {
+    "nome": "Zucchine L.0950-04/21-000040IT",
+    "allergene": false
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "olio extravergine oliva",
+    "allergene": false
+   }
+  ]
+ },
+ {
+  "nome": "zucchine in padella",
+  "ingredienti": [
+   {
+    "nome": "Zucchine L.0950-04/21-000040IT",
+    "allergene": false
+   },
+   {
+    "nome": "SALE SACCHI SALTECHNO KG.25",
+    "allergene": false
+   },
+   {
+    "nome": "olio extravergine oliva",
+    "allergene": false
+   }
+  ]
+ }
+]

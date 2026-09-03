@@ -1,5 +1,11 @@
 # Frontend Ceraldi Group HACCP
 
+<!-- gestionalecloud-doc
+status: current
+reviewed_at: 2026-08-21
+storage_architecture: drive-only
+-->
+
 Applicazione React per tracciabilità lotti, produzione, magazzino, acquisti e registri HACCP.
 
 ## Comandi
