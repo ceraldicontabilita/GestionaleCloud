@@ -31,11 +31,18 @@ from app.hr.services.auth_dipendenti import (
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# Durata della sessione admin (PIN) — default 2 ore. Oltre, va re-inserito il PIN.
-# Configurabile via env Render ADMIN_TOKEN_EXPIRE_MINUTES. Riguarda SOLO i token
-# admin emessi qui; il token del portale dipendente ha la sua scadenza nel service.
+# Durata della sessione admin (PIN) — default 7 giorni, stessa durata e stessa
+# filosofia della sessione dipendente/portale: resta valida finché non scade
+# davvero o non si preme "Esci" esplicitamente, niente re-login a metà lavoro
+# solo per un cambio pagina. (Prima erano 2 ore: con RequireRole che controlla
+# l'exp del JWT a OGNI navigazione in main.jsx, bastava restare sull'app oltre
+# le 2 ore perché il primo cambio pagina seguente rimandasse al PIN — richiesta
+# titolare 04/09/2026: "non devo reinserirlo ad ogni cambio pagina o uscita".)
+# Configurabile via env Render HR_ADMIN_TOKEN_EXPIRE_MINUTES. Riguarda SOLO i
+# token admin emessi qui; il token del portale dipendente ha la sua scadenza
+# nel service (ACCESS_TOKEN_EXPIRE_MINUTES, anch'esso 7 giorni).
 PIN_TOKEN_EXPIRE_MINUTES = int(os.environ.get("HR_ADMIN_TOKEN_EXPIRE_MINUTES")
-                               or os.environ.get("ADMIN_TOKEN_EXPIRE_MINUTES", "120"))
+                               or os.environ.get("ADMIN_TOKEN_EXPIRE_MINUTES", str(60 * 24 * 7)))
 
 # ---- anti brute force (in-memory, per IP) ----
 _FAILED_ATTEMPTS: Dict[str, Dict[str, Any]] = {}
