@@ -4,11 +4,12 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, List
 from uuid import uuid4
+import logging
 import re
 
 from fastapi import HTTPException
 
-from app.services.entity_relations import upsert_entity_relation
+from app.services.accounting_relation_writers import record_bank_invoice_allocation
 from app.services.identity_matching import (
     alias_fornitore,
     soggetto_causale_bancaria,
@@ -21,8 +22,165 @@ from app.services.payment_allocation_validator import (
     validate_invoice_allocation,
 )
 from app.services.bank_reconciliation_rules import classify_bank_movement
-from app.services.scritture_contabili import scrivi_movimento_se_assente
+from app.services.mapping_piano_conti import completa_conti_prima_nota
+from app.services.scadenze_rate_service import applica_quota_scadenze
+from app.services.scritture_contabili import FILTRO_MOVIMENTO_ATTIVO, scrivi_movimento_se_assente
 from app.services.prima_nota_integrity import totale_pagabile_al_fornitore
+
+logger = logging.getLogger(__name__)
+
+# Chiave di idempotenza della riga di Prima Nota Banca scritta dal motore
+# canonico per un movimento: una sola uscita per prova bancaria, anche se
+# ripartita su piu' fatture (le quote stanno in ``allocazioni_fatture``).
+def chiave_idempotenza_pagamento_banca(movement_id: str) -> str:
+    return f"banca:{movement_id}:pagamento_fatture"
+
+
+def evidenza_scadenza_id(movement_id: str, invoice_id: str) -> str:
+    """Stessa evidenza usata dallo storico (``banca:<ec>:<fattura>``): una
+    quota gia' applicata alle rate non viene applicata due volte."""
+    return f"banca:{movement_id}:{invoice_id}"
+
+
+def _metodo_pagamento(movement: Dict[str, Any]) -> str:
+    from app.services.riconciliazione_bancaria import classifica_strumento_bancario
+
+    strumento = classifica_strumento_bancario(
+        str(movement.get("descrizione_originale") or movement.get("descrizione") or "")
+    )
+    if strumento["codice"] in {"riba", "bonifico", "addebito_diretto", "assegno", "paypal"}:
+        return strumento["label"]
+    return "Bonifico"
+
+
+async def _aggiorna_partita_aperta(
+    db, *, invoice_id: str, quota_cents: int, movement_id: str, now: str,
+) -> Dict[str, Any] | None:
+    """Chiude (o riduce) la partita aperta della fattura, una sola volta per
+    movimento, e registra il match nella collezione letta dalla Dashboard
+    Relazionale (``riconciliazioni_match``)."""
+    from app.services.partite_aperte_engine import COLL_PARTITE, chiudi_partita
+
+    match_id = f"bank:{movement_id}:{invoice_id}"
+    partita = await db[COLL_PARTITE].find_one(
+        {"documento_id": invoice_id, "tipo": "fattura_fornitore",
+         "stato": {"$in": ["aperta", "parziale"]}},
+        {"_id": 0},
+    )
+    if not partita or match_id in (partita.get("match_ids") or []):
+        return None
+    esito = await chiudi_partita(partita["id"], match_id, quota_cents / 100, db)
+    await db["riconciliazioni_match"].update_one(
+        {"id": match_id},
+        {"$setOnInsert": {
+            "id": match_id,
+            "movimento_id": movement_id,
+            "movimento_collection": "estratto_conto_movimenti",
+            "partita_id": partita["id"],
+            "partita_collection": COLL_PARTITE,
+            "tipo_match": "fattura_fornitore",
+            "importo_riconciliato": quota_cents / 100,
+            "confidenza": 1.0,
+            "origine": "auto",
+            "stato": "confermato",
+            "created_at": now,
+            "confirmed_at": now,
+            "confirmed_by": "sistema",
+        }},
+        upsert=True,
+    )
+    return esito
+
+
+async def _propaga_fattura_pagata(
+    db, *, invoice_id: str, metodo: str, data_pagamento: str,
+    movement_id: str, quota_cents: int, actor: str,
+) -> None:
+    """Evento FATTURA_PAGATA: alert risolti e audit ("Fattura pagata via ...").
+    Best-effort, mai bloccante."""
+    try:
+        from app.services.event_bus import EventTypes, propagate_event
+
+        await propagate_event(EventTypes.FATTURA_PAGATA, {
+            "fattura_id": invoice_id,
+            "metodo_pagamento": metodo,
+            "data_pagamento": data_pagamento,
+            "movimento_id": movement_id,
+            "importo": quota_cents / 100,
+        }, db, source_module=f"bank_payment_allocations:{actor}")
+    except Exception:
+        logger.exception("Propagazione fattura.pagata non riuscita per %s", invoice_id)
+
+
+async def _proietta_prima_nota_banca(
+    db, movement: Dict[str, Any], invoice_ids: List[str],
+    public_allocations: List[Dict[str, Any]], *, now: str, operation_id: str,
+    metodo: str, automatic: bool, numeri_fattura: List[str],
+) -> List[str]:
+    """Una sola riga di Prima Nota Banca per movimento: se l'import dell'EC o
+    un motore precedente l'hanno gia' scritta viene completata (mai
+    affiancata da una seconda uscita), altrimenti nasce dal writer unico."""
+    movement_id = str(movement.get("id") or "")
+    pn_query = {"$or": [
+        {"estratto_conto_id": movement_id},
+        {"movimento_bancario_id": movement_id},
+        {"movimento_estratto_conto_id": movement_id},
+    ]}
+    comuni = {
+        "fattura_id": invoice_ids[0] if len(invoice_ids) == 1 else None,
+        "invoice_id": invoice_ids[0] if len(invoice_ids) == 1 else None,
+        "fattura_ids": invoice_ids,
+        "allocazioni_fatture": public_allocations,
+        "estratto_conto_id": movement_id,
+        "movimento_bancario_id": movement_id,
+        "movimento_estratto_conto_id": movement_id,
+        "operation_id": operation_id,
+        "riconciliato": True,
+        "riconciliazione_automatica": automatic,
+        "data_riconciliazione": str(movement.get("data") or "")[:10],
+        "updated_at": now,
+    }
+    descrizione = (
+        f"Pagamento {metodo} fattura {', '.join(n for n in numeri_fattura if n)}".strip()
+    )
+    cursor = db["prima_nota_banca"].find({"$and": [pn_query, dict(FILTRO_MOVIMENTO_ATTIVO)]})
+    esistenti = await cursor.to_list(100) if hasattr(cursor, "to_list") else [r async for r in cursor]
+    ids: List[str] = []
+    for riga in esistenti:
+        campi = dict(comuni)
+        gia_documentata = bool(riga.get("fattura_id") or riga.get("invoice_id"))
+        if not gia_documentata and str(riga.get("categoria") or "") != "Assegni":
+            # riga generica dell'import EC / proiezione semantica: diventa la
+            # riga del pagamento fattura, come faceva il motore storico.
+            campi.update({"categoria": "Fatture", "category": "Fatture",
+                          "descrizione": descrizione, "description": descrizione})
+        # Conti CEE (PR 7) anche sulle righe storiche completate qui: solo i
+        # campi mancanti, mai un conto fuori dal piano ufficiale.
+        try:
+            campi.update(completa_conti_prima_nota("banca", {**riga, **campi}))
+        except ValueError as exc:
+            logger.warning("Conti CEE non assegnati alla riga %s: %s", riga.get("id"), exc)
+        await db["prima_nota_banca"].update_one({"id": riga.get("id")}, {"$set": campi})
+        ids.append(str(riga.get("id")))
+    if ids:
+        return ids
+    pn_id, _ = await scrivi_movimento_se_assente(db, "banca", pn_query, {
+        "id": str(uuid4()),
+        "data": str(movement.get("data") or "")[:10],
+        "tipo": "uscita" if to_cents(movement.get("importo")) < 0 or str(
+            movement.get("tipo") or "").lower() == "uscita" else "entrata",
+        "importo": abs(to_cents(movement.get("importo"))) / 100,
+        "categoria": "Fatture",
+        "descrizione": descrizione or (movement.get("descrizione_originale") or movement.get("descrizione")),
+        "source": (
+            "riconciliazione_automatica_fattura_identita"
+            if automatic else "riconciliazione_manual_allocations"
+        ),
+        "idempotency_key": chiave_idempotenza_pagamento_banca(movement_id),
+        "created_at": now,
+        **comuni,
+    })
+    return [str(pn_id)]
 
 
 def invoice_payable_cents(invoice: Dict[str, Any]) -> int:
@@ -124,7 +282,16 @@ async def validate_bank_invoice_allocations(
 async def persist_bank_invoice_allocations(
     db, movement: Dict[str, Any], allocations: List[Dict[str, Any]], *, actor: str,
 ) -> Dict[str, Any]:
-    """Persiste quote e collegamenti reciproci in modo idempotente."""
+    """Persiste quote e collegamenti reciproci in modo idempotente.
+
+    E' l'UNICO motore "fattura pagata da banca" (audit del commercialista
+    03/09/2026 §1, PR 2): in un solo giro, con lo stesso ``operation_id``,
+    aggiorna i cinque oggetti che prima divergevano — fattura, scadenza
+    (rate del ``scadenziario_fornitori``), partita aperta, movimento di
+    estratto conto e riga di Prima Nota Banca — e registra la relazione in
+    ``entity_relations`` tramite ``accounting_relation_writers``. Ogni
+    scrittura e' idempotente sull'identita' ``bank:<movimento>:<fattura>``.
+    """
     movement_id = str(movement.get("id") or "")
     automatic = str(actor).startswith("automatic")
     allocation_rule = (
@@ -132,11 +299,17 @@ async def persist_bank_invoice_allocations(
         if automatic else "bank.invoice_allocations.manual.v1"
     )
     now = datetime.now(timezone.utc).isoformat()
+    operation_id = str(movement.get("operation_id") or f"bank:{movement_id}")
+    movement_date = str(movement.get("data") or "")[:10]
+    metodo = _metodo_pagamento(movement)
     public_allocations = []
     for item in allocations:
         public = {key: value for key, value in item.items() if key != "invoice"}
         public.update({
             "movimento_id": movement_id,
+            "operation_id": operation_id,
+            "metodo_pagamento": metodo,
+            "data_pagamento": movement_date,
             "status": "confirmed",
             "rule_id": allocation_rule,
             "confirmed_by": actor,
@@ -151,6 +324,15 @@ async def persist_bank_invoice_allocations(
             {"$setOnInsert": public},
             upsert=True,
         )
+
+    invoice_ids = [item["fattura_id"] for item in allocations]
+    numeri_fattura = [str(item.get("fattura_numero") or "") for item in allocations]
+    prima_nota_ids = await _proietta_prima_nota_banca(
+        db, movement, invoice_ids, public_allocations, now=now,
+        operation_id=operation_id, metodo=metodo, automatic=automatic,
+        numeri_fattura=numeri_fattura,
+    )
+    prima_nota_id = prima_nota_ids[0] if len(prima_nota_ids) == 1 else None
 
     for item in allocations:
         invoice_id = item["fattura_id"]
@@ -184,33 +366,51 @@ async def persist_bank_invoice_allocations(
                 "pagato": paid,
                 "paid": paid,
                 "stato_pagamento": "pagata" if paid else "parzialmente_pagata",
+                "payment_status": "paid" if paid else "partial",
                 "payment_allocation_status": "valid",
                 "movimento_bancario_id": movement_ids[0] if len(movement_ids) == 1 else None,
                 "movimento_bancario_ids": movement_ids,
+                "metodo_pagamento": metodo,
+                "data_pagamento": movement_date,
+                "in_banca": True,
+                "riconciliato_con_ec": movement_id,
+                "riconciliato_automaticamente": automatic,
+                "payment_operation_id": operation_id,
+                "prima_nota_id": prima_nota_id,
+                "prima_nota_banca_id": prima_nota_id,
+                "prima_nota_tipo": "banca" if prima_nota_id else None,
                 "updated_at": now,
             }},
         )
-        await upsert_entity_relation(
-            db,
-            source_type="bank_movement", source_id=movement_id,
-            relation_type="allocates_invoice_payment",
-            target_type="invoice", target_id=invoice_id,
-            status="confirmed",
-            rule=(
-                "exact_cents+document_identity+bidirectional_uniqueness"
-                if automatic else "exact_cents+same_supplier+manual_selection"
-            ),
-            evidence=[
-                {"type": "bank_movement_id", "value": movement_id},
-                {"type": "invoice_id", "value": invoice_id},
-                {"type": "allocated_cents", "value": item["quota_cents"]},
-            ],
-            amount=item["quota_cents"] / 100,
-            provenance={"collection": "estratto_conto_movimenti", "document_id": movement_id},
-            actor=actor,
+        # Scadenze (rate) e partita aperta: la stessa evidenza non viene
+        # applicata due volte (evidenza_id / match_id deterministici).
+        try:
+            await applica_quota_scadenze(
+                db, fattura_id=invoice_id, quota=item["quota_cents"] / 100,
+                evidenza_id=evidenza_scadenza_id(movement_id, invoice_id),
+                metodo=metodo, data_pagamento=movement_date,
+            )
+        except Exception:
+            logger.exception("Scadenze non aggiornate per la fattura %s", invoice_id)
+        try:
+            await _aggiorna_partita_aperta(
+                db, invoice_id=invoice_id, quota_cents=item["quota_cents"],
+                movement_id=movement_id, now=now,
+            )
+        except Exception:
+            logger.exception("Partita aperta non aggiornata per la fattura %s", invoice_id)
+        await record_bank_invoice_allocation(
+            db, movement=movement, invoice=invoice,
+            allocation={**{k: v for k, v in item.items() if k != "invoice"},
+                        "operation_id": operation_id},
+            prima_nota_id=prima_nota_id, actor=actor,
         )
+        if paid:
+            await _propaga_fattura_pagata(
+                db, invoice_id=invoice_id, metodo=metodo, data_pagamento=movement_date,
+                movement_id=movement_id, quota_cents=item["quota_cents"], actor=actor,
+            )
 
-    invoice_ids = [item["fattura_id"] for item in allocations]
     movement_update = {
         "riconciliato": True,
         "abbinato": True,
@@ -220,46 +420,20 @@ async def persist_bank_invoice_allocations(
         "fattura_id": invoice_ids[0] if len(invoice_ids) == 1 else None,
         "fattura_ids": invoice_ids,
         "allocazioni_fatture": public_allocations,
+        "operation_id": operation_id,
+        "prima_nota_banca_id": prima_nota_id,
+        "prima_nota_banca_ids": prima_nota_ids,
         "data_riconciliazione": now,
         "updated_at": now,
     }
     await db["estratto_conto_movimenti"].update_one({"id": movement_id}, {"$set": movement_update})
 
-    pn_query = {"$or": [
-        {"estratto_conto_id": movement_id},
-        {"movimento_bancario_id": movement_id},
-        {"movimento_estratto_conto_id": movement_id},
-    ]}
-    pn_update = {"$set": {
-        "fattura_id": invoice_ids[0] if len(invoice_ids) == 1 else None,
-        "fattura_ids": invoice_ids,
-        "allocazioni_fatture": public_allocations,
-        "riconciliato": True,
-        "updated_at": now,
-    }}
-    updated = await db["prima_nota_banca"].update_many(pn_query, pn_update)
-    if updated.matched_count == 0:
-        await scrivi_movimento_se_assente(db, "banca", pn_query, {
-            "id": str(uuid4()),
-            "data": str(movement.get("data") or "")[:10],
-            "tipo": "uscita" if to_cents(movement.get("importo")) < 0 else "entrata",
-            "importo": abs(to_cents(movement.get("importo"))) / 100,
-            "categoria": "Pagamenti fatture",
-            "descrizione": movement.get("descrizione_originale") or movement.get("descrizione"),
-            "estratto_conto_id": movement_id,
-            "movimento_bancario_id": movement_id,
-            "source": (
-                "riconciliazione_automatica_fattura_identita"
-                if automatic else "riconciliazione_manual_allocations"
-            ),
-            "created_at": now,
-            **pn_update["$set"],
-        })
-
     return {
         "success": True,
         "movimento_id": movement_id,
+        "operation_id": operation_id,
         "fattura_ids": invoice_ids,
+        "prima_nota_ids": prima_nota_ids,
         "allocazioni": public_allocations,
         "quadratura": {
             "movimento_cents": abs(to_cents(movement.get("importo"))),

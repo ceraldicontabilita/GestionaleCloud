@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1152 · tenere: 757 · verificare: 365 · admin-only (migrazione/manutenzione): 30
+**Totale endpoint:** 1153 · tenere: 757 · verificare: 366 · admin-only (migrazione/manutenzione): 30
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -54,6 +54,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/admin/google-sheets-ledger/sync` | admin | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/admin/noleggio/backfill-dati-gestionali` | admin | — | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
 | `POST /api/admin/reset-collections` | admin | — | — | — | sì | sì | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
+| `POST /api/admin/riallinea-pagamenti-fatture` | admin | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/admin/rollback/drive-fatture/conta` | admin_rollback | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/admin/rollback/drive-fatture/elimina` | admin_rollback | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/admin/rollback/fatture/azzera-tutto` | admin_rollback | sì | — | — | — | — | tenere | in uso: FE |
@@ -881,8 +882,8 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/piano-conti/registra-tutte-fatture` | accounting.piano_conti | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/piano-conti/regole` | accounting.piano_conti | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/piano-conti/regole` | accounting.piano_conti | sì | — | — | — | — | tenere | in uso: FE |
-| `DELETE /api/piano-conti/{conto_id}` | accounting.piano_conti | sì | — | — | — | — | tenere | in uso: FE |
-| `PUT /api/piano-conti/{conto_id}` | accounting.piano_conti | sì | — | — | — | — | tenere | in uso: FE |
+| `DELETE /api/piano-conti/{conto_id}` | accounting.piano_conti | sì | — | — | — | sì | tenere | in uso: FE |
+| `PUT /api/piano-conti/{conto_id}` | accounting.piano_conti | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/portal/upload` | public_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/pos-corrispettivi/alert-oggi` | pos_corrispettivi_check | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/pos-corrispettivi/anomalie-gravi` | pos_corrispettivi_check | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |

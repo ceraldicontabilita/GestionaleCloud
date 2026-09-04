@@ -817,7 +817,7 @@ Gli alias senza valore vanno configurati nel secret/config store di Render. Non 
 
 ## Appendice D — Tutti i router e tutti gli endpoint
 
-Route table sorgente: **1152**; attivi da ricreare: **757**; quarantena: **395** (`verificare` 365, `admin-only` 30).
+Route table sorgente: **1153**; attivi da ricreare: **757**; quarantena: **396** (`verificare` 366, `admin-only` 30).
 
 `attivo` significa da ricreare con contratto e test; `quarantena` significa non esporre nel nuovo runtime finché consumer, autorizzazione e test non sono provati. L'elenco è completo e include entrambe le categorie.
 
@@ -923,7 +923,7 @@ Route table sorgente: **1152**; attivi da ricreare: **757**; quarantena: **395**
 - **attivo** — `POST /api/regole/fornitore` — in uso: FE
 - **attivo** — `POST /api/regole/upload-regole` — in uso: FE
 
-### Router `admin` (26)
+### Router `admin` (27)
 
 - **attivo** — `GET /api/admin/bank-supplier-rules` — in uso: FE
 - **attivo** — `POST /api/admin/bank-supplier-rules` — in uso: FE
@@ -946,6 +946,7 @@ Route table sorgente: **1152**; attivi da ricreare: **757**; quarantena: **395**
 - **attivo** — `POST /api/admin/google-sheets-ledger/sync` — in uso: FE
 - **quarantena: admin-only** — `POST /api/admin/noleggio/backfill-dati-gestionali` — endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7)
 - **quarantena: admin-only** — `POST /api/admin/reset-collections` — endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7)
+- **quarantena: verificare** — `POST /api/admin/riallinea-pagamenti-fatture` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **attivo** — `GET /api/admin/stats` — in uso: FE
 - **quarantena: admin-only** — `POST /api/admin/supabase-migration/jobs` — endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7)
 - **quarantena: admin-only** — `GET /api/admin/supabase-migration/jobs/{job_id}` — endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7)

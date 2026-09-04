@@ -42,111 +42,44 @@ router = APIRouter()
 @router.get("/piano-conti-esteso")
 @handle_errors
 async def get_piano_conti_esteso() -> Dict[str, Any]:
+    """Piano dei conti CEE ufficiale (unico piano, audit 03/09/2026 PR 7).
+
+    Le voci "estese" operative (`PIANO_CONTI_ESTESO`) non sono un secondo
+    piano: sono alias dei conti CEE e compaiono come tali. Nessuna lettura
+    ne' scrittura della collezione dismessa ``piano_conti``.
     """
-    Restituisce il Piano dei Conti esteso con tutte le voci
-    necessarie per una contabilità precisa.
-    """
-    db = Database.get_db()
+    from app.services.mapping_piano_conti import (
+        piano_conti_cee, raggruppa_per_categoria, risolvi_codice_cee,
+    )
 
-    # Verifica se il piano esteso è già nel DB
-    conti_db = await db["piano_conti"].find({}, {"_id": 0}).to_list(500)
-
-    # Crea lista completa
-    conti_completi = []
-    codici_esistenti = {c.get("codice") for c in conti_db}
-
-    # Aggiungi conti mancanti
-    for codice, info in PIANO_CONTI_ESTESO.items():
-        if codice in codici_esistenti:
-            # Conto esistente - recupera dal DB
-            conto_db = next((c for c in conti_db if c.get("codice") == codice), None)
-            if conto_db:
-                conti_completi.append(conto_db)
-        else:
-            # Conto nuovo - aggiungi con saldo 0
-            conti_completi.append({
-                "codice": codice,
-                "nome": info["nome"],
-                "categoria": info["categoria"],
-                "natura": info["natura"],
-                "saldo": 0,
-                "nuovo": True
-            })
-
-    # Ordina per codice
-    conti_completi.sort(key=lambda x: x.get("codice", ""))
-
-    # Raggruppa per categoria
-    grouped = {}
-    for conto in conti_completi:
-        cat = conto.get("categoria", "altro")
-        if cat not in grouped:
-            grouped[cat] = []
-        grouped[cat].append(conto)
-
+    conti = piano_conti_cee()
+    non_mappati = sorted(
+        codice for codice in PIANO_CONTI_ESTESO if not risolvi_codice_cee(codice)
+    )
     return {
-        "conti": conti_completi,
-        "grouped": grouped,
-        "totale_conti": len(conti_completi),
-        "conti_nuovi": len([c for c in conti_completi if c.get("nuovo")])
+        "conti": conti,
+        "grouped": raggruppa_per_categoria(conti),
+        "totale_conti": len(conti),
+        "schema": "CEE",
+        "alias_operativi_non_mappati": non_mappati,
+        "conti_nuovi": 0,
     }
 
 
 @router.post("/inizializza-piano-esteso")
 @handle_errors
 async def inizializza_piano_conti_esteso(_admin: Dict[str, Any] = Depends(get_current_admin_user)) -> Dict[str, Any]:
-    """
-    Inizializza/aggiorna il Piano dei Conti con tutte le voci estese.
-    Preserva i saldi esistenti.
-    """
-    db = Database.get_db()
-
-    conti_aggiunti = 0
-    conti_aggiornati = 0
-    now = datetime.now(timezone.utc).isoformat()
-
-    for codice, info in PIANO_CONTI_ESTESO.items():
-        # Un solo upsert elimina la finestra find-then-insert che poteva
-        # duplicare un conto quando due richieste inizializzavano il piano in
-        # parallelo. L'indice univoco su ``codice`` completa la protezione.
-        fields_to_update = {
-            "nome": info["nome"],
-            "categoria": info["categoria"],
-            "natura": info["natura"],
-            "updated_at": now,
-        }
-        try:
-            result = await db["piano_conti"].update_one(
-                {"codice": codice},
-                {
-                    "$set": fields_to_update,
-                    "$setOnInsert": {
-                        "id": str(uuid.uuid4()),
-                        "gruppo_codice": codice[:2],
-                        "attivo": True,
-                        "saldo": 0,
-                        "created_at": now,
-                    },
-                },
-                upsert=True,
-            )
-        except DuplicateRecordError:
-            # Un altro processo ha appena inserito lo stesso codice. Il dato
-            # esiste gia': completiamo soltanto l'aggiornamento descrittivo.
-            result = await db["piano_conti"].update_one(
-                {"codice": codice},
-                {"$set": fields_to_update},
-            )
-        if result.upserted_id is not None:
-            conti_aggiunti += 1
-        elif result.modified_count:
-            conti_aggiornati += 1
+    """Il piano dei conti e' il CEE ufficiale in codice: non c'e' piu' nulla
+    da inizializzare in una collezione (dismessa, PR 7). Nessuna scrittura."""
+    from app.services.mapping_piano_conti import piano_conti_cee, risolvi_codice_cee
 
     return {
         "success": True,
-        "conti_aggiunti": conti_aggiunti,
-        "conti_aggiornati": conti_aggiornati,
-        "totale_piano_conti": len(PIANO_CONTI_ESTESO)
+        "conti_aggiunti": 0,
+        "conti_aggiornati": 0,
+        "totale_piano_conti": len(piano_conti_cee()),
+        "alias_operativi": sum(1 for codice in PIANO_CONTI_ESTESO if risolvi_codice_cee(codice)),
+        "nota": "Piano dei conti CEE ufficiale: i conti operativi sono alias, nessuna scrittura.",
     }
 
 
@@ -233,42 +166,12 @@ async def ricategorizza_tutte_fatture() -> Dict[str, Any]:
 
 
 async def aggiorna_saldo_conto(db, codice_conto: str, importo: float, tipo: str):
-    """Aggiorna il saldo di un conto nel piano dei conti."""
-    # Crea il conto se non esiste
-    conto = await db["piano_conti"].find_one({"codice": codice_conto})
+    """Compatibilita': i saldi per conto non si persistono piu' nella
+    collezione dismessa ``piano_conti`` (PR 7); delega all'unico punto in
+    `piano_conti.aggiorna_saldo_conto`, che non scrive nulla."""
+    from app.routers.accounting.piano_conti import aggiorna_saldo_conto as _canonico
 
-    if not conto:
-        info = PIANO_CONTI_ESTESO.get(codice_conto, {
-            "nome": f"Conto {codice_conto}",
-            "categoria": "costi" if codice_conto.startswith("05") else "altro",
-            "natura": "economico"
-        })
-        conto = {
-            "id": str(uuid.uuid4()),
-            "codice": codice_conto,
-            "nome": info["nome"],
-            "categoria": info["categoria"],
-            "natura": info["natura"],
-            "saldo": 0,
-            "created_at": datetime.now(timezone.utc).isoformat()
-        }
-        await db["piano_conti"].insert_one(conto.copy())
-
-    categoria = conto.get("categoria", "")
-    saldo_attuale = float(conto.get("saldo", 0) or 0)
-
-    # Regola contabile:
-    # ATTIVO e COSTI: DARE aumenta, AVERE diminuisce
-    # PASSIVO, PN e RICAVI: AVERE aumenta, DARE diminuisce
-    if categoria in ["attivo", "costi"]:
-        nuovo_saldo = saldo_attuale + importo if tipo == "dare" else saldo_attuale - importo
-    else:
-        nuovo_saldo = saldo_attuale + importo if tipo == "avere" else saldo_attuale - importo
-
-    await db["piano_conti"].update_one(
-        {"codice": codice_conto},
-        {"$set": {"saldo": nuovo_saldo, "updated_at": datetime.now(timezone.utc).isoformat()}}
-    )
+    return await _canonico(db, codice_conto, importo, tipo)
 
 
 @router.get("/calcolo-imposte")
@@ -358,9 +261,22 @@ async def get_bilancio_dettagliato() -> Dict[str, Any]:
     """
     db = Database.get_db()
 
-    conti = await db["piano_conti"].find({}, {"_id": 0}).to_list(1000)
+    # Un solo piano (CEE ufficiale) e un solo calcolo dei saldi
+    # (`piano_conti._calcola_saldi_piano_conti`): la collezione ``piano_conti``
+    # con i suoi saldi a zero e' dismessa (audit 03/09/2026, PR 7). Le regole
+    # di deducibilita' restano espresse sugli alias operativi.
+    from app.routers.accounting.piano_conti import _calcola_saldi_piano_conti
+    from app.services.mapping_piano_conti import piano_conti_cee, saldi_in_cee
+
+    saldi_operativi = await _calcola_saldi_piano_conti(db, None)
+    saldi_cee = saldi_in_cee(saldi_operativi)
+    conti = [
+        conto for conto in piano_conti_cee(saldi_operativi)
+        if conto["alias_operativi"] or abs(saldi_cee.get(conto["codice"], 0.0)) >= 0.005
+    ]
 
     bilancio = {
+        "schema": "CEE",
         "stato_patrimoniale": {
             "attivo": {"voci": [], "totale": 0},
             "passivo": {"voci": [], "totale": 0},
@@ -393,10 +309,12 @@ async def get_bilancio_dettagliato() -> Dict[str, Any]:
         nome = conto.get("nome", "")
         categoria = conto.get("categoria", "")
         saldo = float(conto.get("saldo", 0) or 0)
+        alias = conto.get("alias_operativi") or []
 
         voce = {
             "codice": codice,
             "nome": nome,
+            "alias_operativi": alias,
             "saldo": saldo
         }
 
@@ -417,8 +335,11 @@ async def get_bilancio_dettagliato() -> Dict[str, Any]:
             bilancio["conto_economico"]["ricavi"]["totale"] += saldo
 
         elif categoria == "costi":
-            # Aggiungi info deducibilità
-            ded_info = deducibilita_map.get(codice, {"ires": 100, "irap": 100, "nota": ""})
+            # Aggiungi info deducibilità (regole sugli alias operativi)
+            ded_info = next(
+                (deducibilita_map[a] for a in alias if a in deducibilita_map),
+                {"ires": 100, "irap": 100, "nota": ""},
+            )
             voce["deducibilita_ires"] = ded_info["ires"]
             voce["deducibilita_irap"] = ded_info["irap"]
             voce["nota_fiscale"] = ded_info["nota"]
@@ -430,11 +351,12 @@ async def get_bilancio_dettagliato() -> Dict[str, Any]:
             bilancio["conto_economico"]["costi"]["totale_deducibile_ires"] += voce["importo_deducibile_ires"]
             bilancio["conto_economico"]["costi"]["totale_deducibile_irap"] += voce["importo_deducibile_irap"]
 
-            # Raggruppa per sottocategoria (prime 5 cifre del codice)
-            sottocategoria = codice[:5]
+            # Raggruppa per macro-gruppo CEE (prime 2 cifre: 55 Acquisti,
+            # 57 Servizi, 67 Personale, ...)
+            sottocategoria = codice[:2]
             if sottocategoria not in bilancio["conto_economico"]["costi"]["per_categoria"]:
                 bilancio["conto_economico"]["costi"]["per_categoria"][sottocategoria] = {
-                    "nome": _get_nome_sottocategoria(sottocategoria),
+                    "nome": conto.get("voce_cee") or _get_nome_sottocategoria(sottocategoria),
                     "voci": [],
                     "totale": 0
                 }

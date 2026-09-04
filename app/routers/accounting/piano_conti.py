@@ -8,28 +8,51 @@ from datetime import datetime, timezone
 import uuid
 import logging
 
-from app.services.sheets_document_store import DuplicateRecordError
-
 from app.database import Database
 from app.utils.dependencies import get_current_admin_user
 from app.utils.error_handler import handle_errors
 from app.utils.parsing import safe_float
 from app.services.liquidita_service import calcola_liquidita
+from app.services.mapping_piano_conti import (
+    OPERATIVO_A_UFFICIALE,
+    alias_operativi,
+    conto_cee,
+    conto_cee_valido,
+    piano_conti_cee,
+    raggruppa_per_categoria,
+    risolvi_codice_cee,
+    saldi_in_cee,
+)
+from app.services.piano_conti_ufficiale import CONTI_UFFICIALI
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+# Collezione DISMESSA (audit del commercialista 03/09/2026 §2, PR 7): era un
+# secondo piano dei conti (31 conti operativi, saldo 0) parallelo al CEE
+# ufficiale. Si legge SOLO per compatibilita' (conversione degli eventuali
+# conti creati a mano); nessuna nuova scrittura. Il piano esposto e' quello
+# di ``app/services/piano_conti_ufficiale.py`` con i codici operativi come
+# alias (``app/services/mapping_piano_conti.py``).
 COLLECTION_PIANO_CONTI = "piano_conti"
 COLLECTION_MOVIMENTI_CONTABILI = "movimenti_contabili"
 COLLECTION_REGOLE_CATEGORIZZAZIONE = "regole_categorizzazione"
 
-# ============== STRUTTURA PIANO DEI CONTI ==============
-# Basato sulla ragioneria generale italiana:
+MESSAGGIO_PIANO_CEE = (
+    "Il piano dei conti e' quello CEE ufficiale del bilancio "
+    "(app/services/piano_conti_ufficiale.py): i conti non si creano, "
+    "modificano o eliminano a mano. I vecchi codici operativi restano alias."
+)
+
+# ============== STRUTTURA OPERATIVA (ALIAS) ==============
+# Schema operativo storico, oggi SOLO alias dei conti CEE (vedi
+# mapping_piano_conti.OPERATIVO_A_UFFICIALE): il motore di registrazione
+# §6.1 e il dizionario articoli scrivono ancora questi codici, che le API
+# convertono sempre nel conto ufficiale.
 # - Gruppo (2 cifre): 01-99
 # - Sottogruppo (2 cifre): 01-99
 # - Conto (2 cifre): 01-99
-# - Sottoconto (6 cifre): 000001-999999
-# Formato codice: GG.SS.CC.SSSSSS
+# Formato codice: GG.SS.CC
 
 STRUTTURA_BASE = {
     "attivo": {
@@ -146,40 +169,50 @@ def _deduplica_conti_per_codice(conti: List[Dict[str, Any]]) -> List[Dict[str, A
     return [*unici.values(), *senza_codice]
 
 
+async def _conti_operativi_legacy(db) -> List[Dict[str, Any]]:
+    """Lettura di compatibilita' della collezione dismessa ``piano_conti``.
+
+    Serve solo a segnalare eventuali conti creati a mano che non hanno un
+    alias nel piano CEE. Nessuna scrittura, nessuna inizializzazione.
+    """
+    try:
+        conti = await db[COLLECTION_PIANO_CONTI].find({}, {"_id": 0}).sort("codice", 1).to_list(1000)
+    except Exception:  # pragma: no cover - collezione assente o backend minimale
+        return []
+    return _deduplica_conti_per_codice(conti or [])
+
+
 @router.get("/")
 @handle_errors
 async def get_piano_conti(anno: str = None) -> Dict[str, Any]:
-    """Piano dei conti con saldi calcolati al volo dall'anno selezionato.
-    Se `anno` non è passato, calcola su tutti gli anni (cumulativo).
+    """Piano dei conti CEE UFFICIALE con saldi calcolati al volo dall'anno
+    selezionato (se `anno` non è passato, cumulativo su tutti gli anni).
+
+    Un solo piano (audit 03/09/2026, PR 7): i conti sono quelli del bilancio
+    del commercialista; il codice operativo storico (es. 05.01.01) compare
+    come ``alias_operativo``; i saldi per codice operativo vengono sommati
+    sul conto CEE. La vecchia collezione ``piano_conti`` non viene piu'
+    scritta: i suoi eventuali conti senza mapping sono elencati a parte.
     """
     db = Database.get_db()
 
-    conti = await db[COLLECTION_PIANO_CONTI].find({}, {"_id": 0}).sort("codice", 1).to_list(1000)
-    if not conti:
-        conti = await inizializza_piano_conti_base(db)
-    conti = _deduplica_conti_per_codice(conti)
-
-    # Calcola i saldi reali dalle collection di origine, filtrando per anno se passato
     saldi = await _calcola_saldi_piano_conti(db, anno)
+    conti = piano_conti_cee(saldi)
 
-    for conto in conti:
-        codice = conto.get("codice", "")
-        if codice in saldi:
-            conto["saldo"] = saldi[codice]
-        else:
-            conto["saldo"] = 0.0
-
-    grouped = {"attivo": [], "passivo": [], "patrimonio_netto": [], "ricavi": [], "costi": []}
-    for conto in conti:
-        categoria = conto.get("categoria", "")
-        if categoria in grouped:
-            grouped[categoria].append(conto)
+    non_mappati = [
+        {"codice": c.get("codice"), "nome": c.get("nome"), "categoria": c.get("categoria")}
+        for c in await _conti_operativi_legacy(db)
+        if not risolvi_codice_cee(c.get("codice"))
+    ]
 
     return {
         "conti": conti,
-        "grouped": grouped,
+        "grouped": raggruppa_per_categoria(conti),
         "totale": len(conti),
+        "schema": "CEE",
+        "fonte": "piano_conti_ufficiale",
         "struttura": STRUTTURA_BASE,
+        "conti_operativi_non_mappati": non_mappati,
         "anno": anno,
     }
 
@@ -501,141 +534,47 @@ async def _calcola_saldi_piano_conti(db, anno: str = None) -> Dict[str, float]:
 
 
 async def inizializza_piano_conti_base(db) -> List[Dict[str, Any]]:
-    """Inizializza il piano base in modo idempotente anche in concorrenza.
-
-    Ogni conto usa un ``_id`` interno deterministico. Drive/Sheets protegge ``_id``
-    con un indice univoco nativo, quindi due endpoint concorrenti non possono
-    inserire due copie dello stesso conto neppure prima della creazione
-    dell'indice univoco applicativo su ``codice``.
-    """
-    collection = db[COLLECTION_PIANO_CONTI]
-    now = datetime.now(timezone.utc).isoformat()
-
-    for categoria, data in STRUTTURA_BASE.items():
-        for conto_base in data["conti_tipici"]:
-            conto = {
-                "id": str(uuid.uuid4()),
-                "codice": conto_base["codice"],
-                "nome": conto_base["nome"],
-                "categoria": categoria,
-                "gruppo_codice": data["codice"],
-                "gruppo_nome": data["nome"],
-                "natura": conto_base["natura"],
-                "attivo": True,
-                "saldo": 0.0,
-                "created_at": now,
-                "updated_at": now
-            }
-            internal_id = f"piano-conti-base:{conto_base['codice']}"
-            try:
-                await collection.update_one(
-                    {"_id": internal_id},
-                    {"$setOnInsert": conto},
-                    upsert=True,
-                )
-            except DuplicateRecordError:
-                # Un'altra richiesta ha completato lo stesso upsert tra la
-                # ricerca e l'inserimento: il record corretto esiste già.
-                logger.info(
-                    "Inizializzazione concorrente già completata per il conto %s",
-                    conto_base["codice"],
-                )
-
-    conti = await collection.find({}, {"_id": 0}).sort("codice", 1).to_list(1000)
-    return _deduplica_conti_per_codice(conti)
+    """Il piano dei conti non si "inizializza" piu' in una collezione: e' il
+    CEE ufficiale in codice (audit 03/09/2026, PR 7). Nessuna scrittura;
+    restituisce la stessa lista esposta da ``GET /api/piano-conti/``."""
+    return piano_conti_cee()
 
 
 @router.post("/")
 @handle_errors
 async def create_conto(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
-    """Crea un nuovo conto nel piano dei conti."""
-    db = Database.get_db()
+    """Il piano dei conti e' il CEE ufficiale: nessun conto creato a mano.
 
+    Un codice gia' CEE (o un alias operativo mappato) esiste gia'; qualunque
+    altro codice non entra in un secondo piano parallelo (collezione
+    ``piano_conti`` dismessa). Risposta 409 in entrambi i casi, con il conto
+    CEE corrispondente quando c'e'.
+    """
     codice = str(data.get("codice") or "").strip()
-    nome = str(data.get("nome") or "").strip()
-    categoria = str(data.get("categoria") or "").strip()
-
-    if not codice or not nome or not categoria:
-        raise HTTPException(status_code=400, detail="Codice, nome e categoria sono obbligatori")
-
-    # Verifica unicità codice
-    existing = await db[COLLECTION_PIANO_CONTI].find_one({"codice": codice})
-    if existing:
-        raise HTTPException(status_code=409, detail=f"Conto con codice {codice} già esistente")
-
-    now = datetime.now(timezone.utc).isoformat()
-
-    conto = {
-        "id": str(uuid.uuid4()),
-        "codice": codice,
-        "nome": nome,
-        "categoria": categoria,
-        "gruppo_codice": STRUTTURA_BASE.get(categoria, {}).get("codice", ""),
-        "gruppo_nome": STRUTTURA_BASE.get(categoria, {}).get("nome", ""),
-        "natura": data.get("natura", "economico"),
-        "attivo": True,
-        "saldo": 0.0,
-        "created_at": now,
-        "updated_at": now
-    }
-
-    try:
-        await db[COLLECTION_PIANO_CONTI].insert_one(conto.copy())
-    except DuplicateRecordError:
-        # La ricerca preventiva migliora il messaggio nel caso ordinario, ma
-        # due richieste simultanee possono entrambe arrivare all'insert. Il
-        # vincolo univoco su ``codice`` resta la fonte atomica di verita'.
+    if not codice:
+        raise HTTPException(status_code=400, detail="Codice obbligatorio")
+    cee = risolvi_codice_cee(codice)
+    if cee:
         raise HTTPException(
             status_code=409,
-            detail=f"Conto con codice {codice} gia' esistente",
+            detail=f"Conto con codice {codice} gia' esistente nel piano CEE come {cee} "
+                   f"({CONTI_UFFICIALI.get(cee, '')}). {MESSAGGIO_PIANO_CEE}",
         )
-    conto.pop("_id", None)
-
-    return {"success": True, "conto": conto}
+    raise HTTPException(status_code=409, detail=f"Conto {codice} non creato. {MESSAGGIO_PIANO_CEE}")
 
 
 @router.put("/{conto_id}")
 @handle_errors
 async def update_conto(conto_id: str, data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
-    """Aggiorna un conto esistente."""
-    db = Database.get_db()
-
-    update_data = {
-        "updated_at": datetime.now(timezone.utc).isoformat()
-    }
-
-    for field in ["nome", "categoria", "natura", "attivo"]:
-        if field in data:
-            update_data[field] = data[field]
-
-    result = await db[COLLECTION_PIANO_CONTI].update_one(
-        {"id": conto_id},
-        {"$set": update_data}
-    )
-
-    if result.modified_count == 0:
-        raise HTTPException(status_code=404, detail="Conto non trovato")
-
-    return {"success": True, "message": "Conto aggiornato"}
+    """I conti CEE non si modificano a mano (piano dismesso, PR 7)."""
+    raise HTTPException(status_code=409, detail=f"Conto {conto_id} non modificabile. {MESSAGGIO_PIANO_CEE}")
 
 
 @router.delete("/{conto_id}")
 @handle_errors
 async def delete_conto(conto_id: str) -> Dict[str, Any]:
-    """Elimina un conto (se non ha movimenti)."""
-    db = Database.get_db()
-
-    # Verifica che non ci siano movimenti
-    movimenti = await db[COLLECTION_MOVIMENTI_CONTABILI].count_documents({"conto_id": conto_id})
-    if movimenti > 0:
-        raise HTTPException(status_code=400, detail=f"Impossibile eliminare: il conto ha {movimenti} movimenti")
-
-    result = await db[COLLECTION_PIANO_CONTI].delete_one({"id": conto_id})
-
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Conto non trovato")
-
-    return {"success": True, "message": "Conto eliminato"}
+    """I conti CEE non si eliminano (piano dismesso, PR 7)."""
+    raise HTTPException(status_code=409, detail=f"Conto {conto_id} non eliminabile. {MESSAGGIO_PIANO_CEE}")
 
 
 # ============== REGOLE DI CATEGORIZZAZIONE ==============
@@ -771,6 +710,8 @@ async def determina_conti_fattura(db, fattura: Dict[str, Any]) -> Dict[str, Dict
     regole = await db[COLLECTION_REGOLE_CATEGORIZZAZIONE].find({"attiva": True}).to_list(100)
 
     import re
+    from app.services.categorizzazione_contabile import PIANO_CONTI_ESTESO
+
     for regola in regole:
         pattern = regola.get("pattern", "")
         if not pattern:
@@ -779,37 +720,31 @@ async def determina_conti_fattura(db, fattura: Dict[str, Any]) -> Dict[str, Dict
         # Applica regola per fornitore
         if regola.get("tipo") == "fornitore":
             if re.search(pattern, fornitore, re.IGNORECASE):
-                if regola.get("conto_dare"):
-                    conto = await db[COLLECTION_PIANO_CONTI].find_one({"codice": regola["conto_dare"]})
-                    if conto:
-                        conti["costo"] = {"codice": conto["codice"], "nome": conto["nome"]}
+                codice_regola = str(regola.get("conto_dare") or "").strip()
+                # Il conto della regola deve esistere nel piano: alias
+                # operativo mappato o conto CEE. Nessuna lettura della
+                # collezione dismessa ``piano_conti``.
+                if codice_regola and risolvi_codice_cee(codice_regola):
+                    nome = (
+                        (PIANO_CONTI_ESTESO.get(codice_regola) or {}).get("nome")
+                        or CONTI_UFFICIALI.get(codice_regola)
+                        or CONTI_UFFICIALI.get(risolvi_codice_cee(codice_regola), codice_regola)
+                    )
+                    conti["costo"] = {"codice": codice_regola, "nome": nome}
                 break
 
     return conti
 
 
 async def aggiorna_saldo_conto(db, codice_conto: str, importo: float, tipo: str):
-    """Aggiorna il saldo di un conto."""
-    # Per conti ATTIVO e COSTI: DARE aumenta, AVERE diminuisce
-    # Per conti PASSIVO, PN e RICAVI: AVERE aumenta, DARE diminuisce
-
-    conto = await db[COLLECTION_PIANO_CONTI].find_one({"codice": codice_conto})
-    if not conto:
-        return
-
-    categoria = conto.get("categoria", "")
-    saldo_attuale = float(conto.get("saldo", 0))
-
-    # Determina se aumentare o diminuire
-    if categoria in ["attivo", "costi"]:
-        nuovo_saldo = saldo_attuale + importo if tipo == "dare" else saldo_attuale - importo
-    else:  # passivo, patrimonio_netto, ricavi
-        nuovo_saldo = saldo_attuale + importo if tipo == "avere" else saldo_attuale - importo
-
-    await db[COLLECTION_PIANO_CONTI].update_one(
-        {"codice": codice_conto},
-        {"$set": {"saldo": nuovo_saldo, "updated_at": datetime.now(timezone.utc).isoformat()}}
-    )
+    """I saldi per conto non si persistono piu' (collezione ``piano_conti``
+    dismessa, audit 03/09/2026 PR 7): il libro mastro e il bilancio di
+    verifica li ricavano dalle scritture di ``movimenti_contabili`` e il
+    Piano dei Conti da ``_calcola_saldi_piano_conti``. Rimane per
+    compatibilita' con i chiamanti del motore §6.1: non scrive nulla."""
+    if codice_conto and not risolvi_codice_cee(codice_conto):
+        logger.warning("Conto %s fuori dal piano CEE (alias non mappato)", codice_conto)
+    return None
 
 
 # ============== MOVIMENTI CONTABILI ==============
@@ -820,6 +755,7 @@ async def get_movimenti_per_conto(
     codice: str,
     limit: int = 50,
     anno: str = None,
+    schema: str = None,
 ) -> Dict[str, Any]:
     """
     Dettaglio movimenti per un conto del piano dei conti.
@@ -834,12 +770,31 @@ async def get_movimenti_per_conto(
     """
     db = Database.get_db()
 
-    conto = await db["piano_conti"].find_one({"codice": codice}, {"_id": 0})
-    if not conto:
-        raise HTTPException(status_code=404, detail=f"Conto {codice} non trovato")
+    # Un solo piano: il codice puo' essere CEE (es. 55.01.01) oppure un alias
+    # operativo (es. 05.01.09). La logica semantica qui sotto ragiona sui
+    # codici operativi: con un CEE si considerano tutti i suoi alias, con un
+    # alias soltanto quello. Otto codici operativi collidono con codici CEE
+    # veri: la pagina Piano dei Conti passa ``schema=cee``, i vecchi link e
+    # il dizionario articoli restano nello schema operativo.
+    codice_richiesto = str(codice or "").strip()
+    schema_cee = str(schema or "").strip().lower() == "cee"
+    cee = risolvi_codice_cee(codice_richiesto, preferisci_operativo=not schema_cee)
+    if not cee:
+        raise HTTPException(status_code=404, detail=f"Conto {codice} non trovato nel piano CEE")
+    conto = conto_cee(cee)
+    richiesto_e_alias = codice_richiesto in OPERATIVO_A_UFFICIALE and not (
+        schema_cee and conto_cee_valido(codice_richiesto)
+    )
+    if richiesto_e_alias:
+        codici_operativi = [codice_richiesto]
+    else:
+        codici_operativi = alias_operativi(cee) or [codice_richiesto]
+    conto["codice_richiesto"] = codice_richiesto
+    conto["codici_operativi"] = codici_operativi
+    codice = codici_operativi[0]
 
-    cat  = conto.get("categoria", "").lower()
-    nome = conto.get("nome", "")
+    cat  = (conto.get("categoria") or "").lower()
+    nome = conto.get("nome", "") or ""
 
     movimenti: list = []
     fonte: str      = "nessuna"
@@ -847,7 +802,7 @@ async def get_movimenti_per_conto(
     # ── CASSA ────────────────────────────────────────────────────────────────
     # Elenco coerente col saldo cumulativo calcolato in _calcola_saldi_piano_conti:
     # tutti i movimenti fino a fine anno selezionato, non solo quelli dell'anno.
-    if codice == "01.01.01" or "cassa" in nome.lower():
+    if cee == "19.03.03" or "01.01.01" in codici_operativi:
         q_cassa: dict = {}
         if anno:
             q_cassa["data"] = {"$lte": f"{anno}-12-31"}
@@ -868,7 +823,7 @@ async def get_movimenti_per_conto(
     # ── BANCA C/C ─────────────────────────────────────────────────────────────
     # Stesso motivo della Cassa: elenco cumulativo fino a fine anno, coerente
     # col saldo calcolato in _calcola_saldi_piano_conti.
-    elif codice in ("01.01.02", "01.01.03") or "banca" in nome.lower():
+    elif cee in ("19.01.01", "19.01.05") or "01.01.02" in codici_operativi:
         # Prima prova prima_nota_banca (movimenti manuali confermati)
         q_banca: dict = {}
         if anno:
@@ -907,7 +862,7 @@ async def get_movimenti_per_conto(
             fonte = "prima_nota_banca"
 
     # ── CREDITI V/CLIENTI ─────────────────────────────────────────────────────
-    elif codice.startswith("01.02") or "crediti" in nome.lower():
+    elif any(c.startswith("01.02") for c in codici_operativi):
         q_crediti: dict = {}
         if anno:
             q_crediti["$or"] = [
@@ -936,7 +891,7 @@ async def get_movimenti_per_conto(
     # in "invoices" (stessa collection usata da _calcola_saldi_piano_conti).
     # Prima questo ramo interrogava sempre una collection vuota → click sul
     # conto apriva una pagina senza movimenti, pur avendo un saldo diverso da 0.
-    elif codice.startswith("02.01") or "debiti" in nome.lower():
+    elif cee == "33.03.01" or any(c.startswith("02.01") for c in codici_operativi):
         from app.models.stati import STATI_PAGATI as _STATI_PAGATI
         q_debiti: dict = {"status": {"$nin": _STATI_PAGATI}, "pagato": {"$ne": True}}
         if anno:
@@ -994,7 +949,12 @@ async def get_movimenti_per_conto(
                     ]
                 },
             }},
-            {"$match": {"conto_assegnato": codice}},
+            # Il dizionario articoli puo' contenere sia l'alias operativo sia
+            # il codice CEE (scelto dalla pagina Piano dei Conti).
+            {"$match": {"conto_assegnato": (
+                codice if richiesto_e_alias
+                else {"$in": sorted(set(codici_operativi) | {cee})}
+            )}},
             {"$sort": {"invoice_date": -1}},
             {"$limit": limit},
             {"$project": {
@@ -1018,7 +978,7 @@ async def get_movimenti_per_conto(
         # matchata in nessun conto), _calcola_saldi_piano_conti ricade su
         # "tutto l'imponibile su 05.01.01" — replichiamo lo stesso fallback
         # qui, altrimenti 05.01.01 risulterebbe vuoto pur avendo un saldo.
-        if codice == "05.01.01" and not movimenti:
+        if "05.01.01" in codici_operativi and not movimenti:
             diz_count = await db["dizionario_articoli"].count_documents({})
             if diz_count == 0:
                 docs_fallback = await db["invoices"].find(
@@ -1043,7 +1003,7 @@ async def get_movimenti_per_conto(
     # corrispettivi anche per gli altri sotto-conti (bar, cucina, servizi...)
     # farebbe credere che abbiano un saldo proprio quando in realtà è 0.
     elif cat in ("ricavi",):
-        if codice != "04.01.01":
+        if "04.01.01" not in codici_operativi:
             fonte = "nessuna"
         else:
             q_ricavi: dict = {}
@@ -1066,8 +1026,8 @@ async def get_movimenti_per_conto(
     # Capitale sociale e riserve non hanno una fonte transazionale nel
     # gestionale (sono dati statutari, non movimenti): Utile/Perdita
     # d'esercizio invece è calcolato come Ricavi − Costi dell'anno.
-    elif codice.startswith("03"):
-        if codice in ("03.03.01", "03.03.02"):
+    elif cat == "patrimonio_netto":
+        if {"03.03.01", "03.03.02"} & set(codici_operativi):
             saldi_periodo = await _calcola_saldi_piano_conti(db, anno)
             ricavi = sum(v for k, v in saldi_periodo.items() if k.startswith("04."))
             costi = sum(v for k, v in saldi_periodo.items() if k.startswith("05."))
@@ -1100,7 +1060,7 @@ async def get_movimenti_per_conto(
             "i dati mostrati provengono dalla fonte più rilevante per questo conto."
         ) if movimenti else (
             "Capitale sociale e riserve sono dati statutari, non tracciati come movimenti in questo gestionale."
-            if codice.startswith("03") else
+            if cat == "patrimonio_netto" else
             "I corrispettivi non sono disaggregati per settore: solo il totale (04.01.01) ha un saldo reale."
             if cat == "ricavi" else
             "Nessun movimento disponibile per questo conto nel periodo selezionato."
@@ -1146,16 +1106,19 @@ async def get_movimenti_contabili(
 @handle_errors
 async def get_bilancio(anno: str = None) -> Dict[str, Any]:
     """Bilancio completo (SP + CE) con saldi filtrati per anno.
-    Usa `_calcola_saldi_piano_conti` come fonte unica di verità.
+    Usa `_calcola_saldi_piano_conti` come fonte unica di verità e il piano
+    CEE ufficiale come unico elenco di conti (PR 7): compaiono i conti che
+    hanno un alias operativo o un saldo, cosi' un codice non viene mai
+    sommato due volte.
     """
     db = Database.get_db()
 
-    conti = await db[COLLECTION_PIANO_CONTI].find({}, {"_id": 0}).to_list(1000)
-    if not conti:
-        conti = await inizializza_piano_conti_base(db)
-    conti = _deduplica_conti_per_codice(conti)
-
     real_saldi = await _calcola_saldi_piano_conti(db, anno)
+    saldi_cee = saldi_in_cee(real_saldi)
+    conti = [
+        conto for conto in piano_conti_cee(real_saldi)
+        if conto["alias_operativi"] or abs(saldi_cee.get(conto["codice"], 0.0)) >= 0.005
+    ]
 
     bilancio = {
         "anno": anno,
@@ -1173,10 +1136,11 @@ async def get_bilancio(anno: str = None) -> Dict[str, Any]:
 
     for conto in conti:
         codice = conto.get("codice", "")
-        saldo = real_saldi.get(codice, 0.0)
+        saldo = saldi_cee.get(codice, 0.0)
         categoria = conto.get("categoria", "")
 
-        info = {"codice": codice, "nome": conto.get("nome"), "saldo": saldo}
+        info = {"codice": codice, "nome": conto.get("nome"), "saldo": saldo,
+                "alias_operativi": conto.get("alias_operativi") or []}
 
         if categoria == "attivo":
             bilancio["stato_patrimoniale"]["attivo"]["conti"].append(info)

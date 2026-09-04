@@ -438,6 +438,77 @@ async def _applica_pagamento_banca(db, fattura: Dict[str, Any], metodo_label: st
         )
 
 
+MOTIVO_PAGAMENTO_ANTECEDENTE = (
+    "Movimento bancario datato prima della fattura: un pagamento non puo' "
+    "precedere il documento. Conferma manuale necessaria."
+)
+
+
+async def _abbina_fatture_canonico(
+    db, mov: Dict[str, Any], fatture_quote: List[tuple], *, regola: str, now: str,
+) -> bool:
+    """Ogni abbinamento CERTO passa dal motore canonico (audit 03/09/2026 §1, PR 2).
+
+    Prima questo file scriveva da solo Prima Nota, fattura e audit
+    (``ric_auto_identita_unica``) lasciando scadenza, partita aperta ed
+    estratto conto in stati divergenti (25 righe reali, 18 con EC non
+    riconciliato, 12 senza scadenza/partita). Ora la decisione resta qui, la
+    scrittura e' UNA sola: ``persist_bank_invoice_allocations`` aggiorna in un
+    colpo fattura, scadenza, partita, EC, Prima Nota e relazione con lo stesso
+    ``operation_id``. Due regole non negoziabili:
+
+    - mai un pagamento prima della fattura: movimento antecedente → proposta
+      in "Scegli fattura", nessuna scrittura;
+    - se il motore canonico rifiuta (quote non quadrate, fattura assente,
+      quota oltre il residuo) → proposta con il motivo, nessuna scrittura.
+
+    Ritorna True solo se tutti gli oggetti sono stati aggiornati.
+    """
+    from fastapi import HTTPException
+
+    from app.services.bank_payment_allocations import (
+        persist_bank_invoice_allocations,
+        validate_bank_invoice_allocations,
+    )
+    from app.services.payment_allocation_validator import to_cents
+
+    fatture = [fattura for fattura, _ in fatture_quote]
+    if not fatture:
+        return False
+    data_ec = str(mov.get("data") or "")[:10]
+    antecedenti = []
+    for fattura in fatture:
+        giorni = _giorni_pagamento_plausibili(
+            data_ec, fattura.get("data") or fattura.get("invoice_date")
+            or fattura.get("data_fattura") or "",
+        )
+        if giorni is not None and giorni < 0:
+            antecedenti.append(fattura)
+    if antecedenti:
+        await proponi_scelta_fattura(
+            db, mov, fatture, motivo=MOTIVO_PAGAMENTO_ANTECEDENTE,
+            match_type="pagamento_antecedente_fattura", now=now,
+        )
+        return False
+    associazioni = [
+        {"id": str(fattura.get("id") or fattura.get("_id")), "quota_cents": to_cents(quota)}
+        for fattura, quota in fatture_quote
+    ]
+    try:
+        allocazioni = await validate_bank_invoice_allocations(db, mov, associazioni)
+        await persist_bank_invoice_allocations(
+            db, mov, allocazioni, actor=f"automatic_riconciliazione:{regola}",
+        )
+    except HTTPException as exc:
+        await proponi_scelta_fattura(
+            db, mov, fatture,
+            motivo=f"Abbinamento non applicato dal motore canonico: {exc.detail}",
+            match_type="quadratura_non_verificata", now=now,
+        )
+        return False
+    return True
+
+
 def _giorni_pagamento_plausibili(data_ec: str, data_fattura: str) -> Optional[int]:
     """Giorni fra data fattura e movimento EC (None se date non parsabili)."""
     try:
@@ -862,9 +933,13 @@ def _evidenza_pagamento_fornitore_banca(
         or fattura.get("data_documento") or ""
     )
     giorni = _giorni_pagamento_plausibili(data_movimento, data_fattura)
-    # L'estratto puo' essere importato prima dell'XML: sono ammessi pochi
-    # giorni negativi, non abbinamenti cross-esercizio arbitrari.
-    data_coerente = giorni is not None and -7 <= giorni <= 400
+    # Audit 03/09/2026 (PR 2, caso Fastweb 25/03 vs fattura 01/04): "mai un
+    # pagamento prima della fattura". Un movimento antecedente alla data
+    # documento non e' un abbinamento automatico: resta una proposta da
+    # confermare (``antecedente_fattura``), anche se importo e fornitore
+    # coincidono. Restano esclusi gli abbinamenti cross-esercizio arbitrari.
+    data_coerente = giorni is not None and 0 <= giorni <= 400
+    antecedente = giorni is not None and -31 <= giorni < 0
     soggetto_coerente = soggetto_pagante_coerente(
         fornitore, str(descrizione or ""), alias=alias_fornitore(fattura),
     )
@@ -880,6 +955,9 @@ def _evidenza_pagamento_fornitore_banca(
         "soggetto_causale": soggetto_causale_bancaria(str(descrizione or "")),
         "soggetto_coerente": soggetto_coerente,
         "bloccato_da_soggetto": prove_base and soggetto_coerente is False,
+        "antecedente_fattura": bool(
+            diretto and importo_esatto and fornitore_presente and antecedente
+        ),
         "auto_ammesso": prove_base and soggetto_coerente is not False,
     }
 
@@ -1264,18 +1342,16 @@ async def riconcilia_movimenti_banca(
                     } for fattura, quota in fatture_esplicite]
 
                     elenco_completo = not riferimenti_mancanti and not riferimenti_gia_chiusi
-                    if somma_esatta and stesso_fornitore and fornitore_presente and elenco_completo:
+                    if somma_esatta and stesso_fornitore and fornitore_presente and elenco_completo and (
+                        await _abbina_fatture_canonico(
+                            db, mov, fatture_esplicite,
+                            regola="multi_fattura_causale", now=now,
+                        )
+                    ):
                         metodo_pagamento = "Bonifico"
                         num_assegno_multi = extract_assegno_number(descrizione)
                         if num_assegno_multi:
                             metodo_pagamento = f"Assegno N.{num_assegno_multi}"
-
-                        for fattura, quota in fatture_esplicite:
-                            await _applica_pagamento_banca(
-                                db, fattura, metodo_pagamento, data_ec, mov_id,
-                                20, now, source="ric_auto_multi_fattura_causale",
-                                importo_pagamento=quota,
-                            )
 
                         match_found = True
                         match_type = "fatture_multiple_causale"
@@ -1291,6 +1367,12 @@ async def riconcilia_movimenti_banca(
                         results["riconciliati_fatture"] += 1
                         results["riconciliati_movimenti_multi_fattura"] += 1
                         results["fatture_ripartite_multi"] += len(dettagli_fatture)
+                    elif somma_esatta and stesso_fornitore and fornitore_presente and elenco_completo:
+                        # Prove complete ma il motore canonico non ha
+                        # applicato (data antecedente, fattura assente,
+                        # quote non quadrate): la proposta e' gia' in coda.
+                        blocca_match_singolo = True
+                        results["dubbi"] += 1
                     else:
                         # I numeri sono leggibili ma la somma non quadra o i
                         # documenti appartengono a fornitori diversi: non si
@@ -1450,6 +1532,7 @@ async def riconcilia_movimenti_banca(
                 # entrambi i casi l'importo deve coincidere al centesimo.
                 evidenze_fatture = {}
                 filtrate = []
+                fatture_valutate = list(fatture_scored)
                 for fattura, score in fatture_scored:
                     fid = str(fattura.get("id") or fattura.get("_id"))
                     forte = _evidenza_forte_fattura_banca(
@@ -1497,6 +1580,20 @@ async def riconcilia_movimenti_banca(
                         match_type="soggetto_pagante_diverso", now=now,
                     )
                     results["dubbi"] += 1
+                # Audit 03/09/2026 (PR 2): importo e fornitore coincidono ma
+                # il movimento precede la data fattura (Fastweb 25/03 vs
+                # 01/04). Mai automatico: proposta da confermare.
+                antecedenti = [
+                    fattura for fattura, _score in fatture_valutate
+                    if evidenze_fatture[str(fattura.get("id") or fattura.get("_id"))]
+                    ["pagamento_diretto"]["antecedente_fattura"]
+                ]
+                if not fatture_scored and not bloccate_da_soggetto and antecedenti:
+                    await proponi_scelta_fattura(
+                        db, mov, antecedenti, motivo=MOTIVO_PAGAMENTO_ANTECEDENTE,
+                        match_type="pagamento_antecedente_fattura", now=now,
+                    )
+                    results["dubbi"] += 1
 
                 # Per canoni/utenze ricorrenti dello stesso importo, abbina la
                 # fattura antecedente piu' vicina. Se due candidate hanno la
@@ -1516,7 +1613,12 @@ async def riconcilia_movimenti_banca(
                         fatture_scored = [(per_distanza[0][1], per_distanza[0][2])]
 
                 # Una sola candidata con importo+identita' e' un match sicuro.
-                if len(fatture_scored) == 1 and fatture_scored[0][1] >= 10:
+                if len(fatture_scored) == 1 and fatture_scored[0][1] >= 10 and (
+                    await _abbina_fatture_canonico(
+                        db, mov, [(fatture_scored[0][0], importo)],
+                        regola="identita_unica", now=now,
+                    )
+                ):
                     fattura = fatture_scored[0][0]
                     fid = str(fattura.get("id") or fattura.get("_id"))
                     evidenza_scelta = evidenze_fatture[fid]
@@ -1544,12 +1646,6 @@ async def riconcilia_movimenti_banca(
                         )
                         results["riconciliati_assegni"] += 1
 
-                    await _applica_pagamento_banca(
-                        db, fattura, metodo_pagamento, data_ec, mov_id,
-                        fatture_scored[0][1], now, source="ric_auto_identita_unica",
-                        importo_pagamento=importo,
-                    )
-
                     match_details = {
                         "fattura_id": str(fattura.get("id") or fattura.get("_id")),
                         "numero_fattura": fattura.get("numero_fattura") or fattura.get("invoice_number"),
@@ -1569,6 +1665,11 @@ async def riconcilia_movimenti_banca(
                     results["riconciliati_fatture"] += 1
                     imp_fatt_match = _importo_atteso_per_movimento(fattura, importo)
                     await _alert_differenza_importo(db, mov_id, importo, float(imp_fatt_match), match_details["fattura_id"])
+
+                elif len(fatture_scored) == 1 and fatture_scored[0][1] >= 10:
+                    # Candidata unica ma il motore canonico non ha applicato:
+                    # la proposta (data antecedente / quote / fattura) e' in coda.
+                    results["dubbi"] += 1
 
                 # Piu' fatture con identita' compatibile: la scelta resta
                 # sempre da confermare da un operatore.
@@ -1590,7 +1691,12 @@ async def riconcilia_movimenti_banca(
                         if _giorni is not None and (_giorni < -5 or _giorni > 180):
                             data_plausibile = False
 
-                    if len(fatture_buone) == 1 and data_plausibile:
+                    if len(fatture_buone) == 1 and data_plausibile and (
+                        await _abbina_fatture_canonico(
+                            db, mov, [(fatture_buone[0], importo)],
+                            regola="parziale_singolo", now=now,
+                        )
+                    ):
                         fattura = fatture_buone[0]
                         strumento = classifica_strumento_bancario(descrizione)
                         match_found = True
@@ -1602,12 +1708,6 @@ async def riconcilia_movimenti_banca(
                         if num_assegno:
                             metodo_pagamento = f"Assegno N.{num_assegno}"
 
-                        await _applica_pagamento_banca(
-                            db, fattura, metodo_pagamento, data_ec, mov_id,
-                            fatture_scored[0][1], now, source="ric_auto_parziale_singolo",
-                            importo_pagamento=importo,
-                        )
-
                         match_details = {
                             "fattura_id": str(fattura.get("_id")),
                             "numero_fattura": fattura.get("numero_fattura") or fattura.get("invoice_number"),
@@ -1618,6 +1718,9 @@ async def riconcilia_movimenti_banca(
                         results["riconciliati_fatture"] += 1
                         imp_fatt_match = _importo_atteso_per_movimento(fattura, importo)
                         await _alert_differenza_importo(db, mov_id, importo, float(imp_fatt_match), match_details["fattura_id"])
+                    elif len(fatture_buone) == 1 and data_plausibile:
+                        # Il motore canonico ha rifiutato: proposta gia' in coda.
+                        results["dubbi"] += 1
                     else:
                         # Più fatture con score simile → operazione da confermare
                         fatture_ordinate = sorted(

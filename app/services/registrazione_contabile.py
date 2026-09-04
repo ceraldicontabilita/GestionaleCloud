@@ -552,10 +552,11 @@ async def _verifica_importo_scrittura(db, documento: Dict[str, Any], esito: Dict
 async def ricostruisci_fatture(db) -> Dict[str, Any]:
     """Ricostruzione completa (ex `ricategorizza-fatture`): azzera i movimenti di
     tipo fattura_acquisto + i saldi (tranne cassa/banca) e ri-registra tutto da zero.
-    NON tocca i movimenti di corrispettivi/ammortamenti/TFR."""
-    conti_da_non_resettare = [_C_CASSA[0], _C_BANCA[0]]
-    await db[COLL_PIANO_CONTI].update_many(
-        {"codice": {"$nin": conti_da_non_resettare}}, {"$set": {"saldo": 0}})
+    NON tocca i movimenti di corrispettivi/ammortamenti/TFR.
+
+    I saldi per conto non vivono piu' nella collezione ``piano_conti``
+    (dismessa, audit 03/09/2026 PR 7): si ricavano dalle scritture, quindi
+    non c'e' nulla da azzerare oltre ai movimenti stessi."""
     await db[COLL_MOVIMENTI].delete_many({"tipo": "fattura_acquisto"})
     await db["invoices"].update_many(
         {"registrata_contabilita": True},

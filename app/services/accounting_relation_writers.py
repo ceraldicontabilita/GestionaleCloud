@@ -41,6 +41,90 @@ async def _write(db, specifications: Iterable[Dict[str, Any]]) -> List[str]:
     return keys
 
 
+async def record_bank_invoice_allocation(
+    db,
+    *,
+    movement: Dict[str, Any],
+    invoice: Dict[str, Any],
+    allocation: Dict[str, Any],
+    prima_nota_id: Optional[str] = None,
+    actor: str = "system",
+) -> List[str]:
+    """Registra la catena movimento bancario -> fattura (-> Prima Nota Banca)
+    scritta dal motore canonico ``persist_bank_invoice_allocations`` (audit
+    03/09/2026 §1, PR 2). Idempotente per chiave di relazione."""
+    movement_id = _entity_id(movement, "id", "fingerprint")
+    invoice_id = _entity_id(invoice, "id")
+    if not movement_id or not invoice_id:
+        return []
+    automatic = str(actor).startswith("automatic")
+    quota_cents = allocation.get("quota_cents")
+    amount = _amount_from_cents(quota_cents) if isinstance(quota_cents, int) else allocation.get("quota")
+    operation_id = _text(allocation.get("operation_id") or movement.get("operation_id"))
+    evidence = [
+        {"type": "bank_movement_id", "value": movement_id},
+        {"type": "invoice_id", "value": invoice_id},
+        {"type": "allocated_cents", "value": quota_cents},
+        {"type": "allocation_id", "value": allocation.get("allocation_id")},
+        {"type": "operation_id", "value": operation_id},
+    ]
+    provenance = {
+        "source_collection": "estratto_conto_movimenti",
+        "target_collection": "invoices",
+        "document_id": movement_id,
+        "operation_id": operation_id,
+    }
+    specifications: List[Dict[str, Any]] = [{
+        "source_type": "bank_movement",
+        "source_id": movement_id,
+        "relation_type": "allocates_invoice_payment",
+        "target_type": "invoice",
+        "target_id": invoice_id,
+        "status": "confirmed",
+        "rule": (
+            "exact_cents+document_identity+bidirectional_uniqueness"
+            if automatic else "exact_cents+same_supplier+manual_selection"
+        ),
+        "evidence": evidence,
+        "amount": amount,
+        "provenance": provenance,
+        "actor": actor,
+    }]
+    prima_nota_id = _text(prima_nota_id)
+    if prima_nota_id:
+        specifications.extend((
+            {
+                "source_type": "bank_movement",
+                "source_id": movement_id,
+                "relation_type": "represented_by_prima_nota",
+                "target_type": "prima_nota_entry",
+                "target_id": prima_nota_id,
+                "status": "confirmed",
+                "rule": "movimento_ufficiale_proiettato_in_prima_nota_banca",
+                "evidence": evidence,
+                "amount": amount,
+                "provenance": {"source_collection": "estratto_conto_movimenti",
+                               "operation_id": operation_id},
+                "actor": actor,
+            },
+            {
+                "source_type": "invoice",
+                "source_id": invoice_id,
+                "relation_type": "posted_in_prima_nota",
+                "target_type": "prima_nota_entry",
+                "target_id": prima_nota_id,
+                "status": "confirmed",
+                "rule": "fattura_pagata_dal_movimento_ufficiale_di_prima_nota",
+                "evidence": evidence,
+                "amount": amount,
+                "provenance": {"bank_movement_id": movement_id,
+                               "operation_id": operation_id},
+                "actor": actor,
+            },
+        ))
+    return await _write(db, specifications)
+
+
 async def record_check_reconciliation(
     db,
     *,

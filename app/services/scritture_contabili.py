@@ -146,11 +146,19 @@ def _valida(mov: Dict[str, Any]) -> None:
         raise ScritturaNonValida("source mancante (tracciabilità obbligatoria)")
 
 
-def _prepara_documento(mov: Dict[str, Any]) -> Dict[str, Any]:
+def _prepara_documento(mov: Dict[str, Any], registro: Optional[str] = None) -> Dict[str, Any]:
     """Valida un movimento e riempie i campi con default stabili (id,
     alias amount/date/type/category/description, created_at). Estratta da
     scrivi_movimento per essere riusabile anche da chi deve scrivere con
-    un upsert atomico invece di un insert diretto (vedi registra_corrispettivo)."""
+    un upsert atomico invece di un insert diretto (vedi registra_corrispettivo).
+
+    Audit del commercialista 03/09/2026 (PR 7): ogni riga porta i conti del
+    piano CEE ufficiale — `conto_contabile` (tesoreria: 19.01.01 Banca c/c,
+    19.03.03 Cassa, oppure il conto esplicito 19.01.05 / 15.07.xx / 75.01.07.xx
+    dei circuiti POS) e `conto_contropartita` dedotto dalla categoria
+    (Fatture/Assegni/PayPal → 33.03.01, Stipendi → 39.07.01, Commissioni →
+    75.01.07.xx, ...). Un conto fuori dal piano ufficiale viene rifiutato.
+    """
     _valida(mov)
     doc = dict(mov)
     doc.setdefault("id", str(uuid.uuid4()))
@@ -161,6 +169,12 @@ def _prepara_documento(mov: Dict[str, Any]) -> Dict[str, Any]:
     doc.setdefault("category", doc["categoria"])
     doc.setdefault("description", doc.get("descrizione", ""))
     doc.setdefault("created_at", datetime.now(timezone.utc).isoformat())
+    if registro:
+        from app.services.mapping_piano_conti import completa_conti_prima_nota
+        try:
+            doc.update(completa_conti_prima_nota(registro, doc))
+        except ValueError as exc:
+            raise ScritturaNonValida(str(exc)) from exc
     return doc
 
 
@@ -169,7 +183,7 @@ async def scrivi_movimento(db, registro: str, mov: Dict[str, Any]) -> str:
     Ritorna l'id del movimento creato."""
     if registro not in REGISTRI:
         raise ScritturaNonValida(f"registro sconosciuto: {registro}")
-    doc = _prepara_documento(mov)
+    doc = _prepara_documento(mov, registro)
     operation_hash = doc.get("operation_hash") or calcola_operation_hash(registro, doc)
     try:
         if operation_hash:
@@ -269,7 +283,7 @@ async def _scrivi_se_assente(db, registro: str, query_esistente: Dict[str, Any],
     """
     if registro not in REGISTRI:
         raise ScritturaNonValida(f"registro sconosciuto: {registro}")
-    doc = _prepara_documento(mov)
+    doc = _prepara_documento(mov, registro)
     collection = db[REGISTRI[registro]]
     chiave = doc.get("idempotency_key")
     if chiave:

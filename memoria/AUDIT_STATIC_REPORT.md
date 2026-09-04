@@ -5,7 +5,7 @@ Generato da `scripts/audit_static.py`.
 
 ## Sintesi
 
-- P1: 378
+- P1: 379
 - P2: 19
 - P3: 67
 - INFO: 16
@@ -446,13 +446,13 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/accounting/contabilita_avanzata.py:95`
+- File: `app/routers/accounting/contabilita_avanzata.py:69`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/accounting/contabilita_avanzata.py:153`
+- File: `app/routers/accounting/contabilita_avanzata.py:86`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -476,19 +476,19 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/accounting/piano_conti.py:1226`
+- File: `app/routers/accounting/piano_conti.py:1190`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/accounting/piano_conti.py:1239`
+- File: `app/routers/accounting/piano_conti.py:1203`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/accounting/piano_conti.py:1252`
+- File: `app/routers/accounting/piano_conti.py:1216`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -530,19 +530,19 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/accounting/regole_categorizzazione.py:467`
+- File: `app/routers/accounting/regole_categorizzazione.py:469`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/accounting/regole_categorizzazione.py:504`
+- File: `app/routers/accounting/regole_categorizzazione.py:506`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/accounting/regole_categorizzazione.py:553`
+- File: `app/routers/accounting/regole_categorizzazione.py:555`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -602,7 +602,13 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/admin.py:680`
+- File: `app/routers/admin.py:633`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/routers/admin.py:712`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -2798,7 +2804,7 @@ Generato da `scripts/audit_static.py`.
 
 ### P3 - fetch-race
 
-- File: `frontend/src/pages/PianoDeiConti.jsx:64`
+- File: `frontend/src/pages/PianoDeiConti.jsx:65`
 
 - Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
 
