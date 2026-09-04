@@ -3,6 +3,7 @@ Router Dimissioni Dipendenti
 Cerca email "Notifica richiesta recesso rapporto di lavoro" e aggiorna anagrafica dipendenti
 """
 
+import logging
 import os
 import re
 import base64
@@ -16,6 +17,7 @@ from fastapi import APIRouter, HTTPException, Query
 from app.hr.database import Database
 from app.hr.utils.error_handler import handle_errors
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Configurazione email

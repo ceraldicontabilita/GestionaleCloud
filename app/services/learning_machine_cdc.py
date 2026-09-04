@@ -584,7 +584,6 @@ TRIBUTI_F24_MAPPING = {
     "8907": "8.7_IRAP",  # Interessi ravvedimento IRAP
     "8918": "8.2_IMU",   # Sanzioni IMU
     "1993": "8.7_IRAP",  # Interessi IRAP
-    "1990": "8.6_IRES",  # Interessi ravvedimento IRES
     "1631": "8.6_IRES",  # Credito IRES da utilizzare
     "1668": "8.6_IRES",  # Acconto cedolare secca
 }
