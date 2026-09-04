@@ -1609,7 +1609,7 @@ async def processa_f24_scaricati() -> Dict[str, Any]:
                 parsed.get("sezione_erario") or parsed.get("sezione_inps") or parsed.get("totali")
             ):
                 f24_data = dict(parsed)
-                f24_data["id"] = str(uuid4())
+                f24_data["id"] = str(uuid.uuid4())
                 # file_name è la chiave del controllo duplicati sotto: senza,
                 # find_one({"file_name": None}) matcherebbe a vuoto e salterebbe
                 # SEMPRE l'import (come fa sync_f24_automatico). Vedi P0.8.
@@ -2131,13 +2131,19 @@ async def processa_tutti_documenti() -> Dict[str, Any]:
     """
     Endpoint combinato che:
     1. Ricategorizza i documenti
-    2. Processa buste paga
-    3. Processa estratti conto Nexi
-    4. Processa estratti conto BNL
+    2. Processa estratti conto Nexi
+    3. Processa estratti conto BNL
+
+    NOTA (audit-codice 04/09/2026): il passo "buste paga" chiamava una
+    funzione `sync_buste_paga()` mai definita in questo file (NameError
+    sempre catturato dal try/except, quindi l'endpoint "riusciva" ma non
+    processava mai nulla). I cedolini hanno un solo sistema di ingestione
+    canonico (drive_cedolini_ingest / email_download -> cedolini_manager ->
+    salari_unificati_v2, vedi CLAUDE.md "Cedolini: un solo sistema"): questo
+    endpoint combinato non deve duplicarlo con una chiamata inventata.
     """
     risultati = {
         "ricategorizzazione": None,
-        "buste_paga": None,
         "estratti_nexi": None,
         "estratti_bnl": None
     }
@@ -2149,19 +2155,13 @@ async def processa_tutti_documenti() -> Dict[str, Any]:
         risultati["ricategorizzazione"] = {"error": str(e)}
 
     try:
-        # 2. Buste paga
-        risultati["buste_paga"] = await sync_buste_paga()
-    except Exception as e:
-        risultati["buste_paga"] = {"error": str(e)}
-
-    try:
-        # 3. Estratti Nexi
+        # 2. Estratti Nexi
         risultati["estratti_nexi"] = await sync_estratti_conto()
     except Exception as e:
         risultati["estratti_nexi"] = {"error": str(e)}
 
     try:
-        # 4. Estratti BNL
+        # 3. Estratti BNL
         risultati["estratti_bnl"] = await sync_estratti_bnl()
     except Exception as e:
         risultati["estratti_bnl"] = {"error": str(e)}
@@ -2171,7 +2171,6 @@ async def processa_tutti_documenti() -> Dict[str, Any]:
         "risultati": risultati,
         "sommario": {
             "ricategorizzati": risultati.get("ricategorizzazione", {}).get("ricategorizzati", 0),
-            "buste_paga_processate": risultati.get("buste_paga", {}).get("processati", 0),
             "estratti_nexi_processati": risultati.get("estratti_nexi", {}).get("processati", 0),
             "estratti_bnl_processati": risultati.get("estratti_bnl", {}).get("processati", 0)
         }

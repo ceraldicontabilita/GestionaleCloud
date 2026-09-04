@@ -448,7 +448,9 @@ async def sync_iban_anagrafica() -> Dict[str, Any]:
     # Prendi tutti i bonifici con IBAN dalla collection attiva (bonifici_transfers);
     # la legacy 'archivio_bonifici' non viene più alimentata dal flusso di import corrente.
     bonifici = await db["bonifici_transfers"].find(
-        {"beneficiario.iban": {"$exists": True, "$ne": None, "$ne": ""}},
+        # Bug reale (audit-codice 04/09/2026): "$ne" ripetuto nel dict
+        # letterale sovrascriveva se stesso ({"$ne": None} perso).
+        {"beneficiario.iban": {"$exists": True, "$nin": [None, ""]}},
         {"beneficiario": 1}
     ).to_list(5000)
 

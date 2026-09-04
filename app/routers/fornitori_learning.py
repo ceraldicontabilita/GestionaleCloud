@@ -6,10 +6,12 @@ from fastapi import APIRouter, HTTPException, Body
 from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime, timezone
 from pydantic import BaseModel, Field
+import logging
 import re
 
 from app.database import Database
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Fornitori Learning"])
 
 # Collezione Drive/Sheets
