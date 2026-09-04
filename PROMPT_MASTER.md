@@ -817,7 +817,7 @@ Gli alias senza valore vanno configurati nel secret/config store di Render. Non 
 
 ## Appendice D — Tutti i router e tutti gli endpoint
 
-Route table sorgente: **1153**; attivi da ricreare: **757**; quarantena: **396** (`verificare` 366, `admin-only` 30).
+Route table sorgente: **1155**; attivi da ricreare: **757**; quarantena: **398** (`verificare` 368, `admin-only` 30).
 
 `attivo` significa da ricreare con contratto e test; `quarantena` significa non esporre nel nuovo runtime finché consumer, autorizzazione e test non sono provati. L'elenco è completo e include entrambe le categorie.
 
@@ -889,8 +889,9 @@ Route table sorgente: **1153**; attivi da ricreare: **757**; quarantena: **396**
 - **attivo** — `DELETE /api/piano-conti/{conto_id}` — in uso: FE
 - **attivo** — `PUT /api/piano-conti/{conto_id}` — in uso: FE
 
-### Router `accounting.prima_nota_salari` (21)
+### Router `accounting.prima_nota_salari` (23)
 
+- **quarantena: verificare** — `POST /api/prima-nota-salari/bonifica-doppioni` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **quarantena: verificare** — `POST /api/prima-nota-salari/consolida-record` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **quarantena: admin-only** — `POST /api/prima-nota-salari/deposita-cedolini-in-hr` — endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7)
 - **attivo** — `GET /api/prima-nota-salari/dipendenti-lista` — in uso: FE
@@ -912,6 +913,7 @@ Route table sorgente: **1153**; attivi da ricreare: **757**; quarantena: **396**
 - **attivo** — `GET /api/prima-nota-salari/salari/{record_id}/cedolino-pdf` — in uso: FE
 - **attivo** — `POST /api/prima-nota-salari/salari/{record_id}/cedolino-pdf` — in uso: FE
 - **attivo** — `PUT /api/prima-nota-salari/salari/{record_id}/riconcilia` — in uso: FE
+- **quarantena: verificare** — `POST /api/prima-nota-salari/sync-hr` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 
 ### Router `accounting.regole_categorizzazione` (7)
 

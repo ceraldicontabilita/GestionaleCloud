@@ -495,6 +495,36 @@ archivi (12/12, 12/12, 12/12, 13/13). Discrepanze:
   questa PR è il verso opposto (HR → prima nota salari) e va costruita sulla
   stessa chiave `(codice_fiscale, anno, mese, tipo_cedolino)` per non creare
   un terzo sistema.
+- **stato 04/09/2026: fatte PR 14/15.** Chiave logica condivisa
+  `(codice_fiscale risolto per nome se assente, anno, mese, tipo_cedolino
+  canonico — vocabolario HR, "mensile"→"ordinario") in
+  `app/services/prima_nota_salari_chiave.py`, riusata dai due canali che
+  scrivono `prima_nota_salari` (`POST /import-salari-verificati` in
+  `app/routers/accounting/prima_nota_salari.py`, `sincronizza_prima_nota_da_cedolini`
+  in `app/services/salari_sync.py`: entrambi ora risolvono il CF mancante
+  dal nome — causa reale dei doppioni, il canale Excel non scrive mai il
+  CF — prima di decidere se aggiornare una riga esistente o crearne una
+  nuova; mai sovrascritto un `importo_bonifico` già registrato). Bonifica
+  doppioni: `app/services/bonifica_prima_nota_salari_doppioni.py` +
+  `POST /api/prima-nota-salari/bonifica-doppioni` (dry-run di default) —
+  confermate sui dati reali 2 buste duplicate di maggio 2026 (Ceraldi
+  Valerio, Ceraldi Vincenzo, netto 2.000 doppio) marcate (mai cancellate) e
+  3 righe di dicembre 2025 (Murolo, Parisi, Pocci) con bonifico già
+  agganciato ma `importo_bonifico=0` riallineate; le righe con la stessa
+  identità ma importo diverso (Ceraldi Antonietta 12/2025, Ceraldi
+  Valerio/Vincenzo 05/2026, Parisi 05/2026) restano segnalate, mai scelte in
+  automatico. Sync HR: `app/services/salari_sync_hr.py` (sola lettura da
+  `app_cedolini`) + `POST /api/prima-nota-salari/sync-hr` — confermate 26
+  righe mancanti (gennaio 12 + luglio 14 2026); il conteggio "9 senza
+  cedolino" si è affinato in due liste distinte e più precise (mai
+  overlappate): 6 righe di prima nota senza alcun cedolino HR sotto la
+  stessa chiave (Sankapala: dicembre 2025 — netto 1.039 uguale ma HR lo
+  data ottobre 2025, mese errato nell'import — più febbraio-giugno 2026) e
+  4 casi di importo diverso sotto la stessa chiave (già nella bonifica
+  doppioni sopra). Dopo la creazione delle righe di gennaio, `sync-hr`
+  richiama da solo `riallinea_competenza_bonifici_stipendi` (PR 13) sugli
+  anni toccati. Dettagli, comandi ed esiti del dry-run reale in fondo alla
+  sessione di lavoro corrispondente.
 
 ---
 

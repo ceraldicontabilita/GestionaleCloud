@@ -131,16 +131,34 @@ async def sincronizza_prima_nota_da_cedolini(
             }},
         )
 
+    # Mai far coincidere una nuova busta con una copia gia' marcata duplicata
+    # dalla bonifica (PR 14, audit 03/09/2026 §5).
+    from app.services.scritture_contabili import FILTRO_MOVIMENTO_ATTIVO
+    from app.services.prima_nota_salari_chiave import (
+        carica_indice_dipendenti,
+        risolvi_codice_fiscale,
+    )
+
     pn_rows = await db["prima_nota_salari"].find(
-        periodo_contabile, {"_id": 0}
+        {**periodo_contabile, **FILTRO_MOVIMENTO_ATTIVO}, {"_id": 0}
     ).to_list(20000)
     per_cedolino = {
         str(row.get("cedolino_id")): row
         for row in pn_rows if row.get("cedolino_id")
     }
+    # PR 14 (audit 03/09/2026 §5): il canale import Excel/indice cedolini
+    # Drive non scrive il codice fiscale sulla riga. Senza risolverlo dal
+    # nome (anagrafica, match univoco), questo sync non riconosce la busta
+    # gia' creata da quel canale e ne crea una seconda con lo stesso netto —
+    # causa verificata dei doppioni di Ceraldi Valerio/Vincenzo 05/2026.
+    indice_dipendenti = await carica_indice_dipendenti(db)
     per_chiave: Dict[Tuple[str, int, int, str], Dict[str, Any]] = {}
     for row in pn_rows:
-        key = _chiave(row, _tipo_normalizzato(row.get("tipo_cedolino")))
+        cf_risolto = str(row.get("codice_fiscale") or "").strip().upper() or (
+            risolvi_codice_fiscale(row, indice_dipendenti)
+        )
+        row_per_chiave = {**row, "codice_fiscale": cf_risolto} if cf_risolto else row
+        key = _chiave(row_per_chiave, _tipo_normalizzato(row.get("tipo_cedolino")))
         if key and key not in per_chiave:
             per_chiave[key] = row
 

@@ -62,10 +62,11 @@ class _Collection:
 
 
 class _Db:
-    def __init__(self, cedolini, salari):
+    def __init__(self, cedolini, salari, dipendenti=None):
         self.collections = {
             "cedolini": _Collection(cedolini),
             "prima_nota_salari": _Collection(salari),
+            "dipendenti": _Collection(dipendenti or []),
         }
 
     def __getitem__(self, name):

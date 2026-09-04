@@ -34,6 +34,7 @@ from app.services.bonifici_pdf_ingest import arricchisci_nomi_salari_da_cedolini
 from app.services.identity_matching import nome_presente_nel_testo, nome_tokens
 from app.services.accounting_relation_writers import record_salary_reconciliation
 from app.services.entity_relations import relation_key, revoke_entity_relation
+from app.services.scritture_contabili import FILTRO_MOVIMENTO_ATTIVO
 
 logger = logging.getLogger(__name__)
 
@@ -244,7 +245,7 @@ def _importo_movimento(movimento: Dict[str, Any]) -> float:
         return 0.0
 
 
-def _campi_riga_da_movimenti(
+def campi_riga_da_movimenti_stipendio(
     riga: Dict[str, Any], movimenti: List[Dict[str, Any]], now: str,
 ) -> Dict[str, Any]:
     """Stato di pagamento della riga ricalcolato dai movimenti collegati.
@@ -310,7 +311,7 @@ async def riallinea_competenza_bonifici_stipendi(
     Idempotente: una seconda esecuzione non trova piu' nulla da fare.
     ``dry_run=True`` non scrive niente.
     """
-    filtro: Dict[str, Any] = {}
+    filtro: Dict[str, Any] = dict(FILTRO_MOVIMENTO_ATTIVO)
     if anno:
         filtro["anno"] = int(anno)
     righe = await db["prima_nota_salari"].find(filtro, {"_id": 0}).to_list(20000)
@@ -318,7 +319,7 @@ async def riallinea_competenza_bonifici_stipendi(
         # Le destinazioni possono stare nell'anno precedente (bonifico di
         # gennaio -> dicembre): servono anche quelle righe.
         righe_prec = await db["prima_nota_salari"].find(
-            {"anno": int(anno) - 1}, {"_id": 0}
+            {"anno": int(anno) - 1, **FILTRO_MOVIMENTO_ATTIVO}, {"_id": 0}
         ).to_list(20000)
         righe = righe + [r for r in righe_prec if r.get("id") not in {x.get("id") for x in righe}]
     per_id = {str(r.get("id")): r for r in righe if r.get("id")}
@@ -426,11 +427,11 @@ async def riallinea_competenza_bonifici_stipendi(
         await db["prima_nota_salari"].update_one(
             {"id": riga_id},
             {"$set": {
-                **_campi_riga_da_movimenti(riga, collegati.get(riga_id, []), now),
+                **campi_riga_da_movimenti_stipendio(riga, collegati.get(riga_id, []), now),
                 "riallineo_competenza": MOTIVO_RIALLINEO_COMPETENZA,
             }},
         )
-        riga.update(_campi_riga_da_movimenti(riga, collegati.get(riga_id, []), now))
+        riga.update(campi_riga_da_movimenti_stipendio(riga, collegati.get(riga_id, []), now))
 
     for spostamento in esito["spostamenti"]:
         movimento = movimenti_cache[spostamento["movimento_id"]]
@@ -525,7 +526,7 @@ async def recupera_relazioni_stipendi_mancanti(
     stesse verifiche di identita', periodo/data e residuo dell'associazione
     ordinaria. La funzione non modifica salari o movimenti ed e' idempotente.
     """
-    filtro: Dict[str, Any] = {}
+    filtro: Dict[str, Any] = dict(FILTRO_MOVIMENTO_ATTIVO)
     if anno:
         filtro["anno"] = int(anno)
     if stipendio_id:
@@ -668,7 +669,7 @@ async def associa_bonifici_stipendi(
             "riferimenti_non_verificati": 0,
             "errori": 1,
         }
-    filtro: Dict[str, Any] = {"riconciliato": {"$ne": True}}
+    filtro: Dict[str, Any] = {"riconciliato": {"$ne": True}, **FILTRO_MOVIMENTO_ATTIVO}
     if stipendio_id:
         filtro["id"] = stipendio_id
     if anno:
