@@ -133,7 +133,11 @@ sempre la sorgente persistente.
   (`/hr/api/health`, `/hr/api/auth/pin-login`, `/hr/api/dipendenti-cloud/...`).
 - **Login proprio**, non quello del gestionale: tocca-il-nome + PIN personale
   per i dipendenti, "Accesso amministratore" con il PIN dell'env `HR_PIN_CODE`;
-  JWT firmato con `HR_JWT_SECRET` (sessione dipendente 7 giorni, admin 2 ore).
+  JWT firmato con `HR_JWT_SECRET` (sessione dipendente e admin: 7 giorni,
+  finché non si preme "Esci" — prima l'admin era 2 ore, cambiato il 04/09/2026
+  perché `RequireRole` in `frontend_hr/src/main.jsx` controlla l'`exp` del
+  JWT ad ogni cambio pagina, quindi bastava restare sull'app oltre le 2 ore
+  perché la navigazione successiva rimandasse al PIN).
   Il middleware del gestionale non c'entra: `/hr/...` è fuori da `/api/`.
   I ruoli `dipendente`/`responsabile_turni` non esistono più in
   `app/utils/ruoli.py`.

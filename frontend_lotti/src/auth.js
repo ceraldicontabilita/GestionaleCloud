@@ -22,18 +22,21 @@ export const withToken = (url) => {
   return url + (url.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(t);
 };
 
-// ── Cancello a tempo (richiesta Enzo 02/07/2026): il PIN resta valido 2 ORE
-// su TUTTE le pagine, anche uscendo/rientrando o riaprendo la scheda.
-// (prima era sessionStorage per-scheda: ogni nuova scheda richiedeva il PIN)
+// ── Cancello (richiesta Enzo, aggiornata 04/09/2026): il PIN inserito resta
+// valido su TUTTE le pagine e tra riaperture della scheda finché non si preme
+// "Esci" — niente più scadenza a tempo (era 2 ore) indipendente dal token: il
+// JWT viene rinnovato ogni ora da startTokenAutoRefresh() e resta vivo finché
+// l'app è aperta, ma il vecchio cancello a 2 ore chiedeva comunque di nuovo il
+// PIN a metà lavoro anche con un token perfettamente valido. Ora il cancello
+// segue lo stesso confine del token: aperto finché c'è un token, richiuso solo
+// da un logout esplicito o da un vero 401 del server (intercettato da axios).
 const GATE_KEY = "lotti_gate_until";
-export const GATE_DURATA_MS = 2 * 60 * 60 * 1000;
 export function setGateOk() {
-  try { localStorage.setItem(GATE_KEY, String(Date.now() + GATE_DURATA_MS)); } catch { /* no-op */ }
+  try { localStorage.setItem(GATE_KEY, "1"); } catch { /* no-op */ }
 }
 export function gateStillValid() {
   try {
-    const fino = Number(localStorage.getItem(GATE_KEY) || 0);
-    return !!getToken() && fino > Date.now();
+    return !!getToken() && localStorage.getItem(GATE_KEY) === "1";
   } catch { return false; }
 }
 export function clearGate() {
@@ -47,7 +50,11 @@ export function clearGate() {
 // anche tra schede o riaperture accidentali del browser; l'uscita esplicita
 // continua invece a cancellare la sessione operatore.
 // Richiesta Enzo 03/07/2026: "deve persistere per due ore" (uscire da una
-// card e rientrare non deve richiedere di nuovo il PIN admin).
+// card e rientrare non deve richiedere di nuovo il PIN admin). Resta a tempo
+// (a differenza del cancello principale sopra): qui il PIN protegge l'uscita
+// da un tablet condiviso in negozio verso il gestionale completo, un confine
+// fisico diverso dal semplice cambio pagina.
+const GATE_DURATA_MS = 2 * 60 * 60 * 1000;
 const ADMIN_GATE_KEY = "tablet_admin_until";
 export function setAdminGateOk() {
   try { localStorage.setItem(ADMIN_GATE_KEY, String(Date.now() + GATE_DURATA_MS)); } catch { /* no-op */ }
