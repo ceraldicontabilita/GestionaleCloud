@@ -190,6 +190,10 @@ async def get_prima_nota_salari(
     await arricchisci_nomi_salari_da_cedolini(db)
     
     query = filtro_periodo_prima_nota()
+    # Le copie marcate dalla bonifica doppioni (PR 14, audit 03/09/2026 §5)
+    # restano nel DB per l'audit ma non devono comparire in nessuna vista.
+    query["entity_status"] = {"$ne": "deleted"}
+    query["status"] = {"$nin": ["deleted", "archived"]}
     if anno:
         query["anno"] = anno
     if mese:
@@ -452,6 +456,57 @@ async def backfill_deposita_cedolini_in_hr(
     from app.services.hr_cedolini_deposito import deposita_tutti_i_cedolini
 
     return await deposita_tutti_i_cedolini(Database.get_db(), dry_run=dry_run)
+
+
+@router.post("/bonifica-doppioni")
+async def bonifica_prima_nota_salari_doppioni(
+    dry_run: bool = Query(True, description="True = solo analisi; False = marca i doppioni"),
+    current_user: dict = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """PR 14 (audit 03/09/2026 §5): doppioni tra il canale busta/Excel e il
+    canale cedolino di ``prima_nota_salari`` (nessuna chiave unica finora).
+
+    ``dry_run=true`` (default) ritorna i gruppi di doppioni certi (stessa
+    identita' — CF risolto, anno, mese, tipo cedolino — e stesso importo),
+    le righe con la stessa identita' ma importo diverso (mai toccate, solo
+    segnalate) e le righe con un bonifico gia' agganciato ma
+    ``importo_bonifico``/saldo mai riallineati. ``dry_run=false`` marca
+    (``entity_status="deleted"`` + ``duplicate_of``, mai una cancellazione
+    fisica) e riallinea i pagamenti.
+    """
+    from app.services.bonifica_prima_nota_salari_doppioni import esegui
+
+    db = Database.get_db()
+    actor = current_user.get("sub") or current_user.get("username") or "admin"
+    return await esegui(db, dry_run=dry_run, actor=actor)
+
+
+@router.post("/sync-hr")
+async def sincronizza_prima_nota_salari_da_hr(
+    dry_run: bool = Query(True, description="True = solo report; False = crea le righe mancanti"),
+    anno: Optional[int] = Query(None, description="Limita il confronto a un anno"),
+    current_user: dict = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """PR 15 (audit 03/09/2026 §5): confronto/allineamento con l'archivio
+    cedolini HR (``app_cedolini``, fonte canonica dei netti — decisione del
+    titolare 03/09/2026 "Cedolini: un solo sistema"). Sola lettura verso HR:
+    non scrive mai in ``app_cedolini``.
+
+    ``dry_run=true`` (default) ritorna i due elenchi di verifica —
+    ``cedolini_senza_prima_nota`` (busta HR senza riga in questo registro) e
+    ``prima_nota_senza_cedolino_hr`` (riga qui senza cedolino HR
+    corrispondente) — e le ``discrepanze`` (stessa identita', netto
+    diverso: mai risolte in automatico). ``dry_run=false`` crea le righe
+    mancanti e, se ne crea, richiama il riallineo dei bonifici stipendio
+    (PR 13, ``stipendi_bonifici.riallinea_competenza_bonifici_stipendi``)
+    sugli anni toccati, per agganciare i bonifici lasciati "senza
+    destinazione" da quella PR.
+    """
+    from app.services.salari_sync_hr import sincronizza_da_hr
+
+    db = Database.get_db()
+    actor = current_user.get("sub") or current_user.get("username") or "admin"
+    return await sincronizza_da_hr(db, dry_run=dry_run, anno=anno, actor=actor)
 
 
 @router.post("/salari/{record_id}/bonifico-pdf")
@@ -1000,12 +1055,33 @@ async def import_salari_verificati(data: Dict[str, Any] = Body(...)) -> Dict[str
     Il payload e' idempotente per dipendente, periodo, importo e sorgente. Ogni
     riga resta una busta dovuta e non viene mai trasformata in pagamento.
     """
+    from app.services.prima_nota_salari_chiave import (
+        carica_indice_dipendenti,
+        chiave_logica_riga,
+        tipo_cedolino_canonico,
+    )
+    from app.services.scritture_contabili import FILTRO_MOVIMENTO_ATTIVO
+
     db = Database.get_db()
     righe = data.get("righe") or []
     if not isinstance(righe, list) or not righe:
         raise HTTPException(status_code=400, detail="righe deve essere una lista non vuota")
     if len(righe) > 5000:
         raise HTTPException(status_code=413, detail="Massimo 5000 righe per richiesta")
+
+    # PR 14 (audit 03/09/2026 §5): senza CF sulla riga, questo canale non si
+    # accorgeva di scrivere la stessa busta gia' creata dal sync cedolini
+    # (chiave ``import_key`` diversa perche' incorpora l'importo). Un solo
+    # indice caricato una volta, mai una query per riga.
+    indice_dipendenti = await carica_indice_dipendenti(db)
+    righe_attive = await db["prima_nota_salari"].find(
+        dict(FILTRO_MOVIMENTO_ATTIVO), {"_id": 0}
+    ).to_list(20000)
+    per_chiave_canonica: Dict[Any, Dict[str, Any]] = {}
+    for riga_db in righe_attive:
+        chiave_db = chiave_logica_riga(riga_db, indice_dipendenti)
+        if chiave_db and chiave_db not in per_chiave_canonica:
+            per_chiave_canonica[chiave_db] = riga_db
 
     created = 0
     duplicates = 0
@@ -1037,32 +1113,56 @@ async def import_salari_verificati(data: Dict[str, Any] = Body(...)) -> Dict[str
                 continue
 
             import_key = _chiave_busta_excel(dipendente, anno, mese, importo)
-            existing = await db["prima_nota_salari"].find_one(
-                {"import_key": import_key}, {"_id": 0}
+            tipo_canonico = tipo_cedolino_canonico(row.get("tipo_cedolino"))
+            codice_fiscale = str(row.get("codice_fiscale") or "").strip().upper() or (
+                indice_dipendenti.cf_per_nome(dipendente)
             )
+            chiave_canonica = (
+                (codice_fiscale, anno, mese, tipo_canonico) if codice_fiscale else None
+            )
+            existing = (
+                per_chiave_canonica.get(chiave_canonica) if chiave_canonica else None
+            )
+            if existing is None:
+                existing = await db["prima_nota_salari"].find_one(
+                    {"import_key": import_key}, {"_id": 0}
+                )
             if existing:
-                if (
-                    existing.get("source") != "indice_cedolini_drive"
-                    or (source_url and existing.get("source_url") != source_url)
-                    or existing.get("tipo") != "busta"
-                    or float(existing.get("importo_bonifico") or 0) != 0
-                ):
-                    await db["prima_nota_salari"].update_one(
-                        {"id": existing["id"]},
-                        {"$set": {
-                            "source": "indice_cedolini_drive",
-                            "source_url": source_url or existing.get("source_url"),
-                            "document_status": status,
-                            "payment_status": "DA_ASSEGNARE",
-                            "tipo": "busta",
-                            "importo_busta_documentato": round(importo, 2),
-                            "importo_bonifico": 0,
-                            "importo_bonifico_documentato": 0,
-                            "saldo": round(-importo, 2),
-                            "riconciliato": False,
-                            "updated_at": datetime.now(timezone.utc).isoformat(),
-                        }},
-                    )
+                # Mai sovrascrittura distruttiva (PR 14, audit 03/09/2026
+                # §5): un bonifico gia' registrato da un altro canale
+                # (``importo_bonifico`` diverso da zero) non viene mai
+                # riportato a zero da un reimport della sola busta.
+                bonifico_gia_registrato = float(existing.get("importo_bonifico") or 0) != 0
+                importo_documentato_prima = float(
+                    existing.get("importo_busta_documentato")
+                    or existing.get("importo_busta") or 0
+                )
+                aggiornamento: Dict[str, Any] = {
+                    "source": "indice_cedolini_drive",
+                    "source_url": source_url or existing.get("source_url"),
+                    "document_status": status,
+                    "payment_status": existing.get("payment_status") or "DA_ASSEGNARE",
+                    "tipo": existing.get("tipo") or "busta",
+                    "import_key": existing.get("import_key") or import_key,
+                    "importo_busta_documentato": round(importo, 2),
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }
+                if not bonifico_gia_registrato and abs(importo_documentato_prima - importo) > 0.009:
+                    aggiornamento.update({
+                        "importo_busta": round(importo, 2),
+                        "saldo": round(-importo, 2),
+                    })
+                if not existing.get("codice_fiscale") and codice_fiscale:
+                    aggiornamento["codice_fiscale"] = codice_fiscale
+                    dip = indice_dipendenti.dipendente_per_cf(codice_fiscale)
+                    if dip and not existing.get("dipendente_id"):
+                        aggiornamento["dipendente_id"] = dip.get("id")
+                await db["prima_nota_salari"].update_one(
+                    {"id": existing["id"]}, {"$set": aggiornamento}
+                )
+                existing = {**existing, **aggiornamento}
+                if chiave_canonica:
+                    per_chiave_canonica[chiave_canonica] = existing
                 duplicates += 1
                 continue
 
@@ -1070,9 +1170,16 @@ async def import_salari_verificati(data: Dict[str, Any] = Body(...)) -> Dict[str
             new_record = {
                 "id": str(uuid.uuid4()),
                 "dipendente": dipendente,
+                "codice_fiscale": codice_fiscale or None,
+                "dipendente_id": (
+                    indice_dipendenti.dipendente_per_cf(codice_fiscale).get("id")
+                    if codice_fiscale and indice_dipendenti.dipendente_per_cf(codice_fiscale)
+                    else None
+                ),
                 "anno": anno,
                 "mese": mese,
                 "mese_nome": MESI_NOMI[mese - 1],
+                "tipo_cedolino": tipo_canonico,
                 "importo_busta": round(importo, 2),
                 "importo_busta_documentato": round(importo, 2),
                 "importo_bonifico": 0,
@@ -1091,6 +1198,8 @@ async def import_salari_verificati(data: Dict[str, Any] = Body(...)) -> Dict[str
                 "updated_at": now,
             }
             nuovi_record.append(new_record)
+            if chiave_canonica:
+                per_chiave_canonica[chiave_canonica] = new_record
         except Exception as exc:
             errors.append(f"Riga {idx}: {exc}")
 

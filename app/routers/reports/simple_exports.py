@@ -12,6 +12,7 @@ import io
 import logging
 
 from app.database import Database
+from app.services.scritture_contabili import FILTRO_MOVIMENTO_ATTIVO
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -238,7 +239,11 @@ async def export_salari(
     """Export Prima Nota Salari."""
     db = Database.get_db()
     
-    query = {}
+    # Audit-codice 04/09/2026: l'export mostrava anche le righe marcate come
+    # doppioni dalla bonifica (entity_status/status="deleted") -> un
+    # commercialista che esporta i salari vedeva la busta di maggio due
+    # volte. Stesso filtro di riga attiva usato dal motore Prima Nota.
+    query = dict(FILTRO_MOVIMENTO_ATTIVO)
     if data_da:
         query["data"] = {"$gte": data_da}
     if data_a:

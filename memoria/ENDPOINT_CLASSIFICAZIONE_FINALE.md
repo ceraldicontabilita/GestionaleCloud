@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1153 · tenere: 757 · verificare: 366 · admin-only (migrazione/manutenzione): 30
+**Totale endpoint:** 1155 · tenere: 757 · verificare: 368 · admin-only (migrazione/manutenzione): 30
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -899,6 +899,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/previsioni-acquisti/previsioni` | previsioni_acquisti | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/previsioni-acquisti/prodotti` | previsioni_acquisti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/previsioni-acquisti/statistiche` | previsioni_acquisti | sì | — | — | — | sì | tenere | in uso: FE |
+| `POST /api/prima-nota-salari/bonifica-doppioni` | accounting.prima_nota_salari | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/prima-nota-salari/consolida-record` | accounting.prima_nota_salari | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/prima-nota-salari/deposita-cedolini-in-hr` | accounting.prima_nota_salari | — | — | — | sì | sì | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
 | `GET /api/prima-nota-salari/dipendenti-lista` | accounting.prima_nota_salari | sì | — | — | — | sì | tenere | in uso: FE |
@@ -906,7 +907,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/prima-nota-salari/import-bonifici` | accounting.prima_nota_salari | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/prima-nota-salari/import-paghe` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/prima-nota-salari/import-salari-ricostruiti` | accounting.prima_nota_salari | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/prima-nota-salari/import-salari-verificati` | accounting.prima_nota_salari | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/prima-nota-salari/import-salari-verificati` | accounting.prima_nota_salari | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `DELETE /api/prima-nota-salari/pulisci-righe-vuote` | accounting.prima_nota_salari | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/prima-nota-salari/ricalcola-progressivi` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/prima-nota-salari/salari` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
@@ -920,6 +921,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/prima-nota-salari/salari/{record_id}/cedolino-pdf` | accounting.prima_nota_salari | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/prima-nota-salari/salari/{record_id}/cedolino-pdf` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
 | `PUT /api/prima-nota-salari/salari/{record_id}/riconcilia` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/prima-nota-salari/sync-hr` | accounting.prima_nota_salari | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/prima-nota/anni-disponibili` | prima_nota_module.stats | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/prima-nota/annulla-associazione-fattura-banca` | prima_nota_module.manutenzione | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/prima-nota/arricchisci-pagamenti-banca` | prima_nota_module.manutenzione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
