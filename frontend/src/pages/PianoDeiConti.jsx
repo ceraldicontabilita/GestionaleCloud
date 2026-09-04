@@ -43,6 +43,7 @@ export default function PianoDeiConti() {
   const confirm = useConfirm();
   const { anno: annoGlobale } = useAnnoGlobale();
   const [_conti, setConti] = useState([]);
+  const [pianoInfo, setPianoInfo] = useState({ totale: 0, nonMappati: [] });
   const [grouped, setGrouped] = useState({});
   const [regole, setRegole] = useState([]);
   const [bilancio, setBilancio] = useState(null);
@@ -62,7 +63,7 @@ export default function PianoDeiConti() {
       setLoadingDetail(true);
       try {
         const res = await api.get(
-          `/api/piano-conti/conto/${conto.codice}/movimenti?limit=40&anno=${annoGlobale}`
+          `/api/piano-conti/conto/${conto.codice}/movimenti?limit=40&anno=${annoGlobale}&schema=cee`
         );
         setContoDetail(res.data);
       } catch (e) {
@@ -132,15 +133,6 @@ export default function PianoDeiConti() {
   }, [location.pathname]);
   const [expandedCategories, setExpandedCategories] = useState(['attivo', 'passivo', 'costi']);
 
-  // Modal nuovo conto
-  const [showNewConto, setShowNewConto] = useState(false);
-  const [newConto, setNewConto] = useState({
-    codice: '',
-    nome: '',
-    categoria: 'costi',
-    natura: 'economico',
-  });
-
   // Modal nuova regola
   const [showNewRegola, setShowNewRegola] = useState(false);
   const [newRegola, setNewRegola] = useState({
@@ -166,6 +158,10 @@ export default function PianoDeiConti() {
 
       const groupedConti = contiRes.data?.grouped || {};
       setConti(contiRes.data?.conti || []);
+      setPianoInfo({
+        totale: contiRes.data?.totale || (contiRes.data?.conti || []).length,
+        nonMappati: contiRes.data?.conti_operativi_non_mappati || [],
+      });
       setGrouped(groupedConti);
       setRegole(regoleRes.data?.regole || []);
       // Difesa sulla forma: se il backend risponde con payload vuoto/inatteso
@@ -183,21 +179,6 @@ export default function PianoDeiConti() {
     setExpandedCategories(prev =>
       prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
     );
-  };
-
-  const handleCreateConto = async () => {
-    if (!newConto.codice || !newConto.nome) {
-      toast.error('Codice e nome sono obbligatori');
-      return;
-    }
-    try {
-      await api.post('/api/piano-conti/', newConto);
-      setShowNewConto(false);
-      setNewConto({ codice: '', nome: '', categoria: 'costi', natura: 'economico' });
-      loadData();
-    } catch (error) {
-      toast.error('Errore: ' + (error.response?.data?.detail || error.message));
-    }
   };
 
   const handleRiclassificaAI = async () => {
@@ -327,13 +308,26 @@ export default function PianoDeiConti() {
         {activeTab === 'conti' && (
           <>
             <div style={{ marginBottom: 15, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-              <Button
-                variant="primary"
-                onClick={() => setShowNewConto(true)}
-                data-testid="new-conto-btn"
+              <div
+                data-testid="piano-cee-nota"
+                style={{
+                  padding: '8px 12px',
+                  fontSize: 13,
+                  borderRadius: BORDER_RADIUS.sm,
+                  background: COLORS.bgAlt,
+                  border: `1px solid ${COLORS.border}`,
+                  color: COLORS.textMuted,
+                }}
               >
-                ➕ Nuovo Conto
-              </Button>
+                Piano dei conti <strong>CEE ufficiale</strong> del bilancio del commercialista
+                ({pianoInfo.totale} conti): i conti non si creano a mano; il vecchio codice
+                operativo compare come <em>alias</em>.
+                {pianoInfo.nonMappati.length > 0 && (
+                  <span style={{ color: COLORS.danger }}>
+                    {' '}Conti operativi senza alias CEE: {pianoInfo.nonMappati.map(c => c.codice).join(', ')}.
+                  </span>
+                )}
+              </div>
 
               <Button
                 variant="warning"
@@ -410,8 +404,9 @@ export default function PianoDeiConti() {
                           <Table>
                             <thead>
                               <tr>
-                                <Th>Codice</Th>
+                                <Th>Codice CEE</Th>
                                 <Th>Nome Conto</Th>
+                                <Th>Alias operativo</Th>
                                 <Th align="center">Natura</Th>
                                 <Th align="right">Saldo</Th>
                               </tr>
@@ -451,6 +446,9 @@ export default function PianoDeiConti() {
                                     </span>
                                   </Td>
                                   <Td>{conto.nome}</Td>
+                                  <Td mono style={{ fontSize: 12, color: COLORS.textMuted }}>
+                                    {(conto.alias_operativi || []).join(', ') || '—'}
+                                  </Td>
                                   <Td align="center">
                                     <Badge variant={conto.natura === 'finanziario' ? 'info' : 'neutral'}>
                                       {conto.natura}
@@ -565,129 +563,6 @@ export default function PianoDeiConti() {
               </Table>
             </TableWrap>
           </>
-        )}
-
-        {/* Modal Nuovo Conto */}
-        {showNewConto && (
-          <div
-            style={{
-              position: 'fixed',
-              inset: 0,
-              background: 'rgba(0,0,0,0.5)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 1000,
-            }}
-            onClick={() => setShowNewConto(false)}
-          >
-            <div
-              style={{
-                background: COLORS.card,
-                borderRadius: BORDER_RADIUS.md,
-                padding: 24,
-                maxWidth: 450,
-                width: '90%',
-                boxShadow: SHADOWS.modal,
-              }}
-              onClick={e => e.stopPropagation()}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <h2 style={{ marginTop: 0 }}>➕ Nuovo Conto</h2>
-                <button
-                  onClick={() => setShowNewConto(false)}
-                  aria-label="Chiudi"
-                  style={{
-                    width: 32,
-                    height: 32,
-                    flexShrink: 0,
-                    background: COLORS.gray[100],
-                    border: 'none',
-                    borderRadius: BORDER_RADIUS.md,
-                    color: COLORS.gray[600],
-                    fontSize: 16,
-                    lineHeight: 1,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  ✕
-                </button>
-              </div>
-
-              <div style={{ display: 'grid', gap: 15 }}>
-                <div>
-                  <label
-                    style={{ display: 'block', marginBottom: 5, fontWeight: 'bold', fontSize: 13 }}
-                  >
-                    Codice (es. 05.02.03) *
-                  </label>
-                  <Input
-                    type="text"
-                    value={newConto.codice}
-                    onChange={e => setNewConto({ ...newConto, codice: e.target.value })}
-                    placeholder="05.02.03"
-                    style={{ fontFamily: MONO }}
-                  />
-                </div>
-                <div>
-                  <label
-                    style={{ display: 'block', marginBottom: 5, fontWeight: 'bold', fontSize: 13 }}
-                  >
-                    Nome Conto *
-                  </label>
-                  <Input
-                    type="text"
-                    value={newConto.nome}
-                    onChange={e => setNewConto({ ...newConto, nome: e.target.value })}
-                    placeholder="Spese telefoniche"
-                  />
-                </div>
-                <div>
-                  <label
-                    style={{ display: 'block', marginBottom: 5, fontWeight: 'bold', fontSize: 13 }}
-                  >
-                    Categoria *
-                  </label>
-                  <Select
-                    value={newConto.categoria}
-                    onChange={e => setNewConto({ ...newConto, categoria: e.target.value })}
-                  >
-                    {Object.entries(CATEGORIE).map(([key, cat]) => (
-                      <option key={key} value={key}>
-                        {cat.icon} {cat.nome}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-                <div>
-                  <label
-                    style={{ display: 'block', marginBottom: 5, fontWeight: 'bold', fontSize: 13 }}
-                  >
-                    Natura
-                  </label>
-                  <Select
-                    value={newConto.natura}
-                    onChange={e => setNewConto({ ...newConto, natura: e.target.value })}
-                  >
-                    <option value="economico">Economico</option>
-                    <option value="finanziario">Finanziario</option>
-                  </Select>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: 10, marginTop: 20, justifyContent: 'flex-end' }}>
-                <Button variant="secondary" onClick={() => setShowNewConto(false)}>
-                  Annulla
-                </Button>
-                <Button variant="primary" onClick={handleCreateConto}>
-                  ➕ Crea Conto
-                </Button>
-              </div>
-            </div>
-          </div>
         )}
 
         {/* Modal Nuova Regola */}
@@ -916,6 +791,11 @@ export default function PianoDeiConti() {
                       <div style={{ color: 'rgba(255,255,255,0.9)', fontSize: 16, marginTop: 4 }}>
                         {selectedConto.nome}
                       </div>
+                      {(selectedConto.alias_operativi || []).length > 0 && (
+                        <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: 12, marginTop: 4, fontFamily: MONO }}>
+                          alias operativo: {selectedConto.alias_operativi.join(', ')}
+                        </div>
+                      )}
                     </div>
                     <button
                       onClick={closeDrawer}

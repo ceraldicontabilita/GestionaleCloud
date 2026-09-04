@@ -13,7 +13,27 @@ storage_architecture: drive-only
 > canonico del sistema (scelta utente: *il piano dei conti è solo CEE*).
 > Dati in `app/services/piano_conti_ufficiale.py` (rigenerati dal PDF, non a mano).
 
-**231 conti** su **28 macro-gruppi.**
+**240 conti** su **28 macro-gruppi**: i **231** del bilancio ufficiale piu' i **9
+conti dei circuiti di incasso elettronico** aggiunti in codice (marcati `[POS]` qui
+sotto; decisione utente 07-08/2026, `app/services/conti_pos.py`): `15.07`,
+`15.07.01/02/03` crediti verso Numia/SumUp/PayPal, `19.01.05` conto Mastercard
+SumUp, `75.01.07.01-04` sottoconti delle commissioni. Non sono conti nuovi in
+senso contabile: articolano voci gia' presenti nel bilancio (crediti vari,
+disponibilita' liquide, commissioni bancarie) per tenere distinti i circuiti.
+
+> **Un solo piano dei conti (audit del commercialista 03/09/2026, PR 7).** La
+> collezione `piano_conti` (31 conti "operativi" `01.01.01 Cassa`, `02.01.01
+> Debiti v/fornitori`, `05.01.01 Acquisto merci`, ...) e' **dismessa**: le API
+> (`GET /api/piano-conti/`, `/bilancio`, `/conto/{codice}/movimenti`) espongono
+> i conti di questa tabella e i vecchi codici operativi restano soltanto **alias**
+> (`app/services/mapping_piano_conti.py::OPERATIVO_A_UFFICIALE`, tabella completa
+> anche per il piano operativo "esteso" del dizionario articoli). Ogni riga di
+> Prima Nota porta `conto_contabile` (conto di tesoreria: `19.01.01` Banca c/c,
+> `19.03.03` Cassa contanti, `19.01.05` Mastercard SumUp o un credito `15.07.xx`)
+> e `conto_contropartita` CEE dedotto dalla categoria (Fatture/Assegni/PayPal →
+> `33.03.01`, Stipendi → `39.07.01`, TFR → `39.07.05`, Commissioni → `75.01.07.xx`,
+> Finanziamento soci → `31.03.15`, Corrispettivi → `47.01.03`, ...); un conto fuori
+> da questa tabella viene rifiutato dal motore unico `scritture_contabili`.
 
 ## 03 — IMMOBILIZZAZIONI IMMATERIALI  ·  [SP / attivo / B.I Immobilizzazioni immateriali]
 
@@ -66,6 +86,10 @@ storage_architecture: drive-only
 | `15.05` | CREDITI VARI V/TERZI |
 | `15.05.01` | Depositi cauzionali per utenze |
 | `15.05.03` | Depositi cauzionali vari |
+| `15.07` | CREDITI VERSO GESTORI INCASSI `[POS]` — incassi elettronici gia' avvenuti ma non ancora sul conto |
+| `15.07.01` | Crediti verso Nexi/Numia `[POS]` |
+| `15.07.02` | Crediti verso SumUp `[POS]` |
+| `15.07.03` | Crediti verso PayPal `[POS]` |
 
 ## 19 — DISPONIBILITA' LIQUIDE  ·  [SP / attivo / C.IV Disponibilità liquide]
 
@@ -73,6 +97,7 @@ storage_architecture: drive-only
 |--------|-------------|
 | `19.01` | BANCHE C/C E POSTA C/C |
 | `19.01.01` | Banca c/c |
+| `19.01.05` | Mastercard SumUp `[POS]` — conto aziendale su cui arrivano i payout SumUp (letto via API), distinto da Banco BPM |
 | `19.03` | CASSA |
 | `19.03.03` | Cassa contanti |
 
@@ -346,6 +371,10 @@ storage_architecture: drive-only
 |--------|-------------|
 | `75.01` | ONERI FINANZIARI VERSO BANCHE |
 | `75.01.07` | Commissioni e spese bancarie |
+| `75.01.07.01` | Costi commissioni Nexi/Numia `[POS]` |
+| `75.01.07.02` | Costi commissioni SumUp `[POS]` |
+| `75.01.07.03` | Costi commissioni PayPal `[POS]` |
+| `75.01.07.04` | Altri costi bancari/POS `[POS]` — commissioni e competenze bancarie senza circuito |
 | `75.03` | ONERI FINANZIARI DIVERSI |
 | `75.03.05` | Interessi passivi su mutui |
 | `75.03.29` | Inter.pass.per dilaz. pagamento imposte |

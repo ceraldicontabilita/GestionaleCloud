@@ -1,8 +1,11 @@
-"""Regressioni per il doppio Piano dei Conti osservato in produzione.
+"""Regressioni sul Piano dei Conti.
 
-Il frontend carica elenco e bilancio in parallelo. Con la collezione vuota,
-entrambi gli endpoint inizializzavano tutti i conti e producevano due copie
-per codice; il bilancio sommava poi due volte gli stessi saldi.
+Storia: il frontend caricava elenco e bilancio in parallelo e, con la
+collezione ``piano_conti`` vuota, entrambi gli endpoint la inizializzavano
+producendo due copie per codice (saldi sommati due volte). Dall'audit del
+commercialista 03/09/2026 (PR 7) la collezione e' DISMESSA: il piano e' il
+CEE ufficiale in codice, nessun endpoint scrive piu' conti, quindi la
+concorrenza non puo' produrre copie e ogni codice compare una sola volta.
 """
 
 import asyncio
@@ -10,10 +13,10 @@ from copy import deepcopy
 
 import pytest
 from fastapi import HTTPException
-from app.services.sheets_document_store import DuplicateRecordError
 
 import app.routers.accounting.piano_conti as pc
 import app.routers.accounting.contabilita_avanzata as ca
+from app.services.mapping_piano_conti import CODICI_PIANO
 
 
 class _Cursor:
@@ -33,41 +36,25 @@ class _Cursor:
         return docs
 
 
-class _UpdateResult:
-    def __init__(self, upserted_id=None, modified_count=0):
-        self.upserted_id = upserted_id
-        self.modified_count = modified_count
-
-
 class _Collection:
     def __init__(self, docs=None):
         self.docs = [deepcopy(doc) for doc in (docs or [])]
-        self._lock = asyncio.Lock()
+        self.scritture = 0
 
     def find(self, query=None, projection=None):
         return _Cursor(self.docs, projection)
 
     async def insert_many(self, docs):
-        # Riproduce la finestra concorrente del vecchio codice.
-        await asyncio.sleep(0)
-        for doc in docs:
-            stored = deepcopy(doc)
-            stored.setdefault("_id", f"legacy-{len(self.docs)}")
-            self.docs.append(stored)
-            doc["_id"] = stored["_id"]
+        self.scritture += 1
+        raise AssertionError("la collezione piano_conti e' dismessa: nessuna scrittura")
+
+    async def insert_one(self, doc):
+        self.scritture += 1
+        raise AssertionError("la collezione piano_conti e' dismessa: nessuna scrittura")
 
     async def update_one(self, query, update, upsert=False):
-        async with self._lock:
-            for doc in self.docs:
-                if all(doc.get(key) == value for key, value in query.items()):
-                    return _UpdateResult()
-            if not upsert:
-                return _UpdateResult()
-            stored = deepcopy(update["$setOnInsert"])
-            stored.update(query)
-            stored.setdefault("_id", f"upsert-{len(self.docs)}")
-            self.docs.append(stored)
-            return _UpdateResult(stored.get("_id"))
+        self.scritture += 1
+        raise AssertionError("la collezione piano_conti e' dismessa: nessuna scrittura")
 
 
 class _Db:
@@ -116,10 +103,15 @@ def test_get_piano_conti_restituisce_un_solo_record_per_codice(monkeypatch):
 
     result = _run(pc.get_piano_conti(anno="2026"))
 
-    assert result["totale"] == 2
-    assert [row["codice"] for row in result["conti"]] == ["01.01.01", "04.01.01"]
-    assert len(result["grouped"]["attivo"]) == 1
-    assert len(result["grouped"]["ricavi"]) == 1
+    codici = [row["codice"] for row in result["conti"]]
+    assert len(codici) == len(set(codici)) == len(CODICI_PIANO)
+    assert result["totale"] == len(CODICI_PIANO)
+    per_codice = {row["codice"]: row for row in result["conti"]}
+    assert per_codice["19.03.03"]["saldo"] == 100.0      # 01.01.01 Cassa → Cassa contanti
+    assert per_codice["47.01.03"]["saldo"] == 50.0       # 04.01.01 Ricavi → Vendita merci
+    assert sum(1 for c in result["grouped"]["attivo"] if c["codice"] == "19.03.03") == 1
+    assert result["conti_operativi_non_mappati"] == []
+    assert db.collection.scritture == 0
 
 
 def test_bilancio_non_somma_due_volte_un_codice_duplicato(monkeypatch):
@@ -141,47 +133,38 @@ def test_bilancio_non_somma_due_volte_un_codice_duplicato(monkeypatch):
 
     assert result["stato_patrimoniale"]["attivo"]["totale"] == 100.0
     assert result["conto_economico"]["costi"]["totale"] == 25.0
-    assert len(result["stato_patrimoniale"]["attivo"]["conti"]) == 1
+    attivo = result["stato_patrimoniale"]["attivo"]["conti"]
+    assert len({c["codice"] for c in attivo}) == len(attivo)
+    assert sum(1 for c in attivo if c["codice"] == "19.03.03") == 1
+    assert db.collection.scritture == 0
 
 
-def test_inizializzazione_concorrente_crea_un_solo_conto_per_codice():
+def test_inizializzazione_concorrente_non_scrive_e_restituisce_il_cee():
     db = _Db()
 
     async def _inizializza_due_endpoint():
-        await asyncio.gather(
+        return await asyncio.gather(
             pc.inizializza_piano_conti_base(db),
             pc.inizializza_piano_conti_base(db),
         )
 
-    _run(_inizializza_due_endpoint())
+    primo, secondo = _run(_inizializza_due_endpoint())
 
-    codici = [doc["codice"] for doc in db.collection.docs]
-    codici_attesi = {
+    assert db.collection.docs == [] and db.collection.scritture == 0
+    assert [c["codice"] for c in primo] == CODICI_PIANO
+    assert primo == secondo
+    codici_base = {
         conto["codice"]
         for gruppo in pc.STRUTTURA_BASE.values()
         for conto in gruppo["conti_tipici"]
     }
-    assert len(codici) == len(codici_attesi)
-    assert set(codici) == codici_attesi
+    alias = {a for c in primo for a in c["alias_operativi"]}
+    assert codici_base <= alias
 
 
-def test_creazione_concorrente_restituisce_conflitto_anziche_errore_500(monkeypatch):
-    class _DuplicateOnInsertCollection:
-        async def find_one(self, query):
-            # Riproduce la finestra di concorrenza: al controllo preventivo il
-            # codice non esiste ancora, ma un'altra richiesta lo inserisce
-            # prima di questa insert.
-            return None
-
-        async def insert_one(self, document):
-            raise DuplicateRecordError("codice duplicato")
-
-    class _DuplicateDb:
-        def __getitem__(self, name):
-            assert name == "piano_conti"
-            return _DuplicateOnInsertCollection()
-
-    monkeypatch.setattr(pc.Database, "get_db", staticmethod(_DuplicateDb))
+def test_creazione_manuale_restituisce_conflitto_e_indica_il_conto_cee(monkeypatch):
+    db = _Db()
+    monkeypatch.setattr(pc.Database, "get_db", staticmethod(lambda: db))
 
     with pytest.raises(HTTPException) as exc_info:
         _run(pc.create_conto({
@@ -191,10 +174,11 @@ def test_creazione_concorrente_restituisce_conflitto_anziche_errore_500(monkeypa
         }))
 
     assert exc_info.value.status_code == 409
-    assert "05.02.03" in exc_info.value.detail
+    assert "05.02.03" in exc_info.value.detail and "65" in exc_info.value.detail
+    assert db.collection.scritture == 0
 
 
-def test_inizializzazione_piano_esteso_usa_upsert_atomico(monkeypatch):
+def test_inizializzazione_piano_esteso_non_scrive(monkeypatch):
     db = _Db()
     monkeypatch.setattr(ca.Database, "get_db", staticmethod(lambda: db))
     monkeypatch.setattr(ca, "PIANO_CONTI_ESTESO", {
@@ -213,5 +197,7 @@ def test_inizializzazione_piano_esteso_usa_upsert_atomico(monkeypatch):
 
     risultati = _run(_inizializza_due_endpoint())
 
-    assert [doc["codice"] for doc in db.collection.docs] == ["05.02.03"]
-    assert sum(result["conti_aggiunti"] for result in risultati) == 1
+    assert db.collection.docs == [] and db.collection.scritture == 0
+    assert all(r["conti_aggiunti"] == 0 for r in risultati)
+    assert all(r["totale_piano_conti"] == len(CODICI_PIANO) for r in risultati)
+    assert all(r["alias_operativi"] == 1 for r in risultati)

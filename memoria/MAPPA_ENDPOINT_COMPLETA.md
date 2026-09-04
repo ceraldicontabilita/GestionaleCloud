@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1152 endpoint** in **112 gruppi**.
+> Totale **1153 endpoint** in **112 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 708 · ext esterni = 81 · — da verificare = 363
+**Riepilogo uso:** ✓ frontend = 708 · ext esterni = 81 · — da verificare = 364
 
 ## AI Parser  (11)
 
@@ -53,7 +53,7 @@
 | PUT | `/api/warehouse/products/{product_id}` | ✓ | public_api |
 | DELETE | `/api/warehouse/products/{product_id}` | ✓ | public_api |
 
-## Admin  (26)
+## Admin  (27)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -78,6 +78,7 @@
 | POST | `/api/admin/google-sheets-ledger/sync` | — | admin |
 | POST | `/api/admin/noleggio/backfill-dati-gestionali` | — | admin |
 | POST | `/api/admin/reset-collections` | — | admin |
+| POST | `/api/admin/riallinea-pagamenti-fatture` | — | admin |
 | GET | `/api/admin/stats` | ✓ | admin |
 | POST | `/api/admin/supabase-migration/jobs` | ✓ | admin |
 | GET | `/api/admin/supabase-migration/jobs/{job_id}` | ✓ | admin |

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "updated_at": "2026-08-20",
-  "source_revision": "a65bab6878d901a2722574b587cf2c0b6aa29a3a",
+  "source_revision": "281a8ad4a9f9df26b3372a50130d8b22a367b69c",
   "scope": "Tutti i file JSON del repository esclusi artefatti, cache e dipendenze.",
   "hash_mode": "canonical_json_utf8",
   "total_excluding_self": 137,
@@ -32,7 +32,7 @@
       "category": "conoscenza_operativa",
       "policy": "aggiornare_con_test",
       "valid_json": true,
-      "sha256": "3b15dd88eed814189b082a08c93ad3b9970c858e9b5ecad63fa4471be1f42183"
+      "sha256": "0cebcf6d0c6aea2d270323bcef8cdc8924273c7272e7f0cc3c586996046c0664"
     },
     {
       "path": "app/lotti/data/archivio_dolce.json",
@@ -242,721 +242,721 @@
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "2de6fcca76b9441336726fd9ccbefaa9437c10293027667419551ba062aa3fee"
+      "sha256": "7dcc08f8189065ec6243bc4b68efe47a42d8b2e38a5b827b8acc383bfb7c75a3"
     },
     {
       "path": "memoria/pagine/admin-batch-reprocessing.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "25e8007b1fd5c8794e827e28115d9f266eef8c782e5fdd4d008b0d77d5ed1696"
+      "sha256": "484f6805689122e5d772f2d1ad4565fc5df9a84470347373255b71bd0b67f829"
     },
     {
       "path": "memoria/pagine/admin-mfa.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "3316a77ecfd05e0800a7f9208377eceaf04742ab36341046c0a071b4a8ff65db"
+      "sha256": "02f8fe04b4a264537b961190ba335214f290bde5ef9dd9a1674337438915a6bd"
     },
     {
       "path": "memoria/pagine/admin.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "2bb575ba34650b2f8b52c728209086ec5c2279a78c3fee6b3dca52dc5c04f3bd"
+      "sha256": "c6d0fe4f3aafc52206a51d41ed74b03a431cb6dc95607eacba85500672a6396b"
     },
     {
       "path": "memoria/pagine/agenti.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "6b12745124902fcc6295bcf42b8b718117861c564467f14045d9dcabb80129b7"
+      "sha256": "b0b0fe5c98b4adfacf90556179e475f0d83864ad6f10c2e9ffb9fddb3f059cb8"
     },
     {
       "path": "memoria/pagine/archivio-bonifici.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "0dc16d82384ab644592a77721a25ae3e74ac2ec5c02433edddc29b6ff4b03f0f"
+      "sha256": "939efb71e4977f99f8b60112e048beafc801a30470909ae9c0c00df95aae7077"
     },
     {
       "path": "memoria/pagine/assegni.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "6d23a83c6697942433275d665e82eb9073d2e5b72b2af469dd1d80e7a129b3f8"
+      "sha256": "3ee89edc3808100c33bef75afa500cabf6fdba5c45308ef975021ec4c01320f0"
     },
     {
       "path": "memoria/pagine/coerenza-pos.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "1521417af540e6b6991133f300c6004a406079fc12ca5cb1f7f377951d3460d4"
+      "sha256": "794698f5983846bfa4701e380b477ff7dc5544b05206e83207a3bedbeb5abbe7"
     },
     {
       "path": "memoria/pagine/contabilita-avanzata.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "4597445dfeeded75cc43d4aa7cdd9fc0d82cd4a9a39416ace6c031479c001f21"
+      "sha256": "fe41f854fbba274dba2883b34da11dc36cf771dfc7711424b8594a720c27c5f7"
     },
     {
       "path": "memoria/pagine/contabilita-bilancio.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "ddd174960e46fa5a485c48e0e9e559e56410082d3d3ca7a0c275fcb456be4472"
+      "sha256": "3facc32b085347c65bafcc0ba6b6852b274f5bf572f107576cd224420774c675"
     },
     {
       "path": "memoria/pagine/contabilita-budget.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "44b2ab55526372e6fb45fec23a289c8de8c1f516497be97f3909524e5c7f0bed"
+      "sha256": "7833fdc15744b954d27318c3d5cbdf0926a9c1115f7c2d2be520f4b030ad7826"
     },
     {
       "path": "memoria/pagine/contabilita-calendario.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "86ad33f2658ca91e5555d46bc87dfae1ed7a376069ec5626ad944f5425c479e6"
+      "sha256": "60bfcb1a2c1225bfecc96dff1ffcde96224bcf053010f57cb0ed87f4c29e3a84"
     },
     {
       "path": "memoria/pagine/contabilita-cespiti.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "cbfd6505ddfb32978e8675fa059302673764f2d44ae323da81c8d81efce3a0a8"
+      "sha256": "744aff5b6636be1aa8a7b4f750ea2ab9bc56b69bd18eaf553bd945ca736ba365"
     },
     {
       "path": "memoria/pagine/contabilita-chiusura.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "3ec993fbdb81cda6d55f8af80e13e586e55bc8f1aef3529fc7bcddb20b4c4fc7"
+      "sha256": "b5193172752027dbd730e257844396d3626af26caaa10dec8a87a70b1aea21ee"
     },
     {
       "path": "memoria/pagine/contabilita-controllo.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "18e65a5c0ac33e6d68e1667054587a78641fffd702e11743ab17b76208e2e2c7"
+      "sha256": "23ae8bc90bd031955967720badc2fe6569dbe158fb4727333415acd3096d3a54"
     },
     {
       "path": "memoria/pagine/contabilita-dati-isa.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "fb53750d3a906f585357e9f83c7cbb74ba9904e567ed0b169ce9d6399ea6b41c"
+      "sha256": "edb5ab0d98ac0ba3aeac4d9faba1f9a866e9f203dda747b34fbac3ab043d57bb"
     },
     {
       "path": "memoria/pagine/contabilita-finanziaria.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "12c98bcdd428c3903f109029c1867eb7a537c0f40c744a04f7948c9eb0d83633"
+      "sha256": "ffc250bae33b989335ad86ced396d8aa866b92e7101650722b085a719a39f88c"
     },
     {
       "path": "memoria/pagine/contabilita-giornale.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "41444a2685db03c4f577d720ce345ac2e11e5642c4cd7cc55b3ef943125fb518"
+      "sha256": "1929f1819ea903d729c5b8aff6b12a3860c55771707a003e6073704bf6fd6d0f"
     },
     {
       "path": "memoria/pagine/contabilita-mutui.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "ccdfa232875569a16a3c87e19aa8761166cdfee5d1eb3182bebfaf9578d4ec0a"
+      "sha256": "d15a887499134fb073df2feb8de7f1cd3086c6c20ccc6a63d8915513fbcf1847"
     },
     {
       "path": "memoria/pagine/contabilita-piano-conti.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "a056383b297c910bcdae2163805064c5428bfc485f06f713568bb2ebfe923e52"
+      "sha256": "1e3cc62340f035e913543e3abb2092c6b337c1a1a281a1fd3b2ecebe0fcc8be3"
     },
     {
       "path": "memoria/pagine/contabilita-previsioni-acquisti.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "a2c7266a7838ccf705cb1ce10ee4d8fe252473722799d30eb6937df94d96a9d7"
+      "sha256": "6c058504ec20c1456817fdd6d6d8da43ad7eee6d394a07ac1aaa014fde86911b"
     },
     {
       "path": "memoria/pagine/contabilita-utile.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "0160ea170ff42ed5f0a984368674d02741f3309841eeb6beaf6e1bcdc8709a3f"
+      "sha256": "fd3556eeb6f4c5b034172f2646593dc2526c5df889633c0b34de17690de62ca4"
     },
     {
       "path": "memoria/pagine/contabilita-verifica.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "4a06e89f016260ed875de99b0b7cc2fe756486990d99c42861fd7e2ba8cd2ecd"
+      "sha256": "3f5c35368434de9f93f3980980d66a7bff1f5a90d7338b568017bb49f6de0c32"
     },
     {
       "path": "memoria/pagine/corrispettivi.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "6840117fb09dd84f5be7babb9f0ef1493638161620693cf10f8f7fd5a5c12ca4"
+      "sha256": "9f355295317014eafa9e4978640ca66e119087d6bce30829ca667c05607b02c0"
     },
     {
       "path": "memoria/pagine/dashboard-relazionale.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "f2eda2796f7fabbd44ca012c3e073bb5dd3e6f6787672a717ac123f425df4dde"
+      "sha256": "a95063f1b1365f9a4d8ce5367b5af2352655c8999b7456ae18e7ffc3e5c7b73b"
     },
     {
       "path": "memoria/pagine/dashboard.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "b2a601fb9886f795597b542ecaa2fd1f1903beacdfbb0c2e73fa94fedefb74b8"
+      "sha256": "fe8bcba28b6e2e1389032a5b24815309ea8449e7c6dfae9171d377c8fb9f6429"
     },
     {
       "path": "memoria/pagine/dati-provvisori.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "50d80900fc82c33512f0efad025bb33a497a1359f4529cab1ac5ee77342e44b3"
+      "sha256": "207fc2441d08f36350aa07571be6dcaaab7c81c41c088458a9ea96b628bb87e1"
     },
     {
       "path": "memoria/pagine/dettaglio-verbale.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "7543abf6e8ca737ececa13219ce7098cb08985390d2027a7b27a3629ea4909f4"
+      "sha256": "2aeb38a70d6f8f5270be98dbbb5c82d53f5788872ff95623c853f63be7b715d7"
     },
     {
       "path": "memoria/pagine/documenti-archivio.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "c3a883882cc2e83400b0789755c201ee8581fbccd6890e63f42c8758e2b67a67"
+      "sha256": "65d440e153378f929fe76d14f71bfbc2b11b3b8174667fb00429e5b2bff13b6d"
     },
     {
       "path": "memoria/pagine/documenti-atti.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "3734eb66a2e260f557a679df4ae8e1e6e1d2123c5beb3373dadb3231addaa083"
+      "sha256": "2986c5c400131f6b47420c7a95b24c5cc8cf74faee5e7aeb94f64fcd0e8ce80b"
     },
     {
       "path": "memoria/pagine/documenti-drive.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "7fb7baf878c8451139c9d7c28afadf48c83a2b10a89d6daec25081906d3ce470"
+      "sha256": "ef737b7c06f70afe72e5396ab6f9eb6eafd12a6e4abf379521ceb6ae1656fcf8"
     },
     {
       "path": "memoria/pagine/documenti-import.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "98fa5a020b4a2762c8c51f6c13614ab3cba4780897adff9abf868f4fbdeb1d00"
+      "sha256": "ced342acc9db3eff7eb819e436d47ddb8c2374183c9b72f3048aa67f50015167"
     },
     {
       "path": "memoria/pagine/fatture-estere-verifica.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "c91b0997de361dcf07fa4626f068121c23b9468cff8197eb5d6624e0e13ee091"
+      "sha256": "6b84404172d4c19b4e97b4d4fa67dd5064e70059881b65a672bee8517f3f2fd2"
     },
     {
       "path": "memoria/pagine/fatture.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "e441c037ca57e032ea7f9e27262f3343ade821c8e8594f06db077c770932f838"
+      "sha256": "405bb257301b92257cac893eabdacedf081219e6eeb80ce6c6d6b53639e749cc"
     },
     {
       "path": "memoria/pagine/fornitori.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "e6764844f02d427ac3758405adbe5e55a9caca2a61e33a09ad6d24e21ca49484"
+      "sha256": "49d7612466627f336c83c8cbf371ecd04ae9315fa59cdc9cabb2fb1f1af4a273"
     },
     {
       "path": "memoria/pagine/gestione-riservata.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "6161572c5600c2b053f84ab969e849e394e91c6575c7c1902d9b0b09026daf0a"
+      "sha256": "e6f53b30fd9c91ae6bff8c8c84ca84a9d2867ea1fd70fb3335795c0452c48eed"
     },
     {
       "path": "memoria/pagine/impostazioni-ai.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "82987df120aa8ee35180e02b0114f4c15d4f1d8ef4718b581faaf048a4184b8c"
+      "sha256": "24dbf6ea6caba823bbb81e0ee4dfbd35c5c8bdbe0285684efede91e71f990560"
     },
     {
       "path": "memoria/pagine/impostazioni-f24-email.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "5d4154044d290860befa63b916d57404cd719000056615574281507222e646ed"
+      "sha256": "3aaa92b083689880dfccff0b35d583cc08ccc41570aa0f7baada99b4b767522a"
     },
     {
       "path": "memoria/pagine/inserimento-rapido.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "5127afc25fda0f92cc142885bf21d3233fdff0589715990eeaaa96e5d463dc09"
+      "sha256": "710f3c157292ba77f9156d9da2389cdfce0e4cee772cc131a85fb4bce06e062e"
     },
     {
       "path": "memoria/pagine/integrazioni-mittenti-email.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "12f65db322a8e371108efe1c141dbdb141d02714798a3288457fc3e3e23c4ccd"
+      "sha256": "500c3d5d8a2196a9f0c703c668abf3b74b5e6ba68d03c79e3d9a42ef5dc2cf73"
     },
     {
       "path": "memoria/pagine/integrazioni-openapi.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "179f3438af2a02712c9455b4bd81b09d32418a70ae54b27560a189848955b265"
+      "sha256": "044abbfedc0441448817904af770d091156bfe540cfdbfe298eb0348590ccc31"
     },
     {
       "path": "memoria/pagine/integrazioni-pagopa.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "57db9b9aa5dfe4980770f8482bb72110f345fc3457fa093e89ce5a3190523b3c"
+      "sha256": "f8534b11a67a1e25a7cf363f318ae94cd1893b834336c1d504e482c915bebddd"
     },
     {
       "path": "memoria/pagine/iva.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "94580e7095371d9a4680e7c8b9afb749150745152e2536d2aaf38b0453a5d750"
+      "sha256": "b89939297e984b7d3e5f91e3db267b38ba5fd8c647ec8e410e8c1f8fd8a0b831"
     },
     {
       "path": "memoria/pagine/learning-machine.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "c4341cbf1b3d52b0bedc82d9afc2ff6379364ed0def8d5fce94a6df6010727ad"
+      "sha256": "74ac36884a2f3e38e1072ea23d27783307c3a5f8ad5254a733de851db9f85417"
     },
     {
       "path": "memoria/pagine/login.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "1359476d55a0668d556f61d0b55707004bf70d6bef9506fe170ce9e436905662"
+      "sha256": "b3d432c0925b14579bf7c533efa9a0c2726cd617c48ac8c72aa6379cc1b63283"
     },
     {
       "path": "memoria/pagine/mappa-gestionale.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "b295ff8042bbea8e4abafb3ecdd80217b2252c9bb959859e3cf2aea738ed519f"
+      "sha256": "ce97df39e68c3af3fa0325c32fb04d495c0ffedd52f8c69608f6006f28c37c01"
     },
     {
       "path": "memoria/pagine/noleggio-costi.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "7dfc1bcb5b5ad9a2d69a67ef33b8550a4201b0498e6b6c48df8a306fe044c76e"
+      "sha256": "775aed21d504de4592ed05bafef1e0e95024f65cc4a1f82f76cf6e87f5b83722"
     },
     {
       "path": "memoria/pagine/noleggio-flotta.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "1789f78a5fcc2e54f7078dda6b3e4eac9f8a58c6847146beecd5bf12e751a5dc"
+      "sha256": "d1bab250b45e8c8401a34a6ada662c766dedf2a5f1540247aefe19001562f4df"
     },
     {
       "path": "memoria/pagine/noleggio-verbali.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "f7cdd708e67018560c180a744d0b08b7ed07b9bf96ec8db357946de7f646e298"
+      "sha256": "1365a01515672cdddc18fe9f4b783a9c165213e0616038db9e8ad4fb9a87f3b9"
     },
     {
       "path": "memoria/pagine/prima-nota-pulizia.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "2256427ad1ab9b204f62e5c9c8142eea759cc0d3e0eeb149a03deb62fd5ad912"
+      "sha256": "30ceda1d83132e7be3733c0c394b305aabe6780a3e239dbfaa55da4808cd7baf"
     },
     {
       "path": "memoria/pagine/prima-nota.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "c91846b3eb63384226c7e17d53652ac39797838ddb2286fddbd660d53575896e"
+      "sha256": "6c7d4aed79d7e27fa1ea351da1033de3a6b3e43510e2976e4e9516421f03cd55"
     },
     {
       "path": "memoria/pagine/riconciliazione-banca.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "370e12e5ed4cbbb7febfd3814e25eac02c2ebc55fd24c62e7f5439529d15a8bc"
+      "sha256": "77107b4bdc6af65a8145787c76a246462b70368864f211a46b260d7c545e2021"
     },
     {
       "path": "memoria/pagine/riconciliazione-bancaria.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "d10cae3b59255cf101a72514f78d5debafa370112e450674c4fd96e2100bd37a"
+      "sha256": "da1ea069e41fff8819bee2cc0eb241274e25fb0bf576b8ec43de4c69d674126a"
     },
     {
       "path": "memoria/pagine/riconciliazione-documenti.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "baf0e96990a46287dc398f51c5d481502c65197d159edc0a3afa9064d16a991b"
+      "sha256": "6a9d9a6f0cfc14008a3cf1cbfd1574043e1ba2639b74b6c5216b0647753ce002"
     },
     {
       "path": "memoria/pagine/riconciliazione-f24.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "f42faa9822aff5a2a3b0cbfa018a00ac3f3fc8c73111633d8dddcade68c48eb0"
+      "sha256": "b058713015b15f99a4e3d645deedff8bc7943d36c81058be62832a34ea01cfff"
     },
     {
       "path": "memoria/pagine/riconciliazione-paypal.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "efbd34e73bb4216563a4b24f66460cb3384ce07576d770f255ac49f5573c7070"
+      "sha256": "dd1dc500ef17fecefca2a9218a2571627be4a98d2eb0306ceae47c9d1041ddf7"
     },
     {
       "path": "memoria/pagine/riconciliazione-stipendi.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "1d57b7006acc2d43eb417d5a9b8efa0044844c108826d23829450b75fa81801c"
+      "sha256": "150a26be4793c7336e6c09a8d63f21d55a764ed3999f349d9e2bf2e5a6508b33"
     },
     {
       "path": "memoria/pagine/ritenute.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "c7ac6e61a8d7c9591f4b9ddddf304292ad654281f4df4326c1e0eb402edd9021"
+      "sha256": "8ba5a107e37adc3f61f5f4d8beb7ee203f00ca1dc6b2921af8c71fce428d8546"
     },
     {
       "path": "memoria/pagine/scadenze.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "6d184138ca487a926a9571b133e8aaf81168f98c22d14ecee996885e88fb1471"
+      "sha256": "bb60150eccd8211d202c9bc50f5f01e61dc7459f75df2f310c7aee5c5aa34baa"
     },
     {
       "path": "memoria/pagine/situazione-fiscale.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "3d4d648a7f046ba5d97b86bf58f9dfcc8b2817a390ad5465a1c90eb17caf5e12"
+      "sha256": "93648f948c7fc81b18687a33e0ef46982740196045eb53abc1c40e275df90853"
     },
     {
       "path": "memoria/pagine/strumenti-commercialista.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "9de5b224ec286640c8941b4994d30d3cb02eed4fe40ea4ac9f6e49b0bcd40228"
+      "sha256": "e63116fa08067663a695b2be2e2729d34626fdb3021b3c1874a9d8a21689fa02"
     },
     {
       "path": "memoria/pagine/strumenti-movimenti-banca.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "fb5f8d61dc61ea829718f9e5982ba0c10c940c550c1ad6befb2b067ddd657466"
+      "sha256": "67e4c1e8d38911cffaf614c95e2bbd33121689a8fe4a4ebd1857cb4bc43dc476"
     },
     {
       "path": "memoria/pagine/strumenti-pianificazione.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "c94769ec673f37d04ac23442527f283ee104ae803e9ff616308a10090ccbb0fc"
+      "sha256": "6e7b564cb2929dbd24f8ad8af89f28e0a365bdf2c3d0d15ff7b0ff3c908a2449"
     },
     {
       "path": "memoria/pagine/strumenti-verifica.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "e65b3b3a7f3dbb759c29baf74ecc21e13d94378404ed01799bee9db90e929577"
+      "sha256": "e5289c5aaf8dfbc50eb82bfa5465bd9a803fd444057786afb76ce65714a4d589"
     },
     {
       "path": "memoria/pagine/strumenti-visure.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "67db4b4f8cc6b8ecaef0aaeba735ef8caead6f60010182fe1b48f49a33c9463d"
+      "sha256": "24ec23692900553933215c685e6d5e1146eb15cbb7f4b241900eef3455cb88da"
     },
     {
       "path": "memoria/pagine/utenti.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "f3c92329cf261c3c0304453e2935d43a6e827871b52223a19025f48e93d9687d"
+      "sha256": "1fd1e2ef20d908efdd44285f288c34c132775aa312adaf31536329f1590f339b"
     },
     {
       "path": "memoria/popup/admin-rollback-conferma-eliminazione.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "6ff26c1d6be1b4b2e8278f9a5e45cee7aabb67f938f64a2fc371ace26a9e22dc"
+      "sha256": "caff0d21cc53d024d3c553f6898b0ee71613f128398f02e7a752583eccf8e79b"
     },
     {
       "path": "memoria/popup/archivio-bonifici-dropdown-associa-fattura.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "9832f9ffba37937ccaa5d57741ca1380ab3f9f1e23f45e643a46ef23f113c7c9"
+      "sha256": "fa58b3e981cdf8d08d6113fa3fba99349e3c1cb01f635c78fb113a21198d4dcf"
     },
     {
       "path": "memoria/popup/archivio-bonifici-dropdown-associa-salario.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "6332ba6e176021e762a90c2f02f7f1efaee2162a1177bfebff6556d857699a82"
+      "sha256": "39eadaeb138a54194ca9c9d0945e6bf8c953df14a5e0bbe81a1aa6b195f2979b"
     },
     {
       "path": "memoria/popup/assegni-collega-fatture.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "eb20535d8a481c8eb8b367358a00a1073f1edc64ce840e49a2c1942977fbd462"
+      "sha256": "24057be96c9661f87a72a1c3f0aa67b6bfeeea71f9a16dc49839e55f79a27bca"
     },
     {
       "path": "memoria/popup/assegni-genera-progressivi.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "2831236e44cd9778bac2cdbe42418d690d29941a4e70b4ac6c9a8363eb64170b"
+      "sha256": "6d83689348c1db1302ecd1b57fff581e79383cb1dd1e7db6a7f2ee1c101a453e"
     },
     {
       "path": "memoria/popup/assegni-pannello-ambigui.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "410d25228253ddcbfcf9dbfa88f041a2b15acf5947674f89fbfa2c85b896d519"
+      "sha256": "1c815ae42f8b5622bda175092d971b140481b48d124282c7f0f0f83ada580489"
     },
     {
       "path": "memoria/popup/coerenza-pos-chiusura-serale.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "443ff0b108e0e6a35f3344e3a0a620c498b630646a54b46d10e15e51f0e64e34"
+      "sha256": "e8e546df4342e9d7225a844908d364e0461385630829951bfd6c5d27216a11f3"
     },
     {
       "path": "memoria/popup/controllo-mensile-dettaglio-versamenti.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "f27db981b42cecbe277ade6deeddce8c3087bca428d2578f589518b841fc1297"
+      "sha256": "50af82428b84ef9255f3cbc3eb76285496bbb581d44685a282a2d87602fd8939"
     },
     {
       "path": "memoria/popup/corrispettivi-conferma-eliminazione.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "56bf994dc6e65a02c63ae4c3eb210155a74b4490f27a9e1a04e00d34dcd593ff"
+      "sha256": "4b9eec073ccc722c9e8b0c3457f1b4bde524fa45a0e38cf63a49f5b9b5a35c44"
     },
     {
       "path": "memoria/popup/corrispettivi-dettaglio-pannello.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "1bddec8ef583c5c123dfd00d723cc518b37ded721b0f38913b6a3b19e4759053"
+      "sha256": "0710c0384bfe448037d49543aa5c6372211a240653cba2e6fdf096ae352d28af"
     },
     {
       "path": "memoria/popup/dashboard-registra-pagamento.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "8bfc09d7e4532e8f14006474877633b8e8890b89f2e45d7eafd407946f928d1f"
+      "sha256": "5e2a5a373e8d6dd00d906cbe0b9a30d101ca4d667b3532e993fae3f2a3499b5e"
     },
     {
       "path": "memoria/popup/documenti-pdf-viewer-modal.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "c60567688874daf67e7d43141f647e0be1dcbc7736ab3145996d5e00f10f3701"
+      "sha256": "fc57f605a00ce2dff57248b527ef57b8a032e5cbd23c9460afe28fb4b1dd1fe7"
     },
     {
       "path": "memoria/popup/fatture-banner-deep-link-fattura-non-trovata.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "a5c33911759d3e5f6ac73521e80a4906e5f6cbb5ad183e21aa98ce26eef69c7e"
+      "sha256": "1e20dd07ae0d56665b1632bab3b56488c2744ce3f6061f91f20e971f52bd5f44"
     },
     {
       "path": "memoria/popup/fornitori-conferma-eliminazione.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "ef6f466d748b00831b74aa61ed9ba76e5b24e524cae2f2cebb2e18ca37a710ce"
+      "sha256": "47671cb3eaf31abef801deddeb6deb1bc6c666ab09cc35b16aaefef2b31304fb"
     },
     {
       "path": "memoria/popup/fornitori-estratto-fatture.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "0723f16741da9199a4cfd7605520b2a50549390d4022195802c1d330255a3671"
+      "sha256": "9d4af9993519ce8c67499cd593bf206fa1cc96e519606c50dd366cffea707d8b"
     },
     {
       "path": "memoria/popup/fornitori-fatturato-annuo.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "4ef0e5a373e96f05e5b62fb5ba1444a0f8a5754554aab50d4b156fa61b759b90"
+      "sha256": "1f12721b6fbbf9856bc449a5a593c68d0a5646614181a0c03848ac275ec49e7e"
     },
     {
       "path": "memoria/popup/fornitori-menu-metodo-pagamento.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "5217e159c43f2aa8f81eb6d9f3d740e8ad7dffce5fabbcc87716d9d0f5ad16d1"
+      "sha256": "298d16885b89f9724ebb0d84d27d00441b7e6eb43a4e1dddc9f1848147154282"
     },
     {
       "path": "memoria/popup/fornitori-schede-tecniche.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "c290651ffd38ab2575dc7446a7b64aab16c3445bf26dff04f40f86ce5336ca1b"
+      "sha256": "d603b59a00747609acef39c4cbdee75f205f0627a0bbb4f643da72e99284e39d"
     },
     {
       "path": "memoria/popup/fornitori-supplier-modal.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "b80cc529332cefe2ca2a63cf3a0c5ff21625ee9353b46b48dfec677cde8a7c42"
+      "sha256": "eb1757e89372595df42dca0a1073ba82adc6aab85d67c5bab3bb3f57a0bc7fb3"
     },
     {
       "path": "memoria/popup/modal-fattura-condiviso.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "2da394e967312e75565d562ed3ee25736d184942aa1fd840b39f047817d38fae"
+      "sha256": "12802c9de5da39a9184162953ed7868383b0cb2a50d981de7d667d203c60a2d3"
     },
     {
       "path": "memoria/popup/modal-fattura-in-page.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "616cabdab0af0a8f5a3f2c586501cdaf4b6e5f1d20c9b951560da22029b2bf59"
+      "sha256": "9e6c5cfa9676bb71b03a29978b94f46fcbf03a1ae0ab27a55645ac72da1be692"
     },
     {
       "path": "memoria/popup/noleggio-aggiungi-veicolo.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "73014c04645d38c8126c6fea7c02e389b6d6d7fcbfff81e04bec265fc8f1ad10"
+      "sha256": "384e0dbda2d74b9e2bea533e277b0c83a44d7e877f7aa3cce4c01f8a694ea218"
     },
     {
       "path": "memoria/popup/noleggio-associa-targa-driver.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "38efa3ab08922a5ae62547ad65247afd490ec93678f4ba6c9f6b397d2a59f569"
+      "sha256": "99aa2ad3ab39ae9fbdd1144ab84c966c991bfecd6024b645bc020ed581851a0e"
     },
     {
       "path": "memoria/popup/noleggio-fatture-non-associate.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "ec55fedd7ca4d2f4247fd123b2f8ea4c52b78231a04d9c392734fdf7d016f58a"
+      "sha256": "e34875e57b3922f0ebba988ef9c45609e3f67c4420c8d13791a01afe2eae9b85"
     },
     {
       "path": "memoria/popup/noleggio-modifica-veicolo.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "c11ef40eb4fd2cbecc9ef282aca310877ccc590a79ec4e06477d2fcf74d284d8"
+      "sha256": "82305b2380b8a8620db31bb74ce7a9f4ee00e8648931732153d1735b7f1b1fcb"
     },
     {
       "path": "memoria/popup/paypal-crea-fornitore.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "06f1db82dbfff9588cf6862151c65650935a26159e454ead1089b757e137d78d"
+      "sha256": "9560d88d4519a206da4ac2df9f521c986bf5ee8a0efc7f1dac2491c115f0efa3"
     },
     {
       "path": "memoria/popup/paypal-transaction-detail.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "b4211bfc7c52c74d5771da86ca30236b6bf35ac810d1de1e83a579aed5290c14"
+      "sha256": "9571b6bd572e0acc5d33f6aa4a6b4cdb8b27a6ab09cb716cc15c562233c15888"
     },
     {
       "path": "memoria/popup/piano-conti-drawer-dettaglio-conto.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "5dc520eca0e83110cbf8e1d1c2faf432675c43c1a8a4816c8821bb8a5bc66cf0"
+      "sha256": "c67d06bca0e46556ab11e23bb16adaea307908e09d61fb743cca2ffff9d04feb"
     },
     {
       "path": "memoria/popup/piano-conti-nuova-regola.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "e38b9c1b5b6d0ccbf14ff551f47ec49a503b137787b46b715a5c1bbd4fadb6f4"
+      "sha256": "504431d4858f60081efefb77983cce3a101cec31facb953f479b558e3f9fe087"
     },
     {
       "path": "memoria/popup/piano-conti-nuovo-conto.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "0f848f2b5cff041e269dfe03cdfee6a5f5b15167e507200be8c09e6f5eecc7a6"
+      "sha256": "b700b5af61864f1512451151616dc2ab1d4d43a41ca9bbf2aaed4c46be8d4f17"
     },
     {
       "path": "memoria/popup/prima-nota-conferma-eliminazione-movimento.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "4dd681c191314ab3950450101aabef93d4d42f8976fa348f059def9aa6ea6f51"
+      "sha256": "44ae271e7d083ac4c386a3e5e7e33be26419b5deb8dfb5bfe36ea76675bdd2ef"
     },
     {
       "path": "memoria/popup/prima-nota-edit-movimento.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "63634e4131241aee296d20d57b63ac36e71b4df653ce3cbaa1a316789b3b7783"
+      "sha256": "29a2f2e422f1a1dea61756cafeda9e6f35737b56293cfb9c83b9394266df36f5"
     },
     {
       "path": "memoria/popup/prima-nota-pagamento-parziale-misto.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "518bbe7587532d25d8db632398751e11dab77b864c93e1441126c3a7cb77df25"
+      "sha256": "2e05b793c000ad00c6104707d20c600b8aa898bf38dc837bd36177c59607ba44"
     },
     {
       "path": "memoria/popup/scadenze-nuova-scadenza.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "d78d900d4365b88260acc3b2918d68d1f25278767a09d7fe836af4a72291dc9b"
+      "sha256": "a8a9ba2d719cc9d26e45c89236c8ccb454233cf32bbc8dfc4c0e22f7efa96879"
     },
     {
       "path": "memoria/popup/scadenze-registra-pagamento.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "e0a26719e2677becddfa6b3ffd8f7f0c2acbad83f8434a52dd57aaa2de06d7f6"
+      "sha256": "060e46c753ca162ada2370684622e5af8ea637607518aedb5e12aef0d0e7ac1b"
     },
     {
       "path": "memoria/popup/scadenze-visualizzazione-fattura.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "5055762d595418a903a0f4a85207a45c56b38ea0a8076bed88a105334b7c01e1"
+      "sha256": "348ab97dc9a030fb428bd990bd70267d17021a393b49cb7b33f14323a0d812ee"
     },
     {
       "path": "page_catalog.json",
       "category": "documentazione_generata",
       "policy": "rigenerare_con_script",
       "valid_json": true,
-      "sha256": "cacd668cbde2b4ef906cfd72a7244ce1edc71a4cff2891546e756d7a73c539d5"
+      "sha256": "1ecca637ee03786bb36ce020fb583d5c9b545be4f04efa600425b1473a791b6b"
     },
     {
       "path": "pyrightconfig.json",

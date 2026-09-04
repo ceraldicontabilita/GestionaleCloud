@@ -610,6 +610,10 @@ async def bonifica_prima_nota_doppioni(
     ``duplicate_of`` e assegna ``idempotency_key`` (prerequisito della
     migrazione ``supabase/migrations/20260903_idempotency_key.sql``).
     """
+    from app.services.bonifica_prima_nota_conti import (
+        esegui as esegui_conti,
+        integra_nel_report as integra_conti,
+    )
     from app.services.bonifica_prima_nota_doppioni import esegui
     from app.services.bonifica_prima_nota_doppioni_assegni import (
         esegui as esegui_assegni,
@@ -620,7 +624,35 @@ async def bonifica_prima_nota_doppioni(
     actor = current_user.get("sub") or current_user.get("username") or "admin"
     esito_corrispettivi = await esegui(db, dry_run=dry_run, actor=actor)
     esito_assegni = await esegui_assegni(db, dry_run=dry_run, actor=actor)
-    return integra_nel_report(esito_corrispettivi, esito_assegni)
+    # Audit 03/09/2026 §2 (PR 7): stesso punto unico di manutenzione anche
+    # per le righe senza conto CEE (conto di tesoreria + contropartita).
+    esito_conti = await esegui_conti(db, dry_run=dry_run, actor=actor)
+    return integra_conti(integra_nel_report(esito_corrispettivi, esito_assegni), esito_conti)
+
+
+@router.post(
+    "/riallinea-pagamenti-fatture",
+    summary="Riallinea fattura/scadenza/partita/EC/Prima Nota con il motore canonico",
+)
+async def riallinea_pagamenti_fatture(
+    dry_run: bool = Query(True, description="True = solo analisi; False = riallinea e crea le proposte"),
+    current_user: Dict[str, Any] = Depends(richiedi_admin),
+) -> Dict[str, Any]:
+    """Audit del commercialista 03/09/2026, §1 PR 2.
+
+    Per ogni riga di Prima Nota Banca con ``fattura_id`` ricalcola gli stati
+    collegati con l'unico motore ``persist_bank_invoice_allocations``
+    (fattura, scadenze, partita aperta, estratto conto, Prima Nota,
+    relazione, stesso ``operation_id``). Cio' che non e' risolvibile in
+    automatico (fattura non in archivio, movimento antecedente alla fattura,
+    quota non quadrata, EC gia' riconciliato altrove) finisce come proposta
+    in ``operazioni_da_confermare``. Idempotente: un secondo giro non scrive.
+    """
+    from app.services.riallinea_pagamenti_fatture import esegui
+
+    db = Database.get_db()
+    actor = current_user.get("sub") or current_user.get("username") or "admin"
+    return await esegui(db, dry_run=dry_run, actor=actor)
 
 
 # ============================================================================

@@ -219,8 +219,10 @@ async def download_regole_excel():
         cell.fill = header_fill
         cell.border = border
     
-    piano_conti = await db["piano_conti"].find({}, {"_id": 0, "codice": 1, "nome": 1, "categoria": 1}).sort("codice", 1).to_list(200)
-    
+    # Un solo piano dei conti: quello CEE ufficiale (audit 03/09/2026, PR 7).
+    from app.services.mapping_piano_conti import piano_conti_cee
+    piano_conti = piano_conti_cee()
+
     for row, conto in enumerate(piano_conti, 2):
         ws_piano.cell(row=row, column=1, value=conto.get("codice", "")).border = border
         ws_piano.cell(row=row, column=2, value=conto.get("nome", "")).border = border

@@ -127,16 +127,30 @@ async def lifespan(app: FastAPI):
     # (audit §1, PR 3): chiave assegno:<estratto_conto_id>:banca_uscita.
     try:
         db = Database.get_db()
+        from app.services.bonifica_prima_nota_conti import applica as applica_bonifica_conti
         from app.services.bonifica_prima_nota_doppioni import applica as applica_bonifica
         from app.services.bonifica_prima_nota_doppioni_assegni import (
             applica as applica_bonifica_assegni,
         )
+        from app.services.riallinea_pagamenti_fatture import (
+            analizza_avvio as analizza_riallineamento_pagamenti,
+        )
 
+        # Audit §2 PR 7: conti CEE (tesoreria + contropartita) sulle righe
+        # di Prima Nota che ne sono prive — assegna SOLO i campi mancanti.
+        # Audit §1 PR 2: il riallineamento fattura/banca/Prima Nota all'avvio
+        # e' SOLO un dry-run salvato in migration_runs; l'applicazione e' una
+        # scelta esplicita dell'admin (POST /api/admin/riallinea-pagamenti-fatture).
         bonifiche_avvio = (
             ("bonifica_prima_nota_doppioni_20260903_v1",
              "Bonifica doppioni Prima Nota (corrispettivi/POS)", applica_bonifica),
             ("bonifica_prima_nota_doppioni_assegni_20260903_v1",
              "Bonifica doppioni Prima Nota (assegni)", applica_bonifica_assegni),
+            ("bonifica_prima_nota_conti_cee_20260903_v1",
+             "Bonifica conti CEE Prima Nota (tesoreria + contropartita)", applica_bonifica_conti),
+            ("riallinea_pagamenti_fatture_20260903_v1_dry_run",
+             "Analisi riallineamento pagamenti fatture (solo dry-run)",
+             analizza_riallineamento_pagamenti),
         )
         for bonifica_marker, bonifica_nome, bonifica_fn in bonifiche_avvio:
             bonifica_run = (
@@ -168,7 +182,8 @@ async def lifespan(app: FastAPI):
                     {k: bonifica_result.get(k) for k in (
                         "righe_marcate", "totale_righe_marcate",
                         "chiavi_assegnate", "corrispettivi_riallineati",
-                        "riferimenti_riallineati",
+                        "riferimenti_riallineati", "righe_aggiornate",
+                        "righe_esaminate", "coerenti", "riallineabili", "proposte",
                     ) if k in bonifica_result},
                 )
     except Exception:

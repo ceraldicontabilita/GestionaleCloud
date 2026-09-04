@@ -71,17 +71,26 @@ def test_bonifico_con_due_numeri_ripartisce_due_fatture(monkeypatch):
         assert [fattura["pagato"] for fattura in fatture] == [True, True]
         assert [fattura["importo_residuo"] for fattura in fatture] == [0.0, 0.0]
 
+        # Motore unico fattura<->banca<->Prima Nota (audit 03/09/2026, PR 2):
+        # un movimento bancario produce UNA riga di Prima Nota Banca, con
+        # tutte le fatture allocate in "allocazioni_fatture" e lo stesso
+        # operation_id -- non piu' una riga per fattura (comportamento del
+        # doppio motore, causa delle 25 righe con stati divergenti trovate
+        # dall'audit).
         movimenti_banca = await db.prima_nota_banca.find(
             {}, {"_id": 0}
-        ).sort("importo", 1).to_list(10)
-        assert len(movimenti_banca) == 2
-        assert [movimento["importo"] for movimento in movimenti_banca] == [100.0, 200.0]
+        ).to_list(10)
+        assert len(movimenti_banca) == 1
+        movimento = movimenti_banca[0]
+        assert movimento["importo"] == 300.0
+        assert movimento["movimento_estratto_conto_id"] == "ec-multi-ok"
+        assert movimento["operation_id"] == "bank:ec-multi-ok"
         assert {
-            movimento["movimento_estratto_conto_id"] for movimento in movimenti_banca
-        } == {"ec-multi-ok"}
-        assert {
-            movimento["invoice_id"] for movimento in movimenti_banca
+            allocazione["fattura_id"] for allocazione in movimento["allocazioni_fatture"]
         } == {"fatt-101", "fatt-102"}
+        assert {
+            allocazione["quota_cents"] for allocazione in movimento["allocazioni_fatture"]
+        } == {10000, 20000}
 
         ec = await db.estratto_conto_movimenti.find_one(
             {"id": "ec-multi-ok"}, {"_id": 0}
