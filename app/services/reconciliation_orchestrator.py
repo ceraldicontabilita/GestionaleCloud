@@ -16,6 +16,7 @@ async def riconcilia_documenti_e_pagamenti(
     from app.services.bonifici_pdf_ingest import riprocessa_bonifici_pendenti
     from app.services.f24_bank_reconciliation import riconcilia_f24_tributi_banca
     from app.services.finanziamenti_soci import scan_finanziamenti_da_ec
+    from app.services.soci_accounting import riconcilia_attese_soci_da_ec
     from app.services.proiezione_bancaria import proietta_movimenti_bancari_semantici
     from app.services.bank_payment_allocations import reconcile_deterministic_invoice_allocations
     from app.services.stipendi_bonifici import associa_bonifici_stipendi
@@ -41,7 +42,16 @@ async def riconcilia_documenti_e_pagamenti(
         db, start_date=start_date, end_date=end_date,
     )
     cbill = await auto_associa_ricevute_db(db)
+
+    # Prima collega le attese manuali gia' esistenti. Solo dopo crea eventuali
+    # nuovi movimenti soci direttamente dalla banca. In questo ordine la stessa
+    # entrata non puo' diventare sia "attesa manuale confermata" sia una seconda
+    # riga auto-generata nel registro soci.
+    soci_attese = await riconcilia_attese_soci_da_ec(
+        db, anno=anno, movimento_ids=movimento_ids,
+    )
     finanziamenti_soci = await scan_finanziamenti_da_ec(db, anno=anno)
+
     proiezione_banca = await proietta_movimenti_bancari_semantici(
         db, anno=anno, movimento_ids=movimento_ids,
     )
@@ -60,7 +70,10 @@ async def riconcilia_documenti_e_pagamenti(
             "fatture_dopo": paypal_fatture_dopo,
         },
         "cbill_pagopa": cbill,
-        "finanziamenti_soci": finanziamenti_soci,
+        "finanziamenti_soci": {
+            "attese_riconciliate": soci_attese,
+            "scan": finanziamenti_soci,
+        },
         "proiezione_banca": proiezione_banca,
         "allocazioni_fatture_banca": allocazioni_fatture_banca,
     }
