@@ -243,10 +243,17 @@ async def sincronizza_bonifici_storici():
     # (associa_bonifico li ha già messi in pagamenti_esiti con la chiave
     # "beneficiari-diversi:*"): reimportarli qui creerebbe una seconda riga in
     # pagamenti_esiti per lo stesso pagamento, raddoppiando il bonifico del mese.
+    # pdf_data ESCLUSO dal caricamento in blocco (05/09/2026): 805 degli 887
+    # bonifici hanno il PDF allegato, 180 MB di base64 in tutto. Caricarli
+    # interi per leggerne solo dipendente/data/importo/competenza ha mandato
+    # in 503 continuo l'AppDipendenti standalone (piano free, 512 MB): qui il
+    # processo e' condiviso con tutto il gestionale, non c'e' motivo di
+    # occupare quella memoria ogni 6 ore. Il PDF viene letto piu' sotto, uno
+    # alla volta, solo per i bonifici che vengono davvero importati.
     bonifici = await db.bonifici.find(
         {"categoria": "DIPENDENTE", "dipendente_id": {"$ne": None}, "competenza": {"$ne": None},
          "assegnato_da_bonifico_diversi": {"$exists": False}},
-        {"_id": 0}).to_list(5000)
+        {"_id": 0, "pdf_data": 0}).to_list(5000)
 
     # Prefetch in blocco (stesso motivo delle altre correzioni in questo file):
     # un find_one per bonifico dentro il ciclo, su una tabella non indicizzata,
@@ -283,8 +290,11 @@ async def sincronizza_bonifici_storici():
                "causale": b.get("fonte") or "Archivio bonifici PDF",
                "beneficiario": b.get("dipendente_nome"),
                "mese": mese, "anno": anno, "origine": "bonifici-storico"}
-        if b.get("pdf_data"):
-            doc["pdf_data"] = b["pdf_data"]
+        # Il PDF si legge solo qui, per il singolo bonifico che entra davvero
+        # (il caricamento in blocco sopra lo esclude per non saturare la memoria).
+        con_pdf = await db.bonifici.find_one({"id": b.get("id")}, {"_id": 0, "pdf_data": 1})
+        if con_pdf and con_pdf.get("pdf_data"):
+            doc["pdf_data"] = con_pdf["pdf_data"]
             doc["ha_pdf"] = True
         await db.pagamenti_esiti.update_one({"key": key}, {"$set": doc}, upsert=True)
         await db.paghe_mensili.update_one(
