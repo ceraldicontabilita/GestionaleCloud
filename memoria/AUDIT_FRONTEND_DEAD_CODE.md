@@ -3,26 +3,24 @@
 > Generato da `scripts/audit_frontend_dead_code.py` seguendo il grafo di import reale a partire da `main.jsx`/`App.jsx`/`navigation.config.js` (import statici, `import()` dinamici, `lazy(() => import(...))`, re-export `export {X} from`/`export * from`).
 > NON modificare a mano: rilancia lo script.
 
-**Totale file analizzati:** 210
+**Totale file analizzati:** 212
 
 | Classificazione | File |
 |---|---:|
 | ENTRYPOINT | 3 |
 | ROUTE_ATTIVA | 27 |
 | COMPONENTE_USATO | 97 |
-| MODALE_USATO | 3 |
+| MODALE_USATO | 4 |
 | HOOK_USATO | 3 |
-| TEST_ONLY | 54 |
+| TEST_ONLY | 56 |
 | DINAMICO_DA_VERIFICARE | 22 |
-| ORFANO_ELIMINABILE | 1 |
+| ORFANO_ELIMINABILE | 0 |
 
 ## ORFANO_ELIMINABILE — candidati eliminazione
 
 Nessun import statico o dinamico risolvibile li raggiunge da `main.jsx`/`App.jsx`/`navigation.config.js`, e il nome del file non compare altrove nel codice (safety net anti falso-positivo). Decisione conservativa (§7): NON eliminare in blocco — verificare uno per uno, poi `yarn build && yarn lint` dopo ogni piccolo gruppo.
 
-| File |
-|---|
-| `frontend/src/components/LinkedEvidencePanel.jsx` |
+_Nessuno._
 
 ## DINAMICO_DA_VERIFICARE
 
@@ -58,7 +56,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | File | Classificazione | Importato da (n. file) |
 |---|---|---:|
 | `frontend/src/App.jsx` | ENTRYPOINT | 1 |
-| `frontend/src/api.js` | COMPONENTE_USATO | 111 |
+| `frontend/src/api.js` | COMPONENTE_USATO | 110 |
 | `frontend/src/components/AgentiPanel.jsx` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/components/AssociaAssegnoFattura.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/components/AssociaBonificoFattura.jsx` | COMPONENTE_USATO | 1 |
@@ -69,7 +67,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/components/CopiaTesto.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/CopyLinkButton.jsx` | COMPONENTE_USATO | 5 |
 | `frontend/src/components/DocumentImportLink.jsx` | COMPONENTE_USATO | 2 |
-| `frontend/src/components/DocumentViewerModal.jsx` | MODALE_USATO | 9 |
+| `frontend/src/components/DocumentViewerModal.jsx` | MODALE_USATO | 8 |
 | `frontend/src/components/DriveImportControls.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/components/DriveImportControls.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/components/ErrorBoundary.jsx` | COMPONENTE_USATO | 3 |
@@ -78,12 +76,13 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/components/InAttesaDocumento.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/components/InstallAppButton.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/LinkContropartita.jsx` | COMPONENTE_USATO | 7 |
-| `frontend/src/components/LinkedEvidencePanel.jsx` | ORFANO_ELIMINABILE | 0 |
 | `frontend/src/components/ModalFattura.jsx` | MODALE_USATO | 7 |
 | `frontend/src/components/NotificationBell.jsx` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/components/PageLayout.jsx` | COMPONENTE_USATO | 43 |
 | `frontend/src/components/PannelloSumUp.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/components/PannelloSumUp.test.jsx` | TEST_ONLY | 0 |
+| `frontend/src/components/PinModal.jsx` | MODALE_USATO | 2 |
+| `frontend/src/components/PinModal.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/components/Portal.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/UploadStatusBar.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/ds/Badge.jsx` | COMPONENTE_USATO | 1 |
@@ -99,7 +98,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/components/ds/StatCard.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/ds/Table.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/components/ds/Tabs.jsx` | COMPONENTE_USATO | 1 |
-| `frontend/src/components/ds/index.js` | COMPONENTE_USATO | 62 |
+| `frontend/src/components/ds/index.js` | COMPONENTE_USATO | 61 |
 | `frontend/src/components/layout/TopNav.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/ui/ConfirmDialog.jsx` | MODALE_USATO | 28 |
 | `frontend/src/components/ui/alert.jsx` | COMPONENTE_USATO | 1 |
@@ -212,7 +211,8 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/pages/LibroGiornale.jsx` | COMPONENTE_USATO | 3 |
 | `frontend/src/pages/LibroGiornale.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/pages/LinkContropartite.navigation.test.jsx` | TEST_ONLY | 0 |
-| `frontend/src/pages/Login.jsx` | ROUTE_ATTIVA | 1 |
+| `frontend/src/pages/Login.jsx` | ROUTE_ATTIVA | 2 |
+| `frontend/src/pages/Login.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/pages/MFAAdmin.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/pages/MFAAdmin.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/pages/MappaGestionale.jsx` | ROUTE_ATTIVA | 1 |
