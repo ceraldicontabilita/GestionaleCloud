@@ -56,3 +56,25 @@ def test_blocco_tentativi_condiviso():
     with pytest.raises(HTTPException) as exc:
         login()
     assert exc.value.status_code == 429
+
+
+@pytest.mark.parametrize("token", [
+    "non-un-token",
+    module.jwt.encode({"sub": "admin"}, "different-synthetic-key-for-tests-only", algorithm="HS256"),
+    module.jwt.encode({"sub": "admin"}, "synthetic-menu-signing-key-for-tests-only", algorithm="HS384"),
+])
+def test_token_corrotto_firma_errata_o_algoritmo_non_ammesso_risponde_401(token):
+    with pytest.raises(HTTPException) as exc:
+        module.verify_token(f"Bearer {token}")
+    assert exc.value.status_code == 401
+
+
+def test_token_emesso_dal_login_e_verificabile():
+    assert module.verify_token(f"Bearer {login().token}") == module.ADMIN_USERNAME
+
+
+def test_token_scaduto_risponde_401():
+    token = module.jwt.encode({"sub": "admin", "exp": 1}, module.SECRET_KEY, algorithm="HS256")
+    with pytest.raises(HTTPException) as exc:
+        module.verify_token(f"Bearer {token}")
+    assert exc.value.status_code == 401
