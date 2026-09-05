@@ -25,8 +25,8 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 - Riferimento: **28**
 - Pianificati: **7**
 - Generati: **5**
-- Storici: **8**
-- Totale: **76**
+- Storici: **9**
+- Totale: **77**
 
 ## Elenco completo
 
@@ -86,6 +86,7 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 | `memoria/MAPPA_MODULI.md` | `current` | Autorità operativa corrente |
 | `memoria/MAPPA_ROUTER.md` | `generated` | Artefatto meccanico; rigenerare dalla sorgente indicata |
 | `memoria/PIANO_CONTI_UFFICIALE_CERALDI.md` | `reference` | Dettaglio di dominio subordinato ai documenti correnti |
+| `memoria/REFACTOR_APP_PAGINA_PER_PAGINA_2026-09-05.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `memoria/SPECIFICA_F24_CEDOLINI_IRES_IRAP_CHAT.md` | `reference` | Dettaglio di dominio subordinato ai documenti correnti |
 | `memoria/SPECIFICA_IVA.md` | `reference` | Dettaglio di dominio subordinato ai documenti correnti |
 | `memoria/endpoints/01-prima-nota.md` | `reference` | Dettaglio di dominio subordinato ai documenti correnti |

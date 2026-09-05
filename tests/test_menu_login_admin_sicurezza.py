@@ -1,58 +1,58 @@
-"""Login admin del Menu: niente più credenziali di ripiego scritte nel codice
-(app/menu/routes/qrcode_routes.py).
-
-[FIX 05/09/2026] Prima ADMIN_PASSWORD e SECRET_KEY avevano un valore di
-ripiego hardcoded ("Ceraldi2024!" / "ceraldi_secret_key_change_in_production")
-usato ogni volta che le env MENU_ADMIN_PASSWORD/MENU_JWT_SECRET non erano
-configurate — e per anni la stessa password è stata anche stampata in chiaro
-sulla pagina di login pubblica. Questi test verificano che, senza quelle env,
-il login fallisca chiuso (503) invece di accettare il vecchio valore noto.
-"""
+"""Menu: PIN centrale, firma obbligatoria, nessuna credenziale storica accettata."""
 import asyncio
-import importlib
+import hashlib
 
 import pytest
 from fastapi import HTTPException
+from starlette.requests import Request
+from app.menu.models.qrcode_models import AdminPinLogin
+from app.menu.routes import qrcode_routes as module
 
-from app.menu.models.qrcode_models import AdminLogin
-
-
-def _reload_senza_env(monkeypatch):
-    for chiave in ("MENU_ADMIN_PASSWORD", "ADMIN_PASSWORD", "MENU_JWT_SECRET", "JWT_SECRET"):
-        monkeypatch.delenv(chiave, raising=False)
-    import app.menu.routes.qrcode_routes as modulo
-    return importlib.reload(modulo)
+PIN = "74926183"  # fixture, non una credenziale reale
 
 
-def _reload_con_env(monkeypatch, *, password, secret, username="admin"):
-    monkeypatch.setenv("MENU_ADMIN_USERNAME", username)
-    monkeypatch.setenv("MENU_ADMIN_PASSWORD", password)
-    monkeypatch.setenv("MENU_JWT_SECRET", secret)
-    import app.menu.routes.qrcode_routes as modulo
-    return importlib.reload(modulo)
+@pytest.fixture(autouse=True)
+def configured(monkeypatch):
+    monkeypatch.setenv("PIN_HASH_ADMIN", hashlib.sha256(PIN.encode()).hexdigest())
+    monkeypatch.setattr(module, "SECRET_KEY", "synthetic-menu-signing-key-for-tests-only")
+    module.login_lockout._FAILED.clear()
 
 
-def test_senza_env_configurate_il_vecchio_default_non_funziona_piu(monkeypatch):
-    modulo = _reload_senza_env(monkeypatch)
-    assert modulo.ADMIN_PASSWORD == ""
-    assert modulo.SECRET_KEY == ""
+def login(pin=PIN):
+    request = Request({"type": "http", "headers": [], "client": ("menu-test", 1)})
+    return asyncio.run(module.admin_login(AdminPinLogin(pin=pin), request))
 
-    login = AdminLogin(username="admin", password="Ceraldi2024!")
+
+def test_senza_firma_fallisce_chiuso(monkeypatch):
+    monkeypatch.setattr(module, "SECRET_KEY", "")
     with pytest.raises(HTTPException) as exc:
-        asyncio.run(modulo.admin_login(login))
+        login()
     assert exc.value.status_code == 503
 
 
-def test_con_env_configurate_le_credenziali_giuste_funzionano(monkeypatch):
-    modulo = _reload_con_env(monkeypatch, password="una-password-vera-e-lunga", secret="un-segreto-jwt-vero-e-lungo")
-    login = AdminLogin(username="admin", password="una-password-vera-e-lunga")
-    esito = asyncio.run(modulo.admin_login(login))
-    assert esito.success is True
-    assert esito.token
+def test_senza_pin_centrale_non_accetta_credentiali_alternative(monkeypatch):
+    monkeypatch.delenv("PIN_HASH_ADMIN", raising=False)
+    monkeypatch.setenv("MENU_ADMIN_PASSWORD", PIN)
+    with pytest.raises(HTTPException) as exc:
+        login()
+    assert exc.value.status_code == 503
 
 
-def test_con_env_configurate_una_password_sbagliata_viene_rifiutata(monkeypatch):
-    modulo = _reload_con_env(monkeypatch, password="una-password-vera-e-lunga", secret="un-segreto-jwt-vero-e-lungo")
-    login = AdminLogin(username="admin", password="Ceraldi2024!")
-    esito = asyncio.run(modulo.admin_login(login))
-    assert esito.success is False
+def test_pin_centrale_corretto():
+    result = login()
+    assert result.success is True
+    assert result.token
+
+
+def test_pin_errato_non_emette_token():
+    result = login("123456")
+    assert result.success is False
+    assert not result.token
+
+
+def test_blocco_tentativi_condiviso():
+    for _ in range(module.login_lockout.MAX_ATTEMPTS):
+        login("123456")
+    with pytest.raises(HTTPException) as exc:
+        login()
+    assert exc.value.status_code == 429

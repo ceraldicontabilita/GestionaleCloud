@@ -39,6 +39,9 @@ def test_orchestratore_include_paypal_fatture_banca_e_cbill(monkeypatch):
     async def finanziamenti(*args, **kwargs):
         return await record("finanziamenti", {"apporti_nuovi": 1}, *args, **kwargs)
 
+    async def attese_soci(*args, **kwargs):
+        return await record("attese_soci", {"riconciliati": 1, "ambigui": 0}, *args, **kwargs)
+
     async def proiezione(*args, **kwargs):
         return await record("proiezione", {"proiettati": 4}, *args, **kwargs)
 
@@ -76,6 +79,10 @@ def test_orchestratore_include_paypal_fatture_banca_e_cbill(monkeypatch):
         finanziamenti,
     )
     monkeypatch.setattr(
+        "app.services.soci_accounting.riconcilia_attese_soci_da_ec",
+        attese_soci,
+    )
+    monkeypatch.setattr(
         "app.services.proiezione_bancaria.proietta_movimenti_bancari_semantici",
         proiezione,
     )
@@ -91,7 +98,10 @@ def test_orchestratore_include_paypal_fatture_banca_e_cbill(monkeypatch):
     assert [name for name, _ in calls].count("paypal_fatture") == 2
     assert result["paypal"]["banca"] == {"riconciliati": 1}
     assert result["cbill_pagopa"] == {"associati": 1}
-    assert result["finanziamenti_soci"] == {"apporti_nuovi": 1}
+    assert result["finanziamenti_soci"] == {
+        "attese_riconciliate": {"riconciliati": 1, "ambigui": 0},
+        "scan": {"apporti_nuovi": 1},
+    }
     assert result["proiezione_banca"] == {"proiettati": 4}
     assert result["allocazioni_fatture_banca"] == {"allocati": 2}
     paypal_ranges = [

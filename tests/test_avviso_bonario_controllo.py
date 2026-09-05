@@ -272,9 +272,19 @@ def test_endpoint_controllo_restituisce_esiti_e_422_su_periodo_invalido(monkeypa
 def test_route_avviso_bonario_precede_la_route_dinamica_di_f24_main():
     from app.routers.f24 import f24_main
 
-    rotte = [(getattr(r, "path", ""), set(getattr(r, "methods", None) or ())) for r in f24_main.router.routes]
-    percorsi = [p for p, _ in rotte]
+    # FastAPI recente conserva i router inclusi come nodo lazy, anziche'
+    # espandere subito le singole APIRoute. Appiattiamo quel solo nodo per
+    # verificare l'ordine effettivo senza dipendere dalla versione del framework.
+    rotte = []
+    for route in f24_main.router.routes:
+        child = getattr(route, "original_router", None)
+        rotte.extend(child.routes if child is not None else [route])
+    percorsi = [getattr(route, "path", "") for route in rotte]
     assert "/avviso-bonario/controllo" in percorsi
     assert "/riconcilia-addebiti" in percorsi
-    get_dinamica = max(i for i, (p, m) in enumerate(rotte) if p == "/{f24_id}" and "GET" in m)
+    get_dinamica = max(
+        i for i, route in enumerate(rotte)
+        if getattr(route, "path", "") == "/{f24_id}"
+        and "GET" in set(getattr(route, "methods", None) or ())
+    )
     assert percorsi.index("/avviso-bonario/controllo") < get_dinamica

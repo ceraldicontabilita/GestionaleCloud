@@ -49,6 +49,7 @@ from pydantic import BaseModel
 from typing import Optional
 from app.lotti.db import database as db
 from app.lotti.auth import make_token, check_lock, register_fail, clear_fails, require_admin, _secret
+from app.services.admin_pin import verify_admin_pin
 
 router = APIRouter(prefix="/tablet-operatori", tags=["tablet_operatori"])
 
@@ -439,9 +440,16 @@ async def trova_operatori_per_pin(pin: str):
     risultato multiplo e' intenzionale per il gruppo amministratori Ceraldi:
     il client dovra' scegliere la persona prima di ricevere il token.
     """
+    # Gli amministratori conservano ID distinti e scelta esplicita, ma non
+    # verificano più i vecchi hash locali. Il PIN è quello di ERP/Menu.
+    if verify_admin_pin(pin) is True:
+        return await db.tablet_operatori.find(
+            {"attivo": True, "ruolo": "amministratore"},
+            {"_id": 0, "id": 1, "nome": 1, "ruolo": 1},
+        ).to_list(200)
     lookup = _pin_lookup(pin)
     docs = await db.tablet_operatori.find(
-        {"attivo": True, "pin_lookup": lookup},
+        {"attivo": True, "pin_lookup": lookup, "ruolo": {"$ne": "amministratore"}},
         {"_id": 0, "id": 1, "nome": 1, "ruolo": 1, "pin": 1,
          "pin_lookup": 1, "gruppo_pin": 1},
     ).to_list(200)
@@ -487,7 +495,8 @@ async def trova_operatori_per_pin(pin: str):
     # Compatibilità con operatori che hanno bcrypt ma non ancora l'impronta,
     # oppure con un AUTH_SECRET ruotato: bcrypt resta la fonte di verità.
     dipendenti = await db.tablet_operatori.find(
-        {"attivo": True}, {"_id": 0, "id": 1, "nome": 1, "pin": 1, "ruolo": 1}
+        {"attivo": True, "ruolo": {"$ne": "amministratore"}},
+        {"_id": 0, "id": 1, "nome": 1, "pin": 1, "ruolo": 1}
     ).to_list(200)
     for d in dipendenti:
         if d.get("id") not in ids and d.get("pin") and _verify_pin(pin, d["pin"]):
@@ -768,10 +777,12 @@ async def reimposta_pin(op_id: str, payload: ReimpostaPin, _admin=Depends(requir
     if len(pin) < 4 or not pin.isdigit():
         raise HTTPException(400, "Il PIN deve essere di almeno 4 cifre")
     operatore = await db.tablet_operatori.find_one(
-        {"id": op_id, "attivo": True}, {"_id": 0, "id": 1, "gruppo_pin": 1}
+        {"id": op_id, "attivo": True}, {"_id": 0, "id": 1, "gruppo_pin": 1, "ruolo": 1}
     )
     if not operatore:
         raise HTTPException(404, "Operatore non trovato")
+    if operatore.get("ruolo") == "amministratore":
+        raise HTTPException(409, "Il PIN amministratore è gestito centralmente da GestionaleCloud nelle variabili Render")
     gruppo = operatore.get("gruppo_pin")
     filtro_altri = {"attivo": True, "pin_lookup": _pin_lookup(pin), "id": {"$ne": op_id}}
     if gruppo:
@@ -817,6 +828,9 @@ async def aggiorna_dipendente(op_id: str, payload: AggiornaDipendente, _admin=De
         if val is not None:
             upd[campo] = val.strip().upper() if campo == "codice_fiscale" else val
     if payload.pin is not None:
+        existing = await db.tablet_operatori.find_one({"id": op_id}, {"_id": 0, "ruolo": 1})
+        if payload.ruolo == "amministratore" or (existing and existing.get("ruolo") == "amministratore"):
+            raise HTTPException(409, "Il PIN amministratore è gestito centralmente da GestionaleCloud nelle variabili Render")
         pin = payload.pin.strip()
         if len(pin) < 4:
             raise HTTPException(400, "PIN minimo 4 cifre")

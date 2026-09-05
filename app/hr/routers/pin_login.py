@@ -1,9 +1,9 @@
 """
 PIN Login router — accesso rapido via PIN dall'app mobile Ceraldi.
 
-Il PIN è UNICO e FISSO, concede un JWT admin. Il valore vive SOLO nelle env
-di Render (PIN_CODE): non è mai scritto nel codice. Viene confrontato come
-hash SHA-256 calcolato a runtime, mai persistito in chiaro.
+Il PIN amministratore è quello di ERP/Menu. Il verificatore condiviso usa
+esclusivamente PIN_HASH_ADMIN dalle env Render, mai un PIN alternativo HR.
+L'identità e il ruolo amministrativo devono già esistere nell'archivio HR.
 
 Flow:
   POST /api/auth/pin-login   body: {"pin": "<pin>"}
@@ -12,8 +12,6 @@ Flow:
 from fastapi import APIRouter, HTTPException, Body, Request, status
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any
-import hashlib
-import hmac
 import logging
 import os
 import time
@@ -24,9 +22,10 @@ from app.hr.config import settings
 from app.hr.database import Database, Collections
 from app.hr.repositories import UserRepository
 from app.hr.services.auth_dipendenti import (
-    login_dipendente, login_dipendente_per_nome, operatore_amministratore,
+    login_dipendente, login_dipendente_per_nome,
     elenco_dipendenti_per_login,
 )
+from app.services.admin_pin import verify_admin_pin, configured as admin_pin_configured
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -81,13 +80,8 @@ def _clear_failures(ip: str):
 
 
 def _pin_ok(pin: str) -> bool:
-    """Confronto costante tra l'hash del PIN inviato e quello configurato (env)."""
-    configured = settings.PIN_CODE or ""
-    if not configured:
-        return False
-    sent = hashlib.sha256(pin.encode("utf-8")).hexdigest()
-    expected = hashlib.sha256(configured.encode("utf-8")).hexdigest()
-    return hmac.compare_digest(sent, expected)
+    """La stessa credenziale di ERP/Menu, senza fallback HR_PIN_CODE."""
+    return verify_admin_pin(pin) is True
 
 
 @router.get("/dipendenti-attivi", summary="Nomi per il selettore di login del portale")
@@ -159,27 +153,9 @@ async def pin_login(
         logger.info(f"PIN-login dipendente OK · IP {ip} · {result['user_id']} · {result['role']}")
         return result
 
-    # --- Ramo admin via fonte operatori condivisa (PIN unico cassa) ---
-    if pin.isdigit() and 4 <= len(pin) <= 12:
-        db_op = Database.get_db()
-        op = await operatore_amministratore(db_op, pin)
-        if op:
-            _clear_failures(ip)
-            expire = datetime.now(timezone.utc) + timedelta(minutes=PIN_TOKEN_EXPIRE_MINUTES)
-            token = jwt.encode(
-                {"sub": op.get("id", "admin"), "name": op.get("nome", "Amministratore"),
-                 "role": "admin", "tipo": "admin", "exp": expire,
-                 "iat": datetime.now(timezone.utc), "auth_method": "pin_operatore"},
-                settings.SECRET_KEY, algorithm=settings.ALGORITHM,
-            )
-            logger.info(f"PIN-login admin (operatore cassa) OK · IP {ip}")
-            return {"access_token": token, "token_type": "bearer",
-                    "user_id": op.get("id", "admin"), "name": op.get("nome", "Amministratore"),
-                    "role": "admin", "tipo": "admin", "auth_method": "pin_operatore"}
-
-    # --- Ramo admin: PIN unico da env ---
-    if not settings.PIN_CODE:
-        logger.error("PIN-login: PIN_CODE non configurato nelle env")
+    # --- Ramo admin: unica fonte PIN_HASH_ADMIN di GestionaleCloud ---
+    if not admin_pin_configured():
+        logger.error("PIN-login: PIN amministratore centrale non configurato")
         raise HTTPException(503, "Login PIN non configurato")
 
     if not pin.isdigit() or not (4 <= len(pin) <= 12):
@@ -201,9 +177,7 @@ async def pin_login(
         user = None
     if not user:
         user = await db[Collections.USERS].find_one({"role": "admin"})
-    if not user:
-        user = await db[Collections.USERS].find_one({"is_active": True})
-    if not user:
+    if not user or user.get("role") != "admin" or user.get("is_active") is False:
         logger.error("PIN-login: nessun utente admin nel DB")
         raise HTTPException(500, "Nessun utente admin configurato")
 
@@ -246,7 +220,7 @@ async def pin_login(
 async def pin_login_health() -> Dict[str, Any]:
     return {
         "ok": True,
-        "configured": bool(settings.PIN_CODE),
+        "configured": admin_pin_configured(),
         "admin_username": settings.PIN_ADMIN_USERNAME,
         "token_expire_minutes": PIN_TOKEN_EXPIRE_MINUTES,
     }

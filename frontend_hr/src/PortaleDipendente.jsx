@@ -6,6 +6,9 @@ import {
   FolderOpen, Upload, Trash2, AlertTriangle, Grid3X3, Clock, MapPin,
 } from "lucide-react";
 import "./portale.css";
+import { LockKeyhole, Delete, X } from "lucide-react";
+import { createPinModal } from "../../frontend_shared/PinModal";
+const PinModal = createPinModal(React, { LockKeyhole, Delete, X });
 
 const TK = "pt_token";
 // Legge la scadenza (exp) dal JWT senza verificarne la firma (la verifica vera
@@ -164,8 +167,7 @@ function Login({ onLogin }) {
   const [elenco, setElenco] = useState(null);   // null = in caricamento
   const [elencoErr, setElencoErr] = useState(false);
   const [sel, setSel] = useState(null);   // {admin:true} | {id, nome}
-  const [pin, setPin] = useState("");
-  const [err, setErr] = useState("");
+
 
   // Estratta (non solo nell'effetto) per poterla richiamare dal bottone
   // "Riprova": senza, un fallimento di rete lasciava l'elenco vuoto per
@@ -181,34 +183,23 @@ function Login({ onLogin }) {
   };
   useEffect(() => { caricaElenco(); }, []);
 
-  const press = (n) => { setErr(""); if (pin.length < 8) setPin(pin + n); };
-  const submit = async (p) => {
+  const submit = async p => {
+    let r;
     try {
       const body = sel.admin ? { pin: p } : { dipendente_id: sel.id, pin: p };
-      const r = await api.post("/auth/pin-login", body);
-      // Un login riuscito e' la prova piu' diretta possibile che la
-      // connessione funziona: se un tentativo precedente aveva acceso il
-      // banner "Connessione assente" (prima del login, quindi non visibile
-      // in questa schermata), va spento qui — altrimenti l'app si apre con
-      // un banner falso proprio nel momento in cui la connessione e' appena
-      // stata dimostrata funzionante (trovato da una review automatica).
-      _azzeraConnessione();
-      localStorage.setItem(TK, r.data.access_token);
-      localStorage.setItem("pt_role", r.data.role);
-      localStorage.setItem("pt_name", r.data.name || sel.nome);
-      // L'amministratore entra DIRETTAMENTE nella Gestione (desktop), non nel portale.
-      if (r.data.role === "admin") { window.location.href = "/hr/dipendenti"; return; }
-      onLogin();
+      r = await api.post("/auth/pin-login", body);
     } catch (e) {
-      // Prima del login il banner globale "Connessione assente" non e' ancora
-      // visibile (schermata separata da pt-root): senza questa distinzione un
-      // timeout di rete veniva mostrato come "PIN errato", proprio sulla wifi
-      // scarsa che questo fix doveva coprire (trovato da una review automatica).
-      // Login via id (non piu' per nome): un PIN errato e' sempre "PIN errato",
-      // niente piu' ambiguita' da riportare come "nome o PIN non validi".
-      setErr(!e.response ? "Connessione assente — riprova" : "PIN errato");
-      setPin("");
+      const detail = e.response?.data?.detail;
+      throw new Error(!e.response ? "Connessione assente — riprova"
+        : typeof detail === "string" ? detail : "Accesso non riuscito");
     }
+    if (!r.data.access_token) throw new Error("Risposta di accesso non valida");
+    _azzeraConnessione();
+    localStorage.setItem(TK, r.data.access_token);
+    localStorage.setItem("pt_role", r.data.role);
+    localStorage.setItem("pt_name", r.data.name || sel.nome);
+    if (r.data.role === "admin") { window.location.href = "/hr/dipendenti"; return; }
+    onLogin();
   };
 
   if (!sel) return (
@@ -237,22 +228,10 @@ function Login({ onLogin }) {
     </div>
   );
 
-  return (
-    <div className="login">
-      <button className="btn gh sm" style={{ width: "auto" }} onClick={() => { setSel(null); setPin(""); setErr(""); }}>
-        <ChevronLeft size={16} /> indietro</button>
-      <h2 style={{ marginTop: 18 }}>Ciao {sel.admin ? "Amministratore" : sel.nome}</h2>
-      <div className="muted" style={{ textAlign: "center" }}>Inserisci il tuo PIN</div>
-      <div className="pin-dots">{Array.from({length: Math.max(4, pin.length)}).map((_,i)=><i key={i} className={pin.length>i?"on":""} />)}</div>
-      {err && <div className="err">{err}</div>}
-      <div className="pinpad">
-        {[1,2,3,4,5,6,7,8,9].map((n)=><button key={n} onClick={()=>press(n)}>{n}</button>)}
-        <button onClick={()=>setPin("")}>C</button>
-        <button onClick={()=>press(0)}>0</button>
-        <button onClick={()=>submit(pin)} disabled={pin.length<4} style={{color:"var(--violet)"}}>OK</button>
-      </div>
-    </div>
-  );
+  return <PinModal title={sel.admin ? "Accesso HR" : sel.nome}
+    subtitle={sel.admin ? "Inserisci il PIN di GestionaleCloud" : "Inserisci il tuo PIN personale"}
+    color="#5b7a6b" maxLength={12}
+    onVerify={submit} onCancel={() => setSel(null)} />;
 }
 
 /* ---------------- TURNI ----------------

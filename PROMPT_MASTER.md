@@ -339,6 +339,23 @@ credenziali nel repository, nei fogli o nei log.
 Ogni mutazione registra attore, correlation ID, sorgente, prima/dopo, timestamp
 UTC e risultato. L'utente può accedere solo ai dati del ruolo autorizzato.
 
+### 19.1 PIN amministratore e modale condiviso (05/09/2026)
+
+Il PIN amministratore di ERP/Menu è il riferimento unico anche per Lotti e HR:
+verifica centrale in `app/services/admin_pin.py`, solo `PIN_HASH_ADMIN` su Render,
+senza fallback ai vecchi PIN amministratore locali. Nessun hash viene copiato
+tra archivi. Gli operatori Lotti amministratori mantengono ID distinti e scelta
+esplicita quando il PIN corrisponde a più persone. Ruoli, token delle sotto-app
+e MFA dell'ERP restano verificati dai rispettivi flussi; un PIN personale non
+deve aggirare la verifica centrale per ottenere il ruolo admin.
+
+Le quattro app usano `frontend_shared/PinModal.js`: medesimo modale e tastierino,
+colore della sezione, conferma esplicita (nessun invio prematuro alla sesta
+cifra), blocco del doppio invio, errori server, tastiera e gestione del focus.
+Il componente non conserva il PIN in storage. I PIN personali dei dipendenti
+non sono il PIN amministratore: la loro unificazione HR/Lotti richiede identità
+verificate, senza collegamenti automatici per somiglianza del nome.
+
 ## 20. Divieti assoluti
 
 - pagamenti automatici;
@@ -510,9 +527,9 @@ si rigenerano dal codice e non si correggono a mano.
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | sicurezza | segreta | `int` / valore non riportato | `app/config.py` |
 | `ADER_MICRO_RESIDUAL_THRESHOLD_CENTS` | azienda-fiscale | configurazione | `int` / `500` | `app/config.py` |
 | `ADMIN_EMAIL` | sicurezza | configurazione | non dichiarato in Settings | `app/hr/routers/auth.py`, `app/hr/services/email_smtp.py`, `app/routers/auth.py`, `app/routers/pin_login.py`, `scripts/e2e_distruttivo_server.py` |
-| `ADMIN_PASSWORD` | sicurezza | segreta | non dichiarato in Settings | `app/hr/routers/auth.py`, `app/menu/routes/qrcode_routes.py`, `app/routers/auth.py`, `scripts/e2e_distruttivo_server.py` |
+| `ADMIN_PASSWORD` | sicurezza | segreta | non dichiarato in Settings | `app/hr/routers/auth.py`, `app/routers/auth.py`, `scripts/e2e_distruttivo_server.py` |
 | `ADMIN_PASSWORD_HASH` | sicurezza | segreta | non dichiarato in Settings | `app/hr/routers/auth.py`, `app/routers/auth.py` |
-| `ADMIN_PIN` | sicurezza | segreta | non dichiarato in Settings | `app/routers/pin_login.py`, `app/services/utenti_pin.py` |
+| `ADMIN_PIN` | sicurezza | segreta | non dichiarato in Settings | `app/services/utenti_pin.py` |
 | `ADMIN_PIN_INIZIALE` | sicurezza | segreta | non dichiarato in Settings | `app/lotti/routers/tablet_operatori.py` |
 | `ADMIN_PIN_RECOVERY` | sicurezza | segreta | non dichiarato in Settings | `app/lotti/routers/tablet_operatori.py` |
 | `ADMIN_TOKEN_EXPIRE_MINUTES` | sicurezza | segreta | non dichiarato in Settings | `app/hr/routers/pin_login.py` |
@@ -672,7 +689,6 @@ si rigenerano dal codice e non si correggono a mano.
 | `HR_ADMIN_PASSWORD_HASH` | app-runtime | segreta | non dichiarato in Settings | `app/hr/routers/auth.py` |
 | `HR_ADMIN_TOKEN_EXPIRE_MINUTES` | app-runtime | segreta | non dichiarato in Settings | `app/hr/routers/pin_login.py` |
 | `HR_JWT_SECRET` | app-runtime | segreta | non dichiarato in Settings | `app/hr/routers/auth.py`, `render.yaml` |
-| `HR_PIN_CODE` | app-runtime | segreta | non dichiarato in Settings | `render.yaml` |
 | `HR_SUPABASE_DB_URL` | app-runtime | configurazione | non dichiarato in Settings | `render.yaml` |
 | `IMAP_EMAIL` | gmail-email | configurazione | non dichiarato in Settings | `app/hr/routers/dipendenti_cloud/__init__.py` |
 | `IMAP_HOST` | gmail-email | configurazione | `str` / `'imap.gmail.com'` | `app/config.py`, `app/hr/routers/dipendenti_cloud/__init__.py`, `app/routers/settings_router.py`, `app/services/pagopa_scanner.py` |
@@ -696,7 +712,7 @@ si rigenerano dal codice e non si correggono a mano.
 | `LOTTI_SUPABASE_URL` | app-runtime | configurazione | non dichiarato in Settings | `app/lotti/db.py`, `app/lotti/scripts/migrate_recovered_json_to_supabase.py`, `app/lotti/supabase_document_store.py`, `render.yaml` |
 | `MAX_CONCURRENT_IMPORTS` | app-runtime | configurazione | `int` / `5` | `app/config.py` |
 | `MAX_UPLOAD_SIZE_MB` | app-runtime | configurazione | `int` / `50` | `app/config.py` |
-| `MENU_ADMIN_PASSWORD` | app-runtime | segreta | non dichiarato in Settings | `app/menu/routes/qrcode_routes.py`, `render.yaml` |
+| `MENU_ADMIN_PASSWORD` | app-runtime | segreta | non dichiarato in Settings | `render.yaml` |
 | `MENU_ADMIN_USERNAME` | app-runtime | configurazione | non dichiarato in Settings | `app/menu/routes/qrcode_routes.py`, `render.yaml` |
 | `MENU_JWT_SECRET` | app-runtime | segreta | non dichiarato in Settings | `app/menu/routes/qrcode_routes.py`, `render.yaml` |
 | `MENU_SUPABASE_KEY` | app-runtime | configurazione | non dichiarato in Settings | `render.yaml` |
@@ -722,18 +738,18 @@ si rigenerano dal codice e non si correggono a mano.
 | `PEC_PASSWORD` | app-runtime | segreta | non dichiarato in Settings | `app/hr/routers/portale_buste.py`, `app/hr/services/email_smtp.py` |
 | `PEC_PORT` | app-runtime | configurazione | non dichiarato in Settings | `app/hr/routers/portale_buste.py`, `app/hr/services/email_smtp.py` |
 | `PEC_USER` | app-runtime | configurazione | non dichiarato in Settings | `app/hr/routers/portale_buste.py`, `app/hr/services/email_smtp.py` |
-| `PIN_HASH_ADMIN` | sicurezza | segreta | non dichiarato in Settings | `app/routers/pin_login.py` |
+| `PIN_HASH_ADMIN` | sicurezza | segreta | non dichiarato in Settings | `app/services/admin_pin.py` |
 | `PLAYWRIGHT_CHROMIUM` | app-runtime | configurazione | non dichiarato in Settings | `frontend/scripts/audit-destructive-e2e.cjs`, `frontend/scripts/audit-layout.cjs`, `frontend/scripts/audit-operation-index.cjs`, `frontend/scripts/audit-pages-e2e.cjs`, `frontend/scripts/audit-viewer.cjs` |
 | `PORT` | app-runtime | configurazione | `int` / `8000` | `app/config.py` |
 | `POS_ACCREDITO_WEEKEND` | feature-job | configurazione | non dichiarato in Settings | `app/utils/pos_accredito.py` |
 | `PROCESS_ROLE` | app-runtime | configurazione | non dichiarato in Settings | `app/main.py`, `render.yaml` |
-| `PUBLIC_URL` | app-runtime | configurazione | non dichiarato in Settings | `frontend_lotti/src/components/haccp/ManualeView.jsx`, `frontend_lotti/src/components/haccp/RegistroAllergeniView.jsx`, `frontend_lotti/src/utils/constants.js`, `frontend_lotti/src/utils/constants.test.js`, `frontend_menu/src/App.js`, `frontend_menu/src/pages/AdminDashboard.jsx`, `frontend_menu/src/pages/HomePage.jsx` |
+| `PUBLIC_URL` | app-runtime | configurazione | non dichiarato in Settings | `frontend_lotti/src/components/haccp/ManualeView.jsx`, `frontend_lotti/src/components/haccp/RegistroAllergeniView.jsx`, `frontend_lotti/src/utils/constants.js`, `frontend_lotti/src/utils/constants.test.js`, `frontend_menu/src/App.js`, `frontend_menu/src/pages/AdminDashboard.jsx`, `frontend_menu/src/pages/AdminQRCodePage.jsx`, `frontend_menu/src/pages/HomePage.jsx` |
 | `PYTHONUTF8` | app-runtime | configurazione | non dichiarato in Settings | `render.yaml` |
 | `PYTHON_VERSION` | app-runtime | configurazione | non dichiarato in Settings | `render.yaml` |
 | `REACT_APP_BACKEND_URL` | app-runtime | configurazione | non dichiarato in Settings | `app/lotti/routers/manuale_haccp.py`, `app/lotti/tests/conftest.py`, `app/lotti/tests/test_email_ordini_iter66.py`, `app/lotti/tests/test_giacenze_iter69.py`, `app/lotti/tests/test_iteration46_features.py`, `app/lotti/tests/test_iteration47_features.py`, `app/lotti/tests/test_iteration48_features.py`, `app/lotti/tests/test_iteration52_features.py`, `app/lotti/tests/test_iteration53_features.py`, `app/lotti/tests/test_iteration55_bugfixes.py`, `app/lotti/tests/test_iteration56_nutritional.py`, `app/lotti/tests/test_iteration57_bom.py`, `app/lotti/tests/test_iteration72_bugfixes.py`, `app/lotti/tests/test_magazzino_bar_iter68.py`, `app/lotti/tests/test_magazzino_unificato_iter71.py`, `app/lotti/tests/test_ordini_fornitori.py`, `app/lotti/tests/test_ordini_fornitori_iter70.py`, `app/lotti/tests/test_p1_p2_features.py`, `app/lotti/tests/test_prezzi_alert_iter67.py`, `backend/tests/test_fase2_fase3_fase4.py` |
 | `REACT_APP_GESTIONALE_URL` | app-runtime | configurazione | non dichiarato in Settings | `frontend_lotti/src/layouts/AppLayout.jsx` |
 | `REACT_APP_LOTTI_BACKEND_URL` | app-runtime | configurazione | non dichiarato in Settings | `frontend_lotti/src/App.js`, `frontend_lotti/src/components/haccp/BackofficeView.jsx`, `frontend_lotti/src/components/haccp/ControlloOlioView.jsx`, `frontend_lotti/src/components/haccp/CorrispettiviView.jsx`, `frontend_lotti/src/components/haccp/ListinoView.jsx`, `frontend_lotti/src/components/haccp/MagazzinoBarView.jsx`, `frontend_lotti/src/components/haccp/ProdottiVenditaView.jsx`, `frontend_lotti/src/components/haccp/RicetteDashboardView.jsx`, `frontend_lotti/src/components/haccp/RicezioneMerceView.jsx`, `frontend_lotti/src/components/haccp/SaimaRicettariView.jsx`, `frontend_lotti/src/components/haccp/TabletHome.jsx`, `frontend_lotti/src/components/haccp/TabletView.jsx`, `frontend_lotti/src/components/haccp/TemperatureCotturaView.jsx`, `frontend_lotti/src/components/haccp/backoffice/FormRicetta.jsx`, `frontend_lotti/src/components/haccp/backoffice/TabFornitori.jsx`, `frontend_lotti/src/components/haccp/backoffice/TabProdotti.jsx`, `frontend_lotti/src/components/haccp/lotti/ModalDettaglioLotto.jsx`, `frontend_lotti/src/utils/constants.js` |
-| `REACT_APP_MENU_BACKEND_URL` | app-runtime | configurazione | non dichiarato in Settings | `frontend_menu/src/components/CartDrawer.jsx`, `frontend_menu/src/components/admin/BackupManager.jsx`, `frontend_menu/src/components/admin/ImageUploadManager.jsx`, `frontend_menu/src/components/admin/ProductManager.jsx`, `frontend_menu/src/context/CartContext.jsx`, `frontend_menu/src/context/MenuContext.jsx`, `frontend_menu/src/hooks/useAdminAuth.js`, `frontend_menu/src/pages/AdminDashboard.jsx`, `frontend_menu/src/pages/AdminLoginPage.jsx`, `frontend_menu/src/pages/AdminQRCodePage.jsx`, `frontend_menu/src/pages/admin/CounterPage.jsx`, `frontend_menu/src/pages/admin/KitchenMonitorPage.jsx`, `frontend_menu/src/pages/admin/OrdersPage.jsx`, `frontend_menu/src/pages/admin/SalePage.jsx`, `frontend_menu/src/pages/admin/WarehousePage.jsx` |
+| `REACT_APP_MENU_BACKEND_URL` | app-runtime | configurazione | non dichiarato in Settings | `frontend_menu/src/components/CartDrawer.jsx`, `frontend_menu/src/components/admin/BackupManager.jsx`, `frontend_menu/src/components/admin/ImageUploadManager.jsx`, `frontend_menu/src/components/admin/ProductManager.jsx`, `frontend_menu/src/context/CartContext.jsx`, `frontend_menu/src/context/MenuContext.jsx`, `frontend_menu/src/hooks/useAdminAuth.js`, `frontend_menu/src/pages/AdminDashboard.jsx`, `frontend_menu/src/pages/AdminLoginPage.jsx`, `frontend_menu/src/pages/admin/CounterPage.jsx`, `frontend_menu/src/pages/admin/KitchenMonitorPage.jsx`, `frontend_menu/src/pages/admin/OrdersPage.jsx`, `frontend_menu/src/pages/admin/SalePage.jsx`, `frontend_menu/src/pages/admin/WarehousePage.jsx` |
 | `RELOAD` | app-runtime | configurazione | `bool` / `False` | `app/config.py` |
 | `RENDER` | app-runtime | configurazione | non dichiarato in Settings | `app/main.py`, `app/utils/session_cookie.py` |
 | `RENDER_EXTERNAL_URL` | app-runtime | configurazione | non dichiarato in Settings | `app/lotti/routers/scheduler.py` |

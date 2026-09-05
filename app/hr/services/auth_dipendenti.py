@@ -16,6 +16,7 @@ from jose import jwt
 
 from app.hr.config import settings
 from app.hr.database import Database, Collections
+from app.services.admin_pin import verify_admin_pin
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +59,7 @@ async def login_dipendente_per_nome(nome: str, pin: str) -> Optional[Dict[str, A
     al nome e si accetta solo quello il cui PIN verifica — così due omonimi non
     collidono e nessun nome viene mai mostrato prima dell'autenticazione."""
     nome = (nome or "").strip()
-    if len(nome) < 2 or not _valid_pin_format(pin):
+    if len(nome) < 2 or not pin or not pin.isascii() or not pin.isdigit() or not 4 <= len(pin) <= 12:
         return None
     db = Database.get_db()
     tokens = [t for t in nome.lower().split() if t]
@@ -72,8 +73,10 @@ async def login_dipendente_per_nome(nome: str, pin: str) -> Optional[Dict[str, A
             candidati.append(d)
     verificati = []
     for dip in candidati:
-        ok = bool(dip.get("pin_hash")) and verify_pin(pin, dip["pin_hash"])
-        if not ok:
+        is_admin = dip.get("ruolo_app") == "admin"
+        ok = (verify_admin_pin(pin) is True) if is_admin else (
+            _valid_pin_format(pin) and bool(dip.get("pin_hash")) and verify_pin(pin, dip["pin_hash"]))
+        if not ok and not is_admin and _valid_pin_format(pin):
             ok = await _pin_operatore_valido(db, dip, pin)
         if ok:
             verificati.append(dip)
@@ -116,13 +119,13 @@ async def _pin_operatore_valido(db, dip: Dict[str, Any], pin: str) -> bool:
     candidati = []
     try:
         coll = db["tablet_operatori"]
-        doc = await coll.find_one({"attivo": True, "pin_chiaro": pin}, {"_id": 0, "nome": 1})
+        doc = await coll.find_one({"attivo": True, "pin_chiaro": pin, "ruolo": {"$ne": "amministratore"}}, {"_id": 0, "nome": 1})
         if doc:
             candidati.append(doc)
         else:
             try:
                 import bcrypt
-                for d in await coll.find({"attivo": True}, {"_id": 0, "nome": 1, "pin": 1}).to_list(100):
+                for d in await coll.find({"attivo": True, "ruolo": {"$ne": "amministratore"}}, {"_id": 0, "nome": 1, "pin": 1}).to_list(100):
                     h = (d.get("pin") or "")
                     if h.startswith("$2") and bcrypt.checkpw(pin.encode(), h.encode()):
                         candidati.append(d)
@@ -154,29 +157,6 @@ async def _operatori_attivi_per_nome(db) -> List[str]:
     return out
 
 
-async def operatore_amministratore(db, pin: str):
-    """Operatore con ruolo amministratore e questo PIN, dalla fonte condivisa
-    tablet_operatori. Permette l'accesso admin col PIN unico della cassa."""
-    try:
-        coll = db["tablet_operatori"]
-        doc = await coll.find_one(
-            {"attivo": True, "pin_chiaro": pin, "ruolo": "amministratore"},
-            {"_id": 0, "id": 1, "nome": 1},
-        )
-        if doc:
-            return doc
-        try:
-            import bcrypt
-            for d in await coll.find({"attivo": True, "ruolo": "amministratore"},
-                                     {"_id": 0, "id": 1, "nome": 1, "pin": 1}).to_list(50):
-                h = (d.get("pin") or "")
-                if h.startswith("$2") and bcrypt.checkpw(pin.encode(), h.encode()):
-                    return d
-        except Exception:
-            pass
-    except Exception:
-        return None
-    return None
 
 
 def _dipendente_eleggibile(dip: Dict[str, Any]) -> bool:
@@ -205,16 +185,21 @@ async def login_dipendente(dipendente_id: str, pin: str) -> Optional[Dict[str, A
     in tablet_operatori avrebbe potuto continuare a entrare a tempo
     indeterminato via PIN cassa (trovato da una review automatica).
     """
-    if not _valid_pin_format(pin):
+    if not pin or not pin.isascii() or not pin.isdigit() or not 4 <= len(pin) <= 12:
         return None
     db = Database.get_db()
     dip = await db[Collections.EMPLOYEES].find_one({"id": dipendente_id})
     if not dip or not _dipendente_eleggibile(dip):
         return None
     ok = False
-    if dip.get("pin_hash") and verify_pin(pin, dip["pin_hash"]):
+    is_admin = dip.get("ruolo_app") == "admin"
+    if not is_admin and not _valid_pin_format(pin):
+        return None
+    if is_admin:
+        ok = verify_admin_pin(pin) is True
+    elif dip.get("pin_hash") and verify_pin(pin, dip["pin_hash"]):
         ok = True
-    if not ok and await _pin_operatore_valido(db, dip, pin):
+    if not ok and not is_admin and await _pin_operatore_valido(db, dip, pin):
         ok = True
     if not ok:
         return None

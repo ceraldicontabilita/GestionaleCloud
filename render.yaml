@@ -85,12 +85,10 @@ services:
         sync: false
       # --- AppDipendenti portata pari pari (app/hr, montata a /hr): DSN
       # Postgres/Supabase (asyncpg) delle tabelle app_* dell'app originale,
-      # segreto JWT del suo login e PIN dell'amministratore HR.
+      # segreto JWT del suo login. Il PIN admin usa PIN_HASH_ADMIN dell'ERP.
       - key: HR_SUPABASE_DB_URL
         sync: false
       - key: HR_JWT_SECRET
-        sync: false
-      - key: HR_PIN_CODE
         sync: false
       # DSN Postgres della vecchia AppDipendenti: resta come fallback di
       # HR_SUPABASE_DB_URL (stesso database).

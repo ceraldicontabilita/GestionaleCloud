@@ -1,5 +1,14 @@
 # Refactoring pagina per pagina — 05/09/2026
 
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-08-21
+storage_architecture: drive-only
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 Fonte di verità: codice `main`, `page_catalog.json`, log produzione, database e test correnti.
 
 ## Obiettivo

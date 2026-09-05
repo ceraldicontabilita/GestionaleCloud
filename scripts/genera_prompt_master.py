@@ -451,6 +451,23 @@ credenziali nel repository, nei fogli o nei log.
 Ogni mutazione registra attore, correlation ID, sorgente, prima/dopo, timestamp
 UTC e risultato. L'utente può accedere solo ai dati del ruolo autorizzato.
 
+### 19.1 PIN amministratore e modale condiviso (05/09/2026)
+
+Il PIN amministratore di ERP/Menu è il riferimento unico anche per Lotti e HR:
+verifica centrale in `app/services/admin_pin.py`, solo `PIN_HASH_ADMIN` su Render,
+senza fallback ai vecchi PIN amministratore locali. Nessun hash viene copiato
+tra archivi. Gli operatori Lotti amministratori mantengono ID distinti e scelta
+esplicita quando il PIN corrisponde a più persone. Ruoli, token delle sotto-app
+e MFA dell'ERP restano verificati dai rispettivi flussi; un PIN personale non
+deve aggirare la verifica centrale per ottenere il ruolo admin.
+
+Le quattro app usano `frontend_shared/PinModal.js`: medesimo modale e tastierino,
+colore della sezione, conferma esplicita (nessun invio prematuro alla sesta
+cifra), blocco del doppio invio, errori server, tastiera e gestione del focus.
+Il componente non conserva il PIN in storage. I PIN personali dei dipendenti
+non sono il PIN amministratore: la loro unificazione HR/Lotti richiede identità
+verificate, senza collegamenti automatici per somiglianza del nome.
+
 ## 20. Divieti assoluti
 
 - pagamenti automatici;

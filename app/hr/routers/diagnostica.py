@@ -41,7 +41,7 @@ COLLEZIONI = [
 ENV_VARS = [
     ("HR_SUPABASE_DB_URL|APPDIPENDENTI_DB_URL|SUPABASE_DB_URL|HR_MONGO_URL|MONGO_URL", True, "Connessione database"),
     ("HR_JWT_SECRET|JWT_SECRET", True, "Firma token login"),
-    ("HR_PIN_CODE|PIN_CODE", True, "PIN amministratore"),
+    ("PIN_HASH_ADMIN", True, "PIN amministratore centrale GestionaleCloud"),
     ("HR_DB_NAME|DB_NAME", False, "Nome database (solo Mongo)"),
     ("IMAP_HOST", False, "Import documenti da Gmail"),
     ("IMAP_USER", False, "Import documenti da Gmail"),

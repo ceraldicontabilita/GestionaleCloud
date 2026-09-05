@@ -47,6 +47,9 @@ const webpackConfig = {
       '@': path.resolve(__dirname, 'src'),
     },
     configure: (webpackConfig) => {
+      // Unico componente PIN del monorepo, senza importare React da un'altra app.
+      const scope = webpackConfig.resolve.plugins.find(p => p.constructor.name === 'ModuleScopePlugin');
+      if (scope) scope.allowedPaths.push(path.resolve(__dirname, '../frontend_shared'));
 
       // Add ignored patterns to reduce watched directories
         webpackConfig.watchOptions = {

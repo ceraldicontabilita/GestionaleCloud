@@ -21,6 +21,8 @@ os.environ.setdefault("MONGO_URL", "mongodb://localhost:27017")
 os.environ.setdefault("DB_NAME", "Gestionale_Test")  # SOLO db di prova
 
 import asyncio
+import hashlib
+from fastapi import HTTPException
 import importlib
 import inspect
 import pkgutil
@@ -94,7 +96,7 @@ def test_la_bonifica_ricrea_bcrypt_se_il_backup_aveva_solo_pin_chiaro(dbmock):
     perdere l'accesso quando il PIN leggibile viene eliminato."""
     import app.lotti.routers.tablet_operatori as t
     run(dbmock.tablet_operatori.insert_one({
-        "id": "backup-incompleto", "nome": "Storico", "ruolo": "amministratore",
+        "id": "backup-incompleto", "nome": "Storico", "ruolo": "operatore",
         "attivo": True, "pin": "", "pin_chiaro": PIN_FINTO_A,
     }))
     run(t.seed_operatori())
@@ -111,14 +113,14 @@ def test_login_ripara_hash_storico_disallineato_dalla_sua_impronta(dbmock):
     bcrypt senza memorizzare il valore leggibile."""
     import app.lotti.routers.tablet_operatori as t
     run(dbmock.tablet_operatori.insert_one({
-        "id": "hash-disallineato", "nome": "Ceraldi Vincenzo",
-        "ruolo": "amministratore", "attivo": True,
+        "id": "hash-disallineato", "nome": "Operatore di prova",
+        "ruolo": "operatore", "attivo": True,
         "pin": t._hash_pin(PIN_FINTO_B),
         "pin_lookup": t._pin_lookup(PIN_FINTO_A),
     }))
 
     esito = run(t.login_pin(t.PinLogin(pin=PIN_FINTO_A)))
-    assert esito["operatore"]["nome"] == "Ceraldi Vincenzo"
+    assert esito["operatore"]["nome"] == "Operatore di prova"
     doc = run(dbmock.tablet_operatori.find_one({"id": "hash-disallineato"}))
     assert t._verify_pin(PIN_FINTO_A, doc["pin"])
     assert doc["pin_hash_riparato"] is True
@@ -127,6 +129,7 @@ def test_login_ripara_hash_storico_disallineato_dalla_sua_impronta(dbmock):
 
 def test_recupero_admin_da_render_crea_vincenzo_senza_pin_in_chiaro(dbmock, monkeypatch):
     import app.lotti.routers.tablet_operatori as t
+    monkeypatch.setenv("PIN_HASH_ADMIN", hashlib.sha256(PIN_FINTO_A.encode()).hexdigest())
     monkeypatch.setenv("ADMIN_PIN_RECOVERY", PIN_FINTO_A)
     run(dbmock.tablet_operatori.insert_one({
         "id": "op-esistente", "nome": "Mario", "ruolo": "operatore",
@@ -167,10 +170,14 @@ def test_recupero_admin_da_render_crea_vincenzo_senza_pin_in_chiaro(dbmock, monk
 
 def test_stesso_recupero_non_resuscita_il_pin_dopo_modifica(dbmock, monkeypatch):
     import app.lotti.routers.tablet_operatori as t
+    monkeypatch.setenv("PIN_HASH_ADMIN", hashlib.sha256(PIN_FINTO_A.encode()).hexdigest())
     monkeypatch.setenv("ADMIN_PIN_RECOVERY", PIN_FINTO_A)
     run(t.seed_operatori())
     vincenzo = run(dbmock.tablet_operatori.find_one({"nome": "Ceraldi Vincenzo"}))
-    run(t.reimposta_pin(vincenzo["id"], t.ReimpostaPin(pin_nuovo=PIN_FINTO_B)))
+    with pytest.raises(HTTPException) as exc:
+        run(t.reimposta_pin(vincenzo["id"], t.ReimpostaPin(pin_nuovo=PIN_FINTO_B)))
+    assert exc.value.status_code == 409
+    monkeypatch.setenv("PIN_HASH_ADMIN", hashlib.sha256(PIN_FINTO_B.encode()).hexdigest())
 
     run(t.seed_operatori())
 
@@ -183,8 +190,9 @@ def test_stesso_recupero_non_resuscita_il_pin_dopo_modifica(dbmock, monkeypatch)
     }
 
 
-def test_pin_condiviso_resta_due_identita_distinte_e_si_aggiorna_insieme(dbmock):
+def test_pin_condiviso_resta_due_identita_distinte_e_si_aggiorna_insieme(dbmock, monkeypatch):
     import app.lotti.routers.tablet_operatori as t
+    monkeypatch.setenv("PIN_HASH_ADMIN", hashlib.sha256(PIN_FINTO_A.encode()).hexdigest())
     run(dbmock.tablet_operatori.insert_one({
         "id": "admin-generico", "nome": "Amministratore",
         "ruolo": "amministratore", "attivo": True,
@@ -203,10 +211,10 @@ def test_pin_condiviso_resta_due_identita_distinte_e_si_aggiorna_insieme(dbmock)
     assert scelta["scelta_operatore"] is True
     assert len(scelta["operatori"]) == 2
 
-    esito = run(t.reimposta_pin(
-        valerio["id"], t.ReimpostaPin(pin_nuovo=PIN_FINTO_B)
-    ))
-    assert set(esito["operatori_aggiornati"]) == {vincenzo["id"], valerio["id"]}
+    with pytest.raises(HTTPException) as exc:
+        run(t.reimposta_pin(valerio["id"], t.ReimpostaPin(pin_nuovo=PIN_FINTO_B)))
+    assert exc.value.status_code == 409
+    monkeypatch.setenv("PIN_HASH_ADMIN", hashlib.sha256(PIN_FINTO_B.encode()).hexdigest())
     with pytest.raises(Exception):
         run(t.login_pin(t.PinLogin(pin=PIN_FINTO_A)))
     nuova_scelta = run(t.login_pin(t.PinLogin(pin=PIN_FINTO_B)))
@@ -221,6 +229,7 @@ def test_login_pin_condiviso_non_scansiona_tutti_gli_altri_operatori(dbmock, mon
     tablet. Lo stesso hash condiviso va verificato una volta sola e, trovato il
     gruppo tramite pin_lookup, il fallback globale non deve partire."""
     import app.lotti.routers.tablet_operatori as t
+    monkeypatch.setenv("PIN_HASH_ADMIN", hashlib.sha256(PIN_FINTO_A.encode()).hexdigest())
     pin_hash = t._hash_pin(PIN_FINTO_A)
     lookup = t._pin_lookup(PIN_FINTO_A)
     run(dbmock.tablet_operatori.insert_many([
@@ -258,7 +267,7 @@ def test_login_pin_condiviso_non_scansiona_tutti_gli_altri_operatori(dbmock, mon
     trovati = run(t.trova_operatori_per_pin(PIN_FINTO_A))
 
     assert {d["id"] for d in trovati} == {"vincenzo", "valerio"}
-    assert hash_verificati == [pin_hash]
+    assert hash_verificati == []  # il PIN centrale non scandisce bcrypt locale
 
 
 def test_il_database_non_contiene_nessun_pin_leggibile(dbmock):
@@ -318,8 +327,9 @@ def test_nessun_pin_scritto_nel_codice():
 
 
 # ── 4. Nessuna risposta dell'API restituisce un PIN ────────────────────────
-def test_le_api_non_restituiscono_mai_un_pin(dbmock):
+def test_le_api_non_restituiscono_mai_un_pin(dbmock, monkeypatch):
     import app.lotti.routers.tablet_operatori as t
+    monkeypatch.setenv("PIN_HASH_ADMIN", hashlib.sha256(PIN_FINTO_A.encode()).hexdigest())
     run(t.crea_dipendente(t.NuovoDipendente(nome="Verdi", pin=PIN_FINTO_A, ruolo="amministratore")))
 
     lista = run(t.lista_dipendenti())
@@ -331,10 +341,11 @@ def test_le_api_non_restituiscono_mai_un_pin(dbmock):
     assert gestione["operatori"][0]["pin_impostato"] is True
 
 
-def test_il_pin_admin_resta_riconosciuto(dbmock):
+def test_il_pin_admin_resta_riconosciuto(dbmock, monkeypatch):
     """La verifica del PIN amministratore (usata anche da ordini e da
     require_admin) deve funzionare senza il PIN in chiaro."""
     import app.lotti.routers.tablet_operatori as t
+    monkeypatch.setenv("PIN_HASH_ADMIN", hashlib.sha256(PIN_FINTO_A.encode()).hexdigest())
     run(t.crea_dipendente(t.NuovoDipendente(nome="Capo", pin=PIN_FINTO_A, ruolo="amministratore")))
     run(t.crea_dipendente(t.NuovoDipendente(nome="Operaio", pin=PIN_FINTO_B)))
     assert run(t.pin_amministratore_valido(PIN_FINTO_A)) is True

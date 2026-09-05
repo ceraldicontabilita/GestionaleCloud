@@ -23,8 +23,6 @@ elimina i problemi di ordine di caricamento del file .env.
 from fastapi import APIRouter, HTTPException, Body, Request, Response, status
 from typing import Dict, Any, Optional
 import os
-import hashlib
-import hmac
 import logging
 import time
 
@@ -32,6 +30,7 @@ from app.config import settings
 from app.database import Database, Collections
 from app.repositories import UserRepository
 from app.utils.auth_tokens import create_access_token, create_mfa_challenge, set_session_cookies
+from app.services.admin_pin import verify_admin_pin as _verifica_pin, configured as admin_pin_configured
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -50,21 +49,6 @@ PIN_ADMIN_EMAIL_DEFAULT = os.getenv("ADMIN_EMAIL", "ceraldigroupsrl@gmail.com")
 # Durata del token emesso via PIN (in minuti). Default: stesso del login normale.
 PIN_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 
-
-def _verifica_pin(pin: str) -> Optional[bool]:
-    """Confronta il PIN con la configurazione in ambiente.
-
-    Ritorna True/False se il confronto e' possibile, None se il login PIN
-    non e' configurato affatto (nessuna variabile impostata).
-    """
-    # Audit sicurezza 18/07/2026: il supporto ad ADMIN_PIN in chiaro e'
-    # stato rimosso — resta solo PIN_HASH_ADMIN (quello configurato in prod).
-    pin_hash_admin = os.getenv("PIN_HASH_ADMIN", "").strip().lower()
-
-    if pin_hash_admin:
-        pin_hash = hashlib.sha256(pin.encode("utf-8")).hexdigest()
-        return hmac.compare_digest(pin_hash, pin_hash_admin)
-    return None
 
 # ============================================================================
 # ANTI BRUTE FORCE — modulo condiviso con il login email (5 tentativi / 5 min)
@@ -243,12 +227,11 @@ async def pin_login_health() -> Dict[str, Any]:
 
     Diagnostica: dice QUALE variabile e' attiva senza rivelarne il valore.
     """
-    admin_pin_set = bool(os.getenv("ADMIN_PIN", "").strip())
-    pin_hash_set = bool(os.getenv("PIN_HASH_ADMIN", "").strip())
+    pin_hash_set = admin_pin_configured()
     return {
         "ok": True,
-        "configured": admin_pin_set or pin_hash_set,
-        "fonte": "ADMIN_PIN" if admin_pin_set else ("PIN_HASH_ADMIN" if pin_hash_set else None),
+        "configured": pin_hash_set,
+        "fonte": "PIN_HASH_ADMIN" if pin_hash_set else None,
         "admin_username": PIN_ADMIN_USERNAME,
         "token_expire_minutes": PIN_TOKEN_EXPIRE_MINUTES,
     }

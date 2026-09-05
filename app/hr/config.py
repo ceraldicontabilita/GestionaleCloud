@@ -8,7 +8,7 @@ def _env(*nomi: str, default: str = "") -> str:
 
     Dentro GestionaleCloud le variabili dell'app originale sono prefissate `HR_`
     (per non collidere con quelle omonime dell'app ospite: SECRET_KEY, MONGO_URL,
-    DB_NAME, PIN_CODE...); i nomi originali restano come fallback.
+    DB_NAME...); i nomi originali restano come fallback, escluso il PIN admin.
     """
     for nome in nomi:
         val = os.environ.get(nome)
@@ -56,10 +56,6 @@ class Settings:
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 giorni
 
-    # PIN unico (fisso) per il login mobile. Valore SOLO nelle env
-    # (HR_PIN_CODE dentro GestionaleCloud, PIN_CODE come fallback).
-    PIN_CODE: str = _env("HR_PIN_CODE", "PIN_CODE")
-
     # Utente admin a cui il PIN concede accesso (deve esistere in `users`).
     PIN_ADMIN_USERNAME: str = _env("HR_PIN_ADMIN_USERNAME", "PIN_ADMIN_USERNAME", default="ceraldi")
 
@@ -70,7 +66,6 @@ settings = Settings()
 SECRET_KEY = settings.SECRET_KEY
 ALGORITHM = settings.ALGORITHM
 ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
-PIN_CODE = settings.PIN_CODE
 
 # Feature flag (usati da require_feature). Vuoto = nessuna feature gated attiva.
 FEATURES: dict = {}

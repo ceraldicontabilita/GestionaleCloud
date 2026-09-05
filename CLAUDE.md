@@ -424,6 +424,14 @@ sempre la sorgente persistente.
 
 ## Sicurezza
 
+- **05/09/2026, scelta del titolare:** il PIN amministratore unico per ERP,
+  Menu, Lotti e HR è quello già usato da ERP/Menu (`PIN_HASH_ADMIN` in Render).
+  `app/services/admin_pin.py` è l'unica verifica; i vecchi PIN amministratore
+  delle sotto-app non sono alternative. Nessuna copia o modifica degli hash
+  salvati. Il modale comune è `frontend_shared/PinModal.js`, parametrizzato
+  per colore. I PIN personali dei dipendenti restano distinti; non dichiarare
+  completata la loro unificazione finché le identità HR/Lotti non sono verificate.
+
 - Segreti solo nelle variabili d'ambiente/secret store di Render.
 - Non stampare, committare o trasferire credenziali nei documenti.
 - Non spostare né cancellare email e documenti originali.

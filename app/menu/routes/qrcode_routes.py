@@ -1,8 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, Header, Request, status
 from app.menu.models.qrcode_models import QRCodeConfig, QRCodeConfigUpdate, AdminPinLogin, AdminLoginResponse, WiFiConfig
 from datetime import datetime, timedelta
-import hashlib
-import hmac
 import os
 import jwt
 import qrcode
@@ -11,6 +9,7 @@ import base64
 
 from app.menu.supabase_client import supabase
 from app.utils import login_lockout
+from app.services.admin_pin import verify_admin_pin as _verify_admin_pin
 
 CONFIG_ID = "qrcode_config"
 
@@ -25,14 +24,6 @@ SECRET_KEY = os.environ.get("MENU_JWT_SECRET") or os.environ.get("JWT_SECRET") o
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 480  # 8 hours
 ADMIN_USERNAME = os.environ.get("MENU_ADMIN_USERNAME") or os.environ.get("ADMIN_USERNAME", "ceraldi")
-
-
-def _verify_admin_pin(pin: str):
-    pin_hash_admin = os.environ.get("PIN_HASH_ADMIN", "").strip().lower()
-    if not pin_hash_admin:
-        return None
-    supplied_hash = hashlib.sha256(pin.encode("utf-8")).hexdigest()
-    return hmac.compare_digest(supplied_hash, pin_hash_admin)
 
 
 def create_access_token(data: dict):
