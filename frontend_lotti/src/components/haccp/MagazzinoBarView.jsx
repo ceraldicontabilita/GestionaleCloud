@@ -10,7 +10,7 @@ import {
   markTabletActionAuthorized,
 } from "../../utils/tabletSession";
 
-const API = process.env.REACT_APP_BACKEND_URL + "/api";
+const API = process.env.REACT_APP_LOTTI_BACKEND_URL + "/api";
 
 function getOperatore() {
   return getTabletSession() || {};

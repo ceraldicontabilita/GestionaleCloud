@@ -12,7 +12,7 @@ import { Download, Wifi, Menu as MenuIcon, Eye, Save } from 'lucide-react';
 import axios from 'axios';
 import AdminPageHeader from '../components/admin/AdminPageHeader';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const BACKEND_URL = process.env.REACT_APP_MENU_BACKEND_URL;
 
 const AdminQRCodePage = () => {
   const [config, setConfig] = useState(null);

@@ -106,7 +106,7 @@ function App() {
   const [imp, setImp] = useState({ running: false, total: 0, done: 0, ok: 0, errori: [], finished: false, fase: "" });
 
   function pollJob(jobId, onDone) {
-    const base = process.env.REACT_APP_BACKEND_URL + "/api";
+    const base = process.env.REACT_APP_LOTTI_BACKEND_URL + "/api";
     const tick = async () => {
       let r = null;
       try {
@@ -131,7 +131,7 @@ function App() {
   }
 
   const startImport = async (fileList, onDone) => {
-    const base = process.env.REACT_APP_BACKEND_URL + "/api";
+    const base = process.env.REACT_APP_LOTTI_BACKEND_URL + "/api";
     setImp({ running: true, total: 0, done: 0, ok: 0, errori: [], finished: false, fase: "Avvio del server…" });
     await axios.get(`${base}/fatture/stato-sync`, { timeout: 90000 }).catch(() => {});
     setImp(s => ({ ...s, fase: "Lettura file…" }));
@@ -172,7 +172,7 @@ function App() {
 
   // Riprende la barra se un import è già in corso sul server (dopo reload o ritorno da background)
   useEffect(() => {
-    const base = process.env.REACT_APP_BACKEND_URL + "/api";
+    const base = process.env.REACT_APP_LOTTI_BACKEND_URL + "/api";
     axios.get(`${base}/fatture/importa-job-attivo`, { timeout: 30000 }).then(r => {
       const j = r.data;
       if (j && j.id && j.stato === "in_corso") {
@@ -213,7 +213,7 @@ function App() {
 
   // Badge ordini pendenti
   useEffect(() => {
-    const API_URL = process.env.REACT_APP_BACKEND_URL + "/api";
+    const API_URL = process.env.REACT_APP_LOTTI_BACKEND_URL + "/api";
     const fetch_count = () => axios.get(`${API_URL}/ordini-fornitori/count-pendenti`).then(r => setOrdiniPendenti(r.data.count || 0)).catch(() => {});
     fetch_count();
     const timer = setInterval(fetch_count, 30000);

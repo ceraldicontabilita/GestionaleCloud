@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Flame, Plus, CheckCircle, AlertTriangle, RefreshCw, Trash2, Info } from "lucide-react";
 import { SceltaMotivo, MOTIVI } from "./shared/SceltaMotivo";
 
-const API = process.env.REACT_APP_BACKEND_URL + "/api";
+const API = process.env.REACT_APP_LOTTI_BACKEND_URL + "/api";
 
 // Scala colore olio visuale (1=ottimo → 5=scartare)
 const COLORI_OLIO = [

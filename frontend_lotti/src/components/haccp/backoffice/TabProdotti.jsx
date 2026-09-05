@@ -11,7 +11,7 @@ import { toast } from "./toastBackoffice";
 import { withToken } from "../../../utils/constants";
 import { getOperatoreNome } from "../../../auth";
 
-const API = process.env.REACT_APP_BACKEND_URL + "/api";
+const API = process.env.REACT_APP_LOTTI_BACKEND_URL + "/api";
 
 // ══════════════════════════════════════════════════════════════════
 // 1. PRODOTTI & SOGLIE RIORDINO

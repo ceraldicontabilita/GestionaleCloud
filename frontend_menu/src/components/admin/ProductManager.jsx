@@ -11,7 +11,7 @@ import { Edit, Save, X, Search, RefreshCw } from 'lucide-react';
 import axios from 'axios';
 import { menuCategories, allergensList } from '../../mockData';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const BACKEND_URL = process.env.REACT_APP_MENU_BACKEND_URL;
 
 const ProductManager = () => {
   const [selectedCategory, setSelectedCategory] = useState(null);

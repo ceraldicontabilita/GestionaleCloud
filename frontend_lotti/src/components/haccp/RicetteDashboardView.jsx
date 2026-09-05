@@ -45,7 +45,7 @@ function photoUrl(r) {
   if (url.startsWith("http")) return url;
   if (url.startsWith("/images") || url.startsWith("/saima")) return url;
   // Qualunque altro path relativo (/api/foto/<id>, /uploads/...) vive sul backend
-  if (url.startsWith("/")) return `${process.env.REACT_APP_BACKEND_URL || ""}${url}`;
+  if (url.startsWith("/")) return `${process.env.REACT_APP_LOTTI_BACKEND_URL || ""}${url}`;
   return "";
 }
 

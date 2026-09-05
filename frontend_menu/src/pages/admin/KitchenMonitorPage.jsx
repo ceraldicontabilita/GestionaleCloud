@@ -3,7 +3,7 @@ import axios from 'axios';
 import { Clock, Hash, CheckCircle2, ChefHat, Loader2 } from 'lucide-react';
 import { useAdminAuth } from '../../hooks/useAdminAuth';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const BACKEND_URL = process.env.REACT_APP_MENU_BACKEND_URL;
 
 const elapsedMinutes = (iso) => {
   try {

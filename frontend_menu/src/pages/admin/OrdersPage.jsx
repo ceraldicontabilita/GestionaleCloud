@@ -5,7 +5,7 @@ import AdminPageHeader from '../../components/admin/AdminPageHeader';
 import { useAdminAuth } from '../../hooks/useAdminAuth';
 import { toast } from '../../hooks/use-toast';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const BACKEND_URL = process.env.REACT_APP_MENU_BACKEND_URL;
 
 const COLUMNS = [
   { status: 'nuovo', label: 'Nuovi', color: 'bg-blue-100 border-blue-300' },

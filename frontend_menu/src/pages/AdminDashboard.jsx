@@ -13,7 +13,7 @@ import ImageUploadManager from '../components/admin/ImageUploadManager';
 import ProductManager from '../components/admin/ProductManager';
 import BackupManager from '../components/admin/BackupManager';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const BACKEND_URL = process.env.REACT_APP_MENU_BACKEND_URL;
 
 const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState('operazioni');

@@ -175,9 +175,14 @@ sempre la sorgente persistente.
   .../sync-qromo/preview` = prova a secco). Test: `tests/test_menu_qromo_sync.py`.
 - URL del menu per i clienti (QR al tavolo):
   `https://gestionalecloud.onrender.com/menu/`. `frontend_menu/` = copia di
-  `Menu/frontend` (CRA, `PUBLIC_URL=/menu` in `.env.production`, tracciato
-  apposta; build compilata su Render). Voce "Menu" nel menu Altro = link a
-  pagina intera su `/menu/admin`.
+  `Menu/frontend` (CRA, `PUBLIC_URL=/menu` e `REACT_APP_MENU_BACKEND_URL=/menu`
+  in `.env.production`, tracciato apposta — **[FIX 04/09/2026]** rinominata da
+  `REACT_APP_BACKEND_URL`: un env Render generico con quel nome, rimasto dal
+  backend Lotti standalone, veniva letto da `process.env` al posto del valore
+  del file durante la build condivisa (`build_frontends.sh`), mandando ogni
+  chiamata admin del Menu a un host esterno spento — vedi la stessa nota su
+  Lotti sopra, stesso bug, stesso fix; build compilata su Render). Voce "Menu"
+  nel menu Altro = link a pagina intera su `/menu/admin`.
 - **Prodotti da Lotti [03/09/2026, richiesta del titolare]**: ogni ricetta di
   Lotti viene replicata nel Menu con la stessa foto; il titolare sceglie se
   compare nel menu pubblico. Ponte `app/lotti/servizi/menu_bridge.py`
@@ -226,8 +231,15 @@ sempre la sorgente persistente.
   Senza `LOTTI_SUPABASE_URL` l'archivio è in memoria (mongomock, non
   persistente: solo test/sviluppo). Il PIN admin di Lotti resta quello di
   Lotti. `frontend_lotti/` = copia di `Lotti/frontend` (CRA), build con
-  `PUBLIC_URL=/lotti`, `REACT_APP_BACKEND_URL=/lotti` (`.env.production`,
-  tracciato apposta); le foto SAIMA sono referenziate dai dati come
+  `PUBLIC_URL=/lotti`, `REACT_APP_LOTTI_BACKEND_URL=/lotti` (`.env.production`,
+  tracciato apposta — **[FIX 04/09/2026]** rinominata da `REACT_APP_BACKEND_URL`:
+  un vecchio env Render generico con quel nome, rimasto dal backend Lotti
+  standalone (`lotti-backend-2wwb.onrender.com`), veniva letto da `process.env`
+  al posto del valore del file durante la build — e per lo stesso motivo da
+  `frontend_menu` (vedi sotto, stesso nome generico, stesso fix), mandando
+  ogni chiamata di entrambe le app a un host esterno spento: da fuori sembrava
+  un server lento, in realtà la richiesta non arrivava mai al servizio giusto);
+  le foto SAIMA sono referenziate dai dati come
   `/saima/...` e vengono servite dall'host da `frontend_lotti/build/saima`.
   Voce "HACCP Lotti" nel menu Altro (link a pagina intera). I test originali
   vivono in `app/lotti/tests` (`AUTH_SECRET=test python -m pytest app/lotti/tests`).
