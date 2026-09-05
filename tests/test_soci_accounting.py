@@ -1,7 +1,7 @@
 import asyncio
 
 from app.services import soci_accounting
-from tests.memory_sheets import MemorySheetsClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 
 def _run(coro):
