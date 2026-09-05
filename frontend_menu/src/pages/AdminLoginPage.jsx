@@ -5,27 +5,18 @@ import axios from 'axios';
 
 const BACKEND_URL = process.env.REACT_APP_MENU_BACKEND_URL;
 
-// Stile allineato al cancello PIN di Lotti (frontend_lotti/.../LoginGate.jsx +
-// PinKeypad): stessa cream/sage/ink della palette Ceraldi, card centrata con
-// ombra morbida, invece del vecchio riquadro scuro generico in inglese —
-// richiesta del titolare 05/09/2026: "unifica la grafica fin dove è possibile".
-// Rimosso anche il testo con la password di default visibile a chiunque apra
-// la pagina, mai accettabile su un form di login pubblico.
 const AdminLoginPage = () => {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  const [pin, setPin] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    if (!pin) return;
     setLoading(true);
 
     try {
-      const response = await axios.post(`${BACKEND_URL}/api/qrcode/login`, {
-        username,
-        password
-      });
+      const response = await axios.post(`${BACKEND_URL}/api/qrcode/login`, { pin });
 
       if (response.data.success) {
         localStorage.setItem('admin_token', response.data.token);
@@ -35,16 +26,19 @@ const AdminLoginPage = () => {
         });
         navigate('/admin');
       } else {
+        setPin('');
         toast({
           title: 'Accesso non riuscito',
-          description: response.data.message,
+          description: response.data.message || 'PIN non valido',
           variant: 'destructive'
         });
       }
     } catch (error) {
+      setPin('');
+      const detail = error?.response?.data?.detail;
       toast({
         title: 'Errore',
-        description: 'Accesso non riuscito. Riprova.',
+        description: detail || 'Accesso non riuscito. Riprova.',
         variant: 'destructive'
       });
     } finally {
@@ -55,12 +49,14 @@ const AdminLoginPage = () => {
   const inputStyle = {
     width: '100%',
     boxSizing: 'border-box',
-    padding: '12px 14px',
+    padding: '15px 14px',
     borderRadius: 12,
     border: '1.5px solid #e6e0d4',
     background: '#fffefb',
     color: '#2a3329',
-    fontSize: 15,
+    fontSize: 24,
+    letterSpacing: 8,
+    textAlign: 'center',
     outline: 'none',
   };
 
@@ -70,40 +66,40 @@ const AdminLoginPage = () => {
         <div style={{ textAlign: 'center', marginBottom: 22 }}>
           <div style={{ fontSize: 34, marginBottom: 8 }}>🔐</div>
           <h1 style={{ margin: 0, fontSize: 21, fontWeight: 700, color: '#2a3329' }}>Accesso amministratore</h1>
-          <p style={{ margin: '6px 0 0', fontSize: 13, color: '#6b7669' }}>Inserisci le tue credenziali per gestire il Menu</p>
+          <p style={{ margin: '6px 0 0', fontSize: 13, color: '#6b7669' }}>Inserisci il PIN unico del gestionale</p>
         </div>
+
         <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div>
-            <label htmlFor="username" style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#2a3329', marginBottom: 6 }}>Nome utente</label>
+            <label htmlFor="pin" style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#2a3329', marginBottom: 6 }}>PIN</label>
             <input
-              id="username"
-              type="text"
-              placeholder="admin"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              required
-              style={inputStyle}
-            />
-          </div>
-          <div>
-            <label htmlFor="password" style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#2a3329', marginBottom: 6 }}>Password</label>
-            <input
-              id="password"
+              id="pin"
               type="password"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              inputMode="numeric"
+              autoComplete="current-password"
+              aria-label="PIN amministratore"
+              value={pin}
+              onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 12))}
               required
+              autoFocus
               style={inputStyle}
             />
           </div>
+
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || !pin}
             style={{
-              marginTop: 6, padding: 13, border: 'none', borderRadius: 14,
-              background: '#5b7a6b', color: '#fff', fontSize: 15, fontWeight: 800,
-              cursor: loading ? 'wait' : 'pointer', opacity: loading ? 0.6 : 1,
+              marginTop: 6,
+              padding: 13,
+              border: 'none',
+              borderRadius: 14,
+              background: '#5b7a6b',
+              color: '#fff',
+              fontSize: 15,
+              fontWeight: 800,
+              cursor: loading ? 'wait' : 'pointer',
+              opacity: loading || !pin ? 0.6 : 1,
             }}
           >
             {loading ? 'Accesso in corso…' : 'Accedi'}
