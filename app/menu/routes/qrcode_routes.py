@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends, Header
 from app.menu.models.qrcode_models import QRCodeConfig, QRCodeConfigUpdate, AdminLogin, AdminLoginResponse, WiFiConfig
 from datetime import datetime, timedelta
+import hmac
 import os
 import jwt
 import qrcode
@@ -14,17 +15,23 @@ CONFIG_ID = "qrcode_config"
 
 router = APIRouter(prefix="/api/qrcode", tags=["QR Code Management"])
 
-# JWT Secret (in production, use env variable)
-# Dentro GestionaleCloud le env sono namespaced MENU_*; le versioni senza prefisso restano come fallback.
-SECRET_KEY = os.environ.get("MENU_JWT_SECRET") or os.environ.get("JWT_SECRET", "ceraldi_secret_key_change_in_production")
+# [FIX 05/09/2026] Prima questi avevano un valore di ripiego scritto in chiaro
+# nel codice ("ceraldi_secret_key_change_in_production" / "Ceraldi2024!") — in
+# violazione della regola del progetto (credenziali SOLO nelle env di Render),
+# e infatti la password era finita per anni anche stampata in chiaro sulla
+# stessa pagina di login pubblica. Ora, se le env non sono configurate, il
+# login fallisce chiuso (503) invece di accettare un valore noto a chiunque
+# abbia mai visto il codice o la vecchia pagina.
+SECRET_KEY = os.environ.get("MENU_JWT_SECRET") or os.environ.get("JWT_SECRET") or ""
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 480  # 8 hours
 
-# Admin credentials (in production, hash passwords and use database)
 ADMIN_USERNAME = os.environ.get("MENU_ADMIN_USERNAME") or os.environ.get("ADMIN_USERNAME", "admin")
-ADMIN_PASSWORD = os.environ.get("MENU_ADMIN_PASSWORD") or os.environ.get("ADMIN_PASSWORD", "Ceraldi2024!")
+ADMIN_PASSWORD = os.environ.get("MENU_ADMIN_PASSWORD") or os.environ.get("ADMIN_PASSWORD") or ""
 
 def create_access_token(data: dict):
+    if not SECRET_KEY:
+        raise HTTPException(status_code=503, detail="Login non configurato (MENU_JWT_SECRET mancante)")
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
@@ -34,7 +41,9 @@ def create_access_token(data: dict):
 def verify_token(authorization: str = Header(None)):
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Invalid authorization header")
-    
+    if not SECRET_KEY:
+        raise HTTPException(status_code=503, detail="Login non configurato (MENU_JWT_SECRET mancante)")
+
     token = authorization.replace("Bearer ", "")
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -50,7 +59,13 @@ def verify_token(authorization: str = Header(None)):
 @router.post("/login", response_model=AdminLoginResponse)
 async def admin_login(login_data: AdminLogin):
     """Admin login endpoint"""
-    if login_data.username == ADMIN_USERNAME and login_data.password == ADMIN_PASSWORD:
+    if not ADMIN_PASSWORD or not SECRET_KEY:
+        raise HTTPException(status_code=503, detail="Login amministratore non configurato")
+    # Confronto a tempo costante: come per il PIN di HR/Lotti, evita di dare
+    # informazioni utili a un attacco a tempo sul confronto carattere per carattere.
+    utente_ok = hmac.compare_digest(login_data.username, ADMIN_USERNAME)
+    password_ok = hmac.compare_digest(login_data.password, ADMIN_PASSWORD)
+    if utente_ok and password_ok:
         access_token = create_access_token(data={"sub": login_data.username})
         return AdminLoginResponse(
             success=True,

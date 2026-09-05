@@ -24,4 +24,18 @@ describe("fotoSrc", () => {
       "/saima/ricette/ciambelline.webp"
     );
   });
+
+  test("dentro GestionaleCloud aggiunge il prefisso /lotti agli asset statici", () => {
+    // Regressione [FIX 05/09/2026]: con PUBLIC_URL=/lotti (com'è in produzione
+    // dentro GestionaleCloud) le foto SAIMA vanno cercate sotto /lotti, non
+    // alla radice del sito — altrimenti il browser prende un 404.
+    jest.resetModules();
+    process.env.PUBLIC_URL = "/lotti";
+    const { fotoSrc: fotoSrcConPrefisso } = require("./constants");
+    expect(fotoSrcConPrefisso("/saima/ricette/ciambelline.webp")).toBe(
+      "/lotti/saima/ricette/ciambelline.webp"
+    );
+    delete process.env.PUBLIC_URL;
+    jest.resetModules();
+  });
 });

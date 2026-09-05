@@ -14,22 +14,29 @@ export const API = `${BACKEND_URL.replace(/\/$/, "")}/api`;
  * Risolve l'URL di una foto in base a dove il file viene pubblicato.
  *
  * - /api e /uploads sono serviti dal backend;
- * - /saima e gli altri asset statici sono inclusi nel frontend;
+ * - /saima e gli altri asset statici sono inclusi nel frontend, quindi vanno
+ *   raggiunti sotto lo stesso prefisso (PUBLIC_URL) con cui è servito questo
+ *   frontend — "/lotti" dentro GestionaleCloud, vuoto in standalone;
  * - gli URL assoluti restano invariati.
  *
- * In precedenza ogni percorso relativo veniva inviato al backend: le immagini
- * SAIMA esistevano nel frontend, ma il browser le chiedeva al servizio sbagliato
- * e riceveva 404.
+ * [FIX 05/09/2026] Prima gli asset statici erano restituiti sempre root-relative
+ * ("/saima/..."), corretto solo per Lotti standalone (servito dalla radice).
+ * Dentro GestionaleCloud, dove frontend_lotti è montato sotto /lotti, il
+ * browser li cercava alla radice del gestionale principale e riceveva 404 —
+ * le foto del ricettario SAIMA sparivano da tutte le card che le usano.
  */
+const PUBLIC_URL = (process.env.PUBLIC_URL || "").replace(/\/$/, "");
+
 export function fotoSrc(u) {
   if (!u) return null;
   const url = String(u).trim();
   if (!url) return null;
   if (/^(?:https?:)?\/\//i.test(url) || /^(?:data|blob):/i.test(url)) return url;
-  if (/^\/(?:api|uploads)(?:\/|$)/i.test(url)) {
-    return `${BACKEND_URL.replace(/\/$/, "")}${url}`;
+  const rel = url.startsWith("/") ? url : `/${url}`;
+  if (/^\/(?:api|uploads)(?:\/|$)/i.test(rel)) {
+    return `${BACKEND_URL.replace(/\/$/, "")}${rel}`;
   }
-  return url.startsWith("/") ? url : `/${url}`;
+  return `${PUBLIC_URL}${rel}`;
 }
 
 /**
