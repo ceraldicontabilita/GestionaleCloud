@@ -19,9 +19,8 @@ class QRCodeConfigUpdate(BaseModel):
     menu_url: Optional[str] = None
     wifi: Optional[WiFiConfig] = None
 
-class AdminLogin(BaseModel):
-    username: str
-    password: str
+class AdminPinLogin(BaseModel):
+    pin: str
 
 class AdminLoginResponse(BaseModel):
     success: bool
