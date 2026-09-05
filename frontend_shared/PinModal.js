@@ -24,10 +24,29 @@ export function createPinModal(React, { LockKeyhole, Delete, X }) {
       mounted.current = true;
       const previous = document.activeElement;
       const overflow = document.body.style.overflow;
+      // Il PIN non deve mai sopravvivere a un ritorno dal browser, al cambio
+      // app o alla cache di navigazione (bfcache). Oltre allo state React
+      // svuotiamo il campo DOM: il browser può ripristinare i form dopo il
+      // mount, quindi il solo setState non è una garanzia sufficiente.
+      const clearSensitivePin = () => {
+        if (field.current) field.current.value = '';
+        setPin('');
+        setError('');
+        setChoices([]);
+      };
+      const clearOnHidden = () => {
+        if (document.visibilityState !== 'visible') clearSensitivePin();
+      };
       document.body.style.overflow = 'hidden';
       field.current?.focus();
+      window.addEventListener('pageshow', clearSensitivePin);
+      window.addEventListener('pagehide', clearSensitivePin);
+      document.addEventListener('visibilitychange', clearOnHidden);
       return () => {
         mounted.current = false;
+        window.removeEventListener('pageshow', clearSensitivePin);
+        window.removeEventListener('pagehide', clearSensitivePin);
+        document.removeEventListener('visibilitychange', clearOnHidden);
         document.body.style.overflow = overflow;
         if (previous?.isConnected) previous.focus();
       };
@@ -120,9 +139,10 @@ export function createPinModal(React, { LockKeyhole, Delete, X }) {
         disabled: busy, onClick: () => submit(choice.id), style: { ...button, background: color, color: '#fff', fontSize: 16 } }, choice.name)),
       h('button', { type: 'button', disabled: busy, style: { ...button, fontSize: 14 },
         onClick: () => { setChoices([]); setPin(''); setError(''); } }, 'Torna al PIN'))
-    : h('form', { onSubmit: event => { event.preventDefault(); submit(); } },
+    : h('form', { autoComplete: 'off', onSubmit: event => { event.preventDefault(); submit(); } },
       h('label', { style: { display: 'block', fontSize: 13, marginBottom: 6 } }, 'PIN',
-        h('input', { ref: field, type: 'password', inputMode: 'numeric', autoComplete: 'current-password',
+        h('input', { ref: field, type: 'password', inputMode: 'numeric', autoComplete: 'new-password',
+          name: 'pin-accesso-non-salvare', 'data-lpignore': 'true', 'data-1p-ignore': 'true',
           'aria-label': 'PIN', value: pin, disabled: busy, maxLength,
           onChange: event => change(event.target.value),
           style: { width: '100%', boxSizing: 'border-box', height: 48, textAlign: 'center', fontSize: 24,

@@ -61,6 +61,19 @@ describe('Modale PIN comune', () => {
     trigger.remove();
   });
 
+  it('azzera il PIN quando la pagina viene nascosta o ripristinata', () => {
+    render(<PinModal onVerify={vi.fn()} />);
+    const pin = screen.getByLabelText('PIN');
+    fireEvent.change(pin, { target: { value: '1234' } });
+    fireEvent(window, new Event('pagehide'));
+    expect(pin).toHaveValue('');
+    fireEvent.change(pin, { target: { value: '5678' } });
+    fireEvent(window, new Event('pageshow'));
+    expect(pin).toHaveValue('');
+    expect(pin).toHaveAttribute('autocomplete', 'new-password');
+    expect(pin).toHaveAttribute('data-lpignore', 'true');
+  });
+
   it('permette il tastierino, limita le cifre e non conserva il PIN in storage', () => {
     const spy = vi.spyOn(Storage.prototype, 'setItem');
     render(<PinModal maxLength={4} onVerify={vi.fn()} />);
