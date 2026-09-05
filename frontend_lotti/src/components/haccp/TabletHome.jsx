@@ -5,7 +5,7 @@ import { Lock } from "lucide-react";
 import { apiError } from "../../utils/apiError";
 import { clearTabletSession, getTabletSession, moveTabletSessionTo, saveTabletSession } from "../../utils/tabletSession";
 
-const API = process.env.REACT_APP_BACKEND_URL + "/api";
+const API = process.env.REACT_APP_LOTTI_BACKEND_URL + "/api";
 
 // Card del tablet.
 // REGOLA ENZO 25/07/2026: «il dipendente deve solo produrre e vedere le

@@ -18,7 +18,7 @@ import SenzaPesoPanel from "./prodotti/SenzaPesoPanel";
 import VistaTabellaPrezzi from "./prodotti/VistaTabellaPrezzi";
 import { risolviCatalogoProdotti } from "../../router/prodottiRoute";
 
-const API = process.env.REACT_APP_BACKEND_URL + "/api";
+const API = process.env.REACT_APP_LOTTI_BACKEND_URL + "/api";
 
 /** Normalizza un prodotto di catalogo_forno (import da PDF o dal connettore
  * "incolla il link"). Il prezzo arriva dal backend SOLO se il prodotto è

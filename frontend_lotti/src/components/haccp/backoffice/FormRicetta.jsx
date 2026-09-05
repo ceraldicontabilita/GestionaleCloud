@@ -8,8 +8,8 @@ import { conferma } from "../../../utils/conferma";
 import { stampaDoc } from "../../../utils/stampa";
 import PinKeypad from "../shared/PinKeypad";
 
-const API = process.env.REACT_APP_BACKEND_URL + "/api";
-const BACKEND = process.env.REACT_APP_BACKEND_URL || "";
+const API = process.env.REACT_APP_LOTTI_BACKEND_URL + "/api";
+const BACKEND = process.env.REACT_APP_LOTTI_BACKEND_URL || "";
 // foto_url è relativo (/api/foto/..): per <img>/background va reso assoluto sul backend.
 const fotoSrc = (u) => (u ? (/^https?:/.test(u) ? u : BACKEND + u) : "");
 

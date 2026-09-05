@@ -12,7 +12,7 @@ const SEZIONI_COLORI = {
 
 // ── Viewer PDF: apre direttamente in nuova scheda via proxy backend ──
 const PdfViewer = ({ ricett, onClose }) => {
-  const proxyUrl = `${process.env.REACT_APP_BACKEND_URL}/api/saima/ricettari/pdf-proxy?url=${encodeURIComponent(ricett.url_pdf)}`;
+  const proxyUrl = `${process.env.REACT_APP_LOTTI_BACKEND_URL}/api/saima/ricettari/pdf-proxy?url=${encodeURIComponent(ricett.url_pdf)}`;
 
   // Apri subito in nuova scheda
   useEffect(() => {
@@ -161,7 +161,7 @@ export const SaimaRicettariView = () => {
                     <FileText size={9} /> Visualizza
                   </button>
                   <a
-                    href={withToken(`${process.env.REACT_APP_BACKEND_URL}/api/saima/ricettari/pdf-proxy?url=${encodeURIComponent(ricett.url_pdf)}`)}
+                    href={withToken(`${process.env.REACT_APP_LOTTI_BACKEND_URL}/api/saima/ricettari/pdf-proxy?url=${encodeURIComponent(ricett.url_pdf)}`)}
                     download={`${ricett.nome}.pdf`}
                     onClick={e => e.stopPropagation()}
                     className="text-[10px] px-2 py-1 bg-white border border-[#b8d0c2] text-[#5b7a6b] rounded-lg font-medium hover:bg-[#f2f6f3] flex items-center"

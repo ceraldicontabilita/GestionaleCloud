@@ -8,7 +8,7 @@ import {
   Trash2, X, FileText, ChevronDown, ChevronUp, Package, Flag, ShieldAlert
 } from "lucide-react";
 
-const API = process.env.REACT_APP_BACKEND_URL + "/api";
+const API = process.env.REACT_APP_LOTTI_BACKEND_URL + "/api";
 
 const TIPI_PRODOTTO = [
   { v: "refrigerato", label: "Refrigerato",    range: "0 → +4°C",   color: "blue" },

@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { useCart } from '../context/CartContext';
 import { toast } from '../hooks/use-toast';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const BACKEND_URL = process.env.REACT_APP_MENU_BACKEND_URL;
 
 const CartDrawer = ({ language = 'it' }) => {
   const { items, itemCount, total, updateQuantity, removeItem, submitOrder, submitting } = useCart();

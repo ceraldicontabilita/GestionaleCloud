@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Thermometer, Plus, CheckCircle, AlertTriangle, RefreshCw, Trash2, Info } from "lucide-react";
 import { SceltaMotivo, MOTIVI } from "./shared/SceltaMotivo";
 
-const API = process.env.REACT_APP_BACKEND_URL + "/api";
+const API = process.env.REACT_APP_LOTTI_BACKEND_URL + "/api";
 
 const TIPI_COTTURA = [
   { v: "forno",     label: "Forno" },

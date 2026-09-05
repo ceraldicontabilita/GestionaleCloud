@@ -208,7 +208,7 @@ export default function ModalDettaglioLotto({ lotto, onClose, onPrint, onRecallI
             </div>
             <div className="pt-1">
               <Button
-                onClick={() => window.open(withToken(`${process.env.REACT_APP_BACKEND_URL}/api/etichette/lotto/${lotto.id}`), "_blank")}
+                onClick={() => window.open(withToken(`${process.env.REACT_APP_LOTTI_BACKEND_URL}/api/etichette/lotto/${lotto.id}`), "_blank")}
                 variant="secondary"
                 className="w-full"
               >

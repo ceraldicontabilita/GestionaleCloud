@@ -162,7 +162,7 @@ export const TabletView = ({ reparto: repartoIniziale = "pasticceria", onBack })
 
   const esciAdmin = () => {
     const op = getTabletSession({ allowExpired: true });
-    if (op?.nome) axios.post(`${process.env.REACT_APP_BACKEND_URL}/api/tablet-operatori/logout`, { nome: op.nome, reparto: op.reparto || "" }).catch(() => {});
+    if (op?.nome) axios.post(`${process.env.REACT_APP_LOTTI_BACKEND_URL}/api/tablet-operatori/logout`, { nome: op.nome, reparto: op.reparto || "" }).catch(() => {});
     clearTabletSession();
     if (onBack) onBack();
     else { window.location.hash=""; window.location.reload(); }

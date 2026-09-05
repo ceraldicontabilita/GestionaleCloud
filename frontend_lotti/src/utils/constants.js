@@ -1,4 +1,13 @@
-export const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "https://lotti-backend-f2fg.onrender.com";
+// Nome namespaced apposta (04/09/2026): dentro GestionaleCloud questo build
+// gira nello stesso processo di build di frontend_menu (script build_frontends.sh),
+// che legge il proprio REACT_APP_BACKEND_URL — un vecchio REACT_APP_BACKEND_URL
+// generico rimasto nelle env di Render (dal backend Lotti standalone
+// lotti-backend-2wwb.onrender.com) veniva quindi letto anche da questo build
+// al posto del valore corretto "/lotti" in .env.production, mandando ogni
+// chiamata (login PIN incluso) a un host esterno spento/non raggiungibile da
+// qui: da fuori sembrava un server lento ("Avvio del server in corso..."),
+// in realtà la richiesta non arrivava mai al servizio giusto.
+export const BACKEND_URL = process.env.REACT_APP_LOTTI_BACKEND_URL || "https://lotti-backend-f2fg.onrender.com";
 export const API = `${BACKEND_URL.replace(/\/$/, "")}/api`;
 
 /**

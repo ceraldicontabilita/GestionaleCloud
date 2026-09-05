@@ -9,7 +9,7 @@ import { conferma } from "../../utils/conferma";
 import axios from "axios";
 import { norm } from "../../utils/textNormalize";
 
-const API = process.env.REACT_APP_BACKEND_URL + "/api";
+const API = process.env.REACT_APP_LOTTI_BACKEND_URL + "/api";
 
 // ── Colori categoria ───────────────────────────────────────────────────────────
 const CAT_COLORS = {

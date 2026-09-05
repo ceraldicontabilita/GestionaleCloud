@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const BACKEND_URL = process.env.REACT_APP_MENU_BACKEND_URL;
 const CART_STORAGE_KEY = 'ceraldi_cart';
 const LAST_ORDER_KEY = 'ceraldi_last_order_id';
 

@@ -20,8 +20,8 @@ import TabProdotti from "./backoffice/TabProdotti";
 import TabFornitori from "./backoffice/TabFornitori";
 import { toast } from "./backoffice/toastBackoffice";
 
-const API = process.env.REACT_APP_BACKEND_URL + "/api";
-const BACKEND = process.env.REACT_APP_BACKEND_URL || "";
+const API = process.env.REACT_APP_LOTTI_BACKEND_URL + "/api";
+const BACKEND = process.env.REACT_APP_LOTTI_BACKEND_URL || "";
 // foto_url è relativo (/api/foto/..): per <img>/background va reso assoluto sul backend.
 const fotoSrc = (u) => (u ? (/^https?:/.test(u) ? u : BACKEND + u) : "");
 const ORIGINI_FORNITORE = new Set(["saima", "mepa", "acquaviva", "vandemoortele", "tremarie", "tre_marie", "sammontana", "bindi", "alfa", "alpha", "il_pasticcere"]);
