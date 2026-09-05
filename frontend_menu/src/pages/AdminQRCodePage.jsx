@@ -1,326 +1,83 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useMemo } from 'react';
 import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
-import { Label } from '../components/ui/label';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { toast } from '../hooks/use-toast';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { QRCodeSVG } from 'qrcode.react';
-import { Download, Wifi, Menu as MenuIcon, Eye, Save } from 'lucide-react';
-import axios from 'axios';
+import { CheckCircle2, Download, ExternalLink, Info, Link2, QrCode } from 'lucide-react';
 import AdminPageHeader from '../components/admin/AdminPageHeader';
-
-const BACKEND_URL = process.env.REACT_APP_MENU_BACKEND_URL;
+import useAdminAuth from '../hooks/useAdminAuth';
 
 const AdminQRCodePage = () => {
-  const [config, setConfig] = useState(null);
-  const [menuUrl, setMenuUrl] = useState('');
-  const [wifiSsid, setWifiSsid] = useState('');
-  const [wifiPassword, setWifiPassword] = useState('');
-  const [wifiSecurity, setWifiSecurity] = useState('WPA');
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    checkAuth();
-    loadConfig();
+  const { checking, authorized } = useAdminAuth();
+  const menuUrl = useMemo(() => {
+    const path = (process.env.PUBLIC_URL || '/menu').replace(/\/$/, '');
+    return `${window.location.origin}${path}/`;
   }, []);
 
-  const checkAuth = async () => {
-    const token = localStorage.getItem('admin_token');
-    if (!token) {
-      navigate('/admin/login');
-      return;
-    }
-
-    try {
-      await axios.get(`${BACKEND_URL}/api/qrcode/verify`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-    } catch (error) {
-      localStorage.removeItem('admin_token');
-      navigate('/admin/login');
-    }
+  const downloadQR = () => {
+    const svg = document.querySelector('#qr-menu svg');
+    if (!svg) return;
+    const blob = new Blob([new XMLSerializer().serializeToString(svg)], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'ceraldi-menu-clienti-qr.svg';
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
-  const loadConfig = async () => {
-    try {
-      const response = await axios.get(`${BACKEND_URL}/api/qrcode/config`);
-      const data = response.data;
-      setConfig(data);
-      setMenuUrl(data.menu_url);
-      setWifiSsid(data.wifi.ssid);
-      setWifiPassword(data.wifi.password);
-      setWifiSecurity(data.wifi.security);
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to load configuration',
-        variant: 'destructive'
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSave = async () => {
-    setSaving(true);
-    const token = localStorage.getItem('admin_token');
-
-    try {
-      await axios.put(
-        `${BACKEND_URL}/api/qrcode/config`,
-        {
-          menu_url: menuUrl,
-          wifi: {
-            ssid: wifiSsid,
-            password: wifiPassword,
-            security: wifiSecurity,
-            hidden: false
-          }
-        },
-        {
-          headers: { Authorization: `Bearer ${token}` }
-        }
-      );
-
-      toast({
-        title: 'Success',
-        description: 'Configuration updated successfully'
-      });
-
-      loadConfig();
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to save configuration',
-        variant: 'destructive'
-      });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const downloadQR = (type) => {
-    const canvas = document.getElementById(`qr-${type}`);
-    if (canvas) {
-      const svg = canvas.querySelector('svg');
-      const svgData = new XMLSerializer().serializeToString(svg);
-      const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-      const svgUrl = URL.createObjectURL(svgBlob);
-      const downloadLink = document.createElement('a');
-      downloadLink.href = svgUrl;
-      downloadLink.download = `ceraldi_${type}_qr.svg`;
-      document.body.appendChild(downloadLink);
-      downloadLink.click();
-      document.body.removeChild(downloadLink);
-    }
-  };
-
-  const getWiFiString = () => {
-    return `WIFI:T:${wifiSecurity};S:${wifiSsid};P:${wifiPassword};H:false;;`;
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#4a5d4a] mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
-        </div>
-      </div>
-    );
+  if (checking || !authorized) {
+    return <div className="min-h-screen flex items-center justify-center bg-gray-50">Caricamento…</div>;
   }
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <AdminPageHeader title="QR Code Management" subtitle="Ceraldi Caffè Admin Panel" />
-
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Configuration Panel */}
-          <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <MenuIcon className="w-5 h-5" />
-                  Menu QR Code Settings
-                </CardTitle>
-                <CardDescription>
-                  Configure the URL for your menu QR code
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="menuUrl">Menu URL</Label>
-                  <Input
-                    id="menuUrl"
-                    type="url"
-                    value={menuUrl}
-                    onChange={(e) => setMenuUrl(e.target.value)}
-                    placeholder="https://ceraldicaffe.qromo.it"
-                  />
-                  <p className="text-xs text-gray-500">
-                    This URL will be encoded in the menu QR code
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Wifi className="w-5 h-5" />
-                  WiFi QR Code Settings
-                </CardTitle>
-                <CardDescription>
-                  Configure WiFi credentials for automatic connection
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="ssid">Network Name (SSID)</Label>
-                  <Input
-                    id="ssid"
-                    value={wifiSsid}
-                    onChange={(e) => setWifiSsid(e.target.value)}
-                    placeholder="Ceraldi_WiFi"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="password">Password</Label>
-                  <Input
-                    id="password"
-                    type="text"
-                    value={wifiPassword}
-                    onChange={(e) => setWifiPassword(e.target.value)}
-                    placeholder="••••••••"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="security">Security Type</Label>
-                  <Select value={wifiSecurity} onValueChange={setWifiSecurity}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="WPA">WPA/WPA2</SelectItem>
-                      <SelectItem value="WEP">WEP</SelectItem>
-                      <SelectItem value="nopass">No Password</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Button onClick={handleSave} disabled={saving} className="w-full" size="lg">
-              <Save className="w-4 h-4 mr-2" />
-              {saving ? 'Saving...' : 'Save Configuration'}
-            </Button>
-          </div>
-
-          {/* QR Code Preview Panel */}
-          <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Menu QR Code</CardTitle>
-                <CardDescription>
-                  Scan this to view the menu
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div id="qr-menu" className="flex justify-center p-6 bg-white rounded-lg border-2 border-gray-200">
-                  <QRCodeSVG value={menuUrl} size={256} level="H" />
-                </div>
-                <div className="flex gap-2">
-                  <Button onClick={() => downloadQR('menu')} variant="outline" className="flex-1">
-                    <Download className="w-4 h-4 mr-2" />
-                    Download
-                  </Button>
-                  <Button onClick={() => window.open(menuUrl, '_blank')} variant="outline" className="flex-1">
-                    <Eye className="w-4 h-4 mr-2" />
-                    Preview
-                  </Button>
-                </div>
-                <div className="text-xs text-gray-500 text-center">
-                  <p className="font-mono break-all">{menuUrl}</p>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>WiFi QR Code</CardTitle>
-                <CardDescription>
-                  Scan this to connect to WiFi automatically
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div id="qr-wifi" className="flex justify-center p-6 bg-white rounded-lg border-2 border-gray-200">
-                  <QRCodeSVG value={getWiFiString()} size={256} level="H" />
-                </div>
-                <Button onClick={() => downloadQR('wifi')} variant="outline" className="w-full">
-                  <Download className="w-4 h-4 mr-2" />
-                  Download
-                </Button>
-                <div className="bg-gray-50 p-4 rounded-lg space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Network:</span>
-                    <span className="font-semibold">{wifiSsid}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Security:</span>
-                    <span className="font-semibold">{wifiSecurity}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Password:</span>
-                    <span className="font-mono">{'•'.repeat(wifiPassword.length)}</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+      <AdminPageHeader title="Menu clienti e QR Code" subtitle="Ceraldi Caffè Admin Panel" />
+      <div className="max-w-6xl mx-auto px-4 py-8 space-y-6">
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3"><QrCode className="w-8 h-8" />Menu QR Code</h1>
+          <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-800">CENTRALIZZATO</span>
         </div>
 
-        {/* Instructions */}
-        <Card className="mt-6">
+        <Card className="border-green-200 bg-green-50/60">
           <CardHeader>
-            <CardTitle>How to Use</CardTitle>
+            <CardTitle className="text-green-800 flex items-center gap-2"><CheckCircle2 className="w-7 h-7" />Gestione unificata</CardTitle>
+            <CardDescription>Un solo QR per il menu clienti, senza configurazione Wi‑Fi duplicata.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <h3 className="font-semibold mb-2 flex items-center gap-2">
-                  <MenuIcon className="w-4 h-4 text-[#4a5d4a]" />
-                  Menu QR Code
-                </h3>
-                <ol className="list-decimal list-inside space-y-1 text-sm text-gray-600">
-                  <li>Download the QR code</li>
-                  <li>Print and display it on your tables</li>
-                  <li>Customers scan to view the menu</li>
-                  <li>Update the URL anytime from this panel</li>
-                </ol>
-              </div>
-              <div>
-                <h3 className="font-semibold mb-2 flex items-center gap-2">
-                  <Wifi className="w-4 h-4 text-[#4a5d4a]" />
-                  WiFi QR Code
-                </h3>
-                <ol className="list-decimal list-inside space-y-1 text-sm text-gray-600">
-                  <li>Download the WiFi QR code</li>
-                  <li>Display it in your cafe</li>
-                  <li>Customers scan to connect automatically</li>
-                  <li>No need to manually enter password</li>
-                </ol>
-              </div>
+          <CardContent>
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 flex gap-3">
+              <Info className="w-6 h-6 text-blue-700 shrink-0" />
+              <p className="text-sm text-blue-900">L'indirizzo viene ricavato automaticamente dal dominio reale del sistema. Quando il servizio passerà da Render a Personal Cloud, questa pagina userà automaticamente il nuovo dominio.</p>
             </div>
+          </CardContent>
+        </Card>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Menu online attuale</CardTitle>
+              <CardDescription>È l'indirizzo che deve aprirsi sul telefono del cliente.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="rounded-xl border bg-white p-4 flex gap-3"><Link2 className="w-5 h-5 shrink-0" /><a href={menuUrl} target="_blank" rel="noreferrer" className="text-blue-700 underline font-semibold break-all">{menuUrl}</a></div>
+              <Button onClick={() => window.open(menuUrl, '_blank')} className="w-full"><ExternalLink className="w-4 h-4 mr-2" />Apri menu clienti</Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader><CardTitle>QR Code menu clienti</CardTitle><CardDescription>Contiene esattamente l'indirizzo mostrato a sinistra.</CardDescription></CardHeader>
+            <CardContent className="space-y-4">
+              <div id="qr-menu" className="flex justify-center p-6 bg-white rounded-xl border-2"><QRCodeSVG value={menuUrl} size={240} level="H" /></div>
+              <Button onClick={downloadQR} variant="outline" className="w-full"><Download className="w-4 h-4 mr-2" />Scarica QR Code</Button>
+            </CardContent>
+          </Card>
+        </div>
+
+        <Card>
+          <CardHeader><CardTitle>Origine dei dati</CardTitle></CardHeader>
+          <CardContent className="text-sm text-gray-700 space-y-2">
+            <p><strong>Prodotti e categorie:</strong> dal sistema Menu/Lotti già esistente.</p>
+            <p><strong>Indirizzo pubblico:</strong> dominio corrente + <code>/menu/</code>.</p>
+            <p><strong>Wi‑Fi:</strong> eliminato da questa pagina perché duplicato.</p>
           </CardContent>
         </Card>
       </div>
