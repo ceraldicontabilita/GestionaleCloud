@@ -667,7 +667,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/fiscal/documents/{document_id}/content` | fiscal_control | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/fiscal/dossier.pdf` | fiscal_control | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/fiscal/evidence-package.zip` | fiscal_control | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/fiscal/evidence/{entity_type}/{entity_id}` | fiscal_control | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
+| `GET /api/fiscal/evidence/{entity_type}/{entity_id}` | fiscal_control | — | sì | — | — | sì | tenere | in uso: scheduler |
 | `GET /api/fiscal/f24-documents` | fiscal_control | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/fiscal/f24-rows` | fiscal_control | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/fiscal/obligations` | fiscal_control | sì | — | — | — | sì | tenere | in uso: FE |
