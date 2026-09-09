@@ -142,6 +142,14 @@ const STATI_ASSEGNO = {
   assegnato: { label: 'Assegnato', variant: 'info' },
   incassato: { label: 'Incassato', variant: 'accent' },
   annullato: { label: 'Annullato', variant: 'danger' },
+  stornato: { label: 'Stornato', variant: 'danger' },
+};
+
+const RISCONTRO_BANCA = {
+  incassato: { label: 'Incassato da EC', variant: 'success' },
+  da_rientrare_in_banca: { label: 'Da rientrare in banca', variant: 'warning' },
+  incasso_da_verificare: { label: 'Incasso da verificare', variant: 'warning' },
+  stornato: { label: 'Stornato', variant: 'danger' },
 };
 
 export default function GestioneAssegni() {
@@ -399,6 +407,7 @@ export default function GestioneAssegni() {
       importo: assegno.importo || '',
       data_fattura: assegno.data_fattura || '',
       numero_fattura: assegno.numero_fattura || '',
+      data_emissione: assegno.data_emissione || '',
       fattura_selezionata_id: collegata,
       note: assegno.note || '',
       fatture_collegate: assegno.fatture_collegate || [],
@@ -428,6 +437,11 @@ export default function GestioneAssegni() {
         await api.put(`/api/assegni/${editingId}/fatture-collegate`, {
           fatture: [{ fattura_id: fatturaSelezionata.id, quota }],
         });
+        if (editForm.data_emissione) {
+          await api.put(`/api/assegni/${editingId}`, {
+            data_emissione: editForm.data_emissione,
+          });
+        }
         toast.success(
           `Fattura ${numeroFattura(fatturaSelezionata)} collegata all'assegno e pagamento aggiornato`
         );
@@ -616,6 +630,32 @@ export default function GestioneAssegni() {
     try {
       await api.delete(`/api/assegni/${assegno.id}`);
       loadData();
+    } catch (error) {
+      toast.error('Errore: ' + (error.response?.data?.detail || error.message));
+    }
+  };
+
+  const handleEmetti = async assegno => {
+    try {
+      await api.post(`/api/assegni/${assegno.id}/emetti`, {
+        data_emissione: assegno.data_emissione || new Date().toISOString().slice(0, 10),
+      });
+      toast.success('Assegno emesso: attende il riscontro dell’estratto conto.');
+      await loadData();
+    } catch (error) {
+      toast.error('Errore: ' + (error.response?.data?.detail || error.message));
+    }
+  };
+
+  const handleStorna = async assegno => {
+    const motivo = window.prompt(
+      `Motivo dello storno per l’assegno ${assegno.numero || ''} (obbligatorio):`,
+    );
+    if (!motivo?.trim()) return;
+    try {
+      await api.post(`/api/assegni/${assegno.id}/storna`, { motivo: motivo.trim() });
+      toast.success('Assegno stornato: nessun pagamento è stato registrato.');
+      await loadData();
     } catch (error) {
       toast.error('Errore: ' + (error.response?.data?.detail || error.message));
     }
@@ -2788,6 +2828,11 @@ export default function GestioneAssegni() {
                     <Badge variant={STATI_ASSEGNO[assegno.stato]?.variant || 'neutral'}>
                       {STATI_ASSEGNO[assegno.stato]?.label || assegno.stato}
                     </Badge>
+                    {RISCONTRO_BANCA[assegno.riscontro_banca] && (
+                      <Badge variant={RISCONTRO_BANCA[assegno.riscontro_banca].variant}>
+                        {RISCONTRO_BANCA[assegno.riscontro_banca].label}
+                      </Badge>
+                    )}
                     {newlyGeneratedNumbers.has(assegno.numero) && <Badge variant="info">Nuovo</Badge>}
                   </span>
                 ),
@@ -2871,6 +2916,10 @@ export default function GestioneAssegni() {
                       </div>
                     )}
                   </div>
+                ) : assegno.riscontro_banca === 'da_rientrare_in_banca' ? (
+                  <span style={{ color: COLORS.warning, fontSize: 11.5, fontWeight: 700 }}>
+                    Da rientrare in banca
+                  </span>
                 ) : assegno.stato === 'incassato' ? (
                   <span style={{ color: COLORS.danger, fontSize: 11.5, fontWeight: 700 }}>
                     Data EC mancante
@@ -2952,6 +3001,16 @@ export default function GestioneAssegni() {
                           {' '}· numero: <b>{editForm.numero_fattura}</b>
                         </div>
                       )}
+                      <label style={{ display: 'block', marginTop: 7, fontSize: 10.5, color: COLORS.textMuted }}>
+                        Data emissione
+                        <Input
+                          type="date"
+                          aria-label="Data emissione assegno"
+                          value={editForm.data_emissione || ''}
+                          onChange={e => setEditForm({ ...editForm, data_emissione: e.target.value })}
+                          style={{ display: 'block', marginTop: 3, padding: 5, fontSize: 11.5, width: '100%' }}
+                        />
+                      </label>
                     </div>
                   ) : isMobile ? (
                     assegno.numero_fattura || assegno.data_fattura ? (
@@ -3109,6 +3168,26 @@ export default function GestioneAssegni() {
                         >
                           ✏️
                         </RowActionButton>
+                        {['compilato', 'assegnato', 'parzialmente_assegnato'].includes(assegno.stato) && (
+                          <RowActionButton
+                            variant="success"
+                            onClick={() => handleEmetti(assegno)}
+                            data-testid={`emetti-${assegno.id}`}
+                            title="Emetti assegno"
+                          >
+                            📤
+                          </RowActionButton>
+                        )}
+                        {!['incassato', 'annullato', 'stornato'].includes(assegno.stato) && (
+                          <RowActionButton
+                            variant="danger"
+                            onClick={() => handleStorna(assegno)}
+                            data-testid={`storna-${assegno.id}`}
+                            title="Storna assegno"
+                          >
+                            ↩️
+                          </RowActionButton>
+                        )}
                         {/* STAMPA singolo assegno: il carnet è il prefisso
                             del numero, come in groupByCarnet */}
                         <RowActionButton

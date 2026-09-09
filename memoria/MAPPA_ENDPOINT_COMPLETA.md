@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1155 endpoint** in **112 gruppi**.
+> Totale **1156 endpoint** in **112 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 708 · ext esterni = 81 · — da verificare = 366
+**Riepilogo uso:** ✓ frontend = 634 · ext esterni = 81 · — da verificare = 441
 
 ## AI Parser  (11)
 
@@ -28,10 +28,10 @@
 |---|---|:-:|---|
 | POST | `/api/assegni` | ✓ | public_api |
 | GET | `/api/assegni-legacy` | ✓ | public_api |
-| GET | `/api/bank/statements` | ✓ | public_api |
-| POST | `/api/bank/statements` | ✓ | public_api |
-| GET | `/api/cash` | ✓ | public_api |
-| POST | `/api/cash` | ✓ | public_api |
+| GET | `/api/bank/statements` | — | public_api |
+| POST | `/api/bank/statements` | — | public_api |
+| GET | `/api/cash` | — | public_api |
+| POST | `/api/cash` | — | public_api |
 | GET | `/api/dashboard/stats-legacy` | — | public_api |
 | GET | `/api/f24-public/alerts` | ext | public_api |
 | GET | `/api/f24-public/dashboard` | ext | public_api |
@@ -48,10 +48,10 @@
 | GET | `/api/v1/stats` | ext | public_api |
 | GET | `/api/warehouse/movements` | — | public_api |
 | POST | `/api/warehouse/movements` | — | public_api |
-| GET | `/api/warehouse/products` | ✓ | public_api |
-| POST | `/api/warehouse/products` | ✓ | public_api |
-| PUT | `/api/warehouse/products/{product_id}` | ✓ | public_api |
-| DELETE | `/api/warehouse/products/{product_id}` | ✓ | public_api |
+| GET | `/api/warehouse/products` | — | public_api |
+| POST | `/api/warehouse/products` | — | public_api |
+| PUT | `/api/warehouse/products/{product_id}` | — | public_api |
+| DELETE | `/api/warehouse/products/{product_id}` | — | public_api |
 
 ## Admin  (27)
 
@@ -168,7 +168,7 @@
 | PUT | `/api/archivio-bonifici/transfers/{transfer_id}` | ✓ | bonifici_module.transfers |
 | GET | `/api/archivio-bonifici/transfers/{transfer_id}/pdf` | ✓ | bonifici_module.transfers |
 
-## Assegni  (33)
+## Assegni  (34)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -205,6 +205,7 @@
 | PUT | `/api/assegni/{assegno_id}/fatture-collegate` | ✓ | bank.assegni |
 | POST | `/api/assegni/{assegno_id}/incassa` | ✓ | bank.assegni |
 | POST | `/api/assegni/{assegno_id}/risolvi-ambiguo` | ✓ | bank.assegni |
+| POST | `/api/assegni/{assegno_id}/storna` | ✓ | bank.assegni |
 
 ## Assegni Learning  (6)
 
@@ -298,14 +299,14 @@
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
-| POST | `/api/cash/corrispettivi` | ✓ | cash |
-| GET | `/api/cash/corrispettivi/{target_date}` | ✓ | cash |
-| GET | `/api/cash/export/excel` | ✓ | cash |
-| GET | `/api/cash/movements` | ✓ | cash |
-| POST | `/api/cash/movements` | ✓ | cash |
-| PUT | `/api/cash/movements/{movement_id}` | ✓ | cash |
-| DELETE | `/api/cash/movements/{movement_id}` | ✓ | cash |
-| GET | `/api/cash/stats` | ✓ | cash |
+| POST | `/api/cash/corrispettivi` | — | cash |
+| GET | `/api/cash/corrispettivi/{target_date}` | — | cash |
+| GET | `/api/cash/export/excel` | — | cash |
+| GET | `/api/cash/movements` | — | cash |
+| POST | `/api/cash/movements` | — | cash |
+| PUT | `/api/cash/movements/{movement_id}` | — | cash |
+| DELETE | `/api/cash/movements/{movement_id}` | — | cash |
+| GET | `/api/cash/stats` | — | cash |
 
 ## Cedolini Drive  (3)
 
@@ -514,7 +515,7 @@
 | GET | `/api/dashboard/spese-per-categoria` | — | reports.dashboard |
 | GET | `/api/dashboard/stato-riconciliazione` | — | reports.dashboard |
 | GET | `/api/dashboard/stats` | — | reports.dashboard |
-| GET | `/api/dashboard/summary` | ✓ | reports.dashboard |
+| GET | `/api/dashboard/summary` | — | reports.dashboard |
 | GET | `/api/dashboard/trend-mensile` | ✓ | reports.dashboard |
 
 ## Dati ISA  (1)
@@ -766,39 +767,39 @@
 |---|---|:-:|---|
 | GET | `/api/f24` | ✓ | f24.f24_main |
 | POST | `/api/f24` | ✓ | f24.f24_main |
-| GET | `/api/f24/alerts/scadenze` | ✓ | f24.f24_main |
+| GET | `/api/f24/alerts/scadenze` | — | f24.f24_main |
 | POST | `/api/f24/avviso-bonario/controllo` | ✓ | f24.avviso_bonario |
-| GET | `/api/f24/codici/all` | ✓ | f24.f24_main |
-| GET | `/api/f24/codici/{codice}` | ✓ | f24.f24_main |
-| GET | `/api/f24/dashboard/summary` | ✓ | f24.f24_main |
-| GET | `/api/f24/documents` | ✓ | f24.f24_main |
-| DELETE | `/api/f24/documents/{doc_id}` | ✓ | f24.f24_main |
-| POST | `/api/f24/fascicolo/costruisci` | ✓ | f24.f24_main |
-| GET | `/api/f24/fascicolo/{codice_fiscale}/{mese}/{anno}` | ✓ | f24.f24_main |
-| GET | `/api/f24/quietanze` | ✓ | f24.f24_main |
-| GET | `/api/f24/quietanze/statistiche/tributi` | ✓ | f24.f24_main |
-| POST | `/api/f24/quietanze/upload` | ✓ | f24.f24_main |
-| GET | `/api/f24/quietanze/{f24_id}` | ✓ | f24.f24_main |
-| DELETE | `/api/f24/quietanze/{f24_id}` | ✓ | f24.f24_main |
-| POST | `/api/f24/riconcilia` | ✓ | f24.f24_main |
-| POST | `/api/f24/riconcilia-addebiti` | ✓ | f24.avviso_bonario |
-| POST | `/api/f24/upload` | ✓ | f24.f24_main |
-| POST | `/api/f24/upload-multiple` | ✓ | f24.f24_main |
-| POST | `/api/f24/upload-pdf` | ✓ | f24.f24_main |
-| POST | `/api/f24/upload-zip` | ✓ | f24.f24_main |
-| PUT | `/api/f24/{f24_id}` | ✓ | f24.f24_main |
-| DELETE | `/api/f24/{f24_id}` | ✓ | f24.f24_main |
-| GET | `/api/f24/{f24_id}` | ✓ | f24.f24_main |
-| POST | `/api/f24/{f24_id}/mark-paid` | ✓ | f24.f24_main |
+| GET | `/api/f24/codici/all` | — | f24.f24_main |
+| GET | `/api/f24/codici/{codice}` | — | f24.f24_main |
+| GET | `/api/f24/dashboard/summary` | — | f24.f24_main |
+| GET | `/api/f24/documents` | — | f24.f24_main |
+| DELETE | `/api/f24/documents/{doc_id}` | — | f24.f24_main |
+| POST | `/api/f24/fascicolo/costruisci` | — | f24.f24_main |
+| GET | `/api/f24/fascicolo/{codice_fiscale}/{mese}/{anno}` | — | f24.f24_main |
+| GET | `/api/f24/quietanze` | — | f24.f24_main |
+| GET | `/api/f24/quietanze/statistiche/tributi` | — | f24.f24_main |
+| POST | `/api/f24/quietanze/upload` | — | f24.f24_main |
+| GET | `/api/f24/quietanze/{f24_id}` | — | f24.f24_main |
+| DELETE | `/api/f24/quietanze/{f24_id}` | — | f24.f24_main |
+| POST | `/api/f24/riconcilia` | — | f24.f24_main |
+| POST | `/api/f24/riconcilia-addebiti` | — | f24.avviso_bonario |
+| POST | `/api/f24/upload` | — | f24.f24_main |
+| POST | `/api/f24/upload-multiple` | — | f24.f24_main |
+| POST | `/api/f24/upload-pdf` | — | f24.f24_main |
+| POST | `/api/f24/upload-zip` | — | f24.f24_main |
+| PUT | `/api/f24/{f24_id}` | — | f24.f24_main |
+| DELETE | `/api/f24/{f24_id}` | — | f24.f24_main |
+| GET | `/api/f24/{f24_id}` | — | f24.f24_main |
+| POST | `/api/f24/{f24_id}/mark-paid` | — | f24.f24_main |
 
 ## F24 Analisi  (4)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
-| GET | `/api/f24-analisi/doppi-pagamenti` | ✓ | f24_analisi |
+| GET | `/api/f24-analisi/doppi-pagamenti` | — | f24_analisi |
 | GET | `/api/f24-analisi/tabella` | ✓ | f24_analisi |
-| GET | `/api/f24-analisi/{f24_id}` | ✓ | f24_analisi |
-| GET | `/api/f24-analisi/{f24_id}/associazione` | ✓ | f24_analisi |
+| GET | `/api/f24-analisi/{f24_id}` | — | f24_analisi |
+| GET | `/api/f24-analisi/{f24_id}/associazione` | — | f24_analisi |
 
 ## F24 Email  (8)
 
@@ -808,7 +809,7 @@
 | GET | `/api/f24-email-settings/impostazioni` | ✓ | f24_email_settings |
 | POST | `/api/f24-email-settings/impostazioni` | ✓ | f24_email_settings |
 | GET | `/api/f24-email-settings/log-scansioni` | ✓ | f24_email_settings |
-| DELETE | `/api/f24-email-settings/rimuovi-mittente/{email}` | ✓ | f24_email_settings |
+| DELETE | `/api/f24-email-settings/rimuovi-mittente/{email}` | — | f24_email_settings |
 | POST | `/api/f24-email-settings/scan-manuale` | ✓ | f24_email_settings |
 | GET | `/api/f24-email-settings/stato-sistema` | ✓ | f24_email_settings |
 | POST | `/api/f24-email-settings/toggle-auto-scan` | ✓ | f24_email_settings |
@@ -817,36 +818,36 @@
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
-| GET | `/api/f24-email/allegati` | ✓ | f24.email_f24 |
-| GET | `/api/f24-email/codici-tributo` | ✓ | f24.email_f24 |
-| GET | `/api/f24-email/log-download` | ✓ | f24.email_f24 |
-| GET | `/api/f24-email/mittenti` | ✓ | f24.email_f24 |
-| POST | `/api/f24-email/processa-allegati` | ✓ | f24.email_f24 |
-| POST | `/api/f24-email/scarica-e-processa` | ✓ | f24.email_f24 |
-| POST | `/api/f24-email/scarica-email` | ✓ | f24.email_f24 |
+| GET | `/api/f24-email/allegati` | — | f24.email_f24 |
+| GET | `/api/f24-email/codici-tributo` | — | f24.email_f24 |
+| GET | `/api/f24-email/log-download` | — | f24.email_f24 |
+| GET | `/api/f24-email/mittenti` | — | f24.email_f24 |
+| POST | `/api/f24-email/processa-allegati` | — | f24.email_f24 |
+| POST | `/api/f24-email/scarica-e-processa` | — | f24.email_f24 |
+| POST | `/api/f24-email/scarica-email` | — | f24.email_f24 |
 
 ## F24 Riconciliazione  (18)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
-| GET | `/api/f24-riconciliazione/alerts` | ✓ | f24.f24_riconciliazione |
-| POST | `/api/f24-riconciliazione/alerts/{alert_id}/conferma-elimina` | ✓ | f24.f24_riconciliazione |
-| POST | `/api/f24-riconciliazione/alerts/{alert_id}/ignora` | ✓ | f24.f24_riconciliazione |
+| GET | `/api/f24-riconciliazione/alerts` | — | f24.f24_riconciliazione |
+| POST | `/api/f24-riconciliazione/alerts/{alert_id}/conferma-elimina` | — | f24.f24_riconciliazione |
+| POST | `/api/f24-riconciliazione/alerts/{alert_id}/ignora` | — | f24.f24_riconciliazione |
 | GET | `/api/f24-riconciliazione/commercialista` | ✓ | f24.f24_riconciliazione |
-| POST | `/api/f24-riconciliazione/commercialista/upload` | ✓ | f24.f24_riconciliazione |
-| GET | `/api/f24-riconciliazione/commercialista/{f24_id}` | ✓ | f24.f24_riconciliazione |
-| PUT | `/api/f24-riconciliazione/commercialista/{f24_id}` | ✓ | f24.f24_riconciliazione |
-| DELETE | `/api/f24-riconciliazione/commercialista/{f24_id}` | ✓ | f24.f24_riconciliazione |
-| PUT | `/api/f24-riconciliazione/commercialista/{f24_id}/pagato` | ✓ | f24.f24_riconciliazione |
-| GET | `/api/f24-riconciliazione/commercialista/{f24_id}/pdf` | ✓ | f24.f24_riconciliazione |
-| GET | `/api/f24-riconciliazione/dashboard` | ✓ | f24.f24_riconciliazione |
-| POST | `/api/f24-riconciliazione/fix-campo-anno` | ✓ | f24.f24_riconciliazione |
-| GET | `/api/f24-riconciliazione/quietanze` | ✓ | f24.f24_riconciliazione |
-| POST | `/api/f24-riconciliazione/quietanze/upload-multiplo` | ✓ | f24.f24_riconciliazione |
-| GET | `/api/f24-riconciliazione/quietanze/{quietanza_id}` | ✓ | f24.f24_riconciliazione |
-| POST | `/api/f24-riconciliazione/riconcilia-quietanza` | ✓ | f24.f24_riconciliazione |
+| POST | `/api/f24-riconciliazione/commercialista/upload` | — | f24.f24_riconciliazione |
+| GET | `/api/f24-riconciliazione/commercialista/{f24_id}` | — | f24.f24_riconciliazione |
+| PUT | `/api/f24-riconciliazione/commercialista/{f24_id}` | — | f24.f24_riconciliazione |
+| DELETE | `/api/f24-riconciliazione/commercialista/{f24_id}` | — | f24.f24_riconciliazione |
+| PUT | `/api/f24-riconciliazione/commercialista/{f24_id}/pagato` | — | f24.f24_riconciliazione |
+| GET | `/api/f24-riconciliazione/commercialista/{f24_id}/pdf` | — | f24.f24_riconciliazione |
+| GET | `/api/f24-riconciliazione/dashboard` | — | f24.f24_riconciliazione |
+| POST | `/api/f24-riconciliazione/fix-campo-anno` | — | f24.f24_riconciliazione |
+| GET | `/api/f24-riconciliazione/quietanze` | — | f24.f24_riconciliazione |
+| POST | `/api/f24-riconciliazione/quietanze/upload-multiplo` | — | f24.f24_riconciliazione |
+| GET | `/api/f24-riconciliazione/quietanze/{quietanza_id}` | — | f24.f24_riconciliazione |
+| POST | `/api/f24-riconciliazione/riconcilia-quietanza` | — | f24.f24_riconciliazione |
 | POST | `/api/f24-riconciliazione/riconcilia-tutto` | ✓ | f24.f24_riconciliazione |
-| GET | `/api/f24-riconciliazione/verifica-codice/{codice_tributo}` | ✓ | f24.f24_riconciliazione |
+| GET | `/api/f24-riconciliazione/verifica-codice/{codice_tributo}` | — | f24.f24_riconciliazione |
 
 ## F24 protetti  (9)
 
@@ -1454,9 +1455,9 @@
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
-| POST | `/api/f24/quietanze/drive/quadratura` | ✓ | drive_quietanze |
-| GET | `/api/f24/quietanze/drive/status` | ✓ | drive_quietanze |
-| POST | `/api/f24/quietanze/drive/sync` | ✓ | drive_quietanze |
+| POST | `/api/f24/quietanze/drive/quadratura` | — | drive_quietanze |
+| GET | `/api/f24/quietanze/drive/status` | — | drive_quietanze |
+| POST | `/api/f24/quietanze/drive/sync` | — | drive_quietanze |
 
 ## Regole  (7)
 
@@ -1474,11 +1475,11 @@
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
-| GET | `/api/f24-riconciliazione/estratti-conto` | ✓ | bank.riconciliazione_f24_banca |
-| GET | `/api/f24-riconciliazione/movimenti-f24-banca` | ✓ | bank.riconciliazione_f24_banca |
-| POST | `/api/f24-riconciliazione/riconcilia-f24` | ✓ | bank.riconciliazione_f24_banca |
-| GET | `/api/f24-riconciliazione/stato-riconciliazione` | ✓ | bank.riconciliazione_f24_banca |
-| POST | `/api/f24-riconciliazione/upload-estratto-bpm` | ✓ | bank.riconciliazione_f24_banca |
+| GET | `/api/f24-riconciliazione/estratti-conto` | — | bank.riconciliazione_f24_banca |
+| GET | `/api/f24-riconciliazione/movimenti-f24-banca` | — | bank.riconciliazione_f24_banca |
+| POST | `/api/f24-riconciliazione/riconcilia-f24` | — | bank.riconciliazione_f24_banca |
+| GET | `/api/f24-riconciliazione/stato-riconciliazione` | — | bank.riconciliazione_f24_banca |
+| POST | `/api/f24-riconciliazione/upload-estratto-bpm` | — | bank.riconciliazione_f24_banca |
 
 ## Riconciliazione Stats  (1)
 

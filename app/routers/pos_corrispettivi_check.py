@@ -231,11 +231,12 @@ async def verifica_coerenza_pos_corrispettivi(
     accrediti_pos = await db["estratto_conto_movimenti"].find(
         {
             "data": {"$gte": data_da, "$lte": data_a_estesa},
-            "tipo": {"$ne": "uscita"},
-            "$or": [
+            "$nor": [{"tipo": "uscita"}, {"type": "uscita"}],
+            "$and": [{"$or": [
                 {"categoria": {"$in": CATEGORIE_POS_ACCREDITATI}},
+                {"descrizione": {"$regex": "NUMIA|INCAS\\. TRAMITE P\\.O\\.S|INC\\.POS", "$options": "i"}},
                 {"descrizione_originale": {"$regex": "NUMIA|INCAS\\. TRAMITE P\\.O\\.S|INC\\.POS", "$options": "i"}},
-            ],
+            ]}],
         },
         {"_id": 0, "id": 1, "data": 1, "data_contabile": 1,
          "importo": 1, "descrizione": 1, "descrizione_originale": 1,

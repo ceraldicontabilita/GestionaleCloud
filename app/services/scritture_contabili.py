@@ -1025,16 +1025,37 @@ async def registra_chiusura_pos_reale(
 async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Optional[str]]:
     """Scritture del corrispettivo giornaliero secondo il MODELLO POS.
 
-    REGOLA CANONICA: cassa (entrata totale + uscita POS reale) e banca
-    (trasferimento speculare della stessa cifra). L'accredito EC non crea
-    nulla: riconcilia il trasferimento (riconcilia_accredito_pos_ec)."""
+    La Prima Nota Cassa contiene esclusivamente denaro fisicamente incassato
+    in contanti. Il dettaglio RT e' una prova fiscale: la sua quota
+    elettronica non e' denaro in cassa e non puo' da sola generare una
+    scrittura POS/Banca. Quando esiste una chiusura del terminale reale, il
+    suo trasferimento viene registrato e poi riconciliato con l'accredito EC.
+
+    Per gli RT legacy senza alcun dettaglio di pagamento il totale resta una
+    registrazione cassa dichiaratamente non scomposta: non possiamo inventare
+    una quota elettronica assente dalla fonte.
+    """
     data = corr_doc.get("data") or corr_doc.get("data_operazione") or ""
-    contanti = float(corr_doc.get("pagato_contanti") or 0)
-    elettronico = float(corr_doc.get("pagato_elettronico") or corr_doc.get("pagato_pos") or 0)
+    # Le importazioni storiche non usano tutte gli stessi nomi di campo.  La
+    # presenza esplicita di una quota a zero e' comunque informazione: non va
+    # scambiata per un RT senza dettaglio e trasformata nel totale in Cassa.
+    def _quota(*campi: str) -> tuple[float, bool]:
+        for campo in campi:
+            valore = corr_doc.get(campo)
+            if valore not in (None, ""):
+                return float(valore or 0), True
+        return 0.0, False
+
+    contanti, contanti_dichiarati = _quota(
+        "pagato_contanti", "contanti", "importo_contanti"
+    )
+    elettronico, elettronico_dichiarato = _quota(
+        "pagato_elettronico", "elettronico", "pagato_pos", "importo_pos"
+    )
     totale = float(corr_doc.get("totale") or corr_doc.get("totale_complessivo")
                    or corr_doc.get("importo") or corr_doc.get("totale_giornaliero")
                    or (contanti + elettronico) or 0)
-    if contanti == 0 and elettronico == 0 and totale > 0:
+    if not contanti_dichiarati and not elettronico_dichiarato and totale > 0:
         contanti = totale
 
     anno = int(data[:4]) if data[:4].isdigit() else datetime.now().year
@@ -1054,7 +1075,11 @@ async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Opti
     # upsert=True), non più in due chiamate separate find_one + insert_one.
     # Due richieste concorrenti per lo stesso corrispettivo non possono più
     # superare entrambe il controllo prima che una delle due abbia scritto.
-    cassa_id, gia_esistente = await _scrivi_se_assente(
+    # Un RT che dichiara contanti zero non genera una riga Cassa a zero.
+    # La sua quota elettronica resta fiscale finche' non arriva la chiusura
+    # reale del terminale, che viene trattata nel blocco POS seguente.
+    if contanti > 0:
+        cassa_id, gia_esistente = await _scrivi_se_assente(
         db, "cassa",
         {
             "data": data, "tipo": "entrata", "categoria": "Corrispettivi",
@@ -1073,22 +1098,23 @@ async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Opti
             "corrispettivo_id": corr_doc.get("id"),
             **_campo_chiave(chiave_idempotenza_corrispettivo(
                 corr_doc.get("id"), "cassa_entrata")),
-            "data": data, "tipo": "entrata", "importo": totale,
-            "descrizione": f"Corrispettivi {data}",
+            "data": data, "tipo": "entrata", "importo": round(contanti, 2),
+            "descrizione": f"Corrispettivi contanti {data}",
             "categoria": "Corrispettivi", "source": "corrispettivo_import",
             "anno": anno, "mese": mese, "matricola_rt": matricola,
             "imponibile": round(float(corr_doc.get("totale_imponibile") or 0), 2),
             "iva": round(float(corr_doc.get("totale_iva") or 0), 2),
             "contanti": round(contanti, 2), "elettronico": round(elettronico, 2),
+            "totale_corrispettivo": round(totale, 2),
             "dettaglio": {"contanti": round(contanti, 2),
                           "elettronico": round(elettronico, 2),
                           "matricola_rt": corr_doc.get("matricola_rt", ""),
                           "numero_documenti": corr_doc.get("numero_documenti", 0)},
         },
-    )
-    esito["prima_nota_cassa_id"] = cassa_id
-    if gia_esistente:
-        esito["gia_esistente"] = True
+        )
+        esito["prima_nota_cassa_id"] = cassa_id
+        if gia_esistente:
+            esito["gia_esistente"] = True
 
     # USCITA POS: si costruisce SOLO dai terminali reali, mai dall'XML.
     #

@@ -208,7 +208,7 @@ def test_create_prima_nota_entry_trasferimento_speculare():
     assert banca[0]["importo"] == 400.0
     entrata_cassa = next(d for d in cassa if d["tipo"] == "entrata")
     uscita_cassa = next(d for d in cassa if d["tipo"] == "uscita")
-    assert entrata_cassa["importo"] == 1000.0
+    assert entrata_cassa["importo"] == 600.0
     assert uscita_cassa["importo"] == 400.0
 
 

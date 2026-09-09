@@ -72,7 +72,7 @@ def test_upload_crea_corrispettivo_e_prima_nota():
         db["prima_nota_cassa"].find({"tipo": "entrata", "categoria": "Corrispettivi"}).to_list(10)
     )
     assert len(entrate) == 1
-    assert entrate[0]["importo"] == 100.0
+    assert entrate[0]["importo"] == 80.0
 
     uscite_pos = asyncio.run(
         db["prima_nota_cassa"].find({"tipo": "uscita", "categoria": "POS NUMIA Verso Banca"}).to_list(10)
@@ -126,7 +126,7 @@ def test_upload_force_update_ricrea_senza_duplicare_prima_nota():
         db["prima_nota_cassa"].find({"tipo": "entrata", "categoria": "Corrispettivi"}).to_list(10)
     )
     assert len(entrate) == 1
-    assert entrate[0]["importo"] == 120.0  # rigenerato con l'importo aggiornato
+    assert entrate[0]["importo"] == 100.0  # rigenerato con la quota contanti aggiornata
 
 
 def test_due_upload_concorrenti_dello_stesso_corrispettivo_non_duplicano():

@@ -1029,8 +1029,8 @@ async def _sync_corrispettivi_impl(anno: int = None) -> Dict:
     sono ancora passati dal percorso di caricamento diretto. Unificato
     (14/07/2026, richiesta utente) su un'unica implementazione condivisa con
     quel percorso — corrispettivi_helpers.py::_create_prima_nota_movements —
-    così la regola contabile (cassa entrata=totale/uscita=POS, banca
-    entrata=POS) e la lettura dei campi pagamento vivono in un solo posto,
+    così la regola contabile (cassa entrata=soli contanti; POS/Banca solo da
+    terminale e accredito reali) e la lettura dei campi pagamento vivono in un solo posto,
     non due copie che potevano divergere.
     """
     from app.routers.invoices.corrispettivi_helpers import _create_prima_nota_movements
@@ -3462,10 +3462,10 @@ async def crea_entrata_cassa_da_corrispettivo(
 ) -> Dict[str, Any]:
     """Crea manualmente l'entrata in Prima Nota Cassa dal corrispettivo XML già importato.
 
-    Utilizzo previsto: l'operatore la sera non ha tempo di inserire l'entrata
-    cassa a mano, preme questo bottone (dalla UI) e il sistema crea:
-      - Entrata in Prima Nota Cassa = totale corrispettivo (contanti + POS)
-      - Uscita in Prima Nota Cassa = pagato_elettronico (solo se includi_uscita_pos=True)
+    Utilizzo previsto: l'operatore importa il corrispettivo RT e crea la sola
+    entrata cassa dimostrata dal dettaglio ``pagato_contanti``. La quota
+    elettronica non viene trasformata in cassa o banca: richiede la chiusura
+    del terminale e il successivo accredito bancario reale.
 
     Idempotente: se esistono già movimenti con source='manuale_da_xml' + corrispettivo_id
     per questa data, non li duplica.
@@ -3518,63 +3518,23 @@ async def crea_entrata_cassa_da_corrispettivo(
             "message": f"Movimenti per il {data} già confermati (richiesta concorrente rifiutata)",
         }
 
-    # Estrai valori dal corrispettivo (tolleranti a schema legacy)
-    contanti = float(corrispettivo.get("pagato_contanti", 0) or 0)
-    elettronico = float(
-        corrispettivo.get("pagato_pos", 0)
-        or corrispettivo.get("pagato_elettronico", 0)
-        or 0
-    )
-    totale = float(
-        corrispettivo.get("totale", 0)
-        or corrispettivo.get("totale_complessivo", 0)
-        or (contanti + elettronico)
-        or 0
-    )
-
-    if totale <= 0:
+    from app.routers.invoices.corrispettivi_helpers import _create_prima_nota_movements
+    risultati = await _create_prima_nota_movements(db, corrispettivo)
+    if not risultati.get("prima_nota_cassa_id"):
+        await db["corrispettivi"].update_one(
+            {"id": corr_id}, {"$unset": {
+                "prima_nota_cassa_generata": "",
+                "prima_nota_cassa_generata_at": "",
+            }}
+        )
         raise HTTPException(
             status_code=400,
-            detail=f"Corrispettivo {data} ha totale 0. Verifica l'XML importato."
+            detail=f"Corrispettivo {data} senza un importo cassa registrabile. Verifica il dettaglio RT."
         )
 
-    risultati = {"entrata_cassa_id": None, "uscita_pos_id": None}
-
-    # 1) ENTRATA CASSA = totale corrispettivo
-    entrata_id = str(uuid.uuid4())
-    movimento_entrata = {
-        "id": entrata_id,
-        "data": data,
-        "tipo": "entrata",
-        "categoria": "Corrispettivi",
-        "descrizione": f"Corrispettivi {data} (da XML)",
-        "importo": round(totale, 2),
-        "corrispettivo_id": corr_id,
-        "pagato_contanti": round(contanti, 2),
-        "pagato_elettronico": round(elettronico, 2),
-        "totale_giornata": round(totale, 2),
-        "source": "manuale_da_xml",
-        "created_at": now,
-    }
-    await db[COLLECTION_PRIMA_NOTA_CASSA].insert_one(movimento_entrata.copy())
-    risultati["entrata_cassa_id"] = entrata_id
-
-    # 2) USCITA CASSA = quota POS (opzionale)
-    if False:  # XML RT: solo coerenza fiscale, mai scritture POS in Prima Nota
-        uscita_id = str(uuid.uuid4())
-        movimento_uscita = {
-            "id": uscita_id,
-            "data": data,
-            "tipo": "uscita",
-            "categoria": "POS Verso Banca",
-            "descrizione": f"Battuto POS {data} (da XML) → Banca",
-            "importo": round(elettronico, 2),
-            "corrispettivo_id": corr_id,
-            "source": "manuale_da_xml",
-            "created_at": now,
-        }
-        await db[COLLECTION_PRIMA_NOTA_CASSA].insert_one(movimento_uscita.copy())
-        risultati["uscita_pos_id"] = uscita_id
+    contanti = float(corrispettivo.get("pagato_contanti", 0) or 0)
+    elettronico = float(corrispettivo.get("pagato_elettronico", 0) or corrispettivo.get("pagato_pos", 0) or 0)
+    totale = float(corrispettivo.get("totale", 0) or corrispettivo.get("totale_complessivo", 0) or (contanti + elettronico) or 0)
 
     return {
         "success": True,
@@ -3584,8 +3544,10 @@ async def crea_entrata_cassa_da_corrispettivo(
         "contanti": round(contanti, 2),
         "elettronico": round(elettronico, 2),
         "include_uscita_pos": False,
-        **risultati,
-        "message": f"Movimenti creati in Prima Nota Cassa per il {data}. Sono annullabili normalmente dalla pagina Prima Nota.",
+        "entrata_cassa_id": risultati.get("prima_nota_cassa_id"),
+        "uscita_pos_id": risultati.get("prima_nota_cassa_uscita_pos_id"),
+        "prima_nota_banca_id": risultati.get("prima_nota_banca_id"),
+        "message": f"Entrata contanti creata in Prima Nota Cassa per il {data}. Il POS resta separato finché non esiste una chiusura reale.",
     }
 
 
@@ -3618,10 +3580,11 @@ async def sposta_fatture_cassa_pagate_in_banca(
     ).to_list(5000)
 
     movimenti_ec = await db["estratto_conto_movimenti"].find(
-        {"data": {"$regex": f"^{anno}"}, "tipo": "uscita",
+        {"data": {"$regex": f"^{anno}"},
+         "$or": [{"tipo": "uscita"}, {"type": "uscita"}, {"importo": {"$lt": 0}}],
          "riconciliato": {"$ne": True}},
         {"_id": 0, "id": 1, "data": 1, "importo": 1,
-         "descrizione_originale": 1, "descrizione": 1},
+         "descrizione_originale": 1, "descrizione": 1, "causale": 1},
     ).to_list(20000)
     per_importo: Dict[float, list] = {}
     for m in movimenti_ec:
@@ -3641,7 +3604,9 @@ async def sposta_fatture_cassa_pagate_in_banca(
         candidati = per_importo.get(round(abs(float(riga.get("importo") or 0)), 2), [])
         match = None
         for m in candidati:
-            desc = (m.get("descrizione_originale") or m.get("descrizione") or "").upper()
+            desc = " ".join(str(m.get(k) or "") for k in (
+                "descrizione_originale", "descrizione", "causale"
+            )).upper()
             if any(t in desc for t in token):
                 match = m
                 break
@@ -3653,7 +3618,7 @@ async def sposta_fatture_cassa_pagate_in_banca(
             dettaglio.append({
                 "fattura": fatt.get("invoice_number"), "fornitore": fatt.get("supplier_name"),
                 "importo": riga.get("importo"), "addebito_ec": match.get("data"),
-                "descrizione_ec": (match.get("descrizione_originale") or "")[:60],
+                "descrizione_ec": (match.get("descrizione_originale") or match.get("descrizione") or match.get("causale") or "")[:60],
             })
         if dry_run:
             continue

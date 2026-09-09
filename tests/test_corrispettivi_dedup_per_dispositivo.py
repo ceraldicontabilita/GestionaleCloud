@@ -129,7 +129,8 @@ def test_matricole_diverse_stessa_data_non_sono_duplicati():
     assert esito2["prima_nota_id"] is not None
     cassa = db["prima_nota_cassa"].docs
     entrate = [c for c in cassa if c["tipo"] == "entrata"]
-    assert {round(c["importo"], 2) for c in entrate} == {500.0, 400.0}
+    # In Cassa entra soltanto la quota materialmente incassata in contanti.
+    assert {round(c["importo"], 2) for c in entrate} == {300.0, 250.0}
 
 
 def test_stesso_dispositivo_stessa_data_resta_duplicato():

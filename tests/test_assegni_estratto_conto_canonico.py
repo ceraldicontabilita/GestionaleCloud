@@ -36,6 +36,23 @@ def test_numero_preserva_zero_iniziale_e_usa_num_non_cra():
     assert estrai_numero_assegno(_mov()["descrizione"]) == "0208770981"
 
 
+def test_addebito_assegno_in_causale_originale_viene_intercettato():
+    async def scenario():
+        db = MemorySheetsClient().db
+        movimento = _mov(numero="0208771999", idx=1999)
+        movimento.pop("descrizione")
+        movimento.update({
+            "type": "uscita",
+            "causale": "ADDEBITO ASSEGNO N. 0208771999",
+        })
+        await db.estratto_conto_movimenti.insert_one(movimento)
+        return await sincronizza_assegni_da_estratto_conto(db)
+
+    esito = _run(scenario())
+    assert esito["assegni_creati"] == 1
+    assert esito["dettagli"][0]["numero"] == "0208771999"
+
+
 def test_importo_assoluto_tipo_uscita_crea_assegno_e_prima_nota_idempotenti():
     async def scenario():
         db = MemorySheetsClient().db

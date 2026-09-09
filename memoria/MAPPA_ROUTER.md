@@ -1,7 +1,7 @@
 # MAPPA ROUTER — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py — leggendo la route table reale di `register_all_routers`.
-> Totale **1155 endpoint** in **112 prefissi**.
+> Totale **1156 endpoint** in **112 prefissi**.
 
 Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app collegata / webhook / chatbot / scheduler / API pubblica) · `—` nessun riferimento noto (candidato verifica).
 
@@ -13,15 +13,15 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/alerts` | 7 | ✓ | alerts |
 | `/api/anagrafica-fornitori` | 2 | ✓ | anagrafica_fornitori_xml |
 | `/api/archivio-bonifici` | 28 | ✓ | bank.bonifici_import_unificato, bonifici_module.associazioni, bonifici_module.jobs, bonifici_module.riconciliazione, bonifici_module.transfers |
-| `/api/assegni` | 40 | ✓ | bank.assegni, bank.assegni_learning, public_api |
+| `/api/assegni` | 41 | ✓ | bank.assegni, bank.assegni_learning, public_api |
 | `/api/assegni-legacy` | 1 | ✓ | public_api |
 | `/api/auth` | 11 | ext | auth, mfa, pin_login |
 | `/api/auto-repair` | 2 | ✓ | auto_repair |
-| `/api/bank` | 2 | ✓ | public_api |
+| `/api/bank` | 2 | — | public_api |
 | `/api/bank-statement` | 7 | ✓ | bank.bank_statement_import |
 | `/api/batch-reprocess` | 5 | ✓ | batch_reprocessing |
 | `/api/bilancio` | 7 | ✓ | accounting.bilancio |
-| `/api/cash` | 10 | ✓ | cash, public_api |
+| `/api/cash` | 10 | — | cash, public_api |
 | `/api/cedolini` | 3 | — | drive_cedolini |
 | `/api/centri-costo` | 10 | ✓ | accounting.centri_costo |
 | `/api/cespiti` | 13 | ✓ | cespiti |
@@ -53,7 +53,7 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/estratto-conto-movimenti` | 15 | ✓ | bank.estratto_conto |
 | `/api/f24` | 29 | ✓ | drive_quietanze, f24.avviso_bonario, f24.f24_main |
 | `/api/f24-analisi` | 4 | ✓ | f24_analisi |
-| `/api/f24-email` | 7 | ✓ | f24.email_f24 |
+| `/api/f24-email` | 7 | — | f24.email_f24 |
 | `/api/f24-email-settings` | 8 | ✓ | f24_email_settings |
 | `/api/f24-public` | 11 | ext | f24.f24_public, public_api |
 | `/api/f24-riconciliazione` | 23 | ✓ | bank.riconciliazione_f24_banca, f24.f24_riconciliazione |
@@ -115,7 +115,7 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/verbali-riconciliazione` | 10 | ✓ | verbali_riconciliazione |
 | `/api/verifica-coerenza` | 7 | ✓ | verifica_coerenza |
 | `/api/voci-bilancio` | 4 | ✓ | voci_bilancio |
-| `/api/warehouse` | 6 | ✓ | public_api |
+| `/api/warehouse` | 6 | — | public_api |
 | `/data-deletion` | 1 | ext | legal_pages |
 | `/privacy` | 1 | ext | legal_pages |
 | `/terms` | 1 | ext | legal_pages |

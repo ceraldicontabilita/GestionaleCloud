@@ -183,6 +183,27 @@ describe('Stati e resa responsive della pagina Assegni', () => {
     expect(screen.getByText('Estratto conto')).toBeInTheDocument();
   });
 
+  it('rende separati emissione, riscontro EC e storno', async () => {
+    api.get.mockImplementation(rispostaPagina([
+      {
+        id: 'a-emesso', numero: '0208770987', stato: 'emesso', importo: 320,
+        data_emissione: '2026-06-30', riscontro_banca: 'da_rientrare_in_banca',
+      },
+      { id: 'a-stornato', numero: '0208770988', stato: 'stornato', importo: 90, riscontro_banca: 'stornato' },
+      { id: 'a-compilato', numero: '0208770989', stato: 'compilato', importo: 42 },
+    ]));
+    api.post.mockResolvedValue({ data: { success: true } });
+
+    renderPagina();
+
+    expect((await screen.findAllByText('Da rientrare in banca')).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Stornato').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByTestId('emetti-a-compilato'));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      '/api/assegni/a-compilato/emetti', { data_emissione: expect.any(String) },
+    ));
+  });
+
   it('seleziona il fornitore, mostra solo le sue fatture e compila la data dal documento', async () => {
     const assegno = {
       id: 'a-kimbo', numero: '0208769323', stato: 'incassato', importo: 1498.96,

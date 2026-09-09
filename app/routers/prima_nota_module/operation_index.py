@@ -152,6 +152,12 @@ def _first(doc: Dict[str, Any], *keys: str) -> Any:
     return None
 
 
+def _normalized_supplier_key(value: Any) -> str:
+    """Confronto P.IVA tra importatori italiani e internazionali."""
+    normalized = re.sub(r"[^A-Z0-9]", "", str(value or "").upper())
+    return normalized[2:] if normalized.startswith("IT") and normalized[2:].isdigit() else normalized
+
+
 def _target_label(category: str, doc: Dict[str, Any]) -> str:
     if category == "fornitore":
         name = _first(doc, "ragione_sociale", "denominazione", "nome") or "Fornitore"
@@ -209,6 +215,12 @@ def _candidate(category: str, doc: Dict[str, Any]) -> Dict[str, Any]:
             "plate": _first(doc, "targa", "veicolo_targa"),
             "driver": _first(doc, "driver_nome", "dipendente_nome", "driver"),
             "period": _first(doc, "periodo", "mese_competenza", "anno"),
+            # Informazione di contesto: il metodo anagrafico non e' una prova
+            # del pagamento e non viene mai usato per confermare il movimento.
+            "payment_method": _first(
+                doc, "metodo_pagamento", "metodo_pagamento_fornitore",
+                "metodo_pagamento_previsto", "payment_method",
+            ),
         },
     }
 
@@ -258,7 +270,14 @@ async def list_manual_operation_index(
     for movement in movements:
         movement_id = str(movement.get("id") or movement.get("_id") or "")
         decision = by_movement.get(movement_id)
-        row_status = "collegato_indice" if decision and decision.get("target_id") else "classificato" if decision else "da_classificare"
+        # Una riconciliazione gia' confermata dal motore con una prova EC non
+        # deve essere proposta di nuovo come lavoro manuale. L'indice non
+        # modifica la fonte: la espone soltanto con il suo collegamento reale.
+        row_status = (
+            "riconciliato_banca" if movement.get("riconciliato") is True else
+            "collegato_indice" if decision and decision.get("target_id") else
+            "classificato" if decision else "da_classificare"
+        )
         if stato and stato != row_status:
             continue
         rows.append({
@@ -269,6 +288,13 @@ async def list_manual_operation_index(
             "amount_cents": money_cents(movement.get("importo")),
             "source_fingerprint": movement.get("fingerprint"),
             "bank_reconciled": bool(movement.get("riconciliato")),
+            "bank_evidence": {
+                "kind": movement.get("riconciliato_con") or movement.get("tipo_riconciliazione"),
+                "invoice_id": movement.get("fattura_id"),
+                "invoice_ids": movement.get("fattura_ids") or [],
+                "cheque_id": movement.get("assegno_id"),
+                "reconciled_at": movement.get("riconciliato_at") or movement.get("data_riconciliazione"),
+            } if movement.get("riconciliato") is True else None,
             "index_status": row_status,
             "decision": decision,
         })
@@ -319,6 +345,42 @@ async def list_manual_operation_candidates(
     documents = await db[config["collection"]].find(candidate_query).sort(
         config.get("date_field") or "data", -1
     ).limit(500).to_list(500)
+    if category == "fattura":
+        # Le fatture importate possono non replicare il metodo impostato
+        # nell'anagrafica fornitore. Lo proiettiamo solo nella risposta di
+        # consultazione: la scelta dell'operatore resta necessaria.
+        invoice_keys = {
+            _normalized_supplier_key(_first(
+                document, "supplier_vat", "cedente_piva", "fornitore_partita_iva",
+            ))
+            for document in documents
+        }
+        invoice_keys.discard("")
+        if invoice_keys:
+            suppliers = await db[COLL_SUPPLIERS].find(
+                {},
+                {"_id": 0, "partita_iva": 1, "piva": 1, "vat": 1,
+                 "metodo_pagamento": 1, "default_payment_method": 1},
+            ).to_list(5000)
+            methods_by_supplier = {}
+            for supplier in suppliers:
+                method = _first(supplier, "metodo_pagamento", "default_payment_method")
+                if not method:
+                    continue
+                for value in (
+                    supplier.get("partita_iva"), supplier.get("piva"), supplier.get("vat"),
+                ):
+                    key = _normalized_supplier_key(value)
+                    if key:
+                        methods_by_supplier[key] = method
+            for document in documents:
+                if _first(document, "metodo_pagamento", "payment_method", "metodo_pagamento_previsto"):
+                    continue
+                key = _normalized_supplier_key(_first(
+                    document, "supplier_vat", "cedente_piva", "fornitore_partita_iva",
+                ))
+                if methods_by_supplier.get(key):
+                    document["metodo_pagamento_fornitore"] = methods_by_supplier[key]
     candidates = [_candidate(category, item) for item in documents]
     candidates = [item for item in candidates if item["id"]]
     query_text = search_text.upper()

@@ -29,6 +29,33 @@ def _normalized_supplier_key(value: Any) -> str:
     return normalized
 
 
+_INVOICE_AMOUNT_FIELDS = (
+    "importo_totale", "total_amount", "totale_documento", "totale",
+    "importo_documento", "importo",
+)
+
+
+def _invoice_amount(invoice: Dict[str, Any]) -> float:
+    """Legge il totale documento dagli schemi di import supportati.
+
+    Le fatture XML, gli import storici e le fatture create dalla UI non hanno
+    sempre lo stesso nome di campo. Un contatore puo' quindi dire "1 fattura"
+    mentre il totale risulta falsamente zero. Questa funzione non ricostruisce
+    importi: usa soltanto un totale effettivamente presente sul documento.
+    """
+    raw = next((invoice.get(field) for field in _INVOICE_AMOUNT_FIELDS
+                if invoice.get(field) not in (None, "")), 0)
+    if isinstance(raw, str):
+        value = raw.strip().replace(" ", "")
+        if "," in value:
+            value = value.replace(".", "").replace(",", ".")
+        raw = value
+    try:
+        return float(raw or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _legacy_supplier_view(supplier: Dict[str, Any]) -> Dict[str, Any]:
     """Espone anche i fornitori del nuovo DB alla UI storica senza riscriverli."""
     if not supplier.get("vat") and not supplier.get("match_key"):
@@ -385,13 +412,7 @@ async def list_suppliers(
                 key = _normalized_supplier_key(piva)
                 if not key:
                     continue
-                raw_amount = invoice.get("importo_totale")
-                if raw_amount in (None, ""):
-                    raw_amount = invoice.get("total_amount", 0)
-                try:
-                    amount = float(str(raw_amount or 0).replace(",", "."))
-                except (TypeError, ValueError):
-                    amount = 0.0
+                amount = _invoice_amount(invoice)
                 paid_status = str(invoice.get("stato_pagamento") or "").strip().lower()
                 paid = invoice.get("pagato") is True or paid_status in {"pagata", "paid"}
                 excluded = invoice.get("esclusa_da_cassa_banca") is True
@@ -1150,7 +1171,7 @@ async def get_supplier_fatturato(
     importo_non_pagato = 0.0
 
     for f in fatture:
-        importo = float(f.get("importo_totale") or f.get("total_amount") or 0)
+        importo = _invoice_amount(f)
         data = f.get("data_documento") or f.get("invoice_date") or ""
         mese_num = int(data[5:7]) if len(data) >= 7 and data[5:7].isdigit() else None
         pagata = bool(f.get("pagato")) or (f.get("stato_pagamento") or "").lower() in ("pagata", "paid")
@@ -1403,7 +1424,7 @@ async def get_fatture_fornitore(
         estratto = []
         totale_importo = 0
         for f in fatture:
-            importo = float(f.get("importo_totale") or f.get("total_amount") or 0)
+            importo = _invoice_amount(f)
             imponibile = float(f.get("imponibile") or f.get("importo_imponibile") or f.get("taxable_amount") or 0)
             iva = float(f.get("iva") or f.get("importo_iva") or f.get("vat_amount") or 0)
             tipo_doc = f.get("tipo_documento", "TD01")
