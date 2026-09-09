@@ -143,8 +143,8 @@ async def download_backup(filename: str, username: str = Depends(verify_token)):
 
 
 @router.get("/public-download/{filename}")
-async def public_download_backup(filename: str):
-    """Download a backup file without authentication"""
+async def public_download_backup(filename: str, _username: str = Depends(verify_token)):
+    """Legacy URL retained for clients, but downloads are always authenticated."""
     try:
         file_path = BACKUP_DIR / filename
 

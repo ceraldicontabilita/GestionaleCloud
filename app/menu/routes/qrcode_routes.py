@@ -3,7 +3,6 @@ from app.menu.models.qrcode_models import QRCodeConfig, QRCodeConfigUpdate, Admi
 from datetime import datetime, timedelta
 import os
 import jwt
-import qrcode
 from io import BytesIO
 import base64
 
@@ -95,6 +94,15 @@ def _get_config_row():
     return res.data[0] if res.data else None
 
 
+def _public_config(config: dict) -> dict:
+    """Return only the non-secret part of the QR configuration."""
+    public = dict(config)
+    wifi = dict(config.get("wifi") or {})
+    wifi.pop("password", None)
+    public["wifi"] = wifi
+    return public
+
+
 @router.get("/config")
 async def get_qrcode_config():
     """Get current QR code configuration (public endpoint)"""
@@ -106,16 +114,18 @@ async def get_qrcode_config():
             "menu_url": f"{os.environ.get('BACKEND_URL', 'http://localhost:3000')}",
             "wifi": {
                 "ssid": "Ceraldi_Caffe_WiFi",
-                "password": "ceraldi2024",
+                # Deliberately do not rotate the network here.  The deployment
+                # supplies its current password as a secret instead of source code.
+                "password": os.environ.get("MENU_WIFI_PASSWORD", ""),
                 "security": "WPA",
                 "hidden": False,
             },
             "updated_at": datetime.utcnow().isoformat(),
         }
         supabase.table("menu_qrcode_config").insert(default_config).execute()
-        return default_config
+        return _public_config(default_config)
 
-    return config
+    return _public_config(config)
 
 
 @router.put("/config")
@@ -151,6 +161,7 @@ async def update_qrcode_config(
 @router.get("/generate/menu")
 async def generate_menu_qr():
     """Generate QR code for menu URL"""
+    import qrcode
     config = _get_config_row()
     if not config:
         raise HTTPException(status_code=404, detail="Configuration not found")
@@ -171,13 +182,16 @@ async def generate_menu_qr():
 
 
 @router.get("/generate/wifi")
-async def generate_wifi_qr():
+async def generate_wifi_qr(_username: str = Depends(verify_token)):
     """Generate QR code for WiFi access"""
+    import qrcode
     config = _get_config_row()
     if not config:
         raise HTTPException(status_code=404, detail="Configuration not found")
 
-    wifi = config["wifi"]
+    wifi = config.get("wifi") or {}
+    if not wifi.get("password"):
+        raise HTTPException(status_code=503, detail="Password Wi-Fi non configurata")
     wifi_string = f"WIFI:T:{wifi['security']};S:{wifi['ssid']};P:{wifi['password']};H:{'true' if wifi.get('hidden', False) else 'false'};;"
 
     qr = qrcode.QRCode(version=1, box_size=10, border=5)

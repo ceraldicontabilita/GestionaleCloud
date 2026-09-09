@@ -371,6 +371,10 @@ async def get_riferimenti_normativi():
 @router.post("/popola-con-chiusure/{anno}")
 async def popola_con_chiusure(anno: int, frigorifero: int = Query(default=None),
                               _admin=Depends(require_admin)):
+    raise HTTPException(
+        status_code=410,
+        detail="Bloccato: non e consentito generare temperature storiche o operatori fittizi.",
+    )
     """
     Popola le schede temperature con:
     - Chiusure (Capodanno, Pasqua, Ferie 12-24 Agosto)

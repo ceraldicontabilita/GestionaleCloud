@@ -149,21 +149,16 @@ async def get_or_create_scheda_annuale(anno: int) -> dict:
     scheda = await db.disinfestazione_annuale.find_one({"anno": anno}, {"_id": 0})
 
     if not scheda:
-        # Genera dati per l'anno
-        interventi = genera_giorni_intervento_anno(anno)
-        monitoraggio = genera_monitoraggio_apparecchi_anno(anno)
-
-        nuova_scheda = {
-            "id": str(uuid.uuid4()),
+        # Absence of the supplier evidence must remain visible.  A generated
+        # inspection outcome or intervention would be a false record.
+        return {
             "anno": anno,
             "ditta": DITTA_DISINFESTAZIONE,
-            "interventi_mensili": interventi,
-            "monitoraggio_apparecchi": monitoraggio,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "stato": "DA_VERIFICARE",
+            "interventi_mensili": {},
+            "monitoraggio_apparecchi": {},
+            "nota": "Scheda non ancora documentata dalla ditta incaricata.",
         }
-        await db.disinfestazione_annuale.insert_one(nuova_scheda)
-        scheda = nuova_scheda
 
     if "_id" in scheda:
         del scheda["_id"]
@@ -176,6 +171,10 @@ async def get_or_create_scheda_annuale(anno: int) -> dict:
 
 @router.post("/rigenera/{anno}")
 async def rigenera_scheda_annuale(anno: int):
+    raise HTTPException(
+        status_code=410,
+        detail="Bloccato: interventi e monitoraggi richiedono evidenze della ditta incaricata.",
+    )
     """Rigenera la scheda annuale con i dati aggiornati della ditta e giorno fisso 15"""
     # Elimina la scheda esistente
     await db.disinfestazione_annuale.delete_one({"anno": anno})
