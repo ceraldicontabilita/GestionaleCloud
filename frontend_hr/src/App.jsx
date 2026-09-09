@@ -4405,12 +4405,6 @@ ${rate?.rate?.length ? `<h2>Piano di pagamento in ${rate.numero_rate} rate</h2>
   );
 }
 
-// Cedolini & Bonifici — vista unica associazione busta ↔ bonifico pagato
-// URL della cartella Drive con gli originali dei bonifici: da qui si prende
-// il documento se durante un controllo serve l'originale, non solo il PDF
-// gia' allegato al bonifico in app.
-const DRIVE_BONIFICI_URL = "https://drive.google.com/drive/u/1/folders/1yl55742cu9i-AFLxu2s0QnMvXG6kVkJC";
-
 // Bonifici bancari "BENEFICIARI DIVERSI": la banca li emette come un unico
 // addebito cumulativo su piu' persone, senza nominarne nessuna nel PDF —
 // nessun algoritmo puo' indovinare a chi vanno. Qui si guarda il documento
@@ -4559,6 +4553,7 @@ function PagheBonificiPage() {
   const [exportBusy, setExportBusy] = useState(false);
   const [syncBusy, setSyncBusy] = useState(false);
   const [cedSyncBusy, setCedSyncBusy] = useState(false);
+  const [driveBonificiUrl, setDriveBonificiUrl] = useState(null);
 
   const eur = (n) => (Number(n) || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const keyOf = (r) => `${r.dipendente_id}_${r.anno}_${r.mese}`;
@@ -4578,6 +4573,11 @@ function PagheBonificiPage() {
     } finally { setLoading(false); }
   };
   useEffect(() => { load(); }, [anno, mese, filtroStato]);
+  useEffect(() => {
+    axios.get(`${API}/paghe/bonifici-drive-config`)
+      .then((r) => setDriveBonificiUrl(r.data?.drive_url || null))
+      .catch(() => setDriveBonificiUrl(null));
+  }, []);
 
   const conferma = async (r, val) => {
     setBusy(keyOf(r));
@@ -4699,9 +4699,9 @@ function PagheBonificiPage() {
           <button className="dc-btn" disabled={exportBusy} onClick={esportaExcel}>
             {exportBusy ? "Esporto…" : "📊 Esporta Excel"}
           </button>
-          <a href={DRIVE_BONIFICI_URL} target="_blank" rel="noreferrer" className="dc-btn" title="Cartella Drive con gli originali dei bonifici">
+          {driveBonificiUrl && <a href={driveBonificiUrl} target="_blank" rel="noreferrer" className="dc-btn" title="Cartella Drive effettivamente usata dall'importatore">
             📁 Cartella Drive bonifici
-          </a>
+          </a>}
         </div>
       </div>
 

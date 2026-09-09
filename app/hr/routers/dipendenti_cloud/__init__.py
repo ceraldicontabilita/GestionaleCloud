@@ -19,6 +19,8 @@ from datetime import datetime, timezone, timedelta, date
 from decimal import Decimal, InvalidOperation
 
 from app.hr.database import Database
+from app.config import settings
+from app.services.drive_folder_registry import get_folder_id
 
 logger = logging.getLogger(__name__)
 
@@ -623,8 +625,16 @@ async def importa_bonifici_drive(body: Dict[str, Any] = Body(default={})):
     nuovo lo stesso endpoint per continuare (il frontend lo fa in automatico)."""
     from app.hr.services.google_drive_sa import elenca_pdf_cartella, scarica_per_id
 
-    folder = str(body.get("folder_id") or os.environ.get("DRIVE_BONIFICI_FOLDER_ID")
-                or "1yl55742cu9i-AFLxu2s0QnMvXG6kVkJC")
+    # Un'unica sorgente configurabile: la variabile canonica Render, con il
+    # registro Drive come compatibilita'. Non usare fallback hard-coded o una
+    # seconda variabile: porterebbero pagina e importatore su cartelle diverse.
+    folder = str(body.get("folder_id") or settings.GOOGLE_DRIVE_BONIFICI_FOLDER_ID
+                 or get_folder_id("bonifico") or "").strip()
+    if not folder:
+        raise HTTPException(
+            status_code=503,
+            detail="Cartella bonifici non configurata: impostare GOOGLE_DRIVE_BONIFICI_FOLDER_ID su Render.",
+        )
     limite = int(body.get("limit") or 120)
 
     db = get_db()
@@ -755,6 +765,21 @@ async def importa_bonifici_drive(body: Dict[str, Any] = Body(default={})):
             "importati": importati, "in_coda_da_associare": in_coda, "duplicati": duplicati,
             "esclusi_non_stipendio": esclusi_non_stipendio,
             "falliti_download": falliti_nomi[:50], "falliti_lettura": falliti_lettura[:50]}
+
+
+@router.get("/paghe/bonifici-drive-config")
+async def configurazione_cartella_bonifici_drive():
+    """Link della stessa cartella usata dall'importatore HR.
+
+    Il link non e' una seconda configurazione: viene sempre derivato dalla
+    variabile canonica Render o dal registro, cosi il pulsante della pagina
+    non puo' piu' aprire una cartella diversa da quella importata.
+    """
+    folder = str(settings.GOOGLE_DRIVE_BONIFICI_FOLDER_ID or get_folder_id("bonifico") or "").strip()
+    return {
+        "configured": bool(folder),
+        "drive_url": f"https://drive.google.com/drive/folders/{folder}" if folder else None,
+    }
 
 
 @router.delete("/paghe")

@@ -41,6 +41,27 @@ _AREA_ALIASES = {
     "partenopay": ("partenopay",),
 }
 
+# Le variabili esplicite di Render sono la sorgente primaria per gli
+# importatori automatici. Il registro JSON serve al catalogo completo e alle
+# aree che non hanno una variabile dedicata; non deve poter sovrascrivere una
+# configurazione specialistica con un ID storico.
+_CANONICAL_SETTING_AREAS = {
+    "fatture": ("GOOGLE_DRIVE_FATTURE_FOLDER_ID", "Fatture XML e PDF"),
+    "cedolini": ("GOOGLE_DRIVE_CEDOLINI_FOLDER_ID", "Cedolini paga"),
+    "corrispettivi": ("GOOGLE_DRIVE_CORRISPETTIVI_FOLDER_ID", "Corrispettivi"),
+    "quietanze": ("GOOGLE_DRIVE_QUIETANZE_FOLDER_ID", "Quietanze"),
+    "estratti_conto": ("GOOGLE_DRIVE_ESTRATTI_FOLDER_ID", "Estratti conto"),
+    "bonifici_dipendenti": ("GOOGLE_DRIVE_BONIFICI_FOLDER_ID", "Bonifici effettuati"),
+    "dichiarazioni_iva": ("GOOGLE_DRIVE_DICHIARAZIONI_IVA_FOLDER_ID", "Dichiarazioni IVA"),
+    "cartelle_esattoriali": ("GOOGLE_DRIVE_CARTELLE_ESATTORIALI_FOLDER_ID", "Cartelle esattoriali"),
+    "avvisi_bonari": ("GOOGLE_DRIVE_AVVISI_BONARI_FOLDER_ID", "Avvisi bonari"),
+    "f24": ("DRIVE_F24_FOLDER_ID", "F24"),
+    "carte": ("DRIVE_CARTE_FOLDER_ID", "Carte"),
+    "paypal": ("DRIVE_PAYPAL_FOLDER_ID", "PayPal"),
+    "noleggio": ("DRIVE_NOLEGGIO_FOLDER_ID", "Noleggio"),
+    "verbali_auto": ("DRIVE_VERBALI_FOLDER_ID", "Verbali auto"),
+}
+
 _runtime_entries: list[dict[str, Any]] = []
 
 
@@ -71,6 +92,13 @@ def _registry_entries() -> list[dict[str, Any]]:
     merged = {_slug(entry.get("area") or entry.get("label")): entry for entry in configured}
     for entry in _runtime_entries:
         merged[_slug(entry.get("area") or entry.get("label"))] = entry
+    # Una variabile esplicita e verificata su Render prevale sul JSON, che puo'
+    # contenere un catalogo precedente. Cosi tutti i pulsanti e gli importatori
+    # vedono la stessa cartella senza richiedere duplicazioni di ID.
+    for area, (setting_name, label) in _CANONICAL_SETTING_AREAS.items():
+        folder_id = str(getattr(settings, setting_name, None) or "").strip()
+        if folder_id:
+            merged[area] = {"area": area, "label": label, "folder_id": folder_id}
     return list(merged.values())
 
 
