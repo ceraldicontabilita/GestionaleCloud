@@ -99,6 +99,7 @@ ASSEGNO_STATI = {
     "assegnato": {"label": "Assegnato", "color": "#2196f3"},
     "incassato": {"label": "Incassato", "color": "#4caf50"},
     "annullato": {"label": "Annullato", "color": "#f44336"},
+    "stornato": {"label": "Stornato", "color": "#b91c1c"},
     "scaduto": {"label": "Scaduto", "color": "#795548"}
 }
 
@@ -455,6 +456,20 @@ async def list_assegni(
             )
             assegno["evidenza_estratto_conto_id"] = movimento_id
 
+        # Il riscontro EC e' distinto dall'intenzione di emettere: finche' non
+        # esiste una riga bancaria il titolo resta da rientrare in banca. Non
+        # e' un incasso presunto e non modifica fatture o Prima Nota.
+        if assegno.get("stato") == "stornato":
+            assegno["riscontro_banca"] = "stornato"
+        elif assegno.get("incassato_confermato_banca") and movimento_id:
+            assegno["riscontro_banca"] = "incassato"
+        elif assegno.get("stato") == "incassato":
+            assegno["riscontro_banca"] = "incasso_da_verificare"
+        elif assegno.get("stato") in {
+            "compilato", "emesso", "parzialmente_assegnato", "assegnato",
+        }:
+            assegno["riscontro_banca"] = "da_rientrare_in_banca"
+
         if assegno.get("stato") == "incassato":
             mancanti = []
             if not assegno.get("data_incasso"):
@@ -597,7 +612,7 @@ async def get_assegni_stats(anno: Optional[int] = Query(None)) -> Dict[str, Any]
         {"importo": {"$gt": 0}},
         {"stato": {"$in": [
             "compilato", "emesso", "parzialmente_assegnato", "assegnato",
-            "incassato", "annullato", "scaduto",
+            "incassato", "annullato", "stornato", "scaduto",
         ]}},
     ]}
     match_filter.setdefault("$and", []).append(operativi)
@@ -1830,6 +1845,44 @@ async def annulla_assegno(assegno_id: str) -> Dict[str, str]:
     return {"message": "Assegno annullato"}
 
 
+class StornoAssegnoIn(BaseModel):
+    motivo: str = Field(..., min_length=3, max_length=500)
+    data_storno: Optional[str] = None
+
+
+@router.post("/{assegno_id}/storna")
+async def storna_assegno(assegno_id: str, body: StornoAssegnoIn) -> Dict[str, Any]:
+    """Registra lo storno senza cancellare assegno, fatture o prova bancaria."""
+    db = Database.get_db()
+    assegno = await db[COLLECTION_ASSEGNI].find_one(
+        {"$or": [{"id": assegno_id}, {"numero": assegno_id}]}, {"_id": 0},
+    )
+    if not assegno:
+        raise HTTPException(status_code=404, detail="Assegno non trovato")
+    if assegno.get("incassato_confermato_banca"):
+        raise HTTPException(
+            status_code=409,
+            detail="Storno bloccato: l'assegno ha gia un riscontro nell'estratto conto. Correggere la prova bancaria senza cancellarla.",
+        )
+    if assegno.get("stato") == "stornato":
+        return {"success": True, "idempotent": True, "message": "Assegno gia stornato"}
+
+    now = datetime.now(timezone.utc).isoformat()
+    await db[COLLECTION_ASSEGNI].update_one(
+        {"id": assegno["id"]},
+        {"$set": {
+            "stato": "stornato",
+            "stato_pre_storno": assegno.get("stato"),
+            "motivo_storno": body.motivo.strip(),
+            "data_storno": body.data_storno or now[:10],
+            "stornato_at": now,
+            "stato_finanziario": "stornato_da_verificare",
+            "updated_at": now,
+        }},
+    )
+    return {"success": True, "message": "Assegno stornato: nessun pagamento e' stato creato"}
+
+
 @router.delete("/clear-generated")
 async def clear_generated_assegni(stato: str = Query("vuoto")) -> Dict[str, Any]:
     """
@@ -1933,7 +1986,7 @@ async def auto_associa_assegni() -> Dict[str, Any]:
             {"fattura_collegata": None}
         ],
         "importo": {"$gt": 0},
-        "stato": {"$nin": ["annullato", "incassato"]}
+        "stato": {"$nin": ["annullato", "stornato", "incassato"]}
     }, {"_id": 0}).to_list(1000)
     
     # Carica fatture non pagate — SOLO di fornitori che pagano con assegno

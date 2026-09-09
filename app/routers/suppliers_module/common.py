@@ -7,7 +7,10 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Cache key per suppliers
-SUPPLIERS_CACHE_KEY = "suppliers_list"
+# Versionata: le card includono ora tutte le varianti effettivamente importate
+# degli importi fattura. Senza bump una risposta €0,00 poteva restare visibile
+# fino alla scadenza della cache anche dopo la correzione.
+SUPPLIERS_CACHE_KEY = "suppliers_list:v2"
 SUPPLIERS_CACHE_TTL = 300  # 5 minuti per performance migliori
 
 # Metodi di pagamento validi in scrittura sui fornitori. Il dropdown di

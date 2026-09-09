@@ -170,6 +170,50 @@ async def _scenario_incassato_arricchito(monkeypatch):
     assert assegno["dati_riconciliazione_mancanti"] == []
 
 
+async def _scenario_emissione_storno_e_riscontro_banca(monkeypatch):
+    db = MemorySheetsClient()["test_assegno_emissione_storno"]
+    await db["assegni"].insert_many([
+        {
+            "id": "a-da-emettere", "numero": "0208770990", "stato": "compilato",
+            "beneficiario": "Fornitore", "importo": 125.50, "anno": 2026,
+        },
+        {
+            "id": "a-incassato", "numero": "0208770991", "stato": "incassato",
+            "beneficiario": "Fornitore", "importo": 12.00, "anno": 2026,
+            "incassato_confermato_banca": True, "movimento_estratto_conto_id": "ec-1",
+        },
+    ])
+    await db["estratto_conto_movimenti"].insert_one({"id": "ec-1", "data": "2026-07-01"})
+    monkeypatch.setattr(assegni_router.Database, "get_db", staticmethod(lambda: db))
+
+    await assegni_router.emetti_assegno("a-da-emettere", data_emissione="2026-06-30")
+    emesso = await db["assegni"].find_one({"id": "a-da-emettere"})
+    assert emesso["stato"] == "emesso"
+    assert emesso["data_emissione"] == "2026-06-30"
+
+    righe = await assegni_router.list_assegni(
+        skip=0, limit=1000, stato=None, fornitore_piva=None, search=None, anno=2026,
+    )
+    per_id = {r["id"]: r for r in righe}
+    assert per_id["a-da-emettere"]["riscontro_banca"] == "da_rientrare_in_banca"
+    assert per_id["a-incassato"]["riscontro_banca"] == "incassato"
+
+    result = await assegni_router.storna_assegno(
+        "a-da-emettere", assegni_router.StornoAssegnoIn(motivo="Titolo annullato dal beneficiario"),
+    )
+    assert result["success"] is True
+    stornato = await db["assegni"].find_one({"id": "a-da-emettere"})
+    assert stornato["stato"] == "stornato"
+    assert stornato["stato_pre_storno"] == "emesso"
+    assert stornato["motivo_storno"] == "Titolo annullato dal beneficiario"
+
+    with pytest.raises(Exception) as exc:
+        await assegni_router.storna_assegno(
+            "a-incassato", assegni_router.StornoAssegnoIn(motivo="Tentativo senza rettifica EC"),
+        )
+    assert getattr(exc.value, "status_code", None) == 409
+
+
 def test_carnet_salvato_in_blocco_e_visibile_nell_anno(monkeypatch):
     asyncio.run(_scenario_carnet_salvato(monkeypatch))
 
@@ -192,3 +236,7 @@ def test_fatture_disponibili_sono_leggere_aperte_e_deduplicate(monkeypatch):
 
 def test_assegno_incassato_espone_fornitore_fattura_e_data_ec(monkeypatch):
     asyncio.run(_scenario_incassato_arricchito(monkeypatch))
+
+
+def test_assegno_emesso_stornato_e_riscontro_banca_sono_distinti(monkeypatch):
+    asyncio.run(_scenario_emissione_storno_e_riscontro_banca(monkeypatch))

@@ -20,11 +20,18 @@ async def _test_statistiche_fatture_fornitore_su_sheets():
         "id": "supplier-1", "partita_iva": "04518411212",
         "ragione_sociale": "Fornitore", "fatture_count": 1,
     })
-    for index, amount in enumerate((100.0, 20.0, 30.0, 50.0)):
+    # I documenti reali arrivano da importatori diversi: il totale non e'
+    # sempre denominato importo_totale. Le card fornitori devono mostrare il
+    # valore presente nel documento, senza sintetizzarlo.
+    amount_fields = (
+        ("importo_totale", 100.0), ("total_amount", 20.0),
+        ("totale_documento", 30.0), ("totale", "50,00"),
+    )
+    for index, (amount_field, amount) in enumerate(amount_fields):
         await db["invoices"].insert_one({
             "id": f"invoice-{index}", "supplier_vat": "04518411212",
-            "cedente_piva": "04518411212", "importo_totale": amount,
-            "total_amount": amount, "pagato": index == 0,
+            "cedente_piva": "04518411212", amount_field: amount,
+            "pagato": index == 0,
             "data_documento": f"2026-0{index + 1}-01",
         })
 

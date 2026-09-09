@@ -39,7 +39,7 @@ async def banca_veloce(
         {"_id": 0}
     ).sort("data", -1).limit(limit).to_list(limit)
 
-    assegni_query = {"stato": {"$nin": ["incassato", "annullato"]}, "confermato": {"$ne": True}}
+    assegni_query = {"stato": {"$nin": ["incassato", "annullato", "stornato"]}, "confermato": {"$ne": True}}
     if anno:
         assegni_query["data_emissione"] = {"$regex": f"^{anno}"}
     assegni = await db.assegni.find(

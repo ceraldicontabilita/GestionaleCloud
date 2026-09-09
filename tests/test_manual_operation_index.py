@@ -10,6 +10,7 @@ from app.db_collections import (
     COLL_BANK_OPERATION_INDEX,
     COLL_ENTITY_RELATIONS,
     COLL_ESTRATTO_CONTO,
+    COLL_SUPPLIERS,
 )
 from app.routers.prima_nota_module.operation_index import (
     ManualIndexDecisionIn,
@@ -50,6 +51,27 @@ def test_indice_elenca_la_fonte_senza_generare_proposte_o_scritture():
         "fornitore", "fattura", "cedolino", "f24", "noleggio", "verbale", "altro",
     }
     assert run(db[COLL_BANK_OPERATION_INDEX].count_documents({})) == 0
+
+
+def test_indice_non_richiede_scelta_manual_per_movimento_gia_riconciliato():
+    db = MemorySheetsClient()["manual-operation-index-bank-proof"]
+    run(db[COLL_ESTRATTO_CONTO].insert_one({
+        "id": "mov-proof", "data": "2026-08-03", "tipo": "uscita", "importo": -100,
+        "riconciliato": True, "riconciliato_con": "assegno", "assegno_id": "assegno-1",
+        "riconciliato_at": "2026-08-04T10:00:00+00:00",
+    }))
+
+    with patch.object(Database, "get_db", return_value=db):
+        result = run(list_manual_operation_index(
+            anno=2026, tipo=None, stato=None, search="", limit=100, offset=0, _user=USER,
+        ))
+
+    row = result["rows"][0]
+    assert row["index_status"] == "riconciliato_banca"
+    assert row["bank_evidence"] == {
+        "kind": "assegno", "invoice_id": None, "invoice_ids": [], "cheque_id": "assegno-1",
+        "reconciled_at": "2026-08-04T10:00:00+00:00",
+    }
 
 
 def test_indice_include_anche_un_movimento_storico_con_solo_object_id():
@@ -174,3 +196,24 @@ def test_candidati_cedolino_sono_solo_elenco_manual_selectable():
     assert result["matching"] == "manual_only"
     assert [item["id"] for item in result["candidates"]] == ["p1"]
     assert result["candidates"][0]["label"] == "Valerio Ceraldi - 2026-07"
+
+
+def test_candidato_fattura_mostra_metodo_fornitore_senza_riconciliare():
+    db = MemorySheetsClient()["manual-operation-index-supplier-method"]
+    run(db[COLL_ESTRATTO_CONTO].insert_one({"id": "mov-invoice", "data": "2026-08-03", "tipo": "uscita", "importo": -120}))
+    run(db["invoices"].insert_one({
+        "id": "invoice-1", "supplier_vat": "IT01234567890", "supplier_name": "Fornitore Banca",
+        "invoice_number": "42", "invoice_date": "2026-07-30", "total_amount": 120,
+    }))
+    run(db[COLL_SUPPLIERS].insert_one({
+        "id": "supplier-1", "partita_iva": "01234567890", "metodo_pagamento": "banca",
+    }))
+
+    with patch.object(Database, "get_db", return_value=db):
+        result = run(list_manual_operation_candidates(
+            "mov-invoice", category="fattura", search="", limit=50, _user=USER,
+        ))
+
+    assert result["matching"] == "manual_only"
+    assert result["candidates"][0]["details"]["payment_method"] == "banca"
+    assert run(db[COLL_ESTRATTO_CONTO].find_one({"id": "mov-invoice"})).get("riconciliato") is None

@@ -162,7 +162,13 @@ function DecisionModal({ row, categories, onClose, onSaved }) {
                       />
                       <span className="candidate-main">
                         <strong>{candidate.label}</strong>
-                        <small>{[formatDate(candidate.date), candidate.amount_cents ? euroCents(candidate.amount_cents) : ''].filter(Boolean).join(' · ')}</small>
+                        <small>{[
+                          formatDate(candidate.date),
+                          candidate.amount_cents ? euroCents(candidate.amount_cents) : '',
+                          candidate.details?.payment_method
+                            ? `Metodo fornitore: ${candidate.details.payment_method}`
+                            : '',
+                        ].filter(Boolean).join(' · ')}</small>
                       </span>
                     </label>
                   ))}
@@ -199,7 +205,9 @@ export default function VerificaMovimentiBanca() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
-  const [statusFilter, setStatusFilter] = useState('all');
+  // La vista operativa parte dalle sole eccezioni: i movimenti con prova EC
+  // confermata non devono costringere l'operatore a rieseguire un passaggio.
+  const [statusFilter, setStatusFilter] = useState('da_classificare');
   const [search, setSearch] = useState('');
   const [selectedRow, setSelectedRow] = useState(null);
 
@@ -239,10 +247,10 @@ export default function VerificaMovimentiBanca() {
 
       <section className="operation-index-hero">
         <div>
-          <h1>Indice operazioni bancarie</h1>
-          <p>Tutte le righe dell’estratto conto in un solo posto. Sei tu a scegliere la natura e il dato esatto da collegare; ogni scelta è modificabile e conserva la versione precedente.</p>
+          <h1>Eccezioni da riconciliare</h1>
+          <p>I movimenti gia riconciliati da una prova bancaria non richiedono alcuna azione. Qui restano solo le righe per cui l’estratto conto non identifica con certezza il documento o il soggetto.</p>
         </div>
-        <div className="manual-only-badge"><ShieldCheck size={16} /> Solo decisioni manuali</div>
+        <div className="manual-only-badge"><ShieldCheck size={16} /> Automatico con prova · manuale per eccezione</div>
       </section>
 
       <div className="operation-filters">
@@ -254,7 +262,7 @@ export default function VerificaMovimentiBanca() {
           <option value="all">Entrate e uscite</option><option value="entrata">Solo entrate</option><option value="uscita">Solo uscite</option>
         </select>
         <select className="compact-select" value={statusFilter} onChange={event => setStatusFilter(event.target.value)} aria-label="Stato indice">
-          <option value="all">Tutti gli stati</option><option value="da_classificare">Da classificare</option><option value="classificato">Classificati</option><option value="collegato_indice">Collegati</option>
+          <option value="all">Tutti gli stati</option><option value="riconciliato_banca">Riconciliati da EC</option><option value="da_classificare">Da classificare</option><option value="classificato">Classificati</option><option value="collegato_indice">Collegati</option>
         </select>
         <button type="button" className="filter-button" onClick={() => load()} disabled={loading}>{loading ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />} Aggiorna</button>
       </div>
@@ -282,11 +290,13 @@ export default function VerificaMovimentiBanca() {
                     <td className="operation-description">{row.description || '—'}</td>
                     <td style={{ textAlign: 'right', fontWeight: 900, color: row.type === 'entrata' ? '#15803d' : '#dc2626' }}>{euroCents(row.amount_cents)}</td>
                     <td>
-                      {!decision && <span className="decision-pill empty">Da classificare</span>}
-                      {decision && <span className={`decision-pill ${decision.target_id ? 'linked' : 'classified'}`}>{decision.category_label}</span>}
+                      {row.bank_reconciled && <span className="decision-pill linked">Riconciliato da EC</span>}
+                      {!row.bank_reconciled && !decision && <span className="decision-pill empty">Da classificare</span>}
+                      {!row.bank_reconciled && decision && <span className={`decision-pill ${decision.target_id ? 'linked' : 'classified'}`}>{decision.category_label}</span>}
                       {decision?.target_label && <div style={{ fontSize: 11, color: '#52657b', marginTop: 4 }}>{decision.target_label}</div>}
+                      {row.bank_evidence?.kind && <div style={{ fontSize: 11, color: '#52657b', marginTop: 4 }}>Prova: {row.bank_evidence.kind}</div>}
                     </td>
-                    <td><button type="button" className="row-action" onClick={() => setSelectedRow(row)}>{decision ? <Pencil size={14} /> : <ChevronDown size={14} />}{decision ? 'Modifica' : 'Classifica'}</button></td>
+                    <td>{row.bank_reconciled ? <span style={{ fontSize: 12, color: '#166534', fontWeight: 800 }}>Nessuna azione richiesta</span> : <button type="button" className="row-action" onClick={() => setSelectedRow(row)}>{decision ? <Pencil size={14} /> : <ChevronDown size={14} />}{decision ? 'Modifica' : 'Classifica'}</button>}</td>
                   </tr>
                 );
               })}
