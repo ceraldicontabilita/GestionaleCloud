@@ -1,10 +1,8 @@
-"""Regola contabile fissata dall'utente il 14/07/2026 per il caricamento
-corrispettivi in Prima Nota:
-- prima_nota_cassa: ENTRATA = totale corrispettivo (contanti + POS)
-- prima_nota_cassa: USCITA = quota POS/elettronica (esce verso banca)
-- prima_nota_banca: ENTRATA = quota POS/elettronica (copiata, mai duplicata)
-Il saldo cassa netto = solo contante. La riga in prima_nota_banca alimenta
-anche Coerenza POS (pos_corrispettivi_check.py legge source='corrispettivo_pos').
+"""Regola contabile per il caricamento corrispettivi in Prima Nota:
+- prima_nota_cassa: ENTRATA = sola quota contanti dichiarata dal RT;
+- il POS genera cassa/banca solo dalla chiusura reale del terminale;
+- l'accredito dell'estratto conto riconcilia quel trasferimento e non viene
+  ricostruito dal dato fiscale XML.
 
 Copre i due percorsi che scrivono in Prima Nota: il caricamento diretto
 (corrispettivi_helpers.py) e la sincronizzazione periodica dello scheduler
@@ -120,7 +118,7 @@ def test_create_prima_nota_movements_regola_contabile_completa():
     banca = db.collections["prima_nota_banca"].docs
 
     entrata_cassa = next(d for d in cassa if d["tipo"] == "entrata")
-    assert entrata_cassa["importo"] == 1000.0
+    assert entrata_cassa["importo"] == 600.0
     assert entrata_cassa["categoria"] == "Corrispettivi"
 
     uscita_cassa = next(d for d in cassa if d["tipo"] == "uscita")
@@ -133,6 +131,23 @@ def test_create_prima_nota_movements_regola_contabile_completa():
     assert banca[0]["source"] == "trasferimento_pos"
     assert banca[0]["importo"] == 400.0
     assert banca[0]["riconciliato"] is False
+
+
+def test_ricevuta_rt_con_contanti_e_pos_registra_solo_i_contanti_in_cassa():
+    """Ricevuta 01/08/2026: totale 2.379,00 = 758,30 contanti + 1.620,70 POS."""
+    db = _FakeDb()
+    corr = _corrispettivo(
+        id="corr-2026-08-01", data="2026-08-01", totale=2379.00,
+        pagato_contanti=758.30, pagato_elettronico=1620.70,
+    )
+
+    res = _run(helpers_mod._create_prima_nota_movements(db, corr))
+
+    assert res["prima_nota_cassa_id"]
+    cassa = db.collections["prima_nota_cassa"].docs
+    assert [(r["tipo"], r["importo"]) for r in cassa] == [("entrata", 758.30)]
+    assert cassa[0]["totale_corrispettivo"] == 2379.00
+    assert db["prima_nota_banca"].docs == []  # nessuna chiusura POS reale
 
 
 def test_create_prima_nota_movements_legge_pagato_pos_oltre_a_pagato_elettronico():
@@ -159,7 +174,7 @@ def test_create_prima_nota_movements_nessun_elettronico_nessuna_riga_banca():
 
     assert db["prima_nota_banca"].docs == []
     cassa = db.collections["prima_nota_cassa"].docs
-    assert len(cassa) == 1  # solo l'entrata, nessuna uscita POS
+    assert len(cassa) == 1  # solo i contanti, nessuna uscita POS
     assert cassa[0]["importo"] == 1000.0
 
 
@@ -253,7 +268,7 @@ def test_sync_anno_legge_corrispettivi_drive_legacy_senza_campo_anno(monkeypatch
 
     assert risultato["inseriti"] == 1
     assert [(riga["data"], riga["tipo"], riga["importo"]) for riga in righe] == [
-        ("2026-06-16", "entrata", 100.0),
+        ("2026-06-16", "entrata", 60.0),
     ]
     # Senza chiusura reale del terminale non si inventa il circuito POS.
     assert _run(db["prima_nota_banca"].count_documents({})) == 0

@@ -577,10 +577,14 @@ async def sincronizza_assegni_da_estratto_conto(
     }
     filtri_movimenti: List[Dict[str, Any]] = [
             {"$or": [
-                {"descrizione": {"$regex": "PRELIEVO.*ASSEGNO", "$options": "i"}},
-                {"descrizione_originale": {"$regex": "PRELIEVO.*ASSEGNO", "$options": "i"}},
-                {"descrizione": {"$regex": "VOSTRO.*ASSEGNO", "$options": "i"}},
-                {"descrizione_originale": {"$regex": "VOSTRO.*ASSEGNO", "$options": "i"}},
+                # Le banche non usano una causale unica: oltre a PRELIEVO e
+                # VOSTRO ASSEGNO arrivano spesso ADDEBITO/REGOLAMENTO
+                # ASSEGNO. Il numero viene comunque estratto e validato dopo
+                # la query, quindi questa apertura non collega alcuna fattura
+                # per il solo testo o importo.
+                {"descrizione": {"$regex": "ASSEGNO", "$options": "i"}},
+                {"descrizione_originale": {"$regex": "ASSEGNO", "$options": "i"}},
+                {"causale": {"$regex": "ASSEGNO", "$options": "i"}},
             ]},
             {"$or": [{"tipo": "uscita"}, {"type": "uscita"}, {"importo": {"$lt": 0}}]},
     ]
@@ -610,7 +614,7 @@ async def sincronizza_assegni_da_estratto_conto(
     movimenti = [
         movimento for movimento in movimenti
         if "RILASCIO CARNET" not in (
-            movimento.get("descrizione") or movimento.get("descrizione_originale") or ""
+            movimento.get("descrizione") or movimento.get("descrizione_originale") or movimento.get("causale") or ""
         ).upper()
     ]
     risultati["movimenti_analizzati"] = len(movimenti)
@@ -622,7 +626,7 @@ async def sincronizza_assegni_da_estratto_conto(
 
     for movimento in movimenti:
         try:
-            descrizione = movimento.get("descrizione") or movimento.get("descrizione_originale") or ""
+            descrizione = movimento.get("descrizione") or movimento.get("descrizione_originale") or movimento.get("causale") or ""
             numero = estrai_numero_assegno(descrizione)
             if not numero:
                 risultati["errori"].append(f"Numero assegno non riconosciuto nel movimento {movimento.get('id')}")

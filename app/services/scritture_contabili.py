@@ -1025,9 +1025,16 @@ async def registra_chiusura_pos_reale(
 async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Optional[str]]:
     """Scritture del corrispettivo giornaliero secondo il MODELLO POS.
 
-    REGOLA CANONICA: cassa (entrata totale + uscita POS reale) e banca
-    (trasferimento speculare della stessa cifra). L'accredito EC non crea
-    nulla: riconcilia il trasferimento (riconcilia_accredito_pos_ec)."""
+    La Prima Nota Cassa contiene esclusivamente denaro fisicamente incassato
+    in contanti. Il dettaglio RT e' una prova fiscale: la sua quota
+    elettronica non e' denaro in cassa e non puo' da sola generare una
+    scrittura POS/Banca. Quando esiste una chiusura del terminale reale, il
+    suo trasferimento viene registrato e poi riconciliato con l'accredito EC.
+
+    Per gli RT legacy senza alcun dettaglio di pagamento il totale resta una
+    registrazione cassa dichiaratamente non scomposta: non possiamo inventare
+    una quota elettronica assente dalla fonte.
+    """
     data = corr_doc.get("data") or corr_doc.get("data_operazione") or ""
     contanti = float(corr_doc.get("pagato_contanti") or 0)
     elettronico = float(corr_doc.get("pagato_elettronico") or corr_doc.get("pagato_pos") or 0)
@@ -1073,13 +1080,14 @@ async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Opti
             "corrispettivo_id": corr_doc.get("id"),
             **_campo_chiave(chiave_idempotenza_corrispettivo(
                 corr_doc.get("id"), "cassa_entrata")),
-            "data": data, "tipo": "entrata", "importo": totale,
-            "descrizione": f"Corrispettivi {data}",
+            "data": data, "tipo": "entrata", "importo": round(contanti, 2),
+            "descrizione": f"Corrispettivi contanti {data}",
             "categoria": "Corrispettivi", "source": "corrispettivo_import",
             "anno": anno, "mese": mese, "matricola_rt": matricola,
             "imponibile": round(float(corr_doc.get("totale_imponibile") or 0), 2),
             "iva": round(float(corr_doc.get("totale_iva") or 0), 2),
             "contanti": round(contanti, 2), "elettronico": round(elettronico, 2),
+            "totale_corrispettivo": round(totale, 2),
             "dettaglio": {"contanti": round(contanti, 2),
                           "elettronico": round(elettronico, 2),
                           "matricola_rt": corr_doc.get("matricola_rt", ""),
