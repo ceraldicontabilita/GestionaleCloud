@@ -3,7 +3,7 @@
     "schema_version": 2,
     "document_type": "page_source_map",
     "updated_at": "2026-08-20",
-    "source_revision": "e28b90207cc8fc61dd86e3124ce7cce0466937af",
+    "source_revision": "40d3f109beacd897fc0d80a3a0eab5fc51612f2c",
     "generator": "scripts/refresh_json_docs.py",
     "verification": "static_source_map"
   },
@@ -44,22 +44,14 @@
       "app/routers/verifica_coerenza.py"
     ],
     "endpoint_rilevati_nei_sorgenti": [
-      "/api/bank/statements",
-      "/api/cash",
       "/api/controllo-gestione/costi-ricavi",
       "/api/dashboard/fascia-energia",
-      "/api/dashboard/summary{param}",
       "/api/dashboard/trend-mensile",
-      "/api/exports/{param}",
-      "/api/f24",
       "/api/health",
-      "/api/invoices",
       "/api/prima-nota/stats",
       "/api/scadenze",
-      "/api/suppliers",
       "/api/verifica-coerenza/confronto-iva-completo/{param}",
-      "/api/verifica-coerenza/iva/{param}/{param}",
-      "/api/warehouse/products"
+      "/api/verifica-coerenza/iva/{param}/{param}"
     ]
   },
   "archivio_dati": {

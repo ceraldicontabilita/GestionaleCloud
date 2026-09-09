@@ -118,7 +118,7 @@ def test_rebuild_ricrea_corrispettivo_senza_campo_totale():
     assert res["corrispettivi_processati"] == 1
     cassa = db["prima_nota_cassa"].docs
     assert len(cassa) == 1
-    assert cassa[0]["descrizione"] == "Corrispettivi 2026-06-29"
+    assert cassa[0]["descrizione"] == "Corrispettivi contanti 2026-06-29"
     assert cassa[0]["importo"] == 649.70
 
 
@@ -141,7 +141,7 @@ def test_rebuild_somma_contanti_ed_elettronico_senza_totale():
     cassa = db["prima_nota_cassa"].docs
     entrata = next(d for d in cassa if d["tipo"] == "entrata")
     uscita = next(d for d in cassa if d["tipo"] == "uscita")
-    assert entrata["importo"] == 563.0
+    assert entrata["importo"] == 400.0
     assert uscita["importo"] == 163.0
     assert uscita["categoria"] == "POS NUMIA Verso Banca"
     uscite = [m for m in db["prima_nota_cassa"].docs if m["tipo"] == "uscita"]

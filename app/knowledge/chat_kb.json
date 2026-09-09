@@ -19,7 +19,7 @@
       "Ogni risposta deve includere stato, motivazione, fonti interne utilizzate e livello di affidabilita."
     ],
     "nota_implementazione": "La base di conoscenza è distinta dal motore operativo della chat. La sezione implementazione_chat_intelligente definisce backend, strumenti, memoria, frontend e sicurezza.",
-    "source_revision": "e28b90207cc8fc61dd86e3124ce7cce0466937af",
+    "source_revision": "40d3f109beacd897fc0d80a3a0eab5fc51612f2c",
     "repository": "ceraldicontabilita/GestionaleCloud"
   },
   "regola_decisionale_globale": {

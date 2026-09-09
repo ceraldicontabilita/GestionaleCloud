@@ -16,7 +16,7 @@ def test_pagina_movimenti_banca_salva_solo_indice_manual_e_non_prima_nota():
     source = (ROOT / "frontend/src/pages/VerificaMovimentiBanca.jsx").read_text(encoding="utf-8")
     assert "Importa in Prima Nota" not in source
     assert "importa-da-ec" not in source
-    assert "Solo decisioni manuali" in source
+    assert "Automatico con prova · manuale per eccezione" in source
     assert "Nessuna scrittura o stato “pagato” viene creato automaticamente" in source
     assert "/api/prima-nota/indice-operazioni/" in source
 
