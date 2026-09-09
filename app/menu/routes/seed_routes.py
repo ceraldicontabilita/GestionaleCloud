@@ -1,7 +1,8 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 import os
 
 from app.menu.supabase_client import supabase
+from app.menu.routes.qrcode_routes import verify_token
 
 router = APIRouter()
 
@@ -231,7 +232,7 @@ def _to_db_allergen(a):
 
 
 @router.post("/api/admin/seed-once")
-async def seed_database():
+async def seed_database(_username: str = Depends(verify_token)):
     # Ordine di cancellazione che rispetta i vincoli di foreign key (prodotti prima, poi
     # sottocategorie, poi categorie); gt(-1) seleziona tutte le righe (id sempre >= 0/testo).
     supabase.table("menu_products").delete().neq("id", -1).execute()
