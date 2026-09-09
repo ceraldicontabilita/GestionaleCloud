@@ -835,7 +835,7 @@ Gli alias senza valore vanno configurati nel secret/config store di Render. Non 
 
 ## Appendice D — Tutti i router e tutti gli endpoint
 
-Route table sorgente: **1155**; attivi da ricreare: **757**; quarantena: **398** (`verificare` 368, `admin-only` 30).
+Route table sorgente: **1156**; attivi da ricreare: **719**; quarantena: **437** (`verificare` 407, `admin-only` 30).
 
 `attivo` significa da ricreare con contratto e test; `quarantena` significa non esporre nel nuovo runtime finché consumer, autorizzazione e test non sono provati. L'elenco è completo e include entrambe le categorie.
 
@@ -1047,7 +1047,7 @@ Route table sorgente: **1155**; attivi da ricreare: **757**; quarantena: **398**
 - **attivo** — `POST /api/auto-repair/collega-targa-driver` — in uso: FE, scheduler
 - **attivo** — `POST /api/auto-repair/inferisci-targa-driver-da-fatture` — in uso: FE, scheduler
 
-### Router `bank.assegni` (33)
+### Router `bank.assegni` (34)
 
 - **attivo** — `GET /api/assegni` — in uso: FE
 - **attivo** — `GET /api/assegni/ambigui` — in uso: FE
@@ -1082,6 +1082,7 @@ Route table sorgente: **1155**; attivi da ricreare: **757**; quarantena: **398**
 - **attivo** — `PUT /api/assegni/{assegno_id}/fatture-collegate` — in uso: FE
 - **attivo** — `POST /api/assegni/{assegno_id}/incassa` — in uso: FE
 - **attivo** — `POST /api/assegni/{assegno_id}/risolvi-ambiguo` — in uso: FE
+- **attivo** — `POST /api/assegni/{assegno_id}/storna` — in uso: FE
 
 ### Router `bank.assegni_learning` (6)
 
@@ -1181,14 +1182,14 @@ Route table sorgente: **1155**; attivi da ricreare: **757**; quarantena: **398**
 
 ### Router `cash` (8)
 
-- **attivo** — `POST /api/cash/corrispettivi` — in uso: FE
-- **attivo** — `GET /api/cash/corrispettivi/{target_date}` — in uso: FE
-- **attivo** — `GET /api/cash/export/excel` — in uso: FE
-- **attivo** — `GET /api/cash/movements` — in uso: FE
-- **attivo** — `POST /api/cash/movements` — in uso: FE
-- **attivo** — `DELETE /api/cash/movements/{movement_id}` — in uso: FE
-- **attivo** — `PUT /api/cash/movements/{movement_id}` — in uso: FE
-- **attivo** — `GET /api/cash/stats` — in uso: FE
+- **quarantena: verificare** — `POST /api/cash/corrispettivi` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/cash/corrispettivi/{target_date}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/cash/export/excel` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/cash/movements` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/cash/movements` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `DELETE /api/cash/movements/{movement_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `PUT /api/cash/movements/{movement_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/cash/stats` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 
 ### Router `cespiti` (13)
 
@@ -1396,9 +1397,9 @@ Route table sorgente: **1155**; attivi da ricreare: **757**; quarantena: **398**
 
 ### Router `drive_quietanze` (3)
 
-- **attivo** — `POST /api/f24/quietanze/drive/quadratura` — in uso: FE
-- **attivo** — `GET /api/f24/quietanze/drive/status` — in uso: FE, scheduler
-- **attivo** — `POST /api/f24/quietanze/drive/sync` — in uso: FE, scheduler
+- **quarantena: verificare** — `POST /api/f24/quietanze/drive/quadratura` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **attivo** — `GET /api/f24/quietanze/drive/status` — in uso: scheduler
+- **attivo** — `POST /api/f24/quietanze/drive/sync` — in uso: scheduler
 
 ### Router `email_download` (38)
 
@@ -1483,7 +1484,7 @@ Route table sorgente: **1155**; attivi da ricreare: **757**; quarantena: **398**
 ### Router `f24.avviso_bonario` (2)
 
 - **attivo** — `POST /api/f24/avviso-bonario/controllo` — in uso: FE
-- **attivo** — `POST /api/f24/riconcilia-addebiti` — in uso: FE
+- **quarantena: verificare** — `POST /api/f24/riconcilia-addebiti` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 
 ### Router `f24.email_f24` (7)
 
@@ -1499,28 +1500,28 @@ Route table sorgente: **1155**; attivi da ricreare: **757**; quarantena: **398**
 
 - **attivo** — `GET /api/f24` — in uso: FE
 - **attivo** — `POST /api/f24` — in uso: FE
-- **attivo** — `GET /api/f24/alerts/scadenze` — in uso: FE
-- **attivo** — `GET /api/f24/codici/all` — in uso: FE
-- **attivo** — `GET /api/f24/codici/{codice}` — in uso: FE
-- **attivo** — `GET /api/f24/dashboard/summary` — in uso: FE
-- **attivo** — `GET /api/f24/documents` — in uso: FE
-- **attivo** — `DELETE /api/f24/documents/{doc_id}` — in uso: FE
-- **attivo** — `POST /api/f24/fascicolo/costruisci` — in uso: FE
-- **attivo** — `GET /api/f24/fascicolo/{codice_fiscale}/{mese}/{anno}` — in uso: FE
-- **attivo** — `GET /api/f24/quietanze` — in uso: FE
-- **attivo** — `GET /api/f24/quietanze/statistiche/tributi` — in uso: FE
-- **attivo** — `POST /api/f24/quietanze/upload` — in uso: FE
-- **attivo** — `DELETE /api/f24/quietanze/{f24_id}` — in uso: FE
-- **attivo** — `GET /api/f24/quietanze/{f24_id}` — in uso: FE
-- **attivo** — `POST /api/f24/riconcilia` — in uso: FE, scheduler
-- **attivo** — `POST /api/f24/upload` — in uso: FE
-- **attivo** — `POST /api/f24/upload-multiple` — in uso: FE
-- **attivo** — `POST /api/f24/upload-pdf` — in uso: FE
-- **attivo** — `POST /api/f24/upload-zip` — in uso: FE
-- **attivo** — `DELETE /api/f24/{f24_id}` — in uso: FE
-- **attivo** — `GET /api/f24/{f24_id}` — in uso: FE
-- **attivo** — `PUT /api/f24/{f24_id}` — in uso: FE
-- **attivo** — `POST /api/f24/{f24_id}/mark-paid` — in uso: FE
+- **quarantena: verificare** — `GET /api/f24/alerts/scadenze` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/f24/codici/all` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/f24/codici/{codice}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/f24/dashboard/summary` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/f24/documents` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `DELETE /api/f24/documents/{doc_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/f24/fascicolo/costruisci` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/f24/fascicolo/{codice_fiscale}/{mese}/{anno}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/f24/quietanze` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/f24/quietanze/statistiche/tributi` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/f24/quietanze/upload` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `DELETE /api/f24/quietanze/{f24_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/f24/quietanze/{f24_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **attivo** — `POST /api/f24/riconcilia` — in uso: scheduler
+- **quarantena: verificare** — `POST /api/f24/upload` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/f24/upload-multiple` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/f24/upload-pdf` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/f24/upload-zip` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `DELETE /api/f24/{f24_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/f24/{f24_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `PUT /api/f24/{f24_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/f24/{f24_id}/mark-paid` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 
 ### Router `f24.f24_public` (9)
 
@@ -1642,7 +1643,7 @@ Route table sorgente: **1155**; attivi da ricreare: **757**; quarantena: **398**
 - **attivo** — `GET /api/fiscal/documents/{document_id}/content` — in uso: FE
 - **quarantena: verificare** — `GET /api/fiscal/dossier.pdf` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **quarantena: verificare** — `GET /api/fiscal/evidence-package.zip` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **attivo** — `GET /api/fiscal/evidence/{entity_type}/{entity_id}` — in uso: FE, scheduler
+- **attivo** — `GET /api/fiscal/evidence/{entity_type}/{entity_id}` — in uso: scheduler
 - **quarantena: verificare** — `GET /api/fiscal/f24-documents` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **attivo** — `GET /api/fiscal/f24-rows` — in uso: FE
 - **attivo** — `GET /api/fiscal/obligations` — in uso: FE
@@ -2126,10 +2127,10 @@ Route table sorgente: **1155**; attivi da ricreare: **757**; quarantena: **398**
 
 - **attivo** — `POST /api/assegni` — in uso: FE
 - **quarantena: verificare** — `GET /api/assegni-legacy` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **attivo** — `GET /api/bank/statements` — in uso: FE
-- **attivo** — `POST /api/bank/statements` — in uso: FE
-- **attivo** — `GET /api/cash` — in uso: FE
-- **attivo** — `POST /api/cash` — in uso: FE
+- **quarantena: verificare** — `GET /api/bank/statements` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/bank/statements` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/cash` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/cash` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **quarantena: verificare** — `GET /api/dashboard/stats-legacy` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **quarantena: verificare** — `GET /api/f24-public/alerts` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **quarantena: verificare** — `GET /api/f24-public/dashboard` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
@@ -2146,10 +2147,10 @@ Route table sorgente: **1155**; attivi da ricreare: **757**; quarantena: **398**
 - **quarantena: verificare** — `GET /api/v1/stats` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **quarantena: verificare** — `GET /api/warehouse/movements` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **quarantena: verificare** — `POST /api/warehouse/movements` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **attivo** — `GET /api/warehouse/products` — in uso: FE
-- **attivo** — `POST /api/warehouse/products` — in uso: FE
-- **attivo** — `DELETE /api/warehouse/products/{product_id}` — in uso: FE
-- **attivo** — `PUT /api/warehouse/products/{product_id}` — in uso: FE
+- **quarantena: verificare** — `GET /api/warehouse/products` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/warehouse/products` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `DELETE /api/warehouse/products/{product_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `PUT /api/warehouse/products/{product_id}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 
 ### Router `rapido` (8)
 
