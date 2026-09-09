@@ -41,7 +41,7 @@ const indexResponse = {
   }],
 };
 
-describe('Indice manuale delle operazioni bancarie', () => {
+describe('Eccezioni da riconciliare', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     api.get.mockImplementation((url) => {
@@ -59,14 +59,33 @@ describe('Indice manuale delle operazioni bancarie', () => {
     api.put.mockResolvedValue({ data: { saved: true } });
   });
 
-  it('mostra tutte le categorie come decisioni umane e non vecchie proposte automatiche', async () => {
+  it('mostra solo le eccezioni come decisioni umane e non vecchie proposte automatiche', async () => {
     render(<VerificaMovimentiBanca />);
 
-    expect(await screen.findByText('Indice operazioni bancarie')).toBeInTheDocument();
-    expect(screen.getByText('Solo decisioni manuali')).toBeInTheDocument();
+    expect(await screen.findByText('Eccezioni da riconciliare')).toBeInTheDocument();
+    expect(screen.getByText('Automatico con prova · manuale per eccezione')).toBeInTheDocument();
     expect(screen.getAllByText('Da classificare').length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText('Collegare alla riga esistente')).not.toBeInTheDocument();
     expect(screen.queryByText(/Verificare Ricavi/i)).not.toBeInTheDocument();
+  });
+
+  it('non propone classificazione manuale per una riconciliazione gia provata da EC', async () => {
+    api.get.mockResolvedValueOnce({ data: {
+      ...indexResponse,
+      rows: [{
+        ...indexResponse.rows[0], index_status: 'riconciliato_banca', bank_reconciled: true,
+        bank_evidence: { kind: 'assegno' },
+      }],
+    } });
+
+    render(<VerificaMovimentiBanca />);
+    fireEvent.change(screen.getByLabelText('Stato indice'), {
+      target: { value: 'riconciliato_banca' },
+    });
+
+    expect(await screen.findByText('Riconciliato da EC')).toBeInTheDocument();
+    expect(screen.getByText('Nessuna azione richiesta')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Classifica' })).not.toBeInTheDocument();
   });
 
   it('permette di scegliere cedolino e dipendente senza collegamenti automatici', async () => {
