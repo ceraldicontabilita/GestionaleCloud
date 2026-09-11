@@ -5,18 +5,19 @@ Legge i file XML del registratore telematico dalla cartella Drive
 configurata e li processa con la pipeline UNICA dei corrispettivi
 (CorrispettiviService.process_xml: parsing, dedup per hash contenuto e
 per data, prima nota). I file elaborati (importati o duplicati noti)
-vengono spostati nella sottocartella Drive `Elaborate`.
+vengono spostati nella sottocartella Drive `Elaborate` dello stesso anno.
 
-Prima questo canale esisteva solo sulla carta (LOGICA §2 lo dichiarava
-attivo ma nessun codice leggeva la cartella): i corrispettivi entravano
-solo da import manuale.
+La struttura Drive reale puo' essere annidata:
+  CORRISPETTIVI/<anno>/DA ELABORARE
+Il resolver lifecycle usa solo questi stati canonici entro due livelli e non
+attraversa archivi storici o cartelle Elaborate/Errori.
 
 Configurazione (env / settings):
   GOOGLE_DRIVE_CORRISPETTIVI_FOLDER_ID : id della cartella Drive
   GOOGLE_DRIVE_SA_FILE / GOOGLE_DRIVE_SA_JSON : service account (condiviso)
 
 Helper Drive riusati da drive_invoice_ingest (stesso service account,
-stessa gestione Elaborate). Stato sync in sistema_stato, chiave dedicata.
+stessa gestione lifecycle). Stato sync in sistema_stato, chiave dedicata.
 """
 import asyncio
 import io
@@ -35,6 +36,10 @@ from app.services.drive_invoice_ingest import (
     _download_bytes,
     _move_to_folder,
     _move_to_elaborate,
+)
+from app.services.drive_lifecycle_tree import (
+    discover_lifecycle_folders,
+    resolve_inboxes_or_legacy,
 )
 
 logger = logging.getLogger(__name__)
@@ -186,6 +191,16 @@ def _list_xml_files(service, parent_id: str) -> List[Dict[str, Any]]:
     return _list_source_files(service, parent_id)
 
 
+def _inbox_contexts(service, parent_id: str) -> List[Dict[str, Any]]:
+    """Struttura reale prima, fallback legacy root solo se non esiste."""
+    return resolve_inboxes_or_legacy(
+        service,
+        parent_id,
+        _get_or_create_inbox_folder,
+        max_depth=2,
+    )
+
+
 async def get_status(db) -> Dict[str, Any]:
     state = await db["sistema_stato"].find_one({"chiave": _STATO_KEY}, {"_id": 0}) or {}
     credenziali_errore = None
@@ -234,30 +249,47 @@ async def _do_sync(db) -> Dict[str, Any]:
         "status": "ok", "total": 0, "documents": 0,
         "imported": 0, "duplicates": 0,
         "archiviate": 0, "errors": 0, "moved": 0, "details": [],
+        "source_inboxes": 0,
     }
     try:
-        inbox_id = _get_or_create_inbox_folder(service, parent_id)
-        elaborate_id = _get_or_create_elaborate_folder(service, parent_id)
-        error_id = _get_or_create_error_folder(service, parent_id)
-        source_id = inbox_id or parent_id
-        source_files = _list_source_files(service, source_id)
+        contexts = _inbox_contexts(service, parent_id)
+        result["source_inboxes"] = len(contexts)
+        source_files: List[Dict[str, Any]] = []
+        for context in contexts:
+            source_id = context["inbox_id"]
+            for file_info in _list_source_files(service, source_id):
+                source_files.append({
+                    **file_info,
+                    "_source_id": source_id,
+                    "_lifecycle_parent_id": context["lifecycle_parent_id"],
+                    "_source_path": context["relative_path"],
+                })
         result["total"] = len(source_files)
+
+        lifecycle_cache: Dict[str, tuple[Optional[str], Optional[str]]] = {}
         for f in source_files:
             fid, fname = f["id"], f["name"]
+            source_id = f["_source_id"]
+            lifecycle_parent_id = f["_lifecycle_parent_id"]
+            if lifecycle_parent_id not in lifecycle_cache:
+                lifecycle_cache[lifecycle_parent_id] = (
+                    _get_or_create_elaborate_folder(service, lifecycle_parent_id),
+                    _get_or_create_error_folder(service, lifecycle_parent_id),
+                )
+            elaborate_id, error_id = lifecycle_cache[lifecycle_parent_id]
             try:
                 content = _download_bytes(service, fid)
                 if not content:
                     result["errors"] += 1
-                    result["details"].append({"file": fname, "error": "file vuoto"})
+                    result["details"].append({
+                        "file": fname,
+                        "source_path": f["_source_path"],
+                        "error": "file vuoto",
+                    })
                     if error_id:
                         _move_to_folder(service, fid, source_id, error_id)
                     continue
-                # Pipeline UNICA corrispettivi: dedup per hash e per data
-                # sono già dentro process_xml — nessun doppione possibile.
-                # applica_filtro_anno (richiesta utente 14/07/2026, stesso
-                # selettore anno condiviso con l'import fatture): un
-                # corrispettivo di un anno diverso da quello attivo viene
-                # archiviato per sola consultazione, non in Prima Nota.
+
                 source_has_errors = False
                 documents = _xml_documents_from_source(fname, content)
                 result["documents"] += len(documents)
@@ -272,7 +304,9 @@ async def _do_sync(db) -> Dict[str, Any]:
                         source_has_errors = True
                         result["errors"] += 1
                         result["details"].append({
-                            "file": document_name, "error": esito.get("message"),
+                            "file": document_name,
+                            "source_path": f["_source_path"],
+                            "error": esito.get("message"),
                         })
                     elif stato == "archiviata":
                         result["archiviate"] += 1
@@ -280,18 +314,22 @@ async def _do_sync(db) -> Dict[str, Any]:
                     else:
                         result["imported"] += 1
                         logger.info("Drive corrispettivi: importato %s", document_name)
+
                 if source_has_errors:
                     if error_id:
                         _move_to_folder(service, fid, source_id, error_id)
                     continue
-                # Sposta in `Elaborate` i file processati (importati/duplicati)
                 if elaborate_id:
                     _move_to_elaborate(service, fid, source_id, elaborate_id)
                     result["moved"] += 1
             except Exception as e:
                 logger.error(f"Drive corrispettivi: errore su {fname}: {e}")
                 result["errors"] += 1
-                result["details"].append({"file": fname, "error": str(e)})
+                result["details"].append({
+                    "file": fname,
+                    "source_path": f["_source_path"],
+                    "error": str(e),
+                })
                 if error_id:
                     try:
                         _move_to_folder(service, fid, source_id, error_id)
@@ -310,6 +348,7 @@ async def _do_sync(db) -> Dict[str, Any]:
     prev = await db["sistema_stato"].find_one({"chiave": _STATO_KEY}, {"_id": 0}) or {}
     last_result = {k: result[k] for k in (
         "total", "documents", "imported", "duplicates", "archiviate", "errors", "moved",
+        "source_inboxes",
     )}
     last_result["details"] = result["details"][:5]
     now = datetime.now(timezone.utc).isoformat()
@@ -330,11 +369,9 @@ async def _do_sync(db) -> Dict[str, Any]:
 async def verifica_quadratura_elaborate(db) -> Dict[str, Any]:
     """Doppio controllo Elaborate ↔ gestionale per i CORRISPETTIVI.
 
-    Stessa logica della quadratura fatture: ripassa TUTTI gli XML archiviati
-    nella sottocartella "Elaborate" e verifica che ognuno abbia il suo
-    corrispettivo nel gestionale. process_xml è idempotente (dedup per hash
-    contenuto e per data): duplicate = quadrato, imported = buco recuperato.
-    Non sposta file, non può creare doppioni.
+    Ripassa tutte le cartelle ``Elaborate`` canoniche entro due livelli dalla
+    radice (per esempio ``2026/Elaborate``) e verifica ogni XML/ZIP con la
+    pipeline idempotente. Non crea una falsa ``Elaborate`` alla radice.
     """
     if not is_configured():
         return {"status": "not_configured"}
@@ -347,37 +384,51 @@ async def verifica_quadratura_elaborate(db) -> Dict[str, Any]:
 
     parent_id = _folder_id()
     esito = {"status": "ok", "controllati": 0, "quadrati": 0,
-             "recuperati": 0, "errori": 0, "details": []}
+             "recuperati": 0, "errori": 0, "details": [], "cartelle_elaborate": 0}
     try:
-        elaborate_id = _get_or_create_elaborate_folder(service, parent_id)
-        if not elaborate_id:
+        elaborate_folders = discover_lifecycle_folders(
+            service, parent_id, max_depth=2, states=("elaborate",),
+        )
+        esito["cartelle_elaborate"] = len(elaborate_folders)
+        if not elaborate_folders:
             return {"status": "ok", "message": "Nessuna cartella Elaborate", **esito}
-        for f in _list_source_files(service, elaborate_id):
-            try:
-                content = _download_bytes(service, f["id"])
-                if not content:
-                    esito["errori"] += 1
-                    continue
-                # Stesso filtro anno di _do_sync: un buco riparato qui non
-                # deve ripescare nel flusso attivo un corrispettivo storico
-                # (finisce comunque archiviato, non in Prima Nota).
-                for document_name, xml_content in _xml_documents_from_source(f["name"], content):
-                    esito["controllati"] += 1
-                    r = await corr_service.process_xml(
-                        xml_content, document_name, applica_filtro_anno=True,
-                    )
-                    if r.get("status") == "duplicate":
-                        esito["quadrati"] += 1
-                    elif r.get("status") == "error":
+
+        for folder in elaborate_folders:
+            for f in _list_source_files(service, folder["folder_id"]):
+                try:
+                    content = _download_bytes(service, f["id"])
+                    if not content:
                         esito["errori"] += 1
-                        esito["details"].append({"file": document_name, "error": r.get("message")})
-                    else:
-                        esito["recuperati"] += 1
-                        esito["details"].append({"file": document_name, "recuperato": True})
-                        logger.warning("Quadratura corrispettivi: recuperato buco %s", document_name)
-            except Exception as e:
-                esito["errori"] += 1
-                esito["details"].append({"file": f["name"], "error": str(e)})
+                        continue
+                    for document_name, xml_content in _xml_documents_from_source(f["name"], content):
+                        esito["controllati"] += 1
+                        r = await corr_service.process_xml(
+                            xml_content, document_name, applica_filtro_anno=True,
+                        )
+                        if r.get("status") == "duplicate":
+                            esito["quadrati"] += 1
+                        elif r.get("status") == "error":
+                            esito["errori"] += 1
+                            esito["details"].append({
+                                "file": document_name,
+                                "source_path": folder["relative_path"],
+                                "error": r.get("message"),
+                            })
+                        else:
+                            esito["recuperati"] += 1
+                            esito["details"].append({
+                                "file": document_name,
+                                "source_path": folder["relative_path"],
+                                "recuperato": True,
+                            })
+                            logger.warning("Quadratura corrispettivi: recuperato buco %s", document_name)
+                except Exception as e:
+                    esito["errori"] += 1
+                    esito["details"].append({
+                        "file": f["name"],
+                        "source_path": folder["relative_path"],
+                        "error": str(e),
+                    })
     except Exception as e:
         return {"status": "error", "message": str(e), **esito}
 
@@ -387,7 +438,7 @@ async def verifica_quadratura_elaborate(db) -> Dict[str, Any]:
             await genera_alert(
                 "DOC_QUADRATURA_DRIVE", "quadratura_corrispettivi", "corrispettivi",
                 f"Quadratura Drive corrispettivi: {esito['recuperati']} recuperati, "
-                f"{esito['errori']} errori su {esito['controllati']} file in Elaborate",
+                f"{esito['errori']} errori su {esito['controllati']} documenti",
                 db,
             )
         except Exception:
@@ -396,7 +447,9 @@ async def verifica_quadratura_elaborate(db) -> Dict[str, Any]:
     now = datetime.now(timezone.utc).isoformat()
     await db["sistema_stato"].update_one(
         {"chiave": _STATO_KEY},
-        {"$set": {"last_quadratura": {"quando": now, **{k: esito[k] for k in ('controllati', 'quadrati', 'recuperati', 'errori')}}}},
+        {"$set": {"last_quadratura": {"quando": now, **{k: esito[k] for k in (
+            'controllati', 'quadrati', 'recuperati', 'errori', 'cartelle_elaborate'
+        )}}}},
         upsert=True,
     )
     return esito
