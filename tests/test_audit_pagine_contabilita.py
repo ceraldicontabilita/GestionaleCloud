@@ -5,6 +5,7 @@ import asyncio
 import pytest
 from app.services.sheets_document_store import MemorySheetsClient
 
+from app.routers.accounting import bilancio
 from app.routers.accounting import contabilita_gestionale as cg
 from app.routers.accounting import centri_costo
 from app.routers import fiscalita_italiana
@@ -187,33 +188,25 @@ def test_calendario_non_riapre_evidenza_f24(monkeypatch):
 
 
 def test_percentuale_target_annuo_non_usa_target_prorata(monkeypatch):
-    class _Agg:
-        def __init__(self, value):
-            self.value = value
-
-        async def to_list(self, _n):
-            return [{"totale": self.value}]
-
     class _C:
-        def __init__(self, value=0):
-            self.value = value
-
         async def find_one(self, *args, **kwargs):
             return {"anno": 2026, "utile_target_annuo": 25000,
                     "giorni_lavorativi_anno": 300, "margine_medio_atteso": .35}
 
-        def aggregate(self, pipeline):
-            return _Agg(self.value)
-
     class _TargetDb:
         def __getitem__(self, name):
-            if name == "corrispettivi":
-                return _C(350000)
-            if name == centri_costo.Collections.INVOICES:
-                return _C(0)
             return _C()
 
+    async def _conto_economico_canonico(*, anno, mese):
+        assert anno == 2026
+        assert mese is None
+        return {
+            "ricavi": {"totale_ricavi": 350000.0},
+            "costi": {"totale_costi": 0.0},
+        }
+
     monkeypatch.setattr(centri_costo.Database, "get_db", staticmethod(lambda: _TargetDb()))
+    monkeypatch.setattr(bilancio, "get_conto_economico", _conto_economico_canonico)
     result = _run(centri_costo.get_utile_obiettivo(2026))
 
     assert result["analisi"]["percentuale_target_annuo"] == 1400.0
