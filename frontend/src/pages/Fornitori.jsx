@@ -119,7 +119,7 @@ const canaleCanonico = raw => {
 // grezzo salvato (anche legacy).
 const metodoCanonico = supplier => canaleCanonico(supplier?.metodo_pagamento);
 
-const getMetodo = key => METODI_PAGAMENTO[key] || METODI_PAGAMENTO.banca;
+const getMetodo = key => METODI_PAGAMENTO[key] || { label: 'Non definito', bg: COLORS.gray[100], color: COLORS.textMuted };
 
 // Identificatore da usare nelle chiamate API: id applicativo, altrimenti
 // P.IVA (anche nei campi legacy). I fornitori storici possono NON avere il
@@ -152,7 +152,7 @@ const emptySupplier = {
   pec: '',
   iban: '',
   iban_lista: [], // Lista di IBAN aggiuntivi estratti dalle fatture
-  metodo_pagamento: 'banca',
+  metodo_pagamento: '',
   giorni_pagamento: 30,
   esclude_magazzino: false,
   esclude_cassa_banca: false,
@@ -712,7 +712,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                     Metodo Pagamento
                   </label>
                   <select
-                    value={canaleCanonico(form.metodo_pagamento) || 'banca'}
+                    value={canaleCanonico(form.metodo_pagamento) || ''}
                     onChange={e => handleChange('metodo_pagamento', e.target.value)}
                     style={{
                       width: '100%',
@@ -724,6 +724,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                       boxSizing: 'border-box',
                     }}
                   >
+                    <option value="">Non definito</option>
                     {Object.entries(METODI_PAGAMENTO).map(([key, val]) => (
                       <option key={key} value={key}>
                         {val.label}
@@ -3486,7 +3487,7 @@ export default function Fornitori() {
                                                     ? {
                                                         ...x,
                                                         pagato: true,
-                                                        metodo_pagamento: 'banca',
+                                                        metodo_pagamento: '',
                                                       }
                                                     : x
                                                 ),
