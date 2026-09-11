@@ -49,7 +49,7 @@ const EXACT_REDIRECTS = {
   '/pianificazione': '/strumenti/pianificazione',
   '/visure': '/strumenti/visure',
   '/integrazioni-openapi': '/integrazioni',
-  '/pagopa': '/integrazioni/pagopa',
+  '/pagopa': '/riconciliazione/pagopa',
   '/batch-reprocessing': '/admin/batch-reprocessing',
   '/batch-processor': '/admin/batch-processor',
   '/fisco': '/contabilita/calendario',
@@ -84,7 +84,7 @@ const PREFIX_REDIRECTS = [
   ['/commercialista/', '/strumenti/commercialista'],
   ['/pianificazione/', '/strumenti/pianificazione'],
   ['/integrazioni-openapi/', '/integrazioni'],
-  ['/pagopa/', '/integrazioni/pagopa'],
+  ['/pagopa/', '/riconciliazione/pagopa'],
   ['/fisco/', '/contabilita/calendario'],
 ];
 
