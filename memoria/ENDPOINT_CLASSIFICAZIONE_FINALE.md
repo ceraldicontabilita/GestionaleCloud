@@ -98,7 +98,7 @@ Colonne: FE=frontend runtime, Sch=scheduler, Chat, Migr=migrazione/manutenzione,
 | `GET /api/alerts/fornitori-senza-metodo` | alerts | — | — | — | — | — | verificare | nessun riferimento runtime noto (FE/scheduler/chat): verificare prima di deprecare |
 | `GET /api/alerts/lista` | alerts | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/alerts/risolvi-fornitore/{fornitore_piva}` | alerts | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/alerts/summary` | alerts | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/alerts/summary` | alerts | sì | — | — | — | sì | tenere | in uso: FE |
 | `DELETE /api/alerts/{alert_id}` | alerts | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/alerts/{alert_id}/risolvi` | alerts | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
 | `POST /api/alerts/{alert_id}/segna-letto` | alerts | sì | — | — | — | — | tenere | in uso: FE |

@@ -7,7 +7,7 @@
 ## Riepilogo
 
 - Pagine canoniche censite: **64**
-- Voci di navigazione analizzate: **24**
+- Voci di navigazione analizzate: **22**
 - Riferimenti API frontend distinti: **446**
 - Path API backend distinti: **1070**
 - Endpoint metodo+path censiti: **1156**
