@@ -1,0 +1,155 @@
+from pathlib import Path
+
+service = Path("app/services/stipendi_bonifici.py")
+text = service.read_text()
+marker = "\n\n# ── Riallineamento della competenza dei bonifici gia' registrati (PR 13) ────\n"
+helper = '''
+
+
+def stato_operativo_salario(
+    riga: Dict[str, Any],
+    *,
+    riconciliazione_completa_verificata: bool = False,
+) -> Dict[str, Any]:
+    """Espone netto, documentazione e prova bancaria senza confonderli.
+
+    ``importo_bonifico_documentato`` (prospetto/PDF) dimostra una disposizione
+    o un documento, non l'addebito. ``importo_bonifico`` conta come riscontro
+    bancario soltanto quando la riga porta almeno un ID esplicito di movimento
+    dell'estratto conto. Il vecchio campo ``saldo`` non viene usato qui perché
+    nei dati storici ha avuto convenzioni di segno diverse.
+    """
+    busta = _importo_atteso(riga)
+    documentato = round(abs(float(riga.get("importo_bonifico_documentato") or 0)), 2)
+    movimento_ids = _movimento_ids_stipendio(riga)
+    riscontrato = (
+        round(abs(float(riga.get("importo_bonifico") or 0)), 2)
+        if movimento_ids else 0.0
+    )
+    residuo_bancario = round(max(0.0, busta - riscontrato), 2)
+    residuo_documentale = round(max(0.0, busta - max(documentato, riscontrato)), 2)
+    conflitto = (
+        busta <= 0
+        or riscontrato - busta > 0.009
+        or documentato - busta > 0.009
+    )
+
+    if conflitto:
+        stato = "CONFLITTO"
+    elif riconciliazione_completa_verificata:
+        stato = "RICONCILIATO"
+    elif riscontrato > 0 and residuo_bancario > 0.009:
+        stato = "PARZIALMENTE_RICONCILIATO"
+    elif riscontrato > 0:
+        stato = "DA_VERIFICARE"
+    elif documentato > 0:
+        stato = "DOCUMENTATO_ATTESA_BANCA"
+    else:
+        stato = "DA_VERIFICARE"
+
+    return {
+        "importo_busta_verificato": busta,
+        "importo_documentato": documentato,
+        "importo_riscontrato_banca": riscontrato,
+        "residuo_bancario": residuo_bancario,
+        "residuo_documentale": residuo_documentale,
+        "movimenti_bancari_count": len(movimento_ids),
+        "stato_pagamento": stato,
+    }
+'''
+if "def stato_operativo_salario(" not in text:
+    if marker not in text:
+        raise SystemExit("service insertion marker not found")
+    text = text.replace(marker, helper + marker, 1)
+    service.write_text(text)
+
+router = Path("app/routers/accounting/prima_nota_salari.py")
+text = router.read_text()
+old = "from app.services.stipendi_bonifici import riconciliazione_salario_verificata\n"
+new = "from app.services.stipendi_bonifici import (\n        riconciliazione_salario_verificata, stato_operativo_salario,\n    )\n"
+if new not in text:
+    if old not in text:
+        raise SystemExit("router import marker not found")
+    text = text.replace(old, new, 1)
+old2 = '''        salario["riconciliato"] = stato_verificato
+        salario["riconciliazione_precedente_da_rivedere"] = (
+            stato_archiviato and not stato_verificato
+        )
+'''
+new2 = '''        salario["riconciliato"] = stato_verificato
+        salario.update(stato_operativo_salario(
+            salario, riconciliazione_completa_verificata=stato_verificato,
+        ))
+        salario["riconciliazione_precedente_da_rivedere"] = (
+            stato_archiviato and not stato_verificato
+        )
+'''
+if new2 not in text:
+    if old2 not in text:
+        raise SystemExit("router update marker not found")
+    text = text.replace(old2, new2, 1)
+router.write_text(text)
+
+test = Path("tests/test_point8_payroll_evidence_contract.py")
+test.write_text('''from pathlib import Path
+
+from app.services.stipendi_bonifici import stato_operativo_salario
+
+
+def test_documento_bonifico_non_diventa_prova_bancaria():
+    stato = stato_operativo_salario({
+        "importo_busta": 1200.0,
+        "importo_bonifico_documentato": 1200.0,
+        "importo_bonifico": 0,
+    })
+    assert stato["importo_documentato"] == 1200.0
+    assert stato["importo_riscontrato_banca"] == 0.0
+    assert stato["residuo_bancario"] == 1200.0
+    assert stato["residuo_documentale"] == 0.0
+    assert stato["stato_pagamento"] == "DOCUMENTATO_ATTESA_BANCA"
+
+
+def test_acconto_bancario_reale_espone_residuo():
+    stato = stato_operativo_salario({
+        "importo_busta": 1200.0,
+        "importo_bonifico": 500.0,
+        "movimenti_bancari_ids": ["ec-1"],
+    })
+    assert stato["importo_riscontrato_banca"] == 500.0
+    assert stato["residuo_bancario"] == 700.0
+    assert stato["stato_pagamento"] == "PARZIALMENTE_RICONCILIATO"
+
+
+def test_importo_pieno_non_promuove_senza_validazione_completa():
+    riga = {
+        "importo_busta": 1200.0,
+        "importo_bonifico": 1200.0,
+        "movimento_bancario_id": "ec-1",
+    }
+    assert stato_operativo_salario(riga)["stato_pagamento"] == "DA_VERIFICARE"
+    assert stato_operativo_salario(
+        riga, riconciliazione_completa_verificata=True,
+    )["stato_pagamento"] == "RICONCILIATO"
+
+
+def test_importi_oltre_netto_sono_conflitto():
+    stato = stato_operativo_salario({
+        "importo_busta": 1000.0,
+        "importo_bonifico_documentato": 1100.0,
+    })
+    assert stato["stato_pagamento"] == "CONFLITTO"
+
+
+def test_vecchia_pagina_salari_non_ha_store_o_hook_frontend():
+    assert not Path("frontend/src/stores/primaNotaStore.js").exists()
+    assert not Path("frontend/src/hooks/usePrimaNota.js").exists()
+    main = Path("frontend/src/main.jsx").read_text()
+    assert 'path="/salari"' not in main
+''')
+
+for path in (
+    Path("frontend/src/stores/primaNotaStore.js"),
+    Path("frontend/src/hooks/usePrimaNota.js"),
+):
+    if path.exists():
+        path.unlink()
