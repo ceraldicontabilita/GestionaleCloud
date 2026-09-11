@@ -144,14 +144,14 @@
       "category": "configurazione_tecnica",
       "policy": "modificare_solo_se_richiesto_dal_codice",
       "valid_json": true,
-      "sha256": "3e716e6e33d44ddad7e274d07180cce5e7a08f0ee5162a075c75f68e43900690"
+      "sha256": "79f0b0e99fc9d65fa2d8d6b416245bf11a99e4f761c614e21d5e3a9ed54cc852"
     },
     {
       "path": "frontend_hr/package.json",
       "category": "configurazione_tecnica",
       "policy": "modificare_solo_se_richiesto_dal_codice",
       "valid_json": true,
-      "sha256": "c25661410abbb49454c92c6b2a7e60cb07a7e878432723fc501527c966db1abf"
+      "sha256": "72b3ebd60ad680b9de39dfd615dfa94a36bbbc6f124ab2f817046903eff6ee58"
     },
     {
       "path": "frontend_lotti/components.json",

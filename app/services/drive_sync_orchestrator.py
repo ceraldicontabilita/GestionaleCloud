@@ -13,6 +13,7 @@ from app.services import (
     drive_corrispettivi_ingest,
     drive_documenti_ingest,
     drive_estratti_conto_ingest,
+    drive_f24_ingest,
     drive_invoice_ingest,
     drive_quietanze_ingest,
 )
@@ -60,6 +61,7 @@ def start_all(db: Any) -> Dict[str, str]:
         "fatture": _start_existing_service(drive_invoice_ingest, db),
         "cedolini": _start_existing_service(drive_cedolini_ingest, db),
         "corrispettivi": _start_existing_service(drive_corrispettivi_ingest, db),
+        "f24": _start_existing_service(drive_f24_ingest, db),
         "quietanze": _start_existing_service(drive_quietanze_ingest, db),
     }
 
