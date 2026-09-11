@@ -104,7 +104,7 @@ def test_bonifica_archivia_le_cinque_copie_e_riconcilia_un_solo_totale():
     assert all(r["importato_prima_nota"] is False for r in ec)
 
     # Il circuito SumUp dello stesso giorno non viene mai sommato a Numia.
-    sumup = _run(db["prima_nota_banca"].find_one({
+    sumup = _run(db["prima_nota_sumup"].find_one({
         "source": "trasferimento_pos", "gestore": "sumup",
     }))
     assert sumup["importo"] == 721.30

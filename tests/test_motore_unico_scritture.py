@@ -208,17 +208,19 @@ def test_ogni_circuito_reale_ha_il_suo_trasferimento():
     assert esito["pos_reale"] == {"numia": 500.0, "sumup": 100.0}
     # entrata XML + una uscita per circuito
     assert len(db["prima_nota_cassa"].docs) == 3
-    assert len(db["prima_nota_banca"].docs) == 2
+    assert len(db["prima_nota_banca"].docs) == 1
+    assert len(db["prima_nota_sumup"].docs) == 1
 
     uscite = {d["categoria"]: d for d in db["prima_nota_cassa"].docs[1:]}
     assert uscite["POS NUMIA Verso Banca"]["importo"] == 500.0
     assert uscite["POS SUMUP Verso Banca"]["importo"] == 100.0
     assert all(d["quota_pos_fonte"] == "terminale_reale" for d in uscite.values())
 
-    crediti = {d["gestore"]: d for d in db["prima_nota_banca"].docs}
-    assert crediti["numia"]["conto_contabile"] == "15.07.01"
-    assert crediti["sumup"]["conto_contabile"] == "15.07.02"
-    for circuito, credito in crediti.items():
+    crediti_bpm = {d["gestore"]: d for d in db["prima_nota_banca"].docs}
+    crediti_sumup = {d["gestore"]: d for d in db["prima_nota_sumup"].docs}
+    assert crediti_bpm["numia"]["conto_contabile"] == "15.07.01"
+    assert crediti_sumup["sumup"]["conto_contabile"] == "15.07.02"
+    for circuito, credito in {**crediti_bpm, **crediti_sumup}.items():
         assert credito["source"] == "trasferimento_pos"
         assert credito["riconciliato"] is False
         assert credito["in_transito"] is True
@@ -226,5 +228,5 @@ def test_ogni_circuito_reale_ha_il_suo_trasferimento():
         controparte = next(d for d in db["prima_nota_cassa"].docs[1:]
                            if d["gestore"] == circuito)
         assert credito["trasferimento_id"] == controparte["trasferimento_id"]
-    assert (crediti["numia"]["trasferimento_id"]
-            != crediti["sumup"]["trasferimento_id"])
+    assert (crediti_bpm["numia"]["trasferimento_id"]
+            != crediti_sumup["sumup"]["trasferimento_id"])
