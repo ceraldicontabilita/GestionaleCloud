@@ -227,10 +227,6 @@ async def check_scadenze_partite_task():
                 stats["errori"] += 1
                 logger.error(f"[SCHEDULER-SCADENZE] errore alert {codice_alert} per {documento_id}: {e}")
 
-        # Partite scadute di tipo senza alert dedicato (nota_credito, trasferimento,
-        # altro) — prima venivano solo contate in "senza_mapping" e non generavano
-        # mai nessun alert, anche se scadute da mesi. RIC_PARTITA_VECCHIA fa da
-        # rete di sicurezza generica (vedi memoria/moduli/RICONCILIAZIONE.md gap #6).
         stats["partita_vecchia_scaduta"] = 0
         cursor_scadute_senza_mapping = db["partite_aperte"].find(
             {
@@ -264,10 +260,6 @@ async def check_scadenze_partite_task():
                 stats["errori"] += 1
                 logger.error(f"[SCHEDULER-SCADENZE] errore alert RIC_PARTITA_VECCHIA per {documento_id}: {e}")
 
-        # Partite aperte SENZA data_scadenza esplicita ma vecchie (nessuna scadenza
-        # nota per accorgersi che sono in sospeso) — soglia 90 giorni dalla
-        # creazione, stesso gap #6: prima nessuna visibilità su queste partite
-        # "orfane" perché la query sopra richiede sempre una data_scadenza.
         soglia_stale = (datetime.now() - timedelta(days=90)).isoformat()
         stats["partita_vecchia_senza_scadenza"] = 0
         cursor_senza_scadenza = db["partite_aperte"].find(
@@ -312,7 +304,6 @@ async def check_scadenze_partite_task():
             f"senza_mapping={stats['senza_mapping']}, errori={stats['errori']}"
         )
 
-        # Notifica WebSocket se ci sono nuovi alert di scadenza
         totale_nuovi = sum(stats[t] for t in mapping_alert)
         if totale_nuovi > 0:
             try:
@@ -353,7 +344,6 @@ async def check_scadenze_f24_task():
         if n_scadenze > 0:
             logger.info(f"📅 [SCHEDULER] Scadenze F24: {n_scadenze} trovate, "
                        f"Telegram: {n_telegram}, Email: {n_email}")
-            # Notifica WebSocket real-time
             try:
                 from app.services.websocket_manager import notify_data_change
                 await notify_data_change("f24_scadenze", {
@@ -375,13 +365,6 @@ async def check_fornitori_duplicati_task():
     Task eseguito ogni giorno alle 6:00.
     Genera l'alert FORN_DUPLICATO per i gruppi di fornitori con la STESSA
     P.IVA (certezza "alta") trovati da fornitori_dedupe.py::trova_duplicati().
-    La funzione di rilevamento esisteva già (usata dall'endpoint manuale di
-    merge) ma non era mai schedulata — l'alert era definito in
-    alert_engine.py ma mai generato, vedi memoria/moduli/FORNITORI.md.
-
-    Solo i gruppi "alta" (stessa P.IVA, zero ambiguità) per evitare falsi
-    positivi da un job automatico notturno — i gruppi "media" (nome simile,
-    fuzzy) restano disponibili solo nel controllo manuale in Fornitori.
     """
     logger.info("👥 [SCHEDULER] Controllo fornitori duplicati...")
     try:
@@ -421,14 +404,7 @@ async def check_fornitori_duplicati_task():
 
 
 async def paypal_recupera_fatture_email_task():
-    """
-    Task eseguito ogni giorno alle 5:30.
-    I fornitori PayPal non mappati sono tipicamente esteri (Drive/Sheets, SaaS
-    vari): non emettono mai fattura elettronica XML, quindi Drive/PEC-SDI
-    non li troveranno mai, a prescindere da quanto tempo passa. Cerca da
-    sola nella posta invece di aspettare un click manuale — vedi
-    app/services/paypal_email_recovery.py.
-    """
+    """Task eseguito ogni giorno alle 5:30."""
     logger.info("💳 [SCHEDULER] Recupero fatture PayPal mancanti dalla posta...")
     try:
         from app.database import Database
@@ -445,12 +421,7 @@ async def paypal_recupera_fatture_email_task():
 
 
 async def gmail_full_scan_task():
-    """
-    Task eseguito ogni ora.
-    Scansiona TUTTE le cartelle Gmail per documenti amministrativi.
-    REGOLA: le fatture NON vengono scaricate da Gmail (solo PEC o import manuale).
-    Dopo il download, esegue il pipeline di processamento automatico.
-    """
+    """Task eseguito ogni ora. Scansiona le cartelle Gmail per documenti amministrativi."""
     from app.config import settings
     if not getattr(settings, "ENABLE_GMAIL_IMAP", True):
         logger.info("📧 [SCHEDULER-GMAIL] Scansione Gmail saltata (ENABLE_GMAIL_IMAP spento).")
@@ -475,7 +446,6 @@ async def gmail_full_scan_task():
             f"{stats.get('pdfs_downloaded', 0)} PDF"
         )
 
-        # Esegui pipeline post-download (F24, cedolini, verbali, quietanze)
         if stats.get("pdfs_downloaded", 0) > 0:
             try:
                 from app.services.post_download_pipeline import esegui_pipeline_completa
@@ -502,13 +472,8 @@ async def gmail_full_scan_task():
 def start_scheduler():
     """Avvia lo scheduler con i task programmati."""
     logger.info("🚀 [SCHEDULER] Configurazione scheduler...")
-    # Evita il picco di memoria del deploy: gli import Drive non partono tutti
-    # nello stesso istante e la porta web puo' aprirsi prima del primo job.
     avvio = datetime.now()
 
-    # ── Gmail Verbali CdS: scan ogni 30 min ────────────────────────────────
-    # Tesoreria AI: solo lettura + decisioni shadow. Nessun pagamento,
-    # movimento contabile o altra azione di business viene eseguita qui.
     async def _tesoreria_shadow_job():
         from app.agents.orchestrator import run_agenti
         from app.database import Database
@@ -604,7 +569,6 @@ def start_scheduler():
         except Exception as e:
             logger.error(f"[SCHEDULER-VERBALI-LINK] errore: {e}")
 
-    # ── Google Drive: import fatture XML ogni 15 min ───────────────────────
     async def _drive_ingest_job():
         from app.database import Database
         from app.services import drive_invoice_ingest
@@ -614,7 +578,6 @@ def start_scheduler():
         except Exception as e:
             logger.error(f"[SCHEDULER-DRIVE-FATTURE] errore: {e}")
 
-    # ── Google Drive: import cedolini paga (PDF) ogni ora ──────────────────
     async def _drive_cedolini_job():
         from app.database import Database
         from app.services import drive_cedolini_ingest
@@ -624,7 +587,6 @@ def start_scheduler():
         except Exception as e:
             logger.error(f"[SCHEDULER-DRIVE-CEDOLINI] errore: {e}")
 
-    # ── Google Drive: import corrispettivi RT (XML) ogni ora ───────────────
     async def _drive_corrispettivi_job():
         from app.database import Database
         from app.services import drive_corrispettivi_ingest
@@ -634,9 +596,15 @@ def start_scheduler():
         except Exception as e:
             logger.error(f"[SCHEDULER-DRIVE-CORRISPETTIVI] errore: {e}")
 
-    # ── Google Drive: import quietanze F24 (PDF) ogni ora ──────────────────
-    # Canale acceso su scelta esplicita dell'utente (10/07/2026): stesso
-    # motore unico dell'upload manuale (parsing + matching automatico F24).
+    async def _drive_f24_job():
+        from app.database import Database
+        from app.services import drive_f24_ingest
+        try:
+            result = await drive_f24_ingest.sync(Database.get_db())
+            logger.info(f"[SCHEDULER-DRIVE-F24] {result}")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-DRIVE-F24] errore: {e}")
+
     async def _drive_quietanze_job():
         from app.database import Database
         from app.services import drive_quietanze_ingest
@@ -656,7 +624,6 @@ def start_scheduler():
             logger.error(f"[SCHEDULER-DRIVE-ESTRATTI-CONTO] errore: {e}")
 
     async def _bonifici_pdf_inbox_job():
-        """Elabora anche i PDF bonifico gia' caricati in Import documenti."""
         from app.database import Database
         from app.services.bonifici_pdf_ingest import (
             processa_inbox_bonifici,
@@ -683,12 +650,6 @@ def start_scheduler():
         except Exception as e:
             logger.error(f"[SCHEDULER-BONIFICI-PDF] errore: {e}")
 
-    # ── SumUp: sincronizzazione indipendente ogni 30 minuti ────────────────
-    # Prima faceva parte di _automazioni_prima_nota_job: se quel giro si
-    # allungava (es. smaltimento di un arretrato di riconciliazione), SumUp
-    # restava bloccata in coda insieme a tutto il resto. Ora ha un lock e un
-    # orario tutti suoi, cosi' la sincronizzazione SumUp non dipende piu'
-    # dalla durata delle altre automazioni.
     async def _sumup_sync_job():
         from app.database import Database
         from app.services import sumup_sync
@@ -708,10 +669,6 @@ def start_scheduler():
         except Exception as e:
             logger.error(f"[SCHEDULER-SUMUP] errore: {e}")
 
-    # ── Automazioni Prima Nota: le ex funzioni "manuali" girano da sole ────
-    # 1. corrispettivi → prima nota cassa (idempotente)
-    # 2. fatture provvisorie → cassa/banca secondo il metodo fornitore
-    # 3. riconciliazione automatica con l'estratto conto
     async def _automazioni_prima_nota_job():
         from datetime import datetime as _dt
         anno_corrente = _dt.now().year
@@ -916,8 +873,6 @@ def start_scheduler():
         id="link_verbali_fatture", name="Link Verbali ↔ Fatture (ogni 60 min)",
         replace_existing=True,
     )
-    # Le fatture lavorano a lotti piccoli: un ciclo ogni 15 minuti smaltisce
-    # l'arretrato senza superare la memoria del servizio web.
     scheduler.add_job(
         _drive_ingest_job,
         'interval', minutes=15,
@@ -945,6 +900,16 @@ def start_scheduler():
         misfire_grace_time=300,
         coalesce=True,
         id="drive_corrispettivi_ingest", name="Import Corrispettivi da Google Drive (ogni ora)",
+        replace_existing=True,
+    )
+
+    scheduler.add_job(
+        _drive_f24_job,
+        'interval', hours=1,
+        next_run_time=avvio + timedelta(minutes=6),
+        misfire_grace_time=300,
+        coalesce=True,
+        id="drive_f24_ingest", name="Import modelli F24 da Google Drive (ogni ora)",
         replace_existing=True,
     )
 
@@ -980,22 +945,6 @@ def start_scheduler():
         replace_existing=True,
     )
 
-    # ── Documenti da mittenti Gmail attendibili (ceraldigroupsrl@gmail.com),
-    #    ogni ora. Copre TUTTI i tipi configurati in "Mittenti Email"
-    #    (Integrazioni → Mittenti): fatture ESTERE (tipo_documento=
-    #    "fattura_estera_pdf" — il sistema SDI/FatturaPA è SOLO italiano, i
-    #    fornitori esteri mandano un semplice PDF in allegato, MAI un XML;
-    #    il PDF viene scaricato e archiviato in Documenti categoria "Fatture
-    #    estere (PDF)", pronto da associare/registrare — nessuna estrazione
-    #    automatica dei dati per ora, decisione rimandata) più cedolino/
-    #    pagopa/inps/inail/paypal/cartella esattoriale se un mittente è
-    #    configurato per quei tipi. Le fatture ITALIANE arrivano SEMPRE via
-    #    SDI/Aruba/Drive in XML, mai da qui.
-    #    Trovato dormiente in sessione di debug 2026-07-14 (stesso pattern di
-    #    bug già trovato altrove: nessuno chiamava sync_email_documents), attivato
-    #    su richiesta esplicita dell'utente contestualmente alla pagina di
-    #    gestione mittenti. Senza mittenti configurati è un no-op innocuo
-    #    (0 mittenti attivi → 0 email scaricate).
     async def _mittenti_email_job():
         from app.database import Database
         from app.services.email_monitor_service import sync_email_documents
@@ -1020,16 +969,17 @@ def start_scheduler():
         replace_existing=True,
     )
 
-    # ── Google Drive: nuovi canali documentali (dichiarazione IVA, cartelle
-    # esattoriali, avvisi bonari) ogni ora. Ogni canale gira solo se acceso e
-    # con la cartella configurata su Render (altrimenti no-op). ──
+    # Canali Drive documentali generici: bonifici dipendenti, verbali e canali
+    # fiscali esplicitamente abilitati. Il resolver di ciascun canale limita la
+    # scansione alla propria DA ELABORARE canonica.
     async def _drive_documenti_job():
-        from app.services.drive_document_index import get_status
+        from app.database import Database
+        from app.services import drive_documenti_ingest
         try:
-            result = await asyncio.to_thread(get_status)
-            logger.info(f"[SCHEDULER-DRIVE-INDICE] {result}")
+            result = await drive_documenti_ingest.sync_tutti(Database.get_db())
+            logger.info(f"[SCHEDULER-DRIVE-DOCUMENTI] {result}")
         except Exception as e:
-            logger.error(f"[SCHEDULER-DRIVE-INDICE] errore: {e}")
+            logger.error(f"[SCHEDULER-DRIVE-DOCUMENTI] errore: {e}")
 
     scheduler.add_job(
         _drive_documenti_job,
@@ -1038,7 +988,7 @@ def start_scheduler():
         misfire_grace_time=300,
         coalesce=True,
         id="drive_documenti_ingest",
-        name="Verifica indice documentale Drive in sola lettura (ogni 15 minuti)",
+        name="Import canali documentali Drive configurati (ogni 15 minuti)",
         replace_existing=True,
     )
 
@@ -1059,9 +1009,6 @@ def start_scheduler():
         replace_existing=True,
     )
 
-    # Quadratura settimanale Elaborate ↔ gestionale: verifica che ogni file
-    # archiviato in Drive/Elaborate abbia la sua fattura nel gestionale;
-    # i buchi vengono re-importati (idempotente) e segnalati con un alert.
     async def _drive_quadratura_job():
         from app.database import Database
         from app.services import drive_invoice_ingest
@@ -1079,9 +1026,6 @@ def start_scheduler():
         replace_existing=True,
     )
 
-    # Ripresa automatica della ricostruzione fatture da Drive (audit
-    # 03/09/2026): un lotto lasciato a meta' (stato pending/processing) viene
-    # portato avanti da solo, un lotto alla volta, finche' non risulta ok.
     async def _drive_ricostruzione_ripresa_job():
         from app.database import Database
         from app.services import drive_invoice_ingest
@@ -1109,9 +1053,6 @@ def start_scheduler():
         replace_existing=True,
     )
 
-    # COLLAUDO AUTOMATICO (richiesta utente 18/07/2026): ogni notte tutti gli
-    # invarianti contabili vengono verificati; le violazioni diventano alert
-    # COLLAUDO_INVARIANTE in dashboard, i check tornati puliti li risolvono.
     async def _collaudo_notturno_job():
         from app.database import Database
         from app.services.collaudo_invarianti import esegui_collaudo
@@ -1130,8 +1071,6 @@ def start_scheduler():
         replace_existing=True,
     )
 
-    # Stessa quadratura Elaborate anche per cedolini e corrispettivi
-    # (richiesta utente 10/07): archivio Drive ↔ gestionale, buchi recuperati.
     async def _drive_quadratura_cedolini_job():
         from app.database import Database
         from app.services import drive_cedolini_ingest
@@ -1141,10 +1080,6 @@ def start_scheduler():
             logger.info(f"[SCHEDULER-QUADRATURA-CEDOLINI] {r if r.get('status') != 'ok' else {k: r[k] for k in ('controllati', 'quadrati', 'recuperati', 'errori')}}")
         except Exception as e:
             logger.error(f"[SCHEDULER-QUADRATURA-CEDOLINI] errore: {e}")
-        # Richiesta utente 15/07/2026: la quadratura sopra verifica solo
-        # Drive ↔ documents_inbox (il file è arrivato), non che sia
-        # diventato un cedolino vero in contabilità — un buco lì (parsing
-        # fallito, dipendente non trovato) restava invisibile per sempre.
         try:
             bloccati = await drive_cedolini_ingest.verifica_documenti_bloccati(db)
             if bloccati["totale_bloccati"] > 0:
@@ -1183,6 +1118,23 @@ def start_scheduler():
         replace_existing=True,
     )
 
+    async def _drive_quadratura_f24_job():
+        from app.database import Database
+        from app.services import drive_f24_ingest
+        try:
+            r = await drive_f24_ingest.verifica_quadratura_elaborate(Database.get_db())
+            logger.info(f"[SCHEDULER-QUADRATURA-F24] {r if r.get('status') != 'ok' else {k: r[k] for k in ('controllati', 'quadrati', 'recuperati', 'errori')}}")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-QUADRATURA-F24] errore: {e}")
+
+    scheduler.add_job(
+        _drive_quadratura_f24_job,
+        CronTrigger(day_of_week="sun", hour=5, minute=40),
+        id="drive_f24_quadratura",
+        name="Quadratura modelli F24 Drive Elaborate (domenica ore 5:40)",
+        replace_existing=True,
+    )
+
     async def _drive_quadratura_quietanze_job():
         from app.database import Database
         from app.services import drive_quietanze_ingest
@@ -1202,19 +1154,11 @@ def start_scheduler():
     scheduler.add_job(
         _automazioni_prima_nota_job,
         'interval', minutes=30,
-        # Sfasato rispetto agli altri job da 30/60 minuti (scan_gmail_verbali,
-        # google_sheets_ledger_sync) cosi' non competono mai per il lock Sheets
-        # nello stesso istante: prima di questa modifica il job restava sempre
-        # rinviato ("un'altra automazione Sheets e' in esecuzione") perche' partiva
-        # sempre allo stesso secondo di un altro job da 30 minuti.
         next_run_time=avvio + timedelta(minutes=13),
         misfire_grace_time=300,
         coalesce=True,
         id="automazioni_prima_nota",
         name="Automazioni Prima Nota: corrispettivi + provvisori + riconciliazione (ogni 30 min)",
-        # Non eseguire il giro completo durante lo startup: l'idratazione
-        # Drive/Sheets e le automazioni insieme superano la memoria del piano
-        # Render Starter. Il primo giro segue il normale intervallo (sfasato, v. sopra).
         replace_existing=True,
     )
 
@@ -1256,7 +1200,6 @@ def start_scheduler():
         replace_existing=True,
     )
 
-    # Task Scan Verbali Email giornaliero, in ora locale Europe/Rome.
     from zoneinfo import ZoneInfo
     from app.config import settings as scheduler_settings
     scheduler.add_job(
@@ -1278,7 +1221,6 @@ def start_scheduler():
         replace_existing=True,
     )
 
-    # Task Scadenze Partite Aperte (sistema relazionale) - ogni giorno alle 7:00
     scheduler.add_job(
         check_scadenze_partite_task,
         CronTrigger(hour=7, minute=0),
@@ -1287,12 +1229,6 @@ def start_scheduler():
         replace_existing=True
     )
 
-    # Task Controllo POS con calendario - ogni giorno alle 7:30.
-    # Genera avvisi SOLO quando il calendario (lavorativi/festivi) non spiega
-    # la differenza: accredito in ritardo oltre la data prevista, importo
-    # banca diverso dal POS atteso, POS manuale diverso dall'XML oltre
-    # tolleranza. Gli slittamenti fisiologici (weekend/festivi) non generano
-    # mai nulla: sono il comportamento previsto dal calendario.
     async def controllo_pos_calendario_task():
         try:
             from app.routers.pos_corrispettivi_check import alert_oggi
@@ -1313,13 +1249,6 @@ def start_scheduler():
         replace_existing=True
     )
 
-    # Task Regolarità canoni noleggio - ogni giorno alle 7:45.
-    # Per i veicoli con contratto ATTIVO controlla che arrivino fatture
-    # entro NOLEGGIO_GIORNI_SENZA_FATTURA (35 gg, scelta utente); se
-    # mancano rilegge l'ultima fattura: diciture di cessazione → avviso
-    # informativo "probabile contratto cessato" (lo stato lo cambia solo
-    # l'utente), altrimenti avviso soft "da verificare". Contratti
-    # cessati: MAI avvisi (regola non negoziabile).
     async def controllo_canoni_noleggio_task():
         try:
             from app.services.noleggio import controlla_regolarita_canoni
@@ -1337,7 +1266,6 @@ def start_scheduler():
         replace_existing=True
     )
 
-    # Task Scadenze F24 - ogni giorno alle 8:00
     scheduler.add_job(
         check_scadenze_f24_task,
         CronTrigger(hour=8, minute=0),
@@ -1346,12 +1274,6 @@ def start_scheduler():
         replace_existing=True
     )
 
-    # Task Verifica retroattiva trattenute verbali - ogni giorno alle 8:30.
-    # Ripesca i cedolini GIÀ archiviati (posta/Drive, in qualsiasi momento):
-    # per le trattenute confermate/comunicate/in attesa cerca la voce di
-    # trattenuta nei cedolini con periodo >= mese suggerito e applica le
-    # stesse transizioni del percorso on-import (recuperata_in_busta /
-    # non_trovata_nel_cedolino + alert). Idempotente, nessuna cancellazione.
     async def verifica_trattenute_retro_task():
         try:
             from app.services.trattenute_verbali_service import verifica_trattenute_retroattiva
@@ -1369,8 +1291,6 @@ def start_scheduler():
         replace_existing=True
     )
 
-
-    # Task Scadenze F24 - anche alle 14:00 come reminder pomeridiano
     scheduler.add_job(
         check_scadenze_f24_task,
         CronTrigger(hour=14, minute=0),
@@ -1379,7 +1299,6 @@ def start_scheduler():
         replace_existing=True
     )
 
-    # Task Fornitori Duplicati - ogni giorno alle 6:00
     scheduler.add_job(
         check_fornitori_duplicati_task,
         CronTrigger(hour=6, minute=0),
@@ -1388,7 +1307,6 @@ def start_scheduler():
         replace_existing=True
     )
 
-    # Task Gmail Full Scan - ogni ora (tutte le cartelle)
     scheduler.add_job(
         gmail_full_scan_task,
         'interval',
@@ -1401,7 +1319,6 @@ def start_scheduler():
         replace_existing=True
     )
 
-    # Task Recupero Fatture PayPal mancanti - ogni giorno alle 5:30
     scheduler.add_job(
         paypal_recupera_fatture_email_task,
         CronTrigger(hour=5, minute=30),
