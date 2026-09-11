@@ -1,5 +1,13 @@
 # Audit duplicati Google Drive, 11 settembre 2026
 
+> **Snapshot storico:** questo documento fotografa una fase precedente e non e' autorita' per il comportamento corrente. Per l'operativita' usare `PROMPT_MASTER.md`, `PRODUCT.md`, `DESIGN.md`, `LOGICA_FUNZIONAMENTO.md` e `memoria/INDEX.md`.
+
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-09-11
+storage_architecture: drive-only
+-->
+
 Questo manifesto registra esclusivamente duplicati verificati byte-per-byte.
 Non autorizza cancellazioni automatiche. Un file entra in `DUPLICATO CERTO`
 solo quando due oggetti Drive distinti hanno lo stesso SHA-256 e il confronto
