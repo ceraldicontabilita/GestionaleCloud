@@ -30,7 +30,8 @@ jobs:
             tests/test_point10_pos_paypal_evidence_contract.py \
             tests/test_sumup_payout.py \
             tests/test_banca_saldo_reale.py \
-            tests/test_prima_nota_sumup_live_projection.py
+            tests/test_prima_nota_sumup_live_projection.py \
+            tests/test_saldi_finanziari.py
       - name: Commit dedicated SumUp register
         run: |
           git config user.name "github-actions[bot]"
@@ -41,7 +42,10 @@ jobs:
             app/services/sumup_payout.py \
             app/routers/prima_nota_module/common.py \
             app/routers/prima_nota_module/banca.py \
-            tests/test_point10_sumup_separate_register.py
+            tests/test_point10_sumup_separate_register.py \
+            tests/test_point10_pos_paypal_evidence_contract.py \
+            tests/test_sumup_payout.py \
+            tests/test_banca_saldo_reale.py
           if git diff --cached --quiet; then
             echo "No changes"
             exit 0
