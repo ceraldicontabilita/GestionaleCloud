@@ -1,6 +1,6 @@
 import React, { lazy, Suspense, useState, useEffect } from 'react';
-import { Settings, ShieldCheck, Workflow } from 'lucide-react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Settings, ShieldCheck, Workflow, Users, Bot } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { HubTabs, PageLoader } from '../../components/ds';
 
 const AdminContent = lazy(() => import('../Admin.jsx'));
@@ -49,6 +49,34 @@ export default function AdminHub() {
         onSelect={tab => navigate(tab.to)}
         tabs={tabs}
       />
+
+      <div
+        data-testid="admin-shortcuts"
+        style={{
+          display: 'flex',
+          gap: 8,
+          flexWrap: 'wrap',
+          padding: '10px 16px',
+          background: '#f8fafc',
+          borderBottom: '1px solid #e2e8f0',
+        }}
+      >
+        <Link
+          to="/utenti"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 10px', borderRadius: 8, background: '#fff', border: '1px solid #e2e8f0', color: '#334155', textDecoration: 'none', fontSize: 13, fontWeight: 600 }}
+          data-testid="admin-shortcut-utenti"
+        >
+          <Users size={15} /> Utenti
+        </Link>
+        <Link
+          to="/impostazioni-ai"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 10px', borderRadius: 8, background: '#fff', border: '1px solid #e2e8f0', color: '#334155', textDecoration: 'none', fontSize: 13, fontWeight: 600 }}
+          data-testid="admin-shortcut-ai"
+        >
+          <Bot size={15} /> Assistente AI
+        </Link>
+      </div>
+
       <div style={{ display: isAdmin ? 'block' : 'none' }}>
         <Suspense fallback={<PageLoader />}>{visitedAdmin && <AdminContent />}</Suspense>
       </div>
