@@ -8,11 +8,11 @@
 
 - Pagine canoniche censite: **64**
 - Voci di navigazione analizzate: **22**
-- Riferimenti API frontend distinti: **446**
+- Riferimenti API frontend distinti: **439**
 - Path API backend distinti: **1070**
 - Endpoint metodo+path censiti: **1156**
-- Endpoint con uso runtime noto: **640**
-- Endpoint da verificare prima di deprecare: **486**
+- Endpoint con uso runtime noto: **631**
+- Endpoint da verificare prima di deprecare: **495**
 - Endpoint admin-only/migrazione: **30**
 - Errori strutturali verificabili: **0**
 - Riferimenti frontend realmente senza match statico: **0**

@@ -3,7 +3,7 @@
 > NON modificare a mano: rilancia lo script.
 > La colonna FE usa compatibilità esatta di forma del path; un semplice prefisso non prova l'uso di un endpoint figlio.
 
-**Totale endpoint:** 1156 · tenere: 640 · verificare: 486 · admin-only (migrazione/manutenzione): 30
+**Totale endpoint:** 1156 · tenere: 631 · verificare: 495 · admin-only (migrazione/manutenzione): 30
 
 Colonne: FE=frontend runtime, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminato in blocco (§7).
 
@@ -904,20 +904,20 @@ Colonne: FE=frontend runtime, Sch=scheduler, Chat, Migr=migrazione/manutenzione,
 | `POST /api/prima-nota-salari/bonifica-doppioni` | accounting.prima_nota_salari | — | — | — | — | sì | verificare | nessun riferimento runtime noto (FE/scheduler/chat): verificare prima di deprecare |
 | `POST /api/prima-nota-salari/consolida-record` | accounting.prima_nota_salari | — | — | — | — | — | verificare | nessun riferimento runtime noto (FE/scheduler/chat): verificare prima di deprecare |
 | `POST /api/prima-nota-salari/deposita-cedolini-in-hr` | accounting.prima_nota_salari | — | — | — | sì | sì | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
-| `GET /api/prima-nota-salari/dipendenti-lista` | accounting.prima_nota_salari | sì | — | — | — | sì | tenere | in uso: FE |
+| `GET /api/prima-nota-salari/dipendenti-lista` | accounting.prima_nota_salari | — | — | — | — | sì | verificare | nessun riferimento runtime noto (FE/scheduler/chat): verificare prima di deprecare |
 | `GET /api/prima-nota-salari/export-excel` | accounting.prima_nota_salari | — | — | — | — | — | verificare | nessun riferimento runtime noto (FE/scheduler/chat): verificare prima di deprecare |
-| `POST /api/prima-nota-salari/import-bonifici` | accounting.prima_nota_salari | sì | — | — | — | sì | tenere | in uso: FE |
-| `POST /api/prima-nota-salari/import-paghe` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/prima-nota-salari/import-bonifici` | accounting.prima_nota_salari | — | — | — | — | sì | verificare | nessun riferimento runtime noto (FE/scheduler/chat): verificare prima di deprecare |
+| `POST /api/prima-nota-salari/import-paghe` | accounting.prima_nota_salari | — | — | — | — | — | verificare | nessun riferimento runtime noto (FE/scheduler/chat): verificare prima di deprecare |
 | `POST /api/prima-nota-salari/import-salari-ricostruiti` | accounting.prima_nota_salari | — | — | — | — | sì | verificare | nessun riferimento runtime noto (FE/scheduler/chat): verificare prima di deprecare |
 | `POST /api/prima-nota-salari/import-salari-verificati` | accounting.prima_nota_salari | — | — | — | — | sì | verificare | nessun riferimento runtime noto (FE/scheduler/chat): verificare prima di deprecare |
 | `DELETE /api/prima-nota-salari/pulisci-righe-vuote` | accounting.prima_nota_salari | — | — | — | — | — | verificare | nessun riferimento runtime noto (FE/scheduler/chat): verificare prima di deprecare |
-| `POST /api/prima-nota-salari/ricalcola-progressivi` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/prima-nota-salari/salari` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/prima-nota-salari/salari/aggiustamento` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
-| `DELETE /api/prima-nota-salari/salari/reset` | accounting.prima_nota_salari | sì | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
-| `GET /api/prima-nota-salari/salari/riepilogo` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
-| `DELETE /api/prima-nota-salari/salari/{record_id}` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
-| `PUT /api/prima-nota-salari/salari/{record_id}` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/prima-nota-salari/ricalcola-progressivi` | accounting.prima_nota_salari | — | — | — | — | — | verificare | nessun riferimento runtime noto (FE/scheduler/chat): verificare prima di deprecare |
+| `GET /api/prima-nota-salari/salari` | accounting.prima_nota_salari | — | — | — | — | — | verificare | nessun riferimento runtime noto (FE/scheduler/chat): verificare prima di deprecare |
+| `POST /api/prima-nota-salari/salari/aggiustamento` | accounting.prima_nota_salari | — | — | — | — | — | verificare | nessun riferimento runtime noto (FE/scheduler/chat): verificare prima di deprecare |
+| `DELETE /api/prima-nota-salari/salari/reset` | accounting.prima_nota_salari | — | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
+| `GET /api/prima-nota-salari/salari/riepilogo` | accounting.prima_nota_salari | — | — | — | — | — | verificare | nessun riferimento runtime noto (FE/scheduler/chat): verificare prima di deprecare |
+| `DELETE /api/prima-nota-salari/salari/{record_id}` | accounting.prima_nota_salari | — | — | — | — | — | verificare | nessun riferimento runtime noto (FE/scheduler/chat): verificare prima di deprecare |
+| `PUT /api/prima-nota-salari/salari/{record_id}` | accounting.prima_nota_salari | — | — | — | — | — | verificare | nessun riferimento runtime noto (FE/scheduler/chat): verificare prima di deprecare |
 | `GET /api/prima-nota-salari/salari/{record_id}/bonifico-pdf` | accounting.prima_nota_salari | — | — | — | — | — | verificare | nessun riferimento runtime noto (FE/scheduler/chat): verificare prima di deprecare |
 | `POST /api/prima-nota-salari/salari/{record_id}/bonifico-pdf` | accounting.prima_nota_salari | — | — | — | — | — | verificare | nessun riferimento runtime noto (FE/scheduler/chat): verificare prima di deprecare |
 | `GET /api/prima-nota-salari/salari/{record_id}/cedolino-pdf` | accounting.prima_nota_salari | — | — | — | — | sì | verificare | nessun riferimento runtime noto (FE/scheduler/chat): verificare prima di deprecare |

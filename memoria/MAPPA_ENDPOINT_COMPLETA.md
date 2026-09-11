@@ -4,7 +4,7 @@
 > Totale **1156 endpoint** in **112 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 663 · ext esterni = 81 · — da verificare = 412
+**Riepilogo uso:** ✓ frontend = 648 · ext esterni = 81 · — da verificare = 427
 
 ## AI Parser  (11)
 
@@ -1430,25 +1430,25 @@
 | POST | `/api/prima-nota-salari/bonifica-doppioni` | — | accounting.prima_nota_salari |
 | POST | `/api/prima-nota-salari/consolida-record` | — | accounting.prima_nota_salari |
 | POST | `/api/prima-nota-salari/deposita-cedolini-in-hr` | — | accounting.prima_nota_salari |
-| GET | `/api/prima-nota-salari/dipendenti-lista` | ✓ | accounting.prima_nota_salari |
+| GET | `/api/prima-nota-salari/dipendenti-lista` | — | accounting.prima_nota_salari |
 | GET | `/api/prima-nota-salari/export-excel` | — | accounting.prima_nota_salari |
-| POST | `/api/prima-nota-salari/import-bonifici` | ✓ | accounting.prima_nota_salari |
-| POST | `/api/prima-nota-salari/import-paghe` | ✓ | accounting.prima_nota_salari |
+| POST | `/api/prima-nota-salari/import-bonifici` | — | accounting.prima_nota_salari |
+| POST | `/api/prima-nota-salari/import-paghe` | — | accounting.prima_nota_salari |
 | POST | `/api/prima-nota-salari/import-salari-ricostruiti` | — | accounting.prima_nota_salari |
 | POST | `/api/prima-nota-salari/import-salari-verificati` | — | accounting.prima_nota_salari |
 | DELETE | `/api/prima-nota-salari/pulisci-righe-vuote` | — | accounting.prima_nota_salari |
-| POST | `/api/prima-nota-salari/ricalcola-progressivi` | ✓ | accounting.prima_nota_salari |
-| GET | `/api/prima-nota-salari/salari` | ✓ | accounting.prima_nota_salari |
-| POST | `/api/prima-nota-salari/salari/aggiustamento` | ✓ | accounting.prima_nota_salari |
-| DELETE | `/api/prima-nota-salari/salari/reset` | ✓ | accounting.prima_nota_salari |
-| GET | `/api/prima-nota-salari/salari/riepilogo` | ✓ | accounting.prima_nota_salari |
-| DELETE | `/api/prima-nota-salari/salari/{record_id}` | ✓ | accounting.prima_nota_salari |
-| PUT | `/api/prima-nota-salari/salari/{record_id}` | ✓ | accounting.prima_nota_salari |
-| POST | `/api/prima-nota-salari/salari/{record_id}/bonifico-pdf` | ✓ | accounting.prima_nota_salari |
-| GET | `/api/prima-nota-salari/salari/{record_id}/bonifico-pdf` | ✓ | accounting.prima_nota_salari |
-| GET | `/api/prima-nota-salari/salari/{record_id}/cedolino-pdf` | ✓ | accounting.prima_nota_salari |
-| POST | `/api/prima-nota-salari/salari/{record_id}/cedolino-pdf` | ✓ | accounting.prima_nota_salari |
-| PUT | `/api/prima-nota-salari/salari/{record_id}/riconcilia` | ✓ | accounting.prima_nota_salari |
+| POST | `/api/prima-nota-salari/ricalcola-progressivi` | — | accounting.prima_nota_salari |
+| GET | `/api/prima-nota-salari/salari` | — | accounting.prima_nota_salari |
+| POST | `/api/prima-nota-salari/salari/aggiustamento` | — | accounting.prima_nota_salari |
+| DELETE | `/api/prima-nota-salari/salari/reset` | — | accounting.prima_nota_salari |
+| GET | `/api/prima-nota-salari/salari/riepilogo` | — | accounting.prima_nota_salari |
+| DELETE | `/api/prima-nota-salari/salari/{record_id}` | — | accounting.prima_nota_salari |
+| PUT | `/api/prima-nota-salari/salari/{record_id}` | — | accounting.prima_nota_salari |
+| POST | `/api/prima-nota-salari/salari/{record_id}/bonifico-pdf` | — | accounting.prima_nota_salari |
+| GET | `/api/prima-nota-salari/salari/{record_id}/bonifico-pdf` | — | accounting.prima_nota_salari |
+| GET | `/api/prima-nota-salari/salari/{record_id}/cedolino-pdf` | — | accounting.prima_nota_salari |
+| POST | `/api/prima-nota-salari/salari/{record_id}/cedolino-pdf` | — | accounting.prima_nota_salari |
+| PUT | `/api/prima-nota-salari/salari/{record_id}/riconcilia` | — | accounting.prima_nota_salari |
 | POST | `/api/prima-nota-salari/sync-hr` | — | accounting.prima_nota_salari |
 
 ## Quietanze Drive  (3)

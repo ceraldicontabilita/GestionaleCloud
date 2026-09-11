@@ -220,6 +220,59 @@ def _candidati_univoci(
     return candidati
 
 
+
+def stato_operativo_salario(
+    riga: Dict[str, Any],
+    *,
+    riconciliazione_completa_verificata: bool = False,
+) -> Dict[str, Any]:
+    """Espone netto, documentazione e prova bancaria senza confonderli.
+
+    ``importo_bonifico_documentato`` (prospetto/PDF) dimostra una disposizione
+    o un documento, non l'addebito. ``importo_bonifico`` conta come riscontro
+    bancario soltanto quando la riga porta almeno un ID esplicito di movimento
+    dell'estratto conto. Il vecchio campo ``saldo`` non viene usato qui perché
+    nei dati storici ha avuto convenzioni di segno diverse.
+    """
+    busta = _importo_atteso(riga)
+    documentato = round(abs(float(riga.get("importo_bonifico_documentato") or 0)), 2)
+    movimento_ids = _movimento_ids_stipendio(riga)
+    riscontrato = (
+        round(abs(float(riga.get("importo_bonifico") or 0)), 2)
+        if movimento_ids else 0.0
+    )
+    residuo_bancario = round(max(0.0, busta - riscontrato), 2)
+    residuo_documentale = round(max(0.0, busta - max(documentato, riscontrato)), 2)
+    conflitto = (
+        busta <= 0
+        or riscontrato - busta > 0.009
+        or documentato - busta > 0.009
+    )
+
+    if conflitto:
+        stato = "CONFLITTO"
+    elif riconciliazione_completa_verificata:
+        stato = "RICONCILIATO"
+    elif riscontrato > 0 and residuo_bancario > 0.009:
+        stato = "PARZIALMENTE_RICONCILIATO"
+    elif riscontrato > 0:
+        stato = "DA_VERIFICARE"
+    elif documentato > 0:
+        stato = "DOCUMENTATO_ATTESA_BANCA"
+    else:
+        stato = "DA_VERIFICARE"
+
+    return {
+        "importo_busta_verificato": busta,
+        "importo_documentato": documentato,
+        "importo_riscontrato_banca": riscontrato,
+        "residuo_bancario": residuo_bancario,
+        "residuo_documentale": residuo_documentale,
+        "movimenti_bancari_count": len(movimento_ids),
+        "stato_pagamento": stato,
+    }
+
+
 # ── Riallineamento della competenza dei bonifici gia' registrati (PR 13) ────
 
 def _chiave_dipendente(riga: Dict[str, Any]) -> Tuple[str, ...]:

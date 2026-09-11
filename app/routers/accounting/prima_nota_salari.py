@@ -238,7 +238,9 @@ async def get_prima_nota_salari(
         ): d
         for d in docs if d.get("codice_fiscale")
     }
-    from app.services.stipendi_bonifici import riconciliazione_salario_verificata
+    from app.services.stipendi_bonifici import (
+        riconciliazione_salario_verificata, stato_operativo_salario,
+    )
     for salario in salari:
         chiave = (
             salario.get("codice_fiscale"), salario.get("mese"), salario.get("anno"),
@@ -255,6 +257,9 @@ async def get_prima_nota_salari(
         stato_archiviato = salario.get("riconciliato") is True
         stato_verificato = await riconciliazione_salario_verificata(db, salario)
         salario["riconciliato"] = stato_verificato
+        salario.update(stato_operativo_salario(
+            salario, riconciliazione_completa_verificata=stato_verificato,
+        ))
         salario["riconciliazione_precedente_da_rivedere"] = (
             stato_archiviato and not stato_verificato
         )
