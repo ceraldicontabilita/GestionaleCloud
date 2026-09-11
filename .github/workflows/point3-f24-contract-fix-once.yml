@@ -1,4 +1,4 @@
-name: Point3 endpoint inventory once
+name: Point3 final inventory once
 
 on:
   push:
@@ -43,6 +43,6 @@ jobs:
             echo "Inventari invariati"
             exit 0
           fi
-          git commit -m "docs: refresh point 3 endpoint inventory"
+          git commit -m "docs: finalize point 3 inventories"
           git pull --rebase origin ai/prompt-governance-supabase
           git push origin HEAD:ai/prompt-governance-supabase
