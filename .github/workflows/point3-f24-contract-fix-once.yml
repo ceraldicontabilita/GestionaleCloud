@@ -1,0 +1,109 @@
+name: Point3 F24 contract fix once
+
+on:
+  push:
+    branches:
+      - ai/prompt-governance-supabase
+    paths:
+      - .github/workflows/point3-f24-contract-fix-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ai/prompt-governance-supabase
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Installa dipendenze backend
+        run: python -m pip install -r backend/requirements.txt
+      - name: Correggi contratto F24 e audit punto 3
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              text = path.read_text(encoding='utf-8')
+              if old not in text:
+                  raise SystemExit(f'Pattern non trovato in {path}: {old[:100]!r}')
+              path.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          smart = Path('app/routers/operazioni_module/smart.py')
+          replace_once(
+              smart,
+              '''    Conferma manuale di uno o più F24 pendenti con metodo di pagamento.\n\n    Sostituisce la vecchia chiamata a /api/riconciliazione-intelligente/\n    conferma-multipla, che si aspettava un payload di fatture e falliva\n    SEMPRE con 400 sui F24 inviati da RiconciliazioneUnificata.jsx.\n    Scrive sulla stessa collection letta da cerca_f24_per_associazione,\n    così l'F24 confermato sparisce dalla lista dei pendenti.\n''',
+              '''    Registra una dichiarazione manuale di pagamento F24.\n\n    Una scelta manuale del metodo bancario non è prova di addebito: l'F24\n    resta pendente e in attesa di verifica finché non esiste un movimento\n    bancario reale collegato. L'endpoint mantiene il nome storico per\n    compatibilità con il frontend.\n''',
+          )
+          replace_once(
+              smart,
+              '''            {"$set": {\n                "riconciliato": True,\n                "status": "pagato",\n                "pagato_manualmente": True,\n                "metodo_pagamento": op.get("metodo_pagamento") or "banca",\n                "tipo_riconciliazione": "manuale",\n                "data_riconciliazione": now,\n                "updated_at": now,\n            }}\n''',
+              '''            {"$set": {\n                "riconciliato": False,\n                "status": "da_pagare",\n                "stato_pagamento": "DA_VERIFICARE_BANCA",\n                "pagato": False,\n                "pagato_manualmente": False,\n                "pagamento_dichiarato_manualmente": True,\n                "pagamento_verificato_banca": False,\n                "metodo_pagamento": op.get("metodo_pagamento") or "banca",\n                "tipo_riconciliazione": "manuale_da_verificare_banca",\n                "data_dichiarazione_pagamento": now,\n                "updated_at": now,\n            }}\n''',
+          )
+          replace_once(
+              smart,
+              '''        "confermati": confermati,\n        "errori": errori,\n''',
+              '''        "confermati": confermati,\n        "registrati_in_attesa_banca": confermati,\n        "stato": "attesa_verifica_bancaria",\n        "errori": errori,\n''',
+          )
+
+          front = Path('frontend/src/pages/RiconciliazioneUnificata.jsx')
+          replace_once(
+              front,
+              '''          const importo = f.importo_totale || f.importo || 0;\n          const scadenzaStr = formatDateIT(f.data_scadenza);\n\n          return (\n''',
+              '''          const importo = f.importo_totale || f.importo || 0;\n          const scadenzaStr = formatDateIT(f.data_scadenza);\n          const pdfUrl = f.pdf_url || (f.id\n            ? `/api/f24-riconciliazione/commercialista/${encodeURIComponent(f.id)}/pdf`\n            : null);\n\n          return (\n''',
+          )
+          replace_once(
+              front,
+              '''                        if (f.pdf_url) {\n                          setPdfViewer({ title: `📄 F24 ${f.descrizione || f.numero || ''}`, src: f.pdf_url });\n                        } else if (f.file_path) {\n                          setPdfViewer({\n                            title: `📄 F24 ${f.descrizione || f.numero || ''}`,\n                            src: `/api/download/${encodeURIComponent(f.file_path)}`,\n                          });\n                        } else {\n''',
+              '''                        if (pdfUrl) {\n                          setPdfViewer({\n                            title: `📄 F24 ${f.descrizione || f.numero || ''}`,\n                            ...(pdfUrl.startsWith('/api/') ? { fetchUrl: pdfUrl } : { src: pdfUrl }),\n                          });\n                        } else {\n''',
+          )
+          replace_once(front, "background: f.pdf_url || f.file_path ? '#0f2744' : '#94a3b8',", "background: pdfUrl ? '#0f2744' : '#94a3b8',")
+          replace_once(
+              front,
+              '''                      title={\n                        f.pdf_url || f.file_path ? 'Visualizza PDF F24' : 'PDF non disponibile'\n                      }\n''',
+              '''                      title={pdfUrl ? 'Visualizza PDF F24' : 'PDF non disponibile'}\n''',
+          )
+          replace_once(
+              front,
+              '''          src={pdfViewer.src}\n          documentType="f24"\n''',
+              '''          src={pdfViewer.src}\n          fetchUrl={pdfViewer.fetchUrl}\n          documentType="f24"\n''',
+          )
+          replace_once(front, '🏦 Pagamento Banca', '🏦 Attesa verifica banca')
+          replace_once(front, 'toast.success(`Confermati ${selezionati.size} F24`);', 'toast.success(`Registrati ${selezionati.size} F24 in attesa di verifica bancaria`);')
+          replace_once(front, "toast.success('F24 confermato');", "toast.success('F24 registrato in attesa di verifica bancaria');")
+          replace_once(front, 'title="Conferma pagamento F24 tramite Banca"', 'title="Registra la dichiarazione; il pagamento resta in attesa della prova bancaria"')
+          replace_once(front, '🏦 Paga con Banca', '🏦 Attesa banca')
+
+          audit = Path('scripts/audit_frontend_backend_contract.py')
+          text = audit.read_text(encoding='utf-8')
+          old = '''    hard_errors = [*page_errors, *nav_errors]\n    warnings = [*page_warnings, *nav_warnings]\n'''
+          new = '''    hard_errors = [*page_errors, *nav_errors]\n    hard_errors.extend(f"riferimento frontend senza endpoint compatibile: `{item}`" for item in unmatched)\n    warnings = [*page_warnings, *nav_warnings]\n'''
+          if old not in text:
+              raise SystemExit('Blocco hard_errors audit non trovato')
+          text = text.replace(old, new, 1)
+          old = '''    lines.extend([\n        "",\n        "## Esito punto 3",\n        "",\n        "L'inventario strutturale è completo: pagine, navigazione e contratto HTTP non mostrano",\n        "orfani strutturali. Il finding `/api/download/*` è un collegamento legacy rotto verificato",\n        "e va corretto nel flusso F24/documenti; i `NotImplementedError` residui sono guardie adapter",\n        "oppure metodi non collegati a route/UI correnti, non funzioni simulate raggiungibili.",\n        "",\n    ])\n'''
+          new = '''    lines.extend([\n        "",\n        "## Esito punto 3",\n        "",\n        "L'inventario strutturale è completo: pagine, navigazione e contratto HTTP non mostrano",\n        "orfani strutturali né riferimenti frontend senza endpoint compatibile. I `NotImplementedError`",\n        "residui sono guardie adapter oppure metodi non collegati a route/UI correnti.",\n        "La registrazione manuale F24 resta in attesa di prova bancaria e non simula una riconciliazione.",\n        "",\n    ])\n'''
+          if old not in text:
+              raise SystemExit('Blocco esito audit non trovato')
+          audit.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          test = Path('tests/test_point3_f24_contract.py')
+          test.write_text('''from __future__ import annotations\n\nimport asyncio\nfrom pathlib import Path\n\nfrom app.routers.operazioni_module import smart\nfrom app.routers.operazioni_module.common import ConfermaBatchRequest\n\nROOT = Path(__file__).resolve().parents[1]\n\n\nclass _Result:\n    matched_count = 1\n\n\nclass _Collection:\n    def __init__(self):\n        self.calls = []\n\n    async def update_one(self, query, update):\n        self.calls.append((query, update))\n        return _Result()\n\n\nclass _Db:\n    def __init__(self):\n        self.collection = _Collection()\n\n    def __getitem__(self, name):\n        assert name == "f24_unificato"\n        return self.collection\n\n\ndef test_dichiarazione_f24_banca_non_diventa_pagamento_verificato(monkeypatch):\n    db = _Db()\n    monkeypatch.setattr(smart.Database, "get_db", staticmethod(lambda: db))\n    request = ConfermaBatchRequest(operazioni=[{\n        "operazione_id": "f24-1",\n        "metodo_pagamento": "banca",\n        "tipo": "f24",\n    }])\n\n    response = asyncio.run(smart.conferma_f24_batch(request))\n    fields = db.collection.calls[0][1]["$set"]\n\n    assert response["stato"] == "attesa_verifica_bancaria"\n    assert fields["riconciliato"] is False\n    assert fields["status"] == "da_pagare"\n    assert fields["stato_pagamento"] == "DA_VERIFICARE_BANCA"\n    assert fields["pagato"] is False\n    assert fields["pagato_manualmente"] is False\n    assert fields["pagamento_dichiarato_manualmente"] is True\n    assert fields["pagamento_verificato_banca"] is False\n    assert fields["tipo_riconciliazione"] == "manuale_da_verificare_banca"\n    assert "data_riconciliazione" not in fields\n\n\ndef test_f24_viewer_usa_endpoint_reale_e_non_download_generico():\n    source = (ROOT / "frontend/src/pages/RiconciliazioneUnificata.jsx").read_text(encoding="utf-8")\n    assert "/api/download/" not in source\n    assert "/api/f24-riconciliazione/commercialista/${encodeURIComponent(f.id)}/pdf" in source\n    assert "fetchUrl={pdfViewer.fetchUrl}" in source\n    assert "Paga con Banca" not in source\n    assert "Attesa banca" in source\n''', encoding='utf-8')
+          PY
+      - name: Test mirati punto 3
+        run: |
+          python -m pytest -q tests/test_point3_f24_contract.py tests/test_frontend_api_refs_dynamic.py tests/test_frontend_api_contract.py
+          python scripts/audit_frontend_backend_contract.py
+      - name: Commit fix punto 3
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/routers/operazioni_module/smart.py frontend/src/pages/RiconciliazioneUnificata.jsx scripts/audit_frontend_backend_contract.py tests/test_point3_f24_contract.py memoria/AUDIT_FRONTEND_BACKEND_CONTRACT.md
+          git commit -m "fix: preserve bank evidence boundary for F24"
+          git pull --rebase origin ai/prompt-governance-supabase
+          git push origin HEAD:ai/prompt-governance-supabase
