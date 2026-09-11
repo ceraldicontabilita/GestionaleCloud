@@ -194,6 +194,7 @@ def build_report() -> tuple[str, list[str]]:
     unmatched, prefix_only, aliases, fe_refs, backend_routes = api_contract_audit()
     not_impl = not_implemented_candidates()
     hard_errors = [*page_errors, *nav_errors]
+    hard_errors.extend(f"riferimento frontend senza endpoint compatibile: `{item}`" for item in unmatched)
     warnings = [*page_warnings, *nav_warnings]
 
     lines = [
@@ -248,9 +249,9 @@ def build_report() -> tuple[str, list[str]]:
         "## Esito punto 3",
         "",
         "L'inventario strutturale è completo: pagine, navigazione e contratto HTTP non mostrano",
-        "orfani strutturali. Il finding `/api/download/*` è un collegamento legacy rotto verificato",
-        "e va corretto nel flusso F24/documenti; i `NotImplementedError` residui sono guardie adapter",
-        "oppure metodi non collegati a route/UI correnti, non funzioni simulate raggiungibili.",
+        "orfani strutturali né riferimenti frontend senza endpoint compatibile. I `NotImplementedError`",
+        "residui sono guardie adapter oppure metodi non collegati a route/UI correnti.",
+        "La registrazione manuale F24 resta in attesa di prova bancaria e non simula una riconciliazione.",
         "",
     ])
     return "\n".join(lines), hard_errors

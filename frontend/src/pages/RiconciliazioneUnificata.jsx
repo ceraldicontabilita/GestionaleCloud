@@ -2250,7 +2250,7 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
         }));
 
       await api.post('/api/operazioni-da-confermare/smart/conferma-f24', { operazioni });
-      toast.success(`Confermati ${selezionati.size} F24`);
+      toast.success(`Registrati ${selezionati.size} F24 in attesa di verifica bancaria`);
       setSelezionati(new Set());
       // Ricarica dati senza reload pagina
       onRefresh?.();
@@ -2274,7 +2274,7 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
           },
         ],
       });
-      toast.success('F24 confermato');
+      toast.success('F24 registrato in attesa di verifica bancaria');
       onRefresh?.();
     } catch (e) {
       toast.error('Conferma F24 non riuscita', {
@@ -2344,7 +2344,7 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
                   color: '#991b1b',
                 }}
               >
-                🏦 Pagamento Banca
+                🏦 Attesa verifica banca
               </span>
 
               <button
@@ -2374,6 +2374,9 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
         {f24Validi.map((f, idx) => {
           const importo = f.importo_totale || f.importo || 0;
           const scadenzaStr = formatDateIT(f.data_scadenza);
+          const pdfUrl = f.pdf_url || (f.id
+            ? `/api/f24-riconciliazione/commercialista/${encodeURIComponent(f.id)}/pdf`
+            : null);
 
           return (
             <div
@@ -2448,18 +2451,16 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
                         cursor: 'pointer',
                         fontSize: 12,
                       }}
-                      title="Conferma pagamento F24 tramite Banca"
+                      title="Registra la dichiarazione; il pagamento resta in attesa della prova bancaria"
                     >
-                      🏦 Paga con Banca
+                      🏦 Attesa banca
                     </button>
                     <button
                       onClick={async () => {
-                        if (f.pdf_url) {
-                          setPdfViewer({ title: `📄 F24 ${f.descrizione || f.numero || ''}`, src: f.pdf_url });
-                        } else if (f.file_path) {
+                        if (pdfUrl) {
                           setPdfViewer({
                             title: `📄 F24 ${f.descrizione || f.numero || ''}`,
-                            src: `/api/download/${encodeURIComponent(f.file_path)}`,
+                            ...(pdfUrl.startsWith('/api/') ? { fetchUrl: pdfUrl } : { src: pdfUrl }),
                           });
                         } else {
                           await confirm({
@@ -2473,16 +2474,14 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
                       style={{
                         padding: '4px 10px',
                         minHeight: 40,
-                        background: f.pdf_url || f.file_path ? '#0f2744' : '#94a3b8',
+                        background: pdfUrl ? '#0f2744' : '#94a3b8',
                         color: 'white',
                         border: 'none',
                         borderRadius: 6,
                         cursor: 'pointer',
                         fontSize: 12,
                       }}
-                      title={
-                        f.pdf_url || f.file_path ? 'Visualizza PDF F24' : 'PDF non disponibile'
-                      }
+                      title={pdfUrl ? 'Visualizza PDF F24' : 'PDF non disponibile'}
                     >
                       👁️ Vedi PDF
                     </button>
@@ -2498,6 +2497,7 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
         <DocumentViewerModal
           title={pdfViewer.title}
           src={pdfViewer.src}
+          fetchUrl={pdfViewer.fetchUrl}
           documentType="f24"
           onClose={() => setPdfViewer(null)}
         />

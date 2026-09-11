@@ -11,7 +11,7 @@
 - Riferimenti API frontend distinti: **446**
 - Path API backend distinti: **1070**
 - Errori strutturali verificabili: **0**
-- Riferimenti frontend realmente senza match statico: **1**
+- Riferimenti frontend realmente senza match statico: **0**
 - Alias/query-template classificati: **6**
 - Riferimenti frontend riconosciuti come soli prefissi: **2**
 - `NotImplementedError` classificati: **11**
@@ -35,7 +35,7 @@
 
 ## Riferimenti frontend senza endpoint compatibile
 
-- `P1 verificato` `/api/download/*`: fallback PDF in `frontend/src/pages/RiconciliazioneUnificata.jsx`; nessuna route ERP registrata con questo path. Da sostituire con endpoint documentale/F24 reale.
+- Nessuno.
 
 ## Prefissi API frontend
 
@@ -59,6 +59,6 @@
 ## Esito punto 3
 
 L'inventario strutturale è completo: pagine, navigazione e contratto HTTP non mostrano
-orfani strutturali. Il finding `/api/download/*` è un collegamento legacy rotto verificato
-e va corretto nel flusso F24/documenti; i `NotImplementedError` residui sono guardie adapter
-oppure metodi non collegati a route/UI correnti, non funzioni simulate raggiungibili.
+orfani strutturali né riferimenti frontend senza endpoint compatibile. I `NotImplementedError`
+residui sono guardie adapter oppure metodi non collegati a route/UI correnti.
+La registrazione manuale F24 resta in attesa di prova bancaria e non simula una riconciliazione.

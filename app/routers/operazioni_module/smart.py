@@ -401,13 +401,12 @@ async def cerca_f24_per_associazione(
 
 
 async def conferma_f24_batch(request: ConfermaBatchRequest) -> Dict[str, Any]:
-    """Conferma manuale di uno o più F24 pendenti con metodo di pagamento.
+    """Registra una dichiarazione manuale di pagamento F24.
 
-    Sostituisce la vecchia chiamata a /api/riconciliazione-intelligente/
-    conferma-multipla, che si aspettava un payload di fatture e falliva
-    SEMPRE con 400 sui F24 inviati da RiconciliazioneUnificata.jsx.
-    Scrive sulla stessa collection letta da cerca_f24_per_associazione,
-    così l'F24 confermato sparisce dalla lista dei pendenti.
+    Una scelta manuale del metodo bancario non è prova di addebito: l'F24
+    resta pendente e in attesa di verifica finché non esiste un movimento
+    bancario reale collegato. L'endpoint mantiene il nome storico per
+    compatibilità con il frontend.
     """
     db = Database.get_db()
 
@@ -423,12 +422,16 @@ async def conferma_f24_batch(request: ConfermaBatchRequest) -> Dict[str, Any]:
         result = await db["f24_unificato"].update_one(
             {"id": f24_id},
             {"$set": {
-                "riconciliato": True,
-                "status": "pagato",
-                "pagato_manualmente": True,
+                "riconciliato": False,
+                "status": "da_pagare",
+                "stato_pagamento": "DA_VERIFICARE_BANCA",
+                "pagato": False,
+                "pagato_manualmente": False,
+                "pagamento_dichiarato_manualmente": True,
+                "pagamento_verificato_banca": False,
                 "metodo_pagamento": op.get("metodo_pagamento") or "banca",
-                "tipo_riconciliazione": "manuale",
-                "data_riconciliazione": now,
+                "tipo_riconciliazione": "manuale_da_verificare_banca",
+                "data_dichiarazione_pagamento": now,
                 "updated_at": now,
             }}
         )
@@ -440,5 +443,7 @@ async def conferma_f24_batch(request: ConfermaBatchRequest) -> Dict[str, Any]:
     return {
         "success": len(errori) == 0,
         "confermati": confermati,
+        "registrati_in_attesa_banca": confermati,
+        "stato": "attesa_verifica_bancaria",
         "errori": errori,
     }
