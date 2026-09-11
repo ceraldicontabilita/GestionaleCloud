@@ -1,0 +1,44 @@
+name: Point 5 final map sync
+
+on:
+  push:
+    branches:
+      - ai/prompt-governance-supabase
+    paths:
+      - .github/workflows/point5-map-sync-final.yml
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ai/prompt-governance-supabase
+          fetch-depth: 0
+
+      - name: Apply generator-proven classification change
+        run: |
+          python <<'PY'
+          from pathlib import Path
+          p = Path('memoria/ENDPOINT_CLASSIFICAZIONE_FINALE.md')
+          text = p.read_text(encoding='utf-8')
+          old = '| `POST /api/documenti/ricategorizza-documenti` | documenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |'
+          new = '| `POST /api/documenti/ricategorizza-documenti` | documenti | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |'
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected exactly one stale row, found {text.count(old)}')
+          p.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+
+      - name: Commit map and remove this temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/point5-map-sync-final.yml
+          git add memoria/ENDPOINT_CLASSIFICAZIONE_FINALE.md
+          git diff --cached --check
+          git commit -m "chore: align point 5 generated endpoint map"
+          git pull --rebase origin ai/prompt-governance-supabase
+          git push origin HEAD:ai/prompt-governance-supabase
