@@ -36,7 +36,7 @@ def test_sumup_payout_provider_non_si_dichiara_accredito_bancario():
     assert payout['evidenza_provider'] == 'sumup_payout_api'
     assert payout['accredito_banca_verificato'] is False
     assert payout['movimento_bancario_id'] is None
-    accredito = _run(db.prima_nota_banca.find_one({'source': 'accredito_payout'}))
+    accredito = _run(db.prima_nota_sumup.find_one({'source': 'accredito_payout'}))
     assert accredito['evidenza_provider'] == 'sumup_payout_api'
     assert accredito['accredito_banca_verificato'] is False
     assert accredito['movimento_bancario_id'] is None

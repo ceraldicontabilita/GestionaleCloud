@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 # Collections
 COLLECTION_PRIMA_NOTA_CASSA = "prima_nota_cassa"
 COLLECTION_PRIMA_NOTA_BANCA = "prima_nota_banca"
+COLLECTION_PRIMA_NOTA_SUMUP = "prima_nota_sumup"
 COLLECTION_PRIMA_NOTA_SALARI = "prima_nota_salari"
 
 # Tipi movimento
@@ -109,7 +110,7 @@ def esclusioni_saldo_per_collection(collection: str) -> Dict[str, Any]:
     crediti POS lordi, che appartengono ai conti transitori dei gestori e non
     alla liquidita' BPM/Mastercard finche' non avviene l'accredito.
     """
-    if collection == COLLECTION_PRIMA_NOTA_BANCA:
+    if collection in {COLLECTION_PRIMA_NOTA_BANCA, COLLECTION_PRIMA_NOTA_SUMUP}:
         return {
             "categoria": {"$nin": list(CATEGORIE_ESCLUSE)},
             "natura": {"$nin": [NATURA_CREDITO_POS, "costo"]},
@@ -251,7 +252,7 @@ async def _totali_entrate_uscite(db, collection: str,
 # sistema è parziale (es. solo uscite di vecchi backfill). Se per un anno
 # esiste un saldo iniziale manuale, SOSTITUISCE il riporto calcolato.
 COLLECTION_SALDI_INIZIALI = "prima_nota_saldi_iniziali"
-_COLLECTION_A_TIPO = {"prima_nota_cassa": "cassa", "prima_nota_banca": "banca"}
+_COLLECTION_A_TIPO = {"prima_nota_cassa": "cassa", "prima_nota_banca": "banca", "prima_nota_sumup": "sumup"}
 
 
 async def get_saldo_iniziale_manuale(db, collection: str, anno: int):
@@ -323,12 +324,12 @@ async def saldi_finanziari(db, anno: int = None) -> Dict[str, Any]:
     if anno:
         base["data"] = {"$regex": f"^{int(anno)}-"}
 
-    async def _saldo(query: Dict[str, Any]) -> float:
+    async def _saldo(query: Dict[str, Any], collection: str = COLLECTION_PRIMA_NOTA_BANCA) -> float:
         # Somma in Python invece che in aggregate: sono le righe di una
         # singola scheda di tesoreria, non l'intero registro, e cosi' il
         # calcolo non dipende da $convert (assente in registro Sheets effimero, quindi
         # altrimenti non verificabile nei test).
-        cursore = db["prima_nota_banca"].find(
+        cursore = db[collection].find(
             {**base, **query}, {"_id": 0, "tipo": 1, "importo": 1})
         righe = (await cursore.to_list(100000) if hasattr(cursore, "to_list")
                  else [r async for r in cursore])
@@ -358,7 +359,10 @@ async def saldi_finanziari(db, anno: int = None) -> Dict[str, Any]:
             "codice": codice,
             "nome": nome,
             "tipo": "conto_reale",
-            "saldo": await _saldo({**ESCLUSIONI_SALDO_REALE, **appartenenza}),
+            "saldo": await _saldo(
+                {**ESCLUSIONI_SALDO_REALE, **appartenenza},
+                COLLECTION_PRIMA_NOTA_SUMUP if codice == conti_pos.CONTO_SUMUP_MASTERCARD else COLLECTION_PRIMA_NOTA_BANCA,
+            ),
         })
 
     crediti = []
@@ -382,7 +386,10 @@ async def saldi_finanziari(db, anno: int = None) -> Dict[str, Any]:
             "nome": conti_pos.descrizione_conto(codice),
             "tipo": "credito_pos",
             "circuito": circuito,
-            "saldo": await _saldo(aperti),
+            "saldo": await _saldo(
+                aperti,
+                COLLECTION_PRIMA_NOTA_SUMUP if circuito == conti_pos.SUMUP else COLLECTION_PRIMA_NOTA_BANCA,
+            ),
         })
 
     return {

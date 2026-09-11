@@ -322,7 +322,7 @@ async def registra_rettifica_payout(
     scritture = {}
     for ruolo, movimento in (("credito", credito), ("mastercard", mastercard)):
         identificativo, _ = await _scrivi_se_assente(
-            db, "banca",
+            db, "sumup",
             {"settlement_id": settlement_id, "source": movimento["source"]},
             movimento,
         )
@@ -423,7 +423,7 @@ async def _scrittura_di_accredito(db, payout: Dict[str, Any],
         # Idempotenza per ruolo: rilanciare la sincronizzazione non raddoppia
         # ne' l'accredito ne' il costo.
         identificativo, _ = await _scrivi_se_assente(
-            db, "banca",
+            db, "sumup",
             {"settlement_id": settlement_id, "source": movimento["source"]},
             movimento,
         )
@@ -443,7 +443,7 @@ async def _chiudi_crediti(db, payout_id: str, giorni: List[str], *,
     """
     if not coperto:
         return 0
-    esito = await db["prima_nota_banca"].update_many(
+    esito = await db["prima_nota_sumup"].update_many(
         {
             "data": {"$in": giorni},
             "source": "trasferimento_pos",

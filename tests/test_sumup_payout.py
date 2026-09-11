@@ -102,7 +102,7 @@ def test_l_accredito_e_una_scrittura_composta_che_quadra():
     assert esito["scrittura"]["quadra"] is True
 
     per_source = {r["source"]: r for r in
-                  _run(db.prima_nota_banca.find({}).to_list(50))}
+                  _run(db.prima_nota_sumup.find({}).to_list(50))}
 
     apertura = per_source["trasferimento_pos"]
     chiusura = per_source["chiusura_credito_pos"]
@@ -128,7 +128,7 @@ def test_il_payout_non_tocca_bpm_ma_la_mastercard():
     _scenario_utente(db)
     _run(sumup_payout.registra_payout(db, _payout(98.0)))
 
-    accredito = _run(db.prima_nota_banca.find_one({"source": "accredito_payout"}))
+    accredito = _run(db.prima_nota_sumup.find_one({"source": "accredito_payout"}))
     assert accredito["conto_contabile"] == "19.01.05"      # Mastercard SumUp
     assert accredito["conto_nome"] == "Mastercard SumUp"
     assert accredito["conto_contabile"] != "19.01.01"      # mai BPM
@@ -139,7 +139,7 @@ def test_la_commissione_va_sul_sottoconto_del_circuito():
     _scenario_utente(db)
     _run(sumup_payout.registra_payout(db, _payout(98.0)))
 
-    costo = _run(db.prima_nota_banca.find_one({"source": "commissioni_sumup"}))
+    costo = _run(db.prima_nota_sumup.find_one({"source": "commissioni_sumup"}))
     assert costo["conto_contabile"] == "75.01.07.02"
     assert costo["conto_nome"] == "Costi commissioni SumUp"
     assert costo["categoria"] == "Commissioni e spese bancarie"
@@ -155,7 +155,7 @@ def test_il_credito_smette_di_essere_in_transito():
     _scenario_utente(db)
     _run(sumup_payout.registra_payout(db, _payout(98.0)))
 
-    credito = _run(db.prima_nota_banca.find_one({"source": "trasferimento_pos"}))
+    credito = _run(db.prima_nota_sumup.find_one({"source": "trasferimento_pos"}))
     assert credito["in_transito"] is False
     assert credito["riconciliato"] is True
     assert credito["payout_id"] == PAYOUT
@@ -167,7 +167,7 @@ def test_rielaborare_lo_stesso_payout_non_duplica_la_commissione():
     _run(sumup_payout.registra_payout(db, _payout(98.0)))
     _run(sumup_payout.registra_payout(db, _payout(98.0)))
 
-    costi = _run(db.prima_nota_banca.find(
+    costi = _run(db.prima_nota_sumup.find(
         {"source": "commissioni_sumup"}).to_list(50))
     assert len(costi) == 1
     assert len(_run(db.sumup_payouts.find({}).to_list(50))) == 1
@@ -181,8 +181,8 @@ def test_un_payout_senza_transazioni_non_aggancia_nulla():
 
     assert esito["stato_riconciliazione"] == "payout_senza_transazioni"
     assert esito["crediti_chiusi"] == 0
-    assert _run(db.prima_nota_banca.find_one({"source": "commissioni_sumup"})) is None
-    credito = _run(db.prima_nota_banca.find_one({"source": "trasferimento_pos"}))
+    assert _run(db.prima_nota_sumup.find_one({"source": "commissioni_sumup"})) is None
+    credito = _run(db.prima_nota_sumup.find_one({"source": "trasferimento_pos"}))
     assert credito["in_transito"] is True
 
 
@@ -192,8 +192,8 @@ def test_una_trattenuta_anomala_non_diventa_costo_in_automatico():
     esito = _run(sumup_payout.registra_payout(db, _payout(40.0)))
 
     assert esito["stato_riconciliazione"] == "commissioni_da_verificare"
-    assert _run(db.prima_nota_banca.find_one({"source": "commissioni_sumup"})) is None
-    credito = _run(db.prima_nota_banca.find_one({"source": "trasferimento_pos"}))
+    assert _run(db.prima_nota_sumup.find_one({"source": "commissioni_sumup"})) is None
+    credito = _run(db.prima_nota_sumup.find_one({"source": "trasferimento_pos"}))
     assert credito["in_transito"] is True
 
 
@@ -207,9 +207,9 @@ def test_un_payout_failed_non_scrive_e_non_chiude_il_credito():
     assert esito["stato_riconciliazione"] == "payout_fallito"
     assert esito["scrittura"] == {}
     assert esito["crediti_chiusi"] == 0
-    credito = _run(db.prima_nota_banca.find_one({"source": "trasferimento_pos"}))
+    credito = _run(db.prima_nota_sumup.find_one({"source": "trasferimento_pos"}))
     assert credito["in_transito"] is True
-    assert _run(db.prima_nota_banca.find_one({"source": "accredito_payout"})) is None
+    assert _run(db.prima_nota_sumup.find_one({"source": "accredito_payout"})) is None
 
 
 def test_rettifica_failed_resta_prova_senza_scritture():
@@ -229,7 +229,7 @@ def test_rettifica_failed_resta_prova_senza_scritture():
 
     assert esito["stato_riconciliazione"] == "rettifica_da_verificare"
     assert esito["scritture"] == {}
-    assert _run(db.prima_nota_banca.find_one({"settlement_id": "sumup:RET-FAILED"})) is None
+    assert _run(db.prima_nota_sumup.find_one({"settlement_id": "sumup:RET-FAILED"})) is None
 
 
 def test_il_payout_di_piu_giorni_chiude_tutti_i_crediti_coperti():
@@ -245,7 +245,7 @@ def test_il_payout_di_piu_giorni_chiude_tutti_i_crediti_coperti():
     assert esito["crediti_chiusi"] == 2
     assert esito["commissione"] == 2.0
 
-    crediti = _run(db.prima_nota_banca.find(
+    crediti = _run(db.prima_nota_sumup.find(
         {"source": "trasferimento_pos"}).to_list(50))
     assert all(c["in_transito"] is False for c in crediti)
 

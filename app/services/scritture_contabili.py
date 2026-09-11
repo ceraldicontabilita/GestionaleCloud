@@ -75,7 +75,7 @@ from app.services.expectation_policy import (
 
 logger = logging.getLogger(__name__)
 
-REGISTRI = {"cassa": "prima_nota_cassa", "banca": "prima_nota_banca"}
+REGISTRI = {"cassa": "prima_nota_cassa", "banca": "prima_nota_banca", "sumup": "prima_nota_sumup"}
 
 # Marca le righe che sono CREDITI verso un gestore di incassi e non denaro
 # gia' sul conto. Serve a tenerle fuori dai saldi bancari reali senza doverle
@@ -660,6 +660,8 @@ async def registra_chiusura_pos_reale(
     user_name = actor.get("name") or user_email or user_id
 
     gestore = normalizza_gestore_pos(gestore)
+    registro_finanziario = "sumup" if gestore == conti_pos.SUMUP else "banca"
+    collection_finanziaria = REGISTRI[registro_finanziario]
     # Solo le righe di QUESTO terminale: senza il filtro, registrare SumUp
     # sovrascriverebbe la chiusura Nexi dello stesso giorno.
     filtro_chiusura = {"data": data, **filtro_gestore_pos(gestore)}
@@ -795,7 +797,7 @@ async def registra_chiusura_pos_reale(
         **filtro_attivo,
     }
     cassa_mov = await db["prima_nota_cassa"].find_one(cassa_query)
-    banca_mov = await db["prima_nota_banca"].find_one(banca_query)
+    banca_mov = await db[collection_finanziaria].find_one(banca_query)
     trasferimento_id = (
         (cassa_mov or {}).get("trasferimento_id")
         or (banca_mov or {}).get("trasferimento_id")
@@ -818,7 +820,7 @@ async def registra_chiusura_pos_reale(
                           "updated_at": now}},
             )
         if banca_mov:
-            await db["prima_nota_banca"].update_one(
+            await db[collection_finanziaria].update_one(
                 {"id": banca_id},
                 {"$set": {"status": "deleted", "deleted": True,
                           "deleted_reason": motivo, "deleted_at": now,
@@ -923,7 +925,7 @@ async def registra_chiusura_pos_reale(
         if corr_id:
             banca_fields["corrispettivo_id"] = corr_id
         if banca_mov:
-            await db["prima_nota_banca"].update_one(
+            await db[collection_finanziaria].update_one(
                 {"id": banca_id}, {"$set": banca_fields}
             )
         else:
@@ -958,7 +960,7 @@ async def registra_chiusura_pos_reale(
                     chiave_idempotenza_corrispettivo(corr_id, "banca_credito", gestore)
                 )
             banca_id = await scrivi_movimento(
-                db, "banca", nuovo_movimento_banca
+                db, registro_finanziario, nuovo_movimento_banca
             )
 
     # Anche i metadati dell'entrata Cassa devono riflettere il terminale
@@ -1017,7 +1019,8 @@ async def registra_chiusura_pos_reale(
         "importo_totale_giorno": totale_giorno,
         "chiusura_id": chiusura_id,
         "prima_nota_cassa_id": cassa_id,
-        "prima_nota_banca_id": banca_id,
+        "prima_nota_banca_id": banca_id if registro_finanziario == "banca" else None,
+        "prima_nota_sumup_id": banca_id if registro_finanziario == "sumup" else None,
         "trasferimento_id": trasferimento_id if totale_giorno > 0 else None,
     }
 
@@ -1144,6 +1147,8 @@ async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Opti
     for circuito, importo in sorted(reale["per_circuito"].items()):
         if importo <= 0:
             continue
+        registro_finanziario = "sumup" if circuito == conti_pos.SUMUP else "banca"
+        collection_finanziaria = REGISTRI[registro_finanziario]
         # Ogni circuito ha il SUO trasferimento: Nexi e SumUp non ne
         # condividono mai uno, perche' li accreditano conti diversi.
         gestore_filtro = filtro_gestore_pos(circuito)
@@ -1157,7 +1162,7 @@ async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Opti
             "$and": [gestore_filtro], **filtro_attivo,
         }
         cassa_esistente = await db["prima_nota_cassa"].find_one(cassa_query)
-        banca_esistente = await db["prima_nota_banca"].find_one(banca_query)
+        banca_esistente = await db[collection_finanziaria].find_one(banca_query)
         trasferimento_id = (
             (cassa_esistente or {}).get("trasferimento_id")
             or (banca_esistente or {}).get("trasferimento_id")
@@ -1185,7 +1190,7 @@ async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Opti
         # Contropartita speculare: stessa operazione, secondo registro. Non e'
         # denaro in banca ma un credito verso il gestore, che l'accredito
         # reale chiudera'.
-        banca_pos_id, _ = await _scrivi_se_assente(db, "banca", banca_query, {
+        banca_pos_id, _ = await _scrivi_se_assente(db, registro_finanziario, banca_query, {
             **comune, "tipo": "entrata",
             **_campo_chiave(chiave_idempotenza_corrispettivo(
                 corr_doc.get("id"), "banca_credito", circuito)),
@@ -1205,9 +1210,15 @@ async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Opti
                 source_fact_id=f"pos-close:{circuito}:{data}",
             ),
         })
-        scritti[circuito] = {"cassa": cassa_pos_id, "banca": banca_pos_id}
+        scritti[circuito] = {
+            "cassa": cassa_pos_id,
+            "sumup" if registro_finanziario == "sumup" else "banca": banca_pos_id,
+        }
         esito["prima_nota_cassa_uscita_pos_id"] = cassa_pos_id
-        esito["prima_nota_banca_id"] = banca_pos_id
+        if registro_finanziario == "sumup":
+            esito["prima_nota_sumup_id"] = banca_pos_id
+        else:
+            esito["prima_nota_banca_id"] = banca_pos_id
     esito["trasferimenti_pos"] = scritti
     return esito
 

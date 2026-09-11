@@ -81,7 +81,7 @@ def test_lista_banca_mostra_attese_pos_ma_le_esclude_dal_saldo(monkeypatch):
 def test_scheda_sumup_espone_solo_payout_ricevuti_aggregati_per_giorno(monkeypatch):
     db = MemorySheetsClient()["conto_sumup_separato_test"]
     monkeypatch.setattr(banca.Database, "get_db", staticmethod(lambda: db))
-    _run(db["prima_nota_banca"].insert_many([
+    _run(db["prima_nota_sumup"].insert_many([
         {
             "id": "p1", "data": "2026-08-10", "tipo": "entrata", "importo": 800.0,
             "source": "accredito_payout", "conto_contabile": "19.01.05", "payout_id": "PID1",

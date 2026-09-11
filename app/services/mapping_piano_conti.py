@@ -189,7 +189,7 @@ CONTO_PROVENTI_DIVERSI = "53.01"
 CONTO_CREDITI_VARI = "15.05"
 CONTO_SPESE_GENERALI = "63.05.51"
 
-_TESORERIA_PER_REGISTRO = {"banca": CONTO_BANCA, "cassa": CONTO_CASSA}
+_TESORERIA_PER_REGISTRO = {"banca": CONTO_BANCA, "cassa": CONTO_CASSA, "sumup": conti_pos.CONTO_SUMUP_MASTERCARD}
 
 # Categoria di Prima Nota → contropartita CEE. Le chiavi sono normalizzate
 # (minuscolo, spazi singoli). Un valore callable riceve (registro, tipo,

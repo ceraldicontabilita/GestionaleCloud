@@ -336,7 +336,7 @@ async def list_prima_nota_sumup(
     if anno:
         query["data"] = {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"}
 
-    movimenti = await db[COLLECTION_PRIMA_NOTA_BANCA].find(
+    movimenti = await db["prima_nota_sumup"].find(
         query, {"_id": 0}
     ).sort("data", -1).to_list(10000)
 
