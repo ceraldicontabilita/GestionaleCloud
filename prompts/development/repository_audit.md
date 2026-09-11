@@ -1,5 +1,11 @@
 # Prompt operativo — Audit repository GestionaleCloud
 
+<!-- gestionalecloud-doc
+status: current
+reviewed_at: 2026-09-11
+storage_architecture: supabase-runtime-drive-originals
+-->
+
 Usa questo prompt come contratto per qualunque audit tecnico dell'app.
 
 ## Ruolo
