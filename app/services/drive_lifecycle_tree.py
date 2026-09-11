@@ -45,6 +45,18 @@ def _state_for_name(name: str) -> str | None:
     return None
 
 
+def _looks_like_legacy_lifecycle_container(name: str) -> bool:
+    """Blocca vecchie cartelle sweep che incorporano il nome di uno stato.
+
+    Esempi reali/storici come ``mutui__90 - DA ELABORARE`` o
+    ``Cedolini Paga__99 - ELABORATE`` non sono inbox canoniche e non devono
+    nemmeno essere attraversati: potrebbero contenere copie archiviate che
+    verrebbero rimesse in lavorazione.
+    """
+    normalized = _normalized_lifecycle_name(name)
+    return any(expected in normalized for expected in _STATE_ALIASES.values())
+
+
 def _list_child_folders(service, parent_id: str) -> List[Dict[str, Any]]:
     """Elenca solo le sottocartelle dirette, con paginazione Drive."""
     q = (
@@ -80,8 +92,8 @@ def discover_lifecycle_folders(
 
     Ogni risultato contiene ``folder_id``, ``state``, ``lifecycle_parent_id``,
     ``relative_path`` e ``depth``. La ricerca non attraversa mai una cartella
-    lifecycle: un file gia' in ``Elaborate`` o ``Errori`` non puo' rientrare
-    accidentalmente in una scansione dell'inbox.
+    lifecycle, né una vecchia cartella sweep che ne incorpora il nome: un file
+    già elaborato o archiviato non può rientrare accidentalmente nel flusso.
     """
     wanted = set(states)
     unknown = wanted.difference(_STATE_ALIASES)
@@ -118,6 +130,12 @@ def discover_lifecycle_folders(
                         "relative_path": relative_path,
                         "depth": depth,
                     })
+                continue
+
+            # Una cartella legacy/sweep che CONTIENE il nome di uno stato non
+            # è uno stato canonico, ma non va attraversata perché può contenere
+            # copie storiche con sottocartelle omonime.
+            if _looks_like_legacy_lifecycle_container(name):
                 continue
 
             if depth < max_depth:
@@ -162,7 +180,7 @@ def resolve_inboxes_or_legacy(
 ) -> List[Dict[str, Any]]:
     """Usa la struttura reale; crea la vecchia inbox root solo se non esiste.
 
-    Se sotto la radice sono gia' presenti ``anno/DA ELABORARE`` o
+    Se sotto la radice sono già presenti ``anno/DA ELABORARE`` o
     ``dipendente/DA ELABORARE``, NON viene creata una nuova inbox parallela al
     primo livello.
     """
