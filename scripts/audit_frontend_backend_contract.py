@@ -8,7 +8,12 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from fastapi import FastAPI
 
@@ -16,7 +21,6 @@ from app.router_registry import register_all_routers
 from scripts.frontend_api_refs import frontend_api_refs
 from tests.route_table import elenco_route
 
-ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "memoria" / "AUDIT_FRONTEND_BACKEND_CONTRACT.md"
 
 _PARAM_TEMPLATE = re.compile(r"\$\{[^}]+\}")
