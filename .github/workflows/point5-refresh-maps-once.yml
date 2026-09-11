@@ -1,0 +1,51 @@
+name: Point 5 refresh generated maps once
+
+on:
+  push:
+    branches:
+      - ai/prompt-governance-supabase
+    paths:
+      - .github/workflows/point5-refresh-maps-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ai/prompt-governance-supabase
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            render_workflows/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          pip install -r backend/requirements.txt
+          pip install -r render_workflows/requirements.txt
+
+      - name: Regenerate canonical maps
+        run: |
+          python scripts/genera_mappa.py
+          python scripts/genera_classificazione_endpoint.py
+
+      - name: Commit generated maps
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add memoria/MAPPA_ROUTER.md memoria/MAPPA_ENDPOINT_COMPLETA.md memoria/ENDPOINT_CLASSIFICAZIONE_FINALE.md
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo "Generated maps already current"
+            exit 0
+          fi
+          git commit -m "chore: refresh document endpoint maps"
+          git push origin HEAD:ai/prompt-governance-supabase
