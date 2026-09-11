@@ -144,7 +144,7 @@
       "category": "configurazione_tecnica",
       "policy": "modificare_solo_se_richiesto_dal_codice",
       "valid_json": true,
-      "sha256": "3e716e6e33d44ddad7e274d07180cce5e7a08f0ee5162a075c75f68e43900690"
+      "sha256": "79f0b0e99fc9d65fa2d8d6b416245bf11a99e4f761c614e21d5e3a9ed54cc852"
     },
     {
       "path": "frontend_hr/package.json",
