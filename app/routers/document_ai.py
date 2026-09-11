@@ -20,6 +20,21 @@ from app.database import get_database
 router = APIRouter()
 
 
+def _attach_ai_evidence_status(result):
+    """Normalize AI output without treating model success as verified evidence."""
+    payload = dict(result or {})
+    structured = payload.get("structured_data") if isinstance(payload.get("structured_data"), dict) else {}
+    if payload.get("error") or (structured and structured.get("success") is False and structured.get("error")):
+        status = "conflitto"
+    elif structured.get("success") and structured.get("data"):
+        status = "probabile"
+    else:
+        status = "non_verificato"
+    payload["evidence_status"] = status
+    payload["review_required"] = status != "verificato"
+    return payload
+
+
 @router.post("/extract")
 async def extract_from_file(
     file: UploadFile = File(...),
@@ -52,6 +67,7 @@ async def extract_from_file(
             document_type=document_type,
             model=model
         )
+        result = _attach_ai_evidence_status(result)
 
         # Salva nel DB se richiesto
         if save_to_db and result.get("structured_data", {}).get("success"):
@@ -85,19 +101,20 @@ async def extract_from_file(
                 "model_used": model,
                 "file_base64": base64.b64encode(content).decode('utf-8'),
                 "has_pdf": True,
+                "evidence_status": result["evidence_status"],
+                "review_required": True,
                 "processato": True,
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
             await db["documenti_classificati"].insert_one(doc)
             result["saved_to_db"] = True
 
-            # Salva ANCHE nelle collection del gestionale
-            from app.services.document_data_saver import save_extracted_data_to_gestionale
-            source_info = {"filename": file.filename, "upload_type": "manual"}
-            gestionale_result = await save_extracted_data_to_gestionale(
-                db, result.get("structured_data", {}), source_info
-            )
-            result["gestionale_save"] = gestionale_result
+            # L'estrazione AI resta una proposta revisionabile. Non crea F24,
+            # movimenti bancari, cedolini, fatture o altri fatti operativi.
+            result["gestionale_save"] = {
+                "status": "blocked_pending_review",
+                "message": "Estrazione AI salvata per revisione; nessuna scrittura operativa automatica.",
+            }
 
         return result
 
@@ -124,6 +141,7 @@ async def extract_from_base64(
             document_type=document_type,
             model=model
         )
+        result = _attach_ai_evidence_status(result)
 
         if save_to_db and result.get("structured_data", {}).get("success"):
             db = await get_database()
@@ -138,6 +156,8 @@ async def extract_from_base64(
                 "text_preview": result.get("text", "")[:1000],
                 "ocr_used": result.get("ocr_used"),
                 "model_used": model,
+                "evidence_status": result["evidence_status"],
+                "review_required": True,
                 "processato": True,
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
@@ -170,7 +190,9 @@ async def extract_text_only(file: UploadFile = File(...)):
             "text": text,
             "text_length": len(text),
             "detected_type": doc_type,
-            "ocr_used": "OCR" in text
+            "ocr_used": "OCR" in text,
+            "evidence_status": "non_verificato" if doc_type in (None, "generico") else "probabile",
+            "review_required": True,
         }
 
     except Exception as e:
@@ -225,6 +247,8 @@ async def get_extracted_documents(
         "text_preview": 1,
         "ocr_used": 1,
         "model_used": 1,
+        "evidence_status": 1,
+        "review_required": 1,
         "created_at": 1
     }
 
@@ -327,6 +351,7 @@ async def process_classified_email(
         document_type=doc_type,
         model=model
     )
+    result = _attach_ai_evidence_status(result)
 
     # Aggiorna il documento classificato con i dati estratti
     if result.get("structured_data", {}).get("success"):
@@ -337,6 +362,8 @@ async def process_classified_email(
                     "extracted_data": result["structured_data"]["data"],
                     "extraction_model": model,
                     "extracted_at": datetime.now(timezone.utc).isoformat(),
+                    "evidence_status": result["evidence_status"],
+                    "review_required": True,
                     "processed": True
                 }
             }
@@ -375,10 +402,11 @@ async def process_all_classified_documents(
         db=db,
         process_all=process_all,
         document_types=types_list,
-        save_to_gestionale=save_to_gestionale,
+        save_to_gestionale=False,
         model=model
     )
-
+    result["operational_write_blocked"] = True
+    result["requested_save_to_gestionale"] = bool(save_to_gestionale)
     return result
 
 
@@ -443,8 +471,9 @@ async def reprocess_and_save_all(
         db=db,
         process_all=True,  # Riprocessa tutto
         document_types=None,  # Tutti i tipi
-        save_to_gestionale=True,
+        save_to_gestionale=False,
         model=model
     )
-
+    result["operational_write_blocked"] = True
+    result["message"] = "Riprocessamento AI completato come proposta; scritture operative bloccate in attesa di revisione."
     return result

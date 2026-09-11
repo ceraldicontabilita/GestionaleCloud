@@ -21,6 +21,7 @@ function mockPreviewThenImport(tipo, importData, parsed = {}) {
           confirmation_token: `token-${tipo}`,
           blocking_errors: [],
           duplicate: false,
+          evidence_status: 'probabile',
           file: { sha256: 'a'.repeat(64) },
           parsed,
           validation: parsed.validazione || {},
@@ -40,6 +41,21 @@ describe('Import documenti - corrispettivo duplicato', () => {
     expect(screen.getByTestId('drive-import-controls')).toBeInTheDocument();
     expect(screen.getByText('Controllo import fatture Drive')).toBeInTheDocument();
     expect(screen.getByText('Controllo anno import Drive')).toBeInTheDocument();
+  });
+
+  it('mostra lo stato di evidenza separato dal risultato operativo', async () => {
+    mockPreviewThenImport('fattura', {
+      success: true, tipo_rilevato: 'fattura', imported: 1, message: 'Fattura importata',
+    });
+    render(<ImportDocumenti />);
+
+    const xml = new File(['<FatturaElettronica />'], 'fattura.xml', { type: 'application/xml' });
+    fireEvent.change(screen.getByTestId('file-input'), { target: { files: [xml] } });
+    fireEvent.click(await screen.findByTestId('upload-btn'));
+    expect((await screen.findAllByText('Evidenza: Probabile')).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByTestId('upload-btn'));
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2));
+    expect((await screen.findAllByText('Evidenza: Probabile')).length).toBeGreaterThan(0);
   });
 
   it('non presenta come importato un duplicato restituito con HTTP 200', async () => {

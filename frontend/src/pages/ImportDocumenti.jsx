@@ -83,6 +83,15 @@ export function descriviProvaFiscale(data = {}) {
   return parts.join(' • ');
 }
 
+const EVIDENCE_STATUS_META = {
+  verificato: { label: 'Verificato', variant: 'success' },
+  probabile: { label: 'Probabile', variant: 'info' },
+  non_verificato: { label: 'Non verificato', variant: 'warning' },
+  conflitto: { label: 'Conflitto', variant: 'danger' },
+};
+
+const evidenceMeta = status => EVIDENCE_STATUS_META[status] || EVIDENCE_STATUS_META.non_verificato;
+
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 export async function attendiImportDocumentale(jobId, maxWaitMs = 15 * 60 * 1000) {
@@ -290,6 +299,7 @@ export default function ImportDocumenti() {
           status: esito.status,
           message: esito.message,
           workflow: importData?.workflow,
+          evidenceStatus: fileInfo.preview?.evidence_status || 'non_verificato',
           evidenceSummary: descriviProvaFiscale(importData),
           details: importData,
         });
@@ -801,6 +811,11 @@ export default function ImportDocumenti() {
                   </div>
                   {/* Badge tipo rilevato (solo dopo upload) */}
                   {f.tipo && <Badge variant={getTipoVariant(f.tipo)}>{getTipoLabel(f.tipo)}</Badge>}
+                  {f.preview?.evidence_status && (
+                    <Badge variant={evidenceMeta(f.preview.evidence_status).variant}>
+                      Evidenza: {evidenceMeta(f.preview.evidence_status).label}
+                    </Badge>
+                  )}
                   {f.status === 'pending' && (
                     <RowActionButton variant="danger" onClick={() => removeFile(idx)} title="Rimuovi">
                       ×
@@ -918,6 +933,11 @@ export default function ImportDocumenti() {
                         <Badge variant={getTipoVariant(r.tipo)}>{getTipoLabel(r.tipo)}</Badge>
                       )}
                       {r.workflow && <Badge variant="info">{r.workflow}</Badge>}
+                      {r.evidenceStatus && (
+                        <Badge variant={evidenceMeta(r.evidenceStatus).variant}>
+                          Evidenza: {evidenceMeta(r.evidenceStatus).label}
+                        </Badge>
+                      )}
                     </div>
                     <div
                       style={{

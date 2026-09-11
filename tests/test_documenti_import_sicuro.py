@@ -216,3 +216,24 @@ def test_upload_zip_usa_batch_writes_del_runtime(monkeypatch):
 
     assert result["success"] is True
     assert state == {"active": False, "processed": True}
+
+
+
+def test_ricategorizzazione_legacy_da_filename_non_muta_documenti(monkeypatch):
+    async def scenario():
+        db = MemorySheetsClient()["documenti-legacy-filename-disabled"]
+        await db.documents_inbox.insert_one({
+            "id": "legacy-1", "filename": "F24_IMPORTANTE.pdf",
+            "category": "altro", "status": "nuovo", "processed": False,
+        })
+        monkeypatch.setattr(documenti.Database, "get_db", staticmethod(lambda: db))
+
+        result = await documenti.ricategorizza_documenti()
+        persisted = await db.documents_inbox.find_one({"id": "legacy-1"})
+
+        assert result["deprecated"] is True
+        assert result["mutated"] == 0
+        assert result["evidence_status"] == "non_verificato"
+        assert persisted["category"] == "altro"
+
+    asyncio.run(scenario())

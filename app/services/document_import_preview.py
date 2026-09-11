@@ -20,6 +20,37 @@ from app.config import settings
 PARSER_VERSION = "document-import-preview-v1"
 TOKEN_TTL_SECONDS = 30 * 60
 
+EVIDENCE_STATUSES = {"verificato", "probabile", "non_verificato", "conflitto"}
+
+
+def _preview_evidence_state(
+    document_type: str, parsed: dict[str, Any], validation: dict[str, Any],
+    blocking_errors: list[str],
+) -> tuple[str, float, str]:
+    """Return evidence status without promoting recognition into certainty."""
+    if blocking_errors:
+        return "conflitto", 0.0, "parser_o_validazione_in_conflitto"
+    if document_type == "auto":
+        return "non_verificato", 0.0, "tipo_documento_non_dimostrato"
+
+    parsed = parsed if isinstance(parsed, dict) else {}
+    explicit = str(parsed.get("evidence_status") or "").strip().lower()
+    if explicit in EVIDENCE_STATUSES:
+        confidence = parsed.get("confidence")
+        if not isinstance(confidence, (int, float)):
+            confidence = 1.0 if explicit == "verificato" else 0.85
+        return explicit, max(0.0, min(float(confidence), 1.0)), "stato_probatorio_esplicito_parser"
+
+    if parsed.get("requires_review") is True:
+        return "non_verificato", 0.4, "parser_richiede_revisione"
+
+    if document_type in {"f24", "quietanza_f24"} and validation.get("saldo_quadrato") is True:
+        return "verificato", 1.0, "f24_quadrato_da_parser_specialistico"
+
+    if parsed:
+        return "probabile", 0.85, "parser_specialistico_senza_validazione_probatoria_completa"
+    return "probabile", 0.65, "tipo_riconosciuto_da_confermare"
+
 
 def create_confirmation_token(sha256: str, document_type: str) -> str:
     issued_at = int(time.time())
@@ -183,16 +214,21 @@ async def build_import_preview(
     if document_type in {"f24", "quietanza_f24"} and validation.get("saldo_quadrato") is not True:
         blocking_errors.append("F24 non quadrato o non validato")
     duplicates = await _duplicate_sources(db, sha256, md5)
+    evidence_status, confidence, classification_reason = _preview_evidence_state(
+        document_type, parsed, validation, blocking_errors
+    )
     return {
         "success": not blocking_errors,
         "preview_only": True,
         "filename": filename,
         "document_type": document_type,
         "tipo_rilevato": document_type,
+        "evidence_status": evidence_status,
         "classification": {
             "document_type": document_type,
-            "confidence": 1.0 if document_type != "auto" else 0.0,
-            "reason": "classificatore_deterministico_upload_auto",
+            "evidence_status": evidence_status,
+            "confidence": confidence,
+            "reason": classification_reason,
             "classifier_version": PARSER_VERSION,
         },
         "file": {

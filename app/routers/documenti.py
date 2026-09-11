@@ -424,6 +424,40 @@ async def telegram_test() -> Dict[str, Any]:
 
 
 _ARCHIVE_STATUSES = {"nuovo", "processato", "errore"}
+_EVIDENCE_STATUSES = {"verificato", "probabile", "non_verificato", "conflitto"}
+
+
+def _archive_evidence_status(item: Dict[str, Any]) -> str:
+    """Derive display status conservatively; legacy records are never auto-verified."""
+    parsed = item.get("parsed_metadata") if isinstance(item.get("parsed_metadata"), dict) else {}
+    classification = item.get("classification") if isinstance(item.get("classification"), dict) else {}
+    for candidate in (
+        item.get("evidence_status"),
+        classification.get("evidence_status"),
+        parsed.get("evidence_status"),
+    ):
+        normalized = str(candidate or "").strip().lower()
+        if normalized in _EVIDENCE_STATUSES:
+            return normalized
+
+    if item.get("status") == "errore" or item.get("processing_error") or item.get("error"):
+        return "conflitto"
+    if parsed.get("requires_review") is True or classification.get("requires_review") is True:
+        return "non_verificato"
+    if (
+        parsed
+        and parsed.get("requires_review") is False
+        and (parsed.get("parser_version") or item.get("parser_version"))
+    ):
+        return "probabile"
+    if (
+        classification
+        and classification.get("requires_review") is False
+        and isinstance(classification.get("confidence"), (int, float))
+        and float(classification["confidence"]) >= 0.8
+    ):
+        return "probabile"
+    return "non_verificato"
 _ARCHIVE_PAYLOAD_FIELDS = {
     "pdf_data": 0,
     "file_base64": 0,
@@ -512,6 +546,7 @@ def _archive_document_metadata(doc: Dict[str, Any]) -> Dict[str, Any]:
     )
     item["archive_date"] = item["document_date_display"]
     item["size_bytes"] = item.get("size_bytes") or item.get("file_size") or 0
+    item["evidence_status"] = _archive_evidence_status(item)
 
     anomalies: List[str] = []
     if not item.get("id"):
@@ -2054,74 +2089,25 @@ async def sync_estratti_bnl() -> Dict[str, Any]:
     }
 
 
-@router.post("/ricategorizza-documenti")
+@router.post("/ricategorizza-documenti", deprecated=True)
 @handle_errors
 async def ricategorizza_documenti() -> Dict[str, Any]:
+    """Legacy filename-only reclassification is intentionally non-mutating.
+
+    The filename is not evidence. Classification must pass through the canonical
+    preview flow, which inspects content and binds SHA-256 + detected type to the
+    human confirmation token.
     """
-    Ricategorizza automaticamente i documenti nella categoria 'altro'
-    che possono essere riconosciuti come altri tipi.
-    """
-    db = Database.get_db()
-
-    # Trova documenti in "altro" non processati
-    docs = await db["documents_inbox"].find(
-        {"category": "altro", "processed": {"$ne": True}},
-        {"_id": 0}
-    ).to_list(500)
-
-    if not docs:
-        return {
-            "success": True,
-            "message": "Nessun documento da ricategorizzare",
-            "ricategorizzati": 0
-        }
-
-    ricategorizzati = []
-
-    for doc in docs:
-        filename = doc.get("filename", "").lower()
-        new_category = None
-
-        # Riconosci BNL
-        if "bnl" in filename:
-            new_category = "estratto_conto"
-        # Riconosci estratti conto
-        elif "estratto" in filename or "conto" in filename:
-            new_category = "estratto_conto"
-        # Riconosci buste paga
-        elif "paga" in filename or "cedolino" in filename or "lul" in filename:
-            new_category = "busta_paga"
-        # Riconosci F24
-        elif "f24" in filename:
-            new_category = "f24"
-        # Riconosci PayPal
-        elif "paypal" in filename:
-            new_category = "estratto_conto"
-
-        if new_category:
-            await db["documents_inbox"].update_one(
-                {"id": doc["id"]},
-                {"$set": {
-                    "category": new_category,
-                    "category_label": {
-                        "estratto_conto": "Estratti Conto",
-                        "busta_paga": "Buste Paga",
-                        "f24": "F24",
-                        "fattura": "Fatture"
-                    }.get(new_category, new_category.replace("_", " ").title()),
-                    "ricategorizzato_at": datetime.now(timezone.utc).isoformat()
-                }}
-            )
-            ricategorizzati.append({
-                "file": doc.get("filename"),
-                "da": "altro",
-                "a": new_category
-            })
-
     return {
-        "success": True,
-        "ricategorizzati": len(ricategorizzati),
-        "dettagli": ricategorizzati
+        "success": False,
+        "deprecated": True,
+        "mutated": 0,
+        "ricategorizzati": 0,
+        "evidence_status": "non_verificato",
+        "message": (
+            "Ricategorizzazione automatica dal solo nome file disattivata. "
+            "Usare /api/documenti/upload-auto/preview e confermare il risultato."
+        ),
     }
 
 
@@ -2944,6 +2930,11 @@ async def _archive_non_payment_document(
         "source": "upload_automatico", "downloaded_at": now,
         "source_context": source_context or {},
         "parsed_metadata": parsed_metadata,
+        "evidence_status": (
+            "probabile"
+            if parsed_metadata and parsed_metadata.get("requires_review") is False
+            else "non_verificato"
+        ),
         "obligation_status": parsed_metadata.get("obligation_status") or "APERTO",
         "data_scadenza": parsed_metadata.get("data_scadenza"),
         "relation_keys": parsed_metadata.get("relation_keys") or {},
@@ -3171,6 +3162,7 @@ async def upload_documento_automatico(
             "category_label": "Da classificare",
             "status": "nuovo",
             "processed": False,
+            "evidence_status": "non_verificato",
             "file_hash": file_hash,
             "file_size": len(content),
             "downloaded_at": datetime.now(timezone.utc).isoformat(),
