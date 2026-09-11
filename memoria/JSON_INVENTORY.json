@@ -151,7 +151,7 @@
       "category": "configurazione_tecnica",
       "policy": "modificare_solo_se_richiesto_dal_codice",
       "valid_json": true,
-      "sha256": "c25661410abbb49454c92c6b2a7e60cb07a7e878432723fc501527c966db1abf"
+      "sha256": "72b3ebd60ad680b9de39dfd615dfa94a36bbbc6f124ab2f817046903eff6ee58"
     },
     {
       "path": "frontend_lotti/components.json",
