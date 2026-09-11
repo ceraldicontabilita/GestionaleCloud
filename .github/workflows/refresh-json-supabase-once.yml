@@ -44,6 +44,10 @@ jobs:
           }
           for old, new in replacements.items():
               text = text.replace(old, new)
+          text = text.replace(
+              '        "backend_predefinito": "supabase",\n        "compatibilita":',
+              '        "backend_predefinito": "supabase",\n        "originali": "drive",\n        "compatibilita":',
+          )
           path.write_text(text, encoding='utf-8')
 
           kit = Path('scripts/genera_kit_ricostruzione.py')
