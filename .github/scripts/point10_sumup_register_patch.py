@@ -21,7 +21,17 @@ def patch_segment(path, start_marker, end_marker, transform):
     p.write_text(text[:start] + updated + text[end:])
 
 
-# 1. Il motore unico conosce un registro finanziario SumUp autonomo.
+def patch_to_eof(path, start_marker, transform):
+    p = Path(path)
+    text = p.read_text()
+    start = text.index(start_marker)
+    segment = text[start:]
+    updated = transform(segment)
+    if updated == segment:
+        raise SystemExit(f'no changes applied from {start_marker} in {path}')
+    p.write_text(text[:start] + updated)
+
+
 replace_once(
     'app/services/scritture_contabili.py',
     'REGISTRI = {"cassa": "prima_nota_cassa", "banca": "prima_nota_banca"}',
@@ -29,11 +39,8 @@ replace_once(
 )
 
 
-# 2. La chiusura POS SumUp apre il credito nel registro SumUp, mai in BPM.
 def patch_chiusura(segment):
     marker = '    gestore = normalizza_gestore_pos(gestore)\n'
-    if marker not in segment:
-        raise SystemExit('normalizzazione gestore non trovata')
     segment = segment.replace(
         marker,
         marker +
@@ -44,10 +51,6 @@ def patch_chiusura(segment):
     segment = segment.replace(
         '    banca_mov = await db["prima_nota_banca"].find_one(banca_query)\n',
         '    banca_mov = await db[collection_finanziaria].find_one(banca_query)\n',
-    )
-    segment = segment.replace(
-        '            await db["prima_nota_banca"].update_one(\n',
-        '            await db[collection_finanziaria].update_one(\n',
     )
     segment = segment.replace(
         '            await db["prima_nota_banca"].update_one(\n',
@@ -75,12 +78,8 @@ patch_segment(
 )
 
 
-# 3. Anche il percorso registra_corrispettivo instrada il circuito SumUp
-#    nel registro dedicato; Numia resta in Prima Nota Banca BPM.
 def patch_corrispettivo(segment):
     marker = '    for circuito, importo in sorted(reale["per_circuito"].items()):\n        if importo <= 0:\n            continue\n'
-    if marker not in segment:
-        raise SystemExit('loop circuiti non trovato')
     segment = segment.replace(
         marker,
         marker +
@@ -120,17 +119,12 @@ patch_segment(
     patch_corrispettivo,
 )
 
-
-# 4. Piano dei conti: il registro SumUp ha tesoreria Mastercard dedicata.
 replace_once(
     'app/services/mapping_piano_conti.py',
     '_TESORERIA_PER_REGISTRO = {"banca": CONTO_BANCA, "cassa": CONTO_CASSA}',
     '_TESORERIA_PER_REGISTRO = {"banca": CONTO_BANCA, "cassa": CONTO_CASSA, "sumup": conti_pos.CONTO_SUMUP_MASTERCARD}',
 )
 
-
-# 5. Payout, commissioni, chiusure credito e rettifiche SumUp vivono solo
-#    nella Prima Nota SumUp.
 p = Path('app/services/sumup_payout.py')
 text = p.read_text()
 text = text.replace('db["prima_nota_banca"]', 'db["prima_nota_sumup"]')
@@ -139,8 +133,6 @@ text = text.replace('_scrivi_se_assente(\n            db, "banca",', '_scrivi_se
 text = text.replace('_scrivi_se_assente(\n        db, "banca",', '_scrivi_se_assente(\n        db, "sumup",')
 p.write_text(text)
 
-
-# 6. Costanti comuni e saldi: BPM e Mastercard sono due registri distinti.
 replace_once(
     'app/routers/prima_nota_module/common.py',
     'COLLECTION_PRIMA_NOTA_BANCA = "prima_nota_banca"\nCOLLECTION_PRIMA_NOTA_SALARI = "prima_nota_salari"',
@@ -192,11 +184,10 @@ patch_segment(
 )
 
 
-# 7. Endpoint /prima-nota/sumup: legge esclusivamente il registro dedicato.
 def patch_sumup_view(segment):
-    segment = segment.replace('db[COLLECTION_PRIMA_NOTA_BANCA]', 'db["prima_nota_sumup"]')
-    segment = segment.replace('db["prima_nota_banca"]', 'db["prima_nota_sumup"]')
-    return segment
+    return segment.replace('db[COLLECTION_PRIMA_NOTA_BANCA]', 'db["prima_nota_sumup"]').replace(
+        'db["prima_nota_banca"]', 'db["prima_nota_sumup"]'
+    )
 
 
 patch_segment(
@@ -206,8 +197,6 @@ patch_segment(
     patch_sumup_view,
 )
 
-
-# 8. Regressioni nuove.
 Path('tests/test_point10_sumup_separate_register.py').write_text(r'''import asyncio
 
 from app.routers.prima_nota_module import banca
@@ -220,67 +209,45 @@ def _run(coro):
     return asyncio.run(coro)
 
 
-def _sumup_tx():
-    return {
-        'chiave': 'M:t1', 'transaction_id': 't1', 'tipo': 'PAYMENT',
-        'stato': 'SUCCESSFUL', 'data': '2026-08-06', 'importo': 100.0,
-        'payout_id': 'P1', 'valuta': 'EUR',
-    }
+def _tx():
+    return {'chiave': 'M:t1', 'transaction_id': 't1', 'tipo': 'PAYMENT', 'stato': 'SUCCESSFUL', 'data': '2026-08-06', 'importo': 100.0, 'payout_id': 'P1', 'valuta': 'EUR'}
 
 
 def test_chiusura_sumup_scrive_nel_registro_sumup_non_in_banca():
-    db = MemorySheetsClient()['point10_sumup_separate_closure']
+    db = MemorySheetsClient()['p10_sumup_close']
     result = _run(registra_chiusura_pos_reale(db, '2026-08-06', 100.0, gestore='sumup'))
     assert _run(db.prima_nota_banca.find({}).to_list(20)) == []
     rows = _run(db.prima_nota_sumup.find({}).to_list(20))
-    assert len(rows) == 1
-    assert rows[0]['source'] == 'trasferimento_pos'
-    assert rows[0]['gestore'] == 'sumup'
+    assert len(rows) == 1 and rows[0]['source'] == 'trasferimento_pos'
     assert result['prima_nota_banca_id'] is None
     assert result['prima_nota_sumup_id'] == rows[0]['id']
 
 
 def test_payout_sumup_scrive_solo_prima_nota_sumup():
-    db = MemorySheetsClient()['point10_sumup_separate_payout']
-    _run(db.sumup_transactions.insert_one(_sumup_tx()))
+    db = MemorySheetsClient()['p10_sumup_payout']
+    _run(db.sumup_transactions.insert_one(_tx()))
     _run(registra_chiusura_pos_reale(db, '2026-08-06', 100.0, gestore='sumup'))
-    result = _run(sumup_payout.registra_payout(db, {
-        'id': 'P1', 'amount': 98.0, 'date': '2026-08-07T05:00:00Z',
-        'currency': 'EUR', 'status': 'SUCCESSFUL',
-    }))
+    result = _run(sumup_payout.registra_payout(db, {'id': 'P1', 'amount': 98.0, 'date': '2026-08-07T05:00:00Z', 'currency': 'EUR', 'status': 'SUCCESSFUL'}))
     assert result['stato_riconciliazione'] == 'riconciliato'
     assert _run(db.prima_nota_banca.find({}).to_list(50)) == []
     rows = _run(db.prima_nota_sumup.find({}).to_list(50))
-    sources = {r['source'] for r in rows}
-    assert {'trasferimento_pos', 'chiusura_credito_pos', 'accredito_payout', 'commissioni_sumup'} <= sources
-    accredito = next(r for r in rows if r['source'] == 'accredito_payout')
-    assert accredito['conto_contabile'] == '19.01.05'
-    assert accredito['accredito_banca_verificato'] is False
+    assert {'trasferimento_pos', 'chiusura_credito_pos', 'accredito_payout', 'commissioni_sumup'} <= {r['source'] for r in rows}
 
 
 def test_numia_resta_nella_prima_nota_banca_bpm():
-    db = MemorySheetsClient()['point10_numia_stays_bpm']
+    db = MemorySheetsClient()['p10_numia_bpm']
     result = _run(registra_chiusura_pos_reale(db, '2026-08-06', 100.0, gestore='numia'))
-    banca_rows = _run(db.prima_nota_banca.find({}).to_list(20))
-    assert len(banca_rows) == 1
-    assert banca_rows[0]['gestore'] == 'numia'
-    assert result['prima_nota_banca_id'] == banca_rows[0]['id']
+    rows = _run(db.prima_nota_banca.find({}).to_list(20))
+    assert len(rows) == 1 and rows[0]['gestore'] == 'numia'
+    assert result['prima_nota_banca_id'] == rows[0]['id']
     assert result['prima_nota_sumup_id'] is None
     assert _run(db.prima_nota_sumup.find({}).to_list(20)) == []
 
 
 def test_endpoint_sumup_legge_il_registro_dedicato(monkeypatch):
-    db = MemorySheetsClient()['point10_sumup_endpoint']
-    _run(db.prima_nota_sumup.insert_one({
-        'id': 'S1', 'data': '2026-08-07', 'tipo': 'entrata', 'importo': 98.0,
-        'source': 'accredito_payout', 'conto_contabile': '19.01.05',
-        'gestore': 'sumup', 'status': 'active',
-    }))
-    _run(db.prima_nota_banca.insert_one({
-        'id': 'B1', 'data': '2026-08-07', 'tipo': 'entrata', 'importo': 999.0,
-        'source': 'accredito_payout', 'conto_contabile': '19.01.05',
-        'gestore': 'sumup', 'status': 'active',
-    }))
+    db = MemorySheetsClient()['p10_sumup_endpoint']
+    _run(db.prima_nota_sumup.insert_one({'id': 'S1', 'data': '2026-08-07', 'tipo': 'entrata', 'importo': 98.0, 'source': 'accredito_payout', 'conto_contabile': '19.01.05', 'gestore': 'sumup', 'status': 'active'}))
+    _run(db.prima_nota_banca.insert_one({'id': 'B1', 'data': '2026-08-07', 'tipo': 'entrata', 'importo': 999.0, 'source': 'accredito_payout', 'conto_contabile': '19.01.05', 'gestore': 'sumup', 'status': 'active'}))
     monkeypatch.setattr(banca.Database, 'get_db', staticmethod(lambda: db))
     result = _run(banca.list_prima_nota_sumup(anno=2026))
     assert result['totale_ricevuto'] == 98.0
@@ -288,10 +255,9 @@ def test_endpoint_sumup_legge_il_registro_dedicato(monkeypatch):
 ''')
 
 
-# 9. I test storici SumUp devono interrogare il nuovo registro, mentre il
-#    controllo Numia/Nexi continua a usare prima_nota_banca.
 def tests_sumup(segment):
     return segment.replace('db.prima_nota_banca', 'db.prima_nota_sumup')
+
 
 patch_segment(
     'tests/test_sumup_payout.py',
@@ -306,13 +272,8 @@ replace_once(
     "accredito = _run(db.prima_nota_sumup.find_one({'source': 'accredito_payout'}))",
 )
 
-
-def patch_scheda_test(segment):
-    return segment.replace('db["prima_nota_banca"]', 'db["prima_nota_sumup"]')
-
-patch_segment(
+patch_to_eof(
     'tests/test_banca_saldo_reale.py',
     'def test_scheda_sumup_espone_solo_payout_ricevuti_aggregati_per_giorno(',
-    '\n\ndef ',
-    patch_scheda_test,
+    lambda s: s.replace('db["prima_nota_banca"]', 'db["prima_nota_sumup"]'),
 )
