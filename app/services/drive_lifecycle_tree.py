@@ -1,6 +1,6 @@
-"""Discovery sicura delle inbox Drive annidate.
+"""Discovery sicura delle cartelle lifecycle Drive annidate.
 
-Le aree operative reali del Drive non hanno tutte una inbox al primo livello:
+Le aree operative reali del Drive non hanno tutte gli stati al primo livello:
 - fatture/corrispettivi: <radice>/<anno>/DA ELABORARE
 - cedolini: <radice>/<dipendente>/DA ELABORARE
 
@@ -10,9 +10,14 @@ cartelle storiche e non crea/sposta/cancella nulla.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, Iterable, List, Tuple
 
 _FOLDER_MIME = "application/vnd.google-apps.folder"
+_STATE_ALIASES = {
+    "inbox": "da elaborare",
+    "elaborate": "elaborate",
+    "error": "errori",
+}
 
 
 def _normalized_lifecycle_name(name: str) -> str:
@@ -21,15 +26,23 @@ def _normalized_lifecycle_name(name: str) -> str:
 
 
 def is_inbox_name(name: str) -> bool:
-    return _normalized_lifecycle_name(name) == "da elaborare"
+    return _normalized_lifecycle_name(name) == _STATE_ALIASES["inbox"]
 
 
 def is_elaborate_name(name: str) -> bool:
-    return _normalized_lifecycle_name(name) == "elaborate"
+    return _normalized_lifecycle_name(name) == _STATE_ALIASES["elaborate"]
 
 
 def is_error_name(name: str) -> bool:
-    return _normalized_lifecycle_name(name) == "errori"
+    return _normalized_lifecycle_name(name) == _STATE_ALIASES["error"]
+
+
+def _state_for_name(name: str) -> str | None:
+    normalized = _normalized_lifecycle_name(name)
+    for state, expected in _STATE_ALIASES.items():
+        if normalized == expected:
+            return state
+    return None
 
 
 def _list_child_folders(service, parent_id: str) -> List[Dict[str, Any]]:
@@ -56,24 +69,24 @@ def _list_child_folders(service, parent_id: str) -> List[Dict[str, Any]]:
     return out
 
 
-def discover_inboxes(
+def discover_lifecycle_folders(
     service,
     root_id: str,
     *,
     max_depth: int = 2,
+    states: Iterable[str] = ("inbox", "elaborate", "error"),
 ) -> List[Dict[str, Any]]:
-    """Trova inbox ``DA ELABORARE`` entro ``max_depth`` livelli dalla radice.
+    """Trova stati lifecycle entro ``max_depth`` livelli dalla radice.
 
-    Ritorna record con:
-      - inbox_id: cartella DA ELABORARE
-      - lifecycle_parent_id: padre dove creare/trovare Elaborate ed Errori
-      - relative_path: percorso leggibile dalla radice
-      - depth: profondita' dell'inbox (1 = figlia diretta della radice)
-
-    La ricerca scende solo in cartelle normali. Se incontra una cartella di
-    lifecycle (Da elaborare/Elaborate/Errori) non la attraversa ulteriormente,
-    cosi' i documenti gia' elaborati non possono rientrare nel flusso.
+    Ogni risultato contiene ``folder_id``, ``state``, ``lifecycle_parent_id``,
+    ``relative_path`` e ``depth``. La ricerca non attraversa mai una cartella
+    lifecycle: un file gia' in ``Elaborate`` o ``Errori`` non puo' rientrare
+    accidentalmente in una scansione dell'inbox.
     """
+    wanted = set(states)
+    unknown = wanted.difference(_STATE_ALIASES)
+    if unknown:
+        raise ValueError(f"Stati lifecycle non riconosciuti: {sorted(unknown)}")
     if not root_id or max_depth < 1:
         return []
 
@@ -94,27 +107,50 @@ def discover_inboxes(
                 continue
             depth = parent_depth + 1
             relative_path = f"{prefix}/{name}" if prefix else name
+            state = _state_for_name(name)
 
-            if is_inbox_name(name):
-                found.append({
-                    "inbox_id": folder_id,
-                    "lifecycle_parent_id": parent_id,
-                    "relative_path": relative_path,
-                    "depth": depth,
-                })
+            if state:
+                if state in wanted:
+                    found.append({
+                        "folder_id": folder_id,
+                        "state": state,
+                        "lifecycle_parent_id": parent_id,
+                        "relative_path": relative_path,
+                        "depth": depth,
+                    })
                 continue
 
-            # Non attraversare stati terminali e non superare il limite.
-            if is_elaborate_name(name) or is_error_name(name):
-                continue
             if depth < max_depth:
                 queue.append((folder_id, relative_path, depth))
 
-    # Ordine stabile per log/test e dedup difensiva per ID Drive.
     unique: Dict[str, Dict[str, Any]] = {}
     for item in found:
-        unique.setdefault(item["inbox_id"], item)
-    return sorted(unique.values(), key=lambda item: (item["relative_path"].casefold(), item["inbox_id"]))
+        unique.setdefault(item["folder_id"], item)
+    return sorted(
+        unique.values(),
+        key=lambda item: (item["relative_path"].casefold(), item["folder_id"]),
+    )
+
+
+def discover_inboxes(
+    service,
+    root_id: str,
+    *,
+    max_depth: int = 2,
+) -> List[Dict[str, Any]]:
+    """Trova le sole cartelle ``DA ELABORARE`` e usa nomi compatibili."""
+    found = discover_lifecycle_folders(
+        service, root_id, max_depth=max_depth, states=("inbox",),
+    )
+    return [
+        {
+            "inbox_id": item["folder_id"],
+            "lifecycle_parent_id": item["lifecycle_parent_id"],
+            "relative_path": item["relative_path"],
+            "depth": item["depth"],
+        }
+        for item in found
+    ]
 
 
 def resolve_inboxes_or_legacy(
@@ -126,9 +162,9 @@ def resolve_inboxes_or_legacy(
 ) -> List[Dict[str, Any]]:
     """Usa la struttura reale; crea la vecchia inbox root solo se non esiste.
 
-    Questo e' il punto chiave anti-regressione: se sotto la radice sono gia'
-    presenti ``anno/DA ELABORARE`` o ``dipendente/DA ELABORARE``, NON viene
-    creata una nuova inbox parallela al primo livello.
+    Se sotto la radice sono gia' presenti ``anno/DA ELABORARE`` o
+    ``dipendente/DA ELABORARE``, NON viene creata una nuova inbox parallela al
+    primo livello.
     """
     inboxes = discover_inboxes(service, root_id, max_depth=max_depth)
     if inboxes:
