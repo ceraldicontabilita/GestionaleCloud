@@ -18,11 +18,18 @@ class _ExistingService:
 
 
 def test_start_all_avvia_solo_canali_configurati(monkeypatch):
-    services = [_ExistingService(), _ExistingService(False), _ExistingService(), _ExistingService()]
+    services = [
+        _ExistingService(),
+        _ExistingService(False),
+        _ExistingService(),
+        _ExistingService(),
+        _ExistingService(),
+    ]
     monkeypatch.setattr(orchestrator, "drive_invoice_ingest", services[0])
     monkeypatch.setattr(orchestrator, "drive_cedolini_ingest", services[1])
     monkeypatch.setattr(orchestrator, "drive_corrispettivi_ingest", services[2])
-    monkeypatch.setattr(orchestrator, "drive_quietanze_ingest", services[3])
+    monkeypatch.setattr(orchestrator, "drive_f24_ingest", services[3])
+    monkeypatch.setattr(orchestrator, "drive_quietanze_ingest", services[4])
 
     estratti_done = asyncio.Event()
     documenti_done = asyncio.Event()
@@ -55,6 +62,7 @@ def test_start_all_avvia_solo_canali_configurati(monkeypatch):
 
     monkeypatch.setattr(orchestrator, "drive_estratti_conto_ingest", _Estratti)
     monkeypatch.setattr(orchestrator, "drive_documenti_ingest", _Documenti)
+
     async def exercise():
         orchestrator._tasks.clear()
         result = orchestrator.start_all(object())
@@ -68,6 +76,7 @@ def test_start_all_avvia_solo_canali_configurati(monkeypatch):
         "fatture": "started",
         "cedolini": "not_configured",
         "corrispettivi": "started",
+        "f24": "started",
         "quietanze": "started",
         "estratti_conto": "started",
         "documenti": "started",
@@ -80,6 +89,7 @@ def test_start_all_non_duplica_task_generiche_in_corso(monkeypatch):
         "drive_invoice_ingest",
         "drive_cedolini_ingest",
         "drive_corrispettivi_ingest",
+        "drive_f24_ingest",
         "drive_quietanze_ingest",
     ):
         monkeypatch.setattr(orchestrator, name, _ExistingService(False))
@@ -101,6 +111,7 @@ def test_start_all_non_duplica_task_generiche_in_corso(monkeypatch):
 
     monkeypatch.setattr(orchestrator, "drive_estratti_conto_ingest", _Estratti)
     monkeypatch.setattr(orchestrator, "drive_documenti_ingest", _Documenti)
+
     async def exercise():
         orchestrator._tasks.clear()
         first = orchestrator.start_all(object())
