@@ -815,7 +815,7 @@ def build_package(package_root: Path) -> dict[str, Any]:
             "generated_at": TODAY,
             "source_fingerprint": fingerprint,
             "counts": counts,
-            "storage_target": "google_drive_sheets",
+            "storage_target": "supabase_runtime_drive_originals",
             "canonical_pages": [row["path"] for row in page_index],
             "active_endpoints": sum(1 for row in endpoint_rows if row["state"] == "active"),
             "quarantined_endpoints": sum(1 for row in endpoint_rows if row["state"] == "quarantine"),

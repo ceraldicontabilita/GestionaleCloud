@@ -2,8 +2,8 @@
   "_meta": {
     "schema_version": 2,
     "document_type": "page_source_map",
-    "updated_at": "2026-08-20",
-    "source_revision": "40d3f109beacd897fc0d80a3a0eab5fc51612f2c",
+    "updated_at": "2026-09-11",
+    "source_revision": "3d8e5dfe457d13309fc9e113e2f7fe1c8a24ab2b",
     "generator": "scripts/refresh_json_docs.py",
     "verification": "static_source_map"
   },
@@ -33,9 +33,9 @@
     ]
   },
   "archivio_dati": {
-    "stato_corrente": "google_drive_sheets",
-    "backend_predefinito": "sheets",
-    "compatibilita": "nessun_backend_alternativo",
+    "stato_corrente": "supabase_runtime_drive_originals",
+    "backend_predefinito": "supabase",
+    "compatibilita": "sheets_transitorio_rollback",
     "fallback_automatico": "disabilitato"
   },
   "regole_di_lettura": [

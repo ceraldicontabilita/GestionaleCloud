@@ -7,8 +7,8 @@ description: "Istruzioni applicate a tutte le pagine ERP, al catalogo e alla doc
 
 <!-- gestionalecloud-doc
 status: current
-reviewed_at: 2026-08-21
-storage_architecture: drive-only
+reviewed_at: 2026-09-11
+storage_architecture: supabase-runtime-drive-originals
 -->
 
 Usa queste regole quando lavori su una pagina, su un catalogo di schermate o su documentazione a livello pagina.

@@ -7,8 +7,8 @@ description: "Use when: verificare il gateway MCP, controllare il contratto degl
 
 <!-- gestionalecloud-doc
 status: current
-reviewed_at: 2026-08-21
-storage_architecture: drive-only
+reviewed_at: 2026-09-11
+storage_architecture: supabase-runtime-drive-originals
 -->
 
 Valida il gateway MCP del GestionaleCloud come interfaccia semantica tra agenti AI e il backend ERP, senza creare un secondo ERP.

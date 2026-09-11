@@ -2,8 +2,8 @@
 
 <!-- gestionalecloud-doc
 status: current
-reviewed_at: 2026-08-21
-storage_architecture: drive-only
+reviewed_at: 2026-09-11
+storage_architecture: supabase-runtime-drive-originals
 -->
 
 Aggiornato il 20/08/2026 sul codice di `main` del repository canonico

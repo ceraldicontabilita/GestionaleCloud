@@ -2,12 +2,12 @@
 
 <!-- gestionalecloud-doc
 status: historical
-reviewed_at: 2026-08-21
+reviewed_at: 2026-09-11
 storage_architecture: drive-only
 -->
 
 > [!NOTE]
-> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura corrente usare `README.md`, `AGENTS.md` e `docs/AI_GOVERNANCE.md`.
 
 **Stato:** Superata il 03/09/2026 — il modulo nativo `/tracciabilita` è stato
 rimosso su ordine del titolare; l'app Lotti originale è montata pari pari a
