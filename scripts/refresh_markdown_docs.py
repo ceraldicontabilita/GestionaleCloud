@@ -16,6 +16,7 @@ CURRENT_STORAGE = "supabase-runtime-drive-originals"
 LEGACY_STORAGE = "drive-only"
 
 GENERATED = {
+    "memoria/AUDIT_FRONTEND_BACKEND_CONTRACT.md",
     "memoria/AUDIT_FRONTEND_DEAD_CODE.md",
     "memoria/AUDIT_STATIC_REPORT.md",
     "memoria/ENDPOINT_CLASSIFICAZIONE_FINALE.md",
