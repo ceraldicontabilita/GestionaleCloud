@@ -1,0 +1,50 @@
+name: Point 10 dedicated SumUp register
+
+on:
+  push:
+    paths:
+      - ".github/workflows/point10-sumup-separate-register.yml"
+      - ".github/scripts/point10_sumup_register_patch.py"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ai/prompt-governance-supabase
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install backend dependencies
+        run: pip install -r backend/requirements.txt
+      - name: Apply dedicated SumUp register patch
+        run: python .github/scripts/point10_sumup_register_patch.py
+      - name: Focused regression tests
+        run: |
+          python -m pytest -q \
+            tests/test_point10_sumup_separate_register.py \
+            tests/test_point10_pos_paypal_evidence_contract.py \
+            tests/test_sumup_payout.py \
+            tests/test_banca_saldo_reale.py \
+            tests/test_prima_nota_sumup_live_projection.py
+      - name: Commit dedicated SumUp register
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            app/services/scritture_contabili.py \
+            app/services/mapping_piano_conti.py \
+            app/services/sumup_payout.py \
+            app/routers/prima_nota_module/common.py \
+            app/routers/prima_nota_module/banca.py \
+            tests/test_point10_sumup_separate_register.py
+          if git diff --cached --quiet; then
+            echo "No changes"
+            exit 0
+          fi
+          git commit -m "fix: separate SumUp from BPM prima nota"
+          git push origin HEAD:ai/prompt-governance-supabase
