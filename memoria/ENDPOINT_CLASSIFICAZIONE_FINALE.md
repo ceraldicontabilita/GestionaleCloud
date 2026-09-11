@@ -18,7 +18,7 @@ Colonne: FE=frontend runtime, Sch=scheduler, Chat, Migr=migrazione/manutenzione,
 | `GET /api/cedolini/drive/quadratura-completa` | drive_cedolini | — | sì | — | — | — | tenere | in uso: scheduler |
 | `GET /api/cedolini/drive/status` | drive_cedolini | — | sì | — | — | — | tenere | in uso: scheduler |
 | `POST /api/cedolini/drive/sync` | drive_cedolini | — | sì | — | — | sì | tenere | in uso: scheduler |
-| `POST /api/dati-provvisori/riconcilia-estratto-conto` | dati_provvisori | — | sì | — | — | — | tenere | in uso: scheduler |
+| `POST /api/dati-provvisori/riconcilia-estratto-conto` | dati_provvisori | — | sì | — | — | sì | tenere | in uso: scheduler |
 
 ## Tutti gli endpoint
 | Metodo/path | Router | FE | Sch | Chat | Migr | Test | Decisione | Motivo |
@@ -31,7 +31,7 @@ Colonne: FE=frontend runtime, Sch=scheduler, Chat, Migr=migrazione/manutenzione,
 | `GET /api/cedolini/drive/quadratura-completa` | drive_cedolini | — | sì | — | — | — | tenere | in uso: scheduler |
 | `GET /api/cedolini/drive/status` | drive_cedolini | — | sì | — | — | — | tenere | in uso: scheduler |
 | `POST /api/cedolini/drive/sync` | drive_cedolini | — | sì | — | — | sì | tenere | in uso: scheduler |
-| `POST /api/dati-provvisori/riconcilia-estratto-conto` | dati_provvisori | — | sì | — | — | — | tenere | in uso: scheduler |
+| `POST /api/dati-provvisori/riconcilia-estratto-conto` | dati_provvisori | — | sì | — | — | sì | tenere | in uso: scheduler |
 | `GET /api/admin/bank-supplier-rules` | admin | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/admin/bank-supplier-rules` | admin | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/admin/bank-supplier-rules/reprocess/{year}` | admin | sì | — | — | — | — | tenere | in uso: FE |
@@ -705,7 +705,7 @@ Colonne: FE=frontend runtime, Sch=scheduler, Chat, Migr=migrazione/manutenzione,
 | `GET /api/fornitori-learning/stats` | fornitori_learning | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/fornitori-learning/suggerisci-keywords/{fornitore_nome}` | fornitori_learning | sì | — | — | — | sì | tenere | in uso: FE |
 | `DELETE /api/fornitori-learning/{fornitore_id}` | fornitori_learning | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/genera-proposte` | dati_provvisori | — | sì | — | — | — | tenere | in uso: scheduler |
+| `POST /api/genera-proposte` | dati_provvisori | — | sì | — | — | sì | tenere | in uso: scheduler |
 | `POST /api/gestione-riservata/login` | gestione_riservata | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/gestione-riservata/movimenti` | gestione_riservata | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/gestione-riservata/movimenti` | gestione_riservata | sì | — | — | — | — | tenere | in uso: FE |
