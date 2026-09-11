@@ -7,6 +7,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 INVENTORY = ROOT / "docs" / "MARKDOWN_INVENTORY.md"
+CURRENT_STORAGE = "supabase-runtime-drive-originals"
+LEGACY_STORAGE = "drive-only"
 ROW_RE = re.compile(
     r"^\| `([^`]+)` \| `(current|reference|planned|generated|historical)` \|",
     re.MULTILINE,
@@ -53,7 +55,24 @@ def test_non_generated_documents_have_status_metadata() -> None:
         text = (ROOT / path).read_text(encoding="utf-8")
         assert "<!-- gestionalecloud-doc" in text, path
         assert f"status: {status}" in text, path
-        assert "storage_architecture: drive-only" in text, path
+        architecture = re.search(r"storage_architecture: ([^\n]+)", text)
+        assert architecture, path
+        assert architecture.group(1).strip() in {CURRENT_STORAGE, LEGACY_STORAGE}, path
+
+
+def test_authoritative_current_docs_use_supabase_storage_marker() -> None:
+    authoritative = {
+        "AGENTS.md",
+        "README.md",
+        "docs/AI_GOVERNANCE.md",
+        "prompts/development/repository_audit.md",
+        "prompts/documents/evidence_extraction.md",
+    }
+    rows = inventory_rows()
+    for path in authoritative:
+        assert rows.get(path) == "current", path
+        text = (ROOT / path).read_text(encoding="utf-8")
+        assert f"storage_architecture: {CURRENT_STORAGE}" in text, path
 
 
 def test_current_documents_use_canonical_project_identity() -> None:
@@ -76,7 +95,7 @@ def test_historical_documents_are_visibly_non_authoritative() -> None:
             continue
         text = (ROOT / path).read_text(encoding="utf-8")
         assert "Snapshot storico" in text, path
-        assert "LOGICA_FUNZIONAMENTO.md" in text, path
+        assert "README.md" in text, path
 
 
 def test_planned_documents_are_visibly_non_operational() -> None:
@@ -87,11 +106,14 @@ def test_planned_documents_are_visibly_non_operational() -> None:
         assert "non ancora completamente operativo" in text, path
 
 
-def test_drive_only_docs_state_real_cutover_boundary() -> None:
-    logic = (ROOT / "LOGICA_FUNZIONAMENTO.md").read_text(encoding="utf-8")
+def test_current_docs_state_real_supabase_cutover_boundary() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    assert "Drive/Sheets" in logic
-    assert "unico archivio operativo" in logic
-    assert "ricostruzione completa" in logic
-    assert "Drive/Sheets" in readme
-    assert "non esiste fallback" in readme.lower()
+    render = (ROOT / "render.yaml").read_text(encoding="utf-8")
+    config = (ROOT / "app" / "config.py").read_text(encoding="utf-8")
+
+    assert "DATA_BACKEND=supabase" in readme
+    assert "Supabase è il registro operativo" in readme
+    assert "Google Drive conserva gli originali" in readme
+    assert "rollback/test" in readme
+    assert 'value: "supabase"' in render
+    assert 'DATA_BACKEND: str = "supabase"' in config
