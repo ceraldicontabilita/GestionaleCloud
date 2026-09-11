@@ -507,84 +507,176 @@ async def get_suggerimenti_utile(anno: int = Query(...)) -> Dict[str, Any]:
     }
 
 
+def _cdc_operativo_da_learning(codice: str, nome: str = "") -> Optional[str]:
+    """Traduce solo categorie learning con significato operativo esplicito.
+
+    Nessun fallback inventato: categorie non mappabili restano DA_VERIFICARE.
+    """
+    codice = str(codice or "")
+    nome_norm = str(nome or "").casefold()
+    if codice in CDC_STANDARD:
+        return codice
+    prefissi = (
+        (("1.1_", "1.2_", "1.6_"), "CDC-01"),
+        (("1.3_", "1.4_"), "CDC-02"),
+        (("1.5_",), "CDC-03"),
+        (("1.8_", "13.1_"), "CDC-04"),
+        (("4.", "4_"), "CDC-90"),
+    )
+    for gruppi, cdc in prefissi:
+        if codice.startswith(gruppi):
+            return cdc
+    if any(k in nome_norm for k in ("marketing", "pubblicit", "promozion", "social")):
+        return "CDC-92"
+    if any(k in nome_norm for k in ("commercialista", "consulenza", "software", "amministr", "cancelleria")):
+        return "CDC-91"
+    if any(k in nome_norm for k in (
+        "energia", "gas", "acqua", "rifiuti", "affitto", "locazione", "condominio",
+        "manutenzione", "pulizia", "assicur", "noleggio", "carburante", "telefon",
+    )):
+        return "CDC-99"
+    return None
+
+
+def _firma_riga(descrizione: str, importo: float):
+    return (" ".join(str(descrizione or "").casefold().split()), round(float(importo or 0), 2))
+
+
+async def _costi_cdc_da_righe_xml(db, anno: int) -> Dict[str, Any]:
+    """Costi analitici da classificazioni riga XML, al netto dei cespiti.
+
+    Le righe dubbie o con vocabolario non traducibile non vengono forzate in
+    CDC-99: restano esplicitamente DA_VERIFICARE.
+    """
+    data_start = f"{anno}-01-01"
+    data_end = f"{anno}-12-31"
+    fatture = await db[Collections.INVOICES].find({
+        "status": {"$nin": ["deleted", "archived"]},
+        "$or": [
+            {"invoice_date": {"$gte": data_start, "$lte": data_end}},
+            {"data_ricezione": {"$gte": data_start, "$lte": data_end}},
+        ],
+    }, {"_id": 0}).to_list(10000)
+    cespiti = await db["cespiti"].find({
+        "provenienza": "fattura_xml",
+        "data_acquisto": {"$gte": data_start, "$lte": data_end},
+    }, {"_id": 0, "fattura_id": 1, "descrizione": 1, "valore_acquisto": 1}).to_list(10000)
+
+    asset_signatures = {}
+    asset_totals = {}
+    for cespite in cespiti:
+        fid = str(cespite.get("fattura_id") or "")
+        if not fid:
+            continue
+        valore = float(cespite.get("valore_acquisto") or 0)
+        sig = (fid, *_firma_riga(cespite.get("descrizione"), valore))
+        asset_signatures[sig] = asset_signatures.get(sig, 0) + 1
+        asset_totals[fid] = asset_totals.get(fid, 0.0) + valore
+
+    costi = {cdc: 0.0 for cdc in CDC_STANDARD}
+    fatture_per_cdc = {cdc: set() for cdc in CDC_STANDARD}
+    da_verificare = 0.0
+    righe_da_verificare = 0
+    righe_usate = 0
+    cespiti_esclusi = 0.0
+
+    for fattura in fatture:
+        fid = str(fattura.get("id") or fattura.get("invoice_key") or "")
+        segno = -1.0 if fattura.get("tipo_documento") in ("TD04", "TD08") else 1.0
+        righe = fattura.get("classificazioni_righe") or []
+        if righe:
+            for riga in righe:
+                importo = float(riga.get("imponibile") or 0)
+                sig = (fid, *_firma_riga(riga.get("descrizione"), importo))
+                if asset_signatures.get(sig, 0) > 0:
+                    asset_signatures[sig] -= 1
+                    cespiti_esclusi += importo
+                    continue
+                cdc = None if riga.get("richiede_verifica") else _cdc_operativo_da_learning(
+                    riga.get("centro_costo_id"), riga.get("centro_costo_nome")
+                )
+                if not cdc:
+                    da_verificare += segno * importo
+                    righe_da_verificare += 1
+                    continue
+                costi[cdc] += segno * importo
+                fatture_per_cdc[cdc].add(fid)
+                righe_usate += 1
+            continue
+
+        # Fallback solo per fatture legacy con CDC di testata esplicito e non
+        # marcato da verificare. La quota cespite viene comunque esclusa.
+        imponibile = float(fattura.get("imponibile") or 0)
+        if not imponibile:
+            imponibile = float(fattura.get("total_amount") or 0) - float(fattura.get("iva") or 0)
+        imponibile -= float(asset_totals.get(fid, 0) or 0)
+        cdc = fattura.get("centro_costo")
+        if cdc in CDC_STANDARD and not fattura.get("cdc_requires_review"):
+            costi[cdc] += segno * imponibile
+            fatture_per_cdc[cdc].add(fid)
+        else:
+            da_verificare += segno * imponibile
+            righe_da_verificare += 1
+
+    return {
+        "costi": {k: round(v, 2) for k, v in costi.items()},
+        "fatture_count": {k: len(v) for k, v in fatture_per_cdc.items()},
+        "da_verificare": round(da_verificare, 2),
+        "righe_da_verificare": righe_da_verificare,
+        "righe_usate": righe_usate,
+        "cespiti_esclusi": round(cespiti_esclusi, 2),
+        "fonte": "classificazioni_righe_xml",
+    }
+
+
 @router.get("/utile-obiettivo/per-cdc")
 async def get_utile_per_cdc(anno: int = Query(...)) -> Dict[str, Any]:
-    """
-    Analisi utile/margine per centro di costo.
-    """
+    """Analisi utile/margine per CDC basata sulle singole righe XML."""
     db = Database.get_db()
-    
-    date_start = f"{anno}-01-01"
-    date_end = f"{anno}-12-31"
-    
-    # Costi per CDC
-    costi_pipeline = [
-        {"$match": {"invoice_date": {"$gte": date_start, "$lte": date_end}}},
-        {"$group": {
-            "_id": {"$ifNull": ["$centro_costo", "CDC-99"]},
-            "totale_costi": {"$sum": "$total_amount"},
-            "count": {"$sum": 1}
-        }},
-        {"$sort": {"totale_costi": -1}}
-    ]
-    costi_per_cdc = await db[Collections.INVOICES].aggregate(costi_pipeline).to_list(20)
-    
-    # Ricavi totali (non tracciati per settore: ripartiti come stima più sotto)
-    ricavi_result = await db[Collections.CORRISPETTIVI].aggregate([
-        {"$match": {"data": {"$gte": date_start, "$lte": date_end}}},
-        {"$group": {"_id": None, "totale": {"$sum": "$totale"}}}
-    ]).to_list(1)
-    ricavi_totali = ricavi_result[0]["totale"] if ricavi_result else 0
-    
-    # Costruisci report per CDC
+    analitica = await _costi_cdc_da_righe_xml(db, anno)
+    from app.routers.accounting.bilancio import get_conto_economico
+    ce = await get_conto_economico(anno=anno, mese=None)
+    ricavi_totali = float(ce["ricavi"]["totale_ricavi"] or 0)
+
+    costi_dict = analitica["costi"]
+    costi_totali_validati = sum(costi_dict.values())
     report = []
-    costi_totali = sum(c["totale_costi"] for c in costi_per_cdc)
-    
-    for cdc in costi_per_cdc:
-        codice = cdc["_id"]
+    for codice, costo in sorted(costi_dict.items(), key=lambda item: -abs(item[1])):
+        if abs(costo) < 0.005:
+            continue
         info = CDC_STANDARD.get(codice, {"nome": codice, "tipo": "altro"})
-        
-        # Stima ricavi proporzionali (semplificato)
-        # In un sistema completo, i ricavi sarebbero tracciati per CDC
-        peso_costi = cdc["totale_costi"] / costi_totali if costi_totali > 0 else 0
-        
-        # Solo CDC operativi hanno ricavi
-        if info.get("tipo") == "operativo":
-            ricavi_cdc = ricavi_totali * peso_costi * 1.5  # Stima
-        else:
-            ricavi_cdc = 0
-        
-        margine = ricavi_cdc - cdc["totale_costi"]
-        margine_perc = (margine / ricavi_cdc * 100) if ricavi_cdc > 0 else 0
-        
+        peso_costi = costo / costi_totali_validati if costi_totali_validati > 0 else 0
+        ricavi_cdc = ricavi_totali * peso_costi * 1.5 if info.get("tipo") == "operativo" else 0
+        margine = ricavi_cdc - costo
         report.append({
             "codice": codice,
             "nome": info.get("nome", codice),
             "tipo": info.get("tipo", "altro"),
-            "costi": round(cdc["totale_costi"], 2),
+            "costi": round(costo, 2),
             "ricavi_stimati": round(ricavi_cdc, 2),
-            "ricavi_sono_stima": True,  # P2-5: ripartizione ricavi non tracciata per CDC
+            "ricavi_sono_stima": True,
             "margine": round(margine, 2),
-            "margine_percentuale": round(margine_perc, 1),
-            "fatture_count": cdc["count"],
-            "stato": "PROFITTO (stima)" if margine > 0 else "PERDITA (stima)"
+            "margine_percentuale": round((margine / ricavi_cdc * 100), 1) if ricavi_cdc > 0 else 0,
+            "fatture_count": analitica["fatture_count"].get(codice, 0),
+            "stato": "PROFITTO (stima)" if margine > 0 else "PERDITA (stima)",
         })
 
     return {
         "anno": anno,
         "centri_costo": report,
+        "qualita_costi": analitica,
         "avviso_ricavi": (
-            "I ricavi per centro di costo sono una STIMA (ripartizione sui costi, "
-            "fattore 1.5): i ricavi reali non sono tracciati per CDC. Margini e "
-            "stato profitto/perdita sono quindi indicativi."
+            "I COSTI per CDC derivano dalle singole righe XML classificate; righe "
+            "ambigue restano DA_VERIFICARE. I RICAVI per CDC restano una stima "
+            "finche non esiste una fonte ricavi reale per settore."
         ),
         "totali": {
             "ricavi": round(ricavi_totali, 2),
-            "costi": round(costi_totali, 2),
-            "margine": round(ricavi_totali - costi_totali, 2)
-        }
+            "costi_validati": round(costi_totali_validati, 2),
+            "costi_da_verificare": analitica["da_verificare"],
+            "margine_su_costi_validati": round(ricavi_totali - costi_totali_validati, 2),
+        },
     }
-
 
 
 # ============== RIBALTAMENTO CDC ==============
@@ -625,27 +717,17 @@ async def calcola_ribaltamento(anno: int = Query(...)) -> Dict[str, Any]:
     date_start = f"{anno}-01-01"
     date_end = f"{anno}-12-31"
 
-    # 1. Costi per centro di costo
-    costi_pipeline = [
-        {"$match": {"invoice_date": {"$gte": date_start, "$lte": date_end}}},
-        {"$group": {
-            "_id": {"$ifNull": ["$centro_costo", "CDC-99"]},
-            "totale": {"$sum": "$total_amount"},
-            "count": {"$sum": 1}
-        }}
-    ]
-    costi_per_cdc = await db[Collections.INVOICES].aggregate(costi_pipeline).to_list(50)
-    costi_dict = {c["_id"]: c["totale"] for c in costi_per_cdc}
+    # 1. Costi per centro di costo: fonte analitica = righe XML classificate.
+    analitica = await _costi_cdc_da_righe_xml(db, anno)
+    costi_dict = analitica["costi"]
 
     # 2. Costi diretti dei settori operativi
     costi_diretti = {cdc: costi_dict.get(cdc, 0) for cdc in CDC_OPERATIVI}
 
-    # 3. Ricavi totali e quote-ricavo per settore
-    ricavi_result = await db[Collections.CORRISPETTIVI].aggregate([
-        {"$match": {"data": {"$gte": date_start, "$lte": date_end}}},
-        {"$group": {"_id": None, "totale": {"$sum": "$totale"}}}
-    ]).to_list(1)
-    ricavi_totali = ricavi_result[0]["totale"] if ricavi_result else 0
+    # 3. Ricavi totali dalla stessa fonte canonica del Conto Economico.
+    from app.routers.accounting.bilancio import get_conto_economico
+    ce = await get_conto_economico(anno=anno, mese=None)
+    ricavi_totali = float(ce["ricavi"]["totale_ricavi"] or 0)
 
     quote_override = await _quote_ricavo_per_settore(db)
     if quote_override:
@@ -714,6 +796,7 @@ async def calcola_ribaltamento(anno: int = Query(...)) -> Dict[str, Any]:
             if ricavi_stima else
             "Ribaltamento basato sulle quote-ricavo per settore configurate."
         ),
+        "qualita_costi": analitica,
         "ribaltamenti": ribaltamenti,
         "totali_ribaltati": {k: round(v, 2) for k, v in totale_ribaltato.items()},
         "margini_per_cdc": list(margini.values()),

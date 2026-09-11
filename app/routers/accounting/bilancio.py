@@ -74,6 +74,67 @@ COLLECTION_PRIMA_NOTA_SUMUP = "prima_nota_sumup"
 PIVA_AZIENDA = "04523831214"
 
 
+async def _cespiti_capitalizzati_nel_periodo(db, data_inizio: str, data_fine: str):
+    """Restituisce il costo storico dei cespiti estratti da righe XML.
+
+    Questi importi sono immobilizzazioni, non costi d'esercizio immediati. La
+    fattura resta documento origine, ma il suo imponibile operativo viene
+    ridotto della sola quota effettivamente capitalizzata nel registro cespiti.
+    """
+    righe = await db["cespiti"].find(
+        {
+            "provenienza": "fattura_xml",
+            "data_acquisto": {"$gte": data_inizio, "$lte": data_fine},
+            "fattura_id": {"$exists": True},
+        },
+        {"_id": 0, "fattura_id": 1, "valore_acquisto": 1},
+    ).to_list(10000)
+    per_fattura = {}
+    totale = 0.0
+    for riga in righe:
+        fattura_id = str(riga.get("fattura_id") or "")
+        if not fattura_id:
+            continue
+        try:
+            valore = float(riga.get("valore_acquisto") or 0)
+        except (TypeError, ValueError):
+            continue
+        if valore <= 0:
+            continue
+        per_fattura[fattura_id] = per_fattura.get(fattura_id, 0.0) + valore
+        totale += valore
+    return per_fattura, round(totale, 2)
+
+
+async def _ammortamenti_registrati_periodo(db, anno: int, mese: int = None):
+    """Quote realmente registrate nel piano cespiti.
+
+    Il piano viene aggiornato solo da POST /cespiti/registra/{anno}, dopo
+    conferma esplicita. Per il CE mensile una quota annuale gia registrata viene
+    ripartita in dodicesimi a fini gestionali; nessuna preview non registrata
+    entra automaticamente nel risultato contabile.
+    """
+    cespiti = await db["cespiti"].find(
+        {"piano_ammortamento": {"$elemMatch": {"anno": anno}}},
+        {"_id": 0, "id": 1, "piano_ammortamento": 1},
+    ).to_list(10000)
+    quota_annua = 0.0
+    for cespite in cespiti:
+        for quota in cespite.get("piano_ammortamento") or []:
+            if quota.get("anno") != anno:
+                continue
+            try:
+                quota_annua += float(quota.get("quota") or quota.get("quota_anno") or 0)
+            except (TypeError, ValueError):
+                continue
+    quota_periodo = quota_annua / 12 if mese else quota_annua
+    return round(quota_periodo, 2), {
+        "quota_annua_registrata": round(quota_annua, 2),
+        "modalita": "dodicesimo_quota_registrata" if mese else "quota_annua_registrata",
+        "solo_quote_registrate": True,
+    }
+
+
 @router.get("/stato-patrimoniale")
 @handle_errors
 async def get_stato_patrimoniale(
@@ -375,6 +436,15 @@ async def get_conto_economico(
     totale_note_credito = note_credito[0]["totale_imponibile"] if note_credito else 0
     iva_note_credito = note_credito[0]["totale_iva"] if note_credito else 0
     num_note_credito = note_credito[0]["count"] if note_credito else 0
+
+    # Cespiti estratti dalle righe XML: il costo storico non puo essere spesato
+    # integralmente nello stesso CE in cui il bene compare tra le immobilizzazioni.
+    _, totale_cespiti_capitalizzati = await _cespiti_capitalizzati_nel_periodo(
+        db, data_inizio, data_fine
+    )
+    ammortamenti_registrati, ammortamenti_meta = await _ammortamenti_registrati_periodo(
+        db, anno, mese
+    )
     
     # === CALCOLI FINALI ===
     # REGOLA CONTABILE ITALIANA:
@@ -385,9 +455,12 @@ async def get_conto_economico(
     # Ricavi = Solo Corrispettivi (imponibile)
     totale_ricavi = totale_corrispettivi
     
-    # Costi = Acquisti - Note Credito
-    costi_netti = totale_acquisti - totale_note_credito
-    totale_costi = costi_netti
+    # Costi = acquisti operativi - note di credito + ammortamenti registrati.
+    # Il valore dei cespiti capitalizzati resta nell'attivo e viene spesato nel
+    # tempo tramite le quote di ammortamento, mai due volte.
+    acquisti_operativi = totale_acquisti - totale_cespiti_capitalizzati
+    costi_netti = acquisti_operativi - totale_note_credito
+    totale_costi = costi_netti + ammortamenti_registrati
     
     # Risultato
     utile_perdita = totale_ricavi - totale_costi
@@ -409,9 +482,13 @@ async def get_conto_economico(
             # NOTA: Le fatture emesse NON compaiono qui perché l'importo è già nei corrispettivi
         },
         "costi": {
-            "acquisti": round(totale_acquisti, 2),
+            "acquisti_lordi_da_fatture": round(totale_acquisti, 2),
+            "cespiti_capitalizzati_esclusi": round(totale_cespiti_capitalizzati, 2),
+            "acquisti_operativi": round(acquisti_operativi, 2),
             "note_credito": round(totale_note_credito, 2),
-            "costi_netti": round(costi_netti, 2),
+            "ammortamenti_registrati": round(ammortamenti_registrati, 2),
+            "ammortamenti_meta": ammortamenti_meta,
+            "costi_netti_prima_ammortamenti": round(costi_netti, 2),
             "totale_costi": round(totale_costi, 2)
         },
         "risultato": {
@@ -429,7 +506,11 @@ async def get_conto_economico(
             "num_fatture_ricevute": num_fatture,
             "num_note_credito": num_note_credito
         },
-        "note": "Ricavi = Corrispettivi (vendite al pubblico). Costi = Fatture ricevute - Note credito."
+        "note": (
+            "Ricavi = Corrispettivi. Costi = acquisti operativi - note credito + "
+            "ammortamenti registrati; i cespiti capitalizzati da righe XML non "
+            "sono spesati integralmente all'acquisto."
+        )
     }
 
 
@@ -517,7 +598,11 @@ async def get_conto_economico_dettagliato(
             {"data_ricezione": {"$gte": data_inizio, "$lte": data_fine}}
         ]
     }).to_list(5000)
-    
+    capitalizzati_per_fattura, totale_cespiti_capitalizzati_dettaglio = \
+        await _cespiti_capitalizzati_nel_periodo(db, data_inizio, data_fine)
+    ammortamenti_registrati_dettaglio, ammortamenti_meta_dettaglio = \
+        await _ammortamenti_registrati_periodo(db, anno, mese)
+
     # Classifica ogni fattura
     costi_per_categoria = {}
     for fatt in fatture:
@@ -527,6 +612,9 @@ async def get_conto_economico_dettagliato(
         
         imponibile = fatt.get("imponibile") or (fatt.get("total_amount", 0) - fatt.get("iva", 0))
         iva = fatt.get("iva", 0)
+        fattura_id = str(fatt.get("id") or fatt.get("invoice_key") or "")
+        quota_capitalizzata = float(capitalizzati_per_fattura.get(fattura_id, 0) or 0)
+        imponibile_operativo = float(imponibile or 0) - quota_capitalizzata
         
         if categoria not in costi_per_categoria:
             costi_per_categoria[categoria] = {
@@ -535,7 +623,7 @@ async def get_conto_economico_dettagliato(
                 "count": 0
             }
         
-        costi_per_categoria[categoria]["imponibile"] += imponibile
+        costi_per_categoria[categoria]["imponibile"] += imponibile_operativo
         costi_per_categoria[categoria]["iva"] += iva
         costi_per_categoria[categoria]["count"] += 1
     
@@ -676,7 +764,8 @@ async def get_conto_economico_dettagliato(
         costo_personale["totale"] +
         totale_costi_auto +
         B14_altri["imponibile"] -
-        totale_nc
+        totale_nc +
+        ammortamenti_registrati_dettaglio
     )
     
     totale_costi = totale_costi_produzione + totale_C17
@@ -803,6 +892,13 @@ async def get_conto_economico_dettagliato(
                 "num_cedolini": costo_personale["num_cedolini"],
                 "deducibilita": "100%",
                 "note": "Fuori campo IVA"
+            },
+            "B10_ammortamenti": {
+                "quota_registrata_periodo": round(ammortamenti_registrati_dettaglio, 2),
+                "meta": ammortamenti_meta_dettaglio,
+                "cespiti_capitalizzati_esclusi_dagli_acquisti": round(
+                    totale_cespiti_capitalizzati_dettaglio, 2
+                ),
             },
             "B14_oneri_diversi": {
                 "imponibile": round(B14_altri["imponibile"], 2),
