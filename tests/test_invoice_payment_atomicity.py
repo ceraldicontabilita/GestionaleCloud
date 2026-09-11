@@ -29,7 +29,12 @@ def test_retry_identico_non_duplica_movimento_ne_importo_pagato():
     assert replay["idempotent_replay"] is True
     assert asyncio.run(db["prima_nota_banca"].count_documents({})) == 1
     invoice = asyncio.run(db["invoices"].find_one({"id": "fatt-1"}))
-    assert invoice["importo_pagato"] == 100.0
+    # La registrazione manuale in banca e' una disposizione da riscontrare:
+    # l'importo pagato reale resta invariato finche' non arriva il movimento EC.
+    assert invoice["importo_pagato"] == 0.0
+    assert invoice["importo_residuo"] == 100.0
+    assert invoice["pagato"] is False
+    assert invoice["stato_pagamento"] == "da_verificare_banca"
 
 
 def test_cassa_e_banca_hanno_chiavi_idempotenza_distinte():
@@ -53,7 +58,11 @@ def test_cassa_e_banca_hanno_chiavi_idempotenza_distinte():
     assert asyncio.run(db["prima_nota_banca"].count_documents({})) == 1
     assert asyncio.run(db["prima_nota_cassa"].count_documents({})) == 1
     invoice = asyncio.run(db["invoices"].find_one({"id": "fatt-2"}))
-    assert invoice["importo_pagato"] == 200.0
+    # Solo la quota cassa e' prova ammessa. La quota banca resta pendente
+    # finche' non viene riconciliata con un movimento di estratto conto.
+    assert invoice["importo_pagato"] == 100.0
+    assert invoice["importo_residuo"] == 100.0
+    assert invoice["pagato"] is False
 
 
 def test_importo_superiore_al_residuo_e_bloccato_senza_scritture():
