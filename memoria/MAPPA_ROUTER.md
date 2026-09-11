@@ -18,7 +18,7 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/auth` | 11 | ext | auth, mfa, pin_login |
 | `/api/auto-repair` | 2 | ✓ | auto_repair |
 | `/api/bank` | 2 | — | public_api |
-| `/api/bank-statement` | 7 | ✓ | bank.bank_statement_import |
+| `/api/bank-statement` | 7 | — | bank.bank_statement_import |
 | `/api/batch-reprocess` | 5 | ✓ | batch_reprocessing |
 | `/api/bilancio` | 7 | ✓ | accounting.bilancio |
 | `/api/cash` | 10 | — | cash, public_api |
@@ -79,7 +79,7 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/openapi-automotive` | 5 | ext | openapi_automotive |
 | `/api/openapi-imprese` | 6 | ext | openapi_imprese |
 | `/api/operazioni-da-confermare` | 11 | ✓ | operazioni_module, operazioni_module.smart |
-| `/api/pagamenti` | 6 | ✓ | multi_pagamento |
+| `/api/pagamenti` | 6 | — | multi_pagamento |
 | `/api/pagamenti-buoni` | 2 | — | pagamenti_buoni |
 | `/api/pagopa` | 8 | ✓ | pagopa |
 | `/api/partite-aperte` | 3 | — | partite_aperte_api |
@@ -91,7 +91,7 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/pos-corrispettivi` | 9 | ✓ | pos_corrispettivi_check |
 | `/api/previsioni-acquisti` | 5 | ✓ | previsioni_acquisti |
 | `/api/prima-nota` | 86 | ✓ | prima_nota_module, prima_nota_module.banca, prima_nota_module.cassa, prima_nota_module.manutenzione, prima_nota_module.operation_index, prima_nota_module.salari, prima_nota_module.stats, prima_nota_module.sync |
-| `/api/prima-nota-salari` | 23 | ✓ | accounting.prima_nota_salari |
+| `/api/prima-nota-salari` | 23 | — | accounting.prima_nota_salari |
 | `/api/privacy` | 1 | — | legal_pages |
 | `/api/proposte` | 1 | — | dati_provvisori |
 | `/api/rapido` | 8 | ✓ | rapido |

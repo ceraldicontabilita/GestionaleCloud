@@ -239,38 +239,66 @@ async def register_manual_invoice_payment(db, req: ManualInvoicePaymentRequest) 
 
             if due:
                 installment_amount = float(due.get("importo_rata") or due.get("importo") or abs(req.importo))
-                paid_installment = round(float(due.get("importo_pagato") or 0) + abs(req.importo), 2)
-                installment_closed = paid_installment + 0.005 >= installment_amount
-                await db[COL_SCADENZIARIO].update_one(
-                    {"id": req.scadenza_id},
-                    {"$set": {
+                if req.metodo == "cassa":
+                    paid_installment = round(float(due.get("importo_pagato") or 0) + abs(req.importo), 2)
+                    installment_closed = paid_installment + 0.005 >= installment_amount
+                    due_updates = {
                         "stato": "pagata" if installment_closed else "parziale",
                         "pagato": installment_closed,
                         "importo_pagato": min(paid_installment, installment_amount),
                         "importo_residuo": max(0, round(installment_amount - paid_installment, 2)),
                         "data_pagamento": req.data_pagamento,
-                        "metodo_effettivo": req.metodo,
-                        "movimento_id": movement_id,
-                        "updated_at": now,
-                    }}, **skw,
+                    }
+                else:
+                    # Una disposizione/registrazione banca manuale non e' prova di addebito.
+                    # Conserva il residuo fino al riscontro con estratto conto reale.
+                    due_updates = {
+                        "stato": "da_verificare_banca",
+                        "pagato": False,
+                        "importo_banca_da_verificare": abs(req.importo),
+                        "data_disposizione_banca": req.data_pagamento,
+                    }
+                due_updates.update({
+                    "metodo_effettivo": req.metodo,
+                    "movimento_id": movement_id,
+                    "updated_at": now,
+                })
+                await db[COL_SCADENZIARIO].update_one(
+                    {"id": req.scadenza_id}, {"$set": due_updates}, **skw,
                 )
 
-            paid = round(current_paid + abs(req.importo), 2)
-            closed = paid + 0.005 >= total
-            update_fields = {
-                "status": "paid" if closed else "partial",
-                "payment_status": "paid" if closed else "partial",
-                "pagato": closed,
-                "stato_pagamento": "pagata" if closed else "parziale",
-                "importo_pagato": min(paid, total),
-                "importo_residuo": max(0, round(total - paid, 2)),
+            if req.metodo == "cassa":
+                paid = round(current_paid + abs(req.importo), 2)
+                closed = paid + 0.005 >= total
+                update_fields = {
+                    "status": "paid" if closed else "partial",
+                    "payment_status": "paid" if closed else "partial",
+                    "pagato": closed,
+                    "stato_pagamento": "pagata" if closed else "parziale",
+                    "importo_pagato": min(paid, total),
+                    "importo_residuo": max(0, round(total - paid, 2)),
+                    "data_pagamento": req.data_pagamento,
+                }
+            else:
+                # La banca manuale e' solo una disposizione da riscontrare. Non incrementa
+                # importo_pagato e non chiude la fattura prima del movimento EC reale.
+                update_fields = {
+                    "status": "partial" if current_paid > 0 else "pending",
+                    "payment_status": "pending_bank_verification",
+                    "pagato": False,
+                    "stato_pagamento": "da_verificare_banca",
+                    "importo_pagato": min(current_paid, total),
+                    "importo_residuo": max(0, round(total - current_paid, 2)),
+                    "importo_banca_da_verificare": abs(req.importo),
+                    "data_disposizione_banca": req.data_pagamento,
+                }
+            update_fields.update({
                 "riconciliato": False,
-                "data_pagamento": req.data_pagamento,
                 "metodo_pagamento_effettivo": req.metodo,
                 "metodo_pagamento": req.metodo,
                 "updated_at": now,
                 "payment_operation_id": operation_id,
-            }
+            })
             # Un pagamento parziale puo' usare metodi diversi. Non cancellare
             # mai il riferimento dell'altro registro quando arriva una quota.
             update_fields[

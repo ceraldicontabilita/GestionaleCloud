@@ -799,9 +799,12 @@ async def update_supplier(supplier_id: str, data: Dict[str, Any] = Body(...)) ->
     
     metodo_configurato = False
     if "metodo_pagamento" in data:
-        if data["metodo_pagamento"] not in PAYMENT_METHODS:
+        metodo = str(data.get("metodo_pagamento") or "").strip().lower()
+        if metodo and metodo not in PAYMENT_METHODS:
             raise HTTPException(status_code=400, detail="Metodo pagamento non valido")
-        metodo_configurato = data["metodo_pagamento"] is not None and data["metodo_pagamento"] != ""
+        # Vuoto significa esplicitamente "non definito": non inventare Banca.
+        data["metodo_pagamento"] = metodo
+        metodo_configurato = bool(metodo)
         
         # Se cambia metodo, salva la data del cambio e lo storico
         if metodo_configurato:

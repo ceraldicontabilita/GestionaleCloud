@@ -2,8 +2,8 @@
 
 <!-- gestionalecloud-doc
 status: current
-reviewed_at: 2026-08-21
-storage_architecture: drive-only
+reviewed_at: 2026-09-11
+storage_architecture: supabase-runtime-drive-originals
 -->
 
 ERP interno di Ceraldi Group S.R.L. per documenti, fatture, fornitori, Prima
@@ -17,23 +17,17 @@ Gli altri documenti sono guide di lettura, riferimenti di dominio o mappe genera
 - Branch operativo: `main`
 - Catalogo UI: 65 schermate in `page_catalog.json`
 
-## Stato aggiornato al 20/08/2026
+## Stato aggiornato all'11/09/2026
 
-Il repository usa `DATA_BACKEND=sheets` come backend operativo: Google Sheets è il registro operativo e Drive conserva gli originali. In produzione configurare esplicitamente il registro o la cartella Drive del ledger. Non esiste fallback di persistenza: Drive/Sheets è l'unico archivio operativo e non esiste fallback automatico verso altri backend.
+La produzione usa `DATA_BACKEND=supabase`: Supabase è il registro operativo
+strutturato e Google Drive conserva gli originali documentali. Il runtime
+Google Sheets resta nel repository esclusivamente come percorso transitorio di
+rollback/test durante il completamento del cutover e non deve essere esteso a
+nuovi flussi applicativi.
 
 Il passaggio dei dati storici si considera concluso soltanto dopo confronto di
 conteggi e hash, ricostruzione completa e prova di scrittura. Fino a quella
 verifica non cancellare dati storici senza autorizzazione e checklist di cutover approvata.
-
-Il registro Drive crea questa struttura:
-
-```text
-REGISTRO DATI/
-PARTENOPAY/
-CODICI TRIBUTO/
-QUIETANZE/
-DICHIARAZIONI/
-```
 
 ## Architettura
 
@@ -41,11 +35,12 @@ DICHIARAZIONI/
 Browser React/Vite
   -> API FastAPI same-origin
      -> servizi di dominio e motore unico Prima Nota
-        -> backend dati: Google Sheets/Drive (registri operativi)
+        -> registro operativo: Supabase
 
 Google Drive / Gmail autorizzato / API esterne
   -> import, parser, deduplica, identità canonica
-     -> fatture, F24, quietanze, banca, PartenoPay, cedolini
+     -> Supabase (dati strutturati)
+     -> Google Drive (originali documentali)
 ```
 
 ## Fonti dati operative
@@ -66,10 +61,11 @@ locali come fonte di verità. I dati arrivano da questi canali:
 
 ### Stack
 
-- Backend: Python 3.12, FastAPI, archivio asincrono Sheets, APScheduler.
+- Backend: Python 3.12, FastAPI, runtime documentale Supabase, APScheduler.
 - Frontend: React 18, Vite 5, React Router 6, TanStack Query, Zustand.
-- Persistenza: Google Sheets per i registri e Google Drive per gli originali.
-- Deploy: un servizio Render avviato con `python -m app.process_supervisor`.
+- Persistenza: Supabase per i dati strutturati; Google Drive per gli originali.
+- Compatibilità transitoria: runtime Google Sheets solo per rollback/test.
+- Deploy: un servizio Render avviato con `python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
 - CI: pytest, Vitest, build Vite, audit statici, runtime smoke ed E2E isolato.
 
 ## Avvio locale
@@ -101,45 +97,49 @@ avvio in `render.yaml` e il lifecycle importato dai test correnti.
 - `ENVIRONMENT`
 - `SECRET_KEY`
 - `CORS_ALLOWED_ORIGINS`
-- `SHEETS_REGISTRY_NAME`
 - `CREDENTIALS_ENCRYPTION_KEY`
 
-### Registro Google Sheets/Drive
+### Registro Supabase
 
-- `GOOGLE_SHEETS_LEDGER_ID` oppure `GOOGLE_SHEETS_LEDGER_FOLDER_ID`
-- Le collezioni operative non ancora presenti nel manifest iniziale ricevono
-  al primo inserimento un foglio privato `DB_*`.
-- L'import fatture usa `DRIVE_FATTURE_BATCH_SIZE` (default 1) e viene eseguito
-  ogni 15 minuti, così l'arretrato non satura la memoria del servizio web.
-- `GOOGLE_DRIVE_SA_JSON` / `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON`
-- una sola variabile canonica `GOOGLE_DRIVE_<AREA>_FOLDER_ID` per ciascuna
-  area documentale; non creare alias Render diversi per lo stesso folder ID
+In produzione impostare esplicitamente:
 
-Il foglio privato `_INDICE_DRIVE` del registro elenca le cartelle canoniche e,
-per le aree operative, i tre stati `Da elaborare`, `Elaborate` ed `Errori`.
-Codice e automazioni consultano quell'indice e `DRIVE_FOLDER_REGISTRY_JSON`;
-gli ID aziendali non devono essere copiati nella documentazione pubblica.
+- `DATA_BACKEND=supabase`
+- `SUPABASE_URL`
+- `SUPABASE_PUBLISHABLE_KEY`
+- `SUPABASE_RUNTIME_SECRET`
 
-Le credenziali restano nel secret store di Render. Non inserire JSON di
-service account, token o password nel repository.
+La publishable key non è sufficiente ad accedere alle RPC privilegiate: il
+runtime server-to-server usa anche `SUPABASE_RUNTIME_SECRET`, conservato nel
+secret store e mai nel frontend.
 
-## Verifica Drive/Sheets
+### Google Drive
 
-La procedura amministrativa deve essere eseguita in quest'ordine:
+Google Drive conserva gli originali e le prove documentali. Le credenziali e
+gli ID delle cartelle operative restano nelle variabili d'ambiente del deploy.
+Una sola variabile canonica `GOOGLE_DRIVE_<AREA>_FOLDER_ID` deve rappresentare
+ciascuna area documentale.
 
-1. inventario dei registri;
-2. deduplica per `canonical_id` e hash del payload;
+### Compatibilità Google Sheets
+
+`GOOGLE_SHEETS_LEDGER_ID`, `GOOGLE_SHEETS_LEDGER_FOLDER_ID` e il runtime Sheets
+sono mantenuti soltanto per rollback/test durante il cutover. Non introdurre
+nuove dipendenze applicative da Sheets.
+
+## Verifica cutover Supabase
+
+La rimozione definitiva del fallback Sheets è ammessa soltanto dopo:
+
+1. inventario delle collezioni;
+2. deduplica per `canonical_id`, `_id` e chiavi idempotenti;
 3. blocco dei conflitti ID uguale/payload diverso;
-4. sincronizzazione completa nel registro Sheets;
-5. confronto di conteggi e digest per ogni foglio;
-6. ricostruzione del runtime dai fogli e prova di scrittura;
+4. confronto dei conteggi tra sorgente e Supabase;
+5. confronto dei digest per collezione;
+6. prova di lettura e scrittura idempotente sul runtime Supabase;
 7. verifica live del commit in produzione;
-8. conferma dell'assenza di backend alternativi e variabili obsolete.
+8. assenza dimostrata di chiamanti che richiedano ancora il runtime Sheets.
 
 I documenti originali su Drive non vengono eliminati dalla migrazione del
-registro. Nel solo workflow Calderone, dopo un esito completo e verificato,
-l'originale viene spostato fra le cartelle operative dello stesso Calderone
-secondo [docs/RUNBOOK-RENDER-CALDERONE.md](docs/RUNBOOK-RENDER-CALDERONE.md).
+registro.
 
 ## Albero del repository
 
@@ -150,7 +150,7 @@ app/
 ├── parsers/                    XML, PDF, CSV e formati fiscali
 ├── knowledge/                  base di conoscenza della chat
 ├── config.py                   configurazione e feature flag
-└── database.py                 inizializzazione archivio Drive/Sheets
+└── database.py                 selezione runtime Supabase/compatibilità Sheets
 backend/
 └── requirements.txt
 frontend/
@@ -160,6 +160,7 @@ frontend/
 ├── src/components/             modali e componenti condivisi
 └── package.json
 gestionale_mcp/                 gateway AI di sola lettura
+prompts/                        contratti operativi versionati per l'AI
 scripts/                        audit, mappe e manutenzione verificabile
 tests/                          test backend e guardie architetturali
 memoria/                        specifiche e mappe tecniche
@@ -196,6 +197,7 @@ L'elenco completo e verificabile delle route è in `page_catalog.json`.
 6. Le scritture di Prima Nota passano da
    `app/services/scritture_contabili.py`.
 7. I documenti originali sono immutabili e tracciati con fonte e hash.
+8. Una proposta AI o una confidence elevata non sostituisce una prova di dominio.
 
 ## Test
 
@@ -207,12 +209,14 @@ python scripts\audit_static.py
 git diff --check
 ```
 
-Test mirati del catalogo e del registro Drive:
+Test mirati della persistenza:
 
 ```powershell
-python -m pytest tests\test_page_catalog.py -q
-python -m pytest tests\test_google_sheets_ledger.py tests\test_sheets_runtime_database.py -q
+python -m pytest tests\test_startup_safety.py tests\test_storage_architecture_contract.py -q
 ```
+
+I test del runtime Sheets restano test di compatibilità finché il percorso di
+rollback non viene rimosso esplicitamente.
 
 ## Deploy
 
@@ -226,36 +230,13 @@ di considerare pubblicata una modifica:
 
 ## Documentazione
 
-- `PROMPT_MASTER.md` — unica autorità normativa: prodotto, dati, Gmail, Drive,
-  variabili, pagine, router, endpoint, divieti e gate.
-- `CLAUDE.md` — regole vincolanti per lavorare nel repository.
+- `PROMPT_MASTER.md` — autorità normativa di prodotto e dominio.
+- `docs/AI_GOVERNANCE.md` — regole per AI, evidenze e automazioni.
+- `AGENTS.md` — istruzioni repository per agenti di sviluppo.
+- `CLAUDE.md` — regole operative storiche da mantenere allineate.
 - `PRODUCT.md` — visione, flussi e albero funzionale.
 - `LOGICA_FUNZIONAMENTO.md` — comportamento operativo per gli utenti.
 - `page_catalog.json` — route/componenti/accessi/stato audit.
-- `memoria/JSON_INVENTORY.json` — inventario e politica dei file JSON.
-- `memoria/pagine/*.json` — mappe tecniche delle pagine.
-- `memoria/popup/*.json` — mappe tecniche dei popup.
-
-### Kit completo per la ricostruzione pulita
-
-Per generare un unico ZIP autosufficiente con Prompt Master, architettura,
-65 schede Markdown e 65 contratti JSON con la logica specifica di ogni pagina,
-36 popup, contratti API, variabili senza segreti,
-modello Drive/Sheets e matrice di accettazione:
-
-```powershell
-python scripts\genera_kit_ricostruzione.py
-```
-
-Il comando crea in `Documents`:
-
-- `GestionaleCloud_REBUILD_KIT_2026-08-20.zip`;
-- `GestionaleCloud_REBUILD_KIT_2026-08-20.zip.sha256`.
-
-Il generatore verifica una sola cartella radice, manifest e hash interni,
-conteggi canonici e firme compatibili con credenziali. Lo ZIP non viene
-versionato: non contiene dati aziendali, allegati, segreti o una copia del
-codice applicativo; viene rigenerato dalle fonti correnti del repository.
 
 ## Licenza
 

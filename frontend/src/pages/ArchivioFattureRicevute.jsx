@@ -431,41 +431,15 @@ export default function ArchivioFatture() {
   const formatDate = formatDateIT;
 
   const getStatoBadge = fattura => {
-    if (fattura.pagato) {
-      let metodo = fattura.metodo_pagamento || '';
-      let icon = '✅';
-      let label = 'Pagata';
-
-      if (
-        fattura.prima_nota_cassa_id ||
-        metodo.toLowerCase().includes('cassa') ||
-        metodo.toLowerCase().includes('contanti')
-      ) {
-        icon = '💵';
-        label = 'Cassa';
-      } else if (
-        fattura.prima_nota_banca_id ||
-        metodo.toLowerCase().includes('banca') ||
-        metodo.toLowerCase().includes('bonifico')
-      ) {
-        icon = '🏦';
-        label = 'Banca';
-      } else if (metodo.toLowerCase().includes('assegno')) {
-        icon = '📝';
-        label = 'Assegno';
-      } else if (metodo.toLowerCase().includes('rid') || metodo.toLowerCase().includes('sdd')) {
-        icon = '🔄';
-        label = 'RID/SDD';
-      }
-
-      return (
-        <Badge variant="success" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          {icon} {label}
-        </Badge>
-      );
+    const pagamento = descriviPagamento(fattura);
+    if (pagamento.verified) {
+      return <Badge variant="success">{pagamento.label}</Badge>;
     }
     if (fattura.stato === 'anomala') {
       return <Badge variant="danger">Anomala</Badge>;
+    }
+    if (pagamento.variant === 'warning' || fattura.stato_pagamento === 'da_verificare_banca') {
+      return <Badge variant="warning">{pagamento.label || 'Da verificare'}</Badge>;
     }
     return <Badge variant="warning">Da pagare</Badge>;
   };

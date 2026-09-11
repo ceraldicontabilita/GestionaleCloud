@@ -51,6 +51,13 @@ const STATUS_LABELS = {
   errore: { label: 'Errore', variant: 'danger' },
 };
 
+const EVIDENCE_STATUS_LABELS = {
+  verificato: { label: 'Verificato', variant: 'success' },
+  probabile: { label: 'Probabile', variant: 'info' },
+  non_verificato: { label: 'Non verificato', variant: 'warning' },
+  conflitto: { label: 'Conflitto', variant: 'danger' },
+};
+
 const SOURCE_LABELS = {
   email: 'Email',
   gmail: 'Gmail',
@@ -392,9 +399,12 @@ export default function Documenti() {
                 ruoloCard: 'dettaglio',
                 render: doc => {
                   const statusStyle = STATUS_LABELS[doc.status] || STATUS_LABELS.nuovo;
+                  const evidenceStyle = EVIDENCE_STATUS_LABELS[doc.evidence_status]
+                    || EVIDENCE_STATUS_LABELS.non_verificato;
                   return (
                     <div style={{ display: 'grid', gap: 4 }}>
                       <Badge variant={statusStyle.variant}>{statusStyle.label}</Badge>
+                      <Badge variant={evidenceStyle.variant}>Evidenza: {evidenceStyle.label}</Badge>
                       {doc.linked_to && (
                         <span style={{ fontSize: 11, color: COLORS.textMuted }}>
                           Collegato a: {String(doc.linked_to).replaceAll('_', ' ')}

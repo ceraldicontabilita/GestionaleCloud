@@ -64,3 +64,29 @@ def test_preview_non_scrive_e_token_autorizza_solo_file_confermato(monkeypatch):
 
     assert confirmed.status_code == 200
     assert asyncio.run(db["documents_inbox"].count_documents({})) == 1
+
+
+
+def test_preview_tipo_riconosciuto_non_diventa_verificato_solo_per_il_tipo(monkeypatch):
+    import asyncio
+    from app.services import document_import_preview as preview_service
+
+    db = MemorySheetsClient()["document-preview-evidence-test"]
+    monkeypatch.setattr(preview_service, "_specialist_preview", lambda *_: {})
+    payload = asyncio.run(preview_service.build_import_preview(
+        db, content=b"cedolino generico", filename="cedolino.pdf", document_type="cedolino"
+    ))
+
+    assert payload["evidence_status"] == "probabile"
+    assert payload["classification"]["evidence_status"] == "probabile"
+    assert payload["classification"]["confidence"] < 1.0
+
+
+def test_preview_con_errore_di_validazione_e_conflitto():
+    from app.services import document_import_preview as preview_service
+
+    status, confidence, _ = preview_service._preview_evidence_state(
+        "f24", {}, {"saldo_quadrato": False}, ["F24 non quadrato o non validato"]
+    )
+    assert status == "conflitto"
+    assert confidence == 0.0

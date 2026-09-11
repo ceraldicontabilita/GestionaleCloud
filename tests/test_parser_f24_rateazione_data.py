@@ -1,9 +1,6 @@
-from pathlib import Path
-
 from app.services.parser_f24 import (
     _data_versamento_da_testo,
     _rateazione_e_anno,
-    parse_f24_commercialista,
 )
 
 
@@ -17,13 +14,6 @@ def test_data_bancaria_con_cifre_separate():
     assert _data_versamento_da_testo(testo) == "2026-08-04"
 
 
-def test_f24_reale_isa_se_disponibile_sul_pc():
-    percorso = Path(r"C:\Users\ceral\Downloads\F24 ravvedim adeg Isa e I acc Ires.pdf")
-    if not percorso.exists():
-        return
-    parsed = parse_f24_commercialista(pdf_content=percorso.read_bytes())
-    righe = {r["codice_tributo"]: r for r in parsed["sezione_erario"]}
-    assert parsed["dati_generali"]["data_versamento"] == "2026-08-04"
-    assert righe["2001"]["rateazione"] == "0101"
-    assert righe["2001"]["importo_debito"] == 4613.50
-    assert parsed["totali"]["saldo_finale"] == 5362.52
+def test_data_non_viene_inventata_senza_estremi_versamento():
+    testo = "MODELLO F24\nSALDO FINALE 2.029,67\nCODICE TRIBUTO 2003"
+    assert _data_versamento_da_testo(testo) == ""

@@ -278,6 +278,28 @@ async def get_rate_mutuo(mutuo_id: str):
 # RICONCILIAZIONE CON ESTRATTO CONTO
 # ============================================================================
 
+async def _candidato_bancario_univoco(db, query_descrizione, query_fallback):
+    """Restituisce un movimento solo quando il match e' univoco.
+
+    Prima si prova il criterio piu' forte (causale + importo + data). Se produce
+    piu' candidati non si degrada al fallback: l'ambiguita' resta da verificare.
+    Il fallback senza causale e' ammesso soltanto quando il criterio forte non
+    produce alcun candidato ed esso stesso produce esattamente un candidato.
+    """
+    forti = await db.estratto_conto_movimenti.find(query_descrizione).to_list(2)
+    if len(forti) == 1:
+        return forti[0], False, "causale_importo_data"
+    if len(forti) > 1:
+        return None, True, "piu_candidati_con_causale"
+
+    fallback = await db.estratto_conto_movimenti.find(query_fallback).to_list(2)
+    if len(fallback) == 1:
+        return fallback[0], False, "importo_data_univoco"
+    if len(fallback) > 1:
+        return None, True, "piu_candidati_importo_data"
+    return None, False, "nessun_candidato"
+
+
 @router.post("/riconcilia", summary="Riconcilia rate mutui con estratto conto")
 async def riconcilia_mutui_con_estratto_conto(
     data_inizio: Optional[str] = None,
@@ -343,14 +365,10 @@ async def riconcilia_mutui_con_estratto_conto(
                     ],
                 }
 
-                movimento = await db.estratto_conto_movimenti.find_one(query_movimenti)
-                # Fallback senza filtro descrizione (banche con causali generiche),
-                # solo se il match per importo+data è univoco.
-                if not movimento:
-                    query_no_desc = {k: v for k, v in query_movimenti.items() if k != "$or"}
-                    candidati = await db.estratto_conto_movimenti.find(query_no_desc).to_list(2)
-                    if len(candidati) == 1:
-                        movimento = candidati[0]
+                query_no_desc = {k: v for k, v in query_movimenti.items() if k != "$or"}
+                movimento, ambiguo, criterio_match = await _candidato_bancario_univoco(
+                    db, query_movimenti, query_no_desc
+                )
 
                 if movimento:
                     # MATCH TROVATO - Riconcilia automaticamente
@@ -368,7 +386,9 @@ async def riconcilia_mutui_con_estratto_conto(
                                 "rate.$.riconciliata": True,
                                 "rate.$.movimento_bancario_id": movimento_id,
                                 "rate.$.data_pagamento_effettivo": data_movimento,
-                                "rate.$.note_riconciliazione": "Riconciliazione automatica"
+                                "rate.$.note_riconciliazione": (
+                                    f"Riconciliazione automatica univoca ({criterio_match})"
+                                )
                             },
                             "$inc": {
                                 "rate_riconciliate": 1
@@ -430,7 +450,7 @@ async def riconcilia_mutui_con_estratto_conto(
                         logger.warning(f"Prima nota mutuo fallita: {e_mutuo}")
 
                 else:
-                    # Nessun match - richiede riconciliazione manuale
+                    # Nessun match o match ambiguo: nessuna mutazione bancaria.
                     riconciliazioni["riconciliazioni_manuali_richieste"] += 1
                     riconciliazioni["dettagli"].append({
                         "mutuo_id": mutuo_id,
@@ -438,7 +458,8 @@ async def riconcilia_mutui_con_estratto_conto(
                         "rata_numero": rata["numero_rata"],
                         "data_scadenza": rata["data_scadenza"],
                         "importo": rata["importo_totale"],
-                        "status": "richiede_riconciliazione_manuale"
+                        "status": "da_verificare_ambiguita" if ambiguo else "richiede_riconciliazione_manuale",
+                        "criterio_match": criterio_match,
                     })
 
         # Ricalcola percentuali riconciliazione per ogni mutuo
@@ -490,6 +511,19 @@ async def riconcilia_rata_manuale(
 
         if not movimento:
             raise HTTPException(status_code=404, detail="Movimento bancario non trovato")
+        if movimento.get("tipo") != "uscita":
+            raise HTTPException(status_code=409, detail="La rata mutuo richiede un movimento bancario di uscita")
+        if movimento.get("riconciliato") is True:
+            stesso_collegamento = (
+                movimento.get("tipo_documento") == "mutuo"
+                and str(movimento.get("documento_id") or "") == str(mutuo_id)
+                and int(movimento.get("rata_numero") or -1) == int(numero_rata)
+            )
+            if not stesso_collegamento:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Movimento bancario gia riconciliato con un altro documento",
+                )
 
         data_movimento = movimento.get("data_valuta") or movimento.get("data", "")
 

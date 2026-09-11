@@ -1,17 +1,10 @@
 """Riferimenti `/api/...` usati dal frontend, risolvendo le costanti prefisso.
 
 Usato da `genera_mappa.py` e `genera_classificazione_endpoint.py` (colonna
-FE). Prima veniva cercato solo il testo letterale `/api/...`: un modulo che
-compone gli URL da una costante (`const BASE = "/api" + "/fatture"`,
-``const API = `${BASE}/ricevute` ``, ``api.get(`${API}/elenco`)``)
-o da un client axios con `baseURL` (`api.get("/portale/buste")`) risultava
-"mai usato dal frontend" pur essendo la parte piu' chiamata dell'app.
-
-La risoluzione e' statica e per singolo file: costanti MAIUSCOLE dichiarate
-nel file, concatenazioni di stringhe letterali, template `${COSTANTE}` e il
-`baseURL` di un client axios dichiarato nel file. Restituisce stringhe grezze
-(con eventuali `${...}` non risolti): la normalizzazione a `:x` resta ai
-chiamanti, come prima.
+FE). Risolve costanti locali, concatenazioni semplici, template e baseURL axios.
+Gli slot dinamici `${...}` vengono preservati interi per permettere ai chiamanti
+di normalizzarli come parametri senza produrre falsi endpoint troncati.
+I file di test non vengono censiti come chiamanti reali dell'applicazione.
 """
 from __future__ import annotations
 
@@ -24,7 +17,8 @@ _CONCAT = re.compile(r"[\"'`]\s*\+\s*[\"'`]")
 _TEMPLATE_VAR = re.compile(r"\$\{([A-Z][A-Z0-9_]*)\}")
 _BASEURL = re.compile(r"baseURL:\s*([^,}\n]+)")
 _API_CALL = re.compile(r"\bapi\.(?:get|post|put|delete|patch|request)\(\s*([\"'`])(/[^\"'`]*)\1")
-_API_REF = re.compile(r"/api/[a-zA-Z0-9_\-/${}.]+")
+_API_REF = re.compile(r"/api/(?:[A-Za-z0-9_.\-/]+|\$\{[^}\n]+\})+")
+_TEST_FILE = re.compile(r"(?:^|\.)(?:test|spec)\.(?:js|jsx|ts|tsx)$", re.IGNORECASE)
 
 
 def _resolve(value: str, consts: Dict[str, str], depth: int = 0) -> str:
@@ -32,7 +26,9 @@ def _resolve(value: str, consts: Dict[str, str], depth: int = 0) -> str:
     if depth > 5:
         return value
     return _TEMPLATE_VAR.sub(
-        lambda m: _resolve(consts.get(m.group(1), m.group(0)), consts, depth + 1) if m.group(1) in consts else m.group(0),
+        lambda m: _resolve(consts.get(m.group(1), m.group(0)), consts, depth + 1)
+        if m.group(1) in consts
+        else m.group(0),
         value,
     )
 
@@ -56,11 +52,23 @@ def file_api_refs(text: str) -> Set[str]:
     return refs
 
 
+def _is_runtime_source(name: str, folder: str) -> bool:
+    if not name.endswith((".js", ".jsx", ".ts", ".tsx")):
+        return False
+    if _TEST_FILE.search(name):
+        return False
+    parts = {part.lower() for part in os.path.normpath(folder).split(os.sep)}
+    if "__tests__" in parts or "tests" in parts:
+        return False
+    return True
+
+
 def frontend_api_refs(root: str = "frontend/src") -> Set[str]:
     refs: Set[str] = set()
     for folder, _dirs, files in os.walk(root):
         for name in files:
-            if name.endswith((".js", ".jsx", ".ts", ".tsx")):
-                with open(os.path.join(folder, name), encoding="utf-8", errors="ignore") as handle:
-                    refs |= file_api_refs(handle.read())
+            if not _is_runtime_source(name, folder):
+                continue
+            with open(os.path.join(folder, name), encoding="utf-8", errors="ignore") as handle:
+                refs |= file_api_refs(handle.read())
     return refs

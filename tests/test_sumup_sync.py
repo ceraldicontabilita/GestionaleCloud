@@ -245,14 +245,14 @@ def test_risincronizzare_non_duplica_nulla():
     # L'API SumUp e' il fatto owner: crea il credito atteso, non un accredito
     # bancario gia' avvenuto. La risincronizzazione non duplica la coppia.
     cassa = _run(db.prima_nota_cassa.find({}).to_list(50))
-    banca = _run(db.prima_nota_banca.find({}).to_list(50))
+    sumup = _run(db.prima_nota_sumup.find({}).to_list(50))
     assert len(cassa) == 1 and cassa[0]["importo"] == 100.0
-    assert len(banca) == 1 and banca[0]["importo"] == 100.0
-    assert banca[0]["record_role"] == "expectation"
-    assert banca[0]["expectation_owner"] == "sumup_api"
-    assert banca[0]["expectation_status"] == "ATTESO"
-    assert banca[0]["in_transito"] is True
-    assert banca[0]["operation_id"] == cassa[0]["operation_id"]
+    assert len(sumup) == 1 and sumup[0]["importo"] == 100.0
+    assert sumup[0]["record_role"] == "expectation"
+    assert sumup[0]["expectation_owner"] == "sumup_api"
+    assert sumup[0]["expectation_status"] == "ATTESO"
+    assert sumup[0]["in_transito"] is True
+    assert sumup[0]["operation_id"] == cassa[0]["operation_id"]
 
 
 def test_prima_acquisizione_sumup_scrive_un_unico_batch_sheets():
@@ -290,15 +290,15 @@ def test_vendita_sumup_116_90_crea_credito_atteso_non_accredito_reale():
     assert chiusura["fonte_dato"] == "api"
     assert chiusura["source"] == "api_gestore_pos"
     cassa = _run(db.prima_nota_cassa.find_one({"gestore": "sumup"}))
-    banca = _run(db.prima_nota_banca.find_one({"gestore": "sumup"}))
+    sumup = _run(db.prima_nota_sumup.find_one({"gestore": "sumup"}))
     assert cassa["importo"] == 116.90
     assert cassa["quota_pos_fonte"] == "api_sumup"
-    assert banca["importo"] == 116.90
-    assert banca["record_role"] == "expectation"
-    assert banca["expectation_type"] == "pos_bank_credit"
-    assert banca["expectation_owner"] == "sumup_api"
-    assert banca["riconciliato"] is False
-    assert banca["in_transito"] is True
+    assert sumup["importo"] == 116.90
+    assert sumup["record_role"] == "expectation"
+    assert sumup["expectation_type"] == "pos_bank_credit"
+    assert sumup["expectation_owner"] == "sumup_api"
+    assert sumup["riconciliato"] is False
+    assert sumup["in_transito"] is True
 
 
 def test_api_senza_transazioni_scrive_zero_esplicito_per_ogni_giorno():
@@ -351,7 +351,7 @@ def test_l_api_sumup_aggiorna_anche_l_attesa_senza_creare_duplicati():
     assert len(uscite) == 1
     assert uscite[0]["importo"] == 100.0
     assert uscite[0]["quota_pos_fonte"] == "api_sumup"
-    assert _run(db.prima_nota_banca.find_one({
+    assert _run(db.prima_nota_sumup.find_one({
         "source": "trasferimento_pos", "gestore": "sumup"
     }))["importo"] == 100.0
 

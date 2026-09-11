@@ -27,6 +27,7 @@ import api from '../api';
 import { useAnnoGlobale, AnnoSelector } from '../contexts/AnnoContext';
 import { formatEuro, COLORS } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
+import DashboardOperativita from '../components/DashboardOperativita';
 
 /**
  * DASHBOARD — ricostruita da zero (11/07/2026, richiesta utente).
@@ -325,6 +326,8 @@ export default function Dashboard() {
           {erroriApi.join(', ')}.
         </div>
       )}
+
+      <DashboardOperativita scadenze={scadenze} erroriApi={erroriApi} />
 
       <FasciaEnergiaCard energia={energia} errore={erroreEnergia} />
 

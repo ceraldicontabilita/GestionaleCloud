@@ -140,14 +140,16 @@ def test_il_payout_sposta_il_denaro_dal_credito_alla_mastercard():
 
 def test_la_mastercard_non_viene_sommata_a_bpm():
     db = _db()
-    _run(db.prima_nota_banca.insert_many([
+    _run(db.prima_nota_banca.insert_one(
         {"id": "bpm", "data": DATA, "tipo": "entrata", "importo": 1000.0,
          "categoria": "Bonifico", "source": "estratto_conto",
-         "conto_contabile": "19.01.01"},
+         "conto_contabile": "19.01.01"}
+    ))
+    _run(db.prima_nota_sumup.insert_one(
         {"id": "msc", "data": DATA, "tipo": "entrata", "importo": 98.0,
          "categoria": "Accrediti POS", "source": "accredito_payout",
-         "conto_contabile": "19.01.05", "natura": "liquidita"},
-    ]))
+         "conto_contabile": "19.01.05", "natura": "liquidita"}
+    ))
     saldi = _run(saldi_finanziari(db))
     assert _scheda(saldi, "Banca BPM")["saldo"] == 1000.0
     assert _scheda(saldi, "Mastercard SumUp")["saldo"] == 98.0

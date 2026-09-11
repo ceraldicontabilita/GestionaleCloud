@@ -152,8 +152,9 @@ def test_ogni_circuito_ha_la_sua_coppia_di_trasferimento():
         "NUMIA": 500.0, "SUMUP": 100.0}
 
     banca = _righe_pos(db, "prima_nota_banca", source="trasferimento_pos")
-    assert {b["circuito"]: b["importo"] for b in banca} == {
-        "NUMIA": 500.0, "SUMUP": 100.0}
+    sumup = _righe_pos(db, "prima_nota_sumup", source="trasferimento_pos")
+    assert {b["circuito"]: b["importo"] for b in banca} == {"NUMIA": 500.0}
+    assert {s["circuito"]: s["importo"] for s in sumup} == {"SUMUP": 100.0}
 
     # Ogni circuito e' una sola operazione su due registri: stesso
     # trasferimento_id fra la sua uscita e la sua entrata, mai incrociato.
@@ -167,10 +168,10 @@ def test_il_credito_pos_nasce_in_transito():
     """Non e' denaro gia' sul conto finche' l'accredito non lo conferma."""
     db = _db()
     _run(registra_chiusura_pos_reale(db, DATA, 100.0, gestore="sumup"))
-    banca = _righe_pos(db, "prima_nota_banca", source="trasferimento_pos")
-    assert banca[0]["in_transito"] is True
-    assert banca[0]["riconciliato"] is False
-    assert banca[0]["giorno_vendita"] == DATA
+    sumup = _righe_pos(db, "prima_nota_sumup", source="trasferimento_pos")
+    assert sumup[0]["in_transito"] is True
+    assert sumup[0]["riconciliato"] is False
+    assert sumup[0]["giorno_vendita"] == DATA
 
 
 def test_zero_su_un_terminale_non_archivia_il_trasferimento_dell_altro():

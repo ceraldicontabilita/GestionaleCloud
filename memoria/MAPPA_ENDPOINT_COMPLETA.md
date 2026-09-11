@@ -4,7 +4,7 @@
 > Totale **1156 endpoint** in **112 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 634 · ext esterni = 81 · — da verificare = 441
+**Riepilogo uso:** ✓ frontend = 648 · ext esterni = 81 · — da verificare = 427
 
 ## AI Parser  (11)
 
@@ -241,7 +241,7 @@
 | POST | `/api/bank-statement/cleanup-duplicati-causale` | — | bank.bank_statement_import |
 | GET | `/api/bank-statement/formati-supportati` | — | bank.bank_statement_import |
 | POST | `/api/bank-statement/import` | — | bank.bank_statement_import |
-| GET | `/api/bank-statement/movements` | ✓ | bank.bank_statement_import |
+| GET | `/api/bank-statement/movements` | — | bank.bank_statement_import |
 | POST | `/api/bank-statement/riconcilia-manuale` | — | bank.bank_statement_import |
 | GET | `/api/bank-statement/stats` | — | bank.bank_statement_import |
 
@@ -572,7 +572,7 @@
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
-| PUT | `/api/dizionario-articoli/articolo/{descrizione_encoded}` | — | warehouse.dizionario_articoli |
+| PUT | `/api/dizionario-articoli/articolo/{descrizione_encoded}` | ✓ | warehouse.dizionario_articoli |
 | POST | `/api/dizionario-articoli/categorizza-ai` | — | warehouse.dizionario_articoli |
 | GET | `/api/dizionario-articoli/cerca` | — | warehouse.dizionario_articoli |
 | GET | `/api/dizionario-articoli/dizionario` | — | warehouse.dizionario_articoli |
@@ -619,7 +619,7 @@
 | POST | `/api/documenti/drive/fiscal/sync` | — | documenti |
 | GET | `/api/documenti/drive/folders` | ✓ | documenti |
 | GET | `/api/documenti/drive/index/declarations` | ✓ | documenti |
-| GET | `/api/documenti/drive/index/document/{document_id}` | — | documenti |
+| GET | `/api/documenti/drive/index/document/{document_id}` | ✓ | documenti |
 | GET | `/api/documenti/drive/index/f24` | ✓ | documenti |
 | GET | `/api/documenti/drive/index/overview` | ✓ | documenti |
 | GET | `/api/documenti/drive/index/search` | ✓ | documenti |
@@ -759,7 +759,7 @@
 | POST | `/api/estratto-conto-movimenti/riconcilia-stipendi` | — | bank.estratto_conto |
 | GET | `/api/estratto-conto-movimenti/riepilogo` | — | bank.estratto_conto |
 | POST | `/api/estratto-conto-movimenti/ripara-versamenti-cassa` | ✓ | bank.estratto_conto |
-| DELETE | `/api/estratto-conto-movimenti/{movimento_id}` | ✓ | bank.estratto_conto |
+| DELETE | `/api/estratto-conto-movimenti/{movimento_id}` | — | bank.estratto_conto |
 
 ## F24  (26)
 
@@ -809,7 +809,7 @@
 | GET | `/api/f24-email-settings/impostazioni` | ✓ | f24_email_settings |
 | POST | `/api/f24-email-settings/impostazioni` | ✓ | f24_email_settings |
 | GET | `/api/f24-email-settings/log-scansioni` | ✓ | f24_email_settings |
-| DELETE | `/api/f24-email-settings/rimuovi-mittente/{email}` | — | f24_email_settings |
+| DELETE | `/api/f24-email-settings/rimuovi-mittente/{email}` | ✓ | f24_email_settings |
 | POST | `/api/f24-email-settings/scan-manuale` | ✓ | f24_email_settings |
 | GET | `/api/f24-email-settings/stato-sistema` | ✓ | f24_email_settings |
 | POST | `/api/f24-email-settings/toggle-auto-scan` | ✓ | f24_email_settings |
@@ -835,11 +835,11 @@
 | POST | `/api/f24-riconciliazione/alerts/{alert_id}/ignora` | — | f24.f24_riconciliazione |
 | GET | `/api/f24-riconciliazione/commercialista` | ✓ | f24.f24_riconciliazione |
 | POST | `/api/f24-riconciliazione/commercialista/upload` | — | f24.f24_riconciliazione |
-| GET | `/api/f24-riconciliazione/commercialista/{f24_id}` | — | f24.f24_riconciliazione |
-| PUT | `/api/f24-riconciliazione/commercialista/{f24_id}` | — | f24.f24_riconciliazione |
-| DELETE | `/api/f24-riconciliazione/commercialista/{f24_id}` | — | f24.f24_riconciliazione |
+| GET | `/api/f24-riconciliazione/commercialista/{f24_id}` | ✓ | f24.f24_riconciliazione |
+| PUT | `/api/f24-riconciliazione/commercialista/{f24_id}` | ✓ | f24.f24_riconciliazione |
+| DELETE | `/api/f24-riconciliazione/commercialista/{f24_id}` | ✓ | f24.f24_riconciliazione |
 | PUT | `/api/f24-riconciliazione/commercialista/{f24_id}/pagato` | — | f24.f24_riconciliazione |
-| GET | `/api/f24-riconciliazione/commercialista/{f24_id}/pdf` | — | f24.f24_riconciliazione |
+| GET | `/api/f24-riconciliazione/commercialista/{f24_id}/pdf` | ✓ | f24.f24_riconciliazione |
 | GET | `/api/f24-riconciliazione/dashboard` | — | f24.f24_riconciliazione |
 | POST | `/api/f24-riconciliazione/fix-campo-anno` | — | f24.f24_riconciliazione |
 | GET | `/api/f24-riconciliazione/quietanze` | — | f24.f24_riconciliazione |
@@ -867,9 +867,9 @@
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
-| POST | `/api/fatture/drive/quadratura` | — | invoices.fatture_drive |
-| POST | `/api/fatture/drive/ricostruzione` | — | invoices.fatture_drive |
-| POST | `/api/fatture/drive/ricostruzione/lotto` | — | invoices.fatture_drive |
+| POST | `/api/fatture/drive/quadratura` | ✓ | invoices.fatture_drive |
+| POST | `/api/fatture/drive/ricostruzione` | ✓ | invoices.fatture_drive |
+| POST | `/api/fatture/drive/ricostruzione/lotto` | ✓ | invoices.fatture_drive |
 | GET | `/api/fatture/drive/status` | ✓ | invoices.fatture_drive |
 | POST | `/api/fatture/drive/sync` | ✓ | invoices.fatture_drive |
 
@@ -885,12 +885,12 @@
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
-| POST | `/api/fatture-ricevute/aggiorna-metodi-pagamento` | — | fatture_module.pagamento |
+| POST | `/api/fatture-ricevute/aggiorna-metodi-pagamento` | ✓ | fatture_module.pagamento |
 | GET | `/api/fatture-ricevute/archivio` | ✓ | fatture_module.crud |
-| POST | `/api/fatture-ricevute/backfill-autoroute` | — | fatture_module.pagamento |
-| POST | `/api/fatture-ricevute/cambia-metodo-pagamento` | — | fatture_module.pagamento |
-| POST | `/api/fatture-ricevute/elimina-anni-vecchi` | — | fatture_module.crud |
-| POST | `/api/fatture-ricevute/elimina-gusci-vuoti` | — | fatture_module.crud |
+| POST | `/api/fatture-ricevute/backfill-autoroute` | ✓ | fatture_module.pagamento |
+| POST | `/api/fatture-ricevute/cambia-metodo-pagamento` | ✓ | fatture_module.pagamento |
+| POST | `/api/fatture-ricevute/elimina-anni-vecchi` | ✓ | fatture_module.crud |
+| POST | `/api/fatture-ricevute/elimina-gusci-vuoti` | ✓ | fatture_module.crud |
 | POST | `/api/fatture-ricevute/export-selezione` | ✓ | fatture_module.export_selezione |
 | GET | `/api/fatture-ricevute/fattura/{fattura_id}` | ✓ | fatture_module.crud |
 | PUT | `/api/fatture-ricevute/fattura/{fattura_id}` | ✓ | fatture_module.crud |
@@ -901,25 +901,25 @@
 | GET | `/api/fatture-ricevute/fattura/{fattura_id}/view-assoinvoice` | ✓ | fatture_module.crud |
 | GET | `/api/fatture-ricevute/fattura/{fattura_id}/xml-originale` | ✓ | fatture_module.crud |
 | GET | `/api/fatture-ricevute/fornitori` | ✓ | fatture_module.crud |
-| POST | `/api/fatture-ricevute/import-paypal` | — | fatture_module.pagamento |
-| GET | `/api/fatture-ricevute/lista-paypal` | — | fatture_module.pagamento |
+| POST | `/api/fatture-ricevute/import-paypal` | ✓ | fatture_module.pagamento |
+| GET | `/api/fatture-ricevute/lista-paypal` | ✓ | fatture_module.pagamento |
 | POST | `/api/fatture-ricevute/paga-manuale` | ✓ | fatture_module.pagamento |
-| POST | `/api/fatture-ricevute/pulisci-duplicati` | — | fatture_module.crud |
+| POST | `/api/fatture-ricevute/pulisci-duplicati` | ✓ | fatture_module.crud |
 | POST | `/api/fatture-ricevute/riconcilia-con-estratto-conto` | ✓ | fatture_module.pagamento |
-| POST | `/api/fatture-ricevute/riconcilia-paypal` | — | fatture_module.pagamento |
+| POST | `/api/fatture-ricevute/riconcilia-paypal` | ✓ | fatture_module.pagamento |
 | GET | `/api/fatture-ricevute/statistiche` | ✓ | fatture_module.crud |
-| GET | `/api/fatture-ricevute/verifica-incoerenze-estratto-conto` | — | fatture_module.pagamento |
+| GET | `/api/fatture-ricevute/verifica-incoerenze-estratto-conto` | ✓ | fatture_module.pagamento |
 
 ## Fatture Upload  (12)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
-| DELETE | `/api/fatture/all` | — | invoices.fatture_upload |
-| POST | `/api/fatture/categorize-movements` | — | invoices.fatture_upload |
-| POST | `/api/fatture/recalculate-iva` | — | invoices.fatture_upload |
-| POST | `/api/fatture/sync-suppliers` | — | invoices.fatture_upload |
-| POST | `/api/fatture/upload-xml` | — | invoices.fatture_upload |
-| POST | `/api/fatture/upload-xml-bulk` | — | invoices.fatture_upload |
+| DELETE | `/api/fatture/all` | ✓ | invoices.fatture_upload |
+| POST | `/api/fatture/categorize-movements` | ✓ | invoices.fatture_upload |
+| POST | `/api/fatture/recalculate-iva` | ✓ | invoices.fatture_upload |
+| POST | `/api/fatture/sync-suppliers` | ✓ | invoices.fatture_upload |
+| POST | `/api/fatture/upload-xml` | ✓ | invoices.fatture_upload |
+| POST | `/api/fatture/upload-xml-bulk` | ✓ | invoices.fatture_upload |
 | GET | `/api/fatture/{invoice_id}` | ✓ | invoices.fatture_upload |
 | PUT | `/api/fatture/{invoice_id}` | ✓ | invoices.fatture_upload |
 | DELETE | `/api/fatture/{invoice_id}` | ✓ | invoices.fatture_upload |
@@ -979,7 +979,7 @@
 | POST | `/api/fornitori-learning/riclassifica-f24/{f24_id}` | — | fornitori_learning |
 | POST | `/api/fornitori-learning/salva` | ✓ | fornitori_learning |
 | GET | `/api/fornitori-learning/stats` | ✓ | fornitori_learning |
-| GET | `/api/fornitori-learning/suggerisci-keywords/{fornitore_nome}` | — | fornitori_learning |
+| GET | `/api/fornitori-learning/suggerisci-keywords/{fornitore_nome}` | ✓ | fornitori_learning |
 | DELETE | `/api/fornitori-learning/{fornitore_id}` | ✓ | fornitori_learning |
 
 ## Gestione Riservata  (7)
@@ -1109,7 +1109,7 @@
 | POST | `/api/pagamenti/assegno-multi-fatture` | — | multi_pagamento |
 | POST | `/api/pagamenti/fattura-multi-metodo` | — | multi_pagamento |
 | GET | `/api/pagamenti/fattura/{fattura_id}` | — | multi_pagamento |
-| POST | `/api/pagamenti/registra` | ✓ | multi_pagamento |
+| POST | `/api/pagamenti/registra` | — | multi_pagamento |
 | GET | `/api/pagamenti/riepilogo-fornitore/{piva}` | — | multi_pagamento |
 | DELETE | `/api/pagamenti/{pagamento_id}` | — | multi_pagamento |
 
@@ -1204,7 +1204,7 @@
 | GET | `/api/operazioni-da-confermare/smart/cerca-stipendi` | ✓ | operazioni_module.smart |
 | POST | `/api/operazioni-da-confermare/smart/conferma-f24` | ✓ | operazioni_module.smart |
 | POST | `/api/operazioni-da-confermare/smart/ignora` | ✓ | operazioni_module |
-| GET | `/api/operazioni-da-confermare/smart/movimento/{movimento_id}` | — | operazioni_module.smart |
+| GET | `/api/operazioni-da-confermare/smart/movimento/{movimento_id}` | ✓ | operazioni_module.smart |
 | POST | `/api/operazioni-da-confermare/smart/riconcilia-manuale` | ✓ | operazioni_module.smart |
 | POST | `/api/operazioni-da-confermare/smart/riconcilia-stipendio` | ✓ | operazioni_module |
 
@@ -1430,25 +1430,25 @@
 | POST | `/api/prima-nota-salari/bonifica-doppioni` | — | accounting.prima_nota_salari |
 | POST | `/api/prima-nota-salari/consolida-record` | — | accounting.prima_nota_salari |
 | POST | `/api/prima-nota-salari/deposita-cedolini-in-hr` | — | accounting.prima_nota_salari |
-| GET | `/api/prima-nota-salari/dipendenti-lista` | ✓ | accounting.prima_nota_salari |
+| GET | `/api/prima-nota-salari/dipendenti-lista` | — | accounting.prima_nota_salari |
 | GET | `/api/prima-nota-salari/export-excel` | — | accounting.prima_nota_salari |
-| POST | `/api/prima-nota-salari/import-bonifici` | ✓ | accounting.prima_nota_salari |
-| POST | `/api/prima-nota-salari/import-paghe` | ✓ | accounting.prima_nota_salari |
+| POST | `/api/prima-nota-salari/import-bonifici` | — | accounting.prima_nota_salari |
+| POST | `/api/prima-nota-salari/import-paghe` | — | accounting.prima_nota_salari |
 | POST | `/api/prima-nota-salari/import-salari-ricostruiti` | — | accounting.prima_nota_salari |
 | POST | `/api/prima-nota-salari/import-salari-verificati` | — | accounting.prima_nota_salari |
 | DELETE | `/api/prima-nota-salari/pulisci-righe-vuote` | — | accounting.prima_nota_salari |
-| POST | `/api/prima-nota-salari/ricalcola-progressivi` | ✓ | accounting.prima_nota_salari |
-| GET | `/api/prima-nota-salari/salari` | ✓ | accounting.prima_nota_salari |
-| POST | `/api/prima-nota-salari/salari/aggiustamento` | ✓ | accounting.prima_nota_salari |
-| DELETE | `/api/prima-nota-salari/salari/reset` | ✓ | accounting.prima_nota_salari |
-| GET | `/api/prima-nota-salari/salari/riepilogo` | ✓ | accounting.prima_nota_salari |
-| DELETE | `/api/prima-nota-salari/salari/{record_id}` | ✓ | accounting.prima_nota_salari |
-| PUT | `/api/prima-nota-salari/salari/{record_id}` | ✓ | accounting.prima_nota_salari |
-| POST | `/api/prima-nota-salari/salari/{record_id}/bonifico-pdf` | ✓ | accounting.prima_nota_salari |
-| GET | `/api/prima-nota-salari/salari/{record_id}/bonifico-pdf` | ✓ | accounting.prima_nota_salari |
-| GET | `/api/prima-nota-salari/salari/{record_id}/cedolino-pdf` | ✓ | accounting.prima_nota_salari |
-| POST | `/api/prima-nota-salari/salari/{record_id}/cedolino-pdf` | ✓ | accounting.prima_nota_salari |
-| PUT | `/api/prima-nota-salari/salari/{record_id}/riconcilia` | ✓ | accounting.prima_nota_salari |
+| POST | `/api/prima-nota-salari/ricalcola-progressivi` | — | accounting.prima_nota_salari |
+| GET | `/api/prima-nota-salari/salari` | — | accounting.prima_nota_salari |
+| POST | `/api/prima-nota-salari/salari/aggiustamento` | — | accounting.prima_nota_salari |
+| DELETE | `/api/prima-nota-salari/salari/reset` | — | accounting.prima_nota_salari |
+| GET | `/api/prima-nota-salari/salari/riepilogo` | — | accounting.prima_nota_salari |
+| DELETE | `/api/prima-nota-salari/salari/{record_id}` | — | accounting.prima_nota_salari |
+| PUT | `/api/prima-nota-salari/salari/{record_id}` | — | accounting.prima_nota_salari |
+| POST | `/api/prima-nota-salari/salari/{record_id}/bonifico-pdf` | — | accounting.prima_nota_salari |
+| GET | `/api/prima-nota-salari/salari/{record_id}/bonifico-pdf` | — | accounting.prima_nota_salari |
+| GET | `/api/prima-nota-salari/salari/{record_id}/cedolino-pdf` | — | accounting.prima_nota_salari |
+| POST | `/api/prima-nota-salari/salari/{record_id}/cedolino-pdf` | — | accounting.prima_nota_salari |
+| PUT | `/api/prima-nota-salari/salari/{record_id}/riconcilia` | — | accounting.prima_nota_salari |
 | POST | `/api/prima-nota-salari/sync-hr` | — | accounting.prima_nota_salari |
 
 ## Quietanze Drive  (3)
@@ -1561,7 +1561,7 @@
 | GET | `/api/fiscal/crosswalk` | ✓ | fiscal_control |
 | GET | `/api/fiscal/declarations` | ✓ | fiscal_control |
 | GET | `/api/fiscal/declarations/{document_id}/field-certainty` | ✓ | fiscal_control |
-| GET | `/api/fiscal/documents/{document_id}/content` | — | fiscal_control |
+| GET | `/api/fiscal/documents/{document_id}/content` | ✓ | fiscal_control |
 | GET | `/api/fiscal/dossier.pdf` | — | fiscal_control |
 | GET | `/api/fiscal/evidence-package.zip` | — | fiscal_control |
 | GET | `/api/fiscal/evidence/{entity_type}/{entity_id}` | — | fiscal_control |
@@ -1569,7 +1569,7 @@
 | GET | `/api/fiscal/f24-rows` | ✓ | fiscal_control |
 | GET | `/api/fiscal/obligations` | ✓ | fiscal_control |
 | POST | `/api/fiscal/ravvedimento/calculate` | — | fiscal_control |
-| GET | `/api/fiscal/review` | ✓ | fiscal_control |
+| GET | `/api/fiscal/review` | — | fiscal_control |
 | GET | `/api/fiscal/source-certainty` | ✓ | fiscal_control |
 | GET | `/api/fiscal/summary` | ✓ | fiscal_control |
 | POST | `/api/fiscal/vat-credit-chain/rebuild` | — | fiscal_control |
@@ -1678,12 +1678,12 @@
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
-| POST | `/api/verbali-noleggio/associa-pdf/{numero_verbale:path}` | — | verbali_noleggio |
-| POST | `/api/verbali-noleggio/correggi-importo/{numero_verbale:path}` | — | verbali_noleggio |
-| POST | `/api/verbali-noleggio/correggi-trasgressore/{numero_verbale:path}` | — | verbali_noleggio |
+| POST | `/api/verbali-noleggio/associa-pdf/{numero_verbale:path}` | ✓ | verbali_noleggio |
+| POST | `/api/verbali-noleggio/correggi-importo/{numero_verbale:path}` | ✓ | verbali_noleggio |
+| POST | `/api/verbali-noleggio/correggi-trasgressore/{numero_verbale:path}` | ✓ | verbali_noleggio |
 | GET | `/api/verbali-noleggio/dettaglio/{numero_verbale}` | ✓ | verbali_noleggio |
 | GET | `/api/verbali-noleggio/pdf/{numero_verbale:path}` | ✓ | verbali_noleggio |
-| POST | `/api/verbali-noleggio/ricalcola-pdf/{numero_verbale:path}` | — | verbali_noleggio |
+| POST | `/api/verbali-noleggio/ricalcola-pdf/{numero_verbale:path}` | ✓ | verbali_noleggio |
 | GET | `/api/verbali-noleggio/verbali-completi` | — | verbali_noleggio |
 
 ## Verbali Riconciliazione  (10)

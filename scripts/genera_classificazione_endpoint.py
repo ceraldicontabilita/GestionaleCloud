@@ -28,6 +28,9 @@ SCHEDULER_DIRS = ["app/services", "app/routers"]
 SCHEDULER_HINT = re.compile(r"scheduler|cron|apscheduler|ingest|_orari|batch_reprocess|auto_")
 CHAT_HINT = re.compile(r"chat|assistant|ai_engine|chatbot")
 MIGRAZIONE_HINT = re.compile(r"migra|cleanup|pulizia|reset|reimport|inizializz|backfill|one[_-]?shot")
+_TEMPLATE_SLOT = re.compile(r"\$\{[^}]+\}")
+_BRACE_PARAM = re.compile(r"\{[^}]+\}")
+_ATTACHED_OPTIONAL_SUFFIX = re.compile(r"(?<=[A-Za-z0-9_-])\*$")
 
 
 def _read(path):
@@ -54,25 +57,39 @@ def frontend_refs():
 
 
 def _norm(p):
-    # normalizza i path param {id} -> * e rimuove trailing slash
-    p = re.sub(r"\{[^}]+\}", "*", p)
+    """Normalizza path frontend/FastAPI senza trasformare prefissi in uso reale.
+
+    Gli slot ``${...}`` e ``{id}`` diventano segmenti wildcard. Un ``*``
+    attaccato alla fine di un segmento (es. ``/run${params}``) rappresenta
+    invece un suffisso opzionale/query e viene rimosso.
+    """
+    p = _TEMPLATE_SLOT.sub("*", p)
+    p = _BRACE_PARAM.sub("*", p)
+    p = p.split("?", 1)[0].split("#", 1)[0]
+    p = p.rstrip(".,;: ")
+    p = _ATTACHED_OPTIONAL_SUFFIX.sub("", p)
+    p = re.sub(r"/+", "/", p)
+    if not p.startswith("/"):
+        p = "/" + p
     return p.rstrip("/") or "/"
 
 
+def _segments(path):
+    return tuple(part for part in _norm(path).strip("/").split("/") if part)
+
+
+def _compatible_path(left, right):
+    a = _segments(left)
+    b = _segments(right)
+    return len(a) == len(b) and all(
+        x == y or x == "*" or y == "*" for x, y in zip(a, b)
+    )
+
+
 def _fe_match(path, fe_norm):
+    """Match conservativo: stessa forma del path, mai solo stesso prefisso."""
     n = _norm(path)
-    # match esatto o per prefisso significativo (almeno 2 segmenti dopo /api)
-    for r in fe_norm:
-        if r == n or r.startswith(n + "/") or n.startswith(r + "/"):
-            return True
-    # match sul prefisso a 3 segmenti (/api/x/y)
-    segs = n.strip("/").split("/")
-    if len(segs) >= 3:
-        pref = "/" + "/".join(segs[:3])
-        for r in fe_norm:
-            if r == pref or r.startswith(pref + "/"):
-                return True
-    return False
+    return any(_compatible_path(n, ref) for ref in fe_norm)
 
 
 def _grep_any(needle, texts):
@@ -146,7 +163,7 @@ def build():
                 motivo = "in uso: " + ", ".join(usi)
             else:
                 decisione = "verificare"
-                motivo = "nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare"
+                motivo = "nessun riferimento runtime noto (FE/scheduler/chat): verificare prima di deprecare"
 
             prio = next((p for p in PRIORITARI if path.startswith(p)), "")
             rows.append({
@@ -179,10 +196,11 @@ def scrivi(rows):
     out.append("# Classificazione endpoint (§7) — RIGENERABILE\n")
     out.append("> Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.\n")
     out.append("> NON modificare a mano: rilancia lo script.\n")
+    out.append("> La colonna FE usa compatibilità esatta di forma del path; un semplice prefisso non prova l'uso di un endpoint figlio.\n")
     out.append(f"\n**Totale endpoint:** {tot} · tenere: {da_ten} · verificare: {da_verif} · "
                f"admin-only (migrazione/manutenzione): {da_admin}\n")
-    out.append("\nColonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, "
-               "Test. Decisione conservativa: nulla viene eliminata in blocco (§7).\n")
+    out.append("\nColonne: FE=frontend runtime, Sch=scheduler, Chat, Migr=migrazione/manutenzione, "
+               "Test. Decisione conservativa: nulla viene eliminato in blocco (§7).\n")
 
     prioritari = [r for r in rows if r["prio"]]
     if prioritari:
@@ -193,9 +211,9 @@ def scrivi(rows):
     out.append(_tabella(rows))
 
     out.append("\n## Note operative (§7)\n")
-    out.append("- Gli endpoint marcati **deprecare** sono di migrazione/manutenzione one-shot: "
+    out.append("- Gli endpoint **admin-only** sono di migrazione/manutenzione one-shot: "
                "devono essere Admin-only, disabilitabili, documentati e non esposti a lungo.\n")
-    out.append("- Gli endpoint **verificare** non hanno riferimenti noti automatici: "
+    out.append("- Gli endpoint **verificare** non hanno riferimenti runtime noti automatici: "
                "verificare manualmente (potrebbero essere chiamati via strumenti esterni/Postman) "
                "prima di deprecare. NON eliminare in blocco.\n")
     open(OUT, "w", encoding="utf-8").write("".join(out))

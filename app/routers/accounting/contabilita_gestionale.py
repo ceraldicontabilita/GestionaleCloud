@@ -759,6 +759,21 @@ async def get_budget_vs_consuntivo(
         categoria = f.get("categoria_contabile", "Acquisti generici")
         costi_per_voce[categoria][m] += importo
     
+    # --- TOTALI CONSUNTIVI CANONICI ---
+    # Il dettaglio per categoria sopra e' analitico/gestionale. I totali che
+    # alimentano margine, grafico e scostamenti devono invece coincidere col
+    # Conto Economico canonico (imponibile, note di credito, soft-delete e
+    # criteri data unificati).
+    from app.routers.accounting.bilancio import get_conto_economico
+    ricavi_mensili_canonici = {}
+    costi_mensili_canonici = {}
+    for mese_ce in range(1, 13):
+        ce = await get_conto_economico(anno=anno, mese=mese_ce)
+        ricavi_mensili_canonici[mese_ce] = float(ce["ricavi"]["totale_ricavi"] or 0)
+        costi_mensili_canonici[mese_ce] = float(ce["costi"]["totale_costi"] or 0)
+    ricavi_mensili = ricavi_mensili_canonici
+    costi_mensili = costi_mensili_canonici
+
     # --- CONFRONTO PER VOCE ---
     confronto_voci = []
     for voce_budget in budget_data.get("voci", []):
@@ -864,7 +879,18 @@ async def get_budget_vs_consuntivo(
                 "scostamento": round(margine_cons - margine_budget, 2)
             }
         },
-        "andamento_mensile": andamento
+        "andamento_mensile": andamento,
+        "qualita_consuntivo": {
+            "totali_fonte": "conto_economico_canonico",
+            "totali_validati": True,
+            "dettaglio_per_voce": "analisi_gestionale_per_categoria",
+            "dettaglio_per_voce_validato": False,
+            "nota": (
+                "I totali consuntivi coincidono con il Conto Economico canonico. "
+                "L'attribuzione alle singole voci di budget resta un'analisi "
+                "gestionale per categoria e non costituisce quadratura contabile."
+            ),
+        },
     }
 
 

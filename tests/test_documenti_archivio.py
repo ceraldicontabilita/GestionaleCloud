@@ -199,3 +199,32 @@ def test_archivio_rifiuta_filtri_non_validi(monkeypatch, categoria, status):
             skip=0,
         ))
     assert exc.value.status_code == 400
+
+
+
+def test_archivio_separa_stato_operativo_da_stato_evidenza(monkeypatch):
+    db = _db(monkeypatch)
+    _run(db.documents_inbox.insert_many([
+        {
+            "id": "legacy-processato", "filename": "fattura.pdf",
+            "category": "fattura", "status": "processato", "processed": True,
+            "processed_to": "fatture",
+        },
+        {
+            "id": "esplicito", "filename": "f24.pdf",
+            "category": "f24", "status": "processato", "processed": True,
+            "processed_to": "f24_unificato", "evidence_status": "verificato",
+        },
+        {
+            "id": "errore", "filename": "rotto.pdf",
+            "category": "f24", "status": "errore", "processing_error": "parser fallito",
+        },
+    ]))
+
+    result = _run(documenti.lista_documenti(
+        categoria=None, status=None, anno=None, search=None, limit=50, skip=0
+    ))
+    by_id = {item["id"]: item for item in result["documents"]}
+    assert by_id["legacy-processato"]["evidence_status"] == "non_verificato"
+    assert by_id["esplicito"]["evidence_status"] == "verificato"
+    assert by_id["errore"]["evidence_status"] == "conflitto"

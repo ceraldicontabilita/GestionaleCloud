@@ -199,7 +199,11 @@ async def calcola_imposte_realtime(
     try:
         risultato = await calcolatore.calcola_imposte_da_db(db, anno)
 
-        anno_label = anno if anno else "tutti gli anni"
+        anno_label = anno if anno else "anno corrente"
+        dipendenti_reali = await db["dipendenti"].count_documents({
+            "attivo": {"$ne": False},
+            "merged_into": {"$exists": False},
+        })
 
         # Converti in dict per JSON
         return {
@@ -238,10 +242,20 @@ async def calcola_imposte_realtime(
             },
             "totale_imposte": risultato.totale_imposte,
             "aliquota_effettiva": risultato.aliquota_effettiva,
+            "qualita_calcolo": {
+                "tipo": "previsionale_gestionale",
+                "base_civilistica": "conto_economico_canonico",
+                "dipendenti_reali_rilevati": dipendenti_reali,
+                "deduzioni_irap_specifiche_applicate_automaticamente": False,
+                "aliquota_irap_verificata_2026": regione.lower().replace(" ", "_") == "campania",
+                "fonte_irap_campania_2026": "Regione Campania - Portale Entrate IRAP, aliquota ordinaria 4,97% al 01/04/2026",
+                "uso_dichiarativo": False,
+            },
             "note": [
-                f"Calcolo basato su fatture e corrispettivi dell'anno {anno_label}",
-                "Variazioni fiscali automatiche per telefonia (20% indeducibile) e carburante auto (80% indeducibile)",
-                f"Aliquota IRAP regione {regione}: {calcolatore.aliquota_irap}%"
+                f"Base civilistica dal Conto Economico canonico dell'anno {anno_label}",
+                "Deduzioni e agevolazioni con requisiti specifici non sono applicate automaticamente",
+                f"Aliquota IRAP regione {regione}: {calcolatore.aliquota_irap}%",
+                "Calcolo previsionale: validare con il consulente prima di uso dichiarativo"
             ]
         }
     except Exception as e:

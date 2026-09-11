@@ -2,11 +2,11 @@
 
 <!-- gestionalecloud-doc
 status: current
-reviewed_at: 2026-08-21
-storage_architecture: drive-only
+reviewed_at: 2026-09-11
+storage_architecture: supabase-runtime-drive-originals
 -->
 
-Inventario rigenerato il 2026-08-21 da `scripts/refresh_markdown_docs.py`.
+Inventario rigenerato il 2026-09-11 da `scripts/refresh_markdown_docs.py`.
 Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 
 ## Significato degli stati
@@ -21,12 +21,12 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 
 ## Riepilogo
 
-- Correnti: **28**
+- Correnti: **31**
 - Riferimento: **28**
 - Pianificati: **7**
-- Generati: **5**
+- Generati: **6**
 - Storici: **9**
-- Totale: **77**
+- Totale: **81**
 
 ## Elenco completo
 
@@ -48,6 +48,7 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 | `archive/legacy-audit/README.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/ADR-001-HACCP-LOTTI-DRIVE-SHEETS.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/ADR-005-INGESTIONE-DOCUMENTALE-UNIVERSALE-RENDER.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `docs/AI_GOVERNANCE.md` | `current` | Autorità operativa corrente |
 | `docs/FISCAL_ACCOUNTING_POLICY.md` | `current` | Autorità operativa corrente |
 | `docs/GUIDA-SEMPLICE-FLUSSO-ATOMICO-RENDER.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/MARKDOWN_INVENTORY.md` | `current` | Autorità operativa corrente |
@@ -74,6 +75,7 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 | `frontend_lotti/README.md` | `current` | Autorità operativa corrente |
 | `frontend_menu/README.md` | `current` | Autorità operativa corrente |
 | `memoria/AUDIT_COMMERCIALISTA_2026-09-03.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `memoria/AUDIT_FRONTEND_BACKEND_CONTRACT.md` | `generated` | Artefatto meccanico; rigenerare dalla sorgente indicata |
 | `memoria/AUDIT_FRONTEND_DEAD_CODE.md` | `generated` | Artefatto meccanico; rigenerare dalla sorgente indicata |
 | `memoria/AUDIT_STATIC_REPORT.md` | `generated` | Artefatto meccanico; rigenerare dalla sorgente indicata |
 | `memoria/DISASTER_RECOVERY_DRIVE.md` | `current` | Autorità operativa corrente |
@@ -109,9 +111,11 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 | `memoria/moduli/PRIMA_NOTA_CASSA.md` | `reference` | Dettaglio di dominio subordinato ai documenti correnti |
 | `memoria/moduli/README.md` | `reference` | Dettaglio di dominio subordinato ai documenti correnti |
 | `memoria/moduli/RICONCILIAZIONE.md` | `reference` | Dettaglio di dominio subordinato ai documenti correnti |
+| `prompts/development/repository_audit.md` | `current` | Autorità operativa corrente |
+| `prompts/documents/evidence_extraction.md` | `current` | Autorità operativa corrente |
 
 ## Regola architetturale
 
-Drive/Sheets è l'unico archivio operativo: originali in Google Drive e registri
-in Google Sheets/Excel collegato a Drive. Non esistono fallback di persistenza;
-i documenti storici che descrivono altre architetture non sono autorità.
+Supabase è il registro operativo strutturato. Google Drive conserva gli originali
+documentali. Il runtime Google Sheets è mantenuto soltanto come compatibilità
+transitoria di rollback/test e non deve essere esteso a nuovi flussi.

@@ -2,12 +2,12 @@
 
 <!-- gestionalecloud-doc
 status: reference
-reviewed_at: 2026-08-21
+reviewed_at: 2026-09-11
 storage_architecture: drive-only
 -->
 
 > [!IMPORTANT]
-> Documento di riferimento del dominio. Per persistenza e cutover vale l'architettura Drive-only descritta nei documenti correnti; eventuali nomi di collection restano soltanto contesto storico.
+> Documento di riferimento del dominio. Per persistenza e cutover vale l'architettura corrente Supabase + Drive descritta nei documenti correnti; eventuali riferimenti Drive/Sheets sono contesto storico.
 
 Documentazione operativa degli endpoint dei moduli banca/riconciliazione (FastAPI + Drive/Sheets).
 Collezione canonica movimenti banca: `estratto_conto_movimenti`. Schema canonico collegamento assegno↔fatture: `fatture_collegate=[{fattura_id, quota, data_collegamento}]` (max 4 fatture, stesso fornitore, tolleranza ±0,005€).

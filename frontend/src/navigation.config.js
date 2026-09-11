@@ -12,7 +12,6 @@
 import {
   LayoutDashboard,
   FileText,
-  Bot,
   BookOpen,
   Building2,
   Landmark,
@@ -46,8 +45,8 @@ export const NAV_PRINCIPALI = [
 // Voci secondarie: dropdown "Altro" su desktop + resto del menù mobile.
 // Corrispettivi NON è qui: si raggiunge dal tab dentro Fatture.
 // F24 e Coerenza POS sono sezioni dell'hub Riconciliazione e non duplicano
-// più la navigazione principale. Mappa gestionale resta raggiungibile via URL
-// e verrà ricollocata nell'area diagnostica/admin.
+// più la navigazione principale. Le pagine amministrative tecniche (Utenti e
+// Assistente AI) sono raggiungibili dall'area Admin e non duplicano il menu.
 export const NAV_ALTRO = [
   { to: '/iva', label: 'Gestione IVA', Icon: Receipt },
   { to: '/situazione-fiscale', label: 'Situazione fiscale', Icon: FileBarChart, adminOnly: true },
@@ -65,8 +64,6 @@ export const NAV_ALTRO = [
   { href: '/menu/admin', label: 'Menu', Icon: Menu, external: true },
   { href: '/hr/', label: 'HR', Icon: Users, external: true, adminOnly: true },
   { href: '/lotti/', label: 'HACCP Lotti', Icon: ShieldCheck, external: true },
-  { to: '/impostazioni-ai', label: 'Assistente AI', Icon: Bot, adminOnly: true },
-  { to: '/utenti', label: 'Utenti', Icon: Users, adminOnly: true },
   { to: '/admin', label: 'Admin', Icon: Settings, adminOnly: true },
 ];
 

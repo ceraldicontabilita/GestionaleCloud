@@ -11,9 +11,12 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-REVIEW_DATE = "2026-08-21"
+REVIEW_DATE = "2026-09-11"
+CURRENT_STORAGE = "supabase-runtime-drive-originals"
+LEGACY_STORAGE = "drive-only"
 
 GENERATED = {
+    "memoria/AUDIT_FRONTEND_BACKEND_CONTRACT.md",
     "memoria/AUDIT_FRONTEND_DEAD_CODE.md",
     "memoria/AUDIT_STATIC_REPORT.md",
     "memoria/ENDPOINT_CLASSIFICAZIONE_FINALE.md",
@@ -30,8 +33,7 @@ CURRENT = {
     "PROMPT_MASTER.md",
     "PRODUCT.md",
     "README.md",
-    # docs/ADR-001-HACCP-LOTTI-DRIVE-SHEETS.md: superato il 03/09/2026 (modulo
-    # HACCP nativo rimosso, Lotti portata pari pari a /lotti) -> historical.
+    "docs/AI_GOVERNANCE.md",
     "docs/FISCAL_ACCOUNTING_POLICY.md",
     "docs/MARKDOWN_INVENTORY.md",
     "docs/MCP_GESTIONALE_RUNBOOK.md",
@@ -45,6 +47,8 @@ CURRENT = {
     "memoria/FORNITORI_REGOLA_CANONICA.md",
     "memoria/INDEX.md",
     "memoria/MAPPA_MODULI.md",
+    "prompts/development/repository_audit.md",
+    "prompts/documents/evidence_extraction.md",
 }
 
 REFERENCE = {
@@ -93,8 +97,6 @@ APP_PORTATE_PARI_PARI = (
 def classify(path: str) -> str:
     if path in GENERATED:
         return "generated"
-    # Documentazione delle app portate pari pari dentro il gestionale: e' la
-    # documentazione corrente di QUELLA app, non uno snapshot storico dell'ERP.
     if path.startswith(APP_PORTATE_PARI_PARI):
         return "current"
     if (
@@ -125,12 +127,16 @@ def classify(path: str) -> str:
     return "historical"
 
 
+def storage_architecture(status: str) -> str:
+    return CURRENT_STORAGE if status == "current" else LEGACY_STORAGE
+
+
 def marker(status: str) -> str:
     return (
         "<!-- gestionalecloud-doc\n"
         f"status: {status}\n"
         f"reviewed_at: {REVIEW_DATE}\n"
-        "storage_architecture: drive-only\n"
+        f"storage_architecture: {storage_architecture(status)}\n"
         "-->"
     )
 
@@ -140,15 +146,15 @@ def notice(status: str) -> str:
         return (
             "> [!NOTE]\n"
             "> Snapshot storico: non descrive lo stato operativo corrente. "
-            "Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, "
-            "`CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`."
+            "Per l'architettura corrente usare `README.md`, `AGENTS.md` e "
+            "`docs/AI_GOVERNANCE.md`."
         )
     if status == "reference":
         return (
             "> [!IMPORTANT]\n"
             "> Documento di riferimento del dominio. Per persistenza e cutover "
-            "vale l'architettura Drive-only descritta nei documenti correnti; "
-            "eventuali nomi di collection restano soltanto contesto storico."
+            "vale l'architettura corrente Supabase + Drive descritta nei documenti "
+            "correnti; eventuali riferimenti Drive/Sheets sono contesto storico."
         )
     if status == "planned":
         return (
@@ -254,9 +260,9 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 
 ## Regola architetturale
 
-Drive/Sheets è l'unico archivio operativo: originali in Google Drive e registri
-in Google Sheets/Excel collegato a Drive. Non esistono fallback di persistenza;
-i documenti storici che descrivono altre architetture non sono autorità.
+Supabase è il registro operativo strutturato. Google Drive conserva gli originali
+documentali. Il runtime Google Sheets è mantenuto soltanto come compatibilità
+transitoria di rollback/test e non deve essere esteso a nuovi flussi.
 """
 
 

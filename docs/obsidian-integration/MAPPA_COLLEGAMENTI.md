@@ -2,7 +2,7 @@
 
 <!-- gestionalecloud-doc
 status: planned
-reviewed_at: 2026-08-21
+reviewed_at: 2026-09-11
 storage_architecture: drive-only
 -->
 

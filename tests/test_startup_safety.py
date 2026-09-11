@@ -1,4 +1,4 @@
-"""Contratti di sicurezza del bootstrap Drive/Sheets e dell'health check."""
+"""Contratti di sicurezza del bootstrap persistenza e dell'health check."""
 import asyncio
 import json
 
@@ -23,7 +23,7 @@ def test_cors_produzione_senza_origin_esplicito_e_chiuso():
 def test_fail_fast_accetta_fallback_cors_same_origin(monkeypatch):
     monkeypatch.setenv("FAIL_FAST_SECRETS", "true")
     cfg = Settings(
-        ENVIRONMENT="production", SECRET_KEY="x" * 64,
+        ENVIRONMENT="production", DATA_BACKEND="sheets", SECRET_KEY="x" * 64,
         GOOGLE_SHEETS_LEDGER_ID="sheet-1", CORS_ALLOWED_ORIGINS="",
         ALLOW_CREDENTIALS=True,
     )
@@ -33,7 +33,7 @@ def test_fail_fast_accetta_fallback_cors_same_origin(monkeypatch):
 def test_fail_fast_rifiuta_cors_wildcard_con_credenziali(monkeypatch):
     monkeypatch.setenv("FAIL_FAST_SECRETS", "true")
     cfg = Settings(
-        ENVIRONMENT="production", SECRET_KEY="x" * 64,
+        ENVIRONMENT="production", DATA_BACKEND="sheets", SECRET_KEY="x" * 64,
         GOOGLE_SHEETS_LEDGER_ID="sheet-1", CORS_ALLOWED_ORIGINS="*",
         ALLOW_CREDENTIALS=True,
     )
@@ -44,7 +44,7 @@ def test_fail_fast_rifiuta_cors_wildcard_con_credenziali(monkeypatch):
 def test_fail_fast_richiede_il_registro_sheets(monkeypatch):
     monkeypatch.setenv("FAIL_FAST_SECRETS", "true")
     cfg = Settings(
-        ENVIRONMENT="production", SECRET_KEY="x" * 64,
+        ENVIRONMENT="production", DATA_BACKEND="sheets", SECRET_KEY="x" * 64,
         GOOGLE_SHEETS_LEDGER_ID=None,
         GOOGLE_SHEETS_LEDGER_FOLDER_ID=None, CORS_ALLOWED_ORIGINS="",
     )
@@ -55,7 +55,7 @@ def test_fail_fast_richiede_il_registro_sheets(monkeypatch):
 def test_fail_fast_accetta_cartella_registro_esplicita(monkeypatch):
     monkeypatch.setenv("FAIL_FAST_SECRETS", "true")
     cfg = Settings(
-        ENVIRONMENT="production", SECRET_KEY="x" * 64,
+        ENVIRONMENT="production", DATA_BACKEND="sheets", SECRET_KEY="x" * 64,
         GOOGLE_SHEETS_LEDGER_ID=None,
         GOOGLE_SHEETS_LEDGER_FOLDER_ID="drive-root-1",
         CORS_ALLOWED_ORIGINS="",
@@ -73,6 +73,9 @@ def test_health_check_non_dichiara_healthy_senza_database(monkeypatch):
 
 
 def test_health_check_verifica_idratazione_sheets(monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "DATA_BACKEND", "sheets")
     database = MemorySheetsClient()["health"]
     database.hydration_result = {
         "spreadsheet_id": "SHEET-1",
@@ -89,6 +92,9 @@ def test_health_check_verifica_idratazione_sheets(monkeypatch):
 
 
 def test_health_check_segnala_righe_sheets_escluse_senza_nascondere_i_dati(monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "DATA_BACKEND", "sheets")
     database = MemorySheetsClient()["health_degraded"]
     database.hydration_result = {
         "spreadsheet_id": "SHEET-1",
@@ -109,7 +115,7 @@ def test_health_check_verifica_idratazione_supabase(monkeypatch):
     from app.main import settings as main_settings
     from app.services.supabase_runtime_database import SupabaseRuntimeDatabase
 
-    assert main_settings is settings  # stesso singleton importato da main.py
+    assert main_settings is settings
     monkeypatch.setattr(settings, "DATA_BACKEND", "supabase")
 
     database = SupabaseRuntimeDatabase("test", {
@@ -141,8 +147,6 @@ def test_health_check_supabase_prima_dellidratazione_e_unhealthy(monkeypatch):
         "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_test",
         "SUPABASE_RUNTIME_SECRET": "runtime-secret-test",
     })
-    # hydrate() non e' ancora stato chiamato: hydration_result resta None
-    # (attributo reale, non una SheetTable delegata da __getattr__).
     monkeypatch.setattr(Database, "db", database)
 
     response = asyncio.run(health_check())
@@ -155,6 +159,7 @@ def test_health_check_supabase_prima_dellidratazione_e_unhealthy(monkeypatch):
 
 def test_riparazioni_dati_startup_disabilitate_per_default():
     cfg = Settings()
+    assert cfg.DATA_BACKEND == "supabase"
     assert cfg.SHEETS_REGISTRY_NAME == "GestionaleCloud"
     assert cfg.RUN_STARTUP_DATA_REPAIRS is False
     assert cfg.RUN_STARTUP_INDEX_MIGRATIONS is False
@@ -185,6 +190,8 @@ def test_secret_esplicito_non_viene_sovrascritto_da_sheets():
 
 
 def test_runtime_non_ripiega_se_hydrate_fallisce(monkeypatch):
+    from app.config import settings
+
     class BrokenSheetsRuntime:
         def __init__(self, *_args, **_kwargs):
             pass
@@ -192,6 +199,7 @@ def test_runtime_non_ripiega_se_hydrate_fallisce(monkeypatch):
         async def hydrate(self):
             raise RuntimeError("registro Sheets non disponibile")
 
+    monkeypatch.setattr(settings, "DATA_BACKEND", "sheets")
     monkeypatch.setattr(
         "app.services.sheets_runtime_database.SheetsRuntimeDatabase",
         BrokenSheetsRuntime,
@@ -205,6 +213,8 @@ def test_runtime_non_ripiega_se_hydrate_fallisce(monkeypatch):
 
 
 def test_runtime_sheets_avvia_e_chiude_senza_driver_separato(monkeypatch):
+    from app.config import settings
+
     class WorkingSheetsRuntime:
         instance = None
 
@@ -218,6 +228,7 @@ def test_runtime_sheets_avvia_e_chiude_senza_driver_separato(monkeypatch):
         def close(self):
             self.closed = True
 
+    monkeypatch.setattr(settings, "DATA_BACKEND", "sheets")
     monkeypatch.setattr(
         "app.services.sheets_runtime_database.SheetsRuntimeDatabase",
         WorkingSheetsRuntime,

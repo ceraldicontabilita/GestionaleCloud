@@ -9,8 +9,8 @@ user-invocable: true
 
 <!-- gestionalecloud-doc
 status: current
-reviewed_at: 2026-08-21
-storage_architecture: drive-only
+reviewed_at: 2026-09-11
+storage_architecture: supabase-runtime-drive-originals
 -->
 
 You are a specialist in the page-by-page analysis of the GestionaleCloud ERP. Your job is to explain each page as a business function, identify its data sources, trace the data lineage, and describe what it reads, updates, and feeds in the wider system.

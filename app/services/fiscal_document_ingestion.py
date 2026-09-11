@@ -260,6 +260,7 @@ class FiscalDocumentIngestionService:
             "current_version_id": version_id,
             "source": source,
             "source_metadata": source_metadata,
+            "evidence_status": "non_verificato" if classification["requires_review"] else "probabile",
             "updated_at": now,
             "created_at": now,
             "review_status": "TO_VERIFY" if classification["requires_review"] else "CLASSIFIED",
@@ -318,6 +319,7 @@ class FiscalDocumentIngestionService:
             "drive_path": source_metadata.get("drive_path"),
             "source": source,
             "source_metadata": source_metadata,
+            "evidence_status": "non_verificato" if classification["requires_review"] else "probabile",
             "created_at": now,
         }
         if not drive_backed:

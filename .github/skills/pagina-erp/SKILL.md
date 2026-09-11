@@ -7,8 +7,8 @@ description: "Use when: analizzare, spiegare, validare, mappare, documentare, ap
 
 <!-- gestionalecloud-doc
 status: current
-reviewed_at: 2026-08-21
-storage_architecture: drive-only
+reviewed_at: 2026-09-11
+storage_architecture: supabase-runtime-drive-originals
 -->
 
 Analizza una pagina del GestionaleCloud come entità di business con dati, origine, relazioni e impatto operativo.

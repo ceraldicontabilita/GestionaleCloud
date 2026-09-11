@@ -101,7 +101,7 @@ const router = createBrowserRouter([
       { path: "strumenti/*", element: <LazyPage><StrumentiHub /></LazyPage> },
       { path: "agenti", element: <LazyPage><AgentiPage /></LazyPage> },
       { path: "impostazioni-f24-email", element: <LazyPage><ImpostazioniF24Email /></LazyPage> },
-      { path: "impostazioni-ai", element: <LazyPage><ImpostazioniAI /></LazyPage> },
+      { path: "impostazioni-ai", element: <RequireAdmin><LazyPage><ImpostazioniAI /></LazyPage></RequireAdmin> },
       { path: "integrazioni/*", element: <LazyPage><IntegrazioniHub /></LazyPage> },
       { path: "admin/*", element: <RequireAdmin><LazyPage><AdminHub /></LazyPage></RequireAdmin> },
       { path: "utenti", element: <RequireAdmin><LazyPage><Utenti /></LazyPage></RequireAdmin> },

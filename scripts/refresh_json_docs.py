@@ -263,9 +263,9 @@ def rewrite_page_docs(catalog: dict, revision: str, updated_at: str) -> set[str]
                 "endpoint_rilevati_nei_sorgenti": endpoints_for(sources),
             },
             "archivio_dati": {
-                "stato_corrente": "google_drive_sheets",
-                "backend_predefinito": "sheets",
-                "compatibilita": "nessun_backend_alternativo",
+                "stato_corrente": "supabase_runtime_drive_originals",
+                "backend_predefinito": "supabase",
+                "compatibilita": "sheets_transitorio_rollback",
                 "fallback_automatico": "disabilitato",
             },
             "regole_di_lettura": [
@@ -383,10 +383,10 @@ def rewrite_catalog(catalog: dict, revision: str, updated_at: str) -> None:
             "componenti, route, dati e relazioni devono essere collaudati."
         ),
         "storage_state": {
-            "current": "google_drive_sheets",
-            "registry": "sheets",
+            "current": "supabase_runtime_drive_originals",
+            "registry": "supabase",
             "originals": "drive",
-            "compatibility": "nessun_backend_alternativo",
+            "compatibility": "sheets_transitorio_rollback",
         },
         "pages": catalog["pages"],
     }
@@ -397,14 +397,15 @@ def rewrite_chat_kb(revision: str, updated_at: str) -> None:
     path = ROOT / "app" / "knowledge" / "chat_kb.json"
     kb = json.loads(path.read_text(encoding="utf-8"))
     meta = kb.setdefault("meta", {})
-    meta["versione"] = "5.0-drive-sheets-operational"
+    meta["versione"] = "6.0-supabase-drive-operational"
     meta["aggiornato_al"] = updated_at
     meta["source_revision"] = revision
     meta["repository"] = "ceraldicontabilita/GestionaleCloud"
     kb["storage_operativo"] = {
-        "stato_corrente": "google_drive_sheets",
-        "backend_predefinito": "sheets",
-        "compatibilita": "nessun_backend_alternativo",
+        "stato_corrente": "supabase_runtime_drive_originals",
+        "backend_predefinito": "supabase",
+        "originali": "drive",
+        "compatibilita": "sheets_transitorio_rollback",
         "regola": (
             "La chat interroga soltanto strumenti backend autorizzati. Drive/Sheets "
             "è l'unico archivio operativo; non esiste fallback alternativo."
@@ -425,7 +426,7 @@ def rewrite_chat_kb(revision: str, updated_at: str) -> None:
     architecture = implementation.get("architettura_generale", {})
     flow = architecture.get("flusso", [])
     architecture["flusso"] = [
-        "Il backend interroga i registri Sheets e legge gli originali autorizzati da Drive."
+        "Il backend interroga il registro Supabase e legge gli originali autorizzati da Drive."
         if item.startswith("Il backend interroga") else item
         for item in flow
     ]
@@ -436,7 +437,7 @@ def rewrite_chat_kb(revision: str, updated_at: str) -> None:
             "strumenti autorizzati, tipizzati, paginati e registrati."
         )
         tools["regole"] = [
-            "Il modello non può costruire query libere contro Sheets o Drive."
+            "Il modello non può costruire query libere contro Supabase o Drive."
             if "query libere" in rule else rule
             for rule in tools.get("regole", [])
         ]

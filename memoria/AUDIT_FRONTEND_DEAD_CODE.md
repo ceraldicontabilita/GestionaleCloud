@@ -3,17 +3,17 @@
 > Generato da `scripts/audit_frontend_dead_code.py` seguendo il grafo di import reale a partire da `main.jsx`/`App.jsx`/`navigation.config.js` (import statici, `import()` dinamici, `lazy(() => import(...))`, re-export `export {X} from`/`export * from`).
 > NON modificare a mano: rilancia lo script.
 
-**Totale file analizzati:** 212
+**Totale file analizzati:** 211
 
 | Classificazione | File |
 |---|---:|
 | ENTRYPOINT | 3 |
 | ROUTE_ATTIVA | 27 |
-| COMPONENTE_USATO | 97 |
+| COMPONENTE_USATO | 98 |
 | MODALE_USATO | 4 |
 | HOOK_USATO | 3 |
 | TEST_ONLY | 56 |
-| DINAMICO_DA_VERIFICARE | 22 |
+| DINAMICO_DA_VERIFICARE | 20 |
 | ORFANO_ELIMINABILE | 0 |
 
 ## ORFANO_ELIMINABILE — candidati eliminazione
@@ -47,8 +47,6 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/components/ui/toggle.jsx` |
 | `frontend/src/components/ui/tooltip.jsx` |
 | `frontend/src/hooks/use-toast.js` |
-| `frontend/src/hooks/usePrimaNota.js` |
-| `frontend/src/stores/primaNotaStore.js` |
 | `frontend/src/test/setup.js` |
 
 ## Dettaglio completo
@@ -66,6 +64,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/components/ChatIntelligente.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/CopiaTesto.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/CopyLinkButton.jsx` | COMPONENTE_USATO | 5 |
+| `frontend/src/components/DashboardOperativita.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/DocumentImportLink.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/components/DocumentViewerModal.jsx` | MODALE_USATO | 8 |
 | `frontend/src/components/DriveImportControls.jsx` | COMPONENTE_USATO | 2 |
@@ -135,11 +134,10 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/hooks/use-toast.js` | DINAMICO_DA_VERIFICARE | 1 |
 | `frontend/src/hooks/useData.js` | HOOK_USATO | 1 |
 | `frontend/src/hooks/useHashState.js` | HOOK_USATO | 8 |
-| `frontend/src/hooks/usePrimaNota.js` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/hooks/useWebSocket.js` | HOOK_USATO | 1 |
 | `frontend/src/hooks/useWebSocket.test.js` | TEST_ONLY | 0 |
 | `frontend/src/lib/queryClient.js` | COMPONENTE_USATO | 2 |
-| `frontend/src/lib/utils.js` | COMPONENTE_USATO | 101 |
+| `frontend/src/lib/utils.js` | COMPONENTE_USATO | 102 |
 | `frontend/src/lib/utils.test.js` | TEST_ONLY | 0 |
 | `frontend/src/main.jsx` | ENTRYPOINT | 0 |
 | `frontend/src/navigation.config.js` | ENTRYPOINT | 0 |
@@ -265,6 +263,5 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/pages/iva/IvaAuditSections.jsx` | COMPONENTE_USATO | 3 |
 | `frontend/src/pages/iva/IvaAuditSections.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/pages/iva/IvaDatiMancanti.test.jsx` | TEST_ONLY | 0 |
-| `frontend/src/stores/primaNotaStore.js` | DINAMICO_DA_VERIFICARE | 1 |
 | `frontend/src/test/setup.js` | DINAMICO_DA_VERIFICARE | 0 |
 

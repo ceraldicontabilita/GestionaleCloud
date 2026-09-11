@@ -22,7 +22,8 @@ logger = logging.getLogger(__name__)
 # Aliquota IRES ordinaria
 ALIQUOTA_IRES = 24.0  # 24%
 
-# Aliquote IRAP per regione (2024-2025)
+# Aliquote IRAP di riferimento. Campania 4,97% verificata su fonte regionale per il 2026;
+# le altre regioni richiedono verifica annuale prima di uso dichiarativo.
 ALIQUOTE_IRAP = {
     "default": 3.9,  # Aliquota ordinaria
     "abruzzo": 3.9,
@@ -123,7 +124,8 @@ class CalcolatoreImposte:
     async def calcola_imposte_da_db(self, db, anno: int = None) -> CalcoloImposte:
         """
         Calcola le imposte partendo dai dati nel database.
-        OTTIMIZZATO: Usa aggregazione Drive/Sheets per performance.
+        Usa il Conto Economico canonico come base civilistica. Le classificazioni
+        fiscali restano previsioni gestionali e non sostituiscono la dichiarazione.
 
         Args:
             db: Riferimento al registro Sheets
@@ -140,59 +142,49 @@ class CalcolatoreImposte:
 
         logger.info(f"Calcolo imposte per anno {anno}")
 
-        # 1. Calcola totali costi usando aggregazione (molto più veloce)
-        totale_costi = 0.0
-        costi_per_tipo: Dict[str, float] = {}
+        # 1. Base civilistica: unica fonte = Conto Economico canonico.
+        # Include note di credito, soft-delete, cespiti capitalizzati e quote di
+        # ammortamento registrate secondo le regole del Bilancio.
+        from app.routers.accounting.bilancio import (
+            get_conto_economico,
+            _cespiti_capitalizzati_nel_periodo,
+        )
+        ce = await get_conto_economico(anno=anno, mese=None)
+        totale_ricavi = float(ce["ricavi"]["totale_ricavi"] or 0)
+        totale_costi = float(ce["costi"]["totale_costi"] or 0)
+        utile_civilistico = float(ce["risultato"]["utile_perdita"] or 0)
 
-        # Pipeline aggregazione per fatture
-        pipeline_fatture = [
-            {"$match": {"invoice_date": {"$regex": f"^{anno}"}}},
-            {"$project": {
-                "total_amount": 1,
-                "conto_costo_codice": 1,
-                "conto_costo_nome": 1
-            }},
-            {"$group": {
-                "_id": "$conto_costo_codice",
-                "nome": {"$first": "$conto_costo_nome"},
-                "totale": {"$sum": {"$toDouble": {"$ifNull": ["$total_amount", 0]}}}
-            }}
-        ]
-
-        try:
-            risultati_fatture = await db["invoices"].aggregate(pipeline_fatture, allowDiskUse=True).to_list(500)
-
-            for r in risultati_fatture:
-                codice = r.get("_id", "05.01.01") or "05.01.01"
-                importo = r.get("totale", 0) or 0
-                if importo > 0:
-                    totale_costi += importo
-                    costi_per_tipo[codice] = {"nome": r.get("nome", ""), "importo": importo}
-        except Exception as e:
-            logger.error(f"Errore aggregazione fatture: {e}")
-
-        # 2. Calcola ricavi dai corrispettivi usando aggregazione
-        totale_ricavi = 0.0
-
-        pipeline_corr = [
-            {"$match": {"data": {"$regex": f"^{anno}"}}},
-            {"$group": {
-                "_id": None,
-                "totale": {"$sum": {"$toDouble": {"$ifNull": ["$totale", 0]}}}
-            }}
-        ]
-
-        try:
-            risultati_corr = await db["corrispettivi"].aggregate(pipeline_corr).to_list(1)
-            if risultati_corr:
-                totale_lordo = risultati_corr[0].get("totale", 0) or 0
-                # Scorporo IVA 10% ristorazione
-                totale_ricavi = totale_lordo / 1.10
-        except Exception as e:
-            logger.error(f"Errore aggregazione corrispettivi: {e}")
-
-        # Utile civilistico
-        utile_civilistico = totale_ricavi - totale_costi
+        # Dettaglio per tipo usato soltanto per le variazioni fiscali automatiche.
+        # Si lavora sull'imponibile, non sul totale lordo IVA, e si escludono
+        # cespiti capitalizzati gia' rimossi dal CE canonico.
+        data_inizio = f"{anno}-01-01"
+        data_fine = f"{anno}-12-31"
+        capitalizzati_per_fattura, _ = await _cespiti_capitalizzati_nel_periodo(
+            db, data_inizio, data_fine
+        )
+        fatture = await db["invoices"].find({
+            "status": {"$nin": ["deleted", "archived"]},
+            "$or": [
+                {"invoice_date": {"$regex": f"^{anno}"}},
+                {"data_ricezione": {"$regex": f"^{anno}"}},
+            ],
+        }, {"_id": 0}).to_list(10000)
+        costi_per_tipo: Dict[str, Dict[str, float]] = {}
+        for fattura in fatture:
+            codice = fattura.get("conto_costo_codice") or "05.01.01"
+            nome = fattura.get("conto_costo_nome") or ""
+            try:
+                imponibile = float(fattura.get("imponibile") or 0)
+                if not imponibile:
+                    imponibile = float(fattura.get("total_amount") or 0) - float(fattura.get("iva") or 0)
+            except (TypeError, ValueError):
+                continue
+            fid = str(fattura.get("id") or fattura.get("invoice_key") or "")
+            imponibile -= float(capitalizzati_per_fattura.get(fid, 0) or 0)
+            if fattura.get("tipo_documento") in ("TD04", "TD08"):
+                imponibile = -imponibile
+            voce = costi_per_tipo.setdefault(codice, {"nome": nome, "importo": 0.0})
+            voce["importo"] += imponibile
 
         # 2. Calcola variazioni fiscali
         variazioni_aumento_ires = []
@@ -307,14 +299,18 @@ class CalcolatoreImposte:
         tot_var_aumento_irap = sum(v.importo for v in variazioni_aumento_ires if v.applicabile_irap)
         tot_var_diminuzione_irap = sum(v.importo for v in variazioni_diminuzione_ires if v.applicabile_irap)
 
-        # Deduzioni IRAP
-        deduzioni_irap = DEDUZIONE_IRAP_BASE
-
-        # Conta dipendenti (semplificato: se ci sono costi personale)
-        if costo_personale > 0:
-            # Stima n. dipendenti da costo medio
-            n_dipendenti_stimato = int(costo_personale / 25000)  # €25k costo medio
-            deduzioni_irap += n_dipendenti_stimato * DEDUZIONE_IRAP_DIPENDENTI
+        # Deduzioni IRAP: nessuna deduzione viene inventata da una stima del
+        # numero di dipendenti. Il numero reale e' letto solo come informazione;
+        # l'applicabilita' fiscale delle deduzioni richiede requisiti documentati.
+        n_dipendenti_reali = await db["dipendenti"].count_documents({
+            "attivo": {"$ne": False},
+            "merged_into": {"$exists": False},
+        })
+        deduzioni_irap = 0.0
+        logger.info(
+            "IRAP %s: %s dipendenti reali rilevati; deduzioni specifiche non applicate automaticamente",
+            anno, n_dipendenti_reali,
+        )
 
         # Base imponibile IRAP
         base_imponibile_irap = valore_produzione + tot_var_aumento_irap - tot_var_diminuzione_irap - deduzioni_irap
@@ -323,22 +319,8 @@ class CalcolatoreImposte:
         # IRAP dovuta
         irap_dovuta = base_imponibile_irap * self.aliquota_irap / 100
 
-        # 5. Aggiorna variazioni diminuzione IRES con deduzione IRAP
-        if irap_dovuta > 0:
-            deduzione_irap_da_ires = irap_dovuta * 0.10  # 10% deducibile
-            variazioni_diminuzione_ires.append(VariazioneFiscale(
-                descrizione="Deduzione IRAP (10%)",
-                importo=deduzione_irap_da_ires,
-                tipo="diminuzione",
-                norma_riferimento="Art. 99 TUIR",
-                applicabile_irap=False
-            ))
-
-            # Ricalcola IRES con deduzione
-            tot_var_diminuzione_ires = sum(v.importo for v in variazioni_diminuzione_ires)
-            reddito_imponibile_ires = utile_civilistico + tot_var_aumento_ires - tot_var_diminuzione_ires
-            reddito_imponibile_ires = max(0, reddito_imponibile_ires)
-            ires_dovuta = reddito_imponibile_ires * ALIQUOTA_IRES / 100
+        # 5. Nessuna deduzione IRAP->IRES automatica: richiede verifica fiscale
+        # del periodo e dei requisiti. Il risultato resta una stima prudenziale.
 
         # Totale imposte
         totale_imposte = ires_dovuta + irap_dovuta

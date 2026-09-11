@@ -183,7 +183,7 @@ def test_l_accredito_numia_non_tocca_il_trasferimento_sumup(db):
 
     numia = _run(db["prima_nota_banca"].find_one(
         {"source": "trasferimento_pos", "gestore": "numia"}))
-    sumup = _run(db["prima_nota_banca"].find_one(
+    sumup = _run(db["prima_nota_sumup"].find_one(
         {"source": "trasferimento_pos", "gestore": "sumup"}))
     assert numia["riconciliato"] is True
     assert sumup.get("accreditato_ec") is None
