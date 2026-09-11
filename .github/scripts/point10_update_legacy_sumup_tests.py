@@ -20,7 +20,7 @@ replace_once(
     '''    sumup = _run(db["prima_nota_sumup"].find_one({\n        "source": "trasferimento_pos", "gestore": "sumup",\n    }))\n''',
 )
 
-# Motore unico: one BPM/Numia credit + one dedicated SumUp credit.
+# Motore unico: Numia/BPM e SumUp hanno registri distinti.
 replace_once(
     'tests/test_motore_unico_scritture.py',
     '''    assert len(db["prima_nota_banca"].docs) == 2\n''',
@@ -35,6 +35,11 @@ replace_once(
     'tests/test_motore_unico_scritture.py',
     '''    for circuito, credito in crediti.items():\n''',
     '''    for circuito, credito in {**crediti_bpm, **crediti_sumup}.items():\n''',
+)
+replace_once(
+    'tests/test_motore_unico_scritture.py',
+    '''    assert (crediti["numia"]["trasferimento_id"]\n            != crediti["sumup"]["trasferimento_id"])\n''',
+    '''    assert (crediti_bpm["numia"]["trasferimento_id"]\n            != crediti_sumup["sumup"]["trasferimento_id"])\n''',
 )
 
 # Multi-provider POS tests: SumUp lives in its own register.
@@ -57,8 +62,18 @@ replace_once(
 )
 replace_once(
     'tests/test_sumup_sync.py',
+    '''    assert banca[0]["expectation_status"] == "ATTESO"\n''',
+    '''    assert sumup[0]["expectation_status"] == "ATTESO"\n''',
+)
+replace_once(
+    'tests/test_sumup_sync.py',
     '''    banca = _run(db.prima_nota_banca.find_one({"gestore": "sumup"}))\n    assert cassa["importo"] == 116.90\n    assert cassa["quota_pos_fonte"] == "api_sumup"\n    assert banca["importo"] == 116.90\n    assert banca["record_role"] == "expectation"\n    assert banca["expectation_type"] == "pos_bank_credit"\n''',
     '''    sumup = _run(db.prima_nota_sumup.find_one({"gestore": "sumup"}))\n    assert cassa["importo"] == 116.90\n    assert cassa["quota_pos_fonte"] == "api_sumup"\n    assert sumup["importo"] == 116.90\n    assert sumup["record_role"] == "expectation"\n    assert sumup["expectation_type"] == "pos_bank_credit"\n''',
+)
+replace_once(
+    'tests/test_sumup_sync.py',
+    '''    assert banca["expectation_owner"] == "sumup_api"\n''',
+    '''    assert sumup["expectation_owner"] == "sumup_api"\n''',
 )
 replace_once(
     'tests/test_sumup_sync.py',
