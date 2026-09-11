@@ -444,7 +444,7 @@ Colonne: FE=frontend runtime, Sch=scheduler, Chat, Migr=migrazione/manutenzione,
 | `POST /api/documenti/processa-f24-scaricati` | documenti | — | — | — | — | sì | verificare | nessun riferimento runtime noto (FE/scheduler/chat): verificare prima di deprecare |
 | `POST /api/documenti/processa-tutti` | documenti | — | — | — | — | sì | verificare | nessun riferimento runtime noto (FE/scheduler/chat): verificare prima di deprecare |
 | `POST /api/documenti/reimporta-da-filesystem` | documenti | — | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
-| `POST /api/documenti/ricategorizza-documenti` | documenti | — | — | — | — | — | verificare | nessun riferimento runtime noto (FE/scheduler/chat): verificare prima di deprecare |
+| `POST /api/documenti/ricategorizza-documenti` | documenti | — | — | — | — | sì | verificare | nessun riferimento runtime noto (FE/scheduler/chat): verificare prima di deprecare |
 | `POST /api/documenti/scarica-da-email` | documenti | — | — | — | — | — | verificare | nessun riferimento runtime noto (FE/scheduler/chat): verificare prima di deprecare |
 | `GET /api/documenti/statistiche` | documenti | — | — | — | — | — | verificare | nessun riferimento runtime noto (FE/scheduler/chat): verificare prima di deprecare |
 | `POST /api/documenti/sync-estratti-bnl` | documenti | — | — | — | — | — | verificare | nessun riferimento runtime noto (FE/scheduler/chat): verificare prima di deprecare |
