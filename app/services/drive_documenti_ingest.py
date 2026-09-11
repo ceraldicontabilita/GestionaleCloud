@@ -17,6 +17,7 @@ import asyncio
 import base64
 import hashlib
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -84,6 +85,22 @@ CANALI: Dict[str, Dict[str, Any]] = {
 }
 
 _locks: Dict[str, asyncio.Lock] = {c: asyncio.Lock() for c in CANALI}
+
+
+def _batch_size() -> int:
+    """Massimo documenti scaricati/elaborati per canale in un singolo ciclo.
+
+    Il limite e' intenzionalmente piccolo: le cartelle reali possono contenere
+    migliaia di PDF e il web service Render non deve tentare un catch-up storm.
+    La variabile e' letta direttamente dall'ambiente per mantenere la patch
+    compatibile con le Settings esistenti; valori fuori scala vengono chiusi
+    nell'intervallo 1..100.
+    """
+    try:
+        configured = int(os.getenv("DRIVE_DOCUMENTI_BATCH_SIZE", "25"))
+    except (TypeError, ValueError):
+        configured = 25
+    return max(1, min(configured, 100))
 
 
 def _folder_id(canale: str) -> Optional[str]:
@@ -229,6 +246,8 @@ async def _do_sync(db, canale: str) -> Dict[str, Any]:
         "status": "ok",
         "canale": canale,
         "total": 0,
+        "processed": 0,
+        "pending_estimate": 0,
         "imported": 0,
         "duplicates": 0,
         "errors": 0,
@@ -245,6 +264,7 @@ async def _do_sync(db, canale: str) -> Dict[str, Any]:
             max_depth=_lifecycle_depth(canale),
         )
         result["inboxes"] = len(inboxes)
+        remaining = _batch_size()
 
         for inbox in inboxes:
             source_id = inbox["inbox_id"]
@@ -255,7 +275,12 @@ async def _do_sync(db, canale: str) -> Dict[str, Any]:
             pdf_files = _list_pdf_files_direct(service, source_id)
             result["total"] += len(pdf_files)
 
-            for file_info in pdf_files:
+            selected = pdf_files[:remaining] if remaining > 0 else []
+            result["pending_estimate"] += max(0, len(pdf_files) - len(selected))
+
+            for file_info in selected:
+                remaining -= 1
+                result["processed"] += 1
                 fid = file_info["id"]
                 fname = file_info["name"]
                 source_path = f"{relative_inbox}/{fname}"
