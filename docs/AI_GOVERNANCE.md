@@ -45,6 +45,19 @@ Ogni output strutturato deve includere, quando applicabile:
 6. Una proposta AI o una similarità per importo/data/descrizione non è una prova.
 7. Una corrispondenza ambigua resta `Da verificare`.
 
+## Contratto documentale operativo
+
+Lo stato operativo di un documento (`nuovo`, `processato`, `errore`) è distinto
+dallo stato della sua evidenza (`verificato`, `probabile`, `non_verificato`,
+`conflitto`). Un documento processato non diventa quindi automaticamente una
+fonte verificata.
+
+L'anteprima canonica di importazione deve precedere la conferma, essere non
+mutante e legare la conferma all'hash SHA-256 del file e al tipo rilevato. Il
+solo nome file non autorizza una riclassificazione automatica. Le estrazioni AI
+restano proposte revisionabili e non scrivono direttamente fatti operativi nei
+registri contabili, fiscali, bancari o del personale.
+
 ## Regole per agenti decisionali
 
 Gli agenti CFO, Tesoreria, Contabile, Fiscale e Acquisti devono restituire:
