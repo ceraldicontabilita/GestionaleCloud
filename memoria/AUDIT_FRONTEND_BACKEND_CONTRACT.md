@@ -2,7 +2,7 @@
 
 > Generato da `scripts/audit_frontend_backend_contract.py`. Non modificare a mano.
 > Il contratto HTTP per metodo+path resta verificato da `tests/test_frontend_api_contract.py`.
-> Gli scarti statici sono classificati: un riferimento testuale non equivale a una chiamata runtime.
+> La classificazione completa degli endpoint è in `memoria/ENDPOINT_CLASSIFICAZIONE_FINALE.md`.
 
 ## Riepilogo
 
@@ -10,6 +10,10 @@
 - Voci di navigazione analizzate: **24**
 - Riferimenti API frontend distinti: **446**
 - Path API backend distinti: **1070**
+- Endpoint metodo+path censiti: **1156**
+- Endpoint con uso runtime noto: **640**
+- Endpoint da verificare prima di deprecare: **486**
+- Endpoint admin-only/migrazione: **30**
 - Errori strutturali verificabili: **0**
 - Riferimenti frontend realmente senza match statico: **0**
 - Alias/query-template classificati: **6**
@@ -22,7 +26,7 @@
 
 ## Avvisi di routing
 
-- catalogo non riconducibile direttamente al router: `/verbali-noleggio/:identificativo`
+- Nessuno.
 
 ## Alias e template classificati
 
@@ -58,7 +62,8 @@
 
 ## Esito punto 3
 
-L'inventario strutturale è completo: pagine, navigazione e contratto HTTP non mostrano
-orfani strutturali né riferimenti frontend senza endpoint compatibile. I `NotImplementedError`
+L'inventario strutturale è completo in entrambe le direzioni: pagine e chiamate frontend
+sono ricondotte a route reali; gli endpoint backend senza consumatore runtime noto restano
+classificati `verificare` e non vengono eliminati automaticamente. I `NotImplementedError`
 residui sono guardie adapter oppure metodi non collegati a route/UI correnti.
 La registrazione manuale F24 resta in attesa di prova bancaria e non simula una riconciliazione.
