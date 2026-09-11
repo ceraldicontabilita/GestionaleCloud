@@ -18,6 +18,7 @@ from fastapi import FastAPI
 
 from app.router_registry import register_all_routers
 from scripts.frontend_api_refs import frontend_api_refs
+from scripts.genera_classificazione_endpoint import build as build_endpoint_inventory
 from tests.route_table import elenco_route
 
 OUT = ROOT / "memoria" / "AUDIT_FRONTEND_BACKEND_CONTRACT.md"
@@ -83,7 +84,9 @@ def main_routes() -> tuple[set[str], set[str]]:
         full = normalize_path(raw)
         if raw.endswith("/*"):
             wildcard.add(normalize_path(raw[:-2]))
-        elif "*" not in full:
+        else:
+            # I parametri React Router (:id) vengono normalizzati in '*', ma
+            # restano route di forma esatta e non wildcard di profondità.
             exact.add(full)
     return exact, wildcard
 
@@ -148,11 +151,9 @@ def api_contract_audit() -> tuple[list[str], list[str], list[str], int, int]:
     for ref in refs:
         if any(compatible_path(ref, route) for route in backend):
             continue
-        # Template usati per appendere query string, es. `/statistiche${params}`.
         if ref.endswith("*") and ref[:-1].rstrip("/") in backend:
             normalized_aliases.append(f"`{ref}` → `{ref[:-1].rstrip('/')}` (suffisso query/template)")
             continue
-        # Riferimento trovato in commento/testo descrittivo con punteggiatura finale.
         trimmed = ref.rstrip(".,;:")
         if trimmed != ref and trimmed in backend:
             normalized_aliases.append(f"`{ref}` → `{trimmed}` (punteggiatura non parte della route)")
@@ -166,7 +167,7 @@ def api_contract_audit() -> tuple[list[str], list[str], list[str], int, int]:
 
 def not_implemented_candidates() -> list[tuple[str, str, str]]:
     results: list[tuple[str, str, str]] = []
-    ignored = {"app/services/blob_store.py"}  # interfaccia astratta intenzionale
+    ignored = {"app/services/blob_store.py"}
     for path in sorted((ROOT / "app").rglob("*.py")):
         rel = path.relative_to(ROOT).as_posix()
         if rel in ignored:
@@ -188,11 +189,20 @@ def not_implemented_candidates() -> list[tuple[str, str, str]]:
     return results
 
 
+def endpoint_inventory_summary() -> tuple[int, int, int, int]:
+    rows = build_endpoint_inventory()
+    keep = sum(1 for row in rows if row["decisione"] == "tenere")
+    verify = sum(1 for row in rows if row["decisione"] == "verificare")
+    admin_only = sum(1 for row in rows if row["decisione"] == "admin-only")
+    return len(rows), keep, verify, admin_only
+
+
 def build_report() -> tuple[str, list[str]]:
     page_errors, page_warnings, page_count = page_catalog_audit()
     nav_errors, nav_warnings, nav_count = navigation_audit()
     unmatched, prefix_only, aliases, fe_refs, backend_routes = api_contract_audit()
     not_impl = not_implemented_candidates()
+    endpoint_total, endpoint_keep, endpoint_verify, endpoint_admin = endpoint_inventory_summary()
     hard_errors = [*page_errors, *nav_errors]
     hard_errors.extend(f"riferimento frontend senza endpoint compatibile: `{item}`" for item in unmatched)
     warnings = [*page_warnings, *nav_warnings]
@@ -202,7 +212,7 @@ def build_report() -> tuple[str, list[str]]:
         "",
         "> Generato da `scripts/audit_frontend_backend_contract.py`. Non modificare a mano.",
         "> Il contratto HTTP per metodo+path resta verificato da `tests/test_frontend_api_contract.py`.",
-        "> Gli scarti statici sono classificati: un riferimento testuale non equivale a una chiamata runtime.",
+        "> La classificazione completa degli endpoint è in `memoria/ENDPOINT_CLASSIFICAZIONE_FINALE.md`.",
         "",
         "## Riepilogo",
         "",
@@ -210,6 +220,10 @@ def build_report() -> tuple[str, list[str]]:
         f"- Voci di navigazione analizzate: **{nav_count}**",
         f"- Riferimenti API frontend distinti: **{fe_refs}**",
         f"- Path API backend distinti: **{backend_routes}**",
+        f"- Endpoint metodo+path censiti: **{endpoint_total}**",
+        f"- Endpoint con uso runtime noto: **{endpoint_keep}**",
+        f"- Endpoint da verificare prima di deprecare: **{endpoint_verify}**",
+        f"- Endpoint admin-only/migrazione: **{endpoint_admin}**",
         f"- Errori strutturali verificabili: **{len(hard_errors)}**",
         f"- Riferimenti frontend realmente senza match statico: **{len(unmatched)}**",
         f"- Alias/query-template classificati: **{len(aliases)}**",
@@ -225,18 +239,7 @@ def build_report() -> tuple[str, list[str]]:
     lines.extend(["", "## Alias e template classificati", ""])
     lines.extend(f"- {item}" for item in aliases) if aliases else lines.append("- Nessuno.")
     lines.extend(["", "## Riferimenti frontend senza endpoint compatibile", ""])
-    if unmatched:
-        for item in unmatched:
-            if item == "/api/download/*":
-                lines.append(
-                    "- `P1 verificato` `/api/download/*`: fallback PDF in "
-                    "`frontend/src/pages/RiconciliazioneUnificata.jsx`; nessuna route ERP "
-                    "registrata con questo path. Da sostituire con endpoint documentale/F24 reale."
-                )
-            else:
-                lines.append(f"- `da_verificare` `{item}`")
-    else:
-        lines.append("- Nessuno.")
+    lines.extend(f"- `da_verificare` `{item}`" for item in unmatched) if unmatched else lines.append("- Nessuno.")
     lines.extend(["", "## Prefissi API frontend", ""])
     lines.extend(f"- `{item}`: prefisso di composizione, non endpoint autonomo." for item in prefix_only) if prefix_only else lines.append("- Nessuno.")
     lines.extend(["", "## Funzioni `NotImplementedError` classificate", ""])
@@ -248,8 +251,9 @@ def build_report() -> tuple[str, list[str]]:
         "",
         "## Esito punto 3",
         "",
-        "L'inventario strutturale è completo: pagine, navigazione e contratto HTTP non mostrano",
-        "orfani strutturali né riferimenti frontend senza endpoint compatibile. I `NotImplementedError`",
+        "L'inventario strutturale è completo in entrambe le direzioni: pagine e chiamate frontend",
+        "sono ricondotte a route reali; gli endpoint backend senza consumatore runtime noto restano",
+        "classificati `verificare` e non vengono eliminati automaticamente. I `NotImplementedError`",
         "residui sono guardie adapter oppure metodi non collegati a route/UI correnti.",
         "La registrazione manuale F24 resta in attesa di prova bancaria e non simula una riconciliazione.",
         "",
