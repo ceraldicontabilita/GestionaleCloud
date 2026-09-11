@@ -5,6 +5,7 @@ on:
     paths:
       - ".github/workflows/point11-assets-cdc.yml"
       - ".github/scripts/point11_assets_cdc_patch.py"
+      - ".github/scripts/point11_assets_cdc_patch_v2.py"
 
 permissions:
   contents: write
@@ -21,7 +22,7 @@ jobs:
           python-version: "3.11"
       - run: pip install -r backend/requirements.txt
       - name: Apply point 11 assets and CDC patch
-        run: python .github/scripts/point11_assets_cdc_patch.py
+        run: python .github/scripts/point11_assets_cdc_patch_v2.py
       - name: Run focused regression tests
         run: |
           python -m pytest -q \
