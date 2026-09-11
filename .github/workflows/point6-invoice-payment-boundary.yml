@@ -1,0 +1,52 @@
+name: Point 6 invoice payment boundary
+on:
+  push:
+    branches: [ai/prompt-governance-supabase]
+    paths: [.github/workflows/point6-invoice-payment-boundary.yml]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ai/prompt-governance-supabase
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Patch invoice evidence boundary
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('app/services/invoice_payments.py')
+          s = p.read_text()
+          old = '''            if due:\n                installment_amount = float(due.get("importo_rata") or due.get("importo") or abs(req.importo))\n                paid_installment = round(float(due.get("importo_pagato") or 0) + abs(req.importo), 2)\n                installment_closed = paid_installment + 0.005 >= installment_amount\n                await db[COL_SCADENZIARIO].update_one(\n                    {"id": req.scadenza_id},\n                    {"$set": {\n                        "stato": "pagata" if installment_closed else "parziale",\n                        "pagato": installment_closed,\n                        "importo_pagato": min(paid_installment, installment_amount),\n                        "importo_residuo": max(0, round(installment_amount - paid_installment, 2)),\n                        "data_pagamento": req.data_pagamento,\n                        "metodo_effettivo": req.metodo,\n                        "movimento_id": movement_id,\n                        "updated_at": now,\n                    }}, **skw,\n                )\n\n            paid = round(current_paid + abs(req.importo), 2)\n            closed = paid + 0.005 >= total\n            update_fields = {\n                "status": "paid" if closed else "partial",\n                "payment_status": "paid" if closed else "partial",\n                "pagato": closed,\n                "stato_pagamento": "pagata" if closed else "parziale",\n                "importo_pagato": min(paid, total),\n                "importo_residuo": max(0, round(total - paid, 2)),\n                "riconciliato": False,\n                "data_pagamento": req.data_pagamento,\n                "metodo_pagamento_effettivo": req.metodo,\n                "metodo_pagamento": req.metodo,\n                "updated_at": now,\n                "payment_operation_id": operation_id,\n            }\n'''
+          new = '''            if due:\n                installment_amount = float(due.get("importo_rata") or due.get("importo") or abs(req.importo))\n                if req.metodo == "cassa":\n                    paid_installment = round(float(due.get("importo_pagato") or 0) + abs(req.importo), 2)\n                    installment_closed = paid_installment + 0.005 >= installment_amount\n                    due_updates = {\n                        "stato": "pagata" if installment_closed else "parziale",\n                        "pagato": installment_closed,\n                        "importo_pagato": min(paid_installment, installment_amount),\n                        "importo_residuo": max(0, round(installment_amount - paid_installment, 2)),\n                        "data_pagamento": req.data_pagamento,\n                    }\n                else:\n                    # Una disposizione/registrazione banca manuale non e' prova di addebito.\n                    # Conserva il residuo fino al riscontro con estratto conto reale.\n                    due_updates = {\n                        "stato": "da_verificare_banca",\n                        "pagato": False,\n                        "importo_banca_da_verificare": abs(req.importo),\n                        "data_disposizione_banca": req.data_pagamento,\n                    }\n                due_updates.update({\n                    "metodo_effettivo": req.metodo,\n                    "movimento_id": movement_id,\n                    "updated_at": now,\n                })\n                await db[COL_SCADENZIARIO].update_one(\n                    {"id": req.scadenza_id}, {"$set": due_updates}, **skw,\n                )\n\n            if req.metodo == "cassa":\n                paid = round(current_paid + abs(req.importo), 2)\n                closed = paid + 0.005 >= total\n                update_fields = {\n                    "status": "paid" if closed else "partial",\n                    "payment_status": "paid" if closed else "partial",\n                    "pagato": closed,\n                    "stato_pagamento": "pagata" if closed else "parziale",\n                    "importo_pagato": min(paid, total),\n                    "importo_residuo": max(0, round(total - paid, 2)),\n                    "data_pagamento": req.data_pagamento,\n                }\n            else:\n                # La banca manuale e' solo una disposizione da riscontrare. Non incrementa\n                # importo_pagato e non chiude la fattura prima del movimento EC reale.\n                update_fields = {\n                    "status": "partial" if current_paid > 0 else "pending",\n                    "payment_status": "pending_bank_verification",\n                    "pagato": False,\n                    "stato_pagamento": "da_verificare_banca",\n                    "importo_pagato": min(current_paid, total),\n                    "importo_residuo": max(0, round(total - current_paid, 2)),\n                    "importo_banca_da_verificare": abs(req.importo),\n                    "data_disposizione_banca": req.data_pagamento,\n                }\n            update_fields.update({\n                "riconciliato": False,\n                "metodo_pagamento_effettivo": req.metodo,\n                "metodo_pagamento": req.metodo,\n                "updated_at": now,\n                "payment_operation_id": operation_id,\n            })\n'''
+          if old not in s:
+              raise SystemExit('invoice payment block not found')
+          p.write_text(s.replace(old, new))
+
+          p = Path('frontend/src/pages/ArchivioFattureRicevute.jsx')
+          s = p.read_text()
+          start = s.index('  const getStatoBadge = fattura => {')
+          end = s.index('\n  // ==================== RENDER', start)
+          new_fn = '''  const getStatoBadge = fattura => {\n    const pagamento = descriviPagamento(fattura);\n    if (pagamento.verified) {\n      return <Badge variant="success">{pagamento.label}</Badge>;\n    }\n    if (fattura.stato === 'anomala') {\n      return <Badge variant="danger">Anomala</Badge>;\n    }\n    if (pagamento.variant === 'warning' || fattura.stato_pagamento === 'da_verificare_banca') {\n      return <Badge variant="warning">{pagamento.label || 'Da verificare'}</Badge>;\n    }\n    return <Badge variant="warning">Da pagare</Badge>;\n  };\n'''
+          p.write_text(s[:start] + new_fn + s[end:])
+
+          p = Path('tests/test_invoice_payment_evidence_boundary.py')
+          p.write_text('''from pathlib import Path\n\n\ndef test_manual_bank_payment_does_not_mark_invoice_paid():\n    src = Path("app/services/invoice_payments.py").read_text()\n    bank_block = src.split('else:\\n                # La banca manuale e\\' solo una disposizione da riscontrare.', 1)[1]\n    bank_block = bank_block.split('update_fields.update({', 1)[0]\n    assert '"pagato": False' in bank_block\n    assert '"stato_pagamento": "da_verificare_banca"' in bank_block\n    assert '"importo_pagato": min(current_paid, total)' in bank_block\n    assert 'current_paid + abs(req.importo)' not in bank_block\n\n\ndef test_invoice_badge_uses_evidence_description():\n    src = Path("frontend/src/pages/ArchivioFattureRicevute.jsx").read_text()\n    block = src.split('const getStatoBadge = fattura => {', 1)[1].split('// ==================== RENDER', 1)[0]\n    assert 'const pagamento = descriviPagamento(fattura)' in block\n    assert 'if (fattura.pagato)' not in block\n    assert 'pagamento.verified' in block\n''')
+          PY
+      - name: Run focused tests
+        run: |
+          pip install -r backend/requirements.txt >/dev/null
+          python -m pytest -q tests/test_invoice_payment_evidence_boundary.py tests/test_invoice_payments.py
+      - name: Commit point 6 fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/services/invoice_payments.py frontend/src/pages/ArchivioFattureRicevute.jsx tests/test_invoice_payment_evidence_boundary.py
+          git commit -m "fix: enforce invoice payment evidence boundary"
+          git push origin HEAD:ai/prompt-governance-supabase
