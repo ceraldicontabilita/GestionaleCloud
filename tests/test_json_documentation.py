@@ -85,12 +85,13 @@ def test_inventario_json_e_completo_e_verificabile():
         assert item["sha256"] == hashlib.sha256(canonical).hexdigest()
 
 
-def test_conoscenza_operativa_e_valutazioni_restano_di_sola_lettura():
+def test_conoscenza_operativa_usa_supabase_e_drive():
     kb = load_json(ROOT / "app/knowledge/chat_kb.json")
-    assert kb["meta"]["versione"] == "5.0-drive-sheets-operational"
-    assert kb["storage_operativo"]["stato_corrente"] == "google_drive_sheets"
-    assert kb["storage_operativo"]["backend_predefinito"] == "sheets"
-    assert kb["storage_operativo"]["compatibilita"] == "nessun_backend_alternativo"
+    assert kb["meta"]["versione"] == "6.0-supabase-drive-operational"
+    assert kb["storage_operativo"]["stato_corrente"] == "supabase_runtime_drive_originals"
+    assert kb["storage_operativo"]["backend_predefinito"] == "supabase"
+    assert kb["storage_operativo"]["originali"] == "drive"
+    assert kb["storage_operativo"]["compatibilita"] == "sheets_transitorio_rollback"
 
     evals = load_json(ROOT / "gestionale_mcp/evals/read_only_evals.json")
     assert len({item["id"] for item in evals}) == len(evals)
