@@ -45,8 +45,6 @@ def _patch_email_monitor_sender_rules() -> None:
             sender_matches_rule,
         )
     except Exception:
-        # L'import del package non deve rendere indisponibile l'app per una
-        # dipendenza email opzionale; il monitor fallira' chiuso quando invocato.
         return
 
     original_resolver = monitor._risolvi_tipo_documento_email
@@ -85,9 +83,9 @@ def _patch_email_monitor_sender_rules() -> None:
         }
         if allowed:
             return tipo if normalized in allowed else None
-        # Per i mittenti baseline, la policy centrale prevale anche se il record
-        # DB storico contiene un solo ``tipo_documento``.
-        default_rule = default_rule_for_sender(mittente.get("canonical_address") or mittente.get("pattern") or "")
+        default_rule = default_rule_for_sender(
+            mittente.get("canonical_address") or mittente.get("pattern") or ""
+        )
         if default_rule and not rule_allows_document_type(default_rule, normalized):
             return None
         return tipo
@@ -98,9 +96,18 @@ def _patch_email_monitor_sender_rules() -> None:
 
 _patch_email_monitor_sender_rules()
 
+# Ponte di compatibilita': i vecchi job Drive dello scheduler diventano sveglie
+# della coda persistente, senza cambiare il contratto degli endpoint manuali.
+try:
+    from .document_ingestion_runtime import install_legacy_scheduler_bridge
+    install_legacy_scheduler_bridge()
+except Exception:
+    # Fail closed sul bridge: il vecchio scheduler resta disponibile e il
+    # fallimento emerge nei log/test invece di impedire l'avvio dell'intera app.
+    pass
+
 
 __all__ = [
-    # Core Services
     "AuthService",
     "InvoiceServiceV2",
     "get_invoice_service_v2",
@@ -110,13 +117,10 @@ __all__ = [
     "CashService",
     "ChartOfAccountsService",
     "EmailService",
-    # V2 Services with Security
     "CorrispettiviService",
     "get_corrispettivi_service",
-    # Propagation
     "DataPropagationService",
     "get_propagation_service",
-    # Business Rules
     "BusinessRules",
     "ValidationResult",
     "DataFlowManager"
