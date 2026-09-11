@@ -39,14 +39,28 @@ async def genera_proposte_pagamento(db, anno: int = 2026) -> Dict[str, Any]:
     
     stats["fatture_analizzate"] = len(fatture)
     
-    # Proposte già esistenti (dedup)
+    # Proposte già esistenti (dedup). Un movimento EC non può alimentare
+    # contemporaneamente più proposte attive/confermate. Le proposte rifiutate
+    # non lo consumano e possono quindi lasciare il movimento disponibile.
     existing_refs = set()
-    async for p in db[COLLECTION].find({"tipo": "pagamento_fattura"}, {"_id": 0, "fattura_id": 1}):
-        existing_refs.add(p.get("fattura_id"))
+    existing_movement_refs = set()
+    async for p in db[COLLECTION].find(
+        {"tipo": "pagamento_fattura", "stato": {"$in": ["da_confermare", "in_conferma", "confermata"]}},
+        {"_id": 0, "fattura_id": 1, "movimento_id": 1},
+    ):
+        if p.get("fattura_id"):
+            existing_refs.add(p.get("fattura_id"))
+        if p.get("movimento_id"):
+            existing_movement_refs.add(str(p.get("movimento_id")))
     
-    # Movimenti banca uscita dell'anno
+    # Solo movimenti bancari reali ancora liberi. Una riga EC già riconciliata
+    # è prova già consumata e non può essere proposta di nuovo.
     movimenti = await db["estratto_conto_movimenti"].find(
-        {"tipo": "uscita", "data_contabile": {"$regex": f"/{anno}$"}},
+        {
+            "tipo": "uscita",
+            "data_contabile": {"$regex": f"/{anno}$"},
+            "riconciliato": {"$ne": True},
+        },
         {"_id": 0}
     ).to_list(10000)
     
@@ -77,7 +91,12 @@ async def genera_proposte_pagamento(db, anno: int = 2026) -> Dict[str, Any]:
         best_score = 0
         
         for mov in candidati:
-            if mov.get("id") in movimenti_usati:
+            movimento_id = mov.get("id")
+            if not movimento_id:
+                continue
+            if movimento_id in movimenti_usati or str(movimento_id) in existing_movement_refs:
+                continue
+            if mov.get("riconciliato") is True:
                 continue
             
             desc = (mov.get("descrizione") or "").upper()
@@ -163,106 +182,175 @@ async def genera_proposte_pagamento(db, anno: int = 2026) -> Dict[str, Any]:
 
 
 async def conferma_proposta(db, proposta_id: str) -> Dict[str, Any]:
-    """
-    Conferma una proposta: registra il pagamento in Prima Nota e aggiorna la fattura.
+    """Conferma UNA proposta usando come prova il movimento EC reale.
+
+    La proposta è solo un suggerimento. La conferma viene serializzata per
+    evitare doppi click e il movimento di estratto conto viene "prenotato"
+    prima della scrittura, così non può saldare due fatture concorrenti.
     """
     proposta = await db[COLLECTION].find_one({"id": proposta_id})
     if not proposta:
         return {"success": False, "error": "Proposta non trovata"}
-    
     if proposta.get("stato") == "confermata":
-        return {"success": True, "message": "Già confermata"}
-    
+        return {
+            "success": True,
+            "message": "Già confermata",
+            "idempotent_replay": True,
+            "prima_nota_id": proposta.get("prima_nota_id"),
+        }
+    if proposta.get("stato") != "da_confermare":
+        return {"success": False, "error": f"Proposta non confermabile: {proposta.get('stato') or 'stato sconosciuto'}"}
+
+    now = datetime.now(timezone.utc).isoformat()
+    claim = await db[COLLECTION].update_one(
+        {"id": proposta_id, "stato": "da_confermare"},
+        {"$set": {"stato": "in_conferma", "conferma_claimed_at": now}},
+    )
+    if getattr(claim, "modified_count", 0) == 0:
+        aggiornata = await db[COLLECTION].find_one({"id": proposta_id}) or {}
+        if aggiornata.get("stato") == "confermata":
+            return {
+                "success": True, "message": "Già confermata",
+                "idempotent_replay": True,
+                "prima_nota_id": aggiornata.get("prima_nota_id"),
+            }
+        return {"success": False, "error": "Proposta già in elaborazione o non più confermabile"}
+
+    movimento_id = str(proposta.get("movimento_id") or "").strip()
+    if not movimento_id:
+        await db[COLLECTION].update_one(
+            {"id": proposta_id, "stato": "in_conferma"},
+            {"$set": {"stato": "da_confermare", "errore_conferma": "Movimento EC mancante"}},
+        )
+        return {"success": False, "error": "Movimento di estratto conto mancante: nessuna prova bancaria"}
+
+    # Prenota atomicamente il movimento EC. La query impedisce che una prova
+    # già riconciliata o prenotata da un'altra proposta venga riutilizzata.
+    ec_claim = await db["estratto_conto_movimenti"].update_one(
+        {
+            "id": movimento_id,
+            "riconciliato": {"$ne": True},
+            "riconciliazione_claim": {"$in": [None, proposta_id]},
+        },
+        {"$set": {
+            "riconciliazione_claim": proposta_id,
+            "riconciliazione_claimed_at": now,
+        }},
+    )
+    if getattr(ec_claim, "modified_count", 0) == 0:
+        await db[COLLECTION].update_one(
+            {"id": proposta_id, "stato": "in_conferma"},
+            {"$set": {"stato": "da_confermare", "errore_conferma": "Movimento EC già usato o non disponibile"}},
+        )
+        return {"success": False, "error": "Movimento bancario già riconciliato o impegnato da un'altra proposta"}
+
     fatt_id = proposta.get("fattura_id")
-    importo = proposta.get("fattura_importo", 0)
+    importo = float(proposta.get("fattura_importo") or 0)
     fornitore = proposta.get("fattura_fornitore", "")
     numero = proposta.get("fattura_numero", "")
     data_mov = proposta.get("movimento_data", "")
-    
-    # Converti data DD/MM/YYYY → YYYY-MM-DD
     data_iso = data_mov
     if "/" in data_mov:
         parts = data_mov.split("/")
         if len(parts) == 3:
             data_iso = f"{parts[2]}-{parts[1]}-{parts[0]}"
 
-    # Nota di credito (TD04/TD08) NON è un pagamento a fornitore in uscita:
-    # stessa regola già applicata in prima_nota_module/sync.py (bug
-    # segnalato dall'utente 14/07/2026, qui era hardcoded "uscita"/"Fatture"
-    # indipendentemente dal tipo_documento). La proposta non porta con sé
-    # tipo_documento: lo si legge dalla fattura.
-    from app.routers.prima_nota_module.sync import costruisci_campi_movimento_fattura
-    fattura_doc = await db["invoices"].find_one(
-        {"id": fatt_id},
-        {"_id": 0, "tipo_documento": 1, "supplier_vat": 1, "cedente_piva": 1},
-    ) or {}
-    fattura_per_helper = {
-        "tipo_documento": fattura_doc.get("tipo_documento"),
-        "invoice_number": numero,
-        "supplier_name": fornitore,
-        # review Codex su PR #72: senza questo, una TD26 di terzi confermata
-        # da Dati Provvisori restava "Incasso cliente" (il fix del 19/07 si
-        # applica solo se il cedente è noto).
-        "supplier_vat": fattura_doc.get("supplier_vat"),
-        "cedente_piva": fattura_doc.get("cedente_piva"),
-    }
+    try:
+        from app.routers.prima_nota_module.sync import costruisci_campi_movimento_fattura
+        fattura_doc = await db["invoices"].find_one(
+            {"id": fatt_id},
+            {"_id": 0, "tipo_documento": 1, "supplier_vat": 1, "cedente_piva": 1},
+        ) or {}
+        fattura_per_helper = {
+            "tipo_documento": fattura_doc.get("tipo_documento"),
+            "invoice_number": numero,
+            "supplier_name": fornitore,
+            "supplier_vat": fattura_doc.get("supplier_vat"),
+            "cedente_piva": fattura_doc.get("cedente_piva"),
+        }
 
-    # Registra in Prima Nota Banca
-    pn_id = str(uuid.uuid4())
-    movimento = {
-        "id": pn_id,
-        "data": data_iso,
-        **costruisci_campi_movimento_fattura(fattura_per_helper, importo),
-        "riferimento": f"FATT-{fatt_id}",
-        "fattura_id": fatt_id,
-        "movimento_banca_id": proposta.get("movimento_id"),
-        "source": "conferma_provvisori",
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-    
-    await scrivi_movimento(db, "banca", movimento)
-    
-    # Aggiorna fattura
-    await db["invoices"].update_one(
-        {"id": fatt_id},
-        {"$set": {
-            "stato_pagamento": "pagata",
+        pn_id = str(uuid.uuid4())
+        movimento = {
+            "id": pn_id,
+            "data": data_iso,
+            **costruisci_campi_movimento_fattura(fattura_per_helper, importo),
+            "riferimento": f"FATT-{fatt_id}",
+            "fattura_id": fatt_id,
+            # Campo canonico usato dal writer per l'hash idempotente; il legacy
+            # resta per compatibilità con le letture storiche.
+            "movimento_bancario_id": movimento_id,
+            "movimento_banca_id": movimento_id,
+            "estratto_conto_id": movimento_id,
+            "riconciliato": True,
+            "source": "conferma_provvisori",
+            "created_at": now,
+        }
+        pn_id = await scrivi_movimento(db, "banca", movimento)
+
+        await db["estratto_conto_movimenti"].update_one(
+            {"id": movimento_id, "riconciliazione_claim": proposta_id},
+            {"$set": {
+                "riconciliato": True,
+                "fattura_id": fatt_id,
+                "prima_nota_id": pn_id,
+                "riconciliato_il": now,
+                "riconciliazione_fonte": "conferma_provvisori",
+                "riconciliazione_claim": None,
+            }},
+        )
+        await db["invoices"].update_one(
+            {"id": fatt_id},
+            {"$set": {
+                "status": "paid",
+                "payment_status": "paid",
+                "pagato": True,
+                "stato_pagamento": "pagata",
+                "importo_pagato": importo,
+                "importo_residuo": 0.0,
+                "riconciliato": True,
+                "prima_nota_id": pn_id,
+                "prima_nota_tipo": "banca",
+                "movimento_bancario_id": movimento_id,
+                "data_pagamento": data_iso,
+            }},
+        )
+        await db[COLLECTION].update_one(
+            {"id": proposta_id, "stato": "in_conferma"},
+            {"$set": {
+                "stato": "confermata",
+                "confermata_at": now,
+                "prima_nota_id": pn_id,
+                "movimento_id": movimento_id,
+                "errore_conferma": None,
+            }},
+        )
+        return {
+            "success": True,
+            "message": f"Pagamento confermato: {fornitore} €{importo}",
             "prima_nota_id": pn_id,
-            "prima_nota_tipo": "banca",
-            "data_pagamento": data_iso,
-        }}
-    )
-    
-    # Aggiorna proposta
-    await db[COLLECTION].update_one(
-        {"id": proposta_id},
-        {"$set": {
-            "stato": "confermata",
-            "confermata_at": datetime.now(timezone.utc).isoformat(),
-            "prima_nota_id": pn_id,
-        }}
-    )
-    
-    return {"success": True, "message": f"Pagamento confermato: {fornitore} €{importo}"}
+            "movimento_id": movimento_id,
+        }
+    except Exception:
+        # Se la scrittura fallisce, rilascia le prenotazioni: nessun movimento
+        # deve restare falsamente riconciliato per un errore applicativo.
+        await db["estratto_conto_movimenti"].update_one(
+            {"id": movimento_id, "riconciliazione_claim": proposta_id, "riconciliato": {"$ne": True}},
+            {"$set": {"riconciliazione_claim": None}},
+        )
+        await db[COLLECTION].update_one(
+            {"id": proposta_id, "stato": "in_conferma"},
+            {"$set": {"stato": "da_confermare", "errore_conferma": "Errore durante la conferma"}},
+        )
+        raise
 
 
 async def conferma_tutte(db) -> Dict[str, Any]:
-    """Conferma TUTTE le proposte in sospeso."""
-    proposte = await db[COLLECTION].find(
-        {"tipo": "pagamento_fattura", "stato": "da_confermare"},
-        {"_id": 0, "id": 1}
-    ).to_list(500)
-    
-    confermati = 0
-    errori = 0
-    for p in proposte:
-        result = await conferma_proposta(db, p["id"])
-        if result.get("success"):
-            confermati += 1
-        else:
-            errori += 1
-    
-    return {"confermati": confermati, "errori": errori}
+    """Disabilitata: le proposte probabilistiche richiedono conferma singola."""
+    return {
+        "success": False,
+        "error": "Conferma massiva disabilitata: verificare e confermare ogni proposta singolarmente",
+        "confermati": 0,
+    }
 
 
 async def rifiuta_proposta(db, proposta_id: str) -> Dict[str, Any]:

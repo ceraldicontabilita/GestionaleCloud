@@ -175,10 +175,11 @@ async def conferma(proposta_id: str) -> Dict[str, Any]:
 @router.post("/conferma-tutte")
 @handle_errors
 async def conferma_tutte_endpoint() -> Dict[str, Any]:
-    """Conferma TUTTE le proposte in sospeso."""
-    from app.services.dati_provvisori_service import conferma_tutte
-    db = Database.get_db()
-    return await conferma_tutte(db)
+    """Bloccata: una proposta non è prova e richiede conferma puntuale."""
+    raise HTTPException(
+        status_code=409,
+        detail="Conferma massiva disabilitata: verificare ogni proposta e confermarla singolarmente",
+    )
 
 
 @router.post("/rifiuta/{proposta_id}")
