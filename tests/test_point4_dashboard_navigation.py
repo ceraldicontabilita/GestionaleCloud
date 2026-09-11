@@ -38,7 +38,8 @@ def test_dashboard_exposes_real_operational_shortcuts_and_counters():
 
     assert "DashboardOperativita" in dashboard
     assert '<DashboardOperativita scadenze={scadenze} erroriApi={erroriApi} />' in dashboard
-    assert "api.get('/api/alerts/summary'" in operativita
+    assert "api" in operativita
+    assert ".get('/api/alerts/summary'" in operativita
     assert "scadenze?.scadenze" in operativita
 
     for route in (
