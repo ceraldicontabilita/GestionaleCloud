@@ -148,6 +148,7 @@ def test_scheduler_non_perde_import_cedolini_al_riavvio(monkeypatch):
         "drive_fatture_ingest",
         "drive_cedolini_ingest",
         "drive_corrispettivi_ingest",
+        "drive_f24_ingest",
         "drive_quietanze_ingest",
         "drive_estratti_conto_ingest",
     }
