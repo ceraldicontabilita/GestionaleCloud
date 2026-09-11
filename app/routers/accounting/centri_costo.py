@@ -246,14 +246,28 @@ async def assegna_cdc_fatture(
                     cdc = value
                     break
         
-        # 3. Default: costi generali
+        # 3. Nessun fallback inventato: se categoria e fornitore non
+        # identificano un centro in modo esplicito, la fattura resta da
+        # verificare invece di essere forzata in CDC-99.
         if not cdc:
-            cdc = "CDC-99"
-        
-        # Aggiorna fattura
+            await db[Collections.INVOICES].update_one(
+                {"_id": fatt["_id"]},
+                {"$set": {
+                    "cdc_auto_assigned": False,
+                    "cdc_requires_review": True,
+                }, "$unset": {"centro_costo": ""}}
+            )
+            stats["DA_VERIFICARE"] = stats.get("DA_VERIFICARE", 0) + 1
+            continue
+
+        # Aggiorna fattura soltanto quando il mapping è deterministico.
         await db[Collections.INVOICES].update_one(
             {"_id": fatt["_id"]},
-            {"$set": {"centro_costo": cdc, "cdc_auto_assigned": True}}
+            {"$set": {
+                "centro_costo": cdc,
+                "cdc_auto_assigned": True,
+                "cdc_requires_review": False,
+            }}
         )
         updated += 1
         stats[cdc] = stats.get(cdc, 0) + 1
@@ -287,25 +301,13 @@ async def get_utile_obiettivo(anno: int = Query(...)) -> Dict[str, Any]:
             "configurato": False
         }
     
-    # Calcola dati reali
-    date_start = f"{anno}-01-01"
-    date_end = f"{anno}-12-31"
-    
-    # Ricavi da corrispettivi
-    ricavi_pipeline = [
-        {"$match": {"data": {"$gte": date_start, "$lte": date_end}}},
-        {"$group": {"_id": None, "totale": {"$sum": "$totale"}}}
-    ]
-    ricavi_result = await db[Collections.CORRISPETTIVI].aggregate(ricavi_pipeline).to_list(1)
-    ricavi_totali = ricavi_result[0]["totale"] if ricavi_result else 0
-    
-    # Costi da fatture
-    costi_pipeline = [
-        {"$match": {"invoice_date": {"$gte": date_start, "$lte": date_end}}},
-        {"$group": {"_id": None, "totale": {"$sum": "$total_amount"}}}
-    ]
-    costi_result = await db[Collections.INVOICES].aggregate(costi_pipeline).to_list(1)
-    costi_totali = costi_result[0]["totale"] if costi_result else 0
+    # Calcola dati reali usando lo stesso Conto Economico canonico della pagina
+    # Bilancio: ricavi imponibili da corrispettivi, costi imponibili al netto
+    # delle note di credito e dei documenti eliminati/archiviati.
+    from app.routers.accounting.bilancio import get_conto_economico
+    conto_economico = await get_conto_economico(anno=anno, mese=None)
+    ricavi_totali = conto_economico["ricavi"]["totale_ricavi"]
+    costi_totali = conto_economico["costi"]["totale_costi"]
     
     # Calcoli
     utile_corrente = ricavi_totali - costi_totali

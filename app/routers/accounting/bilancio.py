@@ -68,6 +68,7 @@ router = APIRouter()
 
 COLLECTION_PRIMA_NOTA_CASSA = "prima_nota_cassa"
 COLLECTION_PRIMA_NOTA_BANCA = "prima_nota_banca"
+COLLECTION_PRIMA_NOTA_SUMUP = "prima_nota_sumup"
 
 # P.IVA dell'azienda (per identificare fatture emesse vs ricevute)
 PIVA_AZIENDA = "04523831214"
@@ -118,12 +119,16 @@ async def get_stato_patrimoniale(
     intervallo = {"$gte": data_inizio, "$lte": data_fine}
     query_cassa = filtro_saldo_prima_nota(COLLECTION_PRIMA_NOTA_CASSA, data=intervallo)
     query_banca = filtro_saldo_prima_nota(COLLECTION_PRIMA_NOTA_BANCA, data=intervallo)
+    query_sumup = filtro_saldo_prima_nota(COLLECTION_PRIMA_NOTA_SUMUP, data=intervallo)
     saldi_cassa = await aggrega_saldo_prima_nota(
         db, COLLECTION_PRIMA_NOTA_CASSA, query_cassa, anno)
     saldo_cassa = saldi_cassa["saldo"]
     saldi_banca = await aggrega_saldo_prima_nota(
         db, COLLECTION_PRIMA_NOTA_BANCA, query_banca, anno)
     saldo_banca = saldi_banca["saldo"]
+    saldi_sumup = await aggrega_saldo_prima_nota(
+        db, COLLECTION_PRIMA_NOTA_SUMUP, query_sumup, anno)
+    saldo_sumup = saldi_sumup["saldo"]
     
     # Crediti (fatture emesse non pagate - dalla collection fatture_emesse)
     # NOTA: La collection 'invoices' contiene solo fatture RICEVUTE (da fornitori = DEBITI)
@@ -215,7 +220,7 @@ async def get_stato_patrimoniale(
     totale_fondo_tfr = fondo_tfr_agg[0]["totale"] if fondo_tfr_agg else 0
 
     # Calcoli
-    totale_attivo = saldo_cassa + saldo_banca + totale_crediti + totale_immobilizzazioni
+    totale_attivo = saldo_cassa + saldo_banca + saldo_sumup + totale_crediti + totale_immobilizzazioni
     totale_passivo = totale_debiti + totale_fondo_tfr
     patrimonio_netto = totale_attivo - totale_passivo
 
@@ -226,7 +231,8 @@ async def get_stato_patrimoniale(
             "disponibilita_liquide": {
                 "cassa": round(saldo_cassa, 2),
                 "banca": round(saldo_banca, 2),
-                "totale": round(saldo_cassa + saldo_banca, 2)
+                "sumup_mastercard": round(saldo_sumup, 2),
+                "totale": round(saldo_cassa + saldo_banca + saldo_sumup, 2)
             },
             "crediti": {
                 "crediti_vs_clienti": round(totale_crediti, 2),
@@ -908,8 +914,9 @@ async def export_bilancio_pdf(anno: int = Query(None), mese: int = Query(None, d
         ['ATTIVO', '', 'PASSIVO', ''],
         ['Cassa', fmt_eur(sp['attivo']['disponibilita_liquide']['cassa']),
          'Debiti vs Fornitori', fmt_eur(sp['passivo']['debiti']['totale'])],
-        ['Banca', fmt_eur(sp['attivo']['disponibilita_liquide']['banca']),
+        ['Banca BPM', fmt_eur(sp['attivo']['disponibilita_liquide']['banca']),
          'Fondo TFR', fmt_eur(sp['passivo']['fondo_tfr'])],
+        ['Mastercard SumUp', fmt_eur(sp['attivo']['disponibilita_liquide'].get('sumup_mastercard', 0)), '', ''],
         ['Crediti vs Clienti', fmt_eur(sp['attivo']['crediti']['totale']),
          'Patrimonio Netto', fmt_eur(sp['passivo']['patrimonio_netto'])],
         ['Immobilizzazioni', fmt_eur(sp['attivo']['immobilizzazioni']['totale']), '', ''],
@@ -1071,6 +1078,10 @@ async def get_confronto_annuale(
             "banca": calc_variazione(
                 sp_corrente["attivo"]["disponibilita_liquide"]["banca"],
                 sp_precedente["attivo"]["disponibilita_liquide"]["banca"]
+            ),
+            "sumup_mastercard": calc_variazione(
+                sp_corrente["attivo"]["disponibilita_liquide"].get("sumup_mastercard", 0),
+                sp_precedente["attivo"]["disponibilita_liquide"].get("sumup_mastercard", 0)
             ),
             "crediti": calc_variazione(
                 sp_corrente["attivo"]["crediti"]["totale"],
