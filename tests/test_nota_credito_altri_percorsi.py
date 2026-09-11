@@ -14,20 +14,34 @@ def _matches(doc, query):
     if not query:
         return True
     if "$or" in query:
-        return any(_matches(doc, q) for q in query["$or"])
-    out = True
+        if not any(_matches(doc, q) for q in query["$or"]):
+            return False
     for k, v in query.items():
         if k == "$or":
             continue
         if isinstance(v, dict) and "$nin" in v:
-            out = out and (doc.get(k) not in v["$nin"])
+            if doc.get(k) in v["$nin"]:
+                return False
+        elif isinstance(v, dict) and "$in" in v:
+            if doc.get(k) not in v["$in"]:
+                return False
+        elif isinstance(v, dict) and "$ne" in v:
+            if doc.get(k) == v["$ne"]:
+                return False
         elif isinstance(v, dict) and "$gte" in v:
-            out = out and (str(doc.get(k, "")) >= v["$gte"])
+            if str(doc.get(k, "")) < v["$gte"]:
+                return False
         elif isinstance(v, dict) and "$lte" in v:
-            out = out and (str(doc.get(k, "")) <= v["$lte"])
-        else:
-            out = out and doc.get(k) == v
-    return out
+            if str(doc.get(k, "")) > v["$lte"]:
+                return False
+        elif not isinstance(v, dict) and doc.get(k) != v:
+            return False
+    return True
+
+
+class _UpdateResult:
+    def __init__(self, modified_count=0):
+        self.modified_count = modified_count
 
 
 class _FakeCollection:
@@ -49,7 +63,8 @@ class _FakeCollection:
                         d.setdefault(kk, [])
                         if vv not in d[kk]:
                             d[kk].append(vv)
-                return
+                return _UpdateResult(1)
+        return _UpdateResult(0)
 
     async def insert_one(self, doc, *a, **k):
         self.docs.append(dict(doc))
@@ -92,6 +107,14 @@ def _fattura(**over):
     return base
 
 
+def _movimento_ec():
+    return {
+        "id": "mov-1", "tipo": "uscita", "importo": -58.0,
+        "data_contabile": "10/06/2026", "riconciliato": False,
+        "riconciliazione_claim": None,
+    }
+
+
 def test_multi_pagamento_nota_credito_entrata(monkeypatch):
     db = _FakeDb()
     db["invoices"].docs = [_fattura(tipo_documento="TD04")]
@@ -127,8 +150,9 @@ def test_multi_pagamento_fattura_normale_resta_uscita(monkeypatch):
 def test_conferma_proposta_nota_credito_entrata(monkeypatch):
     db = _FakeDb()
     db["invoices"].docs = [_fattura(tipo_documento="TD08")]
+    db["estratto_conto_movimenti"].docs = [_movimento_ec()]
     db["dati_provvisori"].docs = [{
-        "id": "prop-1", "stato": "proposta", "fattura_id": "fatt-1",
+        "id": "prop-1", "stato": "da_confermare", "fattura_id": "fatt-1",
         "fattura_importo": 58.0, "fattura_fornitore": "RONDINELLA MARKET S.R.L.",
         "fattura_numero": "4", "movimento_data": "10/06/2026", "movimento_id": "mov-1",
     }]
@@ -141,19 +165,23 @@ def test_conferma_proposta_nota_credito_entrata(monkeypatch):
     assert banca[0]["tipo"] == "entrata"
     assert banca[0]["categoria"] == "Nota credito fornitore"
     assert banca[0]["numero_fattura"] == "4"
+    assert db["estratto_conto_movimenti"].docs[0]["riconciliato"] is True
 
 
 def test_conferma_proposta_fattura_normale_resta_uscita(monkeypatch):
     db = _FakeDb()
     db["invoices"].docs = [_fattura(tipo_documento="TD01")]
+    db["estratto_conto_movimenti"].docs = [_movimento_ec()]
     db["dati_provvisori"].docs = [{
-        "id": "prop-2", "stato": "proposta", "fattura_id": "fatt-1",
+        "id": "prop-2", "stato": "da_confermare", "fattura_id": "fatt-1",
         "fattura_importo": 58.0, "fattura_fornitore": "RONDINELLA MARKET S.R.L.",
         "fattura_numero": "4", "movimento_data": "10/06/2026", "movimento_id": "mov-1",
     }]
 
-    _run(dp_mod.conferma_proposta(db, "prop-2"))
+    res = _run(dp_mod.conferma_proposta(db, "prop-2"))
 
+    assert res["success"] is True
     banca = db["prima_nota_banca"].docs
     assert banca[0]["tipo"] == "uscita"
     assert banca[0]["categoria"] == "Fatture"
+    assert db["estratto_conto_movimenti"].docs[0]["riconciliato"] is True
