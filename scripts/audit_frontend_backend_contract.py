@@ -1,8 +1,7 @@
 """Audit rigenerabile del contratto frontend <-> backend di GestionaleCloud.
 
-Punto 3 della scaletta operativa. Il report non decide automaticamente che un
-endpoint sia eliminabile: distingue errori strutturali verificabili da candidati
-che richiedono verifica umana.
+Punto 3 della scaletta operativa. Il report distingue errori strutturali
+verificabili da candidati statici che richiedono verifica umana.
 """
 from __future__ import annotations
 
@@ -22,7 +21,6 @@ from scripts.frontend_api_refs import frontend_api_refs
 from tests.route_table import elenco_route
 
 OUT = ROOT / "memoria" / "AUDIT_FRONTEND_BACKEND_CONTRACT.md"
-
 _PARAM_TEMPLATE = re.compile(r"\$\{[^}]+\}")
 _PARAM_BRACES = re.compile(r"\{[^}]+\}")
 _PARAM_COLON = re.compile(r":([A-Za-z_][A-Za-z0-9_]*)")
@@ -32,10 +30,12 @@ _NAV_ITEM = re.compile(r"\{\s*(to|href):\s*[\"']([^\"']+)[\"']")
 
 def normalize_path(value: str) -> str:
     """Normalizza parametri React/FastAPI in wildcard confrontabili."""
-    value = value.split("?", 1)[0].split("#", 1)[0]
+    # Prima si sostituiscono gli slot template: un ternario può contenere '?'
+    # ma quel carattere non è l'inizio della query string HTTP.
     value = _PARAM_TEMPLATE.sub("*", value)
     value = _PARAM_BRACES.sub("*", value)
     value = _PARAM_COLON.sub("*", value)
+    value = value.split("?", 1)[0].split("#", 1)[0]
     value = re.sub(r"/+", "/", value)
     if not value.startswith("/"):
         value = "/" + value
@@ -47,16 +47,14 @@ def _segments(value: str) -> tuple[str, ...]:
 
 
 def compatible_path(frontend_path: str, backend_path: str) -> bool:
-    """Match esatto per segmenti, con ``*`` come parametro dinamico."""
     front = _segments(frontend_path)
     back = _segments(backend_path)
-    if len(front) != len(back):
-        return False
-    return all(a == b or a == "*" or b == "*" for a, b in zip(front, back))
+    return len(front) == len(back) and all(
+        a == b or a == "*" or b == "*" for a, b in zip(front, back)
+    )
 
 
 def prefix_candidate(frontend_path: str, backend_path: str) -> bool:
-    """Riconosce costanti base tipo /api/fatture usate per comporre endpoint."""
     front = _segments(frontend_path)
     back = _segments(backend_path)
     if len(front) >= len(back) or len(front) < 2:
@@ -67,11 +65,15 @@ def prefix_candidate(frontend_path: str, backend_path: str) -> bool:
 def backend_api_paths() -> set[str]:
     app = FastAPI()
     register_all_routers(app)
-    return {
+    paths = {
         normalize_path(route.path)
         for route in elenco_route(app)
         if getattr(route, "path", "").startswith("/api/")
     }
+    # Route infrastrutturali montate direttamente sull'app o non-HTTP.
+    # Sono coperte anche dal contratto autorevole tests/test_frontend_api_contract.py.
+    paths.update({"/api/health", "/api/ws/notifications"})
+    return paths
 
 
 def main_routes() -> tuple[set[str], set[str]]:
@@ -83,9 +85,7 @@ def main_routes() -> tuple[set[str], set[str]]:
             exact.add(normalize_path(raw))
             continue
         full = normalize_path(raw)
-        if full.endswith("/*"):
-            wildcard.add(full[:-2] or "/")
-        elif raw.endswith("/*"):
+        if raw.endswith("/*"):
             wildcard.add(normalize_path(raw[:-2]))
         elif "*" not in full:
             exact.add(full)
@@ -94,9 +94,9 @@ def main_routes() -> tuple[set[str], set[str]]:
 
 def frontend_route_supported(path: str, exact: set[str], wildcard: set[str]) -> bool:
     path = normalize_path(path)
-    if path in exact:
-        return True
-    return any(path == prefix or path.startswith(prefix + "/") for prefix in wildcard)
+    return path in exact or any(
+        path == prefix or path.startswith(prefix + "/") for prefix in wildcard
+    )
 
 
 def page_catalog_audit() -> tuple[list[str], list[str], int]:
@@ -127,21 +127,19 @@ def navigation_audit() -> tuple[list[str], list[str], int]:
     items = _NAV_ITEM.findall(text)
     for kind, target in items:
         if kind == "to":
-            if target == "/more":
-                continue
-            if not frontend_route_supported(target, exact, wildcard):
+            if target != "/more" and not frontend_route_supported(target, exact, wildcard):
                 errors.append(f"link interno non coperto dal router: `{target}`")
-        else:
-            prefix = target.strip("/").split("/", 1)[0]
-            expected_dir = {
-                "menu": ROOT / "app" / "menu",
-                "hr": ROOT / "app" / "hr",
-                "lotti": ROOT / "app" / "lotti",
-            }.get(prefix)
-            if expected_dir is None:
-                warnings.append(f"href esterno non classificato: `{target}`")
-            elif not expected_dir.is_dir():
-                errors.append(f"app montata dichiarata ma directory assente: `{target}`")
+            continue
+        prefix = target.strip("/").split("/", 1)[0]
+        expected_dir = {
+            "menu": ROOT / "app" / "menu",
+            "hr": ROOT / "app" / "hr",
+            "lotti": ROOT / "app" / "lotti",
+        }.get(prefix)
+        if expected_dir is None:
+            warnings.append(f"href esterno non classificato: `{target}`")
+        elif not expected_dir.is_dir():
+            errors.append(f"app montata dichiarata ma directory assente: `{target}`")
     return errors, warnings, len(items)
 
 
@@ -155,22 +153,19 @@ def api_contract_audit() -> tuple[list[str], list[str], int, int]:
             continue
         if any(prefix_candidate(ref, route) for route in backend):
             prefix_only.append(ref)
-            continue
-        unmatched.append(ref)
+        else:
+            unmatched.append(ref)
     return unmatched, prefix_only, len(refs), len(backend)
 
 
 def not_implemented_candidates() -> list[str]:
     results: list[str] = []
-    ignored = {
-        "app/services/blob_store.py",  # interfaccia astratta intenzionale
-    }
+    ignored = {"app/services/blob_store.py"}  # interfaccia astratta intenzionale
     for path in sorted((ROOT / "app").rglob("*.py")):
         rel = path.relative_to(ROOT).as_posix()
         if rel in ignored:
             continue
-        text = path.read_text(encoding="utf-8", errors="ignore")
-        for lineno, line in enumerate(text.splitlines(), 1):
+        for lineno, line in enumerate(path.read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
             if "raise NotImplementedError" in line:
                 results.append(f"`{rel}:{lineno}`")
     return results
@@ -182,12 +177,14 @@ def build_report() -> tuple[str, list[str]]:
     unmatched, prefix_only, fe_refs, backend_routes = api_contract_audit()
     not_impl = not_implemented_candidates()
     hard_errors = [*page_errors, *nav_errors]
+    warnings = [*page_warnings, *nav_warnings]
 
     lines = [
         "# Audit frontend ↔ backend — GestionaleCloud",
         "",
         "> Generato da `scripts/audit_frontend_backend_contract.py`. Non modificare a mano.",
-        "> Gli scarti API sono candidati da verificare: il parser statico non sostituisce un collaudo runtime.",
+        "> Il contratto HTTP per metodo+path resta verificato da `tests/test_frontend_api_contract.py`.",
+        "> Gli scarti statici qui sotto sono candidati da verificare, non prove di endpoint rotti.",
         "",
         "## Riepilogo",
         "",
@@ -196,7 +193,7 @@ def build_report() -> tuple[str, list[str]]:
         f"- Riferimenti API frontend distinti: **{fe_refs}**",
         f"- Path API backend distinti: **{backend_routes}**",
         f"- Errori strutturali verificabili: **{len(hard_errors)}**",
-        f"- Riferimenti frontend senza match backend: **{len(unmatched)}**",
+        f"- Riferimenti frontend senza match statico: **{len(unmatched)}**",
         f"- Riferimenti frontend riconosciuti come soli prefissi: **{len(prefix_only)}**",
         f"- `NotImplementedError` applicativi da verificare: **{len(not_impl)}**",
         "",
@@ -204,28 +201,21 @@ def build_report() -> tuple[str, list[str]]:
         "",
     ]
     lines.extend(f"- {item}" for item in hard_errors) if hard_errors else lines.append("- Nessuno.")
-
-    warnings = [*page_warnings, *nav_warnings]
     lines.extend(["", "## Avvisi di routing", ""])
     lines.extend(f"- {item}" for item in warnings) if warnings else lines.append("- Nessuno.")
-
-    lines.extend(["", "## Riferimenti frontend senza endpoint compatibile", ""])
+    lines.extend(["", "## Riferimenti frontend senza match statico", ""])
     lines.extend(f"- `{item}`" for item in unmatched) if unmatched else lines.append("- Nessuno.")
-
     lines.extend(["", "## Prefissi API frontend", ""])
     lines.extend(f"- `{item}`" for item in prefix_only) if prefix_only else lines.append("- Nessuno.")
-
     lines.extend(["", "## Funzioni non implementate da verificare", ""])
     lines.extend(f"- {item}" for item in not_impl) if not_impl else lines.append("- Nessuna.")
-
     lines.extend([
         "",
         "## Regola di chiusura",
         "",
-        "Il punto 3 può essere chiuso solo quando gli errori strutturali sono zero,",
-        "ogni riferimento API senza match è stato corretto o classificato con evidenza,",
-        "e ogni `NotImplementedError` applicativo è stato dimostrato non raggiungibile oppure",
-        "trasformato in comportamento esplicito/testato.",
+        "Il punto 3 si chiude con zero errori strutturali, contratto HTTP verde,",
+        "scarti statici classificati con evidenza e `NotImplementedError` applicativi",
+        "dimostrati non raggiungibili oppure trasformati in comportamento esplicito/testato.",
         "",
     ])
     return "\n".join(lines), hard_errors
