@@ -25,8 +25,8 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 - Riferimento: **28**
 - Pianificati: **7**
 - Generati: **5**
-- Storici: **9**
-- Totale: **77**
+- Storici: **11**
+- Totale: **79**
 
 ## Elenco completo
 
@@ -48,6 +48,8 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 | `archive/legacy-audit/README.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/ADR-001-HACCP-LOTTI-DRIVE-SHEETS.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/ADR-005-INGESTIONE-DOCUMENTALE-UNIVERSALE-RENDER.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `docs/AUDIT_DUPLICATI_DRIVE_2026-09-11.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `docs/AUDIT_DUPLICATI_DRIVE_2026-09-11_LOTTO2.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/FISCAL_ACCOUNTING_POLICY.md` | `current` | Autorità operativa corrente |
 | `docs/GUIDA-SEMPLICE-FLUSSO-ATOMICO-RENDER.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/MARKDOWN_INVENTORY.md` | `current` | Autorità operativa corrente |
