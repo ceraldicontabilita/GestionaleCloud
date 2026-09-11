@@ -6,6 +6,7 @@ on:
       - ai/prompt-governance-supabase
     paths:
       - .github/workflows/frontend-backend-audit-once.yml
+      - scripts/audit_frontend_backend_contract.py
 
 permissions:
   contents: write
