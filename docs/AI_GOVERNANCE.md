@@ -3,6 +3,7 @@
 <!-- gestionalecloud-doc
 status: current
 reviewed_at: 2026-09-11
+storage_architecture: supabase-runtime-drive-originals
 -->
 
 ## Scopo
