@@ -1,5 +1,6 @@
 from app.services.drive_lifecycle_tree import (
     discover_inboxes,
+    discover_lifecycle_folders,
     resolve_inboxes_or_legacy,
 )
 
@@ -69,6 +70,26 @@ def test_scopre_inbox_per_dipendente_e_non_accetta_nomi_legacy_prefissati():
     assert len(result) == 1
     assert result[0]["inbox_id"] == "in-mario"
     assert result[0]["lifecycle_parent_id"] == "mario"
+
+
+def test_scopre_elaborate_ed_errori_nello_stesso_fascicolo_senza_scendere_dentro():
+    service = _Service({
+        "root": [_folder("mario", "ROSSI MARIO")],
+        "mario": [
+            _folder("in-mario", "DA ELABORARE"),
+            _folder("done-mario", "ELABORATE"),
+            _folder("err-mario", "Errori"),
+        ],
+        "done-mario": [_folder("trap", "DA ELABORARE")],
+    })
+
+    result = discover_lifecycle_folders(service, "root", max_depth=2)
+
+    assert [(x["state"], x["folder_id"], x["lifecycle_parent_id"]) for x in result] == [
+        ("inbox", "in-mario", "mario"),
+        ("elaborate", "done-mario", "mario"),
+        ("error", "err-mario", "mario"),
+    ]
 
 
 def test_fallback_crea_inbox_root_solo_se_non_esistono_inbox_annidate():
