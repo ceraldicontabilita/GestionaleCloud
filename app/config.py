@@ -17,10 +17,10 @@ class Settings(BaseSettings):
     APP_VERSION: str = "2.0.0"
     DEBUG: bool = False
     ENVIRONMENT: str = "production"
-    # Google Drive conserva soltanto gli originali documentali; Supabase e' il
-    # registro operativo strutturato. ``sheets`` resta temporaneamente
-    # disponibile esclusivamente come sorgente di rollback durante il cutover.
-    DATA_BACKEND: str = "sheets"
+    # Supabase e' il registro operativo strutturato. Google Drive conserva gli
+    # originali documentali. ``sheets`` resta disponibile soltanto come
+    # compatibilita' transitoria di rollback/test durante il cutover.
+    DATA_BACKEND: str = "supabase"
     SHEETS_REGISTRY_NAME: str = "GestionaleCloud"
     # Credenziali server-to-server del runtime Supabase. La publishable key non
     # concede da sola accesso ai dati; ogni RPC richiede anche il secret
@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     PORT: int = 8000
     RELOAD: bool = False
 
-    # Nome logico del registro Sheets esposto tramite l'interfaccia database.
+    # Nome logico del registro documentale esposto tramite l'interfaccia database.
     DB_NAME: str = "Gestionale"
     # Le riparazioni dati e migrazioni all'avvio restano disabilitate per default.
     RUN_STARTUP_DATA_REPAIRS: bool = False
@@ -122,31 +122,23 @@ class Settings(BaseSettings):
     GOOGLE_REDIRECT_URI: str = "/api/auth/google/callback"
 
     # Google Drive — ingest fatture XML
-    GOOGLE_DRIVE_FATTURE_FOLDER_ID: Optional[str] = None  # cartella Drive da cui leggere gli XML
-    GOOGLE_DRIVE_SA_FILE: Optional[str] = None            # path al JSON del service account
-    GOOGLE_DRIVE_SA_JSON: Optional[str] = None            # oppure il JSON inline (alternativa al file)
-    # Altre cartelle Drive (specifica utente 10-07-2026): gli ID vanno nelle
-    # variabili d'ambiente su Render, MAI nel codice.
-    GOOGLE_DRIVE_CEDOLINI_FOLDER_ID: Optional[str] = None      # cedolini paga (PDF)
-    GOOGLE_DRIVE_CORRISPETTIVI_FOLDER_ID: Optional[str] = None # corrispettivi RT
-    GOOGLE_DRIVE_QUIETANZE_FOLDER_ID: Optional[str] = None     # quietanze F24
-    GOOGLE_DRIVE_ESTRATTI_FOLDER_ID: Optional[str] = None      # estratti conto
-    GOOGLE_DRIVE_ESTRATTI_FOLDER_IDS: Optional[str] = None     # piu radici, separate da virgola
-    GOOGLE_DRIVE_BONIFICI_FOLDER_ID: Optional[str] = None      # bonifici effettuati: fornitori, stipendi e altri pagamenti
-    # Registro dati portabile: un Google Spreadsheet con un foglio per ogni
-    # entita canonica. ID diretto oppure cartella in cui crearlo/ritrovarlo.
+    GOOGLE_DRIVE_FATTURE_FOLDER_ID: Optional[str] = None
+    GOOGLE_DRIVE_SA_FILE: Optional[str] = None
+    GOOGLE_DRIVE_SA_JSON: Optional[str] = None
+    GOOGLE_DRIVE_CEDOLINI_FOLDER_ID: Optional[str] = None
+    GOOGLE_DRIVE_CORRISPETTIVI_FOLDER_ID: Optional[str] = None
+    GOOGLE_DRIVE_QUIETANZE_FOLDER_ID: Optional[str] = None
+    GOOGLE_DRIVE_ESTRATTI_FOLDER_ID: Optional[str] = None
+    GOOGLE_DRIVE_ESTRATTI_FOLDER_IDS: Optional[str] = None
+    GOOGLE_DRIVE_BONIFICI_FOLDER_ID: Optional[str] = None
+    # Compatibilita' transitoria del vecchio ledger Sheets. Non usare queste
+    # variabili per nuovi flussi applicativi.
     GOOGLE_SHEETS_LEDGER_ID: Optional[str] = None
     GOOGLE_SHEETS_LEDGER_FOLDER_ID: Optional[str] = None
-    # Nuovi canali documentali (scelta utente 12-07-2026): cartelle Drive
-    # dedicate. Gli ID vanno su Render; ogni cartella condivisa con la
-    # client_email del service account che la legge.
-    GOOGLE_DRIVE_DICHIARAZIONI_IVA_FOLDER_ID: Optional[str] = None   # dichiarazioni IVA (PDF)
-    GOOGLE_DRIVE_CARTELLE_ESATTORIALI_FOLDER_ID: Optional[str] = None # cartelle esattoriali (PDF)
-    GOOGLE_DRIVE_AVVISI_BONARI_FOLDER_ID: Optional[str] = None       # avvisi bonari (PDF)
+    GOOGLE_DRIVE_DICHIARAZIONI_IVA_FOLDER_ID: Optional[str] = None
+    GOOGLE_DRIVE_CARTELLE_ESATTORIALI_FOLDER_ID: Optional[str] = None
+    GOOGLE_DRIVE_AVVISI_BONARI_FOLDER_ID: Optional[str] = None
 
-    # Canali documentali ancora privi di un nome GOOGLE_DRIVE_* dedicato.
-    # Le aree principali sopra hanno invece una sola variabile canonica:
-    # non reintrodurre alias Render che puntano allo stesso folder ID.
     DRIVE_PRESENZE_FOLDER_ID: Optional[str] = None
     DRIVE_F24_FOLDER_ID: Optional[str] = None
     DRIVE_CARTE_FOLDER_ID: Optional[str] = None
@@ -154,19 +146,10 @@ class Settings(BaseSettings):
     DRIVE_NOLEGGIO_FOLDER_ID: Optional[str] = None
     DRIVE_VERBALI_FOLDER_ID: Optional[str] = None
     DRIVE_FOLDER_REGISTRY_JSON: Optional[str] = None
-    # Radice fiscale canonica indicata dall'amministratore. L'ID identifica
-    # soltanto la cartella contenitore: le sottocartelle operative vengono
-    # scoperte e verificate via Drive API, mai create per supposizione.
     DRIVE_FISCAL_ROOT_FOLDER_ID: str = "1f48bounfoOyHL_kqpHAp2GAnFfEpHvVa"
-    # Archivio documentale esterno: il gestionale legge esclusivamente
-    # l'indice Excel e lascia i file originali su Google Drive.
     DRIVE_DOCUMENT_INDEX_ROOT_FOLDER_ID: str = "1tmVu6fl7qhJbLcGCHT3wEQzrvFAElc9h"
     GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON: Optional[str] = None
 
-    # Service account DEDICATI per cartella (scelta utente: un account per
-    # canale). Se valorizzato, il canale usa il suo; altrimenti ricade su
-    # GOOGLE_DRIVE_SA_JSON/SA_FILE condiviso. Ogni cartella Drive deve essere
-    # condivisa con la client_email del service account che la legge.
     GOOGLE_SERVICE_ACCOUNT_JSON_CEDOLINI: Optional[str] = None
     GOOGLE_SERVICE_ACCOUNT_JSON_CORRISPETTIVI: Optional[str] = None
     GOOGLE_SERVICE_ACCOUNT_JSON_FATTURE: Optional[str] = None
@@ -174,42 +157,21 @@ class Settings(BaseSettings):
     GOOGLE_SERVICE_ACCOUNT_JSON_ESTRATTI_CONTO: Optional[str] = None
     GOOGLE_SERVICE_ACCOUNT_JSON_BONIFICI: Optional[str] = None
 
-    # Interruttori canali Drive (accesi/spenti — regola utente): letti
-    # dall'ambiente, default = stato attuale dei canali.
     ENABLE_DRIVE_FATTURE_SYNC: bool = True
-    # Il servizio Render Starter dispone di memoria limitata. Le fatture XML
-    # vengono quindi elaborate a lotti piccoli e idempotenti, mai caricando
-    # l'intero arretrato nello stesso ciclo.
     DRIVE_FATTURE_BATCH_SIZE: int = 1
     ENABLE_DRIVE_CEDOLINI_SYNC: bool = True
     ENABLE_DRIVE_CORRISPETTIVI_SYNC: bool = True
-    # Quietanze: ACCESO su scelta esplicita dell'utente (10/07/2026)
     ENABLE_DRIVE_QUIETANZE_SYNC: bool = True
     ENABLE_DRIVE_ESTRATTI_CONTO_SYNC: bool = True
-    # Anche gli estratti vengono elaborati in lotti minimi. La radice Drive
-    # contiene anni di documenti e non deve mai essere riprocessata tutta da
-    # un singolo worker web con 512 MiB di memoria.
     DRIVE_ESTRATTI_BATCH_SIZE: int = 1
-    # Anno minimo dei documenti da importare dall'area Estratti conto
-    # (scelta utente 07/08/2026: "solo 2026, il resto fermo"). L'inbox unico
-    # contiene un arretrato dal 2023: i documenti piu' vecchi restano dove
-    # sono, non vengono ne' importati ne' spostati. Metterlo a 0 li sblocca.
     DRIVE_ESTRATTI_ANNO_MINIMO: int = 2026
     ENABLE_DRIVE_BONIFICI_SYNC: bool = False
-    # Canali fiscali Drive: avvisi bonari e cartelle esattoriali sono abilitati,
-    # ma restano fail-closed finche' la discovery non trova una sola cartella
-    # con il nome atteso sotto la radice fiscale configurata.
     ENABLE_DRIVE_DICHIARAZIONI_IVA_SYNC: bool = False
     ENABLE_DRIVE_CARTELLE_ESATTORIALI_SYNC: bool = True
     ENABLE_DRIVE_AVVISI_BONARI_SYNC: bool = True
     ENABLE_DRIVE_VERBALI_SYNC: bool = True
-    # Canali EMAIL F24 e Verbali: ACCESI su scelta esplicita dell'utente
-    # (13/07/2026). Interruttore dedicato per poterli spegnere senza toccare
-    # le credenziali IMAP. NB: il parser F24 email non è ancora validato su
-    # F24 reali — controllare i primi risultati prima di fidarsi.
     ENABLE_EMAIL_F24_SYNC: bool = True
     ENABLE_EMAIL_VERBALI_SYNC: bool = True
-    # Ora locale Europe/Rome del controllo giornaliero verbali.
     VERBALI_EMAIL_SCAN_HOUR: int = 6
 
     # Telegram
@@ -220,8 +182,7 @@ class Settings(BaseSettings):
     PAYPAL_CLIENT_ID: str = ""
     PAYPAL_CLIENT_SECRET: str = ""
 
-    # SumUp — secondo gestore POS accanto a Nexi.
-    # Chiave statica del nostro stesso conto commerciante: niente OAuth.
+    # SumUp
     SUMUP_API_KEY: str = ""
     SUMUP_MERCHANT_CODE: str = ""
     SUMUP_API_BASE: str = "https://api.sumup.com"
@@ -233,9 +194,6 @@ class Settings(BaseSettings):
 
     # Feature Flags
     ENABLE_SMTP_EMAIL: bool = False
-    # Interruttore maestro della scansione email (Gmail IMAP). Default acceso
-    # (13/07/2026): coerente con i canali email attivi (cedolini/F24/verbali).
-    # Metterlo a False ferma TUTTA l'ingestione email dallo scheduler.
     ENABLE_GMAIL_IMAP: bool = True
     ENABLE_DOCUMENT_AI: bool = False
     ENABLE_ASYNC_IMPORTS: bool = True
@@ -264,9 +222,6 @@ class Settings(BaseSettings):
     TEMPLATES_DIR: Path = Path("templates")
     FONTS_DIR: Path = Path("fonts")
 
-    # Stato runtime, escluso dalle variabili e dalla serializzazione. La
-    # La configurazione non apre connessioni durante l'import; il segreto
-    # condiviso viene inizializzato dal lifecycle asincrono.
     _auth_secret_source: str = PrivateAttr(default="unset")
 
     model_config = SettingsConfigDict(
@@ -285,8 +240,6 @@ class Settings(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> Tuple[PydanticBaseSettingsSource, ...]:
-        # Le variabili iniettate da Render devono prevalere su un file .env
-        # dell'immagine potenzialmente obsoleto.
         return (init_settings, env_settings, dotenv_settings, file_secret_settings)
 
     def __init__(self, **kwargs):
@@ -294,8 +247,6 @@ class Settings(BaseSettings):
         if self.SECRET_KEY:
             self._auth_secret_source = "configured"
         else:
-            # Mantiene importabili i moduli e isolati i test, senza I/O di
-            # rete. In produzione SECRET_KEY deve arrivare dal secret store.
             import secrets
             self.SECRET_KEY = secrets.token_urlsafe(64)
             self._auth_secret_source = "ephemeral"
@@ -311,60 +262,31 @@ class Settings(BaseSettings):
         self._auth_secret_source = source
 
     def get_cors_origins(self) -> list[str]:
-        """Origin CORS consentiti.
-
-        Sicurezza (audit 13/07/2026): con autenticazione via cookie
-        (`ALLOW_CREDENTIALS=True`) NON è mai lecito rispondere con wildcard
-        `*` — il browser rifletterebbe qualunque Origin, permettendo a un
-        sito terzo di usare la sessione dell'utente. Quindi:
-
-        - Se sono elencati origin espliciti in `CORS_ALLOWED_ORIGINS`
-          (o `CORS_ORIGINS`/`ALLOWED_ORIGINS`/`FRONTEND_URL`), usa quelli.
-        - Se non c'è nulla di esplicito e le credenziali sono attive,
-          NON aprire a `*`: restituisci lista vuota (nessun sito esterno
-          autorizzato) e logga un warning, cosi l'app resta chiusa finché
-          non si imposta il dominio reale.
-        - `*` è concesso solo quando le credenziali sono disattivate.
-
-        Dominio da impostare in produzione: variabile d'ambiente
-        `CORS_ALLOWED_ORIGINS` (o `FRONTEND_URL`), es.
-        `CORS_ALLOWED_ORIGINS="https://gestionale.esempio.it"`.
-        Più domini separati da virgola.
-        """
+        """Origin CORS consentiti, chiusi per default con cookie attivi."""
         import logging
         esplicite = (
             getattr(self, "CORS_ALLOWED_ORIGINS", "")
             or self.CORS_ORIGINS
             or self.ALLOWED_ORIGINS
             or ""
-        )
-        esplicite = esplicite.strip()
+        ).strip()
 
         if esplicite and esplicite != "*":
             lista = [o.strip() for o in esplicite.split(",") if o.strip() and o.strip() != "*"]
             if lista:
                 return lista
 
-        # Nessun origin esplicito valido: fallback su FRONTEND_URL se presente.
         if self.FRONTEND_URL:
             return [self.FRONTEND_URL]
 
-        # Niente di esplicito. Il frontend di produzione e' same-origin:
-        # con cookie attivi si chiude ogni accesso cross-site finche' il
-        # dominio esterno non viene autorizzato esplicitamente.
         if self.ALLOW_CREDENTIALS:
             logging.getLogger(__name__).warning(
                 "CORS cross-site disabilitato: ALLOW_CREDENTIALS=True senza "
-                "origin esplicito. Imposta CORS_ALLOWED_ORIGINS soltanto per "
-                "i domini esterni autorizzati."
+                "origin esplicito."
             )
-        # Il frontend di produzione e' same-origin. Con cookie abilitati il
-        # fallback sicuro e' quindi nessun origin cross-site; le integrazioni
-        # esterne devono essere autorizzate esplicitamente.
         return [] if self.ALLOW_CREDENTIALS else ["*"]
 
     def get_allowed_extensions(self) -> set[str]:
-        """Parse allowed file extensions."""
         return set(ext.strip() for ext in self.ALLOWED_EXTENSIONS.split(","))
 
     @property
@@ -376,15 +298,25 @@ class Settings(BaseSettings):
         return self.ENVIRONMENT == "production"
 
     def validate_required_secrets(self) -> dict[str, bool]:
-        """Validate required and optional secrets.
-
-        Questo runtime supporta esclusivamente Google Sheets/Drive come archive
-        operativo. Le verifiche qui sono limitate a ciò che serve per Sheets.
-        """
-        return {
-            'database': bool(
+        """Riepiloga disponibilita' dei segreti per il backend selezionato."""
+        backend = self.DATA_BACKEND.strip().lower()
+        if backend == "supabase":
+            database_ready = all(
+                str(value or "").strip()
+                for value in (
+                    self.SUPABASE_URL,
+                    self.SUPABASE_PUBLISHABLE_KEY,
+                    self.SUPABASE_RUNTIME_SECRET,
+                )
+            )
+        elif backend == "sheets":
+            database_ready = bool(
                 self.GOOGLE_SHEETS_LEDGER_ID or self.GOOGLE_SHEETS_LEDGER_FOLDER_ID
-            ),
+            )
+        else:
+            database_ready = False
+        return {
+            'database': database_ready,
             'auth': bool(self.SECRET_KEY),
             'google_oauth': bool(self.GOOGLE_CLIENT_ID and self.GOOGLE_CLIENT_SECRET),
             'openai': bool(self.OPENAI_API_KEY),
@@ -392,10 +324,11 @@ class Settings(BaseSettings):
         }
 
     def validate_startup(self) -> None:
-        """Validate critical configuration at startup.
+        """Valida la configurazione critica senza fallback silenziosi.
 
-        In produzione, se FAIL_FAST_SECRETS=true è attivo, l'applicazione
-        fallisce l'avvio se mancano SECRET_KEY o la configurazione Drive/Sheets.
+        In produzione Supabase e' il backend operativo previsto. Sheets resta
+        accettato solo quando selezionato esplicitamente come percorso di
+        rollback/test e richiede il proprio ledger configurato.
         """
         import logging
         import os
@@ -404,8 +337,6 @@ class Settings(BaseSettings):
         fail_fast = self.is_production and os.getenv("FAIL_FAST_SECRETS", "").lower() in ("true", "1", "yes")
         errors: list[str] = []
 
-        # Una chiave effimera rende i token diversi tra worker e li invalida
-        # a ogni deploy; in modalita' fail-fast una sorgente effimera e' fatale.
         if self.auth_secret_source == "ephemeral":
             msg = (
                 "SECRET_KEY effimera: configurare SECRET_KEY nel secret store "
@@ -417,17 +348,14 @@ class Settings(BaseSettings):
                 logger.warning(f"⚠️ {msg}")
 
         backend = self.DATA_BACKEND.strip().lower()
-        # Production runtime supports 'sheets' (storico) e 'supabase' (Postgres
-        # reale). Qualunque altro valore resta invalido.
         if backend not in ("sheets", "supabase"):
-            errors.append("DATA_BACKEND non supportato: il runtime corrente supporta 'sheets' (Google Sheets/Drive) o 'supabase' (Postgres).")
+            errors.append(
+                "DATA_BACKEND non supportato: usare 'supabase' in produzione "
+                "oppure 'sheets' solo per rollback/test esplicito."
+            )
 
-        # Check database configuration for Sheets. Sheets is the operational backend;
-        # absence of sheets configuration is a production error.
         if backend == "sheets":
-            if self.GOOGLE_SHEETS_LEDGER_ID or self.GOOGLE_SHEETS_LEDGER_FOLDER_ID:
-                pass
-            else:
+            if not (self.GOOGLE_SHEETS_LEDGER_ID or self.GOOGLE_SHEETS_LEDGER_FOLDER_ID):
                 msg = (
                     "DATA_BACKEND=sheets richiede GOOGLE_SHEETS_LEDGER_ID oppure "
                     "GOOGLE_SHEETS_LEDGER_FOLDER_ID; non esiste fallback di persistenza."
@@ -436,6 +364,11 @@ class Settings(BaseSettings):
                     errors.append(msg)
                 else:
                     logger.error(msg)
+            if self.is_production:
+                logger.warning(
+                    "DATA_BACKEND=sheets attivo in produzione: modalita' di "
+                    "rollback transitoria, non backend operativo raccomandato."
+                )
 
         if backend == "supabase" and not all(
             str(value or "").strip()
@@ -455,13 +388,10 @@ class Settings(BaseSettings):
             else:
                 logger.error(msg)
 
-        if self.is_production and not (self.SHEETS_REGISTRY_NAME or "").strip():
-            msg = "SHEETS_REGISTRY_NAME non configurato in produzione."
+        if backend == "sheets" and not (self.SHEETS_REGISTRY_NAME or "").strip():
+            msg = "SHEETS_REGISTRY_NAME non configurato per il runtime Sheets."
             errors.append(msg) if fail_fast else logger.error(f"❌ ERROR: {msg}")
 
-        # Senza origin espliciti ``get_cors_origins`` restituisce [] e mantiene
-        # il frontend same-origin: e' una configurazione sicura. L'unico caso
-        # da rifiutare e' una wildcard esplicita insieme alle credenziali.
         cors_raw = (self.CORS_ALLOWED_ORIGINS or "").strip()
         if self.is_production and self.ALLOW_CREDENTIALS and "*" in {
             value.strip() for value in cors_raw.split(",") if value.strip()
@@ -484,6 +414,7 @@ class Settings(BaseSettings):
 
 settings = Settings()
 FEATURES = settings.validate_required_secrets()
+
 
 def get_settings() -> Settings:
     return settings
