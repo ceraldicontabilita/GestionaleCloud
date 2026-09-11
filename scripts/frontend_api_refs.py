@@ -1,17 +1,9 @@
 """Riferimenti `/api/...` usati dal frontend, risolvendo le costanti prefisso.
 
 Usato da `genera_mappa.py` e `genera_classificazione_endpoint.py` (colonna
-FE). Prima veniva cercato solo il testo letterale `/api/...`: un modulo che
-compone gli URL da una costante (`const BASE = "/api" + "/fatture"`,
-``const API = `${BASE}/ricevute` ``, ``api.get(`${API}/elenco`)``)
-o da un client axios con `baseURL` (`api.get("/portale/buste")`) risultava
-"mai usato dal frontend" pur essendo la parte piu' chiamata dell'app.
-
-La risoluzione e' statica e per singolo file: costanti MAIUSCOLE dichiarate
-nel file, concatenazioni di stringhe letterali, template `${COSTANTE}` e il
-`baseURL` di un client axios dichiarato nel file. Restituisce stringhe grezze
-(con eventuali `${...}` non risolti): la normalizzazione a `:x` resta ai
-chiamanti, come prima.
+FE). Risolve costanti locali, concatenazioni semplici, template e baseURL axios.
+Gli slot dinamici `${...}` vengono preservati interi per permettere ai chiamanti
+di normalizzarli come parametri senza produrre falsi endpoint troncati.
 """
 from __future__ import annotations
 
@@ -24,7 +16,12 @@ _CONCAT = re.compile(r"[\"'`]\s*\+\s*[\"'`]")
 _TEMPLATE_VAR = re.compile(r"\$\{([A-Z][A-Z0-9_]*)\}")
 _BASEURL = re.compile(r"baseURL:\s*([^,}\n]+)")
 _API_CALL = re.compile(r"\bapi\.(?:get|post|put|delete|patch|request)\(\s*([\"'`])(/[^\"'`]*)\1")
-_API_REF = re.compile(r"/api/[a-zA-Z0-9_\-/${}.]+")
+# Segmenti statici oppure slot template completi. Il vecchio char-class si
+# fermava a `(` e trasformava `${encodeURIComponent(id)}` in una falsa route
+# `${encodeURIComponent`, contaminando gli audit frontend <-> backend.
+_API_REF = re.compile(
+    r"/api/(?:[A-Za-z0-9_.\-/]+|\$\{[^}\n]+\})+"
+)
 
 
 def _resolve(value: str, consts: Dict[str, str], depth: int = 0) -> str:
@@ -32,7 +29,9 @@ def _resolve(value: str, consts: Dict[str, str], depth: int = 0) -> str:
     if depth > 5:
         return value
     return _TEMPLATE_VAR.sub(
-        lambda m: _resolve(consts.get(m.group(1), m.group(0)), consts, depth + 1) if m.group(1) in consts else m.group(0),
+        lambda m: _resolve(consts.get(m.group(1), m.group(0)), consts, depth + 1)
+        if m.group(1) in consts
+        else m.group(0),
         value,
     )
 
