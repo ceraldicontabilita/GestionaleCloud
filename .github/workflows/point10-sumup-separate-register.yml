@@ -5,6 +5,7 @@ on:
     paths:
       - ".github/workflows/point10-sumup-separate-register.yml"
       - ".github/scripts/point10_sumup_register_patch.py"
+      - ".github/scripts/point10_sumup_fixture_patch.py"
 
 permissions:
   contents: write
@@ -22,7 +23,9 @@ jobs:
       - name: Install backend dependencies
         run: pip install -r backend/requirements.txt
       - name: Apply dedicated SumUp register patch
-        run: python .github/scripts/point10_sumup_register_patch.py
+        run: |
+          python .github/scripts/point10_sumup_register_patch.py
+          python .github/scripts/point10_sumup_fixture_patch.py
       - name: Focused regression tests
         run: |
           python -m pytest -q \
@@ -45,7 +48,8 @@ jobs:
             tests/test_point10_sumup_separate_register.py \
             tests/test_point10_pos_paypal_evidence_contract.py \
             tests/test_sumup_payout.py \
-            tests/test_banca_saldo_reale.py
+            tests/test_banca_saldo_reale.py \
+            tests/test_saldi_finanziari.py
           if git diff --cached --quiet; then
             echo "No changes"
             exit 0
