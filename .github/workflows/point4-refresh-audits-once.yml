@@ -10,6 +10,7 @@ on:
 permissions:
   contents: write
 
+# Second pass after making the point-4 contract test formatting-independent.
 jobs:
   refresh:
     runs-on: ubuntu-latest
