@@ -1,5 +1,9 @@
 from scripts.frontend_api_refs import file_api_refs, frontend_api_refs
-from scripts.audit_frontend_backend_contract import normalize_path
+from scripts.audit_frontend_backend_contract import (
+    main_routes,
+    normalize_path,
+    page_catalog_audit,
+)
 
 
 def test_preserva_slot_encode_uri_component_completo():
@@ -25,3 +29,14 @@ def test_inventario_esclude_file_test_e_spec(tmp_path):
     (tests_dir / "fixture.js").write_text("api.get('/api/fixture')", encoding="utf-8")
 
     assert frontend_api_refs(str(tmp_path)) == {"/api/runtime"}
+
+
+def test_route_react_dinamica_viene_censita_come_forma_esatta():
+    exact, _wildcard = main_routes()
+    assert normalize_path('/verbali-noleggio/:identificativo') in exact
+
+
+def test_catalogo_non_segnala_il_dettaglio_verbale_come_orfano():
+    errors, warnings, _count = page_catalog_audit()
+    assert not errors
+    assert not [item for item in warnings if '/verbali-noleggio/' in item]
