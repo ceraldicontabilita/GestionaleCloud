@@ -1,0 +1,38 @@
+name: Point 11 tax governance
+
+on:
+  push:
+    paths:
+      - ".github/workflows/point11-tax-governance.yml"
+      - ".github/scripts/point11_tax_patch.py"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ai/prompt-governance-supabase
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r backend/requirements.txt
+      - name: Apply tax governance patch
+        run: python .github/scripts/point11_tax_patch.py
+      - name: Run tax regression tests
+        run: |
+          python -m pytest -q \
+            tests/test_point11_tax_governance.py \
+            tests/test_point11_assets_cdc.py \
+            tests/test_categorizzazione_carburante_deducibilita.py
+      - name: Commit tax governance patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/services/calcolo_imposte.py app/routers/accounting/contabilita_avanzata.py tests/test_point11_tax_governance.py
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "fix: anchor tax forecast to canonical accounting"
+          git push origin HEAD:ai/prompt-governance-supabase
