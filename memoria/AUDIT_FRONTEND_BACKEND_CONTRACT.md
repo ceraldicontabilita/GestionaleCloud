@@ -8,11 +8,11 @@
 
 - Pagine canoniche censite: **64**
 - Voci di navigazione analizzate: **24**
-- Riferimenti API frontend distinti: **473**
+- Riferimenti API frontend distinti: **446**
 - Path API backend distinti: **1070**
 - Errori strutturali verificabili: **0**
-- Riferimenti frontend senza match statico: **8**
-- Riferimenti frontend riconosciuti come soli prefissi: **4**
+- Riferimenti frontend senza match statico: **7**
+- Riferimenti frontend riconosciuti come soli prefissi: **2**
 - `NotImplementedError` applicativi da verificare: **11**
 
 ## Errori strutturali
@@ -28,7 +28,6 @@
 - `/api/agenti/run*`
 - `/api/download/*`
 - `/api/f24/avviso-bonario/controllo.`
-- `/api/fatture-ricevute/auto-ricostruisci-dati`
 - `/api/fatture-ricevute/statistiche*`
 - `/api/iva/ricalcola-attribuzione*`
 - `/api/noleggio/fatture-non-associate*`
@@ -36,9 +35,7 @@
 
 ## Prefissi API frontend
 
-- `/api/dati-isa`
 - `/api/fatture`
-- `/api/verbali-noleggio/pdf`
 - `/api/verifica-coerenza/iva`
 
 ## Funzioni non implementate da verificare
