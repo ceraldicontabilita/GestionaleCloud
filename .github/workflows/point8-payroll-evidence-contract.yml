@@ -39,7 +39,7 @@ jobs:
       - name: Frontend tests and build
         working-directory: frontend
         run: |
-          yarn test --runInBand
+          yarn test
           yarn build
       - name: Regenerate audits and endpoint maps
         run: |
