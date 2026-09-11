@@ -25,8 +25,8 @@ jobs:
           from pathlib import Path
           p = Path('memoria/ENDPOINT_CLASSIFICAZIONE_FINALE.md')
           text = p.read_text(encoding='utf-8')
-          old = '| `POST /api/documenti/ricategorizza-documenti` | documenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |'
-          new = '| `POST /api/documenti/ricategorizza-documenti` | documenti | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |'
+          old = '| `POST /api/documenti/ricategorizza-documenti` | documenti | — | — | — | — | — | verificare | nessun riferimento runtime noto (FE/scheduler/chat): verificare prima di deprecare |'
+          new = '| `POST /api/documenti/ricategorizza-documenti` | documenti | — | — | — | — | sì | verificare | nessun riferimento runtime noto (FE/scheduler/chat): verificare prima di deprecare |'
           if text.count(old) != 1:
               raise SystemExit(f'Expected exactly one stale row, found {text.count(old)}')
           p.write_text(text.replace(old, new, 1), encoding='utf-8')
