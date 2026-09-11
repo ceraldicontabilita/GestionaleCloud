@@ -1,5 +1,13 @@
 # Audit duplicati Google Drive - Lotto 2
 
+> **Snapshot storico:** questo documento fotografa una fase precedente e non e' autorita' per il comportamento corrente. Per l'operativita' usare `PROMPT_MASTER.md`, `PRODUCT.md`, `DESIGN.md`, `LOGICA_FUNZIONAMENTO.md` e `memoria/INDEX.md`.
+
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-09-11
+storage_architecture: drive-only
+-->
+
 Queste quattro coppie sono state verificate con SHA-256 identico e confronto byte-per-byte. Nessun file Drive è stato rimosso.
 
 | File canonico | ID canonico | ID copia quarantena | SHA-256 |
