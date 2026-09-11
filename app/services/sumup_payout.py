@@ -190,6 +190,11 @@ async def registra_payout(db, grezzo: Dict[str, Any], *,
         "stato_riconciliazione": stato,
         "gestore": GESTORE,
         "conto_contabile": conti_pos.conto_accredito(GESTORE),
+        # Il payout API prova il settlement sul conto SumUp/Mastercard, non
+        # un accredito sul conto corrente bancario del gestionale.
+        "evidenza_provider": "sumup_payout_api",
+        "accredito_banca_verificato": False,
+        "movimento_bancario_id": None,
         "updated_at": now,
     }
     await db[COLL_PAYOUT].update_one(
@@ -360,6 +365,9 @@ async def _scrittura_di_accredito(db, payout: Dict[str, Any],
         "gestore": GESTORE,
         "circuito": "SUMUP",
         "giorni_coperti": componenti["giorni"],
+        "evidenza_provider": "sumup_payout_api",
+        "accredito_banca_verificato": False,
+        "movimento_bancario_id": None,
     }
     righe = []
 
