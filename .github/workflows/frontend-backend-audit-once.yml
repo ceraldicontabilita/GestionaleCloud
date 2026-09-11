@@ -42,6 +42,7 @@ jobs:
             echo "Report invariato"
           else
             git commit -m "docs: generate frontend-backend contract audit"
+            git pull --rebase origin ai/prompt-governance-supabase
             git push origin HEAD:ai/prompt-governance-supabase
           fi
       - name: Propaga esito audit
