@@ -5,6 +5,7 @@ on:
     paths:
       - ".github/workflows/point11-tax-governance.yml"
       - ".github/scripts/point11_tax_patch.py"
+      - ".github/scripts/point11_tax_patch_v2.py"
 
 permissions:
   contents: write
@@ -21,7 +22,7 @@ jobs:
           python-version: "3.11"
       - run: pip install -r backend/requirements.txt
       - name: Apply tax governance patch
-        run: python .github/scripts/point11_tax_patch.py
+        run: python .github/scripts/point11_tax_patch_v2.py
       - name: Run tax regression tests
         run: |
           python -m pytest -q \
