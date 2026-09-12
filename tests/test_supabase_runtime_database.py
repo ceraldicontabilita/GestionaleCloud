@@ -88,6 +88,50 @@ def test_hydrate_carica_collezioni_e_documenti():
     assert {item["_id"] for item in documents} == {"f1", "f2"}
 
 
+def test_hydrate_unisce_shard_fisico_nella_collezione_logica():
+    runtime = FakeRestSupabase({
+        "documents_inbox__shard_001": [
+            {"_id": "storico", "stato": "elaborato"},
+        ],
+        "documents_inbox": [
+            {"_id": "corrente", "stato": "da_elaborare"},
+        ],
+    })
+
+    result = asyncio.run(runtime.hydrate())
+    documents = asyncio.run(runtime["documents_inbox"].find({}).to_list(None))
+
+    assert {item["_id"] for item in documents} == {"storico", "corrente"}
+    assert "documents_inbox__shard_001" not in asyncio.run(
+        runtime.list_collection_names()
+    )
+    assert result["righe"] == 2
+
+
+def test_mutazione_documento_shard_resta_nello_shard_e_non_duplica():
+    runtime = FakeRestSupabase({
+        "documents_inbox__shard_001": [
+            {"_id": "storico", "stato": "elaborato"},
+        ],
+        "documents_inbox": [
+            {"_id": "corrente", "stato": "da_elaborare"},
+        ],
+    })
+
+    async def scenario():
+        await runtime.hydrate()
+        await runtime["documents_inbox"].update_one(
+            {"_id": "storico"}, {"$set": {"nota": "aggiornata"}},
+        )
+        await runtime["documents_inbox"].delete_one({"_id": "storico"})
+
+    asyncio.run(scenario())
+
+    assert "storico" not in runtime.remote["documents_inbox__shard_001"]
+    assert "storico" not in runtime.remote["documents_inbox"]
+    assert set(runtime.remote["documents_inbox"]) == {"corrente"}
+
+
 def test_hydrate_ritenta_manifest_e_riduce_il_lotto_sui_timeout(monkeypatch):
     async def no_sleep(_delay):
         return None
