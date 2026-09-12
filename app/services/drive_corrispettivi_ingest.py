@@ -51,6 +51,7 @@ _bg_task: Optional[asyncio.Task] = None
 _MAX_ZIP_ENTRIES = 5000
 _MAX_ZIP_ENTRY_BYTES = 10 * 1024 * 1024
 _MAX_ZIP_TOTAL_BYTES = 100 * 1024 * 1024
+_MAX_SOURCE_FILES_PER_SYNC = 25
 
 
 def is_sync_running() -> bool:
@@ -227,6 +228,11 @@ async def sync(db) -> Dict[str, Any]:
         return await _do_sync(db)
 
 
+def _source_files_for_batch(source_files: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Limita ogni ciclo per non monopolizzare worker e quota Google Drive."""
+    return source_files[:_MAX_SOURCE_FILES_PER_SYNC]
+
+
 async def _do_sync(db) -> Dict[str, Any]:
     if not is_configured():
         return {
@@ -247,6 +253,7 @@ async def _do_sync(db) -> Dict[str, Any]:
     parent_id = _folder_id()
     result = {
         "status": "ok", "total": 0, "documents": 0,
+        "attempted": 0, "pending": 0,
         "imported": 0, "duplicates": 0,
         "archiviate": 0, "errors": 0, "moved": 0, "details": [],
         "source_inboxes": 0,
@@ -265,6 +272,9 @@ async def _do_sync(db) -> Dict[str, Any]:
                     "_source_path": context["relative_path"],
                 })
         result["total"] = len(source_files)
+        result["pending"] = max(0, result["total"] - _MAX_SOURCE_FILES_PER_SYNC)
+        source_files = _source_files_for_batch(source_files)
+        result["attempted"] = len(source_files)
 
         lifecycle_cache: Dict[str, tuple[Optional[str], Optional[str]]] = {}
         for f in source_files:
@@ -347,7 +357,7 @@ async def _do_sync(db) -> Dict[str, Any]:
 
     prev = await db["sistema_stato"].find_one({"chiave": _STATO_KEY}, {"_id": 0}) or {}
     last_result = {k: result[k] for k in (
-        "total", "documents", "imported", "duplicates", "archiviate", "errors", "moved",
+        "total", "attempted", "pending", "documents", "imported", "duplicates", "archiviate", "errors", "moved",
         "source_inboxes",
     )}
     last_result["details"] = result["details"][:5]
