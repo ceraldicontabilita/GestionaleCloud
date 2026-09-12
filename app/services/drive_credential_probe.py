@@ -1,15 +1,14 @@
-"""Seleziona una credenziale Google Drive verificandola sul folder reale.
+"""Seleziona credenziali Google Drive verificandole sui folder reali.
 
 Non legge o stampa segreti. Prova soltanto le credenziali gia' presenti nel
-runtime Render e restituisce la prima che riesce a leggere il folder canonico.
-Serve durante il consolidamento dei vecchi service account dedicati: un nome
-di variabile configurato non implica che quell'account abbia ancora accesso
-alla nuova gerarchia GESTIONALE.
+runtime Render e restituisce una credenziale soltanto dopo un vero ``files.get``
+sulle radici richieste. Un nome di variabile configurato non implica che
+quell'account abbia accesso alla gerarchia GESTIONALE.
 """
 from __future__ import annotations
 
 import os
-from typing import Any, Iterable, Optional, Tuple
+from typing import Any, Iterable, Optional, Sequence, Tuple
 
 from app.config import settings
 
@@ -34,8 +33,6 @@ def _raw_candidates() -> Iterable[tuple[str, str]]:
             seen.add(raw)
             yield name, raw
 
-    # Alias storico usato dal modulo HR. Non e' una Settings dichiarata e
-    # quindi si legge direttamente dall'ambiente, senza mai esporne il valore.
     raw = str(os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON") or "").strip()
     if raw and raw not in seen:
         yield "GOOGLE_SERVICE_ACCOUNT_JSON", raw
@@ -71,40 +68,31 @@ def _can_access(creds: Any, folder_id: str) -> bool:
             pass
 
 
-def load_credentials_for_folder(folder_id: Optional[str]) -> Tuple[Any, Optional[str]]:
-    """Restituisce una credenziale che ha accesso provato a ``folder_id``.
+def _shared_candidate():
+    try:
+        from app.services.drive_invoice_ingest import _load_credentials
 
-    Prima prova esattamente il loader condiviso gia' usato dagli scanner
-    storici (incluso Estratti conto). Poi prova le credenziali JSON dedicate.
-    In questo modo il probe non replica in modo incompleto la logica di
-    ``_load_credentials`` e il diagnostico conta le credenziali realmente
-    provate, non soltanto gli errori di parsing.
-    """
+        return _load_credentials()
+    except Exception as exc:
+        return None, str(exc)
+
+
+def load_credentials_for_folder(folder_id: Optional[str]) -> Tuple[Any, Optional[str]]:
+    """Restituisce una credenziale con accesso provato a un singolo folder."""
     folder_id = str(folder_id or "").strip()
     if not folder_id:
         return None, "folder Drive non configurato"
 
     attempts = 0
     load_errors = 0
-
-    # Percorso identico a quello che rende operativo Estratti conto quando
-    # non e' presente una credenziale dedicata. Questo include il secret file
-    # storico e gli alias shared senza esporne il contenuto.
-    try:
-        from app.services.drive_invoice_ingest import _load_credentials
-
-        shared_creds, shared_err = _load_credentials()
-        if shared_creds is not None:
-            attempts += 1
-            if _can_access(shared_creds, folder_id):
-                return shared_creds, None
-        elif shared_err:
-            load_errors += 1
-    except Exception:
+    shared_creds, shared_err = _shared_candidate()
+    if shared_creds is not None:
+        attempts += 1
+        if _can_access(shared_creds, folder_id):
+            return shared_creds, None
+    elif shared_err:
         load_errors += 1
 
-    # Le credenziali dedicate restano candidate: un canale puo' avere accesso
-    # a un ramo che il service account condiviso non vede.
     for _name, raw in _raw_candidates():
         try:
             creds = _credentials_from_raw(raw)
@@ -117,4 +105,43 @@ def load_credentials_for_folder(folder_id: Optional[str]) -> Tuple[Any, Optional
     return None, (
         "nessun service account configurato ha accesso al folder Drive canonico "
         f"{folder_id}; credenziali provate={attempts}; errori caricamento={load_errors}"
+    )
+
+
+def load_credentials_for_folders(folder_ids: Sequence[str]) -> Tuple[Any, Optional[str]]:
+    """Restituisce una sola credenziale che vede *tutte* le radici indicate.
+
+    E' usata dagli Estratti conto, che possono avere piu' root operative. Una
+    ``files.list`` vuota non prova l'accesso al parent: per evitare falsi OK la
+    stessa credenziale deve superare ``files.get`` su ogni root prima che lo
+    scanner venga avviato.
+    """
+    roots = list(dict.fromkeys(str(value or "").strip() for value in folder_ids if str(value or "").strip()))
+    if not roots:
+        return None, "nessuna radice Drive configurata"
+
+    attempts = 0
+    load_errors = 0
+
+    shared_creds, shared_err = _shared_candidate()
+    if shared_creds is not None:
+        attempts += 1
+        if all(_can_access(shared_creds, folder_id) for folder_id in roots):
+            return shared_creds, None
+    elif shared_err:
+        load_errors += 1
+
+    for _name, raw in _raw_candidates():
+        try:
+            creds = _credentials_from_raw(raw)
+            attempts += 1
+            if all(_can_access(creds, folder_id) for folder_id in roots):
+                return creds, None
+        except Exception:
+            load_errors += 1
+
+    return None, (
+        "nessun service account configurato ha accesso a tutte le radici Drive "
+        f"richieste; radici={len(roots)}; credenziali provate={attempts}; "
+        f"errori caricamento={load_errors}"
     )
