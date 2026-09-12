@@ -137,6 +137,7 @@ def test_hydrate_ritenta_manifest_e_riduce_il_lotto_sui_timeout(monkeypatch):
         return None
 
     monkeypatch.setattr("app.services.supabase_runtime_database.asyncio.sleep", no_sleep)
+    monkeypatch.setattr("app.services.supabase_runtime_database._PAGE_SIZE", 1000)
     remote = {"fatture": [{"_id": str(i), "numero": i} for i in range(600)]}
     runtime = TimeoutRestSupabase(remote)
 
@@ -171,6 +172,32 @@ def test_fetch_ritenta_timeout_transitorio_al_lotto_minimo(monkeypatch):
     assert documents == [{"_id": "f1"}]
     assert attempts == 3
     assert delays == [0.5, 1.0]
+
+
+def test_fetch_ritenta_errore_http_520_transitorio(monkeypatch):
+    attempts = 0
+
+    async def no_sleep(_delay):
+        return None
+
+    async def transient_520(_function_name, _payload):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise RuntimeError(
+                "Supabase RPC gc_fetch_collection fallita (HTTP 520): errore remoto"
+            )
+        return [{"_id": "f1"}]
+
+    runtime = FakeRestSupabase()
+    monkeypatch.setattr("app.services.supabase_runtime_database._PAGE_SIZE", 10)
+    monkeypatch.setattr(runtime, "_rpc", transient_520)
+    monkeypatch.setattr("app.services.supabase_runtime_database.asyncio.sleep", no_sleep)
+
+    documents = asyncio.run(runtime._fetch_collection_documents("fatture"))
+
+    assert documents == [{"_id": "f1"}]
+    assert attempts == 2
 
 
 def test_fetch_fallisce_dopo_retry_limitati_al_lotto_minimo(monkeypatch):
