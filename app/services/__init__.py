@@ -33,11 +33,15 @@ def _wire_canonical_drive_credentials() -> None:
     from contextvars import ContextVar
     from googleapiclient.discovery import build
 
-    from .drive_credential_probe import load_credentials_for_folder
+    from .drive_credential_probe import (
+        load_credentials_for_folder,
+        load_credentials_for_folders,
+    )
     from . import drive_invoice_ingest as _drive_invoice
     from . import drive_cedolini_ingest as _drive_cedolini
     from . import drive_quietanze_ingest as _drive_quietanze
     from . import drive_f24_ingest as _drive_f24
+    from . import drive_estratti_conto_ingest as _drive_estratti
     from . import drive_documenti_ingest as _drive_documenti
 
     def _loader(folder_getter):
@@ -49,6 +53,15 @@ def _wire_canonical_drive_credentials() -> None:
     _drive_cedolini._load_credentials_cedolini = _loader(_drive_cedolini._folder_id)
     _drive_quietanze._load_credentials_quietanze = _loader(_drive_quietanze._folder_id)
     _drive_f24._load_credentials = _loader(_drive_f24._folder_id)
+
+    # Estratti puo' avere piu' radici (conto, carte/Nexi, registry). Una query
+    # `files.list` vuota non dimostra che il parent sia leggibile, quindi una
+    # singola credenziale deve superare `files.get` su tutte le radici prima
+    # che lo scanner possa restituire OK.
+    def _load_estratti_verified():
+        return load_credentials_for_folders(_drive_estratti._folder_ids())
+
+    _drive_estratti._load_credentials_estratti = _load_estratti_verified
 
     # L'ingest generico serve piu' canali con un solo modulo. Un ContextVar
     # conserva il canale della singola coroutine, quindi anche chiamate
