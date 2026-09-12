@@ -129,6 +129,30 @@ def test_manifest_limita_attesa_tra_retry(monkeypatch):
     assert delays == [0.5, 1.0, 2.0, 2.0]
 
 
+def test_manifest_usa_catalogo_bootstrap_solo_dopo_tutti_i_timeout(monkeypatch):
+    runtime = FakeRestSupabase()
+    attempts = 0
+
+    async def always_timeout(_function_name, _payload):
+        nonlocal attempts
+        attempts += 1
+        raise RuntimeError("canceling statement due to statement timeout")
+
+    async def no_sleep(_delay):
+        return None
+
+    monkeypatch.setattr(runtime, "_rpc", always_timeout)
+    monkeypatch.setattr("app.services.supabase_runtime_database.asyncio.sleep", no_sleep)
+    manifest = asyncio.run(runtime._manifest())
+
+    assert attempts == 10
+    assert len(manifest) >= 70
+    assert all(row["row_count"] == 0 and row["bootstrap"] for row in manifest)
+    assert {"documents_inbox", "invoices", "prima_nota_cassa"}.issubset(
+        {row["collection"] for row in manifest}
+    )
+
+
 def test_hydrate_accetta_righe_aggiunte_dopo_il_manifest():
     runtime = ConcurrentAppendSupabase({"alerts": [{"_id": "iniziale"}]})
 
