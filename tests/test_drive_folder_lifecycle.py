@@ -80,6 +80,10 @@ def test_import_fatture_seleziona_un_lotto_limitato(monkeypatch):
     assert [item["id"] for item in drive._select_batch(files)] == ["0", "1", "2"]
 
 
+def test_dimensione_lotto_fatture_predefinita_supporta_il_collaudo_reale():
+    assert settings.DRIVE_FATTURE_BATCH_SIZE == 25
+
+
 def test_dimensione_lotto_fatture_e_sempre_sicura(monkeypatch):
     monkeypatch.setattr(settings, "DRIVE_FATTURE_BATCH_SIZE", 0)
     assert drive._batch_size() == 1
