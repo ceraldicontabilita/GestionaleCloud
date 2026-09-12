@@ -4659,8 +4659,8 @@ function PagheBonificiPage() {
     bonifico_senza_busta: { label: "Bonifico senza busta", variant: "info" },
   };
   const QUALITA = {
-    esatto: { txt: "Match esatto", col: "#234d3d", bg: "#e2efe8", bd: "#c2ddd0" },
-    per_importo: { txt: "Match per importo", col: "#234d3d", bg: "#e2efe8", bd: "#c2ddd0" },
+    esatto: { txt: "Confermato · importo coerente", col: "#234d3d", bg: "#e2efe8", bd: "#c2ddd0" },
+    per_importo: { txt: "Confermato · ripartizione coerente", col: "#234d3d", bg: "#e2efe8", bd: "#c2ddd0" },
     aggregato: { txt: "Più bonifici", col: "#56442d", bg: "#f3ead9", bd: "#e7d6b9" },
     da_verificare: { txt: "Da verificare", col: "#7a3b32", bg: "#f6e4e1", bd: "#e8c5bf" },
   };
@@ -4844,7 +4844,8 @@ function PagheBonificiPage() {
         </div>
       </div>
       <p className="dc-muted" style={{ fontSize: 12, marginTop: 10 }}>
-        <b>Match esatto/per importo</b> = il bonifico combacia con la busta. <b>Da verificare</b> = importo presente senza prova bancaria (inserito a mano o da prima nota): controlla e premi <b>Conferma</b> per associarlo definitivamente al cedolino.
+        <b>Da verificare</b> = esiste un candidato, ma nome, periodo o importo non bastano a confermare il legame.
+        Controlla dipendente, periodo, quota e prova bancaria; solo dopo usa <b>Conferma</b>. L'associazione resta annullabile.
       </p>
     </div>
   );
