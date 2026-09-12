@@ -51,6 +51,24 @@ class FakeRestSupabase(SupabaseRuntimeDatabase):
         raise AssertionError(function_name)
 
 
+class TimeoutRestSupabase(FakeRestSupabase):
+    def __init__(self, remote=None):
+        super().__init__(remote)
+        self.manifest_attempts = 0
+        self.fetch_limits = []
+
+    async def _rpc(self, function_name, payload):
+        if function_name == "gc_collection_manifest":
+            self.manifest_attempts += 1
+            if self.manifest_attempts < 3:
+                raise RuntimeError("canceling statement due to statement timeout")
+        if function_name == "gc_fetch_collection":
+            self.fetch_limits.append(payload["p_limit"])
+            if payload["p_limit"] > 250:
+                raise RuntimeError("canceling statement due to statement timeout")
+        return await super()._rpc(function_name, payload)
+
+
 def test_hydrate_carica_collezioni_e_documenti():
     runtime = FakeRestSupabase({
         "fatture": [{"_id": "f2", "numero": 2}, {"_id": "f1", "numero": 1}],
@@ -60,6 +78,21 @@ def test_hydrate_carica_collezioni_e_documenti():
 
     assert result["righe"] == 2
     assert {item["_id"] for item in documents} == {"f1", "f2"}
+
+
+def test_hydrate_ritenta_manifest_e_riduce_il_lotto_sui_timeout(monkeypatch):
+    async def no_sleep(_delay):
+        return None
+
+    monkeypatch.setattr("app.services.supabase_runtime_database.asyncio.sleep", no_sleep)
+    remote = {"fatture": [{"_id": str(i), "numero": i} for i in range(600)]}
+    runtime = TimeoutRestSupabase(remote)
+
+    result = asyncio.run(runtime.hydrate())
+
+    assert result["righe"] == 600
+    assert runtime.manifest_attempts == 3
+    assert runtime.fetch_limits[:3] == [1000, 500, 250]
 
 
 def test_hydrate_registra_hydration_result_per_lhealth_check():

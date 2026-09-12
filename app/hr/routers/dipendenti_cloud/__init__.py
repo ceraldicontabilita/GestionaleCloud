@@ -3484,9 +3484,16 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
         else:
             fonte = None
 
-        # Qualità dell'associazione (quanto è affidabile il legame busta↔bonifico)
+        # Qualità dell'associazione (quanto è affidabile il legame busta↔bonifico).
+        # Importo, nome e periodo sono indizi: anche quando coincidono non
+        # confermano da soli il collegamento. Solo la conferma esplicita e
+        # reversibile ``bonifico_riconciliato`` trasforma il candidato in un
+        # legame verificato.
+        riconciliato = bool(p.get("bonifico_riconciliato"))
         if bon <= 0:
             qualita = None
+        elif not riconciliato:
+            qualita = "da_verificare"
         elif esiti:
             if len(esiti) == 1 and busta > 0 and abs(esiti[0]["importo"] - busta) <= 0.5:
                 qualita = "esatto"          # un solo bonifico che combacia con la busta
@@ -3499,7 +3506,7 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
         else:
             qualita = "da_verificare"       # importo inserito a mano / da prima nota, senza prova banca
 
-        associato = bool(p.get("bonifico_riconciliato")) or qualita in ("esatto", "per_importo")
+        associato = riconciliato
         if st in ("pagato", "parziale", "bonifico_senza_busta"):
             if associato:
                 tot["associati"] += 1
@@ -3534,7 +3541,7 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
             "fonte": fonte,
             "qualita": qualita,
             "associato": associato,
-            "riconciliato": bool(p.get("bonifico_riconciliato")),
+            "riconciliato": riconciliato,
             "bonifico_data": p.get("bonifico_data"),
             "bonifici": esiti,
             "n_bonifici": len(esiti),

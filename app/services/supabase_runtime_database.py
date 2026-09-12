@@ -27,6 +27,8 @@ from app.services.sheets_document_store import SheetDatabase
 logger = logging.getLogger(__name__)
 
 _PAGE_SIZE = 1000
+_MIN_READ_PAGE_SIZE = 50
+_READ_RETRIES = 5
 _WRITE_CHUNK_SIZE = 200
 
 
@@ -172,7 +174,20 @@ class SupabaseRuntimeDatabase(SheetDatabase):
             return json.loads(body)
 
     async def _manifest(self) -> list[dict[str, Any]]:
-        result = await self._rpc("gc_collection_manifest", {})
+        result = None
+        for attempt in range(_READ_RETRIES):
+            try:
+                result = await self._rpc("gc_collection_manifest", {})
+                break
+            except RuntimeError as exc:
+                if "statement timeout" not in str(exc).lower() or attempt == _READ_RETRIES - 1:
+                    raise
+                delay = 0.5 * (2 ** attempt)
+                logger.warning(
+                    "Manifest Supabase in timeout; nuovo tentativo %s/%s tra %.1fs",
+                    attempt + 2, _READ_RETRIES, delay,
+                )
+                await asyncio.sleep(delay)
         if not isinstance(result, list):
             raise RuntimeError("Manifest Supabase non valido")
         return result
@@ -182,21 +197,32 @@ class SupabaseRuntimeDatabase(SheetDatabase):
     ) -> list[dict[str, Any]]:
         documents: list[dict[str, Any]] = []
         offset = 0
+        page_size = _PAGE_SIZE
         while expected_count is None or offset < expected_count:
-            page = await self._rpc(
-                "gc_fetch_collection",
-                {
-                    "p_collection": collection_name,
-                    "p_offset": offset,
-                    "p_limit": _PAGE_SIZE,
-                },
-            )
+            try:
+                page = await self._rpc(
+                    "gc_fetch_collection",
+                    {
+                        "p_collection": collection_name,
+                        "p_offset": offset,
+                        "p_limit": page_size,
+                    },
+                )
+            except RuntimeError as exc:
+                if "statement timeout" not in str(exc).lower() or page_size <= _MIN_READ_PAGE_SIZE:
+                    raise
+                page_size = max(_MIN_READ_PAGE_SIZE, page_size // 2)
+                logger.warning(
+                    "Lettura %s in timeout all'offset %s; lotto ridotto a %s",
+                    collection_name, offset, page_size,
+                )
+                continue
             if not isinstance(page, list):
                 raise RuntimeError(
                     f"Risposta Supabase non valida per {collection_name}"
                 )
             documents.extend(page)
-            if len(page) < _PAGE_SIZE:
+            if len(page) < page_size:
                 break
             offset += len(page)
         return documents
