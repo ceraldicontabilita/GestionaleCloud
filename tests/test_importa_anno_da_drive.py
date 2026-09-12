@@ -140,15 +140,18 @@ def test_promozione_salta_giorno_gia_attivo():
 def test_promozione_fattura_archiviata_ripassa_dalla_pipeline(monkeypatch):
     db = _Db()
     db["invoices"].docs = [
-        {"id": "f23", "invoice_date": "2023-03-01", "stato_import": "archivio_storico",
+        {"id": "f23", "invoice_key": "key-f23", "invoice_date": "2023-03-01", "stato_import": "archivio_storico",
          "filename": "IT123_fatt.xml", "xml_raw": "<FatturaElettronica>...</FatturaElettronica>"},
         {"id": "f23-noxml", "invoice_date": "2023-04-01", "stato_import": "archivio_storico"},
     ]
     chiamate = []
 
-    async def _fake_process_xml_bytes(db_, content, filename, source, applica_filtro_anno):
+    async def _fake_process_xml_bytes(db_, content, filename, source, applica_filtro_anno,
+                                      promote_existing_id, promote_invoice_key):
         chiamate.append({"filename": filename, "source": source,
-                         "applica_filtro_anno": applica_filtro_anno})
+                         "applica_filtro_anno": applica_filtro_anno,
+                         "promote_existing_id": promote_existing_id,
+                         "promote_invoice_key": promote_invoice_key})
         return {"status": "imported"}
 
     monkeypatch.setattr("app.routers.invoices.fatture_upload.process_xml_bytes",
@@ -160,10 +163,31 @@ def test_promozione_fattura_archiviata_ripassa_dalla_pipeline(monkeypatch):
     assert esito["fatture_senza_xml"] == 1
     assert chiamate[0]["source"] == "promozione_archivio"
     assert chiamate[0]["applica_filtro_anno"] is False
-    # il doc archiviato con XML è stato rimosso PRIMA del reimport (dedup invoice_key)
-    assert all(d["id"] != "f23" for d in db["invoices"].docs)
+    assert chiamate[0]["promote_existing_id"] == "f23"
+    assert chiamate[0]["promote_invoice_key"] == "key-f23"
+    assert any(d["id"] == "f23" for d in db["invoices"].docs)
     # quello senza XML resta in archivio, mai eliminato alla cieca
     assert any(d["id"] == "f23-noxml" for d in db["invoices"].docs)
+
+
+def test_promozione_fattura_fallita_non_perde_originale(monkeypatch):
+    db = _Db()
+    originale = {
+        "id": "f23", "invoice_key": "key-f23", "invoice_date": "2023-03-01",
+        "stato_import": "archivio_storico", "filename": "IT123_fatt.xml",
+        "xml_raw": "<FatturaElettronica>...</FatturaElettronica>",
+        "file_hash": "sha256-originale",
+    }
+    db["invoices"].docs = [dict(originale)]
+
+    async def _errore(*args, **kwargs):
+        return {"status": "error", "error": "parser non disponibile"}
+
+    monkeypatch.setattr("app.routers.invoices.fatture_upload.process_xml_bytes", _errore)
+    esito = _run(mod.promuovi_archivio_anno(db, 2023))
+
+    assert esito["fatture_errori"] == 1
+    assert db["invoices"].docs == [originale]
 
 
 def test_promozione_ignora_anni_diversi():

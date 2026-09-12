@@ -151,6 +151,57 @@ def test_import_corrispettivo_e_fattura_alimentano_il_libro_giornale_e_il_bilanc
     assert dopo["totali"]["dare"] == dopo["totali"]["avere"] == round(4629.20 + 122.0, 2)
 
 
+def test_promozione_fattura_preserva_identita_hash_e_provenienza(
+    import_fattura_isolato,
+):
+    db = _db("pr8-promozione-stabile")
+    parsed = _parsed_fattura()
+    invoice_key = fu_mod.generate_invoice_key(
+        parsed["invoice_number"], parsed["supplier_vat"], parsed["invoice_date"]
+    )
+    originale = {
+        "id": "fattura-storica-immutabile",
+        "invoice_key": invoice_key,
+        "invoice_date": parsed["invoice_date"],
+        "stato_import": "archivio_storico",
+        "status": "archiviata",
+        "source": "google_drive",
+        "source_history": ["google_drive"],
+        "file_hash": "sha256-documento-originale",
+        "drive_file_id": "drive-id-originale",
+        "created_at": "2026-01-10T12:00:00+00:00",
+    }
+
+    async def scenario():
+        await db["invoices"].insert_one(dict(originale))
+        result = await fu_mod.import_parsed_invoice(
+            db,
+            parsed,
+            "fattura-originale.xml",
+            "promozione_archivio",
+            xml_raw="<FatturaElettronica/>",
+            existing_invoice_id=originale["id"],
+        )
+        docs = await db["invoices"].find({"invoice_key": invoice_key}).to_list(10)
+        scritture = await db["movimenti_contabili"].find({}).to_list(10)
+        return result, docs, scritture
+
+    result, docs, scritture = _run(scenario())
+
+    assert result["status"] == "imported"
+    assert result["id"] == originale["id"]
+    assert len(docs) == 1
+    promoted = docs[0]
+    assert promoted["id"] == originale["id"]
+    assert promoted["file_hash"] == originale["file_hash"]
+    assert promoted["drive_file_id"] == originale["drive_file_id"]
+    assert promoted["created_at"] == originale["created_at"]
+    assert promoted["source"] == "google_drive"
+    assert promoted["source_history"] == ["google_drive", "promozione_archivio"]
+    assert promoted["stato_import"] == "promosso_da_archivio"
+    assert len(scritture) == 1
+    assert scritture[0]["idempotency_key"] == f"reg:fattura:{originale['id']}"
+
 def test_stesso_corrispettivo_due_volte_produce_una_sola_scrittura():
     db = _db("pr8-idempotenza-corr")
 

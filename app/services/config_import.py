@@ -88,8 +88,9 @@ async def promuovi_archivio_anno(db, anno: int) -> Dict[str, Any]:
 
     # ── Fatture archiviate: si ripassa l'XML originale (salvato all'atto
     # dell'archiviazione) nella pipeline di import completa — fornitore,
-    # prima nota provvisoria, eventi. Il documento archiviato viene rimosso
-    # PRIMA del reimport, altrimenti il dedup su invoice_key lo bloccherebbe.
+    # prima nota provvisoria, eventi. La riga storica viene promossa mantenendo
+    # lo stesso ID: parser o side effect falliti non possono cancellare prima
+    # il documento, il suo hash o la provenienza.
     from app.routers.invoices.fatture_upload import process_xml_bytes
 
     fatture_promosse = 0
@@ -104,13 +105,14 @@ async def promuovi_archivio_anno(db, anno: int) -> Dict[str, Any]:
         if not xml_raw:
             fatture_senza_xml += 1
             continue
-        await db["invoices"].delete_one({"id": fatt["id"]})
         esito = await process_xml_bytes(
             db,
             xml_raw.encode("utf-8") if isinstance(xml_raw, str) else xml_raw,
             fatt.get("filename", ""),
             source="promozione_archivio",
             applica_filtro_anno=False,
+            promote_existing_id=fatt["id"],
+            promote_invoice_key=fatt.get("invoice_key"),
         )
         if esito.get("status") in ("imported", "success", "duplicate") or esito.get("success"):
             fatture_promosse += 1
