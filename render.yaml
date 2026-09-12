@@ -101,7 +101,7 @@ services:
       - key: ENABLE_SCHEDULER
         value: "true"
       - key: DRIVE_FATTURE_BATCH_SIZE
-        value: "1"
+        value: "25"
       - key: DRIVE_ESTRATTI_BATCH_SIZE
         value: "1"
       - key: GOOGLE_SHEETS_LEDGER_ID
