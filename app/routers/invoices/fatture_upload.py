@@ -1787,17 +1787,19 @@ async def process_xml_bytes(
             # correggibile (a differenza dell'archivio storico, pensato per
             # sola consultazione).
             if anno_fattura and anno_fattura != anno_attivo:
-                return await archivia_fattura_storica(
-                    db, p, filename, source, xml_raw=xml_content,
-                    source_metadata=source_metadata,
-                )
+                kwargs = {"xml_raw": xml_content}
+                if source_metadata is not None:
+                    kwargs["source_metadata"] = source_metadata
+                return await archivia_fattura_storica(db, p, filename, source, **kwargs)
 
         if replay_storico:
-            return await import_parsed_invoice(
-                db, p, filename, source, xml_raw=xml_content,
-                replay_storico=True, source_metadata=source_metadata,
-            )
-        kwargs = {"xml_raw": xml_content, "source_metadata": source_metadata}
+            kwargs = {"xml_raw": xml_content, "replay_storico": True}
+            if source_metadata is not None:
+                kwargs["source_metadata"] = source_metadata
+            return await import_parsed_invoice(db, p, filename, source, **kwargs)
+        kwargs = {"xml_raw": xml_content}
+        if source_metadata is not None:
+            kwargs["source_metadata"] = source_metadata
         if promote_existing_id:
             kwargs["existing_invoice_id"] = promote_existing_id
         return await import_parsed_invoice(db, p, filename, source, **kwargs)
