@@ -592,7 +592,6 @@ si rigenerano dal codice e non si correggono a mano.
 | `DEFAULT_USER_ID` | app-runtime | configurazione | `str` / `'admin'` | `app/config.py` |
 | `DEV` | app-runtime | configurazione | non dichiarato in Settings | `frontend/src/components/ErrorBoundary.jsx` |
 | `DIGEST_GIORNI` | app-runtime | configurazione | non dichiarato in Settings | `app/lotti/routers/digest.py` |
-| `DRIVE_BONIFICI_FOLDER_ID` | drive-sheets | configurazione | non dichiarato in Settings | `app/hr/routers/dipendenti_cloud/__init__.py` |
 | `DRIVE_CARTE_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `DRIVE_CEDOLINI_FOLDER_ID` | drive-sheets | configurazione | non dichiarato in Settings | `app/hr/services/google_drive_sa.py` |
 | `DRIVE_DOCUMENT_INDEX_ROOT_FOLDER_ID` | drive-sheets | configurazione | `str` / `'1tmVu6fl7qhJbLcGCHT3wEQzrvFAElc9h'` | `app/config.py` |
@@ -600,7 +599,7 @@ si rigenerano dal codice e non si correggono a mano.
 | `DRIVE_ESTRATTI_BATCH_SIZE` | drive-sheets | configurazione | `int` / `1` | `app/config.py`, `render.yaml` |
 | `DRIVE_F24_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `DRIVE_FATTURE_BATCH_SIZE` | drive-sheets | configurazione | `int` / `1` | `app/config.py`, `render.yaml` |
-| `DRIVE_FISCAL_ROOT_FOLDER_ID` | drive-sheets | configurazione | `str` / `'1f48bounfoOyHL_kqpHAp2GAnFfEpHvVa'` | `app/config.py` |
+| `DRIVE_FISCAL_ROOT_FOLDER_ID` | drive-sheets | configurazione | `str` / `'1VBqAFZBGdZ4HtgfZC--DD5ad38Et5I1j'` | `app/config.py` |
 | `DRIVE_FOLDER_REGISTRY_JSON` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `DRIVE_NOLEGGIO_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `DRIVE_PAYPAL_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
@@ -629,6 +628,7 @@ si rigenerano dal codice e non si correggono a mano.
 | `ENABLE_EMAIL_VERBALI_SYNC` | feature-job | configurazione | `bool` / `True` | `app/config.py` |
 | `ENABLE_GMAIL_IMAP` | feature-job | configurazione | `bool` / `True` | `app/config.py` |
 | `ENABLE_HEALTH_CHECK` | feature-job | configurazione | non dichiarato in Settings | `frontend_lotti/craco.config.js` |
+| `ENABLE_QROMO_AUTO_SYNC` | feature-job | configurazione | non dichiarato in Settings | `app/menu/qromo_auto_sync.py` |
 | `ENABLE_RENDER_CANONICAL_INGEST` | feature-job | configurazione | non dichiarato in Settings | `render_workflows/document_ingest.py` |
 | `ENABLE_RENDER_DRIVE_MOVES` | feature-job | configurazione | non dichiarato in Settings | `render_workflows/document_ingest.py` |
 | `ENABLE_SCHEDULER` | feature-job | configurazione | `bool` / `True` | `app/config.py`, `render.yaml` |
@@ -674,7 +674,7 @@ si rigenerano dal codice e non si correggono a mano.
 | `GOOGLE_DRIVE_SA_JSON` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/hr/services/google_drive_sa.py` |
 | `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/hr/services/google_drive_sa.py`, `render.yaml`, `render_workflows/calderone.py`, `render_workflows/document_ingest.py` |
 | `GOOGLE_REDIRECT_URI` | app-runtime | configurazione | `str` / `'/api/auth/google/callback'` | `app/config.py` |
-| `GOOGLE_SERVICE_ACCOUNT_JSON` | drive-sheets | configurazione | non dichiarato in Settings | `app/hr/services/google_drive_sa.py` |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | drive-sheets | configurazione | non dichiarato in Settings | `app/hr/services/google_drive_sa.py`, `app/services/drive_credential_probe.py` |
 | `GOOGLE_SERVICE_ACCOUNT_JSON_BONIFICI` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `GOOGLE_SERVICE_ACCOUNT_JSON_CEDOLINI` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `GOOGLE_SERVICE_ACCOUNT_JSON_CORRISPETTIVI` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
@@ -808,12 +808,11 @@ Questa tabella è l'inventario canonico degli alias di cartella. Gli ID sono con
 
 | Variabile cartella | Default dichiarato | Sorgenti/consumer |
 |---|---|---|
-| `DRIVE_BONIFICI_FOLDER_ID` | `non dichiarato` | `app/hr/routers/dipendenti_cloud/__init__.py` |
 | `DRIVE_CARTE_FOLDER_ID` | `None` | `app/config.py` |
 | `DRIVE_CEDOLINI_FOLDER_ID` | `non dichiarato` | `app/hr/services/google_drive_sa.py` |
 | `DRIVE_DOCUMENT_INDEX_ROOT_FOLDER_ID` | `'1tmVu6fl7qhJbLcGCHT3wEQzrvFAElc9h'` | `app/config.py` |
 | `DRIVE_F24_FOLDER_ID` | `None` | `app/config.py` |
-| `DRIVE_FISCAL_ROOT_FOLDER_ID` | `'1f48bounfoOyHL_kqpHAp2GAnFfEpHvVa'` | `app/config.py` |
+| `DRIVE_FISCAL_ROOT_FOLDER_ID` | `'1VBqAFZBGdZ4HtgfZC--DD5ad38Et5I1j'` | `app/config.py` |
 | `DRIVE_FOLDER_REGISTRY_JSON` | `None` | `app/config.py` |
 | `DRIVE_NOLEGGIO_FOLDER_ID` | `None` | `app/config.py` |
 | `DRIVE_PAYPAL_FOLDER_ID` | `None` | `app/config.py` |
