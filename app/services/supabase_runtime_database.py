@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 _PAGE_SIZE = 1000
 _MIN_READ_PAGE_SIZE = 50
 _READ_RETRIES = 5
-_MANIFEST_RETRIES = 10
+_MANIFEST_RETRIES = 3
 _WRITE_CHUNK_SIZE = 200
 
 # Catalogo di bootstrap verificato sul registro live. Il manifest RPC resta la
