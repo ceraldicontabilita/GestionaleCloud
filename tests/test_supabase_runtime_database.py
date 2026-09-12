@@ -112,6 +112,24 @@ def test_hydrate_accetta_righe_aggiunte_dopo_il_manifest():
     assert result["fogli"][0]["valide"] == 2
 
 
+def test_fetch_deduplica_id_ripetuto_da_paginazione_concorrente(monkeypatch):
+    runtime = FakeRestSupabase()
+    pages = [
+        [{"_id": "a"}, {"_id": "b"}],
+        [{"_id": "b"}, {"_id": "c"}],
+        [],
+    ]
+
+    async def fake_rpc(_function_name, _payload):
+        return pages.pop(0)
+
+    monkeypatch.setattr("app.services.supabase_runtime_database._PAGE_SIZE", 2)
+    monkeypatch.setattr(runtime, "_rpc", fake_rpc)
+    documents = asyncio.run(runtime._fetch_collection_documents("alerts", expected_count=3))
+
+    assert [row["_id"] for row in documents] == ["a", "b", "c"]
+
+
 def test_hydrate_registra_hydration_result_per_lhealth_check():
     # Prima dell'idratazione l'attributo deve essere un vero None su
     # istanza, non delegato a SheetDatabase.__getattr__ (che restituirebbe

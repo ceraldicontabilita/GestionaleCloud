@@ -198,7 +198,10 @@ class SupabaseRuntimeDatabase(SheetDatabase):
         documents: list[dict[str, Any]] = []
         offset = 0
         page_size = _PAGE_SIZE
-        while expected_count is None or offset < expected_count:
+        # Leggi fino alla pagina corta anche quando esiste un conteggio atteso:
+        # durante un deploy l'istanza precedente può aggiungere righe e rendere
+        # instabile la paginazione a offset.
+        while True:
             try:
                 page = await self._rpc(
                     "gc_fetch_collection",
@@ -225,7 +228,18 @@ class SupabaseRuntimeDatabase(SheetDatabase):
             if len(page) < page_size:
                 break
             offset += len(page)
-        return documents
+        # Un inserimento prima dell'offset corrente può riproporre l'ultima riga
+        # della pagina precedente. La cache richiede ID univoci; conserviamo una
+        # sola copia senza inventare o fondere documenti diversi.
+        unique_documents: dict[str, dict[str, Any]] = {}
+        without_id: list[dict[str, Any]] = []
+        for document in documents:
+            document_id = document.get("_id")
+            if document_id is None:
+                without_id.append(document)
+            else:
+                unique_documents[str(document_id)] = document
+        return [*unique_documents.values(), *without_id]
 
     async def hydrate(self) -> dict[str, Any]:
         """Carica tutte le collezioni Supabase nella cache applicativa."""
