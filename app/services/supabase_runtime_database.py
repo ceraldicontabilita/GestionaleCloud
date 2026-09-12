@@ -242,7 +242,11 @@ class SupabaseRuntimeDatabase(SheetDatabase):
                 documents = await self._fetch_collection_documents(
                     collection_name, expected_count=expected_count,
                 )
-                if len(documents) != expected_count:
+                # Il manifest e le pagine non sono una snapshot transazionale:
+                # l'istanza live può aggiungere righe mentre quella nuova si
+                # idrata. Più righe del manifest sono quindi un superset valido;
+                # meno righe restano invece una lettura realmente incompleta.
+                if len(documents) < expected_count:
                     raise RuntimeError(
                         f"Idratazione incompleta per {collection_name}: "
                         f"attese {expected_count}, lette {len(documents)}"

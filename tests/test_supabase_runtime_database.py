@@ -69,6 +69,14 @@ class TimeoutRestSupabase(FakeRestSupabase):
         return await super()._rpc(function_name, payload)
 
 
+class ConcurrentAppendSupabase(FakeRestSupabase):
+    async def _rpc(self, function_name, payload):
+        result = await super()._rpc(function_name, payload)
+        if function_name == "gc_collection_manifest":
+            self.remote["alerts"]["nuovo"] = {"_id": "nuovo", "tipo": "concorrente"}
+        return result
+
+
 def test_hydrate_carica_collezioni_e_documenti():
     runtime = FakeRestSupabase({
         "fatture": [{"_id": "f2", "numero": 2}, {"_id": "f1", "numero": 1}],
@@ -93,6 +101,15 @@ def test_hydrate_ritenta_manifest_e_riduce_il_lotto_sui_timeout(monkeypatch):
     assert result["righe"] == 600
     assert runtime.manifest_attempts == 3
     assert runtime.fetch_limits[:3] == [1000, 500, 250]
+
+
+def test_hydrate_accetta_righe_aggiunte_dopo_il_manifest():
+    runtime = ConcurrentAppendSupabase({"alerts": [{"_id": "iniziale"}]})
+
+    result = asyncio.run(runtime.hydrate())
+
+    assert result["righe"] == 2
+    assert result["fogli"][0]["valide"] == 2
 
 
 def test_hydrate_registra_hydration_result_per_lhealth_check():
