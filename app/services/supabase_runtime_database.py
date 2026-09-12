@@ -32,6 +32,19 @@ _READ_RETRIES = 5
 _MANIFEST_RETRIES = 3
 _WRITE_CHUNK_SIZE = 200
 
+# Le RPC runtime hanno un timeout molto stretto e la paginazione OFFSET diventa
+# costosa oltre alcune migliaia di righe. Le collezioni elencate qui possono
+# essere suddivise fisicamente senza cambiare il nome logico visto dall'app.
+# Il mapping e' esplicito: nessun nome ricevuto dai dati decide dove scrivere.
+_COLLECTION_SHARDS: dict[str, tuple[str, ...]] = {
+    "documents_inbox": ("documents_inbox__shard_001",),
+}
+_SHARD_TO_COLLECTION = {
+    shard: collection
+    for collection, shards in _COLLECTION_SHARDS.items()
+    for shard in shards
+}
+
 # Catalogo di bootstrap verificato sul registro live. Il manifest RPC resta la
 # fonte primaria; questo elenco evita che un digest globale in timeout renda
 # impossibile avviare una nuova istanza. Con row_count=0 ogni collezione viene
@@ -169,6 +182,7 @@ class SupabaseRuntimeDatabase(SheetDatabase):
 
         self._session: aiohttp.ClientSession | None = None
         self._known_collections: set[str] = set()
+        self._document_locations: dict[str, dict[str, str]] = {}
         self._remote_write_lock = asyncio.Lock()
         self._write_batch: ContextVar[dict[str, dict[str, Any]] | None] = (
             ContextVar(f"supabase_write_batch_{id(self)}", default=None)
@@ -299,6 +313,27 @@ class SupabaseRuntimeDatabase(SheetDatabase):
                 unique_documents[str(document_id)] = document
         return [*unique_documents.values(), *without_id]
 
+    def _physical_collections(self, collection_name: str) -> tuple[str, ...]:
+        """Restituisce shard prima e collezione primaria per override deterministico."""
+        return (*_COLLECTION_SHARDS.get(collection_name, ()), collection_name)
+
+    async def _fetch_logical_collection_documents(
+        self, collection_name: str,
+    ) -> list[dict[str, Any]]:
+        merged: dict[str, dict[str, Any]] = {}
+        without_id: list[dict[str, Any]] = []
+        locations = self._document_locations.setdefault(collection_name, {})
+        for physical_name in self._physical_collections(collection_name):
+            for document in await self._fetch_collection_documents(physical_name):
+                document_id = document.get("_id")
+                if document_id is None:
+                    without_id.append(document)
+                    continue
+                key = str(document_id)
+                merged[key] = document
+                locations[key] = physical_name
+        return [*merged.values(), *without_id]
+
     async def hydrate(self) -> dict[str, Any]:
         """Carica tutte le collezioni Supabase nella cache applicativa."""
         manifest = await self._manifest()
@@ -306,14 +341,43 @@ class SupabaseRuntimeDatabase(SheetDatabase):
         totale_righe = 0
         dettaglio: list[dict[str, Any]] = []
         try:
-            for item in manifest:
-                collection_name = str(item.get("collection") or "").strip()
-                expected_count = int(item.get("row_count") or 0)
-                if not collection_name:
-                    continue
-                documents = await self._fetch_collection_documents(
-                    collection_name, expected_count=expected_count,
-                )
+            manifest_by_name = {
+                str(item.get("collection") or "").strip(): item
+                for item in manifest
+                if str(item.get("collection") or "").strip()
+            }
+            logical_names = {
+                _SHARD_TO_COLLECTION.get(name, name) for name in manifest_by_name
+            }
+            # Nel catalogo di bootstrap e' gia' presente la collezione logica:
+            # questo basta a includere anche gli shard configurati quando il
+            # manifest globale e' in timeout.
+            for collection_name in sorted(logical_names):
+                documents_by_id: dict[str, dict[str, Any]] = {}
+                without_id: list[dict[str, Any]] = []
+                locations = self._document_locations.setdefault(collection_name, {})
+                expected_count = 0
+                for physical_name in self._physical_collections(collection_name):
+                    item = manifest_by_name.get(physical_name, {})
+                    physical_expected = int(item.get("row_count") or 0)
+                    physical_documents = await self._fetch_collection_documents(
+                        physical_name, expected_count=physical_expected,
+                    )
+                    if len(physical_documents) < physical_expected:
+                        raise RuntimeError(
+                            f"Idratazione incompleta per {physical_name}: "
+                            f"attese {physical_expected}, lette {len(physical_documents)}"
+                        )
+                    expected_count += physical_expected
+                    for document in physical_documents:
+                        document_id = document.get("_id")
+                        if document_id is None:
+                            without_id.append(document)
+                            continue
+                        key = str(document_id)
+                        documents_by_id[key] = document
+                        locations[key] = physical_name
+                documents = [*documents_by_id.values(), *without_id]
                 # Il manifest e le pagine non sono una snapshot transazionale:
                 # l'istanza live può aggiungere righe mentre quella nuova si
                 # idrata. Più righe del manifest sono quindi un superset valido;
@@ -455,7 +519,7 @@ class SupabaseRuntimeDatabase(SheetDatabase):
         Serve alla copia di preparazione: una seconda esecuzione produce la
         stessa destinazione anche quando la sorgente ha cancellato record.
         """
-        remote_documents = await self._fetch_collection_documents(collection_name)
+        remote_documents = await self._fetch_logical_collection_documents(collection_name)
         source_ids = {str(item.get("_id")) for item in documents}
         stale_ids = [
             str(item.get("_id"))
@@ -474,7 +538,7 @@ class SupabaseRuntimeDatabase(SheetDatabase):
         self, collection_name: str, source_documents: list[dict[str, Any]],
     ) -> dict[str, Any]:
         """Rilegge la destinazione e confronta conteggio e contenuto canonico."""
-        remote_documents = await self._fetch_collection_documents(collection_name)
+        remote_documents = await self._fetch_logical_collection_documents(collection_name)
         source_digest = documents_digest(source_documents)
         remote_digest = documents_digest(remote_documents)
         return {
@@ -501,13 +565,22 @@ class SupabaseRuntimeDatabase(SheetDatabase):
             return []
         normalised = [_normalise_document(document) for document in documents]
         rifiuti: list[dict[str, Any]] = []
-        for start in range(0, len(normalised), _WRITE_CHUNK_SIZE):
-            chunk = normalised[start:start + _WRITE_CHUNK_SIZE]
-            result = await self._rpc(
-                "gc_upsert_documents",
-                {"p_collection": collection_name, "p_documents": chunk},
-            )
-            rifiuti.extend(_rifiuti_da_risposta(result))
+        locations = self._document_locations.setdefault(collection_name, {})
+        grouped: dict[str, list[dict[str, Any]]] = {}
+        for document in normalised:
+            document_id = str(document.get("_id"))
+            physical_name = locations.get(document_id, collection_name)
+            grouped.setdefault(physical_name, []).append(document)
+        for physical_name, physical_documents in grouped.items():
+            for start in range(0, len(physical_documents), _WRITE_CHUNK_SIZE):
+                chunk = physical_documents[start:start + _WRITE_CHUNK_SIZE]
+                result = await self._rpc(
+                    "gc_upsert_documents",
+                    {"p_collection": physical_name, "p_documents": chunk},
+                )
+                rifiuti.extend(_rifiuti_da_risposta(result))
+                for document in chunk:
+                    locations[str(document.get("_id"))] = physical_name
         if rifiuti:
             self._riallinea_cache_dopo_rifiuto(collection_name, rifiuti)
         return rifiuti
@@ -516,10 +589,17 @@ class SupabaseRuntimeDatabase(SheetDatabase):
         clean_ids = [item for item in ids if item and item != "None"]
         if not clean_ids:
             return
-        await self._rpc(
-            "gc_delete_documents",
-            {"p_collection": collection_name, "p_ids": clean_ids},
-        )
+        locations = self._document_locations.setdefault(collection_name, {})
+        grouped: dict[str, list[str]] = {}
+        for item_id in clean_ids:
+            grouped.setdefault(locations.get(item_id, collection_name), []).append(item_id)
+        for physical_name, physical_ids in grouped.items():
+            await self._rpc(
+                "gc_delete_documents",
+                {"p_collection": physical_name, "p_ids": physical_ids},
+            )
+            for item_id in physical_ids:
+                locations.pop(item_id, None)
 
     @asynccontextmanager
     async def batch_writes(self):
