@@ -244,24 +244,40 @@ class SupabaseRuntimeDatabase(SheetDatabase):
         # durante un deploy l'istanza precedente può aggiungere righe e rendere
         # instabile la paginazione a offset.
         while True:
-            try:
-                page = await self._rpc(
-                    "gc_fetch_collection",
-                    {
-                        "p_collection": collection_name,
-                        "p_offset": offset,
-                        "p_limit": page_size,
-                    },
-                )
-            except RuntimeError as exc:
-                if "statement timeout" not in str(exc).lower() or page_size <= _MIN_READ_PAGE_SIZE:
-                    raise
-                page_size = max(_MIN_READ_PAGE_SIZE, page_size // 2)
-                logger.warning(
-                    "Lettura %s in timeout all'offset %s; lotto ridotto a %s",
-                    collection_name, offset, page_size,
-                )
-                continue
+            timeout_attempt = 0
+            while True:
+                try:
+                    page = await self._rpc(
+                        "gc_fetch_collection",
+                        {
+                            "p_collection": collection_name,
+                            "p_offset": offset,
+                            "p_limit": page_size,
+                        },
+                    )
+                    break
+                except RuntimeError as exc:
+                    if "statement timeout" not in str(exc).lower():
+                        raise
+                    if page_size > _MIN_READ_PAGE_SIZE:
+                        page_size = max(_MIN_READ_PAGE_SIZE, page_size // 2)
+                        timeout_attempt = 0
+                        logger.warning(
+                            "Lettura %s in timeout all'offset %s; lotto ridotto a %s",
+                            collection_name, offset, page_size,
+                        )
+                        continue
+                    timeout_attempt += 1
+                    if timeout_attempt >= _READ_RETRIES:
+                        raise
+                    delay = min(0.5 * (2 ** (timeout_attempt - 1)), 2.0)
+                    logger.warning(
+                        "Lettura %s in timeout all'offset %s con lotto minimo; "
+                        "nuovo tentativo %s/%s tra %.1fs",
+                        collection_name, offset, timeout_attempt + 1,
+                        _READ_RETRIES, delay,
+                    )
+                    await asyncio.sleep(delay)
             if not isinstance(page, list):
                 raise RuntimeError(
                     f"Risposta Supabase non valida per {collection_name}"

@@ -103,6 +103,58 @@ def test_hydrate_ritenta_manifest_e_riduce_il_lotto_sui_timeout(monkeypatch):
     assert runtime.fetch_limits[:3] == [1000, 500, 250]
 
 
+def test_fetch_ritenta_timeout_transitorio_al_lotto_minimo(monkeypatch):
+    attempts = 0
+    delays = []
+
+    async def fake_sleep(delay):
+        delays.append(delay)
+
+    async def transient_timeout(_function_name, payload):
+        nonlocal attempts
+        attempts += 1
+        if attempts < 3:
+            raise RuntimeError("canceling statement due to statement timeout")
+        return [{"_id": "f1"}]
+
+    runtime = FakeRestSupabase()
+    monkeypatch.setattr("app.services.supabase_runtime_database._PAGE_SIZE", 50)
+    monkeypatch.setattr(runtime, "_rpc", transient_timeout)
+    monkeypatch.setattr("app.services.supabase_runtime_database.asyncio.sleep", fake_sleep)
+
+    documents = asyncio.run(runtime._fetch_collection_documents("fatture"))
+
+    assert documents == [{"_id": "f1"}]
+    assert attempts == 3
+    assert delays == [0.5, 1.0]
+
+
+def test_fetch_fallisce_dopo_retry_limitati_al_lotto_minimo(monkeypatch):
+    attempts = 0
+
+    async def no_sleep(_delay):
+        return None
+
+    async def always_timeout(_function_name, _payload):
+        nonlocal attempts
+        attempts += 1
+        raise RuntimeError("canceling statement due to statement timeout")
+
+    runtime = FakeRestSupabase()
+    monkeypatch.setattr("app.services.supabase_runtime_database._PAGE_SIZE", 50)
+    monkeypatch.setattr(runtime, "_rpc", always_timeout)
+    monkeypatch.setattr("app.services.supabase_runtime_database.asyncio.sleep", no_sleep)
+
+    try:
+        asyncio.run(runtime._fetch_collection_documents("fatture"))
+    except RuntimeError as exc:
+        assert "statement timeout" in str(exc)
+    else:
+        raise AssertionError("Il timeout permanente deve interrompere l'hydration")
+
+    assert attempts == 5
+
+
 def test_manifest_limita_attesa_tra_retry(monkeypatch):
     delays = []
 
