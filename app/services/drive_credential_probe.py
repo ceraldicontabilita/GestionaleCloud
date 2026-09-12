@@ -77,6 +77,18 @@ def _shared_candidate():
         return None, str(exc)
 
 
+def has_configured_credentials() -> bool:
+    """Indica se il runtime dispone di almeno una sorgente credenziali Drive.
+
+    Non sceglie una credenziale e non legge dati remoti: la selezione effettiva
+    resta affidata a ``load_credentials_for_folder``, che prova l'accesso alla
+    cartella richiesta prima di restituire il client.
+    """
+    if str(getattr(settings, "GOOGLE_DRIVE_SA_FILE", None) or "").strip():
+        return True
+    return next(iter(_raw_candidates()), None) is not None
+
+
 def load_credentials_for_folder(folder_id: Optional[str]) -> Tuple[Any, Optional[str]]:
     """Restituisce una credenziale con accesso provato a un singolo folder."""
     folder_id = str(folder_id or "").strip()
