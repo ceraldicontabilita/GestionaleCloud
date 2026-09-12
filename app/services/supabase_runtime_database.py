@@ -32,6 +32,37 @@ _READ_RETRIES = 5
 _MANIFEST_RETRIES = 10
 _WRITE_CHUNK_SIZE = 200
 
+# Catalogo di bootstrap verificato sul registro live. Il manifest RPC resta la
+# fonte primaria; questo elenco evita che un digest globale in timeout renda
+# impossibile avviare una nuova istanza. Con row_count=0 ogni collezione viene
+# comunque letta integralmente fino alla pagina terminale.
+_BOOTSTRAP_COLLECTIONS = (
+    "acquisti_prodotti", "agenti_segnalazioni", "agenti_stato",
+    "ai_decision_events", "ai_decisions", "alerts", "assegni", "audit_log",
+    "bank_reconciliation_hub", "bonifici_transfers", "cedolini", "cespiti",
+    "chiusure_pos_manuali", "collaudo_report", "commercialista_log",
+    "corrispettivi", "dipendenti", "dizionario_prodotti", "document_import_jobs",
+    "documents_inbox", "drive_estratti_conto_imports", "drive_sync_state",
+    "email_monitor_runs", "entity_relations", "estratto_conto_movimenti",
+    "estratto_conto_nexi", "f24_email_settings", "f24_riconciliazione_alerts",
+    "f24_unificato", "finanziamenti_soci_movimenti", "fiscal_document_versions",
+    "fiscal_documents", "fiscal_evidence", "fiscal_pages", "fornitori",
+    "fornitori_keywords", "invoices", "menu_allergens", "menu_categories",
+    "menu_immagini", "menu_products", "menu_subcategories", "mfa_settings",
+    "migration_runs", "mittenti_email", "operazioni_da_confermare",
+    "pagamenti_operazioni", "partite_aperte", "paypal_statements",
+    "paypal_sync_checkpoints", "paypal_transactions", "piano_conti",
+    "pos_chiusure_audit", "pos_commissioni_giornaliere", "pos_commissioni_imports",
+    "pos_terminal_imports", "pos_terminal_transactions", "prima_nota_banca",
+    "prima_nota_cassa", "prima_nota_migrazioni_audit", "prima_nota_salari",
+    "proposte_associazione_assegni", "quietanze_f24", "regole_categorizzazione",
+    "scadenziario_fornitori", "sistema_stato", "sumup_payouts",
+    "sumup_transactions", "supplier_payment_history", "supplier_payment_methods",
+    "supplier_update_proposals", "system_config", "system_settings",
+    "tax_code_registry", "tax_code_registry_versions", "tfr_accantonamenti",
+    "token_blacklist", "warehouse_inventory",
+)
+
 
 def _json_default(value: Any) -> str:
     from datetime import date, datetime
@@ -181,8 +212,18 @@ class SupabaseRuntimeDatabase(SheetDatabase):
                 result = await self._rpc("gc_collection_manifest", {})
                 break
             except RuntimeError as exc:
-                if "statement timeout" not in str(exc).lower() or attempt == _MANIFEST_RETRIES - 1:
+                if "statement timeout" not in str(exc).lower():
                     raise
+                if attempt == _MANIFEST_RETRIES - 1:
+                    logger.warning(
+                        "Manifest Supabase ancora in timeout dopo %s tentativi; "
+                        "uso catalogo di bootstrap verificato (%s collezioni)",
+                        _MANIFEST_RETRIES, len(_BOOTSTRAP_COLLECTIONS),
+                    )
+                    return [
+                        {"collection": name, "row_count": 0, "bootstrap": True}
+                        for name in _BOOTSTRAP_COLLECTIONS
+                    ]
                 delay = min(0.5 * (2 ** attempt), 2.0)
                 logger.warning(
                     "Manifest Supabase in timeout; nuovo tentativo %s/%s tra %.1fs",
