@@ -4,6 +4,7 @@ import zipfile
 import pytest
 
 from app.services.drive_corrispettivi_ingest import (
+    _source_files_for_batch,
     _xml_documents_from_source,
     is_corrispettivo_filename,
 )
@@ -50,3 +51,13 @@ def test_xml_singolo_resta_compatibile():
     assert _xml_documents_from_source("uno.xml", b"<uno />") == [
         ("uno.xml", b"<uno />"),
     ]
+
+
+def test_un_ciclo_non_supera_25_file_e_preserva_l_ordine():
+    source_files = [{"id": str(index)} for index in range(31)]
+
+    batch = _source_files_for_batch(source_files)
+
+    assert len(batch) == 25
+    assert [item["id"] for item in batch] == [str(index) for index in range(25)]
+    assert len(source_files) == 31
