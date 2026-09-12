@@ -4655,6 +4655,7 @@ function PagheBonificiPage() {
   const STATI = {
     pagato: { label: "✓ Pagato", variant: "success" },
     parziale: { label: "Parziale", variant: "warning" },
+    da_verificare: { label: "Da verificare", variant: "warning" },
     da_pagare: { label: "Da pagare", variant: "danger" },
     bonifico_senza_busta: { label: "Bonifico senza busta", variant: "info" },
   };
@@ -4718,6 +4719,7 @@ function PagheBonificiPage() {
           <option value="">Tutti gli stati</option>
           <option value="pagato">Pagati</option>
           <option value="parziale">Parziali</option>
+          <option value="da_verificare">Da verificare</option>
           <option value="da_pagare">Da pagare</option>
           <option value="bonifico_senza_busta">Bonifico senza busta</option>
         </select>

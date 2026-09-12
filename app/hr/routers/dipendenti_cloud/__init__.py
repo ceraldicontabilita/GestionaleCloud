@@ -3372,8 +3372,9 @@ async def associazioni_bonifici(anno: Optional[int] = None, mese: Optional[int] 
     """Vista UNICA cedolino↔bonifico. Per ogni busta del periodo mostra l'importo busta,
     i bonifici REALMENTE pagati (collezione pagamenti_esiti: data, importo, causale, riferimento/CRO),
     gli acconti, il saldo e lo stato di associazione:
-      - pagato            = erogato (bonifici+acconti) ≥ busta
-      - parziale          = erogato > 0 ma < busta
+      - pagato            = erogato (bonifici+acconti) ≥ busta, con prova confermata
+      - parziale          = erogato > 0 ma < busta, con prova confermata
+      - da_verificare     = importo candidato presente, ma prova non confermata
       - da_pagare         = busta presente, nessun pagamento
       - bonifico_senza_busta = pagamento presente ma nessuna busta
     Inoltre indica la 'fonte' del bonifico (banca/prima_nota/manuale), la 'qualita' del match
@@ -3462,17 +3463,13 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
 
         erogato = bon + acc
         if busta <= 0 and erogato > 0:
-            st = "bonifico_senza_busta"
-            tot["senza_busta"] += 1
+            stato_importo = "bonifico_senza_busta"
         elif erogato <= 0:
-            st = "da_pagare"
-            tot["da_pagare"] += 1
+            stato_importo = "da_pagare"
         elif erogato + 0.5 >= busta:
-            st = "pagato"
-            tot["pagati"] += 1
+            stato_importo = "pagato"
         else:
-            st = "parziale"
-            tot["parziali"] += 1
+            stato_importo = "parziale"
 
         # Fonte del bonifico
         if esiti:
@@ -3490,6 +3487,25 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
         # reversibile ``bonifico_riconciliato`` trasforma il candidato in un
         # legame verificato.
         riconciliato = bool(p.get("bonifico_riconciliato"))
+        # Lo stato contabile effettivo non può derivare dal solo quadramento
+        # numerico. Conserviamo quel calcolo come candidato, ma finché manca
+        # una conferma reversibile della prova bancaria/assegno esponiamo
+        # DA_VERIFICARE e non PAGATO/PARZIALE.
+        if erogato > 0 and not riconciliato:
+            st = "da_verificare"
+        else:
+            st = stato_importo
+
+        if st == "pagato":
+            tot["pagati"] += 1
+        elif st == "parziale":
+            tot["parziali"] += 1
+        elif st == "da_pagare":
+            tot["da_pagare"] += 1
+        elif st == "bonifico_senza_busta":
+            tot["senza_busta"] += 1
+        elif st == "da_verificare":
+            tot["da_verificare"] += 1
         if bon <= 0:
             qualita = None
         elif not riconciliato:
@@ -3510,8 +3526,6 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
         if st in ("pagato", "parziale", "bonifico_senza_busta"):
             if associato:
                 tot["associati"] += 1
-            else:
-                tot["da_verificare"] += 1
 
         # Esiste il cedolino per questo periodo? (il PDF non è stato letto qui,
         # vedi nota sul prefetch sopra — quasi ogni cedolino importato ne ha uno)
@@ -3538,6 +3552,7 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
             "erogato": round(erogato, 2),
             "saldo": round(busta - erogato, 2),
             "stato": st,
+            "stato_importo": stato_importo,
             "fonte": fonte,
             "qualita": qualita,
             "associato": associato,
