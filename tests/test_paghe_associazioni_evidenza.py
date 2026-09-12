@@ -54,6 +54,8 @@ def test_importo_nome_periodo_e_pdf_non_confermano_da_soli():
     result = asyncio.run(_calcola_associazioni_bonifici(_Db(riconciliato=False), 2026, 8))
     row = result["righe"][0]
     assert row["qualita"] == "da_verificare"
+    assert row["stato"] == "da_verificare"
+    assert row["stato_importo"] == "pagato"
     assert row["associato"] is False
     assert row["riconciliato"] is False
     assert result["totali"]["da_verificare"] == 1
@@ -63,6 +65,27 @@ def test_conferma_esplicita_rende_il_legame_associato_e_resta_tracciata():
     result = asyncio.run(_calcola_associazioni_bonifici(_Db(riconciliato=True), 2026, 8))
     row = result["righe"][0]
     assert row["qualita"] == "esatto"
+    assert row["stato"] == "pagato"
+    assert row["stato_importo"] == "pagato"
     assert row["associato"] is True
     assert row["riconciliato"] is True
     assert result["totali"]["associati"] == 1
+
+
+def test_filtro_da_verificare_usa_lo_stato_probatorio_non_il_quadramento():
+    result = asyncio.run(
+        _calcola_associazioni_bonifici(
+            _Db(riconciliato=False), 2026, 8, stato="da_verificare"
+        )
+    )
+    assert len(result["righe"]) == 1
+    assert result["righe"][0]["stato_importo"] == "pagato"
+
+
+def test_filtro_pagato_esclude_il_candidato_non_riconciliato():
+    result = asyncio.run(
+        _calcola_associazioni_bonifici(
+            _Db(riconciliato=False), 2026, 8, stato="pagato"
+        )
+    )
+    assert result["righe"] == []
