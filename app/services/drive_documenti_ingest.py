@@ -84,6 +84,12 @@ CANALI: Dict[str, Dict[str, Any]] = {
 }
 
 _locks: Dict[str, asyncio.Lock] = {c: asyncio.Lock() for c in CANALI}
+_GENERIC_BATCH_SIZE = 25
+
+
+def _batch_size() -> int:
+    """Massimo documenti elaborati per canale in un singolo ciclo."""
+    return _GENERIC_BATCH_SIZE
 
 
 def _folder_id(canale: str) -> Optional[str]:
@@ -229,6 +235,8 @@ async def _do_sync(db, canale: str) -> Dict[str, Any]:
         "status": "ok",
         "canale": canale,
         "total": 0,
+        "processed": 0,
+        "pending_estimate": 0,
         "imported": 0,
         "duplicates": 0,
         "errors": 0,
@@ -245,6 +253,7 @@ async def _do_sync(db, canale: str) -> Dict[str, Any]:
             max_depth=_lifecycle_depth(canale),
         )
         result["inboxes"] = len(inboxes)
+        remaining = _batch_size()
 
         for inbox in inboxes:
             source_id = inbox["inbox_id"]
@@ -255,7 +264,12 @@ async def _do_sync(db, canale: str) -> Dict[str, Any]:
             pdf_files = _list_pdf_files_direct(service, source_id)
             result["total"] += len(pdf_files)
 
-            for file_info in pdf_files:
+            selected = pdf_files[:remaining] if remaining > 0 else []
+            result["pending_estimate"] += max(0, len(pdf_files) - len(selected))
+
+            for file_info in selected:
+                remaining -= 1
+                result["processed"] += 1
                 fid = file_info["id"]
                 fname = file_info["name"]
                 source_path = f"{relative_inbox}/{fname}"
