@@ -98,6 +98,12 @@ def _wire_canonical_drive_credentials() -> None:
 
 _wire_canonical_drive_credentials()
 
+# Il riepilogo aggregato dei canali Drive deve riflettere gli errori annidati:
+# un ciclo non puo' risultare verde se Bonifici o Cartelle sono falliti.
+from .drive_documenti_status_policy import install_drive_documenti_status_policy
+
+install_drive_documenti_status_policy()
+
 # Il package services viene inizializzato durante lo startup prima di
 # ``app.scheduler.start_scheduler``. Installiamo qui la policy di coda: il
 # lock resta globale e seriale, ma un job concorrente attende invece di essere
