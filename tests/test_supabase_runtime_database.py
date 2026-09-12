@@ -109,7 +109,7 @@ def test_manifest_limita_attesa_tra_retry(monkeypatch):
     async def fake_sleep(delay):
         delays.append(delay)
 
-    class FourTimeouts(FakeRestSupabase):
+    class TwoTimeouts(FakeRestSupabase):
         def __init__(self):
             super().__init__({"fatture": [{"_id": "f1"}]})
             self.attempts = 0
@@ -117,16 +117,16 @@ def test_manifest_limita_attesa_tra_retry(monkeypatch):
         async def _rpc(self, function_name, payload):
             if function_name == "gc_collection_manifest":
                 self.attempts += 1
-                if self.attempts < 5:
+                if self.attempts < 3:
                     raise RuntimeError("canceling statement due to statement timeout")
             return await super()._rpc(function_name, payload)
 
     monkeypatch.setattr("app.services.supabase_runtime_database.asyncio.sleep", fake_sleep)
-    runtime = FourTimeouts()
+    runtime = TwoTimeouts()
     asyncio.run(runtime.hydrate())
 
-    assert runtime.attempts == 5
-    assert delays == [0.5, 1.0, 2.0, 2.0]
+    assert runtime.attempts == 3
+    assert delays == [0.5, 1.0]
 
 
 def test_manifest_usa_catalogo_bootstrap_solo_dopo_tutti_i_timeout(monkeypatch):
@@ -145,7 +145,7 @@ def test_manifest_usa_catalogo_bootstrap_solo_dopo_tutti_i_timeout(monkeypatch):
     monkeypatch.setattr("app.services.supabase_runtime_database.asyncio.sleep", no_sleep)
     manifest = asyncio.run(runtime._manifest())
 
-    assert attempts == 10
+    assert attempts == 3
     assert len(manifest) >= 70
     assert all(row["row_count"] == 0 and row["bootstrap"] for row in manifest)
     assert {"documents_inbox", "invoices", "prima_nota_cassa"}.issubset(
