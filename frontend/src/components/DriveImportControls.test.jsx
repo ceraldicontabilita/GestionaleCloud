@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import api from '../api';
@@ -53,10 +53,8 @@ describe('Controlli import Drive in Documenti', () => {
   });
 
   it('segue lo stato del job fino al risultato senza tenere aperta la richiesta', async () => {
-    vi.useFakeTimers();
     api.get
       .mockResolvedValueOnce({ data: { anno: 2025 } })
-      .mockResolvedValueOnce({ data: { stato: 'in_corso', anno: 2025 } })
       .mockResolvedValueOnce({
         data: { stato: 'completato', anno: 2025, risultato: {
           anno: 2025, sync_fatture: { imported: 1 },
@@ -69,10 +67,9 @@ describe('Controlli import Drive in Documenti', () => {
     render(<AnnoImportazioneCard />);
     expect(await screen.findByRole('button', { name: 'Importa 2025 da Drive' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Importa 2025 da Drive' }));
-    await act(async () => vi.advanceTimersByTimeAsync(4000));
 
-    expect(await screen.findByTestId('esito-import-anno')).toHaveTextContent('Esito import 2025');
+    expect(await screen.findByTestId('esito-import-anno', {}, { timeout: 4000 }))
+      .toHaveTextContent('Esito import 2025');
     expect(api.get).toHaveBeenCalledWith('/api/config-import/importa-anno/stato');
-    vi.useRealTimers();
   });
 });

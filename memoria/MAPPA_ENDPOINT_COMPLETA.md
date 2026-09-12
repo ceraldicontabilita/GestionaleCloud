@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1156 endpoint** in **112 gruppi**.
+> Totale **1157 endpoint** in **112 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 634 · ext esterni = 81 · — da verificare = 441
+**Riepilogo uso:** ✓ frontend = 635 · ext esterni = 81 · — da verificare = 441
 
 ## AI Parser  (11)
 
@@ -397,13 +397,14 @@
 | POST | `/api/commercialista/schedula-export` | — | commercialista |
 | POST | `/api/commercialista/segna-inviata` | ✓ | commercialista |
 
-## Config Import  (3)
+## Config Import  (4)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
 | GET | `/api/config-import/anno` | ✓ | config_import |
 | PUT | `/api/config-import/anno` | ✓ | config_import |
 | POST | `/api/config-import/importa-anno` | ✓ | config_import |
+| GET | `/api/config-import/importa-anno/stato` | ✓ | config_import |
 
 ## Configurazioni  (9)
 
