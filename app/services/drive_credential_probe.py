@@ -74,35 +74,47 @@ def _can_access(creds: Any, folder_id: str) -> bool:
 def load_credentials_for_folder(folder_id: Optional[str]) -> Tuple[Any, Optional[str]]:
     """Restituisce una credenziale che ha accesso provato a ``folder_id``.
 
-    Se nessuna credenziale JSON funziona, prova anche l'eventuale file service
-    account storico. Non rivela mai email, private key o contenuto dei secret.
+    Prima prova esattamente il loader condiviso gia' usato dagli scanner
+    storici (incluso Estratti conto). Poi prova le credenziali JSON dedicate.
+    In questo modo il probe non replica in modo incompleto la logica di
+    ``_load_credentials`` e il diagnostico conta le credenziali realmente
+    provate, non soltanto gli errori di parsing.
     """
     folder_id = str(folder_id or "").strip()
     if not folder_id:
         return None, "folder Drive non configurato"
 
-    errors = 0
+    attempts = 0
+    load_errors = 0
+
+    # Percorso identico a quello che rende operativo Estratti conto quando
+    # non e' presente una credenziale dedicata. Questo include il secret file
+    # storico e gli alias shared senza esporne il contenuto.
+    try:
+        from app.services.drive_invoice_ingest import _load_credentials
+
+        shared_creds, shared_err = _load_credentials()
+        if shared_creds is not None:
+            attempts += 1
+            if _can_access(shared_creds, folder_id):
+                return shared_creds, None
+        elif shared_err:
+            load_errors += 1
+    except Exception:
+        load_errors += 1
+
+    # Le credenziali dedicate restano candidate: un canale puo' avere accesso
+    # a un ramo che il service account condiviso non vede.
     for _name, raw in _raw_candidates():
         try:
             creds = _credentials_from_raw(raw)
+            attempts += 1
             if _can_access(creds, folder_id):
                 return creds, None
         except Exception:
-            errors += 1
-
-    sa_file = str(getattr(settings, "GOOGLE_DRIVE_SA_FILE", None) or "").strip()
-    if sa_file:
-        try:
-            from google.oauth2 import service_account
-            from app.services.drive_invoice_ingest import _SCOPES
-
-            creds = service_account.Credentials.from_service_account_file(sa_file, scopes=_SCOPES)
-            if _can_access(creds, folder_id):
-                return creds, None
-        except Exception:
-            errors += 1
+            load_errors += 1
 
     return None, (
         "nessun service account configurato ha accesso al folder Drive canonico "
-        f"{folder_id}; credenziali non valide/inaccessibili provate={errors}"
+        f"{folder_id}; credenziali provate={attempts}; errori caricamento={load_errors}"
     )
