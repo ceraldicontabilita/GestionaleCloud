@@ -59,3 +59,18 @@ def test_nested_file_is_under_target():
     }
     service = _Service({}, metadata)
     assert _is_under_target(service, {"parents": ["nested"]}, {"target"}) is True
+
+
+def test_discovery_accepts_canonical_ader_folder_name():
+    root = {"id": "root", "name": "04_F24_E_TRIBUTI", "mimeType": FOLDER_MIME, "trashed": False}
+    items = {
+        "root": [
+            {"id": "avvisi", "name": "AVVISI BONARI", "mimeType": FOLDER_MIME},
+            {"id": "ader", "name": "AGENZIA_ENTRATE_RISCOSSIONE", "mimeType": FOLDER_MIME},
+        ],
+        "avvisi": [], "ader": [],
+    }
+    _, results = _discover_sync(_Service(items, {"root": root}), "root")
+    entries = {item["area"]: item for item in results}
+    assert entries["cartelle_esattoriali"]["folder_id"] == "ader"
+    assert entries["cartelle_esattoriali"]["label"] == "AGENZIA_ENTRATE_RISCOSSIONE"

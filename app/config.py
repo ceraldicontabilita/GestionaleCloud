@@ -157,7 +157,7 @@ class Settings(BaseSettings):
     # Radice fiscale canonica indicata dall'amministratore. L'ID identifica
     # soltanto la cartella contenitore: le sottocartelle operative vengono
     # scoperte e verificate via Drive API, mai create per supposizione.
-    DRIVE_FISCAL_ROOT_FOLDER_ID: str = "1f48bounfoOyHL_kqpHAp2GAnFfEpHvVa"
+    DRIVE_FISCAL_ROOT_FOLDER_ID: str = "1VBqAFZBGdZ4HtgfZC--DD5ad38Et5I1j"
     # Archivio documentale esterno: il gestionale legge esclusivamente
     # l'indice Excel e lascia i file originali su Google Drive.
     DRIVE_DOCUMENT_INDEX_ROOT_FOLDER_ID: str = "1tmVu6fl7qhJbLcGCHT3wEQzrvFAElc9h"
