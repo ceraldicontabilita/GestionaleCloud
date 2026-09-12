@@ -20,9 +20,12 @@ from app.services.drive_folder_registry import set_runtime_folders
 logger = logging.getLogger(__name__)
 FOLDER_MIME = "application/vnd.google-apps.folder"
 STATE_KEY = "fiscal_documents"
+# I nomi sono parte della provenienza: accettiamo soltanto le denominazioni
+# censite nella radice fiscale canonica.  La chiave resta stabile per router,
+# registro e configurazione Render; non viene mai dedotta dal solo contenuto.
 TARGETS = {
-    "avvisi_bonari": "Avvisi bonari",
-    "cartelle_esattoriali": "Cartelle esattoriali",
+    "avvisi_bonari": ("Avvisi bonari",),
+    "cartelle_esattoriali": ("AGENZIA_ENTRATE_RISCOSSIONE", "Cartelle esattoriali"),
 }
 
 
@@ -68,15 +71,18 @@ def _discover_sync(service, root_id: str) -> tuple[dict[str, Any], list[dict[str
 
     entries: list[dict[str, Any]] = []
     errors: list[dict[str, Any]] = []
-    for area, expected_name in TARGETS.items():
-        matches = [item for item in found if _norm(item.get("name")) == _norm(expected_name)]
+    for area, accepted_names in TARGETS.items():
+        matches = [
+            item for item in found
+            if _norm(item.get("name")) in {_norm(name) for name in accepted_names}
+        ]
         if len(matches) != 1:
             errors.append({"area": area, "matches": len(matches), "error": "cartella assente o ambigua"})
             continue
         item = matches[0]
         entries.append({
             "area": area,
-            "label": expected_name,
+            "label": item.get("name"),
             "folder_id": item["id"],
             "root_folder_id": root_id,
             "path": item["path"],
