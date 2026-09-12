@@ -104,6 +104,13 @@ from .drive_documenti_status_policy import install_drive_documenti_status_policy
 
 install_drive_documenti_status_policy()
 
+# Con Supabase come backend primario il registro Google Sheets resta disponibile
+# come export/backup manuale, ma il full-sync automatico ogni 30 minuti viene
+# neutralizzato per non consumare quota riscrivendo snapshot invariati.
+from .scheduler_sheets_sync_policy import install_scheduler_sheets_sync_policy
+
+install_scheduler_sheets_sync_policy()
+
 # Il package services viene inizializzato durante lo startup prima di
 # ``app.scheduler.start_scheduler``. Installiamo qui la policy di coda: il
 # lock resta globale e seriale, ma un job concorrente attende invece di essere
