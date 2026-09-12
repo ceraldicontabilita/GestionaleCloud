@@ -1,6 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import api from '../api';
@@ -69,10 +68,8 @@ describe('Controlli import Drive in Documenti', () => {
 
     render(<AnnoImportazioneCard />);
     expect(await screen.findByRole('button', { name: 'Importa 2025 da Drive' })).toBeInTheDocument();
-    await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).click(
-      screen.getByRole('button', { name: 'Importa 2025 da Drive' })
-    );
-    await vi.advanceTimersByTimeAsync(4000);
+    fireEvent.click(screen.getByRole('button', { name: 'Importa 2025 da Drive' }));
+    await act(async () => vi.advanceTimersByTimeAsync(4000));
 
     expect(await screen.findByTestId('esito-import-anno')).toHaveTextContent('Esito import 2025');
     expect(api.get).toHaveBeenCalledWith('/api/config-import/importa-anno/stato');
