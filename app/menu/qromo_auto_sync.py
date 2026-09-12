@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import threading
 
 from app.menu.qromo_sync import sincronizza
@@ -43,12 +44,25 @@ def _worker() -> None:
         logger.exception("Qromo auto-sync immagini fallito; catalogo gia' aggiornato")
 
 
-def avvia_sync_qromo_background() -> None:
-    """Avvia una sola sincronizzazione per processo, senza bloccare FastAPI."""
+def avvia_sync_qromo_background() -> bool:
+    """Avvia una sola sincronizzazione per processo solo se abilitata.
+
+    Una sincronizzazione completa non deve partire come effetto collaterale
+    dell'import del server: sostituisce il catalogo e migra centinaia di
+    immagini, allungando l'avvio oltre la finestra di health check. Il job
+    resta disponibile in opt-in esplicito e l'endpoint admin manuale continua
+    a essere la via controllata per la sincronizzazione.
+    """
     global _started
+    if os.getenv("ENABLE_QROMO_AUTO_SYNC", "false").strip().lower() not in {
+        "1", "true", "yes", "on",
+    }:
+        logger.info("Qromo auto-sync disabilitato: nessuna scrittura all'avvio")
+        return False
     with _lock:
         if _started:
-            return
+            return False
         _started = True
     thread = threading.Thread(target=_worker, name="qromo-auto-sync", daemon=True)
     thread.start()
+    return True
