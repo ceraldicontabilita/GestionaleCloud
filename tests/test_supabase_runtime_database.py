@@ -118,7 +118,7 @@ def test_fetch_ritenta_timeout_transitorio_al_lotto_minimo(monkeypatch):
         return [{"_id": "f1"}]
 
     runtime = FakeRestSupabase()
-    monkeypatch.setattr("app.services.supabase_runtime_database._PAGE_SIZE", 50)
+    monkeypatch.setattr("app.services.supabase_runtime_database._PAGE_SIZE", 10)
     monkeypatch.setattr(runtime, "_rpc", transient_timeout)
     monkeypatch.setattr("app.services.supabase_runtime_database.asyncio.sleep", fake_sleep)
 
@@ -141,7 +141,7 @@ def test_fetch_fallisce_dopo_retry_limitati_al_lotto_minimo(monkeypatch):
         raise RuntimeError("canceling statement due to statement timeout")
 
     runtime = FakeRestSupabase()
-    monkeypatch.setattr("app.services.supabase_runtime_database._PAGE_SIZE", 50)
+    monkeypatch.setattr("app.services.supabase_runtime_database._PAGE_SIZE", 10)
     monkeypatch.setattr(runtime, "_rpc", always_timeout)
     monkeypatch.setattr("app.services.supabase_runtime_database.asyncio.sleep", no_sleep)
 
