@@ -218,22 +218,15 @@ async def get_or_create_scheda_apparecchi(anno: int) -> dict:
     scheda = await db.sanificazione_apparecchi.find_one({"anno": anno}, {"_id": 0})
 
     if not scheda:
-        # Genera il calendario
-        calendario = genera_calendario_sanificazione_anno(anno)
-
-        nuova_scheda = {
-            "id": str(uuid.uuid4()),
+        # A missing annual sheet is an operational obligation, not proof that
+        # cleanings happened.  Do not persist a reconstructed calendar.
+        return {
             "anno": anno,
-            "azienda": "Ceraldi Group S.R.L.",
-            "indirizzo": "Piazza Carità 14, 80134 Napoli (NA)",
-            "operatore": OPERATORE_SANIFICAZIONE,
-            "registrazioni_frigoriferi": calendario["frigoriferi"],
-            "registrazioni_congelatori": calendario["congelatori"],
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "stato": "DA_VERIFICARE",
+            "registrazioni_frigoriferi": {},
+            "registrazioni_congelatori": {},
+            "nota": "Scheda non ancora registrata: servono evidenze dell'operatore.",
         }
-        await db.sanificazione_apparecchi.insert_one(nuova_scheda)
-        scheda = nuova_scheda
 
     if "_id" in scheda:
         del scheda["_id"]
@@ -375,6 +368,10 @@ async def get_storico(anno: int = None):
 
 @router.post("/popola-attrezzature")
 async def popola_attrezzature(start_anno: int = 2022, end_anno: int = 2025):
+    raise HTTPException(
+        status_code=410,
+        detail="Bloccato: le sanificazioni devono essere registrate con evidenza dell'operatore.",
+    )
     """
     Popola le schede di sanificazione ATTREZZATURE per gli anni specificati.
     Ogni giorno lavorativo (lunedì-sabato) viene segnato con X per tutte le attrezzature.
@@ -586,6 +583,10 @@ async def registra_sanificazione_apparecchio(
 
 @router.post("/apparecchi/{anno}/rigenera")
 async def rigenera_calendario_apparecchi(anno: int):
+    raise HTTPException(
+        status_code=410,
+        detail="Bloccato: il calendario non puo attestare esiti o operatori non verificati.",
+    )
     """Rigenera il calendario sanificazioni apparecchi per l'anno"""
 
     # Elimina scheda esistente

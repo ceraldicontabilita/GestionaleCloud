@@ -484,6 +484,10 @@ async def elimina_anomalia(anomalia_id: str):
 
 @router.post("/genera-storico")
 async def genera_storico(start_anno: int = 2022, end_anno: int = 2025):
+    raise HTTPException(
+        status_code=410,
+        detail="Bloccato: anomalie e azioni correttive richiedono un fatto realmente segnalato.",
+    )
     """Genera anomalie storiche di esempio per testing"""
     import random
 

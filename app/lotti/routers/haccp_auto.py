@@ -62,6 +62,10 @@ async def popola_temperature_storiche(
     data_inizio: str = "2024-01-01", data_fine: Optional[str] = None,
     _admin=Depends(require_admin),
 ):
+    raise HTTPException(
+        status_code=410,
+        detail="Bloccato: le temperature HACCP devono provenire da una rilevazione verificabile.",
+    )
     """
     Popola le temperature storiche nella struttura ESISTENTE del database.
     Aggiorna i documenti esistenti per ogni frigorifero/freezer.
@@ -203,6 +207,10 @@ async def popola_sanificazione_storica(
     data_inizio: str = "2024-01-01", data_fine: Optional[str] = None,
     _admin=Depends(require_admin),
 ):
+    raise HTTPException(
+        status_code=410,
+        detail="Bloccato: le sanificazioni devono essere registrate dall'operatore.",
+    )
     """Popola i record di sanificazione storici"""
     try:
         start_date = datetime.strptime(data_inizio, "%Y-%m-%d")
@@ -297,6 +305,14 @@ async def popola_tutti_dati_haccp(data_inizio: str = "2024-01-01",
 
 @router.get("/verifica-oggi")
 async def verifica_e_popola_oggi():
+    oggi = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return {
+        "ok": True,
+        "message": f"HACCP {oggi}: rilevazioni attese; nessuna evidenza sintetica creata",
+        "generato": False,
+        "elementi": [],
+        "data": oggi,
+    }
     """
     Chiamata dal job scheduler alle 07:00 ogni mattina.
 
@@ -502,14 +518,10 @@ async def verifica_e_popola_oggi():
 
 @router.post("/genera-oggi")
 async def genera_dati_oggi(_admin=Depends(require_admin)):
-    """Genera i dati HACCP per oggi"""
-    oggi = datetime.now()
-    data_str = oggi.strftime("%Y-%m-%d")
-
-    await popola_temperature_storiche(data_str, data_str)
-    await popola_sanificazione_storica(data_str, data_str)
-
-    return {"success": True, "data": data_str, "message": "Dati di oggi generati"}
+    raise HTTPException(
+        status_code=410,
+        detail="Bloccato: inserire solo rilevazioni HACCP realmente eseguite.",
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
