@@ -86,12 +86,12 @@ def _load_credentials_corrispettivi():
 
 
 def is_configured() -> bool:
+    from app.services.drive_credential_probe import has_configured_credentials
+
     return bool(
         settings.ENABLE_DRIVE_CORRISPETTIVI_SYNC
         and _folder_id()
-        and (settings.GOOGLE_SERVICE_ACCOUNT_JSON_CORRISPETTIVI
-             or settings.GOOGLE_DRIVE_SA_FILE or settings.GOOGLE_DRIVE_SA_JSON
-             or settings.GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON)
+        and has_configured_credentials()
     )
 
 

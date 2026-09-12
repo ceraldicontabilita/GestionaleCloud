@@ -2,6 +2,7 @@ import asyncio
 
 from app.services import (
     drive_cedolini_ingest,
+    drive_corrispettivi_ingest,
     drive_documenti_ingest,
     drive_estratti_conto_ingest,
     drive_f24_ingest,
@@ -15,10 +16,11 @@ def test_scanner_canonici_hanno_loader_specifici_e_lasciano_intatto_quello_gener
     loaders = {
         drive_invoice_ingest._load_credentials_fatture,
         drive_cedolini_ingest._load_credentials_cedolini,
+        drive_corrispettivi_ingest._load_credentials_corrispettivi,
         drive_quietanze_ingest._load_credentials_quietanze,
         drive_f24_ingest._load_credentials,
     }
-    assert len(loaders) == 4
+    assert len(loaders) == 5
     assert drive_invoice_ingest._load_credentials not in loaders
 
 
@@ -29,6 +31,24 @@ def test_ingest_generico_e_wrappato_per_selezionare_il_folder_del_canale():
 
 def test_estratti_usa_loader_multi_root_verificato():
     assert drive_estratti_conto_ingest._load_credentials_estratti.__name__ == "_load_estratti_verified"
+
+
+def test_corrispettivi_accetta_credenziale_canonica_disponibile(monkeypatch):
+    monkeypatch.setattr(
+        drive_corrispettivi_ingest.settings,
+        "ENABLE_DRIVE_CORRISPETTIVI_SYNC",
+        True,
+    )
+    monkeypatch.setattr(
+        drive_corrispettivi_ingest.settings,
+        "GOOGLE_DRIVE_CORRISPETTIVI_FOLDER_ID",
+        "folder-canonico",
+    )
+    monkeypatch.setattr(
+        drive_credential_probe, "has_configured_credentials", lambda: True
+    )
+
+    assert drive_corrispettivi_ingest.is_configured() is True
 
 
 def test_sync_generico_canale_sconosciuto_resta_fail_closed():

@@ -39,6 +39,7 @@ def _wire_canonical_drive_credentials() -> None:
     )
     from . import drive_invoice_ingest as _drive_invoice
     from . import drive_cedolini_ingest as _drive_cedolini
+    from . import drive_corrispettivi_ingest as _drive_corrispettivi
     from . import drive_quietanze_ingest as _drive_quietanze
     from . import drive_f24_ingest as _drive_f24
     from . import drive_estratti_conto_ingest as _drive_estratti
@@ -51,6 +52,9 @@ def _wire_canonical_drive_credentials() -> None:
 
     _drive_invoice._load_credentials_fatture = _loader(_drive_invoice._folder_id)
     _drive_cedolini._load_credentials_cedolini = _loader(_drive_cedolini._folder_id)
+    _drive_corrispettivi._load_credentials_corrispettivi = _loader(
+        _drive_corrispettivi._folder_id
+    )
     _drive_quietanze._load_credentials_quietanze = _loader(_drive_quietanze._folder_id)
     _drive_f24._load_credentials = _loader(_drive_f24._folder_id)
 
