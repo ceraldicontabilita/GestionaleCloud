@@ -15,10 +15,16 @@ dei sync Drive) così sopravvive a riavvii/deploy — un parametro simile a
 GOOGLE_DRIVE_FATTURE_FOLDER_ID ma che deve poter cambiare da UI senza
 un redeploy.
 """
+import asyncio
+import logging
 from datetime import datetime, timezone
 from typing import Any, Dict
 
 _CHIAVE = "config_import_anno_attivo"
+_JOB_CHIAVE = "config_import_anno_job"
+_job_lock = asyncio.Lock()
+_job_task = None
+logger = logging.getLogger(__name__)
 
 
 async def get_anno_importazione_attivo(db) -> int:
@@ -157,3 +163,50 @@ async def importa_anno_da_drive(db, anno: int) -> Dict[str, Any]:
         "sync_corrispettivi": sync_corrispettivi or {"skipped": "Drive corrispettivi non configurato"},
         "promozione_archivio": promozione,
     }
+
+
+async def _salva_stato_job(db, **campi) -> None:
+    await db["sistema_stato"].update_one(
+        {"chiave": _JOB_CHIAVE},
+        {"$set": {**campi, "updated_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True,
+    )
+
+
+async def _esegui_import_job(db, anno: int) -> None:
+    async with _job_lock:
+        iniziato = datetime.now(timezone.utc).isoformat()
+        await _salva_stato_job(db, stato="in_corso", anno=anno, iniziato_at=iniziato,
+                               terminato_at=None, risultato=None, errore=None)
+        try:
+            risultato = await importa_anno_da_drive(db, anno)
+            await _salva_stato_job(
+                db, stato="completato", anno=anno, iniziato_at=iniziato,
+                terminato_at=datetime.now(timezone.utc).isoformat(),
+                risultato=risultato, errore=None,
+            )
+        except Exception as exc:
+            logger.exception("Import Drive per anno %s fallito", anno)
+            await _salva_stato_job(
+                db, stato="errore", anno=anno, iniziato_at=iniziato,
+                terminato_at=datetime.now(timezone.utc).isoformat(),
+                risultato=None, errore=str(exc),
+            )
+
+
+async def avvia_import_anno(db, anno: int) -> Dict[str, Any]:
+    """Avvia un solo import alla volta senza legarlo al timeout HTTP."""
+    global _job_task
+    stato = await get_stato_import_anno(db)
+    if _job_lock.locked() or (_job_task is not None and not _job_task.done()):
+        return {"started": False, **stato}
+    _job_task = asyncio.create_task(_esegui_import_job(db, anno))
+    return {"started": True, "stato": "avvio", "anno": anno}
+
+
+async def get_stato_import_anno(db) -> Dict[str, Any]:
+    stato = await db["sistema_stato"].find_one({"chiave": _JOB_CHIAVE}, {"_id": 0})
+    if not stato:
+        return {"stato": "mai_avviato"}
+    stato.pop("chiave", None)
+    return stato

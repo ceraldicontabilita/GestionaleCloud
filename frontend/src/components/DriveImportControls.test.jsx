@@ -1,5 +1,6 @@
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import api from '../api';
@@ -50,5 +51,31 @@ describe('Controlli import Drive in Documenti', () => {
     expect(screen.getByRole('button', { name: 'Importa 2026 da Drive' })).toBeInTheDocument();
     expect(api.post).not.toHaveBeenCalled();
     expect(api.put).not.toHaveBeenCalled();
+  });
+
+  it('segue lo stato del job fino al risultato senza tenere aperta la richiesta', async () => {
+    vi.useFakeTimers();
+    api.get
+      .mockResolvedValueOnce({ data: { anno: 2025 } })
+      .mockResolvedValueOnce({ data: { stato: 'in_corso', anno: 2025 } })
+      .mockResolvedValueOnce({
+        data: { stato: 'completato', anno: 2025, risultato: {
+          anno: 2025, sync_fatture: { imported: 1 },
+          sync_corrispettivi: { skipped: 'non configurato' },
+          promozione_archivio: { fatture_promosse: 0, corrispettivi_promossi: 0 },
+        } },
+      });
+    api.post.mockResolvedValue({ data: { started: true, stato: 'avvio', anno: 2025 } });
+
+    render(<AnnoImportazioneCard />);
+    expect(await screen.findByRole('button', { name: 'Importa 2025 da Drive' })).toBeInTheDocument();
+    await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).click(
+      screen.getByRole('button', { name: 'Importa 2025 da Drive' })
+    );
+    await vi.advanceTimersByTimeAsync(4000);
+
+    expect(await screen.findByTestId('esito-import-anno')).toHaveTextContent('Esito import 2025');
+    expect(api.get).toHaveBeenCalledWith('/api/config-import/importa-anno/stato');
+    vi.useRealTimers();
   });
 });

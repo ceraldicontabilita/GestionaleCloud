@@ -9,7 +9,8 @@ from fastapi import APIRouter, Body, Depends, HTTPException
 
 from app.database import Database
 from app.services.config_import import (
-    get_anno_importazione_attivo, set_anno_importazione_attivo, importa_anno_da_drive,
+    get_anno_importazione_attivo, set_anno_importazione_attivo,
+    avvia_import_anno, get_stato_import_anno,
 )
 from app.utils.ruoli import richiedi_admin
 
@@ -54,4 +55,11 @@ async def importa_anno(
         raise HTTPException(status_code=400, detail="Campo 'anno' mancante o non valido")
     if anno < 2000 or anno > 2100:
         raise HTTPException(status_code=400, detail="Anno non valido")
-    return await importa_anno_da_drive(Database.get_db(), anno)
+    return await avvia_import_anno(Database.get_db(), anno)
+
+
+@router.get("/importa-anno/stato")
+async def stato_importa_anno(
+    _admin: Dict[str, Any] = Depends(richiedi_admin),
+) -> Dict[str, Any]:
+    return await get_stato_import_anno(Database.get_db())

@@ -212,7 +212,16 @@ export function AnnoImportazioneCard() {
     setResult(null);
     try {
       const response = await api.post('/api/config-import/importa-anno', { anno });
-      setResult(response.data);
+      if (!response.data.started) {
+        throw new Error(`È già in corso l'import ${response.data.anno ?? ''}`.trim());
+      }
+      let stato = response.data;
+      while (['avvio', 'in_corso'].includes(stato.stato)) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        stato = (await api.get('/api/config-import/importa-anno/stato')).data;
+      }
+      if (stato.stato === 'errore') throw new Error(stato.errore || 'Import non riuscito');
+      setResult(stato.risultato);
       toast.success(`Import ${anno} completato`);
     } catch (error) {
       toast.error(`Errore import: ${error.response?.data?.detail || error.message}`);

@@ -200,3 +200,34 @@ def test_promozione_ignora_anni_diversi():
 
     assert esito["corrispettivi_promossi"] == 0
     assert db["corrispettivi"].docs[0]["stato_import"] == "archivio_storico"  # intoccato
+
+
+def test_job_import_anno_persiste_esito(monkeypatch):
+    db = _Db()
+
+    async def _fake_import(db_, anno):
+        return {"anno": anno, "sync_fatture": {"imported": 2}}
+
+    monkeypatch.setattr(mod, "importa_anno_da_drive", _fake_import)
+    _run(mod._esegui_import_job(db, 2025))
+
+    stato = _run(mod.get_stato_import_anno(db))
+    assert stato["stato"] == "completato"
+    assert stato["anno"] == 2025
+    assert stato["risultato"]["sync_fatture"]["imported"] == 2
+    assert stato["errore"] is None
+
+
+def test_job_import_anno_persiste_errore_senza_inventare_esito(monkeypatch):
+    db = _Db()
+
+    async def _fake_import(db_, anno):
+        raise RuntimeError("Drive non disponibile")
+
+    monkeypatch.setattr(mod, "importa_anno_da_drive", _fake_import)
+    _run(mod._esegui_import_job(db, 2025))
+
+    stato = _run(mod.get_stato_import_anno(db))
+    assert stato["stato"] == "errore"
+    assert stato["risultato"] is None
+    assert "Drive non disponibile" in stato["errore"]
