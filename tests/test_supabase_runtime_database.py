@@ -103,6 +103,32 @@ def test_hydrate_ritenta_manifest_e_riduce_il_lotto_sui_timeout(monkeypatch):
     assert runtime.fetch_limits[:3] == [1000, 500, 250]
 
 
+def test_manifest_limita_attesa_tra_retry(monkeypatch):
+    delays = []
+
+    async def fake_sleep(delay):
+        delays.append(delay)
+
+    class FourTimeouts(FakeRestSupabase):
+        def __init__(self):
+            super().__init__({"fatture": [{"_id": "f1"}]})
+            self.attempts = 0
+
+        async def _rpc(self, function_name, payload):
+            if function_name == "gc_collection_manifest":
+                self.attempts += 1
+                if self.attempts < 5:
+                    raise RuntimeError("canceling statement due to statement timeout")
+            return await super()._rpc(function_name, payload)
+
+    monkeypatch.setattr("app.services.supabase_runtime_database.asyncio.sleep", fake_sleep)
+    runtime = FourTimeouts()
+    asyncio.run(runtime.hydrate())
+
+    assert runtime.attempts == 5
+    assert delays == [0.5, 1.0, 2.0, 2.0]
+
+
 def test_hydrate_accetta_righe_aggiunte_dopo_il_manifest():
     runtime = ConcurrentAppendSupabase({"alerts": [{"_id": "iniziale"}]})
 

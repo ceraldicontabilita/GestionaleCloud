@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 _PAGE_SIZE = 1000
 _MIN_READ_PAGE_SIZE = 50
 _READ_RETRIES = 5
+_MANIFEST_RETRIES = 10
 _WRITE_CHUNK_SIZE = 200
 
 
@@ -175,17 +176,17 @@ class SupabaseRuntimeDatabase(SheetDatabase):
 
     async def _manifest(self) -> list[dict[str, Any]]:
         result = None
-        for attempt in range(_READ_RETRIES):
+        for attempt in range(_MANIFEST_RETRIES):
             try:
                 result = await self._rpc("gc_collection_manifest", {})
                 break
             except RuntimeError as exc:
-                if "statement timeout" not in str(exc).lower() or attempt == _READ_RETRIES - 1:
+                if "statement timeout" not in str(exc).lower() or attempt == _MANIFEST_RETRIES - 1:
                     raise
-                delay = 0.5 * (2 ** attempt)
+                delay = min(0.5 * (2 ** attempt), 2.0)
                 logger.warning(
                     "Manifest Supabase in timeout; nuovo tentativo %s/%s tra %.1fs",
-                    attempt + 2, _READ_RETRIES, delay,
+                    attempt + 2, _MANIFEST_RETRIES, delay,
                 )
                 await asyncio.sleep(delay)
         if not isinstance(result, list):
