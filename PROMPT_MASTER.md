@@ -834,7 +834,7 @@ Gli alias senza valore vanno configurati nel secret/config store di Render. Non 
 
 ## Appendice D — Tutti i router e tutti gli endpoint
 
-Route table sorgente: **1156**; attivi da ricreare: **719**; quarantena: **437** (`verificare` 407, `admin-only` 30).
+Route table sorgente: **1157**; attivi da ricreare: **720**; quarantena: **437** (`verificare` 407, `admin-only` 30).
 
 `attivo` significa da ricreare con contratto e test; `quarantena` significa non esporre nel nuovo runtime finché consumer, autorizzazione e test non sono provati. L'elenco è completo e include entrambe le categorie.
 
@@ -1246,11 +1246,12 @@ Route table sorgente: **1156**; attivi da ricreare: **719**; quarantena: **437**
 - **quarantena: verificare** — `POST /api/commercialista/schedula-export` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **attivo** — `POST /api/commercialista/segna-inviata` — in uso: FE
 
-### Router `config_import` (3)
+### Router `config_import` (4)
 
 - **attivo** — `GET /api/config-import/anno` — in uso: FE
 - **attivo** — `PUT /api/config-import/anno` — in uso: FE
 - **attivo** — `POST /api/config-import/importa-anno` — in uso: FE
+- **attivo** — `GET /api/config-import/importa-anno/stato` — in uso: FE
 
 ### Router `configurazioni` (9)
 
