@@ -26,7 +26,7 @@ from app.services.sheets_document_store import SheetDatabase
 
 logger = logging.getLogger(__name__)
 
-_PAGE_SIZE = 1000
+_PAGE_SIZE = 50
 _MIN_READ_PAGE_SIZE = 10
 _READ_RETRIES = 5
 _MANIFEST_RETRIES = 3
@@ -154,6 +154,13 @@ def _rifiuti_da_risposta(result: Any) -> list[dict[str, Any]]:
     return [item for item in rejected if isinstance(item, dict) and item.get("id_rifiutato")]
 
 
+def _errore_lettura_transitorio(exc: RuntimeError) -> bool:
+    message = str(exc).lower()
+    return "statement timeout" in message or any(
+        f"http {status}" in message for status in (502, 503, 504, 520)
+    )
+
+
 class SupabaseRuntimeDatabase(SheetDatabase):
     """Archivio documentale con persistenza write-through su Supabase."""
 
@@ -226,7 +233,7 @@ class SupabaseRuntimeDatabase(SheetDatabase):
                 result = await self._rpc("gc_collection_manifest", {})
                 break
             except RuntimeError as exc:
-                if "statement timeout" not in str(exc).lower():
+                if not _errore_lettura_transitorio(exc):
                     raise
                 if attempt == _MANIFEST_RETRIES - 1:
                     logger.warning(
@@ -271,7 +278,7 @@ class SupabaseRuntimeDatabase(SheetDatabase):
                     )
                     break
                 except RuntimeError as exc:
-                    if "statement timeout" not in str(exc).lower():
+                    if not _errore_lettura_transitorio(exc):
                         raise
                     if page_size > _MIN_READ_PAGE_SIZE:
                         page_size = max(_MIN_READ_PAGE_SIZE, page_size // 2)
