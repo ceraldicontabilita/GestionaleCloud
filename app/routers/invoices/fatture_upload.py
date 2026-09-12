@@ -1653,6 +1653,46 @@ async def upload_fattura_xml(file: UploadFile = File(...)) -> Dict[str, Any]:
     }
 
 
+_SOURCE_METADATA_FIELDS = (
+    "source_document_id",
+    "drive_file_id",
+    "source_parent_id",
+    "source_path",
+    "source_web_view_link",
+    "source_modified_time",
+    "source_mime_type",
+    "source_size",
+    "source_md5",
+    "file_hash",
+    "source_occurrences",
+    "source_documents",
+)
+
+
+def _source_metadata_fields(
+    metadata: Optional[Dict[str, Any]],
+    existing: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Conserva solo metadati di provenienza espliciti e non li perde in promozione."""
+    metadata = metadata or {}
+    existing = existing or {}
+    result: Dict[str, Any] = {}
+    for key in _SOURCE_METADATA_FIELDS:
+        if key in {"source_occurrences", "source_documents"}:
+            merged = []
+            for value in [*(existing.get(key) or []), *(metadata.get(key) or [])]:
+                if value not in merged:
+                    merged.append(value)
+            if merged:
+                result[key] = merged
+        elif existing.get(key) is not None:
+            # Il primo originale registrato resta il riferimento canonico.
+            result[key] = existing[key]
+        elif metadata.get(key) is not None:
+            result[key] = metadata[key]
+    return result
+
+
 async def process_xml_bytes(
     db,
     content: bytes,
@@ -1662,6 +1702,7 @@ async def process_xml_bytes(
     replay_storico: bool = False,
     promote_existing_id: Optional[str] = None,
     promote_invoice_key: Optional[str] = None,
+    source_metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Pipeline CONDIVISA per importare una singola fattura XML dai suoi bytes.
 
@@ -1746,14 +1787,19 @@ async def process_xml_bytes(
             # correggibile (a differenza dell'archivio storico, pensato per
             # sola consultazione).
             if anno_fattura and anno_fattura != anno_attivo:
-                return await archivia_fattura_storica(db, p, filename, source, xml_raw=xml_content)
+                kwargs = {"xml_raw": xml_content}
+                if source_metadata is not None:
+                    kwargs["source_metadata"] = source_metadata
+                return await archivia_fattura_storica(db, p, filename, source, **kwargs)
 
         if replay_storico:
-            return await import_parsed_invoice(
-                db, p, filename, source, xml_raw=xml_content,
-                replay_storico=True,
-            )
+            kwargs = {"xml_raw": xml_content, "replay_storico": True}
+            if source_metadata is not None:
+                kwargs["source_metadata"] = source_metadata
+            return await import_parsed_invoice(db, p, filename, source, **kwargs)
         kwargs = {"xml_raw": xml_content}
+        if source_metadata is not None:
+            kwargs["source_metadata"] = source_metadata
         if promote_existing_id:
             kwargs["existing_invoice_id"] = promote_existing_id
         return await import_parsed_invoice(db, p, filename, source, **kwargs)
@@ -1789,7 +1835,8 @@ async def process_xml_bytes(
 
 
 async def archivia_fattura_storica(db, parsed: Dict[str, Any], filename: str, source: str,
-                                    xml_raw: Optional[str] = None) -> Dict[str, Any]:
+                                    xml_raw: Optional[str] = None,
+                                    source_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Archivia una fattura di un anno precedente SENZA farla entrare nel
     flusso contabile attivo (richiesta utente 14/07/2026: import Drive solo
     per l'anno corrente, il resto "in un archivio fatture consultabile per
@@ -1808,7 +1855,15 @@ async def archivia_fattura_storica(db, parsed: Dict[str, Any], filename: str, so
         parsed.get("supplier_vat", ""),
         parsed.get("invoice_date", ""),
     )
-    if await db[Collections.INVOICES].find_one({"invoice_key": invoice_key}):
+    existing_invoice = await db[Collections.INVOICES].find_one(
+        {"invoice_key": invoice_key}, {"_id": 0}
+    )
+    if existing_invoice:
+        provenance = _source_metadata_fields(source_metadata, existing_invoice)
+        if provenance:
+            await db[Collections.INVOICES].update_one(
+                {"invoice_key": invoice_key}, {"$set": provenance}
+            )
         return {"status": "duplicate", "filename": filename,
                 "invoice_number": parsed.get("invoice_number")}
 
@@ -1849,6 +1904,7 @@ async def archivia_fattura_storica(db, parsed: Dict[str, Any], filename: str, so
         "data_fattura": invoice_date,
         "importo_totale": float(parsed.get("total_amount", 0) or 0),
         "anno": int(invoice_date[:4]) if invoice_date[:4].isdigit() else None,
+        **_source_metadata_fields(source_metadata),
     }
     await db[Collections.INVOICES].insert_one(invoice.copy())
     invoice.pop("_id", None)
@@ -1873,7 +1929,8 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
                                  xml_raw: Optional[str] = None,
                                  piva_validator=_piva_plausibile,
                                  replay_storico: bool = False,
-                                 existing_invoice_id: Optional[str] = None) -> Dict[str, Any]:
+                                 existing_invoice_id: Optional[str] = None,
+                                 source_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Pipeline CONDIVISA per importare una fattura già "parsata" in un dict
     con lo schema di `parse_fattura_xml` (invoice_number/supplier_vat/...).
 
@@ -1893,6 +1950,11 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
         {"invoice_key": invoice_key}, {"_id": 0}
     )
     if existing_invoice and str(existing_invoice.get("id")) != str(existing_invoice_id or ""):
+        provenance = _source_metadata_fields(source_metadata, existing_invoice)
+        if provenance:
+            await db[Collections.INVOICES].update_one(
+                {"invoice_key": invoice_key}, {"$set": provenance}
+            )
         return {"status": "duplicate", "filename": filename,
                 "invoice_number": parsed.get("invoice_number")}
     if existing_invoice_id and not existing_invoice:
@@ -1966,6 +2028,7 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
         "stato_import": "promosso_da_archivio" if existing_invoice_id else "attivo",
         "promotion_source": source if existing_invoice_id else None,
         "promoted_at": datetime.now(timezone.utc).isoformat() if existing_invoice_id else None,
+        **_source_metadata_fields(source_metadata, existing_invoice),
     }
     if existing_invoice_id:
         await db[Collections.INVOICES].update_one(

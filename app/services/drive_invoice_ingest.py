@@ -8,6 +8,7 @@ Elaborate ed Errori restano sorelle dell'inbox che ha originato il documento.
 """
 import asyncio
 import gc
+import hashlib
 import io
 import json
 import logging
@@ -238,7 +239,10 @@ def _list_xml_files(service, parent_id: str) -> List[Dict[str, Any]]:
     while True:
         res = service.files().list(
             q=q,
-            fields="nextPageToken, files(id, name, mimeType)",
+            fields=(
+                "nextPageToken, files(id, name, mimeType, modifiedTime, "
+                "md5Checksum, size, webViewLink, parents)"
+            ),
             pageSize=100,
             pageToken=page_token,
             supportsAllDrives=True,
@@ -265,6 +269,57 @@ def _download_bytes(service, file_id: str) -> bytes:
     while not done:
         _, done = downloader.next_chunk()
     return buf.getvalue()
+
+
+def _drive_source_metadata(
+    file_info: Dict[str, Any], content: bytes, *,
+    parent_id: Optional[str] = None, source_path: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Metadati stabili per risalire dal record al documento Drive originale."""
+    file_id = str(file_info["id"])
+    occurrences = list(file_info.get("_source_occurrences") or [])
+    if parent_id or source_path:
+        occurrence = {"parent_id": parent_id, "path": source_path}
+        if occurrence not in occurrences:
+            occurrences.append(occurrence)
+    web_view_link = file_info.get("webViewLink") or f"https://drive.google.com/file/d/{file_id}/view"
+    file_hash = hashlib.sha256(content).hexdigest()
+    return {
+        "source_document_id": file_id,
+        "drive_file_id": file_id,
+        "source_parent_id": parent_id or (file_info.get("parents") or [None])[0],
+        "source_path": source_path,
+        "source_web_view_link": web_view_link,
+        "source_modified_time": file_info.get("modifiedTime"),
+        "source_mime_type": file_info.get("mimeType"),
+        "source_size": file_info.get("size"),
+        "source_md5": file_info.get("md5Checksum"),
+        "file_hash": file_hash,
+        "source_occurrences": occurrences,
+        "source_documents": [{
+            "drive_file_id": file_id,
+            "file_hash": file_hash,
+            "web_view_link": web_view_link,
+            "modified_time": file_info.get("modifiedTime"),
+        }],
+    }
+
+
+def _add_source_occurrence(
+    unique_files: Dict[str, Dict[str, Any]], file_info: Dict[str, Any],
+    folder_name: str, folder_id: str,
+) -> None:
+    file_id = str(file_info["id"])
+    occurrence = {"parent_id": folder_id, "path": folder_name}
+    if file_id not in unique_files:
+        unique_files[file_id] = {
+            **file_info,
+            "_source_occurrences": [occurrence],
+            "_source_path": folder_name,
+            "_source_id": folder_id,
+        }
+    elif occurrence not in unique_files[file_id]["_source_occurrences"]:
+        unique_files[file_id]["_source_occurrences"].append(occurrence)
 
 
 def _move_to_folder(service, file_id: str, parent_id: str, target_id: str):
@@ -363,8 +418,12 @@ async def _do_sync(db) -> Dict[str, Any]:
             elaborate_id, error_id = lifecycle_cache[lifecycle_parent_id]
             try:
                 content = _download_bytes(service, fid)
+                source_metadata = _drive_source_metadata(
+                    f, content, parent_id=source_id, source_path=f["_source_path"]
+                )
                 res = await process_xml_bytes(
-                    db, content, fname, source="google_drive", applica_filtro_anno=True
+                    db, content, fname, source="google_drive",
+                    applica_filtro_anno=True, source_metadata=source_metadata,
                 )
                 st = res.get("status")
                 if st == "imported":
@@ -492,7 +551,7 @@ async def ricostruisci_archivio_drive_lotto(
                 files = await asyncio.to_thread(_list_xml_files, service, folder_id)
                 folders[folder_name] = len(files)
                 for file_info in files:
-                    unique_files.setdefault(file_info["id"], file_info)
+                    _add_source_occurrence(unique_files, file_info, folder_name, folder_id)
 
             ordered = sorted(unique_files.values(), key=lambda item: str(item["id"]))
 
@@ -549,6 +608,12 @@ async def ricostruisci_archivio_drive_lotto(
                         source="ricostruzione_drive",
                         applica_filtro_anno=True,
                         replay_storico=True,
+                        source_metadata=_drive_source_metadata(
+                            file_info,
+                            content,
+                            parent_id=file_info.get("_source_id"),
+                            source_path=file_info.get("_source_path"),
+                        ),
                     )
                     status = outcome.get("status")
                     if status == "imported":
@@ -672,7 +737,7 @@ async def ricostruisci_archivio_drive(db) -> Dict[str, Any]:
                 files = await asyncio.to_thread(_list_xml_files, service, folder_id)
                 result["folders"][folder_name] = len(files)
                 for file_info in files:
-                    unique_files.setdefault(file_info["id"], file_info)
+                    _add_source_occurrence(unique_files, file_info, folder_name, folder_id)
             result["total"] = len(unique_files)
 
             await db[_SYNC_STATE_COLLECTION].update_one(
@@ -696,6 +761,12 @@ async def ricostruisci_archivio_drive(db) -> Dict[str, Any]:
                         source="ricostruzione_drive",
                         applica_filtro_anno=True,
                         replay_storico=True,
+                        source_metadata=_drive_source_metadata(
+                            file_info,
+                            content,
+                            parent_id=file_info.get("_source_id"),
+                            source_path=file_info.get("_source_path"),
+                        ),
                     )
                     status = outcome.get("status")
                     if status == "imported":
@@ -792,7 +863,13 @@ async def verifica_quadratura_elaborate(db) -> Dict[str, Any]:
                 try:
                     content = _download_bytes(service, fid)
                     res = await process_xml_bytes(
-                        db, content, fname, source="quadratura_drive", applica_filtro_anno=True
+                        db, content, fname, source="quadratura_drive", applica_filtro_anno=True,
+                        source_metadata=_drive_source_metadata(
+                            f,
+                            content,
+                            parent_id=folder["folder_id"],
+                            source_path=folder["relative_path"],
+                        ),
                     )
                     st = res.get("status")
                     if st == "duplicate":
