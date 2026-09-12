@@ -85,6 +85,14 @@ def _wire_canonical_drive_credentials() -> None:
 
 _wire_canonical_drive_credentials()
 
+# Il package services viene inizializzato durante lo startup prima di
+# ``app.scheduler.start_scheduler``. Installiamo qui la policy di coda: il
+# lock resta globale e seriale, ma un job concorrente attende invece di essere
+# perso fino alla ricorrenza successiva.
+from .scheduler_queue_policy import install_scheduler_queue_policy
+
+install_scheduler_queue_policy()
+
 
 __all__ = [
     # Core Services
