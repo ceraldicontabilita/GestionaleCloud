@@ -1660,6 +1660,8 @@ async def process_xml_bytes(
     source: str = "xml_upload",
     applica_filtro_anno: bool = False,
     replay_storico: bool = False,
+    promote_existing_id: Optional[str] = None,
+    promote_invoice_key: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Pipeline CONDIVISA per importare una singola fattura XML dai suoi bytes.
 
@@ -1721,6 +1723,18 @@ async def process_xml_bytes(
     altri_body = parsed.pop("_altri_body", None) or []
 
     async def _importa_una(p: Dict[str, Any]) -> Dict[str, Any]:
+        parsed_key = generate_invoice_key(
+            p.get("invoice_number", ""),
+            p.get("supplier_vat", ""),
+            p.get("invoice_date", ""),
+        )
+        if promote_invoice_key and parsed_key != promote_invoice_key:
+            return {
+                "status": "duplicate",
+                "filename": filename,
+                "invoice_number": p.get("invoice_number"),
+                "skipped_other_body": True,
+            }
         if applica_filtro_anno:
             from app.services.config_import import get_anno_importazione_attivo
             invoice_date = p.get("invoice_date") or ""
@@ -1739,9 +1753,10 @@ async def process_xml_bytes(
                 db, p, filename, source, xml_raw=xml_content,
                 replay_storico=True,
             )
-        return await import_parsed_invoice(
-            db, p, filename, source, xml_raw=xml_content,
-        )
+        kwargs = {"xml_raw": xml_content}
+        if promote_existing_id:
+            kwargs["existing_invoice_id"] = promote_existing_id
+        return await import_parsed_invoice(db, p, filename, source, **kwargs)
 
     risultato = await _importa_una(parsed)
 
@@ -1857,7 +1872,8 @@ async def archivia_fattura_storica(db, parsed: Dict[str, Any], filename: str, so
 async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, source: str,
                                  xml_raw: Optional[str] = None,
                                  piva_validator=_piva_plausibile,
-                                 replay_storico: bool = False) -> Dict[str, Any]:
+                                 replay_storico: bool = False,
+                                 existing_invoice_id: Optional[str] = None) -> Dict[str, Any]:
     """Pipeline CONDIVISA per importare una fattura già "parsata" in un dict
     con lo schema di `parse_fattura_xml` (invoice_number/supplier_vat/...).
 
@@ -1873,9 +1889,15 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
         parsed.get("supplier_vat", ""),
         parsed.get("invoice_date", ""),
     )
-    if await db[Collections.INVOICES].find_one({"invoice_key": invoice_key}):
+    existing_invoice = await db[Collections.INVOICES].find_one(
+        {"invoice_key": invoice_key}, {"_id": 0}
+    )
+    if existing_invoice and str(existing_invoice.get("id")) != str(existing_invoice_id or ""):
         return {"status": "duplicate", "filename": filename,
                 "invoice_number": parsed.get("invoice_number")}
+    if existing_invoice_id and not existing_invoice:
+        return {"status": "error", "filename": filename,
+                "error": "Fattura storica da promuovere non trovata"}
 
     # 4. Fornitore (crea se nuovo) + metodo pagamento
     supplier_result = await ensure_supplier_exists(db, parsed, piva_validator=piva_validator)
@@ -1896,7 +1918,7 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
     # 5. Documento fattura + insert (stessi campi dell'upload manuale, inclusi
     #    i campi speculari in italiano usati da filtri e pagine contabili)
     invoice = {
-        "id": str(uuid.uuid4()),
+        "id": str(existing_invoice_id or uuid.uuid4()),
         "invoice_key": invoice_key,
         "supplier_id": supplier_result.get("supplier_id"),
         "invoice_number": parsed.get("invoice_number", ""),
@@ -1923,11 +1945,16 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
         "dati_ddt": parsed.get("dati_ddt", []),
         "metodo_pagamento": metodo_pagamento,
         "status": "imported",
-        "source": source,
+        "source": (existing_invoice or {}).get("source") or source,
+        "source_history": list(dict.fromkeys([
+            *((existing_invoice or {}).get("source_history") or []),
+            *(([(existing_invoice or {}).get("source")] if (existing_invoice or {}).get("source") else [])),
+            source,
+        ])),
         "filename": filename,
         "xml_raw": xml_raw,
         "xml_body_index": parsed.get("body_index", 0),
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": (existing_invoice or {}).get("created_at") or datetime.now(timezone.utc).isoformat(),
         "cedente_piva": parsed.get("supplier_vat", ""),
         "cedente_denominazione": parsed.get("supplier_name", ""),
         "numero_fattura": parsed.get("invoice_number", ""),
@@ -1936,8 +1963,16 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
         "anno": int(invoice_date[:4]) if invoice_date[:4].isdigit() else None,
         "replay_storico": replay_storico,
         "stato_derivati": "da_ricalcolare" if replay_storico else "allineato",
+        "stato_import": "promosso_da_archivio" if existing_invoice_id else "attivo",
+        "promotion_source": source if existing_invoice_id else None,
+        "promoted_at": datetime.now(timezone.utc).isoformat() if existing_invoice_id else None,
     }
-    await db[Collections.INVOICES].insert_one(invoice.copy())
+    if existing_invoice_id:
+        await db[Collections.INVOICES].update_one(
+            {"id": existing_invoice_id}, {"$set": invoice}
+        )
+    else:
+        await db[Collections.INVOICES].insert_one(invoice.copy())
     invoice.pop("_id", None)
 
     # La ricostruzione dell'archivio non equivale all'arrivo di una nuova
