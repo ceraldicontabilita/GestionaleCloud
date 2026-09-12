@@ -31,6 +31,12 @@ class _FakeCollection:
     async def insert_one(self, doc, *a, **k):
         self.docs.append(dict(doc))
 
+    async def update_one(self, query, update, *a, **k):
+        for doc in self.docs:
+            if all(doc.get(key) == value for key, value in query.items()):
+                doc.update(update.get("$set", {}))
+                break
+
 
 class _FakeDb:
     def __init__(self):
@@ -89,15 +95,60 @@ def test_archivia_fattura_storica_idempotente():
     assert len(db["invoices"].docs) == 1
 
 
+def test_duplicate_storico_riceve_provenienza_drive_senza_nuovo_record():
+    db = _FakeDb()
+    parsed = _parsed(_ANNO_PASSATO)
+    _run(fu_mod.archivia_fattura_storica(db, parsed, "f.xml", "google_drive"))
+
+    metadata = {
+        "drive_file_id": "drive-1",
+        "source_document_id": "drive-1",
+        "file_hash": "a" * 64,
+        "source_web_view_link": "https://drive.google.com/file/d/drive-1/view",
+        "source_occurrences": [{"parent_id": "folder-1", "path": "2023/Elaborate"}],
+        "source_documents": [{"drive_file_id": "drive-1", "file_hash": "a" * 64}],
+    }
+    result = _run(fu_mod.archivia_fattura_storica(
+        db, parsed, "f.xml", "ricostruzione_drive", source_metadata=metadata,
+    ))
+
+    assert result["status"] == "duplicate"
+    assert len(db["invoices"].docs) == 1
+    assert db["invoices"].docs[0]["drive_file_id"] == "drive-1"
+    assert db["invoices"].docs[0]["file_hash"] == "a" * 64
+
+
+def test_provenienza_canonica_non_viene_sovrascritta_e_le_fonti_si_accodano():
+    existing = {
+        "drive_file_id": "drive-originale",
+        "file_hash": "a" * 64,
+        "source_occurrences": [{"parent_id": "folder-a", "path": "A"}],
+        "source_documents": [{"drive_file_id": "drive-originale", "file_hash": "a" * 64}],
+    }
+    incoming = {
+        "drive_file_id": "drive-secondo",
+        "file_hash": "b" * 64,
+        "source_occurrences": [{"parent_id": "folder-b", "path": "B"}],
+        "source_documents": [{"drive_file_id": "drive-secondo", "file_hash": "b" * 64}],
+    }
+
+    merged = fu_mod._source_metadata_fields(incoming, existing)
+
+    assert merged["drive_file_id"] == "drive-originale"
+    assert merged["file_hash"] == "a" * 64
+    assert len(merged["source_occurrences"]) == 2
+    assert len(merged["source_documents"]) == 2
+
+
 def test_process_xml_bytes_filtro_anno_route_verso_archivio(monkeypatch):
     monkeypatch.setattr(fu_mod, "parse_fattura_xml", lambda xml: _parsed(_ANNO_PASSATO))
     chiamate = []
 
-    async def fake_archivia(db, parsed, filename, source, xml_raw=None):
+    async def fake_archivia(db, parsed, filename, source, xml_raw=None, **kwargs):
         chiamate.append("archivio")
         return {"status": "archiviata"}
 
-    async def fake_import(db, parsed, filename, source, xml_raw=None):
+    async def fake_import(db, parsed, filename, source, xml_raw=None, **kwargs):
         chiamate.append("attivo")
         return {"status": "imported"}
 
@@ -118,11 +169,11 @@ def test_process_xml_bytes_filtro_anno_corrente_va_al_flusso_attivo(monkeypatch)
     monkeypatch.setattr(fu_mod, "parse_fattura_xml", lambda xml: _parsed(_ANNO_CORRENTE))
     chiamate = []
 
-    async def fake_archivia(db, parsed, filename, source, xml_raw=None):
+    async def fake_archivia(db, parsed, filename, source, xml_raw=None, **kwargs):
         chiamate.append("archivio")
         return {"status": "archiviata"}
 
-    async def fake_import(db, parsed, filename, source, xml_raw=None):
+    async def fake_import(db, parsed, filename, source, xml_raw=None, **kwargs):
         chiamate.append("attivo")
         return {"status": "imported"}
 
