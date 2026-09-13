@@ -159,3 +159,22 @@ def test_statistiche_restano_disponibili_nel_database_e2e_in_memoria(monkeypatch
     assert esito["totale_importo"] == 366.0
     assert esito["pagate"] == 1
     assert esito["fornitori_unici"] == 2
+
+
+def test_statistiche_non_nascondono_collisioni_e_escludono_archiviati(monkeypatch):
+    db = MemorySheetsClient()["fatture_statistiche_evidenza"]
+    monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
+    base = {
+        "invoice_number": "1", "invoice_date": "2026-08-08",
+        "supplier_vat": "00000000001", "total_amount": 100.0,
+    }
+    _run(db["invoices"].insert_many([
+        {**base, "id": "a", "file_hash": "hash-a", "status": "imported"},
+        {**base, "id": "b", "file_hash": "hash-b", "status": "da_verificare"},
+        {**base, "id": "c", "file_hash": "hash-c", "status": "archived"},
+    ]))
+
+    esito = _run(mod.get_statistiche(anno=2026))
+
+    assert esito["totale_fatture"] == 2
+    assert esito["totale_importo"] == 200.0
