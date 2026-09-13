@@ -78,6 +78,17 @@ movimento bancario e scrittura contabile sono prove distinte. Possono condivider
 
 ## 5. Architettura dati Drive-only
 
+### Aggiornamento runtime Supabase — 13/09/2026
+
+Come stabilito dal titolare il 03/09/2026 e documentato in `CLAUDE.md`,
+la persistenza corrente usa Supabase; Drive conserva gli originali. La
+descrizione Drive-only seguente riguarda l'assetto precedente.
+All'avvio il catalogo deve elencare dinamicamente tutte le collezioni e i
+conteggi, senza calcolare il digest globale dei payload. Il manifest con
+impronte resta disponibile per gli audit. Un timeout non autorizza un elenco
+statico incompleto né uno stato healthy con archivi omessi. La lettura deve
+conservare integralmente ID, fonti e documenti, senza reimportazioni.
+
 La destinazione definitiva usa **Google Drive per gli originali** e **Google
 Sheets/Excel collegato a Drive per registri, progressivi, indici e relazioni**.
 Il runtime usa esclusivamente Drive/Sheets. Non esistono backend alternativi,

@@ -22,7 +22,7 @@ class FakeRestSupabase(SupabaseRuntimeDatabase):
         }
 
     async def _rpc(self, function_name, payload):
-        if function_name == "gc_collection_manifest":
+        if function_name == "gc_collection_catalog":
             return [
                 {
                     "collection": collection,
@@ -65,7 +65,7 @@ class TimeoutRestSupabase(FakeRestSupabase):
         self.fetch_limits = []
 
     async def _rpc(self, function_name, payload):
-        if function_name == "gc_collection_manifest":
+        if function_name == "gc_collection_catalog":
             self.manifest_attempts += 1
             if self.manifest_attempts < 3:
                 raise RuntimeError("canceling statement due to statement timeout")
@@ -79,7 +79,7 @@ class TimeoutRestSupabase(FakeRestSupabase):
 class ConcurrentAppendSupabase(FakeRestSupabase):
     async def _rpc(self, function_name, payload):
         result = await super()._rpc(function_name, payload)
-        if function_name == "gc_collection_manifest":
+        if function_name == "gc_collection_catalog":
             self.remote["alerts"]["nuovo"] = {"_id": "nuovo", "tipo": "concorrente"}
         return result
 
@@ -319,7 +319,7 @@ def test_manifest_limita_attesa_tra_retry(monkeypatch):
             self.attempts = 0
 
         async def _rpc(self, function_name, payload):
-            if function_name == "gc_collection_manifest":
+            if function_name == "gc_collection_catalog":
                 self.attempts += 1
                 if self.attempts < 3:
                     raise RuntimeError("canceling statement due to statement timeout")
@@ -333,7 +333,7 @@ def test_manifest_limita_attesa_tra_retry(monkeypatch):
     assert delays == [0.5, 1.0]
 
 
-def test_manifest_usa_catalogo_bootstrap_solo_dopo_tutti_i_timeout(monkeypatch):
+def test_manifest_non_avvia_un_archivio_parziale_dopo_timeout(monkeypatch):
     runtime = FakeRestSupabase()
     attempts = 0
 
@@ -347,14 +347,53 @@ def test_manifest_usa_catalogo_bootstrap_solo_dopo_tutti_i_timeout(monkeypatch):
 
     monkeypatch.setattr(runtime, "_rpc", always_timeout)
     monkeypatch.setattr("app.services.supabase_runtime_database.asyncio.sleep", no_sleep)
-    manifest = asyncio.run(runtime._manifest())
+    with pytest.raises(RuntimeError, match="archivio parziale"):
+        asyncio.run(runtime._manifest())
 
     assert attempts == 3
-    assert len(manifest) >= 70
-    assert all(row["row_count"] == 0 and row["bootstrap"] for row in manifest)
-    assert {"documents_inbox", "invoices", "prima_nota_cassa"}.issubset(
-        {row["collection"] for row in manifest}
-    )
+
+
+def test_catalogo_carica_archivi_contabili_e_collezioni_nuove():
+    remote = {name: [{"_id": "origine", "source_id": "documento"}] for name in (
+        "movimenti_contabili", "bank_payment_allocations", "riconciliazioni_match",
+        "verbali_noleggio", "job_state", "nuova_collezione_non_predefinita",
+    )}
+    runtime = FakeRestSupabase(remote)
+    result = asyncio.run(runtime.hydrate())
+    assert result["righe"] == len(remote)
+    assert set(asyncio.run(runtime.list_collection_names())) == set(remote)
+    for name in remote:
+        assert asyncio.run(runtime[name].find({}).to_list(None)) == remote[name]
+
+
+def test_catalogo_fallback_dinamico_solo_rpc_assente(monkeypatch):
+    runtime = FakeRestSupabase()
+    calls = []
+
+    async def rpc(function, payload):
+        calls.append(function)
+        if function == "gc_collection_catalog":
+            raise SupabaseRPCError(function, 404, "PGRST202", "not found")
+        return [{"collection": "movimenti_contabili", "row_count": 304}]
+
+    monkeypatch.setattr(runtime, "_rpc", rpc)
+    assert asyncio.run(runtime._manifest())[0]["row_count"] == 304
+    assert calls == ["gc_collection_catalog", "gc_collection_manifest"]
+
+
+@pytest.mark.parametrize("status,code", [(403, "42501"), (404, "42P01")])
+def test_catalogo_non_nasconde_errori_permessi_o_schema(monkeypatch, status, code):
+    runtime = FakeRestSupabase()
+    calls = []
+
+    async def rpc(function, payload):
+        calls.append(function)
+        raise SupabaseRPCError(function, status, code, "errore remoto")
+
+    monkeypatch.setattr(runtime, "_rpc", rpc)
+    with pytest.raises(SupabaseRPCError):
+        asyncio.run(runtime._manifest())
+    assert calls == ["gc_collection_catalog"]
 
 
 def test_hydrate_accetta_righe_aggiunte_dopo_il_manifest():

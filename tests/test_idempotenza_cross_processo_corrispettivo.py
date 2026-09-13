@@ -104,7 +104,7 @@ class ProcessoFinto(SupabaseRuntimeDatabase):
         self.postgres = postgres
 
     async def _rpc(self, function_name, payload):
-        if function_name == "gc_collection_manifest":
+        if function_name == "gc_collection_catalog":
             return self.postgres.manifest()
         if function_name == "gc_fetch_collection":
             return self.postgres.fetch(

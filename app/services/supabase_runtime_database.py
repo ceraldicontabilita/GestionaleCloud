@@ -46,36 +46,6 @@ _SHARD_TO_COLLECTION = {
     for shard in shards
 }
 
-# Catalogo di bootstrap verificato sul registro live. Il manifest RPC resta la
-# fonte primaria; questo elenco evita che un digest globale in timeout renda
-# impossibile avviare una nuova istanza. Con row_count=0 ogni collezione viene
-# comunque letta integralmente fino alla pagina terminale.
-_BOOTSTRAP_COLLECTIONS = (
-    "acquisti_prodotti", "agenti_segnalazioni", "agenti_stato",
-    "ai_decision_events", "ai_decisions", "alerts", "assegni", "audit_log",
-    "bank_reconciliation_hub", "bonifici_transfers", "cedolini", "cespiti",
-    "chiusure_pos_manuali", "collaudo_report", "commercialista_log",
-    "corrispettivi", "dipendenti", "dizionario_prodotti", "document_import_jobs",
-    "documents_inbox", "drive_estratti_conto_imports", "drive_sync_state",
-    "email_monitor_runs", "entity_relations", "estratto_conto_movimenti",
-    "estratto_conto_nexi", "f24_email_settings", "f24_riconciliazione_alerts",
-    "f24_unificato", "finanziamenti_soci_movimenti", "fiscal_document_versions",
-    "fiscal_documents", "fiscal_evidence", "fiscal_pages", "fornitori",
-    "fornitori_keywords", "invoices", "menu_allergens", "menu_categories",
-    "menu_immagini", "menu_products", "menu_subcategories", "mfa_settings",
-    "migration_runs", "mittenti_email", "operazioni_da_confermare",
-    "pagamenti_operazioni", "partite_aperte", "paypal_statements",
-    "paypal_sync_checkpoints", "paypal_transactions", "piano_conti",
-    "pos_chiusure_audit", "pos_commissioni_giornaliere", "pos_commissioni_imports",
-    "pos_terminal_imports", "pos_terminal_transactions", "prima_nota_banca",
-    "prima_nota_cassa", "prima_nota_migrazioni_audit", "prima_nota_salari",
-    "proposte_associazione_assegni", "quietanze_f24", "regole_categorizzazione",
-    "scadenziario_fornitori", "sistema_stato", "sumup_payouts",
-    "sumup_transactions", "supplier_payment_history", "supplier_payment_methods",
-    "supplier_update_proposals", "system_config", "system_settings",
-    "tax_code_registry", "tax_code_registry_versions", "tfr_accantonamenti",
-    "token_blacklist", "warehouse_inventory",
-)
 
 
 def _json_default(value: Any) -> str:
@@ -242,23 +212,29 @@ class SupabaseRuntimeDatabase(SheetDatabase):
 
     async def _manifest(self) -> list[dict[str, Any]]:
         result = None
+        function_name = "gc_collection_catalog"
         for attempt in range(_MANIFEST_RETRIES):
             try:
-                result = await self._rpc("gc_collection_manifest", {})
+                try:
+                    result = await self._rpc(function_name, {})
+                except SupabaseRPCError as exc:
+                    # Rolling deploy: only a missing new RPC permits the old
+                    # dynamic manifest. Never substitute a static collection list.
+                    if function_name != "gc_collection_catalog" or not (
+                        exc.status == 404 and exc.code == "PGRST202"
+                    ):
+                        raise
+                    function_name = "gc_collection_manifest"
+                    result = await self._rpc(function_name, {})
                 break
             except RuntimeError as exc:
                 if not _errore_lettura_transitorio(exc):
                     raise
                 if attempt == _MANIFEST_RETRIES - 1:
-                    logger.warning(
-                        "Manifest Supabase ancora in timeout dopo %s tentativi; "
-                        "uso catalogo di bootstrap verificato (%s collezioni)",
-                        _MANIFEST_RETRIES, len(_BOOTSTRAP_COLLECTIONS),
-                    )
-                    return [
-                        {"collection": name, "row_count": 0, "bootstrap": True}
-                        for name in _BOOTSTRAP_COLLECTIONS
-                    ]
+                    raise RuntimeError(
+                        "Catalogo Supabase non disponibile: avvio interrotto "
+                        "per evitare un archivio parziale"
+                    ) from exc
                 delay = min(0.5 * (2 ** attempt), 2.0)
                 logger.warning(
                     "Manifest Supabase in timeout; nuovo tentativo %s/%s tra %.1fs",
@@ -400,9 +376,8 @@ class SupabaseRuntimeDatabase(SheetDatabase):
             logical_names = {
                 _SHARD_TO_COLLECTION.get(name, name) for name in manifest_by_name
             }
-            # Nel catalogo di bootstrap e' gia' presente la collezione logica:
-            # questo basta a includere anche gli shard configurati quando il
-            # manifest globale e' in timeout.
+            # Il catalogo dinamico include anche collezioni aggiunte da nuovi
+            # flussi; gli shard configurati confluiscono nella collezione logica.
             for collection_name in sorted(logical_names):
                 documents_by_id: dict[str, dict[str, Any]] = {}
                 without_id: list[dict[str, Any]] = []
