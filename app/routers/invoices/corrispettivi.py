@@ -1450,6 +1450,11 @@ async def inserisci_corrispettivo_manuale(data: Dict[str, Any] = Body(...)) -> D
         pos_reale = round(float(pos_reale), 2) if pos_reale is not None else None
     except (ValueError, TypeError):
         pos_reale = None
+    if pos_reale is not None and (pos_reale < 0 or pos_reale > totale):
+        raise HTTPException(
+            status_code=400,
+            detail="Il POS serale deve essere compreso tra zero e il totale",
+        )
 
     note = (data.get("note") or "").strip()
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -1519,103 +1524,8 @@ async def inserisci_corrispettivo_manuale(data: Dict[str, Any] = Body(...)) -> D
                 }}
             )
 
-    # ── MOVIMENTI PRIMA NOTA CASSA (conferma → 2 movimenti stesso giorno) ──
-    # Entrata = intero corrispettivo giornaliero; uscita = POS elettronico
-    # (in viaggio verso la banca): il netto cassa e' il solo contante.
-    # ATOMICO: il flag prima_nota_cassa_generata viene preso con un
-    # aggiornamento condizionato — un doppio click sulla Conferma trova il
-    # flag gia' impostato e NON crea movimenti doppi.
-    movimenti_cassa = None
-    claim = await db["corrispettivi"].find_one_and_update(
-        {"data": data_str, "prima_nota_cassa_generata": {"$ne": True}},
-        {"$set": {"prima_nota_cassa_generata": True,
-                  "prima_nota_cassa_generata_at": now_iso}},
-    )
-    if claim is not None:
-        entrata_id = str(uuid.uuid4())
-        movimento_entrata = {
-            "id": entrata_id,
-            "data": data_str,
-            "tipo": "entrata",
-            "categoria": "Corrispettivi",
-            "descrizione": f"Corrispettivi {data_str}",
-            "importo": totale,
-            "corrispettivo_id": corr_id,
-            "pagato_contanti": round(totale - (pos_reale or 0), 2),
-            "pagato_elettronico": round(pos_reale or 0, 2),
-            "totale_giornata": totale,
-            "source": "conferma_corrispettivo_manuale",
-            "created_at": now_iso,
-        }
-        await scrivi_movimento(db, "cassa", movimento_entrata)
-        movimenti_cassa = {"entrata_id": entrata_id, "uscita_pos_id": None}
-
-        if pos_reale is not None and pos_reale > 0:
-            uscita_id = str(uuid.uuid4())
-            await scrivi_movimento(db, "cassa", {
-                "id": uscita_id,
-                "data": data_str,
-                "tipo": "uscita",
-                "categoria": "POS Verso Banca",
-                "descrizione": f"Battuto POS {data_str} → Banca",
-                "importo": pos_reale,
-                "corrispettivo_id": corr_id,
-                "source": "conferma_corrispettivo_manuale",
-                "created_at": now_iso,
-            })
-            movimenti_cassa["uscita_pos_id"] = uscita_id
-
-        # Audit: chi ha confermato e quando, collegato al corrispettivo.
-        try:
-            from app.services.audit_logger import log_evento
-            await log_evento(
-                modulo="corrispettivi",
-                azione="conferma_corrispettivo_manuale",
-                entita_id=corr_id,
-                entita_collection="corrispettivi",
-                db=db,
-                nuovo_stato={"totale": totale, "pos_serale": pos_reale,
-                             "movimenti_cassa": movimenti_cassa},
-                fonte="corrispettivi_manuale",
-                utente=str(data.get("performed_by") or "operatore"),
-            )
-        except Exception:
-            logger.exception("Audit conferma corrispettivo manuale fallito")
-    else:
-        # Gia' confermato: un doppio click identico non fa nulla di nuovo,
-        # ma una CORREZIONE (secondo invio con importi diversi) aggiorna i
-        # movimenti cassa esistenti invece di lasciarli col vecchio valore.
-        await db["prima_nota_cassa"].update_one(
-            {"corrispettivo_id": corr_id, "tipo": "entrata",
-             "source": "conferma_corrispettivo_manuale"},
-            {"$set": {"importo": totale, "totale_giornata": totale,
-                      "pagato_elettronico": round(pos_reale or 0, 2),
-                      "pagato_contanti": round(totale - (pos_reale or 0), 2),
-                      "updated_at": now_iso}},
-        )
-        if pos_reale is not None and pos_reale > 0:
-            res_upd = await db["prima_nota_cassa"].update_one(
-                {"corrispettivo_id": corr_id, "tipo": "uscita",
-                 "source": "conferma_corrispettivo_manuale"},
-                {"$set": {"importo": pos_reale, "updated_at": now_iso}},
-            )
-            if res_upd.matched_count == 0:
-                # POS aggiunto solo al secondo invio: crea l'uscita mancante
-                await scrivi_movimento(db, "cassa", {
-                    "id": str(uuid.uuid4()),
-                    "data": data_str,
-                    "tipo": "uscita",
-                    "categoria": "POS Verso Banca",
-                    "descrizione": f"Battuto POS {data_str} → Banca",
-                    "importo": pos_reale,
-                    "corrispettivo_id": corr_id,
-                    "source": "conferma_corrispettivo_manuale",
-                    "created_at": now_iso,
-                })
-        movimenti_cassa = {"gia_confermato": True, "importi_aggiornati": True}
-
     # Salva anche il POS reale nel registro manuale canonico e riallinea
-    # l'uscita Cassa + il trasferimento atteso Banca. Il valore XML resta
+    # il credito atteso verso il gestore. Il valore XML resta
     # separato e non viene mai usato come sostituto del terminale manuale.
     pos_result = None
     if pos_reale is not None and pos_reale >= 0:
@@ -1626,6 +1536,61 @@ async def inserisci_corrispettivo_manuale(data: Dict[str, Any] = Body(...)) -> D
             note=note,
             actor={"user_id": str(data.get("performed_by") or "operatore")},
         )
+
+    # La Cassa contiene solo la quota fisica. Una correzione aggiorna la stessa
+    # riga; se il giorno e' tutto elettronico, l'eventuale riga precedente viene
+    # archiviata senza cancellarne la provenienza.
+    quota_contanti = round(totale - (pos_reale or 0), 2)
+    filtro_cassa = {
+        "corrispettivo_id": corr_id, "tipo": "entrata",
+        "source": "conferma_corrispettivo_manuale",
+        "status": {"$nin": ["deleted", "archived"]},
+    }
+    esistente_cassa = await db["prima_nota_cassa"].find_one(filtro_cassa)
+    if quota_contanti > 0:
+        campi_cassa = {
+            "importo": quota_contanti, "totale_giornata": totale,
+            "pagato_elettronico": round(pos_reale or 0, 2),
+            "pagato_contanti": quota_contanti, "updated_at": now_iso,
+        }
+        if esistente_cassa:
+            await db["prima_nota_cassa"].update_one(
+                {"id": esistente_cassa["id"]}, {"$set": campi_cassa}
+            )
+            entrata_id = esistente_cassa["id"]
+        else:
+            entrata_id = str(uuid.uuid4())
+            await scrivi_movimento(db, "cassa", {
+                "id": entrata_id, "data": data_str, "tipo": "entrata",
+                "categoria": "Corrispettivi",
+                "descrizione": f"Corrispettivi contanti {data_str}",
+                "corrispettivo_id": corr_id,
+                "source": "conferma_corrispettivo_manuale",
+                "created_at": now_iso, **campi_cassa,
+            })
+        movimenti_cassa = {"entrata_id": entrata_id, "uscita_pos_id": None}
+    else:
+        if esistente_cassa:
+            await db["prima_nota_cassa"].update_one(
+                {"id": esistente_cassa["id"]},
+                {"$set": {"status": "archived", "deleted": True,
+                          "deleted_reason": "corrispettivo_tutto_elettronico",
+                          "deleted_at": now_iso}},
+            )
+        movimenti_cassa = {"entrata_id": None, "uscita_pos_id": None}
+
+    try:
+        from app.services.audit_logger import log_evento
+        await log_evento(
+            modulo="corrispettivi", azione="conferma_corrispettivo_manuale",
+            entita_id=corr_id, entita_collection="corrispettivi", db=db,
+            nuovo_stato={"totale": totale, "pos_serale": pos_reale,
+                         "movimenti_cassa": movimenti_cassa},
+            fonte="corrispettivi_manuale",
+            utente=str(data.get("performed_by") or "operatore"),
+        )
+    except Exception:
+        logger.exception("Audit conferma corrispettivo manuale fallito")
 
     return {
         "success": True,

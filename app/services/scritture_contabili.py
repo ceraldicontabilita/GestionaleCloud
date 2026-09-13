@@ -623,16 +623,15 @@ async def registra_chiusura_pos_reale(
     fiscale. In un'unica operazione logica vengono mantenuti coerenti:
 
     - ``chiusure_pos_manuali``: verita' manuale del terminale;
-    - uscita ``POS Verso Banca`` in Prima Nota Cassa;
-    - trasferimento atteso speculare in Prima Nota Banca, che verra'
+    - credito verso il gestore POS in Prima Nota Banca, che verra'
       riconciliato dall'estratto conto reale.
 
     L'importo zero e' esplicito: archivia gli eventuali trasferimenti
     sintetici del giorno e impedisce il fallback al valore XML.
 
     Con piu' circuiti (Numia, SumUp, ...) ``importo`` e' la chiusura del
-    singolo ``gestore`` e ogni circuito ha la SUA coppia uscita-cassa /
-    entrata-banca, con un ``trasferimento_id`` proprio: gli accrediti arrivano
+    singolo ``gestore`` e ogni circuito ha il SUO credito, con un
+    ``trasferimento_id`` proprio: gli accrediti arrivano
     separati (NUMIA sul conto BPM, payout sul conto SumUp) e una riga unica
     col totale non sarebbe riconciliabile con nessuno dei due.
 
@@ -770,9 +769,21 @@ async def registra_chiusura_pos_reale(
     )
 
     filtro_attivo = {"status": {"$nin": ["deleted", "archived"]}}
-    # Ogni circuito ha la SUA coppia uscita-cassa / entrata-banca: gli accrediti
-    # arrivano separati (NUMIA sul conto BPM, payout sul conto SumUp) e una riga
-    # unica col totale non sarebbe riconciliabile con nessuno dei due.
+    # Bonifica conservativa di qualunque rappresentazione storica POS in
+    # Cassa per la giornata. Non la cancelliamo: resta consultabile nell'audit.
+    await db["prima_nota_cassa"].update_many(
+        {"data": data, "tipo": "uscita", **filtro_attivo,
+         "$or": [
+             {"categoria": {"$in": list(conti_pos.CATEGORIE_USCITA_POS)}},
+             {"category": {"$in": list(conti_pos.CATEGORIE_USCITA_POS)}},
+             {"source": {"$in": ["corrispettivo_pos", "trasferimento_pos"]}},
+         ]},
+        {"$set": {"status": "archived", "deleted": True,
+                  "deleted_reason": "pos_non_movimenta_contanti",
+                  "deleted_at": now, "updated_at": now}},
+    )
+    # Il POS non genera mai un'uscita Cassa. Per ogni circuito resta soltanto
+    # il credito verso il gestore, distinto dalla liquidita' bancaria reale.
     # ``and_gestore`` isola le righe di questo circuito; per Nexi comprende
     # anche quelle storiche prive del campo, che sono sue.
     and_gestore = [filtro_gestore_pos(gestore)]
@@ -802,7 +813,7 @@ async def registra_chiusura_pos_reale(
         or str(uuid.uuid4())
     )
 
-    cassa_id = (cassa_mov or {}).get("id")
+    cassa_id = None
     banca_id = (banca_mov or {}).get("id")
 
     circuito = gestore.upper()
@@ -812,7 +823,7 @@ async def registra_chiusura_pos_reale(
         motivo = "chiusura_terminale_pos_zero"
         if cassa_mov:
             await db["prima_nota_cassa"].update_one(
-                {"id": cassa_id},
+                {"id": cassa_mov.get("id")},
                 {"$set": {"status": "deleted", "deleted": True,
                           "deleted_reason": motivo, "deleted_at": now,
                           "updated_at": now}},
@@ -825,57 +836,12 @@ async def registra_chiusura_pos_reale(
                           "updated_at": now}},
             )
     else:
-        descrizione_cassa = descrizione_trasferimento_pos(
-            data,
-            gestore,
-            metadati_fonte["quota_pos_fonte"],
-        )
-        cassa_fields = {
-            "importo": importo,
-            "amount": importo,
-            "categoria": conti_pos.categoria_uscita_pos(gestore),
-            "category": conti_pos.categoria_uscita_pos(gestore),
-            "descrizione": descrizione_cassa,
-            "description": descrizione_cassa,
-            "gestore": gestore,
-            "circuito": circuito,
-            "quota_pos_fonte": metadati_fonte["quota_pos_fonte"],
-            "trasferimento_id": trasferimento_id,
-            "operation_id": trasferimento_id,
-            "updated_at": now,
-            "status": "active",
-            "deleted": False,
-        }
-        if corr_id:
-            cassa_fields["corrispettivo_id"] = corr_id
         if cassa_mov:
             await db["prima_nota_cassa"].update_one(
-                {"id": cassa_id}, {"$set": cassa_fields}
-            )
-        else:
-            nuovo_movimento_cassa = {
-                "data": data,
-                "tipo": "uscita",
-                "importo": importo,
-                "categoria": conti_pos.categoria_uscita_pos(gestore),
-                "descrizione": cassa_fields["descrizione"],
-                "source": "corrispettivo_import",
-                "gestore": gestore,
-                "circuito": circuito,
-                "quota_pos_fonte": metadati_fonte["quota_pos_fonte"],
-                "trasferimento_id": trasferimento_id,
-                "operation_id": trasferimento_id,
-            }
-            if corr_id:
-                nuovo_movimento_cassa["corrispettivo_id"] = corr_id
-                # Stessa identita' della riga che scriverebbe
-                # registra_corrispettivo: i due flussi non possono creare
-                # due uscite POS per lo stesso circuito e giorno.
-                nuovo_movimento_cassa["idempotency_key"] = (
-                    chiave_idempotenza_corrispettivo(corr_id, "cassa_uscita", gestore)
-                )
-            cassa_id = await scrivi_movimento(
-                db, "cassa", nuovo_movimento_cassa
+                {"id": cassa_mov.get("id")},
+                {"$set": {"status": "archived", "deleted": True,
+                          "deleted_reason": "pos_non_movimenta_contanti",
+                          "deleted_at": now, "updated_at": now}},
             )
 
         accreditato = round(float((banca_mov or {}).get("accreditato_ec") or 0), 2)

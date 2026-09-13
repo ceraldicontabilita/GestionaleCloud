@@ -136,7 +136,7 @@ def _righe_pos(db, collection, **extra):
     return _run(db[collection].find(query).to_list(20))
 
 
-def test_ogni_circuito_ha_la_sua_coppia_di_trasferimento():
+def test_ogni_circuito_ha_il_suo_credito_senza_uscita_cassa():
     """Esempio dell'utente: corrispettivo 1.000 = 400 contanti + 500 Nexi +
     100 SumUp. Gli accrediti arrivano separati (NUMIA su BPM, payout su
     SumUp): una riga unica da 600 non sarebbe riconciliabile con nessuno."""
@@ -148,19 +148,15 @@ def test_ogni_circuito_ha_la_sua_coppia_di_trasferimento():
     assert esito["importo_totale_giorno"] == 600.0
 
     uscite = _righe_pos(db, "prima_nota_cassa", source="corrispettivo_import")
-    assert {u["circuito"]: u["importo"] for u in uscite} == {
-        "NUMIA": 500.0, "SUMUP": 100.0}
+    assert uscite == []
 
     banca = _righe_pos(db, "prima_nota_banca", source="trasferimento_pos")
     assert {b["circuito"]: b["importo"] for b in banca} == {
         "NUMIA": 500.0, "SUMUP": 100.0}
 
-    # Ogni circuito e' una sola operazione su due registri: stesso
-    # trasferimento_id fra la sua uscita e la sua entrata, mai incrociato.
-    per_circuito = {u["circuito"]: u["trasferimento_id"] for u in uscite}
-    for riga in banca:
-        assert riga["trasferimento_id"] == per_circuito[riga["circuito"]]
+    per_circuito = {r["circuito"]: r["trasferimento_id"] for r in banca}
     assert per_circuito["NUMIA"] != per_circuito["SUMUP"]
+    assert all(r["natura"] == "credito_pos" for r in banca)
 
 
 def test_il_credito_pos_nasce_in_transito():
@@ -180,11 +176,11 @@ def test_zero_su_un_terminale_non_archivia_il_trasferimento_dell_altro():
     # Correzione serale: su SumUp non era passato nulla.
     _run(registra_chiusura_pos_reale(db, DATA, 0, gestore="sumup"))
 
-    uscite = {u["circuito"]: u for u in
-              _righe_pos(db, "prima_nota_cassa", source="corrispettivo_import")}
-    assert uscite["NUMIA"].get("status") != "deleted"
-    assert uscite["NUMIA"]["importo"] == 500.0
-    assert uscite["SUMUP"]["status"] == "deleted"
+    assert _righe_pos(db, "prima_nota_cassa", source="corrispettivo_import") == []
+    banca = {r["circuito"]: r for r in
+             _righe_pos(db, "prima_nota_banca", source="trasferimento_pos")}
+    assert banca["NUMIA"].get("status") != "deleted"
+    assert banca["SUMUP"]["status"] == "deleted"
     assert _run(chiusura_pos_del_giorno(db, DATA)) == 500.0
 
 
@@ -193,8 +189,9 @@ def test_zero_su_tutti_i_terminali_archivia_il_trasferimento():
     _run(registra_chiusura_pos_reale(db, DATA, 300.0, gestore="nexi"))
     _run(registra_chiusura_pos_reale(db, DATA, 0, gestore="nexi"))
 
-    uscita = _run(_uscita_pos(db))
-    assert uscita["status"] == "deleted"
+    assert _run(_uscita_pos(db)) is None
+    banca = _righe_pos(db, "prima_nota_banca", source="trasferimento_pos")
+    assert banca[0]["status"] == "deleted"
 
 
 def test_nessun_circuito_crea_una_seconda_entrata_di_cassa():

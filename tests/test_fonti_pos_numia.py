@@ -99,7 +99,7 @@ def test_manuale_poi_excel_conferma_senza_secondo_movimento():
     assert len(_run(db.chiusure_pos_manuali.find({}).to_list(10))) == 1
     uscite = _run(db.prima_nota_cassa.find(
         {"source": "corrispettivo_import"}).to_list(10))
-    assert len(uscite) == 1 and uscite[0]["importo"] == 500.0
+    assert uscite == []
 
 
 def test_manuale_poi_excel_diverso_segnala_e_non_duplica():
@@ -115,11 +115,11 @@ def test_manuale_poi_excel_diverso_segnala_e_non_duplica():
     chiusura = _chiusura(db)
     assert chiusura["valori_per_fonte"] == {"manuale": 500.0, "excel": 520.0}
     assert chiusura["importo"] == 520.0
-    # Una sola riga, una sola uscita: evidenze dello stesso ciclo.
+    # Una sola evidenza di chiusura e nessuna uscita di contante.
     assert len(_run(db.chiusure_pos_manuali.find({}).to_list(10))) == 1
     uscite = _run(db.prima_nota_cassa.find(
         {"source": "corrispettivo_import"}).to_list(10))
-    assert len(uscite) == 1 and uscite[0]["importo"] == 520.0
+    assert uscite == []
 
 
 def test_manuale_poi_terminale_percorre_tutta_la_catena():

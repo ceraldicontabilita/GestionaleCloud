@@ -2460,30 +2460,15 @@ async def migra_pos_accrediti_reali(
              "status": {"$nin": ["deleted", "archived"]}},
             {"_id": 0, "id": 1, "importo": 1}).to_list(10)
         if not dry_run:
-            if uscite:
-                if abs(float(uscite[0].get("importo") or 0) - quota) >= 0.01:
-                    aggiornate_cassa += 1
-                await db["prima_nota_cassa"].update_one(
-                    {"id": uscite[0]["id"]},
-                    {"$set": {"importo": quota, "categoria": "POS Verso Banca",
-                              "quota_pos_fonte": fonte,
-                              "trasferimento_id": trasferimento_id, "updated_at": now}})
-                for extra in uscite[1:]:
-                    await db["prima_nota_cassa"].update_one(
-                        {"id": extra["id"]},
-                        {"$set": {"status": "deleted", "deleted": True,
-                                  "deleted_reason": "uscita_pos_doppia", "deleted_at": now}})
-            else:
-                # giorno senza uscita cassa (vecchio flusso cor10): la crea,
-                # speculare al trasferimento banca — regola canonica
+            # Il POS non muove contante. Conserviamo le vecchie righe come
+            # storico reversibile, ma le escludiamo dal registro operativo.
+            for uscita in uscite:
                 aggiornate_cassa += 1
-                await scrivi_movimento(db, "cassa", {
-                    "data": giorno, "tipo": "uscita", "importo": quota,
-                    "descrizione": f"POS {giorno} → Banca"
-                                   + (" (chiusura terminale)" if fonte == "chiusura_manuale" else " (recupero estratto conto)"),
-                    "categoria": "POS Verso Banca", "source": "corrispettivo_import",
-                    "quota_pos_fonte": fonte, "trasferimento_id": trasferimento_id,
-                })
+                await db["prima_nota_cassa"].update_one(
+                    {"id": uscita["id"]},
+                    {"$set": {"status": "archived", "deleted": True,
+                              "deleted_reason": "pos_non_movimenta_contanti",
+                              "deleted_at": now, "updated_at": now}})
 
         entrate = await db["prima_nota_banca"].find(
             {"data": giorno, "tipo": "entrata",
