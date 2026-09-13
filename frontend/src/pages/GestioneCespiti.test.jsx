@@ -58,6 +58,7 @@ function getResponse(url) {
           fondo_ammortamento: 0,
           valore_netto_contabile: 3500.5,
           entrata_funzione_da_verificare: 1,
+          documento_acquisto_da_verificare: 1,
         },
       },
     });
@@ -69,6 +70,7 @@ function getResponse(url) {
         cespiti_attivi: 1,
         cespiti_ammortizzati: 0,
         entrata_funzione_da_verificare: 1,
+        documento_acquisto_da_verificare: 1,
         differenza: 0,
         critiche: [],
       },
@@ -108,6 +110,9 @@ describe('GestioneCespiti', () => {
     renderPage();
 
     expect(await screen.findByTestId('verifica-ammortamenti')).toHaveTextContent('0/1');
+    expect(screen.getByTestId('verifica-ammortamenti')).toHaveTextContent(
+      'collegamento alla fattura o al documento originale'
+    );
     expect(screen.getAllByText('Da verificare').length).toBeGreaterThan(0);
     expect(document.body).toHaveTextContent('3500,50');
     expect(api.get).toHaveBeenCalledWith(

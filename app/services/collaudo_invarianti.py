@@ -586,6 +586,53 @@ async def check_f24_pagati_senza_banca(db) -> Dict[str, Any]:
     }
 
 
+async def check_cespiti_senza_documento_acquisto(db) -> Dict[str, Any]:
+    """Un cespite può restare in revisione, ma non può alimentare quote o
+    scritture di ammortamento senza una fattura o un documento di acquisto
+    identificabile. Numero, descrizione e valore non sono una prova."""
+    esempi: List[Dict[str, Any]] = []
+    violazioni = 0
+    fatture_esistenti = {
+        str(r.get("id"))
+        async for r in db["invoices"].find({}, {"_id": 0, "id": 1})
+        if r.get("id")
+    }
+    documenti_esistenti = {
+        str(r.get("id"))
+        async for r in db["documents_inbox"].find({}, {"_id": 0, "id": 1})
+        if r.get("id")
+    }
+    async for cespite in db["cespiti"].find(
+        {"stato": "attivo"},
+        {"_id": 0, "id": 1, "descrizione": 1, "fattura_id": 1,
+         "documento_id": 1, "piano_ammortamento": 1},
+    ):
+        fattura_id = str(cespite.get("fattura_id") or "").strip()
+        documento_id = str(cespite.get("documento_id") or "").strip()
+        if fattura_id in fatture_esistenti or documento_id in documenti_esistenti:
+            continue
+        violazioni += 1
+        if len(esempi) < 5:
+            esempi.append({
+                "cespite_id": cespite.get("id"),
+                "motivo": (
+                    "collegamento_documento_acquisto_inesistente"
+                    if fattura_id or documento_id
+                    else "documento_acquisto_mancante"
+                ),
+                "quote_presenti": bool(cespite.get("piano_ammortamento")),
+            })
+    return {
+        "nome": "cespiti_senza_documento_acquisto",
+        "violazioni": violazioni,
+        "descrizione": (
+            "Cespiti attivi senza collegamento identificabile alla fattura o "
+            "al documento originale di acquisto"
+        ),
+        "esempi": esempi,
+    }
+
+
 CHECKS = [
     check_fatture_banca_senza_ec,
     check_trasferimento_pos_speculare,
@@ -603,6 +650,7 @@ CHECKS = [
     check_fatture_iva_classificazione,
     check_liquidazioni_iva_integrita,
     check_f24_pagati_senza_banca,
+    check_cespiti_senza_documento_acquisto,
 ]
 
 

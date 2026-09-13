@@ -54,6 +54,7 @@ def test_rateo_a_giugno_e_meta_della_quota_annuale(monkeypatch):
             "valore_acquisto": 12000.0, "coefficiente_ammortamento": 12,
             "fondo_ammortamento": 0, "anno_acquisto": 2024,
             "data_entrata_funzione": "2024-01-01",
+            "fattura_id": "fattura-c1",
             "piano_ammortamento": [],
         },
     ]
@@ -75,6 +76,7 @@ def test_rateo_anno_di_acquisto_usa_quota_dimezzata(monkeypatch):
             "valore_acquisto": 6000.0, "coefficiente_ammortamento": 12,
             "fondo_ammortamento": 0, "anno_acquisto": 2026,
             "data_entrata_funzione": "2026-02-01",
+            "fattura_id": "fattura-c2",
             "piano_ammortamento": [],
         },
     ]
