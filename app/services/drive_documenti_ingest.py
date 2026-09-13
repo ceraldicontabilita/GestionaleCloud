@@ -179,6 +179,8 @@ def _build_inbox_doc(
     *,
     drive_file_id: Optional[str] = None,
     source_path: Optional[str] = None,
+    sha256: Optional[str] = None,
+    file_hash: Optional[str] = None,
 ) -> Dict[str, Any]:
     now = datetime.now(timezone.utc).isoformat()
     conf = CANALI[canale]
@@ -186,8 +188,8 @@ def _build_inbox_doc(
         "id": __import__("uuid").uuid4().hex,
         "filename": filename,
         "pdf_data": base64.b64encode(content).decode(),
-        "file_hash": hashlib.md5(content).hexdigest(),
-        "sha256": hashlib.sha256(content).hexdigest(),
+        "file_hash": file_hash or hashlib.md5(content).hexdigest(),
+        "sha256": sha256 or hashlib.sha256(content).hexdigest(),
         "size_bytes": len(content),
         "fonte": f"drive_{canale}",
         "source": f"drive_{canale}",
@@ -202,6 +204,29 @@ def _build_inbox_doc(
         "company_id": settings.FISCAL_COMPANY_ID,
     }
     return set_tassonomia_documento(doc, conf["category"], label=conf["label"])
+
+
+async def _carica_indice_hash_documenti(db) -> Dict[str, Dict[str, Any]]:
+    """Carica una volta gli hash gia' presenti senza scandire l'archivio per file."""
+    collection = db["documents_inbox"]
+    # SheetsDocumentStore.find materializza e filtra subito in Python: va
+    # eseguito fuori dall'event loop. Il cursore risultante e' gia' leggero.
+    cursor = await asyncio.to_thread(
+        collection.find,
+        {},
+        {"_id": 0, "id": 1, "sha256": 1, "file_hash": 1, "fiscal_document_id": 1},
+    )
+    documents = await cursor.to_list(100000)
+    indice: Dict[str, Dict[str, Any]] = {}
+    for document in documents:
+        for value in (document.get("sha256"), document.get("file_hash")):
+            if value:
+                indice[str(value)] = document
+    return indice
+
+
+def _hashes_content(content: bytes) -> tuple[str, str]:
+    return hashlib.sha256(content).hexdigest(), hashlib.md5(content).hexdigest()
 
 
 async def sync(db, canale: str) -> Dict[str, Any]:
@@ -260,6 +285,7 @@ async def _do_sync(db, canale: str) -> Dict[str, Any]:
         )
         result["inboxes"] = len(inboxes)
         remaining = _batch_size()
+        indice_hash: Optional[Dict[str, Dict[str, Any]]] = None
 
         for inbox in inboxes:
             source_id = inbox["inbox_id"]
@@ -279,6 +305,9 @@ async def _do_sync(db, canale: str) -> Dict[str, Any]:
             selected = pdf_files[:remaining] if remaining > 0 else []
             result["pending_estimate"] += max(0, len(pdf_files) - len(selected))
 
+            if selected and indice_hash is None:
+                indice_hash = await _carica_indice_hash_documenti(db)
+
             for file_info in selected:
                 remaining -= 1
                 result["processed"] += 1
@@ -296,29 +325,26 @@ async def _do_sync(db, canale: str) -> Dict[str, Any]:
                             )
                         continue
 
-                    content_hash = hashlib.sha256(content).hexdigest()
-                    legacy_md5 = hashlib.md5(content).hexdigest()
-                    existing = await db["documents_inbox"].find_one(
-                        {
-                            "$or": [
-                                {"sha256": content_hash},
-                                {"file_hash": content_hash},
-                                {"file_hash": legacy_md5},
-                            ]
-                        },
-                        {"_id": 0, "id": 1, "fiscal_document_id": 1},
+                    content_hash, legacy_md5 = await asyncio.to_thread(
+                        _hashes_content, content
                     )
+                    existing = (indice_hash or {}).get(content_hash) or (
+                        indice_hash or {}
+                    ).get(legacy_md5)
 
                     if existing:
                         result["duplicates"] += 1
                         document_id = existing["id"]
                     else:
-                        doc = _build_inbox_doc(
+                        doc = await asyncio.to_thread(
+                            _build_inbox_doc,
                             content,
                             fname,
                             canale,
                             drive_file_id=fid,
                             source_path=source_path,
+                            sha256=content_hash,
+                            file_hash=legacy_md5,
                         )
                         await db["documents_inbox"].insert_one(doc)
 
@@ -349,6 +375,9 @@ async def _do_sync(db, canale: str) -> Dict[str, Any]:
 
                         result["imported"] += 1
                         document_id = doc["id"]
+                        if indice_hash is not None:
+                            indice_hash[content_hash] = doc
+                            indice_hash[legacy_md5] = doc
                         logger.info("Drive %s: importato %s", canale, source_path)
 
                     if canale == "verbale":

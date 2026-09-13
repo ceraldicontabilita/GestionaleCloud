@@ -182,3 +182,49 @@ def test_sync_drive_non_blocca_event_loop(monkeypatch):
     assert result["status"] == "ok"
     assert len(thread_drive) == 6
     assert all(thread_id != thread_event_loop for thread_id in thread_drive)
+
+
+def test_indice_hash_documenti_viene_materializzato_una_sola_volta():
+    class Cursor:
+        async def to_list(self, _limit):
+            return [
+                {"id": "sha", "sha256": "abc"},
+                {"id": "md5", "file_hash": "def"},
+            ]
+
+    class Collection:
+        def __init__(self):
+            self.find_calls = 0
+
+        def find(self, selector, projection):
+            self.find_calls += 1
+            assert selector == {}
+            assert projection["sha256"] == 1
+            assert projection["file_hash"] == 1
+            return Cursor()
+
+    collection = Collection()
+
+    class DB:
+        def __getitem__(self, name):
+            assert name == "documents_inbox"
+            return collection
+
+    indice = asyncio.run(d._carica_indice_hash_documenti(DB()))
+
+    assert collection.find_calls == 1
+    assert indice["abc"]["id"] == "sha"
+    assert indice["def"]["id"] == "md5"
+
+
+def test_build_doc_riusa_hash_gia_calcolati():
+    doc = d._build_inbox_doc(
+        b"contenuto",
+        "bonifico.pdf",
+        "bonifico",
+        sha256="sha-calcolato",
+        file_hash="md5-calcolato",
+    )
+
+    assert doc["sha256"] == "sha-calcolato"
+    assert doc["file_hash"] == "md5-calcolato"
