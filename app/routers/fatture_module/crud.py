@@ -813,87 +813,41 @@ async def get_statistiche(anno: Optional[int] = Query(None)) -> Dict[str, Any]:
 
     # Filtro per anno (invoices ha campo `anno` numerico e `invoice_date` ISO;
     # i doc importati prima del backfill hanno solo invoice_date)
-    query: dict = {}
+    query: dict = {
+        "status": {"$nin": ["deleted", "archived"]},
+        "entity_status": {"$ne": "deleted"},
+    }
     if anno:
         query["$or"] = [
             {"anno": anno},
             {"invoice_date": {"$regex": f"^{anno}"}},
         ]
 
-    # Espressioni che coprono ENTRAMBI gli schemi campi di `invoices`
-    _importo = {"$toDouble": {"$ifNull": ["$total_amount", {"$ifNull": ["$importo_totale", 0]}]}}
-    _piva = {"$ifNull": ["$supplier_vat", {"$ifNull": ["$cedente_piva", ""]}]}
-    _pagata = {"$cond": [{"$or": [
-        {"$in": [{"$ifNull": ["$stato", ""]}, ["pagata", "paid"]]},
-        {"$eq": [{"$ifNull": ["$status", ""]}, "paid"]},
-        {"$eq": [{"$ifNull": ["$pagato", False]}, True]},
-        {"$eq": [{"$ifNull": ["$stato_pagamento", ""]}, "pagata"]},
-    ]}, 1, 0]}
-
-    pipeline_inv = [
-        {"$match": query},
-        # Dedup di CONTENUTO (stessa chiave usata dalla lista archivio):
-        # i doppioni non devono gonfiare i contatori mostrati sopra la tabella
-        {"$group": {
-            "_id": {
-                "numero": {"$toUpper": {"$ifNull": ["$invoice_number", {"$ifNull": ["$numero_documento", ""]}]}},
-                "piva": _piva,
-                "data": {"$substrCP": [{"$ifNull": ["$invoice_date", {"$ifNull": ["$data_documento", ""]}]}, 0, 10]},
-                "importo": {"$round": [_importo, 2]},
-            },
-            "importo": {"$first": _importo},
-            "piva": {"$first": _piva},
-            "pagata": {"$max": _pagata},
-        }},
-        {"$group": {
-            "_id": None,
-            "totale_fatture": {"$sum": 1},
-            "importo_totale": {"$sum": "$importo"},
-            "fornitori_unici": {"$addToSet": "$piva"},
-            "pagate": {"$sum": "$pagata"},
-            "importo_pagato": {"$sum": {"$cond": [{"$eq": ["$pagata", 1]}, "$importo", 0]}},
-        }}
+    # La statistica usa la stessa vista documentale della lista: una chiave
+    # contabile coincidente non nasconde una collisione senza hash/ID comune.
+    from app.routers.invoices.invoices_main import _dedupe_invoices
+    documenti = await db["invoices"].find(query, {"_id": 0}).to_list(20000)
+    fatture_uniche = [
+        _normalizza_da_invoices(documento)
+        for documento in _dedupe_invoices(documenti)
     ]
-    try:
-        result = await db["invoices"].aggregate(pipeline_inv).to_list(1)
-        stats = result[0] if result else {}
-        stats.pop("_id", None)
-    except (NotImplementedError, TypeError, ValueError):
-        # Il repository in memoria usato dai collaudi non implementa tutti gli
-        # operatori di aggregazione ($round/$toDouble). Il contratto della
-        # pagina deve restare verificabile con dati isolati, quindi applichiamo
-        # la stessa deduplicazione in Python senza cambiare la fonte canonica.
-        documenti = await db["invoices"].find(query, {"_id": 0}).to_list(6000)
-        unici: Dict[tuple, dict] = {}
-        for documento in documenti:
-            fattura = _normalizza_da_invoices(documento)
-            chiave = (
-                str(fattura.get("numero_documento") or "").strip().upper(),
-                str(fattura.get("fornitore_partita_iva") or "").strip(),
-                str(fattura.get("data_documento") or "")[:10],
-                round(float(fattura.get("importo_totale") or 0), 2),
-            )
-            corrente = unici.get(chiave)
-            if corrente is None or (fattura.get("pagato") and not corrente.get("pagato")):
-                unici[chiave] = fattura
-        fatture_uniche = list(unici.values())
-        stats = {
-            "totale_fatture": len(fatture_uniche),
-            "importo_totale": round(sum(
-                float(fattura.get("importo_totale") or 0)
-                for fattura in fatture_uniche
-            ), 2),
-            "fornitori_unici": sorted({
-                str(fattura.get("fornitore_partita_iva") or "")
-                for fattura in fatture_uniche
-                if fattura.get("fornitore_partita_iva")
-            }),
-            "pagate": sum(bool(fattura.get("pagato")) for fattura in fatture_uniche),
-            "importo_pagato": round(sum(
-                float(fattura.get("importo_totale") or 0)
-                for fattura in fatture_uniche if fattura.get("pagato")
-            ), 2),
-        }
+    stats = {
+        "totale_fatture": len(fatture_uniche),
+        "importo_totale": round(sum(
+            float(fattura.get("importo_totale") or 0)
+            for fattura in fatture_uniche
+        ), 2),
+        "fornitori_unici": sorted({
+            str(fattura.get("fornitore_partita_iva") or "")
+            for fattura in fatture_uniche
+            if fattura.get("fornitore_partita_iva")
+        }),
+        "pagate": sum(bool(fattura.get("pagato")) for fattura in fatture_uniche),
+        "importo_pagato": round(sum(
+            float(fattura.get("importo_totale") or 0)
+            for fattura in fatture_uniche if fattura.get("pagato")
+        ), 2),
+    }
 
     # Anomale REALI (prima era 0 hardcoded): importo assente/≤0 o numero mancante
     anomale_cond = {"$or": [
