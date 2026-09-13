@@ -123,9 +123,26 @@ def test_fornitore_banca_senza_estratto_resta_provvisoria(monkeypatch):
 
     update = _run(mod.auto_registra_prima_nota(db, dict(FATTURA), None))
 
-    assert update is None
-    assert db["prima_nota_banca"].docs == []
+    assert update["prima_nota_tipo"] == "banca"
+    assert update["provvisorio"] is True
+    assert update["decisione_pagamento_richiesta"] is True
+    assert len(db["prima_nota_banca"].docs) == 1
+    movimento = db["prima_nota_banca"].docs[0]
+    assert movimento["stato"] == "DA_VERIFICARE"
+    assert movimento["canonico"] is False
+    assert movimento["fattura_id"] == "fatt-1"
     assert db["prima_nota_cassa"].docs == []
+
+
+def test_fornitore_assegno_va_in_banca_provvisoria(monkeypatch):
+    db = _setup(monkeypatch, "assegno")
+
+    update = _run(mod.auto_registra_prima_nota(db, dict(FATTURA), None))
+
+    assert update["prima_nota_tipo"] == "banca"
+    assert update["provvisorio"] is True
+    assert len(db["prima_nota_banca"].docs) == 1
+    assert db["prima_nota_banca"].docs[0]["metodo_pagamento_effettivo"] == "banca"
 
 
 def test_fornitore_misto_resta_provvisoria(monkeypatch):
@@ -217,8 +234,11 @@ def test_stesso_importo_accredito_pos_non_paga_fattura(monkeypatch):
 
     update = _run(mod.auto_registra_prima_nota(db, dict(FATTURA), None))
 
-    assert update is None
-    assert db["prima_nota_banca"].docs == []
+    assert update["provvisorio"] is True
+    assert update.get("pagato") is not True
+    assert len(db["prima_nota_banca"].docs) == 1
+    assert db["prima_nota_banca"].docs[0]["riconciliato"] is False
+    assert db["estratto_conto_movimenti"].docs[0].get("riconciliato") is not True
 
 
 def test_fornitore_escluso_non_entra_in_cassa_banca_ma_mantiene_iva(monkeypatch):
