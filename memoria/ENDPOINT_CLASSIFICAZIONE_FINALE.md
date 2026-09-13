@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1157 · tenere: 720 · verificare: 407 · admin-only (migrazione/manutenzione): 30
+**Totale endpoint:** 1159 · tenere: 720 · verificare: 409 · admin-only (migrazione/manutenzione): 30
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -1068,6 +1068,8 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/sumup/bonifica-pos-xml` | sumup | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/sumup/bonifica-pos-xml` | sumup | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/sumup/normalizza-descrizioni-pos` | sumup | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/sumup/rettifica-cassa-corrispettivi` | sumup | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/sumup/rettifica-cassa-corrispettivi` | sumup | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/sumup/riepilogo` | sumup | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/sumup/sincronizza` | sumup | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/sumup/stato` | sumup | sì | — | — | — | sì | tenere | in uso: FE |

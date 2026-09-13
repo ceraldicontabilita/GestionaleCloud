@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1157 endpoint** in **112 gruppi**.
+> Totale **1159 endpoint** in **112 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 635 · ext esterni = 81 · — da verificare = 441
+**Riepilogo uso:** ✓ frontend = 635 · ext esterni = 81 · — da verificare = 443
 
 ## AI Parser  (11)
 
@@ -1575,7 +1575,7 @@
 | GET | `/api/fiscal/summary` | ✓ | fiscal_control |
 | POST | `/api/fiscal/vat-credit-chain/rebuild` | — | fiscal_control |
 
-## SumUp  (7)
+## SumUp  (9)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -1583,6 +1583,8 @@
 | GET | `/api/sumup/bonifica-pos-xml` | — | sumup |
 | POST | `/api/sumup/bonifica-pos-xml` | — | sumup |
 | POST | `/api/sumup/normalizza-descrizioni-pos` | — | sumup |
+| GET | `/api/sumup/rettifica-cassa-corrispettivi` | — | sumup |
+| POST | `/api/sumup/rettifica-cassa-corrispettivi` | — | sumup |
 | GET | `/api/sumup/riepilogo` | ✓ | sumup |
 | POST | `/api/sumup/sincronizza` | — | sumup |
 | GET | `/api/sumup/stato` | ✓ | sumup |
