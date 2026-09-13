@@ -140,11 +140,8 @@ def test_rebuild_somma_contanti_ed_elettronico_senza_totale():
     assert res["corrispettivi_saltati"] == 0
     cassa = db["prima_nota_cassa"].docs
     entrata = next(d for d in cassa if d["tipo"] == "entrata")
-    uscita = next(d for d in cassa if d["tipo"] == "uscita")
     assert entrata["importo"] == 400.0
-    assert uscita["importo"] == 163.0
-    assert uscita["categoria"] == "POS NUMIA Verso Banca"
     uscite = [m for m in db["prima_nota_cassa"].docs if m["tipo"] == "uscita"]
-    assert len(uscite) == 1 and uscite[0]["importo"] == 163.0
+    assert uscite == []
     banca = db["prima_nota_banca"].docs
     assert len(banca) == 1 and banca[0]["importo"] == 163.0  # trasferimento

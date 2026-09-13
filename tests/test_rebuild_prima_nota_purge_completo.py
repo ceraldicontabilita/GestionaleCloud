@@ -154,7 +154,7 @@ def test_purge_elimina_tutte_le_pipeline_e_ricrea_pulito():
     entrate = [m for m in cassa if m.get("tipo") == "entrata" and m.get("categoria") == "Corrispettivi"]
     uscite_pos = [m for m in cassa if m.get("tipo") == "uscita" and m.get("categoria") == "POS NUMIA Verso Banca"]
     assert len(entrate) == 1 and entrate[0]["importo"] == 1552.0
-    assert len(uscite_pos) == 1 and uscite_pos[0]["importo"] == 3617.0
+    assert uscite_pos == []
     # intoccati
     assert any(m["id"] == "v1" for m in cassa)
     assert any(m["id"] == "f1" for m in cassa)

@@ -1147,20 +1147,13 @@ async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Opti
         # Ogni circuito ha il SUO trasferimento: Nexi e SumUp non ne
         # condividono mai uno, perche' li accreditano conti diversi.
         gestore_filtro = filtro_gestore_pos(circuito)
-        cassa_query = {
-            "data": data, "tipo": "uscita",
-            "categoria": {"$in": conti_pos.CATEGORIE_USCITA_POS},
-            "$and": [gestore_filtro], **filtro_attivo,
-        }
         banca_query = {
             "data": data, "tipo": "entrata", "categoria": "Corrispettivi POS",
             "$and": [gestore_filtro], **filtro_attivo,
         }
-        cassa_esistente = await db["prima_nota_cassa"].find_one(cassa_query)
         banca_esistente = await db["prima_nota_banca"].find_one(banca_query)
         trasferimento_id = (
-            (cassa_esistente or {}).get("trasferimento_id")
-            or (banca_esistente or {}).get("trasferimento_id")
+            (banca_esistente or {}).get("trasferimento_id")
             or str(uuid.uuid4())
         )
         etichetta_circuito = conti_pos.etichetta(circuito)
@@ -1173,18 +1166,9 @@ async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Opti
             "operation_id": trasferimento_id,
             "anno": anno, "mese": mese,
         }
-        cassa_pos_id, _ = await _scrivi_se_assente(db, "cassa", cassa_query, {
-            **comune, "tipo": "uscita",
-            **_campo_chiave(chiave_idempotenza_corrispettivo(
-                corr_doc.get("id"), "cassa_uscita", circuito)),
-            "descrizione": (f"POS {conti_pos.sigla(circuito)} "
-                            f"{conti_pos.data_italiana(data)} → Banca"),
-            "categoria": conti_pos.categoria_uscita_pos(circuito),
-            "source": "corrispettivo_import",
-        })
-        # Contropartita speculare: stessa operazione, secondo registro. Non e'
-        # denaro in banca ma un credito verso il gestore, che l'accredito
-        # reale chiudera'.
+        # La chiusura POS non muove contante e non accredita ancora la banca:
+        # apre soltanto il credito transitorio verso il gestore. Le vecchie
+        # righe Cassa restano archiviate come prova, ma non se ne creano altre.
         banca_pos_id, _ = await _scrivi_se_assente(db, "banca", banca_query, {
             **comune, "tipo": "entrata",
             **_campo_chiave(chiave_idempotenza_corrispettivo(
@@ -1205,8 +1189,7 @@ async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Opti
                 source_fact_id=f"pos-close:{circuito}:{data}",
             ),
         })
-        scritti[circuito] = {"cassa": cassa_pos_id, "banca": banca_pos_id}
-        esito["prima_nota_cassa_uscita_pos_id"] = cassa_pos_id
+        scritti[circuito] = {"cassa": None, "banca": banca_pos_id}
         esito["prima_nota_banca_id"] = banca_pos_id
     esito["trasferimenti_pos"] = scritti
     return esito

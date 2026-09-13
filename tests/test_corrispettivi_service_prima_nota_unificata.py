@@ -202,14 +202,13 @@ def test_create_prima_nota_entry_trasferimento_speculare():
     assert prima_nota_id is not None
     cassa = db["prima_nota_cassa"].docs
     banca = db["prima_nota_banca"].docs
-    assert len(cassa) == 2  # entrata totale + uscita POS
-    assert len(banca) == 1  # REGOLA CANONICA: trasferimento speculare
+    assert len(cassa) == 1  # sola quota contanti
+    assert len(banca) == 1  # credito transitorio verso il gestore
     assert banca[0]["source"] == "trasferimento_pos"
     assert banca[0]["importo"] == 400.0
     entrata_cassa = next(d for d in cassa if d["tipo"] == "entrata")
-    uscita_cassa = next(d for d in cassa if d["tipo"] == "uscita")
     assert entrata_cassa["importo"] == 600.0
-    assert uscita_cassa["importo"] == 400.0
+    assert [d for d in cassa if d["tipo"] == "uscita"] == []
 
 
 def test_create_prima_nota_entry_legge_pagato_pos_come_fallback():
@@ -224,7 +223,7 @@ def test_create_prima_nota_entry_legge_pagato_pos_come_fallback():
     _run(svc._create_prima_nota_entry(corr))
 
     uscite = [m for m in db["prima_nota_cassa"].docs if m["tipo"] == "uscita"]
-    assert len(uscite) == 1 and uscite[0]["importo"] == 200.0
+    assert uscite == []
     banca = db["prima_nota_banca"].docs
     assert len(banca) == 1 and banca[0]["importo"] == 200.0  # trasferimento
 
@@ -295,7 +294,7 @@ def test_reimport_duplicato_ripara_prima_nota_mancante_senza_duplicare():
 
     assert first["status"] == second["status"] == "duplicate"
     assert first["repaired_accounting"] is True
-    assert _run(db["prima_nota_cassa"].count_documents({})) == 2
+    assert _run(db["prima_nota_cassa"].count_documents({})) == 1
     assert _run(db["prima_nota_banca"].count_documents({})) == 1
     saved = _run(db["corrispettivi"].find_one({"id": "corr-retry"}))
     assert saved["prima_nota_id"]

@@ -10,16 +10,10 @@ import logging
 
 from app.database import Database, Collections
 from app.services.scritture_contabili import scrivi_movimento
-from app.services.prima_nota_sumup_projection import (
-    CATEGORIA_SUMUP_CASSA,
-    applica_proiezione_ai_movimenti,
-    giorno_corrente_negozio,
-    leggi_proiezione_sumup_cassa,
-    leggi_proiezioni_sumup_cassa,
-)
 from .common import (
     COLLECTION_PRIMA_NOTA_CASSA, TIPO_MOVIMENTO, CATEGORIE_ESCLUSE, ESCLUSIONI_PRIMA_NOTA,
-    calcola_saldo_anni_precedenti, aggrega_saldo_prima_nota, arricchisci_movimenti_fattura
+    calcola_saldo_anni_precedenti, aggrega_saldo_prima_nota,
+    arricchisci_movimenti_fattura, filtro_saldo_prima_nota,
 )
 
 logger = logging.getLogger(__name__)
@@ -37,10 +31,7 @@ async def list_prima_nota_cassa(
     """Lista movimenti prima nota cassa con saldo separato per anno."""
     db = Database.get_db()
     
-    query = {
-        "status": {"$nin": ["deleted", "archived"]},
-        **ESCLUSIONI_PRIMA_NOTA,
-    }
+    query = filtro_saldo_prima_nota(COLLECTION_PRIMA_NOTA_CASSA)
     
     if anno:
         date_start = f"{anno}-01-01"
@@ -59,52 +50,17 @@ async def list_prima_nota_cassa(
     if tipo:
         query["tipo"] = tipo
     if categoria:
-        query["categoria"] = categoria
+        esclusione_categorie = query.pop("categoria", None)
+        query.setdefault("$and", [])
+        if esclusione_categorie:
+            query["$and"].append({"categoria": esclusione_categorie})
+        query["$and"].append({"categoria": categoria})
     
     movimenti = await db[COLLECTION_PRIMA_NOTA_CASSA].find(query, {"_id": 0}).sort("data", -1).skip(skip).limit(limit).to_list(limit)
     await arricchisci_movimenti_fattura(db, movimenti)
 
     # §6.4: saldo tramite la funzione UNICA (segno/riporto/saldo finale uniformi)
     saldi = await aggrega_saldo_prima_nota(db, COLLECTION_PRIMA_NOTA_CASSA, query, anno)
-
-    # La riga SumUp della giornata puo' essere uno snapshot registrato prima
-    # della chiusura. Sovrapponiamo in SOLA LETTURA l'evidenza API corrente,
-    # senza riscrivere il documento contabile. Con piu righe candidate la
-    # proiezione si blocca: nessun accorpamento per somiglianza/importo.
-    oggi = giorno_corrente_negozio()
-    giorno_compreso = (
-        (anno is None or int(oggi[:4]) == anno)
-        and (data_da is None or oggi >= data_da)
-        and (data_a is None or oggi <= data_a)
-    )
-    filtro_compreso = (
-        (tipo is None or tipo == "uscita")
-        and (categoria is None or categoria == CATEGORIA_SUMUP_CASSA)
-    )
-    proiezione_sumup = {
-        "data": oggi,
-        "stato": "fuori_filtro",
-        "applicabile": False,
-        "delta": 0.0,
-    }
-    if filtro_compreso:
-        dal = data_da or (f"{anno}-01-01" if anno else "0001-01-01")
-        al = data_a or (f"{anno}-12-31" if anno else oggi)
-        proiezioni = await leggi_proiezioni_sumup_cassa(db, dal, al)
-        for proiezione in proiezioni:
-            if not proiezione.get("applicabile"):
-                continue
-            delta = round(float(proiezione.get("delta") or 0), 2)
-            movimenti = applica_proiezione_ai_movimenti(movimenti, proiezione)
-            saldi["totale_uscite"] = round(float(saldi["totale_uscite"]) + delta, 2)
-            saldi["saldo_anno"] = round(float(saldi["saldo_anno"]) - delta, 2)
-            saldi["saldo"] = round(float(saldi["saldo"]) - delta, 2)
-        proiezione_sumup = {
-            "stato": "periodo_sumup_archiviato",
-            "applicabile": True,
-            "giornate": proiezioni,
-            "delta": round(sum(float(p.get("delta") or 0) for p in proiezioni if p.get("applicabile")), 2),
-        }
 
     return {
         "movimenti": movimenti,
@@ -116,7 +72,11 @@ async def list_prima_nota_cassa(
         "totale_uscite": saldi["totale_uscite"],
         "count": len(movimenti),
         "anno": anno,
-        "sumup_live": proiezione_sumup,
+        "sumup_live": {
+            "stato": "conto_pos_separato",
+            "applicabile": False,
+            "delta": 0.0,
+        },
     }
 
 
@@ -125,7 +85,7 @@ async def create_prima_nota_cassa(data: Dict[str, Any] = Body(...)) -> Dict[str,
     Crea movimento prima nota cassa.
     SOLO movimenti di denaro CONTANTE:
     - Corrispettivi giornalieri
-    - Incassi POS (rilevazione uscita per versamento)
+    - nessun movimento POS: le chiusure aprono crediti verso i gestori
     - Versamenti in banca
     - Fatture pagate in contanti
     - Finanziamenti soci in contanti

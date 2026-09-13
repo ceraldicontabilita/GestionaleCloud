@@ -74,7 +74,7 @@ def test_proiezione_sumup_non_accorpa_due_righe_ambigue():
     assert proiezione["movimento_ids"] == ["duplicato-1", "duplicato-2"]
 
 
-def test_dashboard_usa_il_totale_sumup_live_senza_modificare_la_riga(monkeypatch):
+def test_dashboard_esclude_sumup_dalla_cassa_senza_modificare_la_riga(monkeypatch):
     db = MemorySheetsClient()["sumup_live_dashboard_test"]
     oggi = giorno_corrente_negozio()
     monkeypatch.setattr(stats.Database, "get_db", staticmethod(lambda: db))
@@ -86,26 +86,16 @@ def test_dashboard_usa_il_totale_sumup_live_senza_modificare_la_riga(monkeypatch
     ))
     persistita = _run(db["prima_nota_cassa"].find_one({"id": "cassa-sumup-oggi"}))
 
-    assert risultato["cassa"]["uscite"] == 635.80
-    assert risultato["cassa"]["saldo"] == -635.80
-    assert risultato["sumup_cassa_live"]["delta"] == 518.90
+    assert risultato["cassa"]["uscite"] == 0
+    assert risultato["cassa"]["saldo"] == 0
+    assert risultato["sumup_cassa_live"]["stato"] == "conto_pos_separato"
     assert persistita["importo"] == 116.90
 
 
-def test_endpoint_cassa_mostra_il_totale_sumup_live_e_conserva_lo_snapshot(monkeypatch):
+def test_endpoint_cassa_esclude_sumup_e_conserva_lo_snapshot(monkeypatch):
     db = MemorySheetsClient()["sumup_live_cassa_endpoint_test"]
     oggi = giorno_corrente_negozio()
     monkeypatch.setattr(cassa.Database, "get_db", staticmethod(lambda: db))
-    async def saldi_prima_della_proiezione(*_args, **_kwargs):
-        return {
-            "saldo": -116.90,
-            "saldo_anno": -116.90,
-            "saldo_precedente": 0.0,
-            "saldo_iniziale_manuale": False,
-            "totale_entrate": 0.0,
-            "totale_uscite": 116.90,
-        }
-    monkeypatch.setattr(cassa, "aggrega_saldo_prima_nota", saldi_prima_della_proiezione)
     _run(db["chiusure_pos_manuali"].insert_one(_evidenza(oggi)))
     _run(db["prima_nota_cassa"].insert_one(_riga_cassa(oggi)))
 
@@ -120,12 +110,10 @@ def test_endpoint_cassa_mostra_il_totale_sumup_live_e_conserva_lo_snapshot(monke
     ))
     persistita = _run(db["prima_nota_cassa"].find_one({"id": "cassa-sumup-oggi"}))
 
-    assert risultato["movimenti"][0]["importo"] == 635.80
-    assert risultato["movimenti"][0]["importo_persistito"] == 116.90
-    assert risultato["totale_uscite"] == 635.80
-    assert risultato["saldo_anno"] == -635.80
-    assert risultato["sumup_live"]["stato"] == "periodo_sumup_archiviato"
-    assert risultato["sumup_live"]["giornate"][0]["stato"] == "aggiornato_live"
+    assert risultato["movimenti"] == []
+    assert risultato["totale_uscite"] == 0
+    assert risultato["saldo_anno"] == 0
+    assert risultato["sumup_live"]["stato"] == "conto_pos_separato"
     assert persistita["importo"] == 116.90
 
 
@@ -163,7 +151,7 @@ def test_periodo_sumup_corregge_11_e_aggiunge_12_senza_scrivere(monkeypatch):
     assert persistita["importo"] == 116.90
 
 
-def test_dashboard_applica_tutte_le_giornate_sumup_del_periodo(monkeypatch):
+def test_dashboard_non_proietta_giornate_sumup_nella_cassa(monkeypatch):
     db = MemorySheetsClient()["sumup_dashboard_period_test"]
     monkeypatch.setattr(stats.Database, "get_db", staticmethod(lambda: db))
     _run(db["prima_nota_cassa"].insert_one(_riga_cassa(
@@ -185,9 +173,9 @@ def test_dashboard_applica_tutte_le_giornate_sumup_del_periodo(monkeypatch):
         data_da="2026-01-01", data_a="2026-12-31"
     ))
 
-    assert risultato["cassa"]["uscite"] == 1419.80
-    assert risultato["cassa"]["movimenti"] == 2
-    assert risultato["sumup_cassa_live"]["delta"] == 1302.90
+    assert risultato["cassa"]["uscite"] == 0
+    assert risultato["cassa"]["movimenti"] == 0
+    assert risultato["sumup_cassa_live"]["stato"] == "conto_pos_separato"
 
 
 def test_credito_sumup_esclude_solo_transazioni_con_payout_riconciliato(monkeypatch):
