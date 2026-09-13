@@ -737,6 +737,7 @@ async def registra_pagamento_fattura(
     source: str = "fattura_pagata",
     movimento_bancario: Optional[Dict[str, Any]] = None,
     session=None,
+    allow_provisional_bank: bool = False,
 ) -> Dict:
     """Registra automaticamente il pagamento di una fattura.
 
@@ -879,6 +880,27 @@ async def registra_pagamento_fattura(
             movimento_bancario.get("id") or movimento_bancario.get("movimento_id")
         ):
             risultato["provvisoria"] = True
+            if not allow_provisional_bank:
+                return risultato
+            importo_effettivo = importo_banca if importo_banca > 0 else importo_totale
+            mid, dup = await _insert_idempotente(
+                COLLECTION_PRIMA_NOTA_BANCA, importo_effettivo, descrizione_base
+            )
+            risultato["banca"] = mid
+            risultato["duplicato"] = dup
+            await db[COLLECTION_PRIMA_NOTA_BANCA].update_one(
+                {"id": mid},
+                {"$set": {
+                    "provvisorio": True,
+                    "canonico": False,
+                    "stato": "DA_VERIFICARE",
+                    "riconciliato": False,
+                    "in_attesa_estratto_ufficiale": True,
+                    "motivo_provvisorio": "metodo_fornitore_banca_senza_evidenza",
+                    "updated_at": now,
+                }},
+                session=session,
+            )
             return risultato
         importo_effettivo = importo_banca if importo_banca > 0 else importo_totale
         mid, dup = await _insert_idempotente(

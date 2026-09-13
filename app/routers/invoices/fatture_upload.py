@@ -693,16 +693,6 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
     la stessa fattura). Ritorna il dict di update applicato alla fattura
     (già persistito), oppure None se resta provvisoria.
     """
-    # Un assegno compilato e collegato alla singola fattura prevale sul metodo
-    # abituale del fornitore. Finche' non arriva l'estratto conto resta nella
-    # sezione "in attesa banca" e non genera una scrittura bancaria fittizia.
-    if (
-        invoice.get("metodo_pagamento_previsto") == "assegno"
-        or invoice.get("metodo_pagamento_override_source") == "assegno_compilato"
-        or invoice.get("assegni_collegati")
-    ):
-        return None
-
     # Un piano XML a piu' rate non e' una prova di pagamento: anche per un
     # fornitore configurato "cassa" resta provvisorio finche' ogni quota non
     # viene confermata con la relativa evidenza.
@@ -742,6 +732,13 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
         return None
 
     metodo = ((forn or {}).get("metodo_pagamento") or "").strip().lower()
+    assegno_specifico = bool(
+        invoice.get("metodo_pagamento_previsto") == "assegno"
+        or invoice.get("metodo_pagamento_override_source") == "assegno_compilato"
+        or invoice.get("assegni_collegati")
+    )
+    if assegno_specifico:
+        metodo = "assegno"
     metodo_assente = not metodo
 
     metodo_canonico = normalizza_metodo_pagamento(metodo)
@@ -833,12 +830,7 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
         invoice.get("invoice_number") or invoice.get("numero_fattura") or "",
         session=session,
     )
-    if not movimento_bancario:
-        return None
-
-    destinazione = decide_destinazione_fattura(
-        metodo, evidenza_bancaria=bool(movimento_bancario)
-    )
+    destinazione = "banca"
 
     # NB: registra_pagamento_fattura scrive fuori dalla transazione
     # dell'import (non accetta session); è idempotente per fattura, quindi
@@ -851,32 +843,41 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
         source=("estratto_conto_auto" if movimento_bancario else "auto_metodo_fornitore"),
         movimento_bancario=movimento_bancario,
         session=session,
+        allow_provisional_bank=not bool(movimento_bancario),
     )
     mov_id = esito.get(destinazione)
     if not mov_id:
         return None
 
     update: Dict[str, Any] = {
-        "pagato": True,
-        "paid": True,
-        "stato_pagamento": "pagata",
-        "metodo_pagamento": "contanti" if destinazione == "cassa" else "bonifico",
-        "data_pagamento": (
-            (movimento_bancario or {}).get("data")
-            or invoice.get("invoice_date") or invoice.get("data_fattura")
-        ),
         "prima_nota_id": mov_id,
         "prima_nota_tipo": destinazione,
         "registrata_auto_da_metodo_fornitore": True,
     }
     if movimento_bancario:
         update.update({
+            "pagato": True,
+            "paid": True,
+            "stato_pagamento": "pagata",
+            "stato_finanziario": "pagata_banca",
+            "metodo_pagamento": "assegno" if assegno_specifico else "bonifico",
+            "metodo_pagamento_effettivo": "banca",
+            "data_pagamento": movimento_bancario.get("data"),
+            "provvisorio": False,
             "riconciliato": True,
             "riconciliato_con_ec": True,
             "riconciliato_automaticamente": True,
             "movimento_bancario_id": movimento_bancario.get("id"),
             "match_score": movimento_bancario.get("match_score"),
             "match_tipo": movimento_bancario.get("match_tipo"),
+        })
+    else:
+        update.update({
+            "stato_finanziario": "in_attesa_estratto_conto",
+            "metodo_pagamento_previsto": "assegno" if assegno_specifico else "banca",
+            "metodo_pagamento_effettivo": None,
+            "provvisorio": True,
+            "decisione_pagamento_richiesta": True,
         })
     update[
         "prima_nota_cassa_id" if destinazione == "cassa" else "prima_nota_banca_id"
