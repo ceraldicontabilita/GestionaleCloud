@@ -121,9 +121,7 @@ def test_create_prima_nota_movements_regola_contabile_completa():
     assert entrata_cassa["importo"] == 600.0
     assert entrata_cassa["categoria"] == "Corrispettivi"
 
-    uscita_cassa = next(d for d in cassa if d["tipo"] == "uscita")
-    assert uscita_cassa["importo"] == 400.0
-    assert uscita_cassa["categoria"] == "POS NUMIA Verso Banca"
+    assert [d for d in cassa if d["tipo"] == "uscita"] == []
 
     # REGOLA CANONICA 18/07/2026: trasferimento speculare in banca,
     # stesso importo dell'uscita cassa, source trasferimento_pos.
@@ -158,9 +156,9 @@ def test_create_prima_nota_movements_legge_pagato_pos_oltre_a_pagato_elettronico
 
     _run(helpers_mod._create_prima_nota_movements(db, corr))
 
-    # REGOLA CANONICA: pagato_pos alimenta uscita cassa E trasferimento banca
+    # Il POS apre il credito verso il gestore, senza muovere la Cassa.
     uscite = [m for m in db.collections["prima_nota_cassa"].docs if m["tipo"] == "uscita"]
-    assert len(uscite) == 1 and uscite[0]["importo"] == 250.0
+    assert uscite == []
     banca = db.collections["prima_nota_banca"].docs
     assert len(banca) == 1 and banca[0]["importo"] == 250.0
     assert banca[0]["source"] == "trasferimento_pos"
@@ -184,9 +182,8 @@ def _patch_db(monkeypatch, db):
     monkeypatch.setattr(sync_mod.Database, "get_db", staticmethod(lambda: db))
 
 
-def test_sync_corrispettivi_impl_trasferimento_speculare(monkeypatch):
-    """REGOLA CANONICA 18/07/2026: il sync crea cassa (entrata+uscita POS)
-    e il trasferimento speculare in banca (stesso importo)."""
+def test_sync_corrispettivi_impl_credito_pos_separato(monkeypatch):
+    """Il sync crea la sola quota contanti in Cassa e il credito POS separato."""
     db = _con_pos_reale(_FakeDb(), 400.0)
     db["corrispettivi"].docs = [_corrispettivo()]
     _patch_db(monkeypatch, db)
@@ -195,7 +192,7 @@ def test_sync_corrispettivi_impl_trasferimento_speculare(monkeypatch):
 
     assert res["inseriti"] == 1
     uscite = [m for m in db.collections["prima_nota_cassa"].docs if m["tipo"] == "uscita"]
-    assert len(uscite) == 1 and uscite[0]["importo"] == 400.0
+    assert uscite == []
     banca = db.collections["prima_nota_banca"].docs
     assert len(banca) == 1 and banca[0]["importo"] == 400.0
     assert banca[0]["source"] == "trasferimento_pos"

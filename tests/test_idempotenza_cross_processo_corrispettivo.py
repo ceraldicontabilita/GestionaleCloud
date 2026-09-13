@@ -172,15 +172,15 @@ def test_due_processi_stesso_corrispettivo_una_sola_riga_per_chiave(caplog):
     banca = postgres.attive("prima_nota_banca")
     assert _chiavi(cassa) == [
         f"corr:{CORR_ID}:cassa_entrata",
-        f"corr:{CORR_ID}:cassa_uscita:numia",
     ]
     assert _chiavi(banca) == [f"corr:{CORR_ID}:banca_credito:numia"]
-    assert len(postgres.righe("prima_nota_cassa")) == 2
+    assert len(postgres.righe("prima_nota_cassa")) == 1
     assert len(postgres.righe("prima_nota_banca")) == 1
 
     # Il secondo processo riceve gli id gia' esistenti, non quelli mai scritti.
     assert esito_b["prima_nota_cassa_id"] == esito_a["prima_nota_cassa_id"]
-    assert esito_b["prima_nota_cassa_uscita_pos_id"] == esito_a["prima_nota_cassa_uscita_pos_id"]
+    assert esito_b["prima_nota_cassa_uscita_pos_id"] is None
+    assert esito_a["prima_nota_cassa_uscita_pos_id"] is None
     assert esito_b["prima_nota_banca_id"] == esito_a["prima_nota_banca_id"]
     assert esito_b.get("gia_esistente") is True
 
@@ -209,7 +209,7 @@ def test_in_batch_la_cache_viene_riallineata_senza_eccezioni(caplog):
 
     asyncio.run(scenario())
 
-    assert len(postgres.attive("prima_nota_cassa")) == 2
+    assert len(postgres.attive("prima_nota_cassa")) == 1
     assert len(postgres.attive("prima_nota_banca")) == 1
     for collection in ("prima_nota_cassa", "prima_nota_banca"):
         assert processo_b.ids_in_cache(collection) == {

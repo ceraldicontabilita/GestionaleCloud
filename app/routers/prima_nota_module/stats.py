@@ -11,10 +11,6 @@ import uuid
 
 from app.database import Database
 from app.services import conti_pos
-from app.services.prima_nota_sumup_projection import (
-    giorno_corrente_negozio,
-    leggi_proiezioni_sumup_cassa,
-)
 from .common import (
     COLLECTION_PRIMA_NOTA_CASSA, COLLECTION_PRIMA_NOTA_BANCA,
     COLLECTION_SALDI_INIZIALI,
@@ -230,30 +226,11 @@ async def get_prima_nota_stats(
                 db, COLLECTION_PRIMA_NOTA_BANCA, anno_intero,
             ))
 
-    oggi = giorno_corrente_negozio()
     proiezione_sumup = {
-        "data": oggi,
-        "stato": "fuori_filtro",
+        "stato": "conto_pos_separato",
         "applicabile": False,
         "delta": 0.0,
     }
-    dal = data_da or "0001-01-01"
-    al = data_a or oggi
-    proiezioni_sumup = await leggi_proiezioni_sumup_cassa(db, dal, al)
-    if proiezioni_sumup:
-        for proiezione in proiezioni_sumup:
-            if not proiezione.get("applicabile"):
-                continue
-            delta = round(float(proiezione.get("delta") or 0), 2)
-            cassa["uscite"] = round(float(cassa.get("uscite") or 0) + delta, 2)
-            if proiezione.get("numero_righe_persistite") == 0:
-                cassa["count"] = int(cassa.get("count") or 0) + 1
-        proiezione_sumup = {
-            "stato": "periodo_sumup_archiviato",
-            "applicabile": True,
-            "giornate": proiezioni_sumup,
-            "delta": round(sum(float(p.get("delta") or 0) for p in proiezioni_sumup if p.get("applicabile")), 2),
-        }
 
     # La Dashboard espone il saldo dei movimenti dell'intervallo richiesto.
     # Non trascina automaticamente anni storici incompleti: un saldo di conto

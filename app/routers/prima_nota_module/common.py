@@ -115,6 +115,16 @@ def esclusioni_saldo_per_collection(collection: str) -> Dict[str, Any]:
             "natura": {"$nin": [NATURA_CREDITO_POS, "costo"]},
             "source": {"$nin": list(SOURCES_ESCLUSE + SOURCES_CREDITO_POS)},
         }
+    if collection == COLLECTION_PRIMA_NOTA_CASSA:
+        # Le chiusure POS aprono un credito verso il gestore: non sono mai
+        # un'uscita di contante. Conserviamo le righe storiche per audit e
+        # provenienza, ma le escludiamo da elenco e saldi operativi Cassa.
+        from app.services import conti_pos
+        return {
+            "categoria": {"$nin": list(CATEGORIE_ESCLUSE)
+                          + list(conti_pos.CATEGORIE_USCITA_POS)},
+            "source": {"$nin": list(SOURCES_ESCLUSE)},
+        }
     return {
         "categoria": {"$nin": list(CATEGORIE_ESCLUSE)},
         "source": {"$nin": list(SOURCES_ESCLUSE)},
