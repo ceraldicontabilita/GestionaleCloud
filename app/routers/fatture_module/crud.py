@@ -66,6 +66,20 @@ def _metodo_reale(doc: dict) -> str:
     return doc.get("payment_method") or doc.get("metodo_pagamento") or ""
 
 
+def _data_documento_fattura(doc: dict):
+    """Restituisce la data documentale senza inventare valori mancanti.
+
+    Nel registro canonico convivono record storici che usano ``data_fattura``
+    e import piu recenti che usano ``invoice_date``/``data_documento``.
+    """
+    return (
+        doc.get("invoice_date")
+        or doc.get("data_documento")
+        or doc.get("data_fattura")
+        or doc.get("data")
+    )
+
+
 def _normalizza_da_invoices(doc: dict) -> dict:
     """Mappa un documento della collection `invoices` nel formato unificato archivio.
 
@@ -100,7 +114,7 @@ def _normalizza_da_invoices(doc: dict) -> dict:
     if hasattr(created_at, "isoformat"):
         created_at = created_at.isoformat()
 
-    data_doc = doc.get("invoice_date") or doc.get("data_documento")
+    data_doc = _data_documento_fattura(doc)
     return {
         "id": doc.get("id", ""),
         "numero_documento": doc.get("invoice_number") or doc.get("numero_documento"),
@@ -225,28 +239,9 @@ async def get_archivio_fatture(
     # stato — una fattura "eliminata" poteva ricomparire qui nonostante il
     # messaggio di conferma dicesse che l'eliminazione è irreversibile.
     q_inv: dict = {"entity_status": {"$ne": "deleted"}, "status": {"$ne": "deleted"}}
-    if anno:
-        # I doc di import_xml (schema italiano) non hanno `anno` né `invoice_date`:
-        # filtra su entrambi gli schemi usando $and per non collidere con gli
-        # $or di ricerca/fornitore più sotto.
-        q_inv.setdefault("$and", []).append({"$or": [
-            {"anno": anno},
-            {"data_documento": {"$regex": f"^{anno}"}},
-            # Fatture da Drive/bulk (schema inglese) importate prima del
-            # backfill di `anno`: hanno solo invoice_date.
-            {"invoice_date": {"$regex": f"^{anno}"}},
-        ]})
-        if mese:
-            mese_str = str(mese).zfill(2)
-            last_day = calendar.monthrange(anno, mese)[1]
-            intervallo = {
-                "$gte": f"{anno}-{mese_str}-01",
-                "$lte": f"{anno}-{mese_str}-{last_day:02d}"
-            }
-            q_inv["$and"].append({"$or": [
-                {"invoice_date": intervallo},
-                {"data_documento": intervallo},
-            ]})
+    # Anno e mese vengono applicati DOPO la normalizzazione. Il filtro database
+    # storico escludeva i record con sola ``data_fattura`` e, su Supabase, le
+    # combinazioni annidate $and/$or non producevano la stessa vista del registro.
     if fornitore_piva:
         q_inv["supplier_vat"] = {"$regex": fornitore_piva.strip(), "$options": "i"}
     if fornitore_nome:
@@ -320,46 +315,32 @@ async def get_archivio_fatture(
         ]
 
     # ── Legge SOLO la collezione canonica `invoices` (§5.4) ──────────────────
-    docs_inv_raw = await db["invoices"].find(q_inv, {"_id": 0}).sort("invoice_date", -1).to_list(6000)
+    docs_inv_raw = await db["invoices"].find(q_inv, {"_id": 0}).sort("invoice_date", -1).to_list(20000)
+
+    # Deduplica esclusivamente per evidenza documentale (hash/ID sorgente).
+    # Numero, fornitore, data e importo identici restano collisioni visibili.
+    from app.routers.invoices.invoices_main import _dedupe_invoices
+    docs_inv_raw = _dedupe_invoices(docs_inv_raw)
 
     # ── Normalizza ────────────────────────────────────────────────────────────
     normalized_inv = [_normalizza_da_invoices(d) for d in docs_inv_raw]
+    if anno:
+        normalized_inv = [
+            fattura for fattura in normalized_inv
+            if _safe_year(fattura.get("data_documento")) == anno
+            or str(fattura.get("anno") or "") == str(anno)
+        ]
+        if mese:
+            prefisso = f"{anno}-{mese:02d}"
+            normalized_inv = [
+                fattura for fattura in normalized_inv
+                if str(fattura.get("data_documento") or "")[:7] == prefisso
+            ]
     normalized_fp = []  # nessuna seconda sorgente: fatture_passive è consolidata in invoices
 
     # ── Unisci e ordina per data_documento decrescente ────────────────────────
     all_fatture = normalized_inv + normalized_fp
 
-    # ── Dedup di CONTENUTO: stessa fattura importata più volte da canali
-    # diversi (stesso numero + P.IVA + data + importo). Tiene il documento
-    # "migliore" (con prima nota / pagato), nasconde i doppioni.
-    def _chiave_contenuto(f: dict):
-        numero = str(f.get("numero_documento") or "").strip().upper()
-        piva = str(f.get("fornitore_partita_iva") or "").strip()
-        if not numero or not piva:
-            return None  # dati incompleti: non deduplicare
-        return (numero, piva, str(f.get("data_documento") or "")[:10],
-                round(float(f.get("importo_totale") or 0), 2))
-
-    visti: dict = {}
-    unici = []
-    for f in all_fatture:
-        k = _chiave_contenuto(f)
-        if k is None:
-            unici.append(f)
-            continue
-        if k not in visti:
-            visti[k] = f
-            unici.append(f)
-        else:
-            cur = visti[k]
-            f_ha_pn = bool(f.get("prima_nota_cassa_id") or f.get("prima_nota_banca_id") or f.get("pagato"))
-            cur_ha_pn = bool(cur.get("prima_nota_cassa_id") or cur.get("prima_nota_banca_id") or cur.get("pagato"))
-            if f_ha_pn and not cur_ha_pn:
-                # sostituisci il doc mostrato con quello collegato alla prima nota
-                idx = unici.index(cur)
-                unici[idx] = f
-                visti[k] = f
-    all_fatture = unici
     all_fatture.sort(
         key=lambda f: f.get("data_documento") or "",
         reverse=True
@@ -811,17 +792,12 @@ async def get_statistiche(anno: Optional[int] = Query(None)) -> Dict[str, Any]:
     """
     db = Database.get_db()
 
-    # Filtro per anno (invoices ha campo `anno` numerico e `invoice_date` ISO;
-    # i doc importati prima del backfill hanno solo invoice_date)
+    # Carica la vista attiva e applica l'anno dopo la normalizzazione: i record
+    # storici possono usare data_fattura/data_documento o anno come stringa.
     query: dict = {
         "status": {"$nin": ["deleted", "archived"]},
         "entity_status": {"$ne": "deleted"},
     }
-    if anno:
-        query["$or"] = [
-            {"anno": anno},
-            {"invoice_date": {"$regex": f"^{anno}"}},
-        ]
 
     # La statistica usa la stessa vista documentale della lista: una chiave
     # contabile coincidente non nasconde una collisione senza hash/ID comune.
@@ -831,6 +807,12 @@ async def get_statistiche(anno: Optional[int] = Query(None)) -> Dict[str, Any]:
         _normalizza_da_invoices(documento)
         for documento in _dedupe_invoices(documenti)
     ]
+    if anno:
+        fatture_uniche = [
+            fattura for fattura in fatture_uniche
+            if _safe_year(fattura.get("data_documento")) == anno
+            or str(fattura.get("anno") or "") == str(anno)
+        ]
     stats = {
         "totale_fatture": len(fatture_uniche),
         "importo_totale": round(sum(
@@ -850,21 +832,11 @@ async def get_statistiche(anno: Optional[int] = Query(None)) -> Dict[str, Any]:
     }
 
     # Anomale REALI (prima era 0 hardcoded): importo assente/≤0 o numero mancante
-    anomale_cond = {"$or": [
-        {"$and": [
-            {"$or": [{"total_amount": {"$lte": 0}}, {"total_amount": {"$exists": False}}]},
-            {"$or": [{"importo_totale": {"$lte": 0}}, {"importo_totale": {"$exists": False}}]},
-        ]},
-        {"$and": [
-            {"invoice_number": {"$in": [None, ""]}},
-            {"numero_documento": {"$in": [None, ""]}},
-        ]},
-    ]}
-    try:
-        anomale = await db["invoices"].count_documents(
-            {"$and": [query, anomale_cond]} if query else anomale_cond)
-    except Exception:
-        anomale = 0
+    anomale = sum(
+        float(fattura.get("importo_totale") or 0) <= 0
+        or not str(fattura.get("numero_documento") or "").strip()
+        for fattura in fatture_uniche
+    )
 
     totale = stats.get("totale_fatture", 0)
     importo = round(stats.get("importo_totale", 0), 2)

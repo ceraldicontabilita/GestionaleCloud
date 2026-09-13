@@ -112,6 +112,28 @@ def test_archivio_usa_metodo_canonico_prima_del_legacy(monkeypatch):
     assert esito["fatture"][0]["fornitore_metodo_pagamento"] == "misto"
 
 
+def test_archivio_include_data_fattura_storica_e_non_nasconde_collisioni(monkeypatch):
+    db = _FakeDb()
+    monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
+    base = {
+        "invoice_number": "ST-1", "data_fattura": "2026-03-15",
+        "supplier_vat": "00000000000", "total_amount": 122.0,
+    }
+    db["invoices"].docs = [
+        {**base, "id": "f1", "file_hash": "hash-1"},
+        {**base, "id": "f2", "file_hash": "hash-2"},
+        {**base, "id": "fuori-anno", "data_fattura": "2025-03-15"},
+    ]
+
+    esito = _run(mod.get_archivio_fatture(
+        anno=2026, mese=3, fornitore_piva=None, fornitore_nome=None,
+        stato=None, search=None, limit=200, skip=0,
+    ))
+
+    assert {fattura["id"] for fattura in esito["fatture"]} == {"f1", "f2"}
+    assert all(fattura["data_documento"] == "2026-03-15" for fattura in esito["fatture"])
+
+
 def test_dettaglio_fattura_eliminata_ritorna_404(monkeypatch):
     db = _FakeDb()
     monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
@@ -178,3 +200,25 @@ def test_statistiche_non_nascondono_collisioni_e_escludono_archiviati(monkeypatc
 
     assert esito["totale_fatture"] == 2
     assert esito["totale_importo"] == 200.0
+
+
+def test_statistiche_includono_schema_storico_data_fattura(monkeypatch):
+    db = MemorySheetsClient()["fatture_statistiche_data_storica"]
+    monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
+    _run(db["invoices"].insert_many([
+        {
+            "id": "storica", "invoice_number": "ST-1",
+            "data_fattura": "2026-02-10", "anno": "2026",
+            "supplier_vat": "00000000001", "total_amount": 122.0,
+        },
+        {
+            "id": "altro-anno", "invoice_number": "ST-2",
+            "data_fattura": "2025-02-10", "anno": "2025",
+            "supplier_vat": "00000000002", "total_amount": 244.0,
+        },
+    ]))
+
+    esito = _run(mod.get_statistiche(anno=2026))
+
+    assert esito["totale_fatture"] == 1
+    assert esito["totale_importo"] == 122.0
