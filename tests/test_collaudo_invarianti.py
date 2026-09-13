@@ -188,6 +188,36 @@ def test_check_cespiti_segnala_documento_acquisto_mancante():
     assert any(e["quote_presenti"] for e in r["esempi"])
 
 
+def test_check_fatture_duplicate_non_inventa_identita_documentale():
+    db = _Db({"invoices": _Coll([{
+        "_id": {"p": "IT000", "n": "1", "d": "2026-01-01"},
+        "count": 2,
+        "records": [
+            {"id": "f1", "total": 100, "file_hash": "hash-a"},
+            {"id": "f2", "total": 100, "file_hash": "hash-b"},
+        ],
+    }])})
+    r = _run(coll.check_fatture_duplicate(db))
+    assert r["violazioni"] == 1
+    assert r["duplicati_provati"] == 0
+    assert r["da_verificare"] == 1
+    assert r["esempi"][0]["esito_evidenza"] == "DA_VERIFICARE"
+
+
+def test_check_fatture_duplicate_richiede_hash_o_origine_comune():
+    db = _Db({"invoices": _Coll([{
+        "_id": {"p": "IT000", "n": "1", "d": "2026-01-01"},
+        "count": 2,
+        "records": [
+            {"id": "f1", "total": 100, "file_hash": "same"},
+            {"id": "f2", "total": 100, "file_hash": "same"},
+        ],
+    }])})
+    r = _run(coll.check_fatture_duplicate(db))
+    assert r["duplicati_provati"] == 1
+    assert r["da_verificare"] == 0
+
+
 def test_check_pos_non_richiede_uscita_cassa_speculare():
     db = _Db({
         "prima_nota_cassa": _Coll([]),
@@ -213,6 +243,35 @@ def test_check_pos_segnala_uscita_cassa_legacy():
     r = _run(coll.check_trasferimento_pos_speculare(db))
     assert r["violazioni"] == 1
     assert r["esempi"][0]["registro"] == "cassa"
+
+
+def test_check_pos_giornaliero_legge_schema_drive_pagato_pos():
+    anno = coll.datetime.now(coll.timezone.utc).year
+    giorno = f"{anno}-01-10"
+    db = _Db({
+        "corrispettivi": _Coll([{
+            "data": giorno, "pagato_pos": 100,
+            "source": "corrispettivi_sync", "content_hash": "xml-1",
+            "filename": "rt.xml",
+        }]),
+        "estratto_conto_movimenti": _Coll([]),
+    })
+    r = _run(coll.check_pos_giornaliero(db))
+    assert r["violazioni"] == 1
+    assert r["esempi"][0]["xml"] == 100
+
+
+def test_check_pos_giornaliero_ignora_righe_non_xml():
+    anno = coll.datetime.now(coll.timezone.utc).year
+    db = _Db({
+        "corrispettivi": _Coll([{
+            "data": f"{anno}-01-10", "pagato_elettronico": 100,
+            "source": "inserimento_manuale",
+        }]),
+        "estratto_conto_movimenti": _Coll([]),
+    })
+    r = _run(coll.check_pos_giornaliero(db))
+    assert r["violazioni"] == 0
 
 
 def test_esegui_collaudo_report_e_alert(monkeypatch):

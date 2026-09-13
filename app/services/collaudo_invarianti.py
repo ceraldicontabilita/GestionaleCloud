@@ -123,30 +123,45 @@ async def check_ec_dangling_e_duplicati(db) -> Dict[str, Any]:
 
 
 async def check_pos_giornaliero(db) -> Dict[str, Any]:
-    """Accrediti POS in estratto conto (per giorno di VENDITA dalla
-    descrizione NUMIA) vs il riferimento operativo del giorno: la CHIUSURA
-    MANUALE serale del terminale quando trascritta (regola utente
-    18/07/2026: 'quello è il vero incasso POS'), altrimenti l'elettronico
-    dei corrispettivi XML (confronto fiscale)."""
-    from app.routers.pos_corrispettivi_check import _giorno_operazione_pos
+    """Quota elettronica XML vs accrediti POS bancari per giorno di vendita.
+
+    Usa gli stessi riconoscitori e la stessa deduplica della pagina POS. Le
+    chiusure manuali restano una terza fonte distinta: non possono sostituire
+    in silenzio l'XML fiscale nel collaudo.
+    """
+    from app.routers.pos_corrispettivi_check import (
+        _deduplica_evidenze_pos_banca,
+        _e_corrispettivo_xml,
+        _importo_elettronico_xml,
+    )
+    from app.services.pos_evidence import (
+        _e_accredito_pos_numia_con_giorno,
+        _giorno_operazione_pos,
+    )
     anno = datetime.now(timezone.utc).year
     xml: Dict[str, float] = {}
     async for c in db["corrispettivi"].find(
-            {"data": {"$regex": f"^{anno}"}}, {"_id": 0, "data": 1, "pagato_elettronico": 1}):
-        xml[c["data"]] = xml.get(c["data"], 0) + float(c.get("pagato_elettronico") or 0)
-    chiusure: Dict[str, float] = {}
-    async for c in db["chiusure_pos_manuali"].find(
-            {"data": {"$regex": f"^{anno}"}}, {"_id": 0, "data": 1, "importo": 1, "totale": 1}):
-        chiusure[c["data"]] = chiusure.get(c["data"], 0) + float(c.get("importo") or c.get("totale") or 0)
-    for g in chiusure:
-        if chiusure[g] > 0:
-            xml[g] = chiusure[g]  # la chiusura manuale è il riferimento operativo
+            {"data": {"$regex": f"^{anno}"},
+             "entity_status": {"$ne": "deleted"},
+             "status": {"$nin": ["deleted", "archived", "archiviata"]}},
+            {"_id": 0, "data": 1, "pagato_elettronico": 1, "pagato_pos": 1,
+             "stato": 1, "status": 1, "source": 1, "filename": 1,
+             "content_hash": 1, "data_import_xml": 1, "totale_xml": 1}):
+        if not c.get("data") or not _e_corrispettivo_xml(c):
+            continue
+        xml[c["data"]] = xml.get(c["data"], 0) + _importo_elettronico_xml(c)
     ec: Dict[str, float] = {}
-    async for m in db["estratto_conto_movimenti"].find(
+    movimenti = await db["estratto_conto_movimenti"].find(
             {"data": {"$regex": f"^{anno}"}, "tipo": {"$ne": "uscita"},
              "$or": [{"categoria": {"$regex": "Incasso tramite POS", "$options": "i"}},
                      {"descrizione_originale": {"$regex": "NUMIA|INC\\.POS|INCAS\\. TRAMITE", "$options": "i"}}]},
-            {"_id": 0, "data": 1, "importo": 1, "descrizione_originale": 1, "descrizione": 1}):
+            {"_id": 0, "id": 1, "data": 1, "data_contabile": 1,
+             "importo": 1, "descrizione_originale": 1, "descrizione": 1,
+             "rapporto": 1, "created_at": 1, "updated_at": 1}).to_list(20000)
+    for m in _deduplica_evidenze_pos_banca(movimenti):
+        descrizione = m.get("descrizione_originale") or m.get("descrizione") or ""
+        if not _e_accredito_pos_numia_con_giorno(descrizione):
+            continue
         g = _giorno_operazione_pos(m.get("descrizione_originale") or m.get("descrizione") or "", m.get("data", ""))
         ec[g] = ec.get(g, 0) + abs(float(m.get("importo") or 0))
     oggi = datetime.now(timezone.utc).date().isoformat()
@@ -164,7 +179,8 @@ async def check_pos_giornaliero(db) -> Dict[str, Any]:
     peggiori.sort(key=lambda x: -x["differenza"])
     return {"nome": "pos_xml_vs_banca_giornaliero", "violazioni": count,
             "descrizione": "Giorni con scostamento tra elettronico XML e accrediti "
-                           "POS in banca oltre il 2% (attribuiti al giorno di vendita)",
+                           "POS NUMIA univoci in banca oltre il 2% (attribuiti al "
+                           "giorno di vendita); chiusure manuali esposte separatamente",
             "esempi": peggiori[:5]}
 
 
@@ -229,15 +245,51 @@ async def check_fatture_duplicate(db) -> Dict[str, Any]:
     pipeline = [
         {"$match": {"status": {"$nin": ["deleted", "archived"]}, "total_amount": {"$gt": 0}}},
         {"$group": {"_id": {"p": "$supplier_vat", "n": "$invoice_number", "d": "$invoice_date"},
-                    "count": {"$sum": 1}}},
+                    "count": {"$sum": 1},
+                    "records": {"$push": {
+                        "id": "$id", "total": "$total_amount",
+                        "content_hash": "$content_hash", "file_hash": "$file_hash",
+                        "source_hash": "$source_hash", "sha256": "$sha256",
+                        "source_document_id": "$source_document_id",
+                        "drive_file_id": "$drive_file_id",
+                        "documents_inbox_id": "$documents_inbox_id",
+                        "source_documents": "$source_documents",
+                    }}}},
         {"$match": {"count": {"$gt": 1}, "_id.n": {"$nin": [None, ""]}}},
     ]
     gruppi = await db["invoices"].aggregate(pipeline).to_list(200)
-    esempi = [{"piva": g["_id"].get("p"), "numero": g["_id"].get("n"),
-               "data": g["_id"].get("d"), "copie": g["count"]} for g in gruppi[:5]]
+    from app.routers.invoices.invoices_main import _same_original, _source_evidence
+
+    esempi = []
+    duplicati_provati = 0
+    da_verificare = 0
+    for gruppo in gruppi:
+        records = gruppo.get("records") or []
+        prova_comune = any(
+            _same_original(records[i], records[j])
+            for i in range(len(records)) for j in range(i + 1, len(records))
+        )
+        if prova_comune:
+            duplicati_provati += 1
+        else:
+            da_verificare += 1
+        if len(esempi) < 5:
+            esempi.append({
+                "fattura_ids": [r.get("id") for r in records if r.get("id")],
+                "copie": gruppo.get("count", len(records)),
+                "esito_evidenza": "DUPLICATO_PROVATO" if prova_comune else "DA_VERIFICARE",
+                "originali_tracciati": sum(
+                    1 for r in records if any(_source_evidence(r))
+                ),
+                "importi_coerenti": len({round(_importo_assoluto(r.get("total")), 2) for r in records}) <= 1,
+            })
     return {"nome": "fatture_duplicate_attive", "violazioni": len(gruppi),
-            "descrizione": "Stessa fattura (P.IVA+numero+data) presente più volte "
-                           "tra le attive", "esempi": esempi}
+            "descrizione": "Collisioni P.IVA+numero+data tra fatture attive: sono "
+                           "duplicati solo con hash o ID dell'originale comune; gli "
+                           "altri casi restano DA_VERIFICARE",
+            "duplicati_provati": duplicati_provati,
+            "da_verificare": da_verificare,
+            "esempi": esempi}
 
 
 async def check_prima_nota_link_rotti(db) -> Dict[str, Any]:
