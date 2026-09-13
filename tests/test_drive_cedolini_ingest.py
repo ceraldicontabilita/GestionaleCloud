@@ -163,3 +163,30 @@ def test_scheduler_non_perde_import_cedolini_al_riavvio(monkeypatch):
         assert job["next_run_time"] is not None
         assert job["misfire_grace_time"] == 300
         assert job["coalesce"] is True
+
+
+def test_scheduler_allinea_subito_i_badge_documentali(monkeypatch):
+    import app.scheduler as scheduler_mod
+
+    class SchedulerFinto:
+        def __init__(self):
+            self.jobs = []
+
+        def add_job(self, funzione, *args, **kwargs):
+            self.jobs.append((funzione, args, kwargs))
+
+        def start(self):
+            pass
+
+    scheduler = SchedulerFinto()
+    monkeypatch.setattr(scheduler_mod, "scheduler", scheduler)
+    scheduler_mod.start_scheduler()
+
+    job = next(
+        item[2] for item in scheduler.jobs
+        if item[2].get("id") == "allinea_status_documenti"
+    )
+    assert job["next_run_time"] is not None
+    assert 0 <= (job["next_run_time"] - scheduler_mod.datetime.now()).total_seconds() <= 60
+    assert job["misfire_grace_time"] == 300
+    assert job["coalesce"] is True

@@ -42,6 +42,17 @@ async def lifespan(app: FastAPI):
     await initialize_auth_secret(Database.get_db())
     settings.validate_startup()
 
+    # Questo riallineamento e' piccolo e idempotente: deve precedere la coda
+    # degli importatori, perche' su Render un deploy puo' interrompere un job
+    # Drive lungo prima che lo scheduler raggiunga il controllo dei badge.
+    try:
+        from app.services.email_monitor_service import allinea_status_documenti_processati
+
+        badge_allineati = await allinea_status_documenti_processati(Database.get_db())
+        logger.info("Badge documenti riallineati all'avvio: %s", badge_allineati)
+    except Exception:
+        logger.exception("Riallineamento badge documenti all'avvio non completato")
+
     # Bus eventi unico (app/services/event_bus.py): include anche gli handler
     # migrati dal vecchio bus core (app/core/event_bus.py, rimosso).
     try:

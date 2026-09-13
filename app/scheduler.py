@@ -945,6 +945,31 @@ def start_scheduler():
         replace_existing=True,
     )
 
+    async def _allinea_status_documenti_job():
+        """Riallinea i badge senza attendere il ciclo orario delle email."""
+        from app.database import Database
+        from app.services.email_monitor_service import allinea_status_documenti_processati
+
+        try:
+            aggiornati = await allinea_status_documenti_processati(Database.get_db())
+            logger.info(
+                "[SCHEDULER-STATUS-DOCUMENTI] documenti riallineati=%s",
+                aggiornati,
+            )
+        except Exception:
+            logger.exception("[SCHEDULER-STATUS-DOCUMENTI] riallineamento non completato")
+
+    scheduler.add_job(
+        _allinea_status_documenti_job,
+        'interval', minutes=15,
+        next_run_time=avvio + timedelta(seconds=20),
+        misfire_grace_time=300,
+        coalesce=True,
+        id="allinea_status_documenti",
+        name="Riallinea badge documenti processati (ogni 15 minuti)",
+        replace_existing=True,
+    )
+
     async def _mittenti_email_job():
         from app.database import Database
         from app.services.email_monitor_service import (
