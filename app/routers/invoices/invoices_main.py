@@ -82,6 +82,37 @@ def _invoice_identity_key(invoice: Dict[str, Any]) -> str:
     return f"{_normalize_invoice_number(number)}|{_normalize_text(vat)}|{date_value}|{total:.2f}"
 
 
+def _source_evidence(invoice: Dict[str, Any]) -> tuple[set[str], set[str]]:
+    """Restituisce hash e ID degli originali, senza dedurli dai dati contabili."""
+    hashes = {
+        str(invoice.get(name) or "").strip().lower()
+        for name in ("content_hash", "file_hash", "source_hash", "sha256", "xml_hash")
+        if invoice.get(name)
+    }
+    source_ids = {
+        str(invoice.get(name) or "").strip()
+        for name in ("source_document_id", "drive_file_id", "documents_inbox_id")
+        if invoice.get(name)
+    }
+    for source in invoice.get("source_documents") or []:
+        if not isinstance(source, dict):
+            continue
+        digest = source.get("file_hash") or source.get("sha256")
+        source_id = source.get("drive_file_id") or source.get("source_document_id")
+        if digest:
+            hashes.add(str(digest).strip().lower())
+        if source_id:
+            source_ids.add(str(source_id).strip())
+    return hashes - {""}, source_ids - {""}
+
+
+def _same_original(left: Dict[str, Any], right: Dict[str, Any]) -> bool:
+    """Vero solo con prova documentale comune, mai per numero/importo/nome."""
+    left_hashes, left_ids = _source_evidence(left)
+    right_hashes, right_ids = _source_evidence(right)
+    return bool(left_hashes & right_hashes or left_ids & right_ids)
+
+
 def _dedupe_invoices(invoices: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     by_key: Dict[str, Dict[str, Any]] = {}
     for invoice in invoices:
@@ -89,6 +120,13 @@ def _dedupe_invoices(invoices: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         existing = by_key.get(key)
         if existing is None:
             by_key[key] = invoice
+            continue
+        if not _same_original(existing, invoice):
+            # La chiave contabile e' solo un indizio. Mostra entrambe le righe
+            # e demandane la verifica, invece di nasconderne una come duplicata.
+            existing["duplicate_review_required"] = True
+            invoice["duplicate_review_required"] = True
+            by_key[f"{key}|review|{invoice.get('id') or len(by_key)}"] = invoice
             continue
         current_rank = (_invoice_score(invoice), invoice.get("updated_at") or invoice.get("created_at") or "")
         existing_rank = (_invoice_score(existing), existing.get("updated_at") or existing.get("created_at") or "")
