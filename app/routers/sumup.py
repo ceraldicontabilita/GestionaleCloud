@@ -374,3 +374,35 @@ async def normalizza_descrizioni_pos(
         Database.get_db(), payload.get("anno"),
         applica=payload.get("conferma") is True,
     )
+
+
+@router.get("/rettifica-cassa-corrispettivi")
+@handle_errors
+async def analizza_rettifica_cassa_corrispettivi(
+    anno: Optional[int] = None,
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Anteprima in sola lettura: lordo in Cassa contro contanti RT."""
+    from app.services import rettifica_cassa_corrispettivi
+
+    return await rettifica_cassa_corrispettivi.analizza(
+        Database.get_db(), anno)
+
+
+@router.post("/rettifica-cassa-corrispettivi")
+@handle_errors
+async def applica_rettifica_cassa_corrispettivi(
+    payload: Optional[Dict[str, Any]] = Body(None),
+    admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Rettifica reversibile basata sul link al documento corrispettivo."""
+    from app.services import rettifica_cassa_corrispettivi
+
+    payload = payload or {}
+    if payload.get("conferma") is not True:
+        raise HTTPException(
+            status_code=400,
+            detail="Serve {\"conferma\": true}; usa prima la GET di anteprima.",
+        )
+    return await rettifica_cassa_corrispettivi.applica(
+        Database.get_db(), payload.get("anno"), actor=admin)

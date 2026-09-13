@@ -609,7 +609,7 @@ si rigenerano dal codice e non si correggono a mano.
 | `DRIVE_ESTRATTI_ANNO_MINIMO` | drive-sheets | configurazione | `int` / `2026` | `app/config.py` |
 | `DRIVE_ESTRATTI_BATCH_SIZE` | drive-sheets | configurazione | `int` / `1` | `app/config.py`, `render.yaml` |
 | `DRIVE_F24_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
-| `DRIVE_FATTURE_BATCH_SIZE` | drive-sheets | configurazione | `int` / `1` | `app/config.py`, `render.yaml` |
+| `DRIVE_FATTURE_BATCH_SIZE` | drive-sheets | configurazione | `int` / `25` | `app/config.py`, `render.yaml` |
 | `DRIVE_FISCAL_ROOT_FOLDER_ID` | drive-sheets | configurazione | `str` / `'1VBqAFZBGdZ4HtgfZC--DD5ad38Et5I1j'` | `app/config.py` |
 | `DRIVE_FOLDER_REGISTRY_JSON` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `DRIVE_NOLEGGIO_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
@@ -845,7 +845,7 @@ Gli alias senza valore vanno configurati nel secret/config store di Render. Non 
 
 ## Appendice D — Tutti i router e tutti gli endpoint
 
-Route table sorgente: **1157**; attivi da ricreare: **720**; quarantena: **437** (`verificare` 407, `admin-only` 30).
+Route table sorgente: **1159**; attivi da ricreare: **720**; quarantena: **439** (`verificare` 409, `admin-only` 30).
 
 `attivo` significa da ricreare con contratto e test; `quarantena` significa non esporre nel nuovo runtime finché consumer, autorizzazione e test non sono provati. L'elenco è completo e include entrambe le categorie.
 
@@ -2239,12 +2239,14 @@ Route table sorgente: **1157**; attivi da ricreare: **720**; quarantena: **437**
 - **attivo** — `POST /api/settings/openai` — in uso: FE
 - **attivo** — `POST /api/settings/openai/test` — in uso: FE
 
-### Router `sumup` (7)
+### Router `sumup` (9)
 
 - **quarantena: verificare** — `POST /api/sumup/bonifica-accrediti-numia` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **quarantena: verificare** — `GET /api/sumup/bonifica-pos-xml` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **quarantena: verificare** — `POST /api/sumup/bonifica-pos-xml` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **quarantena: verificare** — `POST /api/sumup/normalizza-descrizioni-pos` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `GET /api/sumup/rettifica-cassa-corrispettivi` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/sumup/rettifica-cassa-corrispettivi` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **attivo** — `GET /api/sumup/riepilogo` — in uso: FE
 - **quarantena: verificare** — `POST /api/sumup/sincronizza` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **attivo** — `GET /api/sumup/stato` — in uso: FE
