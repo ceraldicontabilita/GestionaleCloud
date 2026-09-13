@@ -6,6 +6,7 @@ lifecycle: Bonifici dipendenti puo' scendere fino al fascicolo dipendente,
 Verbali e canali fiscali lavorano solo sulla DA ELABORARE diretta.
 """
 import asyncio
+import threading
 
 from app.services import drive_documenti_ingest as d
 
@@ -142,3 +143,42 @@ def test_resolver_bonifico_puo_trovare_inbox_dipendente_ma_verbale_non_scende_ne
     assert [x["inbox_id"] for x in discover_inboxes(
         verbali, "verbali", max_depth=d._lifecycle_depth("verbale")
     )] == ["direct"]
+
+
+def test_sync_drive_non_blocca_event_loop(monkeypatch):
+    """Le chiamate Google sincrone devono sempre girare fuori da FastAPI."""
+    thread_event_loop = None
+    thread_drive = []
+    service = object()
+
+    def fuori_event_loop(result):
+        def _call(*_args, **_kwargs):
+            thread_drive.append(threading.get_ident())
+            return result
+        return _call
+
+    monkeypatch.setattr(d, "_build_drive_service", fuori_event_loop((service, None)))
+    monkeypatch.setattr(d, "_folder_id", lambda _canale: "root")
+    monkeypatch.setattr(
+        d,
+        "resolve_inboxes_or_legacy",
+        fuori_event_loop([{
+            "inbox_id": "inbox",
+            "lifecycle_parent_id": "parent",
+            "relative_path": "DA ELABORARE",
+        }]),
+    )
+    monkeypatch.setattr(d, "_resolve_state_folder", fuori_event_loop("state"))
+    monkeypatch.setattr(d, "_list_pdf_files_direct", fuori_event_loop([]))
+    monkeypatch.setattr(d, "_close_drive_service", fuori_event_loop(None))
+
+    async def run():
+        nonlocal thread_event_loop
+        thread_event_loop = threading.get_ident()
+        return await d._do_sync(None, "bonifico")
+
+    result = asyncio.run(run())
+
+    assert result["status"] == "ok"
+    assert len(thread_drive) == 6
+    assert all(thread_id != thread_event_loop for thread_id in thread_drive)
