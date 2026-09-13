@@ -103,15 +103,19 @@ def _setup(monkeypatch, metodo, **supplier_extra):
     return db
 
 
-def test_fornitore_cassa_resta_provvisoria_senza_prova(monkeypatch):
+def test_fornitore_cassa_crea_movimento_canonico(monkeypatch):
     db = _setup(monkeypatch, "contanti")
 
     update = _run(mod.auto_registra_prima_nota(db, dict(FATTURA), None))
 
-    assert update is None
-    assert db["prima_nota_cassa"].docs == []
+    assert update["prima_nota_tipo"] == "cassa"
+    assert update["metodo_pagamento_effettivo"] == "cassa"
+    assert update["provvisorio"] is False
+    assert len(db["prima_nota_cassa"].docs) == 1
+    assert db["prima_nota_cassa"].docs[0]["fattura_id"] == "fatt-1"
+    assert db["prima_nota_cassa"].docs[0]["metodo_pagamento_effettivo"] == "cassa"
     assert db["prima_nota_banca"].docs == []
-    assert db["invoices"].docs[0].get("stato_pagamento") != "pagata"
+    assert db["invoices"].docs[0]["stato_pagamento"] == "pagata"
 
 
 def test_fornitore_banca_senza_estratto_resta_provvisoria(monkeypatch):
@@ -135,21 +139,26 @@ def test_fornitore_misto_resta_provvisoria(monkeypatch):
 
 
 def test_fornitore_senza_metodo_resta_provvisoria(monkeypatch):
-    db = _setup(monkeypatch, None)
+    db = _setup(monkeypatch, "")
 
     update = _run(mod.auto_registra_prima_nota(db, dict(FATTURA), None))
 
-    assert update is None
-    assert db["prima_nota_cassa"].docs == []
+    assert update["prima_nota_tipo"] == "cassa_provvisoria"
+    assert update["decisione_pagamento_richiesta"] is True
+    assert len(db["prima_nota_cassa"].docs) == 1
+    movimento = db["prima_nota_cassa"].docs[0]
+    assert movimento["stato"] == "DA_VERIFICARE"
+    assert movimento["canonico"] is False
+    assert db["invoices"].docs[0].get("stato_pagamento") != "pagata"
 
 
-def test_reimport_cassa_non_crea_pagamenti(monkeypatch):
+def test_reimport_cassa_non_duplica_pagamenti(monkeypatch):
     db = _setup(monkeypatch, "contanti")
 
     _run(mod.auto_registra_prima_nota(db, dict(FATTURA), None))
     _run(mod.auto_registra_prima_nota(db, dict(FATTURA), None))
 
-    assert db["prima_nota_cassa"].docs == []
+    assert len(db["prima_nota_cassa"].docs) == 1
 
 
 def test_idempotente_banca_su_reimport(monkeypatch):

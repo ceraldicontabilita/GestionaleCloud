@@ -685,7 +685,8 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
       - metodo univoco cassa/contanti -> Prima Nota Cassa;
       - metodo banca -> Prima Nota Banca solo con una riga reale, univoca e
         forte dell'estratto conto; in assenza resta Provvisoria;
-      - metodo misto, assente o ambiguo -> Provvisoria.
+      - metodo assente -> riga Cassa provvisoria e alert per decisione utente;
+      - metodo misto o ambiguo -> Provvisoria.
 
     La scrittura usa il writer canonico registra_pagamento_fattura
     (idempotente per fattura: riferimento FATT-{id}, mai due movimenti per
@@ -734,20 +735,94 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
             )
         return None
 
-    metodo = ((forn or {}).get("metodo_pagamento") or "").strip().lower()
-    if not metodo:
+    # Senza un fornitore identificato univocamente non si crea alcun movimento:
+    # nome/importo da soli non sono identita'. Se il fornitore esiste ma non ha
+    # metodo, invece, la richiesta operativa e' una Cassa provvisoria visibile.
+    if not forn:
         return None
+
+    metodo = ((forn or {}).get("metodo_pagamento") or "").strip().lower()
+    metodo_assente = not metodo
 
     metodo_canonico = normalizza_metodo_pagamento(metodo)
+    if metodo_assente:
+        metodo_canonico = "cassa_provvisoria"
     if metodo_canonico not in ("cassa", "banca"):
-        return None
+        if metodo_canonico != "cassa_provvisoria":
+            return None
 
-    # Il metodo abituale del fornitore e' un suggerimento di instradamento,
-    # non una prova che questa specifica fattura sia stata pagata. Per la
-    # cassa non esiste un'evidenza esterna equivalente alla riga di estratto
-    # conto: la fattura deve quindi restare da confermare nei Provvisori.
-    if metodo_canonico == "cassa":
-        return None
+    if metodo_canonico in ("cassa", "cassa_provvisoria"):
+        from app.routers.prima_nota_module.sync import registra_pagamento_fattura
+        esito = await registra_pagamento_fattura(
+            invoice,
+            "cassa",
+            source=(
+                "metodo_fornitore_assente_provvisorio"
+                if metodo_assente else "auto_metodo_fornitore"
+            ),
+            session=session,
+        )
+        mov_id = esito.get("cassa")
+        if not mov_id:
+            return None
+
+        fattura_id = invoice.get("id") or invoice.get("invoice_key")
+        if metodo_assente:
+            now = datetime.now(timezone.utc).isoformat()
+            await db["prima_nota_cassa"].update_one(
+                {"id": mov_id},
+                {"$set": {
+                    "provvisorio": True,
+                    "canonico": False,
+                    "stato": "DA_VERIFICARE",
+                    "motivo_provvisorio": "metodo_pagamento_fornitore_assente",
+                    "updated_at": now,
+                }},
+                session=session,
+            )
+            update = {
+                "prima_nota_id": mov_id,
+                "prima_nota_cassa_id": mov_id,
+                "prima_nota_tipo": "cassa_provvisoria",
+                "stato_finanziario": "da_verificare",
+                "provvisorio": True,
+                "metodo_pagamento_effettivo": None,
+                "decisione_pagamento_richiesta": True,
+            }
+            if fattura_id:
+                await db[Collections.INVOICES].update_one(
+                    {"id": fattura_id}, {"$set": update}, session=session
+                )
+                try:
+                    from app.services.alert_engine import genera_alert
+                    await genera_alert(
+                        "FAT_MP_NON_DEFINITO", fattura_id, Collections.INVOICES,
+                        f"Fattura {invoice.get('invoice_number', '?')}: confermare Cassa o spostare in Banca",
+                        db,
+                    )
+                except Exception:
+                    logger.exception("Creazione alert metodo pagamento mancante non riuscita")
+            return update
+
+        update = {
+            "pagato": True,
+            "paid": True,
+            "stato_pagamento": "pagata",
+            "stato_finanziario": "pagata_cassa",
+            "metodo_pagamento": "contanti",
+            "metodo_pagamento_effettivo": "cassa",
+            "data_pagamento": invoice.get("invoice_date") or invoice.get("data_fattura"),
+            "prima_nota_id": mov_id,
+            "prima_nota_cassa_id": mov_id,
+            "prima_nota_tipo": "cassa",
+            "registrata_auto_da_metodo_fornitore": True,
+            "provvisorio": False,
+        }
+        if fattura_id:
+            await db[Collections.INVOICES].update_one(
+                {"id": fattura_id}, {"$set": update}, session=session
+            )
+        return update
 
     movimento_bancario = None
     movimento_bancario = await find_ec_match_for_invoice(
