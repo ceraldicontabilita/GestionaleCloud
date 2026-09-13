@@ -151,7 +151,7 @@ async def importa_anno_da_drive(db, anno: int) -> Dict[str, Any]:
     sync_fatture = None
     sync_corrispettivi = None
     if drive_invoice_ingest.is_configured():
-        sync_fatture = await drive_invoice_ingest.sync(db)
+        sync_fatture = await drive_invoice_ingest.sync(db, target_year=anno)
     if drive_corrispettivi_ingest.is_configured():
         sync_corrispettivi = await drive_corrispettivi_ingest.sync(db)
 

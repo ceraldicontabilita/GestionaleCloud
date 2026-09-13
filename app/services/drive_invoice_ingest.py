@@ -49,6 +49,20 @@ def _select_batch(files: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return list(files[:_batch_size()])
 
 
+def _files_for_target_year(files: List[Dict[str, Any]], target_year: Optional[int]) -> List[Dict[str, Any]]:
+    """Prioritizza la cartella annuale richiesta senza dedurre l'anno dal nome file."""
+    if target_year is None:
+        return files
+    token = str(target_year)
+    annuali = [
+        item for item in files
+        if token in str(item.get("_source_path") or "").replace("\\", "/").split("/")
+    ]
+    # Un archivio legacy senza cartelle annuali resta compatibile: sara il
+    # parser XML, non il filename, a determinare l'anno documentale.
+    return annuali or files
+
+
 def is_sync_running() -> bool:
     return _sync_lock.locked()
 
@@ -357,14 +371,14 @@ async def get_status(db) -> Dict[str, Any]:
     }
 
 
-async def sync(db) -> Dict[str, Any]:
+async def sync(db, *, target_year: Optional[int] = None) -> Dict[str, Any]:
     if _sync_lock.locked() or _rebuild_lock.locked():
         return {"status": "running", "message": "Sincronizzazione già in corso"}
     async with _sync_lock:
-        return await _do_sync(db)
+        return await _do_sync(db, target_year=target_year)
 
 
-async def _do_sync(db) -> Dict[str, Any]:
+async def _do_sync(db, *, target_year: Optional[int] = None) -> Dict[str, Any]:
     if not is_configured():
         return {
             "status": "not_configured",
@@ -400,10 +414,13 @@ async def _do_sync(db) -> Dict[str, Any]:
                     "_source_path": context["relative_path"],
                 })
 
-        batch = _select_batch(queued)
+        selected_queue = _files_for_target_year(queued, target_year)
+        batch = _select_batch(selected_queue)
         result["total"] = len(queued)
+        result["target_year"] = target_year
+        result["target_year_pending"] = len(selected_queue) if target_year is not None else None
         result["attempted"] = len(batch)
-        result["pending"] = max(len(queued) - len(batch), 0)
+        result["pending"] = max(len(selected_queue) - len(batch), 0)
         lifecycle_cache: Dict[str, tuple[Optional[str], Optional[str]]] = {}
 
         for f in batch:
@@ -472,7 +489,7 @@ async def _do_sync(db) -> Dict[str, Any]:
 
     prev = await db[_SYNC_STATE_COLLECTION].find_one({"_id": _SYNC_STATE_ID}) or {}
     last_result = {k: result[k] for k in (
-        "total", "attempted", "pending", "imported", "duplicates",
+        "total", "target_year", "target_year_pending", "attempted", "pending", "imported", "duplicates",
         "archiviate", "errors", "moved", "source_inboxes",
     )}
     last_result["details"] = result["details"][:5]
