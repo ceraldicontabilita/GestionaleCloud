@@ -620,6 +620,21 @@ async def ricategorizza_documenti(db) -> Dict[str, Any]:
     return {"ricategorizzati": ricategorizzati}
 
 
+async def allinea_status_documenti_processati(db) -> int:
+    """Allinea il badge operativo con i flag di processamento effettivi.
+
+    È idempotente e può essere richiamata sia dalla pipeline completa sia dal
+    job email orario. In precedenza viveva soltanto dentro
+    ``processa_nuovi_documenti``, che il job attivo non eseguiva.
+    """
+    result = await db["documents_inbox"].update_many(
+        {"$or": [{"processed": True}, {"xml_processed": True}],
+         "status": {"$in": ["nuovo", "da_processare", None]}},
+        {"$set": {"status": "processato"}},
+    )
+    return int(getattr(result, "modified_count", 0) or 0)
+
+
 async def processa_nuovi_documenti(db) -> Dict[str, Any]:
     """
     Processa automaticamente i documenti non ancora elaborati.
@@ -646,11 +661,7 @@ async def processa_nuovi_documenti(db) -> Dict[str, Any]:
     # dal badge in "Tutti i Documenti" — i documenti da Drive restavano
     # "NUOVO" per sempre pur essendo già stati esaminati.
     try:
-        await db["documents_inbox"].update_many(
-            {"$or": [{"processed": True}, {"xml_processed": True}],
-             "status": {"$in": ["nuovo", "da_processare", None]}},
-            {"$set": {"status": "processato"}}
-        )
+        results["status_documenti_allineati"] = await allinea_status_documenti_processati(db)
     except Exception as e:
         logger.debug(f"Allineamento status documenti processati: {e}")
 
