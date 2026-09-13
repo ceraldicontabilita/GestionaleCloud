@@ -15,6 +15,7 @@ from .common import (
     CATEGORIE_ESCLUSE, aggrega_saldo_prima_nota, filtro_saldo_prima_nota,
 )
 from .sync import determina_tipo_movimento_fattura
+from .cassa import _movimento_e_bancario_errato_in_cassa
 
 # Collection estratto conto bancario (non esportata da .common, la definisco qui)
 COLLECTION_ESTRATTO_CONTO = "estratto_conto_movimenti"
@@ -1670,25 +1671,12 @@ async def migrazione_pulisci_bancari_da_cassa(_admin: Dict[str, Any] = Depends(g
     """
     db = Database.get_db()
 
-    # Keywords che identificano movimenti BANCARI
-    BANCARI_KEYWORDS = [
-        'INC.POS CARTE CREDIT', 'INCAS. TRAMITE P.O.S', 'INC.POS',
-        'BONIFICO', 'BONIF.', 'BON.DA', 'BONIF. VS.',
-        'SEPA', 'SDD', 'RID', 'ADDEBITO DIRETTO',
-        'ACCREDITO', 'GIROCONTO',
-        'NUMIA', 'NEXI', 'WORLDLINE', 'SUMUP',
-        'PRELIEVO ATM', 'PRELIEVO BANCOMAT',
-        'Pagamento Fatt.', 'PAGAMENTO FATT.',
-        'STIPENDI', 'EMOLUMENTI',
-        'F24', 'DELEGA UNICA', 'MOD.F24',
-        'CANONE MENSILE', 'COMMISSIONI', 'COMPETENZE E SPESE',
-        'IMPOSTA BOLLO',
-        'PDV 37',  # terminale POS bancario Ceraldi
-    ]
-
     tutti = await db[COLLECTION_PRIMA_NOTA_CASSA].find(
         {"status": {"$nin": ["deleted", "archived"]}},
-        {"_id": 1, "descrizione": 1, "categoria": 1, "source": 1, "importo": 1, "data": 1, "tipo": 1}
+        {"_id": 1, "descrizione": 1, "categoria": 1, "source": 1,
+         "importo": 1, "data": 1, "tipo": 1, "riferimento": 1,
+         "fattura_id": 1, "fattura_collegata": 1, "metodo_pagamento": 1,
+         "metodo_pagamento_effettivo": 1}
     ).to_list(100000)
     if len(tutti) >= 100000:
         logger.warning("manutenzione prima nota cassa: raggiunto il tetto di 100000 documenti, possibile troncamento")
@@ -1698,70 +1686,33 @@ async def migrazione_pulisci_bancari_da_cassa(_admin: Dict[str, Any] = Depends(g
 
     for m in tutti:
         desc = (m.get('descrizione') or '')
-        desc_upper = desc.upper()
-        cat = m.get('categoria', '') or ''
         source = m.get('source', '') or ''
-
-        # Corrispettivi: SEMPRE legittimi
-        if cat == 'Corrispettivi' or source == 'corrispettivi_sync':
-            continue
-
-        # Movimenti manuali senza keywords bancari: legittimi
-        if source in ('', 'manual', 'user') or source is None:
-            if not any(kw.upper() in desc_upper for kw in BANCARI_KEYWORDS):
-                continue
-
-        # POS manuali (categoria POS senza source csv): legittimi
-        if cat == 'POS' and source in ('', 'manual', 'user', None):
-            continue
-
-        # Versamenti manuali: legittimi
-        if cat in ('Versamento', 'Finanziamento', 'Finanziamento soci') and source in ('', 'manual', 'user', None):
-            continue
-
-        # CSV import: ELIMINA se ha keywords bancari
-        if source == 'csv_import':
-            if any(kw.upper() in desc_upper for kw in BANCARI_KEYWORDS):
-                ids_da_eliminare.append(m['_id'])
-                if len(campione_eliminati) < 10:
-                    campione_eliminati.append({
-                        "data": m.get("data"), "descrizione": desc[:60],
-                        "importo": m.get("importo"), "source": source, "motivo": "csv_bancario"
-                    })
-                continue
-            else:
-                # CSV non bancario: potrebbe essere legittimo, lo teniamo
-                continue
-
-        # sync_fatture con categoria fornitori/Fatture: ELIMINA (pagato per banca, non contanti)
-        if source == 'sync_fatture' and cat in ('fornitori', 'Fatture', 'fornitore'):
+        if _movimento_e_bancario_errato_in_cassa(m):
             ids_da_eliminare.append(m['_id'])
             if len(campione_eliminati) < 10:
                 campione_eliminati.append({
                     "data": m.get("data"), "descrizione": desc[:60],
-                    "importo": m.get("importo"), "source": source, "motivo": "fattura_bancaria"
-                })
-            continue
-
-        # Qualsiasi altra source con keywords bancari: ELIMINA
-        if any(kw.upper() in desc_upper for kw in BANCARI_KEYWORDS):
-            ids_da_eliminare.append(m['_id'])
-            if len(campione_eliminati) < 10:
-                campione_eliminati.append({
-                    "data": m.get("data"), "descrizione": desc[:60],
-                    "importo": m.get("importo"), "source": source, "motivo": "keyword_bancario"
+                    "importo": m.get("importo"), "source": source,
+                    "motivo": "evidenza_bancaria_in_cassa"
                 })
 
     deleted_count = 0
     if ids_da_eliminare:
-        result = await db[COLLECTION_PRIMA_NOTA_CASSA].delete_many({"_id": {"$in": ids_da_eliminare}})
-        deleted_count = result.deleted_count
+        result = await db[COLLECTION_PRIMA_NOTA_CASSA].update_many(
+            {"_id": {"$in": ids_da_eliminare}},
+            {"$set": {
+                "status": "archived", "deleted": True,
+                "archived_at": datetime.now(timezone.utc).isoformat(),
+                "archived_reason": "movimento_bancario_errato_in_cassa",
+            }},
+        )
+        deleted_count = result.modified_count
 
     remaining = await db[COLLECTION_PRIMA_NOTA_CASSA].count_documents(
         {"status": {"$nin": ["deleted", "archived"]}}
     )
 
-    logger.info(f"MIGRAZIONE CASSA: Eliminati {deleted_count} movimenti bancari, rimasti {remaining}")
+    logger.info(f"MIGRAZIONE CASSA: Archiviati {deleted_count} movimenti bancari, rimasti {remaining}")
 
     return {
         "success": True,

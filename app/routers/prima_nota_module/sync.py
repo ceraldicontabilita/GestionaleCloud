@@ -841,7 +841,18 @@ async def registra_pagamento_fattura(
                 )
                 return (generic.get("id") or str(generic.get("_id")), False)
 
-        mov = {**movimento_base, "id": str(uuid.uuid4()), "importo": float(importo), "descrizione": desc}
+        mov = {
+            **movimento_base,
+            "id": str(uuid.uuid4()),
+            "importo": float(importo),
+            "descrizione": desc,
+            "metodo_pagamento": (
+                "cassa" if collection == COLLECTION_PRIMA_NOTA_CASSA else "banca"
+            ),
+            "metodo_pagamento_effettivo": (
+                "cassa" if collection == COLLECTION_PRIMA_NOTA_CASSA else "banca"
+            ),
+        }
         if collection == COLLECTION_PRIMA_NOTA_BANCA and movimento_bancario:
             evidenza_id = movimento_bancario.get("id") or movimento_bancario.get("movimento_id")
             mov.update({

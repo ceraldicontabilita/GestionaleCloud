@@ -19,6 +19,57 @@ from .common import (
 logger = logging.getLogger(__name__)
 
 
+_KEYWORDS_BANCARIE_CASSA = (
+    'INC.POS CARTE CREDIT', 'INCAS. TRAMITE P.O.S', 'INC.POS',
+    'BONIFICO', 'BONIF.', 'BON.DA', 'BONIF. VS.',
+    'SEPA', 'SDD', 'RID', 'ADDEBITO DIRETTO', 'ACCREDITO', 'GIROCONTO',
+    'NUMIA', 'NEXI', 'WORLDLINE', 'PRELIEVO ATM', 'PRELIEVO BANCOMAT',
+    'STIPENDI', 'EMOLUMENTI', 'F24', 'DELEGA UNICA', 'MOD.F24',
+    'CANONE MENSILE', 'COMMISSIONI', 'COMPETENZE E SPESE', 'IMPOSTA BOLLO',
+)
+
+
+def _fattura_con_evidenza_cassa(movimento: Dict[str, Any]) -> bool:
+    """Vero solo per una fattura collegata esplicitamente a un pagamento cash."""
+    metodo = str(
+        movimento.get("metodo_pagamento_effettivo")
+        or movimento.get("metodo_pagamento")
+        or ""
+    ).strip().lower()
+    collegata = bool(
+        movimento.get("fattura_id")
+        or movimento.get("fattura_collegata")
+        or str(movimento.get("riferimento") or "").upper().startswith("FATT-")
+    )
+    return collegata and metodo in {"cassa", "contanti", "cash"}
+
+
+def _movimento_e_bancario_errato_in_cassa(movimento: Dict[str, Any]) -> bool:
+    """Classificazione fail-closed: il testo generico non sostituisce l'evidenza."""
+    if _fattura_con_evidenza_cassa(movimento):
+        return False
+
+    desc_upper = str(movimento.get("descrizione") or "").upper()
+    categoria = str(movimento.get("categoria") or "")
+    source = movimento.get("source")
+
+    if categoria == "Corrispettivi" or source == "corrispettivi_sync":
+        return False
+    if categoria in {"POS", "Versamento", "Finanziamento", "Finanziamento soci"} and source in (None, "", "manual", "user"):
+        return False
+
+    keyword_bancaria = any(keyword in desc_upper for keyword in _KEYWORDS_BANCARIE_CASSA)
+    if source == "csv_import":
+        return keyword_bancaria
+    if source in (None, "", "manual", "user"):
+        return keyword_bancaria
+    if source == "sync_fatture":
+        # Una fattura priva di prova esplicita del mezzo di pagamento resta
+        # DA_VERIFICARE: non viene cancellata automaticamente.
+        return keyword_bancaria
+    return keyword_bancaria
+
+
 async def list_prima_nota_cassa(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=10000),
@@ -346,25 +397,13 @@ async def analisi_movimenti_bancari_errati_in_cassa() -> Dict[str, Any]:
     db = Database.get_db()
     
     # Keywords che identificano movimenti BANCARI (NON di cassa)
-    bancari_keywords = [
-        'INC.POS CARTE CREDIT', 'INCAS. TRAMITE P.O.S', 'INC.POS',
-        'BONIFICO', 'BONIF.', 'BON.DA', 'BONIF. VS.', 
-        'SEPA', 'SDD', 'RID', 'ADDEBITO DIRETTO',
-        'ACCREDITO', 'GIROCONTO',
-        'NUMIA', 'NEXI', 'WORLDLINE',
-        'PRELIEVO ATM', 'PRELIEVO BANCOMAT',
-        'Pagamento Fatt.', 'PAGAMENTO FATT.',
-        'STIPENDI', 'EMOLUMENTI',
-        'F24', 'DELEGA UNICA', 'MOD.F24',
-        'CANONE MENSILE', 'COMMISSIONI', 'COMPETENZE E SPESE',
-        'IMPOSTA BOLLO',
-    ]
-    
     # Carica TUTTI i movimenti in cassa (non solo csv_import)
     tutti_movimenti = await db[COLLECTION_PRIMA_NOTA_CASSA].find(
         {"status": {"$nin": ["deleted", "archived"]}},
         {"_id": 0, "id": 1, "descrizione": 1, "importo": 1, "data": 1, "tipo": 1, 
-         "categoria": 1, "source": 1, "riferimento": 1}
+         "categoria": 1, "source": 1, "riferimento": 1, "fattura_id": 1,
+         "fattura_collegata": 1, "metodo_pagamento": 1,
+         "metodo_pagamento_effettivo": 1}
     ).to_list(50000)
     if len(tutti_movimenti) >= 50000:
         logger.warning("analisi_movimenti_bancari_errati_in_cassa: raggiunto il tetto di 50000 documenti, possibile troncamento")
@@ -379,53 +418,7 @@ async def analisi_movimenti_bancari_errati_in_cassa() -> Dict[str, Any]:
     totale_bancari = 0
     
     for m in tutti_movimenti:
-        desc = (m.get('descrizione') or '')
-        desc_upper = desc.upper()
-        cat = m.get('categoria', '')
-        source = m.get('source', '')
-        
-        # 1) Corrispettivi sono SEMPRE legittimi
-        if cat == 'Corrispettivi' or source == 'corrispettivi_sync':
-            legittimi.append(m)
-            continue
-        
-        # 2) Movimenti manuali senza source o con source manual/user sono legittimi
-        if source in (None, '', 'manual', 'user'):
-            # Ma controlliamo che non abbiano descrizione bancaria
-            is_bancario = any(kw.upper() in desc_upper for kw in bancari_keywords)
-            if not is_bancario:
-                legittimi.append(m)
-                continue
-        
-        # 3) CSV import - controlla se è bancario
-        if source == 'csv_import':
-            is_bancario = any(kw.upper() in desc_upper for kw in bancari_keywords)
-            if is_bancario:
-                bancari_errati.append(m)
-                totale_bancari += abs(m.get('importo', 0))
-                continue
-            else:
-                legittimi.append(m)
-                continue
-        
-        # 4) sync_fatture - verifica se è fattura pagata per cassa o per banca
-        if source == 'sync_fatture':
-            # Se la descrizione contiene keywords bancari, è un errore
-            is_bancario = any(kw.upper() in desc_upper for kw in bancari_keywords)
-            if is_bancario:
-                bancari_errati.append(m)
-                totale_bancari += abs(m.get('importo', 0))
-                continue
-            # Se la categoria è "fornitori" o "Fatture" ma non è contanti
-            if cat in ('fornitori', 'Fatture', 'fornitore'):
-                # Probabile pagamento bancario finito in cassa
-                bancari_errati.append(m)
-                totale_bancari += abs(m.get('importo', 0))
-                continue
-        
-        # 5) Default: controlla per keywords bancari
-        is_bancario = any(kw.upper() in desc_upper for kw in bancari_keywords)
-        if is_bancario:
+        if _movimento_e_bancario_errato_in_cassa(m):
             bancari_errati.append(m)
             totale_bancari += abs(m.get('importo', 0))
         else:
@@ -459,25 +452,12 @@ async def elimina_movimenti_bancari_da_cassa() -> Dict[str, Any]:
     """
     db = Database.get_db()
     
-    # Stessi keywords dell'analisi
-    bancari_keywords = [
-        'INC.POS CARTE CREDIT', 'INCAS. TRAMITE P.O.S', 'INC.POS',
-        'BONIFICO', 'BONIF.', 'BON.DA', 'BONIF. VS.',
-        'SEPA', 'SDD', 'RID', 'ADDEBITO DIRETTO',
-        'ACCREDITO', 'GIROCONTO',
-        'NUMIA', 'NEXI', 'WORLDLINE',
-        'PRELIEVO ATM', 'PRELIEVO BANCOMAT',
-        'Pagamento Fatt.', 'PAGAMENTO FATT.',
-        'STIPENDI', 'EMOLUMENTI',
-        'F24', 'DELEGA UNICA', 'MOD.F24',
-        'CANONE MENSILE', 'COMMISSIONI', 'COMPETENZE E SPESE',
-        'IMPOSTA BOLLO',
-    ]
-    
     # Carica tutti i movimenti con _id per poter eliminare
     tutti_movimenti = await db[COLLECTION_PRIMA_NOTA_CASSA].find(
         {"status": {"$nin": ["deleted", "archived"]}},
-        {"_id": 1, "descrizione": 1, "categoria": 1, "source": 1}
+        {"_id": 1, "descrizione": 1, "categoria": 1, "source": 1,
+         "riferimento": 1, "fattura_id": 1, "fattura_collegata": 1,
+         "metodo_pagamento": 1, "metodo_pagamento_effettivo": 1}
     ).to_list(50000)
     if len(tutti_movimenti) >= 50000:
         logger.warning("elimina_movimenti_bancari_da_cassa: raggiunto il tetto di 50000 documenti, possibile troncamento")
@@ -485,45 +465,20 @@ async def elimina_movimenti_bancari_da_cassa() -> Dict[str, Any]:
     ids_da_eliminare = []
     
     for m in tutti_movimenti:
-        desc = (m.get('descrizione') or '')
-        desc_upper = desc.upper()
-        cat = m.get('categoria', '')
-        source = m.get('source', '')
-        
-        # Corrispettivi: SEMPRE legittimi
-        if cat == 'Corrispettivi' or source == 'corrispettivi_sync':
-            continue
-        
-        # Manuali senza keywords bancari: legittimi
-        if source in (None, '', 'manual', 'user'):
-            if not any(kw.upper() in desc_upper for kw in bancari_keywords):
-                continue
-        
-        # CSV import con keywords bancari: ELIMINARE
-        if source == 'csv_import':
-            if any(kw.upper() in desc_upper for kw in bancari_keywords):
-                ids_da_eliminare.append(m['_id'])
-                continue
-            else:
-                continue
-        
-        # sync_fatture con keywords bancari o categoria fornitori: ELIMINARE
-        if source == 'sync_fatture':
-            if any(kw.upper() in desc_upper for kw in bancari_keywords):
-                ids_da_eliminare.append(m['_id'])
-                continue
-            if cat in ('fornitori', 'Fatture', 'fornitore'):
-                ids_da_eliminare.append(m['_id'])
-                continue
-        
-        # Qualsiasi altra source con keywords bancari: ELIMINARE
-        if any(kw.upper() in desc_upper for kw in bancari_keywords):
+        if _movimento_e_bancario_errato_in_cassa(m):
             ids_da_eliminare.append(m['_id'])
     
     deleted_count = 0
     if ids_da_eliminare:
-        result = await db[COLLECTION_PRIMA_NOTA_CASSA].delete_many({"_id": {"$in": ids_da_eliminare}})
-        deleted_count = result.deleted_count
+        result = await db[COLLECTION_PRIMA_NOTA_CASSA].update_many(
+            {"_id": {"$in": ids_da_eliminare}},
+            {"$set": {
+                "status": "archived", "deleted": True,
+                "archived_at": datetime.now(timezone.utc).isoformat(),
+                "archived_reason": "movimento_bancario_errato_in_cassa",
+            }},
+        )
+        deleted_count = result.modified_count
     
     remaining = await db[COLLECTION_PRIMA_NOTA_CASSA].count_documents(
         {"status": {"$nin": ["deleted", "archived"]}}
@@ -531,7 +486,7 @@ async def elimina_movimenti_bancari_da_cassa() -> Dict[str, Any]:
     
     return {
         "success": True,
-        "message": f"Eliminati {deleted_count} movimenti bancari errati da Prima Nota Cassa",
+        "message": f"Archiviati {deleted_count} movimenti bancari errati da Prima Nota Cassa",
         "movimenti_eliminati": deleted_count,
         "movimenti_rimanenti_in_cassa": remaining,
         "regola": "In cassa restano solo: corrispettivi, POS manuali, versamenti, finanziamenti soci, fatture contanti"
