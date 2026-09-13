@@ -2063,8 +2063,13 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
                 await db[Collections.INVOICES].update_one(
                     {"id": existing_invoice.get("id")}, {"$set": provenance}
                 )
-            return {"status": "duplicate", "filename": filename,
-                    "invoice_number": parsed.get("invoice_number")}
+            return {
+                "status": "duplicate", "filename": filename,
+                "invoice_number": parsed.get("invoice_number"),
+                "derivati_incompleti": existing_invoice.get("stato_derivati") in {
+                    "da_ricalcolare", "errore",
+                },
+            }
         # Numero, fornitore e data coincidono ma l'originale no: non e' una
         # deduplica dimostrata. Importa separatamente e lascia la collisione
         # esplicita, senza collegare o sovrascrivere il record precedente.
@@ -2142,7 +2147,7 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
         "replay_storico": replay_storico,
         "stato_derivati": (
             "bloccato_collisione_identita" if identity_collision_ids
-            else "da_ricalcolare" if replay_storico else "allineato"
+            else "da_ricalcolare"
         ),
         "stato_import": (
             "collisione_identita_da_verificare" if identity_collision_ids
@@ -2212,9 +2217,11 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
 
     # 6. Prima Nota: sempre provvisoria, conferma manuale dell'utente da
     #    Prima Nota → Provvisori (vedi auto_registra_prima_nota).
+    derivati_errori = []
     try:
         await auto_registra_prima_nota(db, invoice, metodo_pagamento)
     except Exception:
+        derivati_errori.append("prima_nota")
         logger.exception(f"Errore auto-registrazione prima nota per {filename}")
 
     # Nota di credito: collega alla fattura originale e ricalcola il netto.
@@ -2223,6 +2230,7 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
         if nc_update:
             invoice.update(nc_update)
     except Exception:
+        derivati_errori.append("nota_credito")
         logger.exception(f"Errore collegamento nota di credito per {filename}")
 
     # 7. Event bus: crea partita scadenziario, alert fornitore, audit.
@@ -2252,11 +2260,13 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
             "pagamento_rate_coerente": invoice.get("pagamento_rate_coerente"),
         }, db, source_module=f"fatture_upload_{source}")
     except Exception:
+        derivati_errori.append("evento_fattura_created")
         logger.exception(f"Errore propagazione evento fattura.created ({source})")
 
     try:
         await riprocessa_estratto_dopo_import_fattura(db, invoice)
     except Exception:
+        derivati_errori.append("riconciliazione_banca")
         logger.exception(
             "Riprocessamento estratto dopo import fallito per %s",
             invoice.get("invoice_number"),
@@ -2266,17 +2276,31 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
         from app.services.paypal_reconciliation_links import collega_fattura_paypal_appena_importata
         await collega_fattura_paypal_appena_importata(db, invoice)
     except Exception:
+        derivati_errori.append("riconciliazione_paypal")
         logger.exception(
             "Riprocessamento PayPal dopo import fallito per %s",
             invoice.get("invoice_number"),
         )
 
     # 8. Libro giornale (partita doppia) — audit 03/09/2026 §2, PR 8.
-    await _registra_in_partita_doppia(db, invoice["id"])
+    esito_giornale = await _registra_in_partita_doppia(db, invoice["id"])
+    if esito_giornale.get("stato") == "errore":
+        derivati_errori.append("libro_giornale")
+
+    stato_derivati = "errore" if derivati_errori else "allineato"
+    await db[Collections.INVOICES].update_one(
+        {"id": invoice["id"]},
+        {"$set": {
+            "stato_derivati": stato_derivati,
+            "derivati_errori": derivati_errori,
+            "derivati_aggiornati_at": datetime.now(timezone.utc).isoformat(),
+        }},
+    )
 
     return {"status": "imported", "filename": filename,
             "invoice_number": parsed.get("invoice_number"),
-            "supplier": parsed.get("supplier_name"), "id": invoice["id"]}
+            "supplier": parsed.get("supplier_name"), "id": invoice["id"],
+            "stato_derivati": stato_derivati}
 
 
 async def _registra_in_partita_doppia(db, fattura_id: Optional[str]) -> Dict[str, Any]:

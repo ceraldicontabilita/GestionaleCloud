@@ -235,6 +235,57 @@ def test_stessa_fattura_due_volte_produce_una_sola_scrittura(import_fattura_isol
     assert len(scritture) == 1
 
 
+def test_deploy_interrotto_non_dichiara_i_derivati_allineati(
+    import_fattura_isolato, monkeypatch,
+):
+    db = _db("pr8-import-interrotto")
+
+    async def interrotto(*_args, **_kwargs):
+        raise asyncio.CancelledError()
+
+    monkeypatch.setattr(fu_mod, "auto_registra_prima_nota", interrotto)
+
+    async def scenario():
+        with pytest.raises(asyncio.CancelledError):
+            await fu_mod.import_parsed_invoice(
+                db, _parsed_fattura(), "interrotta.xml", "google_drive",
+            )
+        fattura = await db["invoices"].find_one({"invoice_number": "77/2026"})
+        retry = await fu_mod.import_parsed_invoice(
+            db, _parsed_fattura(), "interrotta.xml", "google_drive",
+        )
+        return fattura, retry
+
+    fattura, retry = _run(scenario())
+    assert fattura["stato_derivati"] == "da_ricalcolare"
+    assert retry["status"] == "duplicate"
+    assert retry["derivati_incompleti"] is True
+
+
+def test_errore_derivato_resta_visibile_sulla_fattura(
+    import_fattura_isolato, monkeypatch,
+):
+    db = _db("pr8-derivato-errore")
+
+    async def errore_prima_nota(*_args, **_kwargs):
+        raise RuntimeError("prima nota indisponibile")
+
+    monkeypatch.setattr(fu_mod, "auto_registra_prima_nota", errore_prima_nota)
+
+    async def scenario():
+        result = await fu_mod.import_parsed_invoice(
+            db, _parsed_fattura(), "errore.xml", "google_drive",
+        )
+        fattura = await db["invoices"].find_one({"id": result["id"]})
+        return result, fattura
+
+    result, fattura = _run(scenario())
+    assert result["status"] == "imported"
+    assert result["stato_derivati"] == "errore"
+    assert fattura["stato_derivati"] == "errore"
+    assert fattura["derivati_errori"] == ["prima_nota"]
+
+
 def test_collisione_stessa_chiave_originale_diverso_resta_da_verificare(
     import_fattura_isolato, monkeypatch,
 ):
