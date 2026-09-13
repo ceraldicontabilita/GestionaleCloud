@@ -237,14 +237,11 @@ def test_import_terminale_crea_subito_l_attesa_bancaria():
     assert banca["expectation_owner"] == "numia_provider_export"
     assert banca["expectation_status"] == "ATTESO"
     assert banca["source_fact_id"]
-    assert banca["operation_id"] == cassa["operation_id"]
+    assert cassa is None
+    assert banca["operation_id"]
     assert banca["quota_pos_fonte"] == "export_numia_storico"
-    assert cassa["quota_pos_fonte"] == "export_numia_storico"
     assert banca["descrizione"] == "Credito verso Numia — POS 05/08/2026"
-    assert cassa["descrizione"] == (
-        "POS NUMIA 05/08/2026 → Banca (export storico Numia Drive)"
-    )
-    assert "Nexi" not in banca["descrizione"] + cassa["descrizione"]
+    assert "Nexi" not in banca["descrizione"]
     assert chiusura["source"] == "import_storico_numia"
 
 

@@ -147,14 +147,12 @@ def test_la_chiusura_reale_successiva_corregge_l_importo():
     _run(bonifica_pos_xml.applica(db))
     _run(registra_chiusura_pos_reale(db, "2026-08-03", 1500.0, gestore="nexi"))
 
-    # La prova XML resta nello storico archiviato; operativamente esiste una
-    # sola uscita, quella reale del circuito.
+    # La prova XML resta nello storico archiviato; il POS reale apre il credito
+    # verso il gestore senza creare uscite di contante.
     uscite = _run(db.prima_nota_cassa.find({
         "data": "2026-08-03", "status": {"$ne": "archived"}
     }).to_list(10))
-    assert len(uscite) == 1
-    assert uscite[0]["importo"] == 1500.0
-    assert uscite[0]["quota_pos_fonte"] == "chiusura_manuale"
+    assert uscite == []
 
 
 def test_rieseguire_la_bonifica_e_idempotente():

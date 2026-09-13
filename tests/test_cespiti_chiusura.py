@@ -148,6 +148,7 @@ def _cespite(anno_acquisto=2025, valore=1000.0, coeff=20, fondo=0.0, piano=None)
         "valore_acquisto": valore, "coefficiente_ammortamento": coeff,
         "fondo_ammortamento": fondo, "anno_acquisto": anno_acquisto,
         "data_entrata_funzione": f"{anno_acquisto}-01-01",
+        "fattura_id": "fattura-c1",
         "piano_ammortamento": piano or [],
     }
 

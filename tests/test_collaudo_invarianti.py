@@ -166,6 +166,55 @@ def test_check_f24_pagati_senza_banca_distingue_quietanza_e_addebito():
     assert r["esempi"][0]["f24_id"] == "solo-quietanza"
 
 
+def test_check_cespiti_segnala_documento_acquisto_mancante():
+    db = _Db({
+        "invoices": _Coll([{"id": "f1"}]),
+        "documents_inbox": _Coll([]),
+        "cespiti": _Coll([
+            {"id": "con-prova", "stato": "attivo", "fattura_id": "f1"},
+            {"id": "senza-prova", "stato": "attivo", "piano_ammortamento": []},
+            {"id": "senza-prova-con-quota", "stato": "attivo",
+             "piano_ammortamento": [{"anno": 2025, "quota": 100}]},
+        ]),
+    })
+
+    r = _run(coll.check_cespiti_senza_documento_acquisto(db))
+
+    assert r["nome"] == "cespiti_senza_documento_acquisto"
+    assert r["violazioni"] == 2
+    assert {e["cespite_id"] for e in r["esempi"]} == {
+        "senza-prova", "senza-prova-con-quota",
+    }
+    assert any(e["quote_presenti"] for e in r["esempi"])
+
+
+def test_check_pos_non_richiede_uscita_cassa_speculare():
+    db = _Db({
+        "prima_nota_cassa": _Coll([]),
+        "prima_nota_banca": _Coll([{
+            "id": "credito-1", "data": "2026-09-01", "tipo": "entrata",
+            "source": "trasferimento_pos", "importo": 100,
+            "natura": "credito_pos", "conto_contabile": "1.3.02.01",
+            "trasferimento_id": "tr-1",
+        }]),
+    })
+    r = _run(coll.check_trasferimento_pos_speculare(db))
+    assert r["violazioni"] == 0
+
+
+def test_check_pos_segnala_uscita_cassa_legacy():
+    db = _Db({
+        "prima_nota_cassa": _Coll([{
+            "id": "legacy", "data": "2026-09-01", "tipo": "uscita",
+            "categoria": "POS Verso Banca", "importo": 100,
+        }]),
+        "prima_nota_banca": _Coll([]),
+    })
+    r = _run(coll.check_trasferimento_pos_speculare(db))
+    assert r["violazioni"] == 1
+    assert r["esempi"][0]["registro"] == "cassa"
+
+
 def test_esegui_collaudo_report_e_alert(monkeypatch):
     async def check_sporco(db):
         return {"nome": "sporco", "violazioni": 3, "descrizione": "x", "esempi": []}

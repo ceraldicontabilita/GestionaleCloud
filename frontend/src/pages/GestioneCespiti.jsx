@@ -497,6 +497,13 @@ export default function GestioneCespiti() {
                       conferma della data di entrata in funzione.
                     </span>
                   )}
+                  {verificaAmmortamenti.documento_acquisto_da_verificare > 0 && (
+                    <span>
+                      {' '}
+                      {verificaAmmortamenti.documento_acquisto_da_verificare} beni richiedono il
+                      collegamento alla fattura o al documento originale di acquisto.
+                    </span>
+                  )}
                   {verificaAmmortamenti.critiche?.length > 0 && (
                     <span> Differenza contabile: {fmt(verificaAmmortamenti.differenza)}.</span>
                   )}
@@ -542,7 +549,10 @@ export default function GestioneCespiti() {
                 <p style={styles.statLabel('#dc2626')}>Da verificare</p>
                 <p style={styles.statValue('#b91c1c')}>
                   {riepilogoCespiti.totali.entrata_funzione_da_verificare || 0}
+                  {' / '}
+                  {riepilogoCespiti.totali.documento_acquisto_da_verificare || 0}
                 </p>
+                <p style={{ ...styles.statLabel('#dc2626'), marginTop: 2 }}>data / documento</p>
               </div>
             </div>
           )}
@@ -568,7 +578,8 @@ export default function GestioneCespiti() {
           <div style={{ ...styles.small, marginBottom: 8 }}>
             Coefficienti massimi: DM 31/12/1988, Gruppo XIX. L'ammortamento parte dall'entrata in
             funzione (art. 102 TUIR); software e diritti seguono l'art. 103. Le proposte da XML non
-            vengono ammortizzate finché la data non è confermata.
+            vengono ammortizzate finché la data non è confermata e la fattura o il documento
+            originale di acquisto non è collegato.
           </div>
           {showForm && (
             <div style={styles.formCard}>

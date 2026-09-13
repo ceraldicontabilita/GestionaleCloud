@@ -109,6 +109,7 @@ def _asset(**overrides):
         "data_acquisto": "2025-01-10",
         "anno_acquisto": 2025,
         "data_entrata_funzione": "2025-01-15",
+        "fattura_id": "fattura-1",
         "anno_entrata_funzione": 2025,
         "valore_acquisto": 1000.0,
         "fondo_ammortamento": 0.0,
@@ -155,6 +156,29 @@ def test_registrazione_blocca_entrata_funzione_non_documentata(monkeypatch):
 
     assert exc.value.status_code == 409
     assert "entrata in funzione" in exc.value.detail
+
+
+def test_registrazione_blocca_documento_acquisto_non_collegato(monkeypatch):
+    db = _Db({"cespiti": _Collection([_asset(fattura_id=None, documento_id=None)])})
+    _patch_db(monkeypatch, db)
+    monkeypatch.setattr(mod, "_today", lambda: date(2027, 1, 10))
+
+    with pytest.raises(HTTPException) as exc:
+        _run(mod.registra_ammortamenti_anno(2025, conferma=True))
+
+    assert exc.value.status_code == 409
+    assert "documento" in exc.value.detail
+    assert db["movimenti_contabili"].docs == []
+
+
+def test_rateo_esclude_cespite_senza_documento_acquisto(monkeypatch):
+    db = _Db({"cespiti": _Collection([_asset(fattura_id=None, documento_id=None)])})
+    _patch_db(monkeypatch, db)
+
+    result = _run(mod.calcola_rateo_ammortamenti(2026, 6))
+
+    assert result["num_cespiti"] == 0
+    assert result["da_verificare"][0]["motivo"] == "documento_acquisto_mancante"
 
 
 def test_registrazione_restituisce_id_reale_e_scrive_una_sola_quota(monkeypatch):

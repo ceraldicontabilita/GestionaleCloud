@@ -947,9 +947,14 @@ def start_scheduler():
 
     async def _mittenti_email_job():
         from app.database import Database
-        from app.services.email_monitor_service import sync_email_documents
+        from app.services.email_monitor_service import (
+            allinea_status_documenti_processati,
+            sync_email_documents,
+        )
         try:
-            result = await sync_email_documents(Database.get_db(), giorni=1)
+            db = Database.get_db()
+            result = await sync_email_documents(db, giorni=1)
+            result["status_documenti_allineati"] = await allinea_status_documenti_processati(db)
             if result.get("success") is False:
                 logger.info(f"[SCHEDULER-MITTENTI-EMAIL] non eseguito: {result.get('error')}")
             else:

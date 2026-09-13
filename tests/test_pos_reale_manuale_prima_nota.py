@@ -99,6 +99,15 @@ class _Collection:
             return _Result(1)
         return _Result(0)
 
+    async def update_many(self, query, update):
+        matched = 0
+        for doc in self.docs:
+            if _match(doc, query):
+                matched += 1
+                for chiave, valore in update.get("$set", {}).items():
+                    _set(doc, chiave, valore)
+        return _Result(matched)
+
     async def find_one_and_update(self, query, update, upsert=False):
         for doc in self.docs:
             if _match(doc, query):
@@ -170,8 +179,8 @@ def test_pos_manuale_sostituisce_xml_solo_in_prima_nota():
     assert entrata["pagato_elettronico"] == 1000.0
     assert entrata["pagato_contanti"] == 200.0
     assert entrata["dettaglio"]["elettronico"] == 1000.0
-    assert uscita["importo"] == 1000.0
-    assert uscita["quota_pos_fonte"] == "chiusura_manuale"
+    assert uscita["status"] == "archived"
+    assert uscita["deleted_reason"] == "pos_non_movimenta_contanti"
 
     banca = db["prima_nota_banca"].docs[0]
     assert banca["importo"] == 1000.0
@@ -192,7 +201,7 @@ def test_salvataggio_esatto_riconcilia_e_non_duplica():
     assert db["prima_nota_banca"].docs[0]["riconciliato"] is True
 
 
-def test_crea_trasferimento_speculare_se_manca():
+def test_crea_credito_pos_senza_uscita_cassa_se_manca():
     db = _Db()
     db["corrispettivi"].docs = [{
         "id": "corr-2", "data": "2026-07-08", "totale": 1500.0,
@@ -201,11 +210,11 @@ def test_crea_trasferimento_speculare_se_manca():
 
     _run(registra_chiusura_pos_reale(db, "2026-07-08", 875.50))
 
-    uscita = db["prima_nota_cassa"].docs[0]
     banca = db["prima_nota_banca"].docs[0]
-    assert uscita["tipo"] == "uscita" and uscita["importo"] == 875.50
+    assert db["prima_nota_cassa"].docs == []
     assert banca["tipo"] == "entrata" and banca["importo"] == 875.50
-    assert uscita["trasferimento_id"] == banca["trasferimento_id"]
+    assert banca["natura"] == "credito_pos"
+    assert banca["trasferimento_id"]
     assert banca["riconciliato"] is False
 
 
@@ -215,7 +224,7 @@ def test_zero_manualizzato_non_riprende_il_valore_xml():
 
     assert _run(chiusura_pos_del_giorno(db, "2026-07-05")) == 0.0
     assert db["corrispettivi"].docs[0]["pagato_elettronico"] == 1152.70
-    assert db["prima_nota_cassa"].docs[1]["status"] == "deleted"
+    assert db["prima_nota_cassa"].docs[1]["status"] == "archived"
     assert db["prima_nota_banca"].docs[0]["status"] == "deleted"
 
 
@@ -245,7 +254,7 @@ def test_importazione_batch_salva_tutte_le_giornate(monkeypatch):
     assert esito["errori"] == 0
     assert esito["totale"] == 3352.70
     assert len(db["chiusure_pos_manuali"].docs) == 2
-    assert len(db["prima_nota_cassa"].docs) == 2
+    assert len(db["prima_nota_cassa"].docs) == 0
     assert len(db["prima_nota_banca"].docs) == 2
 
 

@@ -108,6 +108,8 @@ class CespiteInput(BaseModel):
     valore_acquisto: float = Field(gt=0)
     fornitore: Optional[str] = None
     numero_fattura: Optional[str] = None
+    fattura_id: Optional[str] = None
+    documento_id: Optional[str] = None
     ubicazione: Optional[str] = None
     note: Optional[str] = None
 
@@ -224,6 +226,8 @@ async def crea_cespite(cespite: CespiteInput) -> Dict[str, Any]:
         "fondo_ammortamento": 0,
         "fornitore": cespite.fornitore,
         "numero_fattura": cespite.numero_fattura,
+        "fattura_id": cespite.fattura_id,
+        "documento_id": cespite.documento_id,
         "ubicazione": cespite.ubicazione,
         "note": cespite.note,
         "stato": "attivo",
@@ -320,6 +324,21 @@ async def get_riepilogo_cespiti() -> Dict[str, Any]:
             {"data_entrata_funzione": ""},
         ],
     })
+    documento_acquisto_da_verificare = await db["cespiti"].count_documents({
+        "stato": "attivo",
+        "$and": [
+            {"$or": [
+                {"fattura_id": {"$exists": False}},
+                {"fattura_id": None},
+                {"fattura_id": ""},
+            ]},
+            {"$or": [
+                {"documento_id": {"$exists": False}},
+                {"documento_id": None},
+                {"documento_id": ""},
+            ]},
+        ],
+    })
     
     # Arricchisci con info categoria
     for cat in per_categoria:
@@ -339,6 +358,7 @@ async def get_riepilogo_cespiti() -> Dict[str, Any]:
             "valore_netto_contabile": round(totale_residuo, 2),
             "percentuale_ammortizzata": round(totale_fondo / totale_valore * 100, 1) if totale_valore > 0 else 0,
             "entrata_funzione_da_verificare": da_verificare,
+            "documento_acquisto_da_verificare": documento_acquisto_da_verificare,
         },
         "per_categoria": per_categoria
     }
@@ -370,6 +390,13 @@ async def calcola_ammortamenti_anno(anno: int) -> Dict[str, Any]:
         coeff = min(coeff_memorizzato, coeff_massimo)
         fondo = cespite.get("fondo_ammortamento", 0)
         data_entrata_funzione = cespite.get("data_entrata_funzione")
+        if not (cespite.get("fattura_id") or cespite.get("documento_id")):
+            da_verificare.append({
+                "cespite_id": cespite.get("id"),
+                "descrizione": cespite.get("descrizione"),
+                "motivo": "documento_acquisto_mancante",
+            })
+            continue
         if not data_entrata_funzione:
             da_verificare.append({
                 "cespite_id": cespite.get("id"),
@@ -469,6 +496,12 @@ async def calcola_rateo_ammortamenti(anno: int, mese: int) -> Dict[str, Any]:
 
     for cespite in cespiti:
         data_entrata_funzione = cespite.get("data_entrata_funzione")
+        if not (cespite.get("fattura_id") or cespite.get("documento_id")):
+            da_verificare.append({
+                "cespite_id": cespite.get("id"),
+                "motivo": "documento_acquisto_mancante",
+            })
+            continue
         if not data_entrata_funzione:
             da_verificare.append({
                 "cespite_id": cespite.get("id"),
@@ -551,6 +584,8 @@ async def verifica_coerenza_ammortamenti(anno: int) -> Dict[str, Any]:
             "categoria": 1,
             "coefficiente_ammortamento": 1,
             "data_entrata_funzione": 1,
+            "fattura_id": 1,
+            "documento_id": 1,
             "piano_ammortamento": 1,
         },
     ).to_list(5000)
@@ -560,11 +595,14 @@ async def verifica_coerenza_ammortamenti(anno: int) -> Dict[str, Any]:
     ).to_list(100)
 
     senza_entrata_funzione = 0
+    senza_documento_acquisto = 0
     coefficienti_oltre_massimo = 0
     coefficienti_oltre_massimo_con_quote = 0
     quote_registrate = []
     id_ammortizzati = set()
     for cespite in cespiti:
+        if not (cespite.get("fattura_id") or cespite.get("documento_id")):
+            senza_documento_acquisto += 1
         if not cespite.get("data_entrata_funzione"):
             senza_entrata_funzione += 1
         regola = CATEGORIE_CESPITI.get(cespite.get("categoria"), {})
@@ -598,6 +636,8 @@ async def verifica_coerenza_ammortamenti(anno: int) -> Dict[str, Any]:
         avvisi.append("coefficienti_oltre_massimo_da_correggere")
     if senza_entrata_funzione:
         avvisi.append("entrata_in_funzione_da_confermare")
+    if senza_documento_acquisto:
+        avvisi.append("documento_acquisto_da_collegare")
 
     return {
         "success": True,
@@ -606,6 +646,7 @@ async def verifica_coerenza_ammortamenti(anno: int) -> Dict[str, Any]:
         "cespiti_attivi": len(cespiti),
         "cespiti_ammortizzati": len(id_ammortizzati),
         "entrata_funzione_da_verificare": senza_entrata_funzione,
+        "documento_acquisto_da_verificare": senza_documento_acquisto,
         "coefficienti_oltre_massimo": coefficienti_oltre_massimo,
         "coefficienti_oltre_massimo_con_quote": coefficienti_oltre_massimo_con_quote,
         "scritture_contabili": len(movimenti),
@@ -866,8 +907,9 @@ async def registra_ammortamenti_anno(anno: int, conferma: bool) -> Dict[str, Any
         raise HTTPException(
             status_code=409,
             detail=(
-                f"{calcolo['num_da_verificare']} cespiti senza data di entrata in funzione: "
-                "confermare le date prima della registrazione"
+                f"{calcolo['num_da_verificare']} cespiti con entrata in funzione o "
+                "documento di acquisto da verificare: completare le prove prima "
+                "della registrazione"
             ),
         )
 

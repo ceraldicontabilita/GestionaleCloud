@@ -243,16 +243,16 @@ def test_risincronizzare_non_duplica_nulla():
     assert chiusure[0]["stato_dato"] == "confermato"
 
     # L'API SumUp e' il fatto owner: crea il credito atteso, non un accredito
-    # bancario gia' avvenuto. La risincronizzazione non duplica la coppia.
+    # bancario gia' avvenuto. La risincronizzazione non duplica il credito.
     cassa = _run(db.prima_nota_cassa.find({}).to_list(50))
     banca = _run(db.prima_nota_banca.find({}).to_list(50))
-    assert len(cassa) == 1 and cassa[0]["importo"] == 100.0
+    assert cassa == []
     assert len(banca) == 1 and banca[0]["importo"] == 100.0
     assert banca[0]["record_role"] == "expectation"
     assert banca[0]["expectation_owner"] == "sumup_api"
     assert banca[0]["expectation_status"] == "ATTESO"
     assert banca[0]["in_transito"] is True
-    assert banca[0]["operation_id"] == cassa[0]["operation_id"]
+    assert banca[0]["operation_id"]
 
 
 def test_prima_acquisizione_sumup_scrive_un_unico_batch_sheets():
@@ -291,8 +291,7 @@ def test_vendita_sumup_116_90_crea_credito_atteso_non_accredito_reale():
     assert chiusura["source"] == "api_gestore_pos"
     cassa = _run(db.prima_nota_cassa.find_one({"gestore": "sumup"}))
     banca = _run(db.prima_nota_banca.find_one({"gestore": "sumup"}))
-    assert cassa["importo"] == 116.90
-    assert cassa["quota_pos_fonte"] == "api_sumup"
+    assert cassa is None
     assert banca["importo"] == 116.90
     assert banca["record_role"] == "expectation"
     assert banca["expectation_type"] == "pos_bank_credit"
@@ -348,9 +347,7 @@ def test_l_api_sumup_aggiorna_anche_l_attesa_senza_creare_duplicati():
 
     uscite = _run(db.prima_nota_cassa.find(
         {"source": "corrispettivo_import"}).to_list(50))
-    assert len(uscite) == 1
-    assert uscite[0]["importo"] == 100.0
-    assert uscite[0]["quota_pos_fonte"] == "api_sumup"
+    assert uscite == []
     assert _run(db.prima_nota_banca.find_one({
         "source": "trasferimento_pos", "gestore": "sumup"
     }))["importo"] == 100.0
@@ -369,8 +366,7 @@ def test_nexi_e_sumup_nello_stesso_giorno_restano_distinti():
     assert _run(chiusura_pos_del_giorno(db, "2026-08-06")) == 600.0
     uscite = _run(db.prima_nota_cassa.find(
         {"source": "corrispettivo_import"}).to_list(50))
-    assert {u["circuito"]: u["importo"] for u in uscite} == {
-        "NUMIA": 500.0, "SUMUP": 100.0}
+    assert uscite == []
 
 
 def test_senza_credenziali_si_ferma_invece_di_scrivere_a_vuoto(monkeypatch):

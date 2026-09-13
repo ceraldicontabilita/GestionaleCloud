@@ -301,35 +301,45 @@ async def check_movimenti_malformati(db) -> Dict[str, Any]:
 
 
 async def check_trasferimento_pos_speculare(db) -> Dict[str, Any]:
-    """REGOLA CANONICA POS (18/07/2026): per ogni giorno, l'uscita cassa
-    'POS Verso Banca' e l'entrata banca 'trasferimento_pos' sono la STESSA
-    operazione: stessi importi, mai una senza l'altra."""
+    """Il POS non muove contante: apre un credito verso il gestore.
+
+    Il nome storico resta invariato per risolvere lo stesso alert gia'
+    persistito, ma la regola corrente vieta uscite POS attive in Cassa e
+    richiede che ogni attesa POS sia un credito tracciabile verso il gestore.
+    """
     anno = datetime.now(timezone.utc).year
-    cassa: Dict[str, float] = {}
+    count, esempi = 0, []
     async for m in db["prima_nota_cassa"].find(
-            {**_ATTIVO, "tipo": "uscita", "categoria": "POS Verso Banca",
-             "data": {"$regex": f"^{anno}"}},
-            {"_id": 0, "data": 1, "importo": 1}):
-        cassa[m["data"]] = cassa.get(m["data"], 0) + float(m.get("importo") or 0)
-    banca: Dict[str, float] = {}
+            {**_ATTIVO, "tipo": "uscita", "data": {"$regex": f"^{anno}"},
+             "$or": [
+                 {"categoria": {"$in": ["POS Verso Banca", "POS"]}},
+                 {"source": {"$in": ["corrispettivo_pos", "trasferimento_pos"]}},
+             ]},
+            {"_id": 0, "id": 1, "data": 1, "importo": 1, "categoria": 1}):
+        count += 1
+        if len(esempi) < 5:
+            esempi.append({"registro": "cassa", **_es(
+                m, ["id", "data", "importo", "categoria"]
+            )})
     async for m in db["prima_nota_banca"].find(
             {**_ATTIVO, "tipo": "entrata",
              "source": {"$in": ["trasferimento_pos", "corrispettivo_pos"]},
              "data": {"$regex": f"^{anno}"}},
-            {"_id": 0, "data": 1, "importo": 1}):
-        banca[m["data"]] = banca.get(m["data"], 0) + float(m.get("importo") or 0)
-    count, esempi = 0, []
-    for g in sorted(set(cassa) | set(banca)):
-        diff = abs(cassa.get(g, 0) - banca.get(g, 0))
-        if diff > 0.01:
+            {"_id": 0, "id": 1, "data": 1, "importo": 1, "natura": 1,
+             "conto_contabile": 1, "trasferimento_id": 1}):
+        if (m.get("natura") != "credito_pos" or
+                not m.get("conto_contabile") or
+                not m.get("trasferimento_id")):
             count += 1
             if len(esempi) < 5:
-                esempi.append({"giorno": g, "uscita_cassa": round(cassa.get(g, 0), 2),
-                               "entrata_banca": round(banca.get(g, 0), 2)})
+                esempi.append({"registro": "banca", **_es(
+                    m, ["id", "data", "importo", "natura", "conto_contabile",
+                        "trasferimento_id"]
+                )})
     return {"nome": "trasferimento_pos_speculare", "violazioni": count,
-            "descrizione": "Giorni in cui uscita cassa POS ed entrata banca del "
-                           "trasferimento non coincidono (regola canonica: stessa "
-                           "operazione su due registri)", "esempi": esempi}
+            "descrizione": "Uscite POS improprie in Cassa o crediti POS in Banca "
+                           "privi di natura, conto o identificativo del trasferimento",
+            "esempi": esempi}
 
 
 async def check_trascrizione_corrispettivo_manuale(db) -> Dict[str, Any]:
@@ -586,6 +596,53 @@ async def check_f24_pagati_senza_banca(db) -> Dict[str, Any]:
     }
 
 
+async def check_cespiti_senza_documento_acquisto(db) -> Dict[str, Any]:
+    """Un cespite può restare in revisione, ma non può alimentare quote o
+    scritture di ammortamento senza una fattura o un documento di acquisto
+    identificabile. Numero, descrizione e valore non sono una prova."""
+    esempi: List[Dict[str, Any]] = []
+    violazioni = 0
+    fatture_esistenti = {
+        str(r.get("id"))
+        async for r in db["invoices"].find({}, {"_id": 0, "id": 1})
+        if r.get("id")
+    }
+    documenti_esistenti = {
+        str(r.get("id"))
+        async for r in db["documents_inbox"].find({}, {"_id": 0, "id": 1})
+        if r.get("id")
+    }
+    async for cespite in db["cespiti"].find(
+        {"stato": "attivo"},
+        {"_id": 0, "id": 1, "descrizione": 1, "fattura_id": 1,
+         "documento_id": 1, "piano_ammortamento": 1},
+    ):
+        fattura_id = str(cespite.get("fattura_id") or "").strip()
+        documento_id = str(cespite.get("documento_id") or "").strip()
+        if fattura_id in fatture_esistenti or documento_id in documenti_esistenti:
+            continue
+        violazioni += 1
+        if len(esempi) < 5:
+            esempi.append({
+                "cespite_id": cespite.get("id"),
+                "motivo": (
+                    "collegamento_documento_acquisto_inesistente"
+                    if fattura_id or documento_id
+                    else "documento_acquisto_mancante"
+                ),
+                "quote_presenti": bool(cespite.get("piano_ammortamento")),
+            })
+    return {
+        "nome": "cespiti_senza_documento_acquisto",
+        "violazioni": violazioni,
+        "descrizione": (
+            "Cespiti attivi senza collegamento identificabile alla fattura o "
+            "al documento originale di acquisto"
+        ),
+        "esempi": esempi,
+    }
+
+
 CHECKS = [
     check_fatture_banca_senza_ec,
     check_trasferimento_pos_speculare,
@@ -603,6 +660,7 @@ CHECKS = [
     check_fatture_iva_classificazione,
     check_liquidazioni_iva_integrita,
     check_f24_pagati_senza_banca,
+    check_cespiti_senza_documento_acquisto,
 ]
 
 
