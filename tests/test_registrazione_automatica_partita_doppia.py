@@ -235,6 +235,46 @@ def test_stessa_fattura_due_volte_produce_una_sola_scrittura(import_fattura_isol
     assert len(scritture) == 1
 
 
+def test_collisione_stessa_chiave_originale_diverso_resta_da_verificare(
+    import_fattura_isolato, monkeypatch,
+):
+    db = _db("pr8-collisione-originali")
+
+    async def nessun_alert(*_args, **_kwargs):
+        return None
+
+    import app.services.alert_engine as alert_engine
+    monkeypatch.setattr(alert_engine, "genera_alert", nessun_alert)
+
+    async def scenario():
+        primo = await fu_mod.import_parsed_invoice(
+            db, _parsed_fattura(), "uno.xml", "xml_upload",
+            xml_raw="<Fattura>originale-uno</Fattura>",
+        )
+        secondo = await fu_mod.import_parsed_invoice(
+            db, _parsed_fattura(), "due.xml", "xml_upload",
+            xml_raw="<Fattura>originale-due</Fattura>",
+        )
+        docs = await db["invoices"].find({}).to_list(10)
+        scritture = await db["movimenti_contabili"].find({}).to_list(10)
+        return primo, secondo, docs, scritture
+
+    primo, secondo, docs, scritture = _run(scenario())
+    assert primo["status"] == "imported"
+    assert secondo == {
+        "status": "imported", "requires_review": True,
+        "filename": "due.xml", "invoice_number": "77/2026",
+        "supplier": "Fornitore Latticini Srl", "id": secondo["id"],
+    }
+    assert len(docs) == 2
+    collisione = next(d for d in docs if d["id"] == secondo["id"])
+    assert collisione["status"] == "da_verificare"
+    assert collisione["stato_derivati"] == "bloccato_collisione_identita"
+    assert collisione["identity_collision_with_ids"] == [primo["id"]]
+    # Solo il primo originale certo alimenta il giornale.
+    assert len(scritture) == 1
+
+
 def test_corrispettivo_provvisorio_senza_xml_non_entra_nel_giornale():
     db = _db("pr8-provvisorio")
 

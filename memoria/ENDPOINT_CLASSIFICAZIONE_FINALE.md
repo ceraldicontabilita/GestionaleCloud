@@ -489,7 +489,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/email-download/popola-pdf-payslips` | email_download | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/email-download/processa-cedolini` | email_download | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/email-download/processa-pipeline` | email_download | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `DELETE /api/email-download/pulisci-duplicati` | email_download | — | sì | — | — | — | tenere | in uso: scheduler |
+| `DELETE /api/email-download/pulisci-duplicati` | email_download | — | sì | — | — | sì | tenere | in uso: scheduler |
 | `POST /api/email-download/pulizia-non-attendibili` | email_download | — | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
 | `POST /api/email-download/riconcilia-paypal` | email_download | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/email-download/riconcilia-verbali` | email_download | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
@@ -625,7 +625,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/fatture-ricevute/import-paypal` | fatture_module.pagamento | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/fatture-ricevute/lista-paypal` | fatture_module.pagamento | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/fatture-ricevute/paga-manuale` | fatture_module.pagamento | sì | — | — | — | sì | tenere | in uso: FE |
-| `POST /api/fatture-ricevute/pulisci-duplicati` | fatture_module.crud | — | sì | — | — | — | tenere | in uso: scheduler |
+| `POST /api/fatture-ricevute/pulisci-duplicati` | fatture_module.crud | — | sì | — | — | sì | tenere | in uso: scheduler |
 | `POST /api/fatture-ricevute/riconcilia-con-estratto-conto` | fatture_module.pagamento | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/fatture-ricevute/riconcilia-paypal` | fatture_module.pagamento | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/fatture-ricevute/statistiche` | fatture_module.crud | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |

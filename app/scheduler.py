@@ -762,8 +762,8 @@ def start_scheduler():
         try:
             from app.routers.fatture_module.crud import pulisci_duplicati_invoices
             r = await pulisci_duplicati_invoices()
-            if r.get("fatture_eliminate"):
-                logger.info(f"[SCHEDULER-DEDUP-FATTURE] eliminate={r.get('fatture_eliminate')} "
+            if r.get("fatture_archiviate"):
+                logger.info(f"[SCHEDULER-DEDUP-FATTURE] archiviate={r.get('fatture_archiviate')} "
                             f"(gruppi={r.get('gruppi_duplicati')})")
         except Exception as e:
             logger.error(f"[SCHEDULER-DEDUP-FATTURE] errore: {e}")
