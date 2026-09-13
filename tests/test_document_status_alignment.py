@@ -1,4 +1,5 @@
 import asyncio
+from pathlib import Path
 from types import SimpleNamespace
 
 from app.services.email_monitor_service import allinea_status_documenti_processati
@@ -32,3 +33,11 @@ def test_allinea_badge_documenti_processati_e_idempotente():
     assert query["$or"] == [{"processed": True}, {"xml_processed": True}]
     assert query["status"]["$in"] == ["nuovo", "da_processare", None]
     assert update == {"$set": {"status": "processato"}}
+
+
+def test_riallineamento_badge_avviene_prima_dello_scheduler():
+    source = Path("app/main.py").read_text(encoding="utf-8")
+
+    assert source.index("await allinea_status_documenti_processati") < source.index(
+        "start_scheduler()"
+    )
