@@ -31,6 +31,7 @@ _MIN_READ_PAGE_SIZE = 10
 _READ_RETRIES = 5
 _MANIFEST_RETRIES = 3
 _WRITE_CHUNK_SIZE = 200
+_KEYSET_COLLECTIONS = {"documents_inbox"}
 
 # Le RPC runtime hanno un timeout molto stretto e la paginazione OFFSET diventa
 # costosa oltre alcune migliaia di righe. Le collezioni elencate qui possono
@@ -260,6 +261,8 @@ class SupabaseRuntimeDatabase(SheetDatabase):
     ) -> list[dict[str, Any]]:
         documents: list[dict[str, Any]] = []
         offset = 0
+        after_id = ""
+        use_keyset = collection_name in _KEYSET_COLLECTIONS
         page_size = _PAGE_SIZE
         # Leggi fino alla pagina corta anche quando esiste un conteggio atteso:
         # durante un deploy l'istanza precedente può aggiungere righe e rendere
@@ -268,14 +271,30 @@ class SupabaseRuntimeDatabase(SheetDatabase):
             timeout_attempt = 0
             while True:
                 try:
-                    page = await self._rpc(
-                        "gc_fetch_collection",
-                        {
-                            "p_collection": collection_name,
-                            "p_offset": offset,
-                            "p_limit": page_size,
-                        },
+                    function_name = (
+                        "gc_fetch_collection_after" if use_keyset
+                        else "gc_fetch_collection"
                     )
+                    payload = {
+                        "p_collection": collection_name,
+                        "p_limit": page_size,
+                    }
+                    if use_keyset:
+                        payload["p_after_id"] = after_id
+                    else:
+                        payload["p_offset"] = offset
+                    try:
+                        page = await self._rpc(function_name, payload)
+                    except (AssertionError, RuntimeError) as exc:
+                        # Compatibilita' con runtime/test che non hanno ancora
+                        # la RPC keyset: una sola ricaduta controllata su OFFSET.
+                        if use_keyset and (
+                            isinstance(exc, AssertionError)
+                            or "gc_fetch_collection_after" in str(exc)
+                        ):
+                            use_keyset = False
+                            continue
+                        raise
                     break
                 except RuntimeError as exc:
                     if not _errore_lettura_transitorio(exc):
@@ -304,9 +323,12 @@ class SupabaseRuntimeDatabase(SheetDatabase):
                     f"Risposta Supabase non valida per {collection_name}"
                 )
             documents.extend(page)
+            if use_keyset and page:
+                after_id = str(page[-1].get("_id") or "")
             if len(page) < page_size:
                 break
-            offset += len(page)
+            if not use_keyset:
+                offset += len(page)
         # Un inserimento prima dell'offset corrente può riproporre l'ultima riga
         # della pagina precedente. La cache richiede ID univoci; conserviamo una
         # sola copia senza inventare o fondere documenti diversi.
