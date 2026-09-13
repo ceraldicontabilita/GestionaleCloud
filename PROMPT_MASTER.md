@@ -726,6 +726,7 @@ si rigenerano dal codice e non si correggono a mano.
 | `MENU_ADMIN_PASSWORD` | app-runtime | segreta | non dichiarato in Settings | `render.yaml` |
 | `MENU_ADMIN_USERNAME` | app-runtime | configurazione | non dichiarato in Settings | `app/menu/routes/qrcode_routes.py`, `render.yaml` |
 | `MENU_JWT_SECRET` | app-runtime | segreta | non dichiarato in Settings | `app/menu/routes/qrcode_routes.py`, `render.yaml` |
+| `MENU_WIFI_PASSWORD` | app-runtime | segreta | non dichiarato in Settings | `app/menu/routes/qrcode_routes.py` |
 | `MENU_SUPABASE_KEY` | app-runtime | configurazione | non dichiarato in Settings | `render.yaml` |
 | `MENU_SUPABASE_URL` | app-runtime | configurazione | non dichiarato in Settings | `app/lotti/servizi/menu_bridge.py`, `render.yaml` |
 | `MONGO_URL` | app-runtime | configurazione | non dichiarato in Settings | `app/lotti/scripts/fix_fornitori_acquaviva.py`, `app/lotti/scripts/import_acquaviva_definitivo.py`, `app/lotti/scripts/import_listino_2026.py`, `app/lotti/scripts/import_ricette_excel.py`, `app/lotti/scripts/scrape_acquaviva_images.py`, `app/lotti/scripts/scrape_vandemoortele_acquaviva.py`, `app/lotti/tests/test_iteration54_features.py`, `app/lotti/utils/shared.py` |

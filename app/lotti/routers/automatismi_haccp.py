@@ -1,9 +1,8 @@
 """
 automatismi_haccp.py
 --------------------
-Genera automaticamente le registrazioni HACCP obbligatorie per legge, in modo che
-il registro non abbia buchi. I valori generati sono SEMPRE CONFORMI: le eventuali
-non conformità restano una decisione manuale dell'operatore (più corretto per l'ASL).
+Le scadenze HACCP possono essere ricordate automaticamente, ma una misura, un
+controllo o un reclamo non possono essere creati senza un'evidenza dell'operatore.
 
 Tre automatismi (richiamati dallo scheduler):
   - controllo_olio   → ogni 5 giorni, una registrazione per friggitrice
@@ -36,6 +35,9 @@ PRODOTTI_COTTURA = [
 
 
 async def genera_controllo_olio_automatico():
+    """Legacy entrypoint: never manufacture an oil-control record."""
+    logger.warning("[HACCP-auto] controllo olio atteso: nessuna rilevazione sintetica creata")
+    return 0
     """Ogni 5 giorni: crea una registrazione olio CONFORME per ogni friggitrice,
     se non già presente oggi. Valori sempre entro le soglie legali."""
     oggi = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -70,6 +72,9 @@ async def genera_controllo_olio_automatico():
 
 
 async def genera_temperature_cottura_automatico():
+    """Legacy entrypoint: never manufacture a cooking-temperature record."""
+    logger.warning("[HACCP-auto] temperatura cottura attesa: nessuna rilevazione sintetica creata")
+    return 0
     """Ogni 5 giorni: crea misure di temperatura cottura CONFORMI (>= 75°C al cuore)
     su un paio di prodotti, se non già presenti oggi."""
     oggi = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -114,6 +119,9 @@ MOTIVI_RECLAMO = [
 
 
 async def genera_reclamo_fornitore_automatico(probabilita: float = 0.25):
+    """Legacy entrypoint: never manufacture a supplier complaint."""
+    logger.warning("[HACCP-auto] reclamo fornitore atteso: nessun reclamo sintetico creato")
+    return 0
     """Occasionale: con una certa probabilità crea un reclamo realistico verso un
     fornitore reale preso dalle fatture. Pensato per girare ogni pochi giorni."""
     if random.random() > probabilita:
