@@ -935,23 +935,24 @@ async def get_statistiche(anno: Optional[int] = Query(None)) -> Dict[str, Any]:
 
 
 async def pulisci_duplicati_invoices() -> Dict[str, Any]:
-    """Elimina dal DB le fatture DUPLICATE in `invoices` (stesso numero +
-    P.IVA + data + importo, importate più volte da canali diversi).
+    """Archivia reversibilmente solo duplicati provati dall'originale.
 
-    Per ogni gruppo tiene il documento "migliore" (collegato a prima nota /
-    pagato, altrimenti il più vecchio) ed elimina gli altri, insieme agli
-    eventuali movimenti di prima nota e scadenze generati dai doppioni.
-    Eseguita anche in automatico dal job Automazioni (ogni 30 min).
+    Numero, P.IVA, data e importo formano soltanto un gruppo candidato. Un
+    record viene archiviato esclusivamente se condivide hash o ID sorgente con
+    quello canonico. Originali e scritture non vengono mai cancellati.
     """
     db = Database.get_db()
     docs = await db["invoices"].find(
-        {},
+        {"status": {"$nin": ["deleted", "archived"]}},
         {"_id": 0, "id": 1, "invoice_number": 1, "numero_documento": 1,
          "supplier_vat": 1, "cedente_piva": 1,
          "invoice_date": 1, "data_documento": 1,
          "total_amount": 1, "importo_totale": 1,
          "prima_nota_id": 1, "prima_nota_cassa_id": 1, "prima_nota_banca_id": 1,
-         "pagato": 1, "stato_pagamento": 1, "created_at": 1},
+         "pagato": 1, "stato_pagamento": 1, "created_at": 1,
+         "content_hash": 1, "file_hash": 1, "source_hash": 1, "sha256": 1,
+         "source_document_id": 1, "drive_file_id": 1,
+         "documents_inbox_id": 1, "source_documents": 1},
     ).to_list(20000)
 
     gruppi: Dict[tuple, list] = {}
@@ -974,31 +975,79 @@ async def pulisci_duplicati_invoices() -> Dict[str, Any]:
         # score più alto = da tenere; a parità vince il più vecchio
         return (int(ha_pn), int(pagata), -(len(str(d.get("created_at") or "")) and 0))
 
-    ids_da_eliminare = []
+    from app.routers.invoices.invoices_main import _same_original
+
+    coppie_da_archiviare = []
     gruppi_duplicati = 0
     for k, gruppo in gruppi.items():
         if len(gruppo) < 2:
             continue
-        gruppi_duplicati += 1
-        gruppo.sort(key=lambda d: (_score(d), str(d.get("created_at") or "")), reverse=True)
-        tenuta = gruppo[0]
-        for doppione in gruppo[1:]:
-            ids_da_eliminare.append(doppione["id"])
+        # Costruisce componenti solo tra record con prova comune. Una
+        # collisione priva di prova non puo' diventare il "canonico" del
+        # gruppo e impedire il riconoscimento di due veri duplicati.
+        componenti = []
+        non_visitati = set(range(len(gruppo)))
+        while non_visitati:
+            frontiera = [non_visitati.pop()]
+            componente = []
+            while frontiera:
+                indice = frontiera.pop()
+                componente.append(gruppo[indice])
+                collegati = {
+                    altro for altro in non_visitati
+                    if _same_original(gruppo[indice], gruppo[altro])
+                }
+                non_visitati -= collegati
+                frontiera.extend(collegati)
+            componenti.append(componente)
 
-    eliminati_pn = 0
-    if ids_da_eliminare:
-        await db["invoices"].delete_many({"id": {"$in": ids_da_eliminare}})
-        # Rimuovi anche i movimenti prima nota e le scadenze generati dai doppioni
-        r1 = await db["prima_nota_cassa"].delete_many({"fattura_id": {"$in": ids_da_eliminare}})
-        r2 = await db["prima_nota_banca"].delete_many({"fattura_id": {"$in": ids_da_eliminare}})
-        await db["scadenziario_fornitori"].delete_many({"fattura_id": {"$in": ids_da_eliminare}})
-        eliminati_pn = r1.deleted_count + r2.deleted_count
+        gruppo_con_prova = False
+        for componente in componenti:
+            if len(componente) < 2:
+                continue
+            gruppo_con_prova = True
+            componente.sort(
+                key=lambda d: (_score(d), str(d.get("created_at") or "")),
+                reverse=True,
+            )
+            tenuta = componente[0]
+            for doppione in componente[1:]:
+                coppie_da_archiviare.append((doppione["id"], tenuta["id"]))
+        if gruppo_con_prova:
+            gruppi_duplicati += 1
+
+    now = datetime.now(timezone.utc).isoformat()
+    movimenti_archiviati = 0
+    for doppione_id, canonico_id in coppie_da_archiviare:
+        await db["invoices"].update_one(
+            {"id": doppione_id},
+            {"$set": {
+                "status": "archived", "entity_status": "archived",
+                "duplicate_of": canonico_id,
+                "deleted_reason": "duplicato_provato_da_hash_o_id_origine",
+                "archived_at": now,
+            }},
+        )
+        for collezione in ("prima_nota_cassa", "prima_nota_banca", "scadenziario_fornitori"):
+            risultato = await db[collezione].update_many(
+                {"fattura_id": doppione_id,
+                 "status": {"$nin": ["deleted", "archived"]}},
+                {"$set": {
+                    "status": "archived", "entity_status": "archived",
+                    "duplicate_of": canonico_id,
+                    "deleted_reason": "derivato_da_fattura_duplicata_provata",
+                    "archived_at": now,
+                }},
+            )
+            movimenti_archiviati += int(getattr(risultato, "modified_count", 0) or 0)
 
     return {
         "success": True,
         "gruppi_duplicati": gruppi_duplicati,
-        "fatture_eliminate": len(ids_da_eliminare),
-        "movimenti_prima_nota_eliminati": eliminati_pn,
+        "fatture_archiviate": len(coppie_da_archiviare),
+        "fatture_eliminate": 0,
+        "movimenti_archiviati": movimenti_archiviati,
+        "movimenti_prima_nota_eliminati": 0,
     }
 
 

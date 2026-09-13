@@ -19,6 +19,7 @@ import logging
 import zipfile
 import io
 import re
+import hashlib
 
 from app.services.sheets_document_store import DuplicateRecordError
 
@@ -1745,6 +1746,34 @@ _SOURCE_METADATA_FIELDS = (
 )
 
 
+def _xml_content_hash(xml_raw: Optional[str]) -> Optional[str]:
+    if not xml_raw:
+        return None
+    return hashlib.sha256(xml_raw.encode("utf-8")).hexdigest()
+
+
+def _documentary_candidate(
+    source_metadata: Optional[Dict[str, Any]], xml_raw: Optional[str],
+) -> Dict[str, Any]:
+    candidate = dict(source_metadata or {})
+    digest = _xml_content_hash(xml_raw)
+    if digest:
+        candidate["content_hash"] = digest
+    return candidate
+
+
+def _same_documentary_original(
+    existing: Dict[str, Any], source_metadata: Optional[Dict[str, Any]],
+    xml_raw: Optional[str],
+) -> bool:
+    from app.routers.invoices.invoices_main import _same_original
+
+    left = dict(existing)
+    if existing.get("xml_raw") and not existing.get("content_hash"):
+        left["content_hash"] = _xml_content_hash(existing.get("xml_raw"))
+    return _same_original(left, _documentary_candidate(source_metadata, xml_raw))
+
+
 def _source_metadata_fields(
     metadata: Optional[Dict[str, Any]],
     existing: Optional[Dict[str, Any]] = None,
@@ -2026,16 +2055,26 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
         {"invoice_key": invoice_key}, {"_id": 0}
     )
     if existing_invoice and str(existing_invoice.get("id")) != str(existing_invoice_id or ""):
-        provenance = _source_metadata_fields(source_metadata, existing_invoice)
-        if provenance:
-            await db[Collections.INVOICES].update_one(
-                {"invoice_key": invoice_key}, {"$set": provenance}
-            )
-        return {"status": "duplicate", "filename": filename,
-                "invoice_number": parsed.get("invoice_number")}
+        has_documentary_evidence = bool(source_metadata or xml_raw)
+        if (not has_documentary_evidence or
+                _same_documentary_original(existing_invoice, source_metadata, xml_raw)):
+            provenance = _source_metadata_fields(source_metadata, existing_invoice)
+            if provenance:
+                await db[Collections.INVOICES].update_one(
+                    {"id": existing_invoice.get("id")}, {"$set": provenance}
+                )
+            return {"status": "duplicate", "filename": filename,
+                    "invoice_number": parsed.get("invoice_number")}
+        # Numero, fornitore e data coincidono ma l'originale no: non e' una
+        # deduplica dimostrata. Importa separatamente e lascia la collisione
+        # esplicita, senza collegare o sovrascrivere il record precedente.
+        identity_collision_ids = [existing_invoice.get("id")]
+    else:
+        identity_collision_ids = []
     if existing_invoice_id and not existing_invoice:
         return {"status": "error", "filename": filename,
                 "error": "Fattura storica da promuovere non trovata"}
+    base_existing = existing_invoice if existing_invoice_id else {}
 
     # 4. Fornitore (crea se nuovo) + metodo pagamento
     supplier_result = await ensure_supplier_exists(db, parsed, piva_validator=piva_validator)
@@ -2082,17 +2121,18 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
         "dati_ordine_acquisto": parsed.get("dati_ordine_acquisto", []),
         "dati_ddt": parsed.get("dati_ddt", []),
         "metodo_pagamento": metodo_pagamento,
-        "status": "imported",
-        "source": (existing_invoice or {}).get("source") or source,
+        "status": "da_verificare" if identity_collision_ids else "imported",
+        "source": base_existing.get("source") or source,
         "source_history": list(dict.fromkeys([
-            *((existing_invoice or {}).get("source_history") or []),
-            *(([(existing_invoice or {}).get("source")] if (existing_invoice or {}).get("source") else [])),
+            *(base_existing.get("source_history") or []),
+            *(([base_existing.get("source")] if base_existing.get("source") else [])),
             source,
         ])),
         "filename": filename,
         "xml_raw": xml_raw,
+        "content_hash": _xml_content_hash(xml_raw),
         "xml_body_index": parsed.get("body_index", 0),
-        "created_at": (existing_invoice or {}).get("created_at") or datetime.now(timezone.utc).isoformat(),
+        "created_at": base_existing.get("created_at") or datetime.now(timezone.utc).isoformat(),
         "cedente_piva": parsed.get("supplier_vat", ""),
         "cedente_denominazione": parsed.get("supplier_name", ""),
         "numero_fattura": parsed.get("invoice_number", ""),
@@ -2100,11 +2140,19 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
         "importo_totale": float(parsed.get("total_amount", 0) or 0),
         "anno": int(invoice_date[:4]) if invoice_date[:4].isdigit() else None,
         "replay_storico": replay_storico,
-        "stato_derivati": "da_ricalcolare" if replay_storico else "allineato",
-        "stato_import": "promosso_da_archivio" if existing_invoice_id else "attivo",
+        "stato_derivati": (
+            "bloccato_collisione_identita" if identity_collision_ids
+            else "da_ricalcolare" if replay_storico else "allineato"
+        ),
+        "stato_import": (
+            "collisione_identita_da_verificare" if identity_collision_ids
+            else "promosso_da_archivio" if existing_invoice_id else "attivo"
+        ),
         "promotion_source": source if existing_invoice_id else None,
         "promoted_at": datetime.now(timezone.utc).isoformat() if existing_invoice_id else None,
-        **_source_metadata_fields(source_metadata, existing_invoice),
+        "duplicate_review_required": bool(identity_collision_ids),
+        "identity_collision_with_ids": [i for i in identity_collision_ids if i],
+        **_source_metadata_fields(source_metadata, base_existing),
     }
     if existing_invoice_id:
         await db[Collections.INVOICES].update_one(
@@ -2113,6 +2161,33 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
     else:
         await db[Collections.INVOICES].insert_one(invoice.copy())
     invoice.pop("_id", None)
+
+    if identity_collision_ids:
+        # Collegamento reciproco alla collisione, non alla stessa fattura:
+        # nessun pagamento, scadenza o giornale viene generato finche' un
+        # operatore non verifica gli originali.
+        await db[Collections.INVOICES].update_one(
+            {"id": identity_collision_ids[0]},
+            {"$set": {"duplicate_review_required": True},
+             "$addToSet": {"identity_collision_with_ids": invoice["id"]}},
+        )
+        try:
+            from app.services.alert_engine import genera_alert
+            await genera_alert(
+                "FATTURA_IDENTITA_DA_VERIFICARE", invoice["id"],
+                Collections.INVOICES,
+                "Chiave contabile coincidente ma originale documentale diverso",
+                db,
+                extra={"collision_with_ids": identity_collision_ids},
+            )
+        except Exception:
+            logger.exception("Creazione alert collisione fattura fallita")
+        return {
+            "status": "imported", "requires_review": True,
+            "filename": filename,
+            "invoice_number": parsed.get("invoice_number"),
+            "supplier": parsed.get("supplier_name"), "id": invoice["id"],
+        }
 
     # La ricostruzione dell'archivio non equivale all'arrivo di una nuova
     # fattura. Il replay deve prima rendere nuovamente consultabile il

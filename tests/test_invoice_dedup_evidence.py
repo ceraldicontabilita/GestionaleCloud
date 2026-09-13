@@ -1,4 +1,6 @@
 from app.routers.invoices.invoices_main import _dedupe_invoices
+from app.routers.invoices.fatture_upload import _same_documentary_original
+from app.services.alert_engine import ALERT_CATALOG
 
 
 def _invoice(invoice_id, *, digest=None, source_id=None):
@@ -36,3 +38,20 @@ def test_stesso_id_origine_e_prova_anche_senza_hash():
         _invoice("f2", source_id="drive-1"),
     ])
     assert len(result) == 1
+
+
+def test_xml_diversi_non_diventano_stesso_originale_per_chiave_contabile():
+    existing = {"id": "f1", "xml_raw": "<Fattura>uno</Fattura>"}
+    assert not _same_documentary_original(
+        existing, None, "<Fattura>due</Fattura>",
+    )
+
+
+def test_stesso_xml_e_prova_documentale_idempotente():
+    xml = "<Fattura>identica</Fattura>"
+    existing = {"id": "f1", "xml_raw": xml}
+    assert _same_documentary_original(existing, None, xml)
+
+
+def test_collisione_fattura_ha_un_alert_configurato():
+    assert "FATTURA_IDENTITA_DA_VERIFICARE" in ALERT_CATALOG
