@@ -223,7 +223,12 @@ async def sync(db, canale: str) -> Dict[str, Any]:
 
 
 async def _do_sync(db, canale: str) -> Dict[str, Any]:
-    service, service_error = _build_drive_service()
+    # Il client Google e tutte le sue ``execute()`` sono sincroni. Questo job
+    # gira nello stesso event loop di FastAPI: lasciarli qui direttamente
+    # rendeva indisponibile anche /api/health durante gli arretrati Drive e
+    # Render riavviava l'istanza per timeout. Le sole operazioni DB restano
+    # async; l'I/O Drive viene sempre spostato su un thread.
+    service, service_error = await asyncio.to_thread(_build_drive_service)
     if service is None:
         return {
             "status": "error",
@@ -246,7 +251,8 @@ async def _do_sync(db, canale: str) -> Dict[str, Any]:
     }
 
     try:
-        inboxes = resolve_inboxes_or_legacy(
+        inboxes = await asyncio.to_thread(
+            resolve_inboxes_or_legacy,
             service,
             root_id,
             _get_or_create_inbox_folder,
@@ -259,9 +265,15 @@ async def _do_sync(db, canale: str) -> Dict[str, Any]:
             source_id = inbox["inbox_id"]
             lifecycle_parent_id = inbox["lifecycle_parent_id"]
             relative_inbox = inbox.get("relative_path") or "DA ELABORARE"
-            elaborate_id = _resolve_state_folder(service, lifecycle_parent_id, "elaborate")
-            error_id = _resolve_state_folder(service, lifecycle_parent_id, "error")
-            pdf_files = _list_pdf_files_direct(service, source_id)
+            elaborate_id = await asyncio.to_thread(
+                _resolve_state_folder, service, lifecycle_parent_id, "elaborate"
+            )
+            error_id = await asyncio.to_thread(
+                _resolve_state_folder, service, lifecycle_parent_id, "error"
+            )
+            pdf_files = await asyncio.to_thread(
+                _list_pdf_files_direct, service, source_id
+            )
             result["total"] += len(pdf_files)
 
             selected = pdf_files[:remaining] if remaining > 0 else []
@@ -274,12 +286,14 @@ async def _do_sync(db, canale: str) -> Dict[str, Any]:
                 fname = file_info["name"]
                 source_path = f"{relative_inbox}/{fname}"
                 try:
-                    content = _download_bytes(service, fid)
+                    content = await asyncio.to_thread(_download_bytes, service, fid)
                     if not content:
                         result["errors"] += 1
                         result["details"].append({"source_path": source_path, "error": "file vuoto"})
                         if error_id:
-                            _move_to_folder(service, fid, source_id, error_id)
+                            await asyncio.to_thread(
+                                _move_to_folder, service, fid, source_id, error_id
+                            )
                         continue
 
                     content_hash = hashlib.sha256(content).hexdigest()
@@ -353,7 +367,9 @@ async def _do_sync(db, canale: str) -> Dict[str, Any]:
                         })
 
                     if elaborate_id:
-                        _move_to_elaborate(service, fid, source_id, elaborate_id)
+                        await asyncio.to_thread(
+                            _move_to_elaborate, service, fid, source_id, elaborate_id
+                        )
                         result["moved"] += 1
 
                 except Exception as exc:
@@ -362,7 +378,9 @@ async def _do_sync(db, canale: str) -> Dict[str, Any]:
                     result["details"].append({"source_path": source_path, "error": str(exc)})
                     if error_id:
                         try:
-                            _move_to_folder(service, fid, source_id, error_id)
+                            await asyncio.to_thread(
+                                _move_to_folder, service, fid, source_id, error_id
+                            )
                         except Exception:
                             logger.exception(
                                 "Drive %s: impossibile spostare %s in Errori",
@@ -375,7 +393,7 @@ async def _do_sync(db, canale: str) -> Dict[str, Any]:
         logger.exception("Drive %s: errore ciclo", canale)
         return {"status": "error", "canale": canale, "message": str(exc)}
     finally:
-        _close_drive_service(service)
+        await asyncio.to_thread(_close_drive_service, service)
 
 
 async def sync_tutti(db) -> Dict[str, Any]:
