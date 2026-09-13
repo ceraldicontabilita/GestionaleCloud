@@ -201,6 +201,31 @@ def test_promozione_ignora_anni_diversi():
     assert db["corrispettivi"].docs[0]["stato_import"] == "archivio_storico"  # intoccato
 
 
+def test_import_anno_passato_esplicitamente_al_sync_fatture(monkeypatch):
+    db = _Db()
+    chiamate = []
+
+    async def _sync_fatture(db_, *, target_year=None):
+        chiamate.append(target_year)
+        return {"status": "ok", "imported": 0}
+
+    async def _sync_corrispettivi(db_):
+        return {"status": "ok", "imported": 0}
+
+    async def _promuovi(db_, anno):
+        return {"anno": anno}
+
+    monkeypatch.setattr("app.services.drive_invoice_ingest.is_configured", lambda: True)
+    monkeypatch.setattr("app.services.drive_invoice_ingest.sync", _sync_fatture)
+    monkeypatch.setattr("app.services.drive_corrispettivi_ingest.is_configured", lambda: True)
+    monkeypatch.setattr("app.services.drive_corrispettivi_ingest.sync", _sync_corrispettivi)
+    monkeypatch.setattr(mod, "promuovi_archivio_anno", _promuovi)
+
+    _run(mod.importa_anno_da_drive(db, 2026))
+
+    assert chiamate == [2026]
+
+
 def test_job_import_anno_persiste_esito(monkeypatch):
     db = _Db()
 

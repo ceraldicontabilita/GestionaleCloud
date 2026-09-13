@@ -80,6 +80,24 @@ def test_import_fatture_seleziona_un_lotto_limitato(monkeypatch):
     assert [item["id"] for item in drive._select_batch(files)] == ["0", "1", "2"]
 
 
+def test_import_annuale_prioritizza_solo_la_cartella_drive_richiesta():
+    files = [
+        {"id": "old", "_source_path": "2025/DA ELABORARE"},
+        {"id": "new-1", "_source_path": "2026/DA ELABORARE"},
+        {"id": "new-2", "_source_path": "2026/DA ELABORARE"},
+    ]
+
+    selected = drive._files_for_target_year(files, 2026)
+
+    assert [item["id"] for item in selected] == ["new-1", "new-2"]
+
+
+def test_import_annuale_legacy_non_inventa_anno_dal_filename():
+    files = [{"id": "legacy", "name": "fattura_2026.xml", "_source_path": "radice"}]
+
+    assert drive._files_for_target_year(files, 2026) == files
+
+
 def test_dimensione_lotto_fatture_predefinita_supporta_il_collaudo_reale():
     assert settings.DRIVE_FATTURE_BATCH_SIZE == 25
 
