@@ -162,6 +162,17 @@ def _errore_lettura_transitorio(exc: RuntimeError) -> bool:
     )
 
 
+class SupabaseRPCError(RuntimeError):
+    """Errore remoto con codice strutturato, senza esporre il payload."""
+
+    def __init__(self, function_name: str, status: int, code: str, detail: str):
+        self.status = status
+        self.code = code
+        super().__init__(
+            f"Supabase RPC {function_name} fallita (HTTP {status}): {detail}"
+        )
+
+
 class SupabaseRuntimeDatabase(SheetDatabase):
     """Archivio documentale con persistenza write-through su Supabase."""
 
@@ -215,13 +226,15 @@ class SupabaseRuntimeDatabase(SheetDatabase):
         async with session.post(url, json=payload) as response:
             body = await response.text()
             if response.status >= 400:
+                code = ""
                 try:
-                    detail = (json.loads(body).get("message") or "errore remoto")[:240]
+                    error = json.loads(body)
+                    detail = (error.get("message") or "errore remoto")[:240]
+                    code = str(error.get("code") or "")
                 except (TypeError, ValueError, AttributeError):
                     detail = "errore remoto"
-                raise RuntimeError(
-                    f"Supabase RPC {function_name} fallita "
-                    f"(HTTP {response.status}): {detail}"
+                raise SupabaseRPCError(
+                    function_name, response.status, code, detail,
                 )
             if not body:
                 return None
@@ -262,7 +275,7 @@ class SupabaseRuntimeDatabase(SheetDatabase):
         documents: list[dict[str, Any]] = []
         offset = 0
         after_id = ""
-        use_keyset = collection_name in _KEYSET_COLLECTIONS
+        use_keyset = _SHARD_TO_COLLECTION.get(collection_name, collection_name) in _KEYSET_COLLECTIONS
         page_size = _PAGE_SIZE
         # Leggi fino alla pagina corta anche quando esiste un conteggio atteso:
         # durante un deploy l'istanza precedente può aggiungere righe e rendere
@@ -285,14 +298,18 @@ class SupabaseRuntimeDatabase(SheetDatabase):
                         payload["p_offset"] = offset
                     try:
                         page = await self._rpc(function_name, payload)
-                    except (AssertionError, RuntimeError) as exc:
-                        # Compatibilita' con runtime/test che non hanno ancora
-                        # la RPC keyset: una sola ricaduta controllata su OFFSET.
-                        if use_keyset and (
-                            isinstance(exc, AssertionError)
-                            or "gc_fetch_collection_after" in str(exc)
+                    except SupabaseRPCError as exc:
+                        # Solo una RPC assente prima della prima pagina consente
+                        # il fallback. Timeout e permessi devono mantenere la
+                        # paginazione scelta e la gestione degli errori originale.
+                        if use_keyset and not documents and (
+                            exc.status == 404 and exc.code == "PGRST202"
                         ):
                             use_keyset = False
+                            logger.warning(
+                                "RPC keyset assente; lettura OFFSET per %s",
+                                collection_name,
+                            )
                             continue
                         raise
                     break
@@ -322,9 +339,14 @@ class SupabaseRuntimeDatabase(SheetDatabase):
                 raise RuntimeError(
                     f"Risposta Supabase non valida per {collection_name}"
                 )
-            documents.extend(page)
             if use_keyset and page:
-                after_id = str(page[-1].get("_id") or "")
+                next_id = str(page[-1].get("_id") or "")
+                if not next_id or next_id == after_id:
+                    raise RuntimeError(
+                        f"Cursore keyset non avanzato per {collection_name}"
+                    )
+                after_id = next_id
+            documents.extend(page)
             if len(page) < page_size:
                 break
             if not use_keyset:

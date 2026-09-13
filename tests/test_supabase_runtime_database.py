@@ -1,7 +1,9 @@
 """Contratto del runtime documentale Supabase senza dipendenze di rete."""
 import asyncio
+import pytest
 
 from app.services.supabase_runtime_database import (
+    SupabaseRPCError,
     SupabaseRuntimeDatabase,
     documents_digest,
 )
@@ -30,12 +32,17 @@ class FakeRestSupabase(SupabaseRuntimeDatabase):
                 for collection, documents in sorted(self.remote.items())
                 if documents
             ]
-        if function_name == "gc_fetch_collection":
+        if function_name in {"gc_fetch_collection", "gc_fetch_collection_after"}:
             documents = list(
                 self.remote.get(payload["p_collection"], {}).values()
             )
             documents.sort(key=lambda item: str(item["_id"]))
-            start = payload["p_offset"]
+            if function_name == "gc_fetch_collection_after":
+                documents = [
+                    item for item in documents
+                    if str(item["_id"]) > payload["p_after_id"]
+                ]
+            start = payload.get("p_offset", 0)
             return documents[start:start + payload["p_limit"]]
         if function_name == "gc_upsert_documents":
             target = self.remote.setdefault(payload["p_collection"], {})
@@ -75,6 +82,80 @@ class ConcurrentAppendSupabase(FakeRestSupabase):
         if function_name == "gc_collection_manifest":
             self.remote["alerts"]["nuovo"] = {"_id": "nuovo", "tipo": "concorrente"}
         return result
+
+
+@pytest.mark.parametrize("collection", ["documents_inbox", "documents_inbox__shard_001"])
+@pytest.mark.parametrize("status,code,detail", [
+    (500, "57014", "canceling statement due to statement timeout"),
+    (502, "", "errore remoto"),
+])
+def test_keyset_ritenta_senza_passare_a_offset(monkeypatch, collection, status, code, detail):
+    runtime = FakeRestSupabase()
+    calls = []
+
+    async def rpc(function, payload):
+        calls.append((function, dict(payload)))
+        if len(calls) == 1:
+            return [{"_id": "a"}, {"_id": "b"}]
+        if len(calls) == 2:
+            raise SupabaseRPCError(function, status, code, detail)
+        return [{"_id": "c"}]
+
+    async def no_sleep(_delay):
+        pass
+
+    monkeypatch.setattr("app.services.supabase_runtime_database._PAGE_SIZE", 2)
+    monkeypatch.setattr("app.services.supabase_runtime_database.asyncio.sleep", no_sleep)
+    monkeypatch.setattr(runtime, "_rpc", rpc)
+    rows = asyncio.run(runtime._fetch_collection_documents(collection))
+    assert [row["_id"] for row in rows] == ["a", "b", "c"]
+    assert all(call[0] == "gc_fetch_collection_after" for call in calls)
+    assert [call[1]["p_after_id"] for call in calls] == ["", "b", "b"]
+
+
+def test_keyset_fallback_solo_rpc_assente(monkeypatch):
+    runtime = FakeRestSupabase()
+    calls = []
+
+    async def rpc(function, payload):
+        calls.append(function)
+        if function == "gc_fetch_collection_after":
+            raise SupabaseRPCError(function, 404, "PGRST202", "function not found")
+        assert payload["p_offset"] == 0
+        return [{"_id": "a"}]
+
+    monkeypatch.setattr(runtime, "_rpc", rpc)
+    assert asyncio.run(runtime._fetch_collection_documents("documents_inbox")) == [{"_id": "a"}]
+    assert calls == ["gc_fetch_collection_after", "gc_fetch_collection"]
+
+
+@pytest.mark.parametrize("status,code", [(403, "42501"), (404, "42P01")])
+def test_keyset_non_nasconde_errori_permessi_o_schema(monkeypatch, status, code):
+    runtime = FakeRestSupabase()
+    calls = []
+
+    async def rpc(function, payload):
+        calls.append(function)
+        raise SupabaseRPCError(function, status, code, "errore remoto")
+
+    monkeypatch.setattr(runtime, "_rpc", rpc)
+    with pytest.raises(SupabaseRPCError):
+        asyncio.run(runtime._fetch_collection_documents("documents_inbox"))
+    assert calls == ["gc_fetch_collection_after"]
+
+
+@pytest.mark.parametrize("page", [[{}], [{"_id": "a"}]])
+def test_keyset_interrompe_cursore_mancante_o_ripetuto(monkeypatch, page):
+    runtime = FakeRestSupabase()
+    pages = [[{"_id": "a"}], page]
+
+    async def rpc(_function, _payload):
+        return pages.pop(0)
+
+    monkeypatch.setattr("app.services.supabase_runtime_database._PAGE_SIZE", 1)
+    monkeypatch.setattr(runtime, "_rpc", rpc)
+    with pytest.raises(RuntimeError, match="Cursore keyset non avanzato"):
+        asyncio.run(runtime._fetch_collection_documents("documents_inbox"))
 
 
 def test_hydrate_carica_collezioni_e_documenti():
