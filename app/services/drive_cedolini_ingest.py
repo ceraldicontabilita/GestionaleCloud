@@ -245,6 +245,22 @@ def _inbox_contexts(service, parent_id: str) -> List[Dict[str, Any]]:
     )
 
 
+async def _carica_indice_hash_documenti(db) -> Dict[str, Dict[str, Any]]:
+    """Materializza una volta gli hash esistenti, evitando una scansione per PDF."""
+    collection = db["documents_inbox"]
+    cursor = await asyncio.to_thread(
+        collection.find,
+        {},
+        {"_id": 0, "id": 1, "file_hash": 1},
+    )
+    documents = await cursor.to_list(100000)
+    return {
+        str(document["file_hash"]): document
+        for document in documents
+        if document.get("file_hash")
+    }
+
+
 async def get_status(db) -> Dict[str, Any]:
     state = await db["sistema_stato"].find_one({"chiave": _STATO_KEY}, {"_id": 0}) or {}
     credenziali_errore = None
@@ -278,10 +294,10 @@ async def _do_sync(db) -> Dict[str, Any]:
             "message": "Imposta GOOGLE_DRIVE_CEDOLINI_FOLDER_ID e il service account "
                        "(GOOGLE_DRIVE_SA_FILE o GOOGLE_DRIVE_SA_JSON).",
         }
-    creds, cred_err = _load_credentials_cedolini()
+    creds, cred_err = await asyncio.to_thread(_load_credentials_cedolini)
     if creds is None:
         return {"status": "error", "message": f"Credenziali Google Drive non valide: {cred_err}"}
-    service = _build_drive_service()
+    service = await asyncio.to_thread(_build_drive_service)
     if service is None:
         return {"status": "error", "message": "Service Drive non disponibile (errore costruzione client)."}
 
@@ -291,12 +307,15 @@ async def _do_sync(db) -> Dict[str, Any]:
         "errors": 0, "moved": 0, "details": [], "source_inboxes": 0,
     }
     try:
-        contexts = _inbox_contexts(service, parent_id)
+        contexts = await asyncio.to_thread(_inbox_contexts, service, parent_id)
         result["source_inboxes"] = len(contexts)
         source_files: List[Dict[str, Any]] = []
         for context in contexts:
             source_id = context["inbox_id"]
-            for file_info in _list_source_files_recursive(service, source_id):
+            files = await asyncio.to_thread(
+                _list_source_files_recursive, service, source_id
+            )
+            for file_info in files:
                 local_path = file_info.get("relative_path") or file_info.get("name") or ""
                 source_files.append({
                     **file_info,
@@ -308,6 +327,9 @@ async def _do_sync(db) -> Dict[str, Any]:
                     ),
                 })
         result["source_files"] = len(source_files)
+        hash_index = (
+            await _carica_indice_hash_documenti(db) if source_files else {}
+        )
 
         lifecycle_cache: Dict[str, tuple[Optional[str], Optional[str]]] = {}
         for f in source_files:
@@ -317,23 +339,29 @@ async def _do_sync(db) -> Dict[str, Any]:
             lifecycle_parent_id = f["_lifecycle_parent_id"]
             relative_path = f["_source_path"]
             if lifecycle_parent_id not in lifecycle_cache:
-                lifecycle_cache[lifecycle_parent_id] = (
-                    _get_or_create_elaborate_folder(service, lifecycle_parent_id),
-                    _get_or_create_error_folder(service, lifecycle_parent_id),
+                lifecycle_cache[lifecycle_parent_id] = await asyncio.to_thread(
+                    lambda: (
+                        _get_or_create_elaborate_folder(service, lifecycle_parent_id),
+                        _get_or_create_error_folder(service, lifecycle_parent_id),
+                    )
                 )
             elaborate_id, error_id = lifecycle_cache[lifecycle_parent_id]
 
             try:
-                content = _download_bytes(service, fid)
+                content = await asyncio.to_thread(_download_bytes, service, fid)
                 if not content:
                     result["errors"] += 1
                     result["details"].append({"source_path": relative_path, "error": "file vuoto"})
                     if error_id:
-                        _move_to_folder(service, fid, source_parent_id, error_id)
+                        await asyncio.to_thread(
+                            _move_to_folder, service, fid, source_parent_id, error_id
+                        )
                     continue
 
                 if is_cedolini_archive(fname):
-                    pdf_items = iter_pdf_members(content)
+                    pdf_items = iter(
+                        await asyncio.to_thread(lambda: list(iter_pdf_members(content)))
+                    )
                 else:
                     if not content.startswith(b"%PDF"):
                         raise ValueError("File con estensione PDF ma contenuto non valido")
@@ -341,22 +369,26 @@ async def _do_sync(db) -> Dict[str, Any]:
 
                 for member_path, pdf_content in pdf_items:
                     result["total"] += 1
-                    content_hash = hashlib.md5(pdf_content).hexdigest()
-                    existing = await db["documents_inbox"].find_one(
-                        {"file_hash": content_hash}, {"_id": 0, "id": 1}
+                    content_hash = await asyncio.to_thread(
+                        lambda payload=pdf_content: hashlib.md5(payload).hexdigest()
                     )
+                    existing = hash_index.get(content_hash)
                     if existing:
                         result["duplicates"] += 1
                         continue
 
                     display_name = PurePosixPath(member_path).name
-                    doc = build_inbox_doc(
+                    doc = await asyncio.to_thread(
+                        build_inbox_doc,
                         pdf_content,
                         display_name,
                         source_path=member_path,
-                        source_container=relative_path if is_cedolini_archive(fname) else None,
+                        source_container=(
+                            relative_path if is_cedolini_archive(fname) else None
+                        ),
                     )
                     await db["documents_inbox"].insert_one(doc)
+                    hash_index[content_hash] = {"id": doc["id"], "file_hash": content_hash}
                     result["imported"] += 1
                     logger.info("Drive cedolini: importato documento hash=%s", content_hash[:12])
                     try:
@@ -373,7 +405,13 @@ async def _do_sync(db) -> Dict[str, Any]:
                         logger.exception("Drive cedolini: errore propagazione evento documento.acquisito")
 
                 if elaborate_id:
-                    _move_to_elaborate(service, fid, source_parent_id, elaborate_id)
+                    await asyncio.to_thread(
+                        _move_to_elaborate,
+                        service,
+                        fid,
+                        source_parent_id,
+                        elaborate_id,
+                    )
                     result["moved"] += 1
             except Exception as e:
                 logger.error("Drive cedolini: errore su sorgente hash=%s: %s", fid, e)
@@ -381,7 +419,9 @@ async def _do_sync(db) -> Dict[str, Any]:
                 result["details"].append({"source_path": relative_path, "error": str(e)})
                 if error_id:
                     try:
-                        _move_to_folder(service, fid, source_parent_id, error_id)
+                        await asyncio.to_thread(
+                            _move_to_folder, service, fid, source_parent_id, error_id
+                        )
                     except Exception:
                         logger.exception("Drive cedolini: impossibile spostare sorgente in Errori")
     except Exception as e:
@@ -393,6 +433,11 @@ async def _do_sync(db) -> Dict[str, Any]:
             upsert=True,
         )
         return {"status": "error", "message": str(e)}
+
+    finally:
+        close = getattr(service, "close", None)
+        if callable(close):
+            await asyncio.to_thread(close)
 
     if result["imported"] > 0:
         try:

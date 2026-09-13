@@ -12,11 +12,92 @@ Verifica:
 import base64
 import hashlib
 import io
+import asyncio
+import threading
 import zipfile
 
 import pytest
 
 from app.services import drive_cedolini_ingest as ing
+
+
+def test_sync_drive_cedolini_non_blocca_event_loop(monkeypatch):
+    """La scansione sincrona di Drive deve restare fuori dal loop FastAPI."""
+    event_loop_thread = None
+    worker_threads = []
+
+    class Service:
+        def close(self):
+            worker_threads.append(threading.get_ident())
+
+    service = Service()
+
+    def fuori_event_loop(result):
+        def _call(*_args, **_kwargs):
+            worker_threads.append(threading.get_ident())
+            return result
+        return _call
+
+    class Collection:
+        async def find_one(self, *_args, **_kwargs):
+            return None
+
+        async def update_one(self, *_args, **_kwargs):
+            return None
+
+    class DB:
+        def __getitem__(self, _name):
+            return Collection()
+
+    monkeypatch.setattr(ing, "is_configured", lambda: True)
+    monkeypatch.setattr(ing, "_folder_id", lambda: "root")
+    monkeypatch.setattr(ing, "_load_credentials_cedolini", fuori_event_loop((object(), None)))
+    monkeypatch.setattr(ing, "_build_drive_service", fuori_event_loop(service))
+    monkeypatch.setattr(ing, "_inbox_contexts", fuori_event_loop([{
+        "inbox_id": "inbox",
+        "lifecycle_parent_id": "parent",
+        "relative_path": "DA ELABORARE",
+    }]))
+    monkeypatch.setattr(ing, "_list_source_files_recursive", fuori_event_loop([]))
+
+    async def run():
+        nonlocal event_loop_thread
+        event_loop_thread = threading.get_ident()
+        return await ing._do_sync(DB())
+
+    result = asyncio.run(run())
+
+    assert result["status"] == "ok"
+    assert len(worker_threads) == 5
+    assert all(thread_id != event_loop_thread for thread_id in worker_threads)
+
+
+def test_indice_hash_cedolini_viene_caricato_una_sola_volta():
+    class Cursor:
+        async def to_list(self, _limit):
+            return [{"id": "doc-1", "file_hash": "hash-1"}]
+
+    class Collection:
+        def __init__(self):
+            self.find_calls = 0
+
+        def find(self, selector, projection):
+            self.find_calls += 1
+            assert selector == {}
+            assert projection["file_hash"] == 1
+            return Cursor()
+
+    collection = Collection()
+
+    class DB:
+        def __getitem__(self, name):
+            assert name == "documents_inbox"
+            return collection
+
+    index = asyncio.run(ing._carica_indice_hash_documenti(DB()))
+
+    assert collection.find_calls == 1
+    assert index["hash-1"]["id"] == "doc-1"
 
 
 # ── Classificazione nomi file ────────────────────────────────────────────────
