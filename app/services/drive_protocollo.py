@@ -336,6 +336,12 @@ async def sincronizza(service=None, conn=None) -> Dict[str, Any]:
         avvio = datetime.now(timezone.utc)
         chiudi = conn is None
         conn = conn or await postgres_diretto.connetti(dsn)
+        # Un giro rimasto 'in_corso' appartiene a un processo che non c'e' piu'
+        # (riavvio/deploy a meta' della scansione, 14/09/2026 18:05): chiuso
+        # come 'interrotto', altrimenti resterebbe aperto per sempre.
+        await conn.execute(
+            "update gestionale.protocollo_drive_giri set fine=now(), esito='interrotto', "
+            "dettaglio='processo riavviato durante la scansione' where esito='in_corso'")
         giro_id = await conn.fetchval(
             "insert into gestionale.protocollo_drive_giri (avvio, esito) values ($1, 'in_corso') returning id", avvio)
         try:
