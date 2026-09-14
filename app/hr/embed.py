@@ -36,10 +36,10 @@ logger = logging.getLogger("uvicorn.error")
 __all__ = ["hr_app", "avvia_hr", "arresta_hr", "monta_frontend"]
 
 
-async def avvia_hr() -> bool:
+async def avvia_hr(*, avvia_scheduler: bool = True) -> bool:
     """Esegue lo startup di AppDipendenti; ``False`` se e' fallito (mai un'eccezione)."""
     try:
-        await _hr_main.avvio()
+        await _hr_main.avvio(avvia_scheduler=avvia_scheduler)
         logger.info("[HR] sotto-applicazione AppDipendenti avviata")
         return True
     except Exception:
