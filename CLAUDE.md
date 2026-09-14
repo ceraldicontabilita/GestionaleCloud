@@ -328,7 +328,22 @@ che si vede in `/hr/dipendenti/paghe-bonifici` viene alimentato da
 - Anagrafica HR: "Ceraldi Antonella" confermata = Antonietta Ceraldi (unita:
   `merged_into`, 11 presenze spostate). Render: `SUPABASE_DB_URL` svuotata
   (puntava a un progetto morto; il codice legge prima `HR_SUPABASE_DB_URL`).
-- Cedolini con CF senza anagrafica HR (13 persone, elenco in chat del 14/09):
+- **HR Paghe e bonifici, modifiche a mano** (titolare 14/09/2026): `PUT
+  /hr/api/dipendenti-cloud/paghe/pagamento-esito/{key}` sposta un pagamento
+  a un altro periodo e/o ne corregge l'importo (stessa chiave/PDF/CRO, storia
+  in `modifiche_manuali`, entrambi i mesi ricalcolati da
+  `_ricalcola_bonifico_periodo` = somma esiti + motore unico); `PUT
+  /paghe/importo-busta` corregge l'importo della busta (`origine: manuale`,
+  `importo_busta_originale`, nota) e la sincronizzazione dai cedolini non lo
+  sovrascrive (`saltati_manuali`). Nella pagina: ✎ sulla cella busta, «Sposta /
+  modifica» in ogni riga di bonifico dei dettagli.
+- Anagrafica HR completata il 14/09 dai cedolini e da «Lista dipendenti
+  Ceraldi_Group_SRL.xlsx» (Drive 12_EXCEL): 6 persone esistenti senza CF ora
+  con CF/nascita/livello/periodo, 7 create (storiche, cessate), cedolini
+  collegati per CF; i 16 attivi hanno IBAN/matricola/telefono/email/nascita/
+  indirizzo (mancava tutto; resta senza IBAN solo Iazzetta Francesco, non in
+  Excel). Backup `hr.app_dipendenti_prima_20260914b`.
+- Cedolini con CF senza anagrafica HR (13 persone, elenco in chat del 14/09, TUTTE sistemate il 14/09 sera):
   Sankapala Arachchilage (2025-06→2026-02, 11 buste), De Simone Mariano,
   Stasio Salvatore, Posligua Orozco William, Iacovelli Manuele, Lubrano
   Cristian, Thalwattage Sajeewani, Giattini Ilenia, Rabukkana Kusal,

@@ -221,6 +221,103 @@ async def set_ordine_dipendenti(data: dict):
 
 # ============ PAGHE MENSILI (importo busta + bonifico + acconti) ============
 
+async def _ricalcola_bonifico_periodo(db, dip, anno, mese):
+    """bonifico_importo della busta = somma degli esiti del periodo (anche 0),
+    poi il motore unico. Stessa sequenza dell'importatore Drive e del ponte
+    del gestionale: cosi' un pagamento spostato di mese aggiorna entrambi i
+    mesi senza lasciare importi fantasma."""
+    anno, mese = int(anno), int(mese)
+    tot = 0.0
+    async for e in db.pagamenti_esiti.find({"dipendente_id": dip, "mese": mese, "anno": anno},
+                                            {"_id": 0, "importo": 1}):
+        tot += float(e.get("importo") or 0)
+    await db.paghe_mensili.update_one(
+        {"dipendente_id": dip, "anno": anno, "mese": mese},
+        {"$set": {"dipendente_id": dip, "anno": anno, "mese": mese,
+                  "bonifico_importo": round(tot, 2), "bonifico_ricevuto": tot > 0,
+                  "bonifico_da_esiti": True, "updated_at": now_iso()}}, upsert=True)
+    return await _ricalcola_stato_paga(db, dip, anno, mese)
+
+
+@router.put("/paghe/pagamento-esito/{key}")
+async def modifica_pagamento_esito(key: str, data: dict = Body(...)):
+    """Sposta un pagamento a un altro periodo e/o ne corregge l'importo
+    (titolare 14/09/2026: "bonifico dell'1/1/2026, io lo sposto a dicembre
+    2025: per pagare devo prima aspettare il cedolino"). Il pagamento resta
+    UNO (stessa chiave, stesso PDF/CRO); cambiano competenza e importo, con
+    traccia di cosa c'era prima. Entrambi i mesi vengono ricalcolati dal
+    motore unico."""
+    db = get_db()
+    esito = await db.pagamenti_esiti.find_one({"key": key}, {"_id": 0, "pdf_data": 0})
+    if not esito:
+        raise HTTPException(status_code=404, detail="Pagamento non trovato")
+    dip = esito.get("dipendente_id")
+    if not dip:
+        raise HTTPException(status_code=400, detail="Pagamento senza dipendente: assegnalo prima dalla coda")
+    try:
+        mese = int(data.get("mese") or esito.get("mese"))
+        anno = int(data.get("anno") or esito.get("anno"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="mese/anno non validi")
+    if not (1 <= mese <= 14) or anno < 2000:
+        raise HTTPException(status_code=400, detail="mese deve essere 1-14, anno >= 2000")
+    importo = esito.get("importo")
+    if data.get("importo") not in (None, ""):
+        try:
+            importo = round(float(data["importo"]), 2)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="importo non valido")
+        if importo <= 0:
+            raise HTTPException(status_code=400, detail="importo deve essere positivo")
+    vecchio = (int(esito.get("anno") or 0), int(esito.get("mese") or 0))
+    storia = list(esito.get("modifiche_manuali") or [])
+    storia.append({"da_mese": esito.get("mese"), "da_anno": esito.get("anno"),
+                   "da_importo": esito.get("importo"), "a_mese": mese, "a_anno": anno,
+                   "a_importo": importo, "nota": str(data.get("nota") or ""), "at": now_iso()})
+    await db.pagamenti_esiti.update_one({"key": key}, {"$set": {
+        "mese": mese, "anno": anno, "importo": importo,
+        "modificato_manualmente": True, "modifiche_manuali": storia[-20:],
+        "nota_modifica": str(data.get("nota") or ""), "updated_at": now_iso()}})
+    stati = {}
+    for a, m in {vecchio, (anno, mese)}:
+        if a and m:
+            stati[f"{a}-{m:02d}"] = await _ricalcola_bonifico_periodo(db, dip, a, m)
+    return {"ok": True, "key": key, "dipendente_id": dip, "mese": mese, "anno": anno,
+            "importo": importo, "stati": stati}
+
+
+@router.put("/paghe/importo-busta")
+async def modifica_importo_busta(data: dict = Body(...)):
+    """Corregge l'importo della busta di un mese quando non torna col cedolino
+    (titolare 14/09/2026). Il valore manuale vince sulla sincronizzazione dai
+    cedolini (`origine: manuale`, stessa regola dell'inserimento a mano) e
+    resta tracciato con l'importo precedente e la nota."""
+    dip = data.get("dipendente_id"); anno = data.get("anno"); mese = data.get("mese")
+    if not dip or not anno or not mese:
+        raise HTTPException(status_code=400, detail="dipendente_id, anno, mese obbligatori")
+    try:
+        anno, mese = int(anno), int(mese)
+        importo = round(float(data.get("importo_busta")), 2)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="importo_busta non valido")
+    if importo < 0:
+        raise HTTPException(status_code=400, detail="importo_busta non puo' essere negativo")
+    db = get_db()
+    paga = await db.paghe_mensili.find_one({"dipendente_id": dip, "anno": anno, "mese": mese}, {"_id": 0}) or {}
+    set_doc = {"dipendente_id": dip, "anno": anno, "mese": mese, "importo_busta": importo,
+               "origine": "manuale", "importo_busta_manuale": True,
+               "importo_busta_nota": str(data.get("nota") or ""),
+               "importo_busta_modificato_il": now_iso(), "updated_at": now_iso()}
+    if "importo_busta_originale" not in paga:
+        set_doc["importo_busta_originale"] = paga.get("importo_busta")
+    await db.paghe_mensili.update_one({"dipendente_id": dip, "anno": anno, "mese": mese},
+                                      {"$set": set_doc}, upsert=True)
+    stato = await _ricalcola_stato_paga(db, dip, anno, mese)
+    return {"ok": True, "dipendente_id": dip, "anno": anno, "mese": mese,
+            "importo_busta": importo, "importo_busta_originale": set_doc.get("importo_busta_originale", paga.get("importo_busta_originale")),
+            "stato": stato}
+
+
 @router.post("/paghe/sincronizza")
 async def sincronizza_paghe_da_cedolini(anno: Optional[int] = None):
     """Popola il registro paghe dai cedolini e dai bonifici reali gia' in
@@ -3202,8 +3299,10 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
 
         # Bonifici reali pagati (esiti banca) per questo dipendente/mese/anno
         esiti = [{
+            "key": e.get("key"),
             "data": e.get("data"),
             "importo": round(float(e.get("importo") or 0), 2),
+            "modificato": bool(e.get("modificato_manualmente")),
             "causale": e.get("causale") or "",
             "beneficiario": e.get("beneficiario") or "",
             "riferimento": e.get("cro") or e.get("key") or "",
@@ -3309,6 +3408,9 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
             "bonifico_data": p.get("bonifico_data"),
             "bonifici": esiti,
             "n_bonifici": len(esiti),
+            "busta_manuale": bool(p.get("importo_busta_manuale")),
+            "busta_originale": p.get("importo_busta_originale"),
+            "busta_nota": p.get("importo_busta_nota"),
             "cedolino_pdf": has_pdf,
             "cedolino_id": cedolino_id,
         })

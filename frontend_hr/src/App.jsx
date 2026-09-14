@@ -4549,6 +4549,10 @@ function PagheBonificiPage() {
   const [loading, setLoading] = useState(false);
   const [aperta, setAperta] = useState(null); // chiave riga espansa
   const [busy, setBusy] = useState(null);
+  // Modifiche a mano (titolare 14/09/2026): spostare un pagamento al periodo
+  // giusto / correggerne l'importo, e correggere l'importo della busta.
+  const [editPag, setEditPag] = useState(null);   // { key, mese, anno, importo, nota }
+  const [editBusta, setEditBusta] = useState(null); // { k, dipendente_id, anno, mese, importo, nota }
   const [exportBusy, setExportBusy] = useState(false);
   const [syncBusy, setSyncBusy] = useState(false);
   const [cedSyncBusy, setCedSyncBusy] = useState(false);
@@ -4586,6 +4590,39 @@ function PagheBonificiPage() {
       });
       await load();
     } catch (e) { toast(e?.response?.data?.detail || "Errore conferma", "err"); }
+    finally { setBusy(null); }
+  };
+
+  const salvaPagamento = async () => {
+    if (!editPag) return;
+    setBusy(editPag.key);
+    try {
+      const r = await axios.put(`${API}/paghe/pagamento-esito/${encodeURIComponent(editPag.key)}`, {
+        mese: Number(editPag.mese), anno: Number(editPag.anno),
+        importo: editPag.importo === "" ? null : Number(String(editPag.importo).replace(",", ".")),
+        nota: editPag.nota || "",
+      });
+      const st = r.data?.stati || {};
+      toast(`Pagamento spostato a ${mesi[Number(editPag.mese) - 1] || editPag.mese} ${editPag.anno}` +
+        (Object.keys(st).length ? ` — stati: ${Object.entries(st).map(([p, s]) => `${p}: ${s}`).join(", ")}` : ""));
+      setEditPag(null);
+      await load();
+    } catch (e) { toast(e?.response?.data?.detail || "Errore nello spostamento del pagamento", "err"); }
+    finally { setBusy(null); }
+  };
+
+  const salvaBusta = async () => {
+    if (!editBusta) return;
+    setBusy(editBusta.k);
+    try {
+      const r = await axios.put(`${API}/paghe/importo-busta`, {
+        dipendente_id: editBusta.dipendente_id, anno: editBusta.anno, mese: editBusta.mese,
+        importo_busta: Number(String(editBusta.importo).replace(",", ".")), nota: editBusta.nota || "",
+      });
+      toast(`Importo busta aggiornato: € ${eur(r.data?.importo_busta)} (stato ${r.data?.stato})`);
+      setEditBusta(null);
+      await load();
+    } catch (e) { toast(e?.response?.data?.detail || "Errore nella modifica della busta", "err"); }
     finally { setBusy(null); }
   };
 
@@ -4743,7 +4780,26 @@ function PagheBonificiPage() {
                     <tr style={{ background: exp ? "#f7f4ec" : "transparent" }}>
                       <td style={{ ...td, fontWeight: 600 }}>{r.dipendente}</td>
                       <td style={td}>{periodoLbl}</td>
-                      <td style={{ ...td, textAlign: "right" }}>{r.busta > 0 ? `€ ${eur(r.busta)}` : "—"}</td>
+                      <td style={{ ...td, textAlign: "right" }}>
+                        {editBusta && editBusta.k === k ? (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-end" }}>
+                            <input type="number" step="0.01" min="0" value={editBusta.importo} onChange={e => setEditBusta({ ...editBusta, importo: e.target.value })} style={{ ...sel, width: 110, textAlign: "right", padding: "4px 6px" }} />
+                            <input type="text" placeholder="nota (perché)" value={editBusta.nota} onChange={e => setEditBusta({ ...editBusta, nota: e.target.value })} style={{ ...sel, width: 150, padding: "4px 6px", fontSize: 12 }} />
+                            <div style={{ display: "flex", gap: 4 }}>
+                              <button className="dc-btn" disabled={busy === k} onClick={salvaBusta} style={{ fontSize: 12, padding: "3px 8px" }}>Salva</button>
+                              <button className="dc-btn" onClick={() => setEditBusta(null)} style={{ fontSize: 12, padding: "3px 8px" }}>Annulla</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <span>
+                            {r.busta > 0 ? `€ ${eur(r.busta)}` : "—"}
+                            <button className="dc-btn" title={r.busta_manuale ? `Importo corretto a mano (prima: € ${eur(r.busta_originale)})${r.busta_nota ? " — " + r.busta_nota : ""}` : "Correggi l'importo della busta se non torna col cedolino"}
+                              onClick={() => setEditBusta({ k, dipendente_id: r.dipendente_id, anno: r.anno, mese: r.mese, importo: r.busta || "", nota: r.busta_nota || "" })}
+                              style={{ fontSize: 11, padding: "1px 6px", marginLeft: 6, color: r.busta_manuale ? "#8a6f47" : undefined }}>✎</button>
+                            {r.busta_manuale && <div style={{ fontSize: 10, color: "#8a6f47" }}>corretto a mano</div>}
+                          </span>
+                        )}
+                      </td>
                       <td style={{ ...td, textAlign: "right", color: r.bonifico > 0 ? "#3d8168" : "#9aa295", fontWeight: 600 }}>
                         {r.bonifico > 0 ? `€ ${eur(r.bonifico)}` : "—"}
                         {r.fonte && <div style={{ fontSize: 10, color: "#9aa295", fontWeight: 400 }}>{FONTI[r.fonte] || r.fonte}</div>}
@@ -4780,6 +4836,9 @@ function PagheBonificiPage() {
                     {exp && r.bonifici.length > 0 && (
                       <tr>
                         <td style={{ ...td, background: "#f7f4ec" }} colSpan={9}>
+                          <div style={{ fontSize: 12, color: "#7a8576", marginBottom: 6 }}>
+                            Un bonifico arrivato nel mese sbagliato (es. il 1° gennaio per la busta di dicembre) si sposta con <b>Sposta / modifica</b>: il sistema ricalcola entrambi i mesi.
+                          </div>
                           <div style={{ fontSize: 11, color: "#7a8576", fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>Bonifici realmente pagati</div>
                           <table style={{ width: "100%", borderCollapse: "collapse" }}>
                             <thead>
@@ -4790,13 +4849,17 @@ function PagheBonificiPage() {
                                 <th style={{ ...th, borderBottom: "1px solid #e6e0d4" }}>Beneficiario</th>
                                 <th style={{ ...th, borderBottom: "1px solid #e6e0d4" }}>Riferimento</th>
                                 <th style={{ ...th, borderBottom: "1px solid #e6e0d4" }}>PDF</th>
+                                <th style={{ ...th, borderBottom: "1px solid #e6e0d4" }}>Periodo / importo</th>
                               </tr>
                             </thead>
                             <tbody>
                               {r.bonifici.map((b, i) => (
                                 <tr key={i}>
                                   <td style={{ ...td, borderBottom: "none" }}>{b.data || "—"}</td>
-                                  <td style={{ ...td, borderBottom: "none", textAlign: "right", color: "#3d8168", fontWeight: 600 }}>€ {eur(b.importo)}</td>
+                                  <td style={{ ...td, borderBottom: "none", textAlign: "right", color: "#3d8168", fontWeight: 600 }}>
+                                    € {eur(b.importo)}
+                                    {b.modificato && <div style={{ fontSize: 10, color: "#8a6f47", fontWeight: 400 }}>modificato a mano</div>}
+                                  </td>
                                   <td style={{ ...td, borderBottom: "none", fontSize: 13 }}>{b.causale || "—"}</td>
                                   <td style={{ ...td, borderBottom: "none", fontSize: 13 }}>{b.beneficiario || "—"}</td>
                                   <td style={{ ...td, borderBottom: "none", fontSize: 12, color: "#7a8576" }}>{b.riferimento || "—"}</td>
@@ -4804,6 +4867,28 @@ function PagheBonificiPage() {
                                     {b.pdf_key
                                       ? <a href={`${API}/paghe/pagamento-esito/${b.pdf_key}/pdf`} target="_blank" rel="noreferrer" style={{ color: "#3d8168", fontWeight: 600 }}>📄 Apri PDF</a>
                                       : <span style={{ color: "#9aa295" }}>no PDF</span>}
+                                  </td>
+                                  <td style={{ ...td, borderBottom: "none", fontSize: 12, whiteSpace: "nowrap" }}>
+                                    {editPag && editPag.key === b.key ? (
+                                      <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
+                                        <select value={editPag.mese} onChange={e => setEditPag({ ...editPag, mese: e.target.value })} style={{ ...sel, padding: "4px 6px", fontSize: 12 }}>
+                                          {mesi.map((m, idx) => <option key={idx + 1} value={idx + 1}>{m}</option>)}
+                                          <option value={13}>Tredicesima</option>
+                                          <option value={14}>Quattordicesima</option>
+                                        </select>
+                                        <input type="number" value={editPag.anno} onChange={e => setEditPag({ ...editPag, anno: e.target.value })} style={{ ...sel, width: 70, padding: "4px 6px", fontSize: 12 }} />
+                                        <input type="number" step="0.01" min="0" value={editPag.importo} onChange={e => setEditPag({ ...editPag, importo: e.target.value })} style={{ ...sel, width: 100, padding: "4px 6px", fontSize: 12, textAlign: "right" }} />
+                                        <input type="text" placeholder="nota" value={editPag.nota} onChange={e => setEditPag({ ...editPag, nota: e.target.value })} style={{ ...sel, width: 140, padding: "4px 6px", fontSize: 12 }} />
+                                        <button className="dc-btn" disabled={busy === b.key} onClick={salvaPagamento} style={{ fontSize: 12, padding: "3px 8px" }}>Salva</button>
+                                        <button className="dc-btn" onClick={() => setEditPag(null)} style={{ fontSize: 12, padding: "3px 8px" }}>Annulla</button>
+                                      </div>
+                                    ) : (
+                                      b.key
+                                        ? <button className="dc-btn" title="Sposta questo pagamento a un altro mese (es. bonifico del 1° gennaio → dicembre) o correggi l'importo"
+                                            onClick={() => setEditPag({ key: b.key, mese: r.mese, anno: r.anno, importo: b.importo, nota: "" })}
+                                            style={{ fontSize: 12, padding: "3px 8px" }}>Sposta / modifica</button>
+                                        : <span style={{ color: "#9aa295" }}>—</span>
+                                    )}
                                   </td>
                                 </tr>
                               ))}
