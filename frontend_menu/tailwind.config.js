@@ -7,6 +7,8 @@ module.exports = {
   ],
   theme: {
   	extend: {
+  		// Anello di focus di default: salvia, non il blu di Tailwind (design Ceraldi)
+  		ringColor: { DEFAULT: '#5b7a6b' },
   		borderRadius: {
   			lg: 'var(--radius)',
   			md: 'calc(var(--radius) - 2px)',

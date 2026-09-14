@@ -10,11 +10,11 @@ import { formatEuroD, formatDateIT, useIsMobile } from '../lib/utils';
  * puntuale, con ravvedimento (8906+1989), in ritardo senza ravvedimento.
  */
 
-const BLU = '#0f2744';
+const BLU = '#2a3329';
 const STATI = {
   da_pagare: { label: 'Da pagare', bg: '#fef3c7', fg: '#92400e' },
   scaduta_da_versare: { label: '⚠️ SCADUTA da versare', bg: '#fee2e2', fg: '#991b1b' },
-  f24_associato_da_pagare: { label: 'F24 trovato, banca da verificare', bg: '#dbeafe', fg: '#1e40af' },
+  f24_associato_da_pagare: { label: 'F24 trovato, banca da verificare', bg: '#e2efe8', fg: '#3f5a4e' },
   da_verificare_associazione_f24: { label: 'Più F24 compatibili: verifica', bg: '#fef3c7', fg: '#92400e' },
   pagata_puntuale: { label: '✓ Pagata puntuale', bg: '#dcfce7', fg: '#166534' },
   pagata_con_ravvedimento: { label: 'Pagata con ravvedimento', bg: '#fef9c3', fg: '#854d0e' },
@@ -127,7 +127,7 @@ export default function Ritenute() {
                 {badge(r.stato)}
               </div>
               {r.f24_id && (
-                <div style={{ fontSize: 11.5, color: '#1e40af', marginTop: 4 }}>
+                <div style={{ fontSize: 11.5, color: '#3f5a4e', marginTop: 4 }}>
                   🔗 F24, riga 1040 {r.f24_periodo ? `(${r.f24_periodo})` : ''}:{' '}
                   {r.f24_descrizione || r.f24_id}
                   <div>
@@ -177,7 +177,7 @@ export default function Ritenute() {
                   <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800, fontFamily: 'ui-monospace, Menlo, monospace' }}>{eur(r.importo)}</td>
                   <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>{formatDateIT(r.scadenza_legale || r.scadenza)}</td>
                   <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>{r.data_pagamento ? formatDateIT(r.data_pagamento) : '—'}</td>
-                  <td style={{ padding: '8px 10px', fontSize: 11.5, color: '#1e40af' }}>
+                  <td style={{ padding: '8px 10px', fontSize: 11.5, color: '#3f5a4e' }}>
                     {r.f24_id ? (
                       <div>
                         <div>🔗 1040 {r.f24_periodo || 'periodo da verificare'}</div>

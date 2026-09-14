@@ -69,7 +69,7 @@ const styles = {
   statBox: (bg = 'white') => ({
     background: bg,
     border: '1px solid #e2e8f0',
-    borderLeft: '4px solid #0f2744',
+    borderLeft: '4px solid #2a3329',
     padding: '8px 10px',
     borderRadius: 8,
     textAlign: 'left',
@@ -81,7 +81,7 @@ const styles = {
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   }),
-  statValue: (color = '#0f2744') => ({ fontSize: 22, fontWeight: 700, color, fontFamily: MONO }),
+  statValue: (color = '#2a3329') => ({ fontSize: 22, fontWeight: 700, color, fontFamily: MONO }),
   table: { width: '100%', fontSize: 12, borderCollapse: 'collapse' },
   th: {
     padding: '8px',
@@ -523,9 +523,9 @@ export default function GestioneCespiti() {
           )}
           {riepilogoCespiti && (
             <div style={{ ...styles.grid4, marginBottom: 12 }}>
-              <div style={styles.statBox('#eff6ff')}>
-                <p style={styles.statLabel('#2563eb')}>Cespiti</p>
-                <p style={styles.statValue('#1e40af')}>{riepilogoCespiti?.totali?.num_cespiti}</p>
+              <div style={styles.statBox('#eef3ef')}>
+                <p style={styles.statLabel('#5b7a6b')}>Cespiti</p>
+                <p style={styles.statValue('#3f5a4e')}>{riepilogoCespiti?.totali?.num_cespiti}</p>
               </div>
               <div style={styles.statBox('#f0fdf4')}>
                 <p style={styles.statLabel('#16a34a')}>Val. Acq.</p>
@@ -888,7 +888,7 @@ export default function GestioneCespiti() {
                                     onClick={() => handleEditCespite(c)}
                                     title="Modifica"
                                   >
-                                    <Pencil style={{ width: 12, height: 12, color: '#0f2744' }} />
+                                    <Pencil style={{ width: 12, height: 12, color: '#2a3329' }} />
                                   </Button>
                                   <Button
                                     size="sm"
@@ -975,7 +975,7 @@ export default function GestioneCespiti() {
                               {d.nome}
                             </span>
                             <span
-                              style={{ fontWeight: 'bold', color: '#0f2744', fontFamily: MONO }}
+                              style={{ fontWeight: 'bold', color: '#2a3329', fontFamily: MONO }}
                             >
                               {fmt(d.tfr_accantonato)}
                             </span>
@@ -1086,9 +1086,9 @@ export default function GestioneCespiti() {
                     {scadenzario?.riepilogo?.totale_fatture}
                   </p>
                 </div>
-                <div style={styles.statBox('#eff6ff')}>
-                  <p style={styles.statLabel('#2563eb')}>Da Pagare</p>
-                  <p style={styles.statValue('#1e40af')}>
+                <div style={styles.statBox('#eef3ef')}>
+                  <p style={styles.statLabel('#5b7a6b')}>Da Pagare</p>
+                  <p style={styles.statValue('#3f5a4e')}>
                     {fmt(scadenzario.riepilogo.totale_da_pagare)}
                   </p>
                 </div>

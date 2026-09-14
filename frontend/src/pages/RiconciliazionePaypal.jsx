@@ -203,7 +203,7 @@ export default function RiconciliazionePaypal() {
         {loading && <div role="status" style={messageStyle}>Caricamento dati PayPal...</div>}
         {errore && <div role="alert" style={{ ...messageStyle, background: '#fef2f2', color: '#991b1b' }}>{errore}</div>}
         {statoApi && !statoApi.api_configurata && (
-          <div style={{ ...messageStyle, background: '#eff6ff', color: '#1d4ed8' }}>
+          <div style={{ ...messageStyle, background: '#eef3ef', color: '#3f5a4e' }}>
             API PayPal non configurata. Le transazioni già presenti restano consultabili e riconciliabili.
           </div>
         )}
@@ -236,7 +236,7 @@ export default function RiconciliazionePaypal() {
             ['estratti', 'Movimenti banca'],
             ['documenti', 'Fonti'],
           ].map(([id, label]) => (
-            <button key={id} type="button" onClick={() => setTab(id)} style={{ ...buttonStyle, background: tab === id ? '#0f2744' : '#fff', color: tab === id ? '#fff' : '#0f2744' }}>{label}</button>
+            <button key={id} type="button" onClick={() => setTab(id)} style={{ ...buttonStyle, background: tab === id ? '#2a3329' : '#fff', color: tab === id ? '#fff' : '#2a3329' }}>{label}</button>
           ))}
         </div>
 
@@ -324,7 +324,7 @@ function SourceTable({ fonti }) {
 
 const card = { background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: 14, display: 'grid', gap: 6 };
 const cards = { display: 'grid', gap: 10 };
-const value = { display: 'block', marginTop: 6, fontSize: 24, color: '#0f2744' };
+const value = { display: 'block', marginTop: 6, fontSize: 24, color: '#2a3329' };
 const buttonStyle = { minHeight: 40, padding: '8px 14px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer', fontWeight: 700 };
 const inputStyle = { width: '100%', minHeight: 40, padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: 8 };
 const messageStyle = { padding: 12, color: '#64748b', borderRadius: 8, marginBottom: 12 };

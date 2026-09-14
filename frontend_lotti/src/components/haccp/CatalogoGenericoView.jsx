@@ -219,8 +219,8 @@ export default function CatalogoGenericoView({
                     </div>
                   ) : p.prezzoFornitore > 0 ? (
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-xs font-bold text-blue-700">€{Number(p.prezzoFornitore).toFixed(2)}</span>
-                      <span className="text-[9px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-semibold">netto fornitore</span>
+                      <span className="text-xs font-bold text-[#3f5a4e]">€{Number(p.prezzoFornitore).toFixed(2)}</span>
+                      <span className="text-[9px] bg-[#e2efe8] text-[#3f5a4e] px-1.5 py-0.5 rounded-full font-semibold">netto fornitore</span>
                     </div>
                   ) : p.giaAcquistato && p.prezzo > 0 ? (
                     <div className="flex items-center gap-1.5 flex-wrap">

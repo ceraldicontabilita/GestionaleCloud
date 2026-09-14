@@ -560,7 +560,7 @@ function FasciaEnergiaCard({ energia, errore }) {
     return <div style={STILI.energiaLoading}>Calcolo della fascia energia in corso...</div>;
   }
 
-  const colori = { F1: '#2563eb', F2: '#dc2626', F3: '#15803d' };
+  const colori = { F1: '#5b7a6b', F2: '#dc2626', F3: '#15803d' };
   const fascia = energia.fascia_attuale;
   const prossima = new Date(energia.prossima_f3).toLocaleString('it-IT', {
     weekday: 'long', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',

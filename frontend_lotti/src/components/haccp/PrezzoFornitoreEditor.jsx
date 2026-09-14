@@ -43,9 +43,9 @@ export default function PrezzoFornitoreEditor({ prodotto, fonte, fornitore, codi
   };
 
   return (
-    <div className={compatto ? "space-y-1" : "rounded-xl border border-blue-100 bg-blue-50 p-3 space-y-2"}
+    <div className={compatto ? "space-y-1" : "rounded-xl border border-[#dde8e0] bg-[#eef3ef] p-3 space-y-2"}
       onClick={(event) => event.stopPropagation()}>
-      <label className="block text-[10px] font-bold uppercase tracking-wide text-blue-700">
+      <label className="block text-[10px] font-bold uppercase tracking-wide text-[#3f5a4e]">
         Prezzo netto (IVA esclusa)
       </label>
       <div className="flex gap-1.5">
@@ -58,16 +58,16 @@ export default function PrezzoFornitoreEditor({ prodotto, fonte, fornitore, codi
             inputMode="decimal"
             aria-label="Prezzo comunicato dal fornitore"
             placeholder="0,00"
-            className="w-full rounded-lg border border-blue-200 bg-white py-1.5 pl-6 pr-2 text-sm font-semibold outline-none focus:border-blue-500"
+            className="w-full rounded-lg border border-[#c2ddd0] bg-white py-1.5 pl-6 pr-2 text-sm font-semibold outline-none focus:border-[#5b7a6b]"
           />
         </div>
         <button type="button" onClick={salva} disabled={salvando}
           title="Salva prezzo comunicato dal fornitore"
-          className="rounded-lg bg-blue-700 px-2.5 text-white disabled:opacity-50">
+          className="rounded-lg bg-[#3f5a4e] px-2.5 text-white disabled:opacity-50">
           <Save size={14} />
         </button>
       </div>
-      {!compatto && <p className="text-[10px] text-blue-700/80">Usato nell’ordine finché una fattura XML registra il prezzo realmente pagato.</p>}
+      {!compatto && <p className="text-[10px] text-[#3f5a4e]/80">Usato nell’ordine finché una fattura XML registra il prezzo realmente pagato.</p>}
     </div>
   );
 }

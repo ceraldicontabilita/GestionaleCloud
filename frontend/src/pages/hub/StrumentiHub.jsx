@@ -9,8 +9,8 @@ const PianificazioneContent = lazy(() => import('../Pianificazione.jsx'));
 const VisureContent = lazy(() => import('../Visure.jsx'));
 
 const TABS = [
-  { id: 'verifica', label: '🔍 Verifica Coerenza', color: '#3b82f6' },
-  { id: 'commercialista', label: '📊 Commercialista', color: '#8b5cf6' },
+  { id: 'verifica', label: '🔍 Verifica Coerenza', color: '#5b7a6b' },
+  { id: 'commercialista', label: '📊 Commercialista', color: '#8a6f47' },
   { id: 'pianificazione', label: '📅 Pianificazione', color: '#10b981' },
   { id: 'visure', label: '🏛️ Visure', color: '#06b6d4' },
 ];

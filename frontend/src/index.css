@@ -1,6 +1,6 @@
 /* ================================================================
    CERALDI ERP — STILE GLOBALE
-   Design system ufficiale: Navy #0f2744 + Oro #b8860b
+   Design system ufficiale: Navy #2a3329 + Oro #b8860b
    Font di sistema · densità 13px · angoli 6–8px · ombre navy
    Drop-in replacement di  frontend/src/index.css
    Token allineati 1:1 a  tokens/*.css  del design system.
@@ -11,7 +11,7 @@
 /* ---- Design tokens ---- */
 :root {
   /* Brand navy */
-  --c-primary:        #0f2744;
+  --c-primary:        #2a3329;
   --c-primary-light:  #1e3a5f;
   --c-primary-dark:   #081425;
   --c-primary-soft:   #e8eef7;
@@ -25,7 +25,7 @@
   --c-success:        #15803d;  --c-success-light: #dcfce7;
   --c-warning:        #b45309;  --c-warning-light: #fef3c7;
   --c-danger:         #b91c1c;  --c-danger-light:  #fee2e2;
-  --c-info:           #1d4ed8;  --c-info-light:    #dbeafe;
+  --c-info:           #3f5a4e;  --c-info-light:    #e2efe8;
 
   /* Neutri / superfici (slate freddo) */
   --c-bg:             #f1f5f9;

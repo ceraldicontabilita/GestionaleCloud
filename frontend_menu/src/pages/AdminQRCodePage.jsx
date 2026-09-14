@@ -44,9 +44,9 @@ const AdminQRCodePage = () => {
             <CardDescription>Un solo QR per il menu clienti, senza configurazione Wi‑Fi duplicata.</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 flex gap-3">
-              <Info className="w-6 h-6 text-blue-700 shrink-0" />
-              <p className="text-sm text-blue-900">L'indirizzo viene ricavato automaticamente dal dominio reale del sistema. Quando il servizio passerà da Render a Personal Cloud, questa pagina userà automaticamente il nuovo dominio.</p>
+            <div className="rounded-xl border border-[#c2ddd0] bg-[#eef3ef] p-4 flex gap-3">
+              <Info className="w-6 h-6 text-[#3f5a4e] shrink-0" />
+              <p className="text-sm text-[#234d3d]">L'indirizzo viene ricavato automaticamente dal dominio reale del sistema. Quando il servizio passerà da Render a Personal Cloud, questa pagina userà automaticamente il nuovo dominio.</p>
             </div>
           </CardContent>
         </Card>
@@ -58,7 +58,7 @@ const AdminQRCodePage = () => {
               <CardDescription>È l'indirizzo che deve aprirsi sul telefono del cliente.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="rounded-xl border bg-white p-4 flex gap-3"><Link2 className="w-5 h-5 shrink-0" /><a href={menuUrl} target="_blank" rel="noreferrer" className="text-blue-700 underline font-semibold break-all">{menuUrl}</a></div>
+              <div className="rounded-xl border bg-white p-4 flex gap-3"><Link2 className="w-5 h-5 shrink-0" /><a href={menuUrl} target="_blank" rel="noreferrer" className="text-[#3f5a4e] underline font-semibold break-all">{menuUrl}</a></div>
               <Button onClick={() => window.open(menuUrl, '_blank')} className="w-full"><ExternalLink className="w-4 h-4 mr-2" />Apri menu clienti</Button>
             </CardContent>
           </Card>

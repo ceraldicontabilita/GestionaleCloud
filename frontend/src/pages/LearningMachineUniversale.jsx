@@ -106,7 +106,7 @@ export default function LearningMachineUniversale() {
                   width: 24,
                   height: 24,
                   border: '3px solid rgba(99,102,241,0.3)',
-                  borderTopColor: '#6366f1',
+                  borderTopColor: '#5b7a6b',
                   borderRadius: '50%',
                   animation: 'spin 1s linear infinite',
                 }}
@@ -210,7 +210,7 @@ export default function LearningMachineUniversale() {
             {getModuleResult('fornitori') && (
               <ResultCard
                 icon={<Users size={24} />}
-                color="#3b82f6"
+                color="#5b7a6b"
                 title="Fornitori"
                 analyzed={getModuleResult('fornitori').total_analyzed}
                 insights={[
@@ -282,7 +282,7 @@ export default function LearningMachineUniversale() {
             {getModuleResult('movimenti') && (
               <ResultCard
                 icon={<TrendingUp size={24} />}
-                color="#8b5cf6"
+                color="#8a6f47"
                 title="Movimenti Bancari"
                 analyzed={getModuleResult('movimenti').total_analyzed}
                 insights={[

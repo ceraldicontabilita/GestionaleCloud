@@ -8,7 +8,7 @@ import { toast } from '../../hooks/use-toast';
 const BACKEND_URL = process.env.REACT_APP_MENU_BACKEND_URL;
 
 const COLUMNS = [
-  { status: 'nuovo', label: 'Nuovi', color: 'bg-blue-100 border-blue-300' },
+  { status: 'nuovo', label: 'Nuovi', color: 'bg-[#e2efe8] border-[#a9cbbb]' },
   { status: 'in_corso', label: 'In corso', color: 'bg-amber-100 border-amber-300' },
   { status: 'pronto', label: 'Pronti', color: 'bg-emerald-100 border-emerald-300' },
   { status: 'completato', label: 'Completati', color: 'bg-gray-100 border-gray-300' },

@@ -449,7 +449,7 @@ const CardProdotto = ({ prodotto, colore, fornitore, onDettaglio, giaNelDizionar
           <p className="text-[10px] text-gray-500 line-clamp-3 leading-snug">{prodotto.descrizione}</p>
         )}
         {(prezzoProdotto(prodotto) > 0) && (
-          <p className={`text-xs font-bold ${prezzoFatturaProdotto(prodotto) > 0 ? "text-green-700" : "text-blue-700"}`}>
+          <p className={`text-xs font-bold ${prezzoFatturaProdotto(prodotto) > 0 ? "text-green-700" : "text-[#3f5a4e]"}`}>
             €{prezzoProdotto(prodotto).toFixed(2)} · {prezzoFatturaProdotto(prodotto) > 0 ? "ultima fattura" : "netto fornitore"}
           </p>
         )}

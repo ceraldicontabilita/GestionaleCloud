@@ -10,13 +10,13 @@
 }
 
 .calendario-info {
-  border: 1px solid #bfdbfe;
-  background: #eff6ff;
+  border: 1px solid #c2ddd0;
+  background: #eef3ef;
   color: #1e3a5f;
 }
 
 .calendario-info a {
-  color: #1d4ed8;
+  color: #3f5a4e;
   font-weight: 600;
 }
 

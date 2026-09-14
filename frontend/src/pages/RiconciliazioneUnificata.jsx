@@ -38,13 +38,13 @@ const RiconciliazionePaypalLazy = lazy(() => import('./RiconciliazionePaypal.jsx
  */
 
 const TABS = [
-  { id: 'dashboard', label: '📊 Dashboard', color: '#0f2744' },
-  { id: 'banca', label: '🏦 Banca', color: '#0f2744' },
-  { id: 'assegni', label: '📝 Prelievi Assegno', color: '#0f2744' },
-  { id: 'f24', label: '📄 F24', color: '#0f2744' },
-  { id: 'stipendi', label: '👤 Stipendi', color: '#0f2744' },
-  { id: 'documenti', label: '📎 Documenti', color: '#0f2744' },
-  { id: 'paypal', label: '💳 PayPal', color: '#0f2744' },
+  { id: 'dashboard', label: '📊 Dashboard', color: '#2a3329' },
+  { id: 'banca', label: '🏦 Banca', color: '#2a3329' },
+  { id: 'assegni', label: '📝 Prelievi Assegno', color: '#2a3329' },
+  { id: 'f24', label: '📄 F24', color: '#2a3329' },
+  { id: 'stipendi', label: '👤 Stipendi', color: '#2a3329' },
+  { id: 'documenti', label: '📎 Documenti', color: '#2a3329' },
+  { id: 'paypal', label: '💳 PayPal', color: '#2a3329' },
 ];
 
 const RENTAL_RECONCILIATION_TERMS = [
@@ -711,7 +711,7 @@ export default function RiconciliazioneUnificata() {
             justifyContent: 'space-between',
             alignItems: 'center',
             padding: '15px 20px',
-            background: '#0f2744',
+            background: '#2a3329',
             borderRadius: 8,
             color: 'white',
           }}
@@ -775,10 +775,10 @@ export default function RiconciliazioneUnificata() {
           style={{
             marginBottom: 16,
             padding: '10px 14px',
-            background: '#eff6ff',
-            border: '1px solid #bfdbfe',
+            background: '#eef3ef',
+            border: '1px solid #c2ddd0',
             borderRadius: 8,
-            color: '#1e3a8a',
+            color: '#3f5a4e',
             fontSize: 13,
             display: 'flex',
             justifyContent: 'space-between',
@@ -797,8 +797,8 @@ export default function RiconciliazioneUnificata() {
             style={{
               padding: '6px 10px',
               background: '#fff',
-              color: '#1e3a8a',
-              border: '1px solid #93c5fd',
+              color: '#3f5a4e',
+              border: '1px solid #a9cbbb',
               borderRadius: 6,
               cursor: 'pointer',
               whiteSpace: 'nowrap',
@@ -825,8 +825,8 @@ export default function RiconciliazioneUnificata() {
           onClick={handleAnalizzaAnomalie}
           disabled={processing === 'analizza-anomalie'}
           style={{
-            padding: '8px 14px', minHeight: 40, background: '#fff', color: '#0f2744',
-            border: '1px solid #0f2744', borderRadius: 6, cursor: 'pointer',
+            padding: '8px 14px', minHeight: 40, background: '#fff', color: '#2a3329',
+            border: '1px solid #2a3329', borderRadius: 6, cursor: 'pointer',
             fontWeight: 700, whiteSpace: 'nowrap',
           }}
         >
@@ -840,7 +840,7 @@ export default function RiconciliazioneUnificata() {
             minHeight: 40,
             flex: isMobile ? '1 1 auto' : '0 1 auto',
             background: 'white',
-            color: '#0f2744',
+            color: '#2a3329',
             border: '1px solid #e2e8f0',
             borderRadius: 6,
             cursor: 'pointer',
@@ -859,9 +859,9 @@ export default function RiconciliazioneUnificata() {
             padding: '8px 14px',
             minHeight: 40,
             flex: isMobile ? '1 1 auto' : '0 1 auto',
-            background: showFilters ? '#0f2744' : 'white',
-            color: showFilters ? 'white' : '#0f2744',
-            border: `1px solid ${showFilters ? '#0f2744' : '#e2e8f0'}`,
+            background: showFilters ? '#2a3329' : 'white',
+            color: showFilters ? 'white' : '#2a3329',
+            border: `1px solid ${showFilters ? '#2a3329' : '#e2e8f0'}`,
             borderRadius: 6,
             cursor: 'pointer',
             fontWeight: 600,
@@ -932,7 +932,7 @@ export default function RiconciliazioneUnificata() {
                 onClick={() => navigate('/riconciliazione/movimenti-banca')}
                 style={{
                   justifySelf: 'start', padding: '7px 11px', borderRadius: 6,
-                  background: '#0f2744', color: '#fff', border: 0, cursor: 'pointer', fontWeight: 700,
+                  background: '#2a3329', color: '#fff', border: 0, cursor: 'pointer', fontWeight: 700,
                 }}
               >
                 Apri indice operazioni
@@ -1217,7 +1217,7 @@ export default function RiconciliazioneUnificata() {
                     width: 36,
                     height: 36,
                     border: '3px solid #e2e8f0',
-                    borderTop: '3px solid #0f2744',
+                    borderTop: '3px solid #2a3329',
                     borderRadius: '50%',
                     animation: 'spin 1s linear infinite',
                     margin: '0 auto 12px',
@@ -1243,7 +1243,7 @@ export default function RiconciliazioneUnificata() {
             style={{
               padding: '12px 28px',
               minHeight: 40,
-              background: loadingMore ? '#94a3b8' : '#0f2744',
+              background: loadingMore ? '#94a3b8' : '#2a3329',
               color: 'white',
               border: 'none',
               borderRadius: 6,
@@ -1273,7 +1273,7 @@ function DashboardTab({ stats, reconciliationStats }) {
       <div
         style={{
           padding: 40,
-          background: '#0f2744',
+          background: '#2a3329',
           borderRadius: 8,
           color: 'white',
           maxWidth: 500,
@@ -1348,7 +1348,7 @@ function MovimentiTab({
           style={{
             padding: '8px 16px',
             minHeight: 40,
-            background: '#0f2744',
+            background: '#2a3329',
             color: 'white',
             border: 'none',
             borderRadius: 6,
@@ -1390,7 +1390,7 @@ function MovimentiTab({
   return (
     <div>
       <div style={{ padding: 16, background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-        <h3 style={{ margin: 0, fontSize: 16, color: '#0f2744' }}>
+        <h3 style={{ margin: 0, fontSize: 16, color: '#2a3329' }}>
           {title} ({movimenti.length}{Number(totalRows) > movimenti.length ? ` di ${totalRows}` : ''})
         </h3>
       </div>
@@ -1446,7 +1446,7 @@ function MovimentiTab({
                         </div>
                       )}
                       {numeroFattura && (
-                        <div style={{ fontSize: 11, color: '#3b82f6', marginTop: 2 }}>
+                        <div style={{ fontSize: 11, color: '#5b7a6b', marginTop: 2 }}>
                           📄 Fattura: {numeroFattura}
                         </div>
                       )}
@@ -1482,7 +1482,7 @@ function MovimentiTab({
                   if (m.decisione) {
                     const labels = {
                       automatica: ['Registrata automaticamente', '#dcfce7', '#166534'],
-                      proposta: ['Proposta da verificare', '#dbeafe', '#1d4ed8'],
+                      proposta: ['Proposta da verificare', '#e2efe8', '#3f5a4e'],
                       ambigua: ['Da decidere', '#fef3c7', '#92400e'],
                     };
                     const [label, background, color] = labels[m.decisione] || labels.ambigua;
@@ -1649,7 +1649,7 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onVediProva, processin
               : datiIncompleti
                 ? '#fef3c7'
                 : ragioneSociale
-                  ? '#e0f2fe'
+                  ? '#eef3ef'
                   : '#f1f5f9',
             display: 'flex',
             alignItems: 'center',
@@ -1738,7 +1738,7 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onVediProva, processin
               style={{
                 marginTop: 2,
                 fontSize: 11,
-                color: '#3b82f6',
+                color: '#5b7a6b',
               }}
             >
               📄 Fattura: {numeroFattura}
@@ -1762,12 +1762,12 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onVediProva, processin
               <span>📝 Assegno N. {movimento.numero_assegno}</span>
               <span>• Stato: {movimento.stato || 'N/D'}</span>
               {movimento.beneficiario && (
-                <span style={{ color: '#3b82f6', fontWeight: 600 }}>
+                <span style={{ color: '#5b7a6b', fontWeight: 600 }}>
                   • 👤 {movimento.beneficiario}
                 </span>
               )}
               {movimento.fornitore && !movimento.beneficiario && (
-                <span style={{ color: '#3b82f6', fontWeight: 600 }}>
+                <span style={{ color: '#5b7a6b', fontWeight: 600 }}>
                   • 👤 {movimento.fornitore}
                 </span>
               )}
@@ -1818,9 +1818,9 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onVediProva, processin
                     width: '100%',
                     marginTop: 4,
                     padding: '4px 8px',
-                    background: '#dbeafe',
+                    background: '#e2efe8',
                     borderRadius: 4,
-                    color: '#1e40af',
+                    color: '#3f5a4e',
                   }}
                 >
                   📊 <b>Pagamento in {movimento?.info_rate?.numero_rate} rate</b>: Totale rate{' '}
@@ -1837,9 +1837,9 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onVediProva, processin
                     width: '100%',
                     marginTop: 4,
                     padding: '4px 8px',
-                    background: '#dbeafe',
+                    background: '#e2efe8',
                     borderRadius: 4,
-                    color: '#1e40af',
+                    color: '#3f5a4e',
                   }}
                 >
                   ℹ️ {movimento.nota_td24}
@@ -1862,7 +1862,7 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onVediProva, processin
           )}
 
           {movimento.decisione && (
-            <div style={{ marginTop: 8, fontSize: 12, fontWeight: 700, color: '#0f2744' }}>
+            <div style={{ marginTop: 8, fontSize: 12, fontWeight: 700, color: '#2a3329' }}>
               {movimento.decisione === 'automatica'
                 ? 'Registrata automaticamente'
                 : movimento.decisione === 'proposta'
@@ -1908,7 +1908,7 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onVediProva, processin
             style={{
               padding: '8px 16px',
               minHeight: 40,
-              background: '#0f2744',
+              background: '#2a3329',
               color: 'white',
               border: 'none',
               borderRadius: 6,
@@ -1951,13 +1951,13 @@ const STILI_STATO_F24 = {
   pagato_nei_termini: { label: '✅ Pagato nei termini', bg: '#dcfce7', color: '#166534' },
   pagato_in_ritardo: { label: '⚠️ PAGATO IN RITARDO', bg: '#fee2e2', color: '#991b1b' },
   non_pagato: { label: '❌ Non pagato', bg: '#ffedd5', color: '#9a3412' },
-  in_scadenza: { label: '🕐 In scadenza', bg: '#dbeafe', color: '#1e40af' },
+  in_scadenza: { label: '🕐 In scadenza', bg: '#e2efe8', color: '#3f5a4e' },
   periodo_ignoto: { label: '❓ Periodo ignoto', bg: '#f1f5f9', color: '#64748b' },
 };
 
 const STILI_DUP_F24 = {
   da_verificare: { label: '🚨 Da verificare', bg: '#fee2e2', color: '#991b1b' },
-  collegato_no_duplicato: { label: '🔗 Collegato (no doppio)', bg: '#dbeafe', color: '#1e40af' },
+  collegato_no_duplicato: { label: '🔗 Collegato (no doppio)', bg: '#e2efe8', color: '#3f5a4e' },
   no: { label: 'No', bg: '#f1f5f9', color: '#64748b' },
 };
 
@@ -2002,7 +2002,7 @@ export function TabellaAnalisiF24({ anno }) {
   return (
     <div style={{ padding: 16, borderBottom: '1px solid #e2e8f0', background: 'white' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <h3 style={{ margin: 0, fontSize: 15, color: '#0f2744' }}>
+        <h3 style={{ margin: 0, fontSize: 15, color: '#2a3329' }}>
           📋 Analisi F24 — scadenze, ravvedimenti e duplicazioni
         </h3>
         <button
@@ -2010,7 +2010,7 @@ export function TabellaAnalisiF24({ anno }) {
           onClick={() => carica(soloAnno)}
           disabled={loading}
           style={{
-            padding: '8px 14px', minHeight: 38, background: '#0f2744', color: 'white',
+            padding: '8px 14px', minHeight: 38, background: '#2a3329', color: 'white',
             border: 'none', borderRadius: 6, cursor: loading ? 'wait' : 'pointer',
             fontWeight: 600, fontSize: 12.5,
           }}
@@ -2083,7 +2083,7 @@ export function TabellaAnalisiF24({ anno }) {
                     <td style={{ ...cella, fontWeight: 700, whiteSpace: 'nowrap' }}>
                       {r.periodo_competenza || '—'}
                       {(r.codici_tributo || []).length > 0 && (
-                        <div style={{ fontSize: 10.5, color: '#2563eb', fontFamily: 'monospace', marginTop: 2 }}>
+                        <div style={{ fontSize: 10.5, color: '#5b7a6b', fontFamily: 'monospace', marginTop: 2 }}>
                           Codici: {r.codici_tributo.join(', ')}
                         </div>
                       )}
@@ -2191,7 +2191,7 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
               marginTop: 16,
               padding: '10px 20px',
               minHeight: 40,
-              background: '#0f2744',
+              background: '#2a3329',
               color: 'white',
               border: 'none',
               borderRadius: 6,
@@ -2297,7 +2297,7 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
             gap: 12,
           }}
         >
-          <h3 style={{ margin: 0, fontSize: 16, color: '#0f2744' }}>
+          <h3 style={{ margin: 0, fontSize: 16, color: '#2a3329' }}>
             📄 F24 Pendenti ({f24Validi.length})
           </h3>
           <div
@@ -2353,7 +2353,7 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
                 style={{
                   padding: '8px 16px',
                   minHeight: 40,
-                  background: '#0f2744',
+                  background: '#2a3329',
                   color: 'white',
                   border: 'none',
                   borderRadius: 6,
@@ -2473,7 +2473,7 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
                       style={{
                         padding: '4px 10px',
                         minHeight: 40,
-                        background: f.pdf_url || f.file_path ? '#0f2744' : '#94a3b8',
+                        background: f.pdf_url || f.file_path ? '#2a3329' : '#94a3b8',
                         color: 'white',
                         border: 'none',
                         borderRadius: 6,
@@ -2640,11 +2640,11 @@ function DocumentiTab({ documenti, stats, onRefresh, processing }) {
 
   const getCategoryColor = category => {
     const colors = {
-      fattura: '#3b82f6',
+      fattura: '#5b7a6b',
       f24: '#dc2626',
       busta_paga: '#16a34a',
       verbale: '#d97706',
-      cartella: '#0f2744',
+      cartella: '#2a3329',
     };
     return colors[category] || '#64748b';
   };
@@ -2674,7 +2674,7 @@ function DocumentiTab({ documenti, stats, onRefresh, processing }) {
             gap: 12,
           }}
         >
-          <h3 style={{ margin: 0, fontSize: 16, color: '#0f2744' }}>
+          <h3 style={{ margin: 0, fontSize: 16, color: '#2a3329' }}>
             📎 Documenti Non Associati ({documenti.length})
           </h3>
           {stats && (
@@ -2731,7 +2731,7 @@ function DocumentiTab({ documenti, stats, onRefresh, processing }) {
                 cursor: 'pointer',
                 background: selectedDoc?.id === doc.id ? '#f8fafc' : 'white',
                 borderLeft:
-                  selectedDoc?.id === doc.id ? '3px solid #0f2744' : '3px solid transparent',
+                  selectedDoc?.id === doc.id ? '3px solid #2a3329' : '3px solid transparent',
               }}
             >
               <div
@@ -2768,8 +2768,8 @@ function DocumentiTab({ documenti, stats, onRefresh, processing }) {
                       padding: '2px 8px',
                       fontSize: 11,
                       borderRadius: 4,
-                      background: '#dbeafe',
-                      color: '#1e40af',
+                      background: '#e2efe8',
+                      color: '#3f5a4e',
                     }}
                   >
                     {doc?.proposta?.anno_suggerito}
@@ -2791,7 +2791,7 @@ function DocumentiTab({ documenti, stats, onRefresh, processing }) {
                   width: '100%',
                   padding: 14,
                   minHeight: 40,
-                  background: '#0f2744',
+                  background: '#2a3329',
                   color: 'white',
                   border: 'none',
                   borderRadius: 6,
@@ -2833,14 +2833,14 @@ function DocumentiTab({ documenti, stats, onRefresh, processing }) {
               (selectedDoc?.proposta?.anno_suggerito || selectedDoc?.proposta?.tipo_suggerito) && (
                 <div
                   style={{
-                    background: '#eff6ff',
-                    border: '1px solid #bfdbfe',
+                    background: '#eef3ef',
+                    border: '1px solid #c2ddd0',
                     borderRadius: 8,
                     padding: 12,
                     marginBottom: 16,
                   }}
                 >
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#1e40af', marginBottom: 8 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#3f5a4e', marginBottom: 8 }}>
                     💡 Proposta Intelligente
                   </div>
                   {selectedDoc?.proposta?.tipo_suggerito && (
@@ -2956,7 +2956,7 @@ function DocumentiTab({ documenti, stats, onRefresh, processing }) {
           onClick={() => { setMostraRecenti(m => !m); if (!mostraRecenti && recenti.length === 0) caricaRecenti(); }}
           style={{
             background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-            fontSize: 13, fontWeight: 600, color: '#0f2744', display: 'flex', alignItems: 'center', gap: 6,
+            fontSize: 13, fontWeight: 600, color: '#2a3329', display: 'flex', alignItems: 'center', gap: 6,
           }}
         >
           {mostraRecenti ? '▼' : '▶'} Documenti associati di recente — sbagliato collezione? Annulla qui

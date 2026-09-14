@@ -287,7 +287,7 @@ async def genera_report_ferie_permessi_tutti(
     col_widths = [5*cm, 2.5*cm, 2*cm, 2*cm, 2*cm, 2*cm, 2*cm, 2*cm, 2*cm]
     table = Table(data, colWidths=col_widths)
     table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1e3a5f')),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3f5a4e')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#e9ecef')),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
@@ -1660,7 +1660,7 @@ async def genera_report_ferie_permessi(
     
     table_riepilogo = Table(data_riepilogo, colWidths=[6*cm, 3*cm, 3*cm, 3*cm])
     table_riepilogo.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1e3a5f')),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3f5a4e')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
@@ -1698,7 +1698,7 @@ async def genera_report_ferie_permessi(
         
         table_mensile = Table(data_mensile, colWidths=[4*cm, 4*cm, 4*cm, 4*cm])
         table_mensile.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1e3a5f')),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3f5a4e')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
