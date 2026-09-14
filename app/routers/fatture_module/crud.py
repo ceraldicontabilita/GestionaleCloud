@@ -80,6 +80,21 @@ def _data_documento_fattura(doc: dict):
     )
 
 
+def _supplier_counter_key(fattura: dict) -> str:
+    """Identita' conservativa per il solo contatore dei fornitori.
+
+    La P.IVA resta la chiave preferita. Se manca, distinguiamo per nome
+    documentato normalizzato senza trasformarlo in identita' fiscale e senza
+    creare collegamenti tra fatture, anagrafiche o pagamenti.
+    """
+    piva = str(fattura.get("fornitore_partita_iva") or "").strip().upper()
+    if piva:
+        return f"piva:{re.sub(r'[^A-Z0-9]', '', piva)}"
+    name = str(fattura.get("fornitore_ragione_sociale") or "").strip().upper()
+    normalized_name = re.sub(r"[^A-Z0-9]", "", name)
+    return f"nome:{normalized_name}" if normalized_name else ""
+
+
 def _normalizza_da_invoices(doc: dict) -> dict:
     """Mappa un documento della collection `invoices` nel formato unificato archivio.
 
@@ -819,10 +834,13 @@ async def get_statistiche(anno: Optional[int] = Query(None)) -> Dict[str, Any]:
             float(fattura.get("importo_totale") or 0)
             for fattura in fatture_uniche
         ), 2),
+        # Il conteggio non deve diventare zero quando una fattura storica ha
+        # il nome documentato ma non la P.IVA. Il nome serve solo al contatore:
+        # non crea alcuna associazione fiscale o contabile.
         "fornitori_unici": sorted({
-            str(fattura.get("fornitore_partita_iva") or "")
+            _supplier_counter_key(fattura)
             for fattura in fatture_uniche
-            if fattura.get("fornitore_partita_iva")
+            if _supplier_counter_key(fattura)
         }),
         "pagate": sum(bool(fattura.get("pagato")) for fattura in fatture_uniche),
         "importo_pagato": round(sum(

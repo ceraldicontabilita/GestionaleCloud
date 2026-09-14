@@ -183,6 +183,32 @@ def test_statistiche_restano_disponibili_nel_database_e2e_in_memoria(monkeypatch
     assert esito["fornitori_unici"] == 2
 
 
+def test_statistiche_contano_nomi_documentati_senza_inventare_piva(monkeypatch):
+    db = MemorySheetsClient()["fatture_statistiche_nome_fornitore"]
+    monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
+    _run(db["invoices"].insert_many([
+        {
+            "id": "f-name-1", "invoice_number": "1",
+            "invoice_date": "2026-08-08", "supplier_name": "ALFA SRL",
+            "total_amount": 122.0,
+        },
+        {
+            "id": "f-name-2", "invoice_number": "2",
+            "invoice_date": "2026-08-09", "supplier_name": "Alfa S.r.l.",
+            "total_amount": 244.0,
+        },
+        {
+            "id": "f-name-3", "invoice_number": "3",
+            "invoice_date": "2026-08-10", "supplier_name": "BETA SNC",
+            "total_amount": 10.0,
+        },
+    ]))
+
+    esito = _run(mod.get_statistiche(anno=2026))
+
+    assert esito["fornitori_unici"] == 2
+
+
 def test_statistiche_non_nascondono_collisioni_e_escludono_archiviati(monkeypatch):
     db = MemorySheetsClient()["fatture_statistiche_evidenza"]
     monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
