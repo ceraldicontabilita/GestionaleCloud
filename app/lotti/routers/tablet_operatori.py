@@ -1,417 +1,321 @@
 """
 tablet_operatori.py
 -------------------
-Gestione accesso operatori tablet via PIN.
+Operatori del tablet HACCP = anagrafica HR. Decisione del titolare 14/09/2026
+(regole R1-R6):
 
-SICUREZZA — rifatta il 25/07/2026 dopo l'audit (decisione di Enzo: «procedi
-per i pin, si usa la soluzione migliore»). Come stava prima:
-
-  * il PIN di ogni dipendente era salvato IN CHIARO nel database (`pin_chiaro`)
-    accanto a quello cifrato, e un comando lo restituiva all'amministratore:
-    chi riusciva a leggere il database leggeva tutti i PIN, cifratura inutile;
-  * i PIN erano scritti anche NEL CODICE (lista dei dipendenti di partenza),
-    quindi finiti dentro la cronologia del repository;
-  * peggio: a ogni riavvio del server la lista del codice RIMETTEVA il PIN di
-    partenza dentro `pin_chiaro`. Siccome il login controllava prima quello,
-    **un PIN cambiato dall'amministratore non revocava il vecchio**: quello
-    vecchio tornava valido al primo riavvio.
-
-Come sta adesso:
-
-  * il PIN si verifica con bcrypt (`pin`), come prima;
-  * per non dover provare bcrypt su tutti i dipendenti a ogni accesso c'è
-    `pin_lookup`: un'impronta HMAC-SHA256 del PIN calcolata con il segreto
-    dell'applicazione (che sta nelle variabili d'ambiente di Render, NON nel
-    database). Serve solo a trovare la riga giusta in un colpo; da sola non
-    permette di risalire al PIN, e il controllo vero resta bcrypt;
-  * `pin_chiaro` non viene più scritto e viene CANCELLATO dai documenti
-    esistenti all'avvio (dopo aver calcolato `pin_lookup`, così nessuno resta
-    fuori);
-  * nessun PIN è più scritto nel codice: alla prima installazione i
-    dipendenti nascono SENZA PIN e l'amministratore glielo assegna;
-  * al posto di «vedi i PIN» c'è «Reimposta PIN»: se un dipendente lo
-    dimentica, l'amministratore gliene assegna uno nuovo.
+* **R1 — l'anagrafica HR comanda, Lotti legge.** Lotti non tiene un proprio
+  elenco di persone: la collezione ``tablet_operatori`` e' una PROIEZIONE
+  dell'anagrafica HR (``hr.app_dipendenti``, letta in-process), rinfrescata
+  all'avvio, ogni 10 minuti dallo scheduler, a ogni apertura della pagina
+  Personale e a ogni login. Chi e' in forza in HR (stato attivo alla data di
+  oggi) ed e' «operatore Lotti» nella scheda HR e' un operatore; chi non lo e'
+  sparisce da solo. Una riga Lotti senza persona HR corrispondente resta nel
+  database (i lotti gia' firmati restano a suo nome) ma ``attivo = false``.
+* **R2/R3 — il PIN si imposta nella scheda HR**, uno per persona, e vale sia
+  per il portale sia per firmare qui. Lotti non salva piu' nessun PIN: il
+  login chiede a HR chi ha quel PIN (``auth_dipendenti.trova_dipendente_per_pin``).
+  I PIN storici di Lotti (bcrypt) sono migrati UNA volta in HR
+  (``migra_pin_in_hr``), senza mai passare in chiaro.
+* **R4 — niente PIN condiviso** fra Vincenzo e Valerio: ognuno firma col PIN
+  personale della propria scheda HR. Il PIN amministratore centrale
+  (ERP/Menu/Lotti/HR, decisione 05/09/2026) continua a sbloccare le PAGINE
+  amministrative (``pin_amministratore_valido``) ma non e' un'identita' di
+  firma.
+* **R6 — qui restano solo i dati HACCP** della persona: postazione (proposta
+  dal ruolo HR, modificabile) e scadenza del libretto sanitario.
 """
 
-import hashlib
-import hmac
+import logging
 import os
 import re
-import secrets
 import unicodedata
 import uuid
 from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 
-import bcrypt
-import httpx
-from fastapi import APIRouter, HTTPException, Request, Depends
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
-from typing import Optional
+
+from app.lotti.auth import check_lock, clear_fails, make_token, register_fail, require_admin
 from app.lotti.db import database as db
-from app.lotti.auth import make_token, check_lock, register_fail, clear_fails, require_admin, _secret
 from app.services.admin_pin import verify_admin_pin
 
 router = APIRouter(prefix="/tablet-operatori", tags=["tablet_operatori"])
 
-_LOG_PIN = __import__("logging").getLogger("uvicorn.error")
+_LOG = logging.getLogger("uvicorn.error")
+
+POSTAZIONI = ("laboratorio", "pasticceria", "sala", "bar")
+
+# Nomi con cui Lotti conosceva storicamente una persona che in HR si chiama
+# diversamente (refusi): servono solo ad agganciare la riga esistente, cosi'
+# lo storico HACCP resta attaccato alla persona giusta.
+ALIAS_COGNOME = {"lisina": "lesina"}
+
+_CAMPI_PIN_LEGACY = {"pin": "", "pin_lookup": "", "pin_chiaro": "", "pin_da_impostare": "",
+                     "gruppo_pin": "", "pin_hash_riparato": "", "pin_recupero_emergenza": ""}
 
 
-def _hash_pin(pin: str) -> str:
-    return bcrypt.hashpw(pin.encode(), bcrypt.gensalt()).decode()
+def postazione_da_ruolo(ruolo: str) -> str:
+    """Postazione HACCP proposta dal ruolo/qualifica HR (CP2011 o testo libero)."""
+    r = _norm(ruolo)
+    if not r:
+        return ""
+    if any(k in r for k in ("pasticc", "cioccolat", "impastatore", "fornaio", "panett")):
+        return "pasticceria"
+    if any(k in r for k in ("cuoco", "rosticc", "cucina", "lavapiatti", "laborator", "operaio")):
+        return "laboratorio"
+    # "cameriere di bar" e' sala (serve ai tavoli), prima del controllo su "bar"
+    if any(k in r for k in ("camerier", "sala", "tirocin")):
+        return "sala"
+    if any(k in r for k in ("barista", "banconi", "bancon", "cassier", "bar")):
+        return "bar"
+    return ""
 
 
-def _verify_pin(pin: str, hashed: str) -> bool:
+def _norm(value: Any) -> str:
+    clean = unicodedata.normalize("NFKD", str(value or ""))
+    clean = "".join(c for c in clean if not unicodedata.combining(c))
+    return " ".join(clean.casefold().split())
+
+
+def _name_tokens(value: str) -> tuple:
+    return tuple(sorted(re.findall(r"[a-z0-9']+", _norm(value))))
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _db_hr():
     try:
-        return bcrypt.checkpw(pin.encode(), hashed.encode())
+        from app.hr.database import Database as DatabaseHR, DatabaseNonConfigurato
+    except Exception:  # pragma: no cover - modulo HR assente
+        return None
+    try:
+        db_hr = DatabaseHR.get_db()
     except Exception:
-        return False
+        return None
+    if db_hr is None or isinstance(db_hr, DatabaseNonConfigurato):
+        return None
+    return db_hr
 
 
-def _pin_lookup(pin: str) -> str:
-    """Impronta del PIN per ritrovare la riga in un colpo solo, SENZA tenerlo
-    in chiaro. È un HMAC col segreto dell'applicazione: chi legge il database
-    non ha il segreto, quindi non può risalire al PIN. Non sostituisce bcrypt:
-    dopo la ricerca il PIN viene comunque verificato."""
-    return hmac.new(_secret().encode(), pin.encode(), hashlib.sha256).hexdigest()
+async def _persone_hr() -> Optional[List[Dict[str, Any]]]:
+    """Tutte le persone dell'anagrafica HR (non fuse), con stato normalizzato."""
+    db_hr = _db_hr()
+    if db_hr is None:
+        return None
+    from app.hr.services import stato_rapporto
 
-
-# Nomi dei dipendenti storici, SENZA PIN: i PIN non stanno più nel codice
-# (finivano nella cronologia del repository). Alla prima installazione queste
-# persone nascono senza PIN e l'amministratore glielo assegna dalla pagina
-# Personale. In produzione il database è già popolato: questa lista non tocca
-# niente.
-NOMI_DEFAULT = [
-    "Pocci", "Moscato", "Parisi", "Vespa", "Capezzuto", "Carotenuto",
-    "Murolo", "Lisina", "Russo", "Viviana", "Guarino", "Taiano",
-    "Kikko", "Thimira",
-]
-
-# Vincenzo e Valerio sono due persone distinte (e devono quindi produrre log,
-# registrazioni e cedolini distinti), ma per scelta aziendale condividono la
-# stessa credenziale di ingresso amministrativa. Il gruppo serve esclusivamente
-# a sincronizzare il PIN: l'identita' viene sempre scelta dopo la verifica.
-GRUPPO_PIN_ADMIN_CERALDI = "amministratori_ceraldi"
-AMMINISTRATORI_CERALDI = (
-    ("Ceraldi Vincenzo", {"ceraldi vincenzo", "vincenzo ceraldi"}),
-    ("Ceraldi Valerio", {"ceraldi valerio", "valerio ceraldi"}),
-)
-
-
-def _nome_normalizzato(nome: str) -> str:
-    return " ".join(str(nome or "").strip().casefold().split())
-
-
-async def _assicura_amministratori_ceraldi() -> int:
-    """Migrazione idempotente dell'accesso condiviso Vincenzo/Valerio.
-
-    Copia hash bcrypt e impronta HMAC gia' presenti, quindi non richiede e non
-    espone il PIN leggibile. Le due righe restano separate e ricevono ID/token
-    diversi. La vecchia riga generica ``Amministratore`` viene disattivata per
-    evitare una terza identita' fittizia nei log.
-    """
-    docs = await db.tablet_operatori.find(
-        {},
-        {
-            "_id": 0, "id": 1, "nome": 1, "ruolo": 1, "attivo": 1,
-            "pin": 1, "pin_lookup": 1, "pin_da_impostare": 1,
-        },
-    ).to_list(500)
-
-    per_nome = {_nome_normalizzato(d.get("nome")): d for d in docs}
-    nomi_ceraldi = set().union(*(varianti for _, varianti in AMMINISTRATORI_CERALDI))
-    nominativi = [d for d in docs if _nome_normalizzato(d.get("nome")) in nomi_ceraldi]
-
-    def ha_credenziale(d):
-        return bool(d and d.get("pin")) and not d.get("pin_da_impostare")
-
-    # Vincenzo e' la fonte preferita per mantenere il PIN gia' funzionante in
-    # produzione. Le alternative coprono installazioni storiche differenti.
-    fonte = next(
-        (d for nome in ("ceraldi vincenzo", "vincenzo ceraldi")
-         if ha_credenziale(d := per_nome.get(nome))),
-        None,
-    )
-    if fonte is None:
-        fonte = next((d for d in nominativi if ha_credenziale(d)), None)
-    if fonte is None:
-        fonte = next(
-            (d for d in docs if _nome_normalizzato(d.get("nome")) == "amministratore"
-             and d.get("attivo") is not False and ha_credenziale(d)),
-            None,
-        )
-
-    credenziale = {}
-    if fonte:
-        credenziale = {
-            "pin": fonte.get("pin"),
-            "pin_da_impostare": False,
-        }
-        if fonte.get("pin_lookup"):
-            credenziale["pin_lookup"] = fonte["pin_lookup"]
-
-    aggiornati = 0
-    for nome_canonico, varianti in AMMINISTRATORI_CERALDI:
-        esistente = next(
-            (d for d in docs if _nome_normalizzato(d.get("nome")) in varianti),
-            None,
-        )
-        valori = {
-            "nome": nome_canonico,
-            "ruolo": "amministratore",
-            "attivo": True,
-            "gruppo_pin": GRUPPO_PIN_ADMIN_CERALDI,
-            "identita_dipendente": True,
-            **credenziale,
-        }
-        if esistente and esistente.get("id"):
-            await db.tablet_operatori.update_one(
-                {"id": esistente["id"]},
-                {"$set": valori, "$unset": {"pin_chiaro": ""}},
-            )
-        else:
-            await db.tablet_operatori.insert_one({
-                "id": str(uuid.uuid4()),
-                "pin": "",
-                "pin_da_impostare": not bool(credenziale),
-                **valori,
-            })
-        aggiornati += 1
-
-    # Non cancelliamo la riga storica: la rendiamo inattiva e quindi il
-    # ripristino resta reversibile. I due nominativi reali la sostituiscono.
-    await db.tablet_operatori.update_many(
-        {
-            "nome": {"$regex": r"^\s*amministratore\s*$", "$options": "i"},
-            "gruppo_pin": {"$ne": GRUPPO_PIN_ADMIN_CERALDI},
-        },
-        {"$set": {
-            "attivo": False,
-            "sostituito_da_gruppo": GRUPPO_PIN_ADMIN_CERALDI,
-        }},
-    )
-    return aggiornati
-
-
-async def _migra_via_pin_chiaro() -> int:
-    """UNA TANTUM: calcola `pin_lookup` dal vecchio `pin_chiaro` e poi lo
-    CANCELLA. Fatto in quest'ordine nessuno resta fuori: chi entrava prima
-    entra anche dopo, ma il PIN sparisce dal database."""
-    ripuliti = 0
-    docs = await db.tablet_operatori.find(
-        {"pin_chiaro": {"$exists": True}},
-        {"_id": 1, "pin": 1, "pin_chiaro": 1, "pin_lookup": 1},
-    ).to_list(500)
+    docs = await db_hr["dipendenti"].find(
+        {"merged_into": {"$exists": False}},
+        {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "nome_completo": 1, "codice_fiscale": 1,
+         "ruolo": 1, "qualifica_unilav": 1, "mansione": 1, "qualifica": 1, "ruolo_app": 1,
+         "attivo": 1, "in_carico": 1, "stato": 1, "data_fine_rapporto": 1, "data_cessazione": 1,
+         "data_dimissione": 1, "data_cessazione_prevista": 1, "motivo_cessazione": 1,
+         "riferimento_cessazione": 1, "dimissioni": 1, "lotti_operatore": 1, "pin_hash": 1},
+    ).to_list(1000)
+    persone = []
     for d in docs:
-        pin = str(d.get("pin_chiaro") or "").strip()
-        upd = {"$unset": {"pin_chiaro": ""}}
-        if pin:
-            valori = {}
-            if not d.get("pin_lookup"):
-                valori["pin_lookup"] = _pin_lookup(pin)
-            # Alcuni backup storici avevano il PIN leggibile ma non il relativo
-            # hash bcrypt (o conservavano un hash vecchio). Cancellare il campo
-            # leggibile senza rigenerare bcrypt rendeva il PIN irrecuperabile.
-            if not _verify_pin(pin, d.get("pin", "")):
-                valori["pin"] = _hash_pin(pin)
-            if valori:
-                upd["$set"] = valori
-        await db.tablet_operatori.update_one({"_id": d["_id"]}, upd)
-        ripuliti += 1
-    if ripuliti:
-        _LOG_PIN.warning(
-            f"[sicurezza] rimossi {ripuliti} PIN in chiaro dal database "
-            "(sostituiti da un'impronta non reversibile)"
-        )
-    return ripuliti
+        if not d.get("id"):
+            continue
+        st = stato_rapporto.riepilogo_stato(d)
+        cognome = str(d.get("cognome") or "").strip()
+        nome = str(d.get("nome") or "").strip()
+        if not cognome and not nome:
+            nome_completo = str(d.get("nome_completo") or "").strip()
+            cognome, _, nome = nome_completo.partition(" ")
+        persone.append({
+            "id": d["id"], "cognome": cognome, "nome": nome,
+            "nome_completo": f"{cognome} {nome}".strip(),
+            "codice_fiscale": str(d.get("codice_fiscale") or "").strip().upper(),
+            "ruolo_testo": str(d.get("ruolo") or d.get("qualifica_unilav") or d.get("mansione") or d.get("qualifica") or "").strip(),
+            "amministratore": d.get("ruolo_app") == "admin",
+            "stato": st["stato"], "data_fine_rapporto": st["data_fine_rapporto"],
+            "motivo_cessazione": st["motivo_cessazione"], "motivo_etichetta": st["motivo_cessazione_etichetta"],
+            "operatore_lotti": d.get("lotti_operatore") is not False,
+            "pin_impostato": bool(d.get("pin_hash")),
+        })
+    return persone
 
 
-async def _applica_recupero_admin_da_env() -> bool:
-    """Ripristina una sola volta il PIN di Ceraldi Vincenzo da Render.
+def _abbina(persona: Dict[str, Any], operatori: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """Riga Lotti della persona: per id HR, poi per codice fiscale, poi per
+    nome storico (solo cognome, con gli alias) se univoco."""
+    pid, cf = persona["id"], persona["codice_fiscale"]
+    for op in operatori:
+        if pid and pid in (op.get("hr_id"), op.get("gestionale_dipendente_id")):
+            return op
+    if cf:
+        for op in operatori:
+            if str(op.get("codice_fiscale") or "").strip().upper() == cf and not op.get("hr_id"):
+                return op
+    completo = _name_tokens(persona["nome_completo"])
+    cognome = _norm(persona["cognome"])
+    candidati = []
+    for op in operatori:
+        if op.get("hr_id"):
+            continue
+        nome_op = _norm(f"{op.get('nome') or ''} {op.get('cognome') or ''}")
+        nome_op = " ".join(ALIAS_COGNOME.get(t, t) for t in nome_op.split())
+        tok = _name_tokens(nome_op)
+        if not tok:
+            continue
+        if tok == completo or (len(tok) == 1 and tok[0] == cognome and len(cognome) >= 4):
+            candidati.append(op)
+    return candidati[0] if len(candidati) == 1 else None
 
-    ``ADMIN_PIN_RECOVERY`` è un segreto operativo temporaneo: non viene mai
-    salvato in chiaro nel database. Ogni suo valore può essere applicato una
-    sola volta, così lasciarlo accidentalmente configurato non resuscita il
-    PIN dopo una successiva modifica fatta dall'amministratore.
-    """
-    pin = (os.environ.get("ADMIN_PIN_RECOVERY") or "").strip()
-    if not pin:
-        return False
-    if not pin.isdigit() or not 4 <= len(pin) <= 6:
-        _LOG_PIN.error(
-            "[sicurezza] ADMIN_PIN_RECOVERY ignorato: deve contenere da 4 a 6 cifre"
-        )
-        return False
 
-    fingerprint = hmac.new(
-        _secret().encode(), f"admin-recovery:{pin}".encode(), hashlib.sha256
-    ).hexdigest()
-    chiave_marker = f"admin_pin_recovery:{fingerprint}"
-    gia_applicato = await db.sistema_stato.find_one(
-        {"chiave": chiave_marker, "stato": "applicato"}, {"_id": 1}
-    )
-    if gia_applicato:
-        return False
+async def migra_pin_in_hr() -> Dict[str, int]:
+    """R3: i PIN bcrypt gia' presenti in Lotti passano UNA volta nella scheda
+    HR della stessa persona, come sono (hash), mai in chiaro. Se la persona ha
+    gia' un PIN in HR quello vince (una persona = un PIN, e la scheda HR e'
+    la fonte). Le righe del vecchio PIN condiviso fra amministratori NON si
+    migrano (R4: ognuno usa il proprio)."""
+    esito = {"migrati": 0, "gia_in_hr": 0, "senza_persona": 0, "condivisi_scartati": 0}
+    db_hr = _db_hr()
+    persone = await _persone_hr()
+    if db_hr is None or persone is None:
+        return esito
+    operatori = await db.tablet_operatori.find(
+        {"pin": {"$regex": r"^\$2"}, "attivo": {"$ne": False}},
+        {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "pin": 1,
+                                       "gruppo_pin": 1, "hr_id": 1, "gestionale_dipendente_id": 1,
+                                       "codice_fiscale": 1, "pin_da_impostare": 1}).to_list(500)
+    per_operatore: Dict[str, Dict[str, Any]] = {}
+    for p in persone:
+        op = _abbina(p, operatori)
+        if op:
+            per_operatore[op["id"]] = p
+    for op in operatori:
+        if op.get("pin_da_impostare"):
+            continue
+        if op.get("gruppo_pin"):
+            esito["condivisi_scartati"] += 1
+            continue
+        p = per_operatore.get(op["id"])
+        if not p:
+            esito["senza_persona"] += 1
+            continue
+        if p["pin_impostato"]:
+            esito["gia_in_hr"] += 1
+            continue
+        await db_hr["dipendenti"].update_one(
+            {"id": p["id"]},
+            {"$set": {"pin_hash": op["pin"], "pin_migrato_da_lotti": _now(),
+                      "pin_updated_at": _now()},
+             "$unset": {"pin_lookup": ""}})
+        p["pin_impostato"] = True
+        esito["migrati"] += 1
+    if esito["migrati"]:
+        _LOG.info("[personale] PIN migrati da Lotti alla scheda HR: %s", esito)
+    return esito
 
-    operatore = await db.tablet_operatori.find_one(
-        {
-            "nome": {"$regex": r"^\s*(ceraldi\s+vincenzo|vincenzo\s+ceraldi)\s*$", "$options": "i"}
-        },
-        {"_id": 0, "id": 1},
-    )
-    valori = {
-        "nome": "Ceraldi Vincenzo",
-        "ruolo": "amministratore",
-        "attivo": True,
-        "pin": _hash_pin(pin),
-        "pin_lookup": _pin_lookup(pin),
-        "pin_da_impostare": False,
-        "pin_recupero_emergenza": True,
-    }
-    if operatore and operatore.get("id"):
-        await db.tablet_operatori.update_one(
-            {"id": operatore["id"]},
-            {"$set": valori, "$unset": {"pin_chiaro": ""}},
-        )
-    else:
-        await db.tablet_operatori.insert_one({"id": str(uuid.uuid4()), **valori})
 
-    await db.sistema_stato.update_one(
-        {"chiave": chiave_marker},
-        {"$set": {
-            "chiave": chiave_marker,
-            "stato": "applicato",
-            "applicato_at": datetime.now(timezone.utc),
-            "operatore": "Ceraldi Vincenzo",
-        }},
-        upsert=True,
-    )
-    _LOG_PIN.warning(
-        "[sicurezza] recupero PIN amministratore applicato a Ceraldi Vincenzo; "
-        "rimuovere ADMIN_PIN_RECOVERY da Render"
-    )
-    return True
+async def sincronizza_operatori_da_hr() -> Dict[str, Any]:
+    """Allinea ``tablet_operatori`` all'anagrafica HR (idempotente)."""
+    persone = await _persone_hr()
+    if persone is None:
+        return {"esito": "hr_non_configurato", "aggiornati": 0, "creati": 0, "disattivati": 0}
+    operatori = await db.tablet_operatori.find({}, {"_id": 0}).to_list(500)
+    adesso = _now()
+    esito = {"esito": "ok", "aggiornati": 0, "creati": 0, "disattivati": 0, "senza_persona_hr": 0}
+    agganciati = set()
+    for p in persone:
+        op = _abbina(p, operatori)
+        in_forza = p["stato"] == "attivo" and p["operatore_lotti"]
+        valori = {
+            "hr_id": p["id"], "gestionale_dipendente_id": p["id"],
+            "codice_fiscale": p["codice_fiscale"],
+            "nome": p["nome_completo"], "cognome": p["cognome"], "nome_proprio": p["nome"],
+            "mansione": p["ruolo_testo"],
+            "ruolo": "amministratore" if p["amministratore"] else "operatore",
+            "attivo": in_forza, "in_carico": in_forza,
+            "hr_stato": p["stato"], "operatore_lotti": p["operatore_lotti"],
+            "data_fine_rapporto": p["data_fine_rapporto"], "motivo_fine_rapporto": p["motivo_cessazione"],
+            "motivo_fine_rapporto_etichetta": p["motivo_etichetta"],
+            "pin_impostato": p["pin_impostato"],
+            "fonte": "hr", "sincronizzato_at": adesso,
+        }
+        if op:
+            agganciati.add(op["id"])
+            if not op.get("postazione"):
+                valori["postazione"] = postazione_da_ruolo(p["ruolo_testo"])
+            await db.tablet_operatori.update_one({"id": op["id"]}, {"$set": valori, "$unset": dict(_CAMPI_PIN_LEGACY)})
+            esito["aggiornati"] += 1
+        elif in_forza:
+            await db.tablet_operatori.insert_one({
+                "id": str(uuid.uuid4()), **valori,
+                "postazione": postazione_da_ruolo(p["ruolo_testo"]),
+                "libretto_sanitario_scadenza": "", "created_at": adesso,
+            })
+            esito["creati"] += 1
+    for op in operatori:
+        if op["id"] in agganciati:
+            continue
+        esito["senza_persona_hr"] += 1
+        if op.get("attivo") is not False or op.get("pin"):
+            await db.tablet_operatori.update_one(
+                {"id": op["id"]},
+                {"$set": {"attivo": False, "in_carico": False, "hr_stato": "non_in_hr",
+                          "fonte": op.get("fonte") or "storico_lotti", "sincronizzato_at": adesso},
+                 "$unset": dict(_CAMPI_PIN_LEGACY)})
+            if op.get("attivo") is not False:
+                esito["disattivati"] += 1
+    return esito
 
 
 async def seed_operatori():
-    """Alla PRIMA installazione crea le persone senza PIN + un amministratore
-    con un PIN iniziale preso da ADMIN_PIN_INIZIALE (variabile d'ambiente
-    Render); se non c'è, ne genera uno a caso e lo scrive UNA VOLTA nel log del
-    server, così non finisce né nel codice né nel database in chiaro.
-    Se il database è già popolato NON tocca nulla, si limita alla bonifica dei
-    PIN in chiaro: prima invece rimetteva i PIN di partenza a ogni riavvio,
-    facendo tornare valido un PIN che l'amministratore aveva cambiato."""
-    # La bonifica non deve MAI impedire l'avvio: `seed_operatori()` è chiamato
-    # da server.py senza rete di sicurezza, e un intoppo del database qui
-    # terrebbe l'app spenta. Se fallisce si riprova al riavvio dopo; nel
-    # frattempo l'accesso funziona lo stesso (bcrypt).
+    """All'avvio: migra i PIN residui in HR e allinea gli operatori. Non deve
+    MAI impedire l'avvio (chiamato da server.py senza rete di sicurezza)."""
     try:
-        await _migra_via_pin_chiaro()
+        await migra_pin_in_hr()
     except Exception as e:
-        _LOG_PIN.warning(f"[sicurezza] bonifica PIN in chiaro rimandata: {e}")
-
-    count = await db.tablet_operatori.count_documents({})
-    if count > 0:
-        await _applica_recupero_admin_da_env()
-        await _assicura_amministratori_ceraldi()
-        return
-
-    docs = [
-        {"id": str(uuid.uuid4()), "nome": nome, "pin": "", "ruolo": "operatore",
-         "attivo": True, "pin_da_impostare": True}
-        for nome in NOMI_DEFAULT
-    ]
-    pin_admin = (os.environ.get("ADMIN_PIN_INIZIALE") or "").strip()
-    generato = False
-    if len(pin_admin) < 4:
-        pin_admin = "".join(secrets.choice("0123456789") for _ in range(6))
-        generato = True
-    docs.append({
-        "id": str(uuid.uuid4()), "nome": "Amministratore",
-        "pin": _hash_pin(pin_admin), "pin_lookup": _pin_lookup(pin_admin),
-        "ruolo": "amministratore", "attivo": True,
-    })
-    await db.tablet_operatori.insert_many(docs)
-    await _applica_recupero_admin_da_env()
-    await _assicura_amministratori_ceraldi()
-    if generato:
-        _LOG_PIN.warning(
-            "[sicurezza] primo avvio: creato l'amministratore con un PIN "
-            f"generato a caso: {pin_admin} — cambialo subito dalla pagina "
-            "Personale. Questo messaggio non verrà più ripetuto."
-        )
+        _LOG.warning("[personale] migrazione PIN in HR rimandata: %s", e)
+    try:
+        esito = await sincronizza_operatori_da_hr()
+        if esito.get("esito") == "hr_non_configurato":
+            _LOG.warning("[personale] anagrafica HR non configurata: nessun operatore sul tablet")
+        else:
+            _LOG.info("[personale] operatori allineati all'anagrafica HR: %s", esito)
+    except Exception as e:
+        _LOG.warning("[personale] allineamento operatori HR rimandato: %s", e)
 
 
+# ── Modelli ────────────────────────────────────────────────────────────────
 class PinLogin(BaseModel):
     pin: str
     operatore_id: Optional[str] = None
 
 
-class NuovoDipendente(BaseModel):
-    nome: str
-    pin: str
-    ruolo: Optional[str] = "operatore"
-    mansione: Optional[str] = ""
-    postazione: Optional[str] = ""
-    libretto_sanitario_scadenza: Optional[str] = ""
-    cognome: Optional[str] = ""
-    codice_fiscale: Optional[str] = ""
-
-
 class AggiornaDipendente(BaseModel):
-    mansione: Optional[str] = None
     postazione: Optional[str] = None
     libretto_sanitario_scadenza: Optional[str] = None
-    cognome: Optional[str] = None
-    nome: Optional[str] = None
-    ruolo: Optional[str] = None
-    codice_fiscale: Optional[str] = None
-    pin: Optional[str] = None
-
-
-class AbilitaDipendente(BaseModel):
-    gestionale_dipendente_id: Optional[str] = ""
-    codice_fiscale: str
-    nome: str
-    pin: str
-    cognome: Optional[str] = ""
-    mansione: Optional[str] = ""
-    postazione: Optional[str] = ""
-    libretto_sanitario_scadenza: Optional[str] = ""
-
-
-class CollegaDipendente(BaseModel):
-    operatore_id: str
-    gestionale_dipendente_id: str
-    codice_fiscale: Optional[str] = ""
-
-
-def _name_tokens(value: str) -> tuple[str, ...]:
-    clean = unicodedata.normalize("NFKD", str(value or ""))
-    clean = "".join(c for c in clean if not unicodedata.combining(c))
-    return tuple(sorted(re.findall(r"[a-z0-9]+", clean.casefold())))
 
 
 class PinAdmin(BaseModel):
     pin: str
 
 
+class LogoutPayload(BaseModel):
+    nome: Optional[str] = ""
+    reparto: Optional[str] = ""
+
+
+# ── Identita' e PIN ────────────────────────────────────────────────────────
 async def pin_amministratore_valido(pin: str) -> bool:
-    """Il PIN dato appartiene a un amministratore attivo? Unico punto in cui
-    si risponde a questa domanda: prima la stessa verifica era ripetuta in tre
-    file diversi, tutti e tre leggendo il PIN in chiaro dal database."""
+    """Il PIN amministratore centrale (ERP/Menu/Lotti/HR, 05/09/2026): sblocca
+    le pagine riservate. Unico punto in cui si risponde a questa domanda."""
     pin = (pin or "").strip()
     if len(pin) < 4:
         return False
-    return any(
-        d.get("ruolo") == "amministratore"
-        for d in await trova_operatori_per_pin(pin)
-    )
+    return verify_admin_pin(pin) is True
 
 
 async def _richiedi_pin_amministratore(
     pin: str, request: Request = None, dettaglio: str = "PIN amministratore non valido"
 ) -> None:
-    """Verifica amministratore mantenendo il blocco anti tentativi ripetuti."""
     ip = request.client.host if (request and request.client) else None
     if ip:
         check_lock(ip)
@@ -430,87 +334,34 @@ def _op_response(doc):
     return {"ok": True, "token": token, "operatore": op}
 
 
-async def trova_operatori_per_pin(pin: str):
-    """Trova tutti gli operatori attivi associati al PIN verificato.
+async def trova_operatori_per_pin(pin: str) -> List[Dict[str, Any]]:
+    """Chi ha questo PIN, secondo l'anagrafica HR (R2). Restituisce le righe
+    ``tablet_operatori`` corrispondenti (create al volo se la persona e' nuova),
+    mai un cessato, mai chi non e' operatore Lotti."""
+    if _db_hr() is None:
+        return []
+    from app.hr.services.auth_dipendenti import trova_dipendente_per_pin
 
-    La riparazione usa esclusivamente il PIN appena digitato: se la sua HMAC
-    coincide con ``pin_lookup`` già presente, ricrea l'hash bcrypt mancante o
-    rimasto disallineato dalla vecchia migrazione. Il PIN non viene registrato
-    in chiaro e il percorso normale continua a richiedere anche bcrypt. Il
-    risultato multiplo e' intenzionale per il gruppo amministratori Ceraldi:
-    il client dovra' scegliere la persona prima di ricevere il token.
-    """
-    # Gli amministratori conservano ID distinti e scelta esplicita, ma non
-    # verificano più i vecchi hash locali. Il PIN è quello di ERP/Menu.
-    if verify_admin_pin(pin) is True:
-        return await db.tablet_operatori.find(
-            {"attivo": True, "ruolo": "amministratore"},
-            {"_id": 0, "id": 1, "nome": 1, "ruolo": 1},
-        ).to_list(200)
-    lookup = _pin_lookup(pin)
-    docs = await db.tablet_operatori.find(
-        {"attivo": True, "pin_lookup": lookup, "ruolo": {"$ne": "amministratore"}},
-        {"_id": 0, "id": 1, "nome": 1, "ruolo": 1, "pin": 1,
-         "pin_lookup": 1, "gruppo_pin": 1},
-    ).to_list(200)
+    persone = await trova_dipendente_per_pin(pin, solo_operatori_lotti=True)
+    if not persone:
+        return []
     trovati = []
-    ids = set()
-    # Nel gruppo amministratori Vincenzo e Valerio condividono volutamente lo
-    # stesso hash. Verificare due volte lo stesso bcrypt raddoppia il tempo di
-    # accesso; inoltre, dopo aver gia' trovato il PIN tramite la sua impronta,
-    # scandire tutti gli altri dipendenti portava il tablet oltre il timeout di
-    # 15 secondi. Ogni hash distinto si verifica una sola volta e il fallback
-    # globale si usa soltanto quando l'impronta non ha prodotto alcun risultato.
-    verifiche_hash = {}
-    for doc in docs:
-        pin_hash = doc.get("pin", "")
-        if pin_hash not in verifiche_hash:
-            verifiche_hash[pin_hash] = _verify_pin(pin, pin_hash)
-        if verifiche_hash[pin_hash]:
-            trovati.append(doc)
-            ids.add(doc.get("id"))
-            continue
-
-        # ``pin_lookup`` è stato creato dal PIN in chiaro prima di cancellarlo.
-        # Una corrispondenza HMAC col segreto del server prova che il valore
-        # appena inserito è proprio quello migrato: possiamo ricreare bcrypt una
-        # sola volta senza conoscere, esporre o salvare il PIN leggibile.
-        if hmac.compare_digest(str(doc.get("pin_lookup") or ""), lookup):
-            nuovo_hash = _hash_pin(pin)
-            await db.tablet_operatori.update_one(
-                {"id": doc.get("id"), "attivo": True, "pin_lookup": lookup},
-                {"$set": {
-                    "pin": nuovo_hash,
-                    "pin_da_impostare": False,
-                    "pin_hash_riparato": True,
-                }},
-            )
-            doc["pin"] = nuovo_hash
-            trovati.append(doc)
-            ids.add(doc.get("id"))
-
-    if trovati:
-        return trovati
-
-    # Compatibilità con operatori che hanno bcrypt ma non ancora l'impronta,
-    # oppure con un AUTH_SECRET ruotato: bcrypt resta la fonte di verità.
-    dipendenti = await db.tablet_operatori.find(
-        {"attivo": True, "ruolo": {"$ne": "amministratore"}},
-        {"_id": 0, "id": 1, "nome": 1, "pin": 1, "ruolo": 1}
-    ).to_list(200)
-    for d in dipendenti:
-        if d.get("id") not in ids and d.get("pin") and _verify_pin(pin, d["pin"]):
-            await db.tablet_operatori.update_one(
-                {"id": d.get("id")}, {"$set": {"pin_lookup": lookup}}
-            )
-            d["pin_lookup"] = lookup
-            trovati.append(d)
-            ids.add(d.get("id"))
+    for tentativo in (0, 1):
+        trovati = []
+        for p in persone:
+            op = await db.tablet_operatori.find_one(
+                {"attivo": True, "$or": [{"hr_id": p["id"]}, {"gestionale_dipendente_id": p["id"]}]},
+                {"_id": 0, "id": 1, "nome": 1, "ruolo": 1})
+            if op:
+                trovati.append(op)
+        if len(trovati) == len(persone) or tentativo:
+            break
+        await sincronizza_operatori_da_hr()
     return trovati
 
 
 async def trova_operatore_per_pin(pin: str):
-    """Compatibilita' interna: restituisce solo se il PIN identifica una persona."""
+    """Compatibilita' interna: solo se il PIN identifica UNA persona."""
     trovati = await trova_operatori_per_pin(pin)
     return trovati[0] if len(trovati) == 1 else None
 
@@ -523,7 +374,6 @@ async def login_pin(payload: PinLogin, request: Request = None):
     pin = (payload.pin or "").strip()
     if len(pin) < 4:
         raise HTTPException(400, "PIN non valido")
-
     docs = await trova_operatori_per_pin(pin)
     if docs:
         if ip:
@@ -535,188 +385,20 @@ async def login_pin(payload: PinLogin, request: Request = None):
             return _op_response(doc)
         if len(docs) == 1:
             return _op_response(docs[0])
-        return {
-            "ok": True,
-            "scelta_operatore": True,
-            "operatori": [
-                {"id": d.get("id"), "nome": d.get("nome", "Operatore"),
-                 "ruolo": d.get("ruolo", "operatore")}
-                for d in docs
-            ],
-        }
-
+        return {"ok": True, "scelta_operatore": True,
+                "operatori": [{"id": d.get("id"), "nome": d.get("nome", "Operatore"),
+                               "ruolo": d.get("ruolo", "operatore")} for d in docs]}
     if ip:
         register_fail(ip)
+    if await pin_amministratore_valido(pin):
+        raise HTTPException(401, "Il PIN amministratore apre le pagine riservate ma non firma: "
+                                 "per entrare sul tablet usa il tuo PIN personale (scheda HR)")
     raise HTTPException(401, "PIN non riconosciuto")
-
-
-class LogoutPayload(BaseModel):
-    nome: Optional[str] = ""
-    reparto: Optional[str] = ""
 
 
 @router.post("/logout")
 async def logout(payload: LogoutPayload):
     return {"ok": True}
-
-
-@router.get("")
-async def lista_dipendenti():
-    docs = await db.tablet_operatori.find({"attivo": True}, {"_id": 0, "pin": 0, "pin_lookup": 0}).to_list(200)
-    return docs
-
-
-@router.post("")
-async def crea_dipendente(payload: NuovoDipendente, _admin=Depends(require_admin)):
-    pin = (payload.pin or "").strip()
-    if len(pin) < 4:
-        raise HTTPException(400, "PIN minimo 4 cifre")
-    doc = {
-        "id": str(uuid.uuid4()),
-        "nome": payload.nome.strip(),
-        "cognome": (payload.cognome or "").strip(),
-        "codice_fiscale": (payload.codice_fiscale or "").strip().upper(),
-        "pin": _hash_pin(pin),
-        "pin_lookup": _pin_lookup(pin),
-        "ruolo": payload.ruolo or "operatore",
-        "mansione": (payload.mansione or "").strip(),
-        "postazione": (payload.postazione or "").strip(),
-        "libretto_sanitario_scadenza": (payload.libretto_sanitario_scadenza or "").strip(),
-        "attivo": True,
-    }
-    await db.tablet_operatori.insert_one(doc)
-    doc.pop("pin", None); doc.pop("pin_lookup", None); doc.pop("_id", None)
-    return doc
-
-
-@router.get("/nuovi-dipendenti")
-async def nuovi_dipendenti():
-    base_url = (os.environ.get("GESTIONALECLOUD_API_URL") or "").strip().rstrip("/")
-    secret = (os.environ.get("LOTTI_INTEGRATION_KEY") or "").strip()
-    if not base_url or not secret:
-        return {"nuovi": [], "totale": 0, "configurato": False,
-                "messaggio": "Collegamento al GestionaleCloud non configurato"}
-    try:
-        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
-            response = await client.get(
-                f"{base_url}/api/integrations/lotti/employees",
-                headers={"X-Lotti-Key": secret},
-            )
-            response.raise_for_status()
-            payload = response.json()
-    except Exception as exc:
-        _LOG_PIN.warning("[personale] elenco GestionaleCloud non disponibile: %s", exc)
-        return {"nuovi": [], "totale": 0, "configurato": True,
-                "messaggio": "GestionaleCloud non raggiungibile"}
-
-    sorgente = payload.get("data") if isinstance(payload, dict) else []
-    sorgente = sorgente if isinstance(sorgente, list) else []
-    operatori = await db.tablet_operatori.find(
-        {"attivo": True},
-        {"_id": 0, "id": 1, "nome": 1, "cognome": 1,
-         "codice_fiscale": 1, "gestionale_dipendente_id": 1},
-    ).to_list(500)
-    ignorati = await db.tablet_operatori_ignorati.find(
-        {"ignorato": True}, {"_id": 0, "codice_fiscale": 1,
-                             "gestionale_dipendente_id": 1}
-    ).to_list(500)
-    ids_esistenti = {str(o.get("gestionale_dipendente_id") or "") for o in operatori}
-    cf_esistenti = {str(o.get("codice_fiscale") or "").strip().upper() for o in operatori}
-    ids_ignorati = {str(o.get("gestionale_dipendente_id") or "") for o in ignorati}
-    cf_ignorati = {str(o.get("codice_fiscale") or "").strip().upper() for o in ignorati}
-
-    nuovi = []
-    for dip in sorgente:
-        source_id = str(dip.get("source_id") or "").strip()
-        cf = str(dip.get("codice_fiscale") or "").strip().upper()
-        if not source_id or source_id in ids_esistenti or source_id in ids_ignorati:
-            continue
-        if cf and (cf in cf_esistenti or cf in cf_ignorati):
-            continue
-        item = {
-            "gestionale_dipendente_id": source_id,
-            "nome": str(dip.get("nome") or dip.get("nome_completo") or "").strip(),
-            "cognome": str(dip.get("cognome") or "").strip(),
-            "codice_fiscale": cf,
-            "mansione": str(dip.get("mansione") or "").strip(),
-            "matricola": str(dip.get("matricola") or "").strip(),
-        }
-        dip_tokens = _name_tokens(f"{item['nome']} {item['cognome']}")
-        cognome_tokens = _name_tokens(item["cognome"])
-        candidati = []
-        for operatore in operatori:
-            if operatore.get("gestionale_dipendente_id"):
-                continue
-            nome_operatore = f"{operatore.get('nome') or ''} {operatore.get('cognome') or ''}"
-            op_tokens = _name_tokens(nome_operatore)
-            if not op_tokens:
-                continue
-            stessa_persona = op_tokens == dip_tokens
-            solo_nome_presente = (
-                len(op_tokens) == 1
-                and (op_tokens == cognome_tokens or op_tokens[0] in dip_tokens)
-            )
-            if stessa_persona or solo_nome_presente:
-                candidati.append(operatore)
-        if len(candidati) == 1:
-            candidato = candidati[0]
-            item["candidato_operatore"] = {
-                "id": candidato.get("id"),
-                "nome": f"{candidato.get('nome') or ''} {candidato.get('cognome') or ''}".strip(),
-            }
-        nuovi.append(item)
-    return {"nuovi": nuovi, "totale": len(nuovi), "configurato": True}
-
-
-@router.post("/collega-dipendente")
-async def collega_dipendente(payload: CollegaDipendente, _admin=Depends(require_admin)):
-    source_id = (payload.gestionale_dipendente_id or "").strip()
-    cf = (payload.codice_fiscale or "").strip().upper()
-    if not source_id:
-        raise HTTPException(400, "Identificativo GestionaleCloud mancante")
-    operatore = await db.tablet_operatori.find_one({
-        "id": payload.operatore_id, "attivo": True
-    })
-    if not operatore:
-        raise HTTPException(404, "Operatore Lotti non trovato")
-    gia_sorgente = await db.tablet_operatori.find_one({
-        "gestionale_dipendente_id": source_id, "attivo": True
-    })
-    if gia_sorgente and gia_sorgente.get("id") != payload.operatore_id:
-        raise HTTPException(409, "Dipendente GestionaleCloud già collegato")
-    if cf:
-        gia_cf = await db.tablet_operatori.find_one({"codice_fiscale": cf, "attivo": True})
-        if gia_cf and gia_cf.get("id") != payload.operatore_id:
-            raise HTTPException(409, "Codice fiscale già collegato a un altro operatore")
-    await db.tablet_operatori.update_one(
-        {"id": payload.operatore_id},
-        {"$set": {"gestionale_dipendente_id": source_id, "codice_fiscale": cf}},
-    )
-    return {"ok": True, "operatore_id": payload.operatore_id,
-            "gestionale_dipendente_id": source_id}
-
-
-@router.post("/abilita-dipendente")
-async def abilita_dipendente(payload: AbilitaDipendente, _admin=Depends(require_admin)):
-    pin = (payload.pin or "").strip()
-    if len(pin) < 4:
-        raise HTTPException(400, "PIN minimo 4 cifre")
-    cf = (payload.codice_fiscale or "").strip().upper()
-    source_id = (payload.gestionale_dipendente_id or "").strip()
-    if source_id:
-        gia_sorgente = await db.tablet_operatori.find_one({
-            "gestionale_dipendente_id": source_id, "attivo": True
-        })
-        if gia_sorgente:
-            raise HTTPException(409, "Dipendente già abilitato")
-    gia = await db.tablet_operatori.find_one({"codice_fiscale": cf, "attivo": True}) if cf else None
-    if gia:
-        raise HTTPException(409, "Dipendente già abilitato")
-    doc = {"id": str(uuid.uuid4()), "nome": payload.nome.strip(), "cognome": (payload.cognome or "").strip(), "codice_fiscale": cf, "pin": _hash_pin(pin), "pin_lookup": _pin_lookup(pin), "ruolo": "operatore", "mansione": payload.mansione or "", "postazione": payload.postazione or "", "libretto_sanitario_scadenza": payload.libretto_sanitario_scadenza or "", "attivo": True}
-    doc["gestionale_dipendente_id"] = source_id
-    await db.tablet_operatori.insert_one(doc)
-    doc.pop("pin", None); doc.pop("pin_lookup", None); doc.pop("_id", None)
-    return doc
 
 
 @router.post("/verifica-admin")
@@ -725,144 +407,67 @@ async def verifica_admin(payload: PinAdmin, request: Request = None):
     return {"ok": True}
 
 
-class ReimpostaPin(BaseModel):
-    pin_nuovo: str
+# ── Elenco e dati HACCP ────────────────────────────────────────────────────
+_CAMPI_PUBBLICI = {"_id": 0, "pin": 0, "pin_lookup": 0, "pin_chiaro": 0}
 
 
-@router.post("/pin-operatori")
-async def pin_operatori(payload: PinAdmin, request: Request = None):
-    """Elenco degli operatori per la gestione dei PIN.
-
-    25/07/2026 — NON restituisce più i PIN: non esistono più in chiaro da
-    nessuna parte. Se un dipendente dimentica il PIN si usa «Reimposta PIN»
-    (qui sotto) e gliene si assegna uno nuovo. La rotta resta viva per non
-    rompere una pagina rimasta aperta da prima dell'aggiornamento."""
-    await _richiedi_pin_amministratore(
-        payload.pin, request, "Solo l'amministratore può gestire i PIN"
-    )
-    docs = await db.tablet_operatori.find(
-        {"attivo": True},
-        {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "ruolo": 1, "postazione": 1,
-         "pin": 1, "pin_da_impostare": 1, "gruppo_pin": 1},
-    ).to_list(200)
-    operatori = [
-        {
-            "id": d.get("id"),
-            "nome": d.get("nome", ""),
-            "cognome": d.get("cognome", ""),
-            "ruolo": d.get("ruolo", "operatore"),
-            "postazione": d.get("postazione", ""),
-            "gruppo_pin": d.get("gruppo_pin", ""),
-            "pin_condiviso": bool(d.get("gruppo_pin")),
-            # niente PIN: si dice solo SE ne ha uno impostato
-            "pin_impostato": bool(d.get("pin")) and not d.get("pin_da_impostare"),
-        }
-        for d in docs
-    ]
-    return {
-        "ok": True,
-        "operatori": operatori,
-        "pin_visibili": False,
-        "messaggio": "I PIN non sono più leggibili da nessuno, nemmeno da qui: "
-                     "se un dipendente lo dimentica, usa «Reimposta PIN».",
-    }
+@router.get("")
+async def lista_dipendenti(tutti: bool = False, sincronizza: bool = False):
+    """Operatori in carico (= in forza in HR). Con ``tutti=1`` anche chi non
+    e' piu' in carico (cessati in HR o righe storiche senza persona HR), per
+    la sezione «Non piu' in carico» della pagina Personale."""
+    if sincronizza:
+        try:
+            await sincronizza_operatori_da_hr()
+        except Exception as e:
+            _LOG.warning("[personale] allineamento HR non riuscito: %s", e)
+    filtro: Dict[str, Any] = {} if tutti else {"attivo": True}
+    docs = await db.tablet_operatori.find(filtro, _CAMPI_PUBBLICI).to_list(500)
+    if tutti:
+        # la vecchia riga generica "Amministratore" non e' una persona
+        docs = [d for d in docs if not d.get("sostituito_da_gruppo")]
+    for d in docs:
+        d["in_carico"] = d.get("attivo") is not False
+        if d.get("attivo") is not False and not d.get("postazione"):
+            d["postazione_proposta"] = postazione_da_ruolo(d.get("mansione") or "")
+    docs.sort(key=lambda d: (d.get("in_carico") is False, _norm(d.get("nome"))))
+    return docs
 
 
-@router.post("/{op_id}/reimposta-pin")
-async def reimposta_pin(op_id: str, payload: ReimpostaPin, _admin=Depends(require_admin)):
-    """Assegna un PIN nuovo a un dipendente. Da questo momento vale SOLO il
-    nuovo: il vecchio non funziona più (prima invece tornava valido al primo
-    riavvio del server)."""
-    pin = (payload.pin_nuovo or "").strip()
-    if len(pin) < 4 or not pin.isdigit():
-        raise HTTPException(400, "Il PIN deve essere di almeno 4 cifre")
-    operatore = await db.tablet_operatori.find_one(
-        {"id": op_id, "attivo": True}, {"_id": 0, "id": 1, "gruppo_pin": 1, "ruolo": 1}
-    )
-    if not operatore:
-        raise HTTPException(404, "Operatore non trovato")
-    if operatore.get("ruolo") == "amministratore":
-        raise HTTPException(409, "Il PIN amministratore è gestito centralmente da GestionaleCloud nelle variabili Render")
-    gruppo = operatore.get("gruppo_pin")
-    filtro_altri = {"attivo": True, "pin_lookup": _pin_lookup(pin), "id": {"$ne": op_id}}
-    if gruppo:
-        filtro_altri["gruppo_pin"] = {"$ne": gruppo}
-    altro = await db.tablet_operatori.find_one(filtro_altri, {"_id": 1})
-    if altro:
-        raise HTTPException(409, "Questo PIN è già di un altro dipendente: scegline un altro")
-    nuovo_hash = _hash_pin(pin)
-    filtro = {"attivo": True, "gruppo_pin": gruppo} if gruppo else {"id": op_id}
-    res = await db.tablet_operatori.update_many(
-        filtro,
-        {"$set": {"pin": nuovo_hash, "pin_lookup": _pin_lookup(pin),
-                  "pin_da_impostare": False},
-         "$unset": {"pin_chiaro": ""}},
-    )
-    if res.matched_count == 0:
-        raise HTTPException(404, "Operatore non trovato")
-    ids_aggiornati = [op_id]
-    if gruppo:
-        ids_aggiornati = [
-            d.get("id") for d in await db.tablet_operatori.find(
-                {"attivo": True, "gruppo_pin": gruppo}, {"_id": 0, "id": 1}
-            ).to_list(50)
-        ]
-    return {
-        "ok": True,
-        "operatori_aggiornati": ids_aggiornati,
-        "messaggio": (
-            "PIN condiviso aggiornato per Vincenzo e Valerio"
-            if gruppo else "PIN aggiornato: da adesso vale solo quello nuovo"
-        ),
-    }
+@router.post("/sincronizza-hr")
+async def sincronizza_hr(_admin=Depends(require_admin)):
+    """Riallinea subito gli operatori all'anagrafica HR (il job lo fa da solo ogni 10 minuti)."""
+    migrazione = await migra_pin_in_hr()
+    esito = await sincronizza_operatori_da_hr()
+    return {**esito, "pin_migrati": migrazione}
 
 
 @router.patch("/{op_id}")
 async def aggiorna_dipendente(op_id: str, payload: AggiornaDipendente, _admin=Depends(require_admin)):
-    """Aggiorna i campi di un operatore. Se arriva 'pin' aggiorna l'hash e
-    l'impronta di ricerca: da qui in poi vale SOLO il PIN nuovo — prima il
-    vecchio tornava valido al primo riavvio del server."""
-    upd = {}
-    for campo in ("mansione", "postazione", "libretto_sanitario_scadenza", "cognome", "nome", "ruolo", "codice_fiscale"):
-        val = getattr(payload, campo, None)
-        if val is not None:
-            upd[campo] = val.strip().upper() if campo == "codice_fiscale" else val
-    if payload.pin is not None:
-        existing = await db.tablet_operatori.find_one({"id": op_id}, {"_id": 0, "ruolo": 1})
-        if payload.ruolo == "amministratore" or (existing and existing.get("ruolo") == "amministratore"):
-            raise HTTPException(409, "Il PIN amministratore è gestito centralmente da GestionaleCloud nelle variabili Render")
-        pin = payload.pin.strip()
-        if len(pin) < 4:
-            raise HTTPException(400, "PIN minimo 4 cifre")
-        upd["pin"] = _hash_pin(pin)
-        upd["pin_lookup"] = _pin_lookup(pin)
-        upd["pin_da_impostare"] = False
+    """Solo i dati HACCP (R6): postazione e scadenza libretto. Nome, ruolo,
+    stato e PIN vivono nella scheda HR."""
+    upd: Dict[str, Any] = {}
+    if payload.postazione is not None:
+        postazione = payload.postazione.strip().lower()
+        if postazione and postazione not in POSTAZIONI:
+            raise HTTPException(400, "Postazione non valida: " + ", ".join(POSTAZIONI))
+        upd["postazione"] = postazione
+    if payload.libretto_sanitario_scadenza is not None:
+        scad = payload.libretto_sanitario_scadenza.strip()
+        if scad:
+            try:
+                datetime.strptime(scad[:10], "%Y-%m-%d")
+            except ValueError:
+                raise HTTPException(400, "Scadenza libretto non valida (aaaa-mm-gg)")
+            scad = scad[:10]
+        upd["libretto_sanitario_scadenza"] = scad
     if not upd:
         return {"ok": True, "modificato": False}
+    upd["aggiornato_at"] = _now()
     res = await db.tablet_operatori.update_one({"id": op_id}, {"$set": upd})
     if res.matched_count == 0:
         raise HTTPException(404, "Operatore non trovato")
-    return {"ok": True, "modificato": True}
-
-
-class IgnoraDipendente(BaseModel):
-    codice_fiscale: Optional[str] = ""
-    gestionale_dipendente_id: Optional[str] = ""
-
-
-@router.post("/ignora-dipendente")
-async def ignora_dipendente(payload: IgnoraDipendente, _admin=Depends(require_admin)):
-    cf = (payload.codice_fiscale or "").strip().upper()
-    source_id = (payload.gestionale_dipendente_id or "").strip()
-    if cf or source_id:
-        filtro = {"gestionale_dipendente_id": source_id} if source_id else {"codice_fiscale": cf}
-        await db.tablet_operatori_ignorati.update_one(
-            filtro,
-            {"$set": {"codice_fiscale": cf,
-                      "gestionale_dipendente_id": source_id, "ignorato": True}},
-            upsert=True,
-        )
-    return {"ok": True}
+    return {"ok": True, "modificato": True, "salvato_alle": upd["aggiornato_at"]}
 
 
 @router.get("/verifica")

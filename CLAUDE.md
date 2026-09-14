@@ -363,6 +363,86 @@ violet-|indigo-|bg-blue-|bg-sky-|text-blue-|border-blue-|3b82f6|2563eb|1d4ed8"`
 su `frontend*/src` e sui bundle. Il test `frontend/src/components/
 AvvisoBonarioF24.test.jsx` vieta i colori freddi nel suo componente.
 
+### 14/09/2026 — Personale: l'anagrafica HR comanda, Lotti legge (regole R1-R6 del titolare)
+
+- **R1 — un solo elenco di persone.** `app/lotti/routers/tablet_operatori.py`
+  non ha piu' un'anagrafica propria: `tablet_operatori` (Lotti) e' una
+  proiezione di `hr.app_dipendenti` letta in-process
+  (`sincronizza_operatori_da_hr`: all'avvio, ogni 10 min dallo scheduler
+  Lotti, a ogni apertura della pagina Personale, a ogni login). Operatore =
+  dipendente **in forza** in HR con `lotti_operatore` != false (spunta
+  «Operatore in Lotti» nella scheda HR; Iazzetta, Sankapala e Antonietta
+  Ceraldi sono a false per scelta del titolare). Nome = «Cognome Nome» da
+  HR; ruolo amministratore = `ruolo_app: admin`; la postazione HACCP e'
+  proposta dal ruolo HR (`postazione_da_ruolo`) e resta modificabile; le
+  righe Lotti senza persona HR (Viviana, Kikko, Thimira) restano nel DB con
+  `attivo=false, hr_stato=non_in_hr` (lo storico firmato non si tocca);
+  «Lisina» = Lesina (`ALIAS_COGNOME`). Eliminati: «Nuovi dipendenti dal
+  gestionale», «Collega esistente», blocco «PIN operatori», `NOMI_DEFAULT`,
+  `ADMIN_PIN_RECOVERY`, gruppo PIN condiviso Vincenzo/Valerio.
+- **R2/R3 — un PIN per persona, nella scheda HR** (`app/hr/services/
+  auth_dipendenti.py`): vale per il portale e per firmare in Lotti. Nuovi PIN
+  = bcrypt (`pin_hash`) + impronta HMAC `pin_lookup` (segreto = chiave JWT
+  HR) per trovare la persona in una query; gli SHA-256 storici restano
+  validi in lettura. `trova_dipendente_per_pin` (usata dal login del tablet
+  Lotti) non restituisce mai un cessato; `imposta_pin` rifiuta un PIN gia'
+  usato da un altro dipendente in forza; la cessazione revoca il PIN.
+  Migrazione una tantum `migra_pin_in_hr` (avvio + job): i bcrypt di Lotti
+  passano nella scheda HR della stessa persona se non ne ha gia' uno; Lotti
+  poi cancella ogni campo PIN (`_CAMPI_PIN_LEGACY`). R4: il PIN condiviso
+  degli amministratori non viene migrato; il PIN amministratore centrale
+  (`PIN_HASH_ADMIN`) apre le pagine riservate ma NON e' un'identita' di firma
+  sul tablet. Nel portale HR gli admin continuano a entrare solo col PIN
+  centrale (test `test_hr_admin_personale_non_aggira_pin_centrale`).
+- **Anagrafica HR** (`app/hr/routers/dipendenti_cloud/__init__.py`,
+  `app/hr/services/stato_rapporto.py`): UN solo stato del rapporto
+  (`attivo` | `cessato` con `data_fine_rapporto`, `motivo_cessazione` fra
+  dimissioni/licenziamento/fine_contratto/risoluzione_consensuale/altro,
+  `riferimento_cessazione`); `stato=inattivo` con `attivo=true` non esiste
+  piu' (normalizzato a cessato). `POST /dipendenti/{id}/cessa` richiede data e
+  motivo (modale dell'app, niente `confirm()`), revoca il PIN e propaga
+  `DIPENDENTE_CESSATO`; `POST .../riattiva` conserva `cessazioni_precedenti`.
+  `PUT /dipendenti/{id}` aggiorna SOLO i campi inviati (prima riscriveva
+  matricola/nascita/indirizzo a None: successo a Moscato) e ignora `stato`.
+  `POST/DELETE /dipendenti/{id}/pin`. `GET /dipendenti` espone `pin_impostato`,
+  `lotti_operatore`, `data_fine_rapporto`, mai il PIN. `GET /documenti` senza
+  `file_data` (era il «Caricamento…» di 5-10 s a ogni apertura); `POST
+  /documenti` e' multipart con file facoltativo e tipi Dimissioni/UNILAV/
+  Licenziamento — un modulo di dimissioni caricato qui passa da
+  `registra_dimissioni` (alert + scadenza UNILAV). `frontend_hr`: la riga si
+  aggiorna in linea (`aggiornaDipendente`), niente ricarica totale; link
+  diretto `?dip=<id>` dalla pagina Personale di Lotti apre la scheda.
+- **Cedolini & Bonifici = unica pagina paghe** (titolare: «Buste Paga» e
+  «Cedolini & Bonifici» davano numeri diversi). Eliminata `BustePagaPage`
+  (riscriveva a mano `importo_busta`/`bonifico_importo` in `paghe_mensili`,
+  fuori dal motore unico) con `GET/POST/DELETE /paghe`; dentro
+  `PagheBonificiPage` sono passati: menu «Importa» (Libro Unico, email, Drive,
+  Prima Nota, CSV banca, archivio storico), acconti in contanti
+  (`PUT /paghe/acconti`, solo il campo `acconti` + ricalcolo), prima nota per
+  dipendente (clic sul nome), ricerca voci, riscansione, correzione acconti,
+  simulazione F24, griglia annuale. La vecchia rotta `/hr/dipendenti/buste-paga`
+  apre la pagina unificata.
+- **Pannello HR, buste in attesa**: «Buste da pagare» = anno corrente; le
+  buste degli anni precedenti con bonifico non agganciato sono contate a parte
+  (`buste_storiche_non_agganciate`, sezione a scomparsa), non sono soldi da
+  erogare.
+- **PEC dimissioni** (`app/services/email_full_download.py`): la busta PEC
+  (`posta-certificata@…`) vale col mittente del messaggio annidato
+  (`postacert.eml`); mittente builtin `dimissionitelematiche@pec.lavoro.gov.it`
+  e parole chiave «recesso rapporto di lavoro/dimission/unilav»; il PDF
+  `<CF>_Dimissione.pdf` va in `_archive_non_payment_document` come
+  `dimissioni_telematiche` (alert HR + scadenza UNILAV) invece che in
+  `documenti_non_associati`. Trovato: `mittenti_email` in produzione e'
+  VUOTA (persa il 14/09), quindi la posta non scarica nulla finche' non
+  viene ripopolata (i builtin rientrano da soli all'avvio).
+- Dati sistemati in produzione il 14/09 sera (backup
+  `hr.app_dipendenti_prima_20260914c`): Moscato Emanuele cessato 01/07/2026
+  (dimissioni, modulo 20260630102348083, PEC 30/06) con matricola/nascita/
+  indirizzo/assunzione 13/03/2012 ripristinati dall'Excel; Pocci Salvatore
+  cessato 31/08/2026 (dimissioni, modulo 20260730155946178, PEC 30/07,
+  girate al consulente il 31/07). Per nessuno dei due c'e' in Gmail l'UNILAV
+  di cessazione: da verificare col consulente (Ferrantini).
+
 ### Stato precedente
 
 - Il default del codice è `DATA_BACKEND=sheets`.

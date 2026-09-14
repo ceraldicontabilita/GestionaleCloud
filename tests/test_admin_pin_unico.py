@@ -44,32 +44,38 @@ def test_formati_non_validi(pin):
     assert verify_admin_pin(pin) is False
 
 
-def test_lotti_admin_canonico_scelta_identita_e_vecchio_pin_revocato(monkeypatch):
+def test_lotti_pin_centrale_apre_le_pagine_admin_ma_non_e_una_firma(monkeypatch):
+    """14/09/2026 (R4): il PIN amministratore centrale sblocca le pagine
+    riservate di Lotti, ma sul tablet ognuno firma col PIN personale della
+    propria scheda HR — niente identita' condivisa Vincenzo/Valerio."""
     from mongomock_motor import AsyncMongoMockClient
     from app.lotti.routers import tablet_operatori as module
+    from app.hr.database import Database as DatabaseHR
+    from app.hr.services import auth_dipendenti
     db = AsyncMongoMockClient()["pin_unico_test"]
+    hr = AsyncMongoMockClient()["pin_unico_hr"]
     monkeypatch.setattr(module, "db", db)
+    monkeypatch.setattr(DatabaseHR, "get_db", classmethod(lambda cls: hr))
 
     async def scenario():
-        for ident in ("a", "b"):
-            await db.tablet_operatori.insert_one({
-                "id": ident, "nome": "Admin " + ident, "attivo": True,
-                "ruolo": "amministratore", "pin": module._hash_pin(OLD_PIN),
-                "pin_lookup": module._pin_lookup(OLD_PIN),
-            })
-        result = await module.login_pin(module.PinLogin(pin=PIN))
-        assert result["scelta_operatore"] is True
-        assert "token" not in result
-        assert {x["id"] for x in result["operatori"]} == {"a", "b"}
-        assert await module.trova_operatori_per_pin(OLD_PIN) == []
+        await hr.dipendenti.insert_many([
+            {"id": "hr-v", "nome": "Vincenzo", "cognome": "Ceraldi", "ruolo_app": "admin", "stato": "attivo", "attivo": True,
+             "pin_hash": auth_dipendenti.hash_pin(OLD_PIN)},
+            {"id": "hr-b", "nome": "Valerio", "cognome": "Ceraldi", "ruolo_app": "admin", "stato": "attivo", "attivo": True},
+        ])
         assert await module.pin_amministratore_valido(PIN)
         assert not await module.pin_amministratore_valido(OLD_PIN)
+        # il PIN centrale non e' un'identita' di firma
         with pytest.raises(HTTPException) as exc:
-            await module.login_pin(module.PinLogin(pin=PIN, operatore_id="estraneo"))
+            await module.login_pin(module.PinLogin(pin=PIN))
+        assert exc.value.status_code == 401 and "personale" in exc.value.detail
+        # il PIN personale di Vincenzo entra come Vincenzo (ruolo amministratore), senza scelta
+        result = await module.login_pin(module.PinLogin(pin=OLD_PIN))
+        assert result["operatore"]["nome"] == "Ceraldi Vincenzo" and result["operatore"]["ruolo"] == "amministratore"
+        assert "scelta_operatore" not in result and result["token"]
+        with pytest.raises(HTTPException) as exc:
+            await module.login_pin(module.PinLogin(pin=OLD_PIN, operatore_id="estraneo"))
         assert exc.value.status_code == 403
-        assert (await module.login_pin(module.PinLogin(pin=PIN, operatore_id="b")))["operatore"]["id"] == "b"
-        # Gli hash storici non vengono copiati, riscritti o riparati dal login.
-        assert (await db.tablet_operatori.find_one({"id": "a"}))["pin_lookup"] == module._pin_lookup(OLD_PIN)
     asyncio.run(scenario())
 
 

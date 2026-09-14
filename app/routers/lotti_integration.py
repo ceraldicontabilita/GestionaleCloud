@@ -128,26 +128,53 @@ async def _documents() -> list[dict[str, Any]]:
     ]
 
 
-async def _employees() -> list[dict[str, Any]]:
-    db = Database.get_db()
-    docs = await db["dipendenti"].find(
-        {
-            "merged_into": {"$exists": False},
-            "attivo": {"$ne": False},
-            "in_carico": {"$ne": False},
-        },
-        {
-            "_id": 0, "id": 1, "nome": 1, "cognome": 1,
-            "nome_completo": 1, "codice_fiscale": 1, "mansione": 1,
-            "qualifica": 1, "matricola": 1, "codice_dipendente": 1,
-        },
-    ).to_list(1000)
+def _db_hr():
+    try:
+        from app.hr.database import Database as DatabaseHR, DatabaseNonConfigurato
+    except Exception:  # pragma: no cover - modulo HR assente
+        return None
+    try:
+        db_hr = DatabaseHR.get_db()
+    except Exception:
+        return None
+    if db_hr is None or isinstance(db_hr, DatabaseNonConfigurato):
+        return None
+    return db_hr
+
+
+async def _employees(includi_cessati: bool = False) -> list[dict[str, Any]]:
+    """Dipendenti dall'anagrafica HR (la fonte unica dal 14/09/2026: «l'anagrafica
+    HR comanda, Lotti legge»). Senza database HR configurato (test locali) si
+    legge la vecchia collezione ``dipendenti`` del gestionale."""
+    from app.hr.services import stato_rapporto
+
+    db_hr = _db_hr()
+    if db_hr is not None:
+        docs = await db_hr["dipendenti"].find(
+            {"merged_into": {"$exists": False}},
+            {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "nome_completo": 1, "codice_fiscale": 1,
+             "mansione": 1, "qualifica": 1, "ruolo": 1, "qualifica_unilav": 1, "matricola": 1,
+             "codice_dipendente": 1, "attivo": 1, "in_carico": 1, "stato": 1, "data_fine_rapporto": 1,
+             "data_cessazione": 1, "data_dimissione": 1, "motivo_cessazione": 1, "riferimento_cessazione": 1,
+             "dimissioni": 1, "lotti_operatore": 1, "ruolo_app": 1},
+        ).to_list(1000)
+    else:
+        db = Database.get_db()
+        docs = await db["dipendenti"].find(
+            {"merged_into": {"$exists": False}},
+            {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "nome_completo": 1, "codice_fiscale": 1,
+             "mansione": 1, "qualifica": 1, "matricola": 1, "codice_dipendente": 1, "attivo": 1,
+             "in_carico": 1, "stato": 1},
+        ).to_list(1000)
     result = []
     seen = set()
     for doc in docs:
         employee_id = _text(doc.get("id"))
         fiscal_code = _text(doc.get("codice_fiscale")).upper()
         if not employee_id:
+            continue
+        st = stato_rapporto.riepilogo_stato(doc)
+        if st["stato"] != "attivo" and not includi_cessati:
             continue
         dedup_key = fiscal_code or employee_id
         if dedup_key in seen:
@@ -164,8 +191,13 @@ async def _employees() -> list[dict[str, Any]]:
             "cognome": last_name,
             "nome_completo": full_name,
             "codice_fiscale": fiscal_code,
-            "mansione": _text(doc.get("mansione") or doc.get("qualifica")),
+            "mansione": _text(doc.get("mansione") or doc.get("qualifica") or doc.get("ruolo") or doc.get("qualifica_unilav")),
             "matricola": _text(doc.get("matricola") or doc.get("codice_dipendente")),
+            "stato": st["stato"],
+            "data_fine_rapporto": st["data_fine_rapporto"],
+            "motivo_cessazione": st["motivo_cessazione"],
+            "lotti_operatore": doc.get("lotti_operatore") is not False,
+            "ruolo_app": _text(doc.get("ruolo_app")) or "dipendente",
             "source": "gestionalecloud",
         })
     result.sort(key=lambda item: (item["nome_completo"].casefold(), item["source_id"]))
@@ -205,8 +237,10 @@ async def get_invoice_for_lotti(
 @router.get("/employees")
 async def list_employees_for_lotti(
     x_lotti_key: Optional[str] = Header(None, alias="X-Lotti-Key"),
+    includi_cessati: bool = Query(False),
 ) -> dict[str, Any]:
-    """Dipendenti attivi con ID GestionaleCloud e codice fiscale verificabile."""
+    """Dipendenti dell'anagrafica HR (attivi; con ``includi_cessati`` anche i
+    cessati con data e motivo) con ID stabile e codice fiscale."""
     _authorized(x_lotti_key)
-    data = await _employees()
+    data = await _employees(includi_cessati=includi_cessati is True)
     return {"data": data, "total": len(data), "source": "gestionalecloud"}

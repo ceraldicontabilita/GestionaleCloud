@@ -134,6 +134,33 @@ def categorize_document(filename: str, subject: str = "", body: str = "") -> str
     return "altro"
 
 
+_DIMISSIONI_RE = re.compile(r"recesso\s+rapporto\s+di\s+lavoro|_dimission|dimission[ei]\s+telematic", re.IGNORECASE)
+
+
+def _sembra_modulo_dimissioni(filename: str, subject: str = "") -> bool:
+    """Il modulo del Ministero arriva come ``<CF>_Dimissione.pdf`` in una PEC
+    «Notifica richiesta recesso rapporto di lavoro»."""
+    return bool(_DIMISSIONI_RE.search(f"{filename} {subject}"))
+
+
+def _mittenti_messaggi_annidati(msg: email.message.Message) -> List[str]:
+    """Indirizzi ``From`` dei messaggi allegati (message/rfc822, es. la busta PEC)."""
+    out: List[str] = []
+    if not msg.is_multipart():
+        return out
+    for part in msg.walk():
+        if part.get_content_type() != "message/rfc822":
+            continue
+        for interno in part.get_payload() or []:
+            try:
+                frm = decode_mime_header(interno.get("From", "")).lower()
+            except Exception:
+                frm = ""
+            if frm:
+                out.append(frm)
+    return out
+
+
 def extract_period_from_text(text: str) -> Dict[str, Any]:
     """Estrae mese e anno dal testo."""
     result = {"mese": None, "anno": None}
@@ -231,6 +258,7 @@ class EmailFullDownloader:
             # Cedolini e lavoro
             "cedolino", "busta paga", "stipendio", "retribuzione",
             "libro unico", "paghe", "lul",
+            "recesso rapporto di lavoro", "dimission", "unilav",
             # Banca e pagamenti
             "estratto conto", "bonifico", "pagamento", "quietanza",
             "ricevuta", "versamento", "cro", "disposizione",
@@ -387,6 +415,40 @@ class EmailFullDownloader:
         logger.info(f"PDF salvato: {filename} -> {collection_name}")
         return doc_id
 
+    async def _archivia_dimissioni(self, filename: str, content: bytes,
+                                   email_info: Dict[str, Any], source_folder: str) -> bool:
+        """Riconosce e archivia il modulo di recesso come ``dimissioni_telematiche``
+        (documents_inbox + adempimenti HR). False se non e' quel modulo."""
+        try:
+            from app.services.fiscal_domain import classify_document
+            from app.services.administrative_document_parser import extract_administrative_metadata
+            from app.routers.documenti import _archive_non_payment_document
+
+            metadata = extract_administrative_metadata(
+                content=content, filename=filename, document_type="dimissioni_telematiche")
+            testo = " ".join(str(v) for v in metadata.values() if isinstance(v, str))
+            if classify_document(filename, testo).get("document_type") != "DIMISSIONI_TELEMATICHE" \
+                    and not metadata.get("lavoratore_cf"):
+                return False
+            archived = await _archive_non_payment_document(
+                self.db, filename=filename, content=content, document_type="dimissioni_telematiche",
+                metadata=metadata,
+                source_context={"source": "email", "email_uid": email_info.get("uid"),
+                                "email_subject": email_info.get("subject"),
+                                "email_from": email_info.get("from"), "source_folder": source_folder},
+            )
+            if archived.get("duplicate"):
+                self.stats["pdfs_duplicates"] += 1
+                return True
+            self.stats["pdfs_downloaded"] += 1
+            self.stats["pdfs_by_category"]["dimissioni"] = self.stats["pdfs_by_category"].get("dimissioni", 0) + 1
+            logger.info(f"[Gmail] dimissioni telematiche archiviate: {filename} "
+                        f"(HR: {(archived.get('adempimenti_dimissioni') or {}).get('hr')})")
+            return True
+        except Exception as e:
+            logger.warning(f"[Gmail] modulo dimissioni non archiviato ({filename}): {e}")
+            return False
+
     def extract_pdfs_from_email(self, msg: email.message.Message) -> List[Tuple[str, bytes]]:
         """
         Estrae SOLO i PDF da un'email.
@@ -521,7 +583,12 @@ class EmailFullDownloader:
         # entravano saveris2.net, pec.kimbo.it, legalmail mai autorizzati).
         trusted_senders = await self._load_trusted_senders_generico()
         from_lower = from_addr.lower()
-        if not any(s in from_lower for s in trusted_senders):
+        # Una PEC arriva dentro una busta del gestore (posta-certificata@...):
+        # il mittente vero e' quello del messaggio originale allegato
+        # (postacert.eml). Vale come mittente ai fini della lista.
+        mittenti_interni = _mittenti_messaggi_annidati(msg)
+        candidati_mittente = [from_lower] + mittenti_interni
+        if not any(s in m for s in trusted_senders for m in candidati_mittente):
             logger.debug(f"Email saltata (mittente non in lista): {from_addr} [{subject[:50]}]")
             return 0
 
@@ -536,6 +603,15 @@ class EmailFullDownloader:
         pdfs = self.extract_pdfs_from_email(msg)
 
         for filename, content in pdfs:
+            # Modulo di dimissioni telematiche (Ministero del Lavoro, via PEC):
+            # e' la conferma delle dimissioni — alert HR + scadenza UNILAV a 5
+            # giorni (titolare 14/09/2026), stesso percorso dell'Import manuale.
+            if _sembra_modulo_dimissioni(filename, subject):
+                esito_dim = await self._archivia_dimissioni(filename, content, email_info, source_folder)
+                if esito_dim:
+                    pdfs_saved += 1
+                    continue
+
             # Categorizza
             category = categorize_document(filename, subject, body)
 

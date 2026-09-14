@@ -101,5 +101,13 @@ def test_employee_projection_uses_stable_identity_and_filters_inactive(sheet_db,
         "codice_fiscale": "RSSNNA00A00F839X",
         "mansione": "Pasticcere",
         "matricola": "",
+        "stato": "attivo",
+        "data_fine_rapporto": None,
+        "motivo_cessazione": None,
+        "lotti_operatore": True,
+        "ruolo_app": "dipendente",
         "source": "gestionalecloud",
     }]
+    # con includi_cessati anche chi non e' piu' in forza, con lo stato
+    tutti = run(lotti_integration.list_employees_for_lotti("secret-test", includi_cessati=True))
+    assert [(d["source_id"], d["stato"]) for d in tutti["data"]] == [("dip-1", "attivo"), ("dip-2", "cessato")]
