@@ -58,8 +58,11 @@ logger = logging.getLogger(__name__)
 # Stesso ordine di ricerca di app/hr/database.py (_env).
 ENV_DSN_HR = ("HR_SUPABASE_DB_URL", "APPDIPENDENTI_DB_URL", "SUPABASE_DB_URL")
 
-TABELLA_CEDOLINI = 'public."app_cedolini"'
-TABELLA_DIPENDENTI = 'public."app_dipendenti"'
+_SCHEMA_HR = os.environ.get("HR_DB_SCHEMA", "public")
+if not _SCHEMA_HR.replace("_", "").isalnum():
+    raise RuntimeError("HR_DB_SCHEMA non valido")
+TABELLA_CEDOLINI = f'"{_SCHEMA_HR}"."app_cedolini"'
+TABELLA_DIPENDENTI = f'"{_SCHEMA_HR}"."app_dipendenti"'
 
 FONTE_HR = "gestionale_cloud"
 
@@ -107,7 +110,12 @@ _SQL_INSERISCI = (
 
 def dsn_hr() -> Optional[str]:
     """DSN Postgres dell'app HR, letta ad ogni chiamata (mai cachata)."""
-    for nome in ENV_DSN_HR:
+    nomi = (
+        ("SUPABASE_DB_URL",)
+        if os.environ.get("HR_USE_MAIN_DATABASE", "").lower() in {"1", "true", "yes", "on"}
+        else ENV_DSN_HR
+    )
+    for nome in nomi:
         valore = os.environ.get(nome)
         if valore:
             return valore

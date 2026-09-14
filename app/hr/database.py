@@ -31,7 +31,13 @@ def _env(*nomi: str, default: str = "") -> str:
 
 MONGO_URL = _env("HR_MONGO_URL", "MONGO_URL")
 DB_NAME = _env("HR_DB_NAME", "DB_NAME", default="Gestionale")
-SUPABASE_DB_URL = _env("HR_SUPABASE_DB_URL", "APPDIPENDENTI_DB_URL", "SUPABASE_DB_URL")
+HR_USE_MAIN_DATABASE = _env("HR_USE_MAIN_DATABASE").lower() in {"1", "true", "yes", "on"}
+SUPABASE_DB_URL = (
+    _env("SUPABASE_DB_URL")
+    if HR_USE_MAIN_DATABASE
+    else _env("HR_SUPABASE_DB_URL", "APPDIPENDENTI_DB_URL", "SUPABASE_DB_URL")
+)
+SUPABASE_DB_SCHEMA = _env("HR_DB_SCHEMA", default="public")
 
 
 class Collections:
@@ -84,7 +90,7 @@ class Database:
     async def connect(cls):
         if SUPABASE_DB_URL:
             from .db_supabase import crea_database
-            cls.db = await crea_database(SUPABASE_DB_URL)
+            cls.db = await crea_database(SUPABASE_DB_URL, schema=SUPABASE_DB_SCHEMA)
             cls.client = cls.db._pool
             cls.backend = "supabase"
             logger.info("Database: Supabase/Postgres")
