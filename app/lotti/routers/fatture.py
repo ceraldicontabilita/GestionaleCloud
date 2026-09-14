@@ -83,26 +83,33 @@ async def get_fatture(escludi_fornitori: bool = True, limit: int = 2000, mesi: i
     if escludi_fornitori:
         fornitori_esclusi_docs = await db.fornitori.find({"escluso": True}, {"nome": 1}).to_list(1000)
         nomi_esclusi = {f["nome"].lower().strip() for f in fornitori_esclusi_docs}
-    # La lista usa solo i metadati: proiettare tutto (righe prodotti + xml_raw
-    # intero) trasferiva decine di MB da Atlas a ogni apertura della pagina.
-    pipeline = []
+    # La lista usa solo i metadati. Il calcolo di num_prodotti/has_xml viene
+    # fatto in Python: l'adapter persistente Supabase espone l'API Mongo ma non
+    # supporta in modo completo gli operatori aggregate $size/$type.
+    query = {}
     if anno and anno > 0:
         # data_fattura è in formati misti: ISO (2026-07-20) → anno all'inizio,
         # oppure dd/mm/yyyy e dd-mm-yyyy → anno in fondo. Copro entrambi.
         y = str(int(anno))
-        pipeline.append({"$match": {"$or": [
+        query = {"$or": [
             {"data_fattura": {"$regex": f"^{y}[-/]"}},
             {"data_fattura": {"$regex": f"[-/]{y}$"}},
-        ]}})
-    pipeline.append(
-        {"$project": {
+        ]}
+    docs = await db.fatture.find(
+        query,
+        {
             "_id": 0, "id": 1, "numero_fattura": 1, "data_fattura": 1,
             "fornitore": 1, "created_at": 1, "importo_totale": 1, "totale": 1,
-            "num_prodotti": {"$size": {"$ifNull": ["$prodotti", []]}},
-            "has_xml": {"$eq": [{"$type": "$xml_raw"}, "string"]},
-        }},
-    )
-    items = await db.fatture.aggregate(pipeline).to_list(limit * 3)
+            "prodotti": 1, "xml_raw": 1,
+        },
+    ).to_list(limit * 3)
+    items = []
+    for doc in docs:
+        prodotti = doc.pop("prodotti", [])
+        xml_raw = doc.pop("xml_raw", None)
+        doc["num_prodotti"] = len(prodotti) if isinstance(prodotti, list) else 0
+        doc["has_xml"] = isinstance(xml_raw, str) and bool(xml_raw.strip())
+        items.append(doc)
     if nomi_esclusi:
         items = [f for f in items if f.get("fornitore", "").lower().strip() not in nomi_esclusi]
 
@@ -320,11 +327,15 @@ async def _carico_magazzino_bar_da_fattura(prodotti, numero_fattura, fornitore):
     """Aggancio fattura -> magazzino bar. Per ogni riga che corrisponde a un prodotto
     bar (per nome) o a una categoria bar (allowlist), incrementa lo stock. Le materie
     prime (farine, latticini, uova...) NON entrano qui: restano nei lotti. Idempotente
-    per numero fattura. Non solleva mai: l'ingestione fattura non deve rompersi."""
+    per coppia fornitore+numero fattura: numeri uguali di fornitori diversi non sono
+    la stessa prova documentale. Non solleva mai: l'ingestione non deve rompersi."""
     try:
+        source_key = hashlib.sha256(
+            f"{(fornitore or '').strip().casefold()}|{(numero_fattura or '').strip()}".encode("utf-8")
+        ).hexdigest()
         if numero_fattura:
             gia = await db.magazzino_bar_movimenti.find_one(
-                {"fattura_ref": numero_fattura, "origine": "fattura"}, {"_id": 1}
+                {"fattura_source_key": source_key, "origine": "fattura"}, {"_id": 1}
             )
             if gia:
                 return {"caricati": 0, "creati": 0, "gia_fatto": True}
@@ -391,7 +402,8 @@ async def _carico_magazzino_bar_da_fattura(prodotti, numero_fattura, fornitore):
                 prod, pezzi, "carico", "Sistema (fattura)",
                 nota=("Carico da fattura " + (numero_fattura or "") + " - " + (fornitore or "")).strip(),
                 extra={"quantita_colli": (qt if ppc > 1 else None), "origine": "fattura",
-                       "fattura_ref": numero_fattura or ""},
+                       "fattura_ref": numero_fattura or "", "fattura_fornitore": fornitore or "",
+                       "fattura_source_key": source_key},
             )
             prod["stock"] = nuovo
             caricati += 1

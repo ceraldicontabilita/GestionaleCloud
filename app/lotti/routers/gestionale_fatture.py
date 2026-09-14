@@ -39,6 +39,13 @@ def _secret() -> str:
 
 
 def configurato() -> bool:
+    # Nel monolite GestionaleCloud la fonte ERP è nello stesso processo: non
+    # servono URL o segreti per fare una chiamata HTTP verso se stessi.
+    return True
+
+
+def _usa_ponte_http() -> bool:
+    """Compatibilità per installazioni che tengono ancora Lotti separato."""
     return bool(_base_url() and _secret())
 
 
@@ -151,16 +158,29 @@ async def _elenco(client: httpx.AsyncClient, anno: int | None, massimo: int) -> 
     return items[:massimo], total
 
 
+async def _elenco_locale(anno: int | None, massimo: int) -> tuple[list[dict], int]:
+    """Legge la proiezione canonica direttamente dal GestionaleCloud locale."""
+    from app.routers.lotti_integration import _documents, _projection, _year
+
+    items = [_projection(doc, include_xml=False) for doc in await _documents()]
+    if anno is not None:
+        items = [item for item in items if _year(item.get("invoice_date", "")) == anno]
+    items.sort(key=lambda item: (item.get("invoice_date", ""), item.get("source_id", "")))
+    return items[:massimo], len(items)
+
+
+async def _dettaglio_locale(source_id: str) -> dict[str, Any]:
+    from app.routers.lotti_integration import _documents, _projection, _source_id
+
+    for document in await _documents():
+        if _source_id(document) == source_id:
+            return _projection(document, include_xml=True)
+    raise ValueError("Fattura sorgente non trovata nel GestionaleCloud")
+
+
 async def esegui_sync_gestionale(
     *, anno: int | None = None, massimo: int = 1000, anteprima: bool = False
 ) -> dict[str, Any]:
-    if not configurato():
-        return {
-            "ok": False,
-            "configurato": False,
-            "motivo": "Collegamento GestionaleCloud non configurato",
-        }
-
     result: dict[str, Any] = {
         "ok": True,
         "configurato": True,
@@ -177,9 +197,14 @@ async def esegui_sync_gestionale(
         "errori": [],
     }
     now = datetime.now(timezone.utc).isoformat()
-    timeout = httpx.Timeout(120.0, connect=20.0)
-    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
-        items, total = await _elenco(client, anno, massimo)
+    client = None
+    try:
+        if _usa_ponte_http():
+            timeout = httpx.Timeout(120.0, connect=20.0)
+            client = httpx.AsyncClient(timeout=timeout, follow_redirects=True)
+            items, total = await _elenco(client, anno, massimo)
+        else:
+            items, total = await _elenco_locale(anno, massimo)
         result["totale_fonte"] = total
         for item in items:
             result["esaminate"] += 1
@@ -247,10 +272,13 @@ async def esegui_sync_gestionale(
                 continue
 
             try:
-                detail = await _get_json(
-                    client,
-                    f"/api/integrations/lotti/invoices/{quote(source_id, safe='')}",
-                )
+                if client is not None:
+                    detail = await _get_json(
+                        client,
+                        f"/api/integrations/lotti/invoices/{quote(source_id, safe='')}",
+                    )
+                else:
+                    detail = await _dettaglio_locale(source_id)
                 if detail.get("source_hash") != source_hash:
                     result["conflitti"].append({
                         "source_id": source_id,
@@ -296,6 +324,12 @@ async def esegui_sync_gestionale(
                 result["errori"].append(
                     f"{item.get('invoice_number') or source_id}: {str(exc)[:180]}"
                 )
+    except Exception as exc:
+        result["ok"] = False
+        result["errori"].append(f"Lettura fonte GestionaleCloud: {str(exc)[:180]}")
+    finally:
+        if client is not None:
+            await client.aclose()
 
     result["ok"] = not result["errori"] and not result["conflitti"]
     if not anteprima:
@@ -317,7 +351,8 @@ async def stato_gestionale_fatture():
     return {
         "configurato": configurato(),
         "fonte": "GestionaleCloud",
-        "database_separati": True,
+        "modalita": "http" if _usa_ponte_http() else "interna",
+        "database_separati": _usa_ponte_http(),
         "direzione": "GestionaleCloud -> Lotti",
         "ricevute_registrate": ricevute,
         "ultimo_sync": (stato or {}).get("ultimo_sync"),

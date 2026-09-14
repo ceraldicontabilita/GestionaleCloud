@@ -249,46 +249,42 @@ def _seed_schede_temperature(dbmock, anno):
         "temp_min": -22.0, "temp_max": -18.0}))
 
 
-def test_scheduler_temperature_genera_e_non_duplica(dbmock):
+def test_scheduler_temperature_non_inventa_rilevazioni(dbmock):
     from app.lotti.routers.haccp_auto import verifica_e_popola_oggi
     oggi = datetime.now(timezone.utc)
     _seed_schede_temperature(dbmock, oggi.year)
 
     r1 = run(verifica_e_popola_oggi())
-    assert r1["generato"] is True
+    assert r1["generato"] is False
+    assert r1["elementi"] == []
     tp = run(dbmock.temperature_positive.find_one({"id": "TP1"}))
-    rec = tp["temperature"][str(oggi.month)][str(oggi.day)]
-    assert rec["auto"] is True and rec["temp"] is not None
+    assert str(oggi.day) not in tp["temperature"][str(oggi.month)]
 
-    # DEDUP: secondo giro nello stesso giorno → non tocca il dato esistente
+    # Una rilevazione reale già presente non viene mai toccata dal controllo.
     run(dbmock.temperature_positive.update_one(
         {"id": "TP1"},
-        {"$set": {f"temperature.{oggi.month}.{oggi.day}.note": "SENTINELLA"}}))
+        {"$set": {f"temperature.{oggi.month}.{oggi.day}": {
+            "temp": 3.1, "note": "SENTINELLA", "auto": False,
+        }}}))
     r2 = run(verifica_e_popola_oggi())
-    assert r2["generato"] is False, "già compilato: il job non deve rigenerare"
+    assert r2["generato"] is False
     tp2 = run(dbmock.temperature_positive.find_one({"id": "TP1"}))
     assert tp2["temperature"][str(oggi.month)][str(oggi.day)]["note"] == "SENTINELLA"
+    assert tp2["temperature"][str(oggi.month)][str(oggi.day)]["auto"] is False
 
 
-def test_scheduler_temperature_sempre_entro_soglie_scheda(dbmock):
-    """FIX audit: il vecchio clamp min(-15.0, …) generava letture automatiche
-    SOPRA la soglia massima (-18 °C) per i congelatori con base -17.5/-18.3."""
+def test_scheduler_temperature_non_inventa_valori_conformi(dbmock):
+    """Nemmeno un valore apparentemente conforme può sostituire una misura."""
     from app.lotti.routers.haccp_auto import verifica_e_popola_oggi
     oggi = datetime.now(timezone.utc)
     _seed_schede_temperature(dbmock, oggi.year)
-    run(verifica_e_popola_oggi())
+    result = run(verifica_e_popola_oggi())
 
     tp = run(dbmock.temperature_positive.find_one({"id": "TP1"}))
-    rec_p = tp["temperature"][str(oggi.month)][str(oggi.day)]
-    assert 0.0 <= rec_p["temp"] <= 4.0
-    assert rec_p["soglie"] == {"min": 0.0, "max": 4.0}
-    assert rec_p["allarme"] is False
-
     tn = run(dbmock.temperature_negative.find_one({"id": "TN8"}))
-    rec_n = tn["temperature"][str(oggi.month)][str(oggi.day)]
-    assert -22.0 <= rec_n["temp"] <= -18.0, \
-        f"lettura automatica fuori soglia: {rec_n['temp']} (max -18.0)"
-    assert rec_n["soglie"] == {"min": -22.0, "max": -18.0}
+    assert result["generato"] is False
+    assert str(oggi.day) not in tp["temperature"][str(oggi.month)]
+    assert str(oggi.day) not in tn["temperature"][str(oggi.month)]
 
 
 # ═════ 4. ANOMALIE: mai cancellate da un cambio retroattivo di soglie ═══════
