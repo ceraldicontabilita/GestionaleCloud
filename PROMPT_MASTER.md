@@ -701,6 +701,8 @@ si rigenerano dal codice e non si correggono a mano.
 | `HR_ADMIN_TOKEN_EXPIRE_MINUTES` | app-runtime | segreta | non dichiarato in Settings | `app/hr/routers/pin_login.py` |
 | `HR_JWT_SECRET` | app-runtime | segreta | non dichiarato in Settings | `app/hr/routers/auth.py`, `render.yaml` |
 | `HR_SUPABASE_DB_URL` | app-runtime | configurazione | non dichiarato in Settings | `render.yaml` |
+| `HR_USE_MAIN_DATABASE` | app-runtime | configurazione | usa `SUPABASE_DB_URL` del GestionaleCloud per HR | `app/hr/database.py` |
+| `HR_DB_SCHEMA` | app-runtime | configurazione | schema Postgres HR, valore unificato `hr` | `app/hr/database.py` |
 | `IMAP_EMAIL` | gmail-email | configurazione | non dichiarato in Settings | `app/hr/routers/dipendenti_cloud/__init__.py` |
 | `IMAP_HOST` | gmail-email | configurazione | `str` / `'imap.gmail.com'` | `app/config.py`, `app/hr/routers/dipendenti_cloud/__init__.py`, `app/routers/settings_router.py`, `app/services/pagopa_scanner.py` |
 | `IMAP_PASS` | gmail-email | configurazione | non dichiarato in Settings | `app/hr/routers/dipendenti_cloud/__init__.py` |
