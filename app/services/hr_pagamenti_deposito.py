@@ -92,6 +92,13 @@ _ESCLUSIONE_RE = re.compile(
     re.I,
 )
 _RIF_BANCA_RE = re.compile(r"RIF\.?\s*([A-Z0-9]+(?:/[0-9]+)?)", re.I)
+# Addebito cumulativo della banca su piu' persone, senza nominarne nessuna:
+# e' proprio il caso per cui esiste la coda HR "bonifici da associare".
+_BENEFICIARI_DIVERSI_RE = re.compile(r"BENEFICIARI\s+(VARI|DIVERSI)", re.I)
+# Un giorno in cui l'azienda dispone bonifici ad almeno N dipendenti diversi
+# e' un lotto paghe (acconti o saldi): il segnale "stipendio" in causale non
+# serve. Sotto questa soglia decide una persona (coda HR).
+LOTTO_PAGHE_MIN_DIPENDENTI = 3
 
 _avviso_non_configurato_emesso = False
 
@@ -406,16 +413,20 @@ async def _deposita(
     ctx: ContestoHR, *, key: str, testo: str, data: Optional[str], importo: Optional[float],
     hash_pdf: Optional[str], cro: Optional[str], causale: str, pdf_filename: Optional[str],
     pdf_data: Optional[str], origine: str, mese_dichiarato: Any, anno_dichiarato: Any,
-    riferimento: Dict[str, Any], dry_run: bool, segnale_esplicito: bool = False,
+    riferimento: Dict[str, Any], dry_run: bool, segnale_esplicito: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Cuore comune ai due ingressi. Ritorna il marcatore da scrivere sul documento sorgente.
 
     ``segnale_esplicito``: il documento arriva da una fonte che di per se' dice
-    "bonifico stipendio di questo dipendente" (fascicolo Drive della persona):
-    la parola "stipendio" in causale non e' richiesta."""
+    "bonifico stipendio di questo dipendente" (``fascicolo`` Drive della
+    persona, ``lotto_paghe`` bancario dello stesso giorno): la parola
+    "stipendio" in causale non e' richiesta."""
     if e_pagamento_non_stipendio(testo):
         return _marcatore(ESITO_NON_STIPENDIO)
-    dip, motivo = risolvi_dipendente(ctx.indici, testo)
+    if _BENEFICIARI_DIVERSI_RE.search(testo or ""):
+        dip, motivo = None, "beneficiari_diversi"
+    else:
+        dip, motivo = risolvi_dipendente(ctx.indici, testo)
     if dip is None and motivo == "nessuno":
         return _marcatore(ESITO_NON_DIPENDENTE)
     if hash_pdf and (hash_pdf in ctx.per_hash or hash_pdf in ctx.hash_in_coda):
@@ -454,9 +465,11 @@ async def _deposita(
                           key=esistente.get("key"), dipendente_id=dip["id"], motivo=come,
                           campi=campi or None)
     if dry_run:
-        return _marcatore(ESITO_DEPOSITATO, key=key, dipendente_id=dip["id"], mese=mese, anno=anno)
+        return _marcatore(ESITO_DEPOSITATO, key=key, dipendente_id=dip["id"], mese=mese, anno=anno,
+                          segnale=segnale_esplicito)
     await _scrivi_esito(ctx, nuovo)
-    return _marcatore(ESITO_DEPOSITATO, key=key, dipendente_id=dip["id"], mese=mese, anno=anno)
+    return _marcatore(ESITO_DEPOSITATO, key=key, dipendente_id=dip["id"], mese=mese, anno=anno,
+                      segnale=segnale_esplicito)
 
 
 # ── ingresso 1: PDF bonifico del gestionale (bonifici_transfers) ─────────────
@@ -526,7 +539,7 @@ async def deposita_bonifico_transfer_in_hr(db, transfer: Dict[str, Any],
         ctx,
         key=f"{PREFISSO_KEY_PDF}:{(hash_pdf or transfer.get('id') or '')[:24]}",
         testo=_testo_transfer(transfer),
-        segnale_esplicito=bool(persona),
+        segnale_esplicito="fascicolo" if persona else None,
         data=_data_iso(transfer.get("data")),
         importo=_importo(transfer.get("importo")),
         hash_pdf=hash_pdf,
@@ -564,10 +577,36 @@ def movimento_candidato_stipendio(mov: Dict[str, Any]) -> bool:
     return bool(estrai_nome_favore(str(mov.get("descrizione") or mov.get("descrizione_originale") or "")))
 
 
+def date_lotti_paghe(ctx: ContestoHR, movimenti: List[Dict[str, Any]]) -> set:
+    """Giorni in cui l'azienda ha disposto bonifici ad almeno
+    ``LOTTO_PAGHE_MIN_DIPENDENTI`` dipendenti diversi: un lotto paghe.
+
+    Negli estratti conto reali di gennaio-aprile 2026 la descrizione e' solo
+    "VS.DISP. RIF. ... FAVORE TAIANO LUIGI - ADD.TOT" (nessuna causale): 12
+    bonifici lo stesso giorno a 12 dipendenti sono gli acconti/saldi del mese,
+    non 12 decisioni da prendere a mano.
+    """
+    per_data: Dict[str, set] = {}
+    for mov in movimenti:
+        if not movimento_candidato_stipendio(mov):
+            continue
+        descrizione = str(mov.get("descrizione") or mov.get("descrizione_originale") or "")
+        if e_pagamento_non_stipendio(descrizione) or _BENEFICIARI_DIVERSI_RE.search(descrizione):
+            continue
+        data = _data_iso(mov.get("data"))
+        dip, _ = risolvi_dipendente(ctx.indici, descrizione)
+        if data and dip:
+            per_data.setdefault(data, set()).add(dip["id"])
+    return {d for d, dips in per_data.items() if len(dips) >= LOTTO_PAGHE_MIN_DIPENDENTI}
+
+
 async def deposita_movimento_banca_in_hr(db, mov: Dict[str, Any],
                                         ctx: Optional[ContestoHR] = None,
-                                        dry_run: bool = False) -> Dict[str, Any]:
-    """Porta in HR una riga di ``estratto_conto_movimenti``; ritorna il marcatore."""
+                                        dry_run: bool = False,
+                                        segnale_esplicito: Optional[str] = None) -> Dict[str, Any]:
+    """Porta in HR una riga di ``estratto_conto_movimenti``; ritorna il marcatore.
+
+    ``segnale_esplicito="lotto_paghe"`` quando la data e' in ``date_lotti_paghe``."""
     if ctx is None:
         ctx = await carica_contesto_hr()
         if ctx is None:
@@ -594,7 +633,7 @@ async def deposita_movimento_banca_in_hr(db, mov: Dict[str, Any],
         riferimento={"gestionale_movimento_id": mov.get("id"),
                      "gestionale_fonte": mov.get("source") or "estratto_conto"},
         dry_run=dry_run,
-        segnale_esplicito=False,
+        segnale_esplicito=segnale_esplicito,
     )
     if not dry_run:
         await _ricalcola_periodi(ctx)
@@ -645,16 +684,44 @@ async def deposita_pagamenti_in_hr(db, *, dry_run: bool = False, limit: int = 20
     movimenti = await db["estratto_conto_movimenti"].find(
         {CAMPO_MARCATORE: {"$exists": False}}, {"_id": 0}
     ).to_list(limit)
-    for mov in movimenti:
+    # Riesame: righe gia' messe in coda solo perche' senza la parola
+    # "stipendio". Le righe di un lotto paghe possono arrivare in giri diversi
+    # (e la regola del lotto e' nata dopo il primo giro reale del 14/09/2026):
+    # se ora il giorno risulta un lotto, la riga esce dalla coda HR ed entra
+    # nei pagamenti come le altre.
+    riesame = await db["estratto_conto_movimenti"].find(
+        {f"{CAMPO_MARCATORE}.esito": ESITO_IN_CODA,
+         f"{CAMPO_MARCATORE}.motivo": "senza_segnale_stipendio"}, {"_id": 0}
+    ).to_list(limit)
+    lotti = date_lotti_paghe(ctx, movimenti + riesame)
+
+    async def _deposita_movimento(mov: Dict[str, Any], sezione: str) -> None:
         try:
-            marca = await deposita_movimento_banca_in_hr(db, mov, ctx=ctx, dry_run=dry_run)
+            segnale = "lotto_paghe" if _data_iso(mov.get("data")) in lotti else None
+            marca = await deposita_movimento_banca_in_hr(db, mov, ctx=ctx, dry_run=dry_run,
+                                                        segnale_esplicito=segnale)
         except Exception as exc:
             logger.warning("[HR deposito pagamenti] movimento %s: %s", mov.get("id"), exc)
             marca = _marcatore("errore", motivo=str(exc)[:200])
-        _registra("estratto_conto", mov.get("id"), marca, {
+        _registra(sezione, mov.get("id"), marca, {
             "data": _data_iso(mov.get("data")), "importo": _importo(mov.get("importo")),
             "testo": str(mov.get("descrizione") or "")[:120],
         })
 
-    report["letti"] = {"bonifici_pdf": len(transfers), "estratto_conto": len(movimenti)}
+    for mov in movimenti:
+        await _deposita_movimento(mov, "estratto_conto")
+
+    report["estratto_conto_riesame"] = {}
+    for mov in riesame:
+        if _data_iso(mov.get("data")) not in lotti:
+            continue
+        if not dry_run:
+            await ctx.db.bonifici_da_associare.update_one(
+                {"gestionale_movimento_id": mov.get("id"), "stato": "da_associare"},
+                {"$set": {"stato": "ritirato", "ritirato_il": _now_iso(),
+                          "ritirato_motivo": "lotto_paghe: entrato nei pagamenti"}})
+        await _deposita_movimento(mov, "estratto_conto_riesame")
+
+    report["letti"] = {"bonifici_pdf": len(transfers), "estratto_conto": len(movimenti),
+                       "estratto_conto_riesame": len(riesame)}
     return report

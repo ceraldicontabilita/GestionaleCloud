@@ -266,8 +266,14 @@ che si vede in `/hr/dipendenti/paghe-bonifici` viene alimentato da
 - Regole: dipendente da CF → nome completo univoco → cognome univoco; il
   fascicolo Drive della persona vale come identità E come segnale "stipendio"
   (le causali dei PDF reali sono `AGGIUNTIVA`/`ricevuta per ordinante`); dalla
-  banca serve la parola stipendio/stip/salario/acconto/saldo in causale,
-  altrimenti coda; TFR, fatture, commissioni, fornitori mai (nemmeno in coda);
+  banca serve la parola stipendio/stip/salario/acconto/saldo in causale
+  OPPURE un **lotto paghe** (bonifici ad almeno 3 dipendenti diversi lo
+  stesso giorno: negli estratti conto gen–apr 2026 la descrizione è solo
+  `FAVORE TAIANO LUIGI - ADD.TOT`, 12 righe lo stesso giorno = acconti/saldi
+  del mese), altrimenti coda — e il giro successivo riesamina le righe in
+  coda "senza segnale" se il giorno è diventato un lotto (ritira la riga
+  dalla coda HR); `BENEFICIARI VARI/DIVERSI` (cumulativo senza nomi) →
+  coda; TFR, fatture, commissioni, fornitori mai (nemmeno in coda);
   competenza da causale/nome file, altrimenti regola del giorno 25
   (`stipendi_bonifici.competenza_bonifico_stipendio`); stesso pagamento visto
   da PDF e da banca (stesso dipendente, importo, data ±3 gg) → un solo esito,
