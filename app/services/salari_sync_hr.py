@@ -47,7 +47,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from app.services.hr_cedolini_deposito import connetti_hr, dsn_hr
+from app.services.hr_cedolini_deposito import TABELLA_CEDOLINI, connetti_hr, dsn_hr
 from app.services.prima_nota_salari_chiave import (
     IndiceDipendenti,
     carica_indice_dipendenti,
@@ -65,10 +65,10 @@ COLLECTION = "prima_nota_salari"
 TOLLERANZA_NETTO = 0.01
 
 _SQL_CEDOLINI_ANNO = (
-    "SELECT id, doc FROM public.app_cedolini"
+    "SELECT id, doc FROM " + TABELLA_CEDOLINI +
     " WHERE (doc->>'anno') ~ '^[0-9]+$' AND (doc->>'anno')::int = $1"
 )
-_SQL_CEDOLINI_TUTTI = "SELECT id, doc FROM public.app_cedolini"
+_SQL_CEDOLINI_TUTTI = "SELECT id, doc FROM " + TABELLA_CEDOLINI
 
 
 def _json(valore: Any) -> Dict[str, Any]:

@@ -437,20 +437,24 @@ class SupabaseCollection:
         self._nome = nome
         self._tab = _tabella(nome)
 
+    @property
+    def _sql_tab(self) -> str:
+        return f'{self._db._schema_sql}."{self._tab}"'
+
     async def _assicura_tabella(self):
         if self._tab in self._db._tabelle_pronte:
             return
         async with self._db._pool.acquire() as con:
             await con.execute(
-                'CREATE TABLE IF NOT EXISTS public."%s" ('
+                'CREATE TABLE IF NOT EXISTS %s ('
                 ' id text PRIMARY KEY,'
-                ' doc jsonb NOT NULL)' % self._tab
+                ' doc jsonb NOT NULL)' % self._sql_tab
             )
             # RLS attiva e nessuna policy: il ruolo anon di PostgREST non legge
             # nulla (su questo progetto anon e' volutamente aperto). La
             # connessione diretta usa il proprietario, che scavalca la RLS.
             await con.execute(
-                'ALTER TABLE public."%s" ENABLE ROW LEVEL SECURITY' % self._tab
+                'ALTER TABLE %s ENABLE ROW LEVEL SECURITY' % self._sql_tab
             )
         self._db._tabelle_pronte.add(self._tab)
 
@@ -465,9 +469,9 @@ class SupabaseCollection:
         await self._assicura_tabella()
         if escludi:
             campi = ", ".join("'%s'" % c.replace("'", "''") for c in sorted(escludi))
-            sql = 'SELECT doc - ARRAY[%s] AS doc FROM public."%s"' % (campi, self._tab)
+            sql = 'SELECT doc - ARRAY[%s] AS doc FROM %s' % (campi, self._sql_tab)
         else:
-            sql = 'SELECT doc FROM public."%s"' % self._tab
+            sql = 'SELECT doc FROM %s' % self._sql_tab
         async with self._db._pool.acquire() as con:
             righe = await con.fetch(sql)
         out = []
@@ -523,7 +527,7 @@ class SupabaseCollection:
         doc.setdefault("id", chiave)
         async with self._db._pool.acquire() as con:
             await con.execute(
-                'INSERT INTO public."%s" (id, doc) VALUES ($1, $2::jsonb)' % self._tab,
+                'INSERT INTO %s (id, doc) VALUES ($1, $2::jsonb)' % self._sql_tab,
                 chiave, json.dumps(doc, default=str),
             )
         return _Risultato(0, 0, chiave)
@@ -546,8 +550,8 @@ class SupabaseCollection:
             nuovo.setdefault("id", chiave)
             async with self._db._pool.acquire() as con:
                 await con.execute(
-                    'INSERT INTO public."%s" (id, doc) VALUES ($1, $2::jsonb) '
-                    'ON CONFLICT (id) DO UPDATE SET doc = EXCLUDED.doc' % self._tab,
+                    'INSERT INTO %s (id, doc) VALUES ($1, $2::jsonb) '
+                    'ON CONFLICT (id) DO UPDATE SET doc = EXCLUDED.doc' % self._sql_tab,
                     chiave, json.dumps(nuovo, default=str),
                 )
             return _Risultato(0, 0, chiave)
@@ -556,7 +560,7 @@ class SupabaseCollection:
         nuovo = _applica_update(esistente, update, inserito=False)
         async with self._db._pool.acquire() as con:
             await con.execute(
-                'UPDATE public."%s" SET doc = $2::jsonb WHERE id = $1' % self._tab,
+                'UPDATE %s SET doc = $2::jsonb WHERE id = $1' % self._sql_tab,
                 chiave, json.dumps(nuovo, default=str),
             )
         return _Risultato(1, 1 if nuovo != esistente else 0)
@@ -568,7 +572,7 @@ class SupabaseCollection:
                 chiave = str(d.get("id") or d.get("_id"))
                 async with self._db._pool.acquire() as con:
                     await con.execute(
-                        'DELETE FROM public."%s" WHERE id = $1' % self._tab, chiave
+                        'DELETE FROM %s WHERE id = $1' % self._sql_tab, chiave
                     )
                 return _Risultato(1, 1)
         return _Risultato(0, 0)
@@ -600,7 +604,7 @@ class SupabaseCollection:
                 chiave = str(d.get("id") or d.get("_id"))
                 async with self._db._pool.acquire() as con:
                     await con.execute(
-                        'UPDATE public."%s" SET doc = $2::jsonb WHERE id = $1' % self._tab,
+                        'UPDATE %s SET doc = $2::jsonb WHERE id = $1' % self._sql_tab,
                         chiave, json.dumps(nuovo, default=str),
                     )
                 modified += 1
@@ -614,7 +618,7 @@ class SupabaseCollection:
         if chiavi:
             async with self._db._pool.acquire() as con:
                 await con.execute(
-                    'DELETE FROM public."%s" WHERE id = ANY($1::text[])' % self._tab, chiavi
+                    'DELETE FROM %s WHERE id = ANY($1::text[])' % self._sql_tab, chiavi
                 )
         return _Risultato(len(chiavi), len(chiavi))
 
@@ -666,8 +670,12 @@ class SupabaseCollection:
 class SupabaseDatabase:
     """Sta al posto dell'oggetto database di motor: `db["dipendenti"]`."""
 
-    def __init__(self, pool: "asyncpg.Pool"):
+    def __init__(self, pool: "asyncpg.Pool", schema: str = "public"):
+        if not _NOME_OK.fullmatch(schema):
+            raise ValueError("schema Postgres HR non valido: %r" % schema)
         self._pool = pool
+        self._schema = schema
+        self._schema_sql = '"' + schema + '"'
         self._tabelle_pronte: set = set()
         self._cache: Dict[str, SupabaseCollection] = {}
 
@@ -685,12 +693,13 @@ class SupabaseDatabase:
         async with self._pool.acquire() as con:
             righe = await con.fetch(
                 "SELECT tablename FROM pg_tables "
-                "WHERE schemaname='public' AND tablename LIKE 'app\\_%'"
+                "WHERE schemaname=$1 AND tablename LIKE 'app\\_%'",
+                self._schema,
             )
         return [r["tablename"][4:] for r in righe]
 
 
-async def crea_database(dsn: str) -> SupabaseDatabase:
+async def crea_database(dsn: str, schema: str = "public") -> SupabaseDatabase:
     pool = await asyncpg.create_pool(dsn, min_size=1, max_size=5, command_timeout=60)
     logger.info("Supabase/Postgres connesso")
-    return SupabaseDatabase(pool)
+    return SupabaseDatabase(pool, schema=schema)
