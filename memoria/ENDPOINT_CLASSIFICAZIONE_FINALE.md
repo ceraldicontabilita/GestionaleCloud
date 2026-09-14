@@ -343,7 +343,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/dashboard/spese-per-categoria` | reports.dashboard | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/dashboard/stato-riconciliazione` | reports.dashboard | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/dashboard/stats` | reports.dashboard | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/dashboard/stats-legacy` | public_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/dashboard/stats-legacy` | public_api | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/dashboard/summary` | reports.dashboard | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/dashboard/trend-mensile` | reports.dashboard | sì | — | sì | — | — | tenere | in uso: FE, chat |
 | `GET /api/data-deletion` | legal_pages | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
@@ -373,7 +373,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/dipendenti/turni/settimana` | employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
 | `DELETE /api/dipendenti/{dipendente_id}` | employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/dipendenti/{dipendente_id}` | employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `PUT /api/dipendenti/{dipendente_id}` | employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
+| `PUT /api/dipendenti/{dipendente_id}` | employees.dipendenti | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/dipendenti/{dipendente_id}/invita-portale` | employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/dipendenti/{dipendente_id}/report-ferie-permessi` | employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
 | `PUT /api/dizionario-articoli/articolo/{descrizione_encoded}` | warehouse.dizionario_articoli | sì | — | — | — | — | tenere | in uso: FE |
@@ -754,7 +754,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/iva/riepilogo-annuale/{anno}` | iva | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/iva/versamento/{anno}/{mese}` | iva | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/learning-machine/dashboard` | learning_machine | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/learning-machine/documenti` | learning_machine | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/learning-machine/documenti` | learning_machine | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/learning-machine/feedback` | learning_machine | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/learning-machine/regole-apprese` | learning_machine | sì | — | — | — | — | tenere | in uso: FE |
 | `DELETE /api/learning-machine/reset-learning` | learning_machine | — | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
