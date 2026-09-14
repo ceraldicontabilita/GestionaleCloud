@@ -204,6 +204,50 @@ eliminare le cartelle"):
   "Stasio Salvatore" su Drive è "DI STASIO". Sankapala 14ª 2025 caricata due
   volte (stesso PDF).
 
+### 14/09/2026 — audit E2E e integrità dati in produzione: cosa è stato corretto
+
+Rapporto completo (399 righe, 70 finding con query e numeri) prodotto in sessione;
+qui solo ciò che è stato **cambiato** e dove sta il backup (tutto reversibile):
+
+| Cosa | Prima | Dopo | Backup |
+|---|---|---|---|
+| Scheduler produzione | `ENABLE_SCHEDULER=false` dal 14/09 00:52 (spento durante l'unificazione Codex): **nessun job periodico** (44 job ERP + HR) per 16 ore | riattivato con lo switch env del fascicolo Drive | — |
+| Storage `menu-images` | nessuna policy su `storage.objects`: ogni upload dal ponte Lotti→Menu rifiutato | policy "menu app full access" (solo bucket menu-images, ruolo anon = chiave server) | migrazione `20260914190000` |
+| PayPal `sync/incremental` | 500 (404 PayPal su finestre di secondi) | finestra minima 5 min, errore PayPal → 502 leggibile | — |
+| HR `app_bonifici` | 887 righe, **239 PDF byte-identici duplicati** (€ 283.995) | 648 righe, 0 gruppi md5 duplicati | `hr.app_bonifici_duplicati_20260914` (id, doc, canonico_id) |
+| HR `app_paghe_mensili` | 36 righe sul dipendente fuso "Vincenzo Dalma" (9a0e68a7) doppie di quelle di D'Alma (df37ac5a) | rimosse | `hr.app_paghe_mensili_rimosse_20260914` |
+| HR `app_dipendenti` | D'Alma attivo senza CF; Antonietta Ceraldi "cessato" con cedolini fino a 07/2026; "Ceraldi Antonella" attiva senza CF/cedolini | D'Alma cessato 13/06/2024 + CF dai cedolini; Antonietta attiva; Antonella disattivata con nota (riattivare se persona diversa) | `hr.app_dipendenti_modifiche_20260914` |
+| `fornitori` | BIG FOOD Srl id 229 (0 fatture) doppione di BIG FOOD SRL id 381 | rimosso | `gestionale.documents_rimossi_20260914` |
+| `invoices` | 1776634697838: stesso XML della 1785273160323 ma attribuita a PIETRO CASTALDO (l'XML dice GIUSEPPE GARGIULO) | rimossa (786 fatture) | `gestionale.documents_rimossi_20260914` |
+| `corrispettivi` | 181 chiusure legacy con **l'imponibile in `totale_iva`/`iva10`** (totale/1,1): la liquidazione IVA (`iva_liquidation_query.py`) sommava € 471.708 di "IVA" su gen–ago | `totale_imponibile`/`imponibile10` = totale/1,1, `totale_iva`/`iva10`/`iva_da_versare10` = totale − imponibile (**aliquota 10% presunta**, resta DA_VERIFICARE finché non arriva l'XML RT); IVA totale € 47.170,88; il frontend (#442) legge `totale_imponibile` e non applica più l'euristica | `gestionale.corrispettivi_iva_prima_20260914` |
+
+Primo giro reale dopo lo switch (17:25 UTC): scheduler avviato, ingest Drive
+fatture (975 in coda, 25 archiviate per giro), estratti conto (291 documenti
+pre-2026 lasciati fermi per scelta, 39 in coda), cedolini (49 inbox = i
+fascicoli, 0 nuovi), canale bonifici sul fascicolo (`VESPA VINCENZO/BONIFICI/
+DA ELABORARE/...` importati), sync paghe HR (1.175 cedolini, 648 bonifici).
+Il protocollo Drive è fallito al primo giro: `postgres_diretto.ENV_DSN`
+leggeva prima `SUPABASE_DB_URL`, che su Render punta ancora a un progetto
+Supabase **morto** (`postgres.jqguwrahxeilcikplaxi`); ora l'ordine è quello
+del deposito HR (`HR_SUPABASE_DB_URL` prima). **Da fare sul pannello Render:
+aggiornare o togliere `SUPABASE_DB_URL`** (l'ERP usa `SUPABASE_URL` + segreto
+runtime, non la DSN).
+
+Verificato e lasciato com'è: i 68 movimenti banca `_dupN` hanno `legacy_row_hash`
+diversi dalla riga base → righe legacy distinte (es. due commissioni uguali lo
+stesso giorno), non doppioni.
+
+**Aperto (serve codice o dati che non ci sono)**: 158 fatture `riconciliata`
+con movimento `riconciliato=false` e 180 righe hub senza `fattura_id` (stato
+riconciliazione incoerente dopo la ricostruzione del 14/09: da rigenerare col
+motore, non a mano); corrispettivi/POS senza **febbraio** e 26/01–08/03,
+15–23/08 (i file, se esistono, entrano dall'ingest Drive ora che lo scheduler è
+attivo); archivio bonifici HR fermo al 09/04/2026 (paghe apr–giu in attesa,
+€ 45.598): serve il ponte gestionale→HR per bonifici ed estratto conto; 38
+bonifici HR con `cedolino_id` legacy orfano; 119 in "bonifici da associare"
+(14 con PDF già in esiti); 8 persone dei cedolini mai in anagrafica; 10
+tabelle attese dall'app HR assenti (turni_config, onomastici, richieste, ...).
+
 ### Stato precedente
 
 - Il default del codice è `DATA_BACKEND=sheets`.
