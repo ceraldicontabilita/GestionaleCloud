@@ -13,6 +13,7 @@ Mapping tipo_documento -> collection:
 - FATTURA -> invoices
 """
 
+import hashlib
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 import logging
@@ -225,8 +226,12 @@ async def save_estratto_conto_to_gestionale(db, data: Dict[str, Any], source_inf
                 "riconciliato": False
             }
 
-            # Genera ID univoco per evitare duplicati
-            doc_id = f"EC-{doc['data']}-{doc['importo']:.2f}-{hash(doc['descrizione'] or '')}"
+            # ID stabile per evitare duplicati. NON usare hash(): in Python il
+            # hash delle stringhe cambia a ogni avvio del processo (PYTHONHASHSEED),
+            # quindi lo stesso movimento riletto dopo un riavvio otteneva un id
+            # diverso e passava il controllo "existing" (audit 14/09/2026).
+            impronta = hashlib.sha1((doc["descrizione"] or "").encode("utf-8")).hexdigest()[:12]
+            doc_id = f"EC-{doc['data']}-{doc['importo']:.2f}-{impronta}"
             doc["id"] = doc_id
 
             existing = await db["estratto_conto_movimenti"].find_one({"id": doc_id})
