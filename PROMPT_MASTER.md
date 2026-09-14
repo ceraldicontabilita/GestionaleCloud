@@ -844,7 +844,7 @@ Gli alias senza valore vanno configurati nel secret/config store di Render. Non 
 
 ## Appendice D — Tutti i router e tutti gli endpoint
 
-Route table sorgente: **1165**; attivi da ricreare: **726**; quarantena: **439** (`verificare` 409, `admin-only` 30).
+Route table sorgente: **1166**; attivi da ricreare: **726**; quarantena: **440** (`verificare` 410, `admin-only` 30).
 
 `attivo` significa da ricreare con contratto e test; `quarantena` significa non esporre nel nuovo runtime finché consumer, autorizzazione e test non sono provati. L'elenco è completo e include entrambe le categorie.
 
@@ -916,11 +916,12 @@ Route table sorgente: **1165**; attivi da ricreare: **726**; quarantena: **439**
 - **attivo** — `DELETE /api/piano-conti/{conto_id}` — in uso: FE
 - **attivo** — `PUT /api/piano-conti/{conto_id}` — in uso: FE
 
-### Router `accounting.prima_nota_salari` (23)
+### Router `accounting.prima_nota_salari` (24)
 
 - **quarantena: verificare** — `POST /api/prima-nota-salari/bonifica-doppioni` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **quarantena: verificare** — `POST /api/prima-nota-salari/consolida-record` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **quarantena: admin-only** — `POST /api/prima-nota-salari/deposita-cedolini-in-hr` — endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7)
+- **quarantena: verificare** — `POST /api/prima-nota-salari/deposita-pagamenti-hr` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **attivo** — `GET /api/prima-nota-salari/dipendenti-lista` — in uso: FE
 - **quarantena: verificare** — `GET /api/prima-nota-salari/export-excel` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **attivo** — `POST /api/prima-nota-salari/import-bonifici` — in uso: FE

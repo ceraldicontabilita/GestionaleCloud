@@ -509,6 +509,27 @@ async def sincronizza_prima_nota_salari_da_hr(
     return await sincronizza_da_hr(db, dry_run=dry_run, anno=anno, actor=actor)
 
 
+@router.post("/deposita-pagamenti-hr")
+async def deposita_pagamenti_in_hr_endpoint(
+    dry_run: bool = Query(True, description="True = solo report; False = scrive in HR e marca i documenti"),
+    limit: int = Query(2000, ge=1, le=20000, description="Massimo documenti letti per collezione"),
+    _current_user: dict = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Backfill del ponte gestionale -> HR per i PAGAMENTI (14/09/2026).
+
+    Porta nei pagamenti dell'app HR (``pagamenti_esiti`` + ``paghe_mensili``,
+    coda ``bonifici_da_associare`` per i casi da decidere a mano) i bonifici
+    PDF (``bonifici_transfers``) e le uscite bancarie "FAVORE <dipendente>"
+    (``estratto_conto_movimenti``) che non hanno ancora il marcatore
+    ``hr_deposito``. E' lo stesso giro del job scheduler
+    ``hr_pagamenti_deposito`` (ogni 15 minuti); qui si puo' lanciare a mano e
+    in prova (``dry_run=true``, default) per vedere cosa entrerebbe.
+    """
+    from app.services.hr_pagamenti_deposito import deposita_pagamenti_in_hr
+
+    return await deposita_pagamenti_in_hr(Database.get_db(), dry_run=dry_run, limit=limit)
+
+
 @router.post("/salari/{record_id}/bonifico-pdf")
 async def allega_bonifico_pdf(
     record_id: str,

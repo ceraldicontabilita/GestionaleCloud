@@ -990,6 +990,36 @@ def start_scheduler():
         replace_existing=True,
     )
 
+    async def _hr_pagamenti_deposito_job():
+        """Bonifici PDF e righe banca del gestionale -> pagamenti HR
+        (pagamenti_esiti/paghe_mensili/coda manuale). Riprende solo i
+        documenti senza marcatore `hr_deposito`, qualunque sia il punto di
+        ingresso (Drive, email, upload, API)."""
+        from app.database import Database
+        from app.services.hr_pagamenti_deposito import deposita_pagamenti_in_hr
+
+        try:
+            result = await deposita_pagamenti_in_hr(Database.get_db())
+            letti = result.get("letti") or {}
+            if letti.get("bonifici_pdf") or letti.get("estratto_conto"):
+                logger.info(
+                    "[SCHEDULER-HR-PAGAMENTI] bonifici_pdf=%s estratto_conto=%s",
+                    result.get("bonifici_pdf"), result.get("estratto_conto"),
+                )
+        except Exception:
+            logger.exception("[SCHEDULER-HR-PAGAMENTI] deposito non completato")
+
+    scheduler.add_job(
+        _hr_pagamenti_deposito_job,
+        'interval', minutes=15,
+        next_run_time=avvio + timedelta(minutes=6),
+        misfire_grace_time=300,
+        coalesce=True,
+        id="hr_pagamenti_deposito",
+        name="Deposita bonifici ed estratti conto nei pagamenti HR (ogni 15 minuti)",
+        replace_existing=True,
+    )
+
     async def _mittenti_email_job():
         from app.database import Database
         from app.services.email_monitor_service import (

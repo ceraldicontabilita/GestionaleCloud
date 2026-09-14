@@ -313,8 +313,14 @@ async def importa_pdf_bonifico(
     filename: str,
     source: str = "upload_manuale",
     auto_associa: bool = True,
+    source_path: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Parsa e archivia il PDF; il match automatico puo' essere disattivato."""
+    """Parsa e archivia il PDF; il match automatico puo' essere disattivato.
+
+    ``source_path`` e' il percorso Drive relativo del file (es.
+    ``VESPA VINCENZO/BONIFICI/DA ELABORARE/x.pdf``): conservato sul transfer
+    perche' il fascicolo del dipendente dice a chi appartiene il bonifico
+    (ponte HR, ``hr_pagamenti_deposito.fascicolo_persona``)."""
     if not content.startswith(b"%PDF"):
         return {"status": "error", "message": "Il file non e' un PDF valido"}
     digest = hashlib.sha256(content).hexdigest()
@@ -369,6 +375,7 @@ async def importa_pdf_bonifico(
         "id": str(uuid.uuid4()),
         "source_file": filename,
         "source": source,
+        "source_path": source_path,
         "document_hash": digest,
         "pdf_data": base64.b64encode(content).decode("ascii"),
         "created_at": now,
@@ -388,10 +395,25 @@ async def importa_pdf_bonifico(
         if auto_associa
         else {"associato": False, "motivo": "associazione_manuale_richiesta"}
     )
+    # Ponte verso l'app HR (pagamenti_esiti / paghe_mensili / coda manuale):
+    # un bonifico a un dipendente deve comparire in /hr/dipendenti/paghe-bonifici
+    # senza un secondo import. Mai bloccare l'archiviazione contabile per l'HR:
+    # se qui fallisce, il job periodico `hr_pagamenti_deposito` riprende il
+    # documento (nessun marcatore `hr_deposito` sul transfer).
+    deposito_hr = None
+    try:
+        from app.services.hr_pagamenti_deposito import deposita_bonifico_transfer_in_hr
+
+        if associazione.get("fattura_ids"):
+            transfer["fattura_associata"] = True
+        deposito_hr = (await deposita_bonifico_transfer_in_hr(db, transfer)).get("esito")
+    except Exception as exc:  # pragma: no cover - difesa: l'ingest non deve fallire
+        logger.warning("[HR deposito pagamenti] bonifico %s non depositato: %s", transfer["id"], exc)
     return {
         "status": "saved",
         "transfer_id": transfer["id"],
         "parser_completo": transfer["parser_completo"],
+        "deposito_hr": deposito_hr,
         **associazione,
     }
 
@@ -411,6 +433,7 @@ async def processa_inbox_bonifici(db, limit: int = 100) -> Dict[str, int]:
             "id": 1,
             "filename": 1,
             "source": 1,
+            "source_path": 1,
             "created_at": 1,
         },
     ).sort("created_at", 1).to_list(limit)
@@ -426,6 +449,7 @@ async def processa_inbox_bonifici(db, limit: int = 100) -> Dict[str, int]:
             result = await importa_pdf_bonifico(
                 db, content, doc.get("filename") or "bonifico.pdf",
                 source=doc.get("source") or "documents_inbox",
+                source_path=doc.get("source_path"),
             )
             status = result.get("status")
             if status == "saved":

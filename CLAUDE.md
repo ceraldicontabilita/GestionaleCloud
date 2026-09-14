@@ -248,6 +248,40 @@ bonifici HR con `cedolino_id` legacy orfano; 119 in "bonifici da associare"
 (14 con PDF già in esiti); 8 persone dei cedolini mai in anagrafica; 10
 tabelle attese dall'app HR assenti (turni_config, onomastici, richieste, ...).
 
+### 14/09/2026 — ponte gestionale→HR per i PAGAMENTI (bonifici ed estratto conto)
+
+Un solo punto di ingresso per i pagamenti stipendio: il gestionale legge i PDF
+dei bonifici (fascicolo Drive `DIPENDENTI/<persona>/BONIFICI/DA ELABORARE`,
+Import documenti, upload dalla pagina salari) e gli estratti conto; l'archivio
+che si vede in `/hr/dipendenti/paghe-bonifici` viene alimentato da
+`app/services/hr_pagamenti_deposito.py` attraverso il database HR in-process
+(stesso adattatore e stesse funzioni dell'app HR: `_indici_dipendenti`,
+`_ricalcola_stato_paga`, `_e_movimento_non_stipendio` — niente copie).
+
+- Ingressi: `bonifici_transfers` (dopo `importa_pdf_bonifico`, chiave HR
+  `gc:<sha256 PDF[:24]>`, PDF allegato) e `estratto_conto_movimenti` (uscite
+  "FAVORE <dipendente>", chiave `ecm:<id movimento>`, `cro` dal "RIF. …").
+  Scrive `pagamenti_esiti` + `paghe_mensili` (stato ricalcolato dal motore
+  unico HR) oppure la coda HR `bonifici_da_associare`.
+- Regole: dipendente da CF → nome completo univoco → cognome univoco; il
+  fascicolo Drive della persona vale come identità E come segnale "stipendio"
+  (le causali dei PDF reali sono `AGGIUNTIVA`/`ricevuta per ordinante`); dalla
+  banca serve la parola stipendio/stip/salario/acconto/saldo in causale,
+  altrimenti coda; TFR, fatture, commissioni, fornitori mai (nemmeno in coda);
+  competenza da causale/nome file, altrimenti regola del giorno 25
+  (`stipendi_bonifici.competenza_bonifico_stipendio`); stesso pagamento visto
+  da PDF e da banca (stesso dipendente, importo, data ±3 gg) → un solo esito,
+  arricchito (cro/hash/PDF), mai duplicato; stesso hash già in HR (importer
+  Drive HR `drive:`) → duplicato.
+- Ogni documento sorgente riceve `hr_deposito` (`esito`, `key`,
+  `dipendente_id`, `at`): il job scheduler `hr_pagamenti_deposito` (ogni 15
+  min, primo giro avvio+6 min) riprende solo i documenti senza marcatore, per
+  qualunque punto di inserimento. Backfill/prova a mano: `POST
+  /api/prima-nota-salari/deposita-pagamenti-hr?dry_run=true` (admin).
+- Fix a latere: `document_data_saver.save_estratto_conto_to_gestionale` usava
+  `hash()` di Python nell'id (cambia a ogni riavvio del processo → il controllo
+  duplicati non funzionava mai fra riavvii); ora `sha1` stabile.
+
 ### Stato precedente
 
 - Il default del codice è `DATA_BACKEND=sheets`.
