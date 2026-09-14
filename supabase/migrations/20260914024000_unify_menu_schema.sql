@@ -65,3 +65,22 @@ end $$;
 
 create unique index if not exists menu_products_lotti_ref_uidx
   on menu.menu_products(lotti_ref) where lotti_ref is not null;
+
+-- Gateway di compatibilita per il client Menu esistente. I dati restano nello
+-- schema menu; le viste semplici sono aggiornabili e security_invoker conserva
+-- i controlli RLS delle tabelle sottostanti senza esporre un nuovo schema API.
+create or replace view public.menu_categories with (security_invoker = true) as select * from menu.menu_categories;
+create or replace view public.menu_subcategories with (security_invoker = true) as select * from menu.menu_subcategories;
+create or replace view public.menu_products with (security_invoker = true) as select * from menu.menu_products;
+create or replace view public.menu_allergens with (security_invoker = true) as select * from menu.menu_allergens;
+create or replace view public.menu_qrcode_config with (security_invoker = true) as select * from menu.menu_qrcode_config;
+create or replace view public.menu_orders with (security_invoker = true) as select * from menu.menu_orders;
+create or replace view public.menu_warehouse_items with (security_invoker = true) as select * from menu.menu_warehouse_items;
+create or replace view public.menu_warehouse_movements with (security_invoker = true) as select * from menu.menu_warehouse_movements;
+create or replace view public.menu_sale with (security_invoker = true) as select * from menu.menu_sale;
+
+grant select, insert, update, delete on
+  public.menu_categories, public.menu_subcategories, public.menu_products,
+  public.menu_allergens, public.menu_qrcode_config, public.menu_orders,
+  public.menu_warehouse_items, public.menu_warehouse_movements, public.menu_sale
+to anon, authenticated, service_role;
