@@ -659,9 +659,10 @@ si rigenerano dal codice e non si correggono a mano.
 | `GOOGLE_CLIENT_ID` | app-runtime | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/lotti/auth.py` |
 | `GOOGLE_CLIENT_SECRET` | app-runtime | segreta | `Optional[str]` / valore non riportato | `app/config.py` |
 | `GOOGLE_DRIVE_AVVISI_BONARI_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
-| `GOOGLE_DRIVE_BONIFICI_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
+| `GOOGLE_DRIVE_BONIFICI_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py`, `render.yaml` |
+| `GOOGLE_DRIVE_BONIFICI_FOLDER_IDS` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py`, `render.yaml` |
 | `GOOGLE_DRIVE_CARTELLE_ESATTORIALI_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
-| `GOOGLE_DRIVE_CEDOLINI_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
+| `GOOGLE_DRIVE_CEDOLINI_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py`, `render.yaml` |
 | `GOOGLE_DRIVE_CORRISPETTIVI_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `GOOGLE_DRIVE_DICHIARAZIONI_IVA_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `GOOGLE_DRIVE_DOCUMENT_INDEX_FILE_ID` | drive-sheets | configurazione | non dichiarato in Settings | `render_workflows/document_ingest.py` |
@@ -825,9 +826,10 @@ Questa tabella è l'inventario canonico degli alias di cartella. Gli ID sono con
 | `DRIVE_PRESENZE_FOLDER_ID` | `None` | `app/config.py` |
 | `DRIVE_VERBALI_FOLDER_ID` | `None` | `app/config.py` |
 | `GOOGLE_DRIVE_AVVISI_BONARI_FOLDER_ID` | `None` | `app/config.py` |
-| `GOOGLE_DRIVE_BONIFICI_FOLDER_ID` | `None` | `app/config.py` |
+| `GOOGLE_DRIVE_BONIFICI_FOLDER_ID` | `None` | `app/config.py`, `render.yaml` |
+| `GOOGLE_DRIVE_BONIFICI_FOLDER_IDS` | `None` | `app/config.py`, `render.yaml` |
 | `GOOGLE_DRIVE_CARTELLE_ESATTORIALI_FOLDER_ID` | `None` | `app/config.py` |
-| `GOOGLE_DRIVE_CEDOLINI_FOLDER_ID` | `None` | `app/config.py` |
+| `GOOGLE_DRIVE_CEDOLINI_FOLDER_ID` | `None` | `app/config.py`, `render.yaml` |
 | `GOOGLE_DRIVE_CORRISPETTIVI_FOLDER_ID` | `None` | `app/config.py` |
 | `GOOGLE_DRIVE_DICHIARAZIONI_IVA_FOLDER_ID` | `None` | `app/config.py` |
 | `GOOGLE_DRIVE_ESTRATTI_FOLDER_ID` | `None` | `app/config.py` |

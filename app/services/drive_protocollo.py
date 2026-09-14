@@ -45,6 +45,12 @@ PAGINA_DRIVE = 1000
 LOTTO_UPSERT = 1000
 # Cartelle che non devono mai vincere come copia canonica di un duplicato.
 PREFISSI_NON_CANONICI = ("90_ARCHIVIO_STORICO/", "00_DA_CLASSIFICARE/", "_QUARANTENA")
+# Cartelle strutturali che non identificano mai il soggetto di un documento
+# (stati lifecycle e sotto-sezioni del fascicolo dipendente).
+CARTELLE_NON_SOGGETTO = frozenset({
+    "da elaborare", "elaborate", "errori",
+    "bonifici", "certificazioni uniche", "contratti", "documenti",
+})
 _ANNO_RE = re.compile(r"(?<!\d)(20[0-3]\d)(?!\d)")
 _sync_lock = asyncio.Lock()
 
@@ -144,7 +150,11 @@ def riga_pubblica(riga: Dict[str, Any]) -> Dict[str, Any]:
     """Forma compatibile con il tab 'Indice Drive' del hub Documenti."""
     percorso = riga.get("percorso") or ""
     cartelle = percorso.split("/")[:-1]
-    soggetto = cartelle[-1] if cartelle else None
+    # Il soggetto e' l'ultima cartella "parlante": per un cedolino in
+    # DIPENDENTI/ROSSI MARIO/ELABORATE il soggetto e' ROSSI MARIO, non lo
+    # stato lifecycle ne' la sotto-sezione del fascicolo (BONIFICI, ...).
+    parlanti = [c for c in cartelle if c.casefold() not in CARTELLE_NON_SOGGETTO]
+    soggetto = parlanti[-1] if parlanti else None
     stato = "RIMOSSO" if riga.get("stato") == "rimosso" else (
         "DUPLICATO" if riga.get("duplicato_di") else "ATTIVO")
     dimensione = riga.get("dimensione")

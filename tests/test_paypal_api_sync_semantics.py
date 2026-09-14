@@ -100,3 +100,68 @@ def test_riconcilia_intervallo_che_attraversa_due_anni(monkeypatch):
         assert result["banca"]["proposte"] == 2
 
     _run(scenario())
+
+
+def test_sync_incrementale_non_interroga_paypal_per_finestre_di_pochi_secondi(monkeypatch):
+    """Apertura pagina subito dopo una sync riuscita: nessuna chiamata a PayPal,
+    checkpoint invariato (14/09/2026: finestra di 6 s -> 404 -> 500)."""
+    async def scenario():
+        from datetime import timedelta
+
+        db = MemorySheetsClient().db
+        chiamate = []
+
+        async def fake_period(_db, start, end):
+            chiamate.append((start, end))
+            return {"total": 0, "enriched": 0}
+
+        monkeypatch.setattr(sync_module, "sync_paypal_period", fake_period)
+        recente = (datetime.now(timezone.utc) - timedelta(seconds=30)).isoformat()
+        await db[sync_module.CHECKPOINT_COLL].insert_one({
+            "id": "paypal_default_account",
+            "lock_until": "2000-01-01T00:00:00+00:00",
+            "last_success_end": recente,
+        })
+
+        esito = await sync_module.sync_paypal_incremental(db)
+
+        assert esito["status"] == "up_to_date"
+        assert esito["last_success_end"] == recente
+        assert chiamate == []
+        dopo = await db[sync_module.CHECKPOINT_COLL].find_one({"id": "paypal_default_account"}, {"_id": 0})
+        assert dopo["last_success_end"] == recente
+        assert dopo["status"] == "up_to_date"
+
+        # intervallo piu' vecchio del minimo: PayPal viene interrogato
+        vecchio = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+        await db[sync_module.CHECKPOINT_COLL].update_one(
+            {"id": "paypal_default_account"},
+            {"$set": {"last_success_end": vecchio, "lock_until": "2000-01-01T00:00:00+00:00"}},
+        )
+        esito = await sync_module.sync_paypal_incremental(db)
+        assert esito["status"] == "updated"
+        assert len(chiamate) == 1
+
+    _run(scenario())
+
+
+def test_endpoint_sync_incrementale_risponde_502_su_errore_paypal(monkeypatch):
+    import httpx
+    from fastapi import HTTPException
+
+    async def scenario():
+        async def fallisce(_db):
+            request = httpx.Request("GET", "https://api.paypal.com/v1/reporting/transactions")
+            raise httpx.HTTPStatusError("404", request=request, response=httpx.Response(404, request=request))
+
+        monkeypatch.setattr(api_router, "sync_paypal_incremental", fallisce)
+        monkeypatch.setattr(api_router.Database, "get_db", staticmethod(lambda: MemorySheetsClient().db))
+        try:
+            await api_router.sync_incremental()
+        except HTTPException as exc:
+            assert exc.status_code == 502
+            assert "PayPal" in exc.detail
+        else:
+            raise AssertionError("atteso HTTPException 502")
+
+    _run(scenario())

@@ -192,6 +192,14 @@ def test_riga_pubblica_ha_la_forma_del_tab_indice_drive():
     })
     assert pub["document_id"] == "F1"
     assert pub["subject"] == "ROSSI MARIO"
+    # nel fascicolo per persona il soggetto resta la persona, non lo stato
+    # lifecycle ne' la sotto-sezione (BONIFICI, CERTIFICAZIONI UNICHE)
+    for percorso in (
+        "05/DIPENDENTI/ROSSI MARIO/ELABORATE/Busta paga Marzo 2025.pdf",
+        "05/DIPENDENTI/ROSSI MARIO/BONIFICI/DA ELABORARE/bonifico.pdf",
+        "05/DIPENDENTI/ROSSI MARIO/CERTIFICAZIONI UNICHE/CU 2024.pdf",
+    ):
+        assert modulo.riga_pubblica({"drive_id": "Z", "nome": "x.pdf", "percorso": percorso, "stato": "attivo"})["subject"] == "ROSSI MARIO"
     assert pub["domain"] == "05"
     assert pub["display_title"] == "Busta paga Marzo 2025"
     assert pub["status"] == "DUPLICATO"

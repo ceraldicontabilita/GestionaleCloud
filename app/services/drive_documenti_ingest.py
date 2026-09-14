@@ -34,6 +34,7 @@ from app.services.drive_invoice_ingest import (
     _move_to_elaborate,
 )
 from app.services.drive_lifecycle_tree import (
+    discover_inboxes,
     discover_lifecycle_folders,
     resolve_inboxes_or_legacy,
 )
@@ -47,8 +48,14 @@ CANALI: Dict[str, Dict[str, Any]] = {
         "category": "bonifico",
         "label": "Bonifici effettuati",
         "folder": lambda s: s.GOOGLE_DRIVE_BONIFICI_FOLDER_ID or get_folder_id("bonifico"),
+        "folders": lambda s: [x for x in str(s.GOOGLE_DRIVE_BONIFICI_FOLDER_IDS or "").split(",") if x.strip()],
         "enable": lambda s: s.ENABLE_DRIVE_BONIFICI_SYNC,
-        "lifecycle_depth": 2,
+        # Fascicolo per persona (05_PERSONALE_E_CEDOLINI/DIPENDENTI, stessa
+        # radice dei cedolini): <radice>/<COGNOME NOME>/BONIFICI/DA ELABORARE.
+        # Profondita' 3 col vincolo sul nome della cartella madre: le inbox dei
+        # cedolini (<COGNOME NOME>/DA ELABORARE) NON sono bonifici.
+        "lifecycle_depth": 3,
+        "lifecycle_parent_name": "BONIFICI",
     },
     "dichiarazione_iva": {
         "category": "dichiarazione_iva",
@@ -96,16 +103,66 @@ def _folder_id(canale: str) -> Optional[str]:
     return CANALI[canale]["folder"](settings)
 
 
+def _folder_ids(canale: str) -> List[str]:
+    """Tutte le radici del canale, senza doppioni e nell'ordine dichiarato.
+
+    Il canale bonifici legge sia i fascicoli dipendenti
+    (``<persona>/BONIFICI/DA ELABORARE``) sia la cartella dei bonifici
+    generici ``03_BANCHE_E_PAGAMENTI/BONIFICI`` (``DA ELABORARE`` diretta):
+    ``GOOGLE_DRIVE_BONIFICI_FOLDER_IDS`` elenca le radici separate da virgola,
+    la variabile singola resta il fallback e il link della pagina HR."""
+    values: List[str] = []
+    extra = CANALI[canale].get("folders")
+    if extra:
+        values.extend(str(x).strip() for x in extra(settings) or [])
+    values.append(str(_folder_id(canale) or "").strip())
+    return list(dict.fromkeys(v for v in values if v))
+
+
 def is_enabled(canale: str) -> bool:
     return bool(CANALI[canale]["enable"](settings))
 
 
 def is_configured(canale: str) -> bool:
-    return bool(_folder_id(canale))
+    return bool(_folder_ids(canale))
 
 
 def _lifecycle_depth(canale: str) -> int:
     return int(CANALI[canale].get("lifecycle_depth", 1))
+
+
+def _lifecycle_parent_name(canale: str) -> Optional[str]:
+    """Nome esatto (case-insensitive) della cartella che deve contenere gli
+    stati lifecycle del canale; ``None`` = qualunque cartella entro la
+    profondita'."""
+    value = CANALI[canale].get("lifecycle_parent_name")
+    return str(value).strip() or None if value else None
+
+
+def _nome_cartella_madre(relative_path: str) -> str:
+    """``ROSSI MARIO/BONIFICI/DA ELABORARE`` -> ``BONIFICI``."""
+    parts = [p for p in str(relative_path or "").split("/") if p]
+    return parts[-2] if len(parts) >= 2 else ""
+
+
+def _trova_inbox(service, root_id: str, canale: str) -> List[Dict[str, Any]]:
+    """Inbox del canale: con vincolo sulla cartella madre non si crea MAI una
+    inbox legacy alla radice (la radice e' condivisa con altri canali)."""
+    depth = _lifecycle_depth(canale)
+    parent_name = _lifecycle_parent_name(canale)
+    if not parent_name:
+        return resolve_inboxes_or_legacy(
+            service, root_id, _get_or_create_inbox_folder, max_depth=depth,
+        )
+    wanted = parent_name.casefold()
+    return [
+        inbox for inbox in discover_inboxes(service, root_id, max_depth=depth)
+        # una inbox DIRETTA sotto la radice (radice dedicata al canale, es.
+        # 03_BANCHE_E_PAGAMENTI/BONIFICI/DA ELABORARE) va sempre bene; piu' in
+        # profondita' vale solo dentro la cartella madre del canale.
+        if int(inbox.get("depth") or 0) == 1
+        or _nome_cartella_madre(inbox.get("relative_path") or "").casefold() == wanted
+    ]
 
 
 def _build_drive_service():
@@ -260,7 +317,7 @@ async def _do_sync(db, canale: str) -> Dict[str, Any]:
             "message": f"Service Drive non disponibile: {service_error or 'errore sconosciuto'}",
         }
 
-    root_id = _folder_id(canale)
+    root_ids = _folder_ids(canale)
     result: Dict[str, Any] = {
         "status": "ok",
         "canale": canale,
@@ -276,13 +333,9 @@ async def _do_sync(db, canale: str) -> Dict[str, Any]:
     }
 
     try:
-        inboxes = await asyncio.to_thread(
-            resolve_inboxes_or_legacy,
-            service,
-            root_id,
-            _get_or_create_inbox_folder,
-            max_depth=_lifecycle_depth(canale),
-        )
+        inboxes = []
+        for root_id in root_ids:
+            inboxes.extend(await asyncio.to_thread(_trova_inbox, service, root_id, canale))
         result["inboxes"] = len(inboxes)
         remaining = _batch_size()
         indice_hash: Optional[Dict[str, Dict[str, Any]]] = None

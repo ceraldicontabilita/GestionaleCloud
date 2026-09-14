@@ -854,7 +854,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/paypal-api/smappa-fornitore` | paypal_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/paypal-api/status` | paypal_api | sì | sì | sì | — | sì | tenere | in uso: FE, scheduler, chat |
 | `POST /api/paypal-api/sync` | paypal_api | sì | — | — | — | sì | tenere | in uso: FE |
-| `POST /api/paypal-api/sync/incremental` | paypal_api | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/paypal-api/sync/incremental` | paypal_api | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/paypal-api/sync/month` | paypal_api | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/paypal-api/webhook` | paypal_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/paypal-statements/auto-associa` | paypal_statements | — | sì | — | — | sì | tenere | in uso: scheduler |
