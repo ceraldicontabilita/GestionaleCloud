@@ -330,3 +330,19 @@ def test_quarantena_senza_cartella_configurata(monkeypatch):
     monkeypatch.setattr(settings, "GOOGLE_DRIVE_QUARANTENA_FOLDER_ID", None)
     with pytest.raises(RuntimeError):
         _run(modulo.sposta_in_quarantena(["F3"], service=DriveFinto(ALBERO)))
+
+
+def test_dsn_diretta_preferisce_la_variabile_hr_viva(monkeypatch):
+    """SUPABASE_DB_URL in produzione puntava a un progetto morto (14/09/2026):
+    l'ordine deve essere quello del deposito cedolini HR, con la variabile
+    generica per ultima."""
+    from app.services import postgres_diretto
+    from app.services import hr_cedolini_deposito
+
+    assert postgres_diretto.ENV_DSN == hr_cedolini_deposito.ENV_DSN_HR
+    monkeypatch.setenv("SUPABASE_DB_URL", "postgresql://morta")
+    monkeypatch.setenv("HR_SUPABASE_DB_URL", "postgresql://viva")
+    monkeypatch.delenv("APPDIPENDENTI_DB_URL", raising=False)
+    assert postgres_diretto.dsn() == "postgresql://viva"
+    monkeypatch.delenv("HR_SUPABASE_DB_URL")
+    assert postgres_diretto.dsn() == "postgresql://morta"

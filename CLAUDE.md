@@ -221,6 +221,18 @@ qui solo ciò che è stato **cambiato** e dove sta il backup (tutto reversibile)
 | `invoices` | 1776634697838: stesso XML della 1785273160323 ma attribuita a PIETRO CASTALDO (l'XML dice GIUSEPPE GARGIULO) | rimossa (786 fatture) | `gestionale.documents_rimossi_20260914` |
 | `corrispettivi` | 181 chiusure legacy con **l'imponibile in `totale_iva`/`iva10`** (totale/1,1): la liquidazione IVA (`iva_liquidation_query.py`) sommava € 471.708 di "IVA" su gen–ago | `totale_imponibile`/`imponibile10` = totale/1,1, `totale_iva`/`iva10`/`iva_da_versare10` = totale − imponibile (**aliquota 10% presunta**, resta DA_VERIFICARE finché non arriva l'XML RT); IVA totale € 47.170,88; il frontend (#442) legge `totale_imponibile` e non applica più l'euristica | `gestionale.corrispettivi_iva_prima_20260914` |
 
+Primo giro reale dopo lo switch (17:25 UTC): scheduler avviato, ingest Drive
+fatture (975 in coda, 25 archiviate per giro), estratti conto (291 documenti
+pre-2026 lasciati fermi per scelta, 39 in coda), cedolini (49 inbox = i
+fascicoli, 0 nuovi), canale bonifici sul fascicolo (`VESPA VINCENZO/BONIFICI/
+DA ELABORARE/...` importati), sync paghe HR (1.175 cedolini, 648 bonifici).
+Il protocollo Drive è fallito al primo giro: `postgres_diretto.ENV_DSN`
+leggeva prima `SUPABASE_DB_URL`, che su Render punta ancora a un progetto
+Supabase **morto** (`postgres.jqguwrahxeilcikplaxi`); ora l'ordine è quello
+del deposito HR (`HR_SUPABASE_DB_URL` prima). **Da fare sul pannello Render:
+aggiornare o togliere `SUPABASE_DB_URL`** (l'ERP usa `SUPABASE_URL` + segreto
+runtime, non la DSN).
+
 Verificato e lasciato com'è: i 68 movimenti banca `_dupN` hanno `legacy_row_hash`
 diversi dalla riga base → righe legacy distinte (es. due commissioni uguali lo
 stesso giorno), non doppioni.
