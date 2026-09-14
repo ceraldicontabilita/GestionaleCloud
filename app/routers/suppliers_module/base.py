@@ -370,8 +370,22 @@ async def list_suppliers(
         supplier = _legacy_supplier_view(raw_supplier)
         # P.IVA anche nei campi legacy: i fornitori storici usano 'piva'/'vat_number'
         piva = supplier.get("partita_iva") or supplier.get("piva") or supplier.get("vat_number")
-        if piva:
-            suppliers_map[_normalized_supplier_key(piva)] = {
+        # L'archivio storico contiene anche anagrafiche documentate dal nome e
+        # dall'ID sorgente ma prive di P.IVA. Non vanno nascoste e non va
+        # inventata una P.IVA per renderle visibili: usiamo l'ID soltanto come
+        # chiave tecnica della vista. L'aggancio fiscale resta possibile solo
+        # quando esiste davvero una P.IVA.
+        identity = _normalized_supplier_key(piva)
+        if not identity:
+            source_id = supplier.get("id") or raw_supplier.get("id")
+            name = (
+                supplier.get("ragione_sociale")
+                or supplier.get("denominazione")
+                or supplier.get("name")
+            )
+            identity = f"id:{source_id}" if source_id else f"nome:{_normalized_supplier_key(name)}"
+        if identity and identity not in {"id:", "nome:"}:
+            suppliers_map[identity] = {
                 **supplier,
                 "fatture_count": supplier.get("fatture_count", 0),
                 "fatture_totale": 0,
