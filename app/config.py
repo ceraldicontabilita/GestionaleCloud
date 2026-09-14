@@ -161,6 +161,12 @@ class Settings(BaseSettings):
     # Archivio documentale esterno: il gestionale legge esclusivamente
     # l'indice Excel e lascia i file originali su Google Drive.
     DRIVE_DOCUMENT_INDEX_ROOT_FOLDER_ID: str = "1tmVu6fl7qhJbLcGCHT3wEQzrvFAElc9h"
+    # Protocollo-indice vivo (14/09/2026): radice GESTIONALE su Drive da
+    # percorrere per intero e cartella di quarantena dei duplicati certi.
+    # Gli ID stanno su Render; senza radice il giro non parte e lo dice.
+    GOOGLE_DRIVE_GESTIONALE_ROOT_FOLDER_ID: Optional[str] = None
+    GOOGLE_DRIVE_QUARANTENA_FOLDER_ID: Optional[str] = None
+    PROTOCOLLO_DRIVE_ENABLED: bool = True
     GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON: Optional[str] = None
 
     # Service account DEDICATI per cartella (scelta utente: un account per

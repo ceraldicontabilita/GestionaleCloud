@@ -903,6 +903,26 @@ def start_scheduler():
         replace_existing=True,
     )
 
+    async def _protocollo_drive_job():
+        """Protocollo-indice vivo: riconcilia Drive con gestionale.protocollo_drive.
+        Solo lettura su Drive; i file spariti restano come 'rimosso'."""
+        from app.services.drive_protocollo import sincronizza
+        try:
+            esito = await sincronizza()
+            logger.info("[SCHEDULER-PROTOCOLLO-DRIVE] %s", esito)
+        except Exception as exc:
+            logger.error("[SCHEDULER-PROTOCOLLO-DRIVE] errore: %s", exc)
+
+    scheduler.add_job(
+        _protocollo_drive_job,
+        'interval', hours=6,
+        next_run_time=avvio + timedelta(minutes=8),
+        misfire_grace_time=600,
+        coalesce=True,
+        id="protocollo_drive", name="Protocollo-indice documenti Drive (ogni 6 ore)",
+        replace_existing=True,
+    )
+
     scheduler.add_job(
         _drive_f24_job,
         'interval', hours=1,

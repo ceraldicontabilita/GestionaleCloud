@@ -94,6 +94,13 @@ services:
       # HR_SUPABASE_DB_URL (stesso database).
       - key: APPDIPENDENTI_DB_URL
         sync: false
+      # --- Protocollo-indice vivo dei documenti su Drive (14/09/2026):
+      # radice GESTIONALE da percorrere e cartella di quarantena dei duplicati
+      # certi. Il giro periodico riconcilia Drive con gestionale.protocollo_drive.
+      - key: GOOGLE_DRIVE_GESTIONALE_ROOT_FOLDER_ID
+        sync: false
+      - key: GOOGLE_DRIVE_QUARANTENA_FOLDER_ID
+        sync: false
       - key: SHEETS_REGISTRY_NAME
         value: "GestionaleCloud"
       - key: PROCESS_ROLE

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   BadgeCheck, Database, ExternalLink, FileCheck2, FileText,
-  LoaderCircle, ReceiptText, Search, ShieldCheck, X,
+  LoaderCircle, ReceiptText, RefreshCw, Search, ShieldCheck, X,
 } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../api';
@@ -34,6 +34,9 @@ export default function DriveDocumentIndex() {
   const [activeTab, setActiveTab] = useState(folderQuery ? 'documents' : 'overview');
   const [query, setQuery] = useState(folderQuery);
   const [year, setYear] = useState('');
+  const [showRemoved, setShowRemoved] = useState(false);
+  const [onlyDuplicates, setOnlyDuplicates] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [taxCode, setTaxCode] = useState('');
   const [status, setStatus] = useState(null);
   const [overview, setOverview] = useState(null);
@@ -43,8 +46,11 @@ export default function DriveDocumentIndex() {
   const [selected, setSelected] = useState(null);
   const [opening, setOpening] = useState('');
 
+  // "Documenti" legge il protocollo vivo (gestionale.protocollo_drive):
+  // una riga per file su Drive, aggiornata dal giro periodico. F24 e
+  // dichiarazioni restano sull'indice Excel, che porta i dati di merito.
   const endpoint = useMemo(() => ({
-    documents: '/api/documenti/drive/index/search',
+    documents: '/api/documenti/drive/protocollo/search',
     f24: '/api/documenti/drive/index/f24',
     declarations: '/api/documenti/drive/index/declarations',
   })[activeTab], [activeTab]);
@@ -59,6 +65,8 @@ export default function DriveDocumentIndex() {
           q: query || undefined,
           year: year || undefined,
           tax_code: activeTab === 'f24' && taxCode ? taxCode : undefined,
+          includi_rimossi: activeTab === 'documents' && showRemoved ? true : undefined,
+          solo_duplicati: activeTab === 'documents' && onlyDuplicates ? true : undefined,
           limit: 200,
         },
       });
@@ -68,24 +76,37 @@ export default function DriveDocumentIndex() {
     } finally {
       setLoading(false);
     }
-  }, [activeTab, endpoint, query, taxCode, year]);
+  }, [activeTab, endpoint, query, taxCode, year, showRemoved, onlyDuplicates]);
+
+  const refreshProtocol = async () => {
+    setRefreshing(true);
+    setError('');
+    try {
+      await api.post('/api/documenti/drive/protocollo/sync');
+      const response = await api.get('/api/documenti/drive/protocollo/status');
+      setStatus(response.data);
+    } catch (requestError) {
+      setError(requestError.response?.data?.detail || 'Aggiornamento del protocollo non avviato');
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   useEffect(() => {
     let active = true;
-    Promise.all([
-      api.get('/api/documenti/drive/index/status'),
-      api.get('/api/documenti/drive/index/overview'),
-    ]).then(([statusResponse, overviewResponse]) => {
-      if (!active) return;
-      setStatus(statusResponse.data);
-      setOverview(overviewResponse.data);
-      setLoading(false);
-    }).catch(requestError => {
-      if (active) {
-        setError(requestError.response?.data?.detail || 'Indice Drive non disponibile');
-        setLoading(false);
-      }
-    });
+    // Il protocollo vivo e l'indice Excel sono due sorgenti: se una manca,
+    // l'altra resta usabile (prima un solo errore spegneva tutta la pagina).
+    api.get('/api/documenti/drive/protocollo/status')
+      .then(response => { if (active) setStatus(response.data); })
+      .catch(requestError => {
+        if (active) setError(requestError.response?.data?.detail || 'Protocollo Drive non disponibile');
+      });
+    api.get('/api/documenti/drive/index/overview')
+      .then(response => { if (active) setOverview(response.data); })
+      .catch(requestError => {
+        if (active) setError(requestError.response?.data?.detail || 'Indice Excel dei controlli non disponibile');
+      })
+      .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, []);
 
@@ -99,7 +120,10 @@ export default function DriveDocumentIndex() {
     setOpening(documentId);
     setError('');
     try {
-      const response = await api.get(`/api/documenti/drive/index/document/${encodeURIComponent(documentId)}`);
+      const detailEndpoint = activeTab === 'documents'
+        ? `/api/documenti/drive/protocollo/documento/${encodeURIComponent(documentId)}`
+        : `/api/documenti/drive/index/document/${encodeURIComponent(documentId)}`;
+      const response = await api.get(detailEndpoint);
       setSelected(response.data);
       return response.data;
     } catch (requestError) {
@@ -144,7 +168,18 @@ export default function DriveDocumentIndex() {
           <h2>Archivio documentale Google Drive</h2>
           <p>Metadati e relazioni nel Gestionale; PDF, XML e ZIP originali restano su Drive.</p>
         </div>
-        {status && <span className="drive-index__count"><BadgeCheck size={15} /> {status.documents} documenti verificati</span>}
+        <div className="drive-index__row-actions">
+          {status && (
+            <span className="drive-index__count">
+              <BadgeCheck size={15} /> {status.documents} documenti nel protocollo
+              {status.rimossi ? ` · ${status.rimossi} rimossi` : ''}
+              {status.duplicati ? ` · ${status.duplicati} duplicati` : ''}
+            </span>
+          )}
+          <button type="button" className="is-secondary" onClick={refreshProtocol} disabled={refreshing}>
+            {refreshing ? <LoaderCircle className="is-spinning" size={16} /> : <RefreshCw size={16} />} Aggiorna indice adesso
+          </button>
+        </div>
       </header>
 
       <nav className="drive-index__tabs" aria-label="Sezioni archivio Drive">
@@ -170,6 +205,18 @@ export default function DriveDocumentIndex() {
               <span>Codice tributo</span>
               <input value={taxCode} onChange={event => setTaxCode(event.target.value)} placeholder="es. 1001" />
             </label>
+          )}
+          {activeTab === 'documents' && (
+            <>
+              <label>
+                <span>Rimossi da Drive</span>
+                <input type="checkbox" checked={showRemoved} onChange={event => setShowRemoved(event.target.checked)} />
+              </label>
+              <label>
+                <span>Solo duplicati</span>
+                <input type="checkbox" checked={onlyDuplicates} onChange={event => setOnlyDuplicates(event.target.checked)} />
+              </label>
+            </>
           )}
           <button type="submit" disabled={loading}>
             {loading ? <LoaderCircle className="is-spinning" size={17} /> : <Search size={17} />} Cerca

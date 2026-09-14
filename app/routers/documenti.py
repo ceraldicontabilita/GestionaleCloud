@@ -211,6 +211,116 @@ async def dettaglio_indice_documentale_drive(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
+# ── Protocollo-indice vivo (gestionale.protocollo_drive) ──────────────────────
+# Sostituisce, per la ricerca dei documenti, l'indice Excel statico: una riga
+# per file su Drive, riconciliata da un giro periodico. I file spariti da
+# Drive restano come 'rimosso'; i duplicati certi (stesso MD5) si spostano in
+# quarantena solo su richiesta esplicita, mai in automatico.
+
+@router.get("/drive/protocollo/status")
+async def stato_protocollo_drive(
+    _admin: Dict[str, Any] = Depends(richiedi_admin),
+) -> Dict[str, Any]:
+    from app.services.drive_protocollo import stato
+    try:
+        return await stato()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/drive/protocollo/search")
+async def cerca_protocollo_drive(
+    q: Optional[str] = Query(None, max_length=200),
+    area: Optional[str] = Query(None, max_length=120),
+    anno: Optional[int] = Query(None, ge=2000, le=2039),
+    year: Optional[str] = Query(None, max_length=10),
+    includi_rimossi: bool = Query(False),
+    solo_duplicati: bool = Query(False),
+    limit: int = Query(200, ge=1, le=500),
+    _admin: Dict[str, Any] = Depends(richiedi_admin),
+) -> Dict[str, Any]:
+    """Ricerca nel protocollo (nome, percorso o MD5). `year` e' accettato per
+    compatibilita' con il tab Indice Drive, che lo manda come testo."""
+    from app.services.drive_protocollo import cerca
+    if anno is None and year and year.strip().isdigit():
+        anno = int(year.strip())
+    try:
+        return await cerca(q=q, area=area, anno=anno, includi_rimossi=includi_rimossi,
+                           solo_duplicati=solo_duplicati, limit=limit)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/drive/protocollo/documento/{drive_id}")
+async def dettaglio_protocollo_drive(
+    drive_id: str,
+    _admin: Dict[str, Any] = Depends(richiedi_admin),
+) -> Dict[str, Any]:
+    from app.services.drive_protocollo import documento
+    try:
+        riga = await documento(drive_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    if not riga:
+        raise HTTPException(status_code=404, detail="Documento non presente nel protocollo")
+    return riga
+
+
+@router.get("/drive/protocollo/duplicati")
+async def duplicati_protocollo_drive(
+    limit: int = Query(200, ge=1, le=1000),
+    _admin: Dict[str, Any] = Depends(richiedi_admin),
+) -> Dict[str, Any]:
+    """Gruppi di file con lo stesso MD5: copia canonica e copie in eccesso."""
+    from app.services.drive_protocollo import duplicati
+    try:
+        return await duplicati(limit=limit)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.post("/drive/protocollo/sync")
+async def aggiorna_protocollo_drive(
+    background_tasks: BackgroundTasks,
+    _admin: Dict[str, Any] = Depends(richiedi_admin),
+) -> Dict[str, Any]:
+    """'Aggiorna indice adesso': il giro parte in background e si serializza
+    da solo con quello periodico (mai due giri insieme)."""
+    from app.services.drive_protocollo import abilitato, radice, sincronizza
+    if not abilitato():
+        raise HTTPException(status_code=503, detail="Protocollo Drive disattivato (PROTOCOLLO_DRIVE_ENABLED)")
+    if not radice():
+        raise HTTPException(status_code=503, detail="Radice Drive non configurata (GOOGLE_DRIVE_GESTIONALE_ROOT_FOLDER_ID)")
+
+    async def _giro():
+        try:
+            await sincronizza()
+        except Exception as exc:  # noqa: BLE001 - gia' loggato e registrato nel giro
+            logger.error("[PROTOCOLLO-DRIVE] giro manuale fallito: %s", exc)
+
+    background_tasks.add_task(_giro)
+    return {"status": "scheduled", "message": "Aggiornamento del protocollo avviato: ricarica fra qualche minuto."}
+
+
+@router.post("/drive/protocollo/quarantena")
+async def quarantena_protocollo_drive(
+    body: Dict[str, Any],
+    _admin: Dict[str, Any] = Depends(richiedi_admin),
+) -> Dict[str, Any]:
+    """Sposta in quarantena le copie duplicate indicate (mai la canonica,
+    mai una cancellazione). Richiede l'elenco esplicito degli id Drive."""
+    from app.services.drive_protocollo import sposta_in_quarantena
+    ids = [str(x) for x in (body.get("drive_ids") or []) if x]
+    if not ids:
+        raise HTTPException(status_code=422, detail="Indicare drive_ids da spostare")
+    if len(ids) > 500:
+        raise HTTPException(status_code=422, detail="Massimo 500 file per richiesta")
+    try:
+        return await sposta_in_quarantena(ids)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 @router.post("/drive/sync")
 async def sincronizza_cartelle_drive(
     background_tasks: BackgroundTasks,
