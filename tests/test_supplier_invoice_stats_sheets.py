@@ -81,3 +81,32 @@ async def _test_fornitore_storico_senza_piva_resta_visibile_senza_piva_inventata
     assert len(result) == 1
     assert result[0]["id"] == "legacy-supplier-1"
     assert not result[0].get("partita_iva")
+
+
+def test_match_key_nome_non_diventa_piva_e_non_fonde_id_distinti():
+    asyncio.run(_test_match_key_nome_non_diventa_piva_e_non_fonde_id_distinti())
+
+
+async def _test_match_key_nome_non_diventa_piva_e_non_fonde_id_distinti():
+    from app.database import Database
+    from app.routers.suppliers_module import base
+
+    db = MemorySheetsClient()["supplier_same_name_distinct_ids"]
+    await db["fornitori"].insert_many([
+        {"id": "legacy-1", "name": "ALFA SRL", "match_key": "ALFASRL"},
+        {"id": "legacy-2", "name": "ALFA S.R.L.", "match_key": "ALFASRL"},
+    ])
+    original_get_db = Database.get_db
+    Database.get_db = classmethod(lambda cls: db)
+    try:
+        result = await base.list_suppliers(
+            skip=0, limit=500, search=None, metodo_pagamento=None,
+            attivo=None, esclude_magazzino=None, stato_anagrafica=None,
+            giorni_nuovo=90, prodotto=None, use_cache=False,
+        )
+    finally:
+        Database.get_db = original_get_db
+
+    assert len(result) == 2
+    assert {item["id"] for item in result} == {"legacy-1", "legacy-2"}
+    assert all(not item.get("partita_iva") for item in result)

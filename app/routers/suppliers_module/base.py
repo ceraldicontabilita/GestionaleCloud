@@ -60,15 +60,19 @@ def _legacy_supplier_view(supplier: Dict[str, Any]) -> Dict[str, Any]:
     """Espone anche i fornitori del nuovo DB alla UI storica senza riscriverli."""
     if not supplier.get("vat") and not supplier.get("match_key"):
         return supplier
-    piva = _normalized_supplier_key(
-        supplier.get("vat") or supplier.get("match_key")
-    )
+    explicit_vat = supplier.get("vat")
+    match_key = _normalized_supplier_key(supplier.get("match_key"))
+    # Alcuni archivi usano match_key come P.IVA, altri come nome normalizzato.
+    # Solo undici cifre costituiscono qui una P.IVA italiana utilizzabile.
+    piva = _normalized_supplier_key(explicit_vat)
+    if not piva and len(match_key) == 11 and match_key.isdigit():
+        piva = match_key
     name = supplier.get("name") or supplier.get("ragione_sociale") or ""
     return {
         **supplier,
         "id": supplier.get("id") or supplier.get("match_key") or piva,
-        "partita_iva": supplier.get("partita_iva") or piva,
-        "piva": supplier.get("piva") or piva,
+        "partita_iva": supplier.get("partita_iva") or piva or "",
+        "piva": supplier.get("piva") or piva or "",
         "ragione_sociale": supplier.get("ragione_sociale") or name,
         "denominazione": supplier.get("denominazione") or name,
         "nome": name,
