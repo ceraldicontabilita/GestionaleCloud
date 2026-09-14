@@ -77,6 +77,8 @@ services:
         sync: false
       - key: MENU_SUPABASE_KEY
         sync: false
+      - key: MENU_DB_SCHEMA
+        value: menu
       - key: MENU_JWT_SECRET
         sync: false
       - key: MENU_ADMIN_USERNAME

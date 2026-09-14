@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 from supabase import create_client, Client
+from supabase.lib.client_options import ClientOptions
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -34,7 +35,10 @@ def get_supabase() -> Client:
             raise RuntimeError(
                 "Menu: variabili d'ambiente MENU_SUPABASE_URL / MENU_SUPABASE_KEY non impostate"
             )
-        _client = create_client(url, key)
+        schema = _leggi_env('MENU_DB_SCHEMA') or 'public'
+        if not schema.replace('_', '').isalnum() or schema[0].isdigit():
+            raise RuntimeError("Menu: MENU_DB_SCHEMA non valido")
+        _client = create_client(url, key, options=ClientOptions(schema=schema))
     return _client
 
 
