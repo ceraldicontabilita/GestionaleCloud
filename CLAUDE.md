@@ -272,8 +272,10 @@ che si vede in `/hr/dipendenti/paghe-bonifici` viene alimentato da
   `FAVORE TAIANO LUIGI - ADD.TOT`, 12 righe lo stesso giorno = acconti/saldi
   del mese), altrimenti coda — e il giro successivo riesamina le righe in
   coda "senza segnale" se il giorno è diventato un lotto (ritira la riga
-  dalla coda HR); `BENEFICIARI VARI/DIVERSI` (cumulativo senza nomi) →
-  coda; TFR, fatture, commissioni, fornitori mai (nemmeno in coda);
+  dalla coda HR); `BENEFICIARI VARI/DIVERSI` (cumulativo senza nomi, anche
+  se la causale libera cita una persona: "Vincenzo ceraldi stipendi" 4.600 €
+  era per più dipendenti) → coda, e il giro toglie l'esito se era stato
+  attribuito a qualcuno; TFR, fatture, commissioni, fornitori mai (nemmeno in coda);
   competenza da causale/nome file, altrimenti regola del giorno 25
   (`stipendi_bonifici.competenza_bonifico_stipendio`); stesso pagamento visto
   da PDF e da banca (stesso dipendente, importo, data ±3 gg) → un solo esito,

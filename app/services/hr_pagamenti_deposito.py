@@ -390,10 +390,21 @@ async def _metti_in_coda(ctx: ContestoHR, *, hash_pdf: Optional[str], data: Opti
 
 
 async def _ricalcola_periodi(ctx: ContestoHR) -> None:
+    """Stessa sequenza dell'importatore Drive HR: prima ``bonifico_importo`` =
+    somma degli esiti del periodo (anche 0, se un esito e' stato tolto), poi
+    il motore unico ``_ricalcola_stato_paga``."""
     from app.hr.routers.dipendenti_cloud import _ricalcola_stato_paga
 
     while ctx.periodi_toccati:
         dip, anno, mese = ctx.periodi_toccati.pop()
+        tot = 0.0
+        async for e in ctx.db.pagamenti_esiti.find(
+                {"dipendente_id": dip, "mese": mese, "anno": anno}, {"_id": 0, "importo": 1}):
+            tot += float(e.get("importo") or 0)
+        await ctx.db.paghe_mensili.update_one(
+            {"dipendente_id": dip, "anno": anno, "mese": mese},
+            {"$set": {"bonifico_importo": round(tot, 2), "bonifico_ricevuto": tot > 0,
+                      "bonifico_da_esiti": True, "updated_at": _now_iso()}})
         await _ricalcola_stato_paga(ctx.db, dip, anno, mese)
 
 
@@ -720,6 +731,36 @@ async def deposita_pagamenti_in_hr(db, *, dry_run: bool = False, limit: int = 20
                 {"gestionale_movimento_id": mov.get("id"), "stato": "da_associare"},
                 {"$set": {"stato": "ritirato", "ritirato_il": _now_iso(),
                           "ritirato_motivo": "lotto_paghe: entrato nei pagamenti"}})
+        await _deposita_movimento(mov, "estratto_conto_riesame")
+
+    # Riesame 2: "FAVORE BENEFICIARI VARI/DIVERSI" (addebito cumulativo senza
+    # nomi). Nel primo giro reale (14/09/2026) finivano "non_dipendente"
+    # oppure, quando la causale libera citava una persona ("... - Vincenzo
+    # ceraldi stipendi", 4.600 EUR per piu' dipendenti), attribuiti a lei.
+    # Ora vanno sempre in coda: l'esito sbagliato viene tolto e il periodo
+    # ricalcolato, poi la riga rientra dal percorso normale.
+    cumulativi = [
+        m for m in await db["estratto_conto_movimenti"].find(
+            {f"{CAMPO_MARCATORE}.esito": {"$in": [ESITO_NON_DIPENDENTE, ESITO_DEPOSITATO]}}, {"_id": 0}
+        ).to_list(limit)
+        if _BENEFICIARI_DIVERSI_RE.search(str(m.get("descrizione") or m.get("descrizione_originale") or ""))
+        and movimento_candidato_stipendio(m)
+    ]
+    for mov in cumulativi:
+        marca_vecchia = mov.get(CAMPO_MARCATORE) or {}
+        if marca_vecchia.get("esito") == ESITO_DEPOSITATO and not dry_run:
+            key = marca_vecchia.get("key") or f"{PREFISSO_KEY_BANCA}:{mov.get('id')}"
+            esito_errato = await ctx.db.pagamenti_esiti.find_one({"key": key}, {"_id": 0, "pdf_data": 0})
+            if esito_errato:
+                await ctx.db.pagamenti_esiti.delete_one({"key": key})
+                ctx.per_key.pop(key, None)
+                for lista in ctx.per_dipendente.values():
+                    lista[:] = [e for e in lista if e.get("key") != key]
+                try:
+                    ctx.periodi_toccati.add((esito_errato["dipendente_id"],
+                                             int(esito_errato["anno"]), int(esito_errato["mese"])))
+                except (KeyError, TypeError, ValueError):
+                    pass
         await _deposita_movimento(mov, "estratto_conto_riesame")
 
     report["letti"] = {"bonifici_pdf": len(transfers), "estratto_conto": len(movimenti),

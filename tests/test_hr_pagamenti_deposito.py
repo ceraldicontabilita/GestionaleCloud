@@ -404,3 +404,36 @@ def test_riesame_righe_in_coda_che_ora_formano_un_lotto_paghe(basi):
     # secondo giro: niente da rifare
     ancora = _run(ponte.deposita_pagamenti_in_hr(db))
     assert ancora["estratto_conto_riesame"] == {} and ancora["letti"]["estratto_conto"] == 0
+
+
+def test_riesame_beneficiari_vari_toglie_l_esito_sbagliato_e_mette_in_coda(basi):
+    """Riga reale del 10/07/2026: 'FAVORE BENEFICIARI VARI DISTINTA - ADD.TOT -
+    Vincenzo ceraldi stipendi' (4.600 EUR, piu' persone) era stata attribuita
+    a Vespa/Ceraldi. Un cumulativo va sempre in coda."""
+    db, hr = basi
+    mov = _movimento(id="c-1", data="2026-07-10", importo=-4600,
+                     descrizione="VOSTRA DISPOSIZIONE - VS.DISP. RIF. MB0B87387468/90385606 FAVORE BENEFICIARI VARI DISTINTA - ADD.TOT - Vespa Vincenzo stipendi",
+                     hr_deposito={"esito": "depositato", "key": "ecm:c-1", "dipendente_id": "dip-vespa",
+                                  "mese": 6, "anno": 2026, "at": "x"})
+    vecchio = _movimento(id="c-2", data="2026-03-16", importo=-1147,
+                         descrizione="VS.DISP. RIF. MB0B30867928/90433783 FAVORE BENEFICIARI VARI DISTINTA - ADD.TOT",
+                         hr_deposito={"esito": "non_dipendente", "at": "x"})
+    _run(db.estratto_conto_movimenti.insert_many([mov, vecchio]))
+    _run(hr.pagamenti_esiti.insert_one({"key": "ecm:c-1", "dipendente_id": "dip-vespa", "data": "2026-07-10",
+                                        "importo": 4600.0, "mese": 6, "anno": 2026, "origine": ponte.ORIGINE_BANCA}))
+    _run(hr.paghe_mensili.insert_one({"dipendente_id": "dip-vespa", "anno": 2026, "mese": 6,
+                                      "importo_busta": 1300.0, "bonifico_importo": 4600.0, "stato_pagamento": "pagato"}))
+
+    report = _run(ponte.deposita_pagamenti_in_hr(db))
+
+    assert report["estratto_conto_riesame"] == {"in_coda": 2}
+    assert _run(hr.pagamenti_esiti.count_documents({})) == 0
+    paga = _run(hr.paghe_mensili.find_one({"dipendente_id": "dip-vespa", "anno": 2026, "mese": 6}))
+    assert paga["stato_pagamento"] == "in_attesa_pagamento"
+    marche = {m["id"]: m["hr_deposito"] for m in _run(db.estratto_conto_movimenti.find({}, {"_id": 0}).to_list(None))}
+    assert marche["c-1"]["esito"] == "in_coda" and marche["c-1"]["motivo"] == "beneficiari_diversi"
+    assert marche["c-2"]["esito"] == "in_coda"
+    assert _run(hr.bonifici_da_associare.count_documents({"stato": "da_associare"})) == 2
+    # idempotente
+    ancora = _run(ponte.deposita_pagamenti_in_hr(db))
+    assert ancora["estratto_conto_riesame"] == {}
