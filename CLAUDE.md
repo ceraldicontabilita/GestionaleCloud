@@ -350,6 +350,19 @@ che si vede in `/hr/dipendenti/paghe-bonifici` viene alimentato da
   Pellegrino Salvatore, Tramontano Giuseppe, Bettipilippuge Viraj, Mauro
   Mariano — da creare/collegare in anagrafica (decisione del titolare).
 
+### 14/09/2026 — bonifica design (colori)
+
+Skill `bonifica-design` applicata a tutto il repo: 128 colori freddi (blu/
+indaco/viola) in 37 file delle 4 app rimappati su salvia/sabbia, anello di
+focus Tailwind del Menu a salvia (`tailwind.config.js` → `ringColor.DEFAULT`),
+intestazioni PDF reportlab (report, presenze HR, bilancio, contabilità,
+export fatture, noleggio, email ordini Lotti) da blu/viola/navy a salvia.
+Verifica: 0 occorrenze nei bundle compilati. Scansione da ripetere dopo ogni
+modifica frontend: `grep -rEn "5D29C7|1E1B4B|7c3aed|8b5cf6|6366f1|4f46e5|
+violet-|indigo-|bg-blue-|bg-sky-|text-blue-|border-blue-|3b82f6|2563eb|1d4ed8"`
+su `frontend*/src` e sui bundle. Il test `frontend/src/components/
+AvvisoBonarioF24.test.jsx` vieta i colori freddi nel suo componente.
+
 ### Stato precedente
 
 - Il default del codice è `DATA_BACKEND=sheets`.
