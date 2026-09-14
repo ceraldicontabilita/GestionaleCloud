@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 
 COLL = "paypal_transactions"
 CHECKPOINT_COLL = "paypal_sync_checkpoints"
+# Sotto questa durata la sync incrementale non chiama PayPal (vedi
+# sync_paypal_incremental).
+INTERVALLO_MINIMO_SYNC = timedelta(minutes=5)
 
 PAGOPA_CUSTOM_PATTERN = re.compile(r'^E\d{13}[A-Za-z0-9]{3,4}$')
 PAGOPA_IUV_PATTERN = re.compile(r'\b0\d{17}\b')
@@ -210,7 +213,12 @@ async def sync_paypal_incremental(db: SheetDatabase) -> Dict[str, Any]:
     else:
         start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     end = now
-    if start > end:
+    # Ogni apertura della pagina PayPal richiama questa sync: se l'ultimo
+    # intervallo acquisito e' di pochi secondi fa non ha senso interrogare
+    # PayPal per una finestra di secondi (14/09/2026: finestra di 6 s ->
+    # 404 dal reporting API -> 500 in pagina). L'intervallo minimo e' di 5
+    # minuti; il checkpoint resta quello precedente, nessun dato saltato.
+    if start > end or (end - start) < INTERVALLO_MINIMO_SYNC:
         await db[CHECKPOINT_COLL].update_one(
             {"id": checkpoint_id, "lease_id": lease_id},
             {"$set": {"lock_until": now.isoformat(), "status": "up_to_date"}},

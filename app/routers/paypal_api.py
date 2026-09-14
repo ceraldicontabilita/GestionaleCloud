@@ -3,6 +3,8 @@ from fastapi.responses import FileResponse
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, Optional
 import logging
+
+import httpx
 import os
 import re
 
@@ -165,7 +167,17 @@ async def sync_current_month():
 async def sync_incremental():
     """Sync automatica idempotente usata all'apertura della pagina PayPal."""
     db = Database.get_db()
-    result = await sync_paypal_incremental(db)
+    try:
+        result = await sync_paypal_incremental(db)
+    except httpx.HTTPError as exc:
+        # Errore di PayPal (HTTP 4xx/5xx o rete): il checkpoint e' gia' stato
+        # marcato "error" dalla sync; alla pagina serve un esito leggibile,
+        # non un 500 con traceback nei log.
+        logger.warning("PayPal sync incrementale non riuscita: %s", exc)
+        raise HTTPException(
+            status_code=502,
+            detail=f"PayPal non ha risposto correttamente: {exc}",
+        )
     return {**result, "reconciliation_applied": False}
 
 
