@@ -4549,7 +4549,6 @@ function PagheBonificiPage() {
   const [loading, setLoading] = useState(false);
   const [aperta, setAperta] = useState(null); // chiave riga espansa
   const [busy, setBusy] = useState(null);
-  const [importBusy, setImportBusy] = useState(false);
   const [exportBusy, setExportBusy] = useState(false);
   const [syncBusy, setSyncBusy] = useState(false);
   const [cedSyncBusy, setCedSyncBusy] = useState(false);
@@ -4588,29 +4587,6 @@ function PagheBonificiPage() {
       await load();
     } catch (e) { toast(e?.response?.data?.detail || "Errore conferma", "err"); }
     finally { setBusy(null); }
-  };
-
-  const [importProgress, setImportProgress] = useState(null);
-  const importaDaDrive = async () => {
-    setImportBusy(true);
-    setImportProgress(null);
-    // La cartella Drive può avere centinaia di PDF (non solo stipendi): il
-    // backend processa un lotto per chiamata (mai visti prima, tracciati per
-    // id Drive) e dice quanti ne restano. Si richiama in automatico finché
-    // non ne restano più, con un tetto di sicurezza sui giri.
-    const tot = { importati: 0, in_coda_da_associare: 0, duplicati: 0, esclusi_non_stipendio: 0 };
-    try {
-      for (let giro = 0; giro < 30; giro++) {
-        const r = await axios.post(`${API}/paghe/importa-bonifici-drive`, {});
-        const d = r.data || {};
-        for (const k of Object.keys(tot)) tot[k] += d[k] || 0;
-        setImportProgress({ lavorati: (d.trovati_totale || 0) - (d.restanti || 0), totale: d.trovati_totale || 0 });
-        if (!d.restanti) break;
-      }
-      toast(`Bonifici Drive: ${tot.importati} associati, ${tot.in_coda_da_associare} da associare a mano, ${tot.esclusi_non_stipendio} esclusi (non stipendio), ${tot.duplicati} già importati`);
-      await load();
-    } catch (e) { toast(e?.response?.data?.detail || "Errore import da Drive", "err"); }
-    finally { setImportBusy(false); setImportProgress(null); }
   };
 
   const recuperaStorici = async () => {
@@ -4683,6 +4659,9 @@ function PagheBonificiPage() {
           <p className="dc-muted" style={{ marginTop: 4 }}>
             Per ogni busta vedi se il <b>bonifico è stato effettuato</b> e a quale cedolino è associato.
             Dati dal sistema unico paghe (busta) + pagamenti reali della banca (bonifici).
+            I bonifici arrivano da soli ogni 15 minuti dal gestionale: PDF nei fascicoli Drive
+            (DIPENDENTI › persona › BONIFICI › DA ELABORARE) ed estratto conto; quelli da decidere
+            a mano finiscono in «Bonifici da associare».
           </p>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -4692,16 +4671,11 @@ function PagheBonificiPage() {
           <button className="dc-btn" disabled={syncBusy} onClick={recuperaStorici} title="Collega alla busta i bonifici storici già archiviati (PDF già letti in passato) ma non ancora agganciati qui">
             {syncBusy ? "Collego…" : "🔗 Recupera bonifici storici"}
           </button>
-          <button className="dc-btn" disabled={importBusy} onClick={importaDaDrive} title="Legge i PDF nuovi dalla cartella Drive bonifici e li abbina ai cedolini">
-            {importBusy
-              ? (importProgress ? `Importo… ${importProgress.lavorati}/${importProgress.totale}` : "Importo…")
-              : "📥 Importa bonifici da Drive"}
-          </button>
           <button className="dc-btn" disabled={exportBusy} onClick={esportaExcel}>
             {exportBusy ? "Esporto…" : "📊 Esporta Excel"}
           </button>
-          {driveBonificiUrl && <a href={driveBonificiUrl} target="_blank" rel="noreferrer" className="dc-btn" title="Cartella Drive effettivamente usata dall'importatore">
-            📁 Cartella Drive bonifici
+          {driveBonificiUrl && <a href={driveBonificiUrl} target="_blank" rel="noreferrer" className="dc-btn" title="Fascicoli dei dipendenti su Drive: un PDF messo in <persona>/BONIFICI/DA ELABORARE entra qui da solo entro 15 minuti">
+            📁 Fascicoli Drive
           </a>}
         </div>
       </div>

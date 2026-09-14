@@ -286,6 +286,11 @@ che si vede in `/hr/dipendenti/paghe-bonifici` viene alimentato da
   min, primo giro avvio+6 min) riprende solo i documenti senza marcatore, per
   qualunque punto di inserimento. Backfill/prova a mano: `POST
   /api/prima-nota-salari/deposita-pagamenti-hr?dry_run=true` (admin).
+- Rimosso il doppione HR `POST /hr/api/dipendenti-cloud/paghe/importa-bonifici-drive`
+  (+ `_parse_bonifico_pdf`, bottone "📥 Importa bonifici da Drive" in Paghe e
+  bonifici): leggeva la cartella Drive per conto suo, non ricorsiva, quindi con
+  la radice DIPENDENTI trovava 0 file. Un solo sistema: il ponte. Il link
+  "📁 Fascicoli Drive" resta (`/paghe/bonifici-drive-config`).
 - Fix a latere: `document_data_saver.save_estratto_conto_to_gestionale` usava
   `hash()` di Python nell'id (cambia a ogni riavvio del processo → il controllo
   duplicati non funzionava mai fra riavvii); ora `sha1` stabile.
