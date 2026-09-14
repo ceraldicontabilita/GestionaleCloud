@@ -1,8 +1,8 @@
 """Registro dei giorni di CHIUSURA dell'attivita' (ferie, ristrutturazione).
 
-Richiesta del titolare (14/09/2026): il bar e' rimasto chiuso dal 26 al 31
-gennaio e dall'1 all'8 marzo 2026 per ristrutturazione, dal 15 al 23 agosto
-per ferie. Un giorno di chiusura NON e' un corrispettivo mancante: il
+Richiesta del titolare (14/09/2026): il bar e' rimasto chiuso dal 26 gennaio
+all'8 marzo 2026 per ristrutturazione (febbraio compreso) e dal 15 al 23
+agosto per ferie. Un giorno di chiusura NON e' un corrispettivo mancante: il
 registratore telematico, il giorno della riapertura, dichiara all'Agenzia
 delle Entrate il periodo di inattivita' ("Periodo di inattivita' da/a" nel
 tracciato AdE) e le presenze HR mostrano tutti i dipendenti in ferie.
