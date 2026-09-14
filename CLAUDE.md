@@ -72,6 +72,50 @@ si aggiornano con `scripts/refresh_json_docs.py`, non a mano.
   spazio una volta sola; sparisce solo all'ultimo riferimento). L'adattatore
   `app/hr/db_adapter.py` li carica solo su richiesta.
 
+### 14/09/2026 — cancellazione di massa e guardia permanente
+
+**Incidente.** Fra le 00:44 e le 00:54 UTC, col ruolo `postgres` (SQL diretto,
+non l'applicazione), è stata eseguita quattro volte
+`delete from gestionale.documents where collection not like 'menu%'`:
+**53.172 righe cancellate**, le collezioni popolate scese da **83 a 5**. Il
+re-import successivo ne ha ricostruite 21. Restano a zero le scritture che
+nessuna fonte esterna sa ricostruire: `assegni`, `cespiti`, `f24_models`,
+`f24_unificato`, `quietanze_f24`, `scadenzario`, `scadenziario_fornitori`,
+`riconciliazioni`, `riconciliazioni_match`, `partite_aperte`,
+`movimenti_contabili` (libro giornale), `piano_conti`,
+`dettaglio_righe_fatture`, `prima_nota`, `prima_nota_righe`, `note_credito`,
+`documents_inbox`, `magazzino`, `warehouse_inventory`, `veicoli_noleggio`,
+`verbali_noleggio`, `regole_categorie`, `learned_patterns`, `settings`,
+`indice_documenti`. **Vanno recuperate da un restore del backup** (PITR
+attivo: WAL archiviato ogni 120 s, `failed_count` 0) fatto **verso un progetto
+separato** — un restore in place riporterebbe indietro anche la fusione degli
+schemi, fatta dopo le 00:44. Poi reinserimento dei soli id mancanti con
+`gc_upsert_documents` (idempotente per `collection`+`id`).
+
+**Guardia** (`supabase/migrations/20260914160000_guardia_cancellazioni_massive.sql`).
+L'applicazione non cancella mai con un filtro: passa sempre da
+`gc_delete_documents` / `gc_delete_blobs` / `lotti_delete_*` con gli id
+espliciti. La guardia distingue quindi per **origine**, non per numero di
+righe: nessun limite all'app, blocco totale di `DELETE` e `TRUNCATE` eseguiti
+a mano su `gestionale.documents`, `gestionale.blobs`, `lotti.lotti_documents`
+e su tutto lo schema `legacy_staging` (118 trigger, 59 tabelle). Per una
+manutenzione deliberata, nella **stessa transazione**:
+`select gestionale.consenti_cancellazione();`. Collaudata sui dati reali il
+14/09: inserimento libero, `DELETE` a mano bloccata, percorso applicativo
+invariato, `TRUNCATE` bloccato.
+
+**Regola operativa.** Nessun agente e nessuna sessione automatica deve avere
+la password Postgres: solo l'API con il segreto runtime, che cancella per id.
+La password Postgres va ruotata (è stata usata da una sessione automatica).
+
+**Schemi dopo la fusione** (un solo progetto Supabase `GestionaleCloud`):
+`gestionale` (ERP: `documents`, `blobs`), `hr` (29 tabelle `app_*`), `lotti`
+(`lotti_documents`), `menu` (9 tabelle + bucket `menu-images`),
+`legacy_staging` (56 tabelle, archivio CeraldiFatture con
+`_migration_manifest`: hash SHA-256 e `source_count = target_count` per
+tabella). Solo `menu` e `public` sono raggiungibili da `anon`/`authenticated`;
+`gestionale`, `hr`, `lotti`, `legacy_staging` non lo sono.
+
 ### Stato precedente
 
 - Il default del codice è `DATA_BACKEND=sheets`.
