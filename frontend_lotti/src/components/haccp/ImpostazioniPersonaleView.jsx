@@ -1,20 +1,22 @@
 /**
- * ImpostazioniPersonaleView.jsx — gestione personale, PIN e onboarding dipendenti.
+ * ImpostazioniPersonaleView.jsx — personale HACCP, stampanti e dati azienda.
  *
- * Tre sezioni:
- *  1) PIN operatori — 25/07/2026 i PIN NON sono più leggibili da nessuno,
- *     nemmeno da qui: non esistono più in chiaro nel database. Qui si vede solo
- *     CHI ha un PIN impostato e si può assegnarne uno nuovo («Reimposta PIN»),
- *     che revoca subito il precedente.
- *  2) Nuovi dipendenti dal gestionale — legge i dipendenti registrati su gestionalecloud
- *     non ancora abilitati al tablet e consente di assegnare PIN + postazione (o ignorarli).
- *  3) Personale e libretti sanitari — mansione, postazione, scadenza libretto (con alert).
+ * 14/09/2026 (titolare, regole R1-R6): l'anagrafica HR comanda, Lotti legge.
+ *  - gli operatori sono i dipendenti in forza nell'anagrafica HR (con la spunta
+ *    «operatore Lotti»): nome, ruolo, stato e data di fine rapporto vivono in HR,
+ *    qui sono in sola lettura con il link alla scheda;
+ *  - il PIN si imposta nella scheda HR (uno per persona, portale + tablet):
+ *    il blocco «PIN operatori» e la sezione «Nuovi dipendenti dal gestionale»
+ *    non esistono più;
+ *  - qui restano solo i dati HACCP: postazione (proposta dal ruolo HR) e
+ *    scadenza del libretto sanitario; chi non è più in carico sta in una
+ *    sezione chiusa in fondo, con data e motivo letti da HR.
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { apiError } from "../../utils/apiError";
 import axios from "axios";
 import { toast } from "sonner";
-import { IdCard, Save, Users, KeyRound, UserPlus, RefreshCw, UserX, Printer } from "lucide-react";
+import { IdCard, Save, Users, Printer, ExternalLink, RefreshCw, ChevronDown, ChevronUp, AlertTriangle, KeyRound } from "lucide-react";
 import { API } from "../../utils/constants";
 import StampantiConfigView from "./StampantiConfigView";
 
@@ -22,41 +24,63 @@ const SAGE = "#5b7a6b";
 const NAVY = "#3f5a4e";
 const CARD = "#fffefb";
 const LINE = "#e6e0d4";
+const DANGER = "#d35f4e";
+const WARN = "#9c6a32";
+const OK = "#3d8168";
+const MUTED = "#9aa593";
 
 const POSTAZIONI = ["laboratorio", "pasticceria", "sala", "bar"];
-const MANSIONI = [
-  "Pasticcere", "Aiuto pasticcere", "Rosticcere", "Fornaio",
-  "Banconista", "Barista", "Cameriere", "Cassiere", "Responsabile", "Magazziniere",
+const HR_ANAGRAFICA = "/hr/dipendenti/anagrafica";
+
+const inp = { padding: "9px 10px", borderRadius: 8, border: `1px solid ${LINE}`, fontSize: 14, fontFamily: "inherit", boxSizing: "border-box", minHeight: 44 };
+const btn = (bg) => ({ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 14px", minHeight: 44, borderRadius: 9, border: "none", background: bg, color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" });
+const sezione = { background: CARD, border: `1px solid ${LINE}`, borderRadius: 16, padding: "16px 18px", marginBottom: 18 };
+const titoloSez = { display: "flex", alignItems: "center", gap: 9, margin: "0 0 4px", fontSize: 17, fontWeight: 700, color: NAVY, fontFamily: "'Fraunces', Georgia, serif", flexWrap: "wrap" };
+const pill = (bg, fg) => ({ fontSize: 11, fontWeight: 700, background: bg, color: fg, borderRadius: 6, padding: "3px 9px", whiteSpace: "nowrap" });
+
+const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : "");
+const dataIt = (iso) => {
+  if (!iso) return "";
+  const [y, m, d] = String(iso).slice(0, 10).split("-");
+  return d && m && y ? `${d}/${m}/${y}` : iso;
+};
+const oraIt = (iso) => {
+  try { return new Date(iso).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }); } catch { return ""; }
+};
+
+// Campi azienda che finiscono nei PDF (listino, report HACCP, manuale, etichette, ordini)
+const CAMPI_AZIENDA = [
+  ["ragione_sociale", "Ragione sociale", true],
+  ["indirizzo", "Indirizzo", true],
+  ["partita_iva", "P.IVA", true],
+  ["codice_fiscale", "Codice fiscale (= P.IVA per la S.r.l.)", true],
+  ["email", "Email", true],
+  ["telefono", "Telefono", true],
+  ["attivita", "Attività", false],
+  ["responsabile_haccp", "Responsabile HACCP", true],
+  ["studio_consulenza", "Studio consulenza", true],
 ];
 
-const inp = { padding: "9px 10px", borderRadius: 8, border: `1px solid ${LINE}`, fontSize: 14, fontFamily: "inherit", boxSizing: "border-box" };
-const btn = (bg) => ({ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 14px", borderRadius: 9, border: "none", background: bg, color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" });
-const sezione = { background: CARD, border: `1px solid ${LINE}`, borderRadius: 16, padding: "16px 18px", marginBottom: 18 };
-const titoloSez = { display: "flex", alignItems: "center", gap: 9, margin: "0 0 4px", fontSize: 17, fontWeight: 700, color: NAVY, fontFamily: "'Fraunces', Georgia, serif" };
+export function statoLibretto(scad) {
+  if (!scad) return { txt: "libretto mancante", bg: "#f7e0db", fg: DANGER, peso: 0 };
+  const giorni = Math.ceil((new Date(scad) - new Date()) / 86400000);
+  if (giorni < 0) return { txt: "SCADUTO", bg: "#f7e0db", fg: DANGER, peso: 1 };
+  if (giorni <= 30) return { txt: `scade tra ${giorni} gg`, bg: "#fbf0dd", fg: WARN, peso: 2 };
+  return { txt: `valido fino al ${dataIt(scad)}`, bg: "#e7f0ea", fg: OK, peso: 3 };
+}
 
 export default function ImpostazioniPersonaleView() {
-  const [dipendenti, setDipendenti] = useState([]);
+  const [operatori, setOperatori] = useState([]);
   const [valori, setValori] = useState({});
   const [loading, setLoading] = useState(true);
   const [salvando, setSalvando] = useState(null);
+  const [salvatoAlle, setSalvatoAlle] = useState({});
+  const [sincronizzando, setSincronizzando] = useState(false);
+  const [mostraNonInCarico, setMostraNonInCarico] = useState(false);
 
-  // Sezione PIN
-  const [pinInput, setPinInput] = useState("");
-  const [pinSbloccato, setPinSbloccato] = useState(false);
-  const [pinList, setPinList] = useState([]);
-  const [sbloccando, setSbloccando] = useState(false);
-  const [resetVal, setResetVal] = useState({});
-  const [resetting, setResetting] = useState(null);
-
-  // Sezione nuovi dipendenti
-  const [nuovi, setNuovi] = useState([]);
-  const [loadingNuovi, setLoadingNuovi] = useState(true);
-  const [abilVal, setAbilVal] = useState({});
-  const [abilitando, setAbilitando] = useState(null);
-
-  // Sezione dati azienda / fatturazione elettronica
   const [azienda, setAzienda] = useState(null);
   const [azSaving, setAzSaving] = useState(false);
+  const [azSalvatoAlle, setAzSalvatoAlle] = useState("");
   const setAz = (campo, val) => setAzienda((a) => ({ ...(a || {}), [campo]: val }));
 
   const caricaAzienda = useCallback(async () => {
@@ -73,59 +97,65 @@ export default function ImpostazioniPersonaleView() {
     try {
       const r = await axios.put(`${API}/azienda`, azienda || {});
       setAzienda(r.data || {});
-      toast.success("Dati azienda salvati — aggiornati su tutti i PDF");
+      setAzSalvatoAlle(oraIt(new Date().toISOString()));
+      toast.success("Dati azienda salvati: aggiornati su tutti i PDF");
     } catch (e) {
-      apiError(e, "Errore nel salvataggio dei dati azienda");
+      toast.error(apiError(e, "Errore nel salvataggio dei dati azienda"));
     } finally {
       setAzSaving(false);
     }
   };
 
-  const carica = useCallback(async () => {
-    setLoading(true);
+  const carica = useCallback(async (sincronizza = false) => {
     try {
-      const r = await axios.get(`${API}/tablet-operatori`);
-      const lista = (r.data || []).filter((d) => d.ruolo !== "amministratore");
-      setDipendenti(lista);
-      const init = {};
-      for (const d of lista) {
-        init[d.id] = {
-          mansione: d.mansione || "",
-          postazione: d.postazione || "",
-          libretto_sanitario_scadenza: d.libretto_sanitario_scadenza || "",
-        };
-      }
-      setValori(init);
-    } catch {
-      toast.error("Errore caricamento dipendenti");
+      const r = await axios.get(`${API}/tablet-operatori`, { params: { tutti: 1, ...(sincronizza ? { sincronizza: 1 } : {}) } });
+      const lista = Array.isArray(r.data) ? r.data : [];
+      setOperatori(lista);
+      setValori((prev) => {
+        const next = {};
+        for (const d of lista) {
+          next[d.id] = prev[d.id] || {
+            postazione: d.postazione || d.postazione_proposta || "",
+            libretto_sanitario_scadenza: d.libretto_sanitario_scadenza || "",
+          };
+        }
+        return next;
+      });
+    } catch (e) {
+      toast.error(apiError(e, "Errore caricamento personale"));
     } finally {
       setLoading(false);
     }
   }, []);
 
-  const caricaNuovi = useCallback(async () => {
-    setLoadingNuovi(true);
-    try {
-      const r = await axios.get(`${API}/tablet-operatori/nuovi-dipendenti`);
-      setNuovi(r.data?.nuovi || []);
-    } catch {
-      setNuovi([]);
-    } finally {
-      setLoadingNuovi(false);
-    }
-  }, []);
+  useEffect(() => { carica(true); caricaAzienda(); }, [carica, caricaAzienda]);
 
-  useEffect(() => { carica(); caricaNuovi(); caricaAzienda(); }, [carica, caricaNuovi, caricaAzienda]);
+  const riallinea = async () => {
+    setSincronizzando(true);
+    try {
+      const r = await axios.post(`${API}/tablet-operatori/sincronizza-hr`, {});
+      const e = r.data || {};
+      if (e.esito === "hr_non_configurato") toast.error("Anagrafica HR non raggiungibile");
+      else toast.success(`Allineato all'anagrafica HR: ${e.creati || 0} nuovi, ${e.disattivati || 0} non più in carico`);
+      await carica(false);
+    } catch (e) {
+      toast.error(apiError(e, "Allineamento non riuscito"));
+    } finally {
+      setSincronizzando(false);
+    }
+  };
 
   const setCampo = (id, campo, val) =>
     setValori((s) => ({ ...s, [id]: { ...s[id], [campo]: val } }));
 
-  const salva = async (id) => {
-    setSalvando(id);
+  const salva = async (d) => {
+    setSalvando(d.id);
     try {
-      await axios.patch(`${API}/tablet-operatori/${id}`, valori[id]);
-      toast.success("Dati salvati");
-      carica();
+      const r = await axios.patch(`${API}/tablet-operatori/${d.id}`, valori[d.id]);
+      const quando = r.data?.salvato_alle || new Date().toISOString();
+      setSalvatoAlle((s) => ({ ...s, [d.id]: oraIt(quando) }));
+      setOperatori((l) => l.map((o) => (o.id === d.id ? { ...o, ...valori[d.id] } : o)));
+      toast.success(`${d.cognome || d.nome} salvato`);
     } catch (e) {
       toast.error(apiError(e, "Errore salvataggio"));
     } finally {
@@ -133,134 +163,193 @@ export default function ImpostazioniPersonaleView() {
     }
   };
 
-  // ── PIN ──────────────────────────────────────────────
-  const sblocca = async () => {
-    const pin = pinInput.trim();
-    if (pin.length < 4) { toast.error("Inserisci il PIN amministratore"); return; }
-    setSbloccando(true);
-    try {
-      const r = await axios.post(`${API}/tablet-operatori/pin-operatori`, { pin });
-      setPinList(r.data?.operatori || []);
-      setPinSbloccato(true);
-      setPinInput("");
-    } catch (e) {
-      toast.error(apiError(e, "PIN amministratore errato"));
-    } finally {
-      setSbloccando(false);
+  const inCarico = useMemo(() => operatori.filter((o) => o.in_carico !== false && o.ruolo !== "amministratore"), [operatori]);
+  const amministratori = useMemo(() => operatori.filter((o) => o.in_carico !== false && o.ruolo === "amministratore"), [operatori]);
+  const nonInCarico = useMemo(() => operatori.filter((o) => o.in_carico === false), [operatori]);
+
+  // Il dato più urgente per primo: libretto mancante, scaduto, in scadenza, poi valido.
+  const ordinati = useMemo(() => {
+    const peso = (o) => statoLibretto((valori[o.id] || {}).libretto_sanitario_scadenza || o.libretto_sanitario_scadenza).peso;
+    return [...inCarico].sort((a, b) => peso(a) - peso(b) || String(a.nome).localeCompare(String(b.nome)));
+  }, [inCarico, valori]);
+
+  const riepilogo = useMemo(() => {
+    let registrati = 0, inScadenza = 0, scaduti = 0, senzaPin = 0;
+    for (const o of inCarico) {
+      const scad = (valori[o.id] || {}).libretto_sanitario_scadenza || o.libretto_sanitario_scadenza;
+      if (scad) {
+        registrati += 1;
+        const st = statoLibretto(scad);
+        if (st.peso === 1) scaduti += 1;
+        if (st.peso === 2) inScadenza += 1;
+      }
+      if (!o.pin_impostato) senzaPin += 1;
     }
+    return { operatori: inCarico.length, registrati, inScadenza, scaduti, senzaPin };
+  }, [inCarico, valori]);
+
+  const campiPdfVuoti = useMemo(
+    () => (azienda ? CAMPI_AZIENDA.filter(([c, , inPdf]) => inPdf && !String(azienda[c] || "").trim()).map(([, l]) => l) : []),
+    [azienda]
+  );
+
+  if (loading) return <div style={{ textAlign: "center", padding: 60, color: MUTED }}>Caricamento…</div>;
+
+  const SchedaOperatore = ({ d }) => {
+    const v = valori[d.id] || {};
+    const badge = statoLibretto(v.libretto_sanitario_scadenza);
+    const cognome = d.cognome || d.nome;
+    return (
+      <div style={{ border: `1px solid ${LINE}`, borderRadius: 14, padding: "14px 16px" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: NAVY }}>{d.nome}</div>
+            <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>
+              {d.mansione ? d.mansione : <span style={{ color: WARN }}>mansione non inserita in HR</span>}
+              {d.ruolo === "amministratore" ? " · amministratore" : ""}
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+            <span style={pill(badge.bg, badge.fg)}>{badge.txt}</span>
+            {d.pin_impostato
+              ? <span style={pill("#e7f0ea", OK)}><KeyRound size={11} style={{ verticalAlign: "-1px" }} /> PIN impostato</span>
+              : <span style={pill("#fbf0dd", WARN)}><KeyRound size={11} style={{ verticalAlign: "-1px" }} /> PIN da impostare in HR</span>}
+            <a href={HR_ANAGRAFICA + (d.hr_id ? `?dip=${encodeURIComponent(d.hr_id)}` : "")} style={{ ...pill("#f4f8f3", NAVY), textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4 }}>
+              scheda HR <ExternalLink size={11} />
+            </a>
+          </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, alignItems: "end" }}>
+          <div>
+            <label style={{ fontSize: 11, color: MUTED, fontWeight: 600 }}>
+              Postazione{!d.postazione && d.postazione_proposta ? <span style={{ color: WARN }}> · proposta dal ruolo HR</span> : null}
+            </label>
+            <select value={v.postazione || ""} onChange={(e) => setCampo(d.id, "postazione", e.target.value)}
+              style={{ ...inp, width: "100%", background: "#fff" }}>
+              <option value="">—</option>
+              {POSTAZIONI.map((p) => <option key={p} value={p}>{cap(p)}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{ fontSize: 11, color: MUTED, fontWeight: 600 }}>
+              <IdCard size={11} style={{ verticalAlign: "middle" }} /> Scadenza libretto sanitario
+            </label>
+            <input type="date" value={v.libretto_sanitario_scadenza || ""} onChange={(e) => setCampo(d.id, "libretto_sanitario_scadenza", e.target.value)}
+              style={{ ...inp, width: "100%" }} />
+          </div>
+          <div>
+            <button onClick={() => salva(d)} disabled={salvando === d.id} style={{ ...btn(SAGE), width: "100%", opacity: salvando === d.id ? 0.6 : 1 }}>
+              <Save size={15} /> {salvando === d.id ? "Salvo…" : `Salva ${cognome}`}
+            </button>
+            {salvatoAlle[d.id] && <div style={{ fontSize: 11, color: OK, marginTop: 4, textAlign: "center" }}>Salvato alle {salvatoAlle[d.id]}</div>}
+          </div>
+        </div>
+      </div>
+    );
   };
-
-  const resetPin = async (id) => {
-    const np = (resetVal[id] || "").trim();
-    if (np.length < 4) { toast.error("PIN minimo 4 cifre"); return; }
-    setResetting(id);
-    try {
-      const r = await axios.post(`${API}/tablet-operatori/${id}/reimposta-pin`, { pin_nuovo: np });
-      const aggiornati = new Set(r.data?.operatori_aggiornati || [id]);
-      setPinList((l) => l.map((o) => (aggiornati.has(o.id) ? { ...o, pin_impostato: true } : o)));
-      setResetVal((s) => ({ ...s, [id]: "" }));
-      toast.success(r.data?.messaggio || "PIN aggiornato: da adesso vale solo quello nuovo");
-    } catch (e) {
-      toast.error(apiError(e, "Errore aggiornamento PIN"));
-    } finally {
-      setResetting(null);
-    }
-  };
-
-  // ── Nuovi dipendenti ─────────────────────────────────
-  const setAbil = (cf, campo, val) =>
-    setAbilVal((s) => ({ ...s, [cf]: { ...s[cf], [campo]: val } }));
-
-  const chiaveDipendente = (dip) => dip.gestionale_dipendente_id || dip.codice_fiscale;
-
-  const abilita = async (dip) => {
-    const dipKey = chiaveDipendente(dip);
-    const f = abilVal[dipKey] || {};
-    const pin = (f.pin || "").trim();
-    if (pin.length < 4) { toast.error("Imposta un PIN di almeno 4 cifre"); return; }
-    setAbilitando(dipKey);
-    try {
-      await axios.post(`${API}/tablet-operatori/abilita-dipendente`, {
-        gestionale_dipendente_id: dip.gestionale_dipendente_id,
-        codice_fiscale: dip.codice_fiscale,
-        nome: dip.nome,
-        cognome: dip.cognome,
-        mansione: dip.mansione || "",
-        postazione: f.postazione || "",
-        pin,
-      });
-      toast.success(`${dip.nome} ${dip.cognome} abilitato`);
-      caricaNuovi();
-      carica();
-    } catch (e) {
-      toast.error(apiError(e, "Errore abilitazione"));
-    } finally {
-      setAbilitando(null);
-    }
-  };
-
-  const collegaEsistente = async (dip) => {
-    const candidato = dip.candidato_operatore;
-    if (!candidato?.id) return;
-    const dipKey = chiaveDipendente(dip);
-    setAbilitando(dipKey);
-    try {
-      await axios.post(`${API}/tablet-operatori/collega-dipendente`, {
-        operatore_id: candidato.id,
-        gestionale_dipendente_id: dip.gestionale_dipendente_id,
-        codice_fiscale: dip.codice_fiscale || "",
-      });
-      toast.success(`${candidato.nome} collegato al gestionale`);
-      await caricaNuovi();
-      await carica();
-    } catch (e) {
-      toast.error(apiError(e, "Collegamento non riuscito"));
-    } finally {
-      setAbilitando(null);
-    }
-  };
-
-  const ignora = async (dip) => {
-    try {
-      await axios.post(`${API}/tablet-operatori/ignora-dipendente`, {
-        codice_fiscale: dip.codice_fiscale,
-        gestionale_dipendente_id: dip.gestionale_dipendente_id,
-      });
-      setNuovi((l) => l.filter((x) => x.gestionale_dipendente_id !== dip.gestionale_dipendente_id));
-      toast.success("Dipendente ignorato");
-    } catch (e) {
-      toast.error(apiError(e, "Errore"));
-    }
-  };
-
-  const statoLibretto = (scad) => {
-    if (!scad) return null;
-    const giorni = Math.ceil((new Date(scad) - new Date()) / 86400000);
-    if (giorni < 0) return { txt: "SCADUTO", bg: "#f7e0db", fg: "#d35f4e" };
-    if (giorni <= 30) return { txt: `scade tra ${giorni}gg`, bg: "#fbf0dd", fg: "#9c6a32" };
-    return { txt: "valido", bg: "#e7f0ea", fg: "#3d8168" };
-  };
-
-  if (loading) return <div style={{ textAlign: "center", padding: 60, color: "#9aa593" }}>Caricamento…</div>;
 
   return (
     <div style={{ padding: 16, maxWidth: 900, margin: "0 auto", fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
         <Users size={22} color={SAGE} />
-        <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: NAVY, fontFamily: "'Fraunces', Georgia, serif" }}>Operatori e personale</h2>
+        <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: NAVY, fontFamily: "'Fraunces', Georgia, serif" }}>Personale HACCP</h2>
       </div>
 
-      {/* ── 0) Dati azienda · Fatturazione elettronica ──── */}
+      {/* ── 1) Personale e libretti sanitari ───────────── */}
+      <section style={sezione}>
+        <h3 style={titoloSez}>
+          <IdCard size={18} color={SAGE} /> Personale e libretti sanitari
+        </h3>
+        <p style={{ margin: "0 0 10px", fontSize: 13, color: MUTED }}>
+          Gli operatori sono i dipendenti in forza nell'anagrafica HR: nome, ruolo, stato e PIN si modificano lì
+          (<a href={HR_ANAGRAFICA} style={{ color: SAGE, fontWeight: 700 }}>apri l'anagrafica HR</a>). Qui solo postazione e libretto sanitario;
+          gli avvisi di scadenza compaiono sulla campanella entro 30 giorni.
+        </p>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 14 }}>
+          <span style={pill("#f4f8f3", NAVY)}>{riepilogo.operatori} operatori</span>
+          <span style={pill(riepilogo.registrati === riepilogo.operatori ? "#e7f0ea" : "#fbf0dd", riepilogo.registrati === riepilogo.operatori ? OK : WARN)}>
+            {riepilogo.registrati} libretti registrati
+          </span>
+          <span style={pill(riepilogo.inScadenza ? "#fbf0dd" : "#f4f8f3", riepilogo.inScadenza ? WARN : NAVY)}>{riepilogo.inScadenza} in scadenza</span>
+          <span style={pill(riepilogo.scaduti ? "#f7e0db" : "#f4f8f3", riepilogo.scaduti ? DANGER : NAVY)}>{riepilogo.scaduti} scaduti</span>
+          {riepilogo.senzaPin > 0 && <span style={pill("#fbf0dd", WARN)}>{riepilogo.senzaPin} senza PIN (impostalo nella scheda HR)</span>}
+          <button onClick={riallinea} disabled={sincronizzando} title="Rilegge subito l'anagrafica HR (succede comunque da solo ogni 10 minuti)"
+            style={{ ...btn("transparent"), color: NAVY, border: `1px solid ${LINE}`, marginLeft: "auto", padding: "8px 12px", opacity: sincronizzando ? 0.6 : 1 }}>
+            <RefreshCw size={14} /> {sincronizzando ? "Allineo…" : "Riallinea con HR"}
+          </button>
+        </div>
+        {ordinati.length === 0 ? (
+          <div style={{ color: MUTED, fontSize: 13 }}>Nessun operatore in forza nell'anagrafica HR.</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {ordinati.map((d) => <SchedaOperatore key={d.id} d={d} />)}
+          </div>
+        )}
+        {amministratori.length > 0 && (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: MUTED, marginBottom: 8 }}>AMMINISTRATORI (firmano col proprio PIN personale della scheda HR)</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {amministratori.map((d) => <SchedaOperatore key={d.id} d={d} />)}
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* ── 2) Non più in carico (da HR) ─────────────────── */}
+      <section style={{ ...sezione, padding: "12px 18px" }}>
+        <button onClick={() => setMostraNonInCarico((v) => !v)}
+          style={{ ...btn("transparent"), color: NAVY, justifyContent: "space-between", width: "100%", padding: "6px 0" }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 15, fontFamily: "'Fraunces', Georgia, serif" }}>
+            Non più in carico <span style={pill("#f4f8f3", NAVY)}>{nonInCarico.length}</span>
+          </span>
+          {mostraNonInCarico ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+        </button>
+        {mostraNonInCarico && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+            <p style={{ margin: 0, fontSize: 12.5, color: MUTED }}>
+              Cessati nell'anagrafica HR o nomi storici di Lotti senza una persona in HR. Mai cancellati: i lotti, le sanificazioni e le
+              temperature già firmate restano a loro nome. Per rimettere qualcuno in carico si riattiva in HR.
+            </p>
+            {nonInCarico.length === 0 && <div style={{ color: MUTED, fontSize: 13 }}>Nessuno.</div>}
+            {nonInCarico.map((o) => (
+              <div key={o.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, padding: "10px 12px", border: `1px solid ${LINE}`, borderRadius: 10 }}>
+                <div>
+                  <div style={{ fontWeight: 700, color: NAVY }}>{o.nome}</div>
+                  <div style={{ fontSize: 11.5, color: MUTED }}>
+                    {o.hr_stato === "non_in_hr"
+                      ? "nome storico di Lotti, non presente nell'anagrafica HR"
+                      : o.data_fine_rapporto
+                        ? `non più in carico dal ${dataIt(o.data_fine_rapporto)}${o.motivo_fine_rapporto_etichetta ? ` · ${o.motivo_fine_rapporto_etichetta}` : ""} (da HR)`
+                        : "cessato in HR"}
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {o.hr_stato !== "non_in_hr" && !o.data_fine_rapporto && <span style={pill("#fbf0dd", WARN)}>data da inserire in HR</span>}
+                  <span style={pill("#f4f8f3", MUTED)}>PIN disattivato</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* ── 3) Dati azienda · Fatturazione elettronica ──── */}
       <section style={sezione}>
         <h3 style={titoloSez}><IdCard size={18} color={SAGE} /> Dati azienda · Fatturazione elettronica</h3>
-        <p style={{ margin: "0 0 12px", fontSize: 12.5, color: "#9aa593" }}>
+        <p style={{ margin: "0 0 12px", fontSize: 12.5, color: MUTED }}>
           Usati in tutti i PDF (listino, report HACCP, manuale, etichette lotto, ordini). Una modifica qui si riflette ovunque.
         </p>
 
         {azienda === null ? (
-          <div style={{ color: "#9aa593", fontSize: 13 }}>Caricamento…</div>
+          <div style={{ color: MUTED, fontSize: 13 }}>Caricamento…</div>
         ) : (
           <>
+            {campiPdfVuoti.length > 0 && (
+              <div style={{ display: "flex", gap: 8, alignItems: "flex-start", background: "#f7e0db", color: "#8f3829", borderRadius: 10, padding: "10px 12px", marginBottom: 12, fontSize: 13 }}>
+                <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 1 }} />
+                <div><b>Campi vuoti che finiscono nei PDF:</b> {campiPdfVuoti.join(", ")}.</div>
+              </div>
+            )}
             <div style={{ background: "#f4f8f3", border: `1px solid ${LINE}`, borderRadius: 10, padding: "12px 14px", marginBottom: 14 }}>
               <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: NAVY, marginBottom: 5 }}>
                 Codice destinatario SDI
@@ -272,213 +361,43 @@ export default function ImpostazioniPersonaleView() {
                 maxLength={7}
                 style={{ ...inp, width: 180, textTransform: "uppercase", fontWeight: 700, letterSpacing: 1 }}
               />
-              <div style={{ fontSize: 11.5, color: "#9aa593", marginTop: 6 }}>
+              <div style={{ fontSize: 11.5, color: MUTED, marginTop: 6 }}>
                 Cambialo quando cambi gestore dell'interscambio fatturazione: aggiorna i PDF.
               </div>
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 12 }}>
-              {[
-                ["ragione_sociale", "Ragione sociale"],
-                ["indirizzo", "Indirizzo"],
-                ["partita_iva", "P.IVA"],
-                ["codice_fiscale", "Codice fiscale"],
-                ["email", "Email"],
-                ["telefono", "Telefono"],
-                ["attivita", "Attività"],
-                ["responsabile_haccp", "Responsabile HACCP"],
-                ["studio_consulenza", "Studio consulenza"],
-              ].map(([campo, etichetta]) => (
-                <div key={campo}>
-                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: NAVY, marginBottom: 4 }}>{etichetta}</label>
-                  <input
-                    value={azienda[campo] || ""}
-                    onChange={(e) => setAz(campo, e.target.value)}
-                    style={{ ...inp, width: "100%" }}
-                  />
-                </div>
-              ))}
+              {CAMPI_AZIENDA.map(([campo, etichetta, inPdf]) => {
+                const vuoto = inPdf && !String(azienda[campo] || "").trim();
+                return (
+                  <div key={campo}>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: vuoto ? DANGER : NAVY, marginBottom: 4 }}>
+                      {etichetta}{vuoto ? " · vuoto, entra nei PDF" : ""}
+                    </label>
+                    <input
+                      value={azienda[campo] || ""}
+                      onChange={(e) => setAz(campo, e.target.value)}
+                      style={{ ...inp, width: "100%", borderColor: vuoto ? DANGER : LINE }}
+                    />
+                  </div>
+                );
+              })}
             </div>
 
-            <div style={{ marginTop: 14 }}>
+            <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <button onClick={salvaAzienda} disabled={azSaving} style={{ ...btn(SAGE), opacity: azSaving ? 0.6 : 1 }}>
                 <Save size={15} /> {azSaving ? "Salvo…" : "Salva dati azienda"}
               </button>
+              {azSalvatoAlle && <span style={{ fontSize: 12, color: OK }}>Salvato alle {azSalvatoAlle}</span>}
             </div>
           </>
         )}
-      </section>
-
-      {/* ── 1) PIN operatori ───────────────────────────── */}
-      <section style={sezione}>
-        <h3 style={titoloSez}><KeyRound size={18} color={SAGE} /> PIN operatori</h3>
-        {!pinSbloccato ? (
-          <>
-            <p style={{ margin: "0 0 12px", fontSize: 13, color: "#9aa593" }}>
-              Inserisci il PIN amministratore per gestire i PIN degli operatori.
-              I PIN non sono leggibili da nessuno, nemmeno da qui: se un dipendente
-              lo dimentica gliene assegni uno nuovo con un tocco, e il vecchio smette
-              subito di funzionare.
-            </p>
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <input type="password" inputMode="numeric" value={pinInput}
-                onChange={(e) => setPinInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && sblocca()}
-                placeholder="PIN amministratore"
-                style={{ ...inp, flex: "1 1 200px" }} />
-              <button onClick={sblocca} disabled={sbloccando} style={{ ...btn(SAGE), opacity: sbloccando ? 0.6 : 1 }}>
-                <KeyRound size={15} /> {sbloccando ? "Verifico…" : "Gestisci PIN"}
-              </button>
-            </div>
-          </>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {pinList.map((o) => (
-              <div key={o.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10, padding: "10px 12px", border: `1px solid ${LINE}`, borderRadius: 10 }}>
-                <div style={{ minWidth: 160 }}>
-                  <div style={{ fontWeight: 700, color: NAVY }}>{o.nome} {o.cognome || ""}</div>
-                  <div style={{ fontSize: 11, color: "#9aa593" }}>{o.ruolo === "amministratore" ? "Amministratore" : (o.postazione || "—")}</div>
-                </div>
-                <div style={{ minWidth: 110 }}>
-                  {o.pin_impostato
-                    ? <span style={{ fontSize: 12, fontWeight: 700, color: "#3d8168", background: "#e7f0ea", borderRadius: 6, padding: "3px 9px" }}>{o.pin_condiviso ? "PIN condiviso" : "PIN impostato"}</span>
-                    : <span style={{ fontSize: 12, fontWeight: 700, color: "#9c6a32", background: "#fbf0dd", borderRadius: 6, padding: "3px 9px" }}>PIN da assegnare</span>}
-                </div>
-                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                  <input inputMode="numeric" value={resetVal[o.id] || ""} onChange={(e) => setResetVal((s) => ({ ...s, [o.id]: e.target.value }))}
-                    placeholder="nuovo PIN" style={{ ...inp, width: 110 }} />
-                  <button onClick={() => resetPin(o.id)} disabled={resetting === o.id}
-                    style={{ ...btn(NAVY), padding: "9px 11px", opacity: resetting === o.id ? 0.6 : 1 }}>
-                    <RefreshCw size={14} /> {resetting === o.id ? "…" : (o.pin_condiviso ? "Imposta PIN condiviso" : "Reimposta PIN")}
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* ── 2) Nuovi dipendenti dal gestionale ─────────── */}
-      <section style={sezione}>
-        <h3 style={titoloSez}>
-          <UserPlus size={18} color={SAGE} /> Nuovi dipendenti dal gestionale
-          {!loadingNuovi && nuovi.length > 0 && (
-            <span style={{ fontSize: 12, fontWeight: 800, background: SAGE, color: "#fff", borderRadius: 20, padding: "2px 9px", fontFamily: "inherit" }}>{nuovi.length}</span>
-          )}
-        </h3>
-        <p style={{ margin: "0 0 12px", fontSize: 13, color: "#9aa593" }}>
-          Per chi usa già Lotti compare «Collega esistente»: conserva PIN e storico. Per una persona nuova assegna un PIN e premi «Abilita».
-        </p>
-        {loadingNuovi ? (
-          <div style={{ color: "#9aa593", fontSize: 13 }}>Caricamento…</div>
-        ) : nuovi.length === 0 ? (
-          <div style={{ color: "#9aa593", fontSize: 13 }}>Nessun nuovo dipendente da abilitare.</div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {nuovi.map((dip) => {
-              const dipKey = chiaveDipendente(dip);
-              const f = abilVal[dipKey] || {};
-              return (
-                <div key={dipKey} style={{ border: `1px solid ${LINE}`, borderRadius: 12, padding: "12px 14px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
-                    <div style={{ fontWeight: 700, color: NAVY, fontSize: 15 }}>
-                      {dip.nome} {dip.cognome} {dip.mansione ? <span style={{ fontWeight: 500, color: "#9aa593", fontSize: 13 }}>· {dip.mansione}</span> : null}
-                    </div>
-                    <div style={{ fontSize: 11, color: "#9aa593", fontFamily: "monospace" }}>{dip.codice_fiscale || "senza CF"}</div>
-                  </div>
-                  {dip.candidato_operatore && (
-                    <div style={{ margin: "0 0 10px", padding: "9px 11px", borderRadius: 10, background: "#edf5f0", color: "#315e4b", fontSize: 12, fontWeight: 700 }}>
-                      Possibile corrispondenza in Lotti: {dip.candidato_operatore.nome}
-                      <button onClick={() => collegaEsistente(dip)} disabled={abilitando === dipKey}
-                        style={{ ...btn(SAGE), marginLeft: 10, padding: "7px 11px", opacity: abilitando === dipKey ? 0.6 : 1 }}>
-                        Collega esistente
-                      </button>
-                    </div>
-                  )}
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8, alignItems: "end" }}>
-                    <div>
-                      <label style={{ fontSize: 11, color: "#9aa593", fontWeight: 600 }}>PIN</label>
-                      <input inputMode="numeric" value={f.pin || ""} onChange={(e) => setAbil(dipKey, "pin", e.target.value)}
-                        placeholder="min 4 cifre" style={{ ...inp, width: "100%" }} />
-                    </div>
-                    <div>
-                      <label style={{ fontSize: 11, color: "#9aa593", fontWeight: 600 }}>Postazione</label>
-                      <select value={f.postazione || ""} onChange={(e) => setAbil(dipKey, "postazione", e.target.value)}
-                        style={{ ...inp, width: "100%", background: "#fff" }}>
-                        <option value="">—</option>
-                        {POSTAZIONI.map((p) => <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
-                      </select>
-                    </div>
-                    <button onClick={() => abilita(dip)} disabled={abilitando === dipKey}
-                      style={{ ...btn(SAGE), opacity: abilitando === dipKey ? 0.6 : 1 }}>
-                      <UserPlus size={15} /> {abilitando === dipKey ? "…" : "Abilita"}
-                    </button>
-                    <button onClick={() => ignora(dip)} title="Non proporlo più"
-                      style={{ ...btn("transparent"), color: "#b0563f", border: `1px solid ${LINE}` }}>
-                      <UserX size={15} /> Ignora
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
-
-      {/* ── 3) Personale e libretti sanitari ───────────── */}
-      <section style={sezione}>
-        <h3 style={titoloSez}><IdCard size={18} color={SAGE} /> Personale e libretti sanitari</h3>
-        <p style={{ margin: "0 0 14px", fontSize: 13, color: "#9aa593" }}>
-          Mansione, postazione e scadenza del libretto sanitario. Gli avvisi di scadenza compaiono sulla campanella entro 30 giorni.
-        </p>
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {dipendenti.map((d) => {
-            const v = valori[d.id] || {};
-            const badge = statoLibretto(v.libretto_sanitario_scadenza);
-            return (
-              <div key={d.id} style={{ border: `1px solid ${LINE}`, borderRadius: 14, padding: "14px 16px" }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: NAVY }}>{d.nome} {d.cognome || ""}</div>
-                  {badge && <span style={{ fontSize: 11, fontWeight: 700, background: badge.bg, color: badge.fg, borderRadius: 6, padding: "3px 9px" }}>{badge.txt}</span>}
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, alignItems: "end" }}>
-                  <div>
-                    <label style={{ fontSize: 11, color: "#9aa593", fontWeight: 600 }}>Mansione</label>
-                    <input list={`mansioni-${d.id}`} value={v.mansione} onChange={(e) => setCampo(d.id, "mansione", e.target.value)}
-                      placeholder="es. Pasticcere" style={{ ...inp, width: "100%" }} />
-                    <datalist id={`mansioni-${d.id}`}>
-                      {MANSIONI.map((m) => <option key={m} value={m} />)}
-                    </datalist>
-                  </div>
-                  <div>
-                    <label style={{ fontSize: 11, color: "#9aa593", fontWeight: 600 }}>Postazione</label>
-                    <select value={v.postazione} onChange={(e) => setCampo(d.id, "postazione", e.target.value)}
-                      style={{ ...inp, width: "100%", background: "#fff" }}>
-                      <option value="">—</option>
-                      {POSTAZIONI.map((p) => <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ fontSize: 11, color: "#9aa593", fontWeight: 600 }}>
-                      <IdCard size={11} style={{ verticalAlign: "middle" }} /> Scadenza libretto
-                    </label>
-                    <input type="date" value={v.libretto_sanitario_scadenza} onChange={(e) => setCampo(d.id, "libretto_sanitario_scadenza", e.target.value)}
-                      style={{ ...inp, width: "100%" }} />
-                  </div>
-                  <button onClick={() => salva(d.id)} disabled={salvando === d.id} style={{ ...btn(SAGE), opacity: salvando === d.id ? 0.6 : 1 }}>
-                    <Save size={15} /> {salvando === d.id ? "Salvo…" : "Salva"}
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
       </section>
 
       {/* ── 4) Stampanti ───────────── */}
       <section style={sezione}>
         <h3 style={titoloSez}><Printer size={18} color={SAGE} /> Stampanti</h3>
-        <p style={{ margin: "0 0 14px", fontSize: 13, color: "#9aa593" }}>
+        <p style={{ margin: "0 0 14px", fontSize: 13, color: MUTED }}>
           Configurazione stampanti per reparto (banco, magazzino, etichette).
         </p>
         <StampantiConfigView />

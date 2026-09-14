@@ -126,15 +126,13 @@ PIN_OPERATORE_BANCO = "1111"
 async def _seed(db):
     now = datetime.now(timezone.utc).isoformat()
 
-    # ── Operatori del banco. 25/07/2026: nemmeno qui si scrive un PIN in
-    # chiaro — si salva l'hash bcrypt e l'impronta di ricerca, esattamente
-    # come in produzione, così il banco collauda il percorso VERO.
-    from app.lotti.routers.tablet_operatori import _hash_pin, _pin_lookup
+    # ── Operatori del banco. 14/09/2026: gli operatori sono l'anagrafica HR
+    # e il PIN sta nella scheda HR (hash bcrypt, mai in chiaro). Il banco di
+    # prova non ha un database HR: qui le righe esistono solo per mostrare i
+    # nomi; il login sul banco richiede HR configurato.
     await db.tablet_operatori.insert_many([
-        {"id": "op-enzo", "nome": "Enzo", "ruolo": "amministratore", "attivo": True,
-         "pin": _hash_pin(PIN_ADMIN_BANCO), "pin_lookup": _pin_lookup(PIN_ADMIN_BANCO)},
-        {"id": "op-mario", "nome": "Mario", "ruolo": "operatore", "attivo": True,
-         "pin": _hash_pin(PIN_OPERATORE_BANCO), "pin_lookup": _pin_lookup(PIN_OPERATORE_BANCO)},
+        {"id": "op-enzo", "nome": "Enzo", "ruolo": "amministratore", "attivo": True, "fonte": "banco_prova"},
+        {"id": "op-mario", "nome": "Mario", "ruolo": "operatore", "attivo": True, "fonte": "banco_prova"},
     ])
 
     # ── Ricette (ingredienti_dettaglio con unita_misura, foto_url null) ────

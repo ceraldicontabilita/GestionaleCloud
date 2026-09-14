@@ -40,9 +40,9 @@ const FEATURES = [
   },
   {
     icon: Wallet,
-    title: "Buste paga & Prima Nota",
-    text: "Cedolini, voci di busta e saldo progressivo per dipendente, con ricerca su qualsiasi codice.",
-    to: "/dipendenti/buste-paga",
+    title: "Cedolini & Bonifici",
+    text: "Buste, bonifici reali della banca, acconti e saldo progressivo per dipendente, con ricerca su qualsiasi voce.",
+    to: "/dipendenti/paghe-bonifici",
   },
   {
     icon: FolderOpen,

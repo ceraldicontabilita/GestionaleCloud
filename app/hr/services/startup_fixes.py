@@ -20,8 +20,9 @@ async def applica_fix_avvio():
     await _fix_nome_carotenuto()
     # 29/07/2026 — Dias Mahathelge Kris non più in forza
     await _cessa_per_nome("startup_fix_dias_cessato", "dias")
-    # 31/07/2026 — Moscato Emanuele sparito dalle liste (pagina TFR): va rimesso attivo
-    await _riattiva_per_nome("startup_fix_moscato_attivo", "moscato", "MSCMNL88R26F839C")
+    # 31/07/2026 — Moscato Emanuele era stato rimesso attivo da qui (fix una
+    # tantum). 14/09/2026: dimissioni volontarie con decorrenza 01/07/2026,
+    # cessato dall'anagrafica — il fix non deve piu' esistere nel codice.
 
 
 async def _cessa_per_nome(fix_id: str, pattern: str):

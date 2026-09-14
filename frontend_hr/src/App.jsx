@@ -42,8 +42,14 @@ axios.interceptors.response.use(
 // Helper functions
 const formatDate = (dateStr) => {
   if (!dateStr) return "-";
-  const parts = dateStr.split("-");
-  if (parts.length !== 3) return dateStr;
+  const s = String(dateStr);
+  // ISO con ora (2026-08-28T07:02:14+00:00) -> 28/08/2026 09:02 (ora locale)
+  if (s.length > 10 && s[10] === "T") {
+    const d = new Date(s);
+    if (!isNaN(d)) return d.toLocaleDateString("it-IT") + " " + d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+  }
+  const parts = s.slice(0, 10).split("-");
+  if (parts.length !== 3) return s;
   return `${parts[2]}/${parts[1]}/${parts[0]}`;
 };
 
@@ -154,6 +160,16 @@ export default function DipendentiCloudApp({ page: pageProp }) {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  // Aggiorna una sola riga dell'anagrafica senza ricaricare tutta l'app
+  // (prima ogni salvataggio mostrava "Caricamento…" per secondi e perdeva lo scroll).
+  const aggiornaDipendente = useCallback((dip, { rimosso = false } = {}) => {
+    setDipendenti((lista) => {
+      if (rimosso) return lista.filter((d) => d.id !== dip.id);
+      const c = lista.some((d) => d.id === dip.id);
+      return c ? lista.map((d) => (d.id === dip.id ? { ...d, ...dip } : d)) : [...lista, dip];
+    });
+  }, []);
+
   const getDipendente = (id) => dipendenti.find(d => d.id === id);
   const activeDipendenti = (() => {
     const attivi = dipendenti.filter(d => d.stato === "attivo");
@@ -173,7 +189,6 @@ export default function DipendentiCloudApp({ page: pageProp }) {
     { id: "ferie-permessi", label: "Ferie & Permessi", icon: Calendar, section: "DIPENDENTI" },
     { id: "turni", label: "Turni", icon: Grid3X3, section: "DIPENDENTI" },
     { id: "timbrature", label: "Timbrature", icon: Clock, section: "DIPENDENTI" },
-    { id: "buste-paga", label: "Buste Paga", icon: Euro, section: "DIPENDENTI" },
     { id: "paghe-bonifici", label: "Cedolini & Bonifici", icon: Link2, section: "DIPENDENTI" },
     { id: "bonifici-da-associare", label: "Bonifici da associare", icon: Inbox, section: "DIPENDENTI" },
     { id: "tfr", label: "TFR", icon: Wallet, section: "DIPENDENTI" },
@@ -190,7 +205,6 @@ export default function DipendentiCloudApp({ page: pageProp }) {
     "ferie-permessi": "Ferie & Permessi",
     turni: "Turni",
     timbrature: "Timbrature",
-    "buste-paga": "Buste Paga",
     "paghe-bonifici": "Cedolini & Bonifici",
     "bonifici-da-associare": "Bonifici da associare",
     tfr: "TFR",
@@ -216,7 +230,7 @@ export default function DipendentiCloudApp({ page: pageProp }) {
       case "diagnostica":
         return <DiagnosticaPage />;
       case "anagrafica":
-        return <AnagraficaPage dipendenti={dipendenti} reload={loadData} />;
+        return <AnagraficaPage dipendenti={dipendenti} reload={loadData} onDipendente={aggiornaDipendente} />;
       case "presenze":
         return <PresenzePage dipendenti={activeDipendenti} reload={loadData} />;
       case "ferie-permessi":
@@ -225,10 +239,9 @@ export default function DipendentiCloudApp({ page: pageProp }) {
         return <TurniPage dipendenti={activeDipendenti} turni={turni} reload={loadData} />;
       case "timbrature":
         return <TimbraturePage dipendenti={dipendenti} getDipendente={getDipendente} />;
-      case "buste-paga":
-        return <BustePagaPage dipendenti={activeDipendenti} reload={loadData} getDipendente={getDipendente} />;
+      case "buste-paga":  // vecchio indirizzo (pagina unificata il 14/09/2026)
       case "paghe-bonifici":
-        return <PagheBonificiPage />;
+        return <PagheBonificiPage dipendenti={activeDipendenti} />;
       case "bonifici-da-associare":
         return <BonificiDaAssociarePage dipendenti={dipendenti} />;
       case "tfr":
@@ -347,7 +360,6 @@ function DiagnosticaPage() {
     { pagina: "Ferie & Permessi", url: `${API}/ferie` },
     { pagina: "Turni (tipi)", url: `${API}/turni` },
     { pagina: "Turni (settimana)", url: `${API}/assegnazioni-turni?settimana=${lun}` },
-    { pagina: "Buste Paga", url: `${API}/paghe?anno=${Y}&mese=${M}` },
     { pagina: "Cedolini & Bonifici", url: `${API}/paghe/associazioni-bonifici?anno=${Y}` },
     { pagina: "Documenti", url: `${API}/documenti` },
     { pagina: "Missioni", url: `${API}/missioni` },
@@ -518,9 +530,10 @@ function DashboardPage({ stats, dipendenti, ferie, missioni, getDipendente }) {
         <div className="dc-stat-card" style={{ borderLeft: "4px solid #d35f4e" }}>
           <div className="dc-stat-icon"><FileText size={24} /></div>
           <div className="dc-stat-content">
-            <span className="dc-stat-label">BUSTE DA PAGARE</span>
+            <span className="dc-stat-label">BUSTE DA PAGARE ({new Date().getFullYear()})</span>
             <span className="dc-stat-value">{stats.buste_in_attesa ?? 0}</span>
-            <span className="dc-stat-sub">€ {(stats.importo_in_attesa || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} da erogare</span>
+            <span className="dc-stat-sub">€ {(stats.importo_in_attesa || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} da erogare
+              {stats.buste_storiche_non_agganciate ? ` · ${stats.buste_storiche_non_agganciate} storiche senza bonifico agganciato` : ""}</span>
           </div>
         </div>
       </div>
@@ -545,28 +558,44 @@ function DashboardPage({ stats, dipendenti, ferie, missioni, getDipendente }) {
         )}
       </div>
 
-      {pendenze && pendenze.totale > 0 && (
-        <div className="dc-card" style={{ marginBottom: 16, borderLeft: "4px solid #d35f4e" }}>
-          <h3><FileText size={18} /> Buste in attesa di pagamento <span className="dc-muted" style={{ fontWeight: 400 }}>· {pendenze.totale} · € {(pendenze.importo || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></h3>
+      {pendenze && pendenze.totale > 0 && (() => {
+        const eur = (v) => (v || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const correnti = pendenze.righe.filter(x => !x.storico);
+        const storiche = pendenze.righe.filter(x => x.storico);
+        const Tabella = ({ righe, storico }) => (
           <div style={{ overflowX: "auto" }}>
             <table className="dc-table" style={{ minWidth: 480 }}>
-              <thead><tr><th>Dipendente</th><th>Periodo</th><th style={{ textAlign: "right" }}>Busta €</th><th style={{ textAlign: "right" }}>Manca €</th><th>Stato</th></tr></thead>
+              <thead><tr><th>Dipendente</th><th>Periodo</th><th style={{ textAlign: "right" }}>Busta €</th><th style={{ textAlign: "right" }}>{storico ? "Non agganciato €" : "Manca €"}</th><th>Stato</th></tr></thead>
               <tbody>
-                {pendenze.righe.slice(0, 30).map((x, i) => (
+                {righe.slice(0, 30).map((x, i) => (
                   <tr key={i}>
                     <td>{x.dipendente}</td>
                     <td>{mesiIt[(x.mese || 1) - 1]} {x.anno}</td>
-                    <td style={{ textAlign: "right" }}>{x.busta ? x.busta.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}</td>
-                    <td style={{ textAlign: "right", color: "#d35f4e", fontWeight: 700 }}>{x.saldo.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td><Badge variant={x.stato === "parziale" ? "warning" : "danger"}>{x.stato === "parziale" ? "parziale" : "in attesa"}</Badge></td>
+                    <td style={{ textAlign: "right" }}>{x.busta ? eur(x.busta) : "—"}</td>
+                    <td style={{ textAlign: "right", color: storico ? "#7d5526" : "#d35f4e", fontWeight: 700 }}>{eur(x.saldo)}</td>
+                    <td><Badge variant={storico ? "default" : x.stato === "parziale" ? "warning" : "danger"}>{storico ? "bonifico non agganciato" : x.stato === "parziale" ? "parziale" : "da pagare"}</Badge></td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            {righe.length > 30 && <p className="dc-muted" style={{ fontSize: 12 }}>… e altre {righe.length - 30} righe in Cedolini &amp; Bonifici.</p>}
           </div>
-          <p className="dc-muted" style={{ fontSize: 12, marginTop: 8 }}>Aggancio automatico: appena arriva il bonifico (PDF/Excel/CSV) la riga sparisce. Dettaglio in Buste Paga.</p>
-        </div>
-      )}
+        );
+        return (
+          <div className="dc-card" style={{ marginBottom: 16, borderLeft: "4px solid #d35f4e" }}>
+            <h3><FileText size={18} /> Buste da pagare {pendenze.anno_corrente} <span className="dc-muted" style={{ fontWeight: 400 }}>· {pendenze.da_pagare?.totale ?? correnti.length} · € {eur(pendenze.da_pagare?.importo)}</span></h3>
+            {correnti.length === 0 ? <p className="dc-empty">Nessuna busta dell'anno in attesa di pagamento.</p> : <Tabella righe={correnti} storico={false} />}
+            {storiche.length > 0 && (
+              <details style={{ marginTop: 12 }}>
+                <summary style={{ cursor: "pointer", fontWeight: 600 }}>Anni precedenti: {pendenze.non_agganciate?.totale ?? storiche.length} buste con pagamento non ancora agganciato · € {eur(pendenze.non_agganciate?.importo)}</summary>
+                <p className="dc-muted" style={{ fontSize: 12 }}>Cedolini storici quasi sempre già pagati: manca solo l'aggancio del bonifico (coda «Bonifici da associare» o estratto conto non ancora importato). Non sono soldi da erogare.</p>
+                <Tabella righe={storiche} storico={true} />
+              </details>
+            )}
+            <p className="dc-muted" style={{ fontSize: 12, marginTop: 8 }}>Aggancio automatico: appena arriva il bonifico (PDF, estratto conto, CSV) la riga sparisce. Dettaglio in Cedolini &amp; Bonifici.</p>
+          </div>
+        );
+      })()}
 
       <div className="dc-dashboard-grid">
         <div className="dc-card">
@@ -619,19 +648,37 @@ function DashboardPage({ stats, dipendenti, ferie, missioni, getDipendente }) {
   );
 }
 
-// Anagrafica Page
-function AnagraficaPage({ dipendenti, reload }) {
+// Anagrafica Page — fonte unica di chi lavora in azienda (anche per Lotti).
+// 14/09/2026: un solo stato del rapporto (attivo / cessato dal gg/mm/aaaa con
+// motivo e riferimento), cessazione con modale dell'app, PIN personale nella
+// scheda (vale per portale e tablet Lotti), salvataggio in linea.
+const MOTIVI_CESSAZIONE = [
+  ["dimissioni", "Dimissioni"], ["licenziamento", "Licenziamento"], ["fine_contratto", "Fine contratto"],
+  ["risoluzione_consensuale", "Risoluzione consensuale"], ["altro", "Altro"],
+];
+const FORM_DIP_VUOTO = {
+  nome: "", cognome: "", ruolo: "", email: "", telefono: "", codice_fiscale: "", matricola: "",
+  data_nascita: "", indirizzo: "", contratto: "", data_assunzione: "", iban: "", livello: "",
+  ore_settimanali: "", lotti_operatore: true,
+};
+const CAMPI_FORM_DIP = Object.keys(FORM_DIP_VUOTO);
+
+function AnagraficaPage({ dipendenti, reload, onDipendente }) {
   const [showModal, setShowModal] = useState(false);
   const [editingDip, setEditingDip] = useState(null);
-  const [formData, setFormData] = useState({
-    nome: "", cognome: "", ruolo: "", email: "", telefono: "",
-    codice_fiscale: "", contratto: "Indeterminato", iban: "", stato: "attivo"
-  });
+  const [formData, setFormData] = useState(FORM_DIP_VUOTO);
+  const [salvando, setSalvando] = useState(false);
+  const [pinNuovo, setPinNuovo] = useState("");
+  const [pinBusy, setPinBusy] = useState(false);
+  const [cessa, setCessa] = useState(null); // {dip, data, motivo, riferimento, note}
+  const [cessaBusy, setCessaBusy] = useState(false);
   // Default "attivi": i cessati restano cercabili dal filtro ma non
   // affollano la vista di apertura, che e' quella che si guarda ogni giorno.
   const [filter, setFilter] = useState("attivi");
   const anagRef = useRef(null);
   const [anagBusy, setAnagBusy] = useState(false);
+  const oggiISO = new Date().toISOString().slice(0, 10);
+
   const handleImportAnagrafica = async (e) => {
     const fl = (e.target.files || [])[0];
     if (!fl) return;
@@ -668,81 +715,140 @@ function AnagraficaPage({ dipendenti, reload }) {
     }
     setShowRid(false); reload && reload();
     if (daGenerare.length) {
-      alert(`Riduzione salvata.\nContratti di solidarietà generati: ${generati}` +
-        (falliti.length ? `\nNon generati: ${falliti.join(", ")}\n→ carica il modello "Accordo Riduzione Orario" in Assunzione → Modelli.` : `\nLi trovi in Assunzione & Contratti per firma/invio e archiviazione nel fascicolo.`));
+      toast(`Riduzione salvata. Contratti di solidarietà generati: ${generati}` +
+        (falliti.length ? ` · non generati: ${falliti.join(", ")} → carica il modello "Accordo Riduzione Orario" in Assunzione → Modelli.` : ` · li trovi in Assunzione & Contratti.`));
     }
   };
-  const oggiISO = new Date().toISOString().slice(0, 10);
 
-  const filteredDipendenti = dipendenti.filter(d => {
-    if (filter === "attivi") return d.stato === "attivo";
-    if (filter === "inattivi") return d.stato !== "attivo";
-    return true;
-  });
+  // Un solo elenco per contatori e filtri (prima "16 attivi" e "15 attivi" sulla stessa pagina).
+  const attiviLista = dipendenti.filter(d => d.stato === "attivo");
+  const cessatiLista = dipendenti.filter(d => d.stato !== "attivo");
+  const filteredDipendenti = filter === "attivi" ? attiviLista : filter === "cessati" ? cessatiLista : dipendenti;
 
-  const openModal = (dip = null) => {
+  const openModal = useCallback((dip = null) => {
+    setPinNuovo("");
     if (dip) {
       setEditingDip(dip);
-      setFormData({ ...dip });
+      const f = {};
+      for (const k of CAMPI_FORM_DIP) f[k] = dip[k] ?? FORM_DIP_VUOTO[k];
+      f.lotti_operatore = dip.lotti_operatore !== false;
+      setFormData(f);
     } else {
       setEditingDip(null);
-      setFormData({
-        nome: "", cognome: "", ruolo: "", email: "", telefono: "",
-        codice_fiscale: "", contratto: "Indeterminato", iban: "", stato: "attivo"
-      });
+      setFormData(FORM_DIP_VUOTO);
     }
     setShowModal(true);
-  };
+  }, []);
+
+  // Link diretto dalla pagina Personale di Lotti: /hr/dipendenti/anagrafica?dip=<id>
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("dip");
+    if (!id) return;
+    const dip = dipendenti.find(d => d.id === id);
+    if (dip) { openModal(dip); window.history.replaceState(null, "", window.location.pathname); }
+  }, [dipendenti, openModal]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setSalvando(true);
     try {
+      const payload = { ...formData };
+      if (payload.ore_settimanali === "" || payload.ore_settimanali === null) delete payload.ore_settimanali;
       if (editingDip) {
-        await axios.put(`${API}/dipendenti/${editingDip.id}`, formData);
+        const r = await axios.put(`${API}/dipendenti/${editingDip.id}`, payload);
+        onDipendente ? onDipendente(r.data.dipendente) : reload();
+        setEditingDip(r.data.dipendente);
+        toast("Scheda salvata");
       } else {
-        await axios.post(`${API}/dipendenti`, formData);
+        const r = await axios.post(`${API}/dipendenti`, payload);
+        onDipendente ? onDipendente(r.data) : reload();
+        toast("Dipendente creato");
       }
       setShowModal(false);
-      reload();
-      toast("Dipendente salvato");
     } catch (error) {
-      console.error("Error saving:", error);
-      toast("Errore nel salvataggio", "err");
-    }
+      toast(error?.response?.data?.detail || "Errore nel salvataggio", "err");
+    } finally { setSalvando(false); }
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm("Eliminare questo dipendente?")) return;
-    await axios.delete(`${API}/dipendenti/${id}`);
-    reload();
-  };
-
-  const handleCessa = async (dip) => {
-    const nome = `${dip.cognome || ""} ${dip.nome || ""}`.trim();
-    const data = window.prompt(`Cessare il rapporto con ${nome}?\nData cessazione (AAAA-MM-GG):`, new Date().toISOString().slice(0, 10));
-    if (!data) return;
+  const handleDelete = async (dip) => {
+    if (!window.confirm(`Eliminare definitivamente la scheda di ${dip.cognome} ${dip.nome}? Per una cessazione usa "Cessa rapporto".`)) return;
     try {
-      const r = await axios.post(`${API}/dipendenti/${dip.id}/cessa`, { data_cessazione: data });
-      const az = (r.data.automazioni || []).map(a => a.handler || a.error).filter(Boolean);
-      window.alert(`Rapporto cessato.\nAutomazioni eseguite: ${az.length ? az.join(", ") : "nessuna"}.`);
-      reload();
-    } catch (e) { window.alert(e?.response?.data?.detail || "Errore cessazione"); }
+      await axios.delete(`${API}/dipendenti/${dip.id}`);
+      onDipendente ? onDipendente(dip, { rimosso: true }) : reload();
+    } catch (e) { toast(e?.response?.data?.detail || "Errore eliminazione", "err"); }
   };
 
-  const attivi = dipendenti.filter(d => d.stato === "attivo").length;
+  const apriCessazione = (dip) => setCessa({ dip, data: oggiISO, motivo: "dimissioni", riferimento: dip?.dimissioni?.codice_modulo || "", note: "" });
+  const confermaCessazione = async () => {
+    if (!cessa?.data) { toast("Inserisci la data di fine rapporto", "err"); return; }
+    setCessaBusy(true);
+    try {
+      const r = await axios.post(`${API}/dipendenti/${cessa.dip.id}/cessa`, {
+        data_cessazione: cessa.data, motivo: cessa.motivo, riferimento: cessa.riferimento, note: cessa.note,
+      });
+      onDipendente ? onDipendente(r.data.dipendente) : reload();
+      const az = (r.data.automazioni || []).map(a => a.handler || a.error).filter(Boolean);
+      toast(`Rapporto cessato dal ${formatDate(cessa.data)}${az.length ? ` · automazioni: ${az.join(", ")}` : ""}. Lotti si aggiorna da solo.`);
+      setCessa(null);
+    } catch (e) { toast(e?.response?.data?.detail || "Errore cessazione", "err"); }
+    finally { setCessaBusy(false); }
+  };
+
+  const riattiva = async (dip) => {
+    if (!window.confirm(`Rimettere in forza ${dip.cognome} ${dip.nome}? La cessazione del ${formatDate(dip.data_fine_rapporto)} resta nello storico.`)) return;
+    try {
+      const r = await axios.post(`${API}/dipendenti/${dip.id}/riattiva`);
+      onDipendente ? onDipendente(r.data.dipendente) : reload();
+      toast("Rapporto riattivato");
+    } catch (e) { toast(e?.response?.data?.detail || "Errore riattivazione", "err"); }
+  };
+
+  const salvaPin = async () => {
+    const pin = pinNuovo.trim();
+    if (!/^\d{4,8}$/.test(pin)) { toast("PIN di 4-8 cifre", "err"); return; }
+    setPinBusy(true);
+    try {
+      await axios.post(`${API}/dipendenti/${editingDip.id}/pin`, { pin });
+      const agg = { ...editingDip, pin_impostato: true };
+      setEditingDip(agg); onDipendente && onDipendente(agg); setPinNuovo("");
+      toast("PIN impostato: vale per il portale e per firmare in Lotti");
+    } catch (e) { toast(e?.response?.data?.detail || "PIN non salvato", "err"); }
+    finally { setPinBusy(false); }
+  };
+  const togliPin = async () => {
+    if (!window.confirm("Togliere il PIN? La persona non potrà più entrare nel portale né firmare in Lotti finché non ne riceve uno nuovo.")) return;
+    setPinBusy(true);
+    try {
+      await axios.delete(`${API}/dipendenti/${editingDip.id}/pin`);
+      const agg = { ...editingDip, pin_impostato: false };
+      setEditingDip(agg); onDipendente && onDipendente(agg);
+      toast("PIN rimosso");
+    } catch (e) { toast(e?.response?.data?.detail || "Errore", "err"); }
+    finally { setPinBusy(false); }
+  };
+
+  const StatoCell = ({ dip }) => dip.stato === "attivo"
+    ? <Badge variant="success">attivo</Badge>
+    : <span>
+        <Badge variant="default">cessato{dip.data_fine_rapporto ? ` dal ${formatDate(dip.data_fine_rapporto)}` : ""}</Badge>
+        <div className="dc-muted" style={{ fontSize: 11, marginTop: 3 }}>
+          {dip.motivo_cessazione_etichetta || (dip.data_fine_rapporto ? "" : "data da inserire")}
+          {dip.riferimento_cessazione ? ` · rif. ${dip.riferimento_cessazione}` : ""}
+        </div>
+      </span>;
 
   return (
     <div className="dc-page">
       <div className="dc-page-header">
         <div>
           <h1>Anagrafica Dipendenti</h1>
-          <p>{dipendenti.length} dipendenti totali, {attivi} attivi</p>
+          <p>{attiviLista.length} in forza · {cessatiLista.length} cessati · fonte unica anche per Lotti</p>
         </div>
         <div className="dc-page-actions">
           <select value={filter} onChange={(e) => setFilter(e.target.value)} className="dc-select">
+            <option value="attivi">In forza ({attiviLista.length})</option>
+            <option value="cessati">Cessati ({cessatiLista.length})</option>
             <option value="tutti">Tutti ({dipendenti.length})</option>
-            <option value="attivi">Attivi ({attivi})</option>
-            <option value="inattivi">Inattivi ({dipendenti.length - attivi})</option>
           </select>
           <input ref={anagRef} type="file" accept=".xlsx" onChange={handleImportAnagrafica} style={{ display: "none" }} />
           <button onClick={() => anagRef.current?.click()} disabled={anagBusy} className="dc-btn" title="Importa/aggiorna l'anagrafica da Excel (Cognome, Nome, CF, …)">
@@ -765,6 +871,7 @@ function AnagraficaPage({ dipendenti, reload }) {
               <th>RUOLO</th>
               <th>CONTRATTO</th>
               <th>STATO</th>
+              <th>PIN · LOTTI</th>
               <th>AZIONI</th>
             </tr>
           </thead>
@@ -775,18 +882,25 @@ function AnagraficaPage({ dipendenti, reload }) {
                   <div className="dc-table-user">
                     <Avatar nome={dip.nome} cognome={dip.cognome} size="sm" />
                     <div>
-                      <span className="dc-table-name">{dip.nome} {dip.cognome}</span>
-                      <span className="dc-table-email">{dip.email || "No email"}</span>
+                      <span className="dc-table-name">{dip.cognome} {dip.nome}</span>
+                      <span className="dc-table-email">{dip.email || dip.codice_fiscale || "—"}</span>
                     </div>
                   </div>
                 </td>
                 <td data-label="Ruolo">{dip.ruolo || "-"}</td>
-                <td data-label="Contratto">{dip.contratto}</td>
-                <td data-label="Stato"><Badge variant={dip.stato === "attivo" ? "success" : "default"}>{dip.stato}</Badge></td>
+                <td data-label="Contratto">{dip.contratto || "-"}{dip.data_assunzione ? <div className="dc-muted" style={{ fontSize: 11 }}>dal {formatDate(dip.data_assunzione)}</div> : null}</td>
+                <td data-label="Stato"><StatoCell dip={dip} /></td>
+                <td data-label="PIN · Lotti" style={{ fontSize: 12 }}>
+                  {dip.stato !== "attivo" ? <span className="dc-muted">PIN disattivato</span>
+                    : dip.pin_impostato ? <Badge variant="success">PIN ok</Badge> : <Badge variant="warning">PIN da impostare</Badge>}
+                  <div className="dc-muted" style={{ fontSize: 11, marginTop: 3 }}>{dip.lotti_operatore === false ? "non firma in Lotti" : "operatore Lotti"}</div>
+                </td>
                 <td data-label="Azioni" className="dc-table-actions">
-                  <button onClick={() => openModal(dip)} className="dc-btn-icon"><Edit2 size={16} /></button>
-                  {dip.stato === "attivo" && <button onClick={() => handleCessa(dip)} className="dc-btn-icon" title="Cessa rapporto"><LogOut size={16} /></button>}
-                  <button onClick={() => handleDelete(dip.id)} className="dc-btn-icon dc-btn-danger"><Trash2 size={16} /></button>
+                  <button onClick={() => openModal(dip)} className="dc-btn-icon" title="Modifica scheda"><Edit2 size={16} /></button>
+                  {dip.stato === "attivo"
+                    ? <button onClick={() => apriCessazione(dip)} className="dc-btn-icon" title="Cessa rapporto (chiede data e motivo)"><LogOut size={16} /></button>
+                    : <button onClick={() => riattiva(dip)} className="dc-btn-icon" title="Riattiva rapporto"><RefreshCw size={16} /></button>}
+                  <button onClick={() => handleDelete(dip)} className="dc-btn-icon dc-btn-danger" title="Elimina scheda (non e' una cessazione)"><Trash2 size={16} /></button>
                 </td>
               </tr>
             ))}
@@ -794,15 +908,25 @@ function AnagraficaPage({ dipendenti, reload }) {
         </table>
       </div>
 
-      {/* Modal */}
+      {/* Modale scheda */}
       {showModal && (
         <div className="dc-modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="dc-modal" onClick={e => e.stopPropagation()}>
+          <div className="dc-modal dc-modal-lg" onClick={e => e.stopPropagation()}>
             <div className="dc-modal-header">
               <h3>{editingDip ? "Modifica Dipendente" : "Nuovo Dipendente"}</h3>
               <button onClick={() => setShowModal(false)} className="dc-modal-close"><X size={20} /></button>
             </div>
             <form onSubmit={handleSubmit} className="dc-modal-body">
+              {editingDip && (
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+                  <span className="dc-muted" style={{ fontSize: 13 }}>Stato:</span>
+                  <StatoCell dip={editingDip} />
+                  {editingDip.stato === "attivo"
+                    ? <button type="button" className="dc-btn" onClick={() => { setShowModal(false); apriCessazione(editingDip); }}><LogOut size={14} /> Cessa rapporto…</button>
+                    : <button type="button" className="dc-btn" onClick={() => { setShowModal(false); riattiva(editingDip); }}><RefreshCw size={14} /> Riattiva</button>}
+                  <span className="dc-muted" style={{ fontSize: 11 }}>Lo stato cambia solo da qui, con data e motivo: il salvataggio della scheda non lo tocca.</span>
+                </div>
+              )}
               <div className="dc-form-grid">
                 <div className="dc-form-group">
                   <label>Nome *</label>
@@ -813,6 +937,22 @@ function AnagraficaPage({ dipendenti, reload }) {
                   <input required value={formData.cognome} onChange={(e) => setFormData({...formData, cognome: e.target.value})} />
                 </div>
                 <div className="dc-form-group">
+                  <label>Codice Fiscale</label>
+                  <input value={formData.codice_fiscale} onChange={(e) => setFormData({...formData, codice_fiscale: e.target.value.toUpperCase()})} />
+                </div>
+                <div className="dc-form-group">
+                  <label>Matricola</label>
+                  <input value={formData.matricola} onChange={(e) => setFormData({...formData, matricola: e.target.value})} />
+                </div>
+                <div className="dc-form-group">
+                  <label>Data di nascita</label>
+                  <input type="date" value={formData.data_nascita} onChange={(e) => setFormData({...formData, data_nascita: e.target.value})} />
+                </div>
+                <div className="dc-form-group">
+                  <label>Data assunzione</label>
+                  <input type="date" value={formData.data_assunzione} onChange={(e) => setFormData({...formData, data_assunzione: e.target.value})} />
+                </div>
+                <div className="dc-form-group">
                   <label>Email</label>
                   <input type="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} />
                 </div>
@@ -821,16 +961,25 @@ function AnagraficaPage({ dipendenti, reload }) {
                   <input value={formData.telefono} onChange={(e) => setFormData({...formData, telefono: e.target.value})} />
                 </div>
                 <div className="dc-form-group">
-                  <label>Ruolo</label>
-                  <input value={formData.ruolo} onChange={(e) => setFormData({...formData, ruolo: e.target.value})} />
+                  <label>Indirizzo</label>
+                  <input value={formData.indirizzo} onChange={(e) => setFormData({...formData, indirizzo: e.target.value})} />
                 </div>
                 <div className="dc-form-group">
-                  <label>Codice Fiscale</label>
-                  <input value={formData.codice_fiscale} onChange={(e) => setFormData({...formData, codice_fiscale: e.target.value.toUpperCase()})} />
+                  <label>Ruolo / qualifica</label>
+                  <input value={formData.ruolo} onChange={(e) => setFormData({...formData, ruolo: e.target.value})} placeholder="es. barista, cameriere di bar, pasticciere" />
+                </div>
+                <div className="dc-form-group">
+                  <label>Livello</label>
+                  <input value={formData.livello} onChange={(e) => setFormData({...formData, livello: e.target.value})} />
+                </div>
+                <div className="dc-form-group">
+                  <label>Ore settimanali</label>
+                  <input type="number" min="0" max="60" step="0.5" value={formData.ore_settimanali ?? ""} onChange={(e) => setFormData({...formData, ore_settimanali: e.target.value})} />
                 </div>
                 <div className="dc-form-group">
                   <label>Contratto</label>
-                  <select value={formData.contratto} onChange={(e) => setFormData({...formData, contratto: e.target.value})}>
+                  <select value={formData.contratto || ""} onChange={(e) => setFormData({...formData, contratto: e.target.value})}>
+                    <option value="">— non indicato —</option>
                     <option>Indeterminato</option>
                     <option>Determinato</option>
                     <option>Part-time</option>
@@ -838,18 +987,83 @@ function AnagraficaPage({ dipendenti, reload }) {
                   </select>
                 </div>
                 <div className="dc-form-group">
-                  <label>Stato</label>
-                  <select value={formData.stato} onChange={(e) => setFormData({...formData, stato: e.target.value})}>
-                    <option value="attivo">Attivo</option>
-                    <option value="inattivo">Inattivo</option>
-                  </select>
+                  <label>IBAN</label>
+                  <input value={formData.iban} onChange={(e) => setFormData({...formData, iban: e.target.value.toUpperCase()})} />
+                </div>
+                <div className="dc-form-group">
+                  <label>Lotti (HACCP)</label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 400 }}>
+                    <input type="checkbox" checked={formData.lotti_operatore !== false} onChange={(e) => setFormData({...formData, lotti_operatore: e.target.checked})} />
+                    Operatore in Lotti (firma lotti, sanificazioni, temperature)
+                  </label>
                 </div>
               </div>
+
+              {editingDip && (
+                <div className="dc-card" style={{ marginTop: 12, background: "#faf7f0" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <b>PIN personale</b>
+                    {editingDip.pin_impostato ? <Badge variant="success">impostato</Badge> : <Badge variant="warning">da impostare</Badge>}
+                    <span className="dc-muted" style={{ fontSize: 12 }}>Uno per persona: portale dipendente e tablet Lotti. Non e' mai visibile; qui si puo' solo reimpostare.</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
+                    <input className="dc-input" inputMode="numeric" placeholder="nuovo PIN (4-8 cifre)" value={pinNuovo}
+                      onChange={(e) => setPinNuovo(e.target.value.replace(/\D/g, ""))} style={{ width: 200 }} />
+                    <button type="button" className="dc-btn dc-btn-primary" onClick={salvaPin} disabled={pinBusy || editingDip.stato !== "attivo"}>
+                      {pinBusy ? "…" : editingDip.pin_impostato ? "Reimposta PIN" : "Imposta PIN"}
+                    </button>
+                    {editingDip.pin_impostato && <button type="button" className="dc-btn" onClick={togliPin} disabled={pinBusy}>Togli PIN</button>}
+                    {editingDip.stato !== "attivo" && <span className="dc-muted" style={{ fontSize: 12 }}>rapporto cessato: PIN disattivato</span>}
+                  </div>
+                </div>
+              )}
+
               <div className="dc-modal-footer">
                 <button type="button" onClick={() => setShowModal(false)} className="dc-btn">Annulla</button>
-                <button type="submit" className="dc-btn dc-btn-primary">{editingDip ? "Salva" : "Crea"}</button>
+                <button type="submit" className="dc-btn dc-btn-primary" disabled={salvando}>{salvando ? "Salvo…" : editingDip ? "Salva scheda" : "Crea"}</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modale cessazione */}
+      {cessa && (
+        <div className="dc-modal-overlay" onClick={() => !cessaBusy && setCessa(null)}>
+          <div className="dc-modal" onClick={e => e.stopPropagation()}>
+            <div className="dc-modal-header">
+              <h3>Cessa rapporto · {cessa.dip.cognome} {cessa.dip.nome}</h3>
+              <button onClick={() => setCessa(null)} className="dc-modal-close"><X size={20} /></button>
+            </div>
+            <div className="dc-modal-body">
+              <div className="dc-form-grid">
+                <div className="dc-form-group">
+                  <label>Data di fine rapporto *</label>
+                  <input type="date" value={cessa.data} onChange={(e) => setCessa({ ...cessa, data: e.target.value })} />
+                </div>
+                <div className="dc-form-group">
+                  <label>Motivo *</label>
+                  <select value={cessa.motivo} onChange={(e) => setCessa({ ...cessa, motivo: e.target.value })}>
+                    {MOTIVI_CESSAZIONE.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                  </select>
+                </div>
+                <div className="dc-form-group">
+                  <label>Riferimento (numero modulo dimissioni / protocollo UNILAV)</label>
+                  <input value={cessa.riferimento} onChange={(e) => setCessa({ ...cessa, riferimento: e.target.value })} />
+                </div>
+                <div className="dc-form-group">
+                  <label>Note</label>
+                  <input value={cessa.note} onChange={(e) => setCessa({ ...cessa, note: e.target.value })} />
+                </div>
+              </div>
+              <p className="dc-muted" style={{ fontSize: 12 }}>
+                Effetti: PIN disattivato, contratti terminati, richieste future rifiutate, partite aperte chiuse; su Lotti la persona passa in «Non più in carico» entro 10 minuti.
+              </p>
+              <div className="dc-modal-footer">
+                <button type="button" onClick={() => setCessa(null)} className="dc-btn" disabled={cessaBusy}>Annulla</button>
+                <button type="button" onClick={confermaCessazione} className="dc-btn dc-btn-primary" disabled={cessaBusy}>{cessaBusy ? "…" : "Conferma cessazione"}</button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -2730,777 +2944,6 @@ function TurniPage({ dipendenti, turni, reload }) {
 }
 
 // Buste Paga Page
-function BustePagaPage({ dipendenti, reload, getDipendente }) {
-  const [anno, setAnno] = useState(new Date().getFullYear());
-  const [mese, setMese] = useState(new Date().getMonth() + 1);
-  const [righe, setRighe] = useState({});
-  const [salvato, setSalvato] = useState({});
-  const [importing, setImporting] = useState(false);
-  const [importMsg, setImportMsg] = useState(null);
-  const fileRef = useRef(null);
-  const excelRef = useRef(null);
-  const [pnMsg, setPnMsg] = useState(null);
-  const [soloMancanti, setSoloMancanti] = useState(false);
-  const [vistaAnno, setVistaAnno] = useState(false);
-  const [annoMatrix, setAnnoMatrix] = useState(null);
-  const [cercaQ, setCercaQ] = useState("");
-  const [cercaRes, setCercaRes] = useState(null);
-  const [cercaBusy, setCercaBusy] = useState(false);
-  const [rescanMsg, setRescanMsg] = useState("");
-  const mesi = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"];
-
-  const vuota = () => ({ importo_busta: "", bonifico_ricevuto: false, bonifico_importo: "", bonifico_data: "", acconti: [] });
-
-  const load = async () => {
-    const res = await axios.get(`${API}/paghe?anno=${anno}&mese=${mese}`);
-    const map = {};
-    (res.data || []).forEach(p => { map[p.dipendente_id] = {
-      importo_busta: p.importo_busta ?? "",
-      bonifico_ricevuto: !!p.bonifico_ricevuto,
-      bonifico_importo: p.bonifico_importo ?? "",
-      bonifico_data: p.bonifico_data ?? "",
-      acconti: (p.acconti || []).map(a => ({ importo: a.importo ?? "", data: a.data ?? "" })),
-      busta_riconciliata: !!p.busta_riconciliata,
-      bonifico_riconciliato: !!p.bonifico_riconciliato,
-      bonifico_pdf: p.bonifico_pdf || "",
-      bonifico_causale: p.bonifico_causale || "",
-      busta_da_lul: !!p.busta_da_lul,
-      prestito_importo: p.prestito_importo ?? "",
-      prestito_saldo: p.prestito_saldo ?? "",
-      tfr_anticipo_importo: p.tfr_anticipo_importo ?? "",
-      acconto_cedolino: p.acconto_cedolino ?? "",
-      saldo_residuo: p.saldo_residuo ?? "",
-    }; });
-    setRighe(map);
-  };
-  useEffect(() => { load(); }, [anno, mese]);
-
-  const get = (id) => righe[id] || vuota();
-  const upd = (id, patch) => setRighe(r => ({ ...r, [id]: { ...get(id), ...patch } }));
-  const setAcc = (id, idx, patch) => { const acc = [...(get(id).acconti || [])]; acc[idx] = { ...(acc[idx] || { importo: "", data: "" }), ...patch }; upd(id, { acconti: acc }); };
-  const addAcc = (id) => { const acc = [...(get(id).acconti || [])]; if (acc.length < 3) { acc.push({ importo: "", data: "" }); upd(id, { acconti: acc }); } };
-  const delAcc = (id, idx) => { const acc = [...(get(id).acconti || [])]; acc.splice(idx, 1); upd(id, { acconti: acc }); };
-
-  const salva = async (id) => {
-    const d = get(id);
-    const payload = {
-      dipendente_id: id, anno, mese,
-      importo_busta: d.importo_busta === "" ? null : parseFloat(d.importo_busta),
-      bonifico_ricevuto: d.bonifico_ricevuto,
-      bonifico_importo: d.bonifico_importo === "" ? null : parseFloat(d.bonifico_importo),
-      bonifico_data: d.bonifico_data || null,
-      acconti: (d.acconti || []).filter(a => a.importo !== "" && a.importo != null).map(a => ({ importo: parseFloat(a.importo), data: a.data || null })),
-    };
-    try { await axios.post(`${API}/paghe`, payload); setSalvato(s => ({ ...s, [id]: true })); setTimeout(() => setSalvato(s => ({ ...s, [id]: false })), 1500); toast("Busta salvata"); } catch (e) { console.error(e); toast("Errore salvataggio", "err"); }
-  };
-
-  const eur = (n) => (n || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-  // Stato pagamento di una paga: ok / parziale / manca / bonifico-senza-busta / null
-  const statoPaga = (p) => {
-    if (!p) return null;
-    const busta = parseFloat(p.importo_busta) || 0;
-    const bon = parseFloat(p.bonifico_importo) || 0;
-    const acc = (p.acconti || []).reduce((a, x) => a + (parseFloat(x.importo) || 0), 0);
-    if (busta <= 0 && bon <= 0 && acc <= 0) return null;
-    const pagato = bon + acc;
-    if (busta <= 0 && bon > 0) return "bonifico";
-    if (pagato + 0.5 >= busta) return "ok";
-    if (pagato > 0) return "parziale";
-    return "manca";
-  };
-
-  // Vista annuale: carica i 12 mesi dell'anno selezionato
-  useEffect(() => {
-    if (!vistaAnno) return;
-    let vivo = true;
-    (async () => {
-      const res = await Promise.all([1,2,3,4,5,6,7,8,9,10,11,12].map(m =>
-        axios.get(`${API}/paghe?anno=${anno}&mese=${m}`).then(r => [m, r.data || []]).catch(() => [m, []])));
-      if (!vivo) return;
-      const mtx = {};
-      res.forEach(([m, rows]) => { mtx[m] = {}; rows.forEach(p => { mtx[m][p.dipendente_id] = p; }); });
-      setAnnoMatrix(mtx);
-    })();
-    return () => { vivo = false; };
-  }, [vistaAnno, anno]);
-
-  const cercaVoce = async () => {
-    const q = cercaQ.trim();
-    if (!q) return;
-    setCercaBusy(true); setCercaRes(null);
-    const isCode = /^[A-Za-z]\d{3,5}$/.test(q);
-    const params = isCode ? `codice=${encodeURIComponent(q.toUpperCase())}` : `testo=${encodeURIComponent(q)}`;
-    try {
-      const r = await axios.get(`${API}/cedolini/cerca-voce?${params}`);
-      setCercaRes(r.data);
-    } catch (e) {
-      setCercaRes({ risultati: [], totale: 0, errore: e?.response?.data?.detail || "Errore ricerca" });
-    } finally { setCercaBusy(false); }
-  };
-
-  const riscansiona = async () => {
-    if (!window.confirm("Riscansiona i cedolini storici con PDF salvato? Può richiedere fino a un minuto.")) return;
-    setRescanMsg("Riscansione in corso…");
-    try {
-      const r = await axios.post(`${API}/cedolini/riscansiona`);
-      setRescanMsg(`✓ Riscansione completata: ${r.data.aggiornati} cedolini aggiornati, ${r.data.errori} senza PDF/errore.`);
-    } catch (e) { setRescanMsg("⚠ " + (e?.response?.data?.detail || "Errore riscansione")); }
-  };
-
-  const correggiAcconti = async () => {
-    if (!window.confirm("Togliere gli 'acconto dal cedolino' implausibili (poche decine di euro, probabile errore di lettura) e ricalcolare il saldo? Non tocca gli acconti registrati a mano.")) return;
-    setRescanMsg("Correzione acconti in corso…");
-    try {
-      const r = await axios.post(`${API}/paghe/correggi-acconti-cedolino`);
-      setRescanMsg(`✓ Corretti ${r.data.corretti} acconti implausibili (rimossi, saldo ricalcolato sul netto pieno).`);
-      await load();
-    } catch (e) { setRescanMsg("⚠ " + (e?.response?.data?.detail || "Errore correzione acconti")); }
-  };
-
-  const handleImportLul = async (e) => {
-    const fs = Array.from(e.target.files || []);
-    if (!fs.length) return;
-    setImporting(true); setImportMsg(null);
-    try {
-      const fd = new FormData();
-      fs.forEach(f => fd.append("files", f));
-      const res = await axios.post(`${API}/paghe/importa-lul`, fd, { headers: { "Content-Type": "multipart/form-data" } });
-      const r = res.data;
-      setImportMsg(r);
-      if (r.mesi?.length) { const u = r.mesi[r.mesi.length - 1]; setMese(u.mese); setAnno(u.anno); }
-      await load();
-    } catch (err) {
-      setImportMsg({ errore: err.response?.data?.detail || "Errore durante l'import" });
-    } finally {
-      setImporting(false);
-      if (fileRef.current) fileRef.current.value = "";
-    }
-  };
-  const handleImportEmail = async () => {
-    setImporting(true); setImportMsg(null);
-    try {
-      const res = await axios.post(`${API}/paghe/importa-email`);
-      const r = res.data;
-      setImportMsg(r);
-      if (r.mesi?.length) { const u = r.mesi[r.mesi.length - 1]; setMese(u.mese); setAnno(u.anno); }
-      await load();
-    } catch (err) {
-      setImportMsg({ errore: err.response?.data?.detail || "Errore durante l'import da email" });
-    } finally {
-      setImporting(false);
-    }
-  };
-  const handleImportPrimaNota = async (e) => {
-    const fl = (e.target.files || [])[0];
-    if (!fl) return;
-    setImporting(true); setPnMsg(null);
-    try {
-      const fd = new FormData(); fd.append("file", fl);
-      const r = await axios.post(`${API}/paghe/importa-prima-nota`, fd, { headers: { "Content-Type": "multipart/form-data" } });
-      setPnMsg(r.data);
-      await load();
-      if (vistaAnno) { setVistaAnno(false); setTimeout(() => setVistaAnno(true), 50); }
-    } catch (err) {
-      setPnMsg({ errore: err?.response?.data?.detail || "Errore import Prima Nota" });
-    } finally {
-      setImporting(false);
-      if (excelRef.current) excelRef.current.value = "";
-    }
-  };
-  const csvRef = useRef(null);
-  const [csvMsg, setCsvMsg] = useState(null);
-  const [pnDett, setPnDett] = useState(null);
-  const handleImportPagamenti = async (e) => {
-    const fl = (e.target.files || [])[0];
-    if (!fl) return;
-    setImporting(true); setCsvMsg(null);
-    try {
-      const fd = new FormData(); fd.append("file", fl);
-      const r = await axios.post(`${API}/paghe/importa-pagamenti`, fd, { headers: { "Content-Type": "multipart/form-data" } });
-      setCsvMsg(r.data); await load();
-      if (vistaAnno) { setVistaAnno(false); setTimeout(() => setVistaAnno(true), 50); }
-    } catch (err) { setCsvMsg({ errore: err?.response?.data?.detail || "Errore import pagamenti" }); }
-    finally { setImporting(false); if (csvRef.current) csvRef.current.value = ""; }
-  };
-  const apriPrimaNota = async (dipId, nome) => {
-    setPnDett({ nome, loading: true });
-    try {
-      const [r, s] = await Promise.all([
-        axios.get(`${API}/paghe/prima-nota?dipendente_id=${dipId}`),
-        axios.get(`${API}/paghe/storico-pagamenti?dipendente_id=${dipId}`).catch(() => ({ data: { righe: [] } })),
-      ]);
-      setPnDett({ nome, righe: r.data.righe || [], saldo_finale: r.data.saldo_finale, storico: s.data.righe || [] });
-    } catch { setPnDett({ nome, righe: [], errore: true }); }
-  };
-  const storicoRef = useRef(null);
-  const [storicoMsg, setStoricoMsg] = useState(null);
-  const handleImportStorico = async (e) => {
-    const fl = (e.target.files || [])[0];
-    if (!fl) return;
-    setImporting(true); setStoricoMsg(null);
-    try {
-      const fd = new FormData(); fd.append("file", fl);
-      const r = await axios.post(`${API}/paghe/importa-storico-pagamenti`, fd, { headers: { "Content-Type": "multipart/form-data" } });
-      setStoricoMsg(r.data);
-    } catch (err) { setStoricoMsg({ errore: err?.response?.data?.detail || "Errore import archivio storico" }); }
-    finally { setImporting(false); if (storicoRef.current) storicoRef.current.value = ""; }
-  };
-  const totBuste = dipendenti.reduce((s, d) => s + (parseFloat(get(d.id).importo_busta) || 0), 0);
-  const totBonifici = dipendenti.reduce((s, d) => s + (parseFloat(get(d.id).bonifico_importo) || 0), 0);
-  const totAcconti = dipendenti.reduce((s, d) => s + (get(d.id).acconti || []).reduce((a, x) => a + (parseFloat(x.importo) || 0), 0), 0);
-  const inp = { border: "1px solid #d1d5db", borderRadius: 8, padding: "7px 9px", fontSize: 14, width: "100%", boxSizing: "border-box" };
-
-  const [showImport, setShowImport] = useState(false);
-  const [showCerca, setShowCerca] = useState(false);
-
-  // Simulazione F24 + costo mensile (dai cedolini del mese) e import da Google Drive
-  const [f24, setF24] = useState(null);
-  const [f24Busy, setF24Busy] = useState(false);
-  const [driveMsg, setDriveMsg] = useState(null);
-  const calcolaF24 = async () => {
-    setF24Busy(true); setF24(null);
-    try { const r = await axios.get(`/hr/api/cedolini/simulazione-f24?anno=${anno}&mese=${mese}`); setF24(r.data); }
-    catch (e) { setF24({ errore: e?.response?.data?.detail || "Errore nel calcolo" }); }
-    finally { setF24Busy(false); }
-  };
-  const importaDaDrive = async () => {
-    if (!window.confirm("Importo i PDF (buste paga e documenti) dalla cartella Google Drive dei cedolini?")) return;
-    setImporting(true); setDriveMsg(null);
-    try { const r = await axios.post(`/hr/api/cedolini/import-drive`, {}); setDriveMsg(r.data); }
-    catch (e) { setDriveMsg({ errore: e?.response?.data?.detail || "Errore import da Drive" }); }
-    finally { setImporting(false); }
-  };
-
-  return (
-    <div className="dc-page">
-      <div className="dc-page-header">
-        <div>
-          <h1>Buste Paga</h1>
-          <p>Importo busta, bonifico ricevuto e acconti · tutto salvato sul database</p>
-        </div>
-        <div className="dc-page-actions" style={{ position: "relative" }}>
-          <input ref={fileRef} type="file" accept=".pdf,.zip,application/pdf,application/zip,application/x-zip-compressed" multiple onChange={handleImportLul} style={{ display: "none" }} />
-          <input ref={excelRef} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={handleImportPrimaNota} style={{ display: "none" }} />
-          <input ref={csvRef} type="file" accept=".csv,text/csv" onChange={handleImportPagamenti} style={{ display: "none" }} />
-          <input ref={storicoRef} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={handleImportStorico} style={{ display: "none" }} />
-          <button onClick={() => setShowImport(s => !s)} disabled={importing}
-            style={{ background: "#5b7a6b", color: "#fff", border: "none", borderRadius: 10, padding: "9px 16px", fontWeight: 700, cursor: importing ? "default" : "pointer", opacity: importing ? 0.6 : 1 }}>
-            {importing ? "Importo…" : "⤵ Importa  ▾"}
-          </button>
-          {showImport && (
-            <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 6, background: "#fffefb", border: "1px solid #e6e0d4", borderRadius: 10, boxShadow: "0 6px 20px rgba(0,0,0,.12)", zIndex: 30, minWidth: 280, overflow: "hidden" }}>
-              {[["Libro Unico (PDF/ZIP)", () => fileRef.current?.click()],
-                ["Buste da email", handleImportEmail],
-                ["Prima Nota (Excel)", () => excelRef.current?.click()],
-                ["Pagamenti banca (CSV)", () => csvRef.current?.click()],
-                ["Archivio storico pagamenti ante-app (Excel)", () => storicoRef.current?.click()]].map(([label, fn], i, arr) => (
-                <button key={i} onClick={() => { setShowImport(false); fn(); }}
-                  style={{ display: "block", width: "100%", textAlign: "left", background: "none", border: "none", borderBottom: i < arr.length - 1 ? "1px solid #f0ebe0" : "none", padding: "11px 14px", fontSize: 14, cursor: "pointer", color: "#2a3329" }}>{label}</button>
-              ))}
-            </div>
-          )}
-          <select value={mese} onChange={e => setMese(+e.target.value)} className="dc-select">
-            {mesi.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-          </select>
-          <select value={anno} onChange={e => setAnno(+e.target.value)} className="dc-select">
-            {[2022, 2023, 2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
-        </div>
-      </div>
-
-      <div className="dc-card" style={{ marginBottom: 16 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-          <h3 style={{ margin: 0 }}>🧾 Simulazione F24 e costo mensile — {mesi[mese - 1]} {anno}</h3>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button className="dc-btn" disabled={importing} onClick={importaDaDrive}
-              title="Scarica i PDF delle buste dalla cartella Drive dei cedolini (service account) e li archivia con la stessa pipeline dell'upload massivo">
-              📥 Importa cedolini da Drive
-            </button>
-            <button className="dc-btn-primary" disabled={f24Busy} onClick={calcolaF24}>{f24Busy ? "Calcolo…" : "Calcola F24 del mese"}</button>
-          </div>
-        </div>
-        <p className="dc-muted" style={{ fontSize: 12.5, margin: "6px 0 0" }}>
-          Per ogni dipendente legge il cedolino del mese (contratto e livello applicati in busta): IRPEF e INPS
-          reali dalle voci quando ci sono, altrimenti stimati dal netto con le regole CCNL. INPS azienda 30%,
-          quota TFR = lordo ÷ 13,5. È una simulazione: fa fede l'F24 del consulente.
-        </p>
-        {driveMsg && (
-          <div style={{ marginTop: 8, fontSize: 13, color: driveMsg.errore ? "#b3261e" : "#3f5a4e" }}>
-            {driveMsg.errore
-              ? `⚠ ${driveMsg.errore}`
-              : `✓ Drive: ${driveMsg.trovati_pdf} PDF trovati · ${driveMsg.archiviati} archiviati · ${driveMsg.duplicati} duplicati saltati${(driveMsg.non_assegnati || []).length ? ` · da controllare: ${driveMsg.non_assegnati.join(", ")}` : ""}`}
-          </div>
-        )}
-        {f24?.errore && <div style={{ marginTop: 8, color: "#b3261e", fontWeight: 600 }}>⚠ {f24.errore}</div>}
-        {f24 && !f24.errore && (
-          f24.righe.length === 0
-            ? <p className="dc-muted" style={{ marginTop: 10 }}>Nessun cedolino trovato per {mesi[mese - 1]} {anno}: importa prima le buste (Libro Unico, upload o Drive).</p>
-            : (
-              <div className="dc-scroll-x" style={{ marginTop: 10 }}>
-                <table className="dc-table" style={{ fontSize: 13 }}>
-                  <thead><tr>
-                    <th>Dipendente</th><th style={{ textAlign: "right" }}>Lordo €</th><th style={{ textAlign: "right" }}>Netto €</th>
-                    <th style={{ textAlign: "right" }}>IRPEF €</th><th style={{ textAlign: "right" }}>INPS dip. €</th>
-                    <th style={{ textAlign: "right" }}>INPS azienda €</th><th style={{ textAlign: "right" }}>TFR mese €</th>
-                    <th style={{ textAlign: "right" }}>F24 €</th><th style={{ textAlign: "right" }}>Costo azienda €</th><th>Fonte</th>
-                  </tr></thead>
-                  <tbody>
-                    {f24.righe.map(r => (
-                      <tr key={r.dipendente_id || r.dipendente_nome}>
-                        <td style={{ fontWeight: 600 }}>{r.dipendente_nome}</td>
-                        <td style={{ textAlign: "right" }}>{eur(r.lordo)}</td>
-                        <td style={{ textAlign: "right" }}>{eur(r.netto)}</td>
-                        <td style={{ textAlign: "right" }}>{eur(r.irpef)}</td>
-                        <td style={{ textAlign: "right" }}>{eur(r.inps_dipendente)}</td>
-                        <td style={{ textAlign: "right" }}>{eur(r.inps_azienda)}</td>
-                        <td style={{ textAlign: "right" }}>{eur(r.tfr_mese)}</td>
-                        <td style={{ textAlign: "right", fontWeight: 700 }}>{eur(r.totale_f24)}</td>
-                        <td style={{ textAlign: "right", fontWeight: 700 }}>{eur(r.costo_azienda)}</td>
-                        <td className="dc-muted" style={{ fontSize: 11.5 }}>{r.fonte}</td>
-                      </tr>
-                    ))}
-                    <tr style={{ fontWeight: 700, borderTop: "2px solid #e6e0d4", background: "#eef1ea" }}>
-                      <td>TOTALE ({f24.dipendenti} dipendenti)</td>
-                      <td style={{ textAlign: "right" }}>{eur(f24.totali.lordo)}</td>
-                      <td style={{ textAlign: "right" }}>{eur(f24.totali.netto)}</td>
-                      <td style={{ textAlign: "right" }}>{eur(f24.totali.irpef)}</td>
-                      <td style={{ textAlign: "right" }}>{eur(f24.totali.inps_dipendente)}</td>
-                      <td style={{ textAlign: "right" }}>{eur(f24.totali.inps_azienda)}</td>
-                      <td style={{ textAlign: "right" }}>{eur(f24.totali.tfr_mese)}</td>
-                      <td style={{ textAlign: "right", fontSize: 15 }}>{eur(f24.totali.totale_f24)}</td>
-                      <td style={{ textAlign: "right", fontSize: 15 }}>{eur(f24.totali.costo_azienda)}</td>
-                      <td></td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            )
-        )}
-      </div>
-
-      {pnMsg && (
-        <div className="dc-card" style={{ marginBottom: 16, borderLeft: `4px solid ${pnMsg.errore ? '#d35f4e' : '#3d8168'}` }}>
-          {pnMsg.errore ? <div style={{ color: "#d35f4e", fontWeight: 600 }}>⚠ {pnMsg.errore}</div> : (
-            <div>
-              <div style={{ fontWeight: 700 }}>✓ Prima Nota importata: {pnMsg.aggiornati} mesi/dipendente aggiornati su {pnMsg.righe_aggregate} totali.</div>
-              {pnMsg.non_trovati > 0 && (
-                <div style={{ marginTop: 6, fontSize: 13, color: "#7d5526" }}>
-                  ⚠ {pnMsg.non_trovati} voci con dipendente non in anagrafica (non importate): {(pnMsg.nomi_non_trovati || []).join(", ")}
-                </div>
-              )}
-              {pnMsg.discrepanze?.length > 0 && (
-                <div style={{ marginTop: 8 }}>
-                  <div style={{ fontWeight: 700, fontSize: 13, color: "#7d5526" }}>Differenze importo busta (app vs Excel) — {pnMsg.discrepanze.length}:</div>
-                  <div style={{ fontSize: 13, display: "flex", flexDirection: "column", gap: 2, marginTop: 2 }}>
-                    {pnMsg.discrepanze.slice(0, 60).map((x, i) => (
-                      <span key={i}>{x.dipendente} · {mesi[x.mese - 1]} {x.anno}: app € {eur(x.busta_app)} · Excel € {eur(x.busta_excel)}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {csvMsg && (
-        <div className="dc-card" style={{ marginBottom: 16, borderLeft: `4px solid ${csvMsg.errore ? '#d35f4e' : '#3d8168'}` }}>
-          {csvMsg.errore ? <div style={{ color: "#d35f4e", fontWeight: 600 }}>⚠ {csvMsg.errore}</div> : (
-            <div style={{ fontSize: 14 }}>
-              <div style={{ fontWeight: 700 }}>✓ Pagamenti importati: {csvMsg.importati} · {csvMsg.mesi_aggiornati} mesi aggiornati.</div>
-              {csvMsg.non_trovati?.length > 0 && <div style={{ marginTop: 6, fontSize: 13, color: "#7d5526" }}>⚠ Beneficiari non trovati in anagrafica: {csvMsg.non_trovati.join(", ")}</div>}
-            </div>
-          )}
-        </div>
-      )}
-
-      {storicoMsg && (
-        <div className="dc-card" style={{ marginBottom: 16, borderLeft: `4px solid ${storicoMsg.errore ? '#d35f4e' : '#3d8168'}` }}>
-          {storicoMsg.errore ? <div style={{ color: "#d35f4e", fontWeight: 600 }}>⚠ {storicoMsg.errore}</div> : (
-            <div style={{ fontSize: 14 }}>
-              <div style={{ fontWeight: 700 }}>✓ Archivio storico: {storicoMsg.importati} righe nuove, {storicoMsg.gia_presenti} già presenti (su {storicoMsg.righe_lette} lette).</div>
-              {storicoMsg.dipendenti_non_in_anagrafica?.length > 0 && (
-                <div style={{ marginTop: 6, fontSize: 13, color: "#7d5526" }}>
-                  ⚠ Nomi non trovati in anagrafica (non importati): {storicoMsg.dipendenti_non_in_anagrafica.map(x => `${x.nome} (${x.righe})`).join(", ")}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {pnDett && (
-        <div onClick={() => setPnDett(null)} style={{ position: "fixed", inset: 0, background: "rgba(42,51,41,.45)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: 20, zIndex: 50, overflow: "auto" }}>
-          <div onClick={e => e.stopPropagation()} className="dc-card" style={{ maxWidth: 640, width: "100%", marginTop: 20 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <h3 style={{ margin: 0 }}>Prima nota — {pnDett.nome}</h3>
-              <button className="dc-btn" onClick={() => setPnDett(null)}>Chiudi</button>
-            </div>
-            {pnDett.loading ? <p className="dc-muted">Carico…</p> : !pnDett.righe?.length ? <p className="dc-muted" style={{ marginTop: 12 }}>Nessun dato.</p> : (
-              <div style={{ overflowX: "auto", marginTop: 12 }}>
-                <table className="dc-table" style={{ minWidth: 520, whiteSpace: "nowrap" }}>
-                  <thead><tr><th>Periodo</th><th style={{ textAlign: "right" }}>Busta €</th><th style={{ textAlign: "right" }}>Erogato €</th><th style={{ textAlign: "right" }}>Saldo progressivo €</th></tr></thead>
-                  <tbody>
-                    {pnDett.righe.map((x, i) => (
-                      <tr key={i}>
-                        <td>{mesi[x.mese - 1]} {x.anno}</td>
-                        <td style={{ textAlign: "right" }}>{x.busta ? eur(x.busta) : "—"}</td>
-                        <td style={{ textAlign: "right" }}>{x.erogato ? eur(x.erogato) : "—"}</td>
-                        <td style={{ textAlign: "right", fontWeight: 700, color: x.saldo_progressivo > 0.5 ? "#d35f4e" : x.saldo_progressivo < -0.5 ? "#7d5526" : "#3d8168" }}>{eur(x.saldo_progressivo)}</td>
-                      </tr>
-                    ))}
-                    <tr style={{ fontWeight: 700, borderTop: "2px solid #e6e0d4" }}>
-                      <td colSpan={3}>Saldo finale (positivo = ancora da pagare)</td>
-                      <td style={{ textAlign: "right", color: pnDett.saldo_finale > 0.5 ? "#d35f4e" : "#3d8168" }}>{eur(pnDett.saldo_finale)}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            )}
-            {pnDett.storico?.length > 0 && (
-              <div style={{ marginTop: 18 }}>
-                <h4 style={{ margin: "0 0 4px" }}>Storico ante-app (da Excel)</h4>
-                <p className="dc-muted" style={{ fontSize: 12.5, margin: "0 0 8px" }}>
-                  Sola consultazione: registro dei pagamenti effettuati prima di questa app, per data del bonifico.
-                </p>
-                <div style={{ overflowX: "auto", maxHeight: 260, overflowY: "auto" }}>
-                  <table className="dc-table" style={{ minWidth: 420, whiteSpace: "nowrap" }}>
-                    <thead><tr><th>Data</th><th style={{ textAlign: "right" }}>Busta €</th><th style={{ textAlign: "right" }}>Pagato €</th></tr></thead>
-                    <tbody>
-                      {pnDett.storico.map((x, i) => (
-                        <tr key={i}>
-                          <td>{formatDate(x.data)}</td>
-                          <td style={{ textAlign: "right" }}>{x.busta ? eur(x.busta) : "—"}</td>
-                          <td style={{ textAlign: "right" }}>{x.pagato ? eur(x.pagato) : "—"}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Motore di ricerca voci cedolino + riscansione storico (a scomparsa) */}
-      <div className="dc-card" style={{ marginBottom: 16 }}>
-        <h3 style={{ marginTop: 0, marginBottom: showCerca ? undefined : 0, cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }} onClick={() => setShowCerca(s => !s)}>
-          <span>🔎 Cerca nelle buste (qualsiasi voce)</span>
-          <span className="dc-muted" style={{ fontSize: 14 }}>{showCerca ? "▲" : "▼"}</span>
-        </h3>
-        {showCerca && (<>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <input className="dc-input" style={{ flex: "1 1 240px" }} placeholder="Codice (es. F09081) o testo (es. 730, 13ma, L.207)"
-            value={cercaQ} onChange={e => setCercaQ(e.target.value)} onKeyDown={e => e.key === "Enter" && cercaVoce()} />
-          <button className="dc-btn-primary" disabled={cercaBusy} onClick={cercaVoce}>{cercaBusy ? "Cerco…" : "Cerca"}</button>
-          <button className="dc-btn" onClick={riscansiona} title="Rilegge i PDF dei cedolini già caricati per popolare la ricerca sullo storico">Riscansiona storico</button>
-          <button className="dc-btn" onClick={correggiAcconti} title="Toglie gli 'acconto dal cedolino' di poche decine di euro (probabile errore del parser) già salvati e ricalcola il saldo">🔧 Correggi acconti cedolino</button>
-        </div>
-        {rescanMsg && <div className="dc-muted" style={{ marginTop: 8 }}>{rescanMsg}</div>}
-        {cercaRes && (
-          <div style={{ marginTop: 10, overflowX: "auto" }}>
-            {cercaRes.errore ? <div className="dc-muted">⚠ {cercaRes.errore}</div>
-              : cercaRes.totale === 0 ? <div className="dc-muted">Nessun risultato. Per lo storico premi prima “Riscansiona storico”.</div>
-              : <table className="dc-table" style={{ minWidth: 560, whiteSpace: "nowrap" }}>
-                  <thead><tr><th>Dipendente</th><th>Periodo</th><th>Codice</th><th>Descrizione</th><th style={{ textAlign: "right" }}>Importo</th></tr></thead>
-                  <tbody>
-                    {cercaRes.risultati.map((x, i) => (
-                      <tr key={i}><td>{x.dipendente}</td><td>{mesi[(x.mese || 1) - 1]} {x.anno}</td><td>{x.codice}</td><td>{x.descrizione}</td><td style={{ textAlign: "right" }}>{x.importo || "—"}</td></tr>
-                    ))}
-                  </tbody>
-                </table>}
-            {cercaRes.totale > 0 && <p className="dc-muted" style={{ fontSize: 12, marginTop: 6 }}>{cercaRes.totale} risultati.</p>}
-          </div>
-        )}
-        </>)}
-      </div>
-
-      {/* Riepilogo busta vs bonifico — mensile o annuale */}
-      <div className="dc-card" style={{ marginBottom: 16 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-          <h3 style={{ margin: 0 }}>{vistaAnno ? `Riepilogo anno ${anno}` : `Riepilogo ${mesi[mese - 1]} ${anno}`} — busta vs bonifico</h3>
-          <div style={{ display: "flex", gap: 14, fontSize: 13 }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer" }}><input type="checkbox" checked={soloMancanti} onChange={e => setSoloMancanti(e.target.checked)} /> Solo chi manca</label>
-            <label style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer" }}><input type="checkbox" checked={vistaAnno} onChange={e => setVistaAnno(e.target.checked)} /> Vista annuale</label>
-          </div>
-        </div>
-
-        {!vistaAnno && (
-          <div style={{ overflowX: "auto", marginTop: 10 }}>
-            <table className="dc-table" style={{ minWidth: 580, whiteSpace: "nowrap" }}>
-              <thead><tr><th>Dipendente</th><th style={{ textAlign: "right" }}>Busta €</th><th style={{ textAlign: "right" }}>Acconti €</th><th style={{ textAlign: "right" }}>Bonifico €</th><th style={{ textAlign: "right" }}>Differenza</th><th>Stato</th></tr></thead>
-              <tbody>
-                {dipendenti.map(d => {
-                  const r = get(d.id);
-                  const busta = parseFloat(r.importo_busta) || 0;
-                  const bon = parseFloat(r.bonifico_importo) || 0;
-                  const acc = (r.acconti || []).reduce((a, x) => a + (parseFloat(x.importo) || 0), 0);
-                  const cat = statoPaga(r);
-                  if (!cat) return null;
-                  if (soloMancanti && cat === "ok") return null;
-                  const pagato = bon + acc;
-                  const diff = pagato - busta;  // <0 manca, >0 eccedenza
-                  const diffCell = busta <= 0 ? <span className="dc-muted">—</span>
-                    : diff < -0.5 ? <span style={{ color: "#d35f4e", fontWeight: 700 }}>manca € {eur(-diff)}</span>
-                    : diff > 0.5 ? <span style={{ color: "#7d5526", fontWeight: 700 }}>+€ {eur(diff)}</span>
-                    : <span style={{ color: "#3d8168", fontWeight: 700 }}>0,00</span>;
-                  const stato = cat === "bonifico" ? <Badge variant="warning">bonifico senza busta</Badge>
-                    : cat === "ok" ? <Badge variant="success">✓ pagato</Badge>
-                    : cat === "parziale" ? <Badge variant="warning">parziale</Badge>
-                    : <Badge variant="danger">⚠ da pagare</Badge>;
-                  return (
-                    <tr key={d.id}>
-                      <td><button onClick={() => apriPrimaNota(d.id, d.cognome ? `${d.cognome} ${d.nome || ''}`.trim() : d.nome)} title="Apri prima nota / saldo progressivo" style={{ background: "none", border: "none", color: "#5b7a6b", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}>{d.cognome ? `${d.cognome} ${d.nome?.[0] || ''}.` : d.nome}</button></td>
-                      <td style={{ textAlign: "right" }}>{busta ? eur(busta) : "—"}</td>
-                      <td style={{ textAlign: "right" }}>{acc ? eur(acc) : "—"}</td>
-                      <td style={{ textAlign: "right" }}>{bon ? eur(bon) : "—"}</td>
-                      <td style={{ textAlign: "right" }}>{diffCell}</td>
-                      <td>{stato}</td>
-                    </tr>
-                  );
-                })}
-                {!soloMancanti && (
-                  <tr style={{ fontWeight: 700, borderTop: "2px solid #e6e0d4" }}>
-                    <td>Totale</td>
-                    <td style={{ textAlign: "right" }}>{eur(totBuste)}</td>
-                    <td style={{ textAlign: "right" }}>{eur(totAcconti)}</td>
-                    <td style={{ textAlign: "right" }}>{eur(totBonifici)}</td>
-                    <td style={{ textAlign: "right" }}>{eur(totBonifici + totAcconti - totBuste)}</td>
-                    <td></td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-            <p className="dc-muted" style={{ fontSize: 12, marginTop: 8 }}>“Pagato” = bonifico emesso + acconti ≥ importo busta.</p>
-          </div>
-        )}
-
-        {vistaAnno && (
-          <div style={{ overflowX: "auto", marginTop: 10 }}>
-            {!annoMatrix ? <div className="dc-muted">Carico l'anno…</div> : (
-              <table className="dc-table" style={{ minWidth: 1280, whiteSpace: "nowrap", fontSize: 12 }}>
-                <thead><tr><th>Dipendente</th>{mesi.map((m, i) => <th key={i} title={m} style={{ textAlign: "center" }}>{m.slice(0, 3)}</th>)}<th style={{ textAlign: "right" }}>Tot Busta</th><th style={{ textAlign: "right" }}>Tot Bonifici</th><th style={{ textAlign: "right" }}>Differenza</th></tr></thead>
-                <tbody>
-                  {dipendenti.map(d => {
-                    const paghe = mesi.map((_, i) => (annoMatrix[i + 1] || {})[d.id]);
-                    const celle = paghe.map(p => statoPaga(p));
-                    if (soloMancanti && !celle.some(c => c && c !== "ok")) return null;
-                    if (!soloMancanti && celle.every(c => !c)) return null;
-                    const tb = paghe.reduce((s, p) => s + (parseFloat(p?.importo_busta) || 0), 0);
-                    const tbon = paghe.reduce((s, p) => s + (parseFloat(p?.bonifico_importo) || 0), 0);
-                    const tacc = paghe.reduce((s, p) => s + ((p?.acconti || []).reduce((a, x) => a + (parseFloat(x.importo) || 0), 0)), 0);
-                    const tdiff = (tbon + tacc) - tb;
-                    return (
-                      <tr key={d.id}>
-                        <td><button onClick={() => apriPrimaNota(d.id, d.cognome ? `${d.cognome} ${d.nome || ''}`.trim() : d.nome)} title="Apri prima nota / saldo progressivo" style={{ background: "none", border: "none", color: "#5b7a6b", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}>{d.cognome ? `${d.cognome} ${d.nome?.[0] || ''}.` : d.nome}</button></td>
-                        {celle.map((c, i) => {
-                          const p = paghe[i];
-                          const bm = parseFloat(p?.importo_busta) || 0;
-                          const em = (parseFloat(p?.bonifico_importo) || 0) + ((p?.acconti || []).reduce((a, x) => a + (parseFloat(x.importo) || 0), 0));
-                          const manca = bm - em;
-                          let txt, col, title;
-                          if (!c) { txt = "·"; col = "#cbd2c9"; title = `${mesi[i]}: nessun dato`; }
-                          else if (c === "ok") { txt = "✓"; col = "#3d8168"; title = `${mesi[i]}: pagato (busta € ${eur(bm)})`; }
-                          else if (c === "bonifico") { txt = "+" + eur(em); col = "#7d5526"; title = `${mesi[i]}: bonifico € ${eur(em)} senza busta`; }
-                          else if (manca > 0.5) { txt = eur(manca); col = "#d35f4e"; title = `${mesi[i]}: manca € ${eur(manca)} (busta € ${eur(bm)}, erogato € ${eur(em)})`; }
-                          else { txt = "+" + eur(-manca); col = "#7d5526"; title = `${mesi[i]}: eccedenza € ${eur(-manca)}`; }
-                          return <td key={i} style={{ textAlign: "right", color: col, fontWeight: 700, fontSize: 12 }} title={title}>{txt}</td>;
-                        })}
-                        <td style={{ textAlign: "right" }}>{tb ? eur(tb) : "—"}</td>
-                        <td style={{ textAlign: "right" }}>{tbon ? eur(tbon) : "—"}</td>
-                        <td style={{ textAlign: "right", fontWeight: 700, color: tb <= 0 ? "#94a3b8" : tdiff < -0.5 ? "#d35f4e" : tdiff > 0.5 ? "#7d5526" : "#3d8168" }}>
-                          {tb <= 0 ? "—" : tdiff < -0.5 ? `manca € ${eur(-tdiff)}` : tdiff > 0.5 ? `+€ ${eur(tdiff)}` : "0,00"}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-            <p className="dc-muted" style={{ fontSize: 12, marginTop: 8 }}>In ogni mese: <b style={{ color: "#d35f4e" }}>importo rosso</b> = quanto manca · <b style={{ color: "#7d5526" }}>+importo</b> = eccedenza · <b style={{ color: "#3d8168" }}>✓</b> = pagato · · = nessun dato. Importi in euro (es. 1.000,00). Scorri in orizzontale per vedere tutti i mesi.</p>
-          </div>
-        )}
-      </div>
-
-      {importMsg && (
-        <div className="dc-card" style={{ marginBottom: 16, padding: 14, borderLeft: `4px solid ${importMsg.errore ? '#d35f4e' : '#3d8168'}` }}>
-          {importMsg.errore ? (
-            <div style={{ color: "#d35f4e", fontWeight: 600 }}>⚠ {importMsg.errore}</div>
-          ) : (
-            <div>
-              <div style={{ fontWeight: 700, marginBottom: 6 }}>
-                ✓ Elaborati {importMsg.file_pdf} documenti · {importMsg.totale_associati} buste{importMsg.bonifici?.length ? ` · ${importMsg.bonifici.length} bonifici` : ""}{importMsg.prestiti?.length ? ` · ${importMsg.prestiti.length} prestiti` : ""}{importMsg.presenze?.length ? ` · ${importMsg.presenze.length} presenze` : ""}
-              </div>
-              {importMsg.mesi?.length > 0 && (
-                <div style={{ fontSize: 13, marginBottom: 6, color: "#2a3329" }}>
-                  Mesi importati: {importMsg.mesi.map(mm => `${mesi[mm.mese - 1]} ${mm.anno} (${mm.n})`).join(" · ")}
-                </div>
-              )}
-              <div style={{ fontSize: 13, color: "#6b7669", display: "flex", flexWrap: "wrap", gap: "2px 14px" }}>
-                {importMsg.associati?.map((a, i) => (
-                  <span key={i}>{a.dipendente}: € {eur(a.netto)}{importMsg.mesi?.length > 1 ? ` (${a.mese}/${a.anno})` : ""}{a.metodo !== "codice fiscale" ? " ⚠" : ""}</span>
-                ))}
-              </div>
-              {importMsg.bonifici?.length > 0 && (
-                <div style={{ marginTop: 10 }}>
-                  <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4, color: "#234d3d" }}>Bonifici associati ({importMsg.bonifici.length})</div>
-                  <div style={{ fontSize: 13, color: "#2a3329", display: "flex", flexDirection: "column", gap: 2 }}>
-                    {importMsg.bonifici.map((b, i) => (
-                      <span key={i}>
-                        {b.dipendente}: € {eur(b.importo)} → {mesi[b.mese - 1]} {b.anno}
-                        <span style={{ color: "#6b7669" }}> [{b.fonte}]</span>
-                        <span style={{ color: "#234d3d", fontWeight: 700 }}> · ✓ riconciliato PDF</span>
-                        {b.discrepanza != null && <span style={{ color: "#7d5526" }}> (Excel attendeva € {eur(b.discrepanza)})</span>}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {importMsg.tfr?.length > 0 && (
-                <div style={{ marginTop: 10 }}>
-                  <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4, color: "#56442d" }}>Anticipi TFR ({importMsg.tfr.length}) — fuori dal saldo stipendi</div>
-                  <div style={{ fontSize: 13, color: "#2a3329", display: "flex", flexDirection: "column", gap: 2 }}>
-                    {importMsg.tfr.map((t, i) => (
-                      <span key={i}>{t.dipendente}: € {eur(t.importo)} → {mesi[t.mese - 1]} {t.anno}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {importMsg.prestiti?.length > 0 && (
-                <div style={{ marginTop: 10 }}>
-                  <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4, color: "#6a4a86" }}>Prestiti ({importMsg.prestiti.length}) — mastrino separato dalle buste</div>
-                  <div style={{ fontSize: 13, color: "#2a3329", display: "flex", flexDirection: "column", gap: 2 }}>
-                    {importMsg.prestiti.map((p, i) => (
-                      <span key={i}>{p.dipendente}: € {eur(p.importo)} → {mesi[p.mese - 1]} {p.anno} · <strong>saldo prestito € {eur(p.saldo)}</strong></span>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {importMsg.cartelle_lette?.length > 0 && (
-                <div style={{ marginTop: 8, fontSize: 12, color: "#6b7669" }}>
-                  Cartelle email lette: {importMsg.cartelle_lette.map(c => `${c.cartella} (${c.messaggi})`).join(" · ")}
-                </div>
-              )}
-              {importMsg.presenze?.length > 0 && (
-                <div style={{ marginTop: 8, fontSize: 13, color: "#56442d" }}>
-                  Fogli presenze riconosciuti (non sono buste): {importMsg.presenze.map(p => `${p.dipendente}${p.mese ? ` ${mesi[p.mese - 1]} ${p.anno}` : ""}`).join("; ")}
-                </div>
-              )}
-              {importMsg.duplicati?.length > 0 && (
-                <div style={{ marginTop: 8, fontSize: 13, color: "#8a6f47", background: "#f3ead9", border: "1px solid #e7d6b9", borderRadius: 8, padding: "6px 10px" }}>
-                  🔁 Duplicati scartati automaticamente ({importMsg.duplicati.length}): {importMsg.duplicati.map(x => `${x.file} — ${x.motivo}`).join("; ")}
-                </div>
-              )}
-              {importMsg.da_controllare?.length > 0 && (
-                <div style={{ marginTop: 8, fontSize: 13, color: "#7d5526" }}>
-                  Da controllare: {importMsg.da_controllare.map(x => `${x.nome || x.cf} (${x.motivo})`).join("; ")}
-                </div>
-              )}
-              {importMsg.errori?.length > 0 && (
-                <div style={{ marginTop: 6, fontSize: 12, color: "#8f3829" }}>
-                  Avvisi: {importMsg.errori.join("; ")}
-                </div>
-              )}
-              <button onClick={() => setImportMsg(null)} style={{ marginTop: 8, border: "none", background: "transparent", color: "#6b7669", textDecoration: "underline", cursor: "pointer", fontSize: 12 }}>chiudi</button>
-            </div>
-          )}
-        </div>
-      )}
-
-      <div className="dc-buste-stats" style={{ marginBottom: 16 }}>
-        <div className="dc-buste-stat dc-buste-stat-blue"><span className="dc-buste-stat-label">TOTALE BUSTE</span><span className="dc-buste-stat-value">€ {eur(totBuste)}</span></div>
-        <div className="dc-buste-stat dc-buste-stat-green"><span className="dc-buste-stat-label">BONIFICI</span><span className="dc-buste-stat-value">€ {eur(totBonifici)}</span></div>
-        <div className="dc-buste-stat dc-buste-stat-cyan"><span className="dc-buste-stat-label">ACCONTI</span><span className="dc-buste-stat-value">€ {eur(totAcconti)}</span></div>
-        <div className="dc-buste-stat"><span className="dc-buste-stat-label">DIPENDENTI</span><span className="dc-buste-stat-value">{dipendenti.length}</span></div>
-      </div>
-
-      <h3 style={{ margin: "4px 0 10px" }}>✏️ Inserimento / modifica per dipendente <span className="dc-muted" style={{ fontWeight: 400, fontSize: 14 }}>· {mesi[mese - 1]} {anno}</span></h3>
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {dipendenti.map(dip => {
-          const d = get(dip.id);
-          const acc = d.acconti || [];
-          return (
-            <div key={dip.id} className="dc-card" style={{ padding: 14 }}>
-              <div className="dc-busta-row">
-                <div className="dc-table-user dc-busta-user">
-                  <Avatar nome={dip.nome} cognome={dip.cognome} size="sm" />
-                  <span style={{ fontWeight: 600 }}>{dip.cognome ? `${dip.cognome} ${dip.nome || ''}` : dip.nome}</span>
-                </div>
-
-                <div className="dc-busta-field">
-                  <label style={{ fontSize: 11, color: "#6b7669", fontWeight: 600, display: "flex", gap: 6, alignItems: "center" }}>
-                    IMPORTO BUSTA €
-                    {d.busta_riconciliata && <span style={{ background: "#e2efe8", color: "#234d3d", border: "1px solid #c2ddd0", borderRadius: 6, padding: "1px 6px", fontSize: 10, fontWeight: 700 }}>✓ riconciliata PDF</span>}
-                  </label>
-                  <input type="number" step="0.01" value={d.importo_busta} onChange={e => upd(dip.id, { importo_busta: e.target.value })} placeholder="0,00" style={{ ...inp, width: 120 }} />
-                </div>
-
-                <div className="dc-busta-field">
-                  <label style={{ fontSize: 11, color: "#6b7669", fontWeight: 600, display: "flex", gap: 6, alignItems: "center" }}>
-                    BONIFICO
-                    {d.bonifico_riconciliato
-                      ? <span title={d.bonifico_causale} style={{ background: "#e2efe8", color: "#234d3d", border: "1px solid #c2ddd0", borderRadius: 6, padding: "1px 6px", fontSize: 10, fontWeight: 700 }}>✓ riconciliato PDF</span>
-                      : (d.bonifico_pdf ? <span title={d.bonifico_causale} style={{ background: "#f3ead9", color: "#56442d", border: "1px solid #e7d6b9", borderRadius: 6, padding: "1px 6px", fontSize: 10, fontWeight: 700 }}>PDF allegato</span> : null)}
-                  </label>
-                  <div className="dc-busta-inputs" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}>
-                      <input type="checkbox" checked={d.bonifico_ricevuto} onChange={e => upd(dip.id, { bonifico_ricevuto: e.target.checked })} />
-                      ricevuto
-                    </label>
-                    <input type="number" step="0.01" value={d.bonifico_importo} onChange={e => upd(dip.id, { bonifico_importo: e.target.value })} placeholder="€" style={{ ...inp, width: 100 }} />
-                    <input type="date" value={d.bonifico_data || ""} onChange={e => upd(dip.id, { bonifico_data: e.target.value })} style={{ ...inp, width: 150 }} />
-                  </div>
-                </div>
-
-                <div className="dc-busta-field dc-busta-acconti">
-                  <label style={{ fontSize: 11, color: "#6b7669", fontWeight: 600 }}>ACCONTI (max 3)</label>
-                  <div className="dc-busta-inputs" style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-                    {acc.map((a, i) => (
-                      <div key={i} className="dc-busta-acconto" style={{ display: "flex", alignItems: "center", gap: 4, background: "#f8fafc", border: "1px solid #e5e7eb", borderRadius: 8, padding: "4px 6px" }}>
-                        <input type="number" step="0.01" value={a.importo} onChange={e => setAcc(dip.id, i, { importo: e.target.value })} placeholder="€" style={{ ...inp, width: 80, padding: "5px 7px" }} />
-                        <input type="date" value={a.data || ""} onChange={e => setAcc(dip.id, i, { data: e.target.value })} style={{ ...inp, width: 140, padding: "5px 7px" }} />
-                        <button type="button" onClick={() => delAcc(dip.id, i)} title="Rimuovi acconto" style={{ border: "none", background: "transparent", color: "#d35f4e", cursor: "pointer", fontWeight: 700, fontSize: 16 }}>×</button>
-                      </div>
-                    ))}
-                    {acc.length < 3 && <button type="button" onClick={() => addAcc(dip.id)} style={{ border: "1px dashed #9ca3af", background: "#fff", color: "#5b7a6b", borderRadius: 8, padding: "6px 10px", cursor: "pointer", fontWeight: 600, fontSize: 13 }}>+ acconto</button>}
-                  </div>
-                </div>
-
-                <button type="button" onClick={() => salva(dip.id)} className="dc-busta-salva" style={{ background: salvato[dip.id] ? "#3d8168" : "#5b7a6b", color: "#fff", border: "none", borderRadius: 10, padding: "10px 16px", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
-                  {salvato[dip.id] ? "✓ Salvato" : "Salva"}
-                </button>
-              </div>
-              {(Number(d.acconto_cedolino) > 0 || Number(d.prestito_importo) > 0 || Number(d.tfr_anticipo_importo) > 0) && (
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8, paddingTop: 8, borderTop: "1px dashed #e6e0d4" }}>
-                  {Number(d.acconto_cedolino) > 0 && (
-                    <span style={{ background: "#e8efe9", color: "#2a4d3a", border: "1px solid #cfe0d4", borderRadius: 8, padding: "3px 10px", fontSize: 12, fontWeight: 700 }}>
-                      Acconto dal cedolino: € {eur(d.acconto_cedolino)}{Number(d.saldo_residuo) ? ` · saldo da pagare € ${eur(d.saldo_residuo)}` : ""}
-                    </span>
-                  )}
-                  {Number(d.prestito_importo) > 0 && (
-                    <span style={{ background: "#f3ead9", color: "#56442d", border: "1px solid #e7d6b9", borderRadius: 8, padding: "3px 10px", fontSize: 12, fontWeight: 700 }}>
-                      Prestito {mesi[mese - 1]}: € {eur(d.prestito_importo)} · saldo € {eur(d.prestito_saldo)}
-                    </span>
-                  )}
-                  {Number(d.tfr_anticipo_importo) > 0 && (
-                    <span style={{ background: "#f3ead9", color: "#56442d", border: "1px solid #e7d6b9", borderRadius: 8, padding: "3px 10px", fontSize: 12, fontWeight: 700 }}>
-                      Anticipo TFR: € {eur(d.tfr_anticipo_importo)} (fuori dal saldo)
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// Mini-calendario a griglia (mese/anno navigabili) al posto del semplice input data
-// nativo del browser — usato nel simulatore TFR per scegliere le date dei periodi.
 function MiniCalendario({ value, onChange }) {
   const [aperto, setAperto] = useState(false);
   const base = value ? new Date(value + "T00:00:00") : new Date();
@@ -4539,7 +3982,14 @@ function BonificiDaAssociarePage({ dipendenti }) {
   );
 }
 
-function PagheBonificiPage() {
+function PagheBonificiPage({ dipendenti = [] }) {
+  // 14/09/2026 (titolare): «Buste Paga» e «Cedolini & Bonifici» erano due
+  // pagine sulla stessa tabella (paghe_mensili) con numeri diversi: la prima
+  // riscriveva a mano busta e bonifico, la seconda leggeva i pagamenti reali
+  // della banca col motore unico. Resta questa, con dentro tutte le funzioni
+  // dell'altra: import (Libro Unico, email, Prima Nota, CSV banca, archivio
+  // storico, Drive), acconti in contanti, prima nota per dipendente, ricerca
+  // voci di busta, simulazione F24, griglia annuale.
   const mesi = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"];
   const annoCorr = new Date().getFullYear();
   const [anno, setAnno] = useState(annoCorr);
@@ -4549,14 +3999,29 @@ function PagheBonificiPage() {
   const [loading, setLoading] = useState(false);
   const [aperta, setAperta] = useState(null); // chiave riga espansa
   const [busy, setBusy] = useState(null);
-  // Modifiche a mano (titolare 14/09/2026): spostare un pagamento al periodo
-  // giusto / correggerne l'importo, e correggere l'importo della busta.
   const [editPag, setEditPag] = useState(null);   // { key, mese, anno, importo, nota }
   const [editBusta, setEditBusta] = useState(null); // { k, dipendente_id, anno, mese, importo, nota }
+  const [editAcc, setEditAcc] = useState(null);   // { k, dipendente_id, anno, mese, acconti: [{importo,data}] }
   const [exportBusy, setExportBusy] = useState(false);
   const [syncBusy, setSyncBusy] = useState(false);
   const [cedSyncBusy, setCedSyncBusy] = useState(false);
   const [driveBonificiUrl, setDriveBonificiUrl] = useState(null);
+  const [griglia, setGriglia] = useState(false);
+  // Import (ex pagina Buste Paga)
+  const [showImport, setShowImport] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importMsg, setImportMsg] = useState(null);
+  const [pnMsg, setPnMsg] = useState(null);
+  const [csvMsg, setCsvMsg] = useState(null);
+  const [storicoMsg, setStoricoMsg] = useState(null);
+  const [driveMsg, setDriveMsg] = useState(null);
+  const fileRef = useRef(null); const excelRef = useRef(null); const csvRef = useRef(null); const storicoRef = useRef(null);
+  // Strumenti
+  const [showStrumenti, setShowStrumenti] = useState(false);
+  const [cercaQ, setCercaQ] = useState(""); const [cercaRes, setCercaRes] = useState(null); const [cercaBusy, setCercaBusy] = useState(false);
+  const [rescanMsg, setRescanMsg] = useState("");
+  const [f24, setF24] = useState(null); const [f24Busy, setF24Busy] = useState(false);
+  const [pnDett, setPnDett] = useState(null);
 
   const eur = (n) => (Number(n) || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const keyOf = (r) => `${r.dipendente_id}_${r.anno}_${r.mese}`;
@@ -4626,6 +4091,21 @@ function PagheBonificiPage() {
     finally { setBusy(null); }
   };
 
+  const salvaAcconti = async () => {
+    if (!editAcc) return;
+    setBusy(editAcc.k);
+    try {
+      const r = await axios.put(`${API}/paghe/acconti`, {
+        dipendente_id: editAcc.dipendente_id, anno: editAcc.anno, mese: editAcc.mese,
+        acconti: editAcc.acconti.filter(a => a.importo !== "" && a.importo != null),
+      });
+      toast(`Acconti salvati (${r.data?.acconti?.length || 0}) · stato ${r.data?.stato}`);
+      setEditAcc(null);
+      await load();
+    } catch (e) { toast(e?.response?.data?.detail || "Errore nel salvataggio degli acconti", "err"); }
+    finally { setBusy(null); }
+  };
+
   const recuperaStorici = async () => {
     setSyncBusy(true);
     try {
@@ -4664,6 +4144,109 @@ function PagheBonificiPage() {
     finally { setExportBusy(false); }
   };
 
+  // ── Import (dalla vecchia pagina Buste Paga) ──
+  const vaiAlMese = (r) => { if (r?.mesi?.length) { const u = r.mesi[r.mesi.length - 1]; setAnno(u.anno); setMese(u.mese); } };
+  const handleImportLul = async (e) => {
+    const fs = Array.from(e.target.files || []);
+    if (!fs.length) return;
+    setImporting(true); setImportMsg(null);
+    try {
+      const fd = new FormData(); fs.forEach(f => fd.append("files", f));
+      const res = await axios.post(`${API}/paghe/importa-lul`, fd, { headers: { "Content-Type": "multipart/form-data" } });
+      setImportMsg(res.data); vaiAlMese(res.data); await load();
+    } catch (err) { setImportMsg({ errore: err.response?.data?.detail || "Errore durante l'import" }); }
+    finally { setImporting(false); if (fileRef.current) fileRef.current.value = ""; }
+  };
+  const handleImportEmail = async () => {
+    setImporting(true); setImportMsg(null);
+    try {
+      const res = await axios.post(`${API}/paghe/importa-email`);
+      setImportMsg(res.data); vaiAlMese(res.data); await load();
+    } catch (err) { setImportMsg({ errore: err.response?.data?.detail || "Errore durante l'import da email" }); }
+    finally { setImporting(false); }
+  };
+  const handleImportPrimaNota = async (e) => {
+    const fl = (e.target.files || [])[0];
+    if (!fl) return;
+    setImporting(true); setPnMsg(null);
+    try {
+      const fd = new FormData(); fd.append("file", fl);
+      const r = await axios.post(`${API}/paghe/importa-prima-nota`, fd, { headers: { "Content-Type": "multipart/form-data" } });
+      setPnMsg(r.data); await load();
+    } catch (err) { setPnMsg({ errore: err?.response?.data?.detail || "Errore import Prima Nota" }); }
+    finally { setImporting(false); if (excelRef.current) excelRef.current.value = ""; }
+  };
+  const handleImportPagamenti = async (e) => {
+    const fl = (e.target.files || [])[0];
+    if (!fl) return;
+    setImporting(true); setCsvMsg(null);
+    try {
+      const fd = new FormData(); fd.append("file", fl);
+      const r = await axios.post(`${API}/paghe/importa-pagamenti`, fd, { headers: { "Content-Type": "multipart/form-data" } });
+      setCsvMsg(r.data); await load();
+    } catch (err) { setCsvMsg({ errore: err?.response?.data?.detail || "Errore import pagamenti" }); }
+    finally { setImporting(false); if (csvRef.current) csvRef.current.value = ""; }
+  };
+  const handleImportStorico = async (e) => {
+    const fl = (e.target.files || [])[0];
+    if (!fl) return;
+    setImporting(true); setStoricoMsg(null);
+    try {
+      const fd = new FormData(); fd.append("file", fl);
+      const r = await axios.post(`${API}/paghe/importa-storico-pagamenti`, fd, { headers: { "Content-Type": "multipart/form-data" } });
+      setStoricoMsg(r.data);
+    } catch (err) { setStoricoMsg({ errore: err?.response?.data?.detail || "Errore import archivio storico" }); }
+    finally { setImporting(false); if (storicoRef.current) storicoRef.current.value = ""; }
+  };
+  const importaDaDrive = async () => {
+    if (!window.confirm("Importo i PDF delle buste paga dai fascicoli Google Drive dei dipendenti?")) return;
+    setImporting(true); setDriveMsg(null);
+    try { const r = await axios.post(`/hr/api/cedolini/import-drive`, {}); setDriveMsg(r.data); await load(); }
+    catch (e) { setDriveMsg({ errore: e?.response?.data?.detail || "Errore import da Drive" }); }
+    finally { setImporting(false); }
+  };
+
+  // ── Strumenti ──
+  const cercaVoce = async () => {
+    const q = cercaQ.trim();
+    if (!q) return;
+    setCercaBusy(true); setCercaRes(null);
+    const isCode = /^[A-Za-z]\d{3,5}$/.test(q);
+    const params = isCode ? `codice=${encodeURIComponent(q.toUpperCase())}` : `testo=${encodeURIComponent(q)}`;
+    try { const r = await axios.get(`${API}/cedolini/cerca-voce?${params}`); setCercaRes(r.data); }
+    catch (e) { setCercaRes({ risultati: [], totale: 0, errore: e?.response?.data?.detail || "Errore ricerca" }); }
+    finally { setCercaBusy(false); }
+  };
+  const riscansiona = async () => {
+    if (!window.confirm("Riscansiona i cedolini storici con PDF salvato? Può richiedere fino a un minuto.")) return;
+    setRescanMsg("Riscansione in corso…");
+    try { const r = await axios.post(`${API}/cedolini/riscansiona`); setRescanMsg(`✓ Riscansione completata: ${r.data.aggiornati} cedolini aggiornati, ${r.data.errori} senza PDF/errore.`); }
+    catch (e) { setRescanMsg("⚠ " + (e?.response?.data?.detail || "Errore riscansione")); }
+  };
+  const correggiAcconti = async () => {
+    if (!window.confirm("Togliere gli 'acconto dal cedolino' implausibili (poche decine di euro, probabile errore di lettura) e ricalcolare il saldo? Non tocca gli acconti registrati a mano.")) return;
+    setRescanMsg("Correzione acconti in corso…");
+    try { const r = await axios.post(`${API}/paghe/correggi-acconti-cedolino`); setRescanMsg(`✓ Corretti ${r.data.corretti} acconti implausibili (rimossi, saldo ricalcolato sul netto pieno).`); await load(); }
+    catch (e) { setRescanMsg("⚠ " + (e?.response?.data?.detail || "Errore correzione acconti")); }
+  };
+  const calcolaF24 = async () => {
+    if (!mese) { toast("Scegli un mese per la simulazione F24", "err"); return; }
+    setF24Busy(true); setF24(null);
+    try { const r = await axios.get(`/hr/api/cedolini/simulazione-f24?anno=${anno}&mese=${mese}`); setF24(r.data); }
+    catch (e) { setF24({ errore: e?.response?.data?.detail || "Errore nel calcolo" }); }
+    finally { setF24Busy(false); }
+  };
+  const apriPrimaNota = async (dipId, nome) => {
+    setPnDett({ nome, loading: true });
+    try {
+      const [r, st] = await Promise.all([
+        axios.get(`${API}/paghe/prima-nota?dipendente_id=${dipId}`),
+        axios.get(`${API}/paghe/storico-pagamenti?dipendente_id=${dipId}`).catch(() => ({ data: { righe: [] } })),
+      ]);
+      setPnDett({ nome, righe: r.data.righe || [], saldo_finale: r.data.saldo_finale, storico: st.data.righe || [] });
+    } catch { setPnDett({ nome, righe: [], errore: true }); }
+  };
+
   const t = data.totali || {};
   const STATI = {
     pagato: { label: "✓ Pagato", variant: "success" },
@@ -4687,6 +4270,20 @@ function PagheBonificiPage() {
   const sel = { border: "1px solid #e6e0d4", borderRadius: 8, padding: "7px 10px", fontSize: 14, background: "#fffefb", color: "#2a3329" };
   const th = { textAlign: "left", padding: "10px 12px", fontSize: 11, color: "#7a8576", textTransform: "uppercase", letterSpacing: 0.4, fontWeight: 700, borderBottom: "2px solid #e6e0d4", whiteSpace: "nowrap" };
   const td = { padding: "10px 12px", fontSize: 14, color: "#2a3329", borderBottom: "1px solid #efe9dd", verticalAlign: "top" };
+  const msgCard = (m, ok) => ({ marginBottom: 16, borderLeft: `4px solid ${m?.errore ? '#d35f4e' : '#3d8168'}` });
+  const nomeBtn = { background: "none", border: "none", color: "#5b7a6b", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 };
+
+  // Griglia annuale (dipendente × mese) calcolata dalle stesse righe
+  const grigliaRighe = (() => {
+    if (!griglia) return [];
+    const perDip = {};
+    for (const r of data.righe) {
+      const g = perDip[r.dipendente_id] || (perDip[r.dipendente_id] = { dipendente: r.dipendente, id: r.dipendente_id, mesi: {}, busta: 0, erogato: 0 });
+      if (r.mese >= 1 && r.mese <= 12) g.mesi[r.mese] = r;
+      g.busta += r.busta; g.erogato += r.erogato;
+    }
+    return Object.values(perDip).sort((a, b) => a.dipendente.localeCompare(b.dipendente));
+  })();
 
   return (
     <div style={{ maxWidth: 1280 }}>
@@ -4694,37 +4291,189 @@ function PagheBonificiPage() {
         <div>
           <h2 style={{ margin: 0, color: "#2a3329" }}>Cedolini &amp; Bonifici</h2>
           <p className="dc-muted" style={{ marginTop: 4 }}>
-            Per ogni busta vedi se il <b>bonifico è stato effettuato</b> e a quale cedolino è associato.
-            Dati dal sistema unico paghe (busta) + pagamenti reali della banca (bonifici).
-            I bonifici arrivano da soli ogni 15 minuti dal gestionale: PDF nei fascicoli Drive
-            (DIPENDENTI › persona › BONIFICI › DA ELABORARE) ed estratto conto; quelli da decidere
-            a mano finiscono in «Bonifici da associare».
+            Per ogni busta: importo dal cedolino, <b>bonifici realmente pagati</b> (banca), acconti in contanti e saldo.
+            Una sola pagina, un solo motore: i bonifici arrivano da soli dal gestionale (fascicoli Drive ed estratto conto),
+            quelli da decidere a mano stanno in «Bonifici da associare». Clicca il nome per la prima nota del dipendente.
           </p>
         </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button className="dc-btn" disabled={cedSyncBusy} onClick={sincronizzaDaCedolini} title="Popola questo registro dai cedolini in archivio (senza questo passo la tabella resta vuota anche con le buste già caricate)">
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", position: "relative" }}>
+          <input ref={fileRef} type="file" accept=".pdf,.zip,application/pdf,application/zip,application/x-zip-compressed" multiple onChange={handleImportLul} style={{ display: "none" }} />
+          <input ref={excelRef} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={handleImportPrimaNota} style={{ display: "none" }} />
+          <input ref={csvRef} type="file" accept=".csv,text/csv" onChange={handleImportPagamenti} style={{ display: "none" }} />
+          <input ref={storicoRef} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={handleImportStorico} style={{ display: "none" }} />
+          <div style={{ position: "relative" }}>
+            <button className="dc-btn dc-btn-primary" onClick={() => setShowImport(s => !s)} disabled={importing}>
+              {importing ? "Importo…" : "⤵ Importa ▾"}
+            </button>
+            {showImport && (
+              <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 6, background: "#fffefb", border: "1px solid #e6e0d4", borderRadius: 10, boxShadow: "0 6px 20px rgba(0,0,0,.12)", zIndex: 30, minWidth: 300, overflow: "hidden" }}>
+                {[["Libro Unico (PDF/ZIP)", () => fileRef.current?.click()],
+                  ["Buste da email", handleImportEmail],
+                  ["Buste dai fascicoli Drive", importaDaDrive],
+                  ["Prima Nota (Excel)", () => excelRef.current?.click()],
+                  ["Pagamenti banca (CSV)", () => csvRef.current?.click()],
+                  ["Archivio storico pagamenti ante-app (Excel)", () => storicoRef.current?.click()]].map(([label, fn], i, arr) => (
+                  <button key={i} onClick={() => { setShowImport(false); fn(); }}
+                    style={{ display: "block", width: "100%", textAlign: "left", background: "none", border: "none", borderBottom: i < arr.length - 1 ? "1px solid #f0ebe0" : "none", padding: "11px 14px", fontSize: 14, cursor: "pointer", color: "#2a3329" }}>{label}</button>
+                ))}
+              </div>
+            )}
+          </div>
+          <button className="dc-btn" disabled={cedSyncBusy} onClick={sincronizzaDaCedolini} title="Popola questo registro dai cedolini in archivio">
             {cedSyncBusy ? "Sincronizzo…" : "🔄 Sincronizza da cedolini"}
           </button>
-          <button className="dc-btn" disabled={syncBusy} onClick={recuperaStorici} title="Collega alla busta i bonifici storici già archiviati (PDF già letti in passato) ma non ancora agganciati qui">
+          <button className="dc-btn" disabled={syncBusy} onClick={recuperaStorici} title="Collega alla busta i bonifici storici già archiviati ma non ancora agganciati qui">
             {syncBusy ? "Collego…" : "🔗 Recupera bonifici storici"}
           </button>
           <button className="dc-btn" disabled={exportBusy} onClick={esportaExcel}>
             {exportBusy ? "Esporto…" : "📊 Esporta Excel"}
           </button>
+          <button className="dc-btn" onClick={() => setShowStrumenti(s => !s)}>🔎 Strumenti {showStrumenti ? "▲" : "▼"}</button>
           {driveBonificiUrl && <a href={driveBonificiUrl} target="_blank" rel="noreferrer" className="dc-btn" title="Fascicoli dei dipendenti su Drive: un PDF messo in <persona>/BONIFICI/DA ELABORARE entra qui da solo entro 15 minuti">
             📁 Fascicoli Drive
           </a>}
         </div>
       </div>
 
+      {importMsg && (
+        <div className="dc-card" style={msgCard(importMsg)}>
+          {importMsg.errore ? <div style={{ color: "#d35f4e", fontWeight: 600 }}>⚠ {importMsg.errore}</div> : (
+            <div>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>
+                ✓ Elaborati {importMsg.file_pdf} documenti · {importMsg.totale_associati} buste{importMsg.bonifici?.length ? ` · ${importMsg.bonifici.length} bonifici` : ""}{importMsg.prestiti?.length ? ` · ${importMsg.prestiti.length} prestiti` : ""}{importMsg.presenze?.length ? ` · ${importMsg.presenze.length} presenze` : ""}
+              </div>
+              {importMsg.mesi?.length > 0 && <div style={{ fontSize: 13, marginBottom: 6 }}>Mesi importati: {importMsg.mesi.map(mm => `${mesi[mm.mese - 1]} ${mm.anno} (${mm.n})`).join(" · ")}</div>}
+              <div style={{ fontSize: 13, color: "#6b7669", display: "flex", flexWrap: "wrap", gap: "2px 14px" }}>
+                {importMsg.associati?.map((a, i) => <span key={i}>{a.dipendente}: € {eur(a.netto)}{importMsg.mesi?.length > 1 ? ` (${a.mese}/${a.anno})` : ""}{a.metodo !== "codice fiscale" ? " ⚠" : ""}</span>)}
+              </div>
+              {importMsg.bonifici?.length > 0 && (
+                <div style={{ marginTop: 10, fontSize: 13 }}>
+                  <div style={{ fontWeight: 700, marginBottom: 4, color: "#234d3d" }}>Bonifici associati ({importMsg.bonifici.length})</div>
+                  {importMsg.bonifici.map((b, i) => <div key={i}>{b.dipendente}: € {eur(b.importo)} → {mesi[b.mese - 1]} {b.anno} <span style={{ color: "#6b7669" }}>[{b.fonte}]</span>{b.discrepanza != null && <span style={{ color: "#7d5526" }}> (Excel attendeva € {eur(b.discrepanza)})</span>}</div>)}
+                </div>
+              )}
+              {importMsg.tfr?.length > 0 && (
+                <div style={{ marginTop: 10, fontSize: 13 }}>
+                  <div style={{ fontWeight: 700, marginBottom: 4, color: "#56442d" }}>Anticipi TFR ({importMsg.tfr.length}) — fuori dal saldo stipendi</div>
+                  {importMsg.tfr.map((x, i) => <div key={i}>{x.dipendente}: € {eur(x.importo)} → {mesi[x.mese - 1]} {x.anno}</div>)}
+                </div>
+              )}
+              {importMsg.non_associati?.length > 0 && <div style={{ marginTop: 8, fontSize: 13, color: "#7d5526" }}>⚠ Non associati: {importMsg.non_associati.map(x => x.file || x).join(", ")}</div>}
+            </div>
+          )}
+        </div>
+      )}
+      {driveMsg && (
+        <div className="dc-card" style={msgCard(driveMsg)}>
+          {driveMsg.errore ? <div style={{ color: "#d35f4e", fontWeight: 600 }}>⚠ {driveMsg.errore}</div>
+            : <div style={{ fontWeight: 700 }}>✓ Drive: {driveMsg.trovati_pdf} PDF trovati · {driveMsg.archiviati} archiviati · {driveMsg.duplicati} duplicati saltati{(driveMsg.non_assegnati || []).length ? ` · da controllare: ${driveMsg.non_assegnati.join(", ")}` : ""}</div>}
+        </div>
+      )}
+      {pnMsg && (
+        <div className="dc-card" style={msgCard(pnMsg)}>
+          {pnMsg.errore ? <div style={{ color: "#d35f4e", fontWeight: 600 }}>⚠ {pnMsg.errore}</div> : (
+            <div>
+              <div style={{ fontWeight: 700 }}>✓ Prima Nota importata: {pnMsg.aggiornati} mesi/dipendente aggiornati su {pnMsg.righe_aggregate} totali.</div>
+              {pnMsg.non_trovati > 0 && <div style={{ marginTop: 6, fontSize: 13, color: "#7d5526" }}>⚠ {pnMsg.non_trovati} voci con dipendente non in anagrafica (non importate): {(pnMsg.nomi_non_trovati || []).join(", ")}</div>}
+              {pnMsg.discrepanze?.length > 0 && (
+                <div style={{ marginTop: 8, fontSize: 13 }}>
+                  <div style={{ fontWeight: 700, color: "#7d5526" }}>Differenze importo busta (app vs Excel) — {pnMsg.discrepanze.length}:</div>
+                  {pnMsg.discrepanze.slice(0, 60).map((x, i) => <div key={i}>{x.dipendente} · {mesi[x.mese - 1]} {x.anno}: app € {eur(x.busta_app)} · Excel € {eur(x.busta_excel)}</div>)}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+      {csvMsg && (
+        <div className="dc-card" style={msgCard(csvMsg)}>
+          {csvMsg.errore ? <div style={{ color: "#d35f4e", fontWeight: 600 }}>⚠ {csvMsg.errore}</div> : (
+            <div style={{ fontSize: 14 }}>
+              <div style={{ fontWeight: 700 }}>✓ Pagamenti importati: {csvMsg.importati} · {csvMsg.mesi_aggiornati} mesi aggiornati.</div>
+              {csvMsg.non_trovati?.length > 0 && <div style={{ marginTop: 6, fontSize: 13, color: "#7d5526" }}>⚠ Beneficiari non trovati in anagrafica: {csvMsg.non_trovati.join(", ")}</div>}
+            </div>
+          )}
+        </div>
+      )}
+      {storicoMsg && (
+        <div className="dc-card" style={msgCard(storicoMsg)}>
+          {storicoMsg.errore ? <div style={{ color: "#d35f4e", fontWeight: 600 }}>⚠ {storicoMsg.errore}</div> : (
+            <div style={{ fontSize: 14 }}>
+              <div style={{ fontWeight: 700 }}>✓ Archivio storico: {storicoMsg.importati} righe nuove, {storicoMsg.gia_presenti} già presenti (su {storicoMsg.righe_lette} lette).</div>
+              {storicoMsg.dipendenti_non_in_anagrafica?.length > 0 && <div style={{ marginTop: 6, fontSize: 13, color: "#7d5526" }}>⚠ Nomi non trovati in anagrafica (non importati): {storicoMsg.dipendenti_non_in_anagrafica.map(x => `${x.nome} (${x.righe})`).join(", ")}</div>}
+            </div>
+          )}
+        </div>
+      )}
+
+      {showStrumenti && (
+        <div className="dc-card" style={{ marginBottom: 16 }}>
+          <h3 style={{ marginTop: 0 }}>🔎 Cerca nelle buste (qualsiasi voce)</h3>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <input className="dc-input" style={{ flex: "1 1 240px" }} placeholder="Codice (es. F09081) o testo (es. 730, 13ma, L.207)"
+              value={cercaQ} onChange={e => setCercaQ(e.target.value)} onKeyDown={e => e.key === "Enter" && cercaVoce()} />
+            <button className="dc-btn-primary" disabled={cercaBusy} onClick={cercaVoce}>{cercaBusy ? "Cerco…" : "Cerca"}</button>
+            <button className="dc-btn" onClick={riscansiona} title="Rilegge i PDF dei cedolini già caricati per popolare la ricerca sullo storico">Riscansiona storico</button>
+            <button className="dc-btn" onClick={correggiAcconti} title="Toglie gli 'acconto dal cedolino' di poche decine di euro (probabile errore del parser) e ricalcola il saldo">🔧 Correggi acconti cedolino</button>
+          </div>
+          {rescanMsg && <div className="dc-muted" style={{ marginTop: 8 }}>{rescanMsg}</div>}
+          {cercaRes && (
+            <div style={{ marginTop: 10, overflowX: "auto" }}>
+              {cercaRes.errore ? <div className="dc-muted">⚠ {cercaRes.errore}</div>
+                : cercaRes.totale === 0 ? <div className="dc-muted">Nessun risultato. Per lo storico premi prima “Riscansiona storico”.</div>
+                : <table className="dc-table" style={{ minWidth: 560, whiteSpace: "nowrap" }}>
+                    <thead><tr><th>Dipendente</th><th>Periodo</th><th>Codice</th><th>Descrizione</th><th style={{ textAlign: "right" }}>Importo</th></tr></thead>
+                    <tbody>{cercaRes.risultati.map((x, i) => <tr key={i}><td>{x.dipendente}</td><td>{mesi[(x.mese || 1) - 1]} {x.anno}</td><td>{x.codice}</td><td>{x.descrizione}</td><td style={{ textAlign: "right" }}>{x.importo || "—"}</td></tr>)}</tbody>
+                  </table>}
+              {cercaRes.totale > 0 && <p className="dc-muted" style={{ fontSize: 12, marginTop: 6 }}>{cercaRes.totale} risultati.</p>}
+            </div>
+          )}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginTop: 18 }}>
+            <h3 style={{ margin: 0 }}>🧾 Simulazione F24 e costo mensile — {mese ? `${mesi[mese - 1]} ${anno}` : "scegli un mese nel filtro"}</h3>
+            <button className="dc-btn-primary" disabled={f24Busy || !mese} onClick={calcolaF24}>{f24Busy ? "Calcolo…" : "Calcola F24 del mese"}</button>
+          </div>
+          <p className="dc-muted" style={{ fontSize: 12.5, margin: "6px 0 0" }}>
+            Per ogni dipendente legge il cedolino del mese: IRPEF e INPS reali dalle voci quando ci sono, altrimenti stimati dal netto con le regole CCNL.
+            INPS azienda 30%, quota TFR = lordo ÷ 13,5. È una simulazione: fa fede l'F24 del consulente.
+          </p>
+          {f24?.errore && <div style={{ marginTop: 8, color: "#d35f4e", fontWeight: 600 }}>⚠ {f24.errore}</div>}
+          {f24 && !f24.errore && (f24.righe.length === 0
+            ? <p className="dc-muted" style={{ marginTop: 10 }}>Nessun cedolino trovato per {mesi[mese - 1]} {anno}: importa prima le buste.</p>
+            : <div className="dc-scroll-x" style={{ marginTop: 10 }}>
+                <table className="dc-table" style={{ fontSize: 13 }}>
+                  <thead><tr><th>Dipendente</th><th style={{ textAlign: "right" }}>Lordo €</th><th style={{ textAlign: "right" }}>Netto €</th><th style={{ textAlign: "right" }}>IRPEF €</th><th style={{ textAlign: "right" }}>INPS dip. €</th><th style={{ textAlign: "right" }}>INPS azienda €</th><th style={{ textAlign: "right" }}>TFR mese €</th><th style={{ textAlign: "right" }}>F24 €</th><th style={{ textAlign: "right" }}>Costo azienda €</th><th>Fonte</th></tr></thead>
+                  <tbody>
+                    {f24.righe.map(r => (
+                      <tr key={r.dipendente_id || r.dipendente_nome}>
+                        <td style={{ fontWeight: 600 }}>{r.dipendente_nome}</td>
+                        <td style={{ textAlign: "right" }}>{eur(r.lordo)}</td><td style={{ textAlign: "right" }}>{eur(r.netto)}</td><td style={{ textAlign: "right" }}>{eur(r.irpef)}</td>
+                        <td style={{ textAlign: "right" }}>{eur(r.inps_dipendente)}</td><td style={{ textAlign: "right" }}>{eur(r.inps_azienda)}</td><td style={{ textAlign: "right" }}>{eur(r.tfr_mese)}</td>
+                        <td style={{ textAlign: "right", fontWeight: 700 }}>{eur(r.totale_f24)}</td><td style={{ textAlign: "right", fontWeight: 700 }}>{eur(r.costo_azienda)}</td>
+                        <td className="dc-muted" style={{ fontSize: 11.5 }}>{r.fonte}</td>
+                      </tr>
+                    ))}
+                    <tr style={{ fontWeight: 700, borderTop: "2px solid #e6e0d4", background: "#eef1ea" }}>
+                      <td>TOTALE ({f24.dipendenti} dipendenti)</td>
+                      <td style={{ textAlign: "right" }}>{eur(f24.totali.lordo)}</td><td style={{ textAlign: "right" }}>{eur(f24.totali.netto)}</td><td style={{ textAlign: "right" }}>{eur(f24.totali.irpef)}</td>
+                      <td style={{ textAlign: "right" }}>{eur(f24.totali.inps_dipendente)}</td><td style={{ textAlign: "right" }}>{eur(f24.totali.inps_azienda)}</td><td style={{ textAlign: "right" }}>{eur(f24.totali.tfr_mese)}</td>
+                      <td style={{ textAlign: "right", fontSize: 15 }}>{eur(f24.totali.totale_f24)}</td><td style={{ textAlign: "right", fontSize: 15 }}>{eur(f24.totali.costo_azienda)}</td><td></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>)}
+        </div>
+      )}
+
       {/* Filtri */}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 16 }}>
         <select style={sel} value={anno} onChange={e => setAnno(Number(e.target.value))}>
-          {Array.from({ length: 8 }, (_, i) => annoCorr - i).map(a => <option key={a} value={a}>{a}</option>)}
+          {Array.from({ length: 9 }, (_, i) => annoCorr + 1 - i).map(a => <option key={a} value={a}>{a}</option>)}
         </select>
         <select style={sel} value={mese} onChange={e => setMese(Number(e.target.value))}>
           <option value={0}>Tutto l'anno</option>
           {mesi.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+          <option value={13}>Tredicesima</option>
+          <option value={14}>Quattordicesima</option>
         </select>
         <select style={sel} value={filtroStato} onChange={e => setFiltroStato(e.target.value)}>
           <option value="">Tutti gli stati</option>
@@ -4734,6 +4483,7 @@ function PagheBonificiPage() {
           <option value="da_pagare">Da pagare</option>
           <option value="bonifico_senza_busta">Bonifico senza busta</option>
         </select>
+        <label style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 13 }}><input type="checkbox" checked={griglia} onChange={e => setGriglia(e.target.checked)} /> Griglia annuale</label>
         <button className="dc-btn" onClick={load} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
           <RefreshCw size={15} /> Aggiorna
         </button>
@@ -4743,11 +4493,46 @@ function PagheBonificiPage() {
       <div style={cardWrap}>
         <div style={card}><div style={lbl}>Totale buste</div><div style={val}>€ {eur(t.buste)}</div></div>
         <div style={card}><div style={lbl}>Bonifici</div><div style={{ ...val, color: "#3d8168" }}>€ {eur(t.bonifici)}</div></div>
+        <div style={card}><div style={lbl}>Acconti</div><div style={val}>€ {eur(t.acconti)}</div></div>
         <div style={card}><div style={lbl}>Saldo da pagare</div><div style={{ ...val, color: (t.saldo > 0.5 ? "#b04a3a" : "#3d8168") }}>€ {eur(t.saldo)}</div></div>
         <div style={card}><div style={lbl}>Pagati</div><div style={{ ...val, color: "#3d8168" }}>{t.pagati || 0}</div></div>
         <div style={card}><div style={lbl}>Da pagare</div><div style={{ ...val, color: "#b04a3a" }}>{t.da_pagare || 0}</div></div>
         <div style={card}><div style={lbl}>Da verificare</div><div style={{ ...val, color: "#7a3b32" }}>{t.da_verificare || 0}</div></div>
       </div>
+
+      {griglia && (
+        <div style={{ background: "#fffefb", border: "1px solid #e6e0d4", borderRadius: 12, overflow: "hidden", marginBottom: 16 }}>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <thead><tr><th style={th}>Dipendente</th>{mesi.map((m, i) => <th key={i} style={{ ...th, textAlign: "center" }} title={m}>{m.slice(0, 3)}</th>)}<th style={{ ...th, textAlign: "right" }}>Buste</th><th style={{ ...th, textAlign: "right" }}>Erogato</th><th style={{ ...th, textAlign: "right" }}>Differenza</th></tr></thead>
+              <tbody>
+                {grigliaRighe.length === 0 && <tr><td style={td} colSpan={16}>Nessuna busta nell'anno.</td></tr>}
+                {grigliaRighe.map(g => (
+                  <tr key={g.id}>
+                    <td style={{ ...td, fontWeight: 600 }}><button style={nomeBtn} onClick={() => apriPrimaNota(g.id, g.dipendente)}>{g.dipendente}</button></td>
+                    {mesi.map((m, i) => {
+                      const r = g.mesi[i + 1];
+                      let txt = "·", col = "#cbd2c9", title = `${m}: nessun dato`;
+                      if (r) {
+                        if (r.stato === "pagato") { txt = "✓"; col = "#3d8168"; title = `${m}: pagato (busta € ${eur(r.busta)})`; }
+                        else if (r.stato === "bonifico_senza_busta") { txt = "+" + eur(r.erogato); col = "#7d5526"; title = `${m}: erogato € ${eur(r.erogato)} senza busta`; }
+                        else if (r.stato === "da_verificare") { txt = "?"; col = "#7a3b32"; title = `${m}: da verificare (erogato € ${eur(r.erogato)} su busta € ${eur(r.busta)})`; }
+                        else if (r.saldo > 0.5) { txt = eur(r.saldo); col = "#d35f4e"; title = `${m}: manca € ${eur(r.saldo)} (busta € ${eur(r.busta)}, erogato € ${eur(r.erogato)})`; }
+                        else { txt = "+" + eur(-r.saldo); col = "#7d5526"; title = `${m}: eccedenza € ${eur(-r.saldo)}`; }
+                      }
+                      return <td key={i} style={{ ...td, textAlign: "right", color: col, fontWeight: 700 }} title={title}>{txt}</td>;
+                    })}
+                    <td style={{ ...td, textAlign: "right" }}>{eur(g.busta)}</td>
+                    <td style={{ ...td, textAlign: "right" }}>{eur(g.erogato)}</td>
+                    <td style={{ ...td, textAlign: "right", fontWeight: 700, color: g.busta - g.erogato > 0.5 ? "#d35f4e" : "#3d8168" }}>{eur(g.erogato - g.busta)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="dc-muted" style={{ fontSize: 12, margin: "8px 12px" }}>✓ pagato · importo rosso = manca · + = eccedenza · ? = pagamento da confermare. Fa fede l'elenco qui sotto.</p>
+        </div>
+      )}
 
       {/* Tabella */}
       <div style={{ background: "#fffefb", border: "1px solid #e6e0d4", borderRadius: 12, overflow: "hidden" }}>
@@ -4759,6 +4544,7 @@ function PagheBonificiPage() {
                 <th style={th}>Periodo</th>
                 <th style={{ ...th, textAlign: "right" }}>Busta</th>
                 <th style={{ ...th, textAlign: "right" }}>Bonifico</th>
+                <th style={{ ...th, textAlign: "right" }}>Acconti</th>
                 <th style={{ ...th, textAlign: "right" }}>Saldo</th>
                 <th style={th}>Stato</th>
                 <th style={th}>Associazione</th>
@@ -4767,18 +4553,18 @@ function PagheBonificiPage() {
               </tr>
             </thead>
             <tbody>
-              {loading && <tr><td style={td} colSpan={9}>Caricamento…</td></tr>}
-              {!loading && data.righe.length === 0 && <tr><td style={td} colSpan={9}>Nessuna busta per il periodo selezionato.</td></tr>}
+              {loading && <tr><td style={td} colSpan={10}>Caricamento…</td></tr>}
+              {!loading && data.righe.length === 0 && <tr><td style={td} colSpan={10}>Nessuna busta per il periodo selezionato. Se le buste sono in archivio premi «Sincronizza da cedolini».</td></tr>}
               {!loading && data.righe.map(r => {
                 const k = keyOf(r);
                 const exp = aperta === k;
                 const stInfo = STATI[r.stato] || { label: r.stato, variant: "default" };
                 const qInfo = r.qualita ? QUALITA[r.qualita] : null;
-                const periodoLbl = (r.mese >= 1 && r.mese <= 12) ? `${mesi[r.mese - 1]} ${r.anno}` : `${r.mese}/${r.anno}`;
+                const periodoLbl = (r.mese >= 1 && r.mese <= 12) ? `${mesi[r.mese - 1]} ${r.anno}` : r.mese === 13 ? `13ª ${r.anno}` : r.mese === 14 ? `14ª ${r.anno}` : `${r.mese}/${r.anno}`;
                 return (
                   <Fragment key={k}>
                     <tr style={{ background: exp ? "#f7f4ec" : "transparent" }}>
-                      <td style={{ ...td, fontWeight: 600 }}>{r.dipendente}</td>
+                      <td style={{ ...td, fontWeight: 600 }}><button style={nomeBtn} title="Prima nota / saldo progressivo" onClick={() => apriPrimaNota(r.dipendente_id, r.dipendente)}>{r.dipendente}</button></td>
                       <td style={td}>{periodoLbl}</td>
                       <td style={{ ...td, textAlign: "right" }}>
                         {editBusta && editBusta.k === k ? (
@@ -4804,6 +4590,7 @@ function PagheBonificiPage() {
                         {r.bonifico > 0 ? `€ ${eur(r.bonifico)}` : "—"}
                         {r.fonte && <div style={{ fontSize: 10, color: "#9aa295", fontWeight: 400 }}>{FONTI[r.fonte] || r.fonte}</div>}
                       </td>
+                      <td style={{ ...td, textAlign: "right" }}>{r.acconti > 0 ? `€ ${eur(r.acconti)}` : "—"}</td>
                       <td style={{ ...td, textAlign: "right", color: r.saldo > 0.5 ? "#b04a3a" : "#3d8168" }}>
                         {Math.abs(r.saldo) > 0.5 ? `€ ${eur(r.saldo)}` : "✓"}
                       </td>
@@ -4821,11 +4608,9 @@ function PagheBonificiPage() {
                           : <span style={{ color: "#9aa295", fontSize: 12 }}>no PDF</span>}
                       </td>
                       <td style={{ ...td, whiteSpace: "nowrap" }}>
-                        {(r.n_bonifici > 0) && (
-                          <button className="dc-btn" onClick={() => setAperta(exp ? null : k)} style={{ fontSize: 12, padding: "4px 8px" }}>
-                            {exp ? "Nascondi" : `Dettagli (${r.n_bonifici})`}
-                          </button>
-                        )}
+                        <button className="dc-btn" onClick={() => setAperta(exp ? null : k)} style={{ fontSize: 12, padding: "4px 8px" }}>
+                          {exp ? "Nascondi" : `Dettagli${r.n_bonifici ? ` (${r.n_bonifici})` : ""}`}
+                        </button>
                         {(r.bonifico > 0 || r.stato === "bonifico_senza_busta") && (
                           r.riconciliato
                             ? <button className="dc-btn" disabled={busy === k} onClick={() => conferma(r, false)} style={{ fontSize: 12, padding: "4px 8px", marginLeft: 6 }}>Annulla</button>
@@ -4833,67 +4618,93 @@ function PagheBonificiPage() {
                         )}
                       </td>
                     </tr>
-                    {exp && r.bonifici.length > 0 && (
+                    {exp && (
                       <tr>
-                        <td style={{ ...td, background: "#f7f4ec" }} colSpan={9}>
-                          <div style={{ fontSize: 12, color: "#7a8576", marginBottom: 6 }}>
-                            Un bonifico arrivato nel mese sbagliato (es. il 1° gennaio per la busta di dicembre) si sposta con <b>Sposta / modifica</b>: il sistema ricalcola entrambi i mesi.
-                          </div>
-                          <div style={{ fontSize: 11, color: "#7a8576", fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>Bonifici realmente pagati</div>
-                          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                            <thead>
-                              <tr>
-                                <th style={{ ...th, borderBottom: "1px solid #e6e0d4" }}>Data</th>
-                                <th style={{ ...th, borderBottom: "1px solid #e6e0d4", textAlign: "right" }}>Importo</th>
-                                <th style={{ ...th, borderBottom: "1px solid #e6e0d4" }}>Causale</th>
-                                <th style={{ ...th, borderBottom: "1px solid #e6e0d4" }}>Beneficiario</th>
-                                <th style={{ ...th, borderBottom: "1px solid #e6e0d4" }}>Riferimento</th>
-                                <th style={{ ...th, borderBottom: "1px solid #e6e0d4" }}>PDF</th>
-                                <th style={{ ...th, borderBottom: "1px solid #e6e0d4" }}>Periodo / importo</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {r.bonifici.map((b, i) => (
-                                <tr key={i}>
-                                  <td style={{ ...td, borderBottom: "none" }}>{b.data || "—"}</td>
-                                  <td style={{ ...td, borderBottom: "none", textAlign: "right", color: "#3d8168", fontWeight: 600 }}>
-                                    € {eur(b.importo)}
-                                    {b.modificato && <div style={{ fontSize: 10, color: "#8a6f47", fontWeight: 400 }}>modificato a mano</div>}
-                                  </td>
-                                  <td style={{ ...td, borderBottom: "none", fontSize: 13 }}>{b.causale || "—"}</td>
-                                  <td style={{ ...td, borderBottom: "none", fontSize: 13 }}>{b.beneficiario || "—"}</td>
-                                  <td style={{ ...td, borderBottom: "none", fontSize: 12, color: "#7a8576" }}>{b.riferimento || "—"}</td>
-                                  <td style={{ ...td, borderBottom: "none", fontSize: 12 }}>
-                                    {b.pdf_key
-                                      ? <a href={`${API}/paghe/pagamento-esito/${b.pdf_key}/pdf`} target="_blank" rel="noreferrer" style={{ color: "#3d8168", fontWeight: 600 }}>📄 Apri PDF</a>
-                                      : <span style={{ color: "#9aa295" }}>no PDF</span>}
-                                  </td>
-                                  <td style={{ ...td, borderBottom: "none", fontSize: 12, whiteSpace: "nowrap" }}>
-                                    {editPag && editPag.key === b.key ? (
-                                      <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
-                                        <select value={editPag.mese} onChange={e => setEditPag({ ...editPag, mese: e.target.value })} style={{ ...sel, padding: "4px 6px", fontSize: 12 }}>
-                                          {mesi.map((m, idx) => <option key={idx + 1} value={idx + 1}>{m}</option>)}
-                                          <option value={13}>Tredicesima</option>
-                                          <option value={14}>Quattordicesima</option>
-                                        </select>
-                                        <input type="number" value={editPag.anno} onChange={e => setEditPag({ ...editPag, anno: e.target.value })} style={{ ...sel, width: 70, padding: "4px 6px", fontSize: 12 }} />
-                                        <input type="number" step="0.01" min="0" value={editPag.importo} onChange={e => setEditPag({ ...editPag, importo: e.target.value })} style={{ ...sel, width: 100, padding: "4px 6px", fontSize: 12, textAlign: "right" }} />
-                                        <input type="text" placeholder="nota" value={editPag.nota} onChange={e => setEditPag({ ...editPag, nota: e.target.value })} style={{ ...sel, width: 140, padding: "4px 6px", fontSize: 12 }} />
-                                        <button className="dc-btn" disabled={busy === b.key} onClick={salvaPagamento} style={{ fontSize: 12, padding: "3px 8px" }}>Salva</button>
-                                        <button className="dc-btn" onClick={() => setEditPag(null)} style={{ fontSize: 12, padding: "3px 8px" }}>Annulla</button>
-                                      </div>
-                                    ) : (
-                                      b.key
-                                        ? <button className="dc-btn" title="Sposta questo pagamento a un altro mese (es. bonifico del 1° gennaio → dicembre) o correggi l'importo"
-                                            onClick={() => setEditPag({ key: b.key, mese: r.mese, anno: r.anno, importo: b.importo, nota: "" })}
-                                            style={{ fontSize: 12, padding: "3px 8px" }}>Sposta / modifica</button>
-                                        : <span style={{ color: "#9aa295" }}>—</span>
-                                    )}
-                                  </td>
+                        <td style={{ ...td, background: "#f7f4ec" }} colSpan={10}>
+                          {r.bonifici.length > 0 && (<>
+                            <div style={{ fontSize: 12, color: "#7a8576", marginBottom: 6 }}>
+                              Un bonifico arrivato nel mese sbagliato (es. il 1° gennaio per la busta di dicembre) si sposta con <b>Sposta / modifica</b>: il sistema ricalcola entrambi i mesi.
+                            </div>
+                            <div style={{ fontSize: 11, color: "#7a8576", fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>Bonifici realmente pagati</div>
+                            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                              <thead>
+                                <tr>
+                                  <th style={{ ...th, borderBottom: "1px solid #e6e0d4" }}>Data</th>
+                                  <th style={{ ...th, borderBottom: "1px solid #e6e0d4", textAlign: "right" }}>Importo</th>
+                                  <th style={{ ...th, borderBottom: "1px solid #e6e0d4" }}>Causale</th>
+                                  <th style={{ ...th, borderBottom: "1px solid #e6e0d4" }}>Beneficiario</th>
+                                  <th style={{ ...th, borderBottom: "1px solid #e6e0d4" }}>Riferimento</th>
+                                  <th style={{ ...th, borderBottom: "1px solid #e6e0d4" }}>PDF</th>
+                                  <th style={{ ...th, borderBottom: "1px solid #e6e0d4" }}>Periodo / importo</th>
                                 </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                              </thead>
+                              <tbody>
+                                {r.bonifici.map((b, i) => (
+                                  <tr key={i}>
+                                    <td style={{ ...td, borderBottom: "none" }}>{b.data || "—"}</td>
+                                    <td style={{ ...td, borderBottom: "none", textAlign: "right", color: "#3d8168", fontWeight: 600 }}>
+                                      € {eur(b.importo)}
+                                      {b.modificato && <div style={{ fontSize: 10, color: "#8a6f47", fontWeight: 400 }}>modificato a mano</div>}
+                                    </td>
+                                    <td style={{ ...td, borderBottom: "none", fontSize: 13 }}>{b.causale || "—"}</td>
+                                    <td style={{ ...td, borderBottom: "none", fontSize: 13 }}>{b.beneficiario || "—"}</td>
+                                    <td style={{ ...td, borderBottom: "none", fontSize: 12, color: "#7a8576" }}>{b.riferimento || "—"}</td>
+                                    <td style={{ ...td, borderBottom: "none", fontSize: 12 }}>
+                                      {b.pdf_key
+                                        ? <a href={`${API}/paghe/pagamento-esito/${b.pdf_key}/pdf`} target="_blank" rel="noreferrer" style={{ color: "#3d8168", fontWeight: 600 }}>📄 Apri PDF</a>
+                                        : <span style={{ color: "#9aa295" }}>no PDF</span>}
+                                    </td>
+                                    <td style={{ ...td, borderBottom: "none", fontSize: 12, whiteSpace: "nowrap" }}>
+                                      {editPag && editPag.key === b.key ? (
+                                        <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
+                                          <select value={editPag.mese} onChange={e => setEditPag({ ...editPag, mese: e.target.value })} style={{ ...sel, padding: "4px 6px", fontSize: 12 }}>
+                                            {mesi.map((m, idx) => <option key={idx + 1} value={idx + 1}>{m}</option>)}
+                                            <option value={13}>Tredicesima</option>
+                                            <option value={14}>Quattordicesima</option>
+                                          </select>
+                                          <input type="number" value={editPag.anno} onChange={e => setEditPag({ ...editPag, anno: e.target.value })} style={{ ...sel, width: 70, padding: "4px 6px", fontSize: 12 }} />
+                                          <input type="number" step="0.01" min="0" value={editPag.importo} onChange={e => setEditPag({ ...editPag, importo: e.target.value })} style={{ ...sel, width: 100, padding: "4px 6px", fontSize: 12, textAlign: "right" }} />
+                                          <input type="text" placeholder="nota" value={editPag.nota} onChange={e => setEditPag({ ...editPag, nota: e.target.value })} style={{ ...sel, width: 140, padding: "4px 6px", fontSize: 12 }} />
+                                          <button className="dc-btn" disabled={busy === b.key} onClick={salvaPagamento} style={{ fontSize: 12, padding: "3px 8px" }}>Salva</button>
+                                          <button className="dc-btn" onClick={() => setEditPag(null)} style={{ fontSize: 12, padding: "3px 8px" }}>Annulla</button>
+                                        </div>
+                                      ) : (
+                                        b.key
+                                          ? <button className="dc-btn" title="Sposta questo pagamento a un altro mese (es. bonifico del 1° gennaio → dicembre) o correggi l'importo"
+                                              onClick={() => setEditPag({ key: b.key, mese: r.mese, anno: r.anno, importo: b.importo, nota: "" })}
+                                              style={{ fontSize: 12, padding: "3px 8px" }}>Sposta / modifica</button>
+                                          : <span style={{ color: "#9aa295" }}>—</span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </>)}
+                          <div style={{ marginTop: r.bonifici.length ? 12 : 0 }}>
+                            <div style={{ fontSize: 11, color: "#7a8576", fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>Acconti in contanti (massimo 3)</div>
+                            {editAcc && editAcc.k === k ? (
+                              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                                {editAcc.acconti.map((a, i) => (
+                                  <div key={i} style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                                    <input type="number" step="0.01" min="0" placeholder="importo" value={a.importo} onChange={e => setEditAcc({ ...editAcc, acconti: editAcc.acconti.map((x, j) => j === i ? { ...x, importo: e.target.value } : x) })} style={{ ...sel, width: 110, padding: "4px 6px", textAlign: "right" }} />
+                                    <input type="date" value={a.data || ""} onChange={e => setEditAcc({ ...editAcc, acconti: editAcc.acconti.map((x, j) => j === i ? { ...x, data: e.target.value } : x) })} style={{ ...sel, padding: "4px 6px" }} />
+                                    <button className="dc-btn" onClick={() => setEditAcc({ ...editAcc, acconti: editAcc.acconti.filter((_, j) => j !== i) })} style={{ fontSize: 12, padding: "3px 8px" }}>Togli</button>
+                                  </div>
+                                ))}
+                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                  {editAcc.acconti.length < 3 && <button className="dc-btn" onClick={() => setEditAcc({ ...editAcc, acconti: [...editAcc.acconti, { importo: "", data: "" }] })} style={{ fontSize: 12, padding: "3px 8px" }}>+ Acconto</button>}
+                                  <button className="dc-btn dc-btn-primary" disabled={busy === k} onClick={salvaAcconti} style={{ fontSize: 12, padding: "3px 8px" }}>Salva acconti</button>
+                                  <button className="dc-btn" onClick={() => setEditAcc(null)} style={{ fontSize: 12, padding: "3px 8px" }}>Annulla</button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", fontSize: 13 }}>
+                                <span>{r.acconti > 0 ? `€ ${eur(r.acconti)} già registrati` : "nessun acconto"}</span>
+                                <button className="dc-btn" onClick={() => setEditAcc({ k, dipendente_id: r.dipendente_id, anno: r.anno, mese: r.mese, acconti: (r.acconti_dettaglio || []).map(a => ({ importo: a.importo ?? "", data: a.data || "" })) })} style={{ fontSize: 12, padding: "3px 8px" }}>Modifica acconti</button>
+                              </div>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     )}
@@ -4904,126 +4715,47 @@ function PagheBonificiPage() {
           </table>
         </div>
       </div>
-      <p className="dc-muted" style={{ fontSize: 12, marginTop: 10 }}>
-        <b>Da verificare</b> = esiste un candidato, ma nome, periodo o importo non bastano a confermare il legame.
-        Controlla dipendente, periodo, quota e prova bancaria; solo dopo usa <b>Conferma</b>. L'associazione resta annullabile.
-      </p>
-    </div>
-  );
-}
 
-// Missioni Page
-function MissioniPage({ dipendenti, missioni, reload, getDipendente }) {
-  const [showModal, setShowModal] = useState(false);
-  const [formData, setFormData] = useState({
-    dipendente_id: "", destinazione: "", data_inizio: "", data_fine: "", scopo: "", rimborso: 0
-  });
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    await axios.post(`${API}/missioni`, formData);
-    setShowModal(false);
-    reload();
-  };
-
-  const handleApprova = async (id) => {
-    await axios.put(`${API}/missioni/${id}/approva`);
-    reload();
-  };
-
-  return (
-    <div className="dc-page">
-      <div className="dc-page-header">
-        <div>
-          <h1>Missioni & Trasferte</h1>
-          <p>Gestione missioni e trasferte dipendenti</p>
-        </div>
-        <button onClick={() => setShowModal(true)} className="dc-btn dc-btn-primary">
-          <Plus size={18} /> Nuova Missione
-        </button>
-      </div>
-
-      <div className="dc-card">
-        <table className="dc-table dc-table--cards">
-          <thead>
-            <tr>
-              <th>DIPENDENTE</th>
-              <th>DESTINAZIONE</th>
-              <th>PERIODO</th>
-              <th>RIMBORSO</th>
-              <th>STATO</th>
-              <th>AZIONI</th>
-            </tr>
-          </thead>
-          <tbody>
-            {missioni.map((m) => {
-              const dip = getDipendente(m.dipendente_id);
-              return (
-                <tr key={m.id}>
-                  <td>
-                    <div className="dc-table-user">
-                      <Avatar nome={dip?.nome} cognome={dip?.cognome} size="sm" />
-                      <span>{dip?.nome} {dip?.cognome}</span>
-                    </div>
-                  </td>
-                  <td data-label="Destinazione">{m.destinazione}</td>
-                  <td data-label="Periodo">{formatDate(m.data_inizio)} - {formatDate(m.data_fine)}</td>
-                  <td data-label="Rimborso">€ {m.rimborso?.toFixed(2)}</td>
-                  <td data-label="Stato"><Badge variant={m.stato === 'approvata' ? 'success' : 'warning'}>{m.stato}</Badge></td>
-                  <td data-label="Azioni" className="dc-table-actions">
-                    {m.stato === 'in_attesa' && (
-                      <button onClick={() => handleApprova(m.id)} className="dc-btn-icon dc-btn-success"><Check size={16} /></button>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {showModal && (
-        <div className="dc-modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="dc-modal" onClick={e => e.stopPropagation()}>
-            <div className="dc-modal-header">
-              <h3>Nuova Missione</h3>
-              <button onClick={() => setShowModal(false)} className="dc-modal-close"><X size={20} /></button>
+      {pnDett && (
+        <div onClick={() => setPnDett(null)} style={{ position: "fixed", inset: 0, background: "rgba(42,51,41,.45)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: 20, zIndex: 50, overflow: "auto" }}>
+          <div onClick={e => e.stopPropagation()} className="dc-card" style={{ maxWidth: 640, width: "100%", marginTop: 20 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <h3 style={{ margin: 0 }}>Prima nota — {pnDett.nome}</h3>
+              <button className="dc-btn" onClick={() => setPnDett(null)}>Chiudi</button>
             </div>
-            <form onSubmit={handleSubmit} className="dc-modal-body">
-              <div className="dc-form-group">
-                <label>Dipendente *</label>
-                <select required value={formData.dipendente_id} onChange={e => setFormData({...formData, dipendente_id: e.target.value})}>
-                  <option value="">Seleziona...</option>
-                  {dipendenti.map(d => <option key={d.id} value={d.id}>{d.nome} {d.cognome}</option>)}
-                </select>
+            {pnDett.loading ? <p className="dc-muted">Carico…</p> : !pnDett.righe?.length ? <p className="dc-muted" style={{ marginTop: 12 }}>Nessun dato.</p> : (
+              <div style={{ overflowX: "auto", marginTop: 12 }}>
+                <table className="dc-table" style={{ minWidth: 520, whiteSpace: "nowrap" }}>
+                  <thead><tr><th>Periodo</th><th style={{ textAlign: "right" }}>Busta €</th><th style={{ textAlign: "right" }}>Erogato €</th><th style={{ textAlign: "right" }}>Saldo progressivo €</th></tr></thead>
+                  <tbody>
+                    {pnDett.righe.map((x, i) => (
+                      <tr key={i}>
+                        <td>{x.mese >= 1 && x.mese <= 12 ? mesi[x.mese - 1] : x.mese} {x.anno}</td>
+                        <td style={{ textAlign: "right" }}>{x.busta ? eur(x.busta) : "—"}</td>
+                        <td style={{ textAlign: "right" }}>{x.erogato ? eur(x.erogato) : "—"}</td>
+                        <td style={{ textAlign: "right", fontWeight: 700, color: x.saldo_progressivo > 0.5 ? "#d35f4e" : x.saldo_progressivo < -0.5 ? "#7d5526" : "#3d8168" }}>{eur(x.saldo_progressivo)}</td>
+                      </tr>
+                    ))}
+                    <tr style={{ fontWeight: 700, borderTop: "2px solid #e6e0d4" }}>
+                      <td colSpan={3}>Saldo finale (positivo = ancora da pagare)</td>
+                      <td style={{ textAlign: "right", color: pnDett.saldo_finale > 0.5 ? "#d35f4e" : "#3d8168" }}>{eur(pnDett.saldo_finale)}</td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
-              <div className="dc-form-group">
-                <label>Destinazione *</label>
-                <input required value={formData.destinazione} onChange={e => setFormData({...formData, destinazione: e.target.value})} />
-              </div>
-              <div className="dc-form-row">
-                <div className="dc-form-group">
-                  <label>Data Inizio</label>
-                  <input type="date" required value={formData.data_inizio} onChange={e => setFormData({...formData, data_inizio: e.target.value})} />
+            )}
+            {pnDett.storico?.length > 0 && (
+              <div style={{ marginTop: 18 }}>
+                <h4 style={{ margin: "0 0 4px" }}>Storico ante-app (da Excel)</h4>
+                <p className="dc-muted" style={{ fontSize: 12.5, margin: "0 0 8px" }}>Sola consultazione: registro dei pagamenti effettuati prima di questa app, per data del bonifico.</p>
+                <div style={{ overflowX: "auto", maxHeight: 260, overflowY: "auto" }}>
+                  <table className="dc-table" style={{ minWidth: 420, whiteSpace: "nowrap" }}>
+                    <thead><tr><th>Data</th><th style={{ textAlign: "right" }}>Busta €</th><th style={{ textAlign: "right" }}>Pagato €</th></tr></thead>
+                    <tbody>{pnDett.storico.map((x, i) => <tr key={i}><td>{formatDate(x.data)}</td><td style={{ textAlign: "right" }}>{x.busta ? eur(x.busta) : "—"}</td><td style={{ textAlign: "right" }}>{x.pagato ? eur(x.pagato) : "—"}</td></tr>)}</tbody>
+                  </table>
                 </div>
-                <div className="dc-form-group">
-                  <label>Data Fine</label>
-                  <input type="date" required value={formData.data_fine} onChange={e => setFormData({...formData, data_fine: e.target.value})} />
-                </div>
               </div>
-              <div className="dc-form-group">
-                <label>Scopo</label>
-                <input value={formData.scopo} onChange={e => setFormData({...formData, scopo: e.target.value})} />
-              </div>
-              <div className="dc-form-group">
-                <label>Rimborso €</label>
-                <input type="number" min="0" value={formData.rimborso} onChange={e => setFormData({...formData, rimborso: +e.target.value})} />
-              </div>
-              <div className="dc-modal-footer">
-                <button type="button" onClick={() => setShowModal(false)} className="dc-btn">Annulla</button>
-                <button type="submit" className="dc-btn dc-btn-primary">Crea Missione</button>
-              </div>
-            </form>
+            )}
           </div>
         </div>
       )}
@@ -5031,22 +4763,39 @@ function MissioniPage({ dipendenti, missioni, reload, getDipendente }) {
   );
 }
 
-// Documenti Page
 function DocumentiPage({ dipendenti, documenti, reload, getDipendente }) {
   const [showModal, setShowModal] = useState(false);
   const [formData, setFormData] = useState({
     dipendente_id: "", titolo: "", tipo: "Contratto", scadenza: ""
   });
+  const [nuovoFile, setNuovoFile] = useState(null);
+  const [nuovoBusy, setNuovoBusy] = useState(false);
   const massRef = useRef(null);
   const [massBusy, setMassBusy] = useState(false);
   const [massMsg, setMassMsg] = useState(null);
-  const ETICHETTA = { UNILAV: "Unilav", CERTIFICAZIONE_UNICA: "Certificazione Unica (CU)", CONTRATTO: "Contratti", BONIFICO: "Bonifici", CODICE_FISCALE: "Codice fiscale / Tessera sanitaria", CARTA_IDENTITA: "Carta d'identità", BUSTA_PAGA: "Buste paga", ALTRO: "Da classificare" };
+  const ETICHETTA = { UNILAV: "Unilav", CERTIFICAZIONE_UNICA: "Certificazione Unica (CU)", CONTRATTO: "Contratti", DIMISSIONI: "Dimissioni / cessazione", LICENZIAMENTO: "Lettere di licenziamento", RIDUZIONE_ORARIO: "Riduzione orario", BONIFICO: "Bonifici", CODICE_FISCALE: "Codice fiscale / Tessera sanitaria", CARTA_IDENTITA: "Carta d'identità", BUSTA_PAGA: "Buste paga", CERTIFICATO: "Certificati", ALTRO: "Da classificare" };
+  const TIPI_NUOVO = ["Contratto", "UNILAV", "Dimissioni / cessazione", "Lettera di licenziamento", "CUD", "Certificato", "Altro"];
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    await axios.post(`${API}/documenti`, formData);
-    setShowModal(false);
-    reload();
+    setNuovoBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append("dipendente_id", formData.dipendente_id);
+      fd.append("titolo", formData.titolo);
+      fd.append("tipo", formData.tipo);
+      if (formData.scadenza) fd.append("scadenza", formData.scadenza);
+      if (nuovoFile) fd.append("file", nuovoFile);
+      const r = await axios.post(`${API}/documenti`, fd, { headers: { "Content-Type": "multipart/form-data" } });
+      const ad = r.data?.adempimenti_dimissioni;
+      if (ad?.alert) toast(`Documento salvato. Dimissioni registrate: UNILAV entro il ${formatDate(ad.scadenza_unilav)} (alert nel Pannello di controllo).`);
+      else toast("Documento salvato");
+      setShowModal(false); setNuovoFile(null);
+      setFormData({ dipendente_id: "", titolo: "", tipo: "Contratto", scadenza: "" });
+      reload();
+    } catch (err) {
+      toast(err?.response?.data?.detail || "Errore nel salvataggio del documento", "err");
+    } finally { setNuovoBusy(false); }
   };
 
   const handleMassUpload = async (e) => {
@@ -5152,7 +4901,7 @@ function DocumentiPage({ dipendenti, documenti, reload, getDipendente }) {
                       <td>{nome || <span className="dc-muted">⚠ non assegnato</span>}</td>
                       <td className="dc-muted">{doc.data_caricamento ? formatDate(doc.data_caricamento) : "—"}</td>
                       <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                        {doc.file_data || doc.hash ? <button onClick={() => apriDoc(doc)} className="dc-btn" style={{ padding: "4px 10px" }}>Apri</button> : null}
+                        {doc.ha_file || doc.file_data || doc.hash ? <button onClick={() => apriDoc(doc)} className="dc-btn" style={{ padding: "4px 10px" }}>Apri</button> : null}
                         <button onClick={() => handleDelete(doc.id)} className="dc-btn-icon dc-btn-danger" style={{ marginLeft: 6 }}><Trash2 size={16} /></button>
                       </td>
                     </tr>
@@ -5186,19 +4935,21 @@ function DocumentiPage({ dipendenti, documenti, reload, getDipendente }) {
               <div className="dc-form-group">
                 <label>Tipo</label>
                 <select value={formData.tipo} onChange={e => setFormData({...formData, tipo: e.target.value})}>
-                  <option>Contratto</option>
-                  <option>CUD</option>
-                  <option>Certificato</option>
-                  <option>Altro</option>
+                  {TIPI_NUOVO.map(t => <option key={t}>{t}</option>)}
                 </select>
               </div>
               <div className="dc-form-group">
-                <label>Scadenza</label>
+                <label>{formData.tipo === "Dimissioni / cessazione" ? "Data di decorrenza / scadenza" : "Scadenza"}</label>
                 <input type="date" value={formData.scadenza} onChange={e => setFormData({...formData, scadenza: e.target.value})} />
+              </div>
+              <div className="dc-form-group">
+                <label>File (PDF, immagine)</label>
+                <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={e => setNuovoFile((e.target.files || [])[0] || null)} />
+                {formData.tipo === "Dimissioni / cessazione" && <span className="dc-muted" style={{ fontSize: 12 }}>Il modulo del Ministero (recesso rapporto di lavoro) viene letto: alert + scadenza UNILAV a 5 giorni.</span>}
               </div>
               <div className="dc-modal-footer">
                 <button type="button" onClick={() => setShowModal(false)} className="dc-btn">Annulla</button>
-                <button type="submit" className="dc-btn dc-btn-primary">Salva Documento</button>
+                <button type="submit" className="dc-btn dc-btn-primary" disabled={nuovoBusy}>{nuovoBusy ? "Salvo…" : "Salva Documento"}</button>
               </div>
             </form>
           </div>

@@ -12,6 +12,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, List, Optional
 
+import bcrypt
 from jose import jwt
 
 from app.hr.config import settings
@@ -22,19 +23,44 @@ logger = logging.getLogger(__name__)
 
 RUOLI_VALIDI = {"dipendente", "responsabile_turni", "admin"}
 
+# 14/09/2026 (titolare, R2-R4): UNA persona = UN PIN, impostato nella scheda
+# HR e valido sia per il portale sia per firmare in Lotti (lotti, sanificazioni,
+# temperature). I PIN storici di Lotti (bcrypt) sono stati migrati qui come
+# sono; i PIN gia' presenti in HR erano SHA-256 non salato: restano validi in
+# lettura, ma ogni PIN nuovo viene salvato con bcrypt + un'impronta HMAC
+# (``pin_lookup``, segreto = chiave JWT dell'app HR, mai nel database) che
+# permette di trovare la persona in un colpo solo senza provare bcrypt su
+# tutti i dipendenti a ogni tocco del tablet.
+
 
 def hash_pin(pin: str) -> str:
+    return bcrypt.hashpw(pin.encode("utf-8"), bcrypt.gensalt()).decode("ascii")
+
+
+def hash_pin_legacy(pin: str) -> str:
+    """SHA-256 storico (solo per confronto con i PIN salvati prima del 14/09/2026)."""
     return hashlib.sha256(pin.encode("utf-8")).hexdigest()
 
 
 def verify_pin(pin: str, pin_hash: str) -> bool:
     if not pin or not pin_hash:
         return False
-    return hmac.compare_digest(hash_pin(pin), pin_hash)
+    pin_hash = str(pin_hash)
+    if pin_hash.startswith("$2"):
+        try:
+            return bcrypt.checkpw(pin.encode("utf-8"), pin_hash.encode("ascii"))
+        except (ValueError, TypeError):
+            return False
+    return hmac.compare_digest(hash_pin_legacy(pin), pin_hash)
+
+
+def pin_lookup(pin: str) -> str:
+    """Impronta HMAC del PIN: serve solo a trovare la riga, il controllo vero resta l'hash."""
+    return hmac.new(str(settings.SECRET_KEY).encode("utf-8"), pin.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
 def _valid_pin_format(pin: str) -> bool:
-    return bool(pin) and pin.isdigit() and 4 <= len(pin) <= 8
+    return bool(pin) and pin.isascii() and pin.isdigit() and 4 <= len(pin) <= 8
 
 
 def crea_token_dipendente(dip: Dict[str, Any]) -> str:
@@ -76,8 +102,6 @@ async def login_dipendente_per_nome(nome: str, pin: str) -> Optional[Dict[str, A
         is_admin = dip.get("ruolo_app") == "admin"
         ok = (verify_admin_pin(pin) is True) if is_admin else (
             _valid_pin_format(pin) and bool(dip.get("pin_hash")) and verify_pin(pin, dip["pin_hash"]))
-        if not ok and not is_admin and _valid_pin_format(pin):
-            ok = await _pin_operatore_valido(db, dip, pin)
         if ok:
             verificati.append(dip)
     if len(verificati) != 1:
@@ -95,95 +119,24 @@ async def login_dipendente_per_nome(nome: str, pin: str) -> Optional[Dict[str, A
     }
 
 
-def _nome_operatore_combacia(nome_op: str, nome_dip: str) -> bool:
-    """Stessa regola di corrispondenza nome usata per accettare il PIN cassa:
-    l'operatore combacia col dipendente se il suo nome e' contenuto per
-    intero, o token per token, nel nome completo del dipendente."""
-    nome_op = (nome_op or "").lower().strip()
-    return bool(nome_op) and (nome_op in nome_dip or all(tok in nome_dip for tok in nome_op.split() if tok))
-
-
 def _nome_completo(dip: Dict[str, Any]) -> str:
     return (dip.get("nome_completo") or f"{dip.get('nome', '')} {dip.get('cognome', '')}").strip().lower()
 
 
-async def _pin_operatore_valido(db, dip: Dict[str, Any], pin: str) -> bool:
-    """Verifica il PIN contro la fonte operatori condivisa (tablet_operatori),
-    la stessa usata dalla cassa di Lotti. Accetta solo se l'operatore con quel
-    PIN corrisponde, per nome, al dipendente selezionato (un dipendente non puo'
-    entrare col PIN di un altro). PIN unico cassa+portale, nessuna copia.
-    """
-    nome_dip = _nome_completo(dip)
-    if not nome_dip:
-        return False
-    candidati = []
-    try:
-        coll = db["tablet_operatori"]
-        doc = await coll.find_one({"attivo": True, "pin_chiaro": pin, "ruolo": {"$ne": "amministratore"}}, {"_id": 0, "nome": 1})
-        if doc:
-            candidati.append(doc)
-        else:
-            try:
-                import bcrypt
-                for d in await coll.find({"attivo": True, "ruolo": {"$ne": "amministratore"}}, {"_id": 0, "nome": 1, "pin": 1}).to_list(100):
-                    h = (d.get("pin") or "")
-                    if h.startswith("$2") and bcrypt.checkpw(pin.encode(), h.encode()):
-                        candidati.append(d)
-                        break
-            except Exception:
-                pass
-    except Exception:
-        return False
-    return any(_nome_operatore_combacia(c.get("nome"), nome_dip) for c in candidati)
-
-
-async def _operatori_attivi_per_nome(db) -> List[str]:
-    """Nomi (minuscoli) degli operatori attivi in tablet_operatori — prefetch
-    in blocco per elenco_dipendenti_per_login, invece di una query per
-    dipendente (stesso pattern anti-N+1 usato altrove nel repo).
-
-    Un fallimento di lettura qui NON va inghiottito (trovato da una review
-    automatica): se tornasse silenziosamente [], chi usa solo il PIN della
-    cassa sparirebbe dal selettore come se non avesse nessuna credenziale,
-    con l'endpoint che risponde comunque 200 — nessun errore da mostrare, il
-    "Riprova" già previsto in Login non scatterebbe mai. Lasciando propagare
-    l'eccezione, l'endpoint fallisce esplicitamente e il frontend lo tratta
-    come l'errore di rete che già gestisce."""
-    out = []
-    async for o in db["tablet_operatori"].find({"attivo": True}):
-        nome_op = (o.get("nome") or "").lower().strip()
-        if nome_op:
-            out.append(nome_op)
-    return out
-
-
-
-
 def _dipendente_eleggibile(dip: Dict[str, Any]) -> bool:
-    """Stesso filtro di login_dipendente_per_nome (attivo, non fuso, non
-    cessato/dimesso/archiviato) — un dipendente non eleggibile non deve poter
-    fare login con NESSUNA delle due fonti PIN, nemmeno quella della cassa."""
-    if dip.get("attivo") is False:
-        return False
-    if "merged_into" in dip:
-        return False
-    if dip.get("stato") in ("cessato", "dimesso", "archiviato"):
-        return False
-    return True
+    """Rapporto in forza (stesso criterio dell'anagrafica: ``stato_rapporto``)."""
+    from app.hr.services.stato_rapporto import e_in_forza
+
+    return e_in_forza(dip)
 
 
 async def login_dipendente(dipendente_id: str, pin: str) -> Optional[Dict[str, Any]]:
-    """Valida il PIN del dipendente e ritorna il token, oppure None.
+    """Valida il PIN personale del dipendente e ritorna il token, oppure None.
 
-    Due fonti accettate (PIN unico aziendale):
-      1. PIN personale del portale (pin_hash sul documento), se impostato.
-      2. PIN della cassa: stessa fonte operatori di Lotti (tablet_operatori).
-
-    Revoca il pin_hash alla cessazione (vedi handlers/dipendente_handlers.py)
-    blocca solo la prima fonte: senza il controllo di eleggibilita' qui, un
-    dipendente cessato il cui nome corrisponde ancora a un operatore attivo
-    in tablet_operatori avrebbe potuto continuare a entrare a tempo
-    indeterminato via PIN cassa (trovato da una review automatica).
+    Una sola fonte: ``pin_hash`` sulla scheda HR (lo stesso PIN che firma in
+    Lotti). Gli amministratori entrano nel portale solo col PIN centrale di
+    ERP/Menu (decisione 05/09/2026); il loro PIN personale serve alla firma
+    HACCP sul tablet, non a questo login.
     """
     if not pin or not pin.isascii() or not pin.isdigit() or not 4 <= len(pin) <= 12:
         return None
@@ -198,8 +151,6 @@ async def login_dipendente(dipendente_id: str, pin: str) -> Optional[Dict[str, A
     if is_admin:
         ok = verify_admin_pin(pin) is True
     elif dip.get("pin_hash") and verify_pin(pin, dip["pin_hash"]):
-        ok = True
-    if not ok and not is_admin and await _pin_operatore_valido(db, dip, pin):
         ok = True
     if not ok:
         return None
@@ -216,48 +167,94 @@ async def login_dipendente(dipendente_id: str, pin: str) -> Optional[Dict[str, A
 
 
 async def elenco_dipendenti_per_login() -> List[Dict[str, Any]]:
-    """Nomi dei dipendenti attivi, per il selettore di login del portale
-    (tocca il tuo nome, poi il PIN — niente più tastiera).
-    Decisione esplicita del titolare: reintroduce l'elenco nomi in login
-    (prima rimosso per non esporli pre-autenticazione) in cambio di zero
-    digitazione, per un dispositivo condiviso in negozio dove la lista dei
-    dipendenti non è comunque un segreto. Restituisce solo id+nome: niente
-    PIN, ruolo o altri dati — quelli restano protetti dal PIN al login vero.
-
-    Include chi ha un pin_hash proprio OPPURE il cui nome corrisponde a un
-    operatore attivo in tablet_operatori (PIN condiviso della cassa) — le due
-    fonti che login_dipendente() accetta. Filtrare solo su pin_hash
-    escluderebbe chi usa solo la cassa (col selettore a tocco non c'e' più
-    modo di entrare scrivendo il nome); NON filtrare affatto mostrerebbe
-    invece dipendenti appena creati senza alcuna credenziale funzionante —
-    un nome selezionabile il cui PIN verrebbe sempre rifiutato (trovato da
-    una review automatica su entrambi i casi, in due giri separati)."""
+    """Nomi dei dipendenti in forza CON un PIN impostato, per il selettore di
+    login del portale (tocca il tuo nome, poi il PIN). Decisione esplicita del
+    titolare (28/08/2026): l'elenco nomi e' pubblico, niente digitazione su un
+    dispositivo condiviso. Solo id+nome: nessun PIN, ruolo o altro dato.
+    Chi non ha ancora un PIN non compare (un nome selezionabile il cui PIN
+    verrebbe sempre rifiutato sarebbe un bug, non una comodita')."""
     db = Database.get_db()
-    operatori_attivi = await _operatori_attivi_per_nome(db)
     out = []
-    async for d in db[Collections.EMPLOYEES].find(
-            {"attivo": {"$ne": False},
-             "merged_into": {"$exists": False},
-             "stato": {"$nin": ["cessato", "dimesso", "archiviato"]}}):
+    async for d in db[Collections.EMPLOYEES].find({"merged_into": {"$exists": False}}):
+        if not _dipendente_eleggibile(d):
+            continue
         nome = d.get("nome_completo") or f"{d.get('nome', '')} {d.get('cognome', '')}".strip()
         if not (nome and d.get("id")):
             continue
-        ha_credenziale = bool(d.get("pin_hash")) or any(
-            _nome_operatore_combacia(nome_op, _nome_completo(d)) for nome_op in operatori_attivi)
-        if ha_credenziale:
+        if d.get("pin_hash") or d.get("ruolo_app") == "admin":
             out.append({"id": d["id"], "nome": nome})
     out.sort(key=lambda x: x["nome"])
     return out
+
+
+async def dipendente_con_pin_uguale(db, pin: str, escludi_id: str = "") -> Optional[Dict[str, Any]]:
+    """Un ALTRO dipendente in forza usa gia' questo PIN? (R3: PIN unico fra
+    gli attivi.) Confronto sull'impronta quando c'e', altrimenti sull'hash."""
+    impronta = pin_lookup(pin)
+    async for d in db[Collections.EMPLOYEES].find(
+            {"merged_into": {"$exists": False}, "pin_hash": {"$exists": True}},
+            {"_id": 0, "id": 1, "nome_completo": 1, "nome": 1, "cognome": 1,
+             "pin_hash": 1, "pin_lookup": 1, "attivo": 1, "stato": 1, "in_carico": 1}):
+        if d.get("id") == escludi_id or not _dipendente_eleggibile(d) or not d.get("pin_hash"):
+            continue
+        if d.get("pin_lookup"):
+            if hmac.compare_digest(str(d["pin_lookup"]), impronta):
+                return d
+            continue
+        if verify_pin(pin, d["pin_hash"]):
+            return d
+    return None
+
+
+async def trova_dipendente_per_pin(pin: str, solo_operatori_lotti: bool = False) -> List[Dict[str, Any]]:
+    """La persona che ha questo PIN (usato dal tablet Lotti per firmare).
+
+    Cerca prima per impronta (una query, niente bcrypt); se nessuno ce l'ha
+    ancora (PIN migrati da Lotti o SHA-256 storici) prova l'hash di ogni
+    dipendente in forza con un PIN e, trovato, scrive l'impronta cosi' la
+    volta dopo e' immediata. Un cessato non viene mai restituito, qualunque
+    PIN abbia ancora salvato. Con ``solo_operatori_lotti`` esclude chi ha
+    ``lotti_operatore`` = false nella scheda HR.
+    """
+    if not _valid_pin_format(pin):
+        return []
+    db = Database.get_db()
+    impronta = pin_lookup(pin)
+
+    def ok(d):
+        if not _dipendente_eleggibile(d):
+            return False
+        if solo_operatori_lotti and d.get("lotti_operatore") is False:
+            return False
+        return True
+
+    trovati = [d for d in await db[Collections.EMPLOYEES].find(
+        {"pin_lookup": impronta, "merged_into": {"$exists": False}}, {"_id": 0}).to_list(50) if ok(d)]
+    if trovati:
+        return [d for d in trovati if verify_pin(pin, d.get("pin_hash") or "")]
+    candidati = await db[Collections.EMPLOYEES].find(
+        {"pin_hash": {"$exists": True}, "merged_into": {"$exists": False}}, {"_id": 0}).to_list(500)
+    for d in candidati:
+        if not ok(d) or d.get("pin_lookup") or not d.get("pin_hash"):
+            continue
+        if verify_pin(pin, d["pin_hash"]):
+            await db[Collections.EMPLOYEES].update_one({"id": d["id"]}, {"$set": {"pin_lookup": impronta}})
+            trovati.append(d)
+    return trovati
 
 
 async def imposta_pin(dipendente_id: str, pin: str) -> bool:
     if not _valid_pin_format(pin):
         raise ValueError("PIN non valido: 4-8 cifre")
     db = Database.get_db()
+    altro = await dipendente_con_pin_uguale(db, pin, escludi_id=dipendente_id)
+    if altro:
+        raise ValueError("Questo PIN e' gia' di un altro dipendente attivo: scegline un altro")
     r = await db[Collections.EMPLOYEES].update_one(
         {"id": dipendente_id},
-        {"$set": {"pin_hash": hash_pin(pin),
-                  "pin_updated_at": datetime.now(timezone.utc).isoformat()}},
+        {"$set": {"pin_hash": hash_pin(pin), "pin_lookup": pin_lookup(pin),
+                  "pin_updated_at": datetime.now(timezone.utc).isoformat()},
+         "$unset": {"pin_migrato_da_lotti": ""}},
     )
     return r.matched_count > 0
 
@@ -265,7 +262,7 @@ async def imposta_pin(dipendente_id: str, pin: str) -> bool:
 async def rimuovi_pin(dipendente_id: str) -> bool:
     db = Database.get_db()
     r = await db[Collections.EMPLOYEES].update_one(
-        {"id": dipendente_id}, {"$unset": {"pin_hash": "", "pin_updated_at": ""}}
+        {"id": dipendente_id}, {"$unset": {"pin_hash": "", "pin_lookup": "", "pin_updated_at": ""}}
     )
     return r.matched_count > 0
 

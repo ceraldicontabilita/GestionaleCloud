@@ -2,7 +2,7 @@
 Dipendenti in Cloud - Router Module
 Sistema HR completo per gestione personale
 """
-from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Body
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Body, Form
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
@@ -19,6 +19,7 @@ from datetime import datetime, timezone, timedelta, date
 from decimal import Decimal, InvalidOperation
 
 from app.hr.database import Database
+from app.hr.services import stato_rapporto
 from app.config import settings
 from app.services.drive_folder_registry import get_folder_id
 
@@ -61,7 +62,25 @@ class DipendenteCloud(BaseModel):
     data_assunzione: Optional[str] = None
     data_fine_contratto: Optional[str] = None
     iban: Optional[str] = None
-    stato: str = "attivo"
+    livello: Optional[str] = None
+    ore_settimanali: Optional[float] = None
+    # 14/09/2026: lo stato NON si modifica da qui (solo con "Cessa rapporto" /
+    # "Riattiva", con data e motivo). Il campo resta accettato per
+    # compatibilita' ma viene ignorato in PUT.
+    stato: Optional[str] = None
+    # Chi puo' firmare in Lotti (HACCP): l'anagrafica HR comanda (R1).
+    lotti_operatore: Optional[bool] = None
+
+
+class CessazioneCloud(BaseModel):
+    data_cessazione: str
+    motivo: str = "altro"
+    riferimento: Optional[str] = ""
+    note: Optional[str] = ""
+
+
+class PinCloud(BaseModel):
+    pin: str
 
 class PresenzaCloud(BaseModel):
     dipendente_id: str
@@ -86,7 +105,7 @@ class TurnoCloud(BaseModel):
     nome: str
     orario_inizio: str
     orario_fine: str
-    colore: str = "#3b82f6"
+    colore: str = "#5b7a6b"
 
 class BustaPagaCloud(BaseModel):
     dipendente_id: str
@@ -118,61 +137,108 @@ class DocumentoCloud(BaseModel):
 
 # ============ DIPENDENTI ============
 
+def _vista_dipendente(d: dict) -> dict:
+    """Forma unica del dipendente per la UI: stato normalizzato (attivo/cessato
+    con data e motivo), tutti i campi anagrafici, MAI il PIN (solo se e' impostato)."""
+    st = stato_rapporto.riepilogo_stato(d)
+    nome_completo = d.get("nome_completo") or f"{d.get('nome', '')} {d.get('cognome', '')}".strip()
+    return {
+        "id": d.get("id") or str(d.get("_id", "")),
+        "nome": d.get("nome", ""),
+        "cognome": d.get("cognome", ""),
+        "nome_completo": nome_completo,
+        "codice_fiscale": d.get("codice_fiscale", ""),
+        "matricola": d.get("matricola") or "",
+        "data_nascita": d.get("data_nascita") or "",
+        "indirizzo": d.get("indirizzo") or "",
+        # ruolo/contratto: prima il valore inserito a mano, poi quello letto
+        # dall'UNILAV (qualifica_unilav / tipo_contratto) — MAI un default fisso:
+        # "Indeterminato" per chi non lo sappiamo e' un dato inventato, non ignoto.
+        "ruolo": d.get("ruolo") or d.get("qualifica_unilav") or d.get("mansione") or "",
+        "mansione": d.get("mansione") or "",
+        "iban": d.get("iban", ""),
+        "email": d.get("email", ""),
+        "telefono": d.get("telefono", ""),
+        "contratto": d.get("contratto") or d.get("tipo_contratto") or "",
+        "data_assunzione": d.get("data_assunzione", ""),
+        "data_fine_contratto": d.get("data_fine_contratto") or "",
+        "data_cessazione": st["data_fine_rapporto"] or "",
+        "luogo_lavoro": d.get("luogo_lavoro", ""),
+        "importo_stipendio": d.get("importo_stipendio", 0),
+        "livello": d.get("livello", ""),
+        "ore_settimanali": d.get("ore_settimanali"),
+        "ruolo_app": d.get("ruolo_app") or "dipendente",
+        "pin_impostato": bool(d.get("pin_hash")),
+        "lotti_operatore": d.get("lotti_operatore") is not False,
+        "dimissioni": {k: (d.get("dimissioni") or {}).get(k) for k in
+                       ("codice_modulo", "data_decorrenza", "data_trasmissione", "scadenza_unilav")}
+        if d.get("dimissioni") else None,
+        "created_at": d.get("created_at", ""),
+        **st,
+    }
+
+
 @router.get("/dipendenti")
 async def get_dipendenti():
-    """Legge dalla collezione 'dipendenti' esistente nel database Gestionale"""
-    dipendenti = await get_db().dipendenti.find({}, {"_id": 0}).to_list(1000)
-    # Normalizza i campi per compatibilità con il frontend.
-    # ruolo/contratto: prima il valore inserito a mano, poi quello letto
-    # dall'UNILAV (qualifica_unilav / tipo_contratto) — MAI un default fisso:
-    # "Indeterminato" per chi non lo sappiamo e' un dato inventato, non ignoto.
-    result = []
-    for d in dipendenti:
-        result.append({
-            "id": d.get("id") or str(d.get("_id", "")),
-            "nome": d.get("nome", ""),
-            "cognome": d.get("cognome", ""),
-            "codice_fiscale": d.get("codice_fiscale", ""),
-            "stato": d.get("stato", "attivo"),
-            "ruolo": d.get("ruolo") or d.get("qualifica_unilav") or d.get("mansione") or "",
-            "iban": d.get("iban", ""),
-            "email": d.get("email", ""),
-            "telefono": d.get("telefono", ""),
-            "contratto": d.get("contratto") or d.get("tipo_contratto") or "",
-            "data_assunzione": d.get("data_assunzione", ""),
-            "data_cessazione": d.get("data_cessazione", ""),
-            "luogo_lavoro": d.get("luogo_lavoro", ""),
-            "importo_stipendio": d.get("importo_stipendio", 0),
-            "livello": d.get("livello", ""),
-            "ore_settimanali": d.get("ore_settimanali"),
-            "created_at": d.get("created_at", "")
-        })
-    return result
+    """Anagrafica HR: la fonte unica di chi lavora in azienda (anche per Lotti)."""
+    dipendenti = await get_db().dipendenti.find(
+        {"merged_into": {"$exists": False}}, {"_id": 0, "pdf_data": 0}).to_list(1000)
+    return [_vista_dipendente(d) for d in dipendenti]
 
 @router.get("/dipendenti/{dipendente_id}")
 async def get_dipendente(dipendente_id: str):
     dip = await get_db().dipendenti.find_one({"id": dipendente_id}, {"_id": 0})
     if not dip:
         raise HTTPException(status_code=404, detail="Dipendente non trovato")
+    dip.pop("pin_hash", None)
+    dip.pop("pin_lookup", None)
     return dip
+
+
+def _campi_anagrafici(dip: DipendenteCloud, esclusi=("stato",)) -> dict:
+    """Solo i campi realmente inviati (mai sovrascrivere matricola, nascita,
+    indirizzo... con None perche' il modale non li mostrava: e' successo a
+    Moscato il 14/09/2026)."""
+    dati = dip.model_dump(exclude_unset=True)
+    for k in esclusi:
+        dati.pop(k, None)
+    if "codice_fiscale" in dati and dati["codice_fiscale"]:
+        dati["codice_fiscale"] = str(dati["codice_fiscale"]).strip().upper()
+    if "nome" in dati or "cognome" in dati:
+        dati["nome"] = str(dati.get("nome") or "").strip()
+        dati["cognome"] = str(dati.get("cognome") or "").strip()
+    return dati
+
 
 @router.post("/dipendenti")
 async def create_dipendente(dip: DipendenteCloud):
-    dip_dict = dip.model_dump()
-    dip_dict["id"] = generate_id()
-    dip_dict["created_at"] = now_iso()
-    await get_db().dipendenti.insert_one(dip_dict)
-    return serialize_doc(dip_dict)
+    dip_dict = _campi_anagrafici(dip)
+    if not dip_dict.get("nome") and not dip_dict.get("cognome"):
+        raise HTTPException(status_code=400, detail="Nome e cognome obbligatori")
+    dip_dict["nome_completo"] = f"{dip_dict.get('cognome', '')} {dip_dict.get('nome', '')}".strip()
+    dip_dict.update({"id": generate_id(), "created_at": now_iso(), "stato": "attivo", "attivo": True,
+                     "in_carico": True, "ruolo_app": "dipendente"})
+    dip_dict.setdefault("lotti_operatore", True)
+    await get_db().dipendenti.insert_one(dict(dip_dict))
+    return _vista_dipendente(dip_dict)
 
 @router.put("/dipendenti/{dipendente_id}")
 async def update_dipendente(dipendente_id: str, dip: DipendenteCloud):
-    result = await get_db().dipendenti.update_one(
-        {"id": dipendente_id},
-        {"$set": dip.model_dump()}
-    )
-    if result.matched_count == 0:
+    """Aggiorna SOLO i campi inviati. Lo stato del rapporto non passa da qui:
+    si usa /cessa (con data e motivo) o /riattiva."""
+    db = get_db()
+    esistente = await db.dipendenti.find_one({"id": dipendente_id}, {"_id": 0})
+    if not esistente:
         raise HTTPException(status_code=404, detail="Dipendente non trovato")
-    return {"message": "Dipendente aggiornato"}
+    dati = _campi_anagrafici(dip)
+    nome = dati.get("nome", esistente.get("nome") or "")
+    cognome = dati.get("cognome", esistente.get("cognome") or "")
+    if "nome" in dati or "cognome" in dati:
+        dati["nome_completo"] = f"{cognome} {nome}".strip()
+    if dati:
+        await db.dipendenti.update_one({"id": dipendente_id}, {"$set": dati})
+    aggiornato = await db.dipendenti.find_one({"id": dipendente_id}, {"_id": 0})
+    return {"message": "Dipendente aggiornato", "dipendente": _vista_dipendente(aggiornato)}
 
 @router.delete("/dipendenti/{dipendente_id}")
 async def delete_dipendente(dipendente_id: str):
@@ -182,30 +248,82 @@ async def delete_dipendente(dipendente_id: str):
     return {"message": "Dipendente eliminato"}
 
 @router.post("/dipendenti/{dipendente_id}/cessa")
-async def cessa_dipendente(dipendente_id: str, data: dict = Body(default={})):
-    """Cessa il rapporto: aggiorna lo stato e innesca l'iter completo di chiusura
-    (termina contratti, rifiuta assenze future, annulla partite, risolve alert)
-    tramite l'evento DIPENDENTE_CESSATO già agganciato all'handler dedicato."""
+async def cessa_dipendente(dipendente_id: str, data: CessazioneCloud):
+    """Cessa il rapporto CON data e motivo (dimissioni, licenziamento, fine
+    contratto, risoluzione consensuale, altro) e riferimento (modulo
+    dimissioni / UNILAV); innesca l'iter completo di chiusura (termina
+    contratti, rifiuta assenze future, annulla partite, revoca il PIN, risolve
+    alert) tramite l'evento DIPENDENTE_CESSATO. Lotti si adegua da solo."""
     db = get_db()
     dip = await db.dipendenti.find_one({"id": dipendente_id}, {"_id": 0})
     if not dip:
         raise HTTPException(status_code=404, detail="Dipendente non trovato")
-    data_cessazione = (data.get("data_cessazione") or now_iso()[:10])
+    try:
+        campi = stato_rapporto.campi_cessazione(data.data_cessazione, data.motivo, data.riferimento or "",
+                                                data.note or "", fonte="anagrafica")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if data.motivo not in stato_rapporto.MOTIVI_CESSAZIONE:
+        raise HTTPException(status_code=400, detail="Motivo non valido: " + ", ".join(stato_rapporto.MOTIVI_CESSAZIONE))
     nome = dip.get("nome_completo") or f"{dip.get('cognome','')} {dip.get('nome','')}".strip()
-    await db.dipendenti.update_one({"id": dipendente_id}, {"$set": {
-        "stato": "cessato", "attivo": False,
-        "data_dimissione": data_cessazione, "cessato_il": now_iso(),
-        "motivo_cessazione": data.get("motivo") or "cessazione_manuale",
-    }})
+    await db.dipendenti.update_one({"id": dipendente_id}, {"$set": campi})
+    # Il PIN si spegne subito con la cessazione (R3), anche se l'iter
+    # automatico a valle dovesse fallire.
+    try:
+        from app.hr.services.auth_dipendenti import rimuovi_pin
+        await rimuovi_pin(dipendente_id)
+    except Exception as e:
+        logger.warning("revoca PIN alla cessazione non riuscita per %s: %s", dipendente_id, e)
     try:
         from app.hr.services.event_bus import propagate_event, EventTypes
         risultati = await propagate_event(EventTypes.DIPENDENTE_CESSATO, {
             "dipendente_id": dipendente_id, "nome_completo": nome,
-            "data_cessazione": data_cessazione,
+            "data_cessazione": campi["data_fine_rapporto"], "motivo": campi["motivo_cessazione"],
         }, db, source_module="gestione", user="admin")
     except Exception as e:
         risultati = [{"error": str(e)}]
-    return {"ok": True, "stato": "cessato", "data_cessazione": data_cessazione, "automazioni": risultati}
+    aggiornato = await db.dipendenti.find_one({"id": dipendente_id}, {"_id": 0})
+    return {"ok": True, "stato": "cessato", "data_cessazione": campi["data_fine_rapporto"],
+            "automazioni": risultati, "dipendente": _vista_dipendente(aggiornato)}
+
+@router.post("/dipendenti/{dipendente_id}/riattiva")
+async def riattiva_dipendente(dipendente_id: str):
+    """Rimette in forza un cessato (errore o riassunzione): la cessazione
+    precedente resta nello storico della scheda."""
+    db = get_db()
+    dip = await db.dipendenti.find_one({"id": dipendente_id}, {"_id": 0})
+    if not dip:
+        raise HTTPException(status_code=404, detail="Dipendente non trovato")
+    st = stato_rapporto.riepilogo_stato(dip)
+    upd = stato_rapporto.campi_riattivazione()
+    if st["stato"] == "cessato":
+        storico = list(dip.get("cessazioni_precedenti") or [])
+        storico.append({"data_fine_rapporto": st["data_fine_rapporto"], "motivo": st["motivo_cessazione_originale"],
+                        "riferimento": st["riferimento_cessazione"], "riattivato_il": now_iso()})
+        upd["$set"]["cessazioni_precedenti"] = storico
+    await db.dipendenti.update_one({"id": dipendente_id}, upd)
+    aggiornato = await db.dipendenti.find_one({"id": dipendente_id}, {"_id": 0})
+    return {"ok": True, "stato": "attivo", "dipendente": _vista_dipendente(aggiornato)}
+
+@router.post("/dipendenti/{dipendente_id}/pin")
+async def imposta_pin_dipendente(dipendente_id: str, payload: PinCloud):
+    """PIN personale (R2): uno per persona, vale per il portale e per firmare
+    in Lotti. Mai mostrato; qui si puo' solo impostare o reimpostare."""
+    from app.hr.services import auth_dipendenti
+    try:
+        ok = await auth_dipendenti.imposta_pin(dipendente_id, str(payload.pin or "").strip())
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not ok:
+        raise HTTPException(status_code=404, detail="Dipendente non trovato")
+    return {"ok": True, "pin_impostato": True}
+
+@router.delete("/dipendenti/{dipendente_id}/pin")
+async def rimuovi_pin_dipendente(dipendente_id: str):
+    from app.hr.services import auth_dipendenti
+    if not await auth_dipendenti.rimuovi_pin(dipendente_id):
+        raise HTTPException(status_code=404, detail="Dipendente non trovato")
+    return {"ok": True, "pin_impostato": False}
 
 @router.get("/ordine-dipendenti")
 async def get_ordine_dipendenti():
@@ -417,34 +535,37 @@ async def sincronizza_bonifici_storici():
             "duplicati_saltati": duplicati, "mesi_aggiornati": len(affected)}
 
 
-@router.get("/paghe")
-async def get_paghe(anno: int, mese: int):
-    return await get_db().paghe_mensili.find(
-        {"anno": int(anno), "mese": int(mese)}, {"_id": 0}).to_list(500)
+class AccontiCloud(BaseModel):
+    dipendente_id: str
+    anno: int
+    mese: int
+    acconti: List[Dict[str, Any]] = []
 
-@router.post("/paghe")
-async def upsert_pagha(data: dict):
-    dip = data.get("dipendente_id"); anno = data.get("anno"); mese = data.get("mese")
-    if not dip or not anno or not mese:
-        raise HTTPException(status_code=400, detail="dipendente_id, anno, mese obbligatori")
-    # Normalizza gli acconti: massimo 3, solo importo+data
+
+@router.put("/paghe/acconti")
+async def imposta_acconti(payload: AccontiCloud):
+    """Acconti in contanti del mese (max 3, importo + data): l'UNICA cosa che
+    si inserisce a mano oltre alle correzioni; busta e bonifici arrivano dai
+    cedolini e dalla banca. Tocca solo il campo ``acconti`` e ricalcola lo
+    stato col motore unico (14/09/2026: la vecchia pagina «Buste Paga»
+    riscriveva busta e bonifico a mano, da qui i dati discordanti)."""
     acconti = []
-    for a in (data.get("acconti") or [])[:3]:
-        acconti.append({"importo": a.get("importo"), "data": a.get("data")})
-    doc = {
-        "dipendente_id": dip, "anno": int(anno), "mese": int(mese),
-        "importo_busta": data.get("importo_busta"),
-        "bonifico_ricevuto": bool(data.get("bonifico_ricevuto", False)),
-        "bonifico_importo": data.get("bonifico_importo"),
-        "bonifico_data": data.get("bonifico_data"),
-        "acconti": acconti,
-        "updated_at": now_iso(),
-    }
-    await get_db().paghe_mensili.update_one(
-        {"dipendente_id": dip, "anno": int(anno), "mese": int(mese)},
-        {"$set": doc}, upsert=True)
-    await _ricalcola_stato_paga(get_db(), dip, int(anno), int(mese))
-    return {"ok": True, "pagha": doc}
+    for a in (payload.acconti or [])[:3]:
+        try:
+            importo = round(float(str(a.get("importo")).replace(",", ".")), 2)
+        except (TypeError, ValueError):
+            continue
+        if importo <= 0:
+            continue
+        acconti.append({"importo": importo, "data": (a.get("data") or None)})
+    db = get_db()
+    await db.paghe_mensili.update_one(
+        {"dipendente_id": payload.dipendente_id, "anno": int(payload.anno), "mese": int(payload.mese)},
+        {"$set": {"acconti": acconti, "updated_at": now_iso()},
+         "$setOnInsert": {"dipendente_id": payload.dipendente_id, "anno": int(payload.anno), "mese": int(payload.mese)}},
+        upsert=True)
+    stato = await _ricalcola_stato_paga(db, payload.dipendente_id, int(payload.anno), int(payload.mese))
+    return {"ok": True, "acconti": acconti, "stato": stato}
 
 
 async def _ricalcola_stato_paga(db, dip, anno, mese):
@@ -626,13 +747,6 @@ async def configurazione_cartella_bonifici_drive():
         "configured": bool(folder),
         "drive_url": f"https://drive.google.com/drive/folders/{folder}" if folder else None,
     }
-
-
-@router.delete("/paghe")
-async def delete_pagha(dipendente_id: str, anno: int, mese: int):
-    res = await get_db().paghe_mensili.delete_one(
-        {"dipendente_id": dipendente_id, "anno": int(anno), "mese": int(mese)})
-    return {"ok": True, "eliminati": res.deleted_count}
 
 
 _MESI_IMPORT_SALARI = {
@@ -3186,8 +3300,20 @@ async def paghe_in_attesa():
                     "stato": p.get("stato_pagamento"),
                     "busta": round(float(p.get("importo_busta") or 0), 2),
                     "saldo": round(saldo, 2)})
-    out.sort(key=lambda x: (x["anno"] or 0, x["mese"] or 0))
-    return {"righe": out, "totale": len(out), "importo": round(sum(x["saldo"] for x in out), 2)}
+    # 14/09/2026 (titolare): 809 righe dal 2018 sommate come "da erogare" erano
+    # fuorvianti — quasi tutte buste storiche gia' pagate con bonifici non
+    # agganciati. Prima l'anno corrente (da pagare davvero), poi lo storico
+    # ("pagamento non ancora agganciato"), ognuno col suo totale.
+    anno_corrente = datetime.now().year
+    for x in out:
+        x["storico"] = (x["anno"] or 0) < anno_corrente
+    out.sort(key=lambda x: (x["storico"], -(x["anno"] or 0), -(x["mese"] or 0)))
+    correnti = [x for x in out if not x["storico"]]
+    storiche = [x for x in out if x["storico"]]
+    return {"righe": out, "totale": len(out), "importo": round(sum(x["saldo"] for x in out), 2),
+            "anno_corrente": anno_corrente,
+            "da_pagare": {"totale": len(correnti), "importo": round(sum(x["saldo"] for x in correnti), 2)},
+            "non_agganciate": {"totale": len(storiche), "importo": round(sum(x["saldo"] for x in storiche), 2)}}
 
 
 @router.get("/paghe/prima-nota")
@@ -3397,6 +3523,7 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
             "busta": round(busta, 2),
             "bonifico": round(bon, 2),
             "acconti": round(acc, 2),
+            "acconti_dettaglio": [{"importo": round(float(a.get("importo") or 0), 2), "data": a.get("data")} for a in acc_list],
             "erogato": round(erogato, 2),
             "saldo": round(busta - erogato, 2),
             "stato": st,
@@ -3689,19 +3816,67 @@ async def delete_missione(missione_id: str):
 
 @router.get("/documenti")
 async def get_documenti(dipendente_id: Optional[str] = None):
+    """Elenco SENZA il contenuto dei file (base64): prima ogni apertura
+    dell'app scaricava tutti i PDF dell'archivio solo per la lista."""
     query = {}
     if dipendente_id:
         query["dipendente_id"] = dipendente_id
-    documenti = await get_db().documenti_cloud.find(query, {"_id": 0}).to_list(1000)
+    documenti = await get_db().documenti_cloud.find(query, {"_id": 0, "file_data": 0}).to_list(2000)
+    for d in documenti:
+        d["ha_file"] = bool(d.get("hash") or d.get("file_size"))
     return documenti
 
+
+TIPI_DOCUMENTO_MANUALE = {
+    "Contratto": "CONTRATTO", "CUD": "CERTIFICAZIONE_UNICA", "Certificato": "CERTIFICATO",
+    "Dimissioni / cessazione": "DIMISSIONI", "UNILAV": "UNILAV",
+    "Lettera di licenziamento": "LICENZIAMENTO", "Altro": "ALTRO",
+}
+
+
 @router.post("/documenti")
-async def create_documento(doc: DocumentoCloud):
-    doc_dict = doc.model_dump()
-    doc_dict["id"] = generate_id()
-    doc_dict["data_caricamento"] = now_iso()
-    await get_db().documenti_cloud.insert_one(doc_dict)
-    return serialize_doc(doc_dict)
+async def create_documento(
+    dipendente_id: str = Form(...), titolo: str = Form(...), tipo: str = Form("Altro"),
+    scadenza: Optional[str] = Form(None), file: Optional[UploadFile] = File(None),
+):
+    """Nuovo documento con (facoltativo) il PDF allegato. Un modulo di
+    dimissioni telematiche caricato qui passa anche dagli adempimenti del
+    gestionale (alert HR + scadenza UNILAV), come se fosse arrivato per posta."""
+    db = get_db()
+    dip = await db.dipendenti.find_one({"id": dipendente_id}, {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "nome_completo": 1})
+    if not dip:
+        raise HTTPException(status_code=404, detail="Dipendente non trovato")
+    categoria = TIPI_DOCUMENTO_MANUALE.get(tipo) or (tipo.strip().upper().replace(" ", "_") if tipo else "ALTRO")
+    doc_dict = {
+        "id": generate_id(), "dipendente_id": dipendente_id, "titolo": titolo.strip(), "tipo": tipo,
+        "categoria": categoria, "scadenza": scadenza or None, "data_caricamento": now_iso(),
+        "dipendente_nome": dip.get("nome_completo") or f"{dip.get('cognome', '')} {dip.get('nome', '')}".strip(),
+        "origine": "manuale",
+    }
+    raw = await file.read() if file is not None else b""
+    esito_extra = {}
+    if raw:
+        h = hashlib.sha256(raw).hexdigest()
+        if await db.documenti_cloud.find_one({"hash": h}, {"_id": 0, "id": 1}):
+            raise HTTPException(status_code=409, detail="Questo file e' gia' in archivio")
+        doc_dict.update({"filename": file.filename or f"{categoria.lower()}.pdf", "hash": h,
+                         "file_size": len(raw), "file_data": base64.b64encode(raw).decode()})
+        if categoria == "DIMISSIONI" and raw[:4] == b"%PDF":
+            try:
+                from app.services.administrative_document_parser import extract_administrative_metadata
+                from app.services.dimissioni_adempimenti import registra_dimissioni
+                from app.database import Database as DatabaseGestionale
+
+                metadata = extract_administrative_metadata(content=raw, filename=doc_dict["filename"],
+                                                           document_type="dimissioni_telematiche")
+                esito_extra["adempimenti_dimissioni"] = await registra_dimissioni(
+                    DatabaseGestionale.get_db(), metadata, documento_id=doc_dict["id"], filename=doc_dict["filename"])
+            except Exception as e:  # mai bloccare l'archiviazione
+                esito_extra["adempimenti_dimissioni"] = {"errore": str(e)[:200]}
+    await db.documenti_cloud.insert_one(dict(doc_dict))
+    doc_dict.pop("file_data", None)
+    doc_dict["ha_file"] = bool(raw)
+    return {**doc_dict, **esito_extra}
 
 @router.delete("/documenti/{documento_id}")
 async def delete_documento(documento_id: str):
@@ -3712,8 +3887,9 @@ async def delete_documento(documento_id: str):
 
 
 _CF_DOC_RE = re.compile(r'\b([A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z])\b')
-CATEGORIE_DOC = ["UNILAV", "CERTIFICAZIONE_UNICA", "CONTRATTO", "RIDUZIONE_ORARIO", "BONIFICO",
-                 "CODICE_FISCALE", "CARTA_IDENTITA", "BUSTA_PAGA", "ALTRO"]
+CATEGORIE_DOC = ["UNILAV", "CERTIFICAZIONE_UNICA", "CONTRATTO", "RIDUZIONE_ORARIO", "DIMISSIONI",
+                 "LICENZIAMENTO", "BONIFICO", "CODICE_FISCALE", "CARTA_IDENTITA", "BUSTA_PAGA",
+                 "CERTIFICATO", "ALTRO"]
 
 
 def classifica_documento(text: str, filename: str = "") -> str:
@@ -3725,6 +3901,11 @@ def classifica_documento(text: str, filename: str = "") -> str:
     def H(s, *ks):
         return any(k in s for k in ks)
     # 1) Segnali forti dal TESTO
+    if H(t, "modulo recesso rapporto di lavoro", "recesso dal rapporto di lavoro", "dimissioni volontarie",
+         "dimissioni telematiche", "risoluzione consensuale"):
+        return "DIMISSIONI"
+    if H(t, "lettera di licenziamento", "licenziamento per", "intimazione di licenziamento"):
+        return "LICENZIAMENTO"
     if H(t, "unilav", "comunicazione obbligatoria", "modello unificato lav", "centro per l'impiego"):
         return "UNILAV"
     if H(t, "certificazione unica", "redditi di lavoro dipendente e assimilati"):
@@ -3742,6 +3923,10 @@ def classifica_documento(text: str, filename: str = "") -> str:
     # 2) Nome FILE (per scansioni senza testo)
     if H(fn, "riduzione"):
         return "RIDUZIONE_ORARIO"
+    if H(fn, "dimission", "recesso"):
+        return "DIMISSIONI"
+    if H(fn, "licenziament"):
+        return "LICENZIAMENTO"
     if H(fn, "unilav"):
         return "UNILAV"
     if H(fn, "certificazione_unica", "certificazione unica", "_cu_", "cud"):
@@ -3898,9 +4083,9 @@ async def download_documento(documento_id: str):
 
 @router.get("/dashboard/stats")
 async def get_dashboard_stats():
-    dipendenti = await get_db().dipendenti.find({}, {"_id": 0}).to_list(1000)
-    attivi = [d for d in dipendenti if d.get("attivo", True) is not False and d.get("stato", "attivo") not in ("cessato", "disattivo", "inattivo")]
-    
+    dipendenti = await get_db().dipendenti.find({"merged_into": {"$exists": False}}, {"_id": 0, "pdf_data": 0}).to_list(1000)
+    attivi = [d for d in dipendenti if stato_rapporto.e_in_forza(d)]
+
     ferie_pending = await get_db().ferie_cloud.count_documents({"stato": "in_attesa"})
     missioni_pending = await get_db().missioni_cloud.count_documents({"stato": "in_attesa"})
     
@@ -3914,17 +4099,26 @@ async def get_dashboard_stats():
         {"stato": "aperto", "modulo": {"$in": MODULI_HR}})
 
     # Buste in attesa di pagamento (motore unico): busta presente ma non ancora pagata
+    # "In attesa" = anno corrente (da pagare davvero); le buste storiche con
+    # bonifico non agganciato sono contate a parte (vedi /paghe/in-attesa).
     buste_attesa = 0
     importo_attesa = 0.0
+    buste_storiche = 0
+    importo_storico = 0.0
+    anno_corrente = datetime.now().year
     async for p in get_db().paghe_mensili.find(
             {"stato_pagamento": {"$in": ["in_attesa_pagamento", "parziale"]}},
-            {"_id": 0, "saldo": 1, "importo_busta": 1, "bonifico_importo": 1}):
+            {"_id": 0, "saldo": 1, "importo_busta": 1, "bonifico_importo": 1, "anno": 1}):
         saldo = p.get("saldo")
         if saldo is None:
             saldo = float(p.get("importo_busta") or 0) - float(p.get("bonifico_importo") or 0)
         if saldo and saldo > 0.5:
-            buste_attesa += 1
-            importo_attesa += saldo
+            if int(p.get("anno") or 0) >= anno_corrente:
+                buste_attesa += 1
+                importo_attesa += saldo
+            else:
+                buste_storiche += 1
+                importo_storico += saldo
 
     return {
         "totale_dipendenti": len(dipendenti),
@@ -3935,6 +4129,8 @@ async def get_dashboard_stats():
         "alert_aperti": alert_aperti,
         "buste_in_attesa": buste_attesa,
         "importo_in_attesa": round(importo_attesa, 2),
+        "buste_storiche_non_agganciate": buste_storiche,
+        "importo_storico_non_agganciato": round(importo_storico, 2),
     }
 
 

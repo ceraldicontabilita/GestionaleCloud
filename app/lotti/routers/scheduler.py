@@ -528,6 +528,23 @@ async def job_sync_gestionale_fatture():
         })
 
 
+async def job_sincronizza_operatori_hr():
+    """R1 (14/09/2026): gli operatori del tablet sono l'anagrafica HR.
+    Riallinea la proiezione ogni 10 minuti (cessazioni, nuovi assunti, PIN)."""
+    try:
+        from app.lotti.routers.tablet_operatori import migra_pin_in_hr, sincronizza_operatori_da_hr
+        await migra_pin_in_hr()
+        esito = await sincronizza_operatori_da_hr()
+        if esito.get("creati") or esito.get("disattivati"):
+            await db.scheduler_logs.insert_one({
+                "job": "sincronizza_operatori_hr",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "success": True, **{k: v for k, v in esito.items() if k != "esito"},
+            })
+    except Exception as e:
+        logger.warning(f"[scheduler] allineamento operatori HR fallito: {e}")
+
+
 async def job_keep_warm():
     """Self-ping sull'URL pubblico in orario di lavoro (04:00-22:59 Roma).
     Il traffico HTTP esterno impedisce a Render free di addormentare il servizio
@@ -630,6 +647,14 @@ def setup_scheduler():
         CronTrigger(minute="*/20", hour="6-22", timezone=TZ),
         id="ricerca_web_prodotti",
         name="Ricerca web prodotti da fatture (ogni 20 min, 06-22)",
+        replace_existing=True,
+    )
+
+    scheduler.add_job(
+        job_sincronizza_operatori_hr,
+        CronTrigger(minute="*/10", timezone=TZ),
+        id="sincronizza_operatori_hr",
+        name="Operatori tablet = anagrafica HR (ogni 10 min)",
         replace_existing=True,
     )
 

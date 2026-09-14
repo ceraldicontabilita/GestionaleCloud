@@ -28,6 +28,11 @@ COLL_LEGACY = "mittenti_attendibili"
 # qualunque origine e causava l'acquisizione di documenti non pertinenti.
 BUILTIN_MITTENTI = (
     {
+        "pattern": "dimissionitelematiche@pec.lavoro.gov.it",
+        "tipo_documento": "dimissioni",
+        "descrizione": "Ministero del Lavoro - dimissioni telematiche (modulo recesso rapporto di lavoro)",
+    },
+    {
         "pattern": "notifica.pl.napoli@pec.it",
         "tipo_documento": "verbale",
         "descrizione": "Polizia Locale Napoli - notifiche verbali",
