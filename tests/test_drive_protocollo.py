@@ -346,3 +346,15 @@ def test_dsn_diretta_preferisce_la_variabile_hr_viva(monkeypatch):
     assert postgres_diretto.dsn() == "postgresql://viva"
     monkeypatch.delenv("HR_SUPABASE_DB_URL")
     assert postgres_diretto.dsn() == "postgresql://morta"
+
+
+def test_sincronizza_chiude_come_interrotto_il_giro_rimasto_aperto(monkeypatch):
+    """Un deploy a meta' scansione lascia il giro 'in_corso' per sempre: il giro
+    successivo lo chiude come 'interrotto' prima di aprire il proprio."""
+    conn = ConnFinta()
+    _configura(monkeypatch, conn)
+    _run(modulo.sincronizza(service=DriveFinto(ALBERO), conn=conn))
+    chiusure = [q for q in conn.sql if "esito='interrotto'" in q and "where esito='in_corso'" in q]
+    aperture = [q for q in conn.sql if "values ($1, 'in_corso')" in q]
+    assert len(chiusure) == 1 and len(aperture) == 1
+    assert conn.sql.index(chiusure[0]) < conn.sql.index(aperture[0])
