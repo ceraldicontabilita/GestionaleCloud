@@ -14,7 +14,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(na
 logger = logging.getLogger(__name__)
 
 
-async def avvio():
+async def avvio(*, avvia_scheduler: bool = True):
     """Startup originale (DB, scheduler scadenze, seed TFR, scheduler paghe, fix avvio).
 
     Estratto dal lifespan cosi' che l'app ospite (GestionaleCloud, che monta
@@ -22,21 +22,23 @@ async def avvio():
     propaga gli eventi lifespan alle sotto-applicazioni montate.
     """
     await Database.connect()
-    try:
-        from .services.scadenze_scheduler import start_scheduler
-        start_scheduler()
-    except Exception as e:
-        logger.warning(f"Scadenzario non avviato: {e}")
+    if avvia_scheduler:
+        try:
+            from .services.scadenze_scheduler import start_scheduler
+            start_scheduler()
+        except Exception as e:
+            logger.warning(f"Scadenzario non avviato: {e}")
     try:
         from .services.tfr_seed import seed_tfr_periodi
         await seed_tfr_periodi()
     except Exception as e:
         logger.warning(f"Seed TFR non avviato: {e}")
-    try:
-        from .services.paghe_scheduler import start_scheduler as start_paghe_scheduler
-        start_paghe_scheduler()
-    except Exception as e:
-        logger.warning(f"Sincronizzazione paghe periodica non avviata: {e}")
+    if avvia_scheduler:
+        try:
+            from .services.paghe_scheduler import start_scheduler as start_paghe_scheduler
+            start_paghe_scheduler()
+        except Exception as e:
+            logger.warning(f"Sincronizzazione paghe periodica non avviata: {e}")
     try:
         from .services.startup_fixes import applica_fix_avvio
         await applica_fix_avvio()

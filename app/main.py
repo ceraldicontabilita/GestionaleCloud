@@ -89,9 +89,11 @@ async def lifespan(app: FastAPI):
 
         await avvia_lotti()
 
-        from app.hr.embed import avvia_hr
+    # La connessione al DB di HR serve anche quando gli scheduler sono spenti
+    # (ruolo web o ENABLE_SCHEDULER=false). Solo i job periodici seguono il flag.
+    from app.hr.embed import avvia_hr
 
-        await avvia_hr()
+    await avvia_hr(avvia_scheduler=scheduler_attivo)
 
     try:
         from app.menu.embed import avvia_menu
