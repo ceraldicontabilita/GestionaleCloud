@@ -117,6 +117,17 @@ class SupabaseRpcStore:
             if not rows or offset >= int((page or {}).get("total") or 0):
                 return items
 
+    async def get_doc(self, collection: str, doc_id: Any) -> Optional[dict]:
+        result = await self._rpc(
+            "lotti_get_doc",
+            {
+                "p_secret": self.secret,
+                "p_collection": collection,
+                "p_doc_id": str(doc_id),
+            },
+        )
+        return _json_restore(result) if result is not None else None
+
     async def upsert_docs(self, collection: str, docs: Iterable[dict]) -> int:
         rows = []
         total = 0
@@ -234,6 +245,16 @@ class PersistentCollection:
         return LazyCursor(self, lambda: self.raw.aggregate(*args, **kwargs))
 
     async def find_one(self, *args, **kwargs):
+        query = args[0] if args else kwargs.get("filter")
+        if (
+            not self._loaded
+            and isinstance(query, dict)
+            and set(query) == {"_id"}
+            and len(args) == 1
+            and not kwargs
+            and hasattr(self.database.store, "get_doc")
+        ):
+            return await self.database.store.get_doc(self.name, query["_id"])
         await self._ensure_loaded()
         return await self.raw.find_one(*args, **kwargs)
 

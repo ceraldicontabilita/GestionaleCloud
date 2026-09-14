@@ -14,6 +14,10 @@ class FakeStore:
     async def list_docs(self, collection):
         return [dict(v) for v in self.docs.get(collection, {}).values()]
 
+    async def get_doc(self, collection, doc_id):
+        value = self.docs.get(collection, {}).get(str(doc_id))
+        return dict(value) if value is not None else None
+
     async def upsert_docs(self, collection, docs):
         self.upsert_calls += 1
         bucket = self.docs.setdefault(collection, {})
@@ -78,6 +82,25 @@ def test_cursor_sort_limit_e_aggregate():
         {"totale": 2, "_id": "bar"},
         {"totale": 4, "_id": "pasticceria"},
     ]
+
+
+def test_find_one_per_id_non_carica_l_intera_collezione():
+    store = FakeStore()
+    store.docs["foto_files"] = {
+        "foto-1": {"_id": "foto-1", "content_type": "image/jpeg", "data": b"img"},
+        "foto-2": {"_id": "foto-2", "content_type": "image/jpeg", "data": b"altro"},
+    }
+
+    async def vietato(_collection):
+        raise AssertionError("find_one per _id non deve caricare tutta la collezione")
+
+    store.list_docs = vietato
+    db = PersistentDatabase(store, "Gestionale")
+
+    foto = run(db.foto_files.find_one({"_id": "foto-1"}))
+
+    assert foto["data"] == b"img"
+    assert db.foto_files._loaded is False
 
 
 def test_aggiornamenti_diversi_vengono_persistiti_in_un_solo_lotto():
