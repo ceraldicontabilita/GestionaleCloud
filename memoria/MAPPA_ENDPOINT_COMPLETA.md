@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1159 endpoint** in **112 gruppi**.
+> Totale **1165 endpoint** in **112 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 635 · ext esterni = 81 · — da verificare = 443
+**Riepilogo uso:** ✓ frontend = 636 · ext esterni = 81 · — da verificare = 448
 
 ## AI Parser  (11)
 
@@ -600,7 +600,7 @@
 | POST | `/api/document-ai/process-classified-email` | — | document_ai |
 | POST | `/api/document-ai/reprocess-and-save` | — | document_ai |
 
-## Documenti  (52)
+## Documenti  (58)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -623,8 +623,14 @@
 | GET | `/api/documenti/drive/index/document/{document_id}` | — | documenti |
 | GET | `/api/documenti/drive/index/f24` | ✓ | documenti |
 | GET | `/api/documenti/drive/index/overview` | ✓ | documenti |
-| GET | `/api/documenti/drive/index/search` | ✓ | documenti |
-| GET | `/api/documenti/drive/index/status` | ✓ | documenti |
+| GET | `/api/documenti/drive/index/search` | — | documenti |
+| GET | `/api/documenti/drive/index/status` | — | documenti |
+| GET | `/api/documenti/drive/protocollo/documento/{drive_id}` | — | documenti |
+| GET | `/api/documenti/drive/protocollo/duplicati` | — | documenti |
+| POST | `/api/documenti/drive/protocollo/quarantena` | — | documenti |
+| GET | `/api/documenti/drive/protocollo/search` | ✓ | documenti |
+| GET | `/api/documenti/drive/protocollo/status` | ✓ | documenti |
+| POST | `/api/documenti/drive/protocollo/sync` | ✓ | documenti |
 | POST | `/api/documenti/drive/sync` | — | documenti |
 | POST | `/api/documenti/elimina-processati` | — | documenti |
 | POST | `/api/documenti/fiscal/ingest` | — | documenti |

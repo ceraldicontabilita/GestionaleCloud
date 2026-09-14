@@ -78,17 +78,6 @@ movimento bancario e scrittura contabile sono prove distinte. Possono condivider
 
 ## 5. Architettura dati Drive-only
 
-### Aggiornamento runtime Supabase — 13/09/2026
-
-Come stabilito dal titolare il 03/09/2026 e documentato in `CLAUDE.md`,
-la persistenza corrente usa Supabase; Drive conserva gli originali. La
-descrizione Drive-only seguente riguarda l'assetto precedente.
-All'avvio il catalogo deve elencare dinamicamente tutte le collezioni e i
-conteggi, senza calcolare il digest globale dei payload. Il manifest con
-impronte resta disponibile per gli audit. Un timeout non autorizza un elenco
-statico incompleto né uno stato healthy con archivi omessi. La lettura deve
-conservare integralmente ID, fonti e documenti, senza reimportazioni.
-
 La destinazione definitiva usa **Google Drive per gli originali** e **Google
 Sheets/Excel collegato a Drive per registri, progressivi, indici e relazioni**.
 Il runtime usa esclusivamente Drive/Sheets. Non esistono backend alternativi,
@@ -679,7 +668,9 @@ si rigenerano dal codice e non si correggono a mano.
 | `GOOGLE_DRIVE_ESTRATTI_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `GOOGLE_DRIVE_ESTRATTI_FOLDER_IDS` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `GOOGLE_DRIVE_FATTURE_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
+| `GOOGLE_DRIVE_GESTIONALE_ROOT_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py`, `render.yaml` |
 | `GOOGLE_DRIVE_INBOX_FOLDER_ID` | drive-sheets | configurazione | non dichiarato in Settings | `render_workflows/calderone.py`, `render_workflows/document_ingest.py` |
+| `GOOGLE_DRIVE_QUARANTENA_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py`, `render.yaml` |
 | `GOOGLE_DRIVE_QUIETANZE_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `GOOGLE_DRIVE_SA_FILE` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `GOOGLE_DRIVE_SA_JSON` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/hr/services/google_drive_sa.py` |
@@ -699,10 +690,10 @@ si rigenerano dal codice e non si correggono a mano.
 | `HR_ADMIN_PASSWORD` | app-runtime | segreta | non dichiarato in Settings | `app/hr/routers/auth.py` |
 | `HR_ADMIN_PASSWORD_HASH` | app-runtime | segreta | non dichiarato in Settings | `app/hr/routers/auth.py` |
 | `HR_ADMIN_TOKEN_EXPIRE_MINUTES` | app-runtime | segreta | non dichiarato in Settings | `app/hr/routers/pin_login.py` |
+| `HR_DB_SCHEMA` | app-runtime | configurazione | non dichiarato in Settings | `app/services/hr_cedolini_deposito.py` |
 | `HR_JWT_SECRET` | app-runtime | segreta | non dichiarato in Settings | `app/hr/routers/auth.py`, `render.yaml` |
 | `HR_SUPABASE_DB_URL` | app-runtime | configurazione | non dichiarato in Settings | `render.yaml` |
-| `HR_USE_MAIN_DATABASE` | app-runtime | configurazione | usa `SUPABASE_DB_URL` del GestionaleCloud per HR | `app/hr/database.py` |
-| `HR_DB_SCHEMA` | app-runtime | configurazione | schema Postgres HR, valore unificato `hr` | `app/hr/database.py` |
+| `HR_USE_MAIN_DATABASE` | app-runtime | configurazione | non dichiarato in Settings | `app/services/hr_cedolini_deposito.py` |
 | `IMAP_EMAIL` | gmail-email | configurazione | non dichiarato in Settings | `app/hr/routers/dipendenti_cloud/__init__.py` |
 | `IMAP_HOST` | gmail-email | configurazione | `str` / `'imap.gmail.com'` | `app/config.py`, `app/hr/routers/dipendenti_cloud/__init__.py`, `app/routers/settings_router.py`, `app/services/pagopa_scanner.py` |
 | `IMAP_PASS` | gmail-email | configurazione | non dichiarato in Settings | `app/hr/routers/dipendenti_cloud/__init__.py` |
@@ -728,9 +719,9 @@ si rigenerano dal codice e non si correggono a mano.
 | `MENU_ADMIN_PASSWORD` | app-runtime | segreta | non dichiarato in Settings | `render.yaml` |
 | `MENU_ADMIN_USERNAME` | app-runtime | configurazione | non dichiarato in Settings | `app/menu/routes/qrcode_routes.py`, `render.yaml` |
 | `MENU_JWT_SECRET` | app-runtime | segreta | non dichiarato in Settings | `app/menu/routes/qrcode_routes.py`, `render.yaml` |
-| `MENU_WIFI_PASSWORD` | app-runtime | segreta | non dichiarato in Settings | `app/menu/routes/qrcode_routes.py` |
 | `MENU_SUPABASE_KEY` | app-runtime | configurazione | non dichiarato in Settings | `render.yaml` |
 | `MENU_SUPABASE_URL` | app-runtime | configurazione | non dichiarato in Settings | `app/lotti/servizi/menu_bridge.py`, `render.yaml` |
+| `MENU_WIFI_PASSWORD` | app-runtime | segreta | non dichiarato in Settings | `app/menu/routes/qrcode_routes.py` |
 | `MONGO_URL` | app-runtime | configurazione | non dichiarato in Settings | `app/lotti/scripts/fix_fornitori_acquaviva.py`, `app/lotti/scripts/import_acquaviva_definitivo.py`, `app/lotti/scripts/import_listino_2026.py`, `app/lotti/scripts/import_ricette_excel.py`, `app/lotti/scripts/scrape_acquaviva_images.py`, `app/lotti/scripts/scrape_vandemoortele_acquaviva.py`, `app/lotti/tests/test_iteration54_features.py`, `app/lotti/utils/shared.py` |
 | `NODE_ENV` | app-runtime | configurazione | non dichiarato in Settings | `frontend/plugins/health-check/health-endpoints.js`, `frontend_lotti/craco.config.js` |
 | `NOLEGGIO_GIORNI_SENZA_FATTURA` | feature-job | configurazione | non dichiarato in Settings | `app/services/noleggio/controlli.py` |
@@ -757,6 +748,7 @@ si rigenerano dal codice e non si correggono a mano.
 | `PORT` | app-runtime | configurazione | `int` / `8000` | `app/config.py` |
 | `POS_ACCREDITO_WEEKEND` | feature-job | configurazione | non dichiarato in Settings | `app/utils/pos_accredito.py` |
 | `PROCESS_ROLE` | app-runtime | configurazione | non dichiarato in Settings | `app/main.py`, `render.yaml` |
+| `PROTOCOLLO_DRIVE_ENABLED` | app-runtime | configurazione | `bool` / `True` | `app/config.py` |
 | `PUBLIC_URL` | app-runtime | configurazione | non dichiarato in Settings | `frontend_lotti/src/components/haccp/ManualeView.jsx`, `frontend_lotti/src/components/haccp/RegistroAllergeniView.jsx`, `frontend_lotti/src/utils/constants.js`, `frontend_lotti/src/utils/constants.test.js`, `frontend_menu/src/App.js`, `frontend_menu/src/pages/AdminDashboard.jsx`, `frontend_menu/src/pages/AdminQRCodePage.jsx`, `frontend_menu/src/pages/HomePage.jsx` |
 | `PYTHONUTF8` | app-runtime | configurazione | non dichiarato in Settings | `render.yaml` |
 | `PYTHON_VERSION` | app-runtime | configurazione | non dichiarato in Settings | `render.yaml` |
@@ -841,14 +833,16 @@ Questa tabella è l'inventario canonico degli alias di cartella. Gli ID sono con
 | `GOOGLE_DRIVE_ESTRATTI_FOLDER_ID` | `None` | `app/config.py` |
 | `GOOGLE_DRIVE_ESTRATTI_FOLDER_IDS` | `None` | `app/config.py` |
 | `GOOGLE_DRIVE_FATTURE_FOLDER_ID` | `None` | `app/config.py` |
+| `GOOGLE_DRIVE_GESTIONALE_ROOT_FOLDER_ID` | `None` | `app/config.py`, `render.yaml` |
 | `GOOGLE_DRIVE_INBOX_FOLDER_ID` | `non dichiarato` | `render_workflows/calderone.py`, `render_workflows/document_ingest.py` |
+| `GOOGLE_DRIVE_QUARANTENA_FOLDER_ID` | `None` | `app/config.py`, `render.yaml` |
 | `GOOGLE_DRIVE_QUIETANZE_FOLDER_ID` | `None` | `app/config.py` |
 
 Gli alias senza valore vanno configurati nel secret/config store di Render. Non creare cartelle parallele per aggirare un alias mancante; risolvere e documentare la cartella canonica.
 
 ## Appendice D — Tutti i router e tutti gli endpoint
 
-Route table sorgente: **1159**; attivi da ricreare: **720**; quarantena: **439** (`verificare` 409, `admin-only` 30).
+Route table sorgente: **1165**; attivi da ricreare: **726**; quarantena: **439** (`verificare` 409, `admin-only` 30).
 
 `attivo` significa da ricreare con contratto e test; `quarantena` significa non esporre nel nuovo runtime finché consumer, autorizzazione e test non sono provati. L'elenco è completo e include entrambe le categorie.
 
@@ -1316,7 +1310,7 @@ Route table sorgente: **1159**; attivi da ricreare: **720**; quarantena: **439**
 - **quarantena: verificare** — `POST /api/document-ai/process-classified-email` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **quarantena: verificare** — `POST /api/document-ai/reprocess-and-save` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 
-### Router `documenti` (52)
+### Router `documenti` (58)
 
 - **attivo** — `GET /api/documenti/amministrativi` — in uso: FE
 - **attivo** — `GET /api/documenti/amministrativi/familiari` — in uso: FE
@@ -1339,6 +1333,12 @@ Route table sorgente: **1159**; attivi da ricreare: **720**; quarantena: **439**
 - **attivo** — `GET /api/documenti/drive/index/overview` — in uso: FE
 - **attivo** — `GET /api/documenti/drive/index/search` — in uso: FE
 - **attivo** — `GET /api/documenti/drive/index/status` — in uso: FE
+- **attivo** — `GET /api/documenti/drive/protocollo/documento/{drive_id}` — in uso: FE
+- **attivo** — `GET /api/documenti/drive/protocollo/duplicati` — in uso: FE
+- **attivo** — `POST /api/documenti/drive/protocollo/quarantena` — in uso: FE
+- **attivo** — `GET /api/documenti/drive/protocollo/search` — in uso: FE
+- **attivo** — `GET /api/documenti/drive/protocollo/status` — in uso: FE
+- **attivo** — `POST /api/documenti/drive/protocollo/sync` — in uso: FE
 - **attivo** — `POST /api/documenti/drive/sync` — in uso: FE
 - **quarantena: verificare** — `POST /api/documenti/elimina-processati` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **quarantena: verificare** — `POST /api/documenti/fiscal/ingest` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare

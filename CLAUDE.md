@@ -108,6 +108,47 @@ invariato, `TRUNCATE` bloccato.
 la password Postgres: solo l'API con il segreto runtime, che cancella per id.
 La password Postgres va ruotata (è stata usata da una sessione automatica).
 
+### 14/09/2026 — protocollo-indice vivo dei documenti su Drive
+
+- **Problema**: l'indice documentale esisteva solo come file statici (quattro
+  copie su Drive: `INDICE.xlsx`, `_drive_map.json`, `INDICE_GESTIONALE.html`,
+  manifest) più l'Excel letto da `app/services/drive_document_index.py`, la
+  cui radice `DRIVE_DOCUMENT_INDEX_ROOT_FOLDER_ID` **non esiste più su Drive**.
+  Fotografie vecchie di settimane, che non sanno di file aggiunti o tolti.
+- **Soluzione**: `app/services/drive_protocollo.py` + tabella relazionale
+  `gestionale.protocollo_drive` (asyncpg, NON `gestionale.documents`: 30.000
+  righe di inventario non vanno idratate in memoria a ogni avvio). Il giro
+  periodico (`scheduler.py`, ogni 6 ore, primo giro 8 minuti dopo l'avvio;
+  bottone "Aggiorna indice adesso" nel tab Indice Drive del hub Documenti)
+  **riconcilia** Drive con la tabella: file nuovo → riga nuova; cambiato →
+  aggiornata; sparito → `stato='rimosso'` con la data, **mai cancellato** (è
+  un protocollo: deve ricordare che il documento è esistito, con il suo hash).
+  L'MD5 arriva dall'API Drive (`md5Checksum`): i duplicati certi si trovano
+  senza scaricare nulla; la copia canonica è deterministica (mai in
+  `90_ARCHIVIO_STORICO`, `00_DA_CLASSIFICARE` o quarantena, poi la più vecchia).
+  Le impronte dei documenti già in archivio (cedolini e bonifici HR, allegati
+  fattura via `gestionale.impronte_fatture()`) stanno in `protocollo_impronte`:
+  ogni file Drive viene collegato al documento del gestionale **per contenuto**,
+  non per nome. Duplicati → **quarantena** (`GOOGLE_DRIVE_QUARANTENA_FOLDER_ID`)
+  solo su richiesta esplicita, mai la canonica, mai una cancellazione.
+- Env Render: `GOOGLE_DRIVE_GESTIONALE_ROOT_FOLDER_ID` (radice da percorrere),
+  `GOOGLE_DRIVE_QUARANTENA_FOLDER_ID`, `PROTOCOLLO_DRIVE_ENABLED`. Il ruolo
+  Postgres dell'app è `hr_app`: ha i grant minimi sulle tre tabelle del
+  protocollo, **non** legge `gestionale.documents`.
+- Endpoint admin: `GET /api/documenti/drive/protocollo/{status,search,
+  documento/{id},duplicati}`, `POST .../sync`, `POST .../quarantena`.
+  Il tab "Documenti" dell'Indice Drive legge il protocollo; F24 e dichiarazioni
+  restano sull'Excel finché non hanno una sorgente propria.
+- **Trovato durante il censimento Drive (14/09)**: `03_BANCHE_E_PAGAMENTI/
+  BONIFICI` è **vuoto** in tutte e tre le cartelle di stato (i bonifici
+  stanno per persona in `05_PERSONALE_E_CEDOLINI/BONIFICI DIPENDENTI`);
+  `03/ESTRATTI CONTO/DA ELABORARE` contiene **334 file mai lavorati** (72 MB:
+  estratti conto BNL/BPM/Nexi/Worldline/PayPal/Satispay, 54 ricevute di
+  bonifico finite lì per sbaglio, CSV, una fattura fornitore) e un solo file
+  in ELABORATE — l'ingest estratti conto non ha mai girato su quella cartella.
+  Le vecchie cartelle HR (`1XVdb…` cedolini, `1yl55…` bonifici) non esistono
+  più: i default in `app/hr/services/google_drive_sa.py` puntano nel vuoto.
+
 **Schemi dopo la fusione** (un solo progetto Supabase `GestionaleCloud`):
 `gestionale` (ERP: `documents`, `blobs`), `hr` (29 tabelle `app_*`), `lotti`
 (`lotti_documents`), `menu` (9 tabelle + bucket `menu-images`),

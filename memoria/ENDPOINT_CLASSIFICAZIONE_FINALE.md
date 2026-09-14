@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1159 · tenere: 720 · verificare: 409 · admin-only (migrazione/manutenzione): 30
+**Totale endpoint:** 1165 · tenere: 726 · verificare: 409 · admin-only (migrazione/manutenzione): 30
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -432,6 +432,12 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/documenti/drive/index/overview` | documenti | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/documenti/drive/index/search` | documenti | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/documenti/drive/index/status` | documenti | sì | — | — | — | sì | tenere | in uso: FE |
+| `GET /api/documenti/drive/protocollo/documento/{drive_id}` | documenti | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/documenti/drive/protocollo/duplicati` | documenti | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/documenti/drive/protocollo/quarantena` | documenti | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/documenti/drive/protocollo/search` | documenti | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/documenti/drive/protocollo/status` | documenti | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/documenti/drive/protocollo/sync` | documenti | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/documenti/drive/sync` | documenti | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/documenti/elimina-processati` | documenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/documenti/fiscal/ingest` | documenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
