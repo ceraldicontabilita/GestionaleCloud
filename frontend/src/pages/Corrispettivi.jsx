@@ -46,15 +46,28 @@ const asNumber = value => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 const ivaRows = item => Array.isArray(item?.riepilogo_iva) ? item.riepilogo_iva : [];
-const imponibileItem = item => item?.totale_imponibile != null
-  ? asNumber(item.totale_imponibile)
-  : ivaRows(item).reduce((sum, row) => sum + asNumber(row.ammontare ?? row.imponibile), 0);
-const ivaItem = item => item?.totale_iva != null
-  ? asNumber(item.totale_iva)
-  : ivaRows(item).reduce((sum, row) => sum + asNumber(row.imposta), 0);
 const totaleItem = item => item?.totale != null
   ? asNumber(item.totale)
-  : imponibileItem(item) + ivaItem(item);
+  : asNumber(item?.totale_imponibile) + asNumber(item?.totale_iva);
+const legacyTotaleIvaIsImponibile = item => {
+  const total = totaleItem(item);
+  const legacyValue = asNumber(item?.totale_iva);
+  return item?.totale_imponibile == null
+    && ivaRows(item).length === 0
+    && total > 0
+    && legacyValue > total * 0.5
+    && legacyValue <= total;
+};
+export const imponibileItem = item => item?.totale_imponibile != null
+  ? asNumber(item.totale_imponibile)
+  : legacyTotaleIvaIsImponibile(item)
+    ? asNumber(item.totale_iva)
+    : ivaRows(item).reduce((sum, row) => sum + asNumber(row.ammontare ?? row.imponibile), 0);
+export const ivaItem = item => legacyTotaleIvaIsImponibile(item)
+  ? Math.max(0, totaleItem(item) - asNumber(item.totale_iva))
+  : item?.totale_iva != null
+    ? asNumber(item.totale_iva)
+    : ivaRows(item).reduce((sum, row) => sum + asNumber(row.imposta), 0);
 const sourceValue = (item, ...keys) => keys.map(key => item?.[key]).find(Boolean) || null;
 
 /**
