@@ -152,3 +152,51 @@ def test_righe_strutturate_funzionano_anche_senza_xml_raw(bridge, monkeypatch):
     assert result["importate"] == 1
     assert "FARINA 00" in captured["xml"]
     assert "<Quantita>2</Quantita>" in captured["xml"]
+
+
+def test_monolite_legge_fatture_locali_senza_url_o_segreto(bridge, monkeypatch):
+    module, database = bridge
+    monkeypatch.delenv("GESTIONALECLOUD_API_URL", raising=False)
+    monkeypatch.delenv("LOTTI_INTEGRATION_KEY", raising=False)
+
+    import app.routers.lotti_integration as source
+
+    async def documents():
+        return [{
+            "id": "invoice-local-1",
+            "numero_fattura": "77/2026",
+            "data_fattura": "2026-09-14",
+            "fornitore_ragione_sociale": "FORNITORE LOCALE SRL",
+            "fornitore_partita_iva": "01234567890",
+            "righe": [{"descrizione": "FARINA 00", "quantita": 2, "unita_misura": "KG"}],
+        }]
+
+    monkeypatch.setattr(source, "_documents", documents)
+    result = run(module.esegui_sync_gestionale(anno=2026, anteprima=True))
+    stato = run(module.stato_gestionale_fatture())
+
+    assert result["ok"] is True
+    assert result["totale_fonte"] == 1
+    assert result["importabili"] == 1
+    assert run(database.fatture.count_documents({})) == 0
+    assert stato["configurato"] is True
+    assert stato["modalita"] == "interna"
+    assert stato["database_separati"] is False
+
+
+def test_lista_fatture_compatibile_con_store_supabase(bridge):
+    _, database = bridge
+    import app.lotti.routers.fatture as fatture
+
+    run(database.fatture.insert_one({
+        "id": "f-2026", "numero_fattura": "88/2026", "data_fattura": "2026-09-10",
+        "fornitore": "FORNITORE TEST", "prodotti": [{"descrizione": "UOVA"}],
+        "xml_raw": "<FatturaElettronica/>",
+    }))
+    result = run(fatture.get_fatture(escludi_fornitori=False, anno=2026, limit=10))
+
+    assert len(result) == 1
+    assert result[0]["num_prodotti"] == 1
+    assert result[0]["has_xml"] is True
+    assert "prodotti" not in result[0]
+    assert "xml_raw" not in result[0]

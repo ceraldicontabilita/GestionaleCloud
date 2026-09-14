@@ -481,7 +481,11 @@ def test_etichetta_mostra_la_data_della_fattura(dbmock):
         "id": "L-etic", "numero_lotto": "SFOGL-999", "prodotto": "Sfogliatella riccia",
         "data_produzione": "2026-07-02", "data_scadenza": "2026-07-05",
         "quantita": 1, "unita_misura": "pz", "frigo_numero": "Congelatore 1",
-        "ingredienti_dettaglio": [{"nome": "semola", "quantita": 500, "unita_misura": "g"}],
+        "ingredienti_dettaglio": [
+            {"nome": "semola", "quantita": 500, "unita_misura": "g"},
+            {"nome": "Peso impasto totale (g)", "quantita": 1000},
+            {"nome": "Pezzi prodotti (n)", "quantita": 12},
+        ],
         "lotti_fornitori": {"lotti_scalati": [{
             "ingrediente": "semola", "prodotto": "SEMOLA RIMACINATA",
             "fornitore": "SAIMA S.p.A.", "fattura_ref": "1/56437",
@@ -495,6 +499,49 @@ def test_etichetta_mostra_la_data_della_fattura(dbmock):
     assert "1/56437" in testo, "il numero fattura c'era già"
     assert "12/06/2026" in testo, "manca la DATA della fattura sull'etichetta"
     assert "del 12/06/2026" in testo
+    assert "Sfogliatella riccia" in testo
+    assert "PRODUZIONE:</span><span class=\"val\">2026-07-02" in testo
+    assert "Peso impasto totale" not in testo
+    assert "Pezzi prodotti" not in testo
+
+    escpos = st.build_escpos(
+        run(dbmock.lotti.find_one({"id": "L-etic"}, {"_id": 0})),
+        ["CEREALI/GLUTINE"],
+        st._ingredienti_reali([
+            {"nome": "semola"},
+            {"nome": "Peso impasto totale (g)"},
+            {"nome": "Pezzi prodotti (n)"},
+        ]),
+    ).decode("cp437", "ignore")
+    assert "PRODOTTO: Sfogliatella riccia" in escpos
+    assert "PRODUZIONE: 2026-07-02" in escpos
+    assert "Peso impasto totale" not in escpos
+    assert "Pezzi prodotti" not in escpos
+
+
+def test_carico_bar_da_fattura_idempotente_per_fornitore_e_numero(dbmock):
+    """Lo stesso documento non ricarica lo stock, ma due fornitori possono
+    avere legittimamente lo stesso numero fattura."""
+    import app.lotti.routers.fatture as fatture
+
+    run(dbmock.magazzino_bar_prodotti.insert_one({
+        "id": "BAR-ACQUA", "nome": "Acqua naturale", "categoria": "Bibite",
+        "fornitore": "", "unita": "pz", "stock": 0, "pezzi_per_collo": 1,
+    }))
+    righe = [{"descrizione": "Acqua naturale", "quantita": 2, "unita_misura": "PZ"}]
+
+    primo = run(fatture._carico_magazzino_bar_da_fattura(righe, "15", "FORNITORE A"))
+    duplicato = run(fatture._carico_magazzino_bar_da_fattura(righe, "15", "FORNITORE A"))
+    altro_fornitore = run(fatture._carico_magazzino_bar_da_fattura(righe, "15", "FORNITORE B"))
+
+    assert primo["caricati"] == 1
+    assert duplicato["gia_fatto"] is True
+    assert altro_fornitore["caricati"] == 1
+    prodotto = run(dbmock.magazzino_bar_prodotti.find_one({"id": "BAR-ACQUA"}))
+    assert prodotto["stock"] == 4
+    movimenti = run(dbmock.magazzino_bar_movimenti.find({"origine": "fattura"}).to_list(10))
+    assert len(movimenti) == 2
+    assert len({m["fattura_source_key"] for m in movimenti}) == 2
 
 
 def test_compilazione_di_massa_porta_la_base_a_un_chilo(dbmock):

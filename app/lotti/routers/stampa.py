@@ -64,10 +64,11 @@ POS_CSS = """
     color: #000; background: #fff;
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
-  .azienda { text-align: center; font-size: 6pt; font-weight: 500; color: #666; margin-bottom: 0.5mm; }
-  .titolo-sezione { text-align: center; font-size: 10pt; font-weight: 900; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 0.5mm; }
-  .prodotto-nome { text-align: center; font-size: 9pt; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; word-break: break-word; margin-bottom: 0.5mm; }
-  .lotto-box { border: 2px solid #000; text-align: center; padding: 1mm 1.5mm; font-size: 8pt; font-weight: 900; font-family: 'Courier New', monospace; letter-spacing: 0.5px; margin: 1mm 0; word-break: break-all; }
+  .azienda { text-align: center; font-size: 6.5pt; font-weight: 900; letter-spacing: .35px; text-transform: uppercase; }
+  .azienda-indirizzo { text-align: center; font-size: 5.5pt; font-weight: 600; color: #333; margin: .4mm 0 1.2mm; }
+  .prodotto-nome { border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 1.5mm .5mm; text-align: center; font-size: 12pt; font-weight: 900; text-transform: uppercase; letter-spacing: 0.4px; word-break: break-word; }
+  .lotto-caption { text-align: center; font-size: 5.5pt; font-weight: 900; letter-spacing: 1.2px; margin-top: 1mm; }
+  .lotto-box { border: 2px solid #000; text-align: center; padding: 1.2mm 1.5mm; font-size: 9pt; font-weight: 900; font-family: 'Courier New', monospace; letter-spacing: 0.4px; margin: .5mm 0 1mm; word-break: break-all; }
   .qty-box { text-align: center; font-size: 9pt; font-weight: 900; margin-bottom: 0.5mm; color: #000; }
   .row { display: flex; justify-content: space-between; font-size: 7.5pt; font-weight: 700; padding: 0.5mm 0; border-bottom: 1px solid #aaa; color: #000; gap: 3mm; }
   .row .label { font-weight: 900; white-space: nowrap; }
@@ -76,8 +77,9 @@ POS_CSS = """
   .row.frigo .val { border: 1px solid #000; padding: 0.2mm 0.8mm; font-size: 7pt; }
   .sep-solid { border-top: 2px solid #000; margin: 1mm 0; }
   .sep-dash  { border-top: 1px dashed #000; margin: 1mm 0; }
-  .ing-title { font-size: 7pt; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.8mm; }
-  .ing { font-size: 6.5pt; font-weight: 700; padding: 0.4mm 0; border-bottom: 1px dotted #666; word-break: break-word; color: #000; }
+  .ing-title { font-size: 7pt; font-weight: 900; text-transform: uppercase; letter-spacing: 0.7px; margin-bottom: 0.8mm; }
+  .ing { font-size: 6.5pt; font-weight: 700; padding: 0.6mm 0; border-bottom: 1px dotted #666; word-break: break-word; color: #000; }
+  .ing-source { display: block; padding-left: 2.5mm; margin-top: .2mm; font-size: 5.5pt; color: #222; font-weight: 700; }
   .ing.allergene { font-weight: 900; }
   .ing.allergene::before { content: "! "; font-weight: 900; }
   .allergeni-box { border: 2px solid #000; padding: 1.5mm; margin-top: 1mm; background: #fff; }
@@ -90,7 +92,7 @@ POS_CSS = """
   .trac-row .trac-fornitore { font-weight: 700; color: #000; }
   .trac-row .trac-scad { font-weight: 900; text-decoration: underline; }
   .trac-non-trovati { font-size: 5.5pt; color: #888; font-style: italic; margin-top: 0.5mm; }
-  .etichetta-finale { border: 1.5px solid #000; padding: 1.5mm; margin-top: 1.5mm; font-size: 7.5pt; font-weight: 900; text-align: center; word-break: break-word; line-height: 1.4; }
+  .etichetta-finale { border: 1.5px solid #000; padding: 1.2mm; margin-top: 1.5mm; font-size: 6.5pt; font-weight: 900; text-align: center; word-break: break-word; line-height: 1.35; letter-spacing: .25px; }
   .footer { margin-top: 1.5mm; border-top: 1px solid #000; padding-top: 1mm; font-size: 6pt; font-weight: 600; text-align: center; line-height: 1.4; }
 """
 
@@ -108,6 +110,33 @@ def ordina_ingredienti(ingredienti: list, allergeni: list) -> list:
         )
 
     return sorted(ingredienti, key=lambda x: (0 if ha_allergene(x) else 1, x))
+
+
+def _ingredienti_reali(ingredienti_raw: list) -> list[str]:
+    """Separa gli ingredienti dai parametri tecnici della ricetta.
+
+    Alcune ricette storiche conservano nello stesso array anche campi di resa
+    (peso impasto e pezzi prodotti). Sono informazioni di produzione, non
+    ingredienti, e non devono finire nell'etichetta né nel calcolo allergeni.
+    """
+    esclusi = {
+        "peso impasto totale",
+        "peso totale impasto",
+        "pezzi prodotti",
+        "pezzi per ricetta",
+        "numero pezzi prodotti",
+    }
+    result: list[str] = []
+    for item in ingredienti_raw or []:
+        nome = item if isinstance(item, str) else (item.get("nome", "") if isinstance(item, dict) else "")
+        nome = re.sub(r"\s+", " ", str(nome or "")).strip()
+        if not nome:
+            continue
+        chiave = re.sub(r"\s*\([^)]*\)\s*$", "", nome.lower()).strip()
+        if chiave in esclusi:
+            continue
+        result.append(nome)
+    return result
 
 
 def build_pos_html(lotto: dict, allergeni: list, ingredienti: list, nutri_html: str = "", azienda=None) -> str:
@@ -162,7 +191,7 @@ def build_pos_html(lotto: dict, allergeni: list, ingredienti: list, nutri_html: 
         for i in ingredienti:
             cls = "ing  allergene" if ("contiene" in i.lower() and "non contiene" not in i.lower()) else "ing"
             et = _trac_for(i)
-            src_html = f'<span style="font-size:5.5pt;color:#000;font-weight:700;"> — {et}</span>' if et else ""
+            src_html = f'<span class="ing-source">Origine: {et}</span>' if et else ""
             parti.append(f'<div class="{cls}">• {i}{src_html}</div>')
         righe_ing = "".join(parti)
     else:
@@ -236,10 +265,9 @@ def build_pos_html(lotto: dict, allergeni: list, ingredienti: list, nutri_html: 
         sezione_trac = f"""<div class="sep-dash"></div>
 <div class="trac-title">Tracciabilità Fornitori (Controllo a Ritroso · Reg. CE 178/2002)</div>
 {"".join(righe_scalati)}{non_trac_html}"""
-    elif lotto.get("ingredienti_dettaglio"):
+    elif ingredienti:
         righe_ing_fb = []
-        for ing in lotto.get("ingredienti_dettaglio") or []:
-            nome_ing = ing if isinstance(ing, str) else (ing.get("nome") or "?")
+        for nome_ing in ingredienti:
             righe_ing_fb.append(f"""<div class="trac-row">
   <span class="trac-lotto" style="background:#f3f4f6;color:#374151;">ING</span>
   <br/><span>{nome_ing}</span>
@@ -259,15 +287,11 @@ def build_pos_html(lotto: dict, allergeni: list, ingredienti: list, nutri_html: 
     data_scad = lotto.get("data_scadenza") or "—"
     scad_abbattuto = lotto.get("scadenza_abbattuto") or ""
     frigo = lotto.get("frigo_numero") or ""
-    allergie_str = " · ".join(allergeni) if allergeni else ""
-
     ing_section = (
-        f'<div class="sep-dash"></div><div class="ing-title">INGREDIENTI + TRACCIABILITA:</div>{righe_ing}'
+        f'<div class="sep-dash"></div><div class="ing-title">Ingredienti</div>{righe_ing}'
         if ingredienti
         else ""
     )
-
-    etichetta_finale_extra = f"<br/>CONTIENE: {allergie_str}" if allergeni else ""
 
     return f"""<!DOCTYPE html>
 <html lang="it">
@@ -277,11 +301,14 @@ def build_pos_html(lotto: dict, allergeni: list, ingredienti: list, nutri_html: 
   <style>{POS_CSS}</style>
 </head>
 <body>
-  <div class="titolo-sezione">LOTTO</div>
+  <div class="azienda">{_nome_az}</div>
+  {f'<div class="azienda-indirizzo">{_ind_az}</div>' if _ind_az else ''}
+  <div class="prodotto-nome">{prodotto}</div>
+  <div class="lotto-caption">LOTTO DI PRODUZIONE</div>
   <div class="lotto-box">{numero_lotto}</div>
   {qty_box}
   <div class="sep-solid"></div>
-  <div class="row"><span class="label">PRODOTTO:</span><span class="val">{data_prod}</span></div>
+  <div class="row"><span class="label">PRODUZIONE:</span><span class="val">{data_prod}</span></div>
   <div class="row scad"><span class="label">SCADENZA:</span><span class="val">{data_scad}</span></div>
   {f'<div class="row"><span class="label">SCAD -18°C:</span><span class="val">{scad_abbattuto}</span></div>' if scad_abbattuto else ""}
   {f'<div class="row frigo"><span class="label">FRIGO:</span><span class="val">{frigo}</span></div>' if frigo else ""}
@@ -289,11 +316,11 @@ def build_pos_html(lotto: dict, allergeni: list, ingredienti: list, nutri_html: 
   {nutri_html}
   {sezione_allergeni}
   <div class="etichetta-finale">
-    {prodotto.upper()} · {data_prod}{etichetta_finale_extra}
+    &#10003; TRACCIABILITÀ REGISTRATA · Reg. CE 178/2002
   </div>
   <div class="footer">
     Stampato: {data_ora}<br/>
-    Reg. CE 178/2002 — {_nome_az}
+    {_nome_az}
   </div>
   <script>window.onload = () => {{ setTimeout(() => {{ window.print(); window.onafterprint = () => window.close(); }}, 250); }}</script>
 </body>
@@ -427,7 +454,8 @@ def build_escpos(lotto: dict, allergeni: list, ingredienti: list, larghezza: int
     if pezzi:
         buf += line(f"QTA: {pezzi} {unita}", center=True, bold=True)
     buf += sep
-    buf += line(f"PRODOTTO: {data_prod}")
+    buf += line(f"PRODOTTO: {prodotto}", bold=True)
+    buf += line(f"PRODUZIONE: {data_prod}")
     buf += line(f"SCADENZA: {data_scad}", bold=True)
     if scad_abb:
         buf += line(f"SCAD -18°C: {scad_abb}")
@@ -521,7 +549,7 @@ async def _carica_lotto_tracciato(lotto_id: str):
         lotto = {**lotto, "lotti_fornitori": {**_lf, "lotti_scalati": _ls_list}}
 
     ingredienti_raw = lotto.get("ingredienti_dettaglio") or []
-    ingredienti = [i if isinstance(i, str) else i.get("nome", "") for i in ingredienti_raw if i]
+    ingredienti = _ingredienti_reali(ingredienti_raw)
     testo_completo = " ".join(ingredienti) + " " + (lotto.get("allergeni_testo") or "")
     allergeni = rileva_allergeni(testo_completo)
     ingredienti_ordinati = ordina_ingredienti(ingredienti, allergeni)
