@@ -406,13 +406,23 @@ async def processa_inbox_bonifici(db, limit: int = 100) -> Dict[str, int]:
                 {"status": {"$in": ["da_processare", "errore_processing"]}},
             ],
         },
+        {
+            "_id": 1,
+            "id": 1,
+            "filename": 1,
+            "source": 1,
+            "created_at": 1,
+        },
     ).sort("created_at", 1).to_list(limit)
     stats = {"letti": 0, "salvati": 0, "duplicati": 0, "associati": 0, "errori": 0}
     for doc in docs:
         stats["letti"] += 1
         document_filter = {"_id": doc["_id"]} if doc.get("_id") is not None else {"id": doc.get("id")}
         try:
-            content = base64.b64decode(doc.get("pdf_data") or "", validate=True)
+            payload = await db["documents_inbox"].find_one(
+                document_filter, {"_id": 0, "pdf_data": 1}
+            ) or {}
+            content = base64.b64decode(payload.get("pdf_data") or "", validate=True)
             result = await importa_pdf_bonifico(
                 db, content, doc.get("filename") or "bonifico.pdf",
                 source=doc.get("source") or "documents_inbox",
@@ -450,13 +460,27 @@ async def riprocessa_bonifici_pendenti(db, limit: int = 200) -> Dict[str, int]:
             "salario_associato": {"$ne": True},
             "pdf_data": {"$exists": True, "$nin": [None, ""]},
         },
-        {"_id": 0},
+        {
+            "_id": 1,
+            "id": 1,
+            "source_file": 1,
+            "source": 1,
+            "created_at": 1,
+        },
     ).sort("created_at", 1).to_list(limit)
     stats = {"letti": 0, "associati": 0, "non_associati": 0, "errori": 0}
     for transfer in transfers:
         stats["letti"] += 1
         try:
-            content = base64.b64decode(transfer.get("pdf_data") or "", validate=True)
+            transfer_filter = (
+                {"_id": transfer["_id"]}
+                if transfer.get("_id") is not None
+                else {"id": transfer.get("id")}
+            )
+            payload = await db["bonifici_transfers"].find_one(
+                transfer_filter, {"_id": 0, "pdf_data": 1}
+            ) or {}
+            content = base64.b64decode(payload.get("pdf_data") or "", validate=True)
             result = await importa_pdf_bonifico(
                 db,
                 content,
