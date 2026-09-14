@@ -93,7 +93,19 @@ async def lifespan(app: FastAPI):
     # (ruolo web o ENABLE_SCHEDULER=false). Solo i job periodici seguono il flag.
     from app.hr.embed import avvia_hr
 
-    await avvia_hr(avvia_scheduler=scheduler_attivo)
+    hr_avviata = await avvia_hr(avvia_scheduler=scheduler_attivo)
+
+    # 14/09/2026 (R1): gli operatori del tablet Lotti sono l'anagrafica HR.
+    # Lotti parte PRIMA di HR (sopra), quindi il suo allineamento all'avvio
+    # trovava il database HR non ancora connesso: si ripete qui, a HR pronto
+    # (idempotente; il job Lotti lo rifa' comunque ogni 10 minuti).
+    if scheduler_attivo and hr_avviata:
+        try:
+            from app.lotti.routers.tablet_operatori import seed_operatori
+
+            await seed_operatori()
+        except Exception as e:
+            logger.warning(f"Allineamento operatori Lotti all'anagrafica HR rimandato: {e}")
 
     try:
         from app.menu.embed import avvia_menu
