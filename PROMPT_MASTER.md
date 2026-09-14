@@ -607,8 +607,8 @@ si rigenerano dal codice e non si correggono a mano.
 | `DRIVE_VERBALI_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `E2E_BASE_URL` | test-tooling | configurazione | non dichiarato in Settings | `frontend/scripts/audit-destructive-e2e.cjs`, `frontend/scripts/audit-pages-e2e.cjs` |
 | `E2E_FRONTEND_DIST` | test-tooling | configurazione | non dichiarato in Settings | `scripts/e2e_distruttivo_server.py` |
-| `EMAIL_ADDRESS` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/hr/routers/dimissioni.py`, `app/routers/configurazioni.py`, `app/routers/learning_machine.py`, `app/services/gmail_search.py` |
-| `EMAIL_APP_PASSWORD` | gmail-email | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `app/hr/routers/dimissioni.py`, `app/routers/configurazioni.py`, `app/routers/learning_machine.py`, `app/services/gmail_search.py` |
+| `EMAIL_ADDRESS` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/routers/configurazioni.py`, `app/routers/learning_machine.py`, `app/services/gmail_search.py` |
+| `EMAIL_APP_PASSWORD` | gmail-email | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `app/routers/configurazioni.py`, `app/routers/learning_machine.py`, `app/services/gmail_search.py` |
 | `EMAIL_PASSWORD` | gmail-email | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `app/hr/routers/cedolini.py`, `app/routers/commercialista.py`, `app/routers/configurazioni.py`, `app/routers/learning_machine.py`, `app/services/gmail_search.py`, `app/services/pagopa_scanner.py` |
 | `EMAIL_USER` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/hr/routers/cedolini.py`, `app/routers/commercialista.py`, `app/routers/configurazioni.py`, `app/services/gmail_search.py`, `app/services/pagopa_scanner.py` |
 | `ENABLE_ASYNC_IMPORTS` | feature-job | configurazione | `bool` / `True` | `app/config.py` |
@@ -700,7 +700,7 @@ si rigenerano dal codice e non si correggono a mano.
 | `IMAP_PASS` | gmail-email | configurazione | non dichiarato in Settings | `app/hr/routers/dipendenti_cloud/__init__.py` |
 | `IMAP_PASSWORD` | gmail-email | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `app/hr/routers/cedolini.py`, `app/hr/routers/dipendenti_cloud/__init__.py`, `app/routers/settings_router.py`, `app/services/pagopa_scanner.py` |
 | `IMAP_PORT` | gmail-email | configurazione | `int` / `993` | `app/config.py`, `app/hr/routers/dipendenti_cloud/__init__.py`, `app/services/pagopa_scanner.py` |
-| `IMAP_SERVER` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/hr/routers/dimissioni.py`, `app/hr/routers/dipendenti_cloud/__init__.py`, `app/routers/learning_machine.py`, `app/services/email_full_download.py`, `app/services/verbali_email_scanner.py` |
+| `IMAP_SERVER` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/hr/routers/dipendenti_cloud/__init__.py`, `app/routers/learning_machine.py`, `app/services/email_full_download.py`, `app/services/verbali_email_scanner.py` |
 | `IMAP_USER` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/hr/routers/cedolini.py`, `app/hr/routers/dipendenti_cloud/__init__.py`, `app/routers/settings_router.py`, `app/services/pagopa_scanner.py` |
 | `IVA_ALIQUOTE` | app-runtime | configurazione | `list[float]` / `[4.0, 5.0, 10.0, 22.0]` | `app/config.py` |
 | `JWT_SECRET` | app-runtime | segreta | non dichiarato in Settings | `app/menu/routes/qrcode_routes.py` |
@@ -844,7 +844,7 @@ Gli alias senza valore vanno configurati nel secret/config store di Render. Non 
 
 ## Appendice D — Tutti i router e tutti gli endpoint
 
-Route table sorgente: **1166**; attivi da ricreare: **726**; quarantena: **440** (`verificare` 410, `admin-only` 30).
+Route table sorgente: **1169**; attivi da ricreare: **729**; quarantena: **440** (`verificare` 410, `admin-only` 30).
 
 `attivo` significa da ricreare con contratto e test; `quarantena` significa non esporre nel nuovo runtime finché consumer, autorizzazione e test non sono provati. L'elenco è completo e include entrambe le categorie.
 
@@ -1713,12 +1713,15 @@ Route table sorgente: **1166**; attivi da ricreare: **726**; quarantena: **440**
 - **attivo** — `GET /api/gestione-riservata/riepilogo` — in uso: FE, chat
 - **quarantena: verificare** — `GET /api/gestione-riservata/volume-affari-reale` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 
-### Router `invoices.corrispettivi` (24)
+### Router `invoices.corrispettivi` (27)
 
 - **attivo** — `GET /api/corrispettivi` — in uso: FE
 - **attivo** — `POST /api/corrispettivi/aggiorna-stati-mancanti` — in uso: FE
 - **attivo** — `DELETE /api/corrispettivi/all` — in uso: FE
 - **attivo** — `POST /api/corrispettivi/auto-ricostruisci-dati` — in uso: FE
+- **attivo** — `GET /api/corrispettivi/chiusure` — in uso: FE
+- **attivo** — `POST /api/corrispettivi/chiusure` — in uso: FE
+- **attivo** — `DELETE /api/corrispettivi/chiusure/{chiusura_id}` — in uso: FE
 - **quarantena: admin-only** — `POST /api/corrispettivi/cleanup-duplicati-forte` — endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7)
 - **attivo** — `POST /api/corrispettivi/elimina-duplicati` — in uso: FE
 - **attivo** — `POST /api/corrispettivi/hard-delete-bulk` — in uso: FE

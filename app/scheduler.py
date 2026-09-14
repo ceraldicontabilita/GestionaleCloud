@@ -1009,6 +1009,31 @@ def start_scheduler():
         except Exception:
             logger.exception("[SCHEDULER-HR-PAGAMENTI] deposito non completato")
 
+    async def _chiusure_attivita_job():
+        """Registro dei giorni di chiusura (ferie/ristrutturazione): periodi
+        confermati + ferie collettive nelle presenze HR. Toglie quei giorni
+        dai "corrispettivi mancanti"."""
+        from app.database import Database
+        from app.services.chiusure_attivita import aggiorna_registro_chiusure
+
+        try:
+            result = await aggiorna_registro_chiusure(Database.get_db())
+            if result.get("seminati") or result.get("nuovi"):
+                logger.info("[SCHEDULER-CHIUSURE] %s", result)
+        except Exception:
+            logger.exception("[SCHEDULER-CHIUSURE] aggiornamento non completato")
+
+    scheduler.add_job(
+        _chiusure_attivita_job,
+        'interval', hours=6,
+        next_run_time=avvio + timedelta(minutes=7),
+        misfire_grace_time=600,
+        coalesce=True,
+        id="chiusure_attivita",
+        name="Registro giorni di chiusura attivita' (ogni 6 ore)",
+        replace_existing=True,
+    )
+
     scheduler.add_job(
         _hr_pagamenti_deposito_job,
         'interval', minutes=15,

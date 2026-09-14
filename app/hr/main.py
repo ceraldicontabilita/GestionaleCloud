@@ -102,7 +102,7 @@ def register_routers():
     app.include_router(shifts.router, prefix="/api/shifts", tags=["Turni"], dependencies=STAFF)
     app.include_router(fascicolo_dipendente.router, prefix="/api", tags=["Fascicolo"], dependencies=STAFF)
 
-    from .routers import cedolini, tfr, attendance, dimissioni, richieste, portale_buste, turni, notifiche
+    from .routers import cedolini, tfr, attendance, richieste, portale_buste, turni, notifiche
     from .routers import dipendenti_cloud
     from .routers import portale_documenti
     from .routers import timbrature
@@ -120,7 +120,6 @@ def register_routers():
     app.include_router(cedolini.router, prefix="/api/cedolini", tags=["Cedolini"], dependencies=ADMIN)
     app.include_router(tfr.router, prefix="/api/tfr", tags=["TFR"], dependencies=ADMIN)
     app.include_router(attendance.router, prefix="/api/attendance", tags=["Presenze"], dependencies=STAFF)
-    app.include_router(dimissioni.router, prefix="/api/dimissioni", tags=["Dimissioni"], dependencies=ADMIN)
 
     from .routers import libro_unico_parser, f24_parser, salari_unificati_v2
     app.include_router(libro_unico_parser.router, prefix="/api/paghe", tags=["Libro Unico"], dependencies=ADMIN)

@@ -109,8 +109,8 @@ def _logger_definito(sorgente: str) -> bool:
 def test_nessun_modulo_chiama_logger_senza_definirlo():
     """`logger.warning(...)` in un except che deve solo registrare l'errore
     non deve MAI diventare un secondo errore (NameError) che nasconde il
-    primo. Casi reali trovati: app/hr/routers/dimissioni.py e
-    app/routers/fornitori_learning.py chiamavano `logger.x(...)` senza che
+    primo. Casi reali trovati: app/hr/routers/dimissioni.py (poi rimosso
+    il 14/09/2026) e app/routers/fornitori_learning.py chiamavano `logger.x(...)` senza che
     `logger` fosse mai definito nel file.
     """
     problemi = []
