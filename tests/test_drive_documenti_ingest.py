@@ -35,8 +35,10 @@ def test_build_doc_categoria_corretta():
 
 
 def test_profondita_lifecycle_per_canale():
-    # BONIFICI DIPENDENTI/<dipendente>/DA ELABORARE
-    assert d._lifecycle_depth("bonifico") == 2
+    # DIPENDENTI/<COGNOME NOME>/BONIFICI/DA ELABORARE (fascicolo per persona)
+    assert d._lifecycle_depth("bonifico") == 3
+    assert d._lifecycle_parent_name("bonifico") == "BONIFICI"
+    assert d._lifecycle_parent_name("verbale") is None
     # VERBALI_AUTO/DA ELABORARE: non entra in 01_VERBALI/02_NOTIFICHE/...
     assert d._lifecycle_depth("verbale") == 1
     assert d._lifecycle_depth("dichiarazione_iva") == 1
@@ -130,11 +132,12 @@ def test_resolver_bonifico_puo_trovare_inbox_dipendente_ma_verbale_non_scende_ne
 
     bonifici = _Service({
         "bonifici": [_folder("mario", "ROSSI MARIO")],
-        "mario": [_folder("mario-in", "DA ELABORARE")],
+        "mario": [_folder("mario-in", "DA ELABORARE"), _folder("mario-bon", "BONIFICI")],
+        "mario-bon": [_folder("mario-bon-in", "DA ELABORARE")],
     })
     assert [x["inbox_id"] for x in discover_inboxes(
         bonifici, "bonifici", max_depth=d._lifecycle_depth("bonifico")
-    )] == ["mario-in"]
+    )] == ["mario-bon-in", "mario-in"]
 
     verbali = _Service({
         "verbali": [_folder("direct", "DA ELABORARE"), _folder("archive", "01_VERBALI")],
@@ -161,11 +164,11 @@ def test_sync_drive_non_blocca_event_loop(monkeypatch):
     monkeypatch.setattr(d, "_folder_id", lambda _canale: "root")
     monkeypatch.setattr(
         d,
-        "resolve_inboxes_or_legacy",
+        "discover_inboxes",
         fuori_event_loop([{
             "inbox_id": "inbox",
             "lifecycle_parent_id": "parent",
-            "relative_path": "DA ELABORARE",
+            "relative_path": "ROSSI MARIO/BONIFICI/DA ELABORARE",
         }]),
     )
     monkeypatch.setattr(d, "_resolve_state_folder", fuori_event_loop("state"))
@@ -228,3 +231,36 @@ def test_build_doc_riusa_hash_gia_calcolati():
 
     assert doc["sha256"] == "sha-calcolato"
     assert doc["file_hash"] == "md5-calcolato"
+
+
+def test_bonifico_legge_solo_le_inbox_bonifici_del_fascicolo_e_non_i_cedolini(monkeypatch):
+    """Radice condivisa DIPENDENTI: <persona>/DA ELABORARE sono cedolini,
+    <persona>/BONIFICI/DA ELABORARE sono bonifici. Il canale bonifico non deve
+    ne' leggere i cedolini ne' creare una inbox legacy alla radice."""
+    service = _Service({
+        "dip": [_folder("mario", "ROSSI MARIO"), _folder("anna", "BIANCHI ANNA")],
+        "mario": [_folder("mario-ced", "DA ELABORARE"), _folder("mario-bon", "BONIFICI")],
+        "mario-bon": [_folder("mario-bon-in", "DA ELABORARE")],
+        "anna": [_folder("anna-ced", "DA ELABORARE")],
+    })
+    created = []
+    monkeypatch.setattr(
+        d, "_get_or_create_inbox_folder",
+        lambda _service, parent_id: created.append(parent_id) or "legacy",
+    )
+
+    inbox = d._trova_inbox(service, "dip", "bonifico")
+
+    assert [x["inbox_id"] for x in inbox] == ["mario-bon-in"]
+    assert inbox[0]["lifecycle_parent_id"] == "mario-bon"
+    assert created == []
+
+    # nessuna sezione BONIFICI in nessun fascicolo: zero inbox, zero creazioni
+    solo_cedolini = _Service({"dip": [_folder("anna", "BIANCHI ANNA")], "anna": [_folder("anna-ced", "DA ELABORARE")]})
+    assert d._trova_inbox(solo_cedolini, "dip", "bonifico") == []
+    assert created == []
+
+    # i canali senza vincolo continuano a usare il fallback legacy
+    vuoto = _Service({"verbali": []})
+    assert [x["inbox_id"] for x in d._trova_inbox(vuoto, "verbali", "verbale")] == ["legacy"]
+    assert created == ["verbali"]

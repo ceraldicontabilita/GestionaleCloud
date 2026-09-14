@@ -101,6 +101,15 @@ services:
         sync: false
       - key: GOOGLE_DRIVE_QUARANTENA_FOLDER_ID
         sync: false
+      # --- Fascicolo dipendente su Drive (14/09/2026): UNA radice per persona
+      # (05_PERSONALE_E_CEDOLINI/DIPENDENTI). Cedolini in <COGNOME NOME>/DA
+      # ELABORARE, bonifici in <COGNOME NOME>/BONIFICI/DA ELABORARE: le due
+      # variabili puntano alla STESSA cartella, i canali si distinguono per
+      # posizione (vedi app/services/drive_documenti_ingest.py, canale bonifico).
+      - key: GOOGLE_DRIVE_CEDOLINI_FOLDER_ID
+        sync: false
+      - key: GOOGLE_DRIVE_BONIFICI_FOLDER_ID
+        sync: false
       - key: SHEETS_REGISTRY_NAME
         value: "GestionaleCloud"
       - key: PROCESS_ROLE

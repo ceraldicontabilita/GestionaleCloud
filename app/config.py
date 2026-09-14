@@ -127,12 +127,12 @@ class Settings(BaseSettings):
     GOOGLE_DRIVE_SA_JSON: Optional[str] = None            # oppure il JSON inline (alternativa al file)
     # Altre cartelle Drive (specifica utente 10-07-2026): gli ID vanno nelle
     # variabili d'ambiente su Render, MAI nel codice.
-    GOOGLE_DRIVE_CEDOLINI_FOLDER_ID: Optional[str] = None      # cedolini paga (PDF)
+    GOOGLE_DRIVE_CEDOLINI_FOLDER_ID: Optional[str] = None      # radice fascicoli dipendenti: <COGNOME NOME>/DA ELABORARE = cedolini
     GOOGLE_DRIVE_CORRISPETTIVI_FOLDER_ID: Optional[str] = None # corrispettivi RT
     GOOGLE_DRIVE_QUIETANZE_FOLDER_ID: Optional[str] = None     # quietanze F24
     GOOGLE_DRIVE_ESTRATTI_FOLDER_ID: Optional[str] = None      # estratti conto
     GOOGLE_DRIVE_ESTRATTI_FOLDER_IDS: Optional[str] = None     # piu radici, separate da virgola
-    GOOGLE_DRIVE_BONIFICI_FOLDER_ID: Optional[str] = None      # bonifici effettuati: fornitori, stipendi e altri pagamenti
+    GOOGLE_DRIVE_BONIFICI_FOLDER_ID: Optional[str] = None      # stessa radice dei fascicoli: <COGNOME NOME>/BONIFICI/DA ELABORARE = bonifici
     # Registro dati portabile: un Google Spreadsheet con un foglio per ogni
     # entita canonica. ID diretto oppure cartella in cui crearlo/ritrovarlo.
     GOOGLE_SHEETS_LEDGER_ID: Optional[str] = None
