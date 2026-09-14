@@ -264,3 +264,25 @@ def test_bonifico_legge_solo_le_inbox_bonifici_del_fascicolo_e_non_i_cedolini(mo
     vuoto = _Service({"verbali": []})
     assert [x["inbox_id"] for x in d._trova_inbox(vuoto, "verbali", "verbale")] == ["legacy"]
     assert created == ["verbali"]
+
+
+def test_bonifico_accetta_inbox_diretta_di_una_radice_dedicata_e_piu_radici(monkeypatch):
+    """03_BANCHE_E_PAGAMENTI/BONIFICI/DA ELABORARE (profondita' 1) vale sempre;
+    le radici arrivano da GOOGLE_DRIVE_BONIFICI_FOLDER_IDS + variabile singola,
+    senza doppioni."""
+    generici = _Service({
+        "gen": [_folder("gen-in", "DA ELABORARE"), _folder("gen-sub", "ALTRO")],
+        "gen-sub": [_folder("gen-sub-in", "DA ELABORARE")],
+    })
+    assert [x["inbox_id"] for x in d._trova_inbox(generici, "gen", "bonifico")] == ["gen-in"]
+
+    monkeypatch.setattr(d.settings, "GOOGLE_DRIVE_BONIFICI_FOLDER_IDS", " dip , gen,dip ")
+    monkeypatch.setattr(d.settings, "GOOGLE_DRIVE_BONIFICI_FOLDER_ID", "gen")
+    assert d._folder_ids("bonifico") == ["dip", "gen"]
+    assert d.is_configured("bonifico")
+
+    monkeypatch.setattr(d.settings, "GOOGLE_DRIVE_BONIFICI_FOLDER_IDS", None)
+    monkeypatch.setattr(d.settings, "GOOGLE_DRIVE_BONIFICI_FOLDER_ID", None)
+    monkeypatch.setattr(d, "get_folder_id", lambda _area: None)
+    assert d._folder_ids("bonifico") == []
+    assert not d.is_configured("bonifico")

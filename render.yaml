@@ -110,6 +110,9 @@ services:
         sync: false
       - key: GOOGLE_DRIVE_BONIFICI_FOLDER_ID
         sync: false
+      # radici bonifici separate da virgola: fascicoli DIPENDENTI + 03/BONIFICI
+      - key: GOOGLE_DRIVE_BONIFICI_FOLDER_IDS
+        sync: false
       - key: SHEETS_REGISTRY_NAME
         value: "GestionaleCloud"
       - key: PROCESS_ROLE

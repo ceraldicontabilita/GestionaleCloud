@@ -133,6 +133,7 @@ class Settings(BaseSettings):
     GOOGLE_DRIVE_ESTRATTI_FOLDER_ID: Optional[str] = None      # estratti conto
     GOOGLE_DRIVE_ESTRATTI_FOLDER_IDS: Optional[str] = None     # piu radici, separate da virgola
     GOOGLE_DRIVE_BONIFICI_FOLDER_ID: Optional[str] = None      # stessa radice dei fascicoli: <COGNOME NOME>/BONIFICI/DA ELABORARE = bonifici
+    GOOGLE_DRIVE_BONIFICI_FOLDER_IDS: Optional[str] = None     # piu radici bonifici separate da virgola (fascicoli + 03/BONIFICI generici)
     # Registro dati portabile: un Google Spreadsheet con un foglio per ogni
     # entita canonica. ID diretto oppure cartella in cui crearlo/ritrovarlo.
     GOOGLE_SHEETS_LEDGER_ID: Optional[str] = None
