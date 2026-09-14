@@ -100,7 +100,7 @@ export default function Visure() {
               gap: 12,
             }}
           >
-            <Building2 size={28} style={{ color: '#3b82f6' }} />
+            <Building2 size={28} style={{ color: '#5b7a6b' }} />
             {data.companyName}
           </h2>
           <p
@@ -159,7 +159,7 @@ export default function Visure() {
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-            <MapPin size={18} style={{ color: '#3b82f6' }} />
+            <MapPin size={18} style={{ color: '#5b7a6b' }} />
             <span style={{ fontWeight: 600, color: '#374151' }}>Sede Legale</span>
           </div>
           <p style={{ margin: 0, color: '#4b5563', fontSize: 14, lineHeight: 1.6 }}>
@@ -180,7 +180,7 @@ export default function Visure() {
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-            <Mail size={18} style={{ color: '#3b82f6' }} />
+            <Mail size={18} style={{ color: '#5b7a6b' }} />
             <span style={{ fontWeight: 600, color: '#374151' }}>Contatti</span>
           </div>
           <p style={{ margin: 0, color: '#4b5563', fontSize: 14, lineHeight: 1.6 }}>
@@ -200,7 +200,7 @@ export default function Visure() {
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-            <FileText size={18} style={{ color: '#3b82f6' }} />
+            <FileText size={18} style={{ color: '#5b7a6b' }} />
             <span style={{ fontWeight: 600, color: '#374151' }}>Attività</span>
           </div>
           <p style={{ margin: 0, color: '#4b5563', fontSize: 14, lineHeight: 1.6 }}>
@@ -243,15 +243,15 @@ export default function Visure() {
             <div
               style={{
                 padding: 16,
-                background: '#dbeafe',
+                background: '#e2efe8',
                 borderRadius: 12,
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <Users size={18} style={{ color: '#2563eb' }} />
-                <span style={{ fontWeight: 600, color: '#1e40af' }}>Dipendenti</span>
+                <Users size={18} style={{ color: '#5b7a6b' }} />
+                <span style={{ fontWeight: 600, color: '#3f5a4e' }}>Dipendenti</span>
               </div>
-              <p style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#1e40af' }}>
+              <p style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#3f5a4e' }}>
                 {mappedData.numero_dipendenti}
               </p>
             </div>
@@ -320,9 +320,9 @@ export default function Visure() {
             onClick={() => setSearchType('piva')}
             style={{
               padding: '10px 20px',
-              border: searchType === 'piva' ? '2px solid #3b82f6' : '2px solid #e5e7eb',
-              background: searchType === 'piva' ? '#eff6ff' : 'white',
-              color: searchType === 'piva' ? '#3b82f6' : '#6b7280',
+              border: searchType === 'piva' ? '2px solid #5b7a6b' : '2px solid #e5e7eb',
+              background: searchType === 'piva' ? '#eef3ef' : 'white',
+              color: searchType === 'piva' ? '#5b7a6b' : '#6b7280',
               borderRadius: 10,
               cursor: 'pointer',
               fontWeight: 600,
@@ -334,9 +334,9 @@ export default function Visure() {
             onClick={() => setSearchType('nome')}
             style={{
               padding: '10px 20px',
-              border: searchType === 'nome' ? '2px solid #3b82f6' : '2px solid #e5e7eb',
-              background: searchType === 'nome' ? '#eff6ff' : 'white',
-              color: searchType === 'nome' ? '#3b82f6' : '#6b7280',
+              border: searchType === 'nome' ? '2px solid #5b7a6b' : '2px solid #e5e7eb',
+              background: searchType === 'nome' ? '#eef3ef' : 'white',
+              color: searchType === 'nome' ? '#5b7a6b' : '#6b7280',
               borderRadius: 10,
               cursor: 'pointer',
               fontWeight: 600,
@@ -368,7 +368,7 @@ export default function Visure() {
             disabled={loading}
             style={{
               padding: '14px 28px',
-              background: loading ? '#9ca3af' : '#1d4ed8',
+              background: loading ? '#9ca3af' : '#3f5a4e',
               color: 'white',
               border: 'none',
               borderRadius: 12,

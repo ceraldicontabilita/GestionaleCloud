@@ -172,12 +172,12 @@ const BackupManager = () => {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-            <h4 className="font-semibold text-blue-900 mb-2 flex items-center gap-2">
+          <div className="bg-[#eef3ef] border border-[#c2ddd0] rounded-lg p-4 mb-4">
+            <h4 className="font-semibold text-[#234d3d] mb-2 flex items-center gap-2">
               <Shield className="w-4 h-4" />
               Informazioni sul Backup
             </h4>
-            <ul className="text-sm text-blue-800 space-y-1">
+            <ul className="text-sm text-[#2f4a3e] space-y-1">
               <li>Il backup includerà tutti i dati del database MongoDB</li>
               <li>I file vengono compressi in formato .tar.gz</li>
               <li>Conserva i backup in un luogo sicuro</li>

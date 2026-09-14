@@ -12,7 +12,7 @@ import { useConfirm } from '../components/ui/ConfirmDialog';
  * automatico dall'estratto conto (idempotente) leggendo la causale.
  */
 
-const BLU = '#0f2744';
+const BLU = '#2a3329';
 const VERDE = '#16a34a';
 const ROSSO = '#dc2626';
 const eur = v => formatEuroD(v || 0);

@@ -215,7 +215,7 @@ export default function InAttesaDocumento({ anno, onRicarica }) {
                     disabled={Boolean(busy)}
                     style={{
                       padding: '6px 10px', border: 0, borderRadius: 7,
-                      background: '#0f2744', color: '#fff', fontWeight: 700,
+                      background: '#2a3329', color: '#fff', fontWeight: 700,
                       cursor: busy ? 'wait' : 'pointer',
                     }}
                   >

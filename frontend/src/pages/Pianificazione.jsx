@@ -59,7 +59,7 @@ export default function Pianificazione() {
 
   function getEventColor(type) {
     const colors = {
-      meeting: '#dbeafe',
+      meeting: '#e2efe8',
       deadline: '#fef2f2',
       reminder: '#fef3c7',
       task: '#dcfce7',
@@ -102,7 +102,7 @@ export default function Pianificazione() {
             data-testid="btn-nuovo-evento"
             style={{
               padding: '10px 16px',
-              background: '#1d4ed8',
+              background: '#3f5a4e',
               color: 'white',
               border: 'none',
               borderRadius: 8,
@@ -307,8 +307,8 @@ export default function Pianificazione() {
                     style={{
                       padding: '2px 10px',
                       borderRadius: 6,
-                      background: ev.status === 'completed' ? '#dcfce7' : '#e0e7ff',
-                      color: ev.status === 'completed' ? '#166534' : '#3730a3',
+                      background: ev.status === 'completed' ? '#dcfce7' : '#eef3ef',
+                      color: ev.status === 'completed' ? '#166534' : '#3f5a4e',
                       fontWeight: 600,
                       fontSize: 12,
                     }}

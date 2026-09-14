@@ -138,8 +138,8 @@ def _pdf(fatture: List[Dict[str, Any]]) -> BytesIO:
         ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
         ("ALIGN", (4, 1), (6, -1), "RIGHT"),
         ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cbd5e1")),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, colors.HexColor("#f8fafc")]),
-        ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#e2e8f0")),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, colors.HexColor("#faf7f0")]),
+        ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#e6e0d4")),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
     ]))
     corpo.append(tab)

@@ -12,7 +12,7 @@ export function cn(...inputs) {
 }
 
 /* ================================================================
-   TOKEN TEMA UFFICIALE — Navy #0f2744 + Oro #b8860b
+   TOKEN TEMA UFFICIALE — Navy #2a3329 + Oro #b8860b
    Font di sistema · densità 13px. Non modificare i valori qui sotto
    senza aggiornare anche frontend/src/index.css (stessa fonte 1:1).
    ================================================================ */
@@ -20,7 +20,7 @@ export function cn(...inputs) {
 /* ---------- PALETTE CHIAVE ---------- */
 export const COLORS = {
   /* Brand navy */
-  primary: '#0f2744',
+  primary: '#2a3329',
   primaryLight: '#1e3a5f',
   primaryDark: '#081425',
   primarySoft: '#e8eef7',
@@ -32,7 +32,7 @@ export const COLORS = {
   success: '#15803d', successLight: '#dcfce7',
   warning: '#b45309', warningLight: '#fef3c7',
   danger:  '#b91c1c', dangerLight: '#fee2e2',
-  info:    '#1d4ed8', infoLight: '#dbeafe',
+  info:    '#3f5a4e', infoLight: '#e2efe8',
   /* Neutri / superfici (slate) */
   bg: '#f1f5f9',
   bgAlt: '#f8fafc',
@@ -51,7 +51,7 @@ export const COLORS = {
   white: '#ffffff',
   grayLight: '#e2e8f0',
   grayBg: '#f1f5f9',
-  purple: '#6d28d9',   // non nel design system ufficiale, mantenuto per pagine legacy che lo referenziano
+  purple: '#6f583a',   // non nel design system ufficiale, mantenuto per pagine legacy che lo referenziano
 };
 
 /* Theme alias: usato in diverse pagine legacy */

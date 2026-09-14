@@ -24,7 +24,7 @@ const UtileObiettivoContent = lazy(() => import('../UtileObiettivo.jsx'));
 const PrevisioniAcquistiContent = lazy(() => import('../PrevisioniAcquisti.jsx'));
 const DatiIsaContent = lazy(() => import('../DatiIsa.jsx'));
 
-// Design system Ceraldi ERP: un solo colore attivo (navy #0f2744), icone
+// Design system Ceraldi ERP: un solo colore attivo (navy #2a3329), icone
 // Lucide, niente arcobaleno di colori per-tab (era incoerente col resto
 // del sito e illeggibile).
 const TABS = [

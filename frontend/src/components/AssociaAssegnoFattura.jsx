@@ -117,8 +117,8 @@ export default function AssociaAssegnoFattura({
           justifyContent: 'center',
           whiteSpace: 'nowrap',
           background: '#f5f3ff',
-          color: '#6d28d9',
-          border: '1px solid #c4b5fd',
+          color: '#6f583a',
+          border: '1px solid #d9c6a3',
           borderRadius: 7,
           padding: '4px 12px',
           fontSize: 11.5,
@@ -144,12 +144,12 @@ export default function AssociaAssegnoFattura({
         >
           <div style={{
             width: 'min(680px, 100%)', maxHeight: 'calc(100vh - 32px)', overflowY: 'auto',
-            background: '#faf5ff', border: '1px solid #c4b5fd',
+            background: '#faf5ff', border: '1px solid #d9c6a3',
             borderRadius: 12, padding: 16, textAlign: 'left',
             boxShadow: '0 24px 70px rgba(15, 39, 68, 0.28)',
           }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
-            <div style={{ color: '#5b21b6', fontWeight: 800, flex: 1 }}>
+            <div style={{ color: '#6f583a', fontWeight: 800, flex: 1 }}>
               Collega un assegno reale alla fattura {dati.numero || 'senza numero'}
             </div>
             <button
@@ -157,8 +157,8 @@ export default function AssociaAssegnoFattura({
               onClick={() => setAperto(false)}
               aria-label="Chiudi associazione assegno"
               style={{
-                width: 36, height: 36, borderRadius: 8, border: '1px solid #ddd6fe',
-                background: 'white', color: '#5b21b6', fontWeight: 800, cursor: 'pointer',
+                width: 36, height: 36, borderRadius: 8, border: '1px solid #e7d6b9',
+                background: 'white', color: '#6f583a', fontWeight: 800, cursor: 'pointer',
               }}
             >
               ×
@@ -182,7 +182,7 @@ export default function AssociaAssegnoFattura({
               onClick={() => cerca(frammento)}
               disabled={loading}
               style={{
-                minHeight: 40, background: '#6d28d9', color: 'white', border: 0,
+                minHeight: 40, background: '#6f583a', color: 'white', border: 0,
                 borderRadius: 8, padding: '7px 13px', fontWeight: 800,
                 cursor: loading ? 'wait' : 'pointer',
               }}
@@ -197,7 +197,7 @@ export default function AssociaAssegnoFattura({
           </div>
           {errore && <div role="alert" style={{ color: '#b91c1c', marginTop: 7 }}>{errore}</div>}
           {!loading && message && (
-            <div role="status" style={{ color: '#5b21b6', marginTop: 7, fontWeight: 700 }}>
+            <div role="status" style={{ color: '#6f583a', marginTop: 7, fontWeight: 700 }}>
               {message}
             </div>
           )}
@@ -209,7 +209,7 @@ export default function AssociaAssegnoFattura({
                 key={`${candidato.assegno_id || 'ec'}-${candidato.numero_completo}`}
                 style={{
                   marginTop: 7, padding: '7px 9px', background: 'white',
-                  border: '1px solid #ddd6fe', borderRadius: 8, display: 'flex',
+                  border: '1px solid #e7d6b9', borderRadius: 8, display: 'flex',
                   justifyContent: 'space-between', gap: 8, alignItems: 'center',
                   flexWrap: 'wrap',
                 }}
@@ -232,7 +232,7 @@ export default function AssociaAssegnoFattura({
                     : 'Conferma questo numero completo'}
                   aria-label={`Collega ${candidato.numero_completo}`}
                   style={{
-                    minHeight: 36, background: collegatoAltrove ? '#cbd5e1' : '#6d28d9',
+                    minHeight: 36, background: collegatoAltrove ? '#cbd5e1' : '#6f583a',
                     color: 'white', border: 0, borderRadius: 7, padding: '6px 11px',
                     fontWeight: 800, cursor: collegatoAltrove ? 'not-allowed' : 'pointer',
                   }}

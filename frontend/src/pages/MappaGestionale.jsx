@@ -27,14 +27,14 @@ const STAGES = [
     id: 'fonti',
     title: 'Fonti dati',
     subtitle: 'Drive, Gmail, banca, PayPal, manuale',
-    color: '#1d4ed8',
+    color: '#3f5a4e',
     items: ['Drive fatture', 'Drive corrispettivi', 'Gmail attendibili', 'Banco BPM', 'PayPal API'],
   },
   {
     id: 'parser',
     title: 'Parser',
     subtitle: 'Lettura, deduplica, classificazione',
-    color: '#7c3aed',
+    color: '#8a6f47',
     items: ['XML/P7M', 'PDF F24', 'Quietanze', 'Cedolini', 'Verbali', 'Email body'],
   },
   {
@@ -73,7 +73,7 @@ const AREAS = [
     title: 'Dashboard',
     route: '/',
     Icon: LayoutDashboard,
-    color: '#1d4ed8',
+    color: '#3f5a4e',
     group: 'Controllo',
     purpose: 'Mostra KPI, alert critici, scadenze operative, POS da verificare e documenti aperti.',
     pages: ['KPI', 'Alert', 'Scadenze operative', 'POS', 'Trattenute da confermare'],
@@ -86,7 +86,7 @@ const AREAS = [
     title: 'Documenti / Import',
     route: '/documenti/import',
     Icon: FileInput,
-    color: '#7c3aed',
+    color: '#8a6f47',
     group: 'Ingresso',
     purpose:
       'Porta unica per acquisire, classificare, deduplicare, vedere e riprocessare ogni documento. Archivio (/documenti) e Import (menù Altro → Import Documenti) sono pagine separate.',
@@ -109,7 +109,7 @@ const AREAS = [
     title: 'Fatture',
     route: '/fatture',
     Icon: FileText,
-    color: '#6d28d9',
+    color: '#6f583a',
     group: 'Ciclo passivo',
     purpose: 'Legge fatture da Drive, crea fornitori, righe e movimenti secondo metodo pagamento manuale.',
     pages: ['Fatture ricevute', 'Righe XML', 'Note credito', 'AssoInvoice', 'Scadenza informativa'],
@@ -259,7 +259,7 @@ const AREAS = [
     title: 'Noleggio Auto',
     route: '/noleggio',
     Icon: Car,
-    color: '#0369a1',
+    color: '#3f5a4e',
     group: 'Veicoli',
     purpose: 'Gestisce flotta, costi, contratti e cessazioni leggendo ultima fattura e assenza fatture oltre 35 giorni.',
     pages: ['Flotta', 'Costi', 'Contratti', 'Verbali', 'Driver'],
@@ -285,7 +285,7 @@ const AREAS = [
     title: 'Magazzino',
     route: '/contabilita/previsioni-acquisti',
     Icon: Archive,
-    color: '#4f46e5',
+    color: '#5b7a6b',
     group: 'Acquisti',
     purpose: 'Usa righe fattura per prodotti, dizionario articoli, storico acquisti e previsioni.',
     pages: ['Prodotti', 'Dizionario articoli', 'Previsioni', 'Storico'],
@@ -504,7 +504,7 @@ function DetailPanel({ area, relatedAreas, onSelectArea }) {
 
       <div style={styles.detailGrid}>
         <InfoBlock title="Viste interne" items={area.pages} color={area.color} />
-        <InfoBlock title="Riceve da" items={area.inputs} color="#1d4ed8" />
+        <InfoBlock title="Riceve da" items={area.inputs} color="#3f5a4e" />
         <InfoBlock title="Alimenta" items={area.outputs} color="#15803d" />
         <div style={styles.infoBlock}>
           <h3 style={styles.infoTitle}>Collegata a</h3>
@@ -608,9 +608,9 @@ export default function MappaGestionale() {
               onClick={() => setGroup(g)}
               style={{
                 ...styles.groupButton,
-                background: group === g ? '#0f2744' : '#fff',
+                background: group === g ? '#2a3329' : '#fff',
                 color: group === g ? '#fff' : '#475569',
-                borderColor: group === g ? '#0f2744' : '#e2e8f0',
+                borderColor: group === g ? '#2a3329' : '#e2e8f0',
               }}
             >
               {g}
@@ -681,7 +681,7 @@ const styles = {
     colorScheme: 'light',
   },
   header: {
-    background: '#0f2744',
+    background: '#2a3329',
     color: '#fff',
     borderRadius: 8,
     padding: '22px 24px',
@@ -693,7 +693,7 @@ const styles = {
     fontWeight: 800,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
-    color: '#bfdbfe',
+    color: '#c2ddd0',
     marginBottom: 6,
   },
   h1: {
@@ -728,7 +728,7 @@ const styles = {
   sectionTitle: {
     margin: 0,
     fontSize: 17,
-    color: '#0f2744',
+    color: '#2a3329',
     fontWeight: 800,
   },
   sectionSubtitle: {
@@ -905,7 +905,7 @@ const styles = {
   detailTitle: {
     margin: 0,
     fontSize: 17,
-    color: '#0f2744',
+    color: '#2a3329',
   },
   detailSubtitle: {
     margin: '3px 0 0',
@@ -918,7 +918,7 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     padding: '7px 10px',
-    background: '#0f2744',
+    background: '#2a3329',
     color: '#fff',
     borderRadius: 6,
     fontSize: 12,
@@ -1009,7 +1009,7 @@ const styles = {
     border: '1px solid #e2e8f0',
     borderRadius: 8,
     padding: 14,
-    color: '#0f2744',
+    color: '#2a3329',
   },
   chip: {
     display: 'inline-flex',

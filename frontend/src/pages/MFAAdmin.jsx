@@ -107,7 +107,7 @@ export default function MFAAdmin() {
           <div style={{ marginTop: 20 }}>
             <h3>1. Scansiona il codice</h3>
             {setup.setup_id && (
-              <div style={{ marginBottom: 12, padding: 10, borderRadius: 8, background: '#eff6ff', color: '#1e3a8a', fontWeight: 800 }}>
+              <div style={{ marginBottom: 12, padding: 10, borderRadius: 8, background: '#eef3ef', color: '#3f5a4e', fontWeight: 800 }}>
                 Configurazione: {setup.setup_id}. Nell'app usa esclusivamente la voce "Amministratore [{setup.setup_id}]".
               </div>
             )}

@@ -112,7 +112,7 @@ def genera_pdf_ordine_fornitore(ordine: dict, fornitore_nome: str, prodotti: lis
                 ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
                 ("FONTSIZE", (0, 0), (-1, -1), 9),
                 ("TEXTCOLOR", (0, 0), (0, -1), colors.HexColor("#374151")),
-                ("TEXTCOLOR", (1, 0), (1, -1), colors.HexColor("#1e293b")),
+                ("TEXTCOLOR", (1, 0), (1, -1), colors.HexColor("#2a3329")),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
             ]
         )

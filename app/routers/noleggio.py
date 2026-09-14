@@ -514,7 +514,7 @@ async def export_pdf_costi(anno: Optional[int] = Query(None)) -> Any:
     
     t = Table(summary_data, colWidths=[120*mm, 50*mm])
     t.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1e3a5f')),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3f5a4e')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, -1), 10),
@@ -548,7 +548,7 @@ async def export_pdf_costi(anno: Optional[int] = Query(None)) -> Any:
     
     dt = Table(detail_data, colWidths=[18*mm, 35*mm, 28*mm, 22*mm, 22*mm, 18*mm, 18*mm, 22*mm])
     dt.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1e3a5f')),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3f5a4e')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, -1), 8),

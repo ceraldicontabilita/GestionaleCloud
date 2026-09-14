@@ -8,8 +8,8 @@ const FlottaContent = lazy(() => import('../NoleggioAuto.jsx'));
 const VerbaliContent = lazy(() => import('../VerbaliRiconciliazione.jsx'));
 
 const TABS = [
-  { id: 'flotta', label: '🚗 Flotta Auto', color: '#3b82f6' },
-  { id: 'verbali', label: '📋 Verbali Noleggio', color: '#8b5cf6' },
+  { id: 'flotta', label: '🚗 Flotta Auto', color: '#5b7a6b' },
+  { id: 'verbali', label: '📋 Verbali Noleggio', color: '#8a6f47' },
   { id: 'costi', label: '💰 Riepilogo Costi', color: '#10b981' },
 ];
 
@@ -57,8 +57,8 @@ function RiepilogoCosti({ anno }) {
     `€ ${(v || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   const categorie = [
-    { key: 'totale_canoni', label: 'Canoni', icon: '📋', color: '#3b82f6' },
-    { key: 'totale_pedaggio', label: 'Pedaggio', icon: '🛣️', color: '#8b5cf6' },
+    { key: 'totale_canoni', label: 'Canoni', icon: '📋', color: '#5b7a6b' },
+    { key: 'totale_pedaggio', label: 'Pedaggio', icon: '🛣️', color: '#8a6f47' },
     { key: 'totale_verbali', label: 'Verbali', icon: '🚨', color: '#ef4444' },
     { key: 'totale_bollo', label: 'Bollo', icon: '📝', color: '#f59e0b' },
     { key: 'totale_costi_extra', label: 'Costi Extra', icon: '💳', color: '#ff9800' },
@@ -199,7 +199,7 @@ function RiepilogoCosti({ anno }) {
                   (v.totale_riparazioni || 0);
                 return (
                   <tr key={v.targa || i} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <td style={{ padding: '10px 12px', fontWeight: 700, color: '#3b82f6' }}>
+                    <td style={{ padding: '10px 12px', fontWeight: 700, color: '#5b7a6b' }}>
                       {v.targa}
                     </td>
                     <td style={{ padding: '10px 12px' }}>

@@ -178,7 +178,7 @@ const ImageUploadManager = () => {
               />
               <label
                 htmlFor="file-input"
-                className="cursor-pointer text-blue-600 hover:text-blue-800 font-medium"
+                className="cursor-pointer text-[#5b7a6b] hover:text-[#2f4a3e] font-medium"
               >
                 Seleziona un'immagine
               </label>
@@ -195,11 +195,11 @@ const ImageUploadManager = () => {
               )}
             </div>
 
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <h4 className="font-semibold text-blue-900 mb-2">💡 Convenzioni di Nomenclatura</h4>
-              <ul className="text-sm text-blue-800 space-y-1">
-                <li>• Usa il nome del prodotto in italiano: <code className="bg-blue-100 px-1 rounded">sfogliatella-riccia.jpg</code></li>
-                <li>• Per caffè speciali: <code className="bg-blue-100 px-1 rounded">caffe-ceraldi.jpg</code></li>
+            <div className="bg-[#eef3ef] border border-[#c2ddd0] rounded-lg p-4">
+              <h4 className="font-semibold text-[#234d3d] mb-2">💡 Convenzioni di Nomenclatura</h4>
+              <ul className="text-sm text-[#2f4a3e] space-y-1">
+                <li>• Usa il nome del prodotto in italiano: <code className="bg-[#e2efe8] px-1 rounded">sfogliatella-riccia.jpg</code></li>
+                <li>• Per caffè speciali: <code className="bg-[#e2efe8] px-1 rounded">caffe-ceraldi.jpg</code></li>
                 <li>• Separa le parole con trattini o underscore</li>
                 <li>• Il sistema proverà ad associare automaticamente l'immagine</li>
               </ul>

@@ -122,7 +122,7 @@ export default function GestionePagoPA() {
             alignItems: 'center',
             marginBottom: 20,
             padding: '15px 20px',
-            background: '#0f2744',
+            background: '#2a3329',
             borderRadius: 12,
             color: 'white',
             flexWrap: 'wrap',
@@ -200,14 +200,14 @@ export default function GestionePagoPA() {
                   borderRadius: 8,
                   padding: '10px 12px',
                   boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
-                  borderLeft: '3px solid #3b82f6',
+                  borderLeft: '3px solid #5b7a6b',
                 }}
               >
                 <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>
                   📄 Ricevute Totali
                 </div>
                 <div
-                  style={{ fontSize: 18, fontWeight: 'bold', color: '#3b82f6' }}
+                  style={{ fontSize: 18, fontWeight: 'bold', color: '#5b7a6b' }}
                   data-testid="stats-totali"
                 >
                   {stats.ricevute_caricate || 0}
@@ -270,11 +270,11 @@ export default function GestionePagoPA() {
         <div
           style={{
             padding: 12,
-            background: '#eff6ff',
+            background: '#eef3ef',
             borderRadius: 8,
-            borderLeft: '4px solid #3b82f6',
+            borderLeft: '4px solid #5b7a6b',
             fontSize: 13,
-            color: '#1e40af',
+            color: '#3f5a4e',
             marginBottom: 20,
           }}
         >
@@ -319,20 +319,20 @@ export default function GestionePagoPA() {
                 style={{
                   padding: 16,
                   borderRadius: 8,
-                  border: '2px solid #bfdbfe',
-                  background: '#eff6ff',
+                  border: '2px solid #c2ddd0',
+                  background: '#eef3ef',
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
                   <span style={{ fontSize: 24 }}>🏛️</span>
                   <div>
-                    <h4 style={{ margin: 0, fontWeight: 600, color: '#1e40af' }}>Rateizzi INPS</h4>
-                    <p style={{ margin: 0, fontSize: 12, color: '#3b82f6' }}>
+                    <h4 style={{ margin: 0, fontWeight: 600, color: '#3f5a4e' }}>Rateizzi INPS</h4>
+                    <p style={{ margin: 0, fontSize: 12, color: '#5b7a6b' }}>
                       Dilazioni contributive
                     </p>
                   </div>
                 </div>
-                <ul style={{ fontSize: 13, color: '#1e40af', margin: 0, paddingLeft: 16 }}>
+                <ul style={{ fontSize: 13, color: '#3f5a4e', margin: 0, paddingLeft: 16 }}>
                   <li>Rateizzazione contributi</li>
                   <li>Avvisi di addebito</li>
                   <li>Sanzioni INPS</li>
@@ -426,13 +426,13 @@ export default function GestionePagoPA() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
                   <span style={{ fontSize: 24 }}>🏪</span>
                   <div>
-                    <h4 style={{ margin: 0, fontWeight: 600, color: '#7c3aed' }}>COSAP / TOSAP</h4>
-                    <p style={{ margin: 0, fontSize: 12, color: '#a855f7' }}>
+                    <h4 style={{ margin: 0, fontWeight: 600, color: '#8a6f47' }}>COSAP / TOSAP</h4>
+                    <p style={{ margin: 0, fontSize: 12, color: '#8a6f47' }}>
                       Occupazione suolo pubblico
                     </p>
                   </div>
                 </div>
-                <ul style={{ fontSize: 13, color: '#7c3aed', margin: 0, paddingLeft: 16 }}>
+                <ul style={{ fontSize: 13, color: '#8a6f47', margin: 0, paddingLeft: 16 }}>
                   <li>Canone occupazione</li>
                   <li>Rinnovi annuali</li>
                   <li>Plateatici</li>
@@ -709,7 +709,7 @@ export default function GestionePagoPA() {
                               ⏳ Da Associare
                             </span>
                           )}
-                          {ricevuta.fiscal_target_id && <Link to="/situazione-fiscale/riscossione" style={{ fontSize: 11, color: '#0369a1' }}>
+                          {ricevuta.fiscal_target_id && <Link to="/situazione-fiscale/riscossione" style={{ fontSize: 11, color: '#3f5a4e' }}>
                             Rata/cartelle collegate ({(ricevuta.cartelle_collegate || []).length})
                           </Link>}
                           </div>

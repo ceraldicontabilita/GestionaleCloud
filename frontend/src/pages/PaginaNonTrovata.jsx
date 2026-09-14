@@ -29,8 +29,8 @@ export default function PaginaNonTrovata() {
           textAlign: 'center',
         }}
       >
-        <Compass size={40} style={{ color: '#0f2744', marginBottom: 8 }} />
-        <h1 style={{ margin: '0 0 6px', fontSize: 22, color: '#0f2744' }}>Pagina non trovata</h1>
+        <Compass size={40} style={{ color: '#2a3329', marginBottom: 8 }} />
+        <h1 style={{ margin: '0 0 6px', fontSize: 22, color: '#2a3329' }}>Pagina non trovata</h1>
         <p style={{ margin: '0 0 4px', color: '#475569', fontSize: 14 }}>
           L'indirizzo richiesto non esiste nel gestionale:
         </p>
@@ -65,7 +65,7 @@ export default function PaginaNonTrovata() {
                 padding: '7px 12px',
                 borderRadius: 8,
                 border: '1px solid #e2e8f0',
-                color: '#0f2744',
+                color: '#2a3329',
                 textDecoration: 'none',
                 fontSize: 13,
                 fontWeight: 600,

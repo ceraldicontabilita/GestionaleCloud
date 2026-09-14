@@ -193,9 +193,9 @@ export default function CalendarioFiscale() {
 
   const getTipoColor = tipo => {
     const colors = {
-      iva: '#3b82f6',
+      iva: '#5b7a6b',
       f24: '#dc2626',
-      dichiarazione: '#0f2744',
+      dichiarazione: '#2a3329',
       imu: '#d97706',
       comunicazione: '#64748b',
       default: '#64748b',
@@ -323,9 +323,9 @@ export default function CalendarioFiscale() {
 
           {/* KPI Cards */}
           <PageGrid cols={4} gap={16} minWidth={160}>
-            <Card style={{ borderLeft: '4px solid #0f2744', borderRadius: 8 }}>
+            <Card style={{ borderLeft: '4px solid #2a3329', borderRadius: 8 }}>
               <CardContent style={{ padding: 16 }}>
-                <div style={{ fontSize: 24, fontWeight: 700, color: '#0f2744' }}>
+                <div style={{ fontSize: 24, fontWeight: 700, color: '#2a3329' }}>
                   {calendario?.totale_scadenze || 0}
                 </div>
                 <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}>
@@ -333,7 +333,7 @@ export default function CalendarioFiscale() {
                 </div>
               </CardContent>
             </Card>
-            <Card style={{ borderLeft: '4px solid #0f2744', borderRadius: 8 }}>
+            <Card style={{ borderLeft: '4px solid #2a3329', borderRadius: 8 }}>
               <CardContent style={{ padding: 16 }}>
                 <div style={{ fontSize: 24, fontWeight: 700, color: '#16a34a' }}>
                   {calendario?.completate || 0}
@@ -343,7 +343,7 @@ export default function CalendarioFiscale() {
                 </div>
               </CardContent>
             </Card>
-            <Card style={{ borderLeft: '4px solid #0f2744', borderRadius: 8 }}>
+            <Card style={{ borderLeft: '4px solid #2a3329', borderRadius: 8 }}>
               <CardContent style={{ padding: 16 }}>
                 <div style={{ fontSize: 24, fontWeight: 700, color: '#d97706' }}>
                   {(calendario?.totale_scadenze || 0) - (calendario?.completate || 0)}
@@ -353,7 +353,7 @@ export default function CalendarioFiscale() {
                 </div>
               </CardContent>
             </Card>
-            <Card style={{ borderLeft: '4px solid #0f2744', borderRadius: 8 }}>
+            <Card style={{ borderLeft: '4px solid #2a3329', borderRadius: 8 }}>
               <CardContent style={{ padding: 16 }}>
                 <div style={{ fontSize: 24, fontWeight: 700, color: '#dc2626' }}>
                   {scadenzeImminenti.length}

@@ -1586,14 +1586,14 @@ async def genera_pdf_consulente(data: Dict[str, Any]):
     
     table = Table(table_data, colWidths=col_widths, repeatRows=1)
     table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e3a5f")),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#3f5a4e")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTSIZE", (0, 0), (-1, -1), 7),
         ("FONTSIZE", (0, 0), (0, -1), 8),
         ("ALIGN", (1, 0), (-1, -1), "CENTER"),
         ("ALIGN", (0, 0), (0, -1), "LEFT"),
         ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#faf7f0")]),
         ("TOPPADDING", (0, 0), (-1, -1), 2),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
     ]))
@@ -1612,7 +1612,7 @@ async def genera_pdf_consulente(data: Dict[str, Any]):
         
         note_table = Table(note_data, colWidths=[80*mm, 40*mm, 80*mm])
         note_table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#3b82f6")),
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#5b7a6b")),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
             ("FONTSIZE", (0, 0), (-1, -1), 9),
             ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),

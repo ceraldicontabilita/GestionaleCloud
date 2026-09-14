@@ -249,7 +249,7 @@ export default function PuliziaPrimaNota() {
   return (
     <PageLayout>
       <div style={{ marginBottom: 16 }}>
-        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#0f2744' }}>
+        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#2a3329' }}>
           🧹 Pulizia Prima Nota
         </h2>
         <div style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>
@@ -628,7 +628,7 @@ export default function PuliziaPrimaNota() {
             onClick={lanciaDiagnosiMetodi}
             disabled={isBusy}
             style={{
-              padding: '10px 18px', background: '#0f2744', color: 'white',
+              padding: '10px 18px', background: '#2a3329', color: 'white',
               border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 13,
               cursor: isBusy ? 'wait' : 'pointer', display: 'inline-flex',
               alignItems: 'center', gap: 8,
@@ -682,7 +682,7 @@ export default function PuliziaPrimaNota() {
                         onClick={() => spostaDiscordante(v)}
                         disabled={spostandoId === v.movimento_id}
                         style={{
-                          padding: '7px 14px', background: '#0f2744', color: 'white',
+                          padding: '7px 14px', background: '#2a3329', color: 'white',
                           border: 'none', borderRadius: 6, fontWeight: 700, fontSize: 12,
                           cursor: spostandoId === v.movimento_id ? 'wait' : 'pointer',
                           whiteSpace: 'nowrap',
@@ -710,7 +710,7 @@ function DuplicateList({ title, registro, groups }) {
   );
   return (
     <div style={{ marginTop: 16 }}>
-      <div style={{ fontSize: 14, fontWeight: 700, color: '#0f2744', marginBottom: 8 }}>{title} ({groups.length} gruppi)</div>
+      <div style={{ fontSize: 14, fontWeight: 700, color: '#2a3329', marginBottom: 8 }}>{title} ({groups.length} gruppi)</div>
       <div style={{ display: 'grid', gap: 10 }}>
         {groups.map((g, index) => (
           <div key={`${g.chiave}-${index}`} style={{ border: `1px solid ${g.certezza === 'certo' ? '#86efac' : '#fbbf24'}`, borderRadius: 8, padding: 12, background: g.certezza === 'certo' ? '#f0fdf4' : '#fffbeb' }}>
@@ -734,7 +734,7 @@ function MovementRow({ label, registro, movement }) {
       <br />{movement.descrizione || 'descrizione assente'}
       <br /><span style={{ color: '#64748b' }}>ID {movement.id || 'assente'} · fonte {movement.source || 'non indicata'}</span>
       {movement.id && (
-        <a href={`/prima-nota#sezione=${registro}&selected=${encodeURIComponent(movement.id)}`} style={{ marginLeft: 12, color: '#1d4ed8', fontWeight: 700 }}>
+        <a href={`/prima-nota#sezione=${registro}&selected=${encodeURIComponent(movement.id)}`} style={{ marginLeft: 12, color: '#3f5a4e', fontWeight: 700 }}>
           Apri operazione
         </a>
       )}
@@ -752,14 +752,14 @@ function StepCard({ numero, titolo, descrizione, disabledReason, children }) {
     }}>
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', marginBottom: 12 }}>
         <div style={{
-          width: 32, height: 32, borderRadius: '50%', background: '#0f2744',
+          width: 32, height: 32, borderRadius: '50%', background: '#2a3329',
           color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontWeight: 700, fontSize: 15, flexShrink: 0,
         }}>
           {numero}
         </div>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 16, fontWeight: 600, color: '#0f2744' }}>{titolo}</div>
+          <div style={{ fontSize: 16, fontWeight: 600, color: '#2a3329' }}>{titolo}</div>
           <div style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>{descrizione}</div>
           {disabledReason && (
             <div style={{ fontSize: 12, color: '#d97706', marginTop: 4, fontStyle: 'italic' }}>
@@ -773,7 +773,7 @@ function StepCard({ numero, titolo, descrizione, disabledReason, children }) {
   );
 }
 
-function Stat({ label, value, color = '#0f2744' }) {
+function Stat({ label, value, color = '#2a3329' }) {
   return (
     <div>
       <div style={{ fontSize: 11, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.3 }}>{label}</div>
@@ -795,5 +795,5 @@ function btnStyle(variant, disabled) {
     opacity: disabled ? 0.5 : 1, transition: 'all .15s',
   };
   if (variant === 'danger') return { ...base, background: '#dc2626', color: '#fff' };
-  return { ...base, background: '#0f2744', color: '#fff' };
+  return { ...base, background: '#2a3329', color: '#fff' };
 }

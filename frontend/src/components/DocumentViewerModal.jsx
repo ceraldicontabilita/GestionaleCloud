@@ -248,7 +248,7 @@ export default function DocumentViewerModal({
             justifyContent: 'space-between',
             gap: 8,
             padding: '8px 8px 8px 16px',
-            background: '#0f2744',
+            background: '#2a3329',
             color: 'white',
             flexShrink: 0,
           }}

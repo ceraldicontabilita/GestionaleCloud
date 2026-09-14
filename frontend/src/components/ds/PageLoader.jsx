@@ -14,7 +14,7 @@ export function PageLoader({ label = 'Caricamento...' }) {
           width: 32,
           height: 32,
           border: '3px solid #e2e8f0',
-          borderTop: '3px solid #0f2744',
+          borderTop: '3px solid #2a3329',
           borderRadius: '50%',
           animation: 'ds-page-loader-spin 1s linear infinite',
           margin: '0 auto 12px',

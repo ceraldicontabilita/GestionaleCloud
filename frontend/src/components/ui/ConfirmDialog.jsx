@@ -66,7 +66,7 @@ export function ConfirmProvider({ children }) {
       case 'warning':
         return { ...base, background: '#f59e0b', color: 'white' };
       default:
-        return { ...base, background: '#3b82f6', color: 'white' };
+        return { ...base, background: '#5b7a6b', color: 'white' };
     }
   };
 

@@ -94,8 +94,8 @@ body, .dc-app, input, select, textarea, button { font-family: 'Plus Jakarta Sans
   gap: 0.5rem;
   margin: 0.5rem 0.75rem;
   padding: 0.5rem 0.75rem;
-  background: rgba(59, 130, 246, 0.15);
-  border: 1px solid rgba(59, 130, 246, 0.3);
+  background: rgba(91, 122, 107, 0.15);
+  border: 1px solid rgba(91, 122, 107, 0.3);
   border-radius: 8px;
   color: #a9c2b4;
   font-size: 0.8rem;
@@ -104,7 +104,7 @@ body, .dc-app, input, select, textarea, button { font-family: 'Plus Jakarta Sans
 }
 
 .dc-back-to-erp:hover {
-  background: rgba(59, 130, 246, 0.25);
+  background: rgba(91, 122, 107, 0.25);
   color: white;
 }
 

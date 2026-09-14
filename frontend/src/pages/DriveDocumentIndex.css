@@ -5,11 +5,11 @@
 .drive-index__count { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; padding: 6px 10px; border-radius: 999px; background: #ecfdf5; color: #047857; font-size: 12px; font-weight: 700; }
 .drive-index__tabs { display: flex; gap: 7px; margin-bottom: 12px; overflow-x: auto; }
 .drive-index__tabs button { display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 7px 11px; border: 1px solid #cbd5e1; border-radius: 9px; background: #fff; color: #475569; font-weight: 700; white-space: nowrap; cursor: pointer; }
-.drive-index__tabs button.is-active { border-color: #60a5fa; background: #eff6ff; color: #1d4ed8; }
+.drive-index__tabs button.is-active { border-color: #6f9180; background: #eef3ef; color: #3f5a4e; }
 .drive-index__filters { display: grid; grid-template-columns: minmax(220px, 1fr) 140px 140px auto; gap: 10px; align-items: end; padding: 14px; border-radius: 12px; background: #f8fafc; }
 .drive-index__filters label { display: flex; flex-direction: column; gap: 5px; color: #475569; font-size: 12px; font-weight: 700; }
 .drive-index__filters input { min-height: 40px; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 9px; background: #fff; color: #0f172a; font: inherit; font-weight: 400; }
-.drive-index__filters button, .drive-index__row-actions button, .drive-index__open { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 40px; padding: 8px 13px; border: 0; border-radius: 9px; background: #2563eb; color: #fff; font-weight: 700; cursor: pointer; }
+.drive-index__filters button, .drive-index__row-actions button, .drive-index__open { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 40px; padding: 8px 13px; border: 0; border-radius: 9px; background: #5b7a6b; color: #fff; font-weight: 700; cursor: pointer; }
 .drive-index__filters button:disabled, .drive-index__meta button:disabled { cursor: wait; opacity: .65; }
 .drive-index__results { margin-top: 14px; }
 .drive-index__row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 13px 4px; border-bottom: 1px solid #e2e8f0; }
@@ -23,9 +23,9 @@
 .drive-index__meta code { color: #64748b; font-size: 11px; }
 .drive-index__row-actions { display: flex; gap: 6px; }
 .drive-index__row-actions button { min-height: 34px; padding: 6px 10px; }
-.drive-index__row-actions button.is-secondary { border: 1px solid #bfdbfe; background: #eff6ff; color: #1d4ed8; }
+.drive-index__row-actions button.is-secondary { border: 1px solid #c2ddd0; background: #eef3ef; color: #3f5a4e; }
 .drive-index__row-actions button.is-correct { border: 1px solid #fed7aa; background: #fff7ed; color: #9a3412; }
-.drive-index__folder-filter { margin-bottom: 10px; padding: 10px 12px; border-radius: 9px; background: #eff6ff; color: #1e3a8a; font-size: 13px; }
+.drive-index__folder-filter { margin-bottom: 10px; padding: 10px 12px; border-radius: 9px; background: #eef3ef; color: #3f5a4e; font-size: 13px; }
 .drive-index__table-wrap { overflow-x: auto; }
 .drive-index__table { width: 100%; min-width: 1080px; border-collapse: collapse; font-size: 12px; }
 .drive-index__table th { padding: 10px; border-bottom: 2px solid #cbd5e1; background: #f8fafc; color: #475569; text-align: left; text-transform: uppercase; }
@@ -42,9 +42,9 @@
 .drive-index__stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 .drive-index__stats article, .drive-index__stats button { display: grid; grid-template-columns: auto 1fr; gap: 2px 9px; align-items: center; padding: 14px; border: 1px solid #e2e8f0; border-radius: 12px; background: #f8fafc; }
 .drive-index__stats button { cursor: pointer; font: inherit; text-align: left; }
-.drive-index__stats button:hover { border-color: #2563eb; box-shadow: 0 4px 14px rgba(37, 99, 235, .12); }
-.drive-index__stats button:focus-visible { outline: 3px solid rgba(37, 99, 235, .3); outline-offset: 2px; }
-.drive-index__stats svg { grid-row: span 2; color: #2563eb; }
+.drive-index__stats button:hover { border-color: #5b7a6b; box-shadow: 0 4px 14px rgba(91, 122, 107, .12); }
+.drive-index__stats button:focus-visible { outline: 3px solid rgba(91, 122, 107, .3); outline-offset: 2px; }
+.drive-index__stats svg { grid-row: span 2; color: #5b7a6b; }
 .drive-index__stats strong { color: #0f172a; font-size: 22px; }
 .drive-index__stats span { color: #64748b; font-size: 12px; }
 .drive-index__boolean { margin-top: 12px; padding: 15px; border: 1px solid #bbf7d0; border-radius: 12px; background: #f0fdf4; }

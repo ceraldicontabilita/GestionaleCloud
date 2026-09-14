@@ -44,7 +44,7 @@ import {
  * Entrate, Uscite, Saldo) e il registro.
  */
 
-const BLU = '#0f2744';
+const BLU = '#2a3329';
 const VERDE = '#16a34a';
 const ROSSO = '#dc2626';
 const MESI = ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'];
@@ -258,10 +258,10 @@ export function BadgeCategoria({ categoria }) {
   const lower = testo.toLowerCase();
   let Icona = FileText;
   let colore = '#475569';
-  if (lower.includes('pos')) { Icona = CreditCard; colore = '#2563eb'; }
+  if (lower.includes('pos')) { Icona = CreditCard; colore = '#5b7a6b'; }
   else if (lower.includes('corrispettiv')) { Icona = ReceiptText; colore = '#16a34a'; }
-  else if (lower.includes('fattur')) { Icona = FileText; colore = '#3b82f6'; }
-  else if (lower.includes('banca') || lower.includes('f24')) { Icona = Landmark; colore = '#0f2744'; }
+  else if (lower.includes('fattur')) { Icona = FileText; colore = '#5b7a6b'; }
+  else if (lower.includes('banca') || lower.includes('f24')) { Icona = Landmark; colore = '#2a3329'; }
   else if (lower.includes('cassa') || lower.includes('contant')) { Icona = Banknote; colore = '#15803d'; }
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 30, background: '#f1f5f9', borderRadius: 7, padding: '4px 8px', fontSize: 11, fontWeight: 650, color: colore, whiteSpace: 'nowrap' }}>
@@ -321,10 +321,10 @@ export function CartaSumUp({ dati, anno }) {
         <Card titolo={`Venduto con SumUp ${anno}`} valore={dati?.totale_netto_vendite || 0} colore={VERDE} />
         <Card titolo="Credito verso SumUp" valore={dati?.credito_sumup_aperto || 0} colore="#d97706" />
         <Card titolo={`Ricevuto su Mastercard ${anno}`} valore={dati?.totale_ricevuto || 0} colore={BLU} />
-        <Card titolo="Saldo Mastercard SumUp" valore={dati?.saldo_mastercard || 0} colore="#7c3aed" />
+        <Card titolo="Saldo Mastercard SumUp" valore={dati?.saldo_mastercard || 0} colore="#8a6f47" />
       </div>
 
-      <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: '10px 12px', color: '#1e3a8a', fontSize: 13 }}>
+      <div style={{ background: '#eef3ef', border: '1px solid #c2ddd0', borderRadius: 10, padding: '10px 12px', color: '#3f5a4e', fontSize: 13 }}>
         Vendita, credito verso SumUp e accredito Mastercard sono tre passaggi distinti. Una vendita di oggi compare subito qui; il payout compare soltanto quando SumUp lo accredita davvero.
       </div>
 
@@ -794,7 +794,7 @@ function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRip
             onClick={() => setFatturaView({ id: mov.fattura_id, numero: mov.numero_fattura })}
             title="Vedi fattura"
             aria-label={`Vedi fattura ${mov.numero_fattura || ''}`.trim()}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 36, background: '#3b82f6', color: 'white', border: 'none', borderRadius: 8, padding: '6px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 36, background: '#5b7a6b', color: 'white', border: 'none', borderRadius: 8, padding: '6px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
           >
             <FileText size={16} aria-hidden="true" /> Fattura
           </button>
@@ -830,7 +830,7 @@ function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRip
       {mov.non_modificabile ? (
         <span
           title="Dato aggiornato dalla prova SumUp archiviata; il movimento sorgente non viene riscritto"
-          style={{ color: '#0369a1', fontSize: 10.5, fontWeight: 800, whiteSpace: 'normal' }}
+          style={{ color: '#3f5a4e', fontSize: 10.5, fontWeight: 800, whiteSpace: 'normal' }}
         >
           Dato live
         </span>
@@ -1022,7 +1022,7 @@ function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRip
                     <div style={{ fontSize: 12.5, color: '#334155', margin: '5px 0', wordBreak: 'break-word' }}>
                       {normalizzaDescrizioneMovimento(m.descrizione) || '—'}
                       {tipo === 'banca' && (m.numero_assegno || m.assegno_numero) && (
-                        <div style={{ marginTop: 3, color: '#1d4ed8', fontWeight: 700 }}>
+                        <div style={{ marginTop: 3, color: '#3f5a4e', fontWeight: 700 }}>
                           Assegno n. {m.numero_assegno || m.assegno_numero}
                         </div>
                       )}
@@ -1125,7 +1125,7 @@ function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRip
                   <td style={{ padding: '7px 10px', minWidth: 210, maxWidth: 360, wordBreak: 'break-word' }}>
                     {normalizzaDescrizioneMovimento(m.descrizione) || '—'}
                     {tipo === 'banca' && (m.numero_assegno || m.assegno_numero) && (
-                      <div style={{ marginTop: 3, color: '#1d4ed8', fontWeight: 700, fontSize: 11 }}>
+                      <div style={{ marginTop: 3, color: '#3f5a4e', fontWeight: 700, fontSize: 11 }}>
                         Assegno n. {m.numero_assegno || m.assegno_numero}
                       </div>
                     )}
@@ -1268,7 +1268,7 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
     const riferimenti = p.dati_ddt || [];
     if (riferimenti.length === 0) return null;
     return (
-      <div style={{ marginTop: 3, color: '#7c3aed', fontSize: 11.5, fontWeight: 700 }}>
+      <div style={{ marginTop: 3, color: '#8a6f47', fontSize: 11.5, fontWeight: 700 }}>
         {riferimenti.map((ddt, indice) => {
           const distanza = Number.isFinite(ddt.giorni_prima_fattura)
             ? ` · ${ddt.giorni_prima_fattura} gg prima della fattura`
@@ -1504,7 +1504,7 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
       {completezza && (
         <div
           data-testid="completezza-fatture-provvisorie"
-          style={{ background: '#eff6ff', border: '1px solid #93c5fd', borderRadius: 11, padding: '10px 13px', color: '#1e3a5f', fontSize: 12.5, lineHeight: 1.55 }}
+          style={{ background: '#eef3ef', border: '1px solid #a9cbbb', borderRadius: 11, padding: '10px 13px', color: '#1e3a5f', fontSize: 12.5, lineHeight: 1.55 }}
         >
           <b>Completezza fatture {completezza.anno}:</b>{' '}
           {completezza.fatture_attive_positive} fatture dell'anno con importo positivo ={' '}
@@ -1573,7 +1573,7 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
           )}
           {tutteFatturePagina.map(fattura => {
             const registrata = String(fattura.stato || '').startsWith('registrata_');
-            const colore = registrata ? '#047857' : fattura.stato === 'in_attesa_banca' ? '#1d4ed8' : fattura.stato === 'anomalia_pagamento' ? '#b91c1c' : '#92400e';
+            const colore = registrata ? '#047857' : fattura.stato === 'in_attesa_banca' ? '#3f5a4e' : fattura.stato === 'anomalia_pagamento' ? '#b91c1c' : '#92400e';
             return (
               <div key={fattura.fattura_id} style={{ background: 'white', border: '1px solid #e2e8f0', borderLeft: `4px solid ${colore}`, borderRadius: 10, padding: '10px 12px', display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
                 <div style={{ minWidth: 0, flex: '1 1 430px' }}>
@@ -1803,20 +1803,20 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
               style={{
                 background: p.anomalia_pagamento?.stato === 'aperta' ? '#fff7ed' : 'white',
                 borderRadius: 10,
-                border: `1px dashed ${p.anomalia_pagamento?.stato === 'aperta' ? '#fb923c' : '#93c5fd'}`,
-                borderLeft: `4px solid ${p.anomalia_pagamento?.stato === 'aperta' ? '#dc2626' : '#2563eb'}`,
+                border: `1px dashed ${p.anomalia_pagamento?.stato === 'aperta' ? '#fb923c' : '#a9cbbb'}`,
+                borderLeft: `4px solid ${p.anomalia_pagamento?.stato === 'aperta' ? '#dc2626' : '#5b7a6b'}`,
                 padding: '8px 12px', marginBottom: 6, display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12.5, flexWrap: 'wrap',
               }}
             >
               <div style={{ minWidth: 0, flex: '1 1 360px' }}>
                 {p.fornitore || '—'} — Fatt. {p.fattura_numero || '—'} del {formatDateIT(p.fattura_data)}
                 {p.fonte_metodo === 'assegno_compilato' && (
-                  <span style={{ color: '#7c3aed', fontWeight: 700 }}>
+                  <span style={{ color: '#8a6f47', fontWeight: 700 }}>
                     {' '}· Assegno{p.assegno_numero ? ` n. ${p.assegno_numero}` : ''} già predisposto
                   </span>
                 )}
                 {p.strumento_bancario?.codice === 'riba' && (
-                  <span style={{ color: '#0369a1', fontWeight: 800 }}>
+                  <span style={{ color: '#3f5a4e', fontWeight: 800 }}>
                     {' '}· RiBa identificata nell'estratto conto
                   </span>
                 )}
@@ -1838,7 +1838,7 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
                   </span>
                 )}
                 {(p.ritenuta_non_pagabile_fornitore || 0) > 0 && (
-                  <span style={{ color: '#7c3aed', fontWeight: 700 }}>
+                  <span style={{ color: '#8a6f47', fontWeight: 700 }}>
                     {' '}· netto fornitore {eur(p.totale_pagabile_fornitore)} · ritenuta {eur(p.ritenuta_non_pagabile_fornitore)} separata su F24
                   </span>
                 )}
@@ -1872,7 +1872,7 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
                 <button
                   onClick={() => setAssociaFattura(p)}
                   title="Scegli il movimento reale quando piu documenti hanno lo stesso importo o l'identita non e univoca"
-                  style={{ minHeight: 40, display: 'inline-flex', alignItems: 'center', background: '#eff6ff', border: '1px solid #93c5fd', color: '#1d4ed8', borderRadius: 7, padding: '4px 12px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}
+                  style={{ minHeight: 40, display: 'inline-flex', alignItems: 'center', background: '#eef3ef', border: '1px solid #a9cbbb', color: '#3f5a4e', borderRadius: 7, padding: '4px 12px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}
                 >
                   Associa a mano
                 </button>
@@ -1992,7 +1992,7 @@ export function FattureAtteseNelRegistroBanca({ fatture = [], mese, onGestisci }
   if (!visibili.length) return null;
   const totale = visibili.reduce((somma, f) => somma + Number(f.importo || 0), 0);
   return (
-    <details open={mese !== null} style={{ margin: '12px 0 0', background: '#eff6ff', border: '1px solid #93c5fd', borderRadius: 10 }}>
+    <details open={mese !== null} style={{ margin: '12px 0 0', background: '#eef3ef', border: '1px solid #a9cbbb', borderRadius: 10 }}>
       <summary style={{ cursor: 'pointer', padding: '10px 13px', color: BLU, fontWeight: 800, fontSize: 13 }}>
         Fatture attese in banca: {visibili.length} · {eur(totale)}
       </summary>
@@ -2001,7 +2001,7 @@ export function FattureAtteseNelRegistroBanca({ fatture = [], mese, onGestisci }
           Sono visibili nel registro ma non entrano nel saldo finché non esiste un addebito reale riconciliato.
         </div>
         {visibili.map(f => (
-          <div key={f.fattura_id || f.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', background: 'white', border: '1px dashed #60a5fa', borderRadius: 8, padding: '8px 10px', fontSize: 12.5 }}>
+          <div key={f.fattura_id || f.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', background: 'white', border: '1px dashed #6f9180', borderRadius: 8, padding: '8px 10px', fontSize: 12.5 }}>
             <span>
               <b>{f.fornitore || f.supplier_name || 'Fornitore'}</b> · Fatt. {f.fattura_numero || f.invoice_number || '—'} del {formatDateIT(f.fattura_data || f.invoice_date || f.data)}
             </span>

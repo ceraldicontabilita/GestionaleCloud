@@ -137,7 +137,7 @@ function SegnalazioneCard({ s, onRisolvi }) {
             fontSize: 11,
             color: COLORS.info,
             fontWeight: 600,
-            background: '#e0f2fe',
+            background: '#eef3ef',
             padding: '4px 8px',
             borderRadius: 4,
             marginBottom: 8,

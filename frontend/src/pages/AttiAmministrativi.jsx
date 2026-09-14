@@ -161,7 +161,7 @@ export default function AttiAmministrativi() {
         <p style={{ color: '#475569' }}>
           Gli avvisi indicano un'obbligazione; PEC e moduli provano la trasmissione. Nessuno di questi documenti prova da solo il pagamento o chiude automaticamente un rapporto di lavoro.
         </p>
-        {area === 'famiglia' && <p style={{ padding: 12, borderRadius: 8, background: '#eff6ff', color: '#1e3a8a' }}>
+        {area === 'famiglia' && <p style={{ padding: 12, borderRadius: 8, background: '#eef3ef', color: '#3f5a4e' }}>
           Archivio personale separato: questi documenti non entrano in bilanci, costi aziendali, Prima Nota o riconciliazioni.
         </p>}
         {loading && <p>Caricamento…</p>}

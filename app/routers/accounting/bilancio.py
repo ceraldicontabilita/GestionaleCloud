@@ -964,7 +964,7 @@ async def export_bilancio_pdf(anno: int = Query(None), mese: int = Query(None, d
         ('BACKGROUND', (0, 2), (-1, 2), colors.HexColor('#22c55e')),  # TOTALE RICAVI
         ('BACKGROUND', (0, 4), (-1, 4), colors.HexColor('#fee2e2')),  # COSTI header
         ('BACKGROUND', (0, 7), (-1, 7), colors.HexColor('#ef4444')),  # TOTALE COSTI
-        ('BACKGROUND', (0, 9), (-1, 9), colors.HexColor('#1e293b') if utile_perdita >= 0 else colors.HexColor('#dc2626')),  # RISULTATO
+        ('BACKGROUND', (0, 9), (-1, 9), colors.HexColor('#2a3329') if utile_perdita >= 0 else colors.HexColor('#dc2626')),  # RISULTATO
         ('TEXTCOLOR', (0, 2), (-1, 2), colors.white),
         ('TEXTCOLOR', (0, 7), (-1, 7), colors.white),
         ('TEXTCOLOR', (0, 9), (-1, 9), colors.white),
@@ -1235,7 +1235,7 @@ async def export_confronto_pdf(
         ('FONTSIZE', (0, 0), (-1, -1), 9),
         ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e5e7eb')),
-        ('BACKGROUND', (0, 1), (-1, 1), colors.HexColor('#f0f9ff')),
+        ('BACKGROUND', (0, 1), (-1, 1), colors.HexColor('#eef3ef')),
         ('BACKGROUND', (0, 4), (-1, 4), colors.HexColor('#fef2f2')),
         ('BACKGROUND', (0, 8), (-1, 8), colors.HexColor('#f0fdf4')),
         ('FONTNAME', (0, 3), (-1, 3), 'Helvetica-Bold'),

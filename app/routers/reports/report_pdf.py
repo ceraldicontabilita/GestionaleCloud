@@ -28,7 +28,7 @@ def get_styles():
         fontSize=18,
         spaceAfter=20,
         alignment=TA_CENTER,
-        textColor=colors.HexColor('#1e293b')
+        textColor=colors.HexColor('#2a3329')
     ))
     styles.add(ParagraphStyle(
         name='SubtitleCustom',
@@ -149,12 +149,12 @@ async def generate_report_mensile(
     ]
     t = Table(fatture_data, colWidths=[10*cm, 5*cm])
     t.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1e3a5f')),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3f5a4e')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
-        ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#f0f9ff')),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e6e0d4')),
+        ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#eef3ef')),
         ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
     ]))
     elements.append(t)
@@ -174,7 +174,7 @@ async def generate_report_mensile(
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e6e0d4')),
     ]))
     elements.append(t)
     elements.append(Spacer(1, 15))
@@ -191,11 +191,11 @@ async def generate_report_mensile(
     t = Table(iva_data, colWidths=[10*cm, 5*cm])
     bg_saldo = colors.HexColor('#fef2f2') if saldo_iva > 0 else colors.HexColor('#f0fdf4')
     t.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#7c3aed')),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#5b7a6b')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e6e0d4')),
         ('BACKGROUND', (0, -1), (-1, -1), bg_saldo),
         ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
     ]))
@@ -217,8 +217,8 @@ async def generate_report_mensile(
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
-        ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#f0f9ff')),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e6e0d4')),
+        ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#eef3ef')),
         ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
     ]))
     elements.append(t)
@@ -279,12 +279,12 @@ async def generate_report_dipendenti(
 
     t = Table(data, colWidths=[8*cm, 8*cm])
     t.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1e3a5f')),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3f5a4e')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8fafc')]),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e6e0d4')),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#faf7f0')]),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
     ]))
     elements.append(t)
@@ -360,7 +360,7 @@ async def generate_report_scadenze(giorni: int = Query(30, description="Giorni p
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('FONTSIZE', (0, 0), (-1, -1), 9),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e6e0d4')),
             ('ALIGN', (2, 0), (2, -1), 'RIGHT'),
         ]))
         elements.append(t)
@@ -378,11 +378,11 @@ async def generate_report_scadenze(giorni: int = Query(30, description="Giorni p
             ])
         t = Table(data, colWidths=[7*cm, 4*cm, 4*cm])
         t.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#7c3aed')),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#5b7a6b')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('FONTSIZE', (0, 0), (-1, -1), 9),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e6e0d4')),
             ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
         ]))
         elements.append(t)
@@ -451,9 +451,9 @@ async def generate_report_magazzino():
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e6e0d4')),
         ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
-        ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#f0f9ff')),
+        ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#eef3ef')),
         ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
     ]))
     elements.append(t)
