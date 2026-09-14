@@ -157,6 +157,53 @@ La password Postgres va ruotata (è stata usata da una sessione automatica).
 tabella). Solo `menu` e `public` sono raggiungibili da `anon`/`authenticated`;
 `gestionale`, `hr`, `lotti`, `legacy_staging` non lo sono.
 
+### 14/09/2026 — Drive 05: UN fascicolo per dipendente
+
+Prima cedolini, bonifici e certificazioni uniche della stessa persona stavano
+in tre alberi paralleli (`CEDOLINI PAGA/<persona>`, `BONIFICI DIPENDENTI/
+<persona>`, `CERTIFICAZIONI UNICHE/<persona>`) con elenchi di persone diversi
+(50/37/22) e cartelle `VARI` che contenevano documenti veri (tutta la storia
+cedolini di D'Alma Vincenzo, 100+ bonifici a fornitori, CU di 5 persone).
+Struttura definitiva (autorizzata dal titolare, "sei autorizzato a creare,
+eliminare le cartelle"):
+
+```
+05_PERSONALE_E_CEDOLINI/
+  DIPENDENTI/                      ← id 1EfO5-9Cs-h7cIUOKoWdL_O_E1speoccY (era "CEDOLINI PAGA":
+    <COGNOME NOME>/                   stesso id, la radice dell'ingest cedolini non cambia)
+      DA ELABORARE | ELABORATE | ERRORI      ← cedolini (canale cedolini, profondità 2)
+      BONIFICI/DA ELABORARE | ELABORATE | ERRORI  ← bonifici della persona (canale bonifico, prof. 3)
+      CERTIFICAZIONI UNICHE/                  ← CU (nessun ingest)
+  CERTIFICAZIONI UNICHE COLLABORATORI/  ← CU di non dipendenti (Avv. Carini ...)
+  CONTRATTI DIPENDENTI/ UNILAV E PRATICHE LAVORO/ DOCUMENTI DIPENDENTI/ INPS/ INAIL/  (invariate)
+  INPS/CONTENZIOSO INPS - CEDOLINI D'ALMA 2023/   ← era CEDOLINI PAGA/PER CONTENZIOSO INPS
+03_BANCHE_E_PAGAMENTI/BONIFICI/DA ELABORARE | ELABORATE | ERRORI ← i bonifici NON stipendio
+                                    (fornitori, consulenti, INPS...) che stavano in BONIFICI DIPENDENTI/VARI
+07_CONTRATTI_E_FORNITORI/CONTRIBUTI E BANDI/FONDO NUOVE COMPETENZE/, UTENZE E ADDEBITI/BONUS UTENZE/
+```
+
+- 51 fascicoli (48 esistenti + IAZZETTA FRANCESCO, PANE GIUSEPPINA, D'ALMA
+  VINCENZO creati); rinominati IACOVELLI EMANUELE→MANUELE e POSLIGUA
+  OROSCO→OROZCO (fonte: cedolini). 19 fascicoli sono di ex dipendenti pre-2021
+  assenti dall'anagrafica HR (hanno cedolini su Drive: vanno importati, non
+  cancellati).
+- Cestinate (reversibili) SOLO cartelle vuote: le tre `VARI`, le tre lifecycle
+  vuote di 03/BONIFICI, `BONIFICI DIPENDENTI` (dopo lo switch env, vedi sotto).
+- Env Render: `GOOGLE_DRIVE_CEDOLINI_FOLDER_ID` = `GOOGLE_DRIVE_BONIFICI_FOLDER_ID`
+  = DIPENDENTI; `GOOGLE_DRIVE_BONIFICI_FOLDER_IDS` = "DIPENDENTI,03/BONIFICI"
+  (1raKJxMV1YSjRdVwhuqh8kGddmWvNWHHl). Il canale `bonifico` accetta una inbox
+  diretta sotto una radice dedicata o, più in profondità, solo dentro
+  `BONIFICI`; con radice condivisa non crea mai una inbox legacy.
+  **Attenzione**: NON puntare `GOOGLE_DRIVE_BONIFICI_FOLDER_ID` a DIPENDENTI
+  con un backend precedente a questa modifica (profondità 2 senza vincolo =
+  leggerebbe i cedolini come bonifici).
+- Anagrafica HR da sistemare (trovato durante il lavoro): "Ceraldi Antonella"
+  (senza CF, nessun cedolino) è probabilmente un refuso di "Ceraldi Antonietta";
+  "Dalma Vincenzo" (nome/cognome invertiti) e "D'Alma Vincenzo" condividono lo
+  stesso `dipendente_id` nei cedolini, con 48 righe = doppioni per anno/mese;
+  "Stasio Salvatore" su Drive è "DI STASIO". Sankapala 14ª 2025 caricata due
+  volte (stesso PDF).
+
 ### Stato precedente
 
 - Il default del codice è `DATA_BACKEND=sheets`.
