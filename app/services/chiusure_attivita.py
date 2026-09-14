@@ -33,10 +33,11 @@ COLLEZIONE = "chiusure_attivita"
 QUOTA_FERIE_CHIUSURA = 0.8  # 80% dei dipendenti attivi in ferie = negozio chiuso
 
 # Periodi confermati dal titolare il 14/09/2026 (chat): non sono una
-# dimenticanza dell'import, il negozio era chiuso.
+# dimenticanza dell'import, il negozio era chiuso. La ristrutturazione e' un
+# unico periodo continuo 26/01 -> 08/03 (febbraio compreso): lo confermano le
+# transazioni POS in produzione, ultima il 25/01 e prima riapertura il 09/03.
 PERIODI_CONFERMATI = (
-    ("2026-01-26", "2026-01-31", "ristrutturazione"),
-    ("2026-03-01", "2026-03-08", "ristrutturazione"),
+    ("2026-01-26", "2026-03-08", "ristrutturazione"),
     ("2026-08-15", "2026-08-23", "ferie"),
 )
 

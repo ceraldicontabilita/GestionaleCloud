@@ -314,7 +314,8 @@ che si vede in `/hr/dipendenti/paghe-bonifici` viene alimentato da
   solo archivio, niente alert. Rimosso il doppione HR `routers/dimissioni.py`
   (lettore IMAP proprio, mai usato dal frontend): l'unica posta letta è quella
   del gestionale.
-- **Giorni di chiusura** (titolare: 26–31/01 e 1–8/03/2026 ristrutturazione,
+- **Giorni di chiusura** (titolare: ristrutturazione dal 26/01 all'8/03/2026,
+  febbraio compreso — confermato dal POS: ultima transazione 25/01, prima 09/03;
   15–23/08 ferie — non sono corrispettivi mancanti). Registro unico
   `chiusure_attivita` (`app/services/chiusure_attivita.py`): periodi confermati
   seminati dal job `chiusure_attivita` (ogni 6 h), colonne "Periodo di

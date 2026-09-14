@@ -25,14 +25,15 @@ def test_registra_e_idempotente_e_giorni_chiusi():
 
 def test_semina_periodi_confermati_una_volta_sola():
     db = AsyncMongoMockClient()["gc"]
-    assert _run(mod.semina_periodi_confermati(db)) == 3
+    assert _run(mod.semina_periodi_confermati(db)) == 2
     assert _run(mod.semina_periodi_confermati(db)) == 0
     elenco = _run(mod.elenca_chiusure(db, anno=2026))
     assert [(c["data_inizio"], c["data_fine"], c["motivo"]) for c in elenco] == [
-        ("2026-01-26", "2026-01-31", "ristrutturazione"),
-        ("2026-03-01", "2026-03-08", "ristrutturazione"),
+        ("2026-01-26", "2026-03-08", "ristrutturazione"),
         ("2026-08-15", "2026-08-23", "ferie"),
     ]
+    # febbraio intero e' chiusura: nessun giorno "senza corrispettivo"
+    assert len(_run(mod.giorni_chiusi(db, "2026-02-01", "2026-02-28"))) == 28
 
 
 def test_ferie_collettive_hr_senza_corrispettivo_diventano_chiusura(monkeypatch):
