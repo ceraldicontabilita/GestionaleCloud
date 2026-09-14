@@ -3064,8 +3064,20 @@ async def _archive_non_payment_document(
         "journal_proposal": parsed_metadata.get("journal_proposal"),
     }
     await db["documents_inbox"].insert_one(record.copy())
+    adempimenti = None
+    if document_type == "dimissioni_telematiche":
+        # Titolare 14/09/2026: il modulo di dimissioni e' la conferma delle
+        # dimissioni -> alert HR + scadenza UNILAV (5 giorni). Mai bloccante.
+        try:
+            from app.services.dimissioni_adempimenti import registra_dimissioni
+
+            adempimenti = await registra_dimissioni(
+                db, parsed_metadata, documento_id=doc_id, filename=filename)
+        except Exception:
+            logger.exception("Dimissioni %s: adempimenti non registrati", doc_id)
     return {
         "success": True, "duplicate": False, "imported": 1,
+        "adempimenti_dimissioni": adempimenti,
         "tipo_rilevato": document_type, "doc_id": doc_id,
         "filename": filename, "workflow": "OBBLIGAZIONE_DOCUMENTALE",
         "payment_evidence": False,

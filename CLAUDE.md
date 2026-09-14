@@ -295,6 +295,46 @@ che si vede in `/hr/dipendenti/paghe-bonifici` viene alimentato da
   `hash()` di Python nell'id (cambia a ogni riavvio del processo → il controllo
   duplicati non funzionava mai fra riavvii); ora `sha1` stabile.
 
+### 14/09/2026 — dimissioni telematiche → adempimenti; giorni di chiusura attività
+
+- **Dimissioni** (richiesta del titolare: "quando trovi in posta un allegato del
+  genere è la conferma delle dimissioni, ho 5 giorni per comunicarlo al
+  consulente del lavoro"). Il gestionale riconosce già il "Modulo Recesso
+  Rapporto di Lavoro" (`fiscal_domain` → `dimissioni_telematiche`, parser
+  `administrative_document_parser.parse_dimissioni`, archiviato da
+  `documenti._archive_non_payment_document`). Nuovo
+  `app/services/dimissioni_adempimenti.py`, agganciato lì: dipendente HR per
+  CF → `dimissioni{...}` + `data_cessazione_prevista` sull'anagrafica, alert HR
+  `DIP_DIMISSIONI_RICEVUTE` (critico, Pannello di controllo) con la checklist
+  degli adempimenti, scadenza `notifiche_scadenze` tipo `UNILAV_CESSAZIONE` alla
+  data decorrenza + 5 gg. Regole: UNILAV di cessazione entro **5 giorni** dalla
+  cessazione (D.Lgs. 181/2000 art. 4-bis) via consulente; revoca del lavoratore
+  entro **7 giorni** dalla trasmissione (D.Lgs. 151/2015 art. 26); idempotente per
+  `codice_modulo`; modulo vecchio (limite passato da >60 gg) di un cessato →
+  solo archivio, niente alert. Rimosso il doppione HR `routers/dimissioni.py`
+  (lettore IMAP proprio, mai usato dal frontend): l'unica posta letta è quella
+  del gestionale.
+- **Giorni di chiusura** (titolare: ristrutturazione dal 26/01 all'8/03/2026,
+  febbraio compreso — confermato dal POS: ultima transazione 25/01, prima 09/03;
+  15–23/08 ferie — non sono corrispettivi mancanti). Registro unico
+  `chiusure_attivita` (`app/services/chiusure_attivita.py`): periodi confermati
+  seminati dal job `chiusure_attivita` (ogni 6 h), colonne "Periodo di
+  inattività da/a" del CSV AdE (`/api/corrispettivi/import-csv`: il RT le
+  dichiara alla riapertura), ferie collettive nelle presenze HR (≥80% degli
+  attivi in ferie e nessun corrispettivo quel giorno → chiusura `presenze_hr`),
+  API `GET/POST/DELETE /api/corrispettivi/chiusure`. `iva_liquidation_query.
+  corrispettivi_periodo` toglie questi giorni da `giorni_senza_corrispettivo`
+  (nuovo campo `giorni_chiusura`).
+- Anagrafica HR: "Ceraldi Antonella" confermata = Antonietta Ceraldi (unita:
+  `merged_into`, 11 presenze spostate). Render: `SUPABASE_DB_URL` svuotata
+  (puntava a un progetto morto; il codice legge prima `HR_SUPABASE_DB_URL`).
+- Cedolini con CF senza anagrafica HR (13 persone, elenco in chat del 14/09):
+  Sankapala Arachchilage (2025-06→2026-02, 11 buste), De Simone Mariano,
+  Stasio Salvatore, Posligua Orozco William, Iacovelli Manuele, Lubrano
+  Cristian, Thalwattage Sajeewani, Giattini Ilenia, Rabukkana Kusal,
+  Pellegrino Salvatore, Tramontano Giuseppe, Bettipilippuge Viraj, Mauro
+  Mariano — da creare/collegare in anagrafica (decisione del titolare).
+
 ### Stato precedente
 
 - Il default del codice è `DATA_BACKEND=sheets`.

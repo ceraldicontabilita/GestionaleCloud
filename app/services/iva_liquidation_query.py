@@ -76,11 +76,17 @@ async def corrispettivi_periodo(db, periodo: str) -> Dict[str, Any]:
             iva_non_verificabile += 1
     # Giorni del mese senza alcuna chiusura RT: un giorno senza documento non
     # e' "IVA 0", e' un giorno non caricato (regola PR 9 dell'audit).
+    # Un giorno di chiusura dell'attivita' (ferie, ristrutturazione: registro
+    # `chiusure_attivita`, titolare 14/09/2026) non e' un giorno non caricato.
     year, month = map(int, periodo.split("-"))
     giorni_mese = calendar.monthrange(year, month)[1]
+    from app.services.chiusure_attivita import giorni_chiusi
+
+    chiusi = await giorni_chiusi(db, f"{periodo}-01", f"{periodo}-{giorni_mese:02d}")
     giorni_senza = [
         f"{periodo}-{giorno:02d}" for giorno in range(1, giorni_mese + 1)
         if f"{periodo}-{giorno:02d}" not in giorni_coperti
+        and f"{periodo}-{giorno:02d}" not in chiusi
     ]
     return {
         "iva_vendite_cents": total_cents,
@@ -91,6 +97,7 @@ async def corrispettivi_periodo(db, periodo: str) -> Dict[str, Any]:
         "giorni_mese": giorni_mese,
         "giorni_con_corrispettivo": len(giorni_coperti),
         "giorni_senza_corrispettivo": giorni_senza,
+        "giorni_chiusura": sorted(chiusi),
     }
 
 

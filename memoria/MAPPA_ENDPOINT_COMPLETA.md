@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1166 endpoint** in **112 gruppi**.
+> Totale **1169 endpoint** in **112 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 636 · ext esterni = 81 · — da verificare = 449
+**Riepilogo uso:** ✓ frontend = 639 · ext esterni = 81 · — da verificare = 449
 
 ## AI Parser  (11)
 
@@ -468,7 +468,7 @@
 | GET | `/api/controllo-gestione/kpi/{anno}` | — | controllo_gestione |
 | GET | `/api/controllo-gestione/trend-mensile` | — | controllo_gestione |
 
-## Corrispettivi  (24)
+## Corrispettivi  (27)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -476,6 +476,9 @@
 | POST | `/api/corrispettivi/aggiorna-stati-mancanti` | ✓ | invoices.corrispettivi |
 | DELETE | `/api/corrispettivi/all` | ✓ | invoices.corrispettivi |
 | POST | `/api/corrispettivi/auto-ricostruisci-dati` | ✓ | invoices.corrispettivi |
+| GET | `/api/corrispettivi/chiusure` | ✓ | invoices.corrispettivi |
+| POST | `/api/corrispettivi/chiusure` | ✓ | invoices.corrispettivi |
+| DELETE | `/api/corrispettivi/chiusure/{chiusura_id}` | ✓ | invoices.corrispettivi |
 | POST | `/api/corrispettivi/cleanup-duplicati-forte` | ✓ | invoices.corrispettivi |
 | POST | `/api/corrispettivi/elimina-duplicati` | ✓ | invoices.corrispettivi |
 | POST | `/api/corrispettivi/hard-delete-bulk` | ✓ | invoices.corrispettivi |

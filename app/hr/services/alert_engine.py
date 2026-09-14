@@ -230,6 +230,12 @@ ALERT_CATALOG: Dict[str, Dict[str, Any]] = {
         "titolo": "Possibile dipendente duplicato",
         "condizione_chiusura": "Utente conferma o merge"
     },
+    "DIP_DIMISSIONI_RICEVUTE": {
+        "modulo": "dipendenti",
+        "severita": "critical",
+        "titolo": "Dimissioni ricevute: UNILAV di cessazione entro 5 giorni",
+        "condizione_chiusura": "Dipendente cessato in HR o alert risolto dopo la comunicazione al consulente"
+    },
     "DIP_CESSATO_FLUSSI_ATTIVI": {
         "modulo": "dipendenti",
         "severita": "warning",

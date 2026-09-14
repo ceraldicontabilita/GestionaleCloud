@@ -662,6 +662,23 @@ async def import_corrispettivi_csv(file: UploadFile = File(...)) -> Dict[str, An
                 totale = parse_amount(parts[4])
                 imponibile = parse_amount(parts[5])
                 iva = parse_amount(parts[6])
+
+                # Colonne 8-9 del tracciato AdE: "Periodo di inattivita' da/a".
+                # Il registratore telematico le compila il giorno della
+                # riapertura dopo una chiusura (ferie, ristrutturazione): sono
+                # la prova che quei giorni NON sono corrispettivi mancanti.
+                inattivita_da = clean_value(parts[7]) if len(parts) > 7 else ""
+                inattivita_a = clean_value(parts[8]) if len(parts) > 8 else ""
+                if inattivita_da:
+                    try:
+                        from app.services.chiusure_attivita import registra_chiusura
+                        await registra_chiusura(
+                            db, inattivita_da[:10], (inattivita_a or inattivita_da)[:10],
+                            "inattivita", "ade_inattivita", riferimento=id_invio,
+                            note=f"dichiarata dal RT {matricola} con l'invio {id_invio}",
+                        )
+                    except Exception as exc:
+                        errori.append(f"Riga {i+1}: periodo di inattivita' non registrato: {exc}")
                 
                 # Parse data (DD/MM/YYYY HH:MM:SS -> YYYY-MM-DD)
                 data_match = re.match(r'(\d{2})/(\d{2})/(\d{4})', data_rilevazione)
@@ -748,6 +765,53 @@ async def import_corrispettivi_csv(file: UploadFile = File(...)) -> Dict[str, An
     except Exception as e:
         logger.error(f"Errore import CSV: {e}")
         raise HTTPException(status_code=500, detail=f"Errore parsing CSV: {str(e)}")
+
+
+# ============== GIORNI DI CHIUSURA (ferie, ristrutturazione) ==============
+# Un giorno chiuso non e' un corrispettivo mancante (titolare, 14/09/2026).
+# Registro unico: app/services/chiusure_attivita.py (seminato dai periodi
+# confermati, dal CSV AdE "Periodo di inattivita'" e dalle ferie collettive HR).
+
+@router.get("/chiusure")
+@handle_errors
+async def elenco_chiusure_attivita(anno: int = Query(None)) -> Dict[str, Any]:
+    from app.services.chiusure_attivita import elenca_chiusure
+
+    righe = await elenca_chiusure(Database.get_db(), anno=anno)
+    return {"success": True, "chiusure": righe, "count": len(righe)}
+
+
+@router.post("/chiusure")
+@handle_errors
+async def registra_chiusura_attivita(
+    data: Dict[str, Any] = Body(...),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Body: data_inizio, data_fine (opzionale = un giorno), motivo, note."""
+    from app.services.chiusure_attivita import registra_chiusura
+
+    if not data.get("data_inizio"):
+        raise HTTPException(status_code=400, detail="Campo 'data_inizio' obbligatorio (YYYY-MM-DD)")
+    try:
+        esito = await registra_chiusura(
+            Database.get_db(), data["data_inizio"], data.get("data_fine") or data["data_inizio"],
+            data.get("motivo") or "chiusura", "manuale", note=data.get("note") or "",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"success": True, "chiusura": esito}
+
+
+@router.delete("/chiusure/{chiusura_id}")
+@handle_errors
+async def elimina_chiusura_attivita(
+    chiusura_id: str, _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    from app.services.chiusure_attivita import elimina_chiusura
+
+    if not await elimina_chiusura(Database.get_db(), chiusura_id):
+        raise HTTPException(status_code=404, detail="Chiusura non trovata")
+    return {"success": True}
 
 
 @router.get("/template-csv")

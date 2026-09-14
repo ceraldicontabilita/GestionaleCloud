@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1166 · tenere: 726 · verificare: 410 · admin-only (migrazione/manutenzione): 30
+**Totale endpoint:** 1169 · tenere: 729 · verificare: 410 · admin-only (migrazione/manutenzione): 30
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -306,10 +306,13 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/controllo-gestione/costi-ricavi` | controllo_gestione | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/controllo-gestione/kpi/{anno}` | controllo_gestione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/controllo-gestione/trend-mensile` | controllo_gestione | — | — | sì | — | — | tenere | in uso: chat |
-| `GET /api/corrispettivi` | invoices.corrispettivi | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/corrispettivi` | invoices.corrispettivi | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/corrispettivi/aggiorna-stati-mancanti` | invoices.corrispettivi | sì | — | — | — | — | tenere | in uso: FE |
 | `DELETE /api/corrispettivi/all` | invoices.corrispettivi | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/corrispettivi/auto-ricostruisci-dati` | invoices.corrispettivi | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/corrispettivi/chiusure` | invoices.corrispettivi | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/corrispettivi/chiusure` | invoices.corrispettivi | sì | — | — | — | — | tenere | in uso: FE |
+| `DELETE /api/corrispettivi/chiusure/{chiusura_id}` | invoices.corrispettivi | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/corrispettivi/cleanup-duplicati-forte` | invoices.corrispettivi | sì | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
 | `POST /api/corrispettivi/drive/quadratura` | drive_corrispettivi | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/corrispettivi/drive/status` | drive_corrispettivi | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
@@ -317,7 +320,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/corrispettivi/elimina-duplicati` | invoices.corrispettivi | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/corrispettivi/hard-delete-bulk` | invoices.corrispettivi | sì | — | — | — | — | tenere | in uso: FE |
 | `DELETE /api/corrispettivi/hard-delete/{corrispettivo_id}` | invoices.corrispettivi | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/corrispettivi/import-csv` | invoices.corrispettivi | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/corrispettivi/import-csv` | invoices.corrispettivi | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/corrispettivi/manuale` | invoices.corrispettivi | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/corrispettivi/manuali-senza-xml` | invoices.corrispettivi | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/corrispettivi/normalizza-pagamenti` | invoices.corrispettivi | sì | — | — | — | — | tenere | in uso: FE |
