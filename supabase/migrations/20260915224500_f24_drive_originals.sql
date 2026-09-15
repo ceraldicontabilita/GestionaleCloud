@@ -79,7 +79,6 @@ set data = (d.data - 'pdf_data') || jsonb_build_object(
       'original_storage', 'google_drive',
       'idempotency_key', p.idem
     ),
-    idempotency_key = p.idem,
     updated_at = now()
 from prepared p
 where d.collection = p.collection and d.id = p.id;
