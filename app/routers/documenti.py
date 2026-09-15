@@ -2704,6 +2704,20 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
             return "estratto_conto"
         if "BONIFICO" in content_str and ("IBAN" in content_str or "CRO" in content_str):
             return "bonifici"
+        # Dichiarazioni fiscali (770/IVA/IRAP/LIPE/Redditi SC): stesso
+        # classificatore deterministico del canale Drive
+        # "dichiarazione_fiscale" (app/services/drive_documenti_ingest.py),
+        # cosi' un upload manuale da Documenti > Import finisce nello stesso
+        # fiscal_documents indipendentemente dal punto di ingresso.
+        from app.services.fiscal_domain import DocumentType, classify_document
+
+        dichiarazione = classify_document(filename, pdf_text)
+        if dichiarazione["document_type"] in {
+            DocumentType.MODELLO_770.value, DocumentType.DICHIARAZIONE_IVA.value,
+            DocumentType.LIPE.value, DocumentType.DICHIARAZIONE_IRAP.value,
+            DocumentType.REDDITI_SC.value,
+        }:
+            return "dichiarazione_fiscale"
         return "auto"
 
     if lower.endswith((".xlsx", ".xls", ".csv")):
@@ -3498,6 +3512,27 @@ async def upload_documento_automatico(
                 result["success"] = False
                 result["imported"] = 0
                 result["message"] = f"Errore import Quietanza F24: {quietanza.get('error', 'parsing fallito')}"
+
+        elif tipo_rilevato == 'dichiarazione_fiscale':
+            # Stesso servizio del canale Drive "dichiarazione_fiscale"
+            # (app/services/drive_documenti_ingest.py): idempotente per
+            # sha256, popola fiscal_documents indipendentemente dal punto
+            # di ingresso (upload manuale qui, Drive lì).
+            from app.services.fiscal_document_ingestion import FiscalDocumentIngestionService
+
+            registered = await FiscalDocumentIngestionService(db).ingest(
+                content=content, filename=filename, source="documenti_upload_auto",
+            )
+            is_duplicate = registered.get("status") == "duplicate"
+            result["data"] = registered
+            result["workflow"] = "FISCAL_DOCUMENT_INGESTION"
+            result["duplicate"] = is_duplicate
+            result["imported"] = 0 if is_duplicate else 1
+            result["message"] = (
+                "Dichiarazione fiscale già archiviata"
+                if is_duplicate
+                else "Dichiarazione fiscale archiviata e agganciata a F24/quietanze"
+            )
 
         elif tipo_rilevato in {
             'avviso_pagopa', 'nota_rettifica_inps', 'tari_avviso',

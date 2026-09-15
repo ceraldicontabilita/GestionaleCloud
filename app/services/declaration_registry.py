@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from app.constants.codici_ravvedimento import CODICI_RAVVEDIMENTO
 from app.db_collections import COLL_FISCAL_DOCUMENTS
 from app.services.tax_payment_query import TaxPaymentQueryService
 
@@ -79,6 +80,16 @@ async def list_declaration_dossiers(db, *, company_id: str, year: int | None = N
                     str((relation.get("target") or {}).get("id") or ""),
                 } for relation in relations
             )
+            # Un codice tributo puo' comparire in un F24 successivo, con un
+            # totale diverso da quello dichiarato: la prova del versamento e'
+            # la riga col codice, non il totale del modello. Se lo stesso F24
+            # porta anche sanzioni/interessi da ravvedimento, il pagamento
+            # tributo e' tardivo e le due voci vanno sempre associate — non
+            # sono un'obbligazione fiscale separata da riconciliare a parte.
+            righe_ravvedimento = [
+                row for row in f24.get("righe_tributo_normalizzate", [])
+                if row.get("tax_code") in CODICI_RAVVEDIMENTO
+            ]
             candidates.append({
                 "f24_id": f24.get("id"),
                 "filename": f24.get("file_name") or f24.get("filename"),
@@ -89,6 +100,8 @@ async def list_declaration_dossiers(db, *, company_id: str, year: int | None = N
                 "bank_movement": chain.get("bank_movement"),
                 "bank_status": (chain.get("axes") or {}).get("bank", "NON_VERIFICATA"),
                 "documentary_payment_status": (chain.get("axes") or {}).get("document_evidence", "QUIETANZA_NON_PRESENTE"),
+                "pagamento_tardivo": bool(righe_ravvedimento),
+                "ravvedimento_rows": righe_ravvedimento,
             })
         declaration["f24_links"] = candidates
         declaration["f24_confirmed_count"] = sum(item["link_status"] == "CONFIRMED" for item in candidates)
