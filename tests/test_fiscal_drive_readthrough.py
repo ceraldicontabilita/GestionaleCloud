@@ -86,20 +86,27 @@ def test_paid_obligations_read_documentary_payments_from_drive(monkeypatch):
     assert calls == [{"status": "PAID_ON_TIME", "offset": 0, "limit": 5000}]
 
 
-def test_declarations_read_from_drive(monkeypatch):
-    monkeypatch.setattr(drive_document_index, "list_declarations", lambda **_kwargs: {
-        "results": [{
-            "id": "DOC-770", "document_id": "DOC-770", "sha256": "a" * 64,
-            "source_kind": "DRIVE_EXCEL_INDEX_DECLARATION",
-            "document_type": "MODELLO_770", "filing_year": 2026,
+def test_declarations_read_from_fiscal_documents(monkeypatch):
+    """15/09/2026: l'elenco dichiarazioni legge fiscal_documents (Supabase),
+    non piu' il vecchio indice Excel/Drive (radice sparita, sempre vuoto)."""
+    from app.services import declaration_registry
+
+    async def _fake_dossiers(_db, *, company_id, year=None, declaration_type=None):
+        assert company_id
+        return [{
+            "id": "DOC-770", "document_type": "MODELLO_770", "filing_year": 2026,
             "tax_year": 2025, "filename": "770_2026.pdf", "f24_links": [],
-        }],
-        "total_matching": 1,
-    })
+            "f24_confirmed_count": 0, "f24_candidate_count": 0,
+        }]
+
+    monkeypatch.setattr(declaration_registry, "list_declaration_dossiers", _fake_dossiers)
+    monkeypatch.setattr(fiscal_control, "list_declaration_dossiers", _fake_dossiers)
+    monkeypatch.setattr(fiscal_control.Database, "get_db", classmethod(lambda _cls: object()))
 
     payload = asyncio.run(fiscal_control.declarations(
         year=2026, declaration_type="MODELLO_770", _admin={},
     ))
     assert payload["total"] == 1
-    assert payload["sources"]["drive_excel_index"] == 1
+    assert payload["sources"] == {"fiscal_documents": 1, "canonical": "fiscal_documents"}
     assert payload["items"][0]["filename"] == "770_2026.pdf"
+    assert "source_kind" not in payload["items"][0]

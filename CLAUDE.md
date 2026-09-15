@@ -604,6 +604,54 @@ Supabase (Project Settings → General → Delete project) per fermare il costo
 di circa 10,18 $/mese — non è pausabile da MCP (richiede tier free) e non
 esiste un comando di eliminazione via MCP.
 
+### 15/09/2026 — Cassetto Fiscale (770/IVA/IRAP/LIPE/Redditi SC) → fiscal_documents, dichiarazioni agganciate ai F24/quietanze
+
+Richiesta del titolare: cartella Drive con l'export del Cassetto Fiscale
+2005-2026, «aggancia gli importi alle quietanze con link al PDF dal
+gestionale». La cartella indicata è risultata essere `10_BILANCI_
+DICHIARAZIONI/DICHIARAZIONI FISCALI/DA ELABORARE` — un canale già nella forma
+standard DA ELABORARE/ELABORATE/ERRORI, semplicemente non ancora agganciato a
+nessun motore. Due pezzi mancanti, entrambi risolti riusando sistemi già
+esistenti (nessun sistema parallelo):
+
+- **Ingest**: nuovo canale `dichiarazione_fiscale` in
+  `app/services/drive_documenti_ingest.py` (motore generico esistente, stesso
+  di `dichiarazione_iva`/`cartella_esattoriale`/`avviso_bonario`), cartella
+  `GOOGLE_DRIVE_DICHIARAZIONI_FISCALI_FOLDER_ID` (id non segreto, hardcoded
+  come `DRIVE_FISCAL_ROOT_FOLDER_ID`), spento di default
+  (`ENABLE_DRIVE_DICHIARAZIONI_FISCALI_SYNC`, da accendere via Render dopo il
+  deploy). A differenza degli altri canali fiscali non passa un
+  `category_hint`: la cartella mescola piu' tipi (770/IVA/IRAP/LIPE/Redditi
+  SC), decide `classify_document()` dal contenuto. Filtro solo sul nome file
+  (`_da_ingerire_dichiarazione_fiscale`, mai sul contenuto): scarta i singoli
+  quadri componenti la dichiarazione ricomposta (`01_Frontespizio...`,
+  `0N_Quadro_XX_modulo_N...` — ridondanti, lo stesso dato è già nel PDF
+  intero) e i documenti finiti lì per errore (proposte assicurative, avvisi
+  bonari, cartelle esattoriali/rottamazione: hanno già un proprio canale) —
+  spostati comunque in ELABORATE per non ririleggerli ogni giro.
+- **Vista dichiarazioni → F24/quietanze**: `GET /api/fiscal/declarations`
+  (tab "Dichiarazioni" di Situazione Fiscale) leggeva il vecchio indice
+  Excel/Drive (`drive_document_index.list_declarations`), la cui radice non
+  esiste più su Drive dal 03/09 — restituiva sempre lista vuota con avviso.
+  `app/services/declaration_registry.py::list_declaration_dossiers` (motore
+  Supabase-based che incrocia `fiscal_documents` con
+  `TaxPaymentQueryService`/`f24_unificato` per codice tributo + anno
+  d'imposta, espone `f24_links` con quietanza e stato banca) esisteva già,
+  importato ma mai richiamato da nessun endpoint: codice morto. L'endpoint
+  ora chiama quella funzione: il frontend (`SituazioneFiscale.jsx`) era
+  *già* pronto a renderla (branch su `item.source_kind` per il vecchio Drive
+  vs `openDocument(item.id)` → `GET /api/fiscal/documents/{id}/content` per
+  il nuovo, blocco `item.f24_links` già scritto) — bastava collegare i due
+  pezzi. Il drill-down "Verifica campi e F24"
+  (`/declarations/{id}/field-certainty`, estrazione campi + riconciliazione
+  gestionale LIPE/770) resta sul vecchio motore Drive-index: è una funzione
+  più ampia, già rotta allo stesso modo per la stessa causa, fuori perimetro
+  di questa correzione.
+- Non affrontato in questo intervento: il `INDICE.csv` e la sottocartella
+  `770/` descritti nel `LEGGIMI.txt` della cartella non esistono nella
+  cartella reale (solo file sciolti) — enumerazione fatta per nome file, mai
+  indovinata dal contenuto.
+
 ### Stato precedente
 
 - Il default del codice è `DATA_BACKEND=sheets`.

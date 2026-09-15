@@ -22,7 +22,7 @@ def _run(coro):
 def test_canali_definiti():
     assert set(d.CANALI) == {
         "bonifico", "dichiarazione_iva", "cartella_esattoriale", "avviso_bonario",
-        "verbale",
+        "verbale", "dichiarazione_fiscale",
     }
 
 
@@ -286,3 +286,48 @@ def test_bonifico_accetta_inbox_diretta_di_una_radice_dedicata_e_piu_radici(monk
     monkeypatch.setattr(d, "get_folder_id", lambda _area: None)
     assert d._folder_ids("bonifico") == []
     assert not d.is_configured("bonifico")
+
+
+def test_filtro_dichiarazione_fiscale_scarta_frammenti_e_documenti_fuori_canale():
+    """15/09/2026: la cartella "DICHIARAZIONI FISCALI" (Cassetto Fiscale
+    2005-2026) mescola dichiarazioni intere con i singoli quadri componenti
+    (ridondanti col PDF ricomposto) e documenti finiti li' per errore
+    (assicurazioni, avvisi bonari, cartelle esattoriali/rottamazione: hanno
+    gia' un proprio canale)."""
+    accettati = [
+        "770_2023_imposta_2022_T231029074451187547.pdf",
+        "Modello 770 - Anno 2024 - 11124646814-0000004.pdf",
+        "IVA_2024_imposta_2023_T240424162320145752.pdf",
+        "IRAP_2025_imposta_2024_T251021154817510761.pdf",
+        "760_2023_imposta_2022_T240805165341279101.pdf",
+        "LIPE_2026_407141844.pdf",
+        "unico 2016.pdf",
+    ]
+    for nome in accettati:
+        assert d._da_ingerire_dichiarazione_fiscale(nome), nome
+
+    scartati = [
+        "01_Frontespizio.pdf",
+        "01_Frontespizio__9.pdf",
+        "05_Quadro_SV_modulo_2.pdf",
+        "03_Quadro_ST_modulo_2__7.pdf",
+        "IAZZETTA FRANCESCO - Proposta assicurazione Generali 084369036.pdf",
+        "CERALDI GROUP SRL - Avviso Bonario ricevuto 29-03-2026.pdf",
+        "071-CRT-00005121-07120240057143449000-signed.pdf",
+        "07120230006300467000.pdf",
+        "ATTRIBUZIONE PARTITA  IVA.pdf",
+        "2023-04-13-08-39-11__...__R-DA-2023_MODELLO_DEFINIZIONE_AGEVOLATA.pdf",
+        "",
+    ]
+    for nome in scartati:
+        assert not d._da_ingerire_dichiarazione_fiscale(nome), nome
+
+
+def test_canale_dichiarazione_fiscale_configurato_e_senza_hint_categoria():
+    """Il canale ha una radice di default (folder ID non e' un segreto) ed
+    e' nell'elenco che attiva FiscalDocumentIngestionService; senza hint,
+    perche' mescola piu' tipi e la classificazione decide dal contenuto."""
+    assert d.is_configured("dichiarazione_fiscale")
+    assert d._lifecycle_depth("dichiarazione_fiscale") == 1
+    doc = d._build_inbox_doc(b"%PDF-1.4 x", "770_2023.pdf", "dichiarazione_fiscale")
+    assert doc["category"] == "dichiarazione_fiscale"

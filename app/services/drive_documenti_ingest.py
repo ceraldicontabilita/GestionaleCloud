@@ -17,6 +17,7 @@ import asyncio
 import base64
 import hashlib
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -88,7 +89,43 @@ CANALI: Dict[str, Dict[str, Any]] = {
         "enable": lambda s: s.ENABLE_DRIVE_VERBALI_SYNC,
         "lifecycle_depth": 1,
     },
+    "dichiarazione_fiscale": {
+        "category": "dichiarazione_fiscale",
+        "label": "Dichiarazioni fiscali (Cassetto Fiscale)",
+        "folder": lambda s: s.GOOGLE_DRIVE_DICHIARAZIONI_FISCALI_FOLDER_ID or get_folder_id("dichiarazione_fiscale"),
+        "enable": lambda s: s.ENABLE_DRIVE_DICHIARAZIONI_FISCALI_SYNC,
+        "lifecycle_depth": 1,
+    },
 }
+
+# La cartella "DICHIARAZIONI FISCALI" mescola dichiarazioni intere (da
+# ingerire) con i singoli quadri componenti che le compongono (ridondanti:
+# lo stesso dato sta gia' nel PDF ricomposto) e documenti finiti li' per
+# errore (assicurazioni, avvisi bonari, cartelle esattoriali/rottamazione -
+# che hanno gia' un proprio canale). Il filtro e' solo sul nome file: niente
+# viene mai escluso guardando il contenuto o "indovinando" il tipo.
+_FRAMMENTO_DICHIARAZIONE = re.compile(r"^\d{1,2}_(?:quadro|frontespizio)", re.IGNORECASE)
+_NUMERICO_CARTELLA_ESATTORIALE = re.compile(r"^\d{18,22}\.pdf$", re.IGNORECASE)
+_MARCATORI_FUORI_CANALE = (
+    "proposta assicurazione",
+    "avviso bonario",
+    "attribuzione partita",
+    "definizione_agevolata",
+    "dilazionata",
+)
+
+
+def _da_ingerire_dichiarazione_fiscale(filename: str) -> bool:
+    """True se il file e' una dichiarazione intera da portare in fiscal_documents."""
+    name = str(filename or "").strip().lower()
+    if not name:
+        return False
+    if _FRAMMENTO_DICHIARAZIONE.match(name):
+        return False
+    if name.startswith("071-crt-") or _NUMERICO_CARTELLA_ESATTORIALE.match(name):
+        return False
+    return not any(marcatore in name for marcatore in _MARCATORI_FUORI_CANALE)
+
 
 _locks: Dict[str, asyncio.Lock] = {c: asyncio.Lock() for c in CANALI}
 _GENERIC_BATCH_SIZE = 25
@@ -368,6 +405,21 @@ async def _do_sync(db, canale: str) -> Dict[str, Any]:
                 fname = file_info["name"]
                 source_path = f"{relative_inbox}/{fname}"
                 try:
+                    if canale == "dichiarazione_fiscale" and not _da_ingerire_dichiarazione_fiscale(fname):
+                        # Quadro componente della dichiarazione ricomposta o
+                        # documento misfiled (assicurazione, avviso bonario,
+                        # cartella esattoriale): resta un file valido, solo
+                        # fuori dal perimetro di questo canale. Spostato in
+                        # ELABORATE cosi' il canale non lo ririlegge ogni
+                        # giro; nessuna scrittura in fiscal_documents.
+                        result["details"].append({"source_path": source_path, "skipped": "fuori_canale"})
+                        if elaborate_id:
+                            await asyncio.to_thread(
+                                _move_to_folder, service, fid, source_id, elaborate_id
+                            )
+                            result["moved"] += 1
+                        continue
+
                     content = await asyncio.to_thread(_download_bytes, service, fid)
                     if not content:
                         result["errors"] += 1
@@ -405,12 +457,18 @@ async def _do_sync(db, canale: str) -> Dict[str, Any]:
                             "dichiarazione_iva",
                             "cartella_esattoriale",
                             "avviso_bonario",
+                            "dichiarazione_fiscale",
                         }:
+                            # "dichiarazione_fiscale" mescola piu' tipi (770,
+                            # IVA, IRAP, LIPE, Redditi SC): niente hint, la
+                            # classificazione deterministica del contenuto
+                            # decide il tipo (classify_document).
+                            hint = None if canale == "dichiarazione_fiscale" else CANALI[canale]["category"]
                             registered = await FiscalDocumentIngestionService(db).ingest(
                                 content=content,
                                 filename=fname,
                                 source=f"drive_{canale}",
-                                category_hint=CANALI[canale]["category"],
+                                category_hint=hint,
                                 source_metadata={
                                     "drive_file_id": fid,
                                     "source_path": source_path,

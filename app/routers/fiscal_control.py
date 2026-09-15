@@ -220,42 +220,33 @@ async def declarations(
     declaration_type: str | None = None,
     _admin: Dict[str, Any] = Depends(get_current_admin_user),
 ):
+    """770/IVA/IRAP/LIPE/Redditi SC gia' ingeriti in fiscal_documents (Drive
+    canale "dichiarazione_fiscale" + upload manuale), con i tributi F24/
+    quietanza gia' agganciati da ``list_declaration_dossiers``.
+
+    Sostituisce, per questo solo elenco, il read-through sul vecchio indice
+    Excel/Drive (``drive_document_index``): quella radice non esiste piu' su
+    Drive (vedi CLAUDE.md, 03/09/2026) e restituiva sempre lista vuota con
+    avviso. Il drill-down "Verifica campi e F24" (``/declarations/{id}/
+    field-certainty``) resta sul vecchio motore: e' una funzione piu' ampia
+    (estrazione campi + riconciliazione LIPE/770), non nel perimetro di
+    questa correzione.
+    """
     if declaration_type and declaration_type not in DECLARATION_TYPES:
         raise HTTPException(400, "Tipo dichiarazione non valido")
-    drive_warning = None
-    try:
-        from app.services.drive_document_index import list_declarations as list_drive_declarations
-        drive_payload = await asyncio.to_thread(
-            list_drive_declarations, year=str(year) if year else None,
-            declaration_type=declaration_type, limit=5000,
-        )
-        drive_items = drive_payload["results"]
-    except (RuntimeError, ValueError) as exc:
-        drive_items = []
-        drive_warning = str(exc)
-
-    merged: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    for item in drive_items:
-        identity = str(
-            item.get("sha256") or item.get("document_id") or item.get("id")
-            or item.get("archive_path") or item.get("filename") or ""
-        ).casefold()
-        if identity and identity in seen:
-            continue
-        if identity:
-            seen.add(identity)
-        merged.append(item)
-    merged.sort(key=lambda item: (
+    db = Database.get_db()
+    dossiers = await list_declaration_dossiers(
+        db, company_id=_company(), year=year, declaration_type=declaration_type,
+    )
+    dossiers.sort(key=lambda item: (
         int(item.get("filing_year") or 0), str(item.get("filename") or ""),
     ), reverse=True)
     return {
-        "items": merged, "total": len(merged), "year": year,
+        "items": dossiers, "total": len(dossiers), "year": year,
         "declaration_type": declaration_type,
         "sources": {
-            "drive_excel_index": len(drive_items),
-            "canonical": "google_drive",
-            "drive_warning": drive_warning,
+            "fiscal_documents": len(dossiers),
+            "canonical": "fiscal_documents",
         },
     }
 
