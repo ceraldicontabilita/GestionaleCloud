@@ -143,7 +143,13 @@ def _dedupe_invoices(invoices: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 async def _load_invoices(query: Dict[str, Any], limit: int, skip: int) -> List[Dict[str, Any]]:
     db = Database.get_db()
     raw_limit = min(max(limit * 10, 1000), 5000)
-    invoices = await db[Collections.INVOICES].find(query, {"_id": 0}).sort("invoice_date", -1).limit(raw_limit).to_list(raw_limit)
+    invoices = await db[Collections.INVOICES].find(query, {
+        "_id": 0,
+        "fattura_allegata": 0,
+        "document_original_ref": 0,
+        "xml_raw": 0,
+        "foto": 0,
+    }).sort("invoice_date", -1).limit(raw_limit).to_list(raw_limit)
     deduped = _dedupe_invoices(invoices)
     return deduped[skip : skip + limit]
 

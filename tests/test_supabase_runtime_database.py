@@ -36,6 +36,7 @@ class FakeRestSupabase(SupabaseRuntimeDatabase):
             "gc_fetch_collection",
             "gc_fetch_collection_after",
             "gc_fetch_collection_after_projected",
+            "gc_fetch_collection_projected",
         }:
             documents = list(
                 self.remote.get(payload["p_collection"], {}).values()
@@ -49,7 +50,10 @@ class FakeRestSupabase(SupabaseRuntimeDatabase):
                     item for item in documents
                     if str(item["_id"]) > payload["p_after_id"]
                 ]
-            if function_name == "gc_fetch_collection_after_projected":
+            if function_name in {
+                "gc_fetch_collection_after_projected",
+                "gc_fetch_collection_projected",
+            }:
                 documents = [
                     {
                         key: value for key, value in item.items()
@@ -203,6 +207,28 @@ def test_proiezione_esclusiva_viene_applicata_dentro_supabase(monkeypatch):
         },
     )
 
+
+def test_proiezione_esclusiva_offset_viene_applicata_dentro_supabase(monkeypatch):
+    runtime = FakeRestSupabase({
+        "invoices": [{"_id": "f1", "numero": "1", "xml_raw": "enorme"}],
+    })
+    calls = []
+    original_rpc = runtime._rpc
+
+    async def rpc(function, payload):
+        calls.append((function, dict(payload)))
+        return await original_rpc(function, payload)
+
+    monkeypatch.setattr(runtime, "_rpc", rpc)
+    rows = asyncio.run(runtime["invoices"].find({}, {"xml_raw": 0}).to_list(None))
+
+    assert rows == [{"_id": "f1", "numero": "1"}]
+    assert calls == [("gc_fetch_collection_projected", {
+        "p_collection": "invoices",
+        "p_limit": 500,
+        "p_offset": 0,
+        "p_exclude_fields": ["xml_raw"],
+    })]
 
 def test_allineamento_status_usa_una_sola_rpc_senza_caricare_documenti(monkeypatch):
     runtime = FakeRestSupabase({

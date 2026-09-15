@@ -499,9 +499,12 @@ class SupabaseRuntimeDatabase(SheetDatabase):
             while True:
                 try:
                     projected_keyset = bool(use_keyset and excluded_fields)
+                    projected_offset = bool(not use_keyset and excluded_fields)
                     function_name = (
                         "gc_fetch_collection_after_projected"
                         if projected_keyset
+                        else "gc_fetch_collection_projected"
+                        if projected_offset
                         else "gc_fetch_collection_after"
                         if use_keyset
                         else "gc_fetch_collection"
@@ -516,18 +519,20 @@ class SupabaseRuntimeDatabase(SheetDatabase):
                             payload["p_exclude_fields"] = excluded_fields
                     else:
                         payload["p_offset"] = offset
+                        if projected_offset:
+                            payload["p_exclude_fields"] = excluded_fields
                     try:
                         page = await self._rpc(function_name, payload)
                     except SupabaseRPCError as exc:
                         # Solo una RPC assente prima della prima pagina consente
                         # il fallback. Timeout e permessi devono mantenere la
                         # paginazione scelta e la gestione degli errori originale.
-                        if projected_keyset and not documents and (
+                        if (projected_keyset or projected_offset) and not documents and (
                             exc.status == 404 and exc.code == "PGRST202"
                         ):
                             excluded_fields = None
                             logger.warning(
-                                "RPC proiezione assente; lettura keyset completa per %s",
+                                "RPC proiezione assente; lettura completa per %s",
                                 collection_name,
                             )
                             continue

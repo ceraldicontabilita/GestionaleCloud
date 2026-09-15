@@ -330,7 +330,13 @@ async def get_archivio_fatture(
         ]
 
     # ── Legge SOLO la collezione canonica `invoices` (§5.4) ──────────────────
-    docs_inv_raw = await db["invoices"].find(q_inv, {"_id": 0}).sort("invoice_date", -1).to_list(20000)
+    docs_inv_raw = await db["invoices"].find(q_inv, {
+        "_id": 0,
+        "fattura_allegata": 0,
+        "document_original_ref": 0,
+        "xml_raw": 0,
+        "foto": 0,
+    }).sort("invoice_date", -1).to_list(20000)
 
     # Deduplica esclusivamente per evidenza documentale (hash/ID sorgente).
     # Numero, fornitore, data e importo identici restano collisioni visibili.
@@ -817,7 +823,13 @@ async def get_statistiche(anno: Optional[int] = Query(None)) -> Dict[str, Any]:
     # La statistica usa la stessa vista documentale della lista: una chiave
     # contabile coincidente non nasconde una collisione senza hash/ID comune.
     from app.routers.invoices.invoices_main import _dedupe_invoices
-    documenti = await db["invoices"].find(query, {"_id": 0}).to_list(20000)
+    documenti = await db["invoices"].find(query, {
+        "_id": 0,
+        "fattura_allegata": 0,
+        "document_original_ref": 0,
+        "xml_raw": 0,
+        "foto": 0,
+    }).to_list(20000)
     fatture_uniche = [
         _normalizza_da_invoices(documento)
         for documento in _dedupe_invoices(documenti)
