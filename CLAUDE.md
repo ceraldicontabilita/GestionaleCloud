@@ -443,6 +443,40 @@ AvvisoBonarioF24.test.jsx` vieta i colori freddi nel suo componente.
   girate al consulente il 31/07). Per nessuno dei due c'e' in Gmail l'UNILAV
   di cessazione: da verificare col consulente (Ferrantini).
 
+### 15/09/2026 — accessibilità WCAG 2.1 AA (punti 1-4 dell'audit) e cedolini storici via hub unico
+
+- **Modali HR** (`frontend_hr/src/App.jsx`): un solo componente `Modal`
+  (`role="dialog"`, `aria-modal`, titolo in `aria-labelledby`, focus portato
+  dentro all'apertura, Tab intrappolato, Esc chiude, focus restituito a chi ha
+  aperto, clic sullo sfondo chiude). Sostituisce le 4 `dc-modal-overlay` e le
+  6 finestre "a mano" (`position: fixed` + `dc-card`: riduzione oraria,
+  configura turni, sostituzione d'emergenza, correggi periodo TFR, prima nota
+  dipendente, assumi dipendente). Non aggiungere nuove modali fuori da `Modal`.
+- **Etichette**: i 29 gruppi `dc-form-group` sono `<label>` che avvolgono il
+  campo (`<span className="dc-label">` per il testo); Lotti Personale e
+  Stampanti usano `htmlFor`/`id` per riga (`postazione-<id>`, `libretto-<id>`,
+  `azienda-<campo>`, `st-<campo>-<id>`). `aria-label` dinamici sui bottoni
+  ripetuti (modifica/cessa/riattiva/elimina scheda, approva/rifiuta ferie,
+  ‹/› mesi e settimane, ✎ busta e periodo, elimina documento, select
+  dipendente/mese/anno in «Bonifici da associare», filtri paghe).
+- **Griglie da tastiera**: le celle di Presenze e Ferie contengono un
+  `<button className="dc-cell-btn">` con nome accessibile «Cognome Nome,
+  gg/mm: stato»; in Presenze Invio/Spazio applica il pennello alla cella
+  (il trascinamento col mouse resta sul `<td>`); i badge attenuati dal
+  pennello usano `.dc-dimmed` (saturazione ridotta, non opacità 0,12).
+- **Focus visibile**: `:focus-visible` salvia in `App.css` HR e regola
+  esplicita in `frontend_lotti/src/index.css` per `.g-input/.g-select/
+  .g-textarea` e le classi Tailwind `outline-none`. Home HR (`Landing.jsx`):
+  le card sono `<Link>` veri, non `<div onClick>`.
+- **Cedolini storici mancanti (63 PDF, 18 persone)** trovati confrontando
+  l'archivio Drive `1lh7M9…/Cedolini` con `hr.app_cedolini`: copiati con
+  l'API Drive nei fascicoli `DIPENDENTI/<PERSONA>/DA ELABORARE` (hub unico
+  del gestionale: ingest orario → registro `cedolini` → deposito HR), **non**
+  caricati da «Carica documenti» HR (regola del titolare: un solo motore di
+  import per ogni sezione). Appuhamy, Aurigemma, Vitiello e Dell'Aquila non
+  hanno anagrafica HR: il deposito le crea/collega per codice fiscale solo se
+  la persona esiste, quindi vanno create come storiche cessate dopo l'ingest.
+
 ### Stato precedente
 
 - Il default del codice è `DATA_BACKEND=sheets`.

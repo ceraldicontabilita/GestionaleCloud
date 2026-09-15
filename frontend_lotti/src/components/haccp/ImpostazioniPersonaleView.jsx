@@ -221,20 +221,20 @@ export default function ImpostazioniPersonaleView() {
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, alignItems: "end" }}>
           <div>
-            <label style={{ fontSize: 11, color: MUTED, fontWeight: 600 }}>
+            <label htmlFor={`postazione-${d.id}`} style={{ fontSize: 11, color: MUTED, fontWeight: 600 }}>
               Postazione{!d.postazione && d.postazione_proposta ? <span style={{ color: WARN }}> · proposta dal ruolo HR</span> : null}
             </label>
-            <select value={v.postazione || ""} onChange={(e) => setCampo(d.id, "postazione", e.target.value)}
+            <select id={`postazione-${d.id}`} value={v.postazione || ""} onChange={(e) => setCampo(d.id, "postazione", e.target.value)}
               style={{ ...inp, width: "100%", background: "#fff" }}>
               <option value="">—</option>
               {POSTAZIONI.map((p) => <option key={p} value={p}>{cap(p)}</option>)}
             </select>
           </div>
           <div>
-            <label style={{ fontSize: 11, color: MUTED, fontWeight: 600 }}>
-              <IdCard size={11} style={{ verticalAlign: "middle" }} /> Scadenza libretto sanitario
+            <label htmlFor={`libretto-${d.id}`} style={{ fontSize: 11, color: MUTED, fontWeight: 600 }}>
+              <IdCard size={11} style={{ verticalAlign: "middle" }} aria-hidden="true" /> Scadenza libretto sanitario
             </label>
-            <input type="date" value={v.libretto_sanitario_scadenza || ""} onChange={(e) => setCampo(d.id, "libretto_sanitario_scadenza", e.target.value)}
+            <input id={`libretto-${d.id}`} type="date" value={v.libretto_sanitario_scadenza || ""} onChange={(e) => setCampo(d.id, "libretto_sanitario_scadenza", e.target.value)}
               style={{ ...inp, width: "100%" }} />
           </div>
           <div>
@@ -351,10 +351,11 @@ export default function ImpostazioniPersonaleView() {
               </div>
             )}
             <div style={{ background: "#f4f8f3", border: `1px solid ${LINE}`, borderRadius: 10, padding: "12px 14px", marginBottom: 14 }}>
-              <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: NAVY, marginBottom: 5 }}>
+              <label htmlFor="azienda-codice-destinatario" style={{ display: "block", fontSize: 12, fontWeight: 700, color: NAVY, marginBottom: 5 }}>
                 Codice destinatario SDI
               </label>
               <input
+                id="azienda-codice-destinatario"
                 value={azienda.codice_destinatario || ""}
                 onChange={(e) => setAz("codice_destinatario", e.target.value.toUpperCase())}
                 placeholder="USAL8PV"
@@ -371,10 +372,11 @@ export default function ImpostazioniPersonaleView() {
                 const vuoto = inPdf && !String(azienda[campo] || "").trim();
                 return (
                   <div key={campo}>
-                    <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: vuoto ? DANGER : NAVY, marginBottom: 4 }}>
+                    <label htmlFor={`azienda-${campo}`} style={{ display: "block", fontSize: 12, fontWeight: 600, color: vuoto ? DANGER : NAVY, marginBottom: 4 }}>
                       {etichetta}{vuoto ? " · vuoto, entra nei PDF" : ""}
                     </label>
                     <input
+                      id={`azienda-${campo}`}
                       value={azienda[campo] || ""}
                       onChange={(e) => setAz(campo, e.target.value)}
                       style={{ ...inp, width: "100%", borderColor: vuoto ? DANGER : LINE }}

@@ -1024,6 +1024,13 @@ h1, .g-page-title { font-weight: 600; }
   outline-offset: 2px;
   border-radius: 4px;
 }
+/* I campi hanno outline:none di base: da tastiera l'anello deve comunque
+   comparire (WCAG 2.4.7), anche se una regola Tailwind "outline-none" lo toglie. */
+.g-input:focus-visible, .g-select:focus-visible, .g-textarea:focus-visible,
+.g-search-bar input:focus-visible, .outline-none:focus-visible {
+  outline: 2px solid var(--primary) !important;
+  outline-offset: 1px;
+}
 
 /* ════════════════════════════════════════════════════
    COMPAT — le view esistenti continuano a funzionare
