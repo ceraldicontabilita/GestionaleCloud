@@ -1,5 +1,4 @@
--- Un solo round-trip verifica lettura/scrittura/cancellazione. Il probe
--- precedente chiamava catalogo, upsert e delete separatamente a ogni health.
+-- Autorizza esplicitamente il DELETE atomico del probe nella guardia globale.
 
 CREATE OR REPLACE FUNCTION public.gc_runtime_health_probe(p_probe_id text)
 RETURNS boolean
