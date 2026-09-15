@@ -141,9 +141,10 @@ export default function StampantiConfigView() {
       ) : (
         <div className="space-y-4">
           {stampanti.map((s) => (
-            <div key={s.id} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+            <section key={s.id} aria-label={`Stampante ${s.nome || "senza nome"}`} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
               <div className="flex items-start gap-3 mb-3">
                 <input
+                  aria-label={`Nome della stampante ${s.nome || ""}`.trim()}
                   value={s.nome || ""}
                   onChange={(e) => aggiorna(s.id, "nome", e.target.value)}
                   className="flex-1 text-lg font-semibold text-gray-800 border-b border-transparent hover:border-gray-300 focus:border-[#5b7a6b] outline-none px-1 py-1"
@@ -161,6 +162,7 @@ export default function StampantiConfigView() {
                   onClick={() => elimina(s.id)}
                   className="p-2 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 mt-1"
                   title="Elimina"
+                  aria-label={`Elimina la stampante ${s.nome || "senza nome"}`}
                 >
                   <Trash2 size={18} />
                 </button>
@@ -168,8 +170,9 @@ export default function StampantiConfigView() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Reparto</label>
+                  <label htmlFor={`st-reparto-${s.id}`} className="block text-xs font-medium text-gray-500 mb-1">Reparto</label>
                   <select
+                    id={`st-reparto-${s.id}`}
                     value={s.reparto || ""}
                     onChange={(e) => aggiorna(s.id, "reparto", e.target.value)}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:border-[#5b7a6b] outline-none"
@@ -182,8 +185,9 @@ export default function StampantiConfigView() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Cosa stampa</label>
+                  <label htmlFor={`st-cosa_stampa-${s.id}`} className="block text-xs font-medium text-gray-500 mb-1">Cosa stampa</label>
                   <input
+                    id={`st-cosa_stampa-${s.id}`}
                     value={s.cosa_stampa || ""}
                     onChange={(e) => aggiorna(s.id, "cosa_stampa", e.target.value)}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:border-[#5b7a6b] outline-none"
@@ -191,10 +195,11 @@ export default function StampantiConfigView() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1 flex items-center gap-1">
-                    <Network size={13} /> Indirizzo di rete (IP)
+                  <label htmlFor={`st-indirizzo_rete-${s.id}`} className="block text-xs font-medium text-gray-500 mb-1 flex items-center gap-1">
+                    <Network size={13} aria-hidden="true" /> Indirizzo di rete (IP)
                   </label>
                   <input
+                    id={`st-indirizzo_rete-${s.id}`}
                     value={s.indirizzo_rete || ""}
                     onChange={(e) => aggiorna(s.id, "indirizzo_rete", e.target.value)}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:border-[#5b7a6b] outline-none"
@@ -202,8 +207,9 @@ export default function StampantiConfigView() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Porta</label>
+                  <label htmlFor={`st-porta-${s.id}`} className="block text-xs font-medium text-gray-500 mb-1">Porta</label>
                   <input
+                    id={`st-porta-${s.id}`}
                     type="number"
                     value={s.porta ?? 9100}
                     onChange={(e) => aggiorna(s.id, "porta", e.target.value)}
@@ -212,10 +218,11 @@ export default function StampantiConfigView() {
                   />
                 </div>
                 <div className="md:col-span-2">
-                  <label className="block text-xs font-medium text-gray-500 mb-1 flex items-center gap-1">
-                    <Printer size={13} /> Nome stampante in Windows (per la stampa automatica)
+                  <label htmlFor={`st-stampante_windows-${s.id}`} className="block text-xs font-medium text-gray-500 mb-1 flex items-center gap-1">
+                    <Printer size={13} aria-hidden="true" /> Nome stampante in Windows (per la stampa automatica)
                   </label>
                   <input
+                    id={`st-stampante_windows-${s.id}`}
                     value={s.stampante_windows || ""}
                     onChange={(e) => aggiorna(s.id, "stampante_windows", e.target.value)}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:border-[#5b7a6b] outline-none"
@@ -263,7 +270,7 @@ export default function StampantiConfigView() {
                   {salvando === s.id ? "Salvataggio…" : "Salva"}
                 </button>
               </div>
-            </div>
+            </section>
           ))}
 
           <button

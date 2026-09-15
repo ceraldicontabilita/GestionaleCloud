@@ -342,6 +342,53 @@ export default function DipendentiCloudApp({ page: pageProp }) {
 // ==================== PAGES ====================
 
 // Diagnostica Page — autotest dal vivo di backend e pagine
+// Finestra modale accessibile (audit WCAG 14/09/2026): un solo componente per
+// tutte le modali dell'app. role=dialog + aria-modal, titolo collegato con
+// aria-labelledby, focus portato dentro all'apertura, Tab che gira solo fra i
+// controlli della finestra, Esc che chiude, focus restituito al bottone che
+// l'ha aperta. Clic sullo sfondo = chiudi (come prima).
+let _modalSeq = 0;
+function Modal({ title, onClose, large, wide, maxWidth, children }) {
+  const boxRef = useRef(null);
+  const [titleId] = useState(() => `dc-modal-title-${++_modalSeq}`);
+  useEffect(() => {
+    const opener = document.activeElement;
+    const box = boxRef.current;
+    if (!box) return undefined;
+    const focusables = () => Array.from(box.querySelectorAll(
+      'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )).filter(el => el.offsetParent !== null);
+    const primo = focusables().find(el => !el.classList.contains("dc-modal-close")) || box;
+    primo.focus();
+    const onKey = (e) => {
+      if (e.key === "Escape") { e.stopPropagation(); onClose?.(); return; }
+      if (e.key !== "Tab") return;
+      const lista = focusables();
+      if (!lista.length) { e.preventDefault(); box.focus(); return; }
+      const a = lista[0], z = lista[lista.length - 1];
+      if (e.shiftKey && (document.activeElement === a || document.activeElement === box)) { e.preventDefault(); z.focus(); }
+      else if (!e.shiftKey && document.activeElement === z) { e.preventDefault(); a.focus(); }
+    };
+    box.addEventListener("keydown", onKey);
+    return () => {
+      box.removeEventListener("keydown", onKey);
+      if (opener && typeof opener.focus === "function" && document.contains(opener)) opener.focus();
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <div className="dc-modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose?.(); }}>
+      <div ref={boxRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={titleId}
+        className={`dc-modal${large ? " dc-modal-lg" : ""}${wide ? " dc-modal-wide" : ""}`} style={maxWidth ? { maxWidth } : undefined}>
+        <div className="dc-modal-header">
+          <h3 id={titleId}>{title}</h3>
+          <button type="button" onClick={onClose} className="dc-modal-close" aria-label="Chiudi finestra"><X size={20} /></button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function DiagnosticaPage() {
   const [checks, setChecks] = useState(null);
   const [riepilogo, setRiepilogo] = useState(null);
@@ -896,11 +943,11 @@ function AnagraficaPage({ dipendenti, reload, onDipendente }) {
                   <div className="dc-muted" style={{ fontSize: 11, marginTop: 3 }}>{dip.lotti_operatore === false ? "non firma in Lotti" : "operatore Lotti"}</div>
                 </td>
                 <td data-label="Azioni" className="dc-table-actions">
-                  <button onClick={() => openModal(dip)} className="dc-btn-icon" title="Modifica scheda"><Edit2 size={16} /></button>
+                  <button onClick={() => openModal(dip)} className="dc-btn-icon" title="Modifica scheda" aria-label={`Modifica scheda di ${dip.cognome} ${dip.nome}`}><Edit2 size={16} /></button>
                   {dip.stato === "attivo"
-                    ? <button onClick={() => apriCessazione(dip)} className="dc-btn-icon" title="Cessa rapporto (chiede data e motivo)"><LogOut size={16} /></button>
-                    : <button onClick={() => riattiva(dip)} className="dc-btn-icon" title="Riattiva rapporto"><RefreshCw size={16} /></button>}
-                  <button onClick={() => handleDelete(dip)} className="dc-btn-icon dc-btn-danger" title="Elimina scheda (non e' una cessazione)"><Trash2 size={16} /></button>
+                    ? <button onClick={() => apriCessazione(dip)} className="dc-btn-icon" title="Cessa rapporto (chiede data e motivo)" aria-label={`Cessa rapporto di ${dip.cognome} ${dip.nome}`}><LogOut size={16} /></button>
+                    : <button onClick={() => riattiva(dip)} className="dc-btn-icon" title="Riattiva rapporto" aria-label={`Riattiva rapporto di ${dip.cognome} ${dip.nome}`}><RefreshCw size={16} /></button>}
+                  <button onClick={() => handleDelete(dip)} className="dc-btn-icon dc-btn-danger" title="Elimina scheda (non e' una cessazione)" aria-label={`Elimina scheda di ${dip.cognome} ${dip.nome}`}><Trash2 size={16} /></button>
                 </td>
               </tr>
             ))}
@@ -910,12 +957,7 @@ function AnagraficaPage({ dipendenti, reload, onDipendente }) {
 
       {/* Modale scheda */}
       {showModal && (
-        <div className="dc-modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="dc-modal dc-modal-lg" onClick={e => e.stopPropagation()}>
-            <div className="dc-modal-header">
-              <h3>{editingDip ? "Modifica Dipendente" : "Nuovo Dipendente"}</h3>
-              <button onClick={() => setShowModal(false)} className="dc-modal-close"><X size={20} /></button>
-            </div>
+        <Modal large title={editingDip ? "Modifica Dipendente" : "Nuovo Dipendente"} onClose={() => setShowModal(false)}>
             <form onSubmit={handleSubmit} className="dc-modal-body">
               {editingDip && (
                 <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
@@ -928,56 +970,56 @@ function AnagraficaPage({ dipendenti, reload, onDipendente }) {
                 </div>
               )}
               <div className="dc-form-grid">
-                <div className="dc-form-group">
-                  <label>Nome *</label>
+                <label className="dc-form-group">
+                  <span className="dc-label">Nome *</span>
                   <input required value={formData.nome} onChange={(e) => setFormData({...formData, nome: e.target.value})} />
-                </div>
-                <div className="dc-form-group">
-                  <label>Cognome *</label>
+                </label>
+                <label className="dc-form-group">
+                  <span className="dc-label">Cognome *</span>
                   <input required value={formData.cognome} onChange={(e) => setFormData({...formData, cognome: e.target.value})} />
-                </div>
-                <div className="dc-form-group">
-                  <label>Codice Fiscale</label>
+                </label>
+                <label className="dc-form-group">
+                  <span className="dc-label">Codice Fiscale</span>
                   <input value={formData.codice_fiscale} onChange={(e) => setFormData({...formData, codice_fiscale: e.target.value.toUpperCase()})} />
-                </div>
-                <div className="dc-form-group">
-                  <label>Matricola</label>
+                </label>
+                <label className="dc-form-group">
+                  <span className="dc-label">Matricola</span>
                   <input value={formData.matricola} onChange={(e) => setFormData({...formData, matricola: e.target.value})} />
-                </div>
-                <div className="dc-form-group">
-                  <label>Data di nascita</label>
+                </label>
+                <label className="dc-form-group">
+                  <span className="dc-label">Data di nascita</span>
                   <input type="date" value={formData.data_nascita} onChange={(e) => setFormData({...formData, data_nascita: e.target.value})} />
-                </div>
-                <div className="dc-form-group">
-                  <label>Data assunzione</label>
+                </label>
+                <label className="dc-form-group">
+                  <span className="dc-label">Data assunzione</span>
                   <input type="date" value={formData.data_assunzione} onChange={(e) => setFormData({...formData, data_assunzione: e.target.value})} />
-                </div>
-                <div className="dc-form-group">
-                  <label>Email</label>
+                </label>
+                <label className="dc-form-group">
+                  <span className="dc-label">Email</span>
                   <input type="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} />
-                </div>
-                <div className="dc-form-group">
-                  <label>Telefono</label>
+                </label>
+                <label className="dc-form-group">
+                  <span className="dc-label">Telefono</span>
                   <input value={formData.telefono} onChange={(e) => setFormData({...formData, telefono: e.target.value})} />
-                </div>
-                <div className="dc-form-group">
-                  <label>Indirizzo</label>
+                </label>
+                <label className="dc-form-group">
+                  <span className="dc-label">Indirizzo</span>
                   <input value={formData.indirizzo} onChange={(e) => setFormData({...formData, indirizzo: e.target.value})} />
-                </div>
-                <div className="dc-form-group">
-                  <label>Ruolo / qualifica</label>
+                </label>
+                <label className="dc-form-group">
+                  <span className="dc-label">Ruolo / qualifica</span>
                   <input value={formData.ruolo} onChange={(e) => setFormData({...formData, ruolo: e.target.value})} placeholder="es. barista, cameriere di bar, pasticciere" />
-                </div>
-                <div className="dc-form-group">
-                  <label>Livello</label>
+                </label>
+                <label className="dc-form-group">
+                  <span className="dc-label">Livello</span>
                   <input value={formData.livello} onChange={(e) => setFormData({...formData, livello: e.target.value})} />
-                </div>
-                <div className="dc-form-group">
-                  <label>Ore settimanali</label>
+                </label>
+                <label className="dc-form-group">
+                  <span className="dc-label">Ore settimanali</span>
                   <input type="number" min="0" max="60" step="0.5" value={formData.ore_settimanali ?? ""} onChange={(e) => setFormData({...formData, ore_settimanali: e.target.value})} />
-                </div>
-                <div className="dc-form-group">
-                  <label>Contratto</label>
+                </label>
+                <label className="dc-form-group">
+                  <span className="dc-label">Contratto</span>
                   <select value={formData.contratto || ""} onChange={(e) => setFormData({...formData, contratto: e.target.value})}>
                     <option value="">— non indicato —</option>
                     <option>Indeterminato</option>
@@ -985,13 +1027,13 @@ function AnagraficaPage({ dipendenti, reload, onDipendente }) {
                     <option>Part-time</option>
                     <option>Apprendistato</option>
                   </select>
-                </div>
-                <div className="dc-form-group">
-                  <label>IBAN</label>
+                </label>
+                <label className="dc-form-group">
+                  <span className="dc-label">IBAN</span>
                   <input value={formData.iban} onChange={(e) => setFormData({...formData, iban: e.target.value.toUpperCase()})} />
-                </div>
+                </label>
                 <div className="dc-form-group">
-                  <label>Lotti (HACCP)</label>
+                  <span className="dc-label">Lotti (HACCP)</span>
                   <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 400 }}>
                     <input type="checkbox" checked={formData.lotti_operatore !== false} onChange={(e) => setFormData({...formData, lotti_operatore: e.target.checked})} />
                     Operatore in Lotti (firma lotti, sanificazioni, temperature)
@@ -1023,38 +1065,32 @@ function AnagraficaPage({ dipendenti, reload, onDipendente }) {
                 <button type="submit" className="dc-btn dc-btn-primary" disabled={salvando}>{salvando ? "Salvo…" : editingDip ? "Salva scheda" : "Crea"}</button>
               </div>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* Modale cessazione */}
       {cessa && (
-        <div className="dc-modal-overlay" onClick={() => !cessaBusy && setCessa(null)}>
-          <div className="dc-modal" onClick={e => e.stopPropagation()}>
-            <div className="dc-modal-header">
-              <h3>Cessa rapporto · {cessa.dip.cognome} {cessa.dip.nome}</h3>
-              <button onClick={() => setCessa(null)} className="dc-modal-close"><X size={20} /></button>
-            </div>
+        <Modal title={`Cessa rapporto · ${cessa.dip.cognome} ${cessa.dip.nome}`} onClose={() => !cessaBusy && setCessa(null)}>
             <div className="dc-modal-body">
               <div className="dc-form-grid">
-                <div className="dc-form-group">
-                  <label>Data di fine rapporto *</label>
+                <label className="dc-form-group">
+                  <span className="dc-label">Data di fine rapporto *</span>
                   <input type="date" value={cessa.data} onChange={(e) => setCessa({ ...cessa, data: e.target.value })} />
-                </div>
-                <div className="dc-form-group">
-                  <label>Motivo *</label>
+                </label>
+                <label className="dc-form-group">
+                  <span className="dc-label">Motivo *</span>
                   <select value={cessa.motivo} onChange={(e) => setCessa({ ...cessa, motivo: e.target.value })}>
                     {MOTIVI_CESSAZIONE.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                   </select>
-                </div>
-                <div className="dc-form-group">
-                  <label>Riferimento (numero modulo dimissioni / protocollo UNILAV)</label>
+                </label>
+                <label className="dc-form-group">
+                  <span className="dc-label">Riferimento (numero modulo dimissioni / protocollo UNILAV)</span>
                   <input value={cessa.riferimento} onChange={(e) => setCessa({ ...cessa, riferimento: e.target.value })} />
-                </div>
-                <div className="dc-form-group">
-                  <label>Note</label>
+                </label>
+                <label className="dc-form-group">
+                  <span className="dc-label">Note</span>
                   <input value={cessa.note} onChange={(e) => setCessa({ ...cessa, note: e.target.value })} />
-                </div>
+                </label>
               </div>
               <p className="dc-muted" style={{ fontSize: 12 }}>
                 Effetti: PIN disattivato, contratti terminati, richieste future rifiutate, partite aperte chiuse; su Lotti la persona passa in «Non più in carico» entro 10 minuti.
@@ -1064,14 +1100,12 @@ function AnagraficaPage({ dipendenti, reload, onDipendente }) {
                 <button type="button" onClick={confermaCessazione} className="dc-btn dc-btn-primary" disabled={cessaBusy}>{cessaBusy ? "…" : "Conferma cessazione"}</button>
               </div>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {showRid && (
-        <div onClick={() => setShowRid(false)} style={{ position: "fixed", inset: 0, background: "rgba(42,51,41,.45)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: 20, zIndex: 50, overflow: "auto" }}>
-          <div onClick={e => e.stopPropagation()} className="dc-card" style={{ maxWidth: 880, width: "100%", marginTop: 20 }}>
-            <h3 style={{ marginTop: 0 }}>⏱️ Riduzione oraria collettiva</h3>
+        <Modal wide title="Riduzione oraria collettiva" onClose={() => setShowRid(false)}>
+          <div className="dc-modal-body">
             <p className="dc-muted" style={{ fontSize: 13, marginTop: 0 }}>Per ogni dipendente: spunta <b>Attiva</b>, imposta le <b>ore/giorno</b> ridotte, l'eventuale <b>paga oraria</b> e le date <b>dal/al</b>. <b>All'attivazione il sistema genera il contratto di solidarietà</b> che entra nell'iter firma (lo trovi in Assunzione &amp; Contratti → firma/invio → archiviazione nel fascicolo e nei documenti del dipendente). Il sistema sorveglia la <b>scadenza</b>: rossa se scaduta, arancione entro 30 giorni.</p>
             <div style={{ maxHeight: "62vh", overflow: "auto" }}>
               <table className="dc-table" style={{ minWidth: 800, whiteSpace: "nowrap" }}>
@@ -1083,11 +1117,11 @@ function AnagraficaPage({ dipendenti, reload, onDipendente }) {
                     return (
                       <tr key={r.dipendente_id}>
                         <td>{r.nome}</td>
-                        <td style={{ textAlign: "center" }}><input type="checkbox" checked={r.attiva} onChange={e => setRidRow(i, "attiva", e.target.checked)} /></td>
-                        <td><input className="dc-input" style={{ width: 70 }} type="number" min="0" max="24" step="0.5" value={r.ore_giorno} onChange={e => setRidRow(i, "ore_giorno", e.target.value)} /></td>
-                        <td><input className="dc-input" style={{ width: 84 }} type="number" min="0" step="0.01" value={r.paga_oraria} onChange={e => setRidRow(i, "paga_oraria", e.target.value)} /></td>
-                        <td><input className="dc-input" type="date" value={r.data_inizio} onChange={e => setRidRow(i, "data_inizio", e.target.value)} /></td>
-                        <td><input className="dc-input" type="date" value={r.data_fine} onChange={e => setRidRow(i, "data_fine", e.target.value)} /></td>
+                        <td style={{ textAlign: "center" }}><input type="checkbox" checked={r.attiva} aria-label={`Attiva riduzione per ${r.nome}`} onChange={e => setRidRow(i, "attiva", e.target.checked)} /></td>
+                        <td><input className="dc-input" style={{ width: 70 }} type="number" min="0" max="24" step="0.5" aria-label={`Ore al giorno di ${r.nome}`} value={r.ore_giorno} onChange={e => setRidRow(i, "ore_giorno", e.target.value)} /></td>
+                        <td><input className="dc-input" style={{ width: 84 }} type="number" min="0" step="0.01" aria-label={`Paga oraria di ${r.nome}`} value={r.paga_oraria} onChange={e => setRidRow(i, "paga_oraria", e.target.value)} /></td>
+                        <td><input className="dc-input" type="date" aria-label={`Riduzione dal, ${r.nome}`} value={r.data_inizio} onChange={e => setRidRow(i, "data_inizio", e.target.value)} /></td>
+                        <td><input className="dc-input" type="date" aria-label={`Riduzione fino al, ${r.nome}`} value={r.data_fine} onChange={e => setRidRow(i, "data_fine", e.target.value)} /></td>
                         <td>{!r.attiva ? <span className="dc-muted">—</span> : scaduta ? <Badge variant="danger">scaduta</Badge> : vicina ? <Badge variant="warning">in scadenza</Badge> : <Badge variant="success">attiva</Badge>}</td>
                       </tr>
                     );
@@ -1100,7 +1134,7 @@ function AnagraficaPage({ dipendenti, reload, onDipendente }) {
               <button className="dc-btn-primary" onClick={salvaRid}>Salva</button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );
@@ -1525,9 +1559,9 @@ function PresenzePage({ dipendenti, reload }) {
 
         {/* Month Navigation */}
         <div className="dc-month-nav">
-          <button onClick={prevMonth} className="dc-btn-icon"><ChevronLeft size={20} /></button>
+          <button onClick={prevMonth} className="dc-btn-icon" aria-label="Mese precedente"><ChevronLeft size={20} /></button>
           <span className="dc-month-label">{mesi[mese - 1]} {anno}</span>
-          <button onClick={nextMonth} className="dc-btn-icon"><ChevronRight size={20} /></button>
+          <button onClick={nextMonth} className="dc-btn-icon" aria-label="Mese successivo"><ChevronRight size={20} /></button>
         </div>
 
         {/* Action Buttons */}
@@ -1704,14 +1738,18 @@ function PresenzePage({ dipendenti, reload }) {
                       style={{ cursor: penna ? "cell" : "default", position: "relative", userSelect: "none",
                         outline: inSel ? "2px solid #5b7a6b" : "none", background: inSel ? "#e8efe9" : undefined }}
                       title={titolo || undefined}>
-                      {code ? (
-                        <span className="dc-presenza-badge" style={{ backgroundColor: tipo?.color || '#10b981', opacity: dimmed ? 0.12 : (salvata ? 1 : 0.55) }}>
-                          {code}
-                          {nota ? <span title={nota} style={{ position: "absolute", top: 1, right: 2, width: 6, height: 6, borderRadius: "50%", background: "#b91c1c", border: "1px solid #fff" }} /> : null}
-                        </span>
-                      ) : (
-                        <span className="dc-presenza-empty">-</span>
-                      )}
+                      <button type="button" className="dc-cell-btn dc-cell-btn-presenza"
+                        aria-label={`${dip.cognome} ${dip.nome || ""}, ${day}/${mese}: ${titolo || "nessuna presenza"}${penna ? ` — Invio applica ${penna}` : ""}`}
+                        onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && penna) { e.preventDefault(); applicaCelle(cellsForDay(dip.id, day)); } }}>
+                        {code ? (
+                          <span className={`dc-presenza-badge${dimmed ? " dc-dimmed" : ""}`} style={{ backgroundColor: tipo?.color || '#3d8168', opacity: salvata ? 1 : 0.55 }}>
+                            {code}
+                            {nota ? <span title={nota} style={{ position: "absolute", top: 1, right: 2, width: 6, height: 6, borderRadius: "50%", background: "#b91c1c", border: "1px solid #fff" }} /> : null}
+                          </span>
+                        ) : (
+                          <span className="dc-presenza-empty">-</span>
+                        )}
+                      </button>
                     </td>
                   );
                 })}
@@ -1862,9 +1900,9 @@ function FeriePage({ dipendenti, ferie, reload, getDipendente }) {
 
       <div className="dc-card dc-scroll-x" style={{ overflowX: "auto", marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
-          <button onClick={() => setMese(new Date(mese.getFullYear(), mese.getMonth() - 1, 1))} className="dc-btn">‹</button>
+          <button onClick={() => setMese(new Date(mese.getFullYear(), mese.getMonth() - 1, 1))} className="dc-btn" aria-label="Mese precedente">‹</button>
           <strong style={{ textTransform: "capitalize", minWidth: 150, textAlign: "center" }}>{meseLabel}</strong>
-          <button onClick={() => setMese(new Date(mese.getFullYear(), mese.getMonth() + 1, 1))} className="dc-btn">›</button>
+          <button onClick={() => setMese(new Date(mese.getFullYear(), mese.getMonth() + 1, 1))} className="dc-btn" aria-label="Mese successivo">›</button>
           <span style={{ marginLeft: 12, fontSize: 13, color: "#6b7669" }}>
             Clicca una cella: vuoto → <b style={{ color: "#5b7a6b" }}>Ferie</b> → <b style={{ color: "#7d5526" }}>Permesso</b> → vuoto
           </span>
@@ -1889,10 +1927,13 @@ function FeriePage({ dipendenti, ferie, reload, getDipendente }) {
                   const att = assenzaDi(dip.id, dateStr);
                   const meta = att ? TIPI.find(t => t.tipo === att.tipo) : null;
                   return (
-                    <td key={d} onClick={() => ciclaCella(dip.id, dateStr)} title={att ? att.tipo : ""}
-                      style={{ cursor: "pointer", textAlign: "center", padding: "5px 3px", border: "1px solid #f1f5f9",
-                        background: meta ? meta.color : "transparent", color: meta ? "#fff" : "#cbd5e1", fontWeight: 600 }}>
-                      {meta ? meta.code : "·"}
+                    <td key={d} title={att ? att.tipo : ""}
+                      style={{ textAlign: "center", padding: 0, border: "1px solid #f1f5f9", background: meta ? meta.color : "transparent" }}>
+                      <button type="button" className="dc-cell-btn" onClick={() => ciclaCella(dip.id, dateStr)}
+                        aria-label={`${dip.cognome} ${dip.nome || ""}, ${d}/${mese.getMonth() + 1}: ${att ? att.tipo : "nessuna assenza"} — cambia`}
+                        style={{ color: meta ? "#fff" : "#6b7669", fontWeight: 600 }}>
+                        {meta ? meta.code : "·"}
+                      </button>
                     </td>
                   );
                 })}
@@ -1932,8 +1973,8 @@ function FeriePage({ dipendenti, ferie, reload, getDipendente }) {
                   <td data-label="Azioni" className="dc-table-actions">
                     {f.stato === 'in_attesa' && (
                       <>
-                        <button onClick={() => handleApprova(f.id)} className="dc-btn-icon dc-btn-success"><Check size={16} /></button>
-                        <button onClick={() => handleRifiuta(f.id)} className="dc-btn-icon dc-btn-danger"><X size={16} /></button>
+                        <button onClick={() => handleApprova(f.id)} className="dc-btn-icon dc-btn-success" title="Approva" aria-label={`Approva richiesta di ${dip?.nome || ""} ${dip?.cognome || ""}`}><Check size={16} /></button>
+                        <button onClick={() => handleRifiuta(f.id)} className="dc-btn-icon dc-btn-danger" title="Rifiuta" aria-label={`Rifiuta richiesta di ${dip?.nome || ""} ${dip?.cognome || ""}`}><X size={16} /></button>
                       </>
                     )}
                   </td>
@@ -1945,50 +1986,44 @@ function FeriePage({ dipendenti, ferie, reload, getDipendente }) {
       </div>
 
       {showModal && (
-        <div className="dc-modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="dc-modal" onClick={e => e.stopPropagation()}>
-            <div className="dc-modal-header">
-              <h3>Nuova Richiesta Ferie/Permesso</h3>
-              <button onClick={() => setShowModal(false)} className="dc-modal-close"><X size={20} /></button>
-            </div>
+        <Modal title="Nuova Richiesta Ferie/Permesso" onClose={() => setShowModal(false)}>
             <form onSubmit={handleSubmit} className="dc-modal-body">
-              <div className="dc-form-group">
-                <label>Dipendente *</label>
+              <label className="dc-form-group">
+                <span className="dc-label">Dipendente *</span>
                 <select required value={formData.dipendente_id} onChange={e => setFormData({...formData, dipendente_id: e.target.value})}>
                   <option value="">Seleziona...</option>
                   {dipendenti.map(d => <option key={d.id} value={d.id}>{d.nome} {d.cognome}</option>)}
                 </select>
-              </div>
-              <div className="dc-form-group">
-                <label>Tipo</label>
+              </label>
+              <label className="dc-form-group">
+                <span className="dc-label">Tipo</span>
                 <select value={formData.tipo} onChange={e => setFormData({...formData, tipo: e.target.value})}>
                   <option>Ferie</option>
                   <option>Permesso</option>
                   <option>ROL</option>
                   <option>Malattia</option>
                 </select>
-              </div>
+              </label>
               <div className="dc-form-row">
-                <div className="dc-form-group">
-                  <label>Data Inizio</label>
+                <label className="dc-form-group">
+                  <span className="dc-label">Data Inizio</span>
                   <input type="date" required value={formData.data_inizio} onChange={e => setFormData({...formData, data_inizio: e.target.value})} />
-                </div>
-                <div className="dc-form-group">
-                  <label>Data Fine</label>
+                </label>
+                <label className="dc-form-group">
+                  <span className="dc-label">Data Fine</span>
                   <input type="date" required value={formData.data_fine} onChange={e => setFormData({...formData, data_fine: e.target.value})} />
-                </div>
+                </label>
               </div>
-              <div className="dc-form-group">
-                <label>Giorni</label>
+              <label className="dc-form-group">
+                <span className="dc-label">Giorni</span>
                 <input type="number" min="1" value={formData.giorni} onChange={e => setFormData({...formData, giorni: +e.target.value})} />
-              </div>
+              </label>
               <div className="dc-modal-footer">
                 <button type="button" onClick={() => setShowModal(false)} className="dc-btn">Annulla</button>
                 <button type="submit" className="dc-btn dc-btn-primary">Crea Richiesta</button>
               </div>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );
@@ -2519,9 +2554,9 @@ function TurniPage({ dipendenti, turni, reload }) {
       </details>
 
       <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <button onClick={() => setLunedi(d => { const n = new Date(d); n.setDate(d.getDate() - 7); return n; })} className="dc-btn">‹</button>
+        <button onClick={() => setLunedi(d => { const n = new Date(d); n.setDate(d.getDate() - 7); return n; })} className="dc-btn" aria-label="Settimana precedente">‹</button>
         <strong style={{ minWidth: 150, textAlign: "center" }}>{meseLabel}</strong>
-        <button onClick={() => setLunedi(d => { const n = new Date(d); n.setDate(d.getDate() + 7); return n; })} className="dc-btn">›</button>
+        <button onClick={() => setLunedi(d => { const n = new Date(d); n.setDate(d.getDate() + 7); return n; })} className="dc-btn" aria-label="Settimana successiva">›</button>
         <button onClick={() => setLunedi(lunOggi)} className="dc-btn" style={{ fontSize: 12 }}>Oggi</button>
         <button onClick={() => setVista(v => (v === "semplice" ? "tabella" : "semplice"))} className="dc-btn"
           style={{ marginLeft: "auto", padding: "10px 16px", borderRadius: 10, fontWeight: 600 }}
@@ -2566,9 +2601,8 @@ function TurniPage({ dipendenti, turni, reload }) {
       )}
 
       {showCfg && (
-        <div onClick={() => setShowCfg(false)} style={{ position: "fixed", inset: 0, background: "rgba(42,51,41,.45)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: 20, zIndex: 50, overflow: "auto" }}>
-          <div onClick={e => e.stopPropagation()} className="dc-card" style={{ maxWidth: 1080, width: "100%", marginTop: 20 }}>
-            <h3 style={{ marginTop: 0 }}>⚙️ Configura turni dipendenti</h3>
+        <Modal title="Configura turni dipendenti" onClose={() => setShowCfg(false)} maxWidth={1080}>
+          <div className="dc-modal-body">
             <p className="dc-muted" style={{ fontSize: 13, marginTop: 0 }}>
               Una card per dipendente: scegli la <b>modalità</b> (Sala, Bar in rotazione o Turno fisso),
               poi tocca i giorni per <b>riposo fisso</b> e <b>Lunga</b>. Queste sono le "sponde" usate
@@ -2698,13 +2732,12 @@ function TurniPage({ dipendenti, turni, reload }) {
               <button className="dc-btn-primary" onClick={salvaCfg}>Salva</button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
 
       {showSost && (
-        <div onClick={() => setShowSost(false)} style={{ position: "fixed", inset: 0, background: "rgba(42,51,41,.45)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: 20, zIndex: 50, overflow: "auto" }}>
-          <div onClick={e => e.stopPropagation()} className="dc-card" style={{ maxWidth: 520, width: "100%", marginTop: 40 }}>
-            <h3 style={{ marginTop: 0 }}>🚨 Sostituzione d'emergenza</h3>
+        <Modal title="Sostituzione d'emergenza" onClose={() => setShowSost(false)} maxWidth={520}>
+          <div className="dc-modal-body">
             <p className="dc-muted" style={{ fontSize: 13, marginTop: 0 }}>
               Segna chi è assente e il motivo: la <b>malattia</b> viene registrata nelle Presenze (con protocollo), ferie/permesso/assenza liberano il turno. Poi scegli chi lo copre: gli assegno il turno scelto (di default la <b>Lunga</b> = doppia) in quel giorno.
             </p>
@@ -2780,7 +2813,7 @@ function TurniPage({ dipendenti, turni, reload }) {
               <button className="dc-btn-primary" onClick={confermaSost} disabled={busy}>Conferma sostituzione</button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
 
       <div className="dc-card" style={{ marginBottom: 12 }}>
@@ -2982,9 +3015,9 @@ function MiniCalendario({ value, onChange }) {
       {aperto && (
         <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 4, background: "#fffefb", border: "1px solid #e6e0d4", borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,.18)", padding: 10, zIndex: 60, width: 232 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-            <button type="button" className="dc-btn" style={{ padding: "2px 8px" }} onClick={() => cambiaMese(-1)}>‹</button>
+            <button type="button" className="dc-btn" style={{ padding: "2px 8px" }} onClick={() => cambiaMese(-1)} aria-label="Mese precedente">‹</button>
             <b style={{ fontSize: 13 }}>{meseNomi[vista.mese]} {vista.anno}</b>
-            <button type="button" className="dc-btn" style={{ padding: "2px 8px" }} onClick={() => cambiaMese(1)}>›</button>
+            <button type="button" className="dc-btn" style={{ padding: "2px 8px" }} onClick={() => cambiaMese(1)} aria-label="Mese successivo">›</button>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 2, fontSize: 11, textAlign: "center" }}>
             {giorniSett.map((g, i) => <div key={i} className="dc-muted" style={{ fontWeight: 700 }}>{g}</div>)}
@@ -3412,9 +3445,9 @@ ${rate?.rate?.length ? `<h2>Piano di pagamento in ${rate.numero_rate} rate</h2>
                         <td style={{ textAlign: "right" }}>{eur(p.lordo)}</td>
                         <td style={{ textAlign: "right", fontWeight: 700 }}>{eur(p.netto)}</td>
                         <td style={{ display: "flex", gap: 4 }}>
-                          <button className="dc-btn" style={{ padding: "2px 8px", fontSize: 12 }} onClick={() => apriModificaPeriodo(p)} title="Correggi le date">✎</button>
+                          <button className="dc-btn" style={{ padding: "2px 8px", fontSize: 12 }} onClick={() => apriModificaPeriodo(p)} title="Correggi le date" aria-label="Correggi le date del periodo">✎</button>
                           {i === sim.periodi.length - 1 && (
-                            <button className="dc-btn" style={{ padding: "2px 8px", fontSize: 12 }} onClick={() => eliminaUltimoPeriodo(p.id)}>✕</button>
+                            <button className="dc-btn" style={{ padding: "2px 8px", fontSize: 12 }} onClick={() => eliminaUltimoPeriodo(p.id)} aria-label="Elimina l'ultimo periodo">✕</button>
                           )}
                         </td>
                       </tr>
@@ -3815,12 +3848,8 @@ ${rate?.rate?.length ? `<h2>Piano di pagamento in ${rate.numero_rate} rate</h2>
       )}
 
       {modificaPeriodo && (
-        <div onClick={() => setModificaPeriodo(null)} style={{ position: "fixed", inset: 0, background: "rgba(42,51,41,.45)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: 20, zIndex: 50, overflow: "auto" }}>
-          <div onClick={e => e.stopPropagation()} className="dc-card" style={{ maxWidth: 420, width: "100%", marginTop: 60 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <h3 style={{ margin: 0 }}>Correggi periodo</h3>
-              <button className="dc-btn" onClick={() => setModificaPeriodo(null)}>Chiudi</button>
-            </div>
+        <Modal title="Correggi periodo" onClose={() => setModificaPeriodo(null)} maxWidth={420}>
+          <div className="dc-modal-body">
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <div>
                 <label className="dc-muted" style={{ fontSize: 12, display: "block" }}>Dal</label>
@@ -3842,7 +3871,7 @@ ${rate?.rate?.length ? `<h2>Piano di pagamento in ${rate.numero_rate} rate</h2>
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );
@@ -3948,17 +3977,17 @@ function BonificiDaAssociarePage({ dipendenti }) {
                     </a>
                   </td>
                   <td>
-                    <select className="dc-input" value={sc.dipendente_id || ""} onChange={e => setScelta(b.id, "dipendente_id", e.target.value)} style={{ minWidth: 160 }}>
+                    <select className="dc-input" aria-label={`Dipendente per il bonifico del ${b.data ? b.data.split("-").reverse().join("/") : "?"} di € ${eur(b.importo)}`} value={sc.dipendente_id || ""} onChange={e => setScelta(b.id, "dipendente_id", e.target.value)} style={{ minWidth: 160 }}>
                       <option value="">— scegli —</option>
                       {dipOrdinati.map(d => <option key={d.id} value={d.id}>{d.nome_completo}</option>)}
                     </select>
                   </td>
                   <td>
                     <div style={{ display: "flex", gap: 4 }}>
-                      <select className="dc-input" value={sc.mese || 1} onChange={e => setScelta(b.id, "mese", Number(e.target.value))} style={{ width: 100 }}>
+                      <select className="dc-input" aria-label={`Mese di competenza del bonifico di € ${eur(b.importo)}`} value={sc.mese || 1} onChange={e => setScelta(b.id, "mese", Number(e.target.value))} style={{ width: 100 }}>
                         {mesi.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
                       </select>
-                      <input type="number" className="dc-input" value={sc.anno || new Date().getFullYear()}
+                      <input type="number" className="dc-input" aria-label={`Anno di competenza del bonifico di € ${eur(b.importo)}`} value={sc.anno || new Date().getFullYear()}
                         onChange={e => setScelta(b.id, "anno", Number(e.target.value))} style={{ width: 70 }} />
                     </div>
                   </td>
@@ -4466,16 +4495,16 @@ function PagheBonificiPage({ dipendenti = [] }) {
 
       {/* Filtri */}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 16 }}>
-        <select style={sel} value={anno} onChange={e => setAnno(Number(e.target.value))}>
+        <select style={sel} aria-label="Anno" value={anno} onChange={e => setAnno(Number(e.target.value))}>
           {Array.from({ length: 9 }, (_, i) => annoCorr + 1 - i).map(a => <option key={a} value={a}>{a}</option>)}
         </select>
-        <select style={sel} value={mese} onChange={e => setMese(Number(e.target.value))}>
+        <select style={sel} aria-label="Mese" value={mese} onChange={e => setMese(Number(e.target.value))}>
           <option value={0}>Tutto l'anno</option>
           {mesi.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
           <option value={13}>Tredicesima</option>
           <option value={14}>Quattordicesima</option>
         </select>
-        <select style={sel} value={filtroStato} onChange={e => setFiltroStato(e.target.value)}>
+        <select style={sel} aria-label="Stato pagamento" value={filtroStato} onChange={e => setFiltroStato(e.target.value)}>
           <option value="">Tutti gli stati</option>
           <option value="pagato">Pagati</option>
           <option value="parziale">Parziali</option>
@@ -4581,6 +4610,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
                             {r.busta > 0 ? `€ ${eur(r.busta)}` : "—"}
                             <button className="dc-btn" title={r.busta_manuale ? `Importo corretto a mano (prima: € ${eur(r.busta_originale)})${r.busta_nota ? " — " + r.busta_nota : ""}` : "Correggi l'importo della busta se non torna col cedolino"}
                               onClick={() => setEditBusta({ k, dipendente_id: r.dipendente_id, anno: r.anno, mese: r.mese, importo: r.busta || "", nota: r.busta_nota || "" })}
+                              aria-label={`Correggi importo busta ${r.mese}/${r.anno} di ${r.dipendente_nome || ""}`}
                               style={{ fontSize: 11, padding: "1px 6px", marginLeft: 6, color: r.busta_manuale ? "#8a6f47" : undefined }}>✎</button>
                             {r.busta_manuale && <div style={{ fontSize: 10, color: "#8a6f47" }}>corretto a mano</div>}
                           </span>
@@ -4717,12 +4747,8 @@ function PagheBonificiPage({ dipendenti = [] }) {
       </div>
 
       {pnDett && (
-        <div onClick={() => setPnDett(null)} style={{ position: "fixed", inset: 0, background: "rgba(42,51,41,.45)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: 20, zIndex: 50, overflow: "auto" }}>
-          <div onClick={e => e.stopPropagation()} className="dc-card" style={{ maxWidth: 640, width: "100%", marginTop: 20 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <h3 style={{ margin: 0 }}>Prima nota — {pnDett.nome}</h3>
-              <button className="dc-btn" onClick={() => setPnDett(null)}>Chiudi</button>
-            </div>
+        <Modal title={`Prima nota — ${pnDett.nome}`} onClose={() => setPnDett(null)} maxWidth={640}>
+          <div className="dc-modal-body">
             {pnDett.loading ? <p className="dc-muted">Carico…</p> : !pnDett.righe?.length ? <p className="dc-muted" style={{ marginTop: 12 }}>Nessun dato.</p> : (
               <div style={{ overflowX: "auto", marginTop: 12 }}>
                 <table className="dc-table" style={{ minWidth: 520, whiteSpace: "nowrap" }}>
@@ -4757,7 +4783,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
               </div>
             )}
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );
@@ -4902,7 +4928,7 @@ function DocumentiPage({ dipendenti, documenti, reload, getDipendente }) {
                       <td className="dc-muted">{doc.data_caricamento ? formatDate(doc.data_caricamento) : "—"}</td>
                       <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                         {doc.ha_file || doc.file_data || doc.hash ? <button onClick={() => apriDoc(doc)} className="dc-btn" style={{ padding: "4px 10px" }}>Apri</button> : null}
-                        <button onClick={() => handleDelete(doc.id)} className="dc-btn-icon dc-btn-danger" style={{ marginLeft: 6 }}><Trash2 size={16} /></button>
+                        <button onClick={() => handleDelete(doc.id)} className="dc-btn-icon dc-btn-danger" style={{ marginLeft: 6 }} title="Elimina" aria-label={`Elimina documento ${doc.titolo || doc.filename || ""}`}><Trash2 size={16} /></button>
                       </td>
                     </tr>
                   );
@@ -4914,46 +4940,40 @@ function DocumentiPage({ dipendenti, documenti, reload, getDipendente }) {
       ))}
 
       {showModal && (
-        <div className="dc-modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="dc-modal" onClick={e => e.stopPropagation()}>
-            <div className="dc-modal-header">
-              <h3>Nuovo Documento</h3>
-              <button onClick={() => setShowModal(false)} className="dc-modal-close"><X size={20} /></button>
-            </div>
+        <Modal title="Nuovo Documento" onClose={() => setShowModal(false)}>
             <form onSubmit={handleSubmit} className="dc-modal-body">
-              <div className="dc-form-group">
-                <label>Dipendente *</label>
+              <label className="dc-form-group">
+                <span className="dc-label">Dipendente *</span>
                 <select required value={formData.dipendente_id} onChange={e => setFormData({...formData, dipendente_id: e.target.value})}>
                   <option value="">Seleziona...</option>
                   {dipendenti.map(d => <option key={d.id} value={d.id}>{d.nome} {d.cognome}</option>)}
                 </select>
-              </div>
-              <div className="dc-form-group">
-                <label>Titolo *</label>
+              </label>
+              <label className="dc-form-group">
+                <span className="dc-label">Titolo *</span>
                 <input required value={formData.titolo} onChange={e => setFormData({...formData, titolo: e.target.value})} />
-              </div>
-              <div className="dc-form-group">
-                <label>Tipo</label>
+              </label>
+              <label className="dc-form-group">
+                <span className="dc-label">Tipo</span>
                 <select value={formData.tipo} onChange={e => setFormData({...formData, tipo: e.target.value})}>
                   {TIPI_NUOVO.map(t => <option key={t}>{t}</option>)}
                 </select>
-              </div>
-              <div className="dc-form-group">
-                <label>{formData.tipo === "Dimissioni / cessazione" ? "Data di decorrenza / scadenza" : "Scadenza"}</label>
+              </label>
+              <label className="dc-form-group">
+                <span className="dc-label">{formData.tipo === "Dimissioni / cessazione" ? "Data di decorrenza / scadenza" : "Scadenza"}</span>
                 <input type="date" value={formData.scadenza} onChange={e => setFormData({...formData, scadenza: e.target.value})} />
-              </div>
-              <div className="dc-form-group">
-                <label>File (PDF, immagine)</label>
+              </label>
+              <label className="dc-form-group">
+                <span className="dc-label">File (PDF, immagine)</span>
                 <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={e => setNuovoFile((e.target.files || [])[0] || null)} />
                 {formData.tipo === "Dimissioni / cessazione" && <span className="dc-muted" style={{ fontSize: 12 }}>Il modulo del Ministero (recesso rapporto di lavoro) viene letto: alert + scadenza UNILAV a 5 giorni.</span>}
-              </div>
+              </label>
               <div className="dc-modal-footer">
                 <button type="button" onClick={() => setShowModal(false)} className="dc-btn">Annulla</button>
                 <button type="submit" className="dc-btn dc-btn-primary" disabled={nuovoBusy}>{nuovoBusy ? "Salvo…" : "Salva Documento"}</button>
               </div>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );
@@ -5218,9 +5238,8 @@ function AssunzionePage({ dipendenti, reload }) {
       )}
 
       {showAssumi && (
-        <div onClick={() => setShowAssumi(false)} style={{ position: "fixed", inset: 0, background: "rgba(42,51,41,.45)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: 20, zIndex: 50, overflow: "auto" }}>
-          <div onClick={e => e.stopPropagation()} className="dc-card" style={{ maxWidth: 720, width: "100%", marginTop: 20 }}>
-            <h3 style={{ marginTop: 0 }}>Assumi dipendente</h3>
+        <Modal title="Assumi dipendente" onClose={() => setShowAssumi(false)} maxWidth={720}>
+          <div className="dc-modal-body">
             <p className="dc-muted" style={{ fontSize: 13, marginTop: 0 }}>Crea l'anagrafica e genera subito contratto + regolamento + privacy + informativa (nessun invio automatico).</p>
             <div style={grid}>
               <label style={lbl}>Nome *<input className="dc-input" value={nuovo.nome} onChange={e => setN("nome", e.target.value)} /></label>
@@ -5251,7 +5270,7 @@ function AssunzionePage({ dipendenti, reload }) {
               <button className="dc-btn-primary" disabled={busy === "assumi"} onClick={creaAssumi}>{busy === "assumi" ? "Assumo…" : "Crea e genera contratto"}</button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
 
       <div className="dc-card" style={{ marginBottom: 16 }}>

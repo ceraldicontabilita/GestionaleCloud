@@ -1,5 +1,5 @@
 import React from "react";
-import { useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import {
   Users, Briefcase, ChevronRight, Clock, Palmtree, PiggyBank,
   Wallet, CalendarClock, FolderOpen, CheckCircle2,
@@ -109,8 +109,13 @@ const footer = {
   textAlign: "center", color: MUTED, fontSize: 12.5, padding: "0 24px 36px",
 };
 
+// Le card della home sono veri link (audit WCAG 14/09/2026): raggiungibili con
+// Tab, aperti con Invio, annunciati come link dagli screen reader, apribili in
+// una nuova scheda. Prima erano <div onClick>.
+const linkCard = { ...card, textDecoration: "none", color: "inherit" };
+const linkFeat = { ...featCard, textDecoration: "none", color: "inherit", display: "block" };
+
 export default function Landing() {
-  const nav = useNavigate();
   return (
     <div style={wrap}>
       <div style={hero}>
@@ -124,23 +129,23 @@ export default function Landing() {
       </div>
 
       <div style={ctaRow}>
-        <div style={card} onClick={() => nav("/portale")}>
+        <Link to="/portale" style={linkCard}>
           <div style={iconBox(`linear-gradient(135deg, ${SAGE}, ${SAGE_DARK})`)}><Users size={24} /></div>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 700, fontSize: 16 }}>Portale dipendente</div>
             <div style={{ color: MUTED, fontSize: 13 }}>Turni, buste paga, richieste, avvisi — accesso con PIN</div>
           </div>
-          <ChevronRight size={20} color={MUTED} />
-        </div>
+          <ChevronRight size={20} color={MUTED} aria-hidden="true" />
+        </Link>
 
-        <div style={card} onClick={() => nav("/dipendenti")}>
+        <Link to="/dipendenti" style={linkCard}>
           <div style={iconBox(`linear-gradient(135deg, ${SAGE_DARK}, ${SAGE})`)}><Briefcase size={24} /></div>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 700, fontSize: 16 }}>Gestione ufficio</div>
             <div style={{ color: MUTED, fontSize: 13 }}>Anagrafica, presenze, ferie, turni, buste, missioni, documenti</div>
           </div>
-          <ChevronRight size={20} color={MUTED} />
-        </div>
+          <ChevronRight size={20} color={MUTED} aria-hidden="true" />
+        </Link>
       </div>
 
       <div style={section}>
@@ -148,19 +153,13 @@ export default function Landing() {
         <div style={sectionSub}>Un solo posto per ogni calcolo, sempre coerente tra i moduli</div>
         <div style={grid}>
           {FEATURES.map(({ icon: Icon, title, text, to }) => (
-            <div
-              style={{ ...featCard, cursor: "pointer" }}
-              key={title}
-              onClick={() => nav(to)}
-              role="link"
-              title={`Apri ${title}`}
-            >
+            <Link to={to} style={linkFeat} key={title}>
               <div style={featIcon}><Icon size={20} /></div>
               <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
-                {title} <ChevronRight size={15} color={MUTED} />
+                {title} <ChevronRight size={15} color={MUTED} aria-hidden="true" />
               </div>
               <div style={{ color: MUTED, fontSize: 13.5, lineHeight: 1.5 }}>{text}</div>
-            </div>
+            </Link>
           ))}
         </div>
       </div>
