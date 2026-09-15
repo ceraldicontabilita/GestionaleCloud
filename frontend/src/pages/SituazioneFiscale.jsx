@@ -703,6 +703,10 @@ export default function SituazioneFiscale() {
                 <div>{(link.tax_rows || []).map(row => `${row.tax_code} ${row.reference_period || ''}`).join(' · ')}</div>
                 <div>Quietanza: {link.documentary_payment_status} · Banca: {link.bank_status}</div>
                 {link.quietanza && <div>Protocollo quietanza: {link.quietanza.protocol || link.quietanza.id}</div>}
+                {link.pagamento_tardivo && <div style={{ marginTop: 6 }}>
+                  <Badge variant="info">Pagamento tardivo (ravvedimento)</Badge>{' '}
+                  <span>{(link.ravvedimento_rows || []).map(row => `${row.tax_code} ${((row.debit_cents || 0) / 100).toFixed(2)}€`).join(' · ')}</span>
+                </div>}
               </div>)}
               {(item.f24_links || []).length === 0 && <div style={{ marginTop: 8 }}>Nessun F24 compatibile trovato. Non viene creato alcun pagamento per inferenza.</div>}
             </div>}
