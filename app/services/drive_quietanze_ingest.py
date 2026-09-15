@@ -33,6 +33,8 @@ logger = logging.getLogger(__name__)
 _STATO_KEY = "drive_quietanze_last_sync"
 _sync_lock = asyncio.Lock()
 _bg_task: Optional[asyncio.Task] = None
+_quad_lock = asyncio.Lock()
+_quad_bg_task: Optional[asyncio.Task] = None
 
 
 def is_sync_running() -> bool:
@@ -44,6 +46,22 @@ def start_background_sync(db) -> bool:
     if _sync_lock.locked():
         return False
     _bg_task = asyncio.create_task(sync(db))
+    return True
+
+
+def is_quadratura_running() -> bool:
+    return _quad_lock.locked()
+
+
+def start_background_quadratura(db) -> bool:
+    """Avvia la quadratura in background: con decine di PDF in Elaborate,
+    scaricarli e confrontarli uno per uno supera il timeout del gateway
+    Render (~150s) se fatto in modo sincrono nella richiesta HTTP — lo
+    stesso motivo per cui `sync()` gira già così (start_background_sync)."""
+    global _quad_bg_task
+    if _quad_lock.locked():
+        return False
+    _quad_bg_task = asyncio.create_task(verifica_quadratura_elaborate(db))
     return True
 
 
@@ -159,6 +177,8 @@ async def get_status(db) -> Dict[str, Any]:
         "last_result": state.get("last_result"),
         "last_error": state.get("last_error"),
         "total_imported": state.get("total_imported", 0),
+        "quadratura_running": is_quadratura_running(),
+        "last_quadratura": state.get("last_quadratura"),
     }
 
 
@@ -354,6 +374,13 @@ async def _do_sync(db) -> Dict[str, Any]:
 
 
 async def verifica_quadratura_elaborate(db) -> Dict[str, Any]:
+    if _quad_lock.locked():
+        return {"status": "running", "message": "Quadratura gia' in corso"}
+    async with _quad_lock:
+        return await _do_quadratura(db)
+
+
+async def _do_quadratura(db) -> Dict[str, Any]:
     """Controlla tutte le ELABORATE reali senza crearne di nuove."""
     if not is_configured():
         return {"status": "not_configured"}

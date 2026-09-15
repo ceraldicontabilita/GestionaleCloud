@@ -314,7 +314,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/corrispettivi/chiusure` | invoices.corrispettivi | sì | — | — | — | — | tenere | in uso: FE |
 | `DELETE /api/corrispettivi/chiusure/{chiusura_id}` | invoices.corrispettivi | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/corrispettivi/cleanup-duplicati-forte` | invoices.corrispettivi | sì | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
-| `POST /api/corrispettivi/drive/quadratura` | drive_corrispettivi | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/corrispettivi/drive/quadratura` | drive_corrispettivi | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/corrispettivi/drive/status` | drive_corrispettivi | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
 | `POST /api/corrispettivi/drive/sync` | drive_corrispettivi | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
 | `POST /api/corrispettivi/elimina-duplicati` | invoices.corrispettivi | sì | — | — | — | — | tenere | in uso: FE |
@@ -594,8 +594,8 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `DELETE /api/f24/documents/{doc_id}` | f24.f24_main | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/f24/fascicolo/costruisci` | f24.f24_main | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/f24/fascicolo/{codice_fiscale}/{mese}/{anno}` | f24.f24_main | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/f24/quietanze` | f24.f24_main | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/f24/quietanze/drive/quadratura` | drive_quietanze | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/f24/quietanze` | f24.f24_main | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/f24/quietanze/drive/quadratura` | drive_quietanze | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/f24/quietanze/drive/status` | drive_quietanze | — | sì | — | — | — | tenere | in uso: scheduler |
 | `POST /api/f24/quietanze/drive/sync` | drive_quietanze | — | sì | — | — | sì | tenere | in uso: scheduler |
 | `GET /api/f24/quietanze/statistiche/tributi` | f24.f24_main | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
@@ -641,7 +641,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/fatture-ricevute/verifica-incoerenze-estratto-conto` | fatture_module.pagamento | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `DELETE /api/fatture/all` | invoices.fatture_upload | — | sì | — | — | — | tenere | in uso: scheduler |
 | `POST /api/fatture/categorize-movements` | invoices.fatture_upload | — | sì | — | — | — | tenere | in uso: scheduler |
-| `POST /api/fatture/drive/quadratura` | invoices.fatture_drive | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/fatture/drive/quadratura` | invoices.fatture_drive | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/fatture/drive/ricostruzione` | invoices.fatture_drive | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/fatture/drive/ricostruzione/lotto` | invoices.fatture_drive | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/fatture/drive/status` | invoices.fatture_drive | sì | sì | — | — | — | tenere | in uso: FE, scheduler |

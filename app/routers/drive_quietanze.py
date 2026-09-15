@@ -48,6 +48,17 @@ async def drive_quadratura() -> Dict[str, Any]:
     Ripassa i PDF archiviati in "Elaborate" e recupera i buchi (file
     archiviato senza quietanza nel gestionale). Idempotente, non sposta
     file. Gira anche da sola una volta a settimana.
+
+    Come /drive/sync: avviata in background e risponde subito. Con decine
+    di PDF da scaricare uno per uno il controllo supera il timeout del
+    gateway Render (~150s) se resta dentro la richiesta HTTP — osservato
+    live il 15/09/2026 (due tentativi sincroni, entrambi terminati in 502
+    dopo ~150s senza scrivere nulla). Stato/esito si seguono con
+    GET /drive/status (campi quadratura_running, last_quadratura).
     """
     db = Database.get_db()
-    return await drive_quietanze_ingest.verifica_quadratura_elaborate(db)
+    if not drive_quietanze_ingest.is_configured():
+        return await drive_quietanze_ingest.verifica_quadratura_elaborate(db)  # ritorna il not_configured
+    if not drive_quietanze_ingest.start_background_quadratura(db):
+        return {"status": "running", "message": "Quadratura già in corso"}
+    return {"status": "started", "message": "Quadratura avviata"}
