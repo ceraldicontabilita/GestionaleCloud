@@ -175,6 +175,19 @@ class FiscalDocumentIngestionService:
                     )
                 refreshed = True
             source_metadata = dict(source_metadata or {})
+            source_occurrence = {
+                "source": source,
+                "drive_file_id": source_metadata.get("drive_file_id"),
+                "drive_document_id": source_metadata.get("drive_document_id"),
+                "drive_parent_id": source_metadata.get("drive_parent_id"),
+                "source_path": source_metadata.get("source_path") or source_metadata.get("drive_path"),
+                "sha256": digest,
+            }
+            source_occurrence = {k: v for k, v in source_occurrence.items() if v not in (None, "")}
+            await self.db[COLL_FISCAL_DOCUMENTS].update_one(
+                {"company_id": self.company_id, "id": existing_version["document_id"]},
+                {"$addToSet": {"source_occurrences": source_occurrence}, "$set": {"updated_at": utc_now()}},
+            )
             if source_metadata.get("drive_document_id") or source_metadata.get("drive_file_id"):
                 inbox_id = stable_id("document", self.company_id, digest)
                 await self.db[COLL_DOCUMENTS_INBOX].update_one(
@@ -204,7 +217,8 @@ class FiscalDocumentIngestionService:
                         "drive_file_id": source_metadata.get("drive_file_id"),
                         "drive_path": source_metadata.get("drive_path"),
                         "source_metadata": source_metadata,
-                    }, "$unset": {"pdf_data": ""}},
+                    }, "$addToSet": {"source_occurrences": source_occurrence},
+                    "$unset": {"pdf_data": ""}},
                     upsert=True,
                 )
             return {
@@ -260,6 +274,16 @@ class FiscalDocumentIngestionService:
             "current_version_id": version_id,
             "source": source,
             "source_metadata": source_metadata,
+            "source_occurrences": [{
+                k: v for k, v in {
+                    "source": source,
+                    "drive_file_id": source_metadata.get("drive_file_id"),
+                    "drive_document_id": source_metadata.get("drive_document_id"),
+                    "drive_parent_id": source_metadata.get("drive_parent_id"),
+                    "source_path": source_metadata.get("source_path") or source_metadata.get("drive_path"),
+                    "sha256": digest,
+                }.items() if v not in (None, "")
+            }],
             "updated_at": now,
             "created_at": now,
             "review_status": "TO_VERIFY" if classification["requires_review"] else "CLASSIFIED",
@@ -318,6 +342,7 @@ class FiscalDocumentIngestionService:
             "drive_path": source_metadata.get("drive_path"),
             "source": source,
             "source_metadata": source_metadata,
+            "source_occurrences": document["source_occurrences"],
             "created_at": now,
         }
         if not drive_backed:

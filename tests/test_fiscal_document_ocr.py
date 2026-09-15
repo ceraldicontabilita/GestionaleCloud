@@ -91,6 +91,13 @@ def test_documento_fiscale_drive_non_duplica_il_pdf_nel_foglio():
 
         assert inbox["drive_document_id"] == "DOC-DRIVE-LIPE"
         assert inbox["drive_file_id"] == "FILE-DRIVE-LIPE"
+        assert inbox["source_occurrences"] == [{
+            "source": "documenti_upload_auto_zip",
+            "drive_file_id": "FILE-DRIVE-LIPE",
+            "drive_document_id": "DOC-DRIVE-LIPE",
+            "source_path": "01_DICHIARAZIONI_FISCALI/LIPE/2026/LIPE_2026.pdf",
+            "sha256": result["sha256"],
+        }]
         assert "pdf_data" not in inbox
 
     asyncio.run(scenario())
@@ -127,6 +134,7 @@ def test_duplicato_parziale_riceve_il_riferimento_drive(monkeypatch):
         assert result["status"] == "duplicate"
         assert inbox["fiscal_document_id"] == "DOC-PARTIAL"
         assert inbox["drive_document_id"] == "DRIVE-PARTIAL"
+        assert inbox["source_occurrences"][0]["drive_document_id"] == "DRIVE-PARTIAL"
         assert "pdf_data" not in inbox
 
     asyncio.run(scenario())

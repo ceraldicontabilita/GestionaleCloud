@@ -9,6 +9,7 @@ import asyncio
 import threading
 
 from app.services import drive_documenti_ingest as d
+from app.services.sheets_document_store import MemorySheetsClient
 
 
 def _run(coro):
@@ -187,39 +188,6 @@ def test_sync_drive_non_blocca_event_loop(monkeypatch):
     assert all(thread_id != thread_event_loop for thread_id in thread_drive)
 
 
-def test_indice_hash_documenti_viene_materializzato_una_sola_volta():
-    class Cursor:
-        async def to_list(self, _limit):
-            return [
-                {"id": "sha", "sha256": "abc"},
-                {"id": "md5", "file_hash": "def"},
-            ]
-
-    class Collection:
-        def __init__(self):
-            self.find_calls = 0
-
-        def find(self, selector, projection):
-            self.find_calls += 1
-            assert selector == {}
-            assert projection["sha256"] == 1
-            assert projection["file_hash"] == 1
-            return Cursor()
-
-    collection = Collection()
-
-    class DB:
-        def __getitem__(self, name):
-            assert name == "documents_inbox"
-            return collection
-
-    indice = asyncio.run(d._carica_indice_hash_documenti(DB()))
-
-    assert collection.find_calls == 1
-    assert indice["abc"]["id"] == "sha"
-    assert indice["def"]["id"] == "md5"
-
-
 def test_build_doc_riusa_hash_gia_calcolati():
     doc = d._build_inbox_doc(
         b"contenuto",
@@ -231,6 +199,52 @@ def test_build_doc_riusa_hash_gia_calcolati():
 
     assert doc["sha256"] == "sha-calcolato"
     assert doc["file_hash"] == "md5-calcolato"
+
+
+def test_dichiarazione_drive_usa_solo_writer_fiscale(monkeypatch):
+    """Il canale non deve più creare prima una seconda riga inbox col PDF."""
+    service = object()
+    calls = []
+
+    class FiscalWriter:
+        def __init__(self, db):
+            self.db = db
+
+        async def ingest(self, **kwargs):
+            calls.append(kwargs)
+            return {
+                "status": "inserted", "document_id": "fdoc-1",
+                "version_id": "fver-1", "inbox_id": "inbox-1",
+            }
+
+    monkeypatch.setattr(d, "_build_drive_service", lambda: (service, None))
+    monkeypatch.setattr(d, "_folder_ids", lambda _canale: ["root"])
+    monkeypatch.setattr(d, "_trova_inbox", lambda *_args: [{
+        "inbox_id": "inbox", "lifecycle_parent_id": "parent",
+        "relative_path": "DA ELABORARE",
+    }])
+    monkeypatch.setattr(d, "_resolve_state_folder", lambda *_args: "state")
+    monkeypatch.setattr(d, "_list_pdf_files_direct", lambda *_args: [{
+        "id": "drive-1", "name": "770_2025_imposta_2024.pdf",
+        "md5Checksum": "md5-drive", "size": "123",
+    }])
+    monkeypatch.setattr(d, "_download_bytes", lambda *_args: b"%PDF-fiscale")
+    monkeypatch.setattr(d, "_move_to_elaborate", lambda *_args: None)
+    monkeypatch.setattr(d, "_close_drive_service", lambda *_args: None)
+    monkeypatch.setattr(d, "FiscalDocumentIngestionService", FiscalWriter)
+    monkeypatch.setattr(
+        d, "_build_inbox_doc",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("writer duplicato")),
+    )
+    db = MemorySheetsClient().db
+
+    result = _run(d._do_sync(db, "dichiarazione_fiscale"))
+
+    assert result["imported"] == 1 and result["duplicates"] == 0
+    assert len(calls) == 1
+    assert calls[0]["source_metadata"]["drive_file_id"] == "drive-1"
+    assert calls[0]["source_metadata"]["drive_md5"] == "md5-drive"
+    assert _run(db.documents_inbox.find({}).to_list(10)) == []
 
 
 def test_bonifico_legge_solo_le_inbox_bonifici_del_fascicolo_e_non_i_cedolini(monkeypatch):

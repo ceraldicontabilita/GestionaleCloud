@@ -98,6 +98,13 @@ CANALI: Dict[str, Dict[str, Any]] = {
     },
 }
 
+_CANALI_FISCALI = frozenset({
+    "dichiarazione_iva",
+    "cartella_esattoriale",
+    "avviso_bonario",
+    "dichiarazione_fiscale",
+})
+
 # La cartella "DICHIARAZIONI FISCALI" mescola dichiarazioni intere (da
 # ingerire) con i singoli quadri componenti che le compongono (ridondanti:
 # lo stesso dato sta gia' nel PDF ricomposto) e documenti finiti li' per
@@ -226,7 +233,7 @@ def _list_pdf_files_direct(service, parent_id: str) -> List[Dict[str, Any]]:
     while True:
         res = service.files().list(
             q=q,
-            fields="nextPageToken, files(id, name, mimeType)",
+            fields="nextPageToken, files(id, name, mimeType, md5Checksum, size, parents)",
             pageSize=100,
             pageToken=page_token,
             supportsAllDrives=True,
@@ -300,25 +307,6 @@ def _build_inbox_doc(
     return set_tassonomia_documento(doc, conf["category"], label=conf["label"])
 
 
-async def _carica_indice_hash_documenti(db) -> Dict[str, Dict[str, Any]]:
-    """Carica una volta gli hash gia' presenti senza scandire l'archivio per file."""
-    collection = db["documents_inbox"]
-    # SheetsDocumentStore.find materializza e filtra subito in Python: va
-    # eseguito fuori dall'event loop. Il cursore risultante e' gia' leggero.
-    cursor = await asyncio.to_thread(
-        collection.find,
-        {},
-        {"_id": 0, "id": 1, "sha256": 1, "file_hash": 1, "fiscal_document_id": 1},
-    )
-    documents = await cursor.to_list(100000)
-    indice: Dict[str, Dict[str, Any]] = {}
-    for document in documents:
-        for value in (document.get("sha256"), document.get("file_hash")):
-            if value:
-                indice[str(value)] = document
-    return indice
-
-
 def _hashes_content(content: bytes) -> tuple[str, str]:
     return hashlib.sha256(content).hexdigest(), hashlib.md5(content).hexdigest()
 
@@ -375,8 +363,6 @@ async def _do_sync(db, canale: str) -> Dict[str, Any]:
             inboxes.extend(await asyncio.to_thread(_trova_inbox, service, root_id, canale))
         result["inboxes"] = len(inboxes)
         remaining = _batch_size()
-        indice_hash: Optional[Dict[str, Dict[str, Any]]] = None
-
         for inbox in inboxes:
             source_id = inbox["inbox_id"]
             lifecycle_parent_id = inbox["lifecycle_parent_id"]
@@ -394,9 +380,6 @@ async def _do_sync(db, canale: str) -> Dict[str, Any]:
 
             selected = pdf_files[:remaining] if remaining > 0 else []
             result["pending_estimate"] += max(0, len(pdf_files) - len(selected))
-
-            if selected and indice_hash is None:
-                indice_hash = await _carica_indice_hash_documenti(db)
 
             for file_info in selected:
                 remaining -= 1
@@ -433,11 +416,38 @@ async def _do_sync(db, canale: str) -> Dict[str, Any]:
                     content_hash, legacy_md5 = await asyncio.to_thread(
                         _hashes_content, content
                     )
-                    existing = (indice_hash or {}).get(content_hash) or (
-                        indice_hash or {}
-                    ).get(legacy_md5)
+                    existing = await db["documents_inbox"].find_one(
+                        {"$or": [
+                            {"sha256": content_hash},
+                            {"file_hash": content_hash},
+                            {"file_hash": legacy_md5},
+                        ]},
+                        {"_id": 0, "id": 1, "fiscal_document_id": 1},
+                    )
 
-                    if existing:
+                    if canale in _CANALI_FISCALI:
+                        # Unico writer fiscale: registra versione, pagine,
+                        # classificazione e inbox canonica senza PDF Base64.
+                        hint = None if canale == "dichiarazione_fiscale" else CANALI[canale]["category"]
+                        registered = await FiscalDocumentIngestionService(db).ingest(
+                            content=content,
+                            filename=fname,
+                            source=f"drive_{canale}",
+                            category_hint=hint,
+                            source_metadata={
+                                "drive_file_id": fid,
+                                "drive_parent_id": source_id,
+                                "source_path": source_path,
+                                "drive_md5": file_info.get("md5Checksum"),
+                                "drive_size": int(file_info["size"]) if file_info.get("size") else len(content),
+                            },
+                        )
+                        if registered.get("status") == "duplicate":
+                            result["duplicates"] += 1
+                        else:
+                            result["imported"] += 1
+                        document_id = (existing or {}).get("id") or registered.get("inbox_id")
+                    elif existing:
                         result["duplicates"] += 1
                         document_id = existing["id"]
                     else:
@@ -452,43 +462,8 @@ async def _do_sync(db, canale: str) -> Dict[str, Any]:
                             file_hash=legacy_md5,
                         )
                         await db["documents_inbox"].insert_one(doc)
-
-                        if canale in {
-                            "dichiarazione_iva",
-                            "cartella_esattoriale",
-                            "avviso_bonario",
-                            "dichiarazione_fiscale",
-                        }:
-                            # "dichiarazione_fiscale" mescola piu' tipi (770,
-                            # IVA, IRAP, LIPE, Redditi SC): niente hint, la
-                            # classificazione deterministica del contenuto
-                            # decide il tipo (classify_document).
-                            hint = None if canale == "dichiarazione_fiscale" else CANALI[canale]["category"]
-                            registered = await FiscalDocumentIngestionService(db).ingest(
-                                content=content,
-                                filename=fname,
-                                source=f"drive_{canale}",
-                                category_hint=hint,
-                                source_metadata={
-                                    "drive_file_id": fid,
-                                    "source_path": source_path,
-                                },
-                            )
-                            await db["documents_inbox"].update_one(
-                                {"id": doc["id"]},
-                                {
-                                    "$set": {
-                                        "fiscal_document_id": registered["document_id"],
-                                        "fiscal_version_id": registered["version_id"],
-                                    }
-                                },
-                            )
-
                         result["imported"] += 1
                         document_id = doc["id"]
-                        if indice_hash is not None:
-                            indice_hash[content_hash] = doc
-                            indice_hash[legacy_md5] = doc
                         logger.info("Drive %s: importato %s", canale, source_path)
 
                     if canale == "verbale":

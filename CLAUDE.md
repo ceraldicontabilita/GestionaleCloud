@@ -660,6 +660,24 @@ esistenti (nessun sistema parallelo):
   cartella reale (solo file sciolti) — enumerazione fatta per nome file, mai
   indovinata dal contenuto.
 
+#### Quadratura documentale 15/09/2026
+
+- Il protocollo Drive censisce 190 file attivi nel fascicolo canonico
+  `10_BILANCI_DICHIARAZIONI/DICHIARAZIONI FISCALI`: 86 PDF erano ancora in
+  `DA ELABORARE`, 100 in `ELABORATE` e il registro `fiscal_documents`
+  conteneva soltanto 22 dichiarazioni. Il canale va quindi tenuto abilitato in
+  produzione fino all'esaurimento della coda.
+- Una sola copia byte-identica era collocata nel fascicolo sbagliato: un avviso
+  bonario già presente nel canale canonico `04_F24_E_TRIBUTI/AVVISI BONARI`.
+  La copia è stata spostata nella quarantena recuperabile, non eliminata.
+- `drive_documenti_ingest` non materializza più tutti gli hash di
+  `documents_inbox` e non crea più una riga preliminare con `pdf_data` prima
+  del registro fiscale. Ogni file usa lookup indicizzati SHA-256/MD5 e passa
+  direttamente dall'unico writer `FiscalDocumentIngestionService`.
+- Una stessa impronta incontrata in più posizioni non genera un secondo
+  documento/versione: tutte le provenienze vengono conservate in
+  `source_occurrences` con ID Drive, parent, percorso e hash.
+
 ### Stato precedente
 
 - Il default del codice è `DATA_BACKEND=sheets`.
