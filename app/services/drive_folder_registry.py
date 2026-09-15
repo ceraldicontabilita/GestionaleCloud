@@ -16,6 +16,7 @@ _AUTOMATIC_AREAS = {
     "paypal", "noleggio",
     "partenopay",
     "carte", "nexi", "estratti_conto_carte",
+    "dichiarazione_fiscale",
 }
 
 _AREA_ALIASES = {
@@ -55,6 +56,12 @@ _CANONICAL_SETTING_AREAS = {
     "dichiarazioni_iva": ("GOOGLE_DRIVE_DICHIARAZIONI_IVA_FOLDER_ID", "Dichiarazioni IVA"),
     "cartelle_esattoriali": ("GOOGLE_DRIVE_CARTELLE_ESATTORIALI_FOLDER_ID", "Cartelle esattoriali"),
     "avvisi_bonari": ("GOOGLE_DRIVE_AVVISI_BONARI_FOLDER_ID", "Avvisi bonari"),
+    # "dichiarazione_fiscale" NON va qui: il suo folder ID ha un default
+    # hardcoded (come DRIVE_FISCAL_ROOT_FOLDER_ID/DRIVE_DOCUMENT_INDEX_
+    # ROOT_FOLDER_ID in config.py, mai in questa mappa) e sarebbe sempre
+    # "vero" per ogni test che passa da _registry_entries(), inquinando il
+    # catalogo pubblico anche a registro JSON vuoto. Il canale legge la sua
+    # cartella direttamente da settings in drive_documenti_ingest.py.
     "f24": ("DRIVE_F24_FOLDER_ID", "F24"),
     "carte": ("DRIVE_CARTE_FOLDER_ID", "Carte"),
     "paypal": ("DRIVE_PAYPAL_FOLDER_ID", "PayPal"),

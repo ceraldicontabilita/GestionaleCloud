@@ -144,6 +144,11 @@ class Settings(BaseSettings):
     GOOGLE_DRIVE_DICHIARAZIONI_IVA_FOLDER_ID: Optional[str] = None   # dichiarazioni IVA (PDF)
     GOOGLE_DRIVE_CARTELLE_ESATTORIALI_FOLDER_ID: Optional[str] = None # cartelle esattoriali (PDF)
     GOOGLE_DRIVE_AVVISI_BONARI_FOLDER_ID: Optional[str] = None       # avvisi bonari (PDF)
+    # 15/09/2026: cartella "10_BILANCI_DICHIARAZIONI/DICHIARAZIONI FISCALI"
+    # (export Cassetto Fiscale 2005-2026: 770/IVA/IRAP/LIPE/Redditi SC), con
+    # DA ELABORARE/ELABORATE/ERRORI come ogni altro canale. L'ID non e' un
+    # segreto (stesso trattamento di DRIVE_FISCAL_ROOT_FOLDER_ID qui sopra).
+    GOOGLE_DRIVE_DICHIARAZIONI_FISCALI_FOLDER_ID: str = "109em5thoiDUbaQg9tqxE7FXWEFNImXqj"
 
     # Canali documentali ancora privi di un nome GOOGLE_DRIVE_* dedicato.
     # Le aree principali sopra hanno invece una sola variabile canonica:
@@ -212,6 +217,11 @@ class Settings(BaseSettings):
     ENABLE_DRIVE_CARTELLE_ESATTORIALI_SYNC: bool = True
     ENABLE_DRIVE_AVVISI_BONARI_SYNC: bool = True
     ENABLE_DRIVE_VERBALI_SYNC: bool = True
+    # Cassetto Fiscale storico (richiesta titolare 15/09/2026): spento di
+    # default come dichiarazioni_iva (attivato via Render dopo il deploy),
+    # il filtro del canale scarta comunque i singoli quadri componenti e i
+    # documenti misfiled (assicurazioni, avvisi bonari, cartelle esattoriali).
+    ENABLE_DRIVE_DICHIARAZIONI_FISCALI_SYNC: bool = False
     # Canali EMAIL F24 e Verbali: ACCESI su scelta esplicita dell'utente
     # (13/07/2026). Interruttore dedicato per poterli spegnere senza toccare
     # le credenziali IMAP. NB: il parser F24 email non è ancora validato su

@@ -530,8 +530,6 @@ si rigenerano dal codice e non si correggono a mano.
 | `ADMIN_PASSWORD` | sicurezza | segreta | non dichiarato in Settings | `app/hr/routers/auth.py`, `app/routers/auth.py`, `scripts/e2e_distruttivo_server.py` |
 | `ADMIN_PASSWORD_HASH` | sicurezza | segreta | non dichiarato in Settings | `app/hr/routers/auth.py`, `app/routers/auth.py` |
 | `ADMIN_PIN` | sicurezza | segreta | non dichiarato in Settings | `app/services/utenti_pin.py` |
-| `ADMIN_PIN_INIZIALE` | sicurezza | segreta | non dichiarato in Settings | `app/lotti/routers/tablet_operatori.py` |
-| `ADMIN_PIN_RECOVERY` | sicurezza | segreta | non dichiarato in Settings | `app/lotti/routers/tablet_operatori.py` |
 | `ADMIN_TOKEN_EXPIRE_MINUTES` | sicurezza | segreta | non dichiarato in Settings | `app/hr/routers/pin_login.py` |
 | `ADMIN_USERNAME` | sicurezza | configurazione | non dichiarato in Settings | `app/menu/routes/qrcode_routes.py` |
 | `AI_L2_MAX_FINANCIAL_IMPACT` | app-runtime | configurazione | non dichiarato in Settings | `app/agents/decision_engine.py` |
@@ -619,6 +617,7 @@ si rigenerano dal codice e non si correggono a mano.
 | `ENABLE_DRIVE_CARTELLE_ESATTORIALI_SYNC` | feature-job | configurazione | `bool` / `True` | `app/config.py` |
 | `ENABLE_DRIVE_CEDOLINI_SYNC` | feature-job | configurazione | `bool` / `True` | `app/config.py` |
 | `ENABLE_DRIVE_CORRISPETTIVI_SYNC` | feature-job | configurazione | `bool` / `True` | `app/config.py` |
+| `ENABLE_DRIVE_DICHIARAZIONI_FISCALI_SYNC` | feature-job | configurazione | `bool` / `False` | `app/config.py` |
 | `ENABLE_DRIVE_DICHIARAZIONI_IVA_SYNC` | feature-job | configurazione | `bool` / `False` | `app/config.py` |
 | `ENABLE_DRIVE_ESTRATTI_CONTO_SYNC` | feature-job | configurazione | `bool` / `True` | `app/config.py` |
 | `ENABLE_DRIVE_FATTURE_SYNC` | feature-job | configurazione | `bool` / `True` | `app/config.py` |
@@ -640,7 +639,7 @@ si rigenerano dal codice e non si correggono a mano.
 | `FROM_EMAIL` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/routers/commercialista.py` |
 | `FRONTEND_URL` | app-runtime | configurazione | `Optional[str]` / `None` | `app/config.py`, `scripts/smoke_app.py` |
 | `GEMINI_API_KEY` | ai | segreta | `Optional[str]` / valore non riportato | `app/config.py` |
-| `GESTIONALECLOUD_API_URL` | app-runtime | configurazione | non dichiarato in Settings | `app/lotti/routers/gestionale_fatture.py`, `app/lotti/routers/tablet_operatori.py` |
+| `GESTIONALECLOUD_API_URL` | app-runtime | configurazione | non dichiarato in Settings | `app/lotti/routers/gestionale_fatture.py` |
 | `GESTIONALE_MCP_API_BASE_URL` | mcp | configurazione | non dichiarato in Settings | `gestionale_mcp/config.py` |
 | `GESTIONALE_MCP_API_TOKEN` | mcp | segreta | non dichiarato in Settings | `gestionale_mcp/config.py` |
 | `GESTIONALE_MCP_HOST` | mcp | configurazione | non dichiarato in Settings | `gestionale_mcp/config.py` |
@@ -664,6 +663,7 @@ si rigenerano dal codice e non si correggono a mano.
 | `GOOGLE_DRIVE_CARTELLE_ESATTORIALI_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `GOOGLE_DRIVE_CEDOLINI_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py`, `render.yaml` |
 | `GOOGLE_DRIVE_CORRISPETTIVI_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
+| `GOOGLE_DRIVE_DICHIARAZIONI_FISCALI_FOLDER_ID` | drive-sheets | configurazione | `str` / `'109em5thoiDUbaQg9tqxE7FXWEFNImXqj'` | `app/config.py` |
 | `GOOGLE_DRIVE_DICHIARAZIONI_IVA_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `GOOGLE_DRIVE_DOCUMENT_INDEX_FILE_ID` | drive-sheets | configurazione | non dichiarato in Settings | `render_workflows/document_ingest.py` |
 | `GOOGLE_DRIVE_ESTRATTI_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
@@ -712,7 +712,7 @@ si rigenerano dal codice e non si correggono a mano.
 | `LOTTI_AUTH_SECRET` | app-runtime | segreta | non dichiarato in Settings | `app/lotti/auth.py`, `render.yaml` |
 | `LOTTI_DB_NAME` | app-runtime | configurazione | non dichiarato in Settings | `app/lotti/db.py`, `app/lotti/routers/diagnostic.py`, `app/lotti/supabase_document_store.py` |
 | `LOTTI_DB_SECRET` | app-runtime | segreta | non dichiarato in Settings | `app/lotti/auth.py`, `app/lotti/scripts/migrate_recovered_json_to_supabase.py`, `app/lotti/supabase_document_store.py`, `render.yaml` |
-| `LOTTI_INTEGRATION_KEY` | app-runtime | configurazione | non dichiarato in Settings | `app/lotti/routers/gestionale_fatture.py`, `app/lotti/routers/tablet_operatori.py`, `app/middleware/authentication.py`, `app/routers/lotti_integration.py`, `render.yaml` |
+| `LOTTI_INTEGRATION_KEY` | app-runtime | configurazione | non dichiarato in Settings | `app/lotti/routers/gestionale_fatture.py`, `app/middleware/authentication.py`, `app/routers/lotti_integration.py`, `render.yaml` |
 | `LOTTI_SUPABASE_ANON_KEY` | app-runtime | configurazione | non dichiarato in Settings | `app/lotti/scripts/migrate_recovered_json_to_supabase.py`, `app/lotti/supabase_document_store.py`, `render.yaml` |
 | `LOTTI_SUPABASE_URL` | app-runtime | configurazione | non dichiarato in Settings | `app/lotti/db.py`, `app/lotti/scripts/migrate_recovered_json_to_supabase.py`, `app/lotti/supabase_document_store.py`, `render.yaml` |
 | `MAX_CONCURRENT_IMPORTS` | app-runtime | configurazione | `int` / `5` | `app/config.py` |
@@ -831,6 +831,7 @@ Questa tabella è l'inventario canonico degli alias di cartella. Gli ID sono con
 | `GOOGLE_DRIVE_CARTELLE_ESATTORIALI_FOLDER_ID` | `None` | `app/config.py` |
 | `GOOGLE_DRIVE_CEDOLINI_FOLDER_ID` | `None` | `app/config.py`, `render.yaml` |
 | `GOOGLE_DRIVE_CORRISPETTIVI_FOLDER_ID` | `None` | `app/config.py` |
+| `GOOGLE_DRIVE_DICHIARAZIONI_FISCALI_FOLDER_ID` | `'109em5thoiDUbaQg9tqxE7FXWEFNImXqj'` | `app/config.py` |
 | `GOOGLE_DRIVE_DICHIARAZIONI_IVA_FOLDER_ID` | `None` | `app/config.py` |
 | `GOOGLE_DRIVE_ESTRATTI_FOLDER_ID` | `None` | `app/config.py` |
 | `GOOGLE_DRIVE_ESTRATTI_FOLDER_IDS` | `None` | `app/config.py` |
