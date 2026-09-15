@@ -71,9 +71,30 @@ def _portable(value: Any) -> Any:
     return value
 
 
+def _xml_of(document: dict[str, Any]) -> str:
+    """XML della fattura, da qualunque campo lo conservi.
+
+    Le 786 fatture 2026 arrivate dall'archivio legacy (14/09) e quelle del
+    vecchio CeraldiFatture tengono l'XML in ``fattura_allegata``; il feed
+    guardava solo ``xml_raw`` e Lotti le scartava come «senza XML» (15/09:
+    Lotti aveva 20 fatture 2026 su 1.085). Si accetta il primo campo che
+    contiene davvero un documento FatturaElettronica."""
+    for campo in ("xml_raw", "fattura_allegata", "xml_content", "xml"):
+        valore = document.get(campo)
+        if isinstance(valore, bytes):
+            try:
+                valore = valore.decode("utf-8", "ignore")
+            except Exception:  # pragma: no cover - byte non decodificabili
+                continue
+        testo = _text(valore)
+        if testo.lstrip().startswith("<") and "FatturaElettronica" in testo[:4000]:
+            return testo
+    return ""
+
+
 def _projection(document: dict[str, Any], *, include_xml: bool) -> dict[str, Any]:
     lines = document.get("linee") or document.get("righe") or document.get("prodotti") or []
-    xml_raw = _text(document.get("xml_raw"))
+    xml_raw = _xml_of(document)
     projected = {
         "source_id": _source_id(document),
         "invoice_number": _text(
