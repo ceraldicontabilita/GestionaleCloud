@@ -67,6 +67,12 @@ COLLECTION_OPERAZIONI_DA_CONFERMARE = "operazioni_da_confermare"
 COLLECTION_SUPPLIERS = "fornitori"
 COLLECTION_ASSEGNI = "assegni"
 
+# Fase 0 (15/09/2026, PROMPT_CLAUDE_CODE_FASE_0.md punto 9): disattiva il
+# ramo F24 per solo importo (±0,05 senza data) e il ramo POS-cassa legacy
+# per tolleranza (±1€) del motore A. Il ramo NUMIA/riconcilia_accredito_pos_ec
+# resta attivo (funziona correttamente, non va toccato). Rimuovere in Fase 3.
+FASE0_DISATTIVATO = True
+
 # Importi commissioni bancarie da ignorare
 IMPORTI_COMMISSIONI = [0.75, 1.00, 1.10, 1.50, 2.00, 2.50, 3.00]
 
@@ -1768,7 +1774,9 @@ async def riconcilia_movimenti_banca(
                             await _alert_match_ambiguo(db, mov_id, operazione["dettagli"]["motivo_dubbio"])
 
             # === 2. CERCA F24 (per USCITE) ===
-            if tipo == "uscita" and not match_found and "F24" in descrizione.upper():
+            # Fase 0 (15/09/2026, PROMPT_CLAUDE_CODE_FASE_0.md punto 9):
+            # disattivato — vedi FASE0_DISATTIVATO in testa al file.
+            if not FASE0_DISATTIVATO and tipo == "uscita" and not match_found and "F24" in descrizione.upper():
                 f24 = await db["f24_unificato"].find_one({
                     "totale": {"$gte": importo - 0.05, "$lte": importo + 0.05},
                     "riconciliato": {"$ne": True}
@@ -1828,7 +1836,11 @@ async def riconcilia_movimenti_banca(
                         # gia' classificato e non deve produrre un alert o una
                         # richiesta di conferma generica.
                         continue
-                if any(kw in desc_upper for kw in ['POS', 'NEXI', 'SUMUP', 'CARTE', 'BANCOMAT']):
+                # Fase 0 (15/09/2026, PROMPT_CLAUDE_CODE_FASE_0.md punto 9):
+                # ramo legacy a tolleranza (±1€) disattivato — vedi
+                # FASE0_DISATTIVATO in testa al file. Il ramo NUMIA sopra
+                # (riconcilia_accredito_pos_ec) resta attivo.
+                if not FASE0_DISATTIVATO and any(kw in desc_upper for kw in ['POS', 'NEXI', 'SUMUP', 'CARTE', 'BANCOMAT']):
                     # Logica POS: Lun-Gio +1g, Ven-Dom → Lunedì
                     try:
                         dt_acc = datetime.strptime(data_ec, "%Y-%m-%d")

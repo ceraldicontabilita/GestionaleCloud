@@ -715,12 +715,9 @@ def start_scheduler():
             logger.info(f"[SCHEDULER-PN-CORRISPETTIVI] inseriti={r.get('inseriti')} duplicati={r.get('duplicati')}")
         except Exception as e:
             logger.error(f"[SCHEDULER-PN-CORRISPETTIVI] errore: {e}")
-        try:
-            from app.routers.prima_nota_module.sync import auto_conferma_provvisori_per_metodo
-            r = await auto_conferma_provvisori_per_metodo(anno=anno_corrente)
-            logger.info(f"[SCHEDULER-PN-AUTOCONFERMA] cassa={r.get('mosse_cassa')} banca={r.get('mosse_banca')}")
-        except Exception as e:
-            logger.error(f"[SCHEDULER-PN-AUTOCONFERMA] errore: {e}")
+        # Fase 0 (15/09/2026): auto_conferma_provvisori_per_metodo spento — vedi
+        # PROMPT_CLAUDE_CODE_FASE_0.md punto 1. Confermava pagamenti in cassa
+        # senza alcuna prova, solo per metodo dichiarato del fornitore.
         try:
             from app.services.riconciliazione_bancaria import riconcilia_movimenti_banca
             r = await riconcilia_movimenti_banca()
@@ -752,13 +749,10 @@ def start_scheduler():
             )
         except Exception as e:
             logger.error(f"[SCHEDULER-DOCUMENTI-PAGAMENTI] errore: {e}")
-        try:
-            from app.routers.prima_nota_module.sync import sposta_fatture_cassa_pagate_in_banca
-            r = await sposta_fatture_cassa_pagate_in_banca(dry_run=False, anno=anno_corrente)
-            if r.get("spostate_in_banca"):
-                logger.info(f"[SCHEDULER-CASSA-VS-EC] spostate_in_banca={r['spostate_in_banca']}")
-        except Exception as e:
-            logger.error(f"[SCHEDULER-CASSA-VS-EC] errore: {e}")
+        # Fase 0 (15/09/2026): sposta_fatture_cassa_pagate_in_banca spento —
+        # senza il ramo cassa di auto_registra_prima_nota (punto 2) non ha
+        # più righe cassa automatiche da spostare, e rischierebbe di
+        # spostare righe inserite a mano.
         try:
             from app.routers.fatture_module.crud import pulisci_duplicati_invoices
             r = await pulisci_duplicati_invoices()
@@ -1272,22 +1266,12 @@ def start_scheduler():
         replace_existing=True,
     )
 
-    async def _drive_quadratura_f24_job():
-        from app.database import Database
-        from app.services import drive_f24_ingest
-        try:
-            r = await drive_f24_ingest.verifica_quadratura_elaborate(Database.get_db())
-            logger.info(f"[SCHEDULER-QUADRATURA-F24] {r if r.get('status') != 'ok' else {k: r[k] for k in ('controllati', 'quadrati', 'recuperati', 'errori')}}")
-        except Exception as e:
-            logger.error(f"[SCHEDULER-QUADRATURA-F24] errore: {e}")
-
-    scheduler.add_job(
-        _drive_quadratura_f24_job,
-        CronTrigger(day_of_week="sun", hour=5, minute=40),
-        id="drive_f24_quadratura",
-        name="Quadratura modelli F24 Drive Elaborate (domenica ore 5:40)",
-        replace_existing=True,
-    )
+    # Fase 0 (15/09/2026, PROMPT_CLAUDE_CODE_FASE_0.md punto 4): quadratura
+    # F24 domenicale spenta — drive_f24_ingest.verifica_quadratura_elaborate
+    # richiama f24_canonico che resetta status/pagato/riconciliato sui
+    # modelli già riconciliati (f24_canonico.py:95-97,215-219). Le altre
+    # quadrature (fatture/cedolini/corrispettivi/quietanze) non toccano
+    # stato di riconciliazione e restano attive.
 
     async def _drive_quadratura_quietanze_job():
         from app.database import Database

@@ -824,7 +824,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/operazioni-da-confermare/smart/cerca-f24` | operazioni_module.smart | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/operazioni-da-confermare/smart/cerca-fatture` | operazioni_module.smart | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/operazioni-da-confermare/smart/cerca-stipendi` | operazioni_module.smart | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/operazioni-da-confermare/smart/conferma-f24` | operazioni_module.smart | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/operazioni-da-confermare/smart/conferma-f24` | operazioni_module.smart | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/operazioni-da-confermare/smart/ignora` | operazioni_module | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/operazioni-da-confermare/smart/movimento/{movimento_id}` | operazioni_module.smart | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/operazioni-da-confermare/smart/riconcilia-manuale` | operazioni_module.smart | sì | — | — | — | sì | tenere | in uso: FE |
@@ -991,8 +991,8 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/prima-nota/provvisori/assegni-proposti` | prima_nota_module.sync | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/prima-nota/provvisori/associa-assegno` | prima_nota_module.sync | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/prima-nota/provvisori/attendi-banca` | prima_nota_module.sync | sì | — | — | — | sì | tenere | in uso: FE |
-| `POST /api/prima-nota/provvisori/auto-conferma-per-metodo` | prima_nota_module.sync | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/prima-nota/provvisori/conferma` | prima_nota_module.sync | sì | — | — | — | sì | tenere | in uso: FE |
+| `POST /api/prima-nota/provvisori/auto-conferma-per-metodo` | prima_nota_module.sync | sì | — | — | — | sì | tenere | in uso: FE |
+| `POST /api/prima-nota/provvisori/conferma` | prima_nota_module.sync | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
 | `POST /api/prima-nota/provvisori/conferma-divisione` | prima_nota_module.sync | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/prima-nota/provvisori/conferma-multipla` | prima_nota_module.sync | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/prima-nota/provvisori/da-decidere` | prima_nota_module.sync | sì | — | — | — | sì | tenere | in uso: FE |
@@ -1026,7 +1026,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/rapido/apporto-soci` | rapido | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/rapido/corrispettivo` | rapido | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/rapido/dipendenti-attivi` | rapido | sì | — | sì | — | sì | tenere | in uso: FE, chat |
-| `POST /api/rapido/paga-fattura` | rapido | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/rapido/paga-fattura` | rapido | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/rapido/presenza` | rapido | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/rapido/ultimi-inserimenti` | rapido | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/rapido/versamento-banca` | rapido | sì | — | — | — | — | tenere | in uso: FE |

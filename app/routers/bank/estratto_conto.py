@@ -27,6 +27,13 @@ from app.services.bank_evidence import EVIDENZA_UFFICIALE, campi_evidenza
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+# Fase 0 (15/09/2026, PROMPT_CLAUDE_CODE_FASE_0.md punto 11): disattiva il
+# "Motore C" (riconciliazione automatica fatture provvisorie durante
+# l'import estratto conto, righe 942-1025 nell'audit) — un motore parallelo
+# di riconciliazione fatture con proprie tolleranze/regole, separato dallo
+# scrittore canonico persist_bank_invoice_allocations. Rimuovere in Fase 3.
+FASE0_DISATTIVATO = True
+
 
 @asynccontextmanager
 async def _write_batch(db):
@@ -958,7 +965,7 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
         }, {"_id": 0, "id": 1, "supplier_name": 1, "supplier_vat": 1, "total_amount": 1,
             "invoice_date": 1, "invoice_number": 1, "tipo_documento": 1}).to_list(500)
 
-        for f in provvisori if fonte_ufficiale and has_material_changes else []:
+        for f in provvisori if (not FASE0_DISATTIVATO and fonte_ufficiale and has_material_changes) else []:
             importo = float(f.get("total_amount", 0))
             match = await find_ec_match_for_invoice(
                 db, importo, f.get("supplier_name", ""), f.get("invoice_date", ""),
@@ -2309,7 +2316,18 @@ async def ripara_versamenti_cassa(anno: int = Query(None, description="Anno (opz
     La causale esplicita dell'estratto conto prova il trasferimento: un
     versamento genera uscita Cassa + entrata Banca, un prelievo il contrario.
     Gli ID del movimento EC e dell'operazione rendono l'operazione idempotente.
+
+    Fase 0 (15/09/2026, PROMPT_CLAUDE_CODE_FASE_0.md punto 6): disattivato.
+    La guardia contro l'invenzione di uscite cassa era disattivata con
+    `elif False`, quindi il bottone creava davvero una gamba cassa dal solo
+    estratto conto, anche quando il versamento era già registrato a mano un
+    giorno diverso da quello contabilizzato in banca (doppio prelievo).
     """
+    raise HTTPException(
+        status_code=409,
+        detail="Disattivato: Fase 0",
+    )
+
     import uuid as _uuid
     db = Database.get_db()
 

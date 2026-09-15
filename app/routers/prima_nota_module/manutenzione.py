@@ -1817,10 +1817,12 @@ async def dedup_fatture_prima_nota(
 
         # Soft delete (reversibile)
         deleted = 0
-        # L'automatismo e' ammesso esclusivamente per identita fattura certa.
-        # Il vecchio `applica=true` resta compatibile, ma non elimina piu' le
-        # somiglianze anonime o basate soltanto su numero/data/importo.
-        ids_da_eliminare = ids_certi if (applica or auto_risolvi_certi) else []
+        # Fase 0 (15/09/2026, PROMPT_CLAUDE_CODE_FASE_0.md punto 8): con
+        # applica=false non si scrive MAI, qualunque sia auto_risolvi_certi
+        # — prima "false" scriveva comunque se auto_risolvi_certi era true,
+        # contraddicendo sia il nome del parametro sia il commento in testa
+        # a PuliziaPrimaNota.jsx che promette un'anteprima.
+        ids_da_eliminare = ids_certi if applica else []
         if ids_da_eliminare:
             result = await db[collection_name].update_many(
                 {"id": {"$in": ids_da_eliminare}},
