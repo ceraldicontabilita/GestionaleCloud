@@ -45,6 +45,8 @@ _EXACT_LOOKUP_FIELDS = (
     "version_id",
 )
 _MAX_EXACT_LOOKUP_VALUES = 500
+_STATUS_ALIGNMENT_BATCH_SIZE = 250
+_STATUS_ALIGNMENT_MAX_BATCHES = 40
 
 # Le RPC runtime hanno un timeout molto stretto e la paginazione OFFSET diventa
 # costosa oltre alcune migliaia di righe. Le collezioni elencate qui possono
@@ -693,9 +695,16 @@ class SupabaseRuntimeDatabase(SheetDatabase):
         return list(merged.values())
 
     async def align_processed_document_status(self) -> int:
-        """Allinea i badge direttamente nel database, senza scaricare i PDF."""
-        result = await self._rpc("gc_align_processed_document_status", {})
-        return int(result or 0)
+        """Allinea i badge in transazioni brevi, senza scaricare i PDF."""
+        total = 0
+        for _ in range(_STATUS_ALIGNMENT_MAX_BATCHES):
+            affected = int(
+                await self._rpc("gc_align_processed_document_status", {}) or 0
+            )
+            total += affected
+            if affected < _STATUS_ALIGNMENT_BATCH_SIZE:
+                break
+        return total
 
     async def hydrate(self) -> dict[str, Any]:
         """Verifica il catalogo senza copiare i documenti nel processo web."""

@@ -91,6 +91,8 @@ class FakeRestSupabase(SupabaseRuntimeDatabase):
             updated = 0
             for collection in ("documents_inbox__shard_001", "documents_inbox"):
                 for document in self.remote.get(collection, {}).values():
+                    if updated >= 250:
+                        return updated
                     processed = document.get("processed") is True
                     xml_processed = document.get("xml_processed") is True
                     if (processed or xml_processed) and document.get("status") in {
@@ -316,6 +318,30 @@ def test_allineamento_status_usa_una_sola_rpc_senza_caricare_documenti(monkeypat
     assert updated == 1
     assert calls == ["gc_align_processed_document_status"]
     assert runtime.remote["documents_inbox"]["d1"]["status"] == "processato"
+
+
+def test_allineamento_status_prosegue_per_lotti_da_250(monkeypatch):
+    runtime = FakeRestSupabase({
+        "documents_inbox": [
+            {"_id": f"d{index:03d}", "processed": True, "status": "nuovo"}
+            for index in range(251)
+        ],
+    })
+    calls = []
+    original_rpc = runtime._rpc
+
+    async def rpc(function, payload):
+        calls.append(function)
+        return await original_rpc(function, payload)
+
+    monkeypatch.setattr(runtime, "_rpc", rpc)
+    updated = asyncio.run(runtime.align_processed_document_status())
+
+    assert updated == 251
+    assert calls == [
+        "gc_align_processed_document_status",
+        "gc_align_processed_document_status",
+    ]
 
 
 def test_find_one_per_id_usa_lookup_puntuale_e_non_scarica_la_collezione(monkeypatch):
