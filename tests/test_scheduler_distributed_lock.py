@@ -1,5 +1,6 @@
 """Invarianti dello scheduler seriale nel processo Render."""
 import asyncio
+from contextlib import asynccontextmanager
 
 from app.services.sheets_document_store import MemorySheetsClient
 
@@ -74,3 +75,23 @@ def test_sheets_usa_lock_locale_senza_collezione_tecnica(monkeypatch):
     assert risultato_primo == "ok"
     assert risultato_secondo == "ok"
     assert esecuzioni == ["primo", "secondo"]
+
+
+def test_supabase_salta_job_se_la_lease_e_detenuta_da_unaltra_istanza(monkeypatch):
+    class DatabaseConLease:
+        @asynccontextmanager
+        async def scheduler_lease(self, job_id):
+            assert job_id == "job-remoto"
+            yield False
+
+    monkeypatch.setattr(Database, "db", DatabaseConLease())
+    eseguito = False
+
+    async def job():
+        nonlocal eseguito
+        eseguito = True
+
+    risultato = asyncio.run(_esegui_con_lock_sheets("job-remoto", job))
+
+    assert risultato is None
+    assert eseguito is False

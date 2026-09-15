@@ -2,8 +2,8 @@
 
 <!-- gestionalecloud-doc
 status: current
-reviewed_at: 2026-08-21
-storage_architecture: drive-only
+reviewed_at: 2026-09-15
+storage_architecture: supabase
 -->
 
 Aggiornato il 20/08/2026 sul codice corrente di `main`. Il commit esatto della
@@ -48,7 +48,7 @@ Documento originale
 5. Un alert senza lista dei record interessati non è utile.
 6. Le pagine collegate devono mostrare lo stesso stato senza ricaricamenti o
    manutenzioni manuali.
-7. Drive/Sheets è l'unico archivio operativo portabile.
+7. Supabase è il registro operativo unico; Drive conserva gli originali.
 
 ## Motore delle attese
 
@@ -60,11 +60,12 @@ Dettagli e test richiesti sono in `docs/REGOLA_FISSA_ATTESE.md`.
 
 ## Stato dell'architettura dati
 
-Il codice usa un unico backend supportato in produzione:
-
-- `sheets`: registro operativo su Google Sheets/Drive, con cache asincrona nel processo applicativo.
-
-In produzione configurare sempre esplicitamente il registro Drive/Sheets. In modalità Sheets, la mancanza dell'ID del registro o della cartella Drive è un errore di configurazione. La migrazione storica è conclusa solo dopo copia completa, confronto conteggi/hash, ricostruzione e prova di scrittura; prima di allora i dati storici non si cancellano.
+In produzione il backend è `supabase`: `gestionale.documents` conserva le
+collezioni logiche e `gestionale.blobs` i binari deduplicati. Il processo web
+non serve dati da una cache idratata: legge la collezione richiesta dal
+database e rende visibile una mutazione soltanto dopo conferma remota. Drive
+resta l'archivio degli originali documentali. Sheets è solo un fallback di
+sviluppo e non è la fonte della produzione.
 
 ## Fonti dati per dominio
 

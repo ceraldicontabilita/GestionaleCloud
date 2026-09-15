@@ -14,14 +14,9 @@ import random
 
 logger = logging.getLogger(__name__)
 
-# Con il backend Drive/Sheets il servizio Render gira intenzionalmente in un
-# solo processo (FastAPI e APScheduler condividono lo stesso event loop). Un
-# lock distribuito salvato come riga contabile non sarebbe atomico su Sheets e
-# costringerebbe inoltre a trattare una lease effimera come dato aziendale.
-# Il piano Render ha 512 MiB e alcuni job caricano parser PDF/OCR: in modalita'
-# Sheets le automazioni devono essere seriali nell'intero processo, non solo
-# per singolo job. In questo modo due import diversi non sommano i rispettivi
-# picchi di memoria mentre FastAPI resta disponibile.
+# Il lock locale mantiene seriali i job nella stessa istanza. Con Supabase e'
+# affiancato da una lease atomica remota, necessaria durante i rolling deploy;
+# con il backend Sheets rimane il solo meccanismo disponibile.
 _sheets_scheduler_lock = asyncio.Lock()
 
 
@@ -37,12 +32,26 @@ async def _esegui_con_lock_locale(job_id, funzione, *args, **kwargs):
         return await risultato if inspect.isawaitable(risultato) else risultato
 
 async def _esegui_con_lock_sheets(job_id, funzione, *args, **kwargs):
-    """Serializza ogni automazione nel processo operativo Drive/Sheets."""
+    """Usa una lease Supabase tra istanze, con fallback locale per Sheets."""
+    from app.database import Database
+
+    database = Database.db
+    lease_factory = getattr(database, "scheduler_lease", None) if database else None
+    if callable(lease_factory):
+        async with lease_factory(str(job_id)) as acquired:
+            if not acquired:
+                logger.info(
+                    "[SCHEDULER] job %s saltato: lease detenuta da un'altra istanza",
+                    job_id,
+                )
+                return None
+            risultato = funzione(*args, **kwargs)
+            return await risultato if inspect.isawaitable(risultato) else risultato
     return await _esegui_con_lock_locale(job_id, funzione, *args, **kwargs)
 
 
 class SheetsLockedScheduler(AsyncIOScheduler):
-    """APScheduler con esclusione locale applicata a ogni job Drive/Sheets."""
+    """APScheduler con lease Supabase o esclusione locale di compatibilita'."""
 
     def add_job(self, func, trigger=None, args=None, kwargs=None, id=None, **options):
         job_id = id or getattr(func, "__name__", str(uuid.uuid4()))
@@ -63,7 +72,7 @@ class SheetsLockedScheduler(AsyncIOScheduler):
         )
 
 
-# Un solo oggetto per processo; Render mantiene una sola istanza applicativa.
+# Un solo oggetto per processo; la lease impedisce sovrapposizioni tra istanze.
 scheduler = SheetsLockedScheduler()
 
 async def scan_verbali_email_task():

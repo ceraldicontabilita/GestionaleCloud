@@ -768,9 +768,12 @@ async def health_check():
 
     try:
         if getattr(Database.db, "hydration_result", None) is None:
-            raise RuntimeError("Registro Drive/Sheets non idratato")
+            raise RuntimeError("Catalogo Supabase non verificato")
+        health_probe = getattr(Database.db, "health_probe", None)
+        if callable(health_probe):
+            await health_probe()
     except Exception:
-        logger.exception("Health check Drive/Sheets fallito")
+        logger.exception("Health check archivio remoto fallito")
         return JSONResponse(
             status_code=503,
             content={

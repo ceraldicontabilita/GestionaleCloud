@@ -1,13 +1,14 @@
 """Runtime documentale Supabase del gestionale.
 
-Mantiene la stessa interfaccia in memoria del precedente registro Sheets, ma
-persiste ogni modifica nella tabella privata ``gestionale.documents``. Il
+Mantiene l'interfaccia compatibile con il precedente registro Sheets, ma usa
+la tabella privata ``gestionale.documents`` come fonte autorevole. Il
 server non usa la password Postgres né la service-role: chiama esclusivamente
 quattro RPC minimali protette da una chiave applicativa separata, conservata
 nel secret store di Render.
 
-La logica applicativa resta invariata: all'avvio i documenti vengono idratati
-in memoria e le mutazioni sono propagate immediatamente a Supabase. Gli
+Il catalogo viene verificato all'avvio, mentre ogni lettura ricarica da
+Supabase la sola collezione richiesta. Le mutazioni sono confermate dal
+database prima di diventare osservabili da altre letture del processo. Gli
 upsert sono idempotenti sulla coppia ``(collection, id)``.
 """
 from __future__ import annotations
@@ -16,17 +17,17 @@ import asyncio
 import hashlib
 import json
 import logging
+import uuid
 from contextlib import asynccontextmanager
-from contextvars import ContextVar
 from typing import Any
 
 import aiohttp
 
-from app.services.sheets_document_store import SheetDatabase
+from app.services.sheets_document_store import SheetCursor, SheetDatabase, SheetTable
 
 logger = logging.getLogger(__name__)
 
-_PAGE_SIZE = 50
+_PAGE_SIZE = 500
 _MIN_READ_PAGE_SIZE = 10
 _READ_RETRIES = 5
 _MANIFEST_RETRIES = 3
@@ -81,11 +82,9 @@ def documents_digest(documents: list[dict[str, Any]]) -> str:
 class DocumentoDuplicatoRemoto(RuntimeError):
     """Postgres ha rifiutato uno o piu' documenti per ``idempotency_key`` gia' usata.
 
-    Viene sollevata SOLO nel percorso write-through diretto (fuori da
-    ``batch_writes``), dopo che la cache in memoria e' stata riallineata alla
-    riga esistente: chi scrive puo' cosi' restituire l'id gia' presente
-    invece di quello mai persistito. Espone, per chiave, l'id e il documento
-    esistente (``id_esistente_per_chiave``, ``documento_esistente_per_chiave``).
+    Viene sollevata prima che la mutazione possa essere considerata conclusa.
+    Espone, per chiave, l'id e il documento gia' presenti in Supabase
+    (``id_esistente_per_chiave``, ``documento_esistente_per_chiave``).
     """
 
     def __init__(self, collection_name: str, rifiuti: list[dict[str, Any]]):
@@ -143,8 +142,157 @@ class SupabaseRPCError(RuntimeError):
         )
 
 
+class _ReadThroughCursor:
+    """Cursor Motor-compatibile che costruisce lo snapshot da Supabase al consumo."""
+
+    def __init__(self, loader):
+        self._loader = loader
+        self._sort = None
+        self._skip = 0
+        self._limit: int | None = None
+        self._iterator = None
+
+    def sort(self, key_or_list: Any, direction: int | None = None):
+        self._sort = (key_or_list, direction)
+        return self
+
+    def skip(self, count: int):
+        self._skip = max(0, int(count))
+        return self
+
+    def limit(self, count: int):
+        self._limit = max(0, int(count))
+        return self
+
+    async def _cursor(self) -> SheetCursor:
+        cursor = await self._loader()
+        if self._sort is not None:
+            cursor.sort(*self._sort)
+        if self._skip:
+            cursor.skip(self._skip)
+        if self._limit is not None:
+            cursor.limit(self._limit)
+        return cursor
+
+    async def to_list(self, length: int | None = None) -> list[dict[str, Any]]:
+        return await (await self._cursor()).to_list(length)
+
+    def __aiter__(self):
+        self._iterator = None
+        return self
+
+    async def __anext__(self):
+        if self._iterator is None:
+            self._iterator = iter(await self.to_list(None))
+        try:
+            return next(self._iterator)
+        except StopIteration as exc:
+            raise StopAsyncIteration from exc
+
+
+class SupabaseTable(SheetTable):
+    """Vista senza cache autorevole: rilegge Supabase per ogni operazione."""
+
+    def __init__(self, database: "SupabaseRuntimeDatabase", name: str):
+        super().__init__(database, name)
+        self._remote_operation_lock = asyncio.Lock()
+
+    async def _refresh_unlocked(self) -> None:
+        documents = await self.database._fetch_logical_collection_documents(self.name)
+        self._documents = [_normalise_document(document) for document in documents]
+
+    def find(self, selector=None, projection=None, *args, **kwargs):
+        async def load():
+            async with self._remote_operation_lock:
+                await self._refresh_unlocked()
+                return SheetTable.find(self, selector, projection, *args, **kwargs)
+
+        return _ReadThroughCursor(load)
+
+    async def find_one(self, selector=None, projection=None, *args, **kwargs):
+        cursor = self.find(selector, projection, *args, **kwargs)
+        if kwargs.get("sort"):
+            cursor.sort(kwargs["sort"])
+        documents = await cursor.limit(1).to_list(1)
+        return documents[0] if documents else None
+
+    async def count_documents(self, selector=None, *args, **kwargs) -> int:
+        return len(await self.find(selector).to_list(None))
+
+    async def estimated_document_count(self, *args, **kwargs) -> int:
+        return len(await self.find({}).to_list(None))
+
+    async def distinct(self, key, selector=None, *args, **kwargs):
+        async with self._remote_operation_lock:
+            await self._refresh_unlocked()
+            return await SheetTable.distinct(self, key, selector, *args, **kwargs)
+
+    def aggregate(self, pipeline, *args, **kwargs):
+        async def load():
+            # $lookup usa gli snapshot delle collezioni esterne: rileggerli
+            # prima di calcolare evita join contro dati di un vecchio processo.
+            for stage in pipeline:
+                lookup = stage.get("$lookup") if isinstance(stage, dict) else None
+                if isinstance(lookup, dict) and lookup.get("from"):
+                    foreign = self.database[str(lookup["from"])]
+                    async with foreign._remote_operation_lock:
+                        await foreign._refresh_unlocked()
+            async with self._remote_operation_lock:
+                await self._refresh_unlocked()
+                return SheetTable.aggregate(self, pipeline, *args, **kwargs)
+
+        return _ReadThroughCursor(load)
+
+    async def _mutate(self, method_name: str, *args, **kwargs):
+        async with self._remote_operation_lock:
+            await self._refresh_unlocked()
+            snapshot = [_normalise_document(document) for document in self._documents]
+            try:
+                method = getattr(SheetTable, method_name)
+                return await method(self, *args, **kwargs)
+            except Exception:
+                # L'RPC e' l'autorita': una scrittura rifiutata non deve mai
+                # lasciare visibile nel processo il documento candidato.
+                self._documents = snapshot
+                raise
+
+    async def insert_one(self, document, *args, **kwargs):
+        return await self._mutate("insert_one", document, *args, **kwargs)
+
+    async def insert_many(self, documents, *args, **kwargs):
+        return await self._mutate("insert_many", documents, *args, **kwargs)
+
+    async def update_one(self, selector, update, *args, **kwargs):
+        return await self._mutate("update_one", selector, update, *args, **kwargs)
+
+    async def update_many(self, selector, update, *args, **kwargs):
+        return await self._mutate("update_many", selector, update, *args, **kwargs)
+
+    async def replace_one(self, selector, replacement, *args, **kwargs):
+        return await self._mutate("update_one", selector, replacement, *args, **kwargs)
+
+    async def delete_one(self, selector, *args, **kwargs):
+        return await self._mutate("delete_one", selector, *args, **kwargs)
+
+    async def delete_many(self, selector, *args, **kwargs):
+        return await self._mutate("delete_many", selector, *args, **kwargs)
+
+    async def find_one_and_update(self, selector, update, *args, **kwargs):
+        return await self._mutate(
+            "find_one_and_update", selector, update, *args, **kwargs,
+        )
+
+    async def find_one_and_replace(self, selector, replacement, *args, **kwargs):
+        return await self._mutate(
+            "find_one_and_update", selector, replacement, *args, **kwargs,
+        )
+
+    async def find_one_and_delete(self, selector, *args, **kwargs):
+        return await self._mutate("find_one_and_delete", selector, *args, **kwargs)
+
+
 class SupabaseRuntimeDatabase(SheetDatabase):
-    """Archivio documentale con persistenza write-through su Supabase."""
+    """Archivio documentale read-through e write-through su Supabase."""
 
     def __init__(self, name: str, config: dict[str, Any]):
         super().__init__(name, mutation_hook=self._write_through)
@@ -173,10 +321,11 @@ class SupabaseRuntimeDatabase(SheetDatabase):
         self._known_collections: set[str] = set()
         self._document_locations: dict[str, dict[str, str]] = {}
         self._remote_write_lock = asyncio.Lock()
-        self._write_batch: ContextVar[dict[str, dict[str, Any]] | None] = (
-            ContextVar(f"supabase_write_batch_{id(self)}", default=None)
-        )
         self.hydration_result: dict[str, Any] | None = None
+        self._instance_id = str(uuid.uuid4())
+
+    def __getitem__(self, name: str) -> SupabaseTable:
+        return self._tables.setdefault(name, SupabaseTable(self, name))
 
     async def _get_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
@@ -328,8 +477,8 @@ class SupabaseRuntimeDatabase(SheetDatabase):
             if not use_keyset:
                 offset += len(page)
         # Un inserimento prima dell'offset corrente può riproporre l'ultima riga
-        # della pagina precedente. La cache richiede ID univoci; conserviamo una
-        # sola copia senza inventare o fondere documenti diversi.
+        # della pagina precedente. Lo snapshot della singola lettura richiede ID
+        # univoci: conserviamo una sola copia senza fondere documenti diversi.
         unique_documents: dict[str, dict[str, Any]] = {}
         without_id: list[dict[str, Any]] = []
         for document in documents:
@@ -362,78 +511,85 @@ class SupabaseRuntimeDatabase(SheetDatabase):
         return [*merged.values(), *without_id]
 
     async def hydrate(self) -> dict[str, Any]:
-        """Carica tutte le collezioni Supabase nella cache applicativa."""
+        """Verifica il catalogo senza copiare i documenti nel processo web."""
         manifest = await self._manifest()
-        self.loading = True
         totale_righe = 0
         dettaglio: list[dict[str, Any]] = []
-        try:
-            manifest_by_name = {
-                str(item.get("collection") or "").strip(): item
-                for item in manifest
-                if str(item.get("collection") or "").strip()
-            }
-            logical_names = {
-                _SHARD_TO_COLLECTION.get(name, name) for name in manifest_by_name
-            }
-            # Il catalogo dinamico include anche collezioni aggiunte da nuovi
-            # flussi; gli shard configurati confluiscono nella collezione logica.
-            for collection_name in sorted(logical_names):
-                documents_by_id: dict[str, dict[str, Any]] = {}
-                without_id: list[dict[str, Any]] = []
-                locations = self._document_locations.setdefault(collection_name, {})
-                expected_count = 0
-                for physical_name in self._physical_collections(collection_name):
-                    item = manifest_by_name.get(physical_name, {})
-                    physical_expected = int(item.get("row_count") or 0)
-                    physical_documents = await self._fetch_collection_documents(
-                        physical_name, expected_count=physical_expected,
-                    )
-                    if len(physical_documents) < physical_expected:
-                        raise RuntimeError(
-                            f"Idratazione incompleta per {physical_name}: "
-                            f"attese {physical_expected}, lette {len(physical_documents)}"
-                        )
-                    expected_count += physical_expected
-                    for document in physical_documents:
-                        document_id = document.get("_id")
-                        if document_id is None:
-                            without_id.append(document)
-                            continue
-                        key = str(document_id)
-                        documents_by_id[key] = document
-                        locations[key] = physical_name
-                documents = [*documents_by_id.values(), *without_id]
-                # Il manifest e le pagine non sono una snapshot transazionale:
-                # l'istanza live può aggiungere righe mentre quella nuova si
-                # idrata. Più righe del manifest sono quindi un superset valido;
-                # meno righe restano invece una lettura realmente incompleta.
-                if len(documents) < expected_count:
-                    raise RuntimeError(
-                        f"Idratazione incompleta per {collection_name}: "
-                        f"attese {expected_count}, lette {len(documents)}"
-                    )
-                if documents:
-                    await self[collection_name].hydrate_documents(
-                        documents, copy_documents=False,
-                    )
-                self._known_collections.add(collection_name)
-                totale_righe += len(documents)
-                dettaglio.append({
-                    "collezione": collection_name,
-                    "valide": len(documents),
-                    "numero_errori": 0,
-                })
-        finally:
-            self.loading = False
+        counts: dict[str, int] = {}
+        for item in manifest:
+            physical_name = str(item.get("collection") or "").strip()
+            if not physical_name:
+                continue
+            logical_name = _SHARD_TO_COLLECTION.get(physical_name, physical_name)
+            counts[logical_name] = counts.get(logical_name, 0) + int(item.get("row_count") or 0)
+        for collection_name, row_count in sorted(counts.items()):
+            self._known_collections.add(collection_name)
+            totale_righe += row_count
+            dettaglio.append({
+                "collezione": collection_name,
+                "valide": row_count,
+                "numero_errori": 0,
+            })
         logger.info(
-            "Archivio Supabase idratato: %s righe in %s collezioni",
+            "Catalogo Supabase verificato: %s righe in %s collezioni",
             totale_righe,
             len(dettaglio),
         )
         result = {"fogli": dettaglio, "righe": totale_righe}
         self.hydration_result = result
         return result
+
+    async def health_probe(self) -> dict[str, Any]:
+        """Prova in tempo reale sia la lettura sia l'RPC usata dalle scritture."""
+        manifest = await self._manifest()
+        await self._rpc(
+            "gc_upsert_documents",
+            {"p_collection": "runtime_health", "p_documents": []},
+        )
+        return {"collections": len(manifest), "write_path": "ok"}
+
+    @asynccontextmanager
+    async def scheduler_lease(self, job_id: str, ttl_seconds: int = 900):
+        """Lease distribuita rinnovata finche il job resta in esecuzione."""
+        payload = {
+            "p_job_id": str(job_id),
+            "p_owner_id": self._instance_id,
+            "p_ttl_seconds": ttl_seconds,
+        }
+        acquired = bool(await self._rpc("gc_try_scheduler_lease", payload))
+        if not acquired:
+            yield False
+            return
+
+        stop = asyncio.Event()
+
+        async def renew() -> None:
+            while True:
+                try:
+                    await asyncio.wait_for(stop.wait(), timeout=ttl_seconds / 3)
+                    return
+                except asyncio.TimeoutError:
+                    renewed = await self._rpc("gc_renew_scheduler_lease", payload)
+                    if not renewed:
+                        logger.error("Lease scheduler persa durante il job %s", job_id)
+                        return
+                except Exception:
+                    logger.exception("Rinnovo lease scheduler fallito per %s", job_id)
+                    return
+
+        heartbeat = asyncio.create_task(renew())
+        try:
+            yield True
+        finally:
+            stop.set()
+            await heartbeat
+            try:
+                await self._rpc(
+                    "gc_release_scheduler_lease",
+                    {"p_job_id": str(job_id), "p_owner_id": self._instance_id},
+                )
+            except Exception:
+                logger.exception("Rilascio lease scheduler fallito per %s", job_id)
 
     async def _write_through(
         self,
@@ -443,21 +599,6 @@ class SupabaseRuntimeDatabase(SheetDatabase):
         after: list[dict[str, Any]],
     ) -> None:
         self._known_collections.add(collection_name)
-        batch = self._write_batch.get()
-        if batch is not None:
-            pending = batch.setdefault(collection_name, {"upserts": {}, "deletes": set()})
-            if method in {"delete_one", "delete_many", "find_one_and_delete"}:
-                for document in before:
-                    doc_id = str(document.get("_id"))
-                    pending["upserts"].pop(doc_id, None)
-                    pending["deletes"].add(doc_id)
-                return
-            for document in after:
-                doc_id = str(document.get("_id"))
-                pending["deletes"].discard(doc_id)
-                pending["upserts"][doc_id] = document
-            return
-
         async with self._remote_write_lock:
             await self._persist_mutation(collection_name, method, before, after)
 
@@ -476,59 +617,9 @@ class SupabaseRuntimeDatabase(SheetDatabase):
             return
         rifiuti = await self._upsert_documents(collection_name, after)
         if rifiuti:
-            # Fuori dal batch il chiamante e' ancora in attesa della
-            # mutazione: la cache e' gia' stata riallineata, l'eccezione gli
-            # consegna la riga esistente.
+            # Il chiamante e' ancora in attesa della mutazione: l'eccezione
+            # consegna la riga autorevole gia' presente in Supabase.
             raise DocumentoDuplicatoRemoto(collection_name, rifiuti)
-
-    def _riallinea_cache_dopo_rifiuto(
-        self, collection_name: str, rifiuti: list[dict[str, Any]],
-    ) -> None:
-        """La cache non deve tenere una copia che Postgres non ha accettato.
-
-        Per ogni rifiuto: il documento rifiutato sparisce dalla cache e al
-        suo posto entra quello esistente (se l'RPC lo ha restituito). Se
-        l'RPC non lo ha restituito, il documento resta ma marcato
-        ``entity_status="deleted"`` + ``duplicate_of``, cosi' nessuna lettura
-        lo somma. In ogni caso il rifiuto e' loggato a ERROR con id e chiave.
-        """
-        table = self[collection_name]
-        documents = table._documents
-        for item in rifiuti:
-            id_rifiutato = str(item.get("id_rifiutato"))
-            id_esistente = item.get("id_esistente")
-            chiave = item.get("idempotency_key")
-            esistente = item.get("documento_esistente")
-            logger.error(
-                "Supabase ha rifiutato %s/%s: idempotency_key %s gia' usata dalla "
-                "riga %s (scritta da un altro processo); cache riallineata",
-                collection_name, id_rifiutato, chiave, id_esistente,
-            )
-            indice = next(
-                (i for i, doc in enumerate(documents) if str(doc.get("_id")) == id_rifiutato),
-                None,
-            )
-            if isinstance(esistente, dict) and esistente:
-                esistente = dict(esistente)
-                esistente.setdefault("_id", id_esistente)
-                gia_in_cache = any(
-                    str(doc.get("_id")) == str(esistente.get("_id")) for doc in documents
-                )
-                if indice is not None and gia_in_cache:
-                    del documents[indice]
-                elif indice is not None:
-                    documents[indice] = esistente
-                elif not gia_in_cache:
-                    documents.append(esistente)
-                continue
-            if indice is not None:
-                documents[indice].update({
-                    "entity_status": "deleted",
-                    "status": "deleted",
-                    "deleted": True,
-                    "duplicate_of": id_esistente,
-                    "deleted_reason": "idempotency_key_rifiutata_da_postgres",
-                })
 
     async def bulk_seed(
         self, collection_name: str, documents: list[dict[str, Any]],
@@ -581,12 +672,7 @@ class SupabaseRuntimeDatabase(SheetDatabase):
     async def _upsert_documents(
         self, collection_name: str, documents: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
-        """Upsert a blocchi; ritorna i documenti rifiutati per chiave doppia.
-
-        Quando l'RPC segnala un rifiuto la cache viene riallineata subito
-        (``_riallinea_cache_dopo_rifiuto``): nessuna copia divergente resta
-        in memoria, qualunque sia il chiamante.
-        """
+        """Upsert a blocchi; ritorna i documenti rifiutati per chiave doppia."""
         if not documents:
             return []
         normalised = [_normalise_document(document) for document in documents]
@@ -607,8 +693,6 @@ class SupabaseRuntimeDatabase(SheetDatabase):
                 rifiuti.extend(_rifiuti_da_risposta(result))
                 for document in chunk:
                     locations[str(document.get("_id"))] = physical_name
-        if rifiuti:
-            self._riallinea_cache_dopo_rifiuto(collection_name, rifiuti)
         return rifiuti
 
     async def _delete_ids(self, collection_name: str, ids: list[str]) -> None:
@@ -629,32 +713,8 @@ class SupabaseRuntimeDatabase(SheetDatabase):
 
     @asynccontextmanager
     async def batch_writes(self):
-        """Accorpa le mutazioni di uno stesso job per collezione."""
-        current = self._write_batch.get()
-        if current is not None:
-            yield None
-            return
-
-        async with self._remote_write_lock:
-            batch: dict[str, dict[str, Any]] = {}
-            token = self._write_batch.set(batch)
-            try:
-                yield None
-            finally:
-                try:
-                    for collection_name, pending in batch.items():
-                        deletes = sorted(pending["deletes"])
-                        upserts = list(pending["upserts"].values())
-                        if deletes:
-                            await self._delete_ids(collection_name, deletes)
-                        if upserts:
-                            # Nel batch il chiamante ha gia' proseguito: il
-                            # rifiuto riallinea la cache e resta nel log a
-                            # ERROR, non puo' piu' essere consegnato a chi
-                            # ha scritto.
-                            await self._upsert_documents(collection_name, upserts)
-                finally:
-                    self._write_batch.reset(token)
+        """Compatibilita API: ogni mutazione Supabase resta immediata."""
+        yield None
 
     async def list_collection_names(self, *args, **kwargs) -> list[str]:
         return sorted(self._known_collections | set(self._tables))

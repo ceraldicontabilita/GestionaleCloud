@@ -2,8 +2,8 @@
 
 <!-- gestionalecloud-doc
 status: current
-reviewed_at: 2026-08-21
-storage_architecture: drive-only
+reviewed_at: 2026-09-15
+storage_architecture: supabase
 -->
 
 Questo documento descrive le regole operative correnti di Ceraldi ERP. Il
@@ -38,17 +38,16 @@ owner crea subito obblighi e attese; le evidenze future possono soltanto
 soddisfarle o lasciarle aperte. Nessun processo è chiuso se una sua attesa
 obbligatoria è ancora `ATTESO`, `DA_VERIFICARE`, `IN_ELABORAZIONE` o `ERRORE`.
 
-## 2. Archivio Drive-only
+## 2. Archivio Supabase e originali Drive
 
-Drive/Sheets è l'unico archivio operativo. La destinazione operativa è:
+Supabase è l'unico registro operativo di produzione. La destinazione è:
 
 - Google Drive per documenti originali e allegati;
-- Google Sheets/Excel collegato a Drive per registri strutturati;
-- un foglio per entità, con progressivo stabile e identificativo canonico;
+- `gestionale.documents` per registri strutturati e collezioni logiche;
+- `gestionale.blobs` per binari deduplicati;
 - relazioni tra entità tramite `operation_id` e ID specifici.
 
-Il registro implementato in `app/services/google_sheets_ledger.py` usa almeno
-questi fogli:
+Il registro usa collezioni logiche esplicite, tra cui:
 
 ```text
 Documenti                 Fatture ricevute       Fatture emesse
@@ -79,19 +78,23 @@ percorso, origine, hash e data di acquisizione.
 
 ### Stato dell'archivio
 
-Il default corrente in `app/config.py` è `DATA_BACKEND=sheets`. Drive/Sheets è l'unico archivio operativo e il backend supportato in produzione. Il backend storico è stato rimosso come backend operativo e non deve essere utilizzato in ambienti produttivi. Qualsiasi riferimento a `DATA_BACKEND=legacy DB`, variabili legacy DB_* o script di provisioning è deprecato e deve essere trattato come artefatto storico o strumento di migrazione isolato e controllato.
+`render.yaml` imposta `DATA_BACKEND=supabase`. Il runtime verifica il catalogo
+all'avvio ma non copia i documenti nella RAM: ogni lettura ricarica la singola
+collezione richiesta e ogni scrittura è confermata dall'RPC prima di essere
+considerata riuscita. L'health check prova lettura e percorso di scrittura
+remoti. Gli scheduler usano lease distribuite fuori dalle collezioni aziendali.
 
 La migrazione dei dati storici è conclusa solo quando:
 
 1. tutti i fogli richiesti esistono e sono accessibili;
 2. la copia iniziale è completa e senza collisioni irrisolte;
-3. lettura, inserimento, aggiornamento e ricerca funzionano su Sheets;
+3. lettura, inserimento, aggiornamento e ricerca funzionano su Supabase;
 4. un confronto end-to-end dimostra equivalenza dei risultati;
 5. è provata la ricostruzione completa partendo da Drive e registro;
 6. produzione ha un registro esplicitamente configurato e i controlli
    post-deploy passano.
 
-Il runtime non accetta configurazioni o scritture verso archivi alternativi.
+Il fallback Sheets resta disponibile soltanto per sviluppo e test.
 
 ## 3. Identità, hash e duplicati
 

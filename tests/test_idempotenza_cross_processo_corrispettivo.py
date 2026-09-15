@@ -157,8 +157,8 @@ def test_due_processi_stesso_corrispettivo_una_sola_riga_per_chiave(caplog):
     processo_b = ProcessoFinto(postgres, "scheduler")
 
     async def scenario():
-        # Entrambi idratano PRIMA che qualcuno scriva: cache identiche e vuote
-        # per la Prima Nota, come due container avviati da un deploy sovrapposto.
+        # Entrambi verificano il catalogo prima che qualcuno scriva, come due
+        # container avviati da un deploy sovrapposto.
         await processo_a.hydrate()
         await processo_b.hydrate()
         esito_a = await sc.registra_corrispettivo(processo_a, _corrispettivo())
@@ -184,16 +184,15 @@ def test_due_processi_stesso_corrispettivo_una_sola_riga_per_chiave(caplog):
     assert esito_b["prima_nota_banca_id"] == esito_a["prima_nota_banca_id"]
     assert esito_b.get("gia_esistente") is True
 
-    # Nessuna copia divergente: la cache di B contiene solo righe che
-    # Postgres ha davvero accettato.
+    # Nessuna copia divergente: ogni lettura vede le righe accettate da Postgres.
     for collection in ("prima_nota_cassa", "prima_nota_banca"):
         remoti = {r["_id"] for r in postgres.righe(collection)}
         assert processo_b.ids_in_cache(collection) == remoti
         assert processo_a.ids_in_cache(collection) == remoti
-    assert "rifiutato" in caplog.text
+    assert "rifiutato" not in caplog.text
 
 
-def test_in_batch_la_cache_viene_riallineata_senza_eccezioni(caplog):
+def test_in_batch_ogni_scrittura_resta_immediata_e_idempotente(caplog):
     postgres = _postgres_con_dati()
     processo_a = ProcessoFinto(postgres, "web")
     processo_b = ProcessoFinto(postgres, "rebuild")
@@ -215,10 +214,10 @@ def test_in_batch_la_cache_viene_riallineata_senza_eccezioni(caplog):
         assert processo_b.ids_in_cache(collection) == {
             r["_id"] for r in postgres.righe(collection)
         }
-    assert "cache riallineata" in caplog.text
+    assert "cache riallineata" not in caplog.text
 
 
-def test_rifiuto_senza_documento_esistente_marca_la_copia_in_memoria():
+def test_rifiuto_senza_documento_esistente_ripristina_la_riga_remota():
     postgres = _postgres_con_dati()
     processo = ProcessoFinto(postgres, "web")
     originale = postgres.upsert
@@ -238,7 +237,7 @@ def test_rifiuto_senza_documento_esistente_marca_la_copia_in_memoria():
     }])
 
     async def scenario():
-        # Cache vuota per la Prima Nota: il processo non sa della riga altrui.
+        # La pulizia locale non conta: insert_one rilegge comunque Supabase.
         await processo.hydrate()
         processo["prima_nota_cassa"]._documents.clear()
         with pytest.raises(DocumentoDuplicatoRemoto):
@@ -250,12 +249,12 @@ def test_rifiuto_senza_documento_esistente_marca_la_copia_in_memoria():
             })
         return processo["prima_nota_cassa"]._documents
 
-    cache = asyncio.run(scenario())
+    snapshot = asyncio.run(scenario())
 
     assert len(postgres.righe("prima_nota_cassa")) == 1
-    assert len(cache) == 1
-    assert cache[0]["entity_status"] == "deleted"
-    assert cache[0]["duplicate_of"] == "riga-altro-processo"
+    assert len(snapshot) == 1
+    assert snapshot[0]["_id"] == "riga-altro-processo"
+    assert snapshot[0].get("entity_status") != "deleted"
 
 
 def test_la_chiave_vince_sulla_guardia_storica_per_data_e_matricola():

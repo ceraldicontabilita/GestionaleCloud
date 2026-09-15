@@ -2,8 +2,8 @@
 
 <!-- gestionalecloud-doc
 status: current
-reviewed_at: 2026-08-21
-storage_architecture: drive-only
+reviewed_at: 2026-09-15
+storage_architecture: supabase
 -->
 
 Aggiornato il 20/08/2026 sul codice di `main` del repository canonico
@@ -71,6 +71,14 @@ si aggiornano con `scripts/refresh_json_docs.py`, non a mano.
   conteggio dei riferimenti (un PDF identico citato da più documenti occupa
   spazio una volta sola; sparisce solo all'ultimo riferimento). L'adattatore
   `app/hr/db_adapter.py` li carica solo su richiesta.
+- **[15/09/2026]** `app/services/supabase_runtime_database.py` non idrata più
+  le collezioni nella RAM del processo: il bootstrap legge soltanto il
+  catalogo e ogni operazione rilegge da Supabase la collezione richiesta.
+  Le scritture sono immediate anche dentro `batch_writes`; un errore RPC
+  ripristina lo snapshot locale di lavoro e non lascia dati fantasma. `/api/health`
+  verifica dal vivo catalogo e RPC di scrittura. Gli scheduler acquisiscono
+  una lease distribuita in `gestionale.runtime_scheduler_leases`; il lock
+  locale resta soltanto per il fallback Sheets di sviluppo.
 
 ### 14/09/2026 — cancellazione di massa e guardia permanente
 

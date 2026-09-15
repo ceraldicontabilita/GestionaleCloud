@@ -53,7 +53,7 @@ def test_non_generated_documents_have_status_metadata() -> None:
         text = (ROOT / path).read_text(encoding="utf-8")
         assert "<!-- gestionalecloud-doc" in text, path
         assert f"status: {status}" in text, path
-        assert "storage_architecture: drive-only" in text, path
+        assert re.search(r"storage_architecture: (drive-only|supabase)", text), path
 
 
 def test_current_documents_use_canonical_project_identity() -> None:
@@ -87,11 +87,10 @@ def test_planned_documents_are_visibly_non_operational() -> None:
         assert "non ancora completamente operativo" in text, path
 
 
-def test_drive_only_docs_state_real_cutover_boundary() -> None:
+def test_docs_state_real_supabase_cutover_boundary() -> None:
     logic = (ROOT / "LOGICA_FUNZIONAMENTO.md").read_text(encoding="utf-8")
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    assert "Drive/Sheets" in logic
-    assert "unico archivio operativo" in logic
-    assert "ricostruzione completa" in logic
-    assert "Drive/Sheets" in readme
-    assert "non esiste fallback" in readme.lower()
+    assert "Supabase è l'unico registro operativo" in logic
+    assert "non copia i documenti nella RAM" in logic
+    assert "runtime Supabase read-through" in readme
+    assert "conferma ogni scrittura remota" in readme

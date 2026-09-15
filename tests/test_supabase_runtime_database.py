@@ -84,6 +84,13 @@ class ConcurrentAppendSupabase(FakeRestSupabase):
         return result
 
 
+class FailingWriteSupabase(FakeRestSupabase):
+    async def _rpc(self, function_name, payload):
+        if function_name == "gc_upsert_documents" and payload["p_documents"]:
+            raise RuntimeError("scrittura Supabase rifiutata")
+        return await super()._rpc(function_name, payload)
+
+
 @pytest.mark.parametrize("collection", ["documents_inbox", "documents_inbox__shard_001"])
 @pytest.mark.parametrize("status,code,detail", [
     (500, "57014", "canceling statement due to statement timeout"),
@@ -158,11 +165,12 @@ def test_keyset_interrompe_cursore_mancante_o_ripetuto(monkeypatch, page):
         asyncio.run(runtime._fetch_collection_documents("documents_inbox"))
 
 
-def test_hydrate_carica_collezioni_e_documenti():
+def test_hydrate_carica_solo_catalogo_e_lettura_arriva_da_supabase():
     runtime = FakeRestSupabase({
         "fatture": [{"_id": "f2", "numero": 2}, {"_id": "f1", "numero": 1}],
     })
     result = asyncio.run(runtime.hydrate())
+    assert runtime["fatture"]._documents == []
     documents = asyncio.run(runtime["fatture"].find({}).to_list(None))
 
     assert result["righe"] == 2
@@ -213,7 +221,7 @@ def test_mutazione_documento_shard_resta_nello_shard_e_non_duplica():
     assert set(runtime.remote["documents_inbox"]) == {"corrente"}
 
 
-def test_hydrate_ritenta_manifest_e_riduce_il_lotto_sui_timeout(monkeypatch):
+def test_hydrate_ritenta_manifest_senza_scaricare_le_collezioni(monkeypatch):
     async def no_sleep(_delay):
         return None
 
@@ -226,7 +234,7 @@ def test_hydrate_ritenta_manifest_e_riduce_il_lotto_sui_timeout(monkeypatch):
 
     assert result["righe"] == 600
     assert runtime.manifest_attempts == 3
-    assert runtime.fetch_limits[:3] == [1000, 500, 250]
+    assert runtime.fetch_limits == []
 
 
 def test_fetch_ritenta_timeout_transitorio_al_lotto_minimo(monkeypatch):
@@ -401,8 +409,10 @@ def test_hydrate_accetta_righe_aggiunte_dopo_il_manifest():
 
     result = asyncio.run(runtime.hydrate())
 
-    assert result["righe"] == 2
-    assert result["fogli"][0]["valide"] == 2
+    assert result["righe"] == 1
+    assert result["fogli"][0]["valide"] == 1
+    documents = asyncio.run(runtime["alerts"].find({}).to_list(None))
+    assert {item["_id"] for item in documents} == {"iniziale", "nuovo"}
 
 
 def test_fetch_deduplica_id_ripetuto_da_paginazione_concorrente(monkeypatch):
@@ -457,6 +467,66 @@ def test_mutazioni_e_batch_vengono_persistiti():
     assert runtime.remote["fornitori"] == {
         "a": {"_id": "a", "nome": "Aggiornato"},
     }
+
+
+def test_letture_non_restano_ferme_allhydration():
+    runtime = FakeRestSupabase({"fatture": [{"_id": "f1", "numero": 1}]})
+
+    async def scenario():
+        await runtime.hydrate()
+        prima = await runtime["fatture"].find({}).to_list(None)
+        runtime.remote["fatture"]["f2"] = {"_id": "f2", "numero": 2}
+        dopo = await runtime["fatture"].find({}).to_list(None)
+        return prima, dopo
+
+    prima, dopo = asyncio.run(scenario())
+
+    assert [item["_id"] for item in prima] == ["f1"]
+    assert {item["_id"] for item in dopo} == {"f1", "f2"}
+
+
+def test_scrittura_fallita_non_lascia_documento_fantasma():
+    runtime = FailingWriteSupabase()
+
+    async def scenario():
+        with pytest.raises(RuntimeError, match="rifiutata"):
+            await runtime["fatture"].insert_one({"_id": "ghost", "numero": 99})
+        return await runtime["fatture"].find_one({"_id": "ghost"})
+
+    assert asyncio.run(scenario()) is None
+    assert runtime["fatture"]._documents == []
+
+
+def test_health_probe_verifica_anche_rpc_di_scrittura_senza_creare_righe():
+    runtime = FakeRestSupabase({"fatture": [{"_id": "f1"}]})
+
+    result = asyncio.run(runtime.health_probe())
+
+    assert result == {"collections": 1, "write_path": "ok"}
+    assert runtime.remote["runtime_health"] == {}
+
+
+def test_scheduler_lease_acquisisce_e_rilascia_con_owner_del_processo(monkeypatch):
+    runtime = FakeRestSupabase()
+    calls = []
+
+    async def rpc(function_name, payload):
+        calls.append((function_name, dict(payload)))
+        return True
+
+    monkeypatch.setattr(runtime, "_rpc", rpc)
+
+    async def scenario():
+        async with runtime.scheduler_lease("import-email", ttl_seconds=60) as acquired:
+            assert acquired is True
+
+    asyncio.run(scenario())
+
+    assert [name for name, _ in calls] == [
+        "gc_try_scheduler_lease",
+        "gc_release_scheduler_lease",
+    ]
+    assert calls[0][1]["p_owner_id"] == calls[1][1]["p_owner_id"]
 
 
 def test_mirror_elimina_obsoleti_e_verifica_impronta():

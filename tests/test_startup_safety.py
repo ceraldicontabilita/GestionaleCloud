@@ -120,6 +120,16 @@ def test_health_check_verifica_idratazione_supabase(monkeypatch):
     database.hydration_result = {
         "fogli": [{"collezione": "fatture", "valide": 15234, "numero_errori": 0}],
     }
+    async def fake_rpc(function_name, payload):
+        if function_name == "gc_collection_catalog":
+            return [{"collection": "fatture", "row_count": 15234}]
+        if function_name == "gc_upsert_documents":
+            return {"upserted": 0, "rejected": []}
+        if function_name in {"gc_fetch_collection", "gc_fetch_collection_after"}:
+            return []
+        raise AssertionError(function_name)
+
+    monkeypatch.setattr(database, "_rpc", fake_rpc)
     monkeypatch.setattr(Database, "db", database)
 
     response = asyncio.run(health_check())
