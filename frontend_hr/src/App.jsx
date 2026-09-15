@@ -189,7 +189,7 @@ export default function DipendentiCloudApp({ page: pageProp }) {
     { id: "ferie-permessi", label: "Ferie & Permessi", icon: Calendar, section: "DIPENDENTI" },
     { id: "turni", label: "Turni", icon: Grid3X3, section: "DIPENDENTI" },
     { id: "timbrature", label: "Timbrature", icon: Clock, section: "DIPENDENTI" },
-    { id: "paghe-bonifici", label: "Cedolini & Bonifici", icon: Link2, section: "DIPENDENTI" },
+    { id: "paghe-bonifici", label: "Archivio paghe", icon: Link2, section: "DIPENDENTI" },
     { id: "bonifici-da-associare", label: "Bonifici da associare", icon: Inbox, section: "DIPENDENTI" },
     { id: "tfr", label: "TFR", icon: Wallet, section: "DIPENDENTI" },
     { id: "documenti", label: "Documenti", icon: FolderOpen, section: "DIPENDENTI" },
@@ -205,7 +205,7 @@ export default function DipendentiCloudApp({ page: pageProp }) {
     "ferie-permessi": "Ferie & Permessi",
     turni: "Turni",
     timbrature: "Timbrature",
-    "paghe-bonifici": "Cedolini & Bonifici",
+    "paghe-bonifici": "Archivio paghe",
     "bonifici-da-associare": "Bonifici da associare",
     tfr: "TFR",
     missioni: "Missioni",
@@ -4173,6 +4173,34 @@ function PagheBonificiPage({ dipendenti = [] }) {
     finally { setExportBusy(false); }
   };
 
+  const apriCedolino = async (riga) => {
+    if (!riga?.cedolino_id) return;
+    const chiaveBusy = `cedolino_${keyOf(riga)}`;
+    const nuovaFinestra = window.open("", "_blank");
+    setBusy(chiaveBusy);
+    try {
+      const risposta = await axios.get(
+        `/hr/api/cedolini/${encodeURIComponent(riga.cedolino_id)}/download`,
+        { responseType: "blob", timeout: 60000 },
+      );
+      const url = URL.createObjectURL(risposta.data);
+      if (nuovaFinestra) {
+        nuovaFinestra.location = url;
+      } else {
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `cedolino_${riga.dipendente}_${riga.anno}_${String(riga.mese).padStart(2, "0")}.pdf`;
+        link.click();
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (e) {
+      if (nuovaFinestra) nuovaFinestra.close();
+      toast(e?.response?.data?.detail || "PDF del cedolino non disponibile", "err");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   // ── Import (dalla vecchia pagina Buste Paga) ──
   const vaiAlMese = (r) => { if (r?.mesi?.length) { const u = r.mesi[r.mesi.length - 1]; setAnno(u.anno); setMese(u.mese); } };
   const handleImportLul = async (e) => {
@@ -4318,12 +4346,23 @@ function PagheBonificiPage({ dipendenti = [] }) {
     <div style={{ maxWidth: 1280 }}>
       <div style={{ marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
         <div>
-          <h2 style={{ margin: 0, color: "#2a3329" }}>Cedolini &amp; Bonifici</h2>
+          <h2 style={{ margin: 0, color: "#2a3329" }}>Archivio paghe</h2>
           <p className="dc-muted" style={{ marginTop: 4 }}>
             Per ogni busta: importo dal cedolino, <b>bonifici realmente pagati</b> (banca), acconti in contanti e saldo.
             Una sola pagina, un solo motore: i bonifici arrivano da soli dal gestionale (fascicoli Drive ed estratto conto),
             quelli da decidere a mano stanno in «Bonifici da associare». Clicca il nome per la prima nota del dipendente.
           </p>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }} aria-label="Archivi collegati">
+            <a href="/hr/portale" className="dc-btn" title="Apre il minisito mobile con PIN usato dai collaboratori">
+              📱 Portale collaboratori
+            </a>
+            <a href="/riconciliazione/movimenti-banca" className="dc-btn" title="Apre tutti i movimenti dell'estratto conto nel registro contabile autorevole">
+              🏦 Estratto conto completo
+            </a>
+            <a href="/riconciliazione/archivio-bonifici" className="dc-btn" title="Apre l'archivio completo dei bonifici nel gestionale">
+              ↔ Tutti i bonifici
+            </a>
+          </div>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", position: "relative" }}>
           <input ref={fileRef} type="file" accept=".pdf,.zip,application/pdf,application/zip,application/x-zip-compressed" multiple onChange={handleImportLul} style={{ display: "none" }} />
@@ -4633,8 +4672,12 @@ function PagheBonificiPage({ dipendenti = [] }) {
                             : <span style={{ color: "#9aa295", fontSize: 12 }}>—</span>}
                       </td>
                       <td style={td}>
-                        {r.cedolino_pdf
-                          ? <span style={{ color: "#234d3d", fontSize: 12, fontWeight: 600 }}>PDF ✓</span>
+                        {r.cedolino_pdf && r.cedolino_id
+                          ? <button className="dc-btn" disabled={busy === `cedolino_${k}`} onClick={() => apriCedolino(r)} style={{ fontSize: 12, padding: "4px 8px", color: "#234d3d", fontWeight: 600 }}>
+                              {busy === `cedolino_${k}` ? "Apro…" : "📄 Apri PDF"}
+                            </button>
+                          : r.cedolino_pdf
+                            ? <span style={{ color: "#234d3d", fontSize: 12, fontWeight: 600 }}>PDF presente</span>
                           : <span style={{ color: "#9aa295", fontSize: 12 }}>no PDF</span>}
                       </td>
                       <td style={{ ...td, whiteSpace: "nowrap" }}>
