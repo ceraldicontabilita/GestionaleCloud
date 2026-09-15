@@ -1,6 +1,7 @@
 """15/09/2026: l'archivio legacy_staging (CeraldiFatture + modulo presenze) va
-nei registri vivi: fatture/chiusure 2024-25, versamenti, acconti e
-timbrature in HR, ordini storici in Lotti. Idempotente, mai indovinato."""
+nei registri vivi: versamenti, acconti e timbrature in HR, ordini storici in
+Lotti. Idempotente, mai indovinato. Fatture/chiusure degli anni pregressi
+NON entrano nel gestionale (titolare: solo il 2026, salvo cedolini e F24)."""
 import asyncio
 
 from app.services import integrazione_legacy as mod
@@ -78,22 +79,6 @@ class _Con:
         pass
 
 
-def test_fattura_e_chiusura_legacy_hanno_la_forma_dei_documenti_2026():
-    f = mod.doc_fattura_legacy({"id": 1786135885803, "data": "2025-12-29", "numero": "FEP 72_25", "importo": 12200.0,
-                                "fornitore": "A 2000", "totale_imponibile": 10000.0, "totale_imposta": 2200.0}, "hash1")
-    assert f["anno"] == 2025 and f["fonte"] == "legacy_staging_2025" and f["legacy_row_hash"] == "hash1"
-    assert f["importo_totale"] == 12200.0 and f["imponibile"] == 10000.0 and f["totale_iva"] == 2200.0
-    assert f["evidence_status"] == "DA_VERIFICARE" and f["_id"] == "1786135885803"
-    assert mod.doc_fattura_legacy({"id": 1, "data": ""}, "h") is None
-
-    c = mod.doc_chiusura_legacy({"id": 394, "data": "2025-10-16", "pos": 2243.94, "cassa": 775.4,
-                                 "iva10": 2744.85, "totale_corrispettivi": 3019.34, "incassato": 3019.34}, "hash2")
-    assert (c["anno"], c["mese"]) == (2025, 10) and c["totale"] == 3019.34
-    assert c["imponibile10"] == 2744.85 and c["iva10"] == 274.49 and c["totale_iva"] == 274.49
-    assert c["pagato_contanti"] == 775.4 and c["pagato_elettronico"] == 2243.94
-    assert c["status"] == "DA_VERIFICARE" and c["legacy_source_id"] == "394"
-
-
 def test_competenza_acconto_e_ora_roma():
     assert mod.competenza_acconto({"causale": "acconto_13", "data": "2025-12-31", "modalita": "contanti"}) == (2025, 13)
     assert mod.competenza_acconto({"causale": "acconto_14", "data": "2026-08-08", "modalita": "contanti"}) == (2026, 14)
@@ -134,21 +119,6 @@ def test_versamenti_in_prima_nota_cassa_e_banca_idempotenti():
     assert "estratto conto" in banca[1]["descrizione"]
     out2 = _run(mod.integra_versamenti(db, con))
     assert out2["registrati"] == 0 and out2["gia_presenti"] == 2 and len(cassa) == 2
-
-
-def test_fatture_e_chiusure_saltano_quelle_gia_migrate():
-    db = _Db()
-    _run(db["invoices"].insert_one({"id": 1, "legacy_row_hash": "h-fatture-0"}))
-    _run(db["corrispettivi"].insert_one({"id": 77, "data": "2026-08-24"}))
-    con = _Con({"fatture": [{"id": 1, "data": "2026-04-01", "importo": 35.11},
-                            {"id": 2, "data": "2025-12-29", "importo": 12200.0}],
-                "chiusure_giornaliere": [{"id": 647, "data": "2026-08-24", "totale_corrispettivi": 1851.71},
-                                         {"id": 394, "data": "2025-10-16", "totale_corrispettivi": 3019.34, "cassa": 775.4, "pos": 2243.94}]})
-    f = _run(mod.integra_fatture(db, con))
-    c = _run(mod.integra_chiusure(db, con))
-    assert (f["inserite"], f["gia_presenti"]) == (1, 1) and f["per_anno"] == {"2025": 1}
-    assert (c["inserite"], c["gia_presenti"]) == (1, 1) and c["per_anno"] == {"2025": 1}
-    assert _run(mod.integra_fatture(db, con))["inserite"] == 0
 
 
 def test_modulo_presenze_in_hr(monkeypatch):
