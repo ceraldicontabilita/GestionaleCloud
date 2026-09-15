@@ -54,6 +54,15 @@ class PostgresFinto:
         ]
         return righe[offset:offset + limit]
 
+    def fetch_exact(self, collection, field, values, excluded):
+        values = {str(value) for value in values}
+        rows = []
+        for doc in self.righe(collection):
+            candidate = doc.get("_id") if field == "_id" else doc.get(field)
+            if str(candidate) in values:
+                rows.append({k: v for k, v in doc.items() if k not in excluded})
+        return rows
+
     def upsert(self, collection, documents):
         self.chiamate_upsert += 1
         target = self.tabelle.setdefault(collection, {})
@@ -109,6 +118,11 @@ class ProcessoFinto(SupabaseRuntimeDatabase):
         if function_name == "gc_fetch_collection":
             return self.postgres.fetch(
                 payload["p_collection"], payload["p_offset"], payload["p_limit"])
+        if function_name == "gc_fetch_documents_exact":
+            return self.postgres.fetch_exact(
+                payload["p_collection"], payload["p_field"],
+                payload["p_values"], payload["p_exclude_fields"],
+            )
         if function_name == "gc_upsert_documents":
             return self.postgres.upsert(payload["p_collection"], payload["p_documents"])
         if function_name == "gc_delete_documents":

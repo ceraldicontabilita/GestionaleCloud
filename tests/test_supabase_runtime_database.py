@@ -59,6 +59,19 @@ class FakeRestSupabase(SupabaseRuntimeDatabase):
                 ]
             start = payload.get("p_offset", 0)
             return documents[start:start + payload["p_limit"]]
+        if function_name == "gc_fetch_documents_exact":
+            field = payload["p_field"]
+            values = set(payload["p_values"])
+            documents = []
+            for item in self.remote.get(payload["p_collection"], {}).values():
+                candidate = item.get("_id") if field == "_id" else item.get(field)
+                if str(candidate) not in values:
+                    continue
+                documents.append({
+                    key: value for key, value in item.items()
+                    if key not in payload["p_exclude_fields"]
+                })
+            return documents
         if function_name == "gc_upsert_documents":
             target = self.remote.setdefault(payload["p_collection"], {})
             for document in payload["p_documents"]:
@@ -211,6 +224,62 @@ def test_allineamento_status_usa_una_sola_rpc_senza_caricare_documenti(monkeypat
     assert updated == 1
     assert calls == ["gc_align_processed_document_status"]
     assert runtime.remote["documents_inbox"]["d1"]["status"] == "processato"
+
+
+def test_find_one_per_id_usa_lookup_puntuale_e_non_scarica_la_collezione(monkeypatch):
+    runtime = FakeRestSupabase({
+        "invoices": [
+            {"_id": "pk1", "id": "f1", "xml_raw": "grande"},
+            {"_id": "pk2", "id": "f2", "xml_raw": "altro"},
+        ],
+    })
+    calls = []
+    original_rpc = runtime._rpc
+
+    async def rpc(function, payload):
+        calls.append((function, dict(payload)))
+        return await original_rpc(function, payload)
+
+    monkeypatch.setattr(runtime, "_rpc", rpc)
+    found = asyncio.run(runtime["invoices"].find_one({"id": "f2"}))
+
+    assert found["_id"] == "pk2"
+    assert calls == [("gc_fetch_documents_exact", {
+        "p_collection": "invoices",
+        "p_field": "id",
+        "p_values": ["f2"],
+        "p_exclude_fields": [],
+    })]
+
+
+def test_insert_e_update_per_id_non_caricano_tutta_la_collezione(monkeypatch):
+    runtime = FakeRestSupabase({
+        "invoices": [{"_id": "pk1", "id": "f1", "totale": 10}],
+    })
+    calls = []
+    original_rpc = runtime._rpc
+
+    async def rpc(function, payload):
+        calls.append(function)
+        return await original_rpc(function, payload)
+
+    monkeypatch.setattr(runtime, "_rpc", rpc)
+
+    async def scenario():
+        await runtime["invoices"].insert_one({"_id": "pk2", "id": "f2"})
+        await runtime["invoices"].update_one(
+            {"id": "f1"}, {"$set": {"totale": 20}},
+        )
+
+    asyncio.run(scenario())
+
+    assert "gc_fetch_collection" not in calls
+    assert "gc_fetch_collection_after" not in calls
+    assert calls == [
+        "gc_fetch_documents_exact", "gc_upsert_documents",
+        "gc_fetch_documents_exact", "gc_upsert_documents",
+    ]
+    assert runtime.remote["invoices"]["pk1"]["totale"] == 20
 
 
 @pytest.mark.parametrize("status,code", [(403, "42501"), (404, "42P01")])

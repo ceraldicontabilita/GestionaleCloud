@@ -33,6 +33,8 @@ _READ_RETRIES = 5
 _MANIFEST_RETRIES = 3
 _WRITE_CHUNK_SIZE = 50
 _KEYSET_COLLECTIONS = {"documents_inbox"}
+_EXACT_LOOKUP_FIELDS = {"_id", "id", "idempotency_key", "file_hash", "content_hash"}
+_MAX_EXACT_LOOKUP_VALUES = 500
 
 # Le RPC runtime hanno un timeout molto stretto e la paginazione OFFSET diventa
 # costosa oltre alcune migliaia di righe. Le collezioni elencate qui possono
@@ -74,6 +76,26 @@ def _excluded_projection_fields(projection: Any) -> list[str]:
     if included or not excluded:
         return []
     return sorted(set(excluded))
+
+
+def _exact_lookup(selector: Any) -> tuple[str, list[str]] | None:
+    """Trova un vincolo esatto indicizzabile senza cambiare la semantica Mongo."""
+    if not isinstance(selector, dict):
+        return None
+    for field in _EXACT_LOOKUP_FIELDS:
+        if field not in selector:
+            continue
+        condition = selector[field]
+        if isinstance(condition, dict):
+            if set(condition) != {"$in"} or not isinstance(condition["$in"], list):
+                continue
+            raw_values = condition["$in"]
+        else:
+            raw_values = [condition]
+        values = [str(value) for value in raw_values if value is not None]
+        if 0 < len(values) <= _MAX_EXACT_LOOKUP_VALUES:
+            return field, sorted(set(values))
+    return None
 
 
 def documents_digest(documents: list[dict[str, Any]]) -> str:
@@ -208,17 +230,54 @@ class SupabaseTable(SheetTable):
         super().__init__(database, name)
         self._remote_operation_lock = asyncio.Lock()
 
-    async def _refresh_unlocked(self, projection=None) -> None:
-        documents = await self.database._fetch_logical_collection_documents(
-            self.name,
-            excluded_fields=_excluded_projection_fields(projection),
-        )
+    async def _refresh_unlocked(self, projection=None, selector=None) -> None:
+        lookup = _exact_lookup(selector)
+        if lookup:
+            field, values = lookup
+            documents = await self.database._fetch_logical_documents_exact(
+                self.name,
+                field=field,
+                values=values,
+                excluded_fields=_excluded_projection_fields(projection),
+            )
+        else:
+            documents = await self.database._fetch_logical_collection_documents(
+                self.name,
+                excluded_fields=_excluded_projection_fields(projection),
+            )
         self._documents = [_normalise_document(document) for document in documents]
+
+    async def _prepare_insert_unlocked(
+        self, documents: list[dict[str, Any]],
+    ) -> None:
+        """Carica soltanto conflitti di ID o idempotenza prima dell'INSERT."""
+        lookups = [
+            ("_id", [str(document["_id"]) for document in documents]),
+            (
+                "idempotency_key",
+                [
+                    str(document["idempotency_key"])
+                    for document in documents
+                    if document.get("idempotency_key")
+                ],
+            ),
+        ]
+        found: dict[str, dict[str, Any]] = {}
+        for field, values in lookups:
+            if not values:
+                continue
+            rows = await self.database._fetch_logical_documents_exact(
+                self.name, field=field, values=sorted(set(values)),
+            )
+            for row in rows:
+                if row.get("_id") is not None:
+                    found[str(row["_id"])] = row
+        self._documents = [_normalise_document(row) for row in found.values()]
 
     def find(self, selector=None, projection=None, *args, **kwargs):
         async def load():
             async with self._remote_operation_lock:
-                await self._refresh_unlocked(projection)
+                await self._refresh_unlocked(projection, selector)
                 return SheetTable.find(self, selector, projection, *args, **kwargs)
 
         return _ReadThroughCursor(load)
@@ -238,7 +297,7 @@ class SupabaseTable(SheetTable):
 
     async def distinct(self, key, selector=None, *args, **kwargs):
         async with self._remote_operation_lock:
-            await self._refresh_unlocked()
+            await self._refresh_unlocked(selector=selector)
             return await SheetTable.distinct(self, key, selector, *args, **kwargs)
 
     def aggregate(self, pipeline, *args, **kwargs):
@@ -259,7 +318,19 @@ class SupabaseTable(SheetTable):
 
     async def _mutate(self, method_name: str, *args, **kwargs):
         async with self._remote_operation_lock:
-            await self._refresh_unlocked()
+            selector = args[0] if method_name not in {"insert_one", "insert_many"} else None
+            if method_name == "insert_one":
+                document = args[0]
+                document.setdefault("_id", str(uuid.uuid4()))
+                await self._prepare_insert_unlocked([document])
+            elif method_name == "insert_many":
+                documents = list(args[0])
+                for document in documents:
+                    document.setdefault("_id", str(uuid.uuid4()))
+                args = (documents, *args[1:])
+                await self._prepare_insert_unlocked(documents)
+            else:
+                await self._refresh_unlocked(selector=selector)
             snapshot = [_normalise_document(document) for document in self._documents]
             try:
                 method = getattr(SheetTable, method_name)
@@ -544,6 +615,40 @@ class SupabaseRuntimeDatabase(SheetDatabase):
                 merged[key] = document
                 locations[key] = physical_name
         return [*merged.values(), *without_id]
+
+    async def _fetch_logical_documents_exact(
+        self,
+        collection_name: str,
+        *,
+        field: str,
+        values: list[str],
+        excluded_fields: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Legge soltanto i documenti identificati da un vincolo esatto."""
+        merged: dict[str, dict[str, Any]] = {}
+        locations = self._document_locations.setdefault(collection_name, {})
+        for physical_name in self._physical_collections(collection_name):
+            result = await self._rpc(
+                "gc_fetch_documents_exact",
+                {
+                    "p_collection": physical_name,
+                    "p_field": field,
+                    "p_values": values,
+                    "p_exclude_fields": excluded_fields or [],
+                },
+            )
+            if not isinstance(result, list):
+                raise RuntimeError(
+                    f"Risposta Supabase puntuale non valida per {collection_name}"
+                )
+            for document in result:
+                document_id = document.get("_id")
+                if document_id is None:
+                    continue
+                key = str(document_id)
+                merged[key] = document
+                locations[key] = physical_name
+        return list(merged.values())
 
     async def align_processed_document_status(self) -> int:
         """Allinea i badge direttamente nel database, senza scaricare i PDF."""
