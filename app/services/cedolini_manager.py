@@ -353,7 +353,18 @@ async def processa_cedolino_completo(
                     or dip_now.get("data_cessazione")
                 )
 
+                busta_dopo = None
                 if not gia_cessato:
+                    from app.services.cessazione_da_cedolino import busta_successiva
+                    busta_dopo = await busta_successiva(
+                        db, dipendente_id=dipendente_id, codice_fiscale=cf, anno=anno, mese=mese)
+                if busta_dopo:
+                    logger.info(
+                        f"[Canale D V1] cessazione nella busta {anno}-{mese:02d} di {nome} "
+                        f"ignorata: esiste la busta {busta_dopo} (rapporto ripreso)"
+                    )
+                    result["cessazione_storica_ignorata"] = busta_dopo
+                elif not gia_cessato:
                     await db["dipendenti"].update_one(
                         {"id": dipendente_id},
                         {"$set": {

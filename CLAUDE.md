@@ -477,6 +477,31 @@ AvvisoBonarioF24.test.jsx` vieta i colori freddi nel suo componente.
   hanno anagrafica HR: il deposito le crea/collega per codice fiscale solo se
   la persona esiste, quindi vanno create come storiche cessate dopo l'ingest.
 
+### 15/09/2026 — cessazione automatica da cedolino: guardia e riallineamento con HR
+
+- **Trovato** importando l'archivio storico (63 buste 2018-2022) dai fascicoli
+  Drive: `salari_unificati_v2.processa_cedolino_v2` (e il fallback V1 in
+  `cedolini_manager`) marcava cessato nella copia `dipendenti` del gestionale
+  chi aveva una busta con dicitura di cessazione (TFR, «licenz.», «data
+  cessazione»), senza guardare se esistono buste successive. Risultato: in
+  pochi minuti Carotenuto, Capezzuto, Guarino (in forza, buste fino al
+  2026-07), Dias, Liuzza, Lubrano, D'Alma, Solla ecc. risultavano cessati
+  nel gestionale con date di anni fa. L'anagrafica HR non e' stata toccata.
+- **Guardia** (`app/services/cessazione_da_cedolino.py::busta_successiva`):
+  la cessazione letta in una busta vale solo se non esiste una busta
+  successiva della stessa persona nel registro `cedolini` del gestionale o
+  nel deposito HR (`app_cedolini`, per CF); altrimenti viene ignorata e
+  loggata (`cessazione_storica_ignorata` nell'esito).
+- **Riallineamento** (`riallinea_cessazioni_automatiche`, job scheduler
+  `riallinea_cessazioni_auto` ogni 6 ore, primo giro avvio+2 min): per i
+  record con `cessato_automaticamente=True` l'anagrafica HR comanda (R1): HR
+  in forza → riattivato, HR cessato → data di HR. I cessati a mano non si
+  toccano. Passa dall'app (store in memoria coerente), non da SQL a mano.
+- `documents_inbox` del gestionale ha ~3.970 documenti da rielaborare (il
+  registro `cedolini` era a 206 righe dopo l'incidente del 14/09): il giro
+  orario dell'ingest li sta rilavorando; il deposito HR li deduplica per
+  (CF, anno, mese, tipo).
+
 ### Stato precedente
 
 - Il default del codice è `DATA_BACKEND=sheets`.

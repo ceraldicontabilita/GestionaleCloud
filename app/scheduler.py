@@ -1023,6 +1023,31 @@ def start_scheduler():
         except Exception:
             logger.exception("[SCHEDULER-CHIUSURE] aggiornamento non completato")
 
+    async def _riallinea_cessazioni_job():
+        """La copia `dipendenti` del gestionale segue l'anagrafica HR per chi e'
+        stato cessato automaticamente da una busta (15/09/2026: buste storiche
+        avevano cessato Carotenuto, Capezzuto, Guarino, oggi in forza)."""
+        from app.database import Database
+        from app.services.cessazione_da_cedolino import riallinea_cessazioni_automatiche
+
+        try:
+            result = await riallinea_cessazioni_automatiche(Database.get_db())
+            if result.get("riattivati") or result.get("date_corrette"):
+                logger.info("[SCHEDULER-CESSAZIONI-AUTO] %s", result)
+        except Exception:
+            logger.exception("[SCHEDULER-CESSAZIONI-AUTO] riallineamento non completato")
+
+    scheduler.add_job(
+        _riallinea_cessazioni_job,
+        'interval', hours=6,
+        next_run_time=avvio + timedelta(minutes=2),
+        misfire_grace_time=600,
+        coalesce=True,
+        id="riallinea_cessazioni_auto",
+        name="Riallinea le cessazioni automatiche da cedolino con l'anagrafica HR (ogni 6 ore)",
+        replace_existing=True,
+    )
+
     scheduler.add_job(
         _chiusure_attivita_job,
         'interval', hours=6,

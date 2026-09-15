@@ -50,6 +50,24 @@ from app.services.drive_lifecycle_tree import (
 logger = logging.getLogger(__name__)
 
 _STATO_KEY = "drive_cedolini_last_sync"
+# Lotti da 100 documenti lavorati per giro orario sul pregresso della coda
+# (600 buste/ora: la coda del 15/09 si svuota in poche ore senza tenere il
+# lock delle automazioni per troppo tempo).
+BACKLOG_BATCH_MAX = 6
+_FILTRO_IN_CODA = {
+    "category": "busta_paga",
+    "processed": {"$ne": True},
+    "status": {"$nin": ["errore_parser"]},
+}
+
+
+async def _cedolini_in_coda(db) -> int:
+    """Buste in `documents_inbox` ancora da lavorare (stesso filtro di
+    `processa_nuovi_documenti`); 0 se lo store non sa contare."""
+    try:
+        return int(await db["documents_inbox"].count_documents(dict(_FILTRO_IN_CODA)))
+    except Exception:
+        return 0
 _sync_lock = asyncio.Lock()
 _bg_task: Optional[asyncio.Task] = None
 
@@ -439,19 +457,27 @@ async def _do_sync(db) -> Dict[str, Any]:
         if callable(close):
             await asyncio.to_thread(close)
 
-    if result["imported"] > 0:
+    # Il pregresso della coda `documents_inbox` si lavora anche quando da Drive
+    # non arriva nulla di nuovo: il 15/09/2026 c'erano 3.130 buste ferme dal
+    # 12/09 perche' questo blocco girava solo con imported > 0. Ogni giro
+    # smaltisce al massimo BACKLOG_BATCH_MAX lotti da 100 (i documenti che il
+    # parser non riconosce finiscono in `errore_parser` e non tornano in coda).
+    in_coda = await _cedolini_in_coda(db)
+    result["in_coda_prima"] = in_coda
+    if result["imported"] > 0 or in_coda > 0:
         try:
             from app.services.email_monitor_service import processa_nuovi_documenti
             result["cedolini_processati"] = 0
             result["parser_errors"] = []
-            max_batches = max(1, (result["imported"] + 99) // 100 + 1)
+            max_batches = max(1, min(BACKLOG_BATCH_MAX, (max(in_coda, result["imported"]) + 99) // 100 + 1))
             for _ in range(max_batches):
                 proc = await processa_nuovi_documenti(db)
                 processed = proc.get("buste_paga", 0)
                 result["cedolini_processati"] += processed
                 result["parser_errors"].extend(proc.get("errori", []))
-                if processed == 0:
+                if processed == 0 and not proc.get("errori"):
                     break
+            result["in_coda_dopo"] = await _cedolini_in_coda(db)
         except Exception as e:
             logger.error(f"Drive cedolini: errore pipeline processamento: {e}")
             result["details"].append({"pipeline": str(e)})

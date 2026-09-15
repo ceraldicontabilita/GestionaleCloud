@@ -271,3 +271,56 @@ def test_scheduler_allinea_subito_i_badge_documentali(monkeypatch):
     assert 0 <= (job["next_run_time"] - scheduler_mod.datetime.now()).total_seconds() <= 60
     assert job["misfire_grace_time"] == 300
     assert job["coalesce"] is True
+
+
+# ── Pregresso della coda lavorato anche senza file nuovi (15/09/2026) ────────
+
+def test_il_pregresso_in_coda_viene_lavorato_anche_senza_file_nuovi(monkeypatch):
+    """3.130 buste ferme in documents_inbox dal 12/09: la pipeline partiva
+    solo con imported > 0. Ora parte se la coda non e' vuota, a lotti."""
+    import threading
+
+    chiamate = []
+    coda = {"n": 250}
+
+    async def _processa(db):
+        chiamate.append(1)
+        lavorati = min(100, coda["n"])
+        coda["n"] -= lavorati
+        return {"buste_paga": lavorati, "errori": []}
+
+    class Collection:
+        async def find_one(self, *_a, **_k):
+            return None
+
+        async def update_one(self, *_a, **_k):
+            return None
+
+        async def count_documents(self, filtro):
+            assert filtro["category"] == "busta_paga" and filtro["processed"] == {"$ne": True}
+            return coda["n"]
+
+    class DB:
+        def __getitem__(self, _name):
+            return Collection()
+
+    def fuori_event_loop(valore):
+        def _f(*_a, **_k):
+            return valore
+        return _f
+
+    monkeypatch.setattr("app.services.email_monitor_service.processa_nuovi_documenti", _processa)
+    monkeypatch.setattr(ing, "is_configured", lambda: True)
+    monkeypatch.setattr(ing, "_folder_id", lambda: "root")
+    monkeypatch.setattr(ing, "_load_credentials_cedolini", fuori_event_loop((object(), None)))
+    monkeypatch.setattr(ing, "_build_drive_service", fuori_event_loop(object()))
+    monkeypatch.setattr(ing, "_inbox_contexts", fuori_event_loop([{
+        "inbox_id": "inbox", "lifecycle_parent_id": "parent", "relative_path": "DA ELABORARE"}]))
+    monkeypatch.setattr(ing, "_list_source_files_recursive", fuori_event_loop([]))
+
+    result = asyncio.run(ing._do_sync(DB()))
+
+    assert result["imported"] == 0 and result["in_coda_prima"] == 250
+    # 3 lotti utili + 1 lotto vuoto che conferma la coda svuotata
+    assert result["cedolini_processati"] == 250 and len(chiamate) == 4
+    assert result["in_coda_dopo"] == 0
