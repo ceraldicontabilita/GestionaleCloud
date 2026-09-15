@@ -52,16 +52,20 @@ def normalizza_righe_tributo(doc: Dict[str, Any]) -> list[Dict[str, Any]]:
 
 
 async def importa_quietanza(
-    db, content: bytes, filename: str, *, source: str = "upload_manuale"
+    db, content: bytes, filename: str, *, source: str = "upload_manuale",
+    source_metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Ingresso canonico delle quietanze, condiviso da ogni canale."""
     from app.services.quietanze_import import importa_quietanza_bytes
 
-    return await importa_quietanza_bytes(db, content, filename, fonte=source)
+    return await importa_quietanza_bytes(
+        db, content, filename, fonte=source, source_metadata=source_metadata,
+    )
 
 
 async def importa_modello_bytes(
-    db, content: bytes, filename: str, *, source: str = "upload_manuale"
+    db, content: bytes, filename: str, *, source: str = "upload_manuale",
+    source_metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Importa un modello F24 direttamente in ``f24_unificato``.
 
@@ -87,17 +91,29 @@ async def importa_modello_bytes(
             "validazione": parsed.get("validazione") or {},
         }
 
+    source_metadata = dict(source_metadata or {})
     documento = dict(parsed)
     documento.update({
         "file_name": filename,
-        "pdf_data": base64.b64encode(content).decode("utf-8"),
         "pdf_hash": hashlib.sha256(content).hexdigest(),
         "status": "da_pagare",
         "riconciliato": False,
         "pagato": False,
         "import_date": datetime.now(timezone.utc).isoformat(),
     })
+    if source_metadata.get("drive_file_id"):
+        documento.update({
+            "drive_file_id": source_metadata["drive_file_id"],
+            "drive_parent_id": source_metadata.get("drive_parent_id"),
+            "drive_path": source_metadata.get("drive_path"),
+            "drive_md5": source_metadata.get("drive_md5"),
+            "original_storage": "google_drive",
+            "source_metadata": source_metadata,
+        })
+    else:
+        documento["pdf_data"] = base64.b64encode(content).decode("utf-8")
     documento["f24_dedup_key"] = chiave_f24(documento)
+    documento["idempotency_key"] = f"f24:{documento['f24_dedup_key']}"
     existing = await db[COLL].find_one(
         {"f24_dedup_key": documento["f24_dedup_key"]}, {"_id": 0, "id": 1}
     )
@@ -203,6 +219,7 @@ async def salva_f24(
         richiedi_quadratura_f24(doc)
     chiave = chiave_f24(doc)
     doc["f24_dedup_key"] = chiave
+    doc["idempotency_key"] = f"f24:{chiave}"
     if source:
         doc.setdefault("import_source", source)
 

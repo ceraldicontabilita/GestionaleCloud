@@ -547,26 +547,8 @@ async def get_f24_pdf(f24_id: str):
         raise HTTPException(status_code=404, detail="F24 non trovato")
 
     filename = f24.get("file_name", f24.get("filename", "F24.pdf"))
-    pdf_bytes = None
-
-    # Architettura Drive/Sheets: cerca pdf_data
-    pdf_data = f24.get("pdf_data")
-    if pdf_data:
-        pdf_bytes = base64.b64decode(pdf_data)
-
-    # Fallback: cerca in f24_models (collezione legacy)
-    if not pdf_bytes and filename:
-        models_doc = await db["f24_unificato"].find_one(
-            {"filename": filename},
-            {"pdf_data": 1}
-        )
-        if models_doc and models_doc.get("pdf_data"):
-            pdf_bytes = base64.b64decode(models_doc["pdf_data"])
-            # Copia pdf_data per le prossime volte
-            await db[COLL_F24_COMMERCIALISTA].update_one(
-                {"id": f24_id},
-                {"$set": {"pdf_data": models_doc["pdf_data"]}}
-            )
+    from app.services.f24_originale import carica_originale
+    pdf_bytes = await carica_originale(f24, tipo="f24")
 
     if not pdf_bytes:
         raise HTTPException(status_code=404, detail="PDF non disponibile in Drive/Sheets")

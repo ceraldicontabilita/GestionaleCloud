@@ -98,3 +98,30 @@ def test_importa_modello_canonico_conserva_debiti_crediti_e_pdf(monkeypatch):
     assert len(db.c.docs) == 1
     assert db.c.docs[0]["pdf_data"]
     assert db.c.docs[0]["sezione_erario"][1]["importo_credito"] == 20.0
+
+
+def test_importa_modello_drive_conserva_solo_riferimento(monkeypatch):
+    parsed = {
+        "dati_generali": {"codice_fiscale": "CF1", "data_versamento": "2026-07-16"},
+        "sezione_erario": [],
+        "totali": {"totale_debito": 10.0, "totale_credito": 0.0, "saldo_netto": 10.0},
+        "validazione": {"saldo_quadrato": True, "parser_version": "test-v1"},
+    }
+    import app.services.parser_f24 as parser
+    monkeypatch.setattr(parser, "parse_f24_commercialista", lambda pdf_content: parsed)
+    db = _Db()
+
+    result = _run(importa_modello_bytes(
+        db, b"%PDF-1.4 fixture", "f24.pdf", source="drive_f24",
+        source_metadata={
+            "drive_file_id": "drive-f24-1",
+            "drive_parent_id": "folder-1",
+            "drive_path": "ELABORATE/f24.pdf",
+        },
+    ))
+
+    assert result["success"] is True
+    assert db.c.docs[0]["drive_file_id"] == "drive-f24-1"
+    assert db.c.docs[0]["original_storage"] == "google_drive"
+    assert db.c.docs[0]["idempotency_key"].startswith("f24:")
+    assert "pdf_data" not in db.c.docs[0]

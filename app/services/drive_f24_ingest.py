@@ -98,7 +98,7 @@ def _list_pdf_files(service, parent_id: str) -> List[Dict[str, Any]]:
     while True:
         response = service.files().list(
             q=q,
-            fields="nextPageToken, files(id, name, mimeType)",
+            fields="nextPageToken, files(id, name, mimeType, md5Checksum, size, parents)",
             pageSize=100,
             pageToken=page_token,
             supportsAllDrives=True,
@@ -127,6 +127,19 @@ def _resolve_state_folder(service, parent_id: str, state: str) -> Optional[str]:
     if state == "error":
         return _get_or_create_error_folder(service, parent_id)
     raise ValueError(f"Stato lifecycle non supportato: {state}")
+
+
+async def download_file_by_id(file_id: str) -> bytes:
+    """Legge un originale F24 da Drive senza copiarlo nel database."""
+    if not file_id or not is_configured():
+        return b""
+    service = await asyncio.to_thread(_build_drive_service)
+    if service is None:
+        return b""
+    try:
+        return await asyncio.to_thread(_download_bytes, service, file_id)
+    finally:
+        await asyncio.to_thread(_close_drive_service, service)
 
 
 async def get_status(db) -> Dict[str, Any]:
@@ -208,6 +221,14 @@ async def _do_sync(db) -> Dict[str, Any]:
                         content,
                         fname,
                         source="drive_f24",
+                        source_metadata={
+                            "drive_file_id": fid,
+                            "drive_parent_id": elaborate_id,
+                            "drive_path": f"ELABORATE/{fname}",
+                            "drive_md5": file_info.get("md5Checksum"),
+                            "drive_size": file_info.get("size"),
+                            "source_path": source_path,
+                        },
                     )
                     if not outcome.get("success"):
                         result["errors"] += 1
@@ -340,6 +361,13 @@ async def verifica_quadratura_elaborate(db) -> Dict[str, Any]:
                         content,
                         file_info["name"],
                         source="drive_f24_quadratura",
+                        source_metadata={
+                            "drive_file_id": file_info["id"],
+                            "drive_parent_id": folder["folder_id"],
+                            "drive_path": f"ELABORATE/{file_info['name']}",
+                            "drive_md5": file_info.get("md5Checksum"),
+                            "drive_size": file_info.get("size"),
+                        },
                     )
                     if not outcome.get("success"):
                         result["errori"] += 1

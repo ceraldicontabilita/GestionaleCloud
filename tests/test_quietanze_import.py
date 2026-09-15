@@ -130,6 +130,26 @@ def test_dedup_per_impronta(monkeypatch):
     assert len(db[qi.COLL_QUIETANZE].docs) == 1
 
 
+def test_quietanza_drive_conserva_solo_riferimento(monkeypatch):
+    _patch_parser(monkeypatch, PARSED_OK)
+    db = _FakeDb()
+    esito = asyncio.run(qi.importa_quietanza_bytes(
+        db, b"%PDF-drive", "quietanza.pdf", fonte="drive_quietanze",
+        source_metadata={
+            "drive_file_id": "drive-q-1",
+            "drive_parent_id": "folder-q",
+            "drive_path": "ELABORATE/quietanza.pdf",
+        },
+    ))
+
+    assert esito["success"] is True
+    doc = db[qi.COLL_QUIETANZE].docs[0]
+    assert doc["drive_file_id"] == "drive-q-1"
+    assert doc["original_storage"] == "google_drive"
+    assert doc["idempotency_key"].startswith("quietanza_f24:")
+    assert "pdf_data" not in doc
+
+
 def test_senza_match_crea_alert(monkeypatch):
     """Nessun F24 corrispondente → warning + alert quietanza_senza_match."""
     _patch_parser(monkeypatch, PARSED_OK)

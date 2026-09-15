@@ -475,51 +475,17 @@ async def get_f24_pdf(f24_id: str):
     db = Database.get_db()
 
     f24 = await db[F24_COLLECTION].find_one({"id": f24_id})
+    original_type = "f24"
+    if not f24:
+        f24 = await db["quietanze_f24"].find_one({"id": f24_id})
+        original_type = "quietanza"
 
     if not f24:
         raise HTTPException(status_code=404, detail="F24 non trovato")
 
-    # Architettura Drive/Sheets: cerca PDF solo in pdf_data
-    pdf_data = f24.get("pdf_data")
     filename = f24.get("file_name", f24.get("filename", f"F24_{f24_id}.pdf"))
-    pdf_bytes = None
-
-    if pdf_data:
-        pdf_bytes = base64.b64decode(pdf_data)
-
-    # Se non trovato, cerca in f24_models (collezione legacy con pdf_data)
-    if not pdf_bytes and filename:
-        models_doc = await db["f24_unificato"].find_one(
-            {"filename": filename},
-            {"pdf_data": 1}
-        )
-        if models_doc and models_doc.get("pdf_data"):
-            pdf_bytes = base64.b64decode(models_doc["pdf_data"])
-            # Copia pdf_data nella collezione principale per le prossime volte
-            await db[F24_COLLECTION].update_one(
-                {"id": f24_id},
-                {"$set": {"pdf_data": models_doc["pdf_data"]}}
-            )
-            logger.info(f"PDF F24 recuperato da f24_models e copiato in f24_commercialista: {filename}")
-
-    # Se ancora non trovato, cerca in documents_inbox
-    if not pdf_bytes and filename:
-        inbox_doc = await db["documents_inbox"].find_one(
-            {"filename": filename},
-            {"content": 1, "content_base64": 1}
-        )
-        if inbox_doc:
-            content = inbox_doc.get("content") or inbox_doc.get("content_base64")
-            if content:
-                if isinstance(content, bytes):
-                    pdf_bytes = content
-                else:
-                    pdf_bytes = base64.b64decode(content)
-                # Salva pdf_data per le prossime volte
-                await db[F24_COLLECTION].update_one(
-                    {"id": f24_id},
-                    {"$set": {"pdf_data": base64.b64encode(pdf_bytes).decode('utf-8')}}
-                )
+    from app.services.f24_originale import carica_originale
+    pdf_bytes = await carica_originale(f24, tipo=original_type)
 
     if not pdf_bytes:
         raise HTTPException(status_code=404, detail="PDF non disponibile per questo F24")

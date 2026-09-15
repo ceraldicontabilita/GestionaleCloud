@@ -167,7 +167,8 @@ async def _riconcilia_quietanza_ader(
 
 
 async def importa_quietanza_bytes(
-    db, content: bytes, filename: str, fonte: str = "upload_manuale"
+    db, content: bytes, filename: str, fonte: str = "upload_manuale",
+    source_metadata: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
     """Importa UNA quietanza PDF (bytes) con dedup e matching automatico.
 
@@ -176,6 +177,15 @@ async def importa_quietanza_bytes(
       codici_tributo (conteggio), f24_matchati (lista), warning/error.
     """
     pdf_hash = hashlib.md5(content).hexdigest()
+    source_metadata = dict(source_metadata or {})
+    occurrence = {
+        "source": fonte,
+        "drive_file_id": source_metadata.get("drive_file_id"),
+        "drive_parent_id": source_metadata.get("drive_parent_id"),
+        "drive_path": source_metadata.get("drive_path"),
+        "md5": pdf_hash,
+    }
+    occurrence = {k: v for k, v in occurrence.items() if v not in (None, "")}
 
     # Dedup per impronta: la stessa quietanza (da Drive, email o upload)
     # non deve mai creare un doppione.
@@ -183,6 +193,10 @@ async def importa_quietanza_bytes(
         {"pdf_hash": pdf_hash}, {"_id": 0}
     )
     if existing:
+        await db[COLL_QUIETANZE].update_one(
+            {"id": existing["id"]},
+            {"$addToSet": {"source_occurrences": occurrence}},
+        )
         ader = await _riconcilia_quietanza_ader(
             db, content=content, filename=filename, quietanza=existing,
         )
@@ -241,8 +255,8 @@ async def importa_quietanza_bytes(
     quietanza_doc = {
         "id": file_id,
         "filename": filename,
-        "pdf_data": base64.b64encode(content).decode("utf-8"),
         "pdf_hash": pdf_hash,
+        "idempotency_key": f"quietanza_f24:{pdf_hash}",
         "dati_generali": dg,
         "protocollo_telematico": protocollo,
         "data_pagamento": data_pagamento,
@@ -259,7 +273,19 @@ async def importa_quietanza_bytes(
         "f24_associati": [],
         "fonte": fonte,
         "created_at": datetime.now(timezone.utc).isoformat(),
+        "source_occurrences": [occurrence],
     }
+    if source_metadata.get("drive_file_id"):
+        quietanza_doc.update({
+            "drive_file_id": source_metadata["drive_file_id"],
+            "drive_parent_id": source_metadata.get("drive_parent_id"),
+            "drive_path": source_metadata.get("drive_path"),
+            "drive_md5": source_metadata.get("drive_md5") or pdf_hash,
+            "original_storage": "google_drive",
+            "source_metadata": source_metadata,
+        })
+    else:
+        quietanza_doc["pdf_data"] = base64.b64encode(content).decode("utf-8")
     await db[COLL_QUIETANZE].insert_one(quietanza_doc.copy())
     try:
         riconciliazione_ader = await _riconcilia_quietanza_ader(
