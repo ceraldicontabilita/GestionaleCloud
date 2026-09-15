@@ -3,7 +3,8 @@ Ceraldi ERP - Main Application
 ==============================
 FastAPI + Google Drive/Sheets | GestionaleCloud
 """
-from contextlib import asynccontextmanager
+import asyncio
+from contextlib import asynccontextmanager, suppress
 from datetime import datetime, timezone
 import os
 from pathlib import Path
@@ -29,6 +30,27 @@ SALARY_RELATIONS_RECOVERY_MARKER = "recover_salary_relations_20260821_v1"
 SUPPLIER_METHODS_RECOVERY_MARKER = "recover_supplier_payment_methods_20260822_v1"
 
 
+async def _allinea_badge_documenti_in_background(db) -> None:
+    """Esegue l'allineamento senza trattenere la readiness del servizio."""
+    try:
+        lease_factory = getattr(db, "scheduler_lease", None)
+        if callable(lease_factory):
+            async with lease_factory("startup_allinea_badge_documenti") as acquired:
+                if not acquired:
+                    logger.info("Allineamento badge gia' attivo su un'altra istanza")
+                    return
+                from app.services.email_monitor_service import allinea_status_documenti_processati
+
+                badge_allineati = await allinea_status_documenti_processati(db)
+        else:
+            from app.services.email_monitor_service import allinea_status_documenti_processati
+
+            badge_allineati = await allinea_status_documenti_processati(db)
+        logger.info("Badge documenti riallineati: %s", badge_allineati)
+    except Exception:
+        logger.exception("Riallineamento badge documenti in background non completato")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifecycle: startup, yield, shutdown."""
@@ -42,16 +64,13 @@ async def lifespan(app: FastAPI):
     await initialize_auth_secret(Database.get_db())
     settings.validate_startup()
 
-    # Questo riallineamento e' piccolo e idempotente: deve precedere la coda
-    # degli importatori, perche' su Render un deploy puo' interrompere un job
-    # Drive lungo prima che lo scheduler raggiunga il controllo dei badge.
-    try:
-        from app.services.email_monitor_service import allinea_status_documenti_processati
-
-        badge_allineati = await allinea_status_documenti_processati(Database.get_db())
-        logger.info("Badge documenti riallineati all'avvio: %s", badge_allineati)
-    except Exception:
-        logger.exception("Riallineamento badge documenti all'avvio non completato")
+    # Non blocca la readiness: sul registro Supabase documents_inbox puo'
+    # richiedere piu' pagine. La lease evita la doppia esecuzione durante il
+    # rolling deploy e il job email orario resta il recupero idempotente.
+    badge_alignment_task = asyncio.create_task(
+        _allinea_badge_documenti_in_background(Database.get_db()),
+        name="startup_allinea_badge_documenti",
+    )
 
     # Bus eventi unico (app/services/event_bus.py): include anche gli handler
     # migrati dal vecchio bus core (app/core/event_bus.py, rimosso).
@@ -621,6 +640,10 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("Shutting down...")
+    if not badge_alignment_task.done():
+        badge_alignment_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await badge_alignment_task
     try:
         from app.services.email_monitor_service import stop_monitor
 

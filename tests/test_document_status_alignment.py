@@ -35,9 +35,9 @@ def test_allinea_badge_documenti_processati_e_idempotente():
     assert update == {"$set": {"status": "processato"}}
 
 
-def test_riallineamento_badge_avviene_prima_dello_scheduler():
+def test_riallineamento_badge_non_blocca_startup_ed_e_protetto_da_lease():
     source = Path("app/main.py").read_text(encoding="utf-8")
 
-    assert source.index("await allinea_status_documenti_processati") < source.index(
-        "start_scheduler()"
-    )
+    assert "badge_alignment_task = asyncio.create_task(" in source
+    assert 'lease_factory("startup_allinea_badge_documenti")' in source
+    assert "await badge_alignment_task" in source
