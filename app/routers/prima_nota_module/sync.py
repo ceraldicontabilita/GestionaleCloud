@@ -3275,7 +3275,16 @@ async def auto_conferma_provvisori_per_metodo(
     nella prima nota corrispondente; misto/senza metodo/ambiguo → resta in
     Provvisoria. Le fatture già pagate o con un movimento esistente non
     vengono mai toccate (nessun doppio movimento possibile).
+
+    Fase 0 (15/09/2026, PROMPT_CLAUDE_CODE_FASE_0.md punto 1): disattivato.
+    Confermava un pagamento in cassa senza nessuna prova, solo per il
+    metodo dichiarato in anagrafica fornitore.
     """
+    raise HTTPException(
+        status_code=409,
+        detail="Disattivato: Fase 0 — i pagamenti in cassa si confermano a mano",
+    )
+
     db = Database.get_db()
     now = datetime.now(timezone.utc).isoformat()
 

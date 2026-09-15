@@ -408,8 +408,34 @@ async def conferma_f24_batch(request: ConfermaBatchRequest) -> Dict[str, Any]:
     SEMPRE con 400 sui F24 inviati da RiconciliazioneUnificata.jsx.
     Scrive sulla stessa collection letta da cerca_f24_per_associazione,
     così l'F24 confermato sparisce dalla lista dei pendenti.
+
+    Fase 0 (15/09/2026, PROMPT_CLAUDE_CODE_FASE_0.md punto 5): prima
+    marcava "pagato/riconciliato" senza alcuna prova bancaria. Ora ogni
+    operazione deve portare un movimento_id di un movimento reale in
+    estratto_conto_movimenti, altrimenti l'intera richiesta è rifiutata.
     """
     db = Database.get_db()
+
+    senza_movimento = [
+        op for op in request.operazioni if not (op.get("movimento_id") or "").strip()
+    ]
+    if senza_movimento:
+        raise HTTPException(
+            status_code=409,
+            detail="Disattivato: Fase 0 — serve il movimento bancario per confermare un F24",
+        )
+
+    movimento_ids = {op["movimento_id"].strip() for op in request.operazioni}
+    trovati = await db["estratto_conto_movimenti"].find(
+        {"id": {"$in": list(movimento_ids)}}, {"_id": 0, "id": 1}
+    ).to_list(len(movimento_ids))
+    movimenti_esistenti = {m["id"] for m in trovati}
+    mancanti = movimento_ids - movimenti_esistenti
+    if mancanti:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Disattivato: Fase 0 — movimento bancario non trovato: {', '.join(sorted(mancanti))}",
+        )
 
     confermati = 0
     errori = []
@@ -428,6 +454,7 @@ async def conferma_f24_batch(request: ConfermaBatchRequest) -> Dict[str, Any]:
                 "pagato_manualmente": True,
                 "metodo_pagamento": op.get("metodo_pagamento") or "banca",
                 "tipo_riconciliazione": "manuale",
+                "movimento_bancario_id": op["movimento_id"].strip(),
                 "data_riconciliazione": now,
                 "updated_at": now,
             }}

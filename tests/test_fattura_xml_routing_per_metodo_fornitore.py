@@ -103,19 +103,19 @@ def _setup(monkeypatch, metodo, **supplier_extra):
     return db
 
 
-def test_fornitore_cassa_crea_movimento_canonico(monkeypatch):
+def test_fornitore_cassa_resta_da_confermare_fase0(monkeypatch):
+    # Fase 0 (15/09/2026, PROMPT_CLAUDE_CODE_FASE_0.md punto 2): un fornitore
+    # a metodo cassa non crea più da solo il movimento — resta "da
+    # confermare" finché non interviene una conferma esplicita in Provvisori.
     db = _setup(monkeypatch, "contanti")
 
     update = _run(mod.auto_registra_prima_nota(db, dict(FATTURA), None))
 
-    assert update["prima_nota_tipo"] == "cassa"
-    assert update["metodo_pagamento_effettivo"] == "cassa"
-    assert update["provvisorio"] is False
-    assert len(db["prima_nota_cassa"].docs) == 1
-    assert db["prima_nota_cassa"].docs[0]["fattura_id"] == "fatt-1"
-    assert db["prima_nota_cassa"].docs[0]["metodo_pagamento_effettivo"] == "cassa"
+    assert update["stato_finanziario"] == "da_confermare_cassa"
+    assert update["provvisorio"] is True
+    assert db["prima_nota_cassa"].docs == []
     assert db["prima_nota_banca"].docs == []
-    assert db["invoices"].docs[0]["stato_pagamento"] == "pagata"
+    assert db["invoices"].docs[0].get("stato_pagamento") != "pagata"
 
 
 def test_fornitore_banca_senza_estratto_resta_provvisoria(monkeypatch):
@@ -160,22 +160,24 @@ def test_fornitore_senza_metodo_resta_provvisoria(monkeypatch):
 
     update = _run(mod.auto_registra_prima_nota(db, dict(FATTURA), None))
 
-    assert update["prima_nota_tipo"] == "cassa_provvisoria"
+    # Fase 0 (15/09/2026, PROMPT_CLAUDE_CODE_FASE_0.md punto 2): nessuna riga
+    # automatica nemmeno per il fornitore senza metodo — solo l'alert e lo
+    # stato "da_confermare_cassa" restano.
+    assert update["stato_finanziario"] == "da_confermare_cassa"
     assert update["decisione_pagamento_richiesta"] is True
-    assert len(db["prima_nota_cassa"].docs) == 1
-    movimento = db["prima_nota_cassa"].docs[0]
-    assert movimento["stato"] == "DA_VERIFICARE"
-    assert movimento["canonico"] is False
+    assert db["prima_nota_cassa"].docs == []
     assert db["invoices"].docs[0].get("stato_pagamento") != "pagata"
 
 
 def test_reimport_cassa_non_duplica_pagamenti(monkeypatch):
+    # Fase 0: il ramo cassa non scrive più nulla, quindi un reimport non ha
+    # niente da duplicare — resta idempotente per costruzione.
     db = _setup(monkeypatch, "contanti")
 
     _run(mod.auto_registra_prima_nota(db, dict(FATTURA), None))
     _run(mod.auto_registra_prima_nota(db, dict(FATTURA), None))
 
-    assert len(db["prima_nota_cassa"].docs) == 1
+    assert db["prima_nota_cassa"].docs == []
 
 
 def test_idempotente_banca_su_reimport(monkeypatch):

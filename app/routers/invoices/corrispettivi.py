@@ -945,11 +945,14 @@ async def rebuild_prima_nota(
     Rigenera i movimenti Prima Nota (cassa + banca POS) partendo dai corrispettivi esistenti.
     - Elimina i movimenti con source=corrispettivo_* nel periodo
     - Ricrea i movimenti dai corrispettivi validi
+
+    Fase 0 (15/09/2026, PROMPT_CLAUDE_CODE_FASE_0.md punto 7): disattivato.
+    Il `delete_many` fisico cancellava anche righe già riconciliate (crediti
+    POS Numia/SumUp), perdendo `riconciliato`/`accreditato_ec` e lasciando
+    l'estratto conto riconciliato senza contropartita — una cancellazione
+    permanente vietata da CLAUDE.md.
     """
-    from app.routers.invoices.corrispettivi_helpers import rebuild_prima_nota_from_corrispettivi
-    db = Database.get_db()
-    res = await rebuild_prima_nota_from_corrispettivi(db, anno=anno)
-    return {"success": True, **res}
+    raise HTTPException(status_code=409, detail="Disattivato: Fase 0")
 
 
 

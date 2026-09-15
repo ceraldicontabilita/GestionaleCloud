@@ -50,7 +50,10 @@ export default function PuliziaPrimaNota() {
     azzeraErrori();
     setLoading('anteprima');
     try {
-      const res = await api.post(`/api/prima-nota/dedup-fatture?applica=false&auto_risolvi_certi=true&ripristina_regola_errata=true&anno=${anno}`);
+      // Fase 0 (15/09/2026): auto_risolvi_certi=false — con applica=false
+      // questa è comunque una sola anteprima, mai una scrittura (vedi
+      // PROMPT_CLAUDE_CODE_FASE_0.md punto 8).
+      const res = await api.post(`/api/prima-nota/dedup-fatture?applica=false&auto_risolvi_certi=false&ripristina_regola_errata=true&anno=${anno}`);
       setAnteprima(res.data);
       setRisultatoPulizia(res.data);
     } catch (e) {

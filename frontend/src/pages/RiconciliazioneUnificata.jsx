@@ -2349,7 +2349,8 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
 
               <button
                 onClick={confermaBatch}
-                disabled={salvandoBatch}
+                disabled
+                title="Disattivato: Fase 0 — serve il movimento bancario"
                 style={{
                   padding: '8px 16px',
                   minHeight: 40,
@@ -2357,7 +2358,8 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
                   color: 'white',
                   border: 'none',
                   borderRadius: 6,
-                  cursor: 'pointer',
+                  cursor: 'not-allowed',
+                  opacity: 0.5,
                   fontWeight: 600,
                   fontSize: 13,
                 }}
@@ -2438,6 +2440,7 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
                   >
                     <button
                       onClick={() => confermaF24Singolo(f, 'banca')}
+                      disabled
                       style={{
                         padding: '4px 10px',
                         minHeight: 40,
@@ -2445,10 +2448,11 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
                         color: 'white',
                         border: 'none',
                         borderRadius: 6,
-                        cursor: 'pointer',
+                        cursor: 'not-allowed',
+                        opacity: 0.5,
                         fontSize: 12,
                       }}
-                      title="Conferma pagamento F24 tramite Banca"
+                      title="Disattivato: Fase 0 — serve il movimento bancario"
                     >
                       🏦 Paga con Banca
                     </button>

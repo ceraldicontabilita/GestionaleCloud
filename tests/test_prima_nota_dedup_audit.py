@@ -39,9 +39,12 @@ def test_dedup_usa_operazione_e_non_fattura_condivisa(monkeypatch):
     banca = report["banca"]
     assert banca["gruppi_duplicati"] == 1
     assert banca["movimenti_certi"] == 1
-    assert banca["eliminati_effettivi"] == 1
+    # Fase 0 (15/09/2026, PROMPT_CLAUDE_CODE_FASE_0.md punto 8): con
+    # applica=False non si scrive MAI, anche se auto_risolvi_certi e' True —
+    # e' una sola anteprima, nessun movimento viene davvero rimosso.
+    assert banca["eliminati_effettivi"] == 0
     assert len(banca["dettagli"]) == 1
-    assert active_ids == {"check-1", "check-2", "dup-a"}
+    assert active_ids == {"check-1", "check-2", "dup-a", "dup-b"}
 
 
 def test_ripristina_tutto_quello_nascosto_dalla_regola_errata(monkeypatch):

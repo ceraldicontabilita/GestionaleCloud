@@ -5,7 +5,7 @@ from app.services.sheets_document_store import MemorySheetsClient
 from app.routers.invoices import fatture_upload
 
 
-def test_metodo_fornitore_cassa_registra_pagamento_canonico(monkeypatch):
+def test_metodo_fornitore_cassa_resta_da_confermare_fase0(monkeypatch):
     async def scenario():
         db = MemorySheetsClient()["test_fattura_cassa_provvisoria"]
         await db["fornitori"].insert_one({
@@ -36,9 +36,11 @@ def test_metodo_fornitore_cassa_registra_pagamento_canonico(monkeypatch):
             db, invoice, "cassa"
         )
 
-        assert esito["prima_nota_tipo"] == "cassa"
-        assert await db["prima_nota_cassa"].count_documents({}) == 1
-        assert esito["pagato"] is True
-        assert esito["registrata_auto_da_metodo_fornitore"] is True
+        # Fase 0 (15/09/2026, PROMPT_CLAUDE_CODE_FASE_0.md punto 2): il ramo
+        # cassa non scrive più prima_nota_cassa né marca pagato da solo —
+        # resta "da confermare" finché non interviene una conferma esplicita.
+        assert await db["prima_nota_cassa"].count_documents({}) == 0
+        assert esito.get("pagato") is not True
+        assert esito["stato_finanziario"] == "da_confermare_cassa"
 
     asyncio.run(scenario())

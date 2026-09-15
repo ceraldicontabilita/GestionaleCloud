@@ -750,47 +750,26 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
             return None
 
     if metodo_canonico in ("cassa", "cassa_provvisoria"):
-        from app.routers.prima_nota_module.sync import registra_pagamento_fattura
-        esito = await registra_pagamento_fattura(
-            invoice,
-            "cassa",
-            source=(
-                "metodo_fornitore_assente_provvisorio"
-                if metodo_assente else "auto_metodo_fornitore"
-            ),
-            session=session,
-        )
-        mov_id = esito.get("cassa")
-        if not mov_id:
-            return None
-
+        # Fase 0 (15/09/2026, PROMPT_CLAUDE_CODE_FASE_0.md punto 2): niente
+        # riga automatica in prima_nota_cassa e nessun flag pagato/
+        # stato_pagamento=pagata/data_pagamento all'import — ne' per un
+        # fornitore con metodo cassa ne' per un fornitore senza metodo.
+        # La fattura resta con stato_finanziario="da_confermare_cassa" e
+        # compare nei Provvisori con suggerimento cassa; solo una conferma
+        # esplicita di chi tiene la cassa (conferma_fattura_provvisoria)
+        # scrive davvero il movimento.
         fattura_id = invoice.get("id") or invoice.get("invoice_key")
-        if metodo_assente:
-            now = datetime.now(timezone.utc).isoformat()
-            await db["prima_nota_cassa"].update_one(
-                {"id": mov_id},
-                {"$set": {
-                    "provvisorio": True,
-                    "canonico": False,
-                    "stato": "DA_VERIFICARE",
-                    "motivo_provvisorio": "metodo_pagamento_fornitore_assente",
-                    "updated_at": now,
-                }},
-                session=session,
+        update = {
+            "stato_finanziario": "da_confermare_cassa",
+            "provvisorio": True,
+            "metodo_pagamento_effettivo": None,
+            "decisione_pagamento_richiesta": True,
+        }
+        if fattura_id:
+            await db[Collections.INVOICES].update_one(
+                {"id": fattura_id}, {"$set": update}, session=session
             )
-            update = {
-                "prima_nota_id": mov_id,
-                "prima_nota_cassa_id": mov_id,
-                "prima_nota_tipo": "cassa_provvisoria",
-                "stato_finanziario": "da_verificare",
-                "provvisorio": True,
-                "metodo_pagamento_effettivo": None,
-                "decisione_pagamento_richiesta": True,
-            }
-            if fattura_id:
-                await db[Collections.INVOICES].update_one(
-                    {"id": fattura_id}, {"$set": update}, session=session
-                )
+            if metodo_assente:
                 try:
                     from app.services.alert_engine import genera_alert
                     await genera_alert(
@@ -800,26 +779,6 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
                     )
                 except Exception:
                     logger.exception("Creazione alert metodo pagamento mancante non riuscita")
-            return update
-
-        update = {
-            "pagato": True,
-            "paid": True,
-            "stato_pagamento": "pagata",
-            "stato_finanziario": "pagata_cassa",
-            "metodo_pagamento": "contanti",
-            "metodo_pagamento_effettivo": "cassa",
-            "data_pagamento": invoice.get("invoice_date") or invoice.get("data_fattura"),
-            "prima_nota_id": mov_id,
-            "prima_nota_cassa_id": mov_id,
-            "prima_nota_tipo": "cassa",
-            "registrata_auto_da_metodo_fornitore": True,
-            "provvisorio": False,
-        }
-        if fattura_id:
-            await db[Collections.INVOICES].update_one(
-                {"id": fattura_id}, {"$set": update}, session=session
-            )
         return update
 
     movimento_bancario = None
