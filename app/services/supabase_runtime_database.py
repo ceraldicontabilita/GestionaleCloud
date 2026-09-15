@@ -31,7 +31,7 @@ _PAGE_SIZE = 500
 _MIN_READ_PAGE_SIZE = 10
 _READ_RETRIES = 5
 _MANIFEST_RETRIES = 3
-_WRITE_CHUNK_SIZE = 200
+_WRITE_CHUNK_SIZE = 50
 _KEYSET_COLLECTIONS = {"documents_inbox"}
 
 # Le RPC runtime hanno un timeout molto stretto e la paginazione OFFSET diventa
@@ -540,13 +540,27 @@ class SupabaseRuntimeDatabase(SheetDatabase):
         return result
 
     async def health_probe(self) -> dict[str, Any]:
-        """Prova in tempo reale sia la lettura sia l'RPC usata dalle scritture."""
+        """Prova lettura, scrittura reale e cancellazione senza lasciare dati."""
         manifest = await self._manifest()
-        await self._rpc(
+        probe_id = f"health:{self._instance_id}"
+        result = await self._rpc(
             "gc_upsert_documents",
-            {"p_collection": "runtime_health", "p_documents": []},
+            {
+                "p_collection": "runtime_health",
+                "p_documents": [{
+                    "_id": probe_id,
+                    "tipo": "runtime_write_probe",
+                    "instance_id": self._instance_id,
+                }],
+            },
         )
-        return {"collections": len(manifest), "write_path": "ok"}
+        if _rifiuti_da_risposta(result):
+            raise RuntimeError("Probe scrittura Supabase rifiutata")
+        await self._rpc(
+            "gc_delete_documents",
+            {"p_collection": "runtime_health", "p_ids": [probe_id]},
+        )
+        return {"collections": len(manifest), "write_path": "verified"}
 
     @asynccontextmanager
     async def scheduler_lease(self, job_id: str, ttl_seconds: int = 900):

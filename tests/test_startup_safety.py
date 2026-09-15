@@ -124,7 +124,10 @@ def test_health_check_verifica_idratazione_supabase(monkeypatch):
         if function_name == "gc_collection_catalog":
             return [{"collection": "fatture", "row_count": 15234}]
         if function_name == "gc_upsert_documents":
-            return {"upserted": 0, "rejected": []}
+            assert payload["p_documents"]
+            return {"upserted": 1, "rejected": []}
+        if function_name == "gc_delete_documents":
+            return 1
         if function_name in {"gc_fetch_collection", "gc_fetch_collection_after"}:
             return []
         raise AssertionError(function_name)

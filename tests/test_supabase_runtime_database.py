@@ -502,7 +502,7 @@ def test_health_probe_verifica_anche_rpc_di_scrittura_senza_creare_righe():
 
     result = asyncio.run(runtime.health_probe())
 
-    assert result == {"collections": 1, "write_path": "ok"}
+    assert result == {"collections": 1, "write_path": "verified"}
     assert runtime.remote["runtime_health"] == {}
 
 
