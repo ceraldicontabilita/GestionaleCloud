@@ -101,6 +101,12 @@ class FakeRestSupabase(SupabaseRuntimeDatabase):
                         document["status"] = "processato"
                         updated += 1
             return updated
+        if function_name == "gc_runtime_health_probe":
+            probe_id = payload["p_probe_id"]
+            target = self.remote.setdefault("runtime_health", {})
+            target[probe_id] = {"_id": probe_id, "tipo": "runtime_write_probe"}
+            del target[probe_id]
+            return True
         raise AssertionError(function_name)
 
 
@@ -792,7 +798,7 @@ def test_health_probe_verifica_anche_rpc_di_scrittura_senza_creare_righe():
 
     result = asyncio.run(runtime.health_probe())
 
-    assert result == {"collections": 1, "write_path": "verified"}
+    assert result == {"collections": 0, "write_path": "verified"}
     assert runtime.remote["runtime_health"] == {}
 
 

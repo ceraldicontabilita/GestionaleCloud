@@ -736,27 +736,15 @@ class SupabaseRuntimeDatabase(SheetDatabase):
         return result
 
     async def health_probe(self) -> dict[str, Any]:
-        """Prova lettura, scrittura reale e cancellazione senza lasciare dati."""
-        manifest = await self._manifest()
+        """Prova scrittura e cancellazione atomiche senza lasciare dati."""
         probe_id = f"health:{self._instance_id}"
         result = await self._rpc(
-            "gc_upsert_documents",
-            {
-                "p_collection": "runtime_health",
-                "p_documents": [{
-                    "_id": probe_id,
-                    "tipo": "runtime_write_probe",
-                    "instance_id": self._instance_id,
-                }],
-            },
+            "gc_runtime_health_probe", {"p_probe_id": probe_id},
         )
-        if _rifiuti_da_risposta(result):
+        if result is not True:
             raise RuntimeError("Probe scrittura Supabase rifiutata")
-        await self._rpc(
-            "gc_delete_documents",
-            {"p_collection": "runtime_health", "p_ids": [probe_id]},
-        )
-        return {"collections": len(manifest), "write_path": "verified"}
+        collections = len((self.hydration_result or {}).get("fogli") or [])
+        return {"collections": collections, "write_path": "verified"}
 
     @asynccontextmanager
     async def scheduler_lease(self, job_id: str, ttl_seconds: int = 900):
