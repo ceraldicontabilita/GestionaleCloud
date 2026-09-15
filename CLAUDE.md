@@ -502,6 +502,57 @@ AvvisoBonarioF24.test.jsx` vieta i colori freddi nel suo componente.
   orario dell'ingest li sta rilavorando; il deposito HR li deduplica per
   (CF, anno, mese, tipo).
 
+### 15/09/2026 — censimento Supabase e integrazione dell'archivio legacy (richiesta: «fallo tu, non delegare»)
+
+Censimento (numeri reali): `legacy_staging` completo (55 tabelle,
+`source_count = target_count` + hash); `hr` 43 dipendenti / 1.317 cedolini
+con PDF / 648 bonifici / 502 documenti; `lotti` 23.783 documenti in 57
+collezioni; `menu` 325 prodotti + 249 immagini. **Non integrato** prima di
+questo intervento: dal legacy al gestionale era passato solo il 2026
+(`canonical_2026`), restavano 455 fatture 2025 (+2 del 2024) e 77 chiusure
+2025; il **modulo presenze** del vecchio gestionale (lug-ago 2026: 407
+timbrature, 443 turni tutti in bozza, 66 acconti per € 26.948,60, 10
+liquidazioni) non era in HR (`paghe_mensili` con 0 acconti); 18 versamenti
+contanti (€ 71.000) senza prima nota; 54 ordini fornitori storici assenti da
+Lotti; Lotti aveva 20 fatture 2026 su 1.085.
+
+- **Feed fatture → Lotti** (`app/routers/lotti_integration.py::_xml_of`): le
+  fatture legacy tengono l'XML in `fattura_allegata`; il feed guardava solo
+  `xml_raw` e Lotti le scartava come «senza XML». Ora accetta il primo campo
+  che contiene una FatturaElettronica. Le 12 fatture gia' ricevute cambiano
+  `source_hash` e finiscono in `conflitto_hash` nelle ricevute Lotti: sono
+  gia' collegate, nessuna azione.
+- **`app/services/integrazione_legacy.py`** + job scheduler
+  `integrazione_legacy` (ogni 6 h, primo giro avvio+5 min), idempotente per
+  `legacy_row_hash`/`legacy_id`, legge `legacy_staging` con la DSN
+  dell'app (`hr_app` ha i grant sull'archivio):
+  fatture e chiusure degli anni non migrati → `invoices`/`corrispettivi`
+  nella stessa forma dei documenti 2026 (`fonte legacy_staging_<anno>`, IVA
+  10% presunta, DA_VERIFICARE; una chiusura non entra se la giornata e' gia'
+  registrata da un'altra fonte); versamenti → prima nota cassa (uscita) +
+  banca (entrata) con `scrivi_movimento` (`id legacy-vers-<id>`); acconti in
+  contanti e saldi in contanti delle liquidazioni → `paghe_mensili.acconti`
+  di HR (13ª/14ª = mese 13/14) + `_ricalcola_stato_paga`; timbrature →
+  `timbrature` (entrata/uscita in ora di Roma) + `presenze_cloud` solo dove
+  il giorno non esiste gia'; anagrafica HR creata per un profilo legacy con
+  movimenti, solo se ha il CF (Strazzullo, Rossi); ordini storici →
+  `ordini_fornitori` di Lotti (`inviato_fornitori`, `source
+  storico_gestionale_legacy`).
+  Regole: dipendente per CF, poi «Cognome Nome» univoco (Lesina e Murolo
+  hanno CF diversi fra legacy e HR: match per nome), altrimenti saltato e
+  contato; gli acconti pagati con **bonifico** e `acconto_tfr` NON diventano
+  acconti HR (il bonifico arriva dall'estratto conto); i turni legacy (tutti
+  bozze) non si importano.
+- Pulizia: le 584 righe `menu_*` di `gestionale.documents` (modulo Menu
+  riscritto e poi eliminato il 03/09) rimosse con la guardia; backup in
+  `gestionale.documents_menu_rimossi_20260915`.
+- **Non fattibile da qui**: il restore PITR (`settings`, `veicoli_noleggio`,
+  `fatture_emesse`, `scadenzario`, `riconciliazioni`, `f24_models`,
+  `note_credito`, `dettaglio_righe_fatture`, `magazzino`, `prima_nota`,
+  `regole_categorie`, `learned_patterns`, `indice_documenti` azzerate il
+  14/09) si fa solo dal pannello Supabase (Database → Backups → Point in
+  time, 14/09/2026 00:40 UTC): l'MCP non ha quel comando.
+
 ### Stato precedente
 
 - Il default del codice è `DATA_BACKEND=sheets`.

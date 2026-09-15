@@ -1048,6 +1048,30 @@ def start_scheduler():
         replace_existing=True,
     )
 
+    async def _integrazione_legacy_job():
+        """Archivio legacy_staging -> registri vivi (fatture/chiusure 2024-25,
+        versamenti, acconti/timbrature del modulo presenze in HR, ordini
+        storici in Lotti). Idempotente: vedi app/services/integrazione_legacy."""
+        from app.database import Database
+        from app.services.integrazione_legacy import integra_legacy
+
+        try:
+            result = await integra_legacy(Database.get_db())
+            logger.info("[SCHEDULER-INTEGRAZIONE-LEGACY] %s", result)
+        except Exception:
+            logger.exception("[SCHEDULER-INTEGRAZIONE-LEGACY] giro non completato")
+
+    scheduler.add_job(
+        _integrazione_legacy_job,
+        'interval', hours=6,
+        next_run_time=avvio + timedelta(minutes=5),
+        misfire_grace_time=600,
+        coalesce=True,
+        id="integrazione_legacy",
+        name="Integrazione archivio legacy nei registri vivi (ogni 6 ore)",
+        replace_existing=True,
+    )
+
     scheduler.add_job(
         _chiusure_attivita_job,
         'interval', hours=6,

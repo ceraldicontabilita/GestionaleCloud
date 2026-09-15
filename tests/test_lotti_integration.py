@@ -111,3 +111,15 @@ def test_employee_projection_uses_stable_identity_and_filters_inactive(sheet_db,
     # con includi_cessati anche chi non e' piu' in forza, con lo stato
     tutti = run(lotti_integration.list_employees_for_lotti("secret-test", includi_cessati=True))
     assert [(d["source_id"], d["stato"]) for d in tutti["data"]] == [("dip-1", "attivo"), ("dip-2", "cessato")]
+
+
+def test_projection_usa_xml_in_fattura_allegata():
+    """15/09/2026: le fatture legacy tengono l'XML in ``fattura_allegata``;
+    il feed lo esponeva solo da ``xml_raw`` e Lotti le scartava."""
+    from app.routers.lotti_integration import _projection, _xml_of
+    xml = '<?xml version="1.0"?><p:FatturaElettronica versione="FPR12"><FatturaElettronicaHeader/></p:FatturaElettronica>'
+    doc = {"id": 1, "numero": "1029", "data": "2026-04-01", "fornitore": "EUROUOVA SRL", "fattura_allegata": xml}
+    assert _xml_of(doc) == xml
+    assert _xml_of({"fattura_allegata": "non e' xml"}) == ""
+    proj = _projection(doc, include_xml=True)
+    assert proj["has_xml"] is True and proj["xml_raw"] == xml
