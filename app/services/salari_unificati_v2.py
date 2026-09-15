@@ -886,9 +886,12 @@ async def get_saldo_completo_dipendente(
     cf = dipendente.get("codice_fiscale")
     
     # Cedolini dell'anno
-    cedolini = await db["cedolini"].find(
+    from app.db_collections import COLL_CEDOLINI
+    from app.document_repository import metadata_projection
+
+    cedolini = await db[COLL_CEDOLINI].find(
         {"codice_fiscale": cf, "anno": {"$in": [anno, str(anno)]}},
-        {"_id": 0}
+        metadata_projection(COLL_CEDOLINI)
     ).sort([("mese", 1)]).to_list(20)
     
     # Pagamenti dell'anno

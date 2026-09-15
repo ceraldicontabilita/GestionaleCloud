@@ -162,9 +162,12 @@ async def riconcilia_bonifici_con_estratto(background: bool = False) -> Dict[str
     # Modalità sincrona
     db = Database.get_db()
     
+    from app.db_collections import COLL_BONIFICI_TRANSFERS
+    from app.document_repository import metadata_projection
+
     bonifici = await db.bonifici_transfers.find(
         {"riconciliato": {"$ne": True}},
-        {"_id": 0}
+        metadata_projection(COLL_BONIFICI_TRANSFERS)
     ).to_list(10000)
     
     movimenti = await db.estratto_conto_movimenti.find({}, {"_id": 0}).to_list(50000)
@@ -205,9 +208,12 @@ async def _execute_riconciliazione_batch(task_id: str):
     try:
         db = Database.get_db()
         
+        from app.db_collections import COLL_BONIFICI_TRANSFERS
+        from app.document_repository import metadata_projection
+
         bonifici = await db.bonifici_transfers.find(
             {"riconciliato": {"$ne": True}},
-            {"_id": 0}
+            metadata_projection(COLL_BONIFICI_TRANSFERS)
         ).to_list(10000)
         
         movimenti = await db.estratto_conto_movimenti.find({}, {"_id": 0}).to_list(50000)
@@ -344,9 +350,12 @@ async def associa_bonifici_dipendenti(dry_run: bool = True) -> Dict[str, Any]:
     """Associa bonifici ai dipendenti tramite nome beneficiario."""
     db = Database.get_db()
     
+    from app.db_collections import COLL_BONIFICI_TRANSFERS
+    from app.document_repository import metadata_projection
+
     bonifici = await db.bonifici_transfers.find(
         {"salario_associato": {"$ne": True}},
-        {"_id": 0}
+        metadata_projection(COLL_BONIFICI_TRANSFERS)
     ).to_list(10000)
     
     dipendenti = await db.employees.find({}, {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "iban": 1}).to_list(1000)

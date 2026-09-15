@@ -947,11 +947,14 @@ async def list_quietanze_f24(
         ]
 
     # Query con esclusione _id
-    quietanze = await db["quietanze_f24"].find(
-        query, {"_id": 0}
+    from app.db_collections import COLL_QUIETANZE_F24
+    from app.document_repository import metadata_projection
+
+    quietanze = await db[COLL_QUIETANZE_F24].find(
+        query, metadata_projection(COLL_QUIETANZE_F24)
     ).sort("dati_generali.data_pagamento", -1).skip(skip).limit(limit).to_list(limit)
 
-    totale = await db["quietanze_f24"].count_documents(query)
+    totale = await db[COLL_QUIETANZE_F24].count_documents(query)
 
     # Statistiche
     stats_pipeline = [
@@ -963,7 +966,7 @@ async def list_quietanze_f24(
             "count": {"$sum": 1}
         }}
     ]
-    stats_result = await db["quietanze_f24"].aggregate(stats_pipeline).to_list(1)
+    stats_result = await db[COLL_QUIETANZE_F24].aggregate(stats_pipeline).to_list(1)
     stats = stats_result[0] if stats_result else {}
 
     return {

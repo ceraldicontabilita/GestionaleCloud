@@ -251,9 +251,12 @@ async def _auto_associate_bonifici(db, job_id: str) -> tuple:
     auto_fatture = 0
 
     try:
+        from app.db_collections import COLL_BONIFICI_TRANSFERS
+        from app.document_repository import metadata_projection
+
         new_bonifici = await db.bonifici_transfers.find(
             {"job_id": job_id, "salario_associato": {"$ne": True}, "fattura_associata": {"$ne": True}},
-            {"_id": 0}
+            metadata_projection(COLL_BONIFICI_TRANSFERS)
         ).to_list(500)
 
         from app.services.bonifici_pdf_ingest import associa_transfer_a_salario

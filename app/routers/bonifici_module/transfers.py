@@ -13,6 +13,8 @@ import zipfile
 import re as _re_zip
 
 from app.database import Database, Collections
+from app.db_collections import COLL_BONIFICI_TRANSFERS
+from app.document_repository import metadata_projection
 from .common import UPLOAD_DIR
 from .classification import classifica_destinazione_dipendente
 
@@ -52,7 +54,9 @@ async def list_transfers(
     if ands:
         query['$and'] = ands
     
-    transfers = await db.bonifici_transfers.find(query, {'_id': 0}).sort('data', -1).to_list(limit)
+    transfers = await db.bonifici_transfers.find(
+        query, metadata_projection(COLL_BONIFICI_TRANSFERS)
+    ).sort('data', -1).to_list(limit)
     dipendenti = await db[Collections.EMPLOYEES].find(
         {}, {'_id': 0, 'id': 1, 'nome': 1, 'cognome': 1, 'nome_completo': 1, 'iban': 1}
     ).to_list(5000)
@@ -208,7 +212,9 @@ async def export_transfers(
     """Esporta bonifici in CSV o XLSX."""
     db = Database.get_db()
     query = {'job_id': job_id} if job_id else {}
-    transfers = await db.bonifici_transfers.find(query, {'_id': 0}).to_list(10000)
+    transfers = await db.bonifici_transfers.find(
+        query, metadata_projection(COLL_BONIFICI_TRANSFERS)
+    ).to_list(10000)
     
     if format == 'csv':
         buf = io.StringIO()

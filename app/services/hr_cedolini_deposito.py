@@ -397,7 +397,14 @@ async def deposita_tutti_i_cedolini(db, *, dry_run: bool = False) -> Dict[str, A
     dsn = dsn_hr()
     if not dsn:
         _segnala_non_configurato()
-    docs = await db["cedolini"].find({}, {"_id": 0}).to_list(20000)
+    from app.db_collections import COLL_CEDOLINI
+    from app.document_repository import metadata_projection
+
+    # Prima carica solo i metadati. Il PDF viene letto puntualmente, un
+    # cedolino alla volta, soltanto quando esiste davvero un deposito HR.
+    docs = await db[COLL_CEDOLINI].find(
+        {}, metadata_projection(COLL_CEDOLINI)
+    ).to_list(20000)
     conteggi["totale"] = len(docs)
 
     con = None
@@ -406,7 +413,16 @@ async def deposita_tutti_i_cedolini(db, *, dry_run: bool = False) -> Dict[str, A
             con = await connetti_hr(dsn)
         for cedolino in docs:
             if dsn:
-                esito = await deposita_cedolino_in_hr(cedolino, con=con, dry_run=dry_run)
+                completo = cedolino
+                if cedolino.get("id"):
+                    allegato = await db[COLL_CEDOLINI].find_one(
+                        {"id": cedolino["id"]}, {"_id": 0, "pdf_data": 1}
+                    )
+                    if allegato and allegato.get("pdf_data"):
+                        completo = {**cedolino, "pdf_data": allegato["pdf_data"]}
+                esito = await deposita_cedolino_in_hr(
+                    completo, con=con, dry_run=dry_run
+                )
             else:
                 esito = {"esito": "hr_non_configurato", "id": None}
             campo = esiti_contati.get(esito.get("esito"))

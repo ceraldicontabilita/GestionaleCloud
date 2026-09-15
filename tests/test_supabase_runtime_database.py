@@ -230,6 +230,72 @@ def test_proiezione_esclusiva_offset_viene_applicata_dentro_supabase(monkeypatch
         "p_exclude_fields": ["xml_raw"],
     })]
 
+
+def test_count_non_scarica_il_payload_documentale(monkeypatch):
+    runtime = FakeRestSupabase({
+        "cedolini": [
+            {"_id": "c1", "anno": 2026, "pdf_data": "enorme"},
+            {"_id": "c2", "anno": 2025, "pdf_data": "altro"},
+        ],
+    })
+    calls = []
+    original_rpc = runtime._rpc
+
+    async def rpc(function, payload):
+        calls.append((function, dict(payload)))
+        return await original_rpc(function, payload)
+
+    monkeypatch.setattr(runtime, "_rpc", rpc)
+    count = asyncio.run(runtime["cedolini"].count_documents({"anno": 2026}))
+
+    assert count == 1
+    assert calls[0][0] == "gc_fetch_collection_projected"
+    assert calls[0][1]["p_exclude_fields"] == ["pdf_data"]
+
+
+def test_count_con_filtro_sul_payload_conserva_il_campo(monkeypatch):
+    runtime = FakeRestSupabase({
+        "cedolini": [{"_id": "c1", "pdf_data": "presente"}],
+    })
+    calls = []
+    original_rpc = runtime._rpc
+
+    async def rpc(function, payload):
+        calls.append((function, dict(payload)))
+        return await original_rpc(function, payload)
+
+    monkeypatch.setattr(runtime, "_rpc", rpc)
+    count = asyncio.run(runtime["cedolini"].count_documents({
+        "pdf_data": {"$exists": True},
+    }))
+
+    assert count == 1
+    assert calls[0][0] == "gc_fetch_collection"
+
+
+def test_aggregate_non_scarica_il_payload_documentale(monkeypatch):
+    runtime = FakeRestSupabase({
+        "bonifici_transfers": [
+            {"_id": "b1", "importo": 10, "pdf_data": "enorme"},
+            {"_id": "b2", "importo": 20, "pdf_data": "altro"},
+        ],
+    })
+    calls = []
+    original_rpc = runtime._rpc
+
+    async def rpc(function, payload):
+        calls.append((function, dict(payload)))
+        return await original_rpc(function, payload)
+
+    monkeypatch.setattr(runtime, "_rpc", rpc)
+    rows = asyncio.run(runtime["bonifici_transfers"].aggregate([
+        {"$group": {"_id": None, "totale": {"$sum": "$importo"}}},
+    ]).to_list(1))
+
+    assert rows[0]["totale"] == 30
+    assert calls[0][0] == "gc_fetch_collection_projected"
+    assert calls[0][1]["p_exclude_fields"] == ["pdf_data"]
+
 def test_allineamento_status_usa_una_sola_rpc_senza_caricare_documenti(monkeypatch):
     runtime = FakeRestSupabase({
         "documents_inbox": [

@@ -809,9 +809,12 @@ async def get_buste_paga(
     periodo = f"{anno}-{mese}"
     
     # Cerca buste paga esistenti
-    buste = await db["cedolini"].find(
+    from app.db_collections import COLL_CEDOLINI
+    from app.document_repository import metadata_projection
+
+    buste = await db[COLL_CEDOLINI].find(
         {"periodo": periodo},
-        {"_id": 0}
+        metadata_projection(COLL_CEDOLINI)
     ).to_list(1000)
     
     return buste
@@ -1609,13 +1612,16 @@ async def genera_report_ferie_permessi(
     progressivi = dipendente.get("progressivi", {})
     
     # Recupera cedolini dell'anno per storico mensile
-    cedolini = await db["cedolini"].find({
+    from app.db_collections import COLL_CEDOLINI
+    from app.document_repository import metadata_projection
+
+    cedolini = await db[COLL_CEDOLINI].find({
         "$or": [
             {"dipendente_id": dipendente_id},
             {"codice_fiscale": cf}
         ],
         "anno": anno
-    }, {"_id": 0}).sort("mese", 1).to_list(12)
+    }, metadata_projection(COLL_CEDOLINI)).sort("mese", 1).to_list(12)
     
     # Prepara dati
     ferie_maturate = progressivi.get("ferie_maturate", 0)
@@ -1737,7 +1743,6 @@ async def genera_report_ferie_permessi(
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )
-
 
 
 

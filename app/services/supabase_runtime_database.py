@@ -24,6 +24,7 @@ from typing import Any
 import aiohttp
 
 from app.services.sheets_document_store import SheetCursor, SheetDatabase, SheetTable
+from app.document_repository import DOCUMENT_PAYLOAD_FIELDS, metadata_projection
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +97,29 @@ def _exact_lookup(selector: Any) -> tuple[str, list[str]] | None:
         if 0 < len(values) <= _MAX_EXACT_LOOKUP_VALUES:
             return field, sorted(set(values))
     return None
+
+
+def _references_any_field(value: Any, fields: set[str]) -> bool:
+    """Vero se filtro/pipeline usa uno dei campi che vorremmo escludere."""
+    if isinstance(value, dict):
+        for key, nested in value.items():
+            if str(key).split(".", 1)[0] in fields:
+                return True
+            if _references_any_field(nested, fields):
+                return True
+        return False
+    if isinstance(value, (list, tuple)):
+        return any(_references_any_field(item, fields) for item in value)
+    if isinstance(value, str) and value.startswith("$"):
+        return value[1:].split(".", 1)[0] in fields
+    return False
+
+
+def _metadata_projection_if_safe(collection: str, operation: Any) -> dict[str, Any] | None:
+    fields = set(DOCUMENT_PAYLOAD_FIELDS.get(collection, ()))
+    if not fields or _references_any_field(operation, fields):
+        return None
+    return metadata_projection(collection)
 
 
 def documents_digest(documents: list[dict[str, Any]]) -> str:
@@ -290,10 +314,12 @@ class SupabaseTable(SheetTable):
         return documents[0] if documents else None
 
     async def count_documents(self, selector=None, *args, **kwargs) -> int:
-        return len(await self.find(selector).to_list(None))
+        projection = _metadata_projection_if_safe(self.name, selector)
+        return len(await self.find(selector, projection).to_list(None))
 
     async def estimated_document_count(self, *args, **kwargs) -> int:
-        return len(await self.find({}).to_list(None))
+        projection = _metadata_projection_if_safe(self.name, {})
+        return len(await self.find({}, projection).to_list(None))
 
     async def distinct(self, key, selector=None, *args, **kwargs):
         async with self._remote_operation_lock:
@@ -311,7 +337,9 @@ class SupabaseTable(SheetTable):
                     async with foreign._remote_operation_lock:
                         await foreign._refresh_unlocked()
             async with self._remote_operation_lock:
-                await self._refresh_unlocked()
+                await self._refresh_unlocked(
+                    projection=_metadata_projection_if_safe(self.name, pipeline)
+                )
                 return SheetTable.aggregate(self, pipeline, *args, **kwargs)
 
         return _ReadThroughCursor(load)
