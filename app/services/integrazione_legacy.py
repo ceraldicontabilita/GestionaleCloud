@@ -6,10 +6,6 @@ il censimento aveva trovato dati mai integrati dopo la fusione del 14/09.
 Cosa fa, sempre in modo idempotente (chiave = ``legacy_row_hash`` o
 ``legacy_id`` sul documento di destinazione), a lotti dallo scheduler:
 
-* **fatture e chiusure giornaliere degli anni non ancora migrati** (2024-2025:
-  la migrazione del 14/09 copriva solo il 2026) -> ``invoices`` e
-  ``corrispettivi`` del gestionale, stessa forma dei documenti 2026
-  (``fonte`` = ``legacy_staging_<anno>``, IVA 10% presunta, DA_VERIFICARE);
 * **versamenti contanti in banca** (18, gen-ago 2026) -> prima nota cassa
   (uscita) + banca (entrata) col motore unico ``scrivi_movimento``;
 * **modulo presenze** (lug-ago 2026): acconti in contanti e saldi in contanti
@@ -24,6 +20,14 @@ univoco, altrimenti la riga viene saltata e conteggiata (mai indovinato);
 gli acconti pagati con bonifico NON diventano acconti HR (il bonifico arriva
 dall'estratto conto: sarebbe contato due volte); i turni legacy sono tutti
 bozze mai pubblicate e non vengono importati.
+
+**Fuori scopo, deliberatamente** (titolare, 15/09/2026): «a me interessa
+l'anno 2026, solo i cedolini e gli F24 degli anni pregressi devono essere
+nel gestionale». Fatture e chiusure giornaliere (corrispettivi) degli anni
+precedenti al 2026 NON vengono quindi portate qui, anche se esistono
+nell'archivio legacy: sarebbe un doppio registro fuori dall'anno che serve
+al titolare. Cedolini (deposito HR, indipendente da questo modulo) e F24
+(ingest Drive, idem) restano gli unici dati storici attivi nel gestionale.
 """
 from __future__ import annotations
 
@@ -99,116 +103,6 @@ async def righe_legacy(con, tabella: str) -> List[Tuple[str, Dict[str, Any]]]:
         if d and not d.get("deleted_at"):
             out.append((str(r["row_hash"]), d))
     return out
-
-
-# ── fatture e chiusure -> gestionale ─────────────────────────────────────────
-
-def doc_fattura_legacy(row: Dict[str, Any], row_hash: str) -> Optional[Dict[str, Any]]:
-    """Documento ``invoices`` nella forma delle 786 fatture 2026 gia' migrate."""
-    anno = _anno_di(row.get("data") or row.get("data_fattura"))
-    if not anno or row.get("id") in (None, ""):
-        return None
-    d = dict(row)
-    d["_id"] = str(d["id"])
-    d["anno"] = anno
-    d["fonte"] = f"legacy_staging_{anno}"
-    d["legacy_row_hash"] = row_hash
-    d["legacy_source_table"] = "fatture"
-    d["legacy_source_project"] = PROGETTO_LEGACY
-    d.setdefault("data_documento", d.get("data"))
-    totale = _num(d.get("importo"))
-    d.setdefault("importo_totale", totale)
-    d.setdefault("totale", totale)
-    if d.get("totale_imponibile") is not None:
-        d.setdefault("imponibile", _num(d.get("totale_imponibile")))
-    imposta = d.get("totale_imposta") if d.get("totale_imposta") is not None else d.get("iva")
-    if imposta is not None:
-        d.setdefault("totale_iva", _num(imposta))
-    d.setdefault("evidence_status", "DA_VERIFICARE")
-    d.setdefault("stato_pagamento", "da_verificare")
-    d["integrato_da"] = MARCA
-    return d
-
-
-def doc_chiusura_legacy(row: Dict[str, Any], row_hash: str) -> Optional[Dict[str, Any]]:
-    """Documento ``corrispettivi`` come le 183 chiusure 2026 (IVA 10% presunta,
-    normalizzazione del 14/09: nel legacy ``iva10`` conteneva l'imponibile)."""
-    data = str(row.get("data") or "")
-    anno = _anno_di(data)
-    if not anno or row.get("id") in (None, ""):
-        return None
-    totale = _num(row.get("totale_corrispettivi") if row.get("totale_corrispettivi") is not None else row.get("incassato"))
-    imponibile = round(totale / 1.1, 2)
-    iva = round(totale - imponibile, 2)
-    cassa = _num(row.get("cassa"))
-    pos = _num(row.get("pos"))
-    d = dict(row)
-    d.update({
-        "anno": anno, "mese": int(data[5:7]) if len(data) >= 7 and data[5:7].isdigit() else None,
-        "fonte": f"legacy_staging_{anno}",
-        "legacy_row_hash": row_hash, "legacy_source_id": str(row["id"]),
-        "legacy_source_table": "chiusure_giornaliere", "legacy_source_project": PROGETTO_LEGACY,
-        "legacy_totale_iva_originale": row.get("iva10"),
-        "totale": totale, "totale_corrispettivi": totale, "incassato": _num(row.get("incassato")) or totale,
-        "pagato_contanti": cassa, "pagato_elettronico": pos,
-        "imponibile10": imponibile, "totale_imponibile": imponibile,
-        "iva10": iva, "totale_iva": iva, "iva_da_versare10": iva,
-        "iva_source": "chiusura_giornaliera_legacy",
-        "iva_nota": ("Chiusura legacy integrata il 15/09/2026 con aliquota unica 10% presunta; "
-                     "resta DA_VERIFICARE finche' non arriva l'XML RT."),
-        "status": "DA_VERIFICARE", "quadratura_iva_status": "DA_VERIFICARE",
-        "registrato_contabilita": False, "pos_riconciliata": bool(row.get("pos_riconciliata")),
-        "integrato_da": MARCA,
-    })
-    return d
-
-
-async def _esiste(db, collezione: str, row_hash: str, id_legacy: Any) -> bool:
-    if await db[collezione].find_one({"legacy_row_hash": row_hash}, {"_id": 0, "id": 1}):
-        return True
-    for candidato in {id_legacy, str(id_legacy)}:
-        if candidato in (None, "") or await db[collezione].find_one({"id": candidato}, {"_id": 0, "id": 1}) is None:
-            continue
-        return True
-    return False
-
-
-async def integra_fatture(db, con) -> Dict[str, Any]:
-    esito = {"esaminate": 0, "inserite": 0, "gia_presenti": 0, "scartate": 0, "per_anno": {}}
-    for row_hash, row in await righe_legacy(con, "fatture"):
-        esito["esaminate"] += 1
-        doc = doc_fattura_legacy(row, row_hash)
-        if not doc:
-            esito["scartate"] += 1
-            continue
-        if await _esiste(db, "invoices", row_hash, row.get("id")):
-            esito["gia_presenti"] += 1
-            continue
-        await db["invoices"].insert_one(doc)
-        esito["inserite"] += 1
-        esito["per_anno"][str(doc["anno"])] = esito["per_anno"].get(str(doc["anno"]), 0) + 1
-    return esito
-
-
-async def integra_chiusure(db, con) -> Dict[str, Any]:
-    esito = {"esaminate": 0, "inserite": 0, "gia_presenti": 0, "scartate": 0, "per_anno": {}}
-    for row_hash, row in await righe_legacy(con, "chiusure_giornaliere"):
-        esito["esaminate"] += 1
-        doc = doc_chiusura_legacy(row, row_hash)
-        if not doc:
-            esito["scartate"] += 1
-            continue
-        if await _esiste(db, "corrispettivi", row_hash, row.get("id")):
-            esito["gia_presenti"] += 1
-            continue
-        # stessa giornata gia' registrata da un'altra fonte (XML RT, CSV AdE)
-        if await db["corrispettivi"].find_one({"data": doc["data"]}, {"_id": 0, "id": 1}):
-            esito["gia_presenti"] += 1
-            continue
-        await db["corrispettivi"].insert_one(doc)
-        esito["inserite"] += 1
-        esito["per_anno"][str(doc["anno"])] = esito["per_anno"].get(str(doc["anno"]), 0) + 1
-    return esito
 
 
 # ── versamenti -> prima nota ──────────────────────────────────────────────────
@@ -563,8 +457,6 @@ async def integra_legacy(db_gest) -> Dict[str, Any]:
     con = await postgres_diretto.connetti(dsn_valore)
     try:
         blocchi = [
-            ("fatture", lambda: integra_fatture(db_gest, con)),
-            ("chiusure", lambda: integra_chiusure(db_gest, con)),
             ("versamenti", lambda: integra_versamenti(db_gest, con)),
         ]
         db_hr = _db_hr()

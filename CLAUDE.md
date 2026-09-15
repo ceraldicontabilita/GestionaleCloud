@@ -553,6 +553,23 @@ Lotti; Lotti aveva 20 fatture 2026 su 1.085.
   14/09) si fa solo dal pannello Supabase (Database → Backups → Point in
   time, 14/09/2026 00:40 UTC): l'MCP non ha quel comando.
 
+### 15/09/2026 — correzione: fatture e chiusure degli anni pregressi NON vanno nel gestionale
+
+Il titolare ha corretto lo scopo dell'integrazione appena fatta: «a me
+interessa l'anno 2026, solo i cedolini e gli F24 degli anni pregressi devono
+essere nel gestionale». Rimossi da `app/services/integrazione_legacy.py`
+(mai andati in produzione: il job non aveva ancora girato, verificato prima
+di rimuoverli — zero righe con `integrato_da = integrazione_legacy_2026-09-15`
+in `invoices`/`corrispettivi`) `doc_fattura_legacy`, `doc_chiusura_legacy`,
+`integra_fatture`, `integra_chiusure` e i test relativi: le 455 fatture e le
+77 chiusure 2025 (+2 fatture 2024) restano **solo** nell'archivio
+`legacy_staging`, non entrano in `invoices`/`corrispettivi`. Il job
+`integrazione_legacy` fa solo versamenti (18, tutti 2026, verificato),
+presenze/acconti/timbrature in HR, ordini storici in Lotti. Cedolini
+(deposito HR) e F24 (ingest Drive) restano gli unici dati storici attivi nel
+gestionale, e funzionano già per conto loro indipendentemente da questo
+modulo.
+
 ### 15/09/2026 — restore su progetto separato: le 13 collezioni erano già vuote prima dell'incidente
 
 Il titolare ha attivato lui stesso "Restore to new project" dal pannello Supabase
