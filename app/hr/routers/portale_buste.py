@@ -169,13 +169,15 @@ async def scarica_pdf(cedolino_id: str, request: Request,
     doc = await _carica_mia_busta(cedolino_id, identity,
                                   proj={"_id": 0, "pdf_data": 1, "filename": 1,
                                         "pdf_filename": 1, "mese": 1, "anno": 1,
+                                        "drive_file_id": 1,
                                         "netto": 1, "lordo": 1, "dipendente_nome": 1,
                                         "acconto_cedolino": 1, "saldo_residuo": 1})
     pdf_data = doc.get("pdf_data")
     generato = False
-    if pdf_data:
+    if pdf_data or doc.get("drive_file_id"):
         try:
-            pdf_bytes = base64.b64decode(pdf_data)
+            from app.services.cedolino_originale import carica_originale
+            pdf_bytes = await carica_originale(doc)
         except Exception:
             raise HTTPException(500, "PDF corrotto")
     else:

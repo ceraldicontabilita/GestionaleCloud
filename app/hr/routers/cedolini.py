@@ -1220,7 +1220,7 @@ async def download_cedolino_pdf(cedolino_id: str):
     import io
 
     db = Database.get_db()
-    doc = await db["cedolini"].find_one({"id": cedolino_id}, {"_id": 0, "pdf_data": 1, "pdf_filename": 1, "dipendente": 1, "mese": 1, "anno": 1})
+    doc = await db["cedolini"].find_one({"id": cedolino_id}, {"_id": 0, "pdf_data": 1, "drive_file_id": 1, "pdf_filename": 1, "dipendente": 1, "mese": 1, "anno": 1})
     
     pdf_data = doc.get("pdf_data") if doc else None
     filename = doc.get("pdf_filename") if doc else None
@@ -1255,16 +1255,17 @@ async def download_cedolino_pdf(cedolino_id: str):
             )
     
     # Fallback 2: Cerca in payslips legacy
-    if not pdf_data:
+    if not pdf_data and not (doc or {}).get("drive_file_id"):
         payslip = await db["cedolini"].find_one({"id": cedolino_id}, {"pdf_data": 1, "filename": 1})
         if payslip and payslip.get("pdf_data"):
             pdf_data = payslip["pdf_data"]
             filename = payslip.get("filename")
     
-    if not pdf_data:
+    if not pdf_data and not (doc or {}).get("drive_file_id"):
         raise HTTPException(status_code=404, detail="PDF non disponibile")
 
-    pdf_bytes = base64.b64decode(pdf_data)
+    from app.services.cedolino_originale import carica_originale
+    pdf_bytes = await carica_originale({**(doc or {}), "pdf_data": pdf_data})
     if not filename:
         filename = f"cedolino_{cedolino_id}.pdf"
 
@@ -1669,28 +1670,14 @@ async def simulazione_f24(anno: int, mese: int) -> Dict[str, Any]:
 @router.post("/import-drive")
 @handle_errors
 async def import_cedolini_da_drive(body: Dict[str, Any] = Body(default={})) -> Dict[str, Any]:
-    """Importa i PDF (buste paga e documenti) da una cartella Google Drive col
-    service account (vedi services/google_drive_sa.py — chiave di
-    gestionale@ceraldi-gestionale.iam.gserviceaccount.com, la cartella deve
-    essere condivisa con quell'indirizzo). Ogni PDF passa dalla STESSA pipeline
-    dell'upload massivo: classificazione, aggancio al dipendente, anti-duplicati."""
-    from app.hr.services.google_drive_sa import scarica_pdf_cartella, cartella_cedolini_default
-    folder = str(body.get("folder_id") or cartella_cedolini_default())
-    scaricati, falliti = await scarica_pdf_cartella(folder)
+    """Alias compatibile dell'unico importatore Drive del gestionale.
 
-    risultato = {"trovati_pdf": len(scaricati) + len(falliti), "archiviati": 0,
-                "duplicati": 0, "non_assegnati": list(falliti)}
-    from app.hr.routers.dipendenti_cloud import _archivia_documento_cloud, _indici_dipendenti
-    db = Database.get_db()
-    indici = await _indici_dipendenti(db)
-    for nome, contenuto in scaricati:
-        esito, categoria, nome_dip = await _archivia_documento_cloud(
-            db, nome or "documento.pdf", contenuto, contesto="google-drive", indici=indici)
-        if esito == "duplicato":
-            risultato["duplicati"] += 1
-        elif esito == "caricato":
-            risultato["archiviati"] += 1
-        else:
-            risultato["non_assegnati"].append(nome)
-    risultato["non_assegnati"] = risultato["non_assegnati"][:50]
-    return risultato
+    ``folder_id`` non è più accettato: impedisce di importare accidentalmente
+    una cartella storica diversa dalla radice canonica configurata su Render.
+    """
+    if body.get("folder_id"):
+        raise HTTPException(status_code=400, detail="La cartella cedolini è unica e configurata centralmente")
+    from app.database import Database as MainDatabase
+    from app.services import drive_cedolini_ingest
+
+    return await drive_cedolini_ingest.sync(MainDatabase.get_db())

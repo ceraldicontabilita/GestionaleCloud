@@ -174,12 +174,16 @@ async def processa_cedolino_completo(
             "ore_lavorate": cedolino_data.get("ore_lavorate", 0),
             "iban": cedolino_data.get("iban"),
             "filename": filename,
-            "pdf_data": pdf_data,  # Architettura Drive/Sheets
             "formato": cedolino_data.get("formato_rilevato"),
             "tipo_cedolino": cedolino_data.get("tipo_cedolino", "mensile"),
             "cedolino_dedup_key": cedolino_dedup_key,
             "updated_at": datetime.now(timezone.utc).isoformat()
         }
+        for field in ("drive_file_id", "source_file_hash", "source_path", "source_container"):
+            if cedolino_data.get(field):
+                cedolino_record[field] = cedolino_data[field]
+        if pdf_data and not cedolino_data.get("drive_file_id"):
+            cedolino_record["pdf_data"] = pdf_data
 
         riepilogo_esistente = await db["riepilogo_cedolini"].find_one({
             "$or": [
@@ -585,6 +589,8 @@ async def processa_tutti_cedolini_pdf(
     filename: str,
     source_path: str = "",
     source_container: str = "",
+    drive_file_id: str = "",
+    source_file_hash: str = "",
 ) -> Dict[str, Any]:
     """
     Processa un file PDF di cedolini con flusso completo.
@@ -705,6 +711,10 @@ async def processa_tutti_cedolini_pdf(
             continue
         ced["source_path"] = source_path or filename
         ced["source_container"] = source_container or None
+        if drive_file_id:
+            ced["drive_file_id"] = drive_file_id
+        if source_file_hash:
+            ced["source_file_hash"] = source_file_hash
         cedolino_pdf_data = ced.pop("_pdf_data", pdf_data)
         # pdf_text preferenziale: _raw_text del singolo cedolino (parser_v2 regex),
         # altrimenti il raw_text globale estratto all'inizio (Document AI path)

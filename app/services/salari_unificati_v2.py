@@ -463,16 +463,21 @@ async def processa_cedolino_v2(
             "created_at": (cedolino_esistente or {}).get("created_at") or datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
+        for field in ("drive_file_id", "source_file_hash"):
+            if cedolino_data.get(field):
+                cedolino_record[field] = cedolino_data[field]
 
         # Un reimport serve ad arricchire dati e PDF, mai a cancellare una
         # riconciliazione, un acconto o un pagamento gia' registrato.
         _preserva_stato_pagamenti(cedolino_esistente or {}, cedolino_record)
 
-        # Conserva il PDF originale nel documento cedolino. Le liste non
-        # restituiscono questo campo pesante: viene letto solo dall'endpoint
-        # autenticato usato dal pulsante "Vedi cedolino".
-        if pdf_data:
+        # I file Drive restano nell'archivio canonico e vengono letti per ID
+        # dall'endpoint autenticato. Solo i canali senza archivio esterno
+        # conservano ancora il payload incorporato.
+        if pdf_data and not cedolino_record.get("drive_file_id"):
             cedolino_record["pdf_data"] = pdf_data
+            cedolino_record["pdf_disponibile"] = True
+        elif cedolino_record.get("drive_file_id"):
             cedolino_record["pdf_disponibile"] = True
         
         # Upsert per evitare duplicati. Il registro `cedolini` del gestionale

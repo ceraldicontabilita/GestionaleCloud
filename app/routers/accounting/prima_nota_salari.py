@@ -300,9 +300,9 @@ async def get_cedolino_pdf(
     if salario.get("cedolino_id"):
         cedolino = await db["cedolini"].find_one(
             {"id": salario["cedolino_id"]},
-            {"_id": 0, "pdf_data": 1},
+            {"_id": 0, "pdf_data": 1, "drive_file_id": 1},
         )
-    if (not cedolino or not cedolino.get("pdf_data")) and salario.get("fonte_cedolino"):
+    if (not cedolino or not (cedolino.get("pdf_data") or cedolino.get("drive_file_id"))) and salario.get("fonte_cedolino"):
         cedolino = await db["cedolini"].find_one(
             {
                 "filename": salario["fonte_cedolino"],
@@ -310,7 +310,7 @@ async def get_cedolino_pdf(
             },
             {"_id": 0, "pdf_data": 1},
         )
-    if not cedolino or not cedolino.get("pdf_data"):
+    if not cedolino or not (cedolino.get("pdf_data") or cedolino.get("drive_file_id")):
         from app.services.salari_unificati_v2 import _cedolino_identity_filter
         fallback_query = _cedolino_identity_filter(
             salario.get("codice_fiscale"),
@@ -318,16 +318,16 @@ async def get_cedolino_pdf(
             salario.get("anno"),
             salario.get("tipo_cedolino") or "mensile",
         )
-        fallback_query["pdf_data"] = {"$exists": True, "$nin": [None, ""]}
         cedolino = await db["cedolini"].find_one(
             fallback_query,
-            {"_id": 0, "pdf_data": 1},
+            {"_id": 0, "pdf_data": 1, "drive_file_id": 1},
         )
-    if not cedolino or not cedolino.get("pdf_data"):
+    if not cedolino or not (cedolino.get("pdf_data") or cedolino.get("drive_file_id")):
         raise HTTPException(status_code=404, detail="PDF del cedolino non disponibile")
 
     try:
-        pdf_bytes = base64.b64decode(cedolino["pdf_data"], validate=True)
+        from app.services.cedolino_originale import carica_originale
+        pdf_bytes = await carica_originale(cedolino)
     except Exception as exc:
         logger.warning("PDF cedolino non decodificabile per record %s: %s", record_id, exc)
         raise HTTPException(status_code=422, detail="PDF del cedolino non leggibile")

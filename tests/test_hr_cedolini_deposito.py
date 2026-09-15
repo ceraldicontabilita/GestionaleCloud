@@ -164,6 +164,16 @@ def test_mapping_accetta_le_forme_dei_diversi_writer_del_gestionale():
     assert doc["tipo_cedolino"] == "ordinario"
     assert "parser_template" not in doc          # modello ignoto: non inventato
 
+    # Drive è l'archivio canonico: il deposito conserva il riferimento e non
+    # richiede una seconda copia Base64.
+    doc = modulo.mappa_cedolino_per_hr({
+        "codice_fiscale": CF, "mese": 4, "anno": 2025, "netto": 1200,
+        "drive_file_id": "drive-originale", "source_file_hash": "abc123",
+    })
+    assert doc["drive_file_id"] == "drive-originale"
+    assert doc["source_file_hash"] == "abc123"
+    assert "pdf_data" not in doc
+
     # busta manuale: periodo "YYYY-MM"; 13a resta tredicesima
     doc = modulo.mappa_cedolino_per_hr({
         "codice_fiscale": CF, "periodo": "2025-12", "tipo_cedolino": "tredicesima", "netto": "900,5",

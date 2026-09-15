@@ -678,7 +678,6 @@ async def processa_nuovi_documenti(db) -> Dict[str, Any]:
                 "category": "busta_paga",
                 "processed": {"$ne": True},
                 "status": {"$nin": ["errore_parser"]},
-                "pdf_data": {"$exists": True, "$nin": [None, ""]}
             },
             {"_id": 0}
         ).to_list(100)
@@ -686,6 +685,14 @@ async def processa_nuovi_documenti(db) -> Dict[str, Any]:
         for doc in docs:
             pdf_data = doc.get("pdf_data")
             filename = doc.get("filename", "")
+
+            # Gli originali Drive non vengono duplicati nel JSONB. Si leggono
+            # per ID soltanto durante il parsing e restano in memoria.
+            if not pdf_data and doc.get("drive_file_id"):
+                from app.services.drive_cedolini_ingest import download_file_by_id
+                drive_content = await download_file_by_id(str(doc["drive_file_id"]))
+                if drive_content:
+                    pdf_data = base64.b64encode(drive_content).decode("ascii")
 
             if not pdf_data:
                 continue
@@ -698,6 +705,8 @@ async def processa_nuovi_documenti(db) -> Dict[str, Any]:
                     filename=filename,
                     source_path=doc.get("source_path") or filename,
                     source_container=doc.get("source_container") or "",
+                    drive_file_id=doc.get("drive_file_id"),
+                    source_file_hash=doc.get("file_hash"),
                 )
 
                 if res.get("success") and res.get("cedolini_processati", 0) > 0:

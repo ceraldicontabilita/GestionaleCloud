@@ -72,34 +72,6 @@ def test_sync_drive_cedolini_non_blocca_event_loop(monkeypatch):
     assert all(thread_id != event_loop_thread for thread_id in worker_threads)
 
 
-def test_indice_hash_cedolini_viene_caricato_una_sola_volta():
-    class Cursor:
-        async def to_list(self, _limit):
-            return [{"id": "doc-1", "file_hash": "hash-1"}]
-
-    class Collection:
-        def __init__(self):
-            self.find_calls = 0
-
-        def find(self, selector, projection):
-            self.find_calls += 1
-            assert selector == {}
-            assert projection["file_hash"] == 1
-            return Cursor()
-
-    collection = Collection()
-
-    class DB:
-        def __getitem__(self, name):
-            assert name == "documents_inbox"
-            return collection
-
-    index = asyncio.run(ing._carica_indice_hash_documenti(DB()))
-
-    assert collection.find_calls == 1
-    assert index["hash-1"]["id"] == "doc-1"
-
-
 # ── Classificazione nomi file ────────────────────────────────────────────────
 
 def test_is_cedolino_filename_accetta_solo_pdf():
@@ -142,6 +114,23 @@ def test_build_inbox_doc_hash_diverso_per_contenuti_diversi():
     d2 = ing.build_inbox_doc(b"cedolino B", "b.pdf")
     assert d1["file_hash"] != d2["file_hash"]
     assert d1["id"] != d2["id"]
+
+
+def test_build_inbox_doc_drive_salva_riferimento_non_payload():
+    content = b"%PDF-originale-su-drive"
+    doc = ing.build_inbox_doc(
+        content,
+        "cedolino.pdf",
+        drive_file_id="drive-123",
+        drive_parent_id="folder-456",
+        persist_pdf=False,
+    )
+
+    assert doc["drive_file_id"] == "drive-123"
+    assert doc["drive_parent_id"] == "folder-456"
+    assert doc["file_hash"] == hashlib.md5(content).hexdigest()
+    assert doc["size_bytes"] == len(content)
+    assert "pdf_data" not in doc
 
 
 def test_zip_annidato_preserva_percorso_e_tutti_i_pdf():

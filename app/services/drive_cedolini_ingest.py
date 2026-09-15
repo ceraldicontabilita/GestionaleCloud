@@ -159,15 +159,22 @@ def build_inbox_doc(
     *,
     source_path: Optional[str] = None,
     source_container: Optional[str] = None,
+    drive_file_id: Optional[str] = None,
+    drive_parent_id: Optional[str] = None,
+    persist_pdf: bool = True,
 ) -> Dict[str, Any]:
-    """Costruisce il documento `documents_inbox` nel formato dei cedolini email."""
+    """Costruisce la registrazione canonica del documento sorgente.
+
+    Per i file Drive il PDF resta su Drive: nel database conserviamo soltanto
+    riferimento, hash e metadati. ``persist_pdf`` resta disponibile per i
+    canali che non hanno un archivio documentale esterno (email/upload).
+    """
     now = datetime.now(timezone.utc).isoformat()
-    return {
+    document = {
         "id": str(uuid.uuid4()),
         "filename": filename,
         "source_path": source_path or filename,
         "source_container": source_container,
-        "pdf_data": base64.b64encode(content).decode(),
         "file_hash": hashlib.md5(content).hexdigest(),
         "size_bytes": len(content),
         "category": "busta_paga",
@@ -183,6 +190,13 @@ def build_inbox_doc(
         "created_at": now,
         "downloaded_at": now,
     }
+    if drive_file_id:
+        document["drive_file_id"] = drive_file_id
+    if drive_parent_id:
+        document["drive_parent_id"] = drive_parent_id
+    if persist_pdf:
+        document["pdf_data"] = base64.b64encode(content).decode()
+    return document
 
 
 def _build_drive_service():
@@ -207,7 +221,7 @@ def _list_children(service, parent_id: str) -> List[Dict[str, Any]]:
     page_token = None
     while True:
         res = service.files().list(
-            q=q, fields="nextPageToken, files(id, name, mimeType)",
+            q=q, fields="nextPageToken, files(id, name, mimeType, md5Checksum, size)",
             pageSize=100, pageToken=page_token,
             supportsAllDrives=True, includeItemsFromAllDrives=True,
         ).execute()
@@ -263,20 +277,19 @@ def _inbox_contexts(service, parent_id: str) -> List[Dict[str, Any]]:
     )
 
 
-async def _carica_indice_hash_documenti(db) -> Dict[str, Dict[str, Any]]:
-    """Materializza una volta gli hash esistenti, evitando una scansione per PDF."""
-    collection = db["documents_inbox"]
-    cursor = await asyncio.to_thread(
-        collection.find,
-        {},
-        {"_id": 0, "id": 1, "file_hash": 1},
-    )
-    documents = await cursor.to_list(100000)
-    return {
-        str(document["file_hash"]): document
-        for document in documents
-        if document.get("file_hash")
-    }
+async def download_file_by_id(file_id: str) -> bytes:
+    """Legge un originale Drive per ID senza persisterlo in cache/database."""
+    if not file_id or not is_configured():
+        return b""
+    service = await asyncio.to_thread(_build_drive_service)
+    if service is None:
+        return b""
+    try:
+        return await asyncio.to_thread(_download_bytes, service, file_id)
+    finally:
+        close = getattr(service, "close", None)
+        if callable(close):
+            await asyncio.to_thread(close)
 
 
 async def get_status(db) -> Dict[str, Any]:
@@ -345,10 +358,6 @@ async def _do_sync(db) -> Dict[str, Any]:
                     ),
                 })
         result["source_files"] = len(source_files)
-        hash_index = (
-            await _carica_indice_hash_documenti(db) if source_files else {}
-        )
-
         lifecycle_cache: Dict[str, tuple[Optional[str], Optional[str]]] = {}
         for f in source_files:
             fid, fname = f["id"], f["name"]
@@ -390,23 +399,43 @@ async def _do_sync(db) -> Dict[str, Any]:
                     content_hash = await asyncio.to_thread(
                         lambda payload=pdf_content: hashlib.md5(payload).hexdigest()
                     )
-                    existing = hash_index.get(content_hash)
+                    existing = await db["documents_inbox"].find_one(
+                        {"file_hash": content_hash},
+                        {"_id": 0, "id": 1, "file_hash": 1, "drive_file_id": 1},
+                    )
                     if existing:
+                        # Un record storico può avere l'hash ma non la
+                        # provenienza: la recuperiamo senza duplicarlo.
+                        if not existing.get("drive_file_id") and not is_cedolini_archive(fname):
+                            await db["documents_inbox"].update_one(
+                                {"id": existing["id"]},
+                                {"$set": {
+                                    "drive_file_id": fid,
+                                    "drive_parent_id": source_parent_id,
+                                    "source_path": member_path,
+                                }},
+                            )
                         result["duplicates"] += 1
                         continue
 
                     display_name = PurePosixPath(member_path).name
+                    from_archive = is_cedolini_archive(fname)
                     doc = await asyncio.to_thread(
                         build_inbox_doc,
                         pdf_content,
                         display_name,
                         source_path=member_path,
                         source_container=(
-                            relative_path if is_cedolini_archive(fname) else None
+                            relative_path if from_archive else None
                         ),
+                        # Un membro ZIP non è recuperabile singolarmente per
+                        # ID Drive: resta compatibile finché gli archivi non
+                        # saranno estratti in file Drive autonomi.
+                        drive_file_id=None if from_archive else fid,
+                        drive_parent_id=None if from_archive else source_parent_id,
+                        persist_pdf=from_archive,
                     )
                     await db["documents_inbox"].insert_one(doc)
-                    hash_index[content_hash] = {"id": doc["id"], "file_hash": content_hash}
                     result["imported"] += 1
                     logger.info("Drive cedolini: importato documento hash=%s", content_hash[:12])
                     try:
@@ -532,6 +561,26 @@ async def verifica_quadratura_elaborate(db) -> Dict[str, Any]:
         for folder in elaborate_folders:
             for f in _list_source_files_recursive(service, folder["folder_id"]):
                 try:
+                    # Per i PDF Drive espone già l'MD5: la quadratura non deve
+                    # scaricare migliaia di originali soltanto per confrontarli.
+                    drive_hash = f.get("md5Checksum") if is_cedolino_filename(f["name"]) else None
+                    if drive_hash:
+                        existing = await db["documents_inbox"].find_one(
+                            {"file_hash": drive_hash}, {"_id": 0, "id": 1, "drive_file_id": 1}
+                        )
+                        if existing:
+                            esito["controllati"] += 1
+                            if existing.get("drive_file_id") != f["id"]:
+                                await db["documents_inbox"].update_one(
+                                    {"id": existing["id"]},
+                                    {"$set": {
+                                        "drive_file_id": f["id"],
+                                        "drive_parent_id": f.get("parent_id") or folder["folder_id"],
+                                        "source_path": f"{folder['relative_path']}/{f.get('relative_path') or f['name']}",
+                                    }},
+                                )
+                            esito["quadrati"] += 1
+                            continue
                     content = _download_bytes(service, f["id"])
                     if not content:
                         esito["errori"] += 1
@@ -556,6 +605,9 @@ async def verifica_quadratura_elaborate(db) -> Dict[str, Any]:
                             PurePosixPath(member_path).name,
                             source_path=member_path,
                             source_container=relative_path if is_cedolini_archive(f["name"]) else None,
+                            drive_file_id=None if is_cedolini_archive(f["name"]) else f["id"],
+                            drive_parent_id=None if is_cedolini_archive(f["name"]) else (f.get("parent_id") or folder["folder_id"]),
+                            persist_pdf=is_cedolini_archive(f["name"]),
                         )
                         await db["documents_inbox"].insert_one(doc)
                         esito["recuperati"] += 1
