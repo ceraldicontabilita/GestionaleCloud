@@ -344,6 +344,32 @@ def test_find_one_per_id_usa_lookup_puntuale_e_non_scarica_la_collezione(monkeyp
     })]
 
 
+@pytest.mark.parametrize("field", ["sha256", "pdf_hash", "version_id"])
+def test_hash_e_versione_usano_lookup_puntuale(monkeypatch, field):
+    runtime = FakeRestSupabase({
+        "documenti": [{"_id": "pk1", field: "exact-value", "company_id": "CERALDI"}],
+    })
+    calls = []
+    original_rpc = runtime._rpc
+
+    async def rpc(function, payload):
+        calls.append((function, dict(payload)))
+        return await original_rpc(function, payload)
+
+    monkeypatch.setattr(runtime, "_rpc", rpc)
+    found = asyncio.run(runtime["documenti"].find_one(
+        {"company_id": "CERALDI", field: "exact-value"}
+    ))
+
+    assert found["_id"] == "pk1"
+    assert calls == [("gc_fetch_documents_exact", {
+        "p_collection": "documenti",
+        "p_field": field,
+        "p_values": ["exact-value"],
+        "p_exclude_fields": [],
+    })]
+
+
 def test_insert_e_update_per_id_non_caricano_tutta_la_collezione(monkeypatch):
     runtime = FakeRestSupabase({
         "invoices": [{"_id": "pk1", "id": "f1", "totale": 10}],

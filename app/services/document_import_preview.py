@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from app.config import settings
+from app.services.document_hash_lookup import find_one_by_hashes
 
 
 PARSER_VERSION = "document-import-preview-v1"
@@ -60,15 +61,16 @@ def _pdf_page_count(content: bytes) -> int | None:
 
 async def _duplicate_sources(db, sha256: str, md5: str) -> list[dict[str, Any]]:
     checks = (
-        ("documents_inbox", {"$or": [{"sha256": sha256}, {"file_hash": sha256}, {"file_hash": md5}]}),
-        ("f24_unificato", {"$or": [{"pdf_hash": sha256}, {"sha256": sha256}]}),
-        ("quietanze_f24", {"$or": [{"pdf_hash": sha256}, {"sha256": sha256}]}),
-        ("ricevute_pagopa", {"$or": [{"pdf_hash": sha256}, {"sha256": sha256}]}),
+        ("documents_inbox", (("sha256", sha256), ("file_hash", sha256), ("file_hash", md5))),
+        ("f24_unificato", (("pdf_hash", sha256), ("sha256", sha256))),
+        ("quietanze_f24", (("pdf_hash", sha256), ("sha256", sha256))),
+        ("ricevute_pagopa", (("pdf_hash", sha256), ("sha256", sha256))),
     )
     found: list[dict[str, Any]] = []
-    for collection, query in checks:
-        existing = await db[collection].find_one(
-            query, {"_id": 0, "id": 1, "filename": 1, "file_name": 1}
+    for collection, candidates in checks:
+        existing = await find_one_by_hashes(
+            db, collection, candidates,
+            {"_id": 0, "id": 1, "filename": 1, "file_name": 1},
         )
         if existing:
             found.append({"collection": collection, **existing})

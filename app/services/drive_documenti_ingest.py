@@ -39,6 +39,7 @@ from app.services.drive_lifecycle_tree import (
     discover_lifecycle_folders,
     resolve_inboxes_or_legacy,
 )
+from app.services.document_hash_lookup import find_one_by_hashes
 from app.services.fiscal_document_ingestion import FiscalDocumentIngestionService
 
 logger = logging.getLogger(__name__)
@@ -416,12 +417,14 @@ async def _do_sync(db, canale: str) -> Dict[str, Any]:
                     content_hash, legacy_md5 = await asyncio.to_thread(
                         _hashes_content, content
                     )
-                    existing = await db["documents_inbox"].find_one(
-                        {"$or": [
-                            {"sha256": content_hash},
-                            {"file_hash": content_hash},
-                            {"file_hash": legacy_md5},
-                        ]},
+                    existing = await find_one_by_hashes(
+                        db,
+                        "documents_inbox",
+                        (
+                            ("sha256", content_hash),
+                            ("file_hash", content_hash),
+                            ("file_hash", legacy_md5),
+                        ),
                         {"_id": 0, "id": 1, "fiscal_document_id": 1},
                     )
 

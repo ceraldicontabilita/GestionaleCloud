@@ -34,7 +34,16 @@ _READ_RETRIES = 5
 _MANIFEST_RETRIES = 3
 _WRITE_CHUNK_SIZE = 50
 _KEYSET_COLLECTIONS = {"documents_inbox"}
-_EXACT_LOOKUP_FIELDS = {"_id", "id", "idempotency_key", "file_hash", "content_hash"}
+_EXACT_LOOKUP_FIELDS = (
+    "_id",
+    "id",
+    "idempotency_key",
+    "sha256",
+    "file_hash",
+    "content_hash",
+    "pdf_hash",
+    "version_id",
+)
 _MAX_EXACT_LOOKUP_VALUES = 500
 
 # Le RPC runtime hanno un timeout molto stretto e la paginazione OFFSET diventa

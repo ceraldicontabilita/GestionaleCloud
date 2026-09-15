@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from app.constants.tipi_documento import set_tassonomia_documento
+from app.services.document_hash_lookup import find_one_by_hashes
 
 
 COLL_DOCUMENTS = "documents_inbox"
@@ -119,8 +120,10 @@ async def _upsert_source_document(
 ) -> Dict[str, Any]:
     sha256 = hashlib.sha256(content).hexdigest()
     md5 = hashlib.md5(content).hexdigest()
-    existing = await db[COLL_DOCUMENTS].find_one(
-        {"$or": [{"sha256": sha256}, {"file_hash": md5}]},
+    existing = await find_one_by_hashes(
+        db,
+        COLL_DOCUMENTS,
+        (("sha256", sha256), ("file_hash", md5)),
         {"_id": 0, "id": 1},
     )
     document_id = str((existing or {}).get("id") or f"paypal_doc_{sha256[:32]}")
