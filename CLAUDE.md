@@ -553,6 +553,40 @@ Lotti; Lotti aveva 20 fatture 2026 su 1.085.
   14/09) si fa solo dal pannello Supabase (Database → Backups → Point in
   time, 14/09/2026 00:40 UTC): l'MCP non ha quel comando.
 
+### 15/09/2026 — restore su progetto separato: le 13 collezioni erano già vuote prima dell'incidente
+
+Il titolare ha attivato lui stesso "Restore to new project" dal pannello Supabase
+(PITR non disponibile: l'add-on non era mai stato acceso, quindi nessun WAL
+prima di oggi) sul backup fisico del 13/09/2026 04:50 UTC — l'ultimo certamente
+precedente all'azzeramento delle 00:44-00:54 UTC del 14/09. Progetto di
+recupero: `ampnwwusybxhevtvxeng` (org `fatture`, eu-central-1).
+
+**Esito: nessun dato da recuperare.** Le 13 collezioni segnalate a zero
+nell'audit del 14/09 (`settings`, `veicoli_noleggio`, `fatture_emesse`,
+`scadenzario`, `riconciliazioni`, `f24_models`, `note_credito`,
+`dettaglio_righe_fatture`, `magazzino`, `prima_nota`, `prima_nota_righe`,
+`regole_categorie`, `learned_patterns`, `indice_documenti`) risultano vuote
+**anche nel backup del 13/09**, un giorno intero prima dell'incidente
+(confermato: i dati del backup coprono fino alle 04:47 UTC del 13/09, coerente
+con l'orario dichiarato). Non erano quindi svuotate dal `delete` di quella
+notte: erano già senza righe. Verificato anche nel codice attuale: `settings`,
+`veicoli_noleggio`, `fatture_emesse`, `dettaglio_righe_fatture`,
+`prima_nota_righe`, `scadenzario`, `regole_categorie` hanno ancora un punto di
+scrittura vivo (si ripopolano da sole con l'uso, se la funzione viene
+esercitata); `riconciliazioni`, `f24_models`, `note_credito`, `magazzino`,
+`prima_nota`, `learned_patterns`, `indice_documenti` non hanno più NESSUN
+punto di scrittura nel codice: nomi di collezione morti, non funzionalità
+attive da recuperare. La frase dell'audit del 14/09 "restano a zero le
+scritture che nessuna fonte esterna sa ricostruire" andava quindi corretta:
+per queste 13 non è un dato perso dall'incidente, è una funzionalità che non
+aveva ancora prodotto dati (o è stata sostituita da altre collezioni: es.
+`riconciliazioni_match`, `warehouse_inventory`, `prima_nota_cassa/banca/
+salari`, `regole_categorizzazione` coprono lo stesso bisogno e hanno righe
+vere). Il progetto di recupero non serve più: da eliminare dal pannello
+Supabase (Project Settings → General → Delete project) per fermare il costo
+di circa 10,18 $/mese — non è pausabile da MCP (richiede tier free) e non
+esiste un comando di eliminazione via MCP.
+
 ### Stato precedente
 
 - Il default del codice è `DATA_BACKEND=sheets`.
