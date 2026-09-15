@@ -627,6 +627,10 @@ async def allinea_status_documenti_processati(db) -> int:
     job email orario. In precedenza viveva soltanto dentro
     ``processa_nuovi_documenti``, che il job attivo non eseguiva.
     """
+    aligner = getattr(db, "align_processed_document_status", None)
+    if callable(aligner):
+        return int(await aligner())
+
     result = await db["documents_inbox"].update_many(
         {"$or": [{"processed": True}, {"xml_processed": True}],
          "status": {"$in": ["nuovo", "da_processare", None]}},

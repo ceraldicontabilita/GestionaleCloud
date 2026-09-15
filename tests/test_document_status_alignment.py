@@ -23,6 +23,11 @@ class _Db:
         return self.documents
 
 
+class _SupabaseDb(_Db):
+    async def align_processed_document_status(self):
+        return 41
+
+
 def test_allinea_badge_documenti_processati_e_idempotente():
     db = _Db()
 
@@ -33,6 +38,15 @@ def test_allinea_badge_documenti_processati_e_idempotente():
     assert query["$or"] == [{"processed": True}, {"xml_processed": True}]
     assert query["status"]["$in"] == ["nuovo", "da_processare", None]
     assert update == {"$set": {"status": "processato"}}
+
+
+def test_allinea_badge_delega_alloperazione_atomica_supabase():
+    db = _SupabaseDb()
+
+    aggiornati = asyncio.run(allinea_status_documenti_processati(db))
+
+    assert aggiornati == 41
+    assert db.documents.calls == []
 
 
 def test_riallineamento_badge_non_blocca_startup_ed_e_protetto_da_lease():

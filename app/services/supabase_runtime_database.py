@@ -65,6 +65,17 @@ def _normalise_document(document: dict[str, Any]) -> dict[str, Any]:
     return json.loads(json.dumps(document, ensure_ascii=False, default=_json_default))
 
 
+def _excluded_projection_fields(projection: Any) -> list[str]:
+    """Restituisce solo le proiezioni Mongo puramente esclusive e sicure."""
+    if not isinstance(projection, dict) or not projection:
+        return []
+    excluded = [str(key) for key, value in projection.items() if not value and key != "_id"]
+    included = [key for key, value in projection.items() if value and key != "_id"]
+    if included or not excluded:
+        return []
+    return sorted(set(excluded))
+
+
 def documents_digest(documents: list[dict[str, Any]]) -> str:
     """Impronta deterministica usata per il collaudo della migrazione."""
     canonical = [
@@ -197,14 +208,17 @@ class SupabaseTable(SheetTable):
         super().__init__(database, name)
         self._remote_operation_lock = asyncio.Lock()
 
-    async def _refresh_unlocked(self) -> None:
-        documents = await self.database._fetch_logical_collection_documents(self.name)
+    async def _refresh_unlocked(self, projection=None) -> None:
+        documents = await self.database._fetch_logical_collection_documents(
+            self.name,
+            excluded_fields=_excluded_projection_fields(projection),
+        )
         self._documents = [_normalise_document(document) for document in documents]
 
     def find(self, selector=None, projection=None, *args, **kwargs):
         async def load():
             async with self._remote_operation_lock:
-                await self._refresh_unlocked()
+                await self._refresh_unlocked(projection)
                 return SheetTable.find(self, selector, projection, *args, **kwargs)
 
         return _ReadThroughCursor(load)
@@ -395,7 +409,11 @@ class SupabaseRuntimeDatabase(SheetDatabase):
         return result
 
     async def _fetch_collection_documents(
-        self, collection_name: str, *, expected_count: int | None = None,
+        self,
+        collection_name: str,
+        *,
+        expected_count: int | None = None,
+        excluded_fields: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         documents: list[dict[str, Any]] = []
         offset = 0
@@ -409,8 +427,12 @@ class SupabaseRuntimeDatabase(SheetDatabase):
             timeout_attempt = 0
             while True:
                 try:
+                    projected_keyset = bool(use_keyset and excluded_fields)
                     function_name = (
-                        "gc_fetch_collection_after" if use_keyset
+                        "gc_fetch_collection_after_projected"
+                        if projected_keyset
+                        else "gc_fetch_collection_after"
+                        if use_keyset
                         else "gc_fetch_collection"
                     )
                     payload = {
@@ -419,6 +441,8 @@ class SupabaseRuntimeDatabase(SheetDatabase):
                     }
                     if use_keyset:
                         payload["p_after_id"] = after_id
+                        if projected_keyset:
+                            payload["p_exclude_fields"] = excluded_fields
                     else:
                         payload["p_offset"] = offset
                     try:
@@ -427,6 +451,15 @@ class SupabaseRuntimeDatabase(SheetDatabase):
                         # Solo una RPC assente prima della prima pagina consente
                         # il fallback. Timeout e permessi devono mantenere la
                         # paginazione scelta e la gestione degli errori originale.
+                        if projected_keyset and not documents and (
+                            exc.status == 404 and exc.code == "PGRST202"
+                        ):
+                            excluded_fields = None
+                            logger.warning(
+                                "RPC proiezione assente; lettura keyset completa per %s",
+                                collection_name,
+                            )
+                            continue
                         if use_keyset and not documents and (
                             exc.status == 404 and exc.code == "PGRST202"
                         ):
@@ -494,13 +527,15 @@ class SupabaseRuntimeDatabase(SheetDatabase):
         return (*_COLLECTION_SHARDS.get(collection_name, ()), collection_name)
 
     async def _fetch_logical_collection_documents(
-        self, collection_name: str,
+        self, collection_name: str, *, excluded_fields: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         merged: dict[str, dict[str, Any]] = {}
         without_id: list[dict[str, Any]] = []
         locations = self._document_locations.setdefault(collection_name, {})
         for physical_name in self._physical_collections(collection_name):
-            for document in await self._fetch_collection_documents(physical_name):
+            for document in await self._fetch_collection_documents(
+                physical_name, excluded_fields=excluded_fields,
+            ):
                 document_id = document.get("_id")
                 if document_id is None:
                     without_id.append(document)
@@ -509,6 +544,11 @@ class SupabaseRuntimeDatabase(SheetDatabase):
                 merged[key] = document
                 locations[key] = physical_name
         return [*merged.values(), *without_id]
+
+    async def align_processed_document_status(self) -> int:
+        """Allinea i badge direttamente nel database, senza scaricare i PDF."""
+        result = await self._rpc("gc_align_processed_document_status", {})
+        return int(result or 0)
 
     async def hydrate(self) -> dict[str, Any]:
         """Verifica il catalogo senza copiare i documenti nel processo web."""

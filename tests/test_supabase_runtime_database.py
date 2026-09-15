@@ -32,15 +32,30 @@ class FakeRestSupabase(SupabaseRuntimeDatabase):
                 for collection, documents in sorted(self.remote.items())
                 if documents
             ]
-        if function_name in {"gc_fetch_collection", "gc_fetch_collection_after"}:
+        if function_name in {
+            "gc_fetch_collection",
+            "gc_fetch_collection_after",
+            "gc_fetch_collection_after_projected",
+        }:
             documents = list(
                 self.remote.get(payload["p_collection"], {}).values()
             )
             documents.sort(key=lambda item: str(item["_id"]))
-            if function_name == "gc_fetch_collection_after":
+            if function_name in {
+                "gc_fetch_collection_after",
+                "gc_fetch_collection_after_projected",
+            }:
                 documents = [
                     item for item in documents
                     if str(item["_id"]) > payload["p_after_id"]
+                ]
+            if function_name == "gc_fetch_collection_after_projected":
+                documents = [
+                    {
+                        key: value for key, value in item.items()
+                        if key not in payload["p_exclude_fields"]
+                    }
+                    for item in documents
                 ]
             start = payload.get("p_offset", 0)
             return documents[start:start + payload["p_limit"]]
@@ -55,6 +70,18 @@ class FakeRestSupabase(SupabaseRuntimeDatabase):
             for item_id in payload["p_ids"]:
                 deleted += int(target.pop(str(item_id), None) is not None)
             return deleted
+        if function_name == "gc_align_processed_document_status":
+            updated = 0
+            for collection in ("documents_inbox__shard_001", "documents_inbox"):
+                for document in self.remote.get(collection, {}).values():
+                    processed = document.get("processed") is True
+                    xml_processed = document.get("xml_processed") is True
+                    if (processed or xml_processed) and document.get("status") in {
+                        "nuovo", "da_processare", None,
+                    }:
+                        document["status"] = "processato"
+                        updated += 1
+            return updated
         raise AssertionError(function_name)
 
 
@@ -134,6 +161,56 @@ def test_keyset_fallback_solo_rpc_assente(monkeypatch):
     monkeypatch.setattr(runtime, "_rpc", rpc)
     assert asyncio.run(runtime._fetch_collection_documents("documents_inbox")) == [{"_id": "a"}]
     assert calls == ["gc_fetch_collection_after", "gc_fetch_collection"]
+
+
+def test_proiezione_esclusiva_viene_applicata_dentro_supabase(monkeypatch):
+    runtime = FakeRestSupabase({
+        "documents_inbox": [{"_id": "d1", "filename": "a.pdf", "pdf_data": "enorme"}],
+    })
+    calls = []
+    original_rpc = runtime._rpc
+
+    async def rpc(function, payload):
+        calls.append((function, dict(payload)))
+        return await original_rpc(function, payload)
+
+    monkeypatch.setattr(runtime, "_rpc", rpc)
+    rows = asyncio.run(
+        runtime["documents_inbox"].find({}, {"pdf_data": 0}).to_list(None)
+    )
+
+    assert rows == [{"_id": "d1", "filename": "a.pdf"}]
+    assert calls[0] == (
+        "gc_fetch_collection_after_projected",
+        {
+            "p_collection": "documents_inbox__shard_001",
+            "p_limit": 500,
+            "p_after_id": "",
+            "p_exclude_fields": ["pdf_data"],
+        },
+    )
+
+
+def test_allineamento_status_usa_una_sola_rpc_senza_caricare_documenti(monkeypatch):
+    runtime = FakeRestSupabase({
+        "documents_inbox": [
+            {"_id": "d1", "processed": True, "status": "nuovo", "pdf_data": "enorme"},
+            {"_id": "d2", "processed": False, "status": "nuovo"},
+        ],
+    })
+    calls = []
+    original_rpc = runtime._rpc
+
+    async def rpc(function, payload):
+        calls.append(function)
+        return await original_rpc(function, payload)
+
+    monkeypatch.setattr(runtime, "_rpc", rpc)
+    updated = asyncio.run(runtime.align_processed_document_status())
+
+    assert updated == 1
+    assert calls == ["gc_align_processed_document_status"]
+    assert runtime.remote["documents_inbox"]["d1"]["status"] == "processato"
 
 
 @pytest.mark.parametrize("status,code", [(403, "42501"), (404, "42P01")])
