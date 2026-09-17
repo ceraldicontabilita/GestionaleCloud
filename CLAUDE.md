@@ -788,7 +788,19 @@ passo fallito = bug da correggere subito. Cosa è stato trovato e cambiato
   lo esclude (prima il conteggio poteva risultare 0 in silenzio). Il
   marcatore non esce mai dall'adattatore. Il lotto di idratazione per id e'
   ricordato per tabella (dimezzato sui timeout, raddoppiato dopo 8 lotti
-  riusciti). Le scritture
+  riusciti). Migrazione applicata in produzione il 17/09 07:43 UTC (dopo il
+  deploy del codice: PostgREST ha ricaricato lo schema per ~2 minuti con
+  503 «Could not query the database for the schema cache», l'app e' andata
+  in fallback a letture complete e poi e' rientrata da sola). Misurato
+  07:44–07:57 rispetto a 06:55–07:12: letture complete non proiettate
+  183 → 22 (quasi tutte nel fallback dei 2 minuti), memoria istanza
+  937 → 486 MB, fatture legacy normalizzate dal job dedup 49 → 359.
+  **Probe di /api/health condivisa** (PR #476): Render chiama la liveness
+  ogni pochi secondi e ogni probe era una scrittura + cancellazione su
+  `gestionale.documents` con trigger (130 probe in 13 minuti da 7 s l'una
+  a database saturo); ora una sola probe in volo per processo, esito
+  riusato 60 s (15 s se fallita), una probe oltre il budget continua in
+  background e il giro successivo ne raccoglie l'esito. Le scritture
   del processo aggiornano la cache dopo l'esito positivo dell'RPC. Trigger
   `documents_touch_updated_at` garantisce `updated_at` anche per scritture
   fatte fuori dall'app. Fallback automatico alla lettura completa se le RPC
