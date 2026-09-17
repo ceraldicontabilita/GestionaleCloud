@@ -1,6 +1,0 @@
-tests/
-test_reports/
-*.pyc
-__pycache__/
-*.log
-*.tmp

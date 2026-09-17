@@ -2,266 +2,109 @@
 
 <!-- gestionalecloud-doc
 status: current
-reviewed_at: 2026-09-15
+reviewed_at: 2026-09-18
 storage_architecture: supabase
 -->
 
-ERP interno di Ceraldi Group S.R.L. per documenti, fatture, fornitori, Prima
-Nota, riconciliazioni, fisco, personale e flotta.
+Gestionale su misura di **Ceraldi Group S.r.l.** (bar e pasticceria, Napoli,
+P.IVA 04523831214): contabilità, fatture, F24, banca, personale, HACCP e menu
+digitale in un solo servizio.
 
-La specifica normativa unica, completa e atomica è [`PROMPT_MASTER.md`](PROMPT_MASTER.md).
-Gli altri documenti sono guide di lettura, riferimenti di dominio o mappe generate.
+Produzione: **https://gestionalecloud.onrender.com**
 
-- Produzione: [impresasemplice.online](https://impresasemplice.online)
-- Repository: `ceraldicontabilita/GestionaleCloud`
-- Branch operativo: `main`
-- Catalogo UI: 65 schermate in `page_catalog.json`
+> Le regole di progetto stanno in **`CLAUDE.md`**, che è l'unica memoria del
+> repository. Questo README spiega solo com'è fatto il servizio e come si
+> lavora; se i due file si contraddicono, vince `CLAUDE.md`.
 
-## Stato aggiornato al 15/09/2026
+## Un solo servizio, quattro app
 
-La produzione usa `DATA_BACKEND=supabase`: `gestionale.documents` è il
-registro operativo, `gestionale.blobs` conserva i binari deduplicati e Drive
-conserva gli originali. Il processo web non idrata una cache dei documenti:
-legge la collezione richiesta da Supabase e conferma ogni scrittura remota
-prima di restituire successo.
+Un unico processo FastAPI (`app/main.py`) serve le API e i quattro frontend
+compilati, dallo stesso host:
 
-Il passaggio dei dati storici si considera concluso soltanto dopo confronto di
-conteggi e hash, ricostruzione completa e prova di scrittura. Fino a quella
-verifica non cancellare dati storici senza autorizzazione e checklist di cutover approvata.
+| App | Rotte | Backend | Frontend | Accesso |
+| --- | --- | --- | --- | --- |
+| ERP (contabilità) | `/`, `/api/*` | `app/` | `frontend/` (Vite) | login ERP |
+| HR / AppDipendenti | `/hr`, `/hr/portale`, `/hr/api/*` | `app/hr/` | `frontend_hr/` (Vite) | nome + PIN personale |
+| Menu | `/menu`, `/menu/admin`, `/menu/api/*` | `app/menu/` | `frontend_menu/` (CRA) | utente e password admin |
+| Lotti (HACCP) | `/lotti`, `/lotti/api/*` | `app/lotti/` | `frontend_lotti/` (CRA) | PIN operatore |
 
-Il registro Drive crea questa struttura:
+HR, Menu e Lotti sono le app originali del gruppo **portate dentro così
+com'erano**: ognuna con il proprio login, il proprio aspetto e i propri test.
+Sono montate come sub-app FastAPI **prima** del catch-all della SPA dell'ERP,
+altrimenti `/lotti/...` finirebbe nella SPA sbagliata.
 
-```text
-REGISTRO DATI/
-PARTENOPAY/
-CODICI TRIBUTO/
-QUIETANZE/
-DICHIARAZIONI/
-```
+## Dati
 
-## Architettura
+- **Supabase** è l'archivio unico (`DATA_BACKEND=supabase`): schemi
+  `gestionale`, `hr`, `lotti`, `menu` e l'archivio in sola lettura
+  `legacy_staging`.
+- **Google Drive** conserva gli originali documentali (fatture, cedolini, F24,
+  estratti conto) e li fa entrare dai canali `DA ELABORARE / ELABORATE /
+  ERRORI`. Non è un database.
+- Il runtime su Google Sheets esiste ancora nel codice solo come fallback di
+  sviluppo.
 
-```text
-Browser React/Vite
-  -> API FastAPI same-origin
-     -> servizi di dominio e motore unico Prima Nota
-        -> backend dati: Supabase (registri) + Drive (originali)
+## Lavorare in locale
 
-Google Drive / Gmail autorizzato / API esterne
-  -> import, parser, deduplica, identità canonica
-     -> fatture, F24, quietanze, banca, PartenoPay, cedolini
-```
-
-## Fonti dati operative
-
-Le schermate e i servizi non leggono direttamente il repository o archivi
-locali come fonte di verità. I dati arrivano da questi canali:
-
-| Dominio | Fonti primarie | Regole di acquisizione |
-|---|---|---|
-| Documenti | upload manuale, cartelle Drive configurate, allegati email autorizzati, API dei gestori | conserva l'originale, calcola hash, deduplica per identità canonica, registra provenienza |
-| Fatture e fornitori | XML/P7M da Drive/SDI, anagrafiche fornitore, alias normalizzati | la P.IVA o il codice fiscale identificano il fornitore; il nome da solo non crea duplicati |
-| Prima Nota | import da fatture, corrispettivi, banca, versamenti contanti, POS, cedolini, F24 | una scrittura nasce solo da un fatto di dominio e mantiene il proprio `operation_id` |
-| Banca e riconciliazioni | estratti conto, movimenti bancari, CRO/TRN, descrizioni normalizzate | i movimenti riconciliano prove esistenti; non sostituiscono i documenti originali |
-| Fisco e quietanze | modelli F24, codici tributo, quietanze, dichiarazioni, archivi Drive dedicati | F24, quietanza e movimento bancario restano prove distinte |
-| Flotta e verbali | email autorizzate, verbali PDF, ZIP, contratti, storico assegnazioni veicolo | la targa normalizzata e la data/ora guidano l'associazione; i casi ambigui restano manuali |
-| Corrispettivi e POS | XML RT, chiusure terminale, accrediti gestore, commissioni | il ricavo nasce dal corrispettivo RT; l'accredito POS è un fatto successivo e separato |
-| Amministrazione e audit | configurazione Render, cataloghi, log, inventory e report storici | usati per governo e tracciabilità, non come dato operativo primario |
-
-### Stack
-
-- Backend: Python 3.12, FastAPI, runtime Supabase read-through, APScheduler.
-- Frontend: React 18, Vite 5, React Router 6, TanStack Query, Zustand.
-- Persistenza: Supabase per i registri e Google Drive per gli originali.
-- Deploy: un servizio Render avviato con `python -m app.process_supervisor`.
-- CI: pytest, Vitest, build Vite, audit statici, runtime smoke ed E2E isolato.
-
-## Avvio locale
-
-Prerequisiti: Python 3.12, Node.js e Yarn.
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r backend\requirements.txt
-yarn --cwd frontend install --frozen-lockfile
-```
-
-Configurare le variabili in un ambiente locale non versionato. Per una prova
-isolata non usare credenziali o dati di produzione.
-
-```powershell
+```bash
+pip install -r backend/requirements.txt
+npm --prefix frontend install --include=dev --legacy-peer-deps
+npm --prefix frontend run build     # compila l'ERP e, via scripts/build_frontends.sh --apps,
+                                    # tutte le cartelle frontend_*/
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
-yarn --cwd frontend dev
 ```
 
-Se l'entrypoint applicativo cambia, il riferimento definitivo è il comando di
-avvio in `render.yaml` e il lifecycle importato dai test correnti.
+Senza la build, `/hr`, `/menu` e `/lotti` rispondono solo con le API.
 
-## Configurazione essenziale
+Test:
 
-### Applicazione
-
-- `ENVIRONMENT`
-- `SECRET_KEY`
-- `CORS_ALLOWED_ORIGINS`
-- `SHEETS_REGISTRY_NAME`
-- `CREDENTIALS_ENCRYPTION_KEY`
-
-### Registro Supabase
-
-- `DATA_BACKEND=supabase`
-- `SUPABASE_URL`
-- `SUPABASE_PUBLISHABLE_KEY`
-- `SUPABASE_RUNTIME_SECRET`
-- L'import fatture usa `DRIVE_FATTURE_BATCH_SIZE` (default 1) e viene eseguito
-  ogni 15 minuti, così l'arretrato non satura la memoria del servizio web.
-- `GOOGLE_DRIVE_SA_JSON` / `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON`
-- una sola variabile canonica `GOOGLE_DRIVE_<AREA>_FOLDER_ID` per ciascuna
-  area documentale; non creare alias Render diversi per lo stesso folder ID
-
-Il foglio privato `_INDICE_DRIVE` del registro elenca le cartelle canoniche e,
-per le aree operative, i tre stati `Da elaborare`, `Elaborate` ed `Errori`.
-Codice e automazioni consultano quell'indice e `DRIVE_FOLDER_REGISTRY_JSON`;
-gli ID aziendali non devono essere copiati nella documentazione pubblica.
-
-Le credenziali restano nel secret store di Render. Non inserire JSON di
-service account, token o password nel repository.
-
-## Verifica Supabase/Drive
-
-La procedura amministrativa deve essere eseguita in quest'ordine:
-
-1. inventario dei registri;
-2. deduplica per `canonical_id` e hash del payload;
-3. blocco dei conflitti ID uguale/payload diverso;
-4. sincronizzazione completa nel registro Supabase;
-5. confronto di conteggi e digest per ogni collezione;
-6. verifica catalogo, lettura read-through e prova di scrittura RPC;
-7. verifica live del commit in produzione;
-8. conferma dell'assenza di backend alternativi e variabili obsolete.
-
-I documenti originali su Drive non vengono eliminati dalla migrazione del
-registro. Nel solo workflow Calderone, dopo un esito completo e verificato,
-l'originale viene spostato fra le cartelle operative dello stesso Calderone
-secondo [docs/RUNBOOK-RENDER-CALDERONE.md](docs/RUNBOOK-RENDER-CALDERONE.md).
-
-## Albero del repository
-
-```text
-app/
-├── routers/                    API FastAPI per dominio
-├── services/                   logica condivisa e riconciliazioni
-├── parsers/                    XML, PDF, CSV e formati fiscali
-├── knowledge/                  base di conoscenza della chat
-├── config.py                   configurazione e feature flag
-└── database.py                 inizializzazione archivio Supabase
-backend/
-└── requirements.txt
-frontend/
-├── src/main.jsx                router principale
-├── src/pages/                  schermate
-├── src/pages/hub/              alberi di navigazione per modulo
-├── src/components/             modali e componenti condivisi
-└── package.json
-gestionale_mcp/                 gateway AI di sola lettura
-scripts/                        audit, mappe e manutenzione verificabile
-tests/                          test backend e guardie architetturali
-memoria/                        specifiche e mappe tecniche
-page_catalog.json               catalogo macchina delle 65 pagine
-CLAUDE.md                       istruzioni operative per gli agenti
-PRODUCT.md                      obiettivi e confini del prodotto
-```
-
-## Moduli applicativi
-
-- Dashboard e inserimento rapido
-- Fatture, corrispettivi e fornitori
-- Prima Nota Cassa/Banca, salari e ritenute
-- Flotta, verbali e costi noleggio
-- Contabilità, bilancio, IVA, F24 e situazione fiscale
-- Riconciliazione banca, bonifici, assegni, PayPal, PagoPA e POS
-- Import, archivio e indice documentale Drive
-- Strumenti, integrazioni, agenti e amministrazione
-
-Nel catalogo corrente la logica di coerenza POS vive nella pagina 40
-(`Riconciliazione > Coerenza POS`); le elaborazioni amministrative e legacy
-sono le pagine 56 e 57 nell'area Admin.
-
-L'elenco completo e verificabile delle route è in `page_catalog.json`.
-
-## Regole dati fondamentali
-
-1. `canonical_id` identifica l'entità; `operation_id` collega le prove della
-   stessa operazione.
-2. Stesso hash/identità non crea un duplicato.
-3. L'importo da solo non autorizza un'associazione.
-4. Fattura, quietanza e movimento bancario restano entità distinte.
-5. I ricavi provengono dai corrispettivi, non dagli accrediti POS.
-6. Le scritture di Prima Nota passano da
-   `app/services/scritture_contabili.py`.
-7. I documenti originali sono immutabili e tracciati con fonte e hash.
-
-## Test
-
-```powershell
-python -m pytest -q
-yarn --cwd frontend test
+```bash
+python -m pytest -q                 # suite backend, cartella tests/ per area
+yarn --cwd frontend test            # test del frontend ERP
 yarn --cwd frontend build
-python scripts\audit_static.py
-git diff --check
+AUTH_SECRET=test python -m pytest app/lotti/tests   # test originali di Lotti
+python -m pytest app/hr/tests                       # test originali di HR
 ```
 
-Test mirati del catalogo e del registro Drive:
+I test sono raggruppati per area: `tests/banca`, `tests/contabilita`,
+`tests/documenti`, `tests/fatture`, `tests/fiscale`, `tests/frontend`,
+`tests/hr`, `tests/lotti`, `tests/menu`, `tests/noleggio`, `tests/runtime`.
 
-```powershell
-python -m pytest tests\test_page_catalog.py -q
-python -m pytest tests\test_google_sheets_ledger.py tests\test_sheets_runtime_database.py -q
-```
+## Configurazione e segreti
+
+**Tutti i valori reali stanno nelle variabili d'ambiente di Render**, mai nel
+repository: `render.yaml` le dichiara con `sync: false`. Le famiglie sono:
+
+- archivio: `DATA_BACKEND`, `SUPABASE_URL` e il segreto runtime;
+- sub-app: `LOTTI_*`, `MENU_*`, `HR_*` (ognuna ha il proprio progetto o schema,
+  la propria chiave JWT e il proprio login);
+- Drive: `GOOGLE_DRIVE_*_FOLDER_ID` per ogni canale, più le credenziali del
+  service account;
+- accessi: `PIN_HASH_ADMIN` (PIN amministratore unico delle quattro app),
+  `CREDENTIALS_ENCRYPTION_KEY`;
+- integrazioni: PayPal, SumUp, Telegram, posta.
+
+`render.yaml` è il contratto versionato del servizio. La dashboard Render non
+lo recepisce da sola: Build Command e Start Command vanno incollati a mano una
+volta sola in Settings.
 
 ## Deploy
 
-`render.yaml` documenta il servizio Render con auto-deploy da `main`. Prima
-di considerare pubblicata una modifica:
+Render pubblica automaticamente da `main`. Health check: `/api/health`.
+Il workflow `.github/workflows/produzione.yml` attende che la produzione serva
+il bundle del commit, poi controlla salute e schermate; `ci.yml` esegue test
+backend e frontend su ogni push e pull request.
 
-1. CI verde;
-2. `HEAD == origin/main`;
-3. `/api/health` deve riportare il commit atteso;
-4. controllo live del flusso interessato.
+## Struttura
 
-## Documentazione
-
-- `PROMPT_MASTER.md` — unica autorità normativa: prodotto, dati, Gmail, Drive,
-  variabili, pagine, router, endpoint, divieti e gate.
-- `CLAUDE.md` — regole vincolanti per lavorare nel repository.
-- `PRODUCT.md` — visione, flussi e albero funzionale.
-- `LOGICA_FUNZIONAMENTO.md` — comportamento operativo per gli utenti.
-- `page_catalog.json` — route/componenti/accessi/stato audit.
-- `memoria/JSON_INVENTORY.json` — inventario e politica dei file JSON.
-- `memoria/pagine/*.json` — mappe tecniche delle pagine.
-- `memoria/popup/*.json` — mappe tecniche dei popup.
-
-### Kit completo per la ricostruzione pulita
-
-Per generare un unico ZIP autosufficiente con Prompt Master, architettura,
-65 schede Markdown e 65 contratti JSON con la logica specifica di ogni pagina,
-36 popup, contratti API, variabili senza segreti,
-modello Drive/Sheets e matrice di accettazione:
-
-```powershell
-python scripts\genera_kit_ricostruzione.py
 ```
-
-Il comando crea in `Documents`:
-
-- `GestionaleCloud_REBUILD_KIT_2026-08-20.zip`;
-- `GestionaleCloud_REBUILD_KIT_2026-08-20.zip.sha256`.
-
-Il generatore verifica una sola cartella radice, manifest e hash interni,
-conteggi canonici e firme compatibili con credenziali. Lo ZIP non viene
-versionato: non contiene dati aziendali, allegati, segreti o una copia del
-codice applicativo; viene rigenerato dalle fonti correnti del repository.
-
-## Licenza
-
-Uso interno Ceraldi Group S.R.L. Tutti i diritti riservati.
+app/            ERP: routers, services, engines, parsers   (+ hr/ lotti/ menu/)
+frontend/       SPA dell'ERP (React 18, Vite, TanStack Query, Zustand, Radix)
+frontend_hr/    frontend_lotti/    frontend_menu/    frontend_shared/
+backend/        requirements.txt di produzione
+scripts/        build dei frontend, smoke, audit, sincronizzazione RT locale
+supabase/       migrazioni SQL applicate al progetto
+tests/          suite backend, una cartella per area
+page_catalog.json   catalogo delle 64 schermate dell'ERP, usato dai collaudi
+CLAUDE.md       regole di progetto e stato attuale
+```

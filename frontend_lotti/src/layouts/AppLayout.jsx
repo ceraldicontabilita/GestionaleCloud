@@ -123,7 +123,7 @@ export default function AppLayout({ activeTab, onTabChange, ordiniPendenti, onSu
           <div className="g-divider-v" style={{ margin: "0 6px" }} />
 
           <a
-            href={process.env.REACT_APP_GESTIONALE_URL || "https://www.impresasemplice.online"}
+            href={process.env.REACT_APP_GESTIONALE_URL || "/"}
             target="_blank"
             rel="noopener noreferrer"
             data-testid="nav-gestionale"

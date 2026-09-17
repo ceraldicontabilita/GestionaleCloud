@@ -1,9 +1,0 @@
-{
-  "venvPath": "/workspaces/gestionale",
-  "venv": ".venv",
-  "pythonVersion": "3.12",
-  "include": [
-    "app",
-    "backend"
-  ]
-}
