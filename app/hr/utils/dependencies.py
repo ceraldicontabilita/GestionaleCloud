@@ -2,7 +2,7 @@
 FastAPI dependencies for dependency injection.
 Provides reusable dependencies for authentication, database, etc.
 """
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional, Dict, Any
 from jose import jwt, JWTError
@@ -353,3 +353,29 @@ async def require_staff(
     if payload.get("role") not in ("admin", "responsabile_turni"):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Accesso riservato")
     return payload
+
+
+# Allowlist dei consumer della pagina Turni; una nuova funzione di gestione
+# resta solo-admin finché non ne viene verificata esplicitamente la necessità.
+_CLOUD_TURNI_ENDPOINTS = frozenset({
+    "get_dipendenti", "get_ordine_dipendenti", "set_ordine_dipendenti",
+    "get_turni", "create_turno", "update_turno", "delete_turno",
+    "get_assegnazioni", "create_or_update_assegnazione",
+    "get_turni_config", "save_turni_config", "get_turni_disponibilita_bar",
+    "get_turni_preferenze", "get_chiusura_pomeridiana", "save_chiusura_pomeridiana",
+    "get_onomastici", "save_onomastici", "onomastici_settimana", "get_ferie",
+})
+
+
+async def require_cloud_access(
+    request: Request,
+    identity: Dict[str, Any] = Depends(require_staff),
+) -> Dict[str, Any]:
+    """Applica nel backend il perimetro della gestione HR, anche nei mount."""
+    endpoint = request.scope.get("endpoint")
+    if identity.get("role") == "admin":
+        return identity
+    if (identity.get("role") == "responsabile_turni"
+            and getattr(endpoint, "__name__", "") in _CLOUD_TURNI_ENDPOINTS):
+        return identity
+    raise HTTPException(status.HTTP_403_FORBIDDEN, "Accesso riservato all'amministratore")

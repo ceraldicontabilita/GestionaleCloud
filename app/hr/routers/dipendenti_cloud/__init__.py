@@ -19,6 +19,7 @@ from datetime import datetime, timezone, timedelta, date
 from decimal import Decimal, InvalidOperation
 
 from app.hr.database import Database
+from app.hr.utils.dependencies import require_staff
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +118,7 @@ class DocumentoCloud(BaseModel):
 # ============ DIPENDENTI ============
 
 @router.get("/dipendenti")
-async def get_dipendenti():
+async def get_dipendenti(identity: Dict[str, Any] = Depends(require_staff)):
     """Legge dalla collezione 'dipendenti' esistente nel database Gestionale"""
     dipendenti = await get_db().dipendenti.find({}, {"_id": 0}).to_list(1000)
     # Normalizza i campi per compatibilità con il frontend.
@@ -145,6 +146,9 @@ async def get_dipendenti():
             "ore_settimanali": d.get("ore_settimanali"),
             "created_at": d.get("created_at", "")
         })
+    if isinstance(identity, dict) and identity.get("role") == "responsabile_turni":
+        fields = {"id", "nome", "cognome", "stato", "ruolo", "luogo_lavoro", "ore_settimanali"}
+        return [{k: v for k, v in item.items() if k in fields} for item in result]
     return result
 
 @router.get("/dipendenti/{dipendente_id}")
@@ -2349,13 +2353,17 @@ async def consolida_presenze_da_turni(data: dict = Body(default={})):
 # ============ FERIE E PERMESSI ============
 
 @router.get("/ferie")
-async def get_ferie(dipendente_id: Optional[str] = None, stato: Optional[str] = None):
+async def get_ferie(dipendente_id: Optional[str] = None, stato: Optional[str] = None,
+                    identity: Dict[str, Any] = Depends(require_staff)):
     query = {}
     if dipendente_id:
         query["dipendente_id"] = dipendente_id
     if stato:
         query["stato"] = stato
     ferie = await get_db().ferie_cloud.find(query, {"_id": 0}).to_list(1000)
+    if isinstance(identity, dict) and identity.get("role") == "responsabile_turni":
+        fields = {"id", "dipendente_id", "tipo", "data_inizio", "data_fine", "giorni", "stato"}
+        return [{k: v for k, v in item.items() if k in fields} for item in ferie]
     return ferie
 
 @router.post("/ferie")

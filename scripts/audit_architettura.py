@@ -15,7 +15,8 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "app"
-ROUTERS = APP / "routers"
+ROUTER_ROOTS = [APP / "routers", APP / "lotti" / "routers",
+                APP / "hr" / "routers", APP / "menu" / "routes"]
 HTTP_METHODS = {"get", "post", "put", "patch", "delete"}
 LARGE_LIST_RE = re.compile(r"\.to_list\((?:10000|20000|50000|100000)\)")
 HARD_DELETE_RE = re.compile(r"\.(?:delete_one|delete_many)\(")
@@ -36,7 +37,7 @@ def _route_decorators(node: ast.FunctionDef | ast.AsyncFunctionDef):
 
 def collect() -> dict[str, Any]:
     python_files = sorted(APP.rglob("*.py"))
-    router_files = sorted(ROUTERS.rglob("*.py"))
+    router_files = sorted(path for base in ROUTER_ROOTS for path in base.rglob("*.py"))
     routes: list[dict[str, Any]] = []
     parse_errors: list[str] = []
     large_queries: list[str] = []

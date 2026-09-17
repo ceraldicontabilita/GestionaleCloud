@@ -5,7 +5,7 @@ Generato da `scripts/audit_static.py`.
 
 ## Sintesi
 
-- P1: 379
+- P1: 421
 - P2: 19
 - P3: 67
 - INFO: 16
@@ -182,13 +182,13 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/hr/routers/dimissioni.py:184`
+- File: `app/hr/routers/dimissioni.py:186`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/hr/routers/dimissioni.py:305`
+- File: `app/hr/routers/dimissioni.py:307`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -368,55 +368,55 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/hr/routers/tfr.py:1110`
+- File: `app/hr/routers/tfr.py:1114`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/hr/routers/tfr.py:1179`
+- File: `app/hr/routers/tfr.py:1183`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/hr/routers/tfr.py:1523`
+- File: `app/hr/routers/tfr.py:1527`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/hr/routers/tfr.py:1886`
+- File: `app/hr/routers/tfr.py:1890`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/hr/routers/tfr.py:1902`
+- File: `app/hr/routers/tfr.py:1906`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/hr/routers/tfr.py:1991`
+- File: `app/hr/routers/tfr.py:1995`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/hr/routers/tfr.py:2088`
+- File: `app/hr/routers/tfr.py:2092`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/hr/routers/tfr.py:2340`
+- File: `app/hr/routers/tfr.py:2344`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/hr/routers/tfr.py:2397`
+- File: `app/hr/routers/tfr.py:2401`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -494,37 +494,49 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/accounting/prima_nota_salari.py:360`
+- File: `app/routers/accounting/prima_nota_salari.py:364`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/accounting/prima_nota_salari.py:457`
+- File: `app/routers/accounting/prima_nota_salari.py:461`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/accounting/prima_nota_salari.py:636`
+- File: `app/routers/accounting/prima_nota_salari.py:484`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/accounting/prima_nota_salari.py:758`
+- File: `app/routers/accounting/prima_nota_salari.py:512`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/accounting/prima_nota_salari.py:1269`
+- File: `app/routers/accounting/prima_nota_salari.py:691`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/accounting/prima_nota_salari.py:1472`
+- File: `app/routers/accounting/prima_nota_salari.py:813`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/routers/accounting/prima_nota_salari.py:1378`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/routers/accounting/prima_nota_salari.py:1581`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -701,18 +713,6 @@ Generato da `scripts/audit_static.py`.
 - File: `app/routers/alerts.py:221`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
-
-### P1 - missing-required-file
-
-- File: `app/routers/attendance_module/export_consulente.py:0`
-
-- Dettaglio: File richiesto mancante.
-
-### P1 - missing-required-file
-
-- File: `app/routers/attendance_module/no_import_pdf.py:0`
-
-- Dettaglio: File richiesto mancante.
 
 ### P1 - body
 
@@ -1154,31 +1154,31 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/documenti.py:2182`
+- File: `app/routers/documenti.py:2181`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/documenti.py:2969`
+- File: `app/routers/documenti.py:2968`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/documenti.py:3003`
+- File: `app/routers/documenti.py:3002`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/documenti.py:3037`
+- File: `app/routers/documenti.py:3036`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/documenti.py:3767`
+- File: `app/routers/documenti.py:3766`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -1562,7 +1562,7 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/finanziamenti_soci.py:48`
+- File: `app/routers/finanziamenti_soci.py:42`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -1640,37 +1640,37 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/fornitori_learning.py:222`
+- File: `app/routers/fornitori_learning.py:224`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/fornitori_learning.py:310`
+- File: `app/routers/fornitori_learning.py:312`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/fornitori_learning.py:430`
+- File: `app/routers/fornitori_learning.py:432`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/fornitori_learning.py:495`
+- File: `app/routers/fornitori_learning.py:497`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/fornitori_learning.py:765`
+- File: `app/routers/fornitori_learning.py:767`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/fornitori_learning.py:905`
+- File: `app/routers/fornitori_learning.py:907`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -2364,12 +2364,6 @@ Generato da `scripts/audit_static.py`.
 
 - Dettaglio: DELETE senza confirm vicino.
 
-### P1 - missing-required-file
-
-- File: `frontend/src/pages/hr/HRPresenzeExport.jsx:0`
-
-- Dettaglio: File richiesto mancante.
-
 ### P1 - delete-confirm
 
 - File: `frontend/src/stores/primaNotaStore.js:134`
@@ -2379,6 +2373,264 @@ Generato da `scripts/audit_static.py`.
 ### P1 - delete-confirm
 
 - File: `frontend/src/stores/primaNotaStore.js:158`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_hr/src/PortaleDipendente.jsx:122`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_hr/src/PortaleDipendente.jsx:132`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_lotti/src/components/haccp/AttrezzatureView.jsx:188`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_lotti/src/components/haccp/BackofficeView.jsx:88`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_lotti/src/components/haccp/CataloghiEsterniView.jsx:92`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_lotti/src/components/haccp/CatalogoFornitoreView.jsx:693`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_lotti/src/components/haccp/CatalogoFornitoreView.jsx:712`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_lotti/src/components/haccp/CatalogoFornitoreView.jsx:778`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_lotti/src/components/haccp/CatalogoGenericoView.jsx:82`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_lotti/src/components/haccp/CatalogoGenericoView.jsx:101`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_lotti/src/components/haccp/CatalogoGenericoView.jsx:127`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_lotti/src/components/haccp/ColazioneAcquavivaView.jsx:83`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_lotti/src/components/haccp/ColazioneAcquavivaView.jsx:107`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_lotti/src/components/haccp/ColazioneAcquavivaView.jsx:184`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_lotti/src/components/haccp/CollaudiView.jsx:47`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_lotti/src/components/haccp/ControlloOlioView.jsx:75`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_lotti/src/components/haccp/GelatiView.jsx:528`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_lotti/src/components/haccp/GelatiView.jsx:664`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_lotti/src/components/haccp/ImportaFattureView.jsx:220`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_lotti/src/components/haccp/ListinoView.jsx:470`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_lotti/src/components/haccp/MagazzinoBarView.jsx:237`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_lotti/src/components/haccp/OrdiniView.jsx:724`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_lotti/src/components/haccp/OrdiniView.jsx:738`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_lotti/src/components/haccp/ProdottiVenditaView.jsx:217`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_lotti/src/components/haccp/QualificaBatchPanel.jsx:30`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_lotti/src/components/haccp/RegistroAllergeniView.jsx:105`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_lotti/src/components/haccp/RegistroHACCPView.jsx:196`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_lotti/src/components/haccp/RicezioneMerceView.jsx:170`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_lotti/src/components/haccp/SaimaRicettariView.jsx:175`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_lotti/src/components/haccp/SchedeTecnicheView.jsx:128`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_lotti/src/components/haccp/ScontiMerceView.jsx:188`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_lotti/src/components/haccp/StampantiConfigView.jsx:93`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_lotti/src/components/haccp/StoricoProduzioniView.jsx:137`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_lotti/src/components/haccp/TabletView.jsx:151`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_lotti/src/components/haccp/TemperatureCotturaView.jsx:79`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_lotti/src/components/haccp/TemperatureNegativeView.jsx:47`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_lotti/src/components/haccp/TemperaturePositiveView.jsx:62`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_lotti/src/components/haccp/prodotti/ModalProdotto.jsx:105`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_lotti/src/components/haccp/prodotti/SenzaPesoPanel.jsx:42`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_lotti/src/hooks/use-toast.js:30`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_lotti/src/hooks/useLotti.js:49`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_lotti/src/hooks/useRicette.js:59`
+
+- Dettaglio: DELETE senza confirm vicino.
+
+### P1 - delete-confirm
+
+- File: `frontend_menu/src/hooks/use-toast.js:30`
 
 - Dettaglio: DELETE senza confirm vicino.
 
@@ -2414,19 +2666,19 @@ Generato da `scripts/audit_static.py`.
 
 ### P2 - timezone
 
-- File: `app/menu/routes/qrcode_routes.py:29`
+- File: `app/menu/routes/qrcode_routes.py:33`
 
 - Dettaglio: Sostituire con datetime.now(timezone.utc).
 
 ### P2 - timezone
 
-- File: `app/menu/routes/qrcode_routes.py:87`
+- File: `app/menu/routes/qrcode_routes.py:113`
 
 - Dettaglio: Sostituire con datetime.now(timezone.utc).
 
 ### P2 - timezone
 
-- File: `app/menu/routes/qrcode_routes.py:111`
+- File: `app/menu/routes/qrcode_routes.py:138`
 
 - Dettaglio: Sostituire con datetime.now(timezone.utc).
 
@@ -2529,12 +2781,6 @@ Generato da `scripts/audit_static.py`.
 ### P3 - fetch-race
 
 - File: `frontend/src/components/InAttesaDocumento.jsx:32`
-
-- Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
-
-### P3 - fetch-race
-
-- File: `frontend/src/components/LinkedEvidencePanel.jsx:12`
 
 - Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
 
@@ -2895,5 +3141,11 @@ Generato da `scripts/audit_static.py`.
 ### P3 - fetch-race
 
 - File: `frontend/src/pages/hub/RiconciliazioneHub.jsx:69`
+
+- Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
+
+### P3 - fetch-race
+
+- File: `frontend_hr/src/PortaleDipendente.jsx:180`
 
 - Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.

@@ -2275,8 +2275,8 @@ export default function Fornitori() {
               </span>
               {[
                 { k: 'tutti', l: 'Tutti' },
-                { k: 'nuovo', l: '🆕 Nuovi' },
-                { k: 'storico', l: '📜 Storici' },
+                { k: 'nuovo', l: 'Nuovi' },
+                { k: 'storico', l: 'Storici' },
               ].map(opt => (
                 <Button
                   key={opt.k}
@@ -2286,7 +2286,7 @@ export default function Fornitori() {
                   onClick={() => setFilterAnzianita(opt.k)}
                   data-testid={`filter-anzianita-${opt.k}`}
                   style={{
-                    minHeight: 30,
+                    minHeight: 44,
                     padding: '5px 8px',
                     ...(filterAnzianita === opt.k ? { color: COLORS.accent } : {}),
                   }}

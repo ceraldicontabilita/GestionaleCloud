@@ -10,6 +10,8 @@ on:
     branches: [main]
     paths:
       - "frontend/src/**"
+      - "frontend_shared/**"
+      - "page_catalog.json"
       - "frontend/scripts/audit-layout.cjs"
       - ".github/workflows/audit-layout.yml"
 

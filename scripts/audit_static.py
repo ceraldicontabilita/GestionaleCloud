@@ -23,7 +23,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND = ROOT / "app"
-FRONTEND = ROOT / "frontend" / "src"
+FRONTENDS = [ROOT / name / "src" for name in (
+    "frontend", "frontend_lotti", "frontend_menu", "frontend_hr",
+)] + [ROOT / "frontend_shared"]
 REPORT = ROOT / "memoria" / "AUDIT_STATIC_REPORT.md"
 
 
@@ -98,7 +100,7 @@ def audit_backend(finds: list[Finding]):
 
 
 def audit_frontend(finds: list[Finding]):
-    for path in iter_files(FRONTEND, (".jsx", ".js")):
+    for path in (path for base in FRONTENDS for path in iter_files(base, (".jsx", ".js"))):
         txt_lines = lines(path)
         for i, line in enumerate(txt_lines, start=1):
             if "api.delete" in line or ".delete(" in line:
@@ -129,9 +131,13 @@ def audit_frontend(finds: list[Finding]):
 
 def audit_required_files(finds: list[Finding]):
     required = [
-        "app/routers/attendance_module/export_consulente.py",
-        "app/routers/attendance_module/no_import_pdf.py",
-        "frontend/src/pages/hr/HRPresenzeExport.jsx",
+        "app/hr/embed.py",
+        "app/lotti/embed.py",
+        "app/menu/embed.py",
+        "frontend_hr/src/main.jsx",
+        "frontend_lotti/src/App.js",
+        "frontend_menu/src/App.js",
+        "frontend_shared/PinModal.js",
         "scripts/smoke_app.py",
     ]
     for path in required:

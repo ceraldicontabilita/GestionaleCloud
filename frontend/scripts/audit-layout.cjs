@@ -36,14 +36,25 @@ const EXE = process.env.PLAYWRIGHT_CHROMIUM || undefined;
 function leggiRotteStatiche() {
   const source = readFileSync(join(__dirname, '../src/main.jsx'), 'utf8');
   const pagine = new Set(['/']);
-  const alias = new Map();
+  // Alias esplicito gestito da AdminHub, verificato anche dal catalogo E2E.
+  const alias = new Map([['/admin/batch-processor', '/admin/elaborazioni']]);
+
+  // Gli hub usano wildcard: ignorarle escludeva interi moduli dal controllo.
+  // Il catalogo conserva i deep-link reali delle sottopagine degli hub.
+  const catalog = JSON.parse(readFileSync(join(__dirname, '../../page_catalog.json'), 'utf8'));
+  for (const definition of catalog.pages) {
+    if (definition.access === 'public' || definition.access === 'reserved') continue;
+    const path = definition.e2e_path || definition.path;
+    if (path && !path.includes(':') && !path.includes('*') && path !== '/login') pagine.add(path);
+  }
 
   for (const line of source.split(/\r?\n/)) {
     const route = line.match(/path:\s*"([^"]+)"/);
     if (!route) continue;
     const rawPath = route[1];
-    if (rawPath.includes(':') || rawPath.includes('*')) continue;
-    const path = rawPath === '/' ? '/' : `/${rawPath.replace(/^\//, '')}`;
+    if (rawPath.includes(':') || rawPath === '*') continue;
+    const normalizedPath = rawPath.replace(/\/\*$/, '');
+    const path = normalizedPath === '/' ? '/' : `/${normalizedPath.replace(/^\//, '')}`;
     if (path === '/login' || path === '/gestione-riservata') continue;
     pagine.add(path);
 

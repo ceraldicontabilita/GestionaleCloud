@@ -79,7 +79,7 @@ app.add_middleware(
 
 def register_routers():
     # Autenticazione strict per l'area gestione (niente bypass).
-    from .utils.dependencies import require_admin, require_staff
+    from .utils.dependencies import require_admin, require_staff, require_cloud_access
 
     from .routers import auth, pin_login
     app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
@@ -114,7 +114,7 @@ def register_routers():
     # Area gestione: JWT valido + ruolo admin o responsabile_turni (la pagina
     # Turni del responsabile carica dati da questo router).
     app.include_router(dipendenti_cloud.router, prefix="/api", tags=["Dipendenti Cloud"],
-                       dependencies=[Depends(require_staff)])
+                       dependencies=[Depends(require_cloud_access)])
     app.include_router(cedolini.router, prefix="/api/cedolini", tags=["Cedolini"], dependencies=ADMIN)
     app.include_router(tfr.router, prefix="/api/tfr", tags=["TFR"], dependencies=ADMIN)
     app.include_router(attendance.router, prefix="/api/attendance", tags=["Presenze"], dependencies=STAFF)

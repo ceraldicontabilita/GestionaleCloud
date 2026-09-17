@@ -24,6 +24,7 @@ const wsKeepalivePlugin = {
 export default defineConfig({
   plugins: [react()],
   resolve: {
+    dedupe: ['react', 'react-dom', 'axios', 'lucide-react'],
     alias: {
       '@': path.resolve(__dirname, 'src'),
     },
