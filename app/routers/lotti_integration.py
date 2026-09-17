@@ -95,6 +95,15 @@ def _xml_of(document: dict[str, Any]) -> str:
 def _projection(document: dict[str, Any], *, include_xml: bool) -> dict[str, Any]:
     lines = document.get("linee") or document.get("righe") or document.get("prodotti") or []
     xml_raw = _xml_of(document)
+    # 17/09/2026: l'elenco viene letto SENZA XML (versione leggera dalla
+    # cache); l'impronta e' `content_hash`, che e' esattamente sha256 dell'XML
+    # (stesso calcolo dell'import Drive e di fatture_identita), quindi il
+    # source_hash resta identico a quello calcolato dall'XML. Un documento
+    # con XML ma senza impronta viene idratato per id da _documents().
+    impronta = (
+        hashlib.sha256(xml_raw.encode("utf-8")).hexdigest() if xml_raw
+        else _text(document.get("content_hash"))
+    )
     projected = {
         "source_id": _source_id(document),
         "invoice_number": _text(
@@ -116,11 +125,11 @@ def _projection(document: dict[str, Any], *, include_xml: bool) -> dict[str, Any
         "total_amount": document.get("total_amount") or document.get("importo_totale") or 0,
         "document_type": _text(document.get("tipo_documento") or "TD01"),
         "lines": _portable(lines if isinstance(lines, list) else []),
-        "has_xml": bool(xml_raw),
+        "has_xml": bool(impronta),
         "source": "gestionalecloud",
     }
     hash_payload = dict(projected)
-    hash_payload["xml_sha256"] = hashlib.sha256(xml_raw.encode("utf-8")).hexdigest() if xml_raw else ""
+    hash_payload["xml_sha256"] = impronta
     projected["source_hash"] = hashlib.sha256(
         json.dumps(hash_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
     ).hexdigest()
@@ -138,15 +147,48 @@ def _authorized(x_lotti_key: Optional[str]) -> None:
         raise HTTPException(status_code=401, detail="Chiave integrazione non valida")
 
 
-async def _documents() -> list[dict[str, Any]]:
-    db = Database.get_db()
-    docs = await db["invoices"].find({}, {"_id": 0}).to_list(10000)
-    return [
-        doc for doc in docs
-        if doc.get("entity_status") != "deleted"
+def _attiva(doc: dict[str, Any]) -> bool:
+    return (
+        doc.get("entity_status") != "deleted"
         and doc.get("status") != "deleted"
         and not doc.get("deleted")
-    ]
+    )
+
+
+async def _documents() -> list[dict[str, Any]]:
+    """Fatture attive nella versione LEGGERA (senza XML/PDF): l'elenco per
+    Lotti veniva calcolato ogni 15 minuti scaricando tutte le fatture con
+    l'XML (fino a 10.000 documenti per id). L'impronta dell'XML e'
+    `content_hash`; solo chi ne e' privo viene letto per intero, per id."""
+    from app.document_repository import metadata_projection
+
+    db = Database.get_db()
+    leggeri = await db["invoices"].find({}, metadata_projection("invoices")).to_list(10000)
+    docs: list[dict[str, Any]] = []
+    for doc in leggeri:
+        if not _attiva(doc):
+            continue
+        if not _text(doc.get("content_hash")) and doc.get("id"):
+            completo = await db["invoices"].find_one({"id": doc["id"]}, {"_id": 0})
+            if completo is not None:
+                doc = completo
+        docs.append(doc)
+    return docs
+
+
+async def _documento_per_source_id(source_id: str) -> Optional[dict[str, Any]]:
+    """Documento completo (con XML) per il source_id usato da Lotti: id o
+    invoice_key, altrimenti l'impronta derivata calcolata sulle versioni
+    leggere; una sola lettura completa, per id."""
+    db = Database.get_db()
+    for campo in ("id", "invoice_key"):
+        document = await db["invoices"].find_one({campo: source_id}, {"_id": 0})
+        if document is not None and _attiva(document):
+            return document
+    for leggero in await _documents():
+        if _source_id(leggero) == source_id and leggero.get("id"):
+            return await db["invoices"].find_one({"id": leggero["id"]}, {"_id": 0})
+    return None
 
 
 def _db_hr():
@@ -249,9 +291,9 @@ async def get_invoice_for_lotti(
 ) -> dict[str, Any]:
     """Dettaglio della fattura con XML originale quando disponibile."""
     _authorized(x_lotti_key)
-    for document in await _documents():
-        if _source_id(document) == source_id:
-            return _projection(document, include_xml=True)
+    document = await _documento_per_source_id(source_id)
+    if document is not None:
+        return _projection(document, include_xml=True)
     raise HTTPException(status_code=404, detail="Fattura non trovata")
 
 
