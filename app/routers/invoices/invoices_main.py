@@ -12,9 +12,10 @@ per i dettagli dell'audit che ha portato a questa unificazione.
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.database import Collections, Database
+from app.utils.dependencies import get_current_admin_user
 
 router = APIRouter()
 
@@ -204,6 +205,36 @@ async def list_invoices(
         query = {"$and": [query, status_query]} if query else status_query
 
     return await _load_invoices(query, limit=limit, skip=skip)
+
+
+@router.post("/bonifica-identita")
+async def bonifica_identita_fatture_endpoint(
+    dry_run: bool = Query(False, description="Solo conteggi, nessuna scrittura"),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Identita' canonica dall'XML per le fatture che ne sono prive, dedup
+    provata per hash (archivio reversibile + storno della scrittura doppia),
+    storno delle registrazioni non ammesse (archivio storico). Stesso giro
+    del job periodico ogni 30 minuti; qui si lancia subito. Il giro reale
+    parte in background: esito in `GET .../bonifica-identita/stato`."""
+    from app.services import fatture_identita
+
+    db = Database.get_db()
+    if dry_run:
+        return await fatture_identita.bonifica_identita_fatture(db, dry_run=True)
+    if fatture_identita.avvia_bonifica_in_background(db):
+        return {"status": "started", "message": "Bonifica identita' fatture avviata"}
+    return {"status": "running", "message": "Bonifica gia' in corso",
+            **await fatture_identita.stato_bonifica(db)}
+
+
+@router.get("/bonifica-identita/stato")
+async def stato_bonifica_identita_fatture(
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    from app.services import fatture_identita
+
+    return await fatture_identita.stato_bonifica(Database.get_db())
 
 
 @router.get("/bank-pending")
