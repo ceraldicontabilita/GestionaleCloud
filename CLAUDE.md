@@ -775,7 +775,20 @@ passo fallito = bug da correggere subito. Cosa è stato trovato e cambiato
   documenti si tornava alla lettura completa con payload, che sotto carico
   teneva il lock operativo per decine di minuti e fermava il job dedup
   fatture; un `find_one` per id con payload va dritto all'indice remoto,
-  senza firma della cache e senza lock). Le scritture
+  senza firma della cache e senza lock). **Presenza del payload** (PR #475,
+  migrazione `20260917073000_payload_stato.sql`): decine di query filtrano
+  su «ha il PDF / senza XML» (`pdf_data: {$exists, $ne None, $nin [None,
+  ""]}` in email, bonifici, prima nota salari, verbali) e forzavano letture
+  complete CON allegati (~280 pagine in 17 min nei log edge del 17/09 07:00).
+  Le RPC proiettate allegano ora `_payload_stato` = {campo: assente|nullo|
+  vuoto|pieno} per ogni campo escluso; l'adattatore riscrive quei predicati
+  sul marcatore e li serve dalla cache (anche `count_documents`); un filtro
+  sul CONTENUTO del payload (regex, valore) continua a leggere il payload,
+  e in quel caso il campo citato dal filtro arriva anche se la proiezione
+  lo esclude (prima il conteggio poteva risultare 0 in silenzio). Il
+  marcatore non esce mai dall'adattatore. Il lotto di idratazione per id e'
+  ricordato per tabella (dimezzato sui timeout, raddoppiato dopo 8 lotti
+  riusciti). Le scritture
   del processo aggiornano la cache dopo l'esito positivo dell'RPC. Trigger
   `documents_touch_updated_at` garantisce `updated_at` anche per scritture
   fatte fuori dall'app. Fallback automatico alla lettura completa se le RPC

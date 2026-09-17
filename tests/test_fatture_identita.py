@@ -208,3 +208,25 @@ def test_router_avvia_in_background_e_dry_run_sincrono(monkeypatch):
     assert stato["stato"] == "completato" and stato["in_corso"] is False
     assert stato["risultato"]["identita"]["normalizzate"] == 1
     assert leg["invoice_key"] == "FT0014095324_04911190488_2026-06-11"
+
+
+def test_una_scrittura_in_timeout_non_ferma_la_normalizzazione():
+    """17/09/2026: in produzione un solo gc_upsert_documents in timeout
+    faceva abortire l'intero giro (le fatture dopo restavano senza identita')."""
+    db = MemorySheetsClient()["test"]
+    _run(db[fi.COLL].insert_many([_legacy("leg-1"), _legacy("leg-2")]))
+    tabella = db[fi.COLL]
+    originale = tabella.update_one
+
+    async def update_one(selector, update, *args, **kwargs):
+        if selector.get("id") == "leg-1":
+            raise RuntimeError("Supabase RPC gc_upsert_documents fallita (HTTP 500): statement timeout")
+        return await originale(selector, update, *args, **kwargs)
+
+    tabella.update_one = update_one
+    esito = _run(fi.normalizza_fatture_senza_identita(db, pausa=0))
+
+    assert esito["normalizzate"] == 1
+    assert len(esito["errori"]) == 1 and "leg-1" in esito["errori"][0]
+    assert _run(tabella.find_one({"id": "leg-2"}))["invoice_key"] == "FT0014095324_04911190488_2026-06-11"
+    assert not _run(tabella.find_one({"id": "leg-1"})).get("invoice_key")

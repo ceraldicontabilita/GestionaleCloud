@@ -152,10 +152,15 @@ async def normalizza_fatture_senza_identita(db, *, dry_run: bool = False,
         if not patch:
             senza_xml += 1
             continue
-        normalizzate += 1
         if dry_run:
+            normalizzate += 1
             continue
-        await db[COLL].update_one({"id": doc.get("id")}, {"$set": patch})
+        try:
+            await db[COLL].update_one({"id": doc.get("id")}, {"$set": patch})
+        except Exception as exc:  # noqa: BLE001 - un timeout Supabase non ferma il giro
+            errori.append(f"{doc.get('id')}: scrittura fallita: {exc}")
+            continue
+        normalizzate += 1
         if pausa:
             await asyncio.sleep(pausa)
     return {"dry_run": dry_run, "candidate": len(candidati), "normalizzate": normalizzate,
