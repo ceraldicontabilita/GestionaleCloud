@@ -806,7 +806,23 @@ passo fallito = bug da correggere subito. Cosa è stato trovato e cambiato
   la cache resta valida per 120 s dall'ultima firma buona invece di
   ripiegare su letture complete (07:43–07:45: 30 fallimenti = 30 letture
   complete a database già saturo); oltre la finestra, lettura completa
-  come prima. Le scritture
+  come prima. **Cache dell'adattatore HR** (PR #478,
+  `app/hr/db_supabase.py`): `pg_stat_statements` dal 01/09 contava
+  218.000 letture complete di `hr.app_paghe_mensili` (32 ms l'una), 778 di
+  `app_pagamenti_esiti` da 4,7 s e 321 di `app_bonifici` da 8 s (PDF
+  de-toastati e poi buttati): ogni `find`/`find_one`/`count`/`update`
+  rileggeva l'intera tabella e filtrava in Python. Ora ogni tabella letta
+  resta in memoria nella versione leggera (senza `pdf_data`/`file_data`);
+  prima di servirla una sola query legge la firma di tutte le tabelle in
+  cache (`count(*)` + `max(xmin)`: cambia a ogni insert/update/delete,
+  anche fatti fuori dall'app come il deposito cedolini) al più ogni 15 s;
+  firma diversa → rilettura leggera di quella tabella; le scritture del
+  processo aggiornano la copia e ribasano la firma; i PDF arrivano per id
+  solo alle letture che li vogliono (e un `update_one` idrata il documento
+  prima di riscriverlo: mai un PDF perso); un filtro che guarda dentro un
+  campo pesante legge la riga intera da SQL; firma non disponibile →
+  lettura diretta (finestra di grazia 120 s); `HR_RUNTIME_CACHE=0` la
+  spegne. Le scritture
   del processo aggiornano la cache dopo l'esito positivo dell'RPC. Trigger
   `documents_touch_updated_at` garantisce `updated_at` anche per scritture
   fatte fuori dall'app. Fallback automatico alla lettura completa se le RPC

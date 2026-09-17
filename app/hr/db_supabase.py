@@ -19,12 +19,14 @@ usato davvero in questo repo, non un motore Mongo generico).
 NON coperto: indici, find_one_and_*, bulk write, altri stage/operatori
 aggregate oltre a quelli elencati sopra (sollevano NotImplementedError).
 """
+import asyncio
 import json
 import logging
+import os
 import re
 import uuid
 from datetime import date, datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import asyncpg
 
@@ -32,10 +34,49 @@ logger = logging.getLogger(__name__)
 
 _NOME_OK = re.compile(r"^[A-Za-z0-9_]+$")
 
-# Campi noti per essere pesanti (PDF in base64) su alcune collection: esclusi
-# di default dalle letture in blocco di aggregate() quando la pipeline non li
-# nomina — vedi SupabaseCollection.aggregate().
-_CAMPI_PESANTI = ("pdf_data",)
+# Campi noti per essere pesanti (PDF/file in base64) su alcune collection:
+# la copia in memoria di ogni tabella non li contiene (vengono letti per id
+# solo quando una lettura li vuole davvero) e aggregate() li esclude dalle
+# letture in blocco quando la pipeline non li nomina.
+_CAMPI_PESANTI = ("pdf_data", "file_data")
+
+# Cache in memoria per tabella (17/09/2026). Prima ogni find/find_one/count/
+# update rileggeva l'intera tabella da Postgres e filtrava in Python:
+# pg_stat_statements dal 01/09 contava 218.000 letture complete di
+# app_paghe_mensili e letture da 8 s l'una di app_bonifici (PDF de-toastati
+# per poi buttarli). Ora ogni tabella letta resta in memoria nella versione
+# leggera (senza _CAMPI_PESANTI); prima di servirla si legge UNA firma per
+# tutte le tabelle in cache (conteggio + xmin massimo: cambia a ogni
+# insert/update/delete, anche fatti fuori dall'app) al piu' ogni _FIRMA_TTL s;
+# firma diversa → rilettura leggera di quella tabella. Le scritture di questo
+# processo aggiornano la copia e ribasano la firma. Se la firma non e'
+# disponibile si torna alla lettura diretta (mai un dato parziale), salvo la
+# finestra di grazia. HR_RUNTIME_CACHE=0 la spegne.
+_FIRMA_TTL = 15.0
+_FIRMA_GRAZIA = 120.0
+_IDRATAZIONE_LOTTO = 100
+
+
+def _cache_attiva() -> bool:
+    return os.environ.get("HR_RUNTIME_CACHE", "1").strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _campi_usati(filtro: Any) -> Set[str]:
+    """Campi (di primo livello) letti da un filtro Mongo."""
+    usati: Set[str] = set()
+
+    def raccogli(f):
+        if not isinstance(f, dict):
+            return
+        for k, v in f.items():
+            if k in ("$or", "$and"):
+                for sub in (v or []):
+                    raccogli(sub)
+            elif not k.startswith("$"):
+                usati.add(k.split(".")[0])
+
+    raccogli(filtro)
+    return usati
 
 
 def _tabella(collection: str) -> str:
@@ -332,7 +373,7 @@ class _Cursore:
         # l'ordinamento avviene qui, dopo la lettura.
         chiavi_ordine = {k.split(".")[0] for k, _ in (self._ordina or [])}
         escludi = [k for k in escludi if k not in chiavi_ordine]
-        docs = [d for d in await self._coll._tutti(escludi) if _match(d, self._filtro)]
+        docs = await self._coll._seleziona(self._filtro, escludi)
         # ordinamenti multipli: si applicano dal meno al piu' significativo
         for chiave, direzione in reversed(self._ordina or []):
             docs.sort(key=lambda d, k=chiave: _chiave_ordine(_get(d, k)),
@@ -436,6 +477,12 @@ class SupabaseCollection:
         self._db = db
         self._nome = nome
         self._tab = _tabella(nome)
+        # copia leggera della tabella: id → documento senza _CAMPI_PESANTI;
+        # _pesanti: id → campi pesanti presenti nella riga (da idratare per id)
+        self._cache: Optional[Dict[str, Dict[str, Any]]] = None
+        self._pesanti: Dict[str, Set[str]] = {}
+        self._cache_firma: Optional[Tuple[int, int]] = None
+        self._cache_lock = asyncio.Lock()
 
     @property
     def _sql_tab(self) -> str:
@@ -458,8 +505,8 @@ class SupabaseCollection:
             )
         self._db._tabelle_pronte.add(self._tab)
 
-    async def _tutti(self, escludi=None) -> List[Dict[str, Any]]:
-        """Legge i documenti, togliendo in SQL i campi che non servono.
+    async def _tutti_sql(self, escludi=None) -> List[Dict[str, Any]]:
+        """Lettura diretta da Postgres, togliendo in SQL i campi che non servono.
 
         `cedolini` tiene il PDF in base64 dentro il documento: leggere tutta la
         collection per filtrarla in Python significava trasferire decine di MB e
@@ -480,6 +527,148 @@ class SupabaseCollection:
             out.append(json.loads(doc) if isinstance(doc, str) else doc)
         return out
 
+    # ----- cache leggera per tabella --------------------------------------
+
+    async def _leggeri(self) -> Optional[List[Dict[str, Any]]]:
+        """Copia leggera allineata alla firma remota; None = cache non usabile."""
+        firma = await self._db._firma(self._tab)
+        if firma is None:
+            return None
+        async with self._cache_lock:
+            if self._cache is None or firma != self._cache_firma:
+                await self._carica_cache()
+                self._cache_firma = firma
+            return list(self._cache.values())
+
+    async def _carica_cache(self) -> None:
+        await self._assicura_tabella()
+        campi = ", ".join("'%s'" % c for c in _CAMPI_PESANTI)
+        presenza = ", ".join("(doc ? '%s') AS p%d" % (c, i) for i, c in enumerate(_CAMPI_PESANTI))
+        sql = 'SELECT id, (doc - ARRAY[%s]) AS doc, %s FROM %s' % (campi, presenza, self._sql_tab)
+        async with self._db._pool.acquire() as con:
+            righe = await con.fetch(sql)
+        cache: Dict[str, Dict[str, Any]] = {}
+        pesanti: Dict[str, Set[str]] = {}
+        for r in righe:
+            doc = r["doc"]
+            doc = json.loads(doc) if isinstance(doc, str) else doc
+            chiave = str(r["id"])
+            cache[chiave] = doc
+            presenti = {c for i, c in enumerate(_CAMPI_PESANTI) if r["p%d" % i]}
+            if presenti:
+                pesanti[chiave] = presenti
+        self._cache, self._pesanti = cache, pesanti
+
+    async def _idrata(self, docs: List[Dict[str, Any]], escludi) -> List[Dict[str, Any]]:
+        """Aggiunge ai documenti (copie) i campi pesanti che hanno in tabella,
+        letti per id a lotti: mai l'intera tabella con i PDF."""
+        escludi = set(escludi or ())
+        per_id: Dict[str, Dict[str, Any]] = {}
+        campi: Set[str] = set()
+        for d in docs:
+            chiave = str(d.get("id") or d.get("_id"))
+            presenti = self._pesanti.get(chiave)
+            if not presenti:
+                continue
+            necessari = presenti - escludi
+            if necessari:
+                per_id[chiave] = d
+                campi |= necessari
+        if not per_id:
+            return docs
+        colonne = sorted(campi)
+        sql = 'SELECT id, %s FROM %s WHERE id = ANY($1::text[])' % (
+            ", ".join("doc -> '%s' AS c%d" % (c, i) for i, c in enumerate(colonne)),
+            self._sql_tab,
+        )
+        chiavi = list(per_id)
+        for inizio in range(0, len(chiavi), _IDRATAZIONE_LOTTO):
+            lotto = chiavi[inizio:inizio + _IDRATAZIONE_LOTTO]
+            async with self._db._pool.acquire() as con:
+                righe = await con.fetch(sql, lotto)
+            for r in righe:
+                destinazione = per_id.get(str(r["id"]))
+                if destinazione is None:
+                    continue
+                for i, c in enumerate(colonne):
+                    v = r["c%d" % i]
+                    if v is None:
+                        continue
+                    destinazione[c] = json.loads(v) if isinstance(v, str) else v
+        return docs
+
+    async def _seleziona(self, filtro, escludi=None, completi: bool = True,
+                         limite: Optional[int] = None) -> List[Dict[str, Any]]:
+        """Documenti che soddisfano il filtro (copie). Con completi=True
+        portano anche i campi pesanti non esclusi (idratati per id); con
+        completi=False li tralasciano sempre (conteggi, cancellazioni)."""
+        escludi = list(escludi or [])
+        usati = _campi_usati(filtro)
+        if usati & set(_CAMPI_PESANTI):
+            # il filtro guarda dentro un campo pesante: serve la riga intera,
+            # e il campo citato deve arrivare anche se poi va tolto
+            escludi_sql = [c for c in escludi if c not in usati]
+            docs = [d for d in await self._tutti_sql(escludi_sql) if _match(d, filtro)]
+            if len(escludi_sql) != len(escludi):
+                docs = [{k: v for k, v in d.items() if k not in escludi} for d in docs]
+            return docs[:limite] if limite else docs
+        leggeri = await self._leggeri()
+        if leggeri is None:
+            docs = [d for d in await self._tutti_sql(escludi) if _match(d, filtro)]
+            return docs[:limite] if limite else docs
+        scelti = [dict(d) for d in leggeri if _match(d, filtro)]
+        if limite:
+            scelti = scelti[:limite]
+        if completi:
+            scelti = await self._idrata(scelti, escludi)
+        if escludi:
+            scelti = [{k: v for k, v in d.items() if k not in escludi} for d in scelti]
+        return scelti
+
+    async def _tutti(self, escludi=None) -> List[Dict[str, Any]]:
+        """Tutti i documenti (copie), senza i campi in `escludi`."""
+        escludi = list(escludi or [])
+        leggeri = await self._leggeri()
+        if leggeri is None:
+            return await self._tutti_sql(escludi)
+        docs = await self._idrata([dict(d) for d in leggeri], escludi)
+        if escludi:
+            docs = [{k: v for k, v in d.items() if k not in escludi} for d in docs]
+        return docs
+
+    async def _scrivi_cache(self, chiave: str, doc: Dict[str, Any]) -> None:
+        """Scrittura di questo processo gia' confermata da Postgres."""
+        if self._cache is None:
+            return
+        self._cache[chiave] = {k: v for k, v in doc.items() if k not in _CAMPI_PESANTI}
+        presenti = {c for c in _CAMPI_PESANTI if c in doc}
+        if presenti:
+            self._pesanti[chiave] = presenti
+        else:
+            self._pesanti.pop(chiave, None)
+        await self._ribasa()
+
+    async def _rimuovi_cache(self, chiavi: List[str]) -> None:
+        if self._cache is None:
+            return
+        for chiave in chiavi:
+            self._cache.pop(chiave, None)
+            self._pesanti.pop(chiave, None)
+        await self._ribasa()
+
+    async def _ribasa(self) -> None:
+        """Dopo una scrittura propria la firma remota e' cambiata: la si
+        rilegge subito cosi' la copia (gia' aggiornata) resta valida. Se non
+        si riesce, la copia viene buttata: alla prossima lettura si ricarica."""
+        try:
+            firma = await self._db._firma_singola(self._tab)
+        except Exception as exc:  # noqa: BLE001 - mai una cache non allineata
+            logger.warning("HR firma di %s non rileggibile (%s): cache scartata", self._tab, exc)
+            self._cache = None
+            return
+        self._cache_firma = firma
+        self._db._firme[self._tab] = firma
+
     @staticmethod
     def _escludibili(filtro, proiezione) -> List[str]:
         """Campi che la proiezione esclude e che il filtro non usa: si possono
@@ -489,33 +678,19 @@ class SupabaseCollection:
         esclusi = [k for k, v in proiezione.items() if not v and k != "_id"]
         if not esclusi:
             return []
-        usati = set()
-
-        def raccogli(f):
-            if not isinstance(f, dict):
-                return
-            for k, v in f.items():
-                if k in ("$or", "$and"):
-                    for sub in (v or []):
-                        raccogli(sub)
-                elif not k.startswith("$"):
-                    usati.add(k.split(".")[0])
-
-        raccogli(filtro)
+        usati = _campi_usati(filtro)
         return [k for k in esclusi if k not in usati]
 
     async def find_one(self, filtro=None, proiezione=None, **_):
         escludi = self._escludibili(filtro, proiezione)
-        for d in await self._tutti(escludi):
-            if _match(d, filtro):
-                return _proietta(d, proiezione)
-        return None
+        docs = await self._seleziona(filtro, escludi, limite=1)
+        return _proietta(docs[0], proiezione) if docs else None
 
     def find(self, filtro=None, proiezione=None, **_) -> _Cursore:
         return _Cursore(self, filtro, proiezione)
 
     async def count_documents(self, filtro=None, **_) -> int:
-        return sum(1 for d in await self._tutti() if _match(d, filtro))
+        return len(await self._seleziona(filtro, list(_CAMPI_PESANTI), completi=False))
 
     async def estimated_document_count(self, **_) -> int:
         return await self.count_documents(None)
@@ -530,15 +705,15 @@ class SupabaseCollection:
                 'INSERT INTO %s (id, doc) VALUES ($1, $2::jsonb)' % self._sql_tab,
                 chiave, json.dumps(doc, default=str),
             )
+        await self._scrivi_cache(chiave, doc)
         return _Risultato(0, 0, chiave)
 
     async def update_one(self, filtro, update, upsert: bool = False, **_) -> _Risultato:
         await self._assicura_tabella()
-        esistente = None
-        for d in await self._tutti():
-            if _match(d, filtro):
-                esistente = d
-                break
+        # documento COMPLETO (campi pesanti idratati per id): viene riscritto
+        # per intero, senza il PDF lo cancellerebbe
+        trovati = await self._seleziona(filtro, limite=1)
+        esistente = trovati[0] if trovati else None
 
         if esistente is None:
             if not upsert:
@@ -554,6 +729,7 @@ class SupabaseCollection:
                     'ON CONFLICT (id) DO UPDATE SET doc = EXCLUDED.doc' % self._sql_tab,
                     chiave, json.dumps(nuovo, default=str),
                 )
+            await self._scrivi_cache(chiave, nuovo)
             return _Risultato(0, 0, chiave)
 
         chiave = str(esistente.get("id") or esistente.get("_id"))
@@ -563,19 +739,21 @@ class SupabaseCollection:
                 'UPDATE %s SET doc = $2::jsonb WHERE id = $1' % self._sql_tab,
                 chiave, json.dumps(nuovo, default=str),
             )
+        await self._scrivi_cache(chiave, nuovo)
         return _Risultato(1, 1 if nuovo != esistente else 0)
 
     async def delete_one(self, filtro, **_) -> _Risultato:
         await self._assicura_tabella()
-        for d in await self._tutti():
-            if _match(d, filtro):
-                chiave = str(d.get("id") or d.get("_id"))
-                async with self._db._pool.acquire() as con:
-                    await con.execute(
-                        'DELETE FROM %s WHERE id = $1' % self._sql_tab, chiave
-                    )
-                return _Risultato(1, 1)
-        return _Risultato(0, 0)
+        trovati = await self._seleziona(filtro, list(_CAMPI_PESANTI), completi=False, limite=1)
+        if not trovati:
+            return _Risultato(0, 0)
+        chiave = str(trovati[0].get("id") or trovati[0].get("_id"))
+        async with self._db._pool.acquire() as con:
+            await con.execute(
+                'DELETE FROM %s WHERE id = $1' % self._sql_tab, chiave
+            )
+        await self._rimuovi_cache([chiave])
+        return _Risultato(1, 1)
 
     async def update_many(self, filtro, update, **_) -> _Risultato:
         await self._assicura_tabella()
@@ -596,7 +774,7 @@ class SupabaseCollection:
         # JSONB lato SQL per ogni punto di scrittura, non solo qui: fuori
         # scope per un fix mirato, da valutare se in futuro la concorrenza
         # reale aumenta.
-        docs = [d for d in await self._tutti() if _match(d, filtro)]
+        docs = await self._seleziona(filtro)
         matched = len(docs)
         for d in docs:
             nuovo = _applica_update(d, update, inserito=False)
@@ -607,6 +785,7 @@ class SupabaseCollection:
                         'UPDATE %s SET doc = $2::jsonb WHERE id = $1' % self._sql_tab,
                         chiave, json.dumps(nuovo, default=str),
                     )
+                await self._scrivi_cache(chiave, nuovo)
                 modified += 1
         return _Risultato(matched, modified)
 
@@ -614,20 +793,26 @@ class SupabaseCollection:
         await self._assicura_tabella()
         # stesso limite di concorrenza documentato sopra in update_many: la
         # lista di id viene fissata alla lettura, non ri-verificata alla DELETE.
-        chiavi = [str(d.get("id") or d.get("_id")) for d in await self._tutti() if _match(d, filtro)]
+        chiavi = [
+            str(d.get("id") or d.get("_id"))
+            for d in await self._seleziona(filtro, list(_CAMPI_PESANTI), completi=False)
+        ]
         if chiavi:
             async with self._db._pool.acquire() as con:
                 await con.execute(
                     'DELETE FROM %s WHERE id = ANY($1::text[])' % self._sql_tab, chiavi
                 )
+            await self._rimuovi_cache(chiavi)
         return _Risultato(len(chiavi), len(chiavi))
 
     async def distinct(self, campo: str, filtro=None, **_) -> List[Any]:
         visti_set = set()
         out: List[Any] = []
-        for d in await self._tutti():
-            if not _match(d, filtro):
-                continue
+        if campo.split(".")[0] in _CAMPI_PESANTI:
+            docs = await self._seleziona(filtro)
+        else:
+            docs = await self._seleziona(filtro, list(_CAMPI_PESANTI), completi=False)
+        for d in docs:
             v = _get(d, campo)
             if v is _MANCANTE:
                 continue
@@ -678,6 +863,59 @@ class SupabaseDatabase:
         self._schema_sql = '"' + schema + '"'
         self._tabelle_pronte: set = set()
         self._cache: Dict[str, SupabaseCollection] = {}
+        # firme (righe, xmin massimo) delle tabelle in cache, lette insieme
+        self._firme: Dict[str, Tuple[int, int]] = {}
+        self._firme_at: Optional[float] = None
+        self._firme_buone_at: Optional[float] = None
+        self._firme_lock = asyncio.Lock()
+        self._tabelle_in_cache: Set[str] = set()
+        self._cache_attiva = _cache_attiva()
+
+    def _sql_firma(self, tabelle) -> str:
+        return " UNION ALL ".join(
+            "SELECT '%s' AS t, count(*)::bigint AS n, coalesce(max(xmin::text::bigint), 0)::bigint AS x "
+            "FROM %s.\"%s\"" % (t, self._schema_sql, t)
+            for t in tabelle
+        )
+
+    async def _firma_singola(self, tab: str) -> Tuple[int, int]:
+        async with self._pool.acquire() as con:
+            righe = await con.fetch(self._sql_firma([tab]))
+        r = righe[0]
+        return int(r["n"]), int(r["x"])
+
+    async def _firma(self, tab: str) -> Optional[Tuple[int, int]]:
+        """Firma della tabella, letta con quelle di tutte le tabelle in cache
+        al piu' ogni _FIRMA_TTL secondi. None = non disponibile: il chiamante
+        legge direttamente da Postgres (mai un dato parziale)."""
+        if not self._cache_attiva:
+            return None
+        loop = asyncio.get_running_loop()
+        async with self._firme_lock:
+            now = loop.time()
+            if (
+                self._firme_at is not None
+                and now - self._firme_at < _FIRMA_TTL
+                and tab in self._firme
+            ):
+                return self._firme[tab]
+            tabelle = sorted(self._tabelle_in_cache | {tab})
+            try:
+                async with self._pool.acquire() as con:
+                    righe = await con.fetch(self._sql_firma(tabelle))
+            except Exception as exc:  # noqa: BLE001 - la cache non deve mai bloccare una lettura
+                eta = None if self._firme_buone_at is None else now - self._firme_buone_at
+                if eta is not None and eta < _FIRMA_GRAZIA and tab in self._firme:
+                    logger.warning("HR firma tabelle non disponibile (%s): cache mantenuta (%.0f s)", exc, eta)
+                    self._firme_at = now
+                    return self._firme[tab]
+                logger.warning("HR firma tabelle non disponibile (%s): lettura diretta", exc)
+                return None
+            self._firme = {str(r["t"]): (int(r["n"]), int(r["x"])) for r in righe}
+            self._firme_at = now
+            self._firme_buone_at = now
+            self._tabelle_in_cache.update(tabelle)
+            return self._firme.get(tab)
 
     def __getitem__(self, nome: str) -> SupabaseCollection:
         if nome not in self._cache:

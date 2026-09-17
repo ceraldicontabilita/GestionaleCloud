@@ -2,8 +2,8 @@
 
 <!-- gestionalecloud-doc
 status: current
-reviewed_at: 2026-09-15
-storage_architecture: supabase
+reviewed_at: 2026-08-21
+storage_architecture: drive-only
 -->
 
 > Questa è l'unica specifica normativa e atomica del progetto. Codice, test e
@@ -66,7 +66,7 @@ navigazione bidirezionale.
 Ordine di verità:
 
 1. originali immutabili in Google Drive e identificatori dei sistemi esterni;
-2. registri strutturati nel progetto Supabase `GestionaleCloud`;
+2. registri strutturati nel workbook Drive/Sheets canonico;
 3. codice e test del `main` canonico;
 4. configurazione effettivamente attiva in Render e job scheduler;
 5. `page_catalog.json`, OpenAPI e mappe generate dal codice;
@@ -76,21 +76,14 @@ Email, allegato, fattura, disposizione, ricevuta, quietanza, transazione provide
 movimento bancario e scrittura contabile sono prove distinte. Possono condividere
 `operation_id`, ma non devono essere fuse o sovrascritte.
 
-## 5. Architettura dati Supabase autorevole
+## 5. Architettura dati Drive-only
 
-La produzione usa **Google Drive per gli originali** e il progetto Supabase
-`GestionaleCloud` per registri, indici e relazioni. I documenti strutturati
-vivono in `gestionale.documents`; i payload binari deduplicati in
-`gestionale.blobs`. `render.yaml` imposta `DATA_BACKEND=supabase`.
+La destinazione definitiva usa **Google Drive per gli originali** e **Google
+Sheets/Excel collegato a Drive per registri, progressivi, indici e relazioni**.
+Il runtime usa esclusivamente Drive/Sheets. Non esistono backend alternativi,
+fallback legacy o variabili di configurazione per archivi diversi.
 
-Il processo web non conserva una copia autorevole dei documenti: all'avvio
-verifica soltanto il catalogo e ogni operazione rilegge la collezione logica
-richiesta da Supabase. Una mutazione diventa osservabile solo dopo la conferma
-dell'RPC; errore o timeout non possono lasciare dati fantasma nel processo.
-L'health check prova in tempo reale sia il catalogo sia il percorso RPC di
-scrittura. I job scheduler usano lease atomiche nella tabella tecnica
-`gestionale.runtime_scheduler_leases`, separata dai fatti aziendali, così due
-istanze Render in rolling deploy non eseguono lo stesso job insieme.
+Workbook: `Ceraldi ERP - Registro dati`.
 
 Albero minimo sotto la radice configurata:
 
@@ -107,14 +100,14 @@ Le sottocartelle di dominio esistenti possono essere indicizzate senza spostare
 gli originali. Nessun job rinomina, sposta, cestina o elimina originali senza
 autorizzazione esplicita. Credenziali e ID sensibili non entrano nei documenti.
 
-Ogni documento strutturato ha almeno:
+Ogni foglio ha almeno:
 
 `progressivo, canonical_id, operation_id, data, anno, tipo, importo, valuta,
 descrizione, stato, documento_id, fattura_id, movimento_bancario_id, source,
 source_external_id, file_hash, parser_version, created_at, updated_at,
 payload_schema_version, payload_json`.
 
-- `progressivo`: assegnato una volta nel registro logico, stabile, mai riciclato;
+- `progressivo`: assegnato una volta per foglio, stabile, mai riciclato;
 - `canonical_id`: identità deterministica e univoca dell'entità;
 - `operation_id`: UUID/ULID condiviso dalle prove dello stesso evento;
 - `file_hash`: SHA-256 dell'originale, mai MD5 per decisioni nuove;
@@ -591,14 +584,13 @@ si rigenerano dal codice e non si correggono a mano.
 | `CORS_ORIGINS` | sicurezza | configurazione | `str` / `'*'` | `app/config.py`, `app/lotti/server.py`, `app/menu/server.py` |
 | `CREDENTIALS_ENCRYPTION_KEY` | app-runtime | configurazione | non dichiarato in Settings | `render.yaml` |
 | `DATA_BACKEND` | app-runtime | configurazione | `str` / `'sheets'` | `app/config.py`, `render.yaml` |
-| `DB_NAME` | app-runtime | configurazione | `str` / `'Gestionale'` | `app/config.py`, `app/lotti/run_locale_test.py`, `app/lotti/scripts/fix_fornitori_acquaviva.py`, `app/lotti/scripts/import_acquaviva_definitivo.py`, `app/lotti/scripts/import_listino_2026.py`, `app/lotti/scripts/import_ricette_excel.py`, `app/lotti/scripts/scrape_acquaviva_images.py`, `app/lotti/scripts/scrape_vandemoortele_acquaviva.py`, `app/lotti/tests/test_iteration54_features.py`, `app/lotti/utils/shared.py` |
+| `DB_NAME` | app-runtime | configurazione | `str` / `'Gestionale'` | `app/config.py`, `app/lotti/run_locale_test.py`, `app/lotti/scripts/fix_fornitori_acquaviva.py`, `app/lotti/scripts/import_acquaviva_definitivo.py`, `app/lotti/scripts/import_listino_2026.py`, `app/lotti/scripts/import_ricette_excel.py`, `app/lotti/scripts/scrape_acquaviva_images.py`, `app/lotti/scripts/scrape_vandemoortele_acquaviva.py`, `app/lotti/tests/test_iteration54_features.py` |
 | `DEBUG` | app-runtime | configurazione | `bool` / `False` | `app/config.py` |
 | `DEFAULT_USER_EMAIL` | app-runtime | configurazione | `str` / `'admin@ceraldi.it'` | `app/config.py` |
 | `DEFAULT_USER_ID` | app-runtime | configurazione | `str` / `'admin'` | `app/config.py` |
 | `DEV` | app-runtime | configurazione | non dichiarato in Settings | `frontend/src/components/ErrorBoundary.jsx` |
 | `DIGEST_GIORNI` | app-runtime | configurazione | non dichiarato in Settings | `app/lotti/routers/digest.py` |
 | `DRIVE_CARTE_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
-| `DRIVE_CEDOLINI_FOLDER_ID` | drive-sheets | configurazione | non dichiarato in Settings | `app/hr/services/google_drive_sa.py` |
 | `DRIVE_DOCUMENT_INDEX_ROOT_FOLDER_ID` | drive-sheets | configurazione | `str` / `'1tmVu6fl7qhJbLcGCHT3wEQzrvFAElc9h'` | `app/config.py` |
 | `DRIVE_ESTRATTI_ANNO_MINIMO` | drive-sheets | configurazione | `int` / `2026` | `app/config.py` |
 | `DRIVE_ESTRATTI_BATCH_SIZE` | drive-sheets | configurazione | `int` / `1` | `app/config.py`, `render.yaml` |
@@ -681,10 +673,10 @@ si rigenerano dal codice e non si correggono a mano.
 | `GOOGLE_DRIVE_QUARANTENA_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py`, `render.yaml` |
 | `GOOGLE_DRIVE_QUIETANZE_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `GOOGLE_DRIVE_SA_FILE` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
-| `GOOGLE_DRIVE_SA_JSON` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/hr/services/google_drive_sa.py` |
-| `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/hr/services/google_drive_sa.py`, `render.yaml`, `render_workflows/calderone.py`, `render_workflows/document_ingest.py` |
+| `GOOGLE_DRIVE_SA_JSON` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
+| `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py`, `render.yaml`, `render_workflows/calderone.py`, `render_workflows/document_ingest.py` |
 | `GOOGLE_REDIRECT_URI` | app-runtime | configurazione | `str` / `'/api/auth/google/callback'` | `app/config.py` |
-| `GOOGLE_SERVICE_ACCOUNT_JSON` | drive-sheets | configurazione | non dichiarato in Settings | `app/hr/services/google_drive_sa.py`, `app/services/drive_credential_probe.py` |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | drive-sheets | configurazione | non dichiarato in Settings | `app/services/drive_credential_probe.py` |
 | `GOOGLE_SERVICE_ACCOUNT_JSON_BONIFICI` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `GOOGLE_SERVICE_ACCOUNT_JSON_CEDOLINI` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `GOOGLE_SERVICE_ACCOUNT_JSON_CORRISPETTIVI` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
@@ -700,6 +692,7 @@ si rigenerano dal codice e non si correggono a mano.
 | `HR_ADMIN_TOKEN_EXPIRE_MINUTES` | app-runtime | segreta | non dichiarato in Settings | `app/hr/routers/pin_login.py` |
 | `HR_DB_SCHEMA` | app-runtime | configurazione | non dichiarato in Settings | `app/services/hr_cedolini_deposito.py` |
 | `HR_JWT_SECRET` | app-runtime | segreta | non dichiarato in Settings | `app/hr/routers/auth.py`, `render.yaml` |
+| `HR_RUNTIME_CACHE` | app-runtime | configurazione | non dichiarato in Settings | `app/hr/db_supabase.py` |
 | `HR_SUPABASE_DB_URL` | app-runtime | configurazione | non dichiarato in Settings | `render.yaml` |
 | `HR_USE_MAIN_DATABASE` | app-runtime | configurazione | non dichiarato in Settings | `app/services/hr_cedolini_deposito.py` |
 | `IMAP_EMAIL` | gmail-email | configurazione | non dichiarato in Settings | `app/hr/routers/dipendenti_cloud/__init__.py` |
@@ -730,7 +723,7 @@ si rigenerano dal codice e non si correggono a mano.
 | `MENU_SUPABASE_KEY` | app-runtime | configurazione | non dichiarato in Settings | `render.yaml` |
 | `MENU_SUPABASE_URL` | app-runtime | configurazione | non dichiarato in Settings | `app/lotti/servizi/menu_bridge.py`, `render.yaml` |
 | `MENU_WIFI_PASSWORD` | app-runtime | segreta | non dichiarato in Settings | `app/menu/routes/qrcode_routes.py` |
-| `MONGO_URL` | app-runtime | configurazione | non dichiarato in Settings | `app/lotti/scripts/fix_fornitori_acquaviva.py`, `app/lotti/scripts/import_acquaviva_definitivo.py`, `app/lotti/scripts/import_listino_2026.py`, `app/lotti/scripts/import_ricette_excel.py`, `app/lotti/scripts/scrape_acquaviva_images.py`, `app/lotti/scripts/scrape_vandemoortele_acquaviva.py`, `app/lotti/tests/test_iteration54_features.py`, `app/lotti/utils/shared.py` |
+| `MONGO_URL` | app-runtime | configurazione | non dichiarato in Settings | `app/lotti/scripts/fix_fornitori_acquaviva.py`, `app/lotti/scripts/import_acquaviva_definitivo.py`, `app/lotti/scripts/import_listino_2026.py`, `app/lotti/scripts/import_ricette_excel.py`, `app/lotti/scripts/scrape_acquaviva_images.py`, `app/lotti/scripts/scrape_vandemoortele_acquaviva.py`, `app/lotti/tests/test_iteration54_features.py` |
 | `NODE_ENV` | app-runtime | configurazione | non dichiarato in Settings | `frontend/plugins/health-check/health-endpoints.js`, `frontend_lotti/craco.config.js` |
 | `NOLEGGIO_GIORNI_SENZA_FATTURA` | feature-job | configurazione | non dichiarato in Settings | `app/services/noleggio/controlli.py` |
 | `OPENAI_API_KEY` | ai | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `app/routers/settings_router.py`, `app/services/chat_ai_engine.py` |
@@ -823,7 +816,6 @@ Questa tabella è l'inventario canonico degli alias di cartella. Gli ID sono con
 | Variabile cartella | Default dichiarato | Sorgenti/consumer |
 |---|---|---|
 | `DRIVE_CARTE_FOLDER_ID` | `None` | `app/config.py` |
-| `DRIVE_CEDOLINI_FOLDER_ID` | `non dichiarato` | `app/hr/services/google_drive_sa.py` |
 | `DRIVE_DOCUMENT_INDEX_ROOT_FOLDER_ID` | `'1tmVu6fl7qhJbLcGCHT3wEQzrvFAElc9h'` | `app/config.py` |
 | `DRIVE_F24_FOLDER_ID` | `None` | `app/config.py` |
 | `DRIVE_FISCAL_ROOT_FOLDER_ID` | `'1VBqAFZBGdZ4HtgfZC--DD5ad38Et5I1j'` | `app/config.py` |
@@ -852,7 +844,7 @@ Gli alias senza valore vanno configurati nel secret/config store di Render. Non 
 
 ## Appendice D — Tutti i router e tutti gli endpoint
 
-Route table sorgente: **1169**; attivi da ricreare: **729**; quarantena: **440** (`verificare` 410, `admin-only` 30).
+Route table sorgente: **1172**; attivi da ricreare: **732**; quarantena: **440** (`verificare` 410, `admin-only` 30).
 
 `attivo` significa da ricreare con contratto e test; `quarantena` significa non esporre nel nuovo runtime finché consumer, autorizzazione e test non sono provati. L'elenco è completo e include entrambe le categorie.
 
@@ -908,7 +900,7 @@ Route table sorgente: **1169**; attivi da ricreare: **729**; quarantena: **440**
 - **quarantena: verificare** — `GET /api/contabilita-gestionale/partitario/fornitori` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **quarantena: verificare** — `GET /api/contabilita-gestionale/partitario/fornitori/{piva}` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 
-### Router `accounting.piano_conti` (13)
+### Router `accounting.piano_conti` (14)
 
 - **attivo** — `GET /api/piano-conti/` — in uso: FE
 - **attivo** — `POST /api/piano-conti/` — in uso: FE
@@ -1782,12 +1774,12 @@ Route table sorgente: **1169**; attivi da ricreare: **729**; quarantena: **440**
 - **attivo** — `DELETE /api/invoices/emesse/{invoice_id}` — in uso: FE
 - **attivo** — `GET /api/invoices/emesse/{invoice_id}` — in uso: FE
 
-### Router `invoices.invoices_main` (4)
+### Router `invoices.invoices_main` (6)
 
 - **attivo** — `GET /api/invoices` — in uso: FE
 - **attivo** — `GET /api/invoices/bank-pending` — in uso: FE
-- **attivo** — `POST /api/invoices/bonifica-identita` — in uso: scheduler (stesso giro), admin
-- **attivo** — `GET /api/invoices/bonifica-identita/stato` — in uso: admin
+- **attivo** — `POST /api/invoices/bonifica-identita` — in uso: FE
+- **attivo** — `GET /api/invoices/bonifica-identita/stato` — in uso: FE
 - **attivo** — `GET /api/invoices/by-month/{year}/{month}` — in uso: FE
 - **attivo** — `GET /api/invoices/{invoice_id}` — in uso: FE
 
@@ -2144,7 +2136,7 @@ Route table sorgente: **1169**; attivi da ricreare: **729**; quarantena: **440**
 - **attivo** — `POST /api/prima-nota/provvisori/associa-assegno` — in uso: FE
 - **attivo** — `POST /api/prima-nota/provvisori/attendi-banca` — in uso: FE
 - **attivo** — `POST /api/prima-nota/provvisori/auto-conferma-per-metodo` — in uso: FE
-- **attivo** — `POST /api/prima-nota/provvisori/conferma` — in uso: FE
+- **attivo** — `POST /api/prima-nota/provvisori/conferma` — in uso: FE, scheduler
 - **attivo** — `POST /api/prima-nota/provvisori/conferma-divisione` — in uso: FE
 - **attivo** — `POST /api/prima-nota/provvisori/conferma-multipla` — in uso: FE
 - **attivo** — `POST /api/prima-nota/provvisori/da-decidere` — in uso: FE
