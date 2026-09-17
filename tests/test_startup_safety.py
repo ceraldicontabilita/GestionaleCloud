@@ -212,6 +212,34 @@ def test_health_check_probe_in_timeout_resta_200_degraded(monkeypatch):
     assert response["hydrated_rows"] == 10
 
 
+def test_health_check_risponde_entro_il_budget_se_la_probe_resta_appesa(monkeypatch):
+    """17/09/2026: Render riavviava l'istanza ogni ~9 minuti (SIGTERM pulito,
+    memoria < 1 GB): il suo health check scadeva perche' la probe Supabase
+    restava appesa fino allo statement timeout. La liveness ha un budget."""
+    import time
+
+    from app import main as main_mod
+
+    database = _database_supabase_idratata(monkeypatch)
+
+    async def probe_lenta():
+        await asyncio.sleep(5)
+        return {"write_path": "verified"}
+
+    monkeypatch.setattr(database, "health_probe", probe_lenta)
+    monkeypatch.setattr(main_mod, "_HEALTH_PROBE_TIMEOUT", 0.05)
+
+    t0 = time.monotonic()
+    response = asyncio.run(health_check())
+    durata = time.monotonic() - t0
+
+    assert durata < 1.0
+    assert not hasattr(response, "status_code")  # 200
+    assert response["status"] == "degraded"
+    assert response["archivio"] == "failed"
+    assert "oltre" in response["archivio_errore"]
+
+
 def test_health_check_strict_con_probe_in_timeout_e_503(monkeypatch):
     _database_supabase_idratata(monkeypatch)
 

@@ -26,6 +26,10 @@ _PROJECT_ROOT = os.path.realpath(os.path.join(os.path.dirname(__file__), ".."))
 _FRONTEND_DIST = os.path.realpath(os.path.join(_PROJECT_ROOT, "frontend", "dist"))
 _FRONTEND_PUBLIC = os.path.realpath(os.path.join(_PROJECT_ROOT, "frontend", "public"))
 SALARI_SYNC_MARKER = "sync_prima_nota_salari_da_cedolini_2018_20260804_v1"
+# Budget della liveness /api/health per le letture remote (probe Supabase e
+# stato sync salari): Render la chiama con un timeout di pochi secondi e, se
+# scade piu' volte, riavvia l'istanza.
+_HEALTH_PROBE_TIMEOUT = 2.0
 SALARY_RELATIONS_RECOVERY_MARKER = "recover_salary_relations_20260821_v1"
 SUPPLIER_METHODS_RECOVERY_MARKER = "recover_supplier_payment_methods_20260822_v1"
 
@@ -820,7 +824,18 @@ async def health_check(strict: bool = False):
     try:
         health_probe = getattr(Database.db, "health_probe", None)
         if callable(health_probe):
-            await health_probe()
+            # 17/09/2026 (secondo giro): anche con il 200 "degraded", Render
+            # riavviava l'istanza ogni ~9 minuti con spegnimento pulito
+            # (SIGTERM) e memoria sotto 1 GB: il suo health check scadeva
+            # perche' la probe restava appesa fino allo statement timeout
+            # di Supabase (8-10 s). La liveness deve rispondere sempre in
+            # pochi secondi: la probe ha un budget fisso, oltre il quale il
+            # risultato e' "degraded" con motivo, non un'attesa.
+            await asyncio.wait_for(health_probe(), timeout=_HEALTH_PROBE_TIMEOUT)
+    except asyncio.TimeoutError:
+        archivio_probe = "failed"
+        archivio_errore = f"probe oltre {_HEALTH_PROBE_TIMEOUT:g}s (database lento)"
+        logger.warning("Health check archivio remoto fallito: %s", archivio_errore)
     except Exception as exc:
         archivio_probe = "failed"
         archivio_errore = str(exc)[:200]
@@ -842,8 +857,11 @@ async def health_check(strict: bool = False):
     salari_sync = "not_started"
     try:
         if Database.db is not None:
-            run = await Database.db["migration_runs"].find_one(
-                {"id": SALARI_SYNC_MARKER}, {"_id": 0, "status": 1}
+            run = await asyncio.wait_for(
+                Database.db["migration_runs"].find_one(
+                    {"id": SALARI_SYNC_MARKER}, {"_id": 0, "status": 1}
+                ),
+                timeout=_HEALTH_PROBE_TIMEOUT,
             )
             salari_sync = (run or {}).get("status") or "not_started"
     except Exception:
