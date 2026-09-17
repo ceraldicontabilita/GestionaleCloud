@@ -75,15 +75,43 @@ _CAMPI_IMPRONTA = (
 )
 
 
+_PREFISSO_IMPRONTA = "c2:"
+
+
+def _testo_canonico(valore: Any) -> Any:
+    """Stringhe con i soli caratteri ASCII (via ogni carattere non ASCII,
+    compresi accenti, simboli e i «�» di una decodifica sbagliata: «Carità»
+    e «Carit�» diventano entrambi «Carit») e gli spazi compressi; liste e
+    dizionari ricorsivamente. Numeri e None invariati. Niente NFKD: «à» →
+    «a» non combacerebbe con «�» → «»."""
+    if isinstance(valore, str):
+        piatto = valore.encode("ascii", "ignore").decode("ascii")
+        return " ".join(piatto.split())
+    if isinstance(valore, dict):
+        return {str(k): _testo_canonico(v) for k, v in valore.items()}
+    if isinstance(valore, (list, tuple)):
+        return [_testo_canonico(v) for v in valore]
+    return valore
+
+
+def ha_impronta_corrente(doc: Dict[str, Any]) -> bool:
+    """Vero se ``content_hash_canonico`` e' stato calcolato con la versione
+    attuale dell'impronta (prefisso ``c2:``); le versioni precedenti vanno
+    ricalcolate dal backfill."""
+    return str(doc.get("content_hash_canonico") or "").startswith(_PREFISSO_IMPRONTA)
+
+
 def impronta_contenuto_fattura(xml: str) -> Optional[str]:
     """Impronta del CONTENUTO della fattura (campi e righe letti dall'XML con
-    il parser dell'import), indipendente da BOM, a capo, spazi e codifica del
-    file. 17/09/2026: 42 coppie legacy↔Drive della stessa fattura avevano XML
-    diversi di un solo byte (BOM, codifica) e restavano bloccate come
-    «collisione di identita' da verificare». Non e' un confronto per numero e
-    importo: entrano tutte le righe, i riepiloghi IVA, il tipo documento, le
-    date e i pagamenti. Prefisso ``c:`` per non confondersi con gli sha256 dei
-    file. ``None`` se l'XML non e' leggibile."""
+    il parser dell'import), indipendente da BOM, a capo, spazi, codifica e
+    caratteri non ASCII del file. 17/09/2026: 42 coppie legacy↔Drive della
+    stessa fattura restavano bloccate come «collisione di identita' da
+    verificare» per un byte di BOM o, verificato in produzione, per «Carità»
+    decodificato come «Carit�» in una copia (windows-1252 letto male). Non e'
+    un confronto per numero e importo: entrano tutte le righe, i riepiloghi
+    IVA, il tipo documento, le date e i pagamenti. Prefisso ``c2:`` (versione
+    dell'impronta) per non confondersi con gli sha256 dei file. ``None`` se
+    l'XML non e' leggibile."""
     if not isinstance(xml, str) or "FatturaElettronica" not in xml:
         return None
     from app.parsers.fattura_elettronica_parser import parse_fattura_xml
@@ -94,10 +122,10 @@ def impronta_contenuto_fattura(xml: str) -> Optional[str]:
         return None
     if not isinstance(parsed, dict) or parsed.get("error") or not parsed.get("invoice_number"):
         return None
-    base = {campo: parsed.get(campo) for campo in _CAMPI_IMPRONTA if campo in parsed}
-    testo = json.dumps(base, sort_keys=True, ensure_ascii=False, default=str,
+    base = {campo: _testo_canonico(parsed.get(campo)) for campo in _CAMPI_IMPRONTA if campo in parsed}
+    testo = json.dumps(base, sort_keys=True, ensure_ascii=True, default=str,
                        separators=(",", ":"))
-    return "c:" + hashlib.sha256(testo.encode("utf-8")).hexdigest()
+    return _PREFISSO_IMPRONTA + hashlib.sha256(testo.encode("utf-8")).hexdigest()
 
 
 def patch_identita_da_xml(doc: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -144,7 +172,8 @@ def patch_identita_da_xml(doc: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         metti("anno", int(data[:4]))
     metti("xml_raw", xml)
     metti("content_hash", hashlib.sha256(xml.encode("utf-8")).hexdigest())
-    metti("content_hash_canonico", impronta_contenuto_fattura(xml))
+    if not ha_impronta_corrente(doc):
+        patch["content_hash_canonico"] = impronta_contenuto_fattura(xml)
     chiave = generate_invoice_key(
         doc.get("invoice_number") or parsed.get("invoice_number", ""),
         doc.get("supplier_vat") or parsed.get("supplier_vat", ""),
@@ -212,7 +241,7 @@ async def normalizza_impronte_canoniche(db, *, dry_run: bool = False, massimo: i
     leggeri = await db[COLL].find(
         {"status": {"$nin": ["deleted", "archived"]}}, metadata_projection(COLL)).to_list(None)
     candidati = [d for d in leggeri
-                 if _vuoto(d.get("content_hash_canonico")) and d.get("id")
+                 if not ha_impronta_corrente(d) and d.get("id")
                  and not d.get("senza_xml_leggibile")]
     calcolate, senza_xml, errori = 0, 0, []
     for leggero in candidati[:massimo]:

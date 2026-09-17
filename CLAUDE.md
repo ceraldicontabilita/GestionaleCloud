@@ -750,7 +750,18 @@ passo fallito = bug da correggere subito. Cosa è stato trovato e cambiato
   il blocco alla copia tenuta (`status` imported, `stato_import` attivo,
   `stato_derivati` da_ricalcolare, revisione chiusa) e risolve l'avviso
   `FATTURA_IDENTITA_DA_VERIFICARE` — solo se non restano altre collisioni
-  aperte. Log scheduler: `impronte=N (restanti=M)`.
+  aperte. Log scheduler: `impronte=N (restanti=M)`. **Versione `c2:`**
+  (#482): subito dopo il deploy di #481 la ricostruzione Drive ha creato
+  un'altra collisione (10:52 UTC) con XML di pari lunghezza: confrontati i
+  due file, la copia legacy aveva `Carit�`/`43�` (windows-1252 decodificato
+  male, U+FFFD) dove quella Drive aveva `Carità`/`43°`, più righe con spazi
+  di riempimento. L'impronta ora normalizza ogni stringa (via ogni carattere
+  non ASCII — niente NFKD, perché `à`→`a` non combacerebbe con `�`→`` —,
+  spazi compressi; verificato uguale sui due XML reali) e porta il prefisso
+  di versione `c2:`; `ha_impronta_corrente` fa ricalcolare dal backfill le
+  impronte di versione precedente.
+  Il backfill idrata per id ~3 s a fattura (300 per giro = ~15 min): le
+  ~870 fatture attive senza impronta si completano in 3 giri da 30 min.
 - **Collaudi E2E riusciti** (dati "ZZZ TEST" creati e ripuliti): ERP
   fattura XML → classificazione → scrittura in partita doppia in
   quadratura → eliminazione; corrispettivo XML → registrazione; Lotti
