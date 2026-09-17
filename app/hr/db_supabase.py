@@ -492,17 +492,33 @@ class SupabaseCollection:
         if self._tab in self._db._tabelle_pronte:
             return
         async with self._db._pool.acquire() as con:
-            await con.execute(
-                'CREATE TABLE IF NOT EXISTS %s ('
-                ' id text PRIMARY KEY,'
-                ' doc jsonb NOT NULL)' % self._sql_tab
+            # 17/09/2026: prima qui partivano SEMPRE un CREATE TABLE IF NOT
+            # EXISTS e un ALTER TABLE ... ENABLE ROW LEVEL SECURITY, anche a
+            # tabella gia' pronta: ogni DDL fa ricaricare lo schema a
+            # PostgREST, che per un paio di minuti risponde 503 «Could not
+            # query the database for the schema cache» a TUTTE le RPC del
+            # gestionale (visto a ogni avvio dell'istanza, 29 tabelle HR =
+            # 58 DDL). Ora si guarda il catalogo e si esegue il DDL solo se
+            # manca davvero qualcosa.
+            stato = await con.fetchrow(
+                "SELECT c.relrowsecurity FROM pg_class c "
+                "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                "WHERE n.nspname = $1 AND c.relname = $2 AND c.relkind = 'r'",
+                self._db._schema, self._tab,
             )
-            # RLS attiva e nessuna policy: il ruolo anon di PostgREST non legge
-            # nulla (su questo progetto anon e' volutamente aperto). La
-            # connessione diretta usa il proprietario, che scavalca la RLS.
-            await con.execute(
-                'ALTER TABLE %s ENABLE ROW LEVEL SECURITY' % self._sql_tab
-            )
+            if stato is None:
+                await con.execute(
+                    'CREATE TABLE IF NOT EXISTS %s ('
+                    ' id text PRIMARY KEY,'
+                    ' doc jsonb NOT NULL)' % self._sql_tab
+                )
+            if stato is None or not stato["relrowsecurity"]:
+                # RLS attiva e nessuna policy: il ruolo anon di PostgREST non
+                # legge nulla (su questo progetto anon e' volutamente aperto).
+                # La connessione diretta usa il proprietario, che scavalca la RLS.
+                await con.execute(
+                    'ALTER TABLE %s ENABLE ROW LEVEL SECURITY' % self._sql_tab
+                )
         self._db._tabelle_pronte.add(self._tab)
 
     async def _tutti_sql(self, escludi=None) -> List[Dict[str, Any]]:

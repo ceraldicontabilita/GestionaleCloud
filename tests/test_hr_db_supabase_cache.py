@@ -45,6 +45,10 @@ class _Con:
     async def fetch(self, sql, *args):
         return self.pool.esegui(sql, args)
 
+    async def fetchrow(self, sql, *args):
+        righe = self.pool.esegui(sql, args)
+        return righe[0] if righe else None
+
     async def execute(self, sql, *args):
         self.pool.esegui(sql, args)
         return "OK"
@@ -85,7 +89,13 @@ class PoolFinto:
 
     def esegui(self, sql, args):
         self.log.append(sql)
-        if sql.startswith("CREATE TABLE") or sql.startswith("ALTER TABLE"):
+        if sql.startswith("SELECT c.relrowsecurity"):
+            # catalogo: la tabella esiste (con RLS) solo se il pool la conosce
+            return [{"relrowsecurity": True}] if args[1] in self.tabelle else []
+        if sql.startswith("CREATE TABLE"):
+            self.tabelle.setdefault(_TAB.search(sql).group(1), {})
+            return []
+        if sql.startswith("ALTER TABLE"):
             return []
         if sql.startswith("SELECT '") and " AS t, count(*)" in sql:
             if self.firma_guasta:
@@ -313,3 +323,19 @@ def test_sql_firma_usa_solo_nomi_validati(tab):
     sql = db._sql_firma([tab])
     assert sql.startswith("SELECT '%s' AS t, count(*)::bigint AS n" % tab)
     assert 'FROM "hr"."%s"' % tab in sql
+
+
+def test_nessun_ddl_se_la_tabella_esiste_gia():
+    """17/09/2026: CREATE/ALTER a ogni avvio facevano ricaricare lo schema a
+    PostgREST (503 su tutte le RPC del gestionale per minuti)."""
+    pool = _pool()
+    db = _db(pool)
+
+    async def scenario():
+        await db["dipendenti"].find({}).to_list(None)
+        await db["nuova"].insert_one({"id": "n1", "x": 1})
+
+    _run(scenario())
+    ddl = [s for s in pool.log if s.startswith("CREATE TABLE") or s.startswith("ALTER TABLE")]
+    assert not any("app_dipendenti" in s for s in ddl)
+    assert [s.split()[0] for s in ddl] == ["CREATE", "ALTER"] and all("app_nuova" in s for s in ddl)
