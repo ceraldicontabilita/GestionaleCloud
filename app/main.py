@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager, suppress
 from datetime import datetime, timezone
 import os
 from pathlib import Path
+import weakref
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -30,6 +31,11 @@ SALARI_SYNC_MARKER = "sync_prima_nota_salari_da_cedolini_2018_20260804_v1"
 # stato sync salari): Render la chiama con un timeout di pochi secondi e, se
 # scade piu' volte, riavvia l'istanza.
 _HEALTH_PROBE_TIMEOUT = 2.0
+# Esito della probe di scrittura riusato fra chiamate consecutive a /api/health
+# (una sola probe in volo per processo; vedi _probe_archivio).
+_PROBE_ESITO_TTL = 60.0
+_PROBE_ERRORE_TTL = 15.0
+_probe_stati: "weakref.WeakKeyDictionary[object, dict]" = weakref.WeakKeyDictionary()
 SALARY_RELATIONS_RECOVERY_MARKER = "recover_salary_relations_20260821_v1"
 SUPPLIER_METHODS_RECOVERY_MARKER = "recover_supplier_payment_methods_20260822_v1"
 
@@ -776,6 +782,55 @@ async def root(request: Request):
     return {"app": settings.APP_NAME, "version": settings.APP_VERSION, "status": "online"}
 
 
+def _esito_probe(task: "asyncio.Future") -> tuple[str, str | None]:
+    if task.cancelled():
+        return "failed", "probe annullata"
+    exc = task.exception()
+    if exc is not None:
+        return "failed", str(exc)[:200]
+    return "verified", None
+
+
+async def _probe_archivio(database, health_probe) -> tuple[str, str | None]:
+    """Esito della probe di scrittura Supabase: ("verified"|"failed", motivo).
+
+    17/09/2026 (terzo giro): Render interroga /api/health ogni pochi secondi e
+    ogni probe e' una scrittura + cancellazione su gestionale.documents
+    (trigger compresi). Con il database saturo (07:45 UTC) erano 130 probe in
+    13 minuti da 7 s l'una: carico aggiunto proprio quando manca. Ora una
+    sola probe in volo per processo e l'esito riusato per
+    _PROBE_ESITO_TTL secondi (_PROBE_ERRORE_TTL se fallita). Una probe che
+    supera il budget continua in background: il giro successivo ne
+    raccoglie l'esito invece di lanciarne un'altra.
+    """
+    import time
+
+    stato = _probe_stati.get(database)
+    if stato is None:
+        stato = {"at": 0.0, "esito": None, "task": None}
+        _probe_stati[database] = stato
+    task = stato.get("task")
+    if task is not None and task.done():
+        stato.update(esito=_esito_probe(task), at=time.monotonic(), task=None)
+        task = None
+    esito = stato.get("esito")
+    if esito is not None:
+        ttl = _PROBE_ESITO_TTL if esito[0] == "verified" else _PROBE_ERRORE_TTL
+        if time.monotonic() - stato["at"] < ttl:
+            return esito
+    if task is None:
+        task = asyncio.ensure_future(health_probe())
+        stato["task"] = task
+    try:
+        await asyncio.wait_for(asyncio.shield(task), timeout=_HEALTH_PROBE_TIMEOUT)
+    except asyncio.TimeoutError:
+        return "failed", f"probe oltre {_HEALTH_PROBE_TIMEOUT:g}s (database lento)"
+    except Exception:
+        pass
+    stato.update(esito=_esito_probe(task), at=time.monotonic(), task=None)
+    return stato["esito"]
+
+
 @app.get("/health")
 @app.get("/api/health")
 async def health_check(strict: bool = False):
@@ -821,26 +876,19 @@ async def health_check(strict: bool = False):
 
     archivio_probe = "verified"
     archivio_errore = None
-    try:
-        health_probe = getattr(Database.db, "health_probe", None)
-        if callable(health_probe):
-            # 17/09/2026 (secondo giro): anche con il 200 "degraded", Render
-            # riavviava l'istanza ogni ~9 minuti con spegnimento pulito
-            # (SIGTERM) e memoria sotto 1 GB: il suo health check scadeva
-            # perche' la probe restava appesa fino allo statement timeout
-            # di Supabase (8-10 s). La liveness deve rispondere sempre in
-            # pochi secondi: la probe ha un budget fisso, oltre il quale il
-            # risultato e' "degraded" con motivo, non un'attesa.
-            await asyncio.wait_for(health_probe(), timeout=_HEALTH_PROBE_TIMEOUT)
-    except asyncio.TimeoutError:
-        archivio_probe = "failed"
-        archivio_errore = f"probe oltre {_HEALTH_PROBE_TIMEOUT:g}s (database lento)"
-        logger.warning("Health check archivio remoto fallito: %s", archivio_errore)
-    except Exception as exc:
-        archivio_probe = "failed"
-        archivio_errore = str(exc)[:200]
-        logger.warning("Health check archivio remoto fallito: %s", archivio_errore)
-        if strict:
+    health_probe = getattr(Database.db, "health_probe", None)
+    if callable(health_probe):
+        # 17/09/2026 (secondo giro): anche con il 200 "degraded", Render
+        # riavviava l'istanza ogni ~9 minuti con spegnimento pulito
+        # (SIGTERM) e memoria sotto 1 GB: il suo health check scadeva
+        # perche' la probe restava appesa fino allo statement timeout
+        # di Supabase (8-10 s). La liveness deve rispondere sempre in
+        # pochi secondi: la probe ha un budget fisso, oltre il quale il
+        # risultato e' "degraded" con motivo, non un'attesa.
+        archivio_probe, archivio_errore = await _probe_archivio(Database.db, health_probe)
+        if archivio_probe == "failed":
+            logger.warning("Health check archivio remoto fallito: %s", archivio_errore)
+        if archivio_probe == "failed" and strict and not str(archivio_errore).startswith("probe oltre"):
             return JSONResponse(
                 status_code=503,
                 content={

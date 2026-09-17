@@ -334,3 +334,70 @@ def test_runtime_sheets_avvia_e_chiude_senza_driver_separato(monkeypatch):
     assert runtime.closed is True
     assert Database.client is None
     assert Database.db is None
+
+
+def test_health_check_riusa_la_probe_fra_chiamate_ravvicinate(monkeypatch):
+    """17/09/2026 (terzo giro): Render chiama /api/health ogni pochi secondi e
+    ogni probe e' una scrittura+cancellazione su Supabase (130 in 13 minuti
+    a database saturo). Una sola probe per finestra, esito condiviso."""
+    from app.config import settings
+    from app.services.supabase_runtime_database import SupabaseRuntimeDatabase
+
+    monkeypatch.setattr(settings, "DATA_BACKEND", "supabase")
+    database = SupabaseRuntimeDatabase("test", {
+        "SUPABASE_URL": "https://example.supabase.co",
+        "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_test",
+        "SUPABASE_RUNTIME_SECRET": "runtime-secret-test",
+    })
+    database.hydration_result = {"fogli": [{"collezione": "fatture", "valide": 1, "numero_errori": 0}]}
+    probe = []
+
+    async def fake_rpc(function_name, payload):
+        if function_name == "gc_runtime_health_probe":
+            probe.append(payload["p_probe_id"])
+            return True
+        if function_name in {"gc_fetch_collection", "gc_fetch_collection_after"}:
+            return []
+        raise AssertionError(function_name)
+
+    monkeypatch.setattr(database, "_rpc", fake_rpc)
+    monkeypatch.setattr(Database, "db", database)
+
+    async def scenario():
+        prima = await health_check()
+        seconda = await health_check()
+        terza = await health_check()
+        return prima, seconda, terza
+
+    prima, seconda, terza = asyncio.run(scenario())
+    assert prima["status"] == seconda["status"] == terza["status"] == "healthy"
+    assert len(probe) == 1
+
+
+def test_health_check_non_lancia_una_seconda_probe_mentre_la_prima_e_appesa(monkeypatch):
+    from app import main as main_mod
+
+    database = _database_supabase_idratata(monkeypatch)
+    avviate = []
+
+    async def probe_lenta():
+        avviate.append(1)
+        await asyncio.sleep(0.3)
+        return {"write_path": "verified"}
+
+    monkeypatch.setattr(database, "health_probe", probe_lenta)
+    monkeypatch.setattr(main_mod, "_HEALTH_PROBE_TIMEOUT", 0.05)
+
+    async def scenario():
+        prima = await health_check()
+        seconda = await health_check()
+        await asyncio.sleep(0.4)
+        terza = await health_check()
+        return prima, seconda, terza
+
+    prima, seconda, terza = asyncio.run(scenario())
+    assert prima["archivio"] == "failed" and "oltre" in prima["archivio_errore"]
+    assert seconda["archivio"] == "failed"
+    # la probe appesa ha finito: il suo esito viene raccolto, non rilanciata
+    assert terza["archivio"] == "verified" and terza["status"] == "healthy"
+    assert len(avviate) == 1
