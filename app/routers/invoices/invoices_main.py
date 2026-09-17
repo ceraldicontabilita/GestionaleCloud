@@ -85,9 +85,14 @@ def _invoice_identity_key(invoice: Dict[str, Any]) -> str:
 
 def _source_evidence(invoice: Dict[str, Any]) -> tuple[set[str], set[str]]:
     """Restituisce hash e ID degli originali, senza dedurli dai dati contabili."""
+    # content_hash_canonico (prefisso "c:"): impronta del CONTENUTO letto
+    # dall'XML, uguale fra due copie dello stesso documento anche se i byte
+    # differiscono per BOM, a capo o codifica (17/09/2026: 42 coppie
+    # legacy↔Drive bloccate come «collisione» per un solo byte).
     hashes = {
         str(invoice.get(name) or "").strip().lower()
-        for name in ("content_hash", "file_hash", "source_hash", "sha256", "xml_hash")
+        for name in ("content_hash", "file_hash", "source_hash", "sha256", "xml_hash",
+                     "content_hash_canonico")
         if invoice.get(name)
     }
     source_ids = {

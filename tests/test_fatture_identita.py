@@ -230,3 +230,116 @@ def test_una_scrittura_in_timeout_non_ferma_la_normalizzazione():
     assert len(esito["errori"]) == 1 and "leg-1" in esito["errori"][0]
     assert _run(tabella.find_one({"id": "leg-2"}))["invoice_key"] == "FT0014095324_04911190488_2026-06-11"
     assert not _run(tabella.find_one({"id": "leg-1"})).get("invoice_key")
+
+
+# --- 17/09/2026: impronta del contenuto (42 collisioni per un byte di BOM) ---
+
+XML_BOM = "﻿" + XML
+XML_CRLF = XML.replace("\n", "\r\n")
+XML_ALTRO = XML.replace("<Numero>FT0014095324</Numero>", "<Numero>FT0014095325</Numero>")
+
+
+def test_impronta_contenuto_insensibile_a_bom_a_capo_e_codifica():
+    base = fi.impronta_contenuto_fattura(XML)
+    assert base and base.startswith("c:")
+    assert fi.impronta_contenuto_fattura(XML_BOM) == base
+    assert fi.impronta_contenuto_fattura(XML_CRLF) == base
+    assert fi.impronta_contenuto_fattura(XML.replace('encoding="utf-8"', 'encoding="UTF-8"')) == base
+    # i byte del file invece differiscono: era questo a bloccare la dedup
+    assert hashlib.sha256(XML_BOM.encode("utf-8")).hexdigest() != HASH
+    # contenuto diverso = impronta diversa; XML illeggibile = nessuna impronta
+    assert fi.impronta_contenuto_fattura(XML_ALTRO) != base
+    assert fi.impronta_contenuto_fattura("<html>no</html>") is None
+    assert fi.impronta_contenuto_fattura("<p:FatturaElettronica><rotto") is None
+    assert fi.impronta_contenuto_fattura(None) is None
+    # anche l'identita' dall'XML la calcola
+    assert fi.patch_identita_da_xml(_legacy())["content_hash_canonico"] == base
+
+
+def test_normalizza_impronte_marca_chi_non_ha_xml_e_non_lo_ritenta():
+    db = _db("impronte-backfill")
+
+    async def scenario():
+        drv = _drive(); drv.pop("content_hash_canonico", None)
+        senza = {"id": "no-xml", "status": "imported", "invoice_number": "1",
+                 "supplier_vat": "X", "invoice_date": "2026-01-01"}
+        await db["invoices"].insert_many([drv, senza])
+        primo = await fi.normalizza_impronte_canoniche(db, pausa=0)
+        secondo = await fi.normalizza_impronte_canoniche(db, pausa=0)
+        return primo, secondo, await db["invoices"].find_one({"id": "drv-1"}), \
+            await db["invoices"].find_one({"id": "no-xml"})
+
+    primo, secondo, drv, senza = _run(scenario())
+    assert primo["candidate"] == 2 and primo["calcolate"] == 1 and primo["senza_xml"] == 1
+    assert drv["content_hash_canonico"] == fi.impronta_contenuto_fattura(XML)
+    assert senza["senza_xml_leggibile"] is True
+    assert secondo["candidate"] == 0
+
+
+def test_dedup_chiude_la_collisione_legacy_drive_che_differisce_di_un_byte(monkeypatch):
+    """Caso reale (42 coppie): stessa fattura, la copia legacy con l'XML con
+    BOM, la copia Drive importata come «collisione» perche' lo sha256 dei
+    byte era diverso. La dedup deve archiviare il doppione, chiudere la
+    collisione sulla copia tenuta e risolvere l'avviso."""
+    db = _db("impronte-collisione")
+    monkeypatch.setattr(crud.Database, "get_db", lambda: db)
+
+    async def scenario():
+        legacy = _legacy(); legacy["fattura_allegata"] = XML_BOM
+        legacy["identity_collision_with_ids"] = ["drv-1"]
+        legacy["duplicate_review_required"] = True
+        drive = _drive(status="da_verificare", stato_import="collisione_identita_da_verificare",
+                       stato_derivati="bloccato_collisione_identita",
+                       duplicate_review_required=True, identity_collision_with_ids=["leg-1"])
+        await db["invoices"].insert_many([legacy, drive])
+        await db["alerts"].insert_one({"codice": "FATTURA_IDENTITA_DA_VERIFICARE",
+                                       "entita_id": "drv-1", "stato": "aperto"})
+        esito = await fi.bonifica_identita_fatture(db)
+        return esito, await db["invoices"].find_one({"id": "leg-1"}), \
+            await db["invoices"].find_one({"id": "drv-1"}), \
+            await db["alerts"].find_one({"entita_id": "drv-1"})
+
+    esito, leg, drv, alert = _run(scenario())
+    assert esito["identita"]["normalizzate"] == 1
+    assert esito["impronte"]["calcolate"] == 1          # la copia Drive
+    assert esito["dedup"]["fatture_archiviate"] == 1
+    assert esito["dedup"]["collisioni_chiuse"] == 1
+    assert leg["content_hash"] != drv["content_hash"]  # byte diversi...
+    assert leg["content_hash_canonico"] == drv["content_hash_canonico"]  # ...stesso contenuto
+    assert leg["status"] == "archived" and leg["duplicate_of"] == "drv-1"
+    assert drv["status"] == "imported" and drv["stato_import"] == "attivo"
+    assert drv["stato_derivati"] == "da_ricalcolare"
+    assert drv["duplicate_review_required"] is False and drv["identity_collision_with_ids"] == []
+    assert alert["stato"] == "risolto" and alert["resolved_by"] == "dedup_impronta_contenuto"
+
+
+def test_dedup_non_chiude_la_collisione_con_una_fattura_ancora_attiva(monkeypatch):
+    db = _db("impronte-collisione-aperta")
+    monkeypatch.setattr(crud.Database, "get_db", lambda: db)
+
+    async def scenario():
+        legacy = _legacy(); legacy["fattura_allegata"] = XML_BOM
+        drive = _drive(status="da_verificare", identity_collision_with_ids=["leg-1", "altra"],
+                       duplicate_review_required=True)
+        await db["invoices"].insert_many([legacy, drive])
+        esito = await fi.bonifica_identita_fatture(db)
+        return esito, await db["invoices"].find_one({"id": "drv-1"})
+
+    esito, drv = _run(scenario())
+    assert esito["dedup"]["fatture_archiviate"] == 1 and esito["dedup"]["collisioni_chiuse"] == 0
+    assert drv["status"] == "da_verificare" and drv["duplicate_review_required"] is True
+    assert drv["identity_collision_with_ids"] == ["altra"]
+
+
+def test_import_riconosce_lo_stesso_originale_con_bom_diverso():
+    from app.routers.invoices.fatture_upload import _same_documentary_original
+
+    esistente = _legacy(); esistente["fattura_allegata"] = XML_BOM
+    # la copia legacy non ha content_hash: il confronto passa dal contenuto
+    assert _same_documentary_original(esistente, None, XML) is True
+    assert _same_documentary_original(esistente, None, XML_CRLF) is True
+    assert _same_documentary_original(esistente, None, XML_ALTRO) is False
+    # anche con lo sha256 dei byte gia' calcolato (e diverso) non e' una collisione
+    con_hash = _drive(content_hash=hashlib.sha256(XML_BOM.encode()).hexdigest(), xml_raw=XML_BOM)
+    con_hash.pop("content_hash_canonico", None)
+    assert _same_documentary_original(con_hash, None, XML) is True

@@ -1711,6 +1711,15 @@ def _xml_content_hash(xml_raw: Optional[str]) -> Optional[str]:
     return hashlib.sha256(xml_raw.encode("utf-8")).hexdigest()
 
 
+def _impronta_canonica(xml_raw: Optional[str]) -> Optional[str]:
+    """Impronta del contenuto letto dall'XML (vedi fatture_identita)."""
+    if not xml_raw:
+        return None
+    from app.services.fatture_identita import impronta_contenuto_fattura
+
+    return impronta_contenuto_fattura(xml_raw)
+
+
 def _documentary_candidate(
     source_metadata: Optional[Dict[str, Any]], xml_raw: Optional[str],
 ) -> Dict[str, Any]:
@@ -1718,6 +1727,9 @@ def _documentary_candidate(
     digest = _xml_content_hash(xml_raw)
     if digest:
         candidate["content_hash"] = digest
+    canonica = _impronta_canonica(xml_raw)
+    if canonica:
+        candidate["content_hash_canonico"] = canonica
     return candidate
 
 
@@ -1726,10 +1738,20 @@ def _same_documentary_original(
     xml_raw: Optional[str],
 ) -> bool:
     from app.routers.invoices.invoices_main import _same_original
+    from app.services.fatture_identita import _testo_xml, impronta_contenuto_fattura
 
     left = dict(existing)
     if existing.get("xml_raw") and not existing.get("content_hash"):
         left["content_hash"] = _xml_content_hash(existing.get("xml_raw"))
+    if not existing.get("content_hash_canonico"):
+        # 17/09/2026: lo stesso documento gia' presente (es. copia legacy con
+        # l'XML in fattura_allegata) con byte diversi per BOM/a capo/codifica
+        # non e' una collisione: si confronta il contenuto letto dall'XML.
+        xml_esistente = _testo_xml(existing)
+        if xml_esistente:
+            canonica = impronta_contenuto_fattura(xml_esistente)
+            if canonica:
+                left["content_hash_canonico"] = canonica
     return _same_original(left, _documentary_candidate(source_metadata, xml_raw))
 
 
@@ -2095,6 +2117,7 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
         "filename": filename,
         "xml_raw": xml_raw,
         "content_hash": _xml_content_hash(xml_raw),
+        "content_hash_canonico": _impronta_canonica(xml_raw),
         "xml_body_index": parsed.get("body_index", 0),
         "created_at": base_existing.get("created_at") or datetime.now(timezone.utc).isoformat(),
         "cedente_piva": parsed.get("supplier_vat", ""),

@@ -890,6 +890,46 @@ async def get_statistiche(anno: Optional[int] = Query(None)) -> Dict[str, Any]:
     }
 
 
+async def _chiudi_collisione(db, tenuta: Optional[Dict[str, Any]], doppione_id: str) -> bool:
+    """La copia tenuta era entrata come «collisione di identita'» con il
+    doppione appena archiviato: ora che il doppione e' provato uguale, la
+    collisione e' chiusa e la fattura torna attiva (derivati da ricalcolare).
+    Non tocca nulla se la collisione era con un'altra fattura ancora attiva."""
+    if not tenuta or not tenuta.get("id"):
+        return False
+    collisioni = [str(i) for i in (tenuta.get("identity_collision_with_ids") or []) if i]
+    if str(doppione_id) not in collisioni:
+        return False
+    restanti = [i for i in collisioni if i != str(doppione_id)]
+    patch: Dict[str, Any] = {"identity_collision_with_ids": restanti}
+    if not restanti:
+        patch["duplicate_review_required"] = False
+        if tenuta.get("status") == "da_verificare":
+            patch["status"] = "imported"
+        if tenuta.get("stato_import") == "collisione_identita_da_verificare":
+            patch["stato_import"] = "attivo"
+        if tenuta.get("stato_derivati") == "bloccato_collisione_identita":
+            patch["stato_derivati"] = "da_ricalcolare"
+    try:
+        await db["invoices"].update_one({"id": tenuta["id"]}, {"$set": patch})
+    except Exception as exc:  # noqa: BLE001 - un timeout non ferma il giro
+        logger.error("Chiusura collisione su %s fallita: %s", tenuta["id"], exc)
+        return False
+    tenuta["identity_collision_with_ids"] = restanti
+    if restanti:
+        return False
+    # l'avviso «identita' da verificare» era stato aperto sulla copia entrata
+    # per seconda: puo' essere questa o il doppione appena archiviato
+    try:
+        from app.services.alert_engine import risolvi_alert
+        for entita_id in (tenuta["id"], str(doppione_id)):
+            await risolvi_alert("FATTURA_IDENTITA_DA_VERIFICARE", entita_id, db,
+                                resolved_by="dedup_impronta_contenuto")
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Chiusura alert collisione su %s fallita: %s", tenuta["id"], exc)
+    return True
+
+
 async def pulisci_duplicati_invoices() -> Dict[str, Any]:
     """Archivia reversibilmente solo duplicati provati dall'originale.
 
@@ -907,10 +947,12 @@ async def pulisci_duplicati_invoices() -> Dict[str, Any]:
          "prima_nota_id": 1, "prima_nota_cassa_id": 1, "prima_nota_banca_id": 1,
          "pagato": 1, "stato_pagamento": 1, "created_at": 1,
          "content_hash": 1, "file_hash": 1, "source_hash": 1, "sha256": 1,
+         "content_hash_canonico": 1,
          "source_document_id": 1, "drive_file_id": 1,
          "documents_inbox_id": 1, "source_documents": 1,
          "registrata_contabilita": 1, "movimento_contabile_id": 1,
-         "centro_costo_id": 1},
+         "centro_costo_id": 1, "status": 1, "stato_import": 1,
+         "stato_derivati": 1, "identity_collision_with_ids": 1},
     ).to_list(20000)
 
     gruppi: Dict[tuple, list] = {}
@@ -985,8 +1027,10 @@ async def pulisci_duplicati_invoices() -> Dict[str, Any]:
     movimenti_archiviati = 0
     scritture_stornate = 0
     registrati = {d["id"]: bool(d.get("registrata_contabilita")) for d in docs if d.get("id")}
+    per_id = {d["id"]: d for d in docs if d.get("id")}
     from app.services.registrazione_contabile import storna_registrazione_fattura
     archiviazioni_fallite = 0
+    collisioni_chiuse = 0
     for doppione_id, canonico_id in coppie_da_archiviare:
         try:
             await db["invoices"].update_one(
@@ -1029,12 +1073,19 @@ async def pulisci_duplicati_invoices() -> Dict[str, Any]:
                 logger.error("Archiviazione derivati di %s in %s fallita: %s", doppione_id, collezione, exc)
                 continue
             movimenti_archiviati += int(getattr(risultato, "modified_count", 0) or 0)
+        # 17/09/2026: se la copia tenuta era stata importata come «collisione
+        # di identita'» proprio con il doppione appena archiviato (42 coppie
+        # legacy↔Drive con l'XML diverso di un byte), la collisione e' chiusa:
+        # via il blocco dei derivati e la revisione, la fattura torna attiva.
+        if await _chiudi_collisione(db, per_id.get(canonico_id), doppione_id):
+            collisioni_chiuse += 1
 
     return {
         "success": True,
         "gruppi_duplicati": gruppi_duplicati,
         "fatture_archiviate": len(coppie_da_archiviare) - archiviazioni_fallite,
         "archiviazioni_fallite": archiviazioni_fallite,
+        "collisioni_chiuse": collisioni_chiuse,
         "fatture_eliminate": 0,
         "movimenti_archiviati": movimenti_archiviati,
         "scritture_stornate": scritture_stornate,

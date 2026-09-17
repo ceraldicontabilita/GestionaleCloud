@@ -689,11 +689,13 @@ def start_scheduler():
             from app.services.fatture_identita import bonifica_identita_fatture
             r = await bonifica_identita_fatture(Database.get_db())
             dedup = r.get("dedup") or {}
+            impronte = r.get("impronte") or {}
             logger.info(
-                "[SCHEDULER-DEDUP-FATTURE] identita=%s senza_xml=%s archiviate=%s "
-                "(gruppi=%s) storni=%s",
+                "[SCHEDULER-DEDUP-FATTURE] identita=%s senza_xml=%s impronte=%s "
+                "(restanti=%s) archiviate=%s (gruppi=%s) storni=%s",
                 (r.get("identita") or {}).get("normalizzate"),
                 (r.get("identita") or {}).get("senza_xml"),
+                impronte.get("calcolate"), impronte.get("restanti"),
                 dedup.get("fatture_archiviate"), dedup.get("gruppi_duplicati"),
                 (r.get("storni") or {}).get("stornate"),
             )
