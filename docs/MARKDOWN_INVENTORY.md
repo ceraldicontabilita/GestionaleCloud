@@ -25,8 +25,8 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 - Riferimento: **28**
 - Pianificati: **7**
 - Generati: **5**
-- Storici: **47**
-- Totale: **116**
+- Storici: **51**
+- Totale: **120**
 
 ## Elenco completo
 
@@ -92,6 +92,10 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 | `memoria/REFACTOR_APP_PAGINA_PER_PAGINA_2026-09-05.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `memoria/SPECIFICA_F24_CEDOLINI_IRES_IRAP_CHAT.md` | `reference` | Dettaglio di dominio subordinato ai documenti correnti |
 | `memoria/SPECIFICA_IVA.md` | `reference` | Dettaglio di dominio subordinato ai documenti correnti |
+| `memoria/diario/2026-09-03.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `memoria/diario/2026-09-14.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `memoria/diario/2026-09-15.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `memoria/diario/2026-09-16-17.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `memoria/endpoints/01-prima-nota.md` | `reference` | Dettaglio di dominio subordinato ai documenti correnti |
 | `memoria/endpoints/02-contabilita.md` | `reference` | Dettaglio di dominio subordinato ai documenti correnti |
 | `memoria/endpoints/03-fatture-fornitori.md` | `reference` | Dettaglio di dominio subordinato ai documenti correnti |
