@@ -283,3 +283,39 @@ def test_lookup_puntuale_senza_payload_viene_dalla_cache():
     # l'update su una collezione senza payload non rilegge il documento da Supabase
     assert c_update == ["gc_fetch_documents_exact", "gc_upsert_documents"]
     assert runtime.remote["alerts"]["a2"]["stato"] == "aperto"
+
+
+def test_payload_per_id_a_lotti_ridotti_sui_timeout_mai_lettura_completa():
+    """Sopra i 1.000 documenti con payload la cache sceglie gli id e Supabase
+    li manda per id: un timeout restringe il lotto, non fa mai tornare alla
+    lettura completa della collezione (che teneva il lock per decine di minuti)."""
+    runtime = CachingFakeSupabase({
+        "invoices": [
+            {"_id": f"f{i}", "id": f"f{i}", "status": "imported", "xml_raw": f"<xml>{i}</xml>"}
+            for i in range(1200)
+        ],
+    })
+    lotti = []
+    originale = runtime._rpc
+
+    async def rpc(function_name, payload):
+        if function_name == "gc_fetch_documents_exact":
+            lotti.append(len(payload["p_values"]))
+            if len(payload["p_values"]) > 100:
+                raise srd.SupabaseRPCError(
+                    function_name, 500, "57014", "canceling statement due to statement timeout")
+        return await originale(function_name, payload)
+
+    runtime._rpc = rpc
+
+    async def scenario():
+        await runtime["invoices"].find({}, {"_id": 0, "xml_raw": 0, "fattura_allegata": 0,
+                                            "document_original_ref": 0, "foto": 0}).to_list(None)
+        runtime.calls.clear()
+        return await runtime["invoices"].find({"status": "imported"}).to_list(None)
+
+    piene = _run(scenario())
+    assert len(piene) == 1200 and all(d["xml_raw"] for d in piene)
+    assert runtime.letture_complete() == []
+    assert lotti[:4] == [500, 250, 125, 62]
+    assert max(lotti[3:]) <= 100

@@ -74,7 +74,6 @@ _STATUS_ALIGNMENT_MAX_BATCHES = 40
 # completa di prima: mai un risultato parziale.
 _CACHE_VERSIONS_TTL_SECONDS = 15.0
 _CACHE_MAX_DOCUMENTS_PER_COLLECTION = 150_000
-_CACHE_HYDRATE_BY_ID_MAX = 2 * _MAX_EXACT_LOOKUP_VALUES
 _CACHE_ENV_FLAG = "GC_RUNTIME_CACHE"
 
 # Le RPC runtime hanno un timeout molto stretto e la paginazione OFFSET diventa
@@ -339,13 +338,44 @@ class SupabaseTable(SheetTable):
     def _cache_light(self, document: dict[str, Any]) -> dict[str, Any]:
         return _normalise_document(_light_document(document, self._payload_fields))
 
+    def _cache_can_filter(self, selector) -> bool:
+        """Vero se la cache puo' decidere QUALI documenti servono (il filtro
+        non tocca i campi payload)."""
+        return self.database._cache_enabled and not _references_any_field(
+            selector, self._payload_fields)
+
     def _cache_can_serve(self, selector, projection) -> bool:
         """Vero se la lettura non ha bisogno del payload (filtro e proiezione)."""
-        if not self.database._cache_enabled:
-            return False
-        if _projection_needs_payload(projection, self._payload_fields):
-            return False
-        return not _references_any_field(selector, self._payload_fields)
+        return self._cache_can_filter(selector) and not _projection_needs_payload(
+            projection, self._payload_fields)
+
+    async def _hydrate_by_ids(self, ids: list[str], excluded_fields: list[str] | None) -> list[dict[str, Any]]:
+        """Documenti completi (payload incluso) per id, a lotti che si
+        restringono sui timeout: mai una lettura completa della collezione,
+        che sotto carico durava decine di minuti tenendo il lock operativo
+        (osservato il 17/09: 10 fatture ogni 20 s, tutte le scritture ferme)."""
+        documents: list[dict[str, Any]] = []
+        chunk = _MAX_EXACT_LOOKUP_VALUES
+        index = 0
+        while index < len(ids):
+            batch = ids[index:index + chunk]
+            try:
+                rows = await self.database._fetch_logical_documents_exact(
+                    self.name, field="_id", values=sorted(batch),
+                    excluded_fields=excluded_fields,
+                )
+            except RuntimeError as exc:
+                if _errore_lettura_transitorio(exc) and chunk > _MIN_READ_PAGE_SIZE:
+                    chunk = max(_MIN_READ_PAGE_SIZE, chunk // 2)
+                    logger.warning(
+                        "Lettura per id di %s in timeout; lotto ridotto a %s",
+                        self.name, chunk,
+                    )
+                    continue
+                raise
+            documents.extend(rows)
+            index += len(batch)
+        return [_normalise_document(document) for document in documents]
 
     async def _cached_snapshot(self) -> list[dict[str, Any]] | None:
         """Documenti leggeri allineati allo stato remoto, senza il lock operativo."""
@@ -451,35 +481,21 @@ class SupabaseTable(SheetTable):
             )
             self._documents = [_normalise_document(document) for document in documents]
             return
-        cache_pronta = False
-        async with self._cache_lock:
-            cache_pronta = await self._cache_ready()
-        if cache_pronta:
-            assert self._cache is not None
-            needs_payload = (
-                _projection_needs_payload(projection, self._payload_fields)
-                or _references_any_field(selector, self._payload_fields)
-            )
-            if not needs_payload:
-                self._documents = list(self._cache.values())
-                return
-            if not _references_any_field(selector, self._payload_fields):
-                # La cache decide QUALI documenti servono; Supabase fornisce
-                # il payload solo per quelli (lookup esatto per id).
-                matched = [
-                    key for key, document in self._cache.items()
-                    if matches_filter(document, selector)
-                ]
-                if len(matched) <= _CACHE_HYDRATE_BY_ID_MAX:
-                    documents = []
-                    for start in range(0, len(matched), _MAX_EXACT_LOOKUP_VALUES):
-                        documents.extend(await self.database._fetch_logical_documents_exact(
-                            self.name, field="_id",
-                            values=sorted(matched[start:start + _MAX_EXACT_LOOKUP_VALUES]),
-                            excluded_fields=_excluded_projection_fields(projection),
-                        ))
-                    self._documents = [_normalise_document(document) for document in documents]
+        if self._cache_can_filter(selector):
+            documents = await self._cached_snapshot()
+            if documents is not None:
+                if not _projection_needs_payload(projection, self._payload_fields):
+                    self._documents = documents
                     return
+                # La cache decide QUALI documenti servono; Supabase fornisce
+                # il payload solo per quelli (lookup esatto per id, a lotti).
+                matched = [
+                    str(document["_id"]) for document in documents
+                    if document.get("_id") is not None and matches_filter(document, selector)
+                ]
+                self._documents = await self._hydrate_by_ids(
+                    matched, _excluded_projection_fields(projection))
+                return
         documents = await self.database._fetch_logical_collection_documents(
             self.name,
             excluded_fields=_excluded_projection_fields(projection),
@@ -520,13 +536,40 @@ class SupabaseTable(SheetTable):
 
     def find(self, selector=None, projection=None, *args, **kwargs):
         async def load():
-            if self._cache_can_serve(selector, projection):
-                # Lettura servita dalla cache: nessun lock operativo, cosi'
-                # una pagina non aspetta il job che sta scrivendo la stessa
-                # collezione. Vale anche per i lookup puntuali (find_one per
-                # id) quando il payload non serve.
+            needs_payload = _projection_needs_payload(projection, self._payload_fields)
+            lookup = _exact_lookup(selector)
+            if lookup and needs_payload:
+                # Lookup puntuale con payload (es. find_one({"id": ...})):
+                # l'indice remoto basta, la cache non aggiungerebbe nulla e la
+                # firma costerebbe una RPC in piu'. Senza lock operativo.
+                field, values = lookup
+                rows = await self.database._fetch_logical_documents_exact(
+                    self.name, field=field, values=values,
+                    excluded_fields=_excluded_projection_fields(projection),
+                )
+                return SheetCursor([
+                    apply_projection(document, projection)
+                    for document in (_normalise_document(row) for row in rows)
+                    if matches_filter(document, selector)
+                ])
+            if self._cache_can_filter(selector):
+                # Lettura senza lock operativo: una pagina non aspetta il job
+                # che sta scrivendo la stessa collezione. Senza payload arriva
+                # tutto dalla cache (anche i lookup puntuali); con payload la
+                # cache sceglie i documenti e Supabase li manda per id.
                 documents = await self._cached_snapshot()
                 if documents is not None:
+                    if needs_payload:
+                        matched = [
+                            str(document["_id"]) for document in documents
+                            if document.get("_id") is not None
+                            and matches_filter(document, selector)
+                        ]
+                        documents = await self._hydrate_by_ids(
+                            matched, _excluded_projection_fields(projection))
+                        return SheetCursor([
+                            apply_projection(document, projection) for document in documents
+                        ])
                     return SheetCursor([
                         apply_projection(document, projection)
                         for document in documents
