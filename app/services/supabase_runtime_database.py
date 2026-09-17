@@ -73,6 +73,9 @@ _STATUS_ALIGNMENT_MAX_BATCHES = 40
 # nuove non esistono (rolling deploy) o falliscono, si torna alla lettura
 # completa di prima: mai un risultato parziale.
 _CACHE_VERSIONS_TTL_SECONDS = 15.0
+# Firma fallita in modo transitorio: la cache resta valida per questo tempo
+# dall'ultima firma buona, invece di ripiegare su letture complete.
+_CACHE_VERSIONS_GRACE_SECONDS = 120.0
 _CACHE_MAX_DOCUMENTS_PER_COLLECTION = 150_000
 _CACHE_ENV_FLAG = "GC_RUNTIME_CACHE"
 # Presenza del payload nella versione leggera: le RPC proiettate (migrazione
@@ -877,6 +880,7 @@ class SupabaseRuntimeDatabase(SheetDatabase):
         self._cache_enabled = _cache_abilitata()
         self._versions: dict[str, tuple[int, str | None]] = {}
         self._versions_checked_at: float | None = None
+        self._versions_good_at: float | None = None
         self._versions_lock = asyncio.Lock()
 
     async def _collection_versions(self) -> dict[str, tuple[int, str | None]] | None:
@@ -902,14 +906,12 @@ class SupabaseRuntimeDatabase(SheetDatabase):
                 if exc.status == 404 and exc.code == "PGRST202":
                     logger.warning("RPC gc_collection_versions assente: cache disattivata")
                     self._cache_enabled = False
-                else:
-                    logger.warning("Firma collezioni non disponibile (%s): lettura completa", exc)
-                return None
+                    return None
+                return self._versions_stantie(now, exc)
             except Exception as exc:  # noqa: BLE001 - la cache non deve mai bloccare una lettura
-                logger.warning("Firma collezioni non disponibile (%s): lettura completa", exc)
-                return None
+                return self._versions_stantie(now, exc)
             if not isinstance(rows, list):
-                return None
+                return self._versions_stantie(now, "risposta non valida")
             versions: dict[str, tuple[int, str | None]] = {}
             for row in rows:
                 if not isinstance(row, dict) or not row.get("collection"):
@@ -921,7 +923,27 @@ class SupabaseRuntimeDatabase(SheetDatabase):
                 )
             self._versions = versions
             self._versions_checked_at = now
+            self._versions_good_at = now
             return versions
+
+    def _versions_stantie(self, now: float, motivo: Any):
+        """Firma fallita in modo transitorio (timeout, 503 durante una ricarica
+        dello schema di PostgREST). Entro _CACHE_VERSIONS_GRACE_SECONDS
+        dall'ultima firma buona la cache resta valida cosi' com'e' (dati al
+        piu' vecchi di quel tanto, le scritture di questo processo sono
+        comunque gia' dentro) invece di ripiegare su letture complete: a
+        database saturo sono proprio quelle a far fallire la firma
+        (17/09 07:43-07:45: 30 fallimenti → 30 letture complete in 2 minuti)."""
+        eta = None if self._versions_good_at is None else now - self._versions_good_at
+        if self._versions and eta is not None and eta < _CACHE_VERSIONS_GRACE_SECONDS:
+            logger.warning(
+                "Firma collezioni non disponibile (%s): cache mantenuta (firma di %.0f s fa)",
+                motivo, eta,
+            )
+            self._versions_checked_at = now
+            return self._versions
+        logger.warning("Firma collezioni non disponibile (%s): lettura completa", motivo)
+        return None
 
     def invalidate_versions(self) -> None:
         """Forza una nuova firma alla prossima lettura (dopo scritture esterne note)."""

@@ -800,7 +800,13 @@ passo fallito = bug da correggere subito. Cosa è stato trovato e cambiato
   `gestionale.documents` con trigger (130 probe in 13 minuti da 7 s l'una
   a database saturo); ora una sola probe in volo per processo, esito
   riusato 60 s (15 s se fallita), una probe oltre il budget continua in
-  background e il giro successivo ne raccoglie l'esito. Le scritture
+  background e il giro successivo ne raccoglie l'esito. **Finestra di
+  grazia della firma** (PR #477): se `gc_collection_versions` fallisce in
+  modo transitorio (timeout, 503 «schema cache» durante una migrazione)
+  la cache resta valida per 120 s dall'ultima firma buona invece di
+  ripiegare su letture complete (07:43–07:45: 30 fallimenti = 30 letture
+  complete a database già saturo); oltre la finestra, lettura completa
+  come prima. Le scritture
   del processo aggiornano la cache dopo l'esito positivo dell'RPC. Trigger
   `documents_touch_updated_at` garantisce `updated_at` anche per scritture
   fatte fuori dall'app. Fallback automatico alla lettura completa se le RPC

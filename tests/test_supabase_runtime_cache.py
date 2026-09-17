@@ -485,3 +485,37 @@ def test_find_senza_selettore_e_distinct_restano_in_cache():
     tutti, tipi, calls = _run(scenario())
     assert len(tutti) == 2 and tipi == ["scadenza"]
     assert calls == []
+
+
+def test_firma_in_timeout_mantiene_la_cache_per_la_finestra_di_grazia(monkeypatch):
+    """17/09 07:43: durante la ricarica dello schema di PostgREST la firma ha
+    risposto 503 per due minuti e OGNI lettura e' tornata alla lettura
+    completa (30 in 2 minuti, a database gia' saturo). Entro la finestra di
+    grazia la cache resta valida; oltre, si torna alla lettura completa."""
+    monkeypatch.setattr(srd, "_CACHE_VERSIONS_TTL_SECONDS", 0.0)
+    runtime = _fake()
+    guasta = {"on": False}
+    originale = runtime._rpc
+
+    async def rpc(function_name, payload):
+        if function_name == "gc_collection_versions" and guasta["on"]:
+            runtime.calls.append(function_name)
+            raise srd.SupabaseRPCError(function_name, 503, "", "Could not query the database for the schema cache")
+        return await originale(function_name, payload)
+
+    runtime._rpc = rpc
+
+    async def scenario():
+        await runtime["alerts"].find({}).to_list(None)
+        guasta["on"] = True
+        runtime.calls.clear()
+        dentro = await runtime["alerts"].find({"stato": "aperto"}).to_list(None)
+        letture_dentro = list(runtime.letture_complete())
+        monkeypatch.setattr(srd, "_CACHE_VERSIONS_GRACE_SECONDS", 0.0)
+        runtime.calls.clear()
+        fuori = await runtime["alerts"].find({"stato": "aperto"}).to_list(None)
+        return dentro, letture_dentro, fuori, list(runtime.letture_complete())
+
+    dentro, letture_dentro, fuori, letture_fuori = _run(scenario())
+    assert [d["_id"] for d in dentro] == ["a1"] and letture_dentro == []
+    assert [d["_id"] for d in fuori] == ["a1"] and letture_fuori == ["gc_fetch_collection"]
