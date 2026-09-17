@@ -2,11 +2,11 @@
 
 <!-- gestionalecloud-doc
 status: current
-reviewed_at: 2026-08-21
-storage_architecture: drive-only
+reviewed_at: 2026-09-17
+storage_architecture: supabase
 -->
 
-Inventario rigenerato il 2026-08-21 da `scripts/refresh_markdown_docs.py`.
+Inventario rigenerato il 2026-09-17 da `scripts/refresh_markdown_docs.py`.
 Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 
 ## Significato degli stati
@@ -21,12 +21,12 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 
 ## Riepilogo
 
-- Correnti: **28**
+- Correnti: **29**
 - Riferimento: **28**
 - Pianificati: **7**
 - Generati: **5**
-- Storici: **11**
-- Totale: **79**
+- Storici: **47**
+- Totale: **116**
 
 ## Elenco completo
 
@@ -88,6 +88,7 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 | `memoria/MAPPA_MODULI.md` | `current` | Autorità operativa corrente |
 | `memoria/MAPPA_ROUTER.md` | `generated` | Artefatto meccanico; rigenerare dalla sorgente indicata |
 | `memoria/PIANO_CONTI_UFFICIALE_CERALDI.md` | `reference` | Dettaglio di dominio subordinato ai documenti correnti |
+| `memoria/README_ARCHIVIO_APP.md` | `current` | Autorità operativa corrente |
 | `memoria/REFACTOR_APP_PAGINA_PER_PAGINA_2026-09-05.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `memoria/SPECIFICA_F24_CEDOLINI_IRES_IRAP_CHAT.md` | `reference` | Dettaglio di dominio subordinato ai documenti correnti |
 | `memoria/SPECIFICA_IVA.md` | `reference` | Dettaglio di dominio subordinato ai documenti correnti |
@@ -100,6 +101,42 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 | `memoria/endpoints/07-hr-noleggio-verbali.md` | `reference` | Dettaglio di dominio subordinato ai documenti correnti |
 | `memoria/endpoints/08-sistema-admin.md` | `reference` | Dettaglio di dominio subordinato ai documenti correnti |
 | `memoria/endpoints/README.md` | `reference` | Dettaglio di dominio subordinato ai documenti correnti |
+| `memoria/hr/CLAUDE.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `memoria/hr/modelli/README.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `memoria/lotti/.claude/skills/audit-codice/SKILL.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `memoria/lotti/.claude/skills/bonifica-design/SKILL.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `memoria/lotti/.claude/skills/collaudo-funzionale/SKILL.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `memoria/lotti/.claude/skills/guida-operativa/SKILL.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `memoria/lotti/CLAUDE.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `memoria/lotti/DOCUMENTAZIONE.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `memoria/lotti/MAPPA_VERITA.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `memoria/lotti/README.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `memoria/lotti/RISTRUTTURAZIONE_NAVIGAZIONE.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `memoria/lotti/design_handoff/KIT_ALTRE_APP.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `memoria/lotti/design_handoff/PROMPT_USABILITA.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `memoria/lotti/design_handoff/README.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `memoria/lotti/docs/CONSOLIDAMENTO.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `memoria/lotti/docs/KEEPALIVE_RENDER.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `memoria/lotti/docs/PANORAMICA_APP.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `memoria/lotti/docs/ROADMAP_INTERCONNESSIONE.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `memoria/lotti/memory/AUDIT_E2E_LIVE.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `memoria/lotti/memory/AUDIT_FLUSSI.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `memoria/lotti/memory/AUDIT_IMPORT_DATABASE.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `memoria/lotti/memory/AUDIT_NAVIGAZIONE.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `memoria/lotti/memory/AUDIT_QUANTITA_UNITA.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `memoria/lotti/memory/AUDIT_REGISTRI_STAMPE.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `memoria/lotti/memory/AUDIT_SCHEDULER_TEMPERATURE.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `memoria/lotti/memory/AUDIT_SICUREZZA.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `memoria/lotti/memory/AUDIT_VISIVO_MOBILE_TABLET.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `memoria/lotti/memory/PIANO_ESECUTIVO.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `memoria/lotti/memory/PIANO_REFACTOR.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `memoria/lotti/memory/PRD.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `memoria/lotti/memory/REGOLE_ENZO.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `memoria/lotti/memory/STATO.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `memoria/lotti/memory/claude.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `memoria/lotti/print-agent/README.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `memoria/menu/ALLERGENI_MENU.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `memoria/menu/test_result.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `memoria/moduli/CEDOLINI.md` | `reference` | Dettaglio di dominio subordinato ai documenti correnti |
 | `memoria/moduli/DIPENDENTI.md` | `reference` | Dettaglio di dominio subordinato ai documenti correnti |
 | `memoria/moduli/DOCUMENTI_INBOX.md` | `reference` | Dettaglio di dominio subordinato ai documenti correnti |

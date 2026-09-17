@@ -18,6 +18,102 @@ Questo file contiene le regole operative per chi modifica il progetto. Il
 codice corrente, i test e la configurazione effettiva di produzione hanno
 precedenza sui report storici.
 
+## Memoria canonica unica del gruppo Ceraldi
+
+**[17/09/2026, decisione del titolare] Questo file è l'unica memoria di
+progetto del gruppo.** Prima erano sparsi `AppDipendenti/CLAUDE.md`,
+`Lotti/CLAUDE.md` + `Lotti/memory/REGOLE_ENZO.md` + `Lotti/memory/claude.md`,
+`Menu/` e `Gestionale/AGENTS.md`, con regole che in più punti si
+contraddicevano (tre "repository canonici" diversi, due politiche di branch
+opposte, due scadenze di sessione per lo stesso PIN). Ora c'è un solo file: i
+`CLAUDE.md` degli altri repository sono ridotti a un rimando a questo.
+
+### Le quattro app sono un solo servizio
+
+Un unico servizio Render (`gestionalecloud.onrender.com`, deploy automatico da
+`main`) e un unico progetto Supabase servono tutto:
+
+| Cosa | Dove vive ora | Codice |
+| --- | --- | --- |
+| ERP / contabilità | `/` | `app/` + `frontend/` |
+| HR, portale dipendenti | `/hr`, `/hr/portale` | `app/hr/` + `frontend_hr/` |
+| Menu pubblico e admin | `/menu` | `app/menu/` + `frontend_menu/` |
+| Lotti (HACCP) | `/lotti` | `app/lotti/` + `frontend_lotti/` |
+
+### Siti e repository dismessi — non riaprirli
+
+Verificati spenti il 17/09/2026: `appdipendenti.onrender.com` (404),
+`lotti-frontend.onrender.com` (404), `lotti-backend-2wwb.onrender.com` (404),
+`www.ceraldiapp.it` (non risponde). Non vanno riaccesi né citati come
+indirizzi validi: ogni riferimento residuo nel codice è solo una voce CORS o
+un commento. Restano da chiudere a mano, quando il titolare vuole: il DNS di
+`ceraldiapp.it` presso il registrar e gli eventuali servizi Render sospesi.
+
+I repository `ceraldicontabilita/AppDipendenti`, `Lotti` e `Menu` restano
+come **archivio del sorgente originale**: da lì si è copiato il codice dentro
+`app/hr`, `app/lotti`, `app/menu`, e non vengono più deployati. Il repository
+`ceraldicontabilita/Gestionale` (con il suo `AGENTS.md` che vietava di
+riprendere il codice di GestionaleCloud) non è più raggiungibile: era un
+tentativo di riscrittura parallela, abbandonato. **L'unico repository vivo è
+`ceraldicontabilita/GestionaleCloud`.**
+
+## Direttive permanenti del titolare
+
+Valgono su tutte e quattro le app, sempre, anche quando non sono ripetute nel
+resto del file.
+
+### Metodo
+- Rispondere e ragionare **in italiano**, risultati prima delle spiegazioni.
+- **Tutto va portato su `main`**: si sviluppa su un branch, ma il lavoro non è
+  consegnato finché non è unito su `main` e deployato. Render pubblica solo da
+  `main`.
+- Le funzionalità **si collaudano davvero** (dati di prova reali sul backend
+  live, poi ripuliti), non si dichiarano a posto leggendo il codice. Se il
+  titolare mostra uno screenshot con il bug ancora presente dopo un fix, il fix
+  non ha coperto quel caso: si indaga da zero sui dati reali.
+- Se un problema non si risolve subito, **cercare come lo risolvono altri
+  progetti reali** (GitHub, web) e integrare la soluzione, invece di
+  descrivere il problema e fermarsi.
+- Chiudere ogni sessione con il link di produzione: **https://gestionalecloud.onrender.com**
+- Se trovi errori, **correggili**: non limitarti a segnalarli.
+
+### Dati e prestazioni
+- **Niente doppioni, codice morto o sistemi paralleli: un solo sistema per
+  funzione.** Quando ne compare un secondo, si elimina, non si affianca.
+- **Non inventare numeri.** Importi tabellari (CCNL, prezzi, aliquote) vanno
+  presi dalla fonte o dichiarati da verificare.
+- I dati già letti **si tengono in memoria**: ogni rilettura inutile di
+  Supabase o Drive è un costo. Liste, conteggi e lookup usano sempre una
+  proiezione senza payload; il payload si legge per id.
+
+### Credenziali
+- Token, PIN, password e chiavi **solo nelle variabili d'ambiente di Render**
+  (`render.yaml` le dichiara con `sync: false`). Mai nel codice, mai nei file
+  di memoria, mai in chat, nemmeno mascherati.
+- Per le azioni live che richiedono il PIN, usarlo inline in un singolo
+  comando e non scriverlo su disco.
+- Mai `git add -A`: si aggiungono solo i file pertinenti e verificati.
+
+### Design (vale per HR, Menu e Lotti; l'ERP ha il suo layout)
+- Salvia `#5b7a6b` (scuro `#3f5a4e`) su crema `#faf7f0`; card `#fffefb`,
+  bordi sabbia `#e6e0d4`, inchiostro `#2a3329`.
+- Semantici caldi: pericolo `#d35f4e`, avviso `#c4894a`, successo `#3d8168`,
+  informazione `#8a6f47`.
+- **Vietati blu, indaco, viola e ciano**, sia come classi Tailwind sia come
+  hex negli stili inline: si rimappano su salvia o sabbia.
+- Icone Lucide, mai emoji nelle interfacce nuove (su Android rendono con
+  colori di sistema non controllabili).
+- Ogni pagina centrata, **mai scroll orizzontale su smartphone**: le tabelle
+  larghe diventano card impilate. Tocco minimo 44px.
+- Le app portate pari pari mantengono il loro aspetto: nessuna contaminazione
+  con il layout dell'ERP.
+
+### Le mani sporche (04/07/2026)
+Il pasticcere e il banconista hanno **sempre le mani sporche**: nei flussi
+operativi si sceglie da tendine, chip e bottoni grandi, non si scrive a
+tastiera. Ogni campo di testo libero (motivi, azioni correttive, note) va
+sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
+
 ## Lingua e risultato atteso
 
 - Rispondi e documenta in italiano.
@@ -1286,6 +1382,84 @@ sempre la sorgente persistente.
 - Non spostare né cancellare email e documenti originali.
 - Eliminazioni reali, pagamenti e associazioni definitive ambigue richiedono
   conferma esplicita al momento dell'azione.
+
+## Dominio per app: le regole che non stanno nel codice
+
+Assorbite il 17/09/2026 dai `CLAUDE.md` dei repository originali, che ora
+rimandano qui.
+
+### HR — contratto, accessi, turni
+
+- **CCNL applicato: Pubblici Esercizi, Ristorazione Collettiva e Commerciale e
+  Turismo** (Confcommercio-FIPE), codice CNEL **H05Y**, rinnovo 5/6/2024.
+  **Non è il Terziario.** 40 ore settimanali, 14 mensilità (tredicesima a
+  dicembre, quattordicesima a luglio), 26 giorni di ferie, enti EBNT/EBT,
+  Fondo EST per la sanità, Fon.Te. per la previdenza complementare.
+- **Login dipendente = tocca il tuo nome + PIN** (decisione esplicita del
+  titolare): su un dispositivo condiviso in negozio digitare il cognome ad
+  ogni apertura era scomodissimo, e i nomi non sono un segreto. L'accesso
+  amministratore è una voce a parte, non la scheda di un dipendente.
+- Sessione lunga e persistente (7 giorni) per cucina e pasticceria: il portale
+  riapre senza richiedere il PIN finché il token è valido. "Esci" chiude
+  subito.
+- **Turni data-driven**, un solo punto di configurazione ("Configura turni"):
+  per ogni dipendente modalità sala o barista, giorno di riposo fisso, giorni
+  di Lunga, onomastico, flag "può coprire il bar". Nessun nome cablato nel
+  codice. La preferenza di riposo scelta dal dipendente vince sul riposo fisso
+  per quella settimana.
+- **Timbrature solo in sede**: geofencing sulla sede in `impostazioni`
+  (Ceraldi Caffè, Piazza Carità 14, Napoli, circa 40.842949 / 14.2489, raggio
+  200 metri).
+- Attività: bar e pasticceria, Ceraldi Group S.r.l., titolare Vincenzo Ceraldi.
+
+### Lotti — HACCP, magazzino, prezzi
+
+- **Un solo punto d'ingresso per le fatture** e deduplica sempre attiva
+  (fornitore + numero + data).
+- **Prezzi solo da acquisti reali in fattura XML.** Gli ordini hanno totali
+  veri: prezzo di riga, aliquota IVA presa dall'XML, imponibile, IVA e totale
+  che si ricalcolano a ogni variazione, con le stesse colonne nel PDF.
+- **FIFO consuma sempre il lotto con la data fattura più vecchia.**
+- **Le bevande e gli alcolici del reparto bar (acqua, birre, vino, prosecco,
+  liquori, amari, sciroppi, succhi, bibite) si acquistano e si confrontano a
+  cartone o a unità, MAI a chilo o a litro**: un rum o una birra si pagano a
+  bottiglia, non al chilo.
+- Conversioni reali: uovo 60 g, tuorlo 19 g, albume 33 g; pezzi e chili si
+  convertono con il peso del pezzo.
+- Ogni riga d'ordine dice **chi l'ha inserita** (dipendente, lavagna, riordino
+  automatico, produzione, colazione).
+- Le righe-nota (omaggi, riferimenti) non diventano prodotti di magazzino.
+  Soglia minima e quantità di riordino predefinite a 1.
+- Accessi: PIN valido 2 ore; i dipendenti entrano ovunque tranne le pagine di
+  amministrazione (impostazioni, PIN, personale, controllo dati, backoffice,
+  configurazione, backup, stampanti). Sui tablet condivisi il magazzino chiude
+  la sessione dopo 10 minuti.
+
+### Menu — allergeni
+
+- Gli allergeni sono un obbligo di legge, non una cortesia: **Regolamento UE
+  1169/2011** e **D.Lgs. 231/2017** impongono di dichiarare i 14 allergeni
+  principali per ogni prodotto. Il dettaglio prodotto per prodotto è in
+  `memoria/menu/ALLERGENI_MENU.md`.
+- Un prodotto nuovo creato in Lotti arriva nel Menu con le stesse immagini e
+  il flag "visibile nel menu pubblico".
+
+## Indice dei documenti di riferimento
+
+Questo file è la memoria. Gli altri `.md` del repository sono **materiale di
+consultazione o output generato**, non regole: si leggono quando servono, non
+a ogni sessione.
+
+| Documento | Cosa contiene |
+| --- | --- |
+| `PROMPT_MASTER.md` | Specifica normativa completa, rigenerata da `scripts/genera_prompt_master.py`. Non si modifica a mano. |
+| `memoria/MAPPA_ENDPOINT_COMPLETA.md`, `memoria/endpoints/*.md` | Mappa generata di tutti gli endpoint per area. |
+| `memoria/AUDIT_*.md` | Audit storici datati: fotografie di un momento, non regole correnti. |
+| `docs/REGOLA_FISSA_ATTESE.md` | Regola delle attese e delle prove per i flussi che creano obblighi. |
+| `memoria/lotti/`, `memoria/hr/`, `memoria/menu/` | Documenti assorbiti dai repository originali (guide, PRD, changelog storici). |
+
+Quando uno di questi contraddice questo file, **vince questo file**: gli audit
+e i changelog raccontano com'erano le cose in una certa data.
 
 ## Verifica e pubblicazione
 

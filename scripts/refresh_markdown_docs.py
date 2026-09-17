@@ -11,7 +11,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-REVIEW_DATE = "2026-08-21"
+REVIEW_DATE = "2026-09-17"
 
 GENERATED = {
     "memoria/AUDIT_FRONTEND_DEAD_CODE.md",
@@ -45,6 +45,7 @@ CURRENT = {
     "memoria/FORNITORI_REGOLA_CANONICA.md",
     "memoria/INDEX.md",
     "memoria/MAPPA_MODULI.md",
+    "memoria/README_ARCHIVIO_APP.md",
 }
 
 REFERENCE = {
@@ -130,7 +131,7 @@ def marker(status: str) -> str:
         "<!-- gestionalecloud-doc\n"
         f"status: {status}\n"
         f"reviewed_at: {REVIEW_DATE}\n"
-        "storage_architecture: drive-only\n"
+        "storage_architecture: supabase\n"
         "-->"
     )
 
