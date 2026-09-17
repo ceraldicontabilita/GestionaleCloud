@@ -2,8 +2,8 @@
 
 <!-- gestionalecloud-doc
 status: current
-reviewed_at: 2026-08-21
-storage_architecture: drive-only
+reviewed_at: 2026-09-17
+storage_architecture: supabase
 -->
 
 Queste istruzioni valgono per il repository canonico
@@ -12,8 +12,8 @@ Queste istruzioni valgono per il repository canonico
 
 ## Prima di modificare
 
-- Leggere `CLAUDE.md`, `PRODUCT.md`, `DESIGN.md` e
-  `LOGICA_FUNZIONAMENTO.md`.
+- Leggere `CLAUDE.md` (unico documento normativo dal 17/09/2026: prodotto,
+  design system, logica di funzionamento, regola delle attese e cronologia).
 - Trattare codice, test e configurazione corrente come autorità; i report
   datati sono fotografie storiche.
 - Non includere nel commit modifiche locali non pertinenti.
@@ -65,8 +65,8 @@ Queste istruzioni valgono per il repository canonico
 - Ogni contatore/allerta deve aprire l'elenco sottostante.
 - Evitare plance di pulsanti di manutenzione: i flussi normali devono essere
   automatici e idempotenti.
-- Rispettare le regole di `DESIGN.md` per tabelle, modali, stati, accessibilità
-  e responsività.
+- Rispettare le regole della sezione «Design system» di `CLAUDE.md` per
+  tabelle, modali, stati, accessibilità e responsività.
 
 ## Verifica minima
 

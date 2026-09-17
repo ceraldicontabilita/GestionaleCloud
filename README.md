@@ -2,7 +2,7 @@
 
 <!-- gestionalecloud-doc
 status: current
-reviewed_at: 2026-09-15
+reviewed_at: 2026-09-17
 storage_architecture: supabase
 -->
 
@@ -144,7 +144,7 @@ La procedura amministrativa deve essere eseguita in quest'ordine:
 I documenti originali su Drive non vengono eliminati dalla migrazione del
 registro. Nel solo workflow Calderone, dopo un esito completo e verificato,
 l'originale viene spostato fra le cartelle operative dello stesso Calderone
-secondo [docs/RUNBOOK-RENDER-CALDERONE.md](docs/RUNBOOK-RENDER-CALDERONE.md).
+secondo la sezione «Runbook Render — Calderone» di [CLAUDE.md](CLAUDE.md).
 
 ## Albero del repository
 
@@ -169,8 +169,7 @@ scripts/                        audit, mappe e manutenzione verificabile
 tests/                          test backend e guardie architetturali
 memoria/                        specifiche e mappe tecniche
 page_catalog.json               catalogo macchina delle 65 pagine
-CLAUDE.md                       istruzioni operative per gli agenti
-PRODUCT.md                      obiettivi e confini del prodotto
+CLAUDE.md                       unico documento normativo (regole, prodotto, design, logica)
 ```
 
 ## Moduli applicativi
@@ -231,11 +230,13 @@ di considerare pubblicata una modifica:
 
 ## Documentazione
 
-- `PROMPT_MASTER.md` — unica autorità normativa: prodotto, dati, Gmail, Drive,
-  variabili, pagine, router, endpoint, divieti e gate.
-- `CLAUDE.md` — regole vincolanti per lavorare nel repository.
-- `PRODUCT.md` — visione, flussi e albero funzionale.
-- `LOGICA_FUNZIONAMENTO.md` — comportamento operativo per gli utenti.
+- `CLAUDE.md` — unico documento normativo (dal 17/09/2026): regole vincolanti,
+  prodotto, design system, logica di funzionamento, regola delle attese,
+  fornitori, mappa dei moduli, cedolini, policy fiscale, MCP, runbook
+  Render/RT, disaster recovery e cronologia.
+- `PROMPT_MASTER.md` — appendice meccanica generata dal codice (pagine,
+  variabili, router, endpoint); rigenerata da `scripts/genera_prompt_master.py`,
+  non editata a mano.
 - `page_catalog.json` — route/componenti/accessi/stato audit.
 - `memoria/JSON_INVENTORY.json` — inventario e politica dei file JSON.
 - `memoria/pagine/*.json` — mappe tecniche delle pagine.

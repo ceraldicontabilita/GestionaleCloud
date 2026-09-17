@@ -2,12 +2,12 @@
 
 <!-- gestionalecloud-doc
 status: historical
-reviewed_at: 2026-08-21
-storage_architecture: drive-only
+reviewed_at: 2026-09-17
+storage_architecture: supabase
 -->
 
 > [!NOTE]
-> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura corrente (Supabase come registro, Drive per gli originali) usare `README.md` e `CLAUDE.md`.
 
 Verifica in **sola lettura** dei dati reali di produzione (Supabase, progetto
 `GestionaleCloud` = `lohczjdiawjryuopncwc`, tabella `gestionale.documents`;
@@ -123,7 +123,7 @@ Altri controlli sull'intero insieme:
 | Fatture pagate senza movimento banca | — | **non verificabile** (nessuna fattura in archivio) | — |
 | Prime note orfane (fattura eliminata/assente) | — | **25/25** puntano a `invoices` inesistenti | ERRORE (conseguenza di §0.1) |
 | Contropartita in partita doppia (33.03.01 Fornitori / 19.01.01 Banca) | `movimenti_contabili` | **0 scritture** | ERRORE (vedi §2) |
-| Registro relazioni (`entity_relations`) | `group by relation_type` | solo 23 relazioni `allocates_salary_payment`; **nessuna** relazione fattura↔banca | ERRORE: la "Relazioni" del §12 di LOGICA_FUNZIONAMENTO non copre le fatture |
+| Registro relazioni (`entity_relations`) | `group by relation_type` | solo 23 relazioni `allocates_salary_payment`; **nessuna** relazione fattura↔banca | ERRORE: la "Relazioni" del §12 di CLAUDE.md (già LOGICA_FUNZIONAMENTO) non copre le fatture |
 
 **Cause nel codice e come dovrebbe essere**
 
@@ -446,7 +446,7 @@ archivi (12/12, 12/12, 12/12, 13/13). Discrepanze:
   (`_candidati_univoci`) accetta un bonifico per la busta del mese M solo se
   la data cade in **[20/M, 15/M+1]**. Un saldo pagato il 20/02 può quindi
   agganciarsi solo alla busta di **febbraio**, mai a gennaio. La regola scritta
-  in `LOGICA_FUNZIONAMENTO.md §7` è l'opposta ("prima del 25 → mese
+  in `CLAUDE.md (già LOGICA_FUNZIONAMENTO.md) §7` è l'opposta ("prima del 25 → mese
   precedente"). In più le 12 buste di gennaio non esistono in
   `prima_nota_salari`, quindi il saldo di gennaio non ha comunque una riga su
   cui posarsi.
@@ -577,7 +577,7 @@ prima nota (`/prima-nota/banca?movimento=<prima_nota_banca_id>`); (3) Scadenza
 → movimento pagante (valorizzare `movimento_id`); (4) Bilancio → `bilancio-verifica?conto=`
 → `libro-giornale?conto=&data_da=&data_a=` → documento (`invoice_key`/`corrispettivo_id`);
 (5) F24 → quietanza (PDF `fiscal_documents`) e → EC `I24`. Ogni link mostra
-tipo, id, data, importo e origine (regola §12 di LOGICA_FUNZIONAMENTO).
+tipo, id, data, importo e origine (regola §12 di CLAUDE.md (già LOGICA_FUNZIONAMENTO)).
 Test: `frontend/src/pages/*.navigation.test.jsx` per ogni link (pattern già
 usato in `RiconciliazioneHub.navigation.test.jsx`).
 
@@ -594,7 +594,7 @@ usato in `RiconciliazioneHub.navigation.test.jsx`).
 | **Alta** | 1 | 4 assegni registrati due volte in PN Banca (4.853,99 €) | `app/services/assegni_estratto_conto.py`, `routers/bank/assegni.py` | PR 3: scrittura idempotente per `estratto_conto_id` |
 | **Alta** | 3 | Liquidazione IVA 2026 esposta tutta a debito (acquisti 0) e febbraio "calcolato" con 0 corrispettivi; 42 giorni Q1 senza chiusura RT | `iva_liquidation_query.py:45-81, 128` | PR 9: stati `DATI_MANCANTI` / `archivio_fatture_vuoto` |
 | **Alta** | 4 | Nessuna funzione "avviso bonario"; `verifica-codice` legge solo `quietanze_f24` (vuota); 19/19 F24 2019-22 "da pagare"; 9 I24 2026 (21.200,85 €) senza modello | `f24_riconciliazione.py:818-921`, `fascicolo_f24.py:66`, `fiscal_control.py:172` | PR 11 (endpoint interroga avviso) + PR 12 (un solo registro F24/quietanze/banca) |
-| **Alta** | 5 | Bonifici stipendio imputati al mese sbagliato (8 saldi di gennaio 2026 sul mese di febbraio, es. Capezzuto 430, Vespa 406) | `stipendi_bonifici.py:174-186` vs `LOGICA_FUNZIONAMENTO.md §7` | PR 13 |
+| **Alta** | 5 | Bonifici stipendio imputati al mese sbagliato (8 saldi di gennaio 2026 sul mese di febbraio, es. Capezzuto 430, Vespa 406) | `stipendi_bonifici.py:174-186` vs `CLAUDE.md` («Logica di funzionamento -> PayPal, bonifici e assegni») | PR 13 |
 | **Alta** | 5 | Prima nota salari incompleta/duplicata: 26 cedolini senza riga (gen 12, lug 14), 9 righe senza cedolino, 2 buste doppie (Ceraldi V./Valerio 05/2026), 3 righe con bonifico agganciato ma `importo_bonifico = 0` | `prima_nota_salari.py` import, `app/main.py` sync, migrazione `recover_salary_relations_20260821_v1` | PR 14 + PR 15 |
 | **Media** | 1 | Match fattura↔SDD su solo token "AMAZON" + importo, con soggetto pagante diverso (Amazon Payments Europe) | `bank_payment_allocations.py:353-377` | PR 4 |
 | **Media** | 2 | Due piani dei conti (31 operativi in `piano_conti` vs CEE ufficiale); conti POS `15.07.xx/19.01.05/75.01.07.0x` assenti dal documento ufficiale; 117 righe di Prima Nota senza `conto_contabile` | `piano_conti_ufficiale.py`, `mapping_piano_conti.py`, `PIANO_CONTI_UFFICIALE_CERALDI.md` | PR 7 |

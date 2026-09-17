@@ -31,13 +31,18 @@ def existing_repository_markdown() -> set[str]:
         for line in result.stdout.splitlines()
         if line.strip() and (ROOT / line.strip()).exists()
     }
-    paths.update({"docs/MARKDOWN_INVENTORY.md", "memoria/DISASTER_RECOVERY_DRIVE.md"})
+    paths.update({"docs/MARKDOWN_INVENTORY.md"})
     return paths
 
 
 def test_legacy_collection_map_is_removed_and_drive_runbook_exists() -> None:
+    # [17/09/2026] memoria/DISASTER_RECOVERY_DRIVE.md è stato unificato in
+    # CLAUDE.md (sezione "Disaster recovery — archivio Supabase e originali
+    # Drive"), non è più un file a sé.
     assert not (ROOT / "memoria" / "MAPPA_COLLEZIONI.md").exists()
-    assert (ROOT / "memoria" / "DISASTER_RECOVERY_DRIVE.md").is_file()
+    assert not (ROOT / "memoria" / "DISASTER_RECOVERY_DRIVE.md").exists()
+    claude = (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "Disaster recovery — archivio Supabase e originali Drive" in claude
 
 
 def test_inventory_covers_every_repository_markdown() -> None:
@@ -76,7 +81,7 @@ def test_historical_documents_are_visibly_non_authoritative() -> None:
             continue
         text = (ROOT / path).read_text(encoding="utf-8")
         assert "Snapshot storico" in text, path
-        assert "LOGICA_FUNZIONAMENTO.md" in text, path
+        assert "CLAUDE.md" in text, path
 
 
 def test_planned_documents_are_visibly_non_operational() -> None:
@@ -88,7 +93,8 @@ def test_planned_documents_are_visibly_non_operational() -> None:
 
 
 def test_docs_state_real_supabase_cutover_boundary() -> None:
-    logic = (ROOT / "LOGICA_FUNZIONAMENTO.md").read_text(encoding="utf-8")
+    # [17/09/2026] LOGICA_FUNZIONAMENTO.md è stato unificato dentro CLAUDE.md.
+    logic = (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "Supabase è l'unico registro operativo" in logic
     assert "non copia i documenti nella RAM" in logic

@@ -2,21 +2,34 @@
 
 <!-- gestionalecloud-doc
 status: current
-reviewed_at: 2026-09-15
+reviewed_at: 2026-09-17
 storage_architecture: supabase
 -->
 
 Aggiornato il 20/08/2026 sul codice di `main` del repository canonico
 `ceraldicontabilita/GestionaleCloud`.
 
-Prima di ogni intervento leggere `PROMPT_MASTER.md`: è la specifica normativa
-unica. Questo file è soltanto il punto di ingresso operativo per Claude.
-Leggere e applicare anche `docs/REGOLA_FISSA_ATTESE.md` per qualsiasi flusso
-che crea obblighi, attese, prove o riconciliazioni.
+**Questo file è l'unico documento normativo di GestionaleCloud** (unificato
+il 17/09/2026: prima le regole erano sparse fra CLAUDE.md, PROMPT_MASTER.md,
+AGENTS.md, DESIGN.md, PRODUCT.md, LOGICA_FUNZIONAMENTO.md e una decina di file
+in `docs/`/`memoria/`; i file autonomi sono stati assorbiti qui e cancellati).
+`PROMPT_MASTER.md` resta a parte solo perché è **generato dal codice**
+(`scripts/genera_prompt_master.py`, catalogo pagine/variabili/endpoint): non
+va letto come specifica normativa, si rigenera da solo e non si edita a mano.
 
-Questo file contiene le regole operative per chi modifica il progetto. Il
-codice corrente, i test e la configurazione effettiva di produzione hanno
-precedenza sui report storici.
+Il codice corrente, i test e la configurazione effettiva di produzione hanno
+sempre precedenza sui report storici presenti più sotto in questo file.
+
+Indice delle sezioni normative: [Prodotto](#prodotto) ·
+[Design system](#design-system) · [Logica di funzionamento](#logica-di-funzionamento) ·
+[Regola fissa — attese](#regola-fissa--fatti-obblighi-attese-ed-evidenze) ·
+[Autorità del repository](#autorità-del-repository) ·
+[Fornitori](#fornitori--regola-canonica) · [Mappa dei moduli](#mappa-dei-moduli) ·
+[Cedolini](#cedolini-regola-del-netto-pagabile) ·
+[Policy contabile fiscale](#policy-contabile-fiscale-documentale) ·
+[MCP](#mcp--specifica-e-runbook) · [Runbook Render/RT](#runbook-render--calderone) ·
+[Disaster recovery](#disaster-recovery--archivio-supabase-e-originali-drive) ·
+[Cronologia](#autorità-del-repository) (a seguire, sezioni datate).
 
 ## Lingua e risultato atteso
 
@@ -27,6 +40,828 @@ precedenza sui report storici.
   presenza della pagina. Verifica dati, relazioni, deduplica e risultato live.
 - Esponi all'utente il risultato e gli eventuali blocchi, non una sequenza di
   pulsanti tecnici da premere.
+
+## Prodotto
+
+`PROMPT_MASTER.md` resta come appendice meccanica rigenerata dal codice
+(catalogo pagine, variabili ed endpoint, tramite `scripts/genera_prompt_master.py`):
+non va editato a mano. La specifica normativa è questo documento (CLAUDE.md).
+
+GestionaleCloud è l'ERP interno di Ceraldi Group S.R.L. Unisce documenti,
+fatture, fornitori, Prima Nota, banca, fisco, personale, flotta e
+riconciliazioni in un solo grafo operativo consultabile.
+
+- Produzione: `https://impresasemplice.online`
+- Repository: `ceraldicontabilita/GestionaleCloud`
+- Utenti: amministrazione e team interno Ceraldi Group
+- Perimetro fiscale predefinito: P.IVA `04523831214`
+
+### Obiettivo
+
+Ogni fatto economico deve essere acquisito una sola volta, conservare la
+propria prova e risultare navigabile nelle sezioni collegate. Il gestionale
+deve automatizzare i casi certi, mostrare le ambiguità e impedire duplicati e
+scritture incoerenti.
+
+```text
+Documento originale
+  -> entità amministrativa
+     -> operazione canonica
+        -> Prima Nota
+           -> prova bancaria
+              -> riconciliazione e stato finale
+```
+
+### Principi di prodotto
+
+1. Una sola identità per operazione (`canonical_id` + `operation_id`).
+2. Originali immutabili e provenienza sempre visibile.
+3. Automatizzare soltanto corrispondenze certe e idempotenti.
+4. Mostrare candidati e motivazione nei casi ambigui.
+5. Un alert senza lista dei record interessati non è utile.
+6. Le pagine collegate devono mostrare lo stesso stato senza ricaricamenti o
+   manutenzioni manuali.
+7. Supabase è il registro operativo unico; Drive conserva gli originali.
+
+### Motore delle attese
+
+Ogni fatto validato crea immediatamente le attese obbligatorie del proprio
+flusso. Documenti e movimenti arrivati dopo sono evidenze: soddisfano un'attesa
+esistente, non la inventano. Il processo è chiuso soltanto quando tutte le
+attese obbligatorie sono `SODDISFATTO`, `NON_APPLICABILE` o `SUPERATO`.
+Dettagli e test richiesti sono in `docs/REGOLA_FISSA_ATTESE.md`.
+
+### Stato dell'architettura dati
+
+In produzione il backend è `supabase`: `gestionale.documents` conserva le
+collezioni logiche e `gestionale.blobs` i binari deduplicati. Il processo web
+non serve dati da una cache idratata: legge la collezione richiesta dal
+database e rende visibile una mutazione soltanto dopo conferma remota. Drive
+resta l'archivio degli originali documentali. Sheets è solo un fallback di
+sviluppo e non è la fonte della produzione.
+
+### Fonti dati per dominio
+
+Il prodotto aggrega fatti economici e documentali da sorgenti diverse. Le
+fonti operative sono queste:
+
+- Documenti: upload manuale, cartelle Drive configurate, email autorizzate e API dei gestori.
+- Fatture e fornitori: XML/P7M da Drive o SDI, anagrafiche e alias normalizzati.
+- Prima Nota: fatture, corrispettivi, banca, versamenti contanti, POS, cedolini e F24.
+- Riconciliazione: estratti conto, movimenti bancari, CRO/TRN, descrizioni normalizzate e riferimenti del gestore.
+- Fisco: modelli F24, codici tributo, quietanze, dichiarazioni e cartelle Drive dedicate.
+- Flotta e verbali: email autorizzate, verbali PDF, ZIP, contratti, storico assegnazioni e prove di pagamento.
+- Corrispettivi e POS: XML RT, chiusure terminale, accrediti del gestore e commissioni separate.
+
+Il criterio è invariabile: i documenti originali restano immutabili, gli
+importi non bastano da soli a provare un'associazione e i casi ambigui devono
+mostrare candidati, non collegamenti silenziosi.
+
+Albero Drive previsto:
+
+```text
+Radice GestionaleCloud
+├── REGISTRO DATI
+│   └── Ceraldi ERP - Registro dati
+├── PARTENOPAY
+├── CODICI TRIBUTO
+├── QUIETANZE
+└── DICHIARAZIONI
+```
+
+Il registro contiene 23 archivi canonici espliciti e può includere gli altri
+archivi logici scoperti nel database durante la migrazione. Ogni foglio ha un
+progressivo proprio e conserva il payload ricostruibile.
+
+### Albero funzionale
+
+Il catalogo macchina contiene 66 schermate operative.
+
+I riferimenti più delicati del catalogo sono:
+
+- Coerenza POS: pagina 40, nel ramo Riconciliazione.
+- Elaborazioni amministrative: pagina 56.
+- Elaborazioni legacy: pagina 57.
+
+```text
+Ceraldi ERP
+├── Accesso
+│   ├── Login
+│   └── Gestione riservata
+├── Dashboard e inserimento
+│   ├── Dashboard
+│   └── Inserimento rapido
+├── Fatture e fornitori
+│   ├── Archivio fatture
+│   ├── Corrispettivi
+│   ├── Fornitori
+│   └── Verifica fatture estere
+├── Prima Nota e personale
+│   ├── Prima Nota Cassa/Banca
+│   ├── Pulizia e controllo duplicati
+│   ├── Cedolini e salari
+│   └── Ritenute
+├── Flotta e verbali
+│   ├── Flotta noleggio
+│   ├── Verbali noleggio
+│   ├── Dettaglio verbale
+│   └── Riepilogo costi
+├── Contabilità e fisco
+│   ├── Piano dei conti e libro giornale
+│   ├── Bilancio e verifica
+│   ├── Controllo mensile e calendario fiscale
+│   ├── IVA, F24, ritenute e situazione fiscale
+│   ├── Cespiti, finanziaria, mutui e chiusura
+│   └── Budget, utile, previsioni acquisti e dati ISA
+├── Riconciliazione
+│   ├── Banca e documenti
+│   ├── F24 e stipendi
+│   ├── Bonifici e assegni
+│   ├── PayPal e PagoPA
+│   ├── Coerenza POS
+│   └── Movimenti banca
+├── Documenti e Drive
+│   ├── Import documenti
+│   ├── Archivio documenti
+│   ├── Indice documentale Drive
+│   └── Atti amministrativi
+├── Strumenti e integrazioni
+│   ├── Verifica coerenza
+│   ├── Commercialista, pianificazione e visure
+│   ├── OpenAPI e mittenti email
+│   ├── Learning Machine e agenti
+│   └── Impostazioni F24/AI
+├── App del gruppo portate pari pari (pagina intera, login proprio)
+│   └── HACCP Lotti (/lotti), HR (/hr), Menu (/menu)
+└── Amministrazione
+    ├── Sistema e Registro Drive
+    ├── MFA ed utenti
+    └── Elaborazioni e batch
+```
+
+### Flussi principali
+
+#### Fattura fornitore
+
+```text
+Drive/SDI -> XML/P7M -> deduplica -> fornitore -> fattura
+-> scadenza -> pagamento -> Prima Nota -> movimento banca -> riconciliata
+```
+
+#### Corrispettivi e POS
+
+```text
+XML RT -> ricavo/cassa
+SumUp API -> totale giornaliero -> trasferimento SumUp atteso
+chiusura Numia manuale serale -> trasferimento Numia atteso
+export storico Numia Drive -> deduplica + totale giornaliero -> trasferimento Numia atteso
+accredito gestore -> riconciliazione del trasferimento
+commissione -> costo separato
+```
+
+#### Versamento contanti
+
+```text
+Versamento -> uscita Cassa + entrata Banca (stesso operation_id)
+-> movimento estratto conto -> riconciliazione
+```
+
+#### F24
+
+```text
+Modello F24 -> righe per codice tributo -> quietanza
+-> movimento bancario -> stato riconciliato
+```
+
+#### PartenoPay e verbali
+
+```text
+Email/ZIP -> verbale -> targa -> storico driver
+-> pagamento/quietanza -> banca -> eventuale trattenuta
+```
+
+### Requisiti trasversali
+
+- Import idempotente tramite hash e identità canonica.
+- Relazioni bidirezionali navigabili.
+- Importi contabili al centesimo e date utente in formato italiano.
+- Prove distinte: documento, disposizione, ricevuta, quietanza, banca.
+- Log di audit per ogni modifica significativa.
+- Nessun pagamento automatico.
+- Nessuna associazione definitiva ambigua.
+- Nessuna eliminazione degli originali.
+
+### Esperienza utente
+
+- Interfaccia semplice, densa ma leggibile.
+- Stato record visibile a colpo d'occhio.
+- Azioni vicine al dato interessato.
+- Rosso = errore, verde = verificato, oro = attenzione.
+- Liste raggruppate per giorno quando la data è la chiave di lettura.
+- Modali chiudibili da pulsante, overlay ed Escape, con documento leggibile.
+- Desktop e mobile senza overflow; target touch minimo 44–48 px.
+- La manutenzione tecnica resta in Admin e non sostituisce l'automazione.
+
+### Non obiettivi
+
+- Eseguire pagamenti in autonomia.
+- Inventare classificazioni o legami mancanti.
+- Considerare una quietanza equivalente al movimento bancario.
+- Usare un importo come unica chiave di riconciliazione.
+- Conservare per sempre un archivio operativo non portabile.
+## Design system
+
+Design system operativo del frontend. La fonte eseguibile dei token è
+`frontend/src/lib/utils.js`; questa sezione spiega come usarli senza creare
+varianti locali.
+
+L'interfaccia deve sembrare un gestionale contabile, non una plancia di
+comandi. Ogni pagina deve aiutare a capire subito:
+
+1. quale periodo e archivio si stanno consultando;
+2. quali dati sono certi, attesi, riconciliati o da verificare;
+3. quale documento o movimento è l'origine del dato;
+4. quale azione è automatica e quale richiede una scelta umana.
+
+### Token ufficiali
+
+| Uso | Valore |
+|---|---|
+| Primario navy | `#0f2744` |
+| Primario chiaro | `#1e3a5f` |
+| Accento oro | `#b8860b` |
+| Sfondo pagina | `#f1f5f9` |
+| Superficie/card | `#ffffff` |
+| Bordo | `#e2e8f0` |
+| Testo | `#0f172a` |
+| Testo secondario | `#64748b` |
+| Successo | `#15803d` |
+| Avviso | `#b45309` |
+| Errore | `#b91c1c` |
+| Informazione | `#1d4ed8` |
+
+- Font: stack di sistema definito in `FONT.family`.
+- Numeri, importi e identificativi: `FONT.mono` quando l'allineamento aiuta il
+  confronto.
+- Spaziature: `4, 8, 12, 16, 20, 24, 32 px` (`SPACING`).
+- Raggi: `6–14 px` per controlli e contenitori; pill solo per badge/stati.
+- Ombre: usare esclusivamente `SHADOWS`, con tinta navy.
+
+### Struttura delle pagine
+
+- Usare `PageLayout`/`PageHeader` e i componenti condivisi già presenti.
+- Mostrare prima riepilogo e anomalie realmente azionabili, poi filtri, poi
+  dati.
+- Raggruppare i movimenti per giornata quando la sequenza temporale conta.
+- Un alert numerico deve aprire sempre l'elenco dei record che lo compongono.
+- Evitare pulsanti diagnostici all'utente finale: deduplicazione, import e
+  collegamenti certi devono essere idempotenti e automatici.
+- La navigazione tra fattura, documento, pagamento e registrazione deve
+  mantenere l'ID operazione canonico e offrire link bidirezionali.
+
+### Stati e semantica
+
+| Stato | Colore | Regola |
+|---|---|---|
+| Riconciliato/pagato verificato | verde | Esiste una prova collegata e identificabile. |
+| Atteso | blu | Registrazione prevista, non ancora riscontrata. |
+| Da verificare | arancio | Mancano dati o vi sono più candidati. |
+| Errore | rosso | Il flusso non può proseguire senza correzione. |
+| Informativo | grigio/blu | Non richiede un'azione immediata. |
+
+Gli stati di processo sono obbligatoriamente distinti. `ATTESO`,
+`DA_VERIFICARE`, `IN_ELABORAZIONE` ed `ERRORE` sono aperti; `SODDISFATTO`,
+`NON_APPLICABILE` e `SUPERATO` sono terminali positivi. La UI non mostra un
+processo come chiuso finché una sua attesa obbligatoria è aperta.
+
+Non usare il colore come unica informazione: ogni badge deve avere testo
+esplicito. `Attesa quietanza` è lo stato documentale corretto per i verbali;
+non usare `attesa fattura` come sinonimo.
+
+### Tabelle, importi e date
+
+- Date visibili: `gg-mm-aaaa`; date API: ISO `aaaa-mm-gg`.
+- Importi: due decimali, separatori italiani e segno coerente con Dare/Avere.
+- Mostrare sempre origine, ID operazione e collegamenti alle prove.
+- Non fondere righe diverse solo perché hanno stesso importo.
+- Le liste grandi devono avere ricerca, filtri, paginazione e stato vuoto
+  esplicito.
+
+### Modali e documenti
+
+- Il visualizzatore deve stare sopra ogni altro dialog, con `z-index` coerente.
+- Deve chiudersi con pulsante evidente, `Esc` e ritorno del focus al comando
+  che lo ha aperto.
+- Il contenuto non deve apparire sotto una finestra precedente né lasciare
+  overlay bloccati.
+- Per PDF e fatture privilegiare una vista ampia, responsiva e stampabile.
+
+### Responsive e accessibilità
+
+- Desktop: sfruttare la larghezza senza perdere la gerarchia visiva.
+- Tablet/mobile: trasformare le tabelle dense in card leggibili e mantenere le
+  azioni primarie raggiungibili.
+- Tutti i controlli devono avere etichetta, focus visibile e area cliccabile
+  adeguata.
+- Non introdurre Tailwind o un secondo sistema di token.
+
+### Verifica di una modifica UI
+
+1. test Vitest interessati;
+2. build Vite senza errori;
+3. prova della pagina con dati, vuoto, errore e caricamento;
+4. controllo modali, focus, filtri, anno globale e link bidirezionali;
+5. nessuna informazione critica disponibile soltanto tramite colore.
+## Logica di funzionamento
+
+Regole operative correnti di Ceraldi ERP. Codice, test e configurazione di
+produzione prevalgono sui report storici. Questa sezione è la specifica
+normativa unica per la logica applicativa: ogni modifica di logica va
+riflessa qui.
+
+### Principio generale
+
+Il gestionale trasforma documenti e fonti esterne in un grafo di fatti
+consultabile:
+
+```text
+originale Drive/email/import
+        ↓
+documento indicizzato e deduplicato
+        ↓
+fatto di dominio (fattura, F24, verbale, cedolino, movimento...)
+        ↓
+relazioni certe tramite operation_id
+        ↓
+Prima Nota, riconciliazione, stato e prove
+```
+
+L'automazione esegue solo operazioni deterministiche. Se più candidati sono
+plausibili, conserva il documento, mostra l'elenco e richiede una scelta.
+
+La regola trasversale obbligatoria è `docs/REGOLA_FISSA_ATTESE.md`: il fatto
+owner crea subito obblighi e attese; le evidenze future possono soltanto
+soddisfarle o lasciarle aperte. Nessun processo è chiuso se una sua attesa
+obbligatoria è ancora `ATTESO`, `DA_VERIFICARE`, `IN_ELABORAZIONE` o `ERRORE`.
+
+### Archivio Supabase e originali Drive
+
+Supabase è l'unico registro operativo di produzione. La destinazione è:
+
+- Google Drive per documenti originali e allegati;
+- `gestionale.documents` per registri strutturati e collezioni logiche;
+- `gestionale.blobs` per binari deduplicati;
+- relazioni tra entità tramite `operation_id` e ID specifici.
+
+Il registro usa collezioni logiche esplicite, tra cui:
+
+```text
+Documenti                 Fatture ricevute       Fatture emesse
+Fornitori                 Dipendenti             Cedolini
+Estratti conto            Movimenti bancari      Prima Nota Cassa
+Prima Nota Banca          Bonifici               Assegni
+Corrispettivi             F24                    Quietanze F24
+PayPal                    Scadenze fornitori     Relazioni
+Codici tributo            Import PartenoPay      Email PartenoPay
+Verbali PartenoPay
+```
+
+Sotto la radice Drive il sistema riconosce la tassonomia:
+
+```text
+REGISTRO DATI/
+PARTENOPAY/
+CODICI TRIBUTO/
+QUIETANZE/
+DICHIARAZIONI/
+```
+
+I file originali non vengono eliminati automaticamente. Nel workflow
+`00 - CALDERONE`, Render sposta atomicamente il contenitore originale dopo un
+esito completo: `99 - ELABORATE`, `90 - DA ELABORARE` oppure `98 - ERRORI`.
+Un ZIP parziale resta in `01 - IN ARRIVO`. L'indice conserva Drive ID,
+percorso, origine, hash e data di acquisizione.
+
+#### Stato dell'archivio
+
+`render.yaml` imposta `DATA_BACKEND=supabase`. Il runtime verifica il catalogo
+all'avvio ma non copia i documenti nella RAM: ogni lettura ricarica la singola
+collezione richiesta e ogni scrittura è confermata dall'RPC prima di essere
+considerata riuscita. L'health check prova lettura e percorso di scrittura
+remoti. Gli scheduler usano lease distribuite fuori dalle collezioni aziendali.
+
+La migrazione dei dati storici è conclusa solo quando:
+
+1. tutti i fogli richiesti esistono e sono accessibili;
+2. la copia iniziale è completa e senza collisioni irrisolte;
+3. lettura, inserimento, aggiornamento e ricerca funzionano su Supabase;
+4. un confronto end-to-end dimostra equivalenza dei risultati;
+5. è provata la ricostruzione completa partendo da Drive e registro;
+6. produzione ha un registro esplicitamente configurato e i controlli
+   post-deploy passano.
+
+Il fallback Sheets resta disponibile soltanto per sviluppo e test.
+
+### Identità, hash e duplicati
+
+Ogni riga del registro contiene almeno:
+
+- `progressivo` stabile del foglio;
+- `canonical_id` del fatto;
+- `operation_id` comune ai fatti collegati;
+- data, anno, tipo, importo e stato;
+- ID documento, fattura e movimento bancario quando presenti;
+- origine, hash file, data aggiornamento e payload completo.
+
+La chiave di deduplicazione dipende dal dominio:
+
+- documenti: hash del contenuto più ID esterno/provenienza;
+- fatture: identificativo SDI o chiave emittente-numero-data-tipo;
+- movimenti bancari: ID estratto/CRO-TRN, conto, data, importo e descrizione
+  normalizzata;
+- PayPal/SumUp: ID transazione del gestore;
+- F24/quietanze: identificativo documento, periodo, delega e hash;
+- verbali: numero normalizzato, ente, targa, data/ora e hash.
+
+Stesso importo non significa stessa operazione. Le ricorrenze legittime
+(canoni, assegni, rate, bonifici periodici) restano record distinti.
+
+L'import calcola prima la chiave. Se esiste, aggiorna provenienza o metadati;
+non inserisce una seconda scrittura. Eventuali duplicati storici certi vengono
+nascosti/accorpati automaticamente con audit, mentre i casi dubbi restano in
+una lista visibile.
+
+### Import documenti
+
+Le fonti ammesse sono upload manuale, cartelle Drive configurate, email e API
+dei gestori. Ogni ingest segue lo stesso contratto:
+
+1. conserva l'originale;
+2. calcola hash e identità;
+3. verifica se il documento è già indicizzato;
+4. estrae dati e registra la provenienza;
+5. crea o aggiorna il fatto di dominio;
+6. collega automaticamente solo le corrispondenze certe;
+7. espone gli ambigui come candidati selezionabili;
+8. restituisce un riepilogo con inseriti, aggiornati, duplicati e scartati.
+
+Il comando di import deve sempre salvare; una modalità di sola anteprima deve
+essere esplicitamente etichettata come simulazione.
+
+### Fatture e fornitori
+
+- Le fatture ricevute derivano dagli XML e conservano documento, fornitore,
+  imponibile, IVA, totale, scadenza e metodo previsto.
+- Il fornitore canonico è identificato prima dalla P.IVA/codice fiscale e poi
+  da alias normalizzati; il nome da solo non crea duplicati.
+- Una fattura risulta pagata solo quando esiste una prova collegata.
+- Dalla pagina fatture è possibile correggere l'imputazione tra Cassa e Banca
+  senza cercare manualmente la scrittura nella Prima Nota.
+- Se la banca contiene un riferimento stabile (SDD, PayPal, CRO/TRN), la regola
+  del fornitore può usarlo nei successivi abbinamenti.
+- Un'associazione incerta presenta `Scegli fattura`; non viene salvata come
+  definitiva.
+
+### Prima Nota Cassa e Banca
+
+Le due sezioni mostrano movimenti raggruppati per giorno, con totale della
+giornata e link alle prove.
+
+#### Versamento contanti
+
+Un versamento genera una sola operazione logica con due lati:
+
+```text
+Prima Nota Cassa: uscita "Versamento in banca"
+Prima Nota Banca: entrata attesa "Versamento da Cassa"
+```
+
+Le due righe condividono `operation_id`. Quando il movimento compare
+nell'estratto conto, l'entrata attesa viene riconciliata: non viene creata una
+terza registrazione. Il fatto owner è il versamento registrato in Cassa; se la
+banca arriva senza quell'attesa resta `DA_VERIFICARE` e non inventa il
+versamento mancante.
+
+#### POS e SumUp
+
+- Le vendite POS appartengono al giorno delle transazioni.
+- SumUp corrente arriva automaticamente dall'API ufficiale: le transazioni
+  sono deduplicate per ID, aggregate per giorno e creano il credito bancario
+  atteso verso SumUp.
+- Numia corrente non arriva da API: l'operatore inserisce la chiusura dei
+  terminali ogni sera e quel totale crea il credito bancario atteso Numia.
+- Per il pregresso Numia, gli export operativi CSV/XLSX nella cartella Drive
+  dedicata sono deduplicati per ID transazione e accorpati per giorno vendita;
+  il totale di ogni giorno diventa l'attesa bancaria Numia. Non sono estratti
+  conto bancari.
+- L'accredito bancario è un fatto successivo e separato.
+- In Banca si mostra l'importo atteso finché non arriva il movimento effettivo.
+- Commissioni e scostamenti restano componenti identificabili.
+- L'accredito riconcilia gli attesi tramite ID del gestore e composizione del
+  lotto; non sostituisce o duplica i corrispettivi.
+- Numia accorpa per giorno vendita letto da `DEL gg/mm/aa` le componenti
+  `AMEX`, `INTER`, `BNCMT` e `PGBNT`; commissioni, fatture gestore e spese carta
+  restano escluse. Senza una sola attesa terminale la banca non crea il POS.
+
+#### Estratto conto
+
+Al caricamento il sistema:
+
+1. deduplica le righe prima di scriverle;
+2. importa i nuovi movimenti mantenendo la provenienza;
+3. riconcilia versamenti, POS, bonifici, assegni, SDD e pagamenti certi;
+4. marca pagate le fatture solo con prova coerente;
+5. lascia in elenco gli abbinamenti ambigui;
+6. produce un resoconto navigabile dei risultati.
+
+La coerenza tra corrispettivi RT, chiusure POS, accrediti dei gestori e
+movimenti bancari è esposta nella pagina dedicata alla Coerenza POS del
+catalogo, mentre Prima Nota Cassa/Banca conserva le scritture contabili
+distinte e collegate.
+
+### PayPal, bonifici e assegni
+
+- Una transazione PayPal mantiene il proprio ID e può collegarsi sia alla
+  fattura sia al movimento bancario SDD; le tre viste condividono
+  `operation_id`.
+- Le regole note del beneficiario o del riferimento bancario valgono per tutti
+  i movimenti futuri, ma non superano un conflitto di identità.
+- I bonifici ai dipendenti prima del giorno 25 sono normalmente riferiti al
+  cedolino del mese precedente; dal giorno 25 possono riferirsi al mese
+  corrente. La regola propone il periodo e salva la scelta, senza inventare un
+  cedolino non ancora disponibile.
+- Gli assegni ricorrenti con importo uguale ma numero/data differenti non sono
+  duplicati.
+
+### Corrispettivi
+
+ZIP e singoli file importati vengono indicizzati, deduplicati e caricati nella
+Prima Nota Cassa. La data del corrispettivo determina la giornata; totale
+giornaliero, contanti, elettronico e scostamenti devono essere verificabili
+contro POS e accrediti.
+
+### F24, quietanze e codici tributo
+
+F24, quietanza e movimento bancario sono tre prove distinte:
+
+```text
+modello F24 → righe/codici tributo
+quietanza   → prova documentale dell'esecuzione
+banca       → prova finanziaria dell'addebito
+```
+
+La pagina F24 mostra tutti i modelli presenti in Drive/import/email, i codici
+tributo, il periodo, i PDF collegati e lo stato di riconciliazione. La ricerca
+per codice tributo risale all'F24 e al PDF. Un F24 non deve risultare pagato
+solo perché esiste una quietanza scollegata o un movimento dello stesso
+importo.
+
+### Cedolini e personale
+
+- Cedolini e bonifici restano archivi distinti e collegabili.
+- Il periodo associato è persistente e visibile dopo il refresh.
+- Descrizioni e note operative spiegano pagamenti effettuati con carta o da un
+  socio quando la sola causale non basta.
+- Le associazioni automatiche richiedono dipendente, periodo e importo
+  compatibili; i conflitti restano manuali.
+
+### PartenoPay, verbali, veicoli e driver
+
+- La ricerca email usa l'intera casella (`in:anywhere`) e conserva Gmail ID,
+  hash, allegati e provenienza.
+- I documenti PartenoPay sono archiviati in Drive e indicizzati nei fogli
+  dedicati.
+- Il PDF del verbale è la fonte per numero, importo, targa, data/ora, ente,
+  trasgressore e stato; l'importo non si deduce dal nome file.
+- Lo stato documentale dopo il pagamento è `Attesa quietanza` finché la prova
+  non è collegata.
+- Targa e driver si associano automaticamente solo quando fattura/contratto e
+  storico assegnazioni determinano un unico conducente alla data del verbale.
+- Se il trasgressore è Ceraldi Group S.r.l. viene mostrato come tale, senza
+  inventare un driver.
+- Le schede veicolo vengono compilate dai dati di fatture e contratti; una
+  scheda incompleta non va mostrata come veicolo operativo.
+- L'assenza apparente di fatture recenti è un alert solo dopo la scansione di
+  tutte le fonti configurate.
+
+### Relazioni e navigazione
+
+Il registro `Relazioni` descrive i collegamenti tra entità. Ogni vista deve
+consentire di passare, quando disponibili, tra:
+
+```text
+documento ↔ fattura ↔ pagamento gestore ↔ movimento bancario
+          ↔ Prima Nota ↔ quietanza/prova
+```
+
+Un link mostra sempre tipo, ID, data, importo e origine della destinazione.
+
+### Fonti dati per area
+
+Questa sezione riassume da dove il sistema prende i dati per ogni area
+funzionale. Le sorgenti sono sempre le stesse: Drive, email autorizzate,
+upload manuali e API dei gestori. Registri e relazioni risiedono in Sheets;
+gli originali risiedono in Drive.
+
+| Area | Fonti | Dato operativo risultante |
+|---|---|---|
+| Documenti | cartelle Drive configurate, email autorizzate, upload manuale, API dei gestori | documento indicizzato con hash, origine e classe dominio |
+| Fatture ricevute | XML/P7M da Drive/SDI, anagrafiche fornitore, mapping alias | fattura con fornitore canonico, importo, scadenza e stato |
+| Fornitori | fatture, documenti ricevuti, alias normalizzati e anagrafiche già presenti | fornitore univoco per P.IVA/codice fiscale |
+| Prima Nota Cassa/Banca | fatture, corrispettivi RT, movimenti bancari, versamenti contanti, POS, cedolini, F24 | scritture distinte collegate da `operation_id` |
+| Estratti conto | file banca importati, movimenti con CRO/TRN o descrizioni normalizzate | movimenti bancari deduplicati e riconciliati |
+| F24 e quietanze | modelli F24, codici tributo, quietanze PDF e movimenti bancari | delega, riga tributo, quietanza e addebito restano entità separate |
+| Corrispettivi e POS | XML RT, chiusure terminale, accrediti gestore, commissioni | ricavo RT e accredito POS separati, con riconciliazione finale |
+| Cedolini | file paga, anagrafiche dipendenti, bonifici salario | cedolino collegato al dipendente e al periodo corretto |
+| PartenoPay e verbali | email autorizzate, ZIP, verbali PDF, ricevute e storico assegnazioni veicolo | verbale collegato a targa, driver e pagamento quando univoci |
+| Amministrazione e audit | configurazione, inventory, log, report storici e test | tracciabilità e verifica, non scrittura dei fatti di dominio |
+
+La logica resta idempotente: lo stesso hash o la stessa identità canonica non
+deve generare una seconda operazione. Quando l'oggetto non è certo, il sistema
+espone i candidati e chiede una scelta manuale.
+Modificare una relazione aggiorna tutte le viste che la leggono; non crea copie
+locali scollegate.
+
+### Alert e azioni utente
+
+- Ogni numero di anomalie è cliccabile e apre la lista completa.
+- Gli errori certi e recuperabili vengono corretti dal sistema durante
+  l'import o da una migrazione controllata.
+- La manutenzione tecnica non deve diventare una sequenza quotidiana di
+  pulsanti.
+- Gli ambigui restano visibili con motivazione e candidati.
+- Nessuna associazione ambigua, pagamento, eliminazione o spostamento di
+  originale avviene automaticamente.
+
+### Accesso, audit e sicurezza
+
+- Autenticazione e autorizzazione proteggono tutti gli endpoint riservati.
+- La sessione è scorrevole e scade dopo il periodo d'inattività configurato.
+- Segreti e ID privati vivono nelle variabili Render, mai nei documenti o nel
+  codice.
+- Import, associazioni, correzioni e migrazioni registrano autore, momento,
+  origine e risultato.
+- Le automazioni periodiche usano lock/lease per evitare esecuzioni concorrenti.
+
+### Verifica end-to-end
+
+Un flusso è completato soltanto se sono provati:
+
+1. acquisizione dell'originale;
+2. persistenza dopo refresh e riavvio;
+3. deduplicazione al secondo import;
+4. correttezza degli importi al centesimo;
+5. visibilità in tutte le sezioni collegate;
+6. link bidirezionali e stesso `operation_id`;
+7. comportamento sicuro sui casi ambigui;
+8. test backend, test/build frontend, CI e verifica live post-deploy.
+
+Un HTTP 200 o una pagina che si apre non dimostrano la correttezza dei dati.
+
+### Documenti di riferimento
+
+- `README.md`: avvio e deploy.
+- `CLAUDE.md` (questo file): unica specifica normativa corrente.
+- `docs/MARKDOWN_INVENTORY.md`: stato di tutti i documenti Markdown residui.
+- `memoria/INDEX.md`: indice tecnico rapido.
+- `PROMPT_MASTER.md`: appendice meccanica generata dal codice.
+## Regola fissa — fatti, obblighi, attese ed evidenze
+
+Obbligatoria per ogni pagina, import, job, router e servizio di GestionaleCloud.
+
+### Regola centrale definitiva
+
+Quando entra un fatto validato da una fonte autorevole, il sistema crea subito
+tutti gli obblighi e tutte le attese obbligatorie che quel fatto comporta. Una
+prova arrivata dopo non crea retroattivamente l'attesa: può soltanto
+soddisfarla, lasciarla aperta oppure segnalarla come ambigua.
+
+```text
+FONTE
+  -> DOCUMENTO
+  -> CLASSIFICAZIONE
+  -> FATTO CANONICO
+  -> OBBLIGHI
+  -> EXPECTATION
+  -> EVIDENZE FUTURE
+  -> RICONCILIAZIONE
+  -> PRIMA NOTA
+  -> CONTABILITA
+  -> CONTROLLO
+  -> CHIUSURA
+```
+
+Ogni fatto ha un solo owner autorevole. Ogni attesa conserva tipo, owner,
+`source_fact_id`, `operation_id`, stato ed evidenze collegate. Tutte le
+relazioni sono bidirezionali e auditabili.
+
+### Stati obbligatori
+
+Stati aperti:
+
+- `ATTESO`
+- `DA_VERIFICARE`
+- `IN_ELABORAZIONE`
+- `ERRORE`
+
+Stati terminali positivi:
+
+- `SODDISFATTO`
+- `NON_APPLICABILE`
+- `SUPERATO`
+
+Un processo è chiuso soltanto quando ogni sua attesa obbligatoria è in uno
+stato terminale positivo. `ERRORE` non chiude il processo e non equivale a
+`NON_APPLICABILE`.
+
+### Regola di acquisizione
+
+- successo: originale conservato, fatto indicizzato e instradato nel dominio;
+- errore tecnico: originale conservato in `Errori`, stato `ERRORE` e dettaglio;
+- classificazione ambigua: originale in `Da elaborare`, stato
+  `DA_VERIFICARE`, candidati visibili e nessun ciclo automatico infinito;
+- elaborazione completata: stato nel registro e collocazione `Elaborate` senza
+  eliminare o sovrascrivere l'originale.
+
+Upload, Drive ed email devono passare dalla stessa pipeline idempotente.
+
+### Applicazione per dominio
+
+- Fattura fornitore: crea debito, scadenza, metodo atteso, pagamento atteso e
+  relative attese documentali/finanziarie.
+- Fattura cliente: crea credito, scadenza e incasso atteso.
+- Corrispettivo RT/POS: crea giornata fiscale, ricavo, IVA, quota contanti,
+  chiusure Numia/SumUp, credito per gestore, accredito bancario atteso,
+  commissioni attese e controlli RT-POS-banca.
+- Movimento bancario/carta: è evidenza; cerca attese esistenti e non inventa
+  fatture, chiusure POS, pagamenti o obblighi mancanti.
+- F24: crea attese di quietanza e prova bancaria distinte.
+- Cedolino: crea netto dovuto, bonifico atteso, prova bancaria e registrazione
+  contabile; la regola del periodo non inventa un cedolino futuro.
+- ADER/PagoPA: collega atto, avviso, ricevuta e banca come prove separate.
+- Assegno/bonifico/PayPal: conserva l'identità propria e soddisfa soltanto
+  debiti o attese deterministiche.
+- Noleggio/verbale: collega contratto, targa e driver valido alla data; crea
+  pagamento e quietanza attesi senza dedurre il driver dall'intestatario.
+- Finanziamento soci: distingue ogni movimento bancario reale tramite identità,
+  data e riferimento; l'importo ricorrente non è un duplicato.
+
+### Vincoli POS non negoziabili
+
+Non esiste una generica regola “un file POS crea l'attesa”. Le fonti owner sono
+tre e devono restare riconoscibili:
+
+1. **SumUp corrente:** l'API ufficiale acquisisce automaticamente le
+   transazioni, deduplica per ID del gestore, somma il netto per giorno vendita
+   e crea/aggiorna l'attesa bancaria SumUp.
+2. **Numia corrente:** l'operatore inserisce ogni sera la chiusura dei
+   terminali; il totale manuale del giorno crea/aggiorna l'attesa bancaria
+   Numia e resta provvisorio finché non è confermato da una fonte più forte.
+3. **Numia storico:** gli export operativi Numia CSV/XLSX nella cartella Drive
+   dedicata vengono deduplicati per `ID Transazione`, ricostruiti e accorpati
+   per giorno vendita; ogni totale giornaliero crea/aggiorna la stessa attesa
+   Numia. Questi file non sono estratti conto bancari.
+
+Ognuno dei tre fatti crea immediatamente la coppia con un solo `operation_id`:
+
+```text
+Prima Nota Cassa: uscita POS del circuito
+Prima Nota Banca: credito gestore / accredito atteso
+```
+
+L'estratto conto bancario non è mai owner del fatto POS. Raggruppa le
+componenti dello stesso giorno vendita letto
+dalla causale `DEL gg/mm/aa` (`NUMIA-AMEX`, `NUMIA-INTER`, `NUMIA-BNCMT`,
+`NUMIA-PGBNT`), ne somma l'importo al centesimo e soddisfa l'attesa esistente.
+Se l'attesa manca o ce ne sono più di una, le righe bancarie restano
+`DA_VERIFICARE`; la banca non crea la chiusura terminale mancante.
+
+Commissioni, fatture del gestore e spese con carta sono fatti distinti e non
+entrano nel totale dell'accredito POS.
+
+### Criterio di accettazione
+
+Per ogni modifica deve esistere almeno un test che dimostri:
+
+1. il fatto autorevole crea le attese prima delle prove future;
+2. il reimport non duplica né il fatto né le attese;
+3. la prova certa soddisfa l'attesa e conserva gli ID delle evidenze;
+4. prova assente, discordante o ambigua non crea dati mancanti;
+5. la chiusura fallisce finché esiste un'attesa obbligatoria aperta.
+
+### Provenienza della regola
+
+Regola consolidata il 21/08/2026 dai materiali forniti dall'utente:
+
+- albero JSON, SHA-256
+  `BA26ED5419258C766AF130FB0460AC3AF977914E5716B5E316B1FBDDE1FF4DFE`;
+- albero HTML, SHA-256
+  `C2ED6696B43B7E0E37E114CD08117BEB507AC5082E2ED3EC0D5E62AB68D925CD`;
+- regola centrale testuale, SHA-256
+  `B641ACDC39B13D8BB183AD3D5F17B83F7A1EC8E2CCE06FC0794F9E755328979A`.
+
+I materiali descrivono la regola; codice, test e configurazione corrente
+restano l'autorità eseguibile.
 
 ## Autorità del repository
 
@@ -52,6 +887,806 @@ autorevole crea subito l'attesa; la prova la soddisfa o la lascia
 
 I JSON in `memoria/pagine/` e `memoria/popup/` sono mappe tecniche generate:
 si aggiornano con `scripts/refresh_json_docs.py`, non a mano.
+
+## Fornitori — regola canonica
+
+L'anagrafica fornitori vive nella collezione logica `fornitori` del registro
+(`gestionale.documents` su Supabase in produzione; foglio Sheets solo come
+fallback di sviluppo). La logica applicativa non deve dipendere dal supporto
+fisico.
+
+### Identità
+
+Ordine di autorità:
+
+1. partita IVA normalizzata;
+2. codice fiscale normalizzato;
+3. identificativo esterno verificato;
+4. alias/ragione sociale normalizzati come supporto, mai come unica prova in
+   caso di omonimia.
+
+Il `canonical_id` del fornitore è stabile. Rinominare la ragione sociale non
+crea una seconda anagrafica.
+
+### Campi minimi
+
+- progressivo del foglio;
+- `canonical_id`;
+- partita IVA e codice fiscale come testo;
+- ragione sociale corrente;
+- alias conosciuti;
+- contatti e coordinate di pagamento verificate;
+- metodo di pagamento previsto;
+- riferimenti bancari/SDD/PayPal riconosciuti;
+- stato attivo/cessato;
+- origine, hash o documento fonte e data aggiornamento.
+
+### Import e aggiornamento
+
+Prima di inserire un fornitore, il sistema cerca l'identità fiscale e poi gli
+alias. Se trova un record certo lo aggiorna e aggiunge la provenienza; non crea
+un duplicato. Dati discordanti vengono mostrati come conflitto.
+
+Le API continuano a esporre il dominio fornitori (`/api/suppliers` e router
+correlati) indipendentemente dal backend selezionato.
+
+### Relazioni contabili
+
+- Fatture, pagamenti, documenti e movimenti bancari puntano al medesimo
+  `fornitore_id` canonico.
+- Un riferimento SDD o conto PayPal può diventare una regola verificata del
+  fornitore.
+- La corrispondenza per importo da sola non è sufficiente.
+- Se più fatture sono compatibili, mostrare `Scegli fattura`.
+- Una fusione di duplicati mantiene alias, ID precedenti, provenienza e audit.
+
+### Migrazione
+
+Eventuali riferimenti storici a legacy DB o a Sheets sono conservati solo come
+contesto. La destinazione corrente è la collezione `fornitori` in
+`gestionale.documents` (Supabase, `DATA_BACKEND=supabase`): conteggi, identità
+fiscale, relazioni e capacità di ricostruzione vanno provati sul backend live.
+Sheets resta solo fallback di sviluppo.
+
+## Mappa dei moduli
+
+Mappa narrativa del repository canonico. Per l'elenco meccanico dei router e
+degli endpoint usare `memoria/MAPPA_ROUTER.md`, `memoria/MAPPA_ENDPOINT_COMPLETA.md` e
+`memoria/ENDPOINT_CLASSIFICAZIONE_FINALE.md`, rigenerati dagli script in `scripts/`.
+
+Non esiste più una mappa delle collezioni come documento operativo: in
+produzione il contratto dati è Supabase (`gestionale.documents` +
+`gestionale.blobs`, adattatore `app/services/supabase_runtime_database.py`);
+il registro Sheets (`app/services/google_sheets_ledger.py`) resta solo come
+fallback di sviluppo.
+
+### Albero applicativo
+
+```text
+GestionaleCloud
+├── Dashboard
+├── Documenti
+│   ├── Import manuale
+│   ├── Drive e indice documentale
+│   ├── Email/Gmail
+│   └── Elaborazioni e anomalie
+├── Fatture
+│   ├── Ricevute/emesse
+│   ├── Fornitori
+│   ├── Scadenze e pagamenti
+│   └── Documenti e associazioni
+├── Prima Nota
+│   ├── Cassa
+│   ├── Banca
+│   ├── Corrispettivi/POS/SumUp
+│   └── Pulizia e controllo coerenza
+├── Riconciliazione
+│   ├── Estratti conto
+│   ├── Bonifici e assegni
+│   ├── PayPal
+│   ├── F24/quietanze
+│   └── Registro relazioni
+├── Fisco e contabilità
+│   ├── IVA, ritenute e calendario fiscale
+│   ├── Libro giornale/mastro
+│   ├── Bilancio, cespiti e chiusura
+│   └── Dichiarazioni e codici tributo
+├── Personale
+│   ├── Dipendenti
+│   ├── Cedolini
+│   └── Associazione bonifici/periodi
+├── Flotta e PartenoPay
+│   ├── Veicoli e contratti
+│   ├── Targa ↔ driver
+│   ├── Verbali e quietanze
+│   └── Riepilogo costi
+└── Amministrazione
+    ├── Utenti e sicurezza
+    ├── Configurazione Drive/Sheets
+    ├── Integrazioni e scheduler
+    └── Audit e diagnostica
+```
+
+### Backend
+
+```text
+app/
+├── main.py                         bootstrap FastAPI
+├── config.py                       configurazione ambiente
+├── database.py                     selezione runtime dati
+├── routers/                        API per dominio
+├── services/                       logica, import, matching e integrazioni
+│   ├── supabase_runtime_database.py  adapter registro Supabase (produzione)
+│   └── google_sheets_ledger.py       contratto registro Sheets (fallback dev)
+├── models/                         modelli dati
+└── middleware/                     sessione, sicurezza e osservabilità
+```
+
+I router non devono conoscere il supporto fisico. Accedono all'interfaccia del
+database e ai servizi di dominio; nuovi flussi persistenti devono funzionare con
+`DATA_BACKEND=supabase` in produzione (Sheets resta un fallback di sviluppo,
+`SHEETS_REGISTRY_NAME=GestionaleCloud`).
+
+### Frontend
+
+```text
+frontend/src/
+├── App.jsx
+├── components/
+├── hooks/
+├── lib/
+└── pages/
+```
+
+Il catalogo delle schermate è `page_catalog.json`. Il design system è descritto
+in `DESIGN.md` e implementato in `frontend/src/lib/utils.js`.
+
+### Registro Supabase e originali Drive
+
+In produzione il registro è `gestionale.documents` (una collezione logica per
+entità, stesso schema di campi: progressivo, identità, relazione, provenienza,
+hash e payload) + `gestionale.blobs` per i binari deduplicati. Google Drive resta
+l'archivio degli originali documentali. Le cartelle Drive canoniche sono:
+
+```text
+REGISTRO DATI
+PARTENOPAY
+CODICI TRIBUTO
+QUIETANZE
+DICHIARAZIONI
+```
+
+L'elenco delle collezioni e la loro corrispondenza col dominio sono versionati
+nel codice, non duplicati in una mappa manuale soggetta a divergenza.
+
+### Flussi trasversali
+
+#### Import
+
+`fonte → hash/ID → deduplica → estrazione → fatto → relazioni → riepilogo`
+
+#### Riconciliazione
+
+`documento/fattura ↔ gestore pagamento ↔ banca ↔ Prima Nota ↔ prova`
+
+#### Ambiguità
+
+`più candidati → nessun collegamento definitivo → lista + scelta manuale`
+
+#### Pubblicazione
+
+`test → diff/staging mirato → main → CI → deploy Render → verifica live`
+
+### Fonti di dettaglio
+
+- API: mappe generate in `memoria/`.
+- Regole di dominio, prodotto e architettura: le altre sezioni di questo
+  documento (CLAUDE.md).
+- Stato dei documenti Markdown residui: `docs/MARKDOWN_INVENTORY.md`.
+
+## Cedolini: regola del netto pagabile
+
+```text
+Correggi e rendi verificabile l'intero flusso cedolini di GestionaleCloud usando
+Google Drive come archivio canonico dei PDF e la Prima Nota salari
+(`/api/prima-nota-salari`) come vista contabile dei soli importi dimostrati.
+(La pagina `/salari` è stata rimossa il 03/09/2026: i cedolini si consultano
+nell'app HR a `/hr`.)
+
+============================================================
+1. VERIFICA INIZIALE
+============================================================
+
+- Sincronizza il repository canonico `ceraldicontabilita/GestionaleCloud` e
+  verifica `origin/main`, stato locale, test e configurazione Drive corrente.
+- Preserva tutte le modifiche locali non pertinenti.
+- Riusa `Documenti`, la pipeline cedolini, `prima_nota_salari` e gli indici
+  Drive esistenti; non creare un archivio parallelo.
+- Non usare filename, importi vicini, OCR isolato o dati aggregati come prova
+  del netto del cedolino.
+
+============================================================
+2. REGOLA CANONICA PER IL NETTO
+============================================================
+
+Il netto pagabile deve provenire esclusivamente dalla cella graficamente
+associata a una delle etichette canoniche del cedolino, per esempio:
+
+- `TOTALE NETTO`;
+- `NETTO DEL MESE`;
+- `NETTO IN BUSTA`, se presente nel modello verificato.
+
+La lettura deve usare posizione e struttura della pagina PDF, non soltanto
+l'ordine del testo estratto.
+
+Non confondere mai il netto con:
+
+- `ARR. PREC.` o `ARR. ATTUALE`;
+- totale competenze o totale trattenute;
+- detrazioni, ritenute, imponibili, TFR o fringe benefit;
+- arrotondamenti;
+- un numero vicino alla parola `NETTO` ma collocato in un'altra colonna;
+- un importo già presente nel nome del file.
+
+Se la cella del netto è vuota, il valore deve restare nullo. Non sostituirlo
+con zero e non scegliere il candidato numerico più vicino.
+
+============================================================
+3. STATI OBBLIGATORI
+============================================================
+
+Ogni PDF deve ricevere uno dei seguenti stati espliciti:
+
+- `NETTO_VERIFICATO_DA_CEDOLINO`: un solo importo nella cella canonica;
+- `NETTO_NON_PRESENTE_O_NON_LEGGIBILE`: cella vuota, PDF non leggibile o
+  modello non riconosciuto;
+- `MULTIPLE_NETS_DA_VERIFICARE`: più netti legittimi nello stesso PDF;
+- `ERRORE_PARSER`: errore tecnico con dettaglio auditabile.
+
+Soltanto `NETTO_VERIFICATO_DA_CEDOLINO` può alimentare automaticamente Salari
+e la tabella dei bonifici da assegnare.
+
+============================================================
+4. NOMI FILE E INDICE DRIVE
+============================================================
+
+Per un netto verificato usa:
+
+`Nome Dipendente - YYYY-MM - EUR 1.234,56.pdf`
+
+Per una cella vuota o non leggibile usa:
+
+`Nome Dipendente - YYYY-MM - NETTO NON PRESENTE.pdf`
+
+Non rinominare un documento ambiguo con un importo non verificato.
+
+Ricrea `INDICE_CEDOLINI_PAGA.xlsx` con le sole colonne:
+
+`employee | source | year | month | net_amount | net_candidates | status`
+
+Requisiti dell'indice:
+
+- `source` deve essere un collegamento cliccabile al file Drive tramite ID
+  stabile, mai un percorso locale Windows;
+- `net_amount` deve essere numerico soltanto per i netti verificati;
+- `net_candidates` serve esclusivamente per la revisione dei casi multipli;
+- il nome del PDF non è una fonte per calcolare `net_amount`;
+- rinominare il file non deve rompere il collegamento Drive.
+
+============================================================
+5. SALARI E BONIFICI DA ASSEGNARE
+============================================================
+
+Ricrea `SALARI_E_BONIFICI_DA_ASSEGNARE.xlsx` con:
+
+1. `Indice`: tutte le righe e i relativi stati;
+2. `Salari`: soltanto netti verificati, con collegamento Drive al PDF;
+3. `Bonifici da assegnare`: somma dei netti verificati per dipendente, anno e
+   mese, mantenendo il numero dei cedolini sorgente.
+
+La tabella `Bonifici da assegnare` è una proposta di importo dovuto. Non è una
+prova di pagamento e non deve impostare automaticamente:
+
+- bonifico eseguito;
+- movimento bancario;
+- data pagamento;
+- riconciliazione bancaria;
+- stato pagato.
+
+Lo stato iniziale deve restare `DA_ASSEGNARE`. Un pagamento diventa verificato
+soltanto tramite una prova bancaria reale e un collegamento bidirezionale
+auditabile.
+
+============================================================
+6. DEDUPLICAZIONE
+============================================================
+
+- Il duplicato documentale certo richiede uguaglianza dell'hash del PDF.
+- Dipendente, mese e importo uguali non bastano a eliminare un cedolino: nello
+  stesso periodo possono esistere mensilita aggiuntive, arretrati, conguagli o
+  documenti distinti.
+- Conserva sempre file originale, ID Drive, hash, percorso sorgente e motivo
+  della decisione.
+- Ogni eliminazione deve essere recuperabile e registrata; non eliminare file
+  soltanto per somiglianza del nome.
+
+============================================================
+7. CONTROLLI PRIMA DELL'IMPORTAZIONE
+============================================================
+
+Prima di scrivere in produzione:
+
+- ricontrolla visivamente almeno un campione per ogni modello grafico;
+- verifica che un netto vuoto non produca alcun importo;
+- verifica che `ARR. ATTUALE` e `ARR. PREC.` siano sempre esclusi;
+- confronta numero PDF, righe indice, netti verificati, casi multipli e casi
+  non leggibili;
+- verifica tutti i collegamenti Drive;
+- verifica assenza di duplicati per hash;
+- esegui test automatici su layout con netto valorizzato, netto vuoto,
+  simbolo valuta corrotto nel testo estratto e PDF multipagina;
+- mostra conteggio, totale e impatto all'utente;
+- richiedi conferma immediatamente prima di trasmettere dati retributivi
+  personali al gestionale di produzione.
+
+In caso di dubbio, blocca l'importazione e conserva il documento in revisione.
+È preferibile un importo nullo dichiarato a un importo plausibile ma inventato.
+```
+
+## Policy contabile fiscale documentale
+
+Questa policy non registra scritture definitive. Dal PDF costruisce una
+`journal_proposal` con fonte, versione parser, righe in centesimi, sezione di
+bilancio candidata e stato di deducibilita'. La registrazione richiede
+approvazione del commercialista e la relazione bidirezionale fra documento,
+obbligazione, prova di pagamento e banca.
+
+### Regole applicate ai campioni audit
+
+| Documento/codice | Natura | Bilancio candidato | Deducibilita' automatica |
+|---|---|---|---|
+| F24 modello | predisposizione | nessuna scrittura | bloccata: non prova pagamento |
+| 1040 | chiusura debito ritenute | Passivo D12 | non e' un costo nuovo |
+| 7085 | tassa libri sociali | CE B14 / Passivo D12 | da verificare competenza e contabilizzazione pregressa |
+| 3918 IMU | tributo locale/ravvedimento | CE B14 / Passivo D12 | da verificare immobile, uso e dettaglio ravvedimento |
+| 3813 IRAP | acconto | credito/debito IRAP | da verificare liquidazione e periodo |
+| 1993 | interesse ravvedimento | C17 o sottoconto dedicato | da verificare |
+| 8907 | sanzione IRAP | B14 separato | indeducibile salvo diversa valutazione professionale |
+| 1701/1704 | credito fiscale | Attivo CII | non e' IVA ne' costo; origine/residuo obbligatori |
+| 1075 | codice non validato | nessuna | bloccato fino a validazione annuale |
+| Nota rettifica INPS | obbligazione | Passivo D12 e costi separati | da verificare esercizio/OIC 29 |
+| Avviso PagoPA/verbale | richiesta di pagamento | nessuna finche' non definita responsabilita' | nessun pagamento provato |
+
+Le etichette “deducibile/indeducibile” non sostituiscono il giudizio sul caso
+concreto: periodo d'imposta, natura del costo, uso del bene, registrazioni
+precedenti, base IRES/IRAP e documentazione possono cambiare il trattamento.
+Il sistema quindi espone `DEDUCIBILE`, `INDEDUCIBILE`, `LIMITATA` o
+`DA_VERIFICARE` come esito versionato, senza trasformarlo in scrittura.
+
+### Fonti di riferimento
+
+- [Agenzia Entrate: codice 1040](https://www1.agenziaentrate.gov.it/servizi/codici/ricerca/SezioneErario.php?CT=1040&Ord=0492&Q1=Tutte&Q2=&Q3=IRPEF&Q4=Tutte)
+- [Agenzia Entrate: codice 7085](https://www1.agenziaentrate.gov.it/servizi/codici/ricerca/SezioneErario.php?CT=7085&Ord=2487&Q1=&Q2=&Q3=&Q4=Tutte)
+- [Agenzia Entrate: codice 1075](https://www1.agenziaentrate.gov.it/servizi/codici/ricerca/SezioneErario.php?CT=1075&Ord=0526)
+- [OIC 25 - Imposte sul reddito](https://www.fondazioneoic.eu/wp-content/uploads/2011/02/2024-03-OIC-25-Imposte-sul-reddito.pdf)
+
+## MCP — specifica e runbook
+
+### Specifica di produzione
+
+### Scopo e confine architetturale
+
+`gestionale_cloud_mcp` espone agli agenti AI tutte le aree operative del GestionaleCloud senza creare un secondo ERP.
+
+Il server MCP:
+
+1. non apre connessioni Drive/Sheets;
+2. non interroga direttamente Drive, Gmail, PayPal o SumUp;
+3. usa le API HTTP già registrate dal backend come unico confine applicativo;
+4. inoltra il JWT dell'utente al backend, che continua a verificare firma, scadenza, revoca e ruolo;
+5. rende disponibili strumenti specifici e, per la copertura completa, le sole operazioni `GET` dichiarate dall'OpenAPI corrente;
+6. rifiuta URL arbitrari, redirect, parametri non dichiarati, export e contenuti binari;
+7. non abilita scritture finché non sono soddisfatti contemporaneamente configurazione, ruolo admin, MFA e conferma esplicita.
+
+Questo evita letture Drive/Sheets duplicate, regole contabili divergenti e bypass dei middleware già presenti.
+
+### Regole semantiche inderogabili
+
+- Documento, fattura, movimento bancario, assegno, cedolino, F24, quietanza, liquidazione IVA, transazione POS e payout sono entità distinte.
+- L'importo da solo non costituisce mai una corrispondenza sufficiente.
+- Ogni collegamento mantiene identificativi e provenienza in entrambe le direzioni.
+- Il movimento bancario importato è prova finanziaria immutabile; la Prima Nota lo rappresenta ma non lo sostituisce.
+- Un F24 può contenere più codici tributo: stato e residuo si determinano per riga, non soltanto sul totale del modello.
+- XML RT, Numia, SumUp e PayPal sono fonti indipendenti. XML RT non attribuisce il gestore POS; payout e accrediti non sono nuovi ricavi.
+- SumUp corrente proviene dall'API, Numia corrente dalla chiusura manuale serale
+  e Numia storico dagli export operativi del gestore su Drive aggregati per
+  giorno. L'estratto conto bancario è solo evidenza di accredito e non crea il
+  fatto POS mancante.
+- Cassa configurata sul fornitore porta la fattura in Cassa; Banca resta Provvisoria finché non esiste un riscontro bancario valido.
+- Un risultato ambiguo resta da verificare: l'MCP propone, non inventa.
+
+### Tool pubblicati
+
+| Tool | Area | Effetto |
+|---|---|---|
+| `gestionale_status` | sistema | verifica API, identità, ruolo, MFA e catalogo |
+| `gestionale_list_capabilities` | sistema | elenca tool curati, GET OpenAPI e azioni confermate |
+| `gestionale_read_api` | tutte | esegue una GET OpenAPI non binaria con validazione rigorosa |
+| `gestionale_search_documents` | documenti | ricerca per anno, categoria, stato e testo |
+| `gestionale_search_invoices` | fatture | ricerca fatture ricevute e relativi stati |
+| `gestionale_get_invoice_context` | fatture | dettaglio, storia e prove di pagamento, senza file binari |
+| `gestionale_list_bank_movements` | banca | movimenti estratto conto filtrati e paginati |
+| `gestionale_get_prima_nota` | contabilità | Cassa, Banca o Provvisori, senza creare righe |
+| `gestionale_get_checks` | assegni | assegni e proposte di associazione |
+| `gestionale_get_payment_channel` | PayPal/POS | PayPal, SumUp o coerenza POS reale |
+| `gestionale_get_payroll` | paghe | Prima Nota salari per dipendente/mese/anno |
+| `gestionale_get_f24_status` | F24 | modelli, righe tributo, quietanze e banca |
+| `gestionale_get_vat_period` | IVA | liquidazione mensile/annuale e anomalie |
+| `gestionale_get_accounting_report` | contabilità | piano conti, bilancio, audit o discrepanze |
+| `gestionale_get_operational_context` | operazioni | scadenze, PagoPA, noleggi, verbali, cespiti, bonifici |
+| `gestionale_prepare_action` | workflow | crea una proposta a durata limitata senza eseguirla |
+| `gestionale_execute_confirmed_action` | workflow | esegue una proposta solo dopo tutti i controlli |
+
+#### Copertura completa senza tool duplicati
+
+`gestionale_read_api` non accetta un percorso o un URL. Accetta esclusivamente un `operationId` presente nell'OpenAPI vivo del backend. Il gateway verifica:
+
+- metodo `GET`;
+- percorso interno `/api/...`;
+- nomi dei parametri path e query;
+- limiti di paginazione;
+- assenza di endpoint PDF, download, export, template o XML originale;
+- risposta JSON entro la dimensione configurata.
+
+Questa soluzione copre le centinaia di letture esistenti senza generare centinaia di funzioni quasi identiche.
+
+### Modello di autorizzazione
+
+#### Trasporto `stdio`
+
+È destinato allo sviluppo locale e ai client desktop. Il processo legge `GESTIONALE_MCP_API_TOKEN` e lo inoltra alle API. Il token non viene scritto nei log.
+
+#### Trasporto Streamable HTTP
+
+Il gateway richiede:
+
+- metadata dell'authorization server e del resource server;
+- protezione DNS rebinding con allowlist di host e origin;
+- JWT valido del GestionaleCloud;
+- scope MCP `gestionale:read` per ogni tool;
+- ruolo `admin`, MFA attiva e verificata per le mutazioni.
+
+La verifica del bearer token viene delegata a `/api/auth/verify`, quindi include il controllo di revoca già implementato dal gestionale.
+
+#### Mutazioni
+
+Le modifiche sono disabilitate per impostazione predefinita. Per abilitarle serve `GESTIONALE_MCP_ALLOW_WRITES=true`.
+
+Il flusso è sempre a due passaggi:
+
+1. `gestionale_prepare_action` valida l'azione contro una lista chiusa e crea una proposta con hash SHA-256 e scadenza;
+2. `gestionale_execute_confirmed_action` accetta soltanto la frase esatta `CONFERMO <proposal_id>`, poi ricontrolla admin e MFA.
+
+Non sono presenti strumenti di cancellazione definitiva. Le azioni ammesse riguardano soltanto conferme o collegamenti già supportati dalle API: Provvisori, assegni, PayPal, cedolini, F24, PagoPA e fatture-banca.
+
+### Protezione dei dati
+
+- Log: nome tool, operation ID, nomi dei parametri, esito, durata e trace ID; mai valori, credenziali o documenti.
+- Output: token, password, segreti, chiavi API, base64, contenuto PDF e XML originale sono oscurati.
+- Dimensione: massimo 2 MB per risposta per impostazione predefinita.
+- Liste: massimo 500 elementi per impostazione predefinita.
+- Errori: nessuno stack trace o URL sensibile restituito all'agente.
+- Test: soltanto risposte HTTP sintetiche; nessun fixture contiene dati aziendali reali.
+
+### Contratto delle azioni consentite
+
+| Action ID | Endpoint esistente | Vincolo |
+|---|---|---|
+| `prima_nota_confirm_pending` | `POST /api/prima-nota/provvisori/conferma` | conferma metodo |
+| `prima_nota_wait_bank` | `POST /api/prima-nota/provvisori/attendi-banca` | non crea pagamento |
+| `prima_nota_mark_uncertain` | `POST /api/prima-nota/provvisori/segnala-dubbio` | segnala anomalia |
+| `check_confirm_proposal` | `POST /api/assegni/conferma-proposta/{proposta_id}` | proposta preesistente |
+| `paypal_link_transaction` | `POST /api/paypal-statements/transazione/{transaction_id}/associa` | entità preesistenti |
+| `payroll_reconcile` | `PUT /api/prima-nota-salari/salari/{record_id}/riconcilia` | cedolino/bonifico |
+| `f24_reconcile` | `POST /api/f24/riconcilia` | righe tributo preservate |
+| `pagopa_link_receipt` | `POST /api/pagopa/ricevute/associa-manuale` | ricevuta/verbale |
+| `invoice_reconcile_bank` | `POST /api/fatture-ricevute/riconcilia-con-estratto-conto` | prova bancaria |
+
+### Accettazione tecnica
+
+1. Ogni endpoint curato deve esistere nell'OpenAPI corrente con il metodo atteso.
+2. Le operazioni generiche non possono chiamare POST, PUT, PATCH o DELETE.
+3. Path traversal, URL assoluti, header injection e parametri sconosciuti devono fallire.
+4. Redirect, file, output non JSON e risposte oltre limite devono fallire.
+5. Le proposte devono essere allowlistate, scadere e poter essere consumate una sola volta.
+6. Scritture disabilitate, ruolo non admin o MFA non verificata devono fallire chiuso.
+7. Tutti i tool devono avere annotazioni MCP corrette.
+8. La suite di valutazione read-only deve contenere almeno dieci casi stabili e sintetici.
+
+### Riferimenti
+
+- [MCP Python SDK 2.0](https://github.com/modelcontextprotocol/python-sdk)
+- [Documentazione SDK Python](https://py.sdk.modelcontextprotocol.io/)
+- [MCP authorization](https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization)
+- [MCP tools](https://modelcontextprotocol.io/specification/2025-06-18/server/tools)
+
+### Runbook operativo
+
+### Installazione isolata
+
+L'SDK MCP 2.0 usa dipendenze ASGI più recenti di quelle del backend FastAPI 0.110. Per questo il gateway deve avere un ambiente Python separato.
+
+PowerShell:
+
+```powershell
+python -m venv .venv-mcp
+.\.venv-mcp\Scripts\python.exe -m pip install -r gestionale_mcp\requirements.txt
+```
+
+Non installare `gestionale_mcp/requirements.txt` nell'ambiente del backend in produzione.
+
+### Configurazione minima locale
+
+```powershell
+$env:GESTIONALE_MCP_API_BASE_URL = "http://127.0.0.1:8000"
+$env:GESTIONALE_MCP_API_TOKEN = "<JWT del Gestionale>"
+.\.venv-mcp\Scripts\python.exe -m gestionale_mcp --transport stdio
+```
+
+Il token viene usato soltanto per le chiamate al backend e non appare nei log.
+
+### Configurazione Streamable HTTP
+
+```powershell
+$env:GESTIONALE_MCP_API_BASE_URL = "https://impresasemplice.online"
+$env:GESTIONALE_MCP_HOST = "127.0.0.1"
+$env:GESTIONALE_MCP_PORT = "8765"
+$env:GESTIONALE_MCP_ISSUER_URL = "https://impresasemplice.online"
+$env:GESTIONALE_MCP_RESOURCE_SERVER_URL = "https://mcp.example.it"
+$env:GESTIONALE_MCP_ALLOWED_HOSTS = "mcp.example.it,127.0.0.1:*"
+$env:GESTIONALE_MCP_ALLOWED_ORIGINS = "https://mcp.example.it"
+.\.venv-mcp\Scripts\python.exe -m gestionale_mcp --transport http
+```
+
+Esporre la porta soltanto dietro TLS e reverse proxy. Il percorso MCP è `/mcp` e il server usa risposte JSON stateless.
+
+### Variabili
+
+| Variabile | Default | Significato |
+|---|---:|---|
+| `GESTIONALE_MCP_API_BASE_URL` | `http://127.0.0.1:8000` | backend canonico |
+| `GESTIONALE_MCP_API_TOKEN` | vuoto | JWT per `stdio` |
+| `GESTIONALE_MCP_TIMEOUT_SECONDS` | `30` | timeout API |
+| `GESTIONALE_MCP_MAX_RESPONSE_BYTES` | `2000000` | limite risposta |
+| `GESTIONALE_MCP_MAX_ITEMS` | `500` | limite liste |
+| `GESTIONALE_MCP_ALLOW_WRITES` | `false` | abilita il secondo passo mutativo |
+| `GESTIONALE_MCP_PROPOSAL_TTL` | `900` | durata proposta in secondi |
+| `GESTIONALE_MCP_ALLOWED_HOSTS` | localhost | protezione host |
+| `GESTIONALE_MCP_ALLOWED_ORIGINS` | localhost | protezione origin |
+
+### Collaudo
+
+```powershell
+.\.venv-mcp\Scripts\python.exe -m pip install -r gestionale_mcp\requirements-dev.txt
+.\.venv-mcp\Scripts\python.exe -m pytest -q tests\test_mcp_gateway.py
+python -m pytest -q tests\test_mcp_openapi_contract.py
+```
+
+Il test non deve richiedere legacy DB (non più supportato), Drive, Gmail, PayPal, SumUp o produzione.
+
+La pipeline `.github/workflows/mcp-ci.yml` verifica separatamente il contratto
+FastAPI e il runtime MCP. Questa separazione evita di aggiornare Starlette nel
+servizio backend soltanto per soddisfare le dipendenze del gateway.
+
+Checklist prima dell'attivazione remota:
+
+- test MCP verdi;
+- suite backend verde;
+- token non presente nei file o nei log;
+- HTTPS attivo;
+- host/origin espliciti;
+- scritture ancora disabilitate;
+- `gestionale_status` mostra ruolo e MFA corretti;
+- almeno le dodici valutazioni in `gestionale_mcp/evals/read_only_evals.json` verificate;
+- attivazione delle scritture separata e approvata.
+
+### Diagnostica
+
+- `Token ... assente/scaduto/revocato`: generare una nuova sessione ERP; non copiare password nel client MCP.
+- `Endpoint non disponibile`: il backend e il catalogo MCP sono disallineati; eseguire il test OpenAPI.
+- `Risposta troppo grande`: usare anno, mese, stato, `limit` e `skip`/`offset`.
+- `Il tool MCP non trasferisce file`: aprire il documento tramite l'interfaccia del gestionale, che applica autorizzazioni e audit dedicati.
+- `Scritture MCP disabilitate`: comportamento previsto finché non è stata autorizzata l'attivazione.
+
+## Runbook Render — Calderone
+
+### Risultato operativo
+
+Render legge esclusivamente `00 - CALDERONE/01 - IN ARRIVO`, confronta gli
+SHA-256 con l'indice canonico Drive/Sheets, usa l'anteprima obbligatoria del
+Gestionale e, dopo l'esito completo del file o ZIP, sposta il contenitore nella
+cartella corretta. Non elimina originali.
+
+| Esito complessivo | Destinazione |
+|---|---|
+| tutti i membri importati o duplicati esatti | `99 - ELABORATE` |
+| almeno un membro richiede revisione, senza errori | `90 - DA ELABORARE` |
+| almeno un errore tecnico | `98 - ERRORI` |
+| ZIP parziale o limite raggiunto | resta in `01 - IN ARRIVO` |
+
+L'errore prevale sulla revisione. Il contenitore non viene mai suddiviso: uno
+ZIP viene spostato una sola volta. Ogni spostamento aggiorna nella stessa
+richiesta Drive lo stato, l'ora UTC di controllo e lo SHA-256 della sorgente.
+
+### Task Render
+
+- `calderone_documenti_preview(max_documents)`: sola lettura, nessun invio o
+  spostamento.
+- `calderone_lifecycle_preflight()`: controlla cartelle e permessi senza
+  scrivere.
+- `calderone_documenti_ingest(confirm, max_documents)`: importa e completa
+  automaticamente il lifecycle del lotto autorizzato.
+- `calderone_lifecycle_reconcile(confirm_move, max_sources)`: sposta il
+  pregresso già presente nell'indice senza ritrasmettere documenti.
+
+### Protezioni
+
+L'import richiede `confirm=true`, `ENABLE_RENDER_CANONICAL_INGEST=true`, il
+segreto condiviso e `ENABLE_RENDER_DRIVE_MOVES=true`. La riconciliazione richiede
+`confirm_move=true`. Le cartelle devono essere tre destinazioni distinte e
+figlie dello stesso Calderone dell'inbox. Se la verifica fallisce, il file resta
+in `01 - IN ARRIVO` e viene contato come `SPOSTAMENTO_FALLITO`.
+
+### Procedura di collaudo
+
+1. Eseguire `calderone_lifecycle_preflight` e verificare che tutte le sorgenti
+   siano modificabili.
+2. Eseguire un'anteprima con limite `1`.
+3. Eseguire l'ingestione con conferma e limite `1`.
+4. Controllare `IMPORTATO` o `DUPLICATO_*` e `SPOSTATO_DONE=1`.
+5. Verificare su Drive che il file non sia più nell'inbox e sia in Elaborate.
+6. Ripetere la scansione: il file non deve essere riprocessato.
+
+## Acquisizione serale RT locale
+
+Render non puo raggiungere `192.168.1.19`, perche e un indirizzo della rete privata del locale.
+Il raccoglitore deve girare su un PC collegato alla stessa LAN e deve solo trasferire i file
+originali nella cartella Drive `Corrispettivi/Da elaborare`.
+
+Variabili locali, mai da inserire su Render:
+
+- `RT_LOCAL_BASE_URL=http://192.168.1.19/www/dati-rt/`
+- `RT_DRIVE_INBOX=C:\...\Il mio Drive\GESTIONALE\Corrispettivi\Da elaborare`
+- facoltativa `RT_SYNC_STATE_FILE`, se si desidera spostare il registro degli hash
+
+Esecuzione di prova:
+
+```powershell
+python scripts\sync_rt_to_drive.py --preview
+```
+
+Esecuzione reale:
+
+```powershell
+python scripts\sync_rt_to_drive.py
+```
+
+Lo script seleziona la cartella giornaliera piu recente, ignora gli XML `ESITO`, calcola SHA-256
+e copia atomicamente solo i file nuovi. La pipeline Drive del gestionale esegue parsing e seconda
+deduplica, poi sposta i documenti in `Elaborate` o `Errori`.
+
+Per l'esecuzione ogni sera usare Utilita di pianificazione di Windows sul PC del locale. Le
+credenziali Google non servono allo script: Google Drive Desktop sincronizza la cartella. legacy DB non è usato.
+
+## Disaster recovery — archivio Supabase e originali Drive
+
+Procedura di ripristino dell'archivio operativo di GestionaleCloud. Google
+Drive conserva gli originali documentali (invariato). Il registro operativo
+in produzione è **Supabase** (progetto `GestionaleCloud`, `gestionale.documents`
++ `gestionale.blobs`): questa sezione sostituisce la vecchia procedura basata su
+workbook Google Sheets (superata dalla decisione del 03/09/2026, vedi cronologia
+più sotto), corretta alla luce dell'incidente reale del 14/09/2026.
+
+### Obiettivi
+
+- ricostruire il registro Supabase senza perdere identità/relazioni;
+- non modificare o perdere documenti originali su Drive;
+- provare completezza, integrità e leggibilità;
+- mantenere `canonical_id`/`operation_id` stabili;
+- rendere ogni operazione di recupero verificabile e ripetibile.
+
+### Componenti da proteggere
+
+1. progetto Supabase `GestionaleCloud` (schema `gestionale`, `hr`, `lotti`, `menu`);
+2. radice Drive e cartelle canoniche (originali documentali);
+3. configurazione (`SUPABASE_URL`, segreto runtime, ID cartelle Drive) su Render;
+4. credenziale del service account Drive e permessi sulle cartelle;
+5. codice, schema e migrazioni nel repository (`supabase/migrations/`);
+6. manifest di file, hash e provenienza.
+
+Le credenziali non devono essere salvate nel repository. **Nessun agente o
+sessione automatica deve avere la password Postgres**: solo l'API con il
+segreto runtime, che cancella per id (regola introdotta il 14/09/2026 dopo
+l'incidente; la password va ruotata se è stata usata da una sessione
+automatica).
+
+### Guardia preventiva (attiva dal 14/09/2026)
+
+Migrazione `supabase/migrations/20260914160000_guardia_cancellazioni_massive.sql`:
+l'applicazione non cancella mai con un filtro, passa sempre da
+`gc_delete_documents` / `gc_delete_blobs` / `lotti_delete_*` con id espliciti.
+La guardia blocca `DELETE`/`TRUNCATE` eseguiti a mano su `gestionale.documents`,
+`gestionale.blobs`, `lotti.lotti_documents` e sullo schema `legacy_staging`,
+indipendentemente dal numero di righe. Per una manutenzione deliberata, nella
+stessa transazione: `select gestionale.consenti_cancellazione();`.
+
+### Verifiche periodiche
+
+- l'app legge/scrive Supabase con il ruolo previsto (`hr_app` per i grant
+  minimi sulle tabelle dedicate, mai grant estesi non necessari);
+- `/api/health` verifica dal vivo catalogo e RPC di scrittura;
+- ogni collezione richiesta esiste ed è accessibile;
+- `canonical_id`/`operation_id` sono univoci;
+- i documenti referenziati esistono ancora su Drive;
+- hash e dimensioni dei blob corrispondono al manifest (`gestionale.blobs`,
+  chiave SHA-256, conteggio riferimenti);
+- le relazioni non puntano a record mancanti;
+- un import ripetuto non crea duplicati (idempotenza per `collection`+`id`).
+
+### Ricostruzione controllata
+
+**PITR (Point-in-Time Recovery)**: verificare che l'add-on sia acceso *prima*
+che serva — l'incidente del 14/09/2026 ha mostrato che senza PITR attivo in
+anticipo l'unico ripristino possibile è dal backup fisico giornaliero più
+recente, con perdita di tutte le scritture successive a quel backup.
+
+1. Bloccare temporaneamente le scritture applicative che si sospettano
+   compromesse (o isolare l'incidente per finestra oraria).
+2. Fotografare configurazione, `SUPABASE_URL`, ID cartelle Drive e versione
+   schema senza esportare segreti nei log.
+3. **Mai un restore in place**: dal pannello Supabase, "Restore to new
+   project" su un backup fisico precedente l'incidente, verso un progetto di
+   recupero separato. Un restore in place riporterebbe indietro anche
+   eventuali fusioni di schema o migrazioni fatte dopo il punto di ripristino.
+4. Nel progetto di recupero, confrontare conteggi per collezione contro lo
+   stato corrente: le collezioni realmente svuotate dall'incidente hanno un
+   conteggio inferiore lì rispetto a prima dell'incidente; le collezioni già
+   vuote in origine (funzionalità mai popolata, non incidente) hanno lo stesso
+   conteggio (zero) anche nel backup — non vanno trattate come dati persi.
+5. Reinserire solo gli id realmente mancanti con `gc_upsert_documents`
+   (idempotente per `collection`+`id`): mai una copia bulk indiscriminata.
+6. Ricostruire le relazioni soltanto dopo la presenza di entrambe le entità.
+7. Eseguire conteggi e confronti per collezione, anno, importo e stato.
+8. Verificare i flussi end-to-end e solo dopo dichiarare chiuso l'incidente.
+9. Eliminare il progetto Supabase di recupero temporaneo una volta concluso
+   (ha un costo mensile proprio) da Project Settings → General → Delete
+   project (non disponibile via MCP, richiede tier free e azione manuale).
+
+### Criteri di accettazione
+
+- nessun originale Drive mancante o illeggibile;
+- zero collisioni non spiegate di `canonical_id`/`operation_id`;
+- conteggi per collezione uguali alla fonte verificata (distinguendo
+  esplicitamente "svuotata dall'incidente" da "mai popolata");
+- somme monetarie uguali al centesimo;
+- link documento-fattura-pagamento-banca-Prima Nota navigabili;
+- test di creazione, modifica, ricerca e deduplicazione riusciti;
+- report firmato con data, punto di ripristino usato e responsabile del controllo.
+
+### Rollback
+
+Se la verifica fallisce, lasciare invariati gli originali Drive e il progetto
+Supabase di produzione; il progetto di recupero resta la sola area di lavoro
+finché il nuovo stato non supera tutti i criteri. Non eliminare registri o
+progetti di recupero finché la verifica non è conclusa.
+
+### Sheets: solo fallback di sviluppo
+
+Il fallback `DATA_BACKEND=sheets` resta disponibile per sviluppo e test, non
+per il recupero di produzione: un workbook Sheets non riceve le scritture
+reali dal 03/09/2026 in poi e non è quindi una fonte di ripristino valida per
+i dati recenti. legacy DB è stato rimosso come backend supportato e non va
+usato in nessuna procedura di recupero.
 
 ## Archivio dati: stato reale e destinazione
 
@@ -1190,6 +2825,18 @@ Per ogni modifica pertinente:
 6. push su `main` solo quando richiesto;
 7. CI verde e verifica `/api/health` sul commit pubblicato;
 8. controllo live del flusso interessato senza mutare dati non autorizzati.
+
+
+Regole aggiuntive per l'implementazione (da AGENTS.md, unificato qui):
+
+- Riusa pagine, router, servizi, registri Drive/Sheets e viewer esistenti; non
+  creare pipeline o archivi paralleli.
+- Ogni scrittura deve essere idempotente, tracciabile e coperta da test sui casi
+  positivo, nullo, ambiguo, multipagina ed errore parser.
+- Prima del push controlla il diff e aggiorna l'inventario Markdown tramite
+  `scripts/refresh_markdown_docs.py` quando aggiungi documentazione.
+- Prima di dichiarare il lavoro live verifica test, build, CI, commit distribuito
+  e comportamento reale dell'endpoint o della pagina interessata.
 
 Un alert deve sempre mostrare l'elenco dei record coinvolti. Un comando di
 manutenzione che l'utente deve ripetere per correggere duplicati prevedibili è

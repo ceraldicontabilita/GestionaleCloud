@@ -2,12 +2,12 @@
 
 <!-- gestionalecloud-doc
 status: reference
-reviewed_at: 2026-08-21
-storage_architecture: drive-only
+reviewed_at: 2026-09-17
+storage_architecture: supabase
 -->
 
 > [!IMPORTANT]
-> Documento di riferimento del dominio. Per persistenza e cutover vale l'architettura Drive-only descritta nei documenti correnti; eventuali nomi di collection restano soltanto contesto storico.
+> Documento di riferimento del dominio. Per persistenza e cutover vale l'architettura Supabase (registro) + Drive (originali) descritta in `CLAUDE.md`; eventuali nomi di collection Sheets restano soltanto contesto storico.
 
 Specifiche per usare Obsidian come livello di conoscenza navigabile del GestionaleCloud senza trasformarlo nel registro operativo o contabile.
 

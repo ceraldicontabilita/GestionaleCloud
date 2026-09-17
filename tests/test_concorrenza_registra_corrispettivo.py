@@ -1,5 +1,6 @@
 """Test di concorrenza reale su app/services/scritture_contabili.py
-(motore unico, regola canonica POS — LOGICA_FUNZIONAMENTO.md §4).
+(motore unico, regola canonica POS — CLAUDE.md, sezione «Logica di
+funzionamento -> Corrispettivi»).
 
 La guardia di idempotenza di registra_corrispettivo è un classico
 check-then-act: find_one("già esiste?") seguito, se assente, da un

@@ -2,12 +2,12 @@
 
 <!-- gestionalecloud-doc
 status: historical
-reviewed_at: 2026-08-21
-storage_architecture: drive-only
+reviewed_at: 2026-09-17
+storage_architecture: supabase
 -->
 
 > [!NOTE]
-> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura corrente (Supabase come registro, Drive per gli originali) usare `README.md` e `CLAUDE.md`.
 
 ## La risposta più importante
 
@@ -330,6 +330,7 @@ Tu decidi soltanto quando il sistema non può essere certo.
 
 Documenti normativi collegati:
 
-- `docs/REGOLA_FISSA_ATTESE.md`;
+- `CLAUDE.md`, sezione «Regola fissa — fatti, obblighi, attese ed evidenze»
+  (era `docs/REGOLA_FISSA_ATTESE.md`, unificata il 17/09/2026);
 - `PROMPT_MASTER.md`;
 - `docs/ADR-005-INGESTIONE-DOCUMENTALE-UNIVERSALE-RENDER.md`.

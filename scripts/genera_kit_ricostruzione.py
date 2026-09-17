@@ -48,18 +48,16 @@ ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_NAME = "GestionaleCloud_REBUILD_KIT_2026-08-20"
 TODAY = "2026-08-20"
 
+# [17/09/2026] PRODUCT.md, DESIGN.md, LOGICA_FUNZIONAMENTO.md,
+# docs/FISCAL_ACCOUNTING_POLICY.md, docs/MCP_GESTIONALE_SPEC.md,
+# docs/MCP_GESTIONALE_RUNBOOK.md, docs/rt-locale-drive.md e
+# memoria/DISASTER_RECOVERY_DRIVE.md sono stati unificati in CLAUDE.md (unico
+# documento normativo) e cancellati: il loro contenuto arriva già con
+# "CLAUDE.md" -> "01_MASTER/ISTRUZIONI_AGENTI.md" qui sotto.
 PRIMARY_DOCS = {
     "PROMPT_MASTER.md": "01_MASTER/PROMPT_MASTER.md",
-    "PRODUCT.md": "01_MASTER/PRODUCT.md",
-    "DESIGN.md": "01_MASTER/DESIGN_UX.md",
-    "LOGICA_FUNZIONAMENTO.md": "01_MASTER/LOGICA_FUNZIONAMENTO.md",
     "README.md": "01_MASTER/README_REPOSITORY.md",
     "CLAUDE.md": "01_MASTER/ISTRUZIONI_AGENTI.md",
-    "docs/FISCAL_ACCOUNTING_POLICY.md": "02_ARCHITETTURA/POLICY_CONTABILE_FISCALE.md",
-    "docs/MCP_GESTIONALE_SPEC.md": "02_ARCHITETTURA/MCP_SPEC.md",
-    "docs/MCP_GESTIONALE_RUNBOOK.md": "07_TEST_E_ACCETTAZIONE/MCP_RUNBOOK.md",
-    "docs/rt-locale-drive.md": "02_ARCHITETTURA/RUNTIME_LOCALE_DRIVE.md",
-    "memoria/DISASTER_RECOVERY_DRIVE.md": "02_ARCHITETTURA/DISASTER_RECOVERY_DRIVE.md",
 }
 
 

@@ -6,7 +6,8 @@ residuo della busta. Sono ammessi piu' acconti; la riga si chiude soltanto
 quando la loro somma raggiunge il netto. Non esistono fallback per ordine del
 database, solo cognome o semplice vicinanza dell'importo.
 
-Competenza del bonifico (LOGICA_FUNZIONAMENTO.md §7, audit 03/09/2026 PR 13):
+Competenza del bonifico (CLAUDE.md, sezione «Logica di funzionamento ->
+PayPal, bonifici e assegni», audit 03/09/2026 PR 13):
 senza periodo esplicito in causale, un bonifico eseguito PRIMA del giorno 25
 paga il cedolino del mese precedente (il saldo di gennaio arriva il 20
 febbraio); dal 25 in poi paga il mese corrente. La vecchia finestra
@@ -39,7 +40,8 @@ from app.services.scritture_contabili import FILTRO_MOVIMENTO_ATTIVO
 logger = logging.getLogger(__name__)
 
 # Giorno del mese da cui un bonifico senza periodo in causale si riferisce al
-# mese corrente invece che al precedente (LOGICA_FUNZIONAMENTO.md §7).
+# mese corrente invece che al precedente (CLAUDE.md, sezione «Logica di
+# funzionamento -> PayPal, bonifici e assegni»).
 GIORNO_CAMBIO_COMPETENZA = 25
 MOTIVO_RIALLINEO_COMPETENZA = "riallineo_competenza_bonifici_stipendi_2026-09-03"
 

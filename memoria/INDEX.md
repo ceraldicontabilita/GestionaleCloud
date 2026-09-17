@@ -2,8 +2,8 @@
 
 <!-- gestionalecloud-doc
 status: current
-reviewed_at: 2026-08-21
-storage_architecture: drive-only
+reviewed_at: 2026-09-17
+storage_architecture: supabase
 -->
 
 - Repository canonico: `ceraldicontabilita/GestionaleCloud`
@@ -17,28 +17,24 @@ storage_architecture: drive-only
 | Frontend | React 18 + Vite 5 |
 | Backend | FastAPI asincrono |
 | Originali | Google Drive |
-| Registro operativo di destinazione | Google Sheets/Excel collegato a Drive |
-| Compatibilità transitoria | Nessuna — legacy DB rimosso; Drive-only |
+| Registro operativo di destinazione | Supabase (`gestionale.documents` + `gestionale.blobs`) |
+| Fallback di sviluppo | Google Sheets/Excel collegato a Drive (non produzione) |
+| Compatibilità transitoria | Nessuna — legacy DB rimosso |
 | Deploy | Render, `render.yaml` |
 
-Il backend di persistenza è selezionato da `DATA_BACKEND`. La destinazione è
-`sheets`; il default del codice è `sheets`. legacy DB non è più supportato e ogni
-variabile o script legato a legacy DB è deprecato e non deve essere usato.
+Il backend di persistenza è selezionato da `DATA_BACKEND`. In produzione è
+`supabase` (decisione del 03/09/2026); `sheets` resta il default del codice
+solo per sviluppo/test. legacy DB non è più supportato e ogni variabile o
+script legato a legacy DB è deprecato e non deve essere usato.
 
 ## Documenti correnti
 
 | Documento | Scopo |
 |---|---|
 | `../README.md` | Installazione, architettura, test e deploy |
-| `../PRODUCT.md` | Prodotto e albero funzionale |
-| `../CLAUDE.md` | Regole operative per gli agenti |
-| `../DESIGN.md` | Design system UI |
-| `../LOGICA_FUNZIONAMENTO.md` | Regole di dominio e flussi end-to-end |
-| `../docs/MARKDOWN_INVENTORY.md` | Stato e autorità di tutti i Markdown |
-| `MAPPA_MODULI.md` | Mappa dei moduli applicativi |
-| `DISASTER_RECOVERY_DRIVE.md` | Backup, ricostruzione e ripristino Drive-only |
+| `../CLAUDE.md` | Unico documento normativo (dal 17/09/2026): regole, prodotto, design, logica, regola delle attese, fornitori, mappa moduli, cedolini, policy fiscale, MCP, runbook Render/RT, disaster recovery |
+| `../docs/MARKDOWN_INVENTORY.md` | Stato e autorità di tutti i Markdown residui |
 | `DRIVE_ESTRATTI_CONTO.md` | Regole del canale estratti conto |
-| `FORNITORI_REGOLA_CANONICA.md` | Identità anagrafica fornitori |
 | `LOGICA_LIBRO_MASTRO.md` | Regole del libro mastro |
 | `SPECIFICA_IVA.md` | Regole IVA |
 | `SPECIFICA_F24_CEDOLINI_IRES_IRAP_CHAT.md` | Specifiche fiscali/personale di dettaglio |
@@ -65,7 +61,7 @@ datati sono prove storiche, non istruzioni correnti.
 - associazioni definitive automatiche solo quando univoche;
 - importo uguale non prova identità;
 - ogni alert apre la lista dei record;
-- nessuna dismissione Drive/Sheets prima del cutover Drive/Sheets verificato.
+- nessuna dismissione Drive/Supabase prima del cutover verificato.
 
 ## Verifica
 

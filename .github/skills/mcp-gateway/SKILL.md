@@ -7,8 +7,8 @@ description: "Use when: verificare il gateway MCP, controllare il contratto degl
 
 <!-- gestionalecloud-doc
 status: current
-reviewed_at: 2026-08-21
-storage_architecture: drive-only
+reviewed_at: 2026-09-17
+storage_architecture: supabase
 -->
 
 Valida il gateway MCP del GestionaleCloud come interfaccia semantica tra agenti AI e il backend ERP, senza creare un secondo ERP.
@@ -22,8 +22,9 @@ Verificare che:
 - la sicurezza e il contratto siano coerenti con le specifiche del repo
 
 ## Fonti da usare
-- docs/MCP_GESTIONALE_SPEC.md
-- docs/MCP_GESTIONALE_RUNBOOK.md
+- CLAUDE.md, sezione «MCP — specifica e runbook» (assorbe
+  docs/MCP_GESTIONALE_SPEC.md e docs/MCP_GESTIONALE_RUNBOOK.md, unificati e
+  cancellati il 17/09/2026)
 - gestionale_mcp/
 - app/ e app/routers/ per validare i confini delle API
 

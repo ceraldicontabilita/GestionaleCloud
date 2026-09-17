@@ -2,11 +2,11 @@
 
 <!-- gestionalecloud-doc
 status: current
-reviewed_at: 2026-08-21
-storage_architecture: drive-only
+reviewed_at: 2026-09-17
+storage_architecture: supabase
 -->
 
-Inventario rigenerato il 2026-08-21 da `scripts/refresh_markdown_docs.py`.
+Inventario rigenerato il 2026-09-17 da `scripts/refresh_markdown_docs.py`.
 Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 
 ## Significato degli stati
@@ -21,12 +21,12 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 
 ## Riepilogo
 
-- Correnti: **28**
+- Correnti: **14**
 - Riferimento: **28**
 - Pianificati: **7**
 - Generati: **5**
 - Storici: **11**
-- Totale: **79**
+- Totale: **65**
 
 ## Elenco completo
 
@@ -38,11 +38,7 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 | `.github/instructions/pagine-erp.instructions.md` | `current` | Autorità operativa corrente |
 | `.github/skills/mcp-gateway/SKILL.md` | `current` | Autorità operativa corrente |
 | `.github/skills/pagina-erp/SKILL.md` | `current` | Autorità operativa corrente |
-| `AGENTS.md` | `current` | Autorità operativa corrente |
 | `CLAUDE.md` | `current` | Autorità operativa corrente |
-| `DESIGN.md` | `current` | Autorità operativa corrente |
-| `LOGICA_FUNZIONAMENTO.md` | `current` | Autorità operativa corrente |
-| `PRODUCT.md` | `current` | Autorità operativa corrente |
 | `PROMPT_MASTER.md` | `current` | Autorità operativa corrente |
 | `README.md` | `current` | Autorità operativa corrente |
 | `archive/legacy-audit/README.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
@@ -50,18 +46,12 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 | `docs/ADR-005-INGESTIONE-DOCUMENTALE-UNIVERSALE-RENDER.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/AUDIT_DUPLICATI_DRIVE_2026-09-11.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/AUDIT_DUPLICATI_DRIVE_2026-09-11_LOTTO2.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
-| `docs/FISCAL_ACCOUNTING_POLICY.md` | `current` | Autorità operativa corrente |
 | `docs/GUIDA-SEMPLICE-FLUSSO-ATOMICO-RENDER.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/MARKDOWN_INVENTORY.md` | `current` | Autorità operativa corrente |
-| `docs/MCP_GESTIONALE_RUNBOOK.md` | `current` | Autorità operativa corrente |
-| `docs/MCP_GESTIONALE_SPEC.md` | `current` | Autorità operativa corrente |
 | `docs/OBSIDIAN_KNOWLEDGE_ARCHITECTURE_2026-08-20.md` | `planned` | Specifica approvata ma non ancora completamente operativa |
 | `docs/PIANO_OPERATIVO_GESTIONALE.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
-| `docs/PROMPT_CEDOLINI_NETTO_DRIVE_SALARI.md` | `current` | Autorità operativa corrente |
 | `docs/PROMPT_GESTIONALE_MITTENTI_TRIBUTI_DICHIARAZIONI_PARTENOPAY.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
-| `docs/REGOLA_FISSA_ATTESE.md` | `current` | Autorità operativa corrente |
 | `docs/RUNBOOK-OBSIDIAN-PROCEDURE.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
-| `docs/RUNBOOK-RENDER-CALDERONE.md` | `current` | Autorità operativa corrente |
 | `docs/obsidian-integration/ARCHITETTURA.md` | `planned` | Specifica approvata ma non ancora completamente operativa |
 | `docs/obsidian-integration/MAPPA_COLLEGAMENTI.md` | `planned` | Specifica approvata ma non ancora completamente operativa |
 | `docs/obsidian-integration/MODELLO_NOTE.md` | `reference` | Dettaglio di dominio subordinato ai documenti correnti |
@@ -71,21 +61,17 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 | `docs/obsidian-integration/SICUREZZA_E_GOVERNANCE.md` | `reference` | Dettaglio di dominio subordinato ai documenti correnti |
 | `docs/obsidian-integration/templates/ENTITA.md` | `planned` | Specifica approvata ma non ancora completamente operativa |
 | `docs/obsidian-integration/templates/RUN_GIORNALIERO.md` | `planned` | Specifica approvata ma non ancora completamente operativa |
-| `docs/rt-locale-drive.md` | `current` | Autorità operativa corrente |
 | `frontend/README.md` | `current` | Autorità operativa corrente |
 | `frontend_lotti/README.md` | `current` | Autorità operativa corrente |
 | `frontend_menu/README.md` | `current` | Autorità operativa corrente |
 | `memoria/AUDIT_COMMERCIALISTA_2026-09-03.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `memoria/AUDIT_FRONTEND_DEAD_CODE.md` | `generated` | Artefatto meccanico; rigenerare dalla sorgente indicata |
 | `memoria/AUDIT_STATIC_REPORT.md` | `generated` | Artefatto meccanico; rigenerare dalla sorgente indicata |
-| `memoria/DISASTER_RECOVERY_DRIVE.md` | `current` | Autorità operativa corrente |
 | `memoria/DRIVE_ESTRATTI_CONTO.md` | `reference` | Dettaglio di dominio subordinato ai documenti correnti |
 | `memoria/ENDPOINT_CLASSIFICAZIONE_FINALE.md` | `generated` | Artefatto meccanico; rigenerare dalla sorgente indicata |
-| `memoria/FORNITORI_REGOLA_CANONICA.md` | `current` | Autorità operativa corrente |
 | `memoria/INDEX.md` | `current` | Autorità operativa corrente |
 | `memoria/LOGICA_LIBRO_MASTRO.md` | `reference` | Dettaglio di dominio subordinato ai documenti correnti |
 | `memoria/MAPPA_ENDPOINT_COMPLETA.md` | `generated` | Artefatto meccanico; rigenerare dalla sorgente indicata |
-| `memoria/MAPPA_MODULI.md` | `current` | Autorità operativa corrente |
 | `memoria/MAPPA_ROUTER.md` | `generated` | Artefatto meccanico; rigenerare dalla sorgente indicata |
 | `memoria/PIANO_CONTI_UFFICIALE_CERALDI.md` | `reference` | Dettaglio di dominio subordinato ai documenti correnti |
 | `memoria/REFACTOR_APP_PAGINA_PER_PAGINA_2026-09-05.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
@@ -114,6 +100,7 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 
 ## Regola architetturale
 
-Drive/Sheets è l'unico archivio operativo: originali in Google Drive e registri
-in Google Sheets/Excel collegato a Drive. Non esistono fallback di persistenza;
-i documenti storici che descrivono altre architetture non sono autorità.
+Supabase (`gestionale.documents` + `gestionale.blobs`) è il registro operativo
+unico di produzione; Google Drive resta l'archivio degli originali documentali.
+Sheets/Excel è soltanto un fallback di sviluppo, non la fonte della produzione.
+I documenti storici che descrivono altre architetture non sono autorità.

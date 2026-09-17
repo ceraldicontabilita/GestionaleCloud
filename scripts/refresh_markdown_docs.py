@@ -11,7 +11,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-REVIEW_DATE = "2026-08-21"
+REVIEW_DATE = "2026-09-17"
 
 GENERATED = {
     "memoria/AUDIT_FRONTEND_DEAD_CODE.md",
@@ -21,30 +21,24 @@ GENERATED = {
     "memoria/MAPPA_ROUTER.md",
 }
 
+# [17/09/2026] AGENTS.md, DESIGN.md, LOGICA_FUNZIONAMENTO.md, PRODUCT.md,
+# docs/FISCAL_ACCOUNTING_POLICY.md, docs/MCP_GESTIONALE_RUNBOOK.md,
+# docs/MCP_GESTIONALE_SPEC.md, docs/PROMPT_CEDOLINI_NETTO_DRIVE_SALARI.md,
+# docs/REGOLA_FISSA_ATTESE.md, docs/RUNBOOK-RENDER-CALDERONE.md,
+# docs/rt-locale-drive.md, memoria/DISASTER_RECOVERY_DRIVE.md,
+# memoria/FORNITORI_REGOLA_CANONICA.md e memoria/MAPPA_MODULI.md sono stati
+# unificati dentro CLAUDE.md (unico documento normativo) e cancellati: non
+# sono più path da classificare.
 CURRENT = {
     ".github/copilot-instructions.md",
-    "AGENTS.md",
     "CLAUDE.md",
-    "DESIGN.md",
-    "LOGICA_FUNZIONAMENTO.md",
     "PROMPT_MASTER.md",
-    "PRODUCT.md",
     "README.md",
     # docs/ADR-001-HACCP-LOTTI-DRIVE-SHEETS.md: superato il 03/09/2026 (modulo
     # HACCP nativo rimosso, Lotti portata pari pari a /lotti) -> historical.
-    "docs/FISCAL_ACCOUNTING_POLICY.md",
     "docs/MARKDOWN_INVENTORY.md",
-    "docs/MCP_GESTIONALE_RUNBOOK.md",
-    "docs/MCP_GESTIONALE_SPEC.md",
-    "docs/PROMPT_CEDOLINI_NETTO_DRIVE_SALARI.md",
-    "docs/REGOLA_FISSA_ATTESE.md",
-    "docs/RUNBOOK-RENDER-CALDERONE.md",
-    "docs/rt-locale-drive.md",
     "frontend/README.md",
-    "memoria/DISASTER_RECOVERY_DRIVE.md",
-    "memoria/FORNITORI_REGOLA_CANONICA.md",
     "memoria/INDEX.md",
-    "memoria/MAPPA_MODULI.md",
 }
 
 REFERENCE = {
@@ -77,9 +71,7 @@ def tracked_markdown() -> list[str]:
     )
     paths = {line.strip().replace("\\", "/") for line in result.stdout.splitlines() if line.strip()}
     paths.discard("memoria/MAPPA_COLLEZIONI.md")
-    paths.add("memoria/DISASTER_RECOVERY_DRIVE.md")
     paths.add("docs/MARKDOWN_INVENTORY.md")
-    paths.add("docs/REGOLA_FISSA_ATTESE.md")
     return sorted(path for path in paths if (ROOT / path).exists() or path == "docs/MARKDOWN_INVENTORY.md")
 
 
@@ -130,7 +122,7 @@ def marker(status: str) -> str:
         "<!-- gestionalecloud-doc\n"
         f"status: {status}\n"
         f"reviewed_at: {REVIEW_DATE}\n"
-        "storage_architecture: drive-only\n"
+        "storage_architecture: supabase\n"
         "-->"
     )
 
@@ -140,15 +132,16 @@ def notice(status: str) -> str:
         return (
             "> [!NOTE]\n"
             "> Snapshot storico: non descrive lo stato operativo corrente. "
-            "Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, "
-            "`CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`."
+            "Per l'architettura corrente (Supabase come registro, Drive per gli "
+            "originali) usare `README.md` e `CLAUDE.md`."
         )
     if status == "reference":
         return (
             "> [!IMPORTANT]\n"
             "> Documento di riferimento del dominio. Per persistenza e cutover "
-            "vale l'architettura Drive-only descritta nei documenti correnti; "
-            "eventuali nomi di collection restano soltanto contesto storico."
+            "vale l'architettura Supabase (registro) + Drive (originali) descritta "
+            "in `CLAUDE.md`; eventuali nomi di collection Sheets restano soltanto "
+            "contesto storico."
         )
     if status == "planned":
         return (
@@ -254,9 +247,10 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 
 ## Regola architetturale
 
-Drive/Sheets è l'unico archivio operativo: originali in Google Drive e registri
-in Google Sheets/Excel collegato a Drive. Non esistono fallback di persistenza;
-i documenti storici che descrivono altre architetture non sono autorità.
+Supabase (`gestionale.documents` + `gestionale.blobs`) è il registro operativo
+unico di produzione; Google Drive resta l'archivio degli originali documentali.
+Sheets/Excel è soltanto un fallback di sviluppo, non la fonte della produzione.
+I documenti storici che descrivono altre architetture non sono autorità.
 """
 
 

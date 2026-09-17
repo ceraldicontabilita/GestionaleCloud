@@ -2,8 +2,8 @@
 
 <!-- gestionalecloud-doc
 status: current
-reviewed_at: 2026-08-21
-storage_architecture: drive-only
+reviewed_at: 2026-09-17
+storage_architecture: supabase
 -->
 
 Applicazione React per tracciabilità lotti, produzione, magazzino, acquisti e registri HACCP.

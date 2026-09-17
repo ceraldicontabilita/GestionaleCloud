@@ -1,12 +1,16 @@
 # Audit duplicati Google Drive - Lotto 2
 
-> **Snapshot storico:** questo documento fotografa una fase precedente e non e' autorita' per il comportamento corrente. Per l'operativita' usare `PROMPT_MASTER.md`, `PRODUCT.md`, `DESIGN.md`, `LOGICA_FUNZIONAMENTO.md` e `memoria/INDEX.md`.
-
 <!-- gestionalecloud-doc
 status: historical
-reviewed_at: 2026-09-11
-storage_architecture: drive-only
+reviewed_at: 2026-09-17
+storage_architecture: supabase
 -->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura corrente (Supabase come registro, Drive per gli originali) usare `README.md` e `CLAUDE.md`.
+
+> **Snapshot storico:** questo documento fotografa una fase precedente e non e' autorita' per il comportamento corrente. Per l'operativita' usare `PROMPT_MASTER.md`, `CLAUDE.md` e `memoria/INDEX.md`.
+
 
 Queste quattro coppie sono state verificate con SHA-256 identico e confronto byte-per-byte. Nessun file Drive è stato rimosso.
 

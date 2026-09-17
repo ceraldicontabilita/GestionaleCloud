@@ -1,6 +1,7 @@
 """Audit del commercialista 03/09/2026, §5 / PR 13.
 
-Regola di LOGICA_FUNZIONAMENTO.md §7: un bonifico al dipendente prima del
+Regola di CLAUDE.md (sezione «Logica di funzionamento -> PayPal, bonifici e
+assegni»): un bonifico al dipendente prima del
 giorno 25 e' riferito al cedolino del mese precedente. Casi reali:
 Capezzuto 430,00 e Vespa 406,00 pagati il 20/02/2026 sono i SALDI di gennaio
 (1.430 - 1.000 di acconto; 1.406 - 1.000), non acconti di febbraio.

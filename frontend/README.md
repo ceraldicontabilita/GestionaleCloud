@@ -2,8 +2,8 @@
 
 <!-- gestionalecloud-doc
 status: current
-reviewed_at: 2026-08-21
-storage_architecture: drive-only
+reviewed_at: 2026-09-17
+storage_architecture: supabase
 -->
 
 Single-page application del repository
@@ -53,7 +53,7 @@ essere ricondotte ai componenti condivisi, non replicate.
 
 ## Regole UI
 
-- Seguire `DESIGN.md`; la fonte dei token è `src/lib/utils.js`.
+- Seguire la sezione «Design system» di `CLAUDE.md`; la fonte dei token è `src/lib/utils.js`.
 - Non introdurre Tailwind né un secondo tema.
 - Stato globale anno, filtri e selezione devono sopravvivere a refresh e link
   condivisi quando previsto.

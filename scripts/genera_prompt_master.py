@@ -162,7 +162,9 @@ provano il funzionamento.
 
 ### 3.1 Motore obbligatorio delle attese
 
-Applicare sempre `docs/REGOLA_FISSA_ATTESE.md`. Quando entra un fatto validato,
+Applicare sempre la regola delle attese di `CLAUDE.md` (sezione «Regola fissa —
+fatti, obblighi, attese ed evidenze»; era `docs/REGOLA_FISSA_ATTESE.md`, unificata
+il 17/09/2026). Quando entra un fatto validato,
 il suo owner crea immediatamente tutti gli obblighi e le attese conseguenti.
 Le evidenze future non generano l'attesa che dovrebbero provare: la soddisfano
 oppure la lasciano `DA_VERIFICARE`.
