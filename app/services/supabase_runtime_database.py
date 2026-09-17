@@ -31,7 +31,15 @@ logger = logging.getLogger(__name__)
 _PAGE_SIZE = 500
 _MIN_READ_PAGE_SIZE = 10
 _READ_RETRIES = 5
-_MANIFEST_RETRIES = 3
+# 17/09/2026: con 3 tentativi (0,5 s + 1 s di pausa) il processo usciva con
+# "Catalogo Supabase non disponibile" quando il database era sotto carico per
+# qualche decina di secondi (statement timeout sul catalogo): il deploy Render
+# falliva e l'istanza vecchia, riavviata, cadeva nello stesso errore →
+# produzione giu' (osservato 00:18-00:21 UTC). L'avvio ora insiste per circa
+# un minuto e mezzo prima di arrendersi: la regola "mai un archivio parziale"
+# resta identica, cambia solo quanto aspettiamo un catalogo completo.
+_MANIFEST_RETRIES = 12
+_MANIFEST_DELAY_MAX_SECONDS = 8.0
 _WRITE_CHUNK_SIZE = 50
 _KEYSET_COLLECTIONS = {"documents_inbox"}
 _EXACT_LOOKUP_FIELDS = (
@@ -508,7 +516,7 @@ class SupabaseRuntimeDatabase(SheetDatabase):
                         "Catalogo Supabase non disponibile: avvio interrotto "
                         "per evitare un archivio parziale"
                     ) from exc
-                delay = min(0.5 * (2 ** attempt), 2.0)
+                delay = min(0.5 * (2 ** attempt), _MANIFEST_DELAY_MAX_SECONDS)
                 logger.warning(
                     "Manifest Supabase in timeout; nuovo tentativo %s/%s tra %.1fs",
                     attempt + 2, _MANIFEST_RETRIES, delay,
