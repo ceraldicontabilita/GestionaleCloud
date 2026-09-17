@@ -56,3 +56,25 @@ def test_blocco_tentativi_condiviso():
     with pytest.raises(HTTPException) as exc:
         login()
     assert exc.value.status_code == 429
+
+
+def test_token_malformato_risponde_401_non_500(monkeypatch):
+    """PyJWT solleva InvalidTokenError, non JWTError (che e' di python-jose).
+
+    Con il nome sbagliato l'except non intercettava nulla e un token
+    malformato usciva come AttributeError: 500 invece di 401.
+    """
+    import jwt as _jwt
+    from fastapi import HTTPException
+
+    from app.menu.routes import qrcode_routes
+
+    assert not hasattr(_jwt, "JWTError"), "PyJWT non espone JWTError"
+    monkeypatch.setattr(qrcode_routes, "SECRET_KEY", "segreto-di-prova")
+
+    try:
+        qrcode_routes.verify_token("Bearer non-e-un-token")
+    except HTTPException as exc:
+        assert exc.status_code == 401
+    else:  # pragma: no cover
+        raise AssertionError("un token malformato deve dare 401")
