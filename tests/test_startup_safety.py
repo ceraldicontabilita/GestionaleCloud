@@ -123,11 +123,11 @@ def test_health_check_verifica_idratazione_supabase(monkeypatch):
     async def fake_rpc(function_name, payload):
         if function_name == "gc_collection_catalog":
             return [{"collection": "fatture", "row_count": 15234}]
-        if function_name == "gc_upsert_documents":
-            assert payload["p_documents"]
-            return {"upserted": 1, "rejected": []}
-        if function_name == "gc_delete_documents":
-            return 1
+        if function_name == "gc_runtime_health_probe":
+            # probe atomica (scrittura + cancellazione in una sola RPC):
+            # il health check non deve piu' passare da upsert/delete separati
+            assert str(payload["p_probe_id"]).startswith("health:")
+            return True
         if function_name in {"gc_fetch_collection", "gc_fetch_collection_after"}:
             return []
         raise AssertionError(function_name)
