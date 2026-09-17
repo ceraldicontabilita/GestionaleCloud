@@ -822,7 +822,14 @@ passo fallito = bug da correggere subito. Cosa è stato trovato e cambiato
   prima di riscriverlo: mai un PDF perso); un filtro che guarda dentro un
   campo pesante legge la riga intera da SQL; firma non disponibile →
   lettura diretta (finestra di grazia 120 s); `HR_RUNTIME_CACHE=0` la
-  spegne. Le scritture
+  spegne. **DDL HR solo se serve** (PR #479): `_assicura_tabella` faceva
+  SEMPRE `CREATE TABLE IF NOT EXISTS` + `ALTER TABLE … ENABLE ROW LEVEL
+  SECURITY` al primo accesso di ogni tabella (29 tabelle = 58 DDL a ogni
+  avvio dell'istanza): ogni DDL fa ricaricare lo schema a PostgREST, che
+  per minuti risponde 503 «Could not query the database for the schema
+  cache» a TUTTE le RPC del gestionale (visto a ogni deploy: 07:43, 09:05).
+  Ora guarda `pg_class` e fa il DDL solo se la tabella manca o non ha la
+  RLS. Le scritture
   del processo aggiornano la cache dopo l'esito positivo dell'RPC. Trigger
   `documents_touch_updated_at` garantisce `updated_at` anche per scritture
   fatte fuori dall'app. Fallback automatico alla lettura completa se le RPC
