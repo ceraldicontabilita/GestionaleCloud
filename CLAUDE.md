@@ -757,6 +757,35 @@ passo fallito = bug da correggere subito. Cosa è stato trovato e cambiato
   Il database Supabase (compute Micro, 1,9 GB di cui 1 GB `documents`) è
   il collo di bottiglia di tutto quanto sopra: l'adattatore rilegge intere
   collezioni con payload (XML, PDF) a ogni `find` non puntuale.
+- **Cache incrementale del runtime** (PR #471, migrazione
+  `20260917040000_gc_collection_versions.sql` applicata il 17/09 03:46 UTC).
+  Richiesta del titolare: «il sito deve lasciare i dati scritti, non
+  ricaricarli ogni volta da Supabase, altrimenti i costi aumentano». Dal
+  15/09 ogni `find` non puntuale rileggeva l'intera collezione: nei log
+  edge 1.400-2.300 letture complete ogni 10 minuti nei picchi. Ora
+  `SupabaseTable` tiene in memoria la versione **leggera** di ogni
+  collezione letta (senza i campi di `DOCUMENT_PAYLOAD_FIELDS`: XML, PDF,
+  foto); prima di servirla chiede UNA firma per tutte le collezioni
+  (`gc_collection_versions`: conteggio + ultimo `updated_at`) al più ogni
+  15 s; firma diversa → solo i documenti modificati dopo l'ultima lettura
+  (`gc_fetch_collection_since`), rilettura completa solo se il conteggio non
+  torna. Le letture che vogliono il payload usano la cache per scegliere i
+  documenti e li scaricano per id (`gc_fetch_documents_exact`, blocchi di
+  500; oltre 1.000 documenti si torna alla lettura completa). Le scritture
+  del processo aggiornano la cache dopo l'esito positivo dell'RPC. Trigger
+  `documents_touch_updated_at` garantisce `updated_at` anche per scritture
+  fatte fuori dall'app. Fallback automatico alla lettura completa se le RPC
+  mancano o falliscono; `GC_RUNTIME_CACHE=0` la spegne. **Regole per chi
+  scrive codice**: (1) per liste/conteggi/lookup usare sempre una
+  proiezione di esclusione del payload (`metadata_projection(collection)`)
+  o inclusiva senza payload: viene servita dalla cache senza RPC; (2) il
+  payload si legge per id (`find_one({"id": …})`), mai con `find({})` su
+  tutta la collezione; (3) `pulisci_duplicati_invoices` e
+  `fatture_identita` sono già così. Attenzione alle migrazioni DDL su
+  `gestionale.documents`: `create index`/`create trigger` prendono lock
+  esclusivi e con le letture lunghe in corso hanno bloccato l'app per ~30 s
+  (lock timeout 8 s del ruolo `authenticator`): farle a database scarico o
+  con `create index concurrently`.
 - **Timeout del ruolo `anon`** (migrazione `20260917030000_anon_statement_
   timeout.sql`, applicata in produzione il 17/09 02:52 UTC): PostgREST
   esegue TUTTE le RPC del runtime (`gc_*`, `lotti_*`) come ruolo `anon`, che
