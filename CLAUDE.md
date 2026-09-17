@@ -775,7 +775,18 @@ passo fallito = bug da correggere subito. Cosa è stato trovato e cambiato
   del processo aggiornano la cache dopo l'esito positivo dell'RPC. Trigger
   `documents_touch_updated_at` garantisce `updated_at` anche per scritture
   fatte fuori dall'app. Fallback automatico alla lettura completa se le RPC
-  mancano o falliscono; `GC_RUNTIME_CACHE=0` la spegne. **Regole per chi
+  mancano o falliscono; `GC_RUNTIME_CACHE=0` la spegne. **Firma in tempo
+  costante** (migrazione `20260917063000_collection_versions_table.sql`,
+  applicata 06:35 UTC): la `group by` su tutta `documents` superava i 20 s
+  con il disco saturo; ora `gestionale.collection_versions` (una riga per
+  collezione: conteggio + ultimo `updated_at`) e' mantenuta dai trigger
+  `documents_touch_updated_at` (before insert/update) e
+  `documents_collection_versions` (after insert/update/delete) e
+  `gc_collection_versions` la legge senza scansioni. Le letture leggere
+  (`gc_fetch_collection_projected`, `_since`) restano costose lato
+  database perche' `data - campi` deve comunque de-toastare il jsonb intero:
+  la vera riduzione del costo Supabase arriva dalla cache (una lettura per
+  collezione, poi solo delta). **Regole per chi
   scrive codice**: (1) per liste/conteggi/lookup usare sempre una
   proiezione di esclusione del payload (`metadata_projection(collection)`)
   o inclusiva senza payload: viene servita dalla cache senza RPC; (2) il
