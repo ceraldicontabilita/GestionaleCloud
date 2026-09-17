@@ -205,6 +205,7 @@ def test_proiezione_esclusiva_viene_applicata_dentro_supabase(monkeypatch):
     )
 
     assert rows == [{"_id": "d1", "filename": "a.pdf"}]
+    calls = [call for call in calls if call[0] != "gc_collection_versions"]
     assert calls[0] == (
         "gc_fetch_collection_after_projected",
         {
@@ -231,6 +232,7 @@ def test_proiezione_esclusiva_offset_viene_applicata_dentro_supabase(monkeypatch
     rows = asyncio.run(runtime["invoices"].find({}, {"xml_raw": 0}).to_list(None))
 
     assert rows == [{"_id": "f1", "numero": "1"}]
+    calls = [call for call in calls if call[0] != "gc_collection_versions"]
     assert calls == [("gc_fetch_collection_projected", {
         "p_collection": "invoices",
         "p_limit": 500,
@@ -257,6 +259,7 @@ def test_count_non_scarica_il_payload_documentale(monkeypatch):
     count = asyncio.run(runtime["cedolini"].count_documents({"anno": 2026}))
 
     assert count == 1
+    calls = [call for call in calls if call[0] != "gc_collection_versions"]
     assert calls[0][0] == "gc_fetch_collection_projected"
     assert calls[0][1]["p_exclude_fields"] == ["pdf_data"]
 
@@ -278,6 +281,7 @@ def test_count_con_filtro_sul_payload_conserva_il_campo(monkeypatch):
     }))
 
     assert count == 1
+    calls = [call for call in calls if call[0] != "gc_collection_versions"]
     assert calls[0][0] == "gc_fetch_collection"
 
 
@@ -301,6 +305,7 @@ def test_aggregate_non_scarica_il_payload_documentale(monkeypatch):
     ]).to_list(1))
 
     assert rows[0]["totale"] == 30
+    calls = [call for call in calls if call[0] != "gc_collection_versions"]
     assert calls[0][0] == "gc_fetch_collection_projected"
     assert calls[0][1]["p_exclude_fields"] == ["pdf_data"]
 

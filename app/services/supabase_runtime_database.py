@@ -23,7 +23,9 @@ from typing import Any
 
 import aiohttp
 
-from app.services.sheets_document_store import SheetCursor, SheetDatabase, SheetTable
+from app.services.sheets_document_store import (
+    SheetCursor, SheetDatabase, SheetTable, matches_filter,
+)
 from app.document_repository import DOCUMENT_PAYLOAD_FIELDS, metadata_projection
 
 logger = logging.getLogger(__name__)
@@ -55,6 +57,25 @@ _EXACT_LOOKUP_FIELDS = (
 _MAX_EXACT_LOOKUP_VALUES = 500
 _STATUS_ALIGNMENT_BATCH_SIZE = 250
 _STATUS_ALIGNMENT_MAX_BATCHES = 40
+
+# 17/09/2026 — cache incrementale (richiesta del titolare: "il sito deve
+# lasciare i dati scritti, non ricaricarli ogni volta da Supabase").
+# Ogni collezione letta almeno una volta resta in memoria nella versione
+# leggera (senza i campi payload di DOCUMENT_PAYLOAD_FIELDS: XML, PDF, foto).
+# Prima di servirla si chiede a Supabase la firma di tutte le collezioni con
+# UNA RPC (`gc_collection_versions`: conteggio + ultimo updated_at), al piu'
+# ogni _CACHE_VERSIONS_TTL secondi: firma uguale → nessuna lettura; firma
+# diversa → solo i documenti modificati dopo l'ultima lettura
+# (`gc_fetch_collection_since`), rilettura completa solo se il conteggio non
+# torna (cancellazioni). Le scritture di questo processo aggiornano la cache
+# subito dopo l'esito positivo dell'RPC. Un documento con payload viene
+# scaricato per id soltanto quando la lettura lo richiede davvero. Se le RPC
+# nuove non esistono (rolling deploy) o falliscono, si torna alla lettura
+# completa di prima: mai un risultato parziale.
+_CACHE_VERSIONS_TTL_SECONDS = 15.0
+_CACHE_MAX_DOCUMENTS_PER_COLLECTION = 150_000
+_CACHE_HYDRATE_BY_ID_MAX = 2 * _MAX_EXACT_LOOKUP_VALUES
+_CACHE_ENV_FLAG = "GC_RUNTIME_CACHE"
 
 # Le RPC runtime hanno un timeout molto stretto e la paginazione OFFSET diventa
 # costosa oltre alcune migliaia di righe. Le collezioni elencate qui possono
@@ -139,6 +160,32 @@ def _metadata_projection_if_safe(collection: str, operation: Any) -> dict[str, A
     if not fields or _references_any_field(operation, fields):
         return None
     return metadata_projection(collection)
+
+
+def _projection_needs_payload(projection: Any, payload_fields: set[str]) -> bool:
+    """Vero se la lettura richiede almeno un campo payload della collezione."""
+    if not payload_fields:
+        return False
+    if not isinstance(projection, dict) or not projection:
+        return True
+    included = [str(key) for key, value in projection.items() if value and key != "_id"]
+    if included:
+        return any(key.split(".", 1)[0] in payload_fields for key in included)
+    excluded = {str(key).split(".", 1)[0] for key, value in projection.items()
+                if not value and key != "_id" and "." not in str(key)}
+    return not payload_fields.issubset(excluded)
+
+
+def _light_document(document: dict[str, Any], payload_fields: set[str]) -> dict[str, Any]:
+    if not payload_fields:
+        return document
+    return {key: value for key, value in document.items() if key not in payload_fields}
+
+
+def _cache_abilitata() -> bool:
+    import os
+
+    return os.environ.get(_CACHE_ENV_FLAG, "1").strip().lower() not in {"0", "false", "no", "off"}
 
 
 def documents_digest(documents: list[dict[str, Any]]) -> str:
@@ -267,11 +314,104 @@ class _ReadThroughCursor:
 
 
 class SupabaseTable(SheetTable):
-    """Vista senza cache autorevole: rilegge Supabase per ogni operazione."""
+    """Vista su Supabase con cache leggera incrementale (vedi _CACHE_* sopra).
+
+    L'autorita' resta Supabase: la cache serve le letture che non hanno
+    bisogno del payload documentale e filtra quelle che ne hanno bisogno,
+    cosi' da scaricare per id soltanto i documenti coinvolti.
+    """
 
     def __init__(self, database: "SupabaseRuntimeDatabase", name: str):
         super().__init__(database, name)
         self._remote_operation_lock = asyncio.Lock()
+        self._payload_fields = set(DOCUMENT_PAYLOAD_FIELDS.get(name, ()))
+        self._cache: dict[str, dict[str, Any]] | None = None
+        self._cache_signature: tuple | None = None
+        self._cache_watermark: dict[str, str | None] = {}
+
+    # ----- cache -----------------------------------------------------------
+
+    def _cache_light(self, document: dict[str, Any]) -> dict[str, Any]:
+        return _normalise_document(_light_document(document, self._payload_fields))
+
+    async def _cache_ready(self) -> bool:
+        """Porta la cache allo stato remoto corrente. False = cache non usabile."""
+        database = self.database
+        if not database._cache_enabled:
+            return False
+        versions = await database._collection_versions()
+        if versions is None:
+            return False
+        physical = database._physical_collections(self.name)
+        signature = tuple(
+            (name, *(versions.get(name) or (0, None))) for name in physical
+        )
+        total = sum(int(versions.get(name, (0, None))[0]) for name in physical)
+        if total > _CACHE_MAX_DOCUMENTS_PER_COLLECTION:
+            self._cache = None
+            return False
+        if self._cache is not None and signature == self._cache_signature:
+            return True
+        if self._cache is None:
+            await self._cache_load_all()
+        else:
+            await self._cache_apply_delta(versions, physical)
+            if len(self._cache) != total:
+                # Cancellazioni (o conteggio cambiato durante il delta): la
+                # rilettura completa e' l'unico modo per essere esatti.
+                await self._cache_load_all()
+        self._cache_signature = signature
+        for name in physical:
+            self._cache_watermark[name] = (versions.get(name) or (0, None))[1]
+        return True
+
+    async def _cache_load_all(self) -> None:
+        documents = await self.database._fetch_logical_collection_documents(
+            self.name, excluded_fields=sorted(self._payload_fields) or None,
+        )
+        self._cache = {
+            str(document.get("_id")): _normalise_document(document)
+            for document in documents if document.get("_id") is not None
+        }
+
+    async def _cache_apply_delta(self, versions, physical) -> None:
+        assert self._cache is not None
+        for name in physical:
+            remote = versions.get(name)
+            if remote is None:
+                continue
+            since = self._cache_watermark.get(name)
+            if remote[1] is not None and since is not None and remote[1] <= since:
+                continue
+            for document in await self.database._fetch_collection_since(
+                name, since, excluded_fields=sorted(self._payload_fields) or None,
+            ):
+                if document.get("_id") is None:
+                    continue
+                self._cache[str(document["_id"])] = _normalise_document(document)
+                self.database._document_locations.setdefault(self.name, {})[
+                    str(document["_id"])] = name
+
+    def _cache_apply_mutation(self, method: str, before, after) -> None:
+        """Scrittura di questo processo gia' confermata da Supabase."""
+        if self._cache is None:
+            return
+        if method in {"delete_one", "delete_many", "find_one_and_delete"}:
+            for document in before:
+                self._cache.pop(str(document.get("_id")), None)
+            return
+        for document in after:
+            if document.get("_id") is not None:
+                self._cache[str(document["_id"])] = self._cache_light(document)
+
+    def cache_stats(self) -> dict[str, Any]:
+        return {
+            "collection": self.name,
+            "documenti_in_cache": None if self._cache is None else len(self._cache),
+            "payload_escluso": sorted(self._payload_fields),
+        }
+
+    # ----- letture ---------------------------------------------------------
 
     async def _refresh_unlocked(self, projection=None, selector=None) -> None:
         lookup = _exact_lookup(selector)
@@ -283,12 +423,44 @@ class SupabaseTable(SheetTable):
                 values=values,
                 excluded_fields=_excluded_projection_fields(projection),
             )
-        else:
-            documents = await self.database._fetch_logical_collection_documents(
-                self.name,
-                excluded_fields=_excluded_projection_fields(projection),
+            self._documents = [_normalise_document(document) for document in documents]
+            return
+        if await self._cache_ready():
+            assert self._cache is not None
+            needs_payload = (
+                _projection_needs_payload(projection, self._payload_fields)
+                or _references_any_field(selector, self._payload_fields)
             )
+            if not needs_payload:
+                self._documents = list(self._cache.values())
+                return
+            if not _references_any_field(selector, self._payload_fields):
+                # La cache decide QUALI documenti servono; Supabase fornisce
+                # il payload solo per quelli (lookup esatto per id).
+                matched = [
+                    key for key, document in self._cache.items()
+                    if matches_filter(document, selector)
+                ]
+                if len(matched) <= _CACHE_HYDRATE_BY_ID_MAX:
+                    documents = []
+                    for start in range(0, len(matched), _MAX_EXACT_LOOKUP_VALUES):
+                        documents.extend(await self.database._fetch_logical_documents_exact(
+                            self.name, field="_id",
+                            values=sorted(matched[start:start + _MAX_EXACT_LOOKUP_VALUES]),
+                            excluded_fields=_excluded_projection_fields(projection),
+                        ))
+                    self._documents = [_normalise_document(document) for document in documents]
+                    return
+        documents = await self.database._fetch_logical_collection_documents(
+            self.name,
+            excluded_fields=_excluded_projection_fields(projection),
+        )
         self._documents = [_normalise_document(document) for document in documents]
+        if self._cache is not None and not _excluded_projection_fields(projection):
+            # Lettura completa gia' pagata: aggiorna la cache gratis.
+            for document in self._documents:
+                if document.get("_id") is not None:
+                    self._cache[str(document["_id"])] = self._cache_light(document)
 
     async def _prepare_insert_unlocked(
         self, documents: list[dict[str, Any]],
@@ -455,6 +627,90 @@ class SupabaseRuntimeDatabase(SheetDatabase):
         self._remote_write_lock = asyncio.Lock()
         self.hydration_result: dict[str, Any] | None = None
         self._instance_id = str(uuid.uuid4())
+        self._cache_enabled = _cache_abilitata()
+        self._versions: dict[str, tuple[int, str | None]] = {}
+        self._versions_checked_at: float | None = None
+        self._versions_lock = asyncio.Lock()
+
+    async def _collection_versions(self) -> dict[str, tuple[int, str | None]] | None:
+        """Firma (conteggio, ultimo updated_at) di ogni collezione fisica.
+
+        Una sola RPC per tutte le collezioni, al piu' ogni
+        _CACHE_VERSIONS_TTL_SECONDS. None = firma non disponibile: il
+        chiamante legge da Supabase come prima (mai un dato parziale).
+        """
+        if not self._cache_enabled:
+            return None
+        loop = asyncio.get_running_loop()
+        async with self._versions_lock:
+            now = loop.time()
+            if (
+                self._versions_checked_at is not None
+                and now - self._versions_checked_at < _CACHE_VERSIONS_TTL_SECONDS
+            ):
+                return self._versions
+            try:
+                rows = await self._rpc("gc_collection_versions", {})
+            except SupabaseRPCError as exc:
+                if exc.status == 404 and exc.code == "PGRST202":
+                    logger.warning("RPC gc_collection_versions assente: cache disattivata")
+                    self._cache_enabled = False
+                else:
+                    logger.warning("Firma collezioni non disponibile (%s): lettura completa", exc)
+                return None
+            except Exception as exc:  # noqa: BLE001 - la cache non deve mai bloccare una lettura
+                logger.warning("Firma collezioni non disponibile (%s): lettura completa", exc)
+                return None
+            if not isinstance(rows, list):
+                return None
+            versions: dict[str, tuple[int, str | None]] = {}
+            for row in rows:
+                if not isinstance(row, dict) or not row.get("collection"):
+                    continue
+                updated = row.get("max_updated_at")
+                versions[str(row["collection"])] = (
+                    int(row.get("row_count") or 0),
+                    str(updated) if updated is not None else None,
+                )
+            self._versions = versions
+            self._versions_checked_at = now
+            return versions
+
+    def invalidate_versions(self) -> None:
+        """Forza una nuova firma alla prossima lettura (dopo scritture esterne note)."""
+        self._versions_checked_at = None
+
+    async def _fetch_collection_since(
+        self, physical_name: str, since: str | None, *, excluded_fields: list[str] | None,
+    ) -> list[dict[str, Any]]:
+        documents: list[dict[str, Any]] = []
+        offset = 0
+        while True:
+            page = await self._rpc(
+                "gc_fetch_collection_since",
+                {
+                    "p_collection": physical_name,
+                    "p_since": since,
+                    "p_offset": offset,
+                    "p_limit": _PAGE_SIZE,
+                    "p_exclude_fields": excluded_fields or [],
+                },
+            )
+            if not isinstance(page, list):
+                raise RuntimeError(f"Risposta Supabase delta non valida per {physical_name}")
+            documents.extend(page)
+            if len(page) < _PAGE_SIZE:
+                return documents
+            offset += len(page)
+
+    def cache_stats(self) -> dict[str, Any]:
+        return {
+            "abilitata": self._cache_enabled,
+            "collezioni": [
+                table.cache_stats() for table in self._tables.values()
+                if isinstance(table, SupabaseTable) and table._cache is not None
+            ],
+        }
 
     def __getitem__(self, name: str) -> SupabaseTable:
         return self._tables.setdefault(name, SupabaseTable(self, name))
@@ -807,6 +1063,9 @@ class SupabaseRuntimeDatabase(SheetDatabase):
         self._known_collections.add(collection_name)
         async with self._remote_write_lock:
             await self._persist_mutation(collection_name, method, before, after)
+        table = self._tables.get(collection_name)
+        if isinstance(table, SupabaseTable):
+            table._cache_apply_mutation(method, before, after)
 
     async def _persist_mutation(
         self,
