@@ -759,9 +759,25 @@ passo fallito = bug da correggere subito. Cosa è stato trovato e cambiato
   non ASCII — niente NFKD, perché `à`→`a` non combacerebbe con `�`→`` —,
   spazi compressi; verificato uguale sui due XML reali) e porta il prefisso
   di versione `c2:`; `ha_impronta_corrente` fa ricalcolare dal backfill le
-  impronte di versione precedente.
-  Il backfill idrata per id ~3 s a fattura (300 per giro = ~15 min): le
-  ~870 fatture attive senza impronta si completano in 3 giri da 30 min.
+  impronte di versione precedente. **Priorità** (#483): il backfill (300
+  per giro, ~3 s a fattura per l'idratazione per id) mette in testa le
+  fatture in collisione e le loro controparti, poi le altre per
+  `created_at`. **Esito reale 17/09 12:47 UTC** (SQL): collisioni aperte
+  **0** (erano 46 alle 11:05; le 4 con ancora `stato_import=collisione_
+  identita_da_verificare` sono doppioni archiviati, la copia tenuta è
+  `attivo`), `duplicate_review_required` aperti 0, derivati bloccati 0,
+  fatture attive 982, tutte con impronta `c2:` o marcate `senza_xml_
+  leggibile` (13), doppioni archiviati in totale 503 (138 in questa
+  sessione), avvisi `FATTURA_IDENTITA_DA_VERIFICARE` risolti dal dedup. Il
+  conteggio giusto delle collisioni aperte è `stato_import` di collisione
+  **e** `status` non archiviato. **Crash Postgres Supabase 12:33–12:38
+  UTC**: `database system was interrupted; last known up at 12:33:49`,
+  `not properly shut down; automatic recovery in progress`, riavvio
+  `starting PostgreSQL 17.6` alle 12:38:32 → ~5 minuti di database giù
+  durante il backfill (PostgREST senza schema cache, 5xx sulle RPC, job
+  scheduler saltati un giro, health probe fallita); l'app ha ripreso da
+  sola senza deploy né DDL. È il segnale più forte finora che il compute
+  Micro non regge il carico: valutare il passaggio a Small.
 - **Collaudi E2E riusciti** (dati "ZZZ TEST" creati e ripuliti): ERP
   fattura XML → classificazione → scrittura in partita doppia in
   quadratura → eliminazione; corrispettivo XML → registrazione; Lotti
