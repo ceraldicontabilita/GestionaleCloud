@@ -166,6 +166,64 @@ def test_health_check_supabase_prima_dellidratazione_e_unhealthy(monkeypatch):
     assert payload["database"] == "unreachable"
 
 
+def _database_supabase_idratata(monkeypatch):
+    from app.config import settings
+    from app.services.supabase_runtime_database import SupabaseRuntimeDatabase
+
+    monkeypatch.setattr(settings, "DATA_BACKEND", "supabase")
+    database = SupabaseRuntimeDatabase("test", {
+        "SUPABASE_URL": "https://example.supabase.co",
+        "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_test",
+        "SUPABASE_RUNTIME_SECRET": "runtime-secret-test",
+    })
+    database.hydration_result = {
+        "fogli": [{"collezione": "fatture", "valide": 10, "numero_errori": 0}],
+    }
+
+    async def fake_rpc(function_name, payload):
+        if function_name == "gc_runtime_health_probe":
+            raise RuntimeError(
+                "Supabase RPC gc_runtime_health_probe fallita (HTTP 500): "
+                "canceling statement due to statement timeout"
+            )
+        if function_name in {"gc_fetch_collection", "gc_fetch_collection_after"}:
+            return []
+        raise AssertionError(function_name)
+
+    monkeypatch.setattr(database, "_rpc", fake_rpc)
+    monkeypatch.setattr(Database, "db", database)
+    return database
+
+
+def test_health_check_probe_in_timeout_resta_200_degraded(monkeypatch):
+    """17/09/2026: Render usa /api/health come health check. Un 503 a ogni
+    statement timeout della probe faceva riavviare l'istanza in ciclo
+    (sei riavvii in dieci minuti, sito in 502). Processo vivo + catalogo
+    verificato = 200, con il guasto dell'archivio dichiarato nel corpo."""
+    _database_supabase_idratata(monkeypatch)
+
+    response = asyncio.run(health_check())
+
+    assert not hasattr(response, "status_code")  # dict => HTTP 200
+    assert response["status"] == "degraded"
+    assert response["database"] == "unreachable"
+    assert response["archivio"] == "failed"
+    assert "statement timeout" in response["archivio_errore"]
+    assert response["hydrated_rows"] == 10
+
+
+def test_health_check_strict_con_probe_in_timeout_e_503(monkeypatch):
+    _database_supabase_idratata(monkeypatch)
+
+    response = asyncio.run(health_check(strict=True))
+    payload = json.loads(response.body)
+
+    assert response.status_code == 503
+    assert payload["status"] == "unhealthy"
+    assert payload["archivio"] == "failed"
+    assert "statement timeout" in payload["archivio_errore"]
+
+
 def test_riparazioni_dati_startup_disabilitate_per_default():
     cfg = Settings()
     assert cfg.SHEETS_REGISTRY_NAME == "GestionaleCloud"

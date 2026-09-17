@@ -774,7 +774,19 @@ async def root(request: Request):
 
 @app.get("/health")
 @app.get("/api/health")
-async def health_check():
+async def health_check(strict: bool = False):
+    """Liveness per Render + diagnostica dell'archivio.
+
+    17/09/2026: la probe di scrittura Supabase (``gc_runtime_health_probe``)
+    rispondeva 503 a ogni statement timeout del database; Render, che chiama
+    questo stesso percorso come health check, riavviava l'istanza dopo pochi
+    fallimenti consecutivi, e ogni riavvio rilanciava i job di avvio che
+    caricavano di nuovo il database: ciclo di riavvii (00:18-00:28 UTC, sei
+    riavvii, sito in 502). Un processo vivo con il catalogo verificato resta
+    ``200`` anche se la probe fallisce: risponde ``degraded`` con il motivo,
+    cosi' la diagnosi resta visibile senza far cadere il servizio. Con
+    ``?strict=true`` (verifiche manuali, CI) una probe fallita torna ``503``.
+    """
     from datetime import datetime, timezone
 
     if Database.db is None:
@@ -789,24 +801,43 @@ async def health_check():
             },
         )
 
-    try:
-        if getattr(Database.db, "hydration_result", None) is None:
-            raise RuntimeError("Catalogo Supabase non verificato")
-        health_probe = getattr(Database.db, "health_probe", None)
-        if callable(health_probe):
-            await health_probe()
-    except Exception:
-        logger.exception("Health check archivio remoto fallito")
+    if getattr(Database.db, "hydration_result", None) is None:
+        # Avvio non completato: non e' pronto, e Render deve saperlo.
         return JSONResponse(
             status_code=503,
             content={
                 "status": "unhealthy",
                 "database": "unreachable",
+                "archivio": "catalogo non verificato",
                 "version": settings.APP_VERSION,
                 "deploy_commit": (os.getenv("RENDER_GIT_COMMIT") or "")[:8] or None,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             },
         )
+
+    archivio_probe = "verified"
+    archivio_errore = None
+    try:
+        health_probe = getattr(Database.db, "health_probe", None)
+        if callable(health_probe):
+            await health_probe()
+    except Exception as exc:
+        archivio_probe = "failed"
+        archivio_errore = str(exc)[:200]
+        logger.warning("Health check archivio remoto fallito: %s", archivio_errore)
+        if strict:
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "status": "unhealthy",
+                    "database": "unreachable",
+                    "archivio": archivio_probe,
+                    "archivio_errore": archivio_errore,
+                    "version": settings.APP_VERSION,
+                    "deploy_commit": (os.getenv("RENDER_GIT_COMMIT") or "")[:8] or None,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                },
+            )
 
     salari_sync = "not_started"
     try:
@@ -828,10 +859,13 @@ async def health_check():
         for item in hydration_result.get("fogli", [])
     )
 
+    degradato = hydration_errors > 0 or archivio_probe == "failed"
     return {
-        "status": "healthy" if hydration_errors == 0 else "degraded",
-        "database": "connected" if Database.db is not None else "disconnected",
+        "status": "degraded" if degradato else "healthy",
+        "database": "connected" if archivio_probe != "failed" else "unreachable",
         "storage": "supabase" if settings.DATA_BACKEND.strip().lower() == "supabase" else "drive_sheets",
+        "archivio": archivio_probe,
+        "archivio_errore": archivio_errore,
         "hydrated_rows": hydration_rows,
         "hydration_errors": hydration_errors,
         "version": settings.APP_VERSION,

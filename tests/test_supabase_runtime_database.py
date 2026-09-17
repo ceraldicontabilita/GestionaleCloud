@@ -654,7 +654,11 @@ def test_manifest_non_avvia_un_archivio_parziale_dopo_timeout(monkeypatch):
     with pytest.raises(RuntimeError, match="archivio parziale"):
         asyncio.run(runtime._manifest())
 
-    assert attempts == 3
+    # 17/09/2026: i tentativi sono saliti da 3 a _MANIFEST_RETRIES (l'avvio
+    # insiste piu' a lungo su un database sotto carico), ma senza catalogo
+    # completo l'archivio non parte comunque.
+    from app.services.supabase_runtime_database import _MANIFEST_RETRIES
+    assert attempts == _MANIFEST_RETRIES
 
 
 def test_catalogo_carica_archivi_contabili_e_collezioni_nuove():
