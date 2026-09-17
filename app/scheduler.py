@@ -763,11 +763,24 @@ def start_scheduler():
         # più righe cassa automatiche da spostare, e rischierebbe di
         # spostare righe inserite a mano.
         try:
-            from app.routers.fatture_module.crud import pulisci_duplicati_invoices
-            r = await pulisci_duplicati_invoices()
-            if r.get("fatture_archiviate"):
-                logger.info(f"[SCHEDULER-DEDUP-FATTURE] archiviate={r.get('fatture_archiviate')} "
-                            f"(gruppi={r.get('gruppi_duplicati')})")
+            # 17/09/2026: prima della dedup, le fatture senza identita'
+            # canonica (legacy con l'XML in fattura_allegata) ricevono
+            # invoice_key/P.IVA/hash dall'XML, altrimenti la dedup per hash
+            # non puo' ne' raggrupparle ne' provarle; dopo, le scritture
+            # non ammesse (doppioni, archivio storico) vengono stornate.
+            from app.database import Database
+            from app.services.fatture_identita import bonifica_identita_fatture
+            r = await bonifica_identita_fatture(Database.get_db())
+            dedup = r.get("dedup") or {}
+            if (r.get("identita") or {}).get("normalizzate") or dedup.get("fatture_archiviate") \
+                    or (r.get("storni") or {}).get("stornate"):
+                logger.info(
+                    "[SCHEDULER-DEDUP-FATTURE] identita=%s archiviate=%s (gruppi=%s) "
+                    "storni=%s",
+                    (r.get("identita") or {}).get("normalizzate"),
+                    dedup.get("fatture_archiviate"), dedup.get("gruppi_duplicati"),
+                    (r.get("storni") or {}).get("stornate"),
+                )
         except Exception as e:
             logger.error(f"[SCHEDULER-DEDUP-FATTURE] errore: {e}")
         try:

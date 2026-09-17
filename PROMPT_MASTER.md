@@ -1786,6 +1786,8 @@ Route table sorgente: **1169**; attivi da ricreare: **729**; quarantena: **440**
 
 - **attivo** — `GET /api/invoices` — in uso: FE
 - **attivo** — `GET /api/invoices/bank-pending` — in uso: FE
+- **attivo** — `POST /api/invoices/bonifica-identita` — in uso: scheduler (stesso giro), admin
+- **attivo** — `GET /api/invoices/bonifica-identita/stato` — in uso: admin
 - **attivo** — `GET /api/invoices/by-month/{year}/{month}` — in uso: FE
 - **attivo** — `GET /api/invoices/{invoice_id}` — in uso: FE
 

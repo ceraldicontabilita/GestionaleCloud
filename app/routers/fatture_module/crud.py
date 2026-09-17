@@ -908,7 +908,9 @@ async def pulisci_duplicati_invoices() -> Dict[str, Any]:
          "pagato": 1, "stato_pagamento": 1, "created_at": 1,
          "content_hash": 1, "file_hash": 1, "source_hash": 1, "sha256": 1,
          "source_document_id": 1, "drive_file_id": 1,
-         "documents_inbox_id": 1, "source_documents": 1},
+         "documents_inbox_id": 1, "source_documents": 1,
+         "registrata_contabilita": 1, "movimento_contabile_id": 1,
+         "centro_costo_id": 1, "xml_raw": 1},
     ).to_list(20000)
 
     gruppi: Dict[tuple, list] = {}
@@ -928,8 +930,15 @@ async def pulisci_duplicati_invoices() -> Dict[str, Any]:
         ha_pn = bool(d.get("prima_nota_id") or d.get("prima_nota_cassa_id")
                      or d.get("prima_nota_banca_id"))
         pagata = bool(d.get("pagato") or d.get("stato_pagamento") == "pagata")
+        # 17/09/2026: la copia che resta e' quella gia' nel libro giornale
+        # (la scrittura punta a lei), poi quella con l'originale XML e la
+        # classificazione fiscale; prima nota e pagamento vengono dopo.
+        registrata = bool(d.get("registrata_contabilita") and d.get("movimento_contabile_id"))
+        ha_xml = bool(d.get("xml_raw"))
+        classificata = bool(d.get("centro_costo_id"))
         # score più alto = da tenere; a parità vince il più vecchio
-        return (int(ha_pn), int(pagata), -(len(str(d.get("created_at") or "")) and 0))
+        return (int(registrata), int(ha_xml), int(classificata), int(ha_pn), int(pagata),
+                -(len(str(d.get("created_at") or "")) and 0))
 
     from app.routers.invoices.invoices_main import _same_original
 
@@ -974,6 +983,9 @@ async def pulisci_duplicati_invoices() -> Dict[str, Any]:
 
     now = datetime.now(timezone.utc).isoformat()
     movimenti_archiviati = 0
+    scritture_stornate = 0
+    registrati = {d["id"]: bool(d.get("registrata_contabilita")) for d in docs if d.get("id")}
+    from app.services.registrazione_contabile import storna_registrazione_fattura
     for doppione_id, canonico_id in coppie_da_archiviare:
         await db["invoices"].update_one(
             {"id": doppione_id},
@@ -984,6 +996,17 @@ async def pulisci_duplicati_invoices() -> Dict[str, Any]:
                 "archived_at": now,
             }},
         )
+        if registrati.get(doppione_id):
+            # Lo stesso documento non puo' stare due volte nel libro
+            # giornale: la scrittura del doppione viene stornata (mai
+            # cancellata), quella della copia canonica resta.
+            try:
+                r = await storna_registrazione_fattura(
+                    db, doppione_id, f"duplicato della fattura {canonico_id}")
+                if r.get("stato") == "stornato":
+                    scritture_stornate += 1
+            except Exception as exc:  # noqa: BLE001
+                logger.error("Storno doppione %s fallito: %s", doppione_id, exc)
         for collezione in ("prima_nota_cassa", "prima_nota_banca", "scadenziario_fornitori"):
             risultato = await db[collezione].update_many(
                 {"fattura_id": doppione_id,
@@ -1003,6 +1026,7 @@ async def pulisci_duplicati_invoices() -> Dict[str, Any]:
         "fatture_archiviate": len(coppie_da_archiviare),
         "fatture_eliminate": 0,
         "movimenti_archiviati": movimenti_archiviati,
+        "scritture_stornate": scritture_stornate,
         "movimenti_prima_nota_eliminati": 0,
     }
 

@@ -260,6 +260,78 @@ async def registra_fattura(db, fattura: Dict[str, Any], *, force: bool = False,
     return {"stato": "registrato", "movimento": mov}
 
 
+async def storna_registrazione_fattura(db, fattura_id: str, motivo: str) -> Dict[str, Any]:
+    """Storna la scrittura di una fattura acquisto che NON doveva stare nel
+    libro giornale (17/09/2026: 9 fatture 2026 registrate due volte, copia
+    legacy + copia Drive dello stesso XML; 13 fatture 2025 dell'archivio
+    storico registrate dal pregresso).
+
+    Partita doppia: la scrittura originale resta (mai cancellata), viene
+    marcata ``stato: stornato`` e nasce una scrittura di storno con DARE e
+    AVERE invertiti, stesso importo, ``storno_di`` = id originale. Libro
+    giornale e bilancio di verifica sommano tutte le scritture: le due si
+    annullano. Idempotente per documento (``reg:storno-fattura:<id>``).
+    La fattura torna ``registrata_contabilita=False`` con il motivo annotato.
+    """
+    if not fattura_id:
+        return {"stato": "saltato", "motivo": "fattura senza id"}
+    originale = await db[COLL_MOVIMENTI].find_one(
+        {"tipo": "fattura_acquisto", "fattura_id": fattura_id}, {"_id": 0})
+    if not originale:
+        return {"stato": "saltato", "motivo": "nessuna scrittura da stornare"}
+    if originale.get("stato") == "stornato":
+        return {"stato": "gia_stornato", "movimento_id": originale.get("id"),
+                "storno_id": originale.get("stornato_da")}
+
+    righe_storno = []
+    saldi = []
+    for riga in originale.get("righe") or []:
+        dare = float(riga.get("avere") or 0)
+        avere = float(riga.get("dare") or 0)
+        righe_storno.append({**riga, "dare": dare, "avere": avere,
+                             "descrizione": f"Storno: {riga.get('descrizione') or ''}".strip()})
+        if dare:
+            saldi.append((riga.get("conto_codice"), dare, "dare"))
+        if avere:
+            saldi.append((riga.get("conto_codice"), avere, "avere"))
+    now = _now()
+    anno = originale.get("anno") or _anno_da_data(originale.get("data"))
+    storno = {
+        "id": str(uuid.uuid4()),
+        "numero_registrazione": await _prossimo_numero(db, anno),
+        "tipo": "storno_fattura_acquisto",
+        "storno_di": originale.get("id"),
+        "fonte_documento": originale.get("fonte_documento"),
+        "fattura_id": fattura_id,
+        "descrizione": f"Storno {originale.get('descrizione') or ''} - {motivo}".strip(),
+        "motivo_storno": motivo,
+        "data": originale.get("data"), "data_documento": originale.get("data_documento"),
+        "data_competenza": originale.get("data_competenza"),
+        "data_registrazione": now,
+        "anno": anno,
+        "importo_totale": originale.get("importo_totale"),
+        "imponibile": originale.get("imponibile"), "iva": originale.get("iva"),
+        "righe": righe_storno,
+        "totale_dare": originale.get("totale_avere"),
+        "totale_avere": originale.get("totale_dare"),
+        "stato": "registrato", "created_at": now,
+        "idempotency_key": chiave_idempotenza("storno-fattura", fattura_id),
+    }
+    mov = await _scrivi_movimento(db, storno, saldi)
+    await db[COLL_MOVIMENTI].update_one(
+        {"id": originale.get("id")},
+        {"$set": {"stato": "stornato", "stornato_da": mov.get("id"),
+                  "stornato_at": now, "motivo_storno": motivo}})
+    await db["invoices"].update_one(
+        {"id": fattura_id},
+        {"$set": {"registrata_contabilita": False,
+                  "registrazione_contabile_esito": {"stato": "stornato", "motivo": motivo, "at": now},
+                  "movimento_contabile_stornato_id": originale.get("id")},
+         "$unset": {"movimento_contabile_id": ""}})
+    await _audit(db, "stornato", originale.get("id"), f"storno fattura {fattura_id}: {motivo}")
+    return {"stato": "stornato", "movimento_id": originale.get("id"), "storno_id": mov.get("id")}
+
+
 async def registra_corrispettivo(db, corr: Dict[str, Any], *, force: bool = False) -> Dict[str, Any]:
     """Registra un corrispettivo (idempotente).
     DARE cassa/banca · AVERE ricavi + IVA a debito (scorporo aliquota storica)."""
@@ -364,8 +436,14 @@ async def registra_corrispettivo(db, corr: Dict[str, Any], *, force: bool = Fals
 # (contabilita_gestionale._bilancio_verifica_da_registro): un documento
 # cancellato o archiviato non va mai registrato nel libro giornale.
 _FILTRO_FATTURE_DA_REGISTRARE: Dict[str, Any] = {
-    "status": {"$nin": ["deleted", "archived"]},
+    # ``archiviata`` = archivio storico degli anni passati (solo consultazione,
+    # regola 14/07/2026): il pregresso del 17/09 ne aveva registrate 13 del
+    # 2025 perche' mancava dall'elenco. Una collisione di identita' ancora da
+    # verificare non entra finche' un operatore non decide quale originale vale.
+    "status": {"$nin": ["deleted", "archived", "archiviata"]},
     "entity_status": {"$ne": "deleted"},
+    "stato_import": {"$ne": "archivio_storico"},
+    "duplicate_review_required": {"$ne": True},
     "registrata_contabilita": {"$ne": True},
 }
 _FILTRO_CORRISPETTIVI_DA_REGISTRARE: Dict[str, Any] = {

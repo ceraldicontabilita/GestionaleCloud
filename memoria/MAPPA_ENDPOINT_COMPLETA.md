@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1170 endpoint** in **112 gruppi**.
+> Totale **1172 endpoint** in **112 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 640 · ext esterni = 81 · — da verificare = 449
+**Riepilogo uso:** ✓ frontend = 642 · ext esterni = 81 · — da verificare = 449
 
 ## AI Parser  (11)
 
@@ -1050,12 +1050,14 @@
 | GET | `/api/integrations/lotti/invoices` | — | lotti_integration |
 | GET | `/api/integrations/lotti/invoices/{source_id}` | — | lotti_integration |
 
-## Invoices  (4)
+## Invoices  (6)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
 | GET | `/api/invoices` | ✓ | invoices.invoices_main |
 | GET | `/api/invoices/bank-pending` | ✓ | invoices.invoices_main |
+| POST | `/api/invoices/bonifica-identita` | ✓ | invoices.invoices_main |
+| GET | `/api/invoices/bonifica-identita/stato` | ✓ | invoices.invoices_main |
 | GET | `/api/invoices/by-month/{year}/{month}` | ✓ | invoices.invoices_main |
 | GET | `/api/invoices/{invoice_id}` | ✓ | invoices.invoices_main |
 

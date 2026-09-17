@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1170 · tenere: 730 · verificare: 410 · admin-only (migrazione/manutenzione): 30
+**Totale endpoint:** 1172 · tenere: 732 · verificare: 410 · admin-only (migrazione/manutenzione): 30
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -727,6 +727,8 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/integrations/lotti/invoices/{source_id}` | lotti_integration | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/invoices` | invoices.invoices_main | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/invoices/bank-pending` | invoices.invoices_main | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/invoices/bonifica-identita` | invoices.invoices_main | sì | — | — | — | sì | tenere | in uso: FE |
+| `GET /api/invoices/bonifica-identita/stato` | invoices.invoices_main | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/invoices/by-month/{year}/{month}` | invoices.invoices_main | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/invoices/emesse` | invoices.invoices_emesse | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/invoices/emesse` | invoices.invoices_emesse | sì | — | — | — | sì | tenere | in uso: FE |
