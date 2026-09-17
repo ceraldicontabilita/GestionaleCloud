@@ -464,13 +464,20 @@ async def registra_tutte_fatture(db, *, dry_run: bool = False, gia_registrate=No
                     await asyncio.sleep(pausa)
         else:
             try:
-                r = await registra_fattura(db, f)
+                # L'assenza nel libro giornale e' gia' nota dall'elenco caricato
+                # una volta sola: ``force`` evita di ricaricare il giornale per
+                # ogni documento (in produzione ~1,4 s l'uno su Supabase). Un
+                # doppione e' comunque impossibile: l'indice unico su
+                # ``idempotency_key`` rifiuta una seconda scrittura.
+                r = await registra_fattura(db, f, force=True)
                 esiti.append(r.get("stato") or "sconosciuto")
                 if r.get("stato") == "registrato":
                     registrate += 1
+                await _annota_esito(db, "invoices", f.get("id"), r)
             except Exception as e:  # noqa: BLE001 - raccolgo e riporto, non silenzio
                 esiti.append("errore")
                 errori.append(f"Fattura {f.get('invoice_number', 'N/A')}: {e}")
+                await _annota_esito(db, "invoices", f.get("id"), {"stato": "errore", "motivo": str(e)})
             if pausa:
                 await asyncio.sleep(pausa)
         if on_progress and indice % _PROGRESSO_OGNI == 0:
@@ -507,13 +514,15 @@ async def registra_tutti_corrispettivi(db, *, dry_run: bool = False, gia_registr
                     await asyncio.sleep(pausa)
         else:
             try:
-                r = await registra_corrispettivo(db, c)
+                r = await registra_corrispettivo(db, c, force=True)
                 esiti.append(r.get("stato") or "sconosciuto")
                 if r.get("stato") == "registrato":
                     registrati += 1
+                await _annota_esito(db, "corrispettivi", c.get("id"), r)
             except Exception as e:  # noqa: BLE001
                 esiti.append("errore")
                 errori.append(f"Corrispettivo {c.get('id', 'N/A')}: {e}")
+                await _annota_esito(db, "corrispettivi", c.get("id"), {"stato": "errore", "motivo": str(e)})
             if pausa:
                 await asyncio.sleep(pausa)
         if on_progress and indice % _PROGRESSO_OGNI == 0:
@@ -643,10 +652,19 @@ async def registra_documento_import(db, tipo_documento: str, documento: Dict[str
                          tipo_documento, doc_id)
         esito = {"stato": "errore", "motivo": str(exc)}
 
+    await _annota_esito(db, collezione, doc_id, esito)
+    return esito
+
+
+async def _annota_esito(db, collezione: str, doc_id: Any, esito: Dict[str, Any]) -> None:
+    """Annota sul documento sorgente l'esito negativo del motore (o lo toglie
+    quando la scrittura c'e'). Unico punto: usato dall'import automatico e dal
+    recupero del pregresso, cosi' il motivo di uno scarto e' sempre leggibile
+    sul documento e non solo nel log."""
     stato = esito.get("stato")
     if stato in {"da_verificare", "saltato", "errore"}:
         logger.warning("Registrazione contabile %s %s: %s (%s)",
-                       tipo_documento, doc_id, stato, esito.get("motivo"))
+                       collezione, doc_id, stato, esito.get("motivo"))
         try:
             await db[collezione].update_one(
                 {"id": doc_id},
@@ -662,7 +680,6 @@ async def registra_documento_import(db, tipo_documento: str, documento: Dict[str
                 {"id": doc_id}, {"$unset": {"registrazione_contabile_esito": ""}})
         except Exception:  # noqa: BLE001
             pass
-    return esito
 
 
 async def _verifica_importo_scrittura(db, documento: Dict[str, Any], esito: Dict[str, Any]) -> Dict[str, Any]:

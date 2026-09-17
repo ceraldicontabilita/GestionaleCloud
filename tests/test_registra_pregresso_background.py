@@ -92,6 +92,42 @@ def test_i_gia_registrati_non_arrivano_al_motore(monkeypatch):
     }
 
 
+def test_il_pregresso_non_ricarica_il_giornale_e_annota_lo_scarto(monkeypatch):
+    """17/09/2026: in produzione ogni fattura senza scrittura costava ~1,4 s
+    perche' il motore ricaricava il libro giornale (find_one non indicizzato)
+    pur sapendo gia' dall'elenco iniziale che la scrittura non c'era; e uno
+    scarto (es. IVA detraibile non classificata) non veniva annotato sul
+    documento, quindi il motivo restava invisibile."""
+    db = _db("pregresso-force")
+    kw_visti = []
+    vero_fattura = rc.registra_fattura
+
+    async def spia(db_, fattura, **kw):
+        kw_visti.append(kw)
+        return await vero_fattura(db_, fattura, **kw)
+
+    monkeypatch.setattr(rc, "registra_fattura", spia)
+
+    async def scenario():
+        await db["invoices"].insert_many([
+            {"id": "f-iva", "total_amount": 122.0, "iva": 22.0, "invoice_date": "2026-02-02"},
+            {"id": "f-ok", "total_amount": 50.0, "iva": 0, "invoice_date": "2026-02-03"},
+        ])
+        esito = await rc.registra_pregresso(db, dry_run=False)
+        f_iva = await db["invoices"].find_one({"id": "f-iva"})
+        f_ok = await db["invoices"].find_one({"id": "f-ok"})
+        return esito, f_iva, f_ok
+
+    esito, f_iva, f_ok = _run(scenario())
+
+    assert all(kw.get("force") is True for kw in kw_visti) and len(kw_visti) == 2
+    assert esito["fatture"]["esiti"] == {"da_verificare": 1, "registrato": 1}
+    assert f_iva["registrazione_contabile_esito"]["stato"] == "da_verificare"
+    assert "IVA detraibile" in f_iva["registrazione_contabile_esito"]["motivo"]
+    assert f_ok["registrata_contabilita"] is True
+    assert "registrazione_contabile_esito" not in f_ok
+
+
 def test_dry_run_non_legge_il_libro_giornale_e_non_scrive(monkeypatch):
     db = _db("pregresso-dry")
 
