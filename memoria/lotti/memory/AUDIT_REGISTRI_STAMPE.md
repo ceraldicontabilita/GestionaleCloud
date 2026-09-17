@@ -1,5 +1,14 @@
 # AUDIT REGISTRI & STAMPE — Tranche 6 (24/07/2026)
 
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-09-17
+storage_architecture: supabase
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 > Regola tassativa del brief: un anno = 365 righe MAI 364; i giorni senza
 > dati compaiono come "Dato non disponibile", MAI celle vuote o righe
 > saltate; le stampe vanno GENERATE davvero e confrontate col DB.

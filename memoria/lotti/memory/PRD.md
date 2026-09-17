@@ -1,5 +1,14 @@
 # CeraldiApp - PRD & Stato
 
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-09-17
+storage_architecture: supabase
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 ## Original Problem Statement
 Gestionale full-stack (FastAPI + React + MongoDB Atlas) per Ceraldi Group: HACCP, contabilità, inventario bar/pasticceria, gestione ordini fornitori. Database "Gestionale" su Atlas.
 

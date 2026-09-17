@@ -1,5 +1,14 @@
 # Ristrutturazione navigazione
 
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-09-17
+storage_architecture: supabase
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 ## Modifiche applicate
 
 - Ridotte le voci principali da sei a cinque: Oggi, Produzione, Tracciabilità, Magazzino e Acquisti.

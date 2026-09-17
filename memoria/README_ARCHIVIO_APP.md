@@ -1,5 +1,11 @@
 # Archivio dei documenti delle app portate dentro il gestionale
 
+<!-- gestionalecloud-doc
+status: current
+reviewed_at: 2026-09-17
+storage_architecture: supabase
+-->
+
 Il 17/09/2026 la memoria di progetto è stata unificata: l'unico file di regole
 è `CLAUDE.md` alla radice del repository. Questa cartella conserva i documenti
 dei repository originali, che non vengono più deployati e servono solo come

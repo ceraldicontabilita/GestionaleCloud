@@ -1,5 +1,14 @@
 # AUDIT NAVIGAZIONE — fase 2 ristrutturazione (24/07/2026)
 
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-09-17
+storage_architecture: supabase
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 ## Architettura (COMPLETATO e VERIFICATO da build + 13 test)
 - Fonte unica della navigazione: `frontend/src/config/navigation.js`
   (PRIMARY_TABS max 5: Oggi, Produzione, Tracciabilità, Magazzino, Acquisti;

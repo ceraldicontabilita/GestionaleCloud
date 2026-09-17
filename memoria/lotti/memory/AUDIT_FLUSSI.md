@@ -1,5 +1,14 @@
 # AUDIT FLUSSI OPERATIVI (24/07/2026) — dal codice reale + test su Mongo di prova
 
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-09-17
+storage_architecture: supabase
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 Test E2E: backend/tests/test_e2e_flussi.py su mongomock (DB Gestionale_Test,
 MAI il db reale, zero rete). PROVA CON FATTURA VERA di Enzo (F.lli
 Fiorentino, 12 righe): import ok, 12 lotti fornitori creati, SECONDO import

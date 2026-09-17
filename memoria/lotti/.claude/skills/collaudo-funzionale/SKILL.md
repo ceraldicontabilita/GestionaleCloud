@@ -5,6 +5,15 @@ description: Verifica end-to-end di un flusso dell'app con dati di prova reali s
 
 # Collaudo funzionale E2E (metodo Ceraldi)
 
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-09-17
+storage_architecture: supabase
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 1. NON fidarsi della lettura del codice da sola: il titolare vuole la PROVA sul vivo.
 2. Crea un'entità di test riconoscibile ("ZZZ TEST ..." — la pulizia dati rimuove
    automaticamente \btest\b|\bzzz\b|\bprova\b), MAI toccare dati di produzione.

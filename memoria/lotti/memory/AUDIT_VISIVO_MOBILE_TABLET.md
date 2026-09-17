@@ -1,5 +1,14 @@
 # Audit visivo mobile/tablet — Lotti HACCP (Tranche 5, completata)
 
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-09-17
+storage_architecture: supabase
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 Data: 24/07/2026 · Metodo: rig LOCALE (backend reale su mongomock
 `Gestionale_Test` porta 8001 via `backend/run_locale_test.py`, build frontend
 servita su porta 3001, screenshot Chromium/Playwright). Nessun contatto con

@@ -1,5 +1,14 @@
 # Risolvere il cold start di Render (risveglio lento ~50s)
 
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-09-17
+storage_architecture: supabase
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 ## Il problema
 Il piano gratuito di Render **spegne il backend dopo ~15 minuti di inattività**.
 Alla prima richiesta successiva il servizio si riavvia e impiega ~50 secondi a rispondere.

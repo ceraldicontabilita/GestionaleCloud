@@ -1,5 +1,14 @@
 # MAPPA DI VERITÀ — App Tracciabilità HACCP (Lotti)
 
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-09-17
+storage_architecture: supabase
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 > Documento generato automaticamente il 29/05/2026 incrociando codice e database live.
 > Scopo: prima di modificare una pagina, sapere con CERTEZZA quali endpoint e collezioni usa.
 > Rigenerabile con `python3 scripts/genera_mappa_verita.py`.

@@ -1,4 +1,14 @@
 # Direttive permanenti di Enzo (Ceraldi Group) — da propagare a TUTTE le app
+
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-09-17
+storage_architecture: supabase
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 Aggiornato: 02/07/2026. Queste regole valgono per Lotti, App dipendenti e
 Gestionale Cloud: copiarle (con la cartella .claude/skills/) nei nuovi progetti.
 

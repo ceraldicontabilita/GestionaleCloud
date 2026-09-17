@@ -5,6 +5,15 @@ description: Audit completo del codice per errori e incoerenze reali (niente sti
 
 # Audit codice (metodo Ceraldi)
 
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-09-17
+storage_architecture: supabase
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 ## Fase meccanica (sempre per prima, economica e oggettiva)
 1. Backend Python: `python -m compileall` + `pyflakes` su tutto; trattare come GRAVI:
    nomi non definiti, chiavi dict duplicate (es. `{"$ne": a, "$ne": b}` in query Mongo:

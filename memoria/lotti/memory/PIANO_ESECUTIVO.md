@@ -1,4 +1,14 @@
 # PIANO ESECUTIVO — cosa resta da fare, in che ordine, come si collauda
+
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-09-17
+storage_architecture: supabase
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 Aggiornato il 25/07/2026. Ricostruito rileggendo TUTTI i documenti di audit
 (AUDIT_FLUSSI, AUDIT_QUANTITA_UNITA, AUDIT_SICUREZZA, AUDIT_NAVIGAZIONE,
 AUDIT_VISIVO_MOBILE_TABLET, AUDIT_IMPORT_DATABASE, AUDIT_REGISTRI_STAMPE,

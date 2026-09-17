@@ -5,6 +5,15 @@ description: Genera la guida operativa PDF dell'app, pagina per pagina e bottone
 
 # Guida operativa dal codice (metodo Ceraldi)
 
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-09-17
+storage_architecture: supabase
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 Obiettivo: documento stampabile con, per OGNI pagina: titolo, indirizzo (#hash o route),
 schede/sezioni nell'ordine reale, e tabella "Elemento → Cosa fa → Dove porta/API"
 per ogni bottone/card. Le etichette citate devono essere ESATTAMENTE quelle nel JSX.

@@ -1,5 +1,14 @@
 # 🔍 RAPPORTO RICERCA ALLERGENI - MENU CERALDI CAFFÉ
 
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-09-17
+storage_architecture: supabase
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 ## 📋 Riepilogo Generale
 
 Questo documento contiene il risultato di una ricerca approfondita sul web per identificare gli allergeni contenuti in ogni prodotto del menu del Ceraldi Caffé, conformemente al **Regolamento UE 1169/2011** e al **D.Lgs. 231/2017**.

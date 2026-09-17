@@ -1,5 +1,14 @@
 # PIANO REFACTOR — inventario file grandi (24/07/2026)
 
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-09-17
+storage_architecture: supabase
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 Legenda stato: [FATTO] in questa fase · [DA FARE] fasi successive.
 Rischio: BASSO = pezzi già separati nello stesso file · MEDIO = stato
 condiviso da districare · ALTO = effetti/logica intrecciati.

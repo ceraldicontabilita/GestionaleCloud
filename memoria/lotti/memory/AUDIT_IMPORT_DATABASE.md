@@ -1,5 +1,14 @@
 # AUDIT IMPORT & DATABASE — Tranche 6 (24/07/2026)
 
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-09-17
+storage_architecture: supabase
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 > Audit basato sul CODICE REALE (ogni affermazione con file:riga) e su test
 > eseguiti SOLO su database di prova (mongomock-motor, DB "Gestionale_Test",
 > zero rete): `backend/tests/test_audit_tranche6.py` (14 test, tutti verdi).

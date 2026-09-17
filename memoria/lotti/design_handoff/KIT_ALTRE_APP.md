@@ -1,5 +1,14 @@
 # Kit "grafica e semplicità Ceraldi" — da portare su ALTRE app del gruppo
 
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-09-17
+storage_architecture: supabase
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 Scritto il 25/07/2026 per applicare a un'altra app (es. impresasemplice.online)
 lo stesso aspetto e la stessa facilità d'uso di Lotti, senza rifare il lavoro
 da zero e senza toccare le logiche di quell'app.

@@ -1,5 +1,14 @@
 # Documentazione del progetto — Lotti (HACCP · Ordini · Tracciabilità)
 
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-09-17
+storage_architecture: supabase
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 > Ceraldi Group S.r.l. — Pasticceria e Rosticceria, Napoli
 > Questo file spiega com'è strutturato il progetto, quali pagine contiene, cosa fa ogni
 > sezione, come funziona l'import delle fatture e cosa controlla il sistema quando si fa

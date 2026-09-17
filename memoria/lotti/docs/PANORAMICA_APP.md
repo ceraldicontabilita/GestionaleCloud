@@ -1,4 +1,14 @@
 # Lotti — Gestionale HACCP relazionale di Ceraldi Group SRL
+
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-09-17
+storage_architecture: supabase
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 ### Brief professionale: cosa fa, come funziona, ambizione, punti di forza e debolezza, roadmap migliorativa
 
 > Documento di sintesi (utilizzabile anche come prompt/brief per onboarding, audit

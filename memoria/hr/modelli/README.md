@@ -1,5 +1,14 @@
 # Modelli documenti — CCNL Pubblici Esercizi/Turismo (H05Y)
 
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-09-17
+storage_architecture: supabase
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 ## Informativa D.Lgs. 152/1997
 
 `INFORMATIVA_152_1997_Turismo.docx` è l'informativa adattata al CCNL

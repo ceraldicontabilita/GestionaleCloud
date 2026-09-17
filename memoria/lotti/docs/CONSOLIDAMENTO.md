@@ -1,5 +1,14 @@
 # Consolidamento sistemi (§0/§2) — analisi sul codice reale
 
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-09-17
+storage_architecture: supabase
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 > Mappa dei presunti "sistemi paralleli" verificata leggendo il codice di `main`.
 > Scopo: distinguere ciò che è davvero duplicato (da unificare) da ciò che è
 > dominio distinto (da NON fondere) o già unificato.

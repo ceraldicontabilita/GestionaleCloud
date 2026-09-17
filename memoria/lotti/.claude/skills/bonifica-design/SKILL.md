@@ -5,6 +5,15 @@ description: Verifica e ripristina la coerenza del design in tutte le pagine (co
 
 # Bonifica design (metodo Ceraldi)
 
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-09-17
+storage_architecture: supabase
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 ## Palette ufficiale (design_handoff/)
 Salvia #5b7a6b (dark #3f5a4e, gradiente 135° #5b7a6b→#6f9180), crema #faf7f0, card
 #fffefb, bordi #e6e0d4. Semantici caldi: danger #d35f4e, warning #c4894a, success

@@ -1,5 +1,14 @@
 # AUDIT END-TO-END — 25/07/2026
 
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-09-17
+storage_architecture: supabase
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 Audit completo richiesto da Enzo: «fai un audit completo con collaudo per
 capire errori reali live end to end e debug del codice».
 

@@ -1,5 +1,14 @@
 # Ceraldi Group — HACCP Tracciabilità (Lotti)
 
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-09-17
+storage_architecture: supabase
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 Gestionale HACCP per Ceraldi Group SRL (pasticceria/rosticceria/bar, Napoli),
 usato ogni giorno dal titolare e dai dipendenti su smartphone e tablet.
 

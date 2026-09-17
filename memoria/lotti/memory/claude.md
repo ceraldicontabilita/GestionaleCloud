@@ -1,4 +1,14 @@
 # HACCP Ceraldi — Mappa DB/API (fonte di verità per field names)
+
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-09-17
+storage_architecture: supabase
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 > Ultimo aggiornamento: 04/07/2026 v67 (7 tranche tracciabilità lotti + registro richiami)
 > SEMPRE leggere questo file prima di scrivere query MongoDB o chiamate API.
 

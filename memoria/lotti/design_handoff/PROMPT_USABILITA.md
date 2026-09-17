@@ -1,5 +1,14 @@
 # Prompt di USABILITÀ (solo interfaccia) — da incollare su un'altra app
 
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-09-17
+storage_architecture: supabase
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 Nessuna regola di funzionamento, nessuna funzione da implementare: solo come
 deve apparire e come si deve toccare. Le misure sono quelle vere dell'app
 Lotti (`frontend/src/index.css`, `TabletHome.jsx`, `TabletView.jsx`,
