@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1169 endpoint** in **112 gruppi**.
+> Totale **1170 endpoint** in **112 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 639 · ext esterni = 81 · — da verificare = 449
+**Riepilogo uso:** ✓ frontend = 640 · ext esterni = 81 · — da verificare = 449
 
 ## AI Parser  (11)
 
@@ -1314,7 +1314,7 @@
 | POST | `/api/pianificazione/costi-previsionali` | — | pianificazione |
 | DELETE | `/api/pianificazione/costi-previsionali/{costo_id}` | — | pianificazione |
 
-## Piano dei Conti  (13)
+## Piano dei Conti  (14)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -1326,6 +1326,7 @@
 | POST | `/api/piano-conti/registra-corrispettivi` | ✓ | accounting.piano_conti |
 | POST | `/api/piano-conti/registra-fattura` | ✓ | accounting.piano_conti |
 | POST | `/api/piano-conti/registra-pregresso` | ✓ | accounting.piano_conti |
+| GET | `/api/piano-conti/registra-pregresso/stato` | ✓ | accounting.piano_conti |
 | POST | `/api/piano-conti/registra-tutte-fatture` | ✓ | accounting.piano_conti |
 | GET | `/api/piano-conti/regole` | ✓ | accounting.piano_conti |
 | POST | `/api/piano-conti/regole` | ✓ | accounting.piano_conti |

@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1169 · tenere: 729 · verificare: 410 · admin-only (migrazione/manutenzione): 30
+**Totale endpoint:** 1170 · tenere: 730 · verificare: 410 · admin-only (migrazione/manutenzione): 30
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -889,7 +889,8 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/piano-conti/movimenti` | accounting.piano_conti | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/piano-conti/registra-corrispettivi` | accounting.piano_conti | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/piano-conti/registra-fattura` | accounting.piano_conti | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/piano-conti/registra-pregresso` | accounting.piano_conti | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/piano-conti/registra-pregresso` | accounting.piano_conti | sì | — | — | — | sì | tenere | in uso: FE |
+| `GET /api/piano-conti/registra-pregresso/stato` | accounting.piano_conti | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/piano-conti/registra-tutte-fatture` | accounting.piano_conti | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/piano-conti/regole` | accounting.piano_conti | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/piano-conti/regole` | accounting.piano_conti | sì | — | — | — | — | tenere | in uso: FE |

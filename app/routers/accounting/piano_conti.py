@@ -1226,7 +1226,30 @@ async def registra_pregresso_contabilita(
     all'amministratore e idempotente, registra in un solo giro tutto cio' che
     era arrivato prima (riusa `/registra-tutte-fatture` e
     `/registra-corrispettivi`: un solo motore, nessun sistema parallelo).
-    `?dry_run=true` restituisce solo i conteggi senza scrivere.
+    `?dry_run=true` restituisce subito i conteggi senza scrivere.
+
+    Il giro vero parte in background e risponde subito (16/09/2026: con
+    1.043 documenti superava il timeout del gateway Render, il client
+    riceveva 499/502 mentre il server continuava senza che nessuno potesse
+    seguirne l'esito). Avanzamento ed esito finale: `GET .../registra-pregresso/stato`.
     """
-    from app.services.registrazione_contabile import registra_pregresso
-    return await registra_pregresso(Database.get_db(), dry_run=bool(dry_run is True))
+    from app.services.registrazione_contabile import (
+        avvia_pregresso_in_background, registra_pregresso,
+    )
+    db = Database.get_db()
+    if dry_run is True:
+        return await registra_pregresso(db, dry_run=True)
+    if not avvia_pregresso_in_background(db):
+        return {"status": "running", "message": "Registrazione del pregresso già in corso"}
+    return {"status": "started", "message": "Registrazione del pregresso avviata"}
+
+
+@router.get("/registra-pregresso/stato")
+@handle_errors
+async def stato_registra_pregresso(
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Avanzamento (fase, documenti fatti/totale, registrati, errori) ed esito
+    dell'ultimo giro di `POST /registra-pregresso`."""
+    from app.services.registrazione_contabile import stato_pregresso
+    return await stato_pregresso(Database.get_db())
