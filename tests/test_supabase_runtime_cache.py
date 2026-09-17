@@ -11,7 +11,7 @@ aggiornano la cache; che senza le RPC nuove si torna alla lettura completa.
 import asyncio
 
 from app.services import supabase_runtime_database as srd
-from tests.test_supabase_runtime_database import FakeRestSupabase
+from tests.test_supabase_runtime_database import FakeRestSupabase, proietta_come_supabase
 
 
 def _run(coro):
@@ -67,7 +67,7 @@ class CachingFakeSupabase(FakeRestSupabase):
             ]
             rows.sort()
             page = [
-                {k: v for k, v in item.items() if k not in payload["p_exclude_fields"]}
+                proietta_come_supabase(item, payload["p_exclude_fields"], self.marcatore_payload)
                 for _, _, item in rows
             ]
             start = payload["p_offset"]
@@ -318,4 +318,170 @@ def test_payload_per_id_a_lotti_ridotti_sui_timeout_mai_lettura_completa():
     assert len(piene) == 1200 and all(d["xml_raw"] for d in piene)
     assert runtime.letture_complete() == []
     assert lotti[:4] == [500, 250, 125, 62]
-    assert max(lotti[3:]) <= 100
+    # dopo 8 lotti riusciti il lotto prova a raddoppiare (124, di nuovo in
+    # timeout nel fake) e torna a 62: mai oltre, mai una lettura completa
+    assert max(lotti[3:]) <= 124 and lotti.count(124) >= 1
+
+
+def _inbox():
+    return CachingFakeSupabase({
+        "documents_inbox": [
+            {"_id": "d1", "filename": "a.pdf", "pdf_data": "JVBERi0x"},
+            {"_id": "d2", "filename": "b.pdf"},
+            {"_id": "d3", "filename": "c.pdf", "pdf_data": None},
+            {"_id": "d4", "filename": "d.pdf", "pdf_data": ""},
+        ],
+    })
+
+
+_LEGGERA = {"_id": 0, "pdf_data": 0}
+
+
+def test_filtri_di_presenza_del_payload_serviti_dalla_cache():
+    """«Ha il PDF» / «senza PDF» si decidono dal marcatore di presenza:
+    nessuna lettura completa con gli allegati, marcatore mai esposto."""
+    runtime = _inbox()
+
+    async def scenario():
+        await runtime["documents_inbox"].find({}, _LEGGERA).to_list(None)
+        runtime.calls.clear()
+        con_pdf = await runtime["documents_inbox"].count_documents(
+            {"pdf_data": {"$exists": True, "$nin": [None, ""]}})
+        senza_chiave = await runtime["documents_inbox"].find(
+            {"pdf_data": {"$exists": False}}, _LEGGERA).to_list(None)
+        vuoti = await runtime["documents_inbox"].find(
+            {"$or": [{"pdf_data": None}, {"pdf_data": ""}, {"pdf_data": {"$exists": False}}]},
+            {"_id": 0, "filename": 1}).to_list(None)
+        non_nulli = await runtime["documents_inbox"].find({"pdf_data": {"$ne": None}}, _LEGGERA).to_list(None)
+        return con_pdf, senza_chiave, vuoti, non_nulli, list(runtime.calls)
+
+    con_pdf, senza_chiave, vuoti, non_nulli, calls = _run(scenario())
+    assert con_pdf == 1
+    assert [d["filename"] for d in senza_chiave] == ["b.pdf"]
+    assert sorted(d["filename"] for d in vuoti) == ["b.pdf", "c.pdf", "d.pdf"]
+    assert sorted(d["filename"] for d in non_nulli) == ["a.pdf", "d.pdf"]
+    assert calls == []
+    for d in senza_chiave + vuoti + non_nulli:
+        assert srd._PAYLOAD_STATO_KEY not in d and "pdf_data" not in d
+
+
+def test_filtro_di_presenza_con_payload_scarica_solo_i_documenti_scelti():
+    runtime = _inbox()
+
+    async def scenario():
+        await runtime["documents_inbox"].find({}, _LEGGERA).to_list(None)
+        runtime.calls.clear()
+        pieni = await runtime["documents_inbox"].find(
+            {"pdf_data": {"$exists": True, "$nin": [None, ""]}}).to_list(None)
+        return pieni, list(runtime.calls)
+
+    pieni, calls = _run(scenario())
+    assert [d["_id"] for d in pieni] == ["d1"] and pieni[0]["pdf_data"] == "JVBERi0x"
+    # documents_inbox ha due collezioni fisiche: un lookup esatto per ciascuna
+    assert set(calls) == {"gc_fetch_documents_exact"} and len(calls) == 2
+    assert srd._PAYLOAD_STATO_KEY not in pieni[0]
+
+
+def test_filtro_sul_contenuto_del_payload_non_usa_la_cache():
+    runtime = _inbox()
+
+    async def scenario():
+        await runtime["documents_inbox"].find({}, _LEGGERA).to_list(None)
+        runtime.calls.clear()
+        trovati = await runtime["documents_inbox"].find(
+            {"pdf_data": {"$regex": "^JVBER"}}, _LEGGERA).to_list(None)
+        return trovati, list(runtime.calls)
+
+    trovati, calls = _run(scenario())
+    assert [d["filename"] for d in trovati] == ["a.pdf"]
+    # lettura completa CON il payload citato dal filtro, anche se la proiezione lo esclude
+    assert set(runtime.letture_complete()) == {"gc_fetch_collection_after"}
+
+
+def test_senza_marcatore_dalle_rpc_si_torna_alla_lettura_completa():
+    """RPC non ancora migrate: il marcatore manca, un filtro di presenza non
+    puo' fidarsi della cache e rilegge con il payload (risultato esatto)."""
+    runtime = _inbox()
+    runtime.marcatore_payload = False
+
+    async def scenario():
+        await runtime["documents_inbox"].find({}, _LEGGERA).to_list(None)
+        runtime.calls.clear()
+        con_pdf = await runtime["documents_inbox"].count_documents(
+            {"pdf_data": {"$exists": True, "$nin": [None, ""]}})
+        return con_pdf, runtime.letture_complete()
+
+    con_pdf, complete = _run(scenario())
+    assert con_pdf == 1
+    assert set(complete) == {"gc_fetch_collection_after"}
+
+
+def test_scritture_locali_aggiornano_il_marcatore_di_presenza():
+    runtime = _inbox()
+
+    async def scenario():
+        await runtime["documents_inbox"].find({}, _LEGGERA).to_list(None)
+        await runtime["documents_inbox"].insert_one(
+            {"_id": "d5", "filename": "e.pdf", "pdf_data": "JVBERi0y"})
+        await runtime["documents_inbox"].update_one({"_id": "d1"}, {"$set": {"pdf_data": None}})
+        runtime.calls.clear()
+        con_pdf = await runtime["documents_inbox"].find(
+            {"pdf_data": {"$exists": True, "$nin": [None, ""]}}, _LEGGERA).to_list(None)
+        return con_pdf, [c for c in runtime.calls if c != "gc_collection_versions"]
+
+    con_pdf, calls = _run(scenario())
+    assert [d["filename"] for d in con_pdf] == ["e.pdf"]
+    assert calls == []
+
+
+def test_il_lotto_di_idratazione_viene_ricordato_fra_una_lettura_e_l_altra():
+    runtime = CachingFakeSupabase({
+        "invoices": [
+            {"_id": f"f{i}", "id": f"f{i}", "status": "imported", "xml_raw": f"<xml>{i}</xml>"}
+            for i in range(300)
+        ],
+    })
+    lotti = []
+    originale = runtime._rpc
+
+    async def rpc(function_name, payload):
+        if function_name == "gc_fetch_documents_exact":
+            lotti.append(len(payload["p_values"]))
+            if len(payload["p_values"]) > 100:
+                raise srd.SupabaseRPCError(
+                    function_name, 500, "57014", "canceling statement due to statement timeout")
+        return await originale(function_name, payload)
+
+    runtime._rpc = rpc
+
+    async def scenario():
+        await runtime["invoices"].find({}, {"_id": 0, "xml_raw": 0, "fattura_allegata": 0,
+                                            "document_original_ref": 0, "foto": 0}).to_list(None)
+        prima = await runtime["invoices"].find({"status": "imported"}).to_list(None)
+        lotti_prima = list(lotti)
+        lotti.clear()
+        seconda = await runtime["invoices"].find({"status": "imported"}).to_list(None)
+        return prima, lotti_prima, seconda, list(lotti)
+
+    prima, lotti_prima, seconda, lotti_seconda = _run(scenario())
+    assert len(prima) == 300 and len(seconda) == 300
+    # il lotto si dimezza dalla misura di tabella (500), non dal lotto richiesto
+    assert lotti_prima[:4] == [300, 250, 125, 62]
+    # la seconda lettura parte dal lotto che funzionava, senza ripagare i timeout
+    assert lotti_seconda[0] == 62 and max(lotti_seconda) <= 124
+
+
+def test_find_senza_selettore_e_distinct_restano_in_cache():
+    """selector=None (find(), distinct, aggregate) vale come {}: dalla cache."""
+    runtime = _fake()
+
+    async def scenario():
+        await runtime["alerts"].find().to_list(None)
+        runtime.calls.clear()
+        tutti = await runtime["alerts"].find().to_list(None)
+        tipi = await runtime["alerts"].distinct("tipo")
+        return tutti, tipi, list(runtime.calls)
+
+    tutti, tipi, calls = _run(scenario())
+    assert len(tutti) == 2 and tipi == ["scadenza"]
+    assert calls == []

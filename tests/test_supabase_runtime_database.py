@@ -9,7 +9,22 @@ from app.services.supabase_runtime_database import (
 )
 
 
+def proietta_come_supabase(item, exclude_fields, marcatore=True):
+    """Stessa forma delle RPC proiettate (migrazione 20260917073000): campi
+    esclusi tolti e, se ce ne sono, `_payload_stato` con la loro presenza."""
+    from app.services import supabase_runtime_database as srd
+
+    document = {key: value for key, value in item.items() if key not in exclude_fields}
+    if exclude_fields and marcatore:
+        document[srd._PAYLOAD_STATO_KEY] = {
+            field: srd._stato_payload(item.get(field, srd.MISSING)) for field in exclude_fields
+        }
+    return document
+
+
 class FakeRestSupabase(SupabaseRuntimeDatabase):
+    marcatore_payload = True
+
     def __init__(self, remote=None):
         super().__init__("test", {
             "SUPABASE_URL": "https://example.supabase.co",
@@ -55,10 +70,7 @@ class FakeRestSupabase(SupabaseRuntimeDatabase):
                 "gc_fetch_collection_projected",
             }:
                 documents = [
-                    {
-                        key: value for key, value in item.items()
-                        if key not in payload["p_exclude_fields"]
-                    }
+                    proietta_come_supabase(item, payload["p_exclude_fields"], self.marcatore_payload)
                     for item in documents
                 ]
             start = payload.get("p_offset", 0)

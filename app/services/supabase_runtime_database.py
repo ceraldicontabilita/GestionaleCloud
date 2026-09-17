@@ -24,7 +24,7 @@ from typing import Any
 import aiohttp
 
 from app.services.sheets_document_store import (
-    SheetCursor, SheetDatabase, SheetTable, apply_projection, matches_filter,
+    MISSING, SheetCursor, SheetDatabase, SheetTable, apply_projection, matches_filter,
 )
 from app.document_repository import DOCUMENT_PAYLOAD_FIELDS, metadata_projection
 
@@ -75,6 +75,17 @@ _STATUS_ALIGNMENT_MAX_BATCHES = 40
 _CACHE_VERSIONS_TTL_SECONDS = 15.0
 _CACHE_MAX_DOCUMENTS_PER_COLLECTION = 150_000
 _CACHE_ENV_FLAG = "GC_RUNTIME_CACHE"
+# Presenza del payload nella versione leggera: le RPC proiettate (migrazione
+# 20260917073000) e _light_document per le scritture locali aggiungono
+# `_payload_stato` = {campo: assente|nullo|vuoto|pieno} per ogni campo escluso.
+# Cosi' i filtri «ha il PDF» / «senza XML» (pdf_data $exists, $ne None,
+# $nin [None, ""]) si decidono dalla cache senza scaricare gli allegati. Il
+# marcatore non esce mai dall'adattatore.
+_PAYLOAD_STATO_KEY = "_payload_stato"
+_STATI_PAYLOAD = frozenset({"assente", "nullo", "vuoto", "pieno"})
+# Lotto di idratazione per id: ricordato per tabella, dimezzato a ogni timeout
+# e raddoppiato dopo questo numero di lotti consecutivi riusciti.
+_HYDRATE_GROWTH_AFTER = 8
 
 # Le RPC runtime hanno un timeout molto stretto e la paginazione OFFSET diventa
 # costosa oltre alcune migliaia di righe. Le collezioni elencate qui possono
@@ -175,10 +186,112 @@ def _projection_needs_payload(projection: Any, payload_fields: set[str]) -> bool
     return not payload_fields.issubset(excluded)
 
 
+def _stato_payload(value: Any) -> str:
+    """Stesso calcolo di public.gc_payload_stato, per i documenti locali."""
+    if value is MISSING:
+        return "assente"
+    if value is None:
+        return "nullo"
+    if isinstance(value, (str, list, dict)) and len(value) == 0:
+        return "vuoto"
+    return "pieno"
+
+
 def _light_document(document: dict[str, Any], payload_fields: set[str]) -> dict[str, Any]:
+    """Versione leggera di un documento COMPLETO: senza payload, con il
+    marcatore di presenza calcolato dai campi presenti (un marcatore gia'
+    presente vale per i campi che il documento non porta)."""
     if not payload_fields:
         return document
-    return {key: value for key, value in document.items() if key not in payload_fields}
+    precedente = document.get(_PAYLOAD_STATO_KEY)
+    stato = dict(precedente) if isinstance(precedente, dict) else {}
+    for field in payload_fields:
+        if field in document:
+            stato[field] = _stato_payload(document[field])
+        elif field not in stato:
+            stato[field] = "assente"
+    light = {key: value for key, value in document.items() if key not in payload_fields}
+    light[_PAYLOAD_STATO_KEY] = stato
+    return light
+
+
+def _senza_stato(document: dict[str, Any]) -> dict[str, Any]:
+    if _PAYLOAD_STATO_KEY not in document:
+        return document
+    return {key: value for key, value in document.items() if key != _PAYLOAD_STATO_KEY}
+
+
+def _stati_da_uguaglianza(value: Any) -> set[str] | None:
+    if value is None:
+        return {"assente", "nullo"}
+    if value == "":
+        return {"vuoto"}
+    return None
+
+
+def _stati_da_condizione(condition: Any) -> set[str] | None:
+    """Stati del marcatore compatibili con una condizione Mongo di presenza;
+    None se la condizione guarda il contenuto (regex, valore, ...)."""
+    if not isinstance(condition, dict) or not any(str(key).startswith("$") for key in condition):
+        return _stati_da_uguaglianza(condition)
+    stati = set(_STATI_PAYLOAD)
+    for operator, expected in condition.items():
+        if operator == "$exists":
+            consentiti = {"nullo", "vuoto", "pieno"} if expected else {"assente"}
+        elif operator == "$eq":
+            consentiti = _stati_da_uguaglianza(expected)
+        elif operator == "$ne":
+            esclusi = _stati_da_uguaglianza(expected)
+            consentiti = None if esclusi is None else set(_STATI_PAYLOAD) - esclusi
+        elif operator in {"$in", "$nin"}:
+            if not isinstance(expected, (list, tuple)):
+                return None
+            unione: set[str] = set()
+            for item in expected:
+                parziale = _stati_da_uguaglianza(item)
+                if parziale is None:
+                    return None
+                unione |= parziale
+            consentiti = unione if operator == "$in" else set(_STATI_PAYLOAD) - unione
+        else:
+            return None
+        if consentiti is None:
+            return None
+        stati &= consentiti
+    return stati
+
+
+def _riscrivi_presenza(selector: Any, payload_fields: set[str]) -> Any:
+    """Selettore equivalente valutabile sulla versione leggera (i vincoli sui
+    campi payload diventano vincoli sul marcatore), oppure None se almeno un
+    vincolo richiede il contenuto del payload."""
+    if not isinstance(selector, dict):
+        return selector
+    result: dict[str, Any] = {}
+    for key, condition in selector.items():
+        name = str(key)
+        if name in {"$or", "$and", "$nor"}:
+            if not isinstance(condition, list):
+                return None
+            branches = []
+            for branch in condition:
+                rewritten = _riscrivi_presenza(branch, payload_fields)
+                if rewritten is None:
+                    return None
+                branches.append(rewritten)
+            result[key] = branches
+        elif name.split(".", 1)[0] in payload_fields:
+            if "." in name:
+                return None
+            stati = _stati_da_condizione(condition)
+            if stati is None:
+                return None
+            result[f"{_PAYLOAD_STATO_KEY}.{name}"] = {"$in": sorted(stati)}
+        else:
+            if _references_any_field(condition, payload_fields):
+                return None
+            result[key] = condition
+    return result
 
 
 def _cache_abilitata() -> bool:
@@ -332,17 +445,33 @@ class SupabaseTable(SheetTable):
         # sulla stessa collezione (osservato il 17/09: liste bloccate per
         # minuti dietro il job di riconciliazione).
         self._cache_lock = asyncio.Lock()
+        # Vero se ogni documento in cache porta il marcatore di presenza del
+        # payload (RPC proiettate migrate): solo allora i filtri «ha il PDF»
+        # si decidono in memoria.
+        self._cache_stato_payload = False
+        self._hydrate_chunk = _MAX_EXACT_LOOKUP_VALUES
+        self._hydrate_successi = 0
 
     # ----- cache -----------------------------------------------------------
 
     def _cache_light(self, document: dict[str, Any]) -> dict[str, Any]:
         return _normalise_document(_light_document(document, self._payload_fields))
 
+    def _selettore_cache(self, selector) -> tuple[Any, bool]:
+        """(selettore valutabile sulla versione leggera, richiede il marcatore).
+        Il selettore stesso se non tocca i campi payload; la riscrittura sul
+        marcatore di presenza se li usa solo come «c'e' / non c'e'»; None se
+        serve il contenuto del payload (o la cache e' spenta)."""
+        if not self.database._cache_enabled:
+            return None, False
+        if not _references_any_field(selector, self._payload_fields):
+            return (selector if selector is not None else {}), False
+        leggero = _riscrivi_presenza(selector, self._payload_fields)
+        return leggero, leggero is not None
+
     def _cache_can_filter(self, selector) -> bool:
-        """Vero se la cache puo' decidere QUALI documenti servono (il filtro
-        non tocca i campi payload)."""
-        return self.database._cache_enabled and not _references_any_field(
-            selector, self._payload_fields)
+        """Vero se la cache puo' decidere QUALI documenti servono."""
+        return self._selettore_cache(selector)[0] is not None
 
     def _cache_can_serve(self, selector, projection) -> bool:
         """Vero se la lettura non ha bisogno del payload (filtro e proiezione)."""
@@ -353,11 +482,14 @@ class SupabaseTable(SheetTable):
         """Documenti completi (payload incluso) per id, a lotti che si
         restringono sui timeout: mai una lettura completa della collezione,
         che sotto carico durava decine di minuti tenendo il lock operativo
-        (osservato il 17/09: 10 fatture ogni 20 s, tutte le scritture ferme)."""
+        (osservato il 17/09: 10 fatture ogni 20 s, tutte le scritture ferme).
+        Il lotto e' ricordato per tabella: dopo un timeout la lettura
+        successiva parte gia' dalla misura che funzionava, invece di pagare
+        di nuovo tutta la scala 500 → 250 → ... (20 s a gradino)."""
         documents: list[dict[str, Any]] = []
-        chunk = _MAX_EXACT_LOOKUP_VALUES
         index = 0
         while index < len(ids):
+            chunk = self._hydrate_chunk
             batch = ids[index:index + chunk]
             try:
                 rows = await self.database._fetch_logical_documents_exact(
@@ -366,23 +498,33 @@ class SupabaseTable(SheetTable):
                 )
             except RuntimeError as exc:
                 if _errore_lettura_transitorio(exc) and chunk > _MIN_READ_PAGE_SIZE:
-                    chunk = max(_MIN_READ_PAGE_SIZE, chunk // 2)
+                    self._hydrate_chunk = max(_MIN_READ_PAGE_SIZE, chunk // 2)
+                    self._hydrate_successi = 0
                     logger.warning(
                         "Lettura per id di %s in timeout; lotto ridotto a %s",
-                        self.name, chunk,
+                        self.name, self._hydrate_chunk,
                     )
                     continue
                 raise
             documents.extend(rows)
             index += len(batch)
+            if chunk < _MAX_EXACT_LOOKUP_VALUES:
+                self._hydrate_successi += 1
+                if self._hydrate_successi >= _HYDRATE_GROWTH_AFTER:
+                    self._hydrate_chunk = min(_MAX_EXACT_LOOKUP_VALUES, chunk * 2)
+                    self._hydrate_successi = 0
         return [_normalise_document(document) for document in documents]
 
-    async def _cached_snapshot(self) -> list[dict[str, Any]] | None:
-        """Documenti leggeri allineati allo stato remoto, senza il lock operativo."""
+    async def _cached_snapshot(self, *, richiede_stato: bool = False) -> list[dict[str, Any]] | None:
+        """Documenti leggeri allineati allo stato remoto, senza il lock operativo.
+        Con richiede_stato la cache vale solo se ogni documento porta il
+        marcatore di presenza del payload (RPC gia' migrate)."""
         async with self._cache_lock:
             if not await self._cache_ready():
                 return None
             assert self._cache is not None
+            if richiede_stato and self._payload_fields and not self._cache_stato_payload:
+                return None
             return list(self._cache.values())
 
     async def _cache_ready(self) -> bool:
@@ -424,6 +566,9 @@ class SupabaseTable(SheetTable):
             str(document.get("_id")): _normalise_document(document)
             for document in documents if document.get("_id") is not None
         }
+        self._cache_stato_payload = all(
+            _PAYLOAD_STATO_KEY in document for document in self._cache.values()
+        )
 
     async def _cache_apply_delta(self, versions, physical) -> None:
         assert self._cache is not None
@@ -439,6 +584,8 @@ class SupabaseTable(SheetTable):
             ):
                 if document.get("_id") is None:
                     continue
+                if _PAYLOAD_STATO_KEY not in document:
+                    self._cache_stato_payload = False
                 self._cache[str(document["_id"])] = _normalise_document(document)
                 self.database._document_locations.setdefault(self.name, {})[
                     str(document["_id"])] = name
@@ -466,11 +613,13 @@ class SupabaseTable(SheetTable):
 
     async def _refresh_unlocked(self, projection=None, selector=None) -> None:
         lookup = _exact_lookup(selector)
+        leggero, richiede_stato = self._selettore_cache(selector)
         if lookup:
-            if self._cache_can_serve(selector, projection):
-                documents = await self._cached_snapshot()
+            if leggero is not None and not _projection_needs_payload(projection, self._payload_fields):
+                documents = await self._cached_snapshot(richiede_stato=richiede_stato)
                 if documents is not None:
-                    self._documents = [d for d in documents if matches_filter(d, selector)]
+                    self._documents = [
+                        _senza_stato(d) for d in documents if matches_filter(d, leggero)]
                     return
             field, values = lookup
             documents = await self.database._fetch_logical_documents_exact(
@@ -481,26 +630,35 @@ class SupabaseTable(SheetTable):
             )
             self._documents = [_normalise_document(document) for document in documents]
             return
-        if self._cache_can_filter(selector):
-            documents = await self._cached_snapshot()
+        if leggero is not None:
+            documents = await self._cached_snapshot(richiede_stato=richiede_stato)
             if documents is not None:
                 if not _projection_needs_payload(projection, self._payload_fields):
-                    self._documents = documents
+                    self._documents = [_senza_stato(d) for d in documents]
                     return
                 # La cache decide QUALI documenti servono; Supabase fornisce
                 # il payload solo per quelli (lookup esatto per id, a lotti).
                 matched = [
                     str(document["_id"]) for document in documents
-                    if document.get("_id") is not None and matches_filter(document, selector)
+                    if document.get("_id") is not None and matches_filter(document, leggero)
                 ]
                 self._documents = await self._hydrate_by_ids(
                     matched, _excluded_projection_fields(projection))
                 return
+        # Lettura completa: un campo payload citato dal filtro deve arrivare
+        # anche se la proiezione lo esclude, altrimenti il filtro locale
+        # vedrebbe «assente» per tutti (conteggio sbagliato in silenzio).
+        excluded = [
+            field for field in _excluded_projection_fields(projection)
+            if not _references_any_field(selector, {field})
+        ]
         documents = await self.database._fetch_logical_collection_documents(
             self.name,
-            excluded_fields=_excluded_projection_fields(projection),
+            excluded_fields=excluded,
         )
-        self._documents = [_normalise_document(document) for document in documents]
+        # Con esclusioni la RPC allega il marcatore di presenza: resta un
+        # dettaglio dell'adattatore, mai nei documenti restituiti.
+        self._documents = [_senza_stato(_normalise_document(document)) for document in documents]
         if self._cache is not None and not _excluded_projection_fields(projection):
             # Lettura completa gia' pagata: aggiorna la cache gratis.
             for document in self._documents:
@@ -552,18 +710,19 @@ class SupabaseTable(SheetTable):
                     for document in (_normalise_document(row) for row in rows)
                     if matches_filter(document, selector)
                 ])
-            if self._cache_can_filter(selector):
+            leggero, richiede_stato = self._selettore_cache(selector)
+            if leggero is not None:
                 # Lettura senza lock operativo: una pagina non aspetta il job
                 # che sta scrivendo la stessa collezione. Senza payload arriva
                 # tutto dalla cache (anche i lookup puntuali); con payload la
                 # cache sceglie i documenti e Supabase li manda per id.
-                documents = await self._cached_snapshot()
+                documents = await self._cached_snapshot(richiede_stato=richiede_stato)
                 if documents is not None:
                     if needs_payload:
                         matched = [
                             str(document["_id"]) for document in documents
                             if document.get("_id") is not None
-                            and matches_filter(document, selector)
+                            and matches_filter(document, leggero)
                         ]
                         documents = await self._hydrate_by_ids(
                             matched, _excluded_projection_fields(projection))
@@ -571,9 +730,9 @@ class SupabaseTable(SheetTable):
                             apply_projection(document, projection) for document in documents
                         ])
                     return SheetCursor([
-                        apply_projection(document, projection)
+                        apply_projection(_senza_stato(document), projection)
                         for document in documents
-                        if matches_filter(document, selector)
+                        if matches_filter(document, leggero)
                     ])
             async with self._remote_operation_lock:
                 await self._refresh_unlocked(projection, selector)
@@ -590,6 +749,10 @@ class SupabaseTable(SheetTable):
 
     async def count_documents(self, selector=None, *args, **kwargs) -> int:
         projection = _metadata_projection_if_safe(self.name, selector)
+        if projection is None and self._payload_fields and self._cache_can_filter(selector):
+            # Filtro di sola presenza sul payload («ha il PDF»): il conteggio
+            # non ha bisogno del contenuto, la cache risponde dal marcatore.
+            projection = metadata_projection(self.name)
         return len(await self.find(selector, projection).to_list(None))
 
     async def estimated_document_count(self, *args, **kwargs) -> int:
