@@ -365,3 +365,27 @@ def test_import_riconosce_lo_stesso_originale_con_bom_diverso():
     con_hash = _drive(content_hash=hashlib.sha256(XML_BOM.encode()).hexdigest(), xml_raw=XML_BOM)
     con_hash.pop("content_hash_canonico", None)
     assert _same_documentary_original(con_hash, None, XML) is True
+
+
+def test_backfill_impronte_da_precedenza_alle_fatture_in_collisione():
+    """12:00 UTC: 300 impronte per giro a ordine casuale = le 44 coppie in
+    collisione aspettavano che il lotto le raggiungesse per caso."""
+    db = _db("impronte-priorita")
+
+    async def scenario():
+        docs = [_drive(f"n-{i}", invoice_key=f"K{i}", created_at=f"2026-01-{i + 1:02d}") for i in range(5)]
+        for d in docs:
+            d.pop("content_hash_canonico", None)
+        coll = _drive("coll", status="da_verificare", stato_import="collisione_identita_da_verificare",
+                      identity_collision_with_ids=["contro"], created_at="2026-09-01")
+        contro = _drive("contro", created_at="2026-09-02")
+        for d in (coll, contro):
+            d.pop("content_hash_canonico", None)
+        await db["invoices"].insert_many(docs + [coll, contro])
+        esito = await fi.normalizza_impronte_canoniche(db, massimo=2, pausa=0)
+        con = await db["invoices"].find({"content_hash_canonico": {"$exists": True}}).to_list(None)
+        return esito, sorted(d["id"] for d in con)
+
+    esito, con_impronta = _run(scenario())
+    assert esito["calcolate"] == 2 and esito["restanti"] == 5
+    assert con_impronta == ["coll", "contro"]

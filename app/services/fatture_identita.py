@@ -243,6 +243,14 @@ async def normalizza_impronte_canoniche(db, *, dry_run: bool = False, massimo: i
     candidati = [d for d in leggeri
                  if not ha_impronta_corrente(d) and d.get("id")
                  and not d.get("senza_xml_leggibile")]
+    # Prima le fatture coinvolte in una collisione di identita' (e le loro
+    # controparti): sono quelle che l'impronta sblocca subito, invece di
+    # aspettare che il backfill a lotti le raggiunga per caso.
+    in_collisione = {str(d["id"]) for d in leggeri if d.get("identity_collision_with_ids")
+                     or d.get("stato_import") == "collisione_identita_da_verificare"}
+    for d in leggeri:
+        in_collisione.update(str(i) for i in (d.get("identity_collision_with_ids") or []) if i)
+    candidati.sort(key=lambda d: (str(d["id"]) not in in_collisione, str(d.get("created_at") or "")))
     calcolate, senza_xml, errori = 0, 0, []
     for leggero in candidati[:massimo]:
         try:
