@@ -678,6 +678,28 @@ def start_scheduler():
         except Exception as e:
             logger.error(f"[SCHEDULER-SUMUP] errore: {e}")
 
+    async def _dedup_fatture_job():
+        """Identita' canonica dall'XML per le fatture che ne sono prive,
+        dedup provata per hash (archivio reversibile + storno della scrittura
+        doppia), storno delle registrazioni non ammesse. Stesso giro di
+        `POST /api/invoices/bonifica-identita`; qui gira da solo, ogni 30
+        minuti, senza dipendere dalla durata degli altri job."""
+        try:
+            from app.database import Database
+            from app.services.fatture_identita import bonifica_identita_fatture
+            r = await bonifica_identita_fatture(Database.get_db())
+            dedup = r.get("dedup") or {}
+            logger.info(
+                "[SCHEDULER-DEDUP-FATTURE] identita=%s senza_xml=%s archiviate=%s "
+                "(gruppi=%s) storni=%s",
+                (r.get("identita") or {}).get("normalizzate"),
+                (r.get("identita") or {}).get("senza_xml"),
+                dedup.get("fatture_archiviate"), dedup.get("gruppi_duplicati"),
+                (r.get("storni") or {}).get("stornate"),
+            )
+        except Exception as e:
+            logger.error(f"[SCHEDULER-DEDUP-FATTURE] errore: {e}")
+
     async def _automazioni_prima_nota_job():
         from datetime import datetime as _dt
         anno_corrente = _dt.now().year
@@ -762,27 +784,10 @@ def start_scheduler():
         # senza il ramo cassa di auto_registra_prima_nota (punto 2) non ha
         # più righe cassa automatiche da spostare, e rischierebbe di
         # spostare righe inserite a mano.
-        try:
-            # 17/09/2026: prima della dedup, le fatture senza identita'
-            # canonica (legacy con l'XML in fattura_allegata) ricevono
-            # invoice_key/P.IVA/hash dall'XML, altrimenti la dedup per hash
-            # non puo' ne' raggrupparle ne' provarle; dopo, le scritture
-            # non ammesse (doppioni, archivio storico) vengono stornate.
-            from app.database import Database
-            from app.services.fatture_identita import bonifica_identita_fatture
-            r = await bonifica_identita_fatture(Database.get_db())
-            dedup = r.get("dedup") or {}
-            if (r.get("identita") or {}).get("normalizzate") or dedup.get("fatture_archiviate") \
-                    or (r.get("storni") or {}).get("stornate"):
-                logger.info(
-                    "[SCHEDULER-DEDUP-FATTURE] identita=%s archiviate=%s (gruppi=%s) "
-                    "storni=%s",
-                    (r.get("identita") or {}).get("normalizzate"),
-                    dedup.get("fatture_archiviate"), dedup.get("gruppi_duplicati"),
-                    (r.get("storni") or {}).get("stornate"),
-                )
-        except Exception as e:
-            logger.error(f"[SCHEDULER-DEDUP-FATTURE] errore: {e}")
+        # 17/09/2026: la dedup fatture (identita' dall'XML → dedup per hash →
+        # storni) e' un job a se' (`dedup_fatture`, sotto): dentro questo giro
+        # veniva dopo la riconciliazione bancaria, che in produzione dura ore,
+        # e non e' mai arrivata a girare.
         try:
             from app.routers.paypal_statements import auto_associa_transazioni, auto_cerca_gmail
             r = await auto_associa_transazioni()
@@ -1309,6 +1314,16 @@ def start_scheduler():
         CronTrigger(day_of_week="sun", hour=5, minute=45),
         id="drive_quietanze_quadratura",
         name="Quadratura quietanze Drive Elaborate (domenica ore 5:45)",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        _dedup_fatture_job,
+        'interval', minutes=30,
+        next_run_time=avvio + timedelta(minutes=4),
+        misfire_grace_time=300,
+        coalesce=True,
+        id="dedup_fatture",
+        name="Dedup fatture: identita' dall'XML, doppioni per hash, storni (ogni 30 min)",
         replace_existing=True,
     )
     scheduler.add_job(

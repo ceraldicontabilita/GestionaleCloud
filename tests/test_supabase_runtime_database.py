@@ -399,6 +399,7 @@ def test_hash_e_versione_usano_lookup_puntuale(monkeypatch, field):
     ))
 
     assert found["_id"] == "pk1"
+    calls = [call for call in calls if call[0] != "gc_collection_versions"]
     assert calls == [("gc_fetch_documents_exact", {
         "p_collection": "documenti",
         "p_field": field,

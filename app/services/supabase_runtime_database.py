@@ -24,7 +24,7 @@ from typing import Any
 import aiohttp
 
 from app.services.sheets_document_store import (
-    SheetCursor, SheetDatabase, SheetTable, matches_filter,
+    SheetCursor, SheetDatabase, SheetTable, apply_projection, matches_filter,
 )
 from app.document_repository import DOCUMENT_PAYLOAD_FIELDS, metadata_projection
 
@@ -328,11 +328,32 @@ class SupabaseTable(SheetTable):
         self._cache: dict[str, dict[str, Any]] | None = None
         self._cache_signature: tuple | None = None
         self._cache_watermark: dict[str, str | None] = {}
+        # Lock separato dalle operazioni remote: una lettura servita dalla
+        # cache non deve aspettare una scrittura o una lettura completa lenta
+        # sulla stessa collezione (osservato il 17/09: liste bloccate per
+        # minuti dietro il job di riconciliazione).
+        self._cache_lock = asyncio.Lock()
 
     # ----- cache -----------------------------------------------------------
 
     def _cache_light(self, document: dict[str, Any]) -> dict[str, Any]:
         return _normalise_document(_light_document(document, self._payload_fields))
+
+    def _cache_can_serve(self, selector, projection) -> bool:
+        """Vero se la lettura non ha bisogno del payload (filtro e proiezione)."""
+        if not self.database._cache_enabled:
+            return False
+        if _projection_needs_payload(projection, self._payload_fields):
+            return False
+        return not _references_any_field(selector, self._payload_fields)
+
+    async def _cached_snapshot(self) -> list[dict[str, Any]] | None:
+        """Documenti leggeri allineati allo stato remoto, senza il lock operativo."""
+        async with self._cache_lock:
+            if not await self._cache_ready():
+                return None
+            assert self._cache is not None
+            return list(self._cache.values())
 
     async def _cache_ready(self) -> bool:
         """Porta la cache allo stato remoto corrente. False = cache non usabile."""
@@ -416,6 +437,11 @@ class SupabaseTable(SheetTable):
     async def _refresh_unlocked(self, projection=None, selector=None) -> None:
         lookup = _exact_lookup(selector)
         if lookup:
+            if self._cache_can_serve(selector, projection):
+                documents = await self._cached_snapshot()
+                if documents is not None:
+                    self._documents = [d for d in documents if matches_filter(d, selector)]
+                    return
             field, values = lookup
             documents = await self.database._fetch_logical_documents_exact(
                 self.name,
@@ -425,7 +451,10 @@ class SupabaseTable(SheetTable):
             )
             self._documents = [_normalise_document(document) for document in documents]
             return
-        if await self._cache_ready():
+        cache_pronta = False
+        async with self._cache_lock:
+            cache_pronta = await self._cache_ready()
+        if cache_pronta:
             assert self._cache is not None
             needs_payload = (
                 _projection_needs_payload(projection, self._payload_fields)
@@ -491,6 +520,18 @@ class SupabaseTable(SheetTable):
 
     def find(self, selector=None, projection=None, *args, **kwargs):
         async def load():
+            if self._cache_can_serve(selector, projection):
+                # Lettura servita dalla cache: nessun lock operativo, cosi'
+                # una pagina non aspetta il job che sta scrivendo la stessa
+                # collezione. Vale anche per i lookup puntuali (find_one per
+                # id) quando il payload non serve.
+                documents = await self._cached_snapshot()
+                if documents is not None:
+                    return SheetCursor([
+                        apply_projection(document, projection)
+                        for document in documents
+                        if matches_filter(document, selector)
+                    ])
             async with self._remote_operation_lock:
                 await self._refresh_unlocked(projection, selector)
                 return SheetTable.find(self, selector, projection, *args, **kwargs)

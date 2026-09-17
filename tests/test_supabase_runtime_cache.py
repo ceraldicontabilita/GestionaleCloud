@@ -237,3 +237,49 @@ def test_variabile_ambiente_spegne_la_cache(monkeypatch):
     _run(scenario())
     assert runtime.letture_complete() == ["gc_fetch_collection", "gc_fetch_collection"]
     assert "gc_collection_versions" not in runtime.calls
+
+
+def test_lettura_dalla_cache_non_aspetta_il_lock_operativo():
+    """17/09/2026 sera: con il job di riconciliazione che teneva il lock della
+    collezione, anche le liste servite dalla cache restavano bloccate per
+    minuti. La lettura leggera passa da un lock proprio."""
+    runtime = _fake()
+
+    async def scenario():
+        await runtime["alerts"].find({}).to_list(None)  # warm-up
+        await runtime["alerts"]._remote_operation_lock.acquire()
+        try:
+            return await asyncio.wait_for(runtime["alerts"].find({"stato": "aperto"}).to_list(None), 1.0)
+        finally:
+            runtime["alerts"]._remote_operation_lock.release()
+
+    rows = _run(scenario())
+    assert [d["_id"] for d in rows] == ["a1"]
+
+
+def test_lookup_puntuale_senza_payload_viene_dalla_cache():
+    runtime = _fake()
+
+    async def scenario():
+        await runtime["alerts"].find({}).to_list(None)
+        await runtime["invoices"].find({}, {"_id": 0, "xml_raw": 0, "fattura_allegata": 0,
+                                            "document_original_ref": 0, "foto": 0}).to_list(None)
+        runtime.calls.clear()
+        uno = await runtime["alerts"].find_one({"_id": "a2"})
+        leggera = await runtime["invoices"].find_one(
+            {"id": "f2"}, {"_id": 0, "xml_raw": 0, "fattura_allegata": 0,
+                           "document_original_ref": 0, "foto": 0})
+        c_cache = list(runtime.calls)
+        piena = await runtime["invoices"].find_one({"id": "f2"})
+        c_piena = list(runtime.calls)
+        await runtime["alerts"].update_one({"_id": "a2"}, {"$set": {"stato": "aperto"}})
+        c_update = list(runtime.calls)
+        return uno, leggera, c_cache, piena, c_piena, c_update
+
+    uno, leggera, c_cache, piena, c_piena, c_update = _run(scenario())
+    assert uno["_id"] == "a2" and leggera["id"] == "f2" and "xml_raw" not in leggera
+    assert c_cache == []  # nessuna RPC: entrambi dalla cache
+    assert piena["xml_raw"] == "<xml>2</xml>" and c_piena == ["gc_fetch_documents_exact"]
+    # l'update su una collezione senza payload non rilegge il documento da Supabase
+    assert c_update == ["gc_fetch_documents_exact", "gc_upsert_documents"]
+    assert runtime.remote["alerts"]["a2"]["stato"] == "aperto"
