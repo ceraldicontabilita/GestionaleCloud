@@ -918,6 +918,7 @@ Route table sorgente: **1169**; attivi da ricreare: **729**; quarantena: **440**
 - **attivo** — `POST /api/piano-conti/registra-corrispettivi` — in uso: FE
 - **attivo** — `POST /api/piano-conti/registra-fattura` — in uso: FE
 - **attivo** — `POST /api/piano-conti/registra-pregresso` — in uso: FE
+- **attivo** — `GET /api/piano-conti/registra-pregresso/stato` — in uso: FE
 - **attivo** — `POST /api/piano-conti/registra-tutte-fatture` — in uso: FE
 - **attivo** — `GET /api/piano-conti/regole` — in uso: FE
 - **attivo** — `POST /api/piano-conti/regole` — in uso: FE

@@ -24,6 +24,7 @@ Requisiti §6.1 garantiti:
 Riusa gli helper canonici di `piano_conti` (determina_conti_fattura, aggiorna_saldo_conto)
 via import pigro per evitare import circolari.
 """
+import asyncio
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -396,30 +397,91 @@ def _riepilogo_esiti(esiti: list) -> Dict[str, int]:
     return conteggio
 
 
-async def registra_tutte_fatture(db, *, dry_run: bool = False) -> Dict[str, Any]:
+# I giri massivi non devono ricaricare il libro giornale a ogni documento.
+# Sul runtime Supabase ``find_one`` filtrato per ``fattura_id``/
+# ``corrispettivo_id`` (campi non indicizzati) rilegge TUTTA la collezione:
+# osservato in produzione il 16/09/2026 (860 fatture di cui 802 gia'
+# registrate = centinaia di letture complete solo per scoprirlo, con timeout
+# a catena su Supabase). Qui l'elenco dei gia' registrati si legge UNA volta
+# e i documenti da saltare non arrivano mai al motore.
+_PROIEZIONE_FATTURE_MASSIVA = {"_id": 0, "xml_raw": 0, "xml_content": 0, "linee": 0}
+_PROIEZIONE_MOVIMENTI_MASSIVA = {
+    "_id": 0, "id": 1, "tipo": 1, "fattura_id": 1, "corrispettivo_id": 1,
+}
+_PAUSA_TRA_DOCUMENTI = 0.25  # secondi: lascia respirare event loop e database
+_PROGRESSO_OGNI = 20
+_STATO_KEY = "registra_pregresso_stato"
+_pregresso_lock = asyncio.Lock()
+_pregresso_task: Optional[asyncio.Task] = None
+
+
+async def _gia_registrati(db) -> tuple[Dict[str, str], Dict[str, str]]:
+    """Documenti gia' nel libro giornale: ``{id documento: id movimento}``
+    per le fatture e per i corrispettivi."""
+    movimenti = await db[COLL_MOVIMENTI].find({}, _PROIEZIONE_MOVIMENTI_MASSIVA).to_list(None)
+    fatture = {str(m["fattura_id"]): str(m.get("id") or "") for m in movimenti
+               if m.get("tipo") == "fattura_acquisto" and m.get("fattura_id")}
+    corrispettivi = {str(m["corrispettivo_id"]): str(m.get("id") or "") for m in movimenti
+                     if m.get("tipo") == "corrispettivo" and m.get("corrispettivo_id")}
+    return fatture, corrispettivi
+
+
+async def _riallinea_flag(db, collezione: str, documento: Dict[str, Any],
+                          flag: str, movimento_id: str) -> bool:
+    """Un documento con scrittura nel libro giornale ma senza il flag sul
+    documento (caso reale del 16/09/2026: 802 fatture, flag perso nella
+    ricostruzione del 14/09) verrebbe riproposto come "da registrare" a ogni
+    dry-run. Rimette lo stesso flag che il motore scrive alla registrazione."""
+    if documento.get(flag) is True:
+        return False
+    patch = {flag: True}
+    if movimento_id:
+        patch["movimento_contabile_id"] = movimento_id
+    await db[collezione].update_one({"id": documento.get("id")}, {"$set": patch})
+    return True
+
+
+async def registra_tutte_fatture(db, *, dry_run: bool = False, gia_registrate=None,
+                                 on_progress=None, pausa: float = 0.0) -> Dict[str, Any]:
     """Registra (idempotente) tutte le fatture attive non ancora nel libro
     giornale. ``dry_run=True`` conta soltanto, senza scrivere nulla."""
     fatture = await db["invoices"].find(
-        dict(_FILTRO_FATTURE_DA_REGISTRARE), {"_id": 0}).to_list(5000)
+        dict(_FILTRO_FATTURE_DA_REGISTRARE), _PROIEZIONE_FATTURE_MASSIVA).to_list(5000)
     if dry_run:
         return {"success": True, "dry_run": True, "fatture_processate": len(fatture),
                 "da_registrare": len(fatture), "registrate": 0, "errori": []}
+    if gia_registrate is None:
+        gia_registrate, _ = await _gia_registrati(db)
     registrate, errori, esiti = 0, [], []
-    for f in fatture:
-        try:
-            r = await registra_fattura(db, f)
-            esiti.append(r.get("stato") or "sconosciuto")
-            if r.get("stato") == "registrato":
-                registrate += 1
-        except Exception as e:  # noqa: BLE001 - raccolgo e riporto, non silenzio
-            esiti.append("errore")
-            errori.append(f"Fattura {f.get('invoice_number', 'N/A')}: {e}")
+    flag_riallineati = 0
+    for indice, f in enumerate(fatture, start=1):
+        if str(f.get("id")) in gia_registrate:
+            esiti.append("gia_registrato")
+            if await _riallinea_flag(db, "invoices", f, "registrata_contabilita",
+                                     gia_registrate[str(f.get("id"))]):
+                flag_riallineati += 1
+                if pausa:
+                    await asyncio.sleep(pausa)
+        else:
+            try:
+                r = await registra_fattura(db, f)
+                esiti.append(r.get("stato") or "sconosciuto")
+                if r.get("stato") == "registrato":
+                    registrate += 1
+            except Exception as e:  # noqa: BLE001 - raccolgo e riporto, non silenzio
+                esiti.append("errore")
+                errori.append(f"Fattura {f.get('invoice_number', 'N/A')}: {e}")
+            if pausa:
+                await asyncio.sleep(pausa)
+        if on_progress and indice % _PROGRESSO_OGNI == 0:
+            await on_progress("fatture", indice, len(fatture), registrate, len(errori))
     return {"success": True, "dry_run": False, "fatture_processate": len(fatture),
             "registrate": registrate, "esiti": _riepilogo_esiti(esiti),
-            "errori": errori[:20]}
+            "flag_riallineati": flag_riallineati, "errori": errori[:20]}
 
 
-async def registra_tutti_corrispettivi(db, *, dry_run: bool = False) -> Dict[str, Any]:
+async def registra_tutti_corrispettivi(db, *, dry_run: bool = False, gia_registrati=None,
+                                       on_progress=None, pausa: float = 0.0) -> Dict[str, Any]:
     """Registra (idempotente) tutti i corrispettivi definitivi non ancora nel
     libro giornale. ``dry_run=True`` conta soltanto, senza scrivere nulla."""
     trovati = await db["corrispettivi"].find(
@@ -431,29 +493,50 @@ async def registra_tutti_corrispettivi(db, *, dry_run: bool = False) -> Dict[str
                 "corrispettivi_processati": len(corrispettivi),
                 "da_registrare": len(corrispettivi), "provvisori_esclusi": provvisori,
                 "registrati": 0, "errori": []}
+    if gia_registrati is None:
+        _, gia_registrati = await _gia_registrati(db)
     registrati, errori, esiti = 0, [], []
-    for c in corrispettivi:
-        try:
-            r = await registra_corrispettivo(db, c)
-            esiti.append(r.get("stato") or "sconosciuto")
-            if r.get("stato") == "registrato":
-                registrati += 1
-        except Exception as e:  # noqa: BLE001
-            esiti.append("errore")
-            errori.append(f"Corrispettivo {c.get('id', 'N/A')}: {e}")
+    flag_riallineati = 0
+    for indice, c in enumerate(corrispettivi, start=1):
+        if str(c.get("id")) in gia_registrati:
+            esiti.append("gia_registrato")
+            if await _riallinea_flag(db, "corrispettivi", c, "registrato_contabilita",
+                                     gia_registrati[str(c.get("id"))]):
+                flag_riallineati += 1
+                if pausa:
+                    await asyncio.sleep(pausa)
+        else:
+            try:
+                r = await registra_corrispettivo(db, c)
+                esiti.append(r.get("stato") or "sconosciuto")
+                if r.get("stato") == "registrato":
+                    registrati += 1
+            except Exception as e:  # noqa: BLE001
+                esiti.append("errore")
+                errori.append(f"Corrispettivo {c.get('id', 'N/A')}: {e}")
+            if pausa:
+                await asyncio.sleep(pausa)
+        if on_progress and indice % _PROGRESSO_OGNI == 0:
+            await on_progress("corrispettivi", indice, len(corrispettivi), registrati, len(errori))
     return {"success": True, "dry_run": False,
             "corrispettivi_processati": len(corrispettivi),
             "provvisori_esclusi": provvisori,
             "registrati": registrati, "esiti": _riepilogo_esiti(esiti),
-            "errori": errori[:20]}
+            "flag_riallineati": flag_riallineati, "errori": errori[:20]}
 
 
-async def registra_pregresso(db, *, dry_run: bool = False) -> Dict[str, Any]:
+async def registra_pregresso(db, *, dry_run: bool = False, on_progress=None,
+                             pausa: float = 0.0) -> Dict[str, Any]:
     """Recupero del pregresso non registrato: UN solo giro che riusa le due
     funzioni massive (fatture + corrispettivi). Idempotente: rilanciarlo non
     crea seconde scritture. ``dry_run`` restituisce solo i conteggi."""
-    fatture = await registra_tutte_fatture(db, dry_run=dry_run)
-    corrispettivi = await registra_tutti_corrispettivi(db, dry_run=dry_run)
+    gia_fatture, gia_corrispettivi = ({}, {}) if dry_run else await _gia_registrati(db)
+    fatture = await registra_tutte_fatture(
+        db, dry_run=dry_run, gia_registrate=gia_fatture, on_progress=on_progress, pausa=pausa,
+    )
+    corrispettivi = await registra_tutti_corrispettivi(
+        db, dry_run=dry_run, gia_registrati=gia_corrispettivi, on_progress=on_progress, pausa=pausa,
+    )
     return {
         "success": True,
         "dry_run": dry_run,
@@ -466,6 +549,62 @@ async def registra_pregresso(db, *, dry_run: bool = False) -> Dict[str, Any]:
         "registrate": fatture.get("registrate", 0) + corrispettivi.get("registrati", 0),
         "errori": (fatture.get("errori") or []) + (corrispettivi.get("errori") or []),
     }
+
+
+def pregresso_in_corso() -> bool:
+    return _pregresso_lock.locked()
+
+
+async def stato_pregresso(db) -> Dict[str, Any]:
+    stato = await db["sistema_stato"].find_one({"chiave": _STATO_KEY}, {"_id": 0}) or {}
+    stato.pop("chiave", None)
+    stato["in_corso"] = pregresso_in_corso()
+    return stato
+
+
+async def _salva_stato_pregresso(db, **campi: Any) -> None:
+    campi["aggiornato_at"] = _now()
+    await db["sistema_stato"].update_one(
+        {"chiave": _STATO_KEY}, {"$set": campi}, upsert=True,
+    )
+
+
+async def _pregresso_in_background(db) -> Dict[str, Any]:
+    async with _pregresso_lock:
+        await _salva_stato_pregresso(
+            db, stato="in_corso", avviato_at=_now(), fase=None, avanzamento=None,
+            risultato=None, errore=None,
+        )
+
+        async def progresso(fase, fatti, totale, registrati, errori):
+            await _salva_stato_pregresso(db, fase=fase, avanzamento={
+                "fatti": fatti, "totale": totale, "registrati": registrati, "errori": errori,
+            })
+
+        try:
+            risultato = await registra_pregresso(
+                db, dry_run=False, on_progress=progresso, pausa=_PAUSA_TRA_DOCUMENTI,
+            )
+        except Exception as exc:  # noqa: BLE001 - lo stato deve restare leggibile
+            logger.exception("Registrazione del pregresso interrotta")
+            await _salva_stato_pregresso(db, stato="errore", errore=str(exc), terminato_at=_now())
+            raise
+        await _salva_stato_pregresso(
+            db, stato="completato", terminato_at=_now(), fase=None,
+            risultato={k: v for k, v in risultato.items() if k != "success"},
+        )
+        return risultato
+
+
+def avvia_pregresso_in_background(db) -> bool:
+    """Come ``drive_quietanze_ingest.start_background_sync``: il giro puo'
+    durare piu' del timeout del gateway, quindi risponde subito e lo stato si
+    segue con ``stato_pregresso``. Un secondo avvio mentre e' in corso non parte."""
+    global _pregresso_task
+    if _pregresso_lock.locked():
+        return False
+    _pregresso_task = asyncio.create_task(_pregresso_in_background(db))
+    return True
 
 
 _COLLEZIONE_PER_TIPO = {"fattura": "invoices", "corrispettivo": "corrispettivi"}
