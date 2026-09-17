@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
@@ -65,6 +66,38 @@ def _vuoto(valore: Any) -> bool:
 def _senza_identita(doc: Dict[str, Any]) -> bool:
     return _vuoto(doc.get("invoice_key")) or _vuoto(doc.get("content_hash")) \
         or _vuoto(doc.get("supplier_vat"))
+
+
+_CAMPI_IMPRONTA = (
+    "invoice_number", "invoice_date", "supplier_vat", "supplier_name", "customer_vat",
+    "total_amount", "imponibile", "iva", "tipo_documento", "linee", "riepilogo_iva",
+    "dati_pagamento", "dati_ddt",
+)
+
+
+def impronta_contenuto_fattura(xml: str) -> Optional[str]:
+    """Impronta del CONTENUTO della fattura (campi e righe letti dall'XML con
+    il parser dell'import), indipendente da BOM, a capo, spazi e codifica del
+    file. 17/09/2026: 42 coppie legacy↔Drive della stessa fattura avevano XML
+    diversi di un solo byte (BOM, codifica) e restavano bloccate come
+    «collisione di identita' da verificare». Non e' un confronto per numero e
+    importo: entrano tutte le righe, i riepiloghi IVA, il tipo documento, le
+    date e i pagamenti. Prefisso ``c:`` per non confondersi con gli sha256 dei
+    file. ``None`` se l'XML non e' leggibile."""
+    if not isinstance(xml, str) or "FatturaElettronica" not in xml:
+        return None
+    from app.parsers.fattura_elettronica_parser import parse_fattura_xml
+
+    try:
+        parsed = parse_fattura_xml(xml.lstrip("\ufeff"))
+    except Exception:  # noqa: BLE001 - XML rotto = nessuna impronta
+        return None
+    if not isinstance(parsed, dict) or parsed.get("error") or not parsed.get("invoice_number"):
+        return None
+    base = {campo: parsed.get(campo) for campo in _CAMPI_IMPRONTA if campo in parsed}
+    testo = json.dumps(base, sort_keys=True, ensure_ascii=False, default=str,
+                       separators=(",", ":"))
+    return "c:" + hashlib.sha256(testo.encode("utf-8")).hexdigest()
 
 
 def patch_identita_da_xml(doc: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -111,6 +144,7 @@ def patch_identita_da_xml(doc: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         metti("anno", int(data[:4]))
     metti("xml_raw", xml)
     metti("content_hash", hashlib.sha256(xml.encode("utf-8")).hexdigest())
+    metti("content_hash_canonico", impronta_contenuto_fattura(xml))
     chiave = generate_invoice_key(
         doc.get("invoice_number") or parsed.get("invoice_number", ""),
         doc.get("supplier_vat") or parsed.get("supplier_vat", ""),
@@ -167,6 +201,50 @@ async def normalizza_fatture_senza_identita(db, *, dry_run: bool = False,
             "senza_xml": senza_xml, "errori": errori[:20]}
 
 
+async def normalizza_impronte_canoniche(db, *, dry_run: bool = False, massimo: int = 300,
+                                        pausa: float = _PAUSA) -> Dict[str, Any]:
+    """Da' l'impronta del contenuto (``content_hash_canonico``) alle fatture
+    attive con XML che ne sono prive, al massimo ``massimo`` per giro (il
+    documento completo si legge per id). Idempotente: al giro successivo
+    restano solo quelle senza XML leggibile."""
+    from app.document_repository import metadata_projection
+
+    leggeri = await db[COLL].find(
+        {"status": {"$nin": ["deleted", "archived"]}}, metadata_projection(COLL)).to_list(None)
+    candidati = [d for d in leggeri
+                 if _vuoto(d.get("content_hash_canonico")) and d.get("id")
+                 and not d.get("senza_xml_leggibile")]
+    calcolate, senza_xml, errori = 0, 0, []
+    for leggero in candidati[:massimo]:
+        try:
+            doc = await db[COLL].find_one({"id": leggero["id"]}, {"_id": 0})
+            xml = _testo_xml(doc or {})
+            impronta = impronta_contenuto_fattura(xml) if xml else None
+        except Exception as exc:  # noqa: BLE001
+            errori.append(f"{leggero['id']}: {exc}")
+            continue
+        if dry_run:
+            calcolate += int(bool(impronta))
+            senza_xml += int(not impronta)
+            continue
+        try:
+            if impronta:
+                await db[COLL].update_one({"id": leggero["id"]}, {"$set": {"content_hash_canonico": impronta}})
+                calcolate += 1
+            else:
+                # non ritentare a ogni giro un documento senza XML leggibile
+                await db[COLL].update_one({"id": leggero["id"]}, {"$set": {"senza_xml_leggibile": True}})
+                senza_xml += 1
+        except Exception as exc:  # noqa: BLE001 - un timeout non ferma il giro
+            errori.append(f"{leggero['id']}: scrittura fallita: {exc}")
+            continue
+        if pausa:
+            await asyncio.sleep(pausa)
+    return {"dry_run": dry_run, "candidate": len(candidati), "calcolate": calcolate,
+            "senza_xml": senza_xml, "restanti": max(0, len(candidati) - massimo),
+            "errori": errori[:20]}
+
+
 async def storna_registrazioni_non_ammesse(db, *, dry_run: bool = False,
                                            pausa: float = _PAUSA) -> Dict[str, Any]:
     """Toglie dal libro giornale (con storno, mai cancellando) le fatture che
@@ -210,6 +288,7 @@ async def bonifica_identita_fatture(db, *, dry_run: bool = False) -> Dict[str, A
 
     esito: Dict[str, Any] = {"dry_run": dry_run, "avviato_at": _now()}
     esito["identita"] = await normalizza_fatture_senza_identita(db, dry_run=dry_run)
+    esito["impronte"] = await normalizza_impronte_canoniche(db, dry_run=dry_run)
     if dry_run:
         esito["dedup"] = {"dry_run": True, "nota": "la dedup per hash gira solo in modalita' reale"}
     else:

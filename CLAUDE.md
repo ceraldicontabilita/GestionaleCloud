@@ -733,6 +733,24 @@ passo fallito = bug da correggere subito. Cosa è stato trovato e cambiato
   coppie di doppioni interni a Drive, 4 hanno lo stesso hash (le risolve
   la dedup), 3 sono collisioni di identità con file diversi (restano in
   `duplicate_review_required`, decide un operatore).
+  **Impronta del contenuto** (#481): dopo il giro dedup del 17/09 restavano
+  **42 «collisioni»** legacy↔Drive (`stato_import=collisione_identita_da_
+  verificare`, copia Drive `da_verificare` con derivati bloccati) che a
+  campione erano la STESSA fattura con l'XML diverso di un solo byte (BOM
+  `﻿`, a capo, dichiarazione di codifica): lo sha256 dei byte non
+  poteva provarle. Ora `impronta_contenuto_fattura` (prefisso `c:`, sha256
+  dei campi/righe/riepiloghi/pagamenti letti dal parser) è salvata in
+  `content_hash_canonico` a ogni import e nell'identità dall'XML,
+  `normalizza_impronte_canoniche` la aggiunge alle fatture attive che ne
+  sono prive (300 per giro, chi non ha XML leggibile viene marcato
+  `senza_xml_leggibile` e non ritentato), `_source_evidence` la conta come
+  prova documentale e `_same_documentary_original` la calcola al volo sulla
+  copia esistente: un byte di BOM non è più una collisione né in import né
+  in dedup. Quando il doppione viene archiviato, `_chiudi_collisione` toglie
+  il blocco alla copia tenuta (`status` imported, `stato_import` attivo,
+  `stato_derivati` da_ricalcolare, revisione chiusa) e risolve l'avviso
+  `FATTURA_IDENTITA_DA_VERIFICARE` — solo se non restano altre collisioni
+  aperte. Log scheduler: `impronte=N (restanti=M)`.
 - **Collaudi E2E riusciti** (dati "ZZZ TEST" creati e ripuliti): ERP
   fattura XML → classificazione → scrittura in partita doppia in
   quadratura → eliminazione; corrispettivo XML → registrazione; Lotti
