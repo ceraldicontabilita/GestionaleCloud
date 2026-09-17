@@ -770,8 +770,12 @@ passo fallito = bug da correggere subito. Cosa è stato trovato e cambiato
   15 s; firma diversa → solo i documenti modificati dopo l'ultima lettura
   (`gc_fetch_collection_since`), rilettura completa solo se il conteggio non
   torna. Le letture che vogliono il payload usano la cache per scegliere i
-  documenti e li scaricano per id (`gc_fetch_documents_exact`, blocchi di
-  500; oltre 1.000 documenti si torna alla lettura completa). Le scritture
+  documenti e li scaricano per id (`gc_fetch_documents_exact`, lotti da 500
+  che si dimezzano sui timeout fino a 10 — PR #474: prima, oltre 1.000
+  documenti si tornava alla lettura completa con payload, che sotto carico
+  teneva il lock operativo per decine di minuti e fermava il job dedup
+  fatture; un `find_one` per id con payload va dritto all'indice remoto,
+  senza firma della cache e senza lock). Le scritture
   del processo aggiornano la cache dopo l'esito positivo dell'RPC. Trigger
   `documents_touch_updated_at` garantisce `updated_at` anche per scritture
   fatte fuori dall'app. Fallback automatico alla lettura completa se le RPC
