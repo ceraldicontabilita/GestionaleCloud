@@ -653,7 +653,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `DELETE /api/fatture/{invoice_id}` | invoices.fatture_upload | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
 | `GET /api/fatture/{invoice_id}` | invoices.fatture_upload | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
 | `PUT /api/fatture/{invoice_id}` | invoices.fatture_upload | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
-| `PUT /api/fatture/{invoice_id}/classifica` | invoices.fatture_upload | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
+| `PUT /api/fatture/{invoice_id}/classifica` | invoices.fatture_upload | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
 | `GET /api/fatture/{invoice_id}/entita-correlate` | invoices.fatture_upload | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
 | `PUT /api/fatture/{invoice_id}/paga` | invoices.fatture_upload | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
 | `POST /api/finanziamenti-soci/movimento` | finanziamenti_soci | sì | — | — | — | — | tenere | in uso: FE |

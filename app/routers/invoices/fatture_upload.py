@@ -2732,11 +2732,49 @@ async def classifica_fattura_manuale(invoice_id: str, data: Dict[str, Any] = Bod
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Fattura non trovata")
 
+    # 17/09/2026 (collaudo): la classificazione manuale scriveva solo il centro
+    # di costo. Il motore del libro giornale, per regola, non registra una
+    # fattura con IVA finche' `iva_detraibile` non e' classificata, quindi una
+    # fattura di fornitore nuovo restava "da_verificare" senza nessuna azione
+    # per sbloccarla. Ora la scelta del centro di costo ricalcola gli stessi
+    # importi fiscali del handler automatico (calcola_importi_fiscali, nessuna
+    # seconda formula) e chiede la registrazione al motore unico, idempotente.
+    registrazione = None
+    try:
+        from app.services.learning_machine_cdc import CENTRI_COSTO, calcola_importi_fiscali
+        from app.services.registrazione_contabile import registra_documento_import
+
+        cdc_config = CENTRI_COSTO.get(centro_costo_id) or next(
+            (cfg for cfg in CENTRI_COSTO.values() if cfg.get("codice") == centro_costo_id), None,
+        ) or (cdc if cdc and cdc.get("detraibilita_iva") is not None else None)
+        fattura_db = await db[Collections.INVOICES].find_one({"id": invoice_id}, {"_id": 0})
+        if cdc_config is not None and fattura_db:
+            imponibile = float(fattura_db.get("imponibile") or fattura_db.get("subtotal") or 0)
+            iva = float(fattura_db.get("iva") or fattura_db.get("total_tax") or 0)
+            importi = calcola_importi_fiscali(imponibile, iva, cdc_config)
+            await db[Collections.INVOICES].update_one({"id": invoice_id}, {"$set": {
+                "iva_detraibile": importi.get("iva_detraibile", 0),
+                "iva_indetraibile": importi.get("iva_indetraibile", 0),
+                "imponibile_deducibile_ires": importi.get("imponibile_deducibile_ires", 0),
+                "imponibile_indeducibile_ires": importi.get("imponibile_indeducibile_ires", 0),
+                "classificato_da": "manuale",
+                "stato_classificazione": "classificata",
+            }})
+            fattura_db = await db[Collections.INVOICES].find_one({"id": invoice_id}, {"_id": 0})
+            registrazione = await registra_documento_import(db, "fattura", fattura_db)
+        elif fattura_db is not None:
+            registrazione = {"stato": "saltato",
+                             "motivo": f"centro di costo {centro_costo_id} senza detraibilita' IVA configurata"}
+    except Exception:
+        logger.exception("Classificazione manuale: registrazione contabile non eseguita per %s", invoice_id)
+        registrazione = {"stato": "errore"}
+
     return {
         "success": True,
         "message": f"Fattura classificata come '{centro_costo_nome}'",
         "centro_costo_id": centro_costo_id,
-        "centro_costo_nome": centro_costo_nome
+        "centro_costo_nome": centro_costo_nome,
+        "registrazione_contabile": registrazione,
     }
 
 
