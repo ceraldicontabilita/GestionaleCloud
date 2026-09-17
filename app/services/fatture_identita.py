@@ -129,12 +129,22 @@ async def normalizza_fatture_senza_identita(db, *, dry_run: bool = False,
                                             pausa: float = _PAUSA) -> Dict[str, Any]:
     """Da' l'identita' canonica alle fatture attive che ne sono prive ma hanno
     l'XML. Idempotente: al secondo giro non trova piu' nulla."""
-    docs = await db[COLL].find(
-        {"status": {"$nin": ["deleted", "archived"]}}, {"_id": 0}).to_list(None)
-    candidati = [d for d in docs if _senza_identita(d)]
+    # Prima passata SENZA payload (XML/PDF restano su Supabase): serve solo a
+    # scegliere i candidati. Il documento completo si legge per id, uno alla
+    # volta, soltanto per chi non ha identita' — mai l'intera collezione con
+    # gli XML (in produzione 1.400 fatture = decine di MB e timeout a catena).
+    from app.document_repository import metadata_projection
+
+    leggeri = await db[COLL].find(
+        {"status": {"$nin": ["deleted", "archived"]}}, metadata_projection(COLL)).to_list(None)
+    candidati = [d for d in leggeri if _senza_identita(d)]
     normalizzate, senza_xml, errori = 0, 0, []
-    for doc in candidati:
+    for leggero in candidati:
         try:
+            doc = await db[COLL].find_one({"id": leggero.get("id")}, {"_id": 0}) if leggero.get("id") else None
+            if doc is None:
+                senza_xml += 1
+                continue
             patch = patch_identita_da_xml(doc)
         except Exception as exc:  # noqa: BLE001 - un XML rotto non ferma il giro
             errori.append(f"{doc.get('id')}: {exc}")

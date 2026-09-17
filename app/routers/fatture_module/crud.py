@@ -910,7 +910,7 @@ async def pulisci_duplicati_invoices() -> Dict[str, Any]:
          "source_document_id": 1, "drive_file_id": 1,
          "documents_inbox_id": 1, "source_documents": 1,
          "registrata_contabilita": 1, "movimento_contabile_id": 1,
-         "centro_costo_id": 1, "xml_raw": 1},
+         "centro_costo_id": 1},
     ).to_list(20000)
 
     gruppi: Dict[tuple, list] = {}
@@ -931,13 +931,13 @@ async def pulisci_duplicati_invoices() -> Dict[str, Any]:
                      or d.get("prima_nota_banca_id"))
         pagata = bool(d.get("pagato") or d.get("stato_pagamento") == "pagata")
         # 17/09/2026: la copia che resta e' quella gia' nel libro giornale
-        # (la scrittura punta a lei), poi quella con l'originale XML e la
-        # classificazione fiscale; prima nota e pagamento vengono dopo.
+        # (la scrittura punta a lei), poi quella con la classificazione
+        # fiscale; prima nota e pagamento vengono dopo. Niente campi payload
+        # nel confronto: la lettura resta leggera (senza XML).
         registrata = bool(d.get("registrata_contabilita") and d.get("movimento_contabile_id"))
-        ha_xml = bool(d.get("xml_raw"))
         classificata = bool(d.get("centro_costo_id"))
         # score più alto = da tenere; a parità vince il più vecchio
-        return (int(registrata), int(ha_xml), int(classificata), int(ha_pn), int(pagata),
+        return (int(registrata), int(classificata), int(ha_pn), int(pagata),
                 -(len(str(d.get("created_at") or "")) and 0))
 
     from app.routers.invoices.invoices_main import _same_original
