@@ -237,12 +237,20 @@ def test_una_scrittura_in_timeout_non_ferma_la_normalizzazione():
 XML_BOM = "﻿" + XML
 XML_CRLF = XML.replace("\n", "\r\n")
 XML_ALTRO = XML.replace("<Numero>FT0014095324</Numero>", "<Numero>FT0014095325</Numero>")
+# caso reale in produzione (17/09 10:52): la copia legacy aveva «Carit�» e «43�»
+# (windows-1252 decodificato male) dove quella Drive aveva «Carità» e «43°», e
+# righe con spazi di riempimento diversi
+XML_ACCENTI = XML.replace("Piazza Carita 14", "Piazza Carità 14").replace(
+    "<Descrizione>Noleggio</Descrizione>", "<Descrizione>Noleggio 43°\n      </Descrizione>")
+XML_MOJIBAKE = XML.replace("Piazza Carita 14", "Piazza Carit\ufffd 14").replace(
+    "<Descrizione>Noleggio</Descrizione>", "<Descrizione>Noleggio   43\ufffd</Descrizione>")
 
 
 def test_impronta_contenuto_insensibile_a_bom_a_capo_e_codifica():
     base = fi.impronta_contenuto_fattura(XML)
-    assert base and base.startswith("c:")
+    assert base and base.startswith("c2:")
     assert fi.impronta_contenuto_fattura(XML_BOM) == base
+    assert fi.impronta_contenuto_fattura(XML_ACCENTI) == fi.impronta_contenuto_fattura(XML_MOJIBAKE)
     assert fi.impronta_contenuto_fattura(XML_CRLF) == base
     assert fi.impronta_contenuto_fattura(XML.replace('encoding="utf-8"', 'encoding="UTF-8"')) == base
     # i byte del file invece differiscono: era questo a bloccare la dedup
@@ -252,8 +260,11 @@ def test_impronta_contenuto_insensibile_a_bom_a_capo_e_codifica():
     assert fi.impronta_contenuto_fattura("<html>no</html>") is None
     assert fi.impronta_contenuto_fattura("<p:FatturaElettronica><rotto") is None
     assert fi.impronta_contenuto_fattura(None) is None
-    # anche l'identita' dall'XML la calcola
+    # anche l'identita' dall'XML la calcola, e rifa' quella di una versione vecchia
     assert fi.patch_identita_da_xml(_legacy())["content_hash_canonico"] == base
+    vecchia = {**_legacy(), "content_hash_canonico": "c:" + "0" * 64}
+    assert fi.patch_identita_da_xml(vecchia)["content_hash_canonico"] == base
+    assert fi.ha_impronta_corrente(vecchia) is False and fi.ha_impronta_corrente({"content_hash_canonico": base})
 
 
 def test_normalizza_impronte_marca_chi_non_ha_xml_e_non_lo_ritenta():
@@ -261,17 +272,20 @@ def test_normalizza_impronte_marca_chi_non_ha_xml_e_non_lo_ritenta():
 
     async def scenario():
         drv = _drive(); drv.pop("content_hash_canonico", None)
+        # impronta di una versione precedente: va ricalcolata
+        vecchia = _drive("drv-2", content_hash_canonico="c:" + "0" * 64)
         senza = {"id": "no-xml", "status": "imported", "invoice_number": "1",
                  "supplier_vat": "X", "invoice_date": "2026-01-01"}
-        await db["invoices"].insert_many([drv, senza])
+        await db["invoices"].insert_many([drv, vecchia, senza])
         primo = await fi.normalizza_impronte_canoniche(db, pausa=0)
         secondo = await fi.normalizza_impronte_canoniche(db, pausa=0)
         return primo, secondo, await db["invoices"].find_one({"id": "drv-1"}), \
-            await db["invoices"].find_one({"id": "no-xml"})
+            await db["invoices"].find_one({"id": "no-xml"}), await db["invoices"].find_one({"id": "drv-2"})
 
-    primo, secondo, drv, senza = _run(scenario())
-    assert primo["candidate"] == 2 and primo["calcolate"] == 1 and primo["senza_xml"] == 1
+    primo, secondo, drv, senza, vecchia = _run(scenario())
+    assert primo["candidate"] == 3 and primo["calcolate"] == 2 and primo["senza_xml"] == 1
     assert drv["content_hash_canonico"] == fi.impronta_contenuto_fattura(XML)
+    assert vecchia["content_hash_canonico"] == drv["content_hash_canonico"]
     assert senza["senza_xml_leggibile"] is True
     assert secondo["candidate"] == 0
 
@@ -285,11 +299,12 @@ def test_dedup_chiude_la_collisione_legacy_drive_che_differisce_di_un_byte(monke
     monkeypatch.setattr(crud.Database, "get_db", lambda: db)
 
     async def scenario():
-        legacy = _legacy(); legacy["fattura_allegata"] = XML_BOM
+        legacy = _legacy(); legacy["fattura_allegata"] = "\ufeff" + XML_MOJIBAKE
         legacy["identity_collision_with_ids"] = ["drv-1"]
         legacy["duplicate_review_required"] = True
         drive = _drive(status="da_verificare", stato_import="collisione_identita_da_verificare",
-                       stato_derivati="bloccato_collisione_identita",
+                       stato_derivati="bloccato_collisione_identita", xml_raw=XML_ACCENTI,
+                       content_hash=hashlib.sha256(XML_ACCENTI.encode()).hexdigest(),
                        duplicate_review_required=True, identity_collision_with_ids=["leg-1"])
         await db["invoices"].insert_many([legacy, drive])
         await db["alerts"].insert_one({"codice": "FATTURA_IDENTITA_DA_VERIFICARE",
@@ -339,6 +354,13 @@ def test_import_riconosce_lo_stesso_originale_con_bom_diverso():
     assert _same_documentary_original(esistente, None, XML) is True
     assert _same_documentary_original(esistente, None, XML_CRLF) is True
     assert _same_documentary_original(esistente, None, XML_ALTRO) is False
+    # «Carit�» nella copia esistente, «Carità» nel file che arriva da Drive
+    mojibake = _legacy(); mojibake["fattura_allegata"] = XML_MOJIBAKE
+    assert _same_documentary_original(mojibake, None, XML_ACCENTI) is True
+    # impronta di una versione vecchia sulla copia esistente: si ricalcola
+    vecchia = _drive(content_hash_canonico="c:" + "0" * 64, xml_raw=XML_MOJIBAKE,
+                     content_hash=hashlib.sha256(XML_MOJIBAKE.encode()).hexdigest())
+    assert _same_documentary_original(vecchia, None, XML_ACCENTI) is True
     # anche con lo sha256 dei byte gia' calcolato (e diverso) non e' una collisione
     con_hash = _drive(content_hash=hashlib.sha256(XML_BOM.encode()).hexdigest(), xml_raw=XML_BOM)
     con_hash.pop("content_hash_canonico", None)

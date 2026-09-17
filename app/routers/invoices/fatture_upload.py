@@ -1738,12 +1738,14 @@ def _same_documentary_original(
     xml_raw: Optional[str],
 ) -> bool:
     from app.routers.invoices.invoices_main import _same_original
-    from app.services.fatture_identita import _testo_xml, impronta_contenuto_fattura
+    from app.services.fatture_identita import (
+        _testo_xml, ha_impronta_corrente, impronta_contenuto_fattura,
+    )
 
     left = dict(existing)
     if existing.get("xml_raw") and not existing.get("content_hash"):
         left["content_hash"] = _xml_content_hash(existing.get("xml_raw"))
-    if not existing.get("content_hash_canonico"):
+    if not ha_impronta_corrente(existing):
         # 17/09/2026: lo stesso documento gia' presente (es. copia legacy con
         # l'XML in fattura_allegata) con byte diversi per BOM/a capo/codifica
         # non e' una collisione: si confronta il contenuto letto dall'XML.
