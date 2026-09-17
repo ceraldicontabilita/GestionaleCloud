@@ -40,6 +40,7 @@ import re
 import itertools
 
 from app.database import Database, Collections
+from app.document_repository import metadata_projection
 from app.services.identity_matching import (
     alias_fornitore,
     soggetto_causale_bancaria,
@@ -1451,9 +1452,13 @@ async def riconcilia_movimenti_banca(
                             {"pagamento_rate": {"$exists": True, "$ne": []}}
                         ]}
                     ]
-                    # NB: niente proiezione {"_id": 0} — l'_id serve per l'update
-                    # (prima ogni match falliva con KeyError '_id' e finiva in errors)
-                }).to_list(500)
+                # NB: l'_id resta (serve per l'update: prima ogni match falliva
+                # con KeyError '_id'). 17/09/2026: senza XML/PDF/foto — il
+                # punteggio usa solo numero, fornitore, data e importi, e
+                # leggere fino a 500 fatture CON l'XML per ogni movimento
+                # bancario era la lettura per id che andava in timeout (19
+                # su 15 minuti, 31 s l'una) e teneva il giro per ore.
+                }, metadata_projection(Collections.INVOICES, {"_id": 1})).to_list(500)
 
                 # Calcola score per ogni fattura
                 fatture_scored = []

@@ -170,11 +170,11 @@ async def _elenco_locale(anno: int | None, massimo: int) -> tuple[list[dict], in
 
 
 async def _dettaglio_locale(source_id: str) -> dict[str, Any]:
-    from app.routers.lotti_integration import _documents, _projection, _source_id
+    from app.routers.lotti_integration import _documento_per_source_id, _projection
 
-    for document in await _documents():
-        if _source_id(document) == source_id:
-            return _projection(document, include_xml=True)
+    document = await _documento_per_source_id(source_id)
+    if document is not None:
+        return _projection(document, include_xml=True)
     raise ValueError("Fattura sorgente non trovata nel GestionaleCloud")
 
 

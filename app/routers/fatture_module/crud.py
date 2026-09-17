@@ -986,16 +986,22 @@ async def pulisci_duplicati_invoices() -> Dict[str, Any]:
     scritture_stornate = 0
     registrati = {d["id"]: bool(d.get("registrata_contabilita")) for d in docs if d.get("id")}
     from app.services.registrazione_contabile import storna_registrazione_fattura
+    archiviazioni_fallite = 0
     for doppione_id, canonico_id in coppie_da_archiviare:
-        await db["invoices"].update_one(
-            {"id": doppione_id},
-            {"$set": {
-                "status": "archived", "entity_status": "archived",
-                "duplicate_of": canonico_id,
-                "deleted_reason": "duplicato_provato_da_hash_o_id_origine",
-                "archived_at": now,
-            }},
-        )
+        try:
+            await db["invoices"].update_one(
+                {"id": doppione_id},
+                {"$set": {
+                    "status": "archived", "entity_status": "archived",
+                    "duplicate_of": canonico_id,
+                    "deleted_reason": "duplicato_provato_da_hash_o_id_origine",
+                    "archived_at": now,
+                }},
+            )
+        except Exception as exc:  # noqa: BLE001 - 17/09: un timeout Supabase fermava tutto il giro
+            archiviazioni_fallite += 1
+            logger.error("Archiviazione doppione %s fallita: %s", doppione_id, exc)
+            continue
         if registrati.get(doppione_id):
             # Lo stesso documento non puo' stare due volte nel libro
             # giornale: la scrittura del doppione viene stornata (mai
@@ -1008,22 +1014,27 @@ async def pulisci_duplicati_invoices() -> Dict[str, Any]:
             except Exception as exc:  # noqa: BLE001
                 logger.error("Storno doppione %s fallito: %s", doppione_id, exc)
         for collezione in ("prima_nota_cassa", "prima_nota_banca", "scadenziario_fornitori"):
-            risultato = await db[collezione].update_many(
-                {"fattura_id": doppione_id,
-                 "status": {"$nin": ["deleted", "archived"]}},
-                {"$set": {
-                    "status": "archived", "entity_status": "archived",
-                    "duplicate_of": canonico_id,
-                    "deleted_reason": "derivato_da_fattura_duplicata_provata",
-                    "archived_at": now,
-                }},
-            )
+            try:
+                risultato = await db[collezione].update_many(
+                    {"fattura_id": doppione_id,
+                     "status": {"$nin": ["deleted", "archived"]}},
+                    {"$set": {
+                        "status": "archived", "entity_status": "archived",
+                        "duplicate_of": canonico_id,
+                        "deleted_reason": "derivato_da_fattura_duplicata_provata",
+                        "archived_at": now,
+                    }},
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.error("Archiviazione derivati di %s in %s fallita: %s", doppione_id, collezione, exc)
+                continue
             movimenti_archiviati += int(getattr(risultato, "modified_count", 0) or 0)
 
     return {
         "success": True,
         "gruppi_duplicati": gruppi_duplicati,
-        "fatture_archiviate": len(coppie_da_archiviare),
+        "fatture_archiviate": len(coppie_da_archiviare) - archiviazioni_fallite,
+        "archiviazioni_fallite": archiviazioni_fallite,
         "fatture_eliminate": 0,
         "movimenti_archiviati": movimenti_archiviati,
         "scritture_stornate": scritture_stornate,

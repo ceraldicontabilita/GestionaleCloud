@@ -829,7 +829,17 @@ passo fallito = bug da correggere subito. Cosa è stato trovato e cambiato
   per minuti risponde 503 «Could not query the database for the schema
   cache» a TUTTE le RPC del gestionale (visto a ogni deploy: 07:43, 09:05).
   Ora guarda `pg_class` e fa il DDL solo se la tabella manca o non ha la
-  RLS. Le scritture
+  RLS. **Letture leggere residue** (PR #480): i candidati della
+  riconciliazione bancaria (`riconciliazione_bancaria.py`, fino a 500
+  fatture per movimento) e il feed fatture per Lotti (`lotti_integration.
+  _documents`, tutte le fatture ogni 15 min) leggevano ancora l'XML —
+  erano le letture per id in timeout (19 in 15 min, 31 s l'una). Ora
+  entrambe usano `metadata_projection`; il feed Lotti ricava l'impronta da
+  `content_hash` (= sha256 dell'XML, stesso valore: `source_hash` invariato,
+  test dedicato) e idrata per id solo chi ne è privo; il dettaglio per
+  Lotti cerca per `id`/`invoice_key` invece di scorrere tutto. La dedup
+  fatture (`pulisci_duplicati_invoices`) non si ferma più al primo
+  `update_one` in timeout (conta `archiviazioni_fallite`). Le scritture
   del processo aggiornano la cache dopo l'esito positivo dell'RPC. Trigger
   `documents_touch_updated_at` garantisce `updated_at` anche per scritture
   fatte fuori dall'app. Fallback automatico alla lettura completa se le RPC

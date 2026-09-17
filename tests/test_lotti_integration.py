@@ -123,3 +123,29 @@ def test_projection_usa_xml_in_fattura_allegata():
     assert _xml_of({"fattura_allegata": "non e' xml"}) == ""
     proj = _projection(doc, include_xml=True)
     assert proj["has_xml"] is True and proj["xml_raw"] == xml
+
+
+def test_source_hash_identico_da_content_hash_e_da_xml(sheet_db, monkeypatch):
+    """17/09/2026: l'elenco per Lotti si calcola dalla versione leggera
+    (senza XML) usando content_hash = sha256(XML): il source_hash deve
+    restare identico a quello calcolato dall'XML, altrimenti Lotti vedrebbe
+    ogni fattura come «cambiata dopo la prima ricezione»."""
+    import hashlib
+
+    monkeypatch.setenv("LOTTI_INTEGRATION_KEY", "secret-test")
+    xml = "<FatturaElettronica><Numero>7</Numero></FatturaElettronica>"
+    base = {
+        "invoice_number": "7", "invoice_date": "2026-09-01", "supplier_vat": "01234567890",
+        "supplier_name": "Fornitore", "total_amount": 10, "linee": [],
+    }
+    run(sheet_db["invoices"].insert_many([
+        {"id": "con-hash", "xml_raw": xml, "content_hash": hashlib.sha256(xml.encode("utf-8")).hexdigest(), **base},
+        {"id": "senza-hash", "xml_raw": xml, **base},
+    ]))
+    elenco = run(lotti_integration.list_invoices_for_lotti(anno=2026, skip=0, limit=50, x_lotti_key="secret-test"))
+    per_id = {item["source_id"]: item for item in elenco["data"]}
+    atteso = lotti_integration._projection({"id": "con-hash", "xml_raw": xml, **base}, include_xml=False)
+    assert per_id["con-hash"]["source_hash"] == atteso["source_hash"]
+    assert per_id["con-hash"]["has_xml"] is True and per_id["senza-hash"]["has_xml"] is True
+    dettaglio = run(lotti_integration.get_invoice_for_lotti("senza-hash", "secret-test"))
+    assert dettaglio["xml_raw"] == xml
