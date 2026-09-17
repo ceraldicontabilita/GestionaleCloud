@@ -678,6 +678,96 @@ esistenti (nessun sistema parallelo):
   documento/versione: tutte le provenienze vengono conservate in
   `source_occurrences` con ID Drive, parent, percorso e hash.
 
+### 16-17/09/2026 — collaudo funzionale E2E sul vivo e stabilità di produzione
+
+Richiesta del titolare: collaudo dell'intera applicazione (ERP, HR, Lotti,
+Menu) su dati reali via API autenticata, entità di prova "ZZZ TEST", ogni
+passo fallito = bug da correggere subito. Cosa è stato trovato e cambiato
+(PR #464-#469, tutte su `main`):
+
+- **Produzione instabile (riavvii ogni ~9 min)**, tre cause distinte, tutte
+  chiuse: (1) l'avvio abbandonava dopo 3 tentativi di lettura del catalogo
+  Supabase sotto carico → `_MANIFEST_RETRIES = 12` con backoff (#465);
+  (2) `/api/health` rispondeva 503 (o restava appeso fino allo statement
+  timeout) quando la probe Supabase era lenta → Render lo interpretava come
+  servizio morto e riavviava. Ora la liveness risponde **entro 2 s** anche
+  con la probe appesa (`_HEALTH_PROBE_TIMEOUT`), stato `degraded` con
+  `archivio_errore` invece di 503; `?strict=true` per chi vuole il 503
+  (#465, #468); (3) il job "Protocollo-indice documenti Drive" (8 min dopo
+  l'avvio) portava la RAM a 1,57 GB su un piano da 2 GB → **spento via env
+  Render `PROTOCOLLO_DRIVE_ENABLED=false`**: da riaccendere solo dopo aver
+  ridotto la memoria del giro (oggi carica l'intero inventario). Dopo i fix:
+  health 200 continuo per tutta la durata del pregresso (6 min) e nei
+  controlli successivi.
+- **Pregresso nel libro giornale** (#464, #467): il giro ricaricava il
+  giornale a ogni documento (~1,4 s l'uno) e girava dentro la richiesta
+  HTTP; ora i già registrati si leggono una volta, `force=True` al motore,
+  esecuzione in **background** con stato in `sistema_stato`
+  (`POST /api/piano-conti/registra-pregresso`, `GET .../stato`), esito
+  negativo annotato sul documento (`registrazione_contabile_esito`).
+  Esito reale del 17/09: 595 fatture + 160 corrispettivi già in giornale con
+  flag riallineati; 828 fatture processate → 3 registrate, 820
+  "IVA detraibile non classificata", 5 importo nullo; corrispettivi 23 →
+  21 "ripartizione contanti/POS non quadrata con il totale" (chiusure
+  31/03-30/07/2026 da verificare), 2 importo nullo.
+- **Classificazione manuale → registrazione** (#466): `PUT
+  /api/invoices/{id}/classifica` ora calcola `iva_detraibile`/
+  `imponibile_deducibile_ires` dal centro di costo e registra subito la
+  fattura (prima la scelta manuale non sbloccava il gate IVA).
+- **Fatture 2026 doppie legacy↔Drive** (#469). Le 767 fatture importate
+  dall'archivio legacy il 14/09 (`source: xml_import`) avevano l'XML in
+  `fattura_allegata` ma nessuna identità canonica (`invoice_key`,
+  `supplier_vat`, `content_hash`): l'ingest Drive delle stesse fatture ne
+  creava una seconda copia (**485 doppioni, 9 registrati due volte** nel
+  giornale) e la dedup periodica non poteva né raggrupparle né provarle;
+  in più 13 fatture 2025 dell'archivio storico erano entrate nel giornale
+  (stato `archiviata` mancante dal filtro del pregresso). Ora
+  `app/services/fatture_identita.py` ricava l'identità dall'XML con lo
+  stesso parser/chiave/impronta dell'import (sha256 identico a quello
+  Drive, verificato in produzione), `pulisci_duplicati_invoices` tiene la
+  copia già nel giornale e **storna** la scrittura del doppione
+  (`storna_registrazione_fattura`: originale marcata `stornato` +
+  scrittura di storno, mai cancellata), il giro dedup ogni 30 min passa da
+  `bonifica_identita_fatture`; `POST /api/invoices/bonifica-identita`
+  (dry-run sincrono, reale in background) + `GET .../stato`. Delle 7
+  coppie di doppioni interni a Drive, 4 hanno lo stesso hash (le risolve
+  la dedup), 3 sono collisioni di identità con file diversi (restano in
+  `duplicate_review_required`, decide un operatore).
+- **Collaudi E2E riusciti** (dati "ZZZ TEST" creati e ripuliti): ERP
+  fattura XML → classificazione → scrittura in partita doppia in
+  quadratura → eliminazione; corrispettivo XML → registrazione; Lotti
+  prodotto → carico → scarico oltre stock respinto → doppio tap respinto →
+  bozza riordino con `richiesto_da` → pulizia; HR login/anagrafica/paghe;
+  Menu pubblico e admin. F24: quadratura quietanze Drive 459 controllate,
+  459 quadrate, 0 errori. PayPal: sync storico 02/2025→09/2026 a finestre
+  di 30 giorni, transazioni 66 → 159 (113 uscite, 20 PagoPA).
+- **Aperto, con causa nota** (non risolto in questa sessione): gli endpoint
+  sincroni che ricaricano collezioni intere per ogni elemento vanno oltre
+  i 5 minuti del proxy Render e cadono per statement timeout Supabase —
+  `POST /api/paypal-api/riconcilia` (`_candidate_invoices` ricarica
+  `invoices` per ogni transazione: 0 transazioni agganciate a fatture, 26
+  a banca), `GET /api/paypal-api/account-ids-non-mappati`, `POST
+  /api/admin/riallinea-pagamenti-fatture` (>170 s anche in dry-run), `POST
+  /api/prima-nota-salari/deposita-cedolini-in-hr`. Stesso rimedio già
+  applicato al pregresso: prefetch unico + esecuzione in background con
+  stato. Banca 2026: 1.920 movimenti, 652 riconciliati, 26 agganciati a
+  fatture, 1.765 senza categoria. Le 20 note di credito legacy
+  (`tipo_documento` TD04) verrebbero registrate come costi dal motore, che
+  non distingue il tipo documento: da trattare prima di classificarle.
+  Il database Supabase (compute Micro, 1,9 GB di cui 1 GB `documents`) è
+  il collo di bottiglia di tutto quanto sopra: l'adattatore rilegge intere
+  collezioni con payload (XML, PDF) a ogni `find` non puntuale.
+- **Timeout del ruolo `anon`** (migrazione `20260917030000_anon_statement_
+  timeout.sql`, applicata in produzione il 17/09 02:52 UTC): PostgREST
+  esegue TUTTE le RPC del runtime (`gc_*`, `lotti_*`) come ruolo `anon`, che
+  su Supabase nasce con `statement_timeout = 3s`. Nei log: 272 "canceling
+  statement due to statement timeout" in 17 minuti, ogni pagina fallita
+  ritentata dall'app con lotti più piccoli (carico moltiplicato), e il
+  `/lotti/api/health` rispondeva 500 (`select distinct collection` su 26.250
+  righe oltre i 3 s a cache fredda). Ora 20 s (sotto i 60 s dei client
+  HTTP); il ruolo `authenticator` resta a 8 s. Da rivedere se si cambia
+  compute o si riduce il payload di `documents`.
+
 ### Stato precedente
 
 - Il default del codice è `DATA_BACKEND=sheets`.
