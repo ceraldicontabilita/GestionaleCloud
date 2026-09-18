@@ -6,6 +6,16 @@ const SAND = {
   500: '#a8854f', 600: '#8a6f47', 700: '#6f583a', 800: '#56442d', 900: '#403220',
 };
 
+// Scala neutra calda: sostituisce le scale grigio-fredde di Tailwind (gray, slate).
+// I valori 50/100/200/300/400/500/900 sono i token reali del design system Ceraldi
+// (crema, bordo sottile, sabbia, thumb scrollbar, text-3, text-2, inchiostro);
+// 600-800 e 950 interpolano fra text-2 e l'inchiostro.
+const NEUTRAL = {
+  50: '#faf7f0', 100: '#f0ebe0', 200: '#e6e0d4', 300: '#c7cfc2', 400: '#9aa593',
+  500: '#6b7669', 600: '#5a6458', 700: '#495247', 800: '#384038', 900: '#2a3329',
+  950: '#1c211b',
+};
+
 module.exports = {
   darkMode: ["class"],
   content: ["./src/**/*.{js,jsx,ts,tsx}", "./public/index.html"],
@@ -17,15 +27,17 @@ module.exports = {
       colors: {
         primary: { DEFAULT:'#8a6f47', soft:'#f3ead9', grad:'#a8895e' },
         sidebar: '#4a3f33',
-        success: { DEFAULT:'#00B884', soft:'#D4F5EA' },
-        warning: { DEFAULT:'#FF9800', soft:'#FFE9CC' },
-        danger:  { DEFAULT:'#F44336', soft:'#FFDAD7' },
+        success: { DEFAULT:'#3d8168', soft:'#e2efe8' },
+        warning: { DEFAULT:'#c4894a', soft:'#f7ecdc' },
+        danger:  { DEFAULT:'#d35f4e', soft:'#fbe6e2' },
         info:    { DEFAULT:'#8a6f47', soft:'#f3ead9' },
         surface: { DEFAULT:'#faf7f0', card:'#fffefb' },
         // Scale fredde rimappate sul beige (niente piu' blu/viola nei componenti).
         blue: SAND, indigo: SAND, sky: SAND, violet: SAND, purple: SAND,
-        border:  { DEFAULT:'#E2E8F0', subtle:'#EDF2F7' },
-        text:    { DEFAULT:'#0F172A', 2:'#64748B', 3:'#94A3B8' },
+        // Neutri: le scale gray/slate di Tailwind sono grigio-freddo, fuori palette.
+        gray: NEUTRAL, slate: NEUTRAL, zinc: NEUTRAL, neutral: NEUTRAL,
+        border:  { DEFAULT:'#e6e0d4', subtle:'#f0ebe0' },
+        text:    { DEFAULT:'#2a3329', 2:'#6b7669', 3:'#9aa593' },
         /* shadcn compat */
         background: 'hsl(var(--background))',
         foreground: 'hsl(var(--foreground))',
@@ -41,11 +53,11 @@ module.exports = {
         DEFAULT: '12px', sm:'8px', lg:'16px', xl:'20px', '2xl':'24px',
       },
       boxShadow: {
-        card: '0 2px 10px rgba(74,63,51,.06)',
-        list: '0 1px 6px rgba(74,63,51,.05)',
-        md:   '0 4px 20px rgba(74,63,51,.12)',
-        lg:   '0 8px 32px rgba(74,63,51,.15)',
-        btn:  '0 4px 12px rgba(74,63,51,.25)',
+        card: '0 2px 10px rgba(63,90,78,.06)',
+        list: '0 1px 6px rgba(63,90,78,.05)',
+        md:   '0 4px 20px rgba(63,90,78,.10)',
+        lg:   '0 8px 32px rgba(63,90,78,.14)',
+        btn:  '0 4px 12px rgba(91,122,107,.22)',
       },
       keyframes: {
         'accordion-down': { from:{height:'0'}, to:{height:'var(--radix-accordion-content-height)'} },

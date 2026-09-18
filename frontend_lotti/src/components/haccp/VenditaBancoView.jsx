@@ -23,7 +23,7 @@ function FotoProdotto({ url, nome, size = 80 }) {
         style={{
           width: size, height: size, objectFit: "cover",
           borderRadius: 12, flexShrink: 0,
-          background: "#f1f5f9"
+          background: "#faf7f0"
         }}
       />
     );
@@ -88,18 +88,18 @@ function CardProdotto({ item, onSalva, onRiapri }) {
       flexDirection: "column"
     }}>
       {/* Header: foto + nome + pezzi prodotti */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderBottom: "1px solid #f1f5f9" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderBottom: "1px solid #faf7f0" }}>
         <FotoProdotto url={item.foto_url} nome={item.prodotto_nome} size={64} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={{ margin: 0, fontWeight: 800, fontSize: 15, textTransform: "capitalize", color: "#1e293b",
+          <p style={{ margin: 0, fontWeight: 800, fontSize: 15, textTransform: "capitalize", color: "#3f5a4e",
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {item.prodotto_nome}
           </p>
-          <p style={{ margin: "2px 0 0", fontSize: 12, color: "#64748b" }}>
+          <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6b7669" }}>
             Mandato al banco: <strong>{item.pezzi_prodotti} pz</strong>
           </p>
           {item.creato_at && (
-            <p style={{ margin: "2px 0 0", fontSize: 11, color: "#94a3b8" }}>
+            <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9aa593" }}>
               {(() => {
                 try {
                   const d = parseISO(item.creato_at);
@@ -128,7 +128,7 @@ function CardProdotto({ item, onSalva, onRiapri }) {
 
       {/* Corpo: controllo invenduto */}
       <div style={{ padding: "12px 14px", flex: 1 }}>
-        <p style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 1 }}>
+        <p style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 700, color: "#9aa593", textTransform: "uppercase", letterSpacing: 1 }}>
           Invenduto (pz rimasti)
         </p>
 
@@ -136,10 +136,10 @@ function CardProdotto({ item, onSalva, onRiapri }) {
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
           <button onClick={dec} disabled={loading}
             style={{
-              width: 52, height: 52, borderRadius: 12, border: "2px solid #e2e8f0",
-              background: "#f8fafc", fontWeight: 900, fontSize: 26, cursor: "pointer",
+              width: 52, height: 52, borderRadius: 12, border: "2px solid #e6e0d4",
+              background: "#faf7f0", fontWeight: 900, fontSize: 26, cursor: "pointer",
               display: "flex", alignItems: "center", justifyContent: "center",
-              color: "#374151", flexShrink: 0
+              color: "#495247", flexShrink: 0
             }}>−</button>
 
           <div style={{ flex: 1, textAlign: "center" }}>
@@ -151,21 +151,21 @@ function CardProdotto({ item, onSalva, onRiapri }) {
               onChange={(e) => setInvenduto(Math.min(totale, Math.max(0, parseInt(e.target.value) || 0)))}
               style={{
                 width: "100%", padding: "10px 0", fontSize: 30, fontWeight: 900,
-                border: "2px solid #cbd5e1", borderRadius: 12, textAlign: "center",
-                color: "#1e293b", outline: "none", background: "#fff"
+                border: "2px solid #e6e0d4", borderRadius: 12, textAlign: "center",
+                color: "#3f5a4e", outline: "none", background: "#fff"
               }}
             />
-            <p style={{ margin: "3px 0 0", fontSize: 12, color: "#64748b" }}>
+            <p style={{ margin: "3px 0 0", fontSize: 12, color: "#6b7669" }}>
               = <strong style={{ color: "var(--success)" }}>{pezziVenduti} venduti</strong>
             </p>
           </div>
 
           <button onClick={inc} disabled={loading}
             style={{
-              width: 52, height: 52, borderRadius: 12, border: "2px solid #e2e8f0",
-              background: "#f8fafc", fontWeight: 900, fontSize: 26, cursor: "pointer",
+              width: 52, height: 52, borderRadius: 12, border: "2px solid #e6e0d4",
+              background: "#faf7f0", fontWeight: 900, fontSize: 26, cursor: "pointer",
               display: "flex", alignItems: "center", justifyContent: "center",
-              color: "#374151", flexShrink: 0
+              color: "#495247", flexShrink: 0
             }}>+</button>
         </div>
 
@@ -175,9 +175,9 @@ function CardProdotto({ item, onSalva, onRiapri }) {
             <button key={v} onClick={() => setInvenduto(v)}
               style={{
                 padding: "4px 11px", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer",
-                border: `2px solid ${invenduto === v ? "#f97316" : "#e2e8f0"}`,
-                background: invenduto === v ? "#fff7ed" : "#f8fafc",
-                color: invenduto === v ? "#ea580c" : "#64748b"
+                border: `2px solid ${invenduto === v ? "#f97316" : "#e6e0d4"}`,
+                background: invenduto === v ? "#fff7ed" : "#faf7f0",
+                color: invenduto === v ? "#ea580c" : "#6b7669"
               }}>
               {v}
             </button>
@@ -186,9 +186,9 @@ function CardProdotto({ item, onSalva, onRiapri }) {
           <button onClick={() => setInvenduto(totale)}
             style={{
               padding: "4px 11px", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer",
-              border: `2px solid ${invenduto === totale ? "var(--danger)" : "#e2e8f0"}`,
-              background: invenduto === totale ? "#fef2f2" : "#f8fafc",
-              color: invenduto === totale ? "var(--danger-dark)" : "#94a3b8"
+              border: `2px solid ${invenduto === totale ? "var(--danger)" : "#e6e0d4"}`,
+              background: invenduto === totale ? "#fef2f2" : "#faf7f0",
+              color: invenduto === totale ? "var(--danger-dark)" : "#9aa593"
             }}>
             Tutti ({totale})
           </button>
@@ -196,13 +196,13 @@ function CardProdotto({ item, onSalva, onRiapri }) {
 
         {/* Barra % venduto */}
         <div style={{ marginBottom: 12 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#64748b", marginBottom: 3 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#6b7669", marginBottom: 3 }}>
             <span>{pct}% venduto</span>
             <span style={{ color: pct >= 80 ? "var(--success)" : pct >= 50 ? "var(--warning-dark)" : "var(--danger)", fontWeight: 700 }}>
               {pct >= 80 ? "Ottimo" : pct >= 50 ? "Buono" : "Basso"}
             </span>
           </div>
-          <div style={{ background: "#e2e8f0", borderRadius: 8, height: 8, overflow: "hidden" }}>
+          <div style={{ background: "#e6e0d4", borderRadius: 8, height: 8, overflow: "hidden" }}>
             <div style={{
               width: `${pct}%`, height: "100%", borderRadius: 8,
               background: pct >= 80 ? "var(--success)" : pct >= 50 ? "var(--warning)" : "var(--danger)",
@@ -216,7 +216,7 @@ function CardProdotto({ item, onSalva, onRiapri }) {
           <button onClick={handleSalva} disabled={loading}
             style={{
               width: "100%", padding: "13px 0", borderRadius: 12, border: "none",
-              background: loading ? "#94a3b8" : GRADIENT_HEADER,
+              background: loading ? "#9aa593" : GRADIENT_HEADER,
               color: "#fff", fontWeight: 800, fontSize: 15, cursor: loading ? "not-allowed" : "pointer",
               letterSpacing: 0.3
             }}>
@@ -227,7 +227,7 @@ function CardProdotto({ item, onSalva, onRiapri }) {
             <button onClick={handleSalva} disabled={loading}
               style={{
                 flex: 2, padding: "11px 0", borderRadius: 12, border: "none",
-                background: loading ? "#94a3b8" : "var(--success)",
+                background: loading ? "#9aa593" : "var(--success)",
                 color: "#fff", fontWeight: 800, fontSize: 14, cursor: loading ? "not-allowed" : "pointer"
               }}>
               {loading ? "..." : `✓ Aggiorna`}
@@ -235,8 +235,8 @@ function CardProdotto({ item, onSalva, onRiapri }) {
             <button onClick={handleRiapri} disabled={loading}
               style={{
                 flex: 1, padding: "11px 0", borderRadius: 12,
-                border: "2px solid #e2e8f0", background: "#f8fafc",
-                fontWeight: 600, fontSize: 13, cursor: "pointer", color: "#94a3b8"
+                border: "2px solid #e6e0d4", background: "#faf7f0",
+                fontWeight: 600, fontSize: 13, cursor: "pointer", color: "#9aa593"
               }}>
               Modifica
             </button>
@@ -292,7 +292,7 @@ function SprechiView({ onBack }) {
   const colorePerc = (pct) => pct < 10 ? "var(--success)" : pct < 25 ? "var(--warning)" : "var(--danger)";
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f8fafc" }}>
+    <div style={{ minHeight: "100vh", background: "#faf7f0" }}>
       {/* Header */}
       <div style={{ background: "linear-gradient(135deg, #5b7a6b, #3f5a4e)", padding: "16px 18px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
@@ -332,46 +332,46 @@ function SprechiView({ onBack }) {
 
       <div style={{ padding: 16 }}>
         {loading ? (
-          <div style={{ textAlign: "center", padding: 60, color: "#94a3b8" }}>Caricamento...</div>
+          <div style={{ textAlign: "center", padding: 60, color: "#9aa593" }}>Caricamento...</div>
         ) : (
           <>
             {/* KPI */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 10, marginBottom: 16 }}>
-              <div style={{ background: "#fff", borderRadius: 14, padding: "14px 16px", border: "1px solid #e2e8f0" }}>
+              <div style={{ background: "#fff", borderRadius: 14, padding: "14px 16px", border: "1px solid #e6e0d4" }}>
                 <p style={{ margin: 0, fontSize: 26, fontWeight: 900, color: "#5b7a6b" }}>
                   {kpi.totale_pezzi_invenduti || 0}
                 </p>
-                <p style={{ margin: "2px 0 0", fontSize: 11, color: "#94a3b8" }}>Pezzi buttati</p>
+                <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9aa593" }}>Pezzi buttati</p>
               </div>
-              <div style={{ background: "#fff", borderRadius: 14, padding: "14px 16px", border: "1px solid #e2e8f0" }}>
+              <div style={{ background: "#fff", borderRadius: 14, padding: "14px 16px", border: "1px solid #e6e0d4" }}>
                 <p style={{ margin: 0, fontSize: 26, fontWeight: 900, color: "var(--danger)" }}>
                   €{(kpi.costo_totale_sprecato || 0).toFixed(2)}
                 </p>
-                <p style={{ margin: "2px 0 0", fontSize: 11, color: "#94a3b8" }}>Costo mat. prime sprecate</p>
+                <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9aa593" }}>Costo mat. prime sprecate</p>
               </div>
-              <div style={{ background: "#fff", borderRadius: 14, padding: "14px 16px", border: "1px solid #e2e8f0" }}>
+              <div style={{ background: "#fff", borderRadius: 14, padding: "14px 16px", border: "1px solid #e6e0d4" }}>
                 <p style={{ margin: 0, fontSize: 26, fontWeight: 900, color: colorePerc(kpi.pct_media_spreco || 0) }}>
                   {kpi.pct_media_spreco || 0}%
                 </p>
-                <p style={{ margin: "2px 0 0", fontSize: 11, color: "#94a3b8" }}>% media spreco</p>
+                <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9aa593" }}>% media spreco</p>
               </div>
-              <div style={{ background: "#fff", borderRadius: 14, padding: "14px 16px", border: "1px solid #e2e8f0" }}>
+              <div style={{ background: "#fff", borderRadius: 14, padding: "14px 16px", border: "1px solid #e6e0d4" }}>
                 <p style={{ margin: 0, fontSize: 26, fontWeight: 900, color: "var(--info)" }}>
                   {kpi.totale_prodotto || 0}
                 </p>
-                <p style={{ margin: "2px 0 0", fontSize: 11, color: "#94a3b8" }}>Pezzi prodotti (periodo)</p>
+                <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9aa593" }}>Pezzi prodotti (periodo)</p>
               </div>
             </div>
 
             {/* Lista periodi */}
             {periodi.length === 0 ? (
-              <div style={{ textAlign: "center", padding: 40, background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0" }}>
+              <div style={{ textAlign: "center", padding: 40, background: "#fff", borderRadius: 14, border: "1px solid #e6e0d4" }}>
                 <p style={{ fontSize: 32, margin: "0 0 8px" }}>🎉</p>
                 <p style={{ fontWeight: 700, color: "var(--success)" }}>Nessun invenduto nel periodo</p>
-                <p style={{ fontSize: 13, color: "#94a3b8" }}>Hai venduto tutto!</p>
+                <p style={{ fontSize: 13, color: "#9aa593" }}>Hai venduto tutto!</p>
               </div>
             ) : periodi.map((p, idx) => (
-              <div key={p.periodo} style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", marginBottom: 10, overflow: "hidden" }}>
+              <div key={p.periodo} style={{ background: "#fff", borderRadius: 14, border: "1px solid #e6e0d4", marginBottom: 10, overflow: "hidden" }}>
                 {/* Riga periodo */}
                 <div
                   onClick={() => setEspanso(espanso === idx ? null : idx)}
@@ -382,10 +382,10 @@ function SprechiView({ onBack }) {
                   }}
                 >
                   <div>
-                    <p style={{ margin: 0, fontWeight: 800, fontSize: 14, color: "#1e293b" }}>
+                    <p style={{ margin: 0, fontWeight: 800, fontSize: 14, color: "#3f5a4e" }}>
                       {labelPeriodo(p.periodo)}
                     </p>
-                    <p style={{ margin: "2px 0 0", fontSize: 11, color: "#94a3b8" }}>
+                    <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9aa593" }}>
                       {p.totale_invenduto} pz invenduti su {p.totale_prodotto} prodotti
                     </p>
                   </div>
@@ -397,13 +397,13 @@ function SprechiView({ onBack }) {
                       {p.pct_sprecato}% sprecato
                     </p>
                   </div>
-                  <span style={{ marginLeft: 10, color: "#94a3b8", fontSize: 16 }}>
+                  <span style={{ marginLeft: 10, color: "#9aa593", fontSize: 16 }}>
                     {espanso === idx ? "▲" : "▼"}
                   </span>
                 </div>
 
                 {/* Barra % */}
-                <div style={{ height: 4, background: "#f1f5f9" }}>
+                <div style={{ height: 4, background: "#faf7f0" }}>
                   <div style={{
                     height: "100%", width: `${Math.min(p.pct_sprecato, 100)}%`,
                     background: colorePerc(p.pct_sprecato), transition: "width 0.4s"
@@ -414,26 +414,26 @@ function SprechiView({ onBack }) {
                 {espanso === idx && (
                   <div style={{ padding: "8px 16px 12px" }}>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 50px 50px 70px", gap: 6,
-                      padding: "6px 0", borderBottom: "1px solid #f1f5f9", marginBottom: 4 }}>
+                      padding: "6px 0", borderBottom: "1px solid #faf7f0", marginBottom: 4 }}>
                       {["Prodotto","Inv.","Prod.","€ Spreco"].map(h => (
-                        <span key={h} style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase" }}>{h}</span>
+                        <span key={h} style={{ fontSize: 10, fontWeight: 700, color: "#9aa593", textTransform: "uppercase" }}>{h}</span>
                       ))}
                     </div>
                     {p.prodotti.map(prod => (
                       <div key={prod.nome} style={{ display: "grid", gridTemplateColumns: "1fr 50px 50px 70px",
-                        gap: 6, padding: "7px 0", borderBottom: "1px solid #f8fafc", alignItems: "center" }}>
+                        gap: 6, padding: "7px 0", borderBottom: "1px solid #faf7f0", alignItems: "center" }}>
                         <span style={{ fontSize: 12, fontWeight: 600, textTransform: "capitalize",
                           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {prod.nome}
                         </span>
                         <span style={{ fontSize: 13, fontWeight: 700, color: "var(--danger)" }}>{prod.pezzi_invenduto}</span>
-                        <span style={{ fontSize: 12, color: "#64748b" }}>{prod.pezzi_prodotto}</span>
+                        <span style={{ fontSize: 12, color: "#6b7669" }}>{prod.pezzi_prodotto}</span>
                         <div>
-                          <span style={{ fontSize: 13, fontWeight: 700, color: prod.costo_sprecato > 0 ? "#5b7a6b" : "#94a3b8" }}>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: prod.costo_sprecato > 0 ? "#5b7a6b" : "#9aa593" }}>
                             {prod.costo_sprecato > 0 ? `€${prod.costo_sprecato.toFixed(2)}` : "—"}
                           </span>
                           {prod.costo_pz > 0 && (
-                            <p style={{ margin: 0, fontSize: 9, color: "#94a3b8" }}>€{prod.costo_pz.toFixed(3)}/pz</p>
+                            <p style={{ margin: 0, fontSize: 9, color: "#9aa593" }}>€{prod.costo_pz.toFixed(3)}/pz</p>
                           )}
                         </div>
                       </div>
@@ -482,7 +482,7 @@ function StatisticheVendite({ onBack }) {
   const pctGlob  = totProd > 0 ? Math.round((totVend / totProd) * 100) : 0;
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f8fafc" }}>
+    <div style={{ minHeight: "100vh", background: "#faf7f0" }}>
       <div style={{ background: GRADIENT_HEADER, padding: "16px 20px 20px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
           <button onClick={onBack} style={{
@@ -522,22 +522,22 @@ function StatisticheVendite({ onBack }) {
             { label: "Venduti",  val: totVend.toLocaleString("it-IT"), color: "var(--success)" },
             { label: "Invenduto",val: totInv.toLocaleString("it-IT"),  color: "var(--danger)" },
           ].map(({ label, val, color }) => (
-            <div key={label} style={{ background: "#fff", borderRadius: 14, padding: 12, textAlign: "center", border: "1px solid #e2e8f0" }}>
+            <div key={label} style={{ background: "#fff", borderRadius: 14, padding: 12, textAlign: "center", border: "1px solid #e6e0d4" }}>
               <p style={{ margin: 0, fontWeight: 800, fontSize: 22, color }}>{val}</p>
-              <p style={{ margin: "2px 0 0", fontSize: 11, color: "#94a3b8" }}>{label}</p>
+              <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9aa593" }}>{label}</p>
             </div>
           ))}
         </div>
 
         {/* % globale */}
-        <div style={{ background: "#fff", borderRadius: 14, padding: 14, marginBottom: 16, border: "1px solid #e2e8f0" }}>
+        <div style={{ background: "#fff", borderRadius: 14, padding: 14, marginBottom: 16, border: "1px solid #e6e0d4" }}>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Indice venduto</span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "#6b7669" }}>Indice venduto</span>
             <span style={{ fontWeight: 800, fontSize: 18, color: pctGlob >= 80 ? "var(--success)" : pctGlob >= 50 ? "var(--warning-dark)" : "var(--danger)" }}>
               {pctGlob}%
             </span>
           </div>
-          <div style={{ background: "#e2e8f0", borderRadius: 8, height: 10, overflow: "hidden" }}>
+          <div style={{ background: "#e6e0d4", borderRadius: 8, height: 10, overflow: "hidden" }}>
             <div style={{
               width: `${pctGlob}%`, height: "100%", borderRadius: 8,
               background: pctGlob >= 80 ? "var(--success)" : pctGlob >= 50 ? "var(--warning)" : "var(--danger)"
@@ -553,30 +553,30 @@ function StatisticheVendite({ onBack }) {
           ].map(v => (
             <button key={v.id} onClick={() => setVistaStats(v.id)} style={{
               padding: "7px 16px", borderRadius: 10, fontWeight: 700, fontSize: 13, cursor: "pointer",
-              border: `2px solid ${vistaStats === v.id ? "#f97316" : "#e2e8f0"}`,
+              border: `2px solid ${vistaStats === v.id ? "#f97316" : "#e6e0d4"}`,
               background: vistaStats === v.id ? "#fff7ed" : "#fff",
-              color: vistaStats === v.id ? "#ea580c" : "#64748b"
+              color: vistaStats === v.id ? "#ea580c" : "#6b7669"
             }}>{v.label}</button>
           ))}
         </div>
 
         {loading ? (
-          <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>Caricamento...</div>
+          <div style={{ textAlign: "center", padding: 40, color: "#9aa593" }}>Caricamento...</div>
         ) : vistaStats === "prodotto" ? (
           /* ── TABELLA PER PRODOTTO ── */
-          <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", overflow: "hidden" }}>
-            <div style={{ padding: "10px 14px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0",
+          <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e6e0d4", overflow: "hidden" }}>
+            <div style={{ padding: "10px 14px", background: "#faf7f0", borderBottom: "1px solid #e6e0d4",
               display: "grid", gridTemplateColumns: "1fr 55px 55px 55px 50px", gap: 8 }}>
               {["Prodotto","Prod.","Vend.","Inv.","%"].map(h => (
-                <span key={h} style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase" }}>{h}</span>
+                <span key={h} style={{ fontSize: 10, fontWeight: 700, color: "#9aa593", textTransform: "uppercase" }}>{h}</span>
               ))}
             </div>
             {stats.length === 0 ? (
-              <p style={{ textAlign: "center", padding: 30, color: "#94a3b8" }}>Nessun dato</p>
+              <p style={{ textAlign: "center", padding: 30, color: "#9aa593" }}>Nessun dato</p>
             ) : stats.map((r, i) => (
               <div key={r.prodotto} style={{
                 padding: "10px 14px",
-                borderBottom: i < stats.length - 1 ? "1px solid #f1f5f9" : "none",
+                borderBottom: i < stats.length - 1 ? "1px solid #faf7f0" : "none",
                 display: "grid", gridTemplateColumns: "1fr 55px 55px 55px 50px", gap: 8, alignItems: "center"
               }}>
                 <span style={{ fontSize: 13, fontWeight: 600, textTransform: "capitalize", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.prodotto}</span>
@@ -593,9 +593,9 @@ function StatisticheVendite({ onBack }) {
           /* ── TABELLA PER GIORNO ── */
           <div>
             {statsGiorno.length === 0 ? (
-              <p style={{ textAlign: "center", padding: 30, color: "#94a3b8" }}>Nessun dato</p>
+              <p style={{ textAlign: "center", padding: 30, color: "#9aa593" }}>Nessun dato</p>
             ) : statsGiorno.map((giorno) => (
-              <div key={giorno.data} style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", overflow: "hidden", marginBottom: 12 }}>
+              <div key={giorno.data} style={{ background: "#fff", borderRadius: 14, border: "1px solid #e6e0d4", overflow: "hidden", marginBottom: 12 }}>
                 {/* Header giorno */}
                 <div style={{
                   padding: "10px 14px", background: "#fff7ed", borderBottom: "2px solid #fed7aa",
@@ -617,7 +617,7 @@ function StatisticheVendite({ onBack }) {
                 {giorno.prodotti.map((p, i) => (
                   <div key={p.prodotto} style={{
                     padding: "9px 14px",
-                    borderBottom: i < giorno.prodotti.length - 1 ? "1px solid #f1f5f9" : "none",
+                    borderBottom: i < giorno.prodotti.length - 1 ? "1px solid #faf7f0" : "none",
                     display: "grid", gridTemplateColumns: "1fr 55px 55px 55px 50px", gap: 8, alignItems: "center"
                   }}>
                     <span style={{ fontSize: 13, fontWeight: 600, textTransform: "capitalize", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.prodotto}</span>
@@ -705,7 +705,7 @@ export const VenditaBancoView = ({ onBack }) => {
   if (vista === "dettaglio" && prodottoSel) {
     const isNonProdotto = prodottoSel.non_prodotto || prodottoSel.pezzi_prodotti === 0;
     return (
-      <div style={{ minHeight: "100vh", background: "#f8fafc" }}>
+      <div style={{ minHeight: "100vh", background: "#faf7f0" }}>
         {/* Header */}
         <div style={{ background: GRADIENT_HEADER, padding: "14px 18px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -721,22 +721,22 @@ export const VenditaBancoView = ({ onBack }) => {
 
         <div style={{ padding: 16 }}>
           {/* Foto */}
-          <div style={{ borderRadius: 16, overflow: "hidden", height: 180, background: "#e2e8f0", marginBottom: 16 }}>
+          <div style={{ borderRadius: 16, overflow: "hidden", height: 180, background: "#e6e0d4", marginBottom: 16 }}>
             {prodottoSel.foto_url ? (
               <img src={fotoSrc(prodottoSel.foto_url)} alt={prodottoSel.prodotto_nome}
                 style={{ width: "100%", height: "100%", objectFit: "cover" }} />
             ) : (
               <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 60, color: "#94a3b8" }}>🍽</div>
+                fontSize: 60, color: "#9aa593" }}>🍽</div>
             )}
           </div>
 
           {isNonProdotto ? (
             <div style={{ background: "#fff", borderRadius: 14, padding: 20, textAlign: "center",
-              border: "2px dashed #e2e8f0" }}>
+              border: "2px dashed #e6e0d4" }}>
               <p style={{ fontSize: 32, margin: "0 0 8px" }}>📦</p>
-              <p style={{ fontWeight: 700, fontSize: 16, color: "#475569", margin: 0 }}>Non prodotto oggi</p>
-              <p style={{ fontSize: 13, color: "#94a3b8", marginTop: 4 }}>
+              <p style={{ fontWeight: 700, fontSize: 16, color: "#6b7669", margin: 0 }}>Non prodotto oggi</p>
+              <p style={{ fontSize: 13, color: "#9aa593", marginTop: 4 }}>
                 Nessuna produzione registrata per questo prodotto oggi.
               </p>
             </div>
@@ -752,7 +752,7 @@ export const VenditaBancoView = ({ onBack }) => {
   if (vista === "tutti") {
     const oggi = format(new Date(), "yyyy-MM-dd");
     return (
-      <div style={{ minHeight: "100vh", background: "#f8fafc" }}>
+      <div style={{ minHeight: "100vh", background: "#faf7f0" }}>
         <div style={{ background: GRADIENT_HEADER, padding: "14px 18px 16px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
             <button onClick={() => setVista("banco")} style={{
@@ -774,9 +774,9 @@ export const VenditaBancoView = ({ onBack }) => {
             {[
               { colore: "var(--success)", label: "Chiuso" },
               { colore: "var(--warning)", label: "Al banco" },
-              { colore: "#e2e8f0", label: "Non prodotto" }
+              { colore: "#e6e0d4", label: "Non prodotto" }
             ].map(({ colore, label }) => (
-              <div key={label} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "#64748b" }}>
+              <div key={label} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "#6b7669" }}>
                 <div style={{ width: 10, height: 10, borderRadius: "50%", background: colore }} />
                 {label}
               </div>
@@ -788,10 +788,10 @@ export const VenditaBancoView = ({ onBack }) => {
               const nomeN = (prod.nome || "").toLowerCase().trim();
               const vendita = venditeOggi.find(v => (v.prodotto_nome || "").toLowerCase().trim() === nomeN);
               const stato = vendita ? vendita.stato : "non_prodotto";
-              const bordo = stato === "chiuso" ? "#86efac" : stato === "aperto" ? "var(--warning-soft)" : "#e2e8f0";
+              const bordo = stato === "chiuso" ? "#86efac" : stato === "aperto" ? "var(--warning-soft)" : "#e6e0d4";
               const badge = stato === "chiuso" ? { bg: "var(--success)", label: "✓" }
                           : stato === "aperto" ? { bg: "var(--warning)", label: "⏳" }
-                          : { bg: "#cbd5e1", label: "—" };
+                          : { bg: "#e6e0d4", label: "—" };
               return (
                 <div key={prod.id} onClick={() => apriDettaglio(prod)}
                   style={{ background: "#fff", borderRadius: 14, border: `2px solid ${bordo}`,
@@ -801,14 +801,14 @@ export const VenditaBancoView = ({ onBack }) => {
                   onTouchEnd={e => e.currentTarget.style.transform="scale(1)"}
                 >
                   {/* Foto */}
-                  <div style={{ height: 90, background: "#f1f5f9", position: "relative", overflow: "hidden" }}>
+                  <div style={{ height: 90, background: "#faf7f0", position: "relative", overflow: "hidden" }}>
                     {prod.foto_url ? (
                       <img src={fotoSrc(prod.foto_url)} alt={prod.nome}
                         style={{ width: "100%", height: "100%", objectFit: "cover" }}
                         onError={e => { e.target.style.display="none"; }} />
                     ) : (
                       <div style={{ height: "100%", display: "flex", alignItems: "center",
-                        justifyContent: "center", fontSize: 30, color: "#cbd5e1" }}>🍽</div>
+                        justifyContent: "center", fontSize: 30, color: "#e6e0d4" }}>🍽</div>
                     )}
                     <div style={{ position: "absolute", top: 6, right: 6, background: badge.bg,
                       color: "#fff", borderRadius: 20, padding: "2px 7px", fontSize: 10, fontWeight: 700 }}>
@@ -818,11 +818,11 @@ export const VenditaBancoView = ({ onBack }) => {
                   {/* Nome + quantità */}
                   <div style={{ padding: "7px 9px" }}>
                     <p style={{ margin: 0, fontSize: 11, fontWeight: 700, textTransform: "capitalize",
-                      color: "#1e293b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      color: "#3f5a4e", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {prod.nome}
                     </p>
                     {vendita && (
-                      <p style={{ margin: "2px 0 0", fontSize: 10, color: "#64748b" }}>
+                      <p style={{ margin: "2px 0 0", fontSize: 10, color: "#6b7669" }}>
                         {vendita.pezzi_prodotti}pz · {vendita.pezzi_invenduto ?? "?"}inv.
                       </p>
                     )}
@@ -842,7 +842,7 @@ export const VenditaBancoView = ({ onBack }) => {
   const totInv  = chiuse.reduce((s, v) => s + (v.pezzi_invenduto || 0), 0);
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f8fafc", display: "flex", flexDirection: "column" }}>
+    <div style={{ minHeight: "100vh", background: "#faf7f0", display: "flex", flexDirection: "column" }}>
       {/* Header */}
       <div style={{ background: GRADIENT_HEADER, padding: "14px 18px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
@@ -897,12 +897,12 @@ export const VenditaBancoView = ({ onBack }) => {
       {/* Contenuto */}
       <div style={{ flex: 1, padding: 14, overflowY: "auto" }}>
         {loading ? (
-          <div style={{ textAlign: "center", padding: 60, color: "#94a3b8", fontSize: 16 }}>Caricamento...</div>
+          <div style={{ textAlign: "center", padding: 60, color: "#9aa593", fontSize: 16 }}>Caricamento...</div>
         ) : venditeOggi.length === 0 ? (
           <div style={{ textAlign: "center", padding: 60 }}>
             <div style={{ fontSize: 56, marginBottom: 14 }}>🛒</div>
-            <p style={{ fontSize: 18, fontWeight: 700, color: "#475569" }}>Nessun articolo al banco oggi</p>
-            <p style={{ fontSize: 14, color: "#94a3b8", marginTop: 6 }}>
+            <p style={{ fontSize: 18, fontWeight: 700, color: "#6b7669" }}>Nessun articolo al banco oggi</p>
+            <p style={{ fontSize: 14, color: "#9aa593", marginTop: 6 }}>
               Gli articoli appariranno qui quando vengono<br />
               inviati al banco dal tablet di produzione
             </p>
@@ -929,7 +929,7 @@ export const VenditaBancoView = ({ onBack }) => {
               <div style={{ textAlign: "center", padding: "40px 20px" }}>
                 <div style={{ fontSize: 64, marginBottom: 12 }}>✅</div>
                 <p style={{ fontSize: 20, fontWeight: 800, color: "var(--success)", margin: 0 }}>Tutto registrato!</p>
-                <p style={{ fontSize: 14, color: "#64748b", marginTop: 6 }}>
+                <p style={{ fontSize: 14, color: "#6b7669", marginTop: 6 }}>
                   {chiuse.length} referenze chiuse — {totVend} pz venduti, {totInv} pz invenduti
                 </p>
               </div>
@@ -942,9 +942,9 @@ export const VenditaBancoView = ({ onBack }) => {
                   onClick={() => setArchivioAperto(v => !v)}
                   style={{
                     width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
-                    background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: 12,
+                    background: "#faf7f0", border: "1px solid #e6e0d4", borderRadius: 12,
                     padding: "10px 16px", cursor: "pointer", fontWeight: 700, fontSize: 13,
-                    color: "#475569"
+                    color: "#6b7669"
                   }}
                 >
                   <span style={{ display: "flex", alignItems: "center", gap: 8 }}>

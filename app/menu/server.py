@@ -10,6 +10,7 @@ from pathlib import Path
 from app.menu.supabase_client import supabase
 from app.menu.routes.qrcode_routes import router as qrcode_router
 from app.menu.routes.admin_routes import router as admin_router
+from app.menu.routes.allergeni_routes import router as allergeni_router
 from app.menu.routes.backup_routes import router as backup_router
 from app.menu.routes.menu_routes import router as menu_router
 from app.menu.routes.seed_routes import router as seed_router
@@ -39,6 +40,7 @@ app.add_middleware(
 # Routers
 app.include_router(qrcode_router)
 app.include_router(admin_router)
+app.include_router(allergeni_router)
 app.include_router(backup_router)
 app.include_router(menu_router)
 app.include_router(seed_router)

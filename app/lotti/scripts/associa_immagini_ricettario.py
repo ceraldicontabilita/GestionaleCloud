@@ -270,7 +270,7 @@ def applica_mappature_esplicite(
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--api", default="https://lotti-backend-f2fg.onrender.com/api")
+    parser.add_argument("--api", default="https://gestionalecloud.onrender.com/lotti/api")
     parser.add_argument("--images-dir", type=Path, required=True)
     parser.add_argument("--backup-dir", type=Path, default=Path("backup_ricette"))
     parser.add_argument("--operator-name", default="Vincenzo")

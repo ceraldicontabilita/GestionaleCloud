@@ -72,8 +72,8 @@ export default function GestioneProdottiView() {
 
   return (
     <div style={WRAP}>
-      <h2 style={{ fontSize: 22, fontWeight: 800, margin: "0 0 4px", color: "var(--ink,#0f172a)" }}>Gestione prodotti magazzino</h2>
-      <p style={{ color: "var(--muted,#64748b)", fontSize: 13, margin: "0 0 14px" }}>
+      <h2 style={{ fontSize: 22, fontWeight: 800, margin: "0 0 4px", color: "var(--ink,#2a3329)" }}>Gestione prodotti magazzino</h2>
+      <p style={{ color: "var(--muted,#6b7669)", fontSize: 13, margin: "0 0 14px" }}>
         Decidi cosa appare in magazzino, la categoria e il nome da usare.{" "}
         {loading ? "Carico l'elenco…" : `${nVis} visibili su ${prodotti.length}.`}
       </p>
@@ -85,16 +85,16 @@ export default function GestioneProdottiView() {
       <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
         {[["tutti", "Tutti"], ["visibili", "In magazzino"], ["nascosti", "Nascosti"]].map(([id, lb]) => (
           <button key={id} onClick={() => setFiltro(id)}
-            style={{ padding: "7px 14px", borderRadius: 999, border: filtro === id ? "none" : "1px solid var(--border,#ece4d6)", background: filtro === id ? "var(--viola,#8a6f47)" : "#fff", color: filtro === id ? "#fff" : "var(--muted,#64748b)", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>
+            style={{ padding: "7px 14px", borderRadius: 999, border: filtro === id ? "none" : "1px solid var(--border,#ece4d6)", background: filtro === id ? "var(--viola,#8a6f47)" : "#fff", color: filtro === id ? "#fff" : "var(--muted,#6b7669)", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>
             {lb}
           </button>
         ))}
       </div>
 
       {loading ? (
-        <div style={{ textAlign: "center", color: "#64748b", padding: 40 }}>Carico…</div>
+        <div style={{ textAlign: "center", color: "#6b7669", padding: 40 }}>Carico…</div>
       ) : visti.length === 0 ? (
-        <div style={{ textAlign: "center", color: "#64748b", padding: 40 }}>Nessun prodotto.</div>
+        <div style={{ textAlign: "center", color: "#6b7669", padding: 40 }}>Nessun prodotto.</div>
       ) : (
         visti.slice(0, mostra).map((p) => {
           const dirty = !!dirtyRef.current[p.key];
@@ -105,7 +105,7 @@ export default function GestioneProdottiView() {
                   <div style={{ fontSize: 11, color: "#9aa3b2", textTransform: "uppercase", fontWeight: 700, marginBottom: 3 }}>
                     {p.source === "bar" ? "BAR" : "FATTURA"}{p.fornitore ? " · " + p.fornitore : ""}
                   </div>
-                  <div style={{ fontSize: 13.5, fontWeight: 700, color: "#1f2937", lineHeight: 1.3, wordBreak: "break-word" }}>{p.nome_originale}</div>
+                  <div style={{ fontSize: 13.5, fontWeight: 700, color: "#384038", lineHeight: 1.3, wordBreak: "break-word" }}>{p.nome_originale}</div>
                 </div>
                 <button onClick={() => patchLocale(p.key, { visualizza: !p.visualizza })}
                   title={p.visualizza ? "In magazzino" : "Nascosto"}
@@ -117,13 +117,13 @@ export default function GestioneProdottiView() {
 
               <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
                 <div style={{ flex: "1 1 180px" }}>
-                  <label style={{ fontSize: 11, fontWeight: 700, color: "#64748b" }}>Categoria</label>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: "#6b7669" }}>Categoria</label>
                   <select value={p.categoria || "Altro"} onChange={(e) => patchLocale(p.key, { categoria: e.target.value })} style={{ ...INPUT, marginTop: 3 }}>
                     {categorie.map((c) => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
                 <div style={{ flex: "1 1 220px" }}>
-                  <label style={{ fontSize: 11, fontWeight: 700, color: "#64748b" }}>Nome da usare (normalizzazione)</label>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: "#6b7669" }}>Nome da usare (normalizzazione)</label>
                   <input defaultValue={p.nome_norm || ""} placeholder={p.nome_originale}
                     onChange={(e) => patchLocale(p.key, { nome_norm: e.target.value })} style={{ ...INPUT, marginTop: 3 }} />
                 </div>
@@ -131,7 +131,7 @@ export default function GestioneProdottiView() {
 
               <div style={{ display: "flex", gap: 8, marginTop: 10, justifyContent: "flex-end" }}>
                 {p.override_manuale && (
-                  <button onClick={() => azzera(p)} style={{ display: "flex", alignItems: "center", gap: 5, padding: "8px 12px", borderRadius: 10, border: "1px solid var(--border,#ece4d6)", background: "#fff", color: "#64748b", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>
+                  <button onClick={() => azzera(p)} style={{ display: "flex", alignItems: "center", gap: 5, padding: "8px 12px", borderRadius: 10, border: "1px solid var(--border,#ece4d6)", background: "#fff", color: "#6b7669", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>
                     <RotateCcw size={14} /> Auto
                   </button>
                 )}
@@ -146,7 +146,7 @@ export default function GestioneProdottiView() {
       )}
       {!loading && visti.length > mostra && (
         <button onClick={() => setMostra((m) => m + 200)}
-          style={{ width: "100%", padding: "12px", borderRadius: 12, border: "1px solid var(--border,#ece4d6)", background: "#fff", fontWeight: 800, color: "var(--muted,#64748b)", cursor: "pointer" }}>
+          style={{ width: "100%", padding: "12px", borderRadius: 12, border: "1px solid var(--border,#ece4d6)", background: "#fff", fontWeight: 800, color: "var(--muted,#6b7669)", cursor: "pointer" }}>
           Mostra altri ({visti.length - mostra} rimasti)
         </button>
       )}

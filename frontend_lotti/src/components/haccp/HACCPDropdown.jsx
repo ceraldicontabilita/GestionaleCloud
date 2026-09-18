@@ -39,7 +39,7 @@ export function HACCPDropdown({ tabsHACCP, activeTab, onTabChange }) {
         className="g-haccp-btn"
         style={isActive ? {
           background: "rgba(0,184,132,.15)",
-          color: "#00B884",
+          color: "#3d8168",
           borderColor: "rgba(0,184,132,.35)",
         } : {}}
       >

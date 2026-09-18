@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { API } from "../../utils/constants";
 
-const NAVY = "#3f5a4e";
+const SALVIA = "#3f5a4e";
 const SAGE = "#5b7a6b";
 const CREAM = "#faf7f0";
 const CARD = "#fffefb";
@@ -62,15 +62,15 @@ function ModalScheda({ prodotto, onClose, onSaved }) {
       <div style={{ background: CARD, borderRadius: 16, width: "100%", maxWidth: 480, maxHeight: "92vh", display: "flex", flexDirection: "column", overflow: "hidden" }} onClick={(e) => e.stopPropagation()}>
         <div style={{ padding: "16px 20px", borderBottom: `1px solid ${LINE}`, display: "flex", alignItems: "center", gap: 10 }}>
           <FileText size={18} color={SAGE} />
-          <span style={{ fontWeight: 600, fontSize: 16, flex: 1, color: NAVY, fontFamily: "'Fraunces', Georgia, serif" }}>Scheda tecnica</span>
+          <span style={{ fontWeight: 600, fontSize: 16, flex: 1, color: SALVIA, fontFamily: "\'Plus Jakarta Sans\', -apple-system, BlinkMacSystemFont, \'Segoe UI\', system-ui, sans-serif" }}>Scheda tecnica</span>
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "#9aa593" }}><X size={22} /></button>
         </div>
         <div style={{ padding: 20, overflowY: "auto" }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: NAVY, marginBottom: 4 }}>{prodotto.nome}</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: SALVIA, marginBottom: 4 }}>{prodotto.nome}</div>
           {prodotto.fornitore && <div style={{ fontSize: 12, color: "#9aa593", marginBottom: 16 }}>{prodotto.fornitore}</div>}
 
           <div style={{ background: "#e8efe9", borderRadius: 10, padding: 14, marginBottom: 16 }}>
-            <div style={{ fontSize: 12, color: NAVY, marginBottom: 8, fontWeight: 600 }}>
+            <div style={{ fontSize: 12, color: SALVIA, marginBottom: 8, fontWeight: 600 }}>
               1. Cerca la scheda sul web
             </div>
             <a href={googleUrl} target="_blank" rel="noreferrer" style={{ ...btn(SAGE, "#fff", { textDecoration: "none", width: "100%" }) }}>
@@ -81,7 +81,7 @@ function ModalScheda({ prodotto, onClose, onSaved }) {
             </div>
           </div>
 
-          <div style={{ fontSize: 12, color: NAVY, marginBottom: 8, fontWeight: 600 }}>2. Incolla il link e salva</div>
+          <div style={{ fontSize: 12, color: SALVIA, marginBottom: 8, fontWeight: 600 }}>2. Incolla il link e salva</div>
           <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://...scheda.pdf" style={{ ...INPUT, marginBottom: 10 }} autoFocus />
           <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
             <button onClick={() => setTipo("tecnica")} style={btn(tipo === "tecnica" ? SAGE : CREAM, tipo === "tecnica" ? "#fff" : "#6b7669", { flex: 1, border: `1px solid ${LINE}` })}>Tecnica</button>
@@ -147,7 +147,7 @@ export default function SchedeTecnicheView() {
   }), [prodotti]);
 
   return (
-    <div style={{ fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", color: NAVY, maxWidth: 700, margin: "0 auto" }}>
+    <div style={{ fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", color: SALVIA, maxWidth: 700, margin: "0 auto" }}>
       {/* Titolo nell'intestazione uniforme di pagina */}
 
       {/* Proposte nuovi prodotti */}
@@ -194,7 +194,7 @@ export default function SchedeTecnicheView() {
           <div key={p.prodotto_key} style={{ background: CARD, border: `1px solid ${LINE}`, borderRadius: 12, padding: "12px 14px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: NAVY }}>{p.nome}</div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: SALVIA }}>{p.nome}</div>
                 {p.fornitore && <div style={{ fontSize: 11, color: "#9aa593" }}>{p.fornitore}</div>}
               </div>
               {p.ha_scheda ? (

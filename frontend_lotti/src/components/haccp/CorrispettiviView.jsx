@@ -12,11 +12,11 @@ const API = process.env.REACT_APP_LOTTI_BACKEND_URL + "/api";
 const eur = (v) => (v == null ? "—" : `€ ${Number(v).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
 
 function DeltaBadge({ pct }) {
-  if (pct == null) return <span style={{ fontSize: 12, color: "#94a3b8" }}>n/d anno prec.</span>;
+  if (pct == null) return <span style={{ fontSize: 12, color: "#9aa593" }}>n/d anno prec.</span>;
   const up = pct >= 0;
   return (
-    <span style={{ fontSize: 12, fontWeight: 800, color: up ? "#00B884" : "#F44336" }}>
-      {up ? "▲" : "▼"} {Math.abs(pct)}% <span style={{ color: "#94a3b8", fontWeight: 600 }}>vs anno prec.</span>
+    <span style={{ fontSize: 12, fontWeight: 800, color: up ? "#3d8168" : "#d35f4e" }}>
+      {up ? "▲" : "▼"} {Math.abs(pct)}% <span style={{ color: "#9aa593", fontWeight: 600 }}>vs anno prec.</span>
     </span>
   );
 }
@@ -24,10 +24,10 @@ function DeltaBadge({ pct }) {
 function CardKpi({ titolo, dato }) {
   return (
     <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #ece7f6", padding: "16px 18px" }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: 0.5 }}>{titolo}</div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: "#6b7669", textTransform: "uppercase", letterSpacing: 0.5 }}>{titolo}</div>
       <div style={{ fontSize: 26, fontWeight: 900, color: "#2a3329", margin: "4px 0 6px" }}>{eur(dato?.valore)}</div>
       <DeltaBadge pct={dato?.delta_pct} />
-      <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>anno prec.: {eur(dato?.anno_precedente)}</div>
+      <div style={{ fontSize: 11, color: "#9aa593", marginTop: 2 }}>anno prec.: {eur(dato?.anno_precedente)}</div>
     </div>
   );
 }
@@ -96,7 +96,7 @@ export default function CorrispettiviView() {
   return (
     <div style={{ maxWidth: 980, margin: "0 auto", padding: "8px 4px 40px" }}>
       <h2 style={{ fontSize: 22, fontWeight: 900, color: "#2a3329", margin: "4px 0 2px" }}>Corrispettivi</h2>
-      <p style={{ fontSize: 13, color: "#64748B", margin: "0 0 12px" }}>
+      <p style={{ fontSize: 13, color: "#6b7669", margin: "0 0 12px" }}>
         Andamento incassi giornaliero, con confronto sullo stesso periodo dell'anno precedente.
       </p>
 
@@ -110,11 +110,11 @@ export default function CorrispettiviView() {
           {importing ? "Importo…" : "Importa XML corrispettivi"}
           <input type="file" accept=".xml" multiple onChange={importaXml} disabled={importing} style={{ display: "none" }} />
         </label>
-        {importMsg && <span style={{ fontSize: 13, color: "#00B884", fontWeight: 700 }}>{importMsg}</span>}
+        {importMsg && <span style={{ fontSize: 13, color: "#3d8168", fontWeight: 700 }}>{importMsg}</span>}
       </div>
 
       {loading ? (
-        <div style={{ textAlign: "center", color: "#94a3b8", padding: 40 }}>Caricamento…</div>
+        <div style={{ textAlign: "center", color: "#9aa593", padding: 40 }}>Caricamento…</div>
       ) : errore ? (
         <div style={{ background: "#fff5f5", border: "1px solid #fed7d7", borderRadius: 12, padding: 16, color: "#c53030", fontSize: 14 }}>
           {errore}
@@ -140,28 +140,28 @@ export default function CorrispettiviView() {
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 10, marginBottom: 12 }}>
                 <div>
-                  <div style={{ fontSize: 11, color: "#64748B", fontWeight: 700, textTransform: "uppercase" }}>Incasso periodo</div>
-                  <div style={{ fontSize: 19, fontWeight: 900, color: "#00B884" }}>{eur(correlazione.periodo?.incasso)}</div>
+                  <div style={{ fontSize: 11, color: "#6b7669", fontWeight: 700, textTransform: "uppercase" }}>Incasso periodo</div>
+                  <div style={{ fontSize: 19, fontWeight: 900, color: "#3d8168" }}>{eur(correlazione.periodo?.incasso)}</div>
                 </div>
                 <div>
-                  <div style={{ fontSize: 11, color: "#64748B", fontWeight: 700, textTransform: "uppercase" }}>Spesa ordini</div>
+                  <div style={{ fontSize: 11, color: "#6b7669", fontWeight: 700, textTransform: "uppercase" }}>Spesa ordini</div>
                   <div style={{ fontSize: 19, fontWeight: 900, color: "#5b7a6b" }}>{eur(correlazione.periodo?.spesa_ordini)}</div>
-                  <div style={{ fontSize: 11, color: "#94a3b8" }}>{correlazione.periodo?.n_ordini || 0} ordini</div>
+                  <div style={{ fontSize: 11, color: "#9aa593" }}>{correlazione.periodo?.n_ordini || 0} ordini</div>
                 </div>
                 <div>
-                  <div style={{ fontSize: 11, color: "#64748B", fontWeight: 700, textTransform: "uppercase" }}>Incidenza</div>
+                  <div style={{ fontSize: 11, color: "#6b7669", fontWeight: 700, textTransform: "uppercase" }}>Incidenza</div>
                   <div style={{ fontSize: 19, fontWeight: 900, color: "#2a3329" }}>
                     {correlazione.periodo?.incidenza_pct != null ? `${correlazione.periodo.incidenza_pct}%` : "—"}
                   </div>
-                  <div style={{ fontSize: 11, color: "#94a3b8" }}>
+                  <div style={{ fontSize: 11, color: "#9aa593" }}>
                     periodo prec.: {correlazione.periodo_precedente?.incidenza_pct != null ? `${correlazione.periodo_precedente.incidenza_pct}%` : "n/d"}
                   </div>
                 </div>
               </div>
               <div style={{
                 fontSize: 14, fontWeight: 700, padding: "10px 12px", borderRadius: 10,
-                background: correlazione.giustificato === false ? "#fff5f5" : correlazione.giustificato === true ? "#f0fdf4" : "#f8fafc",
-                color: correlazione.giustificato === false ? "#c53030" : correlazione.giustificato === true ? "#15803d" : "#64748B",
+                background: correlazione.giustificato === false ? "#fff5f5" : correlazione.giustificato === true ? "#f0fdf4" : "#faf7f0",
+                color: correlazione.giustificato === false ? "#c53030" : correlazione.giustificato === true ? "#15803d" : "#6b7669",
               }}>
                 {correlazione.giustificato === false ? "⚠️ " : correlazione.giustificato === true ? "✓ " : "ℹ️ "}
                 {correlazione.messaggio}
@@ -203,17 +203,17 @@ export default function CorrispettiviView() {
               </div>
               <div style={{ display: "flex", gap: 18, flexWrap: "wrap", margin: "8px 0" }}>
                 <div>
-                  <div style={{ fontSize: 11, color: "#64748B", fontWeight: 700, textTransform: "uppercase" }}>Crescita media/anno</div>
-                  <div style={{ fontSize: 19, fontWeight: 900, color: previsione.crescita_media_annua_pct >= 0 ? "#00B884" : "#F44336" }}>
+                  <div style={{ fontSize: 11, color: "#6b7669", fontWeight: 700, textTransform: "uppercase" }}>Crescita media/anno</div>
+                  <div style={{ fontSize: 19, fontWeight: 900, color: previsione.crescita_media_annua_pct >= 0 ? "#3d8168" : "#d35f4e" }}>
                     {previsione.crescita_media_annua_pct >= 0 ? "+" : ""}{previsione.crescita_media_annua_pct}%
                   </div>
                 </div>
                 <div>
-                  <div style={{ fontSize: 11, color: "#64748B", fontWeight: 700, textTransform: "uppercase" }}>Incasso atteso</div>
+                  <div style={{ fontSize: 11, color: "#6b7669", fontWeight: 700, textTransform: "uppercase" }}>Incasso atteso</div>
                   <div style={{ fontSize: 19, fontWeight: 900, color: "#5b7a6b" }}>{eur(previsione.incasso_atteso)}</div>
                 </div>
               </div>
-              <div style={{ fontSize: 13, color: "#475569", background: "#f8fafc", borderRadius: 10, padding: "10px 12px" }}>
+              <div style={{ fontSize: 13, color: "#6b7669", background: "#faf7f0", borderRadius: 10, padding: "10px 12px" }}>
                 {previsione.suggerimento}
               </div>
             </div>
@@ -240,12 +240,12 @@ export default function CorrispettiviView() {
 
           <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #ece7f6", padding: 16 }}>
             {(!andamento?.serie || andamento.serie.length === 0) ? (
-              <div style={{ textAlign: "center", color: "#94a3b8", padding: 24 }}>Nessun dato nel periodo</div>
+              <div style={{ textAlign: "center", color: "#9aa593", padding: 24 }}>Nessun dato nel periodo</div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {andamento.serie.map((p) => (
                   <div key={p.periodo} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <div style={{ width: 92, fontSize: 12, color: "#64748B", flexShrink: 0 }}>{p.periodo}</div>
+                    <div style={{ width: 92, fontSize: 12, color: "#6b7669", flexShrink: 0 }}>{p.periodo}</div>
                     <div style={{ flex: 1, background: "#f1edfb", borderRadius: 6, height: 18, overflow: "hidden" }}>
                       <div style={{ width: `${Math.max(2, (p.incasso / maxInc) * 100)}%`, height: "100%", background: "#5b7a6b" }} />
                     </div>
@@ -255,11 +255,11 @@ export default function CorrispettiviView() {
               </div>
             )}
             <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid #f0ecf9", display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-              <span style={{ color: "#64748B" }}>Totale periodo</span>
+              <span style={{ color: "#6b7669" }}>Totale periodo</span>
               <strong style={{ color: "#2a3329" }}>{eur(andamento?.totale)}</strong>
             </div>
             {andamento?.anno_precedente && (
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#94a3b8", marginTop: 4 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#9aa593", marginTop: 4 }}>
                 <span>Stesso periodo anno prec.</span>
                 <span>{eur(andamento.anno_precedente.totale)}</span>
               </div>
@@ -267,7 +267,7 @@ export default function CorrispettiviView() {
           </div>
 
           {andamento?.campo_importo && (
-            <p style={{ fontSize: 11, color: "#cbd5e1", marginTop: 10 }}>
+            <p style={{ fontSize: 11, color: "#e6e0d4", marginTop: 10 }}>
               Importo letto dal campo "{andamento.campo_importo}" della collection corrispettivi.
             </p>
           )}

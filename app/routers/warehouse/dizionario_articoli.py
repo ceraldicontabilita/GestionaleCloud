@@ -10,7 +10,7 @@ Funzionalità:
 Nota: il campo categoria_haccp è il nome storico della categoria merceologica
 usata per scegliere il conto; qui restano solo dati contabili (niente
 temperature di conservazione, rischio o tracciabilità alimentare — quella
-è competenza dell'app HACCP separata, ceraldiapp.it).
+è competenza dell'app Lotti (HACCP), montata a /lotti).
 """
 from fastapi import APIRouter, HTTPException, Query, Body, Path, Depends
 from app.utils.dependencies import get_current_admin_user

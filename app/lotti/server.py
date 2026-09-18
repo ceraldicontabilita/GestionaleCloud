@@ -142,13 +142,10 @@ for r in [
 
 app.include_router(api_router, dependencies=[Depends(auth_dependency)])
 
-# Origini SEMPRE ammesse (unione con l'env CORS_ORIGINS): il dominio ufficiale
-# ceraldiapp.it è nel codice perché l'env sul servizio Render potrebbe non
-# sincronizzarsi dal blueprint — senza, il sito si apre ma le API sono mute.
+# Origini SEMPRE ammesse (unione con l'env CORS_ORIGINS). L'app e' servita
+# dallo stesso host del gestionale (/lotti), quindi same-origin: qui resta solo
+# lo sviluppo locale. I vecchi domini standalone sono spenti.
 _CORS_BASE = {
-    "https://www.ceraldiapp.it",
-    "https://ceraldiapp.it",
-    "https://lotti-frontend.onrender.com",
     "http://localhost:3000",
 }
 app.add_middleware(

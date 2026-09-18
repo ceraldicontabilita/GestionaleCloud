@@ -103,12 +103,12 @@ export default function TourInterattivo({ onNavigate, onClose, passi = PASSI }) 
           <span style={{ fontSize: 11, fontWeight: 700, color: "#5b7a6b", letterSpacing: .3 }}>
             PASSO {i + 1} / {passi.length}
           </span>
-          <button onClick={fine} style={{ border: "none", background: "transparent", color: "#94a3b8", fontSize: 13, cursor: "pointer", fontWeight: 600 }}>
+          <button onClick={fine} style={{ border: "none", background: "transparent", color: "#9aa593", fontSize: 13, cursor: "pointer", fontWeight: 600 }}>
             Salta
           </button>
         </div>
         <h3 style={{ margin: "2px 0 6px", fontSize: 17, fontWeight: 800, color: "#2a3329" }}>{passo.titolo}</h3>
-        <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.5, color: "#475569" }}>{passo.testo}</p>
+        <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.5, color: "#6b7669" }}>{passo.testo}</p>
 
         {/* Barra avanzamento */}
         <div style={{ height: 4, background: "#ece9f6", borderRadius: 4, marginTop: 14, overflow: "hidden" }}>
@@ -119,7 +119,7 @@ export default function TourInterattivo({ onNavigate, onClose, passi = PASSI }) 
           <button
             onClick={() => setI((v) => Math.max(0, v - 1))}
             disabled={i === 0}
-            style={{ flex: "0 0 auto", padding: "9px 14px", borderRadius: 10, border: "1px solid #e2e8f0", background: "#f8fafc", color: "#475569", fontWeight: 700, fontSize: 13, cursor: i === 0 ? "default" : "pointer", opacity: i === 0 ? .5 : 1 }}
+            style={{ flex: "0 0 auto", padding: "9px 14px", borderRadius: 10, border: "1px solid #e6e0d4", background: "#faf7f0", color: "#6b7669", fontWeight: 700, fontSize: 13, cursor: i === 0 ? "default" : "pointer", opacity: i === 0 ? .5 : 1 }}
           >
             Indietro
           </button>

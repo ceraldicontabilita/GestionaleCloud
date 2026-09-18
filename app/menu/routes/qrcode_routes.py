@@ -49,7 +49,9 @@ def verify_token(authorization: str = Header(None)):
         return username
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.JWTError:
+    except jwt.InvalidTokenError:
+        # PyJWT non ha JWTError (e' di python-jose): con quel nome un token
+        # malformato usciva come AttributeError, cioe' 500 invece di 401.
         raise HTTPException(status_code=401, detail="Invalid token")
 
 

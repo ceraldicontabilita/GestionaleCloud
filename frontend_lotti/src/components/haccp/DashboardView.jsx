@@ -47,11 +47,6 @@ const actionTones = {
     icon: "bg-amber-100 text-amber-700",
     badge: "bg-white text-amber-700",
   },
-  blue: {
-    card: "bg-amber-50 border-amber-200 hover:border-amber-300",
-    icon: "bg-amber-100 text-amber-700",
-    badge: "bg-white text-amber-700",
-  },
   green: {
     card: "bg-emerald-50 border-emerald-200 hover:border-emerald-300",
     icon: "bg-emerald-100 text-emerald-700",
@@ -62,7 +57,7 @@ const actionTones = {
     icon: "bg-red-100 text-red-700",
     badge: "bg-white text-red-700",
   },
-  violet: {
+  salvia: {
     card: "bg-[#f2f6f3] border-[#cfdfd5] hover:border-[#b8d0c2]",
     icon: "bg-[#e8efe9] text-[#3f5a4e]",
     badge: "bg-white text-[#3f5a4e]",
@@ -71,12 +66,12 @@ const actionTones = {
   pinkV:   { vivid: true, card: "bg-gradient-to-br from-pink-400 to-pink-600 border-pink-600",     icon: "bg-white/25 text-white", badge: "bg-white/25 text-white" },
   orangeV: { vivid: true, card: "bg-gradient-to-br from-orange-400 to-orange-600 border-orange-600", icon: "bg-white/25 text-white", badge: "bg-white/25 text-white" },
   coffeeV: { vivid: true, card: "bg-gradient-to-br from-amber-700 to-amber-900 border-amber-900",   icon: "bg-white/25 text-white", badge: "bg-white/25 text-white" },
-  cyanV:   { vivid: true, card: "bg-gradient-to-br from-[#8a6f47] to-[#6f583a] border-[#6f583a]",       icon: "bg-white/25 text-white", badge: "bg-white/25 text-white" },
+  sandV:   { vivid: true, card: "bg-gradient-to-br from-[#8a6f47] to-[#6f583a] border-[#6f583a]",       icon: "bg-white/25 text-white", badge: "bg-white/25 text-white" },
   greenV:  { vivid: true, card: "bg-gradient-to-br from-emerald-400 to-emerald-600 border-emerald-600", icon: "bg-white/25 text-white", badge: "bg-white/25 text-white" },
-  violetV: { vivid: true, card: "bg-gradient-to-br from-[#6f9180] to-[#5b7a6b] border-[#5b7a6b]", icon: "bg-white/25 text-white", badge: "bg-white/25 text-white" },
+  salviaV: { vivid: true, card: "bg-gradient-to-br from-[#6f9180] to-[#5b7a6b] border-[#5b7a6b]", icon: "bg-white/25 text-white", badge: "bg-white/25 text-white" },
   greenLightV: { vivid: true, card: "bg-gradient-to-br from-green-300 to-green-500 border-green-500", icon: "bg-white/25 text-white", badge: "bg-white/25 text-white" },
   // ex "slate" (blu-grigio freddo, fuori palette): rimappato su sabbia scura
-  slateV:  { vivid: true, card: "bg-gradient-to-br from-[#6f583a] to-[#4a3f33] border-[#4a3f33]", icon: "bg-white/25 text-white", badge: "bg-white/25 text-white" },
+  sandDarkV: { vivid: true, card: "bg-gradient-to-br from-[#6f583a] to-[#4a3f33] border-[#4a3f33]", icon: "bg-white/25 text-white", badge: "bg-white/25 text-white" },
 };
 
 function SectionTitle({ title, subtitle }) {
@@ -142,7 +137,7 @@ function KpiBig({ label, value, sub, color, icon: Icon, onClick }) {
           <Icon size={18} />
         </span>
       </div>
-      <div className="mt-1 text-2xl font-black tabular-nums" style={{ color: "#1f2937" }}>{value}</div>
+      <div className="mt-1 text-2xl font-black tabular-nums" style={{ color: "#384038" }}>{value}</div>
       <div className="text-xs font-bold uppercase tracking-wide" style={{ color: "#9a917f" }}>{label}</div>
       {sub ? <div className="text-xs font-semibold" style={{ color }}>{sub}</div> : null}
     </button>
@@ -304,9 +299,9 @@ export default function DashboardView({ stats = {}, onRefresh, onNavigate }) {
             <ActionCard icon={ChefHat} title="Pasticceria" subtitle="Produci ricette, registra lotti e stampa etichette." badge="Tablet" tone="orangeV" onClick={() => navigate("tablet/pasticceria")} />
             <ActionCard icon={ChefHat} title="Rosticceria" subtitle="Produzione salato, cucina e tavola calda." badge="Tablet" tone="greenLightV" onClick={() => navigate("tablet/rosticceria")} />
             <ActionCard icon={Coffee} title="Bar" subtitle="Caffetteria e bevande: produci e registra lotti." badge="Tablet" tone="coffeeV" onClick={() => navigate("tablet/bar")} />
-            <ActionCard icon={Store} title="Banco vendita" subtitle="Apri il banco, registra vendita e scarica lotti." badge={riepilogo.bancoAperto ? `${riepilogo.bancoAperto} aperto` : "Tablet"} tone="cyanV" onClick={() => navigate("tablet/vendita")} />
-            <ActionCard icon={Package} title="Magazzino" subtitle="Scarichi rapidi, giacenze e movimenti da PIN." badge="PIN" tone="slateV" onClick={() => navigate("tablet/magazzino")} />
-            <ActionCard icon={IceCreamBowl} title="Gelati" subtitle="Calcolo ricette, produzioni con lotto e invenduti." badge="Lab" tone="violetV" onClick={() => navigate("gelati")} />
+            <ActionCard icon={Store} title="Banco vendita" subtitle="Apri il banco, registra vendita e scarica lotti." badge={riepilogo.bancoAperto ? `${riepilogo.bancoAperto} aperto` : "Tablet"} tone="sandV" onClick={() => navigate("tablet/vendita")} />
+            <ActionCard icon={Package} title="Magazzino" subtitle="Scarichi rapidi, giacenze e movimenti da PIN." badge="PIN" tone="sandDarkV" onClick={() => navigate("tablet/magazzino")} />
+            <ActionCard icon={IceCreamBowl} title="Gelati" subtitle="Calcolo ricette, produzioni con lotto e invenduti." badge="Lab" tone="salviaV" onClick={() => navigate("gelati")} />
             <ActionCard icon={AlertTriangle} title="Cosa usare oggi" subtitle="Lotti per urgenza scadenza e valore economico, con azioni rapide." badge={riepilogo.scadenzeUrgenti ? `${riepilogo.scadenzeUrgenti} urgenti` : "OK"} tone={riepilogo.scadenzeUrgenti ? "red" : "amber"} onClick={() => navigate("cosa_usare_oggi")} />
             <ActionCard icon={ChefHat} title="Produzione consigliata" subtitle="Cosa produrre domani, in base a storico, invenduto e festività." badge="Nuovo" tone="amber" onClick={() => navigate("produzione_consigliata")} />
             <ActionCard icon={Layers} title="Lotti" subtitle="Scadenze, tracciabilità e registro lotti." badge={lottiScadenza.length ? `${lottiScadenza.length} scadenze` : "OK"} tone={lottiScadenza.length ? "red" : "neutral"} onClick={() => navigate("lotti")} />
@@ -367,8 +362,8 @@ export default function DashboardView({ stats = {}, onRefresh, onNavigate }) {
       <section>
         <SectionTitle title="Area ufficio" subtitle="Gestione dati, cataloghi e fornitori." />
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <ActionCard icon={BookOpen} title="Ricette" subtitle="Ricettario, varianti, food cost e allergeni." badge={stats.ricette ? `${stats.ricette}` : ""} tone="violet" onClick={() => navigate("ricette")} />
-          <ActionCard icon={FileText} title="Fatture XML" subtitle="Import fatture e aggiornamento prodotti." badge={stats.fatture ? `${stats.fatture}` : "Import"} tone="blue" onClick={() => navigate("fatture")} />
+          <ActionCard icon={BookOpen} title="Ricette" subtitle="Ricettario, varianti, food cost e allergeni." badge={stats.ricette ? `${stats.ricette}` : ""} tone="salvia" onClick={() => navigate("ricette")} />
+          <ActionCard icon={FileText} title="Fatture XML" subtitle="Import fatture e aggiornamento prodotti." badge={stats.fatture ? `${stats.fatture}` : "Import"} tone="amber" onClick={() => navigate("fatture")} />
           <ActionCard icon={ShoppingCart} title="Acquisti & Ordini" subtitle="Catalogo, confronto prezzi, carrello e invio." badge={ordiniBozza ? `${ordiniBozza}` : "OK"} tone={ordiniBozza ? "amber" : "neutral"} onClick={() => navigate("ordini")} />
           <ActionCard icon={Building2} title="Fornitori" subtitle="Anagrafica, qualifica e schede ricevimento." badge="Rubrica" tone="green" onClick={() => navigate("fornitori")} />
           <ActionCard icon={Wallet} title="Dashboard economica" subtitle="Valore lotti, spreco, margini e fornitori." badge="€" tone="green" onClick={() => navigate("dashboard_economica")} />

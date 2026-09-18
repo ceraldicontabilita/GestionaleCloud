@@ -445,7 +445,7 @@ function DiagnosticaPage() {
   const COL = { ok: "#3d8168", warn: "#a6724a", err: "#b04a3a" };
   const ICON = { ok: "✓", warn: "▲", err: "✗" };
   const pill = (stato) => (
-    <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, borderRadius: "50%", background: COL[stato] || "#9ca3af", color: "#fff", fontWeight: 800, fontSize: 13, flexShrink: 0 }}>{ICON[stato] || "?"}</span>
+    <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, borderRadius: "50%", background: COL[stato] || "#9aa593", color: "#fff", fontWeight: 800, fontSize: 13, flexShrink: 0 }}>{ICON[stato] || "?"}</span>
   );
 
   const aree = {};
@@ -1397,7 +1397,7 @@ function PresenzePage({ dipendenti, reload }) {
     } catch (e) { toast("Errore nel calcolo del riepilogo", "err"); }
     finally { setPreviewCBusy(false); }
   };
-  const COLST = { P: "#3d8168", AS: "#d35f4e", F: "#5b7a6b", PE: "#7d5526", M: "#f59e0b", R: "#8a9a5b", RS: "#9ca3af", CH: "#6b7280", FNL: "#a6724a", X: "#374151" };
+  const COLST = { P: "#3d8168", AS: "#d35f4e", F: "#5b7a6b", PE: "#7d5526", M: "#f59e0b", R: "#8a9a5b", RS: "#9aa593", CH: "#6b7669", FNL: "#a6724a", X: "#495247" };
   const stampaPresenze = () => {
     const { giorni, righe } = buildRighe();
     const th = Array.from({ length: giorni }, (_, i) => `<th>${i + 1}</th>`).join("");
@@ -1481,9 +1481,9 @@ function PresenzePage({ dipendenti, reload }) {
     { code: "PE", label: "Permesso", color: "#7d5526" },
     { code: "M", label: "Malattia", color: "#f59e0b" },
     { code: "R", label: "ROL", color: "#8a9a5b" },
-    { code: "CH", label: "Chiuso", color: "#6b7280" },
-    { code: "RS", label: "Riposo Sett.", color: "#9ca3af" },
-    { code: "X", label: "Cessato", color: "#374151" },
+    { code: "CH", label: "Chiuso", color: "#6b7669" },
+    { code: "RS", label: "Riposo Sett.", color: "#9aa593" },
+    { code: "X", label: "Cessato", color: "#495247" },
     { code: "FNL", label: "Festività Non Lav.", color: "#a6724a" },
   ];
 
@@ -1663,7 +1663,7 @@ function PresenzePage({ dipendenti, reload }) {
           <span style={{ fontSize: 13, color: "#6b7669", marginRight: 4 }}>Pennello:</span>
           {tipiGiustificativo.map(t => (
             <button key={t.code} type="button" onClick={() => setPenna(t.code)} title={t.label}
-              style={{ border: penna === t.code ? "3px solid #5b7a6b" : "1px solid #e5e7eb", background: penna === t.code ? t.color : "#fff", color: penna === t.code ? "#fff" : "#374151", borderRadius: 8, padding: "6px 10px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
+              style={{ border: penna === t.code ? "3px solid #5b7a6b" : "1px solid #e6e0d4", background: penna === t.code ? t.color : "#fff", color: penna === t.code ? "#fff" : "#495247", borderRadius: 8, padding: "6px 10px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
               {t.code} <span style={{ fontWeight: 400, fontSize: 11 }}>{t.label}</span>
             </button>
           ))}
@@ -1672,7 +1672,7 @@ function PresenzePage({ dipendenti, reload }) {
             Applica a tutti i dipendenti
           </label>
         </div>
-        <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 8 }}>
+        <div style={{ fontSize: 12, color: "#9aa593", marginTop: 8 }}>
           Scegli un tipo, poi <b>tieni premuto e trascina</b>: si seleziona il <b>rettangolo</b> fra la casella di partenza e quella sotto il mouse, quindi più giorni e più dipendenti in una volta sola. In alternativa clicca la prima casella e fai <b>shift+clic</b> sull&apos;ultima. Un clic singolo applica una casella; il <b>numero del giorno</b> in cima lo applica a tutti. Per la Malattia chiede il numero di protocollo.
         </div>
         {selRef.current.size > 0 && (
@@ -1772,7 +1772,7 @@ function PresenzePage({ dipendenti, reload }) {
       <div className="dc-card" style={{ marginTop: 12 }}>
         <h3 style={{ margin: "0 0 10px" }}>🤒 Malattie del mese — {mesi[mese - 1]} {anno}</h3>
         {malattieMese.length === 0 ? (
-          <p style={{ color: "#94a3b8", margin: 0, fontSize: 14 }}>Nessuna malattia registrata in questo mese.</p>
+          <p style={{ color: "#9aa593", margin: 0, fontSize: 14 }}>Nessuna malattia registrata in questo mese.</p>
         ) : (
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
@@ -1811,7 +1811,7 @@ function PresenzePage({ dipendenti, reload }) {
       <div className="dc-card" style={{ marginTop: 12 }}>
         <h3 style={{ margin: "0 0 10px" }}>📧 Invii al commercialista — {mesi[mese - 1]} {anno}</h3>
         {invii.length === 0 ? (
-          <p style={{ color: "#94a3b8", margin: 0, fontSize: 14 }}>Ancora nessun invio per questo mese.</p>
+          <p style={{ color: "#9aa593", margin: 0, fontSize: 14 }}>Ancora nessun invio per questo mese.</p>
         ) : (
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
@@ -1914,7 +1914,7 @@ function FeriePage({ dipendenti, ferie, reload, getDipendente }) {
               {Array.from({ length: giorniMese }, (_, i) => i + 1).map(d => {
                 const dow = new Date(mese.getFullYear(), mese.getMonth(), d).getDay();
                 const we = dow === 0 || dow === 6;
-                return <th key={d} style={{ padding: "4px 3px", textAlign: "center", background: we ? "#f1f5f9" : undefined, color: we ? "#94a3b8" : undefined }}>{d}</th>;
+                return <th key={d} style={{ padding: "4px 3px", textAlign: "center", background: we ? "#faf7f0" : undefined, color: we ? "#9aa593" : undefined }}>{d}</th>;
               })}
             </tr>
           </thead>
@@ -1928,7 +1928,7 @@ function FeriePage({ dipendenti, ferie, reload, getDipendente }) {
                   const meta = att ? TIPI.find(t => t.tipo === att.tipo) : null;
                   return (
                     <td key={d} title={att ? att.tipo : ""}
-                      style={{ textAlign: "center", padding: 0, border: "1px solid #f1f5f9", background: meta ? meta.color : "transparent" }}>
+                      style={{ textAlign: "center", padding: 0, border: "1px solid #faf7f0", background: meta ? meta.color : "transparent" }}>
                       <button type="button" className="dc-cell-btn" onClick={() => ciclaCella(dip.id, dateStr)}
                         aria-label={`${dip.cognome} ${dip.nome || ""}, ${d}/${mese.getMonth() + 1}: ${att ? att.tipo : "nessuna assenza"} — cambia`}
                         style={{ color: meta ? "#fff" : "#6b7669", fontWeight: 600 }}>
@@ -2588,12 +2588,12 @@ function TurniPage({ dipendenti, turni, reload }) {
         <div className="dc-card" style={{ marginBottom: 12, padding: 12, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span style={{ fontSize: 13, color: "#6b7669", fontWeight: 600 }}>Pennello — scegli il turno, poi clicca le celle:</span>
           <button type="button" onClick={() => setPenTurno("")}
-            style={{ border: penTurno === "" ? "3px solid #5b7a6b" : "1px solid #e6e0d4", background: "#fff", color: "#374151", borderRadius: 8, padding: "5px 10px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
+            style={{ border: penTurno === "" ? "3px solid #5b7a6b" : "1px solid #e6e0d4", background: "#fff", color: "#495247", borderRadius: 8, padding: "5px 10px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
             – (vuoto)
           </button>
           {turni.map(t => (
             <button key={t.id} type="button" onClick={() => setPenTurno(t.id)}
-              style={{ border: penTurno === t.id ? "3px solid #5b7a6b" : "1px solid #e6e0d4", background: penTurno === t.id ? t.colore : t.colore + "30", color: penTurno === t.id ? "#fff" : "#374151", borderRadius: 8, padding: "5px 10px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
+              style={{ border: penTurno === t.id ? "3px solid #5b7a6b" : "1px solid #e6e0d4", background: penTurno === t.id ? t.colore : t.colore + "30", color: penTurno === t.id ? "#fff" : "#495247", borderRadius: 8, padding: "5px 10px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
               {t.nome}
             </button>
           ))}
@@ -2926,7 +2926,7 @@ function TurniPage({ dipendenti, turni, reload }) {
           <tbody ref={tbodyRef}>
             {dipTurni.map(dip => (
               <tr key={dip.id} data-id={dip.id}>
-                <td className="dc-drag-handle" style={{ cursor: "grab", color: "#94a3b8", textAlign: "center", userSelect: "none", touchAction: "none" }} title="Trascina per riordinare">⠿</td>
+                <td className="dc-drag-handle" style={{ cursor: "grab", color: "#9aa593", textAlign: "center", userSelect: "none", touchAction: "none" }} title="Trascina per riordinare">⠿</td>
                 <td>
                   <div className="dc-table-user">
                     <Avatar nome={dip.nome} cognome={dip.cognome} size="sm" />
@@ -3005,7 +3005,7 @@ function MiniCalendario({ value, onChange }) {
     return { ...v, mese: m };
   });
 
-  const btnStyle = { border: "1px solid #d1d5db", borderRadius: 8, padding: "7px 9px", fontSize: 14, width: "100%", boxSizing: "border-box", textAlign: "left", cursor: "pointer", background: "#fff", color: value ? "#2a3329" : "#9aa39a" };
+  const btnStyle = { border: "1px solid #c7cfc2", borderRadius: 8, padding: "7px 9px", fontSize: 14, width: "100%", boxSizing: "border-box", textAlign: "left", cursor: "pointer", background: "#fff", color: value ? "#2a3329" : "#9aa39a" };
 
   return (
     <div ref={ref} style={{ position: "relative" }}>
@@ -3307,7 +3307,7 @@ ${rate?.rate?.length ? `<h2>Piano di pagamento in ${rate.numero_rate} rate</h2>
       await carica(dipId);
     } catch (e) { setErrore(e?.response?.data?.detail || "Errore nel salvataggio"); }
   };
-  const cellaInput = { border: "1px solid #d1d5db", borderRadius: 6, padding: "3px 6px", fontSize: 13.5, width: 84, textAlign: "right", boxSizing: "border-box" };
+  const cellaInput = { border: "1px solid #c7cfc2", borderRadius: 6, padding: "3px 6px", fontSize: 13.5, width: 84, textAlign: "right", boxSizing: "border-box" };
 
   // Parametro di calcolo globale (divisore 12/13,5), modificabile qui.
   const [parametri, setParametri] = useState({ divisore: "12" });
@@ -3338,7 +3338,7 @@ ${rate?.rate?.length ? `<h2>Piano di pagamento in ${rate.numero_rate} rate</h2>
     } catch (e) { setErrore(e?.response?.data?.detail || "Errore nel calcolo delle rate"); }
   };
 
-  const inp = { border: "1px solid #d1d5db", borderRadius: 8, padding: "7px 9px", fontSize: 14, width: "100%", boxSizing: "border-box" };
+  const inp = { border: "1px solid #c7cfc2", borderRadius: 8, padding: "7px 9px", fontSize: 14, width: "100%", boxSizing: "border-box" };
 
   return (
     <div className="dc-page">

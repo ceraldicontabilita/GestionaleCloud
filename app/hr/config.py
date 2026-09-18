@@ -77,6 +77,4 @@ CORS_ORIGINS: List[str] = [
     "http://localhost:3000",
     "http://localhost:5173",
     "https://ceraldicontabilita.github.io",
-    "https://gestionale-ceraldi.onrender.com",
-    "https://appdipendenti.onrender.com",
 ]

@@ -14,7 +14,7 @@ import {
 import { API, withToken } from "../../utils/constants";
 
 const SAGE = "#5b7a6b";
-const NAVY = "#3f5a4e";
+const SALVIA = "#3f5a4e";
 const CARD = "#fffefb";
 const LINE = "#e6e0d4";
 
@@ -38,7 +38,7 @@ function StatCard({ icon: Icon, label, valore, sotto, colore = SAGE, allarme }) 
         <Icon size={16} color={allarme ? "#d35f4e" : colore} />
         <span style={{ fontSize: 12, fontWeight: 600 }}>{label}</span>
       </div>
-      <div style={{ fontSize: 26, fontWeight: 800, color: allarme ? "#d35f4e" : NAVY, lineHeight: 1 }}>{valore}</div>
+      <div style={{ fontSize: 26, fontWeight: 800, color: allarme ? "#d35f4e" : SALVIA, lineHeight: 1 }}>{valore}</div>
       {sotto && <div style={{ fontSize: 11, color: "#9aa593" }}>{sotto}</div>}
     </div>
   );
@@ -141,7 +141,7 @@ export default function RegistroHACCPView() {
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, paddingBottom: 10, borderBottom: `1px solid ${LINE}` }}>
                 <span style={{ fontSize: 22 }}>{info.emoji}</span>
                 <div>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: NAVY }}>{info.label}</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: SALVIA }}>{info.label}</div>
                   <div style={{ fontSize: 11, color: "#9aa593" }}>{persone.length} {persone.length === 1 ? "persona" : "persone"}</div>
                 </div>
               </div>
@@ -149,7 +149,7 @@ export default function RegistroHACCPView() {
                 {persone.map((p, i) => (
                   <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>{p.nome} {p.cognome}</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: SALVIA }}>{p.nome} {p.cognome}</div>
                       <div style={{ fontSize: 11, color: "#9aa593" }}>{p.mansione || "mansione non assegnata"}</div>
                     </div>
                     {statoLibrettoBadge(p.stato_libretto, p.giorni_alla_scadenza)}
@@ -211,7 +211,7 @@ function ModalStampaRegistro({ onClose }) {
     <div style={{ position: "fixed", inset: 0, background: "rgba(42,51,41,0.55)", backdropFilter: "blur(3px)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={onClose}>
       <div style={{ background: CARD, borderRadius: 18, maxWidth: 520, width: "100%", maxHeight: "90vh", overflowY: "auto", padding: 24 }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
-          <h3 style={{ margin: 0, fontSize: 19, fontWeight: 700, color: NAVY, fontFamily: "'Fraunces', Georgia, serif" }}>Stampa registro HACCP</h3>
+          <h3 style={{ margin: 0, fontSize: 19, fontWeight: 700, color: SALVIA, fontFamily: "\'Plus Jakarta Sans\', -apple-system, BlinkMacSystemFont, \'Segoe UI\', system-ui, sans-serif" }}>Stampa registro HACCP</h3>
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "#9aa593" }}><X size={22} /></button>
         </div>
 
@@ -244,7 +244,7 @@ function ModalStampaRegistro({ onClose }) {
                   textAlign: "left", fontFamily: "inherit",
                 }}>
                   <span style={{ fontSize: 18 }}>{s.emoji}</span>
-                  <span style={{ flex: 1, fontSize: 14, fontWeight: on ? 700 : 500, color: NAVY }}>{s.label}</span>
+                  <span style={{ flex: 1, fontSize: 14, fontWeight: on ? 700 : 500, color: SALVIA }}>{s.label}</span>
                   {s.periodico && <span style={{ fontSize: 11 }}>📅</span>}
                   <span style={{ width: 20, height: 20, borderRadius: 6, border: on ? "none" : `1.5px solid ${LINE}`, background: on ? SAGE : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 13, fontWeight: 800 }}>{on ? "✓" : ""}</span>
                 </button>

@@ -959,9 +959,13 @@ async def system_lock_status():
     }
 
 
-docs_path = "./docs"
-os.makedirs(docs_path, exist_ok=True)
-app.mount("/api/download", StaticFiles(directory=docs_path), name="download")
+# Cartella di lavoro dei file scaricabili da /api/download. Fino al 18/09/2026
+# era "./docs", la stessa cartella della documentazione del repository: la
+# documentazione finiva servita via HTTP. E' una cartella effimera del
+# container, ricreata a ogni avvio e mai committata.
+download_path = "./downloads"
+os.makedirs(download_path, exist_ok=True)
+app.mount("/api/download", StaticFiles(directory=download_path), name="download")
 
 class _HashedAssets(StaticFiles):
     """Asset con hash nel nome (index-BJ8lb5ff.js): cache lunga sicura."""

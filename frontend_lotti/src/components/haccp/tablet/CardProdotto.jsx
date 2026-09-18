@@ -47,7 +47,7 @@ function PulsanteElimina({ prodotto, onElimina, eliminando }) {
       title={`Elimina ${prodotto.nome}`}
       style={{
         width: "100%", minHeight: 36, border: "none", borderTop: "1px solid #fecaca",
-        background: eliminando ? "#f3f4f6" : "#fff1f2", color: eliminando ? "#9ca3af" : "#b91c1c",
+        background: eliminando ? "#f0ebe0" : "#fff1f2", color: eliminando ? "#9aa593" : "#b91c1c",
         cursor: eliminando ? "wait" : "pointer", display: "flex", alignItems: "center",
         justifyContent: "center", gap: 6, fontSize: 11, fontWeight: 800, fontFamily: "inherit",
       }}
@@ -74,7 +74,7 @@ function CardProdotto({ prodotto, reparto, onTap, onCambiaFoto, hasVarianti, onV
             borderRadius: 16, overflow: "hidden", cursor: "pointer",
             boxShadow: "0 2px 10px rgba(0,0,0,0.08)",
             transition: "transform 0.12s, box-shadow 0.12s",
-            background: "#fff", border: `2px solid ${giacenza ? "#7c2d12" : hasVarianti ? "var(--warning-soft)" : "#f3f4f6"}`,
+            background: "#fff", border: `2px solid ${giacenza ? "#7c2d12" : hasVarianti ? "var(--warning-soft)" : "#f0ebe0"}`,
             userSelect: "none", WebkitTapHighlightColor: "transparent",
             display: "flex", flexDirection: "column", minHeight: 100
           }}
@@ -93,8 +93,8 @@ function CardProdotto({ prodotto, reparto, onTap, onCambiaFoto, hasVarianti, onV
               }}>{prodotto.nome}</p>
             </div>
           </div>
-          <div style={{ background: giacenza ? "#fff1e6" : hasVarianti ? "#fffbeb" : "#f9fafb", borderTop: `1px solid ${giacenza ? "#7c2d12" : hasVarianti ? "var(--warning-soft)" : "#f3f4f6"}`, padding: "5px 8px", display: "flex", alignItems: "center", gap: 6 }}>
-            <p style={{ margin: 0, flex: 1, minWidth: 0, fontSize: 10, color: giacenza ? "#7c2d12" : hasVarianti ? "var(--warning-text)" : "#9ca3af", fontWeight: 600, textAlign: onVediRicetta ? "left" : "center" }}>
+          <div style={{ background: giacenza ? "#fff1e6" : hasVarianti ? "#fffbeb" : "#faf7f0", borderTop: `1px solid ${giacenza ? "#7c2d12" : hasVarianti ? "var(--warning-soft)" : "#f0ebe0"}`, padding: "5px 8px", display: "flex", alignItems: "center", gap: 6 }}>
+            <p style={{ margin: 0, flex: 1, minWidth: 0, fontSize: 10, color: giacenza ? "#7c2d12" : hasVarianti ? "var(--warning-text)" : "#9aa593", fontWeight: 600, textAlign: onVediRicetta ? "left" : "center" }}>
               {giacenza ? `🧊 ${giacenza} già in frigo/abbattitore` : "tocca → stampa etichetta"}
             </p>
             {onVediRicetta && (

@@ -11,6 +11,7 @@ import AdminQRCodePage from './AdminQRCodePage';
 // Import new components
 import ImageUploadManager from '../components/admin/ImageUploadManager';
 import ProductManager from '../components/admin/ProductManager';
+import AllergeniMancanti from '../components/admin/AllergeniMancanti';
 import BackupManager from '../components/admin/BackupManager';
 
 const BACKEND_URL = process.env.REACT_APP_MENU_BACKEND_URL;
@@ -150,6 +151,7 @@ const AdminDashboard = () => {
                   Modifica nomi, prezzi, descrizioni e allergeni dei prodotti
                 </p>
               </div>
+              <AllergeniMancanti />
               <ProductManager />
             </div>
           </TabsContent>
