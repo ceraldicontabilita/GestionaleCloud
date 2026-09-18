@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -7,7 +7,6 @@ import os
 import logging
 from pathlib import Path
 
-from app.menu.supabase_client import supabase
 from app.menu.routes.qrcode_routes import router as qrcode_router
 from app.menu.routes.admin_routes import router as admin_router
 from app.menu.routes.backup_routes import router as backup_router
