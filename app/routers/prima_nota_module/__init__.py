@@ -71,8 +71,23 @@ from .operation_index import (
 # === ROTTE STATICHE (devono venire PRIMA delle dinamiche) ===
 
 # Stats e globali
+async def stato_fonti_contabili():
+    """Da quanti giorni ogni fonte non porta piu' documenti.
+
+    18/09/2026: la pagina mostrava un saldo progressivo su una prima nota
+    ferma al 24/08 senza dirlo. Questo endpoint da' alla pagina il dato per
+    avvisare invece di far credere che il conto sia a -186.866,90.
+    """
+    from app.database import Database
+    from app.services.fonti_ferme import stato_fonti
+
+    righe = await stato_fonti(Database.get_db())
+    return {"fonti": righe, "ferme": [r for r in righe if r["ferma"]]}
+
+
 router.add_api_route("/anni-disponibili", get_anni_disponibili, methods=["GET"])
 router.add_api_route("/stats", get_prima_nota_stats, methods=["GET"])
+router.add_api_route("/stato-fonti", stato_fonti_contabili, methods=["GET"])
 router.add_api_route("/saldo-finale", get_saldo_finale, methods=["GET"])
 router.add_api_route("/saldi-finanziari", get_saldi_finanziari, methods=["GET"])
 router.add_api_route("/saldo-iniziale", get_saldi_iniziali, methods=["GET"])

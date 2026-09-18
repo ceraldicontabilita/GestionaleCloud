@@ -631,6 +631,19 @@ def start_scheduler():
             logger.info(f"[SCHEDULER-DRIVE-ESTRATTI-CONTO] {result}")
         except Exception as e:
             logger.error(f"[SCHEDULER-DRIVE-ESTRATTI-CONTO] errore: {e}")
+        # Un import che non trova nulla da importare non e' una buona notizia:
+        # puo' voler dire che la fonte si e' fermata. Il controllo gira qui,
+        # subito dopo, cosi' il silenzio diventa un avviso invece di un saldo
+        # sbagliato che nessuno mette in discussione.
+        try:
+            from app.services.fonti_ferme import controlla_fonti_ferme
+            stato = await controlla_fonti_ferme(Database.get_db())
+            if stato.get("ferme"):
+                logger.warning("[SCHEDULER-FONTI-FERME] %s", stato["ferme"])
+            else:
+                logger.info("[SCHEDULER-FONTI-FERME] tutte aggiornate")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-FONTI-FERME] errore: {e}")
 
     async def _bonifici_pdf_inbox_job():
         from app.database import Database

@@ -593,6 +593,16 @@ function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRip
   const isMobile = useIsMobile();
   const [pagina, setPagina] = useState(1);
   const [righePerPagina, setRighePerPagina] = useState(RIGHE_PER_PAGINA_DEFAULT);
+  // Fonti ferme: se l'estratto conto o i corrispettivi non arrivano piu', i
+  // totali della pagina sono parziali e va detto prima di mostrarli.
+  const [fontiFerme, setFontiFerme] = useState([]);
+  useEffect(() => {
+    let vivo = true;
+    api.get('/prima-nota/stato-fonti')
+      .then((r) => { if (vivo) setFontiFerme(r.data?.ferme || []); })
+      .catch(() => { if (vivo) setFontiFerme([]); });
+    return () => { vivo = false; };
+  }, []);
   const [cerca, setCerca] = useState(selectedId);
   const [fNumeroFattura, setFNumeroFattura] = useState('');
   const [fNumeroDdt, setFNumeroDdt] = useState('');
@@ -928,6 +938,34 @@ function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRip
           </button>
         )}
       </div>
+
+      {/* 18/09/2026: la pagina mostrava un saldo progressivo su una prima nota
+          ferma al 24/08 senza dirlo, e righe POS «da verificare» che non
+          potevano chiudersi perche' mancava l'estratto conto. Una fonte ferma
+          ora si vede qui, in cima, prima dei numeri che rende inattendibili. */}
+      {fontiFerme.length > 0 && (
+        <div
+          role="alert"
+          style={{
+            background: '#fdf1ee', border: '1px solid #d35f4e', borderLeft: '5px solid #d35f4e',
+            borderRadius: 10, padding: '10px 14px', marginBottom: 10, fontSize: 13, color: '#7a2f22',
+          }}
+        >
+          <b>Attenzione: i numeri qui sotto sono incompleti.</b>
+          <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+            {fontiFerme.map((f) => (
+              <li key={f.fonte} style={{ marginBottom: 2 }}>
+                <b>{f.etichetta}</b>: nessun documento da <b>{f.giorni_fermi} giorni</b>
+                {f.ultima_data ? ` (ultimo: ${formatDateIT(f.ultima_data)})` : ''} — {f.conseguenza}.
+              </li>
+            ))}
+          </ul>
+          <div style={{ marginTop: 6 }}>
+            Finche' mancano questi documenti il saldo progressivo non e' il saldo del conto
+            e gli accrediti POS restano «da verificare».
+          </div>
+        </div>
+      )}
 
       {/* paginazione */}
       {visibili.length > 0 && (
