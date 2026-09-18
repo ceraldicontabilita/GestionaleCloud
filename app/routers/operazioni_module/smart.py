@@ -6,7 +6,6 @@ from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 
 from app.database import Database
-from app.utils.parsing import safe_float
 from .common import RiconciliaManuale, ConfermaBatchRequest, logger, QUERY_FATTURA_NON_PAGATA, set_fattura_pagata
 
 # Le operazioni della carta Nexi (tipo="carta_credito") vivono nella STESSA
