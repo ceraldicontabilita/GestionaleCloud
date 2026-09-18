@@ -17,6 +17,7 @@ IMPORTANTE:
 import asyncio
 import logging
 import uuid
+import base64
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, Optional
 import os
