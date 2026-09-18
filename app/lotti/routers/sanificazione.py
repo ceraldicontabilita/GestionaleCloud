@@ -13,7 +13,7 @@ RIFERIMENTI NORMATIVI:
 OPERATORE DESIGNATO: SANKAPALA ARACHCHILAGE JANANIE AYACHANA DISSANAYAKA
 """
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, HTTPException
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Dict
 from datetime import datetime, timezone, date, timedelta
