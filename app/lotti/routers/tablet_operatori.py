@@ -27,7 +27,6 @@ Operatori del tablet HACCP = anagrafica HR. Decisione del titolare 14/09/2026
 """
 
 import logging
-import os
 import re
 import unicodedata
 import uuid

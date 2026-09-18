@@ -647,7 +647,7 @@ async def _genera_manuale_impl(
         alls = r.get("allergeni") or []
         celle = "".join(
             (
-                f'<td style="text-align:center;background:#fee2e2;font-weight:bold;color:#dc2626;">✓</td>'
+                '<td style="text-align:center;background:#fee2e2;font-weight:bold;color:#dc2626;">✓</td>'
                 if a in alls
                 else '<td style="text-align:center;color:#e5e7eb;">—</td>'
             )

@@ -484,7 +484,7 @@ async def export_pdf_disinfestazione(anno: int):
             </tr>
         """
 
-    html += f"""
+    html += """
         </table>
         
         <div class="firma">

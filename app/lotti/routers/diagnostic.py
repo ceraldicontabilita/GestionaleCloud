@@ -158,9 +158,9 @@ async def temperature_status(anno: int):
             out.append(
                 {
                     "numero": s.get(
-                        f"frigorifero_numero" if label == "frigo" else "congelatore_numero"
+                        "frigorifero_numero" if label == "frigo" else "congelatore_numero"
                     ),
-                    "nome": s.get(f"frigorifero_nome" if label == "frigo" else "congelatore_nome"),
+                    "nome": s.get("frigorifero_nome" if label == "frigo" else "congelatore_nome"),
                     "mesi_con_dati": mesi_pieni,
                     "totale_giorni_compilati": sum(mesi_pieni.values()),
                 }
@@ -181,7 +181,7 @@ async def salute_sistema():
     (ultima esecuzione di ogni job notturno) + conteggi chiave.
     Pensato per mostrare semafori verdi/gialli all'utente.
     """
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime, timezone
 
     # Job monitorati con descrizione leggibile e soglia di "freschezza" (ore)
     JOBS = [
@@ -260,7 +260,7 @@ async def registro_haccp_riepilogo():
     """Aggrega lo stato di tutte le registrazioni HACCP obbligatorie + organico.
     Una sola chiamata per il cruscotto del registro (temperature, lotti, anomalie,
     sanificazione, controllo olio, reclami, libretti sanitari, personale per postazione)."""
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime, timezone
 
     oggi = datetime.now(timezone.utc)
     oggi_ymd = oggi.strftime("%Y-%m-%d")

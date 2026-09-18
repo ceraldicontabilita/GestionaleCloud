@@ -28,7 +28,7 @@ import logging
 import re
 import uuid
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Optional
 from urllib.parse import urljoin, urlparse
 
 import httpx

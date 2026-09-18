@@ -817,7 +817,7 @@ async def genera_report_pdf_anomalie(anno: int):
         """
 
     # Footer con firme
-    html += f"""
+    html += """
         <div class="firma">
             <div class="firma-box">
                 <div class="firma-linea">Responsabile HACCP</div>

@@ -15,7 +15,7 @@ non la duplicano (così un riavvio del backend non crea doppioni).
 import uuid
 import random
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
 from app.lotti.db import database as db
 
