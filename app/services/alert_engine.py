@@ -292,6 +292,12 @@ ALERT_CATALOG: Dict[str, Dict[str, Any]] = {
         "titolo": "Differenza importo in match bancario",
         "condizione_chiusura": "Differenza spiegata"
     },
+    "FONTE_CONTABILE_FERMA": {
+        "modulo": "banca",
+        "severita": "critical",
+        "titolo": "Fonte contabile ferma: non arrivano piu' documenti",
+        "condizione_chiusura": "La fonte torna ad aggiornarsi"
+    },
     "ESTRATTO_NEXI_MANCANTE": {
         "modulo": "banca",
         "severita": "warning",

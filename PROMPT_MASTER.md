@@ -844,7 +844,7 @@ Gli alias senza valore vanno configurati nel secret/config store di Render. Non 
 
 ## Appendice D — Tutti i router e tutti gli endpoint
 
-Route table sorgente: **1172**; attivi da ricreare: **732**; quarantena: **440** (`verificare` 410, `admin-only` 30).
+Route table sorgente: **1173**; attivi da ricreare: **732**; quarantena: **441** (`verificare` 411, `admin-only` 30).
 
 `attivo` significa da ricreare con contratto e test; `quarantena` significa non esporre nel nuovo runtime finché consumer, autorizzazione e test non sono provati. L'elenco è completo e include entrambe le categorie.
 
@@ -2036,10 +2036,11 @@ Route table sorgente: **1172**; attivi da ricreare: **732**; quarantena: **440**
 - **quarantena: verificare** — `GET /api/previsioni-acquisti/prodotti` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **attivo** — `GET /api/previsioni-acquisti/statistiche` — in uso: FE
 
-### Router `prima_nota_module` (2)
+### Router `prima_nota_module` (3)
 
 - **attivo** — `GET /api/prima-nota/banca/template-csv` — in uso: FE
 - **attivo** — `GET /api/prima-nota/cassa/template-csv` — in uso: FE
+- **quarantena: verificare** — `GET /api/prima-nota/stato-fonti` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 
 ### Router `prima_nota_module.banca` (11)
 
