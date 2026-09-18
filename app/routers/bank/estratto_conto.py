@@ -705,7 +705,6 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail="Formato non supportato. Usa PDF, CSV o Excel.")
     
     # Salva nel database, evitando duplicati con un singolo query bulk
-    import hashlib as _hashlib
     import uuid as _uuid
     inserted = 0
     duplicates = 0
@@ -1434,8 +1433,6 @@ async def force_reimport_estratto_conto(file: UploadFile = File(...), _admin: Di
     forza né sovrascrive; è un import additivo con deduplica. Il contratto della
     risposta è quello reale (nessuna cancellazione).
     """
-    import hashlib as _hashlib
-    import uuid as _uuid
 
     db = Database.get_db()
     
@@ -1637,7 +1634,7 @@ async def force_reimport_estratto_conto(file: UploadFile = File(...), _admin: Di
     uscite = sum(r["importo"] for r in records if r["tipo"] == "uscita")
 
     return {
-        "message": f"Import completato: solo nuovi movimenti aggiunti",
+        "message": "Import completato: solo nuovi movimenti aggiunti",
         "periodo_csv": f"{data_min_csv} → {data_max_csv}",
         "record_nel_csv": len(movimenti),
         "duplicati_saltati": duplicates_skipped,

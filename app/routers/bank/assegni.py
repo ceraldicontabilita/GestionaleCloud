@@ -20,8 +20,6 @@ from app.services.payment_invoice_matching import (
 )
 from app.services.assegni_fattura_intent import (
     capienza_assegno_fattura,
-    fattura_dichiara_assegno,
-    importi_assegno_dichiarati,
 )
 from app.services.payment_allocation_validator import (
     is_credit_note,
