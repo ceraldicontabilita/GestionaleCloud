@@ -152,7 +152,7 @@ async def riconcilia_cedolini_banca(
             from app.hr.services.salari_unificati_v2 import registra_pagamento_salario
             await registra_pagamento_salario(
                 db, ced["id"], residuo, "bonifico",
-                note=f"Riconciliazione automatica estratto conto",
+                note="Riconciliazione automatica estratto conto",
                 tipo_pagamento="saldo"
             )
             riconciliati += 1

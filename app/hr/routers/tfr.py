@@ -5,7 +5,7 @@ Accantonamento, rivalutazione ISTAT, liquidazione TFR e gestione acconti
 from fastapi import APIRouter, HTTPException, Query, Body
 from pydantic import BaseModel
 from typing import Dict, Any, Optional, List
-from datetime import datetime, timezone, timedelta, date
+from datetime import datetime, timezone, timedelta
 from uuid import uuid4
 import logging
 import os

@@ -72,7 +72,6 @@ def _fetch_cedolini_gmail_sync(email_user: str, email_pass: str, since_days: int
     import email as email_lib
     import base64
     import hashlib
-    import re
     import os as _os
 
     since_date = (datetime.now() - timedelta(days=since_days)).strftime("%d-%b-%Y")
@@ -1215,7 +1214,6 @@ async def get_cedolino_dettaglio(cedolino_id: str) -> Dict[str, Any]:
 @handle_errors
 async def download_cedolino_pdf(cedolino_id: str):
     """Download PDF allegato al cedolino."""
-    import base64
     from fastapi.responses import StreamingResponse
     import io
 

@@ -9,7 +9,6 @@ memorizzata anche in `cedolini_accettazioni` per consultazione rapida.
 NB: le meccaniche di tracciamento e consegna sono complete; la validità formale
 "a norma di legge" in caso di contenzioso va confermata dal consulente del lavoro.
 """
-import base64
 import logging
 import os
 import ssl
