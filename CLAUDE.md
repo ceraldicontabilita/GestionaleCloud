@@ -106,16 +106,30 @@ resto del file.
 - Semantici caldi: pericolo `#d35f4e`, avviso `#c4894a`, successo `#3d8168`,
   informazione `#8a6f47`.
 - **Vietati blu, indaco, viola e ciano**, sia come classi Tailwind sia come
-  hex negli stili inline: si rimappano su salvia o sabbia. Scansione dopo ogni
-  modifica frontend: `grep -rEn "5D29C7|1E1B4B|7c3aed|8b5cf6|6366f1|4f46e5|violet-|indigo-|bg-blue-|bg-sky-|text-blue-|border-blue-|3b82f6|2563eb|1d4ed8"`
-  su `frontend*/src` e sui bundle compilati.
+  hex negli stili inline: si rimappano su salvia o sabbia. **Vietati anche i
+  grigi freddi**: le scale `gray` e `slate` di Tailwind sono blu-tinte, e un
+  `#64748b` o `#6b7280` scritto a mano stona sulla crema. `frontend_lotti` e
+  `frontend_menu` rimappano nel loro `tailwind.config.js` sia le scale fredde
+  su sabbia, sia `gray`/`slate`/`zinc`/`neutral` su una scala neutra calda
+  costruita dai token; `stone` e `amber` sono gia' caldi e si usano com'e'.
+  Scansione dopo ogni modifica frontend, **sui bundle compilati** e non solo
+  sui sorgenti (un remap del config si vede solo li'):
+  `grep -rEn "5D29C7|1E1B4B|7c3aed|8b5cf6|6366f1|4f46e5|violet-|indigo-|bg-blue-|bg-sky-|text-blue-|border-blue-|3b82f6|2563eb|1d4ed8|F1F5F9|E2E8F0|CBD5E1|94A3B8|64748B|475569|0F172A|1E293B|6B7280|9CA3AF|D1D5DB|E5E7EB|374151|111827"`
+- **Un solo font per tutte e quattro le app, ERP compreso: Plus Jakarta Sans**
+  (400-800, da Google Fonts). Non introdurre una seconda famiglia: un titolo
+  si distingue dal **peso** (700/800) e dalla spaziatura (`-0.02em`), mai dal
+  carattere. `mono` resta solo per le colonne di importi (`tabular-nums`).
+- Il colore non e' mai un nome: una variabile o una costante si chiama per
+  quello che contiene (`SALVIA`, `--primary`), mai `NAVY` o `--violet` con
+  dentro il verde. Una classe Tailwind non si costruisce a runtime
+  (`bg-${x}-100`): il JIT non la genera e l'elemento resta senza stile.
 - Icone Lucide, mai emoji nelle interfacce nuove (su Android rendono con
   colori di sistema non controllabili).
 - Ogni pagina centrata, **mai scroll orizzontale su smartphone**: le tabelle
   larghe diventano card impilate. Tocco minimo 44px.
-- L'ERP ha i suoi token in `frontend/src/lib/utils.js` e usa
-  `PageLayout`/`PageHeader`: non introdurre Tailwind né un secondo sistema di
-  token. Il colore non è mai l'unica informazione: ogni badge ha anche testo.
+- L'ERP ha i suoi **colori** in `frontend/src/lib/utils.js` (slate freddo e
+  oro, 13px, raggi 6-10px) e usa `PageLayout`/`PageHeader`: non introdurre
+  Tailwind né un secondo sistema di token. Il font invece è condiviso. Il colore non è mai l'unica informazione: ogni badge ha anche testo.
 - Le app portate pari pari mantengono il loro aspetto: nessuna contaminazione
   con il layout dell'ERP.
 
