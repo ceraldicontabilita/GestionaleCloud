@@ -395,7 +395,6 @@ async def elimina_fornitori_senza_fatture(dry_run: bool = True) -> Dict[str, Any
     fatture in archivio (per P.IVA, in tutte le sue varianti di campo, o
     per nome esatto se senza P.IVA): chi ha ZERO fatture viene eliminato —
     copre anche le voci "Fornitore sconosciuto" senza documenti."""
-    from fastapi import Query  # firma uniforme con gli altri endpoint admin
 
     db = Database.get_db()
     fornitori = await db[Collections.SUPPLIERS].find(
