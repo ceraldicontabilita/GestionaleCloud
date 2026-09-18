@@ -9,7 +9,7 @@ RIFERIMENTI NORMATIVI:
 La disinfestazione viene eseguita UN GIORNO AL MESE in modo casuale.
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, ConfigDict
 from typing import Dict
 from datetime import datetime, timezone, date
