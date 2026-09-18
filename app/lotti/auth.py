@@ -283,7 +283,6 @@ async def require_admin(request: Request):
     pin = (request.headers.get("X-Admin-Pin") or "").strip()
     if pin:
         try:
-            from app.lotti.server import db  # import ritardato: evita ciclo all'avvio
             from app.lotti.routers.tablet_operatori import pin_amministratore_valido
             if await pin_amministratore_valido(pin):
                 return
@@ -393,7 +392,6 @@ class PinLoginReq(BaseModel):
 @router.post("/login")
 async def login_pin_jwt(payload: PinLoginReq, request: Request):
     """PIN -> token firmato. Verifica il PIN contro gli operatori reali."""
-    from app.lotti.server import db  # import locale: evita cicli all'avvio
     ip = request.client.host if request.client else None
     if ip:
         check_lock(ip)
