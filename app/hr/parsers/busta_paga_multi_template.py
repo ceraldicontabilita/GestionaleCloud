@@ -7,7 +7,7 @@ Supporta 4 formati diversi usati nel tempo:
 - Template 4: Teamsystem S.p.A.
 """
 import re
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional
 import fitz  # PyMuPDF
 
 
