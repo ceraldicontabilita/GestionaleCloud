@@ -24,10 +24,10 @@ Tre responsabilità, tutte centralizzate qui:
 import logging
 import os
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from .constants import FORNITORI_NOLEGGIO, TARGA_PATTERN, COLLECTION
+from .constants import FORNITORI_NOLEGGIO, COLLECTION
 
 logger = logging.getLogger(__name__)
 
