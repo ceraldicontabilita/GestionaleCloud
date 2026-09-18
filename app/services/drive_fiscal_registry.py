@@ -276,7 +276,7 @@ async def sync_incremental(db, service=None) -> dict[str, Any]:
             key = "duplicates" if result.get("status") == "duplicate" else "inserted"
             ingest_result[key] += 1
             ingest_result["status"] = "ok"
-        except Exception as exc:
+        except Exception:
             ingest_result["errors"] += 1
             ingest_result["status"] = "partial"
             logger.exception("Drive fiscale: import fallito per %s", file.get("id"))

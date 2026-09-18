@@ -35,8 +35,8 @@ import hashlib
 import logging
 import uuid
 import re
-from datetime import datetime, timezone, date
-from typing import Dict, Any, List, Optional
+from datetime import datetime, timezone
+from typing import Dict, Any
 import calendar
 
 from app.utils.numeri_italiani import parse_importo_ita

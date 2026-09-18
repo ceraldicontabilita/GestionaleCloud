@@ -12,7 +12,6 @@ NON duplica: verifica sempre se il documento esiste già nel DB.
 import imaplib
 import email
 from email.header import decode_header
-import os
 import re
 import uuid
 import base64

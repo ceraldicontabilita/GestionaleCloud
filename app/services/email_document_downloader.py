@@ -573,7 +573,7 @@ class EmailDocumentDownloader:
                             if status == 'OK' and messages[0]:
                                 all_email_ids.extend(messages[0].split())
                                 logger.info(f"Trovate {len(messages[0].split())} email con keyword '{kw}' per {email_addr}")
-                        except Exception as e:
+                        except Exception:
                             # Alcuni server IMAP non supportano BODY search, usa solo SUBJECT
                             try:
                                 criteria_fallback = []

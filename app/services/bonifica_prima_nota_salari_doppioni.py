@@ -46,16 +46,14 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from app.services.entity_relations import relation_key, revoke_entity_relation
+from app.services.entity_relations import revoke_entity_relation
 from app.services.accounting_relation_writers import record_salary_reconciliation
 from app.services.prima_nota_salari_chiave import (
     ChiaveSalario,
-    IndiceDipendenti,
     carica_indice_dipendenti,
     chiave_logica_riga,
     importo_atteso_riga,
     nome_riga_salario,
-    punteggio_completezza,
     riga_piu_autorevole,
 )
 from app.services.scritture_contabili import FILTRO_MOVIMENTO_ATTIVO

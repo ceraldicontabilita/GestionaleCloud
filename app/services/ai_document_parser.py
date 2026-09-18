@@ -9,9 +9,7 @@ import os
 import json
 import base64
 import logging
-import tempfile
-import io
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, List
 from datetime import datetime, timezone
 
 from dotenv import load_dotenv

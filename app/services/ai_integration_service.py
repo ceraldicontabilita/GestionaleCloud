@@ -6,14 +6,11 @@ Integra il parser AI con i flussi di upload esistenti:
 - Upload manuale PDF
 """
 import logging
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, List
 from datetime import datetime, timezone
 
 from app.services.ai_document_parser import (
     parse_document_with_ai,
-    parse_fattura_ai,
-    parse_f24_ai, 
-    parse_busta_paga_ai,
     convert_ai_fattura_to_db_format,
     convert_ai_busta_paga_to_dipendente_update
 )

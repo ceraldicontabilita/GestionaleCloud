@@ -5,7 +5,6 @@ Gestisce fallback text/plain → text/html con strip tag, normalizzazione whites
 import re
 from html.parser import HTMLParser
 from html import unescape
-from typing import Optional
 
 
 class _HTMLStripper(HTMLParser):

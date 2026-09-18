@@ -49,7 +49,6 @@ from typing import Any, Dict, List, Optional
 
 from app.services.hr_cedolini_deposito import TABELLA_CEDOLINI, connetti_hr, dsn_hr
 from app.services.prima_nota_salari_chiave import (
-    IndiceDipendenti,
     carica_indice_dipendenti,
     chiave_logica_riga,
     importo_atteso_riga,

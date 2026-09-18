@@ -22,7 +22,7 @@ from __future__ import annotations
 import logging
 import re
 from difflib import SequenceMatcher
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
 
 from app.database import Database, Collections

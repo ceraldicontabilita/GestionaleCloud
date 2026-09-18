@@ -4,7 +4,7 @@ Servizio per recuperare dati anagrafici aziendali (fornitori) da OpenAPI Company
 """
 import httpx
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)

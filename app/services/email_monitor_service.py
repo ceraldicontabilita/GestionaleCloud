@@ -19,7 +19,6 @@ import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, Optional
-import os
 
 logger = logging.getLogger(__name__)
 
@@ -287,7 +286,6 @@ async def sync_email_documents(db, giorni: int = 30, execution_id: Optional[str]
     La chiamata è idempotente e produce un record persistente di esecuzione
     e una coda di retry per errori temporanei.
     """
-    from app.services.email_document_downloader import download_documents_from_email
 
     if execution_id is None:
         execution = await start_email_monitor_run(db, source="gmail_daily")

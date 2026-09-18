@@ -8,7 +8,7 @@ storici sono accettati solo come input e mai usati per la quadratura.
 from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
-from typing import Any, Dict, Iterable, Optional
+from typing import Any, Dict, Optional
 
 
 CENT = Decimal("0.01")

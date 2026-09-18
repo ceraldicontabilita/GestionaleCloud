@@ -13,7 +13,6 @@ di pagamento compatibile; la banca resta una prova separata.
 from __future__ import annotations
 
 from copy import deepcopy
-from datetime import date
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any
 

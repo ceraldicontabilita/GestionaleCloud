@@ -20,7 +20,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 
-from app.utils.ruoli import RUOLI_VALIDI, normalizza_ruolo
+from app.utils.ruoli import RUOLI_VALIDI
 
 COLLECTION = "utenti_pin"
 

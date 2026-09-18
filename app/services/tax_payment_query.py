@@ -6,7 +6,7 @@ normalizzazione e una sola semantica della prova di pagamento.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, List
 
 from app.services.f24_canonico import normalizza_righe_tributo
 from app.services.f24_payment_evidence import stato_evidenza_pagamento
