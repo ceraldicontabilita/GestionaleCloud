@@ -13,7 +13,7 @@ NOTA: La sanificazione dei congelatori è gestita nel modulo Sanificazione,
 con date casuali ogni 7-10 giorni per ogni apparecchio.
 """
 
-from fastapi import APIRouter, Query, Depends
+from fastapi import APIRouter, Query, Depends, HTTPException
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional, Dict
 from datetime import datetime, timezone
