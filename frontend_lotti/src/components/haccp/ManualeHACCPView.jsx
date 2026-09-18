@@ -109,7 +109,7 @@ const ManualeHACCPView = () => {
           </div>
         </div>
         {loadingManuale ? (
-          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16, color: "#64748b" }}>
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16, color: "#6b7669" }}>
             <div style={{ fontSize: 40 }}>⏳</div>
             <p style={{ fontSize: 16, fontWeight: 600 }}>Generazione manuale in corso...</p>
           </div>

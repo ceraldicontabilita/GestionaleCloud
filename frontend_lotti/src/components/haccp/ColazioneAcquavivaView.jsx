@@ -316,16 +316,16 @@ const ColazioneAcquavivaView = ({ onClose, modoTablet = false }) => {
           <h2 style={{ margin: "0 0 4px", fontSize: 26, fontWeight: 800, color: "var(--success-dark)" }}>
             Colazione Registrata!
           </h2>
-          <p style={{ color: "#6b7280", margin: "0 0 24px", fontSize: 14 }}>{risultato.data}</p>
+          <p style={{ color: "#6b7669", margin: "0 0 24px", fontSize: 14 }}>{risultato.data}</p>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
             <div style={{ background: "#f0fdf4", borderRadius: 14, padding: "14px", border: "2px solid #bbf7d0" }}>
               <p style={{ margin: 0, fontSize: 32, fontWeight: 900, color: "var(--success)" }}>{risultato.prodotti_registrati}</p>
-              <p style={{ margin: 0, fontSize: 11, color: "#6b7280", fontWeight: 700 }}>PRODOTTI</p>
+              <p style={{ margin: 0, fontSize: 11, color: "#6b7669", fontWeight: 700 }}>PRODOTTI</p>
             </div>
             <div style={{ background: "#fff7ed", borderRadius: 14, padding: "14px", border: "2px solid #fed7aa" }}>
               <p style={{ margin: 0, fontSize: 32, fontWeight: 900, color: "#ea580c" }}>{risultato.pezzi_totali}</p>
-              <p style={{ margin: 0, fontSize: 11, color: "#6b7280", fontWeight: 700 }}>PEZZI</p>
+              <p style={{ margin: 0, fontSize: 11, color: "#6b7669", fontWeight: 700 }}>PEZZI</p>
             </div>
           </div>
 
@@ -333,17 +333,17 @@ const ColazioneAcquavivaView = ({ onClose, modoTablet = false }) => {
             <p style={{ margin: 0, fontSize: 26, fontWeight: 900, color: "var(--success-dark)" }}>
               €{(risultato.valore_totale || 0).toFixed(2)}
             </p>
-            <p style={{ margin: 0, fontSize: 11, color: "#6b7280", fontWeight: 700 }}>VALORE TOTALE AL BANCO</p>
+            <p style={{ margin: 0, fontSize: 11, color: "#6b7669", fontWeight: 700 }}>VALORE TOTALE AL BANCO</p>
           </div>
 
           <div style={{ textAlign: "left", maxHeight: 180, overflowY: "auto", marginBottom: 20 }}>
             {risultato.registrati?.map((r, i) => (
               <div key={i} style={{
                 display: "flex", justifyContent: "space-between", alignItems: "center",
-                padding: "8px 0", borderBottom: "1px solid #f1f5f9"
+                padding: "8px 0", borderBottom: "1px solid #faf7f0"
               }}>
-                <span style={{ fontSize: 13, color: "#374151", fontWeight: 600 }}>{r.nome}</span>
-                <span style={{ fontSize: 13, color: "#6b7280", fontWeight: 700 }}>{r.pezzi} pz</span>
+                <span style={{ fontSize: 13, color: "#495247", fontWeight: 600 }}>{r.nome}</span>
+                <span style={{ fontSize: 13, color: "#6b7669", fontWeight: 700 }}>{r.pezzi} pz</span>
               </div>
             ))}
           </div>
@@ -537,13 +537,13 @@ const ColazioneAcquavivaView = ({ onClose, modoTablet = false }) => {
         </div>
 
         {/* ── Barra ricerca ── */}
-        <div style={{ padding: "10px 14px", borderBottom: "1px solid #e5e7eb", background: "#fafafa" }}>
+        <div style={{ padding: "10px 14px", borderBottom: "1px solid #e6e0d4", background: "#fafafa" }}>
           <input
             type="text" placeholder="Cerca prodotto..."
             value={search} onChange={e => setSearch(e.target.value)}
             style={{
               width: "100%", padding: "10px 14px", borderRadius: 10,
-              border: "2px solid #e5e7eb", fontSize: 14, outline: "none",
+              border: "2px solid #e6e0d4", fontSize: 14, outline: "none",
               boxSizing: "border-box"
             }}
           />
@@ -556,7 +556,7 @@ const ColazioneAcquavivaView = ({ onClose, modoTablet = false }) => {
               volta (richiesta Enzo 03/07/2026) — solo a ricerca vuota. */}
           {modalita === "configura" && !search && piuUsati.length > 0 && (
             <div style={{ marginTop: 10 }}>
-              <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 800, color: "#6b7280", textTransform: "uppercase" }}>
+              <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 800, color: "#6b7669", textTransform: "uppercase" }}>
                 ⭐ Più usati
               </p>
               <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2 }}>
@@ -566,9 +566,9 @@ const ColazioneAcquavivaView = ({ onClose, modoTablet = false }) => {
                     <button key={prod.id} onClick={() => toggleProdotto(prod)}
                       style={{
                         flexShrink: 0, padding: "7px 12px", borderRadius: 20, whiteSpace: "nowrap",
-                        border: `2px solid ${inTemplate ? "var(--warning)" : "#e5e7eb"}`,
+                        border: `2px solid ${inTemplate ? "var(--warning)" : "#e6e0d4"}`,
                         background: inTemplate ? "var(--warning-soft)" : "#fff",
-                        color: inTemplate ? "var(--warning-text)" : "#374151",
+                        color: inTemplate ? "var(--warning-text)" : "#495247",
                         fontSize: 12, fontWeight: 700, cursor: "pointer"
                       }}>
                       {inTemplate ? "✓ " : ""}{prod.nome}
@@ -583,19 +583,19 @@ const ColazioneAcquavivaView = ({ onClose, modoTablet = false }) => {
         {/* ── Lista prodotti ── */}
         <div ref={listaRef} style={{ flex: 1, overflowY: "auto", padding: "10px 12px" }}>
           {loading ? (
-            <div style={{ textAlign: "center", padding: 60, color: "#9ca3af" }}>Caricamento...</div>
+            <div style={{ textAlign: "center", padding: 60, color: "#9aa593" }}>Caricamento...</div>
           ) : (
             <>
               {/* MODALITA CONFIGURA: tutti i prodotti con toggle aggiungi/rimuovi */}
               {modalita === "configura" && (
                 <>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-                    <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>
+                    <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: "#6b7669", textTransform: "uppercase" }}>
                       {prodottiDisponibili.length} prodotti disponibili — tocca per aggiungerli al menù
                     </p>
                     {/* Rete di sicurezza: se un prodotto comprato non viene
                         riconosciuto, questa spunta mostra tutto il catalogo */}
-                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: "#6b7280", cursor: "pointer" }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: "#6b7669", cursor: "pointer" }}>
                       <input type="checkbox" checked={mostraTutti} onChange={e => setMostraTutti(e.target.checked)} />
                       mostra anche mai acquistati
                     </label>
@@ -610,7 +610,7 @@ const ColazioneAcquavivaView = ({ onClose, modoTablet = false }) => {
                             onClick={() => toggleProdotto(prod)}
                             style={{
                               borderRadius: 12, overflow: "hidden",
-                              border: `2px solid ${inTemplate ? "var(--warning)" : "#e5e7eb"}`,
+                              border: `2px solid ${inTemplate ? "var(--warning)" : "#e6e0d4"}`,
                               background: inTemplate ? "var(--warning-soft)" : "#fff",
                               cursor: "pointer", position: "relative",
                               boxShadow: inTemplate ? "0 2px 10px rgba(245,158,11,0.2)" : "0 1px 4px rgba(0,0,0,0.06)"
@@ -651,11 +651,11 @@ const ColazioneAcquavivaView = ({ onClose, modoTablet = false }) => {
                                   🏠 fatto in casa
                                 </p>
                               )}
-                              <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: "#1e293b", lineHeight: 1.3 }}>
+                              <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: "#3f5a4e", lineHeight: 1.3 }}>
                                 {prod.nome}
                               </p>
                               {prod.fonte !== "casa" && prod.gia_acquistato === false && !inTemplate && (
-                                <p style={{ margin: "2px 0 0", fontSize: 10, color: "#94a3b8", fontWeight: 600 }}>
+                                <p style={{ margin: "2px 0 0", fontSize: 10, color: "#9aa593", fontWeight: 600 }}>
                                   mai acquistato
                                 </p>
                               )}
@@ -673,7 +673,7 @@ const ColazioneAcquavivaView = ({ onClose, modoTablet = false }) => {
                   {/* Template corrente */}
                   {template.items.length > 0 && (
                     <>
-                      <p style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>
+                      <p style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 700, color: "#6b7669", textTransform: "uppercase" }}>
                         Nel menù ({template.items.length} prodotti) — regola le quantità del mattino
                       </p>
                       <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
@@ -681,25 +681,25 @@ const ColazioneAcquavivaView = ({ onClose, modoTablet = false }) => {
                           <div key={item.prodotto_id} style={{
                             display: "flex", alignItems: "center", gap: 10,
                             padding: "10px 12px", background: "#fff",
-                            borderRadius: 12, border: "2px solid #e5e7eb"
+                            borderRadius: 12, border: "2px solid #e6e0d4"
                           }}>
-                            <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: "#1e293b" }}>
+                            <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: "#3f5a4e" }}>
                               {item.prodotto_nome}
                             </span>
                             {/* Quantità */}
                             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                               <button onClick={e => { e.stopPropagation(); setPezzi(item.prodotto_id, (item.pezzi||1) - 1); }}
-                                style={{ width: 32, height: 32, borderRadius: 8, border: "2px solid #e5e7eb", background: "#f1f5f9", fontWeight: 900, cursor: "pointer", fontSize: 16 }}>
+                                style={{ width: 32, height: 32, borderRadius: 8, border: "2px solid #e6e0d4", background: "#faf7f0", fontWeight: 900, cursor: "pointer", fontSize: 16 }}>
                                 −
                               </button>
                               <input
                                 type="number" value={item.pezzi} min={1}
                                 onChange={e => setPezzi(item.prodotto_id, e.target.value)}
                                 onClick={e => e.stopPropagation()}
-                                style={{ width: 46, textAlign: "center", border: "2px solid #e5e7eb", borderRadius: 8, padding: "4px 0", fontWeight: 800, fontSize: 15 }}
+                                style={{ width: 46, textAlign: "center", border: "2px solid #e6e0d4", borderRadius: 8, padding: "4px 0", fontWeight: 800, fontSize: 15 }}
                               />
                               <button onClick={e => { e.stopPropagation(); setPezzi(item.prodotto_id, (item.pezzi||1) + 1); }}
-                                style={{ width: 32, height: 32, borderRadius: 8, border: "2px solid #e5e7eb", background: "#f1f5f9", fontWeight: 900, cursor: "pointer", fontSize: 16 }}>
+                                style={{ width: 32, height: 32, borderRadius: 8, border: "2px solid #e6e0d4", background: "#faf7f0", fontWeight: 900, cursor: "pointer", fontSize: 16 }}>
                                 +
                               </button>
                             </div>
@@ -738,9 +738,9 @@ const ColazioneAcquavivaView = ({ onClose, modoTablet = false }) => {
                       <div key={prod.id} style={{
                         display: "flex", alignItems: "center", gap: 12,
                         padding: "12px 14px",
-                        background: isAttivo ? "#fff" : "#f8fafc",
+                        background: isAttivo ? "#fff" : "#faf7f0",
                         borderRadius: 16,
-                        border: `2px solid ${isAttivo ? "var(--warning)" : "#e2e8f0"}`,
+                        border: `2px solid ${isAttivo ? "var(--warning)" : "#e6e0d4"}`,
                         boxShadow: isAttivo ? "0 2px 10px rgba(245,158,11,0.15)" : "none",
                         opacity: isAttivo ? 1 : 0.55,
                         transition: "all 0.15s"
@@ -760,7 +760,7 @@ const ColazioneAcquavivaView = ({ onClose, modoTablet = false }) => {
 
                         {/* Nome */}
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#1e293b", lineHeight: 1.3 }}>
+                          <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#3f5a4e", lineHeight: 1.3 }}>
                             {item.prodotto_nome}
                           </p>
                           {item.prezzo_vendita > 0 && (
@@ -774,16 +774,16 @@ const ColazioneAcquavivaView = ({ onClose, modoTablet = false }) => {
                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                           <button onClick={() => setPezzi(item.prodotto_id, (item.pezzi||1) - 1)}
                             style={{
-                              width: 36, height: 36, borderRadius: 10, border: "2px solid #e5e7eb",
-                              background: "#f1f5f9", fontWeight: 900, cursor: "pointer", fontSize: 18, flexShrink: 0
+                              width: 36, height: 36, borderRadius: 10, border: "2px solid #e6e0d4",
+                              background: "#faf7f0", fontWeight: 900, cursor: "pointer", fontSize: 18, flexShrink: 0
                             }}>−</button>
-                          <span style={{ fontSize: 18, fontWeight: 900, color: "#1e293b", minWidth: 30, textAlign: "center" }}>
+                          <span style={{ fontSize: 18, fontWeight: 900, color: "#3f5a4e", minWidth: 30, textAlign: "center" }}>
                             {item.pezzi}
                           </span>
                           <button onClick={() => setPezzi(item.prodotto_id, (item.pezzi||1) + 1)}
                             style={{
-                              width: 36, height: 36, borderRadius: 10, border: "2px solid #e5e7eb",
-                              background: "#f1f5f9", fontWeight: 900, cursor: "pointer", fontSize: 18, flexShrink: 0
+                              width: 36, height: 36, borderRadius: 10, border: "2px solid #e6e0d4",
+                              background: "#faf7f0", fontWeight: 900, cursor: "pointer", fontSize: 18, flexShrink: 0
                             }}>+</button>
                         </div>
 
@@ -792,9 +792,9 @@ const ColazioneAcquavivaView = ({ onClose, modoTablet = false }) => {
                           onClick={() => toggleAttivo(item.prodotto_id)}
                           style={{
                             width: 44, height: 44, borderRadius: 12, flexShrink: 0,
-                            border: `3px solid ${isAttivo ? "var(--warning)" : "#d1d5db"}`,
+                            border: `3px solid ${isAttivo ? "var(--warning)" : "#c7cfc2"}`,
                             background: isAttivo ? "var(--warning)" : "#fff",
-                            color: isAttivo ? "#fff" : "#9ca3af",
+                            color: isAttivo ? "#fff" : "#9aa593",
                             fontSize: 20, fontWeight: 900, cursor: "pointer",
                             display: "flex", alignItems: "center", justifyContent: "center"
                           }}>
@@ -814,13 +814,13 @@ const ColazioneAcquavivaView = ({ onClose, modoTablet = false }) => {
           <div style={{
             padding: "14px 16px",
             background: "#fff",
-            borderTop: "2px solid #e5e7eb"
+            borderTop: "2px solid #e6e0d4"
           }}>
             <button onClick={avviaColazione} disabled={registrando}
               data-testid="avvia-colazione-btn"
               style={{
                 width: "100%", padding: "18px",
-                background: registrando ? "#d1d5db" : "linear-gradient(135deg, var(--warning-text), var(--warning-dark))",
+                background: registrando ? "#c7cfc2" : "linear-gradient(135deg, var(--warning-text), var(--warning-dark))",
                 color: "#fff", border: "none", borderRadius: 16,
                 fontSize: 17, fontWeight: 900, cursor: registrando ? "not-allowed" : "pointer",
                 boxShadow: registrando ? "none" : "0 4px 20px rgba(146,64,14,0.35)"

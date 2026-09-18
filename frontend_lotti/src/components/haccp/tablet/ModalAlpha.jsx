@@ -106,20 +106,20 @@ export function ModalAlpha({ onClose, modo = "ordine" }) {
         </div>
       </div>
 
-      <div style={{ background: "#fff", padding: "12px 16px", borderBottom: "1px solid #e5e7eb" }}>
+      <div style={{ background: "#fff", padding: "12px 16px", borderBottom: "1px solid #e6e0d4" }}>
         <input type="text" placeholder="Cerca prodotto senza glutine..."
           value={search} onChange={e => setSearch(e.target.value)}
           style={{
             width: "100%", padding: "10px 16px", borderRadius: 10,
-            border: "2px solid #d1d5db", fontSize: 16, outline: "none", boxSizing: "border-box"
+            border: "2px solid #c7cfc2", fontSize: 16, outline: "none", boxSizing: "border-box"
           }} />
       </div>
 
       <div style={{ flex: 1, overflowY: "auto", padding: 16, background: "#f0fdf4" }}>
         {loading ? (
-          <div style={{ textAlign: "center", padding: 40, color: "#9ca3af" }}>Caricamento...</div>
+          <div style={{ textAlign: "center", padding: 40, color: "#9aa593" }}>Caricamento...</div>
         ) : filtrati.length === 0 ? (
-          <div style={{ textAlign: "center", padding: 40, color: "#9ca3af" }}>
+          <div style={{ textAlign: "center", padding: 40, color: "#9aa593" }}>
             <p style={{ fontSize: 32 }}>🌿</p>
             <p>Nessun prodotto trovato</p>
           </div>
@@ -158,7 +158,7 @@ export function ModalAlpha({ onClose, modo = "ordine" }) {
                       </span>
                     )}
                     {prod.pz_confezione > 0 && (
-                      <span style={{ fontSize: 10, color: "#6b7280" }}>{prod.pz_confezione} pz/conf</span>
+                      <span style={{ fontSize: 10, color: "#6b7669" }}>{prod.pz_confezione} pz/conf</span>
                     )}
                   </div>
                   {prod.allergeni?.length > 0 && (
@@ -193,7 +193,7 @@ export function ModalAlpha({ onClose, modo = "ordine" }) {
                   </span>
                 )}
                 {prodottoOrdine.pz_confezione > 0 && (
-                  <span style={{ fontSize: 12, color: "#6b7280" }}>{prodottoOrdine.pz_confezione} pz/conf</span>
+                  <span style={{ fontSize: 12, color: "#6b7669" }}>{prodottoOrdine.pz_confezione} pz/conf</span>
                 )}
               </div>
               {prodottoOrdine.allergeni?.length > 0 && (
@@ -203,29 +203,29 @@ export function ModalAlpha({ onClose, modo = "ordine" }) {
               )}
             </div>
             <div style={{ marginBottom: 16 }}>
-              <label style={{ fontSize: 13, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>
+              <label style={{ fontSize: 13, fontWeight: 600, color: "#495247", display: "block", marginBottom: 6 }}>
                 {isBanco ? "Pezzi da mandare al banco:" : "Cartoni da ordinare:"}
               </label>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <button onClick={() => setCartoniOrdine(Math.max(1, cartoniOrdine - 1))}
-                  style={{ width: 44, height: 44, borderRadius: 12, border: "2px solid #e5e7eb", background: "#f9fafb", fontSize: 22, cursor: "pointer" }}>−</button>
+                  style={{ width: 44, height: 44, borderRadius: 12, border: "2px solid #e6e0d4", background: "#faf7f0", fontSize: 22, cursor: "pointer" }}>−</button>
                 <input type="number" min={1} value={cartoniOrdine}
                   onChange={e => setCartoniOrdine(Math.max(1, parseInt(e.target.value) || 1))}
-                  style={{ flex: 1, textAlign: "center", fontSize: 28, fontWeight: 800, border: "2px solid #d1d5db", borderRadius: 12, padding: "6px 0", outline: "none" }} />
+                  style={{ flex: 1, textAlign: "center", fontSize: 28, fontWeight: 800, border: "2px solid #c7cfc2", borderRadius: 12, padding: "6px 0", outline: "none" }} />
                 <button onClick={() => setCartoniOrdine(cartoniOrdine + 1)}
-                  style={{ width: 44, height: 44, borderRadius: 12, border: "2px solid #e5e7eb", background: "#f9fafb", fontSize: 22, cursor: "pointer" }}>+</button>
+                  style={{ width: 44, height: 44, borderRadius: 12, border: "2px solid #e6e0d4", background: "#faf7f0", fontSize: 22, cursor: "pointer" }}>+</button>
               </div>
             </div>
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={() => { setProdottoOrdine(null); setCartoniOrdine(1); }}
                 style={{
-                  flex: 1, padding: "14px", borderRadius: 12, border: "2px solid #e5e7eb",
-                  background: "#f9fafb", fontSize: 14, fontWeight: 600, cursor: "pointer", color: "#6b7280"
+                  flex: 1, padding: "14px", borderRadius: 12, border: "2px solid #e6e0d4",
+                  background: "#faf7f0", fontSize: 14, fontWeight: 600, cursor: "pointer", color: "#6b7669"
                 }}>Annulla</button>
               <button onClick={isBanco ? mandaAlBanco : aggiungiAOrdine} disabled={saving}
                 style={{
                   flex: 2, padding: "14px", borderRadius: 12, border: "none",
-                  background: saving ? "#9ca3af" : "linear-gradient(135deg, var(--success-text), var(--success-dark))",
+                  background: saving ? "#9aa593" : "linear-gradient(135deg, var(--success-text), var(--success-dark))",
                   color: "#fff", fontSize: 14, fontWeight: 800, cursor: saving ? "default" : "pointer"
                 }}>
                 {saving

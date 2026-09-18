@@ -9,7 +9,7 @@
    Font: Plus Jakarta Sans (stesso dell'app mobile)
    ════════════════════════════════════════════════════ */
 
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
 /* ── VARIABILI — copiate 1:1 dall'app mobile ─────── */
 :root {
@@ -58,9 +58,11 @@
   --shadow-lg:     0 8px 32px rgba(63,90,78,.14);
   --shadow-btn:    0 4px 12px rgba(91,122,107,.22);
 
-  /* Tipografia: Fraunces per titoli, Plus Jakarta per testo */
-  --font:       'Plus Jakarta Sans', -apple-system, system-ui, sans-serif;
-  --font-serif: 'Fraunces', Georgia, 'Times New Roman', serif;
+  /* Tipografia: una sola famiglia, i titoli si distinguono dal peso */
+  /* Font unico del gruppo Ceraldi: una sola famiglia per tutte e quattro le app.
+     --font-serif resta come alias di --font per i fogli che lo citano ancora. */
+  --font:       'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-serif: var(--font);
 
   /* Geometria */
   --r:    12px;
@@ -126,13 +128,13 @@ button, input, select, textarea {
 ::-webkit-scrollbar-thumb { background: #c7cfc2; border-radius: 99px; }
 ::-webkit-scrollbar-thumb:hover { background: #9aa593; }
 
-/* ── TITOLI: Fraunces serif con carattere ─────────── */
+/* ── TITOLI: stessa famiglia del testo, distinti dal peso ── */
 h1, h2, h3, .g-title, .g-page-title, .g-card-title, .g-stat-value {
-  font-family: var(--font-serif);
-  letter-spacing: -0.01em;
-  font-weight: 600;
+  font-family: var(--font);
+  letter-spacing: -0.02em;
+  font-weight: 700;
 }
-h1, .g-page-title { font-weight: 600; }
+h1, .g-page-title { font-weight: 800; }
 
 /* ── MOBILE-FIRST: contenuto centrato sullo schermo del telefono ─── */
 .g-container, .g-page, .g-content, .haccp-content, main {
@@ -207,25 +209,25 @@ h1, .g-page-title { font-weight: 600; }
   .g-btn-primary:hover:not(:disabled) { opacity: .9; }
 
   .g-btn-ghost {
-    background: #F1F5F9;
+    background: var(--bg);
     color: var(--text);
   }
-  .g-btn-ghost:hover:not(:disabled) { background: #E8EDF5; }
+  .g-btn-ghost:hover:not(:disabled) { background: var(--border-subtle); }
 
   .g-btn-success {
     background: var(--success);
     color: #fff;
-    box-shadow: 0 4px 12px rgba(0,184,132,.28);
+    box-shadow: 0 4px 12px rgba(61,129,104,.28);
   }
   .g-btn-warning {
     background: var(--warning);
     color: #fff;
-    box-shadow: 0 4px 12px rgba(255,152,0,.28);
+    box-shadow: 0 4px 12px rgba(196,137,74,.28);
   }
   .g-btn-danger {
     background: var(--danger);
     color: #fff;
-    box-shadow: 0 4px 12px rgba(244,67,54,.28);
+    box-shadow: 0 4px 12px rgba(211,95,78,.28);
   }
   .g-btn-soft {
     background: var(--primary-soft);
@@ -281,7 +283,7 @@ h1, .g-page-title { font-weight: 600; }
     transition: border-color .15s;
     min-height: var(--tap);
     appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2394A3B8' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%239aa593' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 14px center;
     padding-right: 38px;
@@ -338,7 +340,7 @@ h1, .g-page-title { font-weight: 600; }
     vertical-align: middle;
   }
   .g-table tbody tr { transition: background .1s; cursor: pointer; }
-  .g-table tbody tr:hover td { background: #F8F7FF; }
+  .g-table tbody tr:hover td { background: var(--bg); }
   .g-table tbody tr:active td { background: var(--primary-soft); }
   .g-table tbody tr:last-child td { border-bottom: none; }
 
@@ -354,12 +356,12 @@ h1, .g-page-title { font-weight: 600; }
     letter-spacing: .04em;
     white-space: nowrap;
   }
-  .g-badge-success { background: var(--success-soft); color: #006B4F; }
-  .g-badge-warning { background: var(--warning-soft); color: #8B4900; }
-  .g-badge-danger  { background: var(--danger-soft);  color: #8B1A12; }
+  .g-badge-success { background: var(--success-soft); color: var(--success-text); }
+  .g-badge-warning { background: var(--warning-soft); color: var(--warning-text); }
+  .g-badge-danger  { background: var(--danger-soft);  color: var(--danger-text); }
   .g-badge-info    { background: var(--info-soft);    color: var(--info-text); }
   .g-badge-primary { background: var(--primary-soft); color: var(--primary); }
-  .g-badge-neutral { background: #E2E8F0;             color: #475569; }
+  .g-badge-neutral { background: #f3ead9;             color: #56442d; }
 
   /* ── STAT — identici a .stat dell'app mobile ── */
   .g-stat {
@@ -391,17 +393,17 @@ h1, .g-page-title { font-weight: 600; }
   .g-stat-primary .g-stat-sub  { color: rgba(255,255,255,.85); }
   .g-stat-primary .g-stat-value { color: #fff; }
 
-  .g-stat-success { background: linear-gradient(135deg,#00B884 0%,#00D69A 100%); color: #fff; }
+  .g-stat-success { background: linear-gradient(135deg,var(--success-dark) 0%,var(--success) 100%); color: #fff; }
   .g-stat-success .g-stat-label,
   .g-stat-success .g-stat-sub  { color: rgba(255,255,255,.85); }
   .g-stat-success .g-stat-value { color: #fff; }
 
-  .g-stat-danger  { background: linear-gradient(135deg,#F44336 0%,#FF5E50 100%); color: #fff; }
+  .g-stat-danger  { background: linear-gradient(135deg,var(--danger-dark) 0%,var(--danger) 100%); color: #fff; }
   .g-stat-danger .g-stat-label,
   .g-stat-danger .g-stat-sub   { color: rgba(255,255,255,.85); }
   .g-stat-danger .g-stat-value  { color: #fff; }
 
-  .g-stat-warning { background: linear-gradient(135deg,#FF9800 0%,#FFB74D 100%); color: #fff; }
+  .g-stat-warning { background: linear-gradient(135deg,var(--warning-dark) 0%,var(--warning) 100%); color: #fff; }
   .g-stat-warning .g-stat-label,
   .g-stat-warning .g-stat-sub  { color: rgba(255,255,255,.85); }
   .g-stat-warning .g-stat-value { color: #fff; }
@@ -416,9 +418,9 @@ h1, .g-page-title { font-weight: 600; }
     align-items: flex-start;
     font-weight: 500;
   }
-  .g-alert-success { background: var(--success-soft); color: #006B4F; }
-  .g-alert-warning { background: var(--warning-soft); color: #8B4900; }
-  .g-alert-danger  { background: var(--danger-soft);  color: #8B1A12; }
+  .g-alert-success { background: var(--success-soft); color: var(--success-text); }
+  .g-alert-warning { background: var(--warning-soft); color: var(--warning-text); }
+  .g-alert-danger  { background: var(--danger-soft);  color: var(--danger-text); }
   .g-alert-info    { background: var(--info-soft);    color: var(--info-text); }
   .g-alert-primary { background: var(--primary-soft); color: var(--primary); }
 
@@ -566,7 +568,7 @@ h1, .g-page-title { font-weight: 600; }
   }
   .g-sheet-handle {
     width: 40px; height: 4px;
-    background: #CBD5E1;
+    background: var(--border);
     border-radius: 4px;
     margin: 4px auto 14px;
   }
@@ -650,7 +652,7 @@ h1, .g-page-title { font-weight: 600; }
 
   /* ── SKELETON ── */
   .g-skeleton {
-    background: linear-gradient(90deg,#EDF2F7 25%,#F7FAFC 50%,#EDF2F7 75%);
+    background: linear-gradient(90deg,#f0ebe0 25%,#F7FAFC 50%,#f0ebe0 75%);
     background-size: 200% 100%;
     animation: g-shimmer 1.4s ease-in-out infinite;
     border-radius: 8px;

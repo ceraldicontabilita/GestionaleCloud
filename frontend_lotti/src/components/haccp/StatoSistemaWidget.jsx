@@ -7,7 +7,7 @@ import {
 import { API } from "../../utils/constants";
 
 const SAGE = "#5b7a6b";
-const NAVY = "#3f5a4e";
+const SALVIA = "#3f5a4e";
 const CARD = "#fffefb";
 const LINE = "#e6e0d4";
 
@@ -85,7 +85,7 @@ export default function StatoSistemaWidget() {
     <div style={{ background: CARD, border: `1px solid ${LINE}`, borderRadius: 16, padding: 18, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
         <Activity size={18} color={SAGE} />
-        <span style={{ fontSize: 16, fontWeight: 600, color: NAVY, fontFamily: "'Fraunces', Georgia, serif", flex: 1 }}>
+        <span style={{ fontSize: 16, fontWeight: 600, color: SALVIA, fontFamily: "\'Plus Jakarta Sans\', -apple-system, BlinkMacSystemFont, \'Segoe UI\', system-ui, sans-serif", flex: 1 }}>
           Stato sistema
         </span>
         {dati && (
@@ -110,7 +110,7 @@ export default function StatoSistemaWidget() {
                 onMouseEnter={(e) => { if (_AZIONE_JOB[j.label]) e.currentTarget.style.background = "#f0ebe0"; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = "#faf7f0"; }}>
                 {(() => { const Icona = _ICONA_JOB[j.label] || Activity; return <Icona size={18} color={SAGE} />; })()}
-                <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: NAVY }}>{j.label}</span>
+                <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: SALVIA }}>{j.label}</span>
                 <span style={{ fontSize: 11, color: "#9aa593" }}>{tempoFa(j.ultima_esecuzione)}</span>
                 {j.ok ? (
                   <CheckCircle2 size={17} color="#3d8168" />

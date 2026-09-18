@@ -66,16 +66,16 @@ export default function Breadcrumb() {
         alignItems: "center",
         gap: 4,
         padding: "5px 16px",
-        background: "#f8fafc",
-        borderBottom: "1px solid #e2e8f0",
+        background: "#faf7f0",
+        borderBottom: "1px solid #e6e0d4",
         fontSize: 12,
-        color: "#64748b",
+        color: "#6b7669",
         overflowX: "auto",
         whiteSpace: "nowrap",
         flexShrink: 0,
       }}
     >
-      <Home size={12} style={{ flexShrink: 0, color: "#94a3b8" }} />
+      <Home size={12} style={{ flexShrink: 0, color: "#9aa593" }} />
       {segs.map((seg, i) => {
         const label = slugToLabel(seg);
         const isLast = i === segs.length - 1;
@@ -83,9 +83,9 @@ export default function Breadcrumb() {
         const path = "#" + segs.slice(0, i + 1).join("/");
         return (
           <span key={i} style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <ChevronRight size={11} style={{ color: "#cbd5e1", flexShrink: 0 }} />
+            <ChevronRight size={11} style={{ color: "#e6e0d4", flexShrink: 0 }} />
             {isLast ? (
-              <span style={{ fontWeight: 700, color: "#1e293b" }}>{label}</span>
+              <span style={{ fontWeight: 700, color: "#3f5a4e" }}>{label}</span>
             ) : (
               <a
                 href={path}
