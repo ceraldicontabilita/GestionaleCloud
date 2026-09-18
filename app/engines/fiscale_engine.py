@@ -20,7 +20,7 @@ d'imposta"). I valori base sono quelli nazionali; l'eventuale maggiorazione
 regionale IRAP è un parametro esplicito (mai deciso in automatico: regola
 parametri dell'utente — proporre, non scegliere).
 """
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 # ── Aliquote versionate per periodo d'imposta ──────────────────────────────
 # {anno_da: aliquota} — si applica l'aliquota dell'anno più recente ≤ anno.
