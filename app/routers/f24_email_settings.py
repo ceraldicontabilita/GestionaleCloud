@@ -3,8 +3,8 @@ Router Impostazioni Email F24
 Gestisce la configurazione dei mittenti e parole chiave per il download automatico F24
 """
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, EmailStr
-from typing import Dict, Any, List, Optional
+from pydantic import BaseModel
+from typing import Dict, Any, List
 from datetime import datetime, timezone
 from app.database import Database
 from app.services.f24_payment_evidence import stato_evidenza_pagamento

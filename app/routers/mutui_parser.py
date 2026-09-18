@@ -11,11 +11,9 @@ import pdfplumber
 from datetime import datetime, timezone
 from typing import List, Dict, Optional
 from fastapi import APIRouter, HTTPException, UploadFile, File
-from fastapi.responses import JSONResponse
 import tempfile
 import os
 import logging
-import uuid
 
 from app.database import Database
 from app.utils.upload_validation import verifica_pdf_reale

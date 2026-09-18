@@ -3,7 +3,7 @@ Router Fornitori Learning - Gestione associazioni fornitore-keywords
 Permette di memorizzare e apprendere le categorie dei fornitori
 """
 from fastapi import APIRouter, HTTPException, Body
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 from pydantic import BaseModel, Field
 import logging

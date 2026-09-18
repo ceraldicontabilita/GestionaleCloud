@@ -35,11 +35,10 @@ from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 from decimal import Decimal, ROUND_HALF_UP
 
-from fastapi import APIRouter, HTTPException, Query, Body
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
 
 from app.database import Database
-from app.services.scritture_contabili import scrivi_movimento
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -459,7 +458,7 @@ def genera_scadenze_anno(anno: int) -> List[Dict]:
     scadenze.append({
         "id": f"cu_consegna_{anno-1}",
         "tipo": "CU",
-        "descrizione": f"Consegna CU ai percipienti",
+        "descrizione": "Consegna CU ai percipienti",
         "data": f"{anno}-03-16",
         "categoria": "adempimento"
     })

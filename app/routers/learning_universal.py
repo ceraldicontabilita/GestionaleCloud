@@ -11,7 +11,7 @@ Apprende pattern da tutti i dati dell'applicazione:
 
 from fastapi import APIRouter, HTTPException, Depends
 from typing import Optional, List, Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime
 from collections import defaultdict
 import logging
 import math

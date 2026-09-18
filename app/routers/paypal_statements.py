@@ -14,7 +14,6 @@ from app.database import Database
 from app.db_collections import (
     COLL_ESTRATTO_CONTO,
     COLL_INVOICES,
-    COLL_FORNITORI,
     COLL_EMPLOYEES
 )
 from app.services.paypal_invoice_matching import evaluate_paypal_invoice_match

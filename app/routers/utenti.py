@@ -6,7 +6,7 @@ lettura, ciascuno con un PIN personale. Endpoint tutti riservati all'admin
 (dependency richiedi_admin). Il login vero e proprio avviene su /api/pin-login.
 """
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Body
 

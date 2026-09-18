@@ -9,7 +9,7 @@ Router per Verbali Noleggio - Endpoint dettaglio e gestione completa.
 # cronologia git. upload-quietanza NON rimosso: caso incerto, lasciato montato
 # per prudenza su decisione utente.
 from fastapi import APIRouter, HTTPException, Body
-from typing import Dict, Any, List
+from typing import Dict, Any
 import logging
 
 from app.database import Database

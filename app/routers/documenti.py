@@ -11,7 +11,6 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 from pathlib import Path
 import asyncio
-import os
 import re
 import base64
 import hashlib
@@ -836,7 +835,6 @@ async def lista_atti_amministrativi(
 
 
 # Store per tracciare task in background
-import asyncio
 
 # Stato dei task in memoria (in produzione usare Redis)
 _download_tasks: Dict[str, Dict] = {}

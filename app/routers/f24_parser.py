@@ -16,10 +16,9 @@ Workflow completo: parsing → f24_pagamenti → tributi_pagati → distinta_f24
 
 import hashlib
 import re
-import uuid
 import pdfplumber
-from datetime import datetime, timedelta, timezone
-from typing import List, Dict, Optional
+from datetime import datetime, timezone
+from typing import Dict, Optional
 from fastapi import APIRouter, HTTPException, UploadFile, File
 import tempfile
 import os
