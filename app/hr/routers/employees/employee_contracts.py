@@ -1,8 +1,8 @@
 """
 Employee Contracts Router - Gestione contratti dipendenti.
 """
-from fastapi import APIRouter, HTTPException, Body, UploadFile, File, Depends
-from fastapi.responses import FileResponse, Response, StreamingResponse
+from fastapi import APIRouter, HTTPException, Body, UploadFile, File
+from fastapi.responses import FileResponse, Response
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 import logging

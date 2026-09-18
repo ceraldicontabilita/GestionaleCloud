@@ -13,12 +13,11 @@ Data: 22 Gennaio 2026
 """
 
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Body
-from typing import Dict, Any, List
+from typing import Dict, Any
 from datetime import datetime, timezone
 import uuid
 import tempfile
 import os
-import base64
 import asyncio
 
 from app.hr.database import Database
