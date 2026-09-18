@@ -216,7 +216,6 @@ async def _paga_fattura_manuale_legacy(payload: Dict[str, Any] = Body(...)) -> D
 from app.services.invoice_payments import (
     InvoiceBankReconciliationRequest,
     ManualInvoicePaymentRequest,
-    ManualInvoicePaymentResponse,
     register_manual_invoice_payment,
 )
 
