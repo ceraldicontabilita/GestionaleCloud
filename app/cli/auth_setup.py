@@ -16,7 +16,6 @@ import asyncio
 import sys
 import getpass
 from datetime import datetime, timezone
-from typing import Optional
 
 import bcrypt
 
@@ -77,12 +76,12 @@ async def _crea_primo_admin(db) -> None:
         "updated_at": datetime.now(timezone.utc),
     }
     result = await db[Collections.USERS].insert_one(doc)
-    print(f"\n✅ Admin creato con successo")
+    print("\n✅ Admin creato con successo")
     print(f"   Email: {email}")
     print(f"   Nome: {nome or '(nessuno)'}")
-    print(f"   Ruolo: admin")
+    print("   Ruolo: admin")
     print(f"   _id Drive/Sheets: {result.inserted_id}")
-    print(f"\nOra puoi loggarti da /login con queste credenziali.")
+    print("\nOra puoi loggarti da /login con queste credenziali.")
 
 
 async def _gestione_utenti_esistenti(db) -> None:
@@ -140,7 +139,7 @@ async def _reset_password(db, utenti) -> None:
     if result.modified_count:
         print(f"✅ Password aggiornata per {email}")
     else:
-        print(f"⚠️  Nessuna modifica effettuata.")
+        print("⚠️  Nessuna modifica effettuata.")
 
 
 async def _crea_utente_aggiuntivo(db) -> None:
