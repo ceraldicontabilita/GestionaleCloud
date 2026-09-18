@@ -15,7 +15,7 @@ Flusso:
 7. Ogni match confermato aggiorna fattura/F24/stipendio collegato
 """
 import logging
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 

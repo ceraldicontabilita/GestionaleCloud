@@ -10,7 +10,6 @@ Copre le specifiche di Documenti__Inbox.txt:
 - Audit trail di ogni documento acquisito
 """
 import logging
-import hashlib
 from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
