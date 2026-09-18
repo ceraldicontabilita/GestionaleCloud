@@ -417,7 +417,6 @@ class Settings(BaseSettings):
         fallisce l'avvio se mancano SECRET_KEY o la configurazione Drive/Sheets.
         """
         import logging
-        import os
         logger = logging.getLogger(__name__)
 
         fail_fast = self.is_production and os.getenv("FAIL_FAST_SECRETS", "").lower() in ("true", "1", "yes")
