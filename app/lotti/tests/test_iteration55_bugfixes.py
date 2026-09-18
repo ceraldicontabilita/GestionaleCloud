@@ -71,7 +71,7 @@ class TestAnomalieEndpoints:
         for field in required_fields:
             assert field in anomalia, f"anomalia missing field: {field}"
         TestAnomalieEndpoints.created_ids.append(anomalia["id"])
-        print(f"PASS: All required fields present in anomalia response")
+        print("PASS: All required fields present in anomalia response")
 
     def test_post_anomalie_root_still_works(self, session):
         """POST /api/anomalie/ - original route must still return 200"""
@@ -81,7 +81,7 @@ class TestAnomalieEndpoints:
         assert data.get("success") == True
         anomalia = data.get("anomalia", {})
         TestAnomalieEndpoints.created_ids.append(anomalia.get("id", ""))
-        print(f"PASS: POST /api/anomalie/ returned 200")
+        print("PASS: POST /api/anomalie/ returned 200")
 
     def test_get_anomalie_lista_returns_200(self, session):
         """GET /api/anomalie/lista - returns list"""
@@ -105,7 +105,7 @@ class TestAnomalieEndpoints:
         data = resp.json()
         ids = [a.get("id") for a in data]
         assert created_id in ids, f"Created anomalia {created_id} not found in lista"
-        print(f"PASS: Created anomalia found in lista")
+        print("PASS: Created anomalia found in lista")
 
     def test_anomalie_lista_filter_by_stato(self, session):
         """GET /api/anomalie/lista?stato=Aperta - filter works"""
@@ -140,7 +140,7 @@ class TestSupervisorStato:
         """GET /api/supervisor/stato - returns 200"""
         resp = session.get(f"{BASE_URL}/api/supervisor/stato")
         assert resp.status_code == 200, f"Expected 200 got {resp.status_code}: {resp.text[:300]}"
-        print(f"PASS: GET /api/supervisor/stato returned 200")
+        print("PASS: GET /api/supervisor/stato returned 200")
 
     def test_supervisor_stato_structure(self, session):
         """GET /api/supervisor/stato - response has required fields"""
@@ -223,8 +223,8 @@ class TestPECImport:
             json={"force_reimport": True, "only_unread": False}
         )
         # Should NOT be 404 (endpoint missing) or 405 (method not allowed)
-        assert resp.status_code != 404, f"Endpoint /api/pec/import not found (404)"
-        assert resp.status_code != 405, f"Method not allowed on /api/pec/import (405)"
+        assert resp.status_code != 404, "Endpoint /api/pec/import not found (404)"
+        assert resp.status_code != 405, "Method not allowed on /api/pec/import (405)"
         # 200 or 500 (no PEC creds) are both acceptable
         print(f"PASS: POST /api/pec/import responded {resp.status_code} (endpoint exists)")
 

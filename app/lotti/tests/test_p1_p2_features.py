@@ -20,7 +20,7 @@ class TestRicettePrezzi:
         """Verify ricette-prezzi endpoint returns 200"""
         response = requests.get(f"{BASE_URL}/api/ricette-prezzi")
         assert response.status_code == 200, f"Expected 200, got {response.status_code}"
-        print(f"✓ GET /api/ricette-prezzi returned 200")
+        print("✓ GET /api/ricette-prezzi returned 200")
     
     def test_ricette_prezzi_returns_list(self):
         """Verify ricette-prezzi returns a list of recipes with pricing data"""
@@ -56,7 +56,7 @@ class TestLotti:
         """Verify lotti endpoint returns 200"""
         response = requests.get(f"{BASE_URL}/api/lotti")
         assert response.status_code == 200, f"Expected 200, got {response.status_code}"
-        print(f"✓ GET /api/lotti returned 200")
+        print("✓ GET /api/lotti returned 200")
     
     def test_lotti_returns_list(self):
         """Verify lotti returns a list"""
@@ -109,7 +109,7 @@ class TestLottiRecall:
         """Verify recall endpoint returns 200"""
         response = requests.get(f"{BASE_URL}/api/lotti/recall/cerca", params={"ingrediente": "farina"})
         assert response.status_code == 200, f"Expected 200, got {response.status_code}"
-        print(f"✓ GET /api/lotti/recall/cerca returned 200")
+        print("✓ GET /api/lotti/recall/cerca returned 200")
     
     def test_recall_returns_structure(self):
         """Verify recall returns proper structure"""
@@ -121,7 +121,7 @@ class TestLottiRecall:
         assert "totale_lotti" in data, "Missing totale_lotti"
         assert "lotti" in data, "Missing lotti"
         
-        print(f"✓ Recall structure verified")
+        print("✓ Recall structure verified")
         print(f"  - ingrediente_cercato: {data.get('ingrediente_cercato')}")
         print(f"  - totale_lotti: {data.get('totale_lotti')}")
     
@@ -140,7 +140,7 @@ class TestReportHACCP:
         """Verify report HACCP endpoint returns 200"""
         response = requests.get(f"{BASE_URL}/api/report-haccp/mensile", params={"anno": 2025, "mese": 1})
         assert response.status_code == 200, f"Expected 200, got {response.status_code}"
-        print(f"✓ GET /api/report-haccp/mensile returned 200")
+        print("✓ GET /api/report-haccp/mensile returned 200")
     
     def test_report_haccp_returns_html(self):
         """Verify report returns HTML content"""
@@ -148,7 +148,7 @@ class TestReportHACCP:
         assert response.status_code == 200
         content_type = response.headers.get('content-type', '')
         assert 'text/html' in content_type, f"Expected text/html, got {content_type}"
-        print(f"✓ Report returns HTML content")
+        print("✓ Report returns HTML content")
     
     def test_report_haccp_contains_data(self):
         """Verify report HTML contains expected sections"""
@@ -161,7 +161,7 @@ class TestReportHACCP:
         assert "Temperature Positive" in html or "Monitoraggio Temperature" in html, "Missing temperature section"
         assert "Sanificazione" in html or "Piano di Sanificazione" in html, "Missing sanificazione section"
         
-        print(f"✓ Report HTML contains expected sections")
+        print("✓ Report HTML contains expected sections")
         print(f"  - HTML length: {len(html)} chars")
 
 
@@ -172,7 +172,7 @@ class TestStoricoProduzioni:
         """Verify produzioni endpoint returns 200"""
         response = requests.get(f"{BASE_URL}/api/produzioni/")
         assert response.status_code == 200, f"Expected 200, got {response.status_code}"
-        print(f"✓ GET /api/produzioni/ returned 200")
+        print("✓ GET /api/produzioni/ returned 200")
     
     def test_produzioni_returns_list(self):
         """Verify produzioni returns a list"""
@@ -193,7 +193,7 @@ class TestStoricoProduzioni:
             required_fields = ['id', 'ricetta_nome', 'pezzi', 'data']
             for field in required_fields:
                 assert field in prod, f"Missing field: {field}"
-            print(f"✓ Produzione structure verified")
+            print("✓ Produzione structure verified")
             print(f"  - ricetta_nome: {prod.get('ricetta_nome', 'N/A')}")
             print(f"  - pezzi: {prod.get('pezzi', 0)}")
             print(f"  - costo_totale: €{prod.get('costo_totale', 0):.2f}")
@@ -216,7 +216,7 @@ class TestBackup:
         """Verify backup lista endpoint returns 200"""
         response = requests.get(f"{BASE_URL}/api/backup/lista")
         assert response.status_code == 200, f"Expected 200, got {response.status_code}"
-        print(f"✓ GET /api/backup/lista returned 200")
+        print("✓ GET /api/backup/lista returned 200")
     
     def test_backup_lista_structure(self):
         """Verify backup lista returns proper structure"""
@@ -227,7 +227,7 @@ class TestBackup:
         assert "backup" in data, "Missing backup field"
         assert "totale" in data, "Missing totale field"
         
-        print(f"✓ Backup lista structure verified")
+        print("✓ Backup lista structure verified")
         print(f"  - totale: {data.get('totale', 0)} backup disponibili")
         
         if data.get('backup') and len(data['backup']) > 0:
@@ -250,7 +250,7 @@ class TestRicette:
         """Verify ricette endpoint returns 200"""
         response = requests.get(f"{BASE_URL}/api/ricette")
         assert response.status_code == 200, f"Expected 200, got {response.status_code}"
-        print(f"✓ GET /api/ricette returned 200")
+        print("✓ GET /api/ricette returned 200")
     
     def test_ricette_count_expected(self):
         """Verify ricette count is approximately 85 as expected"""

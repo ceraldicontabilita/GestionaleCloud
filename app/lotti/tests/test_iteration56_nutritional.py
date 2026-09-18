@@ -5,7 +5,6 @@ Tests: POST /api/food-cost/calcola-nutrizionale/{ricetta_id}
        Regression: POST /api/anomalie/registra
        Regression: GET /api/supervisor/stato
 """
-import pytest
 import requests
 import os
 

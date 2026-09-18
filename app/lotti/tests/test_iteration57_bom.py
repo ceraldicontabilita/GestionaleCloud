@@ -7,7 +7,6 @@ Tests:
   POST /api/registra-produzione-lotto with lotti_componenti_json param
   Regression: previous features still working
 """
-import pytest
 import requests
 import os
 import json

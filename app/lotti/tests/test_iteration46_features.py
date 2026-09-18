@@ -157,7 +157,7 @@ class TestSupervisorStato:
         if "T1" not in alert_ids and "T2" not in alert_ids:
             print("  PASS: T1/T2 temperature alerts not present (auto-generated)")
         else:
-            print(f"  INFO: T1/T2 alerts present - may need manual check")
+            print("  INFO: T1/T2 alerts present - may need manual check")
 
 
 class TestRegistroAllergeni:

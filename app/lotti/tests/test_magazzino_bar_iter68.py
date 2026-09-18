@@ -5,7 +5,6 @@ Tests: GET prodotti, GET filtri, POST carico, POST scarico, GET movimenti/oggi
 import pytest
 import requests
 import os
-import time
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
 _PIN_OP1 = os.environ.get("TEST_PIN_OP1", "0000")  # PIN da env, mai in chiaro
@@ -225,7 +224,7 @@ class TestMagazzinoBarCaricoScarico:
             "operatore_nome": "TEST",
         })
         assert r.status_code == 404, f"Expected 404, got {r.status_code}"
-        print(f"PASS: Carico prodotto inesistente → 404")
+        print("PASS: Carico prodotto inesistente → 404")
 
 
 class TestMagazzinoBarMovimenti:

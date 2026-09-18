@@ -57,7 +57,7 @@ class TestLottiFields:
             # stato should be a string (typically 'attivo')
             assert isinstance(stato, str), f"Lotto {lotto.get('id')} stato is not string: {stato}"
         
-        print(f"PASS: All lotti have valid stato values")
+        print("PASS: All lotti have valid stato values")
 
 
 class TestProduzioniMoltiplicatore:
@@ -126,7 +126,7 @@ class TestLottiFornitoiLimit:
         assert isinstance(lotti, list), "Response should be a list"
         assert len(lotti) == 5, f"Expected exactly 5 records, got {len(lotti)}"
         
-        print(f"PASS: GET /api/lotti-fornitori?limit=5 returns exactly 5 records")
+        print("PASS: GET /api/lotti-fornitori?limit=5 returns exactly 5 records")
 
     def test_lotti_fornitori_limit_10(self):
         """GET /api/lotti-fornitori?limit=10 should return exactly 10 records"""
@@ -137,7 +137,7 @@ class TestLottiFornitoiLimit:
         assert isinstance(lotti, list), "Response should be a list"
         assert len(lotti) == 10, f"Expected exactly 10 records, got {len(lotti)}"
         
-        print(f"PASS: GET /api/lotti-fornitori?limit=10 returns exactly 10 records")
+        print("PASS: GET /api/lotti-fornitori?limit=10 returns exactly 10 records")
 
 
 if __name__ == "__main__":
