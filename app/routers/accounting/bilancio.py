@@ -55,7 +55,7 @@ from io import BytesIO
 import logging
 
 from app.models.stati import STATI_PAGATI
-from app.routers.prima_nota_module.common import CATEGORIE_ESCLUSE, filtro_saldo_prima_nota
+from app.routers.prima_nota_module.common import filtro_saldo_prima_nota
 from app.utils.error_handler import handle_errors
 
 # Esclude movimenti soft-deleted (status deleted/archived) e i duplicati POS
