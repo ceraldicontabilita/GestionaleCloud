@@ -10,7 +10,7 @@ export default function SelettorePosizione({
   return (
     <>
 <div style={{ marginBottom: 8 }}>
-  <span style={{ fontSize: 11, fontWeight: 700, color: "#374151", display: "block", marginBottom: 4 }}>Destinazione</span>
+  <span style={{ fontSize: 11, fontWeight: 700, color: "#495247", display: "block", marginBottom: 4 }}>Destinazione</span>
   <div style={{ display: "grid", gridTemplateColumns: reparto === "bar" ? "1fr 1fr" : "1fr 1fr 1fr", gap: 5 }}>
     {[
       { id: "frigo",       emoji: "🧊", label: "Frigo",       color: "var(--info)" },
@@ -27,7 +27,7 @@ export default function SelettorePosizione({
           textAlign: "center"
         }}>
         <span style={{ fontSize: 14 }}>{opt.emoji}</span>
-        <div style={{ fontSize: 10, fontWeight: 800, color: destinazione === opt.id ? opt.color : "#374151", marginTop: 1 }}>
+        <div style={{ fontSize: 10, fontWeight: 800, color: destinazione === opt.id ? opt.color : "#495247", marginTop: 1 }}>
           {opt.label}
         </div>
       </button>

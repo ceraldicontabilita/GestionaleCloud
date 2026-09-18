@@ -15,14 +15,14 @@ const API = process.env.REACT_APP_LOTTI_BACKEND_URL + "/api";
 const CAT_COLORS = {
   ACQUA:"#a8854f",BIBITE:"#a8854f",BIRRE:"var(--warning-dark)",VINO:"#8f3829",PROSECCO:"#ec4899",
   LIQUORI:"var(--danger-dark)",AMARI:"var(--warning-text)",SCIROPPI:"var(--success-dark)",SUCCHI:"var(--warning)",
-  DOLCIFICANTI:"#6b7280",CAFFE:"#78350f",FARINE:"#ca8a04",LATTICINI:"#c9a877",
+  DOLCIFICANTI:"#6b7669",CAFFE:"#78350f",FARINE:"#ca8a04",LATTICINI:"#c9a877",
   UOVA:"#ea580c",GRASSI:"#65a30d",ZUCCHERI:"#b8960c",CREME:"#f43f5e",
   CIOCCOLATO:"var(--warning-text)",LIEVITI:"#84cc16",FRUTTA_SECCA:"#f97316",
-  MONOUSO:"#94a3b8",IMBALLAGGI:"#64748b",PULIZIA:"#57534e",ATTREZZATURE:"#334155",
-  ALTRO:"#9ca3af",
+  MONOUSO:"#9aa593",IMBALLAGGI:"#6b7669",PULIZIA:"#57534e",ATTREZZATURE:"#56442d",
+  ALTRO:"#9aa593",
 };
 const fmtP   = (v) => v != null ? `€ ${Number(v).toFixed(2)}` : "—";
-const catClr = (c) => CAT_COLORS[c] || "#9ca3af";
+const catClr = (c) => CAT_COLORS[c] || "#9aa593";
 
 // ── VIEWS ─────────────────────────────────────────────────────────────────────
 // Due sole viste (unificazione 02/07/2026): "Genera listino" (la funzione
@@ -74,7 +74,7 @@ function ModalProdotto({ prodotto, fornitori, onClose, onSaved }) {
   return (
     <div style={overlay}>
       <div style={{...box, maxWidth:500}}>
-        <h3 style={{margin:"0 0 18px",fontSize:17,fontWeight:800,color:"#1e293b"}}>
+        <h3 style={{margin:"0 0 18px",fontSize:17,fontWeight:800,color:"#3f5a4e"}}>
           {isEdit?"Modifica prodotto":"Nuovo prodotto"}
         </h3>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
@@ -135,7 +135,7 @@ function CardProdotto({prod, fornitori, onEdit, onDelete, onToggleFav}) {
   return (
     <div data-testid={`card-listino-${prod.id}`} style={{
       background:"#fff", borderRadius:14, padding:"14px 16px",
-      border:"1.5px solid #e5e7eb",
+      border:"1.5px solid #e6e0d4",
       display:"flex", flexDirection:"column", gap:10,
     }}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
@@ -158,16 +158,16 @@ function CardProdotto({prod, fornitori, onEdit, onDelete, onToggleFav}) {
               }}>Δ{delta}%</span>
             )}
           </div>
-          <p style={{margin:0,fontSize:13,fontWeight:700,color:"#1e293b",lineHeight:1.35}}>{prod.nome}</p>
-          <p style={{margin:"2px 0 0",fontSize:11,color:"#94a3b8"}}>{prod.conf}{prod.preferito?" · ⭐":""}</p>
+          <p style={{margin:0,fontSize:13,fontWeight:700,color:"#3f5a4e",lineHeight:1.35}}>{prod.nome}</p>
+          <p style={{margin:"2px 0 0",fontSize:11,color:"#9aa593"}}>{prod.conf}{prod.preferito?" · ⭐":""}</p>
         </div>
         <div style={{textAlign:"right",flexShrink:0}}>
           {best && prezzi[best]!=null ? (
             <>
               <div style={{fontSize:18,fontWeight:800,color:"var(--success-dark)"}}>{fmtP(prezzi[best])}</div>
-              <div style={{fontSize:10,color:"#6b7280"}}>{best}</div>
+              <div style={{fontSize:10,color:"#6b7669"}}>{best}</div>
             </>
-          ) : <div style={{fontSize:13,color:"#94a3b8"}}>—</div>}
+          ) : <div style={{fontSize:13,color:"#9aa593"}}>—</div>}
         </div>
       </div>
 
@@ -177,8 +177,8 @@ function CardProdotto({prod, fornitori, onEdit, onDelete, onToggleFav}) {
           {voci.map(([f,p])=>(
             <span key={f} style={{
               fontSize:10,padding:"2px 8px",borderRadius:16,
-              background: f===best?"#dcfce7":"#f1f5f9",
-              color: f===best?"var(--success-dark)":"#475569",
+              background: f===best?"#e2efe8":"#faf7f0",
+              color: f===best?"var(--success-dark)":"#6b7669",
               fontWeight: f===best?700:500,
             }}>{f}: {fmtP(p)}</span>
           ))}
@@ -217,14 +217,14 @@ function PannelloInvioListino({ fornitori, prodotti, onChiudi, onToast }) {
     } catch { onToast && onToast("Errore nel generare il PDF"); } finally { setBusy(false); }
   };
 
-  const btnTab = (on, bg) => ({ flex: 1, minWidth: 56, padding: "10px 0", borderRadius: 9, fontWeight: 800, fontSize: 13, cursor: "pointer", border: on ? "none" : "1.5px solid #e2e8f0", background: on ? bg : "#fff", color: on ? "#fff" : "#475569" });
+  const btnTab = (on, bg) => ({ flex: 1, minWidth: 56, padding: "10px 0", borderRadius: 9, fontWeight: 800, fontSize: 13, cursor: "pointer", border: on ? "none" : "1.5px solid #e6e0d4", background: on ? bg : "#fff", color: on ? "#fff" : "#6b7669" });
 
   return (
     <div style={overlay} onClick={onChiudi}>
       <div style={{ ...box, maxWidth: 560, maxHeight: "88vh", display: "flex", flexDirection: "column", padding: 22 }} onClick={e => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "#1e293b" }}>Genera PDF del listino</h3>
-          <button onClick={onChiudi} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#94a3b8" }}>×</button>
+          <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "#3f5a4e" }}>Genera PDF del listino</h3>
+          <button onClick={onChiudi} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#9aa593" }}>×</button>
         </div>
 
         <label style={lbl}>Sconto da applicare ai prezzi</label>
@@ -250,12 +250,12 @@ function PannelloInvioListino({ fornitori, prodotti, onChiudi, onToast }) {
           <option value="best">Prezzo più basso tra tutti i fornitori</option>
           {fonti.map(f => <option key={f} value={f}>{f}</option>)}
         </select>
-        <p style={{ fontSize: 11, color: "#94a3b8", margin: "0 0 14px" }}>Il listino userà i prezzi di questo fornitore, scontati. “Prezzo più basso” usa il migliore disponibile.</p>
+        <p style={{ fontSize: 11, color: "#9aa593", margin: "0 0 14px" }}>Il listino userà i prezzi di questo fornitore, scontati. “Prezzo più basso” usa il migliore disponibile.</p>
 
         <button onClick={scarica} disabled={busy} style={{ ...btnBlue, background: "#8a6f47" }}>
           {busy ? "Genero…" : "⬇ Scarica PDF listino"}
         </button>
-        <p style={{ fontSize: 11, color: "#94a3b8", margin: "10px 0 0", textAlign: "center" }}>PDF professionale con i dati Ceraldi Group, da condividere via WhatsApp o email.</p>
+        <p style={{ fontSize: 11, color: "#9aa593", margin: "10px 0 0", textAlign: "center" }}>PDF professionale con i dati Ceraldi Group, da condividere via WhatsApp o email.</p>
       </div>
     </div>
   );
@@ -308,8 +308,8 @@ function GeneraListino({ categorie }) {
   };
 
   const segBtn = (attivo) => ({
-    padding:"8px 14px",borderRadius:8,border:attivo?"none":"1.5px solid #e2e8f0",cursor:"pointer",
-    fontWeight:700,fontSize:13,background:attivo?"var(--info)":"#fff",color:attivo?"#fff":"#64748b",
+    padding:"8px 14px",borderRadius:8,border:attivo?"none":"1.5px solid #e6e0d4",cursor:"pointer",
+    fontWeight:700,fontSize:13,background:attivo?"var(--info)":"#fff",color:attivo?"#fff":"#6b7669",
   });
 
   return (
@@ -384,28 +384,28 @@ function GeneraListino({ categorie }) {
 
       {righe && (
         righe.length===0 ? (
-          <div style={{textAlign:"center",color:"#94a3b8",paddingTop:40,fontSize:14}}>Nessun prodotto per questi criteri.</div>
+          <div style={{textAlign:"center",color:"#9aa593",paddingTop:40,fontSize:14}}>Nessun prodotto per questi criteri.</div>
         ) : (
-          <div style={{border:"1px solid #e2e8f0",borderRadius:12,overflow:"hidden"}}>
-            <div style={{display:"flex",justifyContent:"space-between",padding:"10px 14px",background:"#f8fafc",fontSize:13,fontWeight:700,color:"#475569"}}>
+          <div style={{border:"1px solid #e6e0d4",borderRadius:12,overflow:"hidden"}}>
+            <div style={{display:"flex",justifyContent:"space-between",padding:"10px 14px",background:"#faf7f0",fontSize:13,fontWeight:700,color:"#6b7669"}}>
               <span>{righe.length} prodotti</span>
               <span>{({best:"Miglior prezzo",media:"Media prezzi",ultimo:"Ultimo prezzo"})[modo]}{sconto?` · -${sconto}%`:""}</span>
             </div>
             <div style={{maxHeight:520,overflowY:"auto",overflowX:"auto"}}>
               <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-                <thead><tr style={{background:"#fff",borderBottom:"2px solid #e2e8f0"}}>
-                  <th style={{textAlign:"left",padding:"8px 12px",fontSize:11,color:"#64748b"}}>PRODOTTO</th>
-                  <th style={{textAlign:"left",padding:"8px 12px",fontSize:11,color:"#64748b"}}>FORNITORE</th>
-                  <th style={{textAlign:"center",padding:"8px 12px",fontSize:11,color:"#64748b"}}>ULT. ACQ.</th>
-                  <th style={{textAlign:"right",padding:"8px 12px",fontSize:11,color:"#64748b"}}>PREZZO</th>
+                <thead><tr style={{background:"#fff",borderBottom:"2px solid #e6e0d4"}}>
+                  <th style={{textAlign:"left",padding:"8px 12px",fontSize:11,color:"#6b7669"}}>PRODOTTO</th>
+                  <th style={{textAlign:"left",padding:"8px 12px",fontSize:11,color:"#6b7669"}}>FORNITORE</th>
+                  <th style={{textAlign:"center",padding:"8px 12px",fontSize:11,color:"#6b7669"}}>ULT. ACQ.</th>
+                  <th style={{textAlign:"right",padding:"8px 12px",fontSize:11,color:"#6b7669"}}>PREZZO</th>
                 </tr></thead>
                 <tbody>
                   {righe.map((r,i)=>(
-                    <tr key={i} style={{borderBottom:"1px solid #f1f5f9",background:i%2?"#fbfaff":"#fff"}}>
-                      <td style={{padding:"7px 12px",color:"#1e293b"}}>{r.nome}</td>
-                      <td style={{padding:"7px 12px",color:"#64748b",fontSize:12}}>{r.fornitore||"—"}</td>
-                      <td style={{padding:"7px 12px",textAlign:"center",color:"#475569",fontSize:12}}>{r.data_ultimo||"—"}</td>
-                      <td style={{padding:"7px 12px",textAlign:"right",fontWeight:700,color:"#0f172a"}}>{fmtP(r.prezzo)}</td>
+                    <tr key={i} style={{borderBottom:"1px solid #faf7f0",background:i%2?"#fffefb":"#fff"}}>
+                      <td style={{padding:"7px 12px",color:"#3f5a4e"}}>{r.nome}</td>
+                      <td style={{padding:"7px 12px",color:"#6b7669",fontSize:12}}>{r.fornitore||"—"}</td>
+                      <td style={{padding:"7px 12px",textAlign:"center",color:"#6b7669",fontSize:12}}>{r.data_ultimo||"—"}</td>
+                      <td style={{padding:"7px 12px",textAlign:"right",fontWeight:700,color:"#2a3329"}}>{fmtP(r.prezzo)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -476,8 +476,8 @@ export default function ListinoView() {
       {/* Header */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:18,flexWrap:"wrap",gap:12}}>
         <div>
-          <h2 style={{margin:0,fontSize:22,fontWeight:800,color:"#0f172a"}}>Listino Prezzi</h2>
-          <p style={{margin:"4px 0 0",fontSize:13,color:"#64748b"}}>
+          <h2 style={{margin:0,fontSize:22,fontWeight:800,color:"#2a3329"}}>Listino Prezzi</h2>
+          <p style={{margin:"4px 0 0",fontSize:13,color:"#6b7669"}}>
             {prodotti.length} prodotti · prezzi per fornitore da fatture XML
           </p>
         </div>
@@ -500,11 +500,11 @@ export default function ListinoView() {
       </div>
 
       {/* Sub-tab */}
-      <div style={{display:"flex",gap:0,marginBottom:20,borderBottom:"2px solid #e2e8f0"}}>
+      <div style={{display:"flex",gap:0,marginBottom:20,borderBottom:"2px solid #e6e0d4"}}>
         {VIEWS.map(v=>(
           <button key={v.id} onClick={()=>setView(v.id)} style={{
             padding:"10px 18px",border:"none",background:"transparent",cursor:"pointer",
-            fontWeight:700,fontSize:13,color:view===v.id?"var(--info)":"#64748b",
+            fontWeight:700,fontSize:13,color:view===v.id?"var(--info)":"#6b7669",
             borderBottom:`2px solid ${view===v.id?"var(--info)":"transparent"}`,
             marginBottom:-2,
           }}>{v.label}</button>
@@ -523,10 +523,10 @@ export default function ListinoView() {
         <>
           <div style={{display:"flex",gap:10,marginBottom:12}}>
             <input data-testid="input-search-listino" value={search} onChange={e=>setSearch(e.target.value)}
-              placeholder="Cerca prodotto..." style={{flex:1,padding:"10px 14px",borderRadius:10,border:"1.5px solid #e2e8f0",fontSize:14,outline:"none"}}/>
+              placeholder="Cerca prodotto..." style={{flex:1,padding:"10px 14px",borderRadius:10,border:"1.5px solid #e6e0d4",fontSize:14,outline:"none"}}/>
             <button onClick={()=>setSoloFav(v=>!v)} style={{
               padding:"10px 14px",borderRadius:10,border:"none",cursor:"pointer",fontWeight:700,fontSize:13,
-              background:soloFav?"var(--warning-soft)":"#f1f5f9",color:soloFav?"var(--warning-dark)":"#64748b",
+              background:soloFav?"var(--warning-soft)":"#faf7f0",color:soloFav?"var(--warning-dark)":"#6b7669",
             }}>{soloFav?"⭐ Preferiti":"☆ Tutti"}</button>
           </div>
 
@@ -537,17 +537,17 @@ export default function ListinoView() {
                 onClick={()=>setCatSel(cat)} style={{
                   padding:"6px 14px",borderRadius:20,cursor:"pointer",fontWeight:700,fontSize:12,
                   whiteSpace:"nowrap",flexShrink:0,transition:"all .15s",
-                  border: catSel===cat?"none":"1.5px solid #e2e8f0",
+                  border: catSel===cat?"none":"1.5px solid #e6e0d4",
                   background: catSel===cat ? catClr(cat.toUpperCase()) : "#fff",
-                  color: catSel===cat?"#fff":"#64748b",
+                  color: catSel===cat?"#fff":"#6b7669",
                 }}>{cat==="tutti"?"Tutti":cat}</button>
             ))}
           </div>
 
           {loading ? (
-            <div style={{textAlign:"center",color:"#94a3b8",paddingTop:60,fontSize:15}}>Caricamento...</div>
+            <div style={{textAlign:"center",color:"#9aa593",paddingTop:60,fontSize:15}}>Caricamento...</div>
           ) : prodotti.length===0 ? (
-            <div style={{textAlign:"center",color:"#94a3b8",paddingTop:60}}>
+            <div style={{textAlign:"center",color:"#9aa593",paddingTop:60}}>
               <p style={{fontSize:15,fontWeight:600}}>Nessun prodotto</p>
               <p style={{fontSize:13}}>Clicca "Sync da fatture" per importare i prezzi dalle fatture XML</p>
               <button onClick={syncDaFatture} disabled={syncing} style={{...btnBlue,marginTop:12}}>Sync da fatture XML</button>
@@ -583,7 +583,7 @@ export default function ListinoView() {
       {toastMsg && (
         <div style={{
           position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",
-          background:"#1e293b",color:"#fff",padding:"12px 24px",borderRadius:12,
+          background:"#3f5a4e",color:"#fff",padding:"12px 24px",borderRadius:12,
           fontSize:14,fontWeight:600,zIndex:9999,boxShadow:"0 8px 32px rgba(0,0,0,.3)",
         }}>{toastMsg}</div>
       )}
@@ -594,9 +594,9 @@ export default function ListinoView() {
 // ── Stili ──────────────────────────────────────────────────────────────────────
 const overlay = {position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:500,padding:16};
 const box     = {background:"#fff",borderRadius:18,padding:28,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,.35)",overflow:"hidden"};
-const lbl     = {display:"block",fontSize:11,fontWeight:700,color:"#64748b",marginBottom:5,textTransform:"uppercase",letterSpacing:.5};
-const inp     = {width:"100%",padding:"9px 12px",borderRadius:8,border:"1.5px solid #e2e8f0",fontSize:14,outline:"none",boxSizing:"border-box"};
+const lbl     = {display:"block",fontSize:11,fontWeight:700,color:"#6b7669",marginBottom:5,textTransform:"uppercase",letterSpacing:.5};
+const inp     = {width:"100%",padding:"9px 12px",borderRadius:8,border:"1.5px solid #e6e0d4",fontSize:14,outline:"none",boxSizing:"border-box"};
 const btnBlue = {padding:"10px 18px",borderRadius:8,border:"none",background:"var(--info)",color:"#fff",fontWeight:700,fontSize:14,cursor:"pointer"};
-const btnSec  = {padding:"10px 18px",borderRadius:8,border:"1.5px solid #e2e8f0",background:"#fff",color:"#475569",fontWeight:700,fontSize:14,cursor:"pointer"};
-const iconBtn = {padding:"8px 10px",borderRadius:8,border:"none",background:"#f8fafc",cursor:"pointer",fontSize:13,color:"#64748b"};
-const qtyBtn  = {width:28,height:28,borderRadius:6,border:"1.5px solid #e2e8f0",background:"#f8fafc",cursor:"pointer",fontSize:16,fontWeight:700};
+const btnSec  = {padding:"10px 18px",borderRadius:8,border:"1.5px solid #e6e0d4",background:"#fff",color:"#6b7669",fontWeight:700,fontSize:14,cursor:"pointer"};
+const iconBtn = {padding:"8px 10px",borderRadius:8,border:"none",background:"#faf7f0",cursor:"pointer",fontSize:13,color:"#6b7669"};
+const qtyBtn  = {width:28,height:28,borderRadius:6,border:"1.5px solid #e6e0d4",background:"#faf7f0",cursor:"pointer",fontSize:16,fontWeight:700};

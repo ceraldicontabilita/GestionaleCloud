@@ -411,8 +411,8 @@ function ModalAggiungiProdotto({ reparto, onClose, onSalvato }) {
     <div onClick={onClose} style={{position:"fixed",inset:0,zIndex:60,background:"rgba(0,0,0,.45)",display:"flex",alignItems:"center",justifyContent:"center",padding:14}}>
       <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:18,padding:18,width:"100%",maxWidth:520,maxHeight:"88vh",display:"flex",flexDirection:"column",fontFamily:"'Plus Jakarta Sans',system-ui,sans-serif"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-          <h2 style={{margin:0,fontSize:18,fontWeight:800,color:"#1f2937"}}>Aggiungi prodotto {labelReparto}</h2>
-          <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,color:"#9ca3af",cursor:"pointer",lineHeight:1}}>×</button>
+          <h2 style={{margin:0,fontSize:18,fontWeight:800,color:"#384038"}}>Aggiungi prodotto {labelReparto}</h2>
+          <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,color:"#9aa593",cursor:"pointer",lineHeight:1}}>×</button>
         </div>
 
         {/* Switch modalità */}
@@ -444,7 +444,7 @@ function ModalAggiungiProdotto({ reparto, onClose, onSalvato }) {
                     : <span style={{fontSize:26}}>🍽️</span>}
                 </div>
                 <div style={{minWidth:0}}>
-                  <div style={{fontSize:14,fontWeight:800,color:"#1f2937",lineHeight:1.25}}>{scelto.nome}</div>
+                  <div style={{fontSize:14,fontWeight:800,color:"#384038",lineHeight:1.25}}>{scelto.nome}</div>
                   <div style={{fontSize:12,color:"#9aa593",marginTop:2}}>{scelto.reparto ? `attualmente: ${scelto.reparto}` : "non assegnato"}</div>
                 </div>
               </div>

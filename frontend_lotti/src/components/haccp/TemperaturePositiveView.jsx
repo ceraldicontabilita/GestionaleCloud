@@ -217,7 +217,7 @@ function ModalAzioneCorrettiva({ dati, onSalva, onChiudi }) {
             <button key={a} onClick={() => { setScelta(a); setLibero(""); }}
               style={{ textAlign: "left", padding: "10px 12px", borderRadius: 10, cursor: "pointer",
                 border: `1.5px solid ${scelta === a ? "#5b7a6b" : "#e6e0d4"}`,
-                background: scelta === a ? "#5b7a6b14" : "#fff", fontWeight: 600, fontSize: 14, color: "#1f2937" }}>
+                background: scelta === a ? "#5b7a6b14" : "#fff", fontWeight: 600, fontSize: 14, color: "#384038" }}>
               {a}
             </button>
           ))}

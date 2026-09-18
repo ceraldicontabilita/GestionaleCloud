@@ -70,7 +70,7 @@ const kicker = {
   padding: "5px 12px", marginBottom: 14,
 };
 const h1 = {
-  fontFamily: "'Fraunces', serif", fontWeight: 700, fontSize: "clamp(26px, 4vw, 36px)",
+  fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", fontWeight: 800, fontSize: "clamp(26px, 4vw, 36px)",
   lineHeight: 1.15, marginBottom: 10,
 };
 const sub = { color: MUTED, fontSize: 15.5, lineHeight: 1.55, maxWidth: 560, margin: "0 auto" };
@@ -91,7 +91,7 @@ const iconBox = (grad) => ({
 
 const section = { maxWidth: 1000, margin: "0 auto", padding: "0 24px 64px" };
 const sectionTitle = {
-  fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: 22, textAlign: "center",
+  fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", fontWeight: 700, fontSize: 22, textAlign: "center",
   marginBottom: 6, color: SAGE_DARK,
 };
 const sectionSub = { textAlign: "center", color: MUTED, fontSize: 14.5, marginBottom: 30 };

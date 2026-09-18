@@ -662,7 +662,7 @@ export function ModalRegistraLotto({ prodotto, reparto, onClose, onSuccess, onHo
                   alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                   {stampare && <span style={{ color: "#fff", fontSize: 10, fontWeight: 900 }}>✓</span>}
                 </div>
-                <span style={{ margin: 0, fontWeight: 600, fontSize: 11, color: "#374151" }}>
+                <span style={{ margin: 0, fontWeight: 600, fontSize: 11, color: "#495247" }}>
                   Stampa etichetta {stampare ? "— attiva" : "— no"}
                 </span>
               </div>
@@ -682,7 +682,7 @@ export function ModalRegistraLotto({ prodotto, reparto, onClose, onSuccess, onHo
                 <span style={{ fontSize: 9, fontWeight: 700, color: "var(--success-dark)", textTransform: "uppercase", flexShrink: 0 }}>Codice Lotto</span>
                 <span style={{
                   fontFamily: "monospace", fontSize: 11, fontWeight: 900,
-                  color: "#166534", background: "#dcfce7", padding: "2px 6px", borderRadius: 4,
+                  color: "#166534", background: "#e2efe8", padding: "2px 6px", borderRadius: 4,
                   flex: 1, wordBreak: "break-all"
                 }}>
                   {codiceLottoPreview.codice_lotto}
@@ -701,7 +701,7 @@ export function ModalRegistraLotto({ prodotto, reparto, onClose, onSuccess, onHo
                   </span>
                   <input type="date" value={scadenza} onChange={e => setScadenza(e.target.value)}
                     style={{ padding: "6px 8px", borderRadius: 7, border: "1.5px solid var(--warning-soft)",
-                      fontSize: 13, fontWeight: 700, background: "#fff", color: "#374151" }} />
+                      fontSize: 13, fontWeight: 700, background: "#fff", color: "#495247" }} />
                   {scadenzaInfo && scadenza === scadenzaProposta && (
                     <span style={{ fontSize: 10, color: "#8a6f47" }}>
                       {scadenzaInfo.durata_memorizzata
@@ -757,7 +757,7 @@ export function ModalRegistraLotto({ prodotto, reparto, onClose, onSuccess, onHo
                   </div>
                 ))}
                 <button onClick={() => setStepRegistrazione("base")}
-                  style={{ fontSize: 11, color: "#6b7280", background: "none", border: "none",
+                  style={{ fontSize: 11, color: "#6b7669", background: "none", border: "none",
                     cursor: "pointer", textDecoration: "underline", marginTop: 2 }}>
                   Torna indietro
                 </button>
@@ -922,7 +922,7 @@ export function ModalRegistraLotto({ prodotto, reparto, onClose, onSuccess, onHo
             <div style={{ display: "flex", gap: 6 }}>
               <button onClick={() => handleStampa(lottoCreato)} style={{
                 flex: 1, padding: "9px 0", borderRadius: 8, border: "2px solid #e6e0d4",
-                background: "#faf7f0", fontWeight: 600, fontSize: 12, cursor: "pointer", color: "#374151"
+                background: "#faf7f0", fontWeight: 600, fontSize: 12, cursor: "pointer", color: "#495247"
               }}>Stampa</button>
               <button onClick={onClose} style={{
                 flex: 2, padding: "9px 0", borderRadius: 8, border: "none",

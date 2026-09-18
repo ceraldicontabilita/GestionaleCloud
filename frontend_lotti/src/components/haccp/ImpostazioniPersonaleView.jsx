@@ -21,7 +21,7 @@ import { API } from "../../utils/constants";
 import StampantiConfigView from "./StampantiConfigView";
 
 const SAGE = "#5b7a6b";
-const NAVY = "#3f5a4e";
+const SALVIA = "#3f5a4e";
 const CARD = "#fffefb";
 const LINE = "#e6e0d4";
 const DANGER = "#d35f4e";
@@ -35,7 +35,7 @@ const HR_ANAGRAFICA = "/hr/dipendenti/anagrafica";
 const inp = { padding: "9px 10px", borderRadius: 8, border: `1px solid ${LINE}`, fontSize: 14, fontFamily: "inherit", boxSizing: "border-box", minHeight: 44 };
 const btn = (bg) => ({ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 14px", minHeight: 44, borderRadius: 9, border: "none", background: bg, color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" });
 const sezione = { background: CARD, border: `1px solid ${LINE}`, borderRadius: 16, padding: "16px 18px", marginBottom: 18 };
-const titoloSez = { display: "flex", alignItems: "center", gap: 9, margin: "0 0 4px", fontSize: 17, fontWeight: 700, color: NAVY, fontFamily: "'Fraunces', Georgia, serif", flexWrap: "wrap" };
+const titoloSez = { display: "flex", alignItems: "center", gap: 9, margin: "0 0 4px", fontSize: 17, fontWeight: 700, color: SALVIA, fontFamily: "\'Plus Jakarta Sans\', -apple-system, BlinkMacSystemFont, \'Segoe UI\', system-ui, sans-serif", flexWrap: "wrap" };
 const pill = (bg, fg) => ({ fontSize: 11, fontWeight: 700, background: bg, color: fg, borderRadius: 6, padding: "3px 9px", whiteSpace: "nowrap" });
 
 const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : "");
@@ -203,7 +203,7 @@ export default function ImpostazioniPersonaleView() {
       <div style={{ border: `1px solid ${LINE}`, borderRadius: 14, padding: "14px 16px" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
           <div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: NAVY }}>{d.nome}</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: SALVIA }}>{d.nome}</div>
             <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>
               {d.mansione ? d.mansione : <span style={{ color: WARN }}>mansione non inserita in HR</span>}
               {d.ruolo === "amministratore" ? " · amministratore" : ""}
@@ -214,7 +214,7 @@ export default function ImpostazioniPersonaleView() {
             {d.pin_impostato
               ? <span style={pill("#e7f0ea", OK)}><KeyRound size={11} style={{ verticalAlign: "-1px" }} /> PIN impostato</span>
               : <span style={pill("#fbf0dd", WARN)}><KeyRound size={11} style={{ verticalAlign: "-1px" }} /> PIN da impostare in HR</span>}
-            <a href={HR_ANAGRAFICA + (d.hr_id ? `?dip=${encodeURIComponent(d.hr_id)}` : "")} style={{ ...pill("#f4f8f3", NAVY), textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4 }}>
+            <a href={HR_ANAGRAFICA + (d.hr_id ? `?dip=${encodeURIComponent(d.hr_id)}` : "")} style={{ ...pill("#f4f8f3", SALVIA), textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4 }}>
               scheda HR <ExternalLink size={11} />
             </a>
           </div>
@@ -252,7 +252,7 @@ export default function ImpostazioniPersonaleView() {
     <div style={{ padding: 16, maxWidth: 900, margin: "0 auto", fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
         <Users size={22} color={SAGE} />
-        <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: NAVY, fontFamily: "'Fraunces', Georgia, serif" }}>Personale HACCP</h2>
+        <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: SALVIA, fontFamily: "\'Plus Jakarta Sans\', -apple-system, BlinkMacSystemFont, \'Segoe UI\', system-ui, sans-serif" }}>Personale HACCP</h2>
       </div>
 
       {/* ── 1) Personale e libretti sanitari ───────────── */}
@@ -266,15 +266,15 @@ export default function ImpostazioniPersonaleView() {
           gli avvisi di scadenza compaiono sulla campanella entro 30 giorni.
         </p>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 14 }}>
-          <span style={pill("#f4f8f3", NAVY)}>{riepilogo.operatori} operatori</span>
+          <span style={pill("#f4f8f3", SALVIA)}>{riepilogo.operatori} operatori</span>
           <span style={pill(riepilogo.registrati === riepilogo.operatori ? "#e7f0ea" : "#fbf0dd", riepilogo.registrati === riepilogo.operatori ? OK : WARN)}>
             {riepilogo.registrati} libretti registrati
           </span>
-          <span style={pill(riepilogo.inScadenza ? "#fbf0dd" : "#f4f8f3", riepilogo.inScadenza ? WARN : NAVY)}>{riepilogo.inScadenza} in scadenza</span>
-          <span style={pill(riepilogo.scaduti ? "#f7e0db" : "#f4f8f3", riepilogo.scaduti ? DANGER : NAVY)}>{riepilogo.scaduti} scaduti</span>
+          <span style={pill(riepilogo.inScadenza ? "#fbf0dd" : "#f4f8f3", riepilogo.inScadenza ? WARN : SALVIA)}>{riepilogo.inScadenza} in scadenza</span>
+          <span style={pill(riepilogo.scaduti ? "#f7e0db" : "#f4f8f3", riepilogo.scaduti ? DANGER : SALVIA)}>{riepilogo.scaduti} scaduti</span>
           {riepilogo.senzaPin > 0 && <span style={pill("#fbf0dd", WARN)}>{riepilogo.senzaPin} senza PIN (impostalo nella scheda HR)</span>}
           <button onClick={riallinea} disabled={sincronizzando} title="Rilegge subito l'anagrafica HR (succede comunque da solo ogni 10 minuti)"
-            style={{ ...btn("transparent"), color: NAVY, border: `1px solid ${LINE}`, marginLeft: "auto", padding: "8px 12px", opacity: sincronizzando ? 0.6 : 1 }}>
+            style={{ ...btn("transparent"), color: SALVIA, border: `1px solid ${LINE}`, marginLeft: "auto", padding: "8px 12px", opacity: sincronizzando ? 0.6 : 1 }}>
             <RefreshCw size={14} /> {sincronizzando ? "Allineo…" : "Riallinea con HR"}
           </button>
         </div>
@@ -298,9 +298,9 @@ export default function ImpostazioniPersonaleView() {
       {/* ── 2) Non più in carico (da HR) ─────────────────── */}
       <section style={{ ...sezione, padding: "12px 18px" }}>
         <button onClick={() => setMostraNonInCarico((v) => !v)}
-          style={{ ...btn("transparent"), color: NAVY, justifyContent: "space-between", width: "100%", padding: "6px 0" }}>
-          <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 15, fontFamily: "'Fraunces', Georgia, serif" }}>
-            Non più in carico <span style={pill("#f4f8f3", NAVY)}>{nonInCarico.length}</span>
+          style={{ ...btn("transparent"), color: SALVIA, justifyContent: "space-between", width: "100%", padding: "6px 0" }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 15, fontFamily: "\'Plus Jakarta Sans\', -apple-system, BlinkMacSystemFont, \'Segoe UI\', system-ui, sans-serif" }}>
+            Non più in carico <span style={pill("#f4f8f3", SALVIA)}>{nonInCarico.length}</span>
           </span>
           {mostraNonInCarico ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
         </button>
@@ -314,7 +314,7 @@ export default function ImpostazioniPersonaleView() {
             {nonInCarico.map((o) => (
               <div key={o.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, padding: "10px 12px", border: `1px solid ${LINE}`, borderRadius: 10 }}>
                 <div>
-                  <div style={{ fontWeight: 700, color: NAVY }}>{o.nome}</div>
+                  <div style={{ fontWeight: 700, color: SALVIA }}>{o.nome}</div>
                   <div style={{ fontSize: 11.5, color: MUTED }}>
                     {o.hr_stato === "non_in_hr"
                       ? "nome storico di Lotti, non presente nell'anagrafica HR"
@@ -351,7 +351,7 @@ export default function ImpostazioniPersonaleView() {
               </div>
             )}
             <div style={{ background: "#f4f8f3", border: `1px solid ${LINE}`, borderRadius: 10, padding: "12px 14px", marginBottom: 14 }}>
-              <label htmlFor="azienda-codice-destinatario" style={{ display: "block", fontSize: 12, fontWeight: 700, color: NAVY, marginBottom: 5 }}>
+              <label htmlFor="azienda-codice-destinatario" style={{ display: "block", fontSize: 12, fontWeight: 700, color: SALVIA, marginBottom: 5 }}>
                 Codice destinatario SDI
               </label>
               <input
@@ -372,7 +372,7 @@ export default function ImpostazioniPersonaleView() {
                 const vuoto = inPdf && !String(azienda[campo] || "").trim();
                 return (
                   <div key={campo}>
-                    <label htmlFor={`azienda-${campo}`} style={{ display: "block", fontSize: 12, fontWeight: 600, color: vuoto ? DANGER : NAVY, marginBottom: 4 }}>
+                    <label htmlFor={`azienda-${campo}`} style={{ display: "block", fontSize: 12, fontWeight: 600, color: vuoto ? DANGER : SALVIA, marginBottom: 4 }}>
                       {etichetta}{vuoto ? " · vuoto, entra nei PDF" : ""}
                     </label>
                     <input

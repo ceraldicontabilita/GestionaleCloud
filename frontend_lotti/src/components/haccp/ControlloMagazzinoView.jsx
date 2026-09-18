@@ -5,7 +5,7 @@ import { API } from "../../utils/constants";
 // Colori sistema
 const VIOLA = "#5b7a6b";
 const VIOLA2 = "#5b7a6b";
-const NAVY = "#2a3329";
+const INK = "#2a3329";
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const daysAgoISO = (n) => {
@@ -34,7 +34,7 @@ function MovRow({ m }) {
     <div
       style={{
         background: "#fff",
-        border: "1px solid #e5e7eb",
+        border: "1px solid #e6e0d4",
         borderRadius: 16,
         padding: 14,
         marginBottom: 10,
@@ -43,7 +43,7 @@ function MovRow({ m }) {
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontWeight: 900, fontSize: 16, color: NAVY, lineHeight: 1.2 }}>
+          <div style={{ fontWeight: 900, fontSize: 16, color: INK, lineHeight: 1.2 }}>
             {m.prodotto_nome || "Prodotto"}
           </div>
           <div style={{ marginTop: 4, fontWeight: 800, color: VIOLA, fontSize: 14 }}>
@@ -67,16 +67,16 @@ function MovRow({ m }) {
           </span>
           <div style={{ marginTop: 6, fontWeight: 950, fontSize: 18, color: colore }}>
             {scarico ? "−" : "+"}
-            {m.quantita} <span style={{ fontSize: 13, fontWeight: 800, color: "#6b7280" }}>{m.unita || "pz"}</span>
+            {m.quantita} <span style={{ fontSize: 13, fontWeight: 800, color: "#6b7669" }}>{m.unita || "pz"}</span>
           </div>
         </div>
       </div>
-      <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: "#6b7280", fontWeight: 700 }}>
+      <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: "#6b7669", fontWeight: 700 }}>
         <span>{fmtData(m.data)}</span>
-        <span style={{ color: "#9ca3af" }}>•</span>
+        <span style={{ color: "#9aa593" }}>•</span>
         <span>{m.fonte === "fornitori" ? "Materie prime" : "Bar/Magazzino"}</span>
-        {m.fornitore ? <><span style={{ color: "#9ca3af" }}>•</span><span>{m.fornitore}</span></> : null}
-        {m.nota && m.nota !== "scarico tablet" ? <><span style={{ color: "#9ca3af" }}>•</span><span>{m.nota}</span></> : null}
+        {m.fornitore ? <><span style={{ color: "#9aa593" }}>•</span><span>{m.fornitore}</span></> : null}
+        {m.nota && m.nota !== "scarico tablet" ? <><span style={{ color: "#9aa593" }}>•</span><span>{m.nota}</span></> : null}
       </div>
     </div>
   );
@@ -137,14 +137,14 @@ export default function ControlloMagazzinoView() {
       {/* Titolo nell'intestazione uniforme di pagina */}
 
       {/* Filtri */}
-      <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 18, padding: 14, marginBottom: 14 }}>
+      <div style={{ background: "#fff", border: "1px solid #e6e0d4", borderRadius: 18, padding: 14, marginBottom: 14 }}>
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Cerca prodotto (es. Aperol, caffè, tonno)…"
           style={{
             width: "100%",
-            border: "2px solid #e5e7eb",
+            border: "2px solid #e6e0d4",
             borderRadius: 14,
             padding: "12px 14px",
             fontWeight: 700,
@@ -174,7 +174,7 @@ export default function ControlloMagazzinoView() {
           {q ? (
             <button
               onClick={() => setQ("")}
-              style={{ border: "none", background: "#f3f4f6", color: "#6b7280", borderRadius: 999, padding: "8px 14px", fontWeight: 900, fontSize: 13 }}
+              style={{ border: "none", background: "#f0ebe0", color: "#6b7669", borderRadius: 999, padding: "8px 14px", fontWeight: 900, fontSize: 13 }}
             >
               ✕ Pulisci
             </button>
@@ -186,11 +186,11 @@ export default function ControlloMagazzinoView() {
             sugli smartphone da 360px (campi "Tipo" e "Al" tagliati) */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8, marginTop: 12 }}>
           <div style={{ minWidth: 0 }}>
-            <label style={{ fontSize: 11, fontWeight: 800, color: "#6b7280" }}>Operatore</label>
+            <label style={{ fontSize: 11, fontWeight: 800, color: "#6b7669" }}>Operatore</label>
             <select
               value={operatore}
               onChange={(e) => setOperatore(e.target.value)}
-              style={{ width: "100%", minWidth: 0, border: "2px solid #e5e7eb", borderRadius: 12, padding: "10px", fontWeight: 700, background: "#fff", marginTop: 4, boxSizing: "border-box" }}
+              style={{ width: "100%", minWidth: 0, border: "2px solid #e6e0d4", borderRadius: 12, padding: "10px", fontWeight: 700, background: "#fff", marginTop: 4, boxSizing: "border-box" }}
             >
               <option value="">Tutti</option>
               {operatori.map((o) => (
@@ -199,11 +199,11 @@ export default function ControlloMagazzinoView() {
             </select>
           </div>
           <div style={{ minWidth: 0 }}>
-            <label style={{ fontSize: 11, fontWeight: 800, color: "#6b7280" }}>Tipo</label>
+            <label style={{ fontSize: 11, fontWeight: 800, color: "#6b7669" }}>Tipo</label>
             <select
               value={tipo}
               onChange={(e) => setTipo(e.target.value)}
-              style={{ width: "100%", minWidth: 0, border: "2px solid #e5e7eb", borderRadius: 12, padding: "10px", fontWeight: 700, background: "#fff", marginTop: 4, boxSizing: "border-box" }}
+              style={{ width: "100%", minWidth: 0, border: "2px solid #e6e0d4", borderRadius: 12, padding: "10px", fontWeight: 700, background: "#fff", marginTop: 4, boxSizing: "border-box" }}
             >
               <option value="tutti">Tutti</option>
               <option value="scarico">Solo prelievi</option>
@@ -211,14 +211,14 @@ export default function ControlloMagazzinoView() {
             </select>
           </div>
           <div style={{ minWidth: 0 }}>
-            <label style={{ fontSize: 11, fontWeight: 800, color: "#6b7280" }}>Dal</label>
+            <label style={{ fontSize: 11, fontWeight: 800, color: "#6b7669" }}>Dal</label>
             <input type="date" value={dal} onChange={(e) => setDal(e.target.value)}
-              style={{ width: "100%", minWidth: 0, border: "2px solid #e5e7eb", borderRadius: 12, padding: "10px 6px", fontWeight: 700, fontSize: 13, marginTop: 4, boxSizing: "border-box" }} />
+              style={{ width: "100%", minWidth: 0, border: "2px solid #e6e0d4", borderRadius: 12, padding: "10px 6px", fontWeight: 700, fontSize: 13, marginTop: 4, boxSizing: "border-box" }} />
           </div>
           <div style={{ minWidth: 0 }}>
-            <label style={{ fontSize: 11, fontWeight: 800, color: "#6b7280" }}>Al</label>
+            <label style={{ fontSize: 11, fontWeight: 800, color: "#6b7669" }}>Al</label>
             <input type="date" value={al} onChange={(e) => setAl(e.target.value)}
-              style={{ width: "100%", minWidth: 0, border: "2px solid #e5e7eb", borderRadius: 12, padding: "10px 6px", fontWeight: 700, fontSize: 13, marginTop: 4, boxSizing: "border-box" }} />
+              style={{ width: "100%", minWidth: 0, border: "2px solid #e6e0d4", borderRadius: 12, padding: "10px 6px", fontWeight: 700, fontSize: 13, marginTop: 4, boxSizing: "border-box" }} />
           </div>
         </div>
       </div>
@@ -241,13 +241,13 @@ export default function ControlloMagazzinoView() {
 
       {/* Lista */}
       {loading ? (
-        <div style={{ textAlign: "center", color: "#6b7280", padding: 40, fontWeight: 800 }}>Caricamento…</div>
+        <div style={{ textAlign: "center", color: "#6b7669", padding: 40, fontWeight: 800 }}>Caricamento…</div>
       ) : errore ? (
         <div style={{ background: "#fff7ed", color: "#9a3412", border: "1px solid #fed7aa", borderRadius: 14, padding: 16, fontWeight: 800 }}>
           {errore}
         </div>
       ) : movimenti.length === 0 ? (
-        <div style={{ textAlign: "center", color: "#6b7280", padding: 40, fontWeight: 800 }}>
+        <div style={{ textAlign: "center", color: "#6b7669", padding: 40, fontWeight: 800 }}>
           Nessun movimento trovato per i filtri scelti.
         </div>
       ) : (

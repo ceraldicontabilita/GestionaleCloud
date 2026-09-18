@@ -270,9 +270,9 @@ export function buildPosHtml(lotto, allergeniPresenti = [], ingredientiOrdinati 
       const nomeIng = typeof ing === "string" ? ing : (ing.nome || "?");
       return `
       <div class="trac-row">
-        <span class="trac-lotto" style="background:#f3f4f6;color:#374151;">ING</span>
+        <span class="trac-lotto" style="background:#f0ebe0;color:#495247;">ING</span>
         <br/><span>${nomeIng}</span>
-        <br/><span style="font-size:5.5pt;color:#6b7280;">Rimanenza magazzino: verificare manualmente</span>
+        <br/><span style="font-size:5.5pt;color:#6b7669;">Rimanenza magazzino: verificare manualmente</span>
       </div>`;
     }).join("");
 

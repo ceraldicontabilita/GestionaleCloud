@@ -5,7 +5,7 @@ export default function SelettoreQuantita({ unita, setUnita, pezzi, setPezzi }) 
   return (
 <div style={{ marginBottom: 8 }}>
   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
-    <span style={{ fontSize: 11, fontWeight: 700, color: "#374151" }}>Quantità</span>
+    <span style={{ fontSize: 11, fontWeight: 700, color: "#495247" }}>Quantità</span>
     <div style={{ display: "flex", background: "#f0ebe0", borderRadius: 6, padding: 2, gap: 2 }}>
       {["pz","kg"].map(u => (
         <button key={u} onClick={() => { setUnita(u); setPezzi(1); }}

@@ -55,12 +55,11 @@ function money(v) {
   return n.toLocaleString("it-IT", { style: "currency", currency: "EUR" });
 }
 
-function MainCard({ icon, title, text, tone = "violet", onClick, badge }) {
+function MainCard({ icon, title, text, tone = "salvia", onClick, badge }) {
   const tones = {
-    violet: "bg-[#f2f6f3] border-[#cfdfd5] text-[#3f5a4e]",
+    salvia: "bg-[#f2f6f3] border-[#cfdfd5] text-[#3f5a4e]",
     amber: "bg-amber-50 border-amber-200 text-amber-900",
     green: "bg-emerald-50 border-emerald-200 text-emerald-900",
-    blue: "bg-amber-50 border-amber-200 text-amber-900",
     red: "bg-red-50 border-red-200 text-red-900",
   };
   return (

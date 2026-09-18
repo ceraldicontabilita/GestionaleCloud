@@ -56,7 +56,7 @@ const QRModal = ({ ricetta, onClose }) => {
             size={160}
             level="M"
             includeMargin
-            fgColor="#1f2937"
+            fgColor="#384038"
           />
         </div>
 

@@ -293,25 +293,25 @@ export default function ProdottiVenditaView({ defaultTab = "acquaviva" }) {
       </div>
 
       {/* Tab pagina */}
-      <div role="tablist" aria-label="Prodotti e cataloghi fornitori" className="flex gap-1 bg-gray-100 rounded-xl p-1 mb-5 w-fit flex-wrap">
+      <div role="tablist" aria-label="Prodotti e cataloghi fornitori" className="g-tabs mb-5">
         {[
-          { id: "miei", label: "Miei Prodotti", count: prodotti.filter(p => p.fonte !== "acquaviva").length, color: "violet" },
-          { id: "acquaviva", label: "Acquaviva catalogo", count: null, color: "blue" },
-          { id: "saima", label: "SAIMA S.p.a.", count: null, color: "blue" },
-          { id: "saima_ricettari", label: "Ricettari SAIMA", count: null, color: "blue" },
-          { id: "mepa", label: "MEPA Alimentari", count: null, color: "green" },
-          { id: "pasticcere", label: "Il Pasticcere", count: null, color: "amber" },
-          { id: "tremarie", label: "Tre Marie", count: null, color: "rose" },
-          { id: "alfa", label: "Alfa (senza glutine)", count: null, color: "amber" },
-          { id: "sammontana", label: "Sammontana", count: null, color: "orange" },
-          { id: "bindi", label: "Bindi", count: null, color: "yellow" },
+          { id: "miei", label: "Miei Prodotti", count: prodotti.filter(p => p.fonte !== "acquaviva").length },
+          { id: "acquaviva", label: "Acquaviva catalogo", count: null },
+          { id: "saima", label: "SAIMA S.p.a.", count: null },
+          { id: "saima_ricettari", label: "Ricettari SAIMA", count: null },
+          { id: "mepa", label: "MEPA Alimentari", count: null },
+          { id: "pasticcere", label: "Il Pasticcere", count: null },
+          { id: "tremarie", label: "Tre Marie", count: null },
+          { id: "alfa", label: "Alfa (senza glutine)", count: null },
+          { id: "sammontana", label: "Sammontana", count: null },
+          { id: "bindi", label: "Bindi", count: null },
           // schede dinamiche: una per ogni fonte web sincronizzata con prodotti
-          ...fontiEsterne.map(f => ({ id: f.fornitore_key, label: f.nome, count: f.prodotti_trovati, color: "green" })),
+          ...fontiEsterne.map(f => ({ id: f.fornitore_key, label: f.nome, count: f.prodotti_trovati })),
         ].map(t => (
           <button key={t.id} role="tab" aria-selected={paginaTab === t.id} data-testid={`tab-${t.id.replace("_", "-")}`} onClick={() => setPaginaTab(t.id)}
-            className={`px-5 py-2 rounded-lg text-sm font-medium transition-all ${paginaTab === t.id ? `bg-white text-${t.color}-700 shadow-sm` : "text-gray-500 hover:text-gray-700"}`}>
+            className={`g-tab${paginaTab === t.id ? " active" : ""}`}>
             {t.label}
-            {t.count !== null && <span className={`ml-2 text-xs bg-${t.color}-100 text-${t.color}-600 px-1.5 py-0.5 rounded-full`}>{t.count}</span>}
+            {t.count !== null && <span className="g-badge g-badge-neutral ml-2">{t.count}</span>}
           </button>
         ))}
       </div>

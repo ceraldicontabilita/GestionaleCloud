@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { X, Check, Edit2, BookOpen, RefreshCw } from "lucide-react";
 import { API } from "../../../utils/constants";
 
-const NAVY = "#3f5a4e";
+const SALVIA = "#3f5a4e";
 const SAGE = "#5b7a6b";
 const CREAM = "#faf7f0";
 const LINE = "#e6e0d4";
@@ -76,7 +76,7 @@ export default function ModalRevisioneDizionario({ onClose }) {
       >
         <div style={{ padding: "16px 20px", borderBottom: `1px solid ${LINE}`, display: "flex", alignItems: "center", gap: 10 }}>
           <BookOpen size={18} color={SAGE} />
-          <span style={{ fontWeight: 600, fontSize: 17, flex: 1, color: NAVY, fontFamily: "'Fraunces', Georgia, serif" }}>
+          <span style={{ fontWeight: 600, fontSize: 17, flex: 1, color: SALVIA, fontFamily: "\'Plus Jakarta Sans\', -apple-system, BlinkMacSystemFont, \'Segoe UI\', system-ui, sans-serif" }}>
             Dizionario nomi prodotti
           </span>
           <button onClick={carica} style={{ background: "none", border: "none", cursor: "pointer", color: "#9aa593" }}>
@@ -98,7 +98,7 @@ export default function ModalRevisioneDizionario({ onClose }) {
               style={{
                 flex: 1, padding: "12px", border: "none", cursor: "pointer",
                 background: tab === t.id ? CREAM : "transparent",
-                color: tab === t.id ? NAVY : "#6b7669",
+                color: tab === t.id ? SALVIA : "#6b7669",
                 fontWeight: tab === t.id ? 700 : 500, fontSize: 13, fontFamily: "inherit",
                 borderBottom: tab === t.id ? `2px solid ${SAGE}` : "2px solid transparent",
               }}
@@ -124,7 +124,7 @@ export default function ModalRevisioneDizionario({ onClose }) {
                 const isEdit = editing === key;
                 return (
                   <div key={i} style={{ background: "#fffefb", border: `1px solid ${LINE}`, borderRadius: 12, padding: 14, marginBottom: 10 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: NAVY, marginBottom: 4 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: SALVIA, marginBottom: 4 }}>
                       {m.descrizione_originale || m.descrizione_key}
                     </div>
                     <div style={{ fontSize: 12, color: "#6b7669", marginBottom: 10 }}>
@@ -176,7 +176,7 @@ export default function ModalRevisioneDizionario({ onClose }) {
               {nomiUsuali.sort((a, b) => (b.prodotti_mappati || 0) - (a.prodotti_mappati || 0)).map((u, i) => (
                 <div key={i} style={{ background: "#fffefb", border: `1px solid ${LINE}`, borderRadius: 10, padding: "10px 14px", marginBottom: 6, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                   <div>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: NAVY }}>{u.nome_usuale}</div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: SALVIA }}>{u.nome_usuale}</div>
                     {u.categoria && <div style={{ fontSize: 11, color: "#9aa593" }}>{u.categoria}</div>}
                   </div>
                   <span style={{ fontSize: 12, fontWeight: 700, color: SAGE, background: "#e8efe9", padding: "3px 10px", borderRadius: 20, whiteSpace: "nowrap" }}>
