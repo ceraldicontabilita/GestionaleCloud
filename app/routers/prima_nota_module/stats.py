@@ -14,7 +14,7 @@ from app.services import conti_pos
 from .common import (
     COLLECTION_PRIMA_NOTA_CASSA, COLLECTION_PRIMA_NOTA_BANCA,
     COLLECTION_SALDI_INIZIALI,
-    CATEGORIE_ESCLUSE, aggrega_saldo_prima_nota, filtro_saldo_prima_nota,
+    aggrega_saldo_prima_nota, filtro_saldo_prima_nota,
     saldi_finanziari, get_saldo_iniziale_manuale, calcola_saldo_anni_precedenti,
 )
 
