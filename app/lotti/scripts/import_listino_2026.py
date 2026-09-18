@@ -3,7 +3,7 @@
 Import listino Acquaviva 2026 dal PDF estratto.
 Eseguito una volta per popolare il DB con tutti i dati del listino 2026.
 """
-import asyncio, json, os, sys
+import asyncio, os
 
 # Dati estratti dal PDF listino Acquaviva 2026 (in vigore dal 01/01/2026)
 # Campi: codice_aqv_2025, codice_aqv_2026, categoria_aqv, categoria_vdm,
@@ -226,7 +226,6 @@ PRODOTTI = [
 ]
 
 async def main():
-    import os
     from motor.motor_asyncio import AsyncIOMotorClient
     
     MONGO_URL = os.environ.get("MONGO_URL")
@@ -309,7 +308,7 @@ async def main():
             await db.acquaviva_prodotti.insert_one(campi)
             importati += 1
     
-    print(f"\nImportazione completata!")
+    print("\nImportazione completata!")
     print(f"  Nuovi: {importati}")
     print(f"  Aggiornati: {aggiornati}")
     print(f"  Totale: {importati + aggiornati}")
