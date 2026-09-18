@@ -16,7 +16,7 @@ import logging
 import re
 import uuid
 from difflib import SequenceMatcher
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 
 from app.utils.parsing import safe_float

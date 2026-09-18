@@ -9,9 +9,7 @@ da corrispettivi.py (_crea_movimenti_prima_nota) con logica dare/avere:
 Questo handler NON deve creare movimenti prima nota per evitare duplicati.
 """
 import logging
-import uuid
 from typing import Dict, Any, Optional
-from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +18,6 @@ async def on_corrispettivo_split(event: Dict[str, Any], db) -> Optional[Dict]:
     """
     Splitta il corrispettivo in quota contanti (→ cassa) e quota POS (→ partita).
     """
-    from app.services.partite_aperte_engine import crea_partita, TipoPartita
 
     corr_id = event.get("corrispettivo_id")
     data = event.get("data", "")
