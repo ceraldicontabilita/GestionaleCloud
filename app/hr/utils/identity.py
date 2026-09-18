@@ -10,7 +10,7 @@ Ruoli applicativi (campo `ruolo_app` sul documento dipendente, o role nel JWT):
   - "responsabile_turni"  → Luigi: gestisce turni e richieste turno
   - "admin"               → Enzo: tutto
 """
-from typing import Dict, Any, List
+from typing import Dict, Any
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
