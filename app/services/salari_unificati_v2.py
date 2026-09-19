@@ -36,9 +36,13 @@ import logging
 import uuid
 import re
 from datetime import datetime, timezone
-from typing import Dict, Any
+from typing import Dict, Any, List
 import calendar
 
+from app.constants.stati_netto import (
+    NETTO_NON_PRESENTE_O_NON_LEGGIBILE,
+    NETTO_VERIFICATO_DA_CEDOLINO,
+)
 from app.utils.numeri_italiani import parse_importo_ita
 
 logger = logging.getLogger(__name__)
@@ -298,14 +302,41 @@ async def processa_cedolino_v2(
         mese = cedolino_data.get("mese")
         anno = cedolino_data.get("anno")
         tipo_cedolino = (cedolino_data.get("tipo_cedolino") or "mensile").strip().lower()
-        netto = float(cedolino_data.get("netto_mese") or cedolino_data.get("netto") or 0)
-        lordo = float(cedolino_data.get("lordo") or 0)
+        # CLAUDE.md: «cella vuota → valore nullo, MAI zero». Il vecchio
+        # `float(... or 0)` schiacciava a zero sia un netto illeggibile sia uno
+        # zero vero, e il messaggio d'errore li confondeva nello stesso
+        # «netto=0»: a valle non si poteva piu' distinguere una busta non letta
+        # da una busta senza netto. Qui il nullo resta nullo e lo stato lo dice.
+        # Correzione del 19/09/2026: era stata applicata alla sola copia
+        # `app/hr/services`, che non sta sul percorso di ingest vivo
+        # (email_monitor / post_download_pipeline -> services/cedolini_manager).
+        netto_grezzo = cedolino_data.get("netto_mese")
+        if netto_grezzo is None:
+            netto_grezzo = cedolino_data.get("netto")
+        netto = None if netto_grezzo is None else float(netto_grezzo)
+        lordo_grezzo = cedolino_data.get("lordo")
+        lordo = None if lordo_grezzo is None else float(lordo_grezzo)
         cedolino_dedup_key = _cedolino_document_key(cedolino_data, pdf_data)
-        
-        if not cf or not mese or not anno or netto == 0:
-            result["errore"] = "Dati mancanti (CF, mese, anno, o netto=0)"
+
+        stato_netto = cedolino_data.get("stato_netto") or (
+            NETTO_VERIFICATO_DA_CEDOLINO if netto is not None
+            else NETTO_NON_PRESENTE_O_NON_LEGGIBILE
+        )
+        result["stato_netto"] = stato_netto
+
+        if not cf or not mese or not anno:
+            result["errore"] = "Dati mancanti (CF, mese o anno)"
             return result
-        
+        if netto is None:
+            result["errore"] = (
+                f"Netto non leggibile dal cedolino ({NETTO_NON_PRESENTE_O_NON_LEGGIBILE}): "
+                "la busta non alimenta Salari finche' il netto non e' verificato"
+            )
+            return result
+        if netto == 0:
+            result["errore"] = "Netto pari a zero sul cedolino"
+            return result
+
         # --- Estrai dati aggiuntivi dal testo PDF ---
         dati_extra = {}
         if pdf_text:
@@ -1004,22 +1035,30 @@ async def get_riepilogo_salari_tutti(db, anno: int = None) -> Dict[str, Any]:
         {"_id": 0}
     ).sort("cognome", 1).to_list(200)
     
+    # Cedolini dell'anno per tutti i dipendenti in blocco, invece di un find
+    # per dipendente (fino a 200): l'adattatore Supabase non ha indici, un
+    # find dentro il ciclo e' un N+1 costoso su una tabella non piccola.
+    cedolini_per_cf: Dict[str, List[Dict[str, Any]]] = {}
+    async for c in db["cedolini"].find(
+        {"anno": {"$in": [anno, str(anno)]}},
+        {"_id": 0, "codice_fiscale": 1, "netto": 1, "netto_mese": 1, "importo_pagato": 1,
+         "pagato": 1, "mese": 1, "saldo_residuo": 1, "ferie_residue": 1, "rol_residuo": 1}
+    ):
+        cf_c = c.get("codice_fiscale")
+        if cf_c:
+            cedolini_per_cf.setdefault(cf_c, []).append(c)
+
     riepilogo = []
     totale_debito = 0
     totale_credito = 0
-    
+
     for dip in dipendenti:
         cf = dip.get("codice_fiscale")
         if not cf:
             continue
-        
-        # Cedolini anno
-        cedolini = await db["cedolini"].find(
-            {"codice_fiscale": cf, "anno": {"$in": [anno, str(anno)]}},
-            {"_id": 0, "netto": 1, "netto_mese": 1, "importo_pagato": 1, "pagato": 1, 
-             "mese": 1, "saldo_residuo": 1, "ferie_residue": 1, "rol_residuo": 1}
-        ).to_list(20)
-        
+
+        cedolini = cedolini_per_cf.get(cf, [])
+
         netto_tot = sum(float(c.get("netto") or c.get("netto_mese") or 0) for c in cedolini)
         pagato_tot = sum(float(c.get("importo_pagato") or 0) for c in cedolini)
         saldo = round(pagato_tot - netto_tot, 2)
