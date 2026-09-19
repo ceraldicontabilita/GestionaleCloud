@@ -58,7 +58,6 @@ FORK_NOTO = {
     "routers/tfr.py",
     "services/alert_engine.py",
     "services/audit_logger.py",
-    "services/cedolini_manager.py",
     "services/partite_aperte_engine.py",
     "services/payslip_pdf_parser.py",
     "utils/busta_paga_parser.py",
