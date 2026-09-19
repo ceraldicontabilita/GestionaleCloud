@@ -50,7 +50,6 @@ FORK_NOTO = {
     "parsers/busta_paga_multi_template.py",
     "routers/auth.py",
     "routers/employees/dipendenti.py",
-    "routers/f24_parser.py",
     "routers/pin_login.py",
     "routers/tfr.py",
     "utils/dependencies.py",
