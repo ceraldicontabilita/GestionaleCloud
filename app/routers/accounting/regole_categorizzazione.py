@@ -4,9 +4,10 @@ Permette download/upload Excel delle regole e gestione via UI.
 """
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from fastapi.responses import StreamingResponse
-from typing import Dict, Any, List
+from typing import Any, Dict, List, Set
 from datetime import datetime, timezone
 import io
+import unicodedata
 import uuid
 import logging
 
@@ -14,6 +15,43 @@ from app.database import Database
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def normalizza_categoria(categoria: Any) -> str:
+    """Normalizza una categoria per un confronto stabile: minuscolo, spazi
+    sostituiti da underscore, SENZA accenti.
+
+    Audit 19/09/2026: una regola creata da qui o dall'Excel con "Caffè"
+    (accentato) non combaciava mai con la chiave interna "caffe" (senza
+    accento) usata da `DEFAULT_CATEGORIE`/`categorizzazione_contabile.py` —
+    la regola veniva salvata con successo ma restava silenziosamente
+    inefficace (`piano_conti._conto_da_categoria` non trovava mai il conto).
+    Va applicata sia dove si SALVA una regola/categoria sia dove si CERCA il
+    conto: stesso valore in entrambi i punti, o il confronto fallisce di
+    nuovo.
+    """
+    testo = str(categoria or "").strip().lower().replace(" ", "_")
+    return unicodedata.normalize("NFKD", testo).encode("ascii", "ignore").decode("ascii")
+
+
+async def categorie_valide(db) -> Set[str]:
+    """Insieme delle categorie riconosciute dal motore: quelle scritte dal
+    titolare (`regole_categorie`) piu' i default di questo modulo
+    (`DEFAULT_CATEGORIE`). Usato per rifiutare una regola fornitore/
+    descrizione che punta a una categoria inesistente invece di salvarla
+    silenziosamente inefficace (audit 19/09/2026)."""
+    righe = await db["regole_categorie"].find({}, {"_id": 0, "categoria": 1}).to_list(1000)
+    valide = {normalizza_categoria(r.get("categoria")) for r in righe if r.get("categoria")}
+    valide |= set(DEFAULT_CATEGORIE.keys())
+    return valide
+
+
+def _errore_categoria_inesistente(categoria_originale: Any, categoria_norm: str) -> str:
+    return (
+        f"Categoria '{categoria_originale}' (normalizzata '{categoria_norm}') non esiste ne' "
+        "tra le categorie salvate ne' tra i default: creala prima dal foglio 'Categorie' "
+        "dell'Excel o con POST /api/regole/categorie."
+    )
 
 
 # ============== STRUTTURA DATI REGOLE ==============
@@ -311,87 +349,30 @@ async def upload_regole_excel(file: UploadFile = File(...)):
             "errori": []
         }
         
-        # === PROCESSA FOGLIO FORNITORI ===
-        if "Regole Fornitori" in wb.sheetnames:
-            ws = wb["Regole Fornitori"]
-            regole_forn = []
-            
-            for row in range(2, ws.max_row + 1):
-                pattern = ws.cell(row=row, column=1).value
-                categoria = ws.cell(row=row, column=2).value
-                note = ws.cell(row=row, column=3).value
-                
-                if pattern and categoria:
-                    pattern = str(pattern).strip()
-                    categoria = str(categoria).strip().lower().replace(" ", "_")
-                    
-                    regole_forn.append({
-                        "id": str(uuid.uuid4()),
-                        "pattern": pattern,
-                        "categoria": categoria,
-                        "note": str(note or ""),
-                        "tipo": "fornitore",
-                        "created_at": datetime.now(timezone.utc).isoformat(),
-                        "attivo": True
-                    })
-            
-            if regole_forn:
-                # Elimina vecchie regole e inserisci nuove
-                await db["regole_categorizzazione_fornitori"].delete_many({})
-                await db["regole_categorizzazione_fornitori"].insert_many(regole_forn)
-                stats["regole_fornitori_caricate"] = len(regole_forn)
-        
-        # === PROCESSA FOGLIO DESCRIZIONI ===
-        if "Regole Descrizioni" in wb.sheetnames:
-            ws = wb["Regole Descrizioni"]
-            regole_desc = []
-            
-            for row in range(2, ws.max_row + 1):
-                pattern = ws.cell(row=row, column=1).value
-                categoria = ws.cell(row=row, column=2).value
-                note = ws.cell(row=row, column=3).value
-                
-                if pattern and categoria:
-                    pattern = str(pattern).strip()
-                    categoria = str(categoria).strip().lower().replace(" ", "_")
-                    
-                    regole_desc.append({
-                        "id": str(uuid.uuid4()),
-                        "pattern": pattern,
-                        "categoria": categoria,
-                        "note": str(note or ""),
-                        "tipo": "descrizione",
-                        "created_at": datetime.now(timezone.utc).isoformat(),
-                        "attivo": True
-                    })
-            
-            if regole_desc:
-                await db["regole_categorizzazione_descrizioni"].delete_many({})
-                await db["regole_categorizzazione_descrizioni"].insert_many(regole_desc)
-                stats["regole_descrizioni_caricate"] = len(regole_desc)
-        
-        # === PROCESSA FOGLIO CATEGORIE ===
+        # === PROCESSA FOGLIO CATEGORIE (prima di Fornitori/Descrizioni: una
+        # regola in quei fogli puo' fare riferimento a una categoria appena
+        # definita in QUESTO stesso file) ===
         if "Categorie" in wb.sheetnames:
             ws = wb["Categorie"]
             categorie = []
-            
+
             for row in range(2, ws.max_row + 1):
                 categoria = ws.cell(row=row, column=1).value
                 conto = ws.cell(row=row, column=2).value
                 ded_ires = ws.cell(row=row, column=4).value
                 ded_irap = ws.cell(row=row, column=5).value
                 note = ws.cell(row=row, column=6).value
-                
+
                 if categoria and conto:
-                    categoria = str(categoria).strip().lower().replace(" ", "_")
-                    
+                    categoria = normalizza_categoria(categoria)
+
                     try:
                         ded_ires = float(ded_ires) if ded_ires else 100
                         ded_irap = float(ded_irap) if ded_irap else 100
                     except (ValueError, TypeError):
                         ded_ires = 100
                         ded_irap = 100
-                    
+
                     categorie.append({
                         "id": str(uuid.uuid4()),
                         "categoria": categoria,
@@ -401,12 +382,89 @@ async def upload_regole_excel(file: UploadFile = File(...)):
                         "note": str(note or ""),
                         "created_at": datetime.now(timezone.utc).isoformat()
                     })
-            
+
             if categorie:
                 await db["regole_categorie"].delete_many({})
                 await db["regole_categorie"].insert_many(categorie)
                 stats["categorie_caricate"] = len(categorie)
-        
+
+        # Categorie riconosciute DOPO l'eventuale foglio Categorie di questo
+        # stesso upload: usata per rifiutare (per riga, non l'intero file)
+        # una regola fornitore/descrizione con una categoria inesistente
+        # invece di salvarla silenziosamente inefficace (audit 19/09/2026).
+        valide = await categorie_valide(db)
+
+        # === PROCESSA FOGLIO FORNITORI ===
+        if "Regole Fornitori" in wb.sheetnames:
+            ws = wb["Regole Fornitori"]
+            regole_forn = []
+
+            for row in range(2, ws.max_row + 1):
+                pattern = ws.cell(row=row, column=1).value
+                categoria_raw = ws.cell(row=row, column=2).value
+                note = ws.cell(row=row, column=3).value
+
+                if pattern and categoria_raw:
+                    pattern = str(pattern).strip()
+                    categoria = normalizza_categoria(categoria_raw)
+                    if categoria not in valide:
+                        stats["errori"].append(
+                            f"Regole Fornitori riga {row}: "
+                            + _errore_categoria_inesistente(categoria_raw, categoria)
+                        )
+                        continue
+
+                    regole_forn.append({
+                        "id": str(uuid.uuid4()),
+                        "pattern": pattern,
+                        "categoria": categoria,
+                        "note": str(note or ""),
+                        "tipo": "fornitore",
+                        "created_at": datetime.now(timezone.utc).isoformat(),
+                        "attivo": True
+                    })
+
+            if regole_forn:
+                # Elimina vecchie regole e inserisci nuove
+                await db["regole_categorizzazione_fornitori"].delete_many({})
+                await db["regole_categorizzazione_fornitori"].insert_many(regole_forn)
+                stats["regole_fornitori_caricate"] = len(regole_forn)
+
+        # === PROCESSA FOGLIO DESCRIZIONI ===
+        if "Regole Descrizioni" in wb.sheetnames:
+            ws = wb["Regole Descrizioni"]
+            regole_desc = []
+
+            for row in range(2, ws.max_row + 1):
+                pattern = ws.cell(row=row, column=1).value
+                categoria_raw = ws.cell(row=row, column=2).value
+                note = ws.cell(row=row, column=3).value
+
+                if pattern and categoria_raw:
+                    pattern = str(pattern).strip()
+                    categoria = normalizza_categoria(categoria_raw)
+                    if categoria not in valide:
+                        stats["errori"].append(
+                            f"Regole Descrizioni riga {row}: "
+                            + _errore_categoria_inesistente(categoria_raw, categoria)
+                        )
+                        continue
+
+                    regole_desc.append({
+                        "id": str(uuid.uuid4()),
+                        "pattern": pattern,
+                        "categoria": categoria,
+                        "note": str(note or ""),
+                        "tipo": "descrizione",
+                        "created_at": datetime.now(timezone.utc).isoformat(),
+                        "attivo": True
+                    })
+
+            if regole_desc:
+                await db["regole_categorizzazione_descrizioni"].delete_many({})
+                await db["regole_categorizzazione_descrizioni"].insert_many(regole_desc)
+                stats["regole_descrizioni_caricate"] = len(regole_desc)
+
         return {
             "success": True,
             "message": "Regole caricate con successo",
@@ -470,14 +528,21 @@ async def get_regole() -> Dict[str, Any]:
 async def aggiungi_regola_fornitore(data: Dict[str, Any]) -> Dict[str, Any]:
     """Aggiunge una nuova regola per fornitore."""
     db = Database.get_db()
-    
+
     pattern = data.get("pattern", "").strip()
-    categoria = data.get("categoria", "").strip().lower().replace(" ", "_")
+    categoria_originale = data.get("categoria", "")
+    categoria = normalizza_categoria(categoria_originale)
     note = data.get("note", "")
-    
+
     if not pattern or not categoria:
         raise HTTPException(status_code=400, detail="Pattern e categoria sono obbligatori")
-    
+
+    if categoria not in await categorie_valide(db):
+        raise HTTPException(
+            status_code=400,
+            detail=_errore_categoria_inesistente(categoria_originale, categoria),
+        )
+
     # Verifica se esiste già
     existing = await db["regole_categorizzazione_fornitori"].find_one({"pattern": pattern})
     if existing:
@@ -507,14 +572,21 @@ async def aggiungi_regola_fornitore(data: Dict[str, Any]) -> Dict[str, Any]:
 async def aggiungi_regola_descrizione(data: Dict[str, Any]) -> Dict[str, Any]:
     """Aggiunge una nuova regola per descrizione prodotto."""
     db = Database.get_db()
-    
+
     pattern = data.get("pattern", "").strip()
-    categoria = data.get("categoria", "").strip().lower().replace(" ", "_")
+    categoria_originale = data.get("categoria", "")
+    categoria = normalizza_categoria(categoria_originale)
     note = data.get("note", "")
-    
+
     if not pattern or not categoria:
         raise HTTPException(status_code=400, detail="Pattern e categoria sono obbligatori")
-    
+
+    if categoria not in await categorie_valide(db):
+        raise HTTPException(
+            status_code=400,
+            detail=_errore_categoria_inesistente(categoria_originale, categoria),
+        )
+
     existing = await db["regole_categorizzazione_descrizioni"].find_one({"pattern": pattern})
     if existing:
         await db["regole_categorizzazione_descrizioni"].update_one(
@@ -557,7 +629,7 @@ async def aggiorna_categoria(data: Dict[str, Any]) -> Dict[str, Any]:
     """Aggiorna o crea una categoria con deducibilità."""
     db = Database.get_db()
     
-    categoria = data.get("categoria", "").strip().lower().replace(" ", "_")
+    categoria = normalizza_categoria(data.get("categoria", ""))
     conto = data.get("conto", "").strip()
     ded_ires = data.get("deducibilita_ires", 100)
     ded_irap = data.get("deducibilita_irap", 100)

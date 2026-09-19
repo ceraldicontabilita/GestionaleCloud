@@ -493,8 +493,8 @@ export default function PianoDeiConti() {
 
             <div
               style={{
-                background: COLORS.warningLight,
-                border: `1px solid ${COLORS.warning}`,
+                background: COLORS.dangerLight,
+                border: `1px solid ${COLORS.danger}`,
                 padding: 15,
                 borderRadius: BORDER_RADIUS.md,
                 marginBottom: 20,
@@ -502,11 +502,30 @@ export default function PianoDeiConti() {
                 color: COLORS.text,
               }}
             >
-              <strong>Come funzionano le regole:</strong>
+              <strong>⚠️ Tab storica, scollegata dalla registrazione fatture:</strong>
+              <p style={{ margin: '8px 0 0 0' }}>
+                Le regole create qui vengono salvate nella vecchia collezione{' '}
+                <code>regole_categorizzazione</code>, che il motore di registrazione fatture{' '}
+                <strong>non legge più</strong> (consolidamento 19/09/2026): crearne una qui non
+                cambia il conto usato per nessuna fattura. Sono rimaste solo a scopo storico/di
+                consultazione.
+              </p>
+              <p style={{ margin: '8px 0 0 0' }}>
+                Le regole realmente usate dal motore si gestiscono in{' '}
+                <strong>Learning Machine → ⚙️ Regole Categorizzazione</strong>:{' '}
+                <a
+                  href="/learning-machine/regole"
+                  onClick={e => {
+                    e.preventDefault();
+                    navigate('/learning-machine/regole');
+                  }}
+                  style={{ color: COLORS.primary, fontWeight: 'bold' }}
+                >
+                  vai alla pagina
+                </a>
+                .
+              </p>
               <ul style={{ margin: '10px 0 0 0', paddingLeft: 20 }}>
-                <li>
-                  Le regole determinano automaticamente quali conti usare per registrare le fatture
-                </li>
                 <li>
                   <strong>Pattern</strong>: parola chiave da cercare (es. "ENEL" per bollette
                   elettricità)
