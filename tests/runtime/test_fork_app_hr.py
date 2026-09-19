@@ -8,9 +8,11 @@ qualcuno non inciampa nel ramo sbagliato. Due casi reali gia' accertati:
 - `services/document_ai_extractor.py`: il limite del testo passato all'AI era
   stato alzato da 15.000 a 150.000 caratteri sul lato ERP, perche' tagliava
   estratti conto e PDF multipagina. La copia HR e' rimasta a 15.000 per mesi.
-- `parsers/f24_parser.py`: l'ERP usa `parse_importo_ita`, la copia HR ha
-  ancora il parser scritto a mano che restituisce 0.0 sugli importi
-  illeggibili — cioe' un F24 che non si riesce a leggere vale zero euro.
+- `parsers/f24_parser.py`: le due copie divergevano sul formato anglosassone
+  («1,234.56» valeva 1234.56 da un lato e 1.23456 dall'altro, un fattore
+  1000 su un importo F24). Erano pero' entrambe irraggiungibili, quindi il
+  difetto non era in produzione: rimosse il 19/09/2026 tenendo la sola
+  `app/services/f24_parser.py`, che e' quella viva.
 
 Questa guardia non pretende di smontare il fork: blocca soltanto la sua
 CRESCITA. Un sottopercorso nuovo in entrambi i rami fa fallire la CI il giorno
@@ -29,6 +31,12 @@ RADICE = Path(__file__).resolve().parents[2]
 # averli per esistere.
 IGNORATI = {"__init__.py"}
 
+# ATTENZIONE a chi cerca codice morto con il criterio «mai citato in tests/»:
+# questo file nomina i duplicati PROPRIO PERCHE' lo sono, non perche' siano
+# usati. Contarlo fra le citazioni fa risultare vivi moduli irraggiungibili —
+# e' successo il 19/09/2026 con i tre `f24_parser` che la Fase 1 si era persa.
+# Va escluso dal corpus delle citazioni.
+
 # Fotografia del 19/09/2026, accorciata dalla Fase 2 (i sette
 # `services/handlers/*` HR erano copie del lato ERP e sono spariti).
 # Solo da accorciare.
@@ -40,7 +48,6 @@ FORK_NOTO = {
     # Fork veri, da consolidare (vedi «Aperto» in CLAUDE.md).
     "exceptions/custom_exceptions.py",
     "parsers/busta_paga_multi_template.py",
-    "parsers/f24_parser.py",
     "parsers/payslip_parser_v2.py",
     "repositories/base_repository.py",
     "repositories/user_repository.py",
@@ -55,7 +62,6 @@ FORK_NOTO = {
     "services/cedolini_manager.py",
     "services/document_ai_extractor.py",
     "services/event_bus.py",
-    "services/f24_parser.py",
     "services/libro_unico_parser.py",
     "services/paghe_riconciliazione.py",
     "services/partite_aperte_engine.py",
