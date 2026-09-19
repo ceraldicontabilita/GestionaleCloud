@@ -9,6 +9,8 @@ import pytest
 from fastapi import HTTPException
 from mongomock_motor import AsyncMongoMockClient
 
+import app.lotti
+
 os.environ.setdefault("MONGO_URL", "mongodb://localhost:27017")
 os.environ.setdefault("DB_NAME", "Gestionale_Test")
 
@@ -33,7 +35,11 @@ def context(monkeypatch):
 
 
 def test_file_has_unique_recipes_and_valid_base_links():
-    path = Path(__file__).resolve().parent.parent / "data" / "ricette_cartel1.json"
+    # Il file di dati vive accanto al codice che lo consuma (app/lotti/data/),
+    # non accanto al test: si risolve dal pacchetto, cosi' il percorso regge
+    # ovunque stia il test (19/09/2026: qui sotto tests/lotti/, prima dentro
+    # app/lotti/tests/, dove pytest non lo raccoglieva mai).
+    path = Path(app.lotti.__file__).resolve().parent / "data" / "ricette_cartel1.json"
     payload = json.loads(path.read_text(encoding="utf-8"))
     recipes = payload["recipes"]
     names = {item["nome"].casefold() for item in recipes}
