@@ -317,6 +317,10 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   `app/services/mapping_piano_conti.py`. La vecchia collezione `piano_conti` è
   dismessa: i codici storici sono alias e un conto fuori tabella viene
   **rifiutato** dal motore.
+- **Un solo event bus**: `app/services/event_bus.py`, registrato all'avvio da
+  `app/main.py`. `app/hr/services/event_bus.py` e' un re-export, non un
+  secondo registro: un bus con handler propri che nessuno collega fa sparire
+  gli eventi in silenzio. Un fatto si pubblica **una volta sola**.
 - Motore unico Prima Nota: `app/services/scritture_contabili.py`. Non creare
   nuovi `insert_one` diretti per scritture contabili.
 - Libro giornale in partita doppia (`movimenti_contabili`): motore unico
@@ -441,7 +445,10 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   proiezione (`sincronizza_operatori_da_hr`), il gestionale si riallinea a HR.
   Un solo stato del rapporto: `attivo` | `cessato` con data e motivo; la
   cessazione revoca il PIN. `PUT /dipendenti/{id}` aggiorna **solo i campi
-  inviati**.
+  inviati**. La revoca, la chiusura dei contratti, il rifiuto delle richieste
+  di assenza future e l'annullamento delle partite stipendio residue stanno
+  tutti in un punto solo, `on_dipendente_cessato`: le pagine si limitano a
+  pubblicare `dipendente.cessato`, non ripetono la pulizia a mano.
 - **Un PIN per persona, nella scheda HR**: vale per il portale e per firmare
   in Lotti (bcrypt più impronta HMAC; mai due persone in forza con lo stesso
   PIN; mai un cessato). Il **PIN amministratore è uno solo per ERP, Menu,
@@ -729,10 +736,6 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   **crescere**: `tests/runtime/test_fork_app_hr.py` fa fallire la CI su un
   sottopercorso nuovo in entrambi i rami, e la lista al suo interno puo' solo
   accorciarsi.
-- Tre event bus vivi insieme (`app/services/event_bus.py`,
-  `app/hr/services/event_bus.py`, `app/hr/core/event_bus.py`): `cedolini_manager`
-  pubblica lo stesso fatto su due, e un handler registrato su un bus non vede
-  gli eventi degli altri. `app/hr/core/event_bus.py` e' a copertura zero.
 - `gestionale.blobs` non e' piu' collegata a niente: `app/services/blob_store.py`
   e' l'unico codice che la tocca e nessuno lo importa, mentre in produzione la
   tabella ha 216 righe. O il meccanismo dei PDF su richiesta si ricollega, o la
