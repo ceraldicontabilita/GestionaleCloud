@@ -770,14 +770,13 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 
 - Ogni merge su `main` fa ridistribuire Render e riportare in memoria ~74.500
   righe: per qualche minuto la produzione è `degraded`. Non è un guasto, ma
-  non si accodano merge, e il lavoro di fondo in corso riparte dal suo
-  cursore.
+  non si accodano merge, e il lavoro di fondo riparte dal suo cursore.
 - Ingest cedolini: il ramo vivo è `services/cedolini_manager` →
-  `services/salari_unificati_v2`, e un netto illeggibile non diventa più
-  zero. **Collaudo live non chiuso**: il giro orario Drive trova 0 file su 49
-  caselle, serve un PDF di cedolino vero per esercitare il percorso.
-- Il `last_login` di HR non è mai stato scritto fino al 19/09/2026
-  (`ObjectId` su un id testuale): da verificare al primo accesso col PIN.
+  `services/salari_unificati_v2`, e un netto illeggibile non diventa più zero.
+  **Collaudo live non chiuso**: il giro orario Drive trova 0 file su 49
+  caselle, serve un PDF di cedolino vero.
+- Il `last_login` di HR non è mai stato scritto fino al 19/09/2026 (`ObjectId`
+  su un id testuale): da verificare al primo accesso col PIN.
 - TFR: è accantonato. `hr.app_tfr_accantonamenti` è vuota ma il codice vivo
   scrive in `tfr_accantonamenti` del gestionale: 1.175 righe, 42 dipendenti,
   2018–2026, 273.025,37 €.
@@ -785,30 +784,26 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   1,57 GB su 2 GB: riaccendere solo dopo aver ridotto la memoria del giro).
 - **Acceso**: scheduler, ingest Drive (fatture, estratti conto, cedolini,
   bonifici), ponte pagamenti HR, dedup fatture ogni 30 min, canale
-  dichiarazioni fiscali finché la coda non è esaurita.
+  dichiarazioni fiscali fino a coda esaurita.
 - Fatture in archivio **1.906**, di cui **873 attive e tutte del 2026**
-  (411.487,41 €): la regola «solo 2026 nel bilancio» è rispettata, il resto è
-  archivio storico. Collisioni aperte 0. 21 corrispettivi con ripartizione
-  contanti/POS non quadrata (31/03–30/07/2026).
-- **Su Drive ci sono 2.447 XML di fattura**: 1.318 del 2026 (769 in
-  `Elaborate`, 527 in `Da elaborare`, 22 in `Errori`), 875 del 2025, 254 dal
-  2021 al 2024. Quadratura e ricostruzione hanno già recuperato **396
-  fatture** che il gestionale non aveva (211.097,19 €), tutte pre-2026 e
-  tutte marcate `archivio_storico`: nessuna tocca il bilancio 2026. La
-  ricostruzione completa è **in corso** e va avanti da sola.
+  (411.487,41 €): «solo 2026 nel bilancio» è rispettata, il resto è archivio
+  storico. Collisioni 0. 21 corrispettivi con ripartizione contanti/POS non
+  quadrata (31/03–30/07/2026).
+- **Su Drive 2.447 XML di fattura**: 1.318 del 2026 (769 `Elaborate`, 527 `Da
+  elaborare`, 22 `Errori`), 875 del 2025, 254 dal 2021 al 2024. Ne sono già
+  rientrate **396** che il gestionale non aveva (211.097,19 €), tutte pre-2026
+  e marcate `archivio_storico`. La ricostruzione va avanti da sola.
 - **Nessuna liquidazione IVA è mai stata calcolata**: `/api/iva/liquidazioni`
-  torna vuoto. Giugno e luglio 2026 sono calcolabili e attendibili, ma con
-  **zero** fatture d'acquisto nel calcolo (tutte in `detraibilita_da_verificare`),
-  quindi il saldo è l'IVA sulle vendite intera: 7.651,05 € e 6.211,86 €.
-  Agosto è bloccato su `DATI_MANCANTI` per `giorni_senza_corrispettivo`.
+  torna vuoto. Giugno e luglio 2026 sono calcolabili ma con **zero** acquisti
+  (tutti in `detraibilita_da_verificare`): il saldo è l'IVA sulle vendite
+  intera, 7.651,05 € e 6.211,86 €; agosto è fermo su `giorni_senza_corrispettivo`.
   Corrispettivi 2026: 518.879,34 € incassati, 47.170,88 € di IVA a debito.
 - Confronto con la LIPE 2026 del commercialista (tre periodi, tutti quadrati):
   a marzo l'IVA esigibile combacia **al centesimo** (6.131,26 €); a gennaio
-  ci mancano **5.005,88 €** di IVA detraibile, cioè fatture d'acquisto che
-  lui ha e noi no. Febbraio senza corrispettivi non è un buco: il locale era
-  chiuso per ristrutturazione e anche la LIPE ha le operazioni attive in
-  bianco. Per il 2026 non esiste nessun F24 IVA, ed è corretto: la LIPE
-  chiude a credito tutti i mesi.
+  mancano **5.005,88 €** di IVA detraibile, cioè acquisti che lui ha e noi no.
+  Febbraio senza corrispettivi non è un buco: locale chiuso per
+  ristrutturazione, e anche la LIPE ha le attive in bianco. Nessun F24 IVA
+  2026, ed è corretto: la LIPE chiude a credito tutti i mesi.
 - Cron Render `gestionalecloud-calderone-15min`: **sospeso** e ora senza
   codice (`render_workflows/` eliminato). Va cancellato dal pannello.
 - Solo 108 prodotti del Menu su 325 hanno allergeni valorizzati: da
@@ -820,8 +815,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - Endpoint sincroni oltre i 5 minuti, da portare a lotti riprendibili come la
   ricostruzione Drive: `/api/fatture/drive/quadratura` (tagliata a 300 s,
   arriva solo al 2022), `/api/paypal-api/riconcilia`,
-  `/api/paypal-api/account-ids-non-mappati`,
-  `/api/admin/riallinea-pagamenti-fatture`,
+  `/api/paypal-api/account-ids-non-mappati`, `/api/admin/riallinea-pagamenti-fatture`,
   `/api/prima-nota-salari/deposita-cedolini-in-hr`.
 - Note di credito TD04 legacy (~20, precedenti al fix a `registra_fattura`):
   costo/IVA/debito aumentati anziché ridotti, da sanare una per una con
@@ -858,10 +852,12 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   scelta. Finché una coppia è aperta ogni correzione va cercata anche nel
   gemello; crescere non può, `tests/runtime/test_fork_app_hr.py` impone che la
   lista si accorci soltanto.
-- `gestionale.blobs` (216 righe) la tocca solo `app/services/blob_store.py`,
-  che nessuno importa: o i PDF su richiesta si ricollegano, o la regola va
-  corretta. Stesso caso di `bank_reconciliation_hub` (2.017 righe), scritta da
-  un trigger e letta da nessuno: o le si dà un lettore, o va spenta.
+- `gestionale.blobs`: 216 PDF (4 MB, scritti tutti il 03/09) che **nessun
+  documento cita** (zero chiavi `sha256:` in `documents`) e che solo
+  `app/services/blob_store.py`, mai importato, sa leggere: o si riaggancia
+  l'archivio, o si tolgono tutti e due. Stesso caso di
+  `bank_reconciliation_hub` (2.017 righe), scritta da un trigger e letta da
+  nessuno: o le si dà un lettore, o va spenta.
 - `archivio_documenti_memoria.py` espone ancora `SheetDatabase` e
   `MemorySheetsClient`, che nel nome promettono Google Sheets senza chiamarlo
   mai: 54 e 2 occorrenze in 12 file, da rinominare in un giro dedicato.
@@ -891,7 +887,11 @@ Per ogni modifica pertinente:
    revisore esterno (bot Codex rimosso) e i test provano solo ciò che qualcuno
    ha pensato di scrivere. Tre domande: la chiave che leggo esiste sui dati
    veri? cosa ho dichiarato fatto senza riguardarlo? questo motore c'è già
-   altrove? Da lì sono usciti l'IRES ruotata e l'email F24 mai partita;
+   altrove? Da lì sono usciti l'IRES ruotata e l'email F24 mai partita. Un
+   censimento di moduli mai importati conta solo se risolve gli import
+   relativi **e** quelli dinamici (`__import__("app.x")`) su tutto il
+   repository: cercarli nel solo `app/` più `tests/` li sovrastima di tre
+   volte, e un file in più cancellato è un guasto in produzione;
 6. unione su `main` (è la consegna: Render pubblica solo da lì);
 7. CI verde e verifica `/api/health` sul commit pubblicato;
 8. controllo live del flusso interessato senza mutare dati non autorizzati.
