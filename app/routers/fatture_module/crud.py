@@ -548,8 +548,8 @@ async def _trova_fattura_e_xml_originale(fattura_id: str) -> tuple[Optional[dict
             fattura = await db["invoices"].find_one({"_id": fattura_id})
             if fattura:
                 fattura.pop("_id", None)
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[Fatture] ricerca per _id storico non riuscita: %s", exc)
     if not fattura:
         return None, None
     if fattura.get("entity_status") == "deleted" or fattura.get("status") == "deleted":
@@ -737,8 +737,8 @@ async def get_fattura_dettaglio(fattura_id: str) -> Dict[str, Any]:
             fattura = await db["invoices"].find_one({"_id": fattura_id})
             if fattura:
                 fattura.pop("_id", None)
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[Fatture] ricerca per _id storico non riuscita: %s", exc)
     if not fattura:
         raise HTTPException(status_code=404, detail="Fattura non trovata")
     if fattura.get("entity_status") == "deleted" or fattura.get("status") == "deleted":

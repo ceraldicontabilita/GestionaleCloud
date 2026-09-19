@@ -823,8 +823,10 @@ async def registra_acconto(input_data: AccontoInput) -> Dict[str, Any]:
         if input_data.data and len(input_data.data) >= 7:
             anno_int = int(input_data.data[:4])
             mese_int = int(input_data.data[5:7])
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "[TFR] data non interpretabile: anno e mese restano vuoti e la riga non si "
+            "trova piu' cercando per periodo: %s", exc)
 
     now_iso = datetime.now(timezone.utc).isoformat()
 
@@ -956,8 +958,10 @@ async def modifica_acconto(acconto_id: str, input_data: dict) -> Dict[str, Any]:
             if len(nuova_data) >= 7:
                 update_fields["anno"] = int(nuova_data[:4])
                 update_fields["mese"] = int(nuova_data[5:7])
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "[TFR] data non interpretabile in aggiornamento: anno e mese non "
+                "sono stati ricalcolati: %s", exc)
         # Se l'utente non ha forzato scalato_su_anno_mese, derivalo dalla nuova data
         if "scalato_su_anno_mese" not in input_data:
             update_fields["scalato_su_anno_mese"] = nuova_data[:7]
@@ -2239,8 +2243,12 @@ async def dividi_in_rate_simulazione(dipendente_id: str, input_data: RateSimulaz
         extra_13 = float((liq.get("tredicesima") or {}).get("netto") or 0)
         extra_14 = float((liq.get("quattordicesima") or {}).get("netto") or 0)
         extra_ferie = float((liq.get("ferie") or {}).get("controvalore") or 0)
-    except Exception:
-        pass  # senza liquidazione le rate restano sul solo TFR residuo
+    except Exception as exc:  # noqa: BLE001
+        # Senza liquidazione le rate restano sul solo TFR residuo: e' un piano
+        # di pagamento piu' basso del dovuto, quindi va detto, non subito.
+        logger.warning(
+            "[TFR] simulazione della liquidazione non riuscita per %s: 13a, 14a e "
+            "ferie restano a zero nel calcolo delle rate: %s", dipendente_id, exc)
     totale_complessivo = round(netto_residuo + extra_13 + extra_14 + extra_ferie, 2)
     if totale_complessivo <= 0:
         raise HTTPException(status_code=400, detail="Il totale complessivo da pagare è zero o negativo")

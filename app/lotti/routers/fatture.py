@@ -461,8 +461,8 @@ def _estrai_xml(raw: bytes) -> bytes:
         out = _carve(_b64.b64decode(raw, validate=False))
         if out is not None:
             return out
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("[Lotti fatture] contenuto non decodificabile da base64: %s", exc)
     return raw
 
 

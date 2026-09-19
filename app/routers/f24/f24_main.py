@@ -710,8 +710,10 @@ async def get_f24_dashboard(
 
                 if (scadenza - today).days <= 7:
                     alert_attivi += 1
-            except Exception:
-                pass
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "[F24] scadenza non interpretabile: questa rata non entra nel "
+                    "conteggio degli alert: %s", exc)
 
     return {
         "totale_f24": len(all_f24),

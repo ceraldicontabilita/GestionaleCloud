@@ -213,15 +213,15 @@ async def process_files_background(job_id: str, file_paths: List[Path]):
 
             try:
                 p.unlink(missing_ok=True)
-            except Exception:
-                pass
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("[Bonifici job] file temporaneo non rimosso: %s", exc)
 
     # Pulisci directory job
     job_dir = UPLOAD_DIR / job_id
     try:
         shutil.rmtree(job_dir, ignore_errors=True)
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("[Bonifici job] pulizia della cartella di lavoro non riuscita: %s", exc)
 
     # Auto-associazione
     auto_associated_salari = 0

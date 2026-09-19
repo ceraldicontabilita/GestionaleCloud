@@ -98,8 +98,10 @@ def _fetch_cedolini_gmail_sync(email_user: str, email_pass: str, since_days: int
                         if mid not in collected_ids:
                             collected_ids.add(mid)
                             all_ids.append(mid)
-            except Exception:
-                pass
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "[Gmail Import] ricerca IMAP per oggetto non riuscita: i cedolini con quella "
+                    "parola nell'oggetto non vengono trovati: %s", exc)
 
         # Anche corpo email
         for kw in ["cedolino", "busta paga"]:
@@ -110,8 +112,10 @@ def _fetch_cedolini_gmail_sync(email_user: str, email_pass: str, since_days: int
                         if mid not in collected_ids:
                             collected_ids.add(mid)
                             all_ids.append(mid)
-            except Exception:
-                pass
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "[Gmail Import] ricerca IMAP nel corpo non riuscita: i cedolini che "
+                    "contengono quella parola non vengono trovati: %s", exc)
 
         logger.info(f"[Gmail Import] Trovate {len(all_ids)} email candidate")
 
@@ -166,8 +170,8 @@ def _fetch_cedolini_gmail_sync(email_user: str, email_pass: str, since_days: int
     finally:
         try:
             imap.logout()
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[Gmail Import] logout IMAP non riuscito: %s", exc)
 
     return results
 
@@ -351,8 +355,8 @@ async def crea_cedolino(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
             "anno": cedolino.get("anno"),
             "tipo_cedolino": cedolino.get("tipo_cedolino", "mensile"),
         }, db, source_module="cedolini_create")
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[Cedolini] audit della creazione del cedolino non registrato: %s", exc)
 
     return {"success": True, "message": "Cedolino creato", "id": cedolino["id"]}
 

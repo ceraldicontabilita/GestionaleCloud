@@ -943,8 +943,10 @@ async def verifica_associazioni_assegni(
                     problema["giorni_differenza"] = giorni_differenza
                     statistiche["problemi_data"] += 1
                     ha_problemi = True
-            except Exception:
-                pass
+            except Exception as exc:  # noqa: BLE001
+                logger.debug(
+                    "[Assegni] date non confrontabili: il controllo sullo scarto di "
+                    "giorni non e' stato fatto: %s", exc)
         
         if ha_problemi:
             # Cerca fatture alternative suggerite
@@ -2979,8 +2981,10 @@ async def associa_beneficiari_robusto() -> Dict[str, Any]:
                     diff_giorni = abs((data_ass - data_fatt).days)
                     if diff_giorni <= 90:  # Max 90 giorni di differenza
                         candidati_ordinati.append((c, diff_giorni))
-                except Exception:
-                    pass
+                except Exception as exc:  # noqa: BLE001
+                    logger.debug(
+                        "[Assegni] data fattura non interpretabile: candidato "
+                        "escluso dall'ordinamento: %s", exc)
             
             if candidati_ordinati:
                 candidati_ordinati.sort(key=lambda x: x[1])

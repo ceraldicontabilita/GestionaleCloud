@@ -1872,8 +1872,14 @@ async def create_presenza(presenza: PresenzaCloud):
             ent = datetime.strptime(pres_dict["entrata"], "%H:%M")
             usc = datetime.strptime(pres_dict["uscita"], "%H:%M")
             pres_dict["ore_lavorate"] = round((usc - ent).seconds / 3600, 2)
-        except:
-            pass
+        except ValueError as exc:
+            # Senza ore_lavorate la presenza entra comunque, ma la paga di quel
+            # giorno si calcola su un campo che non c'e': va detto.
+            logger.warning(
+                "[Presenze] orario non interpretabile (%s-%s): ore_lavorate non "
+                "calcolate per il dipendente %s: %s",
+                pres_dict.get("entrata"), pres_dict.get("uscita"),
+                pres_dict.get("dipendente_id"), exc)
     
     await get_db().presenze_cloud.insert_one(pres_dict)
     return serialize_doc(pres_dict)
@@ -1887,8 +1893,14 @@ async def update_presenza(presenza_id: str, presenza: PresenzaCloud):
             ent = datetime.strptime(pres_dict["entrata"], "%H:%M")
             usc = datetime.strptime(pres_dict["uscita"], "%H:%M")
             pres_dict["ore_lavorate"] = round((usc - ent).seconds / 3600, 2)
-        except:
-            pass
+        except ValueError as exc:
+            # Senza ore_lavorate la presenza entra comunque, ma la paga di quel
+            # giorno si calcola su un campo che non c'e': va detto.
+            logger.warning(
+                "[Presenze] orario non interpretabile (%s-%s): ore_lavorate non "
+                "calcolate per il dipendente %s: %s",
+                pres_dict.get("entrata"), pres_dict.get("uscita"),
+                pres_dict.get("dipendente_id"), exc)
     
     result = await get_db().presenze_cloud.update_one(
         {"id": presenza_id},

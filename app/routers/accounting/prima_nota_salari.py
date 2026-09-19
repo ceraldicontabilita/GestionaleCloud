@@ -1425,8 +1425,10 @@ async def ricalcola_progressivi(
     if anni_esclusi:
         try:
             anni_esclusi_list = [int(a.strip()) for a in anni_esclusi.split(',') if a.strip()]
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "[PrimaNotaSalari] anni_esclusi non interpretabile: il filtro viene ignorato e il "
+                "risultato comprende anni che andavano esclusi: %s", exc)
     
     # Se force_reset, prima azzera i progressivi
     if force_reset:

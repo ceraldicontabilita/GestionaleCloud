@@ -120,8 +120,10 @@ def parse_filename_data(filename: str) -> Optional[Dict[str, Any]]:
             result["importo"] = amt
             parts = parts[:i] + parts[i+1:]
             break
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(
+                "[Bonifici] importo non interpretabile in questo pezzo "
+                "della causale: %s", exc)
     
     # Data (YYYYMMDD o DDMMYYYY)
     for i, p in enumerate(parts):
@@ -133,8 +135,10 @@ def parse_filename_data(filename: str) -> Optional[Dict[str, Any]]:
                     result["data_esecuzione"] = datetime(int(p[4:8]), int(p[2:4]), int(p[:2]), tzinfo=timezone.utc)
                 parts = parts[:i] + parts[i+1:]
                 break
-            except Exception:
-                pass
+            except Exception as exc:  # noqa: BLE001
+                logger.debug(
+                    "[Bonifici] data non interpretabile in questo pezzo "
+                    "della causale: %s", exc)
     
     # Resto è causale
     if parts:

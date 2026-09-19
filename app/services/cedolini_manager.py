@@ -644,8 +644,8 @@ async def processa_tutti_cedolini_pdf(
         finally:
             try:
                 _os.unlink(tmp_path)
-            except Exception:
-                pass
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("[Cedolini] file temporaneo non rimosso: %s", exc)
     except Exception as e:
         logger.debug(f"Estrazione pdf_text fallita (non bloccante): {e}")
 

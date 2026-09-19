@@ -216,13 +216,11 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 5. Migrazioni DDL su `gestionale.documents` a database scarico o con
    `create index concurrently`. Ogni DDL fa ricaricare lo schema a PostgREST
    (503 per minuti): l'HR fa DDL solo se la tabella manca davvero.
-6. **Nessuna cancellazione con filtro.** L'app cancella solo per id tramite
+6. **Nessuna cancellazione con filtro**: solo per id, con
    `gc_delete_documents` / `gc_delete_blobs` / `lotti_delete_*`. `DELETE` e
-   `TRUNCATE` a mano sono bloccati da una guardia su `gestionale.documents`,
-   `gestionale.blobs`, `lotti.lotti_documents` e su tutto `legacy_staging`;
-   per una manutenzione deliberata, nella stessa transazione:
-   `select gestionale.consenti_cancellazione();` — e prima un backup in una
-   tabella `*_rimossi_<data>` / `*_prima_<data>`.
+   `TRUNCATE` a mano sono bloccati su `gestionale.documents`, `.blobs`,
+   `lotti.lotti_documents` e `legacy_staging`; per una manutenzione voluta,
+   `select gestionale.consenti_cancellazione();` e prima un backup.
 7. Nessun agente e nessuna sessione automatica deve avere la password
    Postgres: solo l'API con il segreto runtime. Il ruolo dell'app è `hr_app`.
 8. Un protocollo non dimentica: un file sparito da Drive diventa
@@ -237,20 +235,22 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
     fra i due rami filtra per entrambi i campi; `bson`/`motor` non devono
     comparire in codice nuovo.
 11. Un nome di campo sbagliato non dà errore, dà silenzio: `{"campo": {"$ne":
-    True}}` su una chiave inesistente passa **sempre**, e la scrittura finisce
-    su un campo che nessuno legge. Prima di fidarsi di un filtro, contare sul
-    database quante righe hanno davvero quella chiave. Vale anche fra due
-    funzioni: `supplier_result["nuovo"]` al posto di `supplier_created` dava
-    sempre `False`, e un alert non è mai partito.
+    True}}` su una chiave inesistente passa **sempre**. Prima di fidarsi di un
+    filtro, contare sul database quante righe hanno davvero quella chiave.
+    Vale anche fra due funzioni: `supplier_result["nuovo"]` al posto di
+    `supplier_created` dava sempre `False`, e un alert non è mai partito.
 12. **Su `invoices` i campi canonici sono quelli inglesi**: `invoice_date`,
-    `total_amount`, `invoice_number`. `data_documento` e `totale` sono
-    *derivati* (il primo lo scrive il motore IVA) e mancano su tutte le
-    fatture che quel motore non ha mai toccato: filtrare o sommare su di essi
-    perde righe in silenzio. `iva` e `imponibile` invece ci sono sempre.
+    `total_amount`, `invoice_number`. `data_documento` e `totale` sono derivati
+    e mancano sulle fatture che il motore IVA non ha toccato: filtrarci o
+    sommarci perde righe in silenzio. `iva` e `imponibile` ci sono sempre.
 13. Un conteggio che torna zero tondo, o uguale al totale su ogni colonna, si
     tratta come un errore di lettura finché non è smentito. Lo stesso per uno
     stato: in archivio convivono `archived` e `archiviata`, e un filtro che ne
     conosce una sola include documenti che doveva escludere.
+14. **`except Exception: pass` è vietato dove si contano euro** e non cresce
+    altrove (`tests/runtime/test_guasti_muti.py`): il log dice *quale dato non
+    c'è più*, non «errore». Vale anche un `%s` senza argomento: quella riga non
+    viene scritta affatto.
 
 ## Identità, prove e attese
 

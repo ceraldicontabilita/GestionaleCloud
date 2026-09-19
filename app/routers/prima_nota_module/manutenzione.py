@@ -1778,7 +1778,9 @@ async def dedup_fatture_prima_nota(
 
         movimenti = await db[collection_name].find(query, {"_id": 0}).to_list(50000)
         if len(movimenti) >= 50000:
-            logger.warning("manutenzione prima nota %s: raggiunto il tetto di 50000 documenti, possibile troncamento", label)
+            logger.warning(
+                "manutenzione prima nota %s: raggiunto il tetto di 50000 "
+                "documenti, possibile troncamento", label)
 
         # Raggruppamento solo per identita della singola prova/operazione.
         gruppi: Dict[str, list] = {}

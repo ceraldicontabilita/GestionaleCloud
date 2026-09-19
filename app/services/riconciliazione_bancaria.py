@@ -1515,8 +1515,10 @@ async def riconcilia_movimenti_banca(
                             diff_days = abs((dt_ec - dt_scad).days)
                             if diff_days <= 7:
                                 score += 2
-                        except Exception:
-                            pass
+                        except Exception as exc:  # noqa: BLE001
+                            logger.debug(
+                                "[Riconciliazione] date non confrontabili: il punteggio per vicinanza alla "
+                                "scadenza non e' stato assegnato: %s", exc)
 
                     # Sanità date: un pagamento non precede la fattura né
                     # dista oltre ~13 mesi. Penalizza i match cross-periodo
@@ -1910,8 +1912,10 @@ async def riconcilia_movimenti_banca(
 
                                 match_details = {"data_pos": data_pos, "importo_pos": pos.get("importo")}
                                 results["riconciliati_pos"] += 1
-                    except Exception:
-                        pass
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning(
+                            "[Riconciliazione] abbinamento POS non completato per "
+                            "questo movimento: %s", exc)
 
             # === 4. CERCA VERSAMENTI (per ENTRATE) ===
             if tipo == "entrata" and not match_found:

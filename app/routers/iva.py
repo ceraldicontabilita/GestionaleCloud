@@ -223,8 +223,8 @@ async def ricalcola_attribuzione(
     # Persistenza dell'esito (best-effort: non deve far fallire il calcolo).
     try:
         await db[COLL_RICALC_LOG].insert_one(dict(report))
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[IVA] esito del ricalcolo non archiviato nel registro: %s", exc)
 
     return {"success": True, "esaminate": lette, "aggiornate": modificate, "report": report}
 

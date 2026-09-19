@@ -89,8 +89,10 @@ async def associa_fattura_a_bonifico(
         )
         if result2.modified_count > 0:
             return {"success": True, "message": "Fattura associata al bonifico (archivio)"}
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "[Bonifici] associazione alla fattura non riuscita anche in "
+            "archivio_bonifici: %s", exc)
 
     raise HTTPException(404, "Bonifico non trovato in nessuna collection")
 
@@ -152,8 +154,10 @@ async def disassocia_fattura(bonifico_id: str) -> Dict[str, Any]:
         )
         if result2.modified_count > 0:
             return {"success": True, "message": "Associazione fattura rimossa (archivio)"}
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "[Bonifici] rimozione dell'associazione alla fattura non riuscita "
+            "anche in archivio_bonifici: %s", exc)
 
     raise HTTPException(404, "Bonifico non trovato")
 
@@ -250,8 +254,10 @@ async def associa_salario_a_bonifico(
         )
         if result2.modified_count > 0:
             return {"success": True, "message": "Salario associato al bonifico (archivio)"}
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "[Bonifici] associazione del salario non riuscita anche in "
+            "archivio_bonifici: %s", exc)
 
     raise HTTPException(404, "Bonifico non trovato in nessuna collection")
 
@@ -281,8 +287,10 @@ async def disassocia_salario(bonifico_id: str) -> Dict[str, Any]:
         )
         if result2.modified_count > 0:
             return {"success": True, "message": "Associazione salario rimossa (archivio)"}
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "[Bonifici] rimozione dell'associazione al salario non riuscita "
+            "anche in archivio_bonifici: %s", exc)
 
     raise HTTPException(404, "Bonifico non trovato in nessuna collection")
 

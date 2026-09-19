@@ -743,8 +743,10 @@ async def import_corrispettivi_csv(file: UploadFile = File(...)) -> Dict[str, An
                             "contanti": corr_doc.get("contanti") or corr_doc.get("quota_contanti"),
                             "elettronico": corr_doc.get("elettronico") or corr_doc.get("quota_pos"),
                         }, db, source_module="corrispettivi_csv")
-                    except Exception:
-                        pass
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning(
+                            "[Corrispettivi] evento CORRISPETTIVO_REGISTRATO non propagato: la prima "
+                            "nota non riceve questo corrispettivo: %s", exc)
                 
                 totale_importato += totale
                 
