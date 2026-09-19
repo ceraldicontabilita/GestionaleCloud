@@ -12,6 +12,7 @@ import logging
 
 from app.database import Database
 from app.utils.error_handler import handle_errors
+from app.services.piano_conti_ufficiale import SOGLIA_CESPITE_TUIR
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -79,6 +80,35 @@ CATEGORIE_CESPITI = {
         "vita_utile": 8
     }
 }
+
+# Conto ATTIVO (schema operativo, alias del piano CEE ufficiale via
+# app/services/mapping_piano_conti.OPERATIVO_A_UFFICIALE) su cui capitalizzare
+# la riga fattura che genera un cespite. Audit 19/09/2026 (punto 3, doppio
+# conteggio): PRIMA questa quota finiva SOLO qui come cespite ma restava
+# ANCHE per intero sul conto costo in `registrazione_contabile.registra_fattura`
+# (nessun collegamento tra i due motori). `registra_fattura` ora legge questa
+# mappa per instradare la riga sul conto giusto invece che sul costo.
+CATEGORIA_CESPITE_CONTO_ATTIVO = {
+    "fabbricati": {"codice": "01.06.06", "nome": "Fabbricati strumentali"},
+    "impianti_generici": {"codice": "01.06.01", "nome": "Impianti e macchinari"},
+    "impianti_cucina": {"codice": "01.06.01", "nome": "Impianti e macchinari"},
+    "attrezzature": {"codice": "01.06.02", "nome": "Attrezzature"},
+    "mobili_arredi": {"codice": "01.06.04", "nome": "Mobili e arredi"},
+    "automezzi": {"codice": "01.06.03", "nome": "Automezzi"},
+    "autovetture": {"codice": "01.06.03", "nome": "Automezzi"},
+    "macchine_ufficio": {"codice": "01.06.05", "nome": "Macchine ufficio elettroniche"},
+    "software": {"codice": "01.06.09", "nome": "Software e diritti di utilizzazione"},
+    "frigoriferi": {"codice": "01.06.07", "nome": "Frigoriferi e congelatori"},
+    "forni": {"codice": "01.06.08", "nome": "Forni e piastre"},
+}
+_CONTO_CESPITE_DEFAULT = {"codice": "01.06.01", "nome": "Impianti e macchinari"}
+
+
+def conto_attivo_per_categoria_cespite(categoria: str) -> Dict[str, str]:
+    """Conto ATTIVO su cui capitalizzare un cespite di questa categoria
+    (fallback: "Impianti e macchinari" generico se la categoria e' ignota)."""
+    return dict(CATEGORIA_CESPITE_CONTO_ATTIVO.get(categoria) or _CONTO_CESPITE_DEFAULT)
+
 
 FONTI_AMMORTAMENTO = {
     "beni_materiali": "DM 31/12/1988, Gruppo XIX; DPR 917/1986, art. 102",
@@ -660,12 +690,98 @@ async def verifica_coerenza_ammortamenti(anno: int) -> Dict[str, Any]:
     }
 
 
+@router.get("/verifica-doppio-conteggio")
+@handle_errors
+async def verifica_doppio_conteggio_costo_cespite() -> Dict[str, Any]:
+    """Controllo read-only (audit 19/09/2026, punto 3): segnala le fatture i
+    cui cespiti NON risultano capitalizzati nella scrittura contabile — cioe'
+    lo stesso imponibile pesa sia come costo pieno in conto economico sia come
+    cespite nell'attivo di bilancio.
+
+    Da `registrazione_contabile.registra_fattura` in poi, ogni NUOVA
+    registrazione instrada da sola la quota cespite sul conto giusto
+    (`cespiti_capitalizzati` sul movimento). Le fatture registrate PRIMA di
+    questa correzione, o quelle a cui un cespite e' stato collegato DOPO che
+    la fattura era gia' registrata (`registra_fattura` e' idempotente e non
+    riscrive una scrittura esistente), restano doppio-contate finche' non
+    vengono ricostruite (`POST /api/piano-conti/ricategorizza-fatture` o
+    l'equivalente registrazione del pregresso). Non corregge nulla da solo:
+    l'alert e' per il titolare/commercialista.
+    """
+    db = Database.get_db()
+
+    cespiti = await db["cespiti"].find(
+        {"fattura_id": {"$nin": [None, ""]}},
+        {"_id": 0, "fattura_id": 1, "valore_acquisto": 1},
+    ).to_list(10000)
+    valore_per_fattura: Dict[str, float] = {}
+    for c in cespiti:
+        fid = c.get("fattura_id")
+        valore_per_fattura[fid] = round(valore_per_fattura.get(fid, 0.0) + float(c.get("valore_acquisto") or 0), 2)
+
+    if not valore_per_fattura:
+        return {
+            "success": True, "modalita": "sola_lettura",
+            "fatture_con_cespiti": 0, "doppio_conteggio_sospetto": [],
+            "senza_scrittura_contabile": [], "stato": "coerente",
+        }
+
+    movimenti = await db["movimenti_contabili"].find(
+        {"tipo": "fattura_acquisto", "fattura_id": {"$in": list(valore_per_fattura)}},
+        {"_id": 0, "fattura_id": 1, "cespiti_capitalizzati": 1, "numero_registrazione": 1},
+    ).to_list(10000)
+    movimento_per_fattura = {m["fattura_id"]: m for m in movimenti if m.get("fattura_id")}
+
+    doppio_conteggio_sospetto = []
+    senza_scrittura = []
+    for fattura_id, atteso in valore_per_fattura.items():
+        mov = movimento_per_fattura.get(fattura_id)
+        if not mov:
+            senza_scrittura.append(fattura_id)
+            continue
+        capitalizzato = round(float(mov.get("cespiti_capitalizzati") or 0), 2)
+        if abs(capitalizzato - atteso) > 0.05:
+            doppio_conteggio_sospetto.append({
+                "fattura_id": fattura_id,
+                "cespiti_valore_atteso": atteso,
+                "cespiti_capitalizzati_in_scrittura": capitalizzato,
+                "movimento_numero_registrazione": mov.get("numero_registrazione"),
+            })
+
+    return {
+        "success": True,
+        "modalita": "sola_lettura",
+        "fatture_con_cespiti": len(valore_per_fattura),
+        "doppio_conteggio_sospetto": doppio_conteggio_sospetto,
+        "num_doppio_conteggio_sospetto": len(doppio_conteggio_sospetto),
+        "senza_scrittura_contabile": senza_scrittura,
+        "stato": "critico" if doppio_conteggio_sospetto else "coerente",
+    }
+
+
 # ============================================
 # AUTO-SCAN: Estrai cespiti da righe fatture XML
 # (Must be before /{cespite_id} route to avoid catch-all conflict)
 # ============================================
 
 KEYWORD_CATEGORY_MAP = [
+    # Le 4 categorie mancanti dall'audit del 19/09/2026: fabbricati, automezzi,
+    # autovetture, software. Termini scelti per NON collidere con
+    # EXCLUDE_KEYWORDS (canone/abbonamento/noleggio/leasing/locazione/affitto
+    # escludono già correttamente i costi ricorrenti equivalenti). "fabbricati"
+    # deve stare PRIMA di "mobili_arredi": "immobile" contiene la sotto-stringa
+    # "mobile" e verrebbe classificato come mobili/arredi per primo match.
+    (["capannone", "locale commerciale", "immobile strumentale", "acquisto immobile",
+      "fabbricato strumentale"], "fabbricati"),
+    # "automezzi" = autoveicoli da trasporto (furgoni, mezzi commerciali).
+    (["veicolo commerciale", "furgone", "automezzo", "autocarro"], "automezzi"),
+    # "autovetture" = auto passeggeri, categoria distinta da "automezzi"
+    # (coefficiente diverso in CATEGORIE_CESPITI).
+    (["acquisto autovettura", "autovettura nuova", "acquisto vettura aziendale"], "autovetture"),
+    # "software" = licenza acquistata (bene immateriale, art. 103 TUIR), MAI
+    # un canone SaaS ricorrente (già escluso da "canone"/"abbonament").
+    (["licenza software", "licenza perpetua", "licenza d'uso software",
+      "licenza d'uso perpetua"], "software"),
     (["forno", "piastra cottura"], "forni"),
     (["frigo", "congelator", "abbattitore"], "frigoriferi"),
     (["computer", "stampante", "monitor", "pc ", "notebook", "tablet"], "macchine_ufficio"),
@@ -677,10 +793,13 @@ KEYWORD_CATEGORY_MAP = [
 
 EXCLUDE_KEYWORDS = [
     "caffe", "caffè", "kimbo", "grani", "capsul", "omaggio", "storno",
-    "acconto", "anticip", "consulenz", "compensi", "noleggio",
+    "acconto", "anticip", "consulenz", "compensi", "noleggio", "leasing",
     "canone", "abbonament", "rifatturaz", "penalita", "sinistro",
     "manutenzione ordinaria", "riparazion", "intervento lavori",
-    "wi-fi", "sim ", "telefon", "cover", "custodia"
+    "wi-fi", "sim ", "telefon", "cover", "custodia",
+    # Un immobile o un veicolo in affitto/locazione e' un costo ricorrente,
+    # non un cespite (audit 19/09/2026, nuove categorie fabbricati/automezzi).
+    "affitto", "locazione",
 ]
 
 
@@ -703,7 +822,9 @@ def classify_asset(descrizione: str, prezzo: float):
 @router.post("/scan-fatture")
 @handle_errors
 async def scan_fatture_per_cespiti(
-    soglia_valore: float = Query(200, description="Valore minimo"),
+    soglia_valore: float = Query(
+        SOGLIA_CESPITE_TUIR, description="Valore minimo (soglia fiscale art. 102 TUIR)"
+    ),
     dry_run: bool = Query(True, description="Preview senza salvare")
 ) -> Dict[str, Any]:
     """Scansiona righe fatture XML per identificare potenziali cespiti.
@@ -777,7 +898,7 @@ async def scan_fatture_per_cespiti(
                     prezzo = float(riga.get("prezzo_totale") or riga.get("importo") or riga.get("price_total") or 0)
                 except (TypeError, ValueError):
                     continue
-                if not descrizione or prezzo < soglia_valore:
+                if not descrizione or prezzo <= soglia_valore:
                     continue
 
                 categoria = classify_asset(descrizione, prezzo)

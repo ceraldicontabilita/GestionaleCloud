@@ -294,6 +294,18 @@ CONTI_UFFICIALI = {
 }
 
 
+# Soglia fiscale dei beni ammortizzabili (art. 102 comma 5 DPR 917/1986 -
+# TUIR): un bene strumentale di costo unitario NON superiore a questa soglia
+# è deducibile per intero nell'esercizio (nessun ammortamento); sopra la
+# soglia va capitalizzato come cespite. Costante UNICA condivisa da
+# `app/handlers/cespiti.py`, `app/routers/cespiti.py` e
+# `app/services/learning_machine_cdc.py`: prima esistevano due soglie
+# scollegate (200 € nell'handler auto-cespiti, 516,46 € qui) che potevano
+# classificare lo stesso bene in modo diverso a seconda del punto del
+# codice che lo processava (audit 19/09/2026).
+SOGLIA_CESPITE_TUIR = 516.46
+
+
 def sezione_di(codice: str):
     """Ritorna (sezione, gruppo, voce_cee) del macro-gruppo di un conto ufficiale."""
     macro = str(codice)[:2]

@@ -96,6 +96,14 @@ OPERATIVO_A_UFFICIALE: Dict[str, str] = {
     "01.06.03": "05.07.51",   # Automezzi → Altri beni materiali
     "01.06.04": "05.07.01",   # Mobili e arredi
     "01.06.05": "05.07.05",   # Macchine ufficio elettroniche
+    # Audit 19/09/2026 (doppio conteggio costo/cespite, punto 3): conti attivo
+    # per le categorie di CATEGORIE_CESPITI che non avevano ancora un conto di
+    # capitalizzazione dedicato (usati da registra_fattura via
+    # app.routers.cespiti.CATEGORIA_CESPITE_CONTO_ATTIVO).
+    "01.06.06": "05.01.07",   # Fabbricati → Fabbricati strumentali
+    "01.06.07": "05.03.09",   # Frigoriferi e congelatori → Impianti specifici
+    "01.06.08": "05.03.91",   # Forni e piastre → Macchinari
+    "01.06.09": "03.03",      # Software / diritti di utilizzazione → Beni immateriali (macro)
     "02.01.02": "39.07.01",   # Debiti v/dipendenti → Personale c/retribuzioni
     "02.02.03": "37.01.05",   # Debiti v/INAIL → INAIL dipendenti/collaboratori
     "02.02.04": "35.03.01",   # Debiti per ritenute → Erario c/riten. lav. dipendente

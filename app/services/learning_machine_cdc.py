@@ -9,6 +9,8 @@ leggendo la DESCRIZIONE delle linee fattura per assegnare il centro di costo cor
 from typing import Dict, Any, List, Tuple, Optional
 import logging
 
+from app.services.piano_conti_ufficiale import SOGLIA_CESPITE_TUIR
+
 logger = logging.getLogger(__name__)
 
 # ============================================================================
@@ -795,12 +797,12 @@ def classifica_fattura_per_centro_costo(
         # dedurlo integralmente in automatico.
         if best_cdc == "5.3_PICCOLE_ATTREZZATURE":
             importo_tot = _importo_da_linee(linee_fattura)
-            if importo_tot is not None and importo_tot > 516.46:
+            if importo_tot is not None and importo_tot > SOGLIA_CESPITE_TUIR:
                 config_out = {
                     **config_out,
                     "sopra_soglia_516": True,
                     "nota_soglia": (
-                        f"Bene da {importo_tot:.2f} € > 516,46 €: verificare se va "
+                        f"Bene da {importo_tot:.2f} € > {SOGLIA_CESPITE_TUIR:.2f} €: verificare se va "
                         "a cespite/ammortamento invece che a costo integrale (art. 102 TUIR)."
                     ),
                 }
@@ -1032,11 +1034,21 @@ def calcola_importi_fiscali(
     imponibile: float,
     iva: float,
     centro_costo_config: Dict[str, Any],
-    auto_assegnata: bool = False
+    auto_assegnata: bool = False,
+    imponibile_gia_dedotto_anno: float = 0.0,
 ) -> Dict[str, Any]:
     """
     Calcola gli importi deducibili e detraibili in base al centro di costo.
-    
+
+    `imponibile_gia_dedotto_anno` (audit 19/09/2026, punto 4): per i centri
+    con `limite_annuo` (es. noleggio auto, 3.615,20 €/anno per contratto) il
+    tetto è CUMULATIVO sull'anno, non per singola fattura. Prima ogni fattura
+    applicava `min(imponibile, limite)` come se fosse la prima dell'anno: due
+    canoni mensili dello stesso contratto deducevano il limite pieno DUE
+    volte. Il chiamante somma quanto già dedotto quest'anno per lo stesso
+    contratto/fornitore e lo passa qui; il limite applicato a QUESTA fattura
+    è il residuo (`limite - già_dedotto`, mai sotto zero).
+
     Returns:
         Dict con importi deducibili IRES, IRAP e IVA detraibile
     """
@@ -1044,21 +1056,24 @@ def calcola_importi_fiscali(
     ded_ires = centro_costo_config.get("deducibilita_ires", 1.0)
     if auto_assegnata and "deducibilita_ires_assegnata" in centro_costo_config:
         ded_ires = centro_costo_config["deducibilita_ires_assegnata"]
-    
-    # Limite annuo per noleggio auto
+
+    # Limite annuo per noleggio auto — CUMULATIVO per contratto/anno.
     limite = centro_costo_config.get("limite_annuo")
+    imponibile_limitato_periodo = None
     if limite:
-        imponibile_limitato = min(imponibile, limite)
+        limite_residuo = max(0.0, float(limite) - float(imponibile_gia_dedotto_anno or 0.0))
+        imponibile_limitato = min(imponibile, limite_residuo)
+        imponibile_limitato_periodo = imponibile_limitato
         imponibile_deducibile_ires = imponibile_limitato * ded_ires
         imponibile_indeducibile_ires = imponibile - imponibile_deducibile_ires
     else:
         imponibile_deducibile_ires = imponibile * ded_ires if ded_ires else 0
         imponibile_indeducibile_ires = imponibile * (1 - ded_ires) if ded_ires else imponibile
-    
+
     # Deducibilità IRAP
     ded_irap = centro_costo_config.get("deducibilita_irap", 1.0)
     imponibile_deducibile_irap = imponibile * ded_irap if ded_irap else 0
-    
+
     # Detraibilità IVA
     detr_iva = centro_costo_config.get("detraibilita_iva")
     if detr_iva is not None:
@@ -1067,7 +1082,7 @@ def calcola_importi_fiscali(
     else:
         iva_detraibile = 0
         iva_indetraibile = iva
-    
+
     return {
         "imponibile_originale": round(imponibile, 2),
         "imponibile_deducibile_ires": round(imponibile_deducibile_ires, 2),
@@ -1079,8 +1094,68 @@ def calcola_importi_fiscali(
         "iva_detraibile": round(iva_detraibile, 2),
         "iva_indetraibile": round(iva_indetraibile, 2),
         "percentuale_detraibilita_iva": detr_iva,
-        "limite_annuo": limite
+        "limite_annuo": limite,
+        # Quota di QUESTA fattura effettivamente conteggiata contro il tetto
+        # annuo (None se il centro non ha un limite): il chiamante la somma
+        # per calcolare il residuo delle fatture successive dello stesso anno.
+        "imponibile_limitato_periodo": (
+            round(imponibile_limitato_periodo, 2) if imponibile_limitato_periodo is not None else None
+        ),
+        "imponibile_gia_dedotto_anno": round(float(imponibile_gia_dedotto_anno or 0.0), 2) if limite else None,
     }
+
+
+async def somma_gia_dedotto_periodo_anno(
+    db,
+    *,
+    cdc_id: str,
+    anno: Optional[int],
+    numero_contratto: Optional[str] = None,
+    fornitore_piva: Optional[str] = None,
+    escludi_fattura_id: Optional[str] = None,
+) -> float:
+    """Somma, per il tetto annuo cumulativo (audit 19/09/2026, punto 4), quanto
+    già dedotto quest'anno sullo STESSO contratto di noleggio.
+
+    Prima `calcola_importi_fiscali` applicava `min(imponibile, limite)` a
+    livello di SINGOLA fattura: due canoni mensili dello stesso contratto
+    nello stesso anno deducevano il limite pieno due volte. Identità del
+    contratto, in ordine di affidabilità:
+    1. `numero_contratto` (DatiContratto FatturaPA / AltriDatiGestionali di
+       riga — `app.services.noleggio.parsers.estrai_numero_contratto`), che
+       distingue anche due veicoli diversi noleggiati dallo stesso fornitore;
+    2. fallback sulla P.IVA fornitore (`supplier_vat`), l'unico campo sempre
+       presente su `invoices` quando l'XML non porta il contratto — limite
+       noto: due veicoli diversi dello stesso fornitore senza contratto
+       estraibile condividono lo stesso cumulo (più prudente del bug
+       precedente, mai peggio).
+    Nessuno dei due disponibile → nessun cumulo possibile, ritorna 0.0.
+    """
+    if not cdc_id or not anno:
+        return 0.0
+    if not numero_contratto and not fornitore_piva:
+        return 0.0
+    query: Dict[str, Any] = {
+        "centro_costo_id": cdc_id,
+        "$or": [
+            {"invoice_date": {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"}},
+            {"data_fattura": {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"}},
+        ],
+    }
+    if numero_contratto:
+        query["numero_contratto_noleggio"] = numero_contratto
+    else:
+        query["supplier_vat"] = fornitore_piva
+    if escludi_fattura_id:
+        query["id"] = {"$ne": escludi_fattura_id}
+    try:
+        altre_fatture = await db["invoices"].find(
+            query, {"_id": 0, "imponibile_limitato_periodo": 1},
+        ).to_list(1000)
+    except Exception:
+        logger.exception("Somma tetto annuo noleggio fallita per cdc=%s anno=%s", cdc_id, anno)
+        return 0.0
+    return round(sum(float(f.get("imponibile_limitato_periodo") or 0) for f in altre_fatture), 2)
 
 
 def get_tutti_centri_costo() -> List[Dict[str, Any]]:
