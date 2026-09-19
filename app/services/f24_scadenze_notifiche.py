@@ -14,6 +14,7 @@ Livelli di urgenza:
 """
 
 import logging
+import os
 from datetime import datetime, date, timedelta, timezone
 from typing import Dict, Any, List, Optional
 import uuid
@@ -21,6 +22,45 @@ import uuid
 from app.database import Database
 
 logger = logging.getLogger(__name__)
+
+
+async def destinatario_notifiche(db) -> Optional[str]:
+    """A chi mandare l'email delle scadenze F24.
+
+    Fino al 19/09/2026 questa email **non e' mai partita**. Cercava il
+    destinatario in `configurazioni` e poi in `users`: due collezioni in cui
+    non e' mai stata scritta una riga, in nessun punto del codice. Nessun
+    destinatario, nessun invio, e nemmeno una riga di log a dirlo — proprio
+    sulle scadenze fiscali, dove il silenzio costa una sanzione.
+
+    Le due collezioni restano come prima scelta, se un giorno le si popola.
+    L'ultima parola ce l'ha `ADMIN_EMAIL`, la stessa variabile Render che HR
+    usa gia' per le sue notifiche: una convenzione sola, non una nuova.
+    Quando non c'e' nessun destinatario lo si **dice**.
+    """
+    for collezione, query, campi in (
+        ("configurazioni", {"tipo": "notifiche_email"}, ("email_notifiche", "email")),
+        ("users", {"role": "admin"}, ("email",)),
+    ):
+        try:
+            doc = await db[collezione].find_one(query, {"_id": 0}) or {}
+        except Exception:  # noqa: BLE001 — una fonte assente non ferma le altre
+            logger.debug("Destinatario: %s non leggibile", collezione, exc_info=True)
+            continue
+        for campo in campi:
+            valore = str(doc.get(campo) or "").strip()
+            if valore:
+                return valore
+
+    da_ambiente = str(os.getenv("ADMIN_EMAIL") or "").strip()
+    if da_ambiente:
+        return da_ambiente
+
+    logger.warning(
+        "[F24] Nessun destinatario per le scadenze: `configurazioni` e `users` "
+        "sono vuote e ADMIN_EMAIL non e' impostata. L'email non parte."
+    )
+    return None
 
 # Costanti
 # f24_unificato copre sia gli F24 con schema italiano (stato="pagato",
@@ -262,21 +302,8 @@ async def invia_notifiche_scadenze() -> Dict[str, Any]:
             # Componi email HTML
             html = _build_email_scadenze_html(da_notificare)
             
-            # Prendi email destinatario dalla config
-            config = await db["configurazioni"].find_one(
-                {"tipo": "notifiche_email"},
-                {"_id": 0}
-            )
-            destinatario = None
-            if config:
-                destinatario = config.get("email_notifiche") or config.get("email")
-            
-            if not destinatario:
-                # Prova con email admin
-                admin = await db["users"].find_one({"role": "admin"}, {"email": 1})
-                if admin:
-                    destinatario = admin.get("email")
-            
+            destinatario = await destinatario_notifiche(db)
+
             if destinatario:
                 n_scadenze = len(da_notificare)
                 urgenti = len([s for s in da_notificare if s["livello"] in ["SCADUTA", "CRITICA"]])
