@@ -48,6 +48,31 @@ def test_estrai_pattern_causale_troppo_generica_usa_la_causale_intera():
 
 # --- CRUD della regola -------------------------------------------------------
 
+def test_crea_regola_pattern_troppo_generico_e_rifiutata():
+    """Audit 19/09/2026 su PR #500: un pattern fatto solo di vocabolario
+    bancario comune ("COMMISSIONI SU BONIFICI ESTERI", senza il nome del
+    circuito/fornitore) combacerebbe anche con le commissioni di una
+    controparte diversa da quella per cui e' stato imparato — indovinare,
+    non riconoscere. Va rifiutato, non salvato silenziosamente."""
+    db = MemorySheetsClient()["regole_pattern_generico"]
+    with pytest.raises(ValueError):
+        _run(regole.crea_regola(
+            db, pattern="COMMISSIONI SU BONIFICI ESTERI", entita_tipo="fornitore",
+            entita_id="forn-nexi", entita_nome="Nexi Payments S.p.A.",
+        ))
+    with pytest.raises(ValueError):
+        _run(regole.crea_regola(
+            db, pattern=regole._normalizza("RIF. 12345/67890 DEL 01/01/2026"),
+            entita_tipo="categoria", entita_nome="Altro",
+        ))
+    # Un pattern con un nome/servizio specifico dentro resta accettato.
+    regola = _run(regole.crea_regola(
+        db, pattern="COMMISSIONI NEXI PAYMENTS", entita_tipo="fornitore",
+        entita_id="forn-nexi", entita_nome="Nexi Payments S.p.A.",
+    ))
+    assert regola["pattern"] == "COMMISSIONI NEXI PAYMENTS"
+
+
 def test_crea_regola_fornitore_richiede_entita_id():
     db = MemorySheetsClient()["regole_crea_fornitore_senza_id"]
     with pytest.raises(ValueError):

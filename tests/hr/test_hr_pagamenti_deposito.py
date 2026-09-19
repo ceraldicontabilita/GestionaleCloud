@@ -190,6 +190,27 @@ def test_bonifico_tfr_o_fattura_non_entra_mai(basi):
     assert _run(hr.bonifici_da_associare.count_documents({})) == 0
 
 
+def test_omonimo_pagato_per_conto_terzi_o_come_professionista_non_entra(basi):
+    """Audit 19/09/2026 su PR #500: un omonimo di un dipendente puo' essere
+    beneficiario di un pagamento che non e' affatto uno stipendio, senza che
+    la causale nomini una SRL/SPA ne' le parole gia' coperte (TFR/fattura/
+    commissione). _ESCLUSIONE_RE deve fermare anche questi casi, non solo
+    quelli con una ragione sociale societaria dentro."""
+    db, hr = basi
+    casi = [
+        "BONIFICO A FAVORE DI VESPA VINCENZO PER CONTO DI ACME FORNITURA MERCE",
+        "VS.DISP. FAVORE VESPA VINCENZO - ACCONTO LAVORI RISTRUTTURAZIONE LOCALE",
+        "VESPA VINCENZO SALDO CONSULENZA OCCASIONALE 2026 RITENUTA APPLICATA",
+        "BONIFICO VESPA VINCENZO RIMBORSO CAPARRA EVENTO ANNULLATO",
+    ]
+    for causale in casi:
+        marca = _run(ponte.deposita_bonifico_transfer_in_hr(
+            db, _transfer(causale=causale, source_path=None)))
+        assert marca["esito"] == "non_stipendio", f"causale non esclusa: {causale!r}"
+    assert _run(hr.pagamenti_esiti.count_documents({})) == 0
+    assert _run(hr.bonifici_da_associare.count_documents({})) == 0
+
+
 def test_transfer_storico_recupera_il_fascicolo_da_import_documenti(basi):
     db, hr = basi
     transfer = _transfer(source_path=None)

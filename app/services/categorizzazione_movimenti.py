@@ -237,6 +237,11 @@ async def _movimenti_senza_categoria(db, anno: Optional[int]) -> List[Dict[str, 
             {"categoria": None}, {"categoria": ""},
             {"categoria": {"$exists": False}},
         ],
+        # Audit 19/09/2026 su PR #500: un fornitore gia' assegnato viene da
+        # un'identita' piu' certa (P.IVA/IBAN) di un pattern imparato sulla
+        # sola descrizione. CLAUDE.md, "Identita', prove e attese": una
+        # relazione certa non si sovrascrive con una meno certa.
+        "fornitore_id": {"$exists": False},
     }
     if anno:
         query["data"] = {"$regex": f"^{anno}"}

@@ -60,6 +60,33 @@ _RE_TRATTINI = re.compile(r"[-–—]+")
 # causale intera normalizzata che un frammento inutile.
 _LUNGHEZZA_MINIMA_PATTERN = 4
 
+# Audit 19/09/2026 su PR #500: vocabolario bancario comune a QUALSIASI
+# movimento, di QUALSIASI controparte — "COMMISSIONI SU BONIFICI ESTERI"
+# imparato da un movimento Nexi combacerebbe anche con le commissioni di un
+# fornitore completamente diverso, se la causale non nomina mai il circuito.
+# Un pattern fatto solo di queste parole non e' un riconoscimento, e' un
+# indovinare (vietato da CLAUDE.md, "Ingresso documenti").
+_PAROLE_GENERICHE_BANCARIE = {
+    "COMMISSIONE", "COMMISSIONI", "SPESA", "SPESE", "BONIFICO", "BONIFICI",
+    "BANCA", "BANCARIO", "BANCARIA", "BANCARI", "BANCARIE", "ESTERO",
+    "ESTERI", "NAZIONALE", "NAZIONALI", "DISPOSIZIONE", "DISPOSIZIONI",
+    "ADDEBITO", "ADDEBITI", "ACCREDITO", "ACCREDITI", "PAGAMENTO",
+    "PAGAMENTI", "OPERAZIONE", "OPERAZIONI", "VALUTA", "CONTO", "CORRENTE",
+    "TRASFERIMENTO", "TRASFERIMENTI", "SEPA", "SDD", "RID", "FAVORE",
+    "ORDINANTE", "BENEFICIARIO", "BENEFICIARI", "TITOLO", "CAUSALE",
+    "VARIE", "DIVERSI", "GENERICO", "GENERICA", "RIF", "DEL", "DELLA",
+    "DELLO", "DEGLI", "DELLE", "PER", "CON", "SUL", "SULLA",
+}
+
+
+def _e_pattern_troppo_generico(pattern: str) -> bool:
+    """True se il pattern non contiene nessuna parola specifica (un nome,
+    un circuito, un servizio): solo vocabolario bancario comune. Un pattern
+    cosi' non identifica la controparte imparata, cattura chiunque."""
+    parole = re.findall(r"[A-ZÀ-Ù]+", pattern.upper())
+    distintive = [p for p in parole if len(p) >= 4 and p not in _PAROLE_GENERICHE_BANCARIE]
+    return len(distintive) == 0
+
 
 def _normalizza(testo: Any) -> str:
     return re.sub(r"\s+", " ", str(testo or "").strip()).upper()
@@ -112,6 +139,15 @@ def _valida_regola(*, pattern: str, entita_tipo: str, entita_id: Optional[str],
     pattern_norm = _normalizza(pattern)
     if not pattern_norm:
         raise ValueError("pattern mancante")
+    if _e_pattern_troppo_generico(pattern_norm):
+        raise ValueError(
+            f"il pattern \"{pattern_norm}\" e' troppo generico (solo vocabolario "
+            "bancario comune, nessun nome/servizio specifico riconoscibile): "
+            "applicandolo rischierebbe di catturare movimenti di controparti "
+            "diverse. Scegliere un movimento la cui causale nomini davvero il "
+            "fornitore/servizio, oppure usare una categoria manuale per questo "
+            "singolo movimento."
+        )
     if entita_tipo not in ENTITA_TIPI_VALIDI:
         raise ValueError(f"entita_tipo deve essere uno di {sorted(ENTITA_TIPI_VALIDI)}")
     if entita_tipo == "fornitore" and not entita_id:

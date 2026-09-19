@@ -94,7 +94,14 @@ _CF_RE = re.compile(r"\b([A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z])\b", re.I)
 # in pagamenti_esiti e non vanno nemmeno in coda.
 _ESCLUSIONE_RE = re.compile(
     r"\bTFR\b|fattur|\bFPR\b|\bFT\b\s*\d|prestit|finanziament|COMM\.?\s*SU|"
-    r"rimborso\s+spese|\bnota\s+spese",
+    r"rimbors|\bnota\s+spese|fornitor|"
+    # Audit 19/09/2026 su PR #500: un omonimo di un dipendente puo' comparire
+    # come beneficiario di un pagamento che non e' affatto uno stipendio —
+    # un fornitore individuale/professionista (niente SRL/SPA da riconoscere)
+    # o un pagamento occasionale. Queste parole non compaiono mai in una vera
+    # causale di stipendio, quindi escludono senza creare falsi negativi.
+    r"per\s+conto\s+di|consulenz|occasional|ritenut|caparra|ristrutturazion|"
+    r"\blavori\b",
     re.I,
 )
 _RIF_BANCA_RE = re.compile(r"RIF\.?\s*([A-Z0-9]+(?:/[0-9]+)?)", re.I)
