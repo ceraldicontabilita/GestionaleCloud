@@ -130,9 +130,11 @@ async def _migra_riferimenti(db, from_id: str, to_id: str, from_cf: str, to_cf: 
     stats = {
         "cedolini_migrati": 0,
         "cedolini_skippati_duplicati": 0,
+        "bonifici_cedolino_ripuntati": 0,
         "presenze_migrate": 0,
         "giustificativi_migrati": 0,
         "verbali_migrati": 0,
+        "estratto_conto_movimenti_migrati": 0,
         "bonifici_migrati": 0,
     }
 
@@ -145,13 +147,22 @@ async def _migra_riferimenti(db, from_id: str, to_id: str, from_cf: str, to_cf: 
     for ced in cedolini_from:
         anno = ced.get("anno")
         mese = ced.get("mese")
-        exists = await db["cedolini"].find_one({
+        esistente = await db["cedolini"].find_one({
             "dipendente_id": to_id,
             "anno": anno,
             "mese": mese,
-        }, {"_id": 1})
-        if exists and ced.get("id"):
-            # Duplicato: elimina quello del record from (è ridondante)
+        }, {"_id": 0, "id": 1})
+        if esistente and ced.get("id"):
+            # Duplicato: quello del target sopravvive, questo e' ridondante.
+            # Prima di cancellarlo si ripunta chi lo referenzia — audit
+            # 19/09/2026: un bonifico con `cedolino_id` sul cedolino
+            # cancellato restava orfano.
+            id_sopravvissuto = esistente.get("id")
+            if id_sopravvissuto and id_sopravvissuto != ced["id"]:
+                res_bon = await db["bonifici"].update_many(
+                    {"cedolino_id": ced["id"]}, {"$set": {"cedolino_id": id_sopravvissuto}}
+                )
+                stats["bonifici_cedolino_ripuntati"] += res_bon.modified_count
             await db["cedolini"].delete_one({"id": ced["id"]})
             stats["cedolini_skippati_duplicati"] += 1
         else:
@@ -185,13 +196,58 @@ async def _migra_riferimenti(db, from_id: str, to_id: str, from_cf: str, to_cf: 
         )
         stats["verbali_migrati"] = res.modified_count
 
-    # ── Bonifici stipendio / movimenti
+    # ── Movimenti di estratto conto (rinominata da "bonifici_migrati": contava
+    # in realta' queste righe, non la tabella `bonifici` — audit 19/09/2026)
     if "estratto_conto_movimenti" in await db.list_collection_names():
         res = await db["estratto_conto_movimenti"].update_many(
             {"dipendente_id": from_id},
             {"$set": {"dipendente_id": to_id}}
         )
+        stats["estratto_conto_movimenti_migrati"] = res.modified_count
+
+    # ── Bonifici veri e propri (tabella `bonifici`, mai migrata prima —
+    # audit 19/09/2026): stesso pattern, campo `dipendente_id`.
+    if "bonifici" in await db.list_collection_names():
+        res = await db["bonifici"].update_many(
+            {"dipendente_id": from_id},
+            {"$set": {"dipendente_id": to_id}}
+        )
         stats["bonifici_migrati"] = res.modified_count
+
+    # ── Tutte le altre collezioni con un campo `dipendente_id` reale
+    # (audit 19/09/2026, secondo BLOCCANTE): un merge, soft o hard, lasciava
+    # questi dati sul vecchio id — TFR e stipendi del duplicato "sparivano"
+    # dai totali del sopravvissuto senza errore visibile, e con merge hard
+    # (cancellazione fisica) diventavano orfani e irrecuperabili. Elenco
+    # verificato a mano con grep su `app/hr/` (non tutte le collezioni con
+    # un dipendente in causa usano questo nome di campo: `employee_contracts`,
+    # `attendance_*`, `presenze_mensili`, `richieste_assenza` e
+    # `riporti_ferie` usano invece `employee_id` e restano fuori da questo
+    # giro, vedi commit).
+    # Stesso pattern semplice di `bonifici`/`estratto_conto_movimenti`: un
+    # solo `update_many`, nessuna logica di dedup (quella serve solo dove un
+    # doppione vero e proprio puo' nascere, come per i cedolini sopra).
+    _ALTRE_COLLEZIONI_DIPENDENTE_ID = (
+        # finanziarie — priorita' esplicita dell'audit
+        "pagamenti_esiti", "paghe_mensili",
+        "tfr_accantonamenti", "tfr_acconti", "tfr_liquidazioni",
+        "tfr_liquidazione_override", "tfr_simulazione_periodi",
+        "acconti_dipendenti", "trattenute_dipendenti", "prima_nota_salari",
+        "pagamenti_dipendenti", "pagamenti_salari",
+        # altre collezioni collegate al dipendente
+        "contratti_dipendenti", "documenti_cloud", "libretti_sanitari",
+        "shifts_assegnazioni", "turni_dipendenti", "ferie_cloud",
+        "presenze_cloud", "bonifici_transfers",
+    )
+    nomi_esistenti = await db.list_collection_names()
+    for nome in _ALTRE_COLLEZIONI_DIPENDENTE_ID:
+        if nome not in nomi_esistenti:
+            continue
+        res = await db[nome].update_many(
+            {"dipendente_id": from_id},
+            {"$set": {"dipendente_id": to_id}}
+        )
+        stats[f"{nome}_migrati"] = res.modified_count
 
     return stats
 
