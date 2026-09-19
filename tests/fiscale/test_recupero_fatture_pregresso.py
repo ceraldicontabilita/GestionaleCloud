@@ -47,14 +47,21 @@ class _Collezione:
             if all(d.get(k) == v for k, v in query.items())
         ])
 
-    async def update_one(self, filtro, aggiornamento, **k):
+    async def update_one(self, filtro, aggiornamento, upsert=False, **k):
         self.aggiornamenti.append((filtro, aggiornamento))
+        trovato = False
         for doc in self.docs:
             if all(doc.get(k2) == v for k2, v in filtro.items()):
                 doc.update(aggiornamento["$set"])
+                trovato = True
+        if not trovato and upsert:
+            self.docs.append({**filtro, **aggiornamento["$set"]})
         return None
 
-    async def find_one(self, *a, **k):
+    async def find_one(self, query=None, proj=None):
+        for doc in self.docs:
+            if all(doc.get(k) == v for k, v in (query or {}).items()):
+                return dict(doc)
         return None
 
 
@@ -216,3 +223,152 @@ def test_l_import_non_calcola_piu_nessuna_scadenza():
     assert sorgente.count("data_scadenza = None") == 2, (
         "Entrambi i percorsi di import devono lasciare la scadenza vuota."
     )
+
+
+# ── 3. Le scadenze inventate rimaste in archivio ──────────────────────────
+# Misurate il 19/09/2026: 642 fatture e 971 partite fornitore (940 fatture
+# piu' 31 note di credito) portano ancora la scadenza dedotta dall'XML.
+
+def _db_scadenze(fatture, partite):
+    return _Db(fatture, partite=partite)
+
+
+def test_conta_le_scadenze_da_togliere_senza_scrivere():
+    db = _db_scadenze(
+        [{"id": "f1", "data_scadenza": "2026-07-30"}, {"id": "f2"}],
+        [{"id": "p1", "documento_collection": "invoices",
+          "data_scadenza": "2026-07-30"}],
+    )
+
+    esito = _run(recupero.azzera_scadenze_inventate(db, dry_run=True))
+
+    assert esito["fatture_con_scadenza"] == 1
+    assert esito["partite_con_scadenza"] == 1
+    assert esito["fatture_azzerate"] == 0 and esito["partite_azzerate"] == 0
+    assert db["invoices"].aggiornamenti == []
+    assert db["partite_aperte"].aggiornamenti == []
+
+
+def test_toglie_la_scadenza_da_fatture_e_partite():
+    db = _db_scadenze(
+        [{"id": "f1", "data_scadenza": "2026-07-30"}],
+        [{"id": "p1", "documento_collection": "invoices",
+          "tipo": "fattura_fornitore", "data_scadenza": "2026-07-30"}],
+    )
+
+    esito = _run(recupero.azzera_scadenze_inventate(db, dry_run=False))
+
+    assert esito["fatture_azzerate"] == 1 and esito["partite_azzerate"] == 1
+    assert db["invoices"].docs[0]["data_scadenza"] is None
+    assert db["partite_aperte"].docs[0]["data_scadenza"] is None
+
+
+def test_anche_le_note_di_credito_perdono_la_scadenza():
+    """31 delle 971 partite sono note di credito: stesso ciclo, stessa regola."""
+    db = _db_scadenze([], [{"id": "p-nc", "documento_collection": "invoices",
+                            "tipo": "nota_credito", "data_scadenza": "2026-05-10"}])
+
+    assert _run(recupero.azzera_scadenze_inventate(db, dry_run=False))["partite_azzerate"] == 1
+
+
+def test_le_partite_stipendio_non_si_toccano():
+    """3.710 partite stipendio non hanno scadenza e non sono fatture: la
+    query le lascia fuori gia' per `documento_collection`."""
+    db = _db_scadenze([], [{"id": "p-stip", "tipo": "stipendio",
+                            "documento_collection": "cedolini",
+                            "data_scadenza": "2026-09-10"}])
+
+    esito = _run(recupero.azzera_scadenze_inventate(db, dry_run=False))
+
+    assert esito["partite_con_scadenza"] == 0
+    assert db["partite_aperte"].docs[0]["data_scadenza"] == "2026-09-10"
+
+
+def test_una_scadenza_gia_vuota_non_produce_scritture():
+    """Ripassarlo una seconda volta non deve riscrivere niente."""
+    db = _db_scadenze(
+        [{"id": "f1", "data_scadenza": None}, {"id": "f2", "data_scadenza": ""},
+         {"id": "f3", "data_scadenza": "   "}],
+        [],
+    )
+
+    esito = _run(recupero.azzera_scadenze_inventate(db, dry_run=False))
+
+    assert esito["fatture_con_scadenza"] == 0
+    assert db["invoices"].aggiornamenti == []
+
+
+def test_non_tocca_la_data_di_pagamento_ne_le_rate():
+    """`data_pagamento` e' un pagamento avvenuto, `pagamento_rate` la
+    trascrizione del DatiPagamento dell'XML: il documento resta leggibile."""
+    fattura = {
+        "id": "f1", "data_scadenza": "2026-07-30", "data_pagamento": "2026-08-04",
+        "pagamento_rate": [{"data_scadenza": "2026-07-30", "importo": "64.24"}],
+    }
+    db = _db_scadenze([fattura], [])
+
+    _run(recupero.azzera_scadenze_inventate(db, dry_run=False))
+
+    salvata = db["invoices"].docs[0]
+    assert salvata["data_scadenza"] is None
+    assert salvata["data_pagamento"] == "2026-08-04"
+    assert salvata["pagamento_rate"][0]["data_scadenza"] == "2026-07-30"
+
+
+def test_un_errore_su_una_riga_non_ferma_le_altre():
+    db = _db_scadenze(
+        [{"id": "f-rotta", "data_scadenza": "2026-07-30"},
+         {"id": "f-ok", "data_scadenza": "2026-07-30"}],
+        [],
+    )
+    originale = db["invoices"].update_one
+
+    async def _forse_esplode(filtro, aggiornamento, **k):
+        if filtro.get("id") == "f-rotta":
+            raise RuntimeError("scrittura rifiutata")
+        return await originale(filtro, aggiornamento, **k)
+
+    db["invoices"].update_one = _forse_esplode
+
+    esito = _run(recupero.azzera_scadenze_inventate(db, dry_run=False))
+
+    assert esito["fatture_azzerate"] == 1 and esito["errori"] == 1
+    assert "f-rotta" in esito["motivi_errore"][0]
+
+
+def test_legge_ogni_collezione_una_volta_sola():
+    db = _db_scadenze(
+        [{"id": f"f{i}", "data_scadenza": "2026-07-30"} for i in range(40)],
+        [{"id": f"p{i}", "documento_collection": "invoices",
+          "data_scadenza": "2026-07-30"} for i in range(40)],
+    )
+    letture = {"invoices": 0, "partite_aperte": 0}
+    for nome in letture:
+        originale = db[nome].find
+
+        def _conta(*a, _nome=nome, _orig=originale, **k):
+            letture[_nome] += 1
+            return _orig(*a, **k)
+
+        db[nome].find = _conta
+
+    _run(recupero.azzera_scadenze_inventate(db, dry_run=False))
+
+    assert letture == {"invoices": 1, "partite_aperte": 1}
+
+
+def test_le_due_riparazioni_condividono_un_solo_runner():
+    """Niente doppioni: un motore per i job di questo modulo, due chiavi."""
+    assert set(recupero._LAVORI) == {
+        "replay_fattura_created", "azzera_scadenze_fornitore",
+    }
+
+
+def test_lo_stato_di_una_riparazione_non_sovrascrive_l_altra():
+    db = _db_scadenze([], [])
+
+    _run(recupero._salva_stato(db, "replay_fattura_created", stato="completato"))
+    _run(recupero._salva_stato(db, "azzera_scadenze_fornitore", stato="errore"))
+
+    assert _run(recupero.stato_ripubblicazione(db))["stato"] == "completato"
+    assert _run(recupero.stato_azzeramento_scadenze(db))["stato"] == "errore"

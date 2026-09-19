@@ -609,3 +609,41 @@ async def fatture_ripubblica_evento_created_stato(
     from app.services import recupero_fatture_pregresso as recupero
 
     return await recupero.stato_ripubblicazione(Database.get_db())
+
+
+@router.post(
+    "/fatture/azzera-scadenze",
+    summary="Toglie le scadenze inventate dalle fatture fornitore e dalle partite",
+)
+async def fatture_azzera_scadenze(
+    dry_run: bool = Query(True, description="Se True conta soltanto, senza scrivere"),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Le fatture fornitore non hanno scadenza: decide il titolare quando
+    pagare. Dal 19/09/2026 l'import non ne calcola piu' nessuna, ma in
+    archivio restano quelle scritte prima leggendo le condizioni di
+    pagamento dell'XML — ed e' quel numero a far comparire «scaduto» dove
+    non c'e' nessun impegno.
+
+    Non tocca `pagamento_rate` (la trascrizione del blocco DatiPagamento
+    dell'XML, cioe' il documento) ne' `data_pagamento` (un pagamento
+    avvenuto). Gira in background, esito su
+    `GET /fatture/azzera-scadenze/stato`.
+    """
+    richiedi_admin(current_user)
+    from app.services import recupero_fatture_pregresso as recupero
+
+    return await recupero.avvia_azzeramento_scadenze(Database.get_db(), dry_run=dry_run)
+
+
+@router.get(
+    "/fatture/azzera-scadenze/stato",
+    summary="Esito dell'ultimo azzeramento delle scadenze fornitore",
+)
+async def fatture_azzera_scadenze_stato(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    richiedi_admin(current_user)
+    from app.services import recupero_fatture_pregresso as recupero
+
+    return await recupero.stato_azzeramento_scadenze(Database.get_db())
