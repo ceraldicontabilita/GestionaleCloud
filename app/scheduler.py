@@ -1488,7 +1488,14 @@ def start_scheduler():
 
 
 def stop_scheduler():
-    """Ferma lo scheduler."""
+    """Ferma lo scheduler senza bloccare il loop.
+
+    `shutdown()` di default aspetta i job in corso, ma i job qui sono
+    coroutine sullo stesso event loop: aspettarli da dentro il loop lo
+    blocca, lo spegnimento non arriva mai in fondo e il processo viene
+    ucciso con i lease ancora in mano. Si chiude subito, e i lease li
+    restituisce esplicitamente lo shutdown dell'applicazione.
+    """
     if scheduler.running:
-        scheduler.shutdown()
+        scheduler.shutdown(wait=False)
         logger.info("🛑 [SCHEDULER] Scheduler fermato")
