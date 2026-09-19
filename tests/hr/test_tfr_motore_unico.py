@@ -146,9 +146,11 @@ def test_accantonamento_scrittura_bilanciata_e_idempotente(monkeypatch):
     assert conti == {"67.01.07.01", "29.01.01"}
 
     # richiamare lo stesso accantonamento (stesso dipendente+anno) non deve
-    # creare una seconda scrittura, anche se l'accantonamento originale in
-    # tfr_accantonamenti non ha guardia propria.
-    _run(mod.registra_accantonamento_tfr(input_data))
+    # creare una seconda scrittura: da audit 19/09/2026 l'endpoint stesso
+    # rifiuta la ripetizione prima di scrivere in tfr_accantonamenti, quindi
+    # il motore contabile non viene nemmeno richiamato una seconda volta.
+    esito2 = _run(mod.registra_accantonamento_tfr(input_data))
+    assert esito2["gia_registrato"] is True
     movimenti_dopo = _righe_per_tipo(db, "tfr_accantonamento")
     assert len(movimenti_dopo) == 1
 
@@ -166,6 +168,59 @@ def test_accantonamento_numero_registrazione_progressivo(monkeypatch):
     movimenti = sorted(_righe_per_tipo(db, "tfr_accantonamento"),
                         key=lambda m: m["numero_registrazione"])
     assert [m["numero_registrazione"] for m in movimenti] == [1, 2]
+
+
+def test_accantonamento_ripetuto_con_dati_diversi_non_diverge(monkeypatch):
+    """Audit 19/09/2026 (finding 2): prima, un secondo POST /accantonamento
+    per lo stesso dipendente+anno ma con una retribuzione_annua diversa
+    inseriva un secondo record in tfr_accantonamenti e sommava una seconda
+    volta su dipendenti.tfr_accantonato, mentre l'idempotenza del motore
+    bloccava solo movimenti_contabili: tre fonti divergenti. Ora il secondo
+    POST si ferma prima di toccare qualsiasi cosa."""
+    db = _db_con_dipendente(tfr_accantonato=0.0)
+    monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
+
+    esito1 = _run(mod.registra_accantonamento_tfr(mod.AccantonamentoTFRInput(
+        dipendente_id="dip-1", anno=2026, retribuzione_annua=20000.0)))
+    tfr_dopo_primo = db["dipendenti"].docs[0]["tfr_accantonato"]
+
+    # stesso dipendente+anno, retribuzione diversa: prima di questo fix
+    # avrebbe aggiunto un secondo record e un secondo incremento del saldo.
+    esito2 = _run(mod.registra_accantonamento_tfr(mod.AccantonamentoTFRInput(
+        dipendente_id="dip-1", anno=2026, retribuzione_annua=99999.0)))
+
+    assert esito2["gia_registrato"] is True
+    assert esito2["accantonamento_id"] == esito1["accantonamento_id"]
+    assert len(db["tfr_accantonamenti"].docs) == 1
+    assert len(_righe_per_tipo(db, "tfr_accantonamento")) == 1
+    assert db["dipendenti"].docs[0]["tfr_accantonato"] == pytest.approx(tfr_dopo_primo)
+
+
+def test_accantonamento_totale_negativo_rifiutato(monkeypatch):
+    """Audit 19/09/2026 (finding 1): un indice ISTAT molto negativo (es.
+    errore di digitazione) puo' rendere la rivalutazione piu' negativa
+    della quota annuale. Passato cosi' al motore, DARE Quote TFR e AVERE
+    Fondo TFR sarebbero entrambi negativi e uguali in valore assoluto: la
+    scrittura quadrerebbe (dare == avere) ma sarebbe contabilmente
+    invertita. Va rifiutato prima di scrivere, senza alcun effetto
+    collaterale."""
+    from fastapi import HTTPException
+
+    db = _db_con_dipendente(tfr_accantonato=5000.0)
+    monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
+
+    input_data = mod.AccantonamentoTFRInput(
+        dipendente_id="dip-1", anno=2026, retribuzione_annua=1000.0, indice_istat=-50.0,
+    )
+    # quota_annuale = 1000/13.5 = 74.07; tasso = (1.5 - 50*0.75)/100 = -0.3585;
+    # rivalutazione = 5000 * -0.3585 = -1792.5; totale = 74.07 - 1792.5 < 0.
+    with pytest.raises(HTTPException) as exc:
+        _run(mod.registra_accantonamento_tfr(input_data))
+    assert exc.value.status_code == 400
+
+    assert db["tfr_accantonamenti"].docs == []
+    assert _righe_per_tipo(db, "tfr_accantonamento") == []
+    assert db["dipendenti"].docs[0]["tfr_accantonato"] == 5000.0
 
 
 # ---------------------------------------------------------------------------
