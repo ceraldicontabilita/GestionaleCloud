@@ -1,207 +1,207 @@
-"""Allergeni: alert dei prodotti senza dichiarazione, associazione dalla
-ricetta di Lotti gia' collegata.
+"""Allergeni del Menu: alert dei prodotti senza dichiarazione ed esclusioni
+di chi una dichiarazione non deve averla.
 
-18/09/2026: 108 dei 325 prodotti del Menu non avevano allergeni dichiarati.
-Un abbinamento automatico per somiglianza di nome tra i prodotti del Menu e le
-719 ricette di Lotti e' stato provato e scartato: le due app sono state scritte
-in momenti diversi, senza un id in comune, e un confronto per testo produce
-accoppiamenti sbagliati (es. "Aspritz", "Campari Spritz", "Hugo Spritz" finiti
-tutti sulla stessa ricetta generica "Spritz"; il te' "Caramel" abbinato a
-ricette di caramelle; il liquore "Diplomatico" abbinato al dolce "Diplomatico
-Napoletano" solo perche' si chiamano uguale). Scrivere un allergene sbagliato
-su un'etichetta e' peggio che non scriverne nessuno.
+Gli allergeni sono un obbligo di legge (Regolamento UE 1169/2011, D.Lgs.
+231/2017): questa pagina serve a non lasciarne scoperto nessuno. Ma l'elenco
+"senza allergeni dichiarati" contiene anche whisky, distillati e bibite in
+bottiglia, che allergeni da dichiarare non ne hanno: finche' restano li' il
+numero non scende mai e l'alert diventa rumore.
 
-L'unica associazione automatica sicura e' per id (``lotti_ref``), dopo che una
-persona ha scelto la ricetta giusta una volta in ``/associa``: da quel momento
-il prodotto resta agganciato a quella ricetta e ``/risincronizza`` ne riallinea
-gli allergeni ogni volta che servisse (es. dopo una correzione fatta su
-Lotti), senza dover rifare la scelta.
+19/09/2026 (richiesta del titolare): si esclude un prodotto - o un'intera
+categoria/sottocategoria - dalla verifica. L'esclusione dice "non richiede la
+dichiarazione allergeni", NON "nascondilo dal menu": e' un dato di
+conformita', quindi si conserva, si vede e si puo' revocare.
 
-Le credenziali per leggere le ricette di Lotti (``LOTTI_SUPABASE_URL``,
-``LOTTI_SUPABASE_ANON_KEY``, ``LOTTI_DB_SECRET``) sono le stesse gia'
-configurate su Render per il backend di Lotti: GestionaleCloud e' un solo
-servizio Render, un solo processo, le variabili d'ambiente sono condivise.
-Nessun nuovo segreto da aggiungere.
+Perche' le esclusioni stanno in una tabella a parte
+(``menu.menu_allergeni_esclusioni``) e non in una colonna di
+``menu_products``: la sync Qromo (``app/menu/qromo_sync.py``) cancella e
+reinserisce tutte le righe con ``origine IS NULL``, e le righe reinserite
+portano solo le colonne di ``trasforma_catalogo``. Un flag dentro
+``menu_products`` sparirebbe alla prima sincronizzazione - e' gia' cosi' che
+si perdono gli allergeni scritti a mano su un prodotto Qromo. Gli id Qromo
+sono invece stabili tra un sync e l'altro, quindi un'esclusione chiavata su
+quell'id sopravvive.
+
+"Collega a una ricetta" non vive piu' qui: la strada ricetta -> prodotto del
+Menu e' quella del ponte ``app/lotti/servizi/menu_bridge.py``, che pubblica la
+ricetta nel Menu con gli allergeni gia' calcolati dagli ingredienti. Averne
+una seconda, manuale e dal lato sbagliato, era un doppione.
 """
-from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
-import os
-import httpx
+from typing import Literal, Optional
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 
 from app.menu.routes.qrcode_routes import verify_token
 from app.menu.supabase_client import supabase
 
 router = APIRouter(prefix="/api/admin/allergeni", tags=["Allergeni"])
 
-# Stessa corrispondenza di menu.menu_allergens: id canonico (quello salvato in
-# menu_products.allergens) <- nome italiano (quello scritto nelle ricette di
-# Lotti). Le 14 categorie del regolamento UE 1169/2011 sono stabili; se
-# cambiassero andrebbe aggiornata anche la tabella menu.menu_allergens.
-_NOME_IT_A_ID = {
-    "glutine": "gluten", "latte": "milk", "uova": "eggs",
-    "frutta a guscio": "nuts", "pesce": "fish", "soia": "soy",
-    "solfiti": "sulphites", "crostacei": "crustaceans", "molluschi": "molluscs",
-    "sedano": "celery", "senape": "mustard", "sesamo": "sesame",
-    "lupini": "lupin", "arachidi": "peanuts",
+TABELLA_ESCLUSIONI = "menu_allergeni_esclusioni"
+
+Tipo = Literal["prodotto", "categoria", "sottocategoria"]
+
+# tipo di esclusione -> tabella dell'entita' esclusa
+_TABELLA_PER_TIPO = {
+    "prodotto": "menu_products",
+    "categoria": "menu_categories",
+    "sottocategoria": "menu_subcategories",
 }
 
 
-def _traduci_allergeni(nomi_it) -> list:
-    tradotti = []
-    for nome in nomi_it or []:
-        id_canonico = _NOME_IT_A_ID.get(str(nome).strip().lower())
-        if id_canonico and id_canonico not in tradotti:
-            tradotti.append(id_canonico)
-    return sorted(tradotti)
+def _leggi_esclusioni() -> list:
+    res = (
+        supabase.table(TABELLA_ESCLUSIONI)
+        .select("tipo,riferimento_id,motivo,creato_il,creato_da")
+        .execute()
+    )
+    return res.data or []
 
 
-class _ClienteRicetteLotti:
-    """Legge le ricette di Lotti in sola lettura tramite l'RPC gia' usata dal
-    backend di Lotti stesso (``lotti_list_docs``): stesso meccanismo di
-    autorizzazione, nessuna scrittura, nessuna tabella nuova."""
-
-    def __init__(self):
-        self.url = os.environ.get("LOTTI_SUPABASE_URL", "").rstrip("/")
-        self.api_key = os.environ.get("LOTTI_SUPABASE_ANON_KEY", "")
-        self.secret = os.environ.get("LOTTI_DB_SECRET", "")
-
-    @property
-    def configurato(self) -> bool:
-        return bool(self.url and self.api_key and self.secret)
-
-    async def ricette(self) -> list:
-        if not self.configurato:
-            return []
-        async with httpx.AsyncClient(
-            base_url=f"{self.url}/rest/v1",
-            headers={
-                "apikey": self.api_key,
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json",
-            },
-            timeout=httpx.Timeout(30.0, connect=10.0),
-        ) as client:
-            offset, righe = 0, []
-            while True:
-                r = await client.post("/rpc/lotti_list_docs", json={
-                    "p_secret": self.secret, "p_collection": "ricette",
-                    "p_offset": offset, "p_limit": 500,
-                })
-                r.raise_for_status()
-                pagina = r.json() or {}
-                items = pagina.get("items") or []
-                righe.extend(items)
-                offset += len(items)
-                if not items or offset >= int(pagina.get("total") or 0):
-                    break
-        risultato = []
-        for row in righe:
-            dato = row.get("data") or {}
-            risultato.append({
-                "doc_id": row.get("doc_id"),
-                "nome": dato.get("nome") or "",
-                "allergeni": _traduci_allergeni(dato.get("allergeni")),
-                "verificato": bool(dato.get("allergeni_verificato")),
-            })
-        return risultato
+def _insiemi_esclusi(esclusioni: list) -> dict:
+    """Gli id esclusi raggruppati per tipo, pronti per il confronto."""
+    per_tipo = {"prodotto": set(), "categoria": set(), "sottocategoria": set()}
+    for e in esclusioni:
+        tipo = e.get("tipo")
+        if tipo in per_tipo and e.get("riferimento_id") is not None:
+            per_tipo[tipo].add(e["riferimento_id"])
+    return per_tipo
 
 
-_cliente_lotti = _ClienteRicetteLotti()
+def _prodotto_escluso(prodotto: dict, esclusi: dict) -> bool:
+    return (
+        prodotto.get("id") in esclusi["prodotto"]
+        or prodotto.get("category_id") in esclusi["categoria"]
+        or prodotto.get("subcategory_id") in esclusi["sottocategoria"]
+    )
+
+
+def _nomi(tabella: str) -> dict:
+    res = supabase.table(tabella).select("id,name_it").execute()
+    return {r["id"]: r.get("name_it") for r in (res.data or [])}
 
 
 @router.get("/mancanti")
 async def prodotti_senza_allergeni(_username: str = Depends(verify_token)):
-    """Prodotti senza allergeni dichiarati, con evidenza se manca anche il
-    collegamento a una ricetta di Lotti."""
+    """Prodotti che devono dichiarare gli allergeni e non lo fanno.
+
+    Restituisce anche categoria e sottocategoria di ogni prodotto, cosi' la
+    pagina puo' raggrupparli ed escludere un reparto intero in un colpo solo,
+    e il conteggio di quelli tenuti fuori da un'esclusione."""
     res = (
         supabase.table("menu_products")
-        .select("id,name_it,description_it,allergens,lotti_ref,visible")
+        .select("id,name_it,description_it,allergens,category_id,subcategory_id,visible")
         .execute()
     )
     tutti = res.data or []
-    mancanti = [
+    esclusi = _insiemi_esclusi(_leggi_esclusioni())
+
+    senza_allergeni = [p for p in tutti if not (p.get("allergens") or [])]
+    da_dichiarare = [p for p in senza_allergeni if not _prodotto_escluso(p, esclusi)]
+
+    nomi_categorie = _nomi("menu_categories")
+    nomi_sottocategorie = _nomi("menu_subcategories")
+
+    prodotti = [
         {
             "id": p["id"],
             "name_it": p["name_it"],
             "description_it": p.get("description_it"),
-            "lotti_ref": p.get("lotti_ref"),
+            "category_id": p.get("category_id"),
+            "categoria_nome": nomi_categorie.get(p.get("category_id")),
+            "subcategory_id": p.get("subcategory_id"),
+            "sottocategoria_nome": nomi_sottocategorie.get(p.get("subcategory_id")),
             "visible": p.get("visible", True),
         }
-        for p in tutti
-        if not (p.get("allergens") or [])
+        for p in da_dichiarare
     ]
     return {
         "totale_prodotti": len(tutti),
-        "senza_allergeni": len(mancanti),
-        "senza_ricetta_collegata": len([m for m in mancanti if not m["lotti_ref"]]),
-        "prodotti": sorted(mancanti, key=lambda p: (p["name_it"] or "").lower()),
+        "senza_allergeni": len(prodotti),
+        "esclusi": len(senza_allergeni) - len(prodotti),
+        "prodotti": sorted(prodotti, key=lambda p: (p["name_it"] or "").lower()),
     }
 
 
-@router.get("/ricette-lotti")
-async def ricette_lotti(_username: str = Depends(verify_token)):
-    """Elenco delle ricette di Lotti, per la scelta manuale da abbinare a un
-    prodotto del Menu. Sola lettura: non scrive nulla su Lotti."""
-    if not _cliente_lotti.configurato:
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "Collegamento a Lotti non configurato: mancano "
-                "LOTTI_SUPABASE_URL / LOTTI_SUPABASE_ANON_KEY / LOTTI_DB_SECRET"
-            ),
-        )
-    return {"ricette": await _cliente_lotti.ricette()}
+@router.get("/esclusioni")
+async def elenco_esclusioni(_username: str = Depends(verify_token)):
+    """Le esclusioni attive, con il nome dell'entita' esclusa: devono restare
+    visibili e revocabili, non essere una scelta invisibile."""
+    esclusioni = _leggi_esclusioni()
+    nomi = {
+        "prodotto": _nomi("menu_products"),
+        "categoria": _nomi("menu_categories"),
+        "sottocategoria": _nomi("menu_subcategories"),
+    }
+    voci = [
+        {**e, "nome": nomi.get(e.get("tipo"), {}).get(e.get("riferimento_id"))}
+        for e in esclusioni
+    ]
+    voci.sort(key=lambda v: (v.get("tipo") or "", (v.get("nome") or "").lower()))
+    return {"esclusioni": voci, "totale": len(voci)}
 
 
-class AssociaRicetta(BaseModel):
-    product_id: int
-    ricetta_doc_id: str
+class NuovaEsclusione(BaseModel):
+    tipo: Tipo
+    riferimento_id: int
+    motivo: Optional[str] = Field(default=None, max_length=500)
 
 
-@router.post("/associa")
-async def associa_ricetta(payload: AssociaRicetta, username: str = Depends(verify_token)):
-    """Collega un prodotto a una ricetta di Lotti scelta da una persona e
-    copia subito i suoi allergeni tradotti nel formato del Menu. Da qui in
-    poi ``/risincronizza`` puo' riallinearli automaticamente, senza rifare la
-    scelta ogni volta."""
-    ricette = await _cliente_lotti.ricette()
-    ricetta = next((r for r in ricette if r["doc_id"] == payload.ricetta_doc_id), None)
-    if not ricetta:
-        raise HTTPException(status_code=404, detail="Ricetta non trovata")
+@router.post("/esclusioni")
+async def crea_esclusione(payload: NuovaEsclusione, username: str = Depends(verify_token)):
+    """Segna che un prodotto (o un'intera categoria/sottocategoria) non
+    richiede la dichiarazione allergeni. Il motivo e' facoltativo."""
+    tabella = _TABELLA_PER_TIPO[payload.tipo]
+    esiste = supabase.table(tabella).select("id,name_it").eq("id", payload.riferimento_id).execute()
+    if not esiste.data:
+        raise HTTPException(status_code=404, detail=f"{payload.tipo.capitalize()} non trovato")
 
-    res = (
-        supabase.table("menu_products")
-        .update({"lotti_ref": ricetta["doc_id"], "allergens": ricetta["allergeni"]})
-        .eq("id", payload.product_id)
+    motivo = (payload.motivo or "").strip() or None
+    riga = {
+        "tipo": payload.tipo,
+        "riferimento_id": payload.riferimento_id,
+        "motivo": motivo,
+        "creato_da": username,
+    }
+
+    gia_escluso = (
+        supabase.table(TABELLA_ESCLUSIONI)
+        .select("tipo,riferimento_id")
+        .eq("tipo", payload.tipo)
+        .eq("riferimento_id", payload.riferimento_id)
         .execute()
     )
-    if not res.data:
-        raise HTTPException(status_code=404, detail="Prodotto non trovato")
+    if gia_escluso.data:
+        (
+            supabase.table(TABELLA_ESCLUSIONI)
+            .update({"motivo": motivo, "creato_da": username})
+            .eq("tipo", payload.tipo)
+            .eq("riferimento_id", payload.riferimento_id)
+            .execute()
+        )
+        esito = "aggiornata"
+    else:
+        supabase.table(TABELLA_ESCLUSIONI).insert(riga).execute()
+        esito = "creata"
+
     return {
         "success": True,
-        "prodotto": res.data[0],
-        "ricetta_nome": ricetta["nome"],
-        "ricetta_verificata": ricetta["verificato"],
+        "esito": esito,
+        "esclusione": {**riga, "nome": esiste.data[0].get("name_it")},
     }
 
 
-@router.post("/risincronizza")
-async def risincronizza(_username: str = Depends(verify_token)):
-    """Per ogni prodotto gia' collegato a una ricetta, riallinea gli allergeni
-    a quelli attuali della ricetta (es. dopo una correzione fatta su Lotti)."""
-    ricette = {r["doc_id"]: r for r in await _cliente_lotti.ricette()}
+@router.delete("/esclusioni/{tipo}/{riferimento_id}")
+async def revoca_esclusione(tipo: Tipo, riferimento_id: int, _username: str = Depends(verify_token)):
+    """Ripristino: il prodotto (o il reparto) torna nell'elenco di chi deve
+    dichiarare gli allergeni."""
     res = (
-        supabase.table("menu_products")
-        .select("id,name_it,allergens,lotti_ref")
+        supabase.table(TABELLA_ESCLUSIONI)
+        .delete()
+        .eq("tipo", tipo)
+        .eq("riferimento_id", riferimento_id)
         .execute()
     )
-    aggiornati = []
-    for prodotto in res.data or []:
-        ref = prodotto.get("lotti_ref")
-        if not ref or ref not in ricette:
-            continue
-        nuovi = ricette[ref]["allergeni"]
-        if sorted(nuovi) != sorted(prodotto.get("allergens") or []):
-            supabase.table("menu_products").update({"allergens": nuovi}).eq("id", prodotto["id"]).execute()
-            aggiornati.append({"id": prodotto["id"], "name_it": prodotto["name_it"], "allergens": nuovi})
-    return {"aggiornati": aggiornati, "totale_aggiornati": len(aggiornati)}
+    if not (res.data or []):
+        raise HTTPException(status_code=404, detail="Esclusione non trovata")
+    return {"success": True, "tipo": tipo, "riferimento_id": riferimento_id}

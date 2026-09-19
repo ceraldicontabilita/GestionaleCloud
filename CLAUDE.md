@@ -616,7 +616,16 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   `app/lotti/servizi/menu_bridge.py` con la stessa foto (`origine = "lotti"`,
   `lotti_ref` idempotente, `menu_pubblico` → `visible`): le righe di Lotti
   sopravvivono alla sync Qromo e l'esito `menu_sync` non fa mai fallire
-  l'endpoint Lotti.
+  l'endpoint Lotti. **È l'unica strada ricetta → prodotto del Menu**: il
+  «Collega a una ricetta» manuale dell'area admin del Menu era un doppione dal
+  lato sbagliato ed è stato rimosso.
+- Chi allergeni da dichiarare non ne ha (distillati, bibite in bottiglia) si
+  esclude dalla verifica, per prodotto o per intero reparto. Le esclusioni
+  vivono in `menu.menu_allergeni_esclusioni`, **non** in una colonna di
+  `menu_products`: la sync Qromo cancellerebbe qualunque flag messo lì dentro,
+  mentre gli id Qromo restano stabili e l'esclusione regge. Escludere significa
+  «non richiede la dichiarazione», non «nascondilo dal menu»: è conformità, si
+  conserva e si revoca dalla stessa pagina.
 
 ## Stato attuale (al 18/09/2026 — riscrivere sul posto)
 
