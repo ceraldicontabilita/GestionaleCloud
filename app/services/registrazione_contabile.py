@@ -812,6 +812,14 @@ _C_DEBITI_TRIBUTARI = ("02.02.01", "Debiti tributari")
 _C_AMMORTAMENTO = ("05.04.01", "Ammortamento immobilizzazioni")
 _C_FONDO_AMMORTAMENTO = ("01.05.01", "Fondo ammortamento")
 
+# Conti ufficiali (app/services/piano_conti_ufficiale.py) per il motore unico
+# TFR usato da app/hr/routers/tfr.py (audit 19/09/2026, migrazione dai 4
+# insert_one diretti su movimenti_contabili di quel router).
+_C_QUOTE_TFR = ("67.01.07.01", "Quote TFR dipend.ordinari (in azienda)")
+_C_FONDO_TFR = ("29.01.01", "Fondo TFR")
+_C_PERSONALE_LIQUIDAZIONE = ("39.07.05", "Personale c/liquidazione")
+_C_ERARIO_TFR = ("35.03.15", "Erario c/imposte sostitutive su TFR")
+
 
 def riga(conto: tuple, dare: float = 0, avere: float = 0,
          descrizione: str = "") -> Dict[str, Any]:
