@@ -14,7 +14,7 @@ Tests:
 import requests
 import os
 
-# Use localhost for new endpoints (ceraldiapp.it production not yet deployed)
+# Use localhost for new endpoints (contro il servizio locale, non il sito Lotti standalone spento)
 BASE_URL = "http://localhost:8001"
 
 
