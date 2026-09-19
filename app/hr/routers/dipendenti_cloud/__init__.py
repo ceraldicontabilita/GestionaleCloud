@@ -20,6 +20,7 @@ from decimal import Decimal, InvalidOperation
 
 from app.hr.database import Database
 from app.hr.services import stato_rapporto
+from app.hr.utils.dependencies import require_staff
 from app.config import settings
 from app.services.drive_folder_registry import get_folder_id
 
@@ -178,20 +179,51 @@ def _vista_dipendente(d: dict) -> dict:
     }
 
 
+# 18/09/2026: il responsabile turni entra con lo stesso `require_staff` di un
+# admin (gli serve per la pagina Turni, che legge da questo stesso router) ma
+# vedeva anche IBAN, stipendio, email, telefono, indirizzo, data di nascita e
+# codice fiscale di tutta l'azienda — dati che la pagina Turni (l'unica che
+# vede: `App.jsx` lo forza su quella) non usa mai. Non e' un giro di privilegi
+# aggiuntivo: e' lo stesso `require_staff` gia' sulla rotta, solo passato alla
+# funzione per poter filtrare la risposta invece di limitarsi ad aprire o
+# chiudere la porta.
+_CAMPI_RISERVATI_TURNI = (
+    "iban", "email", "telefono", "importo_stipendio",
+    "data_nascita", "indirizzo", "codice_fiscale",
+)
+
+
+def _per_responsabile_turni(identity: Any) -> bool:
+    # isinstance, non solo "truthy": chiamando la funzione fuori dalla
+    # richiesta FastAPI (com'e' nei test) il parametro resta il sentinella
+    # Depends(require_staff) non risolto, non un dict — mai un ruolo da
+    # confrontare, quindi mai un filtro applicato per errore.
+    return isinstance(identity, dict) and identity.get("role") == "responsabile_turni"
+
+
+def _senza_campi_riservati(vista: dict) -> dict:
+    return {k: v for k, v in vista.items() if k not in _CAMPI_RISERVATI_TURNI}
+
+
 @router.get("/dipendenti")
-async def get_dipendenti():
+async def get_dipendenti(identity: Dict[str, Any] = Depends(require_staff)):
     """Anagrafica HR: la fonte unica di chi lavora in azienda (anche per Lotti)."""
     dipendenti = await get_db().dipendenti.find(
         {"merged_into": {"$exists": False}}, {"_id": 0, "pdf_data": 0}).to_list(1000)
-    return [_vista_dipendente(d) for d in dipendenti]
+    viste = [_vista_dipendente(d) for d in dipendenti]
+    if _per_responsabile_turni(identity):
+        return [_senza_campi_riservati(v) for v in viste]
+    return viste
 
 @router.get("/dipendenti/{dipendente_id}")
-async def get_dipendente(dipendente_id: str):
+async def get_dipendente(dipendente_id: str, identity: Dict[str, Any] = Depends(require_staff)):
     dip = await get_db().dipendenti.find_one({"id": dipendente_id}, {"_id": 0})
     if not dip:
         raise HTTPException(status_code=404, detail="Dipendente non trovato")
     dip.pop("pin_hash", None)
     dip.pop("pin_lookup", None)
+    if _per_responsabile_turni(identity):
+        return _senza_campi_riservati(dip)
     return dip
 
 
