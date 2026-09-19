@@ -30,6 +30,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
+from app.constants.tipi_documento import TIPI_NOTA_CREDITO
+
 logger = logging.getLogger(__name__)
 
 COLL_MOVIMENTI = "movimenti_contabili"
@@ -258,9 +260,25 @@ async def registra_fattura(db, fattura: Dict[str, Any], *, force: bool = False,
                            conti: Optional[Dict[str, Any]] = None,
                            extra_movimento: Optional[Dict[str, Any]] = None,
                            extra_fattura: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Registra una fattura acquisto in partita doppia (idempotente).
+    """Registra una fattura di acquisto o una nota di credito ricevuta
+    (idempotente).
 
-    DARE costo merce (imponibile) + IVA a credito · AVERE debito v/fornitore (totale).
+    Fattura normale: DARE costo merce (imponibile) + IVA a credito · AVERE
+    debito v/fornitore (totale).
+
+    Nota di credito ricevuta (TD04/TD08, FatturaPA): scrittura ECONOMICAMENTE
+    INVERSA rispetto a una fattura normale, non un'inversione meccanica di
+    riga per riga. Una nota di credito ricevuta riduce un costo già
+    registrato, riduce l'IVA a credito già maturata e riduce il debito verso
+    il fornitore (non li aumenta): AVERE costo (era DARE), AVERE IVA a
+    credito (era DARE), DARE debito v/fornitore (era AVERE). Coerente con
+    `prima_nota_module/sync.py::determina_tipo_movimento_fattura`, che tratta
+    già TD04/TD08 come "entrata" (categoria "Nota credito fornitore") nel
+    ledger di cassa/banca — stessa direzione concettuale: la nota di credito
+    riduce, non aumenta, quanto dovuto al fornitore. Audit 19/09/2026: prima
+    di questo fix, `registra_fattura` non leggeva mai `tipo_documento` e
+    trattava OGNI nota di credito come se fosse un acquisto normale,
+    raddoppiando (anziché ridurre) costo, IVA a credito e debito fornitore.
 
     `conti` opzionale permette a chi ha una categorizzazione più ricca (es.
     contabilita_avanzata con deducibilità IRES/IRAP) di passare i conti già scelti,
@@ -268,6 +286,8 @@ async def registra_fattura(db, fattura: Dict[str, Any], *, force: bool = False,
     aggiungono campi al movimento e alla fattura senza duplicare la logica.
     """
     from app.routers.accounting.piano_conti import determina_conti_fattura
+
+    is_nota_credito = str(fattura.get("tipo_documento") or "").upper() in TIPI_NOTA_CREDITO
 
     fattura_id = fattura.get("id")
     if not fattura_id:
@@ -305,39 +325,79 @@ async def registra_fattura(db, fattura: Dict[str, Any], *, force: bool = False,
     anno = _anno_da_data(fattura.get("data_competenza") or data_doc)
 
     costo_contabile = round(imponibile + iva_indetraibile, 2)
-    quota_cespiti, righe_cespiti, anomalia_cespiti = await _righe_capitalizzazione_cespiti(
-        db, fattura_id, costo_contabile, centro_costo,
-    )
+    if is_nota_credito:
+        # Audit 19/09/2026 (punto 4, guardia difensiva): una nota di credito
+        # ricevuta non capitalizza mai un cespite, nemmeno se un record
+        # `cespiti` risultasse (per errore a monte) collegato alla stessa
+        # fattura_id — riduce un costo già registrato, non ne crea uno nuovo
+        # da immobilizzare. Non si chiama nemmeno `_righe_capitalizzazione_cespiti`:
+        # zero cespiti è garantito per costruzione, non da un controllo a valle.
+        quota_cespiti, righe_cespiti, anomalia_cespiti = 0.0, [], None
+    else:
+        quota_cespiti, righe_cespiti, anomalia_cespiti = await _righe_capitalizzazione_cespiti(
+            db, fattura_id, costo_contabile, centro_costo,
+        )
     costo_residuo = round(max(0.0, costo_contabile - quota_cespiti), 2)
+
+    # Lato della riga costo/IVA a credito: DARE per una fattura normale,
+    # AVERE per una nota di credito (riduce il costo e l'IVA a credito già
+    # registrati). Lato della riga debito v/fornitore: l'esatto opposto
+    # (AVERE normalmente, DARE per la nota di credito, perché riduce quanto
+    # dobbiamo al fornitore). Vedi la nota nel docstring della funzione per
+    # il ragionamento economico completo.
+    lato_costo = "avere" if is_nota_credito else "dare"
+    lato_debito = "dare" if is_nota_credito else "avere"
+    prefisso_nc = "Nota di credito: " if is_nota_credito else ""
 
     righe = []
     if costo_residuo > 0.005:
+        descrizione_costo = prefisso_nc + (
+            ("storno costo acquisto" if is_nota_credito else "Costo acquisto")
+            if iva_indetraibile == 0
+            else (
+                f"storno costo acquisto (incl. IVA indetraibile {iva_indetraibile:.2f})"
+                if is_nota_credito
+                else f"Costo acquisto (incl. IVA indetraibile {iva_indetraibile:.2f})"
+            )
+        ) + (" al netto della quota capitalizzata come cespite" if righe_cespiti else "")
         righe.append({
             "conto_codice": conti["costo"]["codice"], "conto_nome": conti["costo"]["nome"],
-            "dare": costo_residuo, "avere": 0, "centro_costo": centro_costo,
-            "descrizione": (
-                ("Costo acquisto" if iva_indetraibile == 0
-                 else f"Costo acquisto (incl. IVA indetraibile {iva_indetraibile:.2f})")
-                + (" al netto della quota capitalizzata come cespite" if righe_cespiti else "")
-            ),
+            "dare": costo_residuo if lato_costo == "dare" else 0,
+            "avere": costo_residuo if lato_costo == "avere" else 0,
+            "centro_costo": centro_costo,
+            "descrizione": descrizione_costo,
         })
     righe.extend(righe_cespiti)
-    righe.append(
-        {"conto_codice": conti["iva_credito"]["codice"], "conto_nome": conti["iva_credito"]["nome"],
-         "dare": iva_detraibile, "avere": 0, "centro_costo": None, "descrizione": "IVA a credito detraibile"},
-    )
-    righe.append(
-        {"conto_codice": conti["debito_fornitore"]["codice"], "conto_nome": conti["debito_fornitore"]["nome"],
-         "dare": 0, "avere": importo_totale, "centro_costo": None, "descrizione": "Debito v/fornitore"},
-    )
+    righe.append({
+        "conto_codice": conti["iva_credito"]["codice"], "conto_nome": conti["iva_credito"]["nome"],
+        "dare": iva_detraibile if lato_costo == "dare" else 0,
+        "avere": iva_detraibile if lato_costo == "avere" else 0,
+        "centro_costo": None,
+        "descrizione": prefisso_nc + (
+            "storno IVA a credito detraibile" if is_nota_credito else "IVA a credito detraibile"
+        ),
+    })
+    righe.append({
+        "conto_codice": conti["debito_fornitore"]["codice"], "conto_nome": conti["debito_fornitore"]["nome"],
+        "dare": importo_totale if lato_debito == "dare" else 0,
+        "avere": importo_totale if lato_debito == "avere" else 0,
+        "centro_costo": None,
+        "descrizione": prefisso_nc + (
+            "riduzione debito v/fornitore" if is_nota_credito else "Debito v/fornitore"
+        ),
+    })
     now = _now()
+    fornitore_nome = fattura.get("supplier_name") or fattura.get("cedente_denominazione") or ""
+    totale_lato_costo = round(costo_residuo + quota_cespiti + iva_detraibile, 2)
     movimento = {
         "id": str(uuid.uuid4()),
         "numero_registrazione": await _prossimo_numero(db, anno),
         "tipo": "fattura_acquisto",
         "fonte_documento": {"tipo": "fattura", "id": fattura_id, "numero": numero},
         "fattura_id": fattura_id,
-        "descrizione": f"Fattura {numero or ''} - {fattura.get('supplier_name') or fattura.get('cedente_denominazione') or ''}".strip(),
+        "descrizione": (
+            f"{'Nota di credito' if is_nota_credito else 'Fattura'} {numero or ''} - {fornitore_nome}"
+        ).strip(),
         "data": data_doc, "data_documento": data_doc,
         "data_competenza": fattura.get("data_competenza") or data_doc,
         "data_registrazione": now,
@@ -345,11 +405,13 @@ async def registra_fattura(db, fattura: Dict[str, Any], *, force: bool = False,
         "importo_totale": importo_totale, "imponibile": imponibile, "iva": iva,
         "iva_detraibile": iva_detraibile, "iva_indetraibile": iva_indetraibile,
         "righe": righe,
-        "totale_dare": round(costo_residuo + quota_cespiti + iva_detraibile, 2),
-        "totale_avere": round(importo_totale, 2),
+        "totale_dare": totale_lato_costo if lato_costo == "dare" else round(importo_totale, 2),
+        "totale_avere": round(importo_totale, 2) if lato_costo == "dare" else totale_lato_costo,
         "stato": "registrato", "created_at": now,
         "idempotency_key": chiave_idempotenza("fattura", fattura_id),
     }
+    if is_nota_credito:
+        movimento["nota_di_credito"] = True
     if quota_cespiti:
         # Tracciato esplicito (audit 19/09/2026 punto 3): quanto di questa
         # fattura NON e' costo pieno perche' capitalizzato come cespite.

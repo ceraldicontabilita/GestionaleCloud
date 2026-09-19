@@ -513,8 +513,13 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   fattura. La dedup tiene la copia già nel giornale e **storna** la scrittura
   del doppione. Collisioni aperte = `stato_import` di collisione **e**
   `status` non archiviato.
-- Le note di credito (TD04) non sono costi: il motore non distingue ancora il
-  tipo documento, quindi vanno trattate prima di classificarle.
+- Le note di credito ricevute (TD04/TD08, costante unica
+  `app/constants/tipi_documento.py::TIPI_NOTA_CREDITO`) non sono costi: sia il
+  ledger di cassa/banca (`prima_nota_module/sync.py`) sia il libro giornale
+  (`registrazione_contabile.py::registra_fattura`) generano la scrittura
+  invertita rispetto a una fattura normale (riduzione di costo, IVA a
+  credito e debito v/fornitore, mai un cespite) e leggono `tipo_documento`
+  prima di registrare.
 
 ## PartenoPay, verbali e flotta
 
@@ -643,7 +648,11 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   `POST /api/paypal-api/riconcilia`, `GET /api/paypal-api/account-ids-non-mappati`,
   `POST /api/admin/riallinea-pagamenti-fatture`,
   `POST /api/prima-nota-salari/deposita-cedolini-in-hr`.
-- Note di credito TD04 legacy (20): il motore le registrerebbe come costi.
+- Note di credito TD04 legacy (~20, già in produzione prima del fix del
+  19/09/2026 a `registra_fattura`): scritture sbagliate (costo/IVA/debito
+  aumentati anziché ridotti) ancora da sanare con uno storno mirato per
+  `fattura_id` via `storna_registrazione_fattura` (non un comando di massa:
+  richiede individuarle una per una sul DB live).
 - Riconciliazione: 158 fatture `riconciliata` con movimento non riconciliato,
   180 righe hub senza `fattura_id` (da rigenerare col motore, non a mano);
   banca 2026 con 1.765 movimenti senza categoria.
