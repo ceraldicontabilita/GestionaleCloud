@@ -121,8 +121,14 @@ def register_routers():
     app.include_router(tfr.router, prefix="/api/tfr", tags=["TFR"], dependencies=ADMIN)
     app.include_router(attendance.router, prefix="/api/attendance", tags=["Presenze"], dependencies=STAFF)
 
-    from .routers import libro_unico_parser, f24_parser, salari_unificati_v2
-    app.include_router(libro_unico_parser.router, prefix="/api/paghe", tags=["Libro Unico"], dependencies=ADMIN)
+    # Libro Unico: il router HTTP vive solo sul lato ERP
+    # (`app/routers/libro_unico_parser.py`), chiamato dalla pipeline di ingest
+    # documentale. La copia `app/hr/routers/libro_unico_parser.py`, registrata
+    # qui fino al 19/09/2026, non e' mai stata usata: scriveva su collection
+    # `employees`/`buste_paga`/`presenze_mensili` le cui tabelle
+    # (`hr.app_employees`, `hr.app_buste_paga`, `hr.app_presenze_mensili`) non
+    # esistono in Supabase, e le sue rotte non avevano chiamanti.
+    from .routers import f24_parser, salari_unificati_v2
     app.include_router(f24_parser.router, prefix="/api/paghe", tags=["F24 Parser"], dependencies=ADMIN)
     app.include_router(salari_unificati_v2.router, prefix="/api/salari-v2", tags=["Salari V2"], dependencies=ADMIN)
 
