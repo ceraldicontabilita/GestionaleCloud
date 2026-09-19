@@ -256,113 +256,11 @@ async def salva_verbali_completi(verbali: List[Dict[str, Any]]) -> Dict[str, int
     return risultato
 
 
-async def cerca_verbale_in_estratto_conto(numero_verbale: str, importo: float) -> Optional[Dict]:
-    """
-    Cerca un verbale nell'estratto conto (banca o carta).
-
-    Returns:
-        Movimento trovato o None
-    """
-    db = Database.get_db()
-
-    # Cerca in prima_nota_banca
-    movimento = await db["prima_nota_banca"].find_one({
-        "$or": [
-            {"causale": {"$regex": numero_verbale, "$options": "i"}},
-            {"descrizione": {"$regex": numero_verbale, "$options": "i"}},
-            {"riferimento": {"$regex": numero_verbale, "$options": "i"}}
-        ]
-    })
-
-    if movimento:
-        return {"tipo": "banca", "movimento": movimento}
-
-    # Cerca per importo simile (tolleranza ±0.50€)
-    tolleranza = 0.50
-    movimento = await db["prima_nota_banca"].find_one({
-        "importo": {"$gte": importo - tolleranza, "$lte": importo + tolleranza},
-        "tipo": "uscita"
-    })
-
-    if movimento:
-        return {"tipo": "banca", "movimento": movimento, "match_tipo": "importo"}
-
-    return None
-
-
 async def riconcilia_verbali() -> Dict[str, Any]:
     """Mantiene l'API storica ma applica soltanto regole probatorie strict."""
     from app.services.verbali_pagamento_finder import riconcilia_verbali_strict
 
     return await riconcilia_verbali_strict(Database.get_db())
-
-
-async def _legacy_riconcilia_verbali_non_usare() -> Dict[str, Any]:
-    """
-    Tenta di riconciliare tutti i verbali con l'estratto conto.
-
-    Returns:
-        {"riconciliati": int, "sospesi": int, "totale": int}
-    """
-    db = Database.get_db()
-
-    risultato = {"riconciliati": 0, "sospesi": 0, "totale": 0}
-
-    # Trova verbali non ancora riconciliati
-    cursor = db[COLLECTION_VERBALI].find({
-        "riconciliato": False,
-        "stato_pagamento": {"$ne": "pagato"}
-    })
-
-    async for verbale in cursor:
-        risultato["totale"] += 1
-
-        numero = verbale.get("numero_verbale")
-        importo = verbale.get("importo", 0)
-
-        # Cerca nel conto
-        match = await cerca_verbale_in_estratto_conto(numero, importo)
-
-        if match:
-            # Aggiorna verbale come riconciliato
-            await db[COLLECTION_VERBALI].update_one(
-                {"id": verbale["id"]},
-                {"$set": {
-                    "stato_pagamento": "pagato",
-                    "riconciliato": True,
-                    "movimento_banca_id": str(match["movimento"].get("_id", match["movimento"].get("id"))),
-                    "data_pagamento": match["movimento"].get("data"),
-                    "updated_at": datetime.now(timezone.utc).isoformat()
-                }}
-            )
-            risultato["riconciliati"] += 1
-        else:
-            # Marca come sospeso
-            await db[COLLECTION_VERBALI].update_one(
-                {"id": verbale["id"]},
-                {"$set": {
-                    "stato_pagamento": "sospeso",
-                    "updated_at": datetime.now(timezone.utc).isoformat()
-                }}
-            )
-
-            # Aggiungi a operazioni sospese
-            await db[COLLECTION_SOSPESI].update_one(
-                {"riferimento": numero},
-                {"$set": {
-                    "tipo": "verbale",
-                    "riferimento": numero,
-                    "importo": importo,
-                    "descrizione": verbale.get("descrizione"),
-                    "targa": verbale.get("targa"),
-                    "verbale_id": verbale["id"],
-                    "created_at": datetime.now(timezone.utc).isoformat()
-                }},
-                upsert=True
-            )
-            risultato["sospesi"] += 1
-
-    return risultato
 
 
 async def get_operazioni_sospese() -> List[Dict[str, Any]]:
