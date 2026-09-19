@@ -1099,6 +1099,16 @@ def parse_busta_paga_multi(pdf_path: str) -> Dict[str, Any]:
         result["parse_success"] = False
         result["parse_error"] = "Nessun importo estratto"
 
+    # `cedolino_text` copre tutte le pagine: netto, elementi retributivi e
+    # anticipi TFR stanno spesso sulla seconda, non su quella usata per
+    # riconoscere il template. Le tre funzioni arrivano dalla copia `app/hr`
+    # il 19/09/2026 — erano l'unica cosa che quella copia avesse in piu'.
+    _verifica_netto(result, cedolino_text)
+    _elementi_retributivi(result, cedolino_text)
+    _acconti_e_anticipazioni(result, cedolino_text)
+    if result.get("periodo", {}).get("giorni_lavorati"):
+        result["giorni_lavorati"] = result["periodo"]["giorni_lavorati"]
+
     return result
 
 
@@ -1207,3 +1217,126 @@ def extract_summary(parsed_data: Dict[str, Any]) -> Dict[str, Any]:
         "cessazione_diciture": cessazione.get("diciture_trovate", []),
         "data_cessazione_rilevata": cessazione.get("data_cessazione_rilevata"),
     }
+
+
+def _elementi_retributivi(result: Dict[str, Any], text: str) -> None:
+    """Legge paga base, contingenza e scatti dal corpo della busta.
+
+    Sono su ogni cedolino, ma come tariffa ORARIA a cinque decimali
+    (`PAGA BASE 5,93890 ... CONTING. 3,03703`); il Libro Unico scrive invece gli
+    stessi elementi in forma mensile (`PAGA BASE 1.396,08000`). Qui si prendono
+    entrambe le forme e si distingue dal valore: sopra i 100 euro e' un mensile,
+    sotto e' una tariffa oraria.
+
+    Serve per sapere quale tranche di rinnovo e' stata applicata: la paga base
+    che risulta dalla busta, confrontata con la tabella in vigore, dice se lo
+    scarto e' comune a tutti i livelli (tranche vecchia) o riguarda una sola
+    persona (allora e' un caso da guardare).
+    """
+    # Ogni studio paghe scrive le stesse voci a modo suo: CONTING. o CONTINGENZA,
+    # SCATTI o SCATTI ANZIANITA'. L'importo deve avere i decimali, cosi' le
+    # intestazioni di colonna ("SCATTI N. % G.G") non vengono scambiate per dati.
+    voci = {
+        "paga_base": r"PAGA\s+BASE\s+([\d.]+,\d{2,6})",
+        "contingenza": r"CONTING(?:ENZA)?\.?\s+([\d.]+,\d{2,6})",
+        "scatti": r"SCATTI(?:\s+ANZIANITA'?)?\s+([\d.]+,\d{2,6})",
+        "superminimo": r"SUPERMINIMO(?:\s+ASSOR\.?)?\s+([\d.]+,\d{2,6})",
+    }
+    out: Dict[str, Any] = {}
+    alto = text.upper()
+    for nome, pattern in voci.items():
+        m = re.search(pattern, alto)
+        if not m:
+            continue
+        try:
+            val = float(m.group(1).replace(".", "").replace(",", "."))
+        except ValueError:
+            continue
+        if val <= 0:
+            continue
+        out[nome + ("_mensile" if val >= 100 else "_oraria")] = round(val, 5)
+    if out:
+        result.setdefault("retribuzione", {}).update(out)
+
+
+def _verifica_netto(result: Dict[str, Any], text: str = "") -> None:
+    """Controlla il netto con l'aritmetica della busta: competenze - trattenute.
+
+    Nel template zucchetti_classic il netto veniva letto dalla zona delle
+    coordinate bancarie, dove accanto all'importo vero stanno numeri piccoli:
+    usciva 0,00 o 0,48 al posto di 1.354,00, e su tutto il 2021 il netto
+    risultava nullo pur avendo il lordo corretto.
+
+    Il netto di una busta e' competenze meno trattenute, a meno
+    dell'arrotondamento all'euro. Quando il valore letto si scosta di piu' di un
+    euro da quel conto — o e' assente, o supera le competenze — vince il calcolo,
+    e il documento resta marcato per sapere che il numero e' ricostruito.
+    """
+    t = result.get("totali") or {}
+    if result.get("tipo_documento") == "foglio_presenze":
+        return
+    if re.search(r"COMPENSO\s+AMMINISTRATORE|CO\.CO\.CO", text.upper()):
+        # Cedolino di compenso amministratore (Co.Co.Co.), non busta paga
+        # dipendente: "competenze" e "trattenute" qui intercettano campi del
+        # tutto diversi (residui, arrotondamenti), non i totali del documento.
+        # Il controllo aritmetico li confronterebbe a vuoto e sovrascriverebbe
+        # un netto letto correttamente con un valore inventato — visto su
+        # Ceraldi Valerio maggio 2026: netto vero 2.000,00, "ricostruito" 38,21.
+        return
+    competenze = t.get("competenze", t.get("lordo"))
+    trattenute = t.get("trattenute")
+    if competenze is None or trattenute is None:
+        return
+    try:
+        calcolato = round(float(competenze) - float(trattenute), 2)
+    except (TypeError, ValueError):
+        return
+    if calcolato <= 0:
+        return                  # sospensioni e mesi a saldo negativo: lasciati stare
+    letto = t.get("netto")
+    if (letto is None or abs(float(letto) - calcolato) > 1.0
+            or float(letto) > float(competenze)):
+        t["netto_letto"] = letto
+        t["netto"] = calcolato
+        t["netto_ricostruito"] = True
+
+
+def _acconti_e_anticipazioni(result: Dict[str, Any], text: str) -> None:
+    """Legge acconti sulla retribuzione e anticipi TFR erogati o recuperati.
+
+    Il campo "TFR a fondi / Anticipi" e' presente su quasi ogni busta ma quasi
+    sempre vicino allo zero (mediana 0,50 su 425 buste controllate): e' un
+    residuo tecnico, non un anticipo del mese. Un anticipo TFR vero fa
+    schizzare quel valore molto piu' in alto (undici casi sopra i 50 euro,
+    fino a 5.300) — la soglia di 50 euro separa il rumore dall'evento reale.
+
+    "ACCONTO TRATT. RETRIB." e "Recupero acconto" sono voci distinte e ben
+    popolate (21 e 47 occorrenze, importi tondi: 500, 600, 1.000...): il primo
+    e' l'acconto erogato nel mese, il secondo la sua restituzione trattenuta
+    in busta un mese successivo.
+    """
+    U = text.upper()
+    out: Dict[str, Any] = {}
+
+    m = re.search(r"ACCONTO\s+TRATT\.?\s*RETRIB\.?\s+([\d.]+,\d{2})", U)
+    if m:
+        out["acconto_erogato"] = parse_importo(m.group(1))
+
+    m = re.search(r"RECUPERO\s+ACCONTO\s+([\d.]+,\d{2})", U)
+    if m:
+        out["acconto_recuperato"] = parse_importo(m.group(1))
+
+    m = re.search(r"TFR\s+A\s+FONDI\s+ANTICIPI\s+([\d.]+,\d{2})", U)
+    if not m:
+        m = re.search(r"\bANTICIPI\s+([\d.]+,\d{2})", U)
+    if m:
+        valore = parse_importo(m.group(1))
+        out["tfr_anticipi_residuo"] = valore
+        if valore >= 50:
+            out["tfr_anticipo_erogato"] = valore
+
+    if result.get("tipo_cedolino") == "acconto":
+        out["intero_cedolino_acconto"] = True
+
+    if out:
+        result["acconti"] = out
