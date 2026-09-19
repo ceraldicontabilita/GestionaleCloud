@@ -20,6 +20,7 @@ import io
 import hashlib
 from decimal import Decimal, InvalidOperation
 
+from app.constants.stati_netto import alimenta_salari
 from app.database import Collections, Database
 from app.services.salari_periodo import (
     filtro_periodo_prima_nota,
@@ -1118,12 +1119,20 @@ async def import_salari_verificati(data: Dict[str, Any] = Body(...)) -> Dict[str
             anno = int(row.get("year") or row.get("anno"))
             mese = int(row.get("month") or row.get("mese"))
             importo = _importo_positivo(row.get("net_amount", row.get("importo_busta")))
-            status = str(row.get("status") or "NETTO_VERIFICATO_DA_CEDOLINO").strip().upper()
+            # Fail CHIUSO. Prima qui c'era
+            # `str(row.get("status") or "NETTO_VERIFICATO_DA_CEDOLINO")`:
+            # uno status assente o vuoto veniva promosso a «verificato» e la
+            # riga entrava in Prima Nota Salari. CLAUDE.md dice l'opposto —
+            # «solo NETTO_VERIFICATO_DA_CEDOLINO alimenta Salari e bonifici» —
+            # e su un dato che diventa un bonifico l'assenza di prova non puo'
+            # valere come prova. L'endpoint si chiama «salari verificati»:
+            # chi lo chiama la verifica la dichiara, non la si presume.
+            status = row.get("status")
             source_url = str(row.get("source") or "").strip()
 
             if not dipendente or dipendente == "NAN":
                 raise ValueError("dipendente mancante")
-            if status != "NETTO_VERIFICATO_DA_CEDOLINO":
+            if not alimenta_salari(status):
                 skipped += 1
                 continue
             if importo is None or importo <= 0:

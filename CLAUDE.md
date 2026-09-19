@@ -456,7 +456,11 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   trattenute, TFR, arrotondamenti o dal nome del file. Cella vuota → valore
   nullo, **mai zero**. Stati: `NETTO_VERIFICATO_DA_CEDOLINO`,
   `NETTO_NON_PRESENTE_O_NON_LEGGIBILE`, `MULTIPLE_NETS_DA_VERIFICARE`,
-  `ERRORE_PARSER`; solo il primo alimenta Salari e bonifici.
+  `ERRORE_PARSER`; solo il primo alimenta Salari e bonifici. I quattro stati
+  stanno in `app/constants/stati_netto.py` e la decisione si prende **solo**
+  con `alimenta_salari()`, che fallisce **chiuso**: uno stato assente, vuoto o
+  sconosciuto non passa. Su un dato che diventa un bonifico l'assenza di prova
+  non vale come prova.
 - Duplicato di cedolino **solo con hash del PDF uguale**: stesso dipendente,
   mese e importo non bastano (mensilità aggiuntive, arretrati, conguagli).
 - Una cessazione letta in una busta vale solo se non esiste una busta
@@ -737,10 +741,6 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   e' l'unico codice che la tocca e nessuno lo importa, mentre in produzione la
   tabella ha 216 righe. O il meccanismo dei PDF su richiesta si ricollega, o la
   regola che lo descrive va corretta.
-- Dei quattro stati del netto ne esiste uno solo nel codice
-  (`NETTO_VERIFICATO_DA_CEDOLINO`): gli altri tre non vengono mai scritti e la
-  guardia in `prima_nota_salari.py` tratta lo stato assente come verificato.
-  Finche' restano, un netto illeggibile non e' distinguibile da uno letto.
 - `app/services/sheets_document_store.py` non parla piu' con Google ed e' il
   motore query in memoria del runtime Supabase: nome e docstring vanno
   riallineati, dicono ancora che la fonte persistente e' Google Sheets.
