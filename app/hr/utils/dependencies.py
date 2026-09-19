@@ -52,12 +52,22 @@ async def get_current_user(
         if exp and datetime.fromtimestamp(exp, tz=timezone.utc) < datetime.now(timezone.utc):
             raise AuthenticationError("Token has expired")
         
-        # Return user data
+        # Il ruolo si valida contro il vocabolario dell'app HR e fallisce
+        # CHIUSO. Fino al 19/09/2026 qui c'era `payload.get("role", "user")`:
+        # qualunque stringa nel token passava, e `"user"` non e' nemmeno un
+        # ruolo di questa app (i suoi sono dipendente, responsabile_turni,
+        # admin). La copia ERP di questo file il controllo ce l'aveva gia'.
+        from app.hr.utils.identity import RUOLI_VALIDI
+
+        ruolo = str(payload.get("role") or "").strip().lower()
+        if ruolo not in RUOLI_VALIDI:
+            raise AuthenticationError("Invalid token: unknown user role")
+
         return {
             "user_id": user_id,
             "email": payload.get("email"),
             "name": payload.get("name"),
-            "role": payload.get("role", "user")
+            "role": ruolo,
         }
         
     except JWTError as e:
@@ -137,12 +147,21 @@ async def get_optional_user(
         user_id = payload.get("sub")
         if not user_id:
             return None
-        
+
+        # Anche qui il ruolo si valida: questa dependency e' «facoltativa» sul
+        # token, non sul suo contenuto. Un ruolo sconosciuto vale come assenza
+        # di identita', non come utente generico.
+        from app.hr.utils.identity import RUOLI_VALIDI
+
+        ruolo = str(payload.get("role") or "").strip().lower()
+        if ruolo not in RUOLI_VALIDI:
+            return None
+
         return {
             "user_id": user_id,
             "email": payload.get("email"),
             "name": payload.get("name"),
-            "role": payload.get("role", "user")
+            "role": ruolo,
         }
     except JWTError:
         return None
