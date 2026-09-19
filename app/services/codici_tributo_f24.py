@@ -35,18 +35,21 @@ CODICI_TRIBUTO_F24 = {
         "sezione": "ERARIO",
         "scadenza": "16 del mese successivo"
     },
+    # 1627/1631/1704: descrizioni ripristinate al testo in uso in produzione
+    # (dizionario locale di parser_f24 prima della delega al registro unico).
     "1627": {
-        "descrizione": "Ritenute su lavoro autonomo, provvigioni, redditi diversi",
+        "descrizione": "Eccedenza versamenti ritenute lavoro dipendente",
         "tipo": "misto",
         "sezione": "ERARIO"
     },
     "1631": {
-        "descrizione": "Credito d'imposta per ritenute IRPEF",
+        "descrizione": "Somme rimborsate sostituto assistenza fiscale",
         "tipo": "credito",
         "sezione": "ERARIO"
     },
+    # 1704 è un CREDITO, non IVA né costo (CLAUDE.md, "F24, tributi, dichiarazioni").
     "1704": {
-        "descrizione": "Credito IVA utilizzato in compensazione / Ritenute su redditi di capitale",
+        "descrizione": "Credito somma art.1 c.4 L. 207/2024",
         "tipo": "misto",
         "sezione": "ERARIO"
     },
@@ -170,13 +173,17 @@ CODICI_TRIBUTO_F24 = {
         "tipo": "misto",
         "sezione": "REGIONI"
     },
+    # 3801/3802: testi ripristinati a quelli in uso in produzione. L'abbinamento
+    # (quale dei due è il sostituto d'imposta e quale l'autotassazione) è
+    # da verificare con la fonte ufficiale AE: qui non si riformula nulla di
+    # propria iniziativa, si tiene il valore che l'utente già vedeva.
     "3801": {
-        "descrizione": "Imposta regionale sulle attività produttive - acconto prima rata",
+        "descrizione": "Addizionale regionale IRPEF - sostituto d'imposta",
         "tipo": "debito",
         "sezione": "REGIONI"
     },
     "3802": {
-        "descrizione": "Addizionale regionale IRPEF - sostituti d'imposta",
+        "descrizione": "Addizionale regionale IRPEF - autotassazione",
         "tipo": "misto",
         "sezione": "REGIONI",
         "scadenza": "16 del mese successivo"
@@ -186,13 +193,16 @@ CODICI_TRIBUTO_F24 = {
         "tipo": "credito",
         "sezione": "REGIONI"
     },
+    # 3800 = saldo, 3812 = acconto prima rata, 3813 = acconto seconda rata:
+    # descrizioni ripristinate al testo in uso in produzione (il registro
+    # duplicava "IRAP saldo" su 3800 e 3813).
     "3812": {
-        "descrizione": "IRAP acconto seconda rata o unica soluzione",
+        "descrizione": "IRAP acconto prima rata",
         "tipo": "debito",
         "sezione": "REGIONI"
     },
     "3813": {
-        "descrizione": "IRAP saldo",
+        "descrizione": "IRAP acconto seconda rata o unica soluzione",
         "tipo": "misto",
         "sezione": "REGIONI"
     },
@@ -215,8 +225,11 @@ CODICI_TRIBUTO_F24 = {
         "tipo": "credito",
         "sezione": "IMU"
     },
+    # 3916 = aree fabbricabili quota COMUNE: il registro duplicava il significato
+    # di 3925 (fabbricati gruppo D - STATO). Testo ripristinato a quello in uso
+    # in produzione.
     "3916": {
-        "descrizione": "IMU - imposta municipale propria per fabbricati gruppo D - STATO",
+        "descrizione": "IMU aree fabbricabili - comune",
         "tipo": "debito",
         "sezione": "IMU"
     },
