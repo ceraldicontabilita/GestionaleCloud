@@ -572,29 +572,6 @@ async def backfill_noleggio_dati_gestionali(
 # `app/services/recupero_fatture_pregresso.py`: qui solo le rotte.
 
 @router.post(
-    "/fatture/ricalcola-scadenze",
-    summary="Riporta data_scadenza alla scadenza dichiarata nell'XML",
-)
-async def fatture_ricalcola_scadenze(
-    dry_run: bool = Query(True, description="Se True non scrive: restituisce solo cosa cambierebbe"),
-    current_user: Dict[str, Any] = Depends(get_current_user),
-) -> Dict[str, Any]:
-    """Il canale automatico calcolava la scadenza come data fattura + 30
-    giorni anche quando l'XML ne dichiarava una. Le `pagamento_rate` sono
-    rimaste sulla fattura, quindi la scadenza vera si ricalcola da li' senza
-    rileggere nessun file.
-
-    Misurato in produzione il 19/09/2026: 414 fatture attive del canale
-    Drive, 390 con la scadenza anticipata in media di 29 giorni e 24
-    posticipata fino a 58.
-    """
-    richiedi_admin(current_user)
-    from app.services import recupero_fatture_pregresso as recupero
-
-    return await recupero.ricalcola_scadenze(Database.get_db(), dry_run=dry_run)
-
-
-@router.post(
     "/fatture/ripubblica-evento-created",
     summary="Ripubblica fattura.created per le fatture rimaste senza partita aperta",
 )

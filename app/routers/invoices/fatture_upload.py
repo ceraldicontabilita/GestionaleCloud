@@ -38,7 +38,6 @@ from app.services.supplier_data_quality import apply_supplier_quality
 logger = logging.getLogger(__name__)
 
 from app.services.eventi_fattura import costruisci_evento_fattura_created  # noqa: E402
-from app.services.scadenza_fattura import scadenza_sintetica  # noqa: E402
 
 
 def _iban_xml_verificato(parsed_invoice: Dict[str, Any]) -> Optional[str]:
@@ -1105,10 +1104,17 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
             except Exception:
                 logger.exception(f"Errore generazione alert FAT_TIPO_AMBIGUO per {invoice_key}")
 
-        # La scadenza sintetica della fattura e' la prima scadenza XML
-        # valida. Il +30 giorni e' soltanto un fallback; non e' mai una data
-        # di pagamento e non sostituisce il piano rate conservato sotto.
-        data_scadenza = scadenza_sintetica(parsed)
+        # NESSUNA SCADENZA. Decisione del titolare del 19/09/2026: «decido io
+        # quando pagare, non c'e' una data stabilita». Il gestionale non legge
+        # ne' le condizioni di pagamento dell'XML (rimessa diretta, 30 giorni
+        # data fattura) ne' le date stampate sulla fattura, e non inventa un
+        # «+30». Il piano rate resta comunque conservato sul documento: e' un
+        # dato dell'originale, semplicemente non guida piu' niente.
+        # Conseguenza voluta: `check_scadenze_partite_task` salta le partite
+        # con `data_scadenza` nulla, quindi l'avviso FAT_DA_PAGARE_SCADUTA non
+        # nasce piu' per le fatture fornitore. F24 e stipendi, che una
+        # scadenza vera ce l'hanno, non sono toccati.
+        data_scadenza = None
 
         pagamento_xml = _analizza_pagamento_xml(parsed, metodo_pagamento)
         metodo_canonico = normalizza_metodo_pagamento(metodo_pagamento)
@@ -2040,13 +2046,10 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
     # Se il fornitore non ha un metodo → "sospesa" → resta nei provvisori.
     metodo_pagamento = supplier_result.get("metodo_pagamento") or "sospesa"
 
-    # Data scadenza: prima la scadenza dichiarata nell'XML, e solo in sua
-    # assenza il ripiego «data fattura + 30». Qui si faceva sempre e solo il
-    # +30, con un commento che diceva «come l'upload manuale» e non lo era:
-    # 414 fatture del canale Drive avevano una scadenza vera nell'XML e se la
-    # sono vista sostituire.
+    # Nessuna scadenza: stessa decisione del titolare applicata all'upload
+    # manuale (vedi il commento esteso li').
     invoice_date = parsed.get("invoice_date", "")
-    data_scadenza = scadenza_sintetica(parsed)
+    data_scadenza = None
 
     # 5. Documento fattura + insert (stessi campi dell'upload manuale, inclusi
     #    i campi speculari in italiano usati da filtri e pagine contabili)

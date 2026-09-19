@@ -1,18 +1,12 @@
 """Recupero del pregresso sulle fatture gia' in archivio.
 
-Due riparazioni, entrambe nate da difetti misurati il 19/09/2026.
+**Niente scadenze.** Decisione del titolare del 19/09/2026: «decido io quando
+pagare, non c'e' una data stabilita». Il gestionale non legge le condizioni
+di pagamento dell'XML ne' le date stampate sulla fattura, e qui non si
+ricalcola nessuna `data_scadenza`: le partite fornitore nascono senza
+termine, e `check_scadenze_partite_task` le salta da solo.
 
-**1. Le scadenze sostituite dal ripiego.** Il canale automatico calcolava
-`data_scadenza` come data fattura + 30 giorni anche quando l'XML ne
-dichiarava una. Le `pagamento_rate` sono rimaste sulla fattura, quindi la
-scadenza vera si ricalcola da li' senza rileggere nulla. Simulato sui dati
-di produzione il 19/09/2026, sulle 873 fatture attive: 650 cambierebbero —
-390 hanno la scadenza mostrata **piu' tardi** di quella vera (fino a 40
-giorni: gia' scadute e non segnalate), 24 **prima** (fino a 58), e 236 non
-ne hanno nessuna e la riceverebbero. 210 restano invariate e 13 non hanno
-ne' data ne' rate, quindi si lasciano vuote.
-
-**2. L'evento `fattura.created` mai propagato.** L'import massivo del
+**L'evento `fattura.created` mai propagato.** L'import massivo del
 14/09/2026 05:27 (249 fatture) e le fatture entrate dal Drive senza
 `data_documento` (47) non hanno fatto scattare nessuno dei suoi handler:
 niente partita aperta verso il fornitore, niente alert, niente audit. Sono
@@ -37,13 +31,11 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from app.services.eventi_fattura import costruisci_evento_fattura_created
-from app.services.scadenza_fattura import scadenza_sintetica
 
 logger = logging.getLogger(__name__)
 
 __all__ = [
     "STATI_NON_ATTIVI",
-    "ricalcola_scadenze",
     "ripubblica_fattura_created",
     "avvia_ripubblicazione",
     "stato_ripubblicazione",
@@ -81,71 +73,6 @@ def _e_archivio_storico(fattura: Dict[str, Any]) -> bool:
     return (fattura.get("stato_import") or "") == STATO_ARCHIVIO_STORICO
 
 
-# ── 1. Scadenze da ricalcolare ─────────────────────────────────────────────
-
-async def ricalcola_scadenze(db, *, dry_run: bool = True, esempi: int = 20) -> Dict[str, Any]:
-    """Riporta `data_scadenza` alla scadenza dichiarata nell'XML.
-
-    Legge solo le `pagamento_rate` gia' conservate sulla fattura: non
-    rilegge un XML ne' un file su Drive. Tocca una fattura solo se la
-    scadenza ricalcolata e' **diversa** da quella salvata.
-    """
-    esaminate = corrette = invariate = senza_scadenza = 0
-    # I due nomi dicono cosa vedeva l'utente, non il segno di una
-    # sottrazione: e' l'ambiguita' da cui e' nato un errore di lettura.
-    mostrate_prima = mostrate_dopo = 0
-    campione: List[Dict[str, Any]] = []
-
-    async for fattura in db[COLL].find({}, _PROIEZIONE):
-        if not _e_attiva(fattura):
-            continue
-        esaminate += 1
-
-        vecchia = fattura.get("data_scadenza")
-        nuova = scadenza_sintetica(fattura)
-        if nuova is None:
-            senza_scadenza += 1
-            continue
-        if nuova == vecchia:
-            invariate += 1
-            continue
-
-        if vecchia:
-            if nuova > vecchia:
-                # La salvata cade PRIMA di quella vera: la fattura risultava
-                # scaduta quando ancora non lo era.
-                mostrate_prima += 1
-            else:
-                # La salvata cade DOPO: la fattura era gia' scaduta davvero
-                # e nessuno lo vedeva. E' il caso grave.
-                mostrate_dopo += 1
-        if len(campione) < esempi:
-            campione.append({
-                "id": fattura.get("id"),
-                "numero": fattura.get("invoice_number"),
-                "fornitore": fattura.get("supplier_name"),
-                "scadenza_salvata": vecchia,
-                "scadenza_dall_xml": nuova,
-            })
-
-        if not dry_run:
-            await db[COLL].update_one(
-                {"id": fattura.get("id")}, {"$set": {"data_scadenza": nuova}}
-            )
-        corrette += 1
-
-    return {
-        "dry_run": dry_run,
-        "esaminate": esaminate,
-        "corrette": corrette,
-        "invariate": invariate,
-        "senza_scadenza_determinabile": senza_scadenza,
-        "mostravano_una_scadenza_prima_della_vera": mostrate_prima,
-        "mostravano_una_scadenza_dopo_la_vera": mostrate_dopo,
-        "esempi": campione,
-    }
-
-
 # ── 2. Replay di `fattura.created` ─────────────────────────────────────────
 
 async def _fatture_senza_partita(db) -> List[Dict[str, Any]]:
@@ -179,27 +106,26 @@ async def ripubblica_fattura_created(db, *, dry_run: bool = True) -> Dict[str, A
     da_rigiocare = await _fatture_senza_partita(db)
 
     ripubblicate = errori = 0
-    senza_metodo = senza_scadenza = 0
+    senza_metodo = 0
     motivi_errore: List[str] = []
 
     for fattura in da_rigiocare:
         if not fattura.get("metodo_pagamento"):
             senza_metodo += 1
-        # La scadenza si ricava come all'import: se non e' mai stata
-        # calcolata, la partita nascerebbe senza termine e non invecchierebbe.
-        scadenza = fattura.get("data_scadenza") or scadenza_sintetica(fattura)
-        if not scadenza:
-            senza_scadenza += 1
 
         if dry_run:
             ripubblicate += 1
             continue
 
+        evento = costruisci_evento_fattura_created(fattura)
+        # Nessuna scadenza: la partita fornitore nasce senza termine, per
+        # decisione del titolare. Va azzerata esplicitamente perche' 47 delle
+        # candidate portano ancora la scadenza inventata dal vecchio import.
+        evento["data_scadenza"] = None
+
         try:
             await propagate_event(
-                EventTypes.FATTURA_CREATED,
-                costruisci_evento_fattura_created(fattura, data_scadenza=scadenza),
-                db,
+                EventTypes.FATTURA_CREATED, evento, db,
                 source_module="replay_pregresso",
             )
             ripubblicate += 1
@@ -215,7 +141,6 @@ async def ripubblica_fattura_created(db, *, dry_run: bool = True) -> Dict[str, A
         "ripubblicate": ripubblicate,
         "errori": errori,
         "senza_metodo_pagamento": senza_metodo,
-        "senza_scadenza_determinabile": senza_scadenza,
         "motivi_errore": motivi_errore,
     }
 

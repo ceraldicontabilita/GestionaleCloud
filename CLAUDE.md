@@ -576,11 +576,15 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   `app/constants/metodi_pagamento.py`: `sospesa` (quello che scrive l'import),
   `da_configurare`, `none`, vuoto e campo assente valgono uguale. Chi tiene la
   propria lista si perde il caso più frequente.
-- **La scadenza della fattura è quella dichiarata nell'XML**
-  (`pagamento_rate[].data_scadenza`); «data fattura + 30» è solo il ripiego
-  quando l'XML non ne dichiara nessuna. Motore unico
-  `app/services/scadenza_fattura.py`: nessun percorso di import la ricalcola
-  per conto suo.
+- **Le fatture fornitore non hanno scadenza.** Decisione del titolare
+  (19/09/2026): «decido io quando pagare, non c'è una data stabilita». Non si
+  leggono le condizioni di pagamento dell'XML (rimessa diretta, 30 giorni data
+  fattura), non si leggono le date stampate sul documento e non si inventa un
+  «+30»: `data_scadenza` resta vuota. Il piano rate si conserva sul documento
+  come dato dell'originale, ma non guida niente. Di conseguenza
+  `check_scadenze_partite_task` salta le partite fornitore e l'avviso
+  `FAT_DA_PAGARE_SCADUTA` non nasce più; F24 e stipendi, che una scadenza
+  vera ce l'hanno, restano invariati.
 - Il payload di `fattura.created` si costruisce solo con
   `app/services/eventi_fattura.py::costruisci_evento_fattura_created`, così
   import e recupero del pregresso propagano lo stesso evento.
@@ -808,13 +812,16 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   presente ma vuoto; solo 41 hanno un IBAN): finché resta così ogni fattura
   è `sospesa` e nulla può essere instradato in Prima Nota Banca. Da
   popolare con una fonte vera, non dedotta dalle fatture.
-- **Pregresso fatture da sanare, i comandi ci sono ma vanno lanciati** (admin,
-  prima in `dry_run`). `POST /api/admin/fatture/ricalcola-scadenze`: 650
-  scadenze su 873 cambierebbero — 390 oggi mostrate **dopo** quella vera (fino
-  a 40 giorni: 204.069,70 € già scaduti e non segnalati), 24 prima, 236 oggi
-  assenti. `POST /api/admin/fatture/ripubblica-evento-created`: 296 fatture
-  attive (173.184,83 €, 22.989,82 € di IVA) senza partita aperta verso il
-  fornitore, fra l'import massivo del 14/09 e il canale Drive del 15–17/09.
+- **Pregresso fatture da sanare**: `POST /api/admin/fatture/ripubblica-evento-created`
+  (admin, background, `dry_run` per difetto) — 296 fatture attive
+  (173.184,83 €, 22.989,82 € di IVA) senza partita aperta verso il fornitore,
+  fra l'import massivo del 14/09 e il canale Drive del 15–17/09; 280 di esse
+  sono anche fuori dal libro giornale (145.025,14 €). Ordine obbligato:
+  replay dell'evento (che fa girare anche il classificatore IVA), poi
+  `POST /api/piano-conti/registra-pregresso`.
+- Le `data_scadenza` già scritte sulle fatture fornitore e sulle loro partite
+  sono valori inventati dal vecchio import: vanno azzerate, altrimenti
+  continuano ad alimentare `FAT_DA_PAGARE_SCADUTA`.
 - Riconciliazione: 158 fatture `riconciliata` con movimento non riconciliato,
   180 righe hub senza `fattura_id` (da rigenerare col motore, non a mano);
   banca 2026 con 1.765 movimenti senza categoria.

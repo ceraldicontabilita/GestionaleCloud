@@ -1,21 +1,15 @@
 """Il recupero del pregresso non deve inventare, duplicare o toccare troppo.
 
-Due riparazioni sulle fatture gia' in archivio (19/09/2026):
-
-1. `ricalcola_scadenze` riporta `data_scadenza` alla scadenza dichiarata
-   nelle `pagamento_rate` conservate sulla fattura. In produzione riguarda
-   414 fatture del canale Drive.
-2. `ripubblica_fattura_created` ripubblica l'evento per le 296 fatture
-   attive rimaste senza partita aperta, saltando quelle storiche archiviate
-   di proposito.
+`ripubblica_fattura_created` ripubblica `fattura.created` per le 296 fatture
+attive rimaste senza partita aperta, saltando quelle storiche archiviate di
+proposito.
 
 Qui si prova cio' che puo' andare storto: toccare una fattura archiviata,
 rigiocare l'evento per una fattura che la partita ce l'ha gia', riaprire
-l'archivio storico che il titolare ha voluto fermo, e scrivere in `dry_run`.
+l'archivio storico che il titolare ha voluto fermo, scrivere in `dry_run`, e
+portarsi dietro una scadenza che il titolare ha deciso di non avere.
 """
 import asyncio
-
-import pytest
 
 from app.services import recupero_fatture_pregresso as recupero
 
@@ -74,92 +68,6 @@ class _Db:
 
     def __getitem__(self, nome):
         return self.collezioni.setdefault(nome, _Collezione([]))
-
-
-ATTIVA_SCADENZA_SBAGLIATA = {
-    "id": "f-1", "status": "imported", "invoice_number": "1/26",
-    "supplier_name": "ACME SRL", "invoice_date": "2026-03-01",
-    "data_scadenza": "2026-03-31",           # il ripiego +30
-    "pagamento_rate": [{"data_scadenza": "2026-06-30"}],   # la scadenza vera
-}
-ARCHIVIATA = {
-    "id": "f-arch", "status": "archived", "invoice_date": "2026-03-01",
-    "data_scadenza": "2026-03-31",
-    "pagamento_rate": [{"data_scadenza": "2026-06-30"}],
-}
-ARCHIVIATA_ITALIANO = dict(ARCHIVIATA, id="f-arch-it", status="archiviata")
-GIA_CORRETTA = {
-    "id": "f-ok", "status": "imported", "invoice_date": "2026-03-01",
-    "data_scadenza": "2026-06-30",
-    "pagamento_rate": [{"data_scadenza": "2026-06-30"}],
-}
-
-
-# ── 1. Ricalcolo delle scadenze ────────────────────────────────────────────
-
-def test_la_scadenza_torna_quella_dell_xml():
-    db = _Db([dict(ATTIVA_SCADENZA_SBAGLIATA)])
-
-    esito = _run(recupero.ricalcola_scadenze(db, dry_run=False))
-
-    assert esito["corrette"] == 1
-    assert db["invoices"].docs[0]["data_scadenza"] == "2026-06-30"
-
-
-def test_in_dry_run_non_si_scrive_niente():
-    db = _Db([dict(ATTIVA_SCADENZA_SBAGLIATA)])
-
-    esito = _run(recupero.ricalcola_scadenze(db, dry_run=True))
-
-    assert esito["corrette"] == 1
-    assert db["invoices"].aggiornamenti == []
-    assert db["invoices"].docs[0]["data_scadenza"] == "2026-03-31"
-
-
-@pytest.mark.parametrize("archiviata", [ARCHIVIATA, ARCHIVIATA_ITALIANO])
-def test_le_archiviate_non_si_toccano(archiviata):
-    """In archivio convivono «archived» e «archiviata»: valgono uguale."""
-    db = _Db([dict(archiviata)])
-
-    esito = _run(recupero.ricalcola_scadenze(db, dry_run=False))
-
-    assert esito["esaminate"] == 0 and esito["corrette"] == 0
-    assert db["invoices"].aggiornamenti == []
-
-
-def test_una_scadenza_gia_giusta_resta_invariata():
-    esito = _run(recupero.ricalcola_scadenze(_Db([dict(GIA_CORRETTA)]), dry_run=False))
-    assert esito["invariate"] == 1 and esito["corrette"] == 0
-
-
-def test_senza_data_e_senza_rate_non_si_inventa_una_scadenza():
-    db = _Db([{"id": "f-x", "status": "imported"}])
-
-    esito = _run(recupero.ricalcola_scadenze(db, dry_run=False))
-
-    assert esito["senza_scadenza_determinabile"] == 1
-    assert db["invoices"].aggiornamenti == []
-
-
-def test_una_scadenza_salvata_prima_della_vera_si_conta_come_tale():
-    """Salvata 31/03, vera 30/06: la fattura risultava scaduta tre mesi
-    prima del dovuto. In produzione sono 24."""
-    esito = _run(recupero.ricalcola_scadenze(
-        _Db([dict(ATTIVA_SCADENZA_SBAGLIATA)]), dry_run=True))
-
-    assert esito["mostravano_una_scadenza_prima_della_vera"] == 1
-    assert esito["mostravano_una_scadenza_dopo_la_vera"] == 0
-
-
-def test_una_scadenza_salvata_dopo_la_vera_e_il_caso_grave():
-    """Salvata 31/08, vera 30/06: gia' scaduta e nessuno la segnalava.
-    In produzione sono 390, per 204.069,70 EUR. I due conteggi non vanno
-    scambiati: e' il verso che dice quale dei due e' pericoloso."""
-    fattura = dict(ATTIVA_SCADENZA_SBAGLIATA, data_scadenza="2026-08-31")
-    esito = _run(recupero.ricalcola_scadenze(_Db([fattura]), dry_run=True))
-
-    assert esito["mostravano_una_scadenza_dopo_la_vera"] == 1
-    assert esito["mostravano_una_scadenza_prima_della_vera"] == 0
 
 
 # ── 2. Replay di `fattura.created` ────────────────────────────────────────
@@ -237,8 +145,6 @@ def test_propaga_lo_stesso_payload_dell_import(monkeypatch):
     assert evento["fattura_id"] == "f-orfana"
     assert evento["importo_totale"] == 1220.0
     assert evento["data_documento"] == "2026-03-01"
-    # La scadenza non c'era sulla fattura: si ricava come all'import.
-    assert evento["data_scadenza"] == "2026-03-31"
     assert moduli == ["replay_pregresso"], (
         "L'audit deve poter distinguere un replay da una creazione vera: "
         "la riga nuova porta la data di oggi, non quella dell'import."
@@ -271,3 +177,42 @@ def test_le_partite_si_leggono_con_un_solo_prefetch():
     _run(recupero.ripubblica_fattura_created(db, dry_run=True))
 
     assert len(letture) == 1
+
+
+def test_il_replay_non_porta_nessuna_scadenza(monkeypatch):
+    """Decisione del titolare (19/09/2026): «decido io quando pagare, non c'e'
+    una data stabilita». La partita fornitore nasce senza termine, anche
+    quando la fattura porta ancora la scadenza inventata dal vecchio import.
+    """
+    propagati = []
+
+    async def _spia(tipo, payload, db, **k):
+        propagati.append(payload)
+        return []
+
+    monkeypatch.setattr("app.services.event_bus.propagate_event", _spia)
+
+    con_vecchia_scadenza = dict(SENZA_PARTITA, data_scadenza="2026-03-31")
+    _run(recupero.ripubblica_fattura_created(
+        _db_replay([con_vecchia_scadenza]), dry_run=False))
+
+    assert propagati[0]["data_scadenza"] is None, (
+        "Una scadenza sulla partita fornitore fa rinascere l'avviso "
+        "FAT_DA_PAGARE_SCADUTA, che il titolare non vuole."
+    )
+
+
+def test_l_import_non_calcola_piu_nessuna_scadenza():
+    """Controprova strutturale: niente date di scadenza dedotte dalla fattura."""
+    from pathlib import Path
+
+    sorgente = (
+        Path(__file__).resolve().parents[2]
+        / "app" / "routers" / "invoices" / "fatture_upload.py"
+    ).read_text(encoding="utf-8")
+
+    assert "timedelta(days=30)" not in sorgente
+    assert "scadenza_sintetica" not in sorgente
+    assert sorgente.count("data_scadenza = None") == 2, (
+        "Entrambi i percorsi di import devono lasciare la scadenza vuota."
+    )
