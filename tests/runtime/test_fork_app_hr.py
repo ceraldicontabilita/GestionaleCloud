@@ -23,6 +23,7 @@ Quando una famiglia viene unificata, il suo sottopercorso si toglie da
 direzioni, altrimenti il debito resterebbe scritto qui anche dopo essere stato
 saldato.
 """
+import ast
 from pathlib import Path
 
 RADICE = Path(__file__).resolve().parents[2]
@@ -37,9 +38,9 @@ IGNORATI = {"__init__.py"}
 # e' successo il 19/09/2026 con i tre `f24_parser` che la Fase 1 si era persa.
 # Va escluso dal corpus delle citazioni.
 
-# Fotografia del 19/09/2026, accorciata dalla Fase 2 (i sette
-# `services/handlers/*` HR erano copie del lato ERP e sono spariti).
-# Solo da accorciare.
+# Fotografia del 19/09/2026, accorciata dalle Fasi 2-4. Solo da accorciare: un
+# sottopercorso esce di qui quando la copia HR sparisce o diventa un re-export
+# (che `_e_un_re_export` riconosce da solo, quindi non va tolto a mano).
 FORK_NOTO = {
     # Guscio della sotto-applicazione: legittimamente separati.
     "config.py",
@@ -48,7 +49,6 @@ FORK_NOTO = {
     # Fork veri, da consolidare (vedi «Aperto» in CLAUDE.md).
     "exceptions/custom_exceptions.py",
     "parsers/busta_paga_multi_template.py",
-    "parsers/payslip_parser_v2.py",
     "repositories/base_repository.py",
     "repositories/user_repository.py",
     "routers/auth.py",
@@ -59,16 +59,44 @@ FORK_NOTO = {
     "services/alert_engine.py",
     "services/audit_logger.py",
     "services/cedolini_manager.py",
-    "services/document_ai_extractor.py",
-    "services/event_bus.py",
     "services/paghe_riconciliazione.py",
     "services/partite_aperte_engine.py",
     "services/payslip_pdf_parser.py",
-    "services/salari_unificati_v2.py",
     "utils/busta_paga_parser.py",
     "utils/dependencies.py",
     "utils/error_handler.py",
 }
+
+
+def _e_un_re_export(percorso: Path) -> bool:
+    """Vero se il modulo non contiene logica propria, ma solo import.
+
+    Un re-export non puo' divergere: e' letteralmente lo stesso codice. Contarlo
+    fra i fork terrebbe in `FORK_NOTO` un debito gia' saldato — e la lista
+    racconterebbe il falso, che e' proprio cio' che CLAUDE.md vieta.
+    Ammessi oltre agli import: la docstring e un `__all__`.
+    """
+    try:
+        modulo = ast.parse(percorso.read_text(encoding="utf-8"))
+    except (SyntaxError, UnicodeDecodeError):
+        return False
+    corpo = []
+    for nodo in modulo.body:
+        if (
+            isinstance(nodo, ast.Expr)
+            and isinstance(nodo.value, ast.Constant)
+            and isinstance(nodo.value.value, str)
+        ):
+            continue  # docstring
+        if isinstance(nodo, ast.Assign) and [
+            t for t in nodo.targets
+            if isinstance(t, ast.Name) and t.id == "__all__"
+        ]:
+            continue
+        corpo.append(nodo)
+    return bool(corpo) and all(
+        isinstance(n, (ast.Import, ast.ImportFrom)) for n in corpo
+    )
 
 
 def _sottopercorsi_duplicati() -> set:
@@ -80,7 +108,11 @@ def _sottopercorsi_duplicati() -> set:
         if not p.is_relative_to(hr)
     }
     lato_hr = {p.relative_to(hr).as_posix() for p in hr.rglob("*.py")}
-    return {d for d in (lato_erp & lato_hr) if Path(d).name not in IGNORATI}
+    return {
+        d
+        for d in (lato_erp & lato_hr)
+        if Path(d).name not in IGNORATI and not _e_un_re_export(hr / d)
+    }
 
 
 def test_nessun_nuovo_file_duplicato_fra_app_e_app_hr():
