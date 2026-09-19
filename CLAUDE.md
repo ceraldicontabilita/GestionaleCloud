@@ -448,14 +448,19 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   successiva della stessa persona.
 - **Pagamenti stipendio**: un solo ponte gestionale→HR
   (`hr_pagamenti_deposito`). Dipendente da CF → nome completo univoco →
-  cognome univoco; serve un segnale «stipendio» (fascicolo Drive della
-  persona, causale, oppure un **lotto paghe**: bonifici ad almeno 3 dipendenti
-  diversi lo stesso giorno); `BENEFICIARI VARI` → coda; TFR, fatture,
-  commissioni e fornitori mai, nemmeno in coda. Competenza da causale o nome
-  file, altrimenti **regola del giorno 25**: bonifico prima del 25 = mese
-  precedente, dal 25 = mese corrente. Stesso pagamento visto da PDF e da banca
-  (stesso dipendente, importo, data ±3 gg) → un solo esito, arricchito, mai
-  duplicato.
+  cognome univoco: la corrispondenza univoca **basta da sola** (19/09/2026,
+  decisione del titolare: «il nome di un dipendente è un dipendente», non
+  serve più la parola «stipendio» in causale né un lotto paghe per associare).
+  Resta il veto esplicito: TFR, fatture, commissioni e fornitori non entrano
+  mai, nemmeno in coda, **anche con un nome dipendente riconosciuto dentro**
+  la causale — l'esclusione vince sempre sul nome. Ambiguo (più persone) o
+  `BENEFICIARI VARI` → coda. Il **lotto paghe** (bonifici ad almeno 3
+  dipendenti diversi lo stesso giorno) resta un segnale valido, oggi
+  rilevante solo per i casi non altrimenti risolti. Competenza da causale o
+  nome file, altrimenti **regola del giorno 25**: bonifico prima del 25 =
+  mese precedente, dal 25 = mese corrente. Stesso pagamento visto da PDF e da
+  banca (stesso dipendente, importo, data ±3 gg) → un solo esito, arricchito,
+  mai duplicato.
 - «Bonifici da assegnare» è una proposta di importo dovuto, stato iniziale
   `DA_ASSEGNARE`: non imposta bonifico eseguito, movimento, data di pagamento
   né riconciliazione.

@@ -12,6 +12,7 @@ const PaypalContent = lazy(() => import('../RiconciliazionePaypal.jsx'));
 const AssegniContent = lazy(() => import('../GestioneAssegni.jsx'));
 const BonificiContent = lazy(() => import('../ArchivioBonifici.jsx'));
 const CoerenzaPOSContent = lazy(() => import('../CoerenzaPOSCorrispettivi.jsx'));
+const RegoleRiconoscimentoBancaContent = lazy(() => import('../RegoleRiconoscimentoBanca.jsx'));
 
 function intervalloAnno(anno) {
   const annoNumero = Number(anno);
@@ -42,6 +43,7 @@ export default function RiconciliazioneHub() {
     { id: 'assegni', label: 'Assegni', Icon: ScrollText, to: '/riconciliazione/assegni' },
     { id: 'paypal', label: 'PayPal', Icon: CreditCard, to: '/riconciliazione/paypal' },
     { id: 'coerenza-pos', label: 'Coerenza POS', Icon: Banknote, to: '/riconciliazione/coerenza-pos' },
+    { id: 'regole-banca', label: 'Regole banca', Icon: Banknote, to: '/riconciliazione/regole-banca' },
   ];
 
   const activeTab = path.includes('/movimenti-banca')
@@ -58,7 +60,9 @@ export default function RiconciliazioneHub() {
               ? 'paypal'
               : path.includes('/coerenza-pos')
                 ? 'coerenza-pos'
-                : 'bancaria';
+                : path.includes('/regole-banca')
+                  ? 'regole-banca'
+                  : 'bancaria';
 
   useEffect(() => {
     if (activeTab !== 'paypal') return undefined;
@@ -104,6 +108,9 @@ export default function RiconciliazioneHub() {
     }
     if (path.includes('/coerenza-pos')) {
       return <CoerenzaPOSContent key={`coerenza-pos-${anno}`} />;
+    }
+    if (path.includes('/regole-banca')) {
+      return <RegoleRiconoscimentoBancaContent key="regole-banca" />;
     }
     return <RiconciliazioneContent key={`riconciliazione-${anno}`} />;
   };

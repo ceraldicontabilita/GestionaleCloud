@@ -78,3 +78,23 @@ def test_categoria_gia_data_dal_csv_bancario_non_viene_toccata(monkeypatch):
     assert len(movimenti) == 1
     assert movimenti[0]["categoria"] == "Fornitori - Beni"
     assert not movimenti[0].get("categoria_auto")
+
+
+def test_regola_imparata_vince_sul_motore_generico_in_import(monkeypatch):
+    """Il titolare ha insegnato "questo e' di Nexi" (`regole_riconoscimento_
+    banca`, 19/09/2026): all'import questa regola vince sulla parola chiave
+    generica "COMMISSIONI" (che da sola darebbe solo "Commissioni bancarie")."""
+    db = _db(monkeypatch, "import_regola_appresa")
+    asyncio.run(db["regole_riconoscimento_banca"].insert_one({
+        "id": "r-nexi", "pattern": "COMMISSIONI NEXI PAYMENTS", "entita_tipo": "fornitore",
+        "entita_id": "forn-nexi", "entita_nome": "Nexi Payments S.p.A.", "categoria": "Fatture",
+    }))
+
+    _importa(_riga("ADDEBITO COMMISSIONI NEXI PAYMENTS SPA", "-45,90"))
+
+    movimenti = _movimenti(db)
+    assert len(movimenti) == 1
+    assert movimenti[0]["categoria"] == "Fatture"
+    assert movimenti[0]["fornitore_id"] == "forn-nexi"
+    assert movimenti[0]["fornitore"] == "Nexi Payments S.p.A."
+    assert movimenti[0]["categoria_auto"] is True

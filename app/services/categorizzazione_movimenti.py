@@ -33,6 +33,15 @@ Questo e' l'UNICO motore rimasto. Regole:
 Il riconoscimento del codice tributo F24 riusa i cataloghi ufficiali in
 `app/schemas/accounting_rules.py` (F24_ERARIO_CODES, F24_INPS_CODES): stesso
 registro versionato usato dal parser dei modelli F24, non un secondo elenco.
+
+**Regole imparate (19/09/2026)**: prima di queste parole chiave generiche,
+`categorizza_movimento_bancario` controlla le regole che il titolare ha
+salvato a mano (`app.services.regole_riconoscimento_banca`, es. "questo e' di
+Nexi" su una causale che il motore da solo chiamerebbe solo "Commissioni
+bancarie"). Una regola imparata vince sempre: e' una scelta esplicita del
+titolare, piu' specifica di una parola chiave generica. Il chiamante prefetcha
+le regole una sola volta (mai una query per movimento) e le passa con il
+parametro `regole`.
 """
 from __future__ import annotations
 
@@ -128,6 +137,11 @@ class EsitoCategorizzazione:
     motivo: str                     # spiegazione breve, per audit/report
     codice_tributo: Optional[str] = None
     ambiguo: bool = False
+    # Valorizzati solo quando il riconoscimento viene da una regola imparata
+    # (`app.services.regole_riconoscimento_banca`) con entita_tipo="fornitore".
+    fornitore_id: Optional[str] = None
+    fornitore_nome: Optional[str] = None
+    regola_id: Optional[str] = None
 
 
 def _codice_tributo(descrizione_upper: str) -> Optional[str]:
@@ -141,18 +155,44 @@ def _codice_tributo(descrizione_upper: str) -> Optional[str]:
     return None
 
 
+def _esito_da_regola_appresa(regola: Dict[str, Any]) -> EsitoCategorizzazione:
+    entita_tipo = regola.get("entita_tipo")
+    nome = regola.get("entita_nome") or regola.get("entita_id") or "?"
+    motivo = f"regola imparata: pattern '{regola.get('pattern')}' -> {entita_tipo} {nome}"
+    return EsitoCategorizzazione(
+        categoria=regola.get("categoria") or None,
+        motivo=motivo,
+        fornitore_id=regola.get("entita_id") if entita_tipo == "fornitore" else None,
+        fornitore_nome=regola.get("entita_nome") if entita_tipo == "fornitore" else None,
+        regola_id=regola.get("id"),
+    )
+
+
 def categorizza_movimento_bancario(
     descrizione: Optional[str], importo: float = 0.0,
+    regole: Optional[List[Dict[str, Any]]] = None,
 ) -> EsitoCategorizzazione:
     """Riconosce la categoria di un movimento bancario dalla sola descrizione.
 
     Non associa mai per importo: `importo` resta nella firma solo perche' i
     chiamanti gia' lo passano (compatibilita' con l'uso storico) ma non entra
     in nessuna condizione di riconoscimento.
+
+    `regole`: le regole imparate dal titolare (`app.services
+    .regole_riconoscimento_banca.carica_regole`), gia' prefetchate dal
+    chiamante. Controllate PRIMA delle parole chiave generiche sotto: vincono
+    sempre, sono una scelta esplicita, non un'euristica.
     """
     desc = (descrizione or "").upper()
     if not desc.strip():
         return EsitoCategorizzazione(None, "descrizione assente")
+
+    if regole:
+        from app.services.regole_riconoscimento_banca import trova_regola_per_descrizione
+
+        regola = trova_regola_per_descrizione(regole, desc)
+        if regola is not None:
+            return _esito_da_regola_appresa(regola)
 
     trovati = [
         nome for nome, keywords in _PATTERN_BUCKETS.items()
@@ -238,7 +278,14 @@ async def backfill_categorie_banca(
     movimenti = await _movimenti_senza_categoria(db, anno)
     totale = len(movimenti)
 
+    from app.services.regole_riconoscimento_banca import carica_regole
+    regole = await carica_regole(db)
+
     per_categoria: Dict[str, List[str]] = {}
+    # Movimenti presi da una regola imparata: motivo e (forse) fornitore
+    # variano per regola, quindi si raggruppano a parte dal generico per
+    # parola chiave (che ha sempre lo stesso motivo/fornitore=nessuno).
+    per_regola: Dict[tuple, List[str]] = {}
     dettaglio_f24: Dict[str, str] = {}
     non_riconosciuti = 0
     ambigui = 0
@@ -246,9 +293,13 @@ async def backfill_categorie_banca(
 
     for indice, mov in enumerate(movimenti, start=1):
         descrizione = mov.get("descrizione_originale") or mov.get("descrizione") or ""
-        esito = categorizza_movimento_bancario(descrizione, mov.get("importo") or 0)
-        if esito.categoria:
-            per_categoria.setdefault(esito.categoria, []).append(mov["id"])
+        esito = categorizza_movimento_bancario(descrizione, mov.get("importo") or 0, regole=regole)
+        if esito.categoria or esito.fornitore_id:
+            if esito.regola_id:
+                chiave = (esito.categoria, esito.fornitore_id, esito.fornitore_nome, esito.motivo)
+                per_regola.setdefault(chiave, []).append(mov["id"])
+            elif esito.categoria:
+                per_categoria.setdefault(esito.categoria, []).append(mov["id"])
             if esito.codice_tributo:
                 dettaglio_f24[mov["id"]] = esito.codice_tributo
         else:
@@ -283,10 +334,32 @@ async def backfill_categorie_banca(
                 }},
             )
             aggiornati += len(ids)
+        for (categoria, fornitore_id, fornitore_nome, motivo), ids in per_regola.items():
+            if not ids:
+                continue
+            campi: Dict[str, Any] = {
+                "categoria_auto": True,
+                "categoria_auto_motivo": motivo,
+                "categoria_auto_at": now_iso,
+            }
+            if categoria:
+                campi["categoria"] = categoria
+            if fornitore_id:
+                campi["fornitore_id"] = fornitore_id
+                campi["fornitore"] = fornitore_nome
+            await db["estratto_conto_movimenti"].update_many(
+                {"id": {"$in": ids}}, {"$set": campi},
+            )
+            aggiornati += len(ids)
         for mov_id, codice in dettaglio_f24.items():
             await db["estratto_conto_movimenti"].update_one(
                 {"id": mov_id}, {"$set": {"categoria_codice_tributo": codice}},
             )
+
+    per_categoria_totale: Dict[str, int] = {cat: len(ids) for cat, ids in per_categoria.items()}
+    for (categoria, _fid, _fnome, _motivo), ids in per_regola.items():
+        if categoria:
+            per_categoria_totale[categoria] = per_categoria_totale.get(categoria, 0) + len(ids)
 
     return {
         "success": True,
@@ -294,7 +367,8 @@ async def backfill_categorie_banca(
         "anno": anno,
         "stipendi": stipendi_esito,
         "movimenti_esaminati": totale,
-        "per_categoria": {cat: len(ids) for cat, ids in per_categoria.items()},
+        "per_categoria": per_categoria_totale,
+        "da_regola_appresa": sum(len(ids) for ids in per_regola.values()),
         "aggiornati": aggiornati,
         "non_riconosciuti": non_riconosciuti,
         "ambigui": ambigui,
