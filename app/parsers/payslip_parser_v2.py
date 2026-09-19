@@ -16,6 +16,12 @@ import re
 import logging
 from typing import Dict, Any, List, Optional
 
+from app.constants.stati_netto import (
+    ERRORE_PARSER,
+    NETTO_NON_PRESENTE_O_NON_LEGGIBILE,
+    NETTO_VERIFICATO_DA_CEDOLINO,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -146,26 +152,80 @@ class PayslipParserMultiFormat:
         
         return None
     
-    def _extract_netto(self, text: str, formato: str) -> float:
-        """Estrae il netto in busta."""
-        patterns = [
+    # Un netto in busta reale (mensilità intera) non scende ragionevolmente sotto questa
+    # soglia: sotto, è quasi certo un match sbagliato (pagina, aliquota, trattenuta isolata)
+    # piuttosto che il netto vero. Evita che l'alert di riconciliazione bancaria si riempia
+    # di importi assurdi come €2,00 o €1,15.
+    NETTO_MINIMO_PLAUSIBILE = 50.0
+
+    # Numero in formato italiano (migliaia col punto, decimali con virgola obbligatori),
+    # senza richiedere il simbolo €: approccio ripreso da GestionaleCloud (payroll.py),
+    # più affidabile del semplice "numero seguito da €" perché non dipende da dove/se
+    # pdfplumber ha estratto il simbolo euro.
+    _AMOUNT_IT_RE = re.compile(r'[-+]?(?:\d{1,3}(?:\.\d{3})+|\d+)(?:,\d{1,2})')
+
+    def _find_amount_near_label(self, text: str, labels, finestra: int = 5) -> Optional[float]:
+        """Cerca un'etichetta (es. 'NETTO BUSTA') riga per riga, poi un importo nelle
+        'finestra' righe successive — invece di pretendere che etichetta e numero siano
+        sulla STESSA porzione di testo (come i pattern regex diretti). Molto più
+        tollerante a impaginazioni PDF dove il valore è su una riga diversa da quella
+        dell'etichetta, senza per questo cercare 'un numero qualsiasi' nell'intero
+        documento."""
+        lines = text.split('\n')
+        etichette = tuple(re.sub(r'[^A-Z]', '', l.upper()) for l in labels)
+        for i, line in enumerate(lines):
+            compact = re.sub(r'[^A-Z]', '', line.upper())
+            if not any(et in compact for et in etichette):
+                continue
+            for candidate in lines[i:i + finestra]:
+                matches = self._AMOUNT_IT_RE.findall(candidate.replace('+', ''))
+                if matches:
+                    return self._parse_amount(matches[-1])
+        return None
+
+    def _extract_netto(self, text: str, formato: str) -> Optional[float]:
+        """Il netto in busta, oppure ``None`` se non e' leggibile.
+
+        CLAUDE.md, «Personale»: «cella vuota → valore nullo, **mai zero**».
+        Fino al 19/09/2026 questa funzione tornava `0.0` quando non trovava
+        nulla: un netto illeggibile era indistinguibile da uno zero vero, e a
+        valle nessuno poteva piu' accorgersene.
+        """
+        patterns_affidabili = [
             r'NETTO\s*(?:DEL\s*)?MESE\s*[:\s€]*([0-9.,]+)',
             r'NETTOsDELsMESE\s*[:\s€]*([0-9.,]+)',
             r'NETTO\s*IN\s*BUSTA\s*[:\s€]*([0-9.,]+)',
             r'TOTALE\s*NETTO\s*[:\s€]*([0-9.,]+)',
             r'NETTO\s*DA\s*PAGARE\s*[:\s€]*([0-9.,]+)',
-            r'([0-9.,]+)\s*€\s*$',  # Importo finale con €
         ]
-        
-        for pattern in patterns:
+
+        for pattern in patterns_affidabili:
             match = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
             if match:
                 val = self._parse_amount(match.group(1))
-                if val > 0:
+                if val >= self.NETTO_MINIMO_PLAUSIBILE:
                     return val
-        
-        return 0.0
-    
+
+        # I pattern diretti sopra falliscono se etichetta e numero non sono sulla
+        # stessa porzione di testo (impaginazione PDF): prova etichetta+finestra.
+        val = self._find_amount_near_label(
+            text, ("NETTO BUSTA", "NETTO DEL MESE", "TOTALE NETTO", "NETTO A PAGARE", "NETTO DA PAGARE"))
+        if val is not None and val >= self.NETTO_MINIMO_PLAUSIBILE:
+            return val
+
+        # Ultimo fallback, il più generico ("qualunque numero seguito da €" a fine
+        # riga): con re.MULTILINE il '$' è fine RIGA, non fine documento, quindi può
+        # agganciare un numero di pagina, un'aliquota o una trattenuta isolata invece
+        # del netto vero. Usato solo se le etichette sopra non hanno dato nulla di
+        # plausibile, e con una soglia più alta proprio perché più a rischio di
+        # matchare il campo sbagliato.
+        for match in re.finditer(r'([0-9.,]+)\s*€\s*$', text, re.IGNORECASE | re.MULTILINE):
+            val = self._parse_amount(match.group(1))
+            if val >= 100.0:
+                return val
+
+        return None
+
     def _extract_lordo(self, text: str) -> float:
         """Estrae il lordo / totale competenze."""
         patterns = [
@@ -174,14 +234,18 @@ class PayslipParserMultiFormat:
             r'IMPONIBILE\s*FISCALE\s*[:\s€]*([0-9.,]+)',
             r'TOTALE\s*LORDO\s*[:\s€]*([0-9.,]+)',
         ]
-        
+
         for pattern in patterns:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
                 val = self._parse_amount(match.group(1))
                 if val > 0:
                     return val
-        
+
+        val = self._find_amount_near_label(text, ("TOTALE COMPETENZE", "IMPONIBILE FISCALE", "TOTALE LORDO"))
+        if val is not None and val > 0:
+            return val
+
         return 0.0
     
     def _extract_trattenute(self, text: str) -> float:
@@ -302,10 +366,19 @@ class PayslipParserMultiFormat:
                 tfr = self._extract_tfr(text)
                 ore = self._extract_ore_lavorate(text)
                 
-                # Se non ha netto, potrebbe essere foglio presenze
-                if netto == 0 and lordo == 0:
+                # Ne' netto ne' lordo: non e' una busta paga (foglio presenze,
+                # copertina, allegato). `netto is None` significa «non
+                # leggibile», non «zero»: senza il confronto esplicito con None
+                # una busta con netto illeggibile ma lordo valido verrebbe
+                # scartata, o peggio tenuta con netto 0.
+                if not netto and not lordo:
                     continue
-                
+
+                stato_netto = (
+                    NETTO_VERIFICATO_DA_CEDOLINO if netto is not None
+                    else NETTO_NON_PRESENTE_O_NON_LEGGIBILE
+                )
+
                 cedolino = {
                     "nome_dipendente": nome,
                     "codice_fiscale": cf,
@@ -313,6 +386,7 @@ class PayslipParserMultiFormat:
                     "anno": periodo.get('anno'),
                     "periodo_competenza": f"{periodo.get('mese', 0):02d}/{periodo.get('anno', 0)}",
                     "netto_mese": netto,
+                    "stato_netto": stato_netto,
                     "lordo": lordo,
                     "totale_trattenute": trattenute,
                     "detrazioni_fiscali": detrazioni,
@@ -327,9 +401,16 @@ class PayslipParserMultiFormat:
             
             doc.close()
             
-        except Exception as e:
-            logger.error(f"Errore parsing busta paga: {e}")
-        
+        except Exception:
+            # Non «non l'ho trovato»: qui non sappiamo nemmeno se il dato ci
+            # fosse. `logger.exception` tiene il traceback — con `logger.error`
+            # sul solo messaggio un parser rotto restava invisibile per mesi
+            # (e' cosi' che e' sopravvissuto il difetto di document_ai).
+            logger.exception(
+                "%s: parsing busta paga interrotto, risultati parziali (%d pagine lette)",
+                ERRORE_PARSER, len(results),
+            )
+
         return results
 
 
