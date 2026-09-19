@@ -87,12 +87,37 @@ def _fetch_all():
     return categories, subcategories, products
 
 
-def _build_hierarchy(categories, subcategories, products):
+def _sottocategorie_con_prodotti(subcategories, products) -> list:
+    """Sottocategorie con almeno un prodotto visibile, gia' con i loro items."""
+    piene = []
     for subcategory in subcategories:
         subcategory['items'] = [p for p in products if p.get('subcategory_id') == subcategory.get('id')]
+        if subcategory['items']:
+            piene.append(subcategory)
+    return piene
+
+
+def _build_hierarchy(categories, subcategories, products):
+    """Gerarchia per i clienti: **niente categorie e sottocategorie vuote**.
+
+    La home del Menu disegna ogni categoria come un riquadro con la sua
+    immagine e il conteggio dei prodotti: una categoria senza prodotti
+    visibili diventa un riquadro con immagine rotta (le categorie create da
+    Lotti nascono con ``image = None``) e la scritta «0 prodotti». Succede
+    appena il titolare prepara una categoria in anticipo, e succedeva in massa
+    quando il ponte Lotti creava «Produzione Ceraldi» con le sue sezioni di
+    reparto anche per ricette non pubbliche.
+
+    Il filtro sta **in lettura** e non in scrittura perche' e' l'unico punto
+    che copre anche le categorie gia' vuote oggi in produzione (comprese
+    quelle arrivate da Qromo) e perche' ``menu_products.subcategory_id`` e'
+    NOT NULL: una riga di Lotti la sua sottocategoria deve comunque averla,
+    anche quando resta nascosta. Una categoria con prodotti in una sola delle
+    sue sottocategorie resta visibile: si tolgono solo le sezioni vuote."""
+    piene = _sottocategorie_con_prodotti(subcategories, products)
     for category in categories:
-        category['subcategories'] = [s for s in subcategories if s.get('category_id') == category.get('id')]
-    return categories
+        category['subcategories'] = [s for s in piene if s.get('category_id') == category.get('id')]
+    return [c for c in categories if c['subcategories']]
 
 
 # ================== PUBLIC ENDPOINTS ==================
@@ -134,10 +159,8 @@ async def get_category(category_id: int):
     subcategories = [subcat_out(r) for r in supabase.table("menu_subcategories").select("*").eq("category_id", category_id).order("id").execute().data]
     products = _prodotti_pubblici(supabase.table("menu_products").select("*").eq("category_id", category_id).order("id").execute().data)
 
-    for subcategory in subcategories:
-        subcategory['items'] = [p for p in products if p.get('subcategory_id') == subcategory.get('id')]
-
-    category['subcategories'] = subcategories
+    # Come nel menu completo: le sezioni senza prodotti visibili non si mostrano.
+    category['subcategories'] = _sottocategorie_con_prodotti(subcategories, products)
     return category
 
 
@@ -313,9 +336,32 @@ async def create_product(product: ProductCreate, username: str = Depends(verify_
     return {"success": True, "id": new_id, "message": "Product created"}
 
 
+ORIGINE_LOTTI = "lotti"
+
+MESSAGGIO_RIGA_DI_LOTTI = (
+    "Questo prodotto e' della ricetta di Lotti e si modifica solo in Lotti "
+    "(Ricette): nome, descrizione, prezzo al tavolo, allergeni, foto, "
+    "categoria e «inserisci in menu». Una modifica fatta qui verrebbe "
+    "sovrascritta al primo salvataggio della ricetta o alla prossima "
+    "ripubblicazione in massa."
+)
+
+
 @router.put("/admin/products/{product_id}")
 async def update_product(product_id: int, product: ProductUpdate, username: str = Depends(verify_token)):
-    """Update a product"""
+    """Update a product.
+
+    Le righe con ``origine = "lotti"`` sono di proprieta' di Lotti (regola
+    CLAUDE.md «un solo sistema per funzione»): il ponte
+    ``app/lotti/servizi/menu_bridge.py`` riscrive la riga intera a ogni
+    salvataggio della ricetta, quindi una correzione fatta da qui sparirebbe
+    senza un avviso. Si rifiuta con 409 e si dice dove si modifica davvero."""
+    esistente = supabase.table("menu_products").select("id,origine").eq("id", product_id).limit(1).execute()
+    if not esistente.data:
+        raise HTTPException(status_code=404, detail="Product not found")
+    if (esistente.data[0].get("origine") or "") == ORIGINE_LOTTI:
+        raise HTTPException(status_code=409, detail=MESSAGGIO_RIGA_DI_LOTTI)
+
     data = {k: v for k, v in product.model_dump().items() if v is not None}
     if not data:
         raise HTTPException(status_code=400, detail="No data to update")

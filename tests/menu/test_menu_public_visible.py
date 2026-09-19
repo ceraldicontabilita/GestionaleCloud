@@ -161,7 +161,112 @@ def test_admin_create_e_update_accettano_visible(finto):
     assert inserito["visible"] is False
     assert inserito["id"] == 1000001
 
-    _run(mr.update_product(1000000, ProductUpdate(visible=True), username="admin"))
+    _run(mr.update_product(101, ProductUpdate(visible=False), username="admin"))
     aggiornamento = next(c for c in finto.chiamate if c[0] == "update")
-    assert aggiornamento[2] == {"visible": True}
-    assert _run(mr.get_product(1000000))["nameIT"] == "Babà"
+    assert aggiornamento[2] == {"visible": False}
+    with pytest.raises(HTTPException) as nascosto:
+        _run(mr.get_product(101))
+    assert nascosto.value.status_code == 404
+
+
+def test_admin_del_menu_non_puo_modificare_una_riga_di_lotti(finto):
+    """Doppia penna sulla stessa riga: il ponte di Lotti riscrive il prodotto
+    intero a ogni salvataggio della ricetta, quindi una correzione fatta qui
+    sparirebbe senza un avviso. L'endpoint la rifiuta e dice dove si modifica."""
+    with pytest.raises(HTTPException) as errore:
+        _run(mr.update_product(1000000, ProductUpdate(price="9.99€"), username="admin"))
+    assert errore.value.status_code == 409
+    assert "Lotti" in errore.value.detail
+    # Nessuna scrittura partita
+    assert not [c for c in finto.chiamate if c[0] == "update"]
+    assert _run(mr.get_all_products_flat(username="admin"))["products"][2]["price"] == "1.00€"
+
+    # Le righe che Lotti non possiede restano modificabili come prima
+    _run(mr.update_product(100, ProductUpdate(price="1.50€"), username="admin"))
+    assert [c for c in finto.chiamate if c[0] == "update"][0][2] == {"price": "1.50€"}
+
+    # Un id inesistente resta un 404, non un 409
+    with pytest.raises(HTTPException) as mancante:
+        _run(mr.update_product(999999, ProductUpdate(price="1.00€"), username="admin"))
+    assert mancante.value.status_code == 404
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Categorie e sottocategorie vuote: il cliente non le deve vedere
+# ─────────────────────────────────────────────────────────────────────────────
+
+@pytest.fixture
+def finto_con_vuote(monkeypatch):
+    """Menu con: una categoria piena, una con una sola sottocategoria piena su
+    due, e una del tutto vuota (come nasce una categoria creata da Lotti in
+    anticipo, o «Produzione Ceraldi» creata da un backfill senza ricette
+    pubbliche: senza immagine e con zero prodotti)."""
+    tabelle = {
+        "menu_categories": [
+            {"id": 1, "name": "Bar", "name_it": "Bar", "image": "https://x/bar.jpg"},
+            {"id": 2, "name": "Pastry", "name_it": "Pasticceria", "image": None},
+            {"id": 3, "name": "Ceraldi Production", "name_it": "Produzione Ceraldi",
+             "image": None, "origine": "lotti"},
+        ],
+        "menu_subcategories": [
+            {"id": 10, "category_id": 1, "name": "Coffee", "name_it": "Caffetteria", "image": None},
+            {"id": 20, "category_id": 2, "name": "Cakes", "name_it": "Torte", "image": None},
+            {"id": 21, "category_id": 2, "name": "Empty", "name_it": "Vuota", "image": None},
+            {"id": 30, "category_id": 3, "name": "Pastry", "name_it": "Pasticceria",
+             "image": None, "origine": "lotti"},
+            {"id": 31, "category_id": 3, "name": "Bar", "name_it": "Bar",
+             "image": None, "origine": "lotti"},
+        ],
+        "menu_products": [
+            _prodotto(100, 10, "Espresso"),
+            _prodotto(200, 20, "Babà", category_id=2),
+            # Categoria 3: solo righe nascoste (ricette senza «inserisci in menu»)
+            _prodotto(1000000, 30, "Sfogliatella", visible=False,
+                      origine="lotti", lotti_ref="ricetta:r1", category_id=3),
+        ],
+        "menu_allergens": [],
+    }
+    client = _FakeSupabase(tabelle)
+    monkeypatch.setattr(mr, "supabase", client)
+    return client
+
+
+def test_menu_pubblico_non_mostra_categorie_senza_prodotti(finto_con_vuote):
+    menu = _run(mr.get_full_menu())
+    nomi = [c["nameIT"] for c in menu["categories"]]
+    # «Produzione Ceraldi» ha solo righe nascoste: niente riquadro con
+    # immagine rotta e «0 prodotti» nella home dei clienti.
+    assert nomi == ["Bar", "Pasticceria"]
+
+    # La categoria con prodotti in UNA sola sottocategoria resta visibile,
+    # ma la sezione vuota sparisce.
+    pasticceria = menu["categories"][1]
+    assert [s["nameIT"] for s in pasticceria["subcategories"]] == ["Torte"]
+    assert [p["nameIT"] for p in pasticceria["subcategories"][0]["items"]] == ["Babà"]
+
+
+def test_categorie_endpoint_e_dettaglio_categoria_filtrano_le_sezioni_vuote(finto_con_vuote):
+    categorie = _run(mr.get_categories())
+    assert [c["nameIT"] for c in categorie] == ["Bar", "Pasticceria"]
+
+    dettaglio = _run(mr.get_category(2))
+    assert [s["nameIT"] for s in dettaglio["subcategories"]] == ["Torte"]
+
+    vuota = _run(mr.get_category(3))
+    assert vuota["subcategories"] == []
+
+
+def test_una_categoria_torna_visibile_appena_ha_un_prodotto(finto_con_vuote):
+    """Il filtro e' in lettura: basta rendere visibile la riga di Lotti perche'
+    la categoria ricompaia, senza toccare le tabelle delle categorie — ed e'
+    lo stesso motivo per cui copre le categorie gia' vuote in produzione."""
+    for riga in finto_con_vuote.tabelle["menu_products"]:
+        if riga["id"] == 1000000:
+            riga["visible"] = True
+
+    menu = _run(mr.get_full_menu())
+    assert [c["nameIT"] for c in menu["categories"]] == [
+        "Bar", "Pasticceria", "Produzione Ceraldi"]
+    produzione = menu["categories"][2]
+    # Solo la sezione che ha davvero un prodotto
+    assert [s["nameIT"] for s in produzione["subcategories"]] == ["Pasticceria"]
