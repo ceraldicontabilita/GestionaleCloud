@@ -24,6 +24,14 @@ onesta, non la data di creazione falsificata.
 da `archivia_fattura_storica` (`stato_import == "archivio_storico"`) non
 hanno mai dovuto propagare l'evento: e' una scelta del titolare, non un
 difetto, e il replay le salta.
+
+**Le scadenze gia' scritte.** Dal 19/09/2026 l'import non calcola piu'
+nessuna scadenza, ma in archivio restano quelle inventate prima: 642
+fatture e 971 partite fornitore le portano ancora, e sono loro a far
+comparire «scaduto» dove il titolare non ha preso nessun impegno.
+`azzera_scadenze_inventate` le toglie. Non tocca `pagamento_rate` — e' la
+trascrizione fedele del blocco DatiPagamento dell'XML, cioe' il documento,
+che resta leggibile — ne' `data_pagamento`, che e' un pagamento avvenuto.
 """
 import asyncio
 import logging
@@ -39,11 +47,15 @@ __all__ = [
     "ripubblica_fattura_created",
     "avvia_ripubblicazione",
     "stato_ripubblicazione",
+    "azzera_scadenze_inventate",
+    "avvia_azzeramento_scadenze",
+    "stato_azzeramento_scadenze",
 ]
 
 COLL = "invoices"
 COLL_PARTITE = "partite_aperte"
 _CHIAVE_JOB = "replay_fattura_created"
+_CHIAVE_JOB_SCADENZE = "azzera_scadenze_fornitore"
 
 #: In archivio convivono due parole per lo stesso stato.
 STATI_NON_ATTIVI = frozenset({"archived", "archiviata"})
@@ -145,49 +157,131 @@ async def ripubblica_fattura_created(db, *, dry_run: bool = True) -> Dict[str, A
     }
 
 
-# ── Il job in background ───────────────────────────────────────────────────
+# ── 3. Le scadenze inventate rimaste in archivio ───────────────────────────
 
-async def _salva_stato(db, **campi) -> None:
+def _ha_scadenza(documento: Dict[str, Any]) -> bool:
+    return bool(str(documento.get("data_scadenza") or "").strip())
+
+
+async def azzera_scadenze_inventate(db, *, dry_run: bool = True) -> Dict[str, Any]:
+    """Toglie la `data_scadenza` dalle fatture fornitore e dalle loro partite.
+
+    Nessuna fattura fornitore ha una scadenza: il titolare decide quando
+    pagare. Quelle in archivio le ha scritte il vecchio import leggendo le
+    condizioni di pagamento dell'XML, ed e' proprio quel numero a far
+    comparire «scaduto» su un impegno che non esiste.
+
+    Un prefetch per collezione e una scrittura per sola riga da correggere:
+    ripassarlo una seconda volta non scrive niente.
+    """
+    fatture = [
+        f async for f in db[COLL].find({}, {"_id": 0, "id": 1, "data_scadenza": 1})
+        if _ha_scadenza(f)
+    ]
+    partite = [
+        p async for p in db[COLL_PARTITE].find(
+            {"documento_collection": COLL},
+            {"_id": 0, "id": 1, "tipo": 1, "data_scadenza": 1},
+        )
+        if _ha_scadenza(p)
+    ]
+
+    esito = {
+        "dry_run": dry_run,
+        "fatture_con_scadenza": len(fatture),
+        "partite_con_scadenza": len(partite),
+        "fatture_azzerate": 0,
+        "partite_azzerate": 0,
+        "errori": 0,
+        "motivi_errore": [],
+    }
+    if dry_run:
+        return esito
+
+    for collezione, righe, contatore in (
+        (COLL, fatture, "fatture_azzerate"),
+        (COLL_PARTITE, partite, "partite_azzerate"),
+    ):
+        for riga in righe:
+            try:
+                await db[collezione].update_one(
+                    {"id": riga.get("id")}, {"$set": {"data_scadenza": None}},
+                )
+                esito[contatore] += 1
+            except Exception as exc:  # noqa: BLE001 — l'esito va riportato
+                esito["errori"] += 1
+                if len(esito["motivi_errore"]) < 10:
+                    esito["motivi_errore"].append(f"{collezione}/{riga.get('id')}: {exc}")
+                logger.exception("Azzeramento scadenza fallito su %s", riga.get("id"))
+    return esito
+
+
+# ── Il job in background ───────────────────────────────────────────────────
+# Un solo runner per tutte le riparazioni di questo modulo: girano fuori dal
+# timeout HTTP (§4: oltre i 5 minuti il proxy Render taglia la richiesta) e
+# lasciano l'esito in `sistema_stato` sotto la propria chiave.
+
+_LAVORI = {
+    _CHIAVE_JOB: ripubblica_fattura_created,
+    _CHIAVE_JOB_SCADENZE: azzera_scadenze_inventate,
+}
+
+
+async def _salva_stato(db, chiave: str, **campi) -> None:
     await db["sistema_stato"].update_one(
-        {"chiave": _CHIAVE_JOB},
+        {"chiave": chiave},
         {"$set": {**campi, "updated_at": datetime.now(timezone.utc).isoformat()}},
         upsert=True,
     )
 
 
-async def _esegui(db, dry_run: bool) -> None:
+async def _esegui(db, chiave: str, dry_run: bool) -> None:
     async with _job_lock:
         iniziato = datetime.now(timezone.utc).isoformat()
-        await _salva_stato(db, stato="in_corso", dry_run=dry_run, iniziato_at=iniziato,
-                           terminato_at=None, risultato=None, errore=None)
+        await _salva_stato(db, chiave, stato="in_corso", dry_run=dry_run,
+                           iniziato_at=iniziato, terminato_at=None,
+                           risultato=None, errore=None)
         try:
-            risultato = await ripubblica_fattura_created(db, dry_run=dry_run)
-            await _salva_stato(db, stato="completato", dry_run=dry_run,
+            risultato = await _LAVORI[chiave](db, dry_run=dry_run)
+            await _salva_stato(db, chiave, stato="completato", dry_run=dry_run,
                                iniziato_at=iniziato,
                                terminato_at=datetime.now(timezone.utc).isoformat(),
                                risultato=risultato, errore=None)
         except Exception as exc:  # noqa: BLE001
-            logger.exception("Replay fattura.created fallito")
-            await _salva_stato(db, stato="errore", dry_run=dry_run,
+            logger.exception("Riparazione %s fallita", chiave)
+            await _salva_stato(db, chiave, stato="errore", dry_run=dry_run,
                                iniziato_at=iniziato,
                                terminato_at=datetime.now(timezone.utc).isoformat(),
                                risultato=None, errore=str(exc))
 
 
-async def avvia_ripubblicazione(db, *, dry_run: bool = True) -> Dict[str, Any]:
-    """Un solo replay alla volta, fuori dal timeout HTTP (§4: oltre i 5
-    minuti il proxy Render taglia la richiesta)."""
+async def _avvia(db, chiave: str, dry_run: bool) -> Dict[str, Any]:
     global _job_task
-    stato = await stato_ripubblicazione(db)
     if _job_lock.locked() or (_job_task is not None and not _job_task.done()):
-        return {"avviato": False, **stato}
-    _job_task = asyncio.create_task(_esegui(db, dry_run))
+        return {"avviato": False, **await _stato(db, chiave)}
+    _job_task = asyncio.create_task(_esegui(db, chiave, dry_run))
     return {"avviato": True, "stato": "avvio", "dry_run": dry_run}
 
 
-async def stato_ripubblicazione(db) -> Dict[str, Any]:
-    stato = await db["sistema_stato"].find_one({"chiave": _CHIAVE_JOB}, {"_id": 0})
+async def _stato(db, chiave: str) -> Dict[str, Any]:
+    stato = await db["sistema_stato"].find_one({"chiave": chiave}, {"_id": 0})
     if not stato:
         return {"stato": "mai_avviato"}
     stato.pop("chiave", None)
     return stato
+
+
+async def avvia_ripubblicazione(db, *, dry_run: bool = True) -> Dict[str, Any]:
+    return await _avvia(db, _CHIAVE_JOB, dry_run)
+
+
+async def stato_ripubblicazione(db) -> Dict[str, Any]:
+    return await _stato(db, _CHIAVE_JOB)
+
+
+async def avvia_azzeramento_scadenze(db, *, dry_run: bool = True) -> Dict[str, Any]:
+    return await _avvia(db, _CHIAVE_JOB_SCADENZE, dry_run)
+
+
+async def stato_azzeramento_scadenze(db) -> Dict[str, Any]:
+    return await _stato(db, _CHIAVE_JOB_SCADENZE)
