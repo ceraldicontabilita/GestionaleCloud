@@ -235,7 +235,18 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 11. Un nome di campo sbagliato non dà errore, dà silenzio: `{"campo": {"$ne":
     True}}` su una chiave inesistente passa **sempre**, e la scrittura finisce
     su un campo che nessuno legge. Prima di fidarsi di un filtro, contare sul
-    database quante righe hanno davvero quella chiave.
+    database quante righe hanno davvero quella chiave. Vale anche fra due
+    funzioni: `supplier_result["nuovo"]` al posto di `supplier_created` dava
+    sempre `False`, e un alert non è mai partito.
+12. **Su `invoices` i campi canonici sono quelli inglesi**: `invoice_date`,
+    `total_amount`, `invoice_number`. `data_documento` e `totale` sono
+    *derivati* (il primo lo scrive il motore IVA) e mancano su tutte le
+    fatture che quel motore non ha mai toccato: filtrare o sommare su di essi
+    perde righe in silenzio. `iva` e `imponibile` invece ci sono sempre.
+13. Un conteggio che torna zero tondo, o uguale al totale su ogni colonna, si
+    tratta come un errore di lettura finché non è smentito. Lo stesso per uno
+    stato: in archivio convivono `archived` e `archiviata`, e un filtro che ne
+    conosce una sola include documenti che doveva escludere.
 
 ## Identità, prove e attese
 
@@ -421,6 +432,13 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 
 - Il periodo non è il mese di ricezione: comanda `periodo_iva_attribuito`, e
   il flag `iva_utilizzata` impedisce la seconda detrazione.
+- **`iva_detraibile` assente non vuol dire zero, vuol dire non deciso**, e
+  `campi_iva_da_fattura` non lo scrive finché nessuno l'ha valutato: è
+  l'unica guardia del libro giornale (`registra_fattura` rifiuta con «IVA
+  detraibile non classificata»), e uno `0,00` di comodo la disarma
+  registrando tutta l'IVA come costo indetraibile. All'import il campo lo
+  valorizza `handlers/learning.handler_classifica_cdc`, registrato sullo
+  stesso evento **dopo** il motore IVA.
 - Regola del 15: operazione del mese precedente ricevuta **e** annotata entro
   il 15 → liquidazione del mese precedente, solo nello stesso anno solare.
   Ricevuta dopo il 15 → mese di ricezione. Operazione dell'anno precedente →
@@ -554,6 +572,27 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   `source="metodo_fornitore_assente_provvisorio"` restano in archivio per
   audit ma sono escluse da elenchi e saldi (`SOURCES_ESCLUSE` in
   `app/routers/prima_nota_module/common.py`).
+- «Metodo di pagamento non configurato» ha un vocabolario solo,
+  `app/constants/metodi_pagamento.py`: `sospesa` (quello che scrive l'import),
+  `da_configurare`, `none`, vuoto e campo assente valgono uguale. Chi tiene la
+  propria lista si perde il caso più frequente.
+- **Le fatture fornitore non hanno scadenza.** Decisione del titolare
+  (19/09/2026): «decido io quando pagare, non c'è una data stabilita». Non si
+  leggono le condizioni di pagamento dell'XML (rimessa diretta, 30 giorni data
+  fattura), non si leggono le date stampate sul documento e non si inventa un
+  «+30»: `data_scadenza` resta vuota. Il piano rate si conserva sul documento
+  come dato dell'originale, ma non guida niente. Di conseguenza
+  `check_scadenze_partite_task` salta le partite fornitore e l'avviso
+  `FAT_DA_PAGARE_SCADUTA` non nasce più; F24 e stipendi, che una scadenza
+  vera ce l'hanno, restano invariati.
+- Il payload di `fattura.created` si costruisce solo con
+  `app/services/eventi_fattura.py::costruisci_evento_fattura_created`, così
+  import e recupero del pregresso propagano lo stesso evento.
+- Un import che **non** pubblica `fattura.created` lascia la fattura senza
+  partita aperta, senza alert e senza audit: nessun errore, nessuna traccia.
+  Il recupero è `POST /api/admin/fatture/ripubblica-evento-created` (admin,
+  background, `dry_run` per difetto), che ripubblica l'evento sugli stessi
+  handler idempotenti e salta l'archivio storico.
 - Spostare una fattura fra Cassa e Banca cambia metodo, relazioni e scritture
   **con lo stesso ID**: non nasce una seconda fattura.
 - `app/services/fatture_identita.py` ricava l'identità dall'XML con lo stesso
@@ -737,9 +776,14 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - **Acceso**: scheduler, ingest Drive (fatture, estratti conto, cedolini,
   bonifici), ponte pagamenti HR, dedup fatture ogni 30 min, canale
   dichiarazioni fiscali finché la coda non è esaurita.
-- Fatture attive 982, collisioni aperte 0. Libro giornale: 820 fatture ferme
-  per «IVA detraibile non classificata», 21 corrispettivi con ripartizione
-  contanti/POS non quadrata (31/03–30/07/2026).
+- Fatture attive 873 (624 `imported`, 249 senza `status`), collisioni aperte 0.
+  21 corrispettivi con ripartizione contanti/POS non quadrata (31/03–30/07/2026).
+- **Nessuna liquidazione IVA è mai stata calcolata**: `/api/iva/liquidazioni`
+  torna vuoto. Giugno e luglio 2026 sono calcolabili e attendibili, ma con
+  **zero** fatture d'acquisto nel calcolo (tutte in `detraibilita_da_verificare`),
+  quindi il saldo è l'IVA sulle vendite intera: 7.651,05 € e 6.211,86 €.
+  Agosto è bloccato su `DATI_MANCANTI` per `giorni_senza_corrispettivo`.
+  Corrispettivi 2026: 518.879,34 € incassati, 47.170,88 € di IVA a debito.
 - Le 13 collezioni a zero dopo il 14/09 (`settings`, `scadenzario`,
   `f24_models`, `prima_nota`…) **non sono dati persi**: erano già vuote nel
   backup del 13/09. Non c'è nulla da recuperare, e il progetto Supabase di
@@ -768,6 +812,16 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   presente ma vuoto; solo 41 hanno un IBAN): finché resta così ogni fattura
   è `sospesa` e nulla può essere instradato in Prima Nota Banca. Da
   popolare con una fonte vera, non dedotta dalle fatture.
+- **Pregresso fatture da sanare**: `POST /api/admin/fatture/ripubblica-evento-created`
+  (admin, background, `dry_run` per difetto) — 296 fatture attive
+  (173.184,83 €, 22.989,82 € di IVA) senza partita aperta verso il fornitore,
+  fra l'import massivo del 14/09 e il canale Drive del 15–17/09; 280 di esse
+  sono anche fuori dal libro giornale (145.025,14 €). Ordine obbligato:
+  replay dell'evento (che fa girare anche il classificatore IVA), poi
+  `POST /api/piano-conti/registra-pregresso`.
+- Le `data_scadenza` già scritte sulle fatture fornitore e sulle loro partite
+  sono valori inventati dal vecchio import: vanno azzerate, altrimenti
+  continuano ad alimentare `FAT_DA_PAGARE_SCADUTA`.
 - Riconciliazione: 158 fatture `riconciliata` con movimento non riconciliato,
   180 righe hub senza `fattura_id` (da rigenerare col motore, non a mano);
   banca 2026 con 1.765 movimenti senza categoria.

@@ -11,8 +11,35 @@ def test_fattura_immediata_stesso_mese():
     assert c["periodo_iva_attribuito"] == "2026-03"
     assert c["regola_iva_applicata"] == "STESSO_MESE"
     assert c["iva_documento"] == 220
-    assert c["iva_detraibile"] == 0 and c["iva_utilizzata"] is False
+    assert c["iva_utilizzata"] is False
     assert c["stato_detrazione_iva"] == "DA_VERIFICARE"
+    assert "iva_detraibile" not in c, (
+        "Su una fattura mai classificata la detraibilita' non e' «zero»: non "
+        "e' stata decisa. Scrivere 0.00 la fa sembrare decisa e disarma "
+        "l'unica guardia del libro giornale, che rifiuta la registrazione "
+        "finche' `iva_detraibile is None`."
+    )
+
+
+def test_una_fattura_mai_classificata_resta_fuori_dal_libro_giornale():
+    """La prova che conta: la guardia del giornale regge dopo il ricalcolo IVA."""
+    from app.services.registrazione_contabile import registra_fattura
+    import asyncio
+
+    inv = {"id": "f-1", "invoice_date": "2026-03-10", "iva": 220, "total_amount": 1220}
+    inv.update(ivf.campi_iva_da_fattura(inv))
+
+    loop = asyncio.new_event_loop()
+    try:
+        # `force=True` salta il controllo di idempotenza, che e' l'unico
+        # punto che toccherebbe il database: la guardia si valuta prima di
+        # qualunque scrittura.
+        esito = loop.run_until_complete(registra_fattura(None, inv, force=True))
+    finally:
+        loop.close()
+
+    assert esito["stato"] == "da_verificare"
+    assert esito["motivo"] == "IVA detraibile non classificata"
 
 
 def test_fattura_classificata_preserva_iva_detraibile():
