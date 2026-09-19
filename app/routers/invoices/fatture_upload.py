@@ -38,6 +38,7 @@ from app.services.supplier_data_quality import apply_supplier_quality
 logger = logging.getLogger(__name__)
 
 from app.services.eventi_fattura import costruisci_evento_fattura_created  # noqa: E402
+from app.services.scadenza_fattura import scadenza_sintetica  # noqa: E402
 
 
 def _iban_xml_verificato(parsed_invoice: Dict[str, Any]) -> Optional[str]:
@@ -1107,23 +1108,7 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
         # La scadenza sintetica della fattura e' la prima scadenza XML
         # valida. Il +30 giorni e' soltanto un fallback; non e' mai una data
         # di pagamento e non sostituisce il piano rate conservato sotto.
-        data_fattura_str = parsed.get("invoice_date", "")
-        data_scadenza = None
-        scadenze_xml = sorted(
-            str(rata.get("data_scadenza"))[:10]
-            for rata in (parsed.get("pagamento_rate") or [])
-            if isinstance(rata, dict) and rata.get("data_scadenza")
-            and re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(rata.get("data_scadenza"))[:10])
-        )
-        if scadenze_xml:
-            data_scadenza = scadenze_xml[0]
-        if data_fattura_str:
-            if not data_scadenza:
-                try:
-                    data_fattura = datetime.strptime(data_fattura_str, "%Y-%m-%d")
-                    data_scadenza = (data_fattura + timedelta(days=30)).strftime("%Y-%m-%d")
-                except (ValueError, TypeError):
-                    pass
+        data_scadenza = scadenza_sintetica(parsed)
 
         pagamento_xml = _analizza_pagamento_xml(parsed, metodo_pagamento)
         metodo_canonico = normalizza_metodo_pagamento(metodo_pagamento)
@@ -2055,15 +2040,13 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
     # Se il fornitore non ha un metodo → "sospesa" → resta nei provvisori.
     metodo_pagamento = supplier_result.get("metodo_pagamento") or "sospesa"
 
-    # Data scadenza: data fattura + 30 giorni (come l'upload manuale)
+    # Data scadenza: prima la scadenza dichiarata nell'XML, e solo in sua
+    # assenza il ripiego «data fattura + 30». Qui si faceva sempre e solo il
+    # +30, con un commento che diceva «come l'upload manuale» e non lo era:
+    # 414 fatture del canale Drive avevano una scadenza vera nell'XML e se la
+    # sono vista sostituire.
     invoice_date = parsed.get("invoice_date", "")
-    data_scadenza = None
-    if invoice_date:
-        try:
-            data_scadenza = (datetime.strptime(invoice_date, "%Y-%m-%d")
-                             + timedelta(days=30)).strftime("%Y-%m-%d")
-        except (ValueError, TypeError):
-            pass
+    data_scadenza = scadenza_sintetica(parsed)
 
     # 5. Documento fattura + insert (stessi campi dell'upload manuale, inclusi
     #    i campi speculari in italiano usati da filtri e pagine contabili)
