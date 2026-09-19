@@ -5,9 +5,12 @@ Due riparazioni, entrambe nate da difetti misurati il 19/09/2026.
 **1. Le scadenze sostituite dal ripiego.** Il canale automatico calcolava
 `data_scadenza` come data fattura + 30 giorni anche quando l'XML ne
 dichiarava una. Le `pagamento_rate` sono rimaste sulla fattura, quindi la
-scadenza vera si ricalcola da li' senza rileggere nulla: 414 fatture attive
-del canale Drive, 390 anticipate in media di 29 giorni e 24 posticipate fino
-a 58.
+scadenza vera si ricalcola da li' senza rileggere nulla. Simulato sui dati
+di produzione il 19/09/2026, sulle 873 fatture attive: 650 cambierebbero —
+390 hanno la scadenza mostrata **piu' tardi** di quella vera (fino a 40
+giorni: gia' scadute e non segnalate), 24 **prima** (fino a 58), e 236 non
+ne hanno nessuna e la riceverebbero. 210 restano invariate e 13 non hanno
+ne' data ne' rate, quindi si lasciano vuote.
 
 **2. L'evento `fattura.created` mai propagato.** L'import massivo del
 14/09/2026 05:27 (249 fatture) e le fatture entrate dal Drive senza
@@ -88,7 +91,9 @@ async def ricalcola_scadenze(db, *, dry_run: bool = True, esempi: int = 20) -> D
     scadenza ricalcolata e' **diversa** da quella salvata.
     """
     esaminate = corrette = invariate = senza_scadenza = 0
-    anticipate = posticipate = 0
+    # I due nomi dicono cosa vedeva l'utente, non il segno di una
+    # sottrazione: e' l'ambiguita' da cui e' nato un errore di lettura.
+    mostrate_prima = mostrate_dopo = 0
     campione: List[Dict[str, Any]] = []
 
     async for fattura in db[COLL].find({}, _PROIEZIONE):
@@ -107,9 +112,13 @@ async def ricalcola_scadenze(db, *, dry_run: bool = True, esempi: int = 20) -> D
 
         if vecchia:
             if nuova > vecchia:
-                anticipate += 1   # la salvata era PRIMA di quella vera
+                # La salvata cade PRIMA di quella vera: la fattura risultava
+                # scaduta quando ancora non lo era.
+                mostrate_prima += 1
             else:
-                posticipate += 1
+                # La salvata cade DOPO: la fattura era gia' scaduta davvero
+                # e nessuno lo vedeva. E' il caso grave.
+                mostrate_dopo += 1
         if len(campione) < esempi:
             campione.append({
                 "id": fattura.get("id"),
@@ -131,8 +140,8 @@ async def ricalcola_scadenze(db, *, dry_run: bool = True, esempi: int = 20) -> D
         "corrette": corrette,
         "invariate": invariate,
         "senza_scadenza_determinabile": senza_scadenza,
-        "di_cui_erano_anticipate": anticipate,
-        "di_cui_erano_posticipate": posticipate,
+        "mostravano_una_scadenza_prima_della_vera": mostrate_prima,
+        "mostravano_una_scadenza_dopo_la_vera": mostrate_dopo,
         "esempi": campione,
     }
 

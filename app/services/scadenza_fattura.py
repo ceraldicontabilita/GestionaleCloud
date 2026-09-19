@@ -14,11 +14,13 @@ produzione il 19/09/2026 sulle 624 fatture attive del canale Drive: 427
 dichiarano una scadenza nell'XML e in **414** casi e' stata sostituita dal
 +30. Effetto:
 
-- 390 fatture, 204.069,70 EUR: scadenza **anticipata** in media di 29 giorni
-  (fino a 40). Il gestionale le mostra scadute quando non lo sono, e il cash
-  flow prevede l'uscita un mese prima del vero.
-- 24 fatture, 11.742,90 EUR: scadenza **posticipata** fino a 58 giorni.
-  Sono le pericolose: scadute davvero e mai segnalate.
+- 390 fatture, 204.069,70 EUR: scadenza mostrata **piu' tardi** di quella
+  vera, in media di 29 giorni e fino a 40. Sono le pericolose: gia' scadute
+  e non segnalate, e il cash flow prevede l'uscita un mese dopo il dovuto.
+  Il caso tipico e' un fornitore a pagamento immediato — San Carlo, fattura
+  del 29/05/2026, scadenza XML 29/05, salvata 28/06.
+- 24 fatture, 11.742,90 EUR: scadenza mostrata **prima** di quella vera,
+  fino a 58 giorni. Risultano scadute quando non lo sono.
 
 Il +30 non e' mai una data di pagamento e non sostituisce il piano rate, che
 resta conservato sulla fattura.

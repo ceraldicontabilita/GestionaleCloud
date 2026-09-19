@@ -141,22 +141,25 @@ def test_senza_data_e_senza_rate_non_si_inventa_una_scadenza():
     assert db["invoices"].aggiornamenti == []
 
 
-def test_il_verso_dello_scostamento_e_quello_giusto():
-    """Salvata PRIMA di quella vera = la fattura risultava scaduta in
-    anticipo. E' il caso delle 390 misurate in produzione."""
+def test_una_scadenza_salvata_prima_della_vera_si_conta_come_tale():
+    """Salvata 31/03, vera 30/06: la fattura risultava scaduta tre mesi
+    prima del dovuto. In produzione sono 24."""
     esito = _run(recupero.ricalcola_scadenze(
         _Db([dict(ATTIVA_SCADENZA_SBAGLIATA)]), dry_run=True))
 
-    assert esito["di_cui_erano_anticipate"] == 1
-    assert esito["di_cui_erano_posticipate"] == 0
+    assert esito["mostravano_una_scadenza_prima_della_vera"] == 1
+    assert esito["mostravano_una_scadenza_dopo_la_vera"] == 0
 
 
-def test_lo_scostamento_opposto_si_conta_a_parte():
+def test_una_scadenza_salvata_dopo_la_vera_e_il_caso_grave():
+    """Salvata 31/08, vera 30/06: gia' scaduta e nessuno la segnalava.
+    In produzione sono 390, per 204.069,70 EUR. I due conteggi non vanno
+    scambiati: e' il verso che dice quale dei due e' pericoloso."""
     fattura = dict(ATTIVA_SCADENZA_SBAGLIATA, data_scadenza="2026-08-31")
     esito = _run(recupero.ricalcola_scadenze(_Db([fattura]), dry_run=True))
 
-    assert esito["di_cui_erano_posticipate"] == 1
-    assert esito["di_cui_erano_anticipate"] == 0
+    assert esito["mostravano_una_scadenza_dopo_la_vera"] == 1
+    assert esito["mostravano_una_scadenza_prima_della_vera"] == 0
 
 
 # ── 2. Replay di `fattura.created` ────────────────────────────────────────
