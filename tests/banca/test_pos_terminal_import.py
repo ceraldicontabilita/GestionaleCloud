@@ -9,7 +9,7 @@ from app.services.pos_terminal_import import (
     importa_pos_terminal_file,
     parse_pos_terminal_file,
 )
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 
 def test_csv_pos_aggrega_solo_operazioni_approvate_e_storni_con_segno():

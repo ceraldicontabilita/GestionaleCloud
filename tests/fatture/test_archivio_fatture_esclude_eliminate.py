@@ -7,7 +7,7 @@ lista/dettaglio nonostante il messaggio di conferma dell'UI dica che
 l'operazione non è reversibile."""
 import asyncio
 
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 from app.routers.fatture_module import crud as mod
 

@@ -13,7 +13,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from app.services.sheets_document_store import DuplicateRecordError
+from app.services.archivio_documenti_memoria import DuplicateRecordError
 
 
 COLLECTION = "pagamenti_buoni"

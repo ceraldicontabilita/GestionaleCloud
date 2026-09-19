@@ -744,9 +744,9 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   e' l'unico codice che la tocca e nessuno lo importa, mentre in produzione la
   tabella ha 216 righe. O il meccanismo dei PDF su richiesta si ricollega, o la
   regola che lo descrive va corretta.
-- `app/services/sheets_document_store.py` non parla piu' con Google ed e' il
-  motore query in memoria del runtime Supabase: nome e docstring vanno
-  riallineati, dicono ancora che la fonte persistente e' Google Sheets.
+- `archivio_documenti_memoria.py` espone ancora le classi `SheetDatabase` e
+  `MemorySheetsClient`, che nel nome promettono Google Sheets: 68 e 483
+  occorrenze in 139 file, da rinominare in un giro dedicato.
 
 ## Verifica e pubblicazione
 

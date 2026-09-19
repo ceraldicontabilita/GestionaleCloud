@@ -2,7 +2,7 @@ import asyncio
 import hashlib
 import pytest
 from fastapi import HTTPException, Response
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 from starlette.requests import Request
 
 from app.services import mfa_service

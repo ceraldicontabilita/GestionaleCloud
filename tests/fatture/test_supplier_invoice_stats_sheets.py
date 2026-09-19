@@ -1,6 +1,6 @@
 import asyncio
 
-from app.services.sheets_document_store import MemorySheetsClient, evaluate_expression
+from app.services.archivio_documenti_memoria import MemorySheetsClient, evaluate_expression
 
 
 def test_eq_con_valore_opzionale_non_valuta_confronti_estranei():

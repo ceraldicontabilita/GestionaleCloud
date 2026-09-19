@@ -12,7 +12,7 @@ import io
 import re
 
 from app.database import Database
-from app.services.sheets_document_store import UpdateOperation
+from app.services.archivio_documenti_memoria import UpdateOperation
 from app.utils.error_handler import handle_errors
 from app.utils.dependencies import get_current_admin_user
 

@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from app.services.sheets_document_store import DuplicateRecordError, SheetDatabase
+from app.services.archivio_documenti_memoria import DuplicateRecordError, SheetDatabase
 
 
 def run(coro):

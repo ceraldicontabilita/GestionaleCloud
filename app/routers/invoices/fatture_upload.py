@@ -21,7 +21,7 @@ import io
 import re
 import hashlib
 
-from app.services.sheets_document_store import DuplicateRecordError
+from app.services.archivio_documenti_memoria import DuplicateRecordError
 
 from app.constants.tipi_documento import TIPI_NOTA_CREDITO
 from app.database import Database, Collections

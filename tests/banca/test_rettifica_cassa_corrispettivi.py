@@ -1,7 +1,7 @@
 import asyncio
 
 from app.services.rettifica_cassa_corrispettivi import analizza, applica
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 
 def _run(value):

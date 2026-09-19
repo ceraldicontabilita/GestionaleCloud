@@ -1,7 +1,7 @@
 import asyncio
 from datetime import date
 
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 from app.handlers.corrispettivi import handler_prima_nota_corrispettivi
 from app.parsers.corrispettivi_parser import parse_corrispettivo_xml

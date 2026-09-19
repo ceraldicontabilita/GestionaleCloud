@@ -8,7 +8,7 @@ registrazione al motore unico del libro giornale.
 import asyncio
 
 from app.routers.invoices import fatture_upload as fu
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 
 def _run(coro):

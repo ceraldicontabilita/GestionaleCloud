@@ -6,7 +6,7 @@ import re
 import logging
 from datetime import datetime
 from typing import Dict, Any, Optional
-from app.services.sheets_document_store import SheetDatabase
+from app.services.archivio_documenti_memoria import SheetDatabase
 
 logger = logging.getLogger(__name__)
 FORNITORI_NOLEGGIO = ["ARVAL", "LEASYS", "ALD AUTOMOTIVE", "ALPHABET", "ATHLON", "LEASEPLAN"]

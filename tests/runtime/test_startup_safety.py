@@ -8,7 +8,7 @@ from app.config import Settings
 from app.database import Database
 from app.main import health_check
 from app.services.auth_secret import initialize_auth_secret
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 
 def test_cors_produzione_senza_origin_esplicito_e_chiuso():

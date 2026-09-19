@@ -1,6 +1,6 @@
 import asyncio
 
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 from app.services.supplier_payment_method_recovery import recover_supplier_payment_methods
 from app.utils.iva_calculator import save_supplier_payment_method
 

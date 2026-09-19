@@ -7,7 +7,7 @@ import asyncio
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 from app.services import quietanze_import as qi
 from tests.document_preview_helpers import confirmed_preview_headers

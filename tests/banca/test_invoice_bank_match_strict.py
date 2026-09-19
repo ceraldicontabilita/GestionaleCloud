@@ -1,6 +1,6 @@
 import asyncio
 
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 from app.routers.invoices.fatture_upload import find_ec_match_for_invoice
 

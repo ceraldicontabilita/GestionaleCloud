@@ -8,7 +8,7 @@ movimento: e' sempre lo stesso ciclo di vendita.
 """
 import asyncio
 
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 from app.services.scritture_contabili import (
     STATO_CONFERMATO,

@@ -1,7 +1,7 @@
 import asyncio
 import base64
 
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 from app.services import ripielaborazione_documenti as modulo
 from app.services.ripielaborazione_documenti import RielaborazioneDocumentiService

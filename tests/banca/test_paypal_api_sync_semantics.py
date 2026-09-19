@@ -1,7 +1,7 @@
 import asyncio
 from datetime import datetime, timezone
 
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 from app.services import paypal_api_sync as sync_module
 from app.routers import paypal_api as api_router

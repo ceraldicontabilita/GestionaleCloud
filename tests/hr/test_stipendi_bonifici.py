@@ -14,7 +14,7 @@ from app.services.stipendi_bonifici import (
     recupera_relazioni_stipendi_mancanti,
     riconciliazione_salario_verificata,
 )
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 
 class _Cursor:

@@ -10,7 +10,7 @@ Ora il limite si applica al RESIDUO dell'anno per lo stesso contratto
 import asyncio
 
 from app.services import learning_machine_cdc as lm
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 
 def _run(c):

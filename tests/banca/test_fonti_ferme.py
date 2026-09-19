@@ -5,7 +5,7 @@ import asyncio
 from datetime import date
 
 from app.services import fonti_ferme
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 
 def _run(coro):

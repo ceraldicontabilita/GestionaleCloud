@@ -3,7 +3,7 @@ from copy import deepcopy
 from datetime import date
 
 import pytest
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 from app.db_collections import (
     COLL_CASE_MEMORY,

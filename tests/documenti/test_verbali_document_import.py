@@ -1,7 +1,7 @@
 import asyncio
 import copy
 import re
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 from app.services import ai_document_parser
 from app.services import verbali_document_import as mod

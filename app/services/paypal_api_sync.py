@@ -7,8 +7,8 @@ import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any
-from app.services.sheets_document_store import SheetDatabase
-from app.services.sheets_document_store import ReturnRecord
+from app.services.archivio_documenti_memoria import SheetDatabase
+from app.services.archivio_documenti_memoria import ReturnRecord
 
 from app.services.paypal_api_client import paypal_client
 from app.services.payment_allocation_validator import to_cents

@@ -9,7 +9,7 @@ usati dal mapping anagrafico e dai verbali PagoPA.
 import re
 import logging
 from typing import Dict, Any, List
-from app.services.sheets_document_store import SheetDatabase
+from app.services.archivio_documenti_memoria import SheetDatabase
 
 logger = logging.getLogger(__name__)
 

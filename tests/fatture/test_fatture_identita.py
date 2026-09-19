@@ -14,7 +14,7 @@ import hashlib
 from app.routers.fatture_module import crud
 from app.services import fatture_identita as fi
 from app.services import registrazione_contabile as rc
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 XML = """<?xml version="1.0" encoding="utf-8"?>
 <p:FatturaElettronica versione="FPR12" xmlns:p="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2">

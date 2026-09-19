@@ -7,7 +7,7 @@ ricavi di un importo gia' dichiarato dal corrispettivo XML.
 import asyncio
 
 import pytest
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 from app.services import sumup_payout, sumup_sync
 from app.services.scritture_contabili import registra_chiusura_pos_reale

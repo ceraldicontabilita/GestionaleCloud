@@ -4,7 +4,7 @@ Il registro esiste solo nella memoria del processo e viene eliminato al termine.
 """
 import asyncio
 
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 from app.routers.prima_nota_module import manutenzione
 

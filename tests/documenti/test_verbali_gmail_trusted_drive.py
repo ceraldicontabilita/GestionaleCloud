@@ -2,7 +2,7 @@ import asyncio
 import hashlib
 from email.message import EmailMessage
 
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 from app.services import mittenti
 from app.services import verbali_gmail_scanner as scanner

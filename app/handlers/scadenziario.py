@@ -4,7 +4,7 @@ from datetime import datetime, timezone, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, List, Tuple
 
-from app.services.sheets_document_store import DuplicateRecordError
+from app.services.archivio_documenti_memoria import DuplicateRecordError
 
 logger = logging.getLogger(__name__)
 

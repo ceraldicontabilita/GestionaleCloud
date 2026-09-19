@@ -15,7 +15,7 @@ from fastapi import HTTPException
 
 from app.services import regole_riconoscimento_banca as regole
 from app.services.categorizzazione_movimenti import categorizza_movimento_bancario
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 from app.routers.bank import regole_riconoscimento as router_modulo
 
 

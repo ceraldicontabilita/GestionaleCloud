@@ -9,7 +9,7 @@ scheda del credito.
 import asyncio
 
 import pytest
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 from app.routers.prima_nota_module.common import saldi_finanziari
 from app.services import conti_pos, sumup_payout, sumup_sync

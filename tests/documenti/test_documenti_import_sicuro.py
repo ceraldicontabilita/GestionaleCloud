@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 
 import pytest
 from fastapi import HTTPException, UploadFile
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 from openpyxl import Workbook
 
 from app.routers import documenti

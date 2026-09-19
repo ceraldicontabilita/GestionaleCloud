@@ -14,7 +14,7 @@ import base64
 import inspect
 
 import pytest
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 from app.services import batch_reprocessing as servizio
 from app.services.batch_reprocessing import BatchReprocessingService

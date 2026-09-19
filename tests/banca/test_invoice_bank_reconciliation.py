@@ -3,7 +3,7 @@ import asyncio
 
 import pytest
 from fastapi import HTTPException
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 from app.services.invoice_payments import (
     InvoiceBankReconciliationRequest,

@@ -19,7 +19,7 @@ from email.header import decode_header
 from email.parser import BytesParser
 from email.policy import default as default_policy
 from typing import Dict, Any, List, Set
-from app.services.sheets_document_store import SheetDatabase
+from app.services.archivio_documenti_memoria import SheetDatabase
 
 from app.config import settings
 

@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
 from fastapi import APIRouter, HTTPException, Body
-from app.services.sheets_document_store import DuplicateRecordError
+from app.services.archivio_documenti_memoria import DuplicateRecordError
 from app.database import Database
 from app.utils.error_handler import handle_errors
 

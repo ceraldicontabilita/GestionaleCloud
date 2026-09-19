@@ -23,7 +23,7 @@ from typing import Any
 
 import aiohttp
 
-from app.services.sheets_document_store import (
+from app.services.archivio_documenti_memoria import (
     MISSING, SheetCursor, SheetDatabase, SheetTable, apply_projection, matches_filter,
 )
 from app.document_repository import DOCUMENT_PAYLOAD_FIELDS, metadata_projection

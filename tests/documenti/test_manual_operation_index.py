@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import pytest
 from fastapi import HTTPException
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 from app.database import Database
 from app.db_collections import (
