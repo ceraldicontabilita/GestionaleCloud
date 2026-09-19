@@ -26,6 +26,7 @@ async def handler_classifica_cdc(payload: Dict[str, Any], db) -> Dict[str, Any]:
             carica_configurazioni_learning,
             classifica_fattura_con_learning,
             calcola_importi_fiscali,
+            somma_gia_dedotto_periodo_anno,
         )
 
         # Il payload reale pubblicato da fatture_upload.py usa campi piatti
@@ -48,6 +49,39 @@ async def handler_classifica_cdc(payload: Dict[str, Any], db) -> Dict[str, Any]:
         )
 
         importi = calcola_importi_fiscali(imponibile, iva, cdc_config)
+
+        # Tetto annuo cumulativo per centri con `limite_annuo` (audit
+        # 19/09/2026, punto 4: noleggio auto, 3.615,20 €/anno PER CONTRATTO,
+        # non per singola fattura). Interroga il db solo quando serve: e' un
+        # caso raro rispetto al volume totale di fatture classificate.
+        numero_contratto_noleggio = None
+        if cdc_config.get("limite_annuo"):
+            from app.services.noleggio.parsers import estrai_numero_contratto
+
+            fattura_completa = await db["invoices"].find_one(
+                {"id": fattura_id},
+                {"_id": 0, "linee": 1, "dati_contratto": 1, "supplier_vat": 1,
+                 "invoice_date": 1, "data_fattura": 1},
+            ) or {}
+            numero_contratto_noleggio = estrai_numero_contratto(fattura_completa)
+            fornitore_piva = fattura_completa.get("supplier_vat") or payload.get("fornitore_piva")
+            data_riferimento = (
+                fattura_completa.get("invoice_date") or fattura_completa.get("data_fattura")
+                or payload.get("data_documento") or ""
+            )
+            try:
+                anno_riferimento = int(str(data_riferimento)[:4])
+            except (TypeError, ValueError):
+                anno_riferimento = None
+
+            gia_dedotto_anno = await somma_gia_dedotto_periodo_anno(
+                db, cdc_id=cdc_id, anno=anno_riferimento,
+                numero_contratto=numero_contratto_noleggio, fornitore_piva=fornitore_piva,
+                escludi_fattura_id=fattura_id,
+            )
+            importi = calcola_importi_fiscali(
+                imponibile, iva, cdc_config, imponibile_gia_dedotto_anno=gia_dedotto_anno,
+            )
 
         # La classificazione di testata resta per compatibilita' con bilanci e
         # filtri storici, ma la fonte contabile analitica e' per singola riga:
@@ -133,6 +167,11 @@ async def handler_classifica_cdc(payload: Dict[str, Any], db) -> Dict[str, Any]:
                 else "classificata"
             ),
         }
+        if cdc_config.get("limite_annuo"):
+            # Persistiti per il cumulo annuo delle PROSSIME fatture dello
+            # stesso contratto (somma_gia_dedotto_periodo_anno le rilegge).
+            update["numero_contratto_noleggio"] = numero_contratto_noleggio
+            update["imponibile_limitato_periodo"] = importi.get("imponibile_limitato_periodo")
 
         await db["invoices"].update_one({"id": fattura_id}, {"$set": update})
 

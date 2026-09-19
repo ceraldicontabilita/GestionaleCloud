@@ -2765,7 +2765,9 @@ async def classifica_fattura_manuale(invoice_id: str, data: Dict[str, Any] = Bod
     # seconda formula) e chiede la registrazione al motore unico, idempotente.
     registrazione = None
     try:
-        from app.services.learning_machine_cdc import CENTRI_COSTO, calcola_importi_fiscali
+        from app.services.learning_machine_cdc import (
+            CENTRI_COSTO, calcola_importi_fiscali, somma_gia_dedotto_periodo_anno,
+        )
         from app.services.registrazione_contabile import registra_documento_import
 
         cdc_config = CENTRI_COSTO.get(centro_costo_id) or next(
@@ -2775,15 +2777,42 @@ async def classifica_fattura_manuale(invoice_id: str, data: Dict[str, Any] = Bod
         if cdc_config is not None and fattura_db:
             imponibile = float(fattura_db.get("imponibile") or fattura_db.get("subtotal") or 0)
             iva = float(fattura_db.get("iva") or fattura_db.get("total_tax") or 0)
-            importi = calcola_importi_fiscali(imponibile, iva, cdc_config)
-            await db[Collections.INVOICES].update_one({"id": invoice_id}, {"$set": {
+            numero_contratto_noleggio = None
+            gia_dedotto_anno = 0.0
+            if cdc_config.get("limite_annuo"):
+                # Stesso cumulo annuo per contratto dell'handler automatico
+                # (audit 19/09/2026, punto 4): una riclassificazione manuale
+                # non deve riazzerare il tetto dell'art. 164 TUIR.
+                from app.services.noleggio.parsers import estrai_numero_contratto
+
+                numero_contratto_noleggio = estrai_numero_contratto(fattura_db)
+                try:
+                    anno_riferimento = int(str(
+                        fattura_db.get("invoice_date") or fattura_db.get("data_fattura") or ""
+                    )[:4])
+                except (TypeError, ValueError):
+                    anno_riferimento = None
+                gia_dedotto_anno = await somma_gia_dedotto_periodo_anno(
+                    db, cdc_id=centro_costo_id, anno=anno_riferimento,
+                    numero_contratto=numero_contratto_noleggio,
+                    fornitore_piva=fattura_db.get("supplier_vat"),
+                    escludi_fattura_id=invoice_id,
+                )
+            importi = calcola_importi_fiscali(
+                imponibile, iva, cdc_config, imponibile_gia_dedotto_anno=gia_dedotto_anno,
+            )
+            aggiornamento = {
                 "iva_detraibile": importi.get("iva_detraibile", 0),
                 "iva_indetraibile": importi.get("iva_indetraibile", 0),
                 "imponibile_deducibile_ires": importi.get("imponibile_deducibile_ires", 0),
                 "imponibile_indeducibile_ires": importi.get("imponibile_indeducibile_ires", 0),
                 "classificato_da": "manuale",
                 "stato_classificazione": "classificata",
-            }})
+            }
+            if cdc_config.get("limite_annuo"):
+                aggiornamento["numero_contratto_noleggio"] = numero_contratto_noleggio
+                aggiornamento["imponibile_limitato_periodo"] = importi.get("imponibile_limitato_periodo")
+            await db[Collections.INVOICES].update_one({"id": invoice_id}, {"$set": aggiornamento})
             fattura_db = await db[Collections.INVOICES].find_one({"id": invoice_id}, {"_id": 0})
             registrazione = await registra_documento_import(db, "fattura", fattura_db)
         elif fattura_db is not None:
