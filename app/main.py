@@ -929,7 +929,7 @@ async def health_check(strict: bool = False):
     return {
         "status": "degraded" if degradato else "healthy",
         "database": "connected" if archivio_probe != "failed" else "unreachable",
-        "storage": "supabase" if settings.DATA_BACKEND.strip().lower() == "supabase" else "drive_sheets",
+        "storage": "supabase",
         "archivio": archivio_probe,
         "archivio_errore": archivio_errore,
         "hydrated_rows": hydration_rows,

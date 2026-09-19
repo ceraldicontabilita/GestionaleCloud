@@ -108,37 +108,3 @@ def test_import_commissioni_usa_un_solo_batch_per_file():
     calls, result = asyncio.run(scenario())
     assert calls == 1
     assert result["inserted"] == 30
-
-
-def test_import_commissioni_runtime_flusha_una_volta_per_foglio():
-    async def scenario():
-        from app.services.sheets_runtime_database import SheetsRuntimeDatabase
-
-        db = SheetsRuntimeDatabase(
-            "pos_commissioni_runtime", {"GOOGLE_SHEETS_LEDGER_ID": "test-ledger"},
-        )
-        persisted = []
-
-        async def persist_documents(collection_name, documents):
-            persisted.append((collection_name, len(documents)))
-            return {"aggiornati": 0, "inseriti": len(documents)}
-
-        async def remove_documents(_collection_name, _canonical_ids):
-            return {"rimossi": 0}
-
-        db.persist_documents = persist_documents
-        db.remove_documents = remove_documents
-        rows = [
-            [f"{day:02d}/04/2026", day, 100 + day, 99 + day, -1, -0.01]
-            for day in range(1, 31)
-        ]
-        await importa_pos_commissioni_file(
-            db, _xlsx(rows), "Commissioni_Aprile_2026.xlsx",
-        )
-        return persisted
-
-    persisted = asyncio.run(scenario())
-    assert persisted == [
-        ("pos_commissioni_giornaliere", 30),
-        ("pos_commissioni_imports", 1),
-    ]

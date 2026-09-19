@@ -17,11 +17,9 @@ class Settings(BaseSettings):
     APP_VERSION: str = "2.0.0"
     DEBUG: bool = False
     ENVIRONMENT: str = "production"
-    # Google Drive conserva soltanto gli originali documentali; Supabase e' il
-    # registro operativo strutturato. ``sheets`` resta temporaneamente
-    # disponibile esclusivamente come sorgente di rollback durante il cutover.
-    DATA_BACKEND: str = "sheets"
-    SHEETS_REGISTRY_NAME: str = "GestionaleCloud"
+    # Google Drive conserva soltanto gli originali documentali; Supabase e'
+    # l'unico registro operativo strutturato, senza eccezioni.
+    DATA_BACKEND: str = "supabase"
     # Credenziali server-to-server del runtime Supabase. La publishable key non
     # concede da sola accesso ai dati; ogni RPC richiede anche il secret
     # applicativo separato conservato esclusivamente nel secret store Render.
@@ -34,7 +32,7 @@ class Settings(BaseSettings):
     PORT: int = 8000
     RELOAD: bool = False
 
-    # Nome logico del registro Sheets esposto tramite l'interfaccia database.
+    # Nome logico del registro esposto tramite l'interfaccia database.
     DB_NAME: str = "Gestionale"
     # Le riparazioni dati e migrazioni all'avvio restano disabilitate per default.
     RUN_STARTUP_DATA_REPAIRS: bool = False
@@ -134,9 +132,10 @@ class Settings(BaseSettings):
     GOOGLE_DRIVE_ESTRATTI_FOLDER_IDS: Optional[str] = None     # piu radici, separate da virgola
     GOOGLE_DRIVE_BONIFICI_FOLDER_ID: Optional[str] = None      # stessa radice dei fascicoli: <COGNOME NOME>/BONIFICI/DA ELABORARE = bonifici
     GOOGLE_DRIVE_BONIFICI_FOLDER_IDS: Optional[str] = None     # piu radici bonifici separate da virgola (fascicoli + 03/BONIFICI generici)
-    # Registro dati portabile: un Google Spreadsheet con un foglio per ogni
-    # entita canonica. ID diretto oppure cartella in cui crearlo/ritrovarlo.
-    GOOGLE_SHEETS_LEDGER_ID: Optional[str] = None
+    # Cartella Drive storica del registro portatile (ora dismesso). Resta
+    # come radice di fallback per l'archiviazione delle copie documentali
+    # (app/services/email_drive_archive.py) quando l'area non ha una
+    # cartella dedicata configurata: NON e' piu' legata a Google Sheets.
     GOOGLE_SHEETS_LEDGER_FOLDER_ID: Optional[str] = None
     # Nuovi canali documentali (scelta utente 12-07-2026): cartelle Drive
     # dedicate. Gli ID vanno su Render; ogni cartella condivisa con la
@@ -397,12 +396,14 @@ class Settings(BaseSettings):
     def validate_required_secrets(self) -> dict[str, bool]:
         """Validate required and optional secrets.
 
-        Questo runtime supporta esclusivamente Google Sheets/Drive come archive
-        operativo. Le verifiche qui sono limitate a ciò che serve per Sheets.
+        Supabase e' l'unico backend supportato: le verifiche qui riguardano
+        soltanto ciò che serve per connettersi al registro operativo.
         """
         return {
             'database': bool(
-                self.GOOGLE_SHEETS_LEDGER_ID or self.GOOGLE_SHEETS_LEDGER_FOLDER_ID
+                self.SUPABASE_URL
+                and self.SUPABASE_PUBLISHABLE_KEY
+                and self.SUPABASE_RUNTIME_SECRET
             ),
             'auth': bool(self.SECRET_KEY),
             'google_oauth': bool(self.GOOGLE_CLIENT_ID and self.GOOGLE_CLIENT_SECRET),
@@ -414,7 +415,7 @@ class Settings(BaseSettings):
         """Validate critical configuration at startup.
 
         In produzione, se FAIL_FAST_SECRETS=true è attivo, l'applicazione
-        fallisce l'avvio se mancano SECRET_KEY o la configurazione Drive/Sheets.
+        fallisce l'avvio se mancano SECRET_KEY o la configurazione Supabase.
         """
         import logging
         logger = logging.getLogger(__name__)
@@ -435,25 +436,10 @@ class Settings(BaseSettings):
                 logger.warning(f"⚠️ {msg}")
 
         backend = self.DATA_BACKEND.strip().lower()
-        # Production runtime supports 'sheets' (storico) e 'supabase' (Postgres
-        # reale). Qualunque altro valore resta invalido.
-        if backend not in ("sheets", "supabase"):
-            errors.append("DATA_BACKEND non supportato: il runtime corrente supporta 'sheets' (Google Sheets/Drive) o 'supabase' (Postgres).")
-
-        # Check database configuration for Sheets. Sheets is the operational backend;
-        # absence of sheets configuration is a production error.
-        if backend == "sheets":
-            if self.GOOGLE_SHEETS_LEDGER_ID or self.GOOGLE_SHEETS_LEDGER_FOLDER_ID:
-                pass
-            else:
-                msg = (
-                    "DATA_BACKEND=sheets richiede GOOGLE_SHEETS_LEDGER_ID oppure "
-                    "GOOGLE_SHEETS_LEDGER_FOLDER_ID; non esiste fallback di persistenza."
-                )
-                if fail_fast:
-                    errors.append(msg)
-                else:
-                    logger.error(msg)
+        # Supabase e' l'unico backend supportato dal runtime. Qualunque altro
+        # valore (incluso il vecchio 'sheets', rimosso) resta invalido.
+        if backend != "supabase":
+            errors.append("DATA_BACKEND non supportato: il runtime corrente supporta esclusivamente 'supabase' (Postgres).")
 
         if backend == "supabase" and not all(
             str(value or "").strip()
@@ -472,10 +458,6 @@ class Settings(BaseSettings):
                 errors.append(msg)
             else:
                 logger.error(msg)
-
-        if self.is_production and not (self.SHEETS_REGISTRY_NAME or "").strip():
-            msg = "SHEETS_REGISTRY_NAME non configurato in produzione."
-            errors.append(msg) if fail_fast else logger.error(f"❌ ERROR: {msg}")
 
         # Senza origin espliciti ``get_cors_origins`` restituisce [] e mantiene
         # il frontend same-origin: e' una configurazione sicura. L'unico caso

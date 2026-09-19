@@ -113,8 +113,6 @@ services:
       # radici bonifici separate da virgola: fascicoli DIPENDENTI + 03/BONIFICI
       - key: GOOGLE_DRIVE_BONIFICI_FOLDER_IDS
         sync: false
-      - key: SHEETS_REGISTRY_NAME
-        value: "GestionaleCloud"
       - key: PROCESS_ROLE
         value: "combined"
       - key: ENABLE_SCHEDULER
@@ -123,8 +121,6 @@ services:
         value: "25"
       - key: DRIVE_ESTRATTI_BATCH_SIZE
         value: "1"
-      - key: GOOGLE_SHEETS_LEDGER_ID
-        sync: false
       - key: GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON
         sync: false
       - key: CREDENTIALS_ENCRYPTION_KEY
