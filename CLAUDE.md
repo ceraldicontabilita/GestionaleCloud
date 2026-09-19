@@ -369,6 +369,21 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   **non sono duplicati**.
 - Le regole SDD creano un pagamento solo con identità, periodo e importo
   compatibili; altrimenti candidati.
+- Categorizzazione movimenti banca: un solo motore,
+  `app/services/categorizzazione_movimenti.py` (parole chiave su
+  F24/Commissioni/Utenze/Fatture). Sopra le parole chiave, **regole
+  imparate** dal titolare (`app/services/regole_riconoscimento_banca.py`,
+  `/riconciliazione/regole-banca`): un pattern estratto da una causale reale
+  vince sempre sul generico, ma un pattern fatto solo di vocabolario
+  bancario comune (es. "COMMISSIONI SU BONIFICI", senza il nome di un
+  fornitore/servizio) viene rifiutato alla creazione, non salvato. Eliminare
+  una regola non tocca i movimenti già categorizzati da essa.
+- Pagamenti stipendio via nome: la corrispondenza univoca nome+cognome basta
+  da sola (vedi «Personale»), ma un fornitore individuale/professionista
+  omonimo di un dipendente, o un pagamento occasionale a lui, non deve
+  finire nel suo fascicolo stipendi — `_ESCLUSIONE_RE` in
+  `hr_pagamenti_deposito.py` copre anche queste causali, non solo
+  TFR/fattura/commissione.
 - Le simulazioni non scrivono sul consuntivo. La chiusura d'esercizio richiede
   checklist, anteprima, conferma forte, audit e rollback.
 - Navigazione tra contropartite: un solo componente
