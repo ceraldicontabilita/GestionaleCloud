@@ -9,7 +9,7 @@ import os
 from collections import Counter
 
 BASE_URL = "http://localhost:8001"
-EXT_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://ceraldiapp.it").rstrip("/")
+EXT_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://gestionalecloud.onrender.com/lotti").rstrip("/")
 
 
 class TestB01ImportaXml:
