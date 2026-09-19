@@ -47,7 +47,6 @@ FORK_NOTO = {
     "database.py",
     "main.py",
     # Fork veri, da consolidare (vedi «Aperto» in CLAUDE.md).
-    "exceptions/custom_exceptions.py",
     "parsers/busta_paga_multi_template.py",
     "repositories/base_repository.py",
     "repositories/user_repository.py",
@@ -57,12 +56,7 @@ FORK_NOTO = {
     "routers/pin_login.py",
     "routers/tfr.py",
     "services/alert_engine.py",
-    "services/audit_logger.py",
-    "services/partite_aperte_engine.py",
-    "services/payslip_pdf_parser.py",
-    "utils/busta_paga_parser.py",
     "utils/dependencies.py",
-    "utils/error_handler.py",
 }
 
 
