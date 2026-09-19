@@ -29,7 +29,9 @@ RADICE = Path(__file__).resolve().parents[2]
 # averli per esistere.
 IGNORATI = {"__init__.py"}
 
-# Fotografia del 19/09/2026. Solo da accorciare.
+# Fotografia del 19/09/2026, accorciata dalla Fase 2 (i sette
+# `services/handlers/*` HR erano copie del lato ERP e sono spariti).
+# Solo da accorciare.
 FORK_NOTO = {
     # Guscio della sotto-applicazione: legittimamente separati.
     "config.py",
@@ -54,13 +56,6 @@ FORK_NOTO = {
     "services/document_ai_extractor.py",
     "services/event_bus.py",
     "services/f24_parser.py",
-    "services/handlers/cedolino_handlers.py",
-    "services/handlers/corrispettivo_handlers.py",
-    "services/handlers/dipendente_handlers.py",
-    "services/handlers/documento_handlers.py",
-    "services/handlers/f24_handlers.py",
-    "services/handlers/fattura_handlers.py",
-    "services/handlers/magazzino_handlers.py",
     "services/libro_unico_parser.py",
     "services/paghe_riconciliazione.py",
     "services/partite_aperte_engine.py",

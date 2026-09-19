@@ -141,10 +141,17 @@ async def on_dipendente_cessato(event: Dict[str, Any], db) -> Optional[Dict]:
     """
     Quando un dipendente viene cessato esegue il ciclo completo di chiusura:
 
-    1. Rifiuta automaticamente richieste assenza pending con data > data_cessazione
-    2. Annulla partite aperte stipendio residue
-    3. Risolve alert aperti sul dipendente (tranne DIP_CESSATO_FLUSSI_ATTIVI nuovo)
-    4. Genera audit + eventuale alert se restano flussi anomali
+    1. Revoca il PIN del portale (nessun nuovo accesso da qui in poi)
+    2. Termina i contratti ancora attivi alla data di cessazione
+    3. Rifiuta automaticamente richieste assenza pending con data > data_cessazione
+    4. Annulla partite aperte stipendio residue
+    5. Risolve alert aperti sul dipendente (tranne DIP_CESSATO_FLUSSI_ATTIVI nuovo)
+    6. Genera audit + eventuale alert se restano flussi anomali
+
+    Limite noto sulla revoca del PIN: blocca ogni NUOVO accesso, ma un token
+    gia' emesso resta valido fino a scadenza (fino a 7 giorni: `get_identity`
+    verifica firma e scadenza, non rilegge lo stato del dipendente a ogni
+    chiamata). Le sessioni gia' aperte non vengono chiuse.
 
     Idempotente: se ricevuto due volte non duplica azioni (skip se già terminato).
     """
@@ -161,12 +168,53 @@ async def on_dipendente_cessato(event: Dict[str, Any], db) -> Optional[Dict]:
 
     now_iso = datetime.now(timezone.utc).isoformat()
     azioni = {
+        "pin_revocato": False,
+        "contratti_terminati": 0,
         "richieste_future_rifiutate": 0,
         "partite_annullate": 0,
         "alerts_risolti": 0,
     }
 
-    # 1. Rifiuta richieste assenza future pending
+    # 1. Revoca il PIN. CLAUDE.md, «Personale»: «la cessazione revoca il PIN»,
+    # «mai un cessato» fra i PIN validi. Due strade di cessazione
+    # (`routers/employees/dipendenti.py`, la spunta «non in carico» nel PUT e
+    # il DELETE) non lo revocano da sole: si affidano a questo handler. Finche'
+    # viveva solo sul bus HR — mai collegato, zero handler a runtime — quelle
+    # due strade lasciavano il PIN attivo. Il PIN resta di proprieta' di HR
+    # («l'anagrafica HR comanda»), quindi qui si chiama il suo servizio.
+    try:
+        from app.hr.services.auth_dipendenti import rimuovi_pin
+
+        azioni["pin_revocato"] = await rimuovi_pin(dip_id)
+    except Exception as e:
+        logger.exception(f"Errore revoca PIN per dip {dip_id}: {e}")
+
+    # 2. Termina i contratti ancora attivi alla data di cessazione.
+    try:
+        r_contratti = await db["employee_contracts"].update_many(
+            {
+                "dipendente_id": dip_id,
+                "stato": {"$in": ["attivo", "in_corso", None]},
+                "$or": [
+                    {"data_fine": None},
+                    {"data_fine": {"$exists": False}},
+                    {"data_fine": ""},
+                    {"data_fine": {"$gte": data_cessazione}},
+                ],
+            },
+            {"$set": {
+                "stato": "terminato",
+                "data_fine": data_cessazione,
+                "motivo_fine": "cessazione_rapporto",
+                "terminato_automaticamente": True,
+                "terminato_at": now_iso,
+            }}
+        )
+        azioni["contratti_terminati"] = r_contratti.modified_count
+    except Exception as e:
+        logger.exception(f"Errore terminazione contratti per dip {dip_id}: {e}")
+
+    # 3. Rifiuta richieste assenza future pending
     try:
         r_richieste = await db["richieste_assenza"].update_many(
             {
@@ -185,7 +233,7 @@ async def on_dipendente_cessato(event: Dict[str, Any], db) -> Optional[Dict]:
     except Exception as e:
         logger.exception(f"Errore rifiuto richieste future per dip {dip_id}: {e}")
 
-    # 2. Annulla partite aperte stipendio residue
+    # 4. Annulla partite aperte stipendio residue
     try:
         r_partite = await db["partite_aperte"].update_many(
             {
@@ -203,7 +251,7 @@ async def on_dipendente_cessato(event: Dict[str, Any], db) -> Optional[Dict]:
     except Exception as e:
         logger.exception(f"Errore annullamento partite per dip {dip_id}: {e}")
 
-    # 3. Risolve alert aperti sul dipendente
+    # 5. Risolve alert aperti sul dipendente
     try:
         r_alerts = await db["alerts"].update_many(
             {
@@ -224,7 +272,7 @@ async def on_dipendente_cessato(event: Dict[str, Any], db) -> Optional[Dict]:
     except Exception as e:
         logger.exception(f"Errore risoluzione alert per dip {dip_id}: {e}")
 
-    # 4. Check flussi residui anomali (cedolini recenti NON dovrebbero essere
+    # 6. Check flussi residui anomali (cedolini recenti NON dovrebbero essere
     #    un problema se la cessazione è arrivata proprio da cedolino, quindi
     #    l'alert è generato solo se siamo in cessazione manuale)
     if not auto_from_cedolino:
@@ -252,7 +300,9 @@ async def on_dipendente_cessato(event: Dict[str, Any], db) -> Optional[Dict]:
     if auto_from_cedolino:
         dettaglio += f" (rilevato da cedolino: {', '.join(diciture) if diciture else 'diciture cessazione'})"
     dettaglio += (
-        f" — richieste={azioni['richieste_future_rifiutate']}, "
+        f" — pin_revocato={azioni['pin_revocato']}, "
+        f"contratti={azioni['contratti_terminati']}, "
+        f"richieste={azioni['richieste_future_rifiutate']}, "
         f"partite={azioni['partite_annullate']}, "
         f"alerts={azioni['alerts_risolti']}"
     )
