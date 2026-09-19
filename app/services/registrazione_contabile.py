@@ -126,9 +126,9 @@ async def _audit(db, azione: str, entita_id: str, dettaglio: str) -> None:
             entita_collection=COLL_MOVIMENTI, db=db, fonte="registrazione_contabile",
             dettaglio=dettaglio,
         )
-    except Exception:
+    except Exception as exc:  # noqa: BLE001
         # l'audit non deve mai bloccare la registrazione
-        pass
+        logger.warning("[RegistrazioneContabile] audit della registrazione non scritto: %s", exc)
 
 
 async def _scrivi_movimento(db, movimento: Dict[str, Any], saldi: list) -> Dict[str, Any]:
@@ -430,8 +430,10 @@ async def registra_fattura(db, fattura: Dict[str, Any], *, force: bool = False,
                  "$setOnInsert": {"created_at": now}},
                 upsert=True,
             )
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "[RegistrazioneContabile] segnalazione del doppio conteggio "
+                "cespite non registrata: %s", exc)
     patch = {"registrata_contabilita": True, "movimento_contabile_id": mov["id"]}
     if extra_fattura:
         patch.update(extra_fattura)
@@ -937,8 +939,10 @@ async def _annota_esito(db, collezione: str, doc_id: Any, esito: Dict[str, Any])
         try:
             await db[collezione].update_one(
                 {"id": doc_id}, {"$unset": {"registrazione_contabile_esito": ""}})
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(
+                "[RegistrazioneContabile] esito contabile non ripulito "
+                "dal documento: %s", exc)
 
 
 async def _verifica_importo_scrittura(db, documento: Dict[str, Any], esito: Dict[str, Any]) -> Dict[str, Any]:

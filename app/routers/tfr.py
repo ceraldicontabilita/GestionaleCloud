@@ -784,8 +784,10 @@ async def registra_acconto(input_data: AccontoInput) -> Dict[str, Any]:
         if input_data.data and len(input_data.data) >= 7:
             anno_int = int(input_data.data[:4])
             mese_int = int(input_data.data[5:7])
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "[TFR] data non interpretabile: anno e mese restano vuoti e la riga non si "
+            "trova piu' cercando per periodo: %s", exc)
 
     now_iso = datetime.now(timezone.utc).isoformat()
 
@@ -911,8 +913,10 @@ async def modifica_acconto(acconto_id: str, input_data: dict) -> Dict[str, Any]:
             if len(nuova_data) >= 7:
                 update_fields["anno"] = int(nuova_data[:4])
                 update_fields["mese"] = int(nuova_data[5:7])
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "[TFR] data non interpretabile in aggiornamento: anno e mese non "
+                "sono stati ricalcolati: %s", exc)
         # Se l'utente non ha forzato scalato_su_anno_mese, derivalo dalla nuova data
         if "scalato_su_anno_mese" not in input_data:
             update_fields["scalato_su_anno_mese"] = nuova_data[:7]

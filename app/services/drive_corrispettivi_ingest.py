@@ -431,7 +431,9 @@ async def verifica_quadratura_elaborate(db) -> Dict[str, Any]:
                                 "source_path": folder["relative_path"],
                                 "recuperato": True,
                             })
-                            logger.warning("Quadratura corrispettivi: recuperato buco %s", document_name)
+                            logger.warning(
+                                "Quadratura corrispettivi: recuperato buco %s "
+                                "da %s", document_name, folder["relative_path"])
                 except Exception as e:
                     esito["errori"] += 1
                     esito["details"].append({

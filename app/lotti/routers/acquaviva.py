@@ -636,8 +636,8 @@ async def export_foto_zip():
                         r = await client.get(url)
                         if r.status_code == 200 and r.headers.get("content-type", "").startswith("image/"):
                             dati, mime = r.content, r.headers["content-type"].split(";")[0]
-                    except Exception:
-                        pass
+                    except Exception as exc:  # noqa: BLE001
+                        logger.debug("[Acquaviva] immagine remota non scaricata: %s", exc)
                 if not dati:
                     mancanti.append(p.get("nome") or "?")
                     continue

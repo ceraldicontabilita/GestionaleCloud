@@ -88,8 +88,8 @@ async def cedolini_hr_periodo(anno: int, mese: int) -> Dict[str, Any]:
     finally:
         try:
             await con.close()
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[HR lettura] chiusura della connessione non riuscita: %s", exc)
 
 
 def _importo_da_voci(cedolino: Dict[str, Any], natura: str) -> Optional[float]:

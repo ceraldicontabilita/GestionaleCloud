@@ -61,6 +61,6 @@ def stop_scheduler():
     if _scheduler:
         try:
             _scheduler.shutdown(wait=False)
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[Paghe] spegnimento dello scheduler non riuscito: %s", exc)
         _scheduler = None

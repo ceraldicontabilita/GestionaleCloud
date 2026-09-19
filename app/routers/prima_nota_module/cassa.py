@@ -257,9 +257,11 @@ async def create_prima_nota_cassa(data: Dict[str, Any] = Body(...)) -> Dict[str,
                 "descrizione": movimento["descrizione"],
                 "created_at": now,
             })
-        except Exception:
+        except Exception as exc:  # noqa: BLE001
             # L'audit non deve bloccare la registrazione del movimento.
-            pass
+            logger.warning(
+                "[PrimaNota cassa] evento dell'inserimento manuale non "
+                "registrato: %s", exc)
 
     return {"message": "Movimento cassa creato", "id": movimento["id"],
             "inserimento_manuale": inserimento_manuale}

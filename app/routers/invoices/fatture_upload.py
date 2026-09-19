@@ -536,8 +536,10 @@ async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any], session=Non
         from app.middleware.performance import cache as _cache
         from app.routers.suppliers_module.common import SUPPLIERS_CACHE_KEY as _SCK
         await _cache.clear_pattern(_SCK)
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "[Fatture] cache dei fornitori non invalidata: il fornitore nuovo "
+            "comparira' solo alla scadenza del TTL: %s", exc)
 
     # Alert per configurare il metodo di pagamento
     alert = {
@@ -1356,8 +1358,10 @@ async def find_check_numbers_for_invoice(db, importo: float, data_fattura: str, 
                 data_doc = datetime.strptime(data_fattura, "%Y-%m-%d")
                 data_min = (data_doc - timedelta(days=90)).strftime("%Y-%m-%d")
                 data_max = (data_doc + timedelta(days=90)).strftime("%Y-%m-%d")
-            except Exception:
-                pass
+            except Exception as exc:  # noqa: BLE001
+                logger.debug(
+                    "[Fatture] data fattura non interpretabile: finestra di ricerca "
+                    "+/-90 giorni non applicata: %s", exc)
 
         # Cerca match singolo per importo
         query = {
@@ -2473,8 +2477,10 @@ async def delete_all_invoices(
             utente=_admin.get("email") or _admin.get("user_id") or "admin",
             extra={"collection": "invoices", "deleted_count": result.deleted_count},
         )
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "[Fatture] audit di sicurezza della cancellazione massiva "
+            "NON registrato: %s", exc)
     return {"deleted_count": result.deleted_count}
 
 

@@ -11,12 +11,15 @@ per i dettagli dell'audit che ha portato a questa unificazione.
 """
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, List, Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.database import Collections, Database
 from app.utils.dependencies import get_current_admin_user
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -336,6 +339,6 @@ async def get_invoice(invoice_id: str) -> Dict[str, Any]:
         if invoice:
             invoice.pop("_id", None)
             return invoice
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("[Fatture] ricerca per _id storico non riuscita: %s", exc)
     raise HTTPException(status_code=404, detail="Fattura non trovata")

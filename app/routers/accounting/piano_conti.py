@@ -858,8 +858,10 @@ async def _segnala_conto_bassa_confidenza(
             }, "$setOnInsert": {"created_at": datetime.now(timezone.utc).isoformat()}},
             upsert=True,
         )
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "[PianoConti] segnalazione all'agente non registrata: la proposta "
+            "sotto soglia resta senza traccia: %s", exc)
 
 
 async def determina_conti_fattura(db, fattura: Dict[str, Any]) -> Dict[str, Dict[str, str]]:

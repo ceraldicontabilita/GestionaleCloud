@@ -243,8 +243,8 @@ async def _cerca_in_gmail(db, iuv, numero_verbale, importo, verbale):
     finally:
         try:
             conn.logout()
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[Verbali] logout IMAP non riuscito: %s", exc)
 
     # Anche Gmail puo' contenere piu' ricevute con lo stesso riferimento e
     # importo (reinoltri, tentativi ripetuti, operazioni distinte). In quel
