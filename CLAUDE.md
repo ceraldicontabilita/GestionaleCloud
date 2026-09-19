@@ -6,7 +6,7 @@ reviewed_at: 2026-09-18
 storage_architecture: supabase
 -->
 
-Aggiornato il 18/09/2026 sul codice di `main` del repository canonico
+Aggiornato il 19/09/2026 sul codice di `main` del repository canonico
 `ceraldicontabilita/GestionaleCloud`.
 
 **Questo file e `README.md` sono gli unici due documenti del repository.**
@@ -687,6 +687,25 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   della documentazione): nessun codice la popola, la funzione è ferma.
 - A mano, dal titolare: ruotare la password Postgres; DNS di `ceraldiapp.it` e
   servizi Render sospesi.
+- Il ramo `app/hr/` e' un fork di `app/`: 39 file negli stessi sottopercorsi,
+  19.163 righe, di cui 3.909 di funzioni identiche. La deriva fra le copie e'
+  fatta di correzioni applicate da un lato solo, quindi ogni fix va cercato
+  anche nel gemello finche' non si consolidano (parser cedolini e F24, TFR,
+  `salari_unificati_v2`, `libro_unico_parser`).
+- Tre event bus vivi insieme (`app/services/event_bus.py`,
+  `app/hr/services/event_bus.py`, `app/hr/core/event_bus.py`): `cedolini_manager`
+  pubblica lo stesso fatto su due, e un handler registrato su un bus non vede
+  gli eventi degli altri. `app/hr/core/event_bus.py` e' a copertura zero.
+- 119 moduli (26.579 righe) irraggiungibili dagli entrypoint, a copertura zero e
+  mai citati: 65 sono test sotto `app/lotti/tests/` che `pytest.ini` non esegue
+  (`testpaths = tests`), il resto e' codice di produzione morto.
+- Dei quattro stati del netto ne esiste uno solo nel codice
+  (`NETTO_VERIFICATO_DA_CEDOLINO`): gli altri tre non vengono mai scritti e la
+  guardia in `prima_nota_salari.py` tratta lo stato assente come verificato.
+  Finche' restano, un netto illeggibile non e' distinguibile da uno letto.
+- `app/services/sheets_document_store.py` non parla piu' con Google ed e' il
+  motore query in memoria del runtime Supabase: nome e docstring vanno
+  riallineati, dicono ancora che la fonte persistente e' Google Sheets.
 
 ## Verifica e pubblicazione
 

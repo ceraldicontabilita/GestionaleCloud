@@ -661,12 +661,12 @@ async def processa_tutti_cedolini_pdf(
     # SECONDA SCELTA: Document AI per eventuali formati futuri non noti.
     if not cedolini:
         try:
-            from app.services.document_ai_extractor import extract_document_data
+            from app.services.document_ai_extractor import process_document
 
-            ai_result = await extract_document_data(
-                file_content=file_content,
+            ai_result = await process_document(
+                file_data=file_content,
                 filename=filename,
-                document_type="busta_paga"
+                document_type="busta_paga",
             )
 
             if ai_result.get("structured_data", {}).get("success"):
