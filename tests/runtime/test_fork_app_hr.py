@@ -48,8 +48,6 @@ FORK_NOTO = {
     "main.py",
     # Fork veri, da consolidare (vedi «Aperto» in CLAUDE.md).
     "parsers/busta_paga_multi_template.py",
-    "repositories/base_repository.py",
-    "repositories/user_repository.py",
     "routers/auth.py",
     "routers/employees/dipendenti.py",
     "routers/f24_parser.py",
