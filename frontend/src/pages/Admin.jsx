@@ -10,6 +10,7 @@ import { useHashState } from '../hooks/useHashState';
 import { Button, Badge, StatCard, Card, Tabs, Input, Select } from '../components/ds';
 import { Trash2, AlertTriangle, X, Loader2, CheckCircle2 } from 'lucide-react';
 import PannelloSumUp from '../components/PannelloSumUp';
+import PannelloRiparazioni from '../components/PannelloRiparazioni';
 
 export default function Admin() {
   const isMobile = useIsMobile();
@@ -395,6 +396,7 @@ export default function Admin() {
     { key: 'collaudo', label: 'Collaudo', icon: '🧪' },
     { key: 'bank-rules', label: 'Riferimenti bancari', icon: '🏦' },
     { key: 'supabase-migration', label: 'Migrazione Supabase', icon: '🐘' },
+    { key: 'riparazioni', label: 'Riparazioni', icon: '🩹' },
   ];
 
   return (
@@ -841,6 +843,9 @@ export default function Admin() {
           <PannelloSumUp />
         </div>
       )}
+
+      {/* TAB RIPARAZIONI UNA TANTUM */}
+      {activeTab === 'riparazioni' && <PannelloRiparazioni />}
 
       {/* TAB PAROLE CHIAVE GLOBALI */}
       {activeTab === 'keywords' && (
