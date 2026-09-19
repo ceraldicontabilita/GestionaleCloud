@@ -9,7 +9,6 @@ Elaborate ed Errori restano sorelle dell'inbox che ha originato il documento.
 import asyncio
 import gc
 import hashlib
-import io
 import json
 import logging
 from datetime import datetime, timezone
@@ -274,15 +273,9 @@ def _list_xml_files(service, parent_id: str) -> List[Dict[str, Any]]:
     return out
 
 
-def _download_bytes(service, file_id: str) -> bytes:
-    from googleapiclient.http import MediaIoBaseDownload
-    buf = io.BytesIO()
-    req = service.files().get_media(fileId=file_id, supportsAllDrives=True)
-    downloader = MediaIoBaseDownload(buf, req)
-    done = False
-    while not done:
-        _, done = downloader.next_chunk()
-    return buf.getvalue()
+#: Il download di un file Drive non ha niente di specifico delle fatture:
+#: vive in `app/services/drive_download.py` e lo usa anche chi legge le LIPE.
+from app.services.drive_download import scarica_bytes as _download_bytes  # noqa: E402
 
 
 def _drive_source_metadata(
