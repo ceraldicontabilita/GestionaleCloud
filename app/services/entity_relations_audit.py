@@ -193,7 +193,10 @@ async def audit_legacy_entity_relations(
     payslips = await _read_limited(
         db,
         "cedolini",
-        {"pagata": True, "movimento_bancario_id": {"$nin": [None, ""]}},
+        # `pagato`, non `pagata`: su `cedolini` il campo femminile non esiste
+        # (misurato il 19/09/2026 su 3.256 documenti), quindi questa relazione
+        # non veniva mai verificata.
+        {"pagato": True, "movimento_bancario_id": {"$nin": [None, ""]}},
         {"_id": 0, "id": 1, "movimento_bancario_id": 1},
         limit,
     )
