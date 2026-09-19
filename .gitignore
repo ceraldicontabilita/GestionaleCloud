@@ -12,6 +12,9 @@ credentials.json
 *.pem
 .credentials
 
+# Worktree locali degli agenti Claude Code: scratch space di sessione, mai nel repository
+.claude/worktrees/
+
 # Dati reali (fatture, verbali, ricevute, foto): MAI nel repository
 uploads/
 app/uploads/
