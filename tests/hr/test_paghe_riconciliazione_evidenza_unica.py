@@ -114,3 +114,35 @@ def test_le_buste_sotto_cinquanta_euro_non_si_riconciliano():
         "La soglia sul netto e' sparita: senza, un numero di pagina o "
         "un'aliquota letti male dal parser vengono cercati in banca."
     )
+
+
+def test_i_cedolini_usano_il_campo_pagato_non_pagata():
+    """Il campo femminile su `cedolini` non esiste: filtro e scrittura a vuoto.
+
+    Misurato in produzione il 19/09/2026: 3.256 documenti, 3.256 con `pagato`,
+    zero con `pagata`. Con la chiave sbagliata il filtro `{"pagata": {"$ne":
+    True}}` passa sempre e la scrittura finisce su un campo che nessuno legge,
+    quindi ogni giro riconcilia di nuovo gli stessi cedolini.
+    """
+    import inspect
+
+    corpo = inspect.getsource(motore.riconcilia_tutti_cedolini)
+    assert '"pagata"' not in corpo, (
+        "riconcilia_tutti_cedolini usa ancora `pagata` su una collezione che "
+        "scrive `pagato`."
+    )
+    assert '{"pagato": {"$ne": True}' in corpo
+    assert '"pagato": True' in corpo
+
+
+def test_audit_relazioni_cerca_i_cedolini_pagati_con_la_chiave_giusta():
+    import inspect
+
+    from app.services import entity_relations_audit
+
+    corpo = inspect.getsource(entity_relations_audit)
+    assert '{"pagata": True, "movimento_bancario_id"' not in corpo, (
+        "L'audit delle relazioni cerca `pagata` sui cedolini: la query torna "
+        "sempre vuota e la prova bancaria del cedolino non viene mai "
+        "verificata."
+    )

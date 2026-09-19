@@ -303,8 +303,16 @@ async def riconcilia_tutti_cedolini(db, anno: int = None, mese: int = None) -> d
     importati da email non venivano MAI confrontati con l'estratto conto:
     "pagato" restava undefined a tempo indeterminato. Vedi
     memoria/moduli/CEDOLINI.md e memoria/moduli/PRIMA_NOTA_BANCA.md.
+
+    Il campo e' `pagato`, non `pagata`: lo scrive `salari_unificati_v2` alla
+    creazione del cedolino e lo leggono i riepiloghi. Fino al 19/09/2026 qui
+    c'era `pagata`, che su `cedolini` non esiste (misurato: 3.256 documenti,
+    3.256 con `pagato`, zero con `pagata`) — il filtro passava sempre e la
+    scrittura finiva su un campo che nessuno legge, quindi ogni giro avrebbe
+    riconciliato di nuovo gli stessi cedolini. Il difetto non e' mai arrivato
+    in produzione perche' questa funzione non ha chiamanti.
     """
-    query = {"pagata": {"$ne": True}, "netto": {"$gt": 0}}
+    query = {"pagato": {"$ne": True}, "netto": {"$gt": 0}}
     if anno:
         query["anno"] = anno
     if mese:
@@ -357,7 +365,7 @@ async def riconcilia_tutti_cedolini(db, anno: int = None, mese: int = None) -> d
             await db.cedolini.update_one(
                 {"id": cedolino_id},
                 {"$set": {
-                    "pagata": True,
+                    "pagato": True,
                     "data_pagamento": now_iso,
                     "movimento_bancario_id": mov_id,
                     "movimento_collection": collection,
