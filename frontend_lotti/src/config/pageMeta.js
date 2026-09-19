@@ -25,6 +25,7 @@ export const PAGE_META = {
   storico_produzioni: { sub: "Produzioni registrate", colore: SAGE, icona: "📦" },
   fatture: { sub: "Fatture XML e prodotti acquistati", colore: SAGE, icona: "🧾" },
   materie: { sub: "Materie prime e giacenze", colore: SAGE, icona: "🌾" },
+  in_menu: { sub: "I prodotti che i clienti vedono nel Menu digitale: foto, descrizione, prezzo al tavolo e allergeni", colore: SAGE },
   prodotti: { sub: "Listini, cataloghi fornitori, prezzi banco e magazzino", colore: SAGE, icona: "📚" },
   magazzino_prodotti: { sub: "Giacenze di magazzino", colore: SAGE, icona: "📦" },
   movimenti_magazzino: { sub: "Prelievi, movimenti e rifornimenti", colore: SAGE, icona: "🔁" },

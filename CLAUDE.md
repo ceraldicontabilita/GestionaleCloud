@@ -602,6 +602,13 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - Accessi: PIN valido 2 ore; i dipendenti entrano ovunque tranne le pagine di
   amministrazione. Sui tablet condivisi il magazzino chiude la sessione dopo
   10 minuti.
+- La pagina **«In menu»** (`#in_menu`, `MenuVetrinaView`) è la vetrina di ciò
+  che i clienti vedono nel Menu digitale: foto, descrizione breve, prezzo al
+  tavolo e al banco, categoria e allergeni evidenziati, con in chiaro le
+  ricette da sistemare. Il calcolo di prezzo esposto e categoria di
+  destinazione sta in `frontend_lotti/src/utils/menuVetrina.js` ed è il gemello
+  di `menu_bridge.prezzo_per_menu` / `_destinazione_menu`: se cambia una,
+  cambiano entrambe.
 
 ### Menu — allergeni
 
