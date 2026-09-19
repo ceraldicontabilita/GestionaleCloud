@@ -92,16 +92,46 @@ ESITO_HR_NON_CONFIGURATO = "hr_non_configurato"
 _CF_RE = re.compile(r"\b([A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z])\b", re.I)
 # Pagamenti a un dipendente che NON sono lo stipendio del mese: non entrano
 # in pagamenti_esiti e non vanno nemmeno in coda.
-_ESCLUSIONE_RE = re.compile(
+#
+# Divisa in due gruppi (audit 19/09/2026 su PR #500): un'esclusione "dura"
+# (preesistente a #500) che vince SEMPRE, anche con una parola di stipendio
+# esplicita in causale, e una "morbida" (aggiunta da #500 contro l'omonimo
+# pagato per un'altra cosa) che invece si arrende quando la causale dice
+# esplicitamente "e' uno stipendio" (_SEGNALE_STIPENDIO_RE) — altrimenti una
+# causale come "VESPA VINCENZO ACCONTO STIPENDIO MARZO 2026 + RIMBORSO KM"
+# sparirebbe del tutto solo perche' contiene anche "rimborso".
+_ESCLUSIONE_DURA_RE = re.compile(
     r"\bTFR\b|fattur|\bFPR\b|\bFT\b\s*\d|prestit|finanziament|COMM\.?\s*SU|"
-    r"rimbors|\bnota\s+spese|fornitor|"
+    r"\bnota\s+spese",
+    re.I,
+)
+_ESCLUSIONE_MORBIDA_RE = re.compile(
     # Audit 19/09/2026 su PR #500: un omonimo di un dipendente puo' comparire
     # come beneficiario di un pagamento che non e' affatto uno stipendio —
     # un fornitore individuale/professionista (niente SRL/SPA da riconoscere)
     # o un pagamento occasionale. Queste parole non compaiono mai in una vera
-    # causale di stipendio, quindi escludono senza creare falsi negativi.
-    r"per\s+conto\s+di|consulenz|occasional|ritenut|caparra|ristrutturazion|"
-    r"\blavori\b",
+    # causale di stipendio, quindi escludono senza creare falsi negativi —
+    # a meno che la causale non dica esplicitamente "stipendio"/"acconto"/...
+    r"rimbors|fornitor|per\s+conto\s+di|consulenz|occasional|ritenut|"
+    r"caparra|ristrutturazion|\blavori\b",
+    re.I,
+)
+_ESCLUSIONE_RE = re.compile(
+    _ESCLUSIONE_DURA_RE.pattern + "|" + _ESCLUSIONE_MORBIDA_RE.pattern, re.I
+)
+# Parole che, esplicite in causale, dicono chiaramente "e' uno stipendio":
+# prevalgono sull'esclusione morbida (mai su quella dura). Ricostruita dalla
+# vecchia _STIPENDIO_RE (rimossa da PR #500), senza "saldo", "paga" e
+# "acconto" da soli: troppo generiche, comparirebbero anche in causali che
+# stipendi non sono ("saldo fattura", "carta paga bancomat", "ACCONTO LAVORI
+# RISTRUTTURAZIONE LOCALE" — quest'ultimo e' proprio uno dei casi che
+# l'esclusione morbida deve continuare a fermare, vedi
+# test_omonimo_pagato_per_conto_terzi_o_come_professionista_non_entra) e
+# farebbero vincere la parola sbagliata. Il caso dell'audit ("ACCONTO
+# STIPENDIO MARZO 2026 + RIMBORSO KM") contiene comunque "STIPENDIO" per
+# esteso, quindi resta coperto.
+_SEGNALE_STIPENDIO_RE = re.compile(
+    r"stipendi|salari|tredicesim|quattordicesim|mensilit|retribuz",
     re.I,
 )
 _RIF_BANCA_RE = re.compile(r"RIF\.?\s*([A-Z0-9]+(?:/[0-9]+)?)", re.I)
@@ -213,12 +243,19 @@ def risolvi_dipendente(indici: Dict[str, Any], testo: str) -> Tuple[Optional[Dic
 
 
 def e_pagamento_non_stipendio(testo: str) -> bool:
-    """TFR, fatture, commissioni, mutui/fornitori/tasse: mai in HR."""
-    if _ESCLUSIONE_RE.search(testo or ""):
+    """TFR, fatture, commissioni, mutui/fornitori/tasse: mai in HR.
+
+    L'esclusione "dura" vince sempre. Quella "morbida" (rimborsi, consulenze,
+    lavori occasionali...) non esclude quando la causale contiene
+    esplicitamente una parola di stipendio (vedi _SEGNALE_STIPENDIO_RE)."""
+    testo = testo or ""
+    if _ESCLUSIONE_DURA_RE.search(testo):
+        return True
+    if _ESCLUSIONE_MORBIDA_RE.search(testo) and not _SEGNALE_STIPENDIO_RE.search(testo):
         return True
     from app.hr.routers.dipendenti_cloud import _e_movimento_non_stipendio
 
-    return _e_movimento_non_stipendio(testo or "")
+    return _e_movimento_non_stipendio(testo)
 
 
 def _periodo(mese: Any, anno: Any) -> Optional[Tuple[int, int]]:
@@ -695,35 +732,67 @@ async def deposita_pagamenti_in_hr(db, *, dry_run: bool = False, limit: int = 20
             report["dettaglio"].append({"sezione": sezione, "id": doc_id, **extra,
                                         **{k: v for k, v in marca.items() if k != "at"}})
 
-    transfers = await db["bonifici_transfers"].find(
-        {CAMPO_MARCATORE: {"$exists": False}}, {"_id": 0, "pdf_data": 0}
-    ).to_list(limit)
-    for transfer in transfers:
+    async def _deposita_transfer(transfer: Dict[str, Any], sezione: str) -> Dict[str, Any]:
         try:
             marca = await deposita_bonifico_transfer_in_hr(db, transfer, ctx=ctx, dry_run=dry_run)
         except Exception as exc:  # un documento rotto non ferma il giro
             logger.warning("[HR deposito pagamenti] bonifico %s: %s", transfer.get("id"), exc)
             marca = _marcatore("errore", motivo=str(exc)[:200])
-        _registra("bonifici_pdf", transfer.get("id"), marca, {
+        _registra(sezione, transfer.get("id"), marca, {
             "data": _data_iso(transfer.get("data")), "importo": _importo(transfer.get("importo")),
             "testo": _testo_transfer(transfer)[:120],
         })
+        return marca
+
+    transfers = await db["bonifici_transfers"].find(
+        {CAMPO_MARCATORE: {"$exists": False}}, {"_id": 0, "pdf_data": 0}
+    ).to_list(limit)
+    for transfer in transfers:
+        await _deposita_transfer(transfer, "bonifici_pdf")
+
+    # Riesame PDF: prima del 19/09/2026 un documento gia' marcato "in coda"
+    # non veniva mai ripassato (a differenza delle righe banca, che almeno un
+    # riesame parziale ce l'avevano). Stesso principio di sotto: si prova
+    # SOLO in anteprima (nessuna scrittura) e si tocca la coda solo se il
+    # deposito risulta davvero possibile.
+    transfers_riesame = await db["bonifici_transfers"].find(
+        {f"{CAMPO_MARCATORE}.esito": ESITO_IN_CODA}, {"_id": 0, "pdf_data": 0}
+    ).to_list(limit)
+    report["bonifici_pdf_riesame"] = {}
+    for transfer in transfers_riesame:
+        # Il dedup per hash (righe banca non ce l'hanno, ma i PDF si') non
+        # deve scambiare il documento per un duplicato di se stesso: la sua
+        # riga in coda contribuisce gia' a ``ctx.hash_in_coda``.
+        hash_pdf = transfer.get("document_hash")
+        era_in_coda = bool(hash_pdf) and hash_pdf in ctx.hash_in_coda
+        if hash_pdf:
+            ctx.hash_in_coda.discard(hash_pdf)
+        anteprima = await deposita_bonifico_transfer_in_hr(db, transfer, ctx=ctx, dry_run=True)
+        if anteprima["esito"] not in (ESITO_DEPOSITATO, ESITO_ARRICCHITO):
+            if era_in_coda:
+                ctx.hash_in_coda.add(hash_pdf)
+            continue
+        if not dry_run:
+            await ctx.db.bonifici_da_associare.update_one(
+                {"gestionale_transfer_id": transfer.get("id"), "stato": "da_associare"},
+                {"$set": {"stato": "ritirato", "ritirato_il": _now_iso(),
+                          "ritirato_motivo": "riesame: nome univoco basta da solo"}})
+        await _deposita_transfer(transfer, "bonifici_pdf_riesame")
 
     movimenti = await db["estratto_conto_movimenti"].find(
         {CAMPO_MARCATORE: {"$exists": False}}, {"_id": 0}
     ).to_list(limit)
-    # Riesame: righe gia' messe in coda solo perche' senza la parola
-    # "stipendio". Le righe di un lotto paghe possono arrivare in giri diversi
-    # (e la regola del lotto e' nata dopo il primo giro reale del 14/09/2026):
-    # se ora il giorno risulta un lotto, la riga esce dalla coda HR ed entra
-    # nei pagamenti come le altre.
+    # Riesame banca: TUTTE le righe gia' in coda, qualunque sia il motivo
+    # (non solo quelle di un giorno di lotto). Dal 19/09/2026 il nome
+    # univoco basta da solo (vedi ``_deposita``): una riga rimasta in coda
+    # per un motivo nato prima di quella regola (o per un giorno che allora
+    # non era un lotto) puo' risolversi anche senza lotto paghe.
     riesame = await db["estratto_conto_movimenti"].find(
-        {f"{CAMPO_MARCATORE}.esito": ESITO_IN_CODA,
-         f"{CAMPO_MARCATORE}.motivo": "senza_segnale_stipendio"}, {"_id": 0}
+        {f"{CAMPO_MARCATORE}.esito": ESITO_IN_CODA}, {"_id": 0}
     ).to_list(limit)
     lotti = date_lotti_paghe(ctx, movimenti + riesame)
 
-    async def _deposita_movimento(mov: Dict[str, Any], sezione: str) -> None:
+    async def _deposita_movimento(mov: Dict[str, Any], sezione: str) -> Dict[str, Any]:
         try:
             segnale = "lotto_paghe" if _data_iso(mov.get("data")) in lotti else None
             marca = await deposita_movimento_banca_in_hr(db, mov, ctx=ctx, dry_run=dry_run,
@@ -735,19 +804,28 @@ async def deposita_pagamenti_in_hr(db, *, dry_run: bool = False, limit: int = 20
             "data": _data_iso(mov.get("data")), "importo": _importo(mov.get("importo")),
             "testo": str(mov.get("descrizione") or "")[:120],
         })
+        return marca
 
     for mov in movimenti:
         await _deposita_movimento(mov, "estratto_conto")
 
     report["estratto_conto_riesame"] = {}
     for mov in riesame:
-        if _data_iso(mov.get("data")) not in lotti:
+        # Le righe banca non hanno ``hash_pdf`` (sempre ``None``): il dedup
+        # per hash non le protegge, quindi si prova prima in anteprima e si
+        # tocca la coda SOLO se il nuovo deposito riesce davvero — altrimenti
+        # la riga resta com'era, senza generare una seconda riga di coda per
+        # lo stesso movimento.
+        segnale = "lotto_paghe" if _data_iso(mov.get("data")) in lotti else None
+        anteprima = await deposita_movimento_banca_in_hr(db, mov, ctx=ctx, dry_run=True,
+                                                         segnale_esplicito=segnale)
+        if anteprima["esito"] not in (ESITO_DEPOSITATO, ESITO_ARRICCHITO):
             continue
         if not dry_run:
             await ctx.db.bonifici_da_associare.update_one(
                 {"gestionale_movimento_id": mov.get("id"), "stato": "da_associare"},
                 {"$set": {"stato": "ritirato", "ritirato_il": _now_iso(),
-                          "ritirato_motivo": "lotto_paghe: entrato nei pagamenti"}})
+                          "ritirato_motivo": "riesame: nome univoco basta da solo"}})
         await _deposita_movimento(mov, "estratto_conto_riesame")
 
     # Riesame 2: "FAVORE BENEFICIARI VARI/DIVERSI" (addebito cumulativo senza
@@ -780,6 +858,6 @@ async def deposita_pagamenti_in_hr(db, *, dry_run: bool = False, limit: int = 20
                     pass
         await _deposita_movimento(mov, "estratto_conto_riesame")
 
-    report["letti"] = {"bonifici_pdf": len(transfers), "estratto_conto": len(movimenti),
-                       "estratto_conto_riesame": len(riesame)}
+    report["letti"] = {"bonifici_pdf": len(transfers), "bonifici_pdf_riesame": len(transfers_riesame),
+                       "estratto_conto": len(movimenti), "estratto_conto_riesame": len(riesame)}
     return report

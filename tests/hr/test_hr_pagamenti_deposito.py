@@ -211,6 +211,35 @@ def test_omonimo_pagato_per_conto_terzi_o_come_professionista_non_entra(basi):
     assert _run(hr.bonifici_da_associare.count_documents({})) == 0
 
 
+def test_stipendio_esplicito_vince_sull_esclusione_morbida_di_rimborso(basi):
+    """Audit 19/09/2026: l'esclusione morbida "rimbors" (introdotta da #500)
+    oscurava del tutto uno stipendio vero quando la causale citava anche un
+    rimborso ("VESPA VINCENZO ACCONTO STIPENDIO MARZO 2026 + RIMBORSO KM").
+    La parola esplicita "stipendio" deve prevalere e farlo depositare."""
+    db, hr = basi
+    marca = _run(ponte.deposita_bonifico_transfer_in_hr(
+        db, _transfer(causale="VESPA VINCENZO ACCONTO STIPENDIO MARZO 2026 + RIMBORSO KM",
+                     source_path=None)))
+    assert marca["esito"] == "depositato"
+    assert marca["dipendente_id"] == "dip-vespa"
+    esito = _run(hr.pagamenti_esiti.find_one({"dipendente_id": "dip-vespa"}, {"_id": 0}))
+    assert esito["importo"] == 1000.0
+    # le esclusioni "dure" restano assolute anche con la parola stipendio
+    # dentro: TFR, fattura, prestito/finanziamento, COMM.SU, nota spese.
+    dure = [
+        "VESPA VINCENZO STIPENDIO + TFR MARZO 2026",
+        "VESPA VINCENZO STIPENDIO FATTURA 12/2026",
+        "VESPA VINCENZO STIPENDIO PRESTITO DIPENDENTE",
+        "VESPA VINCENZO STIPENDIO COMM.SU BONIFICO",
+        "VESPA VINCENZO STIPENDIO NOTA SPESE MARZO",
+    ]
+    for causale in dure:
+        marca = _run(ponte.deposita_bonifico_transfer_in_hr(
+            db, _transfer(id=f"tr-{hash(causale)}", document_hash=None,
+                         causale=causale, source_path=None)))
+        assert marca["esito"] == "non_stipendio", f"esclusione dura bypassata: {causale!r}"
+
+
 def test_transfer_storico_recupera_il_fascicolo_da_import_documenti(basi):
     db, hr = basi
     transfer = _transfer(source_path=None)
@@ -336,12 +365,14 @@ def test_giro_riprende_solo_i_documenti_senza_marcatore_ed_e_idempotente(basi):
     vero = _run(ponte.deposita_pagamenti_in_hr(db))
     assert vero["bonifici_pdf"] == {"depositato": 1}
     assert vero["estratto_conto"] == {"depositato": 1, "non_stipendio": 2}
-    assert vero["letti"] == {"bonifici_pdf": 1, "estratto_conto": 3, "estratto_conto_riesame": 0}
+    assert vero["letti"] == {"bonifici_pdf": 1, "bonifici_pdf_riesame": 0,
+                             "estratto_conto": 3, "estratto_conto_riesame": 0}
     assert _run(hr.pagamenti_esiti.count_documents({})) == 2
     assert [d["sezione"] for d in vero["dettaglio"]] == ["bonifici_pdf", "estratto_conto"]
 
     ancora = _run(ponte.deposita_pagamenti_in_hr(db))
-    assert ancora["letti"] == {"bonifici_pdf": 0, "estratto_conto": 0, "estratto_conto_riesame": 0}
+    assert ancora["letti"] == {"bonifici_pdf": 0, "bonifici_pdf_riesame": 0,
+                               "estratto_conto": 0, "estratto_conto_riesame": 0}
     assert _run(hr.pagamenti_esiti.count_documents({})) == 2
 
 
@@ -407,10 +438,11 @@ def test_lotto_paghe_stesso_giorno_entra_senza_parola_stipendio(basi):
     assert _run(hr.bonifici_da_associare.count_documents({"stato": "da_associare"})) == 1
 
 
-def test_riesame_righe_in_coda_che_ora_formano_un_lotto_paghe(basi):
+def test_riesame_righe_in_coda_si_risolvono_col_solo_nome_anche_senza_lotto(basi):
     """Primo giro reale (14/09/2026): 73 righe 'FAVORE X - ADD.TOT' in coda.
-    Col giro successivo, se il giorno e' un lotto, escono dalla coda HR ed
-    entrano nei pagamenti."""
+    Dal 19/09/2026 il riesame non e' piu' ancorato al lotto paghe: il nome
+    univoco basta da solo (decisione del titolare), quindi anche la riga
+    fuori lotto (r-4, un solo dipendente quel giorno) esce dalla coda."""
     db, hr = basi
     _run(hr.dipendenti.insert_one({"id": "dip-lesina", "nome": "Angela", "cognome": "Lesina",
                                    "nome_completo": "Lesina Angela", "codice_fiscale": "LSNNGL92E45F839Q"}))
@@ -423,7 +455,8 @@ def test_riesame_righe_in_coda_che_ora_formano_un_lotto_paghe(basi):
         # la terza riga del lotto arriva solo ora (senza marcatore)
         _movimento(id="r-3", data="2026-02-03", importo=-1000,
                    descrizione="VS.DISP. RIF. MB0B10283457/90367437 FAVORE LESINA ANGELA - ADD.TOT"),
-        # in coda, ma giorno con un solo dipendente: resta in coda
+        # in coda, giorno con un solo dipendente: si risolve comunque, il
+        # nome "Taiano Luigi" e' univoco e non serve piu' il lotto paghe
         _movimento(id="r-4", data="2026-02-13", importo=-800, hr_deposito=dict(marca_vecchia, coda_id="q-4"),
                    descrizione="VS.DISP. RIF. MB0B16277669/90292976 FAVORE TAIANO LUIGI - ADD.TOT"),
     ]
@@ -437,16 +470,73 @@ def test_riesame_righe_in_coda_che_ora_formano_un_lotto_paghe(basi):
     report = _run(ponte.deposita_pagamenti_in_hr(db))
 
     assert report["estratto_conto"] == {"depositato": 1}
-    assert report["estratto_conto_riesame"] == {"depositato": 2}
+    assert report["estratto_conto_riesame"] == {"depositato": 3}
     assert report["letti"]["estratto_conto_riesame"] == 3
     stati = {q["id"]: q["stato"] for q in _run(hr.bonifici_da_associare.find({}, {"_id": 0}).to_list(None))}
-    assert stati == {"q-1": "ritirato", "q-2": "ritirato", "q-4": "da_associare"}
-    assert _run(hr.pagamenti_esiti.count_documents({"origine": ponte.ORIGINE_BANCA})) == 3
+    assert stati == {"q-1": "ritirato", "q-2": "ritirato", "q-4": "ritirato"}
+    assert _run(hr.pagamenti_esiti.count_documents({"origine": ponte.ORIGINE_BANCA})) == 4
     r4 = _run(db.estratto_conto_movimenti.find_one({"id": "r-4"}, {"_id": 0}))
-    assert r4["hr_deposito"]["esito"] == "in_coda"
+    assert r4["hr_deposito"]["esito"] == "depositato"
+    assert r4["hr_deposito"].get("segnale") is None
     # secondo giro: niente da rifare
     ancora = _run(ponte.deposita_pagamenti_in_hr(db))
     assert ancora["estratto_conto_riesame"] == {} and ancora["letti"]["estratto_conto"] == 0
+
+
+def test_riesame_riga_gia_in_coda_prima_del_fix_si_deposita_col_solo_nome(basi):
+    """Scenario esatto del bug (audit 19/09/2026): un bonifico con nome
+    univoco, in un giorno che NON e' un lotto paghe, gia' marcato "in coda"
+    da un giro precedente al fix. Prima del fix restava li' per sempre
+    (filtro ancorato al lotto); dopo il fix il riesame lo ripassa e basta il
+    nome per depositarlo."""
+    db, hr = basi
+    mov = _movimento(id="r-solo", data="2026-05-11", importo=-950,
+                     hr_deposito={"esito": "in_coda", "motivo": "senza_segnale_stipendio",
+                                  "coda_id": "q-solo", "at": "vecchio"},
+                     descrizione="VS.DISP. RIF. MB0B99998888/90111222 FAVORE TAIANO LUIGI - ADD.TOT")
+    _run(db.estratto_conto_movimenti.insert_one(mov))
+    _run(hr.bonifici_da_associare.insert_one(
+        {"id": "q-solo", "stato": "da_associare", "gestionale_movimento_id": "r-solo", "importo": 950}))
+
+    report = _run(ponte.deposita_pagamenti_in_hr(db))
+
+    assert report["estratto_conto"] == {}
+    assert report["estratto_conto_riesame"] == {"depositato": 1}
+    marca = _run(db.estratto_conto_movimenti.find_one({"id": "r-solo"}, {"_id": 0}))["hr_deposito"]
+    assert marca["esito"] == "depositato" and marca["dipendente_id"] == "dip-taiano"
+    coda = _run(hr.bonifici_da_associare.find_one({"id": "q-solo"}, {"_id": 0}))
+    assert coda["stato"] == "ritirato"
+    esito = _run(hr.pagamenti_esiti.find_one({"dipendente_id": "dip-taiano"}, {"_id": 0}))
+    assert esito["importo"] == 950.0
+
+
+def test_riesame_bonifico_pdf_gia_in_coda_si_deposita_col_solo_nome(basi):
+    """Stesso principio per i PDF di ``bonifici_transfers``, che oggi non
+    hanno mai avuto un riesame: un documento gia' marcato "in coda" resta
+    in coda per sempre. Il nome univoco basta anche qui."""
+    db, hr = basi
+    transfer = _transfer(id="tr-coda", document_hash="c" * 64,
+                         hr_deposito={"esito": "in_coda", "motivo": "ambiguo",
+                                      "coda_id": "q-pdf", "at": "vecchio"})
+    _run(db.bonifici_transfers.insert_one(transfer))
+    _run(hr.bonifici_da_associare.insert_one(
+        {"id": "q-pdf", "stato": "da_associare", "hash": "c" * 64,
+         "gestionale_transfer_id": "tr-coda", "importo": 1000}))
+
+    report = _run(ponte.deposita_pagamenti_in_hr(db))
+
+    assert report["bonifici_pdf"] == {}
+    assert report["bonifici_pdf_riesame"] == {"depositato": 1}
+    assert report["letti"]["bonifici_pdf_riesame"] == 1
+    marca = _run(db.bonifici_transfers.find_one({"id": "tr-coda"}, {"_id": 0}))["hr_deposito"]
+    assert marca["esito"] == "depositato" and marca["dipendente_id"] == "dip-vespa"
+    coda = _run(hr.bonifici_da_associare.find_one({"id": "q-pdf"}, {"_id": 0}))
+    assert coda["stato"] == "ritirato"
+    esito = _run(hr.pagamenti_esiti.find_one({"dipendente_id": "dip-vespa"}, {"_id": 0}))
+    assert esito["hash"] == "c" * 64
+    # secondo giro: idempotente, niente da rifare
+    ancora = _run(ponte.deposita_pagamenti_in_hr(db))
+    assert ancora["bonifici_pdf_riesame"] == {} and ancora["letti"]["bonifici_pdf"] == 0
 
 
 def test_riesame_beneficiari_vari_toglie_l_esito_sbagliato_e_mette_in_coda(basi):

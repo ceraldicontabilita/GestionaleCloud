@@ -130,9 +130,11 @@ async def _migra_riferimenti(db, from_id: str, to_id: str, from_cf: str, to_cf: 
     stats = {
         "cedolini_migrati": 0,
         "cedolini_skippati_duplicati": 0,
+        "bonifici_cedolino_ripuntati": 0,
         "presenze_migrate": 0,
         "giustificativi_migrati": 0,
         "verbali_migrati": 0,
+        "estratto_conto_movimenti_migrati": 0,
         "bonifici_migrati": 0,
     }
 
@@ -145,13 +147,22 @@ async def _migra_riferimenti(db, from_id: str, to_id: str, from_cf: str, to_cf: 
     for ced in cedolini_from:
         anno = ced.get("anno")
         mese = ced.get("mese")
-        exists = await db["cedolini"].find_one({
+        esistente = await db["cedolini"].find_one({
             "dipendente_id": to_id,
             "anno": anno,
             "mese": mese,
-        }, {"_id": 1})
-        if exists and ced.get("id"):
-            # Duplicato: elimina quello del record from (è ridondante)
+        }, {"_id": 0, "id": 1})
+        if esistente and ced.get("id"):
+            # Duplicato: quello del target sopravvive, questo e' ridondante.
+            # Prima di cancellarlo si ripunta chi lo referenzia — audit
+            # 19/09/2026: un bonifico con `cedolino_id` sul cedolino
+            # cancellato restava orfano.
+            id_sopravvissuto = esistente.get("id")
+            if id_sopravvissuto and id_sopravvissuto != ced["id"]:
+                res_bon = await db["bonifici"].update_many(
+                    {"cedolino_id": ced["id"]}, {"$set": {"cedolino_id": id_sopravvissuto}}
+                )
+                stats["bonifici_cedolino_ripuntati"] += res_bon.modified_count
             await db["cedolini"].delete_one({"id": ced["id"]})
             stats["cedolini_skippati_duplicati"] += 1
         else:
@@ -185,9 +196,19 @@ async def _migra_riferimenti(db, from_id: str, to_id: str, from_cf: str, to_cf: 
         )
         stats["verbali_migrati"] = res.modified_count
 
-    # ── Bonifici stipendio / movimenti
+    # ── Movimenti di estratto conto (rinominata da "bonifici_migrati": contava
+    # in realta' queste righe, non la tabella `bonifici` — audit 19/09/2026)
     if "estratto_conto_movimenti" in await db.list_collection_names():
         res = await db["estratto_conto_movimenti"].update_many(
+            {"dipendente_id": from_id},
+            {"$set": {"dipendente_id": to_id}}
+        )
+        stats["estratto_conto_movimenti_migrati"] = res.modified_count
+
+    # ── Bonifici veri e propri (tabella `bonifici`, mai migrata prima —
+    # audit 19/09/2026): stesso pattern, campo `dipendente_id`.
+    if "bonifici" in await db.list_collection_names():
+        res = await db["bonifici"].update_many(
             {"dipendente_id": from_id},
             {"$set": {"dipendente_id": to_id}}
         )

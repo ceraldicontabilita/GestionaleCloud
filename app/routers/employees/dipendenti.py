@@ -123,55 +123,17 @@ async def get_dipendenti_stats() -> Dict[str, Any]:
     }
 
 
-# ─── Deduplica dipendenti ────────────────────────────────────────────────────
-
-@router.get("/duplicati")
-@handle_errors
-async def lista_duplicati_dipendenti() -> Dict[str, Any]:
-    """
-    Analizza l'anagrafica e ritorna gruppi di sospetti duplicati.
-    Si basa su CF normalizzato e su nome+cognome normalizzati.
-    """
-    from app.services.dipendenti_dedupe import trova_duplicati
-    return await trova_duplicati()
-
-
-@router.post("/duplicati/merge")
-@handle_errors
-async def merge_duplicato_dipendente(
-    payload: Dict[str, Any] = Body(...)
-) -> Dict[str, Any]:
-    """
-    Unifica `duplicate_id` dentro `target_id`. Re-point di tutti i cedolini,
-    presenze, verbali, movimenti. I cedolini duplicati (stesso anno+mese)
-    vengono scartati. Soft delete di default (il duplicato resta come
-    `merged_into` al target e `in_carico=False`).
-    """
-    from app.services.dipendenti_dedupe import merge_dipendenti
-    target_id = payload.get("target_id")
-    duplicate_id = payload.get("duplicate_id")
-    soft = payload.get("soft", True)
-    if not target_id or not duplicate_id:
-        raise HTTPException(status_code=400, detail="target_id e duplicate_id richiesti")
-    try:
-        return await merge_dipendenti(target_id, duplicate_id, soft=soft)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@router.post("/duplicati/auto-merge")
-@handle_errors
-async def auto_merge_duplicati(
-    payload: Dict[str, Any] = Body(default={})
-) -> Dict[str, Any]:
-    """
-    Auto-merge di tutti i duplicati ad alta certezza.
-    Default dry_run=True: ritorna lista dei merge previsti senza eseguirli.
-    Passa `{"dry_run": false}` per eseguire effettivamente i merge.
-    """
-    from app.services.dipendenti_dedupe import auto_merge_tutti
-    dry_run = bool(payload.get("dry_run", True))
-    return await auto_merge_tutti(dry_run=dry_run)
+# La deduplica/merge dipendenti (era qui come app/services/dipendenti_dedupe.py)
+# e' stata rimossa il 19/09/2026 (audit): duplicava quasi byte per byte
+# app/hr/services/dipendenti_dedupe.py, che e' l'unico dei due a operare
+# sull'anagrafica canonica (hr.app_dipendenti — "L'anagrafica HR comanda",
+# vedi CLAUDE.md) tramite gli endpoint reali dell'app HR
+# (GET /dipendenti/duplicati, POST /dipendenti/duplicati/merge|auto-merge).
+# Questo router ERP serve solo anagrafica in lettura per flussi NON-HR del
+# gestionale (verbali noleggio, inserimento rapido, portale, vedi commento in
+# app/router_registry.py): un secondo merge, qui, operava su una copia
+# dell'anagrafica non canonica — un doppione da eliminare, non un secondo
+# flusso reale.
 
 
 @router.get("/report-ferie-permessi-tutti")
