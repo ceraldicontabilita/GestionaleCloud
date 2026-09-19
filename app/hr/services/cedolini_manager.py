@@ -228,24 +228,15 @@ async def processa_cedolino_completo(
         
         result["success"] = True
 
-        # ── EVENTO: pubblica sul Bus per TFR e notifiche automatiche ──
-        try:
-            from app.hr.core.event_bus import bus
-            await bus.publish("cedolino.importato", payload={
-                "cedolino_id":    movimento_id,
-                "dipendente_id":  dipendente_id,
-                "nome_dipendente": nome,
-                "codice_fiscale": cedolino_data.get("codice_fiscale", ""),
-                "mese":           mese,
-                "anno":           anno,
-                "netto":          netto,
-                "lordo":          cedolino_data.get("lordo", 0),
-                "tfr_quota_mese": cedolino_data.get("tfr_quota_mese", 0),
-            }, db=db, save_to_db=False)
-        except Exception as ev_e:
-            logger.debug(f"[CedoliniManager] Event Bus legacy: {ev_e}")
+        # Qui c'era un SECONDO publish dello stesso fatto su
+        # `app/hr/core/event_bus.py`, commentato «per TFR e notifiche
+        # automatiche». Quel bus non aveva un solo handler registrato in tutto
+        # il repository: il publish finiva nel nulla, e il commento era falso.
+        # Il TFR lo accantona `app/handlers/tfr.py::handler_aggiorna_tfr`, che
+        # e' registrato sul bus unico e funziona (1.175 accantonamenti in
+        # produzione). Un fatto si pubblica una volta sola.
 
-        # ── NUOVO EVENT BUS RELAZIONALE (partita aperta + alert) ──
+        # ── EVENT BUS (partita aperta + alert) ──
         # Canale D: pipeline email_monitor_service / post_download_pipeline.
         # Prima mancava del tutto: cedolini arrivati via email automatica non
         # generavano partite stipendio nel sistema relazionale.
