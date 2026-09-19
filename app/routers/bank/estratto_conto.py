@@ -23,6 +23,7 @@ from app.routers.prima_nota_module.common import (
 from app.routers.prima_nota_module.sync import costruisci_campi_movimento_fattura
 from app.services.scritture_contabili import scrivi_movimento
 from app.services.bank_evidence import EVIDENZA_UFFICIALE, campi_evidenza
+from app.services.categorizzazione_movimenti import categorizza_movimento_bancario
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -52,6 +53,33 @@ def _occorrenza_gia_importata(
     """Deduplica un reimport preservando due righe bancarie identiche reali."""
     incoming_occurrences[key] += 1
     return existing_counts[key] >= incoming_occurrences[key]
+
+
+def _categoria_import_con_fallback(
+    categoria_csv: Optional[str], descrizione: Optional[str], importo: float,
+) -> Dict[str, Any]:
+    """Categoria da scrivere sul movimento in import: quella del CSV bancario
+    se presente (non si sovrascrive mai una fonte piu' autorevole), altrimenti
+    il motore unico di categorizzazione (`app.services.categorizzazione_movimenti`)
+    quando il riconoscimento e' certo. Nessuna associazione per solo importo.
+
+    Ritorna i campi extra da aggiungere al record (vuoto se non si e'
+    categorizzato nulla in automatico).
+    """
+    categoria_pulita = (categoria_csv or "").strip()
+    if categoria_pulita:
+        return {"categoria": categoria_pulita}
+    esito = categorizza_movimento_bancario(descrizione, importo)
+    if not esito.categoria:
+        return {"categoria": ""}
+    campi: Dict[str, Any] = {
+        "categoria": esito.categoria,
+        "categoria_auto": True,
+        "categoria_auto_motivo": esito.motivo,
+    }
+    if esito.codice_tributo:
+        campi["categoria_codice_tributo"] = esito.codice_tributo
+    return campi
 
 
 def estrai_numero_fattura(descrizione: str) -> Optional[str]:
@@ -828,7 +856,11 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
         
         fingerprint = operation_key
         mov_id = f"EC-{data_str}-{importo_abs:.2f}-{operation_key[:12]}"
-        
+
+        campi_categoria = _categoria_import_con_fallback(
+            mov.get("categoria"), mov.get("descrizione_originale") or mov.get("descrizione"),
+            mov["importo"],
+        )
         records_to_insert.append({
             "id": mov_id,
             "operation_id": operation_id,
@@ -841,7 +873,7 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
             "importo": importo_abs,
             "numero_fattura": mov.get("numero_fattura"),
             "data_pagamento": mov["data_pagamento"].isoformat() if mov.get("data_pagamento") else None,
-            "categoria": mov.get("categoria", ""),
+            **campi_categoria,
             "descrizione_originale": mov["descrizione_originale"],
             "descrizione": mov.get("descrizione") or mov["descrizione_originale"],
             "banca": mov.get("banca"),
@@ -1590,7 +1622,10 @@ async def force_reimport_estratto_conto(file: UploadFile = File(...), _admin: Di
         )
         fingerprint = operation_key
         mov_id = f"EC-{data_str}-{importo_abs:.2f}-{operation_key[:12]}"
-        
+
+        campi_categoria = _categoria_import_con_fallback(
+            mov.get("categoria"), mov.get("descrizione_originale"), mov["importo"],
+        )
         record = {
             "id": mov_id,
             "operation_id": operation_id,
@@ -1603,7 +1638,7 @@ async def force_reimport_estratto_conto(file: UploadFile = File(...), _admin: Di
             "importo": importo_abs,
             "numero_fattura": mov.get("numero_fattura"),
             "data_pagamento": mov["data_pagamento"].isoformat() if mov.get("data_pagamento") else None,
-            "categoria": mov.get("categoria", ""),
+            **campi_categoria,
             "descrizione_originale": mov["descrizione_originale"],
             "descrizione": mov.get("descrizione_originale"),
             "banca": mov.get("banca"),
@@ -2267,42 +2302,77 @@ async def get_movimenti_stipendi(
 
 @router.post("/ricategorizza-batch")
 @handle_errors
-async def ricategorizza_batch_movimenti() -> Dict[str, Any]:
-    """Ricategorizza automaticamente i movimenti bancari in base a pattern noti."""
+async def ricategorizza_batch_movimenti(
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Alias storico (bottone "Categorizzazione" in BatchProcessor).
+
+    Fino al 19/09/2026 leggeva e scriveva `bank_movements`, una collezione
+    che l'estratto conto non usa mai: zero righe reali venivano toccate,
+    lo confermano `aggiornati` sempre a 0 in produzione. Ora delega al motore
+    unico (`app.services.categorizzazione_movimenti`) sulla collezione vera
+    `estratto_conto_movimenti`, in background come `/backfill-categorie`
+    (stesso stato in `sistema_stato`, stesso `GET .../backfill-categorie/stato`).
+    """
     db = Database.get_db()
+    from app.services.categorizzazione_movimenti import (
+        avvia_backfill_in_background, backfill_in_corso,
+    )
+    if backfill_in_corso():
+        return {"success": True, "status": "running",
+                "message": "Categorizzazione gia' in corso"}
+    avvia_backfill_in_background(db, anno=None)
+    return {"success": True, "status": "started",
+            "message": "Categorizzazione avviata in background su tutti gli anni",
+            "stato_url": "/api/estratto-conto-movimenti/backfill-categorie/stato"}
 
-    PATTERN_CATEGORIE = {
-        "stipend": "stipendi",
-        "salary": "stipendi",
-        "inps": "contributi",
-        "f24": "tributi",
-        "erario": "tributi",
-        "affitto": "affitto",
-        "canone": "affitto",
-        "enel": "utenze",
-        "telecom": "utenze",
-        "vodafone": "utenze",
-        "assicuraz": "assicurazioni",
-    }
 
-    movimenti = await db["bank_movements"].find(
-        {"$or": [{"categoria": None}, {"categoria": ""}, {"categoria": {"$exists": False}}]},
-        {"_id": 0, "id": 1, "descrizione": 1, "causale": 1}
-    ).to_list(5000)
+@router.post("/backfill-categorie")
+@handle_errors
+async def backfill_categorie_movimenti(
+    anno: Optional[int] = Query(2026, description="Anno da categorizzare (omesso = tutti gli anni)"),
+    dry_run: bool = Query(False, description="Solo conteggio, nessuna scrittura"),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Categorizza i movimenti bancari gia' importati che ne sono privi.
 
-    aggiornati = 0
-    for m in movimenti:
-        testo = ((m.get("descrizione") or "") + " " + (m.get("causale") or "")).lower()
-        for pattern, cat in PATTERN_CATEGORIE.items():
-            if pattern in testo:
-                await db["bank_movements"].update_one(
-                    {"id": m["id"]},
-                    {"$set": {"categoria": cat, "auto_categorizzato": True}}
-                )
-                aggiornati += 1
-                break
+    Riconosce SOLO parole chiave/pattern non ambigui (F24, commissioni
+    bancarie, utenze, riferimenti espliciti a fatture) piu' il motore
+    stipendi esistente (nome completo + importo esatto + periodo). Non
+    associa mai per solo importo: un movimento senza pattern certo resta
+    senza categoria, contato fra i "non riconosciuti".
 
-    return {"totale_analizzati": len(movimenti), "aggiornati": aggiornati}
+    `?dry_run=true` restituisce subito i conteggi senza scrivere (il motore
+    stipendi non viene eseguito in dry-run: non ha una modalita' di sola
+    simulazione). Il giro vero parte in background e risponde subito;
+    avanzamento ed esito: `GET .../backfill-categorie/stato`.
+    """
+    from app.services.categorizzazione_movimenti import (
+        avvia_backfill_in_background, backfill_categorie_banca, backfill_in_corso,
+    )
+    db = Database.get_db()
+    if dry_run:
+        return await backfill_categorie_banca(db, anno=anno, dry_run=True)
+    if backfill_in_corso():
+        return {"success": True, "status": "running",
+                "message": "Backfill categorie gia' in corso"}
+    avvia_backfill_in_background(db, anno=anno)
+    return {"success": True, "status": "started",
+            "message": f"Backfill categorie avviato in background (anno={anno or 'tutti'})"}
+
+
+@router.get("/backfill-categorie/stato")
+@handle_errors
+async def stato_backfill_categorie_movimenti(
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Avanzamento ed esito dell'ultimo giro di `POST .../backfill-categorie`."""
+    from app.services.categorizzazione_movimenti import (
+        backfill_in_corso, stato_backfill_categorie_banca,
+    )
+    stato = await stato_backfill_categorie_banca(Database.get_db())
+    stato["in_corso"] = backfill_in_corso()
+    return stato
 
 
 @router.post("/ripara-versamenti-cassa")

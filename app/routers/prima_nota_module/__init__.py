@@ -72,17 +72,26 @@ from .operation_index import (
 
 # Stats e globali
 async def stato_fonti_contabili():
-    """Da quanti giorni ogni fonte non porta piu' documenti.
+    """Da quanti giorni ogni fonte non porta piu' documenti, e quanta banca
+    dell'anno resta senza categoria.
 
     18/09/2026: la pagina mostrava un saldo progressivo su una prima nota
     ferma al 24/08 senza dirlo. Questo endpoint da' alla pagina il dato per
     avvisare invece di far credere che il conto sia a -186.866,90.
+
+    19/09/2026: una fonte ferma e un movimento senza categoria sono due
+    problemi diversi — l'estratto conto puo' arrivare puntuale e i suoi
+    movimenti restare comunque senza causale nota, quindi fuori da Prima
+    Nota Banca. `copertura_categoria_banca` copre il secondo caso.
     """
     from app.database import Database
-    from app.services.fonti_ferme import stato_fonti
+    from app.services.fonti_ferme import copertura_categoria_banca, stato_fonti
 
-    righe = await stato_fonti(Database.get_db())
-    return {"fonti": righe, "ferme": [r for r in righe if r["ferma"]]}
+    db = Database.get_db()
+    righe = await stato_fonti(db)
+    copertura = await copertura_categoria_banca(db)
+    return {"fonti": righe, "ferme": [r for r in righe if r["ferma"]],
+            "copertura_categoria_banca": copertura}
 
 
 router.add_api_route("/anni-disponibili", get_anni_disponibili, methods=["GET"])

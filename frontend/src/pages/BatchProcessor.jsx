@@ -247,8 +247,13 @@ const AUTO_TASKS = [
     icon: BarChart3,
     color: COLORS.purple,
     endpoint: '/api/estratto-conto-movimenti/ricategorizza-batch',
+    statoEndpoint: '/api/estratto-conto-movimenti/backfill-categorie/stato',
     method: 'POST',
-    autoRun: true,
+    // 19/09/2026 (audit): prima di questa data l'endpoint scriveva su una
+    // collezione morta, quindi l'auto-avvio al mount era innocuo. Ora scrive
+    // davvero su estratto_conto_movimenti: niente più avvio silenzioso
+    // all'apertura della pagina, richiede un click esplicito qui sotto.
+    autoRun: false,
   },
 ];
 
@@ -343,6 +348,60 @@ export default function BatchProcessor() {
       }
     },
     [addLog]
+  );
+
+  // Esegui un task escluso dall'auto-avvio (richiede conferma esplicita
+  // dell'utente, es. "Categorizzazione": scrive davvero sui movimenti
+  // bancari reali) e mostra l'esito vero, non solo "completato" — il
+  // POST /backfill-categorie parte in background, il numero reale arriva
+  // da GET .../stato.
+  const eseguiTaskConfermato = useCallback(
+    async task => {
+      if (isRunning) return;
+      const conferma = window.confirm(
+        `Eseguire ora "${task.name}"?\n\n${task.description}\n\nScrive sui dati reali.`
+      );
+      if (!conferma) return;
+
+      setIsRunning(true);
+      setCurrentTask(task.id);
+      await executeTask(task);
+
+      if (task.statoEndpoint) {
+        addLog("⏳ In corso in background, verifico l'esito reale…", 'info');
+        for (let tentativo = 0; tentativo < 15; tentativo++) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          try {
+            const { data: stato } = await api.get(task.statoEndpoint);
+            if (stato?.stato === 'completato') {
+              const risultato = stato.risultato || {};
+              const perCategoria = risultato.per_categoria
+                ? Object.entries(risultato.per_categoria)
+                    .map(([nome, n]) => `${nome}: ${n}`)
+                    .join(', ')
+                : '';
+              addLog(
+                `✓ ${task.name}: ${risultato.aggiornati ?? 0} movimenti categorizzati su ${risultato.movimenti_esaminati ?? '?'} esaminati${perCategoria ? ` (${perCategoria})` : ''}`,
+                'success'
+              );
+              setTaskResults(prev => ({ ...prev, [task.id]: { success: true, data: risultato } }));
+              break;
+            }
+            if (stato?.stato === 'errore') {
+              addLog(`✗ ${task.name}: ${stato.errore || 'errore sconosciuto'}`, 'error');
+              break;
+            }
+          } catch (e) {
+            addLog(`Impossibile leggere lo stato reale: ${e.message}`, 'warning');
+            break;
+          }
+        }
+      }
+
+      setCurrentTask(null);
+      setIsRunning(false);
+    },
+    [isRunning, executeTask, addLog]
   );
 
   // Esegui tutti i task in sequenza
@@ -539,6 +598,28 @@ export default function BatchProcessor() {
                       </div>
                     )}
                   </div>
+
+                  {task.autoRun === false && (
+                    <button
+                      type="button"
+                      onClick={() => eseguiTaskConfermato(task)}
+                      disabled={isRunning}
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 700,
+                        padding: '8px 12px',
+                        minHeight: 36,
+                        borderRadius: 8,
+                        border: `1.5px solid ${task.color}`,
+                        background: '#fff',
+                        color: task.color,
+                        cursor: isRunning ? 'not-allowed' : 'pointer',
+                        marginRight: 8,
+                      }}
+                    >
+                      Esegui ora
+                    </button>
+                  )}
 
                   <div style={styles.taskStatus}>{renderTaskStatus(task.id)}</div>
                 </div>
