@@ -62,9 +62,11 @@ class _Collection:
     def __init__(self, docs):
         self._docs = docs
         self.query_ricevuta = None
+        self.proiezione_ricevuta = {}
 
     def find(self, query, proj=None):
         self.query_ricevuta = query
+        self.proiezione_ricevuta = proj or {}
         return _Cursore([d for d in self._docs if _corrisponde(d, query)])
 
 
@@ -96,6 +98,17 @@ ALTRO_ANNO = {
     "id": "f-2024", "iva": 900.0,
     "data_documento": "2024-07-01",
 }
+# Il caso reale: l'import scrive `invoice_date`, e `data_documento` lo deriva
+# `campi_iva_da_fattura`. Una fattura mai passata dal motore ha quindi SOLO
+# `invoice_date` — in produzione al 19/09/2026 sono 50 fatture attive.
+SOLO_INVOICE_DATE = {
+    "id": "f-inv", "iva": 300.0,
+    "invoice_date": "2026-02-11",
+}
+SOLO_INVOICE_DATE_ALTRO_ANNO = {
+    "id": "f-inv-2024", "iva": 700.0,
+    "invoice_date": "2024-11-30",
+}
 
 
 def test_la_fattura_mai_classificata_entra_nel_riepilogo():
@@ -125,6 +138,37 @@ def test_non_pesca_le_fatture_di_un_altro_anno():
     trovate = {f["id"] for f in _run(mod._fatture_anno(db, 2026))}
 
     assert "f-2024" not in trovate
+
+
+def test_la_fattura_con_la_sola_invoice_date_entra_nel_riepilogo():
+    db = _Db([SOLO_INVOICE_DATE, ATTRIBUITA])
+
+    trovate = {f["id"] for f in _run(mod._fatture_anno(db, 2026))}
+
+    assert "f-inv" in trovate, (
+        "`invoice_date` e' il campo che l'import scrive per primo (860 fatture "
+        "attive su 873 in produzione); `data_documento` lo deriva il motore "
+        "IVA. Guardare le sole date derivate fa sparire proprio le fatture "
+        "che il motore non ha mai toccato — quelle che il riepilogo deve "
+        "segnalare."
+    )
+
+
+def test_invoice_date_non_tira_dentro_un_altro_anno():
+    db = _Db([SOLO_INVOICE_DATE, SOLO_INVOICE_DATE_ALTRO_ANNO])
+
+    trovate = {f["id"] for f in _run(mod._fatture_anno(db, 2026))}
+
+    assert trovate == {"f-inv"}
+
+
+def test_la_proiezione_chiede_invoice_date():
+    """Senza il campo nella proiezione la fattura torna, ma senza data: il
+    riepilogo la mostrerebbe con la colonna vuota."""
+    db = _Db([SOLO_INVOICE_DATE])
+    _run(mod._fatture_anno(db, 2026))
+
+    assert db.coll.proiezione_ricevuta.get("invoice_date") == 1
 
 
 @pytest.mark.parametrize("stato", [None, ""])
