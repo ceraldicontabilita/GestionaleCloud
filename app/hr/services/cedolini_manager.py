@@ -467,12 +467,12 @@ async def processa_tutti_cedolini_pdf(db, pdf_data: str, filename: str) -> Dict[
 
     # PRIMA SCELTA: Document AI (più accurato)
     try:
-        from app.hr.services.document_ai_extractor import extract_document_data
-        
-        ai_result = await extract_document_data(
-            file_content=file_content,
+        from app.hr.services.document_ai_extractor import process_document
+
+        ai_result = await process_document(
+            file_data=file_content,
             filename=filename,
-            document_type="busta_paga"
+            document_type="busta_paga",
         )
         
         if ai_result.get("structured_data", {}).get("success"):
