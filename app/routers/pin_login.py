@@ -21,10 +21,9 @@ Le variabili vengono lette A OGNI RICHIESTA (non all'import del modulo):
 elimina i problemi di ordine di caricamento del file .env.
 """
 from fastapi import APIRouter, HTTPException, Body, Request, Response, status
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 import os
 import logging
-import time
 
 from app.config import settings
 from app.database import Database, Collections

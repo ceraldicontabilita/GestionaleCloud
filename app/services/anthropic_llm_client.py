@@ -3,10 +3,8 @@ Client LLM basato direttamente sull'SDK anthropic ufficiale (nessuna
 dipendenza da servizi terzi non disponibili su PyPI).
 """
 import os
-import base64
 import anthropic
 from dataclasses import dataclass, field
-from typing import Optional
 
 DEFAULT_DOCUMENT_MODEL = "claude-sonnet-4-6"
 

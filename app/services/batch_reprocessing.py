@@ -3,11 +3,10 @@ Batch Reprocessing Service per F24 e Cedolini
 Riprocessa tutti i documenti esistenti con il nuovo parser migliorato.
 """
 
-import asyncio
 import base64
 import logging
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 from app.database import Database
 from app.services.enhanced_document_parser import (
     parse_f24_enhanced,

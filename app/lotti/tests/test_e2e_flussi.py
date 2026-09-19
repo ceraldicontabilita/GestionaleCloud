@@ -33,7 +33,7 @@ def dbmock(monkeypatch):
     """Mongo FINTO per tutti i router: qualunque modulo con attributo `db`
     viene puntato su Gestionale_Test (mai il db reale, mai la rete). Il bus
     eventi viene disattivato (i suoi handler toccano altri moduli)."""
-    import importlib, pkgutil, sys
+    import importlib, pkgutil
     import app.lotti.routers as routers  # noqa
     cli = AsyncMongoMockClient()
     db = cli["Gestionale_Test"]

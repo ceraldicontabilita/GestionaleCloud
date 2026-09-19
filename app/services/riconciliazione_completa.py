@@ -10,9 +10,7 @@ Riconcilia documenti Gmail con estratto conto bancario:
 """
 import logging
 import re
-import uuid
-from datetime import datetime, timezone
-from typing import Dict, Any, List
+from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 

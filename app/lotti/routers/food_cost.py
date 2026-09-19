@@ -16,7 +16,6 @@ from app.lotti.routers.utils import CATEGORIE_BEVANDE_A_UNITA as CATEGORIE_VENDU
 from app.lotti.auth import require_admin
 from app.lotti.allergeni import (
     ALLERGENI_14,
-    MAPPA_ALLERGENI,
     estrai_nomi_ingredienti,
     normalizza_allergeni,
     rileva_allergeni,

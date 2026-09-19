@@ -21,14 +21,12 @@ Formato CSV atteso (separatore ;):
 - Causale
 """
 
-from fastapi import APIRouter, Body, File, HTTPException, UploadFile
+from fastapi import APIRouter, File, HTTPException, UploadFile
 from typing import Optional
 import csv
 import io
-import re
 import logging
 from datetime import datetime, timezone
-import os
 
 from app.utils.numeri_italiani import parse_importo_ita
 

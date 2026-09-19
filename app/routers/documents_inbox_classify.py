@@ -20,7 +20,7 @@ import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 
 from app.database import Database
 from app.services.mittenti import sender_matches_trusted_rules, trusted_sender_rules

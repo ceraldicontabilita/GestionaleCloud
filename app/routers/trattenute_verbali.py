@@ -21,7 +21,6 @@ from app.database import Database
 from app.utils.error_handler import handle_errors
 from app.services.trattenute_verbali_service import (
     COLL_TRATTENUTE,
-    STATI_ATTESA_VERIFICA,
     STATI_CONFERMABILI,
     STATI_TERMINALI,
     STATO_COMUNICATA,

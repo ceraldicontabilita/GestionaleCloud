@@ -13,7 +13,7 @@ Verifiche implementate:
 from typing import Dict, Any, List
 from datetime import date, datetime, timezone
 import calendar
-from app.database import Database, Collections
+from app.database import Database
 import logging
 
 logger = logging.getLogger(__name__)

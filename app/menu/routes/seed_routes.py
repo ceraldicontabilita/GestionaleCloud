@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Depends
-import os
 
 from app.menu.supabase_client import supabase
 from app.menu.routes.qrcode_routes import verify_token

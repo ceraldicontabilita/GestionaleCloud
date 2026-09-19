@@ -183,7 +183,7 @@ async def import_recipes():
             created += 1
             print(f"  + {nome_ricetta}: creata ({reparto}, {len(ingredienti_nomi)} ingredienti)")
     
-    print(f"\n=== RISULTATO ===")
+    print("\n=== RISULTATO ===")
     print(f"Create: {created}")
     print(f"Aggiornate: {updated}")
     print(f"Invariate: {skipped}")

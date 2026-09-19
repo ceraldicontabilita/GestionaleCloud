@@ -5,10 +5,9 @@ Sistema di staging: il gestionale propone abbinamenti fattura↔banca,
 l'utente conferma prima dell'inserimento definitivo in Prima Nota.
 """
 import logging
-import re
 import uuid
-from datetime import datetime, timezone, timedelta
-from typing import Dict, Any, List, Optional
+from datetime import datetime, timezone
+from typing import Dict, Any
 from app.services.scritture_contabili import scrivi_movimento
 
 logger = logging.getLogger(__name__)

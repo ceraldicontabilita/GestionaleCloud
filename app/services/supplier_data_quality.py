@@ -5,7 +5,7 @@ deve più inventare una propria definizione di ``dati_incompleti``.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, List
 
 
 FISCAL_FIELDS = ("ragione_sociale", "partita_iva", "comune")

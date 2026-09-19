@@ -25,7 +25,6 @@ from app.services.sheets_document_store import DuplicateRecordError
 
 from app.database import Database, Collections
 from app.engines.prima_nota_engine import (
-    decide_destinazione_fattura,
     normalizza_metodo_pagamento,
 )
 from app.parsers.fattura_elettronica_parser import parse_fattura_xml, TIPO_DOC_MAP

@@ -2,8 +2,8 @@
 Router OpenAPI Company - Aggiornamento automatico schede fornitore
 Utilizza l'API OpenAPI.com Company per recuperare dati anagrafici aggiornati
 """
-from fastapi import APIRouter, HTTPException, Query, Body
-from typing import Dict, Any, List, Optional
+from fastapi import APIRouter, HTTPException, Query
+from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 from pydantic import BaseModel
 import os

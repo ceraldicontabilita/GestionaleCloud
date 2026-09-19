@@ -13,7 +13,6 @@ Job registrati:
 """
 
 import re
-import uuid
 import asyncio
 from datetime import datetime, timezone, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler

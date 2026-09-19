@@ -12,7 +12,6 @@ from app.services.parser_f24 import parse_f24_commercialista, confronta_codici_t
 from app.services.alert_engine import genera_alert
 import os
 import uuid
-import base64
 import logging
 from app.utils.error_handler import handle_errors
 from app.services.f24_payment_evidence import (

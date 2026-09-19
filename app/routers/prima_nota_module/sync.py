@@ -12,7 +12,7 @@ import re
 import uuid
 
 from app.database import Database, Collections
-from app.engines.prima_nota_engine import decide_destinazione_fattura, normalizza_metodo_pagamento
+from app.engines.prima_nota_engine import normalizza_metodo_pagamento
 from .common import (
     COLLECTION_PRIMA_NOTA_CASSA, COLLECTION_PRIMA_NOTA_BANCA
 )

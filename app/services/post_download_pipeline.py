@@ -15,13 +15,12 @@ REGOLE BUSINESS:
 - L'importo del verbale pagato diventa trattenuta sulla busta paga del driver
 """
 
-import asyncio
 import base64
 import logging
 import re
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 
 from app.services.sheets_document_store import SheetDatabase
 
@@ -460,7 +459,7 @@ async def _cerca_quietanze_verbali(db: SheetDatabase) -> Dict[str, Any]:
         if not quietanza and verbale.get("importo"):
             mov = await db["estratto_conto_movimenti"].find_one({
                 "importo": -abs(verbale["importo"]),
-                "descrizione": {"$regex": f"verbal|multa|sanzione", "$options": "i"}
+                "descrizione": {"$regex": "verbal|multa|sanzione", "$options": "i"}
             })
             if mov:
                 quietanza = {"source": "estratto_conto", "id": mov.get("id"), "data": mov.get("data")}
@@ -1013,7 +1012,6 @@ async def scarica_pdf_verbali_mancanti(db: SheetDatabase) -> Dict[str, Any]:
             return results
 
         # Esegui in thread
-        import asyncio
         results = await asyncio.to_thread(_download_pdfs_sync, verbali)
 
         # Salva i PDF nel database
@@ -1189,7 +1187,7 @@ async def _legacy_riconcilia_verbali_avanzato_non_usare(
             if not matched:
                 stats["non_riconciliati"] += 1
 
-        except Exception as e:
+        except Exception:
             stats["errori"] += 1
 
     logger.info(f"[RICONCILIAZIONE-AVZ] Completato: {stats}")

@@ -8,9 +8,8 @@ Database: azienda_erp_db
 Struttura documenti mutui con rate e riconciliazione bancaria
 """
 
-from datetime import datetime
 from typing import List, Optional, Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class RataMutuo(BaseModel):

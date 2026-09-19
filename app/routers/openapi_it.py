@@ -139,7 +139,7 @@ async def connetti_conto_bancario(data: BankAccountConnect) -> Dict[str, Any]:
             else:
                 raise HTTPException(
                     status_code=response.status_code,
-                    detail=f"Errore richiesta consenso AISP"
+                    detail="Errore richiesta consenso AISP"
                 )
                 
     except httpx.HTTPError as e:

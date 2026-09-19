@@ -46,7 +46,7 @@ class TestPrezziAlert:
         for pid, delta in list(data.items())[:10]:
             assert isinstance(delta, (int, float)), f"Value for {pid} should be numeric, got {type(delta)}"
             print(f"  product_id={pid[:8]}... delta={delta}%")
-        print(f"PASS: All sampled values are numeric")
+        print("PASS: All sampled values are numeric")
 
     def test_prezzi_alert_delta_within_range(self, api):
         """Delta deve essere tra 15% e 300% (filtro del backend)"""

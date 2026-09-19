@@ -11,8 +11,7 @@ import logging
 from app.database import Database, Collections
 from app.services.scritture_contabili import scrivi_movimento
 from .common import (
-    COLLECTION_PRIMA_NOTA_CASSA, TIPO_MOVIMENTO, CATEGORIE_ESCLUSE, ESCLUSIONI_PRIMA_NOTA,
-    calcola_saldo_anni_precedenti, aggrega_saldo_prima_nota,
+    COLLECTION_PRIMA_NOTA_CASSA, TIPO_MOVIMENTO, aggrega_saldo_prima_nota,
     arricchisci_movimenti_fattura, filtro_saldo_prima_nota,
 )
 

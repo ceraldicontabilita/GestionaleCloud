@@ -16,7 +16,6 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence
 from app.db_collections import (
     COLL_ADMIN_ANOMALIES,
     COLL_CASE_MEMORY,
-    COLL_CEDOLINI,
     COLL_DECISION_QUESTIONS,
     COLL_DIPENDENTI,
     COLL_EXPECTED_EVENTS,

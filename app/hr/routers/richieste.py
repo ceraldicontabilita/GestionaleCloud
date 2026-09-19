@@ -13,7 +13,7 @@ import logging
 import os
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 from fastapi import APIRouter, HTTPException, Body, Query, Depends, BackgroundTasks
 
 from app.hr.database import Database, Collections

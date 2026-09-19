@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, Header, Request, status
-from app.menu.models.qrcode_models import QRCodeConfig, QRCodeConfigUpdate, AdminPinLogin, AdminLoginResponse, WiFiConfig
+from app.menu.models.qrcode_models import QRCodeConfigUpdate, AdminPinLogin, AdminLoginResponse
 from datetime import datetime, timedelta
 import os
 import jwt

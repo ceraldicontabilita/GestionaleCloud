@@ -4,7 +4,7 @@ Servizio per recuperare dati veicoli da targa tramite OpenAPI Automotive
 """
 import httpx
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)

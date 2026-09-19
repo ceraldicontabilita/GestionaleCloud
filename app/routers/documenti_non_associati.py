@@ -525,7 +525,6 @@ async def visualizza_pdf_documento(documento_id: str):
     Supporta PDF, immagini (PNG, JPG, etc.), e file P7S firmati.
     """
     from fastapi.responses import Response
-    import base64
     
     db = Database.get_db()
     

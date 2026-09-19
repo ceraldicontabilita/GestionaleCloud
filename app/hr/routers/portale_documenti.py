@@ -15,9 +15,9 @@ import io
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 
-from fastapi import APIRouter, HTTPException, Request, Depends, UploadFile, File, Form, Query
+from fastapi import APIRouter, HTTPException, Request, Depends, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 
 from app.hr.database import Database

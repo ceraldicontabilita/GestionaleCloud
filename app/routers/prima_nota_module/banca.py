@@ -15,7 +15,7 @@ from .common import (
     entra_in_prima_nota,
     COLLECTION_PRIMA_NOTA_BANCA, TIPO_MOVIMENTO, CATEGORIE_ESCLUSE,
     ESCLUSIONI_SALDO_REALE, SOURCES_CREDITO_POS, SOURCES_ESCLUSE,
-    calcola_saldo_anni_precedenti, aggrega_saldo_prima_nota,
+    aggrega_saldo_prima_nota,
     arricchisci_movimenti_fattura, saldi_finanziari,
 )
 

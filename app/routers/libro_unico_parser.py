@@ -13,7 +13,7 @@ Workflow completo: parsing → anagrafica → presenze → buste paga → scaden
 import re
 import uuid
 import pdfplumber
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import List, Dict, Optional, Tuple
 from fastapi import APIRouter, HTTPException, UploadFile, File
 import tempfile

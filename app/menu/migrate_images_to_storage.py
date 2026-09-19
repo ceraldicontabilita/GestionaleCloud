@@ -8,7 +8,6 @@ Va eseguito una sola volta (localmente, con le credenziali giuste in .env).
 """
 import hashlib
 import mimetypes
-import sys
 from pathlib import Path
 
 

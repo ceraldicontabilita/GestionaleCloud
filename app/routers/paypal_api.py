@@ -12,7 +12,6 @@ from app.database import Database
 from app.config import settings
 from app.services.paypal_api_sync import sync_paypal_incremental, sync_paypal_period
 from app.services.paypal_api_client import paypal_client
-from app.services.paypal_riconciliazione import match_fornitore, normalize_string
 from app.services.paypal_invoice_matching import business_name_matches
 from app.services.paypal_reconciliation_links import riprocessa_collegamenti_paypal
 

@@ -12,11 +12,9 @@ from app.utils.dependencies import get_current_admin_user
 from fastapi.responses import StreamingResponse
 from typing import Dict, Any
 from datetime import datetime, timezone
-import uuid
 import logging
 import io
 
-from app.services.sheets_document_store import DuplicateRecordError
 
 from app.database import Database
 from app.services.categorizzazione_contabile import (

@@ -12,7 +12,7 @@ import logging
 import re
 import uuid
 from datetime import datetime, timezone, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 from app.services.scritture_contabili import scrivi_movimento
 
 logger = logging.getLogger(__name__)

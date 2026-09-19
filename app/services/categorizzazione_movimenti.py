@@ -6,7 +6,6 @@ DA INTEGRARE IN: app/routers/bank/estratto_conto.py
 Aggiungi questa funzione e usala durante l'import.
 """
 
-import re
 from typing import Optional, Tuple
 
 

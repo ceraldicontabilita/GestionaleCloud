@@ -8,7 +8,6 @@ import logging
 from app.database import Database
 from app.models.stati import STATI_PAGATI
 from app.routers.prima_nota_module.common import (
-    CATEGORIE_ESCLUSE,
     aggrega_saldo_prima_nota,
     filtro_saldo_prima_nota,
 )
@@ -270,7 +269,7 @@ async def get_financial_summary(
             "receivables_available": False,
             "receivables_note": "Fatture attive non gestite da una fonte canonica.",
         }
-    except Exception as e:
+    except Exception:
         logger.exception("Errore financial summary")
         # Non trasformare un errore reale in un riepilogo a zero, che puo'
         # essere scambiato per un dato contabile valido dal frontend.

@@ -243,7 +243,7 @@ async def invia_notifiche_scadenze() -> Dict[str, Any]:
             
             totale = sum(s["importo"] for s in da_notificare)
             linee.append(f"💰 *Totale da versare: €{totale:,.2f}*")
-            linee.append(f"\n👉 Vai alla dashboard F24 per dettagli")
+            linee.append("\n👉 Vai alla dashboard F24 per dettagli")
             
             messaggio = "\n".join(linee)
             

@@ -16,9 +16,9 @@ import hashlib
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 
-from fastapi import APIRouter, HTTPException, Query, Body
+from fastapi import APIRouter, HTTPException, Body
 from app.services.sheets_document_store import DuplicateRecordError
 from app.database import Database
 from app.utils.error_handler import handle_errors

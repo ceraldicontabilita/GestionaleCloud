@@ -17,7 +17,6 @@ Mapping Email -> Sezioni Gestionale:
 import imaplib
 import email
 from email.header import decode_header
-import os
 import re
 import base64
 from datetime import datetime, timezone, timedelta

@@ -312,7 +312,7 @@ async def hook_nuova_fattura(fattura_data: dict, fattura_id: str):
 async def hook_nuova_anomalia(anomalia: dict):
     """Aggiorna il manuale ogni volta che viene registrata una nuova anomalia."""
     await aggiorna_sezioni_manuale()
-    logger.info(f"[HACCP] Anomalia registrata → manuale aggiornato")
+    logger.info("[HACCP] Anomalia registrata → manuale aggiornato")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

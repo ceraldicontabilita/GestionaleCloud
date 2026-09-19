@@ -14,7 +14,7 @@ import math
 import re
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 import pandas as pd
 

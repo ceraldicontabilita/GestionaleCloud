@@ -8,7 +8,6 @@ from pydantic import BaseModel
 router = APIRouter(prefix="/api/admin", tags=["Admin Management"])
 
 # Get JWT verification from qrcode_routes
-import sys
 from app.menu.routes.qrcode_routes import verify_token
 from app.menu.supabase_client import supabase
 

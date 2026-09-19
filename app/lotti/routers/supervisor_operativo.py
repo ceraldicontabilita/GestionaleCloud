@@ -220,9 +220,9 @@ async def check_allergeni(alerts: list):
         a = _alert(
             "A1",
             f"{n} ricett{'a' if n==1 else 'e'} senza allergeni (automatismo impossibile)",
-            f"Il rilevamento automatico è già stato eseguito: queste ricette non hanno "
-            f"ingredienti su cui lavorare. Aggiungi gli ingredienti (o gli allergeni a mano) "
-            f"— obbligatorio per legge (Reg. UE 1169/2011).",
+            "Il rilevamento automatico è già stato eseguito: queste ricette non hanno "
+            "ingredienti su cui lavorare. Aggiungi gli ingredienti (o gli allergeni a mano) "
+            "— obbligatorio per legge (Reg. UE 1169/2011).",
             "alta" if n > 5 else "media",
             "ricette",
             n,
@@ -270,8 +270,8 @@ async def check_fornitori_qualifica(alerts: list):
         a = _alert(
                 "A2",
                 f"{n} fornitore{'i' if n>1 else ''} in attesa di qualifica HACCP",
-                f"Verificare e approvare i fornitori nel Registro Qualifica "
-                f"(Reg. CE 178/2002 art. 18). Vai su Fornitori → Registro Qualifica HACCP.",
+                "Verificare e approvare i fornitori nel Registro Qualifica "
+                "(Reg. CE 178/2002 art. 18). Vai su Fornitori → Registro Qualifica HACCP.",
                 "alta",
                 "fornitori",
                 n,
@@ -316,8 +316,8 @@ async def check_lotti_scaduti(alerts: list):
         a = _alert(
             "A3",
             f"{n} lott{'o' if n==1 else 'i'} scadut{'o' if n==1 else 'i'} da smaltire",
-            f"Lotti con data scadenza superata e non smaltiti. "
-            f"Tocca per l'elenco: ogni voce apre Lotti filtrato sugli scaduti.",
+            "Lotti con data scadenza superata e non smaltiti. "
+            "Tocca per l'elenco: ogni voce apre Lotti filtrato sugli scaduti.",
             "critica" if n > 20 else ("alta" if n > SOGLIA_LOTTI_SCADUTI else "media"),
             "lotti",
             n,
@@ -565,8 +565,8 @@ async def check_anomalie_senza_azione(alerts: list):
         a = _alert(
                 "A6",
                 f"{n} anomalia/e senza azione correttiva registrata",
-                f"Le non conformità devono avere un'azione correttiva documentata "
-                f"(Reg. CE 852/2004 Allegato II Cap. I).",
+                "Le non conformità devono avere un'azione correttiva documentata "
+                "(Reg. CE 852/2004 Allegato II Cap. I).",
                 "alta",
                 "anomalie",
                 n,
@@ -719,7 +719,7 @@ async def check_controllo_olio_oggi(alerts: list):
                 _alert(
                     "olio_oggi",
                     "Controllo Olio Frittura mancante",
-                    f"Nessun controllo olio registrato oggi. Verificare colore, odore e polarità.",
+                    "Nessun controllo olio registrato oggi. Verificare colore, odore e polarità.",
                     "alta",
                     "controllo_olio",
                     0,

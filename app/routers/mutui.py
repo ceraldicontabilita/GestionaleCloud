@@ -14,9 +14,8 @@ Endpoints:
 - PUT /api/mutui/{mutuo_id}/rate/{numero_rata}/riconcilia - Riconcilia singola rata
 """
 
-from fastapi import APIRouter, HTTPException, status, Query, Depends
-from fastapi.responses import JSONResponse
-from typing import List, Optional
+from fastapi import APIRouter, HTTPException, status, Query
+from typing import Optional
 from datetime import datetime, timedelta, timezone
 import uuid
 import logging

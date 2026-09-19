@@ -1,11 +1,11 @@
 from fastapi import APIRouter, HTTPException
-from typing import List, Optional
+from typing import List
 
 from app.menu.supabase_client import supabase
 from app.menu.models.menu_models import (
     Category, CategoryCreate, CategoryUpdate,
-    Subcategory, SubcategoryCreate, SubcategoryUpdate,
-    Product, ProductCreate, ProductUpdate,
+    SubcategoryCreate, SubcategoryUpdate,
+    ProductCreate, ProductUpdate,
     Allergen, MenuResponse
 )
 

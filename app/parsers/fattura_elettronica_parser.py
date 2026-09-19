@@ -4,8 +4,7 @@ Supporta il formato XML FPR12 dell'Agenzia delle Entrate
 Gestisce tutti i formati: con namespace, con prefissi, senza namespace.
 """
 import defusedxml.ElementTree as ET  # sicurezza: blocca XXE/entity expansion su XML esterni
-from typing import Dict, Any, List, Optional
-from datetime import datetime
+from typing import Dict, Any, List
 from decimal import Decimal, InvalidOperation
 import logging
 import re

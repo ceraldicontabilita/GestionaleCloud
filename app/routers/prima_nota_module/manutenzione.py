@@ -12,7 +12,7 @@ import uuid
 from app.database import Database
 from .common import (
     COLLECTION_PRIMA_NOTA_CASSA, COLLECTION_PRIMA_NOTA_BANCA, logger,
-    CATEGORIE_ESCLUSE, aggrega_saldo_prima_nota, filtro_saldo_prima_nota,
+    aggrega_saldo_prima_nota, filtro_saldo_prima_nota,
 )
 from .sync import determina_tipo_movimento_fattura
 from .cassa import _movimento_e_bancario_errato_in_cassa
@@ -2138,7 +2138,6 @@ async def collega_banca_a_estratto_conto(
     scollegato e continua a essere contato dal collaudo — corretto così:
     o l'addebito arriverà col prossimo export banca, o il pagamento è da
     rivedere."""
-    from datetime import timedelta
 
     db = Database.get_db()
     now = datetime.now(timezone.utc).isoformat()

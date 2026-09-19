@@ -13,10 +13,9 @@ Autore: Sistema Refactored
 Data: 13 Febbraio 2026
 """
 
-from fastapi import APIRouter, HTTPException
-from typing import Dict, Any, List, Optional
+from fastapi import APIRouter
+from typing import Dict, Any
 from datetime import datetime, timezone, timedelta
-import uuid
 import logging
 
 from app.database import Database

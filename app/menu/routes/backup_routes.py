@@ -2,10 +2,8 @@ from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from fastapi.responses import FileResponse
 from datetime import datetime
 import subprocess
-import os
 import json
 from pathlib import Path
-from typing import List
 
 from app.menu.supabase_client import supabase
 

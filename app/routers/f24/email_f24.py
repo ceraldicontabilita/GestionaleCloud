@@ -10,7 +10,6 @@ from app.services.email_downloader import download_and_process_emails, get_mitte
 from app.services.parser_f24 import parse_f24_commercialista
 from app.services.f24_parser import parse_quietanza_f24
 from app.services.codici_tributo_db import get_info_codice_tributo
-import os
 import logging
 import hashlib
 from app.config import settings

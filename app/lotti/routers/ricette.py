@@ -34,8 +34,6 @@ import json
 import unicodedata
 _LOG_INIT = logging.getLogger("uvicorn.error")
 import re
-import shutil
-import mimetypes
 
 from app.lotti.db import database as db
 from app.lotti.auth import require_admin, require_automation_or_admin
@@ -1249,7 +1247,6 @@ async def scheda_ricetta_pdf(ricetta_id: str):
     alimentata dai dati REALI: ingredienti+dosi, costi, allergeni, reparto, foto.
     Procedimento, segreti, varianti e impiattamento sono campi opzionali della
     ricetta: se presenti vengono mostrati, altrimenti la sezione si nasconde."""
-    from html import escape as _e
     r = await db.ricette.find_one({"id": ricetta_id}, {"_id": 0})
     if not r:
         raise HTTPException(404, "Ricetta non trovata")

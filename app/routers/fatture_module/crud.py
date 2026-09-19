@@ -15,8 +15,6 @@ from .helpers import generate_invoice_html
 from app.services.payment_allocation_validator import (
     allocation_summary,
     is_credit_note,
-    invoice_total_cents,
-    existing_invoice_allocations_cents,
 )
 
 

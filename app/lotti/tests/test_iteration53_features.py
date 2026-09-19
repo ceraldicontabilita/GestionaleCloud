@@ -4,7 +4,6 @@ Tests for: B01 (importa-xml 422), B02 (fatture visualizza 200),
 B03 (pec/anteprima 200 via localhost), acquaviva prodotti foto_url,
 no duplicates, manuale-haccp genera-manuale 200
 """
-import pytest
 import requests
 import os
 from collections import Counter
@@ -25,7 +24,7 @@ class TestB01ImportaXml:
     def test_importa_xml_endpoint_exists_not_404(self):
         """Il path /api/fatture/importa-xml esiste (non ritorna 404)"""
         res = requests.post(f"{BASE_URL}/api/fatture/importa-xml")
-        assert res.status_code != 404, f"Endpoint non trovato (404) - path errato!"
+        assert res.status_code != 404, "Endpoint non trovato (404) - path errato!"
         print(f"PASS: Endpoint /api/fatture/importa-xml esiste (non 404) → {res.status_code}")
 
 
@@ -64,7 +63,7 @@ class TestB02FattureVisualizza:
         """GET con ID inesistente deve ritornare 404"""
         res = requests.get(f"{BASE_URL}/api/fatture/id-non-esiste-xyz/visualizza")
         assert res.status_code == 404, f"Expected 404 but got {res.status_code}"
-        print(f"PASS: GET /api/fatture/id-non-esiste-xyz/visualizza → 404 (atteso)")
+        print("PASS: GET /api/fatture/id-non-esiste-xyz/visualizza → 404 (atteso)")
 
 
 class TestB03PecAnteprima:

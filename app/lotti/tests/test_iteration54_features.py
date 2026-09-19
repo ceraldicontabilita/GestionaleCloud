@@ -11,7 +11,6 @@ Tests:
   ANOMALIE STATISTICHE: GET /api/anomalie/statistiche
 """
 
-import pytest
 import requests
 import os
 
@@ -88,7 +87,7 @@ class TestB04MateriePrimeDaFatture:
         assert res.status_code == 200
         data = res.json()
         assert isinstance(data, list)
-        assert len(data) >= 1, f"With 24 months should have at least 1 group"
+        assert len(data) >= 1, "With 24 months should have at least 1 group"
 
 
 # ─────────────────────────────────────────────────────
@@ -411,7 +410,7 @@ class TestSmokeTests:
         assert res.status_code == 200
         data = res.json()
         assert isinstance(data, list)
-        assert len(data) > 0, f"Expected anomalie for 2022, got 0"
+        assert len(data) > 0, "Expected anomalie for 2022, got 0"
 
     def test_fornitori_endpoint_200(self):
         """GET /api/fornitori should return 200"""

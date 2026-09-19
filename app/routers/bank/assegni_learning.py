@@ -7,14 +7,13 @@ Questo modulo implementa una "learning machine" per:
 3. Suggerire associazioni basate su pattern storici
 4. Gestire l'associazione robusta con tolleranze configurabili
 """
-from fastapi import APIRouter, HTTPException, Query, Body, Depends
+from fastapi import APIRouter, Query, Depends
 from app.utils.dependencies import get_current_admin_user
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 from collections import Counter, defaultdict
 import re
 import logging
-import uuid
 
 from app.database import Database
 

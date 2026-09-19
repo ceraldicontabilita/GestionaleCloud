@@ -2,7 +2,7 @@
 Field Normalizer - Normalizza campi Drive/Sheets con nomi inconsistenti.
 Gestisce i vari formati legacy e li converte in formato standard.
 """
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, List
 from datetime import datetime
 
 

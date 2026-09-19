@@ -274,7 +274,6 @@ async def get_cedolino_pdf(
     _current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Visualizza il PDF originale collegato alla riga del dipendente."""
-    import base64
 
     db = Database.get_db()
     salario = await db["prima_nota_salari"].find_one(

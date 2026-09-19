@@ -16,7 +16,6 @@ Cosa aggiungono:
 """
 import logging
 from typing import Dict, Any, Optional
-from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 

@@ -10,7 +10,6 @@ from datetime import datetime, timedelta, timezone
 from functools import wraps
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-import random
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +100,7 @@ async def scan_verbali_email_task():
         fase1 = result.get("fase_1_completamenti", {})
         fase2 = result.get("fase_2_nuovi", {})
 
-        logger.info(f"🚗 [SCHEDULER] Scan verbali completato:")
+        logger.info("🚗 [SCHEDULER] Scan verbali completato:")
         logger.info(f"   - Quietanze trovate: {fase1.get('quietanze_trovate', 0)}/{fase1.get('quietanze_cercate', 0)}")
         logger.info(f"   - PDF trovati: {fase1.get('pdf_trovati', 0)}/{fase1.get('pdf_cercati', 0)}")
         logger.info(f"   - Nuovi verbali: {fase2.get('verbali_nuovi', 0)}")

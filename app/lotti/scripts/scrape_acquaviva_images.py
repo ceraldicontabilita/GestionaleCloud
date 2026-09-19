@@ -214,7 +214,7 @@ async def update_images(scraped: list[dict]):
         else:
             non_trovati.append(f"{db_nome} (best: {best_match['nome'] if best_match else '?'}, {best_score:.2f})")
 
-    print(f"\n=== RISULTATI ===")
+    print("\n=== RISULTATI ===")
     print(f"Immagini aggiornate: {aggiornati}/{len(db_products)}")
     print(f"Non trovati: {len(non_trovati)}")
     for n in non_trovati[:20]:

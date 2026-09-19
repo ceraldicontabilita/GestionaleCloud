@@ -20,7 +20,7 @@ Normativa 2026:
 """
 from fastapi import APIRouter, HTTPException, Query, Body, Depends
 from typing import Dict, Any, List, Optional
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 import asyncio
 import logging
 import re

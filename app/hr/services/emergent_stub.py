@@ -2,11 +2,8 @@
 Stub locale che emula emergentintegrations.llm.chat usando anthropic diretto.
 Permette di girare su Render senza il pacchetto proprietario di Emergent.
 """
-import os
-import base64
 import anthropic
 from dataclasses import dataclass, field
-from typing import Optional
 
 DEFAULT_MODEL = "claude-opus-4-5"
 

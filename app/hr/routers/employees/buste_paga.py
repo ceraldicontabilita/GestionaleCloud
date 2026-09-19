@@ -6,7 +6,7 @@ Permette di:
 - Estrarre automaticamente stipendi e presenze
 - Salvare i dati nel database dipendenti
 """
-from fastapi import APIRouter, Body, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 import logging

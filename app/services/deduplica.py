@@ -18,7 +18,6 @@ Utilizzo:
 import logging
 import hashlib
 from typing import Dict, Any, Optional
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -230,7 +229,7 @@ async def cerca_duplicato_f24(
         
         if candidates:
             return _result(True, "probabile", candidates[0],
-                          f"Stesso periodo, importo diverso")
+                          "Stesso periodo, importo diverso")
     
     return _result(False)
 
@@ -282,7 +281,7 @@ async def cerca_duplicato_movimento(
         
         if candidates:
             return _result(True, "probabile", candidates[0],
-                          f"Data+importo identici, descrizione diversa")
+                          "Data+importo identici, descrizione diversa")
     
     return _result(False)
 

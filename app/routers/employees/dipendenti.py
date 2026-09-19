@@ -4,13 +4,12 @@ Anagrafica, turni, libro unico, buste paga/cedolini, TFR.
 Gestione HR completa (contratti, libretti sanitari, ecc.) e' un gestionale
 esterno a questo programma: qui restano solo i dati contabili/fiscali.
 """
-from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Body
+from fastapi import APIRouter, HTTPException, Query, Body
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta, timezone
 import uuid
 import logging
 import io
-import re
 
 from app.database import Database, Collections
 from app.utils.error_handler import handle_errors

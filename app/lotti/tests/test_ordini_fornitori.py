@@ -2,7 +2,6 @@
 Backend tests for ordini-fornitori endpoints.
 Verifica fix: prodotti con nomi corretti (non raw ID), prodotti non vuoti.
 """
-import pytest
 import requests
 import os
 

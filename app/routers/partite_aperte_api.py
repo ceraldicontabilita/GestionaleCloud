@@ -5,8 +5,8 @@ Endpoint API per la dashboard relazionale.
 Legge dalla collezione partite_aperte materializzata.
 """
 from fastapi import APIRouter, Query
-from typing import Dict, Any, Optional, List
-from datetime import datetime, timezone
+from typing import Dict, Any, Optional
+from datetime import datetime
 import logging
 
 from app.database import Database

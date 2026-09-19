@@ -4,7 +4,7 @@ rivalidazione, pubblicazione con notifica al dipendente.
 """
 import logging
 from datetime import datetime, timezone, timedelta
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 from uuid import uuid4
 from fastapi import APIRouter, HTTPException, Body, Depends
 

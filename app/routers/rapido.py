@@ -1,7 +1,7 @@
 """
 Inserimento Rapido — endpoint per operazioni quick-entry dalla pagina InserimentoRapido.
 """
-from fastapi import APIRouter, HTTPException, Body, Request
+from fastapi import APIRouter, HTTPException, Body
 from typing import Dict, Any
 from datetime import datetime, timezone
 import uuid

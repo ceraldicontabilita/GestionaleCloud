@@ -3,7 +3,7 @@ Router OpenAPI Automotive - Visure veicoli da targa
 Utilizza l'API OpenAPI.com Automotive per recuperare dati veicoli
 """
 from fastapi import APIRouter, HTTPException, Query
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 from pydantic import BaseModel
 import os

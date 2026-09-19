@@ -2,7 +2,7 @@ import re
 import asyncio
 import base64
 import logging
-from datetime import datetime, timezone, date, timedelta
+from datetime import datetime, date, timedelta
 from app.agents.notifier import crea_segnalazione
 from app.services.f24_payment_evidence import stato_evidenza_pagamento
 

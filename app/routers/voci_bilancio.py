@@ -10,9 +10,9 @@ CLAUDE.md), ristretti alle voci di Stato Patrimoniale (macro-gruppi
 Immobilizzazioni/Capitale e riserve/Risultati portati a nuovo) — non ha senso
 inserire qui una voce di Conto Economico.
 """
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 from uuid import uuid4
 

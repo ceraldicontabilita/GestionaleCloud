@@ -6,7 +6,7 @@ import re
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Dict, Any, List
+from typing import Dict, Any
 from app.services.sheets_document_store import SheetDatabase
 from app.services.sheets_document_store import ReturnRecord
 

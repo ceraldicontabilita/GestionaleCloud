@@ -7,7 +7,6 @@ import imaplib
 import email as email_lib
 import logging
 import os
-import re
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from app.services.sheets_document_store import SheetDatabase

@@ -12,7 +12,7 @@ Copre le specifiche di Magazzino_Acquisti_Prodotti.txt:
 import logging
 import re
 import uuid
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)

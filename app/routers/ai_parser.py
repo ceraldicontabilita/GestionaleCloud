@@ -391,7 +391,6 @@ async def test_ai_parser() -> Dict[str, Any]:
     """
     Test endpoint per verificare configurazione AI parser.
     """
-    import os
     from dotenv import load_dotenv
     load_dotenv()
     
@@ -425,7 +424,6 @@ async def get_documents_da_rivedere(
     - Parsing con errori
     - Fornitore sconosciuto
     """
-    from app.services.ai_integration_service import get_documents_for_review
     
     db = Database.get_db()
     
