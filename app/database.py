@@ -1,5 +1,6 @@
 """Accesso unico al registro operativo Google Drive/Sheets."""
 from typing import Any, Optional
+import asyncio
 import logging
 from .config import settings
 from .db_collections import (
@@ -13,6 +14,33 @@ from .db_collections import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+#: Stati HTTP che dicono «riprova fra poco», non «e' configurato male».
+#: 522 e' il piu' frequente: e' l'edge di Supabase che non raggiunge il
+#: database. Il 19/09/2026 ne sono bastati tre, alle 17:52, 19:02 e 19:16,
+#: per far fallire altrettanti deploy: l'istanza nuova moriva all'avvio e
+#: restava viva quella vecchia, quindi il lavoro unito su `main` non
+#: arrivava al titolare.
+STATI_RIPROVABILI = frozenset({429, 500, 502, 503, 504, 520, 521, 522, 523, 524})
+
+#: Attese fra i tentativi. Cinque tentativi in ~31 s: abbastanza per passare
+#: un buco di Supabase, poco abbastanza da non tenere in piedi un deploy
+#: rotto sul serio.
+ATTESE_RIPROVA = (1.0, 2.0, 4.0, 8.0, 16.0)
+
+
+def _e_passeggero(errore: BaseException) -> bool:
+    """Un errore di rete o un 5xx del gateway si riprova; il resto no.
+
+    Le credenziali sbagliate, il backend non supportato e un payload che non
+    si capisce **devono** far fallire l'avvio: meglio un'istanza che non parte
+    che una che serve numeri senza archivio.
+    """
+    stato = getattr(errore, "status", None)
+    if isinstance(stato, int):
+        return stato in STATI_RIPROVABILI
+    return isinstance(errore, (asyncio.TimeoutError, ConnectionError, OSError))
 
 
 class Database:
@@ -46,7 +74,7 @@ class Database:
                 "SUPABASE_PUBLISHABLE_KEY": settings.SUPABASE_PUBLISHABLE_KEY,
                 "SUPABASE_RUNTIME_SECRET": settings.SUPABASE_RUNTIME_SECRET,
             })
-            await runtime.hydrate()
+            await cls._idrata_con_riprove(runtime)
             cls.client = runtime
             cls.db = runtime
             logger.info("Connected to private Supabase ledger")
@@ -55,6 +83,35 @@ class Database:
         except Exception as e:
             logger.error("Connessione al registro dati fallita: %s", e)
             raise
+
+    @classmethod
+    async def _idrata_con_riprove(cls, runtime: Any) -> None:
+        """Prima idratazione, con riprove sui soli errori passeggeri.
+
+        Senza questo, un singolo HTTP 522 di Supabase — il suo edge che non
+        raggiunge il database — faceva morire l'istanza nuova all'avvio e
+        bruciava il deploy: il codice unito su `main` non arrivava in
+        produzione finche' qualcuno non ne lanciava un altro a mano.
+        """
+        # L'ultimo giro ha `attesa is None`: li' si rilancia, quindi il ciclo
+        # finisce sempre con un return o con un'eccezione.
+        for tentativo, attesa in enumerate((*ATTESE_RIPROVA, None), start=1):
+            try:
+                await runtime.hydrate()
+                if tentativo > 1:
+                    logger.warning(
+                        "Archivio raggiunto al tentativo %d: il primo errore "
+                        "era passeggero", tentativo,
+                    )
+                return
+            except Exception as exc:  # noqa: BLE001 — si decide sul tipo, sotto
+                if not _e_passeggero(exc) or attesa is None:
+                    raise
+                logger.warning(
+                    "Archivio non raggiungibile (tentativo %d): %s. "
+                    "Riprovo fra %.0fs", tentativo, exc, attesa,
+                )
+                await asyncio.sleep(attesa)
 
     @classmethod
     async def _ensure_builtin_senders(cls) -> None:
