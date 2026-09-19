@@ -381,9 +381,18 @@ def filtro_gestore_pos(gestore: str) -> Dict[str, Any]:
 # secondo movimento: sono evidenze successive dello stesso ciclo.
 FONTE_MANUALE = "manuale"
 FONTE_EXCEL = "excel"
+#: Ricostruzione dagli accrediti dell'estratto conto, per il circuito che non
+#: ha ne' API ne' chiusura digitata (NUMIA). E' il denaro davvero arrivato,
+#: sommato per giorno operativo (`DEL gg/mm/aa`): piu' solido di un numero
+#: digitato a fine serata, meno del totale letto sul terminale, che vede
+#: anche resi e storni prima che la banca li compensi.
+FONTE_ESTRATTO_CONTO = "estratto_conto"
 FONTE_TERMINALE = "terminale"
 FONTE_API = "api"
-PRIORITA_FONTE = {FONTE_MANUALE: 1, FONTE_EXCEL: 2, FONTE_TERMINALE: 3, FONTE_API: 3}
+PRIORITA_FONTE = {
+    FONTE_MANUALE: 1, FONTE_EXCEL: 2, FONTE_ESTRATTO_CONTO: 2,
+    FONTE_TERMINALE: 3, FONTE_API: 3,
+}
 
 
 def metadati_fonte_pos(fonte: str, gestore: str) -> Dict[str, str]:
@@ -413,6 +422,12 @@ def metadati_fonte_pos(fonte: str, gestore: str) -> Dict[str, str]:
             "source": "import_storico_numia",
             "quota_pos_fonte": "export_numia_storico",
             "expectation_owner": "numia_provider_export",
+        }
+    if fonte == FONTE_ESTRATTO_CONTO:
+        return {
+            "source": "ricostruzione_estratto_conto",
+            "quota_pos_fonte": "accrediti_estratto_conto",
+            "expectation_owner": f"{gestore}_bank_statement",
         }
     if fonte == FONTE_TERMINALE:
         return {
