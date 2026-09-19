@@ -151,6 +151,46 @@ def test_registrazione_idempotente_anche_con_cespite_collegato():
     assert len(_run(db["movimenti_contabili"].find({}).to_list(10))) == 1
 
 
+def test_piu_categorie_di_cespite_che_sforano_il_budget_quadrano_al_centesimo():
+    """Audit 19/09/2026 su PR #499: quando piu' categorie di cespite insieme
+    superano l'imponibile disponibile, la scalatura proporzionale arrotondava
+    OGNI categoria in modo indipendente. Con 4 categorie il totale scalato
+    poteva sballare di 1 centesimo rispetto al budget (Dare != Avere), perche'
+    la somma di 4 arrotondamenti indipendenti non torna sempre esatta.
+    Ora il resto dell'arrotondamento va tutto sulla categoria piu' grande,
+    cosi' la somma quadra sempre esattamente col budget."""
+    db = _db()
+    _run(db["cespiti"].insert_one(_cespite("F-ANOM-MULTI", "attrezzature", 248.54)))
+    _run(db["cespiti"].insert_one(_cespite("F-ANOM-MULTI", "mobili_arredi", 481.38)))
+    _run(db["cespiti"].insert_one(_cespite("F-ANOM-MULTI", "automezzi", 722.97)))
+    _run(db["cespiti"].insert_one(_cespite("F-ANOM-MULTI", "frigoriferi", 1295.54)))
+    # totale cespiti dichiarati: 2748.43, ben oltre l'imponibile della fattura.
+
+    fattura = {
+        "id": "F-ANOM-MULTI", "total_amount": 1110.53, "total_tax": 200.26,
+        "iva_detraibile": 200.26, "imponibile": 910.27, "invoice_date": "2026-05-07",
+    }
+    mov = _run(motore.registra_fattura(db, fattura))["movimento"]
+
+    righe = {r["conto_codice"]: r for r in mov["righe"] if r["dare"] > 0}
+    assert "05.01.01" not in righe  # tutto l'imponibile e' stato capitalizzato
+
+    conti_cespiti = {"01.06.02", "01.06.04", "01.06.03", "01.06.07"}
+    totale_capitalizzato = round(
+        sum(v["dare"] for k, v in righe.items() if k in conti_cespiti), 2
+    )
+    # e' questa la quadratura che l'audit ha trovato sballata di 1 centesimo:
+    # deve tornare esattamente uguale all'imponibile disponibile, mai di piu'.
+    assert totale_capitalizzato == 910.27
+    assert mov["totale_dare"] == mov["totale_avere"] == 1110.53
+    assert round(mov["totale_dare"] - mov["totale_avere"], 2) == 0.0
+
+    segnalazioni = _run(db["agenti_segnalazioni"].find(
+        {"tipo": "cespite_doppio_conteggio_potenziale", "fattura_id": "F-ANOM-MULTI"}
+    ).to_list(10))
+    assert len(segnalazioni) == 1
+
+
 def test_verifica_doppio_conteggio_endpoint_segnala_scritture_pre_fix(monkeypatch):
     """Simula una fattura registrata PRIMA di questa correzione (movimento
     senza `cespiti_capitalizzati` benché esista un cespite collegato): il

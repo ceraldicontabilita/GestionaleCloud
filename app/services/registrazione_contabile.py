@@ -220,7 +220,22 @@ async def _righe_capitalizzazione_cespiti(
             "capitalizzazione limitata al costo disponibile — verificare a mano."
         )
         fattore = (budget / quota_totale) if quota_totale else 0.0
-        per_categoria = {k: round(v * fattore, 2) for k, v in per_categoria.items()}
+        scalati = {k: v * fattore for k, v in per_categoria.items()}
+        # Audit 19/09/2026: arrotondare ogni categoria in modo indipendente
+        # puo' sbilanciare la somma di qualche centesimo rispetto al budget
+        # (es. 4 categorie arrotondate ciascuna per eccesso). Lo scarto di
+        # arrotondamento va assegnato a UNA categoria (la piu' grande, meno
+        # rischio di finire negativa), non lasciato sparso: solo cosi' la
+        # somma torna esattamente al budget e la scrittura quadra Dare=Avere.
+        ordine = sorted(scalati, key=lambda k: scalati[k], reverse=True)
+        per_categoria = {}
+        residuo = round(budget, 2)
+        for chiave in ordine[1:]:
+            valore = round(scalati[chiave], 2)
+            per_categoria[chiave] = valore
+            residuo = round(residuo - valore, 2)
+        if ordine:
+            per_categoria[ordine[0]] = round(max(0.0, residuo), 2)
         quota_totale = round(sum(per_categoria.values()), 2)
 
     righe = []

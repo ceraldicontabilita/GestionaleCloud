@@ -702,11 +702,18 @@ async def verifica_doppio_conteggio_costo_cespite() -> Dict[str, Any]:
     registrazione instrada da sola la quota cespite sul conto giusto
     (`cespiti_capitalizzati` sul movimento). Le fatture registrate PRIMA di
     questa correzione, o quelle a cui un cespite e' stato collegato DOPO che
-    la fattura era gia' registrata (`registra_fattura` e' idempotente e non
-    riscrive una scrittura esistente), restano doppio-contate finche' non
-    vengono ricostruite (`POST /api/piano-conti/ricategorizza-fatture` o
-    l'equivalente registrazione del pregresso). Non corregge nulla da solo:
-    l'alert e' per il titolare/commercialista.
+    la fattura era gia' registrata, restano doppio-contate — e NON si
+    autocorreggono da sole: `registra_fattura` e' idempotente (non riscrive
+    una scrittura esistente per quella fattura), quindi rilanciare
+    `POST /api/piano-conti/registra-tutte-fatture` o
+    `POST /ricategorizza-fatture` (router `contabilita_avanzata`) su una
+    fattura GIA' registrata non fa nulla: entrambi processano solo le
+    fatture ancora assenti da `movimenti_contabili`, saltano in silenzio
+    quelle segnalate qui (audit 19/09/2026, verificato). La correzione
+    richiede uno storno della scrittura esistente seguito da una nuova
+    registrazione della stessa fattura — un intervento manuale del
+    titolare/commercialista, non un semplice re-run del backfill. Questo
+    endpoint resta di sola segnalazione: non corregge nulla da solo.
     """
     db = Database.get_db()
 
@@ -795,7 +802,12 @@ EXCLUDE_KEYWORDS = [
     "caffe", "caffè", "kimbo", "grani", "capsul", "omaggio", "storno",
     "acconto", "anticip", "consulenz", "compensi", "noleggio", "leasing",
     "canone", "abbonament", "rifatturaz", "penalita", "sinistro",
-    "manutenzione ordinaria", "riparazion", "intervento lavori",
+    # Audit 19/09/2026: "manutenzione ordinaria" da solo non bastava — una
+    # riga "manutenzione automezzo" (senza "ordinaria") sfuggiva e veniva
+    # classificata come cespite. Una manutenzione/riparazione e' sempre un
+    # costo su un bene gia' esistente, mai un acquisto nuovo: si esclude a
+    # prescindere dal qualificatore.
+    "manutenzione", "riparazion", "intervento lavori",
     "wi-fi", "sim ", "telefon", "cover", "custodia",
     # Un immobile o un veicolo in affitto/locazione e' un costo ricorrente,
     # non un cespite (audit 19/09/2026, nuove categorie fabbricati/automezzi).
