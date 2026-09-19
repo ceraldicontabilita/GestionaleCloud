@@ -732,14 +732,45 @@ async def _conto_da_categoria(db, categoria: str) -> Optional[str]:
     dalla pagina Excel `regole_categorizzazione.py`), con fallback ai default
     della stessa pagina se il titolare non ha ancora personalizzato quella
     categoria (stesso comportamento di `GET /api/regole` e del download
-    Excel: DB prima, default poi)."""
-    riga = await db["regole_categorie"].find_one({"categoria": categoria})
+    Excel: DB prima, default poi).
+
+    La categoria viene normalizzata (`normalizza_categoria`: minuscolo,
+    underscore, SENZA accenti) prima di ogni confronto — stessa
+    normalizzazione applicata al salvataggio di una regola/categoria in
+    `regole_categorizzazione.py`. Prima di questo fix "Caffè" (scritto
+    dall'utente) non combaciava mai con la chiave interna "caffe", e la
+    regola restava silenziosamente inefficace (audit 19/09/2026)."""
+    from app.routers.accounting.regole_categorizzazione import (
+        DEFAULT_CATEGORIE,
+        normalizza_categoria,
+    )
+
+    categoria_norm = normalizza_categoria(categoria)
+    riga = await db["regole_categorie"].find_one({"categoria": categoria_norm})
     if riga and riga.get("conto"):
         return str(riga["conto"]).strip()
 
-    from app.routers.accounting.regole_categorizzazione import DEFAULT_CATEGORIE
-    default = DEFAULT_CATEGORIE.get(categoria)
+    default = DEFAULT_CATEGORIE.get(categoria_norm)
     return str(default["conto"]).strip() if default and default.get("conto") else None
+
+
+def _regola_piu_specifica(
+    regole: List[Dict[str, Any]], testo_lower: str
+) -> Optional[Dict[str, Any]]:
+    """La regola il cui pattern combacia con il testo, la più specifica
+    (pattern più lungo) quando più regole combaciano — stesso principio già
+    usato da `regole_riconoscimento_banca.trova_regola_per_descrizione` per
+    lo stesso problema: due regole utente sovrapposte (es. "ACME" e
+    "ACME SRL") davano un risultato diverso a seconda del solo ordine di
+    iterazione del DB, che non è garantito stabile nel tempo (audit
+    19/09/2026)."""
+    migliore: Optional[Dict[str, Any]] = None
+    for regola in regole:
+        pattern = str(regola.get("pattern") or "").strip().lower()
+        if pattern and pattern in testo_lower:
+            if migliore is None or len(pattern) > len(str(migliore.get("pattern") or "")):
+                migliore = regola
+    return migliore
 
 
 async def _conto_da_regole_utente(
@@ -756,7 +787,9 @@ async def _conto_da_regole_utente(
     insensitive "contiene", non regex: i pattern li scrive un umano da Excel
     e possono contenere caratteri (``S.p.A.``, ``&``) che non sono regex
     valide o che avrebbero un significato diverso da quello letterale
-    inteso dal titolare.
+    inteso dal titolare. Tra piu' regole dello stesso tipo che combaciano
+    vince il pattern piu' specifico (`_regola_piu_specifica`), non il primo
+    incontrato nell'iterazione del DB.
 
     Ritorna None se nessuna regola matcha, o se la categoria trovata non ha
     (ancora) un conto associato, o se il conto non esiste nel piano CEE.
@@ -768,11 +801,9 @@ async def _conto_da_regole_utente(
         regole_forn = await db["regole_categorizzazione_fornitori"].find(
             {"attivo": True}
         ).to_list(5000)
-        for regola in regole_forn:
-            pattern = str(regola.get("pattern") or "").strip().lower()
-            if pattern and pattern in fornitore_lower:
-                categoria = str(regola.get("categoria") or "").strip()
-                break
+        migliore = _regola_piu_specifica(regole_forn, fornitore_lower)
+        if migliore:
+            categoria = str(migliore.get("categoria") or "").strip()
 
     if not categoria and linee:
         regole_desc = await db["regole_categorizzazione_descrizioni"].find(
@@ -783,12 +814,9 @@ async def _conto_da_regole_utente(
                 descr = str((linea or {}).get("descrizione") or "").strip().lower()
                 if not descr:
                     continue
-                for regola in regole_desc:
-                    pattern = str(regola.get("pattern") or "").strip().lower()
-                    if pattern and pattern in descr:
-                        categoria = str(regola.get("categoria") or "").strip()
-                        break
-                if categoria:
+                migliore = _regola_piu_specifica(regole_desc, descr)
+                if migliore:
+                    categoria = str(migliore.get("categoria") or "").strip()
                     break
 
     if not categoria:
@@ -799,6 +827,39 @@ async def _conto_da_regole_utente(
         return None
 
     return {"codice": codice_conto, "nome": await _nome_conto(codice_conto)}
+
+
+async def _segnala_conto_bassa_confidenza(
+    db, *, fattura: Dict[str, Any], codice_scartato: str, confidenza: float, soglia: float,
+) -> None:
+    """Rende visibile un match del motore ricco scartato per bassa confidenza
+    (audit 19/09/2026, fix "Mobile bar" -> Telefonia): stesso pattern di
+    segnalazione gia' usato per l'anomalia cespiti in
+    `registrazione_contabile._righe_capitalizzazione_cespiti` (upsert su
+    `agenti_segnalazioni`, mai bloccante)."""
+    logger.warning(
+        "determina_conti_fattura: match motore ricco a bassa confidenza "
+        "(%.2f < %.2f) per conto %s, fornitore=%r — fallback a 05.01.01, da verificare",
+        confidenza, soglia, codice_scartato,
+        fattura.get("supplier_name") or fattura.get("cedente_denominazione"),
+    )
+    fattura_id = fattura.get("id")
+    try:
+        await db["agenti_segnalazioni"].update_one(
+            {"tipo": "conto_costo_bassa_confidenza", "fattura_id": fattura_id, "letta": False},
+            {"$set": {
+                "dettaglio": {
+                    "conto_scartato": codice_scartato,
+                    "confidenza": confidenza,
+                    "soglia": soglia,
+                    "fornitore": fattura.get("supplier_name") or fattura.get("cedente_denominazione"),
+                },
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }, "$setOnInsert": {"created_at": datetime.now(timezone.utc).isoformat()}},
+            upsert=True,
+        )
+    except Exception:
+        pass
 
 
 async def determina_conti_fattura(db, fattura: Dict[str, Any]) -> Dict[str, Dict[str, str]]:
@@ -812,11 +873,24 @@ async def determina_conti_fattura(db, fattura: Dict[str, Any]) -> Dict[str, Dict
       2. Motore ricco `categorizzazione_contabile.categorizza_fattura_completa`
          sulle righe fattura: si prende il conto con l'importo aggregato
          maggiore (`riepilogo_conti`) — stesso algoritmo già usato da
-         `POST /api/contabilita/ricategorizza-fatture`.
-      3. Fallback finale: 05.01.01 Acquisto merci (nessuna riga, o il motore
-         ricco non ha trovato alcun pattern — il suo stesso fallback interno).
+         `POST /api/contabilita/ricategorizza-fatture` — MA solo se la
+         confidenza del match che ha prodotto quel conto e' almeno
+         `SOGLIA_CONFIDENZA_AUTOMATICA` (audit 19/09/2026: "Mobile bar con
+         ripiani in legno" matchava il pattern debole "mobile" di Telefonia
+         con la stessa confidenza di un match forte, scrivendo in automatico
+         una deducibilita' 80% invece di 100% senza nessuna soglia ne'
+         segnalazione). Sotto soglia il conto specifico NON si applica: si
+         ricade sul fallback generico, come se il motore ricco non avesse
+         trovato nulla, e il caso viene segnalato (mai una scrittura fiscale
+         automatica a bassa confidenza, CLAUDE.md sezione F24).
+      3. Fallback finale: 05.01.01 Acquisto merci (nessuna riga, il motore
+         ricco non ha trovato alcun pattern, o il match trovato era sotto
+         soglia).
     """
-    from app.services.categorizzazione_contabile import categorizza_fattura_completa
+    from app.services.categorizzazione_contabile import (
+        categorizza_fattura_completa,
+        SOGLIA_CONFIDENZA_AUTOMATICA,
+    )
 
     fornitore = fattura.get("supplier_name") or fattura.get("cedente_denominazione") or ""
     linee = fattura.get("linee") or []
@@ -826,12 +900,29 @@ async def determina_conti_fattura(db, fattura: Dict[str, Any]) -> Dict[str, Dict
     if not conto_costo and linee:
         categorizzazione = categorizza_fattura_completa(linee, fornitore)
         riepilogo = categorizzazione.get("riepilogo_conti") or []
+        dettaglio = categorizzazione.get("dettaglio_linee") or []
         if riepilogo:
             principale = max(riepilogo, key=lambda c: c.get("importo", 0))
-            conto_costo = {
-                "codice": principale["codice"],
-                "nome": principale.get("nome") or await _nome_conto(principale["codice"]),
-            }
+            codice_vincente = principale["codice"]
+            # Confidenza del match: il massimo tra le righe che sono finite
+            # su questo conto (basta UNA riga con evidenza forte per fidarsi
+            # del conto anche se altre righe simili ci sono arrivate con un
+            # pattern debole).
+            confidenza_vincente = max(
+                (float(riga.get("confidenza") or 0)
+                 for riga in dettaglio if riga.get("conto_codice") == codice_vincente),
+                default=0.0,
+            )
+            if confidenza_vincente >= SOGLIA_CONFIDENZA_AUTOMATICA:
+                conto_costo = {
+                    "codice": codice_vincente,
+                    "nome": principale.get("nome") or await _nome_conto(codice_vincente),
+                }
+            else:
+                await _segnala_conto_bassa_confidenza(
+                    db, fattura=fattura, codice_scartato=codice_vincente,
+                    confidenza=confidenza_vincente, soglia=SOGLIA_CONFIDENZA_AUTOMATICA,
+                )
 
     if not conto_costo:
         conto_costo = {"codice": "05.01.01", "nome": "Acquisto merci"}

@@ -57,6 +57,30 @@ class CategorizzazioneResult:
     confidenza: float  # 0-1
 
 
+# Livelli di confidenza (consolidamento 19/09/2026, audit avversariale sulla
+# PR del motore unico conto-costo): prima di questo fix ogni match sulla
+# DESCRIZIONE riceveva la stessa confidenza (0.9) a prescindere da quanto
+# fosse specifico il pattern che l'ha prodotto. Bug riprodotto: "Mobile bar
+# con ripiani in legno" (un arredo) matcha il pattern generico ``r"mobile"``
+# della categoria "telefonia" (pensato per "telefono mobile") con
+# confidenza=0.9, com un match forte qualunque — finiva scritta come
+# Telefonia (deducibilita' 80%) invece di restare "da verificare".
+# I pattern elencati in ``patterns_deboli`` (vedi PATTERNS_DESCRIZIONE)
+# ricevono CONFIDENZA_MATCH_DEBOLE invece della confidenza piena: sono
+# pattern brevi/ambigui che possono intercettare descrizioni di categorie
+# completamente diverse. ``SOGLIA_CONFIDENZA_AUTOMATICA`` e' la soglia sotto
+# la quale il chiamante (``piano_conti.determina_conti_fattura``) NON deve
+# fidarsi del conto proposto senza revisione, sullo stesso principio delle
+# altre decisioni fiscali automatiche del gestionale (CLAUDE.md, sezione
+# F24: mai una scrittura definitiva a bassa confidenza, sempre una proposta
+# da confermare).
+CONFIDENZA_FORNITORE = 0.85
+CONFIDENZA_DESCRIZIONE = 0.9
+CONFIDENZA_MATCH_DEBOLE = 0.4
+CONFIDENZA_FALLBACK = 0.3
+SOGLIA_CONFIDENZA_AUTOMATICA = 0.5
+
+
 # ============== REGOLE DI CATEGORIZZAZIONE ==============
 
 # Pattern per categoria merceologica basati su descrizione prodotto
@@ -160,10 +184,14 @@ PATTERNS_DESCRIZIONE = {
     "telefonia": {
         "patterns": [
             r"tim\b", r"vodafone", r"wind\b", r"fastweb", r"telecom",
-            r"telefon", r"mobile", r"sim\b", r"roaming", r"adsl",
+            r"telefon", r"sim\b", r"roaming", r"adsl",
             r"fibra\b", r"internet", r"connettivit", r"dati\s+mobili",
             r"voip\b", r"centralino", r"wi-?fi"
         ],
+        # "mobile" da solo e' ambiguo (pensato per "telefono mobile", ma
+        # intercetta anche un arredo come "mobile bar"): confidenza debole,
+        # vedi CONFIDENZA_MATCH_DEBOLE piu' sopra.
+        "patterns_deboli": [r"mobile"],
         "conto": ("05.02.07", "Telefonia e comunicazioni"),
         "categoria_fiscale": CategoriaFiscale.TELEFONIA,
         "deducibilita_ires": 80,
@@ -1021,14 +1049,23 @@ class CategorizzatoreContabile:
                 if re.search(pattern, forn_lower, re.IGNORECASE):
                     if categoria in self.patterns_descrizione:
                         config = self.patterns_descrizione[categoria]
-                        return self._build_result(categoria, config, confidenza=0.85)
-        
-        # 2. PRIORITA' 2: Pattern descrizione (analisi del testo)
+                        return self._build_result(categoria, config, confidenza=CONFIDENZA_FORNITORE)
+
+        # 2. PRIORITA' 2: Pattern descrizione forti (analisi del testo)
         for categoria, config in self.patterns_descrizione.items():
             for pattern in config["patterns"]:
                 if re.search(pattern, desc_lower, re.IGNORECASE):
-                    return self._build_result(categoria, config, confidenza=0.9)
-        
+                    return self._build_result(categoria, config, confidenza=CONFIDENZA_DESCRIZIONE)
+
+        # 2b. Pattern descrizione DEBOLI: solo se nessun pattern forte ha
+        # trovato nulla, con la confidenza dedicata alla bonta' del pattern
+        # specifico (non la stessa di un match forte, vedi commento sopra
+        # CONFIDENZA_MATCH_DEBOLE).
+        for categoria, config in self.patterns_descrizione.items():
+            for pattern in config.get("patterns_deboli", []):
+                if re.search(pattern, desc_lower, re.IGNORECASE):
+                    return self._build_result(categoria, config, confidenza=CONFIDENZA_MATCH_DEBOLE)
+
         # 3. Fallback su "Acquisto merci" generico
         return CategorizzazioneResult(
             categoria_merceologica="merci_generiche",
@@ -1038,7 +1075,7 @@ class CategorizzatoreContabile:
             percentuale_deducibilita_ires=100,
             percentuale_deducibilita_irap=100,
             note_fiscali="Categoria generica - verificare manualmente",
-            confidenza=0.3
+            confidenza=CONFIDENZA_FALLBACK
         )
     
     def _build_result(
