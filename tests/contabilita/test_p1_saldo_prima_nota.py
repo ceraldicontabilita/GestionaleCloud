@@ -4,7 +4,7 @@ la formula preesistente (entrate−uscite + riporto anni precedenti)."""
 import asyncio
 
 from app.routers.prima_nota_module import common
-from app.services.sheets_runtime_database import SheetsRuntimeDatabase
+from app.services.sheets_document_store import MemorySheetsClient
 
 
 class _Agg:
@@ -230,11 +230,11 @@ def test_importo_stringa_convertito():
     assert s["saldo"] == 70.50
 
 
-def test_importo_stringa_convertito_nel_runtime_sheets_reale():
-    """Il runtime Sheets converte anche gli importi serializzati come testo."""
-    runtime = SheetsRuntimeDatabase(
-        "test", {"GOOGLE_SHEETS_LEDGER_ID": "SHEET-1"},
-    )
+def test_importo_stringa_convertito_nel_runtime_documentale_reale():
+    """Il document store condiviso da entrambi i backend (base di
+    SupabaseRuntimeDatabase) converte anche gli importi serializzati come
+    testo, non solo le fake `_Db`/`_Coll` di questo file."""
+    runtime = MemorySheetsClient()["test"]
     runtime.loading = True
     _run(runtime["prima_nota_banca"].insert_many([
         {"tipo": "entrata", "importo": "100.50", "data": "2026-03-01"},

@@ -12,75 +12,6 @@ from app.utils.ruoli import richiedi_admin
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-_ledger_jobs: Dict[str, Dict[str, Any]] = {}
-
-
-async def _run_ledger_job(job_id: str, action: str) -> None:
-    """Esegue migrazioni lunghe fuori dalla richiesta HTTP del browser."""
-    job = _ledger_jobs[job_id]
-    try:
-        db = Database.get_db()
-        config = await db["system_settings"].find_one(
-            {"key": "google_sheets_ledger"}, {"_id": 0},
-        ) or {}
-        if action == "folder-audit":
-            from app.services.google_sheets_ledger import drive_folder_duplicate_audit
-            result = await drive_folder_duplicate_audit(job.get("folder_ids") or [])
-        elif action == "folder-cleanup":
-            from app.services.google_sheets_ledger import trash_exact_duplicates
-            result = await trash_exact_duplicates(
-                job.get("folder_ids") or [], apply=bool(job.get("apply")),
-            )
-        elif action == "sync":
-            from app.services.google_sheets_ledger import sync_all
-            result = await sync_all(db, config)
-            if result.get("spreadsheet_id"):
-                await db["system_settings"].update_one(
-                    {"key": "google_sheets_ledger"},
-                    {"$set": {
-                        "GOOGLE_SHEETS_LEDGER_ID": result["spreadsheet_id"],
-                        "GOOGLE_SHEETS_LEDGER_FORCE_NEW": False,
-                        "updated_at": datetime.now(timezone.utc).isoformat(),
-                    }},
-                    upsert=True,
-                )
-        elif action == "audit":
-            from app.services.google_sheets_ledger import registry_audit
-            result = await registry_audit(db, config)
-        else:
-            from app.services.google_sheets_ledger import restore_all
-            result = await restore_all(db, config, apply=False)
-        job.update(status="completed", result=result)
-    except Exception as exc:
-        logger.exception("Lavoro registro Drive fallito: %s", action)
-        job.update(status="failed", error=str(exc))
-    finally:
-        job["finished_at"] = datetime.now(timezone.utc).isoformat()
-
-
-@router.post("/google-sheets-ledger/jobs/{action}")
-async def start_google_sheets_ledger_job(action: str = Path(...)) -> Dict[str, Any]:
-    if action not in {"sync", "audit", "validate"}:
-        raise HTTPException(status_code=400, detail="Operazione non valida")
-    running = next((item for item in _ledger_jobs.values() if item["status"] == "running"), None)
-    if running:
-        return running
-    job_id = str(uuid.uuid4())
-    job = {
-        "job_id": job_id, "action": action, "status": "running",
-        "started_at": datetime.now(timezone.utc).isoformat(),
-    }
-    _ledger_jobs[job_id] = job
-    asyncio.create_task(_run_ledger_job(job_id, action))
-    return job
-
-
-@router.get("/google-sheets-ledger/jobs/{job_id}")
-async def get_google_sheets_ledger_job(job_id: str = Path(...)) -> Dict[str, Any]:
-    job = _ledger_jobs.get(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Elaborazione non trovata o server riavviato")
-    return job
 
 
 _supabase_migration_jobs: Dict[str, Dict[str, Any]] = {}
@@ -99,17 +30,16 @@ def _supabase_runtime_config(settings: Any) -> Dict[str, str]:
 
 
 async def _run_supabase_migration_job(job_id: str) -> None:
-    """Copia ogni documento gia' idratato in memoria (backend attivo, in
-    produzione Sheets) dentro gestionale.documents su Supabase.
+    """Copia ogni documento gia' idratato in memoria dentro
+    gestionale.documents su Supabase.
 
     Sola lettura dalla cache di processo gia' caricata all'avvio: nessuna
-    nuova chiamata all'API Google Sheets/Drive, quindi non consuma la quota
-    e non rallenta il traffico applicativo in corso. Scrittura idempotente
-    (upsert per collection+id su Supabase): rilanciabile senza duplicare
-    nulla se si interrompe o va rieseguita. Non cambia DATA_BACKEND e non
-    tocca la sorgente Sheets: la produzione continua a servire dal backend
-    attivo finche' non si decide esplicitamente, e separatamente, il
-    cutover.
+    nuova chiamata remota, quindi non rallenta il traffico applicativo in
+    corso. Scrittura idempotente (upsert per collection+id su Supabase):
+    rilanciabile senza duplicare nulla se si interrompe o va rieseguita.
+    Supabase e' ormai l'unico backend supportato: questo job resta come
+    strumento di preparazione per un'eventuale migrazione futura verso un
+    altro archivio, non per un cutover da Sheets (gia' completato).
     """
     job = _supabase_migration_jobs[job_id]
     try:
@@ -172,11 +102,14 @@ async def avvia_migrazione_supabase(
     payload: Dict[str, Any] = Body(...),
     _admin: Dict[str, Any] = Depends(get_current_admin_user),
 ) -> Dict[str, Any]:
-    """Avvia la copia una tantum da Sheets a Supabase (gestionale.documents).
+    """Avvia la copia una tantum del backend attivo verso
+    gestionale.documents su Supabase.
 
     Richiede conferma esplicita nel body per evitare avvii accidentali.
-    Non modifica DATA_BACKEND: e' una copia di sola preparazione, verificabile
-    prima di qualsiasi decisione di cutover.
+    Non modifica DATA_BACKEND: e' una copia di sola preparazione. Con
+    Supabase gia' unico backend supportato, oggi fallisce sempre con
+    "niente da migrare"; resta predisposta per un'eventuale migrazione
+    futura verso un altro archivio.
     """
     if payload.get("conferma") != "MIGRA":
         raise HTTPException(
@@ -218,154 +151,6 @@ async def stato_migrazione_supabase(
         raise HTTPException(status_code=404, detail="Elaborazione non trovata o server riavviato")
     return job
 
-
-@router.get("/google-sheets-ledger/manifest")
-async def google_sheets_ledger_manifest() -> Dict[str, Any]:
-    """Elenco stabile dei fogli e dei relativi progressivi."""
-    from app.services.google_sheets_ledger import HEADERS, sheet_manifest
-    collections = await Database.get_db().list_collection_names()
-    return {"headers": HEADERS, "fogli": sheet_manifest(collections)}
-
-
-@router.get("/google-sheets-ledger/config")
-async def google_sheets_ledger_config() -> Dict[str, Any]:
-    from app.services.google_sheets_ledger import default_folder_id
-    config = await Database.get_db()["system_settings"].find_one(
-        {"key": "google_sheets_ledger"}, {"_id": 0},
-    ) or {}
-    return {
-        "spreadsheet_id": config.get("GOOGLE_SHEETS_LEDGER_ID"),
-        "folder_id": default_folder_id(config),
-        "configured": bool(
-            config.get("GOOGLE_SHEETS_LEDGER_ID")
-            or default_folder_id(config)
-        ),
-    }
-
-
-@router.get("/google-sheets-ledger/duplicate-audit")
-async def google_sheets_ledger_duplicate_audit() -> Dict[str, Any]:
-    """Inventario read-only dei duplicati nella cartella archivio Drive."""
-    from app.services.google_sheets_ledger import drive_duplicate_audit
-    db = Database.get_db()
-    config = await db["system_settings"].find_one(
-        {"key": "google_sheets_ledger"}, {"_id": 0},
-    ) or {}
-    return await drive_duplicate_audit(config)
-
-
-@router.post("/google-sheets-ledger/duplicate-audit-folders")
-async def google_drive_folders_duplicate_audit(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
-    """Audit ricorsivo metadata-only di cartelle Drive esplicitamente indicate."""
-    folder_ids = payload.get("folder_ids") or []
-    if not isinstance(folder_ids, list) or not folder_ids:
-        raise HTTPException(status_code=400, detail="Indicare almeno una cartella Drive")
-    running = next(
-        (item for item in _ledger_jobs.values()
-         if item["status"] == "running" and item.get("action") == "folder-audit"),
-        None,
-    )
-    if running:
-        return running
-    job_id = str(uuid.uuid4())
-    job = {
-        "job_id": job_id,
-        "action": "folder-audit",
-        "status": "running",
-        "folder_ids": list(dict.fromkeys(str(value).strip() for value in folder_ids if str(value).strip())),
-        "started_at": datetime.now(timezone.utc).isoformat(),
-    }
-    _ledger_jobs[job_id] = job
-    asyncio.create_task(_run_ledger_job(job_id, "folder-audit"))
-    return job
-
-
-@router.post("/google-sheets-ledger/duplicate-cleanup-folders")
-async def google_drive_folders_duplicate_cleanup(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
-    """Prepara o applica la pulizia recuperabile delle sole copie MD5."""
-    folder_ids = payload.get("folder_ids") or []
-    if not isinstance(folder_ids, list) or not folder_ids:
-        raise HTTPException(status_code=400, detail="Indicare almeno una cartella Drive")
-    apply = payload.get("apply") is True
-    job_id = str(uuid.uuid4())
-    job = {
-        "job_id": job_id, "action": "folder-cleanup", "status": "running",
-        "folder_ids": list(dict.fromkeys(str(value).strip() for value in folder_ids if str(value).strip())),
-        "apply": apply,
-        "started_at": datetime.now(timezone.utc).isoformat(),
-    }
-    _ledger_jobs[job_id] = job
-    asyncio.create_task(_run_ledger_job(job_id, "folder-cleanup"))
-    return job
-
-
-@router.post("/google-sheets-ledger/config")
-async def save_google_sheets_ledger_config(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
-    """Configura il file o la cartella Drive senza esporre credenziali."""
-    spreadsheet_id = str(payload.get("spreadsheet_id") or "").strip() or None
-    folder_id = str(payload.get("folder_id") or "").strip() or None
-    if not spreadsheet_id and not folder_id:
-        raise HTTPException(status_code=400, detail="Indicare spreadsheet_id oppure folder_id")
-    now = datetime.now(timezone.utc).isoformat()
-    await Database.get_db()["system_settings"].update_one(
-        {"key": "google_sheets_ledger"},
-        {"$set": {
-            "key": "google_sheets_ledger",
-            "GOOGLE_SHEETS_LEDGER_ID": spreadsheet_id,
-            "GOOGLE_SHEETS_LEDGER_FOLDER_ID": folder_id,
-            "GOOGLE_SHEETS_LEDGER_FORCE_NEW": not bool(spreadsheet_id),
-            "updated_at": now,
-        }},
-        upsert=True,
-    )
-    return {"saved": True, "spreadsheet_id": spreadsheet_id, "folder_id": folder_id}
-
-
-@router.post("/google-sheets-ledger/sync")
-async def sync_google_sheets_ledger() -> Dict[str, Any]:
-    """Sincronizza tutte le entita canoniche nel registro Drive."""
-    from app.services.google_sheets_ledger import sync_all
-    db = Database.get_db()
-    config = await db["system_settings"].find_one(
-        {"key": "google_sheets_ledger"}, {"_id": 0},
-    ) or {}
-    result = await sync_all(db, config)
-    if result.get("spreadsheet_id") and not config.get("GOOGLE_SHEETS_LEDGER_ID"):
-        await db["system_settings"].update_one(
-            {"key": "google_sheets_ledger"},
-            {"$set": {
-                "key": "google_sheets_ledger",
-                "GOOGLE_SHEETS_LEDGER_ID": result["spreadsheet_id"],
-                "GOOGLE_SHEETS_LEDGER_FOLDER_ID": result.get("folder_id") or config.get("GOOGLE_SHEETS_LEDGER_FOLDER_ID"),
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            }},
-            upsert=True,
-        )
-    return result
-
-
-@router.post("/google-sheets-ledger/restore")
-async def restore_google_sheets_ledger(
-    apply: bool = Query(False, description="False valida soltanto; True esegue upsert"),
-) -> Dict[str, Any]:
-    """Controlla o ricostruisce il database dal registro Drive."""
-    from app.services.google_sheets_ledger import restore_all
-    db = Database.get_db()
-    config = await db["system_settings"].find_one(
-        {"key": "google_sheets_ledger"}, {"_id": 0},
-    ) or {}
-    return await restore_all(db, config, apply=apply)
-
-
-@router.get("/google-sheets-ledger/migration-audit")
-async def audit_google_sheets_migration() -> Dict[str, Any]:
-    """Gate read-only: verifica completezza e coerenza del registro Sheets."""
-    from app.services.google_sheets_ledger import registry_audit
-    db = Database.get_db()
-    config = await db["system_settings"].find_one(
-        {"key": "google_sheets_ledger"}, {"_id": 0},
-    ) or {}
-    return await registry_audit(db, config)
 
 @router.get("/bank-supplier-rules")
 async def list_bank_supplier_rules() -> List[Dict[str, Any]]:

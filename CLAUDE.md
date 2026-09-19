@@ -159,10 +159,13 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 
 ## Archivio dati e architettura
 
-- **Supabase è l'archivio unico**: un solo progetto `GestionaleCloud`,
-  `render.yaml` imposta `DATA_BACKEND=supabase`. Drive resta la fonte degli
-  **originali documentali**, non il database. Il runtime Sheets sopravvive nel
-  codice solo come fallback di sviluppo: non è più l'assetto di produzione.
+- **Supabase è l'unico archivio, senza eccezioni**: un solo progetto
+  `GestionaleCloud`, `render.yaml` impone `DATA_BACKEND=supabase` ed è
+  l'unico valore accettato dal codice. Drive resta la fonte degli
+  **originali documentali**, non il database. Il vecchio runtime Google
+  Sheets (backend, libreria di sincronizzazione, endpoint admin e job
+  schedulato) è stato rimosso il 19/09/2026: non esiste più nel codice, nemmeno
+  come fallback di sviluppo.
 - Schemi: `gestionale` (ERP: `documents`, `blobs`, `collection_versions`,
   `protocollo_drive`, `runtime_scheduler_leases`), `hr` (tabelle `app_*`,
   `id text` + `doc jsonb`), `lotti` (`lotti_documents` + RPC `lotti_*`),
@@ -178,8 +181,9 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   fallisce. `GC_RUNTIME_CACHE=0` / `HR_RUNTIME_CACHE=0` la spengono.
 - `/api/health` risponde entro 2 s anche con la probe appesa (`degraded`, non
   503; `?strict=true` per il 503). Una sola probe in volo per processo.
-- Gli scheduler acquisiscono una lease distribuita: il lock locale resta solo
-  per il fallback Sheets di sviluppo.
+- Gli scheduler acquisiscono una lease distribuita su Supabase: il lock
+  locale resta solo come riserva prima che la connessione sia disponibile
+  (avvio, test).
 - PostgREST esegue le RPC del runtime come ruolo `anon`, con
   `statement_timeout` 20 s; `authenticator` resta a 8 s. Da rivedere se si
   cambia compute o si riduce il payload di `documents`.

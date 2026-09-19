@@ -27,48 +27,29 @@ class Database:
         Create database connection.
         Called on application startup.
 
-        NOTE: Il supporto ai backend legacy è stato rimosso. Questo metodo supporta solo il runtime Sheets (Google Sheets/Drive). Tentativi di selezionare backend non supportati genereranno un RuntimeError.
+        NOTE: Il supporto ai backend legacy è stato rimosso. Supabase è
+        l'unico backend supportato: qualunque altro valore genera un
+        RuntimeError.
         """
         try:
             backend = settings.DATA_BACKEND.strip().lower()
-            if backend not in ("sheets", "supabase"):
+            if backend != "supabase":
                 raise RuntimeError(
-                    "DATA_BACKEND non supportato. Usare 'sheets' (con "
-                    "GOOGLE_SHEETS_LEDGER_ID/GOOGLE_SHEETS_LEDGER_FOLDER_ID) oppure "
-                    "'supabase' (con le tre variabili SUPABASE_* del runtime)."
+                    "DATA_BACKEND non supportato. Usare 'supabase' (con le "
+                    "tre variabili SUPABASE_* del runtime)."
                 )
 
-            if backend == "supabase":
-                from app.services.supabase_runtime_database import SupabaseRuntimeDatabase
+            from app.services.supabase_runtime_database import SupabaseRuntimeDatabase
 
-                runtime = SupabaseRuntimeDatabase(settings.DB_NAME, {
-                    "SUPABASE_URL": settings.SUPABASE_URL,
-                    "SUPABASE_PUBLISHABLE_KEY": settings.SUPABASE_PUBLISHABLE_KEY,
-                    "SUPABASE_RUNTIME_SECRET": settings.SUPABASE_RUNTIME_SECRET,
-                })
-                await runtime.hydrate()
-                cls.client = runtime
-                cls.db = runtime
-                logger.info("Connected to private Supabase ledger")
-                return
-
-            # Sheets runtime
-            from app.services.sheets_runtime_database import SheetsRuntimeDatabase
-
-            runtime = SheetsRuntimeDatabase(settings.DB_NAME, {
-                "GOOGLE_SHEETS_LEDGER_ID": settings.GOOGLE_SHEETS_LEDGER_ID,
-                "GOOGLE_SHEETS_LEDGER_FOLDER_ID": settings.GOOGLE_SHEETS_LEDGER_FOLDER_ID,
+            runtime = SupabaseRuntimeDatabase(settings.DB_NAME, {
+                "SUPABASE_URL": settings.SUPABASE_URL,
+                "SUPABASE_PUBLISHABLE_KEY": settings.SUPABASE_PUBLISHABLE_KEY,
+                "SUPABASE_RUNTIME_SECRET": settings.SUPABASE_RUNTIME_SECRET,
             })
             await runtime.hydrate()
-            # Il runtime Sheets è sia archivio sia risorsa da chiudere. Non
-            # espone un driver separato: conservarlo direttamente evita di
-            # dipendere da attributi interni inesistenti durante lo startup.
             cls.client = runtime
             cls.db = runtime
-            logger.info(
-                "Connected to Google Sheets ledger %s",
-                settings.GOOGLE_SHEETS_LEDGER_ID,
-            )
+            logger.info("Connected to private Supabase ledger")
             return
 
         except Exception as e:

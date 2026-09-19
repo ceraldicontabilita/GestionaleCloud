@@ -394,7 +394,6 @@ export default function Admin() {
     { key: 'rollback', label: 'Rollback Dati', icon: '🗑️' },
     { key: 'collaudo', label: 'Collaudo', icon: '🧪' },
     { key: 'bank-rules', label: 'Riferimenti bancari', icon: '🏦' },
-    { key: 'drive-ledger', label: 'Registro Drive', icon: '📊' },
     { key: 'supabase-migration', label: 'Migrazione Supabase', icon: '🐘' },
   ];
 
@@ -937,8 +936,6 @@ export default function Admin() {
 
       {activeTab === 'collaudo' && <CollaudoTab />}
 
-      {activeTab === 'drive-ledger' && <GoogleSheetsLedgerTab />}
-
       {activeTab === 'supabase-migration' && <SupabaseMigrationTab />}
 
       {activeTab === 'bank-rules' && (
@@ -1159,217 +1156,6 @@ function PuliziaDriveFattureCard() {
   );
 }
 
-function GoogleSheetsLedgerTab() {
-  const [config, setConfig] = useState({ spreadsheet_id: '', folder_id: '' });
-  const [manifest, setManifest] = useState([]);
-  const [result, setResult] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const [duplicateAudit, setDuplicateAudit] = useState(null);
-  const [driveFolderLinks, setDriveFolderLinks] = useState('');
-
-  const load = useCallback(async () => {
-    const [cfg, man] = await Promise.all([
-      api.get('/api/admin/google-sheets-ledger/config'),
-      api.get('/api/admin/google-sheets-ledger/manifest'),
-    ]);
-    setConfig({ spreadsheet_id: cfg.data.spreadsheet_id || '', folder_id: cfg.data.folder_id || '' });
-    setManifest(man.data.fogli || []);
-  }, []);
-
-  useEffect(() => { load().catch(() => {}); }, [load]);
-
-  async function saveConfig() {
-    setBusy(true);
-    try {
-      await api.post('/api/admin/google-sheets-ledger/config', config);
-      toast.success('Registro Drive configurato');
-    } catch (error) {
-      toast.error(error.response?.data?.detail || 'Configurazione non riuscita');
-    } finally { setBusy(false); }
-  }
-
-  async function auditDuplicates() {
-    setBusy(true);
-    try {
-      const response = await api.get('/api/admin/google-sheets-ledger/duplicate-audit');
-      setDuplicateAudit(response.data);
-      toast.success(`Controllati ${response.data.totale_file || 0} file Drive`);
-    } catch (error) {
-      toast.error(error.response?.data?.detail || 'Audit duplicati non riuscito');
-    } finally { setBusy(false); }
-  }
-
-  async function auditFolderDuplicates() {
-    const folderIds = [...driveFolderLinks.matchAll(/folders\/([A-Za-z0-9_-]+)/g)].map(match => match[1]);
-    if (!folderIds.length) return toast.error('Incolla almeno un link cartella Drive');
-    setBusy(true);
-    try {
-      const response = await api.post('/api/admin/google-sheets-ledger/duplicate-audit-folders', { folder_ids: [...new Set(folderIds)] });
-      let job = response.data;
-      while (job.status === 'running') {
-        await new Promise(resolve => setTimeout(resolve, 5000));
-        job = (await api.get(`/api/admin/google-sheets-ledger/jobs/${job.job_id}`)).data;
-      }
-      if (job.status === 'failed') throw new Error(job.error || 'Audit cartelle non riuscito');
-      const data = job.result || {};
-      setDuplicateAudit(data);
-      toast.success(`Controllati ${data.totale_file || 0} file in ${data.cartelle_visitate || 0} cartelle`);
-    } catch (error) {
-      toast.error(error.response?.data?.detail || 'Audit cartelle non riuscito');
-    } finally { setBusy(false); }
-  }
-
-  async function cleanupFolderDuplicates(apply = false) {
-    const folderIds = [...driveFolderLinks.matchAll(/folders\/([A-Za-z0-9_-]+)/g)].map(match => match[1]);
-    if (!folderIds.length) return toast.error('Incolla almeno un link cartella Drive');
-    setBusy(true);
-    try {
-      let job = (await api.post('/api/admin/google-sheets-ledger/duplicate-cleanup-folders', {
-        folder_ids: [...new Set(folderIds)], apply,
-      })).data;
-      while (job.status === 'running') {
-        await new Promise(resolve => setTimeout(resolve, 5000));
-        job = (await api.get(`/api/admin/google-sheets-ledger/jobs/${job.job_id}`)).data;
-      }
-      if (job.status === 'failed') throw new Error(job.error || 'Pulizia duplicati non riuscita');
-      setResult({ action: apply ? 'cleanup' : 'cleanup-preview', ...(job.result || {}) });
-      toast.success(apply
-        ? `${job.result?.spostate_nel_cestino || 0} copie spostate nel Cestino`
-        : `${job.result?.copie_selezionate || 0} copie MD5 eliminabili`);
-    } catch (error) {
-      toast.error(error.response?.data?.detail || error.message || 'Pulizia duplicati non riuscita');
-    } finally { setBusy(false); }
-  }
-
-  async function run(action) {
-    setBusy(true);
-    try {
-      const started = await api.post(`/api/admin/google-sheets-ledger/jobs/${action}`);
-      let job = started.data;
-      while (job.status === 'running') {
-        await new Promise(resolve => setTimeout(resolve, 5000));
-        job = (await api.get(`/api/admin/google-sheets-ledger/jobs/${job.job_id}`)).data;
-      }
-      if (job.status === 'failed') throw new Error(job.error || 'Elaborazione non riuscita');
-      const data = job.result || {};
-      setResult({ action, ...data });
-      setConfig(current => ({ ...current, spreadsheet_id: data.spreadsheet_id || current.spreadsheet_id }));
-      if (action === 'audit') {
-        if (data.pronto_cutover) toast.success('Archivio Drive pronto per il passaggio');
-        else toast.error('Passaggio bloccato: archivi mancanti o non coerenti');
-        return;
-      }
-      const errors = (data.fogli || []).reduce((sum, row) => sum + (row.numero_errori || 0), 0);
-      if (errors) toast.error(`${errors} errori nel registro`);
-      else toast.success(action === 'sync' ? 'Registro Google Sheets sincronizzato' : 'Registro ricostruibile');
-    } catch (error) {
-      toast.error(error.response?.data?.detail || error.message || 'Operazione non riuscita');
-    } finally { setBusy(false); }
-  }
-
-  return (
-    <div style={{ display: 'grid', gap: 16 }}>
-      <Card title="Registro dati su Google Drive">
-        <p style={{ fontSize: 13, color: COLORS.textMuted, lineHeight: 1.6 }}>
-          Un solo file Google Sheets, un foglio per ogni archivio. Ogni foglio ha un
-          progressivo proprio; canonical_id conserva l'identità originale e operation_id
-          collega fattura, pagamento e movimento bancario. Il payload JSON permette la ricostruzione completa.
-        </p>
-        <div style={{ display: 'grid', gap: 10, gridTemplateColumns: '1fr 1fr auto' }}>
-          <Input value={config.spreadsheet_id} onChange={e => setConfig({ ...config, spreadsheet_id: e.target.value })} placeholder="ID file Google Sheets (se esiste)" />
-          <Input value={config.folder_id} onChange={e => setConfig({ ...config, folder_id: e.target.value })} placeholder="ID cartella Drive (per crearlo)" />
-          <Button onClick={saveConfig} disabled={busy || (!config.spreadsheet_id && !config.folder_id)}>Salva</Button>
-        </div>
-        <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
-          <Button variant="primary" onClick={() => run('sync')} disabled={busy || (!config.spreadsheet_id && !config.folder_id)}>
-            {busy ? 'Elaborazione...' : 'Sincronizza tutto'}
-          </Button>
-          <Button variant="secondary" onClick={() => run('validate')} disabled={busy || !config.spreadsheet_id}>
-            Verifica ricostruzione
-          </Button>
-          <Button variant="secondary" onClick={() => run('audit')} disabled={busy || !config.spreadsheet_id}>
-            Audit migrazione
-          </Button>
-          <Button variant="secondary" onClick={auditDuplicates} disabled={busy || !config.folder_id}>
-            Controlla duplicati Drive
-          </Button>
-          {result?.spreadsheet_url && <a href={result.spreadsheet_url} target="_blank" rel="noreferrer">Apri Google Sheets</a>}
-        </div>
-      </Card>
-      {duplicateAudit && (
-        <Card title="Duplicati Drive (sola lettura)">
-          <div>{duplicateAudit.totale_file || 0} file · {duplicateAudit.gruppi_duplicati || 0} gruppi · {duplicateAudit.file_duplicati_eccedenti || 0} copie eccedenti · {((duplicateAudit.spazio_recuperabile_bytes || 0) / 1048576).toFixed(2)} MB recuperabili</div>
-          {duplicateAudit.radici_richieste != null && (
-            <div style={{ marginTop: 6 }}>
-              {duplicateAudit.radici_accessibili?.length || 0}/{duplicateAudit.radici_richieste} cartelle radice accessibili · {duplicateAudit.errori?.length || 0} errori di accesso
-            </div>
-          )}
-          {(duplicateAudit.errori || []).map(item => (
-            <div key={`${item.radice_id}-${item.folder_id}`} style={{ padding: '6px 0', color: COLORS.danger }}>
-              Non accessibile: {item.folder_id}
-            </div>
-          ))}
-          {(duplicateAudit.duplicati || []).map(group => (
-            <div key={group.chiave} style={{ padding: '8px 0', borderBottom: `1px solid ${COLORS.border}` }}>
-              <strong>{group.file?.[0]?.name || group.chiave}</strong> · {group.file?.length || 0} copie · {group.metodo}
-            </div>
-          ))}
-        </Card>
-      )}
-      <Card title="Controllo cartelle Drive indicate">
-        <textarea value={driveFolderLinks} onChange={e => setDriveFolderLinks(e.target.value)} placeholder="Incolla uno o più link di cartelle Drive" rows={5} style={{ width: '100%', padding: 10, border: `1px solid ${COLORS.border}`, borderRadius: BORDER_RADIUS.sm }} />
-        <Button variant="secondary" onClick={auditFolderDuplicates} disabled={busy || !driveFolderLinks.trim()} style={{ marginTop: 10 }}>
-          Controlla ricorsivamente
-        </Button>
-        <Button variant="secondary" onClick={() => cleanupFolderDuplicates(false)} disabled={busy || !driveFolderLinks.trim()} style={{ marginTop: 10, marginLeft: 10 }}>
-          Prepara pulizia MD5
-        </Button>
-        <Button variant="danger" onClick={() => cleanupFolderDuplicates(true)} disabled={busy || result?.action !== 'cleanup-preview'} style={{ marginTop: 10, marginLeft: 10 }}>
-          Sposta copie nel Cestino
-        </Button>
-      </Card>
-      <Card title={`Fogli previsti (${manifest.length})`}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 8 }}>
-          {manifest.map(item => (
-            <div key={item.foglio} style={{ padding: 10, border: `1px solid ${COLORS.border}`, borderRadius: BORDER_RADIUS.sm }}>
-              <strong>{item.foglio}</strong><br />
-              <small>{item.prefisso}-00000001 · {item.collezione}</small>
-            </div>
-          ))}
-        </div>
-      </Card>
-      {result && (
-        <Card title={result.action === 'audit' ? 'Audit migrazione Drive/Sheets → Drive' : (result.action === 'validate' ? 'Esito verifica ricostruzione' : 'Esito sincronizzazione')}>
-          {result.action === 'audit' && (
-            <div style={{ marginBottom: 12, color: result.pronto_cutover ? COLORS.success : COLORS.danger }}>
-              <strong>{result.pronto_cutover ? 'PRONTO AL PASSAGGIO' : 'PASSAGGIO BLOCCATO'}</strong>
-              <div>{(result.collezioni_non_migrate || []).length} collezioni non migrate · {result.totale_non_migrate || 0} righe</div>
-            </div>
-          )}
-          {(result.fogli || []).map(item => (
-            <div key={item.foglio} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${COLORS.border}` }}>
-              <span>{item.foglio}</span>
-              <strong>{result.action === 'audit' ? `${item.sorgente ?? 0} → ${item.drive ?? 0}` : (item.righe ?? item.valide ?? 0)}{(item.numero_errori || item.errori) ? ` · ${item.numero_errori || item.errori} errori` : ''}</strong>
-            </div>
-          ))}
-          {result.action === 'audit' && (result.collezioni_non_migrate || []).map(item => (
-            <div key={item.collezione} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${COLORS.border}` }}>
-              <span>{item.collezione}</span><strong>{item.righe}</strong>
-            </div>
-          ))}
-        </Card>
-      )}
-      {result?.action?.startsWith('cleanup') && (
-        <Card title={result.action === 'cleanup' ? 'Pulizia duplicati completata' : 'Anteprima pulizia duplicati'}>
-          <div>{result.gruppi_md5 || 0} gruppi MD5 · {result.copie_selezionate || 0} copie selezionate · {result.copie_senza_permesso || 0} senza permesso</div>
-          {result.action === 'cleanup' && <strong>{result.spostate_nel_cestino || 0} file spostati nel Cestino Drive</strong>}
-        </Card>
-      )}
-    </div>
-  );
-}
-
-
 function SupabaseMigrationTab() {
   const [conferma, setConferma] = useState('');
   const [busy, setBusy] = useState(false);
@@ -1398,14 +1184,14 @@ function SupabaseMigrationTab() {
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
-      <Card title="Migrazione dati Sheets → Supabase (preparazione)">
+      <Card title="Migrazione dati verso Supabase (storico)">
         <p style={{ fontSize: 13, color: COLORS.textMuted, lineHeight: 1.6 }}>
-          Copia una tantum di tutti i dati già in memoria (backend attivo, oggi Google Sheets)
-          dentro Supabase (tabella gestionale.documents). Legge solo dalla cache di processo:
-          nessuna nuova chiamata a Google Sheets/Drive, quindi non consuma la quota API e non
-          rallenta l'app in uso. Non modifica il backend attivo né i dati sorgente: la produzione
-          continua a servire da Sheets finché non si decide, separatamente, il passaggio. Operazione
-          idempotente: si può rilanciare senza duplicare nulla.
+          Copia una tantum di tutti i dati già in memoria dentro Supabase
+          (tabella gestionale.documents). Legge solo dalla cache di processo:
+          nessuna nuova chiamata remota. Operazione idempotente: si può
+          rilanciare senza duplicare nulla. Supabase è ormai l'unico backend
+          del gestionale: questo strumento resta solo per un'eventuale
+          migrazione futura verso un archivio diverso.
         </p>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
           <Input
