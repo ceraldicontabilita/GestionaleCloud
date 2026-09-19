@@ -11,6 +11,8 @@ from fastapi import APIRouter, Response, Request, HTTPException
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
+from app.hr.config import settings as _hr_settings
+
 load_dotenv()
 
 router = APIRouter(prefix="/api", tags=["auth"])
@@ -20,7 +22,13 @@ router = APIRouter(prefix="/api", tags=["auth"])
 ADMIN_EMAIL         = os.getenv("HR_ADMIN_EMAIL") or os.getenv("ADMIN_EMAIL", "ceraldigroupsrl@gmail.com")
 ADMIN_PASSWORD      = os.getenv("HR_ADMIN_PASSWORD") or os.getenv("ADMIN_PASSWORD", "")        # password in chiaro (priorità)
 ADMIN_PASSWORD_HASH = os.getenv("HR_ADMIN_PASSWORD_HASH") or os.getenv("ADMIN_PASSWORD_HASH", "")   # bcrypt (fallback)
-SECRET_KEY          = os.getenv("HR_JWT_SECRET") or os.getenv("SECRET_KEY", "ceraldi-erp-2026")
+# Sicurezza (fix 19/09/2026): niente più fallback hardcoded in chiaro
+# ("ceraldi-erp-2026") committato nel codice. Il segreto JWT è UNICO per
+# tutto app/hr/ (pin_login, dependencies, identity, auth_dipendenti lo
+# leggono già da qui): se HR_JWT_SECRET/JWT_SECRET non sono configurate,
+# `_shared_auth_secret()` in app/hr/config.py genera già un secret casuale
+# effimero (mai una stringa prevedibile) e logga l'assenza della variabile.
+SECRET_KEY          = _hr_settings.SECRET_KEY
 TOKEN_EXPIRE_HOURS  = 24 * 7   # 7 giorni
 
 

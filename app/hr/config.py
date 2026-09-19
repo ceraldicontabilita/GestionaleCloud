@@ -1,6 +1,9 @@
 """Configurazione AppDipendenti — punto unico (oggetto `settings` + costanti)."""
+import logging
 import os
 from typing import List
+
+logger = logging.getLogger(__name__)
 
 
 def _env(*nomi: str, default: str = "") -> str:
@@ -37,7 +40,15 @@ def _shared_auth_secret() -> str:
                 cli.close()
                 return doc["valore"]
             import secrets as _s
-            val = _env("HR_JWT_SECRET", "JWT_SECRET") or _s.token_hex(32)
+            configurato = _env("HR_JWT_SECRET", "JWT_SECRET")
+            if not configurato:
+                logger.warning(
+                    "⚠️ HR_JWT_SECRET/JWT_SECRET non configurata: genero un secret "
+                    "JWT effimero (verrà comunque condiviso via sistema_stato finché "
+                    "il processo resta attivo, ma cambia a ogni deploy/restart senza "
+                    "la variabile). Configurare HR_JWT_SECRET nel secret store di Render."
+                )
+            val = configurato or _s.token_urlsafe(64)
             coll.update_one({"chiave": "auth_secret"}, {"$set": {"valore": val}}, upsert=True)
             cli.close()
             return val
@@ -46,7 +57,14 @@ def _shared_auth_secret() -> str:
     # Ultima spiaggia: env JWT_SECRET, altrimenti un segreto casuale di processo
     # (mai un literal prevedibile come "changeme": permetterebbe di forgiare token).
     import secrets as _s
-    return _env("HR_JWT_SECRET", "JWT_SECRET") or _s.token_hex(32)
+    configurato = _env("HR_JWT_SECRET", "JWT_SECRET")
+    if not configurato:
+        logger.warning(
+            "⚠️ HR_JWT_SECRET/JWT_SECRET non configurata: uso un secret JWT "
+            "casuale effimero di processo (invalida i token a ogni riavvio). "
+            "Configurare HR_JWT_SECRET nel secret store di Render."
+        )
+    return configurato or _s.token_urlsafe(64)
 
 
 class Settings:
