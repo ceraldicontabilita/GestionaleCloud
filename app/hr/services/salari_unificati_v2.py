@@ -35,6 +35,11 @@ import uuid
 import re
 from datetime import datetime, timezone
 from typing import Dict, Any, List
+
+from app.constants.stati_netto import (
+    NETTO_NON_PRESENTE_O_NON_LEGGIBILE,
+    NETTO_VERIFICATO_DA_CEDOLINO,
+)
 import calendar
 
 logger = logging.getLogger(__name__)
@@ -229,11 +234,35 @@ async def processa_cedolino_v2(
         nome = cedolino_data.get("nome_dipendente") or ""
         mese = cedolino_data.get("mese")
         anno = cedolino_data.get("anno")
-        netto = float(cedolino_data.get("netto_mese") or cedolino_data.get("netto") or 0)
-        lordo = float(cedolino_data.get("lordo") or 0)
-        
-        if not cf or not mese or not anno or netto == 0:
-            result["errore"] = "Dati mancanti (CF, mese, anno, o netto=0)"
+        # CLAUDE.md: «cella vuota → valore nullo, MAI zero». Il vecchio
+        # `float(... or 0)` schiacciava a zero sia un netto illeggibile sia uno
+        # zero vero, e il messaggio d'errore li confondeva nello stesso
+        # «netto=0»: a valle non si poteva piu' distinguere una busta non letta
+        # da una busta senza netto. Qui il nullo resta nullo e lo stato lo dice.
+        netto_grezzo = cedolino_data.get("netto_mese")
+        if netto_grezzo is None:
+            netto_grezzo = cedolino_data.get("netto")
+        netto = None if netto_grezzo is None else float(netto_grezzo)
+        lordo_grezzo = cedolino_data.get("lordo")
+        lordo = None if lordo_grezzo is None else float(lordo_grezzo)
+
+        stato_netto = cedolino_data.get("stato_netto") or (
+            NETTO_VERIFICATO_DA_CEDOLINO if netto is not None
+            else NETTO_NON_PRESENTE_O_NON_LEGGIBILE
+        )
+        result["stato_netto"] = stato_netto
+
+        if not cf or not mese or not anno:
+            result["errore"] = "Dati mancanti (CF, mese o anno)"
+            return result
+        if netto is None:
+            result["errore"] = (
+                f"Netto non leggibile dal cedolino ({NETTO_NON_PRESENTE_O_NON_LEGGIBILE}): "
+                "la busta non alimenta Salari finche' il netto non e' verificato"
+            )
+            return result
+        if netto == 0:
+            result["errore"] = "Netto pari a zero sul cedolino"
             return result
         
         # --- Estrai dati aggiuntivi dal testo PDF ---
