@@ -235,109 +235,6 @@ def determina_centro_costo_da_f24(codice_tributo: str, sezione: str) -> str:
     return "Non specificato"
 
 # ============================================================================
-# MOVIMENTI BANCARI - PATTERN E CATEGORIZZAZIONE
-# ============================================================================
-
-BANK_MOVEMENT_PATTERNS = {
-    # Spese bancarie
-    "spese_bancarie": {
-        "keywords": ["commissioni", "commissione", "spese bancarie", "spese tenuta conto", "canone conto", "canone mensile", "canone trimestrale"],
-        "conto": "4.3.01",  # Interessi passivi bancari / Spese bancarie
-        "tipo": "oneri_finanziari",
-        "dare": True  # Dare = costo
-    },
-    
-    # Imposta di bollo
-    "bollo": {
-        "keywords": ["imposta bollo", "bollo", "imposta di bollo sul cc", "i.bollo"],
-        "conto": "4.3.02",  # Imposte e tasse
-        "tipo": "imposte",
-        "dare": True
-    },
-    
-    # Interessi passivi
-    "interessi_passivi": {
-        "keywords": ["interessi passivi", "int.passivi", "interessi debitori", "int.deb"],
-        "conto": "4.3.01",
-        "tipo": "oneri_finanziari",
-        "dare": True
-    },
-    
-    # Commissioni POS/carte
-    "commissioni_pos": {
-        "keywords": ["commissioni pos", "commissioni carte", "nexi", "sumup", "worldline", "axepta", "commissione carta"],
-        "conto": "4.3.01",
-        "tipo": "oneri_finanziari",
-        "dare": True
-    },
-    
-    # F24 Erario (riconoscimento da causale)
-    "f24_erario": {
-        "keywords": ["f24", "f 24", "tributi erariali", "agenzia entrate", "pagamento imposte"],
-        "conto": None,  # Determinato da codice tributo
-        "tipo": "f24_erario",
-        "dare": True,
-        "needs_code_analysis": True
-    },
-    
-    # F24 INPS (riconoscimento da causale)
-    "f24_inps": {
-        "keywords": ["inps", "contributi inps", "contributi previdenziali", "dm10", "dm11"],
-        "conto": "4.2.01",
-        "tipo": "costo_personale",
-        "dare": True
-    },
-    
-    # Stipendi
-    "stipendi": {
-        "keywords": ["stipendio", "stipendi", "salario", "retribuzione", "busta paga", "cedolino"],
-        "conto": "4.2.01",
-        "tipo": "costo_personale",
-        "dare": True
-    },
-    
-    # Fornitori
-    "pagamento_fornitori": {
-        "keywords": ["bonifico", "pagamento fornitore", "saldo fattura", "pagam.fatt"],
-        "conto": "2.1.01",  # Debiti verso fornitori
-        "tipo": "pagamento_debito",
-        "dare": True
-    },
-    
-    # Incassi clienti
-    "incasso_clienti": {
-        "keywords": ["bonifico cliente", "incasso", "pagamento cliente", "ric.bonifico"],
-        "conto": "1.2.03",  # Crediti verso clienti
-        "tipo": "incasso_credito",
-        "dare": False  # Avere = riduzione credito
-    },
-    
-    # Prelievi bancomat
-    "prelievi": {
-        "keywords": ["prelievo", "prelievo bancomat", "prelievo atm", "prelevamento"],
-        "conto": "1.2.01",  # Cassa
-        "tipo": "movimento_interno",
-        "dare": False  # Avere = uscita da banca, Dare su Cassa
-    },
-    
-    # Affitti
-    "affitto": {
-        "keywords": ["affitto", "canone locazione", "fitto", "locazione"],
-        "conto": "4.2.02",
-        "tipo": "affitti",
-        "dare": True
-    },
-    
-    # Utenze
-    "utenze": {
-        "keywords": ["enel", "eni", "acea", "bolletta", "energia elettrica", "gas", "acqua", "telecom", "tim", "vodafone", "fastweb"],
-        "conto": "4.2.03",
-        "tipo": "utenze",
-        "dare": True
-    },
-}
-
-# ============================================================================
 # OMAGGI - REGOLE DI CATEGORIZZAZIONE
 # ============================================================================
 
@@ -487,111 +384,16 @@ DOUBLE_ENTRY_TEMPLATES = {
 # ============================================================================
 # FUNZIONI HELPER PER RICONOSCIMENTO E CATEGORIZZAZIONE
 # ============================================================================
-
-def riconosci_f24(descrizione: str, importo: float) -> Dict:
-    """
-    Riconosce se un movimento bancario è un F24 e ne determina la tipologia
-    
-    Returns:
-        dict con chiavi: tipo ('erario' o 'inps'), codice_tributo, conto, descrizione
-    """
-    descrizione_lower = descrizione.lower()
-    
-    # Cerca pattern F24
-    if any(kw in descrizione_lower for kw in ["f24", "f 24", "tributi"]):
-        # Cerca codice tributo nella descrizione
-        import re
-        
-        # Pattern per codici erario (4 cifre)
-        match_erario = re.search(r'\b([2-6]\d{3})\b', descrizione)
-        if match_erario:
-            codice = match_erario.group(1)
-            if codice in F24_ERARIO_CODES:
-                return {
-                    "tipo": "erario",
-                    "codice_tributo": codice,
-                    "conto": F24_ERARIO_CODES[codice]["conto"],
-                    "descrizione_tributo": F24_ERARIO_CODES[codice]["descrizione"],
-                    "categoria": F24_ERARIO_CODES[codice]["tipo"]
-                }
-        
-        # Pattern per codici INPS (DM seguito da 2 cifre)
-        match_inps = re.search(r'\b(DM\d{2})\b', descrizione.upper())
-        if match_inps:
-            codice = match_inps.group(1).upper()
-            if codice in F24_INPS_CODES:
-                return {
-                    "tipo": "inps",
-                    "codice_tributo": codice,
-                    "conto": F24_INPS_CODES[codice]["conto"],
-                    "descrizione_tributo": F24_INPS_CODES[codice]["descrizione"],
-                    "categoria": F24_INPS_CODES[codice]["tipo"]
-                }
-        
-        # Se contiene INPS ma no codice specifico
-        if "inps" in descrizione_lower or "contributi" in descrizione_lower:
-            return {
-                "tipo": "inps",
-                "codice_tributo": None,
-                "conto": "4.2.01",
-                "descrizione_tributo": "Contributi INPS (generico)",
-                "categoria": "costo_personale"
-            }
-        
-        # Altrimenti erario generico
-        return {
-            "tipo": "erario",
-            "codice_tributo": None,
-            "conto": "4.3.02",
-            "descrizione_tributo": "Imposte (generico)",
-            "categoria": "imposte"
-        }
-    
-    return None
-
-
-def categorizza_movimento_bancario(descrizione: str, importo: float, tipo_movimento: str) -> Dict:
-    """
-    Categorizza un movimento bancario basandosi sulla descrizione
-    
-    Args:
-        descrizione: Causale del movimento
-        importo: Importo del movimento
-        tipo_movimento: 'addebito' o 'accredito'
-    
-    Returns:
-        dict con chiavi: conto, tipo, dare, descrizione_categoria
-    """
-    descrizione_lower = descrizione.lower()
-    
-    # Prima verifica se è un F24
-    f24_info = riconosci_f24(descrizione, importo)
-    if f24_info:
-        return {
-            "conto": f24_info["conto"],
-            "tipo": f24_info["categoria"],
-            "dare": True,
-            "descrizione_categoria": f24_info["descrizione_tributo"],
-            "f24_dettagli": f24_info
-        }
-    
-    # Cerca pattern nei movimenti standard
-    for pattern_key, pattern_data in BANK_MOVEMENT_PATTERNS.items():
-        if any(kw in descrizione_lower for kw in pattern_data["keywords"]):
-            return {
-                "conto": pattern_data["conto"],
-                "tipo": pattern_data["tipo"],
-                "dare": pattern_data["dare"],
-                "descrizione_categoria": pattern_key.replace("_", " ").title()
-            }
-    
-    # Default: movimento non categorizzato
-    return {
-        "conto": None,
-        "tipo": "non_categorizzato",
-        "dare": tipo_movimento == "addebito",
-        "descrizione_categoria": "Movimento non categorizzato"
-    }
+#
+# Il riconoscimento F24 e la categorizzazione dei movimenti bancari da
+# descrizione vivono in `app/services/categorizzazione_movimenti.py` (unico
+# motore, usato dall'import reale in `app/routers/bank/estratto_conto.py`).
+# Questo modulo restava con una seconda implementazione parallela — stesso
+# nome, mai collegata a nessun percorso di import — eliminata il 19/09/2026
+# per la regola "un solo sistema per funzione". I cataloghi codici tributo
+# sopra (F24_ERARIO_CODES, F24_INPS_CODES, F24_INAIL_CODES) restano qui: li
+# usa `app/schemas/f24_parser.py` per il parsing del modello F24, dominio
+# diverso dalla categorizzazione del movimento bancario.
 
 
 def determina_conto_omaggio(valore_unitario: float, destinatario: str) -> Dict:

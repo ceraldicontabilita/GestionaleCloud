@@ -596,13 +596,22 @@ function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRip
   // Fonti ferme: se l'estratto conto o i corrispettivi non arrivano piu', i
   // totali della pagina sono parziali e va detto prima di mostrarli.
   const [fontiFerme, setFontiFerme] = useState([]);
+  // 19/09/2026: una fonte puo' arrivare regolare e i suoi movimenti restare
+  // comunque senza categoria — problema diverso da una fonte ferma, stesso
+  // banner (non un secondo avviso separato).
+  const [coperturaCategoria, setCoperturaCategoria] = useState(null);
   useEffect(() => {
     let vivo = true;
     api.get('/prima-nota/stato-fonti')
-      .then((r) => { if (vivo) setFontiFerme(r.data?.ferme || []); })
-      .catch(() => { if (vivo) setFontiFerme([]); });
+      .then((r) => {
+        if (!vivo) return;
+        setFontiFerme(r.data?.ferme || []);
+        setCoperturaCategoria(r.data?.copertura_categoria_banca || null);
+      })
+      .catch(() => { if (vivo) { setFontiFerme([]); setCoperturaCategoria(null); } });
     return () => { vivo = false; };
   }, []);
+  const coperturaSopraSoglia = !!coperturaCategoria?.sopra_soglia;
   const [cerca, setCerca] = useState(selectedId);
   const [fNumeroFattura, setFNumeroFattura] = useState('');
   const [fNumeroDdt, setFNumeroDdt] = useState('');
@@ -942,8 +951,12 @@ function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRip
       {/* 18/09/2026: la pagina mostrava un saldo progressivo su una prima nota
           ferma al 24/08 senza dirlo, e righe POS «da verificare» che non
           potevano chiudersi perche' mancava l'estratto conto. Una fonte ferma
-          ora si vede qui, in cima, prima dei numeri che rende inattendibili. */}
-      {fontiFerme.length > 0 && (
+          ora si vede qui, in cima, prima dei numeri che rende inattendibili.
+          19/09/2026: stesso banner anche quando la fonte arriva regolare ma
+          i suoi movimenti restano senza categoria (e quindi fuori da Prima
+          Nota Banca) oltre la soglia — non e' lo stesso problema, ma l'esito
+          per chi legge la pagina e' identico: il saldo non e' completo. */}
+      {(fontiFerme.length > 0 || coperturaSopraSoglia) && (
         <div
           role="alert"
           style={{
@@ -959,6 +972,13 @@ function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRip
                 {f.ultima_data ? ` (ultimo: ${formatDateIT(f.ultima_data)})` : ''} — {f.conseguenza}.
               </li>
             ))}
+            {coperturaSopraSoglia && (
+              <li style={{ marginBottom: 2 }}>
+                <b>{coperturaCategoria.senza_categoria} movimenti bancari su {coperturaCategoria.totale}</b>
+                {' '}({coperturaCategoria.percentuale}%, anno {coperturaCategoria.anno}) non hanno una
+                categoria riconosciuta: il saldo progressivo mostrato NON include questi movimenti.
+              </li>
+            )}
           </ul>
           <div style={{ marginTop: 6 }}>
             Finche' mancano questi documenti il saldo progressivo non e' il saldo del conto

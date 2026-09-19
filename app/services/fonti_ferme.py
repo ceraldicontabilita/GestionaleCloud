@@ -26,6 +26,15 @@ logger = logging.getLogger(__name__)
 # e' un'interruzione. Sotto i 7 giorni restano i ponti e le chiusure.
 GIORNI_TOLLERATI = 7
 
+# 19/09/2026: una fonte puo' arrivare regolarmente e restare comunque senza
+# categoria (problema diverso da una fonte ferma: verificato il 18/09/2026,
+# 1.764 dei 1.920 movimenti bancari 2026 — il 92% — non avevano categoria, e
+# senza categoria un movimento non entra mai in Prima Nota Banca). Sopra
+# questa soglia il saldo progressivo mostrato e' inattendibile e va detto;
+# sotto il 10% i residui sono normali (causali non standard, bonifici a
+# controparti mai viste) e non serve piu' avvisare.
+SOGLIA_COPERTURA_CATEGORIA = 10.0
+
 FONTI: tuple[dict[str, Any], ...] = (
     {
         "chiave": "estratto_conto",
@@ -152,3 +161,40 @@ async def stato_fonti(db, *, oggi: Optional[date] = None) -> List[Dict[str, Any]
             "conseguenza": fonte["conseguenza"],
         })
     return righe
+
+
+async def copertura_categoria_banca(
+    db, *, anno: Optional[int] = None, soglia: float = SOGLIA_COPERTURA_CATEGORIA,
+) -> Dict[str, Any]:
+    """Quota di movimenti bancari dell'anno senza categoria riconosciuta.
+
+    Diverso dal fermo di una fonte: l'estratto conto puo' arrivare puntuale
+    ogni mese e i suoi movimenti restare comunque senza categoria (nessuna
+    causale contabile nota), e senza categoria un movimento non entra mai in
+    Prima Nota Banca (`entra_in_prima_nota`). Il saldo progressivo mostrato
+    in pagina, in quel caso, non e' il saldo del conto: e' il saldo della
+    sola minoranza di movimenti che il motore ha riconosciuto.
+    """
+    anno_riferimento = anno or _oggi().year
+    collection = db["estratto_conto_movimenti"]
+    query_anno = {"data": {"$regex": f"^{anno_riferimento}"}}
+    try:
+        totale = await collection.count_documents(query_anno)
+        senza_categoria = await collection.count_documents({
+            **query_anno,
+            "$or": [{"categoria": None}, {"categoria": ""}, {"categoria": {"$exists": False}}],
+        })
+    except Exception as exc:  # noqa: BLE001 - non deve far fallire la pagina
+        logger.warning("Copertura categoria banca non calcolabile (%s)", exc)
+        return {"anno": anno_riferimento, "totale": None, "senza_categoria": None,
+                "percentuale": None, "soglia": soglia, "sopra_soglia": False}
+
+    percentuale = round((senza_categoria / totale) * 100, 1) if totale else 0.0
+    return {
+        "anno": anno_riferimento,
+        "totale": totale,
+        "senza_categoria": senza_categoria,
+        "percentuale": percentuale,
+        "soglia": soglia,
+        "sopra_soglia": totale > 0 and percentuale > soglia,
+    }

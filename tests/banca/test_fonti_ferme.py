@@ -106,3 +106,68 @@ def test_stato_fonti_espone_giorni_e_conseguenza_per_la_pagina():
     assert righe["estratto_conto"]["giorni_fermi"] == 25
     assert righe["estratto_conto"]["etichetta"] == "Estratto conto bancario"
     assert righe["corrispettivi"]["conseguenza"]
+
+
+# --- Copertura categoria banca (19/09/2026) --------------------------------
+#
+# Diverso dal fermo di una fonte: l'estratto conto puo' arrivare puntuale e i
+# suoi movimenti restare comunque senza categoria (nessuna causale nota), e
+# senza categoria un movimento non entra mai in Prima Nota Banca. Verificato
+# il 18/09/2026: 1.764 dei 1.920 movimenti bancari 2026 (92%) senza categoria.
+
+def test_copertura_sopra_soglia_quando_la_maggioranza_e_senza_categoria():
+    db = _db("copertura_alta")
+
+    async def scenario():
+        for i in range(18):
+            await db["estratto_conto_movimenti"].insert_one(
+                {"id": f"senza-{i}", "data": "2026-03-01", "importo": 10.0, "categoria": ""})
+        for i in range(2):
+            await db["estratto_conto_movimenti"].insert_one(
+                {"id": f"con-{i}", "data": "2026-03-01", "importo": 10.0, "categoria": "F24"})
+        return await fonti_ferme.copertura_categoria_banca(db, anno=2026)
+
+    esito = _run(scenario())
+    assert esito["totale"] == 20
+    assert esito["senza_categoria"] == 18
+    assert esito["percentuale"] == 90.0
+    assert esito["sopra_soglia"] is True
+
+
+def test_copertura_sotto_soglia_non_avvisa():
+    db = _db("copertura_bassa")
+
+    async def scenario():
+        for i in range(19):
+            await db["estratto_conto_movimenti"].insert_one(
+                {"id": f"con-{i}", "data": "2026-03-01", "importo": 10.0, "categoria": "F24"})
+        await db["estratto_conto_movimenti"].insert_one(
+            {"id": "senza-1", "data": "2026-03-01", "importo": 10.0, "categoria": ""})
+        return await fonti_ferme.copertura_categoria_banca(db, anno=2026)
+
+    esito = _run(scenario())
+    assert esito["percentuale"] == 5.0
+    assert esito["sopra_soglia"] is False
+
+
+def test_copertura_filtra_per_anno_e_ignora_altri_anni():
+    db = _db("copertura_anni")
+
+    async def scenario():
+        await db["estratto_conto_movimenti"].insert_one(
+            {"id": "2025", "data": "2025-12-31", "importo": 10.0, "categoria": ""})
+        await db["estratto_conto_movimenti"].insert_one(
+            {"id": "2026", "data": "2026-01-02", "importo": 10.0, "categoria": "F24"})
+        return await fonti_ferme.copertura_categoria_banca(db, anno=2026)
+
+    esito = _run(scenario())
+    assert esito["totale"] == 1
+    assert esito["senza_categoria"] == 0
+    assert esito["anno"] == 2026
+
+
+def test_copertura_senza_movimenti_non_avvisa():
+    db = _db("copertura_vuota")
+    esito = _run(fonti_ferme.copertura_categoria_banca(db, anno=2026))
+    assert esito["totale"] == 0
+    assert esito["sopra_soglia"] is False
