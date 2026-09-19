@@ -6,7 +6,8 @@ POST /api/ricette                    — crea
 PUT  /api/ricette/{id}               — aggiorna
 DELETE /api/ricette/{id}             — elimina
 GET  /api/ricette-prezzi             — calcolo costo/pezzo + margine + varianti
-PUT  /api/ricette/{id}/prezzo-vendita — imposta prezzo vendita
+PUT  /api/ricette/{id}/prezzo-vendita — imposta il prezzo AL BANCO
+PUT  /api/ricette/{id}/prezzo-tavolo  — imposta il prezzo AL TAVOLO (Menu digitale)
 PUT  /api/ricette/{id}/reparto       — assegna reparto
 PUT  /api/ricette/{id}/foto          — salva URL foto
 POST /api/ricette/{id}/upload-foto   — upload immagine
@@ -18,6 +19,8 @@ GET  /api/ricette/export/json        — export JSON
 POST /api/ricette/auto-assegna-reparti
 POST /api/ricette/pulisci-ingredienti
 POST /api/ricette/popola-quantita-esempio
+POST /api/ricette-ripubblica-menu     — ripubblica tutte le ricette nel Menu (background)
+GET  /api/ricette-ripubblica-menu/stato
 GET  /api/tablet/{reparto}          — prodotti per vista tablet
 """
 
@@ -476,7 +479,20 @@ class Ricetta(BaseModel):
     ricetta_base_id: Optional[str] = None
     ricetta_base_nome: Optional[str] = None
     ingrediente_variante: Optional[dict] = None
+    # Due prezzi come in ogni bar (decisione del titolare 19/09/2026):
+    # `prezzo_vendita` e' il prezzo AL BANCO (resta la base di food cost e
+    # margine, nessun consumatore cambia), `prezzo_tavolo` e' il prezzo AL
+    # TAVOLO, che e' quello che il Menu digitale mostra ai clienti.
     prezzo_vendita: Optional[float] = None
+    prezzo_tavolo: Optional[float] = None
+    # Riga breve per il Menu digitale, distinta da `note` (che e' il
+    # procedimento interno e non esce mai verso i clienti).
+    descrizione: Optional[str] = None
+    # Categoria/sottocategoria del Menu scelte dal titolare
+    # (app/lotti/routers/menu_categorie.py). Vuote = categoria storica
+    # "Produzione Ceraldi" + sottocategoria per reparto.
+    menu_category_id: Optional[int] = None
+    menu_subcategory_id: Optional[int] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -491,7 +507,11 @@ class RicettaCreate(BaseModel):
     ricetta_base_id: Optional[str] = None
     ricetta_base_nome: Optional[str] = None
     ingrediente_variante: Optional[dict] = None
-    prezzo_vendita: Optional[float] = None
+    prezzo_vendita: Optional[float] = None       # prezzo AL BANCO
+    prezzo_tavolo: Optional[float] = None        # prezzo AL TAVOLO (Menu digitale)
+    descrizione: Optional[str] = None            # riga breve per il Menu
+    menu_category_id: Optional[int] = None
+    menu_subcategory_id: Optional[int] = None
     reparto: Optional[str] = None
     foto_url: Optional[str] = None
     stagionale: Optional[bool] = False
@@ -502,6 +522,11 @@ class RicettaCreate(BaseModel):
     # replicata nel Menu, questo flag decide se compare nel menu PUBBLICO.
     # None in aggiornamento = lascia il valore gia' salvato; in creazione = False.
     menu_pubblico: Optional[bool] = None
+
+
+# Valori prodotti da _categorizza_reparto e mappati dal ponte verso le
+# sottocategorie del Menu (menu_bridge.SOTTOCATEGORIE_REPARTO).
+REPARTI_AMMESSI = ("pasticceria", "rosticceria", "bar", "altro")
 
 
 # ─── Ponte verso il Menu digitale ────────────────────────────────────────────
@@ -1222,6 +1247,8 @@ async def get_ricette_prezzi():
                     "costo_variante_extra": round(costo_var_extra, 4),
                     "costo_pezzo": round(costo_var_pezzo, 4),
                     "prezzo_vendita": pv_var,
+                    "prezzo_tavolo": v.get("prezzo_tavolo"),
+                    "prezzo_tavolo_impostato": bool(v.get("prezzo_tavolo")),
                     "margine_pct": round(margine_var, 1),
                 }
             )
@@ -1233,6 +1260,11 @@ async def get_ricette_prezzi():
                 "costo_totale": costo_tot,
                 "costo_pezzo": round(costo_pezzo, 4),
                 "prezzo_vendita": prezzo_vendita,
+                # Il Menu espone il prezzo al tavolo; finche' non e' deciso
+                # ripiega sul banco. `prezzo_tavolo_impostato=False` e' il
+                # segnale che quel prezzo non e' mai stato scelto da nessuno.
+                "prezzo_tavolo": r.get("prezzo_tavolo"),
+                "prezzo_tavolo_impostato": bool(r.get("prezzo_tavolo")),
                 "margine_pct": round(margine, 1),
                 "reparto": r.get("reparto", ""),
                 "varianti": varianti_out,
@@ -2291,6 +2323,13 @@ async def update_ricetta(ricetta_id: str, item: RicettaCreate, _admin=Depends(re
     # Flag Menu non inviato = non toccare la scelta gia' fatta dal titolare.
     if payload.get("menu_pubblico") is None:
         payload.pop("menu_pubblico", None)
+    # Stessa regola per i campi del Menu aggiunti il 19/09/2026: un form che
+    # non li manda (pagine vecchie, salvataggi parziali) non deve azzerare
+    # prezzo al tavolo, descrizione o categoria gia' scelti. Per svuotarli si
+    # usa la PATCH, dove il valore arriva esplicito.
+    for campo_menu in ("prezzo_tavolo", "descrizione", "menu_category_id", "menu_subcategory_id"):
+        if payload.get(campo_menu) is None:
+            payload.pop(campo_menu, None)
 
     # Ricalcola SEMPRE gli allergeni dagli ingredienti (auto), salvo override manuale esplicito
     nomi_ing = estrai_nomi_ingredienti(payload)
@@ -2353,6 +2392,52 @@ async def backfill_allergeni_verificato():
         aggiornate += 1
 
     return {"ok": True, "ricette_esaminate": len(ricette), "aggiornate": aggiornate}
+
+
+@router.post("/ricette-ripubblica-menu")
+async def ripubblica_ricette_nel_menu(
+    dry_run: bool = Query(False, description="Solo conteggi, nessuna scrittura sul Menu"),
+    _admin=Depends(require_admin),
+):
+    """Rimanda nel Menu digitale TUTTE le ricette di Lotti (recupero del pregresso).
+
+    Il ponte scatta al salvataggio: le ricette gia' in archivio prima che
+    esistesse non sono mai arrivate nel Menu. Il giro e' idempotente (il ponte
+    scrive per `lotti_ref`, quindi il secondo passaggio aggiorna e non duplica)
+    e rispetta la scelta del titolare: chi non ha `menu_pubblico` arriva nel
+    Menu NASCOSTO, mai visibile.
+
+    Parte in background e risponde subito; avanzamento ed esito su
+    `GET /api/ricette-ripubblica-menu/stato`. Con `?dry_run=true` risponde
+    invece subito con i conteggi, compreso quante ricette non hanno ancora un
+    prezzo al tavolo e stanno quindi esponendo nel Menu quello al banco.
+    """
+    from app.lotti.servizi.menu_backfill import (
+        avvia_ripubblicazione_in_background, ripubblica_menu, ripubblicazione_in_corso,
+    )
+
+    if dry_run:
+        return await ripubblica_menu(db, dry_run=True)
+    if ripubblicazione_in_corso():
+        return {"ok": True, "stato": "in_corso",
+                "messaggio": "Ripubblicazione gia' in corso",
+                "stato_url": "/api/ricette-ripubblica-menu/stato"}
+    avvia_ripubblicazione_in_background(db)
+    return {"ok": True, "stato": "avviata",
+            "messaggio": "Ripubblicazione nel Menu avviata in background",
+            "stato_url": "/api/ricette-ripubblica-menu/stato"}
+
+
+@router.get("/ricette-ripubblica-menu/stato")
+async def stato_ripubblicazione_ricette_nel_menu(_admin=Depends(require_admin)):
+    """Avanzamento ed esito dell'ultimo `POST /api/ricette-ripubblica-menu`."""
+    from app.lotti.servizi.menu_backfill import (
+        ripubblicazione_in_corso, stato_ripubblicazione_menu,
+    )
+
+    stato = await stato_ripubblicazione_menu(db)
+    stato["in_corso"] = ripubblicazione_in_corso()
+    return stato
 
 
 @router.post("/ricette-importa-tracciabilita")
@@ -2848,13 +2933,27 @@ async def deduplica_ricette_base(
 
 @router.put("/ricette/{ricetta_id}/prezzo-vendita")
 async def set_prezzo_vendita(ricetta_id: str, prezzo: float = Query(...)):
+    """Prezzo AL BANCO: e' la base del food cost e del margine.
+    Il Menu digitale mostra invece il prezzo al tavolo (vedi sotto)."""
     await db.ricette.update_one({"id": ricetta_id}, {"$set": {"prezzo_vendita": prezzo}})
     return {"ok": True, "prezzo_vendita": prezzo, "menu_sync": await _sincronizza_menu(ricetta_id)}
 
 
+@router.put("/ricette/{ricetta_id}/prezzo-tavolo")
+async def set_prezzo_tavolo(ricetta_id: str, prezzo: float = Query(...)):
+    """Prezzo AL TAVOLO: e' quello che il Menu digitale mostra ai clienti."""
+    r = await db.ricette.update_one({"id": ricetta_id}, {"$set": {"prezzo_tavolo": prezzo}})
+    if r.matched_count == 0:
+        raise HTTPException(404, "Ricetta non trovata")
+    return {"ok": True, "prezzo_tavolo": prezzo, "menu_sync": await _sincronizza_menu(ricetta_id)}
+
+
 @router.put("/ricette/{ricetta_id}/reparto")
 async def aggiorna_reparto(ricetta_id: str, reparto: str = Query(...)):
-    if reparto not in ("pasticceria", "rosticceria", "altro"):
+    # `bar` era accettato dal form e mappato dal ponte verso il Menu, ma qui
+    # veniva rifiutato: i quattro valori prodotti da _categorizza_reparto sono
+    # pasticceria, rosticceria, bar e altro.
+    if reparto not in REPARTI_AMMESSI:
         raise HTTPException(400, "Reparto non valido")
     r = await db.ricette.update_one({"id": ricetta_id}, {"$set": {"reparto": reparto}})
     if r.matched_count == 0:
@@ -2868,7 +2967,9 @@ async def aggiorna_foto(ricetta_id: str, foto_url: str = Query(...)):
     r = await db.ricette.update_one({"id": ricetta_id}, {"$set": {"foto_url": foto_url}})
     if r.matched_count == 0:
         raise HTTPException(404, "Ricetta non trovata")
-    return {"success": True}
+    # Come POST /upload-foto: la foto cambia anche nel Menu digitale. Prima
+    # mancava, e la stessa ricetta mostrava due immagini diverse nelle due app.
+    return {"success": True, "menu_sync": await _sincronizza_menu(ricetta_id)}
 
 
 def _foto_id_da_url(foto_url: str) -> Optional[str]:
@@ -3097,8 +3198,12 @@ async def aggiorna_campo_ricetta(ricetta_id: str, body: dict):
         "pezzi_ricetta_base",
         "porzioni",
         "note",
+        "descrizione",
         "reparto",
         "prezzo_vendita",
+        "prezzo_tavolo",
+        "menu_category_id",
+        "menu_subcategory_id",
         "componenti",
         "foto_url",
         "stagionale",

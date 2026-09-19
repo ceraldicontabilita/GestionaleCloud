@@ -33,6 +33,7 @@ class _Query:
     def __init__(self, tabelle, nome):
         self.tabelle, self.nome = tabelle, nome
         self.op, self.filtri, self.payload = "select", [], None
+        self._nulli = []
         self._order, self._limit = None, None
 
     def select(self, *_):
@@ -55,6 +56,13 @@ class _Query:
         self.filtri.append((colonna, valore))
         return self
 
+    def is_(self, colonna, valore):
+        # Solo ``is_("colonna", "null")``: e' l'unico uso reale (la sync Qromo
+        # cancella cio' che non ha ``origine``).
+        assert valore == "null", valore
+        self._nulli.append(colonna)
+        return self
+
     def order(self, colonna, desc=False):
         self._order = (colonna, desc)
         return self
@@ -65,7 +73,11 @@ class _Query:
 
     def execute(self):
         righe = self.tabelle.setdefault(self.nome, [])
-        trovate = [r for r in righe if all(r.get(c) == v for c, v in self.filtri)]
+        trovate = [
+            r for r in righe
+            if all(r.get(c) == v for c, v in self.filtri)
+            and all(r.get(c) is None for c in self._nulli)
+        ]
         if self.op == "select":
             if self._order:
                 trovate.sort(key=lambda r: r[self._order[0]], reverse=self._order[1])

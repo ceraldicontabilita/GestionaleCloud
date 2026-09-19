@@ -6,7 +6,7 @@ reviewed_at: 2026-09-18
 storage_architecture: supabase
 -->
 
-Aggiornato il 18/09/2026 sul codice di `main` del repository canonico
+Aggiornato il 19/09/2026 sul codice di `main` del repository canonico
 `ceraldicontabilita/GestionaleCloud`.
 
 **Questo file e `README.md` sono gli unici due documenti del repository.**
@@ -612,11 +612,26 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - Il menu vero si gestisce su Qromo (`ceraldicaffe.qromo.it`): la sync
   sostituisce per intero categorie, sottocategorie e prodotti con
   `origine IS NULL`, e riduce gli allergeni ai 14 UE.
-- Ogni ricetta di Lotti viene replicata nel Menu dal ponte
-  `app/lotti/servizi/menu_bridge.py` con la stessa foto (`origine = "lotti"`,
-  `lotti_ref` idempotente, `menu_pubblico` → `visible`): le righe di Lotti
-  sopravvivono alla sync Qromo e l'esito `menu_sync` non fa mai fallire
-  l'endpoint Lotti.
+- **È Lotti a spingere nel Menu, non il Menu a pescare dalle ricette.** Ogni
+  ricetta viene replicata dal ponte `app/lotti/servizi/menu_bridge.py` con la
+  stessa foto (`origine = "lotti"`, `lotti_ref` idempotente, `menu_pubblico` →
+  `visible`): le righe di Lotti sopravvivono alla sync Qromo e l'esito
+  `menu_sync` non fa mai fallire l'endpoint Lotti. Il pregresso si recupera
+  con `POST /api/ricette-ripubblica-menu` (admin, in background).
+- La ricetta ha **due prezzi**: `prezzo_vendita` è il prezzo **al banco** (base
+  di food cost e margine) e `prezzo_tavolo` è il prezzo **al tavolo**, che è
+  quello mostrato dal Menu digitale. Finché il prezzo al tavolo non è deciso il
+  Menu espone quello al banco, e il ripiego resta visibile
+  (`prezzo_tavolo_impostato` in `/api/ricette-prezzi`): non si copia
+  `prezzo_vendita` dentro `prezzo_tavolo`, o un prezzo mai scelto sembrerebbe
+  deciso.
+- La categoria del Menu si sceglie sulla ricetta (`menu_category_id`,
+  `menu_subcategory_id`); senza scelta resta «Produzione Ceraldi» più la
+  sottocategoria per reparto. Le categorie si leggono e si creano da Lotti con
+  `/api/menu-categorie`, sempre con `origine` valorizzata. **Una categoria di
+  Qromo (`origine IS NULL`) non è agganciabile**: la sync la cancella e un
+  prodotto di Lotti appeso lì farebbe fallire la cancellazione per chiave
+  esterna.
 
 ## Stato attuale (al 18/09/2026 — riscrivere sul posto)
 
