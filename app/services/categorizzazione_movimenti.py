@@ -81,7 +81,7 @@ _COMMISSIONI_KEYWORDS = (
 # `mappa_categoria_ec()` a prescindere da questo modulo.
 _UTENZE_KEYWORDS = (
     "ENEL", "ENI GAS", "ENI SPA", "A2A", "EDISON", "SORGENIA", "HERA SPA",
-    "ACEA", "IREN", "TELECOM ITALIA", " TIM ", "TIM SPA", "VODAFONE",
+    "ACEA", "IREN", "TELECOM ITALIA", "TIM", "TIM SPA", "VODAFONE",
     "WINDTRE", "WIND TRE", "FASTWEB", "ACQUEDOTTO",
 )
 
@@ -110,6 +110,14 @@ from app.schemas.accounting_rules import F24_ERARIO_CODES, F24_INPS_CODES  # noq
 
 _RE_CODICE_ERARIO = re.compile(r"\b([2-6]\d{3})\b")
 _RE_CODICE_INPS = re.compile(r"\b(DM\d{2})\b")
+
+
+def _kw_presente(desc: str, kw: str) -> bool:
+    """Cerca la parola chiave rispettando i confini di parola: una sigla
+    corta come "IREN" o "ACEA" non deve accendersi dentro "IRENE" o
+    "PANACEA SRL" (audit 19/09/2026, verificato: non ancora accaduto sui
+    dati reali, ma un rischio latente con un semplice `kw in desc`)."""
+    return re.search(r"\b" + re.escape(kw.strip()) + r"\b", desc) is not None
 
 
 @dataclass(frozen=True)
@@ -148,7 +156,7 @@ def categorizza_movimento_bancario(
 
     trovati = [
         nome for nome, keywords in _PATTERN_BUCKETS.items()
-        if any(kw in desc for kw in keywords)
+        if any(_kw_presente(desc, kw) for kw in keywords)
     ]
 
     if len(trovati) > 1:
@@ -168,7 +176,7 @@ def categorizza_movimento_bancario(
         )
         return EsitoCategorizzazione("F24", motivo, codice_tributo=codice)
 
-    kw_match = next(kw for kw in _PATTERN_BUCKETS[categoria] if kw in desc)
+    kw_match = next(kw for kw in _PATTERN_BUCKETS[categoria] if _kw_presente(desc, kw))
     return EsitoCategorizzazione(categoria, f"parola chiave '{kw_match.strip()}'")
 
 
