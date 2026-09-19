@@ -432,6 +432,13 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 
 - Il periodo non è il mese di ricezione: comanda `periodo_iva_attribuito`, e
   il flag `iva_utilizzata` impedisce la seconda detrazione.
+- **`iva_detraibile` assente non vuol dire zero, vuol dire non deciso**, e
+  `campi_iva_da_fattura` non lo scrive finché nessuno l'ha valutato: è
+  l'unica guardia del libro giornale (`registra_fattura` rifiuta con «IVA
+  detraibile non classificata»), e uno `0,00` di comodo la disarma
+  registrando tutta l'IVA come costo indetraibile. All'import il campo lo
+  valorizza `handlers/learning.handler_classifica_cdc`, registrato sullo
+  stesso evento **dopo** il motore IVA.
 - Regola del 15: operazione del mese precedente ricevuta **e** annotata entro
   il 15 → liquidazione del mese precedente, solo nello stesso anno solare.
   Ricevuta dopo il 15 → mese di ricezione. Operazione dell'anno precedente →

@@ -96,7 +96,7 @@ def campi_iva_da_fattura(inv: Dict[str, Any]) -> Dict[str, Any]:
     # 12 giorni. La usiamo se presente sulla fattura; niente inferenze.
     data_trasmissione_sdi = inv.get("data_trasmissione_sdi") or inv.get("data_invio_sdi")
 
-    return {
+    campi = {
         "data_documento": data_documento,
         "data_operazione": data_operazione,
         "data_ricezione": data_ricezione,
@@ -105,8 +105,21 @@ def campi_iva_da_fattura(inv: Dict[str, Any]) -> Dict[str, Any]:
         "periodo_iva_attribuito": periodo_attribuito_finale,
         "regola_iva_applicata": regola,
         "iva_documento": round(iva, 2),
-        "iva_detraibile": round(iva_detraibile, 2),
         "iva_utilizzata": gia_utilizzata,
         "periodo_iva_utilizzato": inv.get("periodo_iva_utilizzato"),
         "stato_detrazione_iva": inv.get("stato_detrazione_iva") if gia_utilizzata else stato,
     }
+    # `iva_detraibile` si scrive SOLO se la detraibilita' e' stata davvero
+    # valutata. Scrivere `0.00` su una fattura mai classificata la fa sembrare
+    # decisa — «zero detraibile» — quando invece nessuno ha ancora deciso, e
+    # soprattutto disarma l'unica guardia del libro giornale:
+    # `registrazione_contabile.registra_fattura` rifiuta la registrazione
+    # finche' `iva_detraibile is None` («IVA detraibile non classificata»).
+    # All'import il campo lo scrive poi `handlers/learning.handler_classifica_cdc`,
+    # registrato sullo stesso evento **dopo** questo motore. Ma
+    # `/api/iva/ricalcola-attribuzione` gira da solo: se scrivesse lo zero,
+    # nessun classificatore lo correggerebbe e le fatture finirebbero a
+    # giornale con tutta l'IVA a costo indetraibile.
+    if detraibilita_valutata:
+        campi["iva_detraibile"] = round(iva_detraibile, 2)
+    return campi
