@@ -3,7 +3,7 @@
 import asyncio
 from datetime import date
 
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 import app.agents.fiscale_shadow as agent_mod
 from app.agents.fiscale_shadow import FiscaleShadow

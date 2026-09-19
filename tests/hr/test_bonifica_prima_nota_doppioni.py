@@ -8,7 +8,7 @@ import asyncio
 from app.database import Database
 from app.routers.admin import bonifica_prima_nota_doppioni
 from app.services import bonifica_prima_nota_doppioni as bonifica
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 CORR_ID = "8eb80d64-12ab-4e34-b848-8935ea1114d4"
 

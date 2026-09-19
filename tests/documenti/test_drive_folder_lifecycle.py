@@ -1,6 +1,6 @@
 from app.config import settings
 from app.services import drive_invoice_ingest as drive
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 
 class _Request:

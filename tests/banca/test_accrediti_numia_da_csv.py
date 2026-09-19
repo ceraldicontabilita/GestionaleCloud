@@ -14,7 +14,7 @@ il trasferimento cassa->banca del giorno di vendita, sommando i circuiti.
 import asyncio
 
 import pytest
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 from app.routers.bank import estratto_conto as modulo
 from app.services.scritture_contabili import (

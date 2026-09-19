@@ -15,7 +15,7 @@ Riproduce i casi reali del report:
 """
 import asyncio
 
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 from app.services import riallinea_pagamenti_fatture as riallinea
 from app.services import riconciliazione_bancaria as ric

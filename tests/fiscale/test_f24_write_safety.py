@@ -1,7 +1,7 @@
 import asyncio
 
 import pytest
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 from app.services.f24_canonico import richiedi_quadratura_f24, salva_f24
 

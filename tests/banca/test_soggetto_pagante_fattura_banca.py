@@ -20,7 +20,7 @@ from app.services.identity_matching import (
     soggetto_causale_bancaria,
     soggetto_pagante_coerente,
 )
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 CAUSALE_PAYMENTS = (
     "SDD CORE: PK)K,TLYRBPN8JWYCYKCMKCV(58MO6 AMAZON PAYMENTS EUROPE S.C.A. AMAZON PAYMENTS"

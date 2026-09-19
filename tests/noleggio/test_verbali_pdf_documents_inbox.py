@@ -1,7 +1,7 @@
 import asyncio
 import base64
 
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 from app.routers import verbali_noleggio, verbali_noleggio_api
 from app.services.verbali_pdf_service import collect_verbale_pdfs, pdf_metadata

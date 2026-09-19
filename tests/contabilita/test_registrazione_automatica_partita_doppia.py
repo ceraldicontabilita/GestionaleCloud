@@ -18,7 +18,7 @@ from app.routers.invoices.corrispettivi_helpers import ingest_corrispettivo_pars
 from app.services import event_bus
 from app.services import registrazione_contabile as rc
 from app.services.mapping_piano_conti import operativo_a_ufficiale
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 from app.services.supabase_runtime_database import DocumentoDuplicatoRemoto
 
 

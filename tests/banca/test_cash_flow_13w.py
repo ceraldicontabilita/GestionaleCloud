@@ -4,7 +4,7 @@ import asyncio
 import inspect
 from datetime import date
 
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 import app.agents.cash_flow_shadow as agent_mod
 import app.services.cash_flow_13w_service as service_mod

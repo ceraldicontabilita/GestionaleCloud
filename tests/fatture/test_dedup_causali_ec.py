@@ -8,7 +8,7 @@ righe che UN file porta; solo l'eccedenza cross-file e' doppione.
 import asyncio
 
 import pytest
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 from app.routers.bank import estratto_conto as modulo_import
 from app.routers.bank.estratto_conto import normalizza_descrizione_ec

@@ -17,7 +17,7 @@ from app.services.assegni_estratto_conto import (
     chiave_idempotenza_assegno,
     sincronizza_assegni_da_estratto_conto,
 )
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 EC_ID = "EC-2026-01-02-1403.01-24a9b009"
 ASSEGNO_ID = "103e84fe-75ab-4aad-82b4-0d66a8f0b8bf"

@@ -1,7 +1,7 @@
 import asyncio
 import base64
 
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 from app.routers.f24 import email_f24
 

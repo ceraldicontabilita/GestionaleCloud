@@ -3,7 +3,7 @@ import hashlib
 import fitz
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 from app.database import Database
 from app.routers import documenti

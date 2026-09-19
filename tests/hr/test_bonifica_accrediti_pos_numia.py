@@ -6,7 +6,7 @@ trasferimento giornaliero, non cinque rimborsi/ricavi indipendenti.
 import asyncio
 from contextlib import asynccontextmanager
 
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 from pydantic import ValidationError
 import pytest
 

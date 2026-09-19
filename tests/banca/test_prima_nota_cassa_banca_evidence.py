@@ -2,7 +2,7 @@
 import asyncio
 
 from app.routers.prima_nota_module import sync
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 
 def test_fattura_impostata_cassa_trova_addebito_ec_con_type_e_causale(monkeypatch):

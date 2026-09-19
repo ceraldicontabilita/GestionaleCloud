@@ -8,7 +8,7 @@ serale al giorno dopo.
 import asyncio
 
 import pytest
-from app.services.sheets_document_store import MemorySheetsClient, SheetDatabase
+from app.services.archivio_documenti_memoria import MemorySheetsClient, SheetDatabase
 
 from app.services import sumup_sync
 from app.services.sumup_sync import (

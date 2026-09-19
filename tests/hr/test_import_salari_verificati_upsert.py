@@ -4,7 +4,7 @@ creare una seconda riga per una busta gia' presente da un altro canale
 causa verificata dei doppioni di Ceraldi Valerio/Vincenzo 05/2026."""
 import asyncio
 
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 
 def _run(coro):

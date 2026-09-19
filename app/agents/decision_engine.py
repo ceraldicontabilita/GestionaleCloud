@@ -15,7 +15,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-from app.services.sheets_document_store import DuplicateRecordError
+from app.services.archivio_documenti_memoria import DuplicateRecordError
 
 from app.agents.models import (
     DecisioneInput,

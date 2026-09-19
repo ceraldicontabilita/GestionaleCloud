@@ -8,7 +8,7 @@ import re
 
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from app.services.sheets_document_store import DuplicateRecordError
+from app.services.archivio_documenti_memoria import DuplicateRecordError
 
 from app.services.scritture_contabili import _sessione, _transazione_registro
 from app.services.prima_nota_integrity import totale_pagabile_al_fornitore

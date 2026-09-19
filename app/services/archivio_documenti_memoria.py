@@ -1,9 +1,20 @@
-"""Archivio documentale asincrono usato dal runtime Google Sheets.
+"""Motore di interrogazione in memoria sui documenti del runtime.
 
-Il modulo offre operazioni CRUD, cursori e aggregazioni sui documenti caricati
-dai fogli.  E' implementato soltanto con la libreria standard: la sorgente
-persistente resta Google Sheets e la memoria del processo e' esclusivamente
-una cache ricostruibile all'avvio.
+Offre operazioni CRUD, cursori, filtri e aggregazioni in stile Mongo sui
+documenti che il runtime tiene in memoria, usando solo la libreria standard.
+**Non parla con nessun archivio**: la persistenza e' di chi lo usa, oggi
+`supabase_runtime_database.py` (Supabase, unico archivio del gruppo).
+
+Si chiamava `sheets_document_store.py` e la sua docstring diceva che «la
+sorgente persistente resta Google Sheets». Era falso da quando il runtime
+Sheets e' stato rimosso (19/09/2026): zero chiamate a Google in tutto il
+file, verificato. Un nome che mente costa piu' di un nome brutto — chi legge
+`sheets_document_store` in cima a un modulo importato da 158 file crede che
+Google Sheets sia ancora nel giro, e CLAUDE.md dice il contrario.
+
+Restano da rinominare le classe `SheetDatabase` e `MemorySheetsClient`, che
+mentono allo stesso modo: 68 e 483 occorrenze in 139 file, cioe' un diff
+meccanico enorme che seppellirebbe qualunque revisione. Lavoro a se'.
 """
 from __future__ import annotations
 

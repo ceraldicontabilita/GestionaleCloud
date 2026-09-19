@@ -4,7 +4,7 @@ la formula preesistente (entrate−uscite + riporto anni precedenti)."""
 import asyncio
 
 from app.routers.prima_nota_module import common
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 
 class _Agg:

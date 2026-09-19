@@ -8,7 +8,7 @@ Capezzuto 430,00 e Vespa 406,00 pagati il 20/02/2026 sono i SALDI di gennaio
 import asyncio
 
 from app.routers.bank import estratto_conto
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 from app.services.stipendi_bonifici import (
     associa_bonifici_stipendi,
     competenza_bonifico_stipendio,

@@ -3,7 +3,7 @@
 import asyncio
 from datetime import date
 
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 import app.agents.tesoreria_shadow as agente_mod
 import app.services.tesoreria_shadow_service as servizio_mod

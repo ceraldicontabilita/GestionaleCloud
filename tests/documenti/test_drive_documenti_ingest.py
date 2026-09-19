@@ -9,7 +9,7 @@ import asyncio
 import threading
 
 from app.services import drive_documenti_ingest as d
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 
 def _run(coro):

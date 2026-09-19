@@ -13,7 +13,7 @@ sarebbe piu' corta ma sbagliata, perche' quel denaro dal conto e' uscito.
 import asyncio
 
 import pytest
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 from app.routers.bank import estratto_conto as modulo
 

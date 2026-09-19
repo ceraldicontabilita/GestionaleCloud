@@ -1,7 +1,7 @@
 """Quadratura POS: il giorno viene dalla descrizione dell'estratto conto."""
 import asyncio
 
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 from app.routers import pos_corrispettivi_check as pc
 

@@ -2,7 +2,7 @@ import asyncio
 from datetime import date
 
 from app.services.lipe_verifica import list_lipe_monthly_evidence, parse_lipe_modules, parse_lipe_page
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 from app.services.verifica_coerenza import VerificaCoerenza, stato_temporale_periodo
 
 

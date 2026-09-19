@@ -2,7 +2,7 @@
 
 import asyncio
 
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 from app.agents.compliance_shadow import ComplianceShadow
 from app.services.compliance_shadow_service import leggi_snapshot_compliance

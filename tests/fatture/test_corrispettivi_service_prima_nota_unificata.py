@@ -8,7 +8,7 @@ implementazione condivisa: questo test verifica che il fix sia effettivo."""
 import asyncio
 import hashlib
 
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 from app.services.corrispettivi_service import (
     CorrispettiviService,

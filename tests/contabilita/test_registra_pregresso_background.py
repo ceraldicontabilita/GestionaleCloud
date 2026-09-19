@@ -9,7 +9,7 @@ stato persistito in ``sistema_stato``.
 import asyncio
 
 from app.services import registrazione_contabile as rc
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 
 def _run(coro):

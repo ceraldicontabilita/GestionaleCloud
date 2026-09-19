@@ -15,7 +15,7 @@ conto costo — mai su entrambi.
 import asyncio
 
 import app.services.registrazione_contabile as motore
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 
 def _run(coro):

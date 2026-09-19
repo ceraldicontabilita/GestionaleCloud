@@ -20,7 +20,7 @@ from fastapi import HTTPException
 
 from app.config import settings
 from app.database import Database
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 import app.services.supabase_runtime_database as supabase_runtime_database
 from app.routers.admin import (
     _run_supabase_migration_job,

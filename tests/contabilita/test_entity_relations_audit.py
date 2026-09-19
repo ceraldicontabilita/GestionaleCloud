@@ -1,7 +1,7 @@
 import asyncio
 from copy import deepcopy
 
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 from app.services.entity_relations import upsert_entity_relation
 from app.services.entity_relations_audit import audit_legacy_entity_relations

@@ -3,7 +3,7 @@
 import asyncio
 from datetime import datetime, timezone
 
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 import app.agents.contabile_shadow as agent_mod
 from app.agents.contabile_shadow import ContabileShadow

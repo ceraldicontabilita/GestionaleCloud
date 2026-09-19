@@ -8,7 +8,7 @@ una finta che risponde alla sola query usata dal servizio (stessa tecnica di
 import asyncio
 import json
 
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 from app.services import salari_sync_hr as modulo
 from app.services.salari_sync_hr import sincronizza_da_hr

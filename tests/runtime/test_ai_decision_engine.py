@@ -7,7 +7,7 @@ credenziale o collection reale viene letta o modificata.
 import asyncio
 
 import pytest
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 from app.agents.decision_engine import (
     cambia_stato_decisione,

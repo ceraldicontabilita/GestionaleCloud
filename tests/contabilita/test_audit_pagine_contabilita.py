@@ -3,7 +3,7 @@
 import asyncio
 
 import pytest
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 from app.routers.accounting import contabilita_gestionale as cg
 from app.routers.accounting import centri_costo

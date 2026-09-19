@@ -1,7 +1,7 @@
 import asyncio
 
 from app.services import document_import_jobs
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 
 def test_job_pos_persistente_e_idempotente_per_hash(monkeypatch):

@@ -13,7 +13,7 @@ import asyncio
 
 from app.routers.invoices import corrispettivi_helpers as helpers_mod
 from app.routers.prima_nota_module import sync as sync_mod
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 
 def _matches(doc, query):

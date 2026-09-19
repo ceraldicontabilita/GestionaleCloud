@@ -5,7 +5,7 @@ from fastapi import HTTPException
 
 from app.database import Database
 from app.routers import lotti_integration
-from app.services.sheets_document_store import SheetDatabase
+from app.services.archivio_documenti_memoria import SheetDatabase
 
 
 @pytest.fixture()

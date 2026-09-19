@@ -18,7 +18,7 @@ AVERE costo, AVERE IVA a credito, DARE debito v/fornitore.
 import asyncio
 
 import app.services.registrazione_contabile as motore
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 
 def _run(coro):

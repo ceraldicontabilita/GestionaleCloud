@@ -6,7 +6,7 @@ import fitz
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 from app.routers import documenti
 from tests.document_preview_helpers import confirmed_preview_headers

@@ -406,7 +406,7 @@ def test_ingestione_v2_sopravvive_al_fallimento_del_deposito(monkeypatch):
 def _client_e_db(monkeypatch):
     from app.database import Database
     from app.routers.accounting import prima_nota_salari
-    from app.services.sheets_document_store import SheetDatabase
+    from app.services.archivio_documenti_memoria import SheetDatabase
 
     db = SheetDatabase("test")
     monkeypatch.setattr(Database, "get_db", classmethod(lambda cls: db))

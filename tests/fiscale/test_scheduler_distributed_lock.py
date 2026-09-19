@@ -2,7 +2,7 @@
 import asyncio
 from contextlib import asynccontextmanager
 
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 from app import scheduler as scheduler_module
 from app.database import Database

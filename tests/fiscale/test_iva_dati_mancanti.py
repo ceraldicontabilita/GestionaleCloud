@@ -9,7 +9,7 @@ import asyncio
 from datetime import date
 
 from app.services.iva_liquidation_query import get_iva_period_snapshot
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 OGGI = date(2026, 9, 3)
 

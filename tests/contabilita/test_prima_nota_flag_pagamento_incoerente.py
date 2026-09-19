@@ -1,6 +1,6 @@
 import asyncio
 
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.archivio_documenti_memoria import MemorySheetsClient
 
 from app.routers.prima_nota_module import manutenzione
 from app.services.collaudo_invarianti import check_prima_nota_link_rotti
