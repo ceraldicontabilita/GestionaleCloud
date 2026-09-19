@@ -10,12 +10,11 @@ Aggiornato il 19/09/2026 sul codice di `main` del repository canonico
 `ceraldicontabilita/GestionaleCloud`.
 
 **Questo file e `README.md` sono gli unici due documenti del repository.**
-Il 18/09/2026, per decisione del titolare, i 116 file `.md` sparsi in
-`docs/`, `memoria/`, `.github/` e nelle radici dei frontend sono stati
-cancellati e le loro regole ancora valide sono confluite qui. Gli audit, le
-mappe generate, i changelog e i diari non esistono più: raccontavano com'erano
-le cose in una certa data e rendevano impossibile capire quali logiche fossero
-davvero in vigore.
+Per decisione del titolare i 116 `.md` sparsi in `docs/`, `memoria/`,
+`.github/` e nei frontend sono stati cancellati e le regole ancora valide
+sono confluite qui: audit, mappe generate, changelog e diari raccontavano
+com'erano le cose in una certa data e rendevano impossibile capire quali
+logiche fossero davvero in vigore.
 
 ## Come si tiene questo file
 
@@ -194,7 +193,15 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   503; `?strict=true` per il 503). Una sola probe in volo per processo.
 - Gli scheduler acquisiscono una lease distribuita su Supabase: il lock
   locale resta solo come riserva prima che la connessione sia disponibile
-  (avvio, test).
+  (avvio, test). **La lease si restituisce allo spegnimento**
+  (`rilascia_lease_attive`), non si lascia scadere: un processo che muore
+  tenendola blocca il suo job per tutto il TTL (900 s), e l'istanza che
+  subentra può solo saltare il turno. Per lo stesso motivo `stop_scheduler`
+  chiude con `shutdown(wait=False)`: i job sono coroutine dello stesso event
+  loop, e aspettarli da dentro il loop impedisce allo spegnimento di
+  arrivare in fondo.
+- Il download di un file Drive sta in un posto solo,
+  `app/services/drive_download.py`: non è specifico di una sezione.
 - PostgREST esegue le RPC del runtime come ruolo `anon`, con
   `statement_timeout` 20 s; `authenticator` resta a 8 s. Da rivedere se si
   cambia compute o si riduce il payload di `documents`.
@@ -309,11 +316,10 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - Estratti conto: inbox unica per sei fonti; riconoscimento nell'ordine
   percorso → nome file (solo segni esclusivi) → contenuto, e il contenuto si
   prova Nexi → PayPal → mutuo → banca. «estratto conto» da solo non è un
-  segno. Non riconosciuto → cartella Errori con il motivo scritto, **mai
-  indovinato**: indovinare significa registrare le spese della carta Nexi come
-  uscite dal conto. Arretrato pre-2026 tenuto fermo per scelta del titolare
-  (`DRIVE_ESTRATTI_ANNO_MINIMO`); un nome senza anno leggibile vale come
-  arretrato.
+  segno. Non riconosciuto → cartella Errori col motivo scritto, **mai
+  indovinato**: indovinare significa registrare le spese Nexi come uscite dal
+  conto. Arretrato pre-2026 fermo per scelta del titolare
+  (`DRIVE_ESTRATTI_ANNO_MINIMO`); un nome senza anno vale come arretrato.
 - Acquisizione serale RT: Render non raggiunge la rete del locale, quindi
   `scripts/sync_rt_to_drive.py` gira su un PC della LAN (ignora gli XML
   `ESITO`, SHA-256, copia atomica dei soli file nuovi). `RT_LOCAL_BASE_URL` e
@@ -336,11 +342,25 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - Il protocollo Drive (`gestionale.protocollo_drive`, tabella relazionale, non
   `documents`) riconcilia Drive con l'inventario: file nuovo → riga nuova,
   cambiato → aggiornata, sparito → `stato='rimosso'` con la data. Le impronte
-  collegano ogni file Drive al documento del gestionale **per contenuto**, non
-  per nome. Una stessa impronta in più posizioni non genera un secondo
-  documento: le provenienze stanno in `source_occurrences`.
+  collegano ogni file al documento **per contenuto**, mai per nome, e una
+  stessa impronta in più posizioni non crea un secondo documento: le
+  provenienze stanno in `source_occurrences`.
 - Un solo motore di import per sezione: un documento storico si mette nella
   cartella `DA ELABORARE` giusta, non si carica da una pagina parallela.
+- **Fatture ricevute**: `01_FATTURE_RICEVUTE/FATTURE/<anno>/` con le tre
+  cartelle `Da elaborare | Elaborate | Errori` per ogni anno. Tre motori,
+  tre mestieri diversi, e non si confondono: il **giro ogni 15 minuti**
+  (`drive_invoice_ingest.sync`) svuota le sole inbox, 25 file per volta, e
+  sposta in `Elaborate` anche i doppioni; la **quadratura**
+  (`POST /api/fatture/drive/quadratura`) ripassa le `Elaborate` e importa i
+  buchi; la **ricostruzione** (`POST /api/fatture/drive/ricostruzione`)
+  rilegge *tutto* l'archivio, a lotti riprendibili con un cursore, ripresi
+  ogni 2 minuti dallo scheduler. Nessuna delle tre sposta un originale fuori
+  dal suo anno, e l'anno documentale lo decide il parser XML, mai il nome
+  del file.
+- Una coda che non cala e importa zero **non è un guasto**: i file già
+  importati risultano doppioni e vengono solo spostati. Il numero che dice
+  se manca qualcosa è la quadratura, non la lunghezza della coda.
 
 ## Regole contabili vincolanti
 
@@ -366,17 +386,16 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - Il protocollo `numero_registrazione` è unico e progressivo **per anno**
   (riparte da 1 a ogni anno solare) e immutabile una volta assegnato.
 - Il giornale sopravvive all'azzeramento delle fatture e si riaggancia al
-  reimport tramite la chiave stabile della fattura; export e import del
-  giornale sono idempotenti.
+  reimport con la chiave stabile della fattura; export e import sono
+  idempotenti.
 - Ogni riga di Prima Nota porta `conto_contabile` di tesoreria (19.01.01
   banca, 19.03.03 cassa, 19.01.05 Mastercard SumUp, crediti 15.07.x) **e**
   `conto_contropartita` CEE per categoria (33.03.01 fornitori, 39.07.01
   stipendi, 39.07.05 TFR, 75.01.07.x commissioni, 31.03.15 finanziamento soci,
-  47.01.03 corrispettivi). I 9 conti POS non sono conti nuovi: articolano voci
-  già in bilancio per tenere separati Numia, SumUp e PayPal.
-- Ammortamenti come scrittura semplice DARE 05.04.01 / AVERE 01.05.01; il
-  risultato d'esercizio resta scrittura semplice con segno, con guardia
-  anti-doppia chiusura.
+  47.01.03 corrispettivi). I 9 conti POS articolano voci già in bilancio per
+  tenere separati Numia, SumUp e PayPal: non sono conti nuovi.
+- Ammortamenti: scrittura semplice DARE 05.04.01 / AVERE 01.05.01; il
+  risultato d'esercizio resta con segno, con guardia anti-doppia chiusura.
 - Ricavi: **solo corrispettivi RT**. Le fatture ricevute sono costi; gli
   accrediti POS e i payout non sono nuovi ricavi.
 - Corrispettivi: in cassa entra **solo la quota contanti**, la quota POS va in
@@ -390,8 +409,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   giorno operativo `DEL gg/mm/aa`; **Numia e Nexi sono lo stesso circuito**;
   commissioni e fatture del gestore escluse; attesa mancante o multipla →
   `DA_VERIFICARE`, la banca non crea la chiusura. L'accredito ricostruito
-  dalla causale è una fonte **derivata**: se arriva l'export del terminale,
-  quello vince.
+  dalla causale è **derivato**: l'export del terminale vince.
 - Un versamento contanti genera uscita Cassa e corrispondente entrata Banca
   con lo stesso `operation_id`. Un trasferimento banca↔cassa sono due
   movimenti speculari collegati da `trasferimento_collegato_id` con categoria
@@ -401,10 +419,9 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   documento ammesse dal codice.
 - Riga bancaria canonica = riferimento esterno **oppure** fingerprint
   data+valuta+importo+causale+progressivo: reimportare lo stesso estratto non
-  duplica. Assegni con importo ricorrente uguale ma numero o data diversi
-  **non sono duplicati**.
-- Le regole SDD creano un pagamento solo con identità, periodo e importo
-  compatibili; altrimenti candidati.
+  duplica. Assegni di importo ricorrente uguale ma numero o data diversi
+  **non sono duplicati**. Le regole SDD creano un pagamento solo con
+  identità, periodo e importo compatibili; altrimenti candidati.
 - Categorizzazione movimenti banca: un solo motore,
   `app/services/categorizzazione_movimenti.py` (parole chiave su
   F24/Commissioni/Utenze/Fatture). Sopra le parole chiave, **regole
@@ -414,12 +431,10 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   bancario comune (es. "COMMISSIONI SU BONIFICI", senza il nome di un
   fornitore/servizio) viene rifiutato alla creazione, non salvato. Eliminare
   una regola non tocca i movimenti già categorizzati da essa.
-- Pagamenti stipendio via nome: la corrispondenza univoca nome+cognome basta
-  da sola (vedi «Personale»), ma un fornitore individuale/professionista
-  omonimo di un dipendente, o un pagamento occasionale a lui, non deve
-  finire nel suo fascicolo stipendi — `_ESCLUSIONE_RE` in
-  `hr_pagamenti_deposito.py` copre anche queste causali, non solo
-  TFR/fattura/commissione.
+- Pagamenti stipendio via nome: regola in «Personale». Qui vale solo il
+  corollario bancario — un professionista omonimo di un dipendente, o un
+  pagamento occasionale a lui, non entra nel fascicolo stipendi
+  (`_ESCLUSIONE_RE` in `hr_pagamenti_deposito.py`).
 - Le simulazioni non scrivono sul consuntivo. La chiusura d'esercizio richiede
   checklist, anteprima, conferma forte, audit e rollback.
 - Navigazione tra contropartite: un solo componente
@@ -448,6 +463,20 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - Una liquidazione confermata non si sovrascrive: ogni ricalcolo è una nuova
   versione, la riapertura è esplicita e motivata. Il calcolo annuale parte
   dalle liquidazioni confermate e dallo stato d'uso, non dalle date.
+- **La LIPE è il documento canonico dell'IVA mensile**: quando il nostro
+  numero diverge da quello trasmesso dal commercialista, quello giusto è il
+  suo e lo scarto è un difetto nostro da spiegare. Si legge **per posizione**
+  (`app/services/lipe_parser.py`): il livello testo del PDF mescola le celle
+  alle caselle di spunta del modulo, e in ordine `18.058,92` diventa
+  `218.058,92`. La prova della lettura non è il parser ma l'aritmetica del
+  quadro VP — `VP6 = VP5 − VP4`, `VP14 = VP6 + VP8 − VP7`: un periodo che non
+  quadra **non viene depositato** in `lipe_periodi` e non fa da fonte. Una
+  comunicazione ritrasmessa (protocollo più alto) sostituisce la precedente.
+- Il confronto mensile gestionale ↔ LIPE ↔ F24 è
+  `GET /api/iva/confronto-commercialista/{anno}`: non aggiusta niente, dice
+  dove si diverge. Un mese che non sappiamo calcolare è un «non lo so», non
+  uno scostamento; una LIPE **a credito** non deve avere nessun F24, e il
+  caso da segnalare è l'opposto.
 
 ### F24, tributi, dichiarazioni
 
@@ -475,6 +504,9 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   aliquote sono versionate per periodo d'imposta.
 - Il catalogo dei codici tributo è consultivo: una ricerca non crea F24,
   pagamenti o scritture.
+- Il **periodo di riferimento di un tributo sta sulla sua riga** (`anno`,
+  `mese`), non sul modello: la data in cui l'F24 è stato pagato è un'altra
+  cosa. L'IVA mensile sono i codici 6001–6012, uno per mese.
 - **Nessun F24 ricostruito in automatico.** Nessun pagamento automatico è
   autorizzato.
 
@@ -702,13 +734,12 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   sostituisce per intero categorie, sottocategorie e prodotti con
   `origine IS NULL`, e riduce gli allergeni ai 14 UE.
 - **È Lotti a spingere nel Menu, non il Menu a pescare dalle ricette**, ed è
-  l'unica strada ricetta → prodotto: il «Collega a una ricetta» manuale
-  dell'area admin del Menu era un doppione dal lato sbagliato ed è stato
-  rimosso. Ogni ricetta viene replicata dal ponte
-  `app/lotti/servizi/menu_bridge.py` con la stessa foto (`origine = "lotti"`,
-  `lotti_ref` idempotente, `menu_pubblico` → `visible`): le righe di Lotti
-  sopravvivono alla sync Qromo e l'esito `menu_sync` non fa mai fallire
-  l'endpoint Lotti. Il pregresso si recupera con
+  l'unica strada ricetta → prodotto (il «Collega a una ricetta» dell'admin
+  Menu era un doppione dal lato sbagliato, rimosso). Ogni ricetta la replica
+  il ponte `app/lotti/servizi/menu_bridge.py` con la stessa foto
+  (`origine = "lotti"`, `lotti_ref` idempotente, `menu_pubblico` → `visible`):
+  le righe di Lotti sopravvivono alla sync Qromo e l'esito `menu_sync` non fa
+  mai fallire l'endpoint Lotti. Pregresso con
   `POST /api/ricette-ripubblica-menu` (admin, in background).
 - **Il menu pubblico non mostra categorie e sottocategorie senza prodotti
   visibili** (`menu_routes._build_hierarchy`): un riquadro vuoto in home ha
@@ -721,18 +752,15 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   /api/menu/admin/products/{id}` le rifiuta con 409 (il ponte le riscrive
   intere a ogni salvataggio della ricetta, una correzione fatta nel Menu
   sparirebbe senza avviso).
-- La ricetta ha **due prezzi**: `prezzo_vendita` è il prezzo **al banco** (base
-  di food cost e margine) e `prezzo_tavolo` è il prezzo **al tavolo**, che è
-  quello mostrato dal Menu digitale. Finché il prezzo al tavolo non è deciso il
-  Menu espone quello al banco, e il ripiego resta visibile
-  (`prezzo_tavolo_impostato` in `/api/ricette-prezzi`): non si copia
-  `prezzo_vendita` dentro `prezzo_tavolo`, o un prezzo mai scelto sembrerebbe
-  deciso. **Un prezzo è valido solo se finito e maggiore di zero**: negativi,
-  `nan` e `inf` sono 400 all'ingresso, `0` significa «togli il prezzo», e il
-  cruscotto usa la stessa nozione del ponte. Una ricetta **senza nessuno dei
-  due prezzi** entra nel Menu **nascosta** (una riga senza prezzo sarebbe
-  ordinabile a 0 €) ed è contata nel backfill (`senza_prezzo`,
-  `nascoste_per_prezzo`): non si inventa un prezzo di ripiego.
+- La ricetta ha **due prezzi**: `prezzo_vendita` è quello **al banco** (base di
+  food cost e margine), `prezzo_tavolo` quello **al tavolo**, mostrato dal Menu
+  digitale. Finché il tavolo non è deciso il Menu espone il banco e il ripiego
+  resta visibile (`prezzo_tavolo_impostato`): non si copia l'uno nell'altro, o
+  un prezzo mai scelto sembrerebbe deciso. **Valido solo se finito e maggiore
+  di zero**: negativi, `nan` e `inf` sono 400 all'ingresso, `0` significa
+  «togli il prezzo». Una ricetta **senza nessuno dei due** entra nel Menu
+  **nascosta** (sarebbe ordinabile a 0 €) ed è contata nel backfill
+  (`senza_prezzo`, `nascoste_per_prezzo`): non si inventa un ripiego.
 - La categoria del Menu si sceglie sulla ricetta (`menu_category_id`,
   `menu_subcategory_id`); senza scelta resta «Produzione Ceraldi» più la
   sottocategoria per reparto. Le categorie si leggono e si creano da Lotti con
@@ -743,53 +771,55 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   prodotto di Lotti appeso lì farebbe fallire la cancellazione per chiave
   esterna.
 - Chi allergeni da dichiarare non ne ha (distillati, bibite in bottiglia) si
-  esclude dalla verifica, per prodotto o per intero reparto. Le esclusioni
-  vivono in `menu.menu_allergeni_esclusioni`, **non** in una colonna di
-  `menu_products`: la sync Qromo cancellerebbe qualunque flag messo lì dentro,
-  mentre gli id Qromo restano stabili e l'esclusione regge. Escludere significa
-  «non richiede la dichiarazione», non «nascondilo dal menu»: è conformità, si
-  conserva e si revoca dalla stessa pagina.
+  esclude dalla verifica, per prodotto o per reparto. Le esclusioni vivono in
+  `menu.menu_allergeni_esclusioni`, **non** in una colonna di `menu_products`:
+  la sync Qromo cancellerebbe qualunque flag messo lì, mentre gli id Qromo
+  restano stabili. Escludere significa «non richiede la dichiarazione», non
+  «nascondilo dal menu»: è conformità, si conserva e si revoca.
 
 ## Stato attuale (al 19/09/2026 — riscrivere sul posto)
 
-- Produzione stabile dopo i fix su avvio, health e memoria. Ogni merge su
-  `main` fa ridistribuire Render e riportare in memoria ~74.500 righe dalla
-  tabella documenti da 1 GB: durante la riidratazione la produzione passa per
-  qualche minuto in `degraded`. Non è un guasto, ma non si accodano merge.
-- **Prima Nota cassa +86.806,69 €** dopo la rimozione dei 497 pagamenti
-  fantasma `metodo_fornitore_assente_provvisorio` (197.632,93 €) dai saldi:
-  righe orfane nate il 14–15/09, il libro giornale non era stato toccato.
-- Il ramo vivo dell'ingest cedolini è
-  `services/cedolini_manager` → `services/salari_unificati_v2`: un netto
-  illeggibile non diventa più zero. Il **collaudo live non è chiuso**: dal
-  deploy #508 in poi il giro orario Drive trova 0 file su 49 caselle e nei log
-  non compare una sola riga di Document AI. Serve un PDF di cedolino vero per
-  esercitare il percorso.
-- **Il `last_login` dell'app HR non è mai stato scritto** fino al 19/09/2026:
-  il repository costruiva un `ObjectId` su un identificativo testuale. Da
-  verificare sul primo accesso col PIN dopo il deploy.
-- TFR: contrariamente a quanto sembrava, è accantonato. `hr.app_tfr_accantonamenti`
-  è vuota ma il codice vivo scrive nella collection `tfr_accantonamenti` del
-  gestionale: 1.175 righe, 42 dipendenti, 2018–2026, 273.025,37 €.
+- Ogni merge su `main` fa ridistribuire Render e riportare in memoria ~74.500
+  righe: per qualche minuto la produzione è `degraded`. Non è un guasto, ma
+  non si accodano merge, e il lavoro di fondo in corso riparte dal suo
+  cursore.
+- Ingest cedolini: il ramo vivo è `services/cedolini_manager` →
+  `services/salari_unificati_v2`, e un netto illeggibile non diventa più
+  zero. **Collaudo live non chiuso**: il giro orario Drive trova 0 file su 49
+  caselle, serve un PDF di cedolino vero per esercitare il percorso.
+- Il `last_login` di HR non è mai stato scritto fino al 19/09/2026
+  (`ObjectId` su un id testuale): da verificare al primo accesso col PIN.
+- TFR: è accantonato. `hr.app_tfr_accantonamenti` è vuota ma il codice vivo
+  scrive in `tfr_accantonamenti` del gestionale: 1.175 righe, 42 dipendenti,
+  2018–2026, 273.025,37 €.
 - **Spento**: `PROTOCOLLO_DRIVE_ENABLED=false` (il giro portava la RAM a
   1,57 GB su 2 GB: riaccendere solo dopo aver ridotto la memoria del giro).
 - **Acceso**: scheduler, ingest Drive (fatture, estratti conto, cedolini,
   bonifici), ponte pagamenti HR, dedup fatture ogni 30 min, canale
   dichiarazioni fiscali finché la coda non è esaurita.
-- Fatture attive 873 (624 `imported`, 249 senza `status`), collisioni aperte 0.
-  21 corrispettivi con ripartizione contanti/POS non quadrata (31/03–30/07/2026).
+- Fatture in archivio **1.906**, di cui **873 attive e tutte del 2026**
+  (411.487,41 €): la regola «solo 2026 nel bilancio» è rispettata, il resto è
+  archivio storico. Collisioni aperte 0. 21 corrispettivi con ripartizione
+  contanti/POS non quadrata (31/03–30/07/2026).
+- **Su Drive ci sono 2.447 XML di fattura**: 1.318 del 2026 (769 in
+  `Elaborate`, 527 in `Da elaborare`, 22 in `Errori`), 875 del 2025, 254 dal
+  2021 al 2024. Quadratura e ricostruzione hanno già recuperato **396
+  fatture** che il gestionale non aveva (211.097,19 €), tutte pre-2026 e
+  tutte marcate `archivio_storico`: nessuna tocca il bilancio 2026. La
+  ricostruzione completa è **in corso** e va avanti da sola.
 - **Nessuna liquidazione IVA è mai stata calcolata**: `/api/iva/liquidazioni`
   torna vuoto. Giugno e luglio 2026 sono calcolabili e attendibili, ma con
   **zero** fatture d'acquisto nel calcolo (tutte in `detraibilita_da_verificare`),
   quindi il saldo è l'IVA sulle vendite intera: 7.651,05 € e 6.211,86 €.
   Agosto è bloccato su `DATI_MANCANTI` per `giorni_senza_corrispettivo`.
   Corrispettivi 2026: 518.879,34 € incassati, 47.170,88 € di IVA a debito.
-- Le 13 collezioni a zero dopo il 14/09 (`settings`, `scadenzario`,
-  `f24_models`, `prima_nota`…) **non sono dati persi**: erano già vuote nel
-  backup del 13/09. Non c'è nulla da recuperare, e il progetto Supabase di
-  recupero è stato eliminato.
-- `mittenti_email` in produzione era vuota: senza mittenti la posta non
-  scarica nulla (i builtin rientrano da soli all'avvio).
+- Confronto con la LIPE 2026 del commercialista (tre periodi, tutti quadrati):
+  a marzo l'IVA esigibile combacia **al centesimo** (6.131,26 €); a gennaio
+  ci mancano **5.005,88 €** di IVA detraibile, cioè fatture d'acquisto che
+  lui ha e noi no. Febbraio senza corrispettivi non è un buco: il locale era
+  chiuso per ristrutturazione e anche la LIPE ha le operazioni attive in
+  bianco. Per il 2026 non esiste nessun F24 IVA, ed è corretto: la LIPE
+  chiude a credito tutti i mesi.
 - Cron Render `gestionalecloud-calderone-15min`: **sospeso** e ora senza
   codice (`render_workflows/` eliminato). Va cancellato dal pannello.
 - Solo 108 prodotti del Menu su 325 hanno allergeni valorizzati: da
@@ -799,64 +829,59 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 
 - Compute Supabase **Micro** insufficiente (crash Postgres del 17/09):
   valutare Small.
-- Endpoint sincroni oltre i 5 minuti, da portare a prefetch + background:
+- Endpoint sincroni oltre i 5 minuti, da portare a lotti riprendibili come la
+  ricostruzione Drive, che invece regge: `POST /api/fatture/drive/quadratura`
+  (tagliata a 300 s, arriva solo fino al 2022),
   `POST /api/paypal-api/riconcilia`, `GET /api/paypal-api/account-ids-non-mappati`,
   `POST /api/admin/riallinea-pagamenti-fatture`,
   `POST /api/prima-nota-salari/deposita-cedolini-in-hr`.
-- Note di credito TD04 legacy (~20, già in produzione prima del fix del
-  19/09/2026 a `registra_fattura`): scritture sbagliate (costo/IVA/debito
-  aumentati anziché ridotti) ancora da sanare con uno storno mirato per
-  `fattura_id` via `storna_registrazione_fattura` (non un comando di massa:
-  richiede individuarle una per una sul DB live).
+- Note di credito TD04 legacy (~20, precedenti al fix a `registra_fattura`):
+  costo/IVA/debito aumentati anziché ridotti, da sanare con uno storno
+  mirato per `fattura_id` (`storna_registrazione_fattura`), una per una.
 - **Nessuno dei 187 fornitori ha `metodo_pagamento` in anagrafica** (campo
   presente ma vuoto; solo 41 hanno un IBAN): finché resta così ogni fattura
   è `sospesa` e nulla può essere instradato in Prima Nota Banca. Da
   popolare con una fonte vera, non dedotta dalle fatture.
-- **Pregresso fatture da sanare**: `POST /api/admin/fatture/ripubblica-evento-created`
-  (admin, background, `dry_run` per difetto) — 296 fatture attive
-  (173.184,83 €, 22.989,82 € di IVA) senza partita aperta verso il fornitore,
-  fra l'import massivo del 14/09 e il canale Drive del 15–17/09; 280 di esse
-  sono anche fuori dal libro giornale (145.025,14 €). Ordine obbligato:
-  replay dell'evento (che fa girare anche il classificatore IVA), poi
-  `POST /api/piano-conti/registra-pregresso`.
+- **Pregresso fatture da sanare**: 296 fatture attive (173.184,83 €,
+  22.989,82 € di IVA) senza partita aperta verso il fornitore, 280 delle
+  quali anche fuori dal libro giornale (145.025,14 €). Ordine obbligato:
+  `POST /api/admin/fatture/ripubblica-evento-created` (che fa girare anche il
+  classificatore IVA), poi `POST /api/piano-conti/registra-pregresso`.
 - Le `data_scadenza` già scritte sulle fatture fornitore e sulle loro partite
   sono valori inventati dal vecchio import: vanno azzerate, altrimenti
   continuano ad alimentare `FAT_DA_PAGARE_SCADUTA`.
+- `POST /api/iva/lipe/importa` non è ancora stato lanciato: `lipe_periodi` è
+  vuota, quindi il confronto col commercialista non ha ancora la sua colonna.
 - Riconciliazione: 158 fatture `riconciliata` con movimento non riconciliato,
   180 righe hub senza `fattura_id` (da rigenerare col motore, non a mano);
   banca 2026 con 1.765 movimenti senza categoria.
 - Drive `03/ESTRATTI CONTO/DA ELABORARE`: 291 documenti pre-2026 fermi per
   scelta.
-- HR: 38 bonifici con `cedolino_id` orfano, 119 in «bonifici da associare»,
-  10 tabelle attese dall'app assenti (turni_config, onomastici, richieste…),
-  Iazzetta Francesco senza IBAN; Appuhamy, Aurigemma, Vitiello e Dell'Aquila
-  da creare come storici cessati.
-- UNILAV di cessazione di Moscato Emanuele e Pocci Salvatore: non trovati in
-  posta, da verificare col consulente (Ferrantini).
+- HR: 38 bonifici con `cedolino_id` orfano, 119 in «bonifici da associare», 10
+  tabelle attese dall'app assenti (turni_config, onomastici, richieste…),
+  Iazzetta Francesco senza IBAN; Appuhamy, Aurigemma, Vitiello e Dell'Aquila da
+  creare come storici cessati. UNILAV di cessazione di Moscato e Pocci non
+  trovati in posta: da verificare col consulente (Ferrantini).
 - Drill-down «Verifica campi e F24» delle dichiarazioni: era agganciato al
   vecchio indice Drive, che non esiste più.
 - `/api/download` serve ora `./downloads` (prima `./docs`, la stessa cartella
   della documentazione): nessun codice la popola, la funzione è ferma.
 - A mano, dal titolare: ruotare la password Postgres; DNS di `ceraldiapp.it` e
   servizi Render sospesi.
-- Il fork `app/hr/` è quasi chiuso: restano **otto** sottopercorsi davvero
-  duplicati — `parsers/busta_paga_multi_template.py`, `routers/auth.py`,
-  `routers/employees/dipendenti.py`, `routers/f24_parser.py`,
-  `routers/pin_login.py`, `routers/tfr.py`, `services/alert_engine.py`,
-  `utils/dependencies.py` — più i tre del guscio (`main`, `config`,
-  `database`), che restano separati per scelta. Finché una coppia è aperta,
-  ogni correzione va cercata anche nel gemello. Il fork non può **crescere**:
-  `tests/runtime/test_fork_app_hr.py` fa fallire la CI su un sottopercorso
-  nuovo in entrambi i rami, riconosce da solo i re-export e impone che la sua
-  lista possa solo accorciarsi.
-- `gestionale.blobs` non e' piu' collegata a niente: `app/services/blob_store.py`
-  e' l'unico codice che la tocca e nessuno lo importa, mentre in produzione la
-  tabella ha 216 righe. O il meccanismo dei PDF su richiesta si ricollega, o la
-  regola che lo descrive va corretta.
-- `archivio_documenti_memoria.py` espone ancora le classi `SheetDatabase` e
+- Il fork `app/hr/` è quasi chiuso: restano **cinque** sottopercorsi davvero
+  duplicati — `routers/auth.py`, `routers/employees/dipendenti.py`,
+  `routers/pin_login.py`, `routers/tfr.py`, `utils/dependencies.py` — più i
+  tre del guscio (`main`, `config`, `database`), separati per scelta. Finché
+  una coppia è aperta, ogni correzione va cercata anche nel gemello, e il
+  fork non può **crescere**: `tests/runtime/test_fork_app_hr.py` fa fallire
+  la CI su un sottopercorso nuovo in entrambi i rami, riconosce da solo i
+  re-export e impone che la sua lista possa solo accorciarsi.
+- `gestionale.blobs` non è più collegata a niente: `app/services/blob_store.py`
+  è l'unico codice che la tocca e nessuno lo importa, mentre in produzione ha
+  216 righe. O i PDF su richiesta si ricollegano, o la regola va corretta.
+- `archivio_documenti_memoria.py` espone ancora `SheetDatabase` e
   `MemorySheetsClient`, che nel nome promettono Google Sheets senza chiamarlo
-  mai: 54 e 2 occorrenze in 12 file di `app/services/`, da rinominare in un
-  giro dedicato.
+  mai: 54 e 2 occorrenze in 12 file, da rinominare in un giro dedicato.
 
 ## Verifica e pubblicazione
 
