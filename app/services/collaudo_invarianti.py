@@ -694,6 +694,80 @@ async def check_cespiti_senza_documento_acquisto(db) -> Dict[str, Any]:
         "esempi": esempi,
     }
 
+async def check_accrediti_pos_senza_controparte(db) -> Dict[str, Any]:
+    """Un accredito POS in banca deve trovare il trasferimento del suo giorno.
+
+    La regola e' quella del titolare, e i dati le danno ragione: NUMIA
+    accredita separatamente bancomat, carte e Amex, anche da terminali (PDV)
+    diversi, e la riconciliazione certa e' la **somma degli accrediti dello
+    stesso giorno operativo** (`DEL gg/mm/aa`) contro il trasferimento POS di
+    quel giorno. Sul 2026, su 183 giorni, l'elettronico dichiarato negli XML
+    e gli accrediti NUMIA sommati per giorno di vendita coincidono al 94,3%.
+
+    `riconcilia_accredito_pos_ec` la somma gia' correttamente. Il punto cieco
+    e' un altro: se il trasferimento POS di quel giorno **non esiste**,
+    l'accredito esce con `tipo_riconciliazione = "evidenza_senza_attesa"` e
+    finisce nella coda «in attesa documento» con un messaggio generico —
+    «nessun documento con importo al centesimo» — che fa sembrare rotto il
+    confronto sugli importi quando invece manca proprio la controparte.
+
+    Misurato il 19/09/2026: **888 accrediti NUMIA per 342.087,35 EUR**, tutti
+    in quello stato e nessuno riconciliato, perche' in `prima_nota_banca` non
+    esiste **nemmeno un** `trasferimento_pos` del circuito NUMIA (ci sono solo
+    quelli SumUp, dal 24/08). Questo check lo dice invece di lasciarlo dietro
+    un messaggio generico.
+    """
+    from app.services.pos_evidence import (
+        _e_accredito_pos_numia_con_giorno,
+        _giorno_operazione_pos,
+    )
+
+    giorni_con_trasferimento = {
+        str(r.get("giorno_vendita") or r.get("data") or "")[:10]
+        async for r in db["prima_nota_banca"].find(
+            {"source": "trasferimento_pos"},
+            {"_id": 0, "giorno_vendita": 1, "data": 1},
+        )
+    }
+
+    per_giorno: Dict[str, Dict[str, Any]] = {}
+    async for mov in db["estratto_conto_movimenti"].find(
+        {"tipo": {"$ne": "uscita"}},
+        {"_id": 0, "id": 1, "data": 1, "importo": 1,
+         "descrizione": 1, "descrizione_originale": 1,
+         "riconciliato": 1, "tipo_riconciliazione": 1},
+    ):
+        if mov.get("riconciliato") is True:
+            continue
+        descrizione = mov.get("descrizione_originale") or mov.get("descrizione") or ""
+        if not _e_accredito_pos_numia_con_giorno(descrizione):
+            continue
+        giorno = _giorno_operazione_pos(descrizione, str(mov.get("data") or ""))
+        voce = per_giorno.setdefault(
+            giorno, {"accrediti": 0, "importo": 0.0,
+                     "trasferimento_presente": giorno in giorni_con_trasferimento},
+        )
+        voce["accrediti"] += 1
+        voce["importo"] = round(voce["importo"] + abs(float(mov.get("importo") or 0)), 2)
+
+    senza = {g: v for g, v in per_giorno.items() if not v["trasferimento_presente"]}
+    totale = round(sum(v["importo"] for v in senza.values()), 2)
+    esempi = [
+        {"giorno_vendita": g, "accrediti": v["accrediti"], "importo": v["importo"]}
+        for g, v in sorted(senza.items(), key=lambda kv: -kv[1]["importo"])[:5]
+    ]
+    return {
+        "nome": "accrediti_pos_senza_controparte",
+        "violazioni": len(senza),
+        "descrizione": (
+            "Giorni di vendita con accrediti POS in banca ma senza il "
+            f"trasferimento POS da riconciliare ({totale} EUR complessivi): "
+            "l'accredito resta «evidenza_senza_attesa» e la coda mostra un "
+            "messaggio generico sugli importi"
+        ),
+        "esempi": esempi,
+    }
+
 
 CHECKS = [
     check_fatture_banca_senza_ec,
@@ -713,6 +787,7 @@ CHECKS = [
     check_liquidazioni_iva_integrita,
     check_f24_pagati_senza_banca,
     check_cespiti_senza_documento_acquisto,
+    check_accrediti_pos_senza_controparte,
 ]
 
 
