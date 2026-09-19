@@ -873,6 +873,10 @@ PIANO_CONTI_ESTESO = {
     "01.06.03": {"nome": "Automezzi", "categoria": "attivo", "natura": "economico"},
     "01.06.04": {"nome": "Mobili e arredi", "categoria": "attivo", "natura": "economico"},
     "01.06.05": {"nome": "Macchine ufficio elettroniche", "categoria": "attivo", "natura": "economico"},
+    "01.06.06": {"nome": "Fabbricati strumentali", "categoria": "attivo", "natura": "economico"},
+    "01.06.07": {"nome": "Frigoriferi e congelatori", "categoria": "attivo", "natura": "economico"},
+    "01.06.08": {"nome": "Forni e piastre", "categoria": "attivo", "natura": "economico"},
+    "01.06.09": {"nome": "Software e diritti di utilizzazione", "categoria": "attivo", "natura": "economico"},
     
     # PASSIVO
     "02.01.01": {"nome": "Debiti v/fornitori", "categoria": "passivo", "natura": "finanziario"},

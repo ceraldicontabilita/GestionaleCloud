@@ -5,18 +5,23 @@ individuate nelle fatture XML devono confluire da sole nel registro cespiti,
 non solo con lo scan manuale ("Scan Fatture XML" in Cespiti & TFR).
 
 Riusa la STESSA logica di POST /api/cespiti/scan-fatture (keyword map,
-soglia 200€, stesso schema di cespite) in modo che scan manuale e trigger
-automatico non divergano mai: il manuale resta utile per il backfill di
-fatture importate prima di questo handler.
+soglia fiscale art. 102 TUIR, stesso schema di cespite) in modo che scan
+manuale e trigger automatico non divergano mai: il manuale resta utile per
+il backfill di fatture importate prima di questo handler.
+
+La soglia (`SOGLIA_CESPITE_TUIR`, 516,46 €) è UNICA e condivisa con
+`app/services/learning_machine_cdc.py`: prima esistevano due soglie
+scollegate (200 € qui, 516,46 € là) che potevano classificare lo stesso bene
+in modo diverso (audit 19/09/2026).
 """
 import logging
 from datetime import date, datetime, timezone
 from typing import Any, Dict
 from uuid import uuid4
 
-logger = logging.getLogger(__name__)
+from app.services.piano_conti_ufficiale import SOGLIA_CESPITE_TUIR
 
-SOGLIA_VALORE = 200
+logger = logging.getLogger(__name__)
 
 
 async def handler_auto_cespite_da_fattura(payload: Dict[str, Any], db) -> Dict[str, Any]:
@@ -48,7 +53,7 @@ async def handler_auto_cespite_da_fattura(payload: Dict[str, Any], db) -> Dict[s
             prezzo = float(riga.get("prezzo_totale") or riga.get("importo") or riga.get("price_total") or 0)
         except (TypeError, ValueError):
             continue
-        if not descrizione or prezzo < SOGLIA_VALORE:
+        if not descrizione or prezzo <= SOGLIA_CESPITE_TUIR:
             continue
 
         categoria = classify_asset(descrizione, prezzo)

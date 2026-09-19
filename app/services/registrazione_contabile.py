@@ -160,6 +160,100 @@ async def _scrivi_movimento(db, movimento: Dict[str, Any], saldi: list) -> Dict[
     return movimento
 
 
+async def _righe_capitalizzazione_cespiti(
+    db, fattura_id: Optional[str], budget: float, centro_costo: Any,
+) -> "tuple[float, list, Optional[str]]":
+    """Righe DARE per la quota della fattura già capitalizzata come cespite.
+
+    Audit 19/09/2026 (punto 3): senza questo instradamento, una riga fattura
+    che genera un cespite (`app/handlers/cespiti.py`) veniva ANCHE registrata
+    per intero come costo pieno da questo motore — lo stesso importo pesava
+    due volte: costo pieno in conto economico e immobilizzazione nell'attivo.
+
+    Scelta di design: qui NON si riclassifica la descrizione della riga con
+    `classify_asset()` una seconda volta. Si legge invece la collezione
+    `cespiti`, che e' l'unico punto dove quella funzione viene chiamata
+    (`handler_auto_cespite_da_fattura`, registrato PRIMA di questo motore
+    sullo stesso evento `fattura.created` — vedi l'ordine in
+    `app/services/event_bus.py`). Due punti che decidessero "e' un cespite"
+    in modo indipendente potrebbero divergere (soglia, keyword, timing) e
+    riaprire esattamente lo stesso doppio conteggio da un lato diverso:
+    leggere la fonte già scritta lo esclude per costruzione. Se il cespite
+    non e' mai stato creato (handler fallito, o fattura senza cespiti), qui
+    non si capitalizza nulla e la fattura resta costo pieno come oggi — mai
+    peggio del comportamento attuale.
+
+    Ritorna (quota_capitalizzata, righe_dare, anomalia). `anomalia` e'
+    valorizzata (mai silenziosa: vedi la segnalazione scritta dal chiamante)
+    se il valore dei cespiti collegati supera l'imponibile disponibile.
+    """
+    if not fattura_id:
+        return 0.0, [], None
+    try:
+        cespiti = await db["cespiti"].find(
+            {"fattura_id": fattura_id},
+            {"_id": 0, "categoria": 1, "valore_acquisto": 1, "descrizione": 1},
+        ).to_list(200)
+    except Exception:
+        logger.exception(
+            "Lettura cespiti per fattura %s fallita: nessuna capitalizzazione applicata", fattura_id,
+        )
+        return 0.0, [], None
+    if not cespiti:
+        return 0.0, [], None
+
+    from app.routers.cespiti import conto_attivo_per_categoria_cespite
+
+    per_categoria: Dict[str, float] = {}
+    descrizioni: Dict[str, str] = {}
+    for c in cespiti:
+        categoria = c.get("categoria") or "altro"
+        per_categoria[categoria] = round(per_categoria.get(categoria, 0.0) + float(c.get("valore_acquisto") or 0), 2)
+        descrizioni.setdefault(categoria, c.get("descrizione") or categoria)
+
+    quota_totale = round(sum(per_categoria.values()), 2)
+    anomalia = None
+    if quota_totale > round(budget, 2) + 0.01:
+        anomalia = (
+            f"cespiti collegati alla fattura {fattura_id} per {quota_totale:.2f} € "
+            f"superano l'imponibile registrabile ({budget:.2f} €): dato incoerente, "
+            "capitalizzazione limitata al costo disponibile — verificare a mano."
+        )
+        fattore = (budget / quota_totale) if quota_totale else 0.0
+        scalati = {k: v * fattore for k, v in per_categoria.items()}
+        # Audit 19/09/2026: arrotondare ogni categoria in modo indipendente
+        # puo' sbilanciare la somma di qualche centesimo rispetto al budget
+        # (es. 4 categorie arrotondate ciascuna per eccesso). Lo scarto di
+        # arrotondamento va assegnato a UNA categoria (la piu' grande, meno
+        # rischio di finire negativa), non lasciato sparso: solo cosi' la
+        # somma torna esattamente al budget e la scrittura quadra Dare=Avere.
+        ordine = sorted(scalati, key=lambda k: scalati[k], reverse=True)
+        per_categoria = {}
+        residuo = round(budget, 2)
+        for chiave in ordine[1:]:
+            valore = round(scalati[chiave], 2)
+            per_categoria[chiave] = valore
+            residuo = round(residuo - valore, 2)
+        if ordine:
+            per_categoria[ordine[0]] = round(max(0.0, residuo), 2)
+        quota_totale = round(sum(per_categoria.values()), 2)
+
+    righe = []
+    for categoria, valore in per_categoria.items():
+        if valore <= 0:
+            continue
+        conto = conto_attivo_per_categoria_cespite(categoria)
+        righe.append({
+            "conto_codice": conto["codice"], "conto_nome": conto["nome"],
+            "dare": valore, "avere": 0, "centro_costo": centro_costo,
+            "descrizione": (
+                f"Cespite: {str(descrizioni.get(categoria, categoria))[:120]} "
+                "(capitalizzato, non a costo pieno)"
+            ),
+        })
+    return quota_totale, righe, anomalia
+
+
 async def registra_fattura(db, fattura: Dict[str, Any], *, force: bool = False,
                            conti: Optional[Dict[str, Any]] = None,
                            extra_movimento: Optional[Dict[str, Any]] = None,
@@ -211,18 +305,31 @@ async def registra_fattura(db, fattura: Dict[str, Any], *, force: bool = False,
     anno = _anno_da_data(fattura.get("data_competenza") or data_doc)
 
     costo_contabile = round(imponibile + iva_indetraibile, 2)
-    righe = [
-        {"conto_codice": conti["costo"]["codice"], "conto_nome": conti["costo"]["nome"],
-         "dare": costo_contabile, "avere": 0, "centro_costo": centro_costo,
-         "descrizione": (
-             "Costo acquisto" if iva_indetraibile == 0
-             else f"Costo acquisto (incl. IVA indetraibile {iva_indetraibile:.2f})"
-         )},
+    quota_cespiti, righe_cespiti, anomalia_cespiti = await _righe_capitalizzazione_cespiti(
+        db, fattura_id, costo_contabile, centro_costo,
+    )
+    costo_residuo = round(max(0.0, costo_contabile - quota_cespiti), 2)
+
+    righe = []
+    if costo_residuo > 0.005:
+        righe.append({
+            "conto_codice": conti["costo"]["codice"], "conto_nome": conti["costo"]["nome"],
+            "dare": costo_residuo, "avere": 0, "centro_costo": centro_costo,
+            "descrizione": (
+                ("Costo acquisto" if iva_indetraibile == 0
+                 else f"Costo acquisto (incl. IVA indetraibile {iva_indetraibile:.2f})")
+                + (" al netto della quota capitalizzata come cespite" if righe_cespiti else "")
+            ),
+        })
+    righe.extend(righe_cespiti)
+    righe.append(
         {"conto_codice": conti["iva_credito"]["codice"], "conto_nome": conti["iva_credito"]["nome"],
          "dare": iva_detraibile, "avere": 0, "centro_costo": None, "descrizione": "IVA a credito detraibile"},
+    )
+    righe.append(
         {"conto_codice": conti["debito_fornitore"]["codice"], "conto_nome": conti["debito_fornitore"]["nome"],
          "dare": 0, "avere": importo_totale, "centro_costo": None, "descrizione": "Debito v/fornitore"},
-    ]
+    )
     now = _now()
     movimento = {
         "id": str(uuid.uuid4()),
@@ -238,19 +345,31 @@ async def registra_fattura(db, fattura: Dict[str, Any], *, force: bool = False,
         "importo_totale": importo_totale, "imponibile": imponibile, "iva": iva,
         "iva_detraibile": iva_detraibile, "iva_indetraibile": iva_indetraibile,
         "righe": righe,
-        "totale_dare": round(costo_contabile + iva_detraibile, 2),
+        "totale_dare": round(costo_residuo + quota_cespiti + iva_detraibile, 2),
         "totale_avere": round(importo_totale, 2),
         "stato": "registrato", "created_at": now,
         "idempotency_key": chiave_idempotenza("fattura", fattura_id),
     }
+    if quota_cespiti:
+        # Tracciato esplicito (audit 19/09/2026 punto 3): quanto di questa
+        # fattura NON e' costo pieno perche' capitalizzato come cespite.
+        movimento["cespiti_capitalizzati"] = quota_cespiti
     if extra_movimento:
         movimento.update(extra_movimento)
-    saldi = [
-        (conti["costo"]["codice"], costo_contabile, "dare"),
-        (conti["iva_credito"]["codice"], iva_detraibile, "dare"),
-        (conti["debito_fornitore"]["codice"], importo_totale, "avere"),
-    ]
+    saldi = [(riga["conto_codice"], riga["dare"] or riga["avere"],
+              "dare" if riga["dare"] else "avere") for riga in righe]
     mov = await _scrivi_movimento(db, movimento, saldi)
+    if anomalia_cespiti and not mov.get("gia_registrato"):
+        logger.warning("[RegistrazioneContabile] %s", anomalia_cespiti)
+        try:
+            await db["agenti_segnalazioni"].update_one(
+                {"tipo": "cespite_doppio_conteggio_potenziale", "fattura_id": fattura_id, "letta": False},
+                {"$set": {"dettaglio": anomalia_cespiti, "updated_at": now},
+                 "$setOnInsert": {"created_at": now}},
+                upsert=True,
+            )
+        except Exception:
+            pass
     patch = {"registrata_contabilita": True, "movimento_contabile_id": mov["id"]}
     if extra_fattura:
         patch.update(extra_fattura)
