@@ -4,12 +4,10 @@ Business logic layer for all operations.
 
 ARCHITETTURA:
 - business_rules.py: Regole di business centralizzate e validazioni
-- invoice_service_v2.py: Gestione fatture con controlli sicurezza
 - corrispettivi_service.py: Gestione corrispettivi con propagazione Prima Nota
 - *_service.py: Altri servizi specifici
 """
 from .auth_service import AuthService
-from .invoice_service_v2 import InvoiceServiceV2, get_invoice_service_v2
 from .warehouse_service import WarehouseService
 from .accounting_service import AccountingService
 from .accounting_entries_service import AccountingEntriesService
@@ -120,8 +118,6 @@ install_scheduler_queue_policy()
 __all__ = [
     # Core Services
     "AuthService",
-    "InvoiceServiceV2",
-    "get_invoice_service_v2",
     "WarehouseService",
     "AccountingService",
     "AccountingEntriesService",
