@@ -19,6 +19,7 @@ from app.engines import iva_fatture
 from app.engines import liquidazione_iva_engine as liq
 from app.engines import riepilogo_iva_engine as riep
 from app.utils.dependencies import get_current_user
+from app.utils.ruoli import richiedi_admin
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -1033,3 +1034,39 @@ async def correggi_periodo_fattura(
         fid, "DA_INSERIRE", liq.MOV_RETTIFICA, motivo, _utente_autenticato(current_user, utente),
         extra_set={"periodo_iva_attribuito": periodo, "regola_iva_applicata": "CORREZIONE_MANUALE"},
     )
+
+
+# ─── Confronto col commercialista (LIPE + prospetti F24) ────────────────────
+# La LIPE e' il documento canonico dell'IVA mensile: quando diverge dal nostro
+# numero, quello giusto e' il suo. Il confronto non aggiusta niente.
+
+@router.post("/lipe/importa", summary="Rilegge le LIPE archiviate e ne deposita i periodi")
+async def lipe_importa(
+    dry_run: bool = Query(True, description="Se True non scrive: dice solo cosa depositerebbe"),
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Le LIPE inventariate si riscaricano da Drive, si leggono e i loro
+    periodi finiscono in `lipe_periodi`, uno per mese.
+
+    Un periodo la cui aritmetica non torna (`VP6 = VP5 - VP4`,
+    `VP14 = VP6 + VP8 - VP7`) non viene depositato: finisce fra gli scartati.
+    Una comunicazione ritrasmessa (protocollo piu' alto) sostituisce la
+    precedente sullo stesso periodo.
+    """
+    richiedi_admin(current_user)
+    from app.services import lipe_deposito
+
+    return await lipe_deposito.importa_lipe_archiviate(Database.get_db(), dry_run=dry_run)
+
+
+@router.get("/confronto-commercialista/{anno}", summary="IVA mensile: gestionale vs LIPE vs F24")
+async def confronto_commercialista(anno: int) -> Dict[str, Any]:
+    """Dodici righe, tre colonne: il nostro calcolo, la LIPE del
+    commercialista e il prospetto F24 effettivamente versato.
+
+    Un mese che non sappiamo calcolare non e' uno scostamento, e una LIPE a
+    credito non deve avere nessun F24: l'assenza del versamento e' corretta.
+    """
+    from app.services.confronto_iva_commercialista import confronto_mensile
+
+    return await confronto_mensile(Database.get_db(), anno)
