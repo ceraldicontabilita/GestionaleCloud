@@ -54,7 +54,6 @@ FORK_NOTO = {
     "routers/auth.py",
     "routers/employees/dipendenti.py",
     "routers/f24_parser.py",
-    "routers/libro_unico_parser.py",
     "routers/pin_login.py",
     "routers/tfr.py",
     "services/alert_engine.py",
