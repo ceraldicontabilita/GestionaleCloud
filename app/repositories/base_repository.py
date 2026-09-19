@@ -25,10 +25,21 @@ class BaseRepository(Generic[T]):
         self.collection = collection
 
     def _build_id_filter(self, doc_id: Any) -> Dict[str, Any]:
+        """Filtro per l'identificativo, valido su entrambi gli archivi.
+
+        I due adattatori tengono la chiave in due campi diversi: il runtime
+        dell'ERP (`services/supabase_runtime_database.py`) indicizza i
+        documenti per `_id`, quello dell'app HR (`app/hr/db_supabase.py`) per
+        `id`. Un filtro su un campo solo funziona di qua e fallisce di la'.
+
+        Misurato il 19/09/2026: l'unico utente HR (`hr.app_users`) non aveva
+        MAI ricevuto un `last_login`, perche' la copia HR di questo file
+        costruiva un `ObjectId(doc_id)` su un identificativo testuale — un
+        `InvalidId` inghiottito dall'`except`, e `update_last_login` che
+        tornava False in silenzio a ogni accesso col PIN.
         """
-        Costruisce il filtro per l'identificativo applicativo.
-        """
-        return {"_id": str(doc_id)}
+        chiave = str(doc_id)
+        return {"$or": [{"_id": chiave}, {"id": chiave}]}
 
     async def create(self, document: Dict[str, Any]) -> str:
         """
@@ -63,7 +74,12 @@ class BaseRepository(Generic[T]):
             document = await self.collection.find_one(self._build_id_filter(doc_id))
 
             if document:
-                document['id'] = str(document.pop('_id'))
+                # Su un archivio che non tiene `_id` il vecchio
+                # `document.pop('_id')` sollevava KeyError, l'except lo
+                # inghiottiva e il documento trovato tornava comunque None.
+                chiave = document.pop('_id', None)
+                if chiave is not None:
+                    document['id'] = str(chiave)
 
             return document
         except Exception as e:
