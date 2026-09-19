@@ -277,3 +277,41 @@ def test_riporto_query_base_esplicita_estratto_conto():
         db, "prima_nota_banca", query_anno, anno=2026))
     assert s_pn["saldo_precedente"] == 100.0
     assert s_pn["saldo"] == 150.0
+
+
+def test_pagamento_cassa_senza_metodo_fornitore_non_entra_nei_saldi():
+    """Caso reale 19/09/2026 (Leasys Italia S.p.A, fattura 0000202611470021).
+
+    Fino al 15/09/2026 una fattura il cui fornitore non aveva il metodo di
+    pagamento in anagrafica veniva instradata d'ufficio in Prima Nota Cassa
+    con `metodo_pagamento="cassa"`, pur essendo marcata provvisoria. Il ramo
+    e' spento (PR #461 "Fase 0"), ma le 497 righe gia' scritte restavano nei
+    saldi: uscite di contante mai avvenute, per 197.632,93 EUR, che
+    portavano la cassa a -84.183,91 EUR. Una cassa non puo' essere negativa.
+
+    Contano solo i movimenti provati: la riga provvisoria resta in archivio
+    per audit ma non tocca elenco, saldi, bilancio, liquidita' e chiusura.
+    """
+    movimenti = [
+        {"tipo": "entrata", "importo": 2000.0, "data": "2026-09-01", "status": "ok"},
+        {"tipo": "uscita", "importo": 300.0, "data": "2026-09-02", "status": "ok",
+         "categoria": "Fatture", "source": "fattura_pagata"},
+        # La riga di Leasys: provvisoria, fornitore senza metodo in anagrafica.
+        {"tipo": "uscita", "importo": 1119.48, "data": "2026-09-08", "status": "ok",
+         "categoria": "Fatture", "stato": "DA_VERIFICARE", "provvisorio": True,
+         "canonico": False, "metodo_pagamento": "cassa",
+         "source": "metodo_fornitore_assente_provvisorio",
+         "motivo_provvisorio": "metodo_pagamento_fornitore_assente"},
+    ]
+    db = _Db(_Coll(movimenti))
+    query = common.filtro_saldo_prima_nota("prima_nota_cassa")
+    s = _run(common.aggrega_saldo_prima_nota(db, "prima_nota_cassa", query, anno=None))
+    assert s["totale_uscite"] == 300.0
+    assert s["saldo"] == 1700.0
+
+
+def test_source_provvisorio_escluso_sia_in_cassa_sia_in_banca():
+    cassa = common.filtro_saldo_prima_nota("prima_nota_cassa")
+    banca = common.filtro_saldo_prima_nota("prima_nota_banca")
+    assert "metodo_fornitore_assente_provvisorio" in cassa["source"]["$nin"]
+    assert "metodo_fornitore_assente_provvisorio" in banca["source"]["$nin"]

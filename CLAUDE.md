@@ -503,7 +503,11 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   documenti e audit.
 - Il metodo di pagamento si legge **solo dall'anagrafica fornitore**, mai
   dedotto dalla fattura; se non configurato la fattura resta `sospesa`, mai
-  con un default «bonifico».
+  con un default «bonifico» **né un ripiego in cassa**: un pagamento in
+  contanti senza prova è un'uscita inventata. Le righe storiche
+  `source="metodo_fornitore_assente_provvisorio"` restano in archivio per
+  audit ma sono escluse da elenchi e saldi (`SOURCES_ESCLUSE` in
+  `app/routers/prima_nota_module/common.py`).
 - Spostare una fattura fra Cassa e Banca cambia metodo, relazioni e scritture
   **con lo stesso ID**: non nasce una seconda fattura.
 - `app/services/fatture_identita.py` ricava l'identità dall'XML con lo stesso
@@ -662,6 +666,10 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   aumentati anziché ridotti) ancora da sanare con uno storno mirato per
   `fattura_id` via `storna_registrazione_fattura` (non un comando di massa:
   richiede individuarle una per una sul DB live).
+- **Nessuno dei 187 fornitori ha `metodo_pagamento` in anagrafica** (campo
+  presente ma vuoto; solo 41 hanno un IBAN): finché resta così ogni fattura
+  è `sospesa` e nulla può essere instradato in Prima Nota Banca. Da
+  popolare con una fonte vera, non dedotta dalle fatture.
 - Riconciliazione: 158 fatture `riconciliata` con movimento non riconciliato,
   180 righe hub senza `fattura_id` (da rigenerare col motore, non a mano);
   banca 2026 con 1.765 movimenti senza categoria.
