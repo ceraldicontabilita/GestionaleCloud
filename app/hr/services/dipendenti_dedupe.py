@@ -214,6 +214,41 @@ async def _migra_riferimenti(db, from_id: str, to_id: str, from_cf: str, to_cf: 
         )
         stats["bonifici_migrati"] = res.modified_count
 
+    # ── Tutte le altre collezioni con un campo `dipendente_id` reale
+    # (audit 19/09/2026, secondo BLOCCANTE): un merge, soft o hard, lasciava
+    # questi dati sul vecchio id — TFR e stipendi del duplicato "sparivano"
+    # dai totali del sopravvissuto senza errore visibile, e con merge hard
+    # (cancellazione fisica) diventavano orfani e irrecuperabili. Elenco
+    # verificato a mano con grep su `app/hr/` (non tutte le collezioni con
+    # un dipendente in causa usano questo nome di campo: `employee_contracts`,
+    # `attendance_*`, `presenze_mensili`, `richieste_assenza` e
+    # `riporti_ferie` usano invece `employee_id` e restano fuori da questo
+    # giro, vedi commit).
+    # Stesso pattern semplice di `bonifici`/`estratto_conto_movimenti`: un
+    # solo `update_many`, nessuna logica di dedup (quella serve solo dove un
+    # doppione vero e proprio puo' nascere, come per i cedolini sopra).
+    _ALTRE_COLLEZIONI_DIPENDENTE_ID = (
+        # finanziarie — priorita' esplicita dell'audit
+        "pagamenti_esiti", "paghe_mensili",
+        "tfr_accantonamenti", "tfr_acconti", "tfr_liquidazioni",
+        "tfr_liquidazione_override", "tfr_simulazione_periodi",
+        "acconti_dipendenti", "trattenute_dipendenti", "prima_nota_salari",
+        "pagamenti_dipendenti", "pagamenti_salari",
+        # altre collezioni collegate al dipendente
+        "contratti_dipendenti", "documenti_cloud", "libretti_sanitari",
+        "shifts_assegnazioni", "turni_dipendenti", "ferie_cloud",
+        "presenze_cloud", "bonifici_transfers",
+    )
+    nomi_esistenti = await db.list_collection_names()
+    for nome in _ALTRE_COLLEZIONI_DIPENDENTE_ID:
+        if nome not in nomi_esistenti:
+            continue
+        res = await db[nome].update_many(
+            {"dipendente_id": from_id},
+            {"$set": {"dipendente_id": to_id}}
+        )
+        stats[f"{nome}_migrati"] = res.modified_count
+
     return stats
 
 

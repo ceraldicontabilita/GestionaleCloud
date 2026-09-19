@@ -64,6 +64,7 @@ volta sola nel log: l'ingestione contabile non deve mai fallire per l'HR.
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 import uuid
@@ -388,7 +389,26 @@ async def carica_contesto_hr() -> Optional[ContestoHR]:
 
 # ── deposito vero e proprio ──────────────────────────────────────────────────
 
+def _id_pagamento_esito(key: str) -> str:
+    """Id deterministico dal ``key`` logico (stesso schema di ``verbale_<hash>``
+    gia' usato altrove nel codebase, es. ``pagopa_receipts.py``).
+
+    L'adapter Supabase (``app/hr/db_supabase.py``) genera un UUID casuale per
+    l'upsert quando il documento non porta gia' ``id``/``_id``: due upsert
+    concorrenti sulla stessa ``key`` (scheduler ogni 15 minuti + endpoint
+    manuale ``deposita-pagamenti-hr`` lanciato nello stesso momento) potevano
+    quindi creare due righe fisiche distinte con la stessa chiave logica,
+    duplicando l'importo nei totali di ``paghe_mensili`` (audit 19/09/2026).
+    Un id calcolato dalla ``key`` fa convergere sempre i due upsert sullo
+    stesso documento fisico. Nessuna lettura di ``pagamenti_esiti`` nel
+    codebase cerca per ``id``: tutte usano ``key`` o
+    ``dipendente_id``+``mese``+``anno``, quindi aggiungerlo e' sicuro."""
+    return "pe_" + hashlib.sha256(key.encode("utf-8")).hexdigest()[:32]
+
+
 async def _scrivi_esito(ctx: ContestoHR, esito: Dict[str, Any]) -> None:
+    esito = dict(esito)
+    esito.setdefault("id", _id_pagamento_esito(esito["key"]))
     await ctx.db.pagamenti_esiti.update_one({"key": esito["key"]}, {"$set": esito}, upsert=True)
     ctx._indicizza(esito)
     dip, mese, anno = esito["dipendente_id"], int(esito["mese"]), int(esito["anno"])
@@ -767,17 +787,41 @@ async def deposita_pagamenti_in_hr(db, *, dry_run: bool = False, limit: int = 20
         era_in_coda = bool(hash_pdf) and hash_pdf in ctx.hash_in_coda
         if hash_pdf:
             ctx.hash_in_coda.discard(hash_pdf)
-        anteprima = await deposita_bonifico_transfer_in_hr(db, transfer, ctx=ctx, dry_run=True)
+        # L'anteprima e' solo una lettura (dry_run=True), ma un dato malformato
+        # o un timeout transitorio possono comunque far sollevare un'eccezione
+        # al suo interno: un documento rotto non deve fermare il giro (stesso
+        # principio di ``_deposita_transfer``/``_deposita_movimento``, audit
+        # 19/09/2026) ne', tanto meno, impedire per sempre ogni deposito
+        # futuro perche' la stessa riga ripropone l'errore ad ogni ciclo.
+        try:
+            anteprima = await deposita_bonifico_transfer_in_hr(db, transfer, ctx=ctx, dry_run=True)
+        except Exception as exc:
+            logger.warning("[HR deposito pagamenti] anteprima riesame bonifico %s: %s",
+                           transfer.get("id"), exc)
+            if era_in_coda:
+                ctx.hash_in_coda.add(hash_pdf)
+            _registra("bonifici_pdf_riesame", transfer.get("id"),
+                      _marcatore("errore", motivo=str(exc)[:200]), {
+                          "data": _data_iso(transfer.get("data")),
+                          "importo": _importo(transfer.get("importo")),
+                          "testo": _testo_transfer(transfer)[:120],
+                      })
+            continue
         if anteprima["esito"] not in (ESITO_DEPOSITATO, ESITO_ARRICCHITO):
             if era_in_coda:
                 ctx.hash_in_coda.add(hash_pdf)
             continue
-        if not dry_run:
+        # Deposito reale PRIMA di marcare "ritirato" la vecchia riga in coda
+        # (audit 19/09/2026, DA CORREGGERE): se il processo muore fra le due
+        # scritture non deve restare una riga "ritirato" senza il pagamento
+        # corrispondente. Si marca "ritirato" solo se il deposito e' davvero
+        # riuscito (``depositato``/``arricchito``), mai per un esito ambiguo.
+        marca_reale = await _deposita_transfer(transfer, "bonifici_pdf_riesame")
+        if not dry_run and marca_reale["esito"] in (ESITO_DEPOSITATO, ESITO_ARRICCHITO):
             await ctx.db.bonifici_da_associare.update_one(
                 {"gestionale_transfer_id": transfer.get("id"), "stato": "da_associare"},
                 {"$set": {"stato": "ritirato", "ritirato_il": _now_iso(),
                           "ritirato_motivo": "riesame: nome univoco basta da solo"}})
-        await _deposita_transfer(transfer, "bonifici_pdf_riesame")
 
     movimenti = await db["estratto_conto_movimenti"].find(
         {CAMPO_MARCATORE: {"$exists": False}}, {"_id": 0}
@@ -817,16 +861,31 @@ async def deposita_pagamenti_in_hr(db, *, dry_run: bool = False, limit: int = 20
         # la riga resta com'era, senza generare una seconda riga di coda per
         # lo stesso movimento.
         segnale = "lotto_paghe" if _data_iso(mov.get("data")) in lotti else None
-        anteprima = await deposita_movimento_banca_in_hr(db, mov, ctx=ctx, dry_run=True,
-                                                         segnale_esplicito=segnale)
+        # Stessa protezione del riesame PDF sopra (audit 19/09/2026,
+        # BLOCCANTE): un'eccezione in anteprima su una riga malformata non
+        # deve fermare il resto del giro ne' ripresentarsi per sempre.
+        try:
+            anteprima = await deposita_movimento_banca_in_hr(db, mov, ctx=ctx, dry_run=True,
+                                                             segnale_esplicito=segnale)
+        except Exception as exc:
+            logger.warning("[HR deposito pagamenti] anteprima riesame movimento %s: %s",
+                           mov.get("id"), exc)
+            _registra("estratto_conto_riesame", mov.get("id"),
+                      _marcatore("errore", motivo=str(exc)[:200]), {
+                          "data": _data_iso(mov.get("data")), "importo": _importo(mov.get("importo")),
+                          "testo": str(mov.get("descrizione") or "")[:120],
+                      })
+            continue
         if anteprima["esito"] not in (ESITO_DEPOSITATO, ESITO_ARRICCHITO):
             continue
-        if not dry_run:
+        # Deposito reale PRIMA di marcare "ritirato" (stesso ordine invertito
+        # del riesame PDF sopra, audit 19/09/2026, DA CORREGGERE).
+        marca_reale = await _deposita_movimento(mov, "estratto_conto_riesame")
+        if not dry_run and marca_reale["esito"] in (ESITO_DEPOSITATO, ESITO_ARRICCHITO):
             await ctx.db.bonifici_da_associare.update_one(
                 {"gestionale_movimento_id": mov.get("id"), "stato": "da_associare"},
                 {"$set": {"stato": "ritirato", "ritirato_il": _now_iso(),
                           "ritirato_motivo": "riesame: nome univoco basta da solo"}})
-        await _deposita_movimento(mov, "estratto_conto_riesame")
 
     # Riesame 2: "FAVORE BENEFICIARI VARI/DIVERSI" (addebito cumulativo senza
     # nomi). Nel primo giro reale (14/09/2026) finivano "non_dipendente"

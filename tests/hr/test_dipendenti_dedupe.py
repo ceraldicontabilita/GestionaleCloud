@@ -76,6 +76,67 @@ def test_merge_ripunta_bonifico_sul_cedolino_sopravvissuto_e_migra_bonifici(hr):
     assert dup["merged_into"] == "dip-target"
 
 
+def test_merge_migra_tfr_pagamenti_esiti_e_paghe_mensili(hr):
+    """BLOCCANTE audit 19/09/2026: un accantonamento TFR e un esito di
+    pagamento del duplicato non devono restare orfani sul vecchio id dopo il
+    merge (soft o hard) — devono ripuntare al sopravvissuto, non sparire dai
+    totali."""
+    _run(hr.dipendenti.insert_many([
+        {"id": "dip-target", "nome": "Anna", "cognome": "Russo",
+         "nome_completo": "Russo Anna", "codice_fiscale": "RSSNNA80A01F839Z"},
+        {"id": "dip-dup", "nome": "Anna", "cognome": "Russo",
+         "nome_completo": "Russo Anna", "codice_fiscale": ""},
+    ]))
+    _run(hr.tfr_accantonamenti.insert_many([
+        {"id": "tfr-target", "dipendente_id": "dip-target", "anno": 2025, "importo": 900.0},
+        {"id": "tfr-dup", "dipendente_id": "dip-dup", "anno": 2026, "importo": 500.0},
+    ]))
+    _run(hr.pagamenti_esiti.insert_one(
+        {"id": "pe-1", "key": "gc:abc", "dipendente_id": "dip-dup",
+         "mese": 3, "anno": 2026, "importo": 1300.0}))
+    _run(hr.paghe_mensili.insert_one(
+        {"id": "pm-1", "dipendente_id": "dip-dup", "anno": 2026, "mese": 3,
+         "bonifico_importo": 1300.0}))
+
+    esito = _run(dedupe.merge_dipendenti("dip-target", "dip-dup", soft=True))
+
+    stats = esito["stats_migrazione"]
+    assert stats["tfr_accantonamenti_migrati"] == 1
+    assert stats["pagamenti_esiti_migrati"] == 1
+    assert stats["paghe_mensili_migrati"] == 1
+
+    # Il TFR del duplicato e' ripuntato al sopravvissuto, non perso.
+    tfr_dup = _run(hr.tfr_accantonamenti.find_one({"id": "tfr-dup"}, {"_id": 0}))
+    assert tfr_dup["dipendente_id"] == "dip-target"
+    tfr_target = _run(hr.tfr_accantonamenti.find_one({"id": "tfr-target"}, {"_id": 0}))
+    assert tfr_target["dipendente_id"] == "dip-target"
+
+    pe = _run(hr.pagamenti_esiti.find_one({"id": "pe-1"}, {"_id": 0}))
+    assert pe["dipendente_id"] == "dip-target"
+    pm = _run(hr.paghe_mensili.find_one({"id": "pm-1"}, {"_id": 0}))
+    assert pm["dipendente_id"] == "dip-target"
+
+
+def test_merge_hard_delete_non_lascia_tfr_orfano(hr):
+    """Anche con `soft=False` (cancellazione fisica del duplicato) il TFR
+    deve gia' essere stato ripuntato al sopravvissuto: la migrazione avviene
+    prima della cancellazione della scheda duplicata."""
+    _run(hr.dipendenti.insert_many([
+        {"id": "dip-target", "nome": "Marco", "cognome": "Verde",
+         "nome_completo": "Verde Marco", "codice_fiscale": "VRDMRC80A01F839W"},
+        {"id": "dip-dup", "nome": "Marco", "cognome": "Verde",
+         "nome_completo": "Verde Marco", "codice_fiscale": ""},
+    ]))
+    _run(hr.tfr_accantonamenti.insert_one(
+        {"id": "tfr-dup", "dipendente_id": "dip-dup", "anno": 2026, "importo": 700.0}))
+
+    _run(dedupe.merge_dipendenti("dip-target", "dip-dup", soft=False))
+
+    tfr = _run(hr.tfr_accantonamenti.find_one({"id": "tfr-dup"}, {"_id": 0}))
+    assert tfr["dipendente_id"] == "dip-target"
+    assert _run(hr.dipendenti.find_one({"id": "dip-dup"})) is None
+
+
 def test_merge_migra_estratto_conto_movimenti_dipendente_id(hr):
     """Comportamento gia' esistente, non deve regredire: le righe banca
     seguono lo stesso pattern di `bonifici`."""
