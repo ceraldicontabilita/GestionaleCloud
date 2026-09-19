@@ -2,7 +2,7 @@
 
 <!-- gestionalecloud-doc
 status: current
-reviewed_at: 2026-09-18
+reviewed_at: 2026-09-19
 storage_architecture: supabase
 -->
 
@@ -156,6 +156,17 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - Endpoint senza frontend, scheduler, integrazione o test restano in
   quarantena e non si ricreano; un alias legacy reindirizza al canonico, mai
   con una risposta finta.
+- **Due copie dello stesso modulo non si tengono allineate a mano.** Quando un
+  sottopercorso esiste sia in `app/` sia in `app/hr/`, la logica va in un
+  modulo solo sotto `app/` e il lato HR diventa un **re-export** (solo import,
+  docstring e `__all__`). Prima di fondere, il diff si **classifica riga per
+  riga**: ogni differenza è una correzione presente da un lato solo oppure una
+  divergenza voluta, e va detto quale. Nessuna copia si cancella «perché
+  sembra vecchia».
+- Prima di dichiarare morto un modulo, la prova è la **raggiungibilità reale**,
+  non il nome: gli import relativi (`from .routers import x`) e quelli dentro
+  una funzione contano, e `tests/runtime/test_fork_app_hr.py` nomina i
+  duplicati **perché** lo sono, quindi non vale come citazione.
 
 ## Archivio dati e architettura
 
@@ -215,6 +226,16 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
    scrittura contabile sbagliata si **storna**, non si cancella.
 9. Il secondo ingest della stessa fonte deve dare **`nuovi=0`** e zero nuove
    scritture contabili: è il criterio di collaudo dell'idempotenza.
+10. **I due archivi non usano la stessa chiave.** Il runtime dell'ERP
+    (`services/supabase_runtime_database.py`) indicizza i documenti per `_id`,
+    l'adattatore HR (`app/hr/db_supabase.py`) per `id`, e in HR gli
+    identificativi sono **testo** (UUID), mai `ObjectId`. Un codice condiviso
+    fra i due rami filtra per entrambi i campi; `bson`/`motor` non devono
+    comparire in codice nuovo.
+11. Un nome di campo sbagliato non dà errore, dà silenzio: `{"campo": {"$ne":
+    True}}` su una chiave inesistente passa **sempre**, e la scrittura finisce
+    su un campo che nessuno legge. Prima di fidarsi di un filtro, contare sul
+    database quante righe hanno davvero quella chiave.
 
 ## Identità, prove e attese
 
@@ -468,6 +489,20 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   con `alimenta_salari()`, che fallisce **chiuso**: uno stato assente, vuoto o
   sconosciuto non passa. Su un dato che diventa un bonifico l'assenza di prova
   non vale come prova.
+- Sulla collection `cedolini` il campo è **`pagato`**, non `pagata`: il
+  femminile non esiste su nessun documento e un filtro che lo cerca passa
+  sempre.
+- **Un solo motore abbina bonifico e stipendio**: `associa_bonifici_stipendi`
+  (identità completa, acconti, residuo). Nessun percorso può cercarsi da solo
+  «il primo movimento con importo vicino e il nome nella descrizione»: un
+  omonimo o due buste uguali nello stesso mese bastano ad attaccare il
+  movimento sbagliato. Lo stesso per gli F24: `riconcilia_f24_tributi_banca`.
+  Un movimento vale come prova solo se ha **evidenza bancaria ufficiale** e
+  non è `in_attesa_estratto_ufficiale`.
+- Il Libro Unico si legge da un router solo (`app/routers/libro_unico_parser.py`,
+  chiamato dalla pipeline documentale): oltre a presenze e busta salva le voci
+  codificate del cedolino e i **dati chiave** (ratei 13ª e 14ª, indennità
+  L.207/24, trattamento integrativo L.21). Una voce assente resta nulla.
 - Duplicato di cedolino **solo con hash del PDF uguale**: stesso dipendente,
   mese e importo non bastano (mensilità aggiuntive, arretrati, conguagli).
 - Una cessazione letta in una busta vale solo se non esiste una busta
@@ -676,9 +711,27 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   «non richiede la dichiarazione», non «nascondilo dal menu»: è conformità, si
   conserva e si revoca dalla stessa pagina.
 
-## Stato attuale (al 18/09/2026 — riscrivere sul posto)
+## Stato attuale (al 19/09/2026 — riscrivere sul posto)
 
-- Produzione stabile dopo i fix su avvio, health e memoria.
+- Produzione stabile dopo i fix su avvio, health e memoria. Ogni merge su
+  `main` fa ridistribuire Render e riportare in memoria ~74.500 righe dalla
+  tabella documenti da 1 GB: durante la riidratazione la produzione passa per
+  qualche minuto in `degraded`. Non è un guasto, ma non si accodano merge.
+- **Prima Nota cassa +86.806,69 €** dopo la rimozione dei 497 pagamenti
+  fantasma `metodo_fornitore_assente_provvisorio` (197.632,93 €) dai saldi:
+  righe orfane nate il 14–15/09, il libro giornale non era stato toccato.
+- Il ramo vivo dell'ingest cedolini è
+  `services/cedolini_manager` → `services/salari_unificati_v2`: un netto
+  illeggibile non diventa più zero. Il **collaudo live non è chiuso**: dal
+  deploy #508 in poi il giro orario Drive trova 0 file su 49 caselle e nei log
+  non compare una sola riga di Document AI. Serve un PDF di cedolino vero per
+  esercitare il percorso.
+- **Il `last_login` dell'app HR non è mai stato scritto** fino al 19/09/2026:
+  il repository costruiva un `ObjectId` su un identificativo testuale. Da
+  verificare sul primo accesso col PIN dopo il deploy.
+- TFR: contrariamente a quanto sembrava, è accantonato. `hr.app_tfr_accantonamenti`
+  è vuota ma il codice vivo scrive nella collection `tfr_accantonamenti` del
+  gestionale: 1.175 righe, 42 dipendenti, 2018–2026, 273.025,37 €.
 - **Spento**: `PROTOCOLLO_DRIVE_ENABLED=false` (il giro portava la RAM a
   1,57 GB su 2 GB: riaccendere solo dopo aver ridotto la memoria del giro).
 - **Acceso**: scheduler, ingest Drive (fatture, estratti conto, cedolini,
@@ -732,21 +785,24 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   della documentazione): nessun codice la popola, la funzione è ferma.
 - A mano, dal titolare: ruotare la password Postgres; DNS di `ceraldiapp.it` e
   servizi Render sospesi.
-- Il ramo `app/hr/` e' un fork di `app/`: 42 file negli stessi sottopercorsi
-  (piu' i tre del guscio `main`/`config`/`database`, legittimi). La deriva fra
-  le copie e' fatta di correzioni applicate da un lato solo, quindi ogni fix va
-  cercato anche nel gemello finche' non si consolidano (parser cedolini e F24,
-  TFR, `salari_unificati_v2`, `libro_unico_parser`). Il fork non puo' piu'
-  **crescere**: `tests/runtime/test_fork_app_hr.py` fa fallire la CI su un
-  sottopercorso nuovo in entrambi i rami, e la lista al suo interno puo' solo
-  accorciarsi.
+- Il fork `app/hr/` è quasi chiuso: restano **otto** sottopercorsi davvero
+  duplicati — `parsers/busta_paga_multi_template.py`, `routers/auth.py`,
+  `routers/employees/dipendenti.py`, `routers/f24_parser.py`,
+  `routers/pin_login.py`, `routers/tfr.py`, `services/alert_engine.py`,
+  `utils/dependencies.py` — più i tre del guscio (`main`, `config`,
+  `database`), che restano separati per scelta. Finché una coppia è aperta,
+  ogni correzione va cercata anche nel gemello. Il fork non può **crescere**:
+  `tests/runtime/test_fork_app_hr.py` fa fallire la CI su un sottopercorso
+  nuovo in entrambi i rami, riconosce da solo i re-export e impone che la sua
+  lista possa solo accorciarsi.
 - `gestionale.blobs` non e' piu' collegata a niente: `app/services/blob_store.py`
   e' l'unico codice che la tocca e nessuno lo importa, mentre in produzione la
   tabella ha 216 righe. O il meccanismo dei PDF su richiesta si ricollega, o la
   regola che lo descrive va corretta.
 - `archivio_documenti_memoria.py` espone ancora le classi `SheetDatabase` e
-  `MemorySheetsClient`, che nel nome promettono Google Sheets: 68 e 483
-  occorrenze in 139 file, da rinominare in un giro dedicato.
+  `MemorySheetsClient`, che nel nome promettono Google Sheets senza chiamarlo
+  mai: 54 e 2 occorrenze in 12 file di `app/services/`, da rinominare in un
+  giro dedicato.
 
 ## Verifica e pubblicazione
 
