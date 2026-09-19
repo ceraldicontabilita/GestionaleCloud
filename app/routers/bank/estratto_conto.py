@@ -996,7 +996,6 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     # EC consumato (riconciliato=True), flag fattura coerenti.
     provvisori_riconciliati = 0
     try:
-        import uuid as _uuid
         from app.routers.invoices.fatture_upload import find_ec_match_for_invoice
         provvisori = await db["invoices"].find({
             "total_amount": {"$gt": 0},
