@@ -88,18 +88,22 @@ async def on_fattura_created_alert_fornitore(event: Dict[str, Any], db) -> Optio
     - FORN_IBAN_MANCANTE: metodo bancario ma senza IBAN
     - FORN_NUOVO_INCOMPLETO: fornitore creato automaticamente
     """
+    from app.constants.metodi_pagamento import metodo_non_configurato
     from app.services.alert_engine import genera_alert
 
     fornitore_id = event.get("fornitore_id", "")
     fornitore_nome = event.get("fornitore_ragione_sociale", "")
-    metodo = (event.get("metodo_pagamento", "") or "").lower()
+    metodo = (event.get("metodo_pagamento", "") or "").strip().lower()
     fornitore_nuovo = event.get("fornitore_nuovo", False)
     fornitore_iban = event.get("fornitore_iban")
 
     alerts_generati = []
 
-    # Alert metodo pagamento mancante
-    if not metodo or metodo in ("", "da_configurare", "none"):
+    # Alert metodo pagamento mancante.
+    # La lista dei valori che significano «non configurato» sta in un posto
+    # solo: qui mancava `"sospesa"`, che e' proprio quello che l'import
+    # scrive, e i due alert non sono mai stati emessi da questo percorso.
+    if metodo_non_configurato(metodo):
         alert = await genera_alert(
             "FORN_MP_MANCANTE",
             fornitore_id,

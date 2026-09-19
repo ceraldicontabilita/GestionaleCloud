@@ -37,15 +37,7 @@ from app.services.supplier_data_quality import apply_supplier_quality
 
 logger = logging.getLogger(__name__)
 
-_CAMPI_RATA_EVENTO = (
-    "blocco_indice", "rata_indice", "condizioni_pagamento", "modalita",
-    "importo", "data_scadenza", "data_riferimento_termini", "giorni_termini",
-)
-
-
-def _pagamento_rate_per_evento(rate: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Propaga solo i dati necessari allo scadenzario, mai IBAN o beneficiario."""
-    return [{campo: rata.get(campo) for campo in _CAMPI_RATA_EVENTO} for rata in (rate or [])]
+from app.services.eventi_fattura import costruisci_evento_fattura_created  # noqa: E402
 
 
 def _iban_xml_verificato(parsed_invoice: Dict[str, Any]) -> Optional[str]:
@@ -1296,28 +1288,17 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
     # audit, righe_magazzino. Fail-safe per non bloccare l'import.
     try:
         from app.services.event_bus import propagate_event, EventTypes
-        fornitore_data = invoice.get("fornitore") or {}
-        await propagate_event(EventTypes.FATTURA_CREATED, {
-            "fattura_id": invoice["id"],
-            "numero_documento": invoice.get("invoice_number", ""),
-            "tipo_documento": invoice.get("tipo_documento", "TD01"),
-            "importo_totale": invoice.get("total_amount", 0),
-            "fornitore_id": supplier_id,
-            "fornitore_ragione_sociale": invoice.get("supplier_name", ""),
-            "fornitore_piva": invoice.get("supplier_vat", ""),
-            "fornitore_nuovo": supplier_result.get("nuovo", False),
-            "fornitore_iban": fornitore_data.get("iban") if isinstance(fornitore_data, dict) else None,
-            "metodo_pagamento": metodo_pagamento,
-            "data_documento": invoice.get("invoice_date", ""),
-            "data_scadenza": data_scadenza,
-            "stato": invoice.get("status", "imported"),
-            "pagato": invoice.get("stato_pagamento") == "pagata",
-            "righe_linee": invoice.get("linee", []),
-            "imponibile": invoice.get("imponibile", 0),
-            "iva": invoice.get("iva", 0),
-            "pagamento_rate": _pagamento_rate_per_evento(invoice.get("pagamento_rate", [])),
-            "pagamento_rate_coerente": invoice.get("pagamento_rate_coerente"),
-        }, db, source_module="fatture_upload_manuale")
+        await propagate_event(
+            EventTypes.FATTURA_CREATED,
+            costruisci_evento_fattura_created(
+                invoice,
+                supplier_result=supplier_result,
+                fornitore_id=supplier_id,
+                metodo_pagamento=metodo_pagamento,
+                data_scadenza=data_scadenza,
+            ),
+            db, source_module="fatture_upload_manuale",
+        )
     except Exception:
         logger.exception("Errore propagazione evento fattura.created (upload manuale)")
 
@@ -2225,28 +2206,16 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
     #    Best-effort: un errore qui non deve far fallire l'import.
     try:
         from app.services.event_bus import propagate_event, EventTypes
-        fornitore_data = invoice.get("fornitore") or {}
-        await propagate_event(EventTypes.FATTURA_CREATED, {
-            "fattura_id": invoice["id"],
-            "numero_documento": invoice.get("invoice_number", ""),
-            "tipo_documento": invoice.get("tipo_documento") or "TD01",
-            "importo_totale": invoice.get("total_amount", 0),
-            "fornitore_id": supplier_result.get("supplier_id"),
-            "fornitore_ragione_sociale": invoice.get("supplier_name", ""),
-            "fornitore_piva": invoice.get("supplier_vat", ""),
-            "fornitore_nuovo": supplier_result.get("supplier_created", False),
-            "fornitore_iban": fornitore_data.get("iban") if isinstance(fornitore_data, dict) else None,
-            "metodo_pagamento": metodo_pagamento,
-            "data_documento": invoice_date,
-            "data_scadenza": data_scadenza,
-            "stato": invoice.get("status", "imported"),
-            "pagato": invoice.get("stato_pagamento") == "pagata",
-            "righe_linee": invoice.get("linee", []),
-            "imponibile": invoice.get("imponibile", 0),
-            "iva": invoice.get("iva", 0),
-            "pagamento_rate": _pagamento_rate_per_evento(invoice.get("pagamento_rate", [])),
-            "pagamento_rate_coerente": invoice.get("pagamento_rate_coerente"),
-        }, db, source_module=f"fatture_upload_{source}")
+        await propagate_event(
+            EventTypes.FATTURA_CREATED,
+            costruisci_evento_fattura_created(
+                invoice,
+                supplier_result=supplier_result,
+                metodo_pagamento=metodo_pagamento,
+                data_scadenza=data_scadenza,
+            ),
+            db, source_module=f"fatture_upload_{source}",
+        )
     except Exception:
         derivati_errori.append("evento_fattura_created")
         logger.exception(f"Errore propagazione evento fattura.created ({source})")

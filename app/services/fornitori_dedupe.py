@@ -25,6 +25,7 @@ from difflib import SequenceMatcher
 from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
 
+from app.constants.metodi_pagamento import metodo_non_configurato
 from app.database import Database, Collections
 
 logger = logging.getLogger(__name__)
@@ -82,7 +83,7 @@ def _score_completezza(d: Dict[str, Any]) -> int:
         v = d.get(k)
         if v not in (None, "", [], {}, 0):
             score += 2
-    if d.get("metodo_pagamento") not in (None, "", "sospesa", "da_configurare"):
+    if not metodo_non_configurato(d.get("metodo_pagamento")):
         score += 5  # un metodo di pagamento configurato è un forte segnale di record "vero"
     score += int(d.get("fatture_count") or 0)  # più fatture collegate = record più usato
     return score
