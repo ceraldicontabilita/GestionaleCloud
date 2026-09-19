@@ -2665,7 +2665,12 @@ def _chiave_nome_base(nome: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", ascii_name.casefold()).strip()
 
 
-def _nomi_ingredienti_ricetta(ricetta: dict) -> list[str]:
+def _nomi_ingredienti_chiave_ricetta(ricetta: dict) -> list[str]:
+    """Nomi ingredienti normalizzati e deduplicati per confronto ricette-base/varianti.
+
+    Non confondere con `_nomi_ingredienti_ricetta`, che restituisce i nomi
+    grezzi e serve ad altri scopi (es. categorizzazione reparto).
+    """
     sorgente = ricetta.get("ingredienti_dettaglio") or ricetta.get("ingredienti") or []
     nomi = []
     for ingrediente in sorgente:
@@ -2677,7 +2682,7 @@ def _nomi_ingredienti_ricetta(ricetta: dict) -> list[str]:
 
 
 def _completezza_ricetta(ricetta: dict) -> tuple:
-    ingredienti = _nomi_ingredienti_ricetta(ricetta)
+    ingredienti = _nomi_ingredienti_chiave_ricetta(ricetta)
     procedimento = any(ricetta.get(k) for k in ("procedimento_testo", "procedimento", "preparazione", "metodo_preparazione"))
     foto = bool(ricetta.get("foto_url") or ricetta.get("foto_id"))
     altri = sum(bool(ricetta.get(k)) for k in ("note", "allergeni", "metodo_conservazione", "porzioni"))
@@ -2699,11 +2704,11 @@ def _piano_deduplica_basi(ricette: list[dict]) -> tuple[list[dict], list[dict]]:
             continue
         ordinato = sorted(gruppo, key=lambda r: (_completezza_ricetta(r), str(r.get("id") or "")), reverse=True)
         vincitore = ordinato[0]
-        vincitore_ingredienti = set(_nomi_ingredienti_ricetta(vincitore))
+        vincitore_ingredienti = set(_nomi_ingredienti_chiave_ricetta(vincitore))
         eliminabili = []
         ambigui = []
         for candidato in ordinato[1:]:
-            ingredienti = set(_nomi_ingredienti_ricetta(candidato))
+            ingredienti = set(_nomi_ingredienti_chiave_ricetta(candidato))
             meno_ingredienti = len(vincitore_ingredienti) > len(ingredienti)
             stessi_ingredienti = bool(vincitore_ingredienti) and vincitore_ingredienti == ingredienti
             if meno_ingredienti or stessi_ingredienti:
@@ -2764,12 +2769,12 @@ async def deduplica_ricette_base(
             "chiave": gruppo["chiave"],
             "mantieni": {
                 "id": vincitore.get("id"), "nome": vincitore.get("nome"),
-                "ingredienti": len(_nomi_ingredienti_ricetta(vincitore)),
+                "ingredienti": len(_nomi_ingredienti_chiave_ricetta(vincitore)),
                 "ha_foto": bool(vincitore.get("foto_url") or vincitore.get("foto_id")),
             },
             "elimina": [{
                 "id": r.get("id"), "nome": r.get("nome"),
-                "ingredienti": len(_nomi_ingredienti_ricetta(r)),
+                "ingredienti": len(_nomi_ingredienti_chiave_ricetta(r)),
                 "ha_foto": bool(r.get("foto_url") or r.get("foto_id")),
             } for r in eliminabili],
             "trasferisce_foto": bool(gruppo["foto_da_trasferire"]),
