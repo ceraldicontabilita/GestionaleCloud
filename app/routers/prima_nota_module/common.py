@@ -57,13 +57,29 @@ CATEGORIE_ESCLUSE = ["POS_DUPLICATO"]
 #  - chiusura_pos_mobile / import_manuale_pos sono evidenze di verifica POS,
 #    non un secondo movimento finanziario;
 #  - estratto_conto_sync e' la copia legacy dell'estratto conto e
-#    duplicherebbe i movimenti gestionali gia' registrati.
+#    duplicherebbe i movimenti gestionali gia' registrati;
+#  - metodo_fornitore_assente_provvisorio e' un pagamento in contanti mai
+#    avvenuto. Il ramo che le generava (auto_registra_prima_nota, fatture
+#    senza metodo in anagrafica instradate d'ufficio in cassa) e' spento
+#    dal 15/09/2026 (PR #461 "Fase 0"), ma le 497 righe gia' scritte —
+#    197.632,93 EUR, tutte agganciate a fatture poi rimosse dalla dedup —
+#    restavano nei saldi e portavano la cassa a -84.183,91 EUR. Una cassa
+#    non puo' essere negativa: erano uscite senza prova. Si conservano per
+#    audit (CLAUDE.md: una scrittura sbagliata si storna, non si cancella)
+#    ma non contano piu' in elenco, saldi, bilancio, liquidita' e chiusura.
+#    Finche' l'anagrafica fornitori non ha un metodo di pagamento, quelle
+#    fatture restano "sospese" nello scadenziario: e' li' che si vedono.
 #
 # La quota POS lorda (corrispettivo_pos/corrispettivi_sync) non e' liquidita'
 # bancaria: apre un credito verso il gestore. Resta visibile nei conti POS
 # dedicati ma viene esclusa dal solo saldo dei conti bancari reali tramite
 # ESCLUSIONI_SALDO_REALE.
-SOURCES_ESCLUSE = ["chiusura_pos_mobile", "import_manuale_pos", "estratto_conto_sync"]
+SOURCES_ESCLUSE = [
+    "chiusura_pos_mobile",
+    "import_manuale_pos",
+    "estratto_conto_sync",
+    "metodo_fornitore_assente_provvisorio",
+]
 
 # Esclusioni standard complete della Prima Nota (da spargere con ** nelle
 # query dei chiamanti, insieme al filtro status deleted/archived).
