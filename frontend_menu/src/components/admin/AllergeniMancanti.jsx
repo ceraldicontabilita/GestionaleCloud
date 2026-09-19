@@ -2,188 +2,447 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from '../ui/dialog';
 import { toast } from '../../hooks/use-toast';
-import { AlertTriangle, Link2, RefreshCw, CheckCircle2 } from 'lucide-react';
+import {
+  AlertTriangle, CheckCircle2, ShieldOff, RotateCcw, ChevronDown, ChevronRight, Eye,
+} from 'lucide-react';
 import axios from 'axios';
-import { allergensList } from '../../mockData';
 
 const BACKEND_URL = process.env.REACT_APP_MENU_BACKEND_URL;
 
-const nomeAllergeni = (ids) =>
-  (ids || [])
-    .map((id) => allergensList.find((a) => a.id === id)?.nameIT || id)
-    .join(', ');
+// Palette del gruppo Ceraldi (CLAUDE.md): salvia su crema, semantici caldi.
+const SALVIA = '#5b7a6b';
+const SALVIA_SCURA = '#3f5a4e';
+const CREMA = '#faf7f0';
+const CARD = '#fffefb';
+const SABBIA = '#e6e0d4';
+const INCHIOSTRO = '#2a3329';
+const AVVISO = '#c4894a';
+const SUCCESSO = '#3d8168';
+const PERICOLO = '#d35f4e';
 
-// 18/09/2026: niente abbinamento automatico per somiglianza di nome tra un
-// prodotto del Menu e una ricetta di Lotti — provato e scartato, produce
-// accoppiamenti sbagliati (es. spritz diversi sulla stessa ricetta generica).
-// Qui la persona sceglie la ricetta giusta una volta; da quel momento il
-// sistema tiene sincronizzati gli allergeni da solo (pulsante "Risincronizza").
+// "Le mani sporche" (CLAUDE.md): il motivo si sceglie da un bottone, non si
+// scrive. "Altro" resta l'eccezione, e comunque il motivo e' facoltativo.
+const MOTIVI_PRONTI = [
+  'Bevanda in bottiglia sigillata',
+  'Distillato o liquore',
+  'Nessuno dei 14 allergeni UE',
+  'Prodotto non alimentare',
+];
+
+const ETICHETTA_TIPO = {
+  prodotto: 'Prodotto',
+  categoria: 'Categoria',
+  sottocategoria: 'Sottocategoria',
+};
+
+const auth = () => ({
+  headers: { Authorization: `Bearer ${localStorage.getItem('admin_token')}` },
+});
+
+/**
+ * Allergeni mancanti: chi deve dichiarare gli allergeni e non lo fa.
+ *
+ * 19/09/2026 — "Collega a una ricetta" e' stato tolto da qui: la strada
+ * ricetta -> prodotto del Menu e' quella del ponte di Lotti, che pubblica la
+ * ricetta con gli allergeni gia' calcolati dagli ingredienti.
+ * Al suo posto l'esclusione: whisky, distillati e bibite in bottiglia non
+ * hanno allergeni da dichiarare e non devono restare nell'alert per sempre.
+ * L'esclusione non nasconde nulla dal menu, e si revoca.
+ */
 const AllergeniMancanti = () => {
   const [dati, setDati] = useState(null);
-  const [ricette, setRicette] = useState([]);
-  const [ricetteDisponibili, setRicetteDisponibili] = useState(true);
+  const [esclusioni, setEsclusioni] = useState([]);
   const [caricamento, setCaricamento] = useState(true);
-  const [ricercaPerProdotto, setRicercaPerProdotto] = useState({});
-  const [risincronizzando, setRisincronizzando] = useState(false);
-
-  const auth = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('admin_token')}` } });
+  const [mostraEsclusioni, setMostraEsclusioni] = useState(false);
+  const [gruppiAperti, setGruppiAperti] = useState({});
+  const [richiesta, setRichiesta] = useState(null); // { tipo, riferimento_id, nome, quanti }
 
   const carica = async () => {
     setCaricamento(true);
     try {
-      const { data } = await axios.get(`${BACKEND_URL}/api/admin/allergeni/mancanti`, auth());
-      setDati(data);
+      const [mancanti, escl] = await Promise.all([
+        axios.get(`${BACKEND_URL}/api/admin/allergeni/mancanti`, auth()),
+        axios.get(`${BACKEND_URL}/api/admin/allergeni/esclusioni`, auth()),
+      ]);
+      setDati(mancanti.data);
+      setEsclusioni(escl.data.esclusioni || []);
     } catch (error) {
-      toast({ title: 'Errore', description: 'Elenco allergeni mancanti non disponibile', variant: 'destructive' });
-    }
-    try {
-      const { data } = await axios.get(`${BACKEND_URL}/api/admin/allergeni/ricette-lotti`, auth());
-      setRicette(data.ricette || []);
-      setRicetteDisponibili(true);
-    } catch (error) {
-      setRicetteDisponibili(false);
+      toast({
+        title: 'Errore',
+        description: 'Elenco allergeni mancanti non disponibile',
+        variant: 'destructive',
+      });
     }
     setCaricamento(false);
   };
 
   useEffect(() => { carica(); }, []);
 
-  const associa = async (productId, ricettaDocId, nomeRicetta) => {
+  const escludi = async ({ tipo, riferimento_id, motivo }) => {
     try {
-      await axios.post(`${BACKEND_URL}/api/admin/allergeni/associa`,
-        { product_id: productId, ricetta_doc_id: ricettaDocId }, auth());
-      toast({ title: 'Associato', description: `Allergeni copiati dalla ricetta "${nomeRicetta}"` });
+      await axios.post(
+        `${BACKEND_URL}/api/admin/allergeni/esclusioni`,
+        { tipo, riferimento_id, motivo: motivo || null },
+        auth(),
+      );
+      toast({
+        title: 'Escluso dalla verifica',
+        description: 'Non richiede la dichiarazione allergeni. Puoi annullare quando vuoi.',
+      });
+      setRichiesta(null);
       carica();
     } catch (error) {
       toast({
-        title: 'Errore', variant: 'destructive',
-        description: error.response?.data?.detail || 'Associazione non riuscita',
+        title: 'Errore',
+        variant: 'destructive',
+        description: error.response?.data?.detail || 'Esclusione non riuscita',
       });
     }
   };
 
-  const risincronizza = async () => {
-    setRisincronizzando(true);
+  const revoca = async (tipo, riferimentoId) => {
     try {
-      const { data } = await axios.post(`${BACKEND_URL}/api/admin/allergeni/risincronizza`, {}, auth());
+      await axios.delete(
+        `${BACKEND_URL}/api/admin/allergeni/esclusioni/${tipo}/${riferimentoId}`,
+        auth(),
+      );
       toast({
-        title: 'Risincronizzato',
-        description: data.totale_aggiornati > 0
-          ? `${data.totale_aggiornati} prodotti riallineati alla loro ricetta Lotti`
-          : 'Tutti i prodotti collegati erano gia\' allineati',
+        title: 'Esclusione annullata',
+        description: 'Torna nell’elenco di chi deve dichiarare gli allergeni.',
       });
       carica();
     } catch (error) {
-      toast({ title: 'Errore', description: 'Risincronizzazione non riuscita', variant: 'destructive' });
+      toast({
+        title: 'Errore',
+        variant: 'destructive',
+        description: error.response?.data?.detail || 'Ripristino non riuscito',
+      });
     }
-    setRisincronizzando(false);
   };
+
+  // Raggruppamento per sottocategoria (il livello su cui il titolare ragiona:
+  // "Whisky", "Bibite"), con la categoria come contesto.
+  const gruppi = useMemo(() => {
+    const per = new Map();
+    (dati?.prodotti || []).forEach((p) => {
+      const chiave = p.subcategory_id ?? `cat-${p.category_id}`;
+      if (!per.has(chiave)) {
+        per.set(chiave, {
+          chiave,
+          subcategory_id: p.subcategory_id,
+          category_id: p.category_id,
+          sottocategoria_nome: p.sottocategoria_nome,
+          categoria_nome: p.categoria_nome,
+          prodotti: [],
+        });
+      }
+      per.get(chiave).prodotti.push(p);
+    });
+    return [...per.values()].sort((a, b) =>
+      (a.sottocategoria_nome || '').localeCompare(b.sottocategoria_nome || ''));
+  }, [dati]);
 
   if (caricamento) return null;
-  if (!dati || dati.senza_allergeni === 0) {
-    return (
-      <Card className="border-green-200 bg-green-50">
-        <CardContent className="py-4 flex items-center gap-2 text-green-700">
-          <CheckCircle2 className="w-5 h-5" />
-          <span>Tutti i prodotti visibili hanno una dichiarazione allergeni.</span>
-        </CardContent>
-      </Card>
-    );
-  }
+  if (!dati) return null;
+
+  const nessunoDaDichiarare = dati.senza_allergeni === 0;
 
   return (
-    <Card className="border-amber-300 bg-amber-50 mb-6">
-      <CardHeader>
-        <CardTitle className="flex items-center justify-between text-amber-800">
-          <span className="flex items-center gap-2">
-            <AlertTriangle className="w-5 h-5" />
-            {dati.senza_allergeni} prodotti senza allergeni dichiarati
-            {dati.senza_ricetta_collegata > 0 && ` (${dati.senza_ricetta_collegata} senza ricetta collegata)`}
-          </span>
-          <Button size="sm" variant="outline" onClick={risincronizza} disabled={risincronizzando}>
-            <RefreshCw className={`w-4 h-4 mr-2 ${risincronizzando ? 'animate-spin' : ''}`} />
-            Risincronizza dai collegamenti esistenti
-          </Button>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {!ricetteDisponibili && (
-          <p className="text-sm text-amber-700">
-            Non riesco a leggere le ricette di Lotti in questo momento: puoi comunque vedere l'elenco,
-            ma l'associazione non e' disponibile finche' il collegamento non torna attivo.
+    <>
+      <Card
+        className="mb-6"
+        style={{
+          background: nessunoDaDichiarare ? CARD : CREMA,
+          borderColor: nessunoDaDichiarare ? SABBIA : AVVISO,
+        }}
+      >
+        <CardHeader className="pb-3">
+          <CardTitle className="flex flex-wrap items-center gap-2 text-base sm:text-lg">
+            {nessunoDaDichiarare ? (
+              <span className="flex items-center gap-2" style={{ color: SUCCESSO }}>
+                <CheckCircle2 className="w-5 h-5 shrink-0" />
+                Tutti i prodotti hanno una dichiarazione allergeni o sono esclusi.
+              </span>
+            ) : (
+              <span className="flex items-center gap-2" style={{ color: AVVISO }}>
+                <AlertTriangle className="w-5 h-5 shrink-0" />
+                {dati.senza_allergeni} prodotti senza allergeni dichiarati
+              </span>
+            )}
+          </CardTitle>
+          <p className="text-sm" style={{ color: SALVIA_SCURA }}>
+            Dichiarare i 14 allergeni UE è un obbligo di legge (Reg. UE 1169/2011).
+            {dati.esclusi > 0 && ` ${dati.esclusi} prodotti sono esclusi dalla verifica.`}
           </p>
-        )}
-        {dati.prodotti.map((p) => (
-          <RigaProdotto
-            key={p.id}
-            prodotto={p}
-            ricette={ricette}
-            ricetteDisponibili={ricetteDisponibili}
-            valoreRicerca={ricercaPerProdotto[p.id] || ''}
-            onCambiaRicerca={(v) => setRicercaPerProdotto((s) => ({ ...s, [p.id]: v }))}
-            onAssocia={associa}
-          />
-        ))}
-      </CardContent>
-    </Card>
+          {(dati.esclusi > 0 || esclusioni.length > 0) && (
+            <Button
+              variant="outline"
+              onClick={() => setMostraEsclusioni((v) => !v)}
+              className="min-h-[44px] w-full sm:w-auto justify-start"
+              style={{ borderColor: SABBIA, color: SALVIA_SCURA, background: CARD }}
+            >
+              <Eye className="w-4 h-4 mr-2" />
+              {mostraEsclusioni ? 'Nascondi' : 'Vedi'} le {esclusioni.length} esclusioni
+            </Button>
+          )}
+        </CardHeader>
+
+        <CardContent className="space-y-4">
+          {mostraEsclusioni && (
+            <ElencoEsclusioni esclusioni={esclusioni} onRevoca={revoca} />
+          )}
+
+          {gruppi.map((g) => (
+            <GruppoProdotti
+              key={g.chiave}
+              gruppo={g}
+              aperto={gruppiAperti[g.chiave] !== false}
+              onToggle={() => setGruppiAperti((s) => ({
+                ...s, [g.chiave]: s[g.chiave] === false,
+              }))}
+              onChiediEsclusione={setRichiesta}
+            />
+          ))}
+        </CardContent>
+      </Card>
+
+      <DialogEsclusione
+        richiesta={richiesta}
+        onAnnulla={() => setRichiesta(null)}
+        onConferma={escludi}
+      />
+    </>
   );
 };
 
-const RigaProdotto = ({ prodotto, ricette, ricetteDisponibili, valoreRicerca, onCambiaRicerca, onAssocia }) => {
-  const [aperto, setAperto] = useState(false);
-  const filtrate = useMemo(() => {
-    const q = valoreRicerca.trim().toLowerCase();
-    if (!q) return ricette.slice(0, 8);
-    return ricette.filter((r) => r.nome.toLowerCase().includes(q)).slice(0, 8);
-  }, [valoreRicerca, ricette]);
+const GruppoProdotti = ({ gruppo, aperto, onToggle, onChiediEsclusione }) => {
+  const titolo = gruppo.sottocategoria_nome || gruppo.categoria_nome || 'Senza reparto';
+  const Freccia = aperto ? ChevronDown : ChevronRight;
 
   return (
-    <div className="bg-white rounded-lg border border-amber-200 p-3">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="font-medium">{prodotto.name_it}</div>
-          {prodotto.description_it && (
-            <div className="text-xs text-gray-500 line-clamp-1">{prodotto.description_it}</div>
-          )}
-          {prodotto.lotti_ref && (
-            <div className="text-xs text-gray-500">Collegato a ricetta Lotti: {prodotto.lotti_ref}</div>
-          )}
-        </div>
-        {ricetteDisponibili && (
-          <Button size="sm" variant="secondary" onClick={() => setAperto((a) => !a)}>
-            <Link2 className="w-4 h-4 mr-1" /> Collega a una ricetta
+    <div className="rounded-lg border overflow-hidden" style={{ borderColor: SABBIA, background: CARD }}>
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 p-3" style={{ background: CREMA }}>
+        <button
+          type="button"
+          onClick={onToggle}
+          className="flex items-center gap-2 text-left min-h-[44px] flex-1"
+          style={{ color: INCHIOSTRO }}
+        >
+          <Freccia className="w-4 h-4 shrink-0" style={{ color: SALVIA }} />
+          <span className="font-semibold">{titolo}</span>
+          <span className="text-xs" style={{ color: SALVIA_SCURA }}>
+            {gruppo.categoria_nome ? `${gruppo.categoria_nome} · ` : ''}
+            {gruppo.prodotti.length} prodotti
+          </span>
+        </button>
+        {gruppo.subcategory_id != null && (
+          <Button
+            variant="outline"
+            onClick={() => onChiediEsclusione({
+              tipo: 'sottocategoria',
+              riferimento_id: gruppo.subcategory_id,
+              nome: titolo,
+              quanti: gruppo.prodotti.length,
+            })}
+            className="min-h-[44px] w-full sm:w-auto"
+            style={{ borderColor: SALVIA, color: SALVIA_SCURA, background: CARD }}
+          >
+            <ShieldOff className="w-4 h-4 mr-2" />
+            Escludi tutto il reparto
           </Button>
         )}
       </div>
+
       {aperto && (
-        <div className="mt-3 space-y-2">
-          <Input
-            placeholder="Cerca la ricetta di Lotti per nome..."
-            value={valoreRicerca}
-            onChange={(e) => onCambiaRicerca(e.target.value)}
-          />
-          <div className="max-h-48 overflow-y-auto divide-y">
-            {filtrate.length === 0 && (
-              <p className="text-sm text-gray-500 py-2">Nessuna ricetta trovata con questo nome.</p>
-            )}
-            {filtrate.map((r) => (
-              <button
-                key={r.doc_id}
-                className="w-full text-left py-2 px-1 hover:bg-amber-50 flex items-center justify-between"
-                onClick={() => { onAssocia(prodotto.id, r.doc_id, r.nome); setAperto(false); }}
+        <ul className="divide-y" style={{ borderColor: SABBIA }}>
+          {gruppo.prodotti.map((p) => (
+            <li
+              key={p.id}
+              className="p-3 flex flex-col sm:flex-row sm:items-center gap-2"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="font-medium break-words" style={{ color: INCHIOSTRO }}>
+                  {p.name_it}
+                </div>
+                {p.description_it && (
+                  <div className="text-xs break-words" style={{ color: SALVIA_SCURA }}>
+                    {p.description_it}
+                  </div>
+                )}
+                {p.visible === false && (
+                  <div className="text-xs" style={{ color: AVVISO }}>Non visibile nel menu pubblico</div>
+                )}
+              </div>
+              <Button
+                variant="outline"
+                onClick={() => onChiediEsclusione({
+                  tipo: 'prodotto', riferimento_id: p.id, nome: p.name_it, quanti: 1,
+                })}
+                className="min-h-[44px] w-full sm:w-auto shrink-0"
+                style={{ borderColor: SABBIA, color: SALVIA_SCURA, background: CARD }}
               >
-                <span>{r.nome}</span>
-                <span className="text-xs text-gray-500">
-                  {r.allergeni.length > 0 ? nomeAllergeni(r.allergeni) : 'nessun allergene nella ricetta'}
-                  {!r.verificato && ' · da verificare'}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
+                <ShieldOff className="w-4 h-4 mr-2" />
+                Non richiede allergeni
+              </Button>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
+  );
+};
+
+const ElencoEsclusioni = ({ esclusioni, onRevoca }) => {
+  if (esclusioni.length === 0) {
+    return (
+      <p className="text-sm" style={{ color: SALVIA_SCURA }}>
+        Nessuna esclusione attiva.
+      </p>
+    );
+  }
+  return (
+    <div className="rounded-lg border" style={{ borderColor: SABBIA, background: CARD }}>
+      <div className="p-3 text-sm font-semibold" style={{ background: CREMA, color: INCHIOSTRO }}>
+        Esclusi dalla verifica allergeni
+      </div>
+      <ul className="divide-y" style={{ borderColor: SABBIA }}>
+        {esclusioni.map((e) => (
+          <li
+            key={`${e.tipo}-${e.riferimento_id}`}
+            className="p-3 flex flex-col sm:flex-row sm:items-center gap-2"
+          >
+            <div className="min-w-0 flex-1">
+              <div className="font-medium break-words" style={{ color: INCHIOSTRO }}>
+                {e.nome || `#${e.riferimento_id}`}
+                <span className="ml-2 text-xs" style={{ color: SALVIA_SCURA }}>
+                  {ETICHETTA_TIPO[e.tipo] || e.tipo}
+                </span>
+              </div>
+              <div className="text-xs break-words" style={{ color: SALVIA_SCURA }}>
+                {e.motivo || 'Nessun motivo indicato'}
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => onRevoca(e.tipo, e.riferimento_id)}
+              className="min-h-[44px] w-full sm:w-auto shrink-0"
+              style={{ borderColor: PERICOLO, color: PERICOLO, background: CARD }}
+            >
+              <RotateCcw className="w-4 h-4 mr-2" />
+              Annulla esclusione
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+};
+
+const DialogEsclusione = ({ richiesta, onAnnulla, onConferma }) => {
+  const [motivo, setMotivo] = useState('');
+  const [altro, setAltro] = useState(false);
+
+  useEffect(() => {
+    setMotivo('');
+    setAltro(false);
+  }, [richiesta]);
+
+  if (!richiesta) return null;
+
+  const diGruppo = richiesta.tipo !== 'prodotto';
+
+  return (
+    <Dialog open onOpenChange={(aperto) => { if (!aperto) onAnnulla(); }}>
+      <DialogContent style={{ background: CARD, borderColor: SABBIA }}>
+        <DialogHeader>
+          <DialogTitle style={{ color: INCHIOSTRO }}>
+            {diGruppo ? 'Escludere tutto il reparto?' : 'Non richiede allergeni?'}
+          </DialogTitle>
+          <DialogDescription style={{ color: SALVIA_SCURA }}>
+            {diGruppo
+              ? `"${richiesta.nome}" e i suoi ${richiesta.quanti} prodotti spariranno da questo elenco.`
+              : `"${richiesta.nome}" sparirà da questo elenco.`}
+            {' '}Resta nel menu come sempre: cambia solo la verifica allergeni, e puoi annullare quando vuoi.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-2">
+          <p className="text-sm font-medium" style={{ color: INCHIOSTRO }}>
+            Motivo (facoltativo)
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {MOTIVI_PRONTI.map((m) => {
+              const scelto = !altro && motivo === m;
+              return (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => { setAltro(false); setMotivo(scelto ? '' : m); }}
+                  className="min-h-[44px] px-3 rounded-md border text-sm text-left"
+                  style={{
+                    borderColor: scelto ? SALVIA : SABBIA,
+                    background: scelto ? SALVIA : CREMA,
+                    color: scelto ? CREMA : INCHIOSTRO,
+                  }}
+                >
+                  {m}
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              onClick={() => { setAltro(true); setMotivo(''); }}
+              className="min-h-[44px] px-3 rounded-md border text-sm"
+              style={{
+                borderColor: altro ? SALVIA : SABBIA,
+                background: altro ? SALVIA : CREMA,
+                color: altro ? CREMA : INCHIOSTRO,
+              }}
+            >
+              Altro (scrivi tu)
+            </button>
+          </div>
+          {altro && (
+            <Input
+              autoFocus
+              placeholder="Perché non richiede la dichiarazione allergeni"
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+              maxLength={200}
+              className="min-h-[44px]"
+              style={{ borderColor: SABBIA, background: CREMA, color: INCHIOSTRO }}
+            />
+          )}
+        </div>
+
+        <DialogFooter className="gap-2 sm:gap-2">
+          <Button
+            variant="outline"
+            onClick={onAnnulla}
+            className="min-h-[44px] w-full sm:w-auto"
+            style={{ borderColor: SABBIA, color: SALVIA_SCURA, background: CARD }}
+          >
+            Annulla
+          </Button>
+          <Button
+            onClick={() => onConferma({
+              tipo: richiesta.tipo,
+              riferimento_id: richiesta.riferimento_id,
+              motivo: motivo.trim(),
+            })}
+            className="min-h-[44px] w-full sm:w-auto"
+            style={{ background: SALVIA, color: CREMA }}
+          >
+            <ShieldOff className="w-4 h-4 mr-2" />
+            Conferma esclusione
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 };
 

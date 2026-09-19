@@ -612,12 +612,15 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - Il menu vero si gestisce su Qromo (`ceraldicaffe.qromo.it`): la sync
   sostituisce per intero categorie, sottocategorie e prodotti con
   `origine IS NULL`, e riduce gli allergeni ai 14 UE.
-- **È Lotti a spingere nel Menu, non il Menu a pescare dalle ricette.** Ogni
-  ricetta viene replicata dal ponte `app/lotti/servizi/menu_bridge.py` con la
-  stessa foto (`origine = "lotti"`, `lotti_ref` idempotente, `menu_pubblico` →
-  `visible`): le righe di Lotti sopravvivono alla sync Qromo e l'esito
-  `menu_sync` non fa mai fallire l'endpoint Lotti. Il pregresso si recupera
-  con `POST /api/ricette-ripubblica-menu` (admin, in background).
+- **È Lotti a spingere nel Menu, non il Menu a pescare dalle ricette**, ed è
+  l'unica strada ricetta → prodotto: il «Collega a una ricetta» manuale
+  dell'area admin del Menu era un doppione dal lato sbagliato ed è stato
+  rimosso. Ogni ricetta viene replicata dal ponte
+  `app/lotti/servizi/menu_bridge.py` con la stessa foto (`origine = "lotti"`,
+  `lotti_ref` idempotente, `menu_pubblico` → `visible`): le righe di Lotti
+  sopravvivono alla sync Qromo e l'esito `menu_sync` non fa mai fallire
+  l'endpoint Lotti. Il pregresso si recupera con
+  `POST /api/ricette-ripubblica-menu` (admin, in background).
 - **Il menu pubblico non mostra categorie e sottocategorie senza prodotti
   visibili** (`menu_routes._build_hierarchy`): un riquadro vuoto in home ha
   l'immagine rotta e «0 prodotti». Il filtro sta in lettura perché è l'unico
@@ -650,6 +653,13 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   Qromo (`origine IS NULL`) non è agganciabile**: la sync la cancella e un
   prodotto di Lotti appeso lì farebbe fallire la cancellazione per chiave
   esterna.
+- Chi allergeni da dichiarare non ne ha (distillati, bibite in bottiglia) si
+  esclude dalla verifica, per prodotto o per intero reparto. Le esclusioni
+  vivono in `menu.menu_allergeni_esclusioni`, **non** in una colonna di
+  `menu_products`: la sync Qromo cancellerebbe qualunque flag messo lì dentro,
+  mentre gli id Qromo restano stabili e l'esclusione regge. Escludere significa
+  «non richiede la dichiarazione», non «nascondilo dal menu»: è conformità, si
+  conserva e si revoca dalla stessa pagina.
 
 ## Stato attuale (al 18/09/2026 — riscrivere sul posto)
 
