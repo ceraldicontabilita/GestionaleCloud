@@ -3,7 +3,7 @@ Piano dei Conti Router - Contabilità Generale
 Gestione del piano dei conti secondo i principi di ragioneria italiana.
 """
 from fastapi import APIRouter, HTTPException, Body, Depends, Query
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 import uuid
 import logging
@@ -577,12 +577,33 @@ async def delete_conto(conto_id: str) -> Dict[str, Any]:
     raise HTTPException(status_code=409, detail=f"Conto {conto_id} non eliminabile. {MESSAGGIO_PIANO_CEE}")
 
 
-# ============== REGOLE DI CATEGORIZZAZIONE ==============
+# ============== REGOLE DI CATEGORIZZAZIONE (tab "Regole" del Piano dei Conti) ==============
+#
+# ATTENZIONE (consolidamento 19/09/2026, chiude i "4 motori disconnessi"
+# trovati dall'audit di sola lettura): la collezione ``regole_categorizzazione``
+# e questi due endpoint alimentavano `determina_conti_fattura` con 8 regole
+# hardcoded, MA nessuna scrittura fatta dall'utente qui aveva effetto reale
+# sulla registrazione (era un secondo sistema, parallelo a quello scritto
+# davvero dalla pagina Excel `regole_categorizzazione.py`). Ora
+# `determina_conti_fattura` usa SOLO le regole scritte dall'Excel
+# (`regole_categorizzazione_fornitori` / `_descrizioni` / `regole_categorie`,
+# vedi sotto) più il motore ricco `categorizzazione_contabile`.
+#
+# Questi endpoint E la collezione restano invariati (non eliminati) solo per
+# compatibilita': il frontend `frontend/src/pages/PianoDeiConti.jsx` (tab
+# "Regole Categorizzazione") li chiama ancora davvero (`api.get('/api/piano-
+# conti/regole')`, `api.post('/api/piano-conti/regole', ...)`). Eliminarli
+# romperebbe quella pagina. Sono pero' oggi PURAMENTE INFORMATIVI/STORICI:
+# una regola creata da qui non cambia più il conto scelto per nessuna nuova
+# fattura. Per correggere davvero la categorizzazione automatica si usa la
+# pagina "Regole Categorizzazione" (Excel, `/api/regole/*`).
 
 @router.get("/regole")
 @handle_errors
 async def get_regole_categorizzazione() -> Dict[str, Any]:
-    """Ottiene le regole di categorizzazione automatica."""
+    """Regole della VECCHIA collezione ``regole_categorizzazione`` (vedi nota
+    sopra): sola lettura/scrittura per la tab del Piano dei Conti, non
+    alimentano più `determina_conti_fattura`."""
     db = Database.get_db()
 
     regole = await db[COLLECTION_REGOLE_CATEGORIZZAZIONE].find({}, {"_id": 0}).to_list(100)
@@ -640,7 +661,8 @@ async def inizializza_regole_base(db) -> List[Dict[str, Any]]:
 @router.post("/regole")
 @handle_errors
 async def create_regola(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
-    """Crea una nuova regola di categorizzazione."""
+    """Crea una regola nella VECCHIA collezione ``regole_categorizzazione``
+    (vedi nota sopra): non influenza più `determina_conti_fattura`."""
     db = Database.get_db()
 
     now = datetime.now(timezone.utc).isoformat()
@@ -694,46 +716,131 @@ async def registra_fattura_contabilita(data: Dict[str, Any] = Body(...)) -> Dict
             "movimento": res["movimento"]}
 
 
-async def determina_conti_fattura(db, fattura: Dict[str, Any]) -> Dict[str, Dict[str, str]]:
-    """Determina i conti da utilizzare per una fattura basandosi sulle regole."""
-
-    # Conti di default
-    conti = {
-        "costo": {"codice": "05.01.01", "nome": "Acquisto merci"},
-        "iva_credito": {"codice": "01.04.01", "nome": "IVA a credito"},
-        "debito_fornitore": {"codice": "02.01.01", "nome": "Debiti v/fornitori"}
-    }
-
-    # Cerca regole applicabili
-    fornitore = (fattura.get("supplier_name") or fattura.get("cedente_denominazione") or "").upper()
-
-    regole = await db[COLLECTION_REGOLE_CATEGORIZZAZIONE].find({"attiva": True}).to_list(100)
-
-    import re
+async def _nome_conto(codice: str) -> str:
+    """Nome leggibile per un codice conto (alias operativo o CEE)."""
     from app.services.categorizzazione_contabile import PIANO_CONTI_ESTESO
 
-    for regola in regole:
-        pattern = regola.get("pattern", "")
-        if not pattern:
-            continue
+    return (
+        (PIANO_CONTI_ESTESO.get(codice) or {}).get("nome")
+        or CONTI_UFFICIALI.get(codice)
+        or CONTI_UFFICIALI.get(risolvi_codice_cee(codice) or "", codice)
+    )
 
-        # Applica regola per fornitore
-        if regola.get("tipo") == "fornitore":
-            if re.search(pattern, fornitore, re.IGNORECASE):
-                codice_regola = str(regola.get("conto_dare") or "").strip()
-                # Il conto della regola deve esistere nel piano: alias
-                # operativo mappato o conto CEE. Nessuna lettura della
-                # collezione dismessa ``piano_conti``.
-                if codice_regola and risolvi_codice_cee(codice_regola):
-                    nome = (
-                        (PIANO_CONTI_ESTESO.get(codice_regola) or {}).get("nome")
-                        or CONTI_UFFICIALI.get(codice_regola)
-                        or CONTI_UFFICIALI.get(risolvi_codice_cee(codice_regola), codice_regola)
-                    )
-                    conti["costo"] = {"codice": codice_regola, "nome": nome}
+
+async def _conto_da_categoria(db, categoria: str) -> Optional[str]:
+    """Mappa categoria → codice conto leggendo `regole_categorie` (scritta
+    dalla pagina Excel `regole_categorizzazione.py`), con fallback ai default
+    della stessa pagina se il titolare non ha ancora personalizzato quella
+    categoria (stesso comportamento di `GET /api/regole` e del download
+    Excel: DB prima, default poi)."""
+    riga = await db["regole_categorie"].find_one({"categoria": categoria})
+    if riga and riga.get("conto"):
+        return str(riga["conto"]).strip()
+
+    from app.routers.accounting.regole_categorizzazione import DEFAULT_CATEGORIE
+    default = DEFAULT_CATEGORIE.get(categoria)
+    return str(default["conto"]).strip() if default and default.get("conto") else None
+
+
+async def _conto_da_regole_utente(
+    db, fornitore: str, linee: List[Dict[str, Any]]
+) -> Optional[Dict[str, str]]:
+    """Regole scritte DAVVERO dal titolare tramite l'Excel di
+    `regole_categorizzazione.py` (le uniche 3 collezioni che quella pagina
+    legge/scrive: `regole_categorizzazione_fornitori`,
+    `regole_categorizzazione_descrizioni`, `regole_categorie`).
+
+    Precedenza: fornitore prima di descrizione (un fornitore riconosciuto è
+    un'identità più affidabile di una parola nella descrizione, stesso
+    ordine dichiarato nel foglio "Istruzioni" dell'Excel). Match case-
+    insensitive "contiene", non regex: i pattern li scrive un umano da Excel
+    e possono contenere caratteri (``S.p.A.``, ``&``) che non sono regex
+    valide o che avrebbero un significato diverso da quello letterale
+    inteso dal titolare.
+
+    Ritorna None se nessuna regola matcha, o se la categoria trovata non ha
+    (ancora) un conto associato, o se il conto non esiste nel piano CEE.
+    """
+    fornitore_lower = (fornitore or "").strip().lower()
+    categoria: Optional[str] = None
+
+    if fornitore_lower:
+        regole_forn = await db["regole_categorizzazione_fornitori"].find(
+            {"attivo": True}
+        ).to_list(5000)
+        for regola in regole_forn:
+            pattern = str(regola.get("pattern") or "").strip().lower()
+            if pattern and pattern in fornitore_lower:
+                categoria = str(regola.get("categoria") or "").strip()
                 break
 
-    return conti
+    if not categoria and linee:
+        regole_desc = await db["regole_categorizzazione_descrizioni"].find(
+            {"attivo": True}
+        ).to_list(5000)
+        if regole_desc:
+            for linea in linee:
+                descr = str((linea or {}).get("descrizione") or "").strip().lower()
+                if not descr:
+                    continue
+                for regola in regole_desc:
+                    pattern = str(regola.get("pattern") or "").strip().lower()
+                    if pattern and pattern in descr:
+                        categoria = str(regola.get("categoria") or "").strip()
+                        break
+                if categoria:
+                    break
+
+    if not categoria:
+        return None
+
+    codice_conto = await _conto_da_categoria(db, categoria)
+    if not codice_conto or not risolvi_codice_cee(codice_conto):
+        return None
+
+    return {"codice": codice_conto, "nome": await _nome_conto(codice_conto)}
+
+
+async def determina_conti_fattura(db, fattura: Dict[str, Any]) -> Dict[str, Dict[str, str]]:
+    """Determina i conti da usare per registrare una fattura (motore unico,
+    consolidamento 19/09/2026: prima esistevano 4 motori scollegati per
+    questa scelta — questo è l'unico rimasto).
+
+    Ordine di decisione:
+      1. Regole utente scritte dall'Excel (`_conto_da_regole_utente`):
+         fornitore, poi descrizione riga.
+      2. Motore ricco `categorizzazione_contabile.categorizza_fattura_completa`
+         sulle righe fattura: si prende il conto con l'importo aggregato
+         maggiore (`riepilogo_conti`) — stesso algoritmo già usato da
+         `POST /api/contabilita/ricategorizza-fatture`.
+      3. Fallback finale: 05.01.01 Acquisto merci (nessuna riga, o il motore
+         ricco non ha trovato alcun pattern — il suo stesso fallback interno).
+    """
+    from app.services.categorizzazione_contabile import categorizza_fattura_completa
+
+    fornitore = fattura.get("supplier_name") or fattura.get("cedente_denominazione") or ""
+    linee = fattura.get("linee") or []
+
+    conto_costo = await _conto_da_regole_utente(db, fornitore, linee)
+
+    if not conto_costo and linee:
+        categorizzazione = categorizza_fattura_completa(linee, fornitore)
+        riepilogo = categorizzazione.get("riepilogo_conti") or []
+        if riepilogo:
+            principale = max(riepilogo, key=lambda c: c.get("importo", 0))
+            conto_costo = {
+                "codice": principale["codice"],
+                "nome": principale.get("nome") or await _nome_conto(principale["codice"]),
+            }
+
+    if not conto_costo:
+        conto_costo = {"codice": "05.01.01", "nome": "Acquisto merci"}
+
+    return {
+        "costo": conto_costo,
+        "iva_credito": {"codice": "01.04.01", "nome": "IVA a credito"},
+        "debito_fornitore": {"codice": "02.01.01", "nome": "Debiti v/fornitori"},
+    }
 
 
 async def aggiorna_saldo_conto(db, codice_conto: str, importo: float, tipo: str):

@@ -92,6 +92,17 @@ async def ricategorizza_tutte_fatture() -> Dict[str, Any]:
     schema/idempotenza/numero registrazione/audit unificati. La CATEGORIZZAZIONE
     ricca resta qui (conti passati al motore). Non cancella, non azzera e non
     riscrive le registrazioni gia definitive.
+
+    Consolidamento 19/09/2026: `determina_conti_fattura` (percorso automatico
+    all'import) ora usa lo STESSO algoritmo ricco (`categorizza_fattura_completa`
+    + conto con importo maggiore) prima di ricadere sul fallback 05.01.01 — non
+    e' più un motore diverso. Questo endpoint resta comunque utile e non e'
+    ridondante da eliminare: serve a RI-classificare con le regole aggiornate le
+    fatture con `registrata_contabilita != true` (il percorso automatico decide
+    una sola volta, al momento della registrazione; qui si può rifare la scelta
+    in blocco dopo aver corretto una regola). E' un ciclo che richiama
+    `registra_fattura` passandogli conti già scelti: nessuna scrittura diretta
+    parallela al motore §6.1.
     """
     from app.services.registrazione_contabile import (
         registra_fattura, registra_tutti_corrispettivi,
