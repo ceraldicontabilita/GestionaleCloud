@@ -769,6 +769,57 @@ async def check_accrediti_pos_senza_controparte(db) -> Dict[str, Any]:
     }
 
 
+async def check_movimento_ec_proiettato_due_volte(db) -> Dict[str, Any]:
+    """Uno stesso movimento dell'estratto conto proiettato due volte in Banca.
+
+    Fino al 19/09/2026 due motori diversi scrivevano in `prima_nota_banca`
+    partendo dall'estratto conto: `app/services/proiezione_bancaria.py`
+    (`source: proiezione_semantica_ec`) e un trigger PL/pgSQL che viveva solo
+    dentro Supabase (`source: estratto_conto_hub`). Non si sovrapponevano —
+    verificato riga per riga — perche' condividevano la chiave
+    `estratto_conto_id`, ma due implementazioni delle stesse regole, una in
+    Python e una in SQL, possono divergere in qualsiasi momento. Se succede,
+    il costo non e' un errore visibile: e' un'uscita contata due volte nei
+    saldi.
+
+    Il trigger e' stato rimosso (`database/README.md`). Questo controllo tiene
+    chiusa la porta: qualunque sia il motore, un movimento bancario puo'
+    produrre una sola riga di Prima Nota.
+    """
+    per_movimento: Dict[str, Dict[str, Any]] = {}
+    async for riga in db["prima_nota_banca"].find(
+        {}, {"_id": 0, "id": 1, "source": 1, "importo": 1,
+             "estratto_conto_id": 1, "movimento_estratto_conto_id": 1},
+    ):
+        ec_id = str(
+            riga.get("movimento_estratto_conto_id")
+            or riga.get("estratto_conto_id") or ""
+        ).strip()
+        if not ec_id:
+            continue
+        voce = per_movimento.setdefault(ec_id, {"righe": 0, "importo": 0.0, "fonti": set()})
+        voce["righe"] += 1
+        voce["importo"] = round(voce["importo"] + abs(float(riga.get("importo") or 0)), 2)
+        voce["fonti"].add(str(riga.get("source") or "(senza fonte)"))
+
+    doppi = {k: v for k, v in per_movimento.items() if v["righe"] > 1}
+    totale = round(sum(v["importo"] for v in doppi.values()), 2)
+    return {
+        "nome": "movimento_ec_proiettato_due_volte",
+        "violazioni": len(doppi),
+        "descrizione": (
+            "Movimenti dell'estratto conto con piu' di una riga in Prima Nota "
+            f"Banca ({totale} EUR sommati due volte): due motori di proiezione "
+            "hanno scritto lo stesso fatto"
+        ),
+        "esempi": [
+            {"movimento_ec": k, "righe": v["righe"],
+             "importo": v["importo"], "fonti": sorted(v["fonti"])}
+            for k, v in sorted(doppi.items(), key=lambda kv: -kv[1]["importo"])[:5]
+        ],
+    }
+
+
 CHECKS = [
     check_fatture_banca_senza_ec,
     check_trasferimento_pos_speculare,
@@ -788,6 +839,7 @@ CHECKS = [
     check_f24_pagati_senza_banca,
     check_cespiti_senza_documento_acquisto,
     check_accrediti_pos_senza_controparte,
+    check_movimento_ec_proiettato_due_volte,
 ]
 
 

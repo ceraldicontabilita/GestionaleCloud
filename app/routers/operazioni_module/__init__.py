@@ -125,10 +125,12 @@ async def _ignora_movimento(data: dict = Body(...)):
             "duplicate_archived_at": ts,
         })
     r1 = await db["estratto_conto_movimenti"].update_one({"id": mov_id}, update)
-    r2 = await db["bank_movements"].update_one({"id": mov_id}, update)
+    # La scrittura su `bank_movements` e' stata tolta il 19/09/2026: quella
+    # collezione non esiste nel database, quindi l'update non ha mai toccato
+    # niente e partecipava lo stesso alla decisione del 404.
     # anche le righe stipendio pendenti (tab Stipendi) si possono ignorare
     r3 = await db["prima_nota_salari"].update_one({"id": mov_id}, update)
-    if r1.matched_count == 0 and r2.matched_count == 0 and r3.matched_count == 0:
+    if r1.matched_count == 0 and r3.matched_count == 0:
         raise HTTPException(status_code=404, detail="Movimento non trovato")
     return {"message": "Movimento escluso dalla coda; fonte bancaria conservata", "movimento_id": mov_id}
 

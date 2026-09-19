@@ -612,36 +612,13 @@ def round_currency(amount: float) -> float:
     return float(Decimal(str(amount)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
 
 
-async def crea_scrittura(db, data: str, ref: str, righe: List[Dict], tipo: str = "general") -> str:
-    """Crea scrittura contabile"""
-    move_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).isoformat()
-    
-    total_dare = sum(r.get('dare', 0) for r in righe)
-    total_avere = sum(r.get('avere', 0) for r in righe)
-    
-    if abs(total_dare - total_avere) > 0.01:
-        raise HTTPException(status_code=400, detail=f"Non bilanciato: DARE {total_dare} ≠ AVERE {total_avere}")
-    
-    # MOTORE UNICO (18/07/2026): questo header di partita doppia NON è un
-    # movimento di Prima Nota Cassa (nessun importo/tipo/categoria) — prima
-    # inquinava prima_nota_cassa con uno schema alieno; ora vive nella sua
-    # collezione dedicata (nessun lettore esistente da aggiornare).
-    await db["scritture_partita_doppia"].insert_one({
-        "id": move_id, "date": data, "ref": ref, "journal_type": tipo,
-        "total_debit": round_currency(total_dare), "total_credit": round_currency(total_avere),
-        "state": "posted", "created_at": now
-    })
-    
-    for i, r in enumerate(righe):
-        await db["prima_nota_righe"].insert_one({
-            "id": str(uuid.uuid4()), "move_id": move_id, "sequence": i + 1,
-            "account_code": r['conto'], "account_name": r.get('nome_conto', ''),
-            "debit": round_currency(r.get('dare', 0)), "credit": round_currency(r.get('avere', 0)),
-            "name": r.get('descrizione', ''), "date": data, "created_at": now
-        })
-    
-    return move_id
+# `crea_scrittura` e' stata rimossa il 19/09/2026 (audit sui sistemi paralleli).
+# Era una SECONDA partita doppia, con schema inglese (`debit`/`credit`/
+# `account_code`/`state: posted`), che scriveva in `scritture_partita_doppia` e
+# `prima_nota_righe`. Nessuna delle due esiste nel database — zero righe — e la
+# funzione non era chiamata da nessuna parte. Il libro giornale vero e'
+# `movimenti_contabili` (1.069 righe), scritto da
+# `app/routers/accounting/contabilita_gestionale.py`.
 
 
 # ============================================

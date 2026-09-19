@@ -106,13 +106,12 @@ resto del file.
   informazione `#8a6f47`.
 - **Vietati blu, indaco, viola e ciano**, sia come classi Tailwind sia come
   hex negli stili inline: si rimappano su salvia o sabbia. **Vietati anche i
-  grigi freddi**: le scale `gray` e `slate` di Tailwind sono blu-tinte, e un
-  `#64748b` o `#6b7280` scritto a mano stona sulla crema. `frontend_lotti` e
-  `frontend_menu` rimappano nel loro `tailwind.config.js` sia le scale fredde
-  su sabbia, sia `gray`/`slate`/`zinc`/`neutral` su una scala neutra calda
-  costruita dai token; `stone` e `amber` sono gia' caldi e si usano com'e'.
-  Scansione dopo ogni modifica frontend, **sui bundle compilati** e non solo
-  sui sorgenti (un remap del config si vede solo li'):
+  grigi freddi**: `gray` e `slate` di Tailwind sono blu-tinte, e un `#64748b`
+  scritto a mano stona sulla crema. `frontend_lotti` e `frontend_menu`
+  rimappano nel loro `tailwind.config.js` le scale fredde su sabbia e
+  `gray`/`slate`/`zinc`/`neutral` su una neutra calda dai token; `stone` e
+  `amber` sono gia' caldi. Scansione dopo ogni modifica frontend, **sui bundle
+  compilati** e non solo sui sorgenti (un remap del config si vede solo li'):
   `grep -rEn "5D29C7|1E1B4B|7c3aed|8b5cf6|6366f1|4f46e5|violet-|indigo-|bg-blue-|bg-sky-|text-blue-|border-blue-|3b82f6|2563eb|1d4ed8|F1F5F9|E2E8F0|CBD5E1|94A3B8|64748B|475569|0F172A|1E293B|6B7280|9CA3AF|D1D5DB|E5E7EB|374151|111827"`
 - **Un solo font per tutte e quattro le app, ERP compreso: Plus Jakarta Sans**
   (400-800, da Google Fonts). Non introdurre una seconda famiglia: un titolo
@@ -191,15 +190,14 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   fallisce. `GC_RUNTIME_CACHE=0` / `HR_RUNTIME_CACHE=0` la spengono.
 - `/api/health` risponde entro 2 s anche con la probe appesa (`degraded`, non
   503; `?strict=true` per il 503). Una sola probe in volo per processo.
-- Gli scheduler acquisiscono una lease distribuita su Supabase: il lock
-  locale resta solo come riserva prima che la connessione sia disponibile
-  (avvio, test). **La lease si restituisce allo spegnimento**
+- Gli scheduler acquisiscono una lease distribuita su Supabase: il lock locale
+  resta solo come riserva prima che la connessione sia disponibile (avvio,
+  test). **La lease si restituisce allo spegnimento**
   (`rilascia_lease_attive`), non si lascia scadere: un processo che muore
-  tenendola blocca il suo job per tutto il TTL (900 s), e l'istanza che
-  subentra può solo saltare il turno. Per lo stesso motivo `stop_scheduler`
-  chiude con `shutdown(wait=False)`: i job sono coroutine dello stesso event
-  loop, e aspettarli da dentro il loop impedisce allo spegnimento di
-  arrivare in fondo.
+  tenendola blocca il suo job per tutto il TTL (900 s) e chi subentra può solo
+  saltare il turno. Per lo stesso motivo `stop_scheduler` chiude con
+  `shutdown(wait=False)`: i job sono coroutine dello stesso event loop, e
+  aspettarli da dentro il loop impedisce allo spegnimento di arrivare in fondo.
 - Il download di un file Drive sta in un posto solo,
   `app/services/drive_download.py`: non è specifico di una sezione.
 - PostgREST esegue le RPC del runtime come ruolo `anon`, con
@@ -348,19 +346,18 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - Un solo motore di import per sezione: un documento storico si mette nella
   cartella `DA ELABORARE` giusta, non si carica da una pagina parallela.
 - **Fatture ricevute**: `01_FATTURE_RICEVUTE/FATTURE/<anno>/` con le tre
-  cartelle `Da elaborare | Elaborate | Errori` per ogni anno. Tre motori,
-  tre mestieri diversi, e non si confondono: il **giro ogni 15 minuti**
-  (`drive_invoice_ingest.sync`) svuota le sole inbox, 25 file per volta, e
-  sposta in `Elaborate` anche i doppioni; la **quadratura**
-  (`POST /api/fatture/drive/quadratura`) ripassa le `Elaborate` e importa i
-  buchi; la **ricostruzione** (`POST /api/fatture/drive/ricostruzione`)
-  rilegge *tutto* l'archivio, a lotti riprendibili con un cursore, ripresi
-  ogni 2 minuti dallo scheduler. Nessuna delle tre sposta un originale fuori
-  dal suo anno, e l'anno documentale lo decide il parser XML, mai il nome
-  del file.
-- Una coda che non cala e importa zero **non è un guasto**: i file già
-  importati risultano doppioni e vengono solo spostati. Il numero che dice
-  se manca qualcosa è la quadratura, non la lunghezza della coda.
+  cartelle `Da elaborare | Elaborate | Errori` per ogni anno. Tre motori, tre
+  mestieri diversi: il **giro ogni 15 minuti** (`drive_invoice_ingest.sync`)
+  svuota le sole inbox, 25 file per volta, e sposta in `Elaborate` anche i
+  doppioni; la **quadratura** (`/api/fatture/drive/quadratura`) ripassa le
+  `Elaborate` e importa i buchi; la **ricostruzione**
+  (`/api/fatture/drive/ricostruzione`) rilegge *tutto* l'archivio a lotti
+  riprendibili con un cursore, ripresi ogni 2 minuti dallo scheduler. Nessuna
+  sposta un originale fuori dal suo anno, e l'anno lo decide il parser XML,
+  mai il nome del file.
+- Una coda che non cala e importa zero **non è un guasto**: i file già importati
+  risultano doppioni e vengono solo spostati. A dire se manca qualcosa è la
+  quadratura, non la lunghezza della coda.
 
 ## Regole contabili vincolanti
 
@@ -427,10 +424,9 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   F24/Commissioni/Utenze/Fatture). Sopra le parole chiave, **regole
   imparate** dal titolare (`app/services/regole_riconoscimento_banca.py`,
   `/riconciliazione/regole-banca`): un pattern estratto da una causale reale
-  vince sempre sul generico, ma un pattern fatto solo di vocabolario
-  bancario comune (es. "COMMISSIONI SU BONIFICI", senza il nome di un
-  fornitore/servizio) viene rifiutato alla creazione, non salvato. Eliminare
-  una regola non tocca i movimenti già categorizzati da essa.
+  vince sul generico, ma un pattern di solo vocabolario bancario comune (es.
+  "COMMISSIONI SU BONIFICI", senza un nome di fornitore) è rifiutato alla
+  creazione. Eliminare una regola non tocca i movimenti già categorizzati.
 - Pagamenti stipendio via nome: regola in «Personale». Qui vale solo il
   corollario bancario — un professionista omonimo di un dipendente, o un
   pagamento occasionale a lui, non entra nel fascicolo stipendi
@@ -487,11 +483,9 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   tributo**, non sul totale.
 - Il saldo F24 non è mai un costo: ritenute 1001/1002/1012, addizionali
   3802/3847/3848 e quote a carico del lavoratore sono debiti verso enti. La
-  sezione INPS non è tutta costo deducibile: la quota datoriale viene dalla
-  contabilità paghe.
-- RC01 è la regolarizzazione di un periodo precedente: non è costo del mese in
-  cui si paga e si collega all'F24 ordinario DM10 dello stesso periodo senza
-  sommare due volte gli stessi tributi.
+  sezione INPS non è tutta deducibile: la quota datoriale viene dalle paghe.
+- RC01 regolarizza un periodo precedente: non è costo del mese in cui si paga,
+  e si collega al DM10 di quel periodo senza sommare due volte i tributi.
 - F24 ↔ cedolini si associano solo con soggetto, periodo, posizione
   contributiva e causali coerenti; la tolleranza vale solo sulla data di
   pagamento (mese successivo).
@@ -503,7 +497,11 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - IRAP è un motore separato da IRES, non sottrae mai l'intero F24, e le
   aliquote sono versionate per periodo d'imposta.
 - Il catalogo dei codici tributo è consultivo: una ricerca non crea F24,
-  pagamenti o scritture.
+  pagamenti o scritture. Le tabelle sono **due** —
+  `services/codici_tributo_f24.py` (la legge il parser) e
+  `services/codici_tributo_db.py` (con le scadenze) — e
+  `tests/fiscale/test_codici_tributo_coerenti.py` impedisce che tornino a dire
+  il contrario: nel 2026 l'IRES era ruotata di uno, 2001 dava «acconto».
 - Il **periodo di riferimento di un tributo sta sulla sua riga** (`anno`,
   `mese`), non sul modello: la data in cui l'F24 è stato pagato è un'altra
   cosa. L'IVA mensile sono i codici 6001–6012, uno per mese.
@@ -534,11 +532,10 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   trattenute, TFR, arrotondamenti o dal nome del file. Cella vuota → valore
   nullo, **mai zero**. Stati: `NETTO_VERIFICATO_DA_CEDOLINO`,
   `NETTO_NON_PRESENTE_O_NON_LEGGIBILE`, `MULTIPLE_NETS_DA_VERIFICARE`,
-  `ERRORE_PARSER`; solo il primo alimenta Salari e bonifici. I quattro stati
-  stanno in `app/constants/stati_netto.py` e la decisione si prende **solo**
-  con `alimenta_salari()`, che fallisce **chiuso**: uno stato assente, vuoto o
-  sconosciuto non passa. Su un dato che diventa un bonifico l'assenza di prova
-  non vale come prova.
+  `ERRORE_PARSER` (in `app/constants/stati_netto.py`); solo il primo alimenta
+  Salari e bonifici, e la decisione si prende **solo** con `alimenta_salari()`,
+  che fallisce **chiuso**: uno stato assente, vuoto o sconosciuto non passa.
+  Su un dato che diventa un bonifico l'assenza di prova non vale come prova.
 - Sulla collection `cedolini` il campo è **`pagato`**, non `pagata`: il
   femminile non esiste su nessun documento e un filtro che lo cerca passa
   sempre.
@@ -559,19 +556,16 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   successiva della stessa persona.
 - **Pagamenti stipendio**: un solo ponte gestionale→HR
   (`hr_pagamenti_deposito`). Dipendente da CF → nome completo univoco →
-  cognome univoco: la corrispondenza univoca **basta da sola** (19/09/2026,
-  decisione del titolare: «il nome di un dipendente è un dipendente», non
-  serve più la parola «stipendio» in causale né un lotto paghe per associare).
-  Resta il veto esplicito: TFR, fatture, commissioni e fornitori non entrano
-  mai, nemmeno in coda, **anche con un nome dipendente riconosciuto dentro**
-  la causale — l'esclusione vince sempre sul nome. Ambiguo (più persone) o
-  `BENEFICIARI VARI` → coda. Il **lotto paghe** (bonifici ad almeno 3
-  dipendenti diversi lo stesso giorno) resta un segnale valido, oggi
-  rilevante solo per i casi non altrimenti risolti. Competenza da causale o
-  nome file, altrimenti **regola del giorno 25**: bonifico prima del 25 =
-  mese precedente, dal 25 = mese corrente. Stesso pagamento visto da PDF e da
-  banca (stesso dipendente, importo, data ±3 gg) → un solo esito, arricchito,
-  mai duplicato.
+  cognome univoco: la corrispondenza univoca **basta da sola** («il nome di un
+  dipendente è un dipendente»: non serve la parola «stipendio» in causale né
+  un lotto paghe). Resta il veto: TFR, fatture, commissioni e fornitori non
+  entrano mai, nemmeno in coda, **anche con un nome dipendente dentro** la
+  causale — l'esclusione vince sul nome. Ambiguo o `BENEFICIARI VARI` → coda.
+  Il **lotto paghe** (≥3 dipendenti lo stesso giorno) resta un segnale per i
+  casi non altrimenti risolti. Competenza da causale o nome file, altrimenti
+  **regola del giorno 25**: prima del 25 = mese precedente, dal 25 = corrente.
+  Stesso pagamento da PDF e da banca (stesso dipendente, importo, data ±3 gg)
+  → un solo esito, arricchito, mai duplicato.
 - «Bonifici da assegnare» è una proposta di importo dovuto, stato iniziale
   `DA_ASSEGNARE`: non imposta bonifico eseguito, movimento, data di pagamento
   né riconciliazione.
@@ -827,61 +821,67 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 
 ## Aperto (togliere la voce quando si chiude)
 
-- Compute Supabase **Micro** insufficiente (crash Postgres del 17/09):
-  valutare Small.
+- Compute Supabase **Micro** insufficiente (crash Postgres del 17/09): valutare Small.
 - Endpoint sincroni oltre i 5 minuti, da portare a lotti riprendibili come la
-  ricostruzione Drive, che invece regge: `POST /api/fatture/drive/quadratura`
-  (tagliata a 300 s, arriva solo fino al 2022),
-  `POST /api/paypal-api/riconcilia`, `GET /api/paypal-api/account-ids-non-mappati`,
-  `POST /api/admin/riallinea-pagamenti-fatture`,
-  `POST /api/prima-nota-salari/deposita-cedolini-in-hr`.
+  ricostruzione Drive: `/api/fatture/drive/quadratura` (tagliata a 300 s,
+  arriva solo al 2022), `/api/paypal-api/riconcilia`,
+  `/api/paypal-api/account-ids-non-mappati`,
+  `/api/admin/riallinea-pagamenti-fatture`,
+  `/api/prima-nota-salari/deposita-cedolini-in-hr`.
 - Note di credito TD04 legacy (~20, precedenti al fix a `registra_fattura`):
-  costo/IVA/debito aumentati anziché ridotti, da sanare con uno storno
-  mirato per `fattura_id` (`storna_registrazione_fattura`), una per una.
-- **Nessuno dei 187 fornitori ha `metodo_pagamento` in anagrafica** (campo
-  presente ma vuoto; solo 41 hanno un IBAN): finché resta così ogni fattura
-  è `sospesa` e nulla può essere instradato in Prima Nota Banca. Da
-  popolare con una fonte vera, non dedotta dalle fatture.
-- **Pregresso fatture da sanare**: 296 fatture attive (173.184,83 €,
-  22.989,82 € di IVA) senza partita aperta verso il fornitore, 280 delle
-  quali anche fuori dal libro giornale (145.025,14 €). Ordine obbligato:
-  `POST /api/admin/fatture/ripubblica-evento-created` (che fa girare anche il
-  classificatore IVA), poi `POST /api/piano-conti/registra-pregresso`.
-- Le `data_scadenza` già scritte sulle fatture fornitore e sulle loro partite
-  sono valori inventati dal vecchio import: vanno azzerate, altrimenti
-  continuano ad alimentare `FAT_DA_PAGARE_SCADUTA`.
-- `POST /api/iva/lipe/importa` non è ancora stato lanciato: `lipe_periodi` è
-  vuota, quindi il confronto col commercialista non ha ancora la sua colonna.
+  costo/IVA/debito aumentati anziché ridotti, da sanare una per una con
+  `storna_registrazione_fattura` per `fattura_id`.
+- **Nessuno dei 187 fornitori ha `metodo_pagamento`** (campo vuoto; solo 41
+  hanno un IBAN): finché resta così ogni fattura è `sospesa` e nulla va in
+  Prima Nota Banca. Da popolare con una fonte vera, non dedotta dalle fatture.
+- **Pregresso fatture da sanare**: 296 fatture attive (173.184,83 €, 22.989,82 €
+  di IVA) senza partita aperta, 280 anche fuori dal libro giornale (145.025,14 €).
+  Ordine obbligato: `/api/admin/fatture/ripubblica-evento-created` (fa girare
+  anche il classificatore IVA), poi `/api/piano-conti/registra-pregresso`.
+- Da lanciare, con `dry_run` prima: `/api/admin/fatture/azzera-scadenze` (642
+  fatture e 971 partite portano ancora la scadenza inventata dal vecchio
+  import, e alimentano `FAT_DA_PAGARE_SCADUTA`); `/api/iva/lipe/importa`
+  (`lipe_periodi` vuota, al confronto col commercialista manca la colonna);
+  `/api/pos-corrispettivi/chiusure-giornaliere/ricostruisci-numia` (senza, 180
+  giornate su 183 restano «attende chiusura POS reale»).
 - Riconciliazione: 158 fatture `riconciliata` con movimento non riconciliato,
-  180 righe hub senza `fattura_id` (da rigenerare col motore, non a mano);
-  banca 2026 con 1.765 movimenti senza categoria.
+  180 righe hub senza `fattura_id` (da rigenerare col motore); banca 2026 con
+  1.765 movimenti senza categoria.
 - Drive `03/ESTRATTI CONTO/DA ELABORARE`: 291 documenti pre-2026 fermi per
-  scelta.
+  scelta. Gli estratti conto importati arrivano al 17/08.
 - HR: 38 bonifici con `cedolino_id` orfano, 119 in «bonifici da associare», 10
   tabelle attese dall'app assenti (turni_config, onomastici, richieste…),
   Iazzetta Francesco senza IBAN; Appuhamy, Aurigemma, Vitiello e Dell'Aquila da
-  creare come storici cessati. UNILAV di cessazione di Moscato e Pocci non
-  trovati in posta: da verificare col consulente (Ferrantini).
-- Drill-down «Verifica campi e F24» delle dichiarazioni: era agganciato al
-  vecchio indice Drive, che non esiste più.
-- `/api/download` serve ora `./downloads` (prima `./docs`, la stessa cartella
-  della documentazione): nessun codice la popola, la funzione è ferma.
+  creare come storici cessati. UNILAV di Moscato e Pocci da verificare col
+  consulente (Ferrantini).
+- Drill-down «Verifica campi e F24»: agganciato al vecchio indice Drive, che non esiste più. `/api/download` serve `./downloads`, che nessuno popola.
 - A mano, dal titolare: ruotare la password Postgres; DNS di `ceraldiapp.it` e
   servizi Render sospesi.
-- Il fork `app/hr/` è quasi chiuso: restano **cinque** sottopercorsi davvero
-  duplicati — `routers/auth.py`, `routers/employees/dipendenti.py`,
-  `routers/pin_login.py`, `routers/tfr.py`, `utils/dependencies.py` — più i
-  tre del guscio (`main`, `config`, `database`), separati per scelta. Finché
-  una coppia è aperta, ogni correzione va cercata anche nel gemello, e il
-  fork non può **crescere**: `tests/runtime/test_fork_app_hr.py` fa fallire
-  la CI su un sottopercorso nuovo in entrambi i rami, riconosce da solo i
-  re-export e impone che la sua lista possa solo accorciarsi.
-- `gestionale.blobs` non è più collegata a niente: `app/services/blob_store.py`
-  è l'unico codice che la tocca e nessuno lo importa, mentre in produzione ha
-  216 righe. O i PDF su richiesta si ricollegano, o la regola va corretta.
+- Fork `app/hr/` quasi chiuso: restano **cinque** sottopercorsi duplicati
+  (`routers/auth.py`, `routers/employees/dipendenti.py`, `routers/pin_login.py`,
+  `routers/tfr.py`, `utils/dependencies.py`) più i tre del guscio, separati per
+  scelta. Finché una coppia è aperta ogni correzione va cercata anche nel
+  gemello; crescere non può, `tests/runtime/test_fork_app_hr.py` impone che la
+  lista si accorci soltanto.
+- `gestionale.blobs` (216 righe) la tocca solo `app/services/blob_store.py`,
+  che nessuno importa: o i PDF su richiesta si ricollegano, o la regola va
+  corretta. Stesso caso di `bank_reconciliation_hub` (2.017 righe), scritta da
+  un trigger e letta da nessuno: o le si dà un lettore, o va spenta.
 - `archivio_documenti_memoria.py` espone ancora `SheetDatabase` e
   `MemorySheetsClient`, che nel nome promettono Google Sheets senza chiamarlo
   mai: 54 e 2 occorrenze in 12 file, da rinominare in un giro dedicato.
+
+## Logica dentro al database
+
+Su Supabase ci sono **trigger PL/pgSQL che scrivono dati contabili**: leggere
+il codice non basta per sapere cosa succede a una riga. Elenco, ruolo di
+ognuno e query su `pg_trigger` stanno in
+`database/trg_bank_ec_before_write.sql`. La regola: **una regola contabile si
+scrive in Python, versionata e testata**. Per questo il 19/09/2026
+`trg_bank_ec_before_write` è stato rimosso — duplicava in SQL
+`proiezione_bancaria.py`, girava prima e vinceva. Restano le guardie
+anti-cancellazione, quelle su `updated_at` e `trg_bank_ec_after_write`, che
+alimenta `entity_relations`.
 
 ## Verifica e pubblicazione
 
