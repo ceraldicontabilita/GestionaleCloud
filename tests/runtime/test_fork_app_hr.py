@@ -53,7 +53,6 @@ FORK_NOTO = {
     "routers/f24_parser.py",
     "routers/pin_login.py",
     "routers/tfr.py",
-    "services/alert_engine.py",
     "utils/dependencies.py",
 }
 

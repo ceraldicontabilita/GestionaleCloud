@@ -163,7 +163,10 @@ async def registra_dimissioni(db, metadata: Dict[str, Any], *, documento_id: Opt
         }})
         esito["hr"] = "aggiornato"
         if not esito["storico"]:
-            from app.hr.services.alert_engine import genera_alert
+            # Motore unico: `DIP_DIMISSIONI_RICEVUTE` stava solo nel catalogo
+            # della copia `app/hr`, e per questo qui si importava dall'altro
+            # ramo. Ora il catalogo e' uno solo.
+            from app.services.alert_engine import genera_alert
 
             alert = await genera_alert(
                 CODICE_ALERT_HR, dip["id"], "dipendenti", _testo_alert(nome, scad, checklist), db_hr,
