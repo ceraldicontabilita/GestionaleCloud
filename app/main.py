@@ -667,6 +667,17 @@ async def lifespan(app: FastAPI):
             stop_scheduler()
         except Exception:
             pass
+        # I lease dei job in corso vanno restituiti: se il processo muore
+        # tenendoli, l'istanza che subentra trova il job occupato e salta il
+        # turno per tutto il TTL (15 minuti dopo ogni deploy).
+        try:
+            rilascia = getattr(Database.db, "rilascia_lease_attive", None)
+            if callable(rilascia):
+                rimasti = await rilascia()
+                if rimasti:
+                    logger.info("Lease scheduler restituiti allo spegnimento: %s", rimasti)
+        except Exception:
+            logger.exception("Restituzione dei lease scheduler non riuscita")
     from app.lotti.embed import arresta_lotti
 
     await arresta_lotti()

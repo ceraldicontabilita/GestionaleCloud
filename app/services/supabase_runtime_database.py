@@ -877,6 +877,9 @@ class SupabaseRuntimeDatabase(SheetDatabase):
         self._remote_write_lock = asyncio.Lock()
         self.hydration_result: dict[str, Any] | None = None
         self._instance_id = str(uuid.uuid4())
+        #: I job di cui questa istanza tiene il lease adesso: servono a
+        #: rilasciarli allo spegnimento invece di lasciarli scadere.
+        self._lease_attive: set[str] = set()
         self._cache_enabled = _cache_abilitata()
         self._versions: dict[str, tuple[int, str | None]] = {}
         self._versions_checked_at: float | None = None
@@ -1281,7 +1284,15 @@ class SupabaseRuntimeDatabase(SheetDatabase):
 
     @asynccontextmanager
     async def scheduler_lease(self, job_id: str, ttl_seconds: int = 900):
-        """Lease distribuita rinnovata finche il job resta in esecuzione."""
+        """Lease distribuita rinnovata finche il job resta in esecuzione.
+
+        Se il processo muore col lease in mano, il job resta bloccato per
+        tutto il TTL: l'istanza nuova lo trova occupato e salta il turno. Con
+        900 secondi vuol dire un quarto d'ora di lavoro di fondo fermo dopo
+        ogni deploy — misurato il 19/09/2026 sulla ricostruzione dell'archivio
+        Drive, ferma a 57 file su 2.447 per venti minuti. Per questo i lease
+        vivi si annotano e si rilasciano allo spegnimento.
+        """
         payload = {
             "p_job_id": str(job_id),
             "p_owner_id": self._instance_id,
@@ -1291,6 +1302,7 @@ class SupabaseRuntimeDatabase(SheetDatabase):
         if not acquired:
             yield False
             return
+        self._lease_attive.add(str(job_id))
 
         stop = asyncio.Event()
 
@@ -1314,13 +1326,30 @@ class SupabaseRuntimeDatabase(SheetDatabase):
         finally:
             stop.set()
             await heartbeat
-            try:
-                await self._rpc(
-                    "gc_release_scheduler_lease",
-                    {"p_job_id": str(job_id), "p_owner_id": self._instance_id},
-                )
-            except Exception:
-                logger.exception("Rilascio lease scheduler fallito per %s", job_id)
+            await self._rilascia_lease(str(job_id))
+
+    async def _rilascia_lease(self, job_id: str) -> None:
+        self._lease_attive.discard(job_id)
+        try:
+            await self._rpc(
+                "gc_release_scheduler_lease",
+                {"p_job_id": job_id, "p_owner_id": self._instance_id},
+            )
+        except Exception:
+            logger.exception("Rilascio lease scheduler fallito per %s", job_id)
+
+    async def rilascia_lease_attive(self) -> list[str]:
+        """Restituisce i lease che questa istanza ha ancora in mano.
+
+        Va chiamata allo spegnimento: un lease abbandonato blocca il suo job
+        per tutto il TTL, e l'istanza che subentra puo' solo saltare il turno.
+        Si rilascia per `job_id`, con la stessa RPC del percorso normale:
+        nessuna cancellazione con filtro.
+        """
+        rimasti = sorted(self._lease_attive)
+        for job_id in rimasti:
+            await self._rilascia_lease(job_id)
+        return rimasti
 
     async def _write_through(
         self,
