@@ -65,8 +65,7 @@ resto del file.
 ### Metodo
 - Rispondere e ragionare **in italiano**, risultati prima delle spiegazioni.
 - **Tutto va portato su `main`**: si sviluppa su un branch, ma il lavoro non è
-  consegnato finché non è unito su `main` e deployato. Render pubblica solo da
-  `main`.
+  consegnato finché non è unito su `main` e deployato. Render pubblica solo da `main`.
 - Le funzionalità **si collaudano davvero** (dati di prova reali sul backend
   live, poi ripuliti), non si dichiarano a posto leggendo il codice. Se il
   titolare mostra uno screenshot con il bug ancora presente dopo un fix, il fix
@@ -107,11 +106,11 @@ resto del file.
 - **Vietati blu, indaco, viola e ciano**, sia come classi Tailwind sia come
   hex negli stili inline: si rimappano su salvia o sabbia. **Vietati anche i
   grigi freddi**: `gray` e `slate` di Tailwind sono blu-tinte, e un `#64748b`
-  scritto a mano stona sulla crema. `frontend_lotti` e `frontend_menu`
-  rimappano nel loro `tailwind.config.js` le scale fredde su sabbia e
-  `gray`/`slate`/`zinc`/`neutral` su una neutra calda dai token; `stone` e
-  `amber` sono gia' caldi. Scansione dopo ogni modifica frontend, **sui bundle
-  compilati** e non solo sui sorgenti (un remap del config si vede solo li'):
+  a mano stona sulla crema. `frontend_lotti` e `frontend_menu` rimappano nel
+  loro `tailwind.config.js` le scale fredde su sabbia e
+  `gray`/`slate`/`zinc`/`neutral` su una neutra calda dai token (`stone` e
+  `amber` sono gia' caldi). Scansione dopo ogni modifica frontend, **sui
+  bundle compilati** (un remap del config si vede solo li'):
   `grep -rEn "5D29C7|1E1B4B|7c3aed|8b5cf6|6366f1|4f46e5|violet-|indigo-|bg-blue-|bg-sky-|text-blue-|border-blue-|3b82f6|2563eb|1d4ed8|F1F5F9|E2E8F0|CBD5E1|94A3B8|64748B|475569|0F172A|1E293B|6B7280|9CA3AF|D1D5DB|E5E7EB|374151|111827"`
 - **Un solo font per tutte e quattro le app, ERP compreso: Plus Jakarta Sans**
   (400-800, da Google Fonts). Non introdurre una seconda famiglia: un titolo
@@ -330,8 +329,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   bonifico legge solo dentro `BONIFICI`), `CERTIFICAZIONI UNICHE/`. I bonifici
   non stipendio stanno in `03_BANCHE_E_PAGAMENTI/BONIFICI`.
   **Attenzione**: non puntare `GOOGLE_DRIVE_BONIFICI_FOLDER_ID` a DIPENDENTI
-  con un backend che non vincoli la profondità: leggerebbe i cedolini come
-  bonifici.
+  con un backend che non vincoli la profondità: leggerebbe i cedolini come bonifici.
 - `10_BILANCI_DICHIARAZIONI/DICHIARAZIONI FISCALI`: canale
   `dichiarazione_fiscale`, senza `category_hint` perché la cartella mescola
   770/IVA/IRAP/LIPE/Redditi SC — decide `classify_document()` dal contenuto.
@@ -351,10 +349,9 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   svuota le sole inbox, 25 file per volta, e sposta in `Elaborate` anche i
   doppioni; la **quadratura** (`/api/fatture/drive/quadratura`) ripassa le
   `Elaborate` e importa i buchi; la **ricostruzione**
-  (`/api/fatture/drive/ricostruzione`) rilegge *tutto* l'archivio a lotti
-  riprendibili con un cursore, ripresi ogni 2 minuti dallo scheduler. Nessuna
-  sposta un originale fuori dal suo anno, e l'anno lo decide il parser XML,
-  mai il nome del file.
+  (`/api/fatture/drive/ricostruzione`) rilegge *tutto* a lotti riprendibili
+  con un cursore, ripresi ogni 2 minuti dallo scheduler. Nessuna sposta un
+  originale fuori dal suo anno, e l'anno lo decide il parser XML, mai il nome.
 - Una coda che non cala e importa zero **non è un guasto**: i file già importati
   risultano doppioni e vengono solo spostati. A dire se manca qualcosa è la
   quadratura, non la lunghezza della coda.
@@ -383,8 +380,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - Il protocollo `numero_registrazione` è unico e progressivo **per anno**
   (riparte da 1 a ogni anno solare) e immutabile una volta assegnato.
 - Il giornale sopravvive all'azzeramento delle fatture e si riaggancia al
-  reimport con la chiave stabile della fattura; export e import sono
-  idempotenti.
+  reimport con la chiave stabile della fattura; export e import sono idempotenti.
 - Ogni riga di Prima Nota porta `conto_contabile` di tesoreria (19.01.01
   banca, 19.03.03 cassa, 19.01.05 Mastercard SumUp, crediti 15.07.x) **e**
   `conto_contropartita` CEE per categoria (33.03.01 fornitori, 39.07.01
@@ -459,15 +455,15 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - Una liquidazione confermata non si sovrascrive: ogni ricalcolo è una nuova
   versione, la riapertura è esplicita e motivata. Il calcolo annuale parte
   dalle liquidazioni confermate e dallo stato d'uso, non dalle date.
-- **La LIPE è il documento canonico dell'IVA mensile**: quando il nostro
-  numero diverge da quello trasmesso dal commercialista, quello giusto è il
-  suo e lo scarto è un difetto nostro da spiegare. Si legge **per posizione**
-  (`app/services/lipe_parser.py`): il livello testo del PDF mescola le celle
-  alle caselle di spunta del modulo, e in ordine `18.058,92` diventa
-  `218.058,92`. La prova della lettura non è il parser ma l'aritmetica del
-  quadro VP — `VP6 = VP5 − VP4`, `VP14 = VP6 + VP8 − VP7`: un periodo che non
-  quadra **non viene depositato** in `lipe_periodi` e non fa da fonte. Una
-  comunicazione ritrasmessa (protocollo più alto) sostituisce la precedente.
+- **La LIPE è il documento canonico dell'IVA mensile**: se il nostro numero
+  diverge da quello trasmesso dal commercialista, il giusto è il suo e lo
+  scarto è un difetto nostro. Si legge **per posizione**
+  (`app/services/lipe_parser.py`): nel livello testo del PDF le celle si
+  mescolano alle caselle di spunta, e in ordine `18.058,92` diventa
+  `218.058,92`. La prova non è il parser ma l'aritmetica del quadro VP —
+  `VP6 = VP5 − VP4`, `VP14 = VP6 + VP8 − VP7`: un periodo che non quadra
+  **non viene depositato** e non fa da fonte. Una comunicazione ritrasmessa
+  (protocollo più alto) sostituisce la precedente.
 - Il confronto mensile gestionale ↔ LIPE ↔ F24 è
   `GET /api/iva/confronto-commercialista/{anno}`: non aggiusta niente, dice
   dove si diverge. Un mese che non sappiamo calcolare è un «non lo so», non
@@ -529,16 +525,15 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   per CF+anno+mese+tipo, mai sovrascrittura; 13ª e 14ª restano buste distinte).
 - Il netto si legge solo dalla cella graficamente associata a `TOTALE NETTO` /
   `NETTO DEL MESE` / `NETTO IN BUSTA`: mai da `ARR. PREC.`, competenze,
-  trattenute, TFR, arrotondamenti o dal nome del file. Cella vuota → valore
-  nullo, **mai zero**. Stati: `NETTO_VERIFICATO_DA_CEDOLINO`,
+  trattenute, TFR, arrotondamenti o dal nome file. Cella vuota → nullo,
+  **mai zero**. Stati: `NETTO_VERIFICATO_DA_CEDOLINO`,
   `NETTO_NON_PRESENTE_O_NON_LEGGIBILE`, `MULTIPLE_NETS_DA_VERIFICARE`,
   `ERRORE_PARSER` (in `app/constants/stati_netto.py`); solo il primo alimenta
   Salari e bonifici, e la decisione si prende **solo** con `alimenta_salari()`,
   che fallisce **chiuso**: uno stato assente, vuoto o sconosciuto non passa.
   Su un dato che diventa un bonifico l'assenza di prova non vale come prova.
 - Sulla collection `cedolini` il campo è **`pagato`**, non `pagata`: il
-  femminile non esiste su nessun documento e un filtro che lo cerca passa
-  sempre.
+  femminile non esiste su nessun documento e un filtro che lo cerca passa sempre.
 - **Un solo motore abbina bonifico e stipendio**: `associa_bonifici_stipendi`
   (identità completa, acconti, residuo). Nessun percorso può cercarsi da solo
   «il primo movimento con importo vicino e il nome nella descrizione»: un
@@ -562,10 +557,10 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   entrano mai, nemmeno in coda, **anche con un nome dipendente dentro** la
   causale — l'esclusione vince sul nome. Ambiguo o `BENEFICIARI VARI` → coda.
   Il **lotto paghe** (≥3 dipendenti lo stesso giorno) resta un segnale per i
-  casi non altrimenti risolti. Competenza da causale o nome file, altrimenti
+  casi non risolti altrimenti. Competenza da causale o nome file, altrimenti
   **regola del giorno 25**: prima del 25 = mese precedente, dal 25 = corrente.
-  Stesso pagamento da PDF e da banca (stesso dipendente, importo, data ±3 gg)
-  → un solo esito, arricchito, mai duplicato.
+  Stesso pagamento da PDF e da banca (dipendente, importo, data ±3 gg) → un
+  solo esito, arricchito, mai duplicato.
 - «Bonifici da assegnare» è una proposta di importo dovuto, stato iniziale
   `DA_ASSEGNARE`: non imposta bonifico eseguito, movimento, data di pagamento
   né riconciliazione.
@@ -890,8 +885,13 @@ Per ogni modifica pertinente:
 1. test mirati;
 2. `python -m pytest -q` quando il cambiamento backend lo richiede;
 3. `yarn test` e `yarn build` in `frontend/` quando coinvolge il frontend;
-4. `git diff --check`;
-5. commit dei soli file pertinenti, mai `git add -A`;
+4. `git diff --check`; commit dei soli file pertinenti, mai `git add -A`;
+5. **revisione avversariale del proprio diff prima di unire**: cercarvi cosa
+   è sbagliato, non la conferma che funziona. Dal 19/09/2026 non c'è più un
+   revisore esterno (bot Codex rimosso) e i test provano solo ciò che qualcuno
+   ha pensato di scrivere. Tre domande: la chiave che leggo esiste sui dati
+   veri? cosa ho dichiarato fatto senza riguardarlo? questo motore c'è già
+   altrove? Da lì sono usciti l'IRES ruotata e l'email F24 mai partita;
 6. unione su `main` (è la consegna: Render pubblica solo da lì);
 7. CI verde e verifica `/api/health` sul commit pubblicato;
 8. controllo live del flusso interessato senza mutare dati non autorizzati.
