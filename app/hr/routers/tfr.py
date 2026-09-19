@@ -142,28 +142,76 @@ async def registra_accantonamento_tfr(input_data: AccantonamentoTFRInput) -> Dic
     
     if input_data.anno < 2020 or input_data.anno > 2030:
         raise HTTPException(status_code=400, detail="Anno non valido")
-    
+
     # Recupera dipendente
     dipendente = await db["dipendenti"].find_one(
         {"id": input_data.dipendente_id},
         {"_id": 0}
     )
-    
+
     if not dipendente:
         raise HTTPException(status_code=404, detail="Dipendente non trovato")
-    
+
+    # 19/09/2026 (audit): un accantonamento per lo stesso dipendente+anno gia'
+    # presente non va ricalcolato ne' riscritto. Prima questo endpoint non
+    # aveva questo controllo (lo ha solo calcola_tfr_batch): una seconda
+    # chiamata con una retribuzione_annua diversa aggiornava una seconda
+    # volta dipendenti.tfr_accantonato e inseriva un secondo record in
+    # tfr_accantonamenti, mentre l'idempotenza del motore contabile
+    # bloccava solo la scrittura in movimenti_contabili - tre fonti
+    # divergenti. Chi vuole correggere un accantonamento gia' registrato
+    # deve passare da un flusso di correzione esplicito, non da un nuovo
+    # POST con dati diversi sulla stessa chiave.
+    esistente = await db["tfr_accantonamenti"].find_one(
+        {"dipendente_id": input_data.dipendente_id, "anno": input_data.anno},
+        {"_id": 0},
+    )
+    if esistente:
+        return {
+            "success": True,
+            "gia_registrato": True,
+            "accantonamento_id": esistente["id"],
+            "messaggio": (
+                f"TFR {input_data.anno} gia' accantonato per "
+                f"{dipendente.get('nome_completo', '')}"
+            ),
+            "dettaglio": {
+                "quota_annuale": esistente.get("quota_annuale"),
+                "rivalutazione": esistente.get("rivalutazione"),
+                "totale_accantonato": esistente.get("totale_accantonamento"),
+                "nuovo_tfr_totale": esistente.get("nuovo_tfr_totale"),
+            },
+        }
+
     # Calcola quota annuale
     quota_annuale = input_data.retribuzione_annua / TFR_DIVISORE
-    
+
     # Calcola rivalutazione sul TFR accumulato precedente
     tfr_precedente = float(dipendente.get("tfr_accantonato", 0))
     # Art. 2120 c.c.: 1.5% fisso + 75% dell'indice ISTAT
     tasso_rivalutazione = (RIVALUTAZIONE_FISSA + input_data.indice_istat * 0.75) / 100
     rivalutazione = tfr_precedente * tasso_rivalutazione
-    
+
     # Totale accantonamento anno
     totale_accantonamento = quota_annuale + rivalutazione
-    
+
+    # 19/09/2026 (audit): un indice ISTAT anomalo (es. digitato per errore
+    # con il segno sbagliato) puo' rendere la rivalutazione piu' negativa
+    # della quota annuale, producendo un accantonamento totale negativo.
+    # Passato cosi' al motore contabile, DARE Quote TFR e AVERE Fondo TFR
+    # diventano entrambi negativi e uguali in valore assoluto: la scrittura
+    # quadra (dare == avere) ma e' contabilmente invertita, e il fondo del
+    # dipendente scenderebbe invece di salire. Si rifiuta prima di scrivere.
+    if totale_accantonamento <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Accantonamento TFR calcolato non positivo "
+                f"({round(totale_accantonamento, 2)}): verificare indice ISTAT "
+                "e TFR precedente prima di registrare"
+            ),
+        )
+
     # Nuovo TFR totale
     nuovo_tfr_totale = tfr_precedente + totale_accantonamento
     
