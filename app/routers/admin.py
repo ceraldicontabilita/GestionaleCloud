@@ -562,3 +562,73 @@ async def backfill_noleggio_dati_gestionali(
         "saltate_gia_ok": saltate_gia_ok,
         "errori_parsing": errori,
     }
+
+
+# ============================================================================
+# RECUPERO PREGRESSO FATTURE
+# ============================================================================
+# Due difetti corretti il 19/09/2026 hanno lasciato dati sbagliati in
+# archivio. Le riparazioni stanno in
+# `app/services/recupero_fatture_pregresso.py`: qui solo le rotte.
+
+@router.post(
+    "/fatture/ricalcola-scadenze",
+    summary="Riporta data_scadenza alla scadenza dichiarata nell'XML",
+)
+async def fatture_ricalcola_scadenze(
+    dry_run: bool = Query(True, description="Se True non scrive: restituisce solo cosa cambierebbe"),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Il canale automatico calcolava la scadenza come data fattura + 30
+    giorni anche quando l'XML ne dichiarava una. Le `pagamento_rate` sono
+    rimaste sulla fattura, quindi la scadenza vera si ricalcola da li' senza
+    rileggere nessun file.
+
+    Misurato in produzione il 19/09/2026: 414 fatture attive del canale
+    Drive, 390 con la scadenza anticipata in media di 29 giorni e 24
+    posticipata fino a 58.
+    """
+    richiedi_admin(current_user)
+    from app.services import recupero_fatture_pregresso as recupero
+
+    return await recupero.ricalcola_scadenze(Database.get_db(), dry_run=dry_run)
+
+
+@router.post(
+    "/fatture/ripubblica-evento-created",
+    summary="Ripubblica fattura.created per le fatture rimaste senza partita aperta",
+)
+async def fatture_ripubblica_evento_created(
+    dry_run: bool = Query(True, description="Se True conta soltanto le candidate, senza propagare"),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """L'import massivo del 14/09/2026 e le fatture entrate dal Drive senza
+    `data_documento` non hanno propagato `fattura.created`: nessuno dei suoi
+    handler e' partito, quindi niente partita aperta verso il fornitore,
+    niente alert, niente audit. Sono 296 fatture per 173.184,83 EUR.
+
+    Ripubblica **lo stesso evento sugli stessi handler**, che sono
+    idempotenti: rilanciarlo non duplica partite ne' alert. Salta le fatture
+    storiche archiviate di proposito (`stato_import: archivio_storico`), per
+    cui l'evento non e' mai dovuto partire.
+
+    Gira in background (§4) con lo stato in `sistema_stato`: si legge con
+    `GET /fatture/ripubblica-evento-created/stato`.
+    """
+    richiedi_admin(current_user)
+    from app.services import recupero_fatture_pregresso as recupero
+
+    return await recupero.avvia_ripubblicazione(Database.get_db(), dry_run=dry_run)
+
+
+@router.get(
+    "/fatture/ripubblica-evento-created/stato",
+    summary="Esito dell'ultima ripubblicazione di fattura.created",
+)
+async def fatture_ripubblica_evento_created_stato(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    richiedi_admin(current_user)
+    from app.services import recupero_fatture_pregresso as recupero
+
+    return await recupero.stato_ripubblicazione(Database.get_db())
