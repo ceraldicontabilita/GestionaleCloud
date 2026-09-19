@@ -481,41 +481,13 @@ async def list_suppliers(
         except Exception as e:
             logger.warning(f"Error loading invoice stats: {e}")
 
-        # Il nuovo database usa fatture_passive con campi canonici diversi.
-        # Sommiamo i saldi senza duplicare o modificare le fatture sorgente.
-        private_pipeline = [
-            {"$match": {"supplier_vat": {"$exists": True, "$nin": [None, ""]}}},
-            {"$group": {
-                "_id": "$supplier_vat",
-                "fatture_count": {"$sum": 1},
-                "fatture_totale": {"$sum": {"$toDouble": {"$ifNull": ["$total", 0]}}},
-                "fatture_pagate": {"$sum": {"$toDouble": {"$ifNull": ["$paid_total", 0]}}},
-                "fatture_non_pagate": {"$sum": {"$toDouble": {"$ifNull": ["$residual", 0]}}},
-                "prima_fattura_data": {"$min": "$document_date"},
-                "ultima_fattura_data": {"$max": "$document_date"},
-            }},
-        ]
-        try:
-            private_stats = await db["fatture_passive"].aggregate(
-                private_pipeline, allowDiskUse=True
-            ).to_list(5000)
-            for stat in private_stats:
-                rec = alias_index.get(_normalized_supplier_key(stat.get("_id")))
-                if rec is None:
-                    continue
-                rec["fatture_count"] = rec.get("fatture_count", 0) + stat.get("fatture_count", 0)
-                rec["fatture_totale"] = rec.get("fatture_totale", 0) + stat.get("fatture_totale", 0)
-                rec["fatture_pagate"] = rec.get("fatture_pagate", 0) + stat.get("fatture_pagate", 0)
-                rec["fatture_non_pagate"] = rec.get("fatture_non_pagate", 0) + stat.get("fatture_non_pagate", 0)
-                for field, chooser in (("prima_fattura_data", min), ("ultima_fattura_data", max)):
-                    value = stat.get(field)
-                    current = rec.get(field)
-                    if value and (not current or chooser(current, value) == value):
-                        rec[field] = value
-                rec["source"] = "merged"
-        except Exception as e:
-            logger.warning(f"Error loading private invoice stats: {e}")
-    
+        # Il secondo giro su `fatture_passive` e' stato tolto il 19/09/2026:
+        # quella collezione non esiste nel database, quindi sommava sempre
+        # zero. Le fatture fornitore stanno in `invoices`, lette sopra — e
+        # sommare due archivi per gli stessi saldi e' il modo piu' rapido per
+        # contare una fattura due volte il giorno in cui uno dei due si
+        # popola davvero.
+
     suppliers = list(suppliers_map.values())
     
     # Filtro stato_anagrafica (post-aggregation perché richiede prima_fattura_data)

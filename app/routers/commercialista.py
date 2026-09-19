@@ -182,16 +182,11 @@ async def get_prima_nota_cassa_mensile(anno: int, mese: int) -> Dict[str, Any]:
         }, {"_id": 0}).sort([("data", 1), ("categoria", 1)])
         movements = await cursor.to_list(5000)
     
-    # If still empty, try cash collection
-    if not movements:
-        cursor = db["cash"].find({
-            "$or": [
-                {"data": {"$regex": f"^{month_prefix}"}},
-                {"date": {"$regex": f"^{month_prefix}"}}
-            ]
-        }, {"_id": 0}).sort([("data", 1), ("categoria", 1)])
-        movements = await cursor.to_list(5000)
-    
+    # Il terzo tentativo su una collezione `cash` e' stato tolto il 19/09/2026:
+    # non esiste nel database, quindi non ha mai restituito niente. La cassa
+    # vive in `prima_nota_cassa` e basta — una catena di ripieghi nasconde
+    # quale sia la fonte vera.
+
     # Calculate totals
     totale_entrate = 0
     totale_uscite = 0
