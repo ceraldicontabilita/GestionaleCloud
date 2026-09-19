@@ -207,10 +207,14 @@ def _register_invoices(app: FastAPI):
 # Restano solo i router usati da flussi NON-HR di questo gestionale:
 #   - dipendenti: anagrafica in lettura (verbali noleggio, inserimento rapido, portale)
 #   - tfr: riepilogo fondo TFR mostrato in Gestione Cespiti (contabilità)
-# libro_unico_parser / f24_parser (router HTTP): smontati (audit 14/07/2026,
-# piano residuo op.5) — le route stesse non hanno chiamanti, ma le funzioni
-# import_libro_unico/import_f24 restano vive: importate e chiamate
-# direttamente da app/routers/documenti.py (pipeline di ingest documentale).
+# libro_unico_parser (router HTTP): smontato (audit 14/07/2026), ma la
+# funzione `import_libro_unico` resta viva: importata e chiamata direttamente
+# da app/routers/documenti.py (pipeline di ingest documentale).
+# f24_parser: rimosso del tutto il 19/09/2026. La sua `import_f24` non aveva
+# piu' chiamanti (il workflow «F24_COMPLETO» che la usava non esiste in nessun
+# file) e scriveva sulla collection `f24_pagamenti`, che in produzione non
+# esiste. L'archivio F24 vivo e' `f24_unificato`, alimentato solo da
+# `services/f24_canonico.salva_f24`.
 def _register_employees(app: FastAPI):
     from app.routers.employees import dipendenti
     from app.routers import tfr, drive_cedolini, drive_corrispettivi, drive_quietanze

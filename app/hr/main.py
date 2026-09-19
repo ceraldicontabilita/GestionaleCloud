@@ -128,8 +128,11 @@ def register_routers():
     # `employees`/`buste_paga`/`presenze_mensili` le cui tabelle
     # (`hr.app_employees`, `hr.app_buste_paga`, `hr.app_presenze_mensili`) non
     # esistono in Supabase, e le sue rotte non avevano chiamanti.
-    from .routers import f24_parser, salari_unificati_v2
-    app.include_router(f24_parser.router, prefix="/api/paghe", tags=["F24 Parser"], dependencies=ADMIN)
+    # Stessa storia per il router F24 (rimosso il 19/09/2026): scriveva sulla
+    # collection `f24_pagamenti`, che in produzione NON ESISTE — l'unico
+    # archivio F24 vivo e' `f24_unificato` (93 righe), alimentato solo da
+    # `services/f24_canonico.salva_f24`. Nessuna rotta aveva chiamanti.
+    from .routers import salari_unificati_v2
     app.include_router(salari_unificati_v2.router, prefix="/api/salari-v2", tags=["Salari V2"], dependencies=ADMIN)
 
     # Contabilità / Gestione Pagamenti (fatture passive, fornitori, documenti fiscali PEC)
