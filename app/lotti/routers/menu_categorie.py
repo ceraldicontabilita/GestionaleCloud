@@ -63,7 +63,12 @@ async def crea_categoria_menu(body: CategoriaMenuCreate, _admin=Depends(require_
     """Crea nel Menu una categoria di Lotti (``origine = "lotti"``).
 
     Idempotente sul nome: ripetere la chiamata restituisce la categoria gia'
-    creata con ``creata: false``, non un doppione."""
+    creata con ``creata: false``, non un doppione.
+
+    Se nel Menu esiste gia' una categoria con quel nome ma di **altra
+    origine** (tipicamente Qromo) la creazione riesce lo stesso — il titolare
+    potrebbe volerne davvero una sua — ma la risposta porta ``avviso``: senza,
+    i clienti si troverebbero due riquadri «Bar» identici nella home."""
     try:
         return await menu_bridge.crea_categoria_menu(
             body.nome, nome=body.nome_en, immagine=body.immagine)

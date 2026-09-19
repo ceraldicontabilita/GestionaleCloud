@@ -15,8 +15,10 @@ import asyncio
 import pytest
 from mongomock_motor import AsyncMongoMockClient
 
+from fastapi import HTTPException
+
 from app.lotti.servizi import menu_backfill, menu_bridge
-from app.lotti.tests.test_menu_bridge import _FakeSupabase, _payload
+from app.lotti.tests.test_menu_bridge import _FakeSupabase, _Query, _payload
 
 
 def run(coro):
@@ -373,7 +375,330 @@ def test_put_reparto_accetta_bar(ambiente):
     for reparto in ("pasticceria", "rosticceria", "altro"):
         assert run(ricette.aggiorna_reparto(creata["id"], reparto))["reparto"] == reparto
 
-    from fastapi import HTTPException
     with pytest.raises(HTTPException) as errore:
         run(ricette.aggiorna_reparto(creata["id"], "gelateria"))
     assert errore.value.status_code == 400
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 6) Una ricetta senza prezzo non diventa MAI visibile nel Menu
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_ricetta_senza_prezzo_non_diventa_visibile_ed_e_segnalata(ambiente):
+    """Una riga con `price` vuoto entrerebbe nell'ordine contando 0 euro
+    (`app/menu/models/order_models.py::compute_total` scarta il valore e
+    continua): un prodotto ordinabile gratis. Si pubblica nascosta, e il
+    motivo esce nell'esito del ponte."""
+    ricette, _, finto = ambiente
+    creata = run(ricette.create_ricetta(ricette.RicettaCreate(**_payload(
+        nome="Senza prezzo", prezzo_vendita=None, menu_pubblico=True))))
+
+    sync = creata["menu_sync"]
+    assert sync["prezzo_mancante"] is True
+    assert sync["visibile_richiesta"] is True
+    assert sync["visible"] is False
+    assert sync["motivo_nascosto"] == "prezzo_assente"
+    riga = _riga_menu(finto)
+    assert riga["price"] == "" and riga["visible"] is False
+    # Pubblicata comunque: resta idempotente e recuperabile
+    assert riga["lotti_ref"] == f"ricetta:{creata['id']}"
+
+
+def test_appena_arriva_un_prezzo_la_ricetta_diventa_visibile(ambiente):
+    ricette, _, finto = ambiente
+    creata = run(ricette.create_ricetta(ricette.RicettaCreate(**_payload(
+        nome="Senza prezzo", prezzo_vendita=None, menu_pubblico=True))))
+    assert _riga_menu(finto)["visible"] is False
+
+    esito = run(ricette.set_prezzo_tavolo(creata["id"], 2.50))
+    assert esito["menu_sync"]["prezzo_mancante"] is False
+    assert esito["menu_sync"]["motivo_nascosto"] is None
+    riga = _riga_menu(finto)
+    assert riga["price"] == "2.50€" and riga["visible"] is True
+    # Nessuna riga in piu': e' sempre la stessa, aggiornata
+    assert len(finto.tabelle["menu_products"]) == 1
+
+
+def test_senza_prezzo_ma_gia_nascosta_nessun_motivo_da_segnalare(ambiente):
+    """Chi non ha spuntato «inserisci in menu» resta nascosto per sua scelta:
+    non e' il prezzo a nasconderla e il cruscotto non deve segnalarla."""
+    ricette, _, _ = ambiente
+    creata = run(ricette.create_ricetta(ricette.RicettaCreate(**_payload(
+        nome="Bozza", prezzo_vendita=None))))
+    assert creata["menu_sync"]["prezzo_mancante"] is True
+    assert creata["menu_sync"]["motivo_nascosto"] is None
+
+
+def test_backfill_conta_e_campiona_le_ricette_senza_prezzo(ambiente):
+    _, database, finto = ambiente
+    run(database.ricette.insert_one({
+        "id": "con-prezzo", "nome": "Con prezzo", "reparto": "bar",
+        "prezzo_vendita": 1.2, "menu_pubblico": True}))
+    run(database.ricette.insert_one({
+        "id": "seminata", "nome": "Seminata da _seed_lotto_nomi",
+        "reparto": "pasticceria", "menu_pubblico": True}))
+    run(database.ricette.insert_one({
+        "id": "import-excel", "nome": "Import Excel", "reparto": "pasticceria"}))
+
+    esito = run(menu_backfill.ripubblica_menu(database))
+    assert esito["senza_prezzo"] == 2
+    assert {c["nome"] for c in esito["campioni_senza_prezzo"]} == {
+        "Seminata da _seed_lotto_nomi", "Import Excel"}
+    # Solo quella che il titolare voleva mostrare viene segnalata come nascosta
+    assert esito["nascoste_per_prezzo"] == 1
+    assert [c["nome"] for c in esito["campioni_nascoste_per_prezzo"]] == [
+        "Seminata da _seed_lotto_nomi"]
+
+    visibili = {p["name_it"]: p["visible"] for p in finto.tabelle["menu_products"]}
+    assert visibili == {"Con prezzo": True, "Seminata da _seed_lotto_nomi": False,
+                        "Import Excel": False}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 7) Prezzo al tavolo: validato all'ingresso, coerente col cruscotto
+# ─────────────────────────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("prezzo", [-2, -0.01, float("nan"), float("inf"), float("-inf")])
+def test_prezzo_tavolo_negativo_o_non_finito_rifiutato(ambiente, prezzo):
+    """`nan` finiva nella colonna `price` come "nan€" sotto gli occhi dei
+    clienti (`nan <= 0` e' False, nessun filtro lo fermava)."""
+    ricette, _, finto = ambiente
+    creata = run(ricette.create_ricetta(ricette.RicettaCreate(
+        **_payload(prezzo_vendita=1.50))))
+
+    with pytest.raises(HTTPException) as errore:
+        run(ricette.set_prezzo_tavolo(creata["id"], prezzo))
+    assert errore.value.status_code == 400
+    assert _riga_menu(finto)["price"] == "1.50€"
+
+
+@pytest.mark.parametrize("prezzo", [-2, float("nan"), float("inf")])
+def test_prezzo_vendita_ha_la_stessa_validazione(ambiente, prezzo):
+    ricette, database, _ = ambiente
+    creata = run(ricette.create_ricetta(ricette.RicettaCreate(
+        **_payload(prezzo_vendita=1.50))))
+    with pytest.raises(HTTPException) as errore:
+        run(ricette.set_prezzo_vendita(creata["id"], prezzo))
+    assert errore.value.status_code == 400
+    assert run(database.ricette.find_one({"id": creata["id"]}))["prezzo_vendita"] == 1.50
+
+
+def test_prezzo_zero_toglie_il_prezzo_tavolo_e_il_menu_torna_al_banco(ambiente):
+    ricette, database, finto = ambiente
+    creata = run(ricette.create_ricetta(ricette.RicettaCreate(
+        **_payload(prezzo_vendita=1.50, prezzo_tavolo=2.50))))
+    assert _riga_menu(finto)["price"] == "2.50€"
+
+    esito = run(ricette.set_prezzo_tavolo(creata["id"], 0))
+    assert esito["prezzo_tavolo"] is None and esito["prezzo_rimosso"] is True
+    assert run(database.ricette.find_one({"id": creata["id"]}))["prezzo_tavolo"] is None
+    assert _riga_menu(finto)["price"] == "1.50€"
+    assert esito["menu_sync"]["prezzo_origine"] == "banco"
+
+
+def test_prezzo_tavolo_non_valido_in_archivio_non_risulta_deciso(ambiente):
+    """Con `prezzo_tavolo = -2` il ponte ripiegava sul banco ma il cruscotto
+    diceva «prezzo deciso»: il titolare leggeva una cosa e il cliente ne vedeva
+    un'altra. Ora le due nozioni di «prezzo valido» sono la stessa."""
+    ricette, database, finto = ambiente
+    run(database.ricette.insert_one({
+        "id": "storica", "nome": "Storica", "reparto": "bar",
+        "prezzo_vendita": 1.50, "prezzo_tavolo": -2}))
+
+    righe = {r["nome"]: r for r in run(ricette.get_ricette_prezzi())}
+    assert righe["Storica"]["prezzo_tavolo_impostato"] is False
+
+    run(menu_backfill.ripubblica_menu(database))
+    assert _riga_menu(finto)["price"] == "1.50€"
+
+
+def test_prezzo_non_valido_rifiutato_anche_da_patch_e_dal_modello(ambiente):
+    ricette, database, _ = ambiente
+    creata = run(ricette.create_ricetta(ricette.RicettaCreate(
+        **_payload(prezzo_vendita=1.50))))
+
+    with pytest.raises(HTTPException) as errore:
+        run(ricette.aggiorna_campo_ricetta(creata["id"], {"prezzo_tavolo": -3}))
+    assert errore.value.status_code == 400
+
+    # 0 dalla PATCH significa «togli il prezzo», non «gratis»
+    run(ricette.aggiorna_campo_ricetta(creata["id"], {"prezzo_tavolo": 0}))
+    assert run(database.ricette.find_one({"id": creata["id"]}))["prezzo_tavolo"] is None
+
+    with pytest.raises(Exception):
+        ricette.RicettaCreate(**_payload(prezzo_tavolo=-1))
+    with pytest.raises(Exception):
+        ricette.RicettaCreate(**_payload(prezzo_vendita=float("nan")))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 8) Assegnazione id: collisione ritentata, non perdita silenziosa
+# ─────────────────────────────────────────────────────────────────────────────
+
+class _QueryInCorsa(_Query):
+    """Come il finto normale, ma con la primary key applicata davvero e con un
+    «altro thread» che si prende l'id appena letto da ``max(id)``."""
+
+    def __init__(self, finto, nome):
+        super().__init__(finto.tabelle, nome)
+        self.finto = finto
+
+    def execute(self):
+        finto = self.finto
+        contesa = self.nome == finto.tabella_contesa
+        if (self.op == "select" and contesa and self._order == ("id", True)
+                and finto.intrusioni < finto.max_intrusioni):
+            risultato = super().execute()
+            massimo = int(risultato.data[0]["id"]) if risultato.data else 0
+            preso = max(massimo + 1, menu_bridge.ID_MINIMO_LOTTI)
+            # L'altro thread inserisce PRIMA di noi con lo stesso id
+            self.tabelle.setdefault(self.nome, []).append(
+                {"id": preso, "name_it": "riga di un altro thread"})
+            finto.intrusioni += 1
+            return risultato
+        if self.op == "insert":
+            righe = self.tabelle.setdefault(self.nome, [])
+            nuove = self.payload if isinstance(self.payload, list) else [self.payload]
+            if any(any(e.get("id") == n.get("id") for e in righe) for n in nuove):
+                finto.collisioni += 1
+                raise RuntimeError(
+                    "duplicate key value violates unique constraint "
+                    f'"{self.nome}_pkey" (code 23505)')
+        return super().execute()
+
+
+class _SupabaseInCorsa(_FakeSupabase):
+    def __init__(self, tabella_contesa, max_intrusioni=1):
+        super().__init__()
+        self.tabella_contesa = tabella_contesa
+        self.max_intrusioni = max_intrusioni
+        self.intrusioni = 0
+        self.collisioni = 0
+
+    def table(self, nome):
+        return _QueryInCorsa(self, nome)
+
+
+def test_collisione_di_id_ritentata_e_la_ricetta_arriva_nel_menu(ambiente, monkeypatch):
+    """Il backfill cicla per minuti mentre il form continua a salvare: le due
+    `select max(id)` tornavano lo stesso valore e la seconda insert violava la
+    primary key, con la ricetta appena salvata persa nel Menu."""
+    ricette, _, _ = ambiente
+    finto = _SupabaseInCorsa("menu_products", max_intrusioni=1)
+    monkeypatch.setattr(menu_bridge, "supabase", finto)
+
+    creata = run(ricette.create_ricetta(ricette.RicettaCreate(**_payload(nome="Babà"))))
+    assert creata["menu_sync"]["esito"] == "pubblicato"
+    assert finto.collisioni == 1
+
+    nostre = [p for p in finto.tabelle["menu_products"] if p.get("lotti_ref")]
+    assert len(nostre) == 1
+    identificativi = [p["id"] for p in finto.tabelle["menu_products"]]
+    assert len(identificativi) == len(set(identificativi)) == 2
+
+
+def test_collisione_persistente_resta_un_errore_visibile(ambiente, monkeypatch):
+    """Il ciclo e' limitato: non gira all'infinito e il fallimento non sparisce."""
+    ricette, database, _ = ambiente
+    finto = _SupabaseInCorsa("menu_products", max_intrusioni=99)
+    monkeypatch.setattr(menu_bridge, "supabase", finto)
+
+    creata = run(ricette.create_ricetta(ricette.RicettaCreate(**_payload())))
+    assert creata["menu_sync"]["esito"] == "errore"
+    assert finto.collisioni == menu_bridge.TENTATIVI_ID
+
+    esito = run(menu_backfill.ripubblica_menu(database))
+    assert esito["errori"] == 1
+    assert esito["campioni_errori"][0]["esito"] == "errore"
+
+
+def test_la_collisione_su_lotti_ref_non_viene_ritentata():
+    """L'unico altro indice unico di `menu_products`: li' ritentare non serve,
+    l'errore deve uscire subito."""
+    pkey = RuntimeError('duplicate key value violates unique constraint "menu_products_pkey"')
+    ref = RuntimeError('duplicate key value violates unique constraint "menu_products_lotti_ref_uidx"')
+    altro = RuntimeError("connessione persa")
+    assert menu_bridge._e_collisione_di_id(pkey) is True
+    assert menu_bridge._e_collisione_di_id(ref) is False
+    assert menu_bridge._e_collisione_di_id(altro) is False
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 9) Backfill: troncamento dichiarato, task non raccolto dal garbage collector
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_backfill_dichiara_il_troncamento(ambiente, monkeypatch):
+    """Oltre il tetto il giro e' parziale: «completato» mentirebbe."""
+    _, database, _ = ambiente
+    monkeypatch.setattr(menu_backfill, "LIMITE_RICETTE", 2)
+    _semina(database, 5)
+
+    esito = run(menu_backfill.ripubblica_menu(database, dry_run=True))
+    assert esito["troncato"] is True
+    assert esito["ricette_totali"] == 2
+    assert esito["limite_ricette"] == 2
+    assert esito["ricette_ignorate"] == 3
+
+    async def giro():
+        await menu_backfill._ripubblica_in_background(database)
+        return await menu_backfill.stato_ripubblicazione_menu(database)
+
+    stato = run(giro())
+    assert stato["stato"] == "completato_parziale"
+    assert stato["risultato"]["troncato"] is True
+
+
+def test_backfill_sotto_il_tetto_non_e_troncato(ambiente):
+    _, database, _ = ambiente
+    _semina(database, 2)
+    esito = run(menu_backfill.ripubblica_menu(database, dry_run=True))
+    assert esito["troncato"] is False and esito["ricette_ignorate"] == 0
+
+
+def test_il_task_del_backfill_resta_referenziato(ambiente):
+    """Senza riferimento il garbage collector puo' raccoglierlo a meta' giro:
+    il `finally` che azzera `_in_corso` non gira e ogni avvio successivo
+    risponde «Ripubblicazione gia' in corso» fino al riavvio del processo."""
+    _, database, _ = ambiente
+    _semina(database, 1)
+    menu_backfill._task_in_corso = None
+
+    async def giro():
+        assert menu_backfill.avvia_ripubblicazione_in_background(database) is True
+        task = menu_backfill._task_in_corso
+        assert task is not None and not task.done()
+        # Un secondo avvio non parte finche' il primo e' in volo
+        assert menu_backfill.avvia_ripubblicazione_in_background(database) is False
+        await task
+        return task
+
+    task = run(giro())
+    assert menu_backfill._task_in_corso is task
+    assert menu_backfill.ripubblicazione_in_corso() is False
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 10) Categoria omonima di una di Qromo: avviso, non blocco
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_categoria_omonima_di_qromo_crea_ma_avvisa(ambiente):
+    _, _, finto = ambiente
+    finto.tabelle["menu_categories"] = [
+        {"id": 7, "name": "Bar", "name_it": "Bar", "image": None, "origine": None}]
+
+    creata = run(menu_bridge.crea_categoria_menu("Bar"))
+    assert creata["creata"] is True
+    assert creata["avviso"] and "Bar" in creata["avviso"] and "7" in creata["avviso"]
+    # Non si blocca: il titolare potrebbe volerne davvero una sua
+    assert len(finto.tabelle["menu_categories"]) == 2
+
+    # L'avviso resta anche alla seconda chiamata (idempotente)
+    ripetuta = run(menu_bridge.crea_categoria_menu("Bar"))
+    assert ripetuta["creata"] is False and ripetuta["avviso"]
+    assert len(finto.tabelle["menu_categories"]) == 2
+
+
+def test_senza_omonimia_nessun_avviso(ambiente):
+    _, _, _ = ambiente
+    creata = run(menu_bridge.crea_categoria_menu("Colazioni"))
+    assert creata["creata"] is True and creata["avviso"] is None

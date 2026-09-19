@@ -618,17 +618,35 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   `visible`): le righe di Lotti sopravvivono alla sync Qromo e l'esito
   `menu_sync` non fa mai fallire l'endpoint Lotti. Il pregresso si recupera
   con `POST /api/ricette-ripubblica-menu` (admin, in background).
+- **Il menu pubblico non mostra categorie e sottocategorie senza prodotti
+  visibili** (`menu_routes._build_hierarchy`): un riquadro vuoto in home ha
+  l'immagine rotta e «0 prodotti». Il filtro sta in lettura perché è l'unico
+  punto che copre anche le categorie già vuote in produzione, e perché
+  `menu_products.subcategory_id` è NOT NULL (una riga nascosta la sua sezione
+  deve comunque averla). Una categoria con prodotti in una sola sottocategoria
+  resta visibile.
+- **Le righe `origine = "lotti"` le possiede Lotti**: `PUT
+  /api/menu/admin/products/{id}` le rifiuta con 409 (il ponte le riscrive
+  intere a ogni salvataggio della ricetta, una correzione fatta nel Menu
+  sparirebbe senza avviso).
 - La ricetta ha **due prezzi**: `prezzo_vendita` è il prezzo **al banco** (base
   di food cost e margine) e `prezzo_tavolo` è il prezzo **al tavolo**, che è
   quello mostrato dal Menu digitale. Finché il prezzo al tavolo non è deciso il
   Menu espone quello al banco, e il ripiego resta visibile
   (`prezzo_tavolo_impostato` in `/api/ricette-prezzi`): non si copia
   `prezzo_vendita` dentro `prezzo_tavolo`, o un prezzo mai scelto sembrerebbe
-  deciso.
+  deciso. **Un prezzo è valido solo se finito e maggiore di zero**: negativi,
+  `nan` e `inf` sono 400 all'ingresso, `0` significa «togli il prezzo», e il
+  cruscotto usa la stessa nozione del ponte. Una ricetta **senza nessuno dei
+  due prezzi** entra nel Menu **nascosta** (una riga senza prezzo sarebbe
+  ordinabile a 0 €) ed è contata nel backfill (`senza_prezzo`,
+  `nascoste_per_prezzo`): non si inventa un prezzo di ripiego.
 - La categoria del Menu si sceglie sulla ricetta (`menu_category_id`,
   `menu_subcategory_id`); senza scelta resta «Produzione Ceraldi» più la
   sottocategoria per reparto. Le categorie si leggono e si creano da Lotti con
-  `/api/menu-categorie`, sempre con `origine` valorizzata. **Una categoria di
+  `/api/menu-categorie`, sempre con `origine` valorizzata; se esiste già una
+  categoria con quel nome di **altra** origine la creazione riesce ma la
+  risposta porta un `avviso` (due riquadri «Bar» in home). **Una categoria di
   Qromo (`origine IS NULL`) non è agganciabile**: la sync la cancella e un
   prodotto di Lotti appeso lì farebbe fallire la cancellazione per chiave
   esterna.

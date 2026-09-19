@@ -26,7 +26,7 @@ GET  /api/tablet/{reparto}          — prodotti per vista tablet
 
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Body, Depends
 from fastapi.responses import HTMLResponse, Response
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 from typing import List, Optional, Any
 from datetime import datetime, timezone
 from pathlib import Path
@@ -34,6 +34,7 @@ import uuid
 import hashlib
 import logging
 import json
+import math
 import unicodedata
 _LOG_INIT = logging.getLogger("uvicorn.error")
 import re
@@ -522,6 +523,21 @@ class RicettaCreate(BaseModel):
     # replicata nel Menu, questo flag decide se compare nel menu PUBBLICO.
     # None in aggiornamento = lascia il valore gia' salvato; in creazione = False.
     menu_pubblico: Optional[bool] = None
+
+    @field_validator("prezzo_vendita", "prezzo_tavolo")
+    @classmethod
+    def _prezzo_finito_e_non_negativo(cls, valore: Optional[float]) -> Optional[float]:
+        """Un prezzo negativo o ``nan``/``inf`` non deve entrare in archivio:
+        finirebbe nella colonna ``price`` del Menu (``"nan€"``, perche'
+        ``nan <= 0`` e' False) sotto gli occhi dei clienti. Vedi
+        ``_prezzo_da_salvare`` per gli endpoint dedicati e la PATCH."""
+        if valore is None:
+            return None
+        if not math.isfinite(valore):
+            raise ValueError("prezzo non valido: serve un numero finito in euro")
+        if valore < 0:
+            raise ValueError("il prezzo non puo' essere negativo")
+        return valore
 
 
 # Valori prodotti da _categorizza_reparto e mappati dal ponte verso le
@@ -1193,6 +1209,16 @@ async def rendi_ricetta_archivio_operativa(
     return {"creata": True, "ricetta": doc}
 
 
+def _prezzo_tavolo_deciso(valore: Any) -> bool:
+    """Stessa nozione di «prezzo deciso» usata dal ponte verso il Menu
+    (``menu_bridge.prezzo_menu``): un ``-2`` o un ``nan`` rimasti in archivio
+    non sono un prezzo, e il cruscotto non deve dichiararli decisi mentre il
+    cliente vede il prezzo al banco."""
+    from app.lotti.servizi import menu_bridge
+
+    return menu_bridge.prezzo_menu(valore) is not None
+
+
 @router.get("/ricette-prezzi")
 async def get_ricette_prezzi():
     ricette = await db.ricette.find({}, {"_id": 0}).sort("nome", 1).to_list(500)
@@ -1248,7 +1274,7 @@ async def get_ricette_prezzi():
                     "costo_pezzo": round(costo_var_pezzo, 4),
                     "prezzo_vendita": pv_var,
                     "prezzo_tavolo": v.get("prezzo_tavolo"),
-                    "prezzo_tavolo_impostato": bool(v.get("prezzo_tavolo")),
+                    "prezzo_tavolo_impostato": _prezzo_tavolo_deciso(v.get("prezzo_tavolo")),
                     "margine_pct": round(margine_var, 1),
                 }
             )
@@ -1264,7 +1290,7 @@ async def get_ricette_prezzi():
                 # ripiega sul banco. `prezzo_tavolo_impostato=False` e' il
                 # segnale che quel prezzo non e' mai stato scelto da nessuno.
                 "prezzo_tavolo": r.get("prezzo_tavolo"),
-                "prezzo_tavolo_impostato": bool(r.get("prezzo_tavolo")),
+                "prezzo_tavolo_impostato": _prezzo_tavolo_deciso(r.get("prezzo_tavolo")),
                 "margine_pct": round(margine, 1),
                 "reparto": r.get("reparto", ""),
                 "varianti": varianti_out,
@@ -2410,7 +2436,10 @@ async def ripubblica_ricette_nel_menu(
     Parte in background e risponde subito; avanzamento ed esito su
     `GET /api/ricette-ripubblica-menu/stato`. Con `?dry_run=true` risponde
     invece subito con i conteggi, compreso quante ricette non hanno ancora un
-    prezzo al tavolo e stanno quindi esponendo nel Menu quello al banco.
+    prezzo al tavolo e stanno quindi esponendo nel Menu quello al banco, e
+    quante non hanno NESSUN prezzo (`senza_prezzo`) e quindi non possono
+    entrare visibili nel Menu. Se l'archivio supera `LIMITE_RICETTE` il
+    risultato porta `troncato: true` con le ricette non trattate.
     """
     from app.lotti.servizi.menu_backfill import (
         avvia_ripubblicazione_in_background, ripubblica_menu, ripubblicazione_in_corso,
@@ -2931,21 +2960,59 @@ async def deduplica_ricette_base(
     }
 
 
+ETICHETTA_PREZZO = {"prezzo_vendita": "Prezzo al banco", "prezzo_tavolo": "Prezzo al tavolo"}
+
+
+def _prezzo_da_salvare(prezzo: Any, etichetta: str) -> Optional[float]:
+    """Valida un prezzo in ingresso e lo traduce nel valore da salvare.
+
+    Un ``float`` di FastAPI accetta anche ``nan`` e ``inf``: passavano dritti
+    in archivio e poi nella colonna ``price`` del Menu come ``"nan€"`` /
+    ``"inf€"`` (``nan <= 0`` e' False, quindi nessun filtro li fermava) sotto
+    gli occhi dei clienti. I negativi finivano in archivio e il ponte
+    ripiegava sull'altro prezzo, ma il cruscotto continuava a dichiararlo
+    «deciso».
+
+    ``0`` non e' un prezzo: significa **togli il prezzo**, quindi si salva
+    ``None`` (lo stesso valore di «mai deciso»). Cosi' il campo ha un solo
+    modo di essere vuoto e ``prezzo_tavolo_impostato`` non mente."""
+    if prezzo is None or prezzo == "":
+        return None
+    try:
+        valore = float(prezzo)
+    except (TypeError, ValueError):
+        raise HTTPException(400, f"{etichetta} non valido: serve un numero in euro")
+    if not math.isfinite(valore):
+        raise HTTPException(400, f"{etichetta} non valido: serve un numero finito in euro")
+    if valore < 0:
+        raise HTTPException(400, f"{etichetta} non puo' essere negativo")
+    return valore if valore > 0 else None
+
+
 @router.put("/ricette/{ricetta_id}/prezzo-vendita")
 async def set_prezzo_vendita(ricetta_id: str, prezzo: float = Query(...)):
     """Prezzo AL BANCO: e' la base del food cost e del margine.
-    Il Menu digitale mostra invece il prezzo al tavolo (vedi sotto)."""
-    await db.ricette.update_one({"id": ricetta_id}, {"$set": {"prezzo_vendita": prezzo}})
-    return {"ok": True, "prezzo_vendita": prezzo, "menu_sync": await _sincronizza_menu(ricetta_id)}
+    Il Menu digitale mostra invece il prezzo al tavolo (vedi sotto).
+    ``prezzo = 0`` toglie il prezzo; negativi, ``nan`` e ``inf`` sono 400."""
+    valore = _prezzo_da_salvare(prezzo, "Prezzo al banco")
+    r = await db.ricette.update_one({"id": ricetta_id}, {"$set": {"prezzo_vendita": valore}})
+    if r.matched_count == 0:
+        raise HTTPException(404, "Ricetta non trovata")
+    return {"ok": True, "prezzo_vendita": valore, "prezzo_rimosso": valore is None,
+            "menu_sync": await _sincronizza_menu(ricetta_id)}
 
 
 @router.put("/ricette/{ricetta_id}/prezzo-tavolo")
 async def set_prezzo_tavolo(ricetta_id: str, prezzo: float = Query(...)):
-    """Prezzo AL TAVOLO: e' quello che il Menu digitale mostra ai clienti."""
-    r = await db.ricette.update_one({"id": ricetta_id}, {"$set": {"prezzo_tavolo": prezzo}})
+    """Prezzo AL TAVOLO: e' quello che il Menu digitale mostra ai clienti.
+    ``prezzo = 0`` toglie il prezzo al tavolo (il Menu torna a esporre quello
+    al banco); negativi, ``nan`` e ``inf`` sono 400."""
+    valore = _prezzo_da_salvare(prezzo, "Prezzo al tavolo")
+    r = await db.ricette.update_one({"id": ricetta_id}, {"$set": {"prezzo_tavolo": valore}})
     if r.matched_count == 0:
         raise HTTPException(404, "Ricetta non trovata")
-    return {"ok": True, "prezzo_tavolo": prezzo, "menu_sync": await _sincronizza_menu(ricetta_id)}
+    return {"ok": True, "prezzo_tavolo": valore, "prezzo_rimosso": valore is None,
+            "menu_sync": await _sincronizza_menu(ricetta_id)}
 
 
 @router.put("/ricette/{ricetta_id}/reparto")
@@ -3217,6 +3284,11 @@ async def aggiorna_campo_ricetta(ricetta_id: str, body: dict):
         raise HTTPException(400, "Nessun campo valido da aggiornare")
     if "menu_pubblico" in update:
         update["menu_pubblico"] = bool(update["menu_pubblico"])
+    # Stessa nozione di «prezzo valido» degli endpoint dedicati: niente
+    # negativi, niente nan/inf, 0 = togli il prezzo.
+    for campo_prezzo, etichetta in ETICHETTA_PREZZO.items():
+        if campo_prezzo in update:
+            update[campo_prezzo] = _prezzo_da_salvare(update[campo_prezzo], etichetta)
     # Sincronizza pezzi_ricetta_base ↔ porzioni
     if "pezzi_ricetta_base" in update and "porzioni" not in update:
         update["porzioni"] = update["pezzi_ricetta_base"]

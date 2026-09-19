@@ -19,6 +19,10 @@ Prezzo (decisione del titolare 19/09/2026): la ricetta ha due prezzi, al banco
 (``prezzo_vendita``, quello del food cost) e al tavolo (``prezzo_tavolo``). Il
 Menu digitale mostra il prezzo AL TAVOLO. Finche' il prezzo al tavolo non e'
 stato deciso si continua a esporre quello al banco (vedi ``prezzo_per_menu``).
+Una ricetta **senza nessuno dei due prezzi** viene pubblicata ma resta
+nascosta (``visible = false``): senza prezzo il carrello del Menu la
+conterebbe 0 euro. Il caso e' segnalato nell'esito (``prezzo_mancante``,
+``motivo_nascosto``) e contato dal backfill.
 
 Categoria: se la ricetta ha ``menu_category_id`` (scelto dal titolare fra le
 categorie del Menu create da Lotti, vedi ``app/lotti/routers/menu_categorie.py``)
@@ -56,6 +60,10 @@ CATEGORIA_NOME_IT = "Produzione Ceraldi"
 # collidere con un futuro prodotto Qromo, le righe create da Lotti partono da
 # una base alta.
 ID_MINIMO_LOTTI = 1_000_000
+
+# Quante volte rileggere max(id) e riprovare l'insert quando un altro thread
+# ha preso lo stesso id nel frattempo (vedi ``_inserisci_con_id``).
+TENTATIVI_ID = 5
 
 # reparto Lotti -> sottocategoria Menu (name, name_it)
 SOTTOCATEGORIE_REPARTO = {
@@ -203,6 +211,51 @@ def _prossimo_id(tabella: str) -> int:
     return max(massimo + 1, ID_MINIMO_LOTTI)
 
 
+def _e_collisione_di_id(errore: Exception) -> bool:
+    """Vero solo per la violazione della PRIMARY KEY (``<tabella>_pkey``).
+
+    L'altro unico indice unico di ``menu_products`` e' quello su ``lotti_ref``:
+    se a collidere e' quello il problema non e' l'id, ritentare non serve e
+    l'errore deve uscire subito."""
+    testo = str(errore).lower()
+    if "23505" not in testo and "duplicate key" not in testo:
+        return False
+    return "_pkey" in testo or "primary key" in testo
+
+
+def _inserisci_con_id(tabella: str, riga: dict) -> int:
+    """Inserisce assegnando ``max(id)+1`` e **ritenta sulla collisione**.
+
+    Gli id di ``menu_*`` sono assegnati dall'app, non da una sequenza: fra la
+    ``select max(id)`` e la ``insert`` un altro thread puo' infilarsi
+    (``_pubblica_sync`` gira in ``asyncio.to_thread`` e il backfill cicla per
+    minuti mentre il form continua a salvare). Senza ritentativo la seconda
+    insert violava la primary key, il ponte restituiva ``errore`` e la ricetta
+    appena salvata non arrivava nel Menu.
+
+    Il ciclo e' limitato a ``TENTATIVI_ID`` giri e ogni giro rilegge il massimo:
+    esaurititi i tentativi l'eccezione risale, quindi un fallimento definitivo
+    resta visibile nell'esito del ponte e nei conteggi del backfill."""
+    ultimo_errore: Optional[Exception] = None
+    for tentativo in range(TENTATIVI_ID):
+        nuovo_id = _prossimo_id(tabella)
+        try:
+            supabase.table(tabella).insert({**riga, "id": nuovo_id}).execute()
+            return nuovo_id
+        except Exception as errore:  # noqa: BLE001 - rilanciata se non e' l'id
+            if not _e_collisione_di_id(errore):
+                raise
+            ultimo_errore = errore
+            logger.warning(
+                "Lotti->Menu: id %s gia' preso su %s, ritento (%s/%s)",
+                nuovo_id, tabella, tentativo + 1, TENTATIVI_ID,
+            )
+    raise RuntimeError(
+        f"Impossibile assegnare un id libero su {tabella} dopo {TENTATIVI_ID} "
+        f"tentativi: {ultimo_errore}"
+    )
+
+
 def _categoria_lotti_id() -> int:
     res = (
         supabase.table(TABELLA_CATEGORIE).select("id")
@@ -211,12 +264,10 @@ def _categoria_lotti_id() -> int:
     )
     if res.data:
         return int(res.data[0]["id"])
-    nuovo_id = _prossimo_id(TABELLA_CATEGORIE)
-    supabase.table(TABELLA_CATEGORIE).insert({
-        "id": nuovo_id, "name": CATEGORIA_NOME, "name_it": CATEGORIA_NOME_IT,
+    return _inserisci_con_id(TABELLA_CATEGORIE, {
+        "name": CATEGORIA_NOME, "name_it": CATEGORIA_NOME_IT,
         "image": None, "origine": ORIGINE_LOTTI,
-    }).execute()
-    return nuovo_id
+    })
 
 
 def _sottocategoria_lotti_id(categoria_id: int, reparto: Any) -> int:
@@ -228,12 +279,10 @@ def _sottocategoria_lotti_id(categoria_id: int, reparto: Any) -> int:
     )
     if res.data:
         return int(res.data[0]["id"])
-    nuovo_id = _prossimo_id(TABELLA_SOTTOCATEGORIE)
-    supabase.table(TABELLA_SOTTOCATEGORIE).insert({
-        "id": nuovo_id, "category_id": categoria_id, "name": nome, "name_it": nome_it,
+    return _inserisci_con_id(TABELLA_SOTTOCATEGORIE, {
+        "category_id": categoria_id, "name": nome, "name_it": nome_it,
         "image": None, "origine": ORIGINE_LOTTI,
-    }).execute()
-    return nuovo_id
+    })
 
 
 def _categoria_di_lotti(categoria_id: int) -> Optional[dict]:
@@ -327,6 +376,17 @@ def _pubblica_sync(ricetta: dict, foto: Optional[dict], visibile: bool) -> dict:
     immagine = _immagine_per_prodotto(ricetta, foto, esistente)
     prezzo, prezzo_origine = prezzo_per_menu(ricetta)
 
+    # Senza NESSUN prezzo (ne' tavolo ne' banco) la riga non puo' diventare
+    # visibile: `price` resterebbe "" e il carrello del Menu la conteggerebbe
+    # 0 euro (`order_models.compute_total` scarta il valore non numerico e
+    # continua), cioe' un prodotto ordinabile gratis. La riga si pubblica
+    # comunque, ma nascosta: resta idempotente per `lotti_ref` e torna
+    # visibile da sola appena il titolare mette un prezzo. Non si inventa un
+    # prezzo di ripiego.
+    prezzo_mancante = prezzo is None
+    visibile_richiesta = bool(visibile)
+    visibile_effettivo = visibile_richiesta and not prezzo_mancante
+
     riga = {
         "category_id": categoria_id,
         "subcategory_id": sottocategoria_id,
@@ -339,7 +399,7 @@ def _pubblica_sync(ricetta: dict, foto: Optional[dict], visibile: bool) -> dict:
         "image": immagine,
         "origine": ORIGINE_LOTTI,
         "lotti_ref": lotti_ref,
-        "visible": bool(visibile),
+        "visible": visibile_effettivo,
     }
 
     if esistente:
@@ -347,21 +407,25 @@ def _pubblica_sync(ricetta: dict, foto: Optional[dict], visibile: bool) -> dict:
         supabase.table(TABELLA_PRODOTTI).update(riga).eq("id", prodotto_id).execute()
         esito = "aggiornato"
     else:
-        prodotto_id = _prossimo_id(TABELLA_PRODOTTI)
-        supabase.table(TABELLA_PRODOTTI).insert({"id": prodotto_id, **riga}).execute()
+        prodotto_id = _inserisci_con_id(TABELLA_PRODOTTI, riga)
         esito = "pubblicato"
 
     return {
         "esito": esito,
         "menu_product_id": prodotto_id,
         "lotti_ref": lotti_ref,
-        "visible": bool(visibile),
+        "visible": visibile_effettivo,
+        "visibile_richiesta": visibile_richiesta,
         "image": immagine,
         "category_id": categoria_id,
         "subcategory_id": sottocategoria_id,
         "categoria_origine": categoria_origine,
         "price": prezzo or "",
         "prezzo_origine": prezzo_origine,
+        "prezzo_mancante": prezzo_mancante,
+        "motivo_nascosto": (
+            "prezzo_assente" if prezzo_mancante and visibile_richiesta else None
+        ),
     }
 
 
@@ -466,20 +530,46 @@ def _elenco_categorie_sync() -> dict:
             "selezionabili": sum(1 for v in voci if v["selezionabile"])}
 
 
+def _avviso_omonimia(nome_it: str) -> Optional[str]:
+    """Avviso quando nel Menu esiste gia' una categoria con quel nome ma di
+    un'altra origine (tipicamente Qromo).
+
+    L'idempotenza sul nome copre solo le categorie di Lotti: creare una "Bar"
+    di Lotti quando Qromo ha gia' una "Bar" riesce, e il cliente si trova due
+    riquadri identici nella home. Non si blocca — il titolare potrebbe volerne
+    davvero una sua, separata da quella di Qromo — ma la risposta lo dice."""
+    righe = (
+        supabase.table(TABELLA_CATEGORIE).select("id,name,name_it,origine")
+        .eq("name_it", nome_it).execute().data or []
+    )
+    omonime = [r for r in righe if (r.get("origine") or None) != ORIGINE_LOTTI]
+    if not omonime:
+        return None
+    provenienze = sorted({str(r.get("origine") or "Qromo") for r in omonime})
+    identificativi = ", ".join(str(r["id"]) for r in omonime)
+    return (
+        f"Nel Menu esiste gia' una categoria «{nome_it}» ({'/'.join(provenienze)}, "
+        f"id {identificativi}): i clienti vedranno due riquadri con lo stesso "
+        "nome. Se non e' voluto, usa un nome diverso."
+    )
+
+
 def _crea_categoria_sync(nome_it: str, nome: str, immagine: Optional[str]) -> dict:
     # Idempotente sul nome italiano fra le categorie di Lotti: due clic sullo
     # stesso bottone non creano due "Colazioni".
+    avviso = _avviso_omonimia(nome_it)
     esistente = (
         supabase.table(TABELLA_CATEGORIE).select("id,name,name_it,origine")
         .eq("origine", ORIGINE_LOTTI).eq("name_it", nome_it).limit(1).execute()
     )
     if esistente.data:
-        return {"creata": False, "categoria": _voce_categoria(esistente.data[0], [])}
-    nuovo_id = _prossimo_id(TABELLA_CATEGORIE)
-    riga = {"id": nuovo_id, "name": nome, "name_it": nome_it,
+        return {"creata": False, "categoria": _voce_categoria(esistente.data[0], []),
+                "avviso": avviso}
+    riga = {"name": nome, "name_it": nome_it,
             "image": immagine or None, "origine": ORIGINE_LOTTI}
-    supabase.table(TABELLA_CATEGORIE).insert(riga).execute()
-    return {"creata": True, "categoria": _voce_categoria(riga, [])}
+    nuovo_id = _inserisci_con_id(TABELLA_CATEGORIE, riga)
+    return {"creata": True, "categoria": _voce_categoria({**riga, "id": nuovo_id}, []),
+            "avviso": avviso}
 
 
 def _crea_sottocategoria_sync(categoria_id: int, nome_it: str, nome: str,
@@ -493,11 +583,10 @@ def _crea_sottocategoria_sync(categoria_id: int, nome_it: str, nome: str,
     )
     if esistente.data:
         return {"creata": False, "sottocategoria": esistente.data[0]}
-    nuovo_id = _prossimo_id(TABELLA_SOTTOCATEGORIE)
-    riga = {"id": nuovo_id, "category_id": categoria_id, "name": nome,
+    riga = {"category_id": categoria_id, "name": nome,
             "name_it": nome_it, "image": immagine or None, "origine": ORIGINE_LOTTI}
-    supabase.table(TABELLA_SOTTOCATEGORIE).insert(riga).execute()
-    return {"creata": True, "sottocategoria": riga}
+    nuovo_id = _inserisci_con_id(TABELLA_SOTTOCATEGORIE, riga)
+    return {"creata": True, "sottocategoria": {**riga, "id": nuovo_id}}
 
 
 async def elenco_categorie_menu() -> dict:
