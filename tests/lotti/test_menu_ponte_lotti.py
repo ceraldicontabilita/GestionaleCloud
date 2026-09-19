@@ -18,7 +18,7 @@ from mongomock_motor import AsyncMongoMockClient
 from fastapi import HTTPException
 
 from app.lotti.servizi import menu_backfill, menu_bridge
-from app.lotti.tests.test_menu_bridge import _FakeSupabase, _Query, _payload
+from tests.lotti.test_menu_bridge import _FakeSupabase, _Query, _payload
 
 
 def run(coro):
