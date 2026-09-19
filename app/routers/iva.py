@@ -754,14 +754,23 @@ async def _fatture_anno(db, anno: int) -> List[Dict[str, Any]]:
         "iva": 1, "iva_detraibile": 1, "iva_utilizzata": 1,
         "stato_detrazione_iva": 1, "tipo_documento": 1, "annullata": 1,
     }
-    # Fatture attribuite all'anno + (P2-d) fatture DA_VERIFICARE con periodo
-    # nullo la cui data (documento/ricezione) cade nell'anno: senza questo
-    # ramo la categoria "IVA da verificare" del §16 non le contava mai.
+    # Fatture attribuite all'anno + fatture con periodo nullo la cui data
+    # (documento/ricezione) cade nell'anno: senza questo ramo la categoria
+    # "IVA da verificare" del §16 non le contava mai.
+    #
+    # Il secondo ramo pretendeva `stato_detrazione_iva == "DA_VERIFICARE"`, e
+    # cosi' una fattura che non e' MAI passata dal motore — periodo nullo E
+    # stato assente — non rientrava ne' nel primo ramo ne' nel secondo:
+    # spariva dal riepilogo annuale senza comparire da nessuna parte.
+    # Misurato il 19/09/2026: 366 fatture attive in quello stato, per
+    # 28.742,08 EUR di IVA, tutte con data entro il 20/05/2026. Lo stato
+    # assente vale come "da verificare": e' il caso piu' da verificare di
+    # tutti, non uno da nascondere.
     return await db[COLL].find(
         {"$or": [
             {"periodo_iva_attribuito": {"$regex": f"^{anno}"}},
             {"periodo_iva_attribuito": {"$in": [None, ""]},
-             "stato_detrazione_iva": "DA_VERIFICARE",
+             "stato_detrazione_iva": {"$in": [None, "", "DA_VERIFICARE"]},
              "$or": [
                  {"data_documento": {"$regex": f"^{anno}"}},
                  {"data_ricezione": {"$regex": f"^{anno}"}},
