@@ -135,20 +135,23 @@ def test_bonifico_del_fascicolo_entra_in_hr_con_pdf_e_stato_paga(basi):
     assert sorgente["hr_deposito"]["dipendente_id"] == "dip-vespa"
 
 
-def test_bonifico_senza_fascicolo_e_senza_parola_stipendio_va_in_coda(basi):
+def test_bonifico_senza_fascicolo_e_senza_parola_stipendio_si_associa_comunque(basi):
+    """Decisione del titolare (19/09/2026): "il nome di un dipendente e' un
+    dipendente" — nome+cognome riconosciuti in modo univoco bastano da soli,
+    anche senza fascicolo Drive e senza la parola "stipendio" in causale
+    (prima di questa decisione finiva in coda, v. git history)."""
     db, hr = basi
     transfer = _transfer(source="upload_manuale", source_path=None)
     _run(db.bonifici_transfers.insert_one(transfer))
 
     marca = _run(ponte.deposita_bonifico_transfer_in_hr(db, transfer))
 
-    assert marca["esito"] == "in_coda"
-    assert marca["motivo"] == "senza_segnale_stipendio"
-    coda = _run(hr.bonifici_da_associare.find_one({"id": marca["coda_id"]}, {"_id": 0}))
-    assert coda["stato"] == "da_associare" and coda["importo"] == 1000.0
-    assert coda["pdf_data"] == PDF and coda["hash"] == "a" * 64
-    assert coda["fonte"] == ponte.ORIGINE_PDF
-    assert _run(hr.pagamenti_esiti.count_documents({})) == 0
+    assert marca["esito"] == "depositato"
+    assert marca["dipendente_id"] == "dip-vespa"
+    assert (marca["mese"], marca["anno"]) == (1, 2026)
+    esito = _run(hr.pagamenti_esiti.find_one({"key": marca["key"]}, {"_id": 0}))
+    assert esito["dipendente_id"] == "dip-vespa" and esito["importo"] == 1000.0
+    assert _run(hr.bonifici_da_associare.count_documents({})) == 0
 
 
 def test_bonifico_con_causale_stipendio_ma_cognome_ambiguo_va_in_coda(basi):
@@ -172,12 +175,38 @@ def test_bonifico_gia_importato_dal_drive_hr_non_viene_duplicato(basi):
 
 
 def test_bonifico_tfr_o_fattura_non_entra_mai(basi):
+    """Il veto esplicito (_ESCLUSIONE_RE) vince SEMPRE, anche con un nome di
+    dipendente riconosciuto dentro la causale ("Vespa Vincenzo" e' univoco,
+    ma "TFR" dice chiaramente che non e' lo stipendio del mese): il nome da
+    solo basta per uno stipendio (v. test sopra), non per bypassare
+    un'esclusione esplicita."""
     db, hr = basi
     marca = _run(ponte.deposita_bonifico_transfer_in_hr(
         db, _transfer(causale="Vespa Vincenzo TFR", source_path=None)))
     assert marca["esito"] == "non_stipendio"
     marca = _run(ponte.deposita_bonifico_transfer_in_hr(db, _transfer(fattura_associata=True)))
     assert marca["esito"] == "non_stipendio" and marca["motivo"] == "fattura_fornitore"
+    assert _run(hr.pagamenti_esiti.count_documents({})) == 0
+    assert _run(hr.bonifici_da_associare.count_documents({})) == 0
+
+
+def test_omonimo_pagato_per_conto_terzi_o_come_professionista_non_entra(basi):
+    """Audit 19/09/2026 su PR #500: un omonimo di un dipendente puo' essere
+    beneficiario di un pagamento che non e' affatto uno stipendio, senza che
+    la causale nomini una SRL/SPA ne' le parole gia' coperte (TFR/fattura/
+    commissione). _ESCLUSIONE_RE deve fermare anche questi casi, non solo
+    quelli con una ragione sociale societaria dentro."""
+    db, hr = basi
+    casi = [
+        "BONIFICO A FAVORE DI VESPA VINCENZO PER CONTO DI ACME FORNITURA MERCE",
+        "VS.DISP. FAVORE VESPA VINCENZO - ACCONTO LAVORI RISTRUTTURAZIONE LOCALE",
+        "VESPA VINCENZO SALDO CONSULENZA OCCASIONALE 2026 RITENUTA APPLICATA",
+        "BONIFICO VESPA VINCENZO RIMBORSO CAPARRA EVENTO ANNULLATO",
+    ]
+    for causale in casi:
+        marca = _run(ponte.deposita_bonifico_transfer_in_hr(
+            db, _transfer(causale=causale, source_path=None)))
+        assert marca["esito"] == "non_stipendio", f"causale non esclusa: {causale!r}"
     assert _run(hr.pagamenti_esiti.count_documents({})) == 0
     assert _run(hr.bonifici_da_associare.count_documents({})) == 0
 
@@ -250,17 +279,24 @@ def test_stessa_paga_vista_da_pdf_e_da_banca_arricchisce_senza_duplicare(basi):
     assert esiti[0]["pdf_data"] == PDF
 
 
-def test_uscita_a_dipendente_senza_parola_stipendio_va_in_coda(basi):
+def test_uscita_a_dipendente_senza_parola_stipendio_si_associa_comunque(basi):
+    """Stesso caso del test PDF sopra, per l'ingresso banca: il cognome
+    "Taiano Luigi" e' univoco e basta da solo, senza la parola "stipendio"."""
     db, hr = basi
     mov = _movimento(id="m-3", importo=-1500,
                      descrizione="VOSTRA DISPOSIZIONE - VS.DISP. RIF. MB0B01411410/90509783 FAVORE Taiano Luigi - ADD.TOT - TAIANO LUIGI")
     marca = _run(ponte.deposita_movimento_banca_in_hr(db, mov))
-    assert marca["esito"] == "in_coda" and marca["motivo"] == "senza_segnale_stipendio"
-    coda = _run(hr.bonifici_da_associare.find_one({"id": marca["coda_id"]}, {"_id": 0}))
-    assert coda["fonte"] == ponte.ORIGINE_BANCA and coda["gestionale_movimento_id"] == "m-3"
+    assert marca["esito"] == "depositato" and marca["dipendente_id"] == "dip-taiano"
+    assert (marca["mese"], marca["anno"]) == (7, 2026)
+    esito = _run(hr.pagamenti_esiti.find_one({"key": "ecm:m-3"}, {"_id": 0}))
+    assert esito["importo"] == 1500.0
+    assert _run(hr.bonifici_da_associare.count_documents({})) == 0
 
 
 def test_uscite_a_fornitori_tfr_e_commissioni_non_entrano(basi):
+    """Il veto esplicito vince anche qui: "Taiano Luigi" e' un nome
+    riconosciuto ma la causale dice TFR, quindi resta escluso (v. commento
+    del test PDF equivalente sopra)."""
     db, hr = basi
     casi = [
         _movimento(id="m-f", importo=-1656.64,
@@ -332,7 +368,11 @@ def test_importa_pdf_bonifico_deposita_in_hr_senza_bloccare_l_ingest(basi, monke
 
 def test_lotto_paghe_stesso_giorno_entra_senza_parola_stipendio(basi):
     """Estratto conto reale gen-apr 2026: 'FAVORE <dipendente> - ADD.TOT' senza
-    causale, ma 3+ dipendenti lo stesso giorno = lotto paghe."""
+    causale, ma 3+ dipendenti lo stesso giorno = lotto paghe. Dal 19/09/2026
+    anche la riga fuori lotto (l-4) si associa da sola: il cognome "Taiano
+    Luigi" e' univoco e basta, il lotto paghe resta rilevante solo per il
+    PERIODO (mese/anno) delle righe del lotto, non piu' per decidere SE
+    associare."""
     db, hr = basi
     _run(hr.dipendenti.insert_one({"id": "dip-lesina", "nome": "Angela", "cognome": "Lesina",
                                    "nome_completo": "Lesina Angela", "codice_fiscale": "LSNNGL92E45F839Q"}))
@@ -343,10 +383,11 @@ def test_lotto_paghe_stesso_giorno_entra_senza_parola_stipendio(basi):
                    descrizione="VS.DISP. RIF. MB0B10283922/90368225 FAVORE TAIANO LUIGI - ADD.TOT"),
         _movimento(id="l-3", data="2026-02-03", importo=-1000,
                    descrizione="VS.DISP. RIF. MB0B10283457/90367437 FAVORE LESINA ANGELA - ADD.TOT"),
-        # giorno diverso, un solo dipendente: resta in coda
+        # giorno diverso, un solo dipendente: si associa comunque (nome
+        # univoco), ma senza il segnale "lotto_paghe"
         _movimento(id="l-4", data="2026-02-13", importo=-800,
                    descrizione="VS.DISP. RIF. MB0B16277669/90292976 FAVORE TAIANO LUIGI - ADD.TOT"),
-        # cumulativo senza nomi: coda (mai scartato)
+        # cumulativo senza nomi: coda (mai scartato, nessun nome da risolvere)
         _movimento(id="l-5", data="2026-03-16", importo=-1147,
                    descrizione="VS.DISP. RIF. MB0B30867928/90433783 FAVORE BENEFICIARI VARI DISTINTA - ADD.TOT"),
     ]
@@ -354,14 +395,16 @@ def test_lotto_paghe_stesso_giorno_entra_senza_parola_stipendio(basi):
 
     report = _run(ponte.deposita_pagamenti_in_hr(db))
 
-    assert report["estratto_conto"] == {"depositato": 3, "in_coda": 2}
+    assert report["estratto_conto"] == {"depositato": 4, "in_coda": 1}
     marche = {m["id"]: m for m in _run(db.estratto_conto_movimenti.find({}, {"_id": 0}).to_list(None))}
     assert marche["l-1"]["hr_deposito"]["segnale"] == "lotto_paghe"
     assert (marche["l-1"]["hr_deposito"]["mese"], marche["l-1"]["hr_deposito"]["anno"]) == (1, 2026)
-    assert marche["l-4"]["hr_deposito"]["motivo"] == "senza_segnale_stipendio"
+    assert marche["l-4"]["hr_deposito"]["esito"] == "depositato"
+    assert marche["l-4"]["hr_deposito"].get("segnale") is None
+    assert (marche["l-4"]["hr_deposito"]["mese"], marche["l-4"]["hr_deposito"]["anno"]) == (1, 2026)
     assert marche["l-5"]["hr_deposito"]["motivo"] == "beneficiari_diversi"
-    assert _run(hr.pagamenti_esiti.count_documents({"origine": ponte.ORIGINE_BANCA})) == 3
-    assert _run(hr.bonifici_da_associare.count_documents({"stato": "da_associare"})) == 2
+    assert _run(hr.pagamenti_esiti.count_documents({"origine": ponte.ORIGINE_BANCA})) == 4
+    assert _run(hr.bonifici_da_associare.count_documents({"stato": "da_associare"})) == 1
 
 
 def test_riesame_righe_in_coda_che_ora_formano_un_lotto_paghe(basi):

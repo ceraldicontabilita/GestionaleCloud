@@ -32,10 +32,21 @@ Regole comuni (le stesse dell'importatore Drive dell'app HR):
 * dipendente risolto da codice fiscale, poi nome completo univoco, poi
   cognome univoco; ambiguo -> coda ``bonifici_da_associare``; nessun
   dipendente -> non e' un pagamento HR (fornitore, PayPal, socio);
-* segnale esplicito "stipendio/salario/acconto/saldo/mensilita'" in causale:
-  senza, il bonifico intestato a un dipendente va in coda, decide una persona;
-* TFR, fatture, commissioni, mutui, fornitori (``_e_movimento_non_stipendio``)
-  non entrano mai, nemmeno in coda;
+* decisione del titolare (19/09/2026): **il nome/cognome di un dipendente
+  riconosciuto in modo univoco basta da solo** come segnale che e' un
+  pagamento a lui, senza bisogno della parola "stipendio/salario/..." in
+  causale ne' di un lotto paghe — "non posso pagare un bonifico a, ad
+  esempio, Vespa Vincenzo e aspettarmi di pagare una fattura di un
+  fornitore, il nome di un dipendente e' un dipendente". Il ``fascicolo``
+  Drive e il ``lotto_paghe`` bancario restano registrati sul pagamento
+  depositato (campo ``segnale``, utile per distinguere a posteriori un
+  lotto di paghe da un bonifico isolato) ma non decidono piu' se
+  depositarlo: quello lo decide solo il nome risolto in modo univoco;
+* resta pero' il veto esplicito: TFR, fatture, commissioni, mutui, fornitori
+  (``_e_movimento_non_stipendio``, ``_ESCLUSIONE_RE``) non entrano mai,
+  nemmeno in coda, **anche quando la causale contiene un nome di dipendente
+  riconosciuto**: la causale che dice chiaramente "e' un'altra cosa" vince
+  sempre sul nome;
 * competenza: periodo scritto in causale/nome file, altrimenti la regola del
   giorno 25 del gestionale (``stipendi_bonifici.competenza_bonifico_stipendio``);
 * dedup: stesso hash del PDF o stessa chiave -> gia' presente; stesso
@@ -79,16 +90,18 @@ ESITO_DATI_INCOMPLETI = "dati_incompleti"
 ESITO_HR_NON_CONFIGURATO = "hr_non_configurato"
 
 _CF_RE = re.compile(r"\b([A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z])\b", re.I)
-_STIPENDIO_RE = re.compile(
-    r"stipend|\bstip\b|\bstip\.|salari|\bsaldo\b|accont|mensilit|"
-    r"tredicesim|quattordicesim|\bpaga\b|\bretribuz",
-    re.I,
-)
 # Pagamenti a un dipendente che NON sono lo stipendio del mese: non entrano
 # in pagamenti_esiti e non vanno nemmeno in coda.
 _ESCLUSIONE_RE = re.compile(
     r"\bTFR\b|fattur|\bFPR\b|\bFT\b\s*\d|prestit|finanziament|COMM\.?\s*SU|"
-    r"rimborso\s+spese|\bnota\s+spese",
+    r"rimbors|\bnota\s+spese|fornitor|"
+    # Audit 19/09/2026 su PR #500: un omonimo di un dipendente puo' comparire
+    # come beneficiario di un pagamento che non e' affatto uno stipendio —
+    # un fornitore individuale/professionista (niente SRL/SPA da riconoscere)
+    # o un pagamento occasionale. Queste parole non compaiono mai in una vera
+    # causale di stipendio, quindi escludono senza creare falsi negativi.
+    r"per\s+conto\s+di|consulenz|occasional|ritenut|caparra|ristrutturazion|"
+    r"\blavori\b",
     re.I,
 )
 _RIF_BANCA_RE = re.compile(r"RIF\.?\s*([A-Z0-9]+(?:/[0-9]+)?)", re.I)
@@ -206,10 +219,6 @@ def e_pagamento_non_stipendio(testo: str) -> bool:
     from app.hr.routers.dipendenti_cloud import _e_movimento_non_stipendio
 
     return _e_movimento_non_stipendio(testo or "")
-
-
-def ha_segnale_stipendio(testo: str) -> bool:
-    return bool(_STIPENDIO_RE.search(testo or ""))
 
 
 def _periodo(mese: Any, anno: Any) -> Optional[Tuple[int, int]]:
@@ -428,10 +437,12 @@ async def _deposita(
 ) -> Dict[str, Any]:
     """Cuore comune ai due ingressi. Ritorna il marcatore da scrivere sul documento sorgente.
 
-    ``segnale_esplicito``: il documento arriva da una fonte che di per se' dice
-    "bonifico stipendio di questo dipendente" (``fascicolo`` Drive della
-    persona, ``lotto_paghe`` bancario dello stesso giorno): la parola
-    "stipendio" in causale non e' richiesta."""
+    ``segnale_esplicito`` (``fascicolo`` Drive della persona, ``lotto_paghe``
+    bancario dello stesso giorno): dal 19/09/2026 non decide piu' se il
+    pagamento viene depositato (basta il nome dipendente risolto in modo
+    univoco da ``risolvi_dipendente``, decisione del titolare, vedi docstring
+    del modulo) — resta solo scritto nel marcatore finale (campo ``segnale``)
+    come metadato utile a distinguere un lotto paghe da un bonifico isolato."""
     if e_pagamento_non_stipendio(testo):
         return _marcatore(ESITO_NON_STIPENDIO)
     if _BENEFICIARI_DIVERSI_RE.search(testo or ""):
@@ -447,17 +458,23 @@ async def _deposita(
         return _marcatore(ESITO_DATI_INCOMPLETI, dipendente_id=(dip or {}).get("id"))
 
     periodo = periodo_bonifico(testo, data, mese_dichiarato, anno_dichiarato)
-    if dip is None or not (segnale_esplicito or ha_segnale_stipendio(testo)) or periodo is None:
-        # ambiguo, oppure intestato a un dipendente ma senza la parola
-        # "stipendio": decide una persona dalla coda HR.
+    # Un nome/cognome risolto in modo univoco (motivo "cf"/"nome"/"cognome")
+    # e' gia' un segnale sufficiente da solo (decisione del titolare,
+    # 19/09/2026): non serve piu' la parola "stipendio" ne' un lotto paghe.
+    # L'esclusione esplicita (TFR/fattura/commissione/...) e' gia' stata
+    # applicata sopra, prima ancora di risolvere il dipendente: resta un
+    # veto valido anche con un nome dipendente riconosciuto dentro.
+    if dip is None or periodo is None:
+        # ambiguo, oppure nessun dipendente riconosciuto: decide una
+        # persona dalla coda HR.
         if dry_run:
-            return _marcatore(ESITO_IN_CODA, motivo=motivo if dip is None else "senza_segnale_stipendio")
+            return _marcatore(ESITO_IN_CODA, motivo=motivo if dip is None else "periodo_sconosciuto")
         coda_id = await _metti_in_coda(
             ctx, hash_pdf=hash_pdf, data=data, importo=importo, causale=causale,
             pdf_filename=pdf_filename, pdf_data=pdf_data, fonte=origine, riferimento=riferimento,
         )
         return _marcatore(ESITO_IN_CODA, coda_id=coda_id,
-                          motivo=motivo if dip is None else "senza_segnale_stipendio")
+                          motivo=motivo if dip is None else "periodo_sconosciuto")
 
     mese, anno = periodo
     esistente, come = ctx.esito_equivalente(dip["id"], importo, data, hash_pdf, key)

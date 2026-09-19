@@ -133,7 +133,8 @@ def _register_bank(app: FastAPI):
     from app.routers.bank import (
         bank_statement_import,
         estratto_conto, assegni,
-        assegni_learning
+        assegni_learning,
+        regole_riconoscimento,
     )
     from app.routers.bonifici_module import router as archivio_bonifici_router
     from app.routers.bonifici_module import associazioni as bonifici_associazioni
@@ -141,6 +142,7 @@ def _register_bank(app: FastAPI):
 
     app.include_router(bank_statement_import.router, prefix="/api/bank-statement", tags=["Bank Statement"])
     app.include_router(estratto_conto.router, prefix="/api/estratto-conto-movimenti", tags=["Estratto Conto"])
+    app.include_router(regole_riconoscimento.router, prefix="/api/regole-riconoscimento-banca", tags=["Regole Riconoscimento Banca"])
     app.include_router(archivio_bonifici_router, prefix="/api/archivio-bonifici", tags=["Archivio Bonifici"])
     app.include_router(assegni.router, prefix="/api/assegni", tags=["Assegni"])
     app.include_router(assegni_learning.router, prefix="/api/assegni/learning", tags=["Assegni Learning"])

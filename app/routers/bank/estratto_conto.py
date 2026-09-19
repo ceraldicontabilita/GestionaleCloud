@@ -24,6 +24,7 @@ from app.routers.prima_nota_module.sync import costruisci_campi_movimento_fattur
 from app.services.scritture_contabili import scrivi_movimento
 from app.services.bank_evidence import EVIDENZA_UFFICIALE, campi_evidenza
 from app.services.categorizzazione_movimenti import categorizza_movimento_bancario
+from app.services.regole_riconoscimento_banca import carica_regole as _carica_regole_riconoscimento
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -57,11 +58,17 @@ def _occorrenza_gia_importata(
 
 def _categoria_import_con_fallback(
     categoria_csv: Optional[str], descrizione: Optional[str], importo: float,
+    regole: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """Categoria da scrivere sul movimento in import: quella del CSV bancario
     se presente (non si sovrascrive mai una fonte piu' autorevole), altrimenti
     il motore unico di categorizzazione (`app.services.categorizzazione_movimenti`)
     quando il riconoscimento e' certo. Nessuna associazione per solo importo.
+
+    `regole`: le regole di riconoscimento imparate dal titolare
+    (`app.services.regole_riconoscimento_banca`, prefetchate una sola volta
+    dal chiamante), controllate dal motore PRIMA delle parole chiave
+    generiche: una regola specifica vince sempre.
 
     Ritorna i campi extra da aggiungere al record (vuoto se non si e'
     categorizzato nulla in automatico).
@@ -69,16 +76,20 @@ def _categoria_import_con_fallback(
     categoria_pulita = (categoria_csv or "").strip()
     if categoria_pulita:
         return {"categoria": categoria_pulita}
-    esito = categorizza_movimento_bancario(descrizione, importo)
-    if not esito.categoria:
+    esito = categorizza_movimento_bancario(descrizione, importo, regole=regole)
+    if not esito.categoria and not esito.fornitore_id:
         return {"categoria": ""}
-    campi: Dict[str, Any] = {
-        "categoria": esito.categoria,
-        "categoria_auto": True,
-        "categoria_auto_motivo": esito.motivo,
-    }
+    campi: Dict[str, Any] = {"categoria_auto": True, "categoria_auto_motivo": esito.motivo}
+    if esito.categoria:
+        campi["categoria"] = esito.categoria
+    else:
+        campi["categoria"] = ""
     if esito.codice_tributo:
         campi["categoria_codice_tributo"] = esito.codice_tributo
+    if esito.fornitore_id:
+        campi["fornitore_id"] = esito.fornitore_id
+        campi["fornitore"] = esito.fornitore_nome
+        campi["regola_riconoscimento_id"] = esito.regola_id
     return campi
 
 
@@ -416,6 +427,7 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     Evita duplicati controllando data + importo + descrizione.
     """
     db = Database.get_db()
+    regole_banca = await _carica_regole_riconoscimento(db)
     # Il job Drive puo' incontrare archivi storici gia' importati. In quel
     # canale non ripete le riparazioni globali per ogni file interamente
     # duplicato; upload manuali conservano invece il comportamento storico.
@@ -859,7 +871,7 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
 
         campi_categoria = _categoria_import_con_fallback(
             mov.get("categoria"), mov.get("descrizione_originale") or mov.get("descrizione"),
-            mov["importo"],
+            mov["importo"], regole=regole_banca,
         )
         records_to_insert.append({
             "id": mov_id,
@@ -1467,7 +1479,8 @@ async def force_reimport_estratto_conto(file: UploadFile = File(...), _admin: Di
     """
 
     db = Database.get_db()
-    
+    regole_banca = await _carica_regole_riconoscimento(db)
+
     filename = file.filename.lower()
     contents = await file.read()
     
@@ -1625,6 +1638,7 @@ async def force_reimport_estratto_conto(file: UploadFile = File(...), _admin: Di
 
         campi_categoria = _categoria_import_con_fallback(
             mov.get("categoria"), mov.get("descrizione_originale"), mov["importo"],
+            regole=regole_banca,
         )
         record = {
             "id": mov_id,

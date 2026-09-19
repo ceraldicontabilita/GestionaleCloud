@@ -143,6 +143,30 @@ def test_backfill_categorizza_solo_i_pattern_certi_e_riporta_il_resto():
     assert not mov4.get("categoria_auto")
 
 
+def test_backfill_non_tocca_un_movimento_con_fornitore_gia_assegnato():
+    """Audit 19/09/2026 su PR #500: un movimento con `fornitore_id` gia'
+    valorizzato (identita' piu' certa di P.IVA/IBAN) ma `categoria` ancora
+    vuota non deve essere riassegnato dal backfill a un fornitore diverso
+    per solo pattern testuale sulla causale (CLAUDE.md, "Identita', prove e
+    attese": una relazione certa non si sovrascrive con una meno certa)."""
+    db = MemorySheetsClient()["backfill_non_sovrascrive_fornitore"]
+
+    async def scenario():
+        await db["estratto_conto_movimenti"].insert_one({
+            "id": "1", "data": "2026-03-05", "importo": -45.9,
+            "descrizione_originale": "ADDEBITO COMMISSIONI NEXI PAYMENTS SPA DEL 05/03/2026",
+            "categoria": "", "fornitore_id": "forn-iban-certo",
+        })
+        return await backfill_categorie_banca(db, anno=2026, dry_run=False)
+
+    esito = _run(scenario())
+    assert esito["movimenti_esaminati"] == 0  # escluso a monte, mai passato al motore
+
+    mov = _run(db["estratto_conto_movimenti"].find_one({"id": "1"}))
+    assert mov["fornitore_id"] == "forn-iban-certo"  # invariato
+    assert mov["categoria"] == ""  # il backfill non ha toccato nulla
+
+
 def test_backfill_dry_run_non_scrive_nulla():
     db = MemorySheetsClient()["backfill_dry_run"]
 
