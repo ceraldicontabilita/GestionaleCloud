@@ -757,6 +757,36 @@ async def upsert_chiusura_giornaliera(
     return result
 
 
+@router.post("/chiusure-giornaliere/ricostruisci-numia")
+@handle_errors
+async def ricostruisci_chiusure_numia_da_estratto_conto(
+    dry_run: bool = Query(True, description="Se True conta soltanto, senza scrivere"),
+    anno: Optional[str] = Query(None, description="Limita a un anno, es. 2026"),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Ricostruisce la chiusura NUMIA di ogni giorno dagli accrediti in banca.
+
+    NUMIA non ha API e nessuno digita la chiusura serale: senza questo, in
+    `chiusure_pos_manuali` non entra mai una riga NUMIA, il trasferimento POS
+    del giorno non nasce e tutta la Coerenza POS resta muta — 180 giornate
+    del 2026 su 183 ferme in «attende chiusura POS reale».
+
+    La fonte e' l'accredito stesso, che in causale porta il giorno operativo
+    (`DEL gg/mm/aa`). Sommati per quel giorno, gli accrediti coincidono con
+    l'elettronico dell'XML al centesimo nelle giornate in cui NUMIA e' l'unico
+    circuito. Le commissioni NUMIA sono addebitate a parte, quindi gli
+    accrediti sono al lordo e non serve nessuna correzione.
+
+    Idempotente: salta i giorni che una chiusura ce l'hanno gia', da qualunque
+    fonte. Non sovrascrive un dato letto dal terminale o arrivato da un'API.
+    """
+    from app.services import ricostruzione_pos_estratto_conto as ricostruzione
+
+    return await ricostruzione.ricostruisci_chiusure_numia(
+        Database.get_db(), dry_run=dry_run, anno=anno, actor=current_user,
+    )
+
+
 @router.post("/chiusure-giornaliere/batch")
 @handle_errors
 async def upsert_chiusure_giornaliere_batch(
