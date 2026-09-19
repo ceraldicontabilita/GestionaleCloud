@@ -146,8 +146,13 @@ CODICI_TRIBUTO_ERARIO = {
         "scadenza": "Compensazione",
         "periodicita": "variabile"
     },
+    # Corretto il 19/09/2026: il 1631 non e' un credito d'imposta generico.
+    # Fonte: Agenzia delle Entrate.
     "1631": {
-        "descrizione": "Credito d'imposta art. 3 DL 73/2021",
+        "descrizione": (
+            "Somme a titolo di imposte erariali rimborsate dal sostituto "
+            "d'imposta a seguito di assistenza fiscale"
+        ),
         "categoria": "Credito",
         "tipo": "credito",
         "scadenza": "Compensazione",

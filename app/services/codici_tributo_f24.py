@@ -537,18 +537,21 @@ CODICI_TRIBUTO_F24 = {
         "tipo": "misto",
         "sezione": "ERARIO"
     },
+    # Corretti il 19/09/2026: erano ruotati di uno. Il saldo e' il 2001, non
+    # il 2003 — cosi' com'era, ogni F24 IRES letto dal parser mostrava un
+    # acconto al posto di un saldo e viceversa. Fonte: Agenzia delle Entrate.
     "2001": {
-        "descrizione": "IRES acconto prima rata",
+        "descrizione": "IRES saldo",
         "tipo": "misto",
         "sezione": "ERARIO"
     },
     "2002": {
-        "descrizione": "IRES acconto seconda rata o unica soluzione",
+        "descrizione": "IRES acconto prima rata",
         "tipo": "misto",
         "sezione": "ERARIO"
     },
     "2003": {
-        "descrizione": "IRES saldo",
+        "descrizione": "IRES acconto seconda rata o unica soluzione",
         "tipo": "misto",
         "sezione": "ERARIO"
     },

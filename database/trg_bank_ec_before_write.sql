@@ -1,16 +1,66 @@
--- Trigger RIMOSSO dalla produzione il 19/09/2026 (audit sui sistemi paralleli).
--- Conservato qui per intero perche' la rimozione resti reversibile e perche'
--- nessuna logica contabile deve esistere solo dentro al database.
+-- ===========================================================================
+-- LOGICA CHE VIVEVA SOLO DENTRO AL DATABASE
+-- ===========================================================================
+-- Su Supabase ci sono trigger PL/pgSQL che scrivono dati contabili. Fino al
+-- 19/09/2026 non comparivano da nessuna parte in questo repository: si poteva
+-- leggere tutto il progetto senza sapere che esistevano.
 --
--- Il motivo della rimozione e le verifiche fatte prima stanno in
--- database/README.md. Il motore canonico che copre gli stessi due casi e'
--- app/services/proiezione_bancaria.py.
+-- Per vedere quelli vivi adesso:
+--   select tgname, pg_get_triggerdef(t.oid)
+--   from pg_trigger t
+--     join pg_class c on c.oid = t.tgrelid
+--     join pg_namespace n on n.oid = c.relnamespace
+--   where n.nspname = 'gestionale' and not t.tgisinternal;
 --
+-- SI TENGONO
+--   trg_guardia_delete / trg_guardia_truncate  su documents, blobs,
+--     protocollo_drive, protocollo_impronte, protocollo_drive_giri: bloccano
+--     cancellazioni e troncamenti non autorizzati. Sono la rete del §6.
+--   documents_touch_updated_at / documents_collection_versions: tengono
+--     updated_at e le versioni per collezione, su cui poggia la cache
+--     incrementale del runtime.
+--   trg_bank_ec_after_write: rigenera bank_reconciliation_hub (2.017 righe,
+--     che NESSUN file di questo repository legge) e scrive entity_relations
+--     (468 righe, che invece il codice legge davvero, in
+--     app/services/entity_relations_audit.py). Resta per quelle relazioni.
+--
+-- RIMOSSO IL 19/09/2026: trg_bank_ec_before_write, definito qui sotto.
+--
+-- Era un SECONDO motore di riconciliazione. Prima di ogni scrittura
+-- sull'estratto conto: riscriveva categoria quando sembrava un codice MCC,
+-- riconosceva le spese bancarie e INSERIVA una riga in prima_nota_banca
+-- (source: estratto_conto_hub), agganciava i finanziamenti soci alle attese
+-- rapido_apporto_soci.
+--
+-- Gli ultimi due sono esattamente i due casi di
+-- app/services/proiezione_bancaria.classifica_movimento_ec, che gira da solo
+-- all'import dell'estratto conto
+-- (reconciliation_orchestrator.on_estratto_conto_importato_riprocessa) ed e'
+-- quello canonico: versionato, testato, con rule_id e rule_version che
+-- lasciano una traccia verificabile. Il trigger girava PRIMA e vinceva, quindi
+-- per quei movimenti le regole controllabili non parlavano mai — e due
+-- implementazioni delle stesse regole, una in Python e una in SQL, possono
+-- divergere senza che nessuno se ne accorga.
+--
+-- Verificato prima di rimuoverlo:
+--   - le due sorgenti NON si sovrapponevano: nessun movimento dell'estratto
+--     conto risultava proiettato due volte in Prima Nota, quindi i saldi non
+--     erano gonfiati;
+--   - proiezione_bancaria cerca le righe esistenti per estratto_conto_id /
+--     movimento_estratto_conto_id, che il trigger scriveva entrambi: NON
+--     ricreera' le 82 righe gia' presenti;
+--   - quelle 82 righe (source estratto_conto_hub, 129,50 EUR, dal 16/01 al
+--     24/08/2026) sono spese bancarie corrette e restano dove sono. Una
+--     registrazione sbagliata si storna, e queste non sono nemmeno sbagliate.
+--
+-- La definizione integrale resta qui perche' la rimozione sia reversibile e
+-- perche' nessuna logica contabile deve esistere solo dentro al database.
 -- Per ripristinarlo: eseguire questo file e poi
 --   CREATE TRIGGER trg_bank_ec_before_write
 --     BEFORE INSERT OR UPDATE ON gestionale.documents
 --     FOR EACH ROW WHEN (new.collection = 'estratto_conto_movimenti')
 --     EXECUTE FUNCTION gestionale.bank_ec_before_write();
+-- ===========================================================================
 
 CREATE OR REPLACE FUNCTION gestionale.bank_ec_before_write()
  RETURNS trigger
