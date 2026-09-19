@@ -62,7 +62,6 @@ FORK_NOTO = {
     "services/cedolini_manager.py",
     "services/document_ai_extractor.py",
     "services/event_bus.py",
-    "services/libro_unico_parser.py",
     "services/paghe_riconciliazione.py",
     "services/partite_aperte_engine.py",
     "services/payslip_pdf_parser.py",
