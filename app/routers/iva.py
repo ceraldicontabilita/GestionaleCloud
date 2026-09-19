@@ -749,6 +749,7 @@ async def liquidazione_periodo(periodo: str) -> Dict[str, Any]:
 async def _fatture_anno(db, anno: int) -> List[Dict[str, Any]]:
     proj = {
         "_id": 0, "id": 1, "invoice_number": 1, "supplier_name": 1,
+        "invoice_date": 1,
         "data_documento": 1, "data_operazione": 1, "data_ricezione": 1,
         "periodo_iva_attribuito": 1, "periodo_iva_utilizzato": 1,
         "iva": 1, "iva_detraibile": 1, "iva_utilizzata": 1,
@@ -766,6 +767,15 @@ async def _fatture_anno(db, anno: int) -> List[Dict[str, Any]]:
     # 28.742,08 EUR di IVA, tutte con data entro il 20/05/2026. Lo stato
     # assente vale come "da verificare": e' il caso piu' da verificare di
     # tutti, non uno da nascondere.
+    #
+    # Il ramo sulla data deve guardare anche `invoice_date`, che e' il campo
+    # che l'import scrive per primo: in produzione al 19/09/2026 lo hanno 860
+    # fatture attive su 873, contro le 823 che hanno `data_documento`, e **50
+    # hanno solo quello**. Nessuna fattura e' davvero senza data — sono le
+    # stesse che il motore non ha mai toccato, quindi `data_documento` (che
+    # `campi_iva_da_fattura` deriva da `invoice_date` e riscrive) non e' mai
+    # stato popolato. Guardare le sole due date derivate significa perdere
+    # proprio le fatture che il riepilogo deve segnalare.
     return await db[COLL].find(
         {"$or": [
             {"periodo_iva_attribuito": {"$regex": f"^{anno}"}},
@@ -774,6 +784,7 @@ async def _fatture_anno(db, anno: int) -> List[Dict[str, Any]]:
              "$or": [
                  {"data_documento": {"$regex": f"^{anno}"}},
                  {"data_ricezione": {"$regex": f"^{anno}"}},
+                 {"invoice_date": {"$regex": f"^{anno}"}},
              ]},
         ]},
         proj,
