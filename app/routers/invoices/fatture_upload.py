@@ -23,6 +23,7 @@ import hashlib
 
 from app.services.sheets_document_store import DuplicateRecordError
 
+from app.constants.tipi_documento import TIPI_NOTA_CREDITO
 from app.database import Database, Collections
 from app.engines.prima_nota_engine import (
     normalizza_metodo_pagamento,
@@ -137,10 +138,14 @@ async def _controlla_dati_fornitore_incoerenti(
         logger.exception(f"Errore generazione alert FORN_DATI_INCOERENTI per {supplier_id}")
 router = APIRouter()
 
-# Tipi documento FatturaPA che rappresentano una nota di credito (TD04) o di
-# debito (TD08 è nota di debito, non di credito, ma segue la stessa logica
-# "collegata a un documento precedente" — vedi memoria/moduli/FATTURE_RICEVUTE.md).
-NOTE_CREDITO_TIPI_DOCUMENTO = {"TD04", "TD08"}
+# Tipi documento FatturaPA che rappresentano una nota di credito (TD04 nota
+# di credito, TD08 nota di credito semplificata): entrambe seguono la stessa
+# logica "collegata a un documento precedente". Audit 19/09/2026: prima
+# ridefinita qui come doppione di `TIPI_NOTA_CREDITO` (già fonte unica per
+# iva.py, sync.py e i motori IVA) — un unico posto, così un futuro TD09
+# (nota di debito semplificata, da NON trattare come nota di credito) si
+# aggiunge una sola volta.
+NOTE_CREDITO_TIPI_DOCUMENTO = set(TIPI_NOTA_CREDITO)
 
 
 async def _collega_nota_credito(db, invoice: Dict[str, Any], session=None) -> Optional[Dict[str, Any]]:
