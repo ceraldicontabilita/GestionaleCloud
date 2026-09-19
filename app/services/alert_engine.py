@@ -174,6 +174,15 @@ ALERT_CATALOG: Dict[str, Dict[str, Any]] = {
         "titolo": "Possibile cedolino duplicato",
         "condizione_chiusura": "Utente conferma"
     },
+    # Definizioni arrivate dalla copia `app/hr` il 19/09/2026: erano solo di
+    # la', e un codice fuori catalogo fa tornare `genera_alert` None con una
+    # semplice riga di log — l'alert sparisce in silenzio.
+    "CED_CONTESTATA": {
+        "modulo": "cedolini",
+        "severita": "warning",
+        "titolo": "Busta paga contestata dal dipendente",
+        "condizione_chiusura": "Contestazione gestita"
+    },
     "CED_DATI_ECONOMICI_INCOMPLETI": {
         "modulo": "cedolini",
         "severita": "warning",
@@ -235,6 +244,24 @@ ALERT_CATALOG: Dict[str, Dict[str, Any]] = {
         "severita": "warning",
         "titolo": "Possibile dipendente duplicato",
         "condizione_chiusura": "Utente conferma o merge"
+    },
+    "DIP_DIMISSIONI_RICEVUTE": {
+        "modulo": "dipendenti",
+        "severita": "critical",
+        "titolo": "Dimissioni ricevute: UNILAV di cessazione entro 5 giorni",
+        "condizione_chiusura": "Dipendente cessato in HR o alert risolto dopo la comunicazione al consulente"
+    },
+    "DIP_CONTRATTO_IN_SCADENZA": {
+        "modulo": "dipendenti",
+        "severita": "warning",
+        "titolo": "Contratto a termine in scadenza",
+        "condizione_chiusura": "Rinnovo o cessazione registrati"
+    },
+    "DIP_PERIODO_PROVA_IN_SCADENZA": {
+        "modulo": "dipendenti",
+        "severita": "warning",
+        "titolo": "Periodo di prova in scadenza",
+        "condizione_chiusura": "Esito prova registrato"
     },
     "DIP_CESSATO_FLUSSI_ATTIVI": {
         "modulo": "dipendenti",
@@ -349,6 +376,12 @@ ALERT_CATALOG: Dict[str, Dict[str, Any]] = {
         "severita": "info",
         "titolo": "Prodotto nuovo da configurare",
         "condizione_chiusura": "Categoria impostata"
+    },
+    "MAG_SOTTO_SCORTA": {
+        "modulo": "magazzino",
+        "severita": "warning",
+        "titolo": "Prodotto sotto scorta",
+        "condizione_chiusura": "Giacenza ripristinata"
     },
     "MAG_MATCH_DUBBIO": {
         "modulo": "magazzino",
