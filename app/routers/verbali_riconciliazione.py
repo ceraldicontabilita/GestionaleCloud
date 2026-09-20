@@ -32,6 +32,11 @@ import re
 import logging
 
 from app.database import Database
+from app.constants.stati_verbale import (
+    FILTRO_STATO_APERTO,
+    FILTRO_STATO_PAGATO,
+    STATI_PAGATI,
+)
 from app.services.verbali_evidence import (
     describe_verbale_amount,
     describe_verbale_date,
@@ -42,6 +47,20 @@ from app.utils.error_handler import handle_errors
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _rami_da_riconciliare() -> List[Dict[str, Any]]:
+    """I verbali che aspettano ancora qualcosa: per il conteggio e per l'elenco.
+
+    Erano due liste identiche scritte a mano, e nominavano tre stati su nove:
+    un verbale `da_pagare` o `identificato` senza `pagamento_id` non compariva
+    ne' nel contatore ne' nella lista, pur essendo esattamente da riconciliare.
+    Il vocabolario sta in `app/constants/stati_verbale.py`.
+    """
+    return [
+        {**FILTRO_STATO_APERTO, "pagamento_id": {"$exists": False}},
+        {**FILTRO_STATO_PAGATO, "fattura_id": {"$exists": False}},
+    ]
 
 
 def campi_ricerca_verbale_in_fattura(numero_verbale: str) -> List[Dict[str, Any]]:
@@ -205,7 +224,7 @@ async def get_verbali_dashboard() -> Dict[str, Any]:
                 "stato": {
                     "$cond": [
                         {"$and": [
-                            {"$in": ["$stato", ["pagato", "pagato_attesa_quietanza", "pagato_attesa_fattura", "riconciliato"]]},
+                            {"$in": ["$stato", sorted(STATI_PAGATI)]},
                             {"$or": [
                                 {"$ne": ["$importo_verificato", True]},
                                 {"$eq": [
@@ -280,11 +299,7 @@ async def get_verbali_dashboard() -> Dict[str, Any]:
 
         # Verbali da riconciliare - solo count
         da_riconciliare = await db["verbali_noleggio"].count_documents({
-            "$or": [
-                {"stato": "fattura_ricevuta", "pagamento_id": {"$exists": False}},
-                {"stato": "pagato", "fattura_id": {"$exists": False}},
-                {"stato": "salvato"}
-            ]
+            "$or": _rami_da_riconciliare()
         })
 
         # Ultimi 5 verbali - ESCLUDI campi pesanti (pdf_content, pdf_base64, etc)
@@ -388,11 +403,7 @@ async def get_lista_verbali(
             query["targa"] = {"$regex": targa, "$options": "i"}
 
         if da_riconciliare:
-            query["$or"] = [
-                {"stato": "fattura_ricevuta", "pagamento_id": {"$exists": False}},
-                {"stato": "pagato", "fattura_id": {"$exists": False}},
-                {"stato": "salvato"}
-            ]
+            query["$or"] = _rami_da_riconciliare()
 
         # PROIEZIONE: escludi campi pesanti (PDF base64)
         projection = {

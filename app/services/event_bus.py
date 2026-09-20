@@ -406,12 +406,6 @@ def register_all_handlers():
         logger.warning(f"Handler cedolini (ex bus core) non registrati: {e}")
 
     try:
-        from app.handlers.estratto_conto import handler_matching_estratto_conto
-        register_handler(EventTypes.ESTRATTO_CONTO_IMPORTATO, handler_matching_estratto_conto)
-    except Exception as e:
-        logger.warning(f"Handler matching estratto conto non registrato: {e}")
-
-    try:
         from app.handlers.corrispettivi import (
             handler_prima_nota_corrispettivi,
             handler_check_coerenza_pos,

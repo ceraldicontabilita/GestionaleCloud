@@ -54,7 +54,6 @@ from app.database import Database, Collections
 from io import BytesIO
 import logging
 
-from app.models.stati import STATI_PAGATI
 from app.routers.prima_nota_module.common import filtro_saldo_prima_nota
 from app.utils.error_handler import handle_errors
 from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
@@ -132,8 +131,8 @@ async def get_stato_patrimoniale(
     try:
         crediti = await db["fatture_emesse"].aggregate([
             {"$match": {
-                "status": {"$nin": STATI_PAGATI},
-                "pagato": {"$ne": True},
+                "status": {"$nin": ["deleted", "archived"]},
+                **FILTRO_NON_PAGATE,
                 "$or": [
                     {"data_emissione": {"$lte": data_fine}},
                     {"invoice_date": {"$lte": data_fine}}
@@ -184,7 +183,7 @@ async def get_stato_patrimoniale(
     debiti = await db[Collections.INVOICES].aggregate([
         {"$match": {
             "tipo_documento": {"$nin": ["TD04", "TD08"]},
-            "status": {"$nin": STATI_PAGATI + ["deleted", "archived"]},
+            "status": {"$nin": ["deleted", "archived"]},
             **FILTRO_NON_PAGATE,
             "$or": [
                 {"invoice_date": {"$lte": data_fine}},

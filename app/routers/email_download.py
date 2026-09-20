@@ -289,10 +289,17 @@ async def parse_f24_con_llm(
 
 @router.post("/riconcilia-verbali")
 async def riconcilia_verbali_banca() -> Dict[str, Any]:
-    """
-    Riconcilia verbali con estratto conto bancario, PagoPA e PayPal.
-    Match per: numero verbale nella descrizione, importo esatto, quietanze email.
-    Crea trattenute busta paga per verbali pagati con driver assegnato.
+    """Riconcilia i verbali con la sola riconciliazione probatoria strict.
+
+    Una relazione certa richiede un riferimento strutturato (IUV o numero
+    verbale, oppure la targa esplicita) **e** l'importo uguale al centesimo:
+    non esiste piu' nessun abbinamento per solo importo o per data vicina.
+
+    Non crea la trattenuta in busta paga: la propone il caricamento della
+    quietanza in «Verbali», con `costruisci_trattenuta_da_verbale`.
+
+    C'era anche `/riconcilia-verbali-avanzato`, stesso corpo e stesso motore,
+    che nessuna pagina chiamava: due bottoni per un lavoro solo.
     """
     from app.services.verbali_pagamento_finder import riconcilia_verbali_strict
     db = Database.get_db()
@@ -309,22 +316,6 @@ async def scarica_pdf_mancanti() -> Dict[str, Any]:
     from app.services.post_download_pipeline import scarica_pdf_verbali_mancanti
     db = Database.get_db()
     stats = await scarica_pdf_verbali_mancanti(db)
-    return {"success": True, "stats": stats}
-
-
-@router.post("/riconcilia-verbali-avanzato")
-async def riconcilia_verbali_avanzato() -> Dict[str, Any]:
-    """
-    Riconciliazione avanzata verbali con banca (5 strategie):
-    1. Numero verbale in descrizione bancaria
-    2. Importo + beneficiario "Comune"
-    3. Importo + data entro 90gg
-    4. Quietanze email PagoPA/PayPal
-    5. Importi multipli
-    """
-    from app.services.verbali_pagamento_finder import riconcilia_verbali_strict
-    db = Database.get_db()
-    stats = await riconcilia_verbali_strict(db)
     return {"success": True, "stats": stats}
 
 

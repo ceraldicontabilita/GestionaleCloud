@@ -772,7 +772,10 @@ async def ripristina_abbinamenti_banca_senza_identita(
     altri tipi contabili non sono incluse. Prima della modifica salva una
     copia dei documenti interessati, poi esegue esclusivamente soft-delete.
     """
-    from app.handlers.estratto_conto import _score_match, SOGLIA_AUTO
+    from app.services.match_storico_banca_fattura import (
+        SOGLIA_AUTO,
+        punteggio_match_storico,
+    )
 
     db = Database.get_db()
     fonti_auto = {
@@ -806,7 +809,7 @@ async def ripristina_abbinamenti_banca_senza_identita(
         )
         if not auto_generato:
             continue
-        if ec and fattura and _score_match(ec, fattura) >= SOGLIA_AUTO:
+        if ec and fattura and punteggio_match_storico(ec, fattura) >= SOGLIA_AUTO:
             valide += 1
             if not dry_run:
                 await db[COLLECTION_PRIMA_NOTA_BANCA].update_one(

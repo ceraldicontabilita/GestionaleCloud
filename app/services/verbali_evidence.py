@@ -8,6 +8,8 @@ documentale o un operatore non lo ha confermato esplicitamente.
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any, Dict, Optional
 
+from app.constants.stati_verbale import e_pagato
+
 
 STATI_IMPORTO_VERIFICATI = {
     "VERIFICATO_DOCUMENTO",
@@ -121,7 +123,7 @@ def sanitize_verbale_evidence(record: Dict[str, Any]) -> Dict[str, Any]:
     sanitized = sanitize_verbale_amount(record)
     sanitized.update(describe_verbale_date(record))
     stato_originale = str(record.get("stato") or "sconosciuto").lower()
-    if stato_originale in {"pagato", "pagato_attesa_quietanza", "pagato_attesa_fattura", "riconciliato"}:
+    if e_pagato(stato_originale):
         has_payment_evidence = bool(
             record.get("pagato_documentalmente") is True
             or record.get("banca_verificata") is True

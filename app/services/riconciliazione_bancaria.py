@@ -33,7 +33,7 @@ upload — stesso pattern operativo già in produzione da mesi con il
 "motore A".
 """
 from typing import Dict, Any, List, Optional
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 import uuid
 import logging
 import re
@@ -69,12 +69,6 @@ COLLECTION_OPERAZIONI_DA_CONFERMARE = "operazioni_da_confermare"
 COLLECTION_SUPPLIERS = "fornitori"
 COLLECTION_ASSEGNI = "assegni"
 
-# Fase 0 (15/09/2026, PROMPT_CLAUDE_CODE_FASE_0.md punto 9): disattiva il
-# ramo F24 per solo importo (±0,05 senza data) e il ramo POS-cassa legacy
-# per tolleranza (±1€) del motore A. Il ramo NUMIA/riconcilia_accredito_pos_ec
-# resta attivo (funziona correttamente, non va toccato). Rimuovere in Fase 3.
-FASE0_DISATTIVATO = True
-
 # Importi commissioni bancarie da ignorare
 IMPORTI_COMMISSIONI = [0.75, 1.00, 1.10, 1.50, 2.00, 2.50, 3.00]
 
@@ -99,26 +93,6 @@ async def _propaga_fattura_pagata(db, fattura_id: str, metodo: str, data_pag: st
         }, db, source_module=source)
     except Exception:
         logger.exception(f"Errore propagazione fattura.pagata ({source}) fat={fattura_id}")
-
-
-async def _propaga_f24_pagato(db, f24_id: str, data_pag: str,
-                               movimento_id: Optional[str] = None,
-                               importo: Optional[float] = None,
-                               source: str = "riconciliazione_bancaria") -> None:
-    """
-    Helper per propagare F24_PAGATO in questo file.
-    Fail-safe.
-    """
-    try:
-        from app.services.event_bus import propagate_event, EventTypes
-        await propagate_event(EventTypes.F24_PAGATO, {
-            "f24_id": f24_id,
-            "data_pagamento": data_pag,
-            "movimento_id": movimento_id,
-            "importo_totale": importo,
-        }, db, source_module=source)
-    except Exception:
-        logger.exception(f"Errore propagazione f24.pagato ({source}) f24={f24_id}")
 
 
 async def _registra_match_partita_aperta(db, tipo: str, documento_id: str, importo: float,
@@ -1113,7 +1087,6 @@ async def riconcilia_movimenti_banca(
         "movimenti_analizzati": 0,
         "riconciliati_fatture": 0,
         "riconciliati_assegni": 0,
-        "riconciliati_f24": 0,
         "riconciliati_pos": 0,
         "riconciliati_versamenti": 0,
         "riconciliati_movimenti_multi_fattura": 0,
@@ -1781,48 +1754,6 @@ async def riconcilia_movimenti_banca(
                         if creata:
                             await _alert_match_ambiguo(db, mov_id, operazione["dettagli"]["motivo_dubbio"])
 
-            # === 2. CERCA F24 (per USCITE) ===
-            # Fase 0 (15/09/2026, PROMPT_CLAUDE_CODE_FASE_0.md punto 9):
-            # disattivato — vedi FASE0_DISATTIVATO in testa al file.
-            if not FASE0_DISATTIVATO and tipo == "uscita" and not match_found and "F24" in descrizione.upper():
-                f24 = await db["f24_unificato"].find_one({
-                    "totale": {"$gte": importo - 0.05, "$lte": importo + 0.05},
-                    "riconciliato": {"$ne": True}
-                })
-
-                if f24:
-                    match_found = True
-                    match_type = "f24"
-                    f24_id = str(f24.get("id") or f24.get("_id"))
-                    importo_f24 = f24.get("totale") or f24.get("importo_totale") or 0
-
-                    await db["f24_unificato"].update_one(
-                        {"_id": f24["_id"]},
-                        {"$set": {
-                            "riconciliato": True,
-                            "pagato": True,
-                            "in_banca": True,
-                            "data_pagamento": data_ec,
-                            "riconciliato_automaticamente": True,
-                            "updated_at": now
-                        }}
-                    )
-                    await _propaga_f24_pagato(
-                        db, f24_id=f24_id, data_pag=data_ec, movimento_id=mov_id,
-                        importo=importo_f24, source="ric_auto_f24",
-                    )
-                    await _registra_match_partita_aperta(
-                        db, tipo="f24", documento_id=f24_id,
-                        importo=float(importo_f24 or 0), movimento_id=mov_id, now=now,
-                    )
-
-                    match_details = {
-                        "f24_id": str(f24.get("_id")),
-                        "periodo": f24.get("periodo_riferimento"),
-                        "importo_f24": f24.get("totale")
-                    }
-                    results["riconciliati_f24"] += 1
-
             # === 3. CERCA POS (per ENTRATE - accrediti) ===
             if tipo == "entrata" and not match_found:
                 desc_upper = descrizione.upper()
@@ -1844,79 +1775,6 @@ async def riconcilia_movimenti_banca(
                         # gia' classificato e non deve produrre un alert o una
                         # richiesta di conferma generica.
                         continue
-                # Fase 0 (15/09/2026, PROMPT_CLAUDE_CODE_FASE_0.md punto 9):
-                # ramo legacy a tolleranza (±1€) disattivato — vedi
-                # FASE0_DISATTIVATO in testa al file. Il ramo NUMIA sopra
-                # (riconcilia_accredito_pos_ec) resta attivo.
-                if not FASE0_DISATTIVATO and any(kw in desc_upper for kw in ['POS', 'NEXI', 'SUMUP', 'CARTE', 'BANCOMAT']):
-                    # Logica POS: Lun-Gio +1g, Ven-Dom → Lunedì
-                    try:
-                        dt_acc = datetime.strptime(data_ec, "%Y-%m-%d")
-                        weekday = dt_acc.weekday()
-
-                        if weekday == 0:  # Lunedì → cerca Ven+Sab+Dom
-                            date_weekend = [
-                                (dt_acc - timedelta(days=3)).strftime("%Y-%m-%d"),
-                                (dt_acc - timedelta(days=2)).strftime("%Y-%m-%d"),
-                                (dt_acc - timedelta(days=1)).strftime("%Y-%m-%d"),
-                            ]
-
-                            pos_weekend = await db[COLLECTION_PRIMA_NOTA_CASSA].find({
-                                "data": {"$in": date_weekend},
-                                "categoria": "POS",
-                                "riconciliato": {"$ne": True}
-                            }, {"_id": 0}).to_list(10)
-
-                            somma_pos = sum(p.get("importo", 0) for p in pos_weekend)
-
-                            if abs(somma_pos - importo) <= 1:
-                                match_found = True
-                                match_type = "pos_weekend"
-
-                                for p in pos_weekend:
-                                    await db[COLLECTION_PRIMA_NOTA_CASSA].update_one(
-                                        {"id": p["id"]},
-                                        {"$set": {
-                                            "riconciliato": True,
-                                            "in_banca": True,
-                                            "riconciliato_con_ec": mov_id,
-                                            "updated_at": now
-                                        }}
-                                    )
-
-                                match_details = {"date_pos": date_weekend, "importo_totale": somma_pos}
-                                results["riconciliati_pos"] += 1
-                        else:
-                            # Lun-Gio → cerca giorno precedente
-                            data_pos = (dt_acc - timedelta(days=1)).strftime("%Y-%m-%d")
-
-                            pos = await db[COLLECTION_PRIMA_NOTA_CASSA].find_one({
-                                "data": data_pos,
-                                "categoria": "POS",
-                                "importo": {"$gte": importo - 1, "$lte": importo + 1},
-                                "riconciliato": {"$ne": True}
-                            })
-
-                            if pos:
-                                match_found = True
-                                match_type = "pos_giornaliero"
-
-                                await db[COLLECTION_PRIMA_NOTA_CASSA].update_one(
-                                    {"id": pos["id"]},
-                                    {"$set": {
-                                        "riconciliato": True,
-                                        "in_banca": True,
-                                        "riconciliato_con_ec": mov_id,
-                                        "updated_at": now
-                                    }}
-                                )
-
-                                match_details = {"data_pos": data_pos, "importo_pos": pos.get("importo")}
-                                results["riconciliati_pos"] += 1
-                    except Exception as exc:  # noqa: BLE001
-                        logger.warning(
-                            "[Riconciliazione] abbinamento POS non completato per "
-                            "questo movimento: %s", exc)
 
             # === 4. CERCA VERSAMENTI (per ENTRATE) ===
             if tipo == "entrata" and not match_found:
@@ -2018,7 +1876,6 @@ async def riconcilia_movimenti_banca(
     totale_riconciliati = (
         results["riconciliati_fatture"] +
         results["riconciliati_assegni"] +
-        results["riconciliati_f24"] +
         results["riconciliati_pos"] +
         results["riconciliati_versamenti"]
     )

@@ -11,7 +11,6 @@ import logging
 import re
 
 from app.database import Database
-from app.models.stati import STATI_PAGATI
 from app.routers.bank.assegni_auto_match import _f, _norm_piva, TOLL, MAX_RATE, fornitore_esclude_assegno
 from app.services.identity_matching import identita_coincide
 from app.services.payment_invoice_matching import (
@@ -101,7 +100,6 @@ ASSEGNO_STATI = {
     "stornato": {"label": "Stornato", "color": "#b91c1c"},
     "scaduto": {"label": "Scaduto", "color": "#795548"}
 }
-
 
 @router.get("/stati")
 async def get_assegno_stati() -> Dict[str, Any]:
@@ -723,12 +721,14 @@ async def preview_combinazioni_assegni_v2(
     
     # Carica fatture non pagate
     # Escludiamo RID/SDD/addebito diretto: non pagabili con assegno.
+    # `status` non dice se una fattura e' pagata (vale `imported`, `archived`
+    # o niente): il ramo che lo interrogava era sempre vero e, dentro un `$or`,
+    # disarmava il criterio canonico — la ricerca di combinazioni lavorava
+    # anche sulle 690 fatture gia' pagate.
     fatture = await db.invoices.find({
         "$and": [
-            {"$or": [
-                {"status": {"$nin": STATI_PAGATI}},
-                {**FILTRO_NON_PAGATE,}
-            ]},
+            {"status": {"$nin": ["deleted", "archived", "archiviata"]}},
+            dict(FILTRO_NON_PAGATE),
             {"total_amount": {"$gt": 0}},
             {"$nor": [
                 {"metodo_pagamento": {"$regex": "rid|sdd|addebito", "$options": "i"}},
@@ -1998,7 +1998,8 @@ async def auto_associa_assegni() -> Dict[str, Any]:
             metodo_fornitori[f['partita_iva']] = (f.get('metodo_pagamento') or '').lower()
     
     fatture_raw = await db[Collections.INVOICES].find({
-        "status": {"$nin": STATI_PAGATI},
+        "status": {"$nin": ["deleted", "archived", "archiviata"]},
+        **FILTRO_NON_PAGATE,
         "total_amount": {"$gt": 0}
     }, {"_id": 0}).to_list(5000)
     
