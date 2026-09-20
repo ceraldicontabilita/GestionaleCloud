@@ -11,6 +11,7 @@ on:
       - "backend/**"
       - "frontend/**"
       - "scripts/e2e_distruttivo_server.py"
+      - "scripts/smoke_app.py"
       - "page_catalog.json"
       - "render.yaml"
       - ".github/workflows/produzione.yml"
