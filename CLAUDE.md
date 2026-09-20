@@ -723,8 +723,17 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   si confondono).
 - `prodotti_master` è il catalogo canonico e `magazzino_unificato` il magazzino canonico;
   `prodotti_vendita` e `sconti_merce` sono domini diversi e non si fondono.
+- **Il registro HACCP non si scrive da solo.** Alle 07:00 il turno *apre* la casella del giorno su ogni
+  apparecchio attivo e ci mette il responsabile assegnato (`attrezzature_config.operatore_id`, nome da HR):
+  `temp` resta `None`, stato `da_rilevare`. La misura la fa una persona dal tablet, e **la firma è il PIN**
+  (`servizi/firma_operatore.py`): col PIN il nome arriva da HR e il record è `firma_verificata`; con un PIN
+  sbagliato la rilevazione **non si salva**, perché una firma falsa è peggio di una registrazione mancante.
+  Un giorno senza lettura si **dichiara** «non rilevato» col motivo, mai riempito d'ufficio. Nessun modulo
+  HACCP può usare `random` né avere codice irraggiungibile (`tests/lotti/test_haccp_niente_evidenze_finte.py`).
 - Stampa: coda più print agent locale sul PC del negozio, stampante scelta per tipo di documento, agent
-  autenticato con il PIN di un operatore dedicato.
+  autenticato con il PIN di un operatore dedicato. Il fascicolo per un'ispezione si compone da
+  `/lotti/api/manuale-haccp/stampa`: si spuntano le pagine (`SEZIONI_MANUALE`, le stesse che il generatore
+  sa produrre — un test lo verifica) e il frontespizio con i dati dell'azienda c'è sempre.
 - Accessi: PIN valido 2 ore; i dipendenti entrano ovunque tranne le pagine di amministrazione. Sui tablet
   condivisi il magazzino chiude la sessione dopo 10 minuti.
 

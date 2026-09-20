@@ -297,3 +297,98 @@ async def elimina_congelatore(numero: int, _admin=Depends(require_admin)):
             }
         )
     return {"success": True, "message": f"Congelatore N°{numero} rimosso dalla lista"}
+
+
+# ─── Assegnazione a un operatore ──────────────────────────────────────────────
+# Ogni apparecchio ha un responsabile: e' lui che ne rileva la temperatura, ed
+# e' il suo nome che deve comparire sul registro. L'assegnazione vive QUI, sulla
+# scheda dell'apparecchio, non su quella del dipendente: gli apparecchi sono 24
+# e i dipendenti cambiano, mentre il frigorifero N°3 resta il frigorifero N°3.
+# L'identita' resta quella di HR (`operatore_id` = id del dipendente): il nome
+# e' solo una copia leggibile per la stampa, e si riallinea a ogni assegnazione.
+
+
+class AssegnaOperatore(BaseModel):
+    operatore_id: str = ""     # vuoto = togli l'assegnazione
+    operatore_nome: str = ""
+
+
+async def operatore_assegnato(tipo: str, numero: int) -> dict:
+    """Chi e' responsabile di questo apparecchio. Dizionario vuoto se nessuno."""
+    doc = await db.attrezzature_config.find_one(
+        {"tipo": tipo, "numero": numero, "attivo": {"$ne": False}},
+        {"_id": 0, "operatore_id": 1, "operatore_nome": 1},
+    ) or {}
+    if not doc.get("operatore_id"):
+        return {}
+    return {
+        "operatore_id": doc.get("operatore_id", ""),
+        "operatore_nome": doc.get("operatore_nome", ""),
+    }
+
+
+@router.get("/assegnazioni")
+async def elenco_assegnazioni():
+    """Chi e' responsabile di cosa, per la pagina di configurazione e per il
+    turno del mattino. Include gli apparecchi senza responsabile: sono quelli
+    su cui il registro restera' senza firma."""
+    righe = []
+    for tipo in ("frigo", "congelatore"):
+        for doc in await _get_config(tipo):
+            righe.append({
+                "tipo": tipo,
+                "numero": doc.get("numero"),
+                "nome": doc.get("nome", ""),
+                "operatore_id": doc.get("operatore_id", ""),
+                "operatore_nome": doc.get("operatore_nome", ""),
+            })
+    senza = [r for r in righe if not r["operatore_id"]]
+    return {
+        "attrezzature": righe,
+        "totale": len(righe),
+        "assegnate": len(righe) - len(senza),
+        "senza_responsabile": [r["nome"] for r in senza],
+    }
+
+
+@router.put("/{tipo}/{numero}/operatore")
+async def assegna_operatore(
+    tipo: str, numero: int, dati: AssegnaOperatore, _admin=Depends(require_admin),
+):
+    """Assegna (o toglie) il responsabile di un apparecchio.
+
+    Il nome non si scrive a mano: si prende dall'anagrafica HR a partire
+    dall'id, cosi' il registro non puo' portare un nome che in azienda non
+    esiste o e' scritto in un altro modo."""
+    if tipo not in ("frigo", "congelatore"):
+        raise HTTPException(status_code=400, detail="Tipo non valido: frigo o congelatore")
+
+    nome = ""
+    if dati.operatore_id:
+        from app.lotti.routers.tablet_operatori import operatore_per_id
+
+        operatore = await operatore_per_id(dati.operatore_id)
+        if not operatore:
+            raise HTTPException(
+                status_code=404,
+                detail="Dipendente non trovato o non in forza: l'assegnazione userebbe un nome che non c'e'",
+            )
+        nome = operatore.get("nome_completo") or dati.operatore_nome
+
+    esito = await db.attrezzature_config.update_one(
+        {"tipo": tipo, "numero": numero},
+        {"$set": {
+            "operatore_id": dati.operatore_id or "",
+            "operatore_nome": nome,
+            "operatore_assegnato_il": datetime.now(timezone.utc).isoformat(),
+        }},
+    )
+    if esito.matched_count == 0:
+        raise HTTPException(status_code=404, detail=f"{tipo} N°{numero} non trovato")
+    return {
+        "success": True,
+        "tipo": tipo, "numero": numero,
+        "operatore_id": dati.operatore_id or "",
+        "operatore_nome": nome,
+        "message": (f"Responsabile: {nome}" if nome else "Responsabile rimosso"),
+    }

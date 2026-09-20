@@ -472,3 +472,22 @@ async def aggiorna_dipendente(op_id: str, payload: AggiornaDipendente, _admin=De
 @router.get("/verifica")
 async def verifica():
     return {"ok": True, "servizio": "tablet_operatori"}
+
+
+async def operatore_per_id(operatore_id: str) -> Optional[Dict[str, Any]]:
+    """La persona dell'anagrafica HR per id, se e' ancora in forza.
+
+    Serve a chi assegna un apparecchio o apre una rilevazione: il nome sul
+    registro deve venire da HR, non essere scritto a mano. Un cessato non e'
+    piu' assegnabile — la sua firma su un controllo di domani non avrebbe
+    senso — e nemmeno un id che in anagrafica non esiste.
+    """
+    if not operatore_id:
+        return None
+    persone = await _persone_hr()
+    if not persone:
+        return None
+    for persona in persone:
+        if persona.get("id") == operatore_id:
+            return persona if persona.get("stato") == "attivo" else None
+    return None

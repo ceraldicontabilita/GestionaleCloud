@@ -184,6 +184,7 @@ async def registra_temperatura(
     giorno: int,
     temperatura: float = None,
     operatore: str = Query(default=""),
+    pin: str = Query(default="", description="PIN personale di chi rileva: e' la firma"),
     note: str = Query(default=""),
     azione_correttiva: str = Query(default=""),
 ):
@@ -200,13 +201,23 @@ async def registra_temperatura(
         scheda["temperature"][mese_str] = {}
 
     # Record temperatura — se operatore non specificato, non salvarlo (misurazione automatica)
+    # Chi firma lo decide il PIN, non la query: `operatore=` da solo e' una
+    # stringa che chiunque puo' scrivere. Col PIN il nome arriva da HR ed e'
+    # marcato `firma_verificata`; con un PIN sbagliato la rilevazione NON si
+    # salva, perche' una firma falsa e' peggio di una registrazione mancante.
+    from app.lotti.servizi.firma_operatore import firma_da_pin
+
+    firma = await firma_da_pin(pin, operatore)
     record = {
         "temp": temperatura,
         "note": note,
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "firma_verificata": firma["firma_verificata"],
     }
-    if operatore:
-        record["operatore"] = operatore
+    if firma["operatore"]:
+        record["operatore"] = firma["operatore"]
+    if firma["operatore_id"]:
+        record["operatore_id"] = firma["operatore_id"]
     # Azione correttiva: documentata quando il frigo sfora (obbligo Reg. 852/2004).
     # L'ispettore ASL vuole sapere COSA si e' fatto, non solo che era fuori range.
     if azione_correttiva:

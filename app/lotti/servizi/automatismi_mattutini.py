@@ -130,11 +130,24 @@ async def run_morning_automation(
     execution_id = execution["_id"]
 
     async def daily_haccp():
-        from app.lotti.routers.haccp_auto import verifica_e_popola_oggi, marca_giorni_non_rilevati
+        """Il turno del mattino, alle 07:00: prima che arrivino gli operatori.
 
+        Apre la casella di oggi su ogni apparecchio attivo e ci scrive CHI deve
+        rilevare (il responsabile assegnato, nome preso da HR). La temperatura
+        la mette la persona dal tablet, col suo PIN: quella e' la firma.
+        I giorni passati senza nessuna lettura restano dichiarati «non
+        rilevati» col motivo, mai riempiti d'ufficio.
+        """
+        from app.lotti.routers.haccp_auto import (
+            apri_rilevazioni_del_giorno,
+            marca_giorni_non_rilevati,
+            verifica_e_popola_oggi,
+        )
+
+        turno = await apri_rilevazioni_del_giorno()
         generated = await verifica_e_popola_oggi()
         missed = await marca_giorni_non_rilevati()
-        return {"generazione": generated, "recupero_mancati": missed}
+        return {"turno_aperto": turno, "generazione": generated, "recupero_mancati": missed}
 
     async def employee_tasks():
         from app.lotti.routers.task_dipendenti import genera_task_giornalieri

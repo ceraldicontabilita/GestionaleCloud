@@ -1050,3 +1050,151 @@ async def get_documenti_disponibili():
         ],
         "formati_disponibili": ["HTML (stampabile)", "PDF (su richiesta)"],
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SCEGLI E STAMPA — il fascicolo da consegnare a un'ispezione
+#
+# Il manuale sapeva gia' filtrare per sezione (`?sezioni=a,b,c`), ma quei nomi
+# stavano solo dentro il codice: per stamparne una parte bisognava conoscerli.
+# Qui l'elenco diventa un dato, e c'e' la pagina per spuntare cosa stampare.
+#
+# Il frontespizio c'e' sempre: e' la copertina con i dati dell'azienda, e un
+# fascicolo di registrazioni senza intestazione non dice di chi sono.
+# ─────────────────────────────────────────────────────────────────────────────
+
+SEZIONI_MANUALE = [
+    {"id": "principi_haccp", "titolo": "I 7 principi HACCP",
+     "descrizione": "Impianto del piano di autocontrollo", "gruppo": "Manuale"},
+    {"id": "personale", "titolo": "Personale e igiene",
+     "descrizione": "Norme di igiene e responsabilita'", "gruppo": "Manuale"},
+    {"id": "allergeni", "titolo": "Allergeni",
+     "descrizione": "I 14 allergeni UE per prodotto (Reg. UE 1169/2011)", "gruppo": "Manuale"},
+    {"id": "ricevimento_merci", "titolo": "Ricevimento merci",
+     "descrizione": "Procedura di accettazione e controllo", "gruppo": "Manuale"},
+    {"id": "fornitori_qualificati", "titolo": "Fornitori qualificati",
+     "descrizione": "Rintracciabilita' a monte (Art. 18 Reg. CE 178/2002)", "gruppo": "Manuale"},
+    {"id": "temperature", "titolo": "Temperature",
+     "descrizione": "Registro frigoriferi e congelatori", "gruppo": "Registrazioni"},
+    {"id": "sanificazione", "titolo": "Sanificazione",
+     "descrizione": "Registro pulizie per attrezzatura", "gruppo": "Registrazioni"},
+    {"id": "controllo_olio", "titolo": "Controllo olio friggitrice",
+     "descrizione": "Registro dei controlli e dei cambi", "gruppo": "Registrazioni"},
+    {"id": "lotti", "titolo": "Lotti di produzione",
+     "descrizione": "Rintracciabilita' a valle", "gruppo": "Registrazioni"},
+    {"id": "anomalie", "titolo": "Anomalie e azioni correttive",
+     "descrizione": "Non conformita' rilevate e cosa si e' fatto", "gruppo": "Registrazioni"},
+    {"id": "disinfestazione", "titolo": "Disinfestazione",
+     "descrizione": "Interventi e piano annuale", "gruppo": "Registrazioni"},
+]
+
+
+@router.get("/sezioni")
+async def elenco_sezioni():
+    """Le pagine che si possono stampare, con il loro identificativo."""
+    return {
+        "sezioni": SEZIONI_MANUALE,
+        "gruppi": ["Manuale", "Registrazioni"],
+        "nota": "Il frontespizio con i dati dell'azienda e' sempre incluso.",
+    }
+
+
+@router.get("/stampa", response_class=HTMLResponse)
+async def pagina_stampa():
+    """Pagina per scegliere cosa stampare e generare il fascicolo.
+
+    Servita dal backend come HTML: si apre dal tablet o dal computer del
+    negozio senza passare da una build del frontend, e il fascicolo che
+    produce si stampa (o si salva in PDF) dal browser.
+    """
+    oggi = datetime.now()
+    anno = oggi.year
+    righe = ""
+    for gruppo in ("Manuale", "Registrazioni"):
+        righe += f'<h2>{gruppo}</h2><div class="griglia">'
+        for s in SEZIONI_MANUALE:
+            if s["gruppo"] != gruppo:
+                continue
+            righe += (
+                f'<label class="scelta"><input type="checkbox" name="sezione" '
+                f'value="{s["id"]}" checked>'
+                f'<span class="titolo">{s["titolo"]}</span>'
+                f'<span class="descrizione">{s["descrizione"]}</span></label>'
+            )
+        righe += "</div>"
+
+    return HTMLResponse(f"""<!DOCTYPE html>
+<html lang="it"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stampa registro HACCP</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {{ --salvia:#5b7a6b; --salvia-scuro:#3f5a4e; --crema:#faf7f0;
+           --card:#fffefb; --sabbia:#e6e0d4; --inchiostro:#2a3329; }}
+  * {{ box-sizing:border-box; }}
+  body {{ margin:0; padding:24px 16px 48px; background:var(--crema);
+          color:var(--inchiostro); font-family:'Plus Jakarta Sans',system-ui,sans-serif; }}
+  .foglio {{ max-width:900px; margin:0 auto; }}
+  h1 {{ font-size:26px; font-weight:800; letter-spacing:-0.02em; margin:0 0 4px; }}
+  .sottotitolo {{ color:var(--salvia-scuro); margin:0 0 28px; font-size:15px; }}
+  h2 {{ font-size:15px; font-weight:700; text-transform:uppercase;
+        letter-spacing:0.04em; color:var(--salvia-scuro); margin:28px 0 12px; }}
+  .griglia {{ display:grid; gap:10px; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); }}
+  .scelta {{ display:grid; grid-template-columns:auto 1fr; gap:4px 12px;
+             align-items:start; background:var(--card); border:1px solid var(--sabbia);
+             border-radius:10px; padding:14px 16px; cursor:pointer; min-height:44px; }}
+  .scelta input {{ grid-row:1/3; width:20px; height:20px; accent-color:var(--salvia); margin-top:2px; }}
+  .titolo {{ font-weight:700; font-size:15px; }}
+  .descrizione {{ font-size:13px; color:#6b7566; }}
+  .periodo {{ display:flex; flex-wrap:wrap; gap:12px; margin:24px 0 8px; }}
+  .periodo label {{ display:flex; flex-direction:column; gap:6px; font-size:13px; font-weight:600; }}
+  input[type=date], input[type=number] {{ font:inherit; padding:10px 12px; min-height:44px;
+      border:1px solid var(--sabbia); border-radius:8px; background:var(--card); color:inherit; }}
+  .azioni {{ display:flex; flex-wrap:wrap; gap:12px; margin-top:28px; }}
+  button {{ font:inherit; font-weight:700; min-height:48px; padding:0 22px;
+            border-radius:10px; border:1px solid var(--salvia-scuro); cursor:pointer; }}
+  .primario {{ background:var(--salvia); color:#fff; }}
+  .secondario {{ background:var(--card); color:var(--salvia-scuro); }}
+  .nota {{ margin-top:24px; font-size:13px; color:#6b7566; border-left:3px solid var(--sabbia);
+           padding-left:14px; }}
+</style></head>
+<body><div class="foglio">
+  <h1>Stampa registro HACCP</h1>
+  <p class="sottotitolo">Scegli le pagine, poi genera il fascicolo. Il frontespizio con i dati dell'azienda c'e' sempre.</p>
+  <form id="modulo" target="_blank" action="/lotti/api/manuale-haccp/genera-manuale" method="get">
+    <div class="periodo">
+      <label>Anno<input type="number" name="anno" value="{anno}" min="2020" max="2100"></label>
+      <label>Dal (facoltativo)<input type="date" name="data_da"></label>
+      <label>Al (facoltativo)<input type="date" name="data_a"></label>
+    </div>
+    {righe}
+    <input type="hidden" name="sezioni" id="sezioni">
+    <div class="azioni">
+      <button type="submit" class="primario">Genera il fascicolo</button>
+      <button type="button" class="secondario" onclick="scegli(true)">Segna tutte</button>
+      <button type="button" class="secondario" onclick="scegli(false)">Togli tutte</button>
+    </div>
+  </form>
+  <p class="nota">Il fascicolo si apre in una scheda nuova, gia' impaginato: da li' si stampa
+     o si salva in PDF con la stampa del browser. Le pagine delle registrazioni riportano
+     quello che c'e' davvero nel registro, comprese le giornate dichiarate «non rilevate».</p>
+</div>
+<script>
+  const modulo = document.getElementById('modulo');
+  function scegli(valore) {{
+    modulo.querySelectorAll('input[name=sezione]').forEach(c => c.checked = valore);
+  }}
+  modulo.addEventListener('submit', (evento) => {{
+    const scelte = [...modulo.querySelectorAll('input[name=sezione]:checked')].map(c => c.value);
+    if (!scelte.length) {{
+      evento.preventDefault();
+      alert('Scegli almeno una pagina da stampare.');
+      return;
+    }}
+    document.getElementById('sezioni').value = scelte.join(',');
+    modulo.querySelectorAll('input[name=sezione]').forEach(c => c.disabled = true);
+    setTimeout(() => modulo.querySelectorAll('input[name=sezione]').forEach(c => c.disabled = false), 0);
+  }});
+</script>
+</body></html>""")
