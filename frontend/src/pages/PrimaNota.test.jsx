@@ -17,6 +17,7 @@ import {
   filtraMovimentiPrimaNota,
   eCategoriaStorica,
   nomeFornitoreMovimento,
+  movimentoContaNelSaldo,
   normalizzaDescrizioneMovimento,
 } from './PrimaNota';
 
@@ -74,6 +75,28 @@ describe('Conto SumUp separato dalla Banca', () => {
     const source = readFileSync(resolve(process.cwd(), 'src/pages/PrimaNota.jsx'), 'utf8');
     expect(source).toContain('mov.non_modificabile');
     expect(source).toContain('Dato live');
+  });
+});
+
+describe('Movimenti banca provvisori', () => {
+  it('non considera liquidita bancaria un movimento senza estratto conto', () => {
+    expect(movimentoContaNelSaldo({
+      provvisorio: true,
+      riconciliato: false,
+      estratto_conto_id: null,
+    }, 'banca')).toBe(false);
+  });
+
+  it('considera reale il movimento quando esiste evidenza di estratto conto', () => {
+    expect(movimentoContaNelSaldo({
+      provvisorio: false,
+      riconciliato: true,
+      estratto_conto_id: 'ec-1',
+    }, 'banca')).toBe(true);
+  });
+
+  it('non cambia la semantica della cassa', () => {
+    expect(movimentoContaNelSaldo({ provvisorio: true }, 'cassa')).toBe(true);
   });
 });
 
