@@ -14,6 +14,7 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List
 from app.services.scritture_contabili import scrivi_movimento
+from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
 
 logger = logging.getLogger(__name__)
 
@@ -169,7 +170,7 @@ async def handler_matching_estratto_conto(payload: Dict[str, Any], db) -> Dict[s
 
     # Carica fatture non pagate per il periodo
     fatture_aperte = await db["invoices"].find(
-        {"pagato": {"$ne": True}, "stato": {"$nin": ["annullata", "stornata"]}},
+        {**FILTRO_NON_PAGATE, "stato": {"$nin": ["annullata", "stornata"]}},
         {"_id": 0, "id": 1, "importo_totale": 1, "total_amount": 1,
          "data_documento": 1, "invoice_date": 1,
          "fornitore_ragione_sociale": 1, "supplier_name": 1,

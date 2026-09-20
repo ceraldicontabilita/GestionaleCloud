@@ -606,6 +606,14 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   `check_scadenze_partite_task` salta le partite fornitore e l'avviso
   `FAT_DA_PAGARE_SCADUTA` non nasce più; F24 e stipendi, che una scadenza
   vera ce l'hanno, restano invariati.
+- **«È pagata?» si chiede in un posto solo**: `e_pagata` /
+  `FILTRO_NON_PAGATE` di `app/services/stato_pagamento_fattura.py`, e
+  `ePagata` di `frontend/src/utils/statoFattura.js`. Lo stato vive in cinque
+  campi (`stato`, `stato_pagamento`, `payment_status`, `pagato`, `paid`) e
+  nessuno copre l'archivio: leggerne uno solo dichiarava non pagate 639
+  fatture da 311.838,20 €, e `{"pagato": {"$ne": True}}` le riportava tutte
+  fra le aperte. `status` è lo stato del documento e `stato_finanziario`
+  quello della riconciliazione: nessuno dei due dice se è pagata.
 - Il payload di `fattura.created` si costruisce solo con
   `app/services/eventi_fattura.py::costruisci_evento_fattura_created`, così
   import e recupero del pregresso propagano lo stesso evento.
@@ -771,79 +779,71 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - Ogni merge su `main` fa ridistribuire Render e riportare in memoria ~74.500
   righe: per qualche minuto la produzione è `degraded`. Non è un guasto, ma
   non si accodano merge, e il lavoro di fondo riparte dal suo cursore.
-- Ingest cedolini: il ramo vivo è `services/cedolini_manager` →
-  `services/salari_unificati_v2`, e un netto illeggibile non diventa più zero.
-  **Collaudo live non chiuso**: il giro orario Drive trova 0 file su 49
-  caselle, serve un PDF di cedolino vero.
+- Ingest cedolini: ramo vivo `services/cedolini_manager` →
+  `services/salari_unificati_v2`; un netto illeggibile non diventa più zero.
+  **Collaudo live non chiuso**: il giro orario Drive trova 0 file su 49 caselle.
 - Il `last_login` di HR non è mai stato scritto fino al 19/09/2026 (`ObjectId`
   su un id testuale): da verificare al primo accesso col PIN.
 - TFR: è accantonato. `hr.app_tfr_accantonamenti` è vuota ma il codice vivo
-  scrive in `tfr_accantonamenti` del gestionale: 1.175 righe, 42 dipendenti,
-  2018–2026, 273.025,37 €.
+  scrive in `tfr_accantonamenti`: 1.175 righe, 42 dipendenti, 273.025,37 €.
 - **Spento**: `PROTOCOLLO_DRIVE_ENABLED=false` (il giro portava la RAM a
-  1,57 GB su 2 GB: riaccendere solo dopo aver ridotto la memoria del giro).
+  1,57 GB su 2 GB: riaccendere solo dopo averla ridotta).
 - **Acceso**: scheduler, ingest Drive (fatture, estratti conto, cedolini,
-  bonifici), ponte pagamenti HR, dedup fatture ogni 30 min, canale
-  dichiarazioni fiscali fino a coda esaurita.
-- Fatture in archivio **1.906**, di cui **873 attive e tutte del 2026**
-  (411.487,41 €): «solo 2026 nel bilancio» è rispettata, il resto è archivio
-  storico. Collisioni 0. 21 corrispettivi con ripartizione contanti/POS non
-  quadrata (31/03–30/07/2026).
-- **Su Drive 2.447 XML di fattura**: 1.318 del 2026 (769 `Elaborate`, 527 `Da
-  elaborare`, 22 `Errori`), 875 del 2025, 254 dal 2021 al 2024. Ne sono già
-  rientrate **396** che il gestionale non aveva (211.097,19 €), tutte pre-2026
-  e marcate `archivio_storico`. La ricostruzione va avanti da sola.
+  bonifici), ponte pagamenti HR, dedup fatture ogni 30 min, dichiarazioni
+  fiscali fino a coda esaurita.
+- Fatture in archivio **2.555**, di cui 685 pagate; collisioni 0. «Solo 2026 nel
+  bilancio» è rispettata. 21 corrispettivi con contanti/POS non quadrati.
+- **Su Drive 2.447 XML di fattura** (1.318 del 2026, 875 del 2025, 254 dal
+  2021 al 2024). Ne sono già rientrate **396** che il gestionale non aveva
+  (211.097,19 €), tutte pre-2026 e marcate `archivio_storico`. La
+  ricostruzione va avanti da sola.
 - **Nessuna liquidazione IVA è mai stata calcolata**: `/api/iva/liquidazioni`
   torna vuoto. Giugno e luglio 2026 sono calcolabili ma con **zero** acquisti
   (tutti in `detraibilita_da_verificare`): il saldo è l'IVA sulle vendite
-  intera, 7.651,05 € e 6.211,86 €; agosto è fermo su `giorni_senza_corrispettivo`.
+  intera, 7.651,05 € e 6.211,86 €; agosto fermo su `giorni_senza_corrispettivo`.
   Corrispettivi 2026: 518.879,34 € incassati, 47.170,88 € di IVA a debito.
-- Confronto con la LIPE 2026 del commercialista (tre periodi, tutti quadrati):
-  a marzo l'IVA esigibile combacia **al centesimo** (6.131,26 €); a gennaio
-  mancano **5.005,88 €** di IVA detraibile, cioè acquisti che lui ha e noi no.
-  Febbraio senza corrispettivi non è un buco: locale chiuso per
-  ristrutturazione, e anche la LIPE ha le attive in bianco. Nessun F24 IVA
-  2026, ed è corretto: la LIPE chiude a credito tutti i mesi.
-- Cron Render `gestionalecloud-calderone-15min`: **sospeso** e ora senza
-  codice (`render_workflows/` eliminato). Va cancellato dal pannello.
-- Solo 108 prodotti del Menu su 325 hanno allergeni valorizzati: da
-  completare, è un obbligo di legge.
+- Confronto con la LIPE 2026 (tre periodi, tutti quadrati): a marzo l'IVA
+  esigibile combacia **al centesimo** (6.131,26 €); a gennaio mancano
+  **5.005,88 €** di IVA detraibile, cioè acquisti che lui ha e noi no. Febbraio
+  senza corrispettivi non è un buco: locale chiuso, e anche la LIPE ha le
+  attive in bianco. Nessun F24 IVA 2026: la LIPE chiude a credito ogni mese.
+- Cron Render `gestionalecloud-calderone-15min`: sospeso e senza codice, va cancellato dal pannello.
+- Solo 108 prodotti del Menu su 325 hanno allergeni: obbligo di legge, da completare.
 
 ## Aperto (togliere la voce quando si chiude)
 
 - Compute Supabase **Micro** insufficiente (crash Postgres del 17/09): valutare Small.
-- Endpoint sincroni oltre i 5 minuti, da portare a lotti riprendibili come la
-  ricostruzione Drive: `/api/fatture/drive/quadratura` (tagliata a 300 s,
-  arriva solo al 2022), `/api/paypal-api/riconcilia`,
-  `/api/paypal-api/account-ids-non-mappati`, `/api/admin/riallinea-pagamenti-fatture`,
+- Endpoint sincroni oltre i 5 minuti, da portare a lotti riprendibili:
+  `/api/fatture/drive/quadratura` (tagliata a 300 s, arriva al 2022),
+  `/api/paypal-api/riconcilia`, `/api/paypal-api/account-ids-non-mappati`,
+  `/api/admin/riallinea-pagamenti-fatture`,
   `/api/prima-nota-salari/deposita-cedolini-in-hr`.
 - Note di credito TD04 legacy (~20, precedenti al fix a `registra_fattura`):
-  costo/IVA/debito aumentati anziché ridotti, da sanare una per una con
+  costo/IVA/debito aumentati anziché ridotti, da sanare con
   `storna_registrazione_fattura` per `fattura_id`.
-- **Nessuno dei 187 fornitori ha `metodo_pagamento`** (campo vuoto; solo 41
-  hanno un IBAN): finché resta così ogni fattura è `sospesa` e nulla va in
-  Prima Nota Banca. Da popolare con una fonte vera, non dedotta dalle fatture.
-- **Pregresso fatture da sanare**: 296 fatture attive (173.184,83 €, 22.989,82 €
-  di IVA) senza partita aperta, 280 anche fuori dal libro giornale (145.025,14 €).
-  Ordine obbligato: `/api/admin/fatture/ripubblica-evento-created` (fa girare
-  anche il classificatore IVA), poi `/api/piano-conti/registra-pregresso`.
+- **Nessuno dei 187 fornitori ha `metodo_pagamento`** (solo 41 hanno un IBAN):
+  finché resta così ogni fattura è `sospesa` e nulla va in Prima Nota Banca.
+  Da popolare con una fonte vera, non dedotta dalle fatture.
+- **Pregresso fatture**: 296 attive (173.184,83 €, 22.989,82 € di IVA) senza
+  partita aperta, 280 anche fuori dal giornale (145.025,14 €). Ordine obbligato:
+  `/api/admin/fatture/ripubblica-evento-created`, poi `/registra-pregresso`.
 - Da lanciare, con `dry_run` prima: `/api/admin/fatture/azzera-scadenze` (642
-  fatture e 971 partite portano ancora la scadenza inventata dal vecchio
-  import, e alimentano `FAT_DA_PAGARE_SCADUTA`); `/api/iva/lipe/importa`
-  (`lipe_periodi` vuota, al confronto col commercialista manca la colonna);
+  fatture e 971 partite con la scadenza inventata dal vecchio import);
+  `/api/iva/lipe/importa` (`lipe_periodi` vuota); e
   `/api/pos-corrispettivi/chiusure-giornaliere/ricostruisci-numia` (senza, 180
   giornate su 183 restano «attende chiusura POS reale»).
 - Riconciliazione: 158 fatture `riconciliata` con movimento non riconciliato,
-  180 righe hub senza `fattura_id` (da rigenerare col motore); banca 2026 con
-  1.765 movimenti senza categoria.
-- Drive `03/ESTRATTI CONTO/DA ELABORARE`: 291 documenti pre-2026 fermi per
-  scelta. Gli estratti conto importati arrivano al 17/08.
+  180 righe hub senza `fattura_id`; banca 2026 con 1.765 movimenti senza categoria.
+- Drive `03/ESTRATTI CONTO/DA ELABORARE`: 291 documenti pre-2026 fermi per scelta; gli estratti importati arrivano al 17/08.
 - HR: 38 bonifici con `cedolino_id` orfano, 119 in «bonifici da associare», 10
   tabelle attese dall'app assenti (turni_config, onomastici, richieste…),
   Iazzetta Francesco senza IBAN; Appuhamy, Aurigemma, Vitiello e Dell'Aquila da
-  creare come storici cessati. UNILAV di Moscato e Pocci da verificare col
-  consulente (Ferrantini).
-- Drill-down «Verifica campi e F24»: agganciato al vecchio indice Drive, che non esiste più. `/api/download` serve `./downloads`, che nessuno popola.
+  creare come storici cessati. UNILAV Moscato e Pocci da verificare (Ferrantini).
+- `app/models/stati.py::STATI_PAGATI` conta «parziale» fra le pagate, ed è
+  applicata a `status`, che sulle fatture vale solo archiviata/imported/
+  archived: oggi non filtra niente. Da togliere o correggere.
+- Drill-down «Verifica campi e F24»: agganciato al vecchio indice Drive, che
+  non esiste più. `/api/download` serve `./downloads`, che nessuno popola.
 - A mano, dal titolare: ruotare la password Postgres; DNS di `ceraldiapp.it` e
   servizi Render sospesi.
 - Fork `app/hr/` quasi chiuso: restano **cinque** sottopercorsi duplicati
@@ -859,8 +859,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   `bank_reconciliation_hub` (2.017 righe), scritta da un trigger e letta da
   nessuno: o le si dà un lettore, o va spenta.
 - `archivio_documenti_memoria.py` espone ancora `SheetDatabase` e
-  `MemorySheetsClient`, che nel nome promettono Google Sheets senza chiamarlo
-  mai: 54 e 2 occorrenze in 12 file, da rinominare in un giro dedicato.
+  `MemorySheetsClient`, che promettono Google Sheets senza chiamarlo mai: 54 e
+  2 occorrenze in 12 file, da rinominare in un giro dedicato.
 
 ## Logica dentro al database
 

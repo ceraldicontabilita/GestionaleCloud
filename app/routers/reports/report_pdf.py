@@ -15,6 +15,7 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib.enums import TA_CENTER
 
 from app.database import Database, Collections
+from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -330,8 +331,7 @@ async def generate_report_scadenze(giorni: int = Query(30, description="Giorni p
     # F24 da pagare
     f24_scadenza = await db["f24_unificato"].find({
         "data_scadenza": {"$lte": limite},
-        "pagato": {"$ne": True}
-    }, {"_id": 0}).sort("data_scadenza", 1).to_list(100)
+        **FILTRO_NON_PAGATE,    }, {"_id": 0}).sort("data_scadenza", 1).to_list(100)
     
     # Genera PDF
     buffer = BytesIO()

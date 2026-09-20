@@ -30,6 +30,7 @@ import {
   Td,
 } from '../components/ds';
 import { ChevronLeft, ChevronRight, Eye, FileText, ArrowLeftRight } from 'lucide-react';
+import { ePagata } from '../utils/statoFattura';
 
 const PER_PAGINA = 50;
 
@@ -130,8 +131,7 @@ export const descriviPagamento = fattura => {
     };
   }
 
-  const dichiarataPagata = fattura.pagato || fattura.status === 'paid'
-    || fattura.stato_pagamento === 'pagata';
+  const dichiarataPagata = ePagata(fattura);
   if (dichiarataPagata) {
     return {
       variant: 'warning',
@@ -431,7 +431,7 @@ export default function ArchivioFatture() {
   const formatDate = formatDateIT;
 
   const getStatoBadge = fattura => {
-    if (fattura.pagato) {
+    if (ePagata(fattura)) {
       let metodo = fattura.metodo_pagamento || '';
       let icon = '✅';
       let label = 'Pagata';
@@ -772,7 +772,7 @@ export default function ArchivioFatture() {
               Seleziona tutte ({fatture.length})
             </label>
             {fattureVisibili.map((f, idx) => {
-              const isPaid = f.pagato || f.status === 'paid' || f.stato_pagamento === 'pagata';
+              const isPaid = ePagata(f);
               const tipoDoc = tipoDocumento(f);
               const assegnoAssociabile = puoAssociareAssegno(f);
               const allocationConflict = statoAllocazione(f) === 'conflicting';
@@ -953,7 +953,7 @@ export default function ArchivioFatture() {
               </thead>
               <tbody>
                 {fattureVisibili.map((f, idx) => {
-                  const isPaid = f.pagato || f.status === 'paid' || f.stato_pagamento === 'pagata';
+                  const isPaid = ePagata(f);
                   const tipoDoc = tipoDocumento(f);
                   const assegnoAssociabile = puoAssociareAssegno(f);
                   const allocationConflict = statoAllocazione(f) === 'conflicting';

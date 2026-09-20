@@ -57,6 +57,7 @@ import logging
 from app.models.stati import STATI_PAGATI
 from app.routers.prima_nota_module.common import filtro_saldo_prima_nota
 from app.utils.error_handler import handle_errors
+from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
 
 # Esclude movimenti soft-deleted (status deleted/archived) e i duplicati POS
 # già identificati — stesso filtro già applicato a tutte le altre query di
@@ -184,7 +185,7 @@ async def get_stato_patrimoniale(
         {"$match": {
             "tipo_documento": {"$nin": ["TD04", "TD08"]},
             "status": {"$nin": STATI_PAGATI + ["deleted", "archived"]},
-            "pagato": {"$ne": True},
+            **FILTRO_NON_PAGATE,
             "$or": [
                 {"invoice_date": {"$lte": data_fine}},
                 {"data_ricezione": {"$lte": data_fine}}

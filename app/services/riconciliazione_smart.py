@@ -24,6 +24,7 @@ from app.services.payment_allocation_validator import (
     invoice_total_cents,
     to_cents,
 )
+from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
 
 logger = logging.getLogger(__name__)
 
@@ -465,7 +466,7 @@ async def cerca_stipendi_non_pagati(
     mese: str = None
 ) -> List[Dict[str, Any]]:
     """Cerca stipendi non pagati per un dipendente."""
-    query = {"pagato": {"$ne": True}}
+    query = {**FILTRO_NON_PAGATE,}
     
     if dipendente_id:
         query["dipendente_id"] = dipendente_id
@@ -898,7 +899,7 @@ async def analizza_estratto_conto_batch(
     fatture = await db.invoices.find(
         {
             "invoice_date": {"$gte": data_limite},
-            "pagato": {"$ne": True},
+            **FILTRO_NON_PAGATE,
             "stato_pagamento": {"$nin": ["pagata", "sospesa"]},
         },
         {"_id": 0, "id": 1, "invoice_number": 1, "supplier_name": 1, "supplier_vat": 1, 

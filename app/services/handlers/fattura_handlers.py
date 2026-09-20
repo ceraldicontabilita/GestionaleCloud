@@ -16,6 +16,7 @@ Cosa aggiungono:
 """
 import logging
 from typing import Dict, Any, Optional
+from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
 
 logger = logging.getLogger(__name__)
 
@@ -302,7 +303,7 @@ async def on_fornitore_aggiornato_risolvi(event: Dict[str, Any], db) -> Optional
 
         # Risolvi anche gli alert FAT_MP_NON_DEFINITO sulle fatture di questo fornitore
         fatture = await db["invoices"].find(
-            {"fornitore_id": fornitore_id, "pagato": {"$ne": True}},
+            {"fornitore_id": fornitore_id, **FILTRO_NON_PAGATE,},
             {"_id": 0, "id": 1}
         ).to_list(100)
         for f in fatture:

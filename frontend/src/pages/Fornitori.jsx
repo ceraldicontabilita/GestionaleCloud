@@ -50,6 +50,7 @@ import {
   TrendingUp,
   RefreshCw,
 } from 'lucide-react';
+import { ePagata } from '../utils/statoFattura';
 
 // Hook per debounce
 function useDebounce(value, delay) {
@@ -3361,7 +3362,7 @@ export default function Fornitori() {
                                   >
                                     ✓ RICONCILIATA
                                   </Badge>
-                                ) : f.pagato ? (
+                                ) : ePagata(f) ? (
                                   <Badge
                                     variant="success"
                                     style={{ background: COLORS.success, color: 'white' }}
@@ -3393,7 +3394,7 @@ export default function Fornitori() {
                                       👁 Vedi
                                     </Button>
                                   )}
-                                  {!f.pagato && !f.is_nota_credito && (
+                                  {!ePagata(f) && !f.is_nota_credito && (
                                     <>
                                       <Button
                                         variant="success"

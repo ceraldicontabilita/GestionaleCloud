@@ -18,6 +18,7 @@ from app.routers.prima_nota_module.common import (
 )
 from app.services.registrazione_contabile import registra_scrittura_semplice
 from app.utils.error_handler import handle_errors
+from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -538,7 +539,7 @@ async def apertura_nuovo_esercizio(input_data: AperturaEsercizioInput) -> Dict[s
         {"$match": {
             "invoice_date": {"$lte": data_chiusura},
             "status": {"$nin": stati_completamente_pagati + ["deleted", "archived"]},
-            "pagato": {"$ne": True},
+            **FILTRO_NON_PAGATE,
         }},
         {"$group": {"_id": None, "totale": {"$sum": {
             "$ifNull": ["$importo_residuo", "$total_amount"]

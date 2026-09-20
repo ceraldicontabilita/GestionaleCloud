@@ -29,6 +29,7 @@ import httpx
 from fastapi import APIRouter, HTTPException, Query, Body, UploadFile, File
 
 from app.hr.database import Database
+from app.services.stato_pagamento_fattura import FILTRO_PAGATE
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -158,7 +159,9 @@ async def dashboard():
 
     tot_fatture = await inv.count_documents({})
     fatture_da_pagare = await inv.count_documents({"stato_pagamento": "da_pagare"})
-    fatture_pagate = await inv.count_documents({"stato_pagamento": "pagato"})
+    # Contava `stato_pagamento == "pagato"`: 3 fatture su 685. Il maschile
+    # esiste su tre righe soltanto, e le 639 pagate stanno su `stato`.
+    fatture_pagate = await inv.count_documents(FILTRO_PAGATE)
 
     # Importo totale da pagare
     importo_da_pagare = 0.0

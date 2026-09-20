@@ -10,12 +10,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any, Dict, Iterable, List, Optional
 
 
-STATI_CHIUSI = frozenset({
-    "pagato", "pagata", "paid", "quietanzato", "quietanzata",
-    "annullato", "annullata", "cancelled", "deleted",
-    "eliminato", "pagata_puntuale", "pagata_con_ravvedimento",
-    "pagata_in_ritardo_senza_ravvedimento",
-})
+from app.services.stato_pagamento_fattura import STATI_CHIUSI  # noqa: F401
 CENT = Decimal("0.01")
 
 

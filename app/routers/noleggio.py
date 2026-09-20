@@ -30,6 +30,7 @@ from app.services.noleggio.associations import (
 )
 
 from app.utils.error_handler import handle_errors
+from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -778,7 +779,7 @@ async def get_riepilogo_controlli(
     query_pagamenti = {
         "supplier_vat": {"$in": list(FORNITORI_NOLEGGIO.values())},
         "invoice_date": {"$regex": f"^{anno_pagamenti}"},
-        "pagato": {"$ne": True},
+        **FILTRO_NON_PAGATE,
         "riconciliato": {"$ne": True},
     }
     pagamenti_count = await db["invoices"].count_documents(query_pagamenti)

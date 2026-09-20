@@ -12,6 +12,7 @@ from app.routers.prima_nota_module.common import (
     filtro_saldo_prima_nota,
 )
 from app.utils.error_handler import handle_errors
+from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -172,7 +173,7 @@ async def get_financial_summary(
                 "invoice_date": date_range,
                 "status": {"$nin": STATI_PAGATI + ["deleted", "archived"]},
                 "entity_status": {"$ne": "deleted"},
-                "pagato": {"$ne": True},
+                **FILTRO_NON_PAGATE,
             }},
             {"$group": {"_id": None, "total": {"$sum": "$total_amount"}}}
         ]).to_list(1)

@@ -23,7 +23,7 @@ SCENARI = {
     "prudente": (Decimal("0.70"), Decimal("1.00")),
     "stress": (Decimal("0.40"), Decimal("1.10")),
 }
-STATI_CHIUSI = ("pagata", "pagato", "paid", "chiusa", "chiuso", "annullata", "annullato")
+from app.services.stato_pagamento_fattura import STATI_CHIUSI  # noqa: F401
 
 
 @dataclass(frozen=True)

@@ -24,6 +24,7 @@ from app.services.mapping_piano_conti import (
     saldi_in_cee,
 )
 from app.services.piano_conti_ufficiale import CONTI_UFFICIALI
+from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -1093,7 +1094,7 @@ async def get_movimenti_per_conto(
     # conto apriva una pagina senza movimenti, pur avendo un saldo diverso da 0.
     elif cee == "33.03.01" or any(c.startswith("02.01") for c in codici_operativi):
         from app.models.stati import STATI_PAGATI as _STATI_PAGATI
-        q_debiti: dict = {"status": {"$nin": _STATI_PAGATI}, "pagato": {"$ne": True}}
+        q_debiti: dict = {"status": {"$nin": _STATI_PAGATI}, **FILTRO_NON_PAGATE,}
         if anno:
             q_debiti["invoice_date"] = {"$lte": f"{anno}-12-31"}
         docs = await db["invoices"].find(

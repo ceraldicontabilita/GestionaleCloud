@@ -6,6 +6,7 @@ import uuid
 from fastapi import HTTPException
 
 from app.services.invoice_payments import InvoiceBankReconciliationRequest, reconcile_invoice_bank_movement
+from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
 
 COLLECTION = "bank_supplier_rules"
 
@@ -45,7 +46,7 @@ async def reprocess_rules(db, year: int) -> dict:
     }, {"_id": 0}).to_list(50000)
     invoices = await db["invoices"].find({
         "$or": [{"invoice_date": {"$regex": f"^{int(year)}"}}, {"data_fattura": {"$regex": f"^{int(year)}"}}],
-        "pagato": {"$ne": True},
+        **FILTRO_NON_PAGATE,
     }, {"_id": 0}).to_list(50000)
     linked, ambiguous, no_invoice = [], [], []
     for movement in movements:
