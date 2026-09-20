@@ -33,6 +33,14 @@ DEFAULT_AZIENDA = {
     "attivita": os.environ.get("AZIENDA_ATTIVITA", "Pasticceria e Rosticceria"),
     "responsabile_haccp": os.environ.get("AZIENDA_RESP_HACCP", ""),
     "studio_consulenza": os.environ.get("AZIENDA_STUDIO", ""),
+    # Il responsabile dell'attivita' dichiara di eseguire di persona il
+    # controllo visivo del ciclo di produzione e igienizzazione, e se ne
+    # assume la responsabilita'. Con questo acceso il registro annota ogni
+    # mattina l'ESITO di quel controllo («conforme, entro soglia»), non una
+    # misura: il valore numerico si scrive solo quando c'e' un'anomalia, e lo
+    # scrive lui. Spento, il turno si limita ad aprire le caselle da rilevare.
+    "controllo_visivo_responsabile": os.environ.get("AZIENDA_CONTROLLO_VISIVO", ""),
+    "controllo_visivo_ogni_ore": os.environ.get("AZIENDA_CONTROLLO_ORE", "2"),
 }
 
 # Campi che le Impostazioni possono modificare e salvare.
@@ -47,6 +55,8 @@ CAMPI_MODIFICABILI = [
     "attivita",
     "responsabile_haccp",
     "studio_consulenza",
+    "controllo_visivo_responsabile",
+    "controllo_visivo_ogni_ore",
 ]
 
 

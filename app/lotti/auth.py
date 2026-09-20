@@ -104,10 +104,17 @@ def make_token(sub: str, nome: str, ruolo: str, via: str = "pin", ore: int = Non
 
 
 def verify_token(token: str):
-    try:
-        return jwt.decode(token, _secret(), algorithms=[ALG])
-    except Exception:
-        return None
+    """Accetta i token di TUTTE le app del gruppo, non solo quelli di Lotti.
+
+    Il PIN si inserisce per entrare, non per passare da una sezione all'altra:
+    lo stesso operatore che apre il magazzino col suo PIN deve poter aprire il
+    portale dipendenti senza rifarlo. La verifica condivisa prova entrambi i
+    segreti (vedi `app/services/sessione_unica.py`); un token scaduto o
+    manomesso resta rifiutato come prima.
+    """
+    from app.services.sessione_unica import verifica_token_condiviso
+
+    return verifica_token_condiviso(token)
 
 
 # ── Rotte sempre pubbliche (non richiedono token) ──────────────────────────

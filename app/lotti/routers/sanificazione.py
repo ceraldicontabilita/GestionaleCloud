@@ -13,7 +13,7 @@ RIFERIMENTI NORMATIVI:
 OPERATORE DESIGNATO: SANKAPALA ARACHCHILAGE JANANIE AYACHANA DISSANAYAKA
 """
 
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Dict
 from datetime import datetime, timezone, date, timedelta
@@ -24,6 +24,8 @@ import uuid
 # nell'archivio vero, con operatore, prodotto usato e un 10% di «non eseguita»
 # per farle sembrare autentiche. Le due funzioni che lo usavano erano orfane —
 # nessuno le chiamava piu' — e sono state tolte il 20/09/2026.
+
+from app.lotti.auth import require_admin
 
 router = APIRouter(prefix="/sanificazione", tags=["Sanificazione"])
 
@@ -572,3 +574,156 @@ async def export_pdf_sanificazione(anno: int, mese: int):
     """
 
     return HTMLResponse(content=html)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PIANO DI SANIFICAZIONE — ogni quanto si lava cosa, e con quale prodotto
+#
+# Il registro diceva CHE una pulizia era stata fatta, mai ogni quanto andava
+# fatta ne' con cosa. Davanti a un'ispezione il piano di sanificazione e'
+# proprio questo: area, frequenza, prodotto, diluizione, tempo di contatto.
+#
+# Frequenza e prodotti NON hanno un valore di ripiego: li stabilisce il
+# responsabile. Un detergente scritto a caso su un manuale HACCP e' peggio di
+# una casella vuota — rimanda a una scheda di sicurezza che non c'entra.
+# ─────────────────────────────────────────────────────────────────────────────
+
+FREQUENZE = {
+    "giornaliera": {"etichetta": "Ogni giorno", "giorni": 1},
+    "due_giorni": {"etichetta": "Ogni due giorni", "giorni": 2},
+    "settimanale": {"etichetta": "Ogni settimana", "giorni": 7},
+    "quindicinale": {"etichetta": "Ogni quindici giorni", "giorni": 15},
+    "mensile": {"etichetta": "Ogni mese", "giorni": 30},
+}
+
+_DOC_PIANO = "piano_sanificazione"
+
+
+class VoceDelPiano(BaseModel):
+    area: str
+    frequenza: str = ""          # una chiave di FREQUENZE
+    prodotto: str = ""           # nome commerciale del detergente/sanificante
+    diluizione: str = ""         # es. "2%" o "20 ml/l"
+    tempo_contatto: str = ""     # es. "5 minuti"
+    note: str = ""
+
+
+async def _piano_salvato() -> dict:
+    doc = await db.impostazioni.find_one({"_id": _DOC_PIANO}) or {}
+    return doc.get("voci", {}) if isinstance(doc.get("voci"), dict) else {}
+
+
+@router.get("/piano")
+async def leggi_piano_sanificazione():
+    """Il piano per area: frequenza, prodotto, diluizione, tempo di contatto.
+
+    Le aree sono quelle vere del registro. Quelle non ancora compilate
+    escono con i campi vuoti e finiscono in `da_completare`: sono le righe
+    che in stampa resterebbero senza piano.
+    """
+    salvato = await _piano_salvato()
+    voci, da_completare = [], []
+    for area in ATTREZZATURE_SANIFICAZIONE:
+        voce = salvato.get(area) or {}
+        riga = {
+            "area": area,
+            "frequenza": voce.get("frequenza", ""),
+            "frequenza_etichetta": FREQUENZE.get(voce.get("frequenza", ""), {}).get("etichetta", ""),
+            "prodotto": voce.get("prodotto", ""),
+            "diluizione": voce.get("diluizione", ""),
+            "tempo_contatto": voce.get("tempo_contatto", ""),
+            "note": voce.get("note", ""),
+        }
+        voci.append(riga)
+        if not riga["frequenza"] or not riga["prodotto"]:
+            da_completare.append(area)
+    return {
+        "voci": voci,
+        "frequenze_disponibili": [
+            {"id": k, "etichetta": v["etichetta"], "giorni": v["giorni"]}
+            for k, v in FREQUENZE.items()
+        ],
+        "da_completare": da_completare,
+        "completo": not da_completare,
+    }
+
+
+@router.put("/piano")
+async def salva_piano_sanificazione(
+    voci: List[VoceDelPiano], _admin=Depends(require_admin),
+):
+    """Imposta frequenza e prodotto per una o piu' aree."""
+    salvato = await _piano_salvato()
+    aggiornate = []
+    for voce in voci:
+        area = (voce.area or "").strip()
+        if area not in ATTREZZATURE_SANIFICAZIONE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Area non riconosciuta: «{area}». Sono quelle del registro.",
+            )
+        if voce.frequenza and voce.frequenza not in FREQUENZE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Frequenza non valida: «{voce.frequenza}». "
+                       f"Ammesse: {', '.join(FREQUENZE)}",
+            )
+        salvato[area] = {
+            "frequenza": voce.frequenza,
+            "prodotto": (voce.prodotto or "").strip(),
+            "diluizione": (voce.diluizione or "").strip(),
+            "tempo_contatto": (voce.tempo_contatto or "").strip(),
+            "note": (voce.note or "").strip(),
+            "aggiornato_il": datetime.now(timezone.utc).isoformat(),
+        }
+        aggiornate.append(area)
+    await db.impostazioni.update_one(
+        {"_id": _DOC_PIANO},
+        {"$set": {"_id": _DOC_PIANO, "voci": salvato,
+                  "updated_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True,
+    )
+    return {"success": True, "aggiornate": aggiornate}
+
+
+@router.get("/scadute")
+async def sanificazioni_scadute():
+    """Cosa e' in ritardo rispetto al piano, oggi.
+
+    Una pulizia «ogni due giorni» fatta cinque giorni fa e' in ritardo: il
+    registro da solo non lo diceva, perche' segnava soltanto i giorni fatti.
+    Le aree senza piano non sono ne' in regola ne' in ritardo: sono da
+    compilare, e si dicono a parte.
+    """
+    from datetime import date as _date
+
+    piano = await _piano_salvato()
+    oggi = _date.today()
+    scheda = await db.sanificazione_schede.find_one(
+        {"anno": oggi.year, "mese": oggi.month}, {"_id": 0, "registrazioni": 1}
+    ) or {}
+    registrazioni = scheda.get("registrazioni", {})
+
+    in_ritardo, senza_piano, in_regola = [], [], []
+    for area in ATTREZZATURE_SANIFICAZIONE:
+        voce = piano.get(area) or {}
+        frequenza = voce.get("frequenza")
+        if not frequenza:
+            senza_piano.append(area)
+            continue
+        giorni_previsti = FREQUENZE[frequenza]["giorni"]
+        fatti = [
+            int(g) for g, v in (registrazioni.get(area) or {}).items()
+            if str(g).isdigit() and v in ("X", "x", "1", True)
+        ]
+        ultimo = max(fatti) if fatti else None
+        giorni_passati = (oggi.day - ultimo) if ultimo else None
+        riga = {"area": area, "frequenza": frequenza,
+                "ultima_pulizia_giorno": ultimo, "giorni_passati": giorni_passati,
+                "prodotto": voce.get("prodotto", "")}
+        if ultimo is None or giorni_passati > giorni_previsti:
+            in_ritardo.append(riga)
+        else:
+            in_regola.append(riga)
+    return {"data": oggi.isoformat(), "in_ritardo": in_ritardo,
+            "in_regola": in_regola, "senza_piano": senza_piano}
