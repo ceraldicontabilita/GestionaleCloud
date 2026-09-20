@@ -6,11 +6,20 @@ dovrebbe sbagliare». Ha ragione, e questo modulo sostituisce il vecchio
 comando «Ripara versamenti», che era un bottone da premere a mano e che il
 15/09/2026 era stato spento perche' sbagliava.
 
-**Perche' sbagliava, e perche' qui non succede.** Il contante versato e'
-spesso gia' scritto a mano in Prima Nota Cassa il giorno in cui esce dal
-negozio; la banca lo contabilizza il giorno dopo. Il vecchio codice creava
-comunque la gamba di cassa, e il contante usciva due volte. Qui la gamba di
-cassa si cerca **prima**: se c'e' gia' si collega, non si riscrive.
+**Perche' sbagliava, e perche' qui non succede.** In Prima Nota Cassa una
+gamba del versamento puo' esserci gia': non scritta a mano — il titolare non
+ne registra nessuno a mano (20/09/2026) — ma portata dall'integrazione
+legacy, che il 15/09/2026 ha importato 18 righe «Versamento contanti in
+banca» dall'archivio CeraldiFatture. Il vecchio codice creava comunque la
+gamba di cassa, e il contante usciva due volte. Qui la gamba si cerca
+**prima**: se c'e' gia' si collega, non si riscrive.
+
+E si collega **solo a una riga che si dichiara versamento** (categoria di
+trasferimento, oppure la parola in descrizione). Cercarla per solo importo e
+data, come faceva la prima versione di questo modulo, e' la stessa regola
+vietata altrove: il giorno in cui un pagamento fornitore in contanti coincide
+d'importo con un versamento, quella riga verrebbe presa, la sua categoria
+sovrascritta con `trasferimento_interno` e il pagamento sparirebbe come tale.
 
 Le due gambe:
 - **versamento** (entrata in banca): uscita da Cassa, entrata in Banca;
@@ -39,6 +48,15 @@ CATEGORIA = "trasferimento_interno"
 # Giorni fra l'uscita del contante dal negozio e la data di contabilizzazione
 # in banca. Tre coprono anche il versamento del venerdi' registrato il lunedi'.
 GIORNI_TOLLERANZA = 3
+
+#: Le categorie con cui una riga di Prima Nota **dichiara** di essere una
+#: gamba di trasferimento. Misurate in produzione il 20/09/2026: 80 righe
+#: `trasferimento_interno` e 36 `Versamento Banca`, nessun altro valore.
+CATEGORIE_TRASFERIMENTO = frozenset({"trasferimento_interno", "versamento banca"})
+
+#: Chi non ha la categoria lo dice nella descrizione: le 18 righe legacy sono
+#: «Versamento contanti in banca — Da estratto conto».
+PAROLE_TRASFERIMENTO = ("versament", "prelev", "preliev")
 
 
 def _data_iso(doc: Dict[str, Any]) -> str:
@@ -109,14 +127,36 @@ def classifica(movimento_ec: Dict[str, Any]) -> Optional[str]:
     return None
 
 
+def _si_dichiara_trasferimento(riga: Dict[str, Any]) -> bool:
+    """`True` se questa riga di Prima Nota dice di essere un trasferimento.
+
+    Una riga che non lo dice non viene agganciata: si crea la gamba nuova.
+    Meglio una gamba in piu' da verificare che un pagamento fornitore
+    trasformato in versamento senza che nessuno se ne accorga.
+    """
+    categoria = str(riga.get("categoria") or "").strip().lower()
+    if categoria in CATEGORIE_TRASFERIMENTO:
+        return True
+    testo = " ".join(
+        str(riga.get(campo) or "")
+        for campo in ("categoria", "descrizione", "description", "causale", "dettaglio")
+    ).lower()
+    return any(parola in testo for parola in PAROLE_TRASFERIMENTO)
+
+
 async def _gamba_di_cassa_gia_scritta(
     db, *, data_banca: str, importo: float, tipo_cassa: str, giorni: int,
 ) -> Optional[Dict[str, Any]]:
-    """La riga di cassa che il negozio ha gia' registrato a mano, se c'e'.
+    """La gamba di cassa gia' in archivio per questo versamento, se c'e'.
 
-    Si cerca per importo esatto al centesimo in una finestra di giorni attorno
-    alla data della banca, e solo fra le righe **non gia' collegate** a un
-    altro trasferimento: una riga puo' chiudere un solo versamento.
+    Tre condizioni insieme, tutte obbligatorie: la riga **si dichiara**
+    trasferimento (categoria o descrizione), ha l'importo esatto al centesimo,
+    e cade nella finestra di giorni attorno alla data della banca. In piu'
+    deve essere **libera**: una riga chiude un solo versamento.
+
+    La dichiarazione e' la condizione che mancava. Senza, bastava l'importo
+    uguale per prendersi una riga di tutt'altra natura — un pagamento
+    fornitore in contanti — e sovrascriverne la categoria.
     """
     try:
         riferimento = datetime.strptime(data_banca, "%Y-%m-%d")
@@ -137,6 +177,8 @@ async def _gamba_di_cassa_gia_scritta(
 
     for riga in candidati:
         if riga.get("trasferimento_collegato_id") or riga.get("operation_id"):
+            continue
+        if not _si_dichiara_trasferimento(riga):
             continue
         if _data_iso(riga) not in finestra:
             continue
