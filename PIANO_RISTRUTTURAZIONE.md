@@ -152,7 +152,23 @@ Il codice, però, conserva ancora:
 
 L'utente non deve percepire quattro prodotti.
 
+**Situazione verificata 2026-09-21:**
+
+- il PIN amministratore ha già un verificatore centrale, `app/services/admin_pin.py`, basato su `PIN_HASH_ADMIN`;
+- HR riusa già quel verificatore, ma conserva ancora un proprio `pin_login.py`, un proprio JWT e una propria sessione;
+- Menu riusa il PIN amministratore in alcuni flussi, ma conserva ancora autenticazione/JWT propri;
+- Lotti conserva il proprio `auth.py`, il proprio JWT e i PIN degli operatori/tablet;
+- il PIN amministratore oggi è configurato nelle env Render, **non è ancora gestito centralmente dalla UI del Gestionale**.
+
 **Obiettivo:** una sessione GestionaleCloud e un unico RBAC. HR, HACCP/Lotti e Menu possono avere ruoli diversi, ma non login separati.
+
+### Regola PIN target
+
+1. Il **PIN amministratore** si imposta/ruota da una sola pagina amministrativa del GestionaleCloud.
+2. Il valore in chiaro non viene mai memorizzato; viene salvato solo un hash/secret verificabile lato server.
+3. HR, Lotti e Menu non devono avere una propria funzione di configurazione del PIN amministratore.
+4. I **PIN personali degli operatori/dipendenti** sono credenziali dell'anagrafica utente/dipendente canonica e servono a identificare chi compie un gesto operativo (tablet, rilevazione HACCP, timbratura). Non sono un secondo sistema di autenticazione applicativa.
+5. Il passaggio ERP ↔ HR ↔ Lotti ↔ Menu non deve chiedere un nuovo login.
 
 ## 4.3 Scheduler separati
 
@@ -436,7 +452,41 @@ frontend_shared/
 
 # 8. Piano progressivo
 
-## FASE 0 — Guardrail prima della demolizione
+## FASE 0A — Contabilità operativa subito, prima della grande ristrutturazione
+
+Questa fase ha precedenza operativa sulle altre: il titolare deve poter usare subito il gestionale per inserire dati contabili mentre la ristrutturazione prosegue.
+
+### Stato verificato
+
+Il codice corrente espone già il flusso reale `/api/prima-nota/provvisori/*` usato da `PrimaNota.jsx`. Esistono test che verificano:
+
+- fattura con fornitore a cassa: resta da confermare e **non inventa** automaticamente un'uscita cassa;
+- fattura con metodo banca senza estratto conto: crea una riga banca `DA_VERIFICARE`, `provvisorio=true`, `canonico=false`;
+- assegno: resta banca provvisoria finché manca la prova bancaria;
+- metodo misto/senza metodo: resta da decidere;
+- reimport: non duplica;
+- saldo cassa/banca: esclude le righe provvisorie/virtuali che non rappresentano denaro reale;
+- riconciliazione successiva promuove la riga quando arriva l'evidenza bancaria.
+
+Questi test dimostrano la logica, ma **non bastano da soli a dichiarare pronta la contabilità operativa di produzione**: il browser E2E corrente non esercita ancora tutti i CRUD reali della Prima Nota.
+
+| ID | Stato | Attività |
+|---|---|---|
+| RST-00A1 | 🟡 | Aggiungere E2E isolato: inserimento manuale movimento Cassa → persistenza → saldo → modifica → eliminazione |
+| RST-00A2 | 🟡 | Aggiungere E2E isolato: movimento Banca provvisorio → esclusione dal saldo reale → arrivo estratto conto → riconciliazione/promozione |
+| RST-00A3 | 🟡 | Aggiungere E2E isolato: fattura → Provvisori → conferma Cassa |
+| RST-00A4 | 🟡 | Aggiungere E2E isolato: fattura → Provvisori → “attendi banca” senza marcarla pagata |
+| RST-00A5 | 🟡 | Aggiungere E2E isolato: pagamento misto/divisione cassa+banca e quadratura importi |
+| RST-00A6 | ⚪ | Verificare reload pagina/anno: nessun movimento sparisce e i saldi coincidono con i record persistiti |
+| RST-00A7 | ⚪ | Verificare che ogni movimento manuale mostri origine, data, descrizione, importo, contropartita e collegamenti documentali |
+| RST-00A8 | ⚪ | Aggiungere smoke produzione non distruttivo sulle letture Prima Nota e sugli endpoint di health/coerenza |
+| RST-00A9 | ⚪ | Dopo gli E2E, dichiarare formalmente “Prima Nota operativa” e congelarne il contratto durante le fasi successive |
+
+**Definition of Done Fase 0A:** il titolare può usare Cassa, Banca e Provvisori per la contabilità corrente senza dipendere dalla fusione HR/Lotti/Menu.
+
+---
+
+## FASE 0B — Guardrail prima della demolizione
 
 | ID | Stato | Attività |
 |---|---|---|
@@ -522,13 +572,16 @@ frontend_shared/
 
 | ID | Stato | Attività |
 |---|---|---|
-| RST-0401 | ⚪ | Inventariare login ERP, HR, Lotti, Menu e relativi secret/token |
+| RST-0401 | 🟡 | Inventariare login ERP, HR, Lotti, Menu e relativi secret/token; verificato che il PIN admin è condiviso come verifica ma le sessioni/JWT restano separate |
 | RST-0402 | ⚪ | Definire ruoli unici: admin, amministrazione, HR, responsabile, operatore HACCP, menu, sola lettura |
 | RST-0403 | ⚪ | Applicare sessione ERP a tutte le route |
 | RST-0404 | ⚪ | Eliminare login HR separato per area amministrativa |
 | RST-0405 | ⚪ | Eliminare login Lotti separato dove non serve un PIN operativo |
 | RST-0406 | ⚪ | Eliminare JWT Menu indipendente |
-| RST-0407 | ⚪ | Mantenere eventuale PIN rapido tablet come step-up/identificazione operatore, non come seconda applicazione |
+| RST-0407 | ⚪ | Mantenere PIN rapido tablet/personale come identificazione dell'operatore canonico, non come seconda applicazione |
+| RST-0408 | ⚪ | Creare in Admin Gestionale una sola funzione “Gestione PIN e accessi” per impostare/ruotare PIN admin e PIN personali |
+| RST-0409 | ⚪ | Migrare Lotti/HR/Menu alla verifica/sessione centrale e poi eliminare i rispettivi login/PIN router duplicati |
+| RST-0410 | ⚪ | Eliminare dipendenza operativa da `PIN_HASH_ADMIN` impostato manualmente in Render dopo aver introdotto storage sicuro centrale e rotazione tracciata |
 
 ---
 
@@ -548,6 +601,10 @@ frontend_shared/
 | RST-0510 | ⚪ | Introdurre outbox persistente per `invoice.imported` |
 | RST-0511 | ⚪ | Eliminare sync periodico/copia GestionaleCloud → Lotti dopo backfill e quadratura |
 | RST-0512 | ⚪ | Eliminare `app/lotti/routers/gestionale_fatture.py` quando non serve più |
+| RST-0513 | ⚪ | Garantire che ogni fattura canonica alimenti registrazione contabile/IVA/scadenzario senza un secondo import |
+| RST-0514 | ⚪ | Garantire che la fattura alimenti Prima Nota solo secondo prova e regole: cassa richiede conferma esplicita, banca resta provvisoria finché manca EC |
+| RST-0515 | ⚪ | Aggiungere stato di completezza ciclo fattura: contabilità, fornitore, righe, prodotti, inventario, lotti, ricette/food-cost, scadenzario |
+| RST-0516 | ⚪ | Esporre in UI gli errori/consumer falliti dell'outbox: nessun “fattura importata” deve nascondere un magazzino non aggiornato |
 
 ### Test obbligatorio di accettazione
 
@@ -556,12 +613,16 @@ Importare una fattura XML di prova e verificare in un unico test E2E:
 1. fattura presente;
 2. fornitore presente;
 3. righe presenti;
-4. prezzi aggiornati;
-5. inventario aggiornato;
-6. eventuale lotto creato/agganciato;
-7. ricetta collegata vede nuova disponibilità/costo;
-8. nessuna seconda copia della fattura;
-9. riesecuzione dello stesso import = zero duplicati.
+4. registrazione contabile/IVA/scadenzario coerente;
+5. Prima Nota instradata correttamente: cassa da confermare oppure banca provvisoria/reale secondo evidenza;
+6. prezzi aggiornati;
+7. inventario aggiornato;
+8. eventuale lotto creato/agganciato solo con evidenza sufficiente;
+9. ricetta già esistente e collegata vede nuova disponibilità/costo, senza generare ricette inventate;
+10. eventuale pubblicazione Menu usa la stessa entità canonica/proiezione;
+11. nessuna seconda copia della fattura;
+12. riesecuzione dello stesso import = zero duplicati;
+13. eventuale consumer fallito resta visibile e ritentabile nell'outbox.
 
 ---
 
@@ -726,7 +787,7 @@ Aggiornare questi valori ad ogni milestone.
 | istanze FastAPI applicative | 4 | 1 |
 | frontend separati | 4 + shared | 1 |
 | build frontend | 4 | 1 |
-| sistemi auth applicativi | multipli | 1 |
+| sistemi auth applicativi | multipli; PIN admin condiviso solo a livello di verifica | 1 sessione/RBAC + PIN personali come identità operatore |
 | scheduler principali | multipli | 1 |
 | client/access layer DB applicativi | multipli | 1 infrastruttura condivisa |
 | bridge ERP→Lotti | 1+ | 0 |
@@ -806,6 +867,7 @@ Aggiungere una riga ad ogni attività conclusa.
 | Data | ID | Stato | Commit/PR | Risultato | Evidenza/Test |
 |---|---|---|---|---|---|
 | 2026-09-21 | PLAN-0001 | 🟢 COMPLETATO | documento iniziale | Creato il piano operativo di ristrutturazione ERP + HR + Lotti + Menu | Audit su `main@8cf52bd` |
+| 2026-09-21 | PLAN-0002 | 🟢 COMPLETATO | aggiornamento piano | Verificati PIN/auth, ciclo fattura e Prima Nota; aggiunta priorità contabilità operativa e gestione PIN centrale | Test e codice su `main@8cf52bd` |
 
 ---
 
