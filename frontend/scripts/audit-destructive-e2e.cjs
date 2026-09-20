@@ -253,8 +253,12 @@ async function getScadenze(request, token) {
   );
   if (!provvisori.ok()) throw new Error(`Lettura Provvisori fallita: HTTP ${provvisori.status()}`);
   const provPayload = await provvisori.json();
-  const attesa = (provPayload.provvisori || []).find(p => p.fattura_id === 'e2e-fattura-banca-attesa');
-  const residuoMisto = (provPayload.provvisori || []).find(p => p.fattura_id === 'e2e-fattura-mista');
+  const attesa = (provPayload.in_attesa_banca || []).find(
+    p => p.fattura_id === 'e2e-fattura-banca-attesa',
+  );
+  const residuoMisto = (provPayload.in_attesa_banca || []).find(
+    p => p.fattura_id === 'e2e-fattura-mista',
+  );
   if (!attesa || attesa.suggerimento !== 'banca') {
     throw new Error('Fattura in attesa banca non è rimasta nei Provvisori');
   }
