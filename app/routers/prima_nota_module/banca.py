@@ -467,7 +467,16 @@ async def create_prima_nota_banca(data: Dict[str, Any] = Body(...)) -> Dict[str,
         "iban": data.get("iban"),
         "conto_bancario": data.get("conto_bancario"),
         "note": data.get("note"),
-        "source": data.get("source"),
+        "source": data.get("source") or (
+            "manuale_banca_senza_evidenza" if not evidenza_id else "manuale_banca_con_evidenza"
+        ),
+        "provvisorio": not bool(evidenza_id),
+        "canonico": bool(evidenza_id),
+        "stato": "DA_VERIFICARE" if not evidenza_id else "riconciliato",
+        "in_attesa_estratto_ufficiale": not bool(evidenza_id),
+        "motivo_provvisorio": (
+            "movimento_banca_manuale_senza_evidenza" if not evidenza_id else None
+        ),
         "pos_details": data.get("pos_details"),
         "numero_assegno": data.get("numero_assegno") or data.get("assegno_numero"),
         "assegno_numero": data.get("numero_assegno") or data.get("assegno_numero"),
