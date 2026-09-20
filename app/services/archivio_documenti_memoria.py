@@ -444,6 +444,29 @@ def evaluate_expression(expression: Any, document: dict[str, Any], variables: di
     if operator in {"$toLower", "$toUpper"}:
         text = str(resolved[0] or "")
         return text.lower() if operator == "$toLower" else text.upper()
+    if operator in {"$trim", "$ltrim", "$rtrim"}:
+        # Prende `input` (e l'opzionale `chars`) come il `$trim` di Mongo, che
+        # e' una forma a oggetto, non posizionale.
+        #
+        # Non implementarlo non dava un risultato sbagliato: faceva **fallire
+        # l'intera aggregazione**, e due pagine sono rimaste ferme per mesi
+        # senza che nessuno le collegasse a questa riga. La ricerca web dei
+        # prodotti e' fallita 644 volte di fila dal 03/09 al 20/09/2026, una
+        # ogni 20 minuti: da li' nasceva il `nome_mapping` dei prodotti, e
+        # senza mapping i lotti fornitori restano senza `nome_canonico` e la
+        # tracciabilita' ingrediente -> lotto non aggancia piu' niente.
+        # L'altra e' il raggruppamento degli sconti merce (`sconti_merce.py`).
+        sorgente = evaluate_expression(raw.get("input"), document, variables)
+        if sorgente is None:
+            return None  # come Mongo: input nullo -> risultato nullo
+        testo = str(sorgente)
+        caratteri = evaluate_expression(raw.get("chars"), document, variables)
+        caratteri = str(caratteri) if caratteri not in (None, "") else None
+        if operator == "$ltrim":
+            return testo.lstrip(caratteri) if caratteri else testo.lstrip()
+        if operator == "$rtrim":
+            return testo.rstrip(caratteri) if caratteri else testo.rstrip()
+        return testo.strip(caratteri) if caratteri else testo.strip()
     if operator == "$concat":
         return "".join(str(value or "") for value in resolved)
     if operator in {"$substr", "$substrCP"}:

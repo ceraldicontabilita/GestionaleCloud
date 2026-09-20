@@ -36,7 +36,7 @@ def _item(source_hash="hash-1"):
 def test_anteprima_non_scrive(bridge, monkeypatch):
     module, database = bridge
 
-    async def elenco(_client, _anno, _massimo):
+    async def elenco(_client, _anno):
         return [_item()], 1
 
     monkeypatch.setattr(module, "_elenco", elenco)
@@ -51,7 +51,7 @@ def test_anteprima_non_scrive(bridge, monkeypatch):
 def test_secondo_giro_non_duplica(bridge, monkeypatch):
     module, database = bridge
 
-    async def elenco(_client, _anno, _massimo):
+    async def elenco(_client, _anno):
         return [_item()], 1
 
     async def dettaglio(_client, _path, **_params):
@@ -84,7 +84,7 @@ def test_hash_cambiato_diventa_conflitto_e_non_sovrascrive(bridge, monkeypatch):
         "source_id": "invoice-1", "source_hash": "hash-vecchio", "stato": "importata"
     }))
 
-    async def elenco(_client, _anno, _massimo):
+    async def elenco(_client, _anno):
         return [_item("hash-nuovo")], 1
 
     monkeypatch.setattr(module, "_elenco", elenco)
@@ -105,7 +105,7 @@ def test_fattura_manualemente_presente_viene_solo_collegata(bridge, monkeypatch)
         "prodotti": [{"descrizione": "FARINA"}],
     }))
 
-    async def elenco(_client, _anno, _massimo):
+    async def elenco(_client, _anno):
         return [_item()], 1
 
     monkeypatch.setattr(module, "_elenco", elenco)
@@ -126,7 +126,7 @@ def test_righe_strutturate_funzionano_anche_senza_xml_raw(bridge, monkeypatch):
                    "prezzo_unitario": "3.50", "prezzo_totale": "7.00"}],
     }
 
-    async def elenco(_client, _anno, _massimo):
+    async def elenco(_client, _anno):
         return [item], 1
 
     async def dettaglio(_client, _path, **_params):

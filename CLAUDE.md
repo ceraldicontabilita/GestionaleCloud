@@ -250,8 +250,13 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
     conosce una sola include documenti che doveva escludere.
 14. **`except Exception: pass` è vietato dove si contano euro** e non cresce
     altrove (`tests/runtime/test_guasti_muti.py`): il log dice *quale dato non
-    c'è più*, non «errore». Vale anche un `%s` senza argomento: quella riga non
-    viene scritta affatto.
+    c'è più*, non «errore». Vale per un `%s` senza argomento (riga mai scritta) e
+    per `str(exc)` da solo: molte eccezioni vere hanno messaggio vuoto e lasciano
+    «Lettura fonte: ». Nel log ci va sempre anche `type(exc).__name__`.
+15. **Un operatore di aggregazione non implementato non dà un valore sbagliato:
+    fa fallire l'intera pipeline.** `$trim` mancava, e con lui sono morte per mesi
+    la ricerca web prodotti (644 giri falliti di fila) e gli sconti merce: prima di
+    usarne uno nuovo, `archivio_documenti_memoria.evaluate_expression` deve conoscerlo.
 
 ## Identità, prove e attese
 
@@ -715,35 +720,32 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 
 ### Lotti — HACCP, magazzino, prezzi
 
-- **Un solo punto d'ingresso per le fatture** e deduplica sempre attiva
-  (fornitore + numero + data).
-- **Prezzi solo da acquisti reali in fattura XML.** Gli ordini hanno totali
-  veri: prezzo di riga, aliquota IVA dall'XML, imponibile, IVA e totale che si
-  ricalcolano a ogni variazione, con le stesse colonne nel PDF.
+- **Un solo punto d'ingresso per le fatture** e deduplica sempre attiva (fornitore + numero + data). Il
+  ponte dal gestionale vede **tutte** le fatture dell'anno: il tetto per giro vale sulle **ancora da
+  prendere**, mai sull'elenco intero, che arriva ordinato per data — tagliarlo butta le più recenti (erano
+  444 dal 30/06) e il buco cresce da solo. Quante restano lo dice `arretrato`.
+- **Prezzi solo da acquisti reali in fattura XML.** Gli ordini hanno totali veri: prezzo di riga, aliquota
+  IVA dall'XML, imponibile, IVA e totale che si ricalcolano a ogni variazione, con le stesse colonne nel
+  PDF.
 - **FIFO consuma sempre il lotto con la data fattura più vecchia.**
-- **Le bevande e gli alcolici del reparto bar** (acqua, birre, vino, prosecco,
-  liquori, amari, sciroppi, succhi, bibite) si acquistano e si confrontano a
-  cartone o a unità, **mai a chilo o a litro**.
-- Conversioni reali: uovo 60 g, tuorlo 19 g, albume 33 g; pezzi e chili si
-  convertono con il peso del pezzo.
-- Ogni riga d'ordine dice **chi l'ha inserita** (dipendente, lavagna, riordino
-  automatico, produzione, colazione). Le righe-nota (omaggi, riferimenti) non
-  diventano prodotti di magazzino. Soglia minima e quantità di riordino a 1.
-- Nomi di campo vincolanti: `ingredienti_dettaglio[].unita_misura` (non
-  `unita`), `lotti.data_scadenza` in gg/mm/aaaa, `fornitori` ha per chiave
-  `nome` e non `id`.
-- Spostando un lotto si scrivono **sempre** sia `posizione` sia
-  `frigo_numero`; per azioni reali sui lotti di un'attrezzatura si usa il match
-  esatto sul nome, mai uno snapshot troncato («Frigorifero N°2» e «N°9» si
-  confondono).
-- `prodotti_master` è il catalogo canonico e `magazzino_unificato` il magazzino
-  canonico; `prodotti_vendita` e `sconti_merce` sono domini diversi e non si
-  fondono.
-- Stampa: coda più print agent locale sul PC del negozio, stampante scelta per
-  tipo di documento, agent autenticato con il PIN di un operatore dedicato.
-- Accessi: PIN valido 2 ore; i dipendenti entrano ovunque tranne le pagine di
-  amministrazione. Sui tablet condivisi il magazzino chiude la sessione dopo
-  10 minuti.
+- **Le bevande e gli alcolici del reparto bar** (acqua, birre, vino, prosecco, liquori, amari, sciroppi,
+  succhi, bibite) si acquistano e si confrontano a cartone o a unità, **mai a chilo o a litro**.
+- Conversioni reali: uovo 60 g, tuorlo 19 g, albume 33 g; pezzi e chili si convertono con il peso del
+  pezzo.
+- Ogni riga d'ordine dice **chi l'ha inserita** (dipendente, lavagna, riordino automatico, produzione,
+  colazione). Le righe-nota (omaggi, riferimenti) non diventano prodotti di magazzino. Soglia minima e
+  quantità di riordino a 1.
+- Nomi di campo vincolanti: `ingredienti_dettaglio[].unita_misura` (non `unita`), `lotti.data_scadenza` in
+  gg/mm/aaaa, `fornitori` ha per chiave `nome` e non `id`.
+- Spostando un lotto si scrivono **sempre** sia `posizione` sia `frigo_numero`; per azioni reali sui lotti
+  di un'attrezzatura si usa il match esatto sul nome, mai uno snapshot troncato («Frigorifero N°2» e «N°9»
+  si confondono).
+- `prodotti_master` è il catalogo canonico e `magazzino_unificato` il magazzino canonico;
+  `prodotti_vendita` e `sconti_merce` sono domini diversi e non si fondono.
+- Stampa: coda più print agent locale sul PC del negozio, stampante scelta per tipo di documento, agent
+  autenticato con il PIN di un operatore dedicato.
+- Accessi: PIN valido 2 ore; i dipendenti entrano ovunque tranne le pagine di amministrazione. Sui tablet
+  condivisi il magazzino chiude la sessione dopo 10 minuti.
 
 ### Menu — allergeni
 
@@ -800,69 +802,65 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 
 ## Stato attuale (al 20/09/2026 — riscrivere sul posto)
 
-- Ogni merge su `main` fa ridistribuire Render e ricaricare ~77.000 righe: per
-  qualche minuto la produzione è `degraded`. Non si accodano merge.
-- TFR: `hr.app_tfr_accantonamenti` è vuota, il codice vivo scrive in
-  `tfr_accantonamenti` (1.175 righe, 42 dipendenti, 273.025,37 €). Ingest
-  cedolini: il giro orario Drive trova 0 file su 49 caselle.
-- **Spento**: `PROTOCOLLO_DRIVE_ENABLED=false` (RAM a 1,57 GB su 2). **Acceso**:
-  scheduler, ingest Drive (fatture, estratti conto, cedolini, bonifici), ponte
-  pagamenti HR, dedup fatture, dichiarazioni fiscali.
+- Ogni merge su `main` fa ridistribuire Render e ricaricare ~77.000 righe: per qualche minuto la
+  produzione è `degraded`. Non si accodano merge.
+- TFR: `hr.app_tfr_accantonamenti` è vuota, il codice vivo scrive in `tfr_accantonamenti` (1.175 righe, 42
+  dipendenti, 273.025,37 €); l'ingest cedolini trova 0 file su 49 caselle.
+- **Spento**: `PROTOCOLLO_DRIVE_ENABLED=false` (RAM a 1,57 GB su 2). **Acceso**: scheduler, ingest Drive
+  (fatture, estratti conto, cedolini, bonifici), ponte pagamenti HR, dedup fatture, dichiarazioni fiscali.
 - Fatture **1.431**, tutte del 2026 (0 orfani, 0 collisioni): il pre-2026 è in
-  `fatture_pre2026_rimosse_20260920`. **13 righe (7 fatture, 6 DDT) hanno solo i
-  campi italiani** e nessun filtro canonico le vede (regola 12).
-- **Gli XML di fattura 2026 arrivano su Drive a blocchi manuali** dal portale AdE:
-  il ritardo e' a monte. I 3 file in `2026/Errori` sono fatture **sane** (`.p7m`).
-- **Corrispettivi 187, ultimo giorno 27/08/2026**, tutti del 2026 (agosto: 19
-  giornate, 19 righe). Dal 28/08 non ne arrivano più: il PC del negozio è fermo,
-  23 giornate fuori dai conti. Backup della bonifica del 20/09 (459 righe) in
-  `corrispettivi_bonifica_20260920`.
-- **Nessuna liquidazione IVA calcolata**: `/api/iva/liquidazioni` torna vuoto.
-  Giugno e luglio sono calcolabili ma con **zero** acquisti (tutti
-  `detraibilita_da_verificare`): saldo = IVA vendite intera, 7.651,05 € e 6.211,86 €.
-- LIPE 2026 (tre periodi, quadrati): marzo combacia al centesimo (6.131,26 €); a
-  gennaio mancano **5.005,88 €** di IVA detraibile. Nessun F24 IVA 2026.
-- Solo 108 prodotti del Menu su 325 hanno allergeni: obbligo di legge. Il cron
-  Render `gestionalecloud-calderone-15min`, sospeso, va cancellato dal pannello.
+  `fatture_pre2026_rimosse_20260920`.
+- **Gli XML di fattura 2026 arrivano su Drive a blocchi manuali** dal portale AdE: il ritardo è a monte,
+  non nostro.
+- **Corrispettivi 187, ultimo giorno 27/08/2026**, tutti del 2026 (agosto: 19 giornate, 19 righe). Dal
+  28/08 non ne arrivano più: il PC del negozio è fermo, 23 giornate fuori dai conti.
+- **Nessuna liquidazione IVA calcolata**: `/api/iva/liquidazioni` torna vuoto; giugno e luglio sono
+  calcolabili ma con **zero** acquisti (tutti `detraibilita_da_verificare`). LIPE 2026 (tre periodi,
+  quadrati): marzo combacia al centesimo, a gennaio mancano **5.005,88 €** di IVA detraibile. Nessun F24
+  IVA 2026.
+- Solo 108 prodotti del Menu su 325 hanno allergeni: obbligo di legge. Il cron Render
+  `gestionalecloud-calderone-15min`, sospeso, va cancellato dal pannello.
+- **Lotti fermo**: l'ultima fattura entrata è del 26/05 e l'ultimo lotto di produzione del 14/09 (0 lotti
+  attivi). 119 lotti fornitori su 344 hanno un'unità che il FIFO non sa convertire (95 in KAR) e nessuno
+  ha `nome_canonico`: il ramo preciso del FIFO non aggancia, resta il ripiego a espressione regolare. Solo
+  15 su 344 hanno la scadenza.
 
 ## Aperto (togliere la voce quando si chiude)
 
-- Compute Supabase **Micro** insufficiente (`documents` 1.172 MB, database 2.111
-  MB): Postgres caduto il 17/09, connessioni rifiutate il 20/09. Da fare **Small**.
+- Compute Supabase **Micro** insufficiente (`documents` 1.172 MB, database 2.111 MB): Postgres caduto il
+  17/09, connessioni rifiutate il 20/09. **Da fare Small**: è la causa degli `statement timeout` che
+  fermano il ponte fatture verso Lotti.
 - Le **13 fatture legacy senza campi inglesi** vanno normalizzate: senza
   `invoice_number`/`invoice_date`/`total_amount` sono fuori da ogni conto.
-- **Tre strade scrivono `corrispettivi`** (`ingest_corrispettivo_parsed`,
-  `CorrispettiviService`, import CSV), ognuna con la sua dedup: vanno ridotte a una.
-- **Da lanciare**: `registra-pregresso` per le **21 giornate** 31/03–30/07 che il non
-  riscosso teneva fuori dal giornale (67.856,00 €). Restano poi fuori 3 giornate a
-  incasso zero (corretto) e il **02/08**, dove è l'XML a non quadrare di 0,90 €.
-- Endpoint sincroni oltre i 5 minuti, da portare a lotti riprendibili:
-  `/api/fatture/drive/quadratura`, `/api/paypal-api/riconcilia`,
-  `/account-ids-non-mappati` e `riallinea-pagamenti-fatture`.
+- **Tre strade scrivono `corrispettivi`** (`ingest_corrispettivo_parsed`, `CorrispettiviService`, import
+  CSV), ognuna con la sua dedup: vanno ridotte a una.
+- **Da lanciare**: `registra-pregresso` per le **21 giornate** 31/03–30/07 che il non riscosso teneva
+  fuori dal giornale (67.856,00 €). Restano poi fuori 3 giornate a incasso zero (corretto) e il **02/08**,
+  dove è l'XML a non quadrare di 0,90 €.
+- Endpoint sincroni oltre i 5 minuti, da portare a lotti riprendibili: `/api/fatture/drive/quadratura`,
+  `/api/paypal-api/riconcilia`, `/account-ids-non-mappati` e `riallinea-pagamenti-fatture`.
 - Note di credito TD04 legacy (~20): costo/IVA/debito aumentati anziché ridotti.
-- **Nessuno dei 187 fornitori ha `metodo_pagamento`** (41 hanno un IBAN): così
-  1.379 fatture restano `sospese` e nulla va in Prima Nota Banca. Serve una fonte
-  vera, non dedotta dalle fatture.
-- **Pregresso fatture**: 296 attive (173.184,83 €) senza partita aperta, 280 fuori dal
-  giornale. Prima `ripubblica-evento-created`, poi `registra-pregresso`. Con `dry_run`:
-  `azzera-scadenze` (642 fatture, 971 partite inventate), `lipe/importa`, `ricostruisci-numia`.
-- Riconciliazione: 158 fatture `riconciliata` con movimento non riconciliato,
-  180 righe hub senza `fattura_id`, 1.417 movimenti banca senza categoria.
-- HR: 38 bonifici con `cedolino_id` orfano, 119 in «bonifici da associare», 10 tabelle
-  attese dall'app assenti (turni_config, onomastici, richieste…), Iazzetta senza IBAN;
-  Appuhamy, Aurigemma, Vitiello, Dell'Aquila da creare cessati; UNILAV Moscato e Pocci.
-- `app/models/stati.py::STATI_PAGATI` conta «parziale» fra le pagate ed è
-  applicata a `status`, che non dice se è pagata: non filtra niente.
-- Drill-down «Verifica campi e F24»: agganciato al vecchio indice Drive, che non
-  esiste più; `/api/download` serve `./downloads`, che nessuno popola.
-- A mano, dal titolare: **far ripartire `sync_rt_to_drive.py` sul PC del
-  negozio** (fermo dal 28/08); password Postgres; DNS ceraldiapp.it.
+- **Nessuno dei 187 fornitori ha `metodo_pagamento`** (41 hanno un IBAN): così 1.379 fatture restano
+  `sospese` e nulla va in Prima Nota Banca. Serve una fonte vera, non dedotta dalle fatture.
+- **Pregresso fatture**: 296 attive (173.184,83 €) senza partita aperta, 280 fuori dal giornale. Prima
+  `ripubblica-evento-created`, poi `registra-pregresso`. Con `dry_run`: `azzera-scadenze` (642 fatture,
+  971 partite inventate), `lipe/importa`, `ricostruisci-numia`.
+- Riconciliazione: 158 fatture `riconciliata` con movimento non riconciliato, 180 righe hub senza
+  `fattura_id`, 1.417 movimenti banca senza categoria.
+- HR: 38 bonifici con `cedolino_id` orfano, 119 in «bonifici da associare», 10 tabelle attese dall'app
+  assenti (turni_config, onomastici, richieste…), Iazzetta senza IBAN; Appuhamy, Aurigemma, Vitiello,
+  Dell'Aquila da creare cessati; UNILAV Moscato e Pocci.
+- `app/models/stati.py::STATI_PAGATI` conta «parziale» fra le pagate ed è applicata a `status`, che non
+  dice se è pagata: non filtra niente.
+- Drill-down «Verifica campi e F24»: agganciato al vecchio indice Drive, che non esiste più;
+  `/api/download` serve `./downloads`, che nessuno popola.
+- A mano, dal titolare: **far ripartire `sync_rt_to_drive.py`** (fermo dal 28/08); password Postgres; DNS
+  ceraldiapp.it.
 - Fork `app/hr/`: **cinque** sottopercorsi ancora duplicati (`routers/auth.py`,
-  `routers/employees/dipendenti.py`, `routers/pin_login.py`, `routers/tfr.py`,
-  `utils/dependencies.py`): ogni correzione va cercata anche nel gemello.
-- `gestionale.blobs`: 216 PDF che **nessun documento cita**, leggibili solo da
-  `blob_store.py`, mai importato; come `bank_reconciliation_hub` (2.017 righe),
-  scritta da un trigger e letta da nessuno.
+  `routers/employees/dipendenti.py`, `routers/pin_login.py`, `routers/tfr.py`, `utils/dependencies.py`):
+  ogni correzione va cercata anche nel gemello.
+- `gestionale.blobs`: 216 PDF che **nessun documento cita**, leggibili solo da `blob_store.py`, mai
+  importato; come `bank_reconciliation_hub` (2.017 righe), scritta da un trigger e letta da nessuno.
 
 ## Logica dentro al database
 
