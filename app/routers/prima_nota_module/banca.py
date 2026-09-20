@@ -263,6 +263,9 @@ async def list_prima_nota_banca(
             # L'attesa nasce dal fatto POS/RT e resta visibile anche prima
             # dell'accredito. Non contribuisce al saldo reale qui sopra.
             {"source": "trasferimento_pos"},
+            # Inserimento manuale senza estratto conto: visibile come attesa,
+            # ma escluso dal saldo reale tramite query_base_saldo.
+            {"source": "manuale_banca_senza_evidenza"},
         ]}],
     }
     query = dict(query_base)
