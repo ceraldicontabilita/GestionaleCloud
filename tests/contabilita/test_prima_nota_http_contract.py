@@ -53,3 +53,156 @@ def test_post_cassa_restituisce_json_valido_e_persistito():
         memoria.close()
         Database.client = None
         Database.db = None
+
+
+def test_crud_cassa_aggiorna_saldo_e_soft_delete():
+    app, memoria = _app_con_db()
+    try:
+        with TestClient(app) as client:
+            creato = client.post(
+                "/api/prima-nota/cassa",
+                json={
+                    "data": "2026-09-21",
+                    "tipo": "uscita",
+                    "importo": 40.0,
+                    "descrizione": "Spesa contanti E2E contratto",
+                    "categoria": "Altro",
+                },
+            )
+            assert creato.status_code == 200, creato.text
+            movimento_id = creato.json()["id"]
+
+            modifica = client.put(
+                f"/api/prima-nota/cassa/{movimento_id}",
+                json={"importo": 55.0, "descrizione": "Spesa contanti corretta"},
+            )
+            assert modifica.status_code == 200, modifica.text
+
+            elenco = client.get("/api/prima-nota/cassa?anno=2026&limit=20")
+            assert elenco.status_code == 200, elenco.text
+            assert float(elenco.json()["saldo"]) == -55.0
+
+            eliminato = client.delete(f"/api/prima-nota/cassa/{movimento_id}?force=true")
+            assert eliminato.status_code == 200, eliminato.text
+
+            dopo = client.get("/api/prima-nota/cassa?anno=2026&limit=20")
+            assert dopo.status_code == 200, dopo.text
+            assert dopo.json()["movimenti"] == []
+            assert float(dopo.json()["saldo"]) == 0.0
+    finally:
+        memoria.close()
+        Database.client = None
+        Database.db = None
+
+
+def test_update_cassa_rifiuta_importo_non_positivo():
+    app, memoria = _app_con_db()
+    try:
+        with TestClient(app) as client:
+            creato = client.post(
+                "/api/prima-nota/cassa",
+                json={
+                    "data": "2026-09-21", "tipo": "entrata", "importo": 10.0,
+                    "descrizione": "Movimento da validare",
+                },
+            )
+            movimento_id = creato.json()["id"]
+            risposta = client.put(
+                f"/api/prima-nota/cassa/{movimento_id}",
+                json={"importo": -10},
+            )
+            assert risposta.status_code == 422, risposta.text
+    finally:
+        memoria.close()
+        Database.client = None
+        Database.db = None
+
+
+def test_crud_banca_manuale_e_validazione_importo():
+    app, memoria = _app_con_db()
+    try:
+        with TestClient(app) as client:
+            creato = client.post(
+                "/api/prima-nota/banca",
+                json={
+                    "data": "2026-09-21",
+                    "tipo": "entrata",
+                    "importo": 80.0,
+                    "descrizione": "Movimento banca manuale non collegato a fattura",
+                    "categoria": "Altro",
+                },
+            )
+            assert creato.status_code == 200, creato.text
+            movimento_id = creato.json()["id"]
+
+            modifica_errata = client.put(
+                f"/api/prima-nota/banca/{movimento_id}",
+                json={"importo": 0},
+            )
+            assert modifica_errata.status_code == 422, modifica_errata.text
+
+            modifica = client.put(
+                f"/api/prima-nota/banca/{movimento_id}",
+                json={"importo": 90.0, "descrizione": "Movimento banca corretto"},
+            )
+            assert modifica.status_code == 200, modifica.text
+
+            elenco = client.get("/api/prima-nota/banca?anno=2026&limit=20")
+            assert elenco.status_code == 200, elenco.text
+            assert any(
+                riga.get("id") == movimento_id and float(riga.get("importo") or 0) == 90.0
+                for riga in elenco.json()["movimenti"]
+            )
+
+            eliminato = client.delete(f"/api/prima-nota/banca/{movimento_id}?force=true")
+            assert eliminato.status_code == 200, eliminato.text
+    finally:
+        memoria.close()
+        Database.client = None
+        Database.db = None
+
+
+def test_cancellazione_pagamento_cassa_riapre_fattura_collegata():
+    app, memoria = _app_con_db()
+    try:
+        db = Database.get_db()
+        import asyncio
+        asyncio.run(db["invoices"].insert_one({
+            "id": "fattura-cassa-http",
+            "invoice_number": "C-1",
+            "pagato": False,
+            "stato_pagamento": "",
+        }))
+        with TestClient(app) as client:
+            creato = client.post(
+                "/api/prima-nota/cassa",
+                json={
+                    "data": "2026-09-21",
+                    "tipo": "uscita",
+                    "importo": 25.0,
+                    "descrizione": "Pagamento contanti fattura",
+                    "categoria": "Fatture",
+                    "fattura_id": "fattura-cassa-http",
+                },
+            )
+            assert creato.status_code == 200, creato.text
+            movimento_id = creato.json()["id"]
+
+            fattura_pagata = asyncio.run(
+                db["invoices"].find_one({"id": "fattura-cassa-http"}, {"_id": 0})
+            )
+            assert fattura_pagata["pagato"] is True
+            assert fattura_pagata["prima_nota_cassa_id"] == movimento_id
+
+            eliminato = client.delete(f"/api/prima-nota/cassa/{movimento_id}?force=true")
+            assert eliminato.status_code == 200, eliminato.text
+
+            fattura_riaperta = asyncio.run(
+                db["invoices"].find_one({"id": "fattura-cassa-http"}, {"_id": 0})
+            )
+            assert fattura_riaperta["pagato"] is False
+            assert not fattura_riaperta.get("prima_nota_cassa_id")
+    finally:
+        memoria.close()
+        Database.client = None
+        Database.db = None
