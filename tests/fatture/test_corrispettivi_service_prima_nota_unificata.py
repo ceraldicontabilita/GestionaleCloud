@@ -8,7 +8,7 @@ implementazione condivisa: questo test verifica che il fix sia effettivo."""
 import asyncio
 import hashlib
 
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.services.corrispettivi_service import (
     CorrispettiviService,
@@ -17,8 +17,8 @@ from app.services.corrispettivi_service import (
 
 
 def test_factory_supporta_database_motor_e_riusa_quello_del_job_drive():
-    """Regressione produzione: SheetDatabase non consente __setitem__."""
-    db = MemorySheetsClient()["corrispettivi_drive_test"]
+    """Regressione produzione: ArchivioDocumenti non consente __setitem__."""
+    db = ClientArchivioMemoria()["corrispettivi_drive_test"]
 
     svc = get_corrispettivi_service(db)
 
@@ -228,9 +228,16 @@ def test_create_prima_nota_entry_legge_pagato_pos_come_fallback():
     assert len(banca) == 1 and banca[0]["importo"] == 200.0  # trasferimento
 
 
-def test_process_xml_filtro_anno_archivia_corrispettivo_storico():
-    # Richiesta utente 14/07/2026: propagazione dello stesso filtro anno
-    # già applicato alle fatture Drive, al canale Drive corrispettivi.
+def test_process_xml_filtro_anno_scarta_il_corrispettivo_storico():
+    """Dal 20/09/2026 una giornata di un anno chiuso non entra affatto.
+
+    Il 14/07/2026 il filtro anno era stato propagato dalle fatture ai
+    corrispettivi, ma qui archiviava invece di scartare: la riga entrava
+    comunque, marcata `archivio_storico`. Erano 414 giornate del 2023-24,
+    fuori da ogni conto e da ogni alert — e, a differenza di una riga
+    sbagliata qualsiasi, **tornavano da sole a ogni giro Drive**, quindi
+    cancellarle non bastava. L'originale resta su Drive, che e' la fonte.
+    """
     db = _FakeDb()
     db["sistema_stato"].docs = [{"chiave": "config_import_anno_attivo", "anno": 2026}]
     svc = CorrispettiviService(db=db)
@@ -241,13 +248,70 @@ def test_process_xml_filtro_anno_archivia_corrispettivo_storico():
 
     esito = _run(svc.process_xml(b"<x/>", "corr.xml", applica_filtro_anno=True))
 
-    assert esito["status"] == "archiviata"
+    assert esito["status"] == "skipped_altro_anno"
+    assert esito["anno"] == 2023 and esito["anno_attivo"] == 2026
     assert esito["prima_nota_id"] is None
-    doc = db["corrispettivi"].docs[0]
-    assert doc["stato_import"] == "archivio_storico"
+    assert db["corrispettivi"].docs == [], (
+        "La giornata storica e' entrata comunque in archivio: e' il difetto "
+        "che questo filtro deve impedire, e nessuna cancellazione regge "
+        "perche' il giro Drive la reimporta."
+    )
     # Un corrispettivo storico non deve MAI toccare Prima Nota.
     assert db["prima_nota_cassa"].docs == []
     assert db["prima_nota_banca"].docs == []
+
+
+def test_filtro_anno_non_aggrega_su_una_giornata_storica_gia_in_archivio():
+    """Il filtro deve stare PRIMA della deduplica per data, non dopo.
+
+    Se scattasse dopo, una giornata storica gia' presente verrebbe trovata
+    dalla deduplica e passata al motore di aggregazione, che le somma gli
+    importi e le ricalcola Prima Nota e scritture — esattamente il doppio
+    conteggio che il filtro dovrebbe evitare.
+    """
+    db = _FakeDb()
+    db["sistema_stato"].docs = [{"chiave": "config_import_anno_attivo", "anno": 2026}]
+    db["corrispettivi"].docs = [{
+        "id": "storico-2023", "data": "2023-05-10", "totale": 800.0,
+        "pagato_contanti": 500.0, "pagato_pos": 300.0,
+        "entity_status": "active", "progressivo": "1", "chiusure_xml": [],
+    }]
+    svc = CorrispettiviService(db=db)
+    svc._parse_corrispettivo_xml = lambda xml_content: {
+        "data": "2023-05-10", "totale": 800.0,
+        "pagato_contanti": 500.0, "pagato_pos": 300.0,
+    }
+
+    esito = _run(svc.process_xml(b"<altro/>", "corr.xml", applica_filtro_anno=True))
+
+    assert esito["status"] == "skipped_altro_anno"
+    (riga,) = db["corrispettivi"].docs
+    assert riga["totale"] == 800.0, (
+        f"La giornata storica e' stata aggregata: totale {riga['totale']} "
+        "invece di 800,00. Il filtro anno e' scattato troppo tardi."
+    )
+    assert db["prima_nota_cassa"].docs == []
+    assert db["prima_nota_banca"].docs == []
+
+
+def test_senza_filtro_anno_l_import_manuale_resta_invariato():
+    """`applica_filtro_anno` lo attiva SOLO l'ingest automatico da Drive.
+
+    Il caricamento a mano di una giornata vecchia dalla pagina Corrispettivi
+    e' una scelta di chi lo fa, e deve continuare a funzionare.
+    """
+    db = _con_pos_reale(_FakeDb(), 300.0, "2023-05-10")
+    db["sistema_stato"].docs = [{"chiave": "config_import_anno_attivo", "anno": 2026}]
+    svc = CorrispettiviService(db=db)
+    svc._parse_corrispettivo_xml = lambda xml_content: {
+        "data": "2023-05-10", "totale": 800.0,
+        "pagato_contanti": 500.0, "pagato_pos": 300.0,
+    }
+
+    esito = _run(svc.process_xml(b"<x/>", "corr.xml"))
+
+    assert esito["status"] == "created"
+    assert len(db["corrispettivi"].docs) == 1
 
 
 def test_process_xml_filtro_anno_corrente_va_al_flusso_attivo():
@@ -267,7 +331,7 @@ def test_process_xml_filtro_anno_corrente_va_al_flusso_attivo():
 
 
 def test_reimport_duplicato_ripara_prima_nota_mancante_senza_duplicare():
-    db = MemorySheetsClient()["corrispettivi_retry_test"]
+    db = ClientArchivioMemoria()["corrispettivi_retry_test"]
     _run(db["chiusure_pos_manuali"].insert_one({
         "data": "2026-08-03", "gestore": "nexi", "importo": 40.0,
         "source": "inserimento_manuale_terminale",
@@ -319,7 +383,7 @@ def _parsed_corr(*, data, ora, totale, contanti, pos, progressivo, docs=1):
 
 
 def test_xml_distinti_stessa_giornata_vengono_sommati_ma_retry_no():
-    db = MemorySheetsClient()["corrispettivi_multi_close_test"]
+    db = ClientArchivioMemoria()["corrispettivi_multi_close_test"]
     svc = CorrispettiviService(db=db)
     parsed = {
         b"chiusura-1": _parsed_corr(
@@ -351,7 +415,7 @@ def test_xml_distinti_stessa_giornata_vengono_sommati_ma_retry_no():
 
 
 def test_chiusura_post_mezzanotte_va_al_giorno_precedente_se_vuoto():
-    db = MemorySheetsClient()["corrispettivi_after_midnight_test"]
+    db = ClientArchivioMemoria()["corrispettivi_after_midnight_test"]
     svc = CorrispettiviService(db=db)
     parsed = {
         b"notte": _parsed_corr(
@@ -378,7 +442,7 @@ def test_chiusura_post_mezzanotte_va_al_giorno_precedente_se_vuoto():
 
 
 def test_chiusura_post_mezzanotte_non_sposta_se_precedente_valorizzato():
-    db = MemorySheetsClient()["corrispettivi_after_midnight_valued_test"]
+    db = ClientArchivioMemoria()["corrispettivi_after_midnight_valued_test"]
     svc = CorrispettiviService(db=db)
     parsed = {
         b"precedente": _parsed_corr(
@@ -403,7 +467,7 @@ def test_chiusura_post_mezzanotte_non_sposta_se_precedente_valorizzato():
 
 
 def test_retry_post_mezzanotte_ignora_precedente_archiviato_e_ripara_data():
-    db = MemorySheetsClient()["corrispettivi_after_midnight_archived_test"]
+    db = ClientArchivioMemoria()["corrispettivi_after_midnight_archived_test"]
     svc = CorrispettiviService(db=db)
     parsed = {
         b"precedente": _parsed_corr(
