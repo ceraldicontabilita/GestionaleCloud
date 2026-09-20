@@ -97,6 +97,16 @@ export function numeroFatturaMovimento(movimento = {}) {
   return movimento.numero_fattura || movimento.fattura_numero || movimento.invoice_number || '';
 }
 
+export function movimentoContaNelSaldo(movimento = {}, tipo = '') {
+  if (tipo !== 'banca') return true;
+  return !(
+    movimento.provvisorio === true &&
+    movimento.riconciliato !== true &&
+    !movimento.estratto_conto_id &&
+    !movimento.movimento_estratto_conto_id
+  );
+}
+
 export function nomeFornitoreMovimento(movimento = {}) {
   const esplicito = movimento.fornitore || movimento.ragione_sociale ||
     movimento.supplier_name || movimento.cedente_denominazione;
@@ -666,7 +676,9 @@ function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRip
     const lista = [...movimenti].sort(ordineVideo);
     for (let i = lista.length - 1; i >= 0; i--) {
       const m = lista[i];
-      saldo += (m.tipo === 'entrata' ? 1 : -1) * Math.abs(m.importo || 0);
+      if (movimentoContaNelSaldo(m, tipo)) {
+        saldo += (m.tipo === 'entrata' ? 1 : -1) * Math.abs(m.importo || 0);
+      }
       mappa[m.id] = saldo;
     }
     return mappa;
@@ -1043,7 +1055,12 @@ function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRip
         /* ------------------- MOBILE: card per giornata ------------------- */
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {gruppiGiorno.map(g => {
-            const netto = g.righe.reduce((s, m) => s + (m.tipo === 'entrata' ? 1 : -1) * Math.abs(m.importo || 0), 0);
+            const netto = g.righe.reduce(
+              (s, m) => s + (movimentoContaNelSaldo(m, tipo)
+                ? (m.tipo === 'entrata' ? 1 : -1) * Math.abs(m.importo || 0)
+                : 0),
+              0,
+            );
             return (
               <div key={g.data} style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
                 <div
@@ -1109,6 +1126,15 @@ function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRip
                         </b>
                       </span>
                       <span style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
+                        {tipo === 'banca' && !movimentoContaNelSaldo(m, tipo) && (
+                          <span
+                            data-testid={`movimento-provvisorio-${m.id}`}
+                            title="Movimento inserito senza prova dell'estratto conto: visibile, ma escluso dal saldo bancario reale"
+                            style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #f59e0b', borderRadius: 6, padding: '3px 7px', fontSize: 10.5, fontWeight: 800, whiteSpace: 'nowrap' }}
+                          >
+                            Provvisorio · fuori saldo
+                          </span>
+                        )}
                         {badgeDocumento(m)}
                         {badgeRiconciliazione(m)}
                         {tipo === 'banca' && <LinkEstrattoConto movimento={m} />}
@@ -1157,7 +1183,12 @@ function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRip
                         <span style={{ fontFamily: 'ui-monospace, Menlo, monospace' }}>
                           {(() => {
                             const giornaliere = righe.filter(r => r.data === m.data);
-                            const netto = giornaliere.reduce((s, r) => s + (r.tipo === 'entrata' ? 1 : -1) * Math.abs(r.importo || 0), 0);
+                            const netto = giornaliere.reduce(
+                              (s, r) => s + (movimentoContaNelSaldo(r, tipo)
+                                ? (r.tipo === 'entrata' ? 1 : -1) * Math.abs(r.importo || 0)
+                                : 0),
+                              0,
+                            );
                             return `${giornaliere.length} operazioni · ${netto >= 0 ? '+' : ''}${eur(netto)}`;
                           })()}
                         </span>
