@@ -18,7 +18,7 @@ import logging
 
 from datetime import timezone
 from app.database import Database, Collections
-from app.models.stati import STATI_PAGATI
+from app.services.stato_pagamento_fattura import PAROLE_PAGATA, PAROLE_PAGATA_F24
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -60,7 +60,7 @@ async def get_f24_alerts_public(
     
     # Cerca in f24_commercialista (non pagati e non eliminati)
     query_comm = {
-        "status": {"$nin": STATI_PAGATI + ["eliminato"]},
+        "status": {"$nin": sorted(PAROLE_PAGATA | PAROLE_PAGATA_F24) + ["eliminato"]},
     }
     if anno_filter:
         query_comm = {"$and": [query_comm, anno_filter]}

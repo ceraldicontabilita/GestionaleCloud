@@ -10,7 +10,7 @@ from uuid import uuid4
 import logging
 
 from app.database import Database
-from app.models.stati import STATI_PAGATI
+from app.constants.stati_assegno import ASSEGNI_STATI_IN_PORTAFOGLIO
 from app.routers.accounting.contabilita_gestionale import _bilancio_verifica_da_registro
 from app.routers.prima_nota_module.common import (
     aggrega_saldo_prima_nota,
@@ -532,13 +532,10 @@ async def apertura_nuovo_esercizio(input_data: AperturaEsercizioInput) -> Dict[s
     )["saldo"]
 
     data_chiusura = f"{anno_precedente}-12-31"
-    stati_completamente_pagati = [
-        stato for stato in STATI_PAGATI if str(stato).lower() not in {"parziale", "partial"}
-    ]
     fatture_da_pagare = await db["invoices"].aggregate([
         {"$match": {
             "invoice_date": {"$lte": data_chiusura},
-            "status": {"$nin": stati_completamente_pagati + ["deleted", "archived"]},
+            "status": {"$nin": ["deleted", "archived", "archiviata"]},
             **FILTRO_NON_PAGATE,
         }},
         {"$group": {"_id": None, "totale": {"$sum": {
@@ -550,8 +547,7 @@ async def apertura_nuovo_esercizio(input_data: AperturaEsercizioInput) -> Dict[s
     # 4. Assegni in portafoglio non incassati
     assegni_portafoglio = await db["assegni"].aggregate([
         {"$match": {
-            "stato": {"$in": ["emesso", "consegnato"]},
-            "incassato": {"$ne": True},
+            "stato": {"$in": list(ASSEGNI_STATI_IN_PORTAFOGLIO)},
             "$or": [
                 {"data_emissione": {"$lte": data_chiusura}},
                 {"data": {"$lte": data_chiusura}},

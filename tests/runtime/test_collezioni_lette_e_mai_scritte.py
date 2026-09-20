@@ -37,31 +37,32 @@ SCRITTURE = (
 #: ne' fuori. Ogni lettura mostra il vuoto senza dirlo. Si tolgono da qui man
 #: mano che si decide, una per una: o la si popola, o la lettura va via.
 NOTE = {
-    "ai_decision_events",
-    "ai_decisions",
-    "collaudo_report",
+    # — esistono in produzione con dei dati: qualcuno le riempie da fuori —
     "entity_relations",            # la scrive il trigger, non Python
-    "f24_email_settings",
-    "sumup_payouts",
-    # — vuote anche in produzione —
+    "fiscal_documents",            # 22 righe
+    "piano_conti",                 # 31 righe, collezione dismessa: il piano
+                                   # dei conti ufficiale sta in Python
+    # — vuote anche in produzione: ogni lettura mostra il vuoto senza dirlo —
     "cartelle_email_attachments",
     "contratti_noleggio",
     "dati_isa_snapshot",
-    "dati_provvisori",
     "dizionario_articoli",
     "documenti_scaricati",
-    "email_accounts",
-    "email_allegati",
+    "documents_classified",
+    "email_download_log",
+    "employees",                   # l'anagrafica vera e' `hr.app_dipendenti`
+    "fatture_passive",             # le fatture ricevute stanno in `invoices`
+    "invoices_emesse",             # la collezione vera e' `fatture_emesse`
     "libro_unico_presenze",
-    "liquidazioni_iva",
+    "mittenti_attendibili",
     "pagamenti_esiti",
+    "payslips",                    # i cedolini stanno in `cedolini`
+    "prima_nota_saldi_iniziali",
     "quietanze",
-    "ritenute_acconto",
+    "staff",
     "tax_collection_claims",
     "tfr_acconti",
-    "utenti_pin",
     "verbali_autovelox",
-    "voci_bilancio_manuali",
     "warehouse_products",
 }
 
@@ -76,10 +77,21 @@ def _lette_e_mai_scritte() -> set:
         if "__pycache__" in str(py):
             continue
         src = py.read_text(encoding="utf-8", errors="ignore")
+        # Molti moduli non scrivono il nome inline ma tengono una costante
+        # (`COLLECTION_OPERAZIONI_DA_CONFERMARE = "operazioni_da_confermare"`)
+        # e poi fanno `db[COSTANTE].insert_one(...)`. Senza risolverle, la
+        # guardia dichiarava orfana una collezione scritta davvero.
+        costanti = dict(
+            re.findall(r'^([A-Z][A-Z0-9_]*)\s*=\s*["\']([a-z0-9_]+)["\']', src, re.M)
+        )
         for m in re.finditer(
             r'(?<![\w.])db\[\s*["\']([a-z0-9_]+)["\']\s*\]\s*\.?\s*(\w+)?', src
         ):
             (scritte if m.group(2) in SCRITTURE else lette).add(m.group(1))
+        for m in re.finditer(r'(?<![\w.])db\[\s*([A-Z][A-Z0-9_]*)\s*\]\s*\.?\s*(\w+)?', src):
+            nome = costanti.get(m.group(1))
+            if nome:
+                (scritte if m.group(2) in SCRITTURE else lette).add(nome)
     # Anche i test scrivono: una collezione popolata solo dai test resta vuota
     # in produzione, quindi qui conta soltanto cio' che scrive `app/`.
     return lette - scritte - FALSI_POSITIVI

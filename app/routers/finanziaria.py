@@ -6,7 +6,6 @@ from uuid import uuid4
 import logging
 
 from app.database import Database
-from app.models.stati import STATI_PAGATI
 from app.routers.prima_nota_module.common import (
     aggrega_saldo_prima_nota,
     filtro_saldo_prima_nota,
@@ -171,7 +170,7 @@ async def get_financial_summary(
         fatture_da_pagare = await db["invoices"].aggregate([
             {"$match": {
                 "invoice_date": date_range,
-                "status": {"$nin": STATI_PAGATI + ["deleted", "archived"]},
+                "status": {"$nin": ["deleted", "archived"]},
                 "entity_status": {"$ne": "deleted"},
                 **FILTRO_NON_PAGATE,
             }},

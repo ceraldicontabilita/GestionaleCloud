@@ -256,13 +256,6 @@ async def salva_verbali_completi(verbali: List[Dict[str, Any]]) -> Dict[str, int
     return risultato
 
 
-async def riconcilia_verbali() -> Dict[str, Any]:
-    """Mantiene l'API storica ma applica soltanto regole probatorie strict."""
-    from app.services.verbali_pagamento_finder import riconcilia_verbali_strict
-
-    return await riconcilia_verbali_strict(Database.get_db())
-
-
 async def get_operazioni_sospese() -> List[Dict[str, Any]]:
     """Restituisce tutte le operazioni sospese (verbali non trovati nell'estratto)."""
     db = Database.get_db()

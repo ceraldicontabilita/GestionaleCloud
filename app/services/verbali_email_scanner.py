@@ -21,6 +21,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional, Tuple
 import logging
 from app.services.archivio_documenti_memoria import ArchivioDocumenti
+from app.constants.stati_verbale import FILTRO_STATO_APERTO
 
 logger = logging.getLogger(__name__)
 
@@ -163,7 +164,7 @@ class VerbaliEmailScanner:
         # Verbali senza quietanza (da pagare)
         cursor = self.db["verbali_noleggio"].find(
             {
-                "stato": {"$in": ["da_pagare", "DA_PAGARE", "identificato", "fattura_ricevuta"]},
+                **FILTRO_STATO_APERTO,
                 "$or": [
                     {"quietanza_ricevuta": {"$exists": False}},
                     {"quietanza_ricevuta": False}

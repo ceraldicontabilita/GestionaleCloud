@@ -1,4 +1,6 @@
-from app.handlers.estratto_conto import _score_match
+from app.services.match_storico_banca_fattura import (
+    punteggio_match_storico as _score_match,
+)
 from app.services.riconciliazione_bancaria import (
     _evidenza_forte_fattura_banca,
     _evidenza_pagamento_fornitore_banca,

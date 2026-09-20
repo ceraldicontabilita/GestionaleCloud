@@ -140,6 +140,7 @@ from app.services.verbali_pagamento_finder import (
     applica_pagamento_a_verbale,
 )
 from app.services.verbali_gmail_scanner import scan_gmail_verbali
+from app.constants.stati_verbale import FILTRO_STATO_APERTO, e_pagato
 from app.services.verbali_email_scanner import (
     VerbaliEmailScanner,
     decode_mime_header,
@@ -176,7 +177,7 @@ class VerbaliPendingManager:
         """
         # Verbali da pagare (senza quietanza)
         cursor = db["verbali_noleggio"].find(
-            {"stato": {"$in": ["da_pagare", "DA_PAGARE", "identificato", "IDENTIFICATO", "fattura_ricevuta"]}},
+            dict(FILTRO_STATO_APERTO),
             {"numero_verbale": 1, "_id": 0}
         )
         self.verbali_senza_quietanza = [
@@ -263,9 +264,6 @@ async def _trova_doc_verbale(db, numero_verbale: str) -> Optional[Dict]:
     return await db["verbali_noleggio"].find_one(
         {"$or": [{"numero_verbale": numero_verbale}, {"id": numero_verbale}]}
     )
-
-
-_STATI_GIA_PAGATI = {"pagato", "PAGATO", "riconciliato", "pagato_attesa_quietanza", "pagato_attesa_fattura"}
 
 
 async def scan_email_con_priorita(db, email_service=None, days_back: int = 30) -> Dict[str, Any]:
@@ -378,7 +376,7 @@ async def cerca_quietanza_per_verbale(db, email_service, numero_verbale: str) ->
     verbale = await _trova_doc_verbale(db, numero_verbale)
     if not verbale:
         return None
-    if verbale.get("quietanza_ricevuta") or verbale.get("stato") in _STATI_GIA_PAGATI:
+    if verbale.get("quietanza_ricevuta") or e_pagato(verbale.get("stato")):
         return None
 
     match = await trova_pagamento_verbale(db, verbale)
@@ -552,7 +550,7 @@ async def cerca_nuove_quietanze(db, email_service, days_back: int = 30) -> List[
                     pending_manager.add_quietanza_orfana(orfana)
                     trovate.append({**orfana, "associata": False})
                     continue
-                if verbale.get("quietanza_ricevuta") or verbale.get("stato") in _STATI_GIA_PAGATI:
+                if verbale.get("quietanza_ricevuta") or e_pagato(verbale.get("stato")):
                     continue
                 await email_service.registra_quietanza(numero, {
                     "email_subject": subject,

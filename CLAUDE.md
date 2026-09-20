@@ -644,11 +644,12 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 
 - Conservare email, verbale, avviso, ricevuta PagoPA/PayPal e movimento banca
   come prove separate.
-- Stati del verbale: `documento salvato`, `da verificare`, `attesa pagamento`,
-  `attesa quietanza`, `pagato documentale`, `riconciliato banca`. L'importo si
-  legge dal PDF, **mai dedotto dal nome file**. Lo stato corretto dopo un
-  pagamento privo di ricevuta ufficiale è `attesa quietanza`, **mai** `attesa
-  fattura`: non sono sinonimi.
+- Stati e motore dei verbali in un posto solo: `app/constants/stati_verbale.py`
+  (nove aperti — fra cui `fattura_ricevuta`, quello di tutte le righe vere — e
+  tre con prova, in maiuscolo e minuscolo: un filtro li elenca entrambi) e
+  `riconcilia_verbali_strict`, che esige riferimento strutturato **e** importo
+  uguale al centesimo, mai solo importo o data vicina. L'importo si legge dal
+  PDF. `pagato_attesa_fattura` è il legacy di `pagato_attesa_quietanza`.
 - Associazione automatica driver: targa normalizzata più data/ora infrazione
   più storico assegnazioni. Le assegnazioni hanno un intervallo temporale: il
   driver è quello attivo **alla data/ora del fatto**.
@@ -835,9 +836,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   `invoice_number`/`invoice_date`/`total_amount` sono fuori da ogni conto.
 - **Tre strade scrivono `corrispettivi`** (`ingest_corrispettivo_parsed`, `CorrispettiviService`, import
   CSV), ognuna con la sua dedup: vanno ridotte a una.
-- **Da lanciare**: `registra-pregresso` per le **21 giornate** 31/03–30/07 che il non riscosso teneva
-  fuori dal giornale (67.856,00 €). Restano poi fuori 3 giornate a incasso zero (corretto) e il **02/08**,
-  dove è l'XML a non quadrare di 0,90 €.
+- **Da lanciare**: `registra-pregresso` per le **21 giornate** 31/03–30/07 tenute fuori dal giornale dal
+  non riscosso (67.856,00 €); fuori restano 3 giornate a incasso zero (giusto) e il **02/08**, XML che non quadra di 0,90 €.
 - Endpoint sincroni oltre i 5 minuti, da portare a lotti riprendibili: `/api/fatture/drive/quadratura`,
   `/api/paypal-api/riconcilia`, `/account-ids-non-mappati` e `riallinea-pagamenti-fatture`.
 - Note di credito TD04 legacy (~20): costo/IVA/debito aumentati anziché ridotti.
@@ -846,13 +846,14 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - **Pregresso fatture**: 296 attive (173.184,83 €) senza partita aperta, 280 fuori dal giornale. Prima
   `ripubblica-evento-created`, poi `registra-pregresso`. Con `dry_run`: `azzera-scadenze` (642 fatture,
   971 partite inventate), `lipe/importa`, `ricostruisci-numia`.
-- Riconciliazione: 158 fatture `riconciliata` con movimento non riconciliato, 180 righe hub senza
-  `fattura_id`, 1.417 movimenti banca senza categoria.
+- Riconciliazione: 158 fatture `riconciliata` con movimento non riconciliato, 180 righe hub senza `fattura_id`, 1.417 movimenti banca senza categoria.
 - HR: 38 bonifici con `cedolino_id` orfano, 119 in «bonifici da associare», 10 tabelle attese dall'app
   assenti (turni_config, onomastici, richieste…), Iazzetta senza IBAN; Appuhamy, Aurigemma, Vitiello,
   Dell'Aquila da creare cessati; UNILAV Moscato e Pocci.
-- `app/models/stati.py::STATI_PAGATI` conta «parziale» fra le pagate ed è applicata a `status`, che non
-  dice se è pagata: non filtra niente.
+- Verbali: i 105 in archivio nascono da una riga di fattura PartenoPay e non hanno importo, targa né data,
+  quindi il motore strict non ne aggancia nessuno; la trattenuta la propone solo la quietanza caricata a mano.
+- L'alert scadenze F24 di `FiscaleSentinella` legge `data_scadenza`, che **nessun** F24 ha: non è mai
+  partito. La scadenza va derivata dal codice tributo (`codici_tributo_db`), mai inventata.
 - Drill-down «Verifica campi e F24»: agganciato al vecchio indice Drive, che non esiste più;
   `/api/download` serve `./downloads`, che nessuno popola.
 - A mano, dal titolare: **far ripartire `sync_rt_to_drive.py`** (fermo dal 28/08); password Postgres; DNS
