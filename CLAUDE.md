@@ -411,7 +411,11 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - Ricavi: **solo corrispettivi RT**. Le fatture ricevute sono costi; gli
   accrediti POS e i payout non sono nuovi ricavi.
 - Corrispettivi: in cassa entra **solo la quota contanti**, la quota POS va in
-  Prima Nota Banca. Mai il totale.
+  Prima Nota Banca. Mai il totale. Il **non riscosso** (sospesi, buoni, fattura)
+  è ricavo ma non è denaro: terza gamba del DARE sui crediti (`01.02.01` → CEE
+  15.05), e solo se il documento lo **dichiara** e cassa + POS + non riscosso fa
+  il totale al centesimo — mai per differenza, o un incasso non registrato
+  sparisce lì dentro. Ignorarlo scarta la giornata intera, non una riga.
 - POS: corrispettivo XML, chiusura terminale e accredito bancario sono tre
   fatti distinti. SumUp corrente dall'API; Numia corrente dalla chiusura
   manuale serale; Numia storico ricostruito dagli export del gestore,
@@ -799,21 +803,20 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - Ogni merge su `main` fa ridistribuire Render e ricaricare ~77.000 righe: per
   qualche minuto la produzione è `degraded`. Non si accodano merge.
 - TFR: `hr.app_tfr_accantonamenti` è vuota, il codice vivo scrive in
-  `tfr_accantonamenti` (1.175 righe, 42 dipendenti, 273.025,37 €). Ingest cedolini:
-  collaudo live non chiuso, il giro orario Drive trova 0 file su 49 caselle.
+  `tfr_accantonamenti` (1.175 righe, 42 dipendenti, 273.025,37 €). Ingest
+  cedolini: il giro orario Drive trova 0 file su 49 caselle.
 - **Spento**: `PROTOCOLLO_DRIVE_ENABLED=false` (RAM a 1,57 GB su 2). **Acceso**:
   scheduler, ingest Drive (fatture, estratti conto, cedolini, bonifici), ponte
   pagamenti HR, dedup fatture, dichiarazioni fiscali.
 - Fatture **1.431**, tutte del 2026 (0 orfani, 0 collisioni): il pre-2026 è in
-  `fatture_pre2026_rimosse_20260920`. **13 righe hanno solo i campi italiani** e
-  nessun filtro canonico le vede (regola 12): 7 fatture e 6 DDT.
+  `fatture_pre2026_rimosse_20260920`. **13 righe (7 fatture, 6 DDT) hanno solo i
+  campi italiani** e nessun filtro canonico le vede (regola 12).
 - **Gli XML di fattura 2026 arrivano su Drive a blocchi manuali** dal portale AdE:
   il ritardo e' a monte. I 3 file in `2026/Errori` sono fatture **sane** (`.p7m`).
 - **Corrispettivi 187, ultimo giorno 27/08/2026**, tutti del 2026 (agosto: 19
-  giornate, 19 righe). Dal 28/08 non ne arrivano più: il PC del negozio è
-  fermo, 23 giornate fuori dai conti. Bonifica del 20/09: 15 giornate di agosto
-  doppie (31.356,28 €, con Prima Nota e scritture) e 414 corrispettivi 2023-24
-  marcati `deleted`, backup in `corrispettivi_bonifica_20260920` (459 righe).
+  giornate, 19 righe). Dal 28/08 non ne arrivano più: il PC del negozio è fermo,
+  23 giornate fuori dai conti. Backup della bonifica del 20/09 (459 righe) in
+  `corrispettivi_bonifica_20260920`.
 - **Nessuna liquidazione IVA calcolata**: `/api/iva/liquidazioni` torna vuoto.
   Giugno e luglio sono calcolabili ma con **zero** acquisti (tutti
   `detraibilita_da_verificare`): saldo = IVA vendite intera, 7.651,05 € e 6.211,86 €.
@@ -825,52 +828,51 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 ## Aperto (togliere la voce quando si chiude)
 
 - Compute Supabase **Micro** insufficiente (`documents` 1.172 MB, database 2.111
-  MB): Postgres caduto il 17/09 e connessioni rifiutate il 20/09. Da fare **Small**.
+  MB): Postgres caduto il 17/09, connessioni rifiutate il 20/09. Da fare **Small**.
 - Le **13 fatture legacy senza campi inglesi** vanno normalizzate: senza
   `invoice_number`/`invoice_date`/`total_amount` sono fuori da ogni conto.
 - **Tre strade scrivono `corrispettivi`** (`ingest_corrispettivo_parsed`,
   `CorrispettiviService`, import CSV), ognuna con la sua dedup: vanno ridotte a una.
-- Due giornate di agosto 2026 non hanno scrittura nel giornale (17 su 19).
+- **Da lanciare**: `registra-pregresso` per le **21 giornate** 31/03–30/07 che il non
+  riscosso teneva fuori dal giornale (67.856,00 €). Restano poi fuori 3 giornate a
+  incasso zero (corretto) e il **02/08**, dove è l'XML a non quadrare di 0,90 €.
 - Endpoint sincroni oltre i 5 minuti, da portare a lotti riprendibili:
   `/api/fatture/drive/quadratura`, `/api/paypal-api/riconcilia`,
-  `/account-ids-non-mappati`, `riallinea-pagamenti-fatture`.
+  `/account-ids-non-mappati` e `riallinea-pagamenti-fatture`.
 - Note di credito TD04 legacy (~20): costo/IVA/debito aumentati anziché ridotti.
 - **Nessuno dei 187 fornitori ha `metodo_pagamento`** (41 hanno un IBAN): così
-  1.379 fatture restano `sospese` e nulla va in Prima Nota Banca. Serve una
-  fonte vera, non dedotta dalle fatture.
-- **Pregresso fatture**: 296 attive (173.184,83 €) senza partita aperta, 280 fuori
-  dal giornale. Prima `ripubblica-evento-created`, poi `registra-pregresso`.
-- Da lanciare, con `dry_run`: `azzera-scadenze` (642 fatture, 971 partite con
-  scadenza inventata); `/api/iva/lipe/importa`; `ricostruisci-numia`.
-- Riconciliazione: 158 fatture `riconciliata` con movimento non riconciliato, 180
-  righe hub senza `fattura_id`, 1.417 movimenti banca senza categoria.
-- HR: 38 bonifici con `cedolino_id` orfano, 119 in «bonifici da associare», 10
-  tabelle attese dall'app assenti (turni_config, onomastici, richieste…), Iazzetta
-  senza IBAN; Appuhamy, Aurigemma, Vitiello e Dell'Aquila da creare come storici
-  cessati; UNILAV Moscato e Pocci da verificare.
+  1.379 fatture restano `sospese` e nulla va in Prima Nota Banca. Serve una fonte
+  vera, non dedotta dalle fatture.
+- **Pregresso fatture**: 296 attive (173.184,83 €) senza partita aperta, 280 fuori dal
+  giornale. Prima `ripubblica-evento-created`, poi `registra-pregresso`. Con `dry_run`:
+  `azzera-scadenze` (642 fatture, 971 partite inventate), `lipe/importa`, `ricostruisci-numia`.
+- Riconciliazione: 158 fatture `riconciliata` con movimento non riconciliato,
+  180 righe hub senza `fattura_id`, 1.417 movimenti banca senza categoria.
+- HR: 38 bonifici con `cedolino_id` orfano, 119 in «bonifici da associare», 10 tabelle
+  attese dall'app assenti (turni_config, onomastici, richieste…), Iazzetta senza IBAN;
+  Appuhamy, Aurigemma, Vitiello, Dell'Aquila da creare cessati; UNILAV Moscato e Pocci.
 - `app/models/stati.py::STATI_PAGATI` conta «parziale» fra le pagate ed è
   applicata a `status`, che non dice se è pagata: non filtra niente.
 - Drill-down «Verifica campi e F24»: agganciato al vecchio indice Drive, che non
-  esiste più. `/api/download` serve `./downloads`, che nessuno popola.
-- A mano, dal titolare: **far ripartire `sync_rt_to_drive.py` sul PC del negozio**
-  (fermo dal 28/08, 23 giornate di incassi); password Postgres; DNS ceraldiapp.it.
-- Fork `app/hr/`: restano **cinque** sottopercorsi duplicati (`routers/auth.py`,
+  esiste più; `/api/download` serve `./downloads`, che nessuno popola.
+- A mano, dal titolare: **far ripartire `sync_rt_to_drive.py` sul PC del
+  negozio** (fermo dal 28/08); password Postgres; DNS ceraldiapp.it.
+- Fork `app/hr/`: **cinque** sottopercorsi ancora duplicati (`routers/auth.py`,
   `routers/employees/dipendenti.py`, `routers/pin_login.py`, `routers/tfr.py`,
-  `utils/dependencies.py`). Ogni correzione va cercata anche nel gemello.
+  `utils/dependencies.py`): ogni correzione va cercata anche nel gemello.
 - `gestionale.blobs`: 216 PDF che **nessun documento cita**, leggibili solo da
-  `blob_store.py`, mai importato. Stesso caso di `bank_reconciliation_hub`
-  (2.017 righe), scritta da un trigger e letta da nessuno.
+  `blob_store.py`, mai importato; come `bank_reconciliation_hub` (2.017 righe),
+  scritta da un trigger e letta da nessuno.
 
 ## Logica dentro al database
 
-Su Supabase ci sono **trigger PL/pgSQL che scrivono dati contabili**: leggere
-il codice non basta per sapere cosa succede a una riga. Elenco, ruolo di
-ognuno e query su `pg_trigger` stanno in
-`database/trg_bank_ec_before_write.sql`. La regola: **una regola contabile si
-scrive in Python, versionata e testata** — per questo `trg_bank_ec_before_write`
-non c'è più, duplicava `proiezione_bancaria.py` e vinceva perché girava prima.
-Restano le guardie anti-cancellazione, quelle su `updated_at` e
-`trg_bank_ec_after_write`, che alimenta `entity_relations`.
+Su Supabase ci sono **trigger PL/pgSQL che scrivono dati contabili**: leggere il
+codice non basta per sapere cosa succede a una riga. Elenco, ruolo di ognuno e
+query su `pg_trigger` stanno in `database/trg_bank_ec_before_write.sql`. La
+regola: **una regola contabile si scrive in Python, versionata e testata** — per
+questo `trg_bank_ec_before_write` non c'è più, duplicava `proiezione_bancaria.py`
+e vinceva perché girava prima. Restano le guardie anti-cancellazione, quelle su
+`updated_at` e `trg_bank_ec_after_write`, che alimenta `entity_relations`.
 
 ## Verifica e pubblicazione
 

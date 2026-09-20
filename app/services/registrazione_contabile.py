@@ -73,6 +73,12 @@ _C_CASSA = ("01.01.01", "Cassa")
 _C_BANCA = ("01.01.02", "Banca c/c")
 _C_RICAVI = ("04.01.02", "Ricavi vendite bar")
 _C_IVA_DEBITO = ("02.03.01", "IVA a debito")
+# Quota del corrispettivo documentata ma non incassata (sospesi, buoni,
+# corrispettivo con emissione di fattura): e' un credito, non denaro.
+# Conto gia' esistente e gia' mappato al CEE 15.05 «Crediti vari v/terzi»
+# in `mapping_piano_conti.OPERATIVO_A_UFFICIALE`: qui non si apre un conto
+# nuovo, si usa quello che c'era.
+_C_CREDITI = ("01.02.01", "Crediti v/clienti")
 _ALIQUOTA_CORRISPETTIVI = 0.10  # ristorazione (parametro storico, invariato)
 
 
@@ -566,9 +572,29 @@ async def registra_corrispettivo(db, corr: Dict[str, Any], *, force: bool = Fals
     # contanti + POS finiva "da_verificare" (ripartizione non quadrata).
     cassa = _primo_importo(corr, "pagato_contanti", "pagato_contante", "pagato_cassa")
     pos = _primo_importo(corr, "pagato_elettronico", "pagato_pos")
-    if cassa + pos == 0:
+    # Il non riscosso e' la terza gamba del DARE, non un ammanco. La chiusura
+    # giornaliera documenta un corrispettivo che non e' entrato ne' in cassa
+    # ne' sul POS (sospesi, buoni, corrispettivo con fattura): e' un credito.
+    # Senza questa riga il DARE valeva `cassa + pos` mentre l'AVERE valeva
+    # `totale`, la scrittura non quadrava e il motore rifiutava L'INTERA
+    # GIORNATA. Misurato il 20/09/2026 sull'archivio vero: 21 giornate dal
+    # 31/03 al 30/07 fuori dal libro giornale, 67.856,00 EUR di ricavi e
+    # 6.168,74 EUR di IVA a debito — per 204,10 EUR complessivi di non
+    # riscosso. Le chiusure d'origine lo dichiarano gia' quadrato
+    # (`differenza = 0`): cassa + POS + non riscosso = totale, al centesimo.
+    non_riscosso = _primo_importo(corr, "non_riscosso", "pagato_non_riscosso")
+    if non_riscosso < 0:
+        return {
+            "stato": "da_verificare",
+            "motivo": "non riscosso negativo sul corrispettivo",
+        }
+    if cassa + pos + non_riscosso == 0:
         cassa = totale
-    elif abs(round(cassa + pos - totale, 2)) > 0.01:
+    elif abs(round(cassa + pos + non_riscosso - totale, 2)) > 0.01:
+        # Lo scarto resta un rifiuto: il non riscosso entra come PROVA
+        # dichiarata dal documento, non come tappabuchi calcolato dalla
+        # differenza. Un totale che non torna nemmeno contandolo e' un dato
+        # da guardare, non da far quadrare d'ufficio.
         return {
             "stato": "da_verificare",
             "motivo": "ripartizione contanti/POS non quadrata con il totale",
@@ -582,6 +608,10 @@ async def registra_corrispettivo(db, corr: Dict[str, Any], *, force: bool = Fals
     if pos > 0:
         righe.append({"conto_codice": _C_BANCA[0], "conto_nome": _C_BANCA[1], "dare": pos, "avere": 0, "centro_costo": None})
         saldi.append((_C_BANCA[0], pos, "dare"))
+    if non_riscosso > 0:
+        righe.append({"conto_codice": _C_CREDITI[0], "conto_nome": _C_CREDITI[1],
+                      "dare": non_riscosso, "avere": 0, "centro_costo": None})
+        saldi.append((_C_CREDITI[0], non_riscosso, "dare"))
     righe.append({"conto_codice": _C_RICAVI[0], "conto_nome": _C_RICAVI[1], "dare": 0, "avere": imponibile, "centro_costo": None})
     righe.append({"conto_codice": _C_IVA_DEBITO[0], "conto_nome": _C_IVA_DEBITO[1], "dare": 0, "avere": iva, "centro_costo": None})
     saldi.append((_C_RICAVI[0], imponibile, "avere"))
@@ -602,7 +632,8 @@ async def registra_corrispettivo(db, corr: Dict[str, Any], *, force: bool = Fals
         "anno": anno,
         "importo_totale": totale, "imponibile": imponibile, "iva": iva,
         "righe": righe,
-        "totale_dare": round(cassa + pos, 2), "totale_avere": round(totale, 2),
+        "totale_dare": round(cassa + pos + non_riscosso, 2),
+        "totale_avere": round(totale, 2),
         "stato": "registrato", "created_at": now,
         "idempotency_key": chiave_idempotenza("corrispettivo", corr_id),
     }
