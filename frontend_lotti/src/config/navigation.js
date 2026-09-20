@@ -3,7 +3,8 @@ import {
   Building2, ChefHat, ClipboardCheck, FileText, Flame, FlaskConical,
   Globe, HelpCircle, IceCreamBowl, Layers, Network, Package,
   Refrigerator, Scale, Settings, ShieldCheck, ShoppingCart, Snowflake,
-  Sparkles, Tag, Thermometer, TrendingUp, Truck, Users, Wallet, Wheat,
+  Sparkles, Tag, Thermometer, TrendingUp, Truck, UtensilsCrossed, Users,
+  Wallet, Wheat,
 } from "lucide-react";
 
 // Le cinque destinazioni più frequenti restano sempre visibili.
@@ -22,6 +23,10 @@ export const SECONDARY_TABS = [
   { section: "Produzione e scorte", id: "produzione_consigliata", label: "Produzione consigliata", icon: ChefHat },
   { section: "Produzione e scorte", id: "storico_produzioni", label: "Storico produzioni", icon: FileText },
   { section: "Produzione e scorte", id: "materie", label: "Materie prime", icon: Wheat },
+  // 19/09/2026 — la vetrina di ciò che i clienti vedono nel Menu digitale:
+  // sta fra le voci di vendita, non nel backoffice (è un contenitore visivo
+  // dei prodotti da vendere, non una pagina di amministrazione).
+  { section: "Acquisti e vendita", id: "in_menu", label: "In menu", icon: UtensilsCrossed },
   { section: "Acquisti e vendita", id: "fornitori", label: "Fornitori", icon: Building2 },
   { section: "Acquisti e vendita", id: "comparatore", label: "Confronto prezzi", icon: Scale },
   { section: "Acquisti e vendita", id: "prodotti", label: "Listini e cataloghi", icon: Tag },

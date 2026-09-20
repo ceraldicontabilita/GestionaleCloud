@@ -7,6 +7,12 @@ import { Globe } from "lucide-react";
 import { conferma } from "../../../utils/conferma";
 import { stampaDoc } from "../../../utils/stampa";
 import PinKeypad from "../shared/PinKeypad";
+import SceltaCategoriaMenu from "./SceltaCategoriaMenu";
+import { isAdmin } from "../../../auth";
+
+// Riga breve mostrata nel Menu digitale: una frase, non un tema. Oltre questa
+// misura il testo sborda dalla card del Menu su telefono.
+export const MAX_DESCRIZIONE_MENU = 140;
 
 const API = process.env.REACT_APP_LOTTI_BACKEND_URL + "/api";
 const BACKEND = process.env.REACT_APP_LOTTI_BACKEND_URL || "";
@@ -153,7 +159,10 @@ function RigaIngrediente({ ing, idx, onChange, onRemove, bloccato = false }) {
 function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onElimina, ricette = [] }) {
   const [form, setForm] = useState(() => {
     if (!ricetta) {
-      return { nome:"", reparto:"pasticceria", porzioni:10, metodo_conservazione:"frigo", prezzo_vendita:"", note:"", ingredienti:[], fornitore_rivendita:"" };
+      return { nome:"", reparto:"pasticceria", porzioni:10, metodo_conservazione:"frigo",
+               prezzo_vendita:"", prezzo_tavolo:"", descrizione:"",
+               menu_category_id:null, menu_subcategory_id:null,
+               note:"", ingredienti:[], fornitore_rivendita:"" };
     }
     // Converte ingredienti_dettaglio (o la lista legacy) nel formato editabile
     // {nome, quantita, unita}, così l'editor e il "+ Aggiungi" funzionano sempre.
@@ -168,7 +177,17 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onElimina, r
         ? { nome: x, quantita: "", unita: "g" }
         : { nome: x.nome || "", quantita: x.quantita ?? "", unita: x.unita_misura || x.unita || "g" }));
     }
-    return { ...ricetta, ingredienti };
+    return {
+      ...ricetta,
+      ingredienti,
+      // I campi Menu nascono `null` sulle ricette vecchie: negli input devono
+      // essere stringa vuota, altrimenti React passa da controllato a non
+      // controllato al primo carattere.
+      prezzo_tavolo: ricetta.prezzo_tavolo ?? "",
+      descrizione: ricetta.descrizione ?? "",
+      menu_category_id: ricetta.menu_category_id ?? null,
+      menu_subcategory_id: ricetta.menu_subcategory_id ?? null,
+    };
   });
   const [saving, setSaving] = useState(false);
   const [scadenza, setScadenza] = useState(null);
@@ -477,6 +496,34 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onElimina, r
     const n = parseFloat(String(v).replace(",", "."));
     return Number.isFinite(n) ? n : 0;
   };
+  // Come `num`, ma «vuoto» resta vuoto: sui campi Menu lo zero non è un prezzo
+  // e un `null` in PUT lascia intatto il valore già salvato (per svuotarlo
+  // davvero si usa la PATCH, vedi `svuotaCampiMenu`).
+  const numOpz = (v) => {
+    if (v == null || v === "") return null;
+    const n = parseFloat(String(v).replace(",", "."));
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
+
+  // Campi Menu che il titolare ha CANCELLATO in questa sessione. La PUT li
+  // ignora quando sono nulli (protegge le pagine vecchie), quindi per toglierli
+  // davvero serve una PATCH con il valore esplicito.
+  const svuotaCampiMenu = async (id) => {
+    if (!ricetta?.id) return;
+    const daAzzerare = {};
+    if (ricetta.prezzo_tavolo != null && numOpz(form.prezzo_tavolo) === null) daAzzerare.prezzo_tavolo = null;
+    if ((ricetta.descrizione || "").trim() && !(form.descrizione || "").trim()) daAzzerare.descrizione = null;
+    if (ricetta.menu_category_id != null && form.menu_category_id == null) daAzzerare.menu_category_id = null;
+    if (ricetta.menu_subcategory_id != null && form.menu_subcategory_id == null) daAzzerare.menu_subcategory_id = null;
+    if (!Object.keys(daAzzerare).length) return null;
+    try {
+      const r = await axios.patch(`${API}/ricette/${id}`, daAzzerare);
+      return r.data?.menu_sync || null;
+    } catch {
+      toast("Ricetta salvata, ma i campi Menu svuotati non sono stati tolti: riprova", "warn");
+      return null;
+    }
+  };
 
   const salva = async () => {
     if (!form.nome.trim()) { toast("Inserisci il nome ricetta","warn"); return; }
@@ -488,7 +535,16 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onElimina, r
         nome: form.nome.trim(),
         reparto: form.reparto || "pasticceria",
         porzioni: parseInt(form.porzioni) || 10,
+        // Due prezzi come in ogni bar (titolare 19/09/2026): `prezzo_vendita`
+        // resta il prezzo AL BANCO (base di food cost e margine),
+        // `prezzo_tavolo` è quello che il Menu digitale mostra ai clienti.
         prezzo_vendita: num(form.prezzo_vendita),
+        prezzo_tavolo: numOpz(form.prezzo_tavolo),
+        // Riga breve del Menu: distinta da `note`, che è il procedimento
+        // interno e non esce mai verso i clienti.
+        descrizione: (form.descrizione || "").trim().slice(0, MAX_DESCRIZIONE_MENU) || null,
+        menu_category_id: form.menu_category_id ?? null,
+        menu_subcategory_id: form.menu_subcategory_id ?? null,
         metodo_conservazione: form.metodo_conservazione || "frigo",
         foto_url: form.foto_url || "",
         note: typeof form.note === "string" ? form.note : "",
@@ -515,6 +571,7 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onElimina, r
       if (ricetta?.id) {
         const ru = await axios.put(`${API}/ricette/${ricetta.id}`, payload);
         menuSync = ru.data?.menu_sync || null;
+        menuSync = (await svuotaCampiMenu(ricetta.id)) || menuSync;
       } else {
         const rr = await axios.post(`${API}/ricette`, payload);
         creata = rr.data;
@@ -638,28 +695,84 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onElimina, r
             <label style={lbl}>Pezzi base</label>
             <input type="number" min="1" value={form.porzioni} onChange={e=>setField("porzioni",e.target.value)} style={inp}/>
           </div>
+          {/* Due prezzi distinti (titolare 19/09/2026): al banco e al tavolo.
+              Il banco resta `prezzo_vendita` — food cost e margine si calcolano
+              ancora su quello — il tavolo è ciò che i clienti leggono nel Menu. */}
           <div>
-            <label style={lbl}>Prezzo (€)</label>
+            <label style={lbl}>Prezzo al banco (€)</label>
             <input type="number" min="0" step="0.01" value={form.prezzo_vendita} onChange={e=>setField("prezzo_vendita",e.target.value)} placeholder="0.00" style={inp}/>
+            <div style={{marginTop:4,fontSize:11,fontWeight:600,color:"var(--text-3)"}}>Base di food cost e margine.</div>
+          </div>
+          <div>
+            <label style={lbl}>Prezzo al tavolo (€)</label>
+            <input type="number" min="0" step="0.01" value={form.prezzo_tavolo ?? ""} onChange={e=>setField("prezzo_tavolo",e.target.value)} placeholder="0.00"
+              style={{...inp, borderColor: form.menu_pubblico && !form.prezzo_tavolo ? "var(--warning-border)" : "var(--border)"}}/>
+            <div style={{marginTop:4,fontSize:11,fontWeight:600,color:"var(--text-3)"}}>È questo che vedono i clienti nel Menu.</div>
           </div>
         </div>
-        {/* Menu digitale (richiesta Enzo 03/09/2026): ogni ricetta finisce
-            comunque nel Menu con la stessa foto; qui decide lui se i clienti
-            la vedono nel menu pubblico (QR al tavolo). */}
-        <label style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",borderRadius:10,cursor:"pointer",
-          border:"1.5px solid", borderColor: form.menu_pubblico ? "var(--primary)" : "var(--border)",
-          background: form.menu_pubblico ? "var(--primary-soft)" : "var(--card)"}}>
-          <input type="checkbox" checked={!!form.menu_pubblico}
-            onChange={e=>setField("menu_pubblico",e.target.checked)}
-            style={{width:20,height:20,flexShrink:0,accentColor:"var(--primary)",cursor:"pointer"}}/>
-          <Globe size={18} color="var(--primary)" style={{flexShrink:0}} aria-hidden="true" />
-          <span style={{display:"flex",flexDirection:"column",gap:2,minWidth:0}}>
-            <span style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>Mostra nel menu pubblico (Menu digitale)</span>
-            <span style={{fontSize:12,fontWeight:600,color:"var(--text-2)"}}>
-              La ricetta va comunque nel Menu con la stessa foto: spunta per farla vedere ai clienti.
+
+        {/* ── Blocco MENU DIGITALE ────────────────────────────────────────
+            Tutto ciò che esce verso i clienti sta qui dentro: si spunta, si
+            scrive la riga breve e si sceglie dove finisce. Richiesta del
+            titolare 19/09/2026: «visualizzo immagine, breve descrizione,
+            prezzo tavolo, allergeni se presenti evidenziati, e la categoria
+            dove inserirla». */}
+        <div style={{border:"1.5px solid var(--border)",borderRadius:12,background:"var(--bg)",padding:"12px 14px",display:"flex",flexDirection:"column",gap:12}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <Globe size={16} color="var(--primary)" aria-hidden="true" />
+            <span style={{fontSize:12,fontWeight:800,color:"var(--text-2)",textTransform:"uppercase",letterSpacing:".05em"}}>
+              Menu digitale — cosa vedono i clienti
             </span>
-          </span>
-        </label>
+          </div>
+
+          {/* Menu digitale (richiesta Enzo 03/09/2026): ogni ricetta finisce
+              comunque nel Menu con la stessa foto; qui decide lui se i clienti
+              la vedono nel menu pubblico (QR al tavolo). */}
+          <label style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",borderRadius:10,cursor:"pointer",
+            border:"1.5px solid", borderColor: form.menu_pubblico ? "var(--primary)" : "var(--border)",
+            background: form.menu_pubblico ? "var(--primary-soft)" : "var(--card)"}}>
+            <input type="checkbox" checked={!!form.menu_pubblico}
+              onChange={e=>setField("menu_pubblico",e.target.checked)}
+              style={{width:20,height:20,flexShrink:0,accentColor:"var(--primary)",cursor:"pointer"}}/>
+            <Globe size={18} color="var(--primary)" style={{flexShrink:0}} aria-hidden="true" />
+            <span style={{display:"flex",flexDirection:"column",gap:2,minWidth:0}}>
+              <span style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>Mostra nel menu pubblico (Menu digitale)</span>
+              <span style={{fontSize:12,fontWeight:600,color:"var(--text-2)"}}>
+                La ricetta va comunque nel Menu con la stessa foto: spunta per farla vedere ai clienti.
+              </span>
+            </span>
+          </label>
+
+          <div>
+            <label style={lbl} htmlFor="menu-descrizione">Descrizione breve (nel Menu)</label>
+            <textarea
+              id="menu-descrizione"
+              rows={2}
+              maxLength={MAX_DESCRIZIONE_MENU}
+              value={form.descrizione ?? ""}
+              onChange={e=>setField("descrizione", e.target.value.slice(0, MAX_DESCRIZIONE_MENU))}
+              placeholder="es. Pasta sfoglia croccante, ricotta e canditi"
+              style={{...inp, resize:"vertical", minHeight:64, lineHeight:1.4}}
+            />
+            <div style={{marginTop:4,display:"flex",justifyContent:"space-between",gap:8,flexWrap:"wrap",fontSize:11,fontWeight:600,color:"var(--text-3)"}}>
+              <span>La riga che il cliente legge sotto il nome: <strong>non</strong> sono le note interne (procedimento).</span>
+              <span style={{fontVariantNumeric:"tabular-nums"}}>{(form.descrizione || "").length}/{MAX_DESCRIZIONE_MENU}</span>
+            </div>
+          </div>
+
+          <SceltaCategoriaMenu
+            categoriaId={form.menu_category_id}
+            sottocategoriaId={form.menu_subcategory_id}
+            adminAbilitato={isAdmin()}
+            onChange={(cat, sub) => setForm(f => ({...f, menu_category_id: cat, menu_subcategory_id: sub}))}
+            avviso={form.menu_pubblico && !form.prezzo_tavolo ? (
+              <div style={{fontSize:12,fontWeight:700,color:"var(--warning-text)",background:"var(--warning-soft)",
+                border:"1.5px solid var(--warning-border)",borderRadius:10,padding:"8px 10px"}}>
+                Attenzione: senza prezzo al tavolo il Menu mostra ai clienti il prezzo al banco.
+              </div>
+            ) : null}
+          />
+        </div>
       </div>
 
       {/* Variante di una ricetta esistente (solo nuova ricetta): scegli la
