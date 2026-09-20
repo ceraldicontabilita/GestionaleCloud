@@ -130,7 +130,7 @@ async def list_prima_nota_cassa(
     }
 
 
-async def create_prima_nota_cassa(data: Dict[str, Any] = Body(...)) -> Dict[str, str]:
+async def create_prima_nota_cassa(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     """
     Crea movimento prima nota cassa.
     SOLO movimenti di denaro CONTANTE:
