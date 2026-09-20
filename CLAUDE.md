@@ -175,8 +175,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   `protocollo_drive`, `runtime_scheduler_leases`), `hr` (tabelle `app_*`,
   `id text` + `doc jsonb`), `lotti` (`lotti_documents` + RPC `lotti_*`),
   `menu` (tabelle + bucket `menu-images`), `legacy_staging` (archivio
-  CeraldiFatture, sola consultazione). Solo `menu` e `public` sono
-  raggiungibili da `anon`/`authenticated`.
+  CeraldiFatture, **staccato**: nessun codice lo legge). Solo `menu` e `public`
+  sono raggiungibili da `anon`/`authenticated`.
 - I PDF HR vivono in `gestionale.blobs` (chiave = SHA-256, conteggio dei
   riferimenti): si caricano su richiesta, mai idratati in memoria.
 - **Cache incrementale del runtime** (ERP `supabase_runtime_database.py`, HR
@@ -832,8 +832,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - Compute Supabase **Micro** insufficiente (`documents` 1.172 MB, database 2.111 MB): Postgres caduto il
   17/09, connessioni rifiutate il 20/09. **Da fare Small**: è la causa degli `statement timeout` che
   fermano il ponte fatture verso Lotti.
-- Le **13 fatture legacy senza campi inglesi** vanno normalizzate: senza
-  `invoice_number`/`invoice_date`/`total_amount` sono fuori da ogni conto.
+- `legacy_staging` (56 tabelle, **197 MB** su 2.111 di database): nessun codice lo legge piu', il giro che
+  ne ripescava ogni 6 ore e' stato tolto. Da cancellare **dopo un backup scaricato**, non prima.
 - **Tre strade scrivono `corrispettivi`** (`ingest_corrispettivo_parsed`, `CorrispettiviService`, import
   CSV), ognuna con la sua dedup: vanno ridotte a una.
 - **Da lanciare**: `registra-pregresso` per le **21 giornate** 31/03–30/07 tenute fuori dal giornale dal
