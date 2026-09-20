@@ -120,17 +120,6 @@ async def rapido_apporto(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     return {"success": True, "id": mov_id, "message": "Apporto soci registrato"}
 
 
-@router.post("/paga-fattura")
-async def rapido_paga_fattura(
-    invoice_id: str = "", metodo_pagamento: str = "cassa", importo: float = 0
-) -> Dict[str, Any]:
-    # Fase 0 (15/09/2026, PROMPT_CLAUDE_CODE_FASE_0.md punto 10): disattivato.
-    # Scriveva pagato/stato_pagamento=pagata senza alcuna prova bancaria o di
-    # cassa verificata — usare Prima Nota › Provvisori per una conferma vera.
-    raise HTTPException(
-        status_code=409,
-        detail="Disattivato: Fase 0 — usare Prima Nota › Provvisori",
-    )
 
 
 @router.post("/acconto-dipendente")

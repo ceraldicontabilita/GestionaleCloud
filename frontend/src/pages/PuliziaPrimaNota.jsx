@@ -23,12 +23,11 @@ export default function PuliziaPrimaNota() {
   const confirm = useConfirm();
   const { anno } = useAnnoGlobale();
 
-  const [loading, setLoading] = useState(null); // 'diagnosi' | 'anteprima' | 'pulisci' | 'risincronizza' | 'auto-conferma'
+  const [loading, setLoading] = useState(null); // 'diagnosi' | 'anteprima' | 'pulisci' | 'risincronizza'
   const [diagnosi, setDiagnosi] = useState(null);
   const [anteprima, setAnteprima] = useState(null);
   const [risultatoPulizia, setRisultatoPulizia] = useState(null);
   const [risultatoSync, setRisultatoSync] = useState(null);
-  const [risultatoAutoConferma, setRisultatoAutoConferma] = useState(null);
   const [errore, setErrore] = useState(null);
 
   const azzeraErrori = () => setErrore(null);
@@ -113,64 +112,6 @@ export default function PuliziaPrimaNota() {
     }
   };
 
-  // Ricostruzione completa Cassa+Banca dai corrispettivi archiviati: a
-  // differenza del passo 4 (che inserisce solo quelli mai sincronizzati),
-  // questo cancella e ricrea TUTTI i movimenti con source=corrispettivo_*
-  // dell'anno selezionato — serve quando l'importo totale corrispettivi o
-  // la quota "pagamento elettronico" in Prima Nota Cassa risultano diversi
-  // dal corrispettivo originale (es. dati importati prima della correzione
-  // della logica unificata).
-  const [risultatoRicostruzione, setRisultatoRicostruzione] = useState(null);
-
-  const lanciaRicostruzione = async () => {
-    const conferma = await confirm({
-      title: `Ricostruisci Prima Nota da Corrispettivi — anno ${anno}`,
-      message:
-        `Elimina e ricrea tutti i movimenti di Prima Nota Cassa e Banca generati dai ` +
-        `corrispettivi dell'anno ${anno} (categoria "Corrispettivi", "POS Verso Banca", ` +
-        `"Corrispettivi POS"), usando i dati oggi presenti nell'archivio corrispettivi. ` +
-        `Non tocca fatture, versamenti o altri movimenti manuali.`,
-      confirmText: 'Ricostruisci',
-      variant: 'warning',
-    });
-    if (!conferma) return;
-    azzeraErrori();
-    setLoading('ricostruisci');
-    setRisultatoRicostruzione(null);
-    try {
-      const res = await api.post(`/api/corrispettivi/rebuild-prima-nota?anno=${anno}`);
-      setRisultatoRicostruzione(res.data);
-    } catch (e) {
-      setErrore(e?.response?.data?.detail || e?.message || 'Errore durante la ricostruzione');
-    } finally {
-      setLoading(null);
-    }
-  };
-
-  const lanciaAutoConferma = async () => {
-    const conferma = await confirm({
-      title: `Smistamento provvisorie — anno ${anno}`,
-      message:
-        `Le fatture in Provvisoria verranno spostate in Prima Nota Cassa/Banca in base al metodo ` +
-        `pagamento del fornitore (CASSA → tutte in Cassa; BANCA → solo le PAGATE in Banca; ` +
-        `PayPal/carta/senza metodo restano in Provvisoria). Ogni movimento creato è annullabile con un comando.`,
-      confirmText: 'Procedi',
-      variant: 'warning',
-    });
-    if (!conferma) return;
-    azzeraErrori();
-    setLoading('auto-conferma');
-    setRisultatoAutoConferma(null);
-    try {
-      const res = await api.post(`/api/prima-nota/provvisori/auto-conferma-per-metodo?anno=${anno}`);
-      setRisultatoAutoConferma(res.data);
-    } catch (e) {
-      setErrore(e?.response?.data?.detail || e?.message || 'Errore durante lo smistamento');
-    } finally {
-      setLoading(null);
-    }
-  };
-
   // Metodi discordanti: fatture registrate in un registro diverso dal metodo
   // ATTUALE del fornitore (es. Varriale = Cassa in anagrafica ma fatture in
   // Banca perché confermate prima della correzione). Diagnosi + spostamento
@@ -221,31 +162,6 @@ export default function PuliziaPrimaNota() {
 
   // Materializza e collega entrambe le gambe Cassa/Banca dei versamenti
   // provati dall'estratto conto, con deduplica sull'identificativo EC.
-  const [risultatoVersamenti, setRisultatoVersamenti] = useState(null);
-
-  const lanciaRiparaVersamenti = async () => {
-    const conferma = await confirm({
-      title: `Riconcilia versamenti Cassa/Banca — anno ${anno}`,
-      message:
-        'Cerca nell\'estratto conto le causali di versamento e prelievo contanti, ' +
-        'crea le gambe mancanti in Prima Nota Cassa e Banca e collega quelle già presenti, ' +
-        'senza duplicare i movimenti.',
-      confirmText: 'Riconcilia',
-      variant: 'warning',
-    });
-    if (!conferma) return;
-    azzeraErrori();
-    setLoading('ripara-versamenti');
-    setRisultatoVersamenti(null);
-    try {
-      const res = await api.post(`/api/estratto-conto-movimenti/ripara-versamenti-cassa?anno=${anno}`);
-      setRisultatoVersamenti(res.data);
-    } catch (e) {
-      setErrore(e?.response?.data?.detail || e?.message || 'Errore durante la riparazione');
-    } finally {
-      setLoading(null);
-    }
-  };
 
   const isBusy = loading !== null;
 
@@ -478,148 +394,9 @@ export default function PuliziaPrimaNota() {
           )}
         </StepCard>
 
-        {/* STEP 4bis - RICOSTRUZIONE COMPLETA DA CORRISPETTIVI */}
-        <StepCard
-          numero="4b"
-          titolo="Ricostruisci importi corrispettivi e pagamento elettronico"
-          descrizione={
-            'Se in Prima Nota Cassa il totale corrispettivi o la quota "pagamento elettronico" ' +
-            'non tornano (es. dati importati prima della correzione), usa questo pulsante: cancella ' +
-            "e ricrea da zero i movimenti generati dai corrispettivi dell'anno selezionato."
-          }
-        >
-          <button
-            onClick={lanciaRicostruzione}
-            disabled={isBusy}
-            style={btnStyle('primary', isBusy)}
-          >
-            {loading === 'ricostruisci' ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-            Ricostruisci da corrispettivi ({anno})
-          </button>
-
-          {risultatoRicostruzione && (
-            <div style={{ ...resultBoxStyle, background: '#f0fdf4', borderColor: '#22c55e' }}>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-                <CheckCircle size={18} color="#059669" />
-                <strong style={{ color: '#065f46' }}>Ricostruzione completata</strong>
-              </div>
-              <div style={{ fontSize: 13, color: '#065f46', lineHeight: 1.6 }}>
-                Corrispettivi processati: <strong>{risultatoRicostruzione.corrispettivi_processati}</strong>
-                {risultatoRicostruzione.corrispettivi_saltati > 0 && (
-                  <> (saltati: {risultatoRicostruzione.corrispettivi_saltati})</>
-                )}
-                <br />
-                Movimenti Cassa ricreati: <strong>{risultatoRicostruzione.prima_nota_cassa_creati}</strong>{' '}
-                (eliminati prima: {risultatoRicostruzione.prima_nota_cassa_eliminati})
-                <br />
-                Movimenti Banca ricreati: <strong>{risultatoRicostruzione.prima_nota_banca_creati}</strong>{' '}
-                (eliminati prima: {risultatoRicostruzione.prima_nota_banca_eliminati})
-              </div>
-            </div>
-          )}
-        </StepCard>
-
-        {/* STEP 4c - RICONCILIA VERSAMENTI GIÀ REGISTRATI IN CASSA */}
-        <StepCard
-          numero="4c"
-          titolo="Riconcilia versamenti Cassa/Banca"
-          descrizione={
-            'Collega le causali bancarie "VERS. CONTANTI" soltanto ai versamenti già ' +
-            'registrati manualmente in Prima Nota Cassa. Se manca la registrazione di cassa, ' +
-            'il movimento resta da verificare e non viene creato automaticamente.'
-          }
-        >
-          <button
-            onClick={lanciaRiparaVersamenti}
-            disabled={isBusy}
-            style={btnStyle('primary', isBusy)}
-          >
-            {loading === 'ripara-versamenti' ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-            Riconcilia versamenti ({anno})
-          </button>
-
-          {risultatoVersamenti && (
-            <div style={{ ...resultBoxStyle, background: '#f0fdf4', borderColor: '#22c55e' }}>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-                <CheckCircle size={18} color="#059669" />
-                <strong style={{ color: '#065f46' }}>Riconciliazione completata</strong>
-              </div>
-              <div style={{ fontSize: 13, color: '#065f46', lineHeight: 1.6 }}>
-                Versamenti trovati nell'estratto conto: <strong>{risultatoVersamenti.movimenti_versamento_trovati}</strong>
-                <br />
-                Nuove registrazioni: <strong>{risultatoVersamenti.creati_cassa}</strong> in Cassa ·{' '}
-                <strong>{risultatoVersamenti.creati_banca}</strong> in Banca
-                <br />
-                Registrazioni Cassa già presenti: <strong>{risultatoVersamenti.gia_presenti_cassa}</strong>
-                <br />
-                Senza registrazione Cassa, lasciati da verificare: {risultatoVersamenti.versamenti_senza_registrazione_cassa}
-                <br />
-                Fatture riconciliate con riferimenti certi:{' '}
-                <strong>{risultatoVersamenti.riconciliazione_fatture?.allocati || 0}</strong> · sospese perché ambigue/non quadrate:{' '}
-                {risultatoVersamenti.riconciliazione_fatture?.sospesi || 0}
-              </div>
-            </div>
-          )}
-        </StepCard>
-
-        {/* STEP 5 - AUTO-CONFERMA PROVVISORI PER METODO PAGAMENTO FORNITORE */}
-        <StepCard
-          numero={5}
-          titolo="Smista fatture provvisorie per metodo fornitore"
-          descrizione="Sposta automaticamente le fatture dalla Provvisoria alla Prima Nota Cassa o Banca, in base al metodo pagamento dell'anagrafica fornitore. Le fatture di fornitori senza metodo definito, o con metodo PayPal/Carta, oppure fatture non pagate di fornitori 'banca', restano in Provvisoria."
-        >
-          <button
-            onClick={lanciaAutoConferma}
-            disabled={isBusy}
-            style={btnStyle('primary', isBusy)}
-          >
-            {loading === 'auto-conferma' ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-            Smista provvisorie
-          </button>
-
-          {risultatoAutoConferma && (
-            <div style={{ ...resultBoxStyle, background: '#f0fdf4', borderColor: '#22c55e' }}>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-                <CheckCircle size={18} color="#059669" />
-                <strong style={{ color: '#065f46' }}>Smistamento completato</strong>
-              </div>
-              <div style={{ fontSize: 13, color: '#065f46', lineHeight: 1.6 }}>
-                Fatture analizzate: <strong>{risultatoAutoConferma.totali_provvisorie_analizzate}</strong>
-                <br />
-                <span style={{ color: '#15803d' }}>✓ Spostate in Cassa: <strong>{risultatoAutoConferma.mosse_cassa}</strong></span>
-                <br />
-                <span style={{ color: '#15803d' }}>✓ Spostate in Banca: <strong>{risultatoAutoConferma.mosse_banca}</strong></span>
-                <br />
-                <span style={{ color: '#78350f' }}>
-                  Restate in Provvisoria:{' '}
-                  {risultatoAutoConferma.restate_in_provvisoria_banca_non_pagata} (banca non pagate) +{' '}
-                  {risultatoAutoConferma.restate_in_provvisoria_paypal_o_carta} (paypal/carta) +{' '}
-                  {risultatoAutoConferma.restate_in_provvisoria_fornitore_senza_metodo} (fornitore senza metodo)
-                </span>
-                {risultatoAutoConferma.skipped_gia_in_prima_nota > 0 && (
-                  <>
-                    <br />
-                    <span style={{ color: '#64748b' }}>
-                      Saltate perché già registrate: {risultatoAutoConferma.skipped_gia_in_prima_nota}
-                    </span>
-                  </>
-                )}
-                {risultatoAutoConferma.skipped_errori?.length > 0 && (
-                  <>
-                    <br />
-                    <span style={{ color: '#991b1b' }}>
-                      ⚠ Errori: {risultatoAutoConferma.skipped_errori.length}
-                    </span>
-                  </>
-                )}
-              </div>
-            </div>
-          )}
-        </StepCard>
-
         {/* ── REGISTRO PAGAMENTI: coerenza metodo fornitore ↔ registrazioni ── */}
         <StepCard
-          numero={6}
+          numero={5}
           titolo="Metodi discordanti (registro pagamenti ↔ anagrafica)"
           descrizione={
             'Confronta OGNI fattura registrata in Cassa/Banca con il metodo ATTUALE del fornitore ' +

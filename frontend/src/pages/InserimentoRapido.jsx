@@ -330,25 +330,6 @@ export default function InserimentoRapido() {
     setLoading(false);
   };
 
-  const handlePagaFattura = async (fattura, metodo) => {
-    setLoading(true);
-    try {
-      const id = fattura.id || fattura._id;
-      const importo = fattura.total_amount || fattura.importo || 0;
-
-      // Usa l'endpoint rapido
-      await api.post(
-        `/api/rapido/paga-fattura?invoice_id=${id}&metodo_pagamento=${metodo}&importo=${importo}`
-      );
-
-      showMessage(`Fattura pagata in ${metodo}!`);
-      setFatture(prev => prev.filter(f => (f.id || f._id) !== id));
-    } catch (err) {
-      showMessage(err.response?.data?.detail || 'Errore', 'error');
-    }
-    setLoading(false);
-  };
-
   const handleSaveAcconto = async () => {
     if (!formData.dipendente_id || !formData.importo) {
       showMessage('Seleziona dipendente e importo', 'error');
@@ -649,24 +630,6 @@ export default function InserimentoRapido() {
                 <span style={styles.listItemAmount}>
                   {formatEuro(f.total_amount || f.importo || 0)}
                 </span>
-                <div style={{ display: 'flex', gap: '4px' }}>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => handlePagaFattura(f, 'CASSA')}
-                    iconLeft={<Wallet size={14} />}
-                  >
-                    Cassa
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="primary"
-                    onClick={() => handlePagaFattura(f, 'BANCA')}
-                    iconLeft={<Building2 size={14} />}
-                  >
-                    Banca
-                  </Button>
-                </div>
               </div>
             </div>
           ))}
