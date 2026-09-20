@@ -1017,10 +1017,40 @@ PROCEDURE_PULIZIA = """
 
 # ==================== DETERGENTI ====================
 
-DETERGENTI_SANIFICANTI = """
+def _tabella_detergenti() -> str:
+    """Le due tabelle del capitolo, generate dal catalogo.
+
+    Prima erano HTML scritto a mano qui dentro: il piano di sanificazione non
+    poteva leggerle, e chi lo compilava riscriveva a memoria quello che il
+    manuale gia' diceva. Ora la fonte e' una sola
+    (`servizi/sanificazione_catalogo.py`) e la stampa la rende.
+    """
+    from app.lotti.servizi.sanificazione_catalogo import (
+        DETERGENTI,
+        FREQUENZE_MANUALE,
+        REGOLE_UTILIZZO,
+    )
+
+    prodotti = ""
+    for voce in DETERGENTI:
+        titolo = f"<strong>{voce['nome']}</strong>"
+        if voce["caratteristica"]:
+            titolo += f"<br>({voce['caratteristica']})"
+        condizioni = []
+        if voce["diluizione"]:
+            condizioni.append(f"Diluizione: {voce['diluizione']}")
+        if voce["tempo_contatto"]:
+            condizioni.append(f"Tempo contatto: {voce['tempo_contatto']}")
+        note = " | ".join(condizioni) or voce["note"]
+        prodotti += f"<tr><td>{titolo}</td><td>{voce['utilizzo']}</td><td>{note}</td></tr>"
+
+    regole = "".join(f"<li>{r}</li>" for r in REGOLE_UTILIZZO)
+    frequenze = "".join(f"<tr><td>{a}</td><td>{q}</td></tr>" for a, q in FREQUENZE_MANUALE)
+
+    return f"""
 <div class="section">
-    <h2>🧴 DETERGENTI E SANIFICANTI</h2>
-    
+    <h2>DETERGENTI E SANIFICANTI</h2>
+
     <h3>Prodotti raccomandati per uso alimentare</h3>
     <table border="1" cellpadding="8" style="border-collapse:collapse; width:100%">
         <tr style="background:#e0e0e0">
@@ -1028,76 +1058,25 @@ DETERGENTI_SANIFICANTI = """
             <th>UTILIZZO</th>
             <th>NOTE</th>
         </tr>
-        <tr>
-            <td><strong>Detergente neutro</strong><br>(pH 6-8)</td>
-            <td>Pulizia quotidiana superfici, pavimenti</td>
-            <td>Non aggredisce le superfici, adatto per uso frequente</td>
-        </tr>
-        <tr>
-            <td><strong>Detergente sgrassante alcalino</strong><br>(pH 9-12)</td>
-            <td>Rimozione grassi, oli, residui carboniosi</td>
-            <td>Per forni, cappe, friggitrici. Risciacquare bene</td>
-        </tr>
-        <tr>
-            <td><strong>Detergente acido</strong><br>(pH 1-5)</td>
-            <td>Rimozione calcare, incrostazioni minerali</td>
-            <td>Per lavastoviglie, caffettiere. Non miscelare con candeggina</td>
-        </tr>
-        <tr>
-            <td><strong>Disinfettante a base di cloro</strong><br>(ipoclorito di sodio)</td>
-            <td>Sanificazione superfici, stoviglie</td>
-            <td>Diluizione: 1-2% | Tempo contatto: 5-10 min</td>
-        </tr>
-        <tr>
-            <td><strong>Disinfettante a base di alcol</strong><br>(≥70%)</td>
-            <td>Sanificazione rapida superfici</td>
-            <td>Azione immediata, evapora senza risciacquo</td>
-        </tr>
-        <tr>
-            <td><strong>Disinfettante quaternari d'ammonio</strong></td>
-            <td>Sanificazione attrezzature</td>
-            <td>Buona compatibilità con metalli, bassa corrosività</td>
-        </tr>
-        <tr>
-            <td><strong>Sapone mani neutro</strong></td>
-            <td>Igiene mani personale</td>
-            <td>Da dispenser, senza profumazione intensa</td>
-        </tr>
-        <tr>
-            <td><strong>Gel igienizzante mani</strong><br>(alcol ≥60%)</td>
-            <td>Igienizzazione mani quando acqua non disponibile</td>
-            <td>Non sostituisce il lavaggio con acqua e sapone</td>
-        </tr>
+        {prodotti}
     </table>
-    
+
     <h3>Regole di utilizzo</h3>
-    <ul>
-        <li>Leggere sempre l'etichetta e la scheda di sicurezza</li>
-        <li>Rispettare le diluizioni indicate dal produttore</li>
-        <li>Non miscelare MAI prodotti diversi (reazioni pericolose)</li>
-        <li>Conservare in contenitori originali, separati dagli alimenti</li>
-        <li>Utilizzare DPI appropriati (guanti, occhiali se necessario)</li>
-        <li>Risciacquare abbondantemente dopo l'uso</li>
-        <li>Conservare le schede di sicurezza accessibili</li>
-    </ul>
-    
+    <ul>{regole}</ul>
+
     <h3>Frequenza sanificazione</h3>
     <table border="1" cellpadding="8" style="border-collapse:collapse; width:100%">
         <tr style="background:#e0e0e0">
             <th>AREA/ATTREZZATURA</th>
             <th>FREQUENZA</th>
         </tr>
-        <tr><td>Piani di lavoro</td><td>Dopo ogni utilizzo + fine giornata</td></tr>
-        <tr><td>Utensili, taglieri</td><td>Dopo ogni utilizzo</td></tr>
-        <tr><td>Frigoriferi</td><td>Ogni 7-10 giorni</td></tr>
-        <tr><td>Congelatori</td><td>Ogni 7-10 giorni</td></tr>
-        <tr><td>Pavimenti</td><td>Giornaliera</td></tr>
-        <tr><td>Pareti, scaffali</td><td>Settimanale</td></tr>
-        <tr><td>Cappe, filtri</td><td>Settimanale</td></tr>
-        <tr><td>Forni</td><td>Dopo ogni utilizzo intensivo</td></tr>
+        {frequenze}
     </table>
 </div>
 """
+
+
+DETERGENTI_SANIFICANTI = _tabella_detergenti()
 
 # ==================== GESTIONE ALLERGENI ====================
 
