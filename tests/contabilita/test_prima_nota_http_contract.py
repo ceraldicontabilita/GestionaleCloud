@@ -149,10 +149,15 @@ def test_crud_banca_manuale_e_validazione_importo():
 
             elenco = client.get("/api/prima-nota/banca?anno=2026&limit=20")
             assert elenco.status_code == 200, elenco.text
-            assert any(
-                riga.get("id") == movimento_id and float(riga.get("importo") or 0) == 90.0
-                for riga in elenco.json()["movimenti"]
-            )
+            dati = elenco.json()
+            riga = next(r for r in dati["movimenti"] if r.get("id") == movimento_id)
+            assert float(riga.get("importo") or 0) == 90.0
+            assert riga["provvisorio"] is True
+            assert riga["canonico"] is False
+            assert riga["stato"] == "DA_VERIFICARE"
+            # Visibile all'operatore, ma senza prova bancaria non e' liquidita'.
+            assert float(dati["saldo"]) == 0.0
+            assert float(dati["totale_entrate"]) == 0.0
 
             eliminato = client.delete(f"/api/prima-nota/banca/{movimento_id}?force=true")
             assert eliminato.status_code == 200, eliminato.text
