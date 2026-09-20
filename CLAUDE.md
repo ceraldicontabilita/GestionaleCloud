@@ -40,6 +40,10 @@ Un unico servizio Render (`gestionalecloud.onrender.com`, deploy automatico da
 | Menu pubblico e admin | `/menu`, `/menu/admin` | `app/menu/` + `frontend_menu/` |
 | Lotti (HACCP) | `/lotti` | `app/lotti/` + `frontend_lotti/` |
 
+Il `Mount` di Starlette esige la barra finale: il prefisso **nudo** va
+rimandato a `/<prefisso>/` fra i mount e il catch-all, o cade nella SPA
+dell'ERP e chi apre `/lotti` si ritrova nel gestionale.
+
 - Repository: `https://github.com/ceraldicontabilita/GestionaleCloud`.
   Checkout canonico Windows: `C:\Users\ceral\Documents\GESTIONALE CLOUD 2`.
 - **L'unico repository vivo è questo.** `AppDipendenti`, `Lotti` e `Menu` sono
@@ -205,7 +209,11 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
    contenuto.
 4. Un endpoint che lavora su un'intera collezione fa **un prefetch unico** e
    gira **in background** con stato in `sistema_stato`: oltre i 5 minuti il
-   proxy Render taglia la richiesta.
+   proxy Render taglia la richiesta. Lo stesso motore non si chiama **da un
+   handler per-documento**: `fattura.created` nasce una volta per fattura e il
+   giro Drive ne importa 25, quindi il costo si moltiplica per il lotto. Il
+   ripasso completo sta solo in `riconcilia_documenti_e_pagamenti`, nel giro
+   dei 30 minuti.
 5. Migrazioni DDL su `gestionale.documents` a database scarico o con
    `create index concurrently`. Ogni DDL fa ricaricare lo schema a PostgREST
    (503 per minuti): l'HR fa DDL solo se la tabella manca davvero.
@@ -786,23 +794,22 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 
 - Ogni merge su `main` fa ridistribuire Render e ricaricare ~77.000 righe: per
   qualche minuto la produzione è `degraded`. Non si accodano merge.
-- Ingest cedolini (`cedolini_manager` → `salari_unificati_v2`): **collaudo live
-  non chiuso**, il giro orario Drive trova 0 file su 49 caselle.
+- Ingest cedolini (`cedolini_manager` → `salari_unificati_v2`): collaudo live
+  non chiuso, il giro orario Drive trova 0 file su 49 caselle.
 - TFR: `hr.app_tfr_accantonamenti` è vuota, il codice vivo scrive in
   `tfr_accantonamenti` (1.175 righe, 42 dipendenti, 273.025,37 €).
-- **Spento**: `PROTOCOLLO_DRIVE_ENABLED=false` (portava la RAM a 1,57 GB su 2).
-- **Acceso**: scheduler, ingest Drive (fatture, estratti conto, cedolini,
-  bonifici), ponte pagamenti HR, dedup fatture, dichiarazioni fiscali.
-- Fatture **1.428**: 873 attive + 555 gemelli archiviati (0 orfani, collisioni
-  0), tutte del 2026 — il pre-2026 è stato tolto il 20/09 con backup in
+- **Spento**: `PROTOCOLLO_DRIVE_ENABLED=false` (RAM a 1,57 GB su 2). **Acceso**:
+  scheduler, ingest Drive (fatture, estratti conto, cedolini, bonifici), ponte
+  pagamenti HR, dedup fatture, dichiarazioni fiscali.
+- Fatture **1.431**, tutte del 2026 (0 orfani, 0 collisioni): il pre-2026 è in
   `fatture_pre2026_rimosse_20260920`. **13 righe hanno solo i campi italiani** e
   nessun filtro canonico le vede (regola 12): 7 fatture e 6 DDT.
 - **Gli XML di fattura 2026 arrivano su Drive a blocchi manuali** dal portale
-  AdE: il ritardo e' a monte, non nell'ingest. I 3 file rimasti in
-  `2026/Errori` sono fatture **sane** (San Marino, `.p7m`), non illeggibili.
-- **Corrispettivi 183, fermi al 24/08/2026.** Le chiusure RT del 25-27/08 erano
-  negli `Errori` delle fatture, spostate il 20/09 nell'inbox giusta. Dal 28/08
-  non ne arrivano più: il PC del negozio è fermo, 23 giornate fuori dai conti.
+  AdE: il ritardo e' a monte. I 3 file in `2026/Errori` sono fatture **sane**
+  (San Marino, `.p7m`), non illeggibili.
+- **Corrispettivi 191, ultimo giorno 27/08/2026**: le chiusure RT del 25-27/08,
+  recuperate dagli `Errori` delle fatture, sono entrate. Dal 28/08 non ne
+  arrivano più: il PC del negozio è fermo, 23 giornate fuori dai conti.
 - **Nessuna liquidazione IVA calcolata**: `/api/iva/liquidazioni` torna vuoto.
   Giugno e luglio sono calcolabili ma con **zero** acquisti (tutti
   `detraibilita_da_verificare`): saldo = IVA vendite intera, 7.651,05 € e
@@ -814,54 +821,47 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 
 ## Aperto (togliere la voce quando si chiude)
 
-- Compute Supabase **Micro** insufficiente: Postgres e' caduto il 17/09 e ha
-  rifiutato le connessioni il 20/09. Da portare a **Small**: e' la causa
-  comune del database irraggiungibile e dei file persi a meta' lettura.
-- Le **13 fatture legacy senza campi inglesi** vanno normalizzate: finché non
-  hanno `invoice_number`/`invoice_date`/`total_amount` restano fuori da ogni
-  elenco, conteggio e somma del gestionale.
+- Compute Supabase **Micro** insufficiente (`gestionale.documents` 1.172 MB, il
+  database 2.111 MB): Postgres e' caduto il 17/09 e ha rifiutato le connessioni
+  il 20/09. Da portare a **Small**.
+- Le **13 fatture legacy senza campi inglesi** vanno normalizzate: senza
+  `invoice_number`/`invoice_date`/`total_amount` sono fuori da ogni conto.
 - Endpoint sincroni oltre i 5 minuti, da portare a lotti riprendibili:
-  `/api/fatture/drive/quadratura`, `/api/paypal-api/riconcilia` e
+  `/api/fatture/drive/quadratura`, `/api/paypal-api/riconcilia`,
   `/account-ids-non-mappati`, `/api/admin/riallinea-pagamenti-fatture`.
-- Note di credito TD04 legacy (~20, precedenti al fix a `registra_fattura`):
-  costo/IVA/debito aumentati anziché ridotti, da sanare con storno.
-- **Nessuno dei 187 fornitori ha `metodo_pagamento`** (41 hanno un IBAN):
-  finché resta così ogni fattura è `sospesa` e nulla va in Prima Nota Banca.
-  Serve una fonte vera, non dedotta dalle fatture.
+- Note di credito TD04 legacy (~20): costo/IVA/debito aumentati anziché
+  ridotti, da sanare con storno.
+- **Nessuno dei 187 fornitori ha `metodo_pagamento`** (41 hanno un IBAN): così
+  1.379 fatture restano `sospese` e nulla va in Prima Nota Banca. Serve una
+  fonte vera, non dedotta dalle fatture.
 - **Pregresso fatture**: 296 attive (173.184,83 €) senza partita aperta, 280
   fuori dal giornale. Prima `ripubblica-evento-created`, poi `registra-pregresso`.
 - Da lanciare, con `dry_run` prima: `/api/admin/fatture/azzera-scadenze` (642
-  fatture e 971 partite con la scadenza inventata dal vecchio import);
-  `/api/iva/lipe/importa` (`lipe_periodi` vuota); e `ricostruisci-numia` di
-  `/api/pos-corrispettivi` (senza, 180 giornate su 183 «attendono chiusura POS»).
+  fatture e 971 partite con la scadenza inventata); `/api/iva/lipe/importa`
+  (`lipe_periodi` vuota); `ricostruisci-numia` di `/api/pos-corrispettivi`.
 - Riconciliazione: 158 fatture `riconciliata` con movimento non riconciliato,
-  180 righe hub senza `fattura_id`; banca 2026 con 1.765 movimenti senza categoria.
-  Drive `03/ESTRATTI CONTO/DA ELABORARE`: 291 documenti pre-2026 fermi per
-  scelta; gli estratti importati arrivano al 17/08.
+  180 righe hub senza `fattura_id`, 1.417 movimenti banca senza categoria. Drive
+  `03/ESTRATTI CONTO/DA ELABORARE`: 291 documenti pre-2026 fermi per scelta.
 - HR: 38 bonifici con `cedolino_id` orfano, 119 in «bonifici da associare», 10
   tabelle attese dall'app assenti (turni_config, onomastici, richieste…),
-  Iazzetta senza IBAN; Appuhamy, Aurigemma, Vitiello e Dell'Aquila da creare
-  come storici cessati; UNILAV Moscato e Pocci da verificare (Ferrantini).
+  Iazzetta senza IBAN; Appuhamy, Aurigemma, Vitiello e Dell'Aquila da creare come
+  storici cessati; UNILAV Moscato e Pocci da verificare (Ferrantini).
 - `app/models/stati.py::STATI_PAGATI` conta «parziale» fra le pagate ed è
-  applicata a `status`, che sulle fatture non dice se è pagata: oggi non filtra
-  niente. Da togliere o correggere.
+  applicata a `status`, che non dice se è pagata: non filtra niente.
 - Drill-down «Verifica campi e F24»: agganciato al vecchio indice Drive, che non
   esiste più. `/api/download` serve `./downloads`, che nessuno popola.
-- A mano, dal titolare: **far ripartire `sync_rt_to_drive.py` sul PC del
-  negozio** (fermo dal 28/08, 23 giornate di incassi non acquisite); ruotare la
-  password Postgres; DNS di `ceraldiapp.it` e servizi Render sospesi.
+- A mano, dal titolare: **far ripartire `sync_rt_to_drive.py` sul PC del negozio**
+  (fermo dal 28/08, 23 giornate di incassi); password Postgres; DNS ceraldiapp.it.
 - Fork `app/hr/` quasi chiuso: restano **cinque** sottopercorsi duplicati
   (`routers/auth.py`, `routers/employees/dipendenti.py`, `routers/pin_login.py`,
-  `routers/tfr.py`, `utils/dependencies.py`) più i tre del guscio, separati per
-  scelta. Finché una coppia è aperta ogni correzione va cercata anche nel
-  gemello; `tests/runtime/test_fork_app_hr.py` impone che la lista si accorci.
+  `routers/tfr.py`, `utils/dependencies.py`) più i tre del guscio. Finché una
+  coppia è aperta ogni correzione va cercata anche nel gemello.
 - `gestionale.blobs`: 216 PDF che **nessun documento cita**, leggibili solo da
   `app/services/blob_store.py`, mai importato: o si riaggancia l'archivio, o si
   tolgono tutti e due. Stesso caso di `bank_reconciliation_hub` (2.017 righe),
   scritta da un trigger e letta da nessuno.
 - `archivio_documenti_memoria.py` espone ancora `SheetDatabase` e
-  `MemorySheetsClient`: promettono Google Sheets senza chiamarlo mai (56
-  occorrenze in 12 file), da rinominare.
+  `MemorySheetsClient`: promettono Google Sheets senza chiamarlo mai, da rinominare.
 
 ## Logica dentro al database
 
