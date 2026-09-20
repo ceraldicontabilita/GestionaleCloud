@@ -155,8 +155,9 @@ def test_un_importo_diverso_non_si_collega(db):
 def test_una_riga_di_cassa_chiude_un_solo_versamento(db):
     """Due versamenti uguali lo stesso giorno non possono pescare la stessa riga."""
     run(db["prima_nota_cassa"].insert_one({
-        "id": "MANUALE", "data": "2026-03-10", "importo": 5000.0, "tipo": "uscita",
-        "categoria": "versamento",
+        "id": "LEGACY", "data": "2026-03-10", "importo": 5000.0, "tipo": "uscita",
+        "categoria": "Versamento Banca",
+        "descrizione": "Versamento contanti in banca — Da estratto conto",
     }))
     run(_prepara(db, [
         _ec("EC1", "VERS. CONTANTI", 5000.0, "entrata", data="2026-03-10"),
@@ -228,3 +229,57 @@ def test_il_vecchio_comando_di_riparazione_non_esiste_piu():
     from app.routers.bank import estratto_conto
 
     assert not hasattr(estratto_conto, "ripara_versamenti_cassa")
+
+
+# ── la riga esistente deve dichiararsi versamento ──────────────────────────
+# Nota del titolare (20/09/2026): «nessun versamento è stato scritto a mano».
+# Le 18 righe di cassa che il motore aggancia in produzione vengono
+# dall'integrazione legacy del 15/09, non da lui. La prima versione di questo
+# modulo le cercava per solo importo e data: bastava un pagamento fornitore in
+# contanti dello stesso importo per fargli sovrascrivere la categoria.
+
+def test_un_pagamento_fornitore_in_contanti_non_diventa_un_versamento(db):
+    run(db["prima_nota_cassa"].insert_one({
+        "id": "FORNITORE", "data": "2026-03-10", "importo": 5000.0, "tipo": "uscita",
+        "categoria": "Fatture", "descrizione": "Pagamento fattura 12/2026 Me.Pa. Srl",
+        "fornitore": "ME.PA. SRL",
+    }))
+    run(_prepara(db, [_ec("EC1", "VERS. CONTANTI", 5000.0, "entrata", data="2026-03-10")]))
+
+    esito = run(riconosci_versamenti(db, dry_run=False))
+
+    assert esito["gambe_cassa_collegate"] == 0
+    assert esito["gambe_cassa_create"] == 1
+    fornitore = run(db["prima_nota_cassa"].find_one({"id": "FORNITORE"}))
+    assert fornitore["categoria"] == "Fatture"
+    assert not fornitore.get("trasferimento_collegato_id")
+    assert not fornitore.get("operation_id")
+
+
+def test_la_riga_legacy_dell_archivio_viene_agganciata(db):
+    """Le 18 vere: «Versamento contanti in banca — Da estratto conto»."""
+    run(db["prima_nota_cassa"].insert_one({
+        "id": "LEGACY", "data": "2026-01-12", "importo": 3510.0, "tipo": "uscita",
+        "source": "legacy_versamenti",
+        "descrizione": "Versamento contanti in banca — Da estratto conto",
+    }))
+    run(_prepara(db, [_ec("EC1", "VERS. CONTANTI", 3510.0, "entrata", data="2026-01-12")]))
+
+    esito = run(riconosci_versamenti(db, dry_run=False))
+
+    assert esito["gambe_cassa_collegate"] == 1
+    assert esito["gambe_cassa_create"] == 0
+    assert run(db["prima_nota_cassa"].count_documents({})) == 1
+
+
+def test_chi_non_dichiara_niente_non_viene_agganciato(db):
+    """Categoria vuota e descrizione muta: si crea la gamba, non si ruba."""
+    run(db["prima_nota_cassa"].insert_one({
+        "id": "MUTA", "data": "2026-03-10", "importo": 5000.0, "tipo": "uscita",
+    }))
+    run(_prepara(db, [_ec("EC1", "VERS. CONTANTI", 5000.0, "entrata", data="2026-03-10")]))
+
+    esito = run(riconosci_versamenti(db, dry_run=False))
+
+    assert esito["gambe_cassa_collegate"] == 0
+    assert esito["gambe_cassa_create"] == 1
