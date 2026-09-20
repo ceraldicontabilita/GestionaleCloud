@@ -166,8 +166,21 @@ class CorrispettiviService:
             "data": parsed["data"],
             "entity_status": {"$ne": EntityStatus.DELETED.value}
         }
+        # 20/09/2026: la stretta del 15/07 ha aperto il buco opposto. Le
+        # giornate arrivate dall'archivio legacy NON hanno `id_dispositivo`,
+        # mentre l'XML ce l'ha sempre: nessuna corrispondenza, e la stessa
+        # giornata rientrava come riga nuova. In produzione: 15 giornate di
+        # agosto 2026 registrate due volte, 31.356,28 EUR di ricavi contati
+        # due volte, 14 scritture in piu' nel libro giornale.
+        # I tre rami servono tutti e tre — provato su `matches_filter`, il
+        # motore vero: `{"$in": [None, ""]}` NON corrisponde al campo ASSENTE,
+        # solo a quello vuoto, e `{"campo": None}` fa l'opposto (regola 11).
         if parsed.get("id_dispositivo"):
-            dup_query["id_dispositivo"] = parsed["id_dispositivo"]
+            dup_query["$or"] = [
+                {"id_dispositivo": parsed["id_dispositivo"]},
+                {"id_dispositivo": None},
+                {"id_dispositivo": ""},
+            ]
         existing_date = await self.corrispettivi.find_one(dup_query)
         if existing_date:
             return await self._merge_distinct_xml(
@@ -557,7 +570,20 @@ class CorrispettiviService:
         e le scritture contabili vengono ricalcolate in modo idempotente.
         """
         components = list(existing.get("chiusure_xml") or [])
-        if not components:
+        # Trovare la riga non basta: qui il motore la tratterebbe come una
+        # SECONDA chiusura e ne sommerebbe gli importi. Sulla giornata vera
+        # del 01/08/2026 il collaudo ha misurato 4.758,00 EUR su 2.379,00, con
+        # i contanti raddoppiati: il doppio conteggio si sposta da due righe a
+        # una sola, dove non lo vede piu' nessuno.
+        # Una riga con `progressivo` o `id_dispositivo` E' una chiusura, e una
+        # seconda chiusura dello stesso giorno si somma davvero (turni,
+        # riaperture). Una riga senza nessuno dei due non e' una chiusura: e'
+        # una giornata registrata senza documento, e il suo XML la sostituisce
+        # — la stessa logica della promozione «provvisorio -> definitivo_xml».
+        e_una_chiusura_xml = bool(
+            existing.get("progressivo") or existing.get("id_dispositivo")
+        )
+        if not components and e_una_chiusura_xml:
             legacy = {
                 "data": existing.get("data"),
                 "data_originale_xml": existing.get("data_rilevazione_xml", existing.get("data")),
@@ -649,7 +675,15 @@ class CorrispettiviService:
             "totale": merged.get("totale"),
             "chiusure_sommate": len(components),
             "prima_nota_id": prima_nota_id,
-            "message": "Chiusura XML distinta sommata al corrispettivo giornaliero",
+            # Il messaggio dice quale dei due casi e' avvenuto: sommare una
+            # seconda chiusura e sostituire una riga senza documento non sono
+            # la stessa cosa, e un esito che li confonde nasconde proprio
+            # l'errore che si sta prevenendo.
+            "message": (
+                "Chiusura XML distinta sommata al corrispettivo giornaliero"
+                if e_una_chiusura_xml or len(components) > 1
+                else "Giornata senza documento sostituita dalla sua chiusura XML"
+            ),
         }
 
     def _parse_corrispettivo_xml(self, xml_content: bytes) -> Dict[str, Any]:
