@@ -1,9 +1,9 @@
 /* Ceraldi ERP — COLOR TOKENS (design system ufficiale: navy + oro) */
 :root {
   --c-primary:        #2a3329;
-  --c-primary-light:  #1e3a5f;
-  --c-primary-dark:   #081425;
-  --c-primary-soft:   #e8eef7;
+  --c-primary-light:  #3f5a4e;
+  --c-primary-dark:   #1a211a;
+  --c-primary-soft:   #e2efe8;
   --c-accent:         #b8860b;
   --c-accent-light:   #d4a017;
   --c-accent-soft:    #fdf6e3;

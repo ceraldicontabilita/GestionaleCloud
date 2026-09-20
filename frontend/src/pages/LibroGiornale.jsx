@@ -284,7 +284,7 @@ export default function LibroGiornale() {
                   data-testid={`scrittura-${s.numero_registrazione}`}
                   style={stileRigaScrittura(s, {
                     background: 'white', borderRadius: 12, border: `1px solid ${COLORS.border}`,
-                    borderLeft: '4px solid #2a3329', boxShadow: '0 1px 2px rgba(15,39,68,0.06)',
+                    borderLeft: '4px solid #2a3329', boxShadow: '0 1px 2px rgba(42, 51, 41,0.06)',
                     padding: '10px 12px', cursor: 'pointer', minWidth: 0,
                   })}
                 >
@@ -411,7 +411,7 @@ export default function LibroGiornale() {
                   style={{
                     background: 'white', borderRadius: 12, border: `1px solid ${COLORS.border}`,
                     borderLeft: `4px solid ${m.saldo >= 0 ? '#2a3329' : '#dc2626'}`,
-                    boxShadow: '0 1px 2px rgba(15,39,68,0.06)', padding: '10px 12px', minWidth: 0,
+                    boxShadow: '0 1px 2px rgba(42, 51, 41,0.06)', padding: '10px 12px', minWidth: 0,
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>

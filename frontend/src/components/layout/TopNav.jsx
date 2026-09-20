@@ -23,7 +23,7 @@ const S = {
     display: 'flex',
     alignItems: 'center',
     background: COLORS.primary,
-    boxShadow: '0 2px 8px rgba(15,39,68,0.18)',
+    boxShadow: '0 2px 8px rgba(42, 51, 41,0.18)',
     padding: '0 16px',
     gap: 0,
   },

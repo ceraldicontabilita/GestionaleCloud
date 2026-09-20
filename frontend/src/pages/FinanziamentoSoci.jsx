@@ -210,7 +210,7 @@ export default function FinanziamentoSoci() {
       {manuale && (
         <div
           onClick={() => setManuale(null)}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(15,39,68,0.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 14 }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(42, 51, 41,0.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 14 }}
         >
           <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: 14, padding: 18, width: '100%', maxWidth: 400 }}>
             <h3 style={{ margin: '0 0 10px', fontSize: 15, color: BLU }}>➕ Movimento — {manuale.nome}</h3>

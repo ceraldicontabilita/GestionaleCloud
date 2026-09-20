@@ -54,6 +54,7 @@ from app.lotti.routers.ricette import router as r_ricette
 from app.lotti.routers.lotti import router as r_lotti
 from app.lotti.routers.lotti_fornitori import router as r_lotti_fornitori
 from app.lotti.routers.lotti_produzione import router as r_lotti_produzione
+from app.lotti.routers.tracciabilita import router as r_tracciabilita
 from app.lotti.routers.produzioni import router as r_produzioni
 from app.lotti.routers.stampa import router as r_stampa
 from app.lotti.routers.farciture import router as r_farciture
@@ -128,6 +129,7 @@ for r in [
     r_anomalie, r_reclami_fornitori, r_task_dipendenti, r_diagnostic, r_manuale,
     r_haccp_auto, r_report_haccp, r_haccp_manuale_auto, r_chiusure,
     r_ricette, r_lotti, r_lotti_fornitori, r_lotti_produzione, r_produzioni,
+    r_tracciabilita,
     r_stampa, r_farciture, r_food_cost, r_ingredienti, r_materie_prime,
     r_normalizzazione, r_etichette, r_schede_tecniche, r_fornitori, r_fornitori_anagrafica,
     r_fornitori_dedup, r_fornitori_schede, r_fornitori_qualifica, r_fatture,

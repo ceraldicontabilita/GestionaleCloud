@@ -155,7 +155,7 @@ function RiepilogoCosti({ anno }) {
           boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
         }}
       >
-        <h3 style={{ margin: '0 0 16px', fontSize: 16, color: '#1e3a5f' }}>
+        <h3 style={{ margin: '0 0 16px', fontSize: 16, color: '#3f5a4e' }}>
           📊 Dettaglio per Veicolo
         </h3>
         <div style={{ overflowX: 'auto' }}>
@@ -237,7 +237,7 @@ function RiepilogoCosti({ anno }) {
                         textAlign: 'right',
                         fontWeight: 700,
                         fontSize: 14,
-                        color: '#1e3a5f',
+                        color: '#3f5a4e',
                       }}
                     >
                       {fmt(tot)}
@@ -246,8 +246,8 @@ function RiepilogoCosti({ anno }) {
                 );
               })}
               {/* Totale */}
-              <tr style={{ borderTop: '2px solid #1e3a5f', background: '#f0f4ff' }}>
-                <td colSpan={3} style={{ padding: '12px', fontWeight: 700, color: '#1e3a5f' }}>
+              <tr style={{ borderTop: '2px solid #3f5a4e', background: '#eef3ef' }}>
+                <td colSpan={3} style={{ padding: '12px', fontWeight: 700, color: '#3f5a4e' }}>
                   TOTALE
                 </td>
                 <td
@@ -272,7 +272,7 @@ function RiepilogoCosti({ anno }) {
                     textAlign: 'right',
                     fontWeight: 700,
                     fontSize: 16,
-                    color: '#1e3a5f',
+                    color: '#3f5a4e',
                   }}
                 >
                   {fmt(stats.totale_generale)}
@@ -337,7 +337,7 @@ export default function VeicoliHub() {
               transition: 'all 140ms ease',
               background: activeTab === tab.id ? tab.color : '#ffffff',
               color: activeTab === tab.id ? 'white' : '#64748b',
-              boxShadow: activeTab === tab.id ? '0 1px 2px rgba(15,39,68,0.08)' : 'none',
+              boxShadow: activeTab === tab.id ? '0 1px 2px rgba(42, 51, 41,0.08)' : 'none',
             }}
           >
             {tab.label}

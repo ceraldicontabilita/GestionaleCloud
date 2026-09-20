@@ -152,8 +152,13 @@ async def aggiorna_metodi_pagamento_da_fornitori() -> Dict[str, Any]:
     """
     db = Database.get_db()
 
+    # Il filtro e' quello canonico. Con la lista scritta a mano qui mancava
+    # `"sospesa"`, cioe' proprio il valore che scrive l'import: 619 fatture su
+    # 1.457 non venivano mai raggiunte da questa sincronizzazione.
+    from app.constants.metodi_pagamento import FILTRO_METODO_NON_CONFIGURATO
+
     fatture = await db[COL_FATTURE_RICEVUTE].find(
-        {"metodo_pagamento": {"$in": [None, "", "da_configurare"]}},
+        dict(FILTRO_METODO_NON_CONFIGURATO),
         {"_id": 0, "id": 1, "fornitore_partita_iva": 1, "supplier_vat": 1, "fornitore_piva": 1}
     ).to_list(10000)
 

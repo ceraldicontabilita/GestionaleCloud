@@ -531,7 +531,7 @@ export function MovimentoModal({ tipo, movimento, onClose, onSaved }) {
     <div
       onClick={onClose}
       style={{
-        position: 'fixed', inset: 0, background: 'rgba(15,39,68,0.55)', zIndex: 1000,
+        position: 'fixed', inset: 0, background: 'rgba(42, 51, 41,0.55)', zIndex: 1000,
         display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 14,
       }}
     >
@@ -1562,7 +1562,7 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
       {completezza && (
         <div
           data-testid="completezza-fatture-provvisorie"
-          style={{ background: '#eef3ef', border: '1px solid #a9cbbb', borderRadius: 11, padding: '10px 13px', color: '#1e3a5f', fontSize: 12.5, lineHeight: 1.55 }}
+          style={{ background: '#eef3ef', border: '1px solid #a9cbbb', borderRadius: 11, padding: '10px 13px', color: '#3f5a4e', fontSize: 12.5, lineHeight: 1.55 }}
         >
           <b>Completezza fatture {completezza.anno}:</b>{' '}
           {completezza.fatture_attive_positive} fatture dell'anno con importo positivo ={' '}
@@ -1989,7 +1989,7 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
       {parziale && (
         <div
           onClick={() => setParziale(null)}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(15,39,68,0.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 14 }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(42, 51, 41,0.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 14 }}
         >
           <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: 14, padding: 18, width: '100%', maxWidth: 400 }}>
             <h3 style={{ margin: '0 0 6px', fontSize: 15, color: BLU }}>✂️ Pagamento parziale</h3>
@@ -2315,7 +2315,7 @@ export default function PrimaNota() {
         <div
           onClick={() => setRiportoModal(null)}
           style={{
-            position: 'fixed', inset: 0, background: 'rgba(15,39,68,0.55)', zIndex: 1000,
+            position: 'fixed', inset: 0, background: 'rgba(42, 51, 41,0.55)', zIndex: 1000,
             display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 14,
           }}
         >

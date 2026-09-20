@@ -289,6 +289,7 @@ async def on_fornitore_aggiornato_risolvi(event: Dict[str, Any], db) -> Optional
     Quando il fornitore viene aggiornato (es. MP impostato),
     risolve gli alert collegati.
     """
+    from app.constants.metodi_pagamento import metodo_non_configurato
     from app.services.alert_engine import risolvi_alert
 
     fornitore_id = event.get("fornitore_id", "")
@@ -297,8 +298,12 @@ async def on_fornitore_aggiornato_risolvi(event: Dict[str, Any], db) -> Optional
 
     risolti = 0
 
-    # Se ora ha metodo pagamento → risolvi FORN_MP_MANCANTE
-    if metodo and metodo not in ("", "da_configurare"):
+    # Se ora ha metodo pagamento → risolvi FORN_MP_MANCANTE.
+    # Il vocabolario e' quello canonico: con la lista scritta a mano qui,
+    # `"sospesa"` non risultava «non configurato», quindi l'alert veniva
+    # CHIUSO mentre il metodo mancava ancora. E' lo specchio del difetto gia'
+    # corretto in emissione — li' l'alert non partiva, qui spariva.
+    if not metodo_non_configurato(metodo):
         risolti += await risolvi_alert("FORN_MP_MANCANTE", fornitore_id, db)
 
         # Risolvi anche gli alert FAT_MP_NON_DEFINITO sulle fatture di questo fornitore
@@ -314,7 +319,7 @@ async def on_fornitore_aggiornato_risolvi(event: Dict[str, Any], db) -> Optional
         risolti += await risolvi_alert("FORN_IBAN_MANCANTE", fornitore_id, db)
 
     # Se i campi minimi sono completi → risolvi FORN_NUOVO_INCOMPLETO
-    if metodo and metodo not in ("", "da_configurare"):
+    if not metodo_non_configurato(metodo):
         risolti += await risolvi_alert("FORN_NUOVO_INCOMPLETO", fornitore_id, db)
 
     if risolti > 0:

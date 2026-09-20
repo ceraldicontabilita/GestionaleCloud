@@ -21,7 +21,11 @@ Una sola definizione, qui. Un valore nuovo si aggiunge in questo file.
 """
 from typing import Any
 
-__all__ = ["METODI_NON_CONFIGURATI", "metodo_non_configurato"]
+__all__ = [
+    "METODI_NON_CONFIGURATI",
+    "FILTRO_METODO_NON_CONFIGURATO",
+    "metodo_non_configurato",
+]
 
 #: I valori che significano «metodo di pagamento non configurato».
 #: Il confronto e' sempre in minuscolo e senza spazi ai bordi.
@@ -43,3 +47,12 @@ def metodo_non_configurato(valore: Any) -> bool:
     if valore is None:
         return True
     return str(valore).strip().lower() in METODI_NON_CONFIGURATI
+
+
+#: Lo stesso fatto, come filtro di archivio. Serve a chi deve *selezionare* le
+#: righe senza metodo invece di giudicarne una: scrivere la lista a mano nella
+#: query e' come tenersi un secondo vocabolario, e si perde il caso piu'
+#: frequente. `None` intercetta anche il campo assente.
+FILTRO_METODO_NON_CONFIGURATO = {
+    "metodo_pagamento": {"$in": [None] + sorted(METODI_NON_CONFIGURATI)}
+}

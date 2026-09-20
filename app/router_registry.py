@@ -266,7 +266,7 @@ def _register_core(app: FastAPI):
         chiusura_esercizio,
         configurazioni, alerts,
         mutui, mutui_parser, auto_repair,
-        rapido, settings_router, dati_provvisori, sezioni,
+        rapido, settings_router, dati_provvisori, sezioni, metodi_fornitori,
         batch_reprocessing, pos_corrispettivi_check,
         chat_router, learning_universal, voci_bilancio
     )
@@ -307,6 +307,8 @@ def _register_core(app: FastAPI):
     app.include_router(auto_repair.router, prefix="/api/auto-repair", tags=["Auto Riparazione"])
     app.include_router(rapido.router, prefix="/api/rapido", tags=["Inserimento Rapido"])
     app.include_router(sezioni.router, prefix="/api/sezioni", tags=["Sezioni"])
+    app.include_router(metodi_fornitori.router, prefix="/api/fornitori/metodi-pagamento",
+                       tags=["Metodi pagamento fornitori"])
     app.include_router(dati_provvisori.router, prefix="/api", tags=["Dati Provvisori"])
     app.include_router(batch_reprocessing.router, prefix="/api/batch-reprocess", tags=["Batch Reprocessing"])
     app.include_router(pos_corrispettivi_check.router, prefix="/api", tags=["POS Check"])

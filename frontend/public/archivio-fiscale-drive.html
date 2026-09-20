@@ -5,22 +5,22 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Archivio fiscale Drive · Ceraldi ERP</title>
   <style>
-    :root{--navy:#0f2744;--blue:#2563eb;--bg:#f4f7fb;--card:#fff;--line:#dbe4ef;--muted:#64748b;--ok:#047857;--warn:#b45309;--danger:#b91c1c}
-    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:#172033;font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
-    header{background:linear-gradient(120deg,var(--navy),#164e78);color:#fff;padding:28px clamp(18px,4vw,56px)}
-    header h1{margin:0 0 5px;font-size:clamp(24px,4vw,38px)}header p{margin:0;color:#dbeafe}
+    :root{--primary:#2a3329;--accent:#b8860b;--bg:#f1f5f9;--card:#fff;--line:#e2e8f0;--muted:#64748b;--ok:#047857;--warn:#b45309;--danger:#b91c1c}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:#2a3329;font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+    header{background:linear-gradient(120deg,var(--primary),#3f5a4e);color:#fff;padding:28px clamp(18px,4vw,56px)}
+    header h1{margin:0 0 5px;font-size:clamp(24px,4vw,38px)}header p{margin:0;color:#fdf6e3}
     main{max-width:1280px;margin:auto;padding:22px}.toolbar,.filters,.stats,.grid{display:grid;gap:12px}
     .toolbar{grid-template-columns:1fr auto;align-items:center}.tabs{display:flex;gap:8px;flex-wrap:wrap}
     button,.button,input,select{font:inherit}.tabs button,.button,button.primary{border:0;border-radius:9px;padding:10px 14px;font-weight:700;cursor:pointer}
-    .tabs button{background:#e2e8f0;color:var(--navy)}.tabs button.active,button.primary{background:var(--blue);color:#fff}
-    .button{display:inline-block;background:#fff;color:var(--navy);border:1px solid var(--line);text-decoration:none}
+    .tabs button{background:#e2e8f0;color:var(--primary)}.tabs button.active,button.primary{background:var(--accent);color:#fff}
+    .button{display:inline-block;background:#fff;color:var(--primary);border:1px solid var(--line);text-decoration:none}
     .status{padding:8px 11px;border-radius:999px;background:#dcfce7;color:#166534;font-weight:800}.status.bad{background:#fee2e2;color:var(--danger)}
-    .stats{grid-template-columns:repeat(4,minmax(140px,1fr));margin:18px 0}.stat,.panel,.item{background:var(--card);border:1px solid var(--line);border-radius:13px;box-shadow:0 4px 18px #0f27440a}
-    .stat{padding:17px}.stat strong{display:block;font-size:28px;color:var(--navy)}.stat span{color:var(--muted)}
+    .stats{grid-template-columns:repeat(4,minmax(140px,1fr));margin:18px 0}.stat,.panel,.item{background:var(--card);border:1px solid var(--line);border-radius:13px;box-shadow:0 4px 18px #2a33290a}
+    .stat{padding:17px}.stat strong{display:block;font-size:28px;color:var(--primary)}.stat span{color:var(--muted)}
     .panel{padding:18px;margin-bottom:16px}.filters{grid-template-columns:2fr 1fr 1fr auto;align-items:end}
     label span{display:block;font-size:12px;font-weight:800;color:#475569;margin-bottom:5px}input,select{width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;background:#fff}
     .grid{grid-template-columns:repeat(auto-fill,minmax(310px,1fr))}.item{padding:16px;display:flex;flex-direction:column;gap:7px}.item h3{margin:0;font-size:16px;overflow-wrap:anywhere}.item small,.muted{color:var(--muted)}
-    .badge{align-self:flex-start;border-radius:999px;padding:4px 8px;background:#e0f2fe;color:#075985;font-size:12px;font-weight:800}.actions{display:flex;gap:8px;margin-top:auto;padding-top:8px}.actions button{flex:1;border:1px solid var(--line);background:#fff;border-radius:8px;padding:9px;cursor:pointer;font-weight:700}.actions button:last-child{background:var(--navy);color:#fff}
+    .badge{align-self:flex-start;border-radius:999px;padding:4px 8px;background:#e2efe8;color:#3f5a4e;font-size:12px;font-weight:800}.actions{display:flex;gap:8px;margin-top:auto;padding-top:8px}.actions button{flex:1;border:1px solid var(--line);background:#fff;border-radius:8px;padding:9px;cursor:pointer;font-weight:700}.actions button:last-child{background:var(--primary);color:#fff}
     .checks{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:8px}.check{padding:10px;border-radius:8px;background:#ecfdf5;color:var(--ok);font-weight:700}.check.no{background:#fef2f2;color:var(--danger)}
     .hidden{display:none!important}.error{background:#fef2f2;color:var(--danger);padding:12px;border-radius:9px;margin:12px 0}.empty{text-align:center;color:var(--muted);padding:32px}
     dialog{border:0;border-radius:14px;padding:0;max-width:760px;width:calc(100% - 28px);box-shadow:0 25px 80px #0f172a55}dialog::backdrop{background:#0f172a99}.modal{padding:22px}.modal header{background:none;color:inherit;padding:0;display:flex;justify-content:space-between;gap:15px}.modal header button{border:0;background:#e2e8f0;border-radius:50%;width:34px;height:34px;cursor:pointer}.relations{max-height:280px;overflow:auto}.relation{padding:9px 0;border-top:1px solid var(--line)}

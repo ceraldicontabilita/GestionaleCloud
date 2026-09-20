@@ -8,8 +8,6 @@ ARCHITETTURA:
 - *_service.py: Altri servizi specifici
 """
 from .auth_service import AuthService
-from .warehouse_service import WarehouseService
-from .accounting_service import AccountingService
 from .accounting_entries_service import AccountingEntriesService
 from .cash_service import CashService
 from .chart_service import ChartOfAccountsService
@@ -118,8 +116,6 @@ install_scheduler_queue_policy()
 __all__ = [
     # Core Services
     "AuthService",
-    "WarehouseService",
-    "AccountingService",
     "AccountingEntriesService",
     "CashService",
     "ChartOfAccountsService",

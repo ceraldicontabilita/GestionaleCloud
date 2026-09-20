@@ -196,7 +196,7 @@ export default function Utenti() {
         <div
           onClick={() => setPinModal(null)}
           style={{
-            position: 'fixed', inset: 0, background: 'rgba(15,39,68,0.55)',
+            position: 'fixed', inset: 0, background: 'rgba(42, 51, 41,0.55)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             zIndex: 2000, padding: 16,
           }}

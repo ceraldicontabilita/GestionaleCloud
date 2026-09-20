@@ -3,7 +3,7 @@ Invoice repository for passive invoices management.
 """
 import re
 from typing import Optional, List, Dict, Any
-from datetime import datetime, timezone, date
+from datetime import date
 import logging
 
 from .base_repository import BaseRepository
@@ -124,64 +124,7 @@ class InvoiceRepository(BaseRepository):
             sort=[("invoice_date", -1)]
         )
     
-    async def find_unpaid(
-        self,
-        user_id: str,
-        skip: int = 0,
-        limit: int = 100
-    ) -> List[Dict[str, Any]]:
-        """
-        Find unpaid invoices.
-        
-        Args:
-            user_id: User ID
-            skip: Number of invoices to skip
-            limit: Maximum number of invoices to return
-            
-        Returns:
-            List of unpaid invoices
-        """
-        return await self.find_all(
-            filter_query={
-                "user_id": user_id,
-                "payment_status": {"$in": ["unpaid", "partial"]},
-                "status": "active"
-            },
-            skip=skip,
-            limit=limit,
-            sort=[("due_date", 1)]
-        )
     
-    async def find_overdue(
-        self,
-        user_id: str,
-        skip: int = 0,
-        limit: int = 100
-    ) -> List[Dict[str, Any]]:
-        """
-        Find overdue invoices (unpaid and past due date).
-        
-        Args:
-            user_id: User ID
-            skip: Number of invoices to skip
-            limit: Maximum number of invoices to return
-            
-        Returns:
-            List of overdue invoices
-        """
-        today = datetime.now(timezone.utc).date().isoformat()
-        
-        return await self.find_all(
-            filter_query={
-                "user_id": user_id,
-                "payment_status": {"$in": ["unpaid", "partial"]},
-                "due_date": {"$lt": today},
-                "status": "active"
-            },
-            skip=skip,
-            limit=limit,
-            sort=[("due_date", 1)]
-        )
     
     async def update_payment_status(
         self,

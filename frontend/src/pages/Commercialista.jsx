@@ -195,7 +195,7 @@ export default function Commercialista() {
     // INTESTAZIONE AZIENDA
     // ==========================================
     doc.setFontSize(16);
-    doc.setTextColor(30, 58, 95);
+    doc.setTextColor(63, 90, 78);
     doc.setFont(undefined, 'bold');
     doc.text('CERALDI GROUP S.R.L.', 14, 18);
 
@@ -206,7 +206,7 @@ export default function Commercialista() {
     doc.text('P.IVA: 04523831214 - C.F.: 04523831214', 14, 29);
 
     // Linea separatrice
-    doc.setDrawColor(30, 58, 95);
+    doc.setDrawColor(63, 90, 78);
     doc.setLineWidth(0.5);
     doc.line(14, 33, 196, 33);
 
@@ -214,7 +214,7 @@ export default function Commercialista() {
     // TITOLO DOCUMENTO
     // ==========================================
     doc.setFontSize(18);
-    doc.setTextColor(30, 58, 95);
+    doc.setTextColor(63, 90, 78);
     doc.setFont(undefined, 'bold');
     doc.text('PRIMA NOTA CASSA', 14, 45);
 
@@ -470,7 +470,7 @@ export default function Commercialista() {
         body: tableData,
         theme: 'striped',
         headStyles: {
-          fillColor: [30, 58, 95],
+          fillColor: [63, 90, 78],
           fontSize: 9,
           fontStyle: 'bold',
         },

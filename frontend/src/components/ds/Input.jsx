@@ -20,7 +20,7 @@ export function Input({ error = false, iconLeft = null, style = {}, onFocus, onB
     fontFamily: FONT.family,
     transition: 'border-color 140ms ease, box-shadow 140ms ease',
     ...(focused && !error
-      ? { borderColor: COLORS.primaryLight, boxShadow: '0 0 0 3px rgba(30,58,95,0.12)' }
+      ? { borderColor: COLORS.primaryLight, boxShadow: '0 0 0 3px rgba(63,90,78,0.14)' }
       : {}),
     ...style,
   };
