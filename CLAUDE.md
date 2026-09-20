@@ -358,6 +358,10 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   originale fuori dal suo anno, e l'anno lo decide il parser XML, mai il nome.
 - Una coda che non cala e importa zero **non è un guasto**: i già importati
   risultano doppioni e vengono solo spostati. A dirlo è la quadratura, non la coda.
+- **Corrispettivi: una riga senza `progressivo` né `id_dispositivo` non è una
+  chiusura**, è una giornata senza documento, e il suo XML la **sostituisce**;
+  due chiusure vere dello stesso giorno invece si sommano. Confonderli conta i
+  ricavi due volte, o li raddoppia dentro una riga sola.
 - **«Processo interrotto durante il parsing» non è un errore del file**: è il
   marcatore che la ricostruzione scrive quando il worker muore mentre lo legge,
   e subito dopo sposta il cursore oltre. Quei file sono fatture **sane** da
@@ -794,72 +798,68 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 
 - Ogni merge su `main` fa ridistribuire Render e ricaricare ~77.000 righe: per
   qualche minuto la produzione è `degraded`. Non si accodano merge.
-- Ingest cedolini (`cedolini_manager` → `salari_unificati_v2`): collaudo live
-  non chiuso, il giro orario Drive trova 0 file su 49 caselle.
 - TFR: `hr.app_tfr_accantonamenti` è vuota, il codice vivo scrive in
-  `tfr_accantonamenti` (1.175 righe, 42 dipendenti, 273.025,37 €).
+  `tfr_accantonamenti` (1.175 righe, 42 dipendenti, 273.025,37 €). Ingest cedolini:
+  collaudo live non chiuso, il giro orario Drive trova 0 file su 49 caselle.
 - **Spento**: `PROTOCOLLO_DRIVE_ENABLED=false` (RAM a 1,57 GB su 2). **Acceso**:
   scheduler, ingest Drive (fatture, estratti conto, cedolini, bonifici), ponte
   pagamenti HR, dedup fatture, dichiarazioni fiscali.
 - Fatture **1.431**, tutte del 2026 (0 orfani, 0 collisioni): il pre-2026 è in
   `fatture_pre2026_rimosse_20260920`. **13 righe hanno solo i campi italiani** e
   nessun filtro canonico le vede (regola 12): 7 fatture e 6 DDT.
-- **Gli XML di fattura 2026 arrivano su Drive a blocchi manuali** dal portale
-  AdE: il ritardo e' a monte. I 3 file in `2026/Errori` sono fatture **sane**
-  (San Marino, `.p7m`), non illeggibili.
-- **Corrispettivi 191, ultimo giorno 27/08/2026**: le chiusure RT del 25-27/08,
-  recuperate dagli `Errori` delle fatture, sono entrate. Dal 28/08 non ne
-  arrivano più: il PC del negozio è fermo, 23 giornate fuori dai conti.
+- **Gli XML di fattura 2026 arrivano su Drive a blocchi manuali** dal portale AdE:
+  il ritardo e' a monte. I 3 file in `2026/Errori` sono fatture **sane** (`.p7m`).
+- **Corrispettivi 187, ultimo giorno 27/08/2026**, tutti del 2026 (agosto: 19
+  giornate, 19 righe). Dal 28/08 non ne arrivano più: il PC del negozio è
+  fermo, 23 giornate fuori dai conti. Bonifica del 20/09: 15 giornate di agosto
+  doppie (31.356,28 €, con Prima Nota e scritture) e 414 corrispettivi 2023-24
+  marcati `deleted`, backup in `corrispettivi_bonifica_20260920` (459 righe).
 - **Nessuna liquidazione IVA calcolata**: `/api/iva/liquidazioni` torna vuoto.
   Giugno e luglio sono calcolabili ma con **zero** acquisti (tutti
-  `detraibilita_da_verificare`): saldo = IVA vendite intera, 7.651,05 € e
-  6.211,86 €. Corrispettivi 2026: 518.879,34 €, 47.170,88 € di IVA a debito.
-- LIPE 2026 (tre periodi, quadrati): marzo combacia al centesimo (6.131,26 €);
-  a gennaio mancano **5.005,88 €** di IVA detraibile. Nessun F24 IVA 2026.
+  `detraibilita_da_verificare`): saldo = IVA vendite intera, 7.651,05 € e 6.211,86 €.
+- LIPE 2026 (tre periodi, quadrati): marzo combacia al centesimo (6.131,26 €); a
+  gennaio mancano **5.005,88 €** di IVA detraibile. Nessun F24 IVA 2026.
 - Solo 108 prodotti del Menu su 325 hanno allergeni: obbligo di legge. Il cron
   Render `gestionalecloud-calderone-15min`, sospeso, va cancellato dal pannello.
 
 ## Aperto (togliere la voce quando si chiude)
 
-- Compute Supabase **Micro** insufficiente (`gestionale.documents` 1.172 MB, il
-  database 2.111 MB): Postgres e' caduto il 17/09 e ha rifiutato le connessioni
-  il 20/09. Da portare a **Small**.
+- Compute Supabase **Micro** insufficiente (`documents` 1.172 MB, database 2.111
+  MB): Postgres caduto il 17/09 e connessioni rifiutate il 20/09. Da fare **Small**.
 - Le **13 fatture legacy senza campi inglesi** vanno normalizzate: senza
   `invoice_number`/`invoice_date`/`total_amount` sono fuori da ogni conto.
+- Il **filtro anno dei corrispettivi archivia invece di scartare**
+  (`archivia_solo`). E tre strade scrivono `corrispettivi`, ognuna con la sua dedup.
+- Due giornate di agosto 2026 non hanno scrittura nel giornale (17 su 19).
 - Endpoint sincroni oltre i 5 minuti, da portare a lotti riprendibili:
   `/api/fatture/drive/quadratura`, `/api/paypal-api/riconcilia`,
-  `/account-ids-non-mappati`, `/api/admin/riallinea-pagamenti-fatture`.
-- Note di credito TD04 legacy (~20): costo/IVA/debito aumentati anziché
-  ridotti, da sanare con storno.
+  `/account-ids-non-mappati`, `riallinea-pagamenti-fatture`.
+- Note di credito TD04 legacy (~20): costo/IVA/debito aumentati anziché ridotti.
 - **Nessuno dei 187 fornitori ha `metodo_pagamento`** (41 hanno un IBAN): così
   1.379 fatture restano `sospese` e nulla va in Prima Nota Banca. Serve una
   fonte vera, non dedotta dalle fatture.
-- **Pregresso fatture**: 296 attive (173.184,83 €) senza partita aperta, 280
-  fuori dal giornale. Prima `ripubblica-evento-created`, poi `registra-pregresso`.
-- Da lanciare, con `dry_run` prima: `/api/admin/fatture/azzera-scadenze` (642
-  fatture e 971 partite con la scadenza inventata); `/api/iva/lipe/importa`
-  (`lipe_periodi` vuota); `ricostruisci-numia` di `/api/pos-corrispettivi`.
-- Riconciliazione: 158 fatture `riconciliata` con movimento non riconciliato,
-  180 righe hub senza `fattura_id`, 1.417 movimenti banca senza categoria. Drive
-  `03/ESTRATTI CONTO/DA ELABORARE`: 291 documenti pre-2026 fermi per scelta.
+- **Pregresso fatture**: 296 attive (173.184,83 €) senza partita aperta, 280 fuori
+  dal giornale. Prima `ripubblica-evento-created`, poi `registra-pregresso`.
+- Da lanciare, con `dry_run`: `azzera-scadenze` (642 fatture, 971 partite con
+  scadenza inventata); `/api/iva/lipe/importa`; `ricostruisci-numia`.
+- Riconciliazione: 158 fatture `riconciliata` con movimento non riconciliato, 180
+  righe hub senza `fattura_id`, 1.417 movimenti banca senza categoria.
 - HR: 38 bonifici con `cedolino_id` orfano, 119 in «bonifici da associare», 10
-  tabelle attese dall'app assenti (turni_config, onomastici, richieste…),
-  Iazzetta senza IBAN; Appuhamy, Aurigemma, Vitiello e Dell'Aquila da creare come
-  storici cessati; UNILAV Moscato e Pocci da verificare (Ferrantini).
+  tabelle attese dall'app assenti (turni_config, onomastici, richieste…), Iazzetta
+  senza IBAN; Appuhamy, Aurigemma, Vitiello e Dell'Aquila da creare come storici
+  cessati; UNILAV Moscato e Pocci da verificare.
 - `app/models/stati.py::STATI_PAGATI` conta «parziale» fra le pagate ed è
   applicata a `status`, che non dice se è pagata: non filtra niente.
 - Drill-down «Verifica campi e F24»: agganciato al vecchio indice Drive, che non
   esiste più. `/api/download` serve `./downloads`, che nessuno popola.
 - A mano, dal titolare: **far ripartire `sync_rt_to_drive.py` sul PC del negozio**
   (fermo dal 28/08, 23 giornate di incassi); password Postgres; DNS ceraldiapp.it.
-- Fork `app/hr/` quasi chiuso: restano **cinque** sottopercorsi duplicati
-  (`routers/auth.py`, `routers/employees/dipendenti.py`, `routers/pin_login.py`,
-  `routers/tfr.py`, `utils/dependencies.py`) più i tre del guscio. Finché una
-  coppia è aperta ogni correzione va cercata anche nel gemello.
+- Fork `app/hr/`: restano **cinque** sottopercorsi duplicati (`routers/auth.py`,
+  `routers/employees/dipendenti.py`, `routers/pin_login.py`, `routers/tfr.py`,
+  `utils/dependencies.py`). Ogni correzione va cercata anche nel gemello.
 - `gestionale.blobs`: 216 PDF che **nessun documento cita**, leggibili solo da
-  `app/services/blob_store.py`, mai importato: o si riaggancia l'archivio, o si
-  tolgono tutti e due. Stesso caso di `bank_reconciliation_hub` (2.017 righe),
-  scritta da un trigger e letta da nessuno.
+  `blob_store.py`, mai importato. Stesso caso di `bank_reconciliation_hub`
+  (2.017 righe), scritta da un trigger e letta da nessuno.
 - `archivio_documenti_memoria.py` espone ancora `SheetDatabase` e
   `MemorySheetsClient`: promettono Google Sheets senza chiamarlo mai, da rinominare.
 
