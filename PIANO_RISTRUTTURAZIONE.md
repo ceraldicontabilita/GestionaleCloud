@@ -490,14 +490,16 @@ Questi test dimostrano la logica, ma **non bastano da soli a dichiarare pronta l
 
 | ID | Stato | Attività |
 |---|---|---|
-| RST-0001 | ⚪ | Aggiungere test di unicità `method + normalized_path` su tutte le route FastAPI montate |
+| RST-0001 | 🟡 | Guardrail aggiunto sul branch 0B: unicità `method + normalized_path` su tutte le route FastAPI montate; attende CI e bonifica eventuali collisioni |
 | RST-0002 | ⚪ | Aggiungere audit inverso backend → chiamante/owner |
-| RST-0003 | ⚪ | Correggere guardia NO-WRITE magazzino: deve risolvere costanti/alias e includere `warehouse_inventory` |
+| RST-0003 | 🟡 | Guardrail AST aggiunto: vecchie collezioni magazzino sono NO-WRITE; `warehouse_inventory` è il target canonico e può essere scritto solo dai writer transitori esplicitamente censiti, che devono diminuire fino a uno |
 | RST-0004 | ⚪ | Aggiungere contratto route React ↔ `page_catalog.json` |
-| RST-0005 | ⚪ | Impedire nuovi `FastAPI()` fuori da `app/main.py` |
+| RST-0005 | 🟡 | Guardrail aggiunto: nessuna nuova istanza `FastAPI()` fuori da `app/main.py`; HR/Lotti/Menu restano eccezioni temporanee esplicite fino alla loro fusione |
 | RST-0006 | ⚪ | Impedire nuovi client DB indipendenti per HR/Lotti/Menu |
 | RST-0007 | ⚪ | Aggiungere inventario automatico di router montati/non montati |
 | RST-0008 | ⚪ | Aggiungere inventario frontend di componenti/pagine non raggiungibili |
+
+**Nota 0B:** il vecchio CRUD `/api/warehouse/products*` e `/api/warehouse/movements*` è stato rimosso da `public_api.py`: nessun chiamante runtime e secondo writer incompatibile con il modello canonico.
 
 **Definition of Done:** nessuna nuova duplicazione può entrare mentre si ristruttura.
 
@@ -871,6 +873,7 @@ Aggiungere una riga ad ogni attività conclusa.
 | 2026-09-21 | RST-00A1/06/07 | 🟡 IN CORSO | branch `ristrutturazione/fase-0a-prima-nota` | Aggiunti contratti CRUD Cassa/Banca e validazioni; corretto collegamento di riapertura fattura alla cancellazione del pagamento | Attende CI/PR e collaudo browser |
 | 2026-09-21 | RST-00A2 | 🟡 IN CORSO | branch `ristrutturazione/fase-0a-prima-nota` | Banca manuale senza estratto conto resa provvisoria e fuori saldo; UI allineata con badge e saldo progressivo corretto | Attende CI ed E2E riconciliazione |
 | 2026-09-21 | FASE-0A-LIVE | 🟢 COMPLETATO | `b71f62d0c8a6f17994355150f4a574e73dcad021` | Prima Nota Cassa/Banca/Provvisori pubblicata su main e servita in produzione | Produzione `35543104234`: E2E, 64 pagine, layout, viewer, bundle commit e smoke runtime tutti verdi |
+| 2026-09-21 | RST-0001/0003/0005 | 🟡 IN CORSO | branch `ristrutturazione/fase-0b-guardrail` | Aggiunti guardrail route duplicate, nuove FastAPI e writer magazzino; rimosso CRUD warehouse legacy da `public_api.py` | Attende CI e bonifica collisioni esistenti |
 
 ---
 
