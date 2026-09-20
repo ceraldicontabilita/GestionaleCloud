@@ -3,7 +3,7 @@ import base64
 
 from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
-from app.routers import verbali_noleggio, verbali_noleggio_api
+from app.routers import verbali_noleggio
 from app.services.verbali_pdf_service import collect_verbale_pdfs, pdf_metadata
 
 
@@ -51,10 +51,10 @@ def test_endpoint_pdf_legge_documents_inbox_e_numero_con_slash(monkeypatch):
 
 def test_endpoint_dettaglio_path_include_pdf_inbox(monkeypatch):
     db, _ = _database()
-    monkeypatch.setattr(verbali_noleggio_api.Database, "get_db", lambda: db)
+    monkeypatch.setattr(verbali_noleggio.Database, "get_db", lambda: db)
 
     result = asyncio.run(
-        verbali_noleggio_api.get_verbale_dettaglio("VV/24990121765")
+        verbali_noleggio.get_dettaglio_verbale("VV/24990121765")
     )
 
     assert len(result["pdf_disponibili"]) == 1
