@@ -96,6 +96,88 @@ async def lifespan(_app: FastAPI):
             "status": "imported",
         },
     ])
+    await Database.db["fornitori"].insert_many([
+        {
+            "id": "e2e-fornitore-cassa",
+            "partita_iva": "00000000101",
+            "ragione_sociale": "Fornitore E2E Cassa",
+            "metodo_pagamento": "contanti",
+        },
+        {
+            "id": "e2e-fornitore-banca-attesa",
+            "partita_iva": "00000000102",
+            "ragione_sociale": "Fornitore E2E Banca Attesa",
+            "metodo_pagamento": "bonifico",
+        },
+        {
+            "id": "e2e-fornitore-banca-prova",
+            "partita_iva": "00000000103",
+            "ragione_sociale": "Fornitore E2E Banca Prova",
+            "metodo_pagamento": "bonifico",
+        },
+        {
+            "id": "e2e-fornitore-misto",
+            "partita_iva": "00000000104",
+            "ragione_sociale": "Fornitore E2E Misto",
+            "metodo_pagamento": "misto",
+        },
+    ])
+    await Database.db["invoices"].insert_many([
+        {
+            "id": "e2e-fattura-cassa",
+            "invoice_number": "E2E-CASSA-001",
+            "invoice_date": "2026-09-20",
+            "document_type": "TD01",
+            "supplier_name": "Fornitore E2E Cassa",
+            "supplier_vat": "00000000101",
+            "total_amount": 90.00,
+            "status": "imported",
+            "pagato": False,
+        },
+        {
+            "id": "e2e-fattura-banca-attesa",
+            "invoice_number": "E2E-BANCA-ATTESA-001",
+            "invoice_date": "2026-09-20",
+            "document_type": "TD01",
+            "supplier_name": "Fornitore E2E Banca Attesa",
+            "supplier_vat": "00000000102",
+            "total_amount": 140.00,
+            "status": "imported",
+            "pagato": False,
+        },
+        {
+            "id": "e2e-fattura-banca-prova",
+            "invoice_number": "E2E-BANCA-PROVA-001",
+            "invoice_date": "2026-09-20",
+            "document_type": "TD01",
+            "supplier_name": "Fornitore E2E Banca Prova",
+            "supplier_vat": "00000000103",
+            "total_amount": 160.00,
+            "status": "imported",
+            "pagato": False,
+        },
+        {
+            "id": "e2e-fattura-mista",
+            "invoice_number": "E2E-MISTA-001",
+            "invoice_date": "2026-09-20",
+            "document_type": "TD01",
+            "supplier_name": "Fornitore E2E Misto",
+            "supplier_vat": "00000000104",
+            "total_amount": 100.00,
+            "status": "imported",
+            "pagato": False,
+        },
+    ])
+    await Database.db["estratto_conto_movimenti"].insert_one({
+        "id": "e2e-ec-banca-prova",
+        "data": "2026-09-21",
+        "tipo": "uscita",
+        "importo": 160.00,
+        "descrizione": "BONIFICO FORNITORE E2E BANCA PROVA FATTURA E2E-BANCA-PROVA-001",
+        "descrizione_originale": "BONIFICO FORNITORE E2E BANCA PROVA FATTURA E2E-BANCA-PROVA-001",
+        "riconciliato": False,
+    })
+
     yield
     client.close()
     Database.client = None
