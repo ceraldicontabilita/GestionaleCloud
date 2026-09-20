@@ -61,7 +61,10 @@ BACKEND_CHECKS = [
     Check("fornitori", "fornitori alias", f"{BACKEND_URL}/api/fornitori?limit=5", protected=True),
     Check("dashboard", "bilancio istantaneo", f"{BACKEND_URL}/api/dashboard/bilancio-istantaneo?anno={SMOKE_ANNO}", protected=True),
     Check("fatture", "invoices", f"{BACKEND_URL}/api/invoices?limit=5", protected=True),
-    Check("prima-nota", "cassa", f"{BACKEND_URL}/api/prima-nota/cassa?limit=5", protected=True),
+    Check("prima-nota", "cassa", f"{BACKEND_URL}/api/prima-nota/cassa?anno={SMOKE_ANNO}&limit=5", protected=True),
+    Check("prima-nota", "banca", f"{BACKEND_URL}/api/prima-nota/banca?anno={SMOKE_ANNO}&limit=5", protected=True),
+    Check("prima-nota", "provvisori", f"{BACKEND_URL}/api/prima-nota/provvisori?anno={SMOKE_ANNO}", protected=True),
+    Check("prima-nota", "stato fonti", f"{BACKEND_URL}/api/prima-nota/stato-fonti", protected=True),
     Check("scadenze", "prossime", f"{BACKEND_URL}/api/scadenze/prossime?giorni=30&limit=5", protected=True),
 ]
 
