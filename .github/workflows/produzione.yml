@@ -67,7 +67,13 @@ jobs:
             sleep 1
           done
       - name: Operazioni distruttive
-        run: node frontend/scripts/audit-destructive-e2e.cjs
+        run: |
+          node frontend/scripts/audit-destructive-e2e.cjs || {
+            echo "::group::Log ERP isolato"
+            sed -E 's/(token=)[^ &]+/\1[REDACTED]/g; s/(Authorization: Bearer )[A-Za-z0-9._-]+/\1[REDACTED]/g' /tmp/e2e-distruttivo-server.log || true
+            echo "::endgroup::"
+            exit 1
+          }
       - name: Tutte le schermate catalogate
         run: node frontend/scripts/audit-pages-e2e.cjs
 
