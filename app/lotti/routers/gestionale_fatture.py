@@ -203,18 +203,38 @@ def _descrivi(exc: BaseException) -> str:
 
 
 async def _source_id_gia_presi() -> dict[str, str]:
-    """`source_id` -> `source_hash` delle fatture gia' prese in carico.
+    """`source_id` -> `source_hash` delle fatture gia' prese E ANCORA PRESENTI.
 
     Solo gli stati terminali: un `conflitto_hash` deve essere riesaminato ogni
-    giro, non saltato."""
+    giro, non saltato.
+
+    Il registro da solo non basta. Se le fatture operative di Lotti vengono
+    svuotate (ripopolamento da zero, ripristino, cancellazione a mano) il
+    registro resta pieno e il ponte salta TUTTO: il magazzino non si rialimenta
+    piu' e nessuno capisce perche'. Una riga vale quindi solo se la fattura
+    che dice di aver preso esiste ancora davvero in `db.fatture`; altrimenti
+    torna fra quelle da prendere, e l'import e' idempotente, quindi
+    rialimentare non duplica.
+
+    Una lettura sola dei soli identificativi, non una per fattura."""
     righe = await getattr(db, RECEIPTS).find(
         {"stato": {"$in": ["importata", "collegata_esistente"]}},
-        {"_id": 0, "source_id": 1, "source_hash": 1},
+        {"_id": 0, "source_id": 1, "source_hash": 1, "fattura_id": 1},
     ).to_list(100000)
-    return {
-        str(r.get("source_id") or ""): str(r.get("source_hash") or "")
-        for r in righe if r.get("source_id")
+    presenti = {
+        str(f.get("id") or "")
+        for f in await db.fatture.find({}, {"_id": 0, "id": 1}).to_list(100000)
     }
+    presi: dict[str, str] = {}
+    for r in righe:
+        sid = str(r.get("source_id") or "")
+        if not sid:
+            continue
+        fattura_id = str(r.get("fattura_id") or "")
+        if fattura_id and fattura_id not in presenti:
+            continue  # il registro dice presa, ma in Lotti non c'e' piu'
+        presi[sid] = str(r.get("source_hash") or "")
+    return presi
 
 
 async def esegui_sync_gestionale(
@@ -279,12 +299,12 @@ async def esegui_sync_gestionale(
             receipt = await getattr(db, RECEIPTS).find_one(
                 {"source_id": source_id}, {"_id": 0}
             )
-            if receipt:
-                if receipt.get("source_hash") == source_hash and receipt.get("stato") in {
-                    "importata", "collegata_esistente"
-                }:
-                    result["gia_ricevute"] += 1
-                    continue
+            # Chi e' gia' stato preso E c'e' ancora e' stato tolto dal
+            # prefiltro: qui restano solo gli hash cambiati, cioe' i
+            # conflitti. Rimettere qui un «gia' ricevuta» farebbe saltare
+            # proprio le fatture che il prefiltro ha rimandato dentro perche'
+            # in Lotti non ci sono piu'.
+            if receipt and receipt.get("source_hash") != source_hash:
                 result["conflitti"].append({
                     "source_id": source_id,
                     "numero": item.get("invoice_number"),
@@ -430,3 +450,70 @@ async def sync_gestionale_fatture(
     _admin=Depends(require_admin),
 ):
     return await esegui_sync_gestionale(anno=anno, massimo=limit, anteprima=anteprima)
+
+
+async def alimenta_lotti_da_fattura(source_id: str) -> dict[str, Any]:
+    """Porta UNA fattura del gestionale dentro Lotti, subito.
+
+    E' l'aggancio automatico fra l'ingresso dei documenti e il magazzino: una
+    fattura XML che entra da Drive deve alimentare Lotti senza aspettare il
+    giro dei 15 minuti, e se e' gia' entrata deve rialimentarlo comunque
+    (l'import e' idempotente per fornitore + numero + data, quindi non
+    duplica).
+
+    Costa una lettura per id piu' l'import di quel solo documento: non e' un
+    ripasso dell'archivio, e puo' girare per ogni fattura senza moltiplicare
+    il lavoro sul lotto di 25 file del giro Drive.
+    """
+    esito: dict[str, Any] = {"source_id": source_id, "stato": "saltata"}
+    if not source_id:
+        esito["motivo"] = "source_id mancante"
+        return esito
+    try:
+        dettaglio = await _dettaglio_locale(source_id)
+    except Exception as exc:  # fattura non piu' attiva o non trovata
+        esito["motivo"] = _descrivi(exc)
+        return esito
+
+    xml_raw = str(dettaglio.get("xml_raw") or "") or _xml_from_projection(dettaglio)
+    if not xml_raw:
+        esito["motivo"] = "nessun XML ne' righe strutturate"
+        return esito
+
+    from app.lotti.routers.fatture import _UF, importa_fattura_xml
+
+    importata = await importa_fattura_xml([
+        _UF(f"gestionale-{source_id}.xml", xml_raw.encode("utf-8"))
+    ])
+    now = datetime.now(timezone.utc).isoformat()
+    relazione = {
+        "gestionale_source_id": source_id,
+        "gestionale_source_hash": dettaglio.get("source_hash", ""),
+        "gestionale_source": "gestionalecloud",
+        "gestionale_collegata_il": now,
+    }
+    query = _invoice_query(dettaglio)
+    fattura = await db.fatture.find_one(query, {"_id": 0, "id": 1})
+    if fattura:
+        await db.fatture.update_one(query, {"$set": relazione})
+    await getattr(db, RECEIPTS).update_one(
+        {"source_id": source_id},
+        {"$set": {**relazione, "source_id": source_id,
+                  "source_hash": dettaglio.get("source_hash", ""),
+                  "stato": "importata",
+                  "fattura_id": (fattura or {}).get("id"),
+                  "numero_fattura": dettaglio.get("invoice_number"),
+                  "data_fattura": dettaglio.get("invoice_date"),
+                  "esito_import": {
+                      "fatture_processate": importata.get("fatture_processate", 0),
+                      "duplicati": importata.get("fatture_duplicate_saltate", 0),
+                  }}},
+        upsert=True,
+    )
+    esito.update({
+        "stato": "alimentata",
+        "fattura_id": (fattura or {}).get("id"),
+        "prodotti": importata.get("prodotti_creati", 0),
+        "lotti": importata.get("lotti_creati", 0),
+    })
+    return esito

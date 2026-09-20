@@ -220,6 +220,7 @@ def register_all_handlers():
             on_fattura_created_alert_fornitore,
             on_fattura_created_audit,
             on_fattura_created_iva,
+            on_fattura_created_alimenta_lotti,
             on_fattura_pagata_risolvi,
             on_fornitore_aggiornato_risolvi,
         )
@@ -227,6 +228,11 @@ def register_all_handlers():
         register_handler(EventTypes.FATTURA_CREATED, on_fattura_created_alert_fornitore)
         register_handler(EventTypes.FATTURA_CREATED, on_fattura_created_audit)
         register_handler(EventTypes.FATTURA_CREATED, on_fattura_created_iva)
+        # Il magazzino di Lotti si alimenta dalla stessa fattura, qui e ora:
+        # e' l'import di QUEL documento, non un ripasso dell'archivio (vedi
+        # la nota qui sotto). Prima c'era solo il giro dei 15 minuti, e quando
+        # si e' fermato Lotti e' rimasto indietro di quattro mesi in silenzio.
+        register_handler(EventTypes.FATTURA_CREATED, on_fattura_created_alimenta_lotti)
         # NON registrare qui un ripasso dell'intero archivio: `fattura.created`
         # nasce una volta PER FATTURA, e il giro Drive ne importa 25 alla volta.
         # `on_fattura_created_riprocessa` faceva esattamente i cinque motori che
