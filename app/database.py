@@ -77,6 +77,14 @@ class Database:
             await cls._idrata_con_riprove(runtime)
             cls.client = runtime
             cls.db = runtime
+            # Senza questa chiamata `mittenti_email` resta vuota, e una
+            # whitelist vuota significa zero acquisizioni dalla posta: il
+            # 20/09/2026 lo scanner verbali si fermava a ogni giro con
+            # «Nessun mittente attendibile per i verbali» — cinque mittenti
+            # istituzionali (Polizia Locale, Prefettura, ASIA, Arval) e le
+            # dimissioni telematiche del Ministero non erano mai stati
+            # seminati. E' idempotente e costa 10 righe: non allunga l'avvio.
+            await cls._ensure_builtin_senders()
             logger.info("Connected to private Supabase ledger")
             return
 

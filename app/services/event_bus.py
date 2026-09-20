@@ -227,8 +227,17 @@ def register_all_handlers():
         register_handler(EventTypes.FATTURA_CREATED, on_fattura_created_alert_fornitore)
         register_handler(EventTypes.FATTURA_CREATED, on_fattura_created_audit)
         register_handler(EventTypes.FATTURA_CREATED, on_fattura_created_iva)
-        from app.services.reconciliation_orchestrator import on_fattura_created_riprocessa
-        register_handler(EventTypes.FATTURA_CREATED, on_fattura_created_riprocessa)
+        # NON registrare qui un ripasso dell'intero archivio: `fattura.created`
+        # nasce una volta PER FATTURA, e il giro Drive ne importa 25 alla volta.
+        # `on_fattura_created_riprocessa` faceva esattamente i cinque motori che
+        # `riconcilia_documenti_e_pagamenti` gia' esegue nel giro «Automazioni
+        # Prima Nota» (ogni 30 min): stessa funzione, ma 25 volte invece di una,
+        # ognuna su tutte le fatture aperte e su 2.000 bonifici PDF (90 MB).
+        # Misurato il 20/09/2026: CPU al 95%, RAM a 1,13 GB, il giro da 15
+        # minuti non finiva mai («maximum number of running instances reached»),
+        # l'istanza veniva riavviata a meta' file e delle 49 fatture da
+        # importare ne entravano 4. Il ripasso resta uno solo, quello dei 30
+        # minuti, che e' un sovrainsieme stretto ed e' idempotente.
         register_handler(EventTypes.FATTURA_PAGATA, on_fattura_pagata_risolvi)
         register_handler(EventTypes.FORNITORE_UPDATED, on_fornitore_aggiornato_risolvi)
     except Exception as e:

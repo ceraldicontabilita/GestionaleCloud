@@ -12,7 +12,7 @@ import weakref
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
@@ -1032,6 +1032,30 @@ if _monta_frontend_hr(Path(_HR_BUILD)):
 else:
     logger.warning("Frontend HR non trovato (%s): /hr serve solo le API", _HR_BUILD)
 app.mount("/hr", hr_app, name="hr")
+
+# Il prefisso NUDO delle app portate (`/lotti`, senza la barra finale) non lo
+# prende il mount: Starlette compila `Mount("/lotti")` in `^/lotti/(?P<path>.*)$`,
+# che richiede la barra. La richiesta cadeva quindi nel catch-all della SPA
+# dell'ERP, e chi digitava `gestionalecloud.onrender.com/lotti` si ritrovava nel
+# gestionale — verificato il 20/09/2026: tutti e tre i prefissi rispondevano 200
+# con `<title>Ceraldi ERP</title>`. Il redirect a `/<prefisso>/` va registrato
+# DOPO i mount e PRIMA del catch-all, ed e' 307 perche' conserva il metodo.
+_APP_PORTATE = ("lotti", "menu", "hr")
+
+for _prefisso in _APP_PORTATE:
+    def _vai_alla_app_portata(request: Request, _p: str = _prefisso) -> RedirectResponse:
+        # La query si conserva: un redirect che la butta perde i parametri del
+        # link con cui l'utente e' arrivato, e chi li legge non li trova piu'.
+        coda = f"?{request.url.query}" if request.url.query else ""
+        return RedirectResponse(url=f"/{_p}/{coda}", status_code=307)
+
+    app.add_api_route(
+        f"/{_prefisso}",
+        _vai_alla_app_portata,
+        methods=["GET", "HEAD"],
+        include_in_schema=False,
+        name=f"{_prefisso}-slash",
+    )
 
 if os.path.isdir(_FRONTEND_DIST):
     assets_path = os.path.join(_FRONTEND_DIST, "assets")

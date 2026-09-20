@@ -42,13 +42,22 @@ def start_scheduler():
         return None
 
     sched = AsyncIOScheduler(timezone="Europe/Rome")
-    # datetime.now() e' naive nel fuso del processo (UTC su Render), ma APScheduler
-    # interpreta un next_run_time naive nel fuso DELLO SCHEDULER (Rome, +1/+2h) —
-    # senza .now(sched.timezone) il primo giro risulterebbe nel passato e verrebbe
-    # saltato (misfire), rimandando la prima sincronizzazione a dopo il prossimo
-    # intervallo di 6h. Trovato da un review automatico prima del deploy.
+    # Il primo giro e' a 6 ore dall'avvio, come tutti gli altri: NON a 60
+    # secondi. Un giro tocca 1.222 cedolini (collection da 165 MB) e 648
+    # bonifici, e l'esito misurato in produzione il 20/09/2026 era sempre
+    # `creati: 0, aggiornati: 1222` — cioe' riscriveva tutto senza cambiare
+    # niente. Partendo a 60 s dall'avvio, ogni riavvio dell'istanza lo rifaceva
+    # da capo: quel giorno l'istanza si riavviava ogni ~5 minuti e la
+    # sincronizzazione ripartiva ogni ~5 minuti, aggiungendo carico proprio a
+    # un Supabase che stava gia' rispondendo 520/522.
+    # datetime.now() e' naive nel fuso del processo (UTC su Render), ma
+    # APScheduler interpreta un next_run_time naive nel fuso DELLO SCHEDULER
+    # (Rome, +1/+2h): `.now(sched.timezone)` resta necessario, altrimenti il
+    # primo giro cadrebbe nel passato e verrebbe saltato come misfire.
+    # Per lanciarla subito c'e' il bottone «Sincronizza da cedolini» in
+    # «Cedolini & Bonifici», che e' il motore che questo job automatizza.
     sched.add_job(sincronizza_paghe_periodico, "interval", hours=6, id="sincronizza_paghe",
-                  next_run_time=datetime.now(sched.timezone) + timedelta(seconds=60),
+                  next_run_time=datetime.now(sched.timezone) + timedelta(hours=6),
                   replace_existing=True)
     sched.start()
     _scheduler = sched

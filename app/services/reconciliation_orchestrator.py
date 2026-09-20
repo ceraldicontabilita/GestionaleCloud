@@ -79,34 +79,6 @@ async def riconcilia_documenti_e_pagamenti(
     }
 
 
-async def on_fattura_created_riprocessa(event: Dict[str, Any], db):
-    """Una fattura arrivata tardi puo' completare assegno o bonifico gia' noto."""
-    from app.routers.bank.assegni_auto_match import run_auto_match
-    from app.services.assegni_fattura_intent import riprocessa_intenti_assegni
-    from app.services.bonifici_pdf_ingest import riprocessa_bonifici_pendenti
-    from app.routers.paypal_statements import riprocessa_collegamenti_paypal
-    from app.services.bank_payment_allocations import reconcile_deterministic_invoice_allocations
-
-    anno = None
-    data = event.get("data") or event.get("invoice_date") or ""
-    if str(data)[:4].isdigit():
-        anno = int(str(data)[:4])
-    paypal = await riprocessa_collegamenti_paypal(
-        db,
-        start_date=f"{anno}-01-01" if anno else None,
-        end_date=f"{anno}-12-31" if anno else None,
-    )
-    return {
-        "assegni_intenti": await riprocessa_intenti_assegni(db, anno=anno),
-        "assegni_auto": await run_auto_match(db, dry_run=False, anno=anno),
-        "bonifici_pdf": await riprocessa_bonifici_pendenti(db, limit=2000),
-        "paypal_fatture": paypal,
-        "allocazioni_fatture_banca": await reconcile_deterministic_invoice_allocations(
-            db, anno=anno,
-        ),
-    }
-
-
 async def on_cedolino_importato_riprocessa(event: Dict[str, Any], db):
     """Il cedolino conferma il maturato; il bonifico puo' essere gia' in banca."""
     from app.services.stipendi_bonifici import associa_bonifici_stipendi
