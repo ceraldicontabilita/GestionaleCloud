@@ -724,8 +724,12 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - `prodotti_master` è il catalogo canonico e `magazzino_unificato` il magazzino canonico;
   `prodotti_vendita` e `sconti_merce` sono domini diversi e non si fondono.
 - **Il registro HACCP non si scrive da solo.** Alle 07:00 il turno *apre* la casella del giorno su ogni
-  apparecchio attivo e ci mette il responsabile assegnato (`attrezzature_config.operatore_id`, nome da HR):
-  `temp` resta `None`, stato `da_rilevare`. La misura la fa una persona dal tablet, e **la firma è il PIN**
+  apparecchio attivo (mai su uno `fuori_servizio`) e ci mette il responsabile assegnato
+  (`attrezzature_config.operatore_id`, nome da HR): `temp` resta `None`, stato `da_rilevare`. Se il titolare
+  dichiara di fare lui il controllo visivo (`controllo_visivo_responsabile`), il turno annota l'**esito** —
+  «conforme, entro le soglie della scheda», firmato col suo nome — e **mai un valore numerico**: quello si
+  scrive solo quando c'è un'anomalia, e lo scrive lui (valore vero, fuori servizio, assistenza).
+  La misura la fa una persona dal tablet, e **la firma è il PIN**
   (`servizi/firma_operatore.py`): col PIN il nome arriva da HR e il record è `firma_verificata`; con un PIN
   sbagliato la rilevazione **non si salva**, perché una firma falsa è peggio di una registrazione mancante.
   Un giorno senza lettura si **dichiara** «non rilevato» col motivo, mai riempito d'ufficio. Nessun modulo
@@ -734,6 +738,13 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   autenticato con il PIN di un operatore dedicato. Il fascicolo per un'ispezione si compone da
   `/lotti/api/manuale-haccp/stampa`: si spuntano le pagine (`SEZIONI_MANUALE`, le stesse che il generatore
   sa produrre — un test lo verifica) e il frontespizio con i dati dell'azienda c'è sempre.
+- **Un PIN per entrare, non per ogni sezione**: magazzino e portale dipendenti condividono la verifica
+  (`services/sessione_unica.py`, prova `LOTTI_AUTH_SECRET` e `HR_JWT_SECRET`). L'ERP contabile resta fuori
+  di proposito. La traduzione dei ruoli è **direzionale** (`operatore`↔`dipendente`), mai verso `admin`, e
+  un token **senza** ruolo non ne riceve uno di ripiego: fallisce chiuso.
+- Piano di sanificazione per area (`/sanificazione/piano`): frequenza, prodotto, diluizione, tempo di
+  contatto. Niente valori di ripiego — un detergente scritto a caso rimanda a una scheda di sicurezza che
+  non c'entra. `/sanificazione/scadute` dice cosa è in ritardo e cosa è ancora da compilare.
 - Accessi: PIN valido 2 ore; i dipendenti entrano ovunque tranne le pagine di amministrazione. Sui tablet
   condivisi il magazzino chiude la sessione dopo 10 minuti.
 

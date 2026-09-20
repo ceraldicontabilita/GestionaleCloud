@@ -36,11 +36,14 @@ async def get_current_user(
     
     try:
         # Decode JWT token
-        payload = jwt.decode(
-            token,
-            settings.SECRET_KEY,
-            algorithms=[settings.ALGORITHM]
-        )
+        # Verifica condivisa fra le app del gruppo: lo stesso operatore che
+        # ha aperto il magazzino col suo PIN non deve rifarlo per entrare qui.
+        # I controlli sul contenuto restano identici — il ruolo si valida sotto.
+        from app.services.sessione_unica import verifica_token_condiviso
+
+        payload = verifica_token_condiviso(token)
+        if payload is None:
+            raise AuthenticationError("Invalid token")
         
         # Extract user data
         user_id: str = payload.get("sub")
@@ -138,11 +141,11 @@ async def get_optional_user(
         return None
     
     try:
-        payload = jwt.decode(
-            credentials.credentials,
-            settings.SECRET_KEY,
-            algorithms=[settings.ALGORITHM]
-        )
+        from app.services.sessione_unica import verifica_token_condiviso
+
+        payload = verifica_token_condiviso(credentials.credentials)
+        if payload is None:
+            return None
         
         user_id = payload.get("sub")
         if not user_id:
@@ -336,11 +339,12 @@ _bearer_strict = HTTPBearer(auto_error=True)
 
 def _decode_or_401(credentials: HTTPAuthorizationCredentials) -> Dict[str, Any]:
     try:
-        return jwt.decode(
-            credentials.credentials,
-            settings.SECRET_KEY,
-            algorithms=[settings.ALGORITHM],
-        )
+        from app.services.sessione_unica import verifica_token_condiviso
+
+        payload = verifica_token_condiviso(credentials.credentials)
+        if payload is None:
+            raise JWTError("token non valido per nessuna app del gruppo")
+        return payload
     except JWTError as e:
         logger.info(f"Auth strict: token rifiutato ({e})")
         raise HTTPException(

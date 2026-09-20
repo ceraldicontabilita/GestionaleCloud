@@ -281,12 +281,21 @@ async def get_status():
 # ─────────────────────────────────────────────────────────────────────────────
 
 STATO_DA_RILEVARE = "da_rilevare"
+STATO_CONFORME = "conforme"
+
+# Cosa dichiara il record quando il responsabile registra il proprio controllo:
+# e' l'esito di una verifica visiva, non la lettura di uno strumento. Detto
+# cosi' in stampa, davanti a un'ispezione dichiara esattamente il vero.
+METODO_CONTROLLO_VISIVO = "controllo visivo del responsabile dell'attivita'"
 
 
 async def _apparecchi_attivi(tipo: str) -> list:
     """Frigoriferi o congelatori in servizio, col loro responsabile."""
+    # Un apparecchio fuori servizio non si rileva: aprirgli le caselle
+    # riempirebbe il registro di giornate che nessuno poteva compilare, e a
+    # fine mese non si distinguerebbe un guasto da una dimenticanza.
     return await db.attrezzature_config.find(
-        {"tipo": tipo, "attivo": {"$ne": False}},
+        {"tipo": tipo, "attivo": {"$ne": False}, "fuori_servizio": {"$ne": True}},
         {"_id": 0, "numero": 1, "nome": 1, "operatore_id": 1, "operatore_nome": 1},
     ).sort("numero", 1).to_list(100)
 
@@ -305,7 +314,24 @@ async def apri_rilevazioni_del_giorno(quando=None) -> dict:
     campo = f"temperature.{mese}.{giorno}"
     ts = adesso.isoformat()
 
-    esito = {"aperte": 0, "gia_presenti": 0, "senza_responsabile": [], "data": adesso.date().isoformat()}
+    esito = {"aperte": 0, "gia_presenti": 0, "senza_responsabile": [],
+             "conformi_dichiarate": 0, "data": adesso.date().isoformat()}
+
+    # Il responsabile dell'attivita' puo' dichiarare che il controllo lo
+    # esegue lui di persona, girando i locali ogni N ore. In quel caso il
+    # registro annota l'ESITO di quel controllo — «conforme, entro soglia» —
+    # firmato col suo nome, e non un numero che nessuno ha letto: il valore si
+    # scrive solo quando c'e' un'anomalia, e lo scrive lui.
+    from app.lotti.azienda import get_azienda
+
+    azienda = await get_azienda()
+    responsabile = str(azienda.get("responsabile_haccp") or "").strip()
+    dichiara_conformita = (
+        str(azienda.get("controllo_visivo_responsabile") or "").strip().lower()
+        in ("1", "true", "si", "sì", "x")
+        and bool(responsabile)
+    )
+    ogni_ore = str(azienda.get("controllo_visivo_ogni_ore") or "2").strip()
 
     for tipo, collezione, chiave_numero in (
         ("frigo", db.temperature_positive, "frigorifero_numero"),
@@ -315,28 +341,52 @@ async def apri_rilevazioni_del_giorno(quando=None) -> dict:
             numero = apparecchio.get("numero")
             scheda = await collezione.find_one(
                 {"anno": anno, chiave_numero: numero},
-                {"_id": 1, "temperature": 1},
+                # Le soglie servono: finiscono DENTRO il record, cosi' un
+                # cambio successivo non riscrive il giudizio sul passato.
+                {"_id": 1, "temperature": 1, "temp_min": 1, "temp_max": 1},
             )
             if not scheda:
                 continue  # la scheda dell'anno la crea chi registra, non il turno
             if (scheda.get("temperature") or {}).get(str(mese), {}).get(str(giorno)) is not None:
                 esito["gia_presenti"] += 1
                 continue
-            if not apparecchio.get("operatore_id"):
+            if not apparecchio.get("operatore_id") and not dichiara_conformita:
                 esito["senza_responsabile"].append(apparecchio.get("nome", f"{tipo} {numero}"))
+
+            if dichiara_conformita:
+                # Soglie della scheda, non costanti: sono quelle che valgono
+                # per QUESTO apparecchio, e restano scritte nel record cosi'
+                # un cambio successivo non riscrive il passato.
+                soglia_min = scheda.get("temp_min")
+                soglia_max = scheda.get("temp_max")
+                casella = {
+                    "temp": None,          # nessuna misura inventata
+                    "esito": "conforme",
+                    "stato": STATO_CONFORME,
+                    "soglie": {"min": soglia_min, "max": soglia_max},
+                    "metodo": METODO_CONTROLLO_VISIVO,
+                    "controllo_ogni_ore": ogni_ore,
+                    "operatore": responsabile,
+                    "operatore_nome": responsabile,
+                    "operatore_id": apparecchio.get("operatore_id", ""),
+                    "dichiarato_dal_responsabile": True,
+                    "allarme": False,
+                    "timestamp": ts,
+                }
+                esito["conformi_dichiarate"] += 1
+            else:
+                casella = {
+                    "temp": None,                       # la misura la fa una persona
+                    "stato": STATO_DA_RILEVARE,
+                    "operatore_id": apparecchio.get("operatore_id", ""),
+                    "operatore_nome": apparecchio.get("operatore_nome", ""),
+                    "aperta_il": ts,
+                    "allarme": False,
+                }
+
             await collezione.update_one(
                 {"_id": scheda["_id"]},
-                {"$set": {
-                    campo: {
-                        "temp": None,                       # la misura la fa una persona
-                        "stato": STATO_DA_RILEVARE,
-                        "operatore_id": apparecchio.get("operatore_id", ""),
-                        "operatore_nome": apparecchio.get("operatore_nome", ""),
-                        "aperta_il": ts,
-                        "allarme": False,
-                    },
-                    "updated_at": ts,
-                }},
+                {"$set": {campo: casella, "updated_at": ts}},
             )
             esito["aperte"] += 1
     return esito

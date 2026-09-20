@@ -224,3 +224,94 @@ def test_una_chiamata_diretta_senza_pin_non_esplode():
 
     assert firma["firma_verificata"] is False
     assert firma["operatore"] == "Mario"
+
+
+# ── Il controllo del responsabile ────────────────────────────────────────────
+
+@pytest.fixture()
+def responsabile(monkeypatch, archivio):
+    """Il titolare dichiara di eseguire lui il controllo visivo, ogni 2 ore."""
+    import app.lotti.routers.haccp_auto as haccp
+
+    async def azienda():
+        return {
+            "responsabile_haccp": "Ceraldi Vincenzo",
+            "controllo_visivo_responsabile": "true",
+            "controllo_visivo_ogni_ore": "2",
+        }
+
+    monkeypatch.setattr("app.lotti.azienda.get_azienda", azienda)
+    return archivio
+
+
+def test_il_responsabile_registra_l_esito_non_una_temperatura(responsabile):
+    """Quello che chiede il titolare, nella forma che regge a un'ispezione.
+
+    Il registro annota che il controllo e' stato fatto e che l'apparecchio era
+    entro soglia, con il nome di chi se ne assume la responsabilita'. Non
+    annota un numero che nessuno ha letto: quello si scrive solo quando c'e'
+    un'anomalia, e lo scrive lui.
+    """
+    from app.lotti.routers.haccp_auto import apri_rilevazioni_del_giorno
+
+    db, oggi = responsabile
+    esito = run(apri_rilevazioni_del_giorno())
+
+    assert esito["conformi_dichiarate"] == 3
+    scheda = run(db.temperature_positive.find_one({"frigorifero_numero": 1}))
+    casella = scheda["temperature"][str(oggi.month)][str(oggi.day)]
+
+    assert casella["temp"] is None, "nessun numero inventato"
+    assert casella["esito"] == "conforme"
+    assert casella["soglie"] == {"min": 0, "max": 4}, "le soglie vere della scheda"
+    assert casella["operatore"] == "Ceraldi Vincenzo"
+    assert casella["dichiarato_dal_responsabile"] is True
+    assert "controllo visivo" in casella["metodo"]
+
+
+def test_col_responsabile_nessun_apparecchio_resta_senza_firma(responsabile):
+    """Il Frigorifero N°2 non ha un responsabile assegnato, ma il controllo
+    lo fa il titolare: non e' un buco."""
+    from app.lotti.routers.haccp_auto import apri_rilevazioni_del_giorno
+
+    assert run(apri_rilevazioni_del_giorno())["senza_responsabile"] == []
+
+
+def test_l_anomalia_trovata_sostituisce_la_conformita(responsabile):
+    """Il frigo va a 10 gradi: il valore vero prende il posto della dichiarazione."""
+    from app.lotti.routers.haccp_auto import apri_rilevazioni_del_giorno
+
+    db, oggi = responsabile
+    run(apri_rilevazioni_del_giorno())
+    run(db.temperature_positive.update_one(
+        {"frigorifero_numero": 1},
+        {"$set": {f"temperature.{oggi.month}.{oggi.day}": {
+            "temp": 10.0, "allarme": True, "operatore": "Ceraldi Vincenzo",
+            "azione_correttiva": "Fuori servizio, richiesta assistenza",
+        }}},
+    ))
+
+    casella = run(db.temperature_positive.find_one({"frigorifero_numero": 1}))[
+        "temperature"][str(oggi.month)][str(oggi.day)]
+    assert casella["temp"] == 10.0 and casella["allarme"] is True
+    # e un secondo giro del turno non la cancella
+    run(apri_rilevazioni_del_giorno())
+    casella = run(db.temperature_positive.find_one({"frigorifero_numero": 1}))[
+        "temperature"][str(oggi.month)][str(oggi.day)]
+    assert casella["temp"] == 10.0
+
+
+def test_un_apparecchio_fuori_servizio_non_riceve_caselle(responsabile):
+    """«Faccio fuori servizio»: da li' il registro non si riempie di giornate
+    che nessuno poteva rilevare, e il motivo resta scritto."""
+    from app.lotti.routers.haccp_auto import apri_rilevazioni_del_giorno
+
+    db, _oggi = responsabile
+    run(db.attrezzature_config.update_one(
+        {"tipo": "frigo", "numero": 1},
+        {"$set": {"fuori_servizio": True, "fuori_servizio_motivo": "Guasto, assistenza richiesta"}},
+    ))
+
+    esito = run(apri_rilevazioni_del_giorno())
+
+    assert esito["aperte"] == 2, "il frigorifero fermo non deve avere una casella"

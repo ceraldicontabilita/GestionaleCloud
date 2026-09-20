@@ -392,3 +392,67 @@ async def assegna_operatore(
         "operatore_nome": nome,
         "message": (f"Responsabile: {nome}" if nome else "Responsabile rimosso"),
     }
+
+
+# ─── Fuori servizio ───────────────────────────────────────────────────────────
+# Quando il responsabile trova un apparecchio guasto lo mette fuori servizio:
+# da quel momento il turno del mattino smette di aprirgli le caselle, e il
+# registro non si riempie di giornate che nessuno poteva rilevare. Il motivo e
+# la data restano scritti — a un'ispezione «il frigo era fermo dal 12 al 19,
+# assistenza richiesta il 12» e' una risposta; una colonna vuota no.
+
+
+class FuoriServizio(BaseModel):
+    motivo: str = ""
+    assistenza_richiesta: bool = False
+    temperatura_rilevata: float | None = None
+
+
+@router.put("/{tipo}/{numero}/fuori-servizio")
+async def metti_fuori_servizio(
+    tipo: str, numero: int, dati: FuoriServizio, _admin=Depends(require_admin),
+):
+    if tipo not in ("frigo", "congelatore"):
+        raise HTTPException(status_code=400, detail="Tipo non valido: frigo o congelatore")
+    if not (dati.motivo or "").strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Serve il motivo: un apparecchio fermo senza motivo scritto "
+                   "e' un buco nel registro, non una spiegazione",
+        )
+    adesso = datetime.now(timezone.utc).isoformat()
+    esito = await db.attrezzature_config.update_one(
+        {"tipo": tipo, "numero": numero},
+        {"$set": {
+            "fuori_servizio": True,
+            "fuori_servizio_dal": adesso,
+            "fuori_servizio_motivo": dati.motivo.strip(),
+            "assistenza_richiesta": bool(dati.assistenza_richiesta),
+            "temperatura_rilevata_al_guasto": dati.temperatura_rilevata,
+            "rientrato_in_servizio_il": None,
+        }},
+    )
+    if esito.matched_count == 0:
+        raise HTTPException(status_code=404, detail=f"{tipo} N°{numero} non trovato")
+    return {
+        "success": True, "tipo": tipo, "numero": numero,
+        "message": f"{tipo} N°{numero} fuori servizio: {dati.motivo.strip()}",
+    }
+
+
+@router.put("/{tipo}/{numero}/rientro-in-servizio")
+async def rientro_in_servizio(tipo: str, numero: int, _admin=Depends(require_admin)):
+    """L'apparecchio torna in funzione: il turno ricomincia ad aprirgli le caselle."""
+    if tipo not in ("frigo", "congelatore"):
+        raise HTTPException(status_code=400, detail="Tipo non valido: frigo o congelatore")
+    esito = await db.attrezzature_config.update_one(
+        {"tipo": tipo, "numero": numero},
+        {"$set": {
+            "fuori_servizio": False,
+            "rientrato_in_servizio_il": datetime.now(timezone.utc).isoformat(),
+            "assistenza_richiesta": False,
+        }},
+    )
+    if esito.matched_count == 0:
+        raise HTTPException(status_code=404, detail=f"{tipo} N°{numero} non trovato")
+    return {"success": True, "message": f"{tipo} N°{numero} di nuovo in servizio"}
