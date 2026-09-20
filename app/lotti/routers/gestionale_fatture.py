@@ -139,13 +139,21 @@ async def _get_json(client: httpx.AsyncClient, path: str, **params) -> dict[str,
     return payload
 
 
-async def _elenco(client: httpx.AsyncClient, anno: int | None, massimo: int) -> tuple[list[dict], int]:
+# Guardia contro un ciclo infinito se la fonte sbaglia a dire `total`. Non e'
+# il tetto di lavorazione: quello si applica alle sole fatture ANCORA DA
+# PRENDERE, dopo il confronto col registro delle ricevute.
+_TETTO_ELENCO = 20000
+
+
+async def _elenco(client: httpx.AsyncClient, anno: int | None) -> tuple[list[dict], int]:
+    """Elenco COMPLETO della fonte per l'anno. Tagliarlo qui significherebbe
+    tagliarlo per data (l'elenco arriva ordinato), cioe' perdere per sempre le
+    fatture piu' recenti."""
     items: list[dict] = []
     skip = 0
     total = 0
-    while len(items) < massimo:
-        page_size = min(500, massimo - len(items))
-        params: dict[str, Any] = {"skip": skip, "limit": page_size}
+    while len(items) < _TETTO_ELENCO:
+        params: dict[str, Any] = {"skip": skip, "limit": 500}
         if anno:
             params["anno"] = anno
         page = await _get_json(client, "/api/integrations/lotti/invoices", **params)
@@ -155,18 +163,21 @@ async def _elenco(client: httpx.AsyncClient, anno: int | None, massimo: int) -> 
         skip += len(data)
         if not data or skip >= total:
             break
-    return items[:massimo], total
+    return items, total
 
 
-async def _elenco_locale(anno: int | None, massimo: int) -> tuple[list[dict], int]:
-    """Legge la proiezione canonica direttamente dal GestionaleCloud locale."""
+async def _elenco_locale(anno: int | None) -> tuple[list[dict], int]:
+    """Legge la proiezione canonica direttamente dal GestionaleCloud locale.
+
+    Restituisce TUTTE le fatture dell'anno, non le prime N: il taglio per
+    numero si applica piu' avanti alle sole fatture ancora da prendere."""
     from app.routers.lotti_integration import _documents, _projection, _year
 
     items = [_projection(doc, include_xml=False) for doc in await _documents()]
     if anno is not None:
         items = [item for item in items if _year(item.get("invoice_date", "")) == anno]
     items.sort(key=lambda item: (item.get("invoice_date", ""), item.get("source_id", "")))
-    return items[:massimo], len(items)
+    return items, len(items)
 
 
 async def _dettaglio_locale(source_id: str) -> dict[str, Any]:
@@ -176,6 +187,34 @@ async def _dettaglio_locale(source_id: str) -> dict[str, Any]:
     if document is not None:
         return _projection(document, include_xml=True)
     raise ValueError("Fattura sorgente non trovata nel GestionaleCloud")
+
+
+def _descrivi(exc: BaseException) -> str:
+    """Messaggio dell'eccezione, o il suo TIPO se il messaggio e' vuoto.
+
+    `str(exc)` e' vuoto per molte eccezioni reali (i timeout di httpx, per
+    dirne una). Il registro di produzione al 20/09/2026 conteneva quattro giri
+    andati storti con scritto soltanto «Lettura fonte GestionaleCloud: » —
+    un guasto muto, che CLAUDE.md vieta proprio perche' il log deve dire
+    QUALE cosa non ha funzionato, non limitarsi a dire «errore»."""
+    testo = str(exc).strip()
+    tipo = type(exc).__name__
+    return f"{tipo}: {testo[:180]}" if testo else tipo
+
+
+async def _source_id_gia_presi() -> dict[str, str]:
+    """`source_id` -> `source_hash` delle fatture gia' prese in carico.
+
+    Solo gli stati terminali: un `conflitto_hash` deve essere riesaminato ogni
+    giro, non saltato."""
+    righe = await getattr(db, RECEIPTS).find(
+        {"stato": {"$in": ["importata", "collegata_esistente"]}},
+        {"_id": 0, "source_id": 1, "source_hash": 1},
+    ).to_list(100000)
+    return {
+        str(r.get("source_id") or ""): str(r.get("source_hash") or "")
+        for r in righe if r.get("source_id")
+    }
 
 
 async def esegui_sync_gestionale(
@@ -192,6 +231,7 @@ async def esegui_sync_gestionale(
         "importate": 0,
         "collegate_esistenti": 0,
         "gia_ricevute": 0,
+        "arretrato": 0,
         "senza_xml": 0,
         "conflitti": [],
         "errori": [],
@@ -202,10 +242,32 @@ async def esegui_sync_gestionale(
         if _usa_ponte_http():
             timeout = httpx.Timeout(120.0, connect=20.0)
             client = httpx.AsyncClient(timeout=timeout, follow_redirects=True)
-            items, total = await _elenco(client, anno, massimo)
+            items, total = await _elenco(client, anno)
         else:
-            items, total = await _elenco_locale(anno, massimo)
+            items, total = await _elenco_locale(anno)
         result["totale_fonte"] = total
+
+        # Il tetto `massimo` limita il LAVORO di un giro, non la finestra di
+        # fatture che il ponte e' disposto a vedere. Prima si applicava
+        # all'elenco intero, che arriva ordinato per data crescente: con 1.444
+        # fatture in archivio e un tetto di 1.000, le 444 dal 30/06/2026 in poi
+        # non sarebbero MAI entrate in Lotti, e il buco cresceva ogni giorno —
+        # senza un errore, senza un alert, solo merce che non arriva.
+        # Ora si scartano prima quelle gia' prese, poi si taglia: ogni giro
+        # lavora fatture NUOVE, e `arretrato` dice quante restano per il giro
+        # dopo, cosi' il ritardo e' un numero che si legge.
+        gia_presi = await _source_id_gia_presi()
+        da_prendere = []
+        for item in items:
+            sid = str(item.get("source_id") or "").strip()
+            sh = str(item.get("source_hash") or "").strip()
+            if sid and sh and gia_presi.get(sid) == sh:
+                result["gia_ricevute"] += 1
+                continue
+            da_prendere.append(item)
+        result["arretrato"] = max(0, len(da_prendere) - massimo)
+        items = da_prendere[:massimo]
+
         for item in items:
             result["esaminate"] += 1
             source_id = str(item.get("source_id") or "").strip()
@@ -322,11 +384,11 @@ async def esegui_sync_gestionale(
                 result["importate"] += 1
             except Exception as exc:
                 result["errori"].append(
-                    f"{item.get('invoice_number') or source_id}: {str(exc)[:180]}"
+                    f"{item.get('invoice_number') or source_id}: {_descrivi(exc)}"
                 )
     except Exception as exc:
         result["ok"] = False
-        result["errori"].append(f"Lettura fonte GestionaleCloud: {str(exc)[:180]}")
+        result["errori"].append(f"Lettura fonte GestionaleCloud: {_descrivi(exc)}")
     finally:
         if client is not None:
             await client.aclose()
