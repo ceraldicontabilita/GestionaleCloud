@@ -2,11 +2,11 @@
 
 <!-- gestionalecloud-doc
 status: current
-reviewed_at: 2026-09-19
+reviewed_at: 2026-09-20
 storage_architecture: supabase
 -->
 
-Aggiornato il 19/09/2026 sul codice di `main` del repository canonico
+Aggiornato il 20/09/2026 sul codice di `main` del repository canonico
 `ceraldicontabilita/GestionaleCloud`.
 
 **Questo file e `README.md` sono gli unici due documenti del repository.**
@@ -350,6 +350,10 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   originale fuori dal suo anno, e l'anno lo decide il parser XML, mai il nome.
 - Una coda che non cala e importa zero **non è un guasto**: i già importati
   risultano doppioni e vengono solo spostati. A dirlo è la quadratura, non la coda.
+- **«Processo interrotto durante il parsing» non è un errore del file**: è il
+  marcatore che la ricostruzione scrive quando il worker muore mentre lo legge,
+  e subito dopo sposta il cursore oltre. Quei file sono fatture **sane** da
+  rileggere, non scarti: cercarli fra gli errori è cercarli nel posto sbagliato.
 - **Un documento di un'altra sezione arrivato nel canale sbagliato non è un
   errore.** Una chiusura RT (`DatiCorrispettivi`) finita fra le fatture si
   riconosce dalla radice dell'XML — mai dal nome, che ha la stessa forma — e si
@@ -778,58 +782,54 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   restano stabili. Escludere significa «non richiede la dichiarazione», non
   «nascondilo dal menu»: è conformità, si conserva e si revoca.
 
-## Stato attuale (al 19/09/2026 — riscrivere sul posto)
+## Stato attuale (al 20/09/2026 — riscrivere sul posto)
 
-- Ogni merge su `main` fa ridistribuire Render e ricaricare ~74.500 righe: per
-  qualche minuto la produzione è `degraded`. Non è un guasto, ma non si
-  accodano merge.
-- Ingest cedolini (`services/cedolini_manager` → `salari_unificati_v2`):
-  **collaudo live non chiuso**, il giro orario Drive trova 0 file su 49
-  caselle. Anche il `last_login` di HR è da verificare al primo accesso col PIN.
-- TFR accantonato: `hr.app_tfr_accantonamenti` è vuota ma il codice vivo scrive
-  in `tfr_accantonamenti` (1.175 righe, 42 dipendenti, 273.025,37 €).
+- Ogni merge su `main` fa ridistribuire Render e ricaricare ~77.000 righe: per
+  qualche minuto la produzione è `degraded`. Non si accodano merge.
+- Ingest cedolini (`cedolini_manager` → `salari_unificati_v2`): **collaudo live
+  non chiuso**, il giro orario Drive trova 0 file su 49 caselle.
+- TFR: `hr.app_tfr_accantonamenti` è vuota, il codice vivo scrive in
+  `tfr_accantonamenti` (1.175 righe, 42 dipendenti, 273.025,37 €).
 - **Spento**: `PROTOCOLLO_DRIVE_ENABLED=false` (portava la RAM a 1,57 GB su 2).
 - **Acceso**: scheduler, ingest Drive (fatture, estratti conto, cedolini,
-  bonifici), ponte pagamenti HR, dedup fatture ogni 30 min, dichiarazioni fiscali.
-- Fatture in archivio **1.428**, di cui 873 non archiviate e 555 loro gemelli
-  archiviati (0 orfani); collisioni 0. Tutte del 2026: il pre-2026 è stato
-  tolto il 20/09 con backup in `fatture_pre2026_rimosse_20260920`. **Le
-  ultime 13 righe hanno solo i campi italiani** e nessun filtro canonico le
-  vede (regola 12): 7 fatture e 6 DDT, fonte `legacy_staging_2026`.
-- **Su Drive 1.318 XML di fattura 2026**, consegnati a blocchi manuali: il
-  ritardo è a monte di noi, non nell'ingest.
-- **Corrispettivi fermi al 24/08/2026**: le chiusure del 25-27/08 erano su
-  Drive nella cartella sbagliata, dal 28/08 non ne arrivano più (PC negozio).
-- **Nessuna liquidazione IVA è mai stata calcolata**: `/api/iva/liquidazioni`
-  torna vuoto. Giugno e luglio sono calcolabili ma con **zero** acquisti (tutti
+  bonifici), ponte pagamenti HR, dedup fatture, dichiarazioni fiscali.
+- Fatture **1.428**: 873 attive + 555 gemelli archiviati (0 orfani, collisioni
+  0), tutte del 2026 — il pre-2026 è stato tolto il 20/09 con backup in
+  `fatture_pre2026_rimosse_20260920`. **13 righe hanno solo i campi italiani** e
+  nessun filtro canonico le vede (regola 12): 7 fatture e 6 DDT.
+- **Gli XML di fattura 2026 arrivano su Drive a blocchi manuali** dal portale
+  AdE: il ritardo e' a monte, non nell'ingest. I 3 file rimasti in
+  `2026/Errori` sono fatture **sane** (San Marino, `.p7m`), non illeggibili.
+- **Corrispettivi 183, fermi al 24/08/2026.** Le chiusure RT del 25-27/08 erano
+  negli `Errori` delle fatture, spostate il 20/09 nell'inbox giusta. Dal 28/08
+  non ne arrivano più: il PC del negozio è fermo, 23 giornate fuori dai conti.
+- **Nessuna liquidazione IVA calcolata**: `/api/iva/liquidazioni` torna vuoto.
+  Giugno e luglio sono calcolabili ma con **zero** acquisti (tutti
   `detraibilita_da_verificare`): saldo = IVA vendite intera, 7.651,05 € e
   6.211,86 €. Corrispettivi 2026: 518.879,34 €, 47.170,88 € di IVA a debito.
 - LIPE 2026 (tre periodi, quadrati): marzo combacia al centesimo (6.131,26 €);
-  a gennaio mancano **5.005,88 €** di IVA detraibile, acquisti che lui ha e noi
-  no. Nessun F24 IVA 2026: la LIPE chiude a credito ogni mese.
-- Solo 108 prodotti del Menu su 325 hanno allergeni: obbligo di legge, da
-  completare. Il cron Render `gestionalecloud-calderone-15min`, sospeso e senza
-  codice, va cancellato dal pannello.
+  a gennaio mancano **5.005,88 €** di IVA detraibile. Nessun F24 IVA 2026.
+- Solo 108 prodotti del Menu su 325 hanno allergeni: obbligo di legge. Il cron
+  Render `gestionalecloud-calderone-15min`, sospeso, va cancellato dal pannello.
 
 ## Aperto (togliere la voce quando si chiude)
 
-- Compute Supabase **Micro** insufficiente (crash del 17/09): valutare Small.
+- Compute Supabase **Micro** insufficiente: Postgres e' caduto il 17/09 e ha
+  rifiutato le connessioni il 20/09. Da portare a **Small**: e' la causa
+  comune del database irraggiungibile e dei file persi a meta' lettura.
 - Le **13 fatture legacy senza campi inglesi** vanno normalizzate: finché non
   hanno `invoice_number`/`invoice_date`/`total_amount` restano fuori da ogni
   elenco, conteggio e somma del gestionale.
 - Endpoint sincroni oltre i 5 minuti, da portare a lotti riprendibili:
   `/api/fatture/drive/quadratura`, `/api/paypal-api/riconcilia` e
-  `/account-ids-non-mappati`, `/api/admin/riallinea-pagamenti-fatture`,
-  `/api/prima-nota-salari/deposita-cedolini-in-hr`.
+  `/account-ids-non-mappati`, `/api/admin/riallinea-pagamenti-fatture`.
 - Note di credito TD04 legacy (~20, precedenti al fix a `registra_fattura`):
-  costo/IVA/debito aumentati anziché ridotti, da sanare con
-  `storna_registrazione_fattura`.
+  costo/IVA/debito aumentati anziché ridotti, da sanare con storno.
 - **Nessuno dei 187 fornitori ha `metodo_pagamento`** (41 hanno un IBAN):
   finché resta così ogni fattura è `sospesa` e nulla va in Prima Nota Banca.
   Serve una fonte vera, non dedotta dalle fatture.
 - **Pregresso fatture**: 296 attive (173.184,83 €) senza partita aperta, 280
-  anche fuori dal giornale. Ordine obbligato:
-  `/api/admin/fatture/ripubblica-evento-created`, poi `/registra-pregresso`.
+  fuori dal giornale. Prima `ripubblica-evento-created`, poi `registra-pregresso`.
 - Da lanciare, con `dry_run` prima: `/api/admin/fatture/azzera-scadenze` (642
   fatture e 971 partite con la scadenza inventata dal vecchio import);
   `/api/iva/lipe/importa` (`lipe_periodi` vuota); e `ricostruisci-numia` di
