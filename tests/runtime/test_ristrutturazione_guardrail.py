@@ -100,11 +100,17 @@ def test_nessuna_nuova_istanza_fastapi_fuori_dal_main():
 GIACENZA_ERP_NO_WRITE = {
     "warehouse_stocks",
     "warehouse_products",
-    "warehouse_inventory",
     "magazzino",
     "magazzino_articoli",
     "magazzino_movimenti",
     "movimenti_magazzino",
+}
+
+# Durante la fusione il nuovo inventario canonico e' warehouse_inventory.
+# I writer storici ammessi sono espliciti e devono diminuire, mai aumentare.
+WAREHOUSE_INVENTORY_WRITERS_TEMPORANEI = {
+    "app/services/handlers/magazzino_handlers.py",
+    "app/routers/fornitori_learning.py",
 }
 
 COSTANTI_GIACENZA_NO_WRITE = {
@@ -151,12 +157,20 @@ def test_erp_non_scrive_sulle_collezioni_giacenza_legacy_neanche_via_alias():
             if node.func.attr not in WRITE_METHODS:
                 continue
             coll, costante = _subscript_name(node.func.value)
-            if coll in GIACENZA_ERP_NO_WRITE or costante in COSTANTI_GIACENZA_NO_WRITE:
+            vecchia_giacenza = (
+                coll in GIACENZA_ERP_NO_WRITE
+                or costante in COSTANTI_GIACENZA_NO_WRITE
+            )
+            inventario_canonico_fuori_writer = (
+                coll == "warehouse_inventory"
+                and rel not in WAREHOUSE_INVENTORY_WRITERS_TEMPORANEI
+            )
+            if vecchia_giacenza or inventario_canonico_fuori_writer:
                 bersaglio = coll or f"Collections.{costante}"
                 offenders.append(
                     f"{rel}:{node.lineno} -> {bersaglio}.{node.func.attr}"
                 )
     assert not offenders, (
-        "Scritture ERP vietate sulla vecchia giacenza. Il magazzino operativo "
-        "non puo' avere un secondo writer:\n" + "\n".join(offenders)
+        "Scritture ERP vietate sulla vecchia giacenza o fuori dai writer "
+        "canonici transitori di warehouse_inventory:\n" + "\n".join(offenders)
     )
