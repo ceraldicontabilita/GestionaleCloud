@@ -1,7 +1,8 @@
 // Layout dell'app principale: header, barra di navigazione e cornice pagina.
 // Estratto da App.js (fase 2 ristrutturazione 24/07/2026) — SOLO presentazione:
 // stato e logica restano in App.js / useAppNavigation.
-import { FileText, HelpCircle, LayoutDashboard, LogOut, ShoppingCart } from "lucide-react";
+import { FileText, HelpCircle, LayoutDashboard, LogOut } from "lucide-react";
+import SelettoreSezioni from "../components/shared/SelettoreSezioni";
 import { logout } from "../auth";
 import { conferma } from "../utils/conferma";
 import { HACCP_TABS, PRIMARY_TABS, SECONDARY_TABS } from "../config/navigation";
@@ -122,16 +123,7 @@ export default function AppLayout({ activeTab, onTabChange, ordiniPendenti, onSu
           <HACCPPdfButton />
           <div className="g-divider-v" style={{ margin: "0 6px" }} />
 
-          <a
-            href={process.env.REACT_APP_GESTIONALE_URL || "/"}
-            target="_blank"
-            rel="noopener noreferrer"
-            data-testid="nav-gestionale"
-            className="g-gestionale-link"
-          >
-            <ShoppingCart size={13} />
-            Gestionale
-          </a>
+          <SelettoreSezioni sezioneCorrente="lotti" />
         </div>
       </nav>
 

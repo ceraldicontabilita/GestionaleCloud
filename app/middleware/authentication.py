@@ -41,6 +41,16 @@ PUBLIC_PATHS = {
     "/health",
     "/api/health",
     "/api/ping",
+
+    # L'elenco delle quattro sezioni (gestionale, magazzino, personale, menu).
+    # Pubblico di proposito: e' la mappa del sito, quella che si legge dalla
+    # barra degli indirizzi, e serve a tutte e quattro le interfacce per
+    # costruire il passaggio da una all'altra. Le tre sezioni fuori dall'ERP
+    # firmano i token con altri segreti: se fosse protetto, da Lotti o dal
+    # portale la chiamata tornerebbe 401 e il collegamento sparirebbe.
+    # Non espone nessun dato: solo nomi e percorsi.
+    "/api/sezioni",
+    "/api/sezioni/",
     
     # Authentication endpoints
     "/api/auth/login",

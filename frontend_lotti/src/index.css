@@ -896,7 +896,9 @@ h1, .g-page-title { font-weight: 800; }
 }
 
 /* Link esterno Gestionale */
-.g-gestionale-link {
+/* Il passaggio alle altre sezioni. Si chiamava `g-gestionale-link` quando il
+   collegamento era uno solo; ora ne serve uno per sezione. */
+.g-sezione-link {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -909,11 +911,12 @@ h1, .g-page-title { font-weight: 800; }
   background: var(--warning-soft);
   text-decoration: none;
   transition: all .15s;
-  min-height: 38px;
+  /* 44px: si tocca dal tablet, con le mani sporche. Erano 38. */
+  min-height: 44px;
   font-family: var(--font);
   white-space: nowrap;
 }
-.g-gestionale-link:hover { background: #FFD099; }
+.g-sezione-link:hover { background: #FFD099; }
 
 /* ════════════════════════════════════════════════════
    LOADING SCREEN — stile PIN screen app mobile
