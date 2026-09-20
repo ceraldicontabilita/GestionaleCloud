@@ -87,20 +87,29 @@ def test_nessun_codice_irraggiungibile(percorso):
     assert not morti, f"{percorso} ha codice irraggiungibile: {'; '.join(morti)}"
 
 
-def test_gli_endpoint_che_popolavano_sono_chiusi():
-    """Non basta che il corpo sia sparito: devono rispondere 410."""
-    from fastapi import HTTPException
+def test_gli_endpoint_che_popolavano_non_esistono_piu():
+    """Non bastava il 410 davanti: adesso la funzione non c'e'.
 
+    Erano quattro rotte che riempivano il registro HACCP di rilevazioni mai
+    fatte. Le avevano zittite con un `raise HTTPException(410)`, lasciando la
+    firma al suo posto: una riga da togliere e tornavano a scrivere. Di tre
+    non restava nemmeno un bottone che le chiamasse.
+
+    `popola_sanificazione_storica` sopravvive al 410 finche' la sua pagina la
+    chiama: quella va tolta insieme al bottone, non prima, o resta un tasto
+    che porta a un 404.
+    """
     import app.lotti.routers.haccp_auto as haccp
 
-    for nome in ("popola_temperature_storiche", "popola_sanificazione_storica",
-                 "popola_tutti_dati_haccp", "genera_dati_oggi"):
-        funzione = getattr(haccp, nome)
-        sorgente = inspect.getsource(funzione)
-        assert "HTTPException" in sorgente and "410" in sorgente, (
-            f"{nome} non e' piu' bloccato: puo' tornare a scrivere evidenze finte."
+    for nome in ("popola_temperature_storiche", "popola_tutti_dati_haccp",
+                 "genera_dati_oggi"):
+        assert not hasattr(haccp, nome), (
+            f"{nome} e' tornato: una rotta che fabbrica evidenze non si tiene "
+            "nemmeno spenta."
         )
-    assert HTTPException  # l'import serve a provare che il tipo esiste davvero
+
+    sorgente = inspect.getsource(haccp.popola_sanificazione_storica)
+    assert "HTTPException" in sorgente and "410" in sorgente
 
 
 def test_verifica_oggi_non_scrive_niente():

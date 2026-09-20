@@ -890,21 +890,17 @@ async def update_supplier(supplier_id: str, data: Dict[str, Any] = Body(...)) ->
                 anno_corrente = datetime.now(timezone.utc).year
                 esito = await ripristina_provvisori_metodo_errato(
                     dry_run=False, anno=anno_corrente, banca_non_riconciliate=False)
-                from app.routers.prima_nota_module.sync import (
-                    auto_conferma_provvisori_per_metodo,
-                )
-                reinstradamento = await auto_conferma_provvisori_per_metodo(
-                    anno=anno_corrente,
-                )
+                # Qui seguiva il reinstradamento automatico in Cassa/Banca sul
+                # solo metodo dell'anagrafica. E' stato tolto perche' confermava
+                # un pagamento senza prova. Dal 15/09/2026 rispondeva 409, e il
+                # 409 finiva dritto nell'except qui sotto: nessun errore in
+                # pagina, nessuna riga scritta, nessuno che se ne accorgeva.
+                # Resta il ripristino dei provvisori sul lato sbagliato, che
+                # non afferma nessun pagamento.
                 if esito.get("corretti"):
                     logger.info(
                         "Riprocesso prima nota dopo cambio metodo fornitore %s: %s corretti",
                         supplier_id, esito.get("corretti"))
-                if reinstradamento.get("mosse_cassa") or reinstradamento.get("mosse_banca"):
-                    logger.info(
-                        "Reinstradamento fatture fornitore %s: cassa=%s banca=%s",
-                        supplier_id, reinstradamento.get("mosse_cassa", 0),
-                        reinstradamento.get("mosse_banca", 0))
             except Exception as e:
                 logger.warning("Riprocesso prima nota dopo cambio metodo fallito: %s", e)
 

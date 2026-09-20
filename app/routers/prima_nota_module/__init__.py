@@ -47,7 +47,7 @@ from .sync import (
     conferma_provvisorie_multiple,
     conferma_divisione_provvisoria,
     sposta_scrittura_prima_nota,
-    auto_conferma_provvisori_per_metodo, annulla_auto_conferma,
+    annulla_auto_conferma,
     crea_entrata_cassa_da_corrispettivo,
 )
 from .manutenzione import (
@@ -203,7 +203,6 @@ router.add_api_route("/provvisori/associa-assegno", associa_assegno_fattura_prov
 from .sync import sposta_fatture_cassa_pagate_in_banca
 router.add_api_route("/sposta-cassa-pagate-in-banca", sposta_fatture_cassa_pagate_in_banca, methods=["POST"])
 router.add_api_route("/provvisori/conferma-divisione", conferma_divisione_provvisoria, methods=["POST"])
-router.add_api_route("/provvisori/auto-conferma-per-metodo", auto_conferma_provvisori_per_metodo, methods=["POST"])
 router.add_api_route("/provvisori/annulla-auto-conferma", annulla_auto_conferma, methods=["POST"])
 router.add_api_route("/cassa/crea-entrata-da-corrispettivo", crea_entrata_cassa_da_corrispettivo, methods=["POST"])
 router.add_api_route("/sposta-scrittura", sposta_scrittura_prima_nota, methods=["POST"])

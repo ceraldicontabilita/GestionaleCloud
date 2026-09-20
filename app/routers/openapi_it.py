@@ -18,7 +18,6 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 
 from app.database import Database
-from app.models.stati import STATI_PAGATI
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -201,70 +200,6 @@ async def get_movimenti_bancari(
     except httpx.HTTPError as e:
         logger.error(f"Errore AISP movimenti: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
-
-async def riconcilia_automatica_aisp(iban: str = Query(...)) -> Dict[str, Any]:
-    """
-    Esegue la riconciliazione automatica tra movimenti AISP e fatture/assegni.
-    """
-    raise HTTPException(
-        status_code=410,
-        detail="Riconciliazione AISP automatica disabilitata: usare preview e conferma manuale",
-    )
-    db = Database.get_db()
-    
-    risultato = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "movimenti_processati": 0,
-        "riconciliazioni_trovate": 0,
-        "dettagli": []
-    }
-    
-    try:
-        # Recupera movimenti AISP
-        movimenti_resp = await get_movimenti_bancari(iban=iban)
-        movimenti = movimenti_resp.get("movimenti", [])
-        
-        risultato["movimenti_processati"] = len(movimenti)
-        
-        for mov in movimenti:
-            importo = abs(float(mov.get("amount", 0)))
-            descrizione = mov.get("description", "")
-            data = mov.get("booking_date")
-            
-            # Cerca match in fatture
-            fattura = await db.invoices.find_one({
-                "total_amount": {"$gte": importo - 1, "$lte": importo + 1},
-                "status": {"$nin": STATI_PAGATI}
-            })
-            
-            if fattura:
-                # Aggiorna fattura come pagata
-                await db.invoices.update_one(
-                    {"id": fattura.get("id")},
-                    {"$set": {
-                        "status": "pagata",
-                        "data_pagamento": data,
-                        "movimento_aisp_id": mov.get("transaction_id"),
-                        "riconciliazione_automatica": True,
-                        "updated_at": datetime.now(timezone.utc).isoformat()
-                    }}
-                )
-                
-                risultato["riconciliazioni_trovate"] += 1
-                risultato["dettagli"].append({
-                    "movimento": descrizione[:50],
-                    "importo": importo,
-                    "fattura": fattura.get("invoice_number"),
-                    "fornitore": fattura.get("supplier_name", "")[:30]
-                })
-        
-        return risultato
-        
-    except Exception as e:
-        logger.error(f"Errore riconciliazione AISP: {e}")
-        risultato["error"] = str(e)
-        return risultato
 
 
 # ============================================================

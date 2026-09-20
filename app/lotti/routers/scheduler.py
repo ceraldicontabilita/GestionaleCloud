@@ -235,82 +235,20 @@ async def job_pulisci_lotti_scaduti():
 
 
 async def job_genera_haccp_giornaliero():
-    """
-    Ogni mattino alle 07:00 (Roma) — prima che gli operatori arrivino.
+    """Il turno del mattino, alle 07:00 (Roma): prima che arrivino gli operatori.
 
-    Usa verifica_oggi() che:
-    1. Controlla se temperature e sanificazione sono già presenti
-    2. Genera SOLO quello che manca (non sovrascrive dati manuali)
-    3. Per la sanificazione usa correttamente db.sanificazione_schede
-       con lo schema {registrazioni: {attrezzatura: {giorno: 'X'}}}
+    Tutto il lavoro sta in `run_morning_automation`, che e' l'unico ingresso:
+    lo usano anche il recupero all'avvio e il workflow esterno, e la chiave
+    job/data impedisce che una giornata venga aperta due volte.
 
-    Se la scheda sanificazione del mese non esiste ancora (operatori non l'hanno
-    creata tramite l'interfaccia) non la crea automaticamente per non interferire
-    con il workflow manuale.
+    Qui sotto stava una seconda copia dello stesso giro, irraggiungibile perche'
+    veniva dopo il `return`. Nessun comportamento e' andato perso: apertura del
+    turno, generazione di quel che manca e marcatura dei giorni non rilevati le
+    fa `daily_haccp()` dentro l'orchestratore.
     """
     from app.lotti.servizi.automatismi_mattutini import run_morning_automation
 
     return await run_morning_automation(source="internal_scheduler")
-
-    from app.lotti.routers.haccp_auto import verifica_e_popola_oggi, marca_giorni_non_rilevati
-
-    print(f"[Scheduler] {datetime.now()} - Generazione HACCP giornaliero...")
-    oggi = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-
-    try:
-        result = await verifica_e_popola_oggi()
-
-        # RECUPERO DEI BUCHI (AUDIT_SCHEDULER_TEMPERATURE §2.3): se il server è
-        # rimasto giù per uno o più giorni, quei giorni restavano vuoti a
-        # database senza dire perché. Ora vengono DICHIARATI "non rilevato" col
-        # motivo — nessuna temperatura inventata, nessun dato esistente
-        # riscritto. Gira anche al riavvio, perché il catchup richiama questo
-        # stesso job.
-        non_rilevati = await marca_giorni_non_rilevati()
-
-        await db.scheduler_logs.insert_one(
-            {
-                "job": "haccp_daily",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "success": True,
-                "date": oggi,
-                "generato": result.get("generato", False),
-                "elementi": result.get("elementi", []),
-                "message": result.get("message", ""),
-                "giorni_non_rilevati": non_rilevati,
-            }
-        )
-        print(f"[Scheduler] HACCP {oggi}: {result.get('message', 'ok')}")
-
-    except Exception as e:
-        await db.scheduler_logs.insert_one(
-            {
-                "job": "haccp_daily",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "success": False,
-                "date": oggi,
-                "error": str(e),
-            }
-        )
-        print(f"[Scheduler] Errore HACCP: {e}")
-
-    # ── Riordino automatico sotto-scorta: crea bozze per fornitore ──────────
-    #    FUORI dal try HACCP: un errore nella generazione registri non deve
-    #    saltare il riordino del giorno (funzioni di business indipendenti).
-    try:
-        from app.lotti.routers.ordini_fornitori import esegui_riordino_automatico
-        r = await esegui_riordino_automatico()
-        logger.info(f"[scheduler] riordino auto: {len(r.get('bozze_create', []))} bozze")
-    except Exception as e:
-        logger.warning(f"[scheduler] riordino auto fallito: {e}")
-
-    # ── Task dipendenti: genera checklist giornaliera ────────────────────────
-    try:
-        from app.lotti.routers.task_dipendenti import genera_task_giornalieri
-
-        await genera_task_giornalieri()
-    except Exception as _te:
-        print(f"[Scheduler] Generazione task fallita: {_te}")
 
 
 # ── JOB 02:30 — Backup notturno ──────────────────────────────────────────────
@@ -456,39 +394,6 @@ async def job_ricerca_web_prodotti():
         print(f"[Scheduler] Errore ricerca web: {e}")
 
 
-async def job_automatismi_haccp():
-    """Ogni 5 giorni (Roma). Genera le registrazioni HACCP obbligatorie SEMPRE CONFORMI
-    (controllo olio, temperature cottura) e, occasionalmente, un reclamo fornitore realistico.
-    Le non conformità restano una scelta manuale dell'operatore."""
-    print(f"[Scheduler] {datetime.now()} - Automatismi HACCP...")
-    try:
-        from app.lotti.routers.automatismi_haccp import (
-            genera_controllo_olio_automatico,
-            genera_temperature_cottura_automatico,
-            genera_reclamo_fornitore_automatico,
-        )
-
-        n_olio = await genera_controllo_olio_automatico()
-        n_temp = await genera_temperature_cottura_automatico()
-        n_recl = await genera_reclamo_fornitore_automatico()
-
-        await db.scheduler_logs.insert_one({
-            "job": "automatismi_haccp",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "success": True,
-            "controllo_olio": n_olio,
-            "temperature_cottura": n_temp,
-            "reclami_fornitori": n_recl,
-        })
-        print(f"[Scheduler] Automatismi HACCP — olio:{n_olio} temp:{n_temp} reclami:{n_recl}")
-    except Exception as e:
-        await db.scheduler_logs.insert_one({
-            "job": "automatismi_haccp",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "success": False,
-            "error": str(e),
-        })
-        print(f"[Scheduler] Errore automatismi HACCP: {e}")
 
 
 # job_check_scorta_minima RIMOSSO (02/07/2026): faceva da doppione del riordino
@@ -630,15 +535,6 @@ def setup_scheduler():
         replace_existing=True,
     )
 
-    # HACCP obbligatorio: ogni 5 giorni (giorni 1,6,11,16,21,26,31) alle 07:30
-    scheduler.add_job(
-        job_automatismi_haccp,
-        CronTrigger(day="1,6,11,16,21,26,31", hour=7, minute=30, timezone=TZ),
-        id="automatismi_haccp",
-        name="Automatismi HACCP olio/temperature/reclami (ogni 5gg, 07:30)",
-        replace_existing=True,
-    )
-
     # Ricerca web prodotti: identifica le righe fattura senza canonico, 3 per
     # giro (~200/giorno). Permanente: una riga identificata non si ricerca più.
     scheduler.add_job(
@@ -728,23 +624,6 @@ async def _catchup_jobs_mancanti():
             except Exception as e:
                 print(f"[Scheduler CATCHUP] Errore eseguendo '{job_name}': {e}")
 
-        # Automatismi HACCP (ogni 5 giorni): se l'ultima esecuzione è >5 giorni fa
-        # (o non c'è mai stata), eseguili subito per non lasciare buchi nel registro.
-        try:
-            ultimo_haccp = await db.scheduler_logs.find_one(
-                {"job": "automatismi_haccp", "success": True}, sort=[("timestamp", -1)]
-            )
-            esegui = True
-            if ultimo_haccp and ultimo_haccp.get("timestamp"):
-                from datetime import datetime as _dt
-                ts = _dt.fromisoformat(ultimo_haccp["timestamp"].replace("Z", "+00:00"))
-                giorni = (datetime.now(timezone.utc) - ts).days
-                esegui = giorni >= 5
-            if esegui:
-                print("[Scheduler CATCHUP] Automatismi HACCP non eseguiti da >5gg → eseguo subito")
-                await job_automatismi_haccp()
-        except Exception as e:
-            print(f"[Scheduler CATCHUP] Errore automatismi HACCP: {e}")
     except Exception as e:
         print(f"[Scheduler CATCHUP] Errore generale: {e}")
 
@@ -752,16 +631,6 @@ async def _catchup_jobs_mancanti():
 # ── Endpoint REST ─────────────────────────────────────────────────────────────
 
 
-@router.post("/esegui-automatismi-haccp")
-async def esegui_automatismi_haccp_ora():
-    """Lancia subito gli automatismi HACCP (olio, temperature, reclami).
-    Utile per popolare il registro al primo avvio senza attendere il giorno pianificato,
-    o per forzare un controllo. Idempotente: non duplica le registrazioni di oggi."""
-    await job_automatismi_haccp()
-    ultimo = await db.scheduler_logs.find_one(
-        {"job": "automatismi_haccp"}, {"_id": 0}, sort=[("timestamp", -1)]
-    )
-    return {"ok": True, "ultimo_log": ultimo}
 
 
 @router.get("/stato", response_model=SchedulerStatus)

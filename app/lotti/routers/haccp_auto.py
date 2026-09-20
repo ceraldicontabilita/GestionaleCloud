@@ -24,15 +24,6 @@ class PopulateResult(BaseModel):
     date_to: str
 
 
-@router.post("/popola-temperature", response_model=PopulateResult)
-async def popola_temperature_storiche(
-    data_inizio: str = "2024-01-01", data_fine: Optional[str] = None,
-    _admin=Depends(require_admin),
-):
-    raise HTTPException(
-        status_code=410,
-        detail="Bloccato: le temperature HACCP devono provenire da una rilevazione verificabile.",
-    )
 
 
 @router.post("/popola-sanificazione", response_model=PopulateResult)
@@ -46,13 +37,6 @@ async def popola_sanificazione_storica(
     )
 
 
-@router.post("/popola-tutto", response_model=PopulateResult)
-async def popola_tutti_dati_haccp(data_inizio: str = "2024-01-01",
-                                  _admin=Depends(require_admin)):
-    raise HTTPException(
-        status_code=410,
-        detail="Bloccato: temperature e sanificazioni si registrano quando si eseguono.",
-    )
 
 
 @router.get("/verifica-oggi")
@@ -84,12 +68,6 @@ async def verifica_e_popola_oggi():
     }
 
 
-@router.post("/genera-oggi")
-async def genera_dati_oggi(_admin=Depends(require_admin)):
-    raise HTTPException(
-        status_code=410,
-        detail="Bloccato: inserire solo rilevazioni HACCP realmente eseguite.",
-    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────

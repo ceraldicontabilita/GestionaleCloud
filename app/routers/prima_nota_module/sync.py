@@ -1363,7 +1363,6 @@ async def get_corrispettivi_sync_status() -> Dict:
     }
 
 
-
 async def sync_estratto_conto_to_banca(anno: int = Query(...)) -> Dict:
     """
     Sincronizza movimenti dall'estratto conto bancario alla prima nota banca.
@@ -1452,7 +1451,6 @@ async def sync_estratto_conto_to_banca(anno: int = Query(...)) -> Dict:
         "gia_sincronizzati": len(existing_ids),
         "importati": importati,
     }
-
 
 
 def _movimento_non_consumato_da_altra_fattura(
@@ -3049,7 +3047,6 @@ async def conferma_divisione_provvisoria(data: Dict = Body(...)) -> Dict:
     }
 
 
-
 async def sposta_scrittura_prima_nota(data: Dict = Body(...)) -> Dict:
     """
     Sposta una scrittura da Cassa a Banca o viceversa.
@@ -3111,8 +3108,6 @@ async def sposta_scrittura_prima_nota(data: Dict = Body(...)) -> Dict:
         "movimento_id": movimento_id,
         "importo": movimento.get("importo"),
     }
-
-
 
 
 async def import_prima_nota_batch(data: Dict = Body(...)) -> Dict:
@@ -3266,173 +3261,6 @@ async def collega_fatture_movimenti() -> Dict:
     return {"success": True, "movimenti_collegati": collegati}
 
 
-async def auto_conferma_provvisori_per_metodo(
-    anno: int = Query(..., description="Anno da processare"),
-) -> Dict[str, Any]:
-    """Applica al PREGRESSO dell'anno la regola metodo-fornitore (utente
-    17/07/2026, la stessa dell'ingresso fattura XML): fornitore con metodo
-    univoco cassa/banca → la fattura provvisoria viene registrata subito
-    nella prima nota corrispondente; misto/senza metodo/ambiguo → resta in
-    Provvisoria. Le fatture già pagate o con un movimento esistente non
-    vengono mai toccate (nessun doppio movimento possibile).
-
-    Fase 0 (15/09/2026, PROMPT_CLAUDE_CODE_FASE_0.md punto 1): disattivato.
-    Confermava un pagamento in cassa senza nessuna prova, solo per il
-    metodo dichiarato in anagrafica fornitore.
-    """
-    raise HTTPException(
-        status_code=409,
-        detail="Disattivato: Fase 0 — i pagamenti in cassa si confermano a mano",
-    )
-
-    db = Database.get_db()
-    now = datetime.now(timezone.utc).isoformat()
-
-    # Carica il dizionario metodo-per-piva dall'anagrafica fornitori
-    # (P.IVA in partita_iva, piva o vat_number: record storici inclusi)
-    metodo_per_piva: Dict[str, str] = {}
-    esclusi_cassa_banca = set()
-    async for s in db["fornitori"].find(
-        {},
-        {"_id": 0, "partita_iva": 1, "piva": 1, "vat_number": 1,
-         "metodo_pagamento": 1, "esclude_cassa_banca": 1, "cessato": 1}
-    ):
-        metodo = (s.get("metodo_pagamento") or "").strip().lower()
-        for k in (s.get("partita_iva"), s.get("piva"), s.get("vat_number")):
-            if not k:
-                continue
-            chiave = str(k).strip()
-            if metodo:
-                metodo_per_piva[chiave] = metodo
-            if s.get("esclude_cassa_banca") or s.get("cessato"):
-                esclusi_cassa_banca.add(chiave)
-
-    # Fatture provvisorie dell'anno
-    fatture = await db["invoices"].find(
-        {
-            "invoice_date": {"$regex": f"^{anno}"},
-            "total_amount": {"$gt": 0},
-            "$or": [
-                {"prima_nota_id": None},
-                {"prima_nota_id": ""},
-                {"prima_nota_id": {"$exists": False}},
-            ],
-            "stato_pagamento": {"$nin": ["sospesa"]},  # le sospese non le tocco
-        },
-        {"_id": 0, "xml_raw": 0, "linee": 0}
-    ).to_list(5000)
-
-    report = {
-        "anno": anno,
-        "totali_provvisorie_analizzate": len(fatture),
-        "mosse_cassa": 0,
-        "mosse_banca": 0,
-        "restate_in_provvisoria_banca_non_pagata": 0,
-        "restate_in_provvisoria_paypal_o_carta": 0,
-        "restate_in_provvisoria_fornitore_senza_metodo": 0,
-        "restate_in_provvisoria_richiede_conferma_manuale": 0,
-        "restate_escluse_cassa_banca": 0,
-        "skipped_gia_in_prima_nota": 0,
-        "skipped_errori": [],
-        "dettaglio_mosse": [],  # prime 100 per log
-    }
-
-    for f in fatture:
-        try:
-            fid = f.get("id") or f.get("invoice_key")
-            if not fid:
-                continue
-
-            piva = (f.get("supplier_vat") or f.get("cedente_piva") or "").strip()
-            stato_pagamento = (f.get("stato_pagamento") or "").lower()
-            pagata = stato_pagamento in ("pagata", "paid")
-
-            if f.get("esclusa_da_cassa_banca") or piva in esclusi_cassa_banca:
-                report["restate_escluse_cassa_banca"] += 1
-                continue
-
-            # Dedup sicuro: se esiste già un movimento in cassa o banca per
-            # questa fattura, non tocco nulla (può esserci stato movimento
-            # manuale). Aggiorno solo il flag sulla fattura per toglierla dai
-            # provvisori.
-            rif = f"FATT-{fid}"
-            existing_cassa = await db[COLLECTION_PRIMA_NOTA_CASSA].find_one({
-                "$or": [{"riferimento": rif}, {"fattura_id": fid}],
-                "status": {"$nin": ["deleted", "archived"]},
-            })
-            existing_banca = await db[COLLECTION_PRIMA_NOTA_BANCA].find_one({
-                "$or": [{"riferimento": rif}, {"fattura_id": fid}],
-                "status": {"$nin": ["deleted", "archived"]},
-            })
-            if existing_cassa or existing_banca:
-                existing = existing_cassa or existing_banca
-                tipo_pn = "cassa" if existing_cassa else "banca"
-                await db["invoices"].update_one(
-                    {"id": fid},
-                    {"$set": {
-                        "prima_nota_id": existing.get("id"),
-                        "prima_nota_tipo": tipo_pn,
-                        "stato_pagamento": "pagata" if pagata else stato_pagamento,
-                    }}
-                )
-                report["skipped_gia_in_prima_nota"] += 1
-                continue
-
-            metodo = metodo_per_piva.get(piva, "")
-
-            # Fattura già marcata pagata (es. "segna pagata manualmente",
-            # pagamento fuori sistema): mai creare un movimento nuovo, si
-            # duplicherebbe una spesa già avvenuta altrove.
-            if pagata or f.get("pagato"):
-                report["restate_in_provvisoria_richiede_conferma_manuale"] += 1
-                continue
-
-            # --- REGOLA utente 17/07/2026 (applicata anche al pregresso):
-            # fornitore con metodo UNIVOCO cassa/banca → registrazione
-            # diretta nella prima nota corrispondente; misto/assente/ambiguo
-            # → resta provvisoria. Stessa identica implementazione usata
-            # all'ingresso della fattura XML (auto_registra_prima_nota).
-            from app.routers.invoices.fatture_upload import auto_registra_prima_nota
-            update = await auto_registra_prima_nota(db, f, None)
-
-            if update:
-                if update.get("prima_nota_tipo") == "cassa":
-                    report["mosse_cassa"] += 1
-                else:
-                    report["mosse_banca"] += 1
-                if len(report["dettaglio_mosse"]) < 100:
-                    report["dettaglio_mosse"].append({
-                        "fattura_id": fid,
-                        "fornitore": f.get("supplier_name") or f.get("cedente_denominazione"),
-                        "importo": f.get("total_amount") or f.get("importo_totale"),
-                        "destinazione": update.get("prima_nota_tipo"),
-                    })
-            else:
-                destinazione_calcolata = classifica_metodo_fornitore(metodo)
-                if destinazione_calcolata == "sospesa":
-                    if metodo:
-                        report["restate_in_provvisoria_paypal_o_carta"] += 1
-                    else:
-                        report["restate_in_provvisoria_fornitore_senza_metodo"] += 1
-                else:
-                    report["restate_in_provvisoria_richiede_conferma_manuale"] += 1
-
-        except Exception as e:
-            logger.exception(f"Errore auto-conferma fattura {f.get('id')}: {e}")
-            report["skipped_errori"].append({
-                "fattura_id": f.get("id"),
-                "errore": str(e)[:200],
-            })
-
-    return {
-        "success": True,
-        "message": (
-            f"Regola metodo-fornitore applicata: {report['mosse_cassa']} fatture "
-            f"registrate in Cassa, {report['mosse_banca']} in Banca; le fatture di "
-            "fornitori misto/senza metodo/ambiguo restano in Provvisoria."
-        ),
-        **report,
-    }
 
 
 async def annulla_auto_conferma(

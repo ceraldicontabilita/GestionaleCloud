@@ -245,12 +245,6 @@ async def get_storico(anno: int = None):
     return schede
 
 
-@router.post("/popola-attrezzature")
-async def popola_attrezzature(start_anno: int = 2022, end_anno: int = 2025):
-    raise HTTPException(
-        status_code=410,
-        detail="Bloccato: le sanificazioni devono essere registrate con evidenza dell'operatore.",
-    )
 
 
 # ==================== ENDPOINTS SANIFICAZIONE APPARECCHI REFRIGERANTI ====================

@@ -46,19 +46,36 @@ def test_daily_haccp_reports_expected_readings_without_writing_them():
 
 
 def test_historical_haccp_population_is_disabled():
+    """La rotta che riempiva lo storico temperature non esiste piu'."""
     from app.lotti.routers import haccp_auto
 
+    assert not hasattr(haccp_auto, "popola_temperature_storiche")
     with pytest.raises(HTTPException) as exc:
-        run(haccp_auto.popola_temperature_storiche())
+        run(haccp_auto.popola_sanificazione_storica())
     assert exc.value.status_code == 410
 
 
 def test_haccp_periodic_automation_never_creates_evidence():
-    from app.lotti.routers import automatismi_haccp
+    """Il modulo che fabbricava le registrazioni non esiste piu'.
 
-    assert run(automatismi_haccp.genera_controllo_olio_automatico()) == 0
-    assert run(automatismi_haccp.genera_temperature_cottura_automatico()) == 0
-    assert run(automatismi_haccp.genera_reclamo_fornitore_automatico()) == 0
+    `automatismi_haccp` generava controlli dell'olio «entro le soglie»,
+    temperature di cottura conformi e reclami a fornitori estratti a sorte.
+    Era stato messo a tacere con tre `return 0`, e lo scheduler continuava a
+    chiamarlo ogni 5 giorni per scrivere «creati: 0». Tre funzioni vuote, un
+    job, un blocco di recupero all'avvio, un endpoint e una spia in
+    diagnostica per un lavoro che non si doveva fare: cancellati.
+
+    Questo test resta perche' la porta non si riapra dal nulla.
+    """
+    import importlib
+
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("app.lotti.routers.automatismi_haccp")
+
+    scheduler = (ROOT / "app/lotti/routers/scheduler.py").read_text(encoding="utf-8")
+    assert "automatismi_haccp" not in scheduler, (
+        "Lo scheduler chiama ancora gli automatismi che fabbricavano il registro."
+    )
 
 
 @pytest.mark.parametrize("relative", [

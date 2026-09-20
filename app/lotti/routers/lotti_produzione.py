@@ -895,11 +895,18 @@ def _parse_data_fattura(s):
     return datetime.max
 
 
-async def _candidati_lotti_fifo(ing: dict) -> list:
-    """Trova i lotti_fornitori candidati per un ingrediente e li ordina FIFO
-    (data fattura piu' vecchia, poi scadenza). NON consuma nulla: e' la base
-    CONDIVISA tra lo scarico in produzione (scala_lotti_fornitori_per_ricetta) e
-    il peek del lotto attivo (peek_lotto_fifo_attivo). Un solo criterio FIFO."""
+async def _candidati_lotti_fifo(ing: dict) -> tuple:
+    """(utilizzabili, scaduti) per un ingrediente, in ordine FIFO.
+
+    `utilizzabili` sono i lotti_fornitori con giacenza, ordinati per data
+    fattura piu' vecchia e poi per scadenza: il primo e' quello da consumare
+    adesso, qualunque fornitore sia. `scaduti` sono quelli con la scadenza gia'
+    passata, che non si consumano e vanno smaltiti.
+
+    NON consuma nulla: e' la base CONDIVISA fra lo scarico in produzione
+    (scala_lotti_fornitori_per_ricetta) e il lotto in etichetta
+    (peek_lotto_fifo_attivo). Un solo criterio FIFO, quindi l'etichetta non
+    puo' dire un fornitore diverso da quello che si sta consumando."""
     nome_ing = (ing.get("nome") or "").strip()
     if not nome_ing:
         return []
@@ -986,24 +993,39 @@ async def _candidati_lotti_fifo(ing: dict) -> list:
             if lotti_candidati:
                 break
 
-    # REGOLA ENZO 23/07/2026: l'ingrediente si associa al lotto più vecchio
-    # DEGLI ULTIMI 60 GIORNI — un lotto di mesi/anni fa non rappresenta più il
-    # fornitore reale in etichetta. I lotti oltre i 60gg NON si buttano: vanno
-    # in coda come riserva per lo scarico (ordinati dal più recente), così la
-    # giacenza vecchia si consuma comunque se quella recente finisce. Se non
-    # c'è NULLA negli ultimi 60gg, si usa il più recente disponibile.
+    # FIFO STRETTO: si consuma sempre il lotto con la data fattura più vecchia,
+    # qualunque sia il fornitore. Finita la farina di un fornitore si continua
+    # con quella del fornitore dopo, senza saltare nulla in mezzo.
+    #
+    # Prima qui c'era una finestra di 60 giorni: i lotti più vecchi finivano in
+    # coda e, fra loro, ordinati **dal più recente**. Era l'opposto del FIFO —
+    # la giacenza più vecchia restava ferma mentre si consumava quella nuova —
+    # e nasceva da una domanda diversa: quale fornitore mettere in etichetta.
+    # Quella domanda ha la sua risposta in `peek_lotto_fifo_attivo`, che guarda
+    # la testa di questa stessa coda: così l'etichetta dice il lotto che si sta
+    # davvero consumando, non un altro.
+    #
+    # Un lotto SCADUTO non è giacenza: non si consuma e non finisce in un
+    # prodotto. Esce dai candidati e viene restituito a parte, perché chi
+    # produce deve vederlo e smaltirlo, non ritrovarselo in un dolce.
     _chiave = lambda l: (  # noqa: E731 — FIFO: fattura più vecchia, poi scadenza
         _parse_data_fattura(l.get("data_fattura")),
         _parse_data_fattura(l.get("data_scadenza")),
     )
-    soglia = datetime.now() - timedelta(days=60)
-    recenti = [l for l in lotti_candidati
-               if _parse_data_fattura(l.get("data_fattura")) >= soglia]
-    ids_recenti = {l["id"] for l in recenti}
-    vecchi = [l for l in lotti_candidati if l["id"] not in ids_recenti]
-    recenti.sort(key=_chiave)                    # più vecchio dei recenti PRIMA
-    vecchi.sort(key=_chiave, reverse=True)       # riserva: dal più recente
-    return recenti + vecchi
+    oggi = datetime.now()
+    utilizzabili, scaduti = [], []
+    for lotto_f in lotti_candidati:
+        scadenza = _parse_data_fattura(lotto_f.get("data_scadenza"))
+        # datetime.max = scadenza assente o illeggibile: non è una prova di
+        # scadenza, quindi il lotto resta utilizzabile (e lo segnala il
+        # censimento delle scadenze mancanti, non lo scarico).
+        if scadenza is not datetime.max and scadenza < oggi:
+            scaduti.append(lotto_f)
+        else:
+            utilizzabili.append(lotto_f)
+    utilizzabili.sort(key=_chiave)
+    scaduti.sort(key=_chiave)
+    return utilizzabili, scaduti
 
 
 # Peso in grammi del singolo pezzo, per convertire lotti in PZ ↔ ricette in
@@ -1065,8 +1087,8 @@ async def peek_lotto_fifo_attivo(ing: dict) -> Optional[dict]:
     per data_fattura con giacenza residua) SENZA consumarlo. Single source per
     "da dove arriva OGGI questo ingrediente" — sostituisce i campi congelati
     all'import (fornitore/numero_fattura/data_fattura) che davano il last-wins."""
-    candidati = await _candidati_lotti_fifo(ing)
-    return candidati[0] if candidati else None
+    utilizzabili, _scaduti = await _candidati_lotti_fifo(ing)
+    return utilizzabili[0] if utilizzabili else None
 
 
 async def scala_lotti_fornitori_per_ricetta(
@@ -1079,6 +1101,7 @@ async def scala_lotti_fornitori_per_ricetta(
     ingredienti_non_trovati = []
     ingredienti_insufficienti = []
     conversioni_non_disponibili = []
+    lotti_da_smaltire = []
 
     for ing in ingredienti_dettaglio:
         nome_ing = ing.get("nome", "").strip()
@@ -1093,11 +1116,22 @@ async def scala_lotti_fornitori_per_ricetta(
         unita = ing.get("unita_misura") or ing.get("unita", "g")
         quantita_scalata = quantita_base * moltiplicatore
 
-        lotti_candidati = await _candidati_lotti_fifo(ing)
+        lotti_candidati, lotti_scaduti = await _candidati_lotti_fifo(ing)
+        for scaduto in lotti_scaduti:
+            lotti_da_smaltire.append({
+                "ingrediente": nome_ing,
+                "lotto_id": scaduto["id"],
+                "lotto_id_fornitore": scaduto.get("lotto_id_fornitore", ""),
+                "fornitore": scaduto.get("fornitore", ""),
+                "prodotto": scaduto.get("prodotto_nome", ""),
+                "quantita_disponibile": scaduto.get("quantita_disponibile", 0),
+                "unita": scaduto.get("unita_misura", ""),
+                "data_scadenza": scaduto.get("data_scadenza", ""),
+            })
         if not lotti_candidati:
             ingredienti_non_trovati.append(nome_ing)
             continue
-        # (candidati gia' ordinati FIFO dal helper condiviso)
+        # (candidati gia' ordinati FIFO stretto dal helper condiviso)
 
         quantita_rimasta = quantita_scalata  # nell'unità della RICETTA
         peso_pezzo_g = await _peso_pezzo_g_per_ing(nome_ing)
@@ -1153,6 +1187,14 @@ async def scala_lotti_fornitori_per_ricetta(
                     "lotto_id_fornitore": lotto.get("lotto_id_fornitore", ""),
                     "fornitore": lotto.get("fornitore", ""),
                     "prodotto": lotto.get("prodotto_nome", ""),
+                    # La fattura e le sue date sono la prova di provenienza: da
+                    # qui l'ispezione risale al documento. `cerca-universale` le
+                    # interrogava gia' (`lotti_scalati.fattura_ref`) ma nessuno
+                    # le scriveva, quindi cercare un numero di fattura non
+                    # trovava mai niente e non dava nessun errore.
+                    "fattura_ref": lotto.get("fattura_ref", ""),
+                    "data_fattura": lotto.get("data_fattura", ""),
+                    "data_scadenza": lotto.get("data_scadenza", ""),
                     "quantita_consumata": round(qt_da_consumare, 3),
                     "quantita_rimasta": round(qt_nuova, 3),
                     "unita": unita_lotto,
@@ -1186,6 +1228,7 @@ async def scala_lotti_fornitori_per_ricetta(
         "ingredienti_non_trovati": ingredienti_non_trovati,
         "ingredienti_insufficienti": ingredienti_insufficienti,
         "conversioni_non_disponibili": conversioni_non_disponibili,
+        "lotti_da_smaltire": lotti_da_smaltire,
     }
 
 
@@ -1580,10 +1623,10 @@ async def genera_lotto_da_ricetta(
     ingredienti_per_scadenza = []
     for ingrediente in ingredienti_totali:
         # Fonte unica: lotti_fornitori (unificazione materie_prime 03/07/2026).
-        # REGOLA ENZO 23/07/2026: l'etichetta indica il lotto FIFO-ATTIVO (il
-        # più vecchio degli ultimi 60 giorni, stessa regola dello scarico —
-        # peek condiviso), NON più il lotto più recente: così etichetta,
-        # registro lotti e scarico raccontano lo stesso fornitore.
+        # L'etichetta indica il lotto FIFO-ATTIVO: il più vecchio con giacenza
+        # e non scaduto, esattamente il primo che lo scarico consuma (peek
+        # condiviso). Non il più recente: così etichetta, registro lotti e
+        # scarico raccontano lo stesso fornitore, perché è lo stesso lotto.
         materia = await peek_lotto_fifo_attivo({"nome": ingrediente})
         if materia and nomi_esclusi and (materia.get("fornitore") or "") in nomi_esclusi:
             materia = None

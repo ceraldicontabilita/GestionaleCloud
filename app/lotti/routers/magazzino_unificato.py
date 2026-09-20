@@ -101,6 +101,54 @@ async def _carica_soglie() -> dict:
     }
 
 
+async def _carica_soglie_critiche() -> dict:
+    """Seconda soglia, quella dell'«ordinare immediatamente».
+
+    Le imposta il titolare, come la prima: qui non si calcola una percentuale
+    della scorta minima. Una frazione inventata direbbe «ordina subito» a un
+    numero che nessuno ha scelto, e su prodotti con tempi di consegna diversi
+    sbaglierebbe sempre da una parte. Senza soglia critica resta il solo
+    avviso di scorta, che e' gia' un'informazione vera.
+    """
+    docs = await db.dizionario_prodotti.find(
+        {"scorta_critica": {"$gt": 0}}, {"_id": 0, "nome_normalizzato": 1, "scorta_critica": 1}
+    ).to_list(5000)
+    return {
+        (d.get("nome_normalizzato") or "").strip(): float(d.get("scorta_critica") or 0)
+        for d in docs
+        if d.get("nome_normalizzato")
+    }
+
+
+# Livelli dell'avviso, dal piu' grave. Il messaggio porta SEMPRE la quantita'
+# che resta davvero: «rimangono 45 kg» si legge e si decide, «sotto scorta» no.
+LIVELLO_ESAURITO = "esaurito"
+LIVELLO_CRITICO = "ordinare_subito"
+LIVELLO_SCORTA = "sotto_scorta"
+
+
+def stato_scorta(nome: str, stock: float, unita: str, soglia: float, critica: float) -> dict:
+    """L'avviso per un prodotto, o None se la giacenza sta sopra la soglia.
+
+    Serve una soglia impostata: senza, non esiste un «poco» — 20 kg di farina
+    sono tanti per una casa e niente per un laboratorio, e inventare il
+    confine farebbe suonare allarmi che nessuno ha chiesto.
+    """
+    if soglia <= 0 and critica <= 0:
+        return None
+    quanto = f"{stock:g} {unita}".strip() if unita else f"{stock:g}"
+    if stock <= 0:
+        return {"livello": LIVELLO_ESAURITO, "soglia": soglia, "soglia_critica": critica,
+                "messaggio": f"{nome}: esaurito — ordinare immediatamente"}
+    if critica > 0 and stock <= critica:
+        return {"livello": LIVELLO_CRITICO, "soglia": soglia, "soglia_critica": critica,
+                "messaggio": f"{nome}: rimangono {quanto} — ordinare immediatamente"}
+    if soglia > 0 and stock <= soglia:
+        return {"livello": LIVELLO_SCORTA, "soglia": soglia, "soglia_critica": critica,
+                "messaggio": f"{nome}: rimangono {quanto} (scorta minima {soglia:g})"}
+    return None
+
+
 def _categoria_da_nome(nome: str) -> str:
     n = nome.lower()
     for cat, keywords in CATEGORIE_FORNITORI.items():
@@ -712,20 +760,24 @@ async def azzera_override(key: str):
 class SogliaPayload(BaseModel):
     prodotto_nome_norm: str
     soglia_minima: float
+    # None = non toccare quella gia' impostata; 0 = toglila.
+    soglia_critica: Optional[float] = None
 
 
 @router.get("/soglie")
 async def get_soglie():
     """Elenco delle scorte minime impostate (da dizionario_prodotti)."""
     docs = await db.dizionario_prodotti.find(
-        {"scorta_minima": {"$gt": 0}},
-        {"_id": 0, "nome_normalizzato": 1, "nome_canonico": 1, "scorta_minima": 1},
+        {"$or": [{"scorta_minima": {"$gt": 0}}, {"scorta_critica": {"$gt": 0}}]},
+        {"_id": 0, "nome_normalizzato": 1, "nome_canonico": 1,
+         "scorta_minima": 1, "scorta_critica": 1},
     ).sort("nome_normalizzato", 1).to_list(5000)
     return [
         {
             "prodotto_nome_norm": d.get("nome_normalizzato", ""),
             "nome": d.get("nome_canonico") or d.get("nome_normalizzato", ""),
             "soglia_minima": float(d.get("scorta_minima") or 0),
+            "soglia_critica": float(d.get("scorta_critica") or 0),
         }
         for d in docs
     ]
@@ -739,15 +791,68 @@ async def set_soglia(payload: SogliaPayload):
     if not nome_norm:
         raise HTTPException(400, "prodotto_nome_norm obbligatorio")
     valore = max(0.0, float(payload.soglia_minima))
+    da_scrivere = {
+        "scorta_minima": valore,
+        "scorta_minima_updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    critica = payload.soglia_critica
+    if critica is not None:
+        critica = max(0.0, float(critica))
+        if critica > valore > 0:
+            raise HTTPException(
+                400,
+                "La soglia dell'«ordinare immediatamente» non puo' stare sopra la "
+                f"scorta minima ({critica:g} > {valore:g}): scattarebbe per prima "
+                "e la scorta minima non direbbe piu' niente.",
+            )
+        da_scrivere["scorta_critica"] = critica
+        da_scrivere["scorta_critica_updated_at"] = datetime.now(timezone.utc).isoformat()
     await db.dizionario_prodotti.update_one(
-        {"nome_normalizzato": nome_norm},
-        {
-            "$set": {
-                "scorta_minima": valore,
-                "scorta_minima_updated_at": datetime.now(timezone.utc).isoformat(),
-            }
-        },
-        upsert=True,
+        {"nome_normalizzato": nome_norm}, {"$set": da_scrivere}, upsert=True,
     )
-    return {"ok": True, "prodotto_nome_norm": nome_norm, "soglia_minima": valore}
+    return {"ok": True, "prodotto_nome_norm": nome_norm, "soglia_minima": valore,
+            "soglia_critica": da_scrivere.get("scorta_critica")}
+
+
+@router.get("/avvisi-scorte")
+async def avvisi_scorte(solo_critici: bool = False):
+    """Cosa sta finendo, con quanto ne resta davvero.
+
+    Legge la stessa giacenza che si vede a schermo (`prodotti_unificati`, che
+    somma i lotti di tutti i fornitori), quindi non puo' dire un numero
+    diverso da quello del magazzino. Un prodotto senza soglia impostata non
+    compare: non e' un avviso mancato, e' una soglia che nessuno ha scelto.
+    """
+    prodotti = await prodotti_unificati(gestione=False, solo_disponibili=False)
+    critiche = await _carica_soglie_critiche()
+
+    avvisi = []
+    for prod in prodotti:
+        avviso = stato_scorta(
+            prod.get("nome", ""),
+            float(prod.get("stock") or 0),
+            prod.get("unita_misura") or prod.get("unita") or "",
+            float(prod.get("soglia_minima") or 0),
+            float(critiche.get(prod.get("key", ""), 0) or 0),
+        )
+        if not avviso:
+            continue
+        if solo_critici and avviso["livello"] == LIVELLO_SCORTA:
+            continue
+        avviso.update({
+            "prodotto": prod.get("nome", ""),
+            "prodotto_nome_norm": prod.get("key", ""),
+            "giacenza": float(prod.get("stock") or 0),
+            "unita_misura": prod.get("unita_misura") or prod.get("unita") or "",
+            "categoria": prod.get("categoria", ""),
+        })
+        avvisi.append(avviso)
+
+    ordine = {LIVELLO_ESAURITO: 0, LIVELLO_CRITICO: 1, LIVELLO_SCORTA: 2}
+    avvisi.sort(key=lambda a: (ordine[a["livello"]], a["prodotto"]))
+    return {
+        "totale": len(avvisi),
+        "da_ordinare_subito": sum(1 for a in avvisi if a["livello"] != LIVELLO_SCORTA),
+        "avvisi": avvisi,
+    }
 
