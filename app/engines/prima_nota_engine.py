@@ -3,9 +3,9 @@ Motore unico di instradamento Prima Nota (Cassa / Banca / Provvisoria).
 
 Prima di questo modulo la stessa decisione "il fornitore paga in cassa o in
 banca?" era reimplementata in modo indipendente in almeno 7 punti del
-codice (handlers/prima_nota.py, fatture_module/metodo_pagamento.py,
-fatture_module/pagamento.py, sync_relazionale.py, data_propagation.py,
-prima_nota_module/sync.py), ciascuno con la propria lista di parole chiave.
+codice (handlers/prima_nota.py, fatture_module/pagamento.py,
+sync_relazionale.py, data_propagation.py, prima_nota_module/sync.py),
+ciascuno con la propria lista di parole chiave.
 Le liste non erano sincronizzate tra loro: un fornitore con metodo
 "assegno" o "carta" poteva risultare "Banca" in un punto e "sospeso"
 nell'altro (vedi commento storico in app/routers/prima_nota_module/sync.py).

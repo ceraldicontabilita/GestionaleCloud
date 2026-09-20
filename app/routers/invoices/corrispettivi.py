@@ -601,7 +601,6 @@ async def upload_corrispettivi_zip(file: UploadFile = File(...)) -> Dict[str, An
         raise HTTPException(status_code=500, detail=str(e))
 
 
-
 # ============== IMPORT CSV CORRISPETTIVI ==============
 
 @router.post("/import-csv")
@@ -833,7 +832,6 @@ async def get_template_csv():
     )
 
 
-
 @router.post("/elimina-duplicati")
 @handle_errors
 async def elimina_duplicati_corrispettivi(anno: int = Query(...)) -> Dict[str, Any]:
@@ -957,8 +955,6 @@ async def rebuild_prima_nota(
     raise HTTPException(status_code=409, detail="Disattivato: Fase 0")
 
 
-
-
 @router.post("/auto-ricostruisci-dati")
 @handle_errors
 async def auto_ricostruisci_dati_corrispettivi() -> Dict[str, Any]:
@@ -975,86 +971,6 @@ async def auto_ricostruisci_dati_corrispettivi() -> Dict[str, Any]:
         status_code=410,
         detail="Ricostruzione automatica disabilitata: usare import/revisione guidata",
     )
-    db = Database.get_db()
-    
-    risultati = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "corrispettivi_verificati": 0,
-        "iva_ricalcolata": 0,
-        "campi_corretti": 0,
-        "duplicati_rimossi": 0,
-        "errori": []
-    }
-    
-    try:
-        # 1. Verifica corrispettivi con IVA mancante o zero
-        corr_senza_iva = await db["corrispettivi"].find({
-            "$or": [{"totale_iva": 0}, {"totale_iva": None}],
-            "totale": {"$gt": 0}
-        }, {"_id": 0}).to_list(10000)
-        
-        risultati["corrispettivi_verificati"] = len(corr_senza_iva)
-        
-        for corr in corr_senza_iva:
-            totale = float(corr.get("totale", 0) or 0)
-            if totale > 0:
-                # Scorporo IVA 10%
-                imponibile = round(totale / 1.10, 2)
-                iva = round(totale - imponibile, 2)
-                
-                try:
-                    await db["corrispettivi"].update_one(
-                        {"id": corr["id"]},
-                        {"$set": {
-                            "totale_iva": iva,
-                            "totale_imponibile": imponibile,
-                            "iva_ricalcolata_auto": True,
-                            "updated_at": datetime.now(timezone.utc).isoformat()
-                        }}
-                    )
-                    risultati["iva_ricalcolata"] += 1
-                except Exception as e:
-                    risultati["errori"].append(f"Errore IVA {corr['id']}: {str(e)}")
-        
-        # 2. Verifica corrispettivi con data mancante o errata
-        corr_senza_data = await db["corrispettivi"].count_documents({
-            "$or": [{"data": None}, {"data": ""}, {"data": {"$regex": r"^N/[AD]"}}]
-        })
-        
-        if corr_senza_data > 0:
-            # Usa data_trasmissione se disponibile
-            await db["corrispettivi"].update_many(
-                {"data": None, "data_trasmissione": {"$exists": True}},
-                [{"$set": {"data": "$data_trasmissione"}}]
-            )
-            risultati["campi_corretti"] += corr_senza_data
-        
-        # 3. Rimuovi duplicati (stesso giorno, stesso totale, stesso punto cassa)
-        pipeline = [
-            {"$group": {
-                "_id": {"data": "$data", "totale": "$totale", "punto_cassa": {"$ifNull": ["$punto_cassa", "default"]}},
-                "count": {"$sum": 1},
-                "ids": {"$push": "$id"}
-            }},
-            {"$match": {"count": {"$gt": 1}}}
-        ]
-        duplicati = await db["corrispettivi"].aggregate(pipeline).to_list(1000)
-        
-        for dup in duplicati:
-            ids = dup.get("ids", [])
-            if len(ids) > 1:
-                for dup_id in ids[1:]:  # Mantieni il primo
-                    try:
-                        await db["corrispettivi"].delete_one({"id": dup_id})
-                        risultati["duplicati_rimossi"] += 1
-                    except Exception as e:
-                        risultati["errori"].append(f"Errore rimozione {dup_id}: {str(e)}")
-        
-    except Exception as e:
-        logger.error(f"Errore auto-ricostruzione corrispettivi: {e}")
-        risultati["errori"].append(str(e))
-    
-    return risultati
 
 
 # ==================== VISUALIZZAZIONE CORRISPETTIVO ====================
@@ -1447,7 +1363,6 @@ async def view_corrispettivo(corrispettivo_id: str):
     html_content = generate_corrispettivo_html(corrispettivo, movimento)
     
     return HTMLResponse(content=html_content, status_code=200)
-
 
 
 # ═══════════════════════════════════════════════════════════════════════════

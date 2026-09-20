@@ -1,4 +1,4 @@
-"""Guardia: in Lotti non rientra codice dopo un `return` o un `raise`.
+"""Guardia: non rientra codice dopo un `return` o un `raise`.
 
 Non e' una questione di ordine. In questo repository quel codice aveva sempre
 la stessa storia: un fabbricatore di registrazioni HACCP — controlli dell'olio
@@ -14,6 +14,12 @@ turno delle 07:00 nello scheduler: dopo il `return` verso l'orchestratore
 c'era una seconda copia del giro, con `marca_giorni_non_rilevati` dentro — chi
 la leggeva credeva che quella marcatura partisse da li'.
 
+Nell'ERP era lo stesso, ma sui soldi: il pagamento manuale confermato «senza
+alcuna prova bancaria o di cassa verificata», l'auto-conferma dei provvisori
+sul solo metodo dichiarato in anagrafica, l'abbinamento degli assegni alle
+fatture per importo entro 10 euro e data entro 30 giorni. Tutti disattivati
+con un `raise HTTPException(409)` davanti, tutti ancora scritti sotto.
+
 Il codice che non gira si toglie. Se una funzione deve smettere di fare
 qualcosa, si toglie il corpo e si lascia la ragione scritta.
 """
@@ -22,7 +28,7 @@ import pathlib
 
 import pytest
 
-RADICE = pathlib.Path(__file__).resolve().parents[2] / "app" / "lotti"
+RADICE = pathlib.Path(__file__).resolve().parents[2] / "app"
 
 
 def _funzioni_con_codice_morto(sorgente: str):
@@ -43,7 +49,7 @@ def _funzioni_con_codice_morto(sorgente: str):
 
 
 MODULI = sorted(RADICE.rglob("*.py"))
-assert MODULI, "nessun modulo trovato: il percorso di app/lotti e' cambiato"
+assert MODULI, "nessun modulo trovato: il percorso di app/ e' cambiato"
 
 
 @pytest.mark.parametrize("modulo", MODULI, ids=lambda p: str(p.relative_to(RADICE)))

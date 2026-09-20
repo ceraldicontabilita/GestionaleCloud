@@ -82,7 +82,6 @@ class SchedaDisinfestazione(BaseModel):
 # ==================== HELPER ====================
 
 
-
 async def get_or_create_scheda_annuale(anno: int) -> dict:
     """Ottiene o crea la scheda annuale di disinfestazione"""
     scheda = await db.disinfestazione_annuale.find_one({"anno": anno}, {"_id": 0})

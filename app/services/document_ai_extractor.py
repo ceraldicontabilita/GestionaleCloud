@@ -378,10 +378,6 @@ def detect_document_type(text: str) -> str:
         return "fattura"
     
     return "generico"
-    if any(kw in text_lower for kw in ["fattura n", "fattura numero", "imponibile", "totale fattura", "iva"]):
-        return "fattura"
-    
-    return "generico"
 
 
 def extract_text_from_pdf(pdf_data: bytes) -> str:

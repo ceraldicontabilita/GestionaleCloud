@@ -131,46 +131,6 @@ async def rapido_paga_fattura(
         status_code=409,
         detail="Disattivato: Fase 0 — usare Prima Nota › Provvisori",
     )
-    db = Database.get_db()
-    if not invoice_id:
-        raise HTTPException(status_code=400, detail="invoice_id richiesto")
-
-    fattura = await db["invoices"].find_one({"id": invoice_id}, {"_id": 0})
-    if not fattura:
-        raise HTTPException(status_code=404, detail="Fattura non trovata")
-
-    imp = importo or float(fattura.get("total_amount", 0) or fattura.get("importo_totale", 0) or 0)
-    collection = "prima_nota_cassa" if metodo_pagamento == "cassa" else "prima_nota_banca"
-
-    # Anti-duplicato
-    existing = await db[collection].find_one({"fattura_id": invoice_id})
-    if existing:
-        return {"success": True, "message": "Già pagata", "movimento_id": existing.get("id")}
-
-    mov_id = str(uuid.uuid4())
-    await db[collection].insert_one({
-        "id": mov_id, "data": datetime.now().strftime("%Y-%m-%d"),
-        "tipo": "uscita", "importo": abs(imp),
-        "descrizione": f"Pagamento fattura {fattura.get('invoice_number', '')}",
-        "categoria": "Fatture", "fattura_id": invoice_id,
-        "source": "rapido_paga_fattura",
-        "created_at": datetime.now(timezone.utc).isoformat()
-    })
-    await db["invoices"].update_one({"id": invoice_id}, {"$set": {"pagato": True, "stato_pagamento": "pagata"}})
-
-    # --- EVENT BUS: propaga evento fattura pagata (rapido) ---
-    try:
-        from app.services.event_bus import propagate_event, EventTypes
-        await propagate_event(EventTypes.FATTURA_PAGATA, {
-            "fattura_id": invoice_id,
-            "metodo_pagamento": metodo_pagamento,
-            "data_pagamento": datetime.now().strftime("%Y-%m-%d"),
-            "importo": abs(imp),
-        }, db, source_module="rapido_paga_fattura")
-    except Exception:
-        logger.exception("Errore propagazione evento fattura.pagata (rapido)")
-
-    return {"success": True, "id": mov_id, "message": f"Fattura pagata ({metodo_pagamento})"}
 
 
 @router.post("/acconto-dipendente")
