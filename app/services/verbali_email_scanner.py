@@ -20,7 +20,7 @@ import base64
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional, Tuple
 import logging
-from app.services.archivio_documenti_memoria import SheetDatabase
+from app.services.archivio_documenti_memoria import ArchivioDocumenti
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +111,7 @@ class VerbaliEmailScanner:
     Scanner email specifico per verbali con logica di priorità.
     """
 
-    def __init__(self, db: SheetDatabase):
+    def __init__(self, db: ArchivioDocumenti):
         self.db = db
         self.connection = None
         self.stats = {
@@ -778,7 +778,7 @@ class VerbaliEmailScanner:
             self.disconnect()
 
 
-async def esegui_scan_verbali_email(db: SheetDatabase, days_back: int = 365) -> Dict[str, Any]:
+async def esegui_scan_verbali_email(db: ArchivioDocumenti, days_back: int = 365) -> Dict[str, Any]:
     """
     Funzione helper per eseguire lo scan email verbali.
 

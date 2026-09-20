@@ -8,7 +8,7 @@ serale al giorno dopo.
 import asyncio
 
 import pytest
-from app.services.archivio_documenti_memoria import MemorySheetsClient, SheetDatabase
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria, ArchivioDocumenti
 
 from app.services import sumup_sync
 from app.services.sumup_sync import (
@@ -28,7 +28,7 @@ def _run(awaitable):
 
 
 def _db():
-    return MemorySheetsClient()["sumup_sync_test"]
+    return ClientArchivioMemoria()["sumup_sync_test"]
 
 
 def _tx(tid, importo, *, timestamp="2026-08-06T10:00:00Z", tipo="PAYMENT",
@@ -255,13 +255,13 @@ def test_risincronizzare_non_duplica_nulla():
     assert banca[0]["operation_id"]
 
 
-def test_prima_acquisizione_sumup_scrive_un_unico_batch_sheets():
+def test_prima_acquisizione_sumup_scrive_un_unico_batch():
     mutazioni = []
 
     async def registra_mutazione(collection, metodo, prima, dopo):
         mutazioni.append((collection, metodo, len(prima), len(dopo)))
 
-    db = SheetDatabase("sumup_batch", mutation_hook=registra_mutazione)
+    db = ArchivioDocumenti("sumup_batch", mutation_hook=registra_mutazione)
     grezze = [_tx(f"tx-{indice}", float(indice)) for indice in range(1, 251)]
 
     esito = _run(sumup_sync.salva_transazioni(db, grezze, MERCHANT))

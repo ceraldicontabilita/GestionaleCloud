@@ -7,7 +7,7 @@ presentate come lo stesso saldo.
 
 import asyncio
 
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.routers import finanziaria
 
@@ -21,7 +21,7 @@ def _run(coro):
 
 
 def test_summary_distingue_flussi_riporti_e_disponibilita(monkeypatch):
-    db = MemorySheetsClient()["test_finanziaria"]
+    db = ClientArchivioMemoria()["test_finanziaria"]
     _run(db["prima_nota_cassa"].insert_many([
         {"data": "2026-01-10", "tipo": "entrata", "importo": 100.0,
          "categoria": "Corrispettivi", "source": "manuale", "status": "active"},
@@ -63,7 +63,7 @@ def test_summary_distingue_flussi_riporti_e_disponibilita(monkeypatch):
 
 
 def test_summary_non_inventa_crediti_clienti(monkeypatch):
-    db = MemorySheetsClient()["test_finanziaria_crediti"]
+    db = ClientArchivioMemoria()["test_finanziaria_crediti"]
     monkeypatch.setattr(finanziaria.Database, "get_db", staticmethod(lambda: db))
 
     result = _run(finanziaria.get_financial_summary(anno=2026))

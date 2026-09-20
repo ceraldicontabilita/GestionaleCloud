@@ -8,7 +8,7 @@ registrazione al motore unico del libro giornale.
 import asyncio
 
 from app.routers.invoices import fatture_upload as fu
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 
 def _run(coro):
@@ -20,7 +20,7 @@ def _run(coro):
 
 
 def _db(nome):
-    return MemorySheetsClient()[nome]
+    return ClientArchivioMemoria()[nome]
 
 
 def _fattura(**extra):

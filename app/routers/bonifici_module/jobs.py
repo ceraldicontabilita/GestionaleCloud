@@ -153,7 +153,7 @@ async def process_files_background(job_id: str, file_paths: List[Path]):
             text = read_pdf_text(p)
             transfers = extract_transfers_from_text(text, filename=p.name) if text.strip() else []
 
-            # Architettura Drive/Sheets: leggi PDF e codifica in Base64
+            # Architettura Drive/Supabase: leggi PDF e codifica in Base64
             import base64
             try:
                 with open(p, 'rb') as pdf_file:
@@ -179,7 +179,7 @@ async def process_files_background(job_id: str, file_paths: List[Path]):
                 t['job_id'] = job_id
                 t['id'] = str(uuid.uuid4())
                 t['dedup_key'] = build_dedup_key(t)
-                t['pdf_data'] = pdf_data  # Architettura Drive/Sheets
+                t['pdf_data'] = pdf_data  # Architettura Drive/Supabase
                 t['created_at'] = datetime.now(timezone.utc).isoformat()
 
                 if isinstance(t.get('data'), datetime):

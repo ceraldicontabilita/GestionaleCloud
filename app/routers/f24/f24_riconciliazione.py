@@ -94,7 +94,7 @@ async def upload_f24_commercialista(
     - use_ai=False (default): Usa parser PyMuPDF (veloce e accurato)
     - use_ai=True: Usa AI per parsing (più lento, richiede crediti)
 
-    Architettura Drive/Sheets: salva PDF come Base64.
+    Architettura Drive/Supabase: salva PDF come Base64.
     """
     if not file.filename.lower().endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Il file deve essere un PDF")
@@ -102,7 +102,7 @@ async def upload_f24_commercialista(
     db = Database.get_db()
     file_id = str(uuid.uuid4())
 
-    # Architettura Drive/Sheets: leggi contenuto e codifica in Base64
+    # Architettura Drive/Supabase: leggi contenuto e codifica in Base64
     try:
         content = await file.read()
         import base64
@@ -230,12 +230,12 @@ async def upload_f24_commercialista(
             if anno:
                 break
 
-    # Salva nel database con pdf_data (architettura Drive/Sheets)
+    # Salva nel database con pdf_data (architettura Drive/Supabase)
     documento = {
         "id": file_id,
         "f24_key": f24_key,
         "file_name": file.filename,
-        "pdf_data": pdf_base64,  # Architettura Drive/Sheets
+        "pdf_data": pdf_base64,  # Architettura Drive/Supabase
         "parser_used": parser_used,  # Traccia quale parser è stato usato
         "anno": anno,  # Campo anno estratto per filtri rapidi
         "data_scadenza": data_vers,  # Alias per compatibilità frontend
@@ -550,7 +550,7 @@ async def get_f24_pdf(f24_id: str):
     pdf_bytes = await carica_originale(f24, tipo="f24")
 
     if not pdf_bytes:
-        raise HTTPException(status_code=404, detail="PDF non disponibile in Drive/Sheets")
+        raise HTTPException(status_code=404, detail="PDF non disponibile in Drive/Supabase")
 
     return Response(
         content=pdf_bytes,
@@ -650,7 +650,7 @@ async def delete_f24_commercialista(f24_id: str) -> Dict[str, Any]:
     })
     cascade_results["alerts"] = alert_result.deleted_count
 
-    # Se già eliminato, cancella definitivamente (architettura Drive/Sheets)
+    # Se già eliminato, cancella definitivamente (architettura Drive/Supabase)
     if f24.get("status") == "eliminato":
         await db[COLL_F24_COMMERCIALISTA].delete_one({"id": f24_id})
         return {

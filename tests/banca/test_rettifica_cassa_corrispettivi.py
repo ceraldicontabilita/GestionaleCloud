@@ -1,7 +1,7 @@
 import asyncio
 
 from app.services.rettifica_cassa_corrispettivi import analizza, applica
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 
 def _run(value):
@@ -9,7 +9,7 @@ def _run(value):
 
 
 def _db():
-    db = MemorySheetsClient()["rettifica-cassa"]
+    db = ClientArchivioMemoria()["rettifica-cassa"]
     _run(db["corrispettivi"].insert_many([
         {"id": "corr-1", "data": "2026-08-03", "totale": 2181.40,
          "pagato_contanti": 551.90, "pagato_elettronico": 1629.50},

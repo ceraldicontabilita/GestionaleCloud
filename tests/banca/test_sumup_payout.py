@@ -7,7 +7,7 @@ ricavi di un importo gia' dichiarato dal corrispettivo XML.
 import asyncio
 
 import pytest
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.services import sumup_payout, sumup_sync
 from app.services.scritture_contabili import registra_chiusura_pos_reale
@@ -22,7 +22,7 @@ def _run(awaitable):
 
 
 def _db():
-    return MemorySheetsClient()["sumup_payout_test"]
+    return ClientArchivioMemoria()["sumup_payout_test"]
 
 
 @pytest.fixture(autouse=True)

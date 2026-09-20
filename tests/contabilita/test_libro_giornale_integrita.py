@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 from fastapi import HTTPException
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.routers.accounting import contabilita_gestionale as cg
 
@@ -65,7 +65,7 @@ def test_rileva_protocollo_duplicato_e_righe_invalide():
 
 
 def test_giornale_include_scrittura_con_solo_campo_data(monkeypatch):
-    db = MemorySheetsClient().db
+    db = ClientArchivioMemoria().db
     _run(db.movimenti_contabili.insert_one(_scrittura(1, 84, 84, data_field="data")))
     monkeypatch.setattr(cg.Database, "get_db", lambda: db)
 
@@ -101,7 +101,7 @@ def test_reimport_corrotto_viene_annullato_prima_di_qualsiasi_scrittura():
 
 
 def test_reimport_valido_e_idempotente(monkeypatch):
-    db = MemorySheetsClient().db
+    db = ClientArchivioMemoria().db
     monkeypatch.setattr(cg.Database, "get_db", lambda: db)
     dump = {
         "tipo": "libro_giornale_gestionalecloud",

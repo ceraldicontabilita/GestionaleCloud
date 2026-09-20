@@ -3,7 +3,7 @@ import hashlib
 import fitz
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.database import Database
 from app.routers import documenti
@@ -19,7 +19,7 @@ def _pdf(text: str) -> bytes:
 
 
 def test_preview_non_scrive_e_token_autorizza_solo_file_confermato(monkeypatch):
-    db = MemorySheetsClient()["document-preview-test"]
+    db = ClientArchivioMemoria()["document-preview-test"]
     monkeypatch.setattr(Database, "get_db", staticmethod(lambda: db))
     app = FastAPI()
     app.include_router(documenti.router, prefix="/api/documenti")

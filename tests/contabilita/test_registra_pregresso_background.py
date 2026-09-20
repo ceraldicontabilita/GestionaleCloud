@@ -9,7 +9,7 @@ stato persistito in ``sistema_stato``.
 import asyncio
 
 from app.services import registrazione_contabile as rc
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 
 def _run(coro):
@@ -21,7 +21,7 @@ def _run(coro):
 
 
 def _db(nome):
-    return MemorySheetsClient()[nome]
+    return ClientArchivioMemoria()[nome]
 
 
 async def _semina(db):

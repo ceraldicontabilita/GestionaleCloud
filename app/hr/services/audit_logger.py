@@ -3,7 +3,8 @@
 La logica vive in `app/services/audit_logger.py`. Fino al 19/09/2026 qui c'era
 una copia identica nel comportamento: le sole differenze erano il percorso di
 import nell'esempio della docstring, la terminologia di due righe di commento
-(«MongoDB» invece di «Sheets», resto di una migrazione gia' fatta) e l'assenza
+(«MongoDB» invece del nome dell'archivio, resto di una migrazione
+fatta da tempo) e l'assenza
 di `log_sicurezza`, la scorciatoia per gli eventi di login e le operazioni
 distruttive. Nessuna divergenza da classificare: una copia era semplicemente
 piu' povera.

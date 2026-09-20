@@ -2,7 +2,7 @@ import asyncio
 from datetime import date
 
 from app.services.lipe_verifica import list_lipe_monthly_evidence, parse_lipe_modules, parse_lipe_page
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 from app.services.verifica_coerenza import VerificaCoerenza, stato_temporale_periodo
 
 
@@ -146,7 +146,7 @@ def test_vp4_nativo_vuoto_vale_zero_e_quadra_il_credito():
 
 def test_lipe_duplicata_resta_ambigua_con_provenienza():
     async def scenario():
-        db = MemorySheetsClient().db
+        db = ClientArchivioMemoria().db
         for suffix in ("A", "B"):
             await db.fiscal_documents.insert_one({
                 "id": f"LIPE-{suffix}", "company_id": "CERALDI",
@@ -166,7 +166,7 @@ def test_lipe_duplicata_resta_ambigua_con_provenienza():
 
 def test_lipe_da_ocr_resta_da_verificare_anche_con_i_campi_presenti():
     async def scenario():
-        db = MemorySheetsClient().db
+        db = ClientArchivioMemoria().db
         await db.fiscal_documents.insert_one({
             "id": "LIPE-OCR", "company_id": "CERALDI", "document_type": "LIPE",
             "filename": "LIPE_2026.pdf", "source_metadata": {"tax_year": 2026},
@@ -204,7 +204,7 @@ def test_mesi_correnti_e_futuri_non_diventano_omissioni():
 
 def test_verifica_annuale_non_segnala_i_cinque_mesi_non_maturati(monkeypatch):
     async def scenario():
-        db = MemorySheetsClient().db
+        db = ClientArchivioMemoria().db
         verifier = VerificaCoerenza(db)
 
         async def credito(_anno, month):

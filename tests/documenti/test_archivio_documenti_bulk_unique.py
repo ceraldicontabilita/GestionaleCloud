@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from app.services.archivio_documenti_memoria import DuplicateRecordError, SheetDatabase
+from app.services.archivio_documenti_memoria import DuplicateRecordError, ArchivioDocumenti
 
 
 def run(coro):
@@ -10,7 +10,7 @@ def run(coro):
 
 
 def test_insert_many_valida_indici_univoci_senza_scansione_per_riga(monkeypatch):
-    database = SheetDatabase("test")
+    database = ArchivioDocumenti("test")
     table = database["pos_transactions"]
     run(table.create_index([("operation_key", 1)], unique=True))
     run(table.insert_many([
@@ -32,7 +32,7 @@ def test_insert_many_valida_indici_univoci_senza_scansione_per_riga(monkeypatch)
 
 
 def test_insert_many_rifiuta_duplicato_esistente_e_non_scrive_il_batch():
-    database = SheetDatabase("test")
+    database = ArchivioDocumenti("test")
     table = database["pos_transactions"]
     run(table.create_index([("operation_key", 1)], unique=True))
     run(table.insert_one({"operation_key": "POS-1"}))
@@ -47,7 +47,7 @@ def test_insert_many_rifiuta_duplicato_esistente_e_non_scrive_il_batch():
 
 
 def test_insert_many_rifiuta_duplicato_nello_stesso_batch():
-    database = SheetDatabase("test")
+    database = ArchivioDocumenti("test")
     table = database["pos_transactions"]
     run(table.create_index([("operation_key", 1)], unique=True))
 
@@ -61,7 +61,7 @@ def test_insert_many_rifiuta_duplicato_nello_stesso_batch():
 
 
 def test_insert_many_rispetta_indice_sparse_e_valori_annidati():
-    database = SheetDatabase("test")
+    database = ArchivioDocumenti("test")
     table = database["pos_transactions"]
     run(table.create_index([("external", 1)], unique=True, sparse=True))
 
@@ -78,7 +78,7 @@ def test_insert_many_rispetta_indice_sparse_e_valori_annidati():
 
 
 def test_in_query_gestisce_valori_scalari_e_array():
-    database = SheetDatabase("test")
+    database = ArchivioDocumenti("test")
     table = database["records"]
     run(table.insert_many([
         {"id": "one", "key": "A", "tags": ["x", "y"]},

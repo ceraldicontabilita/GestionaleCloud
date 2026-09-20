@@ -8,7 +8,7 @@ Capezzuto 430,00 e Vespa 406,00 pagati il 20/02/2026 sono i SALDI di gennaio
 import asyncio
 
 from app.routers.bank import estratto_conto
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 from app.services.stipendi_bonifici import (
     associa_bonifici_stipendi,
     competenza_bonifico_stipendio,
@@ -71,7 +71,7 @@ def test_regola_del_giorno_25():
 
 def test_saldo_del_20_febbraio_chiude_gennaio_non_febbraio():
     async def scenario():
-        db = MemorySheetsClient()["competenza-associa"]
+        db = ClientArchivioMemoria()["competenza-associa"]
         await db.prima_nota_salari.insert_many([
             _riga("cap-gen", "CAPEZZUTO ALESSANDRO", 1, 2026, 1430.0, 1000.0, ["EC-ACC-CAP"]),
             _riga("cap-feb", "CAPEZZUTO ALESSANDRO", 2, 2026, 801.0),
@@ -108,7 +108,7 @@ def test_saldo_del_20_febbraio_chiude_gennaio_non_febbraio():
 def _db_come_in_produzione():
     """Stato reale letto il 03/09/2026: i saldi del 20/02 stanno su febbraio;
     la riga di gennaio di Capezzuto non esiste in prima nota."""
-    db = MemorySheetsClient()["competenza-riallineo"]
+    db = ClientArchivioMemoria()["competenza-riallineo"]
 
     async def semina():
         await db.prima_nota_salari.insert_many([

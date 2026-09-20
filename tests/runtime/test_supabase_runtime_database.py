@@ -753,8 +753,8 @@ def test_fetch_deduplica_id_ripetuto_da_paginazione_concorrente(monkeypatch):
 
 def test_hydrate_registra_hydration_result_per_lhealth_check():
     # Prima dell'idratazione l'attributo deve essere un vero None su
-    # istanza, non delegato a SheetDatabase.__getattr__ (che restituirebbe
-    # una SheetTable e romperebbe /api/health con un AttributeError).
+    # istanza, non delegato a ArchivioDocumenti.__getattr__ (che restituirebbe
+    # una CollezioneDocumenti e romperebbe /api/health con un AttributeError).
     runtime = FakeRestSupabase({
         "fatture": [{"_id": "f1", "numero": 1}],
     })

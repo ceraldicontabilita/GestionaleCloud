@@ -117,7 +117,7 @@ async def upload_f24_zip(
             safe_filename = os.path.basename(pdf_name).replace(" ", "_")
             stored_filename = f"{file_id}_{safe_filename}"
 
-            # Architettura Drive/Sheets: salva PDF come Base64
+            # Architettura Drive/Supabase: salva PDF come Base64
             import base64
             pdf_base64 = base64.b64encode(pdf_content).decode('utf-8')
 
@@ -126,7 +126,7 @@ async def upload_f24_zip(
                 "id": file_id,
                 "original_filename": pdf_name,
                 "stored_filename": stored_filename,
-                "pdf_data": pdf_base64,  # Architettura Drive/Sheets
+                "pdf_data": pdf_base64,  # Architettura Drive/Supabase
                 "file_hash": file_hash,
                 "file_size": len(pdf_content),
                 "status": "pending",  # pending, processed, error
@@ -218,7 +218,7 @@ async def upload_f24_multiple(
                 })
                 continue
 
-            # Architettura Drive/Sheets: salva PDF come Base64
+            # Architettura Drive/Supabase: salva PDF come Base64
             import base64
             file_id = str(uuid4())
             safe_filename = os.path.basename(file.filename).replace(" ", "_")
@@ -231,7 +231,7 @@ async def upload_f24_multiple(
                 "id": file_id,
                 "original_filename": file.filename,
                 "stored_filename": stored_filename,
-                "pdf_data": pdf_base64,  # Architettura Drive/Sheets
+                "pdf_data": pdf_base64,  # Architettura Drive/Supabase
                 "file_hash": file_hash,
                 "file_size": len(pdf_content),
                 "status": "pending",
@@ -295,7 +295,7 @@ async def delete_f24_document(
     if not doc:
         raise HTTPException(status_code=404, detail="Documento non trovato")
 
-    # Architettura Drive/Sheets: elimina solo dal database
+    # Architettura Drive/Supabase: elimina solo dal database
     await db["f24_unificato"].delete_one({"id": doc_id})
 
     return {"success": True, "message": "Documento eliminato"}
@@ -891,7 +891,7 @@ async def upload_quietanza_f24(
     """
     Upload e parsing di una quietanza F24 PDF.
     Estrae automaticamente tutti i dati e li salva nel database.
-    Architettura Drive/Sheets: salva PDF come Base64.
+    Architettura Drive/Supabase: salva PDF come Base64.
     """
     if not file.filename.lower().endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Il file deve essere un PDF")
@@ -1014,7 +1014,7 @@ async def delete_quietanza_f24(f24_id: str) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail="Quietanza non trovata")
 
     # Elimina file fisico
-    # Architettura Drive/Sheets: elimina solo da database
+    # Architettura Drive/Supabase: elimina solo da database
     await db["quietanze_f24"].delete_one({"id": f24_id})
 
     return {

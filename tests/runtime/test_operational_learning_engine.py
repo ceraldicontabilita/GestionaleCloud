@@ -3,7 +3,7 @@ from copy import deepcopy
 from datetime import date
 
 import pytest
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.db_collections import (
     COLL_CASE_MEMORY,
@@ -28,7 +28,7 @@ def _run(coro):
 
 
 def _database():
-    return MemorySheetsClient()["gestionale_test"]
+    return ClientArchivioMemoria()["gestionale_test"]
 
 
 def test_expected_vs_actual_usa_centesimi_esatti():

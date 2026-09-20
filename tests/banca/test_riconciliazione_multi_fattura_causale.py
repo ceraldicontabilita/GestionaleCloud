@@ -1,6 +1,6 @@
 import asyncio
 
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.services import riconciliazione_bancaria as mod
 
@@ -33,7 +33,7 @@ def _fattura(fid, numero, importo):
 
 
 def _prepara_db(monkeypatch, importo_movimento):
-    db = MemorySheetsClient()["test_multi_fattura_causale"]
+    db = ClientArchivioMemoria()["test_multi_fattura_causale"]
     monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
     monkeypatch.setattr(mod, "_propaga_fattura_pagata", _noop)
     monkeypatch.setattr(mod, "_registra_match_partita_aperta", _noop)

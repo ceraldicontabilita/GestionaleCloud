@@ -14,7 +14,7 @@ from app.services.stipendi_bonifici import (
     recupera_relazioni_stipendi_mancanti,
     riconciliazione_salario_verificata,
 )
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 
 class _Cursor:
@@ -365,7 +365,7 @@ def test_etichetta_con_due_movimenti_reali_e_verificata():
 
 def test_recupera_relazione_stipendio_certa_ed_e_idempotente():
     async def scenario():
-        db = MemorySheetsClient()["salary-relations-recovery"]
+        db = ClientArchivioMemoria()["salary-relations-recovery"]
         salary = {
             "id": "S1",
             "dipendente": "ROSSI MARIO",
@@ -410,7 +410,7 @@ def test_recupera_relazione_stipendio_certa_ed_e_idempotente():
 
 def test_recupero_non_collega_un_movimento_con_nome_diverso():
     async def scenario():
-        db = MemorySheetsClient()["salary-relations-recovery-negative"]
+        db = ClientArchivioMemoria()["salary-relations-recovery-negative"]
         await db["prima_nota_salari"].insert_one({
             "id": "S1",
             "dipendente": "ROSSI MARIO",

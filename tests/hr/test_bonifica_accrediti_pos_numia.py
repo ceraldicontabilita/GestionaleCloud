@@ -6,7 +6,7 @@ trasferimento giornaliero, non cinque rimborsi/ricavi indipendenti.
 import asyncio
 from contextlib import asynccontextmanager
 
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 from pydantic import ValidationError
 import pytest
 
@@ -31,7 +31,7 @@ def _run(awaitable):
 
 
 def _db():
-    return MemorySheetsClient()["bonifica_pos_numia_test"]
+    return ClientArchivioMemoria()["bonifica_pos_numia_test"]
 
 
 def test_payload_bonifica_numia_rifiuta_campi_e_anni_non_validi():
@@ -126,7 +126,7 @@ def test_bonifica_e_idempotente():
     })) == 1
 
 
-def test_bonifica_massiva_usa_il_batch_drive_sheets():
+def test_bonifica_massiva_usa_un_solo_batch():
     db = _db()
     _prepara(db)
     eventi = []

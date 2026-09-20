@@ -41,8 +41,6 @@ altrimenti `/lotti/...` finirebbe nella SPA sbagliata.
 - **Google Drive** conserva gli originali documentali (fatture, cedolini, F24,
   estratti conto) e li fa entrare dai canali `DA ELABORARE / ELABORATE /
   ERRORI`. Non è un database.
-- Il runtime su Google Sheets esiste ancora nel codice solo come fallback di
-  sviluppo.
 
 ## Lavorare in locale
 

@@ -3,7 +3,7 @@ Parser PDF per Piani di Ammortamento Mutui
 ==========================================
 
 Estrae le rate dai PDF BPM (Banca Popolare di Milano)
-e le importa nel registro Sheets.
+e le importa nell'archivio del runtime.
 """
 
 import re

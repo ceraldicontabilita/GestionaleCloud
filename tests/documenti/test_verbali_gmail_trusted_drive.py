@@ -2,7 +2,7 @@ import asyncio
 import hashlib
 from email.message import EmailMessage
 
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.services import mittenti
 from app.services import verbali_gmail_scanner as scanner
@@ -75,7 +75,7 @@ def test_builtin_idempotenti_e_non_sovrascrivono():
 
 
 def test_preparser_non_crea_verbale_anonimo_senza_identita():
-    db = MemorySheetsClient()["verbali-test"]
+    db = ClientArchivioMemoria()["verbali-test"]
     result = asyncio.run(scanner._upsert_verbale(db, {
         "data_ricezione_notifica": "2026-05-14T09:12:30+02:00",
         "email_subject": "POSTA CERTIFICATA: notifica con allegato",
@@ -86,7 +86,7 @@ def test_preparser_non_crea_verbale_anonimo_senza_identita():
 
 
 def test_credenziali_supportano_alias_ambiente_amministrativo(monkeypatch):
-    db = MemorySheetsClient()["verbali-credenziali"]
+    db = ClientArchivioMemoria()["verbali-credenziali"]
     monkeypatch.setattr(scanner.settings, "GMAIL_EMAIL", None)
     monkeypatch.setattr(scanner.settings, "IMAP_USER", None)
     monkeypatch.setattr(scanner.settings, "GMAIL_APP_PASSWORD", None)
@@ -115,7 +115,7 @@ def test_documento_archiviato_manualmente_non_viene_ritrasmesso(monkeypatch, tmp
     digest = hashlib.md5(content).hexdigest()
     path = tmp_path / "verbale.pdf"
     path.write_bytes(content)
-    db = MemorySheetsClient()["verbali-drive-skip"]
+    db = ClientArchivioMemoria()["verbali-drive-skip"]
     asyncio.run(db["documents_inbox"].insert_one({
         "id": "doc-archiviato",
         "file_hash": digest,

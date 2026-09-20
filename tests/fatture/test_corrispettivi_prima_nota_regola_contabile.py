@@ -13,7 +13,7 @@ import asyncio
 
 from app.routers.invoices import corrispettivi_helpers as helpers_mod
 from app.routers.prima_nota_module import sync as sync_mod
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 
 def _matches(doc, query):
@@ -237,7 +237,7 @@ def test_sync_anno_legge_corrispettivi_drive_legacy_senza_campo_anno(monkeypatch
     In produzione le righe 2026 del registro Drive avevano ``data`` valida ma
     non ``anno``: il vecchio filtro le escludeva tutte e Cassa restava vuota.
     """
-    db = MemorySheetsClient()["corrispettivi_drive_legacy"]
+    db = ClientArchivioMemoria()["corrispettivi_drive_legacy"]
     monkeypatch.setattr(sync_mod.Database, "get_db", staticmethod(lambda: db))
     _run(db["corrispettivi"].insert_many([
         {

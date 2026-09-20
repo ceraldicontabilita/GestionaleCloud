@@ -39,7 +39,7 @@ from typing import Any, Dict, List, Optional
 
 @asynccontextmanager
 async def _transazione_registro(db):
-    """Serializza una scrittura composta nel registro Drive/Sheets."""
+    """Serializza una scrittura composta nel registro Drive/Supabase."""
     transaction = getattr(db, "transaction", None)
     if not callable(transaction):
         yield None
@@ -50,11 +50,11 @@ async def _transazione_registro(db):
 
 @asynccontextmanager
 async def _batch_scritture_registro(db):
-    """Accorpa un job massivo in un solo flush per foglio Drive/Sheets.
+    """Accorpa un job massivo in un solo flush per foglio Drive/Supabase.
 
     I doppi di test e gli adapter compatibili che non espongono
     ``batch_writes`` continuano a funzionare senza un ramo speciale nei
-    chiamanti. Il runtime Sheets deduplica inoltre i batch annidati.
+    chiamanti. Il runtime in memoria deduplica inoltre i batch annidati.
     """
     batch_writes = getattr(db, "batch_writes", None)
     if not callable(batch_writes):
@@ -258,7 +258,7 @@ def _e_rifiuto_remoto_per_chiave(exc: BaseException) -> bool:
 async def _scrivi_se_assente(db, registro: str, query_esistente: Dict[str, Any],
                               mov: Dict[str, Any]) -> tuple:
     """Come scrivi_movimento, ma con la guardia di idempotenza (query_esistente)
-    applicata in UNA SOLA operazione atomica verso Drive/Sheets (find_one_and_update
+    applicata in UNA SOLA operazione atomica verso Drive/Supabase (find_one_and_update
     con upsert=True), non in due chiamate separate (find_one poi insert_one).
 
     Prima di questa funzione, registra_corrispettivo faceva le due chiamate
@@ -1631,7 +1631,7 @@ async def _bonifica_accrediti_pos_numia_impl(
             "righe_ec": len(ids_canonici),
         }
         # Il trasferimento e tutte le prove EC della giornata cambiano stato
-        # insieme sotto il lock atomico del registro Drive/Sheets.
+        # insieme sotto il lock atomico del registro Drive/Supabase.
         async with _transazione_registro(db) as session:
             sessione = _sessione(session)
             await db["prima_nota_banca"].update_one(
@@ -1758,10 +1758,10 @@ async def bonifica_accrediti_pos_numia(
     dry_run: bool = True,
     actor: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Bonifica NUMIA con persistenza Drive/Sheets accorpata per foglio.
+    """Bonifica NUMIA con persistenza Drive/Supabase accorpata per foglio.
 
     Senza questo confine un recupero di molte giornate eseguiva una lettura
-    remota dell'indice Sheets per ogni singola mutazione e superava il limite
+    remota dell'indice del runtime per ogni singola mutazione e superava il limite
     di 60 letture/minuto. La cache resta aggiornata a ogni passaggio, mentre il
     registro remoto riceve un unico upsert deduplicato per collezione.
     """

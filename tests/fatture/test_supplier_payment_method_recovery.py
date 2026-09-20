@@ -1,6 +1,6 @@
 import asyncio
 
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 from app.services.supplier_payment_method_recovery import recover_supplier_payment_methods
 from app.utils.iva_calculator import save_supplier_payment_method
 
@@ -10,7 +10,7 @@ def test_recupera_solo_metodo_storico_e_crea_backup():
 
 
 async def _test_recupera_solo_metodo_storico_e_crea_backup():
-    db = MemorySheetsClient()["supplier_method_recovery"]
+    db = ClientArchivioMemoria()["supplier_method_recovery"]
     await db["fornitori"].insert_one({
         "id": "for-1", "partita_iva": "01234567890", "metodo_pagamento": "",
         "storico_metodi_pagamento": [
@@ -36,7 +36,7 @@ def test_non_deduce_senza_fonte_e_non_sovrascrive_configurato():
 
 
 async def _test_non_deduce_senza_fonte_e_non_sovrascrive_configurato():
-    db = MemorySheetsClient()["supplier_method_no_guess"]
+    db = ClientArchivioMemoria()["supplier_method_no_guess"]
     await db["fornitori"].insert_one({"id": "for-1", "partita_iva": "1", "metodo_pagamento": "misto"})
     await db["fornitori"].insert_one({"id": "for-2", "partita_iva": "2", "metodo_pagamento": ""})
 
@@ -51,7 +51,7 @@ def test_blocca_conflitto_senza_data():
 
 
 async def _test_blocca_conflitto_senza_data():
-    db = MemorySheetsClient()["supplier_method_conflict"]
+    db = ClientArchivioMemoria()["supplier_method_conflict"]
     await db["fornitori"].insert_one({"id": "for-1", "partita_iva": "1", "metodo_pagamento": ""})
     await db["supplier_payment_methods"].insert_one({
         "id": "dict-1", "supplier_vat": "1", "payment_method": "cassa"
@@ -65,12 +65,12 @@ async def _test_blocca_conflitto_senza_data():
     assert result["ripristinati"] == 0
 
 
-def test_dizionario_persistente_ha_identita_canoniche_sheets():
-    asyncio.run(_test_dizionario_persistente_ha_identita_canoniche_sheets())
+def test_dizionario_persistente_ha_identita_canoniche():
+    asyncio.run(_test_dizionario_persistente_ha_identita_canoniche())
 
 
-async def _test_dizionario_persistente_ha_identita_canoniche_sheets():
-    db = MemorySheetsClient()["supplier_method_dictionary_ids"]
+async def _test_dizionario_persistente_ha_identita_canoniche():
+    db = ClientArchivioMemoria()["supplier_method_dictionary_ids"]
     assert await save_supplier_payment_method(db, "01234567890", "Fornitore", "banca", "test")
     dictionary = await db["supplier_payment_methods"].find_one({"supplier_vat": "01234567890"})
     history = await db["supplier_payment_history"].find_one({"supplier_vat": "01234567890"})

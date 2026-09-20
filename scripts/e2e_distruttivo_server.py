@@ -1,6 +1,6 @@
 """Server isolato per il collaudo browser delle operazioni distruttive.
 
-Usa i router reali e un registro Sheets in memoria. Non legge file ``.env`` e
+Usa i router reali e un archivio in memoria in memoria. Non legge file ``.env`` e
 non puo' raggiungere l'archivio di produzione. I dati spariscono alla chiusura.
 """
 
@@ -21,7 +21,7 @@ os.environ.pop("ADMIN_PASSWORD_HASH", None)
 from fastapi import FastAPI, Request  # noqa: E402
 from fastapi.responses import FileResponse, JSONResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
-from app.services.sheets_document_store import MemorySheetsClient  # noqa: E402
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria  # noqa: E402
 
 from app.config import settings  # noqa: E402
 from app.database import Database  # noqa: E402
@@ -41,7 +41,7 @@ DIST = Path(
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    client = MemorySheetsClient()
+    client = ClientArchivioMemoria()
     Database.client = client
     Database.db = client["Gestionale_E2E_Distruttivo"]
     await Database.db["notifiche_scadenze"].insert_one(

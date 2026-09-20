@@ -9,7 +9,7 @@ scheda del credito.
 import asyncio
 
 import pytest
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.routers.prima_nota_module.common import saldi_finanziari
 from app.services import conti_pos, sumup_payout, sumup_sync
@@ -25,7 +25,7 @@ def _run(awaitable):
 
 
 def _db():
-    return MemorySheetsClient()["saldi_finanziari_test"]
+    return ClientArchivioMemoria()["saldi_finanziari_test"]
 
 
 @pytest.fixture(autouse=True)

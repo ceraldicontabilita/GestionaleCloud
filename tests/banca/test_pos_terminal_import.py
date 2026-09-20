@@ -9,7 +9,7 @@ from app.services.pos_terminal_import import (
     importa_pos_terminal_file,
     parse_pos_terminal_file,
 )
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 
 def test_csv_pos_aggrega_solo_operazioni_approvate_e_storni_con_segno():
@@ -180,7 +180,7 @@ def test_operazioni_identiche_senza_id_preservano_la_molteplicita():
 
 def test_reimport_periodo_sovrapposto_non_duplica_operazioni(monkeypatch):
     async def scenario():
-        db = MemorySheetsClient()["pos_overlap_test"]
+        db = ClientArchivioMemoria()["pos_overlap_test"]
         content = (
             "Data e ora;Codice autorizzazione;Importo;Tipo transazione;Stato operazione;ID Transazione\n"
             "01/06/2026 09:00:00;A1;10,00;Acquisto;Acquisto approvato;TX-A\n"
@@ -209,7 +209,7 @@ def test_reimport_periodo_sovrapposto_non_duplica_operazioni(monkeypatch):
 
 def test_import_terminale_crea_subito_l_attesa_bancaria():
     async def scenario():
-        db = MemorySheetsClient()["pos_expectation_test"]
+        db = ClientArchivioMemoria()["pos_expectation_test"]
         content = (
             "Data e ora;Codice autorizzazione;Importo;Tipo transazione;"
             "Stato operazione;ID Transazione\n"
@@ -247,7 +247,7 @@ def test_import_terminale_crea_subito_l_attesa_bancaria():
 
 def test_import_pos_grande_spezza_le_scritture_in_batch_limitati(monkeypatch):
     async def scenario():
-        db = MemorySheetsClient()["pos_chunk_test"]
+        db = ClientArchivioMemoria()["pos_chunk_test"]
         calls = 0
 
         from contextlib import asynccontextmanager

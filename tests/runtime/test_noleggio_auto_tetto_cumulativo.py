@@ -10,7 +10,7 @@ Ora il limite si applica al RESIDUO dell'anno per lo stesso contratto
 import asyncio
 
 from app.services import learning_machine_cdc as lm
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 
 def _run(c):
@@ -64,7 +64,7 @@ def test_centro_senza_limite_annuo_ignora_il_parametro():
 # ------------------------------------------------------------------
 
 def test_somma_gia_dedotto_per_numero_contratto():
-    db = MemorySheetsClient()["test"]
+    db = ClientArchivioMemoria()["test"]
     _run(db["invoices"].insert_one({
         "id": "NOL-1", "centro_costo_id": "6.1_NOLEGGIO_AUTO",
         "invoice_date": "2026-03-01", "numero_contratto_noleggio": "CONTR-XYZ",
@@ -83,7 +83,7 @@ def test_somma_gia_dedotto_per_numero_contratto():
 
 
 def test_somma_gia_dedotto_esclude_lanno_precedente():
-    db = MemorySheetsClient()["test"]
+    db = ClientArchivioMemoria()["test"]
     _run(db["invoices"].insert_one({
         "id": "NOL-2025", "centro_costo_id": "6.1_NOLEGGIO_AUTO",
         "invoice_date": "2025-12-01", "numero_contratto_noleggio": "CONTR-XYZ",
@@ -96,7 +96,7 @@ def test_somma_gia_dedotto_esclude_lanno_precedente():
 
 
 def test_somma_gia_dedotto_esclude_la_fattura_corrente():
-    db = MemorySheetsClient()["test"]
+    db = ClientArchivioMemoria()["test"]
     _run(db["invoices"].insert_one({
         "id": "NOL-CORRENTE", "centro_costo_id": "6.1_NOLEGGIO_AUTO",
         "invoice_date": "2026-03-01", "numero_contratto_noleggio": "CONTR-XYZ",
@@ -110,7 +110,7 @@ def test_somma_gia_dedotto_esclude_la_fattura_corrente():
 
 
 def test_somma_gia_dedotto_fallback_su_fornitore_senza_numero_contratto():
-    db = MemorySheetsClient()["test"]
+    db = ClientArchivioMemoria()["test"]
     _run(db["invoices"].insert_one({
         "id": "NOL-SENZA-CONTRATTO", "centro_costo_id": "6.1_NOLEGGIO_AUTO",
         "invoice_date": "2026-03-01", "supplier_vat": "IT12345678901",
@@ -130,7 +130,7 @@ def test_somma_gia_dedotto_fallback_su_fornitore_senza_numero_contratto():
 def test_handler_classifica_cdc_cumula_il_tetto_su_due_fatture_dello_stesso_contratto():
     from app.handlers.learning import handler_classifica_cdc
 
-    db = MemorySheetsClient()["test"]
+    db = ClientArchivioMemoria()["test"]
 
     def _seed_invoice(fattura_id, mese):
         _run(db["invoices"].insert_one({

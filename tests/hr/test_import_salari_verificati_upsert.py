@@ -4,7 +4,7 @@ creare una seconda riga per una busta gia' presente da un altro canale
 causa verificata dei doppioni di Ceraldi Valerio/Vincenzo 05/2026."""
 import asyncio
 
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 
 def _run(coro):
@@ -12,7 +12,7 @@ def _run(coro):
 
 
 def _db(nome):
-    return MemorySheetsClient()[nome]
+    return ClientArchivioMemoria()[nome]
 
 
 def test_upsert_su_chiave_duplicata_non_crea_una_seconda_riga(monkeypatch):

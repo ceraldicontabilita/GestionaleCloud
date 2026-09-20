@@ -3,7 +3,7 @@
 import asyncio
 from datetime import date
 
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 import app.agents.acquisti_shadow as agent_mod
 from app.agents.acquisti_shadow import AcquistiShadow
@@ -11,7 +11,7 @@ from app.services.acquisti_shadow_service import leggi_snapshot_acquisti
 
 
 def _db():
-    return MemorySheetsClient()["acquisti_shadow_test"]
+    return ClientArchivioMemoria()["acquisti_shadow_test"]
 
 
 async def _seed(db):

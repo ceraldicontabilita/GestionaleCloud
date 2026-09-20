@@ -1,11 +1,11 @@
 """PR 14 (audit 03/09/2026 §5): doppioni di ``prima_nota_salari``.
 
-Nessuna rete: ``MemorySheetsClient`` sostituisce Supabase/Postgres con la
+Nessuna rete: ``ClientArchivioMemoria`` sostituisce Supabase/Postgres con la
 stessa API async usata in produzione.
 """
 import asyncio
 
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.services.bonifica_prima_nota_salari_doppioni import esegui
 
@@ -15,7 +15,7 @@ def _run(coro):
 
 
 def _db(nome):
-    return MemorySheetsClient()[nome]
+    return ClientArchivioMemoria()[nome]
 
 
 async def _popola_dipendente(db, *, id_, nome, cognome, cf):

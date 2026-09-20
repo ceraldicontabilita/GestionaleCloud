@@ -531,7 +531,7 @@ async def _trova_fattura_e_xml_originale(fattura_id: str) -> tuple[Optional[dict
     1. Cerca la fattura in `invoices` (poi fallback COL_FATTURE_RICEVUTE / _id)
     2. Legge il file XML dal disco (gestisce .p7m estraendo l'XML interno)
        oppure, se il file non e' su disco, usa xml_raw/xml_content salvato
-       nel record Drive/Sheets.
+       nel record Drive/Supabase.
     """
     import os
     from app.services.xml_invoice_processor import extract_xml_from_p7m

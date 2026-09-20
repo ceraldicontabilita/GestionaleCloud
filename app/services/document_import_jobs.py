@@ -1,7 +1,7 @@
 """Coda in-process per import documentali voluminosi.
 
 Il file viene ricevuto e validato dalla rotta autenticata, mentre il lavoro
-Drive/Sheets prosegue dopo la risposta HTTP. Lo stato e' persistito in Sheets:
+Drive/Supabase prosegue dopo la risposta HTTP. Lo stato e' persistito nell'archivio:
 se il processo viene riavviato, un nuovo upload dello stesso file riprende il
 job usando lo stesso identificativo e le chiavi operazione dell'importer
 impediscono scritture duplicate.
@@ -101,7 +101,7 @@ async def _run_pos_job_after_ack(
     db, *, job_id: str, content: bytes, filename: str,
     drive_file_id: str | None = None,
 ) -> None:
-    """Lascia al gateway il tempo di inviare il 202 prima di scrivere su Sheets."""
+    """Lascia al gateway il tempo di inviare il 202 prima di scrivere nell'archivio."""
     await asyncio.sleep(_JOB_START_DELAY_SECONDS)
     await _run_pos_job(
         db, job_id=job_id, content=content, filename=filename,

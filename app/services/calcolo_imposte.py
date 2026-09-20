@@ -123,10 +123,10 @@ class CalcolatoreImposte:
     async def calcola_imposte_da_db(self, db, anno: int = None) -> CalcoloImposte:
         """
         Calcola le imposte partendo dai dati nel database.
-        OTTIMIZZATO: Usa aggregazione Drive/Sheets per performance.
+        OTTIMIZZATO: Usa aggregazione Drive/Supabase per performance.
 
         Args:
-            db: Riferimento al registro Sheets
+            db: Riferimento all'archivio del runtime
             anno: Anno fiscale (opzionale, default anno corrente)
 
         Returns:

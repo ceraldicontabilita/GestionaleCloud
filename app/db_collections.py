@@ -1,5 +1,5 @@
 """
-Definizione centralizzata delle collezioni Drive/Sheets.
+Definizione centralizzata delle collezioni Drive/Supabase.
 Questo file serve come UNICA fonte di verità per i nomi delle collezioni.
 
 REGOLA FONDAMENTALE: Ogni router DEVE importare i nomi delle collezioni da qui.

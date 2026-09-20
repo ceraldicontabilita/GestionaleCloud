@@ -1,5 +1,5 @@
 import asyncio
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.routers.accounting.contabilita_gestionale import (
     _bilancio_verifica_da_registro,
@@ -8,7 +8,7 @@ from app.routers.accounting.contabilita_gestionale import (
 
 def test_non_confonde_compensazione_annuale_con_scritture_in_quadratura():
     async def scenario():
-        db = MemorySheetsClient().db
+        db = ClientArchivioMemoria().db
         await db.movimenti_contabili.insert_many([
             {
                 "id": "s1",
@@ -42,7 +42,7 @@ def test_non_confonde_compensazione_annuale_con_scritture_in_quadratura():
 
 def test_segnala_righe_invalide_e_scritture_senza_righe():
     async def scenario():
-        db = MemorySheetsClient().db
+        db = ClientArchivioMemoria().db
         await db.movimenti_contabili.insert_many([
             {
                 "id": "valida-con-riga-errata",
@@ -72,7 +72,7 @@ def test_segnala_righe_invalide_e_scritture_senza_righe():
 def test_registro_vuoto_non_quadra_ed_espone_lo_stato_onesto():
     """Audit 03/09/2026 §2 (PR 6): 0 scritture non e' una quadratura."""
     async def scenario():
-        db = MemorySheetsClient().db
+        db = ClientArchivioMemoria().db
         # documenti sorgente dell'anno, anche gia' "flaggati" registrati:
         # senza scritture il flag non puo' essere vero e vanno contati.
         await db.corrispettivi.insert_many([
@@ -109,7 +109,7 @@ def test_registro_vuoto_non_quadra_ed_espone_lo_stato_onesto():
 
 def test_registro_con_scritture_bilanciate_quadra_e_dichiara_lo_stato():
     async def scenario():
-        db = MemorySheetsClient().db
+        db = ClientArchivioMemoria().db
         await db.movimenti_contabili.insert_many([
             {
                 "id": "s1", "anno": 2026, "data": "2026-03-22",
@@ -136,7 +136,7 @@ def test_registro_con_scritture_bilanciate_quadra_e_dichiara_lo_stato():
 
 def test_registro_che_quadra_ma_con_backlog_non_e_completo():
     async def scenario():
-        db = MemorySheetsClient().db
+        db = ClientArchivioMemoria().db
         await db.movimenti_contabili.insert_one({
             "id": "s1", "anno": 2026, "data": "2026-03-22",
             "righe": [
@@ -157,7 +157,7 @@ def test_registro_che_quadra_ma_con_backlog_non_e_completo():
 
 def test_espone_il_patrimonio_netto_nel_riepilogo():
     async def scenario():
-        db = MemorySheetsClient().db
+        db = ClientArchivioMemoria().db
         await db.movimenti_contabili.insert_one({
             "id": "apertura",
             "anno": 2026,

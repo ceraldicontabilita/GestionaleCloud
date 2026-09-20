@@ -1,13 +1,13 @@
 import asyncio
 
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.routers import previsioni_acquisti
 
 
 def test_statistiche_espongono_quantita_corrente_confronto_e_costo(monkeypatch):
     async def scenario():
-        db = MemorySheetsClient()["test_previsioni_statistiche"]
+        db = ClientArchivioMemoria()["test_previsioni_statistiche"]
         monkeypatch.setattr(
             previsioni_acquisti.Database, "get_db", staticmethod(lambda: db)
         )

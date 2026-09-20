@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 from fastapi import HTTPException
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.routers.operazioni_module import smart
 from app.routers.bank import estratto_conto
@@ -51,7 +51,7 @@ def test_semantic_contract_separates_automatic_classification_from_ambiguous_tar
 
 def test_manual_bank_payment_supports_many_invoices_and_is_idempotent(monkeypatch):
     async def scenario():
-        db = MemorySheetsClient()["bank_many"]
+        db = ClientArchivioMemoria()["bank_many"]
         await db.estratto_conto_movimenti.insert_one({
             "id": "M1", "data": "2026-07-17", "importo": -300.00,
             "descrizione": "LEASYS SALDO FATTURE 000001 000002",
@@ -94,7 +94,7 @@ def test_manual_bank_payment_supports_many_invoices_and_is_idempotent(monkeypatc
 
 def test_many_invoice_allocation_rejects_non_square_total_before_writes(monkeypatch):
     async def scenario():
-        db = MemorySheetsClient()["bank_many_invalid"]
+        db = ClientArchivioMemoria()["bank_many_invalid"]
         await db.estratto_conto_movimenti.insert_one({"id": "M1", "importo": -300.0})
         await db.invoices.insert_many([
             {"id": "F1", "supplier_vat": "0123", "total_amount": 100.0},
@@ -120,7 +120,7 @@ def test_many_invoice_allocation_rejects_non_square_total_before_writes(monkeypa
 
 def test_bank_api_reports_loaded_rows_separately_from_real_total(monkeypatch):
     async def scenario():
-        db = MemorySheetsClient()["bank_totals"]
+        db = ClientArchivioMemoria()["bank_totals"]
         await db.estratto_conto_movimenti.insert_many([
             {"id": f"M{i}", "data": "2026-08-10", "importo": i + 1}
             for i in range(60)
@@ -136,7 +136,7 @@ def test_bank_api_reports_loaded_rows_separately_from_real_total(monkeypatch):
 
 def test_import_orchestrator_can_apply_unique_referenced_invoice_set(monkeypatch):
     async def scenario():
-        db = MemorySheetsClient()["bank_auto_many"]
+        db = ClientArchivioMemoria()["bank_auto_many"]
         await db.estratto_conto_movimenti.insert_one({
             "id": "M1", "data": "2026-07-17", "importo": -300,
             "descrizione": "ADDEBITO DIRETTO SDD LEASYS SALDO FATTURE 000001 000002",
@@ -155,7 +155,7 @@ def test_import_orchestrator_can_apply_unique_referenced_invoice_set(monkeypatch
 
 def test_auto_match_unique_supplier_amount_reconciles_without_operator():
     async def scenario():
-        db = MemorySheetsClient()["bank_auto_supplier"]
+        db = ClientArchivioMemoria()["bank_auto_supplier"]
         await db.estratto_conto_movimenti.insert_one({
             "id": "M-FERRANTINI", "data": "2026-08-06", "importo": -1332.24,
             "tipo": "uscita", "descrizione": "BONIFICO FULVIO FERRANTINI",
@@ -182,7 +182,7 @@ def test_auto_match_unique_supplier_amount_reconciles_without_operator():
 
 def test_auto_match_amount_only_stays_unconfirmed():
     async def scenario():
-        db = MemorySheetsClient()["bank_auto_amount_only"]
+        db = ClientArchivioMemoria()["bank_auto_amount_only"]
         await db.estratto_conto_movimenti.insert_one({
             "id": "M1", "data": "2026-08-06", "importo": -1332.24,
             "tipo": "uscita", "descrizione": "BONIFICO GENERICO",
@@ -204,7 +204,7 @@ def test_auto_match_amount_only_stays_unconfirmed():
 
 def test_auto_match_duplicate_same_supplier_amount_stays_ambiguous():
     async def scenario():
-        db = MemorySheetsClient()["bank_auto_ambiguous"]
+        db = ClientArchivioMemoria()["bank_auto_ambiguous"]
         await db.estratto_conto_movimenti.insert_one({
             "id": "M1", "data": "2026-08-06", "importo": -100,
             "tipo": "uscita", "descrizione": "BONIFICO ALFA FORNITURE",
@@ -225,7 +225,7 @@ def test_auto_match_duplicate_same_supplier_amount_stays_ambiguous():
 
 def test_auto_match_withholding_closes_supplier_net_and_leaves_tax_due():
     async def scenario():
-        db = MemorySheetsClient()["bank_auto_withholding"]
+        db = ClientArchivioMemoria()["bank_auto_withholding"]
         await db.estratto_conto_movimenti.insert_one({
             "id": "M-NETTO", "data": "2026-08-06", "importo": -3206.40,
             "tipo": "uscita", "descrizione": "BONIFICO STUDIO ALFA FPR 105/26",
@@ -260,7 +260,7 @@ def test_auto_match_withholding_closes_supplier_net_and_leaves_tax_due():
 
 def test_anomaly_analysis_is_read_only(monkeypatch):
     async def scenario():
-        db = MemorySheetsClient()["bank_anomalies"]
+        db = ClientArchivioMemoria()["bank_anomalies"]
         await db.estratto_conto_movimenti.insert_many([
             {"id": "M1", "data": "2026-01-01", "fingerprint": "same", "importo": -10},
             {"id": "M2", "data": "2026-01-02", "fingerprint": "same", "importo": -10},

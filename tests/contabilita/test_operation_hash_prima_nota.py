@@ -1,6 +1,6 @@
 import asyncio
 
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.services.scritture_contabili import calcola_operation_hash, scrivi_movimento
 
@@ -14,7 +14,7 @@ def test_hash_distingue_assegni_che_pagano_stessa_fattura():
 
 def test_writer_non_inserisce_due_volte_stessa_prova_originaria():
     async def scenario():
-        db = MemorySheetsClient()["operation_hash"]
+        db = ClientArchivioMemoria()["operation_hash"]
         mov = {
             "data": "2026-08-20", "tipo": "uscita", "importo": 51.64,
             "categoria": "Fatture", "descrizione": "Pagamento verbale",

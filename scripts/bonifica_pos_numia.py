@@ -1,4 +1,4 @@
-"""Anteprima/applicazione della bonifica POS NUMIA sul registro Sheets.
+"""Anteprima/applicazione della bonifica POS NUMIA sull'archivio del runtime.
 
 Uso sicuro (nessuna modifica):
     python scripts/bonifica_pos_numia.py

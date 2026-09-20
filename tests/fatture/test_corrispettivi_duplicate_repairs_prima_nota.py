@@ -1,12 +1,12 @@
 import asyncio
 
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.routers.invoices.corrispettivi_helpers import ingest_corrispettivo_parsed
 
 
 def test_zip_reimport_ripara_prima_nota_mancante_senza_duplicarla():
-    db = MemorySheetsClient()["corrispettivi-duplicate-repair"]
+    db = ClientArchivioMemoria()["corrispettivi-duplicate-repair"]
     parsed = {
         "corrispettivo_key": "IT01234567890_2026-08-13_RT001_42",
         "data": "2026-08-13",

@@ -17,7 +17,7 @@ from app.services.assegni_estratto_conto import (
     chiave_idempotenza_assegno,
     sincronizza_assegni_da_estratto_conto,
 )
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 EC_ID = "EC-2026-01-02-1403.01-24a9b009"
 ASSEGNO_ID = "103e84fe-75ab-4aad-82b4-0d66a8f0b8bf"
@@ -58,7 +58,7 @@ def test_chiave_idempotenza_per_movimento_di_estratto_conto():
 
 def test_doppia_registrazione_stesso_movimento_lascia_una_sola_riga_attiva():
     async def scenario():
-        db = MemorySheetsClient()["assegni-idempotenti"]
+        db = ClientArchivioMemoria()["assegni-idempotenti"]
         await db.estratto_conto_movimenti.insert_one(_movimento())
 
         await sincronizza_assegni_da_estratto_conto(db)
@@ -80,7 +80,7 @@ def test_riga_scritta_da_un_altro_processo_viene_riusata_per_chiave():
     """La riga esiste gia' con la sola chiave (arrivata dalla cache di un altro
     processo): non se ne crea una seconda, si aggiorna quella."""
     async def scenario():
-        db = MemorySheetsClient()["assegni-altro-processo"]
+        db = ClientArchivioMemoria()["assegni-altro-processo"]
         await db.prima_nota_banca.insert_one({
             "id": "riga-altro-processo", "tipo": "uscita", "categoria": "Assegni",
             "importo": 1403.01, "data": "2026-01-02", "source": "assegno_estratto_conto",
@@ -104,7 +104,7 @@ def test_riga_scritta_da_un_altro_processo_viene_riusata_per_chiave():
 
 
 def _db_con_doppione_reale():
-    db = MemorySheetsClient()["bonifica-assegni"]
+    db = ClientArchivioMemoria()["bonifica-assegni"]
 
     async def semina():
         await db.prima_nota_banca.insert_many([

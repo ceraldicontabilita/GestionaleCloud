@@ -84,7 +84,7 @@ def extract_verbale_from_description(description: str) -> Optional[str]:
 
 
 def serialize_doc(doc: dict) -> dict:
-    """Serializza documento Drive/Sheets per JSON."""
+    """Serializza documento Drive/Supabase per JSON."""
     if doc is None:
         return None
     result = {}

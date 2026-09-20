@@ -106,7 +106,7 @@ def extract_pdf_pages(content: bytes, *, use_ocr: bool = True) -> list[dict[str,
             "text_source": "rapidocr_locale" if ocr_used else "pdf_text",
             "ocr_used": ocr_used,
             "ocr_confidence": ocr_confidence,
-            # Le coordinate servono al quadro VP; non gonfiano le righe Sheets
+            # Le coordinate servono al quadro VP; non gonfiano le righe dell'archivio
             # degli altri documenti fiscali.
             "layout_words": layout_words if _looks_like_lipe_module(text) else [],
             "requires_ocr": len(text.strip()) < 20,

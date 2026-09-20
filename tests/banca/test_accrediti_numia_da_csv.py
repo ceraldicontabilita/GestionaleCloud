@@ -14,7 +14,7 @@ il trasferimento cassa->banca del giorno di vendita, sommando i circuiti.
 import asyncio
 
 import pytest
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.routers.bank import estratto_conto as modulo
 from app.services.scritture_contabili import (
@@ -66,7 +66,7 @@ def _run(awaitable):
 
 @pytest.fixture
 def db(monkeypatch):
-    finto = MemorySheetsClient()["accrediti_numia_test"]
+    finto = ClientArchivioMemoria()["accrediti_numia_test"]
     monkeypatch.setattr(modulo.Database, "get_db", staticmethod(lambda: finto))
     return finto
 

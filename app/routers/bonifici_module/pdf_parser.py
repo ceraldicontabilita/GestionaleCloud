@@ -39,7 +39,7 @@ def read_pdf_text(pdf_path: Path) -> str:
 def read_pdf_bytes(content: bytes) -> str:
     """Estrae testo da un PDF gia' disponibile in memoria.
 
-    Il flusso ``Import documenti`` conserva i file in Drive/Sheets e non deve
+    Il flusso ``Import documenti`` conserva i file in Drive/Supabase e non deve
     dipendere dalla vita breve di ``/tmp``. Per questo il parser accetta
     direttamente i byte e usa PyMuPDF soltanto come fallback.
     """

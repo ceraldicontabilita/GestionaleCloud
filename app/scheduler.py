@@ -13,25 +13,26 @@ from apscheduler.triggers.cron import CronTrigger
 
 logger = logging.getLogger(__name__)
 
-# Il lock locale mantiene seriali i job nella stessa istanza. Con Supabase e'
-# affiancato da una lease atomica remota, necessaria durante i rolling deploy;
-# con il backend Sheets rimane il solo meccanismo disponibile.
-_sheets_scheduler_lock = asyncio.Lock()
+# Il lock locale mantiene seriali i job nella stessa istanza. In produzione e'
+# affiancato da una lease atomica su Supabase, necessaria durante i rolling
+# deploy; finche' la connessione non c'e' (avvio, test) resta il solo
+# meccanismo disponibile.
+_lock_scheduler_locale = asyncio.Lock()
 
 
 async def _esegui_con_lock_locale(job_id, funzione, *args, **kwargs):
-    if _sheets_scheduler_lock.locked():
+    if _lock_scheduler_locale.locked():
         logger.info(
-            "[SCHEDULER] job %s rinviato: un'altra automazione Sheets e' in esecuzione",
+            "[SCHEDULER] job %s rinviato: un'altra automazione e' in esecuzione",
             job_id,
         )
         return None
-    async with _sheets_scheduler_lock:
+    async with _lock_scheduler_locale:
         risultato = funzione(*args, **kwargs)
         return await risultato if inspect.isawaitable(risultato) else risultato
 
-async def _esegui_con_lock_sheets(job_id, funzione, *args, **kwargs):
-    """Usa una lease Supabase tra istanze, con fallback locale per Sheets."""
+async def _esegui_con_lease(job_id, funzione, *args, **kwargs):
+    """Usa una lease Supabase tra istanze, con il lock locale come riserva."""
     from app.database import Database
 
     database = Database.db
@@ -49,7 +50,7 @@ async def _esegui_con_lock_sheets(job_id, funzione, *args, **kwargs):
     return await _esegui_con_lock_locale(job_id, funzione, *args, **kwargs)
 
 
-class SheetsLockedScheduler(AsyncIOScheduler):
+class SchedulerConLease(AsyncIOScheduler):
     """APScheduler con lease Supabase o esclusione locale di compatibilita'."""
 
     def add_job(self, func, trigger=None, args=None, kwargs=None, id=None, **options):
@@ -57,7 +58,7 @@ class SheetsLockedScheduler(AsyncIOScheduler):
 
         @wraps(func)
         async def _locked(*job_args, **job_kwargs):
-            return await _esegui_con_lock_sheets(
+            return await _esegui_con_lease(
                 job_id, func, *job_args, **job_kwargs
             )
 
@@ -72,7 +73,7 @@ class SheetsLockedScheduler(AsyncIOScheduler):
 
 
 # Un solo oggetto per processo; la lease impedisce sovrapposizioni tra istanze.
-scheduler = SheetsLockedScheduler()
+scheduler = SchedulerConLease()
 
 async def scan_verbali_email_task():
     """

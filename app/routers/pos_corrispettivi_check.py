@@ -1285,7 +1285,7 @@ async def controllo_incassi_due_fasi(
 
     # Index corrispettivi per data. Possono esistere piu' XML nella stessa
     # giornata (piu' RT o sostituzione della matricola): vanno sommati, non
-    # sovrascritti con l'ultimo documento restituito dal registro Drive/Sheets.
+    # sovrascritti con l'ultimo documento restituito dal registro Drive/Supabase.
     corr_by_date: Dict[str, Dict] = {}
     for c in corrispettivi:
         d = c.get("data")

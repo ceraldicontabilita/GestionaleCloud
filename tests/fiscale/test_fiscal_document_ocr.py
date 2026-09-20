@@ -5,7 +5,7 @@ import fitz
 
 from app.services import fiscal_document_ingestion as ingestion
 from app.services.fiscal_document_ingestion import FiscalDocumentIngestionService
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 
 def _blank_pdf() -> bytes:
@@ -40,7 +40,7 @@ def test_pagina_fiscale_raster_usa_ocr_locale_con_confidenza(monkeypatch):
 
 def test_duplicato_legacy_rigenera_solo_il_testo_derivato(monkeypatch):
     async def scenario():
-        db = MemorySheetsClient().db
+        db = ClientArchivioMemoria().db
         content = b"%PDF-LIPE-LEGACY"
         digest = hashlib.sha256(content).hexdigest()
         await db.fiscal_document_versions.insert_one({
@@ -74,7 +74,7 @@ def test_duplicato_legacy_rigenera_solo_il_testo_derivato(monkeypatch):
 
 def test_documento_fiscale_drive_non_duplica_il_pdf_nel_foglio():
     async def scenario():
-        db = MemorySheetsClient().db
+        db = ClientArchivioMemoria().db
         content = _blank_pdf()
         result = await FiscalDocumentIngestionService(db, "CERALDI").ingest(
             content=content,
@@ -105,7 +105,7 @@ def test_documento_fiscale_drive_non_duplica_il_pdf_nel_foglio():
 
 def test_duplicato_parziale_riceve_il_riferimento_drive(monkeypatch):
     async def scenario():
-        db = MemorySheetsClient().db
+        db = ClientArchivioMemoria().db
         content = b"%PDF-LIPE-PARTIAL"
         digest = hashlib.sha256(content).hexdigest()
         await db.fiscal_document_versions.insert_one({

@@ -1,7 +1,7 @@
 import asyncio
 from datetime import datetime, timezone
 
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.services import paypal_api_sync as sync_module
 from app.routers import paypal_api as api_router
@@ -49,7 +49,7 @@ def test_extract_conserva_stato_evento_riferimento_banca_e_balance_affecting():
 
 def test_sync_scarto_riga_tecnica_duplicata_non_balance_affecting(monkeypatch):
     async def scenario():
-        db = MemorySheetsClient().db
+        db = ClientArchivioMemoria().db
 
         async def fake_sync_period(start, end):
             return [_api_row("Y"), _api_row("N")]
@@ -71,7 +71,7 @@ def test_sync_scarto_riga_tecnica_duplicata_non_balance_affecting(monkeypatch):
 
 def test_riconcilia_intervallo_che_attraversa_due_anni(monkeypatch):
     async def scenario():
-        db = MemorySheetsClient().db
+        db = ClientArchivioMemoria().db
         anni = []
         link_calls = []
 
@@ -108,7 +108,7 @@ def test_sync_incrementale_non_interroga_paypal_per_finestre_di_pochi_secondi(mo
     async def scenario():
         from datetime import timedelta
 
-        db = MemorySheetsClient().db
+        db = ClientArchivioMemoria().db
         chiamate = []
 
         async def fake_period(_db, start, end):
@@ -155,7 +155,7 @@ def test_endpoint_sync_incrementale_risponde_502_su_errore_paypal(monkeypatch):
             raise httpx.HTTPStatusError("404", request=request, response=httpx.Response(404, request=request))
 
         monkeypatch.setattr(api_router, "sync_paypal_incremental", fallisce)
-        monkeypatch.setattr(api_router.Database, "get_db", staticmethod(lambda: MemorySheetsClient().db))
+        monkeypatch.setattr(api_router.Database, "get_db", staticmethod(lambda: ClientArchivioMemoria().db))
         try:
             await api_router.sync_incremental()
         except HTTPException as exc:

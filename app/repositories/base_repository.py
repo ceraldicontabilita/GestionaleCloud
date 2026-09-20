@@ -1,4 +1,4 @@
-"""Repository CRUD condiviso dai registri Google Sheets."""
+"""Repository CRUD condiviso dai archivi del runtime."""
 from typing import Optional, List, Dict, Any, Generic, TypeVar
 from datetime import datetime, timezone
 import logging
@@ -20,7 +20,7 @@ class BaseRepository(Generic[T]):
         Inizializza il repository con un foglio documentale.
 
         Args:
-            collection: tabella asincrona del registro Sheets
+            collection: tabella asincrona dell'archivio del runtime
         """
         self.collection = collection
 

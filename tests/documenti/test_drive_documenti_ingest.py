@@ -9,7 +9,7 @@ import asyncio
 import threading
 
 from app.services import drive_documenti_ingest as d
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 
 def _run(coro):
@@ -236,7 +236,7 @@ def test_dichiarazione_drive_usa_solo_writer_fiscale(monkeypatch):
         d, "_build_inbox_doc",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("writer duplicato")),
     )
-    db = MemorySheetsClient().db
+    db = ClientArchivioMemoria().db
 
     result = _run(d._do_sync(db, "dichiarazione_fiscale"))
 

@@ -39,7 +39,7 @@ async def _run_supabase_migration_job(job_id: str) -> None:
     rilanciabile senza duplicare nulla se si interrompe o va rieseguita.
     Supabase e' ormai l'unico backend supportato: questo job resta come
     strumento di preparazione per un'eventuale migrazione futura verso un
-    altro archivio, non per un cutover da Sheets (gia' completato).
+    altro archivio, non per un cutover dall'archivio precedente (gia' completato).
     """
     job = _supabase_migration_jobs[job_id]
     try:

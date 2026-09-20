@@ -15,7 +15,7 @@ from typing import Dict, Any, List, Optional, Tuple
 import logging
 import hashlib
 import base64
-from app.services.archivio_documenti_memoria import SheetDatabase
+from app.services.archivio_documenti_memoria import ArchivioDocumenti
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ def get_email_credentials():
     email_password = settings.EMAIL_PASSWORD or settings.EMAIL_APP_PASSWORD or settings.GMAIL_APP_PASSWORD or ""
     return email_user, email_password
 
-# Mapping categoria -> foglio Sheets
+# Mapping categoria -> collezione
 CATEGORY_COLLECTIONS = {
     "f24": "f24_email_attachments",
     "fattura": "fatture_email_attachments",
@@ -207,7 +207,7 @@ class EmailFullDownloader:
     Supporta deduplicazione e categorizzazione automatica.
     """
 
-    def __init__(self, db: SheetDatabase):
+    def __init__(self, db: ArchivioDocumenti):
         self.db = db
         self.connection = None
         self.stats = {
@@ -858,7 +858,7 @@ class EmailFullDownloader:
 
 
 async def associate_pdf_to_document(
-    db: SheetDatabase,
+    db: ArchivioDocumenti,
     pdf_id: str,
     source_collection: str,
     target_document_id: str,
@@ -909,7 +909,7 @@ async def associate_pdf_to_document(
 
 
 async def get_documenti_non_associati(
-    db: SheetDatabase,
+    db: ArchivioDocumenti,
     category: str = None,
     limit: int = 100
 ) -> List[Dict[str, Any]]:
@@ -935,7 +935,7 @@ async def get_documenti_non_associati(
     return results[:limit]
 
 
-async def smart_auto_associate(db: SheetDatabase) -> Dict[str, int]:
+async def smart_auto_associate(db: ArchivioDocumenti) -> Dict[str, int]:
     """
     Tenta di associare automaticamente i PDF ai documenti esistenti
     basandosi su filename, periodo e categoria.
@@ -1086,7 +1086,7 @@ async def smart_auto_associate(db: SheetDatabase) -> Dict[str, int]:
     return stats
 
 
-async def populate_payslips_pdf_data(db: SheetDatabase) -> Dict[str, int]:
+async def populate_payslips_pdf_data(db: ArchivioDocumenti) -> Dict[str, int]:
     """
     DEPRECATO: Funzione di migrazione legacy per popolare pdf_data da filesystem.
     I nuovi documenti devono già avere pdf_data quando vengono scaricati dalle email.
@@ -1118,7 +1118,7 @@ async def populate_payslips_pdf_data(db: SheetDatabase) -> Dict[str, int]:
     return stats
 
 
-async def get_documents_inbox_stats(db: SheetDatabase) -> Dict[str, Any]:
+async def get_documents_inbox_stats(db: ArchivioDocumenti) -> Dict[str, Any]:
     """
     Statistiche sulla collezione documents_inbox.
     """
@@ -1150,7 +1150,7 @@ async def get_documents_inbox_stats(db: SheetDatabase) -> Dict[str, Any]:
     return stats
 
 
-async def sync_filesystem_pdfs_to_db(db: SheetDatabase, base_dir: str = "/tmp/documents") -> Dict[str, Any]:
+async def sync_filesystem_pdfs_to_db(db: ArchivioDocumenti, base_dir: str = "/tmp/documents") -> Dict[str, Any]:
     """
     Scansiona i PDF sul filesystem e li sincronizza con documents_inbox.
     Per ogni file:
@@ -1256,7 +1256,7 @@ async def sync_filesystem_pdfs_to_db(db: SheetDatabase, base_dir: str = "/tmp/do
     return stats
 
 
-async def associate_f24_from_filesystem(db: SheetDatabase) -> Dict[str, int]:
+async def associate_f24_from_filesystem(db: ArchivioDocumenti) -> Dict[str, int]:
     """
     Associa i PDF F24 dal filesystem ai record f24_commercialista.
     Usa pattern matching su periodo e tipo tributo.
@@ -1376,7 +1376,7 @@ async def associate_f24_from_filesystem(db: SheetDatabase) -> Dict[str, int]:
     return stats
 
 
-async def process_cedolini_to_prima_nota(db: SheetDatabase) -> Dict[str, Any]:
+async def process_cedolini_to_prima_nota(db: ArchivioDocumenti) -> Dict[str, Any]:
     """
     Processa i cedolini scaricati ed estrae i dati per prima_nota_salari.
     Usa PyMuPDF per estrarre testo e pattern matching per i dati.

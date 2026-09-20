@@ -1,6 +1,6 @@
 """Runtime documentale Supabase del gestionale.
 
-Mantiene l'interfaccia compatibile con il precedente registro Sheets, ma usa
+Mantiene l'interfaccia compatibile con il precedente archivio del runtime, ma usa
 la tabella privata ``gestionale.documents`` come fonte autorevole. Il
 server non usa la password Postgres né la service-role: chiama esclusivamente
 quattro RPC minimali protette da una chiave applicativa separata, conservata
@@ -24,7 +24,7 @@ from typing import Any
 import aiohttp
 
 from app.services.archivio_documenti_memoria import (
-    MISSING, SheetCursor, SheetDatabase, SheetTable, apply_projection, matches_filter,
+    MISSING, CursoreDocumenti, ArchivioDocumenti, CollezioneDocumenti, apply_projection, matches_filter,
 )
 from app.document_repository import DOCUMENT_PAYLOAD_FIELDS, metadata_projection
 
@@ -402,7 +402,7 @@ class _ReadThroughCursor:
         self._limit = max(0, int(count))
         return self
 
-    async def _cursor(self) -> SheetCursor:
+    async def _cursor(self) -> CursoreDocumenti:
         cursor = await self._loader()
         if self._sort is not None:
             cursor.sort(*self._sort)
@@ -428,7 +428,7 @@ class _ReadThroughCursor:
             raise StopAsyncIteration from exc
 
 
-class SupabaseTable(SheetTable):
+class SupabaseTable(CollezioneDocumenti):
     """Vista su Supabase con cache leggera incrementale (vedi _CACHE_* sopra).
 
     L'autorita' resta Supabase: la cache serve le letture che non hanno
@@ -708,7 +708,7 @@ class SupabaseTable(SheetTable):
                     self.name, field=field, values=values,
                     excluded_fields=_excluded_projection_fields(projection),
                 )
-                return SheetCursor([
+                return CursoreDocumenti([
                     apply_projection(document, projection)
                     for document in (_normalise_document(row) for row in rows)
                     if matches_filter(document, selector)
@@ -729,17 +729,17 @@ class SupabaseTable(SheetTable):
                         ]
                         documents = await self._hydrate_by_ids(
                             matched, _excluded_projection_fields(projection))
-                        return SheetCursor([
+                        return CursoreDocumenti([
                             apply_projection(document, projection) for document in documents
                         ])
-                    return SheetCursor([
+                    return CursoreDocumenti([
                         apply_projection(_senza_stato(document), projection)
                         for document in documents
                         if matches_filter(document, leggero)
                     ])
             async with self._remote_operation_lock:
                 await self._refresh_unlocked(projection, selector)
-                return SheetTable.find(self, selector, projection, *args, **kwargs)
+                return CollezioneDocumenti.find(self, selector, projection, *args, **kwargs)
 
         return _ReadThroughCursor(load)
 
@@ -765,7 +765,7 @@ class SupabaseTable(SheetTable):
     async def distinct(self, key, selector=None, *args, **kwargs):
         async with self._remote_operation_lock:
             await self._refresh_unlocked(selector=selector)
-            return await SheetTable.distinct(self, key, selector, *args, **kwargs)
+            return await CollezioneDocumenti.distinct(self, key, selector, *args, **kwargs)
 
     def aggregate(self, pipeline, *args, **kwargs):
         async def load():
@@ -781,7 +781,7 @@ class SupabaseTable(SheetTable):
                 await self._refresh_unlocked(
                     projection=_metadata_projection_if_safe(self.name, pipeline)
                 )
-                return SheetTable.aggregate(self, pipeline, *args, **kwargs)
+                return CollezioneDocumenti.aggregate(self, pipeline, *args, **kwargs)
 
         return _ReadThroughCursor(load)
 
@@ -802,7 +802,7 @@ class SupabaseTable(SheetTable):
                 await self._refresh_unlocked(selector=selector)
             snapshot = [_normalise_document(document) for document in self._documents]
             try:
-                method = getattr(SheetTable, method_name)
+                method = getattr(CollezioneDocumenti, method_name)
                 return await method(self, *args, **kwargs)
             except Exception:
                 # L'RPC e' l'autorita': una scrittura rifiutata non deve mai
@@ -845,7 +845,7 @@ class SupabaseTable(SheetTable):
         return await self._mutate("find_one_and_delete", selector, *args, **kwargs)
 
 
-class SupabaseRuntimeDatabase(SheetDatabase):
+class SupabaseRuntimeDatabase(ArchivioDocumenti):
     """Archivio documentale read-through e write-through su Supabase."""
 
     def __init__(self, name: str, config: dict[str, Any]):

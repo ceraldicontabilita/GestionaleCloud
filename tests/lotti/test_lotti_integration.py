@@ -5,13 +5,13 @@ from fastapi import HTTPException
 
 from app.database import Database
 from app.routers import lotti_integration
-from app.services.archivio_documenti_memoria import SheetDatabase
+from app.services.archivio_documenti_memoria import ArchivioDocumenti
 
 
 @pytest.fixture()
 def sheet_db():
     original = Database.db
-    db = SheetDatabase("test-lotti")
+    db = ArchivioDocumenti("test-lotti")
     Database.db = db
     try:
         yield db

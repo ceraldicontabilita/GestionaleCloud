@@ -1,13 +1,13 @@
 import asyncio
 
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.routers.invoices import fatture_upload
 
 
 def test_metodo_fornitore_cassa_resta_da_confermare_fase0(monkeypatch):
     async def scenario():
-        db = MemorySheetsClient()["test_fattura_cassa_provvisoria"]
+        db = ClientArchivioMemoria()["test_fattura_cassa_provvisoria"]
         await db["fornitori"].insert_one({
             "partita_iva": "01234567890",
             "metodo_pagamento": "cassa",

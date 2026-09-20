@@ -11,7 +11,7 @@ import os
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, Optional
-from app.services.archivio_documenti_memoria import SheetDatabase
+from app.services.archivio_documenti_memoria import ArchivioDocumenti
 
 from app.config import settings
 from app.services.payment_invoice_matching import amounts_equal_to_cent
@@ -47,7 +47,7 @@ def _paypal_candidate_id(doc: Dict[str, Any]) -> Optional[str]:
     return value or None
 
 
-async def trova_pagamento_verbale(db: SheetDatabase, verbale: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+async def trova_pagamento_verbale(db: ArchivioDocumenti, verbale: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     iuv = get_iuv_from_verbale(verbale)
     numero_verbale = verbale.get("numero_verbale")
     targa = verbale.get("targa")

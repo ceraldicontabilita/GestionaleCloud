@@ -31,6 +31,6 @@ def test_drive_only_product_has_no_forbidden_backend_references():
                 offenders.append(path.relative_to(REPOSITORY_ROOT).as_posix())
 
     assert offenders == [], (
-        "Drive/Sheets è l'unico archivio operativo; rimossi i riferimenti al "
+        "Drive/Supabase è l'unico archivio operativo; rimossi i riferimenti al "
         f"backend escluso. File da correggere: {offenders}"
     )

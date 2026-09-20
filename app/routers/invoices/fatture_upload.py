@@ -1026,7 +1026,7 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
     un'unica transazione repository: se un passaggio fallisce a metà, tutto viene
     annullato invece di lasciare stato incoerente (es. fornitore creato ma
     fattura mai salvata, o prima nota orfana senza il link sulla fattura).
-    Il client di test in sandbox (registro Sheets effimero) non supporta le sessioni: in
+    Il client di test in sandbox (archivio del runtime effimero) non supporta le sessioni: in
     quel caso si procede senza transazione, come prima.
 
     Args:

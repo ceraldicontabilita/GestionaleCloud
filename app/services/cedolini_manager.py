@@ -58,10 +58,10 @@ async def processa_cedolino_completo(
     4. Riconciliazione automatica
 
     Args:
-        db: Registro Sheets
+        db: Archivio del runtime
         cedolino_data: Dati estratti dal parser
         filename: Nome file PDF
-        pdf_data: Contenuto PDF in Base64 (architettura Drive/Sheets)
+        pdf_data: Contenuto PDF in Base64 (architettura Drive/Supabase)
 
     Returns:
         Risultato del processamento
@@ -596,12 +596,12 @@ async def processa_tutti_cedolini_pdf(
     Processa un file PDF di cedolini con flusso completo.
     Gestisce PDF multi-pagina con più dipendenti.
 
-    Architettura Drive/Sheets: accetta pdf_data in Base64.
+    Architettura Drive/Supabase: accetta pdf_data in Base64.
     Usa come prima scelta il parser deterministico multi-template dei modelli
     aziendali, poi Document AI e infine il parser regex storico.
 
     Args:
-        db: Registro Sheets
+        db: Archivio del runtime
         pdf_data: Contenuto PDF in Base64
         filename: Nome del file PDF
     """

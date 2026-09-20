@@ -1,5 +1,5 @@
 """
-Piano residuo P1 §12 — blocca l'uso di collection Drive/Sheets deprecate.
+Piano residuo P1 §12 — blocca l'uso di collection Drive/Supabase deprecate.
 
 Le collezioni sotto sono deprecate/legacy (vedi
 `app/db_collections.py::COLLEZIONI DEPRECATE - NON USARE` e le costanti
@@ -43,7 +43,7 @@ FILE_ESENTI = {
 
 # App esterne portate pari pari dentro il gestionale (Lotti, Menu, AppDipendenti):
 # hanno il proprio archivio e i propri nomi di collection (es. `staff` in
-# AppDipendenti); non toccano le collection Drive/Sheets dell'ERP.
+# AppDipendenti); non toccano le collection Drive/Supabase dell'ERP.
 CARTELLE_APP_PORTATE_PARI_PARI = {
     os.path.normpath(os.path.join(APP_DIR, nome)) for nome in ("lotti", "menu", "hr")
 }
@@ -81,6 +81,6 @@ def test_nessuna_collection_deprecata_hardcoded_fuori_dagli_script_di_migrazione
                     violazioni.append(f"{path}:{numero_riga} usa la collection deprecata '{nome}'")
 
     assert not violazioni, (
-        "Trovati riferimenti a collection Drive/Sheets deprecate (vedi "
+        "Trovati riferimenti a collection Drive/Supabase deprecate (vedi "
         "app/db_collections.py per la canonica corretta):\n" + "\n".join(violazioni)
     )

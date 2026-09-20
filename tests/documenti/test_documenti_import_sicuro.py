@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 
 import pytest
 from fastapi import HTTPException, UploadFile
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 from openpyxl import Workbook
 
 from app.routers import documenti
@@ -76,7 +76,7 @@ def test_p7m_viene_classificato_solo_dopo_estrazione_xml(monkeypatch):
 
 def test_upload_generico_duplicato_non_crea_una_seconda_copia(monkeypatch):
     async def scenario():
-        db = MemorySheetsClient()["documenti_import_sicuro"]
+        db = ClientArchivioMemoria()["documenti_import_sicuro"]
         payload = b"documento generico"
         file_hash = hashlib.md5(payload).hexdigest()
         await db.documents_inbox.insert_one({
@@ -152,7 +152,7 @@ def test_categoria_fiscale_zip_accetta_solo_documento_completo():
 
 def test_zip_invia_lipe_al_registro_fiscale(monkeypatch):
     calls = []
-    db = MemorySheetsClient()["documenti_import_fiscale_zip"]
+    db = ClientArchivioMemoria()["documenti_import_fiscale_zip"]
 
     class FakeFiscalIngestion:
         def __init__(self, received_db):

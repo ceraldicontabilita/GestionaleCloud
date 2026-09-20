@@ -29,7 +29,7 @@ def _item(source_hash="hash-1"):
         "supplier_name": "FORNITORE TEST SRL",
         "supplier_vat": "01234567890",
         "has_xml": True,
-        "source": "gestionalecloud_sheets",
+        "source": "gestionalecloud",
     }
 
 

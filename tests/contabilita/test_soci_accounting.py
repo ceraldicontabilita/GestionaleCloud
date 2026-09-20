@@ -1,7 +1,7 @@
 import asyncio
 
 from app.services import soci_accounting
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 
 def _run(coro):
@@ -10,7 +10,7 @@ def _run(coro):
 
 def test_apporto_cassa_scrive_un_solo_fatto_con_due_proiezioni():
     async def scenario():
-        db = MemorySheetsClient()["soci-cassa"]
+        db = ClientArchivioMemoria()["soci-cassa"]
         out = await soci_accounting.registra_movimento_socio(
             db,
             socio_id="vincenzo_ceraldi",
@@ -44,7 +44,7 @@ def test_apporto_cassa_scrive_un_solo_fatto_con_due_proiezioni():
 
 def test_apporto_banca_resta_attesa_e_poi_si_aggancia_senza_doppione():
     async def scenario():
-        db = MemorySheetsClient()["soci-banca"]
+        db = ClientArchivioMemoria()["soci-banca"]
         out = await soci_accounting.registra_movimento_socio(
             db,
             socio_id="vincenzo_ceraldi",

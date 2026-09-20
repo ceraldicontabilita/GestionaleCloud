@@ -1,6 +1,6 @@
 from app.config import settings
 from app.services import drive_invoice_ingest as drive
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 
 class _Request:
@@ -111,7 +111,7 @@ def test_dimensione_lotto_fatture_e_sempre_sicura(monkeypatch):
 
 def test_ricostruzione_rilegge_tutte_le_cartelle_senza_spostare_file(monkeypatch):
     service = _Service()
-    db = MemorySheetsClient()["test"]
+    db = ClientArchivioMemoria()["test"]
     files = {
         "root": [{"id": "1", "name": "uno.xml"}],
         "inbox": [{"id": "2", "name": "due.xml"}],
@@ -151,7 +151,7 @@ def test_ricostruzione_rilegge_tutte_le_cartelle_senza_spostare_file(monkeypatch
 
 def test_ricostruzione_web_riprende_dal_cursore_senza_spostare_file(monkeypatch):
     service = _Service()
-    db = MemorySheetsClient()["test_lotti"]
+    db = ClientArchivioMemoria()["test_lotti"]
     files = {
         "root": [{"id": "1", "name": "uno.xml"}],
         "inbox": [{"id": "2", "name": "due.xml"}],
@@ -203,7 +203,7 @@ def test_ricostruzione_web_riprende_dal_cursore_senza_spostare_file(monkeypatch)
 
 def test_ricostruzione_web_isola_file_che_ha_interrotto_il_processo(monkeypatch):
     service = _Service()
-    db = MemorySheetsClient()["test_quarantena"]
+    db = ClientArchivioMemoria()["test_quarantena"]
     files = {
         "root": [
             {"id": "1", "name": "uno.xml"},

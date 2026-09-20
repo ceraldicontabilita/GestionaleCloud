@@ -119,7 +119,7 @@ def blob_store_per_runtime(runtime: Any) -> BlobStore:
     """Sceglie l'archivio in base al runtime documentale attivo.
 
     Con ``DATA_BACKEND=supabase`` il runtime espone ``_rpc``: i blob vanno su
-    ``gestionale.blobs``. Con il runtime Sheets (o nei test) resta la memoria,
+    ``gestionale.blobs``. Con il runtime in memoria (o nei test) resta la memoria,
     e lo si dice chiaramente nel log: i file caricati non sopravviverebbero a
     un riavvio.
     """

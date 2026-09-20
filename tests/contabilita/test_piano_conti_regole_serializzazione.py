@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.routers.accounting.piano_conti import (
     COLLECTION_REGOLE_CATEGORIZZAZIONE,
@@ -12,7 +12,7 @@ from app.routers.accounting.piano_conti import (
 
 def test_regole_base_restituite_senza_identificatore_interno():
     async def scenario():
-        db = MemorySheetsClient()["test_piano_conti"]
+        db = ClientArchivioMemoria()["test_piano_conti"]
         regole = await inizializza_regole_base(db)
         persistite = await db[COLLECTION_REGOLE_CATEGORIZZAZIONE].find({}).to_list(100)
         return regole, persistite

@@ -7,7 +7,7 @@ Questo servizio:
 2. NON sovrascrive mai i dati esistenti (skip duplicati)
 3. Ricategorizza automaticamente i documenti
 4. Processa automaticamente i nuovi documenti (buste paga, estratti conto)
-5. Salva SEMPRE nel registro Sheets configurato
+5. Salva SEMPRE nell'archivio del runtime configurato
 
 IMPORTANTE:
 - I duplicati vengono SEMPRE saltati (controllo hash file)
@@ -668,7 +668,7 @@ async def processa_nuovi_documenti(db) -> Dict[str, Any]:
     except Exception as e:
         logger.debug(f"Allineamento status documenti processati: {e}")
 
-    # 1. Processa buste paga con FLUSSO COMPLETO (Drive/Sheets)
+    # 1. Processa buste paga con FLUSSO COMPLETO (Drive/Supabase)
     try:
         from app.services.cedolini_manager import processa_tutti_cedolini_pdf
 
@@ -697,7 +697,7 @@ async def processa_nuovi_documenti(db) -> Dict[str, Any]:
                 continue
 
             try:
-                # Usa il nuovo manager completo con architettura Drive/Sheets
+                # Usa il nuovo manager completo con architettura Drive/Supabase
                 res = await processa_tutti_cedolini_pdf(
                     db=db,
                     pdf_data=pdf_data,
@@ -754,7 +754,7 @@ async def processa_nuovi_documenti(db) -> Dict[str, Any]:
     except Exception as e:
         results["errori"].append(f"Errore buste paga: {e}")
 
-    # 2. Processa estratti conto Nexi (Drive/Sheets)
+    # 2. Processa estratti conto Nexi (Drive/Supabase)
     try:
         from app.parsers.estratto_conto_nexi_parser import parse_estratto_conto_nexi
         import uuid
@@ -821,7 +821,7 @@ async def processa_nuovi_documenti(db) -> Dict[str, Any]:
     except Exception as e:
         results["errori"].append(f"Errore Nexi: {e}")
 
-    # 3. Processa estratti conto BNL (Drive/Sheets)
+    # 3. Processa estratti conto BNL (Drive/Supabase)
     try:
         from app.parsers.estratto_conto_bnl_parser import parse_estratto_conto_bnl
         import uuid

@@ -358,7 +358,7 @@ async def scopri_cartelle_drive_fiscali(
 async def sincronizza_drive_fiscale_incrementale(
     _admin: Dict[str, Any] = Depends(get_current_admin_mfa_user),
 ) -> Dict[str, Any]:
-    """Compatibilita': verifica l'indice senza importare binari in Drive/Sheets."""
+    """Compatibilita': verifica l'indice senza importare binari in Drive/Supabase."""
     import asyncio
     from app.services.drive_document_index import get_status
     try:
@@ -1071,7 +1071,7 @@ async def _trova_documento_scaricabile(db, doc_id: str):
 @router.get("/documento/{doc_id}/download")
 @handle_errors
 async def download_documento(doc_id: str):
-    """Scarica il file del documento da Drive/Sheets (architettura Drive/Sheets)."""
+    """Scarica il file del documento da Drive/Supabase (architettura Drive/Supabase)."""
     db = Database.get_db()
 
     doc = await _trova_documento_scaricabile(db, doc_id)
@@ -1079,7 +1079,7 @@ async def download_documento(doc_id: str):
         raise HTTPException(status_code=404, detail="Documento non trovato")
 
     # I documenti piccoli storici possono avere ancora il payload nel registro;
-    # gli originali fiscali nuovi restano invece su Drive e Sheets conserva il
+    # gli originali fiscali nuovi restano invece su Drive e l'archivio conserva il
     # riferimento verificabile. Il download resta sempre mediato da questo
     # endpoint autenticato, mai da un URL Drive pubblico.
     pdf_data = doc.get("pdf_data")
@@ -1089,7 +1089,7 @@ async def download_documento(doc_id: str):
             or (doc.get("source_metadata") or {}).get("drive_document_id")
         )
         if not drive_document_id:
-            raise HTTPException(status_code=404, detail="PDF non disponibile nel catalogo Drive/Sheets")
+            raise HTTPException(status_code=404, detail="PDF non disponibile nel catalogo Drive/Supabase")
         try:
             import asyncio
             from app.services.drive_document_index import get_document
@@ -1136,7 +1136,7 @@ async def processa_documento(
 ) -> Dict[str, Any]:
     """
     Processa un documento e lo carica nella sezione appropriata.
-    Architettura Drive/Sheets: usa solo pdf_data da Drive/Sheets.
+    Architettura Drive/Supabase: usa solo pdf_data da Drive/Supabase.
     """
     db = Database.get_db()
 
@@ -1144,10 +1144,10 @@ async def processa_documento(
     if not doc:
         raise HTTPException(status_code=404, detail="Documento non trovato")
 
-    # Architettura Drive/Sheets: usa solo pdf_data
+    # Architettura Drive/Supabase: usa solo pdf_data
     pdf_data = doc.get("pdf_data")
     if not pdf_data:
-        raise HTTPException(status_code=404, detail="PDF non disponibile in Drive/Sheets. Eseguire migrazione dati.")
+        raise HTTPException(status_code=404, detail="PDF non disponibile in Drive/Supabase. Eseguire migrazione dati.")
 
     # Mappa destinazioni agli endpoint
     destination_map = {
@@ -1189,7 +1189,7 @@ async def cambia_categoria_documento(
 ) -> Dict[str, Any]:
     """
     Cambia la categoria di un documento.
-    Architettura Drive/Sheets: aggiorna solo i metadati nel database.
+    Architettura Drive/Supabase: aggiorna solo i metadati nel database.
     """
     db = Database.get_db()
 
@@ -1200,7 +1200,7 @@ async def cambia_categoria_documento(
     if not doc:
         raise HTTPException(status_code=404, detail="Documento non trovato")
 
-    # Architettura Drive/Sheets: aggiorna solo metadati, nessuna operazione su filesystem
+    # Architettura Drive/Supabase: aggiorna solo metadati, nessuna operazione su filesystem
     await db["documents_inbox"].update_one(
         {"id": doc_id},
         {"$set": {
@@ -1254,7 +1254,7 @@ async def annulla_processamento_documento(doc_id: str) -> Dict[str, Any]:
 async def elimina_documento(doc_id: str) -> Dict[str, Any]:
     """
     Elimina un documento.
-    Architettura Drive/Sheets: elimina solo dal database.
+    Architettura Drive/Supabase: elimina solo dal database.
     """
     db = Database.get_db()
 
@@ -1262,7 +1262,7 @@ async def elimina_documento(doc_id: str) -> Dict[str, Any]:
     if not doc:
         raise HTTPException(status_code=404, detail="Documento non trovato")
 
-    # Architettura Drive/Sheets: elimina solo dal database
+    # Architettura Drive/Supabase: elimina solo dal database
     await db["documents_inbox"].delete_one({"id": doc_id})
 
     return {"success": True, "deleted": doc_id}
@@ -1273,14 +1273,14 @@ async def elimina_documento(doc_id: str) -> Dict[str, Any]:
 async def elimina_documenti_processati() -> Dict[str, Any]:
     """
     Elimina tutti i documenti già processati.
-    Architettura Drive/Sheets: elimina solo dal database.
+    Architettura Drive/Supabase: elimina solo dal database.
     """
     db = Database.get_db()
 
     # Conta documenti da eliminare
     count_to_delete = await db["documents_inbox"].count_documents({"processed": True})
 
-    # Elimina dal database (architettura Drive/Sheets)
+    # Elimina dal database (architettura Drive/Supabase)
     await db["documents_inbox"].delete_many({"processed": True})
 
     return {
@@ -1438,23 +1438,23 @@ async def sync_f24_automatico(
         f24_docs = [d for d in new_documents if d.get("category") == "f24"]
         quietanze_docs = [d for d in new_documents if d.get("category") == "quietanza"]
 
-        # Processa automaticamente gli F24 (architettura Drive/Sheets)
+        # Processa automaticamente gli F24 (architettura Drive/Supabase)
         f24_caricati = []
         f24_errori = []
 
         for doc in f24_docs:
             try:
-                # Architettura Drive/Sheets: usa pdf_data
+                # Architettura Drive/Supabase: usa pdf_data
                 pdf_data = doc.get("pdf_data")
                 if not pdf_data:
-                    f24_errori.append({"file": doc["filename"], "errore": "PDF non disponibile in Drive/Sheets"})
+                    f24_errori.append({"file": doc["filename"], "errore": "PDF non disponibile in Drive/Supabase"})
                     continue
 
                 # Decodifica PDF da base64
                 import base64
                 pdf_content = base64.b64decode(pdf_data)
 
-                # Chiama il parser F24 con pdf_content (architettura Drive/Sheets)
+                # Chiama il parser F24 con pdf_content (architettura Drive/Supabase)
                 from app.services.parser_f24 import parse_f24_commercialista
 
                 parsed = parse_f24_commercialista(pdf_content=pdf_content)
@@ -1470,7 +1470,7 @@ async def sync_f24_automatico(
                     f24_data["id"] = str(uuid4())
                     f24_data["file_name"] = doc["filename"]
 
-                    # Rimuovi eventuali _id per evitare errori Drive/Sheets
+                    # Rimuovi eventuali _id per evitare errori Drive/Supabase
                     if "_id" in f24_data:
                         del f24_data["_id"]
 
@@ -1500,7 +1500,7 @@ async def sync_f24_automatico(
                     f24_data["id"] = await salva_f24(db, f24_data, source="email_sync")
 
                     # Salva anche in f24_models per la visualizzazione frontend
-                    # Usa pdf_data già disponibile da Drive/Sheets (architettura Drive/Sheets)
+                    # Usa pdf_data già disponibile da Drive/Supabase (architettura Drive/Supabase)
                     pdf_base64 = pdf_data  # Già in base64
 
                     # Converti formato tributi per f24_models
@@ -1700,10 +1700,10 @@ async def processa_f24_scaricati() -> Dict[str, Any]:
 
     for doc in f24_docs:
         try:
-            # Architettura Drive/Sheets: usa pdf_data
+            # Architettura Drive/Supabase: usa pdf_data
             pdf_data = doc.get("pdf_data")
             if not pdf_data:
-                f24_errori.append({"file": doc["filename"], "errore": "PDF non disponibile in Drive/Sheets"})
+                f24_errori.append({"file": doc["filename"], "errore": "PDF non disponibile in Drive/Supabase"})
                 continue
 
             pdf_content = base64.b64decode(pdf_data)
@@ -1871,10 +1871,10 @@ async def sync_estratti_conto() -> Dict[str, Any]:
     for doc in docs:
         filename = doc.get("filename", "")
 
-        # Architettura Drive/Sheets: usa pdf_data
+        # Architettura Drive/Supabase: usa pdf_data
         pdf_data = doc.get("pdf_data")
         if not pdf_data:
-            errori.append({"file": filename, "errore": "PDF non disponibile in Drive/Sheets"})
+            errori.append({"file": filename, "errore": "PDF non disponibile in Drive/Supabase"})
             continue
 
         try:
@@ -1897,7 +1897,7 @@ async def sync_estratti_conto() -> Dict[str, Any]:
                     estratto_record = {
                         "id": estratto_id,
                         "filename": filename,
-                        "pdf_data": pdf_data,  # Architettura Drive/Sheets
+                        "pdf_data": pdf_data,  # Architettura Drive/Supabase
                         "tipo": "nexi_carta",
                         "metadata": metadata,
                         "totale_transazioni": len(transazioni),
@@ -2050,11 +2050,11 @@ async def sync_estratti_bnl() -> Dict[str, Any]:
             continue
 
         if not pdf_data:
-            errori.append({"file": filename, "errore": "PDF non disponibile in Drive/Sheets"})
+            errori.append({"file": filename, "errore": "PDF non disponibile in Drive/Supabase"})
             continue
 
         try:
-            # Architettura Drive/Sheets: decodifica da Base64
+            # Architettura Drive/Supabase: decodifica da Base64
             pdf_content = base64.b64decode(pdf_data)
 
             # Usa parser BNL
@@ -2074,7 +2074,7 @@ async def sync_estratti_bnl() -> Dict[str, Any]:
                 estratto_record = {
                     "id": estratto_id,
                     "filename": filename,
-                    "pdf_data": pdf_data,  # Architettura Drive/Sheets
+                    "pdf_data": pdf_data,  # Architettura Drive/Supabase
                     "tipo": tipo_doc,
                     "banca": "BNL",
                     "metadata": metadata,
@@ -2301,7 +2301,7 @@ async def reimporta_documenti_da_filesystem(
     db = Database.get_db()
 
     # DEPRECATO: Questo endpoint è per migrazione legacy.
-    # Architettura Drive/Sheets: legge file da disco e li salva come Base64 in Drive/Sheets.
+    # Architettura Drive/Supabase: legge file da disco e li salva come Base64 in Drive/Supabase.
 
     # Categorie e sottocartelle
     category_dirs = {
@@ -2334,7 +2334,7 @@ async def reimporta_documenti_da_filesystem(
             filename = file_path.name
             filepath = str(file_path)
 
-            # Architettura Drive/Sheets: leggi file e codifica in Base64
+            # Architettura Drive/Supabase: leggi file e codifica in Base64
             try:
                 with open(filepath, 'rb') as f:
                     file_content = f.read()
@@ -2371,11 +2371,11 @@ async def reimporta_documenti_da_filesystem(
             elif "f24" in filename_lower:
                 final_category = "f24"
 
-            # Crea record documento con pdf_data (Drive/Sheets)
+            # Crea record documento con pdf_data (Drive/Supabase)
             doc_record = {
                 "id": str(uuid.uuid4()),
                 "filename": filename,
-                "pdf_data": pdf_base64,  # Architettura Drive/Sheets
+                "pdf_data": pdf_base64,  # Architettura Drive/Supabase
                 "category": final_category,
                 "category_label": {
                     "estratto_conto": "Estratti Conto",
@@ -3233,7 +3233,7 @@ async def upload_documento_automatico(
 
     if tipo_rilevato == "archivio_zip":
         # Uno ZIP fiscale puo generare centinaia di versioni, pagine e prove.
-        # Il runtime Drive/Sheets sa consolidarle per collezione e scriverle in
+        # Il runtime Drive/Supabase sa consolidarle per collezione e scriverle in
         # blocchi; senza questo contesto ogni singola pagina consuma una
         # richiesta e supera rapidamente la quota Google di 60 write/minuto.
         db = Database.get_db()
@@ -3245,7 +3245,7 @@ async def upload_documento_automatico(
 
     # Se non riconosciuto, salva in inbox
     if tipo_rilevato == 'auto':
-        # documents_inbox conserva il payload in Base64 dentro Drive/Sheets: oltre
+        # documents_inbox conserva il payload in Base64 dentro Drive/Supabase: oltre
         # 10 MB il record si avvicina al limite BSON di 16 MB. I documenti
         # grandi devono passare da un workflow riconosciuto o da Drive.
         if len(content) > MAX_INBOX_BYTES:
@@ -3293,14 +3293,14 @@ async def upload_documento_automatico(
 
         doc_id = f"upload_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{file_hash[:8]}"
 
-        # Salva nel registro Sheets senza copie locali permanenti.
+        # Salva nell'archivio del runtime senza copie locali permanenti.
         import base64
         pdf_base64 = base64.b64encode(content).decode('utf-8')
 
         doc_record = {
             "id": doc_id,
             "filename": filename,
-            "pdf_data": pdf_base64,  # Contenuto in Drive/Sheets!
+            "pdf_data": pdf_base64,  # Contenuto in Drive/Supabase!
             "category": "altro",
             "category_label": "Da classificare",
             "status": "nuovo",
@@ -3878,7 +3878,7 @@ async def upload_documento_automatico(
             bonifici_doc = {
                 "id": doc_id,
                 "filename": filename,
-                "pdf_data": b64.b64encode(content).decode('utf-8'),  # Drive/Sheets
+                "pdf_data": b64.b64encode(content).decode('utf-8'),  # Drive/Supabase
                 "category": "bonifico",
                 "status": "da_processare",
                 "processed": False,

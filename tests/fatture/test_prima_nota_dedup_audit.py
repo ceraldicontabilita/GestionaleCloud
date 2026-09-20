@@ -1,6 +1,6 @@
 import asyncio
 
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.database import Database
 from app.routers.prima_nota_module.manutenzione import (
@@ -15,7 +15,7 @@ def _run(coro):
 
 def test_dedup_usa_operazione_e_non_fattura_condivisa(monkeypatch):
     async def scenario():
-        db = MemorySheetsClient()["dedup_audit"]
+        db = ClientArchivioMemoria()["dedup_audit"]
         base = {
             "data": "2026-08-11", "importo": 180.56, "categoria": "Fatture",
             "status": "active", "descrizione": "Pagamento fattura FVL968 - 2M ITALIA",
@@ -49,7 +49,7 @@ def test_dedup_usa_operazione_e_non_fattura_condivisa(monkeypatch):
 
 def test_ripristina_tutto_quello_nascosto_dalla_regola_errata(monkeypatch):
     async def scenario():
-        db = MemorySheetsClient()["dedup_restore"]
+        db = ClientArchivioMemoria()["dedup_restore"]
         await db.prima_nota_banca.insert_many([
             {"id": "a", "status": "deleted", "deleted_reason": "dedup_fatture_prima_nota"},
             {"id": "b", "status": "deleted", "deleted_reason": "altra_causa"},

@@ -1,7 +1,7 @@
 """
 Servizio Download Documenti da Email
-Scarica automaticamente allegati dalle email e li salva su Google Sheets.
-IMPORTANTE: Tutto va salvato su Drive/Sheets, NIENTE filesystem!
+Scarica automaticamente allegati dalle email e li salva nell'archivio.
+IMPORTANTE: Tutto va salvato su Drive/Supabase, NIENTE filesystem!
 Supporta: F24, Fatture, Buste Paga, Estratti Conto, Quietanze
 """
 
@@ -722,15 +722,15 @@ class EmailDocumentDownloader:
                         safe_filename = re.sub(r'[^\w\-_\.]', '_', filename)
                         unique_filename = f"{timestamp}_{safe_filename}"
 
-                        # IMPORTANTE: Salva contenuto PDF come base64 in Drive/Sheets
-                        # Nessuna copia locale: metadati nel registro Sheets.
+                        # IMPORTANTE: Salva contenuto PDF come base64 in Drive/Supabase
+                        # Nessuna copia locale: metadati nell'archivio del runtime.
                         pdf_base64 = base64.b64encode(content).decode('utf-8')
 
                         documents.append({
                             "id": str(uuid.uuid4()),
                             "filename": filename,
                             "filename_saved": unique_filename,
-                            "pdf_data": pdf_base64,  # Contenuto PDF in Drive/Sheets!
+                            "pdf_data": pdf_base64,  # Contenuto PDF in Drive/Supabase!
                             "category": category,
                             "category_label": CATEGORIES.get(category, category.replace("_", " ").title()),
                             "size_bytes": len(content),
@@ -750,7 +750,7 @@ class EmailDocumentDownloader:
                             "processed_to": None  # dove è stato caricato
                         })
 
-                        logger.info(f"Salvato su Drive/Sheets: {filename} -> {category}")
+                        logger.info(f"Salvato su Drive/Supabase: {filename} -> {category}")
 
         except Exception as e:
             logger.error(f"Errore download allegati: {e}")
@@ -825,7 +825,7 @@ async def download_documents_from_email(
     """
     Funzione principale per scaricare documenti da email.
 
-    DIZIONARIO EMAIL: Usa una foglio Sheets (email_message_index) per tracciare
+    DIZIONARIO EMAIL: Usa una collezione (email_message_index) per tracciare
     i Message-ID già scaricati, evitando di riscaricare email già elaborate.
 
     Args:

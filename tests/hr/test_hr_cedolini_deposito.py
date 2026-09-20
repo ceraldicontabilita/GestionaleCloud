@@ -406,9 +406,9 @@ def test_ingestione_v2_sopravvive_al_fallimento_del_deposito(monkeypatch):
 def _client_e_db(monkeypatch):
     from app.database import Database
     from app.routers.accounting import prima_nota_salari
-    from app.services.archivio_documenti_memoria import SheetDatabase
+    from app.services.archivio_documenti_memoria import ArchivioDocumenti
 
-    db = SheetDatabase("test")
+    db = ArchivioDocumenti("test")
     monkeypatch.setattr(Database, "get_db", classmethod(lambda cls: db))
     app = FastAPI()
     app.include_router(prima_nota_salari.router, prefix="/api/prima-nota-salari")

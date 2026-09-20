@@ -13,7 +13,7 @@ sarebbe piu' corta ma sbagliata, perche' quel denaro dal conto e' uscito.
 import asyncio
 
 import pytest
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.routers.bank import estratto_conto as modulo
 
@@ -57,7 +57,7 @@ class _File:
 
 @pytest.fixture
 def db(monkeypatch):
-    finto = MemorySheetsClient()["prima_nota_import_test"]
+    finto = ClientArchivioMemoria()["prima_nota_import_test"]
     monkeypatch.setattr(modulo.Database, "get_db", staticmethod(lambda: finto))
     return finto
 

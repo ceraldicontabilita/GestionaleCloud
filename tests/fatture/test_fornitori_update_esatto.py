@@ -1,6 +1,6 @@
 import asyncio
 
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 
 def test_cambio_metodo_scrive_una_volta_e_restituisce_valore_persistito(monkeypatch):
@@ -12,7 +12,7 @@ async def _test_cambio_metodo_scrive_una_volta_e_restituisce_valore_persistito(m
     from app.routers.suppliers_module import base
     from app.utils import iva_calculator
 
-    db = MemorySheetsClient()["supplier_update_exact"]
+    db = ClientArchivioMemoria()["supplier_update_exact"]
     await db["fornitori"].insert_one({
         "id": "supplier-1",
         "partita_iva": "04518411212",

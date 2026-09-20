@@ -20,7 +20,7 @@ from fastapi import HTTPException
 
 from app.config import settings
 from app.database import Database
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 import app.services.supabase_runtime_database as supabase_runtime_database
 from app.routers.admin import (
     _run_supabase_migration_job,
@@ -80,7 +80,7 @@ def _reset_stato(monkeypatch):
 
 
 def _origine_con_dati():
-    db = MemorySheetsClient()["gestionale_test"]
+    db = ClientArchivioMemoria()["gestionale_test"]
     asyncio.run(db["fatture"].insert_many([
         {"_id": "f1", "numero": "1"}, {"_id": "f2", "numero": "2"},
     ]))
@@ -159,7 +159,7 @@ def test_migrazione_copia_tutte_le_collezioni_e_riporta_i_conteggi(monkeypatch):
     esito = asyncio.run(stato_migrazione_supabase(job_id=job_id, _admin={}))
     assert esito["status"] == "completed"
     assert esito["result"]["righe_totali"] == 3
-    assert esito["result"]["backend_origine"] == "SheetDatabase"
+    assert esito["result"]["backend_origine"] == "ArchivioDocumenti"
     dettaglio = {item["collezione"]: item["righe"] for item in esito["result"]["dettaglio"]}
     assert dettaglio["fatture"] == 2
     assert dettaglio["fornitori"] == 1
