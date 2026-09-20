@@ -12,9 +12,8 @@ La disinfestazione viene eseguita UN GIORNO AL MESE in modo casuale.
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, ConfigDict
 from typing import Dict
-from datetime import datetime, timezone, date
+from datetime import datetime, timezone
 import uuid
-import random
 
 router = APIRouter(prefix="/disinfestazione", tags=["Disinfestazione"])
 
@@ -83,66 +82,6 @@ class SchedaDisinfestazione(BaseModel):
 # ==================== HELPER ====================
 
 
-def genera_giorni_intervento_anno(anno: int) -> Dict[str, int]:
-    """Genera intervento il 15 di ogni mese (giorno fisso)"""
-    interventi = {}
-
-    oggi = date.today()
-    GIORNO_INTERVENTO = 15  # Giorno fisso per l'intervento mensile
-
-    for mese in range(1, 13):
-        # Verifica che non sia nel futuro
-        data_intervento = date(anno, mese, GIORNO_INTERVENTO)
-        if data_intervento <= oggi:
-            interventi[str(mese)] = {
-                "giorno": GIORNO_INTERVENTO,
-                "data": f"{GIORNO_INTERVENTO:02d}/{mese:02d}/{anno}",
-                "esito": "OK - Nessuna infestazione rilevata",
-                "tipo": "Controllo programmato + trattamento preventivo",
-                "tecnico": "ANTHIRAT CONTROL S.R.L.",
-                "note": "Derattizzazione e disinfestazione eseguite come da contratto",
-            }
-
-    return interventi
-
-
-def genera_monitoraggio_apparecchi_anno(anno: int) -> Dict[str, Dict[str, dict]]:
-    """Genera monitoraggio per tutti gli apparecchi"""
-    random.seed(anno * 98765)
-    monitoraggio = {}
-
-    oggi = date.today()
-
-    # Tutti gli apparecchi
-    tutti_apparecchi = (
-        APPARECCHI_MONITORAGGIO["frigoriferi"]
-        + APPARECCHI_MONITORAGGIO["congelatori"]
-        + APPARECCHI_MONITORAGGIO["altri"]
-    )
-
-    for apparecchio in tutti_apparecchi:
-        monitoraggio[apparecchio] = {}
-
-        for mese in range(1, 13):
-            # Verifica che il mese non sia nel futuro
-            data_check = date(anno, mese, 1)
-            if data_check <= oggi:
-                # 98% OK, 2% richiede intervento
-                if random.random() < 0.98:
-                    esito = "OK"
-                    note = ""
-                else:
-                    esito = "Richiede intervento"
-                    note = "Segnalata presenza tracce - intervento programmato"
-
-                monitoraggio[apparecchio][str(mese)] = {
-                    "esito": esito,
-                    "note": note,
-                    "controllato": True,
-                }
-
-    return monitoraggio
-
 
 async def get_or_create_scheda_annuale(anno: int) -> dict:
     """Ottiene o crea la scheda annuale di disinfestazione"""
@@ -175,31 +114,6 @@ async def rigenera_scheda_annuale(anno: int):
         status_code=410,
         detail="Bloccato: interventi e monitoraggi richiedono evidenze della ditta incaricata.",
     )
-    """Rigenera la scheda annuale con i dati aggiornati della ditta e giorno fisso 15"""
-    # Elimina la scheda esistente
-    await db.disinfestazione_annuale.delete_one({"anno": anno})
-
-    # Rigenera
-    interventi = genera_giorni_intervento_anno(anno)
-    monitoraggio = genera_monitoraggio_apparecchi_anno(anno)
-
-    nuova_scheda = {
-        "id": str(uuid.uuid4()),
-        "anno": anno,
-        "ditta": DITTA_DISINFESTAZIONE,
-        "interventi_mensili": interventi,
-        "monitoraggio_apparecchi": monitoraggio,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-    }
-    await db.disinfestazione_annuale.insert_one(nuova_scheda)
-
-    return {
-        "success": True,
-        "message": f"Scheda {anno} rigenerata con giorno fisso 15 e ditta ANTHIRAT CONTROL",
-        "interventi": len(interventi),
-        "ditta": DITTA_DISINFESTAZIONE["ragione_sociale"],
-    }
 
 
 @router.get("/scheda-annuale/{anno}")

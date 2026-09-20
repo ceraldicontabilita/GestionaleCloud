@@ -235,82 +235,20 @@ async def job_pulisci_lotti_scaduti():
 
 
 async def job_genera_haccp_giornaliero():
-    """
-    Ogni mattino alle 07:00 (Roma) — prima che gli operatori arrivino.
+    """Il turno del mattino, alle 07:00 (Roma): prima che arrivino gli operatori.
 
-    Usa verifica_oggi() che:
-    1. Controlla se temperature e sanificazione sono già presenti
-    2. Genera SOLO quello che manca (non sovrascrive dati manuali)
-    3. Per la sanificazione usa correttamente db.sanificazione_schede
-       con lo schema {registrazioni: {attrezzatura: {giorno: 'X'}}}
+    Tutto il lavoro sta in `run_morning_automation`, che e' l'unico ingresso:
+    lo usano anche il recupero all'avvio e il workflow esterno, e la chiave
+    job/data impedisce che una giornata venga aperta due volte.
 
-    Se la scheda sanificazione del mese non esiste ancora (operatori non l'hanno
-    creata tramite l'interfaccia) non la crea automaticamente per non interferire
-    con il workflow manuale.
+    Qui sotto stava una seconda copia dello stesso giro, irraggiungibile perche'
+    veniva dopo il `return`. Nessun comportamento e' andato perso: apertura del
+    turno, generazione di quel che manca e marcatura dei giorni non rilevati le
+    fa `daily_haccp()` dentro l'orchestratore.
     """
     from app.lotti.servizi.automatismi_mattutini import run_morning_automation
 
     return await run_morning_automation(source="internal_scheduler")
-
-    from app.lotti.routers.haccp_auto import verifica_e_popola_oggi, marca_giorni_non_rilevati
-
-    print(f"[Scheduler] {datetime.now()} - Generazione HACCP giornaliero...")
-    oggi = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-
-    try:
-        result = await verifica_e_popola_oggi()
-
-        # RECUPERO DEI BUCHI (AUDIT_SCHEDULER_TEMPERATURE §2.3): se il server è
-        # rimasto giù per uno o più giorni, quei giorni restavano vuoti a
-        # database senza dire perché. Ora vengono DICHIARATI "non rilevato" col
-        # motivo — nessuna temperatura inventata, nessun dato esistente
-        # riscritto. Gira anche al riavvio, perché il catchup richiama questo
-        # stesso job.
-        non_rilevati = await marca_giorni_non_rilevati()
-
-        await db.scheduler_logs.insert_one(
-            {
-                "job": "haccp_daily",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "success": True,
-                "date": oggi,
-                "generato": result.get("generato", False),
-                "elementi": result.get("elementi", []),
-                "message": result.get("message", ""),
-                "giorni_non_rilevati": non_rilevati,
-            }
-        )
-        print(f"[Scheduler] HACCP {oggi}: {result.get('message', 'ok')}")
-
-    except Exception as e:
-        await db.scheduler_logs.insert_one(
-            {
-                "job": "haccp_daily",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "success": False,
-                "date": oggi,
-                "error": str(e),
-            }
-        )
-        print(f"[Scheduler] Errore HACCP: {e}")
-
-    # ── Riordino automatico sotto-scorta: crea bozze per fornitore ──────────
-    #    FUORI dal try HACCP: un errore nella generazione registri non deve
-    #    saltare il riordino del giorno (funzioni di business indipendenti).
-    try:
-        from app.lotti.routers.ordini_fornitori import esegui_riordino_automatico
-        r = await esegui_riordino_automatico()
-        logger.info(f"[scheduler] riordino auto: {len(r.get('bozze_create', []))} bozze")
-    except Exception as e:
-        logger.warning(f"[scheduler] riordino auto fallito: {e}")
-
-    # ── Task dipendenti: genera checklist giornaliera ────────────────────────
-    try:
-        from app.lotti.routers.task_dipendenti import genera_task_giornalieri
-
-        await genera_task_giornalieri()
-    except Exception as _te:
-        print(f"[Scheduler] Generazione task fallita: {_te}")
 
 
 # ── JOB 02:30 — Backup notturno ──────────────────────────────────────────────
