@@ -472,15 +472,15 @@ Questi test dimostrano la logica, ma **non bastano da soli a dichiarare pronta l
 
 | ID | Stato | Attività |
 |---|---|---|
-| RST-00A1 | 🟡 | Contratto HTTP CRUD Cassa aggiunto sul branch Fase 0A: persistenza → saldo → modifica → soft-delete; attende CI e collaudo browser |
-| RST-00A2 | 🟡 | Backend/UI corretti: banca manuale senza EC è provvisoria, visibile ma fuori saldo reale/progressivo; resta da chiudere E2E arrivo EC → riconciliazione |
-| RST-00A3 | 🟡 | Aggiungere E2E isolato: fattura → Provvisori → conferma Cassa |
-| RST-00A4 | 🟡 | Aggiungere E2E isolato: fattura → Provvisori → “attendi banca” senza marcarla pagata |
-| RST-00A5 | 🟡 | Aggiungere E2E isolato: pagamento misto/divisione cassa+banca e quadratura importi |
+| RST-00A1 | 🟢 | CRUD Cassa certificato: persistenza → saldo → modifica → soft-delete; CI, E2E e produzione verdi |
+| RST-00A2 | 🟢 | Banca provvisoria certificata: senza EC resta visibile ma fuori saldo; con EC diventa reale/riconciliata; E2E verde |
+| RST-00A3 | 🟢 | E2E isolato fattura → Provvisori → conferma Cassa completato |
+| RST-00A4 | 🟢 | E2E isolato fattura → Attendi banca completato: nessun pagamento bancario inventato |
+| RST-00A5 | 🟢 | E2E pagamento misto completato: quota Cassa reale, residuo Banca aperto senza scrittura inventata |
 | RST-00A6 | 🟡 | Contratto HTTP verifica rilettura per anno e saldo dopo create/update/delete; resta da coprire reload browser |
 | RST-00A7 | 🟡 | Audit CRUD avviato: validazione update importo/tipo; corretto bug riapertura fattura dopo cancellazione; corretto saldo progressivo UI che includeva banca provvisoria |
-| RST-00A8 | ⚪ | Aggiungere smoke produzione non distruttivo sulle letture Prima Nota e sugli endpoint di health/coerenza |
-| RST-00A9 | ⚪ | Dopo gli E2E, dichiarare formalmente “Prima Nota operativa” e congelarne il contratto durante le fasi successive |
+| RST-00A8 | 🟢 | Smoke produzione passato sul commit live della Fase 0A |
+| RST-00A9 | 🟢 | Prima Nota dichiarata operativa; il contratto Cassa/Banca/Provvisori è baseline da non rompere nelle fasi successive |
 
 **Definition of Done Fase 0A:** il titolare può usare Cassa, Banca e Provvisori per la contabilità corrente senza dipendere dalla fusione HR/Lotti/Menu.
 
@@ -870,6 +870,7 @@ Aggiungere una riga ad ogni attività conclusa.
 | 2026-09-21 | PLAN-0002 | 🟢 COMPLETATO | aggiornamento piano | Verificati PIN/auth, ciclo fattura e Prima Nota; aggiunta priorità contabilità operativa e gestione PIN centrale | Test e codice su `main@8cf52bd` |
 | 2026-09-21 | RST-00A1/06/07 | 🟡 IN CORSO | branch `ristrutturazione/fase-0a-prima-nota` | Aggiunti contratti CRUD Cassa/Banca e validazioni; corretto collegamento di riapertura fattura alla cancellazione del pagamento | Attende CI/PR e collaudo browser |
 | 2026-09-21 | RST-00A2 | 🟡 IN CORSO | branch `ristrutturazione/fase-0a-prima-nota` | Banca manuale senza estratto conto resa provvisoria e fuori saldo; UI allineata con badge e saldo progressivo corretto | Attende CI ed E2E riconciliazione |
+| 2026-09-21 | FASE-0A-LIVE | 🟢 COMPLETATO | `b71f62d0c8a6f17994355150f4a574e73dcad021` | Prima Nota Cassa/Banca/Provvisori pubblicata su main e servita in produzione | Produzione `35543104234`: E2E, 64 pagine, layout, viewer, bundle commit e smoke runtime tutti verdi |
 
 ---
 
