@@ -19,8 +19,11 @@ from typing import List, Dict
 from datetime import datetime, timezone, date, timedelta
 import uuid
 
-# NOTE: random usato per generazione dati demo HACCP con seed fisso (riproducibilità). NON usato per operazioni di sicurezza.
-import random
+# Qui c'era `import random`, con una nota che lo dava per «generazione dati demo
+# HACCP». Non erano dati demo: erano registrazioni di sanificazione scritte
+# nell'archivio vero, con operatore, prodotto usato e un 10% di «non eseguita»
+# per farle sembrare autentiche. Le due funzioni che lo usavano erano orfane —
+# nessuno le chiamava piu' — e sono state tolte il 20/09/2026.
 
 router = APIRouter(prefix="/sanificazione", tags=["Sanificazione"])
 
@@ -83,134 +86,8 @@ ATTREZZATURE_SANIFICAZIONE = [
 # ==================== HELPER FUNZIONI ====================
 
 
-def genera_date_sanificazione_apparecchio(
-    anno: int, apparecchio_id: int, tipo: str, seed_offset: int = 0
-) -> List[dict]:
-    """
-    Genera le date di sanificazione per un singolo apparecchio.
-    La pulizia avviene ogni 7-10 giorni in modo casuale.
-
-    Args:
-        anno: Anno di riferimento
-        apparecchio_id: Numero identificativo dell'apparecchio (1-12)
-        tipo: "frigorifero" o "congelatore"
-        seed_offset: Offset per il seed random (per variare tra apparecchi)
-
-    Returns:
-        Lista di dict con data e stato sanificazione
-    """
-    # Seed basato su anno + apparecchio + tipo per consistenza
-    random.seed(
-        anno * 10000 + apparecchio_id * 100 + seed_offset + (1 if tipo == "congelatore" else 0)
-    )
-
-    date_sanificazione = []
-    oggi = date.today()
-    data_corrente = date(anno, 1, 1)
-    fine_anno = date(anno, 12, 31)
-
-    while data_corrente <= fine_anno:
-        # Salta date future
-        if data_corrente <= oggi:
-            # 90% probabilità di pulizia eseguita, 10% non eseguita
-            eseguita = random.random() > 0.10
-
-            date_sanificazione.append(
-                {
-                    "data": data_corrente.strftime("%d/%m/%Y"),
-                    "giorno": data_corrente.day,
-                    "mese": data_corrente.month,
-                    "eseguita": eseguita,
-                    "operatore": OPERATORE_SANIFICAZIONE,
-                    "note": "" if eseguita else "Pulizia non eseguita",
-                    "prodotto": "Detergente alimentare professionale" if eseguita else "",
-                }
-            )
-
-        # Prossima data: random tra 7-10 giorni
-        intervallo = random.randint(7, 10)
-        data_corrente += timedelta(days=intervallo)
-
-    return date_sanificazione
 
 
-def genera_calendario_sanificazione_anno(anno: int) -> dict:
-    """
-    Genera il calendario completo di sanificazione per tutti gli apparecchi.
-    Garantisce che NON ci siano 2 o più apparecchi lavati lo stesso giorno.
-
-    Algoritmo:
-    1. Per ogni apparecchio, genera date ogni 7-10 giorni
-    2. Se la data è già occupata, prova il giorno dopo (fino a 3 tentativi)
-    3. Se non trova slot libero, salta quella sanificazione
-
-    Returns:
-        Dict con frigoriferi e congelatori e relative date
-    """
-    random.seed(anno * 12345)  # Seed fisso per l'anno per consistenza
-
-    oggi = date.today()
-    fine_anno = min(date(anno, 12, 31), oggi)
-
-    # Set globale di date già usate
-    date_occupate = set()
-
-    risultato = {
-        "frigoriferi": {str(i): [] for i in range(1, 13)},
-        "congelatori": {str(i): [] for i in range(1, 13)},
-    }
-
-    # Lista di tutti gli apparecchi da processare
-    apparecchi = []
-    for i in range(1, 13):
-        apparecchi.append(("frigoriferi", i))
-        apparecchi.append(("congelatori", i))
-
-    # Shuffle per distribuire equamente
-    random.shuffle(apparecchi)
-
-    for tipo, num in apparecchi:
-        chiave = str(num)
-
-        # Data di partenza: offset random 0-6 giorni dall'inizio anno
-        offset_iniziale = random.randint(0, 6)
-        data_corrente = date(anno, 1, 1) + timedelta(days=offset_iniziale)
-
-        while data_corrente <= fine_anno:
-            # Cerca una data libera partendo da data_corrente
-            data_assegnata = None
-
-            for tentativo in range(4):  # Max 4 tentativi
-                data_prova = data_corrente + timedelta(days=tentativo)
-
-                if data_prova <= fine_anno and data_prova not in date_occupate:
-                    data_assegnata = data_prova
-                    break
-
-            if data_assegnata:
-                # 90% probabilità di pulizia eseguita, 10% non eseguita
-                eseguita = random.random() > 0.10
-
-                risultato[tipo][chiave].append(
-                    {
-                        "data": data_assegnata.strftime("%d/%m/%Y"),
-                        "giorno": data_assegnata.day,
-                        "mese": data_assegnata.month,
-                        "eseguita": eseguita,
-                        "operatore": OPERATORE_SANIFICAZIONE,
-                        "note": "" if eseguita else "Pulizia non eseguita",
-                        "prodotto": "Detergente alimentare professionale" if eseguita else "",
-                    }
-                )
-
-                # Segna la data come occupata
-                date_occupate.add(data_assegnata)
-
-            # Prossima data: random tra 7-10 giorni
-            intervallo = random.randint(7, 10)
-            data_corrente += timedelta(days=intervallo)
-
-    return risultato
 
 
 async def get_or_create_scheda_apparecchi(anno: int) -> dict:
@@ -372,86 +249,6 @@ async def popola_attrezzature(start_anno: int = 2022, end_anno: int = 2025):
         status_code=410,
         detail="Bloccato: le sanificazioni devono essere registrate con evidenza dell'operatore.",
     )
-    """
-    Popola le schede di sanificazione ATTREZZATURE per gli anni specificati.
-    Ogni giorno lavorativo (lunedì-sabato) viene segnato con X per tutte le attrezzature.
-    Domeniche e chiusure aziendali vengono saltate.
-    A volte (~5%) qualche attrezzatura non viene sanificata per realismo.
-    """
-    from app.lotti.routers.chiusure import get_chiusure_obbligatorie
-
-    oggi = date.today()
-    schede_aggiornate = 0
-
-    for anno in range(start_anno, end_anno + 1):
-        random.seed(anno * 11111)
-
-        # Ottieni chiusure per l'anno
-        chiusure = get_chiusure_obbligatorie(anno)
-        date_chiusure = set()
-        for c in chiusure:
-            date_chiusure.add((c["data"].month, c["data"].day))
-
-        for mese in range(1, 13):
-            # Giorni nel mese
-            if mese in [1, 3, 5, 7, 8, 10, 12]:
-                num_giorni = 31
-            elif mese in [4, 6, 9, 11]:
-                num_giorni = 30
-            else:
-                if (anno % 4 == 0 and anno % 100 != 0) or (anno % 400 == 0):
-                    num_giorni = 29
-                else:
-                    num_giorni = 28
-
-            # Prepara registrazioni
-            registrazioni = {attr: {} for attr in ATTREZZATURE_SANIFICAZIONE}
-
-            for giorno in range(1, num_giorni + 1):
-                data_corrente = date(anno, mese, giorno)
-
-                # Salta date future
-                if data_corrente > oggi:
-                    continue
-
-                # Salta domeniche (weekday() == 6)
-                if data_corrente.weekday() == 6:
-                    continue
-
-                # Salta chiusure aziendali
-                if (mese, giorno) in date_chiusure:
-                    continue
-
-                # Segna X per ogni attrezzatura (a volte salta per realismo)
-                for attr in ATTREZZATURE_SANIFICAZIONE:
-                    # 95% delle volte segna X
-                    if random.random() > 0.05:
-                        registrazioni[attr][str(giorno)] = "X"
-
-            # Salva scheda
-            scheda = {
-                "id": str(uuid.uuid4()),
-                "mese": mese,
-                "anno": anno,
-                "azienda": "Ceraldi Group S.R.L.",
-                "indirizzo": "Piazza Carità 14 Napoli",
-                "area": "Sala e Servizi",
-                "registrazioni": registrazioni,
-                "operatore_responsabile": OPERATORE_SANIFICAZIONE,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            }
-
-            await db.sanificazione_schede.update_one(
-                {"mese": mese, "anno": anno}, {"$set": scheda}, upsert=True
-            )
-            schede_aggiornate += 1
-
-    return {
-        "success": True,
-        "message": f"Popolate {schede_aggiornate} schede sanificazione attrezzature",
-        "anni": list(range(start_anno, end_anno + 1)),
-    }
 
 
 # ==================== ENDPOINTS SANIFICAZIONE APPARECCHI REFRIGERANTI ====================
@@ -587,24 +384,6 @@ async def rigenera_calendario_apparecchi(anno: int):
         status_code=410,
         detail="Bloccato: il calendario non puo attestare esiti o operatori non verificati.",
     )
-    """Rigenera il calendario sanificazioni apparecchi per l'anno"""
-
-    # Elimina scheda esistente
-    await db.sanificazione_apparecchi.delete_one({"anno": anno})
-
-    # Ricrea
-    scheda = await get_or_create_scheda_apparecchi(anno)
-
-    tot_frigo = sum(len(v) for v in scheda["registrazioni_frigoriferi"].values())
-    tot_cong = sum(len(v) for v in scheda["registrazioni_congelatori"].values())
-
-    return {
-        "success": True,
-        "message": f"Calendario rigenerato per {anno}",
-        "totale_sanificazioni_frigoriferi": tot_frigo,
-        "totale_sanificazioni_congelatori": tot_cong,
-        "operatore": OPERATORE_SANIFICAZIONE,
-    }
 
 
 @router.get("/operatore")

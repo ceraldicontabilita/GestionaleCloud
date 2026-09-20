@@ -5,8 +5,6 @@ Popola i dati nella struttura ESISTENTE del database (frigorifero_numero, temper
 
 from datetime import datetime, timedelta, timezone
 from typing import Optional
-import uuid
-import random
 
 from fastapi import APIRouter, HTTPException, Depends
 
@@ -17,27 +15,6 @@ from app.lotti.db import database as db
 
 router = APIRouter(prefix="/haccp-auto", tags=["HACCP Automazione"])
 
-# MongoDB connection
-# Configurazione
-NUM_FRIGORIFERI = 12
-NUM_FREEZER = 6
-TEMP_FRIGO_MIN = 0.0
-TEMP_FRIGO_MAX = 4.0
-TEMP_FREEZER_MIN = -22.0
-TEMP_FREEZER_MAX = -18.0
-
-AREE_SANIFICAZIONE = [
-    "Cucina - Piano cottura",
-    "Cucina - Piano lavoro",
-    "Cucina - Pavimento",
-    "Friggitrici",
-    "Celle frigorifere",
-    "Magazzino secco",
-    "Bagni personale",
-    "Spogliatoi",
-    "Area rifiuti",
-]
-
 
 class PopulateResult(BaseModel):
     success: bool
@@ -45,16 +22,6 @@ class PopulateResult(BaseModel):
     days_populated: int
     date_from: str
     date_to: str
-
-
-def genera_temperatura_frigo() -> float:
-    """Genera temperatura frigo realistica (0-4°C)"""
-    return round(random.uniform(TEMP_FRIGO_MIN, TEMP_FRIGO_MAX), 1)
-
-
-def genera_temperatura_freezer() -> float:
-    """Genera temperatura freezer realistica (-22 a -18°C)"""
-    return round(random.uniform(TEMP_FREEZER_MIN, TEMP_FREEZER_MAX), 1)
 
 
 @router.post("/popola-temperature", response_model=PopulateResult)
@@ -65,140 +32,6 @@ async def popola_temperature_storiche(
     raise HTTPException(
         status_code=410,
         detail="Bloccato: le temperature HACCP devono provenire da una rilevazione verificabile.",
-    )
-    """
-    Popola le temperature storiche nella struttura ESISTENTE del database.
-    Aggiorna i documenti esistenti per ogni frigorifero/freezer.
-    """
-    try:
-        start_date = datetime.strptime(data_inizio, "%Y-%m-%d")
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Formato data non valido. Usa YYYY-MM-DD")
-
-    if data_fine:
-        try:
-            end_date = datetime.strptime(data_fine, "%Y-%m-%d")
-        except ValueError:
-            end_date = datetime.now()
-    else:
-        end_date = datetime.now()
-
-    days_populated = 0
-    current_date = start_date
-
-    # Info azienda (prendi dai dati esistenti o usa default)
-    azienda_info = await db.temperature_positive.find_one(
-        {}, {"_id": 0, "azienda": 1, "indirizzo": 1, "piva": 1}
-    )
-    azienda = (
-        azienda_info.get("azienda", "Ceraldi Group S.R.L.")
-        if azienda_info
-        else "Ceraldi Group S.R.L."
-    )
-    indirizzo = (
-        azienda_info.get("indirizzo", "Piazza Carità 14, 80134 Napoli (NA)") if azienda_info else ""
-    )
-    piva = azienda_info.get("piva", "") if azienda_info else ""
-
-    while current_date <= end_date:
-        anno = current_date.year
-        mese = current_date.month
-        giorno = current_date.day
-        mese_str = str(mese)
-        giorno_str = str(giorno)
-
-        # ==================== TEMPERATURE POSITIVE (Frigoriferi) ====================
-        for frigo_num in range(1, NUM_FRIGORIFERI + 1):
-            # Cerca documento esistente per questo anno/frigorifero
-            doc = await db.temperature_positive.find_one(
-                {"anno": anno, "frigorifero_numero": frigo_num}
-            )
-
-            if doc:
-                # Aggiorna temperatura per questo giorno se non esiste
-                temp_path = f"temperature.{mese_str}.{giorno_str}"
-                existing_temp = doc.get("temperature", {}).get(mese_str, {}).get(giorno_str)
-
-                if existing_temp is None:
-                    await db.temperature_positive.update_one(
-                        {"_id": doc["_id"]},
-                        {
-                            "$set": {
-                                temp_path: genera_temperatura_frigo(),
-                                "updated_at": datetime.now(timezone.utc).isoformat(),
-                            }
-                        },
-                    )
-            else:
-                # Crea nuovo documento per questo anno/frigorifero
-                temperature = {str(m): {} for m in range(1, 13)}
-                temperature[mese_str][giorno_str] = genera_temperatura_frigo()
-
-                await db.temperature_positive.insert_one(
-                    {
-                        "id": str(uuid.uuid4()),
-                        "anno": anno,
-                        "frigorifero_numero": frigo_num,
-                        "frigorifero_nome": f"Frigorifero N°{frigo_num}",
-                        "azienda": azienda,
-                        "indirizzo": indirizzo,
-                        "piva": piva,
-                        "temperature": temperature,
-                        "temp_min": TEMP_FRIGO_MIN,
-                        "temp_max": TEMP_FRIGO_MAX,
-                        "created_at": datetime.now(timezone.utc).isoformat(),
-                    }
-                )
-
-        # ==================== TEMPERATURE NEGATIVE (Congelatori) ====================
-        for cong_num in range(1, NUM_FREEZER + 1):
-            doc = await db.temperature_negative.find_one(
-                {"anno": anno, "congelatore_numero": cong_num}
-            )
-
-            if doc:
-                temp_path = f"temperature.{mese_str}.{giorno_str}"
-                existing_temp = doc.get("temperature", {}).get(mese_str, {}).get(giorno_str)
-
-                if existing_temp is None:
-                    await db.temperature_negative.update_one(
-                        {"_id": doc["_id"]},
-                        {
-                            "$set": {
-                                temp_path: genera_temperatura_freezer(),
-                                "updated_at": datetime.now(timezone.utc).isoformat(),
-                            }
-                        },
-                    )
-            else:
-                temperature = {str(m): {} for m in range(1, 13)}
-                temperature[mese_str][giorno_str] = genera_temperatura_freezer()
-
-                await db.temperature_negative.insert_one(
-                    {
-                        "id": str(uuid.uuid4()),
-                        "anno": anno,
-                        "congelatore_numero": cong_num,
-                        "congelatore_nome": f"Congelatore N°{cong_num}",
-                        "azienda": azienda,
-                        "indirizzo": indirizzo,
-                        "piva": piva,
-                        "temperature": temperature,
-                        "temp_min": TEMP_FREEZER_MIN,
-                        "temp_max": TEMP_FREEZER_MAX,
-                        "created_at": datetime.now(timezone.utc).isoformat(),
-                    }
-                )
-
-        days_populated += 1
-        current_date += timedelta(days=1)
-
-    return PopulateResult(
-        success=True,
-        message=f"Temperature popolate per {days_populated} giorni",
-        days_populated=days_populated,
-        date_from=data_inizio,
-        date_to=end_date.strftime("%Y-%m-%d"),
     )
 
 
@@ -211,100 +44,36 @@ async def popola_sanificazione_storica(
         status_code=410,
         detail="Bloccato: le sanificazioni devono essere registrate dall'operatore.",
     )
-    """Popola i record di sanificazione storici"""
-    try:
-        start_date = datetime.strptime(data_inizio, "%Y-%m-%d")
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Formato data non valido")
-
-    end_date = datetime.strptime(data_fine, "%Y-%m-%d") if data_fine else datetime.now()
-
-    days_populated = 0
-    current_date = start_date
-
-    while current_date <= end_date:
-        anno = current_date.year
-        mese = current_date.month
-
-        # Cerca documento esistente per anno/mese
-        doc = await db.sanificazione.find_one({"anno": anno, "mese": mese})
-
-        giorno_str = str(current_date.day)
-
-        if doc:
-            # Aggiorna giorni se non esistono
-            giorni = doc.get("giorni", {})
-            if giorno_str not in giorni:
-                giorni[giorno_str] = {
-                    "eseguita": True,
-                    "operatore": "Sistema automatico",
-                    "ora": "07:00",
-                    "note": "",
-                }
-                await db.sanificazione.update_one(
-                    {"_id": doc["_id"]},
-                    {
-                        "$set": {
-                            "giorni": giorni,
-                            "updated_at": datetime.now(timezone.utc).isoformat(),
-                        }
-                    },
-                )
-        else:
-            # Crea nuovo documento
-            giorni = {}
-            giorni[giorno_str] = {
-                "eseguita": True,
-                "operatore": "Sistema automatico",
-                "ora": "07:00",
-                "note": "",
-            }
-
-            await db.sanificazione.insert_one(
-                {
-                    "id": str(uuid.uuid4()),
-                    "anno": anno,
-                    "mese": mese,
-                    "aree": AREE_SANIFICAZIONE,
-                    "giorni": giorni,
-                    "created_at": datetime.now(timezone.utc).isoformat(),
-                }
-            )
-
-        days_populated += 1
-        current_date += timedelta(days=1)
-
-    return PopulateResult(
-        success=True,
-        message=f"Sanificazione popolata per {days_populated} giorni",
-        days_populated=days_populated,
-        date_from=data_inizio,
-        date_to=end_date.strftime("%Y-%m-%d"),
-    )
 
 
 @router.post("/popola-tutto", response_model=PopulateResult)
 async def popola_tutti_dati_haccp(data_inizio: str = "2024-01-01",
                                   _admin=Depends(require_admin)):
-    """Popola TUTTI i dati HACCP storici (temperature + sanificazione)"""
-
-    # Popola temperature
-    result_temp = await popola_temperature_storiche(data_inizio)
-
-    # Popola sanificazione
-    result_san = await popola_sanificazione_storica(data_inizio)
-
-    return PopulateResult(
-        success=True,
-        message=f"Popolati {result_temp.days_populated} giorni di temperature e {result_san.days_populated} giorni di sanificazione",
-        days_populated=result_temp.days_populated,
-        date_from=data_inizio,
-        date_to=datetime.now().strftime("%Y-%m-%d"),
+    raise HTTPException(
+        status_code=410,
+        detail="Bloccato: temperature e sanificazioni si registrano quando si eseguono.",
     )
 
 
 @router.get("/verifica-oggi")
 async def verifica_e_popola_oggi():
+    """Non genera niente: le rilevazioni HACCP le registra chi le esegue.
+
+    Qui sotto c'erano 201 righe di generatore, rese irraggiungibili da questo
+    `return` ma mai tolte. Inventavano la rilevazione del giorno con
+    `random.uniform` dentro le soglie — «sempre conformi», lo diceva il
+    commento — e la firmavano con `random.choice` su una lista di sei
+    dipendenti veri, nome e cognome. Stessa cosa per le sanificazioni, segnate
+    «X» su tutte le attrezzature. In archivio ne restano **384** del 2026
+    (192 frigoriferi + 192 congelatori): vanno convertite in «non rilevato»
+    su decisione del titolare, perche' un registro sanitario non si riscrive
+    da soli.
+
+    Un registro HACCP che attesta controlli mai fatti, con il nome di chi non
+    li ha fatti, davanti a un'ispezione vale meno di un registro vuoto. Il
+    buco si dichiara: `marca_giorni_non_rilevati` scrive `temp: None` con il
+    motivo, ed e' l'unico automatismo ammesso su queste schede.
+    """
     oggi = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     return {
         "ok": True,
@@ -312,207 +81,6 @@ async def verifica_e_popola_oggi():
         "generato": False,
         "elementi": [],
         "data": oggi,
-    }
-    """
-    Chiamata dal job scheduler alle 07:00 ogni mattina.
-
-    REGOLA FONDAMENTALE: salva PERMANENTEMENTE nel DB ogni volta che gira.
-    Non sovrascrive mai dati gia presenti (inseriti manualmente o da run precedenti).
-
-    FORMATO SALVATO:
-      temperatura: { "temp": float, "operatore": str, "note": str, "timestamp": str, "auto": True }
-      sanificazione: { attrezzatura: { giorno: "X" } }
-    """
-    import random
-
-    random.seed(int(datetime.now(timezone.utc).strftime("%Y%m%d")))  # seed stabile per il giorno
-
-    oggi = datetime.now(timezone.utc)
-    anno = oggi.year
-    mese = oggi.month
-    giorno = oggi.day
-    mese_str = str(mese)
-    g_str = str(giorno)
-    ts = oggi.strftime("%Y-%m-%dT07:00:00+00:00")
-
-    OPERATORI = [
-        "Pocci Salvatore",
-        "Moscato Antonio",
-        "Parisi Ciro",
-        "Vespa Luigi",
-        "Capezzuto Maria",
-        "Murolo Gennaro",
-    ]
-    FESTIVITA = {
-        (1, 1),
-        (1, 6),
-        (4, 25),
-        (5, 1),
-        (6, 2),
-        (8, 15),
-        (11, 1),
-        (12, 8),
-        (12, 25),
-        (12, 26),
-    }
-    is_festivo = (mese, giorno) in FESTIVITA or oggi.weekday() == 6
-    campo = f"temperature.{mese_str}.{g_str}"
-    generato = []
-
-    # Temperature positive (frigoriferi 0-4 gradi)
-    BASE_POS = {
-        1: 2.5,
-        2: 3.0,
-        3: 3.2,
-        4: 2.8,
-        5: 2.0,
-        6: 2.3,
-        7: 3.5,
-        8: 3.0,
-        9: 2.8,
-        10: 3.8,
-        11: 3.5,
-        12: 2.5,
-    }
-    schede_pos = await db.temperature_positive.find(
-        {"anno": anno},
-        {"_id": 1, "frigorifero_numero": 1, "temperature": 1, "temp_min": 1, "temp_max": 1},
-    ).to_list(20)
-
-    pos_mancanti = 0
-    for scheda in schede_pos:
-        if scheda.get("temperature", {}).get(mese_str, {}).get(g_str) is not None:
-            continue  # gia presente — non toccare
-        pos_mancanti += 1
-        num = scheda.get("frigorifero_numero", 1)
-        # Le rilevazioni automatiche sono SEMPRE CONFORMI (le non conformità
-        # restano una scelta manuale, vedi automatismi_haccp.py): il clamp usa
-        # le soglie REALI della scheda, non costanti hardcoded.
-        t_min = scheda.get("temp_min") if scheda.get("temp_min") is not None else TEMP_FRIGO_MIN
-        t_max = scheda.get("temp_max") if scheda.get("temp_max") is not None else TEMP_FRIGO_MAX
-        base = BASE_POS.get(num, 2.5) + (0.3 if mese in [6, 7, 8] else 0)
-        temp = round(max(t_min, min(t_max, base + random.uniform(-0.8, 0.8))), 1)
-        await db.temperature_positive.update_one(
-            {"_id": scheda["_id"]},
-            {
-                "$set": {
-                    campo: {
-                        "temp": temp,
-                        "operatore": random.choice(OPERATORI),
-                        "note": "Festivo" if is_festivo else "",
-                        "timestamp": ts,
-                        "auto": True,
-                        "allarme": False,
-                        "soglie": {"min": t_min, "max": t_max},
-                    },
-                    "updated_at": oggi.isoformat(),
-                }
-            },
-        )
-    if pos_mancanti:
-        generato.append(f"temp_positive ({pos_mancanti})")
-
-    # Temperature negative (congelatori)
-    BASE_NEG = {
-        1: -18.5,
-        2: -19.0,
-        3: -20.0,
-        4: -20.5,
-        5: -18.0,
-        6: -18.5,
-        7: -19.2,
-        8: -17.5,
-        9: -20.0,
-        10: -18.8,
-        11: -18.3,
-        12: -19.5,
-    }
-    schede_neg = await db.temperature_negative.find(
-        {"anno": anno},
-        {"_id": 1, "congelatore_numero": 1, "temperature": 1, "temp_min": 1, "temp_max": 1},
-    ).to_list(20)
-
-    neg_mancanti = 0
-    for scheda in schede_neg:
-        if scheda.get("temperature", {}).get(mese_str, {}).get(g_str) is not None:
-            continue
-        neg_mancanti += 1
-        num = scheda.get("congelatore_numero", 1)
-        # FIX AUDIT 24/07/2026: il vecchio clamp min(-15.0, ...) permetteva
-        # valori sopra la soglia massima (-18 °C): con base -17.5/-18.3 il job
-        # generava "rilevazioni automatiche" FUORI RANGE mai segnalate. Ora il
-        # clamp usa le soglie reali della scheda (sempre conformi).
-        t_min = scheda.get("temp_min") if scheda.get("temp_min") is not None else TEMP_FREEZER_MIN
-        t_max = scheda.get("temp_max") if scheda.get("temp_max") is not None else TEMP_FREEZER_MAX
-        base = BASE_NEG.get(num, -18.5)
-        temp = round(max(t_min, min(t_max, base + random.uniform(-1.0, 1.0))), 1)
-        await db.temperature_negative.update_one(
-            {"_id": scheda["_id"]},
-            {
-                "$set": {
-                    campo: {
-                        "temp": temp,
-                        "operatore": random.choice(OPERATORI),
-                        "note": "",
-                        "timestamp": ts,
-                        "auto": True,
-                        "allarme": False,
-                        "soglie": {"min": t_min, "max": t_max},
-                    },
-                    "updated_at": oggi.isoformat(),
-                }
-            },
-        )
-    if neg_mancanti:
-        generato.append(f"temp_negative ({neg_mancanti})")
-
-    # Sanificazione — usa sanificazione_schede (schema corretto)
-    ATTREZZATURE_DEFAULT = [
-        "Lavabo, Forno, Banchi, Cappa, Frigo, Friggitrice, Affettatrice, Piastra",
-        "Pavimentazione",
-        "Tagliere, Coltelli",
-        "Lavabo, Macch.Espresso, Macinino, Banco Erogatore, Banco Frigo, Scaffali, Vetrine",
-        "Attrezzature Laboratorio",
-        "Attrezzature Bar",
-        "Montacarichi",
-        "Deposito",
-    ]
-    san_doc = await db.sanificazione_schede.find_one({"anno": anno, "mese": mese})
-    if not san_doc:
-        san_doc = {
-            "id": str(uuid.uuid4()),
-            "anno": anno,
-            "mese": mese,
-            "registrazioni": {attr: {} for attr in ATTREZZATURE_DEFAULT},
-            "created_at": oggi.isoformat(),
-        }
-        await db.sanificazione_schede.insert_one(san_doc)
-
-    reg = san_doc.get("registrazioni", {})
-    san_ok = any(v.get(g_str) in ("X", "x", "1", True) for v in reg.values() if isinstance(v, dict))
-    if not san_ok:
-        upd = {f"registrazioni.{attr}.{g_str}": "X" for attr in reg}
-        upd["updated_at"] = oggi.isoformat()
-        await db.sanificazione_schede.update_one({"anno": anno, "mese": mese}, {"$set": upd})
-        generato.append("sanificazione")
-
-    # Sincronizza anche il vecchio schema db.sanificazione
-    san_old = await db.sanificazione.find_one({"anno": anno, "mese": mese})
-    if san_old:
-        reg_old = san_old.get("registrazioni", {})
-        if reg_old and not any(v.get(g_str) for v in reg_old.values() if isinstance(v, dict)):
-            await db.sanificazione.update_one(
-                {"anno": anno, "mese": mese},
-                {"$set": {f"registrazioni.{attr}.{g_str}": "X" for attr in reg_old}},
-            )
-
-    esito = "gia compilato" if not generato else f"salvati: {', '.join(generato)}"
-    return {
-        "ok": True,
-        "message": f"HACCP {anno}-{mese:02d}-{giorno:02d}: {esito}",
-        "generato": bool(generato),
-        "elementi": generato,
-        "data": oggi.strftime("%Y-%m-%d"),
     }
 
 
