@@ -105,6 +105,172 @@ async function getScadenze(request, token) {
     throw new Error('Il record risulta ancora nel database dopo la conferma');
   }
 
+
+  // ── FASE 0A: Prima Nota operativa ──────────────────────────────────────
+  // CRUD Cassa reale attraverso gli endpoint montati.
+  const headers = { Authorization: `Bearer ${adminToken}` };
+  const creaCassa = await context.request.post(`${BASE}/api/prima-nota/cassa`, {
+    headers,
+    data: {
+      data: '2026-09-21',
+      tipo: 'entrata',
+      importo: 100,
+      descrizione: 'COLLAUDO E2E CASSA CRUD',
+      categoria: 'Altro',
+    },
+  });
+  if (!creaCassa.ok()) throw new Error(`Creazione Cassa fallita: HTTP ${creaCassa.status()}`);
+  const cassaId = (await creaCassa.json()).id;
+  if (!cassaId) throw new Error('Creazione Cassa senza id');
+
+  const modificaCassa = await context.request.put(`${BASE}/api/prima-nota/cassa/${cassaId}`, {
+    headers,
+    data: { importo: 125, descrizione: 'COLLAUDO E2E CASSA CRUD MODIFICATO' },
+  });
+  if (!modificaCassa.ok()) throw new Error(`Modifica Cassa fallita: HTTP ${modificaCassa.status()}`);
+
+  let cassa = await context.request.get(`${BASE}/api/prima-nota/cassa?anno=2026&limit=200`, { headers });
+  if (!cassa.ok()) throw new Error(`Lettura Cassa fallita: HTTP ${cassa.status()}`);
+  let cassaPayload = await cassa.json();
+  const cassaCrud = (cassaPayload.movimenti || []).find(m => m.id === cassaId);
+  if (!cassaCrud || Number(cassaCrud.importo) !== 125
+      || cassaCrud.descrizione !== 'COLLAUDO E2E CASSA CRUD MODIFICATO') {
+    throw new Error('CRUD Cassa non persistito correttamente');
+  }
+
+  // Verifica UI + reload: il dato deve sopravvivere alla navigazione, non solo
+  // alla risposta del POST.
+  await page.goto(`${BASE}/prima-nota`, { waitUntil: 'networkidle', timeout: 30000 });
+  await page.getByText('COLLAUDO E2E CASSA CRUD MODIFICATO', { exact: false }).first()
+    .waitFor({ timeout: 10000 });
+  await page.reload({ waitUntil: 'networkidle', timeout: 30000 });
+  await page.getByText('COLLAUDO E2E CASSA CRUD MODIFICATO', { exact: false }).first()
+    .waitFor({ timeout: 10000 });
+
+  const eliminaCassa = await context.request.delete(
+    `${BASE}/api/prima-nota/cassa/${cassaId}?force=true`,
+    { headers },
+  );
+  if (!eliminaCassa.ok()) throw new Error(`Eliminazione Cassa fallita: HTTP ${eliminaCassa.status()}`);
+  cassa = await context.request.get(`${BASE}/api/prima-nota/cassa?anno=2026&limit=200`, { headers });
+  cassaPayload = await cassa.json();
+  if ((cassaPayload.movimenti || []).some(m => m.id === cassaId)) {
+    throw new Error('Movimento Cassa archiviato ancora visibile nell’elenco operativo');
+  }
+
+  // Provvisori -> Cassa: una conferma esplicita genera la scrittura reale.
+  const confermaCassa = await context.request.post(
+    `${BASE}/api/prima-nota/provvisori/conferma`,
+    { headers, data: { fattura_id: 'e2e-fattura-cassa', metodo: 'cassa' } },
+  );
+  if (!confermaCassa.ok()) {
+    throw new Error(`Provvisorio -> Cassa fallito: HTTP ${confermaCassa.status()} ${await confermaCassa.text()}`);
+  }
+  cassa = await context.request.get(`${BASE}/api/prima-nota/cassa?anno=2026&limit=200`, { headers });
+  cassaPayload = await cassa.json();
+  const pagamentoCassa = (cassaPayload.movimenti || []).find(m => m.fattura_id === 'e2e-fattura-cassa');
+  if (!pagamentoCassa || Number(pagamentoCassa.importo) !== 90) {
+    throw new Error('Conferma Cassa non ha creato la scrittura da 90 EUR');
+  }
+
+  // Banca: una fattura NON può essere dichiarata pagata senza prova EC.
+  const bancaSenzaProva = await context.request.post(
+    `${BASE}/api/prima-nota/provvisori/conferma`,
+    { headers, data: { fattura_id: 'e2e-fattura-banca-attesa', metodo: 'banca' } },
+  );
+  if (bancaSenzaProva.status() !== 409) {
+    throw new Error(`Pagamento Banca senza prova non bloccato: HTTP ${bancaSenzaProva.status()}`);
+  }
+
+  const attendiBanca = await context.request.post(
+    `${BASE}/api/prima-nota/provvisori/attendi-banca`,
+    { headers, data: { fattura_id: 'e2e-fattura-banca-attesa' } },
+  );
+  if (!attendiBanca.ok()) {
+    throw new Error(`Attendi banca fallito: HTTP ${attendiBanca.status()} ${await attendiBanca.text()}`);
+  }
+
+  let banca = await context.request.get(`${BASE}/api/prima-nota/banca?anno=2026&limit=200`, { headers });
+  if (!banca.ok()) throw new Error(`Lettura Banca fallita: HTTP ${banca.status()}`);
+  let bancaPayload = await banca.json();
+  if ((bancaPayload.movimenti || []).some(m => m.fattura_id === 'e2e-fattura-banca-attesa')) {
+    throw new Error('Attendi banca ha creato una falsa scrittura bancaria');
+  }
+
+  // Banca con prova: la stessa conferma è ammessa quando esiste il movimento EC.
+  const bancaConProva = await context.request.post(
+    `${BASE}/api/prima-nota/provvisori/conferma`,
+    {
+      headers,
+      data: {
+        fattura_id: 'e2e-fattura-banca-prova',
+        metodo: 'banca',
+        movimento_banca_id: 'e2e-ec-banca-prova',
+      },
+    },
+  );
+  if (!bancaConProva.ok()) {
+    throw new Error(`Banca con prova EC fallita: HTTP ${bancaConProva.status()} ${await bancaConProva.text()}`);
+  }
+  banca = await context.request.get(`${BASE}/api/prima-nota/banca?anno=2026&limit=200`, { headers });
+  bancaPayload = await banca.json();
+  const pagamentoBanca = (bancaPayload.movimenti || []).find(m => m.fattura_id === 'e2e-fattura-banca-prova');
+  if (!pagamentoBanca || Number(pagamentoBanca.importo) !== 160 || pagamentoBanca.riconciliato !== true) {
+    throw new Error('Pagamento Banca con prova EC non risulta reale e riconciliato');
+  }
+
+  // Misto: solo la quota Cassa diventa denaro reale; il residuo Banca resta aperto.
+  const divisione = await context.request.post(
+    `${BASE}/api/prima-nota/provvisori/conferma-divisione`,
+    {
+      headers,
+      data: {
+        fattura_id: 'e2e-fattura-mista',
+        importo_cassa: 40,
+        importo_banca: 60,
+        performed_by: 'e2e',
+      },
+    },
+  );
+  if (!divisione.ok()) {
+    throw new Error(`Divisione mista fallita: HTTP ${divisione.status()} ${await divisione.text()}`);
+  }
+  cassa = await context.request.get(`${BASE}/api/prima-nota/cassa?anno=2026&limit=200`, { headers });
+  cassaPayload = await cassa.json();
+  const quotaCassa = (cassaPayload.movimenti || []).find(m => m.fattura_id === 'e2e-fattura-mista');
+  if (!quotaCassa || Number(quotaCassa.importo) !== 40) {
+    throw new Error('Quota Cassa del pagamento misto non registrata');
+  }
+  banca = await context.request.get(`${BASE}/api/prima-nota/banca?anno=2026&limit=200`, { headers });
+  bancaPayload = await banca.json();
+  if ((bancaPayload.movimenti || []).some(m => m.fattura_id === 'e2e-fattura-mista')) {
+    throw new Error('Pagamento misto ha inventato una quota Banca senza estratto conto');
+  }
+
+  const provvisori = await context.request.get(
+    `${BASE}/api/prima-nota/provvisori?anno=2026`,
+    { headers },
+  );
+  if (!provvisori.ok()) throw new Error(`Lettura Provvisori fallita: HTTP ${provvisori.status()}`);
+  const provPayload = await provvisori.json();
+  const attesa = (provPayload.provvisori || []).find(p => p.fattura_id === 'e2e-fattura-banca-attesa');
+  const residuoMisto = (provPayload.provvisori || []).find(p => p.fattura_id === 'e2e-fattura-mista');
+  if (!attesa || attesa.suggerimento !== 'banca') {
+    throw new Error('Fattura in attesa banca non è rimasta nei Provvisori');
+  }
+  if (!residuoMisto || Math.abs(Number(residuoMisto.importo_residuo) - 60) > 0.01) {
+    throw new Error('Residuo Banca del pagamento misto non è rimasto aperto a 60 EUR');
+  }
+
+  // Quadratura finale isolata: CRUD manuale è stato eliminato, quindi Cassa
+  // contiene solo 90 EUR della fattura Cassa + 40 EUR della quota mista.
+  if (Math.abs(Number(cassaPayload.saldo) - 130) > 0.01) {
+    throw new Error(`Saldo Cassa E2E inatteso: ${cassaPayload.saldo}, atteso 130`);
+  }
+  if (Math.abs(Number(bancaPayload.saldo) - (-160)) > 0.01) {
+    throw new Error(`Saldo Banca E2E inatteso: ${bancaPayload.saldo}, atteso -160`);
+  }
+
   const operatoreToken = tokenPerRuolo('operatore');
   const tentativoNonAdmin = await context.request.delete(
     `${BASE}/api/learning-machine/reset-learning`,
@@ -124,7 +290,7 @@ async function getScadenze(request, token) {
   }
 
   await browser.close();
-  console.log('E2E DISTRUTTIVO OK: annullamento preserva il record; conferma lo elimina; reset non-admin bloccato con 403 e dati invariati.');
+  console.log('E2E DISTRUTTIVO OK: scadenze e permessi verificati; Prima Nota Cassa/Banca/Provvisori CRUD, prova bancaria e pagamento misto verificati.');
 })().catch(error => {
   console.error(error);
   process.exit(1);
