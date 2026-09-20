@@ -121,9 +121,15 @@ function uniqueProblems(problems) {
       if (path === '/fatture') {
         await page.getByRole('columnheader', { name: 'Documento' }).waitFor({ timeout: 10000 });
         await page.getByRole('columnheader', { name: 'Azione' }).waitFor({ timeout: 10000 });
-        const rows = page.locator('tbody tr');
+        // Il server E2E contiene anche fatture tecniche per i collaudi di
+        // Prima Nota. Qui verifichiamo soltanto le tre fixture dedicate al
+        // layout della tabella Fatture, così i test dei domini restano
+        // indipendenti senza falsi fallimenti sul conteggio totale.
+        const rows = page.locator('tbody tr').filter({
+          hasText: /E2E-001|E2E-002|NC-E2E-001/,
+        });
         if (await rows.count() !== 3) {
-          problems.push({ type: 'fixture', detail: `Attese 3 fatture E2E, trovate ${await rows.count()}` });
+          problems.push({ type: 'fixture', detail: `Attese 3 fatture layout E2E, trovate ${await rows.count()}` });
         }
 
         const positions = await rows.evaluateAll(elements => elements.map(row => {
