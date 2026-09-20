@@ -48,6 +48,9 @@ def test_orchestratore_include_paypal_fatture_banca_e_cbill(monkeypatch):
     async def allocazioni_fatture(*args, **kwargs):
         return await record("allocazioni_fatture", {"allocati": 2}, *args, **kwargs)
 
+    async def versamenti(*args, **kwargs):
+        return await record("versamenti", {"versamenti": 3, "prelievi": 1}, *args, **kwargs)
+
     monkeypatch.setattr(
         "app.services.assegni_fattura_intent.riprocessa_intenti_assegni",
         assegni_intenti,
@@ -90,6 +93,9 @@ def test_orchestratore_include_paypal_fatture_banca_e_cbill(monkeypatch):
         "app.services.bank_payment_allocations.reconcile_deterministic_invoice_allocations",
         allocazioni_fatture,
     )
+    monkeypatch.setattr(
+        "app.services.versamenti_contanti.riconosci_versamenti", versamenti,
+    )
 
     result = asyncio.run(
         riconcilia_documenti_e_pagamenti(object(), anno=2026)
@@ -104,6 +110,9 @@ def test_orchestratore_include_paypal_fatture_banca_e_cbill(monkeypatch):
     }
     assert result["proiezione_banca"] == {"proiettati": 4}
     assert result["allocazioni_fatture_banca"] == {"allocati": 2}
+    # I versamenti di contante li riconosce il giro dei 30 minuti: non c'e'
+    # piu' nessun comando «ripara versamenti» da premere a mano.
+    assert result["versamenti_contanti"] == {"versamenti": 3, "prelievi": 1}
     paypal_ranges = [
         kwargs for name, kwargs in calls if name == "paypal_fatture"
     ]
