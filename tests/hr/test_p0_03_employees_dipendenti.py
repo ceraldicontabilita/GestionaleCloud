@@ -16,7 +16,8 @@ def test_libro_unico_non_scrive_piu_su_employees():
     assert "db[Collections.EMPLOYEES].update_one" in src
 
 
-def test_verbali_api_usa_dipendenti_per_driver():
-    src = Path("app/routers/verbali_noleggio_api.py").read_text(encoding="utf-8")
+def test_dettaglio_verbale_canonico_usa_dipendenti_per_driver():
+    """Il requisito segue il comportamento, non il vecchio file duplicato."""
+    src = Path("app/routers/verbali_noleggio.py").read_text(encoding="utf-8")
     assert "db.employees.find_one" not in src
     assert 'db["dipendenti"].find_one' in src
