@@ -7,7 +7,7 @@ import asyncio
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.services import quietanze_import as qi
 from tests.document_preview_helpers import confirmed_preview_headers
@@ -349,7 +349,7 @@ def test_upload_quietanza_aggiorna_subito_ritenuta_reale_1040(monkeypatch):
         "validazione": {"saldo_quadrato": True, "differenza_saldo": 0.0},
     }
     _patch_parser(monkeypatch, parsed)
-    db = MemorySheetsClient()["quietanza-ritenuta-real-case"]
+    db = ClientArchivioMemoria()["quietanza-ritenuta-real-case"]
     asyncio.run(db[qi.COLL_F24_COMMERCIALISTA].insert_one({
         "id": "F24-1040-06-2026", "status": "da_pagare", "riconciliato": False,
         "codice_fiscale": "CF-ANONIMO",

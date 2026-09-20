@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 
 from app.services import f24_controllo_incrociato as ctrl
 from app.services.hr_cedolini_lettura import riepilogo_ritenute
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 
 def _run(coro):
@@ -70,7 +70,7 @@ async def _nessun_cedolino(anno, mese):
 
 
 def _db_base():
-    db = MemorySheetsClient()["avviso_bonario"]
+    db = ClientArchivioMemoria()["avviso_bonario"]
     return db
 
 

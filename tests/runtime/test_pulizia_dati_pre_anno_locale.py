@@ -1,17 +1,18 @@
-"""Collaudo distruttivo sul registro Sheets effimero dei test.
+"""Collaudo distruttivo sull'archivio in memoria dei test.
 
-Il registro esiste solo nella memoria del processo e viene eliminato al termine.
+L'archivio esiste solo nella memoria del processo e viene eliminato al termine:
+nessun dato di produzione viene toccato.
 """
 import asyncio
 
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.routers.prima_nota_module import manutenzione
 
 
-def test_pulizia_su_sheets_usa_e_getta_preserva_paghe(monkeypatch):
+def test_pulizia_su_archivio_usa_e_getta_preserva_paghe(monkeypatch):
     async def scenario():
-        client = MemorySheetsClient()
+        client = ClientArchivioMemoria()
         nome_db = "usa_e_getta_pulizia_pregressi"
         db = client[nome_db]
         monkeypatch.setattr(
@@ -63,7 +64,7 @@ def test_pulizia_su_sheets_usa_e_getta_preserva_paghe(monkeypatch):
 
 def test_migrazione_una_tantum_verifica_e_non_si_ripete(monkeypatch):
     async def scenario():
-        client = MemorySheetsClient()
+        client = ClientArchivioMemoria()
         nome_db = "usa_e_getta_migrazione_una_tantum"
         db = client[nome_db]
         monkeypatch.setattr(

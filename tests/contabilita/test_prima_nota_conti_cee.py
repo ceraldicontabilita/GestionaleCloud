@@ -15,7 +15,7 @@ import asyncio
 import pytest
 from fastapi import HTTPException
 
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 import app.routers.accounting.piano_conti as pc
 from app.services import bonifica_prima_nota_conti as bonifica
@@ -53,7 +53,7 @@ def _run(coro):
     ("cassa", "uscita", "POS SUMUP Verso Banca", "19.03.03", "15.07.02"),
 ])
 def test_scrivi_movimento_assegna_conti_cee_per_categoria(registro, tipo, categoria, tesoreria, contropartita):
-    db = MemorySheetsClient()[f"conti-{registro}-{categoria}"]
+    db = ClientArchivioMemoria()[f"conti-{registro}-{categoria}"]
     collezione = "prima_nota_banca" if registro == "banca" else "prima_nota_cassa"
     riga_id = _run(scrivi_movimento(db, registro, {
         "data": "2026-03-10", "tipo": tipo, "importo": 100.0,
@@ -68,7 +68,7 @@ def test_scrivi_movimento_assegna_conti_cee_per_categoria(registro, tipo, catego
 
 
 def test_conto_esplicito_valido_viene_rispettato_e_ha_la_contropartita():
-    db = MemorySheetsClient()["conti-esplicito"]
+    db = ClientArchivioMemoria()["conti-esplicito"]
     riga_id, _ = _run(scrivi_movimento_se_assente(db, "banca", {"id": "x"}, {
         "data": "2026-03-10", "tipo": "uscita", "importo": 2.0,
         "categoria": "Commissioni e spese bancarie", "source": "commissioni_sumup",
@@ -80,7 +80,7 @@ def test_conto_esplicito_valido_viene_rispettato_e_ha_la_contropartita():
 
 
 def test_conto_fuori_dal_piano_cee_viene_rifiutato():
-    db = MemorySheetsClient()["conti-rifiuto"]
+    db = ClientArchivioMemoria()["conti-rifiuto"]
     with pytest.raises(ScritturaNonValida):
         _run(scrivi_movimento(db, "banca", {
             "data": "2026-03-10", "tipo": "uscita", "importo": 10.0,
@@ -96,7 +96,7 @@ def test_conto_fuori_dal_piano_cee_viene_rifiutato():
 
 
 def test_categoria_ignota_ha_il_conto_di_tesoreria_ma_nessuna_contropartita_inventata():
-    db = MemorySheetsClient()["conti-ignota"]
+    db = ClientArchivioMemoria()["conti-ignota"]
     riga_id = _run(scrivi_movimento(db, "banca", {
         "data": "2026-03-10", "tipo": "uscita", "importo": 10.0,
         "categoria": "Altro", "source": "test",
@@ -133,7 +133,7 @@ def test_ogni_conto_operativo_esteso_ha_un_alias_cee():
 # ── backfill ─────────────────────────────────────────────────────────────────
 
 def _db_storico():
-    db = MemorySheetsClient()["backfill-conti"]
+    db = ClientArchivioMemoria()["backfill-conti"]
 
     async def semina():
         await db.prima_nota_banca.insert_many([
@@ -236,7 +236,7 @@ def test_endpoint_bonifica_prima_nota_include_i_conti(monkeypatch):
 # ── API piano dei conti ──────────────────────────────────────────────────────
 
 def test_api_piano_conti_espone_solo_il_cee_con_alias(monkeypatch):
-    db = MemorySheetsClient()["piano-cee-api"]
+    db = ClientArchivioMemoria()["piano-cee-api"]
     _run(db.piano_conti.insert_many([
         {"id": "1", "codice": "05.01.01", "nome": "Acquisto merci", "categoria": "costi", "saldo": 0},
         {"id": "2", "codice": "77.77.77", "nome": "Conto a mano", "categoria": "costi", "saldo": 0},
@@ -267,7 +267,7 @@ def test_api_piano_conti_espone_solo_il_cee_con_alias(monkeypatch):
 
 
 def test_api_piano_conti_non_crea_ne_modifica_conti(monkeypatch):
-    db = MemorySheetsClient()["piano-cee-crud"]
+    db = ClientArchivioMemoria()["piano-cee-crud"]
     monkeypatch.setattr(pc.Database, "get_db", staticmethod(lambda: db))
     with pytest.raises(HTTPException) as nuovo:
         _run(pc.create_conto({"codice": "05.02.03", "nome": "Spese telefoniche", "categoria": "costi"}))
@@ -285,7 +285,7 @@ def test_api_piano_conti_non_crea_ne_modifica_conti(monkeypatch):
 
 
 def test_bilancio_usa_il_piano_cee(monkeypatch):
-    db = MemorySheetsClient()["piano-cee-bilancio"]
+    db = ClientArchivioMemoria()["piano-cee-bilancio"]
     monkeypatch.setattr(pc.Database, "get_db", staticmethod(lambda: db))
 
     async def _saldi(_db, anno=None):
@@ -303,7 +303,7 @@ def test_bilancio_usa_il_piano_cee(monkeypatch):
 
 
 def test_movimenti_per_conto_accetta_codice_cee_e_alias(monkeypatch):
-    db = MemorySheetsClient()["piano-cee-movimenti"]
+    db = ClientArchivioMemoria()["piano-cee-movimenti"]
     _run(db.prima_nota_cassa.insert_one({
         "id": "k1", "data": "2026-03-22", "tipo": "entrata", "importo": 10.0,
         "categoria": "Corrispettivi",

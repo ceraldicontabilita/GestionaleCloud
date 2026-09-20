@@ -1,7 +1,7 @@
 """
 Ceraldi ERP - Main Application
 ==============================
-FastAPI + Google Drive/Sheets | GestionaleCloud
+FastAPI + Google Drive/Supabase | GestionaleCloud
 """
 import asyncio
 from contextlib import asynccontextmanager, suppress

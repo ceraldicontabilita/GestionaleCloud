@@ -22,7 +22,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
-from app.services.archivio_documenti_memoria import SheetDatabase
+from app.services.archivio_documenti_memoria import ArchivioDocumenti
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 # 1. PIPELINE F24
 # ============================================================
 
-async def processa_f24_da_email(db: SheetDatabase) -> Dict[str, Any]:
+async def processa_f24_da_email(db: ArchivioDocumenti) -> Dict[str, Any]:
     """
     Processa tutti gli F24 PDF scaricati da Gmail.
     Estrae codici tributo, periodi, importi e salva nella collezione canonica
@@ -129,7 +129,7 @@ async def processa_f24_da_email(db: SheetDatabase) -> Dict[str, Any]:
 # 2. PIPELINE CEDOLINI → DIPENDENTI
 # ============================================================
 
-async def processa_cedolini_da_email(db: SheetDatabase) -> Dict[str, Any]:
+async def processa_cedolini_da_email(db: ArchivioDocumenti) -> Dict[str, Any]:
     """
     Processa cedolini PDF scaricati da Gmail.
     Estrae dati dipendente (nome, CF, netto, lordo, mese/anno).
@@ -288,7 +288,7 @@ async def processa_cedolini_da_email(db: SheetDatabase) -> Dict[str, Any]:
 # 3. PIPELINE VERBALI → VEICOLO → DIPENDENTE → TRATTENUTE
 # ============================================================
 
-async def processa_verbali_da_email(db: SheetDatabase) -> Dict[str, Any]:
+async def processa_verbali_da_email(db: ArchivioDocumenti) -> Dict[str, Any]:
     """
     Processa verbali PDF scaricati da Gmail.
 
@@ -426,7 +426,7 @@ async def processa_verbali_da_email(db: SheetDatabase) -> Dict[str, Any]:
     return stats
 
 
-async def _cerca_quietanze_verbali(db: SheetDatabase) -> Dict[str, Any]:
+async def _cerca_quietanze_verbali(db: ArchivioDocumenti) -> Dict[str, Any]:
     """
     Cerca quietanze di pagamento per verbali non ancora pagati.
     Controlla: quietanze_email_attachments, estratto_conto_movimenti, PagoPA.
@@ -490,7 +490,7 @@ async def _cerca_quietanze_verbali(db: SheetDatabase) -> Dict[str, Any]:
 
 
 async def _crea_trattenuta_verbale(
-    db: SheetDatabase,
+    db: ArchivioDocumenti,
     verbale: dict,
     data_pagamento: str
 ) -> None:
@@ -556,7 +556,7 @@ async def _crea_trattenuta_verbale(
 # 4. PIPELINE QUIETANZE → PROVA PAGAMENTO F24
 # ============================================================
 
-async def processa_quietanze_da_email(db: SheetDatabase) -> Dict[str, Any]:
+async def processa_quietanze_da_email(db: ArchivioDocumenti) -> Dict[str, Any]:
     """
     Processa quietanze PDF scaricate da Gmail.
     Cerca il F24 corrispondente e lo marca come pagato.
@@ -665,7 +665,7 @@ def _extract_numero_verbale(filename: str, subject: str, folder: str) -> Optiona
 # PIPELINE MASTER — Esegue tutto in sequenza
 # ============================================================
 
-async def esegui_pipeline_completa(db: SheetDatabase) -> Dict[str, Any]:
+async def esegui_pipeline_completa(db: ArchivioDocumenti) -> Dict[str, Any]:
     """
     Esegue l'intero pipeline di processamento post-download.
     Chiamato automaticamente dopo ogni scansione Gmail.
@@ -726,7 +726,7 @@ async def esegui_pipeline_completa(db: SheetDatabase) -> Dict[str, Any]:
 # 5. RICONCILIAZIONE VERBALI → BANCA / PagoPA / PayPal
 # ============================================================
 
-async def riconcilia_verbali_con_banca(db: SheetDatabase) -> Dict[str, Any]:
+async def riconcilia_verbali_con_banca(db: ArchivioDocumenti) -> Dict[str, Any]:
     """Compatibilita: usa esclusivamente la riconciliazione probatoria strict."""
     from app.services.verbali_pagamento_finder import riconcilia_verbali_strict
 
@@ -734,7 +734,7 @@ async def riconcilia_verbali_con_banca(db: SheetDatabase) -> Dict[str, Any]:
 
 
 async def _legacy_riconcilia_verbali_con_banca_non_usare(
-    db: SheetDatabase,
+    db: ArchivioDocumenti,
 ) -> Dict[str, Any]:
     """
     Riconcilia verbali con movimenti bancari, PagoPA e PayPal.
@@ -867,7 +867,7 @@ async def _legacy_riconcilia_verbali_con_banca_non_usare(
 
 
 async def _marca_verbale_pagato(
-    db: SheetDatabase,
+    db: ArchivioDocumenti,
     verbale: dict,
     data_pagamento: str,
     metodo: str,
@@ -910,7 +910,7 @@ async def _marca_verbale_pagato(
 # 6. SCARICA PDF MANCANTI DAI FOLDER GMAIL
 # ============================================================
 
-async def scarica_pdf_verbali_mancanti(db: SheetDatabase) -> Dict[str, Any]:
+async def scarica_pdf_verbali_mancanti(db: ArchivioDocumenti) -> Dict[str, Any]:
     """
     Scarica i PDF dei verbali che hanno il numero (dalla cartella Gmail)
     ma non hanno il pdf_data. Va nella cartella Gmail specifica e scarica gli allegati.
@@ -1041,7 +1041,7 @@ async def scarica_pdf_verbali_mancanti(db: SheetDatabase) -> Dict[str, Any]:
 # 7. MATCHING MIGLIORATO VERBALI → BANCA
 # ============================================================
 
-async def riconcilia_verbali_avanzato(db: SheetDatabase) -> Dict[str, Any]:
+async def riconcilia_verbali_avanzato(db: ArchivioDocumenti) -> Dict[str, Any]:
     """Compatibilita: vieta i match storici basati sul solo importo/data."""
     from app.services.verbali_pagamento_finder import riconcilia_verbali_strict
 
@@ -1049,7 +1049,7 @@ async def riconcilia_verbali_avanzato(db: SheetDatabase) -> Dict[str, Any]:
 
 
 async def _legacy_riconcilia_verbali_avanzato_non_usare(
-    db: SheetDatabase,
+    db: ArchivioDocumenti,
 ) -> Dict[str, Any]:
     """
     Riconciliazione avanzata verbali ↔ banca con 5 strategie:

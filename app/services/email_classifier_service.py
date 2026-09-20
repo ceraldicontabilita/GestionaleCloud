@@ -42,7 +42,7 @@ class EmailRule:
     sender_patterns: List[str]  # Pattern per mittente
     category: str  # Categoria nel sistema
     gestionale_section: str  # Sezione del gestionale
-    collection: str  # Foglio Sheets
+    collection: str  # Collezione
     action: str  # Tipo di azione: 'save_pdf', 'extract_data', 'associate'
     priority: int = 0  # Priorità (più alto = più prioritario)
 
@@ -317,7 +317,7 @@ async def scan_and_classify_emails(
     Scansiona le email, le classifica e le processa.
 
     Args:
-        db: Registro Sheets
+        db: Archivio del runtime
         cartella: Cartella IMAP da scansionare
         giorni: Numero di giorni da controllare
         delete_unmatched: Se True, elimina email che non matchano nessuna regola
@@ -593,7 +593,7 @@ async def process_documents_with_ai(
     Processa i documenti classificati usando Document AI per estrarre dati strutturati.
 
     Args:
-        db: Registro Sheets
+        db: Archivio del runtime
         process_all: Se True, riprocessa anche documenti già processati
         document_types: Lista di tipi da processare (None = tutti)
         save_to_gestionale: Se True, salva i dati estratti nelle collection del gestionale

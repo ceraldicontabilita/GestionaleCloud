@@ -1,13 +1,13 @@
 """Policy L0-L4, approvazioni umane e interruttore globale.
 
-I test usano un registro Sheets esclusivamente in memoria: nessuna rete,
+I test usano un archivio in memoria esclusivamente in memoria: nessuna rete,
 credenziale o collection reale viene letta o modificata.
 """
 
 import asyncio
 
 import pytest
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.agents.decision_engine import (
     cambia_stato_decisione,
@@ -26,7 +26,7 @@ from app.agents.orchestrator import run_agenti
 
 
 def _db():
-    return MemorySheetsClient()["gestionale_ai_test"]
+    return ClientArchivioMemoria()["gestionale_ai_test"]
 
 
 def _proposta(**override):

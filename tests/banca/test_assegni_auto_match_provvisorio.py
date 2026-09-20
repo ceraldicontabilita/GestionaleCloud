@@ -1,13 +1,13 @@
 import asyncio
 
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.routers.bank.assegni_auto_match import _apply_match
 
 
 def test_conferma_proposta_collega_ma_non_crea_banca_ne_segna_pagata():
     async def scenario():
-        db = MemorySheetsClient()["assegni_auto_match_provvisorio"]
+        db = ClientArchivioMemoria()["assegni_auto_match_provvisorio"]
         assegno = {
             "id": "ass-1",
             "numero": "0208771000-01",

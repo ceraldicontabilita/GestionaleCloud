@@ -1,6 +1,6 @@
 import asyncio
 
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.routers.prima_nota_module import banca
 
@@ -10,7 +10,7 @@ def _run(awaitable):
 
 
 def test_coda_esclude_gia_collegati_e_mostra_i_candidati(monkeypatch):
-    db = MemorySheetsClient()["banca_in_attesa_documento_test"]
+    db = ClientArchivioMemoria()["banca_in_attesa_documento_test"]
     monkeypatch.setattr(banca.Database, "get_db", staticmethod(lambda: db))
     _run(db["estratto_conto_movimenti"].insert_many([
         {
@@ -62,7 +62,7 @@ def test_coda_mostra_estratti_drive_legacy_senza_stato(monkeypatch):
     Un record senza ``stato_riconciliazione`` e' ancora aperto; se invece ha
     gia' evidenza di collegamento resta fuori dalla coda operativa.
     """
-    db = MemorySheetsClient()["banca_in_attesa_documento_legacy"]
+    db = ClientArchivioMemoria()["banca_in_attesa_documento_legacy"]
     monkeypatch.setattr(banca.Database, "get_db", staticmethod(lambda: db))
     _run(db["estratto_conto_movimenti"].insert_many([
         {

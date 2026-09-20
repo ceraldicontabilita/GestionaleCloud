@@ -3,7 +3,7 @@
 import asyncio
 from datetime import date
 
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 import app.agents.tesoreria_shadow as agente_mod
 import app.services.tesoreria_shadow_service as servizio_mod
@@ -12,7 +12,7 @@ from app.services.tesoreria_shadow_service import leggi_snapshot_tesoreria
 
 
 def _db():
-    return MemorySheetsClient()["tesoreria_shadow_test"]
+    return ClientArchivioMemoria()["tesoreria_shadow_test"]
 
 
 async def _semina(db):

@@ -9,7 +9,7 @@ import asyncio
 from datetime import date
 
 from app.services.iva_liquidation_query import get_iva_period_snapshot
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 OGGI = date(2026, 9, 3)
 
@@ -19,7 +19,7 @@ def _run(coro):
 
 
 def _db():
-    return MemorySheetsClient()["iva_dati_mancanti"]
+    return ClientArchivioMemoria()["iva_dati_mancanti"]
 
 
 def _corrispettivo(giorno, iva=100.0):

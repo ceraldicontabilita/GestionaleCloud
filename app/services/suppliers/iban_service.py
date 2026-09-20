@@ -24,7 +24,7 @@ async def estrai_iban_da_fatture(db, piva: str) -> Optional[str]:
     Cerca IBAN nelle fatture XML per una P.IVA.
 
     Args:
-        db: Registro Sheets
+        db: Archivio del runtime
         piva: Partita IVA del fornitore
 
     Returns:
@@ -72,7 +72,7 @@ async def ricerca_iban_web(db, fornitori: List[Dict]) -> Dict[str, Any]:
     Cerca IBAN per una lista di fornitori usando tutte le fonti disponibili.
 
     Args:
-        db: Registro Sheets
+        db: Archivio del runtime
         fornitori: Lista di fornitori senza IBAN
 
     Returns:

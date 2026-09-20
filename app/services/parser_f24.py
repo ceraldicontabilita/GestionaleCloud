@@ -219,7 +219,7 @@ def _saldo_da_coordinate(page) -> float | None:
 def extract_text_from_pdf(pdf_path: str = None, pdf_content: bytes = None) -> str:
     """
     Estrae tutto il testo da un PDF.
-    Supporta sia filepath che bytes (architettura Drive/Sheets).
+    Supporta sia filepath che bytes (architettura Drive/Supabase).
     """
     try:
         from app.services.pdf_text_extraction import extract_pdf_text
@@ -240,11 +240,11 @@ def extract_text_from_pdf(pdf_path: str = None, pdf_content: bytes = None) -> st
 def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) -> Dict[str, Any]:
     """
     Parsa un F24 PDF della commercialista ed estrae tutti i dati.
-    Supporta sia filepath che bytes (architettura Drive/Sheets).
+    Supporta sia filepath che bytes (architettura Drive/Supabase).
 
     Args:
         pdf_path: Percorso file PDF (legacy)
-        pdf_content: Contenuto PDF in bytes (Drive/Sheets)
+        pdf_content: Contenuto PDF in bytes (Drive/Supabase)
 
     Layout F24 standard:
     - Colonna DEBITO: X ~357-389 (euro + centesimi)

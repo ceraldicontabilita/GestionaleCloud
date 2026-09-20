@@ -649,7 +649,7 @@ async def movimenti_in_attesa_documento(anno: Optional[int] = None) -> Dict[str,
     db = Database.get_db()
 
     query: Dict[str, Any] = {
-        # Gli estratti gia' presenti nel registro Sheets possono essere
+        # Gli estratti gia' presenti nell'archivio del runtime possono essere
         # anteriori all'introduzione di ``stato_riconciliazione``.  Erano
         # movimenti reali e non riconciliati, ma la query precedente li
         # nascondeva e mostrava falsamente "nessun movimento".  In coda

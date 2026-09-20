@@ -8,7 +8,7 @@ from app.config import Settings
 from app.database import Database
 from app.main import health_check
 from app.services.auth_secret import initialize_auth_secret
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 
 def test_cors_produzione_senza_origin_esplicito_e_chiuso():
@@ -95,7 +95,7 @@ def test_health_check_non_dichiara_healthy_senza_database(monkeypatch):
 def test_health_check_verifica_idratazione_generica(monkeypatch):
     """L'health check idrata da qualunque archivio esponga hydration_result;
     qui si usa il document store generico in-memory come doppio di test."""
-    database = MemorySheetsClient()["health"]
+    database = ClientArchivioMemoria()["health"]
     database.hydration_result = {
         "spreadsheet_id": "SHEET-1",
         "fogli": [{"valide": 2920, "numero_errori": 0}],
@@ -110,8 +110,8 @@ def test_health_check_verifica_idratazione_generica(monkeypatch):
     assert response["salari_sync"] == "not_started"
 
 
-def test_health_check_segnala_righe_sheets_escluse_senza_nascondere_i_dati(monkeypatch):
-    database = MemorySheetsClient()["health_degraded"]
+def test_health_check_segnala_righe_escluse_senza_nascondere_i_dati(monkeypatch):
+    database = ClientArchivioMemoria()["health_degraded"]
     database.hydration_result = {
         "spreadsheet_id": "SHEET-1",
         "fogli": [{"valide": 100, "numero_errori": 2}],
@@ -177,7 +177,7 @@ def test_health_check_supabase_prima_dellidratazione_e_unhealthy(monkeypatch):
         "SUPABASE_RUNTIME_SECRET": "runtime-secret-test",
     })
     # hydrate() non e' ancora stato chiamato: hydration_result resta None
-    # (attributo reale, non una SheetTable delegata da __getattr__).
+    # (attributo reale, non una CollezioneDocumenti delegata da __getattr__).
     monkeypatch.setattr(Database, "db", database)
 
     response = asyncio.run(health_check())
@@ -287,17 +287,17 @@ def test_settings_non_fa_io_e_bootstrap_secret_e_condiviso():
     cfg_b = Settings(SECRET_KEY=None)
     assert cfg_a.auth_secret_source == "ephemeral"
     assert cfg_b.auth_secret_source == "ephemeral"
-    db = MemorySheetsClient()["auth_bootstrap_test"]
-    assert asyncio.run(initialize_auth_secret(db, cfg_a)) == "sheets"
-    assert asyncio.run(initialize_auth_secret(db, cfg_b)) == "sheets"
+    db = ClientArchivioMemoria()["auth_bootstrap_test"]
+    assert asyncio.run(initialize_auth_secret(db, cfg_a)) == "archivio"
+    assert asyncio.run(initialize_auth_secret(db, cfg_b)) == "archivio"
     assert cfg_a.SECRET_KEY == cfg_b.SECRET_KEY
-    assert cfg_a.auth_secret_source == "sheets"
+    assert cfg_a.auth_secret_source == "archivio"
 
 
-def test_secret_esplicito_non_viene_sovrascritto_da_sheets():
+def test_secret_esplicito_non_viene_sovrascritto_dall_archivio():
     explicit = "x" * 64
     cfg = Settings(SECRET_KEY=explicit)
-    db = MemorySheetsClient()["auth_explicit_test"]
+    db = ClientArchivioMemoria()["auth_explicit_test"]
     asyncio.run(db["sistema_stato"].insert_one({
         "_id": "auth_secret", "chiave": "auth_secret", "valore": "y" * 64,
     }))

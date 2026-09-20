@@ -3,12 +3,12 @@
 Nessuna rete: la connessione asyncpg verso l'archivio HR e' sostituita da
 una finta che risponde alla sola query usata dal servizio (stessa tecnica di
 ``tests/test_hr_cedolini_deposito.py``); il gestionale usa
-``MemorySheetsClient``.
+``ClientArchivioMemoria``.
 """
 import asyncio
 import json
 
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.services import salari_sync_hr as modulo
 from app.services.salari_sync_hr import sincronizza_da_hr
@@ -21,7 +21,7 @@ def _run(coro):
 
 
 def _db(nome):
-    return MemorySheetsClient()[nome]
+    return ClientArchivioMemoria()[nome]
 
 
 class ConnessioneHRFinta:

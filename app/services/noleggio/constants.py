@@ -16,7 +16,7 @@ CATEGORIE SPESE:
 - Riparazioni: Sinistri, danni, carrozzeria, meccanica
 """
 
-# Foglio Sheets per veicoli noleggio
+# Collezione per veicoli noleggio
 COLLECTION = "veicoli_noleggio"
 
 # Fornitori noleggio con P.IVA

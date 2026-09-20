@@ -40,7 +40,7 @@ FASE0_DISATTIVATO = True
 
 @asynccontextmanager
 async def _write_batch(db):
-    """Accorpa le scritture remote quando il runtime Sheets lo supporta."""
+    """Accorpa le scritture remote quando il runtime in memoria lo supporta."""
     factory = getattr(db, "batch_writes", None)
     if callable(factory):
         async with factory():

@@ -8,7 +8,7 @@ import asyncio
 from app.database import Database
 from app.routers.admin import bonifica_prima_nota_doppioni
 from app.services import bonifica_prima_nota_doppioni as bonifica
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 CORR_ID = "8eb80d64-12ab-4e34-b848-8935ea1114d4"
 
@@ -23,7 +23,7 @@ def _entrata(id_riga, created_at, matricola="99MEY026532"):
 
 
 def _db_con_caso_reale():
-    db = MemorySheetsClient()["bonifica-doppioni"]
+    db = ClientArchivioMemoria()["bonifica-doppioni"]
 
     async def semina():
         await db["prima_nota_cassa"].insert_many([

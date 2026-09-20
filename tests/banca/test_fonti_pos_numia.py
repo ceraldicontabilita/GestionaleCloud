@@ -8,7 +8,7 @@ movimento: e' sempre lo stesso ciclo di vendita.
 """
 import asyncio
 
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.services.scritture_contabili import (
     STATO_CONFERMATO,
@@ -26,7 +26,7 @@ def _run(awaitable):
 
 
 def _db():
-    return MemorySheetsClient()["fonti_pos_test"]
+    return ClientArchivioMemoria()["fonti_pos_test"]
 
 
 def _chiusura(db):

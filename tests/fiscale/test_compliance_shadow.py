@@ -2,14 +2,14 @@
 
 import asyncio
 
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.agents.compliance_shadow import ComplianceShadow
 from app.services.compliance_shadow_service import leggi_snapshot_compliance
 
 
 def _db():
-    return MemorySheetsClient()["compliance_shadow_test"]
+    return ClientArchivioMemoria()["compliance_shadow_test"]
 
 
 async def _seed(db):

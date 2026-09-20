@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 from fastapi import HTTPException
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.routers import documenti
 
@@ -12,7 +12,7 @@ def _run(awaitable):
 
 
 def _db(monkeypatch):
-    db = MemorySheetsClient()["archivio_documenti_test"]
+    db = ClientArchivioMemoria()["archivio_documenti_test"]
     monkeypatch.setattr(documenti.Database, "get_db", staticmethod(lambda: db))
     return db
 

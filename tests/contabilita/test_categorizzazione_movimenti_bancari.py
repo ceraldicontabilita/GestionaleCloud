@@ -15,7 +15,7 @@ from app.services.categorizzazione_movimenti import (
     backfill_categorie_banca,
     categorizza_movimento_bancario,
 )
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 
 def _run(coro):
@@ -110,7 +110,7 @@ def test_pattern_in_conflitto_non_categorizza():
 # --- Backfill -------------------------------------------------------------
 
 def test_backfill_categorizza_solo_i_pattern_certi_e_riporta_il_resto():
-    db = MemorySheetsClient()["backfill_categorie"]
+    db = ClientArchivioMemoria()["backfill_categorie"]
 
     async def scenario():
         await db["estratto_conto_movimenti"].insert_many([
@@ -149,7 +149,7 @@ def test_backfill_non_tocca_un_movimento_con_fornitore_gia_assegnato():
     vuota non deve essere riassegnato dal backfill a un fornitore diverso
     per solo pattern testuale sulla causale (CLAUDE.md, "Identita', prove e
     attese": una relazione certa non si sovrascrive con una meno certa)."""
-    db = MemorySheetsClient()["backfill_non_sovrascrive_fornitore"]
+    db = ClientArchivioMemoria()["backfill_non_sovrascrive_fornitore"]
 
     async def scenario():
         await db["estratto_conto_movimenti"].insert_one({
@@ -168,7 +168,7 @@ def test_backfill_non_tocca_un_movimento_con_fornitore_gia_assegnato():
 
 
 def test_backfill_dry_run_non_scrive_nulla():
-    db = MemorySheetsClient()["backfill_dry_run"]
+    db = ClientArchivioMemoria()["backfill_dry_run"]
 
     async def scenario():
         await db["estratto_conto_movimenti"].insert_one(

@@ -323,7 +323,7 @@ async def importa_pos_terminal_file(db, content: bytes, filename: str, *, drive_
     updated = 0
     unchanged = 0
 
-    # Una sola lettura della cache Sheets, poi un solo inserimento bulk. La
+    # Una sola lettura della cache del runtime, poi un solo inserimento bulk. La
     # vecchia implementazione faceva find+update remoto per ogni riga (oltre
     # 6.500 chiamate per un mese), causando i 502 visibili in produzione.
     immutable_fields = (
@@ -443,7 +443,7 @@ async def importa_pos_terminal_file(db, content: bytes, filename: str, *, drive_
     )
 
     # Ogni batch limita le copie transitorie create dal datastore, dal hook di
-    # persistenza e dal payload Sheets. Il vecchio batch unico da oltre 6.500
+    # persistenza e dal payload dell'archivio. Il vecchio batch unico da oltre 6.500
     # righe poteva superare i 512 MiB di Render prima del primo flush.
     write_chunk_size = 250
     for offset in range(0, len(records_to_insert), write_chunk_size):

@@ -20,7 +20,7 @@ def install_scheduler_queue_policy() -> None:
         return
 
     async def _queued(job_id: str, funzione, *args: Any, **kwargs: Any):
-        lock = scheduler_module._sheets_scheduler_lock
+        lock = scheduler_module._lock_scheduler_locale
         if lock.locked():
             scheduler_module.logger.info(
                 "[SCHEDULER] job %s in coda: attende il completamento "

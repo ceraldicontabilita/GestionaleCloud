@@ -308,22 +308,31 @@ async def _do_sync(db) -> Dict[str, Any]:
                         xml_content, document_name, applica_filtro_anno=True,
                     )
                     stato = esito.get("status")
-                    if stato == "duplicate":
+                    # Ogni stato e' nominato, e quello sconosciuto cade nel
+                    # ramo errore: prima l'`else` contava come "importato"
+                    # qualunque esito non previsto, cioe' il contrario.
+                    if stato in ("created", "aggregated"):
+                        result["imported"] += 1
+                        logger.info("Drive corrispettivi: importato %s", document_name)
+                    elif stato == "duplicate":
                         result["duplicates"] += 1
-                    elif stato == "error":
+                    elif stato in ("skipped_altro_anno", "archiviata"):
+                        # Anno diverso da quello attivo: non entra in archivio,
+                        # ma il file e' stato letto correttamente e va in
+                        # `Elaborate` come gli altri. Trattarlo come errore lo
+                        # spedirebbe in `Errori` e lo rileggeremmo per sempre.
+                        result["archiviate"] += 1
+                        logger.info(
+                            "Drive corrispettivi: %s non importato (%s)",
+                            document_name, esito.get("message"))
+                    else:
                         source_has_errors = True
                         result["errors"] += 1
                         result["details"].append({
                             "file": document_name,
                             "source_path": f["_source_path"],
-                            "error": esito.get("message"),
+                            "error": esito.get("message") or f"esito sconosciuto: {stato}",
                         })
-                    elif stato == "archiviata":
-                        result["archiviate"] += 1
-                        logger.info("Drive corrispettivi: archiviato %s", document_name)
-                    else:
-                        result["imported"] += 1
-                        logger.info("Drive corrispettivi: importato %s", document_name)
 
                 if source_has_errors:
                     if error_id:
@@ -394,7 +403,8 @@ async def verifica_quadratura_elaborate(db) -> Dict[str, Any]:
 
     parent_id = _folder_id()
     esito = {"status": "ok", "controllati": 0, "quadrati": 0,
-             "recuperati": 0, "errori": 0, "details": [], "cartelle_elaborate": 0}
+             "recuperati": 0, "saltati_altro_anno": 0, "errori": 0,
+             "details": [], "cartelle_elaborate": 0}
     try:
         elaborate_folders = discover_lifecycle_folders(
             service, parent_id, max_depth=2, states=("elaborate",),
@@ -415,14 +425,20 @@ async def verifica_quadratura_elaborate(db) -> Dict[str, Any]:
                         r = await corr_service.process_xml(
                             xml_content, document_name, applica_filtro_anno=True,
                         )
-                        if r.get("status") == "duplicate":
+                        stato = r.get("status")
+                        if stato == "duplicate":
                             esito["quadrati"] += 1
-                        elif r.get("status") == "error":
+                        elif stato in ("skipped_altro_anno", "archiviata"):
+                            # Una giornata di un anno chiuso non e' un buco:
+                            # non deve entrare, e contarla fra i «recuperati»
+                            # faceva scattare un alert su un lavoro mai fatto.
+                            esito["saltati_altro_anno"] += 1
+                        elif stato not in ("created", "aggregated"):
                             esito["errori"] += 1
                             esito["details"].append({
                                 "file": document_name,
                                 "source_path": folder["relative_path"],
-                                "error": r.get("message"),
+                                "error": r.get("message") or f"esito sconosciuto: {stato}",
                             })
                         else:
                             esito["recuperati"] += 1
@@ -460,7 +476,8 @@ async def verifica_quadratura_elaborate(db) -> Dict[str, Any]:
     await db["sistema_stato"].update_one(
         {"chiave": _STATO_KEY},
         {"$set": {"last_quadratura": {"quando": now, **{k: esito[k] for k in (
-            'controllati', 'quadrati', 'recuperati', 'errori', 'cartelle_elaborate'
+            'controllati', 'quadrati', 'recuperati', 'saltati_altro_anno',
+            'errori', 'cartelle_elaborate'
         )}}}},
         upsert=True,
     )

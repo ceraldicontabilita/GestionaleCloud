@@ -9,7 +9,7 @@ import logging
 import os
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
-from app.services.archivio_documenti_memoria import SheetDatabase
+from app.services.archivio_documenti_memoria import ArchivioDocumenti
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -26,7 +26,7 @@ def _connect():
 
 
 async def fetch_ricevuta_pagopa(
-    db: SheetDatabase, transaction_id: str, importo: float, data_iso: str
+    db: ArchivioDocumenti, transaction_id: str, importo: float, data_iso: str
 ) -> Optional[Dict[str, Any]]:
     """Cerca su Gmail la ricevuta PagoPA corrispondente alla transazione PayPal."""
     try:
@@ -116,7 +116,7 @@ def _genera_pdf_da_testo(testo: str, path: str, titolo: str):
 
 
 async def genera_pdf_transazione_paypal(
-    db: SheetDatabase, transaction_id: str
+    db: ArchivioDocumenti, transaction_id: str
 ) -> Optional[str]:
     tx = await db["paypal_transactions"].find_one({"transaction_id": transaction_id})
     if not tx:

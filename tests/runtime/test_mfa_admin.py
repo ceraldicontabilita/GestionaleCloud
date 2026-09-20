@@ -2,7 +2,7 @@ import asyncio
 import hashlib
 import pytest
 from fastapi import HTTPException, Response
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 from starlette.requests import Request
 
 from app.services import mfa_service
@@ -12,7 +12,7 @@ from app.utils.dependencies import get_current_admin_mfa_user
 
 @pytest.fixture
 def db():
-    return MemorySheetsClient()["mfa_test"]
+    return ClientArchivioMemoria()["mfa_test"]
 
 
 def _request(path: str, ip: str) -> Request:

@@ -31,7 +31,7 @@ import asyncio
 
 import pytest
 
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 from app.services.corrispettivi_service import CorrispettiviService
 
 MATRICOLA = "99MEY026532"
@@ -73,7 +73,7 @@ ALTRA_MATRICOLA = _xml(9001, "88ABC000001", "300.00", "200.00", "454.55", "45.45
 
 
 async def _esegui(righe_iniziali, xml_da_processare):
-    db = MemorySheetsClient()["collaudo"]
+    db = ClientArchivioMemoria()["collaudo"]
     for riga in righe_iniziali:
         await db["corrispettivi"].insert_one(dict(riga))
     servizio = CorrispettiviService(db)

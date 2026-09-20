@@ -2,7 +2,7 @@
 
 Usa Fernet (AES128-CBC + HMAC, libreria 'cryptography', già una dipendenza
 del progetto). La chiave viene letta da CREDENTIALS_ENCRYPTION_KEY
-nell'ambiente. In produzione e' obbligatoria: i registri Sheets non devono
+nell'ambiente. In produzione e' obbligatoria: i archivi del runtime non devono
 mai contenere una chiave capace di decifrare le credenziali archiviate.
 """
 import os

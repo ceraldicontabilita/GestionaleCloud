@@ -1,12 +1,12 @@
 import asyncio
 
 from app.services import document_import_jobs
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 
 def test_job_pos_persistente_e_idempotente_per_hash(monkeypatch):
     async def scenario():
-        db = MemorySheetsClient()["document-import-job-test"]
+        db = ClientArchivioMemoria()["document-import-job-test"]
         calls = 0
 
         async def fake_import(_db, content, filename, *, drive_file_id=None):
@@ -48,7 +48,7 @@ def test_job_pos_persistente_e_idempotente_per_hash(monkeypatch):
 
 def test_job_pos_registra_errore_senza_perdere_identita(monkeypatch):
     async def scenario():
-        db = MemorySheetsClient()["document-import-job-error-test"]
+        db = ClientArchivioMemoria()["document-import-job-error-test"]
 
         async def failed_import(*_args, **_kwargs):
             raise ValueError("foglio non leggibile")
@@ -69,9 +69,9 @@ def test_job_pos_registra_errore_senza_perdere_identita(monkeypatch):
     assert failed["error"] == "foglio non leggibile"
 
 
-def test_enqueue_risponde_prima_di_persistire_su_sheets(monkeypatch):
+def test_enqueue_risponde_prima_di_persistire_nell_archivio(monkeypatch):
     async def scenario():
-        db = MemorySheetsClient()["document-import-fast-ack-test"]
+        db = ClientArchivioMemoria()["document-import-fast-ack-test"]
         save_calls = []
 
         async def fake_save(_db, job_id, values):

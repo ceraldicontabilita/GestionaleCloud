@@ -8,7 +8,7 @@ import io
 
 import pandas as pd
 import pytest
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.services import fatture_report_ae as report_ae
 
@@ -18,7 +18,7 @@ def _run(awaitable):
 
 
 def _db():
-    return MemorySheetsClient()["report_ae_test"]
+    return ClientArchivioMemoria()["report_ae_test"]
 
 
 def _riga(

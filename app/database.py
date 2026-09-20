@@ -1,4 +1,4 @@
-"""Accesso unico al registro operativo Google Drive/Sheets."""
+"""Accesso unico al registro operativo Google Drive/Supabase."""
 from typing import Any, Optional
 import asyncio
 import logging
@@ -44,7 +44,7 @@ def _e_passeggero(errore: BaseException) -> bool:
 
 
 class Database:
-    """Gestore del registro Drive/Sheets condiviso dall'applicazione."""
+    """Gestore del registro Drive/Supabase condiviso dall'applicazione."""
 
     client: Optional[Any] = None
     db: Optional[Any] = None
@@ -789,9 +789,9 @@ class Database:
         Called on application shutdown.
         """
         if cls.client:
-            logger.info("Chiusura cache del registro Drive/Sheets...")
+            logger.info("Chiusura cache del registro Drive/Supabase...")
             cls.client.close()
-            logger.info("Cache del registro Drive/Sheets chiusa")
+            logger.info("Cache del registro Drive/Supabase chiusa")
         cls.client = None
         cls.db = None
 
@@ -801,7 +801,7 @@ class Database:
         Get database instance.
 
         Returns:
-            Registro documentale Drive/Sheets.
+            Registro documentale Drive/Supabase.
 
         Raises:
             RuntimeError: If database is not connected

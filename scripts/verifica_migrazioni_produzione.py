@@ -1,4 +1,4 @@
-"""Verifica lo stato reale delle migrazioni nei registri Sheets configurati.
+"""Verifica lo stato reale delle migrazioni nei archivi del runtime configurati.
 
 Sola lettura: chiama ogni script di migrazione nella sua modalità dry-run
 (`migra(esegui=False)`), che conta soltanto — non scrive nulla. Aggrega i
@@ -10,7 +10,7 @@ blocco — note di migrazione nella cronologia git (PIANO_MIGRAZIONE_COLLECTION.
 attenzione specifiche di ciascuna).
 
 Uso: python scripts/verifica_migrazioni_produzione.py
-Richiede le credenziali Google Drive/Sheets previste da ``app/config.py``.
+Richiede le credenziali Google Drive/Supabase previste da ``app/config.py``.
 """
 import asyncio
 import os
@@ -70,6 +70,6 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except Exception as e:
-        print(f"ERRORE: impossibile aprire i registri Sheets: {e}", file=sys.stderr)
-        print("Servono le credenziali Drive/Sheets previste da app/config.py.", file=sys.stderr)
+        print(f"ERRORE: impossibile aprire i archivi del runtime: {e}", file=sys.stderr)
+        print("Servono le credenziali Drive/Supabase previste da app/config.py.", file=sys.stderr)
         sys.exit(1)

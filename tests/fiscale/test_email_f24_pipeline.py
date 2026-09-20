@@ -1,7 +1,7 @@
 import asyncio
 import base64
 
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.routers.f24 import email_f24
 
@@ -34,7 +34,7 @@ def test_download_email_f24_scrive_direttamente_su_drive_senza_database(monkeypa
 
 def test_email_quietanza_non_viene_scambiata_per_modello_f24(monkeypatch):
     async def scenario():
-        db = MemorySheetsClient()["test_email_quietanza"]
+        db = ClientArchivioMemoria()["test_email_quietanza"]
         await db["email_allegati"].insert_one({
             "id": "a1", "original_filename": "quietanza.pdf",
             "extension": ".pdf", "processato": False,
@@ -78,7 +78,7 @@ def test_email_quietanza_non_viene_scambiata_per_modello_f24(monkeypatch):
 
 def test_email_f24_stesso_pdf_in_due_allegati_non_duplica(monkeypatch):
     async def scenario():
-        db = MemorySheetsClient()["test_email_f24_dedup"]
+        db = ClientArchivioMemoria()["test_email_f24_dedup"]
         pdf_data = base64.b64encode(b"modello-f24-identico").decode()
         await db["email_allegati"].insert_many([
             {"id": "a1", "original_filename": "f24-a.pdf", "extension": ".pdf", "processato": False, "pdf_data": pdf_data},

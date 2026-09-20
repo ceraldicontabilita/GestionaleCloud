@@ -1,14 +1,14 @@
 import asyncio
 
 import pytest
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.handlers.estratto_conto import handler_matching_estratto_conto
 
 
 @pytest.fixture
 def db():
-    return MemorySheetsClient()["test_gestionale"]
+    return ClientArchivioMemoria()["test_gestionale"]
 
 
 def test_f24_multi_tributo_per_solo_importo_resta_proposta_idempotente(db):

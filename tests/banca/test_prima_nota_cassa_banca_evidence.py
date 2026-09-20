@@ -2,12 +2,12 @@
 import asyncio
 
 from app.routers.prima_nota_module import sync
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 
 def test_fattura_impostata_cassa_trova_addebito_ec_con_type_e_causale(monkeypatch):
     async def scenario():
-        db = MemorySheetsClient().db
+        db = ClientArchivioMemoria().db
         await db.prima_nota_cassa.insert_one({
             "id": "cassa-1", "data": "2026-08-01", "tipo": "uscita",
             "fattura_id": "fatt-1", "importo": 123.45, "status": "active",

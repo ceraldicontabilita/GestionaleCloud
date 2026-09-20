@@ -447,7 +447,7 @@ async def save_extracted_data_to_gestionale(
     Salva i dati estratti nella collection appropriata del gestionale.
 
     Args:
-        db: Registro Sheets
+        db: Archivio del runtime
         extracted_data: Dati estratti dal documento (output di extract_structured_data)
         source_info: Informazioni sulla fonte (filename, email_id, etc.)
         conferma_scrittura_gestionale: guardia di sicurezza (audit 19/07/2026).

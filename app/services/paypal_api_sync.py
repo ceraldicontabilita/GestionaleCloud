@@ -7,7 +7,7 @@ import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any
-from app.services.archivio_documenti_memoria import SheetDatabase
+from app.services.archivio_documenti_memoria import ArchivioDocumenti
 from app.services.archivio_documenti_memoria import ReturnRecord
 
 from app.services.paypal_api_client import paypal_client
@@ -111,7 +111,7 @@ def extract_enriched_fields(tx: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def sync_paypal_period(
-    db: SheetDatabase,
+    db: ArchivioDocumenti,
     start: datetime,
     end: datetime,
 ) -> Dict[str, int]:
@@ -153,7 +153,7 @@ async def sync_paypal_period(
             "period_start": start.isoformat(), "period_end": end.isoformat()}
 
 
-async def sync_paypal_incremental(db: SheetDatabase) -> Dict[str, Any]:
+async def sync_paypal_incremental(db: ArchivioDocumenti) -> Dict[str, Any]:
     """Acquisisce solo l'intervallo successivo al checkpoint persistito.
 
     Un lease breve impedisce che due aperture contemporanee della pagina

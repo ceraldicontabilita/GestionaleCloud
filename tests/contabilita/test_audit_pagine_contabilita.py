@@ -3,7 +3,7 @@
 import asyncio
 
 import pytest
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.routers.accounting import contabilita_gestionale as cg
 from app.routers.accounting import centri_costo
@@ -131,7 +131,7 @@ def test_calendario_sposta_weekend_e_dichiara_fonte_ufficiale():
 
 
 def test_calendario_conferma_e_riapertura_sono_tracciate(monkeypatch):
-    db = MemorySheetsClient()["test_calendario"]
+    db = ClientArchivioMemoria()["test_calendario"]
     monkeypatch.setattr(
         fiscalita_italiana.Database,
         "get_db",
@@ -165,7 +165,7 @@ def test_calendario_conferma_e_riapertura_sono_tracciate(monkeypatch):
 
 
 def test_calendario_non_riapre_evidenza_f24(monkeypatch):
-    db = MemorySheetsClient()["test_calendario_f24"]
+    db = ClientArchivioMemoria()["test_calendario_f24"]
     _run(db["calendario_fiscale"].insert_one({
         "anno": 2026,
         "id": "ritenute_2026_01",

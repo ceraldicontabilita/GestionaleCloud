@@ -987,7 +987,7 @@ async def _conta_documenti_giornale(
     match: Dict[str, Any],
     fallback: int,
 ) -> int:
-    """Conta esattamente nel repository Drive/Sheets e nei doppi di test.
+    """Conta esattamente nel repository Drive/Supabase e nei doppi di test.
 
     I doppi di test storici espongono soltanto ``find``/``aggregate``. In
     produzione il repository asincrono fornisce ``count_documents`` e il dato di

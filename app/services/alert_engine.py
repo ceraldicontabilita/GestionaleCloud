@@ -699,10 +699,10 @@ async def ignora_alert(
 
 
 # ============================================================
-# SEED: inserire definizioni alert in Drive/Sheets
+# SEED: inserire definizioni alert in Drive/Supabase
 # ============================================================
 async def seed_alert_definitions(db):
-    """Inserisce/aggiorna il catalogo alert_definitions in Drive/Sheets."""
+    """Inserisce/aggiorna il catalogo alert_definitions in Drive/Supabase."""
     for codice, dati in ALERT_CATALOG.items():
         await db[COLL_ALERT_DEFINITIONS].update_one(
             {"codice": codice},

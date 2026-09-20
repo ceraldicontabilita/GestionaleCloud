@@ -5,7 +5,7 @@ import asyncio
 from datetime import date
 
 from app.services import fonti_ferme
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 
 def _run(coro):
@@ -17,7 +17,7 @@ def _run(coro):
 
 
 def _db(nome="fonti"):
-    return MemorySheetsClient()[nome]
+    return ClientArchivioMemoria()[nome]
 
 
 def _popola(db, estratto="2026-08-24", corrispettivi="2026-08-24", pos="2026-07-31"):

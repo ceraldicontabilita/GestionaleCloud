@@ -1,4 +1,4 @@
-"""Audit statico ripetibile dell'architettura FastAPI/Drive/Sheets.
+"""Audit statico ripetibile dell'architettura FastAPI/Drive/Supabase.
 
 Non modifica codice o dati. Produce metriche oggettive utili a impedire che
 la revisione architetturale diventi una valutazione soggettiva.

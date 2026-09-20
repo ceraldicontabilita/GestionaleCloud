@@ -86,13 +86,13 @@ async def processa_allegati_f24() -> Dict[str, Any]:
     }
 
     for allegato in allegati:
-        # Architettura Drive/Sheets: usa pdf_data
+        # Architettura Drive/Supabase: usa pdf_data
         pdf_data = allegato.get("pdf_data")
         if not pdf_data:
             risultati["errori"] += 1
             risultati["dettagli"].append({
                 "file": allegato.get("original_filename"),
-                "errore": "PDF non disponibile in Drive/Sheets"
+                "errore": "PDF non disponibile in Drive/Supabase"
             })
             continue
 
@@ -105,7 +105,7 @@ async def processa_allegati_f24() -> Dict[str, Any]:
             categoria = allegato.get("categoria_f24", "generico")
             mittente_tipo = allegato.get("mittente_tipo", "sconosciuto")
 
-            # Prova a parsare come F24 commercialista (architettura Drive/Sheets: usa bytes)
+            # Prova a parsare come F24 commercialista (architettura Drive/Supabase: usa bytes)
             parsed_quietanza_forte = parse_quietanza_f24(pdf_content=pdf_content)
             dg_quietanza = parsed_quietanza_forte.get("dati_generali", {})
             protocollo = str(dg_quietanza.get("protocollo_telematico") or "")
@@ -163,7 +163,7 @@ async def processa_allegati_f24() -> Dict[str, Any]:
                 f24_doc = {
                     "id": allegato.get("id"),
                     "file_name": allegato.get("original_filename"),
-                    "pdf_data": pdf_data,  # Architettura Drive/Sheets
+                    "pdf_data": pdf_data,  # Architettura Drive/Supabase
                     "file_hash": file_hash,
                     "pdf_hash": pdf_hash,
                     "email_from": allegato.get("email_from"),
@@ -198,7 +198,7 @@ async def processa_allegati_f24() -> Dict[str, Any]:
                     "codici": len(parsed_f24.get("codici_univoci", []))
                 })
             else:
-                # Prova come quietanza (architettura Drive/Sheets: usa bytes)
+                # Prova come quietanza (architettura Drive/Supabase: usa bytes)
                 parsed_quietanza = parse_quietanza_f24(pdf_content=pdf_content)
 
                 has_quietanza_data = (

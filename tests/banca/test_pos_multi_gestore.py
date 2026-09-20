@@ -6,7 +6,7 @@ e trattarle come righe di un terminale diverso raddoppierebbe l'incasso.
 """
 import asyncio
 
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.services.scritture_contabili import (
     GESTORE_POS_DEFAULT,
@@ -22,7 +22,7 @@ def _run(awaitable):
 
 
 def _db():
-    return MemorySheetsClient()["pos_multi_gestore_test"]
+    return ClientArchivioMemoria()["pos_multi_gestore_test"]
 
 
 def _chiusura(importo, gestore=None, source="inserimento_manuale_terminale"):

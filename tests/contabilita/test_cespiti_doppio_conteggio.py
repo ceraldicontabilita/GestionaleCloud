@@ -15,7 +15,7 @@ conto costo — mai su entrambi.
 import asyncio
 
 import app.services.registrazione_contabile as motore
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 
 def _run(coro):
@@ -27,7 +27,7 @@ def _run(coro):
 
 
 def _db():
-    return MemorySheetsClient()["test"]
+    return ClientArchivioMemoria()["test"]
 
 
 def _cespite(fattura_id, categoria, valore, descrizione="Bene"):

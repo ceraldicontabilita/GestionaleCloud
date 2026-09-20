@@ -234,10 +234,10 @@ def _pipeline_entrate_uscite(query: Dict[str, Any]) -> list:
 
 async def _totali_entrate_uscite(db, collection: str,
                                   query: Dict[str, Any]) -> tuple[float, float]:
-    """Somma entrate/uscite nel runtime Drive/Sheets.
+    """Somma entrate/uscite nel runtime Drive/Supabase.
 
-    Drive/Sheets esegue la pipeline sul server. Il database in memoria usato dal
-    backend Sheets non implementa ``$convert``: in quel caso leggiamo i soli
+    Drive/Supabase esegue la pipeline sul server. Il database in memoria usato dal
+    archivio del runtime non implementa ``$convert``: in quel caso leggiamo i soli
     campi necessari e applichiamo la stessa conversione tollerante in Python.
     """
     try:
@@ -352,7 +352,7 @@ async def saldi_finanziari(db, anno: int = None) -> Dict[str, Any]:
     async def _saldo(query: Dict[str, Any]) -> float:
         # Somma in Python invece che in aggregate: sono le righe di una
         # singola scheda di tesoreria, non l'intero registro, e cosi' il
-        # calcolo non dipende da $convert (assente in registro Sheets effimero, quindi
+        # calcolo non dipende da $convert (assente in archivio del runtime effimero, quindi
         # altrimenti non verificabile nei test).
         cursore = db["prima_nota_banca"].find(
             {**base, **query}, {"_id": 0, "tipo": 1, "importo": 1})

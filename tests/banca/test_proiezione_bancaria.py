@@ -1,6 +1,6 @@
 import asyncio
 
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.services.proiezione_bancaria import proietta_movimenti_bancari_semantici
 
@@ -10,7 +10,7 @@ def _run(awaitable):
 
 
 def test_proiezione_semantica_e_idempotente_senza_match_per_solo_importo():
-    db = MemorySheetsClient()["proiezione_bancaria_test"]
+    db = ClientArchivioMemoria()["proiezione_bancaria_test"]
     _run(db["dipendenti"].insert_many([
         {
             "id": "dip-valerio", "nome": "Valerio", "cognome": "Ceraldi",

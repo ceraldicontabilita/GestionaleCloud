@@ -154,9 +154,9 @@ async def importa_pos_commissioni_file(
             yield
 
     # Un file contiene circa cento righe di sintesi. Senza batch ogni riga
-    # provocava una lettura/scrittura completa su Sheets e su Render superava
-    # il limite di memoria. La cache viene aggiornata subito, mentre Sheets
-    # riceve una sola mutazione aggregata per collezione.
+    # provocava una lettura/scrittura completa dell'archivio e su Render
+    # superava il limite di memoria. La cache viene aggiornata subito,
+    # mentre l'archivio riceve una sola mutazione aggregata per collezione.
     async with _write_batch():
         # Ripara l'unica riga fantasma prodotta dalla vecchia lettura del
         # totale Excel (seriale 0). Il filtro e' stretto e non tocca dati

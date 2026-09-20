@@ -1,7 +1,7 @@
 import asyncio
 
 from app.routers.fatture_module import crud
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 
 def _run(coro):
@@ -9,7 +9,7 @@ def _run(coro):
 
 
 def test_cleanup_archivia_solo_stesso_originale_e_non_cancella(monkeypatch):
-    db = MemorySheetsClient()["fatture-dedup-reversibile"]
+    db = ClientArchivioMemoria()["fatture-dedup-reversibile"]
     monkeypatch.setattr(crud.Database, "get_db", lambda: db)
 
     base = {

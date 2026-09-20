@@ -3,7 +3,7 @@ import hashlib
 import io
 
 import openpyxl
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.services.pos_commissioni_import import (
     importa_pos_commissioni_file,
@@ -64,7 +64,7 @@ def test_parser_commissioni_esclude_la_riga_totale_excel():
 
 def test_import_sovrapposto_tiene_la_fotografia_piu_completa():
     async def scenario():
-        db = MemorySheetsClient()["pos_commissioni"]
+        db = ClientArchivioMemoria()["pos_commissioni"]
         small = _xlsx([["30/03/2026", 16, 252.10, 251.37, -0.73, -0.0029]])
         complete = _xlsx([["30/03/2026", 156, 1775.10, 1763.26, -11.84, -0.00667]])
         await importa_pos_commissioni_file(db, small, "Commissioni_Marzo_2026.xlsx")
@@ -84,7 +84,7 @@ def test_import_sovrapposto_tiene_la_fotografia_piu_completa():
 
 def test_import_commissioni_usa_un_solo_batch_per_file():
     async def scenario():
-        db = MemorySheetsClient()["pos_commissioni_batch"]
+        db = ClientArchivioMemoria()["pos_commissioni_batch"]
         calls = 0
 
         from contextlib import asynccontextmanager

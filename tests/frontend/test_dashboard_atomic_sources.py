@@ -1,6 +1,6 @@
 import asyncio
 
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.routers import controllo_gestione
 from app.routers.prima_nota_module import stats
@@ -11,7 +11,7 @@ def _run(awaitable):
 
 
 def test_dashboard_separa_bpm_sumup_e_non_trascina_anni_storici(monkeypatch):
-    db = MemorySheetsClient()["dashboard_financial_sources_test"]
+    db = ClientArchivioMemoria()["dashboard_financial_sources_test"]
     monkeypatch.setattr(stats.Database, "get_db", staticmethod(lambda: db))
     async def nessun_riporto(*_args, **_kwargs):
         return 0.0
@@ -42,7 +42,7 @@ def test_dashboard_separa_bpm_sumup_e_non_trascina_anni_storici(monkeypatch):
 
 
 def test_dashboard_annuale_include_il_riporto_manualizzato(monkeypatch):
-    db = MemorySheetsClient()["dashboard_annual_opening_balance_test"]
+    db = ClientArchivioMemoria()["dashboard_annual_opening_balance_test"]
     monkeypatch.setattr(stats.Database, "get_db", staticmethod(lambda: db))
     async def nessun_riporto(*_args, **_kwargs):
         return 0.0
@@ -66,7 +66,7 @@ def test_dashboard_annuale_include_il_riporto_manualizzato(monkeypatch):
 
 
 def test_dashboard_non_somma_fattura_iva_e_pagamento_cassa_due_volte(monkeypatch):
-    db = MemorySheetsClient()["dashboard_economic_sources_test"]
+    db = ClientArchivioMemoria()["dashboard_economic_sources_test"]
     monkeypatch.setattr(controllo_gestione.Database, "get_db", staticmethod(lambda: db))
     _run(db["corrispettivi"].insert_one({
         "id": "corr-1", "data": "2026-01-10", "totale": 122.0,

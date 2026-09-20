@@ -33,7 +33,7 @@ def get_db():
 
 
 def serialize_doc(doc):
-    """Serializza documento Drive/Sheets rimuovendo _id o convertendolo"""
+    """Serializza documento Drive/Supabase rimuovendo _id o convertendolo"""
     if doc is None:
         return None
     if "_id" in doc:

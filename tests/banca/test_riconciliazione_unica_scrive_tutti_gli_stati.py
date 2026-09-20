@@ -15,7 +15,7 @@ Riproduce i casi reali del report:
 """
 import asyncio
 
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.services import riallinea_pagamenti_fatture as riallinea
 from app.services import riconciliazione_bancaria as ric
@@ -117,7 +117,7 @@ def _verifica_coerenza(fattura, ec, pn, scadenza, partita, relazioni, allocazion
 
 def test_abbinamento_certo_aggiorna_i_cinque_oggetti_e_la_relazione(monkeypatch):
     async def scenario():
-        db = MemorySheetsClient()["ric_unica_enel"]
+        db = ClientArchivioMemoria()["ric_unica_enel"]
         await db.invoices.insert_one(_fattura_enel())
         await db.estratto_conto_movimenti.insert_one(_ec_enel())
         await db.scadenziario_fornitori.insert_one(_scadenza_enel())
@@ -142,7 +142,7 @@ def test_abbinamento_certo_aggiorna_i_cinque_oggetti_e_la_relazione(monkeypatch)
 
 def test_movimento_antecedente_alla_fattura_diventa_proposta(monkeypatch):
     async def scenario():
-        db = MemorySheetsClient()["ric_unica_fastweb"]
+        db = ClientArchivioMemoria()["ric_unica_fastweb"]
         await db.invoices.insert_one({
             "id": FASTWEB_ID, "invoice_number": "M012842207", "supplier_name": "FASTWEB SpA",
             "cedente_denominazione": "FASTWEB SpA", "supplier_vat": "12878470157",
@@ -188,7 +188,7 @@ def _riga_storica(pn_id, fattura_id, ec_id, data, importo):
 
 
 def _db_bonifica():
-    db = MemorySheetsClient()["riallinea_pagamenti"]
+    db = ClientArchivioMemoria()["riallinea_pagamenti"]
 
     async def semina():
         # caso Enel: PN "riconciliata", EC no, scadenza e partita aperte

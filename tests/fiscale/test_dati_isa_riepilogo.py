@@ -1,13 +1,13 @@
 import asyncio
 
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.routers import dati_isa
 
 
 def test_riepilogo_dati_isa_usa_dati_annuali_e_quadra_fasce(monkeypatch):
     async def scenario():
-        db = MemorySheetsClient()["test_dati_isa"]
+        db = ClientArchivioMemoria()["test_dati_isa"]
         await db["dati_isa_snapshot"].insert_one({
             "anno": 2025,
             "indicatori_acquisti": {"caffe_kg_acquistati": 2526},
@@ -39,7 +39,7 @@ def test_riepilogo_dati_isa_usa_dati_annuali_e_quadra_fasce(monkeypatch):
 
 def test_riepilogo_dati_isa_distingue_assenza_dati_da_valore_zero(monkeypatch):
     async def scenario():
-        db = MemorySheetsClient()["test_dati_isa_vuoto"]
+        db = ClientArchivioMemoria()["test_dati_isa_vuoto"]
         monkeypatch.setattr(dati_isa.Database, "get_db", staticmethod(lambda: db))
         return await dati_isa.riepilogo_dati_isa(2026)
 

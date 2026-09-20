@@ -7,7 +7,7 @@ lista/dettaglio nonostante il messaggio di conferma dell'UI dica che
 l'operazione non è reversibile."""
 import asyncio
 
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.routers.fatture_module import crud as mod
 
@@ -161,7 +161,7 @@ def test_dettaglio_fattura_attiva_resta_visibile(monkeypatch):
 
 
 def test_statistiche_restano_disponibili_nel_database_e2e_in_memoria(monkeypatch):
-    db = MemorySheetsClient()["fatture_statistiche_e2e"]
+    db = ClientArchivioMemoria()["fatture_statistiche_e2e"]
     monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
     _run(db["invoices"].insert_many([
         {
@@ -184,7 +184,7 @@ def test_statistiche_restano_disponibili_nel_database_e2e_in_memoria(monkeypatch
 
 
 def test_statistiche_contano_nomi_documentati_senza_inventare_piva(monkeypatch):
-    db = MemorySheetsClient()["fatture_statistiche_nome_fornitore"]
+    db = ClientArchivioMemoria()["fatture_statistiche_nome_fornitore"]
     monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
     _run(db["invoices"].insert_many([
         {
@@ -210,7 +210,7 @@ def test_statistiche_contano_nomi_documentati_senza_inventare_piva(monkeypatch):
 
 
 def test_statistiche_non_nascondono_collisioni_e_escludono_archiviati(monkeypatch):
-    db = MemorySheetsClient()["fatture_statistiche_evidenza"]
+    db = ClientArchivioMemoria()["fatture_statistiche_evidenza"]
     monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
     base = {
         "invoice_number": "1", "invoice_date": "2026-08-08",
@@ -229,7 +229,7 @@ def test_statistiche_non_nascondono_collisioni_e_escludono_archiviati(monkeypatc
 
 
 def test_statistiche_includono_schema_storico_data_fattura(monkeypatch):
-    db = MemorySheetsClient()["fatture_statistiche_data_storica"]
+    db = ClientArchivioMemoria()["fatture_statistiche_data_storica"]
     monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
     _run(db["invoices"].insert_many([
         {

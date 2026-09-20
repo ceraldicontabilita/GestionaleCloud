@@ -1,21 +1,21 @@
 import asyncio
 
-from app.services.archivio_documenti_memoria import MemorySheetsClient, evaluate_expression
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria, evaluate_expression
 
 
 def test_eq_con_valore_opzionale_non_valuta_confronti_estranei():
     assert evaluate_expression({"$eq": ["$pagato", True]}, {"pagato": None}) is False
 
 
-def test_statistiche_fatture_fornitore_su_sheets():
-    asyncio.run(_test_statistiche_fatture_fornitore_su_sheets())
+def test_statistiche_fatture_fornitore():
+    asyncio.run(_test_statistiche_fatture_fornitore())
 
 
-async def _test_statistiche_fatture_fornitore_su_sheets():
+async def _test_statistiche_fatture_fornitore():
     from app.database import Database
     from app.routers.suppliers_module import base
 
-    db = MemorySheetsClient()["supplier_invoice_stats"]
+    db = ClientArchivioMemoria()["supplier_invoice_stats"]
     await db["fornitori"].insert_one({
         "id": "supplier-1", "partita_iva": "04518411212",
         "ragione_sociale": "Fornitore", "fatture_count": 1,
@@ -61,7 +61,7 @@ async def _test_fornitore_storico_senza_piva_resta_visibile_senza_piva_inventata
     from app.database import Database
     from app.routers.suppliers_module import base
 
-    db = MemorySheetsClient()["supplier_name_only"]
+    db = ClientArchivioMemoria()["supplier_name_only"]
     await db["fornitori"].insert_one({
         "id": "legacy-supplier-1",
         "ragione_sociale": "Fornitore storico documentato",
@@ -91,7 +91,7 @@ async def _test_match_key_nome_non_diventa_piva_e_non_fonde_id_distinti():
     from app.database import Database
     from app.routers.suppliers_module import base
 
-    db = MemorySheetsClient()["supplier_same_name_distinct_ids"]
+    db = ClientArchivioMemoria()["supplier_same_name_distinct_ids"]
     await db["fornitori"].insert_many([
         {"id": "legacy-1", "name": "ALFA SRL", "match_key": "ALFASRL"},
         {"id": "legacy-2", "name": "ALFA S.R.L.", "match_key": "ALFASRL"},

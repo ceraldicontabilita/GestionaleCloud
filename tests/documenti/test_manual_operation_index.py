@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import pytest
 from fastapi import HTTPException
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.database import Database
 from app.db_collections import (
@@ -28,7 +28,7 @@ def run(coro):
 
 
 def test_indice_elenca_la_fonte_senza_generare_proposte_o_scritture():
-    db = MemorySheetsClient()["manual-operation-index-list"]
+    db = ClientArchivioMemoria()["manual-operation-index-list"]
     run(db[COLL_ESTRATTO_CONTO].insert_one({
         "id": "mov-1",
         "data": "2026-08-03",
@@ -54,7 +54,7 @@ def test_indice_elenca_la_fonte_senza_generare_proposte_o_scritture():
 
 
 def test_indice_non_richiede_scelta_manual_per_movimento_gia_riconciliato():
-    db = MemorySheetsClient()["manual-operation-index-bank-proof"]
+    db = ClientArchivioMemoria()["manual-operation-index-bank-proof"]
     run(db[COLL_ESTRATTO_CONTO].insert_one({
         "id": "mov-proof", "data": "2026-08-03", "tipo": "uscita", "importo": -100,
         "riconciliato": True, "riconciliato_con": "assegno", "assegno_id": "assegno-1",
@@ -75,7 +75,7 @@ def test_indice_non_richiede_scelta_manual_per_movimento_gia_riconciliato():
 
 
 def test_indice_include_anche_un_movimento_storico_con_solo_object_id():
-    db = MemorySheetsClient()["manual-operation-index-object-id"]
+    db = ClientArchivioMemoria()["manual-operation-index-object-id"]
     inserted = run(db[COLL_ESTRATTO_CONTO].insert_one({
         "data": "2026-08-02",
         "tipo": "uscita",
@@ -99,7 +99,7 @@ def test_indice_include_anche_un_movimento_storico_con_solo_object_id():
 
 
 def test_scelta_manual_invoice_crea_indice_e_relazione_ma_non_marca_pagato():
-    db = MemorySheetsClient()["manual-operation-index-save"]
+    db = ClientArchivioMemoria()["manual-operation-index-save"]
     source = {
         "id": "mov-invoice",
         "data": "2026-08-03",
@@ -141,7 +141,7 @@ def test_scelta_manual_invoice_crea_indice_e_relazione_ma_non_marca_pagato():
 
 
 def test_modifica_revoca_vecchio_collegamento_e_conserva_la_versione():
-    db = MemorySheetsClient()["manual-operation-index-edit"]
+    db = ClientArchivioMemoria()["manual-operation-index-edit"]
     run(db[COLL_ESTRATTO_CONTO].insert_one({
         "id": "mov-edit", "data": "2026-08-03", "tipo": "uscita", "importo": 1500,
     }))
@@ -168,7 +168,7 @@ def test_modifica_revoca_vecchio_collegamento_e_conserva_la_versione():
 
 
 def test_versione_obsoleta_blocca_la_sovrascrittura():
-    db = MemorySheetsClient()["manual-operation-index-lock"]
+    db = ClientArchivioMemoria()["manual-operation-index-lock"]
     run(db[COLL_ESTRATTO_CONTO].insert_one({"id": "mov-lock", "data": "2026-08-03", "tipo": "uscita", "importo": 1}))
     run(db[COLL_BANK_OPERATION_INDEX].insert_one({"movement_id": "mov-lock", "version": 2, "status": "classified"}))
 
@@ -181,7 +181,7 @@ def test_versione_obsoleta_blocca_la_sovrascrittura():
 
 
 def test_candidati_cedolino_sono_solo_elenco_manual_selectable():
-    db = MemorySheetsClient()["manual-operation-index-candidates"]
+    db = ClientArchivioMemoria()["manual-operation-index-candidates"]
     run(db[COLL_ESTRATTO_CONTO].insert_one({"id": "mov-salary", "data": "2026-08-03", "tipo": "uscita", "importo": 1500}))
     run(db["cedolini"].insert_many([
         {"id": "p1", "dipendente_nome": "Valerio Ceraldi", "periodo": "2026-07", "netto": 1500},
@@ -199,7 +199,7 @@ def test_candidati_cedolino_sono_solo_elenco_manual_selectable():
 
 
 def test_candidato_fattura_mostra_metodo_fornitore_senza_riconciliare():
-    db = MemorySheetsClient()["manual-operation-index-supplier-method"]
+    db = ClientArchivioMemoria()["manual-operation-index-supplier-method"]
     run(db[COLL_ESTRATTO_CONTO].insert_one({"id": "mov-invoice", "data": "2026-08-03", "tipo": "uscita", "importo": -120}))
     run(db["invoices"].insert_one({
         "id": "invoice-1", "supplier_vat": "IT01234567890", "supplier_name": "Fornitore Banca",

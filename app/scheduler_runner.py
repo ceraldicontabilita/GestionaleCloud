@@ -2,7 +2,7 @@
 
 Il processo web non deve eseguire scansioni Drive/Gmail, OCR o agenti shadow
 nello stesso event loop che serve le richieste HTTP.  Questo modulo possiede
-quindi un accesso dedicato a Drive/Sheets e uno scheduler separato, ma non espone API.
+quindi un accesso dedicato a Drive/Supabase e uno scheduler separato, ma non espone API.
 """
 
 from __future__ import annotations

@@ -18,7 +18,7 @@ from app.database import Database
 
 logger = logging.getLogger(__name__)
 
-# Foglio Sheets
+# Collezione
 COLLECTION_VERBALI = "verbali_noleggio_completi"
 COLLECTION_SOSPESI = "operazioni_sospese"
 

@@ -14,7 +14,7 @@ import base64
 import inspect
 
 import pytest
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.services import batch_reprocessing as servizio
 from app.services.batch_reprocessing import BatchReprocessingService
@@ -27,7 +27,7 @@ def _run(awaitable):
 
 
 def _db(quanti):
-    db = MemorySheetsClient()["batch_reprocessing_test"]
+    db = ClientArchivioMemoria()["batch_reprocessing_test"]
     _run(db["f24_models"].insert_many(
         [{"id": f"f{i}", "pdf_data": PDF} for i in range(quanti)]))
     return db

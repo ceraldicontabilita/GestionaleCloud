@@ -20,7 +20,7 @@ from app.services.identity_matching import (
     soggetto_causale_bancaria,
     soggetto_pagante_coerente,
 )
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 CAUSALE_PAYMENTS = (
     "SDD CORE: PK)K,TLYRBPN8JWYCYKCMKCV(58MO6 AMAZON PAYMENTS EUROPE S.C.A. AMAZON PAYMENTS"
@@ -104,7 +104,7 @@ def test_evidenza_sdd_con_soggetto_diverso_e_bloccata_non_ammessa():
 
 def test_motore_storico_amazon_payments_resta_proposta_in_scegli_fattura(monkeypatch):
     async def scenario():
-        db = MemorySheetsClient()["amazon-sdd-storico"]
+        db = ClientArchivioMemoria()["amazon-sdd-storico"]
         monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
         monkeypatch.setattr(mod, "_propaga_fattura_pagata", _noop)
         monkeypatch.setattr(mod, "_registra_match_partita_aperta", _noop)
@@ -192,7 +192,7 @@ def test_motore_canonico_token_fornitore_con_soggetto_diverso_e_proposta():
 
 def test_motore_canonico_scrive_la_proposta_e_non_applica():
     async def scenario():
-        db = MemorySheetsClient()["amazon-sdd-canonico"]
+        db = ClientArchivioMemoria()["amazon-sdd-canonico"]
         await db.estratto_conto_movimenti.insert_one({
             "id": "EC-2026-02-16-11.99-29944358", "data": "2026-02-16", "tipo": "uscita",
             "importo": -11.99, "descrizione": CAUSALE_PAYMENTS,

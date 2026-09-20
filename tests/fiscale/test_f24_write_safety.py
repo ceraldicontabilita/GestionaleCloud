@@ -1,13 +1,13 @@
 import asyncio
 
 import pytest
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.services.f24_canonico import richiedi_quadratura_f24, salva_f24
 
 
 def test_writer_canonico_rifiuta_f24_non_quadrato_senza_scrivere():
-    db = MemorySheetsClient()["f24-write-safety"]
+    db = ClientArchivioMemoria()["f24-write-safety"]
     document = {
         "file_name": "non_quadrato.pdf",
         "validazione": {"saldo_quadrato": False, "differenza_saldo": 0.01},

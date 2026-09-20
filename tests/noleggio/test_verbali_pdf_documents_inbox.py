@@ -1,14 +1,14 @@
 import asyncio
 import base64
 
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.routers import verbali_noleggio, verbali_noleggio_api
 from app.services.verbali_pdf_service import collect_verbale_pdfs, pdf_metadata
 
 
 def _database():
-    db = MemorySheetsClient()["verbali-pdf"]
+    db = ClientArchivioMemoria()["verbali-pdf"]
     verbale = {
         "id": "verbale-test",
         "numero_verbale": "VV/24990121765",

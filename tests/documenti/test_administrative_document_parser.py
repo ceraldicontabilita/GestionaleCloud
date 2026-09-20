@@ -5,7 +5,7 @@ import zipfile
 import fitz
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.routers import documenti
 from tests.document_preview_helpers import confirmed_preview_headers
@@ -91,7 +91,7 @@ def test_parser_tari_preserva_contribuente_anno_e_fase():
 
 
 def test_upload_dimissioni_archivia_e_propone_dipendente_senza_modificarlo(monkeypatch):
-    db = MemorySheetsClient()["upload-dimissioni"]
+    db = ClientArchivioMemoria()["upload-dimissioni"]
     asyncio.run(db["dipendenti"].insert_one({
         "id": "dip-1", "codice_fiscale": "RSSMRA80A01F839X",
         "nome": "Mario", "cognome": "Rossi", "stato": "attivo",
@@ -125,7 +125,7 @@ def test_upload_dimissioni_archivia_e_propone_dipendente_senza_modificarlo(monke
 
 
 def test_upload_zip_preserva_percorso_e_gruppo_per_associare_allegati(monkeypatch):
-    db = MemorySheetsClient()["upload-zip-provenienza"]
+    db = ClientArchivioMemoria()["upload-zip-provenienza"]
     monkeypatch.setattr(documenti.Database, "get_db", staticmethod(lambda: db))
     app = FastAPI()
     app.include_router(documenti.router, prefix="/api/documenti")

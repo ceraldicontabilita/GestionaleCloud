@@ -15,7 +15,7 @@ from fastapi import HTTPException
 
 from app.services import regole_riconoscimento_banca as regole
 from app.services.categorizzazione_movimenti import categorizza_movimento_bancario
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 from app.routers.bank import regole_riconoscimento as router_modulo
 
 
@@ -54,7 +54,7 @@ def test_crea_regola_pattern_troppo_generico_e_rifiutata():
     circuito/fornitore) combacerebbe anche con le commissioni di una
     controparte diversa da quella per cui e' stato imparato — indovinare,
     non riconoscere. Va rifiutato, non salvato silenziosamente."""
-    db = MemorySheetsClient()["regole_pattern_generico"]
+    db = ClientArchivioMemoria()["regole_pattern_generico"]
     with pytest.raises(ValueError):
         _run(regole.crea_regola(
             db, pattern="COMMISSIONI SU BONIFICI ESTERI", entita_tipo="fornitore",
@@ -74,13 +74,13 @@ def test_crea_regola_pattern_troppo_generico_e_rifiutata():
 
 
 def test_crea_regola_fornitore_richiede_entita_id():
-    db = MemorySheetsClient()["regole_crea_fornitore_senza_id"]
+    db = ClientArchivioMemoria()["regole_crea_fornitore_senza_id"]
     with pytest.raises(ValueError):
         _run(regole.crea_regola(db, pattern="NEXI PAYMENTS", entita_tipo="fornitore", entita_nome="Nexi"))
 
 
 def test_crea_regola_fornitore_categoria_di_default_fatture():
-    db = MemorySheetsClient()["regole_crea_fornitore_default"]
+    db = ClientArchivioMemoria()["regole_crea_fornitore_default"]
     regola = _run(regole.crea_regola(
         db, pattern="nexi   payments", entita_tipo="fornitore",
         entita_id="forn-nexi", entita_nome="Nexi Payments S.p.A.", creata_da="titolare@test",
@@ -93,7 +93,7 @@ def test_crea_regola_fornitore_categoria_di_default_fatture():
 
 
 def test_crea_regola_categoria_libera_senza_fornitore():
-    db = MemorySheetsClient()["regole_crea_categoria_libera"]
+    db = ClientArchivioMemoria()["regole_crea_categoria_libera"]
     regola = _run(regole.crea_regola(
         db, pattern="QUOTA ASSOCIATIVA CONFCOMMERCIO", entita_tipo="categoria",
         entita_nome="Quota associativa", categoria="Altro",
@@ -103,7 +103,7 @@ def test_crea_regola_categoria_libera_senza_fornitore():
 
 
 def test_elimina_regola_rimuove_solo_quella():
-    db = MemorySheetsClient()["regole_elimina"]
+    db = ClientArchivioMemoria()["regole_elimina"]
     r1 = _run(regole.crea_regola(db, pattern="NEXI", entita_tipo="fornitore", entita_id="forn-1", entita_nome="Nexi"))
     r2 = _run(regole.crea_regola(db, pattern="SUMUP", entita_tipo="fornitore", entita_id="forn-2", entita_nome="SumUp"))
     assert _run(regole.elimina_regola(db, r1["id"])) is True
@@ -158,7 +158,7 @@ def test_nessuna_regola_combacia_ricade_sul_motore_generico():
 # --- endpoint: crea da un movimento, applica subito, elimina non retroattivo -
 
 def _db_router(monkeypatch, nome):
-    db = MemorySheetsClient()[nome]
+    db = ClientArchivioMemoria()[nome]
     monkeypatch.setattr(router_modulo.Database, "get_db", staticmethod(lambda: db))
     return db
 
@@ -287,7 +287,7 @@ def test_regola_imparata_vince_sul_motore_generico_in_force_reimport(monkeypatch
     """Stesso caso dell'/import, sull'altro punto collegato da #498."""
     from app.routers.bank import estratto_conto as ec_modulo
 
-    db = MemorySheetsClient()["force_reimport_regola_appresa"]
+    db = ClientArchivioMemoria()["force_reimport_regola_appresa"]
     monkeypatch.setattr(ec_modulo.Database, "get_db", staticmethod(lambda: db))
     _run(db["regole_riconoscimento_banca"].insert_one({
         "id": "r-nexi", "pattern": "COMMISSIONI NEXI PAYMENTS", "entita_tipo": "fornitore",

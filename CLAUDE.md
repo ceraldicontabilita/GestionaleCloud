@@ -828,8 +828,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   MB): Postgres caduto il 17/09 e connessioni rifiutate il 20/09. Da fare **Small**.
 - Le **13 fatture legacy senza campi inglesi** vanno normalizzate: senza
   `invoice_number`/`invoice_date`/`total_amount` sono fuori da ogni conto.
-- Il **filtro anno dei corrispettivi archivia invece di scartare**
-  (`archivia_solo`). E tre strade scrivono `corrispettivi`, ognuna con la sua dedup.
+- **Tre strade scrivono `corrispettivi`** (`ingest_corrispettivo_parsed`,
+  `CorrispettiviService`, import CSV), ognuna con la sua dedup: vanno ridotte a una.
 - Due giornate di agosto 2026 non hanno scrittura nel giornale (17 su 19).
 - Endpoint sincroni oltre i 5 minuti, da portare a lotti riprendibili:
   `/api/fatture/drive/quadratura`, `/api/paypal-api/riconcilia`,
@@ -860,8 +860,6 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - `gestionale.blobs`: 216 PDF che **nessun documento cita**, leggibili solo da
   `blob_store.py`, mai importato. Stesso caso di `bank_reconciliation_hub`
   (2.017 righe), scritta da un trigger e letta da nessuno.
-- `archivio_documenti_memoria.py` espone ancora `SheetDatabase` e
-  `MemorySheetsClient`: promettono Google Sheets senza chiamarlo mai, da rinominare.
 
 ## Logica dentro al database
 

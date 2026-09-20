@@ -3,7 +3,7 @@ import asyncio
 
 import pytest
 from fastapi import HTTPException
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.services.invoice_payments import (
     InvoiceBankReconciliationRequest,
@@ -13,7 +13,7 @@ from app.services.invoice_payments import (
 
 
 def _db(number="FT-123", invoice_amount=100.0, bank_amount=100.0, description=None):
-    db = MemorySheetsClient()["invoice_bank_reconciliation"]
+    db = ClientArchivioMemoria()["invoice_bank_reconciliation"]
     asyncio.run(db["invoices"].insert_one({
         "id": "f-1", "invoice_number": number, "total_amount": invoice_amount,
         "prima_nota_banca_id": "pn-1",

@@ -12,9 +12,12 @@ file, verificato. Un nome che mente costa piu' di un nome brutto — chi legge
 `sheets_document_store` in cima a un modulo importato da 158 file crede che
 Google Sheets sia ancora nel giro, e CLAUDE.md dice il contrario.
 
-Restano da rinominare le classe `SheetDatabase` e `MemorySheetsClient`, che
-mentono allo stesso modo: 68 e 483 occorrenze in 139 file, cioe' un diff
-meccanico enorme che seppellirebbe qualunque revisione. Lavoro a se'.
+Il 20/09/2026 sono state rinominate anche le quattro classi che mentivano
+allo stesso modo, in un commit che non fa altro (585 occorrenze in 156 file):
+`SheetDatabase` -> `ArchivioDocumenti`, `MemorySheetsClient` ->
+`ClientArchivioMemoria`, `SheetTable` -> `CollezioneDocumenti`,
+`SheetCursor` -> `CursoreDocumenti`. Nessun alias all'indietro: due nomi per
+la stessa classe sono il doppione che CLAUDE.md vieta.
 """
 from __future__ import annotations
 
@@ -578,13 +581,13 @@ def apply_update(document: dict[str, Any], update: dict[str, Any], *, inserting:
     return result
 
 
-class SheetCursor:
+class CursoreDocumenti:
     def __init__(self, documents: Iterable[dict[str, Any]]):
         self._documents = [_clone(document) for document in documents]
         self._skip = 0
         self._limit: int | None = None
 
-    def sort(self, key_or_list: Any, direction: int | None = None) -> "SheetCursor":
+    def sort(self, key_or_list: Any, direction: int | None = None) -> "CursoreDocumenti":
         fields = key_or_list if isinstance(key_or_list, list) else [(key_or_list, direction or 1)]
 
         def compare(left: dict[str, Any], right: dict[str, Any]) -> int:
@@ -599,11 +602,11 @@ class SheetCursor:
         self._documents.sort(key=cmp_to_key(compare))
         return self
 
-    def skip(self, count: int) -> "SheetCursor":
+    def skip(self, count: int) -> "CursoreDocumenti":
         self._skip = max(0, int(count))
         return self
 
-    def limit(self, count: int) -> "SheetCursor":
+    def limit(self, count: int) -> "CursoreDocumenti":
         self._limit = max(0, int(count))
         return self
 
@@ -631,8 +634,8 @@ class SheetCursor:
 MutationHook = Callable[[str, str, list[dict[str, Any]], list[dict[str, Any]]], Awaitable[None]]
 
 
-class SheetTable:
-    def __init__(self, database: "SheetDatabase", name: str):
+class CollezioneDocumenti:
+    def __init__(self, database: "ArchivioDocumenti", name: str):
         self.database = database
         self.name = name
         self._documents: list[dict[str, Any]] = []
@@ -664,9 +667,9 @@ class SheetTable:
                 if tuple(get_path(document, field, MISSING) for field in fields) == values:
                     raise DuplicateRecordError(f"Valore duplicato nel foglio {self.name}: {fields}")
 
-    def find(self, selector: dict[str, Any] | None = None, projection: dict[str, Any] | None = None, *args, **kwargs) -> SheetCursor:
+    def find(self, selector: dict[str, Any] | None = None, projection: dict[str, Any] | None = None, *args, **kwargs) -> CursoreDocumenti:
         documents = [apply_projection(document, projection) for document in self._documents if matches_filter(document, selector)]
-        return SheetCursor(documents)
+        return CursoreDocumenti(documents)
 
     async def find_one(self, selector: dict[str, Any] | None = None, projection: dict[str, Any] | None = None, *args, **kwargs) -> dict[str, Any] | None:
         cursor = self.find(selector, projection)
@@ -912,14 +915,14 @@ class SheetTable:
     async def drop_index(self, name: str, *args, **kwargs) -> None:
         self._indexes.pop(name, None)
 
-    def aggregate(self, pipeline: list[dict[str, Any]], *args, **kwargs) -> SheetCursor:
+    def aggregate(self, pipeline: list[dict[str, Any]], *args, **kwargs) -> CursoreDocumenti:
         documents = [_clone(document) for document in self._documents]
         for stage in pipeline:
             operator, value = next(iter(stage.items()))
             if operator == "$match":
                 documents = [document for document in documents if matches_filter(document, value)]
             elif operator == "$sort":
-                documents = SheetCursor(documents).sort(list(value.items()))._page()
+                documents = CursoreDocumenti(documents).sort(list(value.items()))._page()
             elif operator == "$skip":
                 documents = documents[int(value):]
             elif operator == "$limit":
@@ -1009,7 +1012,7 @@ class SheetTable:
                 facet_result = {}
                 source = [_clone(document) for document in documents]
                 for name, sub_pipeline in value.items():
-                    temporary = SheetTable(self.database, f"{self.name}:{name}")
+                    temporary = CollezioneDocumenti(self.database, f"{self.name}:{name}")
                     temporary._documents = _clone(source)
                     facet_result[name] = temporary.aggregate(sub_pipeline)._page()
                 documents = [facet_result]
@@ -1018,21 +1021,21 @@ class SheetTable:
                 documents = [evaluate_expression(expression, document) or {} for document in documents]
             else:
                 raise NotImplementedError(f"Fase di aggregazione non supportata: {operator}")
-        return SheetCursor(documents)
+        return CursoreDocumenti(documents)
 
 
-class SheetDatabase:
+class ArchivioDocumenti:
     def __init__(self, name: str = "Gestionale", mutation_hook: MutationHook | None = None):
         self.name = name
         self.mutation_hook = mutation_hook
         self.loading = False
-        self._tables: dict[str, SheetTable] = {}
+        self._tables: dict[str, CollezioneDocumenti] = {}
         self._transaction_lock = asyncio.Lock()
 
-    def __getitem__(self, name: str) -> SheetTable:
-        return self._tables.setdefault(name, SheetTable(self, name))
+    def __getitem__(self, name: str) -> CollezioneDocumenti:
+        return self._tables.setdefault(name, CollezioneDocumenti(self, name))
 
-    def __getattr__(self, name: str) -> SheetTable:
+    def __getattr__(self, name: str) -> CollezioneDocumenti:
         if name.startswith("_"):
             raise AttributeError(name)
         return self[name]
@@ -1053,16 +1056,16 @@ class SheetDatabase:
         self._tables.clear()
 
 
-class MemorySheetsClient:
+class ClientArchivioMemoria:
     """Client effimero per test: stessa API del registro, nessuna I/O remota."""
 
     def __init__(self):
-        self._databases: dict[str, SheetDatabase] = {}
+        self._databases: dict[str, ArchivioDocumenti] = {}
 
-    def __getitem__(self, name: str) -> SheetDatabase:
-        return self._databases.setdefault(name, SheetDatabase(name))
+    def __getitem__(self, name: str) -> ArchivioDocumenti:
+        return self._databases.setdefault(name, ArchivioDocumenti(name))
 
-    def __getattr__(self, name: str) -> SheetDatabase:
+    def __getattr__(self, name: str) -> ArchivioDocumenti:
         if name.startswith("_"):
             raise AttributeError(name)
         return self[name]

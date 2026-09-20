@@ -9,7 +9,7 @@ usati dal mapping anagrafico e dai verbali PagoPA.
 import re
 import logging
 from typing import Dict, Any, List
-from app.services.archivio_documenti_memoria import SheetDatabase
+from app.services.archivio_documenti_memoria import ArchivioDocumenti
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +91,7 @@ def match_fornitore(paypal_name: str, fornitore_name: str) -> float:
     return 0.0
 
 
-async def riconcilia_multe_pagopa(db: SheetDatabase, transazioni_pagopa: List[Dict[str, Any]]) -> Dict[str, int]:
+async def riconcilia_multe_pagopa(db: ArchivioDocumenti, transazioni_pagopa: List[Dict[str, Any]]) -> Dict[str, int]:
     """Le multe CdS non vanno su invoices, ma su verbali_noleggio (fase 3)."""
     from app.services.verbali_pagamento_finder import trova_pagamento_verbale, applica_pagamento_a_verbale
     stats = {"totale": len(transazioni_pagopa), "riconciliati": 0}

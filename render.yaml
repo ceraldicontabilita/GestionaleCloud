@@ -33,8 +33,8 @@ services:
       pip install -r backend/requirements.txt &&
       npm --prefix frontend install --include=dev --legacy-peer-deps &&
       npm --prefix frontend run build
-    # Il piano Starter dispone di 512 MiB: due interpreti Python completi
-    # duplicano il registro Sheets in memoria e superano il limite. FastAPI e
+    # Due interpreti Python completi duplicano la cache dell'archivio in
+    # memoria e superano il limite di RAM del piano. FastAPI e
     # APScheduler vivono quindi nello stesso processo; PROCESS_ROLE=combined
     # mantiene attive le automazioni senza una seconda copia del database.
     startCommand: python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT

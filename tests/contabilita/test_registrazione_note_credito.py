@@ -18,7 +18,7 @@ AVERE costo, AVERE IVA a credito, DARE debito v/fornitore.
 import asyncio
 
 import app.services.registrazione_contabile as motore
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 
 def _run(coro):
@@ -30,7 +30,7 @@ def _run(coro):
 
 
 def _db():
-    return MemorySheetsClient()["test"]
+    return ClientArchivioMemoria()["test"]
 
 
 def _fattura(id_, tipo_documento, imponibile=500.0, iva=110.0):

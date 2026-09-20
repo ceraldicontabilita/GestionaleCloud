@@ -1,6 +1,6 @@
 import asyncio
 
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.routers.suppliers_module.base import _sincronizza_esclusione_cassa_banca
 
@@ -11,7 +11,7 @@ def _run(coro):
 
 def test_esclusione_rimuove_solo_movimenti_auto_e_conserva_dati_fiscali():
     async def scenario():
-        db = MemorySheetsClient()["test_esclusione_finanziaria"]
+        db = ClientArchivioMemoria()["test_esclusione_finanziaria"]
         supplier = {"partita_iva": "01234567890"}
         await db["invoices"].insert_one({
             "id": "fatt-1",
@@ -62,7 +62,7 @@ def test_esclusione_rimuove_solo_movimenti_auto_e_conserva_dati_fiscali():
 
 def test_riattivazione_rimette_la_fattura_nel_flusso_senza_toccare_iva():
     async def scenario():
-        db = MemorySheetsClient()["test_riattivazione_finanziaria"]
+        db = ClientArchivioMemoria()["test_riattivazione_finanziaria"]
         supplier = {"partita_iva": "01234567890"}
         await db["invoices"].insert_one({
             "id": "fatt-2",

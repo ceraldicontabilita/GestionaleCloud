@@ -712,7 +712,7 @@ async def genera_dizionario() -> Dict[str, Any]:
     """
     db = Database.get_db()
 
-    # Estrai articoli senza calcoli numerici in Drive/Sheets
+    # Estrai articoli senza calcoli numerici in Drive/Supabase
     pipeline = [
         {"$unwind": "$linee"},
         {"$group": {

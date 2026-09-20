@@ -8,7 +8,7 @@ import asyncio
 from app.routers import f24_analisi, scadenze
 from app.routers.accounting import contabilita_gestionale as cg
 from app.services.riconciliazione_smart import collegamenti_movimento, semanticizza_risultato
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 
 def _run(coro):
@@ -20,7 +20,7 @@ def _run(coro):
 
 
 def _db(nome):
-    return MemorySheetsClient()[nome]
+    return ClientArchivioMemoria()[nome]
 
 
 # ── Bilancio di verifica → libro giornale → documento ─────────────────────

@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.services import f24_controllo_incrociato as ctrl
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 
 def _run(coro):
@@ -38,7 +38,7 @@ def _mov(id_, data, importo, **extra):
 
 
 def _db():
-    return MemorySheetsClient()["registro_f24"]
+    return ClientArchivioMemoria()["registro_f24"]
 
 
 def test_verifica_codice_legge_fiscal_documents_e_banca_non_solo_quietanze_f24():

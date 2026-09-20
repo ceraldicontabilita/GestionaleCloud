@@ -135,7 +135,7 @@ class Settings(BaseSettings):
     # Cartella Drive storica del registro portatile (ora dismesso). Resta
     # come radice di fallback per l'archiviazione delle copie documentali
     # (app/services/email_drive_archive.py) quando l'area non ha una
-    # cartella dedicata configurata: NON e' piu' legata a Google Sheets.
+    # cartella dedicata configurata: NON e' piu' legata a Supabase.
     GOOGLE_SHEETS_LEDGER_FOLDER_ID: Optional[str] = None
     # Nuovi canali documentali (scelta utente 12-07-2026): cartelle Drive
     # dedicate. Gli ID vanno su Render; ogni cartella condivisa con la

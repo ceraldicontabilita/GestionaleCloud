@@ -469,7 +469,7 @@ async def list_inbox_documents(
     status: str = Query(default=None),
     limit: int = Query(default=50, le=200)
 ) -> Dict[str, Any]:
-    """Lista documenti in documents_inbox con PDF salvato in Drive/Sheets."""
+    """Lista documenti in documents_inbox con PDF salvato in Drive/Supabase."""
     db = Database.get_db()
 
     query = {}
@@ -478,7 +478,7 @@ async def list_inbox_documents(
     if status:
         query["status"] = status
 
-    # Solo documenti con pdf_data (salvati su Drive/Sheets)
+    # Solo documenti con pdf_data (salvati su Drive/Supabase)
     query["pdf_data"] = {"$exists": True, "$ne": None}
 
     cursor = db["documents_inbox"].find(
@@ -491,7 +491,7 @@ async def list_inbox_documents(
 
     return {
         "count": len(docs),
-        "total_in_sheets": total,
+        "total_in_archivio": total,
         "documents": docs
     }
 

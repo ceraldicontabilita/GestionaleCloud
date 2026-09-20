@@ -50,8 +50,8 @@ async def log_evento(
         azione: tipo azione (creato, aggiornato, stato_aggiornato, eliminato,
                 riconciliato, match_confermato, alert_generato, ...)
         entita_id: id dell'entità coinvolta
-        entita_collection: nome foglio Sheets
-        db: repository asincrono Drive/Sheets
+        entita_collection: nome collezione
+        db: repository asincrono Drive/Supabase
         vecchio_stato: stato prima della modifica (campi rilevanti)
         nuovo_stato: stato dopo la modifica
         fonte: chi/cosa ha generato la modifica

@@ -60,7 +60,7 @@ Questa informativa è resa ai sensi dell'art. 13 del Regolamento UE 2016/679 (GD
 <h2>6. Comunicazione a Terzi</h2>
 <p>I dati possono essere comunicati a:</p>
 <ul>
-<li>Google per l'archivio Drive/Sheets configurato dall'azienda</li>
+<li>Google per l'archivio Drive/Supabase configurato dall'azienda</li>
 <li>Telegram per gli alert operativi inviati ai destinatari autorizzati</li>
 <li>Consulente del lavoro per gli adempimenti HR</li>
 </ul>

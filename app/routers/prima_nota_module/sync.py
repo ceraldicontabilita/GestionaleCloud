@@ -1072,7 +1072,7 @@ async def _sync_corrispettivi_impl(anno: int = None) -> Dict:
 
     query = {}
     if anno:
-        # Il registro Drive/Sheets contiene anche corrispettivi storici
+        # Il registro Drive/Supabase contiene anche corrispettivi storici
         # importati prima dell'introduzione del campo ``anno``.  Filtrare solo
         # su quel campo rendeva invisibili proprio le righe valide che hanno
         # ``data=YYYY-MM-DD`` e lasciava Prima Nota Cassa completamente vuota
@@ -1092,7 +1092,7 @@ async def _sync_corrispettivi_impl(anno: int = None) -> Dict:
     duplicati = 0
     saltati_importo_zero = []  # diagnostica: quali corrispettivi vengono scartati
 
-    # Il runtime Drive/Sheets accorpa tutte le mutazioni per foglio. Senza il
+    # Il runtime Drive/Supabase accorpa tutte le mutazioni per foglio. Senza il
     # batch, ogni corrispettivo storico causava piu' riletture dell'indice
     # remoto e il processo Render da 512 MiB veniva terminato prima di
     # completare il recupero. I doppi di test o backend compatibili che non

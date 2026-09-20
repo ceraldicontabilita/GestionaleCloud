@@ -14,7 +14,7 @@ import hashlib
 from app.routers.fatture_module import crud
 from app.services import fatture_identita as fi
 from app.services import registrazione_contabile as rc
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 XML = """<?xml version="1.0" encoding="utf-8"?>
 <p:FatturaElettronica versione="FPR12" xmlns:p="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2">
@@ -45,7 +45,7 @@ def _run(coro):
 
 
 def _db(nome):
-    return MemorySheetsClient()[nome]
+    return ClientArchivioMemoria()[nome]
 
 
 def _legacy(id_="leg-1"):
@@ -213,7 +213,7 @@ def test_router_avvia_in_background_e_dry_run_sincrono(monkeypatch):
 def test_una_scrittura_in_timeout_non_ferma_la_normalizzazione():
     """17/09/2026: in produzione un solo gc_upsert_documents in timeout
     faceva abortire l'intero giro (le fatture dopo restavano senza identita')."""
-    db = MemorySheetsClient()["test"]
+    db = ClientArchivioMemoria()["test"]
     _run(db[fi.COLL].insert_many([_legacy("leg-1"), _legacy("leg-2")]))
     tabella = db[fi.COLL]
     originale = tabella.update_one

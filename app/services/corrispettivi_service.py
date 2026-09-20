@@ -36,7 +36,7 @@ class CorrispettiviService:
     """
 
     def __init__(self, db=None):
-        # SheetDatabase vieta intenzionalmente bool(db): usare
+        # ArchivioDocumenti vieta intenzionalmente bool(db): usare
         # sempre il confronto esplicito, altrimenti il job Drive fallisce
         # prima ancora di leggere il primo XML.
         self.db = db if db is not None else Database.get_db()
@@ -59,15 +59,19 @@ class CorrispettiviService:
         """
         Processa un file XML corrispettivo.
 
-        `applica_filtro_anno` (richiesta utente 14/07/2026, propagazione
-        dello stesso filtro già applicato all'import Drive delle fatture:
-        SOLO l'ingest automatico da Drive lo attiva): se True e la data del
-        corrispettivo non è nell'anno di importazione attivo configurato
-        (vedi app.services.config_import), il corrispettivo viene comunque
-        salvato per consultazione ma marcato `stato_import="archivio_storico"`
-        e NON propagato a Prima Nota né all'event bus (niente Coerenza POS,
-        niente calendario accrediti) — un corrispettivo storico non deve
-        alterare il saldo cassa/banca dell'anno attivo. Default False:
+        `applica_filtro_anno` (SOLO l'ingest automatico da Drive lo attiva,
+        stesso filtro del canale fatture): se True e la giornata non è
+        nell'anno di importazione attivo (vedi app.services.config_import),
+        il corrispettivo **non entra affatto** e l'esito è
+        `skipped_altro_anno`. L'originale non si perde: l'XML resta su Drive,
+        che è la fonte documentale, e il file va comunque in `Elaborate`.
+        Per rivedere un anno intero: cambiare l'anno attivo e rilanciare
+        l'import, che rilegge tutti gli XML.
+
+        Fino al 20/09/2026 quelle giornate venivano salvate e marcate
+        `stato_import="archivio_storico"`: righe che non entravano in nessun
+        conto e non generavano nessun alert, ma riempivano la pagina
+        Corrispettivi e tornavano da sole a ogni giro Drive. Default False:
         l'import manuale da UI resta invariato.
         """
         logger.info(f"Processing corrispettivo XML: {filename}")
@@ -150,6 +154,45 @@ class CorrispettiviService:
                 "message": "Corrispettivo già presente"
             }
 
+        # Filtro anno (solo l'ingest automatico da Drive lo attiva). Nel
+        # gestionale resta SOLO l'anno attivo, e la regola vale per i
+        # corrispettivi esattamente come per le fatture: una chiusura di un
+        # anno passato non entra, l'originale resta su Drive.
+        # Prima di qui il corrispettivo storico veniva comunque salvato e
+        # marcato `archivio_storico`: righe fuori da ogni conto e da ogni
+        # alert, che riempivano la pagina Corrispettivi e — questo e' il
+        # punto — tornavano da sole a ogni giro Drive, quindi cancellarle non
+        # bastava (erano 414, gli anni 2023-24 tolti il 20/09/2026).
+        # Il controllo sta QUI, prima della deduplica per data: piu' avanti
+        # una giornata storica gia' in archivio verrebbe aggregata dal
+        # motore, che le ricalcolerebbe Prima Nota e scritture.
+        # Data mancante o illeggibile resta nel flusso attivo di proposito:
+        # un XML malformato dell'anno attivo non si scarta alla cieca.
+        if applica_filtro_anno:
+            from app.services.config_import import get_anno_importazione_attivo
+            anno_attivo = await get_anno_importazione_attivo(self.db)
+            data_str = str(parsed.get("data") or "")
+            anno_corr = int(data_str[:4]) if data_str[:4].isdigit() else None
+            if anno_corr and anno_corr != anno_attivo:
+                logger.info(
+                    "[Corrispettivi] %s e' la giornata del %s, l'anno attivo "
+                    "e' %s: non entra in archivio, l'originale resta su Drive",
+                    filename, data_str, anno_attivo,
+                )
+                return {
+                    "status": "skipped_altro_anno",
+                    "filename": filename,
+                    "data": data_str,
+                    "anno": anno_corr,
+                    "anno_attivo": anno_attivo,
+                    "corrispettivo_id": None,
+                    "prima_nota_id": None,
+                    "message": (
+                        f"Giornata del {anno_corr}, anno attivo {anno_attivo}: "
+                        "non importata, l'originale resta su Drive"
+                    ),
+                }
+
         # Check duplicato per data + dispositivo. Bug segnalato dall'utente
         # 15/07/2026 (saldo Prima Nota sballato di decine di migliaia di
         # euro): il controllo guardava SOLO la data, ignorando
@@ -185,18 +228,7 @@ class CorrispettiviService:
         if existing_date:
             return await self._merge_distinct_xml(
                 existing_date, parsed, filename, content_hash,
-                applica_filtro_anno=applica_filtro_anno,
             )
-
-        # Filtro anno: data mancante/illeggibile resta nel flusso attivo di
-        # proposito (mai archiviare alla cieca un XML sospetto).
-        archivia_solo = False
-        if applica_filtro_anno:
-            from app.services.config_import import get_anno_importazione_attivo
-            anno_attivo = await get_anno_importazione_attivo(self.db)
-            data_str = parsed.get("data") or ""
-            anno_corr = int(data_str[:4]) if data_str[:4].isdigit() else None
-            archivia_solo = bool(anno_corr and anno_corr != anno_attivo)
 
         # 3. Prepara documento
         corr_doc = {
@@ -244,21 +276,6 @@ class CorrispettiviService:
             # Relazioni
             "prima_nota_id": None
         }
-
-        if archivia_solo:
-            corr_doc["status"] = "archiviata"
-            corr_doc["stato_import"] = "archivio_storico"
-            await self.corrispettivi.insert_one(corr_doc.copy())
-            logger.info(f"Corrispettivo archiviato (anno storico): {corr_doc['id']}")
-            return {
-                "status": "archiviata",
-                "corrispettivo_id": corr_doc["id"],
-                "data": corr_doc["data"],
-                "totale": corr_doc["totale"],
-                "prima_nota_id": None,
-                "message": "Corrispettivo di un anno storico: archiviato per sola consultazione, "
-                           "non registrato in Prima Nota"
-            }
 
         # Calendario accrediti POS: se c'e' quota elettronica, il corrispettivo
         # entra "in attesa accredito" con la data prevista dal calendario
@@ -499,7 +516,7 @@ class CorrispettiviService:
         query = {
             "data": previous_date,
             "entity_status": {"$ne": EntityStatus.DELETED.value},
-            # I residui archiviati restano nel registro Drive/Sheets per audit, ma non sono
+            # I residui archiviati restano nel registro Drive/Supabase per audit, ma non sono
             # una chiusura attiva. Se li consideriamo "giorno valorizzato"
             # impediscono alla chiusura post-mezzanotte di tornare al giorno
             # corretto (caso reale XML 04/04/2026 attribuito al 03/04).
@@ -561,7 +578,7 @@ class CorrispettiviService:
 
     async def _merge_distinct_xml(
         self, existing: Dict[str, Any], parsed: Dict[str, Any], filename: str,
-        content_hash: str, *, applica_filtro_anno: bool,
+        content_hash: str,
     ) -> Dict[str, Any]:
         """Somma chiusure XML distinte della stessa data/registratore.
 

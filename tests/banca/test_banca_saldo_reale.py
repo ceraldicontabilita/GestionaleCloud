@@ -1,6 +1,6 @@
 import asyncio
 
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.routers.prima_nota_module import banca
 
@@ -11,13 +11,13 @@ def _run(awaitable):
 
 def test_lista_banca_mostra_attese_pos_ma_le_esclude_dal_saldo(monkeypatch):
     """L'attesa POS e' visibile, ma non e' ancora denaro sul conto BPM."""
-    db = MemorySheetsClient()["banca_saldo_reale_test"]
+    db = ClientArchivioMemoria()["banca_saldo_reale_test"]
     monkeypatch.setattr(banca.Database, "get_db", staticmethod(lambda: db))
 
     async def _aggrega_senza_convert(
         db_corrente, collection, query, anno, query_base_precedente=None,
     ):
-        """Replica i totali senza $convert, non implementato da registro Sheets effimero."""
+        """Replica i totali senza $convert, non implementato da archivio del runtime effimero."""
         documenti = await db_corrente[collection].find(query, {"_id": 0}).to_list(None)
         entrate = sum(float(doc.get("importo") or 0) for doc in documenti if doc.get("tipo") == "entrata")
         uscite = sum(float(doc.get("importo") or 0) for doc in documenti if doc.get("tipo") == "uscita")
@@ -79,7 +79,7 @@ def test_lista_banca_mostra_attese_pos_ma_le_esclude_dal_saldo(monkeypatch):
 
 
 def test_scheda_sumup_espone_solo_payout_ricevuti_aggregati_per_giorno(monkeypatch):
-    db = MemorySheetsClient()["conto_sumup_separato_test"]
+    db = ClientArchivioMemoria()["conto_sumup_separato_test"]
     monkeypatch.setattr(banca.Database, "get_db", staticmethod(lambda: db))
     _run(db["prima_nota_banca"].insert_many([
         {

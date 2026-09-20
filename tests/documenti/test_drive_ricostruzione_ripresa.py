@@ -11,12 +11,12 @@ import asyncio
 import pytest
 
 from app.services import drive_invoice_ingest as drive
-from app.services.archivio_documenti_memoria import MemorySheetsClient
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 
 @pytest.fixture
 def db():
-    return MemorySheetsClient()["test_ripresa"]
+    return ClientArchivioMemoria()["test_ripresa"]
 
 
 @pytest.fixture
