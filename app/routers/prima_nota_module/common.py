@@ -79,6 +79,7 @@ SOURCES_ESCLUSE = [
     "import_manuale_pos",
     "estratto_conto_sync",
     "metodo_fornitore_assente_provvisorio",
+    "manuale_banca_senza_evidenza",
 ]
 
 # Esclusioni standard complete della Prima Nota (da spargere con ** nelle

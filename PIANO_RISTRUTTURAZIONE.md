@@ -472,13 +472,13 @@ Questi test dimostrano la logica, ma **non bastano da soli a dichiarare pronta l
 
 | ID | Stato | Attività |
 |---|---|---|
-| RST-00A1 | 🟡 | Aggiungere E2E isolato: inserimento manuale movimento Cassa → persistenza → saldo → modifica → eliminazione |
-| RST-00A2 | 🟡 | Aggiungere E2E isolato: movimento Banca provvisorio → esclusione dal saldo reale → arrivo estratto conto → riconciliazione/promozione |
+| RST-00A1 | 🟡 | Contratto HTTP CRUD Cassa aggiunto sul branch Fase 0A: persistenza → saldo → modifica → soft-delete; attende CI e collaudo browser |
+| RST-00A2 | 🟡 | Backend/UI corretti: banca manuale senza EC è provvisoria, visibile ma fuori saldo reale/progressivo; resta da chiudere E2E arrivo EC → riconciliazione |
 | RST-00A3 | 🟡 | Aggiungere E2E isolato: fattura → Provvisori → conferma Cassa |
 | RST-00A4 | 🟡 | Aggiungere E2E isolato: fattura → Provvisori → “attendi banca” senza marcarla pagata |
 | RST-00A5 | 🟡 | Aggiungere E2E isolato: pagamento misto/divisione cassa+banca e quadratura importi |
-| RST-00A6 | ⚪ | Verificare reload pagina/anno: nessun movimento sparisce e i saldi coincidono con i record persistiti |
-| RST-00A7 | ⚪ | Verificare che ogni movimento manuale mostri origine, data, descrizione, importo, contropartita e collegamenti documentali |
+| RST-00A6 | 🟡 | Contratto HTTP verifica rilettura per anno e saldo dopo create/update/delete; resta da coprire reload browser |
+| RST-00A7 | 🟡 | Audit CRUD avviato: validazione update importo/tipo; corretto bug riapertura fattura dopo cancellazione; corretto saldo progressivo UI che includeva banca provvisoria |
 | RST-00A8 | ⚪ | Aggiungere smoke produzione non distruttivo sulle letture Prima Nota e sugli endpoint di health/coerenza |
 | RST-00A9 | ⚪ | Dopo gli E2E, dichiarare formalmente “Prima Nota operativa” e congelarne il contratto durante le fasi successive |
 
@@ -868,6 +868,8 @@ Aggiungere una riga ad ogni attività conclusa.
 |---|---|---|---|---|---|
 | 2026-09-21 | PLAN-0001 | 🟢 COMPLETATO | documento iniziale | Creato il piano operativo di ristrutturazione ERP + HR + Lotti + Menu | Audit su `main@8cf52bd` |
 | 2026-09-21 | PLAN-0002 | 🟢 COMPLETATO | aggiornamento piano | Verificati PIN/auth, ciclo fattura e Prima Nota; aggiunta priorità contabilità operativa e gestione PIN centrale | Test e codice su `main@8cf52bd` |
+| 2026-09-21 | RST-00A1/06/07 | 🟡 IN CORSO | branch `ristrutturazione/fase-0a-prima-nota` | Aggiunti contratti CRUD Cassa/Banca e validazioni; corretto collegamento di riapertura fattura alla cancellazione del pagamento | Attende CI/PR e collaudo browser |
+| 2026-09-21 | RST-00A2 | 🟡 IN CORSO | branch `ristrutturazione/fase-0a-prima-nota` | Banca manuale senza estratto conto resa provvisoria e fuori saldo; UI allineata con badge e saldo progressivo corretto | Attende CI ed E2E riconciliazione |
 
 ---
 

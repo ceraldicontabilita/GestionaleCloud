@@ -263,6 +263,9 @@ async def list_prima_nota_banca(
             # L'attesa nasce dal fatto POS/RT e resta visibile anche prima
             # dell'accredito. Non contribuisce al saldo reale qui sopra.
             {"source": "trasferimento_pos"},
+            # Inserimento manuale senza estratto conto: visibile come attesa,
+            # ma escluso dal saldo reale tramite query_base_saldo.
+            {"source": "manuale_banca_senza_evidenza"},
         ]}],
     }
     query = dict(query_base)
@@ -467,7 +470,16 @@ async def create_prima_nota_banca(data: Dict[str, Any] = Body(...)) -> Dict[str,
         "iban": data.get("iban"),
         "conto_bancario": data.get("conto_bancario"),
         "note": data.get("note"),
-        "source": data.get("source"),
+        "source": data.get("source") or (
+            "manuale_banca_senza_evidenza" if not evidenza_id else "manuale_banca_con_evidenza"
+        ),
+        "provvisorio": not bool(evidenza_id),
+        "canonico": bool(evidenza_id),
+        "stato": "DA_VERIFICARE" if not evidenza_id else "riconciliato",
+        "in_attesa_estratto_ufficiale": not bool(evidenza_id),
+        "motivo_provvisorio": (
+            "movimento_banca_manuale_senza_evidenza" if not evidenza_id else None
+        ),
         "pos_details": data.get("pos_details"),
         "numero_assegno": data.get("numero_assegno") or data.get("assegno_numero"),
         "assegno_numero": data.get("numero_assegno") or data.get("assegno_numero"),
@@ -506,7 +518,17 @@ async def update_prima_nota_banca(
     db = Database.get_db()
     
     update_data = {"updated_at": datetime.now(timezone.utc).isoformat()}
-    
+
+    if "tipo" in data and data["tipo"] not in TIPO_MOVIMENTO:
+        raise HTTPException(status_code=400, detail="Tipo deve essere 'entrata' o 'uscita'")
+    if "importo" in data:
+        try:
+            importo = float(data["importo"])
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=422, detail="importo non valido")
+        if importo <= 0:
+            raise HTTPException(status_code=422, detail="importo deve essere > 0")
+
     for field in ["data", "tipo", "importo", "descrizione", "categoria", "riferimento", "note", "fornitore", "ragione_sociale"]:
         if field in data:
             update_data[field] = float(data[field]) if field == "importo" else data[field]
@@ -590,7 +612,13 @@ async def delete_movimento_banca(
     # (niente prima_nota_id orfano / stato pagata fantasma)
     if mov.get("fattura_id"):
         await db["invoices"].update_one(
-            {"id": mov["fattura_id"], "prima_nota_id": movimento_id},
+            {
+                "id": mov["fattura_id"],
+                "$or": [
+                    {"prima_nota_id": movimento_id},
+                    {"prima_nota_banca_id": movimento_id},
+                ],
+            },
             {"$set": {"stato_pagamento": "", "pagato": False, "paid": False},
              "$unset": {"prima_nota_id": "", "prima_nota_tipo": "",
                         "prima_nota_banca_id": "", "data_pagamento": ""}}
