@@ -133,12 +133,12 @@ def test_endpoint_distruttivi_dichiarano_require_admin():
         # 25/07/2026: chi riscrive registri HACCP STORICI deve essere admin.
         # Prima un dipendente (o un tablet lasciato acceso) poteva sostituire
         # un anno intero di temperature o rigenerare dati retroattivi.
-        ("app.lotti.routers.temperature_positive", ('router.put("/scheda/{anno}/{frigorifero}")',
-                                          "/popola-con-chiusure/{anno}")),
-        ("app.lotti.routers.temperature_negative", ('router.put("/scheda/{anno}/{congelatore}")',
-                                          "/popola-con-chiusure/{anno}")),
-        ("app.lotti.routers.haccp_auto", ("/popola-temperature", "/popola-sanificazione",
-                                "/popola-tutto", "/genera-oggi")),
+        ("app.lotti.routers.temperature_positive", ('router.put("/scheda/{anno}/{frigorifero}")',)),
+        ("app.lotti.routers.temperature_negative", ('router.put("/scheda/{anno}/{congelatore}")',)),
+        # Delle quattro rotte che popolavano il registro ne resta una sola:
+        # le altre tre sono state cancellate il 20/09/2026 (nessun bottone le
+        # chiamava). Questa ha ancora la sua pagina, quindi resta bloccata.
+        ("app.lotti.routers.haccp_auto", ("/popola-sanificazione",)),
         # 25/07/2026: rinominare un frigorifero riscrive il nome su TUTTI i
         # controlli temperatura già registrati (update_many sullo storico):
         # è una modifica ai registri, non una preferenza di visualizzazione.

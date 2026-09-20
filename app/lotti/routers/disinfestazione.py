@@ -9,7 +9,7 @@ RIFERIMENTI NORMATIVI:
 La disinfestazione viene eseguita UN GIORNO AL MESE in modo casuale.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel, Field, ConfigDict
 from typing import Dict
 from datetime import datetime, timezone
@@ -107,12 +107,6 @@ async def get_or_create_scheda_annuale(anno: int) -> dict:
 # ==================== ENDPOINTS ====================
 
 
-@router.post("/rigenera/{anno}")
-async def rigenera_scheda_annuale(anno: int):
-    raise HTTPException(
-        status_code=410,
-        detail="Bloccato: interventi e monitoraggi richiedono evidenze della ditta incaricata.",
-    )
 
 
 @router.get("/scheda-annuale/{anno}")

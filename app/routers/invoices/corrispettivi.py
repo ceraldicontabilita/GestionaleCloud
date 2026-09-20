@@ -955,22 +955,6 @@ async def rebuild_prima_nota(
     raise HTTPException(status_code=409, detail="Disattivato: Fase 0")
 
 
-@router.post("/auto-ricostruisci-dati")
-@handle_errors
-async def auto_ricostruisci_dati_corrispettivi() -> Dict[str, Any]:
-    """
-    LOGICA INTELLIGENTE: Verifica e corregge automaticamente i corrispettivi.
-    
-    REGOLE:
-    1. Verifica campi mancanti (data, totale, iva)
-    2. Ricalcola IVA con scorporo se mancante
-    3. Verifica e corregge sincronizzazione con Prima Nota Cassa
-    4. Rimuove duplicati evidenti
-    """
-    raise HTTPException(
-        status_code=410,
-        detail="Ricostruzione automatica disabilitata: usare import/revisione guidata",
-    )
 
 
 # ==================== VISUALIZZAZIONE CORRISPETTIVO ====================

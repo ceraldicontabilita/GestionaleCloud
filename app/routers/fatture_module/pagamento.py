@@ -1,8 +1,7 @@
 """
 Fatture Module - Operazioni di pagamento e riconciliazione.
 """
-from fastapi import HTTPException, File, UploadFile, Body, Depends
-from app.utils.dependencies import get_current_admin_user
+from fastapi import HTTPException, File, UploadFile, Body
 from typing import Dict, Any
 from datetime import datetime, timezone
 
@@ -212,28 +211,6 @@ async def aggiorna_metodi_pagamento_da_fornitori() -> Dict[str, Any]:
     }
 
 
-async def backfill_autoroute_da_metodo_fornitore(_admin: Dict[str, Any] = Depends(get_current_admin_user)) -> Dict[str, Any]:
-    """
-    Backfill massivo: per ogni fattura NON ancora registrata in prima nota,
-    legge il metodo di pagamento dell'anagrafica fornitore e crea automaticamente
-    il movimento in `prima_nota_cassa` o `prima_nota_banca`.
-    
-    Metodi mappati (vedi motore app.engines.prima_nota_engine):
-      - contanti/cassa/MP01                        → prima_nota_cassa
-      - banca/bonifico/carta/assegno/SEPA/RID/
-        PayPal/MP02/MP03/MP05/MP08/MP19/MP20/MP21  → prima_nota_banca
-      - misto                                       → NON auto-routato (Prima Nota Provvisoria)
-      - ambiguo/vuoto                               → NON auto-routato
-    """
-    raise HTTPException(
-        status_code=410,
-        detail=(
-            "Funzione sostituita: il metodo del fornitore e' una regola di "
-            "instradamento, non una prova di pagamento. Usa Riprocessa "
-            "estratto conto: Cassa viene instradata direttamente; Banca "
-            "resta provvisoria finche non esiste evidenza univoca."
-        ),
-    )
 
 
 async def riconcilia_fatture_paypal() -> Dict[str, Any]:

@@ -177,12 +177,19 @@ def test_fifo_consuma_il_lotto_piu_vecchio(dbmock):
     assert vecchio["storico_utilizzi"][0]["lotto_produzione"] == "LOTTO-TEST"
 
 
-def test_fifo_lotto_oltre_60_giorni_va_in_riserva(dbmock):
-    """REGOLA ENZO 23/07/2026: si parte dal più vecchio DEGLI ULTIMI 60 GIORNI —
-    un lotto di mesi fa non rappresenta più il fornitore vero da mettere in
-    etichetta. I lotti oltre i 60 giorni non si buttano: restano in coda come
-    riserva. Questo comportamento non era coperto da nessun test (l'ha fatto
-    emergere l'audit del 25/07/2026)."""
+def test_fifo_parte_sempre_dalla_fattura_piu_vecchia(dbmock):
+    """Si parte dal lotto con la fattura piu' vecchia, senza finestre temporali.
+
+    Fino al 20/09/2026 qui c'era la regola opposta: una finestra di 60 giorni
+    metteva i lotti piu' vecchi «in riserva», e si consumava prima il recente.
+    Nasceva da una domanda diversa — quale fornitore scrivere in etichetta —
+    ma applicata allo scarico teneva ferma a invecchiare proprio la giacenza
+    piu' vicina a scadere.
+
+    La regola ora e' una sola, e vale per tutti e due: si consuma il piu'
+    vecchio, e l'etichetta dice quello (`peek_lotto_fifo_attivo` guarda la
+    testa della stessa coda). Un lotto scaduto invece non si consuma affatto.
+    """
     import app.lotti.routers.lotti_produzione as lp
     run(dbmock.lotti_fornitori.insert_many([
         {"id": "L-antico", "prodotto_nome": "Farina 00", "prodotto_nome_norm": "farina 00",
@@ -194,10 +201,13 @@ def test_fifo_lotto_oltre_60_giorni_va_in_riserva(dbmock):
     ]))
     esito = run(lp.scala_lotti_fornitori_per_ricetta(RICETTA_PANE, 1, "LOTTO-RISERVA"))
     assert esito["lotti_scalati"], f"nessun lotto scalato: {esito}"
-    # si parte dal recente, NON dall'antico (che resta riserva)
-    assert esito["lotti_scalati"][0]["lotto_id"] == "L-recente", esito
-    antico = run(dbmock.lotti_fornitori.find_one({"id": "L-antico"}))
-    assert antico["quantita_disponibile"] == 10.0, "il lotto antico non va toccato finché c'è il recente"
+    assert esito["lotti_scalati"][0]["lotto_id"] == "L-antico", esito
+    recente = run(dbmock.lotti_fornitori.find_one({"id": "L-recente"}))
+    assert recente["quantita_disponibile"] == 10.0, (
+        "il lotto recente si tocca solo quando il vecchio e' finito"
+    )
+    # e l'etichetta non puo' dire un fornitore diverso da quello consumato
+    assert run(lp.peek_lotto_fifo_attivo({"nome": "Farina 00"}))["id"] == "L-antico"
 
 
 def test_fifo_quantita_insufficiente_mai_negativa(dbmock):

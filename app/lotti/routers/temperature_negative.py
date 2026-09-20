@@ -371,13 +371,6 @@ async def get_riferimenti_normativi():
     }
 
 
-@router.post("/popola-con-chiusure/{anno}")
-async def popola_con_chiusure(anno: int, congelatore: int = Query(default=None),
-                              _admin=Depends(require_admin)):
-    raise HTTPException(
-        status_code=410,
-        detail="Bloccato: non e consentito generare temperature storiche o operatori fittizi.",
-    )
 
 
 # ── POST /pulisci-operatori — rimuove campo operatore da tutti i doc automatici ──

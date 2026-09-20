@@ -189,7 +189,6 @@ async def salute_sistema():
         {"job": "pulizia_lotti_scaduti", "label": "Pulizia lotti scaduti", "ore_max": 26, "emoji": "🧹"},
         {"job": "check_scorta_minima", "label": "Controllo scorte minime", "ore_max": 26, "emoji": "📊"},
         {"job": "haccp_daily", "label": "Registri HACCP giornalieri", "ore_max": 26, "emoji": "📋"},
-        {"job": "automatismi_haccp", "label": "Controlli olio/temperature/reclami", "ore_max": 130, "emoji": "🌡️"},
         {"job": "backup_notturno", "label": "Backup dati", "ore_max": 26, "emoji": "💾"},
     ]
 

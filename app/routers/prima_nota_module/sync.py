@@ -3261,24 +3261,6 @@ async def collega_fatture_movimenti() -> Dict:
     return {"success": True, "movimenti_collegati": collegati}
 
 
-async def auto_conferma_provvisori_per_metodo(
-    anno: int = Query(..., description="Anno da processare"),
-) -> Dict[str, Any]:
-    """Applica al PREGRESSO dell'anno la regola metodo-fornitore (utente
-    17/07/2026, la stessa dell'ingresso fattura XML): fornitore con metodo
-    univoco cassa/banca → la fattura provvisoria viene registrata subito
-    nella prima nota corrispondente; misto/senza metodo/ambiguo → resta in
-    Provvisoria. Le fatture già pagate o con un movimento esistente non
-    vengono mai toccate (nessun doppio movimento possibile).
-
-    Fase 0 (15/09/2026, PROMPT_CLAUDE_CODE_FASE_0.md punto 1): disattivato.
-    Confermava un pagamento in cassa senza nessuna prova, solo per il
-    metodo dichiarato in anagrafica fornitore.
-    """
-    raise HTTPException(
-        status_code=409,
-        detail="Disattivato: Fase 0 — i pagamenti in cassa si confermano a mano",
-    )
 
 
 async def annulla_auto_conferma(

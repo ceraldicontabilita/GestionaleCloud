@@ -2716,53 +2716,9 @@ async def correggi_numeri_assegni() -> Dict[str, Any]:
     return risultati
 
 
-@router.post("/associa-beneficiari-robusto")
-async def associa_beneficiari_robusto() -> Dict[str, Any]:
-    """
-    LOGICA ROBUSTA: Cerca e associa beneficiari agli assegni senza beneficiario.
-    
-    ALGORITMO:
-    1. Per ogni assegno senza beneficiario
-    2. Cerca fatture con importo simile (±10€) nella finestra temporale (±30 giorni)
-    3. Se trovato match unico, associa
-    4. Se trovati più match, cerca di distinguere per fornitore già pagato con altri assegni
-    5. Gestisce pagamenti multipli (una fattura pagata con più assegni)
-    """
-    db = Database.get_db()
-    from app.routers.bank.assegni_auto_match import run_auto_match
-    return {
-        "success": True,
-        "sola_lettura": True,
-        "message": (
-            "Il vecchio abbinamento per importo/data è disattivato. "
-            "Sono restituite soltanto proposte con numero fattura esplicito."
-        ),
-        "anteprima": await run_auto_match(db, dry_run=True),
-    }
     
 
 
-@router.post("/associa-pagamenti-multipli")
-async def associa_pagamenti_multipli() -> Dict[str, Any]:
-    """
-    LOGICA AVANZATA: Gestisce fatture pagate con più assegni.
-    
-    ALGORITMO:
-    1. Raggruppa assegni per beneficiario
-    2. Per ogni gruppo, cerca fatture con importo = somma assegni
-    3. Se trovato, marca tutti gli assegni come parte dello stesso pagamento
-    """
-    db = Database.get_db()
-    from app.routers.bank.assegni_auto_match import run_auto_match
-    return {
-        "success": True,
-        "sola_lettura": True,
-        "message": (
-            "Il raggruppamento per solo beneficiario/importo è disattivato. "
-            "La somma è valutata soltanto se i numeri fattura sono dichiarati."
-        ),
-        "anteprima": await run_auto_match(db, dry_run=True),
-    }
     
 
 
