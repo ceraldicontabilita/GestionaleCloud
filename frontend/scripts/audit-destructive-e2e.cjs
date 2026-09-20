@@ -267,9 +267,10 @@ async function getScadenze(request, token) {
   }
 
   // Quadratura finale isolata: CRUD manuale è stato eliminato, quindi Cassa
-  // contiene solo 90 EUR della fattura Cassa + 40 EUR della quota mista.
-  if (Math.abs(Number(cassaPayload.saldo) - 130) > 0.01) {
-    throw new Error(`Saldo Cassa E2E inatteso: ${cassaPayload.saldo}, atteso 130`);
+  // contiene solo due USCITE fornitore: 90 EUR della fattura Cassa + 40 EUR
+  // della quota mista, quindi il saldo isolato è -130 EUR.
+  if (Math.abs(Number(cassaPayload.saldo) - (-130)) > 0.01) {
+    throw new Error(`Saldo Cassa E2E inatteso: ${cassaPayload.saldo}, atteso -130`);
   }
   if (Math.abs(Number(bancaPayload.saldo) - (-160)) > 0.01) {
     throw new Error(`Saldo Banca E2E inatteso: ${bancaPayload.saldo}, atteso -160`);
