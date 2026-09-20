@@ -10,11 +10,8 @@ Aggiornato il 19/09/2026 sul codice di `main` del repository canonico
 `ceraldicontabilita/GestionaleCloud`.
 
 **Questo file e `README.md` sono gli unici due documenti del repository.**
-Per decisione del titolare i 116 `.md` sparsi in `docs/`, `memoria/`,
-`.github/` e nei frontend sono stati cancellati e le regole ancora valide
-sono confluite qui: audit, mappe generate, changelog e diari raccontavano
-com'erano le cose in una certa data e rendevano impossibile capire quali
-logiche fossero davvero in vigore.
+Audit, mappe generate, changelog e diari raccontano com'erano le cose in una
+certa data e impediscono di capire quali logiche siano in vigore: non si tengono.
 
 ## Come si tiene questo file
 
@@ -45,14 +42,12 @@ Un unico servizio Render (`gestionalecloud.onrender.com`, deploy automatico da
 
 - Repository: `https://github.com/ceraldicontabilita/GestionaleCloud`.
   Checkout canonico Windows: `C:\Users\ceral\Documents\GESTIONALE CLOUD 2`.
-- **L'unico repository vivo è questo.** `AppDipendenti`, `Lotti` e `Menu`
-  restano come archivio del sorgente originale e non vengono più deployati;
-  `Gestionale` era una riscrittura parallela abbandonata.
+- **L'unico repository vivo è questo.** `AppDipendenti`, `Lotti` e `Menu` sono
+  l'archivio del sorgente originale; `Gestionale` una riscrittura abbandonata.
 - **Siti spenti, da non riaprire né citare**: `appdipendenti.onrender.com`,
   `lotti-frontend.onrender.com`, `lotti-backend-2wwb.onrender.com`,
   `www.ceraldiapp.it`, `impresasemplice.online`. Ogni riferimento residuo è una
-  voce CORS o un refuso. Restano da chiudere a mano, quando il titolare vuole:
-  il DNS di `ceraldiapp.it` presso il registrar e i servizi Render sospesi.
+  voce CORS o un refuso.
 - Prima di intervenire confronta sempre `HEAD` con `origin/main`. Il worktree
   può contenere modifiche dell'utente: non cancellarle, non ripristinarle e
   non includerle nei commit. **Mai `git add -A`**: solo i file pertinenti.
@@ -170,10 +165,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - **Supabase è l'unico archivio, senza eccezioni**: un solo progetto
   `GestionaleCloud`, `render.yaml` impone `DATA_BACKEND=supabase` ed è
   l'unico valore accettato dal codice. Drive resta la fonte degli
-  **originali documentali**, non il database. Il vecchio runtime Google
-  Sheets (backend, libreria di sincronizzazione, endpoint admin e job
-  schedulato) è stato rimosso il 19/09/2026: non esiste più nel codice, nemmeno
-  come fallback di sviluppo.
+  **originali documentali**, non il database. Del runtime Google Sheets non
+  esiste più niente, nemmeno come fallback di sviluppo.
 - Schemi: `gestionale` (ERP: `documents`, `blobs`, `collection_versions`,
   `protocollo_drive`, `runtime_scheduler_leases`), `hr` (tabelle `app_*`,
   `id text` + `doc jsonb`), `lotti` (`lotti_documents` + RPC `lotti_*`),
@@ -320,7 +313,10 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - Acquisizione serale RT: Render non raggiunge la rete del locale, quindi
   `scripts/sync_rt_to_drive.py` gira su un PC della LAN (ignora gli XML
   `ESITO`, SHA-256, copia atomica dei soli file nuovi). `RT_LOCAL_BASE_URL` e
-  `RT_DRIVE_INBOX` sono variabili **locali**: mai su Render.
+  `RT_DRIVE_INBOX` sono variabili **locali**: mai su Render. **Se quel
+  programma si ferma nessuno se ne accorge**: il gestionale vede solo l'assenza
+  di file, e l'assenza di incassi somiglia a un locale chiuso. Il segnale da
+  guardare è l'ultima giornata in `corrispettivi`, non la coda Drive.
 
 ### Drive, struttura canonica
 
@@ -354,6 +350,14 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   originale fuori dal suo anno, e l'anno lo decide il parser XML, mai il nome.
 - Una coda che non cala e importa zero **non è un guasto**: i già importati
   risultano doppioni e vengono solo spostati. A dirlo è la quadratura, non la coda.
+- **Un documento di un'altra sezione arrivato nel canale sbagliato non è un
+  errore.** Una chiusura RT (`DatiCorrispettivi`) finita fra le fatture si
+  riconosce dalla radice dell'XML — mai dal nome, che ha la stessa forma — e si
+  consegna a `ingest_corrispettivo_parsed`, l'unico motore che la sa
+  registrare. Trattarla da XML rotto la spediva in `Errori`, da dove nessun
+  giro la ripesca: così 19 chiusure sono rimaste ferme e tre giornate di
+  incasso sono rimaste fuori dai conti. Ogni punto che smista un esito deve
+  conoscere tutti gli stati: quello sconosciuto cade nel ramo «errore».
 
 ## Regole contabili vincolanti
 
@@ -776,91 +780,88 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 
 ## Stato attuale (al 19/09/2026 — riscrivere sul posto)
 
-- Ogni merge su `main` fa ridistribuire Render e riportare in memoria ~74.500
-  righe: per qualche minuto la produzione è `degraded`. Non è un guasto, ma
-  non si accodano merge, e il lavoro di fondo riparte dal suo cursore.
-- Ingest cedolini: ramo vivo `services/cedolini_manager` →
-  `services/salari_unificati_v2`; un netto illeggibile non diventa più zero.
-  **Collaudo live non chiuso**: il giro orario Drive trova 0 file su 49 caselle.
-- Il `last_login` di HR non è mai stato scritto fino al 19/09/2026 (`ObjectId`
-  su un id testuale): da verificare al primo accesso col PIN.
-- TFR: è accantonato. `hr.app_tfr_accantonamenti` è vuota ma il codice vivo
-  scrive in `tfr_accantonamenti`: 1.175 righe, 42 dipendenti, 273.025,37 €.
-- **Spento**: `PROTOCOLLO_DRIVE_ENABLED=false` (il giro portava la RAM a
-  1,57 GB su 2 GB: riaccendere solo dopo averla ridotta).
+- Ogni merge su `main` fa ridistribuire Render e ricaricare ~74.500 righe: per
+  qualche minuto la produzione è `degraded`. Non è un guasto, ma non si
+  accodano merge.
+- Ingest cedolini (`services/cedolini_manager` → `salari_unificati_v2`):
+  **collaudo live non chiuso**, il giro orario Drive trova 0 file su 49
+  caselle. Anche il `last_login` di HR è da verificare al primo accesso col PIN.
+- TFR accantonato: `hr.app_tfr_accantonamenti` è vuota ma il codice vivo scrive
+  in `tfr_accantonamenti` (1.175 righe, 42 dipendenti, 273.025,37 €).
+- **Spento**: `PROTOCOLLO_DRIVE_ENABLED=false` (portava la RAM a 1,57 GB su 2).
 - **Acceso**: scheduler, ingest Drive (fatture, estratti conto, cedolini,
-  bonifici), ponte pagamenti HR, dedup fatture ogni 30 min, dichiarazioni
-  fiscali fino a coda esaurita.
-- Fatture in archivio **2.555**, di cui 685 pagate; collisioni 0. «Solo 2026 nel
-  bilancio» è rispettata. 21 corrispettivi con contanti/POS non quadrati.
-- **Su Drive 2.447 XML di fattura** (1.318 del 2026, 875 del 2025, 254 dal
-  2021 al 2024). Ne sono già rientrate **396** che il gestionale non aveva
-  (211.097,19 €), tutte pre-2026 e marcate `archivio_storico`. La
-  ricostruzione va avanti da sola.
+  bonifici), ponte pagamenti HR, dedup fatture ogni 30 min, dichiarazioni fiscali.
+- Fatture in archivio **1.428**, di cui 873 non archiviate e 555 loro gemelli
+  archiviati (0 orfani); collisioni 0. Tutte del 2026: il pre-2026 è stato
+  tolto il 20/09 con backup in `fatture_pre2026_rimosse_20260920`. **Le
+  ultime 13 righe hanno solo i campi italiani** e nessun filtro canonico le
+  vede (regola 12): 7 fatture e 6 DDT, fonte `legacy_staging_2026`.
+- **Su Drive 1.318 XML di fattura 2026**, consegnati a blocchi manuali: il
+  ritardo è a monte di noi, non nell'ingest.
+- **Corrispettivi fermi al 24/08/2026**: le chiusure del 25-27/08 erano su
+  Drive nella cartella sbagliata, dal 28/08 non ne arrivano più (PC negozio).
 - **Nessuna liquidazione IVA è mai stata calcolata**: `/api/iva/liquidazioni`
-  torna vuoto. Giugno e luglio 2026 sono calcolabili ma con **zero** acquisti
-  (tutti in `detraibilita_da_verificare`): il saldo è l'IVA sulle vendite
-  intera, 7.651,05 € e 6.211,86 €; agosto fermo su `giorni_senza_corrispettivo`.
-  Corrispettivi 2026: 518.879,34 € incassati, 47.170,88 € di IVA a debito.
-- Confronto con la LIPE 2026 (tre periodi, tutti quadrati): a marzo l'IVA
-  esigibile combacia **al centesimo** (6.131,26 €); a gennaio mancano
-  **5.005,88 €** di IVA detraibile, cioè acquisti che lui ha e noi no. Febbraio
-  senza corrispettivi non è un buco: locale chiuso, e anche la LIPE ha le
-  attive in bianco. Nessun F24 IVA 2026: la LIPE chiude a credito ogni mese.
-- Cron Render `gestionalecloud-calderone-15min`: sospeso e senza codice, va cancellato dal pannello.
-- Solo 108 prodotti del Menu su 325 hanno allergeni: obbligo di legge, da completare.
+  torna vuoto. Giugno e luglio sono calcolabili ma con **zero** acquisti (tutti
+  `detraibilita_da_verificare`): saldo = IVA vendite intera, 7.651,05 € e
+  6.211,86 €. Corrispettivi 2026: 518.879,34 €, 47.170,88 € di IVA a debito.
+- LIPE 2026 (tre periodi, quadrati): marzo combacia al centesimo (6.131,26 €);
+  a gennaio mancano **5.005,88 €** di IVA detraibile, acquisti che lui ha e noi
+  no. Nessun F24 IVA 2026: la LIPE chiude a credito ogni mese.
+- Solo 108 prodotti del Menu su 325 hanno allergeni: obbligo di legge, da
+  completare. Il cron Render `gestionalecloud-calderone-15min`, sospeso e senza
+  codice, va cancellato dal pannello.
 
 ## Aperto (togliere la voce quando si chiude)
 
-- Compute Supabase **Micro** insufficiente (crash Postgres del 17/09): valutare Small.
+- Compute Supabase **Micro** insufficiente (crash del 17/09): valutare Small.
+- Le **13 fatture legacy senza campi inglesi** vanno normalizzate: finché non
+  hanno `invoice_number`/`invoice_date`/`total_amount` restano fuori da ogni
+  elenco, conteggio e somma del gestionale.
 - Endpoint sincroni oltre i 5 minuti, da portare a lotti riprendibili:
-  `/api/fatture/drive/quadratura` (tagliata a 300 s, arriva al 2022),
-  `/api/paypal-api/riconcilia`, `/api/paypal-api/account-ids-non-mappati`,
-  `/api/admin/riallinea-pagamenti-fatture`,
+  `/api/fatture/drive/quadratura`, `/api/paypal-api/riconcilia` e
+  `/account-ids-non-mappati`, `/api/admin/riallinea-pagamenti-fatture`,
   `/api/prima-nota-salari/deposita-cedolini-in-hr`.
 - Note di credito TD04 legacy (~20, precedenti al fix a `registra_fattura`):
   costo/IVA/debito aumentati anziché ridotti, da sanare con
-  `storna_registrazione_fattura` per `fattura_id`.
-- **Nessuno dei 187 fornitori ha `metodo_pagamento`** (solo 41 hanno un IBAN):
+  `storna_registrazione_fattura`.
+- **Nessuno dei 187 fornitori ha `metodo_pagamento`** (41 hanno un IBAN):
   finché resta così ogni fattura è `sospesa` e nulla va in Prima Nota Banca.
-  Da popolare con una fonte vera, non dedotta dalle fatture.
-- **Pregresso fatture**: 296 attive (173.184,83 €, 22.989,82 € di IVA) senza
-  partita aperta, 280 anche fuori dal giornale (145.025,14 €). Ordine obbligato:
+  Serve una fonte vera, non dedotta dalle fatture.
+- **Pregresso fatture**: 296 attive (173.184,83 €) senza partita aperta, 280
+  anche fuori dal giornale. Ordine obbligato:
   `/api/admin/fatture/ripubblica-evento-created`, poi `/registra-pregresso`.
 - Da lanciare, con `dry_run` prima: `/api/admin/fatture/azzera-scadenze` (642
   fatture e 971 partite con la scadenza inventata dal vecchio import);
-  `/api/iva/lipe/importa` (`lipe_periodi` vuota); e
-  `/api/pos-corrispettivi/chiusure-giornaliere/ricostruisci-numia` (senza, 180
-  giornate su 183 restano «attende chiusura POS reale»).
+  `/api/iva/lipe/importa` (`lipe_periodi` vuota); e `ricostruisci-numia` di
+  `/api/pos-corrispettivi` (senza, 180 giornate su 183 «attendono chiusura POS»).
 - Riconciliazione: 158 fatture `riconciliata` con movimento non riconciliato,
   180 righe hub senza `fattura_id`; banca 2026 con 1.765 movimenti senza categoria.
-- Drive `03/ESTRATTI CONTO/DA ELABORARE`: 291 documenti pre-2026 fermi per scelta; gli estratti importati arrivano al 17/08.
+  Drive `03/ESTRATTI CONTO/DA ELABORARE`: 291 documenti pre-2026 fermi per
+  scelta; gli estratti importati arrivano al 17/08.
 - HR: 38 bonifici con `cedolino_id` orfano, 119 in «bonifici da associare», 10
   tabelle attese dall'app assenti (turni_config, onomastici, richieste…),
-  Iazzetta Francesco senza IBAN; Appuhamy, Aurigemma, Vitiello e Dell'Aquila da
-  creare come storici cessati. UNILAV Moscato e Pocci da verificare (Ferrantini).
-- `app/models/stati.py::STATI_PAGATI` conta «parziale» fra le pagate, ed è
-  applicata a `status`, che sulle fatture vale solo archiviata/imported/
-  archived: oggi non filtra niente. Da togliere o correggere.
-- Drill-down «Verifica campi e F24»: agganciato al vecchio indice Drive, che
-  non esiste più. `/api/download` serve `./downloads`, che nessuno popola.
-- A mano, dal titolare: ruotare la password Postgres; DNS di `ceraldiapp.it` e
-  servizi Render sospesi.
+  Iazzetta senza IBAN; Appuhamy, Aurigemma, Vitiello e Dell'Aquila da creare
+  come storici cessati; UNILAV Moscato e Pocci da verificare (Ferrantini).
+- `app/models/stati.py::STATI_PAGATI` conta «parziale» fra le pagate ed è
+  applicata a `status`, che sulle fatture non dice se è pagata: oggi non filtra
+  niente. Da togliere o correggere.
+- Drill-down «Verifica campi e F24»: agganciato al vecchio indice Drive, che non
+  esiste più. `/api/download` serve `./downloads`, che nessuno popola.
+- A mano, dal titolare: **far ripartire `sync_rt_to_drive.py` sul PC del
+  negozio** (fermo dal 28/08, 23 giornate di incassi non acquisite); ruotare la
+  password Postgres; DNS di `ceraldiapp.it` e servizi Render sospesi.
 - Fork `app/hr/` quasi chiuso: restano **cinque** sottopercorsi duplicati
   (`routers/auth.py`, `routers/employees/dipendenti.py`, `routers/pin_login.py`,
   `routers/tfr.py`, `utils/dependencies.py`) più i tre del guscio, separati per
   scelta. Finché una coppia è aperta ogni correzione va cercata anche nel
-  gemello; crescere non può, `tests/runtime/test_fork_app_hr.py` impone che la
-  lista si accorci soltanto.
-- `gestionale.blobs`: 216 PDF (4 MB, scritti tutti il 03/09) che **nessun
-  documento cita** (zero chiavi `sha256:` in `documents`) e che solo
-  `app/services/blob_store.py`, mai importato, sa leggere: o si riaggancia
-  l'archivio, o si tolgono tutti e due. Stesso caso di
-  `bank_reconciliation_hub` (2.017 righe), scritta da un trigger e letta da
-  nessuno: o le si dà un lettore, o va spenta.
+  gemello; `tests/runtime/test_fork_app_hr.py` impone che la lista si accorci.
+- `gestionale.blobs`: 216 PDF che **nessun documento cita**, leggibili solo da
+  `app/services/blob_store.py`, mai importato: o si riaggancia l'archivio, o si
+  tolgono tutti e due. Stesso caso di `bank_reconciliation_hub` (2.017 righe),
+  scritta da un trigger e letta da nessuno.
 - `archivio_documenti_memoria.py` espone ancora `SheetDatabase` e
-  `MemorySheetsClient`, che promettono Google Sheets senza chiamarlo mai: 54 e
-  2 occorrenze in 12 file, da rinominare in un giro dedicato.
+  `MemorySheetsClient`: promettono Google Sheets senza chiamarlo mai (56
+  occorrenze in 12 file), da rinominare.
 
 ## Logica dentro al database
 
@@ -868,11 +869,10 @@ Su Supabase ci sono **trigger PL/pgSQL che scrivono dati contabili**: leggere
 il codice non basta per sapere cosa succede a una riga. Elenco, ruolo di
 ognuno e query su `pg_trigger` stanno in
 `database/trg_bank_ec_before_write.sql`. La regola: **una regola contabile si
-scrive in Python, versionata e testata**. Per questo il 19/09/2026
-`trg_bank_ec_before_write` è stato rimosso — duplicava in SQL
-`proiezione_bancaria.py`, girava prima e vinceva. Restano le guardie
-anti-cancellazione, quelle su `updated_at` e `trg_bank_ec_after_write`, che
-alimenta `entity_relations`.
+scrive in Python, versionata e testata** — per questo `trg_bank_ec_before_write`
+non c'è più, duplicava `proiezione_bancaria.py` e vinceva perché girava prima.
+Restano le guardie anti-cancellazione, quelle su `updated_at` e
+`trg_bank_ec_after_write`, che alimenta `entity_relations`.
 
 ## Verifica e pubblicazione
 

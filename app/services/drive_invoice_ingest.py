@@ -390,7 +390,7 @@ async def _do_sync(db, *, target_year: Optional[int] = None) -> Dict[str, Any]:
     parent_id = _folder_id()
     result = {
         "status": "ok", "total": 0, "imported": 0, "duplicates": 0,
-        "archiviate": 0, "errors": 0, "moved": 0, "details": [],
+        "archiviate": 0, "chiusure_rt": 0, "errors": 0, "moved": 0, "details": [],
         "source_inboxes": 0,
     }
     try:
@@ -440,6 +440,11 @@ async def _do_sync(db, *, target_year: Optional[int] = None) -> Dict[str, Any]:
                     result["imported"] += 1
                 elif st == "duplicate":
                     result["duplicates"] += 1
+                elif st == "chiusura_rt":
+                    # Non e' una fattura: e' una chiusura di cassa finita nel
+                    # canale sbagliato. E' stata consegnata ai corrispettivi,
+                    # quindi il file e' lavorato e va in `Elaborate`.
+                    result["chiusure_rt"] += 1
                 elif st in ("archiviata", "skipped_altro_anno"):
                     # Anno diverso da quello attivo: non entra in archivio,
                     # ma il file e' stato letto correttamente e va in
@@ -487,7 +492,7 @@ async def _do_sync(db, *, target_year: Optional[int] = None) -> Dict[str, Any]:
     prev = await db[_SYNC_STATE_COLLECTION].find_one({"_id": _SYNC_STATE_ID}) or {}
     last_result = {k: result[k] for k in (
         "total", "target_year", "target_year_pending", "attempted", "pending", "imported", "duplicates",
-        "archiviate", "errors", "moved", "source_inboxes",
+        "archiviate", "chiusure_rt", "errors", "moved", "source_inboxes",
     )}
     last_result["details"] = result["details"][:5]
     await db[_SYNC_STATE_COLLECTION].update_one(
@@ -553,7 +558,7 @@ async def ricostruisci_archivio_drive_lotto(
         )
         counters = {
             key: int(previous.get(key, 0) or 0) if can_resume else 0
-            for key in ("imported", "duplicates", "archiviate", "errors")
+            for key in ("imported", "duplicates", "archiviate", "chiusure_rt", "errors")
         }
         folders: Dict[str, int] = {}
         details: List[Dict[str, str]] = list(previous.get("details") or [])[-10:]
@@ -634,6 +639,8 @@ async def ricostruisci_archivio_drive_lotto(
                         counters["imported"] += 1
                     elif status == "duplicate":
                         counters["duplicates"] += 1
+                    elif status == "chiusura_rt":
+                        counters["chiusure_rt"] += 1
                     elif status in ("archiviata", "skipped_altro_anno"):
                         counters["archiviate"] += 1
                     else:
@@ -742,8 +749,8 @@ async def ricostruisci_archivio_drive(db) -> Dict[str, Any]:
 
         result: Dict[str, Any] = {
             "status": "running", "total": 0, "processed": 0,
-            "imported": 0, "duplicates": 0, "archiviate": 0, "errors": 0,
-            "folders": {}, "details": [],
+            "imported": 0, "duplicates": 0, "archiviate": 0, "chiusure_rt": 0,
+            "errors": 0, "folders": {}, "details": [],
         }
         try:
             unique_files: Dict[str, Dict[str, Any]] = {}
@@ -759,7 +766,7 @@ async def ricostruisci_archivio_drive(db) -> Dict[str, Any]:
                 {"$set": {"last_rebuild_result": {
                     **{k: result[k] for k in (
                         "status", "total", "processed", "imported", "duplicates",
-                        "archiviate", "errors", "folders",
+                        "archiviate", "chiusure_rt", "errors", "folders",
                     )},
                 }}},
                 upsert=True,
@@ -787,6 +794,8 @@ async def ricostruisci_archivio_drive(db) -> Dict[str, Any]:
                         result["imported"] += 1
                     elif status == "duplicate":
                         result["duplicates"] += 1
+                    elif status == "chiusura_rt":
+                        result["chiusure_rt"] += 1
                     elif status in ("archiviata", "skipped_altro_anno"):
                         result["archiviate"] += 1
                     else:
@@ -807,7 +816,7 @@ async def ricostruisci_archivio_drive(db) -> Dict[str, Any]:
                 if index % 25 == 0 or index == result["total"]:
                     checkpoint = {k: result[k] for k in (
                         "status", "total", "processed", "imported", "duplicates",
-                        "archiviate", "errors", "folders",
+                        "archiviate", "chiusure_rt", "errors", "folders",
                     )}
                     await db[_SYNC_STATE_COLLECTION].update_one(
                         {"_id": _SYNC_STATE_ID},
@@ -825,7 +834,7 @@ async def ricostruisci_archivio_drive(db) -> Dict[str, Any]:
         completed_at = datetime.now(timezone.utc).isoformat()
         final_result = {k: result[k] for k in (
             "status", "total", "processed", "imported", "duplicates",
-            "archiviate", "errors", "folders",
+            "archiviate", "chiusure_rt", "errors", "folders",
         )}
         await db[_SYNC_STATE_COLLECTION].update_one(
             {"_id": _SYNC_STATE_ID},

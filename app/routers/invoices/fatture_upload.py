@@ -1761,6 +1761,96 @@ def _source_metadata_fields(
     return result
 
 
+#: Il tag radice di una chiusura giornaliera del registratore telematico
+#: (tracciato COR10 dell'Agenzia delle Entrate). Il prefisso di namespace
+#: cambia da un registratore all'altro (`n1:`, `p:`, nessuno), quindi si
+#: confronta il nome locale e non la stringa intera.
+_RADICE_CHIUSURA_RT = re.compile(r"<(?:[A-Za-z0-9_.-]+:)?DatiCorrispettivi[\s>]")
+
+
+def e_chiusura_rt(xml_content: str) -> bool:
+    """Vero se questo XML e' una chiusura di cassa, non una fattura.
+
+    Si guarda il contenuto, mai il nome del file: i file RT si chiamano
+    `<progressivo>_<piva>.xml`, cioe' esattamente come certe fatture.
+
+    La fattura vince sempre: se nella testa del documento compare
+    `FatturaElettronica`, quello e' il documento, e un `DatiCorrispettivi`
+    piu' avanti puo' solo essere testo dentro un allegato o una descrizione.
+    Senza questa precedenza basterebbe una parola in una riga di fattura per
+    dirottare un costo vero nei ricavi.
+    """
+    testa = xml_content.lstrip("﻿ \t\r\n")[:4000]
+    if re.search(r"<(?:[A-Za-z0-9_.-]+:)?FatturaElettronica[\s>]", testa):
+        return False
+    return bool(_RADICE_CHIUSURA_RT.search(testa))
+
+
+async def _consegna_chiusura_rt(
+    db, xml_content: str, filename: str, source: str, applica_filtro_anno: bool,
+) -> Dict[str, Any]:
+    """Passa una chiusura RT finita nel canale fatture al motore dei corrispettivi.
+
+    Il 20/09/2026 in `01_FATTURE_RICEVUTE/FATTURE/2026/Errori` c'erano
+    **19 chiusure RT**: il canale fatture le leggeva come XML rotti
+    («FatturaElettronicaBody non trovato»), le spediva in `Errori` e le
+    rileggeva a ogni giro senza mai importarle. Con loro erano fuori dai
+    conti gli incassi del 25, 26 e 27 agosto.
+
+    Non si duplica il motore: `ingest_corrispettivo_parsed` resta l'unico
+    che sa registrare un corrispettivo (Prima Nota cassa per i contanti,
+    banca per l'elettronico, partita doppia) ed e' idempotente, quindi una
+    giornata gia' in archivio torna `duplicate` senza scrivere nulla.
+    """
+    from app.parsers.corrispettivi_parser import parse_corrispettivo_xml
+    from app.routers.invoices.corrispettivi_helpers import ingest_corrispettivo_parsed
+
+    parsed = parse_corrispettivo_xml(xml_content)
+    if parsed.get("error"):
+        logger.warning(
+            "[Fatture] %s e' una chiusura RT, ma il parser dei corrispettivi la rifiuta: %s",
+            filename, parsed["error"])
+        return {"status": "error", "filename": filename,
+                "error": f"chiusura RT illeggibile: {parsed['error']}"}
+    if db is None:
+        # Anteprima senza archivio (test, validazione di un upload manuale):
+        # si dice che cos'e', non si scrive.
+        return {"status": "chiusura_rt", "filename": filename,
+                "data": parsed.get("data"), "importato": False}
+
+    if applica_filtro_anno:
+        # Nel gestionale resta solo l'anno attivo, e la regola vale per i
+        # corrispettivi esattamente come per le fatture: una chiusura di un
+        # anno passato non entra, l'originale resta su Drive.
+        from app.services.config_import import get_anno_importazione_attivo
+        data_rt = str(parsed.get("data") or "")
+        anno_rt = int(data_rt[:4]) if data_rt[:4].isdigit() else None
+        anno_attivo = await get_anno_importazione_attivo(db)
+        if anno_rt and anno_rt != anno_attivo:
+            logger.info(
+                "[Fatture] %s e' la chiusura RT del %s, l'anno attivo e' %s: "
+                "non entra nei corrispettivi, l'originale resta su Drive",
+                filename, data_rt, anno_attivo)
+            return {"status": "chiusura_rt", "filename": filename,
+                    "data": data_rt, "anno": anno_rt, "anno_attivo": anno_attivo,
+                    "importato": False, "azione": "skipped_altro_anno"}
+
+    esito = await ingest_corrispettivo_parsed(
+        db, parsed, filename=filename, source="xml", update_if_exists=False)
+    logger.info(
+        "[Fatture] %s non e' una fattura ma la chiusura RT del %s, arrivata nel "
+        "canale fatture da %s: consegnata ai corrispettivi (%s)",
+        filename, esito.get("data"), source, esito.get("action"))
+    return {
+        "status": "chiusura_rt",
+        "filename": filename,
+        "data": esito.get("data"),
+        "azione": esito.get("action"),
+        "corrispettivo_id": esito.get("corrispettivo_id"),
+        "importato": esito.get("action") in ("created", "updated"),
+    }
+
+
 async def process_xml_bytes(
     db,
     content: bytes,
@@ -1777,19 +1867,20 @@ async def process_xml_bytes(
     Usata sia dall'upload bulk (`/upload-xml-bulk`) sia dall'ingest Google Drive,
     per non duplicare la logica di decodifica/parse/dedup/import.
 
-    `applica_filtro_anno` (richiesta utente 14/07/2026, SOLO per l'ingest
-    automatico dalla cartella Drive condivisa: "carica solo quelle con data
-    fattura 2026, gli anni precedenti metti in un archivio fatture
-    consultabile per visione personale"): se True e la data fattura non è
-    nell'anno corrente, la fattura NON entra nel flusso contabile attivo
-    (niente Prima Nota, scadenzario, alert, magazzino) — viene solo
-    archiviata per consultazione (vedi archivia_fattura_storica). Default
-    False: l'upload manuale via UI e le altre fonti (PEC/SDI, fatture
-    estere) restano invariate, un utente che carica volontariamente una
-    fattura di un anno passato si aspetta che venga registrata normalmente.
+    `applica_filtro_anno` (SOLO per l'ingest automatico dalla cartella Drive
+    condivisa): se True e la data fattura non è nell'anno attivo, la fattura
+    **non entra affatto** e si torna `skipped_altro_anno` — decisione del
+    titolare del 20/09/2026, che ha superato quella del 14/07/2026 (allora
+    entrava come archivio di sola consultazione). L'originale resta su Drive,
+    che è la fonte documentale. Default False: l'upload manuale via UI e le
+    altre fonti (PEC/SDI, fatture estere) restano invariate, un utente che
+    carica volontariamente una fattura di un anno passato si aspetta che
+    venga registrata normalmente.
 
     Ritorna un dict con `status` in {"imported", "duplicate", "error",
-    "archiviata"}.
+    "skipped_altro_anno", "chiusura_rt"}. Chi smista l'esito deve conoscerli
+    tutti: uno stato sconosciuto finisce nel ramo «errore» e manda in
+    `Errori` un file sano, che verrà riletto per sempre.
     """
     # 0. Busta firmata .p7m (CAdES): estrai l'XML interno prima di decodificare.
     if is_p7m_content(filename):
@@ -1816,6 +1907,14 @@ async def process_xml_bytes(
             continue
     if not xml_content:
         return {"status": "error", "filename": filename, "error": "Decodifica fallita"}
+
+    # 1bis. Una chiusura di cassa non e' una fattura. Prima di provare a
+    # leggerla come tale — cosa che fallirebbe con «FatturaElettronicaBody non
+    # trovato» e la manderebbe in `Errori` per sempre — la si riconosce dal
+    # contenuto e la si consegna al motore dei corrispettivi.
+    if e_chiusura_rt(xml_content):
+        return await _consegna_chiusura_rt(
+            db, xml_content, filename, source, applica_filtro_anno)
 
     # 2. Parse fattura elettronica
     parsed = parse_fattura_xml(xml_content)
