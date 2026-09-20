@@ -255,3 +255,127 @@ async def get_status():
         "schede_sanificazione": san,
         "ultimo_aggiornamento": ultimo_temp.get("updated_at") if ultimo_temp else None,
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TURNO DEL MATTINO — le rilevazioni del giorno si APRONO, non si riempiono
+#
+# Alle 07:00 il sistema prepara il lavoro della giornata: per ogni frigorifero
+# e congelatore attivo apre la casella di oggi e ci scrive CHI deve rilevare
+# (il responsabile assegnato all'apparecchio, nome preso da HR). La casella
+# resta senza temperatura: `temp` e' None, `stato` e' "da_rilevare".
+#
+# L'operatore la compila dal tablet, e il PIN con cui e' entrato E' la firma.
+# Quella e' una misura vera, con un nome vero sopra.
+#
+# Perche' non la riempie il sistema: fino al 20/09/2026 lo faceva, con una
+# temperatura sorteggiata dentro le soglie e un firmatario sorteggiato fra sei
+# dipendenti. Un registro HACCP che attesta controlli mai eseguiti, col nome di
+# chi non li ha eseguiti, davanti a un'ispezione vale meno di un registro
+# vuoto: e' un falso, e il rischio e' di chi lo esibisce.
+#
+# Cosa cambia in pratica: il registro si riempie lo stesso, ma la mattina i
+# responsabili trovano il loro elenco gia' pronto e a fine giornata si vede a
+# colpo d'occhio cosa manca — invece di scoprire a marzo che a settembre non
+# aveva rilevato nessuno.
+# ─────────────────────────────────────────────────────────────────────────────
+
+STATO_DA_RILEVARE = "da_rilevare"
+
+
+async def _apparecchi_attivi(tipo: str) -> list:
+    """Frigoriferi o congelatori in servizio, col loro responsabile."""
+    return await db.attrezzature_config.find(
+        {"tipo": tipo, "attivo": {"$ne": False}},
+        {"_id": 0, "numero": 1, "nome": 1, "operatore_id": 1, "operatore_nome": 1},
+    ).sort("numero", 1).to_list(100)
+
+
+async def apri_rilevazioni_del_giorno(quando=None) -> dict:
+    """Apre la casella di oggi su ogni apparecchio attivo, assegnata al suo
+    responsabile. Non scrive nessuna temperatura e non sovrascrive mai una
+    casella che ha gia' un valore.
+
+    Ritorna il riepilogo del turno: quante aperte, e su quali apparecchi manca
+    il responsabile (quelli il cui registro restera' senza firma finche'
+    qualcuno non li assegna).
+    """
+    adesso = quando or datetime.now(timezone.utc)
+    anno, mese, giorno = adesso.year, adesso.month, adesso.day
+    campo = f"temperature.{mese}.{giorno}"
+    ts = adesso.isoformat()
+
+    esito = {"aperte": 0, "gia_presenti": 0, "senza_responsabile": [], "data": adesso.date().isoformat()}
+
+    for tipo, collezione, chiave_numero in (
+        ("frigo", db.temperature_positive, "frigorifero_numero"),
+        ("congelatore", db.temperature_negative, "congelatore_numero"),
+    ):
+        for apparecchio in await _apparecchi_attivi(tipo):
+            numero = apparecchio.get("numero")
+            scheda = await collezione.find_one(
+                {"anno": anno, chiave_numero: numero},
+                {"_id": 1, "temperature": 1},
+            )
+            if not scheda:
+                continue  # la scheda dell'anno la crea chi registra, non il turno
+            if (scheda.get("temperature") or {}).get(str(mese), {}).get(str(giorno)) is not None:
+                esito["gia_presenti"] += 1
+                continue
+            if not apparecchio.get("operatore_id"):
+                esito["senza_responsabile"].append(apparecchio.get("nome", f"{tipo} {numero}"))
+            await collezione.update_one(
+                {"_id": scheda["_id"]},
+                {"$set": {
+                    campo: {
+                        "temp": None,                       # la misura la fa una persona
+                        "stato": STATO_DA_RILEVARE,
+                        "operatore_id": apparecchio.get("operatore_id", ""),
+                        "operatore_nome": apparecchio.get("operatore_nome", ""),
+                        "aperta_il": ts,
+                        "allarme": False,
+                    },
+                    "updated_at": ts,
+                }},
+            )
+            esito["aperte"] += 1
+    return esito
+
+
+@router.post("/apri-rilevazioni-oggi")
+async def apri_rilevazioni_oggi(_admin=Depends(require_admin)):
+    """Rifa' a mano il turno del mattino (se il servizio era spento alle 07:00)."""
+    return {"success": True, **await apri_rilevazioni_del_giorno()}
+
+
+@router.get("/turno-oggi")
+async def turno_di_oggi():
+    """Cosa resta da rilevare oggi, e a chi tocca. Lo leggono i tablet."""
+    adesso = datetime.now(timezone.utc)
+    mese, giorno = str(adesso.month), str(adesso.day)
+    da_fare, fatte = [], 0
+    for tipo, collezione, chiave_numero in (
+        ("frigo", db.temperature_positive, "frigorifero_numero"),
+        ("congelatore", db.temperature_negative, "congelatore_numero"),
+    ):
+        for scheda in await collezione.find(
+            {"anno": adesso.year}, {"_id": 0, chiave_numero: 1, "temperature": 1,
+                                    "frigorifero_nome": 1, "congelatore_nome": 1},
+        ).to_list(100):
+            casella = (scheda.get("temperature") or {}).get(mese, {}).get(giorno)
+            if not isinstance(casella, dict):
+                if casella is not None:
+                    fatte += 1
+                continue
+            if casella.get("temp") is not None:
+                fatte += 1
+                continue
+            da_fare.append({
+                "tipo": tipo,
+                "numero": scheda.get(chiave_numero),
+                "nome": scheda.get("frigorifero_nome") or scheda.get("congelatore_nome") or "",
+                "operatore_id": casella.get("operatore_id", ""),
+                "operatore_nome": casella.get("operatore_nome", ""),
+            })
+    return {"data": adesso.date().isoformat(), "da_rilevare": da_fare,
+            "quante_da_rilevare": len(da_fare), "gia_rilevate": fatte}
