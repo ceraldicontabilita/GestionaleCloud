@@ -1,0 +1,959 @@
+{
+  "_cos_e": "Il metodo di pagamento di ogni fornitore: 'cassa', 'banca' o 'misto'. E' il dato che decide se una fattura finisce in Prima Nota Cassa o Banca. Senza, la fattura resta sospesa e fuori dai saldi.",
+  "_perche_sta_qui": "Perche' vive in git e non si perde. Il 20/09/2026 i metodi impostati non sono stati ritrovati in nessuna parte del database: ne' in fornitori, ne' nell'audit, ne' nelle proposte, ne' nell'archivio legacy (che un campo metodo non ce l'ha proprio). Questo file e' la copia che sopravvive.",
+  "_come_si_usa": [
+    "1. Scrivi 'cassa', 'banca' o 'misto' accanto a ogni fornitore.",
+    "2. POST /api/fornitori/metodi-pagamento/importa — li applica all'anagrafica.",
+    "3. GET /api/fornitori/metodi-pagamento/esporta — rigenera questo file dai dati vivi.",
+    "Lascia vuoto quello che non sai: un metodo sbagliato registra un pagamento mai avvenuto."
+  ],
+  "_chiave": "partita_iva quando c'e', altrimenti il nome normalizzato",
+  "metodi_ammessi": [
+    "cassa",
+    "banca",
+    "misto"
+  ],
+  "aggiornato_il": "2026-09-20",
+  "fornitori": [
+    {
+      "nome": "\"RONDINELLA MARKET S.R.L.\"",
+      "partita_iva": "04518411212",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "2M ITALIA S.R.L.",
+      "partita_iva": "03614591216",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "A 2000 Costruzioni S.r.l",
+      "partita_iva": "08577391215",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "ABC - ACQUA BENE COMUNE NAPOLI A.S.",
+      "partita_iva": "07679350632",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "ACQUAVERDE SRL",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "ALD Automotive Italia S.r.l.",
+      "partita_iva": "01924961004",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Alfa Service Srl",
+      "partita_iva": "06626921214",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "AMARELLI FABBRICA DI LIQUIRIZIA S.r.L.",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Amazon Business EU S.a.r.l, Sede Secondaria",
+      "partita_iva": "13397910962",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Amazon EU S.a r.l., Succursale Italiana",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Amodio s.r.l.",
+      "partita_iva": "04786440638",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "ANATRELLA DISTRIBUZIONI S.R.L.",
+      "partita_iva": "07784231214",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Aniello Limone",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "ANTHIRAT CONTROL S.R.L.",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Antonio De Biasio",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Any Lamp B.V.",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "AP COMMERCIALE S.R.L.",
+      "partita_iva": "07489941216",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "ARREDOTOP Srl",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "ARTECARTA ITALIA S.R.L.",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "ARUBA SPA",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "ARVAL SERVICE LEASE ITALIA SPA",
+      "partita_iva": "04911190488",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "B.S. S.R.L.",
+      "partita_iva": "07319190638",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "BARBETTA RICAMBI BAGNO di BARBETTA ROBERTO",
+      "partita_iva": "02521360699",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "BIG FOOD SRL",
+      "partita_iva": "06356400637",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "BRICOLEVANTE DI FREZZA ALESSANDRO",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "BUONAIUTO  SAS DI G. LIGUORI ",
+      "partita_iva": "07005050633",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "BUONGELO S.R.L.",
+      "partita_iva": "06092201216",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "CAMPANIA 2 srl",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "CARINI GIOVANNI",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "CARPINO S.R.L.",
+      "partita_iva": "03635010659",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "CARTA & PARTY SNC DI COSITORE GIOVANNI",
+      "partita_iva": "05851861210",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Ceraldi Group S.R.L",
+      "partita_iva": "04523831214",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "CERALDI GROUP S.R.L.",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "CERAMICHE MARA S.R.L",
+      "partita_iva": "05533631213",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "CHIAVI EXPRESS DI BERTAMINO NIVES & C. SAS",
+      "partita_iva": "06929960638",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "CIERVO FABIANA",
+      "partita_iva": "10654421212",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "CILATTE S.R.L.",
+      "partita_iva": "01353181215",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "CLIMARIA SISTEMI SRL",
+      "partita_iva": "07963411215",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "COFRUT SAS DI VIVENZIO CIRO",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "COLLEFASANI SOCIETA AGRICOLA A  R. L.",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "CONAD",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "CONFALONE s.r.l.",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "CONI GALASSO S.r.l.",
+      "partita_iva": "04947181212",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Coop. Soc. EUREKA onlus",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "CORRADO GORZEGNO",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Cromo SRL",
+      "partita_iva": "11325140967",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Daniel Pfattner",
+      "partita_iva": "03056300217",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "DI COSMO S.R.L.",
+      "partita_iva": "01835050616",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "DI MASSA di DI MASSA DARIO & c. sas",
+      "partita_iva": "07338881217",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "DI VINCENZO GROUP SRL",
+      "partita_iva": "18377021003",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "DISTILLERIA F.LLI CAFFO SRL",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "DISTILLERIA F.LLI CAFFO SRL ",
+      "partita_iva": "00093830792",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "DISTILLERIE CAMEL SPA",
+      "partita_iva": "00157230301",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "DIVISE & DIVISE SRL",
+      "partita_iva": "09432401215",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Dolciaria Acquaviva S.p.A. sog. all'att. di dir. e coord. di Vandemoortele NV",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "DOMORI SPA",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Drink Up S.r.l.",
+      "partita_iva": "06443221210",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "EDENRED ITALIA Srl",
+      "partita_iva": "09429840151",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "EDILIZIA SANTAMARIA IMPORT EXPORT SRL",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "El-Ga Srl a Socio Unico",
+      "partita_iva": "12540380016",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "ELECTRONICS' HOUSE GIUSEPPE S.R.L.",
+      "partita_iva": "07370620630",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "ELISABETTA CARUSO",
+      "partita_iva": "01713080628",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Enel Energia S.p.A.",
+      "partita_iva": "15844561009",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Eni Plenitude S.p.A. Società Benefit",
+      "partita_iva": "12300020158",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "ENOTECA CONTE S.R.L. Unipersonale",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "ENOTECA DANTE S.R.L.",
+      "partita_iva": "07024451218",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Eureka Onlus societa' cooperativa sociale",
+      "partita_iva": "03162360618",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "EUROMERCATO",
+      "partita_iva": "09161111217",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Europa 23 S.R.L.",
+      "partita_iva": "01893910701",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "EUROUOVA SRL",
+      "partita_iva": "07832841212",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "F.COVONE INSIEME SRL",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "F.LLI CASOLARO HOTELLERIE S.P.A.",
+      "partita_iva": "00838370633",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "F.lli Fiorentino Srl",
+      "partita_iva": "01637290634",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "F.LLI SOMMELLA",
+      "partita_iva": "06119081211",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "FASTWEB SpA",
+      "partita_iva": "12878470157",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Fattura24 S.r.l.",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "FIRE SOLUTION GROUP SRL",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "FLA S.R.L.",
+      "partita_iva": "09336951216",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "FoodNess SpA",
+      "partita_iva": "01930570203",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "FULVIO FERRANTINI",
+      "partita_iva": "04997201217",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "G.I.A.L. GENERALE INGROSSO ALIMENTARE S.R.L.",
+      "partita_iva": "00986800613",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "GB FOOD SRL",
+      "partita_iva": "07593261212",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "GE.FI.AL. SAS DI FIORENZANO GENNARO & C.",
+      "partita_iva": "02857050617",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "GELINOVA GROUP SRL società unipersonale",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "GENERALE INGROSSO ALIMENTARI srl",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "giuliano puma",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "GIUSEPPE GARGIULO",
+      "partita_iva": "05867230657",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Google Cloud Italy S.r.l.",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "GRANZUCCHERI SRL",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "GRUPPO MARTELLOZZO S.R.L.",
+      "partita_iva": "01557380936",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "GRUPPO PARZIALE A.EFIGLI s.r.l",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "GSM marmi Sbordone Srl",
+      "partita_iva": "03307320618",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "GTM DETERSIVI DI TOMMASINO CLAUDIO",
+      "partita_iva": "08486771218",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "GTO srl",
+      "partita_iva": "12256430963",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "HP Italy S.r.l.",
+      "partita_iva": "08954150960",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "I COZZOLINO SRL",
+      "partita_iva": "06523851217",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "IDEA CASA SAS DI SIMEONE CARMINE",
+      "partita_iva": "08845361214",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "IFI SUD GROUP SRL",
+      "partita_iva": "05801401216",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "IL MONDO SENZA GLUTINE S.N.C. DI SABATINO ALFONSO & C.",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "INGROSSO E DISTRIBUZIONE BIBITE DI CINOGLOSSO CAMILLO",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "ITALESSE S.R.L",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "KIMBO S.P.A.",
+      "partita_iva": "01238591216",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "KOBI BREWING SRL",
+      "partita_iva": "09668871214",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "KUWAIT PETROLEUM ITALIA SPA",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "L.MORELLI E FIGLIO S.R.L.",
+      "partita_iva": "00957820509",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "LA FONTANINA SRL",
+      "partita_iva": "05839901211",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "LA SPILLATURA S.R.L.",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "LANGELLOTTI GROUP SRL",
+      "partita_iva": "07683401215",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "LARICOGAR S.R.L.",
+      "partita_iva": "11005861213",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Leasys Italia S.p.A",
+      "partita_iva": "06714021000",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "LEMIRO' SRL",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Leroy Merlin Italia srl",
+      "partita_iva": "05602710963",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "LEVIGAZIONE MARMI SRLS",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "MANTOVANI S.P.A.",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "MARCO GARGIULO",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "mario criscitiello",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "MASTER FROST S.R.L.",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "ME.PA. ALIMENTARI S.R.L.",
+      "partita_iva": "04352551214",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "MICROTECNICA S.R.L.",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Miraglia S.r.l.",
+      "partita_iva": "05956621212",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "MONALS SRLS",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "NAPOLITANO GROUP SRL",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "NASTI GROUP SRL",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "NATURISSIME SRL",
+      "partita_iva": "05157530634",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Novacqua srl",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Nuova Bever-lì",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "OFFICINE GRAFICHE SRL",
+      "partita_iva": "01592410441",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Openapi SpA",
+      "partita_iva": "12485671007",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "P.S.D. DISTRIBUZIONE SRL",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "P.S.D. DISTRIBUZIONE SRL ",
+      "partita_iva": "01694210764",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Paraiso F.C. ASD",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Pastiglie Leone Srl",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Perfetti Van Melle S.p.A.",
+      "partita_iva": "04219660158",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "PERLAGE SRL",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Pfattner Daniel",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Pick Solutions S.r.l.s.",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "PIETRO CASTALDO",
+      "partita_iva": "09312771216",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "PROGETTO ALPHA S.R.L.S",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "PUNTO A SRL",
+      "partita_iva": "06040391218",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "R.A. COSTRUZIONI S.R.L.",
+      "partita_iva": "10521161215",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "R.T.A. ROMANA TECNOLOGIE",
+      "partita_iva": "11166551009",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "raffaele graziuso",
+      "partita_iva": "06268430631",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Register SpA",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "REKORDATA SRL",
+      "partita_iva": "05185750014",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Rentokil Initial Italia S.p.A.",
+      "partita_iva": "03986581001",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Ricambi Manzo sas di Manzo dr. Raf",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "RISTOPANNO DI DE MARTINO SIMONE",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "RISTOSUBITO SRL",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "ROSARIA MAROTTA",
+      "partita_iva": "07914040634",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "S.PASSALACQUA  S.P.A.",
+      "partita_iva": "01238001216",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "SAIMA S.p.A.",
+      "partita_iva": "01992440618",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "SAN CARLO",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "San Carlo Gruppo Alimentare S.P.A",
+      "partita_iva": "04172800155",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Sanson Cart sas di Esposito M. & C.",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Saro",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Scaramuzza Spa",
+      "partita_iva": "04013331006",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "SERRAMENTI AZZOLINO DI CAPUANO ILARIA",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "SIRO S.R.L. UNIPERSONALE",
+      "partita_iva": "04104640612",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Skechers USA Italia SRL",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Società Duegi S.r.l.",
+      "partita_iva": "02936711213",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "SOLO 50 CENTESIMI DI BALDI NICOLA",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "STE.CLA. PLAST DI ERNESTO AMODIO",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Subito.it S.r.l",
+      "partita_iva": "05526340962",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "SUD INGROSSO DI VINCENZO SRL",
+      "partita_iva": "08719711213",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "SWEET DRINK SAS DI VINCENZO LARENZA",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Tecmarket Servizi Spa",
+      "partita_iva": "03090380233",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "TERMOIDRAULICA VINACCIA S.A.S. DI SARRUBBI DANIELA",
+      "partita_iva": "03672961210",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "TIM  S.p.A.",
+      "partita_iva": "00488410010",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "TIMAS ASCENSORI S.R.L.",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "TIMAS ASCENSORI S.R.L.  ",
+      "partita_iva": "07818970639",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "TINEXTA INFOCERT S.p.A.",
+      "partita_iva": "07945211006",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Today Service S.r.l.",
+      "partita_iva": "07359860637",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "TOP DISTRBUZIONE SRL",
+      "partita_iva": "07267610637",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Top Distribuzione S.r.l.",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "TOP SPINA s.r.l. unipersonale",
+      "partita_iva": "06076491213",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "TURCOFRUTTA SRL - BDNOO IT0118034",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "UN MONDO DI OFFERTE S.R.L.",
+      "partita_iva": "05929030657",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "VAN BERKEL INTERNATIONAL SRL",
+      "partita_iva": "08688960965",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "VANDEMOORTELE EUROPE NV,           (SEDE SECONDARIA ITALIA)",
+      "partita_iva": "02644480994",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "VARRIALE SALVATORE",
+      "partita_iva": "06752641214",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "VDM Refrigeration di Vincenzo Di Macco",
+      "partita_iva": "08255871215",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "VE.MO. HOTELLERIE S.R.L.S.",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Venchi SpA",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "VIDOELETTRONICA SRL",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "Villa Sandi SpA",
+      "partita_iva": "",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "VITALE GROUP SRL",
+      "partita_iva": "06467201213",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "ZAMPINO NG SRL",
+      "partita_iva": "09809491211",
+      "metodo_pagamento": ""
+    },
+    {
+      "nome": "ZECCHINI EMME SRL",
+      "partita_iva": "07194111212",
+      "metodo_pagamento": ""
+    }
+  ]
+}

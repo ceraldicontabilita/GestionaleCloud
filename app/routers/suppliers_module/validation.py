@@ -34,17 +34,16 @@ async def get_fornitori_con_problemi_p0() -> Dict[str, Any]:
     1. Senza metodo di pagamento
     2. Metodo bancario senza IBAN
     """
+    from app.services.metodi_pagamento_fornitori import mancanti
+
     db = Database.get_db()
-    
-    # P0: Senza metodo pagamento
-    senza_metodo = await db[Collections.SUPPLIERS].find({
-        "$or": [
-            {"metodo_pagamento": None},
-            {"metodo_pagamento": ""},
-            {"metodo_pagamento": "da_configurare"},
-            {"metodo_pagamento": {"$exists": False}}
-        ]
-    }, {"_id": 0, "id": 1, "partita_iva": 1, "ragione_sociale": 1}).to_list(500)
+
+    # P0: senza metodo pagamento. L'elenco lo fa `mancanti()`, che usa il
+    # vocabolario canonico di `constants/metodi_pagamento.py`. Qui c'era una
+    # lista propria — None, "", "da_configurare", campo assente — che NON
+    # conosceva `"sospesa"`, cioe' proprio il valore che scrive l'import: il
+    # caso piu' frequente non veniva contato fra i problemi.
+    senza_metodo = await mancanti(db)
     
     # P0: Metodo bancario senza IBAN
     senza_iban = await db[Collections.SUPPLIERS].find({
