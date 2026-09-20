@@ -506,7 +506,17 @@ async def update_prima_nota_banca(
     db = Database.get_db()
     
     update_data = {"updated_at": datetime.now(timezone.utc).isoformat()}
-    
+
+    if "tipo" in data and data["tipo"] not in TIPO_MOVIMENTO:
+        raise HTTPException(status_code=400, detail="Tipo deve essere 'entrata' o 'uscita'")
+    if "importo" in data:
+        try:
+            importo = float(data["importo"])
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=422, detail="importo non valido")
+        if importo <= 0:
+            raise HTTPException(status_code=422, detail="importo deve essere > 0")
+
     for field in ["data", "tipo", "importo", "descrizione", "categoria", "riferimento", "note", "fornitore", "ragione_sociale"]:
         if field in data:
             update_data[field] = float(data[field]) if field == "importo" else data[field]
@@ -590,7 +600,13 @@ async def delete_movimento_banca(
     # (niente prima_nota_id orfano / stato pagata fantasma)
     if mov.get("fattura_id"):
         await db["invoices"].update_one(
-            {"id": mov["fattura_id"], "prima_nota_id": movimento_id},
+            {
+                "id": mov["fattura_id"],
+                "$or": [
+                    {"prima_nota_id": movimento_id},
+                    {"prima_nota_banca_id": movimento_id},
+                ],
+            },
             {"$set": {"stato_pagamento": "", "pagato": False, "paid": False},
              "$unset": {"prima_nota_id": "", "prima_nota_tipo": "",
                         "prima_nota_banca_id": "", "data_pagamento": ""}}
