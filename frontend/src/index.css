@@ -13,9 +13,9 @@
 :root {
   /* Brand navy */
   --c-primary:        #2a3329;
-  --c-primary-light:  #1e3a5f;
-  --c-primary-dark:   #081425;
-  --c-primary-soft:   #e8eef7;
+  --c-primary-light:  #3f5a4e;
+  --c-primary-dark:   #1a211a;
+  --c-primary-soft:   #e2efe8;
 
   /* Accent oro (sobrio, solo enfasi/attenzione) */
   --c-accent:         #b8860b;
@@ -55,13 +55,13 @@
   --radius-sm:6px; --radius-md:8px; --radius-lg:10px; --radius-xl:14px; --radius-full:9999px;
 
   /* Ombre — tinta navy, mai nere pure */
-  --shadow-sm: 0 1px 2px rgba(15,39,68,0.06);
-  --shadow-md: 0 2px 8px rgba(15,39,68,0.08);
-  --shadow-lg: 0 6px 16px rgba(15,39,68,0.10);
-  --shadow-xl: 0 12px 32px rgba(15,39,68,0.14);
-  --shadow-nav: 0 2px 8px rgba(15,39,68,0.18);
+  --shadow-sm: 0 1px 2px rgba(42, 51, 41,0.06);
+  --shadow-md: 0 2px 8px rgba(42, 51, 41,0.08);
+  --shadow-lg: 0 6px 16px rgba(42, 51, 41,0.10);
+  --shadow-xl: 0 12px 32px rgba(42, 51, 41,0.14);
+  --shadow-nav: 0 2px 8px rgba(42, 51, 41,0.18);
 
-  --focus-ring: 0 0 0 3px rgba(30,58,95,0.12);
+  --focus-ring: 0 0 0 3px rgba(63, 90, 78,0.12);
   --border-accent-left: 4px;
 
   --t-fast: 140ms ease;
@@ -139,7 +139,7 @@ code {
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { scrollbar-width: none; }
 
-::selection { background: rgba(15,39,68,0.14); color: var(--c-primary-dark); }
+::selection { background: rgba(42, 51, 41,0.14); color: var(--c-primary-dark); }
 
 /* ================================================================
    LAYOUT
@@ -255,7 +255,7 @@ table td {
   padding: 10px 14px; border-bottom: 1px solid var(--c-border);
   color: var(--c-text); vertical-align: middle;
 }
-table tbody tr:hover td { background: rgba(15,39,68,0.025); }
+table tbody tr:hover td { background: rgba(42, 51, 41,0.025); }
 table td.text-right, table th.text-right { text-align: right; }
 @media (max-width: 768px) { table th, table td { padding: 8px 10px; } }
 
@@ -336,7 +336,7 @@ table td.text-right, table th.text-right { text-align: right; }
 .mobile-nav-topnav {
   display: none; position: fixed; bottom: 0; left: 0; right: 0;
   background: var(--c-card); border-top: 1px solid var(--c-border);
-  box-shadow: 0 -2px 8px rgba(15,39,68,0.08); z-index: 900;
+  box-shadow: 0 -2px 8px rgba(42, 51, 41,0.08); z-index: 900;
   padding: 6px 4px; gap: 2px; justify-content: space-around;
 }
 @media (max-width: 768px) { .mobile-nav-topnav { display: flex; } }

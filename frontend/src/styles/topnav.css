@@ -4,9 +4,9 @@
 
 :root {
   --ceraldi-primary:       #2a3329;
-  --ceraldi-primary-dark:  #081425;
-  --ceraldi-primary-light: #1e3a5f;
-  --ceraldi-secondary:     #1e3a5f;
+  --ceraldi-primary-dark:  #1a211a;
+  --ceraldi-primary-light: #3f5a4e;
+  --ceraldi-secondary:     #3f5a4e;
   --ceraldi-bg:            #f1f5f9;
   --ceraldi-text:          #0f172a;
   --ceraldi-text-muted:    #64748b;
@@ -58,7 +58,7 @@
   position: fixed !important;
   top: 0; left: 0; right: 0;
   z-index: 1000;
-  box-shadow: 0 2px 8px rgba(15, 39, 68, 0.18);
+  box-shadow: 0 2px 8px rgba(42, 51, 41, 0.18);
 }
 
 .topnav-brand {
@@ -139,7 +139,7 @@
   color: #fff !important;
 }
 .topnav-drop-item:hover {
-  background: rgba(15, 39, 68, 0.06) !important;
+  background: rgba(42, 51, 41, 0.06) !important;
 }
 
 .topnav-items-scroll::-webkit-scrollbar { display: none; }

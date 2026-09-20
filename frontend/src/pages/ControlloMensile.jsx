@@ -552,7 +552,7 @@ export default function ControlloMensile() {
           left: 0,
           right: 0,
           bottom: 0,
-          background: 'rgba(15,39,68,0.5)',
+          background: 'rgba(42, 51, 41,0.5)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',

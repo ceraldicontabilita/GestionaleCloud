@@ -19,11 +19,15 @@ export function cn(...inputs) {
 
 /* ---------- PALETTE CHIAVE ---------- */
 export const COLORS = {
-  /* Brand navy */
+  /* Inchiostro del gruppo. Si chiamava «Brand navy» e il navy era rimasto
+     solo nelle tre varianti: `primary` era gia' stato portato all'inchiostro
+     verde, le altre no. Il bottone primario era quindi verde a riposo e
+     BLU al passaggio del mouse (`Button.jsx` usa primaryLight sull'hover).
+     Un nome non dice mai un colore che non contiene. */
   primary: '#2a3329',
-  primaryLight: '#1e3a5f',
-  primaryDark: '#081425',
-  primarySoft: '#e8eef7',
+  primaryLight: '#3f5a4e',
+  primaryDark: '#1a211a',
+  primarySoft: '#e2efe8',
   /* Accent oro (sobrio) */
   accent: '#b8860b',
   accentLight: '#d4a017',
@@ -75,14 +79,14 @@ export const SPACING = { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32
 
 /* ---------- OMBRE (tinta navy, mai nere) ---------- */
 export const SHADOWS = {
-  sm: '0 1px 2px rgba(15,39,68,0.06)',
-  md: '0 2px 8px rgba(15,39,68,0.08)',
-  lg: '0 6px 16px rgba(15,39,68,0.10)',
-  xl: '0 12px 32px rgba(15,39,68,0.14)',
-  nav: '0 2px 8px rgba(15,39,68,0.18)',
+  sm: '0 1px 2px rgba(42, 51, 41,0.06)',
+  md: '0 2px 8px rgba(42, 51, 41,0.08)',
+  lg: '0 6px 16px rgba(42, 51, 41,0.10)',
+  xl: '0 12px 32px rgba(42, 51, 41,0.14)',
+  nav: '0 2px 8px rgba(42, 51, 41,0.18)',
   // Ombra forte per modali/dialog in overlay — stessa tinta navy della scala
   // sopra, non nera: prima ogni pagina la scriveva a mano come rgba(0,0,0,...).
-  modal: '0 20px 50px rgba(15,39,68,0.28)',
+  modal: '0 20px 50px rgba(42, 51, 41,0.28)',
 };
 
 /* ---------- RADIUS (contenuto: ≤8px dati, ≤14px contenitori) ---------- */

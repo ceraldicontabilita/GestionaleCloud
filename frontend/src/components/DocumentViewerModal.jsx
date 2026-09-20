@@ -208,7 +208,7 @@ export default function DocumentViewerModal({
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(15,39,68,0.55)',
+        background: 'rgba(42, 51, 41,0.55)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',

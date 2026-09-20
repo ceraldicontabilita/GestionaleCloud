@@ -145,7 +145,7 @@ export default function GestionePagoPA() {
               style={{
                 padding: '10px 20px',
                 background: 'rgba(255,255,255,0.95)',
-                color: '#1e3a5f',
+                color: '#3f5a4e',
                 border: 'none',
                 borderRadius: 8,
                 cursor: loading ? 'not-allowed' : 'pointer',
@@ -251,7 +251,7 @@ export default function GestionePagoPA() {
               </div>
               <div
                 style={{
-                  background: '#1e3a5f',
+                  background: '#3f5a4e',
                   borderRadius: 8,
                   padding: '10px 12px',
                   color: 'white',
@@ -498,7 +498,7 @@ export default function GestionePagoPA() {
                 onClick={() => setStatoFiltro('tutti')}
                 style={{
                   padding: '8px 16px',
-                  background: statoFiltro === 'tutti' ? '#1e3a5f' : 'white',
+                  background: statoFiltro === 'tutti' ? '#3f5a4e' : 'white',
                   color: statoFiltro === 'tutti' ? 'white' : '#6b7280',
                   border: '1px solid #e5e7eb',
                   borderRadius: 6,

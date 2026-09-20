@@ -65,7 +65,7 @@ export default function AssociaMovimentoBanca({ fattura, onChiudi, onAssociato }
     <div
       onClick={onChiudi}
       style={{
-        position: 'fixed', inset: 0, background: 'rgba(15,39,68,0.55)', zIndex: 1100,
+        position: 'fixed', inset: 0, background: 'rgba(42, 51, 41,0.55)', zIndex: 1100,
         display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 14,
       }}
     >

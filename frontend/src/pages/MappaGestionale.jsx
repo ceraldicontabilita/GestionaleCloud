@@ -448,7 +448,7 @@ function AreaCard({ area, active, onClick }) {
       style={{
         ...styles.areaCard,
         borderColor: active ? area.color : '#e2e8f0',
-        boxShadow: active ? `0 10px 24px ${area.color}22` : '0 2px 8px rgba(15, 39, 68, 0.06)',
+        boxShadow: active ? `0 10px 24px ${area.color}22` : '0 2px 8px rgba(42, 51, 41, 0.06)',
       }}
     >
       <div style={styles.areaCardHeader}>
@@ -686,7 +686,7 @@ const styles = {
     borderRadius: 8,
     padding: '22px 24px',
     marginBottom: 16,
-    boxShadow: '0 6px 18px rgba(15, 39, 68, 0.16)',
+    boxShadow: '0 6px 18px rgba(42, 51, 41, 0.16)',
   },
   eyebrow: {
     fontSize: 11,
@@ -716,7 +716,7 @@ const styles = {
     borderRadius: 8,
     padding: 18,
     marginBottom: 16,
-    boxShadow: '0 2px 8px rgba(15, 39, 68, 0.06)',
+    boxShadow: '0 2px 8px rgba(42, 51, 41, 0.06)',
   },
   sectionHeader: {
     display: 'flex',
@@ -881,7 +881,7 @@ const styles = {
     background: '#fff',
     border: '1px solid #e2e8f0',
     borderRadius: 8,
-    boxShadow: '0 3px 12px rgba(15, 39, 68, 0.08)',
+    boxShadow: '0 3px 12px rgba(42, 51, 41, 0.08)',
     overflow: 'hidden',
   },
   detailHeader: {
@@ -983,7 +983,7 @@ const styles = {
     borderRadius: 8,
     padding: 18,
     marginTop: 16,
-    boxShadow: '0 2px 8px rgba(15, 39, 68, 0.06)',
+    boxShadow: '0 2px 8px rgba(42, 51, 41, 0.06)',
   },
   tableWrap: {
     overflowX: 'auto',

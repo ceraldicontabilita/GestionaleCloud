@@ -1073,7 +1073,7 @@ export default function GestioneAssegni() {
     // INTESTAZIONE AZIENDA (stile Commercialista)
     // ==========================================
     doc.setFontSize(16);
-    doc.setTextColor(30, 58, 95);
+    doc.setTextColor(63, 90, 78);
     doc.setFont(undefined, 'bold');
     doc.text('CERALDI GROUP S.R.L.', 14, 18);
 
@@ -1084,7 +1084,7 @@ export default function GestioneAssegni() {
     doc.text('P.IVA: 04523831214 - C.F.: 04523831214', 14, 29);
 
     // Linea separatrice
-    doc.setDrawColor(30, 58, 95);
+    doc.setDrawColor(63, 90, 78);
     doc.setLineWidth(0.5);
     doc.line(14, 33, 196, 33);
 
@@ -1092,7 +1092,7 @@ export default function GestioneAssegni() {
     // TITOLO DOCUMENTO
     // ==========================================
     doc.setFontSize(18);
-    doc.setTextColor(30, 58, 95);
+    doc.setTextColor(63, 90, 78);
     doc.setFont(undefined, 'bold');
     doc.text('CARNET ASSEGNI', 14, 45);
 
@@ -1114,7 +1114,7 @@ export default function GestioneAssegni() {
 
     doc.setFontSize(12);
     doc.setFont(undefined, 'bold');
-    doc.setTextColor(30, 58, 95);
+    doc.setTextColor(63, 90, 78);
     doc.text(`Totale Importo: ${formatEuro(totale)}`, 140, 62);
     doc.setFont(undefined, 'normal');
 
@@ -1162,7 +1162,7 @@ export default function GestioneAssegni() {
       body: tableData,
       theme: 'striped',
       headStyles: {
-        fillColor: [30, 58, 95],
+        fillColor: [63, 90, 78],
         textColor: 255,
         fontStyle: 'bold',
         fontSize: 9,
@@ -1243,7 +1243,7 @@ export default function GestioneAssegni() {
     // INTESTAZIONE AZIENDA (stile Commercialista)
     // ==========================================
     doc.setFontSize(16);
-    doc.setTextColor(30, 58, 95);
+    doc.setTextColor(63, 90, 78);
     doc.setFont(undefined, 'bold');
     doc.text('CERALDI GROUP S.R.L.', 14, 18);
 
@@ -1254,7 +1254,7 @@ export default function GestioneAssegni() {
     doc.text('P.IVA: 04523831214 - C.F.: 04523831214', 14, 29);
 
     // Linea separatrice
-    doc.setDrawColor(30, 58, 95);
+    doc.setDrawColor(63, 90, 78);
     doc.setLineWidth(0.5);
     doc.line(14, 33, 196, 33);
 
@@ -1262,7 +1262,7 @@ export default function GestioneAssegni() {
     // TITOLO DOCUMENTO
     // ==========================================
     doc.setFontSize(18);
-    doc.setTextColor(30, 58, 95);
+    doc.setTextColor(63, 90, 78);
     doc.setFont(undefined, 'bold');
     doc.text('REPORT ASSEGNI SELEZIONATI', 14, 45);
 
@@ -1282,7 +1282,7 @@ export default function GestioneAssegni() {
 
     doc.setFontSize(12);
     doc.setFont(undefined, 'bold');
-    doc.setTextColor(30, 58, 95);
+    doc.setTextColor(63, 90, 78);
     doc.text(`Totale Importo: ${formatEuro(totale)}`, 140, 62);
     doc.setFont(undefined, 'normal');
 
@@ -1327,7 +1327,7 @@ export default function GestioneAssegni() {
       body: tableData,
       theme: 'striped',
       headStyles: {
-        fillColor: [30, 58, 95],
+        fillColor: [63, 90, 78],
         textColor: 255,
         fontStyle: 'bold',
         fontSize: 9,
@@ -3066,7 +3066,7 @@ export default function GestioneAssegni() {
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(15,39,68,0.5)',
+            background: 'rgba(42, 51, 41,0.5)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -3163,7 +3163,7 @@ export default function GestioneAssegni() {
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(15,39,68,0.35)',
+            background: 'rgba(42, 51, 41,0.35)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',

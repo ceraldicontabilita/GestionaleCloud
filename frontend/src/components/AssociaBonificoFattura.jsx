@@ -100,10 +100,10 @@ export default function AssociaBonificoFattura({
         <div role="dialog" aria-modal="true" aria-label={`Bonifici candidati per la fattura ${dati.numero}`}
           onMouseDown={e => e.target === e.currentTarget && setAperto(false)}
           style={{ position: 'fixed', inset: 0, zIndex: 1200, display: 'flex', alignItems: 'center',
-            justifyContent: 'center', padding: 16, background: 'rgba(15, 39, 68, 0.52)' }}>
+            justifyContent: 'center', padding: 16, background: 'rgba(42, 51, 41, 0.52)' }}>
           <div style={{ width: 'min(760px, 100%)', maxHeight: 'calc(100vh - 32px)', overflowY: 'auto',
             background: '#f8fafc', border: '1px solid #6ee7b7', borderRadius: 12, padding: 16,
-            boxShadow: '0 24px 70px rgba(15, 39, 68, 0.28)' }}>
+            boxShadow: '0 24px 70px rgba(42, 51, 41, 0.28)' }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
               <div style={{ flex: 1 }}>
                 <div style={{ color: '#065f46', fontWeight: 800 }}>Bonifici per fattura {dati.numero}</div>

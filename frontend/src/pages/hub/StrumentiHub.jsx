@@ -98,7 +98,7 @@ export default function StrumentiHub() {
               transition: 'all 140ms ease',
               background: activeTab === tab.id ? tab.color : '#ffffff',
               color: activeTab === tab.id ? 'white' : '#64748b',
-              boxShadow: activeTab === tab.id ? '0 1px 2px rgba(15,39,68,0.08)' : 'none',
+              boxShadow: activeTab === tab.id ? '0 1px 2px rgba(42, 51, 41,0.08)' : 'none',
             }}
           >
             {tab.label}
