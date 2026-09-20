@@ -534,139 +534,111 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 
 ## Personale: un solo sistema per funzione
 
-- **L'anagrafica HR comanda** (`hr.app_dipendenti`): Lotti ne legge una
-  proiezione (`sincronizza_operatori_da_hr`), il gestionale si riallinea a HR.
-  Un solo stato del rapporto: `attivo` | `cessato` con data e motivo; la
-  cessazione revoca il PIN. `PUT /dipendenti/{id}` aggiorna **solo i campi
-  inviati**. La revoca, la chiusura dei contratti, il rifiuto delle richieste
-  di assenza future e l'annullamento delle partite stipendio residue stanno
-  tutti in un punto solo, `on_dipendente_cessato`: le pagine si limitano a
-  pubblicare `dipendente.cessato`, non ripetono la pulizia a mano.
-- **Un PIN per persona, nella scheda HR**: vale per il portale e per firmare
-  in Lotti (bcrypt più impronta HMAC; mai due persone in forza con lo stesso
-  PIN; mai un cessato). Il **PIN amministratore è uno solo per ERP, Menu,
-  Lotti e HR** (`PIN_HASH_ADMIN`, verifica unica in `app/services/admin_pin.py`):
-  apre le pagine riservate ma non è un'identità di firma sul tablet.
-- **Cedolini**: il gestionale li scarica (Drive e posta) e ne ricava la Prima
-  Nota salari; l'archivio che si vede è **solo in HR**
-  (`hr_cedolini_deposito`, richiamato dopo ogni scrittura, dedup per chiave o
-  per CF+anno+mese+tipo, mai sovrascrittura; 13ª e 14ª restano buste distinte).
-- Il netto si legge solo dalla cella graficamente associata a `TOTALE NETTO` /
-  `NETTO DEL MESE` / `NETTO IN BUSTA`: mai da `ARR. PREC.`, competenze,
-  trattenute, TFR, arrotondamenti o dal nome file. Cella vuota → nullo,
-  **mai zero**. Stati: `NETTO_VERIFICATO_DA_CEDOLINO`,
-  `NETTO_NON_PRESENTE_O_NON_LEGGIBILE`, `MULTIPLE_NETS_DA_VERIFICARE`,
-  `ERRORE_PARSER` (in `app/constants/stati_netto.py`); solo il primo alimenta
-  Salari e bonifici, e la decisione si prende **solo** con `alimenta_salari()`,
-  che fallisce **chiuso**: uno stato assente, vuoto o sconosciuto non passa.
-  Su un dato che diventa un bonifico l'assenza di prova non vale come prova.
-- Sulla collection `cedolini` il campo è **`pagato`**, non `pagata`: il
-  femminile non esiste su nessun documento e un filtro che lo cerca passa sempre.
-- **Un solo motore abbina bonifico e stipendio**: `associa_bonifici_stipendi`
-  (identità completa, acconti, residuo). Nessun percorso può cercarsi da solo
-  «il primo movimento con importo vicino e il nome nella descrizione»: un
-  omonimo o due buste uguali nello stesso mese bastano ad attaccare il
-  movimento sbagliato. Lo stesso per gli F24: `riconcilia_f24_tributi_banca`.
-  Un movimento vale come prova solo se ha **evidenza bancaria ufficiale** e
-  non è `in_attesa_estratto_ufficiale`.
-- Il Libro Unico si legge da un router solo (`app/routers/libro_unico_parser.py`,
-  chiamato dalla pipeline documentale): oltre a presenze e busta salva le voci
-  codificate del cedolino e i **dati chiave** (ratei 13ª e 14ª, indennità
-  L.207/24, trattamento integrativo L.21). Una voce assente resta nulla.
-- Duplicato di cedolino **solo con hash del PDF uguale**: stesso dipendente,
-  mese e importo non bastano (mensilità aggiuntive, arretrati, conguagli).
-- Una cessazione letta in una busta vale solo se non esiste una busta
-  successiva della stessa persona.
-- **Pagamenti stipendio**: un solo ponte gestionale→HR
-  (`hr_pagamenti_deposito`). Dipendente da CF → nome completo univoco →
-  cognome univoco: la corrispondenza univoca **basta da sola** («il nome di un
-  dipendente è un dipendente»: non serve la parola «stipendio» in causale né
-  un lotto paghe). Resta il veto: TFR, fatture, commissioni e fornitori non
-  entrano mai, nemmeno in coda, **anche con un nome dipendente dentro** la
-  causale — l'esclusione vince sul nome. Ambiguo o `BENEFICIARI VARI` → coda.
-  Il **lotto paghe** (≥3 dipendenti lo stesso giorno) resta un segnale per i
-  casi non risolti altrimenti. Competenza da causale o nome file, altrimenti
-  **regola del giorno 25**: prima del 25 = mese precedente, dal 25 = corrente.
-  Stesso pagamento da PDF e da banca (dipendente, importo, data ±3 gg) → un
-  solo esito, arricchito, mai duplicato.
-- «Bonifici da assegnare» è una proposta di importo dovuto, stato iniziale
-  `DA_ASSEGNARE`: non imposta bonifico eseguito, movimento, data di pagamento
-  né riconciliazione.
-- Cedolini e bonifici salario si associano per dipendente, periodo e regole
-  temporali: non si richiedono importi identici quando esistono acconti o
-  trattenute. Le correzioni a mano in «Paghe e bonifici» non vengono
-  sovrascritte dalla sincronizzazione.
-- **Dimissioni telematiche** (PDF o PEC): alert critico più scadenza UNILAV di
-  cessazione a **5 giorni** dalla decorrenza (D.Lgs. 181/2000 art. 4-bis);
-  revoca del lavoratore entro 7 giorni (D.Lgs. 151/2015 art. 26).
-- **Giorni di chiusura** (`chiusure_attivita`): ristrutturazione 26/01–08/03/2026
-  e ferie 15–23/08/2026 non sono corrispettivi mancanti.
-- **Dello storico interessano solo cedolini e F24**: fatture e corrispettivi
-  precedenti all'anno attivo non entrano in `invoices`/`corrispettivi`, e dal
-  20/09/2026 non ci entrano **nemmeno come archivio di consultazione** (il
-  `stato_import: archivio_storico` delle fatture e' stato tolto: erano 1.127
-  documenti e 52 MB fuori da ogni conto, che tornavano a ogni ricostruzione
-  Drive). L'originale sta su Drive. Per rivedere un anno intero: cambiare
-  l'anno attivo e rilanciare la ricostruzione, che rilegge tutti gli XML.
-- Modali HR: solo il componente `Modal` di `frontend_hr/src/App.jsx` (WCAG 2.1
-  AA: focus intrappolato, Esc, focus restituito). Campi dentro `<label>`,
-  `aria-label` sui bottoni ripetuti, focus visibile salvia.
+- **L'anagrafica HR comanda** (`hr.app_dipendenti`): Lotti ne legge una proiezione
+  (`sincronizza_operatori_da_hr`), il gestionale si riallinea a HR. Un solo stato del rapporto: `attivo` |
+  `cessato` con data e motivo; la cessazione revoca il PIN. `PUT /dipendenti/{id}` aggiorna **solo i campi
+  inviati**. La revoca, la chiusura dei contratti, il rifiuto delle richieste di assenza future e
+  l'annullamento delle partite stipendio residue stanno tutti in un punto solo, `on_dipendente_cessato`:
+  le pagine si limitano a pubblicare `dipendente.cessato`, non ripetono la pulizia a mano.
+- **Un PIN per persona, nella scheda HR**: vale per il portale e per firmare in Lotti (bcrypt più impronta
+  HMAC; mai due persone in forza con lo stesso PIN; mai un cessato). Il **PIN amministratore è uno solo
+  per ERP, Menu, Lotti e HR** (`PIN_HASH_ADMIN`, verifica unica in `app/services/admin_pin.py`): apre le
+  pagine riservate ma non è un'identità di firma sul tablet.
+- **Cedolini**: il gestionale li scarica (Drive e posta) e ne ricava la Prima Nota salari; l'archivio che
+  si vede è **solo in HR** (`hr_cedolini_deposito`, richiamato dopo ogni scrittura, dedup per chiave o per
+  CF+anno+mese+tipo, mai sovrascrittura; 13ª e 14ª restano buste distinte).
+- Il netto si legge solo dalla cella graficamente associata a `TOTALE NETTO` / `NETTO DEL MESE` / `NETTO
+  IN BUSTA`: mai da `ARR. PREC.`, competenze, trattenute, TFR, arrotondamenti o dal nome file. Cella vuota
+  → nullo, **mai zero**. Stati: `NETTO_VERIFICATO_DA_CEDOLINO`, `NETTO_NON_PRESENTE_O_NON_LEGGIBILE`,
+  `MULTIPLE_NETS_DA_VERIFICARE`, `ERRORE_PARSER` (in `app/constants/stati_netto.py`); solo il primo
+  alimenta Salari e bonifici, e la decisione si prende **solo** con `alimenta_salari()`, che fallisce
+  **chiuso**: uno stato assente, vuoto o sconosciuto non passa. Su un dato che diventa un bonifico
+  l'assenza di prova non vale come prova.
+- Sulla collection `cedolini` il campo è **`pagato`**, non `pagata`: il femminile non esiste su nessun
+  documento e un filtro che lo cerca passa sempre.
+- **Un solo motore abbina bonifico e stipendio**: `associa_bonifici_stipendi` (identità completa, acconti,
+  residuo). Nessun percorso può cercarsi da solo «il primo movimento con importo vicino e il nome nella
+  descrizione»: un omonimo o due buste uguali nello stesso mese bastano ad attaccare il movimento
+  sbagliato. Lo stesso per gli F24: `riconcilia_f24_tributi_banca`. Un movimento vale come prova solo se
+  ha **evidenza bancaria ufficiale** e non è `in_attesa_estratto_ufficiale`.
+- Il Libro Unico si legge da un router solo (`app/routers/libro_unico_parser.py`, chiamato dalla pipeline
+  documentale): oltre a presenze e busta salva le voci codificate del cedolino e i **dati chiave** (ratei
+  13ª e 14ª, indennità L.207/24, trattamento integrativo L.21). Una voce assente resta nulla.
+- Duplicato di cedolino **solo con hash del PDF uguale**: stesso dipendente, mese e importo non bastano
+  (mensilità aggiuntive, arretrati, conguagli).
+- Una cessazione letta in una busta vale solo se non esiste una busta successiva della stessa persona.
+- **Pagamenti stipendio**: un solo ponte gestionale→HR (`hr_pagamenti_deposito`). Dipendente da CF → nome
+  completo univoco → cognome univoco: la corrispondenza univoca **basta da sola** («il nome di un
+  dipendente è un dipendente»: non serve la parola «stipendio» in causale né un lotto paghe). Resta il
+  veto: TFR, fatture, commissioni e fornitori non entrano mai, nemmeno in coda, **anche con un nome
+  dipendente dentro** la causale — l'esclusione vince sul nome. Ambiguo o `BENEFICIARI VARI` → coda. Il
+  **lotto paghe** (≥3 dipendenti lo stesso giorno) resta un segnale per i casi non risolti altrimenti.
+  Competenza da causale o nome file, altrimenti **regola del giorno 25**: prima del 25 = mese precedente,
+  dal 25 = corrente. Stesso pagamento da PDF e da banca (dipendente, importo, data ±3 gg) → un solo esito,
+  arricchito, mai duplicato.
+- «Bonifici da assegnare» è una proposta di importo dovuto, stato iniziale `DA_ASSEGNARE`: non imposta
+  bonifico eseguito, movimento, data di pagamento né riconciliazione.
+- Cedolini e bonifici salario si associano per dipendente, periodo e regole temporali: non si richiedono
+  importi identici quando esistono acconti o trattenute. Le correzioni a mano in «Paghe e bonifici» non
+  vengono sovrascritte dalla sincronizzazione.
+- **Dimissioni telematiche** (PDF o PEC): alert critico più scadenza UNILAV di cessazione a **5 giorni**
+  dalla decorrenza (D.Lgs. 181/2000 art. 4-bis); revoca del lavoratore entro 7 giorni (D.Lgs. 151/2015
+  art. 26).
+- **Giorni di chiusura** (`chiusure_attivita`): ristrutturazione 26/01–08/03/2026 e ferie 15–23/08/2026
+  non sono corrispettivi mancanti.
+- **Dello storico interessano solo cedolini e F24**: fatture e corrispettivi precedenti all'anno attivo
+  non entrano in `invoices`/`corrispettivi`, e dal 20/09/2026 non ci entrano **nemmeno come archivio di
+  consultazione** (il `stato_import: archivio_storico` delle fatture e' stato tolto: erano 1.127 documenti
+  e 52 MB fuori da ogni conto, che tornavano a ogni ricostruzione Drive). L'originale sta su Drive. Per
+  rivedere un anno intero: cambiare l'anno attivo e rilanciare la ricostruzione, che rilegge tutti gli
+  XML.
+- Modali HR: solo il componente `Modal` di `frontend_hr/src/App.jsx` (WCAG 2.1 AA: focus intrappolato,
+  Esc, focus restituito). Campi dentro `<label>`, `aria-label` sui bottoni ripetuti, focus visibile
+  salvia.
 
 ## Fatture: identità e duplicati
 
-- Fornitore univoco per P.IVA → CF → id esterno verificato; gli alias sono
-  solo di supporto. `canonical_id` stabile: un cambio di ragione sociale non
-  crea una seconda anagrafica, e un merge conserva alias, IBAN, id precedenti,
-  documenti e audit.
-- Il metodo di pagamento si legge **solo dall'anagrafica fornitore**, mai
-  dedotto dalla fattura; se non configurato la fattura resta `sospesa`, mai
-  con un default «bonifico» **né un ripiego in cassa**: un pagamento in
-  contanti senza prova è un'uscita inventata. Le righe storiche
-  `source="metodo_fornitore_assente_provvisorio"` restano in archivio per
-  audit ma sono escluse da elenchi e saldi (`SOURCES_ESCLUSE` in
-  `app/routers/prima_nota_module/common.py`).
-- «Metodo di pagamento non configurato» ha un vocabolario solo,
-  `app/constants/metodi_pagamento.py`: `sospesa` (quello che scrive l'import),
-  `da_configurare`, `none`, vuoto e campo assente valgono uguale. Chi tiene la
-  propria lista si perde il caso più frequente.
-- **Le fatture fornitore non hanno scadenza.** Decisione del titolare
-  (19/09/2026): «decido io quando pagare». Non si leggono le condizioni di
-  pagamento dell'XML, non si leggono le date sul documento e non si inventa un
-  «+30»: `data_scadenza` resta vuota. Il piano rate si conserva come dato
-  dell'originale ma non guida niente. `check_scadenze_partite_task` salta le
-  partite fornitore e `FAT_DA_PAGARE_SCADUTA` non nasce più; F24 e stipendi,
-  che una scadenza vera ce l'hanno, restano invariati.
-- **«È pagata?» si chiede in un posto solo**: `e_pagata` /
-  `FILTRO_NON_PAGATE` di `app/services/stato_pagamento_fattura.py`, e
-  `ePagata` di `frontend/src/utils/statoFattura.js`. Lo stato vive in cinque
-  campi (`stato`, `stato_pagamento`, `payment_status`, `pagato`, `paid`) e
-  nessuno copre l'archivio: leggerne uno solo dichiarava non pagate 639
-  fatture da 311.838,20 €, e `{"pagato": {"$ne": True}}` le riportava tutte
-  fra le aperte. `status` è lo stato del documento e `stato_finanziario`
-  quello della riconciliazione: nessuno dei due dice se è pagata.
+- Fornitore univoco per P.IVA → CF → id esterno verificato; gli alias sono solo di supporto.
+  `canonical_id` stabile: un cambio di ragione sociale non crea una seconda anagrafica, e un merge
+  conserva alias, IBAN, id precedenti, documenti e audit.
+- Il metodo di pagamento si legge **solo dall'anagrafica fornitore**, mai dedotto dalla fattura; se non
+  configurato la fattura resta `sospesa`, mai con un default «bonifico» **né un ripiego in cassa**: un
+  pagamento in contanti senza prova è un'uscita inventata. Le righe storiche
+  `source="metodo_fornitore_assente_provvisorio"` restano in archivio per audit ma sono escluse da elenchi
+  e saldi (`SOURCES_ESCLUSE` in `app/routers/prima_nota_module/common.py`).
+- «Metodo di pagamento non configurato» ha un vocabolario solo, `app/constants/metodi_pagamento.py`:
+  `sospesa` (quello che scrive l'import), `da_configurare`, `none`, vuoto e campo assente valgono uguale.
+  Chi tiene la propria lista si perde il caso più frequente.
+- **Le fatture fornitore non hanno scadenza.** Decisione del titolare (19/09/2026): «decido io quando
+  pagare». Non si leggono le condizioni di pagamento dell'XML, non si leggono le date sul documento e non
+  si inventa un «+30»: `data_scadenza` resta vuota. Il piano rate si conserva come dato dell'originale ma
+  non guida niente. `check_scadenze_partite_task` salta le partite fornitore e `FAT_DA_PAGARE_SCADUTA` non
+  nasce più; F24 e stipendi, che una scadenza vera ce l'hanno, restano invariati.
+- **«È pagata?» si chiede in un posto solo**: `e_pagata` / `FILTRO_NON_PAGATE` di
+  `app/services/stato_pagamento_fattura.py`, e `ePagata` di `frontend/src/utils/statoFattura.js`. Lo stato
+  vive in cinque campi (`stato`, `stato_pagamento`, `payment_status`, `pagato`, `paid`) e nessuno copre
+  l'archivio: leggerne uno solo dichiarava non pagate 639 fatture da 311.838,20 €, e `{"pagato": {"$ne":
+  True}}` le riportava tutte fra le aperte. `status` è lo stato del documento e `stato_finanziario` quello
+  della riconciliazione: nessuno dei due dice se è pagata.
 - Il payload di `fattura.created` si costruisce solo con
-  `app/services/eventi_fattura.py::costruisci_evento_fattura_created`, così
-  import e recupero del pregresso propagano lo stesso evento.
-- Un import che **non** pubblica `fattura.created` lascia la fattura senza
-  partita aperta, senza alert e senza audit: nessun errore, nessuna traccia.
-  Il recupero è `POST /api/admin/fatture/ripubblica-evento-created` (admin,
-  background, `dry_run` per difetto), sugli stessi handler idempotenti.
-- Spostare una fattura fra Cassa e Banca cambia metodo, relazioni e scritture
-  **con lo stesso ID**: non nasce una seconda fattura.
-- `app/services/fatture_identita.py` ricava l'identità dall'XML con lo stesso
-  parser dell'import. L'impronta del **contenuto**
-  (`content_hash_canonico`, prefisso di versione `c2:`, insensibile a BOM, a
-  capo, codifica e caratteri non ASCII) prova che due XML sono la stessa
-  fattura. La dedup tiene la copia già nel giornale e **storna** la scrittura
-  del doppione. Collisioni aperte = `stato_import` di collisione **e**
-  `status` non archiviato.
+  `app/services/eventi_fattura.py::costruisci_evento_fattura_created`, così import e recupero del
+  pregresso propagano lo stesso evento.
+- Un import che **non** pubblica `fattura.created` lascia la fattura senza partita aperta, senza alert e
+  senza audit: nessun errore, nessuna traccia. Il recupero è `POST
+  /api/admin/fatture/ripubblica-evento-created` (admin, background, `dry_run` per difetto), sugli stessi
+  handler idempotenti.
+- Spostare una fattura fra Cassa e Banca cambia metodo, relazioni e scritture **con lo stesso ID**: non
+  nasce una seconda fattura.
+- `app/services/fatture_identita.py` ricava l'identità dall'XML con lo stesso parser dell'import.
+  L'impronta del **contenuto** (`content_hash_canonico`, prefisso di versione `c2:`, insensibile a BOM, a
+  capo, codifica e caratteri non ASCII) prova che due XML sono la stessa fattura. La dedup tiene la copia
+  già nel giornale e **storna** la scrittura del doppione. Collisioni aperte = `stato_import` di
+  collisione **e** `status` non archiviato.
 - Le note di credito ricevute (TD04/TD08, costante unica
-  `app/constants/tipi_documento.py::TIPI_NOTA_CREDITO`) non sono costi: sia il
-  ledger di cassa/banca (`prima_nota_module/sync.py`) sia il libro giornale
-  (`registrazione_contabile.py::registra_fattura`) generano la scrittura
-  invertita rispetto a una fattura normale (riduzione di costo, IVA a
-  credito e debito v/fornitore, mai un cespite) e leggono `tipo_documento`
-  prima di registrare.
+  `app/constants/tipi_documento.py::TIPI_NOTA_CREDITO`) non sono costi: sia il ledger di cassa/banca
+  (`prima_nota_module/sync.py`) sia il libro giornale (`registrazione_contabile.py::registra_fattura`)
+  generano la scrittura invertita rispetto a una fattura normale (riduzione di costo, IVA a credito e
+  debito v/fornitore, mai un cespite) e leggono `tipo_documento` prima di registrare.
 
 ## PartenoPay, verbali e flotta
 
@@ -724,6 +696,15 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   ponte dal gestionale vede **tutte** le fatture dell'anno: il tetto per giro vale sulle **ancora da
   prendere**, mai sull'elenco intero, che arriva ordinato per data — tagliarlo butta le più recenti (erano
   444 dal 30/06) e il buco cresce da solo. Quante restano lo dice `arretrato`.
+- **Una fattura che entra nel gestionale alimenta Lotti subito**: l'handler `fattura.created` importa
+  **quella sola** fattura (mai un ripasso d'archivio: il giro Drive ne porta 25 per volta). Lotti è a
+  valle, quindi un suo guasto non fa mai fallire l'import contabile. Il giro dei 15 minuti resta come rete.
+- **«Fattura attiva» si decide in un posto solo**, e per Lotti vale lo stesso criterio del libro giornale:
+  fuori `deleted`, `archived`/`archiviata`, `archivio_storico` e le collisioni di identità aperte. Un
+  filtro parallelo che guardava solo `deleted` mandava a Lotti 1.444 fatture invece di 889.
+- **Il registro delle ricevute non è una prova di presenza**: una riga vale solo se la fattura che dice di
+  aver preso esiste ancora in `fatture`. Altrimenti svuotare Lotti lascia il registro pieno, il ponte salta
+  tutto e il magazzino non si rialimenta più. Rialimentare non duplica: l'import è idempotente.
 - **Prezzi solo da acquisti reali in fattura XML.** Gli ordini hanno totali veri: prezzo di riga, aliquota
   IVA dall'XML, imponibile, IVA e totale che si ricalcolano a ogni variazione, con le stesse colonne nel
   PDF.

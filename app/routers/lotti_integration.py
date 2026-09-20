@@ -147,12 +147,34 @@ def _authorized(x_lotti_key: Optional[str]) -> None:
         raise HTTPException(status_code=401, detail="Chiave integrazione non valida")
 
 
+# Le due grafie dello stato archiviato convivono in archivio (regola 13 di
+# CLAUDE.md): un filtro che ne conosce una sola lascia passare documenti che
+# doveva escludere.
+_STATI_NON_ATTIVI = {"deleted", "archived", "archiviata"}
+
+
 def _attiva(doc: dict[str, Any]) -> bool:
-    return (
-        doc.get("entity_status") != "deleted"
-        and doc.get("status") != "deleted"
-        and not doc.get("deleted")
-    )
+    """Le stesse fatture che il gestionale considera attive, non altre.
+
+    Qui c'era un filtro PARALLELO che guardava solo `deleted`: il 20/09/2026
+    mandava a Lotti **1.444** fatture del 2026 mentre nel gestionale le attive
+    erano **889** — 555 archiviate in piu', piu' 46 collisioni di identita'
+    ancora da decidere. Lotti si ritrovava cosi' righe di magazzino nate da
+    doppioni che la contabilita' aveva gia' scartato.
+
+    Il criterio e' quello del libro giornale
+    (`registrazione_contabile._FILTRO_FATTURE_DA_REGISTRARE`): archiviata
+    significa fuori dai conti, e una collisione aperta aspetta che un operatore
+    decida quale originale vale — finche' non lo decide, non e' merce."""
+    if doc.get("entity_status") == "deleted" or doc.get("deleted"):
+        return False
+    if _text(doc.get("status")).lower() in _STATI_NON_ATTIVI:
+        return False
+    if _text(doc.get("stato_import")) == "archivio_storico":
+        return False
+    if doc.get("duplicate_review_required") is True:
+        return False
+    return True
 
 
 async def _documents() -> list[dict[str, Any]]:

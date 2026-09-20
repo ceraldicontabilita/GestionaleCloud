@@ -329,3 +329,46 @@ async def on_fornitore_aggiornato_risolvi(event: Dict[str, Any], db) -> Optional
         )
 
     return {"action": "alert_risolti", "count": risolti} if risolti > 0 else None
+
+
+# ============================================================
+# HANDLER 5: la fattura alimenta il magazzino di Lotti
+# ============================================================
+async def on_fattura_created_alimenta_lotti(event: Dict[str, Any], db) -> Optional[Dict]:
+    """Una fattura XML che entra deve alimentare anche Lotti, subito.
+
+    Prima esisteva solo il giro dei 15 minuti, che rileggeva l'intero elenco
+    dell'anno: quando quel giro si e' fermato (timeout sulle RPC, poi un tetto
+    che tagliava le fatture piu' recenti) il magazzino e' rimasto fermo al
+    26/05/2026 mentre nel gestionale le fatture continuavano ad arrivare, e
+    nessuno se n'e' accorto perche' i due percorsi non si parlavano.
+
+    Qui l'aggancio e' PUNTUALE: una sola fattura, quella dell'evento. Non e'
+    il ripasso d'archivio che `fattura.created` non deve mai innescare (il
+    giro Drive ne importa 25 alla volta, e un motore globale per documento
+    moltiplicherebbe il lavoro per il lotto) — e' l'import di quel singolo
+    documento, idempotente per fornitore + numero + data.
+
+    Non blocca mai l'import contabile: Lotti e' un consumatore a valle, e una
+    sua indisponibilita' non deve far fallire la registrazione della fattura.
+    """
+    fattura_id = event.get("fattura_id")
+    if not fattura_id:
+        return None
+    try:
+        from app.lotti.routers.gestionale_fatture import alimenta_lotti_da_fattura
+
+        esito = await alimenta_lotti_da_fattura(str(fattura_id))
+    except Exception as exc:  # noqa: BLE001 - il motivo va scritto, non ingoiato
+        logger.warning(
+            "[lotti] fattura %s non alimentata: %s: %s",
+            fattura_id, type(exc).__name__, exc,
+        )
+        return None
+    if esito.get("stato") != "alimentata":
+        logger.info(
+            "[lotti] fattura %s non alimentata (%s)",
+            fattura_id, esito.get("motivo") or esito.get("stato"),
+        )
+        return None
+    return {"action": "lotti_alimentato", "fattura_id": fattura_id}
