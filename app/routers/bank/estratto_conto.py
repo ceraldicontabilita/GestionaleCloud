@@ -25,6 +25,7 @@ from app.services.scritture_contabili import scrivi_movimento
 from app.services.bank_evidence import EVIDENZA_UFFICIALE, campi_evidenza
 from app.services.categorizzazione_movimenti import categorizza_movimento_bancario
 from app.services.regole_riconoscimento_banca import carica_regole as _carica_regole_riconoscimento
+from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -1002,7 +1003,7 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
             # "sospesa" = bloccata manualmente in Prima Nota Provvisoria:
             # esclusa dal matching automatico, come in riconciliazione_bancaria.
             "stato_pagamento": {"$nin": ["pagata", "paid", "sospesa"]},
-            "pagato": {"$ne": True},
+            **FILTRO_NON_PAGATE,
             "$or": [{"prima_nota_id": None}, {"prima_nota_id": {"$exists": False}}, {"prima_nota_id": ""}]
         }, {"_id": 0, "id": 1, "supplier_name": 1, "supplier_vat": 1, "total_amount": 1,
             "invoice_date": 1, "invoice_number": 1, "tipo_documento": 1}).to_list(500)

@@ -27,6 +27,7 @@ from app.services.payment_allocation_validator import (
     to_cents,
     invoice_total_cents,
 )
+from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -726,7 +727,7 @@ async def preview_combinazioni_assegni_v2(
         "$and": [
             {"$or": [
                 {"status": {"$nin": STATI_PAGATI}},
-                {"pagato": {"$ne": True}}
+                {**FILTRO_NON_PAGATE,}
             ]},
             {"total_amount": {"$gt": 0}},
             {"$nor": [
@@ -3207,7 +3208,7 @@ async def cerca_combinazioni_assegni(
         "$and": [
             {"$or": [
                 {"status": {"$nin": STATI_PAGATI}},
-                {"pagato": {"$ne": True}}
+                {**FILTRO_NON_PAGATE,}
             ]},
             {"total_amount": {"$gt": 0}},
             {"$nor": [

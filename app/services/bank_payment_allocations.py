@@ -26,6 +26,7 @@ from app.services.mapping_piano_conti import completa_conti_prima_nota
 from app.services.scadenze_rate_service import applica_quota_scadenze
 from app.services.scritture_contabili import FILTRO_MOVIMENTO_ATTIVO, scrivi_movimento_se_assente
 from app.services.prima_nota_integrity import totale_pagabile_al_fornitore
+from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
 
 logger = logging.getLogger(__name__)
 
@@ -617,7 +618,7 @@ async def _reconcile_unique_identity_matches(
         if str(movement.get("id")) not in excluded and _is_outgoing_invoice_candidate(movement)
     ]
     invoices = await db["invoices"].find({
-        "pagato": {"$ne": True},
+        **FILTRO_NON_PAGATE,
         "stato_pagamento": {"$ne": "pagata"},
     }, {"_id": 0}).to_list(50000)
     invoices_by_residual: Dict[int, List[Dict[str, Any]]] = {}
@@ -725,7 +726,7 @@ async def reconcile_deterministic_invoice_allocations(
                     {"invoice_number": ref},
                     {"numero_fattura": ref},
                 ],
-                "pagato": {"$ne": True},
+                **FILTRO_NON_PAGATE,
             }, {"_id": 0}).to_list(2)
             if len(candidates) != 1:
                 ambiguous = True

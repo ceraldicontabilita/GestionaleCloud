@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.database import Collections, Database
 from app.utils.dependencies import get_current_admin_user
+from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -253,7 +254,7 @@ async def get_bank_pending_invoices() -> Dict[str, Any]:
         "$or": [
             {"payment_status": {"$ne": "paid"}},
             {"stato_pagamento": {"$ne": "pagata"}},
-            {"pagato": {"$ne": True}},
+            {**FILTRO_NON_PAGATE,},
         ],
         "status": {"$ne": "deleted"},
     }

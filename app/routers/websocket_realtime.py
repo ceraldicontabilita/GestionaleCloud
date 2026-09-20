@@ -10,6 +10,7 @@ from app.config import settings
 from app.utils.logger import get_logger
 import asyncio
 from datetime import datetime, timezone
+from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -88,7 +89,7 @@ async def calculate_live_kpi(db, anno: int) -> dict:
         # Conteggi
         num_fatture = await db[Collections.INVOICES].count_documents({})
         num_dipendenti = await db[Collections.EMPLOYEES].count_documents({})
-        num_f24 = await db["f24_unificato"].count_documents({"pagato": {"$ne": True}})
+        num_f24 = await db["f24_unificato"].count_documents({**FILTRO_NON_PAGATE,})
         
         # Scadenze prossime (entro 7 giorni)
         from datetime import timedelta

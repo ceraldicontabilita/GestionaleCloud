@@ -10,6 +10,7 @@ import logging
 
 from app.database import Database
 from app.utils.error_handler import handle_errors
+from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -262,7 +263,7 @@ async def get_cash_flow_previsionale(
     # Fatture da pagare nei prossimi mesi
     fatture = await db["invoices"].find(
         {
-            "pagato": {"$ne": True},
+            **FILTRO_NON_PAGATE,
             "status": {"$ne": "paid"},
             "$or": [
                 {"data_scadenza": {"$lte": data_limite}},
@@ -356,7 +357,7 @@ async def get_aging_fornitori() -> Dict[str, Any]:
     
     fatture = await db["invoices"].find(
         {
-            "pagato": {"$ne": True},
+            **FILTRO_NON_PAGATE,
             "status": {"$ne": "paid"}
         },
         {"_id": 0}

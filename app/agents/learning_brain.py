@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime, timezone, date, timedelta
+from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
 
 
 class LearningCervello:
@@ -44,7 +45,7 @@ class LearningCervello:
     async def _genera_suggerimenti(self, db):
         sessanta_gg = (date.today() - timedelta(days=60)).isoformat()
         vecchie = await db["invoices"].count_documents({
-            "pagato": {"$ne": True},
+            **FILTRO_NON_PAGATE,
             "created_at": {"$lt": sessanta_gg}
         })
         if vecchie > 0:

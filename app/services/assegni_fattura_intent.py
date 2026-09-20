@@ -19,6 +19,7 @@ from app.services.payment_allocation_validator import (
     validate_invoice_allocation,
     is_credit_note,
 )
+from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
 
 
 TOLL = 0.005
@@ -440,7 +441,7 @@ async def prepara_intento_assegno(db, assegno_id: str) -> Dict[str, Any]:
             {"importo_totale": {"$gte": importo - TOLL, "$lte": importo + TOLL}},
         ],
         "entity_status": {"$ne": "deleted"},
-        "pagato": {"$ne": True},
+        **FILTRO_NON_PAGATE,
     }, {"_id": 0}).to_list(500)
     compatibili = [(inv, _score(assegno, inv)) for inv in invoices]
     compatibili = [(inv, score) for inv, score in compatibili if score > 0]

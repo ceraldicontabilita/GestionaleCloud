@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, Optional
 
 from app.services.bank_evidence import STATO_ATTESA_UFFICIALE
+from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
 
 
 def classifica_movimento_operativo(movimento: Dict[str, Any]) -> Optional[str]:
@@ -50,7 +51,7 @@ async def _candidato_univoco(db, movimento: Dict[str, Any], tipo: str) -> Option
 
     if tipo == "fattura":
         docs = await db["invoices"].find({
-            "pagato": {"$ne": True},
+            **FILTRO_NON_PAGATE,
             "$or": [
                 {"total_amount": {"$gte": importo - 0.01, "$lte": importo + 0.01}},
                 {"importo_totale": {"$gte": importo - 0.01, "$lte": importo + 0.01}},

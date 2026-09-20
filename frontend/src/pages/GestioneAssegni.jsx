@@ -10,6 +10,7 @@ import ModalFattura from '../components/ModalFattura';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import { toast } from 'sonner';
 import { Button, Badge, StatCard, Table, TableWrap, Th, Td, Input, RowActions, RowActionButton, ListaAdattiva } from '../components/ds';
+import { ePagata } from '../utils/statoFattura';
 
 // Fornitori mai pagabili con assegno (dettato utente 18/07/2026): arrivano
 // su carta di credito o addebito bancario, al limite bonifico — mai assegno.
@@ -278,7 +279,7 @@ export default function GestioneAssegni() {
       // una fattura specifica prevale sul metodo abituale cassa/misto del
       // fornitore e viene poi confermata dall'estratto conto.
       let filtered = items.filter(f => {
-        if (f.status === 'paid' || f.payment_status === 'paid' || f.pagato === true) return false;
+        if (ePagata(f)) return false;
         // Fornitori mai pagabili con assegno (dettato utente 18/07/2026):
         // arrivano su carta di credito o addebito bancario, mai su assegno.
         const fornitoreNome = (f.supplier_name || f.cedente_denominazione || '').toLowerCase();

@@ -12,10 +12,7 @@ from typing import Any, Dict, Iterable, List, Optional
 
 
 CENT = Decimal("0.01")
-STATI_CHIUSI = frozenset({
-    "pagato", "pagata", "paid", "chiuso", "chiusa", "closed",
-    "annullato", "annullata", "cancelled", "deleted", "stornato", "stornata",
-})
+from app.services.stato_pagamento_fattura import STATI_CHIUSI  # noqa: F401
 TIPI_NOTA_CREDITO = frozenset({
     "td04", "nota_credito", "nota di credito", "credit_note", "credit note",
 })

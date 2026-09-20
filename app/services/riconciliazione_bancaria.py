@@ -49,6 +49,7 @@ from app.services.identity_matching import (
 from app.services.payment_invoice_matching import amounts_equal_to_cent
 from app.services.prima_nota_integrity import totale_pagabile_al_fornitore
 from app.services.scritture_contabili import scrivi_movimento
+from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
 
 # Fuzzy matching per nomi fornitori
 try:
@@ -254,7 +255,7 @@ async def _alert_pagamento_multiplo(db, mov_id: Optional[str], importo: float) -
     try:
         candidates = await db[Collections.INVOICES].find(
             {
-                "pagato": {"$ne": True},
+                **FILTRO_NON_PAGATE,
                 # "sospesa" = l'utente ha bloccato la fattura in Prima Nota
                 # Provvisoria: non deve essere toccata dal matching automatico.
                 "stato_pagamento": {"$nin": ["pagata", "paid", "sospesa"]},
@@ -1249,7 +1250,7 @@ async def riconcilia_movimenti_banca(
             if tipo == "uscita" and causale_indica_fatture:
                 riferimenti_dichiarati = _riferimenti_fattura_dichiarati(descrizione)
                 fatture_aperte = await db[Collections.INVOICES].find({
-                    "pagato": {"$ne": True},
+                    **FILTRO_NON_PAGATE,
                     "stato_pagamento": {"$nin": ["pagata", "paid", "sospesa"]},
                 }, {
                     "id": 1, "invoice_number": 1, "numero_fattura": 1,
@@ -1437,7 +1438,7 @@ async def riconcilia_movimenti_banca(
                 # Query per fatture candidate (importo esatto O importo parziale)
                 fatture_candidate = await db[Collections.INVOICES].find({
                     "$and": [
-                        {"pagato": {"$ne": True}},
+                        {**FILTRO_NON_PAGATE,},
                         # Coerenza: alcuni flussi marcano il pagamento solo qui.
                         # "sospesa" = bloccata manualmente in Prima Nota
                         # Provvisoria, esclusa dal matching automatico.

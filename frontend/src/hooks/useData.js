@@ -8,6 +8,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import api from '../api';
+import { ePagata } from '../utils/statoFattura';
 
 // ==================== UTILITY HOOKS ====================
 
@@ -128,7 +129,7 @@ export function useFatture(filters = {}) {
       setFatture(items);
 
       // Calcola stats
-      const paid = items.filter(f => f.pagato === true || f.payment_status === 'paid').length;
+      const paid = items.filter(ePagata).length;
       setStats({
         total: items.length,
         paid,
