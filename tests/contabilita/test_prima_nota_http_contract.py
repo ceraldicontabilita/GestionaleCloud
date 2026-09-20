@@ -206,3 +206,93 @@ def test_cancellazione_pagamento_cassa_riapre_fattura_collegata():
         memoria.close()
         Database.client = None
         Database.db = None
+
+
+def test_attendi_banca_non_segna_pagata_e_non_crea_scrittura_banca():
+    app, memoria = _app_con_db()
+    try:
+        db = Database.get_db()
+        import asyncio
+        asyncio.run(db["invoices"].insert_one({
+            "id": "fattura-attesa-banca-http",
+            "invoice_number": "B-ATT",
+            "invoice_date": "2026-09-21",
+            "supplier_name": "Fornitore Banca",
+            "total_amount": 120.0,
+            "pagato": False,
+            "stato_pagamento": "",
+        }))
+        with TestClient(app) as client:
+            risposta = client.post(
+                "/api/prima-nota/provvisori/attendi-banca",
+                json={"fattura_id": "fattura-attesa-banca-http"},
+            )
+            assert risposta.status_code == 200, risposta.text
+            fattura = asyncio.run(
+                db["invoices"].find_one({"id": "fattura-attesa-banca-http"}, {"_id": 0})
+            )
+            assert fattura["pagato"] is False
+            assert fattura["stato_pagamento"] == "in_attesa_banca"
+            assert fattura["stato_finanziario"] == "aperta_in_attesa_banca"
+            assert asyncio.run(db["prima_nota_banca"].count_documents({})) == 0
+    finally:
+        memoria.close()
+        Database.client = None
+        Database.db = None
+
+
+def test_pagamento_banca_con_evidenza_e_cancellazione_riapre_fattura():
+    app, memoria = _app_con_db()
+    try:
+        db = Database.get_db()
+        import asyncio
+        asyncio.run(db["estratto_conto_movimenti"].insert_one({
+            "id": "ec-http-1",
+            "data": "2026-09-21",
+            "tipo": "uscita",
+            "importo": -75.0,
+            "descrizione": "BONIFICO FORNITORE TEST",
+        }))
+        asyncio.run(db["invoices"].insert_one({
+            "id": "fattura-banca-http",
+            "invoice_number": "B-1",
+            "invoice_date": "2026-09-21",
+            "supplier_name": "Fornitore Test",
+            "total_amount": 75.0,
+            "pagato": False,
+            "stato_pagamento": "",
+        }))
+        with TestClient(app) as client:
+            creato = client.post(
+                "/api/prima-nota/banca",
+                json={
+                    "data": "2026-09-21",
+                    "tipo": "uscita",
+                    "importo": 75.0,
+                    "descrizione": "Pagamento banca fattura",
+                    "categoria": "Fatture",
+                    "fattura_id": "fattura-banca-http",
+                    "estratto_conto_id": "ec-http-1",
+                },
+            )
+            assert creato.status_code == 200, creato.text
+            movimento_id = creato.json()["id"]
+
+            fattura_pagata = asyncio.run(
+                db["invoices"].find_one({"id": "fattura-banca-http"}, {"_id": 0})
+            )
+            assert fattura_pagata["pagato"] is True
+            assert fattura_pagata["prima_nota_banca_id"] == movimento_id
+
+            eliminato = client.delete(f"/api/prima-nota/banca/{movimento_id}?force=true")
+            assert eliminato.status_code == 200, eliminato.text
+
+            fattura_riaperta = asyncio.run(
+                db["invoices"].find_one({"id": "fattura-banca-http"}, {"_id": 0})
+            )
+            assert fattura_riaperta["pagato"] is False
+            assert not fattura_riaperta.get("prima_nota_banca_id")
+    finally:
+        memoria.close()
+        Database.client = None
+        Database.db = None
