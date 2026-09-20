@@ -119,7 +119,7 @@ async function getScadenze(request, token) {
       categoria: 'Altro',
     },
   });
-  if (!creaCassa.ok()) throw new Error(`Creazione Cassa fallita: HTTP ${creaCassa.status()}`);
+  if (!creaCassa.ok()) throw new Error(`Creazione Cassa fallita: HTTP ${creaCassa.status()} ${await creaCassa.text()}`);
   const cassaId = (await creaCassa.json()).id;
   if (!cassaId) throw new Error('Creazione Cassa senza id');
 
