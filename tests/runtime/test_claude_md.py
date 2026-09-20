@@ -1,10 +1,11 @@
-"""Guardia su CLAUDE.md e sulla documentazione del repository.
+"""Guardia sui documenti canonici del repository.
 
-CLAUDE.md e README.md sono gli unici due documenti ammessi. Il 18/09/2026 i
-116 .md sparsi in docs/, memoria/ e .github/ sono stati cancellati: erano
+Sono ammessi solo CLAUDE.md, README.md e PIANO_RISTRUTTURAZIONE.md. Il 18/09/2026
+i 116 .md sparsi in docs/, memoria/ e .github/ sono stati cancellati: erano
 diari e audit datati che rendevano impossibile capire quali regole fossero in
-vigore. Questa guardia impedisce che ricrescano e che CLAUDE.md torni un
-diario: la cronaca di una sessione sta nella storia di git.
+vigore. Il piano di ristrutturazione è invece un registro operativo esplicitamente
+richiesto dal titolare e deve restare aggiornato insieme al codice. La guardia
+continua a impedire la ricrescita di documentazione parallela.
 """
 from __future__ import annotations
 
@@ -15,7 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 TESTO = (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
 MAX_RIGHE = 900
-AMMESSI = {"CLAUDE.md", "README.md"}
+AMMESSI = {"CLAUDE.md", "README.md", "PIANO_RISTRUTTURAZIONE.md"}
 
 
 def _markdown_tracciati() -> set[str]:
@@ -30,7 +31,7 @@ def _markdown_tracciati() -> set[str]:
     return {riga.strip().replace("\\", "/") for riga in out.stdout.splitlines() if riga.strip()}
 
 
-def test_solo_due_documenti_nel_repository() -> None:
+def test_solo_documenti_canonici_nel_repository() -> None:
     trovati = _markdown_tracciati()
     assert trovati == AMMESSI, (
         "I soli .md ammessi sono CLAUDE.md e README.md. In piu' o in meno: "
