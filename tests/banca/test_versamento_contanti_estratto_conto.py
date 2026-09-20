@@ -106,55 +106,19 @@ def _run(c):
     finally:
         loop.close()
 
-def test_ripara_versamenti_disattivato_fase0_non_scrive_nulla(monkeypatch):
-    """Fase 0 (PROMPT_CLAUDE_CODE_FASE_0.md punto 6): ripara_versamenti_cassa
-    e' disattivato — deve rifiutare la richiesta con 409 e non toccare
-    prima_nota_cassa/prima_nota_banca/estratto_conto_movimenti, qualunque sia
-    il movimento presente (versamento riconosciuto o no)."""
-    from fastapi import HTTPException
+def test_ripara_versamenti_cassa_non_esiste_piu():
+    """Non piu' spento: cancellato, endpoint e bottone.
 
-    db = _FakeDb()
-    monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
+    Creava una gamba di cassa dal solo estratto conto — anche quando il
+    versamento era gia' registrato a mano in un altro giorno, e allora il
+    contante usciva due volte. Dal 15/09/2026 rispondeva 409; il 20/09 sono
+    stati tolti la funzione, la rotta e il passo «Riconcilia versamenti» della
+    pagina Pulizia Prima Nota, che altrimenti restava li' a dare errore.
 
-    db["estratto_conto_movimenti"].docs = [{
-        "id": "EC-vecchio", "data": "2026-03-30", "importo": 5000.0,
-        "tipo": "entrata", "descrizione_originale": "VERS. CONTANTI - VVVVV",
-        "riconciliato": False,
-    }]
-
-    try:
-        _run(mod.ripara_versamenti_cassa(anno=2026))
-        assert False, "doveva sollevare HTTPException 409"
-    except HTTPException as exc:
-        assert exc.status_code == 409
-
-    assert db["prima_nota_cassa"].docs == []
-    assert db["prima_nota_banca"].docs == []
-    assert db["estratto_conto_movimenti"].docs[0]["riconciliato"] is False
-
-
-def test_ripara_prelievo_disattivato_fase0_non_scrive_nulla(monkeypatch):
-    """Stessa disattivazione anche per il ramo prelievo (doppia scrittura
-    cassa/banca): nessuna scrittura, l'estratto conto resta non riconciliato."""
-    from fastapi import HTTPException
-
-    db = _FakeDb()
-    monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
-
-    db["estratto_conto_movimenti"].docs = [{
-        "id": "EC-prel", "data": "2026-05-10", "importo": 500.0,
-        "tipo": "uscita", "descrizione_originale": "PRELIEVO CONTANTI SPORTELLO",
-    }]
-
-    try:
-        _run(mod.ripara_versamenti_cassa(anno=2026))
-        assert False, "doveva sollevare HTTPException 409"
-    except HTTPException as exc:
-        assert exc.status_code == 409
-
-    assert db["prima_nota_cassa"].docs == []
-    assert db["prima_nota_banca"].docs == []
-    assert "tipo_riconciliazione" not in db["estratto_conto_movimenti"].docs[0]
+    Il riconoscimento delle causali resta, ed e' quello che i test sotto
+    verificano: serve a leggere l'estratto conto, non a scrivere movimenti.
+    """
+    assert not hasattr(mod, "ripara_versamenti_cassa")
 
 
 def test_prelievo_non_confuso_con_versamento():

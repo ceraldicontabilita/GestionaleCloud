@@ -16,7 +16,7 @@ OPERATORE DESIGNATO: SANKAPALA ARACHCHILAGE JANANIE AYACHANA DISSANAYAKA
 from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Dict
-from datetime import datetime, timezone, date, timedelta
+from datetime import datetime, timezone
 import uuid
 
 # Qui c'era `import random`, con una nota che lo dava per «generazione dati demo
@@ -583,6 +583,10 @@ async def export_pdf_sanificazione(anno: int, mese: int):
 # ─────────────────────────────────────────────────────────────────────────────
 
 FREQUENZE = {
+    # Il manuale la usa per utensili e taglieri. Il registro segna i giorni,
+    # non gli utilizzi: puo' provare che oggi la pulizia c'e' stata, non che
+    # c'e' stata dopo ogni uso. Qui vale come «almeno una volta nel giorno».
+    "dopo_ogni_uso": {"etichetta": "Dopo ogni utilizzo", "giorni": 1},
     "giornaliera": {"etichetta": "Ogni giorno", "giorni": 1},
     "due_giorni": {"etichetta": "Ogni due giorni", "giorni": 2},
     "settimanale": {"etichetta": "Ogni settimana", "giorni": 7},
@@ -615,10 +619,13 @@ async def leggi_piano_sanificazione():
     escono con i campi vuoti e finiscono in `da_completare`: sono le righe
     che in stampa resterebbero senza piano.
     """
+    from app.lotti.servizi.sanificazione_catalogo import DETERGENTI, FREQUENZA_SUGGERITA
+
     salvato = await _piano_salvato()
     voci, da_completare = [], []
     for area in ATTREZZATURE_SANIFICAZIONE:
         voce = salvato.get(area) or {}
+        suggerita, perche = FREQUENZA_SUGGERITA.get(area, ("", ""))
         riga = {
             "area": area,
             "frequenza": voce.get("frequenza", ""),
@@ -627,6 +634,11 @@ async def leggi_piano_sanificazione():
             "diluizione": voce.get("diluizione", ""),
             "tempo_contatto": voce.get("tempo_contatto", ""),
             "note": voce.get("note", ""),
+            # Proposta, non impostazione: il piano resta vuoto finche' non lo
+            # conferma il responsabile. Dove il manuale non dice niente
+            # (montacarichi, deposito) non c'e' nessuna proposta.
+            "frequenza_suggerita": suggerita,
+            "frequenza_suggerita_fonte": perche,
         }
         voci.append(riga)
         if not riga["frequenza"] or not riga["prodotto"]:
@@ -637,6 +649,11 @@ async def leggi_piano_sanificazione():
             {"id": k, "etichetta": v["etichetta"], "giorni": v["giorni"]}
             for k, v in FREQUENZE.items()
         ],
+        # Le tipologie che il manuale HACCP dell'attivita' gia' prescrive, con
+        # pH, diluizione e tempo di contatto dove li dichiara. Il nome
+        # commerciale lo scrive il responsabile: e' quello che rimanda alla
+        # scheda di sicurezza vera.
+        "detergenti_dal_manuale": DETERGENTI,
         "da_completare": da_completare,
         "completo": not da_completare,
     }

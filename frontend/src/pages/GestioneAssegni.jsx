@@ -681,8 +681,6 @@ export default function GestioneAssegni() {
   const [statsAvanzate, setStatsAvanzate] = useState(null);
 
   // Associazione combinata (più assegni = 1 fattura)
-  const [combinazioneLoading, setCombinazioneLoading] = useState(false);
-  const [combinazioneResult, setCombinazioneResult] = useState(null);
 
   // Selezione multipla per stampa PDF
   const [selectedAssegni, setSelectedAssegni] = useState(new Set());
@@ -911,22 +909,6 @@ export default function GestioneAssegni() {
   }, [anno]);
 
   // Nuova funzione: Associazione combinata (somma di più assegni = importo fattura)
-  const handleAssociaCombinazioni = async () => {
-    setCombinazioneLoading(true);
-    setCombinazioneResult(null);
-    try {
-      const res = await api.post('/api/assegni/cerca-combinazioni-assegni');
-      setCombinazioneResult(res.data);
-      if (res.data.assegni_associati > 0) {
-        loadData();
-      }
-    } catch (error) {
-      toast.error('Errore: ' + (error.response?.data?.detail || error.message));
-    } finally {
-      setCombinazioneLoading(false);
-    }
-  };
-
   // FILTRO ASSEGNI LATO CLIENT
   // useMemo (vincolo ListaAdattiva): la lista resetta la paginazione quando
   // cambia il riferimento di `dati`; senza memo ogni re-render (es. una
@@ -1512,18 +1494,6 @@ export default function GestioneAssegni() {
                 style={menuItemStyle}
               >
                 👁️ Anteprima auto-match
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setShowAltroMenu(false);
-                  handleAssociaCombinazioni();
-                }}
-                disabled={combinazioneLoading}
-                data-testid="associa-combinazioni-btn"
-                style={menuItemStyle}
-              >
-                🔗 {combinazioneLoading ? 'Cercando...' : 'Combinazioni'}
               </Button>
               <Button
                 variant="ghost"
@@ -2456,138 +2426,6 @@ export default function GestioneAssegni() {
       )}
 
       {/* Risultato Associazione Combinata */}
-      {combinazioneResult && (
-        <div
-          style={{
-            marginBottom: 20,
-            padding: 15,
-            background: combinazioneResult.match_trovati > 0 ? COLORS.infoLight : COLORS.warningLight,
-            borderRadius: BORDER_RADIUS.md,
-            border: `1px solid ${combinazioneResult.match_trovati > 0 ? COLORS.info : COLORS.warning}`,
-          }}
-        >
-          <div
-            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}
-          >
-            <div style={{ flex: 1 }}>
-              <strong
-                style={{ color: combinazioneResult.match_trovati > 0 ? COLORS.info : COLORS.warning }}
-              >
-                🔗{' '}
-                {combinazioneResult.message ||
-                  (combinazioneResult.match_trovati > 0
-                    ? `Trovate ${combinazioneResult.match_trovati} combinazioni! (${combinazioneResult.assegni_associati} assegni associati)`
-                    : 'Nessuna combinazione trovata')}
-              </strong>
-              <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 4 }}>
-                Analizzati: {combinazioneResult.assegni_analizzati || 0} assegni • Combinazioni
-                testate: {combinazioneResult.combinazioni_testate || 0}
-              </div>
-              {combinazioneResult.dettagli_match &&
-                combinazioneResult.dettagli_match.length > 0 && (
-                  <div style={{ marginTop: 10, fontSize: 13 }}>
-                    <strong>Combinazioni trovate:</strong>
-                    <ul style={{ margin: '5px 0', paddingLeft: 20 }}>
-                      {combinazioneResult.dettagli_match.map((d, i) => (
-                        <li key={i} style={{ marginBottom: 8 }}>
-                          <div>
-                            <span style={{ color: COLORS.info, fontWeight: 600 }}>
-                              {d.num_assegni} Assegni
-                            </span>
-                            {' → '}
-                            <span style={{ color: COLORS.success, fontWeight: 600 }}>
-                              Fattura {d.fattura_numero}
-                            </span>
-                            {d.fornitore && (
-                              <span style={{ color: COLORS.textMuted }}>
-                                {' '}
-                                ({d.fornitore.substring(0, 25)})
-                              </span>
-                            )}
-                          </div>
-                          {/* Struttura per lo stesso fornitore: quali assegni compongono
-                              la somma, con il rispettivo importo — prima si vedeva solo
-                              la lista dei numeri assegno senza risalire a quanto valeva
-                              ciascuno, impossibile verificare la somma a colpo d'occhio. */}
-                          {d.assegni?.length > 0 && (
-                            <div style={{ fontSize: 11, color: COLORS.gray[600], marginTop: 4, paddingLeft: 10 }}>
-                              {d.assegni.map((numAss, j) => (
-                                <div key={j}>
-                                  ↳ Assegno {numAss}
-                                  {d.importi_assegni?.[j] != null
-                                    ? `: ${formatEuro(d.importi_assegni[j])}`
-                                    : ''}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 2 }}>
-                            Somma: {formatEuro(d.somma_assegni)} = Fattura:{' '}
-                            {formatEuro(d.fattura_importo)}
-                            {d.differenza !== 0 && (
-                              <span style={{ color: COLORS.warning }}>
-                                {' '}
-                                (diff: {formatEuro(d.differenza)})
-                              </span>
-                            )}
-                            {d.fattura_id && (
-                              <Button
-                                variant="success"
-                                size="sm"
-                                onClick={() =>
-                                  setFatturaView({ id: d.fattura_id, numero: d.fattura_numero })
-                                }
-                                style={{ marginLeft: 8, padding: '3px 8px', fontSize: 11 }}
-                              >
-                                📄 Vedi
-                              </Button>
-                            )}
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              {combinazioneResult.combinazioni_ambigue &&
-                combinazioneResult.combinazioni_ambigue.length > 0 && (
-                  <div style={{ marginTop: 10, fontSize: 13 }}>
-                    <strong style={{ color: COLORS.warning }}>
-                      ⚠️ {combinazioneResult.combinazioni_ambigue.length} combinazioni ambigue (non
-                      associate automaticamente):
-                    </strong>
-                    <ul style={{ margin: '5px 0', paddingLeft: 20 }}>
-                      {combinazioneResult.combinazioni_ambigue.map((amb, i) => (
-                        <li key={i} style={{ marginBottom: 8, fontSize: 12, color: COLORS.textMuted }}>
-                          Assegni {amb.assegni?.join(', ')} (somma {formatEuro(amb.somma_assegni)})
-                          corrispondono a più fatture:{' '}
-                          {amb.fatture_candidate
-                            ?.map(f => `${f.numero} (${f.fornitore || 'N/D'})`)
-                            .join(', ')}{' '}
-                          — scegli a mano quale associare.
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              {combinazioneResult.assegni_non_associabili &&
-                combinazioneResult.assegni_non_associabili.length > 0 && (
-                  <div style={{ marginTop: 8, fontSize: 12, color: COLORS.warning }}>
-                    ⚠️ {combinazioneResult.assegni_non_associabili.length} assegni rimasti senza
-                    corrispondenza
-                  </div>
-                )}
-            </div>
-            <Button
-              variant="ghost"
-              onClick={() => setCombinazioneResult(null)}
-              aria-label="Chiudi"
-              style={{ width: 40, height: 40, flexShrink: 0, marginLeft: 10, padding: 0, fontSize: 16 }}
-            >
-              ✕
-            </Button>
-          </div>
-        </div>
-      )}
 
       {/* SEZIONE ASSEGNI NON ASSOCIATI */}
       <div

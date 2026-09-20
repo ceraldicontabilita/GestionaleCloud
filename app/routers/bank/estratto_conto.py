@@ -2235,24 +2235,3 @@ async def stato_backfill_categorie_movimenti(
     stato = await stato_backfill_categorie_banca(Database.get_db())
     stato["in_corso"] = backfill_in_corso()
     return stato
-
-
-@router.post("/ripara-versamenti-cassa")
-@handle_errors
-async def ripara_versamenti_cassa(anno: int = Query(None, description="Anno (opzionale). Se omesso ripara tutti gli anni")) -> Dict[str, Any]:
-    """Materializza e riconcilia le due gambe dei trasferimenti di contante.
-
-    La causale esplicita dell'estratto conto prova il trasferimento: un
-    versamento genera uscita Cassa + entrata Banca, un prelievo il contrario.
-    Gli ID del movimento EC e dell'operazione rendono l'operazione idempotente.
-
-    Fase 0 (15/09/2026, PROMPT_CLAUDE_CODE_FASE_0.md punto 6): disattivato.
-    La guardia contro l'invenzione di uscite cassa era disattivata con
-    `elif False`, quindi il bottone creava davvero una gamba cassa dal solo
-    estratto conto, anche quando il versamento era già registrato a mano un
-    giorno diverso da quello contabilizzato in banca (doppio prelievo).
-    """
-    raise HTTPException(
-        status_code=409,
-        detail="Disattivato: Fase 0",
-    )

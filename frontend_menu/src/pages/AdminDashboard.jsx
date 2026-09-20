@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Button } from '../components/ui/button';
 import { LogOut, QrCode, Image, Package, Database, ClipboardList, ShoppingBag, ChefHat, Warehouse, DoorOpen } from 'lucide-react';
+import SelettoreSezioni from "../components/shared/SelettoreSezioni";
 import axios from 'axios';
 
 // Import existing QR Code management
@@ -55,10 +56,13 @@ const AdminDashboard = () => {
             <h1 className="text-2xl font-bold">Ceraldi Caffè Admin</h1>
             <p className="text-sm text-white/80">Pannello di Amministrazione</p>
           </div>
-          <Button variant="ghost" onClick={handleLogout} className="text-white hover:bg-white/10">
-            <LogOut className="w-4 h-4 mr-2" />
-            Esci
-          </Button>
+          <div className="flex items-center gap-1">
+            <SelettoreSezioni sezioneCorrente="menu" />
+            <Button variant="ghost" onClick={handleLogout} className="text-white hover:bg-white/10">
+              <LogOut className="w-4 h-4 mr-2" />
+              Esci
+            </Button>
+          </div>
         </div>
       </div>
 

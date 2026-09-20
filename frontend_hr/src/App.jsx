@@ -13,6 +13,7 @@ import {
   User, FolderOpen, Settings, LogOut, ArrowLeft, AlertTriangle,
   Wallet, Receipt, Building2, Inbox, CheckCircle2, Link2, Activity, Send
 } from "lucide-react";
+import SelettoreSezioni from "./SelettoreSezioni";
 import "./App.css";
 
 const API = '/hr/api/dipendenti-cloud';
@@ -308,6 +309,8 @@ export default function DipendentiCloudApp({ page: pageProp }) {
             </div>
           ))}
         </nav>
+
+        <SelettoreSezioni sezioneCorrente="hr" />
 
         <div className="dc-sidebar-footer">
           <div className="dc-sidebar-user">

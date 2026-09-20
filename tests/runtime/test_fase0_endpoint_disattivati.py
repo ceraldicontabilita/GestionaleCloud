@@ -40,19 +40,24 @@ def test_punto1_auto_conferma_provvisori_per_metodo_cancellato():
     assert "auto_conferma_provvisori_per_metodo" not in inspect.getsource(base)
 
 
-def test_punto7_rebuild_prima_nota_disattivato():
+def test_punto7_rebuild_prima_nota_cancellato():
+    """Cancellava e ricreava tutti i movimenti da corrispettivo dell'anno.
+
+    Spento dal 15/09/2026, tolto il 20/09 insieme al passo «Ricostruzione
+    completa» della pagina Pulizia Prima Nota.
+    """
     from app.routers.invoices import corrispettivi as mod
 
-    with pytest.raises(HTTPException) as exc_info:
-        _run(mod.rebuild_prima_nota(anno=2026, _admin={}))
-
-    assert exc_info.value.status_code == 409
+    assert not hasattr(mod, "rebuild_prima_nota")
 
 
-def test_punto10_rapido_paga_fattura_disattivato():
+def test_punto10_rapido_paga_fattura_cancellato():
+    """Scriveva `pagato` e `stato_pagamento=pagata` senza nessuna prova.
+
+    Spento dal 15/09/2026, tolto il 20/09 insieme ai due bottoni «Cassa» e
+    «Banca» di Inserimento Rapido: un bottone che risponde sempre errore e'
+    peggio di un bottone che non c'e'.
+    """
     from app.routers import rapido as mod
 
-    with pytest.raises(HTTPException) as exc_info:
-        _run(mod.rapido_paga_fattura(invoice_id="FT-1", metodo_pagamento="cassa", importo=100))
-
-    assert exc_info.value.status_code == 409
+    assert not hasattr(mod, "rapido_paga_fattura")

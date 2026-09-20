@@ -935,24 +935,6 @@ async def cleanup_duplicati_forte(anno: int = Query(None, description="Anno (opz
     return {"success": True, **res}
 
 
-@router.post("/rebuild-prima-nota")
-@handle_errors
-async def rebuild_prima_nota(
-    anno: int = Query(None, description="Anno (opzionale). Se omesso ricostruisce tutti gli anni"),
-    _admin: Dict[str, Any] = Depends(get_current_admin_user),
-) -> Dict[str, Any]:
-    """
-    Rigenera i movimenti Prima Nota (cassa + banca POS) partendo dai corrispettivi esistenti.
-    - Elimina i movimenti con source=corrispettivo_* nel periodo
-    - Ricrea i movimenti dai corrispettivi validi
-
-    Fase 0 (15/09/2026, PROMPT_CLAUDE_CODE_FASE_0.md punto 7): disattivato.
-    Il `delete_many` fisico cancellava anche righe già riconciliate (crediti
-    POS Numia/SumUp), perdendo `riconciliato`/`accreditato_ec` e lasciando
-    l'estratto conto riconciliato senza contropartita — una cancellazione
-    permanente vietata da CLAUDE.md.
-    """
-    raise HTTPException(status_code=409, detail="Disattivato: Fase 0")
 
 
 

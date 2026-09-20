@@ -155,6 +155,13 @@ class TestAllowlistCongelata:
         "/docs", "/redoc", "/openapi.json",
         # SEO/crawler
         "/robots.txt", "/sitemap.xml", "/favicon.ico",
+        # Elenco delle quattro sezioni (nomi e percorsi, nessun dato).
+        # Pubblico DELIBERATAMENTE: serve a tutte e quattro le interfacce per
+        # costruire il passaggio da una all'altra, e le tre fuori dall'ERP
+        # firmano i token con altri segreti — protetto, da Lotti o dal portale
+        # tornerebbe 401 e il collegamento sparirebbe proprio dove serve.
+        # E' la mappa del sito, la stessa che si legge nella barra indirizzi.
+        "/api/sezioni", "/api/sezioni/",
     }
 
     ALLOWLIST_PREFISSI_ATTESA = ["/docs", "/redoc"]
