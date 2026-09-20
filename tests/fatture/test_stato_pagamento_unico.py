@@ -121,6 +121,46 @@ def test_le_annullate_non_stanno_da_nessuna_delle_due_parti():
     assert matches_filter(annullata, FILTRO_ANNULLATE) is True
 
 
+@pytest.mark.parametrize("marcatore", [
+    pytest.param({"pagato": True}, id="pagato=true"),
+    pytest.param({"paid": True}, id="paid=true"),
+    pytest.param({"stato_pagamento": "pagata"}, id="stato_pagamento=pagata"),
+    pytest.param({"payment_status": "paid"}, id="payment_status=paid"),
+])
+def test_una_stornata_che_porta_ancora_il_marcatore_di_pagata_resta_fuori(marcatore):
+    """Il caso che i test non vedevano e il collaudo del 20/09/2026 ha trovato.
+
+    `e_pagata` diceva già di no, ma `FILTRO_PAGATE` la contava fra le pagate:
+    la funzione e la query non rispondevano la stessa cosa, e il conteggio
+    degli incassi avrebbe preso dentro una fattura stornata. Il test vecchio
+    provava l'annullata *senza* marcatore, cioè il caso facile.
+    """
+    stornata = {"stato": "annullata", **marcatore}
+    assert e_pagata(stornata) is False
+    assert matches_filter(stornata, FILTRO_PAGATE) is False, (
+        "la query deve dire quello che dice la funzione"
+    )
+    assert matches_filter(stornata, FILTRO_NON_PAGATE) is False
+    assert matches_filter(stornata, FILTRO_ANNULLATE) is True
+
+
+def test_la_funzione_e_il_filtro_dicono_sempre_la_stessa_cosa():
+    """La cricchetta contro il ritorno dello scarto: provati insieme, non a parte."""
+    casi = [
+        {}, {"stato": "pagata"}, {"stato": "da_pagare"}, {"stato": "parziale"},
+        {"pagato": True}, {"paid": True}, {"payment_status": "paid"},
+        {"stato_pagamento": "pagata"}, {"stato_pagamento": "da_verificare"},
+        {"stato": "annullata"}, {"stato": "annullata", "pagato": True},
+        {"stato": "stornata", "stato_pagamento": "pagata"},
+        {"status": "archiviata"}, {"stato_finanziario": "riconciliato"},
+    ]
+    for f in casi:
+        assert matches_filter(f, FILTRO_PAGATE) == e_pagata(f), f
+        # aperta = né pagata né annullata
+        atteso_aperta = not e_pagata(f) and not matches_filter(f, FILTRO_ANNULLATE)
+        assert matches_filter(f, FILTRO_NON_PAGATE) == atteso_aperta, f
+
+
 def test_con_non_pagate_non_perde_i_criteri_di_partenza():
     filtro = con_non_pagate({"fornitore_id": "F1"})
     assert matches_filter({"fornitore_id": "F1"}, filtro) is True

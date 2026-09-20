@@ -144,8 +144,14 @@ def _rami_annullata() -> list[Dict[str, Any]]:
 #: Sostituisce `{"pagato": {"$ne": True}}`, che su un campo assente passa sempre.
 FILTRO_NON_PAGATE: Dict[str, Any] = {"$nor": _rami_pagata() + _rami_annullata()}
 
-#: Le fatture pagate, comunque sia scritto.
-FILTRO_PAGATE: Dict[str, Any] = {"$or": _rami_pagata()}
+#: Le fatture pagate, comunque sia scritto — ma non le annullate.
+#: Il `$nor` non è un di più: una stornata porta spesso ancora addosso il
+#: `pagato: true` di quando lo era, e senza questo finirebbe nel conteggio
+#: degli incassi. Trovato dal collaudo del 20/09/2026, non dai test: il test
+#: provava l'annullata *senza* il marcatore, cioè il caso facile.
+FILTRO_PAGATE: Dict[str, Any] = {
+    "$and": [{"$or": _rami_pagata()}, {"$nor": _rami_annullata()}]
+}
 
 #: Le annullate o stornate: non entrano né di qua né di là.
 FILTRO_ANNULLATE: Dict[str, Any] = {"$or": _rami_annullata()}
