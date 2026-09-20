@@ -10,10 +10,16 @@ from datetime import datetime, timezone
 from typing import Any
 
 
+# I metodi che questo recupero sa leggere da uno storico. Non sono i tre di
+# instradamento (cassa/banca/misto): «bonifico», «rid» e «carta» sono le
+# parole che l'anagrafica ha usato negli anni, e `prima_nota_engine` le mappa.
 VALID_METHODS = {
     "cassa", "banca", "misto", "contanti", "assegno", "bonifico", "rid", "carta"
 }
-MISSING_METHODS = {"", "da_configurare", "altro", "n/d", "sospesa"}
+# Qui c'era anche `MISSING_METHODS`, un secondo vocabolario del «non
+# configurato» che non faceva niente: `_method()` ritorna gia' stringa vuota
+# per tutti quei valori, quindi la condizione che la usava era sempre vera.
+# Il vocabolario unico e' `constants/metodi_pagamento.py`.
 
 
 def _vat(value: Any) -> str:
@@ -75,7 +81,7 @@ async def recover_supplier_payment_methods(db, *, apply: bool = False) -> dict[s
 
     for supplier in suppliers:
         current = str(supplier.get("metodo_pagamento") or "").strip().lower()
-        if _method(current) and current not in MISSING_METHODS:
+        if _method(current):
             result["gia_configurati"] += 1
             continue
         vat = _vat(supplier.get("partita_iva") or supplier.get("piva") or supplier.get("vat_number"))

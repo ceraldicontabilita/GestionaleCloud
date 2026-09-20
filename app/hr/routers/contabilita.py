@@ -29,7 +29,7 @@ import httpx
 from fastapi import APIRouter, HTTPException, Query, Body, UploadFile, File
 
 from app.hr.database import Database
-from app.services.stato_pagamento_fattura import FILTRO_PAGATE
+from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE, FILTRO_PAGATE
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -158,14 +158,17 @@ async def dashboard():
     docs = db["documents_inbox"]
 
     tot_fatture = await inv.count_documents({})
-    fatture_da_pagare = await inv.count_documents({"stato_pagamento": "da_pagare"})
-    # Contava `stato_pagamento == "pagato"`: 3 fatture su 685. Il maschile
-    # esiste su tre righe soltanto, e le 639 pagate stanno su `stato`.
+    # «Pagate» e «da pagare» devono venire dalla stessa definizione, o la
+    # stessa pagina mostra due conti che non tornano. Il filtro singolo
+    # `stato_pagamento == "da_pagare"` ne vedeva 142 su 1.457: le altre 625
+    # non pagate hanno lo stato su un altro dei cinque campi, o non ce l'hanno
+    # affatto (838 fatture su 1.457 hanno `stato_pagamento`).
+    fatture_da_pagare = await inv.count_documents(FILTRO_NON_PAGATE)
     fatture_pagate = await inv.count_documents(FILTRO_PAGATE)
 
     # Importo totale da pagare
     importo_da_pagare = 0.0
-    async for d in inv.find({"stato_pagamento": "da_pagare"}, {"importo_totale": 1}):
+    async for d in inv.find(dict(FILTRO_NON_PAGATE), {"importo_totale": 1}):
         importo_da_pagare += float(d.get("importo_totale") or 0)
 
     tot_fornitori = await forn.count_documents({})
@@ -311,7 +314,7 @@ async def da_pagare(search: Optional[str] = None):
     for d in docs:
         gruppi.setdefault(d.get("tipo") or "ALTRO", []).append(d)
 
-    fatture_da_pagare = await db["invoices"].count_documents({"stato_pagamento": "da_pagare"})
+    fatture_da_pagare = await db["invoices"].count_documents(FILTRO_NON_PAGATE)
     return {
         "totale_documenti": len(docs),
         "gruppi": gruppi,
@@ -496,8 +499,8 @@ async def riconciliazione(limit: int = Query(100, le=500)):
         importo = float(b.get("importo") or 0)
         benef = _norm(b.get("beneficiario"))
         token = benef.split(" ")[0] if benef else ""
-        # candidati: fattura da pagare con importo vicino o nome simile
-        cand_q = {"stato_pagamento": "da_pagare"}
+        # candidati: fattura non pagata con importo vicino o nome simile
+        cand_q = dict(FILTRO_NON_PAGATE)
         candidati = await db["invoices"].find(cand_q, {"fonte": 0}).limit(500).to_list(length=500)
         suggeriti = []
         for c in candidati:
@@ -521,7 +524,7 @@ async def riconciliazione(limit: int = Query(100, le=500)):
 async def calendario(mese: Optional[str] = Query(None, description="YYYY-MM")):
     db = Database.get_db()
     eventi = []
-    inv_q = {"stato_pagamento": "da_pagare"}
+    inv_q = dict(FILTRO_NON_PAGATE)
     async for f in db["invoices"].find(inv_q, {"data_scadenza": 1, "data": 1, "fornitore": 1, "importo_totale": 1, "numero": 1}):
         giorno = f.get("data_scadenza") or f.get("data")
         if not giorno:
