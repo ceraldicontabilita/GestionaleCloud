@@ -352,9 +352,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   (`/api/fatture/drive/ricostruzione`) rilegge *tutto* a lotti riprendibili
   con un cursore, ripresi ogni 2 minuti dallo scheduler. Nessuna sposta un
   originale fuori dal suo anno, e l'anno lo decide il parser XML, mai il nome.
-- Una coda che non cala e importa zero **non è un guasto**: i file già importati
-  risultano doppioni e vengono solo spostati. A dire se manca qualcosa è la
-  quadratura, non la lunghezza della coda.
+- Una coda che non cala e importa zero **non è un guasto**: i già importati
+  risultano doppioni e vengono solo spostati. A dirlo è la quadratura, non la coda.
 
 ## Regole contabili vincolanti
 
@@ -574,8 +573,12 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - **Giorni di chiusura** (`chiusure_attivita`): ristrutturazione 26/01–08/03/2026
   e ferie 15–23/08/2026 non sono corrispettivi mancanti.
 - **Dello storico interessano solo cedolini e F24**: fatture e corrispettivi
-  precedenti al 2026 restano in `legacy_staging` e non entrano in
-  `invoices`/`corrispettivi`.
+  precedenti all'anno attivo non entrano in `invoices`/`corrispettivi`, e dal
+  20/09/2026 non ci entrano **nemmeno come archivio di consultazione** (il
+  `stato_import: archivio_storico` delle fatture e' stato tolto: erano 1.127
+  documenti e 52 MB fuori da ogni conto, che tornavano a ogni ricostruzione
+  Drive). L'originale sta su Drive. Per rivedere un anno intero: cambiare
+  l'anno attivo e rilanciare la ricostruzione, che rilegge tutti gli XML.
 - Modali HR: solo il componente `Modal` di `frontend_hr/src/App.jsx` (WCAG 2.1
   AA: focus intrappolato, Esc, focus restituito). Campi dentro `<label>`,
   `aria-label` sui bottoni ripetuti, focus visibile salvia.
@@ -598,14 +601,12 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   `da_configurare`, `none`, vuoto e campo assente valgono uguale. Chi tiene la
   propria lista si perde il caso più frequente.
 - **Le fatture fornitore non hanno scadenza.** Decisione del titolare
-  (19/09/2026): «decido io quando pagare, non c'è una data stabilita». Non si
-  leggono le condizioni di pagamento dell'XML (rimessa diretta, 30 giorni data
-  fattura), non si leggono le date stampate sul documento e non si inventa un
-  «+30»: `data_scadenza` resta vuota. Il piano rate si conserva sul documento
-  come dato dell'originale, ma non guida niente. Di conseguenza
-  `check_scadenze_partite_task` salta le partite fornitore e l'avviso
-  `FAT_DA_PAGARE_SCADUTA` non nasce più; F24 e stipendi, che una scadenza
-  vera ce l'hanno, restano invariati.
+  (19/09/2026): «decido io quando pagare». Non si leggono le condizioni di
+  pagamento dell'XML, non si leggono le date sul documento e non si inventa un
+  «+30»: `data_scadenza` resta vuota. Il piano rate si conserva come dato
+  dell'originale ma non guida niente. `check_scadenze_partite_task` salta le
+  partite fornitore e `FAT_DA_PAGARE_SCADUTA` non nasce più; F24 e stipendi,
+  che una scadenza vera ce l'hanno, restano invariati.
 - **«È pagata?» si chiede in un posto solo**: `e_pagata` /
   `FILTRO_NON_PAGATE` di `app/services/stato_pagamento_fattura.py`, e
   `ePagata` di `frontend/src/utils/statoFattura.js`. Lo stato vive in cinque
@@ -620,8 +621,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - Un import che **non** pubblica `fattura.created` lascia la fattura senza
   partita aperta, senza alert e senza audit: nessun errore, nessuna traccia.
   Il recupero è `POST /api/admin/fatture/ripubblica-evento-created` (admin,
-  background, `dry_run` per difetto), che ripubblica l'evento sugli stessi
-  handler idempotenti e salta l'archivio storico.
+  background, `dry_run` per difetto), sugli stessi handler idempotenti.
 - Spostare una fattura fra Cassa e Banca cambia metodo, relazioni e scritture
   **con lo stesso ID**: non nasce una seconda fattura.
 - `app/services/fatture_identita.py` ricava l'identità dall'XML con lo stesso

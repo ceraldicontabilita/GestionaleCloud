@@ -1855,10 +1855,27 @@ async def process_xml_bytes(
             # correggibile (a differenza dell'archivio storico, pensato per
             # sola consultazione).
             if anno_fattura and anno_fattura != anno_attivo:
-                kwargs = {"xml_raw": xml_content}
-                if source_metadata is not None:
-                    kwargs["source_metadata"] = source_metadata
-                return await archivia_fattura_storica(db, p, filename, source, **kwargs)
+                # Decisione del titolare (20/09/2026): nel gestionale resta
+                # SOLO l'anno attivo. Prima queste fatture entravano in
+                # `invoices` come `archivio_storico` (richiesta del 14/07/2026,
+                # «consultabile per visione personale»): 1.127 documenti e
+                # 52 MB che non entravano in nessun conto e non generavano
+                # nessun alert, ma riempivano le liste — e che tornavano da
+                # soli a ogni giro di ricostruzione Drive.
+                # L'originale non si perde: l'XML resta su Drive, che è la
+                # fonte documentale, e il file viene comunque spostato in
+                # `Elaborate` dal chiamante.
+                logger.info(
+                    "[Fatture] %s è del %s, l'anno attivo è %s: non entra in "
+                    "archivio, l'originale resta su Drive",
+                    filename, anno_fattura, anno_attivo)
+                return {
+                    "status": "skipped_altro_anno",
+                    "filename": filename,
+                    "invoice_number": p.get("invoice_number"),
+                    "anno": anno_fattura,
+                    "anno_attivo": anno_attivo,
+                }
 
         if replay_storico:
             kwargs = {"xml_raw": xml_content, "replay_storico": True}
@@ -1902,95 +1919,11 @@ async def process_xml_bytes(
     return risultato
 
 
-async def archivia_fattura_storica(db, parsed: Dict[str, Any], filename: str, source: str,
-                                    xml_raw: Optional[str] = None,
-                                    source_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Archivia una fattura di un anno precedente SENZA farla entrare nel
-    flusso contabile attivo (richiesta utente 14/07/2026: import Drive solo
-    per l'anno corrente, il resto "in un archivio fatture consultabile per
-    visione personale"). A differenza di import_parsed_invoice, qui NON si
-    chiama ensure_supplier_exists (nessun nuovo fornitore/statistica creata
-    nell'anagrafica attiva solo per una fattura storica), NON si registra
-    Prima Nota, NON si propaga l'evento fattura.created (niente scadenzario/
-    alert/magazzino). Il documento resta comunque nella stessa collection
-    `invoices` — la pagina Archivio Fatture Ricevute lo mostra già
-    selezionando quell'anno — ma marcato `stato_import: "archivio_storico"`
-    così i job schedulati che scansionano `invoices` per Prima Nota/alert/
-    scadenzario possono riconoscerlo ed escluderlo esplicitamente.
-    """
-    invoice_key = generate_invoice_key(
-        parsed.get("invoice_number", ""),
-        parsed.get("supplier_vat", ""),
-        parsed.get("invoice_date", ""),
-    )
-    existing_invoice = await db[Collections.INVOICES].find_one(
-        {"invoice_key": invoice_key}, {"_id": 0}
-    )
-    if existing_invoice:
-        provenance = _source_metadata_fields(source_metadata, existing_invoice)
-        if provenance:
-            await db[Collections.INVOICES].update_one(
-                {"invoice_key": invoice_key}, {"$set": provenance}
-            )
-        return {"status": "duplicate", "filename": filename,
-                "invoice_number": parsed.get("invoice_number")}
-
-    invoice_date = parsed.get("invoice_date", "")
-    invoice = {
-        "id": str(uuid.uuid4()),
-        "invoice_key": invoice_key,
-        "supplier_id": None,
-        "invoice_number": parsed.get("invoice_number", ""),
-        "invoice_date": invoice_date,
-        "tipo_documento": parsed.get("tipo_documento", ""),
-        "tipo_documento_desc": parsed.get("tipo_documento_desc", ""),
-        "supplier_name": parsed.get("supplier_name", ""),
-        "supplier_vat": parsed.get("supplier_vat", ""),
-        "total_amount": float(parsed.get("total_amount", 0) or 0),
-        "imponibile": float(parsed.get("imponibile", 0) or 0),
-        "iva": float(parsed.get("iva", 0) or 0),
-        "divisa": parsed.get("divisa", "EUR"),
-        "fornitore": parsed.get("fornitore", {}),
-        "cliente": parsed.get("cliente", {}),
-        "linee": parsed.get("linee", []),
-        "riepilogo_iva": parsed.get("riepilogo_iva", []),
-        "pagamento_rate": parsed.get("pagamento_rate", []),
-        "pagamento_rate_totale": parsed.get("pagamento_rate_totale"),
-        "pagamento_rate_coerente": parsed.get("pagamento_rate_coerente"),
-        "causali": parsed.get("causali", []),
-        "dati_ddt": parsed.get("dati_ddt", []),
-        "status": "archiviata",
-        "stato_import": "archivio_storico",
-        "source": source,
-        "filename": filename,
-        "xml_raw": xml_raw,
-        "xml_body_index": parsed.get("body_index", 0),
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "cedente_piva": parsed.get("supplier_vat", ""),
-        "cedente_denominazione": parsed.get("supplier_name", ""),
-        "numero_fattura": parsed.get("invoice_number", ""),
-        "data_fattura": invoice_date,
-        "importo_totale": float(parsed.get("total_amount", 0) or 0),
-        "anno": int(invoice_date[:4]) if invoice_date[:4].isdigit() else None,
-        **_source_metadata_fields(source_metadata),
-    }
-    await db[Collections.INVOICES].insert_one(invoice.copy())
-    invoice.pop("_id", None)
-
-    try:
-        from app.services.assegni_fattura_intent import collega_intento_assegno_a_fattura
-        intento_assegno = await collega_intento_assegno_a_fattura(db, invoice)
-        if intento_assegno.get("collegato"):
-            logger.info(
-                "Fattura %s collegata all'assegno anticipato %s",
-                invoice.get("invoice_number"), intento_assegno.get("assegno_id"),
-            )
-    except Exception:
-        logger.exception("Errore collegamento intento assegno per %s", filename)
-
-    return {"status": "archiviata", "filename": filename,
-            "invoice_number": parsed.get("invoice_number"),
-            "supplier": parsed.get("supplier_name"), "id": invoice["id"]}
+# `archivia_fattura_storica` rimossa il 20/09/2026: nel gestionale resta
+# solo l'anno attivo, quindi una fattura di un altro anno non entra piu'
+# nemmeno come archivio. Per rivedere un anno intero: cambiare l'anno
+# attivo (`/api/config-import/anno`) e rilanciare la ricostruzione Drive,
+# che rilegge tutti gli XML dal cursore e li importa nel flusso attivo.
 
 
 async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, source: str,

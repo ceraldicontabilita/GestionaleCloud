@@ -440,7 +440,11 @@ async def _do_sync(db, *, target_year: Optional[int] = None) -> Dict[str, Any]:
                     result["imported"] += 1
                 elif st == "duplicate":
                     result["duplicates"] += 1
-                elif st == "archiviata":
+                elif st in ("archiviata", "skipped_altro_anno"):
+                    # Anno diverso da quello attivo: non entra in archivio,
+                    # ma il file e' stato letto correttamente e va in
+                    # `Elaborate` come gli altri. Trattarlo come errore lo
+                    # spedirebbe in `Errori` e lo rileggeremmo per sempre.
                     result["archiviate"] += 1
                 else:
                     result["errors"] += 1
@@ -630,7 +634,7 @@ async def ricostruisci_archivio_drive_lotto(
                         counters["imported"] += 1
                     elif status == "duplicate":
                         counters["duplicates"] += 1
-                    elif status == "archiviata":
+                    elif status in ("archiviata", "skipped_altro_anno"):
                         counters["archiviate"] += 1
                     else:
                         counters["errors"] += 1
@@ -783,7 +787,7 @@ async def ricostruisci_archivio_drive(db) -> Dict[str, Any]:
                         result["imported"] += 1
                     elif status == "duplicate":
                         result["duplicates"] += 1
-                    elif status == "archiviata":
+                    elif status in ("archiviata", "skipped_altro_anno"):
                         result["archiviate"] += 1
                     else:
                         result["errors"] += 1
