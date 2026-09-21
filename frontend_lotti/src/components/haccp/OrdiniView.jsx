@@ -4,7 +4,7 @@
  * design system salvia, flusso bozza→confermato→inviato su ordini_fornitori.
  * Quattro schede: Catalogo · Carrello · Giacenze · Da inviare.
  */
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import { API, withToken } from "../../utils/constants";
@@ -68,6 +68,11 @@ function svuotaCarrelloCataloghi() {
 export default function OrdiniView({ initialTab = "riordini" }) {
   const [tab, setTab] = useState(initialTab);          // riordini | catalogo | confronto | carrello | giacenze | invio
   const [richieste, setRichieste] = useState([]);      // lavagna magazzino (stato=aperta)
+  const [richiesteAcquisto, setRichiesteAcquisto] = useState([]);
+  const [modificheRichieste, setModificheRichieste] = useState({});
+  const richiesteViste = useRef(null);
+  const creazioneBozzeInCorso = useRef(false);
+  const [creandoBozze, setCreandoBozze] = useState(false);
   const [prodotti, setProdotti] = useState([]);
   const [giacBy, setGiacBy] = useState({});
   const [cart, setCart] = useState({});
@@ -162,6 +167,8 @@ export default function OrdiniView({ initialTab = "riordini" }) {
     // Il carrello cataloghi e' condiviso dal backend: se l'ordine e' stato
     // iniziato su un tablet, compare anche sull'altro senza dover ricominciare.
     axios.get(`${API}/ordini-fornitori/carrello-sospesi`).then(response => {
+      setRichiesteAcquisto(response.data?.richieste || []);
+      richiesteViste.current = new Set((response.data?.richieste || []).map(r => r.id));
       const remoti = response.data?.righe || [];
       const locali = leggiCarrelloCataloghi();
       const uniti = Array.from(new Map([...remoti, ...locali].map(item => [item.id, item])).values());
@@ -169,6 +176,21 @@ export default function OrdiniView({ initialTab = "riordini" }) {
       mergeCarrelloCataloghi();
     }).catch(() => {});
   }, [mergeCarrelloCataloghi]);
+  useEffect(() => {
+    const timer = setInterval(async () => {
+      try {
+        const response = await axios.get(`${API}/ordini-fornitori/carrello-sospesi`);
+        const arrivate = response.data?.richieste || [];
+        if (richiesteViste.current) {
+          const nuove = arrivate.filter(r => !richiesteViste.current.has(r.id));
+          if (nuove.length) toast.info(`${nuove.length} nuove richieste di acquisto dai reparti`);
+        }
+        richiesteViste.current = new Set(arrivate.map(r => r.id));
+        setRichiesteAcquisto(arrivate);
+      } catch { /* riprova al prossimo aggiornamento */ }
+    }, 15000);
+    return () => clearInterval(timer);
+  }, []);
   useEffect(() => {
     mergeCarrelloCataloghi();
     window.addEventListener("ordini_smart_cart_update", mergeCarrelloCataloghi);
@@ -212,14 +234,50 @@ export default function OrdiniView({ initialTab = "riordini" }) {
   const toggle = (p) => setCart(c => { const nc={...c}; if(nc[p.id])delete nc[p.id]; else nc[p.id]={id:p.id,nome:p.nome,conf:p.conf,fornitore:p.fornitore,prezzo:p.prezzo,fornitori60:p.fornitori60||[],prezzoRecente:p.prezzoRecente,prezzoGiorniFa:p.prezzoGiorniFa,qty:1,stock_iniziale:stockOf(p),soglia:sogliaOf(p),richiesto_da:getOperatoreNome()||"Ordini app"}; return nc; });
   const markLow = (p, qta) => { const n = qta || Math.max(1,Math.ceil((sogliaOf(p)||1)-stockOf(p))); inc(p, n); toast.success(`Aggiunto riordino: ${n} pz`); };
 
-  const setFornitore = (id, fornitore, prezzo) => setCart(c => {
-    const nc = {...c};
-    if (nc[id]) nc[id] = { ...nc[id], fornitore, prezzo: Number(prezzo)||0 };
-    return nc;
-  });
+  const setFornitore = (id, fornitore, prezzo) => {
+    if (String(id).startsWith("req_")) {
+      const richiestaId = String(id).slice(4);
+      setModificheRichieste(c => ({...c, [richiestaId]: {...c[richiestaId], fornitore}}));
+      return;
+    }
+    setCart(c => {
+      const nc = {...c};
+      if (nc[id]) nc[id] = { ...nc[id], fornitore, prezzo: Number(prezzo)||0 };
+      return nc;
+    });
+  };
 
-  const cartRows = Object.values(cart);
+  const richiesteRows = richiesteAcquisto.map(r => ({
+    id:`req_${r.id}`, richiestaId:r.id, nome:r.nome, conf:r.unita || "pz",
+    fornitore:modificheRichieste[r.id]?.fornitore ?? r.fornitore ?? "",
+    prezzo:0, fornitori60:[], qty:modificheRichieste[r.id]?.qty ?? Number(r.quantita || 1),
+    stock_iniziale:0, richiesto_da:`${r.richiesto_da || "Reparto"}${r.reparto ? ` · ${r.reparto}` : ""}`,
+    da_reparto:true, prodottoId:r.prodotto_id,
+  }));
+  const cartRows = [...Object.values(cart), ...richiesteRows];
   const cartTot = cartRows.reduce((s,r)=>s+(r.prezzo||0)*r.qty, 0);
+  const cambiaQuantitaCarrello = (r, delta) => {
+    if (!r.da_reparto) { inc(r, delta); return; }
+    setModificheRichieste(c => ({...c, [r.richiestaId]: {
+      ...c[r.richiestaId], qty:Math.max(1, (c[r.richiestaId]?.qty ?? Number(r.qty) ?? 1) + delta),
+    }}));
+  };
+  const rimuoviCarrello = async (id) => {
+    if (!String(id).startsWith("req_")) {
+      setCart(c => {
+        const nc={...c};
+        if (nc[id]?.da_catalogo) rimuoviDaCarrelloCataloghi(nc[id].idCatalogo);
+        delete nc[id]; return nc;
+      });
+      return;
+    }
+    const richiestaId = String(id).slice(4);
+    try {
+      await axios.delete(`${API}/ordini-fornitori/carrello-sospesi/richieste/${richiestaId}`);
+      setRichiesteAcquisto(c => c.filter(r => r.id !== richiestaId));
+      toast.success("Richiesta rimossa dal carrello");
+    } catch { toast.error("Impossibile rimuovere la richiesta"); }
+  };
 
   // ── RIORDINI: i tre segnali in una lista sola (richiesta Enzo: pochi tap) ──
   // 1) prodotti sotto soglia di giacenza; 2) richieste lavagna dei dipendenti.
@@ -247,20 +305,62 @@ export default function OrdiniView({ initialTab = "riordini" }) {
   const nRiordini = sottoSoglia.length + richieste.length;
 
   const creaBozze = async () => {
+    if (creazioneBozzeInCorso.current) return;
     const rows = cartRows.filter(r=>r.qty>0);
     if (!rows.length) { toast("Carrello vuoto"); return; }
+    if (rows.some(r => !r.fornitore || r.fornitore === "DA ASSEGNARE")) {
+      toast.error("Scegli il fornitore prima di creare le bozze"); return;
+    }
+    creazioneBozzeInCorso.current = true;
+    setCreandoBozze(true);
+    try {
     const by = {}; rows.forEach(r=>{ const f=r.fornitore||"DA ASSEGNARE"; (by[f]=by[f]||[]).push(r); });
     let ok=0;
+    const completate = [];
     for (const f of Object.keys(by)) {
+      const richiestaIds = by[f].filter(r => r.da_reparto).map(r => r.richiestaId).sort();
+      const unite = new Map();
+      by[f].forEach(r => {
+        const chiave = `${r.prodottoId || r.id}:${r.conf || "pz"}`;
+        const riga = unite.get(chiave);
+        if (riga) {
+          riga.quantita += Number(r.qty);
+          riga.richiesto_da = [riga.richiesto_da, r.richiesto_da].filter(Boolean).join("; ");
+        } else {
+          unite.set(chiave, {prodotto_id:String(r.prodottoId || r.id),nome:r.nome,fornitore:f,
+            quantita:Number(r.qty),unita:r.conf||"pz",prezzo_ultimo:r.prezzo||0,note:"",
+            richiesto_da:r.richiesto_da||getOperatoreNome()||"Ordini app"});
+        }
+      });
       const doc = { source:"ordini_app", reparto:"", operatore:getOperatoreNome()||"Ordini app",
         note_operatore:"Bozza da pagina Ordini — "+new Date().toLocaleDateString("it-IT"),
-        prodotti: by[f].map(r=>({prodotto_id:String(r.id),nome:r.nome,fornitore:f,quantita:r.qty,unita:r.conf||"pz",prezzo_ultimo:r.prezzo||0,note:"",richiesto_da:r.richiesto_da||getOperatoreNome()||"Ordini app"})),
+        idempotency_key:richiestaIds.length ? `carrello:${richiestaIds.join(":")}` : "",
+        prodotti: [...unite.values()],
         ricette_da_produrre:[] };
-      try { await axios.post(`${API}/ordini-fornitori`, doc); ok++; } catch { /* continua */ }
+      try { await axios.post(`${API}/ordini-fornitori`, doc); ok++; completate.push(...by[f]); }
+      catch { toast.error(`Bozza ${f} non creata: le righe restano nel carrello`); }
     }
-    setCart({}); svuotaCarrelloCataloghi();
+    if (!ok) return;
+    for (const r of completate.filter(r => r.da_reparto)) {
+      try {
+        await axios.delete(`${API}/ordini-fornitori/carrello-sospesi/richieste/${r.richiestaId}`);
+        setRichiesteAcquisto(c => c.filter(x => x.id !== r.richiestaId));
+      } catch { toast.error(`${r.nome}: bozza creata, richiesta ancora visibile; verifica prima di ripetere`); }
+    }
+    setCart(c => Object.fromEntries(Object.entries(c).filter(([id]) => !completate.some(r => String(r.id) === String(id)))));
+    if (completate.length === rows.length) svuotaCarrelloCataloghi();
+    else {
+      const completatiCatalogo = new Set(completate.filter(r => r.da_catalogo).map(r => r.idCatalogo));
+      const rimasti = leggiCarrelloCataloghi().filter(r => !completatiCatalogo.has(r.id));
+      localStorage.setItem(CART_LS_KEY, JSON.stringify(rimasti));
+      axios.put(`${API}/ordini-fornitori/carrello-sospesi`, { righe: rimasti }).catch(() => {});
+    }
     toast.success(`${ok} bozze create: vai su "Da inviare" per confermare`);
     setTab("invio");
+    } finally {
+      creazioneBozzeInCorso.current = false;
+      setCreandoBozze(false);
+    }
   };
 
   return (
@@ -384,18 +484,13 @@ export default function OrdiniView({ initialTab = "riordini" }) {
         )}
         {tab==="confronto" && <ConfrontoProdottoView />}
         {tab==="giacenze" && <Giacenze giacBy={giacBy} onReload={carica} />}
-        {tab==="carrello" && <Carrello rows={cartRows} tot={cartTot} inc={inc} prodotti={prodotti} onSetFornitore={setFornitore} onCrea={creaBozze}
-          onRemove={(id)=>setCart(c=>{
-            const n={...c};
-            if (n[id]?.da_catalogo) rimuoviDaCarrelloCataloghi(n[id].idCatalogo);
-            delete n[id]; return n;
-          })} />}
+        {tab==="carrello" && <Carrello rows={cartRows} tot={cartTot} inc={cambiaQuantitaCarrello} onSetFornitore={setFornitore} onCrea={creaBozze} onRemove={rimuoviCarrello} creando={creandoBozze} />}
         {tab==="invio" && <DaInviare />}
       </div>
 
       {/* barra inferiore */}
       <div style={{ position:"fixed", left:0, right:0, bottom:0, background:"#fff", borderTop:`1px solid ${C.line}`, display:"flex" }}>
-        {[["compra",<Search size={20}/>,"Compra"],["carrello",<ShoppingCart size={20}/>,`Carrello${cartRows.length?" ("+cartRows.length+")":""}`],["invio",<Send size={20}/>,"Da inviare"]].map(([id,icon,lbl])=>{
+        {[["compra",<Search size={20}/>,"Compra"],["carrello",<ShoppingCart size={20}/>,`Carrello${cartRows.length?" ("+cartRows.length+")":""}${richiesteAcquisto.length?" · richieste":""}`],["invio",<Send size={20}/> ,"Da inviare"]].map(([id,icon,lbl])=>{
           const attivo = id==="compra" ? COMPRA_TABS.includes(tab) : tab===id;
           const target = id==="compra" ? (COMPRA_TABS.includes(tab)?tab:"riordini") : id;
           return (
@@ -634,14 +729,16 @@ function Giacenze({ giacBy, onReload }) {
   </>);
 }
 
-function Carrello({ rows, tot, inc, prodotti, onSetFornitore, onCrea, onRemove }) {
+function Carrello({ rows, tot, inc, onSetFornitore, onCrea, onRemove, creando }) {
   if (!rows.length) return <div style={{ textAlign:"center", color:C.muted, padding:40 }}>Carrello vuoto</div>;
-  const find = (id) => prodotti.find(p=>String(p.id)===String(id)) || {};
   return (<>
+    {rows.some(r => r.da_reparto) && <div style={{background:"#fff7ed",border:"1px solid #fed7aa",borderRadius:12,padding:12,marginBottom:12,fontSize:13,fontWeight:700}}>
+      Richieste dai reparti: controlla quantità e fornitore. “Crea bozze ordine” le raggruppa per fornitore; l'invio richiede la tua conferma.
+    </div>}
     {rows.map(r=>{ const fut=(Number(r.stock_iniziale)||0)+(Number(r.qty)||0);
       return (<div key={r.id} style={{ border:`1px solid ${C.line}`, borderRadius:14, padding:12, marginBottom:10 }}>
         <div style={{ display:"flex", gap:10 }}>
-          <div style={{ flex:1, minWidth:0, fontWeight:800 }}>{r.nome}
+          <div style={{ flex:1, minWidth:0, fontWeight:800 }}>{r.nome}{r.da_reparto && <span style={{display:"block",fontSize:11,color:C.amber}}>Richiesta del reparto da valutare</span>}
             <div style={{ fontSize:12, color:C.muted, marginTop:2 }}>Giac. {r.stock_iniziale||0} → prevista {fut}{r.richiesto_da?` · inserito da ${r.richiesto_da}`:""}</div>
           </div>
           <button onClick={()=>onRemove(r.id)} style={{ width:40, height:40, border:"none", borderRadius:12, background:"#fee2e2", color:"#b91c1c", cursor:"pointer" }}><X size={18}/></button>
@@ -663,19 +760,26 @@ function Carrello({ rows, tot, inc, prodotti, onSetFornitore, onCrea, onRemove }
               ))}
             </select>
           </div>
+        ) : r.da_reparto ? (
+          <label style={{display:"block",fontSize:12,fontWeight:800,marginTop:8}}>Fornitore
+            <input value={r.fornitore === "DA ASSEGNARE" ? "" : r.fornitore}
+              onChange={e => onSetFornitore(r.id, e.target.value, r.prezzo)}
+              placeholder="Inserisci o correggi il fornitore"
+              style={{display:"block",width:"100%",boxSizing:"border-box",marginTop:4,padding:"10px 12px",borderRadius:10,border:`1px solid ${C.line}`,fontSize:14}} />
+          </label>
         ) : (
           <div style={{ fontSize:12, color:C.muted, marginTop:6 }}>{r.fornitore}{r.prezzo>0?` · € ${Number(r.prezzo).toFixed(2)}/${r.conf||"pz"}${r.prezzoRecente===false?" (vecchio)":""}`:" · prezzo n/d"}</div>
         )}
         <div style={{ display:"flex", alignItems:"center", gap:10, marginTop:10 }}>
-          <button onClick={()=>inc(find(r.id),-1)} style={qtybtn}><Minus size={18}/></button>
+          <button onClick={()=>inc(r,-1)} style={qtybtn}><Minus size={18}/></button>
           <b>{r.qty}</b>
-          <button onClick={()=>inc(find(r.id),1)} style={qtybtn}><Plus size={18}/></button>
+          <button onClick={()=>inc(r,1)} style={qtybtn}><Plus size={18}/></button>
           <span style={{ marginLeft:"auto", fontWeight:800 }}>€ {((r.prezzo||0)*r.qty).toFixed(2)}</span>
         </div>
       </div>);
     })}
-    <button onClick={onCrea} style={{ width:"100%", border:"none", borderRadius:16, background:`linear-gradient(135deg,${C.brand},#6f9180)`, color:"#fff", padding:15, fontWeight:800, fontSize:15, cursor:"pointer", marginTop:8 }}>
-      Crea bozze ordine · € {tot.toFixed(2)}
+    <button onClick={onCrea} disabled={creando} style={{ width:"100%", border:"none", borderRadius:16, background:`linear-gradient(135deg,${C.brand},#6f9180)`, color:"#fff", padding:15, fontWeight:800, fontSize:15, cursor:creando?"wait":"pointer", marginTop:8 }}>
+      {creando ? "Creo le bozze…" : `Crea bozze ordine · € ${tot.toFixed(2)}`}
     </button>
   </>);
 }

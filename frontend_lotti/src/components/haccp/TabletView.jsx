@@ -342,7 +342,7 @@ export const TabletView = ({ reparto: repartoIniziale = "pasticceria", onBack })
       {showAdmin && <PannelloReparti onClose={()=>{setShowAdmin(false);carica();}}/>}
       {showAlpha && <ModalAlpha modo="banco" onClose={()=>setShowAlpha(false)}/>}
       {showColazione && <ColazioneAcquavivaView modoTablet={true} onClose={()=>{setShowColazione(false);carica();}}/>}
-      {showRichiediMerce && <ModalRichiediMerce operatoreNome={operatore?.nome || ""} onClose={()=>setShowRichiediMerce(false)}/>}
+      {showRichiediMerce && <ModalRichiediMerce operatoreNome={operatore?.nome || ""} reparto={reparto} onClose={()=>setShowRichiediMerce(false)}/>}
       {showAggiungi && <ModalAggiungiProdotto reparto={reparto} onClose={()=>setShowAggiungi(false)} onSalvato={()=>{setShowAggiungi(false);carica();}}/>}
     </div>
   );

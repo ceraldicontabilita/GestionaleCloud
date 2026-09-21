@@ -159,6 +159,21 @@ export default function TabletHome({ onEntra, preselectReparto }) {
   const [repSel, setRepSel] = useState(preselectReparto && REPARTI.find(r => r.id === preselectReparto) ? preselectReparto : null);
   const [showAdminEsci, setShowAdminEsci] = useState(false);
   const sessione = getTabletSession();
+  const [richiesteOrdini, setRichiesteOrdini] = useState(0);
+
+  useEffect(() => {
+    if (sessione?.ruolo !== "amministratore") return;
+    let attivo = true;
+    const aggiorna = async () => {
+      try {
+        const risposta = await axios.get(`${API}/ordini-fornitori/carrello-sospesi`);
+        if (attivo) setRichiesteOrdini((risposta.data?.richieste || []).length);
+      } catch { /* il badge si aggiorna alla prossima lettura */ }
+    };
+    aggiorna();
+    const timer = setInterval(aggiorna, 15000);
+    return () => { attivo = false; clearInterval(timer); };
+  }, [sessione?.ruolo]);
 
   const handleSuccess = (operatore) => {
     const repartoCorrente = repSel;
@@ -224,6 +239,11 @@ export default function TabletHome({ onEntra, preselectReparto }) {
             {r.soloAdmin && (
               <span style={{ position: "absolute", top: 12, right: 12, display: "inline-flex", alignItems: "center", gap: 5, background: "rgba(0,0,0,.35)", borderRadius: 999, padding: "4px 10px", fontSize: 11, fontWeight: 800, letterSpacing: .3 }}>
                 <Lock size={12} /> Solo titolare
+              </span>
+            )}
+            {r.id === "ordini" && sessione?.ruolo === "amministratore" && richiesteOrdini > 0 && (
+              <span style={{ position:"absolute", top:12, left:12, background:"#dc2626", color:"#fff", borderRadius:999, padding:"5px 9px", fontSize:12, fontWeight:900 }}>
+                {richiesteOrdini} da valutare
               </span>
             )}
             <span style={{ fontSize: 56 }}>{r.emoji}</span>

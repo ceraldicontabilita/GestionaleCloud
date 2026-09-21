@@ -7,7 +7,7 @@ poi completati e inviati dall'amministratore via listino-prezzi-merci.
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from app.lotti.auth import require_admin
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional
 import re
 import uuid
@@ -101,6 +101,7 @@ async def get_prodotti_suggeriti(fornitore: Optional[str] = Query(None), limit: 
 
 class OrdineCreateFull(OrdineCreate):
     source: str = "tracciabilita"  # "tracciabilita" | "manuale"
+    idempotency_key: str = ""
 
 
 @router.post("")
@@ -108,6 +109,13 @@ async def crea_ordine(payload: OrdineCreateFull):
     """Crea un nuovo ordine. source='tracciabilita' (automatico) o 'manuale'."""
     if not payload.prodotti:
         raise HTTPException(status_code=400, detail="Nessun prodotto selezionato")
+
+    if payload.idempotency_key:
+        esistente = await db.ordini_fornitori.find_one(
+            {"idempotency_key": payload.idempotency_key}, {"_id": 0}
+        )
+        if esistente:
+            return {"success": True, "ordine_id": esistente["id"], "ordine": esistente, "gia_creata": True}
 
     now = datetime.now(timezone.utc).isoformat()
     oggi = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -138,6 +146,7 @@ async def crea_ordine(payload: OrdineCreateFull):
         "data_ordine": oggi,
         "stato": "bozza",
         "source": payload.source,
+        "idempotency_key": payload.idempotency_key,
         "reparto": payload.reparto,
         "operatore": payload.operatore,
         "prodotti": await arricchisci_iva_righe([p.model_dump() for p in payload.prodotti]),
@@ -636,12 +645,49 @@ class CarrelloSospesiPayload(BaseModel):
     righe: List[dict] = []
 
 
+class RichiestaAcquistoReparto(BaseModel):
+    prodotto_id: str
+    nome: str
+    quantita: float = Field(gt=0)
+    unita: str = "collo"
+    fornitore: str = ""
+    richiesto_da: str = ""
+    reparto: str = ""
+
+
 @router.get("/carrello-sospesi")
 async def get_carrello_sospesi():
     """Carrello dei prodotti 'sospesi' (da ordinare piu tardi), persistente lato
     server: sopravvive a cambio dispositivo/giorno. Documento unico condiviso."""
     doc = await db.carrello_sospesi.find_one({"_id": "default"}, {"_id": 0})
-    return {"righe": (doc or {}).get("righe", [])}
+    return {"righe": (doc or {}).get("righe", []), "richieste": (doc or {}).get("richieste", [])}
+
+
+@router.post("/carrello-sospesi/richieste")
+async def aggiungi_richiesta_acquisto(payload: RichiestaAcquistoReparto):
+    """Accoda la richiesta del reparto al carrello da revisionare dal titolare."""
+    richiesta = {
+        "id": str(uuid.uuid4()), **payload.model_dump(),
+        "stato": "da_valutare", "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.carrello_sospesi.update_one(
+        {"_id": "default"},
+        {"$push": {"richieste": richiesta}, "$set": {"updated_at": richiesta["created_at"]}},
+        upsert=True,
+    )
+    return {"ok": True, "richiesta": richiesta}
+
+
+@router.delete("/carrello-sospesi/richieste/{richiesta_id}")
+async def rimuovi_richiesta_acquisto(richiesta_id: str, request: Request):
+    await require_admin(request)
+    result = await db.carrello_sospesi.update_one(
+        {"_id": "default", "richieste.id": richiesta_id},
+        {"$pull": {"richieste": {"id": richiesta_id}}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(404, "Richiesta non trovata")
+    return {"ok": True}
 
 
 @router.put("/carrello-sospesi")
