@@ -6,7 +6,7 @@ poi completati e inviati dall'amministratore via listino-prezzi-merci.
 """
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from app.services import pin_authentication
+from app.lotti.auth import require_admin
 from pydantic import BaseModel
 from typing import List, Optional
 import re
@@ -275,7 +275,7 @@ async def pulisci_e_rigenera_riordini(request: Request, conferma: bool = False):
     SOLO stato bozza — le manuali non si toccano) e fa rigenerare al motore
     unico un set fresco basato sulle scorte di OGGI. Anteprima di default;
     ?conferma=true per eseguire. Il tasto sta in Controllo Dati."""
-    await _richiedi_admin(request)
+    await require_admin(request)
     # alert_mancanti ESCLUSI: derivano dalla riconciliazione fatture (merce
     # ordinata mai consegnata) e NON sono rigenerabili dalle scorte di oggi.
     AUTO = ["riordino_auto", "automatico_scorta", "automatico_lotti"]
@@ -302,7 +302,7 @@ async def genera_riordino_automatico(request: Request, dry_run: bool = False):
     fornitore (source='riordino_auto') che il titolare valuta su 'Da inviare'.
     dry_run=true: mostra cosa verrebbe creato SENZA creare nulla.
     Anti-duplicato: salta i prodotti gia' presenti in una bozza riordino aperta."""
-    await _richiedi_admin(request)
+    await require_admin(request)
     return await esegui_riordino_automatico(dry_run)
 
 
@@ -756,39 +756,9 @@ async def lista_ordini_automatici():
 
 
 
-async def _richiedi_admin(request: Request):
-    """Le azioni di revisione ordini (conferma/invio) sono SOLO del titolare.
-    Via principale: il token JWT del login centrale con ruolo amministratore
-    (chi e' entrato dal gate col PIN admin e' gia' verificato). Fallback:
-    header X-Admin-Pin per i flussi tablet senza login."""
-    # 1) token del sistema auth centralizzato
-    try:
-        from app.lotti.auth import _ha_token_valido
-        data = _ha_token_valido(request)
-        if data and data.get("ruolo") == "amministratore":
-            return
-    except Exception as e:
-        # fail-closed: si passa al fallback PIN, ma l'errore va visto nei log
-        import logging
-        logging.getLogger(__name__).warning(f"[admin-check] verifica token fallita: {e}")
-    # 2) fallback X-Admin-Pin
-    pin = (request.headers.get("X-Admin-Pin") or "").strip() if request else ""
-    if not pin:
-        raise HTTPException(403, "Operazione riservata al titolare: inserisci il PIN amministratore")
-    if not pin_authentication.admin_pin_matches(pin):
-        raise HTTPException(403, "PIN amministratore non valido")
-
-
-@router.post("/verifica-admin")
-async def verifica_admin(request: Request):
-    """Verifica il PIN amministratore (usato dal pannello 'Da inviare')."""
-    await _richiedi_admin(request)
-    return {"ok": True}
-
-
 @router.put("/{ordine_id}/conferma")
 async def conferma_ordine(ordine_id: str, request: Request = None):
-    await _richiedi_admin(request)
+    await require_admin(request)
     """
     Conferma una bozza → stato 'confermato' (NON inviato).
     Regola: gli ordini non partono mai da soli; l'invio è un'azione separata.
@@ -811,7 +781,7 @@ async def conferma_ordine(ordine_id: str, request: Request = None):
 
 @router.put("/{ordine_id}/conferma-righe")
 async def conferma_righe(ordine_id: str, payload: dict, request: Request = None):
-    await _richiedi_admin(request)
+    await require_admin(request)
     """Segna confermate SOLO alcune righe. Payload: {prodotto_ids: [...]}.
     Le righe non in lista vengono s-confermate. Stato: 'confermato' se almeno
     una riga è confermata, altrimenti torna 'bozza'."""
@@ -839,7 +809,7 @@ async def conferma_righe(ordine_id: str, payload: dict, request: Request = None)
 
 @router.post("/{ordine_id}/invia")
 async def invia_ordine_confermato(ordine_id: str, request: Request = None):
-    await _richiedi_admin(request)
+    await require_admin(request)
     """Invia al fornitore SOLO le righe confermate. Le righe non confermate
     restano in una bozza residua (stesso fornitore/fonte). L'email parte con
     le sole righe confermate; lo stato dell'ordine inviato diventa
