@@ -230,6 +230,8 @@ FILE_MORTI_ELIMINATI = {
     "app/routers/reports/report_pdf.py",
     "app/routers/reports/simple_exports.py",
     "app/routers/batch_operations.py",
+    "app/routers/distinte_bpm.py",
+    "app/routers/libro_unico_parser.py",
 }
 
 
@@ -238,3 +240,13 @@ def test_codice_morto_eliminato_non_ritorna():
     assert not presenti, (
         "File morti gia' eliminati sono ricomparsi: " + ", ".join(presenti)
     )
+
+
+def test_importatori_documentali_non_sono_router_http():
+    for path in (
+        ROOT / "app/services/distinte_bpm.py",
+        ROOT / "app/services/libro_unico_parser.py",
+    ):
+        source = path.read_text(encoding="utf-8")
+        assert "APIRouter" not in source
+        assert "@router." not in source
