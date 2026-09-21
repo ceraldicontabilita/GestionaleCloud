@@ -176,8 +176,30 @@ jobs:
             fi
             sleep 30
           done
-          curl -sSf --max-time 20 -o /dev/null "$PROD_URL/$ATTESO"
-          curl -sSf --max-time 20 "$PROD_URL/api/health" | head -c 500
+          for i in $(seq 1 12); do
+            if curl -sSf --max-time 20 -o /dev/null "$PROD_URL/$ATTESO"; then
+              break
+            fi
+            if [ "$i" = "12" ]; then
+              echo "::error::bundle corretto rilevato ma asset non ancora servibile stabilmente"
+              exit 1
+            fi
+            echo "Asset non ancora stabile dopo deploy, ritento ($i/12)"
+            sleep 10
+          done
+          for i in $(seq 1 12); do
+            HEALTH=$(curl -sSf --max-time 20 "$PROD_URL/api/health" || true)
+            if [ -n "$HEALTH" ]; then
+              printf '%s' "$HEALTH" | head -c 500
+              break
+            fi
+            if [ "$i" = "12" ]; then
+              echo "::error::bundle corretto servito ma /api/health non e' tornato stabile"
+              exit 1
+            fi
+            echo "Health transitoriamente non disponibile dopo deploy, ritento ($i/12)"
+            sleep 10
+          done
       - name: Smoke runtime
         env:
           BACKEND_URL: ${{ env.PROD_URL }}
