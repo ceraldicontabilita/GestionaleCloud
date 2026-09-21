@@ -1,7 +1,7 @@
 /**
  * tablet/CardProdotto.jsx — Card prodotto nella vista tablet
  */
-import { BookOpen, Trash2 } from "lucide-react";
+import { BookOpen, EyeOff } from "lucide-react";
 import { fotoSrc } from "../../../utils/constants";
 
 const COLORI_REPARTO = {
@@ -34,30 +34,30 @@ export function usaCardTestuale(prodotto, reparto) {
   return reparto === "pasticceria" && !(prodotto?.foto_url || prodotto?.foto_fallback_url);
 }
 
-function PulsanteElimina({ prodotto, onElimina, eliminando }) {
-  if (!onElimina) return null;
+function PulsanteEscludi({ prodotto, onEscludi, escludendo }) {
+  if (!onEscludi) return null;
   return (
     <button
       type="button"
-      disabled={eliminando}
+      disabled={escludendo}
       onClick={(e) => {
         e.stopPropagation();
-        onElimina(prodotto);
+        onEscludi(prodotto);
       }}
-      title={`Elimina ${prodotto.nome}`}
+      title={`Escludi ${prodotto.nome} dalle card di produzione`}
       style={{
-        width: "100%", minHeight: 36, border: "none", borderTop: "1px solid #fecaca",
-        background: eliminando ? "#f0ebe0" : "#fff1f2", color: eliminando ? "#9aa593" : "#b91c1c",
-        cursor: eliminando ? "wait" : "pointer", display: "flex", alignItems: "center",
+        width: "100%", minHeight: 44, border: "none", borderTop: "1px solid #cfdfd5",
+        background: escludendo ? "#f0ebe0" : "#f2f6f3", color: escludendo ? "#9aa593" : "#3f5a4e",
+        cursor: escludendo ? "wait" : "pointer", display: "flex", alignItems: "center",
         justifyContent: "center", gap: 6, fontSize: 11, fontWeight: 800, fontFamily: "inherit",
       }}
     >
-      <Trash2 size={14} /> {eliminando ? "Eliminazione…" : "Elimina"}
+      <EyeOff size={14} /> {escludendo ? "Esclusione…" : "Escludi dalle card"}
     </button>
   );
 }
 
-function CardProdotto({ prodotto, reparto, onTap, onCambiaFoto, hasVarianti, onVediRicetta, onElimina, eliminando = false }) {
+function CardProdotto({ prodotto, reparto, onTap, onCambiaFoto, hasVarianti, onVediRicetta, onEscludi, escludendo = false }) {
   const colore = getColoreProdotto(prodotto.nome || "", reparto);
   // Una ricetta base con varianti puo avere una foto valida: in quel caso va
   // mostrata come tutte le altre. Il badge continua a segnalare che il tocco
@@ -105,7 +105,7 @@ function CardProdotto({ prodotto, reparto, onTap, onCambiaFoto, hasVarianti, onV
               </button>
             )}
           </div>
-          <PulsanteElimina prodotto={prodotto} onElimina={onElimina} eliminando={eliminando} />
+          <PulsanteEscludi prodotto={prodotto} onEscludi={onEscludi} escludendo={escludendo} />
         </div>
         <GiacenzaBadge giacenza={giacenza} style={{ top: -8, left: 8 }} />
         {hasVarianti && onCambiaFoto && (
@@ -173,7 +173,7 @@ function CardProdotto({ prodotto, reparto, onTap, onCambiaFoto, hasVarianti, onV
           {giacenza ? `🧊 ${giacenza} già in frigo/abbattitore` : "Tocca → registra lotto"}
         </p>
       </div>
-      <PulsanteElimina prodotto={prodotto} onElimina={onElimina} eliminando={eliminando} />
+      <PulsanteEscludi prodotto={prodotto} onEscludi={onEscludi} escludendo={escludendo} />
     </div>
   );
 }

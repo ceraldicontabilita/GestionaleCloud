@@ -2272,6 +2272,25 @@ async def get_tablet(reparto: str):
     return {"reparto": reparto, "totale": len(ricette), "prodotti": ricette}
 
 
+class VisibilitaTabletRicetta(BaseModel):
+    visibile: bool
+
+
+@router.put("/ricette/{ricetta_id}/visibilita-tablet")
+async def imposta_visibilita_tablet_ricetta(
+    ricetta_id: str,
+    richiesta: VisibilitaTabletRicetta,
+    _admin=Depends(require_admin),
+):
+    """Esclude o ripristina una ricetta dalle card, conservando i suoi dati."""
+    result = await db.ricette.update_one(
+        {"id": ricetta_id}, {"$set": {"visibile_tablet": richiesta.visibile}}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(404, "Ricetta non trovata")
+    return {"id": ricetta_id, "visibile_tablet": richiesta.visibile}
+
+
 @router.get("/ricette/{ricetta_id}", response_model=Ricetta)
 async def get_ricetta(ricetta_id: str):
     item = await db.ricette.find_one({"id": ricetta_id}, {"_id": 0})
@@ -2373,7 +2392,7 @@ async def update_ricetta(ricetta_id: str, item: RicettaCreate, _admin=Depends(re
 
     # Salvare dal form «Ricette» trasforma il riferimento ufficiale del
     # fornitore in una ricetta operativa Ceraldi, senza perdere la provenienza.
-    if _riferimento_ricettario_fornitore(precedente):
+    if _riferimento_ricettario_fornitore(precedente) and not precedente.get("ricetta_operativa"):
         payload["visibile_tablet"] = True
         payload["ricetta_operativa"] = True
         payload["adattata_da_ricettario_fornitore_at"] = datetime.now(timezone.utc).isoformat()

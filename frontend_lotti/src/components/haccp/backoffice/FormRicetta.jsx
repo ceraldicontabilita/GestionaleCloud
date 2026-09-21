@@ -156,7 +156,7 @@ function RigaIngrediente({ ing, idx, onChange, onRemove, bloccato = false }) {
 }
 
 
-function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onElimina, ricette = [] }) {
+function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita, ricette = [] }) {
   const [form, setForm] = useState(() => {
     if (!ricetta) {
       return { nome:"", reparto:"pasticceria", porzioni:10, metodo_conservazione:"frigo",
@@ -1021,14 +1021,12 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onElimina, r
         {saving ? "Salvo…" : ricetta?.id ? "💾 Aggiorna ricetta" : "✨ Crea ricetta"}
       </button>
 
-      {/* Elimina: tolto dalla card (dove un cestino sempre in vista su ogni
-          ricetta era rumore e rischio-tocco) e messo qui, in fondo, discreto. */}
-      {ricetta?.id && onElimina && (
-        <button onClick={() => onElimina(ricetta)}
-          style={{width:"100%",marginTop:10,padding:"10px",border:"none",borderRadius:10,
-            background:"transparent",color:"var(--danger)",fontFamily:"var(--font)",
+      {ricetta?.id && onVisibilita && (
+        <button type="button" onClick={() => onVisibilita(ricetta)}
+          style={{width:"100%",minHeight:44,marginTop:10,padding:"10px",border:"1px solid #cfdfd5",borderRadius:10,
+            background:"#f2f6f3",color:"#3f5a4e",fontFamily:"var(--font)",
             fontSize:13,fontWeight:700,cursor:"pointer"}}>
-          🗑 Elimina questa ricetta
+          {ricetta.visibile_tablet === false ? "↩ Ripristina nei reparti" : "⊘ Escludi dai reparti"}
         </button>
       )}
       </div>

@@ -17,7 +17,6 @@ import axios from "axios";
 import { toast } from "sonner";
 import { User } from "lucide-react";
 import { norm } from "../../utils/textNormalize";
-import { conferma } from "../../utils/conferma";
 import { apiError } from "../../utils/apiError";
 
 import { ModalCambioFoto }    from "./tablet/ModalCambioFoto";
@@ -63,7 +62,7 @@ export const TabletView = ({ reparto: repartoIniziale = "pasticceria", onBack })
   const [showColazione,       setShowColazione]       = useState(false);
   const [showRichiediMerce,   setShowRichiediMerce]   = useState(false);
   const [showAggiungi,        setShowAggiungi]        = useState(false);
-  const [eliminandoId,        setEliminandoId]        = useState(null);
+  const [escludendoId,        setEscludendoId]        = useState(null);
   const [idConVarianti,       setIdConVarianti]       = useState(new Set());
   const [taskOggi,            setTaskOggi]            = useState([]);
   const [showTask,            setShowTask]            = useState(false);
@@ -134,29 +133,31 @@ export const TabletView = ({ reparto: repartoIniziale = "pasticceria", onBack })
     .filter(p=>!search||norm(p.nome).includes(norm(search)))  // stesso motore di ricerca dell'app: senza accenti ("babà"→"baba")
     .sort((a,b)=>(a.nome||"").localeCompare(b.nome||"","it"));
 
-  const puoEliminareRicette = operatore?.ruolo === "amministratore";
-  const eliminaRicetta = async (prodotto) => {
-    if (!puoEliminareRicette || !prodotto?.id || eliminandoId) return;
-    const ok = await conferma(
-      `Eliminare la ricetta "${prodotto.nome}" dalle card operative?`,
-      {
-        titolo: "Elimina ricetta",
-        ok: "Sposta nel cestino",
-        pericolo: true,
-      },
-    );
-    if (!ok) return;
-    setEliminandoId(prodotto.id);
+  const puoGestireRicette = operatore?.ruolo === "amministratore";
+  const escludiRicetta = async (prodotto) => {
+    if (!puoGestireRicette || !prodotto?.id || escludendoId) return;
+    setEscludendoId(prodotto.id);
     try {
-      const risposta = await axios.delete(`${API}/ricette/${prodotto.id}`);
+      await axios.put(`${API}/ricette/${prodotto.id}/visibilita-tablet`, { visibile: false });
       setProdotti((correnti) => correnti.filter((r) => r.id !== prodotto.id));
-      toast.success(risposta.data?.recuperabile
-        ? "Ricetta eliminata e conservata nel cestino"
-        : "Ricetta eliminata");
+      toast.success("Ricetta esclusa dalle card. La trovi in Ricette.", {
+        action: {
+          label: "Annulla",
+          onClick: async () => {
+            try {
+              await axios.put(`${API}/ricette/${prodotto.id}/visibilita-tablet`, { visibile: true });
+              await carica();
+              toast.success("Ricetta ripristinata nelle card");
+            } catch (errore) {
+              toast.error(apiError(errore, "Non è stato possibile ripristinare la ricetta"));
+            }
+          },
+        },
+      });
     } catch (errore) {
-      toast.error(apiError(errore, "Non è stato possibile eliminare la ricetta"));
+      toast.error(apiError(errore, "Non è stato possibile escludere la ricetta"));
     } finally {
-      setEliminandoId(null);
+      setEscludendoId(null);
     }
   };
 
@@ -318,8 +319,8 @@ export const TabletView = ({ reparto: repartoIniziale = "pasticceria", onBack })
                   onCambiaFoto={prod=>setCambiaFotoProd(prod)}
                   hasVarianti={idConVarianti.has(p.id)}
                   onVediRicetta={prod=>setRicettaDaVedere(prod)}
-                  onElimina={puoEliminareRicette ? eliminaRicetta : undefined}
-                  eliminando={eliminandoId === p.id}
+                  onEscludi={puoGestireRicette ? escludiRicetta : undefined}
+                  escludendo={escludendoId === p.id}
                 />
               ))}
             </div>
@@ -333,7 +334,7 @@ export const TabletView = ({ reparto: repartoIniziale = "pasticceria", onBack })
       {ricettaDaVedere && <SchedaRicettaKiosk
         ricettaId={ricettaDaVedere.id}
         nome={ricettaDaVedere.nome}
-        modificabile={puoEliminareRicette}
+        modificabile={puoGestireRicette}
         onSalvato={carica}
         onClose={()=>setRicettaDaVedere(null)}
       />}
