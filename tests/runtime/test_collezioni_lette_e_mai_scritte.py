@@ -63,7 +63,6 @@ NOTE = {
     "tax_collection_claims",
     "tfr_acconti",
     "verbali_autovelox",
-    "warehouse_products",
 }
 
 #: Non e' un nome di collezione: compare dentro una docstring che spiega
