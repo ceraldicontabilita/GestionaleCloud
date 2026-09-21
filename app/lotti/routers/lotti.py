@@ -320,22 +320,38 @@ async def lotti_pesce(limit: int = Query(30, ge=1, le=200)):
 
 @router.get("/cosa-usare-oggi")
 async def cosa_usare_oggi(limit: int = Query(200, ge=1, le=2000)):
-    """Lotti attivi ordinati per urgenza (semaforo scadenza) e, a parità di
-    urgenza, per valore economico decrescente — così l'operatore vede prima
-    cosa rischia di più (rosso/arancione) e, tra pari urgenza, cosa costa
-    di più lasciare andare a male."""
+    """Separa lotti utilizzabili, scaduti e senza scadenza verificabile.
+
+    Solo i lotti con data di scadenza valida e non passata possono ricevere
+    l'azione operativa «Usa oggi»; gli altri restano visibili per la gestione.
+    """
     from app.lotti.routers.utils import FILTRO_LOTTO_APERTO
     items = await db.lotti.find(dict(FILTRO_LOTTO_APERTO), {"_id": 0}).to_list(5000)
     normalizzati = [_normalizza_lotto(it) for it in items]
     # esclude i lotti già a quantità zero (consumati parzialmente fino a esaurimento
     # ma non ancora marcati — coerente col filtro usato altrove, es. giacenza_prodotti_finiti)
     normalizzati = [n for n in normalizzati if (n.get("quantita") or 0) > 0]
-    ordine_colore = {"rosso": 0, "arancione": 1, "giallo": 2, "verde": 3, "grigio": 4}
-    normalizzati.sort(key=lambda n: (
-        ordine_colore.get(n["stato_scadenza"]["colore"], 5),
+    utilizzabili = []
+    scaduti = []
+    da_verificare = []
+    for lotto in normalizzati:
+        giorni = lotto["stato_scadenza"]["giorni_alla_scadenza"]
+        if giorni is None:
+            da_verificare.append(lotto)
+        elif giorni < 0:
+            scaduti.append(lotto)
+        else:
+            utilizzabili.append(lotto)
+    utilizzabili.sort(key=lambda n: (
+        n["stato_scadenza"]["giorni_alla_scadenza"],
         -(n.get("valore_economico") or 0),
     ))
-    return {"totale": len(normalizzati), "lotti": normalizzati[:limit]}
+    scaduti.sort(key=lambda n: n["stato_scadenza"]["giorni_alla_scadenza"])
+    return {
+        "totale": len(utilizzabili), "lotti": utilizzabili[:limit],
+        "totale_scaduti": len(scaduti), "scaduti": scaduti[:limit],
+        "totale_da_verificare": len(da_verificare), "da_verificare": da_verificare[:limit],
+    }
 
 
 @router.get("/{lotto_id}")

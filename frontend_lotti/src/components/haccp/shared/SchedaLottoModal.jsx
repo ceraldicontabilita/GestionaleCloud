@@ -256,6 +256,8 @@ export function SchedaLottoModal({ lottoId, onClose, onCambiato }) {
           <div className="p-4 space-y-4">
             {(() => {
               const l = scheda.lotto;
+              const giorniAllaScadenza = l.stato_scadenza?.giorni_alla_scadenza;
+              const utilizzabile = Number.isFinite(giorniAllaScadenza) && giorniAllaScadenza >= 0;
               const sem = SEMAFORO[l.stato_scadenza?.colore] || SEMAFORO.grigio;
               return (
                 <>
@@ -448,10 +450,10 @@ export function SchedaLottoModal({ lottoId, onClose, onCambiato }) {
                     }}><FileText size={16}/> Stampa report</Button>
                     {onCambiato && (
                       <>
-                        <Button size="sm" variant="secondary" onClick={() => onCambiato("sposta", l)}><ArrowLeftRight size={16}/> Sposta</Button>
-                        <Button size="sm" variant="secondary" onClick={() => onCambiato("congela", l)}><Snowflake size={16}/> Congela</Button>
-                        <Button size="sm" variant="secondary" onClick={() => onCambiato("banco", l)}><Store size={16}/> Al banco</Button>
-                        <Button size="sm" variant="secondary" onClick={() => onCambiato("recupera", l)}><RotateCcw size={16}/> Recupera</Button>
+                        {utilizzabile && <Button size="sm" variant="secondary" onClick={() => onCambiato("sposta", l)}><ArrowLeftRight size={16}/> Sposta</Button>}
+                        {utilizzabile && <Button size="sm" variant="secondary" onClick={() => onCambiato("congela", l)}><Snowflake size={16}/> Congela</Button>}
+                        {utilizzabile && <Button size="sm" variant="secondary" onClick={() => onCambiato("banco", l)}><Store size={16}/> Al banco</Button>}
+                        {utilizzabile && <Button size="sm" variant="secondary" onClick={() => onCambiato("recupera", l)}><RotateCcw size={16}/> Recupera</Button>}
                         <Button size="sm" variant="danger" onClick={() => onCambiato("smalti", l)}><Trash2 size={16}/> Smaltisci</Button>
                       </>
                     )}
