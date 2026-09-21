@@ -6,7 +6,7 @@ lavorati, cattura generica delle voci, ratei 13ma/14ma, indennita' L.207/24,
 trattamento integrativo L.21) ma non e' mai stata usata: le sue tabelle
 (`hr.app_employees`, `hr.app_buste_paga`, `hr.app_presenze_mensili`) non
 esistono in Supabase e nessun chiamante puntava alle sue rotte. La copia viva —
-`app/services/libro_unico_parser.py`, invocata da `documenti.upload_auto` quando
+`app/services/libro_unico_workflow.py`, invocata da `documenti.upload_auto` quando
 riconosce un cedolino — quei campi non li leggeva.
 
 Questi test coprono gli arricchimenti portati sulla copia viva, e il fatto che
@@ -16,9 +16,9 @@ elencano i campi uno per uno, quindi un parser piu' ricco da solo non basta.
 import re
 from pathlib import Path
 
-from app.services.libro_unico_parser import parse_busta_paga, parse_foglio_presenze
+from app.services.libro_unico_workflow import parse_busta_paga, parse_foglio_presenze
 
-SORGENTE = Path("app/services/libro_unico_parser.py").read_text(encoding="utf-8")
+SORGENTE = Path("app/services/libro_unico_workflow.py").read_text(encoding="utf-8")
 
 
 def test_giorni_lavorati_esclude_i_giorni_con_giustificativo():
