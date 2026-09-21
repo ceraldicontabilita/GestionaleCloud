@@ -3,7 +3,7 @@ import { saveToken, saveRuolo, setGateOk } from "../../auth";
 import axios from "axios";
 import { Lock } from "lucide-react";
 import { apiError } from "../../utils/apiError";
-import { clearTabletSession, getTabletSession, moveTabletSessionTo, saveTabletSession } from "../../utils/tabletSession";
+import { getTabletSession, moveTabletSessionTo, saveTabletSession } from "../../utils/tabletSession";
 
 const API = process.env.REACT_APP_LOTTI_BACKEND_URL + "/api";
 
@@ -191,7 +191,8 @@ export default function TabletHome({ onEntra, preselectReparto }) {
     onEntra?.(repartoCorrente, operatore);
   };
 
-  const handleEsciAdmin = () => {
+  const handleEsciAdmin = (operatore = null) => {
+    if (operatore) saveTabletSession(operatore, "home");
     // Serve anche il ruolo salvato: il gestionale ora si apre SOLO da
     // amministratore (25/07/2026), altrimenti si tornerebbe subito al kiosk.
     saveRuolo("amministratore");
@@ -199,7 +200,6 @@ export default function TabletHome({ onEntra, preselectReparto }) {
     // ricaricare la pagina per ritrovarsi il tastierino "Accesso Lotti"
     // (trovato al collaudo del 25/07/2026).
     setGateOk();
-    clearTabletSession();
     setShowAdminEsci(false);
     window.location.hash = "dashboard";
     window.dispatchEvent(new Event("tablet-auth"));

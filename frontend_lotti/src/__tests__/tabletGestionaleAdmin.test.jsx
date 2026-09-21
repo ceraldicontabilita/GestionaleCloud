@@ -40,7 +40,7 @@ describe("uscita dal tablet verso il gestionale", () => {
     await act(async () => button.click());
     expect(get).toHaveBeenCalledWith(expect.stringContaining("/auth/me"));
     expect(window.location.hash).toBe("#dashboard");
-    expect(getTabletSession()).toBeNull();
+    expect(getTabletSession()).toMatchObject({ dipendente_id: "hr-admin", ruolo: "amministratore" });
     expect(node.textContent).not.toContain("PIN Amministratore");
   });
 
