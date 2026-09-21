@@ -178,7 +178,7 @@ _SEED = [
         "Pannello Supervisore: la ✕ che nasconde un avviso deve funzionare solo col tuo accesso da amministratore.",
     ]},
     {"titolo": "Tablet: il dipendente produce e legge le ricette, il resto è tuo", "gruppo": "Tablet", "passi": [
-        "Dal tablet, con un PIN DIPENDENTE: Pasticceria, Rosticceria, Bar, Produzioni al banco e Dose di oggi devono aprirsi normalmente.",
+        "Dal tablet, con un PIN DIPENDENTE: Pasticceria, Rosticceria, Bar, Produzioni al banco e Ricette devono aprirsi normalmente.",
         "Sempre col PIN dipendente prova Magazzino, Lavagna richieste e Ordini: hanno il lucchetto «Solo titolare» e devono rispondere «PIN non autorizzato».",
         "Con il TUO PIN le stesse tre card devono aprirsi: le usi tu dal tablet.",
         "Su ogni prodotto del reparto c'è il bottone «Ricetta»: si apre la scheda in SOLA LETTURA con ingredienti, dosi, allergeni e note. Non deve esserci nessun modo di modificarla da lì.",

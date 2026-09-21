@@ -16,7 +16,7 @@ jest.mock("../components/haccp/VenditaBancoView", () => ({
 }));
 jest.mock("../components/haccp/MagazzinoBarView", () => () => <div>Magazzino</div>);
 jest.mock("../components/haccp/OrdiniView", () => () => <div>Ordini</div>);
-jest.mock("../components/haccp/tablet/DoseProduzioneView", () => () => <div>Dosi</div>);
+jest.mock("../components/haccp/tablet/RicetteKioskView", () => () => <div data-testid="ricette-kiosk">Ricette</div>);
 
 const KioskLayout = require("../layouts/KioskLayout").default;
 const {
@@ -54,6 +54,13 @@ describe("navigazione kiosk senza richieste PIN inutili", () => {
 
     expect(container.querySelector('[data-testid="tablet-view"]')?.textContent).toBe("pasticceria");
     expect(getTabletSession()).toMatchObject({ nome: "Mario", reparto: "pasticceria" });
+  });
+
+  test("Ricette usa la sessione esistente e non apre un secondo accesso", async () => {
+    saveTabletSession({ dipendente_id: "hr-1", nome: "Mario", ruolo: "operatore" }, "pasticceria");
+    await act(async () => root.render(<KioskLayout hash="tablet/ricette" />));
+    expect(container.querySelector('[data-testid="ricette-kiosk"]')).not.toBeNull();
+    expect(getTabletSession()).toMatchObject({ dipendente_id: "hr-1", reparto: "ricette" });
   });
 
   test("una card riservata non cancella la sessione del dipendente", async () => {

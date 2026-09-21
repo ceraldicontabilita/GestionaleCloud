@@ -18,7 +18,7 @@ const REPARTI = [
   { id: "rosticceria", label: "Rosticceria", emoji: "🥙", grad: "linear-gradient(135deg,#86efac,#22c55e)", shadow: "rgba(34,197,94,.5)" },
   { id: "bar", label: "Bar", emoji: "☕", grad: "linear-gradient(135deg,#b45309,#78350f)", shadow: "rgba(120,53,15,.5)" },
   { id: "vendita", label: "Produzioni al banco", emoji: "🧾", grad: "linear-gradient(135deg,#5b7a6b,#3f5a4e)", shadow: "rgba(63,90,78,.5)" },
-  { id: "dosi", label: "Dose di oggi", emoji: "⚖️", grad: "linear-gradient(135deg,#c4894a,#9c6a32)", shadow: "rgba(156,106,50,.5)" },
+  { id: "ricette", label: "Ricette", emoji: "📖", grad: "linear-gradient(135deg,#c4894a,#9c6a32)", shadow: "rgba(156,106,50,.5)" },
   { id: "magazzino", label: "Magazzino", emoji: "📦", grad: "linear-gradient(135deg,#6f583a,#4a3f33)", shadow: "rgba(74,63,51,.5)" },
   { id: "lavagna", label: "Lavagna richieste", emoji: "📺", grad: "linear-gradient(135deg,#8a6f47,#6f583a)", shadow: "rgba(111,88,58,.5)" },
   { id: "ordini", label: "Ordini", emoji: "🛒", grad: "linear-gradient(135deg,#6f9180,#4f6d5f)", shadow: "rgba(79,109,95,.5)", soloAdmin: true },
