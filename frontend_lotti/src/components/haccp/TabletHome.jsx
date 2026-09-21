@@ -186,8 +186,6 @@ export default function TabletHome({ onEntra, preselectReparto }) {
     // ricaricare la pagina per ritrovarsi il tastierino "Accesso Lotti"
     // (trovato al collaudo del 25/07/2026).
     setGateOk();
-    const op = getTabletSession({ allowExpired: true });
-    if (op?.nome) axios.post(`${API}/tablet-operatori/logout`, { nome: op.nome, reparto: op.reparto || "" }, { timeout: 6000 }).catch(() => {});
     clearTabletSession();
     setShowAdminEsci(false);
     window.location.hash = "dashboard";
