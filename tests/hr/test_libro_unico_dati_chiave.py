@@ -6,7 +6,7 @@ lavorati, cattura generica delle voci, ratei 13ma/14ma, indennita' L.207/24,
 trattamento integrativo L.21) ma non e' mai stata usata: le sue tabelle
 (`hr.app_employees`, `hr.app_buste_paga`, `hr.app_presenze_mensili`) non
 esistono in Supabase e nessun chiamante puntava alle sue rotte. La copia viva —
-`app/services/libro_unico_workflow.py`, invocata da `documenti.upload_auto` quando
+`app/routers/libro_unico_parser.py`, invocata da `documenti.upload_auto` quando
 riconosce un cedolino — quei campi non li leggeva.
 
 Questi test coprono gli arricchimenti portati sulla copia viva, e il fatto che
@@ -16,9 +16,9 @@ elencano i campi uno per uno, quindi un parser piu' ricco da solo non basta.
 import re
 from pathlib import Path
 
-from app.services.libro_unico_workflow import parse_busta_paga, parse_foglio_presenze
+from app.routers.libro_unico_parser import parse_busta_paga, parse_foglio_presenze
 
-SORGENTE = Path("app/services/libro_unico_workflow.py").read_text(encoding="utf-8")
+SORGENTE = Path("app/routers/libro_unico_parser.py").read_text(encoding="utf-8")
 
 
 def test_giorni_lavorati_esclude_i_giorni_con_giustificativo():
@@ -95,8 +95,8 @@ def test_i_campi_nuovi_finiscono_nel_documento_archiviato():
     )
 
 
-def test_una_sola_copia_del_workflow_libro_unico():
-    assert not Path("app/hr/routers/libro_unico_parser.py").exists() and not Path("app/routers/libro_unico_parser.py").exists(), (
+def test_una_sola_copia_del_router_libro_unico():
+    assert not Path("app/hr/routers/libro_unico_parser.py").exists(), (
         "La copia HR e' tornata: era registrata a /api/paghe ma scriveva su "
         "tabelle inesistenti e le mancavano la validazione PDF "
         "(`verifica_pdf_reale`), il fix P0.3 su Collections.EMPLOYEES e lo "
