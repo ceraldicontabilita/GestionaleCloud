@@ -14,6 +14,7 @@ from datetime import datetime, timezone, date, timedelta
 from typing import List
 import re
 import uuid
+from app.lotti.servizi.stati_anomalia import STATI_APERTI, STATI_CONCLUSI, STATI_ANOMALIA
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,6 @@ TIPI_ANOMALIA = [
     "Altro",
 ]
 
-STATI_ANOMALIA = ["Aperta", "In corso", "Risolta", "Chiusa"]
 
 CATEGORIE_ATTREZZATURA = [
     "Frigorifero",
@@ -125,7 +125,7 @@ async def get_tipi_anomalia():
 @router.get("/stati")
 async def get_stati_anomalia():
     """Lista stati anomalia"""
-    return STATI_ANOMALIA
+    return list(STATI_ANOMALIA)
 
 
 @router.get("/categorie")
@@ -166,8 +166,8 @@ async def get_statistiche(anno: int = None):
         "per_stato": per_stato,
         "per_categoria": per_categoria,
         "per_priorita": per_priorita,
-        "aperte": per_stato.get("Aperta", 0) + per_stato.get("In corso", 0),
-        "risolte": per_stato.get("Risolta", 0) + per_stato.get("Chiusa", 0),
+        "aperte": sum(per_stato.get(stato, 0) for stato in STATI_APERTI),
+        "risolte": sum(per_stato.get(stato, 0) for stato in STATI_CONCLUSI),
     }
 
 
@@ -510,8 +510,8 @@ async def genera_report_pdf_anomalie(anno: int):
 
     # Statistiche
     totale = len(anomalie)
-    risolte = sum(1 for a in anomalie if a.get("stato") == "Risolta")
-    aperte = sum(1 for a in anomalie if a.get("stato") in ["Aperta", "In corso"])
+    risolte = sum(1 for a in anomalie if a.get("stato") in STATI_CONCLUSI)
+    aperte = sum(1 for a in anomalie if a.get("stato") in STATI_APERTI)
 
     # Raggruppa per categoria
     per_categoria = {}
@@ -609,7 +609,7 @@ async def genera_report_pdf_anomalie(anno: int):
             stato = a.get("stato", "")
             stato_class = (
                 "stato-risolta"
-                if stato == "Risolta"
+                if stato in STATI_CONCLUSI
                 else ("stato-aperta" if stato == "Aperta" else "stato-incorso")
             )
 
@@ -676,7 +676,7 @@ async def genera_report_pdf_range(start_anno: int, end_anno: int):
     ]
 
     totale = len(anomalie)
-    risolte = sum(1 for a in anomalie if a.get("stato") == "Risolta")
+    risolte = sum(1 for a in anomalie if a.get("stato") in STATI_CONCLUSI)
 
     html = f"""
     <!DOCTYPE html>
@@ -713,7 +713,7 @@ async def genera_report_pdf_range(start_anno: int, end_anno: int):
     """
 
     for a in sorted(anomalie, key=lambda x: x.get("data_segnalazione", ""), reverse=True):
-        stato_class = "stato-risolta" if a.get("stato") == "Risolta" else "stato-aperta"
+        stato_class = "stato-risolta" if a.get("stato") in STATI_CONCLUSI else "stato-aperta"
         html += f"""
             <tr class="{stato_class}">
                 <td>{a.get('data_segnalazione', '')}</td>
