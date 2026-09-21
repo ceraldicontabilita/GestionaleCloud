@@ -3,12 +3,7 @@ import axios from "axios";
 import { toast } from "sonner";
 import { apiError } from "../../utils/apiError";
 import { norm } from "../../utils/textNormalize";
-import PinKeypad from "./shared/PinKeypad";
-import {
-  actionAuthorizationStillValid,
-  getTabletSession,
-  markTabletActionAuthorized,
-} from "../../utils/tabletSession";
+import { getTabletSession } from "../../utils/tabletSession";
 
 const API = process.env.REACT_APP_LOTTI_BACKEND_URL + "/api";
 
@@ -70,7 +65,7 @@ function KeypadPopup({ titolo, value, onChange, onClose }) {
   );
 }
 
-function ProductCard({ p, onReload, authorizeAction }) {
+function ProductCard({ p, onReload, eseguiConSessione }) {
   const [qty, setQty] = useState("1");
   const [busy, setBusy] = useState(false);
   const [keypad, setKeypad] = useState(false);
@@ -79,7 +74,7 @@ function ProductCard({ p, onReload, authorizeAction }) {
   const unita = p.unita || p.um || "pz";
   const source = p.source || p.origine || "bar";
 
-  const scarica = () => authorizeAction(async (operatoreNome) => {
+  const scarica = () => eseguiConSessione(async (operatoreNome) => {
     const q = Number(String(qty).replace(",", "."));
     if (!Number.isFinite(q) || q <= 0) { toast.error("Quantita non valida"); return; }
     setBusy(true);
@@ -137,29 +132,17 @@ function ProductCard({ p, onReload, authorizeAction }) {
 }
 
 export default function MagazzinoBarView({ onBack, soloLavagna = false }) {
-  const [op, setOp] = useState(() => getOperatore());
-  const [showActionPin, setShowActionPin] = useState(false);
-  const [pendingAction, setPendingAction] = useState(null);
+  const op = getOperatore();
   const operatoreNome = op.nome || op.name || "Operatore";
 
-  const authorizeAction = useCallback((azione) => {
+  const eseguiConSessione = useCallback((azione) => {
     const session = getTabletSession();
-    if (session && actionAuthorizationStillValid(session)) {
-      azione(session.nome || "Operatore");
+    if (!session) {
+      toast.error("Sessione scaduta: accedi di nuovo dal tablet");
       return;
     }
-    setPendingAction(() => azione);
-    setShowActionPin(true);
+    azione(session.nome);
   }, []);
-
-  const actionPinOk = useCallback((operatore) => {
-    const session = markTabletActionAuthorized(operatore, soloLavagna ? "lavagna" : "magazzino");
-    setOp(session);
-    setShowActionPin(false);
-    const azione = pendingAction;
-    setPendingAction(null);
-    if (azione) azione(session.nome || "Operatore");
-  }, [pendingAction, soloLavagna]);
   const [loading, setLoading] = useState(true);
   const [errore, setErrore] = useState("");
   const [prodotti, setProdotti] = useState([]);
@@ -224,7 +207,7 @@ export default function MagazzinoBarView({ onBack, soloLavagna = false }) {
     } catch (e) { toast.error(apiError(e, "Errore richiesta")); }
   };
 
-  const okRichiesta = (r) => authorizeAction(async (nomeAutorizzato) => {
+  const okRichiesta = (r) => eseguiConSessione(async (nomeAutorizzato) => {
     try {
       const res = await axios.put(`${API}/magazzino-bar/richieste/${r.id}/ok?operatore_nome=${encodeURIComponent(nomeAutorizzato)}`);
       if (res.data?.avviso) toast.warning(res.data.avviso);
@@ -341,22 +324,12 @@ export default function MagazzinoBarView({ onBack, soloLavagna = false }) {
             </div>
             {filtrati.length === 0 ? <MessageBox title="Nessun prodotto" text="Non ci sono prodotti da mostrare con questi filtri." /> : (
               <div style={{ display: "flex", flexDirection: "column", gap: 10, paddingBottom: 70 }}>
-                {filtrati.map((p, i) => <ProductCard key={`${p.source || p.origine || "bar"}-${p.id || i}`} p={p} onReload={carica} authorizeAction={authorizeAction} />)}
+                {filtrati.map((p, i) => <ProductCard key={`${p.source || p.origine || "bar"}-${p.id || i}`} p={p} onReload={carica} eseguiConSessione={eseguiConSessione} />)}
               </div>
             )}
           </>
         ) : null}
       </div>
-      {showActionPin && (
-        <PinKeypad
-          titolo="Chi sta effettuando il prelievo?"
-          sottotitolo="Conferma il tuo PIN. Le azioni successive restano autorizzate per 10 minuti."
-          colore="#5b7a6b"
-          maxLen={6}
-          onSuccess={actionPinOk}
-          onCancel={() => { setShowActionPin(false); setPendingAction(null); }}
-        />
-      )}
     </div>
   );
 }
