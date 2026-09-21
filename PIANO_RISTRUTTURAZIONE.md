@@ -3,10 +3,12 @@
 **Documento operativo vivo, aggiornato il 21 settembre 2026.**
 
 - Baseline iniziale dell'audit: `8cf52bd269d8d1facb478e4a585fa8b01a5ec3ff`.
-- Baseline di questa tranche: `e283400164c0b9fb88ece13eb401fcde9cba1c42`.
+- Baseline iniziale della bonifica: `e283400164c0b9fb88ece13eb401fcde9cba1c42`.
+- Avanzamento main integrato: `31943965f382018d87047637e16fe815d1b93318`, rimozione di public_api e riallocazione degli endpoint vivi.
 - Tranche corrente: [PR #569](https://github.com/ceraldicontabilita/GestionaleCloud/pull/569), bonifica dei router dismessi e collaudi prima del merge.
+- Integrazione della tranche con main: `5b6e1271b12b1a35ecb19dec6f7a62dae9a5a54e`; nessuna modifica concorrente rimossa.
 - Stato complessivo: **IN CORSO**. La fusione ERP, HR, Lotti e Menu non è ancora completata.
-- Pubblicazione della tranche corrente: **non attestata in questa revisione**; attendere test, merge e verifica del commit effettivamente servito.
+- Pubblicazione della tranche corrente: **non attestata in questa revisione**; richiede test, merge e verifica del commit effettivamente servito.
 
 ## 1. Regole di avanzamento e pubblicazione
 
@@ -15,7 +17,7 @@ Questo file è il registro unico del programma. Gli ID delle attività rimangono
 | Stato | Significato |
 |---|---|
 | ⚪ | Da fare; nessuna implementazione conclusa |
-| 🟡 | In corso oppure modificato sul branch, non ancora verificato e pubblicato |
+| 🟡 | In corso, implementato ma non ancora verificato/pubblicato, o verifica operativa incompleta |
 | 🟢 | Concluso nel perimetro dichiarato, con test e verifica del rilascio |
 | 🔴 | Bloccato da un impedimento documentato |
 | 🧊 | Differito con motivazione |
@@ -29,19 +31,21 @@ Una chiusura richiede: commit/PR, perimetro preciso, confronto prima/dopo, test 
 
 ## 2. Stato verificato e correzioni all'audit iniziale
 
-La PR #566 della Prima Nota è stata integrata con commit `b71f62d0c8a6f17994355150f4a574e73dcad021`. La baseline successiva `e283400` contiene anche i primi guardrail della Fase 0B e la rimozione del vecchio CRUD warehouse da `public_api.py`.
+La PR #566 della Prima Nota è stata integrata con commit `b71f62d0c8a6f17994355150f4a574e73dcad021`. La baseline successiva `e283400` contiene anche i primi guardrail della Fase 0B e la rimozione del vecchio CRUD warehouse da public_api.
 
 Il workflow [Produzione 35553261218](https://github.com/ceraldicontabilita/GestionaleCloud/actions/runs/35553261218), relativo a `e283400`, ha superato E2E isolati, apertura delle schermate catalogate, layout, viewer e controllo della versione servita con smoke. Queste prove non equivalgono al collaudo manuale di ogni operazione su dati aziendali. Il catalogo iniziale di 64 schermate riguarda l'ERP, non costituisce censimento completo delle tre sotto-app.
 
+Main è poi avanzato a `3194396`: public_api.py è eliminato; Pianificazione conserva gli URL /api/pianificazione/events; API v1 e ricerca globale sono in moduli dedicati. Questo avanzamento, già presente su main, non va contato fra le nuove eliminazioni della #569. La nostra integrazione conserva anche i nuovi test dei proprietari degli endpoint.
+
 ### Evidenze della tranche #569
 
-- `reports/__init__.py` importava `report_pdf` e `simple_exports` anche se il registro HTTP montava soltanto la dashboard. Eliminati i due moduli e gli import.
-- `batch_operations.py` aveva chiamanti solo interni al modulo dismesso e nei test. Il filtro `filtro_uscite_da_riconciliare` non è un servizio vivo: eliminato insieme alla catena, anziché trasferirlo in un nuovo modulo orfano.
+- reports/__init__.py importava report_pdf e simple_exports anche se il registro HTTP montava soltanto la dashboard. Eliminati i due moduli e gli import.
+- batch_operations.py aveva chiamanti solo interni al modulo dismesso e nei test. Il filtro filtro_uscite_da_riconciliare non è un servizio vivo: eliminato insieme alla catena, anziché trasferirlo in un nuovo modulo orfano.
 - Ritirati due file di test esclusivi del batch e il test PDF che interrogava il proprio database finto senza chiamare il report. Conservati i test effettivi TFR, API v1 e riconciliazione.
-- `app/routers/trattenute_verbali.py` era già assente in `e283400`: non attribuire questa rimozione alla nuova tranche. Il servizio trattenute e i suoi chiamanti rimangono.
-- La prima CI della tranche ha rilevato che `warehouse_products` non aveva più lettori: rimossa la relativa deroga dalla guardia sulle collezioni. Non è stata cancellata alcuna tabella.
+- app/routers/trattenute_verbali.py era già assente in e283400: non attribuire questa rimozione alla nuova tranche. Il servizio trattenute e i suoi chiamanti rimangono.
+- La prima CI della tranche ha rilevato che warehouse_products non aveva più lettori: rimossa la relativa deroga dalla guardia sulle collezioni. Non è stata cancellata alcuna tabella.
 - Aggiunti controlli contro ricomparsa dei moduli dismessi e import residui.
-- Collaudi browser introdotti anche sulle PR; prova del deploy riservata a main. Il collaudo distruttivo rifiuta host non locali e server senza identificativo `e2e-isolato`.
+- Collaudi browser introdotti anche sulle PR; prova del deploy riservata a main. Il collaudo distruttivo rifiuta host non locali e server senza identificativo e2e-isolato.
 - Le nuove schermate Cassa/Banca/Provvisori contengono solo fixture. Il metodo è CRUD HTTP reale più rilettura nel browser desktop/mobile, non simulazione di ogni pulsante della UI.
 
 ### Distinzioni vincolanti
@@ -50,14 +54,14 @@ Il workflow [Produzione 35553261218](https://github.com/ceraldicontabilita/Gesti
 2. Nessun chiamante frontend non significa morto: controllare job, servizi, webhook, API esterne, strumenti di ripristino e accessi osservati.
 3. Un import esistente soltanto in un test non rende vivo un servizio. Non trasferire codice morto per salvare un test obsoleto.
 4. Il censimento storico 196 nomi/61 collezioni è una fotografia documentata, non un conteggio attuale. Collezioni vuote, alimentate da trigger o da servizi esterni non sono automaticamente eliminabili.
-5. Quattro adapter o variabili DSN non provano quattro database di produzione. Il README descrive schemi `gestionale`, `hr`, `lotti`, `menu`; verificare configurazione effettiva prima di pianificare trasferimenti di dati. I commenti che parlano di progetti separati possono essere obsoleti.
+5. Quattro adapter o variabili DSN non provano quattro database di produzione. Il README descrive schemi gestionale, hr, lotti, menu; verificare configurazione effettiva prima di pianificare trasferimenti di dati. I commenti che parlano di progetti separati possono essere obsoleti.
 6. Spostare file non elimina duplicazioni. Misurare separatamente righe applicative, test, documentazione e file generati; non contare una rinomina come bonifica.
 
 ## 3. Obiettivo architetturale
 
 Un solo ERP modulare: un bootstrap FastAPI applicativo, un'infrastruttura dati governata, un'identità/sessione con autorizzazioni per dominio, un coordinamento dei job e un frontend React/Vite. HR, Lotti e Menu diventano moduli, non prodotti da reimportare o riautenticare.
 
-Struttura backend target: `app/main.py`, `app/api/<dominio>/`, `app/domains/<dominio>/`, `app/repositories/`, `app/services/`, `app/jobs/`, `app/migrations/`. Vietati nuovi bootstrap paralleli; quelli attuali rimangono solo durante il passaggio verificato. Le FastAPI di test isolate non sono applicazioni produttive duplicate.
+Struttura backend target: app/main.py, app/api/<dominio>/, app/domains/<dominio>/, app/repositories/, app/services/, app/jobs/, app/migrations/. Vietati nuovi bootstrap paralleli; quelli attuali rimangono solo durante il passaggio verificato. Le FastAPI di test isolate non sono applicazioni produttive duplicate.
 
 Unico progetto/database operativo previsto. Gli schemi di dominio possono rimanere distinti. Non imporre un unico oggetto client globale se servono connessioni con privilegi differenti: eliminare fonti di verità e logiche duplicate, preservando isolamento e transazioni.
 
@@ -67,11 +71,11 @@ Unico progetto/database operativo previsto. Gli schemi di dominio possono rimane
 |---|---|
 | Originali documentali | Archivio originale immutabile, hash e riferimenti; Drive non è il database operativo |
 | Inbox e classificazione | Un unico ingresso con stato, parser/versione ed errori tracciati |
-| Fatture e righe | `invoices` e righe canoniche, un ID/versione per documento |
-| Fornitori | `fornitori`, condivisi dai domini |
+| Fatture e righe | invoices e righe canoniche, un ID/versione per documento |
+| Fornitori | fornitori, condivisi dai domini |
 | Dipendenti | Anagrafica HR canonica, identità stabile |
 | Cedolini | Un record canonico versionato, non copie ERP/HR/payslip |
-| Banca | `estratto_conto_movimenti` come evidenza; scritture e classificazioni collegate |
+| Banca | estratto_conto_movimenti come evidenza; scritture e classificazioni collegate |
 | Prodotti/ingredienti | Catalogo unico con codici fornitore e unità normalizzate |
 | Magazzino | Ricezioni e movimenti inventario verificabili, con lotto quando disponibile |
 | Ricette | Versioni, ingredienti canonici, rese, costo e allergeni verificati |
@@ -79,7 +83,7 @@ Unico progetto/database operativo previsto. Gli schemi di dominio possono rimane
 
 ### PIN e permessi
 
-Il verificatore amministratore `app/services/admin_pin.py` è già condiviso in alcuni ingressi. Questo non completa l'unificazione: esistono ancora emittenti/sessioni e router locali.
+Il verificatore amministratore app/services/admin_pin.py è già condiviso in alcuni ingressi. Questo non completa l'unificazione: esistono ancora emittenti/sessioni e router locali.
 
 Nel target, **Admin del Gestionale è l'unico posto per gestire accessi, ruoli e PIN**. Nessuna funzione amministrativa duplicata in Lotti, HR o Menu. Usare credenziali protette lato server, rotazione e revoca tracciate, limiti tentativi condivisi e MFA per operazioni sensibili. Mai PIN in chiaro nei dati, log o repository. Il PIN e il token ottenuto con esso non costituiscono due fattori distinti.
 
@@ -89,13 +93,13 @@ I PIN personali identificano il dipendente canonico per il gesto operativo; non 
 
 **Fattura:** acquisizione unica → identità fornitore/righe → contabilità, IVA, debito e scadenza quando applicabili → prodotti, prezzi e ricezione → inventario/lotti → costo e disponibilità delle ricette collegate → proiezione Menu autorizzata.
 
-La fattura non dimostra da sola il pagamento o la consegna fisica. Una bolletta non carica ingredienti. Un servizio, cespite, anticipo o nota di credito segue il suo ciclo, non tutti i cicli indistintamente. Ricezione attesa e ricezione confermata devono essere distinte; non duplicare il carico se esiste già DDT/ricezione. Non inventare quantità, unità, lotti, scadenze o ricette. Righe ambigue → `da_mappare`; dati non applicabili → stato esplicito `non_applicabile`.
+La fattura non dimostra da sola il pagamento o la consegna fisica. Una bolletta non carica ingredienti. Un servizio, cespite, anticipo o nota di credito segue il suo ciclo, non tutti i cicli indistintamente. Ricezione attesa e ricezione confermata devono essere distinte; non duplicare il carico se esiste già DDT/ricezione. Non inventare quantità, unità, lotti, scadenze o ricette. Righe ambigue → da_mappare; dati non applicabili → stato esplicito non_applicabile.
 
 **Cedolino:** un ID/versione → fascicolo HR, costo/debito, Prima Nota salari, TFR documentato o stima dichiarata, acconti e saldo. Un PDF di bonifico non è l'addebito: la riconciliazione bancaria richiede movimento reale e identità coerente. La rettifica di un cedolino non deve duplicare costi o pagamenti.
 
 **Menu:** dati canonici e pubblicazione esplicita. Non trasformare un aggiornamento del costo ingrediente in un cambio automatico del prezzo di vendita; non derivare allergeni certi da nomi ambigui. Qromo rimane una fonte di transizione finché proprietà dei campi, compatibilità e riconciliazione del catalogo non sono risolte.
 
-**Outbox:** evento registrato atomicamente con il documento nella stessa transazione. Almeno `event_id`, `entity_id`, `entity_version`, `event_type`, versione payload, data, chiave idempotenza; stato/tentativi/errore per ciascun consumer, lease e retry persistente. Non basta un'unica spunta globale se un consumer è riuscito e un altro no. Il riavvio non perde lavoro; il retry non duplica. UI con ciclo completo, pendente, errore o non applicabile per ogni dominio. Gli errori Lotti non devono far perdere la fattura né sparire in un warning.
+**Outbox:** evento registrato atomicamente con il documento nella stessa transazione. Almeno event_id, entity_id, entity_version, event_type, versione payload, data, chiave idempotenza; stato/tentativi/errore per ciascun consumer, lease e retry persistente. Non basta un'unica spunta globale se un consumer è riuscito e un altro no. Il riavvio non perde lavoro; il retry non duplica. UI con ciclo completo, pendente, errore o non applicabile per ogni dominio. Gli errori Lotti non devono far perdere la fattura né sparire in un warning.
 
 ## 4. Frontend unico
 
@@ -123,9 +127,9 @@ frontend/
   public/
 ```
 
-Una versione React/Router compatibile, una build Vite, client API/query e AuthProvider condivisi, design system e dialog/toast comuni. Preservare deep link, stampa, QR pubblici e uso tablet/mobile. `/hr/*`, `/lotti/*`, `/menu/*` possono restare URL della stessa SPA; rimuovere la navigazione amministrativa fra documenti separati. I QR clienti non devono aprire il gestionale privato.
+Una versione React/Router compatibile, una build Vite, client API/query e AuthProvider condivisi, design system e dialog/toast comuni. Preservare deep link, stampa, QR pubblici e uso tablet/mobile. /hr/*, /lotti/*, /menu/* possono restare URL della stessa SPA; rimuovere la navigazione amministrativa fra documenti separati. I QR clienti non devono aprire il gestionale privato.
 
-Eliminare `frontend_hr/`, `frontend_lotti/`, `frontend_menu/`, `frontend_shared/` solo dopo migrazione degli import, asset, test, build e riferimenti backend. Non ridurre artificialmente le schermate cancellando funzionalità vive: classificare pagina, tab, dettaglio, strumento admin e vista pubblica.
+Eliminare frontend_hr/, frontend_lotti/, frontend_menu/, frontend_shared/ solo dopo migrazione degli import, asset, test, build e riferimenti backend. Non ridurre artificialmente le schermate cancellando funzionalità vive: classificare pagina, tab, dettaglio, strumento admin e vista pubblica.
 
 ## 5. Piano progressivo con ID stabili
 
@@ -150,7 +154,7 @@ Accettazione ulteriore: errore su importi/date invalidi senza scritture parziali
 | ID | Stato | Attività e verifica |
 |---|---|---|
 | RST-0001 | 🟢 | Guardia unicità metodo/percorso normalizzato introdotta in e283400; verificare anche sub-app e shadowing |
-| RST-0002 | ⚪ | Audit inverso endpoint → consumatore/owner, includendo job, esterni, manutenzione e telemetria |
+| RST-0002 | 🟡 | Owner espliciti per endpoint estratti in 3194396; completare audit inverso globale con job, esterni, manutenzione e telemetria |
 | RST-0003 | 🟢 | Guardia AST NO-WRITE e census writer warehouse introdotti in e283400; restano writer transitori da ridurre |
 | RST-0004 | ⚪ | Contratto route React ↔ catalogo, distinguendo tab/dettagli/redirect |
 | RST-0005 | 🟢 | Nessuna nuova FastAPI produttiva; tre eccezioni temporanee esplicite fino alla fusione |
@@ -158,16 +162,16 @@ Accettazione ulteriore: errore su importi/date invalidi senza scritture parziali
 | RST-0007 | ⚪ | Inventario automatico router montati, non montati, importati e utilizzati internamente |
 | RST-0008 | ⚪ | Grafo completo pagine/componenti, import lazy, asset e toolchain delle quattro interfacce |
 
-`warehouse_inventory` è un target canonico previsto dal codice corrente: non vietarne ogni scrittura indiscriminatamente. Bloccare writer obsoleti e convergere su responsabilità unica senza interrompere Lotti.
+warehouse_inventory è un target canonico previsto dal codice corrente: non vietarne ogni scrittura indiscriminatamente. Bloccare writer obsoleti e convergere su responsabilità unica senza interrompere Lotti.
 
 ### Fase 1: rimozione reale del morto
 
 | ID | Stato | Attività e verifica |
 |---|---|---|
-| RST-0101 | 🟡 | `report_pdf.py` eliminato nella #569; confermare CI e rilascio |
-| RST-0102 | 🟡 | `simple_exports.py` eliminato nella #569, import package rimossi; export dei domini conservati |
+| RST-0101 | 🟡 | report_pdf.py eliminato nella #569; confermare CI e rilascio |
+| RST-0102 | 🟡 | simple_exports.py eliminato nella #569, import package rimossi; export dei domini conservati |
 | RST-0103 | 🟢 | Router trattenute già assente nella baseline e283400; service vivo conservato, non contare nuova cancellazione |
-| RST-0104 | 🟡 | `batch_operations.py` e helper senza chiamanti runtime eliminati nella #569, nessun servizio sostitutivo orfano |
+| RST-0104 | 🟡 | batch_operations.py e helper senza chiamanti runtime eliminati nella #569, nessun servizio sostitutivo orfano |
 | RST-0105 | ⚪ | Estrarre import_distinte_bpm vivo in service/parser, ritirare wrapper dopo verifica chiamanti |
 | RST-0106 | ⚪ | Estrarre import_libro_unico vivo in service/parser, ritirare wrapper dopo verifica chiamanti |
 | RST-0107 | 🟡 | Ripulire commenti su implementazioni rimosse; mantenere invarianti di dominio e motivazioni ancora utili |
@@ -179,14 +183,14 @@ Una rimozione può abbassare il numero totale dei test perché sparisce una funz
 
 | ID | Stato | Attività e verifica |
 |---|---|---|
-| RST-0201 | ⚪ | Spostare GET/POST pianificazione/events nel dominio Pianificazione, URL invariati |
-| RST-0202 | ⚪ | Verificare client esterni /api/v1; conservare in modulo dedicato oppure ritirare con evidenze |
-| RST-0203 | ⚪ | Verificare consumatori della ricerca globale ERP, distinta da Lotti |
-| RST-0210 | ⚪ | Portare a zero le route operative del router storico dopo migrazione dei vivi |
-| RST-0211 | ⚪ | Eliminare public_api.py quando tutte le responsabilità sono risolte |
-| RST-0212 | ⚪ | Eliminare la registrazione e gli import residui |
+| RST-0201 | 🟡 | GET/POST pianificazione/events trasferiti nel dominio Pianificazione in main 3194396; URL invariati, verificare rilascio corrente |
+| RST-0202 | 🟡 | API v1 conservata in external_api_v1.py in main 3194396; nessun client esterno dismesso, completare inventario consumatori |
+| RST-0203 | 🟡 | Ricerca globale ERP conservata in ricerca_globale.py in main 3194396; completare consumo reale e fusione con frontend |
+| RST-0210 | 🟡 | Route operative riallocate e legacy ritirate in main 3194396; controllo owner aggiunto |
+| RST-0211 | 🟡 | public_api.py eliminato in main 3194396; verificare il rilascio, non attribuire alla #569 |
+| RST-0212 | 🟡 | Registrazione storica rimossa in main 3194396; #569 integra gli import dei test senza ricrearla |
 
-Candidati da rivalidare: vecchi F24 alerts/dashboard, suppliers-legacy, bank/statements, assegni-legacy, portal/upload, dashboard/stats-legacy e inventory fornitore. Il CRUD warehouse è già rimosso dalla Fase 0B. Un endpoint nascosto da OpenAPI può essere ancora montato e richiede verifica.
+Il CRUD warehouse era già rimosso dalla Fase 0B. Non ritirare API esterne soltanto perché non chiamate dal frontend. Un endpoint nascosto da OpenAPI può essere ancora montato e richiede verifica.
 
 ### Fase 3: infrastruttura dati e applicativa condivisa
 
@@ -380,12 +384,12 @@ La ristrutturazione è chiusa soltanto con un backend e frontend modulari effett
 | Accesso dati | Adapter multipli, topologia reale da verificare | Repository governati e responsabilità unica |
 | Job/lease | Più scheduler | Coordinamento unico, nessuna doppia esecuzione |
 | Bridge transitori | ERP→Lotti e Lotti→Menu | Nessuna seconda fonte editabile |
-| public_api | 26 route nell'audit iniziale | File eliminato dopo migrazione dei vivi |
+| public_api | 26 route nell'audit iniziale | File eliminato in main 3194396; verificare versione produttiva |
 | Letture fantasma tollerate | Lista nel test runtime | Riduzione verificata, esterni/read-only documentati |
 | Test schermate ERP | Catalogo iniziale 64 | Nessuna regressione, estensione HR/Lotti/Menu |
 | Righe applicative eliminate | Da misurare per PR | Riduzione netta verificata, senza contare rinomine/docs come codice |
 
-Il primo commit della #569 aveva 1.354 righe rimosse e 57 aggiunte complessive; il totale finale va ricalcolato sul diff completo e separato tra applicazione, test e documentazione. Non confondere riduzione del piano Markdown con snellimento del software.
+Il primo commit della #569 aveva 1.354 righe rimosse e 57 aggiunte complessive. I tre moduli applicativi rimossi contenevano 1.186 righe; l'inizializzazione reports ha altre 8 righe nette in meno. Il totale finale va ricalcolato sul diff completo e separato tra applicazione, test e documentazione. Non confondere riduzione del piano Markdown con snellimento del software.
 
 ## 8. Registro avanzamento
 
@@ -395,8 +399,10 @@ Il primo commit della #569 aveva 1.354 righe rimosse e 57 aggiunte complessive; 
 | 2026-09-21 | PLAN-0002 | 🟢 | Priorità Prima Nota e gestione PIN centrale aggiunte |
 | 2026-09-21 | FASE-0A-LIVE | 🟢 | #566, b71f62d0c8a6f17994355150f4a574e73dcad021; precedente registro Produzione 35543104234 |
 | 2026-09-21 | RST-0001/0003/0005 | 🟢 | e283400164c0b9fb88ece13eb401fcde9cba1c42; Produzione 35553261218 tutti i job superati |
+| 2026-09-21 | FASE-0C / RST-0201/0202/0203/0210/0211/0212 | 🟡 | main 31943965f382018d87047637e16fe815d1b93318: public_api eliminato, owner Pianificazione/API v1/ricerca conservati; verificare rilascio |
 | 2026-09-21 | RST-0101/0102/0104/0108 | 🟡 | #569, primo commit 1cfbad652ce50471655b3eac9d8c62075517d95a: tre moduli rimossi, test morti ritirati, guardia nuova; nessun dato cancellato |
 | 2026-09-21 | RST-00A6, collaudi prima del merge | 🟡 | #569, bd36c7c9559077edfb5e1d1a0d1796d42a7d00b5: isolamento esplicito e schermate desktop/mobile, attendere esito |
 | 2026-09-21 | RST-1003/1004 | 🟡 | #569, 781854b0cb6805afa85801253439d073c8371fd1: rimossa deroga warehouse_products dopo scomparsa dell'ultimo lettore; nessuna tabella eliminata |
+| 2026-09-21 | Integrazione aggiornamenti concorrenti | 🟡 | #569, 5b6e1271b12b1a35ecb19dec6f7a62dae9a5a54e: merge di main 3194396 senza ripristinare public_api; test HR sulla nuova API v1 |
 
 **Passo di chiusura della #569 ancora necessario:** test completi sul suo HEAD, ispezione delle prove visive, revisione diff, merge senza forzature, verifica del commit in produzione e aggiornamento di questo registro. Nessun'altra fase è da considerare conclusa per effetto di questa bonifica.
