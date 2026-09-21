@@ -1,10 +1,9 @@
 """Identita' e permessi per il portale personale HR.
 
 Il token e' sempre obbligatorio. Il portale usa il verificatore operativo
-canonico con il solo segreto HR: il sub del token tablet Lotti e' ancora l'ID
-della proiezione operatore, non l'ID dipendente che possiede il fascicolo.
-Questa separazione resta necessaria finche' la corrispondenza non e' risolta
-su identita' canonica stabile.
+canonico con il solo segreto HR. Il sub del token tablet Lotti e' ancora l'ID
+della proiezione operatore, non l'ID dipendente che possiede il fascicolo:
+la corrispondenza fra i due ID resta da risolvere su identita' canonica.
 
 Ruoli applicativi (campo `ruolo_app` sul documento dipendente, o role nel JWT):
   - "dipendente"          → accede solo ai propri dati

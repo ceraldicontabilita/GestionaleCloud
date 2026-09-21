@@ -64,7 +64,7 @@ def test_ruolo_hr_sconosciuto_non_apre_il_portale(monkeypatch):
     assert error.value.status_code == 401
 
 
-def test_token_tablet_lotti_non_identifica_il_titolare_del_fascicolo(monkeypatch):
+def test_token_tablet_lotti_con_segreto_distinto_non_apre_il_portale(monkeypatch):
     monkeypatch.setattr(settings, "SECRET_KEY", "segreto-hr-del-test-123456789")
     token = create_workforce_token(
         sub="id-proiezione-operatore-lotti",
