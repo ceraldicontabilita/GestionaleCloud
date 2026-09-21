@@ -17,6 +17,7 @@ test("un lotto scaduto non propone Usa oggi o l'invio al banco", async () => {
   jest.spyOn(axios, "get").mockImplementation((url) => Promise.resolve({
     data: url.includes("/cosa-usare-oggi") ? lotti : { frigoriferi: [], congelatori: [] },
   }));
+  const invio = jest.spyOn(axios, "post").mockResolvedValue({ data: { creato: true } });
   const node = document.createElement("div");
   document.body.appendChild(node);
   const root = createRoot(node);
@@ -29,6 +30,8 @@ test("un lotto scaduto non propone Usa oggi o l'invio al banco", async () => {
     expect(scaduti.textContent).not.toContain("Usa oggi");
     expect(scaduti.textContent).not.toContain("Manda al banco");
     expect([...node.querySelectorAll("button")].filter((b) => b.textContent.includes("Usa oggi"))).toHaveLength(1);
+    await act(async () => [...node.querySelectorAll("button")].find((b) => b.textContent.includes("Usa oggi")).click());
+    expect(invio).toHaveBeenCalledWith(expect.stringContaining("/task-dipendenti/lotti/valido/usa-oggi"));
   } finally {
     await act(async () => root.unmount());
     node.remove();
