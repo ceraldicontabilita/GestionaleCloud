@@ -3,12 +3,13 @@
 **Documento operativo vivo, aggiornato il 21 settembre 2026.**
 
 - Baseline iniziale dell'audit: `8cf52bd269d8d1facb478e4a585fa8b01a5ec3ff`.
-- Baseline iniziale della bonifica: `e283400164c0b9fb88ece13eb401fcde9cba1c42`.
-- Avanzamento main integrato: `31943965f382018d87047637e16fe815d1b93318`, rimozione di public_api e riallocazione degli endpoint vivi.
-- Tranche corrente: [PR #569](https://github.com/ceraldicontabilita/GestionaleCloud/pull/569), bonifica dei router dismessi e collaudi prima del merge.
-- Integrazione della tranche con main: `5b6e1271b12b1a35ecb19dec6f7a62dae9a5a54e`; nessuna modifica concorrente rimossa.
-- Stato complessivo: **IN CORSO**. La fusione ERP, HR, Lotti e Menu non è ancora completata.
-- Pubblicazione della tranche corrente: **non attestata in questa revisione**; richiede test, merge e verifica del commit effettivamente servito.
+- Baseline della bonifica misurata: `e283400164c0b9fb88ece13eb401fcde9cba1c42`.
+- Avanzamenti concorrenti preservati: `31943965f382018d87047637e16fe815d1b93318` (public_api) e `4ad3ffa4cbfd5612e6a4b179d583a419582f2c09` (report/batch).
+- Ultima tranche conclusa: [PR #569](https://github.com/ceraldicontabilita/GestionaleCloud/pull/569), bonifica residua e collaudi prima del merge.
+- Codice pubblicato e verificato: **`7329ec7498c90da519422ade2f638f0f75d8fc55`**.
+- Prova di produzione: [workflow 35555459176](https://github.com/ceraldicontabilita/GestionaleCloud/actions/runs/35555459176), tutti i job superati, inclusa verifica commit servito e smoke.
+- **Stato complessivo: IN CORSO.** La fusione ERP, HR, Lotti e Menu non è completata. La bonifica pubblicata non certifica ogni funzione e ogni dato contabile.
+- **Priorità operativa aperta:** date Banca [#573](https://github.com/ceraldicontabilita/GestionaleCloud/issues/573) e contatori Provvisori [#575](https://github.com/ceraldicontabilita/GestionaleCloud/issues/575).
 
 ## 1. Regole di avanzamento e pubblicazione
 
@@ -35,27 +36,47 @@ La PR #566 della Prima Nota è stata integrata con commit `b71f62d0c8a6f17994355
 
 Il workflow [Produzione 35553261218](https://github.com/ceraldicontabilita/GestionaleCloud/actions/runs/35553261218), relativo a `e283400`, ha superato E2E isolati, apertura delle schermate catalogate, layout, viewer e controllo della versione servita con smoke. Queste prove non equivalgono al collaudo manuale di ogni operazione su dati aziendali. Il catalogo iniziale di 64 schermate riguarda l'ERP, non costituisce censimento completo delle tre sotto-app.
 
-Main è poi avanzato a `3194396`: public_api.py è eliminato; Pianificazione conserva gli URL /api/pianificazione/events; API v1 e ricerca globale sono in moduli dedicati. Questo avanzamento, già presente su main, non va contato fra le nuove eliminazioni della #569. La nostra integrazione conserva anche i nuovi test dei proprietari degli endpoint.
+Main è avanzato a `3194396`: public_api.py eliminato; Pianificazione conserva /api/pianificazione/events; API v1 e ricerca globale sono in moduli dedicati. Main `4ad3ffa` ha poi eliminato i tre router report/batch. Questi avanzamenti sono stati integrati nella #569 senza ripristinare codice morto o attribuire due volte le eliminazioni.
 
-### Evidenze della tranche #569
+### Esito pubblicato della tranche #569
 
-- reports/__init__.py importava report_pdf e simple_exports anche se il registro HTTP montava soltanto la dashboard. Eliminati i due moduli e gli import.
-- batch_operations.py aveva chiamanti solo interni al modulo dismesso e nei test. Il filtro filtro_uscite_da_riconciliare non è un servizio vivo: eliminato insieme alla catena, anziché trasferirlo in un nuovo modulo orfano.
-- Ritirati due file di test esclusivi del batch e il test PDF che interrogava il proprio database finto senza chiamare il report. Conservati i test effettivi TFR, API v1 e riconciliazione.
-- app/routers/trattenute_verbali.py era già assente in e283400: non attribuire questa rimozione alla nuova tranche. Il servizio trattenute e i suoi chiamanti rimangono.
-- La prima CI della tranche ha rilevato che warehouse_products non aveva più lettori: rimossa la relativa deroga dalla guardia sulle collezioni. Non è stata cancellata alcuna tabella.
-- Aggiunti controlli contro ricomparsa dei moduli dismessi e import residui.
-- Collaudi browser introdotti anche sulle PR; prova del deploy riservata a main. Il collaudo distruttivo rifiuta host non locali e server senza identificativo e2e-isolato.
-- Le nuove schermate Cassa/Banca/Provvisori contengono solo fixture. Il metodo è CRUD HTTP reale più rilettura nel browser desktop/mobile, non simulazione di ogni pulsante della UI.
+- I moduli report_pdf.py, simple_exports.py e batch_operations.py non sono più nel sorgente attivo.
+- reports/__init__.py carica soltanto la dashboard attiva; gli export dei domini vivi rimangono.
+- Il filtro del batch, trasferito nel frattempo in riconciliazione_filters.py, aveva soltanto il vecchio test come chiamante. Eliminati entrambi, anziché mantenere un servizio orfano.
+- Ritirati test esclusivi dei percorsi dismessi; conservati quelli effettivi di TFR, API v1, riconciliazione e Prima Nota.
+- app/routers/trattenute_verbali.py era già assente nella baseline: non è una nuova eliminazione della #569. Il service trattenute e i suoi chiamanti rimangono.
+- Eliminata la deroga warehouse_products dalla guardia sulle collezioni dopo la scomparsa dell'ultimo lettore. Nessuna tabella cancellata.
+- Guardia permanente contro ricomparsa dei componenti dismessi e import residui.
+- E2E/layout/viewer eseguiti anche sulle PR, prima del merge. Il controllo della produzione gira solo su main.
+- Collaudo distruttivo limitato a HTTP locale e server con identificativo e2e-isolato.
+- I collaudi isolati compilano solo l'ERP; CI e rilascio conservano la build completa delle interfacce.
+- Cinque schermate Cassa/Banca/Provvisori desktop/mobile ispezionate. Artefatto finale 10619819101 del workflow 35555214652: PNG ed esito.json identici byte per byte alle immagini esaminate. Dati esclusivamente sintetici.
+- Revisione automatica Codex non eseguita per quota esaurita; nessun credito acquistato. Il controllo diretto e i test non vengono descritti come una revisione automatica riuscita.
+
+### Verifiche e limiti
+
+HEAD collaudato prima del merge: `5d40f7e1070dff9d237d2ca0035d419676b4cc62`.
+
+- [CI 35555214654](https://github.com/ceraldicontabilita/GestionaleCloud/actions/runs/35555214654): superata.
+- [E2E/layout/viewer 35555214652](https://github.com/ceraldicontabilita/GestionaleCloud/actions/runs/35555214652): superati. Il job di produzione era correttamente escluso sulle PR.
+- Merge: `7329ec7498c90da519422ade2f638f0f75d8fc55`.
+- [Produzione 35555459176](https://github.com/ceraldicontabilita/GestionaleCloud/actions/runs/35555459176): E2E, schermate catalogate, layout/viewer, bundle e smoke con commit servito tutti superati.
+
+Il metodo è CRUD HTTP reale e rilettura nel browser, non simulazione di ogni pulsante o certificazione dei dati aziendali. Le immagini hanno evidenziato due difetti preesistenti NON risolti dalla bonifica:
+
+1. **#573 / RST-00A7:** la fattura di prova è del 20 settembre, l'addebito del 21, ma Banca mostra il 20. Verificare date persistite, proiezione, raggruppamento e saldi per mese. Non correggere massivamente gli originali.
+2. **#575 / RST-00A6:** da Banca i contatori mostrano zero fino all'apertura dei Provvisori, che rende visibili tre fatture da decidere e due in attesa. Distinguere non caricato da zero e invalidare i conteggi dopo le operazioni.
+
+La qualificazione operativa completa della Prima Nota resta quindi aperta. I suoi writer non sono stati modificati per nascondere questi risultati.
 
 ### Distinzioni vincolanti
 
 1. Nomi simili o prefissi HTTP condivisi non provano duplicazione. Controllare metodo, percorso finale, ordine, chiamanti e responsabilità.
 2. Nessun chiamante frontend non significa morto: controllare job, servizi, webhook, API esterne, strumenti di ripristino e accessi osservati.
 3. Un import esistente soltanto in un test non rende vivo un servizio. Non trasferire codice morto per salvare un test obsoleto.
-4. Il censimento storico 196 nomi/61 collezioni è una fotografia documentata, non un conteggio attuale. Collezioni vuote, alimentate da trigger o da servizi esterni non sono automaticamente eliminabili.
-5. Quattro adapter o variabili DSN non provano quattro database di produzione. Il README descrive schemi gestionale, hr, lotti, menu; verificare configurazione effettiva prima di pianificare trasferimenti di dati. I commenti che parlano di progetti separati possono essere obsoleti.
-6. Spostare file non elimina duplicazioni. Misurare separatamente righe applicative, test, documentazione e file generati; non contare una rinomina come bonifica.
+4. Il censimento storico 196 nomi/61 collezioni è una fotografia documentata, non un conteggio attuale. Collezioni vuote, alimentate da trigger o servizi esterni non sono automaticamente eliminabili.
+5. Quattro adapter o variabili DSN non provano quattro database di produzione. Verificare configurazione effettiva prima di pianificare trasferimenti; i commenti su progetti separati possono essere obsoleti.
+6. Spostare file non elimina duplicazioni. Misurare separatamente righe applicative, test, documentazione e generati; una rinomina non è bonifica.
 
 ## 3. Obiettivo architetturale
 
@@ -69,37 +90,37 @@ Unico progetto/database operativo previsto. Gli schemi di dominio possono rimane
 
 | Entità | Responsabilità canonica |
 |---|---|
-| Originali documentali | Archivio originale immutabile, hash e riferimenti; Drive non è il database operativo |
-| Inbox e classificazione | Un unico ingresso con stato, parser/versione ed errori tracciati |
+| Originali documentali | Originale immutabile, hash e riferimenti; Drive non è il database operativo |
+| Inbox e classificazione | Ingresso unico con stato, parser/versione ed errori tracciati |
 | Fatture e righe | invoices e righe canoniche, un ID/versione per documento |
 | Fornitori | fornitori, condivisi dai domini |
 | Dipendenti | Anagrafica HR canonica, identità stabile |
-| Cedolini | Un record canonico versionato, non copie ERP/HR/payslip |
+| Cedolini | Record canonico versionato, non copie ERP/HR/payslip |
 | Banca | estratto_conto_movimenti come evidenza; scritture e classificazioni collegate |
 | Prodotti/ingredienti | Catalogo unico con codici fornitore e unità normalizzate |
-| Magazzino | Ricezioni e movimenti inventario verificabili, con lotto quando disponibile |
+| Magazzino | Ricezioni e movimenti verificabili, lotto quando disponibile |
 | Ricette | Versioni, ingredienti canonici, rese, costo e allergeni verificati |
-| Menu | Proiezione di pubblicazione dei prodotti/ricette, con prezzo e visibilità deliberati |
+| Menu | Proiezione di pubblicazione con prezzo e visibilità deliberati |
 
 ### PIN e permessi
 
 Il verificatore amministratore app/services/admin_pin.py è già condiviso in alcuni ingressi. Questo non completa l'unificazione: esistono ancora emittenti/sessioni e router locali.
 
-Nel target, **Admin del Gestionale è l'unico posto per gestire accessi, ruoli e PIN**. Nessuna funzione amministrativa duplicata in Lotti, HR o Menu. Usare credenziali protette lato server, rotazione e revoca tracciate, limiti tentativi condivisi e MFA per operazioni sensibili. Mai PIN in chiaro nei dati, log o repository. Il PIN e il token ottenuto con esso non costituiscono due fattori distinti.
+**Admin del Gestionale deve essere l'unico posto per gestire accessi, ruoli e PIN.** Nessuna configurazione amministrativa duplicata in Lotti, HR o Menu. Credenziali protette lato server, rotazione/revoca tracciate, limiti tentativi condivisi e MFA per operazioni sensibili. Mai PIN in chiaro nei dati, log o repository. PIN e token ottenuto con esso non sono due fattori distinti.
 
-I PIN personali identificano il dipendente canonico per il gesto operativo; non vanno sostituiti da un PIN condiviso fra persone. Un'unica sessione non autorizza ogni ruolo a tutto. Menu clienti pubblico, portale personale, dati retributivi e amministrazione devono restare separati per autorizzazione. Verificare esplicitamente accessi negati e revoche attraverso tutti i moduli.
+I PIN personali identificano il dipendente canonico per il gesto operativo; non sostituirli con un PIN condiviso fra persone. Un'unica sessione non autorizza ogni ruolo a tutto. Menu clienti pubblico, portale personale, dati retributivi e amministrazione rimangono separati per autorizzazione. Verificare accessi negati e revoche attraverso tutti i moduli.
 
 ### Flussi affidabili, non copie
 
-**Fattura:** acquisizione unica → identità fornitore/righe → contabilità, IVA, debito e scadenza quando applicabili → prodotti, prezzi e ricezione → inventario/lotti → costo e disponibilità delle ricette collegate → proiezione Menu autorizzata.
+**Fattura:** acquisizione unica → fornitore/righe → contabilità, IVA, debito e scadenza quando applicabili → prodotti, prezzi e ricezione → inventario/lotti → costo e disponibilità delle ricette collegate → Menu autorizzato.
 
-La fattura non dimostra da sola il pagamento o la consegna fisica. Una bolletta non carica ingredienti. Un servizio, cespite, anticipo o nota di credito segue il suo ciclo, non tutti i cicli indistintamente. Ricezione attesa e ricezione confermata devono essere distinte; non duplicare il carico se esiste già DDT/ricezione. Non inventare quantità, unità, lotti, scadenze o ricette. Righe ambigue → da_mappare; dati non applicabili → stato esplicito non_applicabile.
+La fattura non dimostra da sola pagamento o consegna fisica. Una bolletta non carica ingredienti. Servizi, cespiti, anticipi e note di credito seguono il proprio ciclo. Distinguere ricezione attesa e confermata; non duplicare carichi già documentati da DDT/ricezioni. Non inventare quantità, unità, lotti, scadenze o ricette. Righe ambigue → da_mappare; passaggi non applicabili → non_applicabile.
 
-**Cedolino:** un ID/versione → fascicolo HR, costo/debito, Prima Nota salari, TFR documentato o stima dichiarata, acconti e saldo. Un PDF di bonifico non è l'addebito: la riconciliazione bancaria richiede movimento reale e identità coerente. La rettifica di un cedolino non deve duplicare costi o pagamenti.
+**Cedolino:** un ID/versione → fascicolo HR, costo/debito, Prima Nota salari, TFR documentato o stima dichiarata, acconti e saldo. Il PDF del bonifico non è l'addebito: la riconciliazione bancaria richiede movimento reale e identità coerente. Rettificare senza duplicare costi o pagamenti.
 
-**Menu:** dati canonici e pubblicazione esplicita. Non trasformare un aggiornamento del costo ingrediente in un cambio automatico del prezzo di vendita; non derivare allergeni certi da nomi ambigui. Qromo rimane una fonte di transizione finché proprietà dei campi, compatibilità e riconciliazione del catalogo non sono risolte.
+**Menu:** dati canonici e pubblicazione esplicita. Non trasformare un nuovo costo ingrediente in un cambio automatico del prezzo di vendita. Non derivare allergeni certi da nomi ambigui. Qromo resta fonte di transizione fino a risoluzione di proprietà campi, compatibilità e riconciliazione catalogo.
 
-**Outbox:** evento registrato atomicamente con il documento nella stessa transazione. Almeno event_id, entity_id, entity_version, event_type, versione payload, data, chiave idempotenza; stato/tentativi/errore per ciascun consumer, lease e retry persistente. Non basta un'unica spunta globale se un consumer è riuscito e un altro no. Il riavvio non perde lavoro; il retry non duplica. UI con ciclo completo, pendente, errore o non applicabile per ogni dominio. Gli errori Lotti non devono far perdere la fattura né sparire in un warning.
+**Outbox:** evento registrato atomicamente con il documento nella stessa transazione. Event ID, entity ID/version, tipo e versione payload, data, chiave idempotenza; stato/tentativi/errore per ciascun consumer, lease e retry persistente. Una spunta globale non basta se solo alcuni consumer riescono. Il riavvio non perde lavoro; il retry non duplica. UI con completo, pendente, errore o non applicabile per ciascun dominio. Un errore Lotti non deve far perdere la fattura né sparire in un warning.
 
 ## 4. Frontend unico
 
@@ -127,40 +148,40 @@ frontend/
   public/
 ```
 
-Una versione React/Router compatibile, una build Vite, client API/query e AuthProvider condivisi, design system e dialog/toast comuni. Preservare deep link, stampa, QR pubblici e uso tablet/mobile. /hr/*, /lotti/*, /menu/* possono restare URL della stessa SPA; rimuovere la navigazione amministrativa fra documenti separati. I QR clienti non devono aprire il gestionale privato.
+Una versione React/Router compatibile, una build Vite, client API/query e AuthProvider condivisi, design system e dialog/toast comuni. Preservare deep link, stampa, QR pubblici e tablet/mobile. /hr/*, /lotti/*, /menu/* possono restare URL della stessa SPA. I QR clienti non devono aprire il gestionale privato.
 
-Eliminare frontend_hr/, frontend_lotti/, frontend_menu/, frontend_shared/ solo dopo migrazione degli import, asset, test, build e riferimenti backend. Non ridurre artificialmente le schermate cancellando funzionalità vive: classificare pagina, tab, dettaglio, strumento admin e vista pubblica.
+Eliminare frontend_hr/, frontend_lotti/, frontend_menu/, frontend_shared/ solo dopo migrazione di import, asset, test, build e riferimenti backend. Non cancellare funzionalità vive per ridurre artificialmente le schermate: distinguere pagina, tab, dettaglio, strumento admin e vista pubblica.
 
 ## 5. Piano progressivo con ID stabili
 
-### Fase 0A: Prima Nota operativa prima delle demolizioni
+### Fase 0A: Prima Nota operativa
 
 | ID | Stato | Attività e verifica |
 |---|---|---|
-| RST-00A1 | 🟢 | CRUD Cassa HTTP, persistenza, saldo, update e soft-delete nella baseline #566 |
-| RST-00A2 | 🟢 | Banca senza prova resta provvisoria/fuori saldo; flusso con EC verificato nella baseline |
-| RST-00A3 | 🟢 | Fattura da confermare → pagamento Cassa, test baseline |
-| RST-00A4 | 🟢 | Attendi banca senza inventare pagamento, test baseline |
-| RST-00A5 | 🟢 | Misto: quota Cassa reale e residuo Banca aperto, test baseline |
-| RST-00A6 | 🟡 | Estendere prove browser di reload, anno, Cassa/Banca/Provvisori; screenshot nella #569, attendere esito |
-| RST-00A7 | 🟡 | Completare audit campi/origine/contropartita, saldi e relazioni; validazioni e riapertura fattura già corrette |
-| RST-00A8 | 🟢 | Smoke versione pubblicata nella baseline; ripeterlo per ogni rilascio |
-| RST-00A9 | 🟢 | Preservare il contratto operativo della baseline; non è certificazione di ogni dato contabile reale |
+| RST-00A1 | 🟢 | CRUD Cassa HTTP, persistenza, saldo, modifica e soft-delete verificati; prove di reload conservate |
+| RST-00A2 | 🟢 | Flussi testati: Banca senza prova resta provvisoria/fuori saldo; conferma con EC documentata |
+| RST-00A3 | 🟢 | Fattura da confermare → pagamento Cassa, coperto dai collaudi |
+| RST-00A4 | 🟢 | Attendi banca senza inventare pagamento, coperto dai collaudi |
+| RST-00A5 | 🟢 | Misto: quota Cassa reale e residuo Banca aperto, coperto dai collaudi |
+| RST-00A6 | 🟡 | Reload e viste desktop/mobile verificati; correggere contatori non caricati/zero (#575) ed estendere prova cambio anno |
+| RST-00A7 | 🟡 | Correggere/verificare data movimento Banca distinta da data fattura (#573); completare campi, contropartita e periodi |
+| RST-00A8 | 🟢 | Smoke versione pubblicata 7329ec7 superato; ripetere ad ogni rilascio |
+| RST-00A9 | 🟡 | Qualificazione completa non chiusa: #573 e #575 aperti. Conservare il contratto CRUD già verificato |
 
-Accettazione ulteriore: errore su importi/date invalidi senza scritture parziali, doppi invii idempotenti, più pagamenti parziali, annullamento coerente, prova bancaria originale non alterata, saldi iniziali e periodo. Non aspettare la fusione delle sotto-app per mantenere utilizzabile Prima Nota.
+Ulteriore accettazione: importi/date invalidi senza scritture parziali, doppi invii idempotenti, pagamenti parziali multipli, annullamento coerente, originali bancari immutati, saldi iniziali e corretta attribuzione al periodo. Non attendere la fusione delle sotto-app per mantenere utilizzabile Prima Nota.
 
 ### Fase 0B: guardrail
 
 | ID | Stato | Attività e verifica |
 |---|---|---|
-| RST-0001 | 🟢 | Guardia unicità metodo/percorso normalizzato introdotta in e283400; verificare anche sub-app e shadowing |
-| RST-0002 | 🟡 | Owner espliciti per endpoint estratti in 3194396; completare audit inverso globale con job, esterni, manutenzione e telemetria |
-| RST-0003 | 🟢 | Guardia AST NO-WRITE e census writer warehouse introdotti in e283400; restano writer transitori da ridurre |
+| RST-0001 | 🟢 | Guardia unicità metodo/percorso normalizzato in e283400; estendere verifica a sub-app e shadowing |
+| RST-0002 | 🟡 | Owner espliciti degli endpoint estratti; completare audit inverso globale con job, esterni, manutenzione e telemetria |
+| RST-0003 | 🟢 | Guardia AST NO-WRITE e census writer warehouse presenti; writer transitori ancora da ridurre |
 | RST-0004 | ⚪ | Contratto route React ↔ catalogo, distinguendo tab/dettagli/redirect |
-| RST-0005 | 🟢 | Nessuna nuova FastAPI produttiva; tre eccezioni temporanee esplicite fino alla fusione |
+| RST-0005 | 🟢 | Nessuna nuova FastAPI produttiva; tre eccezioni temporanee fino alla fusione |
 | RST-0006 | ⚪ | Impedire nuove fonti dati/client indipendenti duplicati |
-| RST-0007 | ⚪ | Inventario automatico router montati, non montati, importati e utilizzati internamente |
-| RST-0008 | ⚪ | Grafo completo pagine/componenti, import lazy, asset e toolchain delle quattro interfacce |
+| RST-0007 | ⚪ | Inventario router montati, non montati, importati e utilizzati internamente |
+| RST-0008 | ⚪ | Grafo completo pagine/componenti, lazy import, asset e toolchain delle quattro interfacce |
 
 warehouse_inventory è un target canonico previsto dal codice corrente: non vietarne ogni scrittura indiscriminatamente. Bloccare writer obsoleti e convergere su responsabilità unica senza interrompere Lotti.
 
@@ -168,143 +189,143 @@ warehouse_inventory è un target canonico previsto dal codice corrente: non viet
 
 | ID | Stato | Attività e verifica |
 |---|---|---|
-| RST-0101 | 🟡 | report_pdf.py eliminato nella #569; confermare CI e rilascio |
-| RST-0102 | 🟡 | simple_exports.py eliminato nella #569, import package rimossi; export dei domini conservati |
-| RST-0103 | 🟢 | Router trattenute già assente nella baseline e283400; service vivo conservato, non contare nuova cancellazione |
-| RST-0104 | 🟡 | batch_operations.py e helper senza chiamanti runtime eliminati nella #569, nessun servizio sostitutivo orfano |
+| RST-0101 | ❌ | report_pdf.py eliminato, assenza/import verificati; rilascio 7329ec7 |
+| RST-0102 | ❌ | simple_exports.py e import eliminati; export vivi conservati; rilascio 7329ec7 |
+| RST-0103 | 🟢 | Router trattenute già assente in e283400; service vivo conservato, non è nuova cancellazione |
+| RST-0104 | ❌ | batch_operations e filtro senza chiamanti runtime eliminati; nessun servizio sostitutivo orfano; rilascio 7329ec7 |
 | RST-0105 | ⚪ | Estrarre import_distinte_bpm vivo in service/parser, ritirare wrapper dopo verifica chiamanti |
 | RST-0106 | ⚪ | Estrarre import_libro_unico vivo in service/parser, ritirare wrapper dopo verifica chiamanti |
-| RST-0107 | 🟡 | Ripulire commenti su implementazioni rimosse; mantenere invarianti di dominio e motivazioni ancora utili |
-| RST-0108 | 🟡 | Import e test esclusivi dei router morti rimossi nella #569; continuare census sul resto del repo |
+| RST-0107 | 🟡 | Pulizia commenti storici avviata; conservare invarianti e motivazioni utili |
+| RST-0108 | 🟡 | Import/test esclusivi dei router morti rimossi; continuare census sul resto del repo |
 
-Una rimozione può abbassare il numero totale dei test perché sparisce una funzione non pubblicata: documentare il motivo e mantenere coperti i percorsi canonici. Non cancellare test falliti per nascondere regressioni vive.
+Rimuovere una funzione mai pubblicata può ridurre i test: documentare il motivo e preservare copertura dei percorsi canonici. Non cancellare test falliti per nascondere regressioni vive.
 
-### Fase 2: svuotare public_api.py
-
-| ID | Stato | Attività e verifica |
-|---|---|---|
-| RST-0201 | 🟡 | GET/POST pianificazione/events trasferiti nel dominio Pianificazione in main 3194396; URL invariati, verificare rilascio corrente |
-| RST-0202 | 🟡 | API v1 conservata in external_api_v1.py in main 3194396; nessun client esterno dismesso, completare inventario consumatori |
-| RST-0203 | 🟡 | Ricerca globale ERP conservata in ricerca_globale.py in main 3194396; completare consumo reale e fusione con frontend |
-| RST-0210 | 🟡 | Route operative riallocate e legacy ritirate in main 3194396; controllo owner aggiunto |
-| RST-0211 | 🟡 | public_api.py eliminato in main 3194396; verificare il rilascio, non attribuire alla #569 |
-| RST-0212 | 🟡 | Registrazione storica rimossa in main 3194396; #569 integra gli import dei test senza ricrearla |
-
-Il CRUD warehouse era già rimosso dalla Fase 0B. Non ritirare API esterne soltanto perché non chiamate dal frontend. Un endpoint nascosto da OpenAPI può essere ancora montato e richiede verifica.
-
-### Fase 3: infrastruttura dati e applicativa condivisa
+### Fase 2: public_api
 
 | ID | Stato | Attività e verifica |
 |---|---|---|
-| RST-0301 | ⚪ | Definire accesso Supabase governato e transazioni condivise |
+| RST-0201 | 🟢 | GET/POST pianificazione/events trasferiti nel dominio corretto, URL invariati; inclusi nel codice pubblicato |
+| RST-0202 | 🟡 | API v1 conservata in external_api_v1.py; completare inventario client esterni prima di ulteriori ritiri |
+| RST-0203 | 🟡 | Ricerca globale ERP conservata nel proprio router; verificare consumatori e integrazione frontend |
+| RST-0210 | 🟢 | Responsabilità operative riallocate, guardia owner presente e collaudata |
+| RST-0211 | ❌ | public_api.py eliminato in main 3194396 e assente nel rilascio 7329ec7 |
+| RST-0212 | 🟢 | Registrazione/import storici eliminati; test sull'API v1 aggiornata |
+
+Il CRUD warehouse era già rimosso dalla Fase 0B. Non ritirare API esterne soltanto perché non chiamate dal frontend. Un endpoint nascosto da OpenAPI può essere ancora montato.
+
+### Fase 3: infrastruttura condivisa
+
+| ID | Stato | Attività e verifica |
+|---|---|---|
+| RST-0301 | ⚪ | Accesso Supabase governato e transazioni condivise |
 | RST-0302 | ⚪ | Rimuovere fallback Mongo HR produttivo dopo verifica configurazione |
-| RST-0303 | ⚪ | Eliminare eventuale fonte Lotti parallela, non gli attributi esclusivi HACCP |
-| RST-0304 | ⚪ | Convergere il client Menu su infrastruttura condivisa e privilegi corretti |
-| RST-0305 | ⚪ | Verificare progetto/schemi effettivi; migrare soltanto dati realmente separati e dopo backup |
-| RST-0306 | ⚪ | Repository per dominio, un solo writer per fatto, ID/FK e mapping di migrazione |
-| RST-0307 | ⚪ | Health e readiness dei moduli senza falsi successi o fallback in memoria produttivo |
+| RST-0303 | ⚪ | Eliminare eventuale fonte Lotti parallela, preservare attributi esclusivi HACCP |
+| RST-0304 | ⚪ | Client Menu su infrastruttura comune e privilegi corretti |
+| RST-0305 | ⚪ | Verificare progetto/schemi effettivi; migrare solo dati davvero separati e dopo backup |
+| RST-0306 | ⚪ | Repository di dominio, writer unico per fatto, ID/FK e mapping migrazione |
+| RST-0307 | ⚪ | Health/readiness senza falsi successi o fallback in memoria produttivo |
 | RST-0308 | ⚪ | Coordinamento job/lease, retry e stato amministrativo unico |
-| RST-0309 | ⚪ | Eliminare bootstrap e shutdown duplicati dopo parità |
-| RST-0310 | ⚪ | Ritirare i tre embed.py solo dopo eliminazione dei rispettivi mount |
+| RST-0309 | ⚪ | Eliminare bootstrap/shutdown duplicati dopo parità |
+| RST-0310 | ⚪ | Ritirare i tre embed.py dopo eliminazione dei mount |
 
-Prima di ogni migrazione: conteggi per stato/anno, originali e hash, relazioni, saldi, backup ripristinabile, dry-run e rollback. Non cancellare tabelle solo perché un adapter non le legge.
+Prima di migrare: conteggi per stato/anno, originali/hash, relazioni, saldi, backup ripristinabile, dry-run e rollback. Nessuna cancellazione di tabella basata soltanto sull'assenza di lettori in un adapter.
 
 ### Fase 4: autenticazione/PIN unici
 
 | ID | Stato | Attività e verifica |
 |---|---|---|
-| RST-0401 | 🟡 | Inventario ingressi e token; verificatore admin condiviso già presente, sessioni non ancora tutte unificate |
-| RST-0402 | ⚪ | RBAC comune per admin, amministrazione, HR, responsabile, operatore HACCP, Menu e sola lettura |
-| RST-0403 | ⚪ | Sessione unica con controlli server per ogni dominio e identità stabile |
+| RST-0401 | 🟡 | Inventario ingressi/token: verificatore admin in parte condiviso, sessioni non ancora unificate |
+| RST-0402 | ⚪ | RBAC comune per admin, amministrazione, HR, responsabile, HACCP, Menu e sola lettura |
+| RST-0403 | ⚪ | Sessione unica, controlli server per dominio e identità stabile |
 | RST-0404 | ⚪ | Eliminare login amministrativo HR autonomo dopo cutover verificato |
-| RST-0405 | ⚪ | Eliminare login applicativo Lotti autonomo, preservando identificazione tablet |
-| RST-0406 | ⚪ | Eliminare JWT Menu autonomo senza esporre dati privati al Menu clienti |
-| RST-0407 | ⚪ | PIN personale come credenziale dell'utente/dipendente canonico |
-| RST-0408 | ⚪ | Unica pagina Gestione PIN e accessi nel Gestionale, niente configurazioni duplicate |
-| RST-0409 | ⚪ | Rimuovere router/login duplicati dopo passaggio a verifica e revoca centrali |
-| RST-0410 | ⚪ | Sostituire gestione manuale PIN_HASH_ADMIN in Render con rotazione sicura centrale e bootstrap controllato |
+| RST-0405 | ⚪ | Eliminare login applicativo Lotti autonomo, preservare identificazione tablet |
+| RST-0406 | ⚪ | Eliminare JWT Menu autonomo, mantenere confini pubblico/privato |
+| RST-0407 | ⚪ | PIN personale dell'utente/dipendente canonico |
+| RST-0408 | ⚪ | Unica pagina Gestione PIN e accessi nel Gestionale |
+| RST-0409 | ⚪ | Rimuovere router/login duplicati dopo verifica e revoca centrali |
+| RST-0410 | ⚪ | Sostituire gestione manuale PIN_HASH_ADMIN in Render con rotazione centrale e bootstrap sicuro |
 
 ### Fase 5: fattura e ciclo interdominio
 
 | ID | Stato | Attività e verifica |
 |---|---|---|
-| RST-0501 | ⚪ | Modello canonico righe fattura con unità, quantità, prezzi e provenienza |
-| RST-0502 | ⚪ | Eliminare seconda fattura Lotti, mantenendo relazioni/proiezioni ricostruibili |
+| RST-0501 | ⚪ | Righe canoniche con unità, quantità, prezzi e provenienza |
+| RST-0502 | ⚪ | Eliminare seconda fattura Lotti, preservare relazioni/proiezioni ricostruibili |
 | RST-0503 | ⚪ | Mapping riga → prodotto/ingrediente, conferma degli ambigui |
-| RST-0504 | ⚪ | Storico prezzi fornitore dalla riga canonica |
-| RST-0505 | ⚪ | Ricezione attesa/confermata e movimento inventario idempotente, senza doppio DDT/carico |
-| RST-0506 | ⚪ | Lotto/tracciabilità solo con evidenze, dati mancanti espliciti |
-| RST-0507 | ⚪ | Ricette riferite agli ingredienti canonici, non nomi liberi duplicati |
-| RST-0508 | ⚪ | Aggiornare food cost/disponibilità con rese e conversioni verificate |
-| RST-0509 | ⚪ | Coda da_mappare per righe sconosciute, mai inventare corrispondenze |
-| RST-0510 | ⚪ | Outbox atomica e ricevute per consumer; replay, lease e idempotenza |
+| RST-0504 | ⚪ | Storico prezzi dalla riga canonica |
+| RST-0505 | ⚪ | Ricezione attesa/confermata e inventario idempotente, senza doppio DDT/carico |
+| RST-0506 | ⚪ | Lotto/tracciabilità solo con evidenze, assenze esplicite |
+| RST-0507 | ⚪ | Ricette riferite agli ingredienti canonici |
+| RST-0508 | ⚪ | Food cost/disponibilità con rese e conversioni verificate |
+| RST-0509 | ⚪ | Coda da_mappare per righe sconosciute |
+| RST-0510 | ⚪ | Outbox atomica, ricevute per consumer, replay/lease/idempotenza |
 | RST-0511 | ⚪ | Ritirare sync/copie ERP→Lotti dopo backfill e quadratura |
-| RST-0512 | ⚪ | Eliminare gestionale_fatture.py quando non ha più responsabilità vive |
-| RST-0513 | ⚪ | Contabilità, IVA, debito/scadenzario dal documento unico secondo applicabilità |
-| RST-0514 | ⚪ | Prima Nota: cash attestato, banca con prova reale, provvisori fuori saldo reale |
-| RST-0515 | ⚪ | Completezza ciclo: riuscito/pendente/errore/non applicabile per dominio |
-| RST-0516 | ⚪ | Errori consumer e retry visibili in UI, senza falso successo globale |
+| RST-0512 | ⚪ | Eliminare gestionale_fatture.py quando non ha responsabilità vive |
+| RST-0513 | ⚪ | Contabilità/IVA/debito/scadenzario dal documento unico quando applicabili |
+| RST-0514 | ⚪ | Prima Nota: cash attestato, banca con prova, provvisori fuori saldo reale |
+| RST-0515 | ⚪ | Completezza ciclo per dominio: riuscito/pendente/errore/non applicabile |
+| RST-0516 | ⚪ | Errori e retry visibili in UI, non falso successo globale |
 
-Accettazione: XML entra una volta; stessa fattura e righe in tutti i lettori; conti/IVA/debiti corretti; nessun pagamento inventato; prodotti/prezzi/ricezione coerenti; lotto documentato; ricette esistenti aggiornate senza inventarne; Menu pubblicato solo secondo regole; reimport e riavvio senza duplicati; errore di un consumer persistente e ritentabile. Coprire servizi, merci, cespiti, note di credito, parziali e rettifiche.
+Accettazione: XML acquisito una volta, identità condivisa, conti/IVA/debiti corretti, nessun pagamento inventato, prezzi/ricezioni/lotti documentati, ricette esistenti aggiornate e pubblicazione Menu autorizzata. Reimport/riavvio senza duplicati, errore consumer persistente/ritentabile. Coprire servizi, merci, cespiti, note di credito, parziali e rettifiche.
 
 ### Fase 6: HR e cedolini
 
 | ID | Stato | Attività e verifica |
 |---|---|---|
-| RST-0601 | ⚪ | Dipendente canonico con ID e stato rapporto unici |
+| RST-0601 | ⚪ | Dipendente canonico con ID/stato rapporto unici |
 | RST-0602 | ⚪ | Cedolino canonico versionato con originale |
 | RST-0603 | ⚪ | Lettori HR/ERP sullo stesso repository |
-| RST-0604 | ⚪ | Eliminare copie payslip/buste paga parallele dopo confronto |
-| RST-0605 | ⚪ | Cedolino → costo/debito/Prima Nota salari senza doppia registrazione |
-| RST-0606 | ⚪ | TFR documentato o stimato esplicitamente, no doppio accantonamento |
-| RST-0607 | ⚪ | Acconti/saldo e bonifici collegati con prova bancaria reale |
+| RST-0604 | ⚪ | Eliminare copie payslip/buste paga dopo confronto |
+| RST-0605 | ⚪ | Cedolino → costo/debito/salari senza doppia registrazione |
+| RST-0606 | ⚪ | TFR documentato o stima esplicita, non doppio accantonamento |
+| RST-0607 | ⚪ | Acconti/saldo e bonifici collegati con prova bancaria |
 | RST-0608 | ⚪ | Fascicolo personale con lo stesso ID documento |
-| RST-0609 | ⚪ | Ferie, presenze, turni e richieste dentro l'ERP, permessi preservati |
+| RST-0609 | ⚪ | Ferie/presenze/turni/richieste nell'ERP, permessi preservati |
 | RST-0610 | ⚪ | Eliminare FastAPI autonoma HR |
-| RST-0611 | ⚪ | Router HR nella app principale |
+| RST-0611 | ⚪ | Router HR nell'app principale |
 
-Accettazione: un upload visibile con stesso ID da HR, fascicolo, salari, TFR e banca; riavvio/reimport/rettifica idempotenti; nessun altro dipendente può leggere il documento.
+Accettazione: stesso ID visibile da HR, fascicolo, salari, TFR e banca; reimport/riavvio/rettifica idempotenti; nessun dipendente legge documenti di un altro.
 
 ### Fase 7: Lotti nativo
 
 | ID | Stato | Attività e verifica |
 |---|---|---|
-| RST-0701 | ⚪ | Router Lotti nella app principale |
+| RST-0701 | ⚪ | Router Lotti nell'app principale |
 | RST-0702 | ⚪ | Eliminare bootstrap FastAPI Lotti autonomo |
 | RST-0703 | ⚪ | Job HACCP nel coordinamento comune |
-| RST-0704 | ⚪ | Operatori dall'identità HR, senza seconda anagrafica/PIN |
-| RST-0705 | ⚪ | Fornitori condivisi, attributi qualifica HACCP nel proprio dominio |
+| RST-0704 | ⚪ | Operatori da HR, nessuna seconda anagrafica/PIN |
+| RST-0705 | ⚪ | Fornitori condivisi, qualifica HACCP nel dominio specifico |
 | RST-0706 | ⚪ | Catalogo prodotti/ingredienti unico |
-| RST-0707 | ⚪ | Registro movimenti inventario coerente con ricezioni/consumi |
-| RST-0708 | ⚪ | Preservare lotti, temperature, sanificazione, allergeni, tracciabilità e richiami |
-| RST-0709 | ⚪ | Eliminare doppioni di tabelle soltanto dopo backfill e controllo dei dati esclusivi |
+| RST-0707 | ⚪ | Inventario coerente con ricezioni/consumi |
+| RST-0708 | ⚪ | Preservare lotti, temperature, sanificazione, allergeni, tracciabilità/richiami |
+| RST-0709 | ⚪ | Eliminare tabelle duplicate dopo backfill e controllo dati esclusivi |
 
 ### Fase 8: Menu nativo
 
 | ID | Stato | Attività e verifica |
 |---|---|---|
-| RST-0801 | ⚪ | Censire menu_* e responsabilità realmente esclusive |
+| RST-0801 | ⚪ | Censire menu_* e responsabilità esclusive |
 | RST-0802 | ⚪ | Prodotto/ricetta canonico pubblicabile |
-| RST-0803 | ⚪ | Immagini con riferimenti unici e accesso pubblico limitato alle pubblicabili |
-| RST-0804 | ⚪ | Allergenici e versioni canoniche verificabili |
-| RST-0805 | ⚪ | Sostituire menu_bridge con proiezione/pubblicazione controllata |
-| RST-0806 | ⚪ | Portare Qromo a import/export di transizione dopo riconciliazione e proprietà campi |
+| RST-0803 | ⚪ | Immagini con riferimenti unici, pubblico limitato alle pubblicabili |
+| RST-0804 | ⚪ | Allergenici e versioni verificabili |
+| RST-0805 | ⚪ | Sostituire menu_bridge con pubblicazione/proiezione controllata |
+| RST-0806 | ⚪ | Qromo come import/export di transizione dopo riconciliazione e proprietà campi |
 | RST-0807 | ⚪ | Ritirare client Menu duplicato |
 | RST-0808 | ⚪ | Ritirare bootstrap FastAPI Menu autonomo |
-| RST-0809 | ⚪ | Router Menu privati/pubblici nella app principale con confini espliciti |
-| RST-0810 | ⚪ | Eliminare copie editabili concorrenti, preservare prezzi/visibilità pubblicazione |
+| RST-0809 | ⚪ | Router pubblici/privati nell'app principale, confini espliciti |
+| RST-0810 | ⚪ | Eliminare copie editabili concorrenti, preservare prezzi/visibilità |
 
 ### Fase 9A: fondamenta frontend
 
 | ID | Stato | Attività e verifica |
 |---|---|---|
 | RST-0901 | ⚪ | Unica versione React compatibile |
-| RST-0902 | ⚪ | Unico React Router e modello di deep link |
+| RST-0902 | ⚪ | Unico React Router e deep link coerenti |
 | RST-0903 | ⚪ | Una toolchain Vite |
-| RST-0904 | ⚪ | Client API/query comune e invalidazione cache coerente |
+| RST-0904 | ⚪ | Client API/query comune e invalidazione cache |
 | RST-0905 | ⚪ | Unico AuthProvider/RBAC |
-| RST-0906 | ⚪ | Design system, form, errori, toast/dialog coerenti |
-| RST-0907 | ⚪ | Portare PinModal condiviso nel vero shared, senza nuove copie |
+| RST-0906 | ⚪ | Design system, form, errori, toast/dialog comuni |
+| RST-0907 | ⚪ | PinModal nel vero shared, senza nuove copie |
 
 ### Fase 9B: porting
 
@@ -313,10 +334,10 @@ Accettazione: un upload visibile con stesso ID da HR, fascicolo, salari, TFR e b
 | RST-0910 | ⚪ | HR in frontend/src/modules/hr |
 | RST-0911 | ⚪ | Lotti in frontend/src/modules/lotti |
 | RST-0912 | ⚪ | Menu admin/pubblico in frontend/src/modules/menu |
-| RST-0913 | ⚪ | Link amministrativi interni, stessa sessione e layout |
-| RST-0914 | ⚪ | Preservare deep link/QR e redirect necessari; non rimuoverli solo per età |
+| RST-0913 | ⚪ | Link amministrativi interni, stessa sessione/layout |
+| RST-0914 | ⚪ | Deep link/QR e redirect necessari preservati, non rimossi solo per età |
 
-### Fase 9C: eliminazione toolchain duplicate
+### Fase 9C: toolchain duplicate
 
 | ID | Stato | Attività e verifica |
 |---|---|---|
@@ -324,8 +345,8 @@ Accettazione: un upload visibile con stesso ID da HR, fascicolo, salari, TFR e b
 | RST-0921 | ⚪ | Eliminare frontend_lotti dopo parità |
 | RST-0922 | ⚪ | Eliminare frontend_menu dopo parità |
 | RST-0923 | ⚪ | Eliminare frontend_shared dopo migrazione |
-| RST-0924 | ⚪ | Semplificare build_frontends.sh a una sola build e aggiornare deploy |
-| RST-0925 | ⚪ | Rimuovere CRA/CRACO, lockfile e dipendenze non più richiesti |
+| RST-0924 | ⚪ | build_frontends.sh a una sola build, aggiornare deploy |
+| RST-0925 | ⚪ | Rimuovere CRA/CRACO, lockfile/dipendenze non richiesti |
 
 ### Fase 10: alias e collezioni fantasma
 
@@ -333,76 +354,83 @@ Accettazione: un upload visibile con stesso ID da HR, fascicolo, salari, TFR e b
 |---|---|---|
 | RST-1001 | ⚪ | Eliminare progressivamente app.database.Collections |
 | RST-1002 | ⚪ | Costanti/repository canonici, no nomenclature parallele |
-| RST-1003 | 🟡 | KEEP/ARCHIVE/DELETE motivato per ogni collezione; warehouse_products tolta dalle letture tollerate nella #569 |
-| RST-1004 | 🟡 | Lista delle letture fantasma in riduzione, non azzerata |
-| RST-1005 | ⚪ | Ritirare endpoint di migrazione completata preservando ripristino/nuove installazioni |
-| RST-1006 | ⚪ | Audit provenienza legacy: mai usarla da sola per cancellare dati |
+| RST-1003 | 🟡 | KEEP/ARCHIVE/DELETE motivati; lettura warehouse_products eliminata e deroga ritirata nel rilascio |
+| RST-1004 | 🟡 | Lista letture fantasma ridotta, non azzerata |
+| RST-1005 | ⚪ | Ritirare endpoint migrazioni concluse, preservare ripristino/nuove installazioni |
+| RST-1006 | ⚪ | Audit provenienza legacy: mai criterio unico di cancellazione |
 
 ### Fase 11: bootstrap e manutenzione
 
 | ID | Stato | Attività e verifica |
 |---|---|---|
-| RST-1101 | ⚪ | Censire marker, dipendenze e stato migrazioni startup |
-| RST-1102 | ⚪ | Spostare one-shot in migrazioni versionate e riutilizzabili per ripristino |
-| RST-1103 | ⚪ | Togliere dal normale avvio i repair conclusi e verificati |
-| RST-1104 | ⚪ | Strumenti amministrativi in maintenance con dry-run e audit |
-| RST-1105 | ⚪ | Lifespan limitato a connessioni, sicurezza, registrazione servizi/job e shutdown |
+| RST-1101 | ⚪ | Censire marker, dipendenze e stato migrazioni |
+| RST-1102 | ⚪ | One-shot in migrazioni versionate, utili anche al ripristino |
+| RST-1103 | ⚪ | Togliere repair conclusi dal normale avvio |
+| RST-1104 | ⚪ | Maintenance con dry-run e audit |
+| RST-1105 | ⚪ | Lifespan limitato a connessioni, sicurezza, servizi/job e shutdown |
 
-### Fase 12: ritiro definitivo delle sotto-app
+### Fase 12: ritiro sotto-app
 
 | ID | Stato | Attività e verifica |
 |---|---|---|
-| RST-1201 | ⚪ | Nessuna FastAPI produttiva HR autonoma |
-| RST-1202 | ⚪ | Nessuna FastAPI produttiva Lotti autonoma |
-| RST-1203 | ⚪ | Nessuna FastAPI produttiva Menu autonoma |
+| RST-1201 | ⚪ | Nessuna FastAPI HR produttiva autonoma |
+| RST-1202 | ⚪ | Nessuna FastAPI Lotti produttiva autonoma |
+| RST-1203 | ⚪ | Nessuna FastAPI Menu produttiva autonoma |
 | RST-1204 | ⚪ | Rimuovere mount HR dopo migrazione percorsi |
 | RST-1205 | ⚪ | Rimuovere mount Lotti dopo migrazione percorsi |
-| RST-1206 | ⚪ | Rimuovere mount Menu dopo migrazione percorsi pubblici/privati |
-| RST-1207 | ⚪ | Nessuna configurazione che reintroduca una fonte DB parallela |
+| RST-1206 | ⚪ | Rimuovere mount Menu dopo migrazione pubblico/privato |
+| RST-1207 | ⚪ | Nessuna configurazione reintroduce fonti DB parallele |
 | RST-1208 | ⚪ | Nessun bridge transitorio ERP→Lotti o Lotti→Menu |
 | RST-1209 | ⚪ | Una build frontend |
 | RST-1210 | ⚪ | Una identità/sessione e gestione accessi |
-| RST-1211 | ⚪ | Un coordinamento job/lease e relativi controlli |
+| RST-1211 | ⚪ | Un coordinamento job/lease e controlli |
 
 ## 6. Ordine di lavoro e criteri finali
 
-Prima Nota operativa e copertura dei casi critici → guardrail necessari alla tranche → codice morto → public_api → infrastruttura e identità → outbox → fatture/inventario → cedolini/HR → Lotti → Menu → frontend unico → ritiro delle compatibilità e delle sotto-app → audit finale. Le rimozioni isolate già dimostrate non devono aspettare l'intera rifondazione, ma non devono indebolire la contabilità in uso.
+**Priorità immediata: RST-00A7/#573 e RST-00A6/#575**, poi ulteriori tranche senza compromettere la contabilità in uso.
 
-Prima di eliminare un percorso: cercare import/call/dynamic import, chiamanti UI/job/API esterne e test; confrontare contratto; migrare i chiamanti vivi; aggiungere guardia antiregressione; cancellare file/import/dependency non più necessari. Per i dati servono in più backup, referenzialità, confronto saldi/quantità e prova di ripristino.
+Ordine generale: Prima Nota operativa → guardrail → codice morto → public_api → infrastruttura/identità → outbox → fatture/inventario → cedolini/HR → Lotti → Menu → frontend unico → ritiro compatibilità/sotto-app → audit finale. Le rimozioni isolate dimostrate non devono attendere l'intera rifondazione.
 
-Non riscrivere tutto da zero. Non creare nuove copie temporanee senza owner e condizione di ritiro. Non cambiare conti, IVA, pagamenti, stock fisico, PIN o permessi per far passare un test. Non togliere commenti che spiegano invarianti ancora necessarie. Non sostituire un flusso rotto con un successo vuoto.
+Prima di eliminare un percorso: verificare import/call/dynamic import, UI/job/API esterne e test; confrontare contratto; migrare i chiamanti vivi; aggiungere guardia; eliminare file/import/dipendenze inutili. Per i dati servono anche backup, referenzialità, saldi/quantità e ripristino provato.
 
-La ristrutturazione è chiusa soltanto con un backend e frontend modulari effettivamente unificati; accessi/ruoli corretti; originali preservati; una fattura e un cedolino canonici; consumer persistenti e idempotenti; report e Menu coerenti; nessun router orfano non giustificato; startup snello; eliminazioni verificate; test backend/frontend/integrati/visivi e versione produttiva allineati. L'audit funzionale deve includere tutte e quattro le aree, non solo le 64 viste ERP iniziali.
+Non riscrivere tutto da zero. Non creare copie temporanee senza owner e criterio di ritiro. Non cambiare conti, IVA, pagamenti, stock, PIN o permessi per far passare test. Non togliere commenti utili alle invarianti. Non sostituire un flusso rotto con un successo vuoto.
+
+Chiusura finale: backend/frontend modulari realmente unificati; autorizzazioni corrette; originali preservati; fattura e cedolino canonici; consumer persistenti/idempotenti; report/Menu coerenti; nessun router orfano ingiustificato; startup snello; eliminazioni provate; test e produzione allineati. L'audit deve coprire tutte le quattro aree, non solo le viste ERP iniziali.
 
 ## 7. Misure di riduzione
 
-| Indicatore | Baseline storica | Traguardo |
-|---|---|---|
-| Bootstrap FastAPI produttivi | 4 | 1, esclusi server isolati di test |
-| Frontend e build | 4 + cartella shared | Un frontend e una build |
-| Identità/sessioni | Verificatore admin in parte comune, ingressi multipli | Gestione centrale, ruoli separati |
-| Accesso dati | Adapter multipli, topologia reale da verificare | Repository governati e responsabilità unica |
-| Job/lease | Più scheduler | Coordinamento unico, nessuna doppia esecuzione |
-| Bridge transitori | ERP→Lotti e Lotti→Menu | Nessuna seconda fonte editabile |
-| public_api | 26 route nell'audit iniziale | File eliminato in main 3194396; verificare versione produttiva |
-| Letture fantasma tollerate | Lista nel test runtime | Riduzione verificata, esterni/read-only documentati |
-| Test schermate ERP | Catalogo iniziale 64 | Nessuna regressione, estensione HR/Lotti/Menu |
-| Righe applicative eliminate | Da misurare per PR | Riduzione netta verificata, senza contare rinomine/docs come codice |
+**Confronto cumulativo e283400 → 7329ec7, solo app/: 393 righe aggiunte, 2.156 rimosse, riduzione netta 1.763 righe.** Include gli avanzamenti concorrenti integrati, non solo la #569. Esclude documentazione, workflow e test. Nessuna cancellazione di dati aziendali è stata eseguita in questa tranche.
 
-Il primo commit della #569 aveva 1.354 righe rimosse e 57 aggiunte complessive. I tre moduli applicativi rimossi contenevano 1.186 righe; l'inizializzazione reports ha altre 8 righe nette in meno. Il totale finale va ricalcolato sul diff completo e separato tra applicazione, test e documentazione. Non confondere riduzione del piano Markdown con snellimento del software.
+| Indicatore | Baseline | Stato/traguardo |
+|---|---|---|
+| Bootstrap FastAPI produttivi | 4 | Target 1, esclusi server test; fusione ancora aperta |
+| Frontend/build | 4 + shared | Target unico, non ancora raggiunto |
+| Identità/sessioni | Ingressi multipli | Gestione centrale e ruoli separati ancora da completare |
+| Accesso dati | Adapter multipli | Topologia reale da verificare, repository governati |
+| Job/lease | Più scheduler | Coordinamento unico ancora da realizzare |
+| Bridge | ERP→Lotti e Lotti→Menu | Da ritirare dopo sostituzione verificata |
+| public_api.py | 26 route nell'audit iniziale | File eliminato, owner vivi preservati |
+| Report/batch dismessi | Tre moduli principali | Eliminati; nessun filtro orfano sostitutivo |
+| Letture fantasma | Lista del test runtime | In riduzione; esterni/read-only documentati |
+| Schermate ERP | Catalogo iniziale 64 | Collaudi superati; estendere HR/Lotti/Menu e casi funzionali |
+| Codice backend app/ | e283400 | -1.763 righe nette nel rilascio 7329ec7 |
+
+Il conteggio dei tre moduli report/batch è 1.186 righe rimosse. Non aggiungerlo nuovamente alla riduzione cumulativa. Le rinomine o il taglio del piano Markdown non sono snellimento applicativo.
 
 ## 8. Registro avanzamento
 
 | Data | ID/perimetro | Stato | Commit/PR e prova |
 |---|---|---|---|
-| 2026-09-21 | PLAN-0001 | 🟢 | Piano iniziale su audit 8cf52bd; storia in Git |
-| 2026-09-21 | PLAN-0002 | 🟢 | Priorità Prima Nota e gestione PIN centrale aggiunte |
-| 2026-09-21 | FASE-0A-LIVE | 🟢 | #566, b71f62d0c8a6f17994355150f4a574e73dcad021; precedente registro Produzione 35543104234 |
-| 2026-09-21 | RST-0001/0003/0005 | 🟢 | e283400164c0b9fb88ece13eb401fcde9cba1c42; Produzione 35553261218 tutti i job superati |
-| 2026-09-21 | FASE-0C / RST-0201/0202/0203/0210/0211/0212 | 🟡 | main 31943965f382018d87047637e16fe815d1b93318: public_api eliminato, owner Pianificazione/API v1/ricerca conservati; verificare rilascio |
-| 2026-09-21 | RST-0101/0102/0104/0108 | 🟡 | #569, primo commit 1cfbad652ce50471655b3eac9d8c62075517d95a: tre moduli rimossi, test morti ritirati, guardia nuova; nessun dato cancellato |
-| 2026-09-21 | RST-00A6, collaudi prima del merge | 🟡 | #569, bd36c7c9559077edfb5e1d1a0d1796d42a7d00b5: isolamento esplicito e schermate desktop/mobile, attendere esito |
-| 2026-09-21 | RST-1003/1004 | 🟡 | #569, 781854b0cb6805afa85801253439d073c8371fd1: rimossa deroga warehouse_products dopo scomparsa dell'ultimo lettore; nessuna tabella eliminata |
-| 2026-09-21 | Integrazione aggiornamenti concorrenti | 🟡 | #569, 5b6e1271b12b1a35ecb19dec6f7a62dae9a5a54e: merge di main 3194396 senza ripristinare public_api; test HR sulla nuova API v1 |
+| 2026-09-21 | PLAN-0001 | 🟢 | Piano iniziale, audit 8cf52bd; storia in Git |
+| 2026-09-21 | PLAN-0002 | 🟢 | Priorità Prima Nota e PIN centrale aggiunte |
+| 2026-09-21 | FASE-0A-LIVE | 🟢 | #566, b71f62d; precedente registro Produzione 35543104234; non qualifica tutti i casi contabili |
+| 2026-09-21 | RST-0001/0003/0005 | 🟢 | e283400; Produzione 35553261218 superata |
+| 2026-09-21 | FASE-0C | 🟢 | main 3194396: public_api eliminato, Pianificazione/API v1/ricerca preservate; presente nel rilascio verificato 7329ec7 |
+| 2026-09-21 | FASE-1A | 🟢 | main 4ad3ffa: report_pdf, simple_exports e batch_operations eliminati; non contare nuovamente nella #569 |
+| 2026-09-21 | RST-0101/0102/0104, bonifica residua | 🟢 | #569: eliminato anche filtro rimasto senza chiamanti runtime, controlli import/assenza; merge 7329ec7 e produzione verificata |
+| 2026-09-21 | RST-00A6, prove visive | 🟡 | Cinque immagini ispezionate; artefatto finale 10619819101 identico alle prove viste; aperto #575 sui contatori |
+| 2026-09-21 | RST-00A7, date Banca | 🟡 | Aperto #573: data fattura 20/09 mostrata per addebito 21/09; correzione non eseguita |
+| 2026-09-21 | RST-1003/1004 | 🟡 | Deroga warehouse_products rimossa dopo eliminazione del lettore; nessuna tabella cancellata |
+| 2026-09-21 | PR-569-PUBBLICATA | 🟢 | 7329ec7498c90da519422ade2f638f0f75d8fc55; CI pre-merge 35555214654, E2E pre-merge 35555214652, Produzione 35555459176 tutti superati nei rispettivi perimetri |
 
-**Passo di chiusura della #569 ancora necessario:** test completi sul suo HEAD, ispezione delle prove visive, revisione diff, merge senza forzature, verifica del commit in produzione e aggiornamento di questo registro. Nessun'altra fase è da considerare conclusa per effetto di questa bonifica.
+**Rilascio verificato:** il lavoro della PR #569 è pubblicato e accessibile live. **Non sono concluse** la qualificazione completa della Prima Nota, la gestione PIN centralizzata dalla UI, l'unificazione dati/outbox né la fusione HR/Lotti/Menu/frontend. Nessuna di queste attività va dichiarata completata per effetto della sola bonifica.
