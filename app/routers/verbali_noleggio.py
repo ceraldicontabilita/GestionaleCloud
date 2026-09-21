@@ -274,11 +274,9 @@ async def get_verbali_completi(
     }
 
 
-# NOTA: esiste un secondo /dettaglio/{numero_verbale} in verbali_noleggio_api.py
-# (stesso prefisso /api/verbali-noleggio, registrato dopo questo). Non è duplicato
-# morto: questo usa un path-param str che non matcha "/", quindi i numeri verbale
-# CON slash (es. "S/2259") cadono sull'altra route che usa {numero_verbale:path}.
-@router.get("/dettaglio/{numero_verbale}")
+# Endpoint canonico unico: il converter :path gestisce anche numeri verbale
+# contenenti slash (es. "S/2259"), senza una seconda route shadowata.
+@router.get("/dettaglio/{numero_verbale:path}")
 @handle_errors
 async def get_dettaglio_verbale(numero_verbale: str) -> Dict[str, Any]:
     """
@@ -296,6 +294,7 @@ async def get_dettaglio_verbale(numero_verbale: str) -> Dict[str, Any]:
             {"numero_verbale_old": numero_verbale},
             {"numero_verbale": numero_verbale.upper()},
             {"numero_verbale_old": numero_verbale.upper()},
+            {"id": numero_verbale},
         ]},
         {"_id": 0}
     )
@@ -306,6 +305,7 @@ async def get_dettaglio_verbale(numero_verbale: str) -> Dict[str, Any]:
             {"$or": [
                 {"numero_verbale": numero_verbale},
                 {"numero_verbale_old": numero_verbale},
+                {"id": numero_verbale},
             ]},
             {"_id": 0}
         )
@@ -315,6 +315,19 @@ async def get_dettaglio_verbale(numero_verbale: str) -> Dict[str, Any]:
 
     # Carica info aggiuntive
     risultato = {**verbale}
+
+    # Driver: preserva l'arricchimento che prima viveva soltanto
+    # nella route duplicata dedicata ai numeri con slash.
+    if verbale.get("driver_id"):
+        driver = await db["dipendenti"].find_one(
+            {"id": verbale["driver_id"]}, {"_id": 0}
+        )
+        if driver:
+            risultato["driver_dettaglio"] = {
+                "nome": driver.get("nome"),
+                "cognome": driver.get("cognome"),
+                "codice_fiscale": driver.get("codice_fiscale"),
+            }
 
     # Carica info veicolo se presente
     if verbale.get("targa"):
