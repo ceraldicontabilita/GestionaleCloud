@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import { RefreshCw, Eye, MoreVertical, ArrowLeftRight, Snowflake, Store, RotateCcw, Trash2, BellRing } from "lucide-react";
-import { getOperatoreNome } from "../../auth";
 import Button from "../ui/Button";
 import { API } from "../../utils/constants";
 import { apiError } from "../../utils/apiError";
@@ -111,14 +110,10 @@ export default function CosaUsareOggiView() {
   // compare in «📋 Cosa fare oggi» e chi lo usa lo spunta col proprio nome.
   const usaOggi = async (lotto) => {
     try {
-      await axios.post(`${API}/task-dipendenti`, {
-        titolo: `🕐 Usa prima: ${lotto.prodotto}`,
-        descrizione: `Lotto ${lotto.numero_lotto} — scade il ${lotto.data_scadenza || "?"}. Segnalato da ${getOperatoreNome() || "ufficio"} da "Cosa usare oggi".`,
-        reparto: "tutti",
-        tipo: "scadenza",
-        priorita: "urgente",
-      });
-      toast.success(`"${lotto.prodotto}" mandato nei task di oggi dei tablet`);
+      const risposta = await axios.post(`${API}/task-dipendenti/lotti/${encodeURIComponent(lotto.id)}/usa-oggi`);
+      toast.success(risposta.data?.creato
+        ? `"${lotto.prodotto}" mandato nei task di oggi dei tablet`
+        : `"${lotto.prodotto}" è già nei task di oggi`);
     } catch (e) {
       toast.error(apiError(e, "Non sono riuscito a creare il task"));
     }

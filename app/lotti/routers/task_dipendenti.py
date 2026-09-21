@@ -13,10 +13,12 @@ import uuid
 import logging
 from datetime import datetime, timezone, date, timedelta
 from typing import Optional
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel
 
 from app.lotti.db import database as db
+from app.lotti.auth import require_admin
+from app.lotti.servizi.lotto_arricchimento_service import calcola_stato_scadenza
 
 router = APIRouter(prefix="/task-dipendenti", tags=["task_dipendenti"])
 logger = logging.getLogger(__name__)
@@ -26,10 +28,40 @@ class TaskIn(BaseModel):
     titolo: str
     descrizione: Optional[str] = ""
     reparto: str = "tutti"  # pasticceria | rosticceria | cucina | tutti
-    tipo: str = "manuale"  # sanificazione | produzione | temperatura | scadenza | manuale
     priorita: str = "normale"  # urgente | normale | bassa
     assegnato_a: Optional[str] = None  # nome dipendente o None = tutti
     data: Optional[str] = None  # yyyy-mm-dd, default oggi
+
+
+async def crea_task_scadenza_lotto(lotto: dict, fonte: str) -> tuple[dict, bool]:
+    """Un task al giorno per il lotto reale, condiviso fra tablet e scheduler."""
+    giorni = calcola_stato_scadenza(lotto.get("data_scadenza"))["giorni_alla_scadenza"]
+    if giorni is None or giorni < 0:
+        raise HTTPException(409, "Lotto scaduto o con scadenza da verificare: non usare")
+    if (lotto.get("quantita") or 0) <= 0 or lotto.get("consumato") or lotto.get("esaurito") or lotto.get("stato") in {"smaltito", "esaurito", "bloccato_richiamo"}:
+        raise HTTPException(409, "Lotto non disponibile per l'uso")
+    lotto_id = lotto.get("id") or lotto.get("lotto_id")
+    if not lotto_id:
+        raise HTTPException(409, "Identità del lotto non disponibile")
+
+    oggi = date.today().isoformat()
+    task_id = f"scadenza:{oggi}:{lotto_id}"
+    doc = {
+        "_id": task_id, "id": task_id,
+        "titolo": f"🕐 Usa prima: {lotto.get('prodotto') or lotto.get('prodotto_nome') or '?'}",
+        "descrizione": f"Lotto {lotto.get('numero_lotto') or lotto.get('lotto_id') or lotto_id} scade il {lotto.get('data_scadenza')}.",
+        "reparto": "tutti", "tipo": "scadenza", "priorita": "urgente",
+        "assegnato_a": None, "data": oggi,
+        "completato": False, "completato_da": None, "completato_il": None,
+        "fonte": fonte, "lotto_id": lotto_id,
+        "numero_lotto": lotto.get("numero_lotto") or lotto.get("lotto_id"),
+        "creato_il": datetime.now(timezone.utc).isoformat(),
+    }
+    risultato = await db.task_dipendenti.update_one(
+        {"_id": task_id}, {"$setOnInsert": doc}, upsert=True,
+    )
+    salvato = await db.task_dipendenti.find_one({"_id": task_id}, {"_id": 0})
+    return salvato, risultato.upserted_id is not None
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -39,7 +71,7 @@ class TaskIn(BaseModel):
 async def get_task_oggi(reparto: Optional[str] = None):
     """Task del giorno — filtrabili per reparto."""
     oggi = date.today().isoformat()
-    query = {"data": oggi}
+    query = {"data": oggi, "annullato": {"$ne": True}}
     if reparto and reparto != "tutti":
         query["$or"] = [{"reparto": reparto}, {"reparto": "tutti"}]
 
@@ -66,7 +98,7 @@ async def crea_task(payload: TaskIn):
         "titolo": payload.titolo,
         "descrizione": payload.descrizione or "",
         "reparto": payload.reparto,
-        "tipo": payload.tipo,
+        "tipo": "manuale",
         "priorita": payload.priorita,
         "assegnato_a": payload.assegnato_a,
         "data": payload.data or oggi,
@@ -81,12 +113,21 @@ async def crea_task(payload: TaskIn):
     return {"ok": True, "task": doc}
 
 
+@router.post("/lotti/{lotto_id}/usa-oggi")
+async def usa_oggi_lotto(lotto_id: str):
+    lotto = await db.lotti.find_one({"$or": [{"id": lotto_id}, {"lotto_id": lotto_id}]}, {"_id": 0})
+    if not lotto:
+        raise HTTPException(404, "Lotto non trovato")
+    task, creato = await crea_task_scadenza_lotto(lotto, "manuale")
+    return {"ok": True, "creato": creato, "task": task}
+
+
 @router.patch("/{task_id}/completa")
 async def completa_task(task_id: str, operatore_nome: Optional[str] = None):
     """Segna un task come completato — chiamato dal tablet quando il dipendente lo spunta."""
     ora = datetime.now(timezone.utc)
     r = await db.task_dipendenti.update_one(
-        {"id": task_id},
+        {"id": task_id, "annullato": {"$ne": True}},
         {
             "$set": {
                 "completato": True,
@@ -100,10 +141,17 @@ async def completa_task(task_id: str, operatore_nome: Optional[str] = None):
     return {"ok": True, "completato_il": ora.isoformat()}
 
 
-@router.delete("/{task_id}")
-async def elimina_task(task_id: str):
-    await db.task_dipendenti.delete_one({"id": task_id})
-    return {"ok": True}
+@router.patch("/{task_id}/annulla")
+async def annulla_task(task_id: str, motivo: str = Query(...), _admin=Depends(require_admin)):
+    """Ritira un task errato conservandone la storia."""
+    r = await db.task_dipendenti.update_one(
+        {"id": task_id, "annullato": {"$ne": True}},
+        {"$set": {"annullato": True, "motivo_annullamento": motivo,
+                  "annullato_il": datetime.now(timezone.utc).isoformat()}},
+    )
+    if r.matched_count == 0:
+        raise HTTPException(404, "Task non trovato o già annullato")
+    return {"ok": True, "task_id": task_id}
 
 
 @router.post("/genera-oggi")
@@ -129,44 +177,31 @@ async def genera_task_giornalieri():
     # 1. Lotti in scadenza entro 2 giorni → task "Da usare prima".
     # data_scadenza è in formati misti (dd/mm/yyyy e yyyy-mm-dd): il confronto
     # va fatto in Python, un $lte come stringa matchava sempre le date italiane.
-    from app.lotti.routers.utils import parse_data_flessibile
-    fra_2gg = date.today() + timedelta(days=2)
     candidati = await db.lotti.find(
         {
             "consumato": {"$ne": True},
             "esaurito": {"$ne": True},
-            "stato": {"$nin": ["smaltito", "esaurito"]},
+            "stato": {"$nin": ["smaltito", "esaurito", "bloccato_richiamo"]},
+            "quantita": {"$gt": 0},
             "data_scadenza": {"$nin": [None, ""]},
         },
-        {"_id": 0, "prodotto": 1, "data_scadenza": 1, "frigo_numero": 1, "numero_lotto": 1},
+        {"_id": 0, "id": 1, "lotto_id": 1, "prodotto": 1,
+         "data_scadenza": 1, "numero_lotto": 1, "quantita": 1, "stato": 1,
+         "consumato": 1, "esaurito": 1},
     ).to_list(2000)
     lotti_urgenti = []
     for l in candidati:
-        d = parse_data_flessibile(l.get("data_scadenza"))
-        if d and d <= fra_2gg:
+        giorni = calcola_stato_scadenza(l.get("data_scadenza"))["giorni_alla_scadenza"]
+        if (l.get("id") or l.get("lotto_id")) and giorni is not None and 0 <= giorni <= 2:
             lotti_urgenti.append(l)
             if len(lotti_urgenti) >= 20:
                 break
 
+    task_scadenza_creati = []
     for lotto in lotti_urgenti:
-        tasks_da_creare.append(
-            {
-                "id": str(uuid.uuid4()),
-                "titolo": f"🕐 Usa prima: {lotto.get('prodotto','?')}",
-                "descrizione": f"Lotto {lotto.get('numero_lotto','')} scade il {lotto.get('data_scadenza','')}. Usare questo prodotto in priorità oggi.",
-                "reparto": "tutti",
-                "tipo": "scadenza",
-                "priorita": "urgente",
-                "assegnato_a": None,
-                "data": oggi,
-                "completato": False,
-                "completato_da": None,
-                "completato_il": None,
-                "fonte": "auto_scadenza",
-                "lotto_id": lotto.get("numero_lotto"),
-                "creato_il": ora.isoformat(),
-            }
-        )
+        task, creato = await crea_task_scadenza_lotto(lotto, "auto_scadenza")
+        if creato:
+            task_scadenza_creati.append(task)
 
     # 2. Controllo temperature mattina
     tasks_da_creare.append(
@@ -229,5 +264,6 @@ async def genera_task_giornalieri():
         for t in tasks_da_creare:
             t.pop("_id", None)
 
-    logger.info(f"[Task] Generati {len(tasks_da_creare)} task per {oggi}")
-    return {"ok": True, "generati": len(tasks_da_creare), "tasks": tasks_da_creare}
+    generati = [*task_scadenza_creati, *tasks_da_creare]
+    logger.info(f"[Task] Generati {len(generati)} task per {oggi}")
+    return {"ok": True, "generati": len(generati), "tasks": generati}
