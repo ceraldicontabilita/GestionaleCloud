@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Plus, Trash2, RefreshCw } from "lucide-react";
 import { API } from "../../utils/constants";
 import TouchNumberInput from "./shared/TouchNumberInput";
+import { calcolaProduzione, scalaIngredienti } from "./gelati/calcoloProduzione";
 
 // Ricette base Ceraldi/Galatea — le quantità scalano linearmente su `base` (= somma g ricetta).
 // `gruppo` raggruppa la tendina; `prep` = preparazione Galatea; un ingrediente "qb" non scala.
@@ -206,8 +207,9 @@ function CalcoloTab({ onProdotto }) {
   useEffect(() => { caricaDispo(); }, [caricaDispo]);
 
   const recDisp = dispo.find((d) => d.gusto === recGusto)?.disponibile_g || 0;
-  const recuperato = (usaRecupero && recGusto) ? Math.min(Number(recQty) || 0, recDisp) : 0;
-  const nuovo = Math.max(0, (Number(totale) || 0) - recuperato);
+  const { recuperato, nuovo } = calcolaProduzione(
+    totale, usaRecupero && recGusto ? recQty : 0, recDisp,
+  );
 
   const registraRientro = async () => {
     if (!rinGusto.trim() || !(Number(rinQty) > 0)) { toast.error("Indica gusto e peso del gelato rientrato"); return; }
@@ -227,8 +229,7 @@ function CalcoloTab({ onProdotto }) {
     const r = RICETTE[recipeT];
     const t = nuovo;  // la ricetta vera scala sul NUOVO da produrre (totale − recuperato)
     if (t <= 0) return null;
-    let righe = Object.entries(r.ing).map(([n, amt]) =>
-      typeof amt === "number" ? { n, q: (amt / r.base) * t } : { n, qb: true });
+    let righe = scalaIngredienti(r.ing, r.base, t);
     const acquaQ = righe.find((x) => x.n === "Acqua")?.q || 0;
     const fg = !baseAccettaFrutta(recipeT) ? 0
       : FRUTTA_SENZA_ACQUA.has(fruttaT) ? acquaQ
@@ -261,6 +262,10 @@ function CalcoloTab({ onProdotto }) {
       toast.error(`Di ${recGusto} ci sono solo ${fmtG(recDisp)} disponibili in giacenza.`);
       return;
     }
+    if (usaRecupero && recGusto && (Number(recQty) || 0) > t) {
+      toast.error("Il recupero non può superare il peso totale da produrre.");
+      return;
+    }
     // Se è un gelato alla frutta, il gusto scelto entra nel nome della produzione
     // (così il lotto è "Gelato Frutta — Fragola/Limone/Mango/Anguria…", non generico).
     const conFrutta = baseAccettaFrutta(recipeT) && (FRUTTA_SENZA_ACQUA.has(fruttaT) || Number(fruttaGT) > 0);
@@ -275,7 +280,8 @@ function CalcoloTab({ onProdotto }) {
       setTimeout(() => setSaved(false), 2500);
       onProdotto?.();
     } catch (e) {
-      toast.error("Errore nel salvataggio della produzione");
+      toast.error(e?.response?.data?.detail || "Errore nel salvataggio della produzione");
+      caricaDispo();
     }
   };
 
@@ -434,7 +440,7 @@ function CalcoloTab({ onProdotto }) {
                           value={recQty}
                           onChange={setRecQty}
                           min={1}
-                          max={recGusto ? recDisp : undefined}
+                          max={recGusto ? Math.min(recDisp, Number(totale) || 0) : undefined}
                           disabled={!recGusto}
                           title={`Quantità di ${recGusto || "gelato"} da riutilizzare`}
                           placeholder={recGusto ? "Inserisci grammi" : "Scegli prima il gusto"}
