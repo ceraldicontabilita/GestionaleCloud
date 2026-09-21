@@ -115,3 +115,45 @@ def test_hr_admin_personale_non_aggira_pin_centrale(monkeypatch, admin_pin):
         await db[module.Collections.EMPLOYEES].update_one({"id": "admin"}, {"$set": {"attivo": False}})
         assert await module.login_dipendente("admin", admin_pin) is None
     asyncio.run(scenario())
+
+
+def test_motore_pin_canonico_risolve_admin_e_utente(monkeypatch):
+    from mongomock_motor import AsyncMongoMockClient
+    from app.services import pin_authentication, utenti_pin
+
+    db = AsyncMongoMockClient()["pin_auth_canonica"]
+
+    async def scenario():
+        admin = await pin_authentication.authenticate_pin(db, PIN)
+        assert admin is not None
+        assert admin.role == "admin"
+        assert admin.source == "admin_pin"
+
+        user = await utenti_pin.crea_utente(db, "Operatore test", "operatore", OLD_PIN)
+        identity = await pin_authentication.authenticate_pin(db, OLD_PIN)
+        assert identity is not None
+        assert identity.id == user["id"]
+        assert identity.role == "operatore"
+        assert identity.source == "utente_pin"
+
+        assert await pin_authentication.authenticate_pin(db, "111111") is None
+
+    asyncio.run(scenario())
+
+
+def test_utenti_pin_non_possono_riusare_il_pin_admin_canonico(monkeypatch):
+    from mongomock_motor import AsyncMongoMockClient
+    from app.services import utenti_pin
+
+    db = AsyncMongoMockClient()["pin_collisione"]
+    monkeypatch.setenv("ADMIN_PIN", OLD_PIN)
+
+    async def scenario():
+        with pytest.raises(ValueError, match="riservato"):
+            await utenti_pin.crea_utente(db, "Collisione admin", "operatore", PIN)
+
+        created = await utenti_pin.crea_utente(db, "Utente valido", "operatore", OLD_PIN)
+        with pytest.raises(ValueError, match="riservato"):
+            await utenti_pin.aggiorna_utente(db, created["id"], pin=PIN)
+
+    asyncio.run(scenario())

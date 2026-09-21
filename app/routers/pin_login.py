@@ -26,10 +26,10 @@ import os
 import logging
 
 from app.config import settings
-from app.database import Database, Collections
-from app.repositories import UserRepository
+from app.database import Database
 from app.utils.auth_tokens import create_access_token, create_mfa_challenge, set_session_cookies
-from app.services.admin_pin import verify_admin_pin as _verifica_pin, configured as admin_pin_configured
+from app.services import pin_authentication
+from app.services.admin_pin import configured as admin_pin_configured
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -37,13 +37,6 @@ router = APIRouter()
 # ============================================================================
 # CONFIG
 # ============================================================================
-
-# Username dell'utente admin a cui il PIN concede accesso, se esiste in
-# collection users. Se non esiste NESSUN utente, il login funziona comunque
-# con un'identita' admin sintetica (il sistema e' mono-utente: stesso
-# comportamento del login email/password che vive solo di variabili ambiente).
-PIN_ADMIN_USERNAME = "ceraldi"
-PIN_ADMIN_EMAIL_DEFAULT = os.getenv("ADMIN_EMAIL", "ceraldigroupsrl@gmail.com")
 
 # Durata del token emesso via PIN (in minuti). Default: stesso del login normale.
 PIN_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
@@ -91,71 +84,34 @@ async def pin_login(
         _register_failure(ip)
         raise HTTPException(status_code=400, detail="PIN non valido")
 
-    # 1) PIN amministratore (ADMIN_PIN in chiaro o PIN_HASH_ADMIN SHA-256).
-    esito = _verifica_pin(pin)
-    user = None
-    user_repo = None
+    # Autenticazione canonica: il router non decide piu' sorgenti credenziali,
+    # lookup utenti o fallback. Queste responsabilita' vivono nel servizio unico.
     db = Database.get_db()
-
-    if esito is True:
-        # Admin: recupera l'identità dal DB se esiste, altrimenti sintetica.
+    identity = await pin_authentication.authenticate_pin(db, pin)
+    if identity is None:
+        _register_failure(ip)
+        if not await pin_authentication.has_any_pin_identity(db):
+            logger.error("PIN-login: nessuna identita PIN configurata")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Login PIN non configurato sul server",
+            )
+        logger.warning(f"PIN-login: PIN errato da IP {ip}")
         try:
-            user_repo = UserRepository(db[Collections.USERS])
-            try:
-                user = await user_repo.find_by_username(PIN_ADMIN_USERNAME)
-            except Exception:
-                user = None
-            if not user:
-                user = await db[Collections.USERS].find_one({"role": "admin"})
+            from app.services.audit_logger import log_sicurezza
+            await log_sicurezza(
+                db,
+                azione="login_fallito",
+                dettaglio="PIN errato",
+                utente="pin",
+                ip=ip,
+            )
         except Exception:
-            logger.exception("PIN-login: lookup utente admin fallito, uso identita' sintetica")
-            user_repo = None
-        if not user:
-            user = {
-                "id": "admin",
-                "email": PIN_ADMIN_EMAIL_DEFAULT,
-                "name": "Amministratore",
-                "role": "admin",
-            }
-        else:
-            # Il PIN amministratore, se verificato, concede esplicitamente il
-            # ruolo admin. Non eredita mai un ruolo mancante o legacy dal DB.
-            user = dict(user)
-            user["role"] = "admin"
-    else:
-        # 2) PIN di un utente creato dall'admin (Operatore / Sola lettura).
-        from app.services import utenti_pin as _utenti_pin
-        match = await _utenti_pin.verifica_pin(db, pin)
-        if match:
-            user = {
-                "id": match["id"],
-                "email": "",
-                "name": match.get("nome"),
-                "role": match.get("ruolo", "operatore"),
-            }
-        else:
-            # Nessuna corrispondenza. Se NEANCHE l'admin-PIN è configurato e non
-            # esistono utenti, il login PIN è del tutto disattivato → 503.
-            _register_failure(ip)
-            if esito is None:
-                try:
-                    n_utenti = await db[_utenti_pin.COLLECTION].count_documents({"attivo": True})
-                except Exception:
-                    n_utenti = 0
-                if n_utenti == 0:
-                    logger.error("PIN-login: nessun ADMIN_PIN e nessun utente PIN configurato")
-                    raise HTTPException(
-                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                        detail="Login PIN non configurato sul server",
-                    )
-            logger.warning(f"PIN-login: PIN errato da IP {ip}")
-            try:
-                from app.services.audit_logger import log_sicurezza
-                await log_sicurezza(db, azione="login_fallito",
-                                    dettaglio="PIN errato", utente="pin", ip=ip)
-            except Exception:
-                pass
-            raise HTTPException(status_code=401, detail="PIN non valido")
+            pass
+        raise HTTPException(status_code=401, detail="PIN non valido")
+
+    user = identity.as_user()
+    user_repo = identity.user_repo
 
     # Estrai user_id
     user_id = str(user.get("id") or user.get("_id"))
@@ -231,6 +187,6 @@ async def pin_login_health() -> Dict[str, Any]:
         "ok": True,
         "configured": pin_hash_set,
         "fonte": "PIN_HASH_ADMIN" if pin_hash_set else None,
-        "admin_username": PIN_ADMIN_USERNAME,
+        "admin_username": pin_authentication.PIN_ADMIN_USERNAME,
         "token_expire_minutes": PIN_TOKEN_EXPIRE_MINUTES,
     }
