@@ -11,7 +11,7 @@ non potra' mai restituire niente, non dara' mai un errore, e chi la usa
 prende il vuoto per una risposta. Cosi' l'email delle scadenze F24 non e'
 mai partita: cercava il destinatario in `configurazioni` e in `users`.
 
-Questa guardia non pretende di azzerare la lista di colpo — sono decisioni di
+Questa guardia non pretende di azzerare la lista di colpo: sono decisioni di
 dominio, una per una. Pretende che la lista **possa solo accorciarsi**: un
 nome nuovo fa fallire la CI, e uno risolto va tolto da qui.
 """
@@ -28,21 +28,13 @@ SCRITTURE = (
 
 #: Lette da `app/` e mai scritte da `app/`, misurate il 19/09/2026.
 #:
-#: Le cinque senza commento **esistono in produzione con dei dati**: qualcuno
-#: le riempie da fuori Python. `entity_relations` per esempio la scrive un
-#: trigger PL/pgSQL (`database/trg_bank_ec_before_write.sql`). Per quelle il
-#: valore di questa lista e' proprio mostrare la dipendenza invisibile.
-#:
-#: Le altre sono **vuote anche in produzione**: nessuno le scrive, ne' dentro
-#: ne' fuori. Ogni lettura mostra il vuoto senza dirlo. Si tolgono da qui man
-#: mano che si decide, una per una: o la si popola, o la lettura va via.
+#: Le collezioni con dati possono essere alimentate da trigger o da servizi
+#: esterni: l'assenza di writer Python non ne autorizza la cancellazione.
+#: I commenti sui conteggi sono la fotografia storica, non un inventario live.
 NOTE = {
-    # — esistono in produzione con dei dati: qualcuno le riempie da fuori —
     "entity_relations",            # la scrive il trigger, non Python
-    "fiscal_documents",            # 22 righe
-    "piano_conti",                 # 31 righe, collezione dismessa: il piano
-                                   # dei conti ufficiale sta in Python
-    # — vuote anche in produzione: ogni lettura mostra il vuoto senza dirlo —
+    "fiscal_documents",            # 22 righe nel censimento storico
+    "piano_conti",                 # piano ufficiale definito in Python
     "cartelle_email_attachments",
     "contratti_noleggio",
     "dati_isa_snapshot",
@@ -63,7 +55,6 @@ NOTE = {
     "tax_collection_claims",
     "tfr_acconti",
     "verbali_autovelox",
-    "warehouse_products",
 }
 
 #: Non e' un nome di collezione: compare dentro una docstring che spiega
@@ -92,8 +83,8 @@ def _lette_e_mai_scritte() -> set:
             nome = costanti.get(m.group(1))
             if nome:
                 (scritte if m.group(2) in SCRITTURE else lette).add(nome)
-    # Anche i test scrivono: una collezione popolata solo dai test resta vuota
-    # in produzione, quindi qui conta soltanto cio' che scrive `app/`.
+    # Una collezione popolata solo dai test resta vuota in produzione:
+    # qui conta soltanto cio' che scrive `app/`.
     return lette - scritte - FALSI_POSITIVI
 
 
@@ -114,8 +105,7 @@ def test_la_lista_puo_solo_accorciarsi() -> None:
 
 
 def test_il_destinatario_f24_non_dipende_piu_solo_da_quelle_due() -> None:
-    """Controprova del difetto chiuso: `configurazioni` e `users` restano in
-    lista, ma l'email ora ha una terza fonte che esiste davvero."""
+    """L'email ha una fonte configurabile, non solo le vecchie collezioni."""
     sorgente = (RADICE / "app" / "services" / "f24_scadenze_notifiche.py").read_text(
         encoding="utf-8"
     )
