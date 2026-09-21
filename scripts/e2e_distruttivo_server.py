@@ -148,7 +148,7 @@ async def lifespan(_app: FastAPI):
         {
             "id": "e2e-fattura-banca-prova",
             "invoice_number": "E2E-BANCA-PROVA-001",
-            "invoice_date": "2026-09-20",
+            "invoice_date": "2026-08-31",
             "document_type": "TD01",
             "supplier_name": "Fornitore E2E Banca Prova",
             "supplier_vat": "00000000103",
@@ -170,7 +170,9 @@ async def lifespan(_app: FastAPI):
     ])
     await Database.db["estratto_conto_movimenti"].insert_one({
         "id": "e2e-ec-banca-prova",
-        "data": "2026-09-21",
+        "data": "2026-09-02",
+        "data_contabile": "02/09/2026",
+        "data_valuta": "2026-09-03",
         "tipo": "uscita",
         "importo": 160.00,
         "descrizione": "BONIFICO FORNITORE E2E BANCA PROVA FATTURA E2E-BANCA-PROVA-001",
