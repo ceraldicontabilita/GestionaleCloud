@@ -491,7 +491,7 @@ Questi test dimostrano la logica, ma **non bastano da soli a dichiarare pronta l
 | ID | Stato | Attività |
 |---|---|---|
 | RST-0001 | 🟡 | Guardrail aggiunto sul branch 0B: unicità `method + normalized_path` su tutte le route FastAPI montate; attende CI e bonifica eventuali collisioni |
-| RST-0002 | ⚪ | Aggiungere audit inverso backend → chiamante/owner |
+| RST-0002 | 🟡 | Audit inverso avviato: router storico demolito e route vive riallocate per owner; prossimo passo automatizzare inventario backend → owner |
 | RST-0003 | 🟡 | Guardrail AST aggiunto: vecchie collezioni magazzino sono NO-WRITE; `warehouse_inventory` è il target canonico e può essere scritto solo dai writer transitori esplicitamente censiti, che devono diminuire fino a uno |
 | RST-0004 | ⚪ | Aggiungere contratto route React ↔ `page_catalog.json` |
 | RST-0005 | 🟡 | Guardrail aggiunto: nessuna nuova istanza `FastAPI()` fuori da `app/main.py`; HR/Lotti/Menu restano eccezioni temporanee esplicite fino alla loro fusione |
@@ -526,9 +526,9 @@ Questi test dimostrano la logica, ma **non bastano da soli a dichiarare pronta l
 
 | ID | Stato | Attività |
 |---|---|---|
-| RST-0201 | ⚪ | Spostare `/api/pianificazione/events` nel router Pianificazione mantenendo il contratto URL |
-| RST-0202 | ⚪ | Verificare runtime di `/api/v1/*`; se esterno, spostare in `external_api_v1.py`; altrimenti eliminare |
-| RST-0203 | ⚪ | Verificare eventuali chiamanti esterni di `/api/ricerca-globale` |
+| RST-0201 | 🟢 | `/api/pianificazione/events` spostato nel router Pianificazione mantenendo lo stesso URL |
+| RST-0202 | 🟢 | `/api/v1/*` isolato in `external_api_v1.py` come superficie esterna esplicita, separata dall'ERP storico |
+| RST-0203 | 🟢 | `/api/ricerca-globale` ha chiamante nel frontend Lotti ed è stato isolato in `ricerca_globale.py` fino alla fusione frontend |
 
 ### Endpoint candidati a eliminazione immediata dopo guardia/chiamanti
 
@@ -545,9 +545,9 @@ Questi test dimostrano la logica, ma **non bastano da soli a dichiarare pronta l
 
 | ID | Stato | Attività |
 |---|---|---|
-| RST-0210 | ⚪ | Portare a zero le route operative in `public_api.py` |
-| RST-0211 | ⚪ | Eliminare `app/routers/public_api.py` |
-| RST-0212 | ⚪ | Rimuovere `public_api` da `router_registry.py` |
+| RST-0210 | 🟢 | Route operative portate a zero: vive riallocate, legacy senza chiamanti eliminate |
+| RST-0211 | 🟢 | `app/routers/public_api.py` eliminato fisicamente dal repository corrente |
+| RST-0212 | 🟢 | `public_api` rimosso dal registry; registrati `external_api_v1` e `ricerca_globale` |
 
 ---
 
@@ -874,6 +874,7 @@ Aggiungere una riga ad ogni attività conclusa.
 | 2026-09-21 | RST-00A2 | 🟡 IN CORSO | branch `ristrutturazione/fase-0a-prima-nota` | Banca manuale senza estratto conto resa provvisoria e fuori saldo; UI allineata con badge e saldo progressivo corretto | Attende CI ed E2E riconciliazione |
 | 2026-09-21 | FASE-0A-LIVE | 🟢 COMPLETATO | `b71f62d0c8a6f17994355150f4a574e73dcad021` | Prima Nota Cassa/Banca/Provvisori pubblicata su main e servita in produzione | Produzione `35543104234`: E2E, 64 pagine, layout, viewer, bundle commit e smoke runtime tutti verdi |
 | 2026-09-21 | RST-0001/0003/0005 | 🟡 IN CORSO | branch `ristrutturazione/fase-0b-guardrail` | Aggiunti guardrail route duplicate, nuove FastAPI e writer magazzino; rimosso CRUD warehouse legacy da `public_api.py` | Attende CI e bonifica collisioni esistenti |
+| 2026-09-21 | FASE-0C-PUBLIC-API | 🟡 IN CORSO | branch `ristrutturazione/fase-0c-endpoint-owner` | Eliminato `public_api.py`; Pianificazione, ricerca globale e API v1 riallocate nei rispettivi owner; endpoint legacy senza chiamanti non trasferiti | Attende CI/Produzione |
 
 ---
 
