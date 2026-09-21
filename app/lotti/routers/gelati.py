@@ -6,6 +6,7 @@ produzioni di gelato. Collezioni MongoDB condivise (DB Gestionale):
 Il calcolo ricette è lato frontend (ricette base Ceraldi/Galatea); qui si
 persistono invenduti e produzioni.
 """
+import math
 import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List
@@ -289,15 +290,31 @@ async def lista_produzioni():
 
 @router.post("/produzioni")
 async def aggiungi_produzione(body: ProduzioneIn):
-    if not body.ricetta.strip() or body.peso_g <= 0:
+    if not body.ricetta.strip() or not math.isfinite(body.peso_g) or body.peso_g <= 0:
         raise HTTPException(status_code=400, detail="Ricetta e peso obbligatori")
     ricetta_nome = body.ricetta.strip()
     peso_totale = float(body.peso_g)  # gelato finito = nuovo prodotto + recuperato
+    recuperi = body.recuperi or []
+    richiesto = sum(float(rc.quantita_g) for rc in recuperi)
+    if any(not rc.gusto.strip() or not math.isfinite(rc.quantita_g) or rc.quantita_g <= 0 for rc in recuperi):
+        raise HTTPException(400, "Gusto e peso del recupero obbligatori")
+    if len({rc.gusto.strip().casefold() for rc in recuperi}) > 1:
+        raise HTTPException(400, "Una produzione può recuperare un solo gusto")
+    if richiesto > peso_totale:
+        raise HTTPException(400, "Il recupero non può superare il peso totale del gelato")
+    if recuperi:
+        gusto = recuperi[0].gusto.strip()
+        disponibili = await db.gelati_invenduti.find(
+            {"gusto": gusto, "esito": {"$ne": "dismesso"}}, {"_id": 0}
+        ).to_list(2000)
+        residuo = sum(max(0.0, float(d.get("quantita_g") or 0) - float(d.get("riutilizzato_g") or 0)) for d in disponibili)
+        if residuo + 0.001 < richiesto:
+            raise HTTPException(409, f"Giacenza di {gusto} insufficiente: {round(residuo, 1)} g")
 
     # ── Recupero: consuma il gelato rientrato dagli invenduti (FIFO) ──
     recuperi_dett = []
     recuperato_tot = 0.0
-    for rc in (body.recuperi or []):
+    for rc in recuperi:
         res = await _consuma_invenduto(rc.gusto, rc.quantita_g, produzione_ref=ricetta_nome)
         if res["consumato"] > 0:
             recuperi_dett.append({"gusto": (rc.gusto or "").strip(), "quantita_g": res["consumato"], "fonti": res["fonti"]})
