@@ -1729,8 +1729,9 @@ async def get_conteggi_fatture_provvisorie(anno: int = Query(...)) -> Dict[str, 
         if float(f.get("total_amount") or f.get("importo_totale") or 0) > 0
     ])
 
+    # Ritenute in un'unica query. Servono per il netto realmente pagabile.
     fatture_ids = [str(f.get("id")) for f in fatture_tutte if f.get("id")]
-    ritenute_per_fattura = {}
+    ritenute_per_fattura: Dict[str, float] = {}
     if fatture_ids:
         async for ritenuta in db["ritenute_acconto"].find(
             {"fattura_id": {"$in": fatture_ids}},
@@ -1747,9 +1748,10 @@ async def get_conteggi_fatture_provvisorie(anno: int = Query(...)) -> Dict[str, 
         if importo_ritenuta:
             fattura["ritenuta_importo"] = importo_ritenuta
 
-    fatture_aperte = await fatture_senza_pagamento_contabile_confermato(
-        db, fatture_tutte,
-    )
+    # Una sola scansione batch delle due Prima Nota. Evita di chiamare
+    # fatture_senza_pagamento_contabile_confermato, che rifarebbe lo stesso
+    # lavoro e rendeva il "conteggio leggero" abbastanza lento da scadere.
+    riepiloghi = await _riepilogo_prima_nota_per_fattura(db, fatture_tutte)
 
     metodo_per_piva: Dict[str, str] = {}
     esclusi_cassa_banca = set()
@@ -1777,13 +1779,34 @@ async def get_conteggi_fatture_provvisorie(anno: int = Query(...)) -> Dict[str, 
     da_decidere = 0
     attesa_banca = 0
     escluse = 0
-    for fattura in fatture_aperte:
+    aperte = 0
+    for fattura in fatture_tutte:
+        fattura_id = str(fattura.get("id") or fattura.get("invoice_key") or "")
+        riepilogo = riepiloghi.get(fattura_id, {})
+        totale = totale_pagabile_al_fornitore(fattura)
+        pagato = round(
+            float(riepilogo.get("cassa_importo") or 0)
+            + float(riepilogo.get("banca_importo") or 0),
+            2,
+        )
+
+        # Compatibilita' con righe storiche collegate ma senza importo: come
+        # la vista completa, non le riapriamo artificialmente.
+        collegamento_storico = bool(
+            pagato <= 0
+            and (riepilogo.get("cassa_presente") or riepilogo.get("banca_presente"))
+        )
+        if collegamento_storico or (totale > 0 and pagato >= totale - 0.01):
+            continue
+
         piva = str(
             fattura.get("supplier_vat") or fattura.get("cedente_piva") or ""
         ).strip()
         if fattura.get("esclusa_da_cassa_banca") or piva in esclusi_cassa_banca:
             escluse += 1
             continue
+
+        aperte += 1
         suggerimento, _stato, _fonte = _classifica_provvisorio_fattura(
             fattura, metodo_per_piva,
         )
@@ -1796,11 +1819,10 @@ async def get_conteggi_fatture_provvisorie(anno: int = Query(...)) -> Dict[str, 
         "anno": anno,
         "totale_da_decidere": da_decidere,
         "totale_in_attesa_banca": attesa_banca,
-        "totale_aperti_mostrati": da_decidere + attesa_banca,
+        "totale_aperti_mostrati": aperte,
         "totale_escluse_cassa_banca": escluse,
         "caricato": True,
     }
-
 
 async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
     """
