@@ -122,7 +122,6 @@ PUBLIC_PREFIXES = (
     "/api/auth/config",
     "/api/auth/me",
     "/api/tablet-operatori/login",
-    "/api/tablet-operatori/logout",
     "/api/tablet-operatori/verifica",  # keep-warm / verifica sessione kiosk
     "/api/foto",  # immagini servite da Mongo: i tag <img> non mandano il token
 )

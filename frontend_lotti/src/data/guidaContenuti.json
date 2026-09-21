@@ -21,7 +21,7 @@
     [
      "«🔒 Esci gestionale» (dal tablet)",
      "esce dal kiosk verso il gestionale: serve il PIN amministratore (non richiesto se già inserito nelle ultime 2 ore)",
-     "POST /api/tablet-operatori/logout"
+     "chiude la sessione tablet nel browser"
     ]
    ]
   },

@@ -296,11 +296,6 @@ class PinAdmin(BaseModel):
     pin: str
 
 
-class LogoutPayload(BaseModel):
-    nome: Optional[str] = ""
-    reparto: Optional[str] = ""
-
-
 # ── Identita' e PIN ────────────────────────────────────────────────────────
 async def _richiedi_pin_amministratore(
     pin: str, request: Request = None, dettaglio: str = "PIN amministratore non valido"
@@ -374,11 +369,6 @@ async def login_pin(payload: PinLogin, request: Request = None):
         raise HTTPException(401, "Il PIN amministratore apre le pagine riservate ma non firma: "
                                  "per entrare sul tablet usa il tuo PIN personale (scheda HR)")
     raise HTTPException(401, "PIN non riconosciuto")
-
-
-@router.post("/logout")
-async def logout(payload: LogoutPayload):
-    return {"ok": True}
 
 
 @router.post("/verifica-admin")
