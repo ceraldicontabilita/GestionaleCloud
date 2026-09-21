@@ -8,7 +8,7 @@ import base64
 
 from app.menu.supabase_client import supabase
 from app.utils import login_lockout
-from app.services.admin_pin import verify_admin_pin as _verify_admin_pin
+from app.services import pin_authentication
 
 CONFIG_ID = "qrcode_config"
 
@@ -74,11 +74,10 @@ async def admin_login(login_data: AdminPinLogin, request: Request):
         login_lockout.register_failure(ip)
         raise HTTPException(status_code=400, detail="PIN non valido")
 
-    pin_ok = _verify_admin_pin(pin)
-    if pin_ok is None:
+    if not pin_authentication.admin_pin_is_configured():
         raise HTTPException(status_code=503, detail="PIN amministratore non configurato")
 
-    if not pin_ok:
+    if not pin_authentication.admin_pin_matches(pin):
         login_lockout.register_failure(ip)
         return AdminLoginResponse(success=False, message="PIN non valido")
 
