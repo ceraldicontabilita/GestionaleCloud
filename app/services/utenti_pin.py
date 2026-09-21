@@ -15,12 +15,12 @@ Collection: `utenti_pin`.
 """
 import hashlib
 import hmac
-import os
 import uuid
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 
 from app.utils.ruoli import RUOLI_VALIDI
+from app.services.admin_pin import verify_admin_pin
 
 COLLECTION = "utenti_pin"
 
@@ -56,10 +56,9 @@ async def crea_utente(db, nome: str, ruolo: str, pin: str) -> Dict[str, Any]:
     if not pin_valido(pin):
         raise ValueError("PIN non valido: solo cifre, da 4 a 12")
 
-    # Il PIN deve essere univoco tra tutti gli utenti attivi (altrimenti il
-    # login sarebbe ambiguo) e non deve coincidere con l'ADMIN_PIN a env.
-    admin_pin = os.getenv("ADMIN_PIN", "").strip()
-    if admin_pin and hmac.compare_digest(pin, admin_pin):
+    # Il PIN deve essere univoco tra tutti gli utenti attivi e non deve
+    # coincidere con il PIN amministratore centrale.
+    if verify_admin_pin(pin) is True:
         raise ValueError("Questo PIN è riservato all'amministratore")
     if await _pin_gia_usato(db, pin):
         raise ValueError("PIN già assegnato a un altro utente: scegline un altro")
@@ -106,8 +105,7 @@ async def aggiorna_utente(db, utente_id: str, nome=None, ruolo=None, attivo=None
     if pin is not None:
         if not pin_valido(pin):
             raise ValueError("PIN non valido: solo cifre, da 4 a 12")
-        admin_pin = os.getenv("ADMIN_PIN", "").strip()
-        if admin_pin and hmac.compare_digest(pin, admin_pin):
+        if verify_admin_pin(pin) is True:
             raise ValueError("Questo PIN è riservato all'amministratore")
         if await _pin_gia_usato(db, pin, escludi_id=utente_id):
             raise ValueError("PIN già assegnato a un altro utente")
