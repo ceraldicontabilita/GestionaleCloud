@@ -60,6 +60,36 @@ def test_tablet_nasconde_fornitori_e_riordina_dolce_salato(monkeypatch):
     assert all(item["reparto"] == "rosticceria" for item in salati)
 
 
+def test_esclusione_ricetta_conserva_dati_e_permette_ripristino(monkeypatch):
+    import app.lotti.routers.ricette as module
+    import app.lotti.routers.lotti_produzione as lotti
+    database = AsyncMongoMockClient()["Gestionale_Test"]
+    monkeypatch.setattr(module, "db", database)
+
+    async def giacenza_vuota(_nomi):
+        return {}
+
+    monkeypatch.setattr(lotti, "giacenza_prodotti_finiti", giacenza_vuota)
+    originale = {"id": "ricetta-1", "nome": "Pastiera", "reparto": "pasticceria",
+                "ingredienti": ["Ricotta"], "foto_url": "/api/foto/originale"}
+    run(database.ricette.insert_one(originale.copy()))
+
+    result = run(module.imposta_visibilita_tablet_ricetta(
+        "ricetta-1", module.VisibilitaTabletRicetta(visibile=False), _admin={"nome": "Admin"}
+    ))
+    assert result["visibile_tablet"] is False
+    assert run(module.get_tablet("pasticceria"))["prodotti"] == []
+    conservata = run(database.ricette.find_one({"id": "ricetta-1"}, {"_id": 0}))
+    assert {k: conservata[k] for k in originale} == originale
+    assert conservata["visibile_tablet"] is False
+    assert run(database.ricette_cestino.count_documents({})) == 0
+
+    run(module.imposta_visibilita_tablet_ricetta(
+        "ricetta-1", module.VisibilitaTabletRicetta(visibile=True), _admin={"nome": "Admin"}
+    ))
+    assert [r["id"] for r in run(module.get_tablet("pasticceria"))["prodotti"]] == ["ricetta-1"]
+
+
 def test_salvataggio_ricetta_fornitore_la_rende_operativa(monkeypatch):
     import app.lotti.routers.ricette as module
     database = AsyncMongoMockClient()["Gestionale_Test"]
@@ -90,6 +120,13 @@ def test_salvataggio_ricetta_fornitore_la_rende_operativa(monkeypatch):
     assert saved["visibile_tablet"] is True
     assert saved["ricetta_operativa"] is True
     assert saved["adattata_da_ricettario_fornitore_at"]
+
+    run(module.imposta_visibilita_tablet_ricetta(
+        "saima-ref", module.VisibilitaTabletRicetta(visibile=False), _admin={"nome": "Admin"}
+    ))
+    modificata = run(module.update_ricetta("saima-ref", item))
+    assert modificata["visibile_tablet"] is False
+    assert modificata["ricetta_operativa"] is True
 
 
 def test_riordino_persistente_esclude_riferimenti_e_crea_backup(monkeypatch):

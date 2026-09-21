@@ -26,7 +26,7 @@ const BACKEND = process.env.REACT_APP_LOTTI_BACKEND_URL || "";
 const fotoSrc = (u) => (u ? (/^https?:/.test(u) ? u : BACKEND + u) : "");
 const ORIGINI_FORNITORE = new Set(["saima", "mepa", "acquaviva", "vandemoortele", "tremarie", "tre_marie", "sammontana", "bindi", "alfa", "alpha", "il_pasticcere"]);
 const riferimentoFornitoreNonAttivo = (r) =>
-  r?.visibile_tablet !== true && (
+  r?.ricetta_operativa !== true && r?.visibile_tablet !== true && (
     ORIGINI_FORNITORE.has(String(r?.origine || "").toLowerCase()) ||
     r?.ricettario_saima_id || r?.ricettario_mepa_id || r?.ricettario_acquaviva_id || r?.ricettario_fornitore_id
   );
@@ -41,6 +41,7 @@ function TabRicette() {
   const [loading,    setLoading]    = useState(true);
   const [search,     setSearch]     = useState("");
   const [repFiltro,  setRepFiltro]  = useState("tutti");
+  const [statoFiltro,setStatoFiltro]= useState("attive");
   const [editRicetta,setEditRicetta]= useState(null);   // null=lista, {}=nuova, {id}=modifica
   const [showForm,   setShowForm]   = useState(false);
   const [produciR,   setProduciR]   = useState(null);   // ricetta da produrre (modal)
@@ -48,6 +49,7 @@ function TabRicette() {
   const [schedaR,    setSchedaR]    = useState(null);   // ricetta di cui compilare la scheda
   const [dettaglioR, setDettaglioR] = useState(null);   // scheda chiara unica
   const [promuovendo, setPromuovendo] = useState(false);
+  const [cambiandoVisibilita, setCambiandoVisibilita] = useState(null);
   // Frigoriferi/congelatori REALI configurati (Attrezzature), non la lista
   // generica di fallback — richiesta Enzo 20/07/2026.
   const [attrezzature, setAttrezzature] = useState({ frigoriferi: [], congelatori: [] });
@@ -82,14 +84,16 @@ function TabRicette() {
     })();
   }, []);
 
-  const elimina = async (id, nome) => {
-    if (!await conferma(`Eliminare "${nome}"?`)) return false;
+  const impostaVisibilita = async (ricetta, visibile) => {
+    if (!ricetta?.id || cambiandoVisibilita) return false;
+    setCambiandoVisibilita(ricetta.id);
     try {
-      await axios.delete(`${API}/ricette/${id}`);
-      setRicette(r => r.filter(x => x.id !== id));
-      toast("Ricetta eliminata");
+      await axios.put(`${API}/ricette/${ricetta.id}/visibilita-tablet`, { visibile });
+      setRicette(correnti => correnti.map(r => r.id === ricetta.id ? {...r, visibile_tablet:visibile} : r));
+      toast(visibile ? "Ricetta ripristinata nei reparti" : "Ricetta esclusa dalle card; resta nel ricettario");
       return true;
-    } catch { toast("Errore eliminazione","err"); return false; }
+    } catch { toast("Impossibile cambiare la visibilità della ricetta", "err"); return false; }
+    finally { setCambiandoVisibilita(null); }
   };
 
   const [importando, setImportando] = useState(false);
@@ -153,6 +157,9 @@ function TabRicette() {
 
   const filtrate = ricette.filter(r => {
     if (repFiltro !== "tutti" && r.reparto !== repFiltro) return false;
+    const esclusa = r.visibile_tablet === false && !riferimentoFornitoreNonAttivo(r);
+    if (statoFiltro === "attive" && esclusa) return false;
+    if (statoFiltro === "escluse" && !esclusa) return false;
     if (search && !r.nome?.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   }).sort((a,b) => (a.nome||"").localeCompare(b.nome||"","it"));
@@ -179,6 +186,14 @@ function TabRicette() {
         <input value={search} onChange={e=>setSearch(e.target.value)}
           placeholder="🔍 Cerca ricetta…"
           style={{padding:"8px 14px",border:"1.5px solid var(--border)",borderRadius:10,fontSize:14,fontFamily:"var(--font)",flex:1,minWidth:200}}/>
+        <div role="group" aria-label="Visibilità ricette" style={{display:"flex",gap:6}}>
+          {[["attive","In uso"],["escluse","Escluse"],["tutte","Tutte"]].map(([valore,etichetta]) => (
+            <button key={valore} type="button" onClick={() => setStatoFiltro(valore)} aria-pressed={statoFiltro===valore}
+              style={{padding:"8px 12px",borderRadius:10,border:"1.5px solid var(--border)",background:statoFiltro===valore?"var(--primary)":"var(--card)",color:statoFiltro===valore?"#fff":"var(--text-2)",fontWeight:700,cursor:"pointer",fontFamily:"var(--font)"}}>
+              {etichetta}
+            </button>
+          ))}
+        </div>
         <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
           {["tutti",...REPARTI].map(r=>(
             <button key={r} onClick={()=>setRepFiltro(r)}
@@ -216,16 +231,9 @@ function TabRicette() {
             const emoji = r.reparto==="pasticceria"?"🍰":r.reparto==="rosticceria"?"🥙":r.reparto==="bar"?"☕":"🍽️";
             const soloLettura = r.origine === "archivio" || r.sola_lettura;
             const riferimentoFornitore = riferimentoFornitoreNonAttivo(r);
+            const esclusa = r.visibile_tablet === false && !riferimentoFornitore;
             return (
             <div key={r.id} style={{background:soloLettura?"#fffaf1":"var(--card)",border:`1px solid ${soloLettura?"#e2d8ca":"transparent"}`,borderRadius:16,boxShadow:"var(--shadow-list)",overflow:"hidden",display:"flex",flexDirection:"column",position:"relative"}}>
-              {!soloLettura && <button
-                type="button"
-                aria-label={`Elimina ${r.nome}`}
-                title="Elimina ricetta (resta recuperabile)"
-                onClick={() => elimina(r.id, r.nome)}
-                style={{position:"absolute",right:8,top:8,zIndex:3,width:34,height:34,border:"1px solid rgba(255,255,255,.65)",borderRadius:"50%",background:"rgba(35,30,25,.72)",color:"#fff",fontSize:22,lineHeight:1,cursor:"pointer",display:"grid",placeItems:"center"}}>
-                ×
-              </button>}
               {/* Foto / copertina */}
               <div style={{
                 height:120,
@@ -253,14 +261,15 @@ function TabRicette() {
                 {riferimentoFornitore && <div style={{fontSize:11,fontWeight:800,color:"#8a5a14",background:"#fff4d8",border:"1px solid #ead19a",borderRadius:8,padding:"6px 8px"}}>
                   Ricetta fornitore: non compare in produzione finché non la adatti e salvi
                 </div>}
+                {esclusa && <div style={{fontSize:12,fontWeight:800,color:"#3f5a4e",background:"#edf4ef",borderRadius:8,padding:"6px 8px"}}>Esclusa dalle card dei reparti</div>}
                 {/* Azioni visibili richieste: produzione, modifica immediata e scheda. */}
                 <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:"auto"}}>
-                  {!soloLettura && !riferimentoFornitore && <button
+                  {!soloLettura && !riferimentoFornitore && !esclusa && <button
                     onClick={() => setProduciR(r)}
                     style={{width:"100%",padding:"9px 0",border:"none",borderRadius:8,background:"var(--primary-grad)",color:"#fff",fontFamily:"var(--font)",fontSize:13,fontWeight:800,cursor:"pointer"}}>
                     🏭 Produci
                   </button>}
-                  {!soloLettura && !riferimentoFornitore && <button
+                  {!soloLettura && !riferimentoFornitore && !esclusa && <button
                     onClick={() => setVerificaR(r)}
                     style={{width:"100%",padding:"9px 0",border:"none",borderRadius:8,background:"#16835c",color:"#fff",fontFamily:"var(--font)",fontSize:13,fontWeight:800,cursor:"pointer"}}>
                     ✅ Posso produrla?
@@ -279,6 +288,12 @@ function TabRicette() {
                     disabled={promuovendo}
                     style={{width:"100%",padding:"8px 0",border:"1.5px solid #b9cec1",borderRadius:8,background:"#edf4ef",color:"#3f5a4e",fontFamily:"var(--font)",fontSize:13,fontWeight:800,cursor:promuovendo?"wait":"pointer"}}>
                     ✏️ Rendi modificabile
+                  </button>}
+                  {!soloLettura && !riferimentoFornitore && <button type="button"
+                    disabled={cambiandoVisibilita===r.id}
+                    onClick={() => impostaVisibilita(r, esclusa)}
+                    style={{width:"100%",minHeight:44,border:"1px solid #cfdfd5",borderRadius:8,background:"#f2f6f3",color:"#3f5a4e",fontFamily:"var(--font)",fontSize:13,fontWeight:800,cursor:"pointer"}}>
+                    {cambiandoVisibilita===r.id ? "Aggiorno…" : esclusa ? "↩ Ripristina nei reparti" : "⊘ Escludi dai reparti"}
                   </button>}
                 </div>
               </div>
@@ -311,11 +326,9 @@ function TabRicette() {
           onSalvato={() => { setShowForm(false); carica(); }}
           onAnnulla={() => setShowForm(false)}
           onApriScheda={(r) => { setShowForm(false); setSchedaR(r); }}
-          onElimina={async (r) => {
-            // Il form si chiude SUBITO e la conferma compare in primo piano
-            // (23/07/2026: prima la conferma finiva dietro al modale)
-            setShowForm(false);
-            await elimina(r.id, r.nome);
+          onVisibilita={async (r) => {
+            const aggiornato = await impostaVisibilita(r, r.visibile_tablet === false);
+            if (aggiornato) setShowForm(false);
           }}
         />
       )}
