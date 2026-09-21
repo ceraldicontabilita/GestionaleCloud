@@ -25,6 +25,7 @@ per i rispettivi domini.
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
+from pymongo.errors import DuplicateKeyError
 
 from app.lotti.db import database as db
 
@@ -91,12 +92,15 @@ async def registra_movimento(
     motivo: str = "",
     azione_correttiva_haccp: Optional[str] = None,
     documento_collegato: Optional[dict] = None,
+    operation_id: Optional[str] = None,
 ) -> dict:
     """Registra UN evento nel registro movimenti del lotto. Sola scrittura
     additiva: non modifica mai `db.lotti` (quello resta compito del
     chiamante, es. aggiornare `frigo_numero`/`posizione` sul lotto)."""
+    movimento_id = (str(uuid.uuid5(uuid.NAMESPACE_URL, operation_id))
+                    if operation_id else str(uuid.uuid4()))
     doc = {
-        "id": str(uuid.uuid4()),
+        "id": movimento_id,
         "lotto_id": lotto_id,
         "numero_lotto": numero_lotto or "",
         "tipo_evento": tipo_evento,
@@ -110,7 +114,17 @@ async def registra_movimento(
         "documento_collegato": documento_collegato,
         "data_ora": _adesso(),
     }
-    await db.movimenti_lotto.insert_one(dict(doc))
+    if operation_id:
+        doc["_id"] = movimento_id
+    try:
+        await db.movimenti_lotto.insert_one(dict(doc))
+    except DuplicateKeyError:
+        if not operation_id:
+            raise
+        precedente = await db.movimenti_lotto.find_one({"_id": movimento_id}, {"_id": 0})
+        if precedente is None:
+            raise
+        return precedente
     doc.pop("_id", None)
 
     from app.lotti.eventi import publish

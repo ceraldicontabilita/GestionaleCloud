@@ -493,31 +493,11 @@ async def manda_lotto_al_banco(
     registra come inviato al banco — l'azione "Manda al banco" mostrata
     all'operatore quando tenta di produrre un prodotto già in giacenza,
     invece di fargliene produrre altro."""
-    # IDEMPOTENZA (tranche 4): stesso operation_id → stesso risultato, mai
-    # doppio scarico anche se la rete rispedisce la richiesta.
-    if operation_id:
-        try:
-            await db.operazioni_idempotenti.insert_one(
-                {"_id": f"banco_{operation_id}",
-                 "creato": datetime.now(timezone.utc).isoformat()})
-        except DuplicateKeyError:
-            prec = await db.operazioni_idempotenti.find_one({"_id": f"banco_{operation_id}"})
-            return (prec or {}).get("risultato") or {"ok": True, "gia_eseguita": True}
-    lotto = await db.lotti.find_one({"id": lotto_id}, {"_id": 0})
-    if not lotto:
-        raise HTTPException(status_code=404, detail="Lotto non trovato")
-    if lotto.get("stato") == "bloccato_richiamo":
-        raise HTTPException(status_code=423,
-            detail="Lotto BLOCCATO da richiamo: operazione non consentita (serve lo sblocco amministrativo)")
-    disponibile = lotto.get("quantita") or 0
-    if pezzi <= 0 or pezzi > disponibile:
-        raise HTTPException(status_code=400, detail=f"Quantità non valida: disponibili {disponibile}")
-
-    if pezzi >= disponibile:
-        await db.lotti.update_one({"id": lotto_id}, {"$set": {
-            "consumato": True, "data_consumo": datetime.now(timezone.utc).isoformat(), "quantita": 0}})
-    else:
-        await db.lotti.update_one({"id": lotto_id}, {"$set": {"quantita": round(disponibile - pezzi, 3)}})
+    from app.lotti.servizi.prelievo_lotto_service import preleva_lotto, conclude_prelievo
+    prelievo = await preleva_lotto(lotto_id, pezzi, "banco", operation_id)
+    if "risultato" in prelievo:
+        return prelievo["risultato"]
+    lotto = prelievo["lotto"]
 
     from app.lotti.servizi.vendita_banco_service import registra_vendita_banco, VenditaBancoIn
     vendita = await registra_vendita_banco(VenditaBancoIn(
@@ -529,7 +509,7 @@ async def manda_lotto_al_banco(
         numero_lotto=lotto.get("numero_lotto"),
         operatore_nome=operatore_nome,
         operatore_id=operatore_id,
-    ))
+    ), operation_id=f"banco_{operation_id}" if operation_id else None)
     movimento_id = None
     try:
         from app.lotti.servizi.movimenti_lotto_service import registra_movimento, costruisci_posizione
@@ -545,10 +525,13 @@ async def manda_lotto_al_banco(
             operatore_id=operatore_id or "", operatore_nome=operatore_nome or "",
             motivo="Mandato al banco",
             documento_collegato={"tipo": "vendita_banco", "id": vendita.get("id")},
+            operation_id=f"banco_{operation_id}" if operation_id else None,
         )
         movimento_id = mov.get("id")
     except Exception:
-        _LOG_INIT.exception("[lotti_produzione] registrazione movimento banco fallita (non bloccante)")
+        _LOG_INIT.exception("[lotti_produzione] registrazione movimento banco fallita")
+        if operation_id:
+            raise
     # Richiesta Enzo 20/07/2026: "manda al banco" non diceva DA QUALE frigo/
     # congelatore veniva presa la merce, né dava modo di stamparne conferma —
     # ora la risposta porta tutto ciò che serve al frontend per confermarlo
@@ -560,9 +543,7 @@ async def manda_lotto_al_banco(
         "numero_lotto": lotto.get("numero_lotto", ""),
         "frigo_numero": lotto.get("frigo_numero", ""),
     }
-    if operation_id:
-        await db.operazioni_idempotenti.update_one(
-            {"_id": f"banco_{operation_id}"}, {"$set": {"risultato": _risposta}}, upsert=True)
+    await conclude_prelievo(prelievo["chiave"], _risposta)
     return _risposta
 
 @router.patch("/lotti/{lotto_id}/smalti")
@@ -777,8 +758,6 @@ async def recupera_lotto(
     motivo: str = Query("", description="Es. nome della nuova preparazione in cui viene riutilizzato"),
     operatore_id: Optional[str] = Query(None),
     operatore_nome: Optional[str] = Query(None),
-    # AUDIT 25/07/2026: il corpo usava `operation_id` senza averlo mai
-    # dichiarato → NameError, quindi errore 500 a OGNI tocco di "Recupera".
     operation_id: Optional[str] = Query(None),
 ):
     """Segna un lotto (in tutto o in parte) come recuperato per l'uso in
@@ -789,32 +768,12 @@ async def recupera_lotto(
     nella tracciabilità/recall). Qui NON si forza un lotto di destinazione:
     a differenza di 'consuma', l'evento registrato è 'recupero' per essere
     distinguibile in cronologia da uno scarto/uso normale."""
-    # IDEMPOTENZA (tranche 4): stesso operation_id → stesso risultato, mai
-    # doppio scarico anche se la rete rispedisce la richiesta.
-    if operation_id:
-        try:
-            await db.operazioni_idempotenti.insert_one(
-                {"_id": f"banco_{operation_id}",
-                 "creato": datetime.now(timezone.utc).isoformat()})
-        except DuplicateKeyError:
-            prec = await db.operazioni_idempotenti.find_one({"_id": f"banco_{operation_id}"})
-            return (prec or {}).get("risultato") or {"ok": True, "gia_eseguita": True}
-    lotto = await db.lotti.find_one({"id": lotto_id}, {"_id": 0})
-    if not lotto:
-        raise HTTPException(status_code=404, detail="Lotto non trovato")
-    if lotto.get("stato") == "bloccato_richiamo":
-        raise HTTPException(status_code=423,
-            detail="Lotto BLOCCATO da richiamo: operazione non consentita (serve lo sblocco amministrativo)")
-    disponibile = lotto.get("quantita") or 0
-    if quantita is None or quantita >= disponibile:
-        quantita_recuperata = disponibile
-        update = {"consumato": True, "data_consumo": datetime.now(timezone.utc).isoformat(), "quantita": 0}
-    else:
-        if quantita <= 0:
-            raise HTTPException(status_code=400, detail="quantita deve essere positiva")
-        quantita_recuperata = quantita
-        update = {"quantita": round(disponibile - quantita, 3)}
-    await db.lotti.update_one({"id": lotto_id}, {"$set": update})
+    from app.lotti.servizi.prelievo_lotto_service import preleva_lotto, conclude_prelievo
+    prelievo = await preleva_lotto(lotto_id, quantita, "recupero", operation_id)
+    if "risultato" in prelievo:
+        return prelievo["risultato"]
+    lotto = prelievo["lotto"]
+    quantita_recuperata = prelievo["quantita"]
 
     try:
         from app.lotti.servizi.movimenti_lotto_service import registra_movimento
@@ -825,16 +784,15 @@ async def recupera_lotto(
             quantita=quantita_recuperata,
             operatore_id=operatore_id or "", operatore_nome=operatore_nome or "",
             motivo=motivo or "Recuperato in nuova produzione",
+            operation_id=f"recupero_{operation_id}" if operation_id else None,
         )
     except Exception:
-        _LOG_INIT.exception("[lotti_produzione] registrazione movimento recupero fallita (non bloccante)")
+        _LOG_INIT.exception("[lotti_produzione] registrazione movimento recupero fallita")
+        if operation_id:
+            raise
     _risposta = {"status": "ok", "lotto_id": lotto_id, "quantita_recuperata": quantita_recuperata,
-                 "quantita_residua": update.get("quantita", 0)}
-    # Se la rete rispedisce la stessa richiesta, il secondo giro deve
-    # restituire la STESSA risposta, non un generico "già eseguita".
-    if operation_id:
-        await db.operazioni_idempotenti.update_one(
-            {"_id": f"banco_{operation_id}"}, {"$set": {"risultato": _risposta}}, upsert=True)
+                 "quantita_residua": prelievo["residua"]}
+    await conclude_prelievo(prelievo["chiave"], _risposta)
     return _risposta
 
 
