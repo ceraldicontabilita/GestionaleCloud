@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import { format, subDays } from "date-fns";
 import { it } from "date-fns/locale";
-import { Trash2, User } from "lucide-react";
+import { Ban, User } from "lucide-react";
 
 import { API } from "../../utils/constants";
 
@@ -79,7 +79,9 @@ export const StoricoProduzioniView = () => {
   const [paginaCorrente, setPaginaCorrente] = useState(1);
   const [vistaGrafico, setVistaGrafico] = useState("pezzi");
   const [periodoTrend, setPeriodoTrend] = useState(30);
-  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [annullaId, setAnnullaId] = useState(null);
+  const [motivo, setMotivo] = useState("");
+  const [errore, setErrore] = useState("");
   const perPagina = 20;
 
   const caricaTrend = useCallback(async (giorni) => {
@@ -132,21 +134,24 @@ export const StoricoProduzioniView = () => {
   useEffect(() => { carica(); }, [carica]);
   useEffect(() => { caricaTrend(periodoTrend); }, [caricaTrend, periodoTrend]);
 
-  const eliminaProduzione = async (id) => {
+  const annullaProduzione = async () => {
     try {
-      await axios.delete(`${API}/produzioni/${id}`);
-      setProduzioni(prev => prev.filter(p => p.id !== id));
-      setConfirmDeleteId(null);
-    } catch { }
+      await axios.post(`${API}/produzioni/${annullaId}/annulla`, { motivo: motivo.trim() });
+      setAnnullaId(null);
+      setMotivo("");
+      setErrore("");
+      await Promise.all([carica(), caricaTrend(periodoTrend)]);
+    } catch (e) { setErrore(e.response?.data?.detail || "Impossibile annullare la produzione"); }
   };
 
   // Stats aggregate
-  const totalePezzi = produzioni.reduce((s, p) => s + (p.pezzi || 0), 0);
-  const totaleCosto = produzioni.reduce((s, p) => s + (p.costo_totale || 0), 0);
-  const ricetteProdotte = new Set(produzioni.map(p => p.ricetta_nome)).size;
+  const attive = produzioni.filter(p => p.stato !== "annullata");
+  const totalePezzi = attive.reduce((s, p) => s + (p.pezzi || 0), 0);
+  const totaleCosto = attive.reduce((s, p) => s + (p.costo_totale || 0), 0);
+  const ricetteProdotte = new Set(attive.map(p => p.ricetta_nome)).size;
 
   const topRicette = Object.entries(
-    produzioni.reduce((acc, p) => {
+    attive.reduce((acc, p) => {
       acc[p.ricetta_nome] = (acc[p.ricetta_nome] || 0) + (p.pezzi || 0);
       return acc;
     }, {})
@@ -158,7 +163,7 @@ export const StoricoProduzioniView = () => {
 
   const esportaCsv = () => {
     const righe = [
-      ["Data", "Ricetta", "Pezzi", "Costo (€)", "Numero Lotto", "Frigo", "Lotti Fornitori Scalati"].join(";"),
+      ["Data", "Ricetta", "Pezzi", "Costo (€)", "Numero Lotto", "Frigo", "Lotti Fornitori Scalati", "Stato", "Motivo annullamento"].join(";"),
       ...produzioni.map(p => [
         p.data ? p.data.slice(0, 10) : "",
         p.ricetta_nome || "",
@@ -166,7 +171,9 @@ export const StoricoProduzioniView = () => {
         (p.costo_totale || 0).toFixed(2),
         p.numero_lotto || "",
         p.frigo_numero || "",
-        (p.lotti_fornitori_scalati || 0)
+        (p.lotti_fornitori_scalati || 0),
+        p.stato || "attiva",
+        p.motivo_annullamento || ""
       ].join(";"))
     ].join("\n");
     const blob = new Blob([righe], { type: "text/csv;charset=utf-8" });
@@ -201,7 +208,7 @@ export const StoricoProduzioniView = () => {
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <StatCard label="Produzioni" value={produzioni.length} sub="nel periodo" color="blue" />
+        <StatCard label="Produzioni" value={attive.length} sub="attive nel periodo" color="blue" />
         <StatCard label="Totale Pezzi" value={totalePezzi.toLocaleString("it-IT")} sub="unità prodotte" color="green" />
         <StatCard label="Costo Totale" value={`€${totaleCosto.toFixed(2)}`} sub="ingredienti usati" color="amber" />
         <StatCard label="Ricette Diverse" value={ricetteProdotte} sub="tipologie" color="purple" />
@@ -327,19 +334,20 @@ export const StoricoProduzioniView = () => {
           </div>
         ) : (
           <>
-            {/* Modal conferma elimina */}
-            {confirmDeleteId && (
+            {annullaId && (
               <div className="fixed inset-0 z-50 flex items-center justify-center">
-                <div className="absolute inset-0 bg-black/50" onClick={() => setConfirmDeleteId(null)} />
+                <div className="absolute inset-0 bg-black/50" onClick={() => setAnnullaId(null)} />
                 <div className="relative bg-white rounded-2xl shadow-2xl p-6 max-w-xs w-full mx-4 text-center">
-                  <Trash2 size={36} className="mx-auto mb-3 text-red-500" />
-                  <h3 className="text-lg font-bold text-gray-800 mb-1">Eliminare questa produzione?</h3>
-                  <p className="text-xs text-gray-400 mb-5">Questa azione non può essere annullata. Il lotto collegato rimarrà.</p>
+                  <Ban size={36} className="mx-auto mb-3 text-red-500" />
+                  <h3 className="text-lg font-bold text-gray-800 mb-1">Annullare questa produzione?</h3>
+                  <p className="text-xs text-gray-500 mb-3">Registrazione e lotto restano nella cronologia. Se il lotto è già stato usato, serve una rettifica.</p>
+                  <textarea value={motivo} onChange={e => setMotivo(e.target.value)} placeholder="Motivo della rettifica" className="w-full border rounded-lg p-2 text-sm mb-2" />
+                  {errore && <p role="alert" className="text-red-700 text-sm mb-2">{errore}</p>}
                   <div className="flex gap-3">
-                    <button onClick={() => setConfirmDeleteId(null)}
+                    <button onClick={() => setAnnullaId(null)}
                       className="flex-1 px-4 py-2 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50">Annulla</button>
-                    <button onClick={() => eliminaProduzione(confirmDeleteId)}
-                      className="flex-1 px-4 py-2 bg-red-600 text-white rounded-xl text-sm font-semibold hover:bg-red-700">Elimina</button>
+                    <button onClick={annullaProduzione} disabled={motivo.trim().length < 3}
+                      className="flex-1 px-4 py-2 bg-red-600 text-white rounded-xl text-sm font-semibold hover:bg-red-700 disabled:opacity-40">Conferma</button>
                   </div>
                 </div>
               </div>
@@ -362,7 +370,7 @@ export const StoricoProduzioniView = () => {
               </thead>
               <tbody>
                 {paginati.map((p, i) => (
-                  <tr key={p.id} className={`border-b border-gray-50 hover:bg-[#f2f6f3]/30 transition-colors ${i % 2 === 0 ? "" : "bg-gray-50/30"}`}>
+                  <tr key={p.id} className={`border-b border-gray-50 hover:bg-[#f2f6f3]/30 transition-colors ${p.stato === "annullata" ? "opacity-60 bg-gray-100" : i % 2 === 0 ? "" : "bg-gray-50/30"}`}>
                     <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
                       {(() => {
                         const raw = p.data || "";
@@ -372,7 +380,7 @@ export const StoricoProduzioniView = () => {
                         catch { return raw.slice(0,10); }
                       })()}
                     </td>
-                    <td className="px-4 py-3 font-medium text-gray-800 capitalize">{p.ricetta_nome}</td>
+                    <td className="px-4 py-3 font-medium text-gray-800 capitalize">{p.ricetta_nome}{p.stato === "annullata" && <span className="block text-xs text-red-700 normal-case" title={p.motivo_annullamento}>Annullata · {p.motivo_annullamento}</span>}</td>
                     <td className="px-4 py-3 text-center">
                       <span className="font-bold text-[#5b7a6b]">{(p.pezzi || 0).toLocaleString("it-IT")}</span>
                     </td>
@@ -406,11 +414,11 @@ export const StoricoProduzioniView = () => {
                       ) : <span className="text-gray-300 text-xs">—</span>}
                     </td>
                     <td className="px-2 py-3">
-                      <button onClick={() => setConfirmDeleteId(p.id)}
+                      {p.stato !== "annullata" && <button onClick={() => { setAnnullaId(p.id); setMotivo(""); setErrore(""); }}
                         className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                        title="Elimina produzione" data-testid={`btn-elimina-prod-${p.id}`}>
-                        <Trash2 size={14} />
-                      </button>
+                        title="Annulla produzione" data-testid={`btn-annulla-prod-${p.id}`}>
+                        <Ban size={14} />
+                      </button>}
                     </td>
                   </tr>
                 ))}
