@@ -43,43 +43,6 @@ export function clearGate() {
   try { localStorage.removeItem(GATE_KEY); } catch { /* no-op */ }
 }
 
-// ── PIN amministratore del TABLET kiosk: stessa idea del cancello sopra ma
-// per il PIN admin usato per uscire dal kiosk (TabletHome/TabletView),
-// SEPARATO dal cancello principale (sistemi diversi: quello è il JWT del
-// gestionale, questo è il PIN condiviso del tablet). Dura al massimo due ore
-// anche tra schede o riaperture accidentali del browser; l'uscita esplicita
-// continua invece a cancellare la sessione operatore.
-// Richiesta Enzo 03/07/2026: "deve persistere per due ore" (uscire da una
-// card e rientrare non deve richiedere di nuovo il PIN admin). Resta a tempo
-// (a differenza del cancello principale sopra): qui il PIN protegge l'uscita
-// da un tablet condiviso in negozio verso il gestionale completo, un confine
-// fisico diverso dal semplice cambio pagina.
-const GATE_DURATA_MS = 2 * 60 * 60 * 1000;
-const ADMIN_GATE_KEY = "tablet_admin_until";
-export function setAdminGateOk() {
-  try { localStorage.setItem(ADMIN_GATE_KEY, String(Date.now() + GATE_DURATA_MS)); } catch { /* no-op */ }
-  try { sessionStorage.removeItem(ADMIN_GATE_KEY); } catch { /* no-op */ }
-}
-export function adminGateStillValid() {
-  try {
-    const persisted = Number(localStorage.getItem(ADMIN_GATE_KEY) || 0);
-    if (persisted > Date.now()) return true;
-    const legacy = Number(sessionStorage.getItem(ADMIN_GATE_KEY) || 0);
-    if (legacy > Date.now()) {
-      localStorage.setItem(ADMIN_GATE_KEY, String(legacy));
-      sessionStorage.removeItem(ADMIN_GATE_KEY);
-      return true;
-    }
-    localStorage.removeItem(ADMIN_GATE_KEY);
-    sessionStorage.removeItem(ADMIN_GATE_KEY);
-    return false;
-  } catch { return false; }
-}
-export function clearAdminGate() {
-  try { localStorage.removeItem(ADMIN_GATE_KEY); } catch { /* no-op */ }
-  try { sessionStorage.removeItem(ADMIN_GATE_KEY); } catch { /* no-op */ }
-}
-
 const OPNOME_KEY = "lotti_operatore_nome";
 export const saveOperatoreNome = (n) => { try { if (n) localStorage.setItem(OPNOME_KEY, n); } catch { /* no-op */ } };
 export const getOperatoreNome = () => { try { return localStorage.getItem(OPNOME_KEY) || ""; } catch { return ""; } };

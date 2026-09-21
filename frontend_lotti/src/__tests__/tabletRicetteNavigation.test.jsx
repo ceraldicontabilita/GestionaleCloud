@@ -1,10 +1,6 @@
 import React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-jest.mock("@/auth", () => ({
-  saveToken: jest.fn(), saveRuolo: jest.fn(), setAdminGateOk: jest.fn(),
-  adminGateStillValid: () => false, setGateOk: jest.fn(),
-}), { virtual: true });
 import TabletHome from "../components/haccp/TabletHome";
 import { clearTabletSession, saveTabletSession } from "../utils/tabletSession";
 import { saveToken } from "../auth";

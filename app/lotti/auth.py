@@ -409,7 +409,7 @@ async def me(request: Request):
     data = verify_token(token) if token else None
     if not data:
         raise HTTPException(401, "Token assente o non valido")
-    return {"ok": True, "user": {"nome": data.get("nome"), "ruolo": data.get("ruolo"), "via": data.get("via")}}
+    return {"ok": True, "user": {"dipendente_id": data.get("sub"), "nome": data.get("nome"), "ruolo": data.get("ruolo"), "via": data.get("via")}}
 
 
 @router.get("/config")

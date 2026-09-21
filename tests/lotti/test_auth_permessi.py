@@ -49,6 +49,15 @@ def test_token_valido_roundtrip():
     assert data and data["sub"] == "op1" and data["ruolo"] == "operatore"
 
 
+def test_auth_me_restituisce_id_dipendente_del_token():
+    from app.lotti.auth import me
+
+    token = make_token("hr-141", "Vincenzo", "amministratore")
+    risposta = _run(me(FintaRichiesta(token=token)))
+    assert risposta["user"]["dipendente_id"] == "hr-141"
+    assert risposta["user"]["ruolo"] == "amministratore"
+
+
 def test_token_manomesso_rifiutato():
     t = make_token("op1", "Mario", "operatore")
     assert verify_token(t[:-2] + "xx") is None
