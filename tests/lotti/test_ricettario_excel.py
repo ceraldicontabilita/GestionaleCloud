@@ -174,3 +174,35 @@ def test_prodotto_acquistato_scompare_dalle_due_proiezioni_del_ricettario(monkey
     assert not any(r.get("nome") == "Aranciata" for r in unificate)
     assert archivio["recipes"] == []
     assert archivio["ricette_operative"] == 0
+
+
+def test_variante_arancini_identica_confluisce_nella_base_senza_perdere_fonti():
+    bundle = mod._carica_ricettario_excel()
+    canoniche = mod._ricette_excel_canoniche(bundle["recipes"])
+    arancini = [r for r in canoniche if r["nome"].lower().startswith("arancini di riso")]
+    assert len(arancini) == 2
+    base = next(r for r in arancini if r["nome"] == "arancini di riso (base)")
+    variante = next(r for r in arancini if "funghi e provola" in r["nome"])
+    assert {f["row"] for f in base["fonti_excel"]} == {4, 19}
+    assert {f["row"] for f in variante["fonti_excel"]} == {34}
+    assert variante["ingredienti_dettaglio"] != base["ingredienti_dettaglio"]
+
+
+def test_import_mirato_collega_variante_diversa_alla_base(monkeypatch):
+    database = AsyncMongoMockClient()["Gestionale_Test"]
+    monkeypatch.setattr(mod, "db", database)
+    base_id = "base-arancini"
+    chiave = "arancini di riso funghi e provola variante di arancini di riso"
+
+    async def scenario():
+        await database.ricette.insert_one({"id": base_id, "nome": "arancini di riso (base)"})
+        esito = await mod._importa_ricettario_excel(False, {"nome": "Admin"}, chiave=chiave)
+        variante = await database.ricette.find_one({"nome": {
+            "$regex": "^arancini di riso funghi e provola"
+        }})
+        return esito, variante
+
+    esito, variante = run(scenario())
+    assert esito["create"] == 1
+    assert esito["duplicati_unificati"] >= 1
+    assert variante["ricetta_base_id"] == base_id
