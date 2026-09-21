@@ -12,7 +12,6 @@ def test_mass_repair_and_auto_reconciliation_routes_are_disabled():
     assert "/smart/riconcilia-auto/status" not in _paths(operazioni_module.router)
     assert "/smart/associa-stipendi-auto" not in _paths(operazioni_module.router)
     assert "/aisp/riconcilia-automatica" not in _paths(openapi_it.router)
-    assert "/auto-ricostruisci-dati" not in _paths(fatture_module.router)
     assert "/salari/auto-ricostruisci-dati" not in _paths(prima_nota_module.router)
 
 

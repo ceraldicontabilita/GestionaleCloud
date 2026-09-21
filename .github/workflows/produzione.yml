@@ -1,29 +1,52 @@
-# Collaudi lenti: browser reale ed esito del deploy.
-# Girano solo su main o a mano, mai sulle pull request.
+# I collaudi isolati girano anche sulle PR, prima della fusione.
+# La verifica del servizio pubblico gira esclusivamente su main.
 name: Produzione
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "backend/**"
+      - "frontend/**"
+      - "frontend_hr/**"
+      - "frontend_lotti/**"
+      - "frontend_menu/**"
+      - "frontend_shared/**"
+      - "tests/**"
+      - "scripts/e2e_distruttivo_server.py"
+      - "scripts/smoke_app.py"
+      - "scripts/build_frontends.sh"
+      - "page_catalog.json"
+      - "render.yaml"
+      - ".github/workflows/produzione.yml"
   push:
     branches: [main]
     paths:
       - "app/**"
       - "backend/**"
       - "frontend/**"
+      - "frontend_hr/**"
+      - "frontend_lotti/**"
+      - "frontend_menu/**"
+      - "frontend_shared/**"
+      - "tests/**"
       - "scripts/e2e_distruttivo_server.py"
       - "scripts/smoke_app.py"
+      - "scripts/build_frontends.sh"
       - "page_catalog.json"
       - "render.yaml"
       - ".github/workflows/produzione.yml"
+
+permissions:
+  contents: read
 
 concurrency:
   group: produzione-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  # Dominio reale del servizio Render. Il vecchio impresasemplice.online non
-  # risponde piu': era rimasto nei workflow smoke e verifica-produzione, che
-  # quindi non controllavano nulla. Non reintrodurlo.
   PROD_URL: https://gestionalecloud.onrender.com
 
 jobs:
@@ -50,9 +73,9 @@ jobs:
         run: |
           yarn install --frozen-lockfile
           npx playwright-core install --with-deps chromium
-      - name: Build frontend
+      - name: Build frontend ERP per il collaudo isolato
         working-directory: frontend
-        run: yarn build
+        run: yarn build:erp
       - name: Avvia ERP isolato
         run: |
           python -m uvicorn scripts.e2e_distruttivo_server:app \
@@ -76,6 +99,14 @@ jobs:
           }
       - name: Tutte le schermate catalogate
         run: node frontend/scripts/audit-pages-e2e.cjs
+      - name: Conserva prove visive della Prima Nota
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prima-nota-e2e-${{ github.run_attempt }}
+          path: /tmp/prima-nota-e2e/
+          if-no-files-found: warn
+          retention-days: 7
 
   browser:
     name: Audit layout e viewer
@@ -93,16 +124,14 @@ jobs:
           cache-dependency-path: frontend/yarn.lock
       - name: Installa dipendenze
         run: yarn install --frozen-lockfile
-      - name: Build
-        run: yarn build
+      - name: Build frontend ERP per il collaudo visivo
+        run: yarn build:erp
       - name: Installa Chromium per Playwright
         run: npx playwright-core install --with-deps chromium || npx playwright install --with-deps chromium
       - name: Avvia preview
         run: |
           npx vite preview --port 4173 &
           sleep 4
-      # Overflow orizzontale e titoli invisibili: regressione ricorrente,
-      # si blocca qui e non in produzione.
       - name: Audit layout
         run: node scripts/audit-layout.cjs
       - name: Audit viewer documenti
@@ -110,6 +139,7 @@ jobs:
 
   deploy:
     name: La produzione serve questo commit
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:

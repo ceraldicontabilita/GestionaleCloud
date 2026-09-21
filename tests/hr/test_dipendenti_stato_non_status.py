@@ -1,10 +1,8 @@
-"""Bug trovato in verifica live (dati reali di produzione, sola lettura)
-15/07/2026: più punti del codice filtravano i dipendenti attivi con
-{"status": {"$in": [...]}}, ma il campo reale sul documento è "stato"
-(italiano) — nessun dipendente ha mai un campo "status". Risultato: il
-Fondo TFR aziendale (GET /api/tfr/riepilogo-aziendale) mostrava sempre 0
-dipendenti attivi anche con dipendenti realmente attivi in produzione.
-La regressione resta coperta sui flussi ancora vivi: TFR e API esterna v1."""
+"""TFR e API esterna contano gli attivi usando il campo canonico `stato`.
+
+La regressione resta coperta sulle funzioni effettivamente chiamate. Il vecchio
+report PDF non montato e il test del suo solo database finto sono stati rimossi.
+"""
 import asyncio
 
 from app.routers import tfr as mod_tfr
@@ -79,11 +77,11 @@ def test_tfr_riepilogo_conta_i_dipendenti_attivi_veri(monkeypatch):
 
     esito = _run(mod_tfr.get_riepilogo_tfr_aziendale(anno=2026))
 
-    assert esito["num_dipendenti_attivi"] == 2  # d1 e d3, non d2 (inattivo)
-    assert esito["totale_fondo_tfr"] == 300.0  # 100 + 200
+    assert esito["num_dipendenti_attivi"] == 2
+    assert esito["totale_fondo_tfr"] == 300.0
 
 
-def test_external_api_v1_conta_dipendenti_attivi_veri(monkeypatch):
+def test_api_esterna_conta_dipendenti_attivi_veri(monkeypatch):
     db = _FakeDb()
     monkeypatch.setattr(mod_public.Database, "get_db", staticmethod(lambda: db))
     db["dipendenti"].docs = list(_DIPENDENTI_REALI)
