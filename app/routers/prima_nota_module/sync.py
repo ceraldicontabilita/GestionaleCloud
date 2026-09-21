@@ -738,7 +738,7 @@ def _data_iso_bancaria(valore: Any) -> Optional[str]:
     testo = str(valore).strip()
     if not testo:
         return None
-    if re.match(r"^\\d{4}-\\d{2}-\\d{2}", testo):
+    if re.match(r"^\d{4}-\d{2}-\d{2}", testo):
         try:
             return datetime.strptime(testo[:10], "%Y-%m-%d").date().isoformat()
         except ValueError:
