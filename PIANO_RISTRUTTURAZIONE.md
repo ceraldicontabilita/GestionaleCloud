@@ -518,6 +518,7 @@ Questi test dimostrano la logica, ma **non bastano da soli a dichiarare pronta l
 | RST-0107 | ⚪ | Eliminare commenti che descrivono intere implementazioni rimosse quando Git history è sufficiente |
 | RST-0108 | 🟡 | Eliminati import/test legati a report_pdf e batch_operations; falsi router Distinte/LUL rimossi; resta la pulizia dei riferimenti storici residui |
 | RST-0109 | 🟢 | Eliminato `app/routers/bank/pos_accredito.py`: zero chiamanti; la logica viva resta in `app/utils/pos_accredito.py` |
+| RST-0110 | 🟢 | Eliminato `app/routers/dati_provvisori.py`: zero chiamanti; mantenuto `app/services/dati_provvisori_service.py` usato dai flussi Prima Nota/test |
 
 ---
 
@@ -879,7 +880,7 @@ Aggiungere una riga ad ogni attività conclusa.
 | 2026-09-21 | FASE-1A-CODICE-MORTO | 🟡 IN CORSO | branch `ristrutturazione/fase-1-codice-morto` | Eliminati report_pdf, simple_exports e batch_operations; estratto solo il filtro di riconciliazione vivo | Attende CI/Produzione |
 | 2026-09-21 | FASE-1B-FALSI-ROUTER | 🟡 IN CORSO | branch `ristrutturazione/fase-1b-falsi-router` | Distinte BPM e Libro Unico convertiti da router non montati a servizi applicativi; vecchi file eliminati | Attende CI e merge dopo Fase 1A |
 | 2026-09-21 | RST-0006-DB-GUARDRAIL | 🟡 IN CORSO | branch `ristrutturazione/fase-0d-db-client-guardrail` | Congelati i punti che creano client DB autonomi in HR/Lotti/Menu; un nuovo costruttore rompe la CI e la whitelist può solo diminuire | Attende CI/merge dopo 1B |
-| 2026-09-21 | FASE-1C-POS | 🟡 IN CORSO | branch `ristrutturazione/fase-1c-pos-router-morto` | Eliminato router POS accredito non montato; mantenuta solo la logica utility viva | Preparata, da aprire dopo la catena 1A→1B→DB guardrail |
+| 2026-09-21 | FASE-1C-POS | 🟡 IN CORSO | branch `ristrutturazione/fase-1c-pos-router-morto` | Eliminati router POS accredito e Dati Provvisori senza chiamanti; mantenute le utility/service vive | Preparata, da aprire dopo la catena 1A→1B→DB guardrail |
 
 ---
 
