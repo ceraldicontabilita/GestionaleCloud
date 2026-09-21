@@ -13,7 +13,7 @@ import { Landmark, Boxes, Users, UtensilsCrossed, ArrowUpRight } from 'lucide-re
  * crema, come il resto del portale.
  *
  * Il PIN non si rifà: magazzino e portale condividono la verifica del token
- * (services/sessione_unica.py), quindi chi è entrato resta dentro.
+ * (services/workforce_tokens.py), quindi chi è entrato resta dentro.
  */
 const ICONE = { Landmark, Boxes, Users, UtensilsCrossed };
 

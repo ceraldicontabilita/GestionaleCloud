@@ -110,10 +110,10 @@ def verify_token(token: str):
     Il PIN si inserisce per entrare, non per passare da una sezione all'altra:
     lo stesso operatore che apre il magazzino col suo PIN deve poter aprire il
     portale dipendenti senza rifarlo. La verifica condivisa prova entrambi i
-    segreti (vedi `app/services/sessione_unica.py`); un token scaduto o
+    segreti (vedi `app/services/workforce_tokens.py`); un token scaduto o
     manomesso resta rifiutato come prima.
     """
-    from app.services.sessione_unica import verifica_token_condiviso
+    from app.services.workforce_tokens import verifica_token_condiviso
 
     return verifica_token_condiviso(token)
 

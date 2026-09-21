@@ -12,7 +12,7 @@ import { Landmark, Boxes, Users, UtensilsCrossed, ArrowUpRight } from "lucide-re
  * sezioni esistono e dove vivono. L'aspetto resta quello della barra di Lotti.
  *
  * Il PIN non si rifà: magazzino e portale dipendenti condividono la verifica
- * del token (services/sessione_unica.py).
+ * del token (services/workforce_tokens.py).
  *
  * `g-sezione-link` porta l'altezza minima di 44px: si tocca dal tablet, con
  * le mani sporche.

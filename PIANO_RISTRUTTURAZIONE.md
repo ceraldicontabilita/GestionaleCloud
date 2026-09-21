@@ -5,9 +5,9 @@
 - Baseline iniziale dell'audit: `8cf52bd269d8d1facb478e4a585fa8b01a5ec3ff`.
 - Baseline della bonifica misurata: `e283400164c0b9fb88ece13eb401fcde9cba1c42`.
 - Avanzamenti concorrenti preservati: `31943965f382018d87047637e16fe815d1b93318` (public_api) e `4ad3ffa4cbfd5612e6a4b179d583a419582f2c09` (report/batch).
-- Ultima tranche conclusa: [PR #603](https://github.com/ceraldicontabilita/GestionaleCloud/pull/603), emissione operativa HR/Lotti su servizio canonico.
-- Codice pubblicato e verificato: **`b8d0560ac7e59718934ce361d93c4567dce4c16b`**.
-- Prova di produzione: [workflow 35611388426](https://github.com/ceraldicontabilita/GestionaleCloud/actions/runs/35611388426), tutti i job superati, inclusa verifica commit servito e smoke.
+- Ultima tranche conclusa: [PR #604](https://github.com/ceraldicontabilita/GestionaleCloud/pull/604), login HR con password sull'emettitore operativo canonico.
+- Codice pubblicato e verificato: **`0ed3b411ff67c31cf97336822bab0dd82575b133`**.
+- Prova di produzione: [workflow 35612620496](https://github.com/ceraldicontabilita/GestionaleCloud/actions/runs/35612620496), tutti i job superati, inclusa verifica commit servito e smoke.
 - **Stato complessivo: IN CORSO.** La fusione ERP, HR, Lotti e Menu non è completata. La bonifica pubblicata non certifica ogni funzione e ogni dato contabile.
 - **Priorità operativa aperta:** date Banca [#573](https://github.com/ceraldicontabilita/GestionaleCloud/issues/573) e contatori Provvisori [#575](https://github.com/ceraldicontabilita/GestionaleCloud/issues/575).
 
@@ -241,7 +241,7 @@ Prima di migrare: conteggi per stato/anno, originali/hash, relazioni, saldi, bac
 | ID | Stato | Attività e verifica |
 |---|---|---|
 | RST-0401 | 🟢 | Autenticazione PIN admin canonica completata sui quattro domini: ERP PR #599 / `87efac99`, HR PR #600 / `b34a78cc`, Lotti PR #601 / `ab8c4afe`, Menu PR #602 / `1b6d396c`. Nessun fallback `ADMIN_PIN` in chiaro; lockout condiviso dove applicabile; CI/E2E/Produzione verdi |
-| RST-0402 | 🟡 | Emissione sessione operativa HR/Lotti pubblicata con PR #603; migrazione del login HR con password in corso. RBAC comune per admin, amministrazione, HR, responsabile, HACCP, Menu e sola lettura ancora aperto |
+| RST-0402 | 🟡 | Emissione sessione operativa HR/Lotti pubblicata con PR #603-#604; convergenza del verificatore in corso. RBAC comune per admin, amministrazione, HR, responsabile, HACCP, Menu e sola lettura ancora aperto |
 | RST-0403 | ⚪ | Sessione unica, controlli server per dominio e identità stabile |
 | RST-0404 | ⚪ | Eliminare login amministrativo HR autonomo dopo cutover verificato |
 | RST-0405 | ⚪ | Eliminare login applicativo Lotti autonomo, preservare identificazione tablet |
@@ -446,8 +446,9 @@ Il conteggio dei tre moduli report/batch è 1.186 righe rimosse. Non aggiungerlo
 | 2026-09-21 | RST-0401C-LOTTI-PIN | 🟢 | PR #601 / merge `ab8c4afe89952575b908346a238b74e4969fb72c`: eliminato helper PIN admin locale; `auth.py`, tablet e ordini usano direttamente il servizio canonico; CI 35596972887 e Produzione 35596972923 verdi, commit servito e smoke superato |
 | 2026-09-21 | RST-0401D-MENU-PIN | 🟢 | PR #602 / merge `1b6d396c5e6245cf549d107c21a523948818a175`: login Menu su `pin_authentication`; CI 35597930235 e Produzione 35597930222 verdi, commit servito e smoke superato |
 | 2026-09-21 | RST-0402-SESSIONE-OPERATIVA | 🟢 | PR #603 / merge `b8d0560ac7e59718934ce361d93c4567dce4c16b`: unico emettitore token per HR dipendenti, HR PIN admin e Lotti; CI 35611387736 e Produzione 35611388426 verdi, commit servito e smoke superato |
-| 2026-09-21 | RST-0402B-HR-PASSWORD | 🟡 | Migrazione dell'emissione JWT rimasta nel login HR con password al servizio `workforce_tokens`; test comportamentali e rilascio da completare |
+| 2026-09-21 | RST-0402B-HR-PASSWORD | 🟢 | PR #604 / merge `0ed3b411ff67c31cf97336822bab0dd82575b133`: login HR con password usa l'emettitore canonico; CI 35612620570 e Produzione 35612620496 verdi, commit servito e smoke superato |
+| 2026-09-21 | RST-0402C-VERIFICA-OPERATIVA | 🟡 | Verifica e normalizzazione HR/Lotti confluiscono in `workforce_tokens`; eliminazione di `sessione_unica.py` e migrazione dei chiamanti vivi in corso |
 | 2026-09-21 | FASE-1C-20260921 | 🟡 | branch `ristrutturazione/fase-1c-router-morti-20260921`: eliminati router POS accredito e Dati Provvisori senza chiamanti; utility/service vivi preservati; attende CI/rilascio |
 | 2026-09-21 | FASE-1B-V5 | 🟡 | branch `ristrutturazione/fase-1b-falsi-router-v5`: Distinte BPM e workflow ERP Libro Unico spostati nei servizi; vecchi router eliminati; attende CI/rilascio |
 
-**Rilascio verificato:** RST-0402 della PR #603 è pubblicato e accessibile live con `b8d0560`; le precedenti PR #599-#602 restano pubblicate. **Non sono concluse** la qualificazione completa della Prima Nota, la gestione PIN centralizzata dalla UI, l'unificazione dati/outbox né la fusione HR/Lotti/Menu/frontend. Nessuna di queste attività va dichiarata completata per effetto della sola bonifica.
+**Rilascio verificato:** RST-0402B della PR #604 è pubblicato e accessibile live con `0ed3b411`; la PR #603 e le precedenti PR #599-#602 restano pubblicate. **Non sono concluse** la qualificazione completa della Prima Nota, la gestione PIN centralizzata dalla UI, l'unificazione dati/outbox né la fusione HR/Lotti/Menu/frontend. Nessuna di queste attività va dichiarata completata per effetto della sola bonifica.

@@ -39,7 +39,7 @@ async def get_current_user(
         # Verifica condivisa fra le app del gruppo: lo stesso operatore che
         # ha aperto il magazzino col suo PIN non deve rifarlo per entrare qui.
         # I controlli sul contenuto restano identici — il ruolo si valida sotto.
-        from app.services.sessione_unica import verifica_token_condiviso
+        from app.services.workforce_tokens import verifica_token_condiviso
 
         payload = verifica_token_condiviso(token)
         if payload is None:
@@ -141,7 +141,7 @@ async def get_optional_user(
         return None
     
     try:
-        from app.services.sessione_unica import verifica_token_condiviso
+        from app.services.workforce_tokens import verifica_token_condiviso
 
         payload = verifica_token_condiviso(credentials.credentials)
         if payload is None:
@@ -339,7 +339,7 @@ _bearer_strict = HTTPBearer(auto_error=True)
 
 def _decode_or_401(credentials: HTTPAuthorizationCredentials) -> Dict[str, Any]:
     try:
-        from app.services.sessione_unica import verifica_token_condiviso
+        from app.services.workforce_tokens import verifica_token_condiviso
 
         payload = verifica_token_condiviso(credentials.credentials)
         if payload is None:
