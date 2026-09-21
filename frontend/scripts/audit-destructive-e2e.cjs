@@ -156,6 +156,11 @@ async function run() {
       assert(pagamentoBanca, 'Pagamento Banca con prova assente');
       assertAmount(pagamentoBanca.importo, 160, 'Pagamento Banca');
       assert.equal(pagamentoBanca.riconciliato, true);
+      assert.equal(pagamentoBanca.data, '2026-09-02',
+        'La cronologia Banca deve usare la data dell\'addebito, non quella fattura');
+      assert.equal(pagamentoBanca.data_documento, '2026-08-31',
+        'La data fattura deve restare separata dalla data bancaria');
+      assert.equal(pagamentoBanca.data_valuta, '2026-09-03');
       await call('post', '/api/prima-nota/provvisori/conferma-divisione', {
         fattura_id: 'e2e-fattura-mista', importo_cassa: 40, importo_banca: 60, performed_by: 'e2e',
       });
