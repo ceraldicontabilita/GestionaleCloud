@@ -9,6 +9,7 @@ import axios from "axios";
 import { toast } from "sonner";
 import { API, withToken } from "../../utils/constants";
 import { norm } from "../../utils/textNormalize";
+import { linkEmailOrdine, linkWhatsAppOrdine } from "../../utils/invioOrdine";
 import { getOperatoreNome } from "../../auth";
 import { Search, ShoppingCart, Package, Send, Plus, Check, X, Minus, AlertTriangle, Scale } from "lucide-react";
 // UN solo confronto prezzi in tutta l'app (prima Ordini usava un componente
@@ -809,6 +810,8 @@ function DaInviare() {
   const { conferma, dialogConferma } = useConferma();
   const [ordini, setOrdini] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [preparazione, setPreparazione] = useState(null);
+  const [invioBusy, setInvioBusy] = useState(false);
   const carica = useCallback(async () => {
     try {
       const [r1,r2] = await Promise.all([
@@ -843,16 +846,48 @@ function DaInviare() {
     catch(e){ toast.error(e.response?.data?.detail || "Annullamento non riuscito"); }
   };
 
-  const confermaInvia = async (o) => {
+  const preparaInvio = async (o) => {
     const ids=[...(sel[o.id]||[])];
     if(!ids.length){ toast("Spunta almeno una riga"); return; }
     try {
       await axios.put(`${API}/ordini-fornitori/${o.id}/conferma-righe`, { prodotto_ids: ids });
-      await axios.post(`${API}/ordini-fornitori/${o.id}/invia`);
-      // Invio automatico rimosso: scarico il PDF da inviare a mano al fornitore.
-      window.open(withToken(`${API}/ordini-fornitori/${o.id}/pdf`), "_blank");
-      toast.success("Ordine confermato — PDF scaricato, invialo al fornitore"); carica();
-    } catch(e){ toast.error(e.response?.data?.detail || "Errore invio"); }
+      const righe = (o.prodotti || []).filter(p => ids.includes(String(p.prodotto_id)));
+      const fornitori = [...new Set(righe.map(p => p.fornitore).filter(Boolean))];
+      if (fornitori.length !== 1 || fornitori[0] === "DA ASSEGNARE") {
+        toast.error("Seleziona righe di un solo fornitore assegnato"); return;
+      }
+      const risposta = await axios.get(`${API}/ordini-fornitori/${o.id}/suppliers-email`);
+      const contatto = (risposta.data?.fornitori || []).find(f => f.nome === fornitori[0]) || {};
+      setPreparazione({ ordine: o, righe, fornitore: fornitori[0],
+        email: contatto.email || "", cellulare: contatto.cellulare || "",
+        canale: "", destinatario: "", clientAperto: false });
+    } catch(e){ toast.error(e.response?.data?.detail || "Preparazione ordine non riuscita"); }
+  };
+
+  const scegliCanale = (canale) => setPreparazione(p => p && ({ ...p,
+    canale, destinatario: canale === "email" ? p.email : p.cellulare, clientAperto: false }));
+
+  const apriClient = () => {
+    try {
+      const link = preparazione.canale === "email"
+        ? linkEmailOrdine(preparazione.destinatario, preparazione.ordine, preparazione.righe)
+        : linkWhatsAppOrdine(preparazione.destinatario, preparazione.ordine, preparazione.righe);
+      window.open(link, "_blank", "noopener,noreferrer");
+      setPreparazione(p => ({ ...p, clientAperto: true }));
+    } catch (e) { toast.error(e.message); }
+  };
+
+  const segnaInviato = async () => {
+    setInvioBusy(true);
+    try {
+      await axios.post(`${API}/ordini-fornitori/${preparazione.ordine.id}/invia`, {
+        canale: preparazione.canale, destinatario: preparazione.destinatario,
+      });
+      toast.success("Invio al fornitore registrato");
+      setPreparazione(null);
+      await carica();
+    } catch (e) { toast.error(e.response?.data?.detail || "Registrazione invio non riuscita"); }
+    finally { setInvioBusy(false); }
   };
 
   const riordinoAuto = async () => {
@@ -908,9 +943,33 @@ function DaInviare() {
           </div>
         );})}
         <TotaliOrdine prodotti={o.prodotti}/>
-        <button onClick={()=>confermaInvia(o)} style={{ width:"100%", border:"none", borderRadius:14, background:`linear-gradient(135deg,${C.brand},#6f9180)`, color:"#fff", padding:13, fontWeight:800, cursor:"pointer", marginTop:10 }}>
-          Conferma e scarica PDF (invio manuale)
+        <button onClick={()=>preparaInvio(o)} style={{ width:"100%", border:"none", borderRadius:14, background:`linear-gradient(135deg,${C.brand},#6f9180)`, color:"#fff", padding:13, fontWeight:800, cursor:"pointer", marginTop:10 }}>
+          Conferma righe e scegli invio
         </button>
+        {preparazione?.ordine.id === o.id && (
+          <div style={{ background:C.soft, borderRadius:14, padding:12, marginTop:10 }}>
+            <div style={{ fontWeight:800, marginBottom:8 }}>{preparazione.fornitore} · {preparazione.righe.length} righe confermate</div>
+            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+              <button onClick={()=>scegliCanale("email")} style={qtybtn}>Email</button>
+              <button onClick={()=>scegliCanale("whatsapp")} style={qtybtn}>WhatsApp</button>
+              <button onClick={()=>window.open(withToken(`${API}/ordini-fornitori/${o.id}/pdf?fornitore=${encodeURIComponent(preparazione.fornitore)}`), "_blank")} style={qtybtn}>Scarica PDF</button>
+            </div>
+            {preparazione.canale && (
+              <>
+                <input value={preparazione.destinatario} onChange={e=>setPreparazione(p=>({...p,destinatario:e.target.value,clientAperto:false}))}
+                  placeholder={preparazione.canale === "email" ? "Email fornitore" : "Cellulare WhatsApp fornitore"}
+                  style={{ width:"100%", boxSizing:"border-box", marginTop:10, padding:10, border:`1px solid ${C.line}`, borderRadius:10 }} />
+                <button onClick={apriClient} style={{ ...qtybtn, marginTop:8, width:"100%" }}>
+                  Apri {preparazione.canale === "email" ? "email" : "WhatsApp"} con l'ordine
+                </button>
+                {preparazione.clientAperto && <button onClick={segnaInviato} disabled={invioBusy}
+                  style={{ ...qtybtn, marginTop:8, width:"100%", background:C.green, color:"#fff" }}>
+                  {invioBusy ? "Registro…" : "Ho inviato al fornitore — registra l'invio"}
+                </button>}
+              </>
+            )}
+          </div>
+        )}
       </div>
     ))}
   </>);
