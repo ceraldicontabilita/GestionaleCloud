@@ -32,6 +32,12 @@ def admin_pin_is_configured() -> bool:
     return configured()
 
 
+def admin_pin_matches(pin: str) -> bool:
+    """Unica verifica booleana del PIN amministratore centrale."""
+    pin = (pin or "").strip()
+    return verify_admin_pin(pin) is True
+
+
 @dataclass(frozen=True)
 class PinIdentity:
     id: str
@@ -67,7 +73,7 @@ async def authenticate_admin_pin(
     La credenziale e' unica; il dominio decide soltanto dove vive la propria
     identita' amministrativa e se una identita' persistita e' obbligatoria.
     """
-    if verify_admin_pin(pin) is not True:
+    if not admin_pin_matches(pin):
         return None
 
     user_repo = None
@@ -117,8 +123,8 @@ async def authenticate_admin_pin(
 
 async def authenticate_pin(db, pin: str) -> PinIdentity | None:
     """Ritorna identita canonica associata al PIN, oppure None."""
-    admin_match = verify_admin_pin(pin)
-    if admin_match is True:
+    admin_match = admin_pin_matches(pin)
+    if admin_match:
         return await authenticate_admin_pin(db, pin)
 
     match = await utenti_pin.verifica_pin(db, pin)
