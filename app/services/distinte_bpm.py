@@ -21,7 +21,7 @@ Formato CSV atteso (separatore ;):
 - Causale
 """
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import HTTPException, UploadFile
 from typing import Optional
 import csv
 import io
@@ -31,8 +31,6 @@ from datetime import datetime, timezone
 from app.utils.numeri_italiani import parse_importo_ita
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
-
 # Database connection - usa il singleton già configurato
 from app.database import Database
 
@@ -101,9 +99,8 @@ def parse_importo(value: str) -> float:
     return parse_importo_ita(value)
 
 
-@router.post("/import-distinte-bpm")
 async def import_distinte_bpm(
-    file: UploadFile = File(...),
+    file: UploadFile,
     solo_anteprima: bool = False
 ):
     """
@@ -263,6 +260,4 @@ async def import_distinte_bpm(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# (route morta rimossa — §13.2, pulizia 2026-07-13: /riconcilia-pagamento-manuale,
-# zero chiamanti. L'ingresso vivo è POST /import-distinte-bpm, usato anche
-# internamente da documenti.upload_auto per tipo 'distinte_bpm'.)
+# Importatore applicativo usato dalla pipeline Documenti. Nessuna route HTTP propria.

@@ -15,7 +15,7 @@ import uuid
 import pdfplumber
 from datetime import datetime, timezone
 from typing import List, Dict, Optional, Tuple
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import HTTPException, UploadFile
 import tempfile
 import os
 import logging
@@ -25,7 +25,6 @@ from app.utils.upload_validation import verifica_pdf_reale
 
 from app.database import Database, Collections
 
-router = APIRouter(tags=["Libro Unico Parser"])
 logger = logging.getLogger(__name__)
 
 # Pattern per filtrare la filigrana Zucchetti
@@ -631,9 +630,8 @@ async def riconcilia_stipendio_con_banca(
         return None
 
 
-@router.post("/import-libro-unico", summary="Importa Libro Unico nel database (workflow completo)")
 async def import_libro_unico(
-    file: UploadFile = File(...),
+    file: UploadFile,
     aggiorna_esistenti: bool = True
 ):
     """
