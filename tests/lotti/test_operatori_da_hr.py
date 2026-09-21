@@ -216,16 +216,22 @@ def test_lista_e_modifica_solo_dati_haccp(basi):
     in_carico = run(t.lista_dipendenti())
     assert {o["nome"] for o in in_carico} == {"Pocci Salvatore", "Lesina Angela", "Rossi Anna", "Ceraldi Vincenzo"}
     assert all("pin" not in o and "pin_lookup" not in o for o in in_carico)
+    assert {o["dipendente_id"] for o in in_carico} == {"hr-pocci", "hr-lesina", "hr-nuovo", "hr-vince"}
+    assert all("id" not in o and "hr_id" not in o and "gestionale_dipendente_id" not in o for o in in_carico)
     tutti = run(t.lista_dipendenti(tutti=True))
     non_in_carico = [o for o in tutti if not o["in_carico"]]
     assert {o["nome"] for o in non_in_carico} == {"Moscato Emanuele", "Viviana"}
+    assert next(o for o in non_in_carico if o["nome"] == "Viviana")["dipendente_id"] is None
     assert not any(o["nome"] == "Amministratore" for o in tutti)
 
-    esito = run(t.aggiorna_dipendente("op-pocci", t.AggiornaDipendente(postazione="laboratorio",
+    esito = run(t.aggiorna_dipendente("hr-pocci", t.AggiornaDipendente(postazione="laboratorio",
                                                                        libretto_sanitario_scadenza="2026-12-31")))
     assert esito["modificato"] is True and esito["salvato_alle"]
     with pytest.raises(HTTPException):
-        run(t.aggiorna_dipendente("op-pocci", t.AggiornaDipendente(postazione="cucina")))
+        run(t.aggiorna_dipendente("hr-pocci", t.AggiornaDipendente(postazione="cucina")))
+    with pytest.raises(HTTPException) as exc:
+        run(t.aggiorna_dipendente("op-pocci", t.AggiornaDipendente(postazione="bar")))
+    assert exc.value.status_code == 404
     op = run(db.tablet_operatori.find_one({"id": "op-pocci"}, {"_id": 0}))
     assert op["postazione"] == "laboratorio" and op["libretto_sanitario_scadenza"] == "2026-12-31"
     # una nuova sincronizzazione non sovrascrive la postazione scelta a mano

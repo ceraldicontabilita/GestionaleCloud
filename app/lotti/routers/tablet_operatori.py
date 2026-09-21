@@ -407,7 +407,14 @@ async def lista_dipendenti(tutti: bool = False, sincronizza: bool = False):
         # la vecchia riga generica "Amministratore" non e' una persona
         docs = [d for d in docs if not d.get("sostituito_da_gruppo")]
     for d in docs:
-        d["in_carico"] = d.get("attivo") is not False
+        dipendente_id = d.get("hr_id")
+        if not dipendente_id or d.get("gestionale_dipendente_id") != dipendente_id:
+            dipendente_id = None
+        d.pop("id", None)
+        d.pop("hr_id", None)
+        d.pop("gestionale_dipendente_id", None)
+        d["dipendente_id"] = dipendente_id
+        d["in_carico"] = d.get("attivo") is not False and bool(dipendente_id)
         if d.get("attivo") is not False and not d.get("postazione"):
             d["postazione_proposta"] = postazione_da_ruolo(d.get("mansione") or "")
     docs.sort(key=lambda d: (d.get("in_carico") is False, _norm(d.get("nome"))))
@@ -422,8 +429,8 @@ async def sincronizza_hr(_admin=Depends(require_admin)):
     return {**esito, "pin_migrati": migrazione}
 
 
-@router.patch("/{op_id}")
-async def aggiorna_dipendente(op_id: str, payload: AggiornaDipendente, _admin=Depends(require_admin)):
+@router.patch("/{dipendente_id}")
+async def aggiorna_dipendente(dipendente_id: str, payload: AggiornaDipendente, _admin=Depends(require_admin)):
     """Solo i dati HACCP (R6): postazione e scadenza libretto. Nome, ruolo,
     stato e PIN vivono nella scheda HR."""
     upd: Dict[str, Any] = {}
@@ -441,10 +448,13 @@ async def aggiorna_dipendente(op_id: str, payload: AggiornaDipendente, _admin=De
                 raise HTTPException(400, "Scadenza libretto non valida (aaaa-mm-gg)")
             scad = scad[:10]
         upd["libretto_sanitario_scadenza"] = scad
+    filtro = {"hr_id": dipendente_id, "gestionale_dipendente_id": dipendente_id, "attivo": True}
+    if await db.tablet_operatori.count_documents(filtro) != 1:
+        raise HTTPException(404, "Dipendente HR non trovato in una proiezione Lotti attiva e univoca")
     if not upd:
         return {"ok": True, "modificato": False}
     upd["aggiornato_at"] = _now()
-    res = await db.tablet_operatori.update_one({"id": op_id}, {"$set": upd})
+    res = await db.tablet_operatori.update_one(filtro, {"$set": upd})
     if res.matched_count == 0:
         raise HTTPException(404, "Operatore non trovato")
     return {"ok": True, "modificato": True, "salvato_alle": upd["aggiornato_at"]}
