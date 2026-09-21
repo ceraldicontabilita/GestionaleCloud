@@ -197,6 +197,8 @@ warehouse_inventory è un target canonico previsto dal codice corrente: non viet
 | RST-0106 | 🟢 | Workflow ERP Libro Unico spostato in `app/services/libro_unico_workflow.py`; falso router eliminato e pubblicato con `335d1f7a`; parser HR resta separato fino alla Fase 6 |
 | RST-0107 | 🟡 | Pulizia commenti storici avviata; conservare invarianti e motivazioni utili |
 | RST-0108 | 🟡 | Import/test esclusivi dei router morti rimossi; continuare census sul resto del repo |
+| RST-0109 | 🟢 | `app/routers/bank/pos_accredito.py` eliminato e pubblicato in `5d66bb25`; zero chiamanti, utility viva preservata |
+| RST-0110 | 🟢 | `app/routers/dati_provvisori.py` eliminato e pubblicato in `5d66bb25`; service vivo preservato |
 | RST-0109 | 🟡 | Eliminato `app/routers/bank/pos_accredito.py`; zero chiamanti runtime, utility viva `app/utils/pos_accredito.py` preservata; attende CI/rilascio |
 | RST-0110 | 🟡 | Eliminato `app/routers/dati_provvisori.py`; zero chiamanti runtime, service vivo `app/services/dati_provvisori_service.py` preservato; attende CI/rilascio |
 
@@ -435,6 +437,7 @@ Il conteggio dei tre moduli report/batch è 1.186 righe rimosse. Non aggiungerlo
 | 2026-09-21 | RST-1003/1004 | 🟡 | Deroga warehouse_products rimossa dopo eliminazione del lettore; nessuna tabella cancellata |
 | 2026-09-21 | PR-569-PUBBLICATA | 🟢 | 7329ec7498c90da519422ade2f638f0f75d8fc55; CI pre-merge 35555214654, E2E pre-merge 35555214652, Produzione 35555459176 tutti superati nei rispettivi perimetri |
 | 2026-09-21 | FASE-1B-PUBBLICATA | 🟢 | `335d1f7a83959c1cb2015e849f88b6f3f5cae513`: falsi router Distinte BPM e Libro Unico eliminati, service canonici attivi; CI 35567802880 e Produzione 35567802918 verdi |
+| 2026-09-21 | FASE-1C-PUBBLICATA | 🟢 | `5d66bb25807bf09fa3fb36f2120e7232a862a40c`: router POS accredito e Dati Provvisori eliminati; CI 35571155357 e Produzione 35571155286 verdi |
 | 2026-09-21 | FASE-1C-20260921 | 🟡 | branch `ristrutturazione/fase-1c-router-morti-20260921`: eliminati router POS accredito e Dati Provvisori senza chiamanti; utility/service vivi preservati; attende CI/rilascio |
 | 2026-09-21 | FASE-1B-V5 | 🟡 | branch `ristrutturazione/fase-1b-falsi-router-v5`: Distinte BPM e workflow ERP Libro Unico spostati nei servizi; vecchi router eliminati; attende CI/rilascio |
 
