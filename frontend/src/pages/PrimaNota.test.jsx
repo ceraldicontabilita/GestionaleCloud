@@ -293,6 +293,12 @@ describe('Fatture provvisorie in attesa banca', () => {
     })).toBe('⚠️ Da decidere (0) · 🏦 Attesa banca (0)');
   });
 
+  it('ricalcola i conteggi quando cambia scheda', () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/pages/PrimaNota.jsx'), 'utf8');
+    expect(source).toContain('}, [anno, sezione]);');
+    expect(source).toContain('/api/prima-nota/provvisori/conteggi?anno=');
+  });
+
   it('compatta soltanto descrizioni duplicate parola per parola', () => {
     const descrizione = 'BONIF. VS. FAVORE - BON.DA CERALDI BONIF. VS. FAVORE - BON.DA CERALDI';
     expect(normalizzaDescrizioneMovimento(descrizione)).toBe(
