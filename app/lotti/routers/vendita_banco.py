@@ -7,7 +7,6 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, timezone
-import uuid
 import logging
 _LOG_INIT = logging.getLogger("uvicorn.error")
 
@@ -15,22 +14,9 @@ router = APIRouter(prefix="/vendita-banco", tags=["vendita_banco"])
 
 from app.lotti.db import database as db
 from app.lotti.auth import request_actor
+from app.lotti.servizi.vendita_banco_service import VenditaBancoIn, registra_vendita_banco
 
 # ── Modelli ────────────────────────────────────────────────────────────────────
-
-
-class VenditaBancoIn(BaseModel):
-    prodotto_id: str
-    prodotto_nome: str
-    reparto: str = "rosticceria"
-    pezzi_prodotti: int
-    foto_url: Optional[str] = None
-    data: Optional[str] = None  # yyyy-MM-dd, default oggi
-    lotto_id: Optional[str] = None  # FK → lotti.id (tracciabilità)
-    numero_lotto: Optional[str] = None  # numero lotto leggibile
-    operatore_nome: Optional[str] = None  # dipendente che ha prodotto
-    operatore_id: Optional[str] = None
-    consumo_immediato: bool = False  # banco rivendita (es. senza glutine): già venduto, niente rimanenza serale
 
 
 class InvendutoIn(BaseModel):
@@ -50,40 +36,9 @@ def oggi_str() -> str:
 
 
 @router.post("/registra")
-async def registra_vendita_banco(payload: VenditaBancoIn):
-    """Registra produzione inviata al banco (non stoccata in frigo)."""
-    doc = {
-        "id": str(uuid.uuid4()),
-        "prodotto_id": payload.prodotto_id,
-        "prodotto_nome": payload.prodotto_nome,
-        "reparto": payload.reparto,
-        "foto_url": payload.foto_url,
-        "pezzi_prodotti": payload.pezzi_prodotti,
-        "pezzi_invenduto": 0 if payload.consumo_immediato else None,
-        "pezzi_venduti": payload.pezzi_prodotti if payload.consumo_immediato else None,
-        "data": payload.data or oggi_str(),
-        "lotto_id": payload.lotto_id or None,  # ← tracciabilità
-        "numero_lotto": payload.numero_lotto or None,  # ← tracciabilità
-        "operatore_nome": payload.operatore_nome or None,
-        "operatore_id": payload.operatore_id or None,
-        "consumo_immediato": payload.consumo_immediato,
-        "creato_at": datetime.now(timezone.utc).isoformat(),
-        "invenduto_at": None,
-        "stato": "chiuso" if payload.consumo_immediato else "aperto",
-    }
-    await db.vendite_banco.insert_one(doc)
-    doc.pop("_id", None)
-    try:
-        from app.lotti.utils.activity_log import registra_attivita
-        await registra_attivita(
-            payload.operatore_nome, "vendita_banco",
-            f"{payload.operatore_nome or 'Operatore'} ha inviato al banco {payload.pezzi_prodotti}\u00d7 {payload.prodotto_nome}",
-            payload.reparto or "",
-            extra={"prodotto": payload.prodotto_nome, "pezzi": payload.pezzi_prodotti},
-        )
-    except Exception:
-        _LOG_INIT.debug("[vendita_banco] errore non bloccante ignorato")
-    return doc
+async def registra_vendita_banco_route(payload: VenditaBancoIn):
+    """Consegna esplicita al banco per gli altri flussi."""
+    return await registra_vendita_banco(payload)
 
 
 @router.put("/{vendita_id}/invenduto")
