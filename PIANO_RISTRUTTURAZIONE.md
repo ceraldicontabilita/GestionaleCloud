@@ -513,10 +513,10 @@ Questi test dimostrano la logica, ma **non bastano da soli a dichiarare pronta l
 | RST-0102 | 🟢 | `app/routers/reports/simple_exports.py` eliminato: non montato, zero chiamanti runtime |
 | RST-0103 | 🟢 | Router `trattenute_verbali` assente; confermato vivo solo `services/trattenute_verbali_service.py` usato da scheduler/cedolini |
 | RST-0104 | 🟢 | Estratto `filtro_uscite_da_riconciliare` in service puro ed eliminato l'intero `batch_operations.py` con test di funzioni senza chiamanti |
-| RST-0105 | ⚪ | Estrarre `import_distinte_bpm` in service/parser e cancellare il falso router |
-| RST-0106 | ⚪ | Estrarre `import_libro_unico` in service/parser e cancellare il falso router |
+| RST-0105 | 🟢 | `import_distinte_bpm` spostato in `app/services/distinte_bpm.py`; falso router eliminato e pipeline Documenti riallineata |
+| RST-0106 | 🟢 | Parser/workflow Libro Unico spostato in `app/services/libro_unico_parser.py`; falso router eliminato e test/chiamanti riallineati |
 | RST-0107 | ⚪ | Eliminare commenti che descrivono intere implementazioni rimosse quando Git history è sufficiente |
-| RST-0108 | 🟡 | Eliminati import/test legati a report_pdf e batch_operations; prosegue con i falsi router distinte/LUL |
+| RST-0108 | 🟡 | Eliminati import/test legati a report_pdf e batch_operations; falsi router Distinte/LUL rimossi; resta la pulizia dei riferimenti storici residui |
 
 ---
 
@@ -876,6 +876,7 @@ Aggiungere una riga ad ogni attività conclusa.
 | 2026-09-21 | RST-0001/0003/0005 | 🟡 IN CORSO | branch `ristrutturazione/fase-0b-guardrail` | Aggiunti guardrail route duplicate, nuove FastAPI e writer magazzino; rimosso CRUD warehouse legacy da `public_api.py` | Attende CI e bonifica collisioni esistenti |
 | 2026-09-21 | FASE-0C-PUBLIC-API | 🟢 COMPLETATO | `31943965f382018d87047637e16fe815d1b93318` | Eliminato `public_api.py`; Pianificazione, ricerca globale e API v1 riallocate nei rispettivi owner; endpoint legacy senza chiamanti non trasferiti | Produzione `35553798734`: E2E, 64 pagine, layout/viewer, bundle commit e smoke runtime tutti verdi |
 | 2026-09-21 | FASE-1A-CODICE-MORTO | 🟡 IN CORSO | branch `ristrutturazione/fase-1-codice-morto` | Eliminati report_pdf, simple_exports e batch_operations; estratto solo il filtro di riconciliazione vivo | Attende CI/Produzione |
+| 2026-09-21 | FASE-1B-FALSI-ROUTER | 🟡 IN CORSO | branch `ristrutturazione/fase-1b-falsi-router` | Distinte BPM e Libro Unico convertiti da router non montati a servizi applicativi; vecchi file eliminati | Attende CI e merge dopo Fase 1A |
 
 ---
 
