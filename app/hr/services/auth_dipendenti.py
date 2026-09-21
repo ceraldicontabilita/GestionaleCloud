@@ -18,6 +18,7 @@ from jose import jwt
 from app.hr.config import settings
 from app.hr.database import Database, Collections
 from app.services.admin_pin import verify_admin_pin
+from app.services.workforce_tokens import create_workforce_token
 
 logger = logging.getLogger(__name__)
 
@@ -64,19 +65,15 @@ def _valid_pin_format(pin: str) -> bool:
 
 
 def crea_token_dipendente(dip: Dict[str, Any]) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(
-        minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
+    return create_workforce_token(
+        sub=dip["id"],
+        name=dip.get("nome_completo", ""),
+        role=dip.get("ruolo_app", "dipendente"),
+        secret=settings.SECRET_KEY,
+        algorithm=settings.ALGORITHM,
+        expires_in=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
+        auth_method="pin_dipendente",
     )
-    payload = {
-        "sub": dip["id"],
-        "name": dip.get("nome_completo", ""),
-        "role": dip.get("ruolo_app", "dipendente"),
-        "tipo": "dipendente",
-        "exp": expire,
-        "iat": datetime.now(timezone.utc),
-        "auth_method": "pin_dipendente",
-    }
-    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
 async def login_dipendente_per_nome(nome: str, pin: str) -> Optional[Dict[str, Any]]:
