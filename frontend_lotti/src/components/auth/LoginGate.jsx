@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import PinKeypad from "@/components/haccp/shared/PinKeypad";
 import GoogleLoginButton from "@/components/auth/GoogleLoginButton";
 import { fetchAuthConfig, cachedAuthConfig, gateStillValid, setGateOk, clearGate, isAdmin } from "@/auth";
+import { saveTabletSession } from "../../utils/tabletSession";
 
 /**
  * Cancello di accesso. Regole (riviste 13/06/2026 dopo i bug visti da Enzo):
@@ -80,7 +81,7 @@ export default function LoginGate({ children }) {
           titolo="Accesso Lotti"
           sottotitolo="Inserisci il tuo PIN"
           maxLen={6}
-          onSuccess={() => { setGateOk(); setState("open"); }}
+          onSuccess={(operatore) => { saveTabletSession(operatore, ""); setGateOk(); setState("open"); }}
           onCancel={() => {}}
         />
         {cfg.google_enabled && cfg.google_client_id ? (

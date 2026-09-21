@@ -158,6 +158,7 @@ function Orologio() {
 export default function TabletHome({ onEntra, preselectReparto }) {
   const [repSel, setRepSel] = useState(preselectReparto && REPARTI.find(r => r.id === preselectReparto) ? preselectReparto : null);
   const [showAdminEsci, setShowAdminEsci] = useState(false);
+  const sessione = getTabletSession();
 
   const handleSuccess = (operatore) => {
     const repartoCorrente = repSel;
@@ -214,7 +215,7 @@ export default function TabletHome({ onEntra, preselectReparto }) {
       <Orologio />
       <div style={{ marginBottom: 40, textAlign: "center" }}>
         <div style={{ fontSize: 13, color: "#6b7669", fontWeight: 800, letterSpacing: 4, textTransform: "uppercase" }}>Ceraldi Group</div>
-        <div style={{ fontSize: 12, color: "#8a8478", marginTop: 5 }}>Seleziona reparto e inserisci il tuo PIN</div>
+        <div style={{ fontSize: 12, color: "#8a8478", marginTop: 5 }}>{sessione ? `Seleziona reparto · ${sessione.nome}` : "Seleziona reparto e inserisci il tuo PIN"}</div>
       </div>
       <div style={{ display: "flex", gap: 20, flexWrap: "wrap", justifyContent: "center", maxWidth: 760, marginBottom: 48 }}>
         {REPARTI.map(r => (
