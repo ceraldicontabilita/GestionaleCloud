@@ -1,11 +1,8 @@
 import {
-  actionAuthorizationStillValid,
   clearTabletSession,
   getTabletSession,
-  markTabletActionAuthorized,
   moveTabletSessionTo,
   saveTabletSession,
-  TABLET_ACTION_AUTH_MS,
 } from "./tabletSession";
 import { getToken, saveToken } from "../auth";
 
@@ -24,17 +21,15 @@ describe("tabletSession", () => {
     expect(getTabletSession().reparto).toBe("magazzino");
   });
 
-  test("la conferma delle azioni vale dieci minuti senza chiudere la sessione", () => {
-    markTabletActionAuthorized({ dipendente_id: "hr-1", nome: "Operatore Uno", ruolo: "operatore" }, "magazzino");
-    expect(actionAuthorizationStillValid()).toBe(true);
-
-    const stored = getTabletSession();
+  test("il cambio reparto elimina il vecchio timer del PIN sulle azioni", () => {
     localStorage.setItem("tablet_operatore", JSON.stringify({
-      ...stored,
-      actionVerifiedAt: Date.now() - TABLET_ACTION_AUTH_MS - 1,
+      dipendente_id: "hr-1", nome: "Operatore Uno", reparto: "bar", actionVerifiedAt: 1,
     }));
-    expect(actionAuthorizationStillValid()).toBe(false);
-    expect(getTabletSession().nome).toBe("Operatore Uno");
+    moveTabletSessionTo("magazzino");
+    expect(getTabletSession()).toMatchObject({
+      dipendente_id: "hr-1", nome: "Operatore Uno", reparto: "magazzino",
+    });
+    expect(getTabletSession()).not.toHaveProperty("actionVerifiedAt");
   });
 
   test("la sessione operatore sopravvive al cambio di scheda", () => {

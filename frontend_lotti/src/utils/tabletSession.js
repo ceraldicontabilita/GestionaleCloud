@@ -2,8 +2,6 @@ import { getToken, logout } from "../auth";
 
 const SESSION_KEY = "tablet_operatore";
 
-export const TABLET_ACTION_AUTH_MS = 10 * 60 * 1000;
-
 function readRaw() {
   try {
     const persisted = localStorage.getItem(SESSION_KEY);
@@ -39,7 +37,7 @@ export function getTabletSession() {
   return session;
 }
 
-export function saveTabletSession(operatore, reparto, { actionVerified = false } = {}) {
+export function saveTabletSession(operatore, reparto) {
   if (!operatore?.dipendente_id) throw new Error("ID dipendente obbligatorio");
   const now = Date.now();
   const previous = readRaw() || {};
@@ -50,10 +48,8 @@ export function saveTabletSession(operatore, reparto, { actionVerified = false }
     reparto: reparto || previous.reparto || "",
     startedAt: sameOperator ? Number(previous.startedAt || now) : now,
     lastSeenAt: now,
-    actionVerifiedAt: actionVerified
-      ? now
-      : (sameOperator ? Number(previous.actionVerifiedAt || 0) : 0),
   };
+  delete session.actionVerifiedAt;
   try { localStorage.setItem(SESSION_KEY, JSON.stringify(session)); } catch { /* no-op */ }
   // Rimuove l'eventuale copia legacy per non avere due fonti discordanti.
   try { sessionStorage.removeItem(SESSION_KEY); } catch { /* no-op */ }
@@ -64,13 +60,4 @@ export function moveTabletSessionTo(reparto) {
   const session = getTabletSession();
   if (!session) return null;
   return saveTabletSession(session, reparto);
-}
-
-export function actionAuthorizationStillValid(session = getTabletSession()) {
-  const verifiedAt = Number(session?.actionVerifiedAt || 0);
-  return !!verifiedAt && Date.now() - verifiedAt < TABLET_ACTION_AUTH_MS;
-}
-
-export function markTabletActionAuthorized(operatore, reparto) {
-  return saveTabletSession(operatore, reparto, { actionVerified: true });
 }
