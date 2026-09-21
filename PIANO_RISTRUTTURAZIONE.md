@@ -164,9 +164,9 @@ Eliminare frontend_hr/, frontend_lotti/, frontend_menu/, frontend_shared/ solo d
 | RST-00A4 | 🟢 | Attendi banca senza inventare pagamento, coperto dai collaudi |
 | RST-00A5 | 🟢 | Misto: quota Cassa reale e residuo Banca aperto, coperto dai collaudi |
 | RST-00A6 | 🟢 | #575 chiuso e pubblicato in `10a74950`: conteggi Provvisori leggeri, non-caricato distinto da zero, invalidazione al cambio sezione/anno; CI 35563595194 e Produzione 35563595236 verdi |
-| RST-00A7 | 🟡 | Correggere/verificare data movimento Banca distinta da data fattura (#573); completare campi, contropartita e periodi |
+| RST-00A7 | 🟢 | #573 chiuso e pubblicato in `e339284b`: Banca usa la data dell'evidenza reale e conserva separatamente data documento, contabile e valuta; regressione cross-month ed E2E verdi |
 | RST-00A8 | 🟢 | Smoke versione pubblicata 7329ec7 superato; ripetere ad ogni rilascio |
-| RST-00A9 | 🟡 | #573 e #575 sono chiusi; qualificazione completa resta aperta solo per ulteriori casi contabili non ancora certificati end-to-end |
+| RST-00A9 | 🟡 | #573 e #575 sono chiusi e live; qualificazione completa resta aperta solo per ulteriori casi contabili non ancora certificati end-to-end |
 
 Ulteriore accettazione: importi/date invalidi senza scritture parziali, doppi invii idempotenti, pagamenti parziali multipli, annullamento coerente, originali bancari immutati, saldi iniziali e corretta attribuzione al periodo. Non attendere la fusione delle sotto-app per mantenere utilizzabile Prima Nota.
 
