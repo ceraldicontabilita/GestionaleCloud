@@ -32,7 +32,6 @@ import jwt
 from jwt import PyJWKClient
 from fastapi import APIRouter, HTTPException, Request
 from app.services.workforce_tokens import create_workforce_token
-from app.services import pin_authentication
 from pydantic import BaseModel
 
 ALG = "HS256"
@@ -277,16 +276,12 @@ async def require_admin(request: Request):
     un token dipendente supera il gate globale su TUTTE le rotte. Questa dipendenza
     va aggiunta esplicitamente agli endpoint distruttivi/di configurazione.
 
-    Accetta due prove di identità admin:
-      1. token JWT centrale con ruolo == amministratore (login col PIN admin);
-      2. fallback header X-Admin-Pin (flussi tablet senza login centrale).
+    Richiede il token operativo con ruolo amministratore. Il PIN personale
+    viene verificato al login tablet e non viene inviato di nuovo nelle API.
     """
     data = _ha_token_valido(request)
     if data and data.get("ruolo") == "amministratore":
         request.state.user = data
-        return
-    pin = (request.headers.get("X-Admin-Pin") or "").strip()
-    if pin and pin_authentication.admin_pin_matches(pin):
         return
     raise HTTPException(status_code=403, detail="Operazione riservata all'amministratore")
 

@@ -238,18 +238,24 @@ def test_fifo_ingrediente_sconosciuto_segnalato(dbmock):
 
 
 # ── 3. Permessi: dipendente NO, amministratore SÌ su endpoint protetto ─────
-def test_require_admin_blocca_dipendente(dbmock):
+def test_require_admin_blocca_dipendente(dbmock, monkeypatch):
     from app.lotti.auth import require_admin, make_token
     from fastapi import HTTPException
+    import hashlib
+
+    monkeypatch.setenv("PIN_HASH_ADMIN", hashlib.sha256(b"123456").hexdigest())
 
     class Req:
-        def __init__(self, token):
-            self.headers = {"authorization": f"Bearer {token}", "X-Admin-Pin": ""}
+        def __init__(self, token, pin=""):
+            self.headers = {"authorization": f"Bearer {token}", "X-Admin-Pin": pin}
             self.state = type("S", (), {})()
 
     tok_dip = make_token("op1", "Mario", "operatore")
     with pytest.raises(HTTPException) as exc:
         run(require_admin(Req(tok_dip)))
+    assert exc.value.status_code == 403
+    with pytest.raises(HTTPException) as exc:
+        run(require_admin(Req(tok_dip, "123456")))
     assert exc.value.status_code == 403
 
     tok_admin = make_token("enzo", "Enzo", "amministratore")

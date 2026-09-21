@@ -1296,9 +1296,9 @@ async def _esegui_ricostruzione_giacenze():
 async def ricostruisci_giacenze_bar(request: Request, background_tasks: BackgroundTasks, forza: bool = False):
     """AVVIA in background la ricostruzione da zero delle giacenze bar sommando
     tutte le fatture XML in ordine di data. Risposta immediata; stato live su
-    GET /fatture/ricostruisci-giacenze-bar/stato. Solo titolare (X-Admin-Pin)."""
-    from app.lotti.routers.ordini_fornitori import _richiedi_admin
-    await _richiedi_admin(request)
+    GET /fatture/ricostruisci-giacenze-bar/stato. Solo amministratore autenticato."""
+    from app.lotti.auth import require_admin
+    await require_admin(request)
     st = await db.sistema_stato.find_one({"chiave": "ricostruzione_giacenze"}, {"_id": 0})
     if st and st.get("stato") == "in_corso" and not forza:
         # se un deploy ha ucciso la corsa, lo stato resta "in_corso": riavvia con ?forza=true
