@@ -156,10 +156,8 @@ def _register_bank(app: FastAPI):
 
     # (paypal_api è registrato in _register_core con prefix="/api/paypal-api")
     app.include_router(bonifici_associazioni.router, prefix="/api", tags=["Bonifici Associazioni"])
-    # distinte_bpm (router HTTP): smontato (audit 14/07/2026, piano residuo
-    # op.5) — la route stessa non ha chiamanti, ma la funzione
-    # import_distinte_bpm resta viva: importata e chiamata direttamente da
-    # app/routers/documenti.py (pipeline di ingest documentale).
+    # Distinte BPM: importatore applicativo in services/distinte_bpm.py;
+    # nessuna route HTTP dedicata.
 
     # bonifici_import_unificato: wrapper per ImportUnificato UI.
     # Il router ha prefix interno "/archivio-bonifici/jobs", quindi prefix="/api" qui.
@@ -206,9 +204,8 @@ def _register_invoices(app: FastAPI):
 # Restano solo i router usati da flussi NON-HR di questo gestionale:
 #   - dipendenti: anagrafica in lettura (verbali noleggio, inserimento rapido, portale)
 #   - tfr: riepilogo fondo TFR mostrato in Gestione Cespiti (contabilità)
-# libro_unico_parser (router HTTP): smontato (audit 14/07/2026), ma la
-# funzione `import_libro_unico` resta viva: importata e chiamata direttamente
-# da app/routers/documenti.py (pipeline di ingest documentale).
+# Libro Unico ERP: workflow in services/libro_unico_workflow.py,
+# chiamato dalla pipeline Documenti; nessuna route HTTP dedicata.
 # f24_parser: rimosso del tutto il 19/09/2026. La sua `import_f24` non aveva
 # piu' chiamanti (il workflow «F24_COMPLETO» che la usava non esiste in nessun
 # file) e scriveva sulla collection `f24_pagamenti`, che in produzione non
