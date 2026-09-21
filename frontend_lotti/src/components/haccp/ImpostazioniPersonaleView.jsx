@@ -114,7 +114,8 @@ export default function ImpostazioniPersonaleView() {
       setValori((prev) => {
         const next = {};
         for (const d of lista) {
-          next[d.id] = prev[d.id] || {
+          if (!d.dipendente_id) continue;
+          next[d.dipendente_id] = prev[d.dipendente_id] || {
             postazione: d.postazione || d.postazione_proposta || "",
             libretto_sanitario_scadenza: d.libretto_sanitario_scadenza || "",
           };
@@ -149,12 +150,12 @@ export default function ImpostazioniPersonaleView() {
     setValori((s) => ({ ...s, [id]: { ...s[id], [campo]: val } }));
 
   const salva = async (d) => {
-    setSalvando(d.id);
+    setSalvando(d.dipendente_id);
     try {
-      const r = await axios.patch(`${API}/tablet-operatori/${d.id}`, valori[d.id]);
+      const r = await axios.patch(`${API}/tablet-operatori/${d.dipendente_id}`, valori[d.dipendente_id]);
       const quando = r.data?.salvato_alle || new Date().toISOString();
-      setSalvatoAlle((s) => ({ ...s, [d.id]: oraIt(quando) }));
-      setOperatori((l) => l.map((o) => (o.id === d.id ? { ...o, ...valori[d.id] } : o)));
+      setSalvatoAlle((s) => ({ ...s, [d.dipendente_id]: oraIt(quando) }));
+      setOperatori((l) => l.map((o) => (o.dipendente_id === d.dipendente_id ? { ...o, ...valori[d.dipendente_id] } : o)));
       toast.success(`${d.cognome || d.nome} salvato`);
     } catch (e) {
       toast.error(apiError(e, "Errore salvataggio"));
@@ -169,14 +170,14 @@ export default function ImpostazioniPersonaleView() {
 
   // Il dato più urgente per primo: libretto mancante, scaduto, in scadenza, poi valido.
   const ordinati = useMemo(() => {
-    const peso = (o) => statoLibretto((valori[o.id] || {}).libretto_sanitario_scadenza || o.libretto_sanitario_scadenza).peso;
+    const peso = (o) => statoLibretto((valori[o.dipendente_id] || {}).libretto_sanitario_scadenza || o.libretto_sanitario_scadenza).peso;
     return [...inCarico].sort((a, b) => peso(a) - peso(b) || String(a.nome).localeCompare(String(b.nome)));
   }, [inCarico, valori]);
 
   const riepilogo = useMemo(() => {
     let registrati = 0, inScadenza = 0, scaduti = 0, senzaPin = 0;
     for (const o of inCarico) {
-      const scad = (valori[o.id] || {}).libretto_sanitario_scadenza || o.libretto_sanitario_scadenza;
+      const scad = (valori[o.dipendente_id] || {}).libretto_sanitario_scadenza || o.libretto_sanitario_scadenza;
       if (scad) {
         registrati += 1;
         const st = statoLibretto(scad);
@@ -196,7 +197,7 @@ export default function ImpostazioniPersonaleView() {
   if (loading) return <div style={{ textAlign: "center", padding: 60, color: MUTED }}>Caricamento…</div>;
 
   const SchedaOperatore = ({ d }) => {
-    const v = valori[d.id] || {};
+    const v = valori[d.dipendente_id] || {};
     const badge = statoLibretto(v.libretto_sanitario_scadenza);
     const cognome = d.cognome || d.nome;
     return (
@@ -214,34 +215,34 @@ export default function ImpostazioniPersonaleView() {
             {d.pin_impostato
               ? <span style={pill("#e7f0ea", OK)}><KeyRound size={11} style={{ verticalAlign: "-1px" }} /> PIN impostato</span>
               : <span style={pill("#fbf0dd", WARN)}><KeyRound size={11} style={{ verticalAlign: "-1px" }} /> PIN da impostare in HR</span>}
-            <a href={HR_ANAGRAFICA + (d.hr_id ? `?dip=${encodeURIComponent(d.hr_id)}` : "")} style={{ ...pill("#f4f8f3", SALVIA), textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4 }}>
+            <a href={HR_ANAGRAFICA + (d.dipendente_id ? `?dip=${encodeURIComponent(d.dipendente_id)}` : "")} style={{ ...pill("#f4f8f3", SALVIA), textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4 }}>
               scheda HR <ExternalLink size={11} />
             </a>
           </div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, alignItems: "end" }}>
           <div>
-            <label htmlFor={`postazione-${d.id}`} style={{ fontSize: 11, color: MUTED, fontWeight: 600 }}>
+            <label htmlFor={`postazione-${d.dipendente_id}`} style={{ fontSize: 11, color: MUTED, fontWeight: 600 }}>
               Postazione{!d.postazione && d.postazione_proposta ? <span style={{ color: WARN }}> · proposta dal ruolo HR</span> : null}
             </label>
-            <select id={`postazione-${d.id}`} value={v.postazione || ""} onChange={(e) => setCampo(d.id, "postazione", e.target.value)}
+            <select id={`postazione-${d.dipendente_id}`} value={v.postazione || ""} onChange={(e) => setCampo(d.dipendente_id, "postazione", e.target.value)}
               style={{ ...inp, width: "100%", background: "#fff" }}>
               <option value="">—</option>
               {POSTAZIONI.map((p) => <option key={p} value={p}>{cap(p)}</option>)}
             </select>
           </div>
           <div>
-            <label htmlFor={`libretto-${d.id}`} style={{ fontSize: 11, color: MUTED, fontWeight: 600 }}>
+            <label htmlFor={`libretto-${d.dipendente_id}`} style={{ fontSize: 11, color: MUTED, fontWeight: 600 }}>
               <IdCard size={11} style={{ verticalAlign: "middle" }} aria-hidden="true" /> Scadenza libretto sanitario
             </label>
-            <input id={`libretto-${d.id}`} type="date" value={v.libretto_sanitario_scadenza || ""} onChange={(e) => setCampo(d.id, "libretto_sanitario_scadenza", e.target.value)}
+            <input id={`libretto-${d.dipendente_id}`} type="date" value={v.libretto_sanitario_scadenza || ""} onChange={(e) => setCampo(d.dipendente_id, "libretto_sanitario_scadenza", e.target.value)}
               style={{ ...inp, width: "100%" }} />
           </div>
           <div>
-            <button onClick={() => salva(d)} disabled={salvando === d.id} style={{ ...btn(SAGE), width: "100%", opacity: salvando === d.id ? 0.6 : 1 }}>
-              <Save size={15} /> {salvando === d.id ? "Salvo…" : `Salva ${cognome}`}
+            <button onClick={() => salva(d)} disabled={salvando === d.dipendente_id} style={{ ...btn(SAGE), width: "100%", opacity: salvando === d.dipendente_id ? 0.6 : 1 }}>
+              <Save size={15} /> {salvando === d.dipendente_id ? "Salvo…" : `Salva ${cognome}`}
             </button>
-            {salvatoAlle[d.id] && <div style={{ fontSize: 11, color: OK, marginTop: 4, textAlign: "center" }}>Salvato alle {salvatoAlle[d.id]}</div>}
+            {salvatoAlle[d.dipendente_id] && <div style={{ fontSize: 11, color: OK, marginTop: 4, textAlign: "center" }}>Salvato alle {salvatoAlle[d.dipendente_id]}</div>}
           </div>
         </div>
       </div>
@@ -282,14 +283,14 @@ export default function ImpostazioniPersonaleView() {
           <div style={{ color: MUTED, fontSize: 13 }}>Nessun operatore in forza nell'anagrafica HR.</div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {ordinati.map((d) => <SchedaOperatore key={d.id} d={d} />)}
+            {ordinati.map((d) => <SchedaOperatore key={d.dipendente_id} d={d} />)}
           </div>
         )}
         {amministratori.length > 0 && (
           <div style={{ marginTop: 14 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: MUTED, marginBottom: 8 }}>AMMINISTRATORI (firmano col proprio PIN personale della scheda HR)</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {amministratori.map((d) => <SchedaOperatore key={d.id} d={d} />)}
+              {amministratori.map((d) => <SchedaOperatore key={d.dipendente_id} d={d} />)}
             </div>
           </div>
         )}
@@ -311,8 +312,8 @@ export default function ImpostazioniPersonaleView() {
               temperature già firmate restano a loro nome. Per rimettere qualcuno in carico si riattiva in HR.
             </p>
             {nonInCarico.length === 0 && <div style={{ color: MUTED, fontSize: 13 }}>Nessuno.</div>}
-            {nonInCarico.map((o) => (
-              <div key={o.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, padding: "10px 12px", border: `1px solid ${LINE}`, borderRadius: 10 }}>
+            {nonInCarico.map((o, index) => (
+              <div key={o.dipendente_id || `storico-${index}`} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, padding: "10px 12px", border: `1px solid ${LINE}`, borderRadius: 10 }}>
                 <div>
                   <div style={{ fontWeight: 700, color: SALVIA }}>{o.nome}</div>
                   <div style={{ fontSize: 11.5, color: MUTED }}>
