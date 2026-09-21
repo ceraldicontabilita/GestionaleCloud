@@ -176,8 +176,20 @@ jobs:
             fi
             sleep 30
           done
-          curl -sSf --max-time 20 -o /dev/null "$PROD_URL/$ATTESO"
-          curl -sSf --max-time 20 "$PROD_URL/api/health" | head -c 500
+          for i in $(seq 1 20); do
+            if curl -sSf --max-time 20 -o /dev/null "$PROD_URL/$ATTESO" \
+              && HEALTH=$(curl -sSf --max-time 20 "$PROD_URL/api/health"); then
+              printf '%s' "$HEALTH" | head -c 500
+              echo
+              break
+            fi
+            if [ "$i" = "20" ]; then
+              echo "::error::bundle corretto riconosciuto, ma asset/health non sono diventati stabili"
+              exit 1
+            fi
+            echo "Asset/health temporaneamente non disponibili ($i/20), riprovo"
+            sleep 10
+          done
       - name: Smoke runtime
         env:
           BACKEND_URL: ${{ env.PROD_URL }}
