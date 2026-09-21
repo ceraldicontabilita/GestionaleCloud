@@ -147,11 +147,8 @@ def _register_bank(app: FastAPI):
     app.include_router(assegni_learning.router, prefix="/api/assegni/learning", tags=["Assegni Learning"])
     app.include_router(nexi_carta.router, prefix="/api/nexi", tags=["Carta Nexi"])
     app.include_router(sumup.router, prefix="/api/sumup", tags=["SumUp"])
-    # pos_accredito (router HTTP): smontato (audit 14/07/2026, piano residuo
-    # op.6) — sostituito funzionalmente da pos_corrispettivi_check, zero
-    # chiamanti verificati. app/utils/pos_accredito.py (le funzioni di calcolo,
-    # NON questo router) resta vivo: importato direttamente da
-    # pos_corrispettivi_check.py, corrispettivi_service.py e corrispettivi.py.
+    # Il vecchio router POS accredito non montato e' stato eliminato in Fase 1C.
+    # La logica viva resta in app/utils/pos_accredito.py.
     app.include_router(paypal_statements.router, prefix="/api/paypal-statements", tags=["PayPal"])
 
     # (paypal_api è registrato in _register_core con prefix="/api/paypal-api")
@@ -260,7 +257,7 @@ def _register_core(app: FastAPI):
         chiusura_esercizio,
         configurazioni, alerts,
         mutui, mutui_parser, auto_repair,
-        rapido, settings_router, dati_provvisori, sezioni, metodi_fornitori,
+        rapido, settings_router, sezioni, metodi_fornitori,
         batch_reprocessing, pos_corrispettivi_check,
         chat_router, learning_universal, voci_bilancio
     )
@@ -303,7 +300,6 @@ def _register_core(app: FastAPI):
     app.include_router(sezioni.router, prefix="/api/sezioni", tags=["Sezioni"])
     app.include_router(metodi_fornitori.router, prefix="/api/fornitori/metodi-pagamento",
                        tags=["Metodi pagamento fornitori"])
-    app.include_router(dati_provvisori.router, prefix="/api", tags=["Dati Provvisori"])
     app.include_router(batch_reprocessing.router, prefix="/api/batch-reprocess", tags=["Batch Reprocessing"])
     app.include_router(pos_corrispettivi_check.router, prefix="/api", tags=["POS Check"])
     app.include_router(chat_router.router, prefix="/api", tags=["Chat"])
