@@ -180,7 +180,7 @@ Ulteriore accettazione: importi/date invalidi senza scritture parziali, doppi in
 | RST-0004 | ⚪ | Contratto route React ↔ catalogo, distinguendo tab/dettagli/redirect |
 | RST-0005 | 🟢 | Nessuna nuova FastAPI produttiva; tre eccezioni temporanee fino alla fusione |
 | RST-0006 | 🟢 | Guardrail AST pubblicato con PR #595 / `d4b91880`: censiti 6 costruttori DB autonomi legacy in HR/Lotti/Menu; nessun nuovo client può entrare e la whitelist può solo accorciarsi; CI 35571750093 e Produzione 35571750023 verdi |
-| RST-0007 | ⚪ | Inventario router montati, non montati, importati e utilizzati internamente |
+| RST-0007 | 🟡 | Inventario automatico aggiunto: ogni modulo con APIRouter + operazioni deve risultare raggiungibile dalla app root, direttamente o tramite HR/Lotti/Menu; i soli contenitori restano coperti dal grafo import/orfani. Attende CI e classificazione di eventuali non montati |
 | RST-0008 | ⚪ | Grafo completo pagine/componenti, lazy import, asset e toolchain delle quattro interfacce |
 
 warehouse_inventory è un target canonico previsto dal codice corrente: non vietarne ogni scrittura indiscriminatamente. Bloccare writer obsoleti e convergere su responsabilità unica senza interrompere Lotti.
@@ -438,7 +438,7 @@ Il conteggio dei tre moduli report/batch è 1.186 righe rimosse. Non aggiungerlo
 | 2026-09-21 | PR-569-PUBBLICATA | 🟢 | 7329ec7498c90da519422ade2f638f0f75d8fc55; CI pre-merge 35555214654, E2E pre-merge 35555214652, Produzione 35555459176 tutti superati nei rispettivi perimetri |
 | 2026-09-21 | FASE-1B-PUBBLICATA | 🟢 | `335d1f7a83959c1cb2015e849f88b6f3f5cae513`: falsi router Distinte BPM e Libro Unico eliminati, service canonici attivi; CI 35567802880 e Produzione 35567802918 verdi |
 | 2026-09-21 | FASE-1C-PUBBLICATA | 🟢 | `5d66bb25807bf09fa3fb36f2120e7232a862a40c`: router POS accredito e Dati Provvisori eliminati; CI 35571155357 e Produzione 35571155286 verdi |
-| 2026-09-21 | RST-0006-V2 | 🟢 | PR #595 / merge `d4b918807845b417d4438fb6f8994b97b5717bd7`: congelati 6 costruttori DB autonomi legacy; CI 35571750093 e Produzione 35571750023 verdi |
+| 2026-09-21 | RST-0006-V2 | 🟢 | PR #595 / merge `d4b918807845b417d4438fb6f8994b97b5717bd7`: congelati 6 costruttori DB autonomi legacy; CI 35571750093 e Produzione 35571750023 verdi |\n| 2026-09-21 | RST-0007 | 🟡 | branch `ristrutturazione/rst-0007-router-inventory`: aggiunto census runtime/AST dei router con operazioni; attende CI e risoluzione di eventuali router non raggiungibili |
 | 2026-09-21 | FASE-1C-20260921 | 🟡 | branch `ristrutturazione/fase-1c-router-morti-20260921`: eliminati router POS accredito e Dati Provvisori senza chiamanti; utility/service vivi preservati; attende CI/rilascio |
 | 2026-09-21 | FASE-1B-V5 | 🟡 | branch `ristrutturazione/fase-1b-falsi-router-v5`: Distinte BPM e workflow ERP Libro Unico spostati nei servizi; vecchi router eliminati; attende CI/rilascio |
 
