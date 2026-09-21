@@ -509,14 +509,14 @@ Questi test dimostrano la logica, ma **non bastano da soli a dichiarare pronta l
 
 | ID | Stato | Attività |
 |---|---|---|
-| RST-0101 | ⚪ | Eliminare `app/routers/reports/report_pdf.py` se confermato senza chiamanti |
-| RST-0102 | ⚪ | Eliminare `app/routers/reports/simple_exports.py` se confermato senza chiamanti |
-| RST-0103 | ⚪ | Eliminare router `trattenute_verbali` mantenendo solo il service usato dallo scheduler |
-| RST-0104 | ⚪ | Estrarre helper vivo da `batch_operations.py`, poi eliminare il router/file morto |
+| RST-0101 | 🟢 | `app/routers/reports/report_pdf.py` eliminato: non montato, zero chiamanti runtime |
+| RST-0102 | 🟢 | `app/routers/reports/simple_exports.py` eliminato: non montato, zero chiamanti runtime |
+| RST-0103 | 🟢 | Router `trattenute_verbali` assente; confermato vivo solo `services/trattenute_verbali_service.py` usato da scheduler/cedolini |
+| RST-0104 | 🟢 | Estratto `filtro_uscite_da_riconciliare` in service puro ed eliminato l'intero `batch_operations.py` con test di funzioni senza chiamanti |
 | RST-0105 | ⚪ | Estrarre `import_distinte_bpm` in service/parser e cancellare il falso router |
 | RST-0106 | ⚪ | Estrarre `import_libro_unico` in service/parser e cancellare il falso router |
 | RST-0107 | ⚪ | Eliminare commenti che descrivono intere implementazioni rimosse quando Git history è sufficiente |
-| RST-0108 | ⚪ | Eliminare import, costanti e test che esistono soltanto per mantenere codice morto |
+| RST-0108 | 🟡 | Eliminati import/test legati a report_pdf e batch_operations; prosegue con i falsi router distinte/LUL |
 
 ---
 
@@ -874,7 +874,8 @@ Aggiungere una riga ad ogni attività conclusa.
 | 2026-09-21 | RST-00A2 | 🟡 IN CORSO | branch `ristrutturazione/fase-0a-prima-nota` | Banca manuale senza estratto conto resa provvisoria e fuori saldo; UI allineata con badge e saldo progressivo corretto | Attende CI ed E2E riconciliazione |
 | 2026-09-21 | FASE-0A-LIVE | 🟢 COMPLETATO | `b71f62d0c8a6f17994355150f4a574e73dcad021` | Prima Nota Cassa/Banca/Provvisori pubblicata su main e servita in produzione | Produzione `35543104234`: E2E, 64 pagine, layout, viewer, bundle commit e smoke runtime tutti verdi |
 | 2026-09-21 | RST-0001/0003/0005 | 🟡 IN CORSO | branch `ristrutturazione/fase-0b-guardrail` | Aggiunti guardrail route duplicate, nuove FastAPI e writer magazzino; rimosso CRUD warehouse legacy da `public_api.py` | Attende CI e bonifica collisioni esistenti |
-| 2026-09-21 | FASE-0C-PUBLIC-API | 🟡 IN CORSO | branch `ristrutturazione/fase-0c-endpoint-owner` | Eliminato `public_api.py`; Pianificazione, ricerca globale e API v1 riallocate nei rispettivi owner; endpoint legacy senza chiamanti non trasferiti | Attende CI/Produzione |
+| 2026-09-21 | FASE-0C-PUBLIC-API | 🟢 COMPLETATO | `31943965f382018d87047637e16fe815d1b93318` | Eliminato `public_api.py`; Pianificazione, ricerca globale e API v1 riallocate nei rispettivi owner; endpoint legacy senza chiamanti non trasferiti | Produzione `35553798734`: E2E, 64 pagine, layout/viewer, bundle commit e smoke runtime tutti verdi |
+| 2026-09-21 | FASE-1A-CODICE-MORTO | 🟡 IN CORSO | branch `ristrutturazione/fase-1-codice-morto` | Eliminati report_pdf, simple_exports e batch_operations; estratto solo il filtro di riconciliazione vivo | Attende CI/Produzione |
 
 ---
 

@@ -2,7 +2,7 @@
 ENTRAMBE le convenzioni di segno: importo positivo con tipo="uscita" (canonica)
 e importo negativo (legacy). Prima filtrava solo importo<0 e non trovava mai le
 uscite salvate come positive → zero candidati."""
-from app.routers.batch_operations import filtro_uscite_da_riconciliare
+from app.services.riconciliazione_filters import filtro_uscite_da_riconciliare
 
 
 def _match(d, q):

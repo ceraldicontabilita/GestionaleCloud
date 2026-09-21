@@ -224,3 +224,17 @@ def test_nessun_import_runtime_del_vecchio_public_api():
         "Il router public_api e' stato eliminato ma esistono ancora import runtime: "
         + ", ".join(offenders)
     )
+
+
+FILE_MORTI_ELIMINATI = {
+    "app/routers/reports/report_pdf.py",
+    "app/routers/reports/simple_exports.py",
+    "app/routers/batch_operations.py",
+}
+
+
+def test_codice_morto_eliminato_non_ritorna():
+    presenti = [p for p in sorted(FILE_MORTI_ELIMINATI) if (ROOT / p).exists()]
+    assert not presenti, (
+        "File morti gia' eliminati sono ricomparsi: " + ", ".join(presenti)
+    )
