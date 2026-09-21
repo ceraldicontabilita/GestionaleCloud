@@ -149,3 +149,28 @@ def test_prodotto_acquistato_conserva_fonte_e_foto():
     assert salvato["fonti_excel"][0]["row"] == 114
     assert salvato["immagine_url"] == "/api/foto/foto-originale"
     assert salvato["visibile_ricette"] is False
+
+
+def test_prodotto_acquistato_scompare_dalle_due_proiezioni_del_ricettario(monkeypatch):
+    database = AsyncMongoMockClient()["Gestionale_Test"]
+    monkeypatch.setattr(mod, "db", database)
+    monkeypatch.setattr(mod, "_carica_archivio_dolce", lambda: {
+        "meta": {}, "recipes": [{"id": "arch-1", "name": "Aranciata"}], "components": [],
+    })
+
+    async def scenario():
+        await database.prodotti_vendita.insert_one({
+            "id": "bevanda-1", "nome": "Aranciata",
+            "fonte_ricettario_excel_chiave": "aranciata",
+        })
+        await database.ricette.insert_one({"id": "ric-1", "nome": "Aranciata"})
+        operative = await mod.get_ricette(search=None)
+        unificate = await mod.get_ricette_unificate(search=None)
+        archivio = await mod.get_ricette_archivio()
+        return operative, unificate, archivio
+
+    operative, unificate, archivio = run(scenario())
+    assert operative == []
+    assert not any(r.get("nome") == "Aranciata" for r in unificate)
+    assert archivio["recipes"] == []
+    assert archivio["ricette_operative"] == 0

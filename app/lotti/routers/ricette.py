@@ -58,6 +58,18 @@ def _chiave_ricetta(nome: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", testo).strip()
 
 
+async def _chiavi_prodotti_acquistati() -> set[str]:
+    """Il catalogo prodotti è la fonte canonica delle voci comprate."""
+    prodotti = await db.prodotti_vendita.find(
+        {"fonte_ricettario_excel_chiave": {"$exists": True}},
+        {"_id": 0, "fonte_ricettario_excel_chiave": 1},
+    ).to_list(5000)
+    return {
+        item.get("fonte_ricettario_excel_chiave") for item in prodotti
+        if item.get("fonte_ricettario_excel_chiave")
+    }
+
+
 def _carica_archivio_dolce() -> dict:
     if not _ARCHIVIO_DOLCE_PATH.exists():
         return {"meta": {}, "recipes": [], "components": []}
@@ -694,14 +706,7 @@ async def _importa_ricettario_excel(anteprima: bool, admin: Optional[dict] = Non
     bundle = _carica_ricettario_excel()
     bundle_hash = (bundle.get("meta") or {}).get("bundle_sha256") or ""
     current = await db.ricette.find({}, {"_id": 0}).to_list(5000)
-    prodotti_acquistati = await db.prodotti_vendita.find(
-        {"fonte_ricettario_excel_chiave": {"$exists": True}},
-        {"_id": 0, "fonte_ricettario_excel_chiave": 1},
-    ).to_list(5000)
-    chiavi_prodotti_acquistati = {
-        item.get("fonte_ricettario_excel_chiave") for item in prodotti_acquistati
-        if item.get("fonte_ricettario_excel_chiave")
-    }
+    chiavi_prodotti_acquistati = await _chiavi_prodotti_acquistati()
     groups: dict[str, list[dict]] = {}
     for item in current:
         key = _chiave_ricetta(item.get("nome"))
@@ -833,7 +838,9 @@ async def get_ricette(search: Optional[str] = Query(None)):
     q = {}
     if search:
         q["nome"] = {"$regex": search, "$options": "i"}
-    return await db.ricette.find(q, {"_id": 0}).sort("nome", 1).to_list(3000)
+    acquistati = await _chiavi_prodotti_acquistati()
+    return [r for r in await db.ricette.find(q, {"_id": 0}).sort("nome", 1).to_list(3000)
+            if _chiave_ricetta(r.get("nome")) not in acquistati]
 
 
 @router.post("/ricette/importa-excel")
@@ -854,9 +861,10 @@ async def get_ricette_archivio():
     frontend può aprire l'editor, produrre e stampare con i flussi già esistenti.
     """
     archivio = _carica_archivio_dolce()
-    operative = await db.ricette.find(
+    acquistati = await _chiavi_prodotti_acquistati()
+    operative = [r for r in await db.ricette.find(
         {}, {"_id": 0, "id": 1, "nome": 1, "reparto": 1, "foto_url": 1}
-    ).to_list(1000)
+    ).to_list(1000) if _chiave_ricetta(r.get("nome")) not in acquistati]
     per_nome = {_chiave_ricetta(r.get("nome")): r for r in operative if r.get("nome")}
 
     def collega(item: dict) -> dict:
@@ -866,8 +874,8 @@ async def get_ricette_archivio():
             risultato["ricetta_operativa"] = ricetta
         return risultato
 
-    recipes = [collega(item) for item in archivio.get("recipes", [])]
-    components = [collega(item) for item in archivio.get("components", [])]
+    recipes = [collega(item) for item in archivio.get("recipes", []) if _chiave_ricetta(item.get("name")) not in acquistati]
+    components = [collega(item) for item in archivio.get("components", []) if _chiave_ricetta(item.get("name")) not in acquistati]
     return {
         "meta": archivio.get("meta", {}),
         "recipes": recipes,
@@ -886,12 +894,16 @@ async def get_ricette_unificate(search: Optional[str] = Query(None)):
     senza corrispondenza restano consultabili e possono essere rese operative
     con l'endpoint dedicato.
     """
-    operative = await db.ricette.find({}, {"_id": 0}).sort("nome", 1).to_list(2000)
+    acquistati = await _chiavi_prodotti_acquistati()
+    operative = [r for r in await db.ricette.find({}, {"_id": 0}).sort("nome", 1).to_list(2000)
+                 if _chiave_ricetta(r.get("nome")) not in acquistati]
     per_nome = {_chiave_ricetta(r.get("nome")): r for r in operative if r.get("nome")}
     archivio = _carica_archivio_dolce()
     sole_per_nome = {}
     for item in [*(archivio.get("recipes") or []), *(archivio.get("components") or [])]:
         chiave = _chiave_ricetta(item.get("name"))
+        if chiave in acquistati:
+            continue
         operativa = per_nome.get(chiave)
         if operativa:
             docs = operativa.setdefault("documentazioni_archivio", [])
@@ -2013,8 +2025,11 @@ async def get_tablet(reparto: str):
     # automaticamente prodotti Ceraldi. Compaiono qui soltanto dopo che
     # l'utente le ha aperte e salvate con «Usa in ricetta».
     tutte = await db.ricette.find({}, {"_id": 0}).sort("nome", 1).to_list(5000)
+    acquistati = await _chiavi_prodotti_acquistati()
     ricette = []
     for ricetta in tutte:
+        if _chiave_ricetta(ricetta.get("nome")) in acquistati:
+            continue
         if not _ricetta_visibile_tablet(ricetta):
             continue
         reparto_effettivo = _reparto_operativo_ricetta(ricetta)
