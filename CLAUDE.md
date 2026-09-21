@@ -740,7 +740,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   `/lotti/api/manuale-haccp/stampa`: si spuntano le pagine (`SEZIONI_MANUALE`, le stesse che il generatore
   sa produrre — un test lo verifica) e il frontespizio con i dati dell'azienda c'è sempre.
 - **Un PIN per entrare, non per ogni sezione**: magazzino e portale dipendenti condividono la verifica
-  (`services/sessione_unica.py`, prova `LOTTI_AUTH_SECRET` e `HR_JWT_SECRET`). L'ERP contabile resta fuori
+  (`services/workforce_tokens.py`, prova `LOTTI_AUTH_SECRET` e `HR_JWT_SECRET`). L'ERP contabile resta fuori
   di proposito. La traduzione dei ruoli è **direzionale** (`operatore`↔`dipendente`), mai verso `admin`, e
   un token **senza** ruolo non ne riceve uno di ripiego: fallisce chiuso.
 - Piano di sanificazione per area (`/sanificazione/piano`): frequenza, prodotto, diluizione, tempo di

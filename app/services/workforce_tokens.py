@@ -1,4 +1,4 @@
-"""Emissione canonica dei token operativi HR/Lotti.
+"""Emissione e verifica canoniche dei token operativi HR/Lotti.
 
 ERP contabile escluso intenzionalmente: questo servizio copre soltanto il
 perimetro operativo condiviso tra portale dipendenti e magazzino/HACCP.
@@ -7,7 +7,7 @@ Il payload espone entrambi i vocabolari senza promuovere ruoli.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Any, Dict, Optional
 
 import jwt
 
@@ -15,6 +15,56 @@ ALGORITHM = "HS256"
 
 _VERSO_HR = {"operatore": "dipendente"}
 _VERSO_LOTTI = {"dipendente": "operatore"}
+
+
+def normalizza(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Restituisce i campi HR e Lotti senza attribuire ruoli mancanti.
+
+    La traduzione e' direzionale: il ruolo base rimane ``dipendente`` per
+    HR e ``operatore`` per Lotti. Un ruolo sconosciuto resta sconosciuto.
+    """
+    dati = dict(payload)
+    dati["sub"] = payload.get("sub", "")
+    name = payload.get("nome") or payload.get("name") or ""
+    role = str(payload.get("ruolo") or payload.get("role") or "").strip().lower()
+    dati["name"] = dati["nome"] = name
+    dati["via"] = payload.get("via") or payload.get("auth_method") or "token"
+    dati["role"] = _VERSO_HR.get(role, role)
+    dati["ruolo"] = _VERSO_LOTTI.get(role, role)
+    return dati
+
+
+def _segreti() -> list[str]:
+    """Solo i segreti HR/Lotti; il segreto ERP contabile resta escluso."""
+    segreti = []
+    try:
+        from app.lotti.auth import _secret as segreto_lotti
+
+        valore = segreto_lotti()
+        if valore:
+            segreti.append(valore)
+    except Exception:  # Lotti non montato: resta HR
+        pass
+    try:
+        from app.hr.config import settings as impostazioni_hr
+
+        if impostazioni_hr.SECRET_KEY and impostazioni_hr.SECRET_KEY not in segreti:
+            segreti.append(impostazioni_hr.SECRET_KEY)
+    except Exception:
+        pass
+    return segreti
+
+
+def verifica_token_condiviso(token: str) -> Optional[Dict[str, Any]]:
+    """Verifica firma e scadenza con i segreti operativi, poi normalizza."""
+    if not token or not isinstance(token, str):
+        return None
+    for segreto in _segreti():
+        try:
+            return normalizza(jwt.decode(token, segreto, algorithms=[ALGORITHM]))
+        except jwt.PyJWTError:
+            continue
+    return None
 
 
 def create_workforce_token(
@@ -33,21 +83,17 @@ def create_workforce_token(
         raise ValueError("Segreto sessione operativa mancante")
 
     now = datetime.now(timezone.utc)
-    normalized_role = str(role or "").strip().lower()
-    hr_role = normalized_role if normalized_role == "admin" else _VERSO_HR.get(normalized_role, normalized_role)
-    lotti_role = normalized_role if normalized_role == "admin" else _VERSO_LOTTI.get(normalized_role, normalized_role)
-    payload = {
+    payload = normalizza({
         "sub": str(sub),
         "name": name or "",
-        "nome": name or "",
-        "role": hr_role,
-        "ruolo": lotti_role,
-        "tipo": "dipendente" if hr_role != "admin" else "admin",
+        "role": role,
         "auth_method": auth_method,
-        "via": auth_method,
+    })
+    payload.update({
+        "tipo": "admin" if payload["role"] == "admin" else "dipendente",
         "iat": now,
         "exp": now + expires_in,
-    }
+    })
     if email:
         payload["email"] = email
     return jwt.encode(payload, secret, algorithm=algorithm)

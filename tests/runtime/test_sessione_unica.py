@@ -14,8 +14,7 @@ from datetime import datetime, timedelta, timezone
 import jwt
 import pytest
 
-from app.services.sessione_unica import normalizza, verifica_token_condiviso
-from app.services.workforce_tokens import create_workforce_token
+from app.services.workforce_tokens import create_workforce_token, normalizza, verifica_token_condiviso
 
 ALG = "HS256"
 
