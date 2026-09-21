@@ -212,3 +212,15 @@ def test_endpoint_estratti_hanno_owner_canonico():
                 f"{chiave[0]} {chiave[1]} owner={reale}, atteso={modulo}"
             )
     assert not errori, "Endpoint senza owner canonico:\n" + "\n".join(errori)
+
+
+def test_nessun_import_runtime_del_vecchio_public_api():
+    offenders = []
+    for path in APP.rglob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        if "app.routers.public_api" in source or "from app.routers import public_api" in source:
+            offenders.append(path.relative_to(ROOT).as_posix())
+    assert not offenders, (
+        "Il router public_api e' stato eliminato ma esistono ancora import runtime: "
+        + ", ".join(offenders)
+    )
