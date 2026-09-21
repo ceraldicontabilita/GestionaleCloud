@@ -250,3 +250,20 @@ def test_importatori_documentali_non_sono_router_http():
         source = path.read_text(encoding="utf-8")
         assert "APIRouter" not in source
         assert "@router." not in source
+
+
+def test_nessun_import_dei_vecchi_falsi_router_documentali():
+    vietati = (
+        "app.routers.distinte_bpm",
+        "app.routers.libro_unico_parser",
+    )
+    offenders = []
+    for path in APP.rglob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        for modulo in vietati:
+            if modulo in source:
+                offenders.append(f"{path.relative_to(ROOT).as_posix()} -> {modulo}")
+    assert not offenders, (
+        "Importatori documentali spostati nei servizi ma ancora importati come router: "
+        + ", ".join(offenders)
+    )
