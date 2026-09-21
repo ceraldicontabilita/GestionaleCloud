@@ -495,7 +495,7 @@ Questi test dimostrano la logica, ma **non bastano da soli a dichiarare pronta l
 | RST-0003 | 🟡 | Guardrail AST aggiunto: vecchie collezioni magazzino sono NO-WRITE; `warehouse_inventory` è il target canonico e può essere scritto solo dai writer transitori esplicitamente censiti, che devono diminuire fino a uno |
 | RST-0004 | ⚪ | Aggiungere contratto route React ↔ `page_catalog.json` |
 | RST-0005 | 🟡 | Guardrail aggiunto: nessuna nuova istanza `FastAPI()` fuori da `app/main.py`; HR/Lotti/Menu restano eccezioni temporanee esplicite fino alla loro fusione |
-| RST-0006 | ⚪ | Impedire nuovi client DB indipendenti per HR/Lotti/Menu |
+| RST-0006 | 🟢 | Guardrail AST attivo: censiti 6 costruttori DB autonomi legacy in HR/Lotti/Menu; nessun nuovo client può entrare e la whitelist può solo accorciarsi |
 | RST-0007 | ⚪ | Aggiungere inventario automatico di router montati/non montati |
 | RST-0008 | ⚪ | Aggiungere inventario frontend di componenti/pagine non raggiungibili |
 
@@ -877,6 +877,7 @@ Aggiungere una riga ad ogni attività conclusa.
 | 2026-09-21 | FASE-0C-PUBLIC-API | 🟢 COMPLETATO | `31943965f382018d87047637e16fe815d1b93318` | Eliminato `public_api.py`; Pianificazione, ricerca globale e API v1 riallocate nei rispettivi owner; endpoint legacy senza chiamanti non trasferiti | Produzione `35553798734`: E2E, 64 pagine, layout/viewer, bundle commit e smoke runtime tutti verdi |
 | 2026-09-21 | FASE-1A-CODICE-MORTO | 🟡 IN CORSO | branch `ristrutturazione/fase-1-codice-morto` | Eliminati report_pdf, simple_exports e batch_operations; estratto solo il filtro di riconciliazione vivo | Attende CI/Produzione |
 | 2026-09-21 | FASE-1B-FALSI-ROUTER | 🟡 IN CORSO | branch `ristrutturazione/fase-1b-falsi-router` | Distinte BPM e Libro Unico convertiti da router non montati a servizi applicativi; vecchi file eliminati | Attende CI e merge dopo Fase 1A |
+| 2026-09-21 | RST-0006-DB-GUARDRAIL | 🟡 IN CORSO | branch `ristrutturazione/fase-0d-db-client-guardrail` | Congelati i punti che creano client DB autonomi in HR/Lotti/Menu; un nuovo costruttore rompe la CI e la whitelist può solo diminuire | Attende CI/merge dopo 1B |
 
 ---
 
