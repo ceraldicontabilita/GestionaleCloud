@@ -58,6 +58,39 @@ def _chiave_ricetta(nome: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", testo).strip()
 
 
+def _relazione_variante(nome: str) -> Optional[tuple[str, str]]:
+    match = re.fullmatch(r"(.+?)\s*\(variante di:\s*(.+?)\)", str(nome or ""), re.IGNORECASE)
+    return (match.group(1).strip(), match.group(2).strip()) if match else None
+
+
+def _ricette_excel_canoniche(sources: list[dict]) -> list[dict]:
+    """Unisce alla base solo la variante omonima con contenuto identico.
+
+    La provenienza della riga eliminata resta tra le fonti della base. Una
+    variante con nome o contenuto diverso rimane una ricetta autonoma.
+    """
+    basi = {
+        _chiave_ricetta(r["nome"][:-7]): r
+        for r in sources if str(r.get("nome") or "").lower().endswith(" (base)")
+    }
+    canoniche = []
+    for source in sources:
+        relazione = _relazione_variante(source.get("nome"))
+        base = basi.get(_chiave_ricetta(relazione[1])) if relazione else None
+        stessa_ricetta = bool(base and _chiave_ricetta(relazione[0]) == _chiave_ricetta(relazione[1]))
+        if stessa_ricetta:
+            stessa_ricetta = all(
+                source.get(campo) == base.get(campo)
+                for campo in ("ingredienti_dettaglio", "procedimento_testo", "note", "porzioni")
+            )
+        if stessa_ricetta:
+            fonti = [*(base.get("fonti_excel") or []), *(source.get("fonti_excel") or [])]
+            base["fonti_excel"] = list({json.dumps(f, sort_keys=True): f for f in fonti}.values())
+            continue
+        canoniche.append(source)
+    return canoniche
+
+
 async def _chiavi_prodotti_acquistati() -> set[str]:
     """Il catalogo prodotti è la fonte canonica delle voci comprate."""
     prodotti = await db.prodotti_vendita.find(
@@ -694,16 +727,28 @@ def _dosi_compilate(details: list) -> int:
     )
 
 
-async def _importa_ricettario_excel(anteprima: bool, admin: Optional[dict] = None) -> dict:
+async def _importa_ricettario_excel(
+    anteprima: bool, admin: Optional[dict] = None, chiave: Optional[str] = None,
+) -> dict:
     """Integra le quattro fonti senza cancellare foto o correzioni manuali.
 
-    Il nome normalizzato è l'unico criterio di deduplicazione. Le ricette già
-    curate a mano mantengono ingredienti e dosi; quelle vuote o provenienti dai
-    vecchi import vengono arricchite con la fonte più completa del bundle.
+    La chiave normalizzata identifica il record esistente; una variante
+    omonima e identica alla base confluisce nella base con tutte le fonti.
+    Le ricette curate a mano mantengono ingredienti e dosi.
     """
     from app.lotti.routers.utils import _rileva_allergeni
 
     bundle = _carica_ricettario_excel()
+    sources = _ricette_excel_canoniche(bundle["recipes"])
+    duplicati_unificati = len(bundle["recipes"]) - len(sources)
+    basi_source = {
+        _chiave_ricetta(r["nome"][:-7]): r
+        for r in sources if str(r.get("nome") or "").lower().endswith(" (base)")
+    }
+    if chiave:
+        sources = [source for source in sources if source["chiave"] == chiave]
+        if not sources:
+            raise HTTPException(404, "Ricetta non presente nel ricettario Excel canonico")
     bundle_hash = (bundle.get("meta") or {}).get("bundle_sha256") or ""
     current = await db.ricette.find({}, {"_id": 0}).to_list(5000)
     chiavi_prodotti_acquistati = await _chiavi_prodotti_acquistati()
@@ -716,7 +761,7 @@ async def _importa_ricettario_excel(anteprima: bool, admin: Optional[dict] = Non
     operations = []
     conflicts = []
     imported_sources = {"cartel1_xlsx", "tracciabilita_xlsm", "ricettari_excel_ceraldi"}
-    for source in bundle["recipes"]:
+    for source in sources:
         key = source["chiave"]
         # Un articolo acquistato e già classificato nel catalogo prodotti non
         # deve tornare a essere una ricetta al successivo import della fonte.
@@ -740,6 +785,16 @@ async def _importa_ricettario_excel(anteprima: bool, admin: Optional[dict] = Non
             "fonti_excel": source.get("fonti_excel") or [],
             "ricettario_excel_bundle_sha256": bundle_hash,
         }
+        relazione = _relazione_variante(source.get("nome"))
+        base_source = basi_source.get(_chiave_ricetta(relazione[1])) if relazione else None
+        if base_source:
+            base_match = (groups.get(base_source["chiave"]) or [None])[0]
+            desired["ricetta_base_id"] = (
+                base_match["id"] if base_match else str(uuid.uuid5(
+                    uuid.NAMESPACE_URL, f"ceraldiapp:ricettario-excel:{base_source['chiave']}"
+                ))
+            )
+            desired["ricetta_base_nome"] = base_source["nome"]
         if use_source_details:
             desired.update({
                 "ingredienti": source_names,
@@ -782,6 +837,13 @@ async def _importa_ricettario_excel(anteprima: bool, admin: Optional[dict] = Non
                 "approvata": True,
                 "created_at": datetime.now(timezone.utc).isoformat(),
             }
+            if base_source:
+                desired["ricetta_base_id"] = (
+                    base_match["id"] if base_match else str(uuid.uuid5(
+                        uuid.NAMESPACE_URL, f"ceraldiapp:ricettario-excel:{base_source['chiave']}"
+                    ))
+                )
+                desired["ricetta_base_nome"] = base_source["nome"]
             action = "creata"
         operations.append({
             "id": recipe_id,
@@ -794,6 +856,7 @@ async def _importa_ricettario_excel(anteprima: bool, admin: Optional[dict] = Non
 
     summary = {
         "totale_bundle": len(bundle["recipes"]),
+        "duplicati_unificati": duplicati_unificati,
         "create": sum(item["azione"] == "creata" for item in operations),
         "aggiornate": sum(item["azione"] == "aggiornata" for item in operations),
         "invariate": sum(item["azione"] == "invariata" for item in operations),
@@ -823,6 +886,14 @@ async def _importa_ricettario_excel(anteprima: bool, admin: Optional[dict] = Non
             await db.ricette.insert_one(fields)
         else:
             await db.ricette.update_one({"id": item["id"]}, {"$set": fields})
+    for item in changed:
+        if not item["campi"].get("ricetta_base_id"):
+            continue
+        variante = await db.ricette.find_one({"id": item["id"]}, {"_id": 0, "foto_url": 1})
+        if variante and not variante.get("foto_url"):
+            await _clona_foto_tra_ricette(
+                item["campi"]["ricetta_base_id"], item["id"], fonte="import_ricettario_excel"
+            )
     return {
         "ok": True,
         "anteprima": False,
@@ -846,10 +917,11 @@ async def get_ricette(search: Optional[str] = Query(None)):
 @router.post("/ricette/importa-excel")
 async def importa_ricettari_excel(
     anteprima: bool = Query(True),
+    chiave: Optional[str] = Query(None),
     _admin=Depends(require_admin),
 ):
-    """Importa i quattro ricettari Ceraldi con anteprima, backup e idempotenza."""
-    return await _importa_ricettario_excel(anteprima=anteprima, admin=_admin)
+    """Importa tutte le ricette o una chiave canonica, con anteprima e backup."""
+    return await _importa_ricettario_excel(anteprima=anteprima, admin=_admin, chiave=chiave)
 
 
 @router.get("/ricette-archivio")
