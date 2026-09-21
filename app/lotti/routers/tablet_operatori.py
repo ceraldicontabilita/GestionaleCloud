@@ -285,7 +285,6 @@ async def seed_operatori():
 # ── Modelli ────────────────────────────────────────────────────────────────
 class PinLogin(BaseModel):
     pin: str
-    operatore_id: Optional[str] = None
 
 
 class AggiornaDipendente(BaseModel):
@@ -319,15 +318,19 @@ async def _richiedi_pin_amministratore(
 
 
 def _op_response(doc):
-    op = {"id": doc.get("id") or str(uuid.uuid4()), "nome": doc.get("nome", "Operatore"), "ruolo": doc.get("ruolo", "operatore")}
-    token = make_token(sub=op["id"], nome=op["nome"], ruolo=op["ruolo"], via="pin")
+    if not doc.get("dipendente_id"):
+        raise HTTPException(401, "Identita' dipendente HR non disponibile")
+    op = {"dipendente_id": doc["dipendente_id"], "nome": doc.get("nome", "Operatore"), "ruolo": doc.get("ruolo", "operatore")}
+    token = make_token(sub=op["dipendente_id"], nome=op["nome"], ruolo=op["ruolo"], via="pin")
     return {"ok": True, "token": token, "operatore": op}
 
 
 async def trova_operatori_per_pin(pin: str) -> List[Dict[str, Any]]:
-    """Chi ha questo PIN, secondo l'anagrafica HR (R2). Restituisce le righe
-    ``tablet_operatori`` corrispondenti (create al volo se la persona e' nuova),
-    mai un cessato, mai chi non e' operatore Lotti."""
+    """Identita' HR con ``dipendente_id`` e attributi HACCP del tablet.
+
+    La proiezione ``tablet_operatori`` viene allineata se manca; non entra mai
+    un cessato o chi non e' autorizzato a operare in Lotti.
+    """
     if _db_hr() is None:
         return []
     from app.hr.services.auth_dipendenti import trova_dipendente_per_pin
@@ -341,19 +344,13 @@ async def trova_operatori_per_pin(pin: str) -> List[Dict[str, Any]]:
         for p in persone:
             op = await db.tablet_operatori.find_one(
                 {"attivo": True, "$or": [{"hr_id": p["id"]}, {"gestionale_dipendente_id": p["id"]}]},
-                {"_id": 0, "id": 1, "nome": 1, "ruolo": 1})
+                {"_id": 0, "nome": 1, "ruolo": 1})
             if op:
-                trovati.append(op)
+                trovati.append({"dipendente_id": p["id"], "nome": op.get("nome"), "ruolo": op.get("ruolo")})
         if len(trovati) == len(persone) or tentativo:
             break
         await sincronizza_operatori_da_hr()
     return trovati
-
-
-async def trova_operatore_per_pin(pin: str):
-    """Compatibilita' interna: solo se il PIN identifica UNA persona."""
-    trovati = await trova_operatori_per_pin(pin)
-    return trovati[0] if len(trovati) == 1 else None
 
 
 @router.post("/login")
@@ -368,16 +365,9 @@ async def login_pin(payload: PinLogin, request: Request = None):
     if docs:
         if ip:
             clear_fails(ip)
-        if payload.operatore_id:
-            doc = next((d for d in docs if d.get("id") == payload.operatore_id), None)
-            if not doc:
-                raise HTTPException(403, "Identita' non associata a questo PIN")
-            return _op_response(doc)
-        if len(docs) == 1:
-            return _op_response(docs[0])
-        return {"ok": True, "scelta_operatore": True,
-                "operatori": [{"id": d.get("id"), "nome": d.get("nome", "Operatore"),
-                               "ruolo": d.get("ruolo", "operatore")} for d in docs]}
+        if len(docs) > 1:
+            raise HTTPException(409, "PIN associato a piu' dipendenti: correggere gli accessi HR")
+        return _op_response(docs[0])
     if ip:
         register_fail(ip)
     if pin_authentication.admin_pin_matches(pin):

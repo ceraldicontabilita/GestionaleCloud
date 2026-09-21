@@ -148,7 +148,7 @@ def test_col_pin_il_nome_lo_mette_l_anagrafica(monkeypatch):
     from app.lotti.servizi import firma_operatore
 
     async def per_pin(_pin):
-        return [{"id": "hr-7", "nome": "Pocci Salvatore"}]
+        return [{"dipendente_id": "hr-7", "nome": "Pocci Salvatore"}]
 
     monkeypatch.setattr(
         "app.lotti.routers.tablet_operatori.trova_operatori_per_pin", per_pin
@@ -184,7 +184,7 @@ def test_un_pin_di_due_persone_non_sceglie_a_caso(monkeypatch):
     from app.lotti.servizi import firma_operatore
 
     async def due(_pin):
-        return [{"id": "hr-7", "nome": "Uno"}, {"id": "hr-9", "nome": "Due"}]
+        return [{"dipendente_id": "hr-7", "nome": "Uno"}, {"dipendente_id": "hr-9", "nome": "Due"}]
 
     monkeypatch.setattr(
         "app.lotti.routers.tablet_operatori.trova_operatori_per_pin", due

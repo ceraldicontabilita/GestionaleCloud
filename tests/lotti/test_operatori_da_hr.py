@@ -138,13 +138,16 @@ def test_login_tablet_usa_il_pin_della_scheda_hr(basi):
 
     # Lesina entra col PIN migrato (bcrypt, senza impronta -> ripara e la salva)
     res = run(t.login_pin(t.PinLogin(pin=PIN_A)))
-    assert res["operatore"] == {"id": "op-lisina", "nome": "Lesina Angela", "ruolo": "operatore"} and res["token"]
+    assert res["operatore"] == {"dipendente_id": "hr-lesina", "nome": "Lesina Angela", "ruolo": "operatore"} and res["token"]
+    from app.lotti.auth import verify_token
+    assert verify_token(res["token"])["sub"] == "hr-lesina"
     assert run(hr.dipendenti.find_one({"id": "hr-lesina"}))["pin_lookup"]
     # PIN impostato in HR per una persona nuova (senza riga Lotti gia' pronta)
     run(hr.dipendenti.update_one({"id": "hr-nuovo"}, {"$set": {"pin_hash": auth_dipendenti.hash_pin("4321"),
                                                              "pin_lookup": auth_dipendenti.pin_lookup("4321")}}))
     res = run(t.login_pin(t.PinLogin(pin="4321")))
     assert res["operatore"]["nome"] == "Rossi Anna"
+    assert res["operatore"]["dipendente_id"] == "hr-nuovo"
     # un cessato con PIN ancora salvato non entra
     run(hr.dipendenti.update_one({"id": "hr-moscato"}, {"$set": {"pin_hash": auth_dipendenti.hash_pin("5555")}}))
     with pytest.raises(HTTPException) as exc:
@@ -158,6 +161,29 @@ def test_login_tablet_usa_il_pin_della_scheda_hr(basi):
     with pytest.raises(HTTPException) as exc:
         run(t.login_pin(t.PinLogin(pin=PIN_ADMIN_TEST)))
     assert "personale" in exc.value.detail
+
+
+def test_un_solo_percorso_pin_lotti():
+    from app.lotti.auth import router as auth_router
+    from app.lotti.routers.tablet_operatori import router as tablet_router
+
+    assert not any("POST" in route.methods and route.path == "/auth/login" for route in auth_router.routes)
+    assert sum("POST" in route.methods and route.path == "/tablet-operatori/login" for route in tablet_router.routes) == 1
+
+
+def test_pin_non_univoco_non_sceglie_una_persona_a_caso(monkeypatch):
+    from app.lotti.routers import tablet_operatori as t
+
+    async def due_persone(_pin):
+        return [
+            {"dipendente_id": "hr-1", "nome": "Uno", "ruolo": "operatore"},
+            {"dipendente_id": "hr-2", "nome": "Due", "ruolo": "operatore"},
+        ]
+
+    monkeypatch.setattr(t, "trova_operatori_per_pin", due_persone)
+    with pytest.raises(HTTPException) as error:
+        run(t.login_pin(t.PinLogin(pin="1234")))
+    assert error.value.status_code == 409
 
 
 def test_pin_unico_fra_gli_attivi_e_revoca_alla_cessazione(basi):

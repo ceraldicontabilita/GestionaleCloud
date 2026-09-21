@@ -7,6 +7,7 @@ import {
   saveTabletSession,
   TABLET_ACTION_AUTH_MS,
 } from "./tabletSession";
+import { getToken, saveToken } from "../auth";
 
 describe("tabletSession", () => {
   beforeEach(() => {
@@ -16,14 +17,14 @@ describe("tabletSession", () => {
   });
 
   test("mantiene la persona quando cambia reparto", () => {
-    saveTabletSession({ id: "op-1", nome: "Operatore Uno", ruolo: "operatore" }, "pasticceria");
+    saveTabletSession({ dipendente_id: "hr-1", nome: "Operatore Uno", ruolo: "operatore" }, "pasticceria");
     const moved = moveTabletSessionTo("magazzino");
     expect(moved.nome).toBe("Operatore Uno");
     expect(getTabletSession().reparto).toBe("magazzino");
   });
 
   test("la conferma delle azioni vale dieci minuti senza chiudere la sessione", () => {
-    markTabletActionAuthorized({ id: "op-1", nome: "Operatore Uno", ruolo: "operatore" }, "magazzino");
+    markTabletActionAuthorized({ dipendente_id: "hr-1", nome: "Operatore Uno", ruolo: "operatore" }, "magazzino");
     expect(actionAuthorizationStillValid()).toBe(true);
 
     const stored = getTabletSession();
@@ -36,18 +37,19 @@ describe("tabletSession", () => {
   });
 
   test("la sessione operatore sopravvive al cambio di scheda", () => {
-    saveTabletSession({ id: "op-1", nome: "Operatore Uno", ruolo: "operatore" }, "pasticceria");
+    saveTabletSession({ dipendente_id: "hr-1", nome: "Operatore Uno", ruolo: "operatore" }, "pasticceria");
     sessionStorage.clear();
 
     expect(getTabletSession()).toMatchObject({
-      id: "op-1",
+      dipendente_id: "hr-1",
       nome: "Operatore Uno",
       reparto: "pasticceria",
     });
   });
 
-  test("migra una sessione legacy senza richiedere un altro PIN", () => {
+  test("una sessione con ID della proiezione richiede un nuovo login", () => {
     const now = Date.now();
+    saveToken("token-legacy");
     sessionStorage.setItem("tablet_operatore", JSON.stringify({
       id: "op-legacy",
       nome: "Operatore Legacy",
@@ -56,13 +58,30 @@ describe("tabletSession", () => {
       expiresAt: now + 60_000,
     }));
 
-    expect(getTabletSession()?.nome).toBe("Operatore Legacy");
-    expect(localStorage.getItem("tablet_operatore")).toContain("Operatore Legacy");
+    expect(getTabletSession()).toBeNull();
+    expect(localStorage.getItem("tablet_operatore")).toBeNull();
     expect(sessionStorage.getItem("tablet_operatore")).toBeNull();
+    expect(getToken()).toBe("");
+  });
+
+  test("la vecchia sessione persistita cancella anche il token", () => {
+    saveToken("token-legacy");
+    localStorage.setItem("tablet_operatore", JSON.stringify({
+      id: "op-legacy", nome: "Operatore Legacy", expiresAt: Date.now() + 60_000,
+    }));
+
+    expect(getTabletSession()).toBeNull();
+    expect(getToken()).toBe("");
+  });
+
+  test("non salva una nuova sessione senza ID dipendente", () => {
+    expect(() => saveTabletSession({ id: "op-1", nome: "Operatore" }, "bar"))
+      .toThrow("ID dipendente obbligatorio");
+    expect(localStorage.getItem("tablet_operatore")).toBeNull();
   });
 
   test("l'uscita esplicita cancella memoria nuova e legacy", () => {
-    saveTabletSession({ id: "op-1", nome: "Operatore Uno", ruolo: "operatore" }, "pasticceria");
+    saveTabletSession({ dipendente_id: "hr-1", nome: "Operatore Uno", ruolo: "operatore" }, "pasticceria");
     sessionStorage.setItem("tablet_operatore", JSON.stringify({ id: "vecchio", nome: "Vecchio" }));
     clearTabletSession();
 

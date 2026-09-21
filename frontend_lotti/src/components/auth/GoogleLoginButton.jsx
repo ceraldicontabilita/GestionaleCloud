@@ -27,7 +27,6 @@ export default function GoogleLoginButton({ clientId, onSuccess }) {
           saveToken(r.data.token);
           saveRuolo(r.data?.operatore?.ruolo || "amministratore");
           saveOperatoreNome(r.data?.operatore?.nome || "Amministratore");
-          try { sessionStorage.setItem("tablet_operatore", JSON.stringify(r.data.operatore || {})); } catch { /* no-op */ }
           onSuccess && onSuccess(r.data.operatore);
         }
       } catch (e) {

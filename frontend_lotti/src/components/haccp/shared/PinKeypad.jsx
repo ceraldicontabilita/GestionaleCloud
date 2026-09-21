@@ -11,22 +11,13 @@ const PinModal = createPinModal(React, { LockKeyhole, Delete, X });
 export default function PinKeypad({
   titolo, sottotitolo, colore = "#5b7a6b", soloAdmin = false, onSuccess, onCancel,
 }) {
-  const verify = async (pin, operatoreId) => {
+  const verify = async (pin) => {
     let data;
     try {
-      const response = await axios.post(`${API}/tablet-operatori/login`, {
-        pin, ...(operatoreId ? { operatore_id: operatoreId } : {}),
-      });
+      const response = await axios.post(`${API}/tablet-operatori/login`, { pin });
       data = response.data;
     } catch (error) {
       throw new Error(apiError(error, "PIN non riconosciuto"));
-    }
-    if (data?.scelta_operatore) {
-      const choices = (data.operatori || [])
-        .filter(op => !soloAdmin || op.ruolo === "amministratore")
-        .map(op => ({ id: op.id, name: op.nome }));
-      if (!choices.length) throw new Error("Solo l'amministratore può accedere");
-      return { choices };
     }
     const op = data?.operatore;
     if (!data?.token || !op) throw new Error("Risposta di accesso non valida");

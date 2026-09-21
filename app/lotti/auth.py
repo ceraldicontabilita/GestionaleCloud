@@ -2,20 +2,18 @@
 auth.py — Autenticazione centralizzata Lotti.
 
 Modello:
-  - Il PIN non "apre" più nulla da solo: viene verificato dal server e in cambio
-    si riceve un TOKEN firmato (JWT HS256) da allegare a ogni richiesta in
-    `Authorization: Bearer <token>`. Doppio controllo = qualcosa che sai (PIN) +
-    token firmato dal server (non falsificabile).
-  - `auth_dependency` è agganciata a TUTTO l'api_router. Rollout sicuro: finché
-    la env `AUTH_ENFORCE` non è "true" NON blocca nulla (così si allinea prima il
-    frontend e poi si accende, senza rischio di chiudere fuori nessuno).
+  - Il PIN personale viene verificato dal server nel solo ingresso
+    `/tablet-operatori/login`; il JWT risultante si allega alle richieste in
+    `Authorization: Bearer <token>`. PIN e token non sono due fattori distinti.
+  - `auth_dependency` è agganciata a TUTTO l'api_router. `AUTH_ENFORCE` è
+    attivo per default; le scritture non-tablet richiedono sempre un token.
   - Google Sign-In: verifica l'ID token contro le chiavi pubbliche Google.
     Dormiente finché non è impostata la env `GOOGLE_CLIENT_ID`.
   - Anti brute-force: lockout in memoria per IP.
 
 Env usate (tutte opzionali, con default sicuri):
   AUTH_SECRET          segreto per firmare i JWT (consigliato impostarlo)
-  AUTH_ENFORCE         "true" per attivare il blocco (default: false)
+  AUTH_ENFORCE         "false" per disattivare l'enforcement delle letture in emergenza (default: true)
   AUTH_TOKEN_TTL_H     durata token in ore (default 12)
   AUTH_MAX_FAILS       tentativi PIN prima del lock (default 8)
   AUTH_LOCK_SECONDS    durata lock in secondi (default 300)
@@ -121,7 +119,6 @@ def verify_token(token: str):
 # ── Rotte sempre pubbliche (non richiedono token) ──────────────────────────
 PUBLIC_PREFIXES = (
     "/api/health",
-    "/api/auth/login",
     "/api/auth/google",
     "/api/auth/config",
     "/api/auth/me",
@@ -168,7 +165,7 @@ def _percorso_api(request: Request) -> str:
 
     Montata come sotto-applicazione (``/lotti``) dentro GestionaleCloud,
     ``request.url.path`` contiene anche il prefisso del mount
-    (``/lotti/api/auth/login``): senza toglierlo nessuna rotta risulterebbe
+    (``/lotti/api/tablet-operatori/login``): senza toglierlo nessuna rotta risulterebbe
     pubblica e il login sarebbe impossibile. Standalone ``root_path`` e' vuoto
     e il percorso resta identico a prima."""
     path = request.url.path
@@ -385,50 +382,6 @@ def verify_google_id_token(id_token: str):
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-
-
-class PinLoginReq(BaseModel):
-    pin: str
-    operatore_id: Optional[str] = None
-
-
-@router.post("/login")
-async def login_pin_jwt(payload: PinLoginReq, request: Request):
-    """PIN -> token firmato. Verifica il PIN contro gli operatori reali."""
-    ip = request.client.host if request.client else None
-    if ip:
-        check_lock(ip)
-    pin = (payload.pin or "").strip()
-    if len(pin) < 4:
-        raise HTTPException(400, "PIN non valido")
-    # 25/07/2026: il PIN non è più salvato in chiaro. Si cerca l'IMPRONTA
-    # (HMAC col segreto dell'applicazione) e si conferma comunque con bcrypt.
-    from app.lotti.routers.tablet_operatori import trova_operatori_per_pin
-    docs = await trova_operatori_per_pin(pin)
-    if not docs:
-        if ip:
-            register_fail(ip)
-        raise HTTPException(401, "PIN non riconosciuto")
-    if ip:
-        clear_fails(ip)
-    if payload.operatore_id:
-        doc = next((d for d in docs if d.get("id") == payload.operatore_id), None)
-        if not doc:
-            raise HTTPException(403, "Identita' non associata a questo PIN")
-    elif len(docs) == 1:
-        doc = docs[0]
-    else:
-        return {
-            "ok": True,
-            "scelta_operatore": True,
-            "operatori": [
-                {"id": d.get("id"), "nome": d.get("nome"),
-                 "ruolo": d.get("ruolo", "operatore")}
-                for d in docs
-            ],
-        }
-    token = make_token(sub=doc.get("id", "op"), nome=doc.get("nome", "Operatore"), ruolo=doc.get("ruolo", "operatore"), via="pin")
-    return {"ok": True, "token": token, "operatore": {"id": doc.get("id"), "nome": doc.get("nome"), "ruolo": doc.get("ruolo")}}
 
 
 class GoogleLogin(BaseModel):

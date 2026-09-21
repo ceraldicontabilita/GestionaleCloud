@@ -36,17 +36,15 @@ function PinKeypad({ titolo, sottotitolo, colore = "#5b7a6b", onSuccess, onCance
   const [loading, setLoading] = useState(false);
   const [okNome, setOkNome] = useState(null);
   const [avvio, setAvvio] = useState("");
-  const [scelte, setScelte] = useState([]);
 
   const reset = () => {
     setDigits("");
     setErrore("");
     setAvvio("");
-    setScelte([]);
     setLoading(false);
   };
 
-  const conferma = async (operatoreId = null) => {
+  const conferma = async () => {
     if (loading || digits.length < 4) return;
     setLoading(true);
     setErrore("");
@@ -59,23 +57,7 @@ function PinKeypad({ titolo, sottotitolo, colore = "#5b7a6b", onSuccess, onCance
     while (true) {
       tentativo += 1;
       try {
-        const res = await axios.post(`${API}/tablet-operatori/login`, {
-          pin,
-          ...(operatoreId ? { operatore_id: operatoreId } : {}),
-        }, { timeout: 15000 });
-        if (res.data?.scelta_operatore) {
-          const candidati = (res.data.operatori || []).filter(
-            (op) => !onlyAdmin || op?.ruolo === "amministratore"
-          );
-          if (!candidati.length) {
-            setErrore("PIN non autorizzato");
-            setDigits("");
-          } else {
-            setScelte(candidati);
-          }
-          setLoading(false);
-          return;
-        }
+        const res = await axios.post(`${API}/tablet-operatori/login`, { pin }, { timeout: 15000 });
         const op = res.data?.operatore;
         if (!op) throw new Error("Operatore non valido");
         if (res.data?.token) saveToken(res.data.token);  // token per le letture sotto enforce
@@ -115,11 +97,11 @@ function PinKeypad({ titolo, sottotitolo, colore = "#5b7a6b", onSuccess, onCance
   };
 
   useEffect(() => {
-    if (digits.length !== maxLen || loading || scelte.length > 0) return;
+    if (digits.length !== maxLen || loading) return;
     const t = setTimeout(conferma, 80);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [digits, loading, maxLen, scelte.length]);
+  }, [digits, loading, maxLen]);
 
   const addDigit = (d) => {
     if (loading || digits.length >= maxLen) return;
@@ -139,26 +121,6 @@ function PinKeypad({ titolo, sottotitolo, colore = "#5b7a6b", onSuccess, onCance
             <div style={{ width: 72, height: 72, borderRadius: 99, margin: "0 auto 16px", background: colore, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: `0 8px 24px ${colore}55` }}><span style={{ fontSize: 38, color: "#fff" }}>✓</span></div>
             <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "#2a3329" }}>Ciao{okNome ? `, ${okNome}` : ""}</h2>
             <p style={{ margin: "6px 0 0", fontSize: 13, color: "#6b7669" }}>Accesso effettuato</p>
-          </div>
-        ) : scelte.length > 0 ? (
-          <div>
-            <div style={{ textAlign: "center", marginBottom: 20 }}>
-              <div style={{ fontSize: 34, marginBottom: 8 }}>👤</div>
-              <h2 style={{ margin: 0, fontSize: 21, fontWeight: 700, color: "#2a3329" }}>Chi sta operando?</h2>
-              <p style={{ margin: "7px 0 0", fontSize: 13, color: "#6b7669" }}>Il PIN è condiviso; scegli il nome da registrare nei log.</p>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {scelte.map((op) => (
-                <button key={op.id} onClick={() => conferma(op.id)} disabled={loading}
-                  style={{ padding: "15px 14px", border: "none", borderRadius: 14, background: colore, color: "#fff", fontSize: 16, fontWeight: 800, cursor: loading ? "wait" : "pointer", opacity: loading ? .6 : 1 }}>
-                  {op.nome}
-                </button>
-              ))}
-            </div>
-            <button onClick={reset} disabled={loading}
-              style={{ width: "100%", marginTop: 14, padding: 12, border: "1.5px solid #e6e0d4", borderRadius: 14, background: "#fffefb", color: "#6b7669", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
-              Indietro
-            </button>
           </div>
         ) : (
           <>

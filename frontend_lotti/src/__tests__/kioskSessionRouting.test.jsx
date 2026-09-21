@@ -46,7 +46,7 @@ describe("navigazione kiosk senza richieste PIN inutili", () => {
   });
 
   test("un reparto operativo riutilizza l'operatore già identificato", async () => {
-    saveTabletSession({ id: "op-1", nome: "Mario", ruolo: "operatore" }, "bar");
+    saveTabletSession({ dipendente_id: "hr-1", nome: "Mario", ruolo: "operatore" }, "bar");
 
     await act(async () => root.render(<KioskLayout hash="tablet/pasticceria" />));
 
@@ -55,12 +55,12 @@ describe("navigazione kiosk senza richieste PIN inutili", () => {
   });
 
   test("una card riservata non cancella la sessione del dipendente", async () => {
-    saveTabletSession({ id: "op-1", nome: "Mario", ruolo: "operatore" }, "bar");
+    saveTabletSession({ dipendente_id: "hr-1", nome: "Mario", ruolo: "operatore" }, "bar");
 
     await act(async () => root.render(<KioskLayout hash="tablet/ordini" />));
 
     expect(container.querySelector('[data-testid="tablet-home"]')?.dataset.preselect).toBe("ordini");
-    expect(getTabletSession()).toMatchObject({ id: "op-1", nome: "Mario" });
+    expect(getTabletSession()).toMatchObject({ dipendente_id: "hr-1", nome: "Mario" });
   });
 });
 

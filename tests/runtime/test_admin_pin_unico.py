@@ -73,10 +73,9 @@ def test_lotti_pin_centrale_apre_le_pagine_admin_ma_non_e_una_firma(monkeypatch)
         # il PIN personale di Vincenzo entra come Vincenzo (ruolo amministratore), senza scelta
         result = await module.login_pin(module.PinLogin(pin=OLD_PIN))
         assert result["operatore"]["nome"] == "Ceraldi Vincenzo" and result["operatore"]["ruolo"] == "amministratore"
-        assert "scelta_operatore" not in result and result["token"]
-        with pytest.raises(HTTPException) as exc:
-            await module.login_pin(module.PinLogin(pin=OLD_PIN, operatore_id="estraneo"))
-        assert exc.value.status_code == 403
+        assert result["operatore"]["dipendente_id"] == "hr-v" and result["token"]
+        from app.lotti.auth import verify_token
+        assert verify_token(result["token"])["sub"] == "hr-v"
     asyncio.run(scenario())
 
 
