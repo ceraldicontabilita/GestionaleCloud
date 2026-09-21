@@ -183,7 +183,7 @@ export default function TabletHome({ onEntra, preselectReparto }) {
     saveRuolo(operatore?.ruolo || "operatore");
     saveTabletSession(operatore, repartoCorrente);
     setRepSel(null);
-    const targetHash = `tablet/${repartoCorrente}`;
+    const targetHash = repartoCorrente === "ricette" ? "ricette" : `tablet/${repartoCorrente}`;
     if (window.location.hash !== `#${targetHash}`) window.location.hash = targetHash;
     window.dispatchEvent(new Event("tablet-auth"));
     onEntra?.(repartoCorrente, operatore);
@@ -218,7 +218,7 @@ export default function TabletHome({ onEntra, preselectReparto }) {
     if (session && (!rep.soloAdmin || session.ruolo === "amministratore")) {
       moveTabletSessionTo(rep.id);
       onEntra?.(rep.id, session);
-      window.location.hash = `tablet/${rep.id}`;
+      window.location.hash = rep.id === "ricette" ? "ricette" : `tablet/${rep.id}`;
       return;
     }
     setRepSel(rep.id);
