@@ -163,7 +163,7 @@ Eliminare frontend_hr/, frontend_lotti/, frontend_menu/, frontend_shared/ solo d
 | RST-00A3 | 🟢 | Fattura da confermare → pagamento Cassa, coperto dai collaudi |
 | RST-00A4 | 🟢 | Attendi banca senza inventare pagamento, coperto dai collaudi |
 | RST-00A5 | 🟢 | Misto: quota Cassa reale e residuo Banca aperto, coperto dai collaudi |
-| RST-00A6 | 🟡 | Reload e viste desktop/mobile verificati; correggere contatori non caricati/zero (#575) ed estendere prova cambio anno |
+| RST-00A6 | 🟡 | #575: implementati conteggi Provvisori leggeri, stato non-caricato distinto da zero e prova browser prima di aprire la scheda; attende CI/E2E/rilascio. Resta da estendere prova cambio anno |
 | RST-00A7 | 🟡 | Correggere/verificare data movimento Banca distinta da data fattura (#573); completare campi, contropartita e periodi |
 | RST-00A8 | 🟢 | Smoke versione pubblicata 7329ec7 superato; ripetere ad ogni rilascio |
 | RST-00A9 | 🟡 | Qualificazione completa non chiusa: #573 e #575 aperti. Conservare il contratto CRUD già verificato |
@@ -428,7 +428,7 @@ Il conteggio dei tre moduli report/batch è 1.186 righe rimosse. Non aggiungerlo
 | 2026-09-21 | FASE-0C | 🟢 | main 3194396: public_api eliminato, Pianificazione/API v1/ricerca preservate; presente nel rilascio verificato 7329ec7 |
 | 2026-09-21 | FASE-1A | 🟢 | main 4ad3ffa: report_pdf, simple_exports e batch_operations eliminati; non contare nuovamente nella #569 |
 | 2026-09-21 | RST-0101/0102/0104, bonifica residua | 🟢 | #569: eliminato anche filtro rimasto senza chiamanti runtime, controlli import/assenza; merge 7329ec7 e produzione verificata |
-| 2026-09-21 | RST-00A6, prove visive | 🟡 | Cinque immagini ispezionate; artefatto finale 10619819101 identico alle prove viste; aperto #575 sui contatori |
+| 2026-09-21 | RST-00A6, prove visive | 🟡 | #575: correzione riallineata dopo #573 su branch `fix/prima-nota-contatori-provvisori-v2`; attende CI/E2E/rilascio |
 | 2026-09-21 | RST-00A7, date Banca | 🟡 | Aperto #573: data fattura 20/09 mostrata per addebito 21/09; correzione non eseguita |
 | 2026-09-21 | RST-1003/1004 | 🟡 | Deroga warehouse_products rimossa dopo eliminazione del lettore; nessuna tabella cancellata |
 | 2026-09-21 | PR-569-PUBBLICATA | 🟢 | 7329ec7498c90da519422ade2f638f0f75d8fc55; CI pre-merge 35555214654, E2E pre-merge 35555214652, Produzione 35555459176 tutti superati nei rispettivi perimetri |
