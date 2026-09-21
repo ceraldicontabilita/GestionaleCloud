@@ -1,12 +1,11 @@
 """
 Iteration 55 Bug-fix regression tests.
 Tests:
-1. POST /api/anomalie/registra - new alias endpoint (was 404 in iter 54)
-2. POST /api/anomalie/ - original route still works
-3. GET /api/anomalie/lista - returns list
-4. GET /api/supervisor/stato - alerts with fixed check_anomalie_senza_azione (stato field)
-5. POST /api/pec/import with force_reimport=true - structure check
-6. PUT /api/ricette/{id}/prezzo-vendita - endpoint exists
+1. POST /api/anomalie/registra - canonical creation endpoint
+2. GET /api/anomalie/lista - returns list
+3. GET /api/supervisor/stato - alerts with fixed check_anomalie_senza_azione (stato field)
+4. POST /api/pec/import with force_reimport=true - structure check
+5. PUT /api/ricette/{id}/prezzo-vendita - endpoint exists
 """
 
 import pytest
@@ -33,7 +32,7 @@ def session():
 # ──────────────────────────────────────────────────────────────────
 
 class TestAnomalieEndpoints:
-    """Test anomalie endpoints including new /registra alias"""
+    """Test the canonical anomaly creation and list endpoints."""
 
     PAYLOAD = {
         "attrezzatura": "TEST_Frigorifero N°1",
@@ -47,7 +46,7 @@ class TestAnomalieEndpoints:
     created_ids = []
 
     def test_post_anomalie_registra_returns_200(self, session):
-        """POST /api/anomalie/registra - new alias must return 200 (was 404)"""
+        """POST /api/anomalie/registra must return 200."""
         resp = session.post(f"{BASE_URL}/api/anomalie/registra", json=self.PAYLOAD)
         assert resp.status_code == 200, f"Expected 200 got {resp.status_code}: {resp.text[:300]}"
         data = resp.json()
@@ -72,16 +71,6 @@ class TestAnomalieEndpoints:
             assert field in anomalia, f"anomalia missing field: {field}"
         TestAnomalieEndpoints.created_ids.append(anomalia["id"])
         print("PASS: All required fields present in anomalia response")
-
-    def test_post_anomalie_root_still_works(self, session):
-        """POST /api/anomalie/ - original route must still return 200"""
-        resp = session.post(f"{BASE_URL}/api/anomalie/", json=self.PAYLOAD)
-        assert resp.status_code == 200, f"Expected 200 got {resp.status_code}: {resp.text[:300]}"
-        data = resp.json()
-        assert data.get("success") == True
-        anomalia = data.get("anomalia", {})
-        TestAnomalieEndpoints.created_ids.append(anomalia.get("id", ""))
-        print("PASS: POST /api/anomalie/ returned 200")
 
     def test_get_anomalie_lista_returns_200(self, session):
         """GET /api/anomalie/lista - returns list"""
