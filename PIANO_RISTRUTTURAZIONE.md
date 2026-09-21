@@ -172,8 +172,8 @@ warehouse_inventory è un target canonico previsto dal codice corrente: non viet
 | RST-0102 | 🟡 | simple_exports.py eliminato nella #569, import package rimossi; export dei domini conservati |
 | RST-0103 | 🟢 | Router trattenute già assente nella baseline e283400; service vivo conservato, non contare nuova cancellazione |
 | RST-0104 | 🟡 | batch_operations.py e helper senza chiamanti runtime eliminati nella #569, nessun servizio sostitutivo orfano |
-| RST-0105 | ⚪ | Estrarre import_distinte_bpm vivo in service/parser, ritirare wrapper dopo verifica chiamanti |
-| RST-0106 | ⚪ | Estrarre import_libro_unico vivo in service/parser, ritirare wrapper dopo verifica chiamanti |
+| RST-0105 | 🟡 | `import_distinte_bpm` estratto in `app/services/distinte_bpm.py`; falso router eliminato, attende CI e rilascio |
+| RST-0106 | 🟡 | Workflow ERP Libro Unico estratto in `app/services/libro_unico_workflow.py`; falso router eliminato. Il parser HR resta separato fino alla Fase 6; attende CI e rilascio |
 | RST-0107 | 🟡 | Ripulire commenti su implementazioni rimosse; mantenere invarianti di dominio e motivazioni ancora utili |
 | RST-0108 | 🟡 | Import e test esclusivi dei router morti rimossi nella #569; continuare census sul resto del repo |
 
