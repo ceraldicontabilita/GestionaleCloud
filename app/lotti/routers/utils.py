@@ -23,12 +23,12 @@ router = APIRouter(tags=["Utils"])
 # ════════════════════════════════════════════════════════════════════════════
 
 # Filtro CANONICO "lotto ancora attivo/in giro". Un lotto è finito in TRE modi
-# diversi nei dati (debito storico): stato testuale (smaltito/esaurito), flag
+# diversi nei dati (debito storico): stato testuale (smaltito/esaurito/annullato), flag
 # esaurito=True (svuotato in FIFO), flag consumato=True. Chi ne controlla solo
 # uno o due lascia passare lotti già finiti (es. la ricerca globale mostrava
 # gli smaltiti come attivi). USARE SEMPRE questo, mai reinventarlo nel router.
 FILTRO_LOTTO_APERTO = {
-    "stato": {"$nin": ["smaltito", "esaurito"]},
+    "stato": {"$nin": ["smaltito", "esaurito", "annullato"]},
     "esaurito": {"$ne": True},
     "consumato": {"$ne": True},
 }

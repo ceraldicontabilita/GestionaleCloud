@@ -2,13 +2,10 @@
 Router per la gestione dei Lotti.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-# 25/07/2026 — Enzo: «il dipendente deve solo produrre e vedere le ricette,
-# tutto il resto lo guardo e lo uso io: metti tutto sotto PIN». Cancellare un
-# lotto è la cosa più definitiva che si possa fare alla tracciabilità.
-from app.lotti.auth import require_admin
-from pydantic import BaseModel, Field, ConfigDict
+from app.lotti.auth import require_admin, request_actor
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 from typing import List, Optional, Dict
 from datetime import datetime, timezone, timedelta
 import uuid
@@ -489,13 +486,31 @@ async def create_lotto(item: LottoCreate):
     return data
 
 
-@router.delete("/{lotto_id}")
-async def delete_lotto(lotto_id: str, _admin=Depends(require_admin)):
-    """Elimina un lotto (cerca per id o lotto_id per compatibilità schema vecchio)"""
-    result = await db.lotti.delete_one({"$or": [{"id": lotto_id}, {"lotto_id": lotto_id}]})
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Lotto non trovato")
-    return {"success": True}
+class RettificaLotto(BaseModel):
+    motivo: str = Field(min_length=5)
+
+    @field_validator("motivo")
+    @classmethod
+    def motivo_concreto(cls, value: str) -> str:
+        if len(value.strip()) < 5:
+            raise ValueError("Motivazione obbligatoria (almeno 5 caratteri)")
+        return value.strip()
+
+
+@router.post("/{lotto_id}/annulla")
+async def annulla_lotto(lotto_id: str, body: RettificaLotto, request: Request,
+                       _admin=Depends(require_admin)):
+    """Ritira un lotto errato conservando origine e movimenti."""
+    from app.lotti.servizi.annullamento_lotto_service import annulla_lotto as annulla
+    return await annulla(lotto_id, body.motivo.strip(), request_actor(request))
+
+
+@router.post("/{lotto_id}/ripristina")
+async def ripristina_lotto(lotto_id: str, body: RettificaLotto, request: Request,
+                          _admin=Depends(require_admin)):
+    """Ripristina un lotto annullato con una nuova voce di cronologia."""
+    from app.lotti.servizi.annullamento_lotto_service import ripristina_lotto as ripristina
+    return await ripristina(lotto_id, body.motivo.strip(), request_actor(request))
 
 
 @router.post("/archivia-scaduti")

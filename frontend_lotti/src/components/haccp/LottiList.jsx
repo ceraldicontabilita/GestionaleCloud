@@ -9,12 +9,12 @@ import { format, addDays } from "date-fns";
 import { toast } from "sonner";
 import { chiediTesto } from "../../utils/conferma";
 import {
-  Search, FileText, Printer, Trash2, Layers, Calendar,
+  Search, FileText, Printer, Ban, RotateCcw, Layers, Calendar,
   AlertTriangle, PackageX, CheckCircle2, History
 } from "lucide-react";
 import { API, withToken } from "../../utils/constants";
 import { SchedaLottoModal, AzioneModal } from "./shared/SchedaLottoModal";
-import { getOperatoreNome } from "../../auth";
+import { getOperatoreNome, isAdmin } from "../../auth";
 // Refactor 25/07/2026: primitivi UI, costanti allergeni e i modali pesanti
 // stanno in file dedicati — qui resta l'orchestrazione (stato + chiamate).
 import { Badge } from "./lotti/uiLotti";
@@ -27,14 +27,15 @@ import ModalRecallIngrediente from "./lotti/ModalRecallIngrediente";
 // provenienza). Qui era un doppione senza tracciabilità e per giunta
 // irraggiungibile, perché il bottone che la apriva non esiste più.
 const LottiList = ({
-  items, onDelete,
+  items, onLottiChanged,
   search, setSearch,
   filtroDataDa, setFiltroDataDa,
   filtroDataA, setFiltroDataA,
   filtroSoloScaduti, setFiltroSoloScaduti,
 }) => {
-  // Confirm elimina (sostituisce window.confirm)
-  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [rettifica, setRettifica] = useState(null); // { id, azione: annulla | ripristina }
+  const [motivoRettifica, setMotivoRettifica] = useState("");
+  const [rettificaLoading, setRettificaLoading] = useState(false);
   const [selectedLotto, setSelectedLotto] = useState(null);
   const [mostraArchivio, setMostraArchivio] = useState(false);
   const [smaltimentoId, setSmaltimentoId] = useState(null);
@@ -147,6 +148,27 @@ const LottiList = ({
     if (!win) toast.error("Popup bloccato dal browser. Consenti i popup per questo sito.");
   };
 
+  const confermaRettifica = async () => {
+    if (!rettifica || motivoRettifica.trim().length < 5) {
+      toast.error("Indica una motivazione di almeno 5 caratteri");
+      return;
+    }
+    setRettificaLoading(true);
+    try {
+      await axios.post(`${API}/lotti/${rettifica.id}/${rettifica.azione}`, {
+        motivo: motivoRettifica.trim(),
+      });
+      toast.success(rettifica.azione === "annulla" ? "Lotto annullato: storico conservato" : "Lotto ripristinato");
+      setRettifica(null);
+      setMotivoRettifica("");
+      await onLottiChanged?.();
+    } catch (e) {
+      toast.error(apiError(e, "Rettifica del lotto non riuscita"));
+    } finally {
+      setRettificaLoading(false);
+    }
+  };
+
   const ricalcolaTracciabilita = async () => {
     try {
       const res = await axios.post(`${API}/lotti/ricalcola-tracciabilita?solo_mancanti=true`);
@@ -158,7 +180,7 @@ const LottiList = ({
       } else {
         toast.success(`Provenienza ricalcolata: ${aggiornati}/${processati} lotti collegati`);
       }
-      if (onDelete) onDelete("__refresh__"); // trigger refresh
+      await onLottiChanged?.();
     } catch {
       toast.error("Errore ricalcolo provenienza");
     }
@@ -171,7 +193,7 @@ const LottiList = ({
       await axios.patch(`${API}/lotti/${lottoId}/smalti?motivo=smaltito_scaduto`);
       toast.success("Lotto smaltito e registrato");
       setSmaltimentoId(null);
-      if (onDelete) onDelete("__refresh__"); // Ricarica lista
+      await onLottiChanged?.();
     } catch {
       toast.error("Errore durante lo smaltimento");
     }
@@ -182,7 +204,7 @@ const LottiList = ({
     setSmaltiBatchLoading(true);
     try {
       const scaduti = items.filter(i => {
-        if (i.stato === "smaltito") return false;
+        if (["smaltito", "annullato"].includes(i.stato)) return false;
         const d = parseScadenza(i.data_scadenza);
         return d && d < new Date();
       });
@@ -191,7 +213,7 @@ const LottiList = ({
       const res = await axios.post(`${API}/lotti/smalti-batch?motivo=smaltito_scaduto`, { ids });
       toast.success(`Smaltiti ${res.data.smaltiti} lotti scaduti`);
       setSmaltiBatchConfirm(false);
-      if (onDelete) onDelete("__refresh__"); // Ricarica lista
+      await onLottiChanged?.();
     } catch {
       toast.error("Errore smaltimento batch");
     }
@@ -211,7 +233,7 @@ const LottiList = ({
   };
 
   const lottiFiltrati_scaduti = items.filter(i => {
-    if (i.stato === "smaltito") return false;
+    if (["smaltito", "annullato"].includes(i.stato)) return false;
     const d = parseScadenza(i.data_scadenza);
     return d && d < new Date();
   });
@@ -462,22 +484,25 @@ const LottiList = ({
           registrandoRichiamo={registrandoRichiamo}
         />
 
-        {/* Modal conferma eliminazione */}
-        {confirmDeleteId && (
+        {/* Rettifica reversibile del lotto, con motivazione nello storico HACCP */}
+        {rettifica && (
           <div className="fixed inset-0 z-50 flex items-center justify-center">
-            <div className="absolute inset-0 bg-black/50" onClick={() => setConfirmDeleteId(null)} />
+            <div className="absolute inset-0 bg-black/50" onClick={() => setRettifica(null)} />
             <div className="relative bg-white rounded-2xl shadow-2xl p-6 max-w-xs w-full mx-4 text-center">
-              <Trash2 size={36} className="mx-auto mb-3 text-red-500" />
-              <h3 className="text-lg font-bold text-gray-800 mb-1">Eliminare il lotto?</h3>
-              <p className="text-sm text-gray-500 mb-5">Questa azione non può essere annullata.</p>
+              {rettifica.azione === "annulla" ? <Ban size={36} className="mx-auto mb-3 text-red-500" /> : <RotateCcw size={36} className="mx-auto mb-3 text-emerald-600" />}
+              <h3 className="text-lg font-bold text-gray-800 mb-1">{rettifica.azione === "annulla" ? "Annullare il lotto?" : "Ripristinare il lotto?"}</h3>
+              <p className="text-sm text-gray-500 mb-3">Il lotto e la sua cronologia restano consultabili nell’archivio.</p>
+              <textarea value={motivoRettifica} onChange={e => setMotivoRettifica(e.target.value)}
+                placeholder="Motivazione della rettifica" aria-label="Motivazione della rettifica"
+                className="w-full border border-gray-200 rounded-xl p-3 text-sm mb-4" rows={3} />
               <div className="flex gap-3">
-                <button onClick={() => setConfirmDeleteId(null)}
+                <button onClick={() => setRettifica(null)}
                   className="flex-1 px-4 py-2 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50">
-                  Annulla
+                  Chiudi
                 </button>
-                <button onClick={() => { onDelete(confirmDeleteId); setConfirmDeleteId(null); }}
-                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-xl text-sm font-semibold hover:bg-red-700">
-                  Elimina
+                <button onClick={confermaRettifica} disabled={rettificaLoading || motivoRettifica.trim().length < 5}
+                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-xl text-sm font-semibold hover:bg-red-700 disabled:opacity-50">
+                  {rettifica.azione === "annulla" ? "Annulla lotto" : "Ripristina"}
                 </button>
               </div>
             </div>
@@ -486,12 +511,12 @@ const LottiList = ({
 
         {/* Toggle archivio (lotti scaduti da oltre 30 giorni) */}
         {(() => {
-          const archiviatiN = items.filter(i => { const d = parseScadenza(i.data_scadenza); return d && (Date.now() - d.getTime()) > 30 * 86400000; }).length;
+          const archiviatiN = items.filter(i => { const d = parseScadenza(i.data_scadenza); return i.stato === "annullato" || (d && (Date.now() - d.getTime()) > 30 * 86400000); }).length;
           if (!archiviatiN && !mostraArchivio) return null;
           return (
             <div className="flex items-center justify-between gap-2 px-1">
               <span className="text-xs text-gray-400">
-                {mostraArchivio ? "Archivio — scaduti da oltre 30 giorni" : `${archiviatiN} in archivio (scaduti da oltre 30gg)`}
+                {mostraArchivio ? "Archivio — lotti storici e annullati" : `${archiviatiN} in archivio`}
               </span>
               <button onClick={() => setMostraArchivio(v => !v)} className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50">
                 {mostraArchivio ? "← Lotti attivi" : "🗄 Archivio"}
@@ -506,7 +531,7 @@ const LottiList = ({
               // Applica filtro "solo scaduti" se attivo
               const isArchiviato = (i) => {
                 const d = parseScadenza(i.data_scadenza);
-                return d && (Date.now() - d.getTime()) > 30 * 86400000;
+                return i.stato === "annullato" || (d && (Date.now() - d.getTime()) > 30 * 86400000);
               };
               const q = (search || "").trim().toLowerCase();
               // Lotti recenti: in vista attiva mostra solo quelli prodotti negli ultimi 30 giorni.
@@ -521,7 +546,7 @@ const LottiList = ({
                 .filter(i => !q || (i.prodotto || "").toLowerCase().includes(q) || (i.numero_lotto || "").toLowerCase().includes(q));
               if (filtroSoloScaduti) {
                 lottiDaRenderare = lottiDaRenderare.filter(i => {
-                  if (i.stato === "smaltito") return false;
+                  if (["smaltito", "annullato"].includes(i.stato)) return false;
                   const d = parseScadenza(i.data_scadenza);
                   return d && d < new Date();
                 });
@@ -563,7 +588,9 @@ const LottiList = ({
                 // Un lotto bloccato da richiamo era indistinguibile dagli altri
                 // nella lista (audit visivo 24/07/2026): bordo e badge dedicati.
                 const bloccatoRichiamo = item.stato === "bloccato_richiamo";
-                const bordo = bloccatoRichiamo ? "border-red-400"
+                const annullato = item.stato === "annullato";
+                const bordo = annullato ? "border-gray-300"
+                  : bloccatoRichiamo ? "border-red-400"
                   : item.consumato ? "border-gray-200"
                   : scadutaOggi ? "border-red-300"
                   : inScadenza ? "border-amber-300"
@@ -582,8 +609,9 @@ const LottiList = ({
                             </span>
                           )}
                           {bloccatoRichiamo && <span className="text-[10px] font-bold bg-red-600 text-white px-2 py-0.5 rounded-full uppercase tracking-wide">Bloccato — richiamo</span>}
-                          {scadutaOggi && <span className="text-[10px] font-bold bg-red-100 text-red-700 px-2 py-0.5 rounded-full">SCADUTO</span>}
-                          {inScadenza && <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">Scade tra {giorniScadenza}gg</span>}
+                          {annullato && <span className="text-[10px] font-bold bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full">ANNULLATO · {item.motivo_annullamento}</span>}
+                          {!annullato && scadutaOggi && <span className="text-[10px] font-bold bg-red-100 text-red-700 px-2 py-0.5 rounded-full">SCADUTO</span>}
+                          {!annullato && inScadenza && <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">Scade tra {giorniScadenza}gg</span>}
                         </div>
                         <div className="flex items-center gap-x-4 gap-y-1 mt-1 text-sm text-gray-500 flex-wrap">
                           <span className="flex items-center gap-1"><Calendar size={14} /> Prod: {item.data_produzione}</span>
@@ -613,7 +641,7 @@ const LottiList = ({
                         <button onClick={() => handlePrint(item)} className="p-2 text-[#5b7a6b] hover:bg-[#f2f6f3] rounded-lg" title="Stampa">
                           <Printer size={18} />
                         </button>
-                        {scadutaOggi && item.stato !== "smaltito" && !item.consumato && (
+                        {scadutaOggi && item.stato !== "smaltito" && !annullato && !item.consumato && (
                           <button
                             onClick={() => setSmaltimentoId(item.id)}
                             className="p-2 text-red-500 hover:bg-red-50 rounded-lg"
@@ -623,9 +651,16 @@ const LottiList = ({
                             <PackageX size={18} />
                           </button>
                         )}
-                        {!item.consumato && (
-                          <button onClick={() => setConfirmDeleteId(item.id)} className="p-2 text-red-400 hover:bg-red-50 rounded-lg" title="Elimina" data-testid={`btn-elimina-lotto-${item.id}`}>
-                            <Trash2 size={18} />
+                        {isAdmin() && annullato && (
+                          <button onClick={() => { setMotivoRettifica(""); setRettifica({ id: item.id, azione: "ripristina" }); }}
+                            className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg" title="Ripristina lotto" data-testid={`btn-ripristina-lotto-${item.id}`}>
+                            <RotateCcw size={18} />
+                          </button>
+                        )}
+                        {isAdmin() && !item.consumato && !item.esaurito && !annullato && (
+                          <button onClick={() => { setMotivoRettifica(""); setRettifica({ id: item.id, azione: "annulla" }); }}
+                            className="p-2 text-red-500 hover:bg-red-50 rounded-lg" title="Annulla lotto" data-testid={`btn-annulla-lotto-${item.id}`}>
+                            <Ban size={18} />
                           </button>
                         )}
                       </div>
