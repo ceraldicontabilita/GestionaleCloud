@@ -2167,7 +2167,6 @@ export default function PrimaNota() {
     if (sezione === 'soci') {
       setLoading(false);
       setLoadError('');
-      void caricaConteggiProvvisori();
       return;
     }
     if (!silent) setLoading(true);
@@ -2210,9 +2209,6 @@ export default function PrimaNota() {
         if (endpoint === 'banca') setBanca(dati);
         else setCassa(dati);
 
-      }
-      if (sezione !== 'provvisori') {
-        void caricaConteggiProvvisori();
       }
     } catch (e) {
       if (richiesta !== richiestaRef.current) return;
