@@ -4,6 +4,7 @@ import axios from "axios";
 import { toast } from "sonner";
 import { API } from "../../../utils/constants";
 import { stampaDoc } from "../../../utils/stampa";
+import { getTabletSession } from "../../../utils/tabletSession";
 import SelettoreQuantita from "./registraLotto/SelettoreQuantita";
 import SelettorePosizione from "./registraLotto/SelettorePosizione";
 
@@ -116,7 +117,7 @@ export function ModalRegistraLotto({ prodotto, reparto, onClose, onSuccess, onHo
         stagione: stagioneSel,
         divisione,
         reparto,
-        ...(sessionOp?.id && { operatore_id: sessionOp.id }),
+        ...(sessionOp?.dipendente_id && { operatore_id: sessionOp.dipendente_id }),
         ...(sessionOp?.nome && { operatore_nome: sessionOp.nome }),
       });
       toast.success(`✓ ${res.data.pezzi_totali} ${prodotto.nome} divisi nei gusti e mandati al banco`);
@@ -146,7 +147,7 @@ export function ModalRegistraLotto({ prodotto, reparto, onClose, onSuccess, onHo
   const _opDone = (chiave) => { delete opIds.current[chiave]; };
 
   const _operatoreSessione = () => {
-    try { return JSON.parse(sessionStorage.getItem("tablet_operatore") || "null"); } catch { return null; }
+    return getTabletSession();
   };
 
   const _mandaUnLotto = (lotto, qty) => {
@@ -156,7 +157,7 @@ export function ModalRegistraLotto({ prodotto, reparto, onClose, onSuccess, onHo
         pezzi: qty,
         reparto,
         operation_id: _opId(`banco_${lotto.id}`),
-        ...(sessionOp?.id && { operatore_id: sessionOp.id }),
+        ...(sessionOp?.dipendente_id && { operatore_id: sessionOp.dipendente_id }),
         ...(sessionOp?.nome && { operatore_nome: sessionOp.nome }),
       },
     });
@@ -386,8 +387,7 @@ export function ModalRegistraLotto({ prodotto, reparto, onClose, onSuccess, onHo
         });
 
       // Leggi operatore dalla sessione tablet
-      const sessionOpRaw = sessionStorage.getItem("tablet_operatore");
-      const sessionOp = sessionOpRaw ? JSON.parse(sessionOpRaw) : null;
+      const sessionOp = getTabletSession();
 
       const params = {
         ricetta_id: prodotto.id,
@@ -396,7 +396,7 @@ export function ModalRegistraLotto({ prodotto, reparto, onClose, onSuccess, onHo
         costo_totale: 0,
         data_produzione: new Date().toISOString().split("T")[0],
         operation_id: _opId("produzione"),
-        ...(sessionOp?.id   && { operatore_id:   sessionOp.id }),
+        ...(sessionOp?.dipendente_id && { operatore_id: sessionOp.dipendente_id }),
         ...(sessionOp?.nome && { operatore_nome: sessionOp.nome }),
       };
       if ((destinazione === "frigo" || destinazione === "abbattitore") && frigo) {
@@ -445,7 +445,7 @@ export function ModalRegistraLotto({ prodotto, reparto, onClose, onSuccess, onHo
             data: new Date().toISOString().split("T")[0],
             lotto_id: res.data.id || res.data.lotto?.id || null,          // ← tracciabilità
             numero_lotto: res.data.numero_lotto || res.data.lotto?.numero_lotto || null,
-            operatore_id: operatore?.id || null,
+            operatore_id: operatore?.dipendente_id || null,
             operatore_nome: operatore?.nome || null,
           });
           toast.success("Registrato per la vendita al banco!");

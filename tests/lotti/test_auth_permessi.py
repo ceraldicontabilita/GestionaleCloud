@@ -87,7 +87,7 @@ def test_scrittura_con_token_passa():
 
 
 def test_rotte_pubbliche_passano_senza_token():
-    for p in ("/api/health", "/api/foto/abc", "/api/auth/login"):
+    for p in ("/api/health", "/api/foto/abc", "/api/tablet-operatori/login"):
         req = FintaRichiesta(method="GET", path=p)
         assert _run(auth_dependency(req)) is None
     # /api/foto è pubblica perché i tag <img> non mandano l'header

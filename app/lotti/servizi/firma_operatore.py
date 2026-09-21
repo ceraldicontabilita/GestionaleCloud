@@ -75,6 +75,6 @@ async def firma_da_pin(
     operatore = trovati[0]
     return {
         "operatore": operatore.get("nome", "") or operatore_dichiarato,
-        "operatore_id": operatore.get("id", ""),
+        "operatore_id": operatore["dipendente_id"],
         "firma_verificata": True,
     }

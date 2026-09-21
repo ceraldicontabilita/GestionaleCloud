@@ -1,5 +1,5 @@
 import axios from "axios";
-import { API } from "@/utils/constants";
+import { API } from "./utils/constants";
 
 const TOKEN_KEY = "lotti_token";
 

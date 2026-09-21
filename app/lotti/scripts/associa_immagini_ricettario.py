@@ -2,7 +2,7 @@
 
 Esegue prima una simulazione. Con ``--apply`` scarica un backup JSON dei
 collegamenti, carica solo immagini con corrispondenza forte e lascia intatte le
-foto manuali già presenti. Il PIN arriva esclusivamente da ``LOTTI_ADMIN_PIN``.
+foto manuali già presenti. Il PIN personale arriva da ``LOTTI_OPERATOR_PIN``.
 """
 
 from __future__ import annotations
@@ -140,25 +140,14 @@ def scegli_immagine(nome_ricetta: str, immagini: list[Immagine]):
 
 
 class LottiClient:
-    def __init__(self, api: str, pin: str, operator_name: str):
+    def __init__(self, api: str, pin: str):
         self.api = api.rstrip("/")
         self.session = requests.Session()
-        login = self.session.post(f"{self.api}/auth/login", json={"pin": pin}, timeout=30)
+        login = self.session.post(f"{self.api}/tablet-operatori/login", json={"pin": pin}, timeout=30)
         login.raise_for_status()
         payload = login.json()
-        if payload.get("scelta_operatore"):
-            operators = payload.get("operatori") or []
-            selected = next((op for op in operators if operator_name.casefold() in (op.get("nome") or "").casefold()), None)
-            selected = selected or next((op for op in operators if op.get("ruolo") == "amministratore"), None)
-            if not selected:
-                raise RuntimeError("Nessun amministratore associato al PIN")
-            login = self.session.post(
-                f"{self.api}/auth/login",
-                json={"pin": pin, "operatore_id": selected["id"]},
-                timeout=30,
-            )
-            login.raise_for_status()
-            payload = login.json()
+        if payload.get("operatore", {}).get("ruolo") != "amministratore":
+            raise RuntimeError("Il PIN personale non identifica un amministratore Lotti")
         self.session.headers["Authorization"] = f"Bearer {payload['token']}"
 
     def get_json(self, path: str):
@@ -273,7 +262,6 @@ def main() -> int:
     parser.add_argument("--api", default="https://gestionalecloud.onrender.com/lotti/api")
     parser.add_argument("--images-dir", type=Path, required=True)
     parser.add_argument("--backup-dir", type=Path, default=Path("backup_ricette"))
-    parser.add_argument("--operator-name", default="Vincenzo")
     parser.add_argument("--mapping-file", type=Path)
     parser.add_argument(
         "--apply-departments",
@@ -283,11 +271,11 @@ def main() -> int:
     parser.add_argument("--apply", action="store_true")
     args = parser.parse_args()
 
-    pin = os.environ.get("LOTTI_ADMIN_PIN", "")
+    pin = os.environ.get("LOTTI_OPERATOR_PIN", "")
     if not pin:
-        raise SystemExit("Imposta LOTTI_ADMIN_PIN nell'ambiente")
+        raise SystemExit("Imposta LOTTI_OPERATOR_PIN nell'ambiente")
     images = indicizza_immagini(args.images_dir)
-    client = LottiClient(args.api, pin, args.operator_name)
+    client = LottiClient(args.api, pin)
     recipes = client.get_json("/ricette")
     plan = applica_mappature_esplicite(
         costruisci_piano(recipes, images), recipes, images, args.mapping_file
