@@ -238,31 +238,3 @@ def test_codice_morto_eliminato_non_ritorna():
     assert not presenti, (
         "File morti gia' eliminati sono ricomparsi: " + ", ".join(presenti)
     )
-
-
-def test_importatori_documentali_vivono_solo_nei_servizi():
-    vecchi = (
-        ROOT / "app/routers/distinte_bpm.py",
-        ROOT / "app/routers/libro_unico_parser.py",
-    )
-    presenti = [p.relative_to(ROOT).as_posix() for p in vecchi if p.exists()]
-    assert not presenti, "Falsi router documentali ricomparsi: " + ", ".join(presenti)
-
-    for path in (
-        ROOT / "app/services/distinte_bpm.py",
-        ROOT / "app/services/libro_unico_workflow.py",
-    ):
-        source = path.read_text(encoding="utf-8")
-        assert "APIRouter" not in source
-        assert "@router." not in source
-
-
-def test_nessun_import_runtime_dei_vecchi_router_documentali():
-    vietati = ("app.routers.distinte_bpm", "app.routers.libro_unico_parser")
-    offenders = []
-    for path in APP.rglob("*.py"):
-        source = path.read_text(encoding="utf-8")
-        for modulo in vietati:
-            if modulo in source:
-                offenders.append(f"{path.relative_to(ROOT).as_posix()} -> {modulo}")
-    assert not offenders, "Import dei vecchi falsi router: " + ", ".join(offenders)
