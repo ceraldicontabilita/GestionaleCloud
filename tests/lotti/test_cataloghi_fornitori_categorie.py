@@ -5,7 +5,7 @@ from app.lotti.routers.acquaviva import (
 )
 from app.lotti.routers.mepa import CATEGORIE_MEPA
 from app.lotti.routers.prodotti_master import _CATALOGO_MAX_PRODOTTI, _categoria_merce
-from app.lotti.routers.ricette import _categorizza_reparto, _reparto_finale_auto
+from app.lotti.servizi.reparti_ricette import _categorizza_reparto, _reparto_finale_auto
 from bs4 import BeautifulSoup
 from app.lotti.routers.saima import build_saima_image_url, _immagine_saima_da_listing
 
@@ -45,6 +45,14 @@ def test_preparazioni_base_storiche_hanno_un_reparto():
 
 def test_classificazione_bar_corregge_anche_un_reparto_errato():
     assert _reparto_finale_auto("rosticceria", _categorizza_reparto("Succo alla pera")) == "bar"
+
+
+def test_ricettari_fornitori_non_confondono_dolci_e_panificati_con_le_bevande():
+    assert _categorizza_reparto("Caprese Al Limone") == "pasticceria"
+    assert _categorizza_reparto("Mela E Cannella", ["Zucchero", "Mela semicandita"]) == "pasticceria"
+    assert _categorizza_reparto("Pane Dolce Allo Zafferano") == "pasticceria"
+    assert _categorizza_reparto("Grissini Al Vino") == "rosticceria"
+    assert _categorizza_reparto("Ciabatta Al Vino Rosso") == "rosticceria"
 
 
 def test_categoria_ufficiale_fornitore_precede_le_parole_del_nome():
