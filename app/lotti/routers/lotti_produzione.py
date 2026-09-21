@@ -529,7 +529,9 @@ async def manda_lotto_al_banco(
         )
         movimento_id = mov.get("id")
     except Exception:
-        _LOG_INIT.exception("[lotti_produzione] registrazione movimento banco fallita (non bloccante)")
+        _LOG_INIT.exception("[lotti_produzione] registrazione movimento banco fallita")
+        if operation_id:
+            raise
     # Richiesta Enzo 20/07/2026: "manda al banco" non diceva DA QUALE frigo/
     # congelatore veniva presa la merce, né dava modo di stamparne conferma —
     # ora la risposta porta tutto ciò che serve al frontend per confermarlo
@@ -785,7 +787,9 @@ async def recupera_lotto(
             operation_id=f"recupero_{operation_id}" if operation_id else None,
         )
     except Exception:
-        _LOG_INIT.exception("[lotti_produzione] registrazione movimento recupero fallita (non bloccante)")
+        _LOG_INIT.exception("[lotti_produzione] registrazione movimento recupero fallita")
+        if operation_id:
+            raise
     _risposta = {"status": "ok", "lotto_id": lotto_id, "quantita_recuperata": quantita_recuperata,
                  "quantita_residua": prelievo["residua"]}
     await conclude_prelievo(prelievo["chiave"], _risposta)

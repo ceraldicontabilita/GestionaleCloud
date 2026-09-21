@@ -355,6 +355,27 @@ def test_retry_banco_riprende_consegna_dopo_errore_senza_secondo_scarico(dbmock,
     assert run(dbmock.vendite_banco.count_documents({"lotto_id": "RIPRESA"})) == 1
 
 
+def test_retry_recupero_riprende_movimento_senza_secondo_scarico(dbmock, monkeypatch):
+    import app.lotti.routers.lotti_produzione as lp
+    import app.lotti.servizi.movimenti_lotto_service as movimenti
+    run(dbmock.lotti.insert_one({"id": "RECUPERO", "prodotto": "Crema", "quantita": 3,
+        "data_scadenza": (datetime.now() + timedelta(days=2)).strftime("%d/%m/%Y")}))
+    originale = movimenti.registra_movimento
+    async def errore_temporaneo(*args, **kwargs):
+        raise RuntimeError("registro movimenti non disponibile")
+    monkeypatch.setattr(movimenti, "registra_movimento", errore_temporaneo)
+    parametri = {"quantita": 1, "motivo": "nuova preparazione", "operatore_id": "op-1",
+                "operatore_nome": "Mario", "operation_id": "recupero-ripresa"}
+    with pytest.raises(RuntimeError):
+        run(lp.recupera_lotto("RECUPERO", **parametri))
+    assert run(dbmock.lotti.find_one({"id": "RECUPERO"}))["quantita"] == 2
+    monkeypatch.setattr(movimenti, "registra_movimento", originale)
+    esito = run(lp.recupera_lotto("RECUPERO", **parametri))
+    assert esito["quantita_residua"] == 2
+    assert run(dbmock.lotti.find_one({"id": "RECUPERO"}))["quantita"] == 2
+    assert run(dbmock.movimenti_lotto.count_documents({"lotto_id": "RECUPERO", "tipo_evento": "recupero"})) == 1
+
+
 def test_dedup_senza_piva_conserva_entrambe(dbmock):
     import app.lotti.routers.fatture as fat
     run(dbmock.fatture.create_index([("numero_fattura", 1), ("piva", 1)],
