@@ -20,6 +20,7 @@ from app.lotti.db import database as db
 from datetime import datetime, timezone
 from pymongo import UpdateOne
 from app.lotti.auth import require_admin
+from app.lotti.servizi.reparti_ricette import _categorizza_reparto
 
 router = APIRouter(prefix="/saima/ricettari", tags=["saima"])
 
@@ -247,6 +248,9 @@ async def _importa_bundle_saima() -> dict:
             "sha256_fonte": item.get("sha256_fonte"),
         }
         insert_only = {key: value for key, value in item.items() if key not in source_fields}
+        reparto = _categorizza_reparto(item.get("nome", ""), ingredienti=item.get("ingredienti") or [])
+        if reparto != "altro":
+            insert_only["reparto"] = reparto
         # Il bundle e un riferimento professionale consultabile: non diventa
         # automaticamente una card di produzione. L'utente lo attiva salvando
         # la ricetta dal form «Usa in ricetta».

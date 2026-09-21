@@ -33,6 +33,14 @@ def test_tutti_i_ricettari_ufficiali_hanno_url_correnti_e_bundle():
     assert Path(mod._BUNDLE_RICETTE).exists()
 
 
+def test_bundle_saima_assegna_dolci_e_salati_ai_reparti_corretti():
+    items = {item["nome"]: item for item in mod._bundle_saima()["ricette"]}
+    assert items["Caprese Al Limone"]["reparto"] == "pasticceria"
+    assert items["Mela E Cannella"]["reparto"] == "pasticceria"
+    assert items["Ciabatta Al Vino Rosso"]["reparto"] == "rosticceria"
+    assert items["Grissini Al Vino"]["reparto"] == "rosticceria"
+
+
 def test_dosi_italiane_con_punto_migliaia_non_diventano_decimali():
     rows = _parse_ingredients("Uova 1.300 g\nLatte 1,5 l")
     assert rows[0]["quantita"] == 1300

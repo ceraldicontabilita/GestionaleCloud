@@ -903,7 +903,7 @@
     {
       "id": "saima:waldkorn-ricettario:mela-e-cannella:p4",
       "nome": "Mela E Cannella",
-      "reparto": "rosticceria",
+      "reparto": "pasticceria",
       "origine": "saima",
       "fonte_archivio": "SAIMA S.p.a.",
       "ricettario_saima_id": "waldkorn-ricettario",
@@ -1091,7 +1091,7 @@
     {
       "id": "saima:waldkorn-ricettario:cioccolato-e-lampone:p6",
       "nome": "Cioccolato E Lampone",
-      "reparto": "rosticceria",
+      "reparto": "pasticceria",
       "origine": "saima",
       "fonte_archivio": "SAIMA S.p.a.",
       "ricettario_saima_id": "waldkorn-ricettario",
@@ -1329,7 +1329,7 @@
     {
       "id": "saima:pan-della-vigna-ricettario:mediterraneo:p4",
       "nome": "Mediterraneo",
-      "reparto": "pasticceria",
+      "reparto": "rosticceria",
       "origine": "saima",
       "fonte_archivio": "SAIMA S.p.a.",
       "ricettario_saima_id": "pan-della-vigna-ricettario",
@@ -1543,7 +1543,7 @@
     {
       "id": "saima:pan-della-vigna-ricettario:e-salsiccia-di-cinghiale:p7",
       "nome": "E Salsiccia Di Cinghiale",
-      "reparto": "pasticceria",
+      "reparto": "rosticceria",
       "origine": "saima",
       "fonte_archivio": "SAIMA S.p.a.",
       "ricettario_saima_id": "pan-della-vigna-ricettario",
@@ -1733,7 +1733,7 @@
     {
       "id": "saima:pan-della-vigna-ricettario:ciabatta-al-vino-rosso:p10",
       "nome": "Ciabatta Al Vino Rosso",
-      "reparto": "pasticceria",
+      "reparto": "rosticceria",
       "origine": "saima",
       "fonte_archivio": "SAIMA S.p.a.",
       "ricettario_saima_id": "pan-della-vigna-ricettario",
@@ -2933,7 +2933,7 @@
     {
       "id": "saima:rex-bucheron-ricettario:baguette-rustica:p5",
       "nome": "Baguette Rustica",
-      "reparto": "pasticceria",
+      "reparto": "rosticceria",
       "origine": "saima",
       "fonte_archivio": "SAIMA S.p.a.",
       "ricettario_saima_id": "rex-bucheron-ricettario",
@@ -3519,7 +3519,7 @@
     {
       "id": "saima:rex-bucheron-ricettario:pagnotta-rustica:p15",
       "nome": "Pagnotta Rustica",
-      "reparto": "pasticceria",
+      "reparto": "rosticceria",
       "origine": "saima",
       "fonte_archivio": "SAIMA S.p.a.",
       "ricettario_saima_id": "rex-bucheron-ricettario",
@@ -3585,7 +3585,7 @@
     {
       "id": "saima:rex-bucheron-ricettario:pagnotta-rustica-con-lievito-madre:p16",
       "nome": "Pagnotta Rustica Con Lievito Madre",
-      "reparto": "pasticceria",
+      "reparto": "rosticceria",
       "origine": "saima",
       "fonte_archivio": "SAIMA S.p.a.",
       "ricettario_saima_id": "rex-bucheron-ricettario",
@@ -4307,7 +4307,7 @@
     {
       "id": "saima:craft-malz-ricettario-2:mini-craft-burger:p9",
       "nome": "Mini Craft Burger",
-      "reparto": "pasticceria",
+      "reparto": "rosticceria",
       "origine": "saima",
       "fonte_archivio": "SAIMA S.p.a.",
       "ricettario_saima_id": "craft-malz-ricettario-2",
@@ -4569,7 +4569,7 @@
     {
       "id": "saima:soft-break-ricettario:calzone-con-provola-e-scarola:p4",
       "nome": "Calzone Con Provola E Scarola",
-      "reparto": "pasticceria",
+      "reparto": "rosticceria",
       "origine": "saima",
       "fonte_archivio": "SAIMA S.p.a.",
       "ricettario_saima_id": "soft-break-ricettario",
@@ -4643,7 +4643,7 @@
     {
       "id": "saima:soft-break-ricettario:hot-dog-farciti:p5",
       "nome": "Hot Dog Farciti",
-      "reparto": "pasticceria",
+      "reparto": "rosticceria",
       "origine": "saima",
       "fonte_archivio": "SAIMA S.p.a.",
       "ricettario_saima_id": "soft-break-ricettario",
@@ -4701,7 +4701,7 @@
     {
       "id": "saima:soft-break-ricettario:pane-dolce-allo-zafferano:p6",
       "nome": "Pane Dolce Allo Zafferano",
-      "reparto": "rosticceria",
+      "reparto": "pasticceria",
       "origine": "saima",
       "fonte_archivio": "SAIMA S.p.a.",
       "ricettario_saima_id": "soft-break-ricettario",
@@ -4999,7 +4999,7 @@
     {
       "id": "saima:cake-nature-ricettario:caprese-al-limone:p3",
       "nome": "Caprese Al Limone",
-      "reparto": "rosticceria",
+      "reparto": "pasticceria",
       "origine": "saima",
       "fonte_archivio": "SAIMA S.p.a.",
       "ricettario_saima_id": "cake-nature-ricettario",

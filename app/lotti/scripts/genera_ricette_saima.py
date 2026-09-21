@@ -22,6 +22,7 @@ from pathlib import Path
 import pdfplumber
 from PIL import Image
 from pypdf import PdfReader
+from app.lotti.servizi.reparti_ricette import _categorizza_reparto
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -110,15 +111,6 @@ def _parse_ingredients(text: str, *, allow_quantityless: bool = False) -> list[d
             }
         )
     return rows
-
-
-def _department(title: str, procedure: str) -> str:
-    text = f"{title} {procedure}".lower()
-    savory = (
-        "pane", "pizza", "focacc", "scrocchiarella", "pancampagna", "waldkorn",
-        "sandwich", "panino", "salato", "rustico", "grissin", "cracker",
-    )
-    return "rosticceria" if any(word in text for word in savory) else "pasticceria"
 
 
 def _recipe_crops(page) -> tuple[str, str]:
@@ -365,7 +357,7 @@ def build() -> dict:
                     {
                         "id": rid,
                         "nome": title.title(),
-                        "reparto": _department(title, procedure),
+                        "reparto": _categorizza_reparto(title, ingredienti=[item["nome"] for item in ingredients]),
                         "origine": "saima",
                         "fonte_archivio": "SAIMA S.p.a.",
                         "ricettario_saima_id": book_id,

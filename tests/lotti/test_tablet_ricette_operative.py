@@ -129,7 +129,7 @@ def test_salvataggio_ricetta_fornitore_la_rende_operativa(monkeypatch):
     assert modificata["ricetta_operativa"] is True
 
 
-def test_riordino_persistente_esclude_riferimenti_e_crea_backup(monkeypatch):
+def test_riordino_persistente_corregge_anche_riferimenti_fornitori_e_crea_backup(monkeypatch):
     import app.lotti.routers.ricette as module
     database = AsyncMongoMockClient()["Gestionale_Test"]
     monkeypatch.setattr(module, "db", database)
@@ -137,14 +137,22 @@ def test_riordino_persistente_esclude_riferimenti_e_crea_backup(monkeypatch):
         {"id": "dolce", "nome": "Tiramisù", "reparto": "rosticceria"},
         {"id": "salato", "nome": "Pizza margherita", "reparto": "pasticceria"},
         {"id": "saima", "nome": "Calzone SAIMA", "reparto": "pasticceria", "origine": "saima"},
+        {"id": "saima-dolce", "nome": "Caprese Al Limone", "reparto": "rosticceria",
+         "origine": "saima", "visibile_tablet": False,
+         "ingredienti": ["Marzapane dolce", "Cioccolato bianco"]},
     ]))
 
     result = run(module.auto_assegna_reparti(applica=True, _admin={"nome": "Ceraldi Vincenzo"}))
 
-    assert result["aggiornate"] == 2
+    assert result["aggiornate"] == 4
     assert run(database.ricette.find_one({"id": "dolce"}))["reparto"] == "pasticceria"
     assert run(database.ricette.find_one({"id": "salato"}))["reparto"] == "rosticceria"
-    assert run(database.ricette.find_one({"id": "saima"}))["reparto"] == "pasticceria"
+    assert run(database.ricette.find_one({"id": "saima"}))["reparto"] == "rosticceria"
+    corretta = run(database.ricette.find_one({"id": "saima-dolce"}))
+    assert corretta["reparto"] == "pasticceria"
+    assert corretta["visibile_tablet"] is False
     backup = run(database.ricette_import_backup.find_one({"tipo": "riordino_reparti_operativi"}))
     assert backup["operatore"] == "Ceraldi Vincenzo"
-    assert {item["id"] for item in backup["reparti_precedenti"]} == {"dolce", "salato"}
+    assert {item["id"] for item in backup["reparti_precedenti"]} == {
+        "dolce", "salato", "saima", "saima-dolce"
+    }
