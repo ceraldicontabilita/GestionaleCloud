@@ -27,6 +27,11 @@ PIN_ADMIN_USERNAME = "ceraldi"
 PIN_ADMIN_EMAIL_DEFAULT = os.getenv("ADMIN_EMAIL", "ceraldigroupsrl@gmail.com")
 
 
+def admin_pin_is_configured() -> bool:
+    from app.services.admin_pin import configured
+    return configured()
+
+
 @dataclass(frozen=True)
 class PinIdentity:
     id: str
@@ -132,9 +137,7 @@ async def authenticate_pin(db, pin: str) -> PinIdentity | None:
 
 async def has_any_pin_identity(db) -> bool:
     """True se esiste almeno una sorgente PIN utilizzabile."""
-    from app.services.admin_pin import configured
-
-    if configured():
+    if admin_pin_is_configured():
         return True
     try:
         return await db[utenti_pin.COLLECTION].count_documents({"attivo": True}) > 0
