@@ -7,20 +7,16 @@ from fastapi import APIRouter, HTTPException, BackgroundTasks, Query, Depends
 from pydantic import BaseModel
 import httpx
 import logging
-import json
 import re
 import unicodedata
 import uuid
 from difflib import SequenceMatcher
-from pathlib import Path
 from typing import Optional
 _LOG_INIT = logging.getLogger("uvicorn.error")
 from bs4 import BeautifulSoup
 from app.lotti.db import database as db
 from datetime import datetime, timezone
-from pymongo import UpdateOne
 from app.lotti.auth import require_admin
-from app.lotti.servizi.reparti_ricette import _categorizza_reparto
 
 router = APIRouter(prefix="/saima/ricettari", tags=["saima"])
 
@@ -214,67 +210,6 @@ RICETTARI_APPLICAZIONI = [
 RICETTARI_STATICI = RICETTARI_APPLICAZIONI
 ALL_RICETTARI_STATICI = RICETTARI_STATICI
 
-_BUNDLE_RICETTE = Path(__file__).resolve().parent.parent / "data" / "ricette_saima.json"
-
-
-def _bundle_saima() -> dict:
-    if not _BUNDLE_RICETTE.exists():
-        return {"meta": {}, "ricette": []}
-    try:
-        return json.loads(_BUNDLE_RICETTE.read_text(encoding="utf-8"))
-    except Exception:
-        _LOG_INIT.exception("[saima_ricettari] bundle ricette non leggibile")
-        return {"meta": {}, "ricette": []}
-
-
-async def _importa_bundle_saima() -> dict:
-    """Upsert idempotente: crea le ricette mancanti e preserva le modifiche utente."""
-    payload = _bundle_saima()
-    ricette = payload.get("ricette") or []
-    if not ricette:
-        return {"totale_bundle": 0, "inserite": 0, "gia_presenti": 0}
-    ids = [item["id"] for item in ricette]
-    esistenti = set(await db.ricette.distinct("id", {"id": {"$in": ids}}))
-    now = datetime.now(timezone.utc).isoformat()
-    ops = []
-    for item in ricette:
-        source_fields = {
-            "fonte_archivio": item.get("fonte_archivio"),
-            "ricettario_saima_id": item.get("ricettario_saima_id"),
-            "ricettario_saima_nome": item.get("ricettario_saima_nome"),
-            "url_pdf": item.get("url_pdf"),
-            "url_pagina": item.get("url_pagina"),
-            "pagina_fonte": item.get("pagina_fonte"),
-            "sha256_fonte": item.get("sha256_fonte"),
-        }
-        insert_only = {key: value for key, value in item.items() if key not in source_fields}
-        reparto = _categorizza_reparto(item.get("nome", ""), ingredienti=item.get("ingredienti") or [])
-        if reparto != "altro":
-            insert_only["reparto"] = reparto
-        # Il bundle e un riferimento professionale consultabile: non diventa
-        # automaticamente una card di produzione. L'utente lo attiva salvando
-        # la ricetta dal form «Usa in ricetta».
-        insert_only.setdefault("visibile_tablet", False)
-        insert_only.setdefault("ricetta_operativa", False)
-        ops.append(
-            UpdateOne(
-                {"id": item["id"]},
-                {
-                    "$setOnInsert": {**insert_only, "created_at": now},
-                    "$set": {**source_fields, "updated_source_at": now},
-                },
-                upsert=True,
-            )
-        )
-    if ops:
-        await db.ricette.bulk_write(ops, ordered=False)
-    return {
-        "totale_bundle": len(ricette),
-        "inserite": len(set(ids) - esistenti),
-        "gia_presenti": len(esistenti),
-        "ricettari": payload.get("meta", {}).get("totale_ricettari", 0),
-    }
-
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Accept-Language": "it-IT,it;q=0.9",
@@ -291,20 +226,7 @@ async def get_ricettari():
     ids_statici = {r["id"] for r in ALL_RICETTARI_STATICI}
     nuovi = [extra for extra in db_extra if extra.get("id") not in ids_statici]
 
-    counts = {}
-    for item in (_bundle_saima().get("ricette") or []):
-        book_id = item.get("ricettario_saima_id")
-        counts[book_id] = counts.get(book_id, 0) + 1
-    return [
-        {**item, "ricette_importabili": counts.get(item.get("id"), 0)}
-        for item in (list(ALL_RICETTARI_STATICI) + nuovi)
-    ]
-
-
-@router.post("/importa-ricette")
-async def importa_ricette_saima(_admin=Depends(require_admin)):
-    """Inserisce idempotentemente le ricette SAIMA nel ricettario Ceraldi unico."""
-    return {"success": True, **(await _importa_bundle_saima())}
+    return list(ALL_RICETTARI_STATICI) + nuovi
 
 
 def _norm(value: str) -> str:
