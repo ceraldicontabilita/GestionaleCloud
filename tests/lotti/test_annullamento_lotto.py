@@ -76,4 +76,5 @@ def test_lotto_componente_di_altra_produzione_non_si_annulla(archivio):
 
 def test_router_non_espone_piu_delete_lotto():
     assert not any(r.path == "/lotti/{lotto_id}" and "DELETE" in r.methods for r in lotti.router.routes)
+    assert not any(r.path == "/lotti/elimina-senza-tracciabilita" for r in lotti.router.routes)
     assert any(r.path == "/lotti/{lotto_id}/annulla" and "POST" in r.methods for r in lotti.router.routes)

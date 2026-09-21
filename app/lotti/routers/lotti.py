@@ -537,34 +537,3 @@ async def archivia_scaduti(giorni: int = Query(30, ge=0, le=3650)):
     return {"ok": True, "archiviati": upd.modified_count, "soglia_data": limite}
 
 
-@router.post("/elimina-senza-tracciabilita")
-async def elimina_senza_tracciabilita(conferma: bool = Query(False)):
-    """Elimina definitivamente i lotti storici senza dettaglio ingredienti (produzioni
-    passate create prima che il collegamento ingredienti fosse tracciato — dato non
-    ricostruibile a posteriori). STESSA query del cruscotto /controllo-dati/overview
-    (issue 'lotti_senza_tracciabilita'), per cancellare esattamente e solo quelli
-    segnalati. Richiesto da Enzo 01/07/2026. Senza conferma=true fa solo un'anteprima
-    (nessuna cancellazione)."""
-    def _vuoto(path):
-        return {"$or": [
-            {path: {"$exists": False}}, {path: None}, {path: ""}, {path: []},
-        ]}
-    query = {"$and": [
-        {"$or": [
-            {"stato": {"$exists": False}},
-            # vocabolario reale dei lotti terminati (prima "consumato/chiuso/
-            # archiviato", valori che nessuno scrive → il filtro non escludeva
-            # nulla): ora esclude davvero i lotti già smaltiti/esauriti.
-            {"stato": {"$nin": ["smaltito", "esaurito"]}},
-        ]},
-        _vuoto("ingredienti_dettaglio"),
-        _vuoto("ingredienti"),
-    ]}
-    trovati = await db.lotti.find(
-        query, {"_id": 0, "id": 1, "numero_lotto": 1, "prodotto": 1, "prodotto_nome": 1, "stato": 1}
-    ).to_list(1000)
-    if not conferma:
-        return {"ok": True, "anteprima": True, "trovati": len(trovati), "lotti": trovati,
-                "nota": "Nessuna cancellazione eseguita. Richiama con ?conferma=true per eliminare davvero."}
-    result = await db.lotti.delete_many(query)
-    return {"ok": True, "eliminati": result.deleted_count, "lotti": trovati}
