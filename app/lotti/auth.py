@@ -33,6 +33,7 @@ from typing import Optional
 import jwt
 from jwt import PyJWKClient
 from fastapi import APIRouter, HTTPException, Request
+from app.services.workforce_tokens import create_workforce_token
 from app.services import pin_authentication
 from pydantic import BaseModel
 
@@ -92,16 +93,15 @@ def _load_or_create_persistent_secret() -> str:
 
 
 def make_token(sub: str, nome: str, ruolo: str, via: str = "pin", ore: int = None) -> str:
-    now = datetime.now(timezone.utc)
-    payload = {
-        "sub": sub,
-        "nome": nome,
-        "ruolo": ruolo,
-        "via": via,
-        "iat": now,
-        "exp": now + timedelta(hours=ore if ore else _ttl_hours()),
-    }
-    return jwt.encode(payload, _secret(), algorithm=ALG)
+    return create_workforce_token(
+        sub=sub,
+        name=nome,
+        role=ruolo,
+        secret=_secret(),
+        algorithm=ALG,
+        expires_in=timedelta(hours=ore if ore else _ttl_hours()),
+        auth_method=via,
+    )
 
 
 def verify_token(token: str):
