@@ -279,6 +279,26 @@ describe('Fatture provvisorie in attesa banca', () => {
     );
   });
 
+  it('non mostra falsi zeri prima del caricamento dei conteggi', () => {
+    expect(etichettaTabProvvisori([], [], { caricato: false })).toBe(
+      '⚠️ Da decidere (…) · 🏦 Attesa banca (…)',
+    );
+  });
+
+  it('mostra zero solo dopo un conteggio realmente caricato', () => {
+    expect(etichettaTabProvvisori([], [], {
+      caricato: true,
+      totale_da_decidere: 0,
+      totale_in_attesa_banca: 0,
+    })).toBe('⚠️ Da decidere (0) · 🏦 Attesa banca (0)');
+  });
+
+  it('ricalcola i conteggi quando cambia scheda', () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/pages/PrimaNota.jsx'), 'utf8');
+    expect(source).toContain('}, [anno, sezione]);');
+    expect(source).toContain('/api/prima-nota/provvisori/conteggi?anno=');
+  });
+
   it('compatta soltanto descrizioni duplicate parola per parola', () => {
     const descrizione = 'BONIF. VS. FAVORE - BON.DA CERALDI BONIF. VS. FAVORE - BON.DA CERALDI';
     expect(normalizzaDescrizioneMovimento(descrizione)).toBe(

@@ -180,6 +180,39 @@ async function run() {
       assertAmount(cassaPayload.saldo, -130, 'Saldo Cassa delle fixture isolate');
       assertAmount(bancaPayload.saldo, -160, 'Saldo Banca delle fixture isolate');
 
+      const conteggiProvvisoriAttesi = await call(
+        'get', '/api/prima-nota/provvisori/conteggi?anno=2026',
+      );
+      const rispostaConteggiPagina = page.waitForResponse(
+        r => r.url().includes('/api/prima-nota/provvisori/conteggi?anno='),
+        { timeout: 15000 },
+      );
+      await page.goto(`${BASE}/prima-nota#sezione=banca`, {
+        waitUntil: 'networkidle', timeout: 30000,
+      });
+      const rispostaConteggi = await rispostaConteggiPagina;
+      assert.equal(rispostaConteggi.status(), 200,
+        `Conteggi Provvisori dalla SPA: HTTP ${rispostaConteggi.status()}`);
+      const conteggiDallaPagina = await rispostaConteggi.json();
+      assert.equal(
+        conteggiDallaPagina.totale_da_decidere,
+        conteggiProvvisoriAttesi.totale_da_decidere,
+        'La SPA riceve un conteggio Da decidere diverso dalla chiamata diretta',
+      );
+      assert.equal(
+        conteggiDallaPagina.totale_in_attesa_banca,
+        conteggiProvvisoriAttesi.totale_in_attesa_banca,
+        'La SPA riceve un conteggio Attesa banca diverso dalla chiamata diretta',
+      );
+      await page.getByText(
+        `Da decidere (${conteggiProvvisoriAttesi.totale_da_decidere})`,
+        { exact: false },
+      ).first().waitFor({ timeout: 10000 });
+      await page.getByText(
+        `Attesa banca (${conteggiProvvisoriAttesi.totale_in_attesa_banca})`,
+        { exact: false },
+      ).first().waitFor({ timeout: 10000 });
+
       for (const [sezione, testo] of [
         ['banca', 'E2E-BANCA-PROVA-001'],
         ['provvisori', 'E2E-BANCA-ATTESA-001'],

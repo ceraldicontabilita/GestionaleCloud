@@ -40,7 +40,7 @@ from .sync import (
     registra_fattura_prima_nota, sync_corrispettivi_to_prima_nota,
     sync_corrispettivi_anno, sync_fatture_pagate, get_corrispettivi_sync_status,
     import_prima_nota_batch, create_movimento_generico, collega_fatture_movimenti,
-    sync_estratto_conto_to_banca, get_fatture_provvisorie, conferma_fattura_provvisoria,
+    sync_estratto_conto_to_banca, get_fatture_provvisorie, get_conteggi_fatture_provvisorie, conferma_fattura_provvisoria,
     imposta_fattura_in_attesa_banca, riporta_fattura_da_decidere,
     segnala_dubbio_pagamento,
     proponi_assegni_fattura, associa_assegno_fattura_provvisoria,
@@ -137,6 +137,7 @@ router.add_api_route("/import-batch", import_prima_nota_batch, methods=["POST"])
 router.add_api_route("/movimento", create_movimento_generico, methods=["POST"])
 router.add_api_route("/collega-fatture", collega_fatture_movimenti, methods=["POST"])
 router.add_api_route("/registra-fattura", registra_fattura_prima_nota, methods=["POST"])
+router.add_api_route("/provvisori/conteggi", get_conteggi_fatture_provvisorie, methods=["GET"])
 
 # Manutenzione
 router.add_api_route("/fix-tipo-movimento", fix_tipo_movimento_fatture, methods=["POST"])

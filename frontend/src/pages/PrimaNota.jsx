@@ -82,8 +82,17 @@ function parseImportoIT(input) {
 
 const testoRicerca = valore => String(valore ?? '').trim().toLocaleLowerCase('it-IT');
 
-export function etichettaTabProvvisori(provvisori = [], attesaBanca = []) {
-  return `\u26a0\ufe0f Da decidere (${provvisori.length}) \u00b7 \ud83c\udfe6 Attesa banca (${attesaBanca.length})`;
+export function etichettaTabProvvisori(
+  provvisori = [],
+  attesaBanca = [],
+  conteggi = undefined,
+) {
+  if (conteggi && conteggi.caricato !== true) {
+    return '\u26a0\ufe0f Da decidere (…) · \ud83c\udfe6 Attesa banca (…)';
+  }
+  const daDecidere = conteggi?.totale_da_decidere ?? provvisori.length;
+  const inAttesa = conteggi?.totale_in_attesa_banca ?? attesaBanca.length;
+  return `\u26a0\ufe0f Da decidere (${daDecidere}) · \ud83c\udfe6 Attesa banca (${inAttesa})`;
 }
 
 export function puoAssociareAssegno(pagamento = {}) {
@@ -2120,6 +2129,11 @@ export default function PrimaNota() {
   });
   const [provvisori, setProvvisori] = useState([]);
   const [attesaBanca, setAttesaBanca] = useState([]);
+  const [conteggiProvvisori, setConteggiProvvisori] = useState({
+    caricato: false,
+    totale_da_decidere: null,
+    totale_in_attesa_banca: null,
+  });
   const [tutteFatture, setTutteFatture] = useState([]);
   const [completezzaProvvisori, setCompletezzaProvvisori] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -2130,6 +2144,23 @@ export default function PrimaNota() {
   // globale di Axios (pensato per il cold start di Render) qui raddoppierebbe
   // inutilmente l'attesa.
   const richiestaInterattiva = { timeout: 10000, __noRetry: true };
+
+  const caricaConteggiProvvisori = async () => {
+    try {
+      const { data } = await api.get(
+        `/api/prima-nota/provvisori/conteggi?anno=${anno}`,
+        richiestaInterattiva,
+      );
+      setConteggiProvvisori({
+        caricato: true,
+        totale_da_decidere: Number(data?.totale_da_decidere || 0),
+        totale_in_attesa_banca: Number(data?.totale_in_attesa_banca || 0),
+      });
+    } catch (error) {
+      console.error('Conteggi Prima Nota Provvisori:', error);
+      setConteggiProvvisori(prev => ({ ...prev, caricato: false }));
+    }
+  };
 
   const carica = async ({ silent = false } = {}) => {
     const richiesta = ++richiestaRef.current;
@@ -2150,6 +2181,11 @@ export default function PrimaNota() {
         if (richiesta !== richiestaRef.current) return;
         setProvvisori(p.data?.provvisori || []);
         setAttesaBanca(p.data?.in_attesa_banca || []);
+        setConteggiProvvisori({
+          caricato: true,
+          totale_da_decidere: Number(p.data?.totale_da_decidere || 0),
+          totale_in_attesa_banca: Number(p.data?.totale_in_attesa_banca || 0),
+        });
         setTutteFatture(p.data?.tutte_fatture || []);
         setCompletezzaProvvisori(p.data?.completezza || null);
       } else if (sezione === 'sumup') {
@@ -2188,6 +2224,14 @@ export default function PrimaNota() {
   useEffect(() => {
     carica();
     return () => { richiestaRef.current += 1; };
+  }, [anno, sezione]);
+
+  useEffect(() => {
+    setConteggiProvvisori(prev => ({
+      ...prev,
+      caricato: false,
+    }));
+    void caricaConteggiProvvisori();
   }, [anno, sezione]);
 
   // Modale dedicata (niente window.prompt: su telefono/PWA è inaffidabile)
@@ -2248,7 +2292,9 @@ export default function PrimaNota() {
         {tab('banca', `🏦 Banca ${anno}`)}
         {tab('sumup', `💳 SumUp ${anno}`)}
         {tab('soci', '👥 Soci')}
-        {tab('provvisori', etichettaTabProvvisori(provvisori, attesaBanca))}
+        {tab('provvisori', etichettaTabProvvisori(
+          provvisori, attesaBanca, conteggiProvvisori,
+        ))}
       </div>
 
       {loading && sezione !== 'soci' && (
