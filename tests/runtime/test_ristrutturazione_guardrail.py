@@ -266,3 +266,19 @@ def test_nessun_import_runtime_dei_vecchi_router_documentali():
             if modulo in source:
                 offenders.append(f"{path.relative_to(ROOT).as_posix()} -> {modulo}")
     assert not offenders, "Import dei vecchi falsi router: " + ", ".join(offenders)
+
+
+ROUTER_MORTI_FASE_1C = {
+    "app/routers/bank/pos_accredito.py",
+    "app/routers/dati_provvisori.py",
+}
+
+
+def test_router_morti_fase_1c_non_ritornano():
+    presenti = [p for p in sorted(ROUTER_MORTI_FASE_1C) if (ROOT / p).exists()]
+    assert not presenti, "Router morti Fase 1C ricomparsi: " + ", ".join(presenti)
+
+
+def test_servizi_vivi_fase_1c_restano_disponibili():
+    assert (ROOT / "app/utils/pos_accredito.py").exists()
+    assert (ROOT / "app/services/dati_provvisori_service.py").exists()
