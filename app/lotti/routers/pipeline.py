@@ -11,7 +11,7 @@ Step eseguiti in sequenza:
   2. prezzi         → aggiorna prezzi/kg dizionario da fatture ultime 30gg
   3. dedup          → rimuove prodotti duplicati nel dizionario
   4. acquaviva      → ricalcola costo/pezzo dai pesi reali in fattura
-  5. lotti          → marca scaduti, rimuove esauriti >1 anno
+  5. lotti          → marca scaduti, conserva tutti i lotti storici
   6. fornitori      → aggiorna statistiche fornitori (num fatture, ultima data)
 """
 
@@ -307,70 +307,33 @@ async def step_costi_acquaviva(log: dict):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  STEP 5 — Lotti: marca scaduti, rimuove vecchi
+#  STEP 5 — Lotti: marca scaduti conservando lo storico
 # ─────────────────────────────────────────────────────────────────────────────
 async def step_lotti(log: dict):
-    """
-    Marca lotti scaduti confrontando date in formato dd/mm/yyyy (come salvate nel DB).
-    NON usare confronto stringa ISO vs dd/mm/yyyy — produce falsi positivi.
-    """
-    oggi = datetime.now(timezone.utc).date()
-    un_anno_fa = oggi.replace(year=oggi.year - 1)
+    """Classifica le scadenze con la stessa regola di liste e tablet.
 
-    # Fetch tutti i lotti non ancora marcati scaduti/esauriti
+    Esauriti, smaltiti, annullati e bloccati da richiamo conservano il loro
+    stato e tutti i record restano disponibili alla tracciabilità storica.
+    """
+    from app.lotti.servizi.lotto_arricchimento_service import calcola_stato_scadenza
+
     candidati = await db.lotti.find(
-        {"stato": {"$nin": ["scaduto", "esaurito", "smaltito"]}},
-        {"_id": 0, "id": 1, "lotto_id": 1, "data_scadenza": 1},
+        {"stato": {"$nin": ["scaduto", "esaurito", "smaltito", "annullato", "bloccato_richiamo"]},
+         "esaurito": {"$ne": True}, "consumato": {"$ne": True}},
+        {"_id": 1, "data_scadenza": 1},
     ).to_list(5000)
-
     ids_scaduti = []
-    for l in candidati:
-        scad_str = l.get("data_scadenza", "")
-        if not scad_str:
-            continue
-        try:
-            parts = scad_str.split("/")
-            if len(parts) == 3:
-                d = datetime(int(parts[2]), int(parts[1]), int(parts[0])).date()
-                if d < oggi:
-                    ids_scaduti.append(l.get("id") or l.get("lotto_id"))
-        except Exception:
-            continue
-
+    for lotto in candidati:
+        giorni = calcola_stato_scadenza(lotto.get("data_scadenza"))["giorni_alla_scadenza"]
+        if giorni is not None and giorni < 0:
+            ids_scaduti.append(lotto["_id"])
     if ids_scaduti:
         await db.lotti.update_many(
-            {"$or": [{"id": {"$in": ids_scaduti}}, {"lotto_id": {"$in": ids_scaduti}}]},
-            {"$set": {"stato": "scaduto", "pipeline_flagged": True}},
+            {"_id": {"$in": ids_scaduti},
+             "stato": {"$nin": ["scaduto", "esaurito", "smaltito", "annullato", "bloccato_richiamo"]}},
+            {"$set": {"stato": "scaduto"}},
         )
-
-    # Rimuove lotti esauriti più vecchi di 1 anno (data_produzione in formato dd/mm/yyyy)
-    candidati_vecchi = await db.lotti.find(
-        {"stato": "esaurito"}, {"_id": 0, "id": 1, "lotto_id": 1, "data_produzione": 1}
-    ).to_list(5000)
-
-    ids_da_rimuovere = []
-    for l in candidati_vecchi:
-        prod_str = l.get("data_produzione", "")
-        if not prod_str:
-            continue
-        try:
-            parts = prod_str.split("/")
-            if len(parts) == 3:
-                d = datetime(int(parts[2]), int(parts[1]), int(parts[0])).date()
-                if d < un_anno_fa:
-                    ids_da_rimuovere.append(l.get("id") or l.get("lotto_id"))
-        except Exception:
-            continue
-
-    rimossi_count = 0
-    if ids_da_rimuovere:
-        res = await db.lotti.delete_many(
-            {"$or": [{"id": {"$in": ids_da_rimuovere}}, {"lotto_id": {"$in": ids_da_rimuovere}}]}
-        )
-        rimossi_count = res.deleted_count
-
     log["lotti_scaduti_marcati"] = len(ids_scaduti)
-    log["lotti_vecchi_rimossi"] = rimossi_count
 
 
 # ─────────────────────────────────────────────────────────────────────────────
