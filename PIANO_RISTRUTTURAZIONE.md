@@ -179,7 +179,7 @@ Ulteriore accettazione: importi/date invalidi senza scritture parziali, doppi in
 | RST-0003 | 🟢 | Guardia AST NO-WRITE e census writer warehouse presenti; writer transitori ancora da ridurre |
 | RST-0004 | ⚪ | Contratto route React ↔ catalogo, distinguendo tab/dettagli/redirect |
 | RST-0005 | 🟢 | Nessuna nuova FastAPI produttiva; tre eccezioni temporanee fino alla fusione |
-| RST-0006 | ⚪ | Impedire nuove fonti dati/client indipendenti duplicati |
+| RST-0006 | 🟡 | Guardrail AST introdotto: censiti 6 costruttori DB autonomi legacy in HR/Lotti/Menu; nessun nuovo client può entrare e la whitelist può solo accorciarsi; attende CI/rilascio |
 | RST-0007 | ⚪ | Inventario router montati, non montati, importati e utilizzati internamente |
 | RST-0008 | ⚪ | Grafo completo pagine/componenti, lazy import, asset e toolchain delle quattro interfacce |
 
@@ -387,7 +387,7 @@ Accettazione: stesso ID visibile da HR, fascicolo, salari, TFR e banca; reimport
 
 ## 6. Ordine di lavoro e criteri finali
 
-**Priorità immediata: RST-00A7/#573 e RST-00A6/#575**, poi ulteriori tranche senza compromettere la contabilità in uso.
+**Priorità immediata:** completare la bonifica strutturale e poi consolidare accessi dati/PIN senza compromettere la Prima Nota, ora corretta sui difetti #573 e #575.
 
 Ordine generale: Prima Nota operativa → guardrail → codice morto → public_api → infrastruttura/identità → outbox → fatture/inventario → cedolini/HR → Lotti → Menu → frontend unico → ritiro compatibilità/sotto-app → audit finale. Le rimozioni isolate dimostrate non devono attendere l'intera rifondazione.
 
@@ -433,6 +433,7 @@ Il conteggio dei tre moduli report/batch è 1.186 righe rimosse. Non aggiungerlo
 | 2026-09-21 | RST-1003/1004 | 🟡 | Deroga warehouse_products rimossa dopo eliminazione del lettore; nessuna tabella cancellata |
 | 2026-09-21 | PR-569-PUBBLICATA | 🟢 | 7329ec7498c90da519422ade2f638f0f75d8fc55; CI pre-merge 35555214654, E2E pre-merge 35555214652, Produzione 35555459176 tutti superati nei rispettivi perimetri |
 | 2026-09-21 | FASE-1B-PUBBLICATA | 🟢 | `335d1f7a83959c1cb2015e849f88b6f3f5cae513`: falsi router Distinte BPM e Libro Unico eliminati, service canonici attivi; CI 35567802880 e Produzione 35567802918 verdi |
+| 2026-09-21 | RST-0006-DB-GUARDRAIL | 🟡 | branch `ristrutturazione/rst-0006-db-client-guardrail-20260921`: congelati 6 costruttori DB autonomi legacy; attende CI/rilascio |
 | 2026-09-21 | FASE-1B-V5 | 🟡 | branch `ristrutturazione/fase-1b-falsi-router-v5`: Distinte BPM e workflow ERP Libro Unico spostati nei servizi; vecchi router eliminati; attende CI/rilascio |
 
 **Rilascio verificato:** il lavoro della PR #569 è pubblicato e accessibile live. **Non sono concluse** la qualificazione completa della Prima Nota, la gestione PIN centralizzata dalla UI, l'unificazione dati/outbox né la fusione HR/Lotti/Menu/frontend. Nessuna di queste attività va dichiarata completata per effetto della sola bonifica.
