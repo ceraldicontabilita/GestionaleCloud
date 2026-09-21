@@ -3,7 +3,7 @@
 // stato e logica restano in App.js / useAppNavigation.
 import { FileText, HelpCircle, LayoutDashboard, LogOut } from "lucide-react";
 import SelettoreSezioni from "../components/shared/SelettoreSezioni";
-import { logout } from "../auth";
+import { isAdmin, logout } from "../auth";
 import { conferma } from "../utils/conferma";
 import { HACCP_TABS, PRIMARY_TABS, SECONDARY_TABS } from "../config/navigation";
 import { PAGE_META, PAGE_NAMES, TAB_HEADER_PROPRIO } from "../config/pageMeta";
@@ -31,6 +31,7 @@ const btnHeaderStyle = {
 };
 
 export default function AppLayout({ activeTab, onTabChange, ordiniPendenti, onSupervisoreNavigate, children }) {
+  const amministratore = isAdmin();
   return (
     <div style={{ minHeight: "100dvh", background: "var(--bg)" }}>
       {/* ── Header — .topbar stile app mobile ── */}
@@ -56,6 +57,8 @@ export default function AppLayout({ activeTab, onTabChange, ordiniPendenti, onSu
 
         {/* Azioni header */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          {!amministratore && <button onClick={() => { window.location.hash = "tablet/home"; }} style={btnHeaderStyle}>← Reparti</button>}
+          {amministratore && <>
           {activeTab !== "dashboard" && (
             <button
               onClick={() => onTabChange("dashboard")}
@@ -95,11 +98,12 @@ export default function AppLayout({ activeTab, onTabChange, ordiniPendenti, onSu
             <LogOut size={15} />
             <span className="g-header-btn-label" style={{ whiteSpace: "nowrap" }}>Esci</span>
           </button>
+          </>}
         </div>
       </header>
 
       {/* ── Nav bar — scroll orizzontale tablet ── */}
-      <nav className="g-nav-bar">
+      {amministratore && <nav className="g-nav-bar">
         <div className="g-nav-inner">
           {PRIMARY_TABS.map((tab) => (
             <button
@@ -125,7 +129,7 @@ export default function AppLayout({ activeTab, onTabChange, ordiniPendenti, onSu
 
           <SelettoreSezioni sezioneCorrente="lotti" />
         </div>
-      </nav>
+      </nav>}
 
       {/* ── Contenuto ── */}
       <div className="g-page">

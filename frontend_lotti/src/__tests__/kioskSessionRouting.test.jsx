@@ -16,15 +16,16 @@ jest.mock("../components/haccp/VenditaBancoView", () => ({
 }));
 jest.mock("../components/haccp/MagazzinoBarView", () => () => <div>Magazzino</div>);
 jest.mock("../components/haccp/OrdiniView", () => () => <div>Ordini</div>);
-jest.mock("../components/haccp/tablet/RicetteKioskView", () => () => <div data-testid="ricette-kiosk">Ricette</div>);
 
 const KioskLayout = require("../layouts/KioskLayout").default;
+const AppRouter = require("../router/AppRouter").default;
 const {
   clearTabletSession,
   getTabletSession,
   saveTabletSession,
 } = require("../utils/tabletSession");
-const { saveToken } = require("../auth");
+const { saveRuolo, saveToken } = require("../auth");
+const axios = require("axios");
 
 global.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -33,6 +34,8 @@ describe("navigazione kiosk senza richieste PIN inutili", () => {
   let root;
 
   beforeEach(() => {
+    jest.spyOn(axios, "get").mockResolvedValue({ data: {} });
+    window.location.hash = "";
     localStorage.clear();
     sessionStorage.clear();
     clearTabletSession();
@@ -45,6 +48,7 @@ describe("navigazione kiosk senza richieste PIN inutili", () => {
   afterEach(async () => {
     await act(async () => root.unmount());
     container.remove();
+    jest.restoreAllMocks();
   });
 
   test("un reparto operativo riutilizza l'operatore già identificato", async () => {
@@ -56,11 +60,14 @@ describe("navigazione kiosk senza richieste PIN inutili", () => {
     expect(getTabletSession()).toMatchObject({ nome: "Mario", reparto: "pasticceria" });
   });
 
-  test("Ricette usa la sessione esistente e non apre un secondo accesso", async () => {
+  test("la pagina canonica #ricette usa la sessione dipendente esistente", async () => {
     saveTabletSession({ dipendente_id: "hr-1", nome: "Mario", ruolo: "operatore" }, "pasticceria");
-    await act(async () => root.render(<KioskLayout hash="tablet/ricette" />));
-    expect(container.querySelector('[data-testid="ricette-kiosk"]')).not.toBeNull();
-    expect(getTabletSession()).toMatchObject({ dipendente_id: "hr-1", reparto: "ricette" });
+    saveRuolo("operatore");
+    window.location.hash = "ricette";
+    await act(async () => root.render(<AppRouter AppComponent={() => <div data-testid="ricette-canoniche">Ricette</div>} />));
+    expect(container.querySelector('[data-testid="ricette-canoniche"]')).not.toBeNull();
+    expect(window.location.hash).toBe("#ricette");
+    expect(getTabletSession()).toMatchObject({ dipendente_id: "hr-1" });
   });
 
   test("una card riservata non cancella la sessione del dipendente", async () => {

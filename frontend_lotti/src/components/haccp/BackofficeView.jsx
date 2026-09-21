@@ -36,7 +36,7 @@ const riferimentoFornitoreNonAttivo = (r) =>
 // 3. RICETTE — form schematico e semplice
 // ══════════════════════════════════════════════════════════════════
 
-function TabRicette() {
+function TabRicette({ solaLetturaOperatore = false }) {
   const [ricette,    setRicette]    = useState([]);
   const [loading,    setLoading]    = useState(true);
   const [search,     setSearch]     = useState("");
@@ -72,6 +72,7 @@ function TabRicette() {
 
   // Apertura diretta di una ricetta nell'editor (es. dal pulsante Modifica del tablet).
   useEffect(() => {
+    if (solaLetturaOperatore) return;
     let id;
     try { id = sessionStorage.getItem("apri_ricetta_id"); } catch (_) { id = null; }
     if (!id) return;
@@ -82,7 +83,7 @@ function TabRicette() {
         if (r.data) { setEditRicetta(r.data); setShowForm(true); }
       } catch { /* ignora */ }
     })();
-  }, []);
+  }, [solaLetturaOperatore]);
 
   const impostaVisibilita = async (ricetta, visibile) => {
     if (!ricetta?.id || cambiandoVisibilita) return false;
@@ -206,20 +207,20 @@ function TabRicette() {
           ))}
         </div>
         {/* Azione una-tantum: discreta, non deve competere con «Nuova ricetta» */}
-        <button onClick={importaTracciabilita} disabled={importando}
+        {!solaLetturaOperatore && <button onClick={importaTracciabilita} disabled={importando}
           title="Importa e aggiorna i quattro ricettari Excel Ceraldi senza perdere le modifiche già fatte"
           style={{padding:"8px 12px",border:"1.5px solid var(--border)",borderRadius:10,background:"var(--card)",color:"var(--text-2)",fontWeight:700,fontSize:12,cursor:importando?"wait":"pointer",fontFamily:"var(--font)",whiteSpace:"nowrap"}}>
           {importando ? "Aggiorno…" : "📥 Aggiorna ricettari Excel"}
-        </button>
-        <button onClick={proponiTutte} disabled={compilando}
+        </button>}
+        {!solaLetturaOperatore && <button onClick={proponiTutte} disabled={compilando}
           title="Compila ingredienti e dosi delle ricette incomplete, con l'ingrediente principale portato a 1 kg (non tocca quelle già complete)"
           style={{padding:"8px 12px",border:"1.5px solid #cfdfd5",borderRadius:10,background:"#f2f6f3",color:"#3f5a4e",fontWeight:700,fontSize:12,cursor:compilando?"wait":"pointer",fontFamily:"var(--font)",whiteSpace:"nowrap"}}>
           {compilando ? (avanzamento || "Compilo…") : "Compila ricette incomplete (dosi a 1 kg)"}
-        </button>
-        <button onClick={() => { setEditRicetta(null); setShowForm(true); }}
+        </button>}
+        {!solaLetturaOperatore && <button onClick={() => { setEditRicetta(null); setShowForm(true); }}
           style={{padding:"8px 18px",border:"none",borderRadius:10,background:"var(--primary-grad)",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"var(--font)",whiteSpace:"nowrap"}}>
           + Nuova ricetta
-        </button>
+        </button>}
       </div>
 
       {loading ? (
@@ -269,7 +270,7 @@ function TabRicette() {
                     style={{width:"100%",padding:"9px 0",border:"none",borderRadius:8,background:"var(--primary-grad)",color:"#fff",fontFamily:"var(--font)",fontSize:13,fontWeight:800,cursor:"pointer"}}>
                     🏭 Produci
                   </button>}
-                  {!soloLettura && !riferimentoFornitore && !esclusa && <button
+                  {!solaLetturaOperatore && !soloLettura && !riferimentoFornitore && !esclusa && <button
                     onClick={() => setVerificaR(r)}
                     style={{width:"100%",padding:"9px 0",border:"none",borderRadius:8,background:"#16835c",color:"#fff",fontFamily:"var(--font)",fontSize:13,fontWeight:800,cursor:"pointer"}}>
                     ✅ Posso produrla?
@@ -279,7 +280,7 @@ function TabRicette() {
                     style={{width:"100%",padding:"8px 0",border:"1.5px solid var(--border)",borderRadius:8,background:"var(--card)",fontFamily:"var(--font)",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                     📖 Apri scheda
                   </button>
-                  {!soloLettura ? <button
+                  {!solaLetturaOperatore && (!soloLettura ? <button
                     onClick={() => { setEditRicetta(r); setShowForm(true); }}
                     style={{width:"100%",padding:"8px 0",border:"1.5px solid #b9cec1",borderRadius:8,background:"#edf4ef",color:"#3f5a4e",fontFamily:"var(--font)",fontSize:13,fontWeight:800,cursor:"pointer"}}>
                     {riferimentoFornitore ? "✏️ Usa in ricetta" : "✏️ Modifica nome e ingredienti"}
@@ -288,8 +289,8 @@ function TabRicette() {
                     disabled={promuovendo}
                     style={{width:"100%",padding:"8px 0",border:"1.5px solid #b9cec1",borderRadius:8,background:"#edf4ef",color:"#3f5a4e",fontFamily:"var(--font)",fontSize:13,fontWeight:800,cursor:promuovendo?"wait":"pointer"}}>
                     ✏️ Rendi modificabile
-                  </button>}
-                  {!soloLettura && !riferimentoFornitore && <button type="button"
+                  </button>)}
+                  {!solaLetturaOperatore && !soloLettura && !riferimentoFornitore && <button type="button"
                     disabled={cambiandoVisibilita===r.id}
                     onClick={() => impostaVisibilita(r, esclusa)}
                     style={{width:"100%",minHeight:44,border:"1px solid #cfdfd5",borderRadius:8,background:"#f2f6f3",color:"#3f5a4e",fontFamily:"var(--font)",fontSize:13,fontWeight:800,cursor:"pointer"}}>
@@ -352,9 +353,9 @@ function TabRicette() {
           tutte={ricette}
           occupato={promuovendo}
           onClose={() => setDettaglioR(null)}
-          onRendiOperativa={rendiOperativa}
+          onRendiOperativa={solaLetturaOperatore ? undefined : rendiOperativa}
           onProduci={(r) => { setDettaglioR(null); setProduciR(r); }}
-          onModifica={(r) => { setDettaglioR(null); setEditRicetta(r); setShowForm(true); }}
+          onModifica={solaLetturaOperatore ? undefined : (r) => { setDettaglioR(null); setEditRicetta(r); setShowForm(true); }}
         />
       )}
     </div>
@@ -434,7 +435,7 @@ const TABS = [
   { id:"attivita",   label:"🕑 Attività",             desc:"Chi è entrato e cosa ha fatto" },
 ];
 
-export default function BackofficeView({ initialTab = "prodotti", solo = false }) {
+export default function BackofficeView({ initialTab = "prodotti", solo = false, solaLetturaOperatore = false }) {
   const [tab, setTab] = useState(initialTab);
   const cur = TABS.find(t => t.id === tab);
 
@@ -447,7 +448,7 @@ export default function BackofficeView({ initialTab = "prodotti", solo = false }
           {solo ? (cur?.label?.replace(/^[^\wÀ-ÿ]+\s*/, "") || "Ricette") : "Backoffice"}
         </h1>
         <p style={{margin: solo ? 0 : "0 0 16px",fontSize:13,color:"rgba(255,255,255,.75)"}}>
-          {cur?.desc}
+          {solaLetturaOperatore ? "Consulta le ricette e registra la produzione" : cur?.desc}
         </p>
         {/* Tab bar (nascosta in modalità solo) */}
         {!solo && (
@@ -472,7 +473,7 @@ export default function BackofficeView({ initialTab = "prodotti", solo = false }
       <div style={{padding:"24px 20px", maxWidth:1000, margin:"0 auto"}}>
         {tab === "prodotti"  && <TabProdotti/>}
         {tab === "fornitori" && <TabFornitori/>}
-        {tab === "ricette"   && <TabRicette/>}
+        {tab === "ricette"   && <TabRicette solaLetturaOperatore={solaLetturaOperatore}/>}
         {tab === "attivita"  && <TabAttivita/>}
       </div>
 

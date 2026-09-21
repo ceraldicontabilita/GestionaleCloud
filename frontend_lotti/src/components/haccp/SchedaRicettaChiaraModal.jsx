@@ -1,26 +1,13 @@
 import { BookOpen, ChefHat, Pencil, Plus, X } from "lucide-react";
+import DosiRicetta from "./shared/DosiRicetta";
 
 const righe = (value) => String(value || "").split(/\r?\n/).map(x => x.trim()).filter(Boolean);
-
-function ingredientiOperativi(ricetta) {
-  const dettagli = ricetta?.ingredienti_dettaglio || [];
-  if (dettagli.length) {
-    return dettagli.map(i => {
-      const quantita = Number(i?.quantita || 0);
-      const dose = quantita > 0 ? ` ${quantita.toLocaleString("it-IT")} ${i?.unita_misura || ""}` : "";
-      return `${i?.nome || "Ingrediente"}${dose}`.trim();
-    });
-  }
-  return (ricetta?.ingredienti || []).map(i => typeof i === "string" ? i : i?.nome).filter(Boolean);
-}
 
 export default function SchedaRicettaChiaraModal({ ricetta, tutte = [], onClose, onProduci, onModifica, onRendiOperativa, occupato }) {
   if (!ricetta) return null;
   const documento = ricetta.documentazione_archivio || null;
   const soloLettura = ricetta.origine === "archivio" || ricetta.sola_lettura;
-  const operativi = ingredientiOperativi(ricetta);
   const dallaFonte = righe(ricetta.ingredienti_testo || documento?.ingredients);
-  const elencoIngredienti = soloLettura ? dallaFonte : (operativi.length ? operativi : dallaFonte);
   const procedimento = soloLettura
     ? (ricetta.procedimento_testo || documento?.procedure || "Procedimento non indicato nella fonte.")
     : (ricetta.note || ricetta.procedimento_testo || documento?.procedure || "Procedimento non ancora indicato.");
@@ -48,9 +35,9 @@ export default function SchedaRicettaChiaraModal({ ricetta, tutte = [], onClose,
         <div className="grid gap-7 p-5 md:grid-cols-[.9fr_1.1fr] md:p-8">
           <section>
             <h3 className="mb-3 font-serif text-xl font-bold text-stone-900">Ingredienti</h3>
-            {elencoIngredienti.length ? (
+            {!soloLettura ? <DosiRicetta ricetta={ricetta} /> : dallaFonte.length ? (
               <ul className="m-0 space-y-2 rounded-2xl border border-[#e7ddd0] bg-white p-4 text-sm text-stone-700">
-                {elencoIngredienti.map((riga, i) => <li key={`${riga}-${i}`} className="border-b border-stone-100 pb-2 last:border-0 last:pb-0">{riga}</li>)}
+                {dallaFonte.map((riga, i) => <li key={`${riga}-${i}`} className="border-b border-stone-100 pb-2 last:border-0 last:pb-0">{riga}</li>)}
               </ul>
             ) : <p className="rounded-2xl bg-stone-100 p-4 text-sm text-stone-500">Ingredienti non ancora indicati.</p>}
 
@@ -79,14 +66,14 @@ export default function SchedaRicettaChiaraModal({ ricetta, tutte = [], onClose,
             )}
 
             <div className="grid gap-2 sm:grid-cols-2">
-              {soloLettura ? (
+              {soloLettura ? (onRendiOperativa &&
                 <button onClick={() => onRendiOperativa?.(ricetta)} disabled={occupato} className="col-span-full flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-[#5b7a6b] px-5 py-3 font-black text-white disabled:opacity-60">
                   <Plus size={18} /> {occupato ? "Inserimento…" : "Inserisci nel ricettario operativo"}
                 </button>
               ) : (
                 <>
-                  <button onClick={() => onProduci?.(ricetta)} className="flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-[#5b7a6b] px-5 py-3 font-black text-white"><ChefHat size={18} /> Produci</button>
-                  <button onClick={() => onModifica?.(ricetta)} className="flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-[#b9cec1] bg-white px-5 py-3 font-black text-[#3f5a4e]"><Pencil size={17} /> Modifica</button>
+                  {onProduci && <button onClick={() => onProduci(ricetta)} className="flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-[#5b7a6b] px-5 py-3 font-black text-white"><ChefHat size={18} /> Produci</button>}
+                  {onModifica && <button onClick={() => onModifica(ricetta)} className="flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-[#b9cec1] bg-white px-5 py-3 font-black text-[#3f5a4e]"><Pencil size={17} /> Modifica</button>}
                 </>
               )}
             </div>

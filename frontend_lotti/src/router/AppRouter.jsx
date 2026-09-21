@@ -6,6 +6,7 @@ import axios from "axios";
 import { API } from "../utils/constants";
 import KioskLayout from "../layouts/KioskLayout";
 import { isAdmin } from "../auth";
+import { getTabletSession } from "../utils/tabletSession";
 
 export default function AppRouter({ AppComponent }) {
   const [hash, setHash] = useState(window.location.hash.replace("#", ""));
@@ -33,6 +34,10 @@ export default function AppRouter({ AppComponent }) {
   }, []);
 
   if (hash.startsWith("tablet/")) return <KioskLayout hash={hash} />;
+
+  // La card Ricette apre l'unica pagina #ricette anche con la sessione
+  // operativa: le azioni amministrative sono nascoste al dipendente.
+  if (hash === "ricette" && getTabletSession()) return <AppComponent />;
 
   // REGOLA ACCESSI (Enzo 25/07/2026): i dipendenti vedono SOLO le card del
   // tablet; il gestionale compare solo dopo il PIN amministratore (dalla home

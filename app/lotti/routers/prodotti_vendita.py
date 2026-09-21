@@ -28,6 +28,8 @@ class ProdottoVendita(BaseModel):
     descrizione: str = ""
     ricetta_id: Optional[str] = None
     fonte: str = "interno"
+    fonte_ricettario_excel_chiave: Optional[str] = None
+    fonti_excel: List[dict] = []
     fornitore: str = ""
     pezzi_cartone: Optional[int] = None
     pezzi_per_ricetta: Optional[int] = None

@@ -7,7 +7,6 @@ import TabletHome, { REPARTI_SOLO_ADMIN } from "../components/haccp/TabletHome";
 import { VenditaBancoView } from "../components/haccp/VenditaBancoView";
 import MagazzinoBarView from "../components/haccp/MagazzinoBarView";
 import OrdiniView from "../components/haccp/OrdiniView";
-import RicetteKioskView from "../components/haccp/tablet/RicetteKioskView";
 import { clearTabletSession, getTabletSession, moveTabletSessionTo } from "../utils/tabletSession";
 
 export default function KioskLayout({ hash }) {
@@ -15,7 +14,7 @@ export default function KioskLayout({ hash }) {
 
   // Home kiosk — nessuna autenticazione richiesta, solo selezione reparto
   if (reparto === "home") {
-    return <TabletHome onEntra={(rep) => { window.location.hash = `tablet/${rep}`; }} />;
+    return <TabletHome onEntra={(rep) => { window.location.hash = rep === "ricette" ? "ricette" : `tablet/${rep}`; }} />;
   }
 
   // Tutti gli altri reparti richiedono sessione operatore
@@ -39,7 +38,7 @@ export default function KioskLayout({ hash }) {
 
   if (!opObj) {
     // Nessuna sessione (o reparto diverso) → home con reparto pre-selezionato
-    return <TabletHome onEntra={(rep) => { window.location.hash = `tablet/${rep}`; }} preselectReparto={reparto} />;
+    return <TabletHome onEntra={(rep) => { window.location.hash = rep === "ricette" ? "ricette" : `tablet/${rep}`; }} preselectReparto={reparto} />;
   }
 
   const esciGestionale = () => {
@@ -54,7 +53,6 @@ export default function KioskLayout({ hash }) {
   // Card portate nel kiosk il 25/07/2026 (il gestionale è ora solo del
   // titolare): la Lavagna delle richieste e gli Ordini ai fornitori.
   if (reparto === "lavagna") return <MagazzinoBarView onBack={tornaReparti} soloLavagna />;
-  if (reparto === "ricette") return <RicetteKioskView onBack={tornaReparti} />;
   if (reparto === "ordini") {
     // OrdiniView è nata nel gestionale e non ha un "indietro": nel kiosk gliene
     // mettiamo uno sopra, altrimenti dal tablet non si tornerebbe alle card.

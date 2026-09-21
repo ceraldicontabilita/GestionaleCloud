@@ -16,6 +16,7 @@ import {
 import OrdiniView from "../components/haccp/OrdiniView";
 import { StoricoProduzioniView } from "../components/haccp/StoricoProduzioniView";
 import BackofficeView from "../components/haccp/BackofficeView";
+import { isAdmin } from "../auth";
 import CorrispettiviView from "../components/haccp/CorrispettiviView";
 import FornitoriList from "../components/haccp/FornitoriList";
 import LottiList from "../components/haccp/LottiList";
@@ -67,7 +68,7 @@ const PAGINE = {
   // digitale. Da una card si torna alla scheda ricetta con lo stesso
   // meccanismo del Supervisore (sessionStorage + pagina Produzione).
   in_menu: { render: (ctx) => <MenuVetrinaView onNavigate={ctx.handleTabChange} /> },
-  ricette: { render: () => <BackofficeView initialTab="ricette" solo /> },
+  ricette: { render: () => <BackofficeView initialTab="ricette" solo solaLetturaOperatore={!isAdmin()} /> },
   lotti: {
     render: (ctx) => (
       <LottiList

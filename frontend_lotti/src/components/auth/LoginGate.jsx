@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import PinKeypad from "@/components/haccp/shared/PinKeypad";
 import GoogleLoginButton from "@/components/auth/GoogleLoginButton";
 import { fetchAuthConfig, cachedAuthConfig, gateStillValid, setGateOk, clearGate, isAdmin } from "@/auth";
-import { saveTabletSession } from "../../utils/tabletSession";
+import { getTabletSession, saveTabletSession } from "../../utils/tabletSession";
 
 /**
  * Cancello di accesso. Regole (riviste 13/06/2026 dopo i bug visti da Enzo):
@@ -20,7 +20,7 @@ export default function LoginGate({ children }) {
   const isTablet = () => (window.location.hash || "").replace("#", "").startsWith("tablet");
 
   const check = useCallback(async () => {
-    if (isTablet()) { setState("open"); return; }
+    if (isTablet() || (window.location.hash === "#ricette" && getTabletSession())) { setState("open"); return; }
 
     // Enzo 25/07/2026: chi non è amministratore non deve nemmeno vedere il
     // tastierino del gestionale — l'app si apre sulle card del tablet, che

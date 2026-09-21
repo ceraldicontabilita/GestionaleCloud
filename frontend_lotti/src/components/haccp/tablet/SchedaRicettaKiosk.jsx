@@ -16,6 +16,7 @@ import { X, ChefHat, AlertTriangle, Pencil } from "lucide-react";
 import { API } from "../../../utils/constants";
 import { apiError } from "../../../utils/apiError";
 import ModificaRicettaKiosk from "./ModificaRicettaKiosk";
+import DosiRicetta from "../shared/DosiRicetta";
 
 const C = {
   crema: "#faf7f0", card: "#fffefb", bordo: "#e6e0d4",
@@ -27,9 +28,6 @@ export default function SchedaRicettaKiosk({ ricettaId, nome, onClose, modificab
   const [errore, setErrore] = useState("");
   const [caricando, setCaricando] = useState(true);
   const [modifica, setModifica] = useState(false);
-  const [moltiplicatore, setMoltiplicatore] = useState("1");
-  const [doseLavoro, setDoseLavoro] = useState(null);
-  const [erroreDose, setErroreDose] = useState("");
 
   useEffect(() => {
     let vivo = true;
@@ -42,40 +40,6 @@ export default function SchedaRicettaKiosk({ ricettaId, nome, onClose, modificab
     return () => { vivo = false; };
   }, [ricettaId]);
 
-  useEffect(() => {
-    setMoltiplicatore("1");
-    setDoseLavoro(null);
-    setErroreDose("");
-  }, [ricettaId]);
-
-  useEffect(() => {
-    if (!ricetta?.id || !(ricetta.ingredienti_dettaglio || []).length) return;
-    const valore = Number(moltiplicatore);
-    if (!Number.isFinite(valore) || valore <= 0 || valore > 1000) {
-      setDoseLavoro(null);
-      setErroreDose("Inserisci un moltiplicatore maggiore di zero e al massimo 1000.");
-      return;
-    }
-    let attivo = true;
-    const timer = setTimeout(() => {
-      axios.post(`${API}/food-cost/ricetta/${ricetta.id}/dose-produzione`, { moltiplicatore: valore })
-        .then(({ data }) => { if (attivo) { setDoseLavoro(data); setErroreDose(""); } })
-        .catch((e) => { if (attivo) { setDoseLavoro(null); setErroreDose(apiError(e, "Dose non calcolabile")); } });
-    }, 200);
-    return () => { attivo = false; clearTimeout(timer); };
-  }, [ricetta, moltiplicatore]);
-
-  // Le dosi stanno in `ingredienti_dettaglio`; `ingredienti` è solo l'elenco
-  // dei nomi (ricette vecchie o compilate a mano).
-  const dettaglio = Array.isArray(ricetta?.ingredienti_dettaglio) ? ricetta.ingredienti_dettaglio : [];
-  const soloNomi = Array.isArray(ricetta?.ingredienti) ? ricetta.ingredienti : [];
-  const ingredientiVisualizzati = doseLavoro?.ingredienti || dettaglio;
-  const righe = ingredientiVisualizzati.length
-    ? ingredientiVisualizzati.map((i) => ({
-        nome: i?.nome || "",
-        dose: [i?.quantita, i?.unita_misura || i?.unita].filter((v) => v !== null && v !== undefined && v !== "").join(" "),
-      }))
-    : soloNomi.map((i) => ({ nome: typeof i === "string" ? i : (i?.nome || ""), dose: "" }));
   const allergeni = Array.isArray(ricetta?.allergeni) ? ricetta.allergeni.filter(Boolean) : [];
   const procedimento = ricetta?.procedimento_testo || ricetta?.procedimento || ricetta?.preparazione || ricetta?.metodo_preparazione || "";
 
@@ -168,42 +132,7 @@ export default function SchedaRicettaKiosk({ ricettaId, nome, onClose, modificab
               <h3 style={{ margin: "0 0 8px", fontSize: 15, fontWeight: 900, color: C.testo }}>
                 Ingredienti
               </h3>
-              {dettaglio.length > 0 && <div style={{ background: C.card, border: `1px solid ${C.bordo}`, borderRadius: 12, padding: 12, marginBottom: 12 }}>
-                <label htmlFor="moltiplicatore-ricetta" style={{ fontWeight: 800, color: C.testo }}>Moltiplicatore della dose</label>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
-                  <button onClick={() => setMoltiplicatore(String(Math.max(0.1, (Number(moltiplicatore) || 1) - 0.5)))} aria-label="Riduci dose" style={{ minWidth: 44, minHeight: 44 }}>−</button>
-                  <input id="moltiplicatore-ricetta" type="number" min="0.1" max="1000" step="0.1" value={moltiplicatore} onChange={(e) => { setDoseLavoro(null); setMoltiplicatore(e.target.value); }}
-                    style={{ width: 100, minHeight: 44, textAlign: "center", fontSize: 18, fontWeight: 800 }} />
-                  <button onClick={() => setMoltiplicatore(String((Number(moltiplicatore) || 0) + 0.5))} aria-label="Aumenta dose" style={{ minWidth: 44, minHeight: 44 }}>+</button>
-                </div>
-                {doseLavoro && <small>Ingrediente base: {doseLavoro.base} · dose ×{doseLavoro.fattore} · circa {doseLavoro.porzioni_stimate} pezzi</small>}
-                {erroreDose && <p role="alert" style={{ color: "#8f3829", margin: "8px 0 0" }}>{erroreDose}</p>}
-              </div>}
-              {righe.length === 0 ? (
-                <p style={{
-                  margin: 0, padding: 14, background: C.card, border: `1px dashed ${C.bordo}`,
-                  borderRadius: 12, color: C.tenue, fontSize: 13.5, textAlign: "center",
-                }}>
-                  Questa ricetta non ha ancora gli ingredienti. Falli mettere al titolare.
-                </p>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {righe.map((r, i) => (
-                    <div key={`${r.nome}-${i}`} style={{
-                      display: "flex", alignItems: "center", gap: 10,
-                      background: C.card, border: `1px solid ${C.bordo}`, borderRadius: 12,
-                      padding: "11px 13px",
-                    }}>
-                      <span style={{ flex: 1, minWidth: 0, fontSize: 15, fontWeight: 700, color: C.testo, textTransform: "capitalize" }}>
-                        {r.nome}
-                      </span>
-                      <span style={{ fontSize: 15, fontWeight: 900, color: r.dose ? C.salvia : "#b3aa9a", whiteSpace: "nowrap" }}>
-                        {r.dose || "—"}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
+              <DosiRicetta ricetta={ricetta} />
 
               {allergeni.length > 0 && (
                 <>
