@@ -181,7 +181,6 @@ async def get_anomalia(anomalia_id: str):
 
 
 @router.post("/registra")
-@router.post("/")
 async def registra_anomalia(data: NuovaAnomaliaRequest):
     """Registra una nuova anomalia"""
     oggi = date.today()
