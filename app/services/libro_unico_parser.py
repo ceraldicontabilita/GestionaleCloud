@@ -631,7 +631,7 @@ async def riconcilia_stipendio_con_banca(
 
 
 async def import_libro_unico(
-    file: UploadFile = File(...),
+    file: UploadFile,
     aggiorna_esistenti: bool = True
 ):
     """
