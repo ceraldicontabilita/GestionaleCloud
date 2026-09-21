@@ -63,8 +63,9 @@ def test_lotti_pin_centrale_apre_le_pagine_admin_ma_non_e_una_firma(monkeypatch)
              "pin_hash": auth_dipendenti.hash_pin(OLD_PIN)},
             {"id": "hr-b", "nome": "Valerio", "cognome": "Ceraldi", "ruolo_app": "admin", "stato": "attivo", "attivo": True},
         ])
-        assert await module.pin_amministratore_valido(PIN)
-        assert not await module.pin_amministratore_valido(OLD_PIN)
+        assert (await module.verifica_admin(module.PinAdmin(pin=PIN)))["ok"] is True
+        with pytest.raises(HTTPException):
+            await module.verifica_admin(module.PinAdmin(pin=OLD_PIN))
         # il PIN centrale non e' un'identita' di firma
         with pytest.raises(HTTPException) as exc:
             await module.login_pin(module.PinLogin(pin=PIN))
