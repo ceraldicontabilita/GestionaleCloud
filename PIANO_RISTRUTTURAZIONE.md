@@ -179,7 +179,7 @@ Ulteriore accettazione: importi/date invalidi senza scritture parziali, doppi in
 | RST-0003 | 🟢 | Guardia AST NO-WRITE e census writer warehouse presenti; writer transitori ancora da ridurre |
 | RST-0004 | ⚪ | Contratto route React ↔ catalogo, distinguendo tab/dettagli/redirect |
 | RST-0005 | 🟢 | Nessuna nuova FastAPI produttiva; tre eccezioni temporanee fino alla fusione |
-| RST-0006 | ⚪ | Impedire nuove fonti dati/client indipendenti duplicati |
+| RST-0006 | 🟡 | Guardrail AST introdotto: censiti 6 costruttori DB autonomi legacy in HR/Lotti/Menu; nessun nuovo client può entrare e la whitelist può solo diminuire; attende CI/rilascio |
 | RST-0007 | ⚪ | Inventario router montati, non montati, importati e utilizzati internamente |
 | RST-0008 | ⚪ | Grafo completo pagine/componenti, lazy import, asset e toolchain delle quattro interfacce |
 
@@ -432,6 +432,7 @@ Il conteggio dei tre moduli report/batch è 1.186 righe rimosse. Non aggiungerlo
 | 2026-09-21 | RST-00A7, date Banca | 🟢 | #578 / `e339284b`: prova 31/08 → 02/09, E2E/layout/bundle/smoke verdi nel workflow 35557280814; issue #573 chiusa |
 | 2026-09-21 | RST-1003/1004 | 🟡 | Deroga warehouse_products rimossa dopo eliminazione del lettore; nessuna tabella cancellata |
 | 2026-09-21 | PR-569-PUBBLICATA | 🟢 | 7329ec7498c90da519422ade2f638f0f75d8fc55; CI pre-merge 35555214654, E2E pre-merge 35555214652, Produzione 35555459176 tutti superati nei rispettivi perimetri |
+| 2026-09-21 | RST-0006-V3 | 🟡 | branch `ristrutturazione/fase-0d-db-client-guardrail-v3`: congelati 6 client DB autonomi legacy; un nuovo costruttore rompe la CI; attende CI/rilascio |
 | 2026-09-21 | FASE-1B-V5 | 🟡 | branch `ristrutturazione/fase-1b-falsi-router-v5`: Distinte BPM e workflow ERP Libro Unico spostati nei servizi; vecchi router eliminati; attende CI/rilascio |
 
 **Rilascio verificato:** il lavoro della PR #569 è pubblicato e accessibile live. **Non sono concluse** la qualificazione completa della Prima Nota, la gestione PIN centralizzata dalla UI, l'unificazione dati/outbox né la fusione HR/Lotti/Menu/frontend. Nessuna di queste attività va dichiarata completata per effetto della sola bonifica.
