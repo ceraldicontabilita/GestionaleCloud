@@ -1358,7 +1358,7 @@ async def registra_produzione_e_crea_lotto(
     data_scadenza: Optional[str] = Query(None),   # ← scadenza corretta a mano dal tablet
     memorizza_durata: bool = Query(False),        # ← ricorda la durata per questo prodotto
     operation_id: Optional[str] = Query(None),    # ← idempotenza doppio tocco (tranche 4)
-    destinazione: Optional[str] = Query(None),    # banco immediato o deposito
+    destinazione: Optional[str] = None,           # banco immediato o deposito
 ):
     """
     Registra una produzione e:
