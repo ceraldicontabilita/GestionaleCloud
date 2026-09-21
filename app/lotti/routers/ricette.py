@@ -694,6 +694,14 @@ async def _importa_ricettario_excel(anteprima: bool, admin: Optional[dict] = Non
     bundle = _carica_ricettario_excel()
     bundle_hash = (bundle.get("meta") or {}).get("bundle_sha256") or ""
     current = await db.ricette.find({}, {"_id": 0}).to_list(5000)
+    prodotti_acquistati = await db.prodotti_vendita.find(
+        {"fonte_ricettario_excel_chiave": {"$exists": True}},
+        {"_id": 0, "fonte_ricettario_excel_chiave": 1},
+    ).to_list(5000)
+    chiavi_prodotti_acquistati = {
+        item.get("fonte_ricettario_excel_chiave") for item in prodotti_acquistati
+        if item.get("fonte_ricettario_excel_chiave")
+    }
     groups: dict[str, list[dict]] = {}
     for item in current:
         key = _chiave_ricetta(item.get("nome"))
@@ -705,6 +713,10 @@ async def _importa_ricettario_excel(anteprima: bool, admin: Optional[dict] = Non
     imported_sources = {"cartel1_xlsx", "tracciabilita_xlsm", "ricettari_excel_ceraldi"}
     for source in bundle["recipes"]:
         key = source["chiave"]
+        # Un articolo acquistato e già classificato nel catalogo prodotti non
+        # deve tornare a essere una ricetta al successivo import della fonte.
+        if key in chiavi_prodotti_acquistati:
+            continue
         matches = groups.get(key) or []
         if len(matches) > 1:
             conflicts.append({"nome": source.get("nome"), "ids": [item.get("id") for item in matches]})

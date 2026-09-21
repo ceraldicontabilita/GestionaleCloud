@@ -8,6 +8,7 @@ os.environ.setdefault("DB_NAME", "Gestionale_Test")
 from mongomock_motor import AsyncMongoMockClient
 
 from app.lotti.routers import ricette as mod
+from app.lotti.routers.prodotti_vendita import ProdottoVendita
 
 _TEST_LOOP = asyncio.new_event_loop()
 asyncio.set_event_loop(_TEST_LOOP)
@@ -115,3 +116,36 @@ def test_eliminazione_salva_copia_recuperabile(monkeypatch):
     assert live is None
     assert trash["ricetta"]["foto_url"] == "/foto.jpg"
     assert trash["eliminata_da"] == "Admin"
+
+
+def test_prodotto_acquistato_non_ritorna_nelle_ricette_al_reimport(monkeypatch):
+    database = AsyncMongoMockClient()["Gestionale_Test"]
+    monkeypatch.setattr(mod, "db", database)
+    monkeypatch.setattr(mod, "_carica_ricettario_excel", _bundle_minimo)
+
+    async def scenario():
+        await database.prodotti_vendita.insert_one({
+            "id": "prodotto-baba", "nome": "Babà", "fonte": "ricettario_excel_ceraldi",
+            "fonte_ricettario_excel_chiave": "baba",
+        })
+        result = await mod._importa_ricettario_excel(False, {"nome": "Admin"})
+        return result, await database.ricette.find_one({"nome": "Babà"})
+
+    result, ricetta = run(scenario())
+    assert result["create"] == 1  # Savoiardi resta una ricetta vera
+    assert ricetta is None
+
+
+def test_prodotto_acquistato_conserva_fonte_e_foto():
+    prodotto = ProdottoVendita(
+        nome="Aranciata", categoria="Bevande", fonte="acquistato",
+        fonte_ricettario_excel_chiave="aranciata",
+        fonti_excel=[{"file": "Ricettario_Completo_v6.xlsx", "row": 114}],
+        immagine_url="/api/foto/foto-originale",
+        visibile_ricette=False,
+    )
+    salvato = prodotto.model_dump()
+    assert salvato["fonte_ricettario_excel_chiave"] == "aranciata"
+    assert salvato["fonti_excel"][0]["row"] == 114
+    assert salvato["immagine_url"] == "/api/foto/foto-originale"
+    assert salvato["visibile_ricette"] is False
