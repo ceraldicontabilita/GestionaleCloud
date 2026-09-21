@@ -382,15 +382,10 @@ _CAMPI_PUBBLICI = {"_id": 0, "pin": 0, "pin_lookup": 0, "pin_chiaro": 0}
 
 
 @router.get("")
-async def lista_dipendenti(tutti: bool = False, sincronizza: bool = False):
+async def lista_dipendenti(tutti: bool = False):
     """Operatori in carico (= in forza in HR). Con ``tutti=1`` anche chi non
     e' piu' in carico (cessati in HR o righe storiche senza persona HR), per
     la sezione «Non piu' in carico» della pagina Personale."""
-    if sincronizza:
-        try:
-            await sincronizza_operatori_da_hr()
-        except Exception as e:
-            _LOG.warning("[personale] allineamento HR non riuscito: %s", e)
     filtro: Dict[str, Any] = {} if tutti else {"attivo": True}
     docs = await db.tablet_operatori.find(filtro, _CAMPI_PUBBLICI).to_list(500)
     if tutti:
