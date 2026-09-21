@@ -1,5 +1,7 @@
 import asyncio
 
+from fastapi import HTTPException
+
 from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 from app.routers.prima_nota_module import manutenzione
@@ -145,5 +147,112 @@ def test_registra_pagamento_promuove_riga_ec_generica(monkeypatch):
         assert riga["fattura_id"] == "F-1"
         assert riga["riconciliato"] is True
         assert riga["data"] == "2026-02-20"
+
+    _run(scenario())
+
+
+def test_nuova_scrittura_banca_usa_data_evidenza_e_preserva_data_documento(monkeypatch):
+    async def scenario():
+        db = ClientArchivioMemoria()["test_data_banca_evidenza"]
+        monkeypatch.setattr(sync_module.Database, "get_db", staticmethod(lambda: db))
+        fattura = {
+            "id": "F-DATA",
+            "invoice_number": "77/2026",
+            "invoice_date": "2026-08-31",
+            "supplier_name": "FORNITORE DATA",
+            "total_amount": 160.0,
+        }
+
+        esito = await sync_module.registra_pagamento_fattura(
+            fattura,
+            "bonifico",
+            source="estratto_conto_auto",
+            movimento_bancario={
+                "id": "EC-DATA",
+                "data": "2026-09-02",
+                "data_contabile": "02/09/2026",
+                "data_valuta": "2026-09-03",
+                "match_score": 0.99,
+            },
+        )
+
+        riga = await db.prima_nota_banca.find_one({"id": esito["banca"]}, {"_id": 0})
+        assert riga["data"] == "2026-09-02"
+        assert riga["data_operazione_banca"] == "2026-09-02"
+        assert riga["data_contabile"] == "2026-09-02"
+        assert riga["data_valuta"] == "2026-09-03"
+        assert riga["data_documento"] == "2026-08-31"
+        assert riga["data_fattura"] == "2026-08-31"
+
+    _run(scenario())
+
+
+def test_promozione_riga_ec_usa_data_evidenza_senza_perdere_data_fattura(monkeypatch):
+    async def scenario():
+        db = ClientArchivioMemoria()["test_promozione_data_banca"]
+        monkeypatch.setattr(sync_module.Database, "get_db", staticmethod(lambda: db))
+        await db.prima_nota_banca.insert_one({
+            "id": "PN-GENERICA-DATA",
+            "estratto_conto_id": "EC-GENERICA-DATA",
+            "importo": 120.0,
+            "data": "2026-09-05",
+            "source": "estratto_conto_auto",
+            "status": "active",
+        })
+        fattura = {
+            "id": "F-GENERICA-DATA",
+            "invoice_number": "88/2026",
+            "invoice_date": "2026-08-30",
+            "supplier_name": "FORNITORE",
+            "total_amount": 120.0,
+        }
+
+        esito = await sync_module.registra_pagamento_fattura(
+            fattura,
+            "bonifico",
+            source="estratto_conto_auto",
+            movimento_bancario={
+                "id": "EC-GENERICA-DATA",
+                "data_contabile": "05/09/2026",
+                "match_score": 0.98,
+            },
+        )
+
+        assert esito["banca"] == "PN-GENERICA-DATA"
+        riga = await db.prima_nota_banca.find_one({"id": "PN-GENERICA-DATA"}, {"_id": 0})
+        assert riga["data"] == "2026-09-05"
+        assert riga["data_contabile"] == "2026-09-05"
+        assert riga["data_documento"] == "2026-08-30"
+        assert riga["fattura_id"] == "F-GENERICA-DATA"
+
+    _run(scenario())
+
+
+def test_nuova_scrittura_banca_rifiuta_evidenza_senza_data(monkeypatch):
+    async def scenario():
+        db = ClientArchivioMemoria()["test_banca_senza_data"]
+        monkeypatch.setattr(sync_module.Database, "get_db", staticmethod(lambda: db))
+        fattura = {
+            "id": "F-NO-DATA",
+            "invoice_number": "99/2026",
+            "invoice_date": "2026-08-30",
+            "supplier_name": "FORNITORE",
+            "total_amount": 120.0,
+        }
+
+        try:
+            await sync_module.registra_pagamento_fattura(
+                fattura,
+                "bonifico",
+                source="estratto_conto_auto",
+                movimento_bancario={"id": "EC-NO-DATA", "match_score": 0.9},
+            )
+        except HTTPException as exc:
+            assert exc.status_code == 409
+            assert "senza data" in str(exc.detail)
+        else:
+            raise AssertionError("Una nuova scrittura bancaria senza data non deve essere creata")
+
+        assert await db.prima_nota_banca.count_documents({}) == 0
 
     _run(scenario())
