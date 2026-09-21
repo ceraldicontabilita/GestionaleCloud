@@ -38,7 +38,7 @@ from pydantic import BaseModel
 
 from app.lotti.auth import check_lock, clear_fails, make_token, register_fail, require_admin
 from app.lotti.db import database as db
-from app.services.admin_pin import verify_admin_pin
+from app.services import pin_authentication
 
 router = APIRouter(prefix="/tablet-operatori", tags=["tablet_operatori"])
 
@@ -303,22 +303,13 @@ class LogoutPayload(BaseModel):
 
 
 # ── Identita' e PIN ────────────────────────────────────────────────────────
-async def pin_amministratore_valido(pin: str) -> bool:
-    """Il PIN amministratore centrale (ERP/Menu/Lotti/HR, 05/09/2026): sblocca
-    le pagine riservate. Unico punto in cui si risponde a questa domanda."""
-    pin = (pin or "").strip()
-    if len(pin) < 4:
-        return False
-    return verify_admin_pin(pin) is True
-
-
 async def _richiedi_pin_amministratore(
     pin: str, request: Request = None, dettaglio: str = "PIN amministratore non valido"
 ) -> None:
     ip = request.client.host if (request and request.client) else None
     if ip:
         check_lock(ip)
-    if await pin_amministratore_valido(pin):
+    if pin_authentication.admin_pin_matches(pin):
         if ip:
             clear_fails(ip)
         return
@@ -389,7 +380,7 @@ async def login_pin(payload: PinLogin, request: Request = None):
                                "ruolo": d.get("ruolo", "operatore")} for d in docs]}
     if ip:
         register_fail(ip)
-    if await pin_amministratore_valido(pin):
+    if pin_authentication.admin_pin_matches(pin):
         raise HTTPException(401, "Il PIN amministratore apre le pagine riservate ma non firma: "
                                  "per entrare sul tablet usa il tuo PIN personale (scheda HR)")
     raise HTTPException(401, "PIN non riconosciuto")
