@@ -42,10 +42,11 @@ def register_all_routers(app: FastAPI) -> None:
 
 # ─── Auth & Public ───────────────────────────────────────────────────────────
 def _register_auth(app: FastAPI):
-    from app.routers import auth, lotti_integration, mfa, public_api, pin_login
+    from app.routers import auth, lotti_integration, mfa, pin_login, external_api_v1, ricerca_globale
     from app.routers.legal_pages import router as legal_router
 
-    app.include_router(public_api.router, prefix="/api", tags=["API ERP protetta"])
+    app.include_router(external_api_v1.router, prefix="/api", tags=["API esterna v1"])
+    app.include_router(ricerca_globale.router, prefix="/api", tags=["Ricerca globale"])
     app.include_router(lotti_integration.router, prefix="/api")
     # auth.router already carries an internal prefix="/api" and its routes are
     # "/auth/...", so it must be included WITHOUT an extra prefix — otherwise the

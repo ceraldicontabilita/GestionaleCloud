@@ -54,3 +54,43 @@ async def delete_costo(
     db = Database.get_db()
     await db["costi_previsionali"].delete_one({"id": costo_id})
     return {"message": "Cost deleted"}
+
+@router.get("/events")
+async def list_events(
+    skip: int = 0,
+    limit: int = 10000,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+) -> List[Dict[str, Any]]:
+    """Lista eventi della pianificazione, con compatibilita' schema storico."""
+    db = Database.get_db()
+    events = await db["planning_events"].find({}, {"_id": 0}).to_list(limit or 10000)
+    events.sort(key=lambda ev: ev.get("scheduled_date") or ev.get("start_date") or "")
+    return events[skip: skip + (limit or 10000)]
+
+
+@router.post("/events")
+async def create_event(
+    data: Dict[str, Any] = Body(...),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Crea evento mantenendo leggibili i campi storici della pianificazione."""
+    db = Database.get_db()
+    scheduled = data.get("scheduled_date") or data.get("start_date") or ""
+    event_type = data.get("event_type") or data.get("type") or "event"
+    notes = data.get("notes") or data.get("description") or ""
+    event = {
+        "id": str(uuid4()),
+        "title": data.get("title", ""),
+        "scheduled_date": scheduled,
+        "start_date": scheduled,
+        "end_date": data.get("end_date", ""),
+        "event_type": event_type,
+        "type": event_type,
+        "notes": notes,
+        "description": notes,
+        "status": data.get("status", "scheduled"),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db["planning_events"].insert_one(event.copy())
+    event.pop("_id", None)
+    return event
