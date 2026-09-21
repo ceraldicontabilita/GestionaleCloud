@@ -1478,8 +1478,8 @@ async def registra_produzione_e_crea_lotto(
             "costo_pezzo": round(costo_totale / pezzi, 4) if pezzi > 0 else 0,
             "numero_lotto": numero_lotto,
             "lotti_fornitori_scalati": len(lotti_info["lotti_scalati"]),
-            # Dettaglio completo dello scarico: serve allo storno (DELETE produzione)
-            # per restituire le quantità ai lotti fornitori giusti.
+            # Dettaglio originale dello scarico, conservato per la tracciabilità
+            # e per una eventuale rettifica documentata delle scorte.
             "lotti_scalati_dettaglio": lotti_info["lotti_scalati"],
             "operatore_id": operatore_id or "",  # ← chi ha prodotto
             "operatore_nome": operatore_nome or "",

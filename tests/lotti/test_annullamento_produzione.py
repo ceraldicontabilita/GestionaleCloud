@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from mongomock_motor import AsyncMongoMockClient
 
 from app.lotti.routers import produzioni
+from app.lotti.routers import lotti_produzione
 from app.lotti.servizi import annullamento_lotto_service as lotti_service
 from app.lotti.servizi import annullamento_produzione_service as service
 from app.lotti.servizi import movimenti_lotto_service as movimenti
@@ -67,3 +68,9 @@ def test_produzione_senza_lotto_verificabile_non_si_annulla(archivio):
 def test_router_non_espone_piu_cancellazione_fisica():
     assert not any(r.path == "/produzioni/{produzione_id}" and "DELETE" in r.methods for r in produzioni.router.routes)
     assert any(r.path == "/produzioni/{produzione_id}/annulla" and "POST" in r.methods for r in produzioni.router.routes)
+
+
+def test_produzione_operativa_ha_un_solo_emettitore():
+    assert not any(r.path == "/produzioni/" and "POST" in r.methods for r in produzioni.router.routes)
+    assert any(r.path == "/registra-produzione-lotto" and "POST" in r.methods
+               for r in lotti_produzione.router.routes)
