@@ -450,11 +450,6 @@ async def aggiorna_dipendente(dipendente_id: str, payload: AggiornaDipendente, _
     return {"ok": True, "modificato": True, "salvato_alle": upd["aggiornato_at"]}
 
 
-@router.get("/verifica")
-async def verifica():
-    return {"ok": True, "servizio": "tablet_operatori"}
-
-
 async def operatore_per_id(operatore_id: str) -> Optional[Dict[str, Any]]:
     """La persona dell'anagrafica HR per id, se e' ancora in forza.
 

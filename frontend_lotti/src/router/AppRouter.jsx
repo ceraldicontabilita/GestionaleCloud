@@ -15,7 +15,7 @@ export default function AppRouter({ AppComponent }) {
   // il backend ogni 10 min, così Render non va in sleep e login/temperature
   // restano istantanei.
   useEffect(() => {
-    const ping = () => axios.get(`${API}/tablet-operatori/verifica`, { timeout: 8000 }).catch(() => {});
+    const ping = () => axios.get(`${API}/health`, { timeout: 8000 }).catch(() => {});
     ping();
     const id = setInterval(ping, 10 * 60 * 1000);
     return () => clearInterval(id);
