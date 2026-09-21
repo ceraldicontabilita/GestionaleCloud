@@ -55,15 +55,24 @@ def _segreti() -> list[str]:
     return segreti
 
 
+def verifica_token_firmato(token: str, secret: str) -> Optional[Dict[str, Any]]:
+    """Verifica un token operativo con il segreto del dominio chiamante."""
+    if not token or not isinstance(token, str) or not secret:
+        return None
+    try:
+        return normalizza(jwt.decode(token, secret, algorithms=[ALGORITHM]))
+    except jwt.PyJWTError:
+        return None
+
+
 def verifica_token_condiviso(token: str) -> Optional[Dict[str, Any]]:
-    """Verifica firma e scadenza con i segreti operativi, poi normalizza."""
+    """Verifica con i segreti HR/Lotti; il segreto ERP resta escluso."""
     if not token or not isinstance(token, str):
         return None
     for segreto in _segreti():
-        try:
-            return normalizza(jwt.decode(token, segreto, algorithms=[ALGORITHM]))
-        except jwt.PyJWTError:
-            continue
+        payload = verifica_token_firmato(token, segreto)
+        if payload is not None:
+            return payload
     return None
 
 

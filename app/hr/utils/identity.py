@@ -1,9 +1,9 @@
-"""
-Identità & permessi per il portale dipendenti.
+"""Identita' e permessi per il portale personale HR.
 
-A differenza di utils/dependencies.get_current_user (che ha un bypass admin
-quando manca il token), qui il token è SEMPRE obbligatorio: nessun accesso
-anonimo. Usato da tutti gli endpoint del portale (buste paga, richieste, turni).
+Il token e' sempre obbligatorio. Il portale usa il verificatore operativo
+canonico con il solo segreto HR. Il sub del token tablet Lotti e' ancora l'ID
+della proiezione operatore, non l'ID dipendente che possiede il fascicolo:
+la corrispondenza fra i due ID resta da risolvere su identita' canonica.
 
 Ruoli applicativi (campo `ruolo_app` sul documento dipendente, o role nel JWT):
   - "dipendente"          → accede solo ai propri dati
@@ -13,9 +13,9 @@ Ruoli applicativi (campo `ruolo_app` sul documento dipendente, o role nel JWT):
 from typing import Dict, Any
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from jose import jwt, JWTError
 
 from app.hr.config import settings
+from app.services.workforce_tokens import verifica_token_firmato
 
 _bearer = HTTPBearer(auto_error=True)
 
@@ -23,14 +23,14 @@ RUOLI_VALIDI = {"dipendente", "responsabile_turni", "admin"}
 
 
 def decode_token(token: str) -> Dict[str, Any]:
-    try:
-        return jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-    except JWTError:
+    payload = verifica_token_firmato(token, settings.SECRET_KEY)
+    if payload is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token non valido o scaduto",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    return payload
 
 
 async def get_identity(
@@ -41,10 +41,13 @@ async def get_identity(
     sub = payload.get("sub")
     if not sub:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token senza soggetto")
+    role = str(payload.get("role") or "").strip().lower()
+    if role not in RUOLI_VALIDI:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token senza ruolo HR valido")
     return {
         "id": sub,
-        "role": payload.get("role", "dipendente"),
-        "tipo": payload.get("tipo", "dipendente"),
+        "role": role,
+        "tipo": payload.get("tipo") or ("admin" if role == "admin" else "dipendente"),
         "name": payload.get("name"),
         "auth_method": payload.get("auth_method"),
     }
