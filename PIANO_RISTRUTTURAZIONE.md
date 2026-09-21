@@ -197,6 +197,8 @@ warehouse_inventory è un target canonico previsto dal codice corrente: non viet
 | RST-0106 | ⚪ | Estrarre import_libro_unico vivo in service/parser, ritirare wrapper dopo verifica chiamanti |
 | RST-0107 | 🟡 | Pulizia commenti storici avviata; conservare invarianti e motivazioni utili |
 | RST-0108 | 🟡 | Import/test esclusivi dei router morti rimossi; continuare census sul resto del repo |
+| RST-0109 | 🟡 | Eliminato `app/routers/bank/pos_accredito.py`: zero chiamanti; utility viva `app/utils/pos_accredito.py` preservata; attende CI/rilascio |
+| RST-0110 | 🟡 | Eliminato `app/routers/dati_provvisori.py`: zero chiamanti; service vivo `app/services/dati_provvisori_service.py` preservato; attende CI/rilascio |
 
 Rimuovere una funzione mai pubblicata può ridurre i test: documentare il motivo e preservare copertura dei percorsi canonici. Non cancellare test falliti per nascondere regressioni vive.
 
@@ -432,5 +434,6 @@ Il conteggio dei tre moduli report/batch è 1.186 righe rimosse. Non aggiungerlo
 | 2026-09-21 | RST-00A7, date Banca | 🟡 | Aperto #573: data fattura 20/09 mostrata per addebito 21/09; correzione non eseguita |
 | 2026-09-21 | RST-1003/1004 | 🟡 | Deroga warehouse_products rimossa dopo eliminazione del lettore; nessuna tabella cancellata |
 | 2026-09-21 | PR-569-PUBBLICATA | 🟢 | 7329ec7498c90da519422ade2f638f0f75d8fc55; CI pre-merge 35555214654, E2E pre-merge 35555214652, Produzione 35555459176 tutti superati nei rispettivi perimetri |
+| 2026-09-21 | FASE-1C-V2 | 🟡 | branch `ristrutturazione/fase-1c-router-morti-v2`: eliminati router POS accredito e Dati Provvisori senza chiamanti; utility/service vivi preservati; attende CI/rilascio |
 
 **Rilascio verificato:** il lavoro della PR #569 è pubblicato e accessibile live. **Non sono concluse** la qualificazione completa della Prima Nota, la gestione PIN centralizzata dalla UI, l'unificazione dati/outbox né la fusione HR/Lotti/Menu/frontend. Nessuna di queste attività va dichiarata completata per effetto della sola bonifica.
