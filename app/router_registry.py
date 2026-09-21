@@ -147,11 +147,8 @@ def _register_bank(app: FastAPI):
     app.include_router(assegni_learning.router, prefix="/api/assegni/learning", tags=["Assegni Learning"])
     app.include_router(nexi_carta.router, prefix="/api/nexi", tags=["Carta Nexi"])
     app.include_router(sumup.router, prefix="/api/sumup", tags=["SumUp"])
-    # pos_accredito (router HTTP): smontato (audit 14/07/2026, piano residuo
-    # op.6) — sostituito funzionalmente da pos_corrispettivi_check, zero
-    # chiamanti verificati. app/utils/pos_accredito.py (le funzioni di calcolo,
-    # NON questo router) resta vivo: importato direttamente da
-    # pos_corrispettivi_check.py, corrispettivi_service.py e corrispettivi.py.
+    # Il vecchio router POS accredito non montato e' stato eliminato in Fase 1C.
+    # La logica viva resta in app/utils/pos_accredito.py.
     app.include_router(paypal_statements.router, prefix="/api/paypal-statements", tags=["PayPal"])
 
     # (paypal_api è registrato in _register_core con prefix="/api/paypal-api")
