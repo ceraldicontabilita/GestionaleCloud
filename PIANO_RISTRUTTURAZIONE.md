@@ -197,6 +197,8 @@ warehouse_inventory è un target canonico previsto dal codice corrente: non viet
 | RST-0106 | 🟡 | Workflow ERP Libro Unico spostato in `app/services/libro_unico_workflow.py`; falso router eliminato; parser HR resta separato fino alla Fase 6; attende CI/rilascio |
 | RST-0107 | 🟡 | Pulizia commenti storici avviata; conservare invarianti e motivazioni utili |
 | RST-0108 | 🟡 | Import/test esclusivi dei router morti rimossi; continuare census sul resto del repo |
+| RST-0109 | 🟡 | Eliminato `app/routers/bank/pos_accredito.py`: zero chiamanti; utility viva `app/utils/pos_accredito.py` preservata; attende CI/rilascio |
+| RST-0110 | 🟡 | Eliminato `app/routers/dati_provvisori.py`: zero chiamanti; service vivo `app/services/dati_provvisori_service.py` preservato; attende CI/rilascio |
 
 Rimuovere una funzione mai pubblicata può ridurre i test: documentare il motivo e preservare copertura dei percorsi canonici. Non cancellare test falliti per nascondere regressioni vive.
 
@@ -432,6 +434,7 @@ Il conteggio dei tre moduli report/batch è 1.186 righe rimosse. Non aggiungerlo
 | 2026-09-21 | RST-00A7, date Banca | 🟢 | #578 / `e339284b`: prova 31/08 → 02/09, E2E/layout/bundle/smoke verdi nel workflow 35557280814; issue #573 chiusa |
 | 2026-09-21 | RST-1003/1004 | 🟡 | Deroga warehouse_products rimossa dopo eliminazione del lettore; nessuna tabella cancellata |
 | 2026-09-21 | PR-569-PUBBLICATA | 🟢 | 7329ec7498c90da519422ade2f638f0f75d8fc55; CI pre-merge 35555214654, E2E pre-merge 35555214652, Produzione 35555459176 tutti superati nei rispettivi perimetri |
+| 2026-09-21 | FASE-1C-V6 | 🟡 | branch `ristrutturazione/fase-1c-router-morti-v6`: eliminati router POS accredito e Dati Provvisori senza chiamanti; utility/service vivi preservati; attende CI/rilascio |
 | 2026-09-21 | FASE-1B-V5 | 🟡 | branch `ristrutturazione/fase-1b-falsi-router-v5`: Distinte BPM e workflow ERP Libro Unico spostati nei servizi; vecchi router eliminati; attende CI/rilascio |
 
 **Rilascio verificato:** il lavoro della PR #569 è pubblicato e accessibile live. **Non sono concluse** la qualificazione completa della Prima Nota, la gestione PIN centralizzata dalla UI, l'unificazione dati/outbox né la fusione HR/Lotti/Menu/frontend. Nessuna di queste attività va dichiarata completata per effetto della sola bonifica.
