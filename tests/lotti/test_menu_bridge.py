@@ -7,6 +7,7 @@ nel menu pubblico". Nessuna rete: il client Supabase del Menu e' un finto in
 memoria (tabelle + Storage) e l'archivio Lotti e' mongomock.
 """
 import asyncio
+import hashlib
 import io
 
 import pytest
@@ -259,7 +260,7 @@ def test_upload_foto_copia_immagine_nel_menu(ambiente):
     creata = run(ricette.create_ricetta(ricette.RicettaCreate(**_payload())))
     assert finto.tabelle["menu_products"][0]["image"] is None
 
-    esito = run(ricette.upload_foto(creata["id"], _file_png()))
+    esito = run(ricette.upload_foto(creata["id"], _file_png(), False))
     foto_id = ricette._foto_id_da_url(esito["foto_url"])
     assert esito["menu_sync"]["esito"] == "aggiornato"
 
@@ -280,11 +281,44 @@ def test_upload_foto_copia_immagine_nel_menu(ambiente):
     assert finto.tabelle["menu_products"][0]["description_it"] == "Babà classico napoletano"  # le note/procedimento non vanno nel menu
 
     # Una nuova foto (nuovo foto_id) viene caricata e sostituisce l'immagine
-    esito2 = run(ricette.upload_foto(creata["id"], _file_png(b"seconda")))
+    esito2 = run(ricette.upload_foto(creata["id"], _file_png(b"seconda"), False))
     foto_id2 = ricette._foto_id_da_url(esito2["foto_url"])
     assert foto_id2 != foto_id
     assert len(finto.upload) == 2
     assert finto.tabelle["menu_products"][0]["image"].endswith(f"/lotti/{foto_id2}.png")
+
+
+def test_illustrazione_ai_conserva_provenienza_e_hash_nella_ricetta_e_nel_file(ambiente):
+    ricette, database, _ = ambiente
+    creata = run(ricette.create_ricetta(ricette.RicettaCreate(**_payload())))
+    contenuto = b"\x89PNG-illustrazione"
+
+    esito = run(ricette.upload_foto(creata["id"], _file_png(contenuto), True))
+    salvata = run(database.ricette.find_one({"id": creata["id"]}))
+    foto = run(database.foto_files.find_one({"_id": salvata["foto_id"]}))
+
+    assert esito["foto_source"] == salvata["foto_source"] == foto["fonte"] == "illustrazione_ai"
+    assert salvata["foto_sha256"] == foto["sha256"] == hashlib.sha256(contenuto).hexdigest()
+    assert salvata["foto_url"] == esito["foto_url"]
+    assert foto["ricetta_id"] == creata["id"]
+
+
+def test_upload_multipart_distingue_illustrazione_ai_da_foto_manuale(ambiente):
+    ricette, database, _ = ambiente
+    creata = run(ricette.create_ricetta(ricette.RicettaCreate(**_payload())))
+    app = FastAPI()
+    app.include_router(ricette.router, prefix="/api")
+    client = TestClient(app)
+
+    risposta = client.post(
+        f"/api/ricette/{creata['id']}/upload-foto",
+        data={"illustrazione_ai": "true"},
+        files={"file": ("amaretti.png", b"\x89PNG-illustrazione", "image/png")},
+    )
+    assert risposta.status_code == 200
+    salvata = run(database.ricette.find_one({"id": creata["id"]}))
+    assert salvata["foto_source"] == "illustrazione_ai"
+    assert salvata["foto_filename"] == "amaretti.png"
 
 
 # ---------- scelta del titolare: menu_pubblico -> visible ----------
