@@ -3645,7 +3645,7 @@ async def upload_documento_automatico(
 
         elif tipo_rilevato == 'cedolino':
             # Import cedolino / Libro Unico - USA IL WORKFLOW COMPLETO
-            from app.services.libro_unico_parser import import_libro_unico
+            from app.services.libro_unico_workflow import import_libro_unico
             import io
 
             # Crea un nuovo UploadFile per il workflow
