@@ -122,7 +122,7 @@ def register_routers():
     app.include_router(attendance.router, prefix="/api/attendance", tags=["Presenze"], dependencies=STAFF)
 
     # Libro Unico: il router HTTP vive solo sul lato ERP
-    # (`app/routers/libro_unico_parser.py`), chiamato dalla pipeline di ingest
+    # (`app/services/libro_unico_parser.py`), chiamato dalla pipeline di ingest
     # documentale. La copia `app/hr/routers/libro_unico_parser.py`, registrata
     # qui fino al 19/09/2026, non e' mai stata usata: scriveva su collection
     # `employees`/`buste_paga`/`presenze_mensili` le cui tabelle
