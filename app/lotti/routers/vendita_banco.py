@@ -3,7 +3,7 @@ Router: Vendita al Banco
 Gestisce la produzione giornaliera inviata alla vendita e l'invenduto serale.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, timezone
@@ -14,6 +14,7 @@ _LOG_INIT = logging.getLogger("uvicorn.error")
 router = APIRouter(prefix="/vendita-banco", tags=["vendita_banco"])
 
 from app.lotti.db import database as db
+from app.lotti.auth import request_actor
 
 # ── Modelli ────────────────────────────────────────────────────────────────────
 
@@ -86,11 +87,16 @@ async def registra_vendita_banco(payload: VenditaBancoIn):
 
 
 @router.put("/{vendita_id}/invenduto")
-async def registra_invenduto(vendita_id: str, payload: InvendutoIn):
+async def registra_invenduto(vendita_id: str, payload: InvendutoIn, request: Request):
     """Segna l'invenduto serale e calcola il venduto effettivo."""
+    actor = request_actor(request)
+    if not actor or not actor["id"]:
+        raise HTTPException(401, "Sessione dipendente richiesta")
     vendita = await db.vendite_banco.find_one({"id": vendita_id}, {"_id": 0})
     if not vendita:
         raise HTTPException(404, "Registrazione non trovata")
+    if payload.pezzi_invenduto < 0 or payload.pezzi_invenduto > vendita["pezzi_prodotti"]:
+        raise HTTPException(400, "Invenduto fuori dalla quantità inviata al banco")
 
     pezzi_venduti = max(0, vendita["pezzi_prodotti"] - payload.pezzi_invenduto)
 
@@ -102,6 +108,8 @@ async def registra_invenduto(vendita_id: str, payload: InvendutoIn):
                 "pezzi_venduti": pezzi_venduti,
                 "note_invenduto": payload.note,
                 "invenduto_at": datetime.now(timezone.utc).isoformat(),
+                "invenduto_dipendente_id": actor["id"],
+                "invenduto_operatore_nome": actor["nome"],
                 "stato": "chiuso",
             }
         },
@@ -109,7 +117,7 @@ async def registra_invenduto(vendita_id: str, payload: InvendutoIn):
     try:
         from app.lotti.utils.activity_log import registra_attivita
         await registra_attivita(
-            vendita.get("operatore_nome"), "vendita_banco",
+            actor["nome"], "vendita_banco",
             f"Chiusura banco {vendita.get('prodotto_nome','?')}: venduti {pezzi_venduti}, invenduti {payload.pezzi_invenduto}",
             vendita.get("reparto", ""),
             extra={"prodotto": vendita.get("prodotto_nome"), "venduti": pezzi_venduti, "invenduti": payload.pezzi_invenduto},
@@ -129,8 +137,8 @@ async def registra_invenduto(vendita_id: str, payload: InvendutoIn):
                 vendita["lotto_id"], "rientro_invenduto",
                 numero_lotto=vendita.get("numero_lotto", ""),
                 quantita=payload.pezzi_invenduto,
-                operatore_nome=vendita.get("operatore_nome") or "",
-                operatore_id=vendita.get("operatore_id") or "",
+                operatore_nome=actor["nome"],
+                operatore_id=actor["id"],
                 motivo=payload.note or "Rientro invenduto serale",
                 documento_collegato={"tipo": "vendita_banco", "id": vendita_id},
             )
@@ -360,11 +368,18 @@ async def get_trend_giornaliero(giorni: int = 30, reparto: Optional[str] = None)
 
 
 @router.put("/{vendita_id}/riapri")
-async def riapri_vendita(vendita_id: str):
+async def riapri_vendita(vendita_id: str, request: Request):
     """Riapre un record già chiuso per correggere l'invenduto."""
+    actor = request_actor(request)
+    if not actor or not actor["id"]:
+        raise HTTPException(401, "Sessione dipendente richiesta")
     result = await db.vendite_banco.update_one(
         {"id": vendita_id},
-        {"$set": {"stato": "aperto", "pezzi_invenduto": None, "pezzi_venduti": None}},
+        {"$set": {
+            "stato": "aperto", "pezzi_invenduto": None, "pezzi_venduti": None,
+            "riaperto_da_dipendente_id": actor["id"],
+            "riaperto_da_operatore_nome": actor["nome"],
+        }},
     )
     if result.matched_count == 0:
         raise HTTPException(404, "Non trovata")

@@ -8,6 +8,8 @@ import { toast } from "sonner";
 import { format, subDays, parseISO } from "date-fns";
 import { it } from "date-fns/locale";
 import { API, fotoSrc } from "../../utils/constants";
+import PinKeypad from "./shared/PinKeypad";
+import { getTabletSession, saveTabletSession } from "../../utils/tabletSession";
 
 const GRADIENT_HEADER = "linear-gradient(135deg, #f97316 0%, #ea580c 100%)";
 
@@ -639,7 +641,7 @@ function StatisticheVendite({ onBack }) {
 }
 
 // ── Componente principale ─────────────────────────────────────────────────────
-export const VenditaBancoView = ({ onBack }) => {
+const VenditaBancoContent = ({ onBack, autorizzaInvenduto }) => {
   const [vista, setVista]           = useState("banco");  // "banco"|"tutti"|"dettaglio"|"statistiche"|"sprechi"
   const [venditeOggi, setVenditeOggi] = useState([]);
   const [tuttiProdotti, setTuttiProdotti] = useState([]);
@@ -663,26 +665,30 @@ export const VenditaBancoView = ({ onBack }) => {
 
   useEffect(() => { caricaOggi(); }, [caricaOggi]);
 
-  const handleSalva = async (id, invenduto) => {
+  const handleSalva = (id, invenduto) => autorizzaInvenduto(async () => {
     // Ottimistico: rimuovi subito dalla lista "da fare" senza aspettare il server
     setVenditeOggi(prev => prev.map(v =>
       v.id === id ? { ...v, stato: "chiuso", pezzi_invenduto: invenduto, pezzi_venduti: Math.max(0, (v.pezzi_prodotti || 0) - invenduto) } : v
     ));
-    toast.success("Salvato!");
     try {
       await axios.put(`${API}/vendita-banco/${id}/invenduto`, { vendita_id: id, pezzi_invenduto: invenduto });
-      caricaOggi(); // aggiorna in background
+      toast.success("Salvato!");
+      await caricaOggi();
     } catch {
       toast.error("Errore salvataggio");
-      caricaOggi(); // rollback
+      await caricaOggi(); // rollback
     }
-  };
+  });
 
-  const handleRiapri = async (id) => {
-    await axios.put(`${API}/vendita-banco/${id}/riapri`);
-    toast.success("Record riaperto per modifica");
-    await caricaOggi();
-  };
+  const handleRiapri = (id) => autorizzaInvenduto(async () => {
+    try {
+      await axios.put(`${API}/vendita-banco/${id}/riapri`);
+      toast.success("Record riaperto per modifica");
+      await caricaOggi();
+    } catch {
+      toast.error("Errore riapertura");
+    }
+  });
 
   // Naviga a dettaglio: usa record vendita se esiste, altrimenti crea record vuoto da ricetta
   const apriDettaglio = (prodotto) => {
@@ -967,6 +973,42 @@ export const VenditaBancoView = ({ onBack }) => {
         )}
       </div>
     </div>
+  );
+};
+
+export const VenditaBancoView = ({ onBack }) => {
+  const [dipendenteVerificato, setDipendenteVerificato] = useState("");
+  const [azioneInAttesa, setAzioneInAttesa] = useState(null);
+
+  const autorizzaInvenduto = useCallback((azione) => {
+    const sessione = getTabletSession();
+    if (sessione?.dipendente_id && sessione.dipendente_id === dipendenteVerificato) {
+      return azione();
+    }
+    setAzioneInAttesa(() => azione);
+  }, [dipendenteVerificato]);
+
+  const pinConfermato = (operatore) => {
+    const sessione = saveTabletSession(operatore, "vendita");
+    setDipendenteVerificato(sessione.dipendente_id);
+    const azione = azioneInAttesa;
+    setAzioneInAttesa(null);
+    if (azione) azione();
+  };
+
+  return (
+    <>
+      <VenditaBancoContent onBack={onBack} autorizzaInvenduto={autorizzaInvenduto} />
+      {azioneInAttesa && (
+        <PinKeypad
+          titolo="Registro invenduto serale"
+          sottotitolo="Conferma il tuo PIN per registrare o correggere gli invenduti. Vale finché resti in questa schermata."
+          colore="#f97316"
+          onSuccess={pinConfermato}
+          onCancel={() => setAzioneInAttesa(null)}
+        />
+      )}
+    </>
   );
 };
 
