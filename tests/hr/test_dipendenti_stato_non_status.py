@@ -11,7 +11,7 @@ sempre assente, risultavano None → sempre dentro il filtro)."""
 import asyncio
 
 from app.routers import tfr as mod_tfr
-from app.routers import public_api as mod_public
+from app.routers import external_api_v1 as mod_public
 from app.routers.reports import report_pdf as mod_pdf
 from app.database import Collections
 
@@ -88,7 +88,7 @@ def test_tfr_riepilogo_conta_i_dipendenti_attivi_veri(monkeypatch):
     assert esito["totale_fondo_tfr"] == 300.0  # 100 + 200
 
 
-def test_public_api_conta_dipendenti_attivi_veri(monkeypatch):
+def test_external_api_v1_conta_dipendenti_attivi_veri(monkeypatch):
     db = _FakeDb()
     monkeypatch.setattr(mod_public.Database, "get_db", staticmethod(lambda: db))
     db["dipendenti"].docs = list(_DIPENDENTI_REALI)
