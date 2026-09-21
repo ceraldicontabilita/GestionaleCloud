@@ -242,7 +242,7 @@ Prima di migrare: conteggi per stato/anno, originali/hash, relazioni, saldi, bac
 |---|---|---|
 | RST-0401 | 🟢 | Autenticazione PIN admin canonica completata sui quattro domini: ERP PR #599 / `87efac99`, HR PR #600 / `b34a78cc`, Lotti PR #601 / `ab8c4afe`, Menu PR #602 / `1b6d396c`. Nessun fallback `ADMIN_PIN` in chiaro; lockout condiviso dove applicabile; CI/E2E/Produzione verdi |
 | RST-0402 | 🟡 | Emissione sessione operativa HR/Lotti pubblicata con PR #603-#604; convergenza del verificatore in corso. RBAC comune per admin, amministrazione, HR, responsabile, HACCP, Menu e sola lettura ancora aperto |
-| RST-0403 | 🟡 | Verifica HR/Lotti comune pubblicata; il portale personale HR richiede ancora il segreto HR finché l'ID operatore della proiezione Lotti non è ricondotto all'ID dipendente canonico. Controlli server per dominio e identità stabile da completare |
+| RST-0403 | 🟡 | Verifica HR/Lotti comune pubblicata; il portale personale HR richiede ancora il segreto HR. Se i segreti HR/Lotti coincidono, questa condizione da sola non distingue i domini. Target: un solo `ID dipendente` in HR/Lotti, con collegamento verificato dello storico HACCP e controlli server per dominio |
 | RST-0404 | ⚪ | Eliminare login amministrativo HR autonomo dopo cutover verificato |
 | RST-0405 | ⚪ | Eliminare login applicativo Lotti autonomo, preservare identificazione tablet |
 | RST-0406 | ⚪ | Eliminare JWT Menu autonomo, mantenere confini pubblico/privato |
