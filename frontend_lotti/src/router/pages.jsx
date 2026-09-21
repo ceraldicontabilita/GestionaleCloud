@@ -73,7 +73,7 @@ const PAGINE = {
     render: (ctx) => (
       <LottiList
         items={ctx.lotti}
-        onDelete={ctx.handleDeleteLotto}
+        onLottiChanged={ctx.notifyLottiChanged}
         search={ctx.searchLotti}
         setSearch={ctx.setSearchLotti}
         filtroDataDa={ctx.filtroDataDaLotti}

@@ -2,13 +2,10 @@
 Router per la gestione dei Lotti.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-# 25/07/2026 — Enzo: «il dipendente deve solo produrre e vedere le ricette,
-# tutto il resto lo guardo e lo uso io: metti tutto sotto PIN». Cancellare un
-# lotto è la cosa più definitiva che si possa fare alla tracciabilità.
-from app.lotti.auth import require_admin
-from pydantic import BaseModel, Field, ConfigDict
+from app.lotti.auth import require_admin, request_actor
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 from typing import List, Optional, Dict
 from datetime import datetime, timezone, timedelta
 import uuid
@@ -489,13 +486,31 @@ async def create_lotto(item: LottoCreate):
     return data
 
 
-@router.delete("/{lotto_id}")
-async def delete_lotto(lotto_id: str, _admin=Depends(require_admin)):
-    """Elimina un lotto (cerca per id o lotto_id per compatibilità schema vecchio)"""
-    result = await db.lotti.delete_one({"$or": [{"id": lotto_id}, {"lotto_id": lotto_id}]})
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Lotto non trovato")
-    return {"success": True}
+class RettificaLotto(BaseModel):
+    motivo: str = Field(min_length=5)
+
+    @field_validator("motivo")
+    @classmethod
+    def motivo_concreto(cls, value: str) -> str:
+        if len(value.strip()) < 5:
+            raise ValueError("Motivazione obbligatoria (almeno 5 caratteri)")
+        return value.strip()
+
+
+@router.post("/{lotto_id}/annulla")
+async def annulla_lotto(lotto_id: str, body: RettificaLotto, request: Request,
+                       _admin=Depends(require_admin)):
+    """Ritira un lotto errato conservando origine e movimenti."""
+    from app.lotti.servizi.annullamento_lotto_service import annulla_lotto as annulla
+    return await annulla(lotto_id, body.motivo.strip(), request_actor(request))
+
+
+@router.post("/{lotto_id}/ripristina")
+async def ripristina_lotto(lotto_id: str, body: RettificaLotto, request: Request,
+                          _admin=Depends(require_admin)):
+    """Ripristina un lotto annullato con una nuova voce di cronologia."""
+    from app.lotti.servizi.annullamento_lotto_service import ripristina_lotto as ripristina
+    return await ripristina(lotto_id, body.motivo.strip(), request_actor(request))
 
 
 @router.post("/archivia-scaduti")
@@ -522,34 +537,3 @@ async def archivia_scaduti(giorni: int = Query(30, ge=0, le=3650)):
     return {"ok": True, "archiviati": upd.modified_count, "soglia_data": limite}
 
 
-@router.post("/elimina-senza-tracciabilita")
-async def elimina_senza_tracciabilita(conferma: bool = Query(False)):
-    """Elimina definitivamente i lotti storici senza dettaglio ingredienti (produzioni
-    passate create prima che il collegamento ingredienti fosse tracciato — dato non
-    ricostruibile a posteriori). STESSA query del cruscotto /controllo-dati/overview
-    (issue 'lotti_senza_tracciabilita'), per cancellare esattamente e solo quelli
-    segnalati. Richiesto da Enzo 01/07/2026. Senza conferma=true fa solo un'anteprima
-    (nessuna cancellazione)."""
-    def _vuoto(path):
-        return {"$or": [
-            {path: {"$exists": False}}, {path: None}, {path: ""}, {path: []},
-        ]}
-    query = {"$and": [
-        {"$or": [
-            {"stato": {"$exists": False}},
-            # vocabolario reale dei lotti terminati (prima "consumato/chiuso/
-            # archiviato", valori che nessuno scrive → il filtro non escludeva
-            # nulla): ora esclude davvero i lotti già smaltiti/esauriti.
-            {"stato": {"$nin": ["smaltito", "esaurito"]}},
-        ]},
-        _vuoto("ingredienti_dettaglio"),
-        _vuoto("ingredienti"),
-    ]}
-    trovati = await db.lotti.find(
-        query, {"_id": 0, "id": 1, "numero_lotto": 1, "prodotto": 1, "prodotto_nome": 1, "stato": 1}
-    ).to_list(1000)
-    if not conferma:
-        return {"ok": True, "anteprima": True, "trovati": len(trovati), "lotti": trovati,
-                "nota": "Nessuna cancellazione eseguita. Richiama con ?conferma=true per eliminare davvero."}
-    result = await db.lotti.delete_many(query)
-    return {"ok": True, "eliminati": result.deleted_count, "lotti": trovati}

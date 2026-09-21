@@ -160,10 +160,10 @@ def test_endpoint_distruttivi_dichiarano_require_admin():
         ("app.lotti.routers.sconti_merce", ("/importa-da-fatture", "/valorizza-da-fatture")),
         # Nascondere un avviso del Supervisore è una decisione del titolare.
         ("app.lotti.routers.supervisor_operativo", ("/alerts/{alert_id}/silenzia",)),
-        # 25/07/2026 — Enzo: «il dipendente deve solo produrre e vedere le
-        # ricette, tutto il resto lo guardo io e lo utilizzo io». Cancellare un
-        # lotto è la cosa più definitiva che si possa fare alla tracciabilità.
-        ("app.lotti.routers.lotti", ('router.delete("/{lotto_id}")',)),
+        # Il lotto si rettifica con annullamento/ripristino motivato e storico;
+        # entrambe le transizioni restano riservate all'amministratore.
+        ("app.lotti.routers.lotti", ('router.post("/{lotto_id}/annulla")',
+                                     'router.post("/{lotto_id}/ripristina")')),
         ("app.lotti.routers.lotti_fornitori", ('router.delete("/{lotto_id}")',)),
         ("app.lotti.routers.attrezzature", ('router.post("/frigo")',
                                   'router.post("/congelatore")',

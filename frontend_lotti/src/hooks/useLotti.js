@@ -39,20 +39,9 @@ export function useLotti() {
     return () => clearTimeout(timer);
   }, [searchLotti, filtroDataDaLotti, filtroDataALotti, fetchLotti]);
 
-  const handleDeleteLotto = async (id) => {
-    if (!id || id === "__refresh__") {
-      await fetchLotti();
-      window.dispatchEvent(new CustomEvent("haccp:lotti-changed"));
-      return;
-    }
-    try {
-      await axios.delete(`${API}/lotti/${id}`);
-      toast.success("Lotto eliminato");
-      await fetchLotti();
-      window.dispatchEvent(new CustomEvent("haccp:lotti-changed"));
-    } catch (e) {
-      toast.error("Errore nell'eliminazione: " + apiError(e));
-    }
+  const notifyLottiChanged = async () => {
+    await fetchLotti();
+    window.dispatchEvent(new CustomEvent("haccp:lotti-changed"));
   };
 
   // 25/07/2026 — rimosso handleGeneraLotto: il lotto si crea SOLO producendo
@@ -68,6 +57,6 @@ export function useLotti() {
     filtroDataALotti,
     setFiltroDataALotti,
     fetchLotti,
-    handleDeleteLotto,
+    notifyLottiChanged,
   };
 }

@@ -192,7 +192,7 @@ function App() {
     lotti, searchLotti, setSearchLotti,
     filtroDataDaLotti, setFiltroDataDaLotti,
     filtroDataALotti, setFiltroDataALotti,
-    fetchLotti, handleDeleteLotto,
+    fetchLotti, notifyLottiChanged,
   } = useLotti();
   const { fornitori, fetchFornitori } = useFornitori();
 
@@ -255,7 +255,7 @@ function App() {
     imp, startImport,
     onImportComplete: () => Promise.all([fetchStats(), fetchFornitori()]),
     fornitori, fetchFornitori,
-    lotti, handleDeleteLotto,
+    lotti, notifyLottiChanged,
     searchLotti, setSearchLotti,
     filtroDataDaLotti, setFiltroDataDaLotti,
     filtroDataALotti, setFiltroDataALotti,

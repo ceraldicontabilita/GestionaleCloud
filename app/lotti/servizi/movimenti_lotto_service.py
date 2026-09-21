@@ -43,6 +43,8 @@ TIPI_EVENTO = (
     "spostamento_massivo_anomalia",
     "rientro_invenduto",
     "recall",
+    "annullamento",
+    "ripristino",
 )
 
 

@@ -39,7 +39,7 @@ async def preleva_lotto(lotto_id: str, quantita: float | None, tipo: str,
     if giorni is None or giorni < 0:
         raise HTTPException(409, "Lotto scaduto o scadenza da verificare: non utilizzare")
     disponibile = lotto.get("quantita") or 0
-    if lotto.get("consumato") or lotto.get("esaurito") or lotto.get("stato") in {"smaltito", "esaurito", "scaduto"} or disponibile <= 0:
+    if lotto.get("consumato") or lotto.get("esaurito") or lotto.get("stato") in {"smaltito", "esaurito", "scaduto", "annullato"} or disponibile <= 0:
         raise HTTPException(409, "Lotto non disponibile")
     prelevata = disponibile if quantita is None else quantita
     if prelevata <= 0 or prelevata > disponibile or (tipo == "banco" and not float(prelevata).is_integer()):
