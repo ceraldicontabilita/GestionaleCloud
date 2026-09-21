@@ -62,12 +62,12 @@ HEAD collaudato prima del merge: `5d40f7e1070dff9d237d2ca0035d419676b4cc62`.
 - Merge: `7329ec7498c90da519422ade2f638f0f75d8fc55`.
 - [Produzione 35555459176](https://github.com/ceraldicontabilita/GestionaleCloud/actions/runs/35555459176): E2E, schermate catalogate, layout/viewer, bundle e smoke con commit servito tutti superati.
 
-Il metodo è CRUD HTTP reale e rilettura nel browser, non simulazione di ogni pulsante o certificazione dei dati aziendali. Le immagini hanno evidenziato due difetti preesistenti NON risolti dalla bonifica:
+Il metodo è CRUD HTTP reale e rilettura nel browser, non simulazione di ogni pulsante o certificazione dei dati aziendali. Le immagini della bonifica avevano evidenziato due difetti preesistenti, entrambi poi corretti e pubblicati:
 
-1. **#573 / RST-00A7:** la fattura di prova è del 20 settembre, l'addebito del 21, ma Banca mostra il 20. Verificare date persistite, proiezione, raggruppamento e saldi per mese. Non correggere massivamente gli originali.
-2. **#575 / RST-00A6:** da Banca i contatori mostrano zero fino all'apertura dei Provvisori, che rende visibili tre fatture da decidere e due in attesa. Distinguere non caricato da zero e invalidare i conteggi dopo le operazioni.
+1. **#573 / RST-00A7:** data Banca distinta dalla data fattura, corretta e pubblicata in `e339284b`; prova cross-month 31/08 → 02/09, data contabile/valuta separate.
+2. **#575 / RST-00A6:** falsi zeri/staleness dei contatori Provvisori, corretti e pubblicati in `10a74950`; conteggi leggeri, zero solo dopo risposta reale e invalidazione al cambio sezione/anno.
 
-La qualificazione operativa completa della Prima Nota resta quindi aperta. I suoi writer non sono stati modificati per nascondere questi risultati.
+La qualificazione operativa completa della Prima Nota resta prudenzialmente aperta per i casi non ancora coperti (parziali, riporto, periodi e ulteriori relazioni), ma questi due difetti specifici sono chiusi.
 
 ### Distinzioni vincolanti
 
@@ -163,10 +163,10 @@ Eliminare frontend_hr/, frontend_lotti/, frontend_menu/, frontend_shared/ solo d
 | RST-00A3 | 🟢 | Fattura da confermare → pagamento Cassa, coperto dai collaudi |
 | RST-00A4 | 🟢 | Attendi banca senza inventare pagamento, coperto dai collaudi |
 | RST-00A5 | 🟢 | Misto: quota Cassa reale e residuo Banca aperto, coperto dai collaudi |
-| RST-00A6 | 🟡 | #575: implementati conteggi Provvisori leggeri, stato non-caricato distinto da zero e prova browser prima di aprire la scheda; attende CI/E2E/rilascio. Resta da estendere prova cambio anno |
+| RST-00A6 | 🟢 | #575 chiuso e pubblicato in `10a74950`: conteggi Provvisori leggeri, non-caricato distinto da zero, invalidazione al cambio sezione/anno; CI 35563595194 e Produzione 35563595236 verdi |
 | RST-00A7 | 🟡 | Correggere/verificare data movimento Banca distinta da data fattura (#573); completare campi, contropartita e periodi |
 | RST-00A8 | 🟢 | Smoke versione pubblicata 7329ec7 superato; ripetere ad ogni rilascio |
-| RST-00A9 | 🟡 | Qualificazione completa non chiusa: #573 e #575 aperti. Conservare il contratto CRUD già verificato |
+| RST-00A9 | 🟡 | #573 e #575 sono chiusi; qualificazione completa resta aperta solo per ulteriori casi contabili non ancora certificati end-to-end |
 
 Ulteriore accettazione: importi/date invalidi senza scritture parziali, doppi invii idempotenti, pagamenti parziali multipli, annullamento coerente, originali bancari immutati, saldi iniziali e corretta attribuzione al periodo. Non attendere la fusione delle sotto-app per mantenere utilizzabile Prima Nota.
 
@@ -428,8 +428,8 @@ Il conteggio dei tre moduli report/batch è 1.186 righe rimosse. Non aggiungerlo
 | 2026-09-21 | FASE-0C | 🟢 | main 3194396: public_api eliminato, Pianificazione/API v1/ricerca preservate; presente nel rilascio verificato 7329ec7 |
 | 2026-09-21 | FASE-1A | 🟢 | main 4ad3ffa: report_pdf, simple_exports e batch_operations eliminati; non contare nuovamente nella #569 |
 | 2026-09-21 | RST-0101/0102/0104, bonifica residua | 🟢 | #569: eliminato anche filtro rimasto senza chiamanti runtime, controlli import/assenza; merge 7329ec7 e produzione verificata |
-| 2026-09-21 | RST-00A6, prove visive | 🟡 | #575: correzione riallineata dopo #573 su branch `fix/prima-nota-contatori-provvisori-v2`; attende CI/E2E/rilascio |
-| 2026-09-21 | RST-00A7, date Banca | 🟡 | Aperto #573: data fattura 20/09 mostrata per addebito 21/09; correzione non eseguita |
+| 2026-09-21 | RST-00A6, contatori Provvisori | 🟢 | #580 / `10a74950`: CI 35563595194 e Produzione 35563595236 verdi; issue #575 chiusa |
+| 2026-09-21 | RST-00A7, date Banca | 🟢 | #578 / `e339284b`: prova 31/08 → 02/09, E2E/layout/bundle/smoke verdi nel workflow 35557280814; issue #573 chiusa |
 | 2026-09-21 | RST-1003/1004 | 🟡 | Deroga warehouse_products rimossa dopo eliminazione del lettore; nessuna tabella cancellata |
 | 2026-09-21 | PR-569-PUBBLICATA | 🟢 | 7329ec7498c90da519422ade2f638f0f75d8fc55; CI pre-merge 35555214654, E2E pre-merge 35555214652, Produzione 35555459176 tutti superati nei rispettivi perimetri |
 
