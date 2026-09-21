@@ -233,6 +233,7 @@ FILE_MORTI_ELIMINATI = {
     "app/routers/distinte_bpm.py",
     "app/routers/libro_unico_parser.py",
     "app/routers/bank/pos_accredito.py",
+    "app/routers/dati_provvisori.py",
 }
 
 
