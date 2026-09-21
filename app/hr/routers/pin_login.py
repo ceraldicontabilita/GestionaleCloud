@@ -19,6 +19,7 @@ from jose import jwt
 
 from app.hr.config import settings
 from app.hr.database import Database, Collections
+from app.hr.repositories import UserRepository as HrUserRepository
 from app.hr.services.auth_dipendenti import (
     login_dipendente, login_dipendente_per_nome,
     elenco_dipendenti_per_login,
@@ -133,9 +134,7 @@ async def pin_login(
         pin,
         users_collection=Collections.USERS,
         username=settings.PIN_ADMIN_USERNAME,
-        repository_factory=__import__(
-            "app.hr.repositories", fromlist=["UserRepository"]
-        ).UserRepository,
+        repository_factory=HrUserRepository,
         require_existing=True,
         require_active=True,
         allow_synthetic=False,
