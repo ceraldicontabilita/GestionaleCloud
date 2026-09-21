@@ -6,6 +6,7 @@ poi completati e inviati dall'amministratore via listino-prezzi-merci.
 """
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from app.services import pin_authentication
 from pydantic import BaseModel
 from typing import List, Optional
 import re
@@ -774,8 +775,7 @@ async def _richiedi_admin(request: Request):
     pin = (request.headers.get("X-Admin-Pin") or "").strip() if request else ""
     if not pin:
         raise HTTPException(403, "Operazione riservata al titolare: inserisci il PIN amministratore")
-    from app.lotti.routers.tablet_operatori import pin_amministratore_valido
-    if not await pin_amministratore_valido(pin):
+    if not pin_authentication.admin_pin_matches(pin):
         raise HTTPException(403, "PIN amministratore non valido")
 
 
