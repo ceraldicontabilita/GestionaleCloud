@@ -205,7 +205,7 @@ async def registra_temperatura(
     # stringa che chiunque puo' scrivere. Col PIN il nome arriva da HR ed e'
     # marcato `firma_verificata`; con un PIN sbagliato la rilevazione NON si
     # salva, perche' una firma falsa e' peggio di una registrazione mancante.
-    from app.lotti.servizi.firma_operatore import firma_da_pin
+    from app.lotti.servizi.firma_dipendente import firma_da_pin
 
     firma = await firma_da_pin(pin, operatore)
     record = {
@@ -216,8 +216,8 @@ async def registra_temperatura(
     }
     if firma["operatore"]:
         record["operatore"] = firma["operatore"]
-    if firma["operatore_id"]:
-        record["operatore_id"] = firma["operatore_id"]
+    if firma["dipendente_id"]:
+        record["dipendente_id"] = firma["dipendente_id"]
     # Azione correttiva: documentata quando il frigo sfora (obbligo Reg. 852/2004).
     # L'ispettore ASL vuole sapere COSA si e' fatto, non solo che era fuori range.
     if azione_correttiva:

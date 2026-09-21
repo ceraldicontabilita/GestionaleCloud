@@ -13,7 +13,7 @@ Chi firma e' quindi la persona che l'anagrafica riconosce, col nome scritto
 come in anagrafica, e un cessato non firma piu' niente.
 
 Tre esiti, tutti espliciti nel record salvato:
-  - PIN valido        -> `firma_verificata: True`, con `operatore_id` di HR;
+  - PIN valido        -> `firma_verificata: True`, con `dipendente_id` di HR;
   - PIN sbagliato     -> errore, la registrazione NON si salva (una firma
                          falsa e' peggio di una registrazione mancante);
   - nessun PIN        -> `firma_verificata: False`, il nome resta quello
@@ -51,13 +51,13 @@ async def firma_da_pin(
     if not pin:
         return {
             "operatore": operatore_dichiarato,
-            "operatore_id": "",
+            "dipendente_id": "",
             "firma_verificata": False,
         }
 
-    from app.lotti.routers.tablet_operatori import trova_operatori_per_pin
+    from app.hr.services.auth_dipendenti import trova_dipendente_per_pin
 
-    trovati = await trova_operatori_per_pin(pin)
+    trovati = await trova_dipendente_per_pin(pin, solo_operatori_lotti=True)
     if not trovati:
         raise HTTPException(
             status_code=401,
@@ -72,9 +72,16 @@ async def firma_da_pin(
             detail="Questo PIN risulta a piu' persone: chiedi all'amministratore "
                    "di assegnarne uno diverso prima di firmare.",
         )
-    operatore = trovati[0]
+    dipendente = trovati[0]
+    if not dipendente.get("id"):
+        raise HTTPException(status_code=401, detail="Identita' dipendente HR non disponibile")
+    nome = f"{dipendente.get('cognome') or ''} {dipendente.get('nome') or ''}".strip()
+    if not nome:
+        nome = str(dipendente.get("nome_completo") or "").strip()
+    if not nome:
+        raise HTTPException(status_code=401, detail="Nome dipendente HR non disponibile")
     return {
-        "operatore": operatore.get("nome", "") or operatore_dichiarato,
-        "operatore_id": operatore["dipendente_id"],
+        "operatore": nome,
+        "dipendente_id": dipendente["id"],
         "firma_verificata": True,
     }
