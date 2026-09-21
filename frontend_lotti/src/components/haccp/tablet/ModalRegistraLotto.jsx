@@ -396,6 +396,7 @@ export function ModalRegistraLotto({ prodotto, reparto, onClose, onSuccess, onHo
         costo_totale: 0,
         data_produzione: new Date().toISOString().split("T")[0],
         operation_id: _opId("produzione"),
+        destinazione,
         ...(sessionOp?.dipendente_id && { operatore_id: sessionOp.dipendente_id }),
         ...(sessionOp?.nome && { operatore_nome: sessionOp.nome }),
       };
@@ -416,7 +417,9 @@ export function ModalRegistraLotto({ prodotto, reparto, onClose, onSuccess, onHo
       const res = await axios.post(`${API}/registra-produzione-lotto`, null, { params });
       _opDone("produzione");
       setLottoCreato({ ...res.data, destinazione });
-      toast.success(`Lotto ${res.data.numero_lotto} registrato!`);
+      toast.success(destinazione === "banco"
+        ? `Lotto ${res.data.numero_lotto} registrato e mandato al banco!`
+        : `Lotto ${res.data.numero_lotto} registrato!`);
       // Avvisi scorte: prodotti finiti durante questo scarico FIFO
       const _lf = res.data.lotti_fornitori || {};
       (_lf.lotti_esauriti || []).forEach((e) =>
@@ -431,26 +434,6 @@ export function ModalRegistraLotto({ prodotto, reparto, onClose, onSuccess, onHo
         toast.error(`⚠️ ${i.ingrediente}: mancavano ${i.mancante} ${i.unita} — giacenza insufficiente, controlla gli ordini`)
       );
 
-      if (destinazione === "banco") {
-        try {
-          // Recupera operatore dalla sessione tablet se disponibile
-          const operatore = sessionOp;
-
-          await axios.post(`${API}/vendita-banco/registra`, {
-            prodotto_id: prodotto.id,
-            prodotto_nome: prodotto.nome,
-            reparto,
-            pezzi_prodotti: pezzi,
-            foto_url: prodotto.foto_url || null,
-            data: new Date().toISOString().split("T")[0],
-            lotto_id: res.data.id || res.data.lotto?.id || null,          // ← tracciabilità
-            numero_lotto: res.data.numero_lotto || res.data.lotto?.numero_lotto || null,
-            operatore_id: operatore?.dipendente_id || null,
-            operatore_nome: operatore?.nome || null,
-          });
-          toast.success("Registrato per la vendita al banco!");
-        } catch (err) { console.warn("Vendita banco non registrata:", err?.message); }
-      }
       if (stampare && destinazione !== "banco") {
         setTimeout(() => handleStampa(res.data), 600);
       }

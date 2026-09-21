@@ -519,7 +519,7 @@ async def manda_lotto_al_banco(
     else:
         await db.lotti.update_one({"id": lotto_id}, {"$set": {"quantita": round(disponibile - pezzi, 3)}})
 
-    from app.lotti.routers.vendita_banco import registra_vendita_banco, VenditaBancoIn
+    from app.lotti.servizi.vendita_banco_service import registra_vendita_banco, VenditaBancoIn
     vendita = await registra_vendita_banco(VenditaBancoIn(
         prodotto_id=lotto_id,
         prodotto_nome=lotto.get("prodotto", ""),
@@ -1323,6 +1323,27 @@ async def _riordini_post_produzione(lotti_scalati, ricetta_nome: str):
 # ── Registra produzione e crea lotto ─────────────────────────────────────────
 
 
+async def _registra_banco_da_produzione(
+    lotto: dict, ricetta: dict, ricetta_id: str, pezzi: int,
+    data_produzione: str, operatore_id: Optional[str], operatore_nome: Optional[str],
+) -> dict:
+    """Un solo registro banco per il lotto appena prodotto, anche dopo un retry."""
+    from app.lotti.servizi.vendita_banco_service import VenditaBancoIn, registra_vendita_banco
+
+    return await registra_vendita_banco(VenditaBancoIn(
+        prodotto_id=ricetta_id,
+        prodotto_nome=ricetta["nome"],
+        reparto=ricetta.get("reparto") or "pasticceria",
+        pezzi_prodotti=pezzi,
+        foto_url=ricetta.get("foto_url"),
+        data=data_produzione,
+        lotto_id=lotto["id"],
+        numero_lotto=lotto.get("numero_lotto"),
+        operatore_id=operatore_id,
+        operatore_nome=operatore_nome,
+    ), operation_id=f"produzione-banco:{lotto['id']}")
+
+
 @router.post("/registra-produzione-lotto")
 async def registra_produzione_e_crea_lotto(
     ricetta_id: str = Query(...),
@@ -1337,6 +1358,7 @@ async def registra_produzione_e_crea_lotto(
     data_scadenza: Optional[str] = Query(None),   # ← scadenza corretta a mano dal tablet
     memorizza_durata: bool = Query(False),        # ← ricorda la durata per questo prodotto
     operation_id: Optional[str] = Query(None),    # ← idempotenza doppio tocco (tranche 4)
+    destinazione: Optional[str] = Query(None),    # banco immediato o deposito
 ):
     """
     Registra una produzione e:
@@ -1344,6 +1366,10 @@ async def registra_produzione_e_crea_lotto(
     2. Scala i lotti fornitori in modo FIFO
     3. Crea un lotto di produzione
     """
+    if destinazione not in (None, "banco", "frigo", "abbattitore"):
+        raise HTTPException(422, "Destinazione produzione non valida")
+    if destinazione == "banco" and not operation_id:
+        raise HTTPException(422, "ID operazione richiesto per la produzione al banco")
     if operation_id:
         try:
             await db.operazioni_idempotenti.insert_one(
@@ -1351,7 +1377,26 @@ async def registra_produzione_e_crea_lotto(
                  "creato": datetime.now(timezone.utc).isoformat()})
         except DuplicateKeyError:
             prec = await db.operazioni_idempotenti.find_one({"_id": f"prod_{operation_id}"})
-            return (prec or {}).get("risultato") or {"ok": True, "gia_eseguita": True}
+            if prec and prec.get("risultato"):
+                return prec["risultato"]
+            # Il lotto esiste già, ma la vendita al banco può essere fallita:
+            # completa la stessa operazione senza produrre né scalare due volte.
+            if prec and prec.get("lotto_creato") and prec.get("destinazione") == "banco":
+                originali = prec["parametri_banco"]
+                ricetta_precedente = await db.ricette.find_one(
+                    {"id": originali["ricetta_id"]}, {"_id": 0})
+                if ricetta_precedente is None:
+                    raise HTTPException(404, "Ricetta della produzione non trovata")
+                vendita = await _registra_banco_da_produzione(
+                    prec["lotto_creato"], ricetta_precedente, originali["ricetta_id"],
+                    originali["pezzi"], originali["data_produzione"],
+                    originali["operatore_id"], originali["operatore_nome"],
+                )
+                risposta = {**prec["lotto_creato"], "vendita_banco": vendita}
+                await db.operazioni_idempotenti.update_one(
+                    {"_id": f"prod_{operation_id}"}, {"$set": {"risultato": risposta}})
+                return risposta
+            raise HTTPException(409, "Produzione già in corso; riprova tra poco")
     ricetta = await db.ricette.find_one({"id": ricetta_id}, {"_id": 0})
     if not ricetta:
         raise HTTPException(status_code=404, detail=f"Ricetta con id '{ricetta_id}' non trovata")
@@ -1488,10 +1533,30 @@ async def registra_produzione_e_crea_lotto(
     # Il check scorta post-produzione ora vive in _riordini_post_produzione
     # (chiamato dentro scala_lotti_fornitori_per_ricetta): un motore solo.
 
+    if operation_id and destinazione == "banco":
+        await db.operazioni_idempotenti.update_one(
+            {"_id": f"prod_{operation_id}"},
+            {"$set": {"lotto_creato": {k: v for k, v in lotto_doc.items() if k != "_id"},
+                      "destinazione": "banco",
+                      "parametri_banco": {
+                          "ricetta_id": ricetta_id, "pezzi": pezzi,
+                          "data_produzione": data_produzione,
+                          "operatore_id": operatore_id,
+                          "operatore_nome": operatore_nome,
+                      }}},
+        )
+        vendita = await _registra_banco_da_produzione(
+            lotto_doc, ricetta, ricetta_id, pezzi, data_produzione,
+            operatore_id, operatore_nome,
+        )
+        lotto_doc["vendita_banco"] = vendita
+
     if operation_id:
         _snap = {k: lotto_doc.get(k) for k in
                  ("id", "numero_lotto", "prodotto", "quantita", "data_scadenza",
                   "frigo_numero", "lotti_fornitori")}
+        if destinazione == "banco":
+            _snap["vendita_banco"] = lotto_doc["vendita_banco"]
         _snap["gia_eseguita"] = True
         await db.operazioni_idempotenti.update_one(
             {"_id": f"prod_{operation_id}"}, {"$set": {"risultato": _snap}}, upsert=True)

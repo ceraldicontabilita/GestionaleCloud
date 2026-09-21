@@ -135,7 +135,7 @@ async def dividi_e_manda_al_banco(lotto_id: str, data: dict = Body(...)):
        registra cosi' com'e', senza scarico farcitura.
     """
     from app.lotti.routers.lotti_produzione import scala_lotti_fornitori_per_ricetta, peek_lotto_fifo_attivo
-    from app.lotti.routers.vendita_banco import registra_vendita_banco, VenditaBancoIn
+    from app.lotti.servizi.vendita_banco_service import registra_vendita_banco, VenditaBancoIn
 
     lotto = await db.lotti.find_one({"id": lotto_id}, {"_id": 0})
     if lotto and lotto.get("stato") == "bloccato_richiamo":
