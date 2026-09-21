@@ -49,8 +49,6 @@ export const SaimaRicettariView = () => {
   const [ricettari, setRicettari] = useState([]);
   const [loading, setLoading] = useState(true);
   const [pdfAperto, setPdfAperto] = useState(null);
-  const [importando, setImportando] = useState(false);
-  const [importEsito, setImportEsito] = useState(null);
 
   const carica = useCallback(async () => {
     setLoading(true);
@@ -71,16 +69,6 @@ export const SaimaRicettariView = () => {
       await axios.post(`${API}/saima/ricettari/aggiorna`);
       setTimeout(carica, 3000);
     } catch { }
-  };
-
-  const handleImportaRicette = async () => {
-    setImportando(true);
-    try {
-      const response = await axios.post(`${API}/saima/ricettari/importa-ricette`);
-      setImportEsito(response.data);
-    } finally {
-      setImportando(false);
-    }
   };
 
   // Raggruppa per sezione. MEPA avrà un proprio ricettario separato.
@@ -110,22 +98,16 @@ export const SaimaRicettariView = () => {
             <BookOpen size={20} /> Ricettari SAIMA
           </h2>
           <p className="text-sm opacity-80 mt-0.5">
-            {ricettari.length} ricettari ufficiali — le ricette estratte entrano nel ricettario Ceraldi
+            {ricettari.length} ricettari ufficiali del fornitore
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={handleImportaRicette} disabled={importando}
-            className="text-sm px-3 py-1.5 bg-white text-[#4d6a5c] hover:bg-[#f2f6f3] rounded-lg flex items-center gap-1.5 transition-colors disabled:opacity-60">
-            <BookOpen size={13} /> {importando ? "Inserimento…" : "Inserisci nel ricettario"}
-          </button>
           <button onClick={handleAggiorna}
             className="text-sm px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg flex items-center gap-1.5 transition-colors">
             <RefreshCw size={13} /> Aggiorna SAIMA
           </button>
         </div>
       </div>
-
-      {importEsito && <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">Ricettario aggiornato: {importEsito.inserite} nuove ricette, {importEsito.gia_presenti} già presenti. Totale disponibile {importEsito.totale_bundle}.</div>}
 
       {/* Viewer PDF inline */}
       {pdfAperto && (
@@ -151,7 +133,6 @@ export const SaimaRicettariView = () => {
                 <p className="text-xs font-bold text-gray-700 text-center leading-tight mb-2 line-clamp-2">
                   {ricett.nome}
                 </p>
-                {ricett.ricette_importabili > 0 && <p className="mb-2 text-center text-[10px] font-black text-[#5b7a6b]">{ricett.ricette_importabili} ricette estratte</p>}
                 <div className="flex gap-1.5 justify-center mt-auto">
                   <button
                     onClick={() => setPdfAperto(pdfAperto?.id === ricett.id ? null : ricett)}

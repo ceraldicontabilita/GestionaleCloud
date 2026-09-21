@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 from pathlib import Path
 
@@ -19,22 +20,26 @@ def run(coro):
     return _TEST_LOOP.run_until_complete(coro)
 
 
+def source_bundle():
+    path = Path(mod.__file__).resolve().parent.parent / "data" / "ricette_saima.json"
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
 def test_tutti_i_ricettari_ufficiali_hanno_url_correnti_e_bundle():
     assert len(mod.RICETTARI_APPLICAZIONI) == 19
     urls = {item["id"]: item["url_pdf"] for item in mod.RICETTARI_APPLICAZIONI}
     assert urls["croissant-ricettario"].endswith("/2023/07/Ricettario-Croissant.pdf")
     assert urls["waldkorn-ricettario"].endswith("/2024/11/Ricettario-Waldkorn.pdf")
-    bundle = mod._bundle_saima()
+    bundle = source_bundle()
     assert bundle["meta"]["totale_ricettari"] == 19
     assert bundle["meta"]["totale_ricette"] >= 120
     assert len(bundle["ricette"]) == bundle["meta"]["totale_ricette"]
     assert all(item.get("pagina_fonte") for item in bundle["ricette"])
     assert any(item["nome"].lower().startswith("croissant") for item in bundle["ricette"])
-    assert Path(mod._BUNDLE_RICETTE).exists()
 
 
 def test_bundle_saima_assegna_dolci_e_salati_ai_reparti_corretti():
-    items = {item["nome"]: item for item in mod._bundle_saima()["ricette"]}
+    items = {item["nome"]: item for item in source_bundle()["ricette"]}
     assert items["Caprese Al Limone"]["reparto"] == "pasticceria"
     assert items["Mela E Cannella"]["reparto"] == "pasticceria"
     assert items["Ciabatta Al Vino Rosso"]["reparto"] == "rosticceria"
@@ -53,7 +58,7 @@ def test_sostituzioni_solo_nella_stessa_famiglia(monkeypatch):
 
     async def scenario():
         await database.ricette.insert_one({
-            "id": "saima:test:croissant",
+            "id": "ricetta-interna-croissant",
             "nome": "Croissant pistacchio",
             "porzioni": 40,
             "ingredienti_dettaglio": [
@@ -69,7 +74,7 @@ def test_sostituzioni_solo_nella_stessa_famiglia(monkeypatch):
             {"id": "a2", "prodotto_nome": "Aroma zuppa inglese", "prodotto_nome_norm": "aroma zuppa inglese", "quantita_disponibile": 1, "unita_misura": "KG", "fornitore": "Fornitore B", "esaurito": False},
         ])
         return await mod.verifica_disponibilita_ricetta(
-            "saima:test:croissant", mod.VerificaDisponibilitaPayload(pezzi=80)
+            "ricetta-interna-croissant", mod.VerificaDisponibilitaPayload(pezzi=80)
         )
 
     out = run(scenario())
@@ -84,27 +89,18 @@ def test_sostituzioni_solo_nella_stessa_famiglia(monkeypatch):
     assert rows["Lievito di birra"]["richiesta"]["valore"] == 80
 
 
-def test_import_bundle_e_idempotente(monkeypatch):
+def test_ricettari_fornitore_non_scrivono_nelle_ricette_interne(monkeypatch):
     database = AsyncMongoMockClient()["Gestionale_Test"]
     monkeypatch.setattr(mod, "db", database)
 
     async def scenario():
-        first = await mod._importa_bundle_saima()
-        await database.ricette.update_one(
-            {"id": "saima:croissant-ricettario:croissant-oreo:p5"},
-            {"$set": {"porzioni": 42}},
-        )
-        second = await mod._importa_bundle_saima()
-        edited = await database.ricette.find_one({"id": "saima:croissant-ricettario:croissant-oreo:p5"})
-        return first, second, edited, await database.ricette.count_documents({})
+        listed = await mod.get_ricettari()
+        return listed, await database.ricette.count_documents({})
 
-    first, second, edited, count = run(scenario())
-    assert first["inserite"] == first["totale_bundle"]
-    assert second["inserite"] == 0
-    assert count == first["totale_bundle"]
-    assert edited["porzioni"] == 42
-    assert edited["visibile_tablet"] is False
-    assert edited["ricetta_operativa"] is False
+    listed, count = run(scenario())
+    assert len(listed) == 19
+    assert count == 0
+    assert not any(route.path.endswith("/importa-ricette") for route in mod.router.routes)
 
 
 def test_lista_spesa_aggiunge_solo_veri_mancanti(monkeypatch):
