@@ -2145,11 +2145,29 @@ export default function PrimaNota() {
   // inutilmente l'attesa.
   const richiestaInterattiva = { timeout: 10000, __noRetry: true };
 
+  const caricaConteggiProvvisori = async () => {
+    try {
+      const { data } = await api.get(
+        `/api/prima-nota/provvisori/conteggi?anno=${anno}`,
+        richiestaInterattiva,
+      );
+      setConteggiProvvisori({
+        caricato: true,
+        totale_da_decidere: Number(data?.totale_da_decidere || 0),
+        totale_in_attesa_banca: Number(data?.totale_in_attesa_banca || 0),
+      });
+    } catch (error) {
+      console.error('Conteggi Prima Nota Provvisori:', error);
+      setConteggiProvvisori(prev => ({ ...prev, caricato: false }));
+    }
+  };
+
   const carica = async ({ silent = false } = {}) => {
     const richiesta = ++richiestaRef.current;
     if (sezione === 'soci') {
       setLoading(false);
       setLoadError('');
+      void caricaConteggiProvvisori();
       return;
     }
     if (!silent) setLoading(true);
@@ -2193,6 +2211,9 @@ export default function PrimaNota() {
         else setCassa(dati);
 
       }
+      if (sezione !== 'provvisori') {
+        void caricaConteggiProvvisori();
+      }
     } catch (e) {
       if (richiesta !== richiestaRef.current) return;
       console.error('Prima nota:', e);
@@ -2210,29 +2231,12 @@ export default function PrimaNota() {
   }, [anno, sezione]);
 
   useEffect(() => {
-    let attivo = true;
-    setConteggiProvvisori({
+    setConteggiProvvisori(prev => ({
+      ...prev,
       caricato: false,
-      totale_da_decidere: null,
-      totale_in_attesa_banca: null,
-    });
-    api.get(
-      `/api/prima-nota/provvisori/conteggi?anno=${anno}`,
-      richiestaInterattiva,
-    ).then(({ data }) => {
-      if (!attivo) return;
-      setConteggiProvvisori({
-        caricato: true,
-        totale_da_decidere: Number(data?.totale_da_decidere || 0),
-        totale_in_attesa_banca: Number(data?.totale_in_attesa_banca || 0),
-      });
-    }).catch(error => {
-      if (!attivo) return;
-      console.error('Conteggi Prima Nota Provvisori:', error);
-      setConteggiProvvisori(prev => ({ ...prev, caricato: false }));
-    });
-    return () => { attivo = false; };
-  }, [anno]);
+    }));
+    void caricaConteggiProvvisori();
+  }, [anno, sezione]);
 
   // Modale dedicata (niente window.prompt: su telefono/PWA è inaffidabile)
   const [riportoModal, setRiportoModal] = useState(null); // {tipo}
