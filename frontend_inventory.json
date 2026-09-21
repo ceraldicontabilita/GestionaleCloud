@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "interfaces": [
+    {
+      "id": "erp",
+      "root": "frontend",
+      "entry": "frontend/src/main.jsx",
+      "toolchain": "vite",
+      "config": "frontend/vite.config.js",
+      "public_root": "frontend/public",
+      "mount": "/"
+    },
+    {
+      "id": "hr",
+      "root": "frontend_hr",
+      "entry": "frontend_hr/src/main.jsx",
+      "toolchain": "vite",
+      "config": "frontend_hr/vite.config.js",
+      "public_root": null,
+      "mount": "/hr"
+    },
+    {
+      "id": "lotti",
+      "root": "frontend_lotti",
+      "entry": "frontend_lotti/src/index.js",
+      "toolchain": "cra-craco",
+      "config": "frontend_lotti/craco.config.js",
+      "public_root": "frontend_lotti/public",
+      "mount": "/lotti",
+      "shared": [
+        "frontend_shared"
+      ]
+    },
+    {
+      "id": "menu",
+      "root": "frontend_menu",
+      "entry": "frontend_menu/src/index.js",
+      "toolchain": "cra-craco",
+      "config": "frontend_menu/craco.config.js",
+      "public_root": "frontend_menu/public",
+      "mount": "/menu",
+      "shared": [
+        "frontend_shared"
+      ]
+    }
+  ]
+}
