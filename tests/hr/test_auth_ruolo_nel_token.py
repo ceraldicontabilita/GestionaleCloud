@@ -62,6 +62,18 @@ def test_il_login_amministratore_mette_il_ruolo_nel_token():
         "pretende `role == 'admin'` e lo rifiuta, quindi l'area riservata di "
         "HR resta chiusa a chi ha appena fatto il login."
     )
+    assert payload["ruolo"] == "admin"
+    assert payload["name"] == payload["nome"] == "Admin"
+    assert payload["auth_method"] == payload["via"] == "password"
+
+
+def test_il_login_password_hr_usa_la_sessione_operativa_condivisa():
+    from app.lotti.auth import verify_token
+
+    payload = verify_token(hr_auth._make_token("titolare@esempio.it"))
+    assert payload is not None
+    assert payload["sub"] == "titolare@esempio.it"
+    assert payload["role"] == payload["ruolo"] == "admin"
 
 
 def test_quel_token_supera_la_guardia_admin():

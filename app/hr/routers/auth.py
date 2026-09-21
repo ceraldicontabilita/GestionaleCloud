@@ -6,12 +6,13 @@ Singolo utente admin configurato via env.
 import os
 import jwt
 import bcrypt
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from fastapi import APIRouter, Response, Request, HTTPException
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
 from app.hr.config import settings as _hr_settings
+from app.services.workforce_tokens import create_workforce_token
 
 load_dotenv()
 
@@ -50,20 +51,16 @@ class LoginRequest(BaseModel):
 
 
 def _make_token(email: str) -> str:
-    payload = {
-        "sub": email,
-        # Il ruolo nel token, non solo nel corpo della risposta. Questo login
-        # e' quello dell'amministratore (la password e' verificata sopra), ma
-        # fino al 19/09/2026 il token non portava alcun `role`: ogni rotta
-        # amministrativa di HR passa da `require_admin`, che pretende
-        # `payload["role"] == "admin"`, quindi il token emesso qui non apriva
-        # nulla dell'area riservata. La risposta diceva «role: admin», il
-        # token no.
-        "role": "admin",
-        "iat": datetime.now(timezone.utc),
-        "exp": datetime.now(timezone.utc) + timedelta(hours=TOKEN_EXPIRE_HOURS),
-    }
-    return jwt.encode(payload, SECRET_KEY, algorithm="HS256")
+    return create_workforce_token(
+        sub=email,
+        name="Admin",
+        role="admin",
+        secret=SECRET_KEY,
+        expires_in=timedelta(hours=TOKEN_EXPIRE_HOURS),
+        auth_method="password",
+        algorithm=_hr_settings.ALGORITHM,
+        email=email,
+    )
 
 
 def verify_token(request: Request) -> str:
