@@ -28,6 +28,8 @@ Una chiusura richiede: commit/PR, perimetro preciso, confronto prima/dopo, test 
 
 **Autonomia:** eseguire le tranche autorizzate senza chiedere conferme intermedie inutili. Non aggirare permessi, protezioni del branch, test falliti o vincoli sui dati. Le prove distruttive usano solo fixture isolate. Non creare operazioni contabili finte in produzione.
 
+**Regola canonica di implementazione:** quando emerge un errore strutturale, una duplicazione o un'architettura transitoria, non creare nuovi guardrail, whitelist, inventari o strati di compatibilità come soluzione finale. Riscrivere il componente nella forma canonica target, migrare i chiamanti vivi, verificare il nuovo flusso con test comportamentali e rimuovere il codice legacy nella stessa sequenza di lavoro. I guardrail già esistenti restano soltanto finché proteggono transizioni non ancora eliminate; non sono un obiettivo progettuale e vanno ritirati quando il codice canonico rende il vincolo strutturalmente impossibile da violare.
+
 **Comunicazione:** scrivere «Ho pubblicato il lavoro ed è accessibile live» solo dopo verifica del commit servito, indicando cosa è stato pubblicato. Non usare questa frase per una PR ancora aperta.
 
 ## 2. Stato verificato e correzioni all'audit iniziale
@@ -181,7 +183,7 @@ Ulteriore accettazione: importi/date invalidi senza scritture parziali, doppi in
 | RST-0005 | 🟢 | Nessuna nuova FastAPI produttiva; tre eccezioni temporanee fino alla fusione |
 | RST-0006 | 🟢 | Guardrail AST pubblicato con PR #595 / `d4b91880`: censiti 6 costruttori DB autonomi legacy in HR/Lotti/Menu; nessun nuovo client può entrare e la whitelist può solo accorciarsi; CI 35571750093 e Produzione 35571750023 verdi |
 | RST-0007 | 🟢 | Inventario automatico pubblicato con PR #596 / `d481a80c`: ogni modulo con APIRouter + operazioni deve risultare realmente raggiungibile dalla app root, direttamente o tramite HR/Lotti/Menu; riconosciuti anche aggregatori `add_api_route` e nomi router non standard. CI 35579221334 e Produzione 35579221330 verdi |
-| RST-0008 | ⚪ | Grafo completo pagine/componenti, lazy import, asset e toolchain delle quattro interfacce |
+| RST-0008 | 🧊 | Censimento/guardrail frontend sospeso: la PR #598 non va fusa. Per direttiva canonica, le prossime tranche devono sostituire direttamente toolchain e frontend duplicati con implementazione target, non aggiungere inventari difensivi |
 
 warehouse_inventory è un target canonico previsto dal codice corrente: non vietarne ogni scrittura indiscriminatamente. Bloccare writer obsoleti e convergere su responsabilità unica senza interrompere Lotti.
 
@@ -393,11 +395,11 @@ Accettazione: stesso ID visibile da HR, fascicolo, salari, TFR e banca; reimport
 
 **Priorità immediata:** consolidare accessi dati e PIN senza compromettere la Prima Nota; #573 e #575 sono già corretti e pubblicati.
 
-Ordine generale: Prima Nota operativa → guardrail → codice morto → public_api → infrastruttura/identità → outbox → fatture/inventario → cedolini/HR → Lotti → Menu → frontend unico → ritiro compatibilità/sotto-app → audit finale. Le rimozioni isolate dimostrate non devono attendere l'intera rifondazione.
+Ordine generale: Prima Nota operativa → infrastruttura/identità canonica → sostituzione del legacy con codice nuovo → fatture/inventario → cedolini/HR → Lotti → Menu → frontend unico → ritiro compatibilità/sotto-app → audit finale. Le rimozioni isolate dimostrate non devono attendere l'intera rifondazione.
 
-Prima di eliminare un percorso: verificare import/call/dynamic import, UI/job/API esterne e test; confrontare contratto; migrare i chiamanti vivi; aggiungere guardia; eliminare file/import/dipendenze inutili. Per i dati servono anche backup, referenzialità, saldi/quantità e ripristino provato.
+Prima di eliminare un percorso: verificare import/call/dynamic import, UI/job/API esterne e test; confrontare il contratto; implementare il sostituto canonico; migrare i chiamanti vivi; eliminare file/import/dipendenze inutili. Per i dati servono anche backup, referenzialità, saldi/quantità e ripristino provato.
 
-Non riscrivere tutto da zero. Non creare copie temporanee senza owner e criterio di ritiro. Non cambiare conti, IVA, pagamenti, stock, PIN o permessi per far passare test. Non togliere commenti utili alle invarianti. Non sostituire un flusso rotto con un successo vuoto.
+Non riscrivere l'intero sistema in un unico big-bang. Riscrivere invece ex novo il singolo componente difettoso nella forma canonica target, una micro-tranche alla volta. Non creare copie temporanee senza owner e criterio di ritiro. Non cambiare conti, IVA, pagamenti, stock, PIN o permessi per far passare test. Non togliere commenti utili alle invarianti. Non sostituire un flusso rotto con un successo vuoto.
 
 Chiusura finale: backend/frontend modulari realmente unificati; autorizzazioni corrette; originali preservati; fattura e cedolino canonici; consumer persistenti/idempotenti; report/Menu coerenti; nessun router orfano ingiustificato; startup snello; eliminazioni provate; test e produzione allineati. L'audit deve coprire tutte le quattro aree, non solo le viste ERP iniziali.
 
