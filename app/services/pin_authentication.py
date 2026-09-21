@@ -27,6 +27,11 @@ PIN_ADMIN_USERNAME = "ceraldi"
 PIN_ADMIN_EMAIL_DEFAULT = os.getenv("ADMIN_EMAIL", "ceraldigroupsrl@gmail.com")
 
 
+def admin_pin_is_configured() -> bool:
+    from app.services.admin_pin import configured
+    return configured()
+
+
 @dataclass(frozen=True)
 class PinIdentity:
     id: str
@@ -34,7 +39,7 @@ class PinIdentity:
     name: str | None
     role: str
     source: str
-    user_repo: UserRepository | None = None
+    user_repo: Any | None = None
 
     def as_user(self) -> dict[str, Any]:
         return {
@@ -45,38 +50,68 @@ class PinIdentity:
         }
 
 
-async def _admin_identity(db) -> PinIdentity:
-    user_repo: UserRepository | None = None
+async def authenticate_admin_pin(
+    db,
+    pin: str,
+    *,
+    users_collection: str = Collections.USERS,
+    username: str = PIN_ADMIN_USERNAME,
+    repository_factory=UserRepository,
+    require_existing: bool = False,
+    require_active: bool = False,
+    allow_synthetic: bool = True,
+    synthetic_email: str = PIN_ADMIN_EMAIL_DEFAULT,
+) -> PinIdentity | None:
+    """Valida il PIN centrale e risolve l'identita' admin del dominio.
+
+    La credenziale e' unica; il dominio decide soltanto dove vive la propria
+    identita' amministrativa e se una identita' persistita e' obbligatoria.
+    """
+    if verify_admin_pin(pin) is not True:
+        return None
+
+    user_repo = None
     user = None
     try:
-        user_repo = UserRepository(db[Collections.USERS])
-        try:
-            user = await user_repo.find_by_username(PIN_ADMIN_USERNAME)
-        except Exception:
-            user = None
-        if not user:
-            user = await db[Collections.USERS].find_one({"role": "admin"})
-    except Exception:
-        logger.exception("PIN auth: lookup identita admin fallito, uso identita sintetica")
-        user_repo = None
+        if repository_factory is not None:
+            user_repo = repository_factory(db[users_collection])
+            try:
+                candidate = await user_repo.find_by_username(username)
+            except Exception:
+                candidate = None
+            if candidate and candidate.get("role") == "admin":
+                user = candidate
 
-    if not user:
+        if not user:
+            user = await db[users_collection].find_one({"role": "admin"})
+    except Exception:
+        logger.exception("PIN auth: lookup identita admin fallito")
+        user_repo = None
+        user = None
+
+    if user and require_active and user.get("is_active") is False:
+        user = None
+
+    if user:
         return PinIdentity(
-            id="admin",
-            email=PIN_ADMIN_EMAIL_DEFAULT,
-            name="Amministratore",
+            id=str(user.get("id") or user.get("_id")),
+            email=user.get("email", ""),
+            name=user.get("name"),
             role="admin",
             source="admin_pin",
-            user_repo=None,
+            user_repo=user_repo,
         )
 
+    if require_existing or not allow_synthetic:
+        return None
+
     return PinIdentity(
-        id=str(user.get("id") or user.get("_id")),
-        email=user.get("email", ""),
-        name=user.get("name"),
+        id="admin",
+        email=synthetic_email,
+        name="Amministratore",
         role="admin",
         source="admin_pin",
-        user_repo=user_repo,
+        user_repo=None,
     )
 
 
@@ -84,7 +119,7 @@ async def authenticate_pin(db, pin: str) -> PinIdentity | None:
     """Ritorna identita canonica associata al PIN, oppure None."""
     admin_match = verify_admin_pin(pin)
     if admin_match is True:
-        return await _admin_identity(db)
+        return await authenticate_admin_pin(db, pin)
 
     match = await utenti_pin.verifica_pin(db, pin)
     if not match:
@@ -102,9 +137,7 @@ async def authenticate_pin(db, pin: str) -> PinIdentity | None:
 
 async def has_any_pin_identity(db) -> bool:
     """True se esiste almeno una sorgente PIN utilizzabile."""
-    from app.services.admin_pin import configured
-
-    if configured():
+    if admin_pin_is_configured():
         return True
     try:
         return await db[utenti_pin.COLLECTION].count_documents({"attivo": True}) > 0

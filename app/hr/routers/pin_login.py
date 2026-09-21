@@ -14,18 +14,18 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, Any
 import logging
 import os
-import time
 
 from jose import jwt
 
 from app.hr.config import settings
 from app.hr.database import Database, Collections
-from app.hr.repositories import UserRepository
+from app.hr.repositories import UserRepository as HrUserRepository
 from app.hr.services.auth_dipendenti import (
     login_dipendente, login_dipendente_per_nome,
     elenco_dipendenti_per_login,
 )
-from app.services.admin_pin import verify_admin_pin, configured as admin_pin_configured
+from app.services import pin_authentication
+from app.utils import login_lockout
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -43,45 +43,11 @@ router = APIRouter()
 PIN_TOKEN_EXPIRE_MINUTES = int(os.environ.get("HR_ADMIN_TOKEN_EXPIRE_MINUTES")
                                or os.environ.get("ADMIN_TOKEN_EXPIRE_MINUTES", str(60 * 24 * 7)))
 
-# ---- anti brute force (in-memory, per IP) ----
-_FAILED_ATTEMPTS: Dict[str, Dict[str, Any]] = {}
-MAX_ATTEMPTS = 8
-LOCK_SECONDS = 60
-
-
-def _client_ip(request: Request) -> str:
-    xff = request.headers.get("x-forwarded-for")
-    if xff:
-        return xff.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
-
-
-def _is_locked(ip: str) -> int:
-    rec = _FAILED_ATTEMPTS.get(ip)
-    if not rec:
-        return 0
-    if rec.get("locked_until", 0) > time.time():
-        return int(rec["locked_until"] - time.time())
-    return 0
-
-
-def _register_failure(ip: str):
-    rec = _FAILED_ATTEMPTS.get(ip) or {"count": 0, "locked_until": 0}
-    rec["count"] += 1
-    if rec["count"] >= MAX_ATTEMPTS:
-        rec["locked_until"] = time.time() + LOCK_SECONDS
-        rec["count"] = 0
-        logger.warning(f"PIN-login: IP {ip} bloccato per {LOCK_SECONDS}s")
-    _FAILED_ATTEMPTS[ip] = rec
-
-
-def _clear_failures(ip: str):
-    _FAILED_ATTEMPTS.pop(ip, None)
-
-
-def _pin_ok(pin: str) -> bool:
-    """La stessa credenziale di ERP/Menu, senza fallback HR_PIN_CODE."""
-    return verify_admin_pin(pin) is True
+# Anti brute force condiviso con ERP/email login.
+_client_ip = login_lockout.client_ip
+_is_locked = login_lockout.seconds_locked
+_register_failure = login_lockout.register_failure
+_clear_failures = login_lockout.clear_failures
 
 
 @router.get("/dipendenti-attivi", summary="Nomi per il selettore di login del portale")
@@ -153,8 +119,8 @@ async def pin_login(
         logger.info(f"PIN-login dipendente OK · IP {ip} · {result['user_id']} · {result['role']}")
         return result
 
-    # --- Ramo admin: unica fonte PIN_HASH_ADMIN di GestionaleCloud ---
-    if not admin_pin_configured():
+    # --- Ramo admin: credenziale e identita risolte dal motore canonico. ---
+    if not pin_authentication.admin_pin_is_configured():
         logger.error("PIN-login: PIN amministratore centrale non configurato")
         raise HTTPException(503, "Login PIN non configurato")
 
@@ -162,24 +128,24 @@ async def pin_login(
         _register_failure(ip)
         raise HTTPException(400, "PIN non valido")
 
-    if not _pin_ok(pin):
-        _register_failure(ip)
-        logger.warning(f"PIN-login: PIN errato da IP {ip}")
-        raise HTTPException(401, "PIN non valido")
-
     db = Database.get_db()
-    user_repo = UserRepository(db[Collections.USERS])
+    identity = await pin_authentication.authenticate_admin_pin(
+        db,
+        pin,
+        users_collection=Collections.USERS,
+        username=settings.PIN_ADMIN_USERNAME,
+        repository_factory=HrUserRepository,
+        require_existing=True,
+        require_active=True,
+        allow_synthetic=False,
+    )
+    if identity is None:
+        _register_failure(ip)
+        logger.warning(f"PIN-login admin HR fallito da IP {ip}")
+        raise HTTPException(401, "PIN non valido o amministratore non configurato")
 
-    user = None
-    try:
-        user = await user_repo.find_by_username(settings.PIN_ADMIN_USERNAME)
-    except Exception:
-        user = None
-    if not user:
-        user = await db[Collections.USERS].find_one({"role": "admin"})
-    if not user or user.get("role") != "admin" or user.get("is_active") is False:
-        logger.error("PIN-login: nessun utente admin nel DB")
-        raise HTTPException(500, "Nessun utente admin configurato")
+    user = identity.as_user()
+    user_repo = identity.user_repo
 
     user_id = str(user.get("id") or user.get("_id"))
     expire = datetime.now(timezone.utc) + timedelta(minutes=PIN_TOKEN_EXPIRE_MINUTES)
@@ -220,7 +186,7 @@ async def pin_login(
 async def pin_login_health() -> Dict[str, Any]:
     return {
         "ok": True,
-        "configured": admin_pin_configured(),
+        "configured": pin_authentication.admin_pin_is_configured(),
         "admin_username": settings.PIN_ADMIN_USERNAME,
         "token_expire_minutes": PIN_TOKEN_EXPIRE_MINUTES,
     }

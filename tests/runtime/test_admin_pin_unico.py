@@ -84,7 +84,8 @@ def test_hr_rifiuta_pin_alternativo_e_non_promuove_utente(monkeypatch):
     from app.hr.routers import pin_login as module
     db = AsyncMongoMockClient()["hr_pin_test"]
     monkeypatch.setattr(module.Database, "get_db", lambda: db)
-    module._FAILED_ATTEMPTS.clear()
+    from app.utils import login_lockout
+    login_lockout.clear_failures("test")
     request = Request({"type": "http", "headers": [], "client": ("test", 1)})
 
     async def scenario():
