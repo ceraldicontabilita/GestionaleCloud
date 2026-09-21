@@ -6,7 +6,7 @@ report PDF non montato e il test del suo solo database finto sono stati rimossi.
 import asyncio
 
 from app.routers import tfr as mod_tfr
-from app.routers import public_api as mod_public
+from app.routers import external_api_v1 as mod_public
 
 
 def _run(c):
@@ -77,11 +77,11 @@ def test_tfr_riepilogo_conta_i_dipendenti_attivi_veri(monkeypatch):
 
     esito = _run(mod_tfr.get_riepilogo_tfr_aziendale(anno=2026))
 
-    assert esito["num_dipendenti_attivi"] == 2  # d1 e d3, non d2 (inattivo)
-    assert esito["totale_fondo_tfr"] == 300.0  # 100 + 200
+    assert esito["num_dipendenti_attivi"] == 2
+    assert esito["totale_fondo_tfr"] == 300.0
 
 
-def test_public_api_conta_dipendenti_attivi_veri(monkeypatch):
+def test_api_esterna_conta_dipendenti_attivi_veri(monkeypatch):
     db = _FakeDb()
     monkeypatch.setattr(mod_public.Database, "get_db", staticmethod(lambda: db))
     db["dipendenti"].docs = list(_DIPENDENTI_REALI)
