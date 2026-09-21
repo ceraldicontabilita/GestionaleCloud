@@ -561,7 +561,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   descrizione»: un omonimo o due buste uguali nello stesso mese bastano ad attaccare il movimento
   sbagliato. Lo stesso per gli F24: `riconcilia_f24_tributi_banca`. Un movimento vale come prova solo se
   ha **evidenza bancaria ufficiale** e non è `in_attesa_estratto_ufficiale`.
-- Il Libro Unico si legge da un router solo (`app/routers/libro_unico_parser.py`, chiamato dalla pipeline
+- Il Libro Unico si legge da un router solo (`app/services/libro_unico_parser.py`, chiamato dalla pipeline
   documentale): oltre a presenze e busta salva le voci codificate del cedolino e i **dati chiave** (ratei
   13ª e 14ª, indennità L.207/24, trattamento integrativo L.21). Una voce assente resta nulla.
 - Duplicato di cedolino **solo con hash del PDF uguale**: stesso dipendente, mese e importo non bastano
