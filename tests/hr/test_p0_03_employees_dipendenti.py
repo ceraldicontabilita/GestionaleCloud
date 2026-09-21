@@ -11,7 +11,7 @@ def test_collections_employees_e_dipendenti():
 
 
 def test_libro_unico_non_scrive_piu_su_employees():
-    src = Path("app/routers/libro_unico_parser.py").read_text(encoding="utf-8")
+    src = Path("app/services/libro_unico_parser.py").read_text(encoding="utf-8")
     assert "db.employees.update_one" not in src
     assert "db[Collections.EMPLOYEES].update_one" in src
 
