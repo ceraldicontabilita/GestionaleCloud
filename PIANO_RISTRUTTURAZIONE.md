@@ -179,7 +179,7 @@ Ulteriore accettazione: importi/date invalidi senza scritture parziali, doppi in
 | RST-0003 | 🟢 | Guardia AST NO-WRITE e census writer warehouse presenti; writer transitori ancora da ridurre |
 | RST-0004 | ⚪ | Contratto route React ↔ catalogo, distinguendo tab/dettagli/redirect |
 | RST-0005 | 🟢 | Nessuna nuova FastAPI produttiva; tre eccezioni temporanee fino alla fusione |
-| RST-0006 | ⚪ | Impedire nuove fonti dati/client indipendenti duplicati |
+| RST-0006 | 🟡 | Guardrail AST preparato: 6 costruttori DB autonomi legacy censiti in HR/Lotti/Menu; nuovi client vietati e whitelist solo decrescente; attende CI/rilascio |
 | RST-0007 | ⚪ | Inventario router montati, non montati, importati e utilizzati internamente |
 | RST-0008 | ⚪ | Grafo completo pagine/componenti, lazy import, asset e toolchain delle quattro interfacce |
 
@@ -432,5 +432,6 @@ Il conteggio dei tre moduli report/batch è 1.186 righe rimosse. Non aggiungerlo
 | 2026-09-21 | RST-00A7, date Banca | 🟡 | Aperto #573: data fattura 20/09 mostrata per addebito 21/09; correzione non eseguita |
 | 2026-09-21 | RST-1003/1004 | 🟡 | Deroga warehouse_products rimossa dopo eliminazione del lettore; nessuna tabella cancellata |
 | 2026-09-21 | PR-569-PUBBLICATA | 🟢 | 7329ec7498c90da519422ade2f638f0f75d8fc55; CI pre-merge 35555214654, E2E pre-merge 35555214652, Produzione 35555459176 tutti superati nei rispettivi perimetri |
+| 2026-09-21 | RST-0006-DB-V2 | 🟡 | branch `ristrutturazione/guardrail-db-v2`: congelati 6 costruttori DB autonomi legacy; un nuovo client rompe la CI; attende verifica e merge |
 
 **Rilascio verificato:** il lavoro della PR #569 è pubblicato e accessibile live. **Non sono concluse** la qualificazione completa della Prima Nota, la gestione PIN centralizzata dalla UI, l'unificazione dati/outbox né la fusione HR/Lotti/Menu/frontend. Nessuna di queste attività va dichiarata completata per effetto della sola bonifica.
