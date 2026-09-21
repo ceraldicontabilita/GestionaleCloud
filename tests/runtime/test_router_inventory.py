@@ -8,6 +8,7 @@ grafo import e dal test dei moduli orfani.
 from __future__ import annotations
 
 import ast
+import sys
 from pathlib import Path
 
 from fastapi.routing import APIRoute, APIWebSocketRoute
@@ -23,7 +24,11 @@ _ROUTE_BUILDERS = {"add_api_route", "add_api_websocket_route"}
 
 
 def _module_name(path: Path) -> str:
-    return ".".join(path.relative_to(ROOT).with_suffix("").parts)
+    rel = path.relative_to(ROOT).with_suffix("")
+    parts = list(rel.parts)
+    if parts and parts[-1] == "__init__":
+        parts.pop()
+    return ".".join(parts)
 
 
 def _router_modules_with_operations() -> set[str]:
@@ -64,11 +69,11 @@ def _router_modules_with_operations() -> set[str]:
     return modules
 
 
-def _reachable_endpoint_modules() -> set[str]:
+def _reachable_endpoint_ids() -> set[int]:
     # Importare l'app non esegue il lifespan: nessuna connessione DB o job parte.
     from app.main import app
 
-    modules: set[str] = set()
+    endpoints: set[int] = set()
     visited: set[int] = set()
 
     def walk(router_app) -> None:
@@ -80,21 +85,43 @@ def _reachable_endpoint_modules() -> set[str]:
         for route in getattr(router_app, "routes", ()):
             if isinstance(route, (APIRoute, APIWebSocketRoute)):
                 endpoint = getattr(route, "endpoint", None)
-                module = getattr(endpoint, "__module__", "")
-                if module.startswith("app."):
-                    modules.add(module)
+                if endpoint is not None:
+                    endpoints.add(id(endpoint))
             child = getattr(route, "app", None)
             if child is not None and child is not router_app and hasattr(child, "routes"):
                 walk(child)
 
     walk(app)
-    return modules
+    return endpoints
+
+
+def _mounted_router_modules(candidates: set[str]) -> set[str]:
+    reachable = _reachable_endpoint_ids()
+    mounted: set[str] = set()
+
+    # app.main ha già importato tutti i router effettivamente registrati.
+    # Non importiamo moduli ulteriori solo per censirli, evitando side effect.
+    for module_name in candidates:
+        module = sys.modules.get(module_name)
+        router = getattr(module, "router", None) if module is not None else None
+        if router is None:
+            continue
+        endpoint_ids = {
+            id(route.endpoint)
+            for route in getattr(router, "routes", ())
+            if isinstance(route, (APIRoute, APIWebSocketRoute))
+            and getattr(route, "endpoint", None) is not None
+        }
+        if endpoint_ids & reachable:
+            mounted.add(module_name)
+
+    return mounted
 
 
 def test_router_con_operazioni_sono_raggiungibili_dalla_app_pubblicata() -> None:
     dichiarati = _router_modules_with_operations()
-    raggiungibili = _reachable_endpoint_modules()
-    non_montati = sorted(dichiarati - raggiungibili)
+    montati = _mounted_router_modules(dichiarati)
+    non_montati = sorted(dichiarati - montati)
 
     assert not non_montati, (
         "Moduli APIRouter con operazioni ma non raggiungibili dalla app root "
