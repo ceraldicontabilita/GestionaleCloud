@@ -729,6 +729,48 @@ def costruisci_campi_movimento_fattura(
     }
 
 
+def _data_iso_bancaria(valore: Any) -> Optional[str]:
+    """Normalizza una data bancaria senza inventarla."""
+    if valore in (None, ""):
+        return None
+    if isinstance(valore, datetime):
+        return valore.date().isoformat()
+    testo = str(valore).strip()
+    if not testo:
+        return None
+    if re.match(r"^\\d{4}-\\d{2}-\\d{2}", testo):
+        try:
+            return datetime.strptime(testo[:10], "%Y-%m-%d").date().isoformat()
+        except ValueError:
+            return None
+    for formato in ("%d/%m/%Y", "%d-%m-%Y", "%d.%m.%Y"):
+        try:
+            return datetime.strptime(testo[:10], formato).date().isoformat()
+        except ValueError:
+            continue
+    return None
+
+
+def _campi_data_evidenza_banca(movimento: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Restituisce le date della prova bancaria mantenendole distinte."""
+    movimento = movimento or {}
+    data_operazione = _data_iso_bancaria(
+        movimento.get("data") or movimento.get("data_operazione")
+    )
+    data_contabile = _data_iso_bancaria(movimento.get("data_contabile"))
+    data_valuta = _data_iso_bancaria(movimento.get("data_valuta"))
+    data_finanziaria = data_operazione or data_contabile or data_valuta
+    campi: Dict[str, Any] = {}
+    if data_finanziaria:
+        campi["data"] = data_finanziaria
+    if data_operazione:
+        campi["data_operazione_banca"] = data_operazione
+    if data_contabile:
+        campi["data_contabile"] = data_contabile
+    if data_valuta:
+        campi["data_valuta"] = data_valuta
+    return campi
+
 async def registra_pagamento_fattura(
     fattura: Dict,
     metodo_pagamento: str,
