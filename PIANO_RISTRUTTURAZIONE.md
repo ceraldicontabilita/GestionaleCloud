@@ -874,7 +874,7 @@ Aggiungere una riga ad ogni attività conclusa.
 | 2026-09-21 | RST-00A2 | 🟡 IN CORSO | branch `ristrutturazione/fase-0a-prima-nota` | Banca manuale senza estratto conto resa provvisoria e fuori saldo; UI allineata con badge e saldo progressivo corretto | Attende CI ed E2E riconciliazione |
 | 2026-09-21 | FASE-0A-LIVE | 🟢 COMPLETATO | `b71f62d0c8a6f17994355150f4a574e73dcad021` | Prima Nota Cassa/Banca/Provvisori pubblicata su main e servita in produzione | Produzione `35543104234`: E2E, 64 pagine, layout, viewer, bundle commit e smoke runtime tutti verdi |
 | 2026-09-21 | RST-0001/0003/0005 | 🟡 IN CORSO | branch `ristrutturazione/fase-0b-guardrail` | Aggiunti guardrail route duplicate, nuove FastAPI e writer magazzino; rimosso CRUD warehouse legacy da `public_api.py` | Attende CI e bonifica collisioni esistenti |
-| 2026-09-21 | FASE-0C-PUBLIC-API | 🟡 IN CORSO | branch `ristrutturazione/fase-0c-endpoint-owner` | Eliminato `public_api.py`; Pianificazione, ricerca globale e API v1 riallocate nei rispettivi owner; endpoint legacy senza chiamanti non trasferiti | Attende CI/Produzione |
+| 2026-09-21 | FASE-0C-PUBLIC-API | 🟢 COMPLETATO | `31943965f382018d87047637e16fe815d1b93318` | Eliminato `public_api.py`; Pianificazione, ricerca globale e API v1 riallocate nei rispettivi owner; endpoint legacy senza chiamanti non trasferiti | Produzione `35553798734`: E2E, 64 pagine, layout/viewer, bundle commit e smoke runtime tutti verdi |
 | 2026-09-21 | FASE-1A-CODICE-MORTO | 🟡 IN CORSO | branch `ristrutturazione/fase-1-codice-morto` | Eliminati report_pdf, simple_exports e batch_operations; estratto solo il filtro di riconciliazione vivo | Attende CI/Produzione |
 
 ---
