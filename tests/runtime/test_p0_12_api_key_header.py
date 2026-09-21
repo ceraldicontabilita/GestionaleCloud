@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from fastapi import HTTPException
 
-import app.routers.public_api as pub
+import app.routers.external_api_v1 as pub
 
 
 def _run(c):
@@ -42,6 +42,6 @@ def test_chiave_mancante_401():
 
 
 def test_endpoint_v1_non_usano_piu_query_obbligatoria():
-    src = Path("app/routers/public_api.py").read_text(encoding="utf-8")
+    src = Path("app/routers/external_api_v1.py").read_text(encoding="utf-8")
     assert 'x_api_key: str = Query(..., alias="api_key")' not in src
     assert "Depends(richiedi_api_key)" in src
