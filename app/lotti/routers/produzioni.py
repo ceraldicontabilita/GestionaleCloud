@@ -7,10 +7,12 @@ from datetime import datetime, timezone
 from typing import Optional
 import uuid
 
-from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel, Field
 
 from app.lotti.db import database as db
+from app.lotti.auth import require_admin, request_actor
+from app.lotti.servizi.annullamento_produzione_service import annulla_produzione
 
 router = APIRouter(prefix="/produzioni", tags=["Produzioni"])
 
@@ -28,6 +30,10 @@ class ProduzioneCrea(BaseModel):
 class ProduzioneResponse(ProduzioneCrea):
     id: str
     data: str
+
+
+class AnnullamentoProduzione(BaseModel):
+    motivo: str = Field(min_length=3)
 
 
 @router.post("/", response_model=ProduzioneResponse)
@@ -71,7 +77,7 @@ async def get_produzioni_oggi():
     # Cerca per data ISO oppure data con timestamp (substr 10)
     pipeline = [
         {"$addFields": {"data_str": {"$substr": ["$data", 0, 10]}}},
-        {"$match": {"data_str": oggi, "reparto": {"$in": ["pasticceria", "rosticceria"]}}},
+        {"$match": {"data_str": oggi, "reparto": {"$in": ["pasticceria", "rosticceria"]}, "stato": {"$ne": "annullata"}}},
         {"$project": {"_id": 0}},
     ]
     docs = await db.produzioni.aggregate(pipeline).to_list(200)
@@ -105,6 +111,7 @@ async def get_produzioni(
 async def get_stats_produzioni():
     """Statistiche aggregate delle produzioni"""
     pipeline = [
+        {"$match": {"stato": {"$ne": "annullata"}}},
         {
             "$group": {
                 "_id": "$ricetta_nome",
@@ -133,7 +140,7 @@ async def get_trend_produzioni(giorni: int = 30):
 
     inizio = (datetime.now(timezone.utc) - timedelta(days=giorni)).date()
     docs = await db.produzioni.find(
-        {}, {"_id": 0, "data": 1, "pezzi": 1, "costo_totale": 1}
+        {"stato": {"$ne": "annullata"}}, {"_id": 0, "data": 1, "pezzi": 1, "costo_totale": 1}
     ).to_list(10000)
     agg = {}
     for d in docs:
@@ -166,7 +173,7 @@ async def get_produzioni_per_giorno(
     from datetime import timedelta
 
     data_inizio = (datetime.now(timezone.utc) - timedelta(days=giorni)).isoformat()
-    match = {"data": {"$gte": data_inizio}}
+    match = {"data": {"$gte": data_inizio}, "stato": {"$ne": "annullata"}}
     if ricetta_id:
         match["ricetta_id"] = ricetta_id
 
@@ -203,7 +210,7 @@ async def get_riepilogo_produzioni(giorni: int = Query(30, le=365)):
 
     data_inizio = (datetime.now(timezone.utc) - timedelta(days=giorni)).isoformat()
     pipeline = [
-        {"$match": {"data": {"$gte": data_inizio}}},
+        {"$match": {"data": {"$gte": data_inizio}, "stato": {"$ne": "annullata"}}},
         {
             "$group": {
                 "_id": None,
@@ -226,58 +233,12 @@ async def get_riepilogo_produzioni(giorni: int = Query(30, le=365)):
     }
 
 
-@router.delete("/{produzione_id}")
-async def elimina_produzione(
-    produzione_id: str, ripristina_scorte: bool = True, elimina_lotto: bool = True
+@router.post("/{produzione_id}/annulla")
+async def annulla_produzione_route(
+    produzione_id: str, body: AnnullamentoProduzione, request: Request,
+    _admin=Depends(require_admin),
 ):
-    """Storno produzione: elimina la registrazione e, di default,
-    restituisce ai lotti fornitori le quantità scalate (FIFO inverso esatto,
-    lotto per lotto) ed elimina il lotto di produzione creato.
-    - ripristina_scorte=False: elimina solo la registrazione (vecchio comportamento).
-    - elimina_lotto=False: conserva il lotto/etichetta di produzione.
-    """
-    # CLAIM ATOMICO: elimina PRIMA il documento e usa il suo contenuto per il
-    # ripristino. Solo la richiesta che ottiene davvero il doc (deleted_count==1)
-    # prosegue: un doppio tap "storna" non ripristina due volte le scorte
-    # (prima: find_one + $inc + delete_one alla fine → entrambe le richieste
-    # trovavano la produzione e restituivano le quantità DUE volte).
-    prod = await db.produzioni.find_one_and_delete({"id": produzione_id})
-    if not prod:
-        raise HTTPException(status_code=404, detail="Produzione non trovata")
-    prod.pop("_id", None)
-
-    # Dettaglio scarico: dal doc produzione (nuove) o dal lotto etichetta (vecchie)
-    dettaglio = prod.get("lotti_scalati_dettaglio") or []
-    if not dettaglio and prod.get("numero_lotto"):
-        lotto_prod = await db.lotti.find_one(
-            {"numero_lotto": prod["numero_lotto"]}, {"_id": 0, "lotti_fornitori": 1}
-        )
-        if lotto_prod:
-            dettaglio = (lotto_prod.get("lotti_fornitori") or {}).get("lotti_scalati") or []
-
-    ripristinati = 0
-    if ripristina_scorte:
-        for ls in dettaglio:
-            try:
-                qta = float(ls.get("quantita_consumata") or 0)
-            except (ValueError, TypeError):
-                qta = 0
-            lotto_id = ls.get("lotto_id")
-            if not lotto_id or qta <= 0 or str(lotto_id).startswith("DIZ-"):
-                continue
-            res = await db.lotti_fornitori.update_one(
-                {"id": lotto_id},
-                {"$inc": {"quantita_disponibile": qta}, "$set": {"esaurito": False}},
-            )
-            ripristinati += res.modified_count
-
-    lotto_eliminato = False
-    if elimina_lotto and prod.get("numero_lotto"):
-        res = await db.lotti.delete_one({"numero_lotto": prod["numero_lotto"]})
-        lotto_eliminato = res.deleted_count > 0
-
-    return {
-        "success": True,
-        "lotti_ripristinati": ripristinati,
-        "lotto_produzione_eliminato": lotto_eliminato,
-    }
+    actor = request_actor(request)
+    if not actor or not actor["id"]:
+        raise HTTPException(401, "Sessione dipendente richiesta")
+    return await annulla_produzione(produzione_id, body.motivo.strip(), actor)
