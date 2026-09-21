@@ -9,7 +9,7 @@ import { apiError } from "../../utils/apiError";
 import { SEMAFORO, euro, posizioneLabel, AzioneModal, SchedaLottoModal } from "./shared/SchedaLottoModal";
 
 // ── Card lotto ────────────────────────────────────────────────────────────────
-function LottoCard({ lotto, onDettaglio, onAzione, onUsaOggi }) {
+function LottoCard({ lotto, stato = "utilizzabile", onDettaglio, onAzione, onUsaOggi }) {
   const [menuAperto, setMenuAperto] = useState(false);
   const sem = SEMAFORO[lotto.stato_scadenza?.colore] || SEMAFORO.grigio;
 
@@ -35,13 +35,18 @@ function LottoCard({ lotto, onDettaglio, onAzione, onUsaOggi }) {
       </div>
 
       <div className="flex items-center gap-2 mt-3">
-        {/* "Usa oggi" — mancava (audit onesto 04/07/2026): manda il lotto
-            nei task del giorno dei tablet, così il reparto lo vede subito */}
-        <Button size="sm" onClick={() => onUsaOggi(lotto)} className="flex-1">
-          <BellRing size={16}/> Usa oggi
-        </Button>
+        {stato === "utilizzabile" && (
+          <Button size="sm" onClick={() => onUsaOggi(lotto)} className="flex-1">
+            <BellRing size={16}/> Usa oggi
+          </Button>
+        )}
+        {stato === "scaduto" && (
+          <Button size="sm" variant="danger" onClick={() => onAzione("smalti", lotto)} className="flex-1">
+            <Trash2 size={16}/> Smaltisci
+          </Button>
+        )}
         <Button size="sm" variant="secondary" onClick={() => onDettaglio(lotto.id)}><Eye size={16}/> Dettaglio</Button>
-        <div className="relative">
+        {stato === "utilizzabile" && <div className="relative">
           <button onClick={() => setMenuAperto((v) => !v)} className="p-2 rounded-lg border border-stone-200 hover:bg-stone-50">
             <MoreVertical size={18} />
           </button>
@@ -61,7 +66,7 @@ function LottoCard({ lotto, onDettaglio, onAzione, onUsaOggi }) {
               ))}
             </div>
           )}
-        </div>
+        </div>}
       </div>
     </div>
   );
@@ -70,6 +75,8 @@ function LottoCard({ lotto, onDettaglio, onAzione, onUsaOggi }) {
 // ── Vista principale ──────────────────────────────────────────────────────────
 export default function CosaUsareOggiView() {
   const [lotti, setLotti] = useState([]);
+  const [scaduti, setScaduti] = useState([]);
+  const [daVerificare, setDaVerificare] = useState([]);
   const [loading, setLoading] = useState(true);
   const [attrezzature, setAttrezzature] = useState({ frigoriferi: [], congelatori: [] });
   const [schedaLottoId, setSchedaLottoId] = useState(null);
@@ -80,6 +87,8 @@ export default function CosaUsareOggiView() {
     try {
       const r = await axios.get(`${API}/lotti/cosa-usare-oggi`);
       setLotti(r.data?.lotti || []);
+      setScaduti(r.data?.scaduti || []);
+      setDaVerificare(r.data?.da_verificare || []);
     } catch (e) {
       toast.error(apiError(e, "Impossibile caricare i lotti"));
     } finally {
@@ -120,16 +129,17 @@ export default function CosaUsareOggiView() {
       <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-2xl font-black text-stone-900">Cosa usare oggi</h1>
-          <p className="text-sm text-stone-500">Lotti attivi ordinati per urgenza scadenza e valore economico</p>
+          <p className="text-sm text-stone-500">Lotti utilizzabili ordinati per scadenza e valore; scaduti separati</p>
         </div>
         <Button variant="secondary" size="sm" onClick={carica}><RefreshCw size={16}/> Aggiorna</Button>
       </div>
 
       {loading && <p className="text-center text-stone-500 py-8">Carico...</p>}
-      {!loading && lotti.length === 0 && (
-        <p className="text-center text-stone-500 py-8">Nessun lotto attivo al momento.</p>
+      {!loading && lotti.length === 0 && scaduti.length === 0 && daVerificare.length === 0 && (
+        <p className="text-center text-stone-500 py-8">Nessun lotto disponibile al momento.</p>
       )}
 
+      {lotti.length > 0 && <h2 className="text-lg font-bold mt-5 mb-3">Da usare prima della scadenza</h2>}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {lotti.map((l) => (
           <LottoCard key={l.id} lotto={l}
@@ -138,6 +148,27 @@ export default function CosaUsareOggiView() {
             onAzione={(tipo, lotto) => setAzione({ tipo, lotto })} />
         ))}
       </div>
+
+      {scaduti.length > 0 && (
+        <section className="mt-8" aria-label="Lotti scaduti">
+          <h2 className="text-lg font-bold text-red-800 mb-1">Scaduti: non utilizzare</h2>
+          <p className="text-sm text-stone-600 mb-3">Apri il dettaglio oppure registra lo smaltimento con l’azione correttiva HACCP.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {scaduti.map((l) => <LottoCard key={l.id} lotto={l} stato="scaduto" onDettaglio={setSchedaLottoId}
+              onAzione={(tipo, lotto) => setAzione({ tipo, lotto })} />)}
+          </div>
+        </section>
+      )}
+
+      {daVerificare.length > 0 && (
+        <section className="mt-8" aria-label="Lotti con scadenza da verificare">
+          <h2 className="text-lg font-bold mb-1">Scadenza da verificare</h2>
+          <p className="text-sm text-stone-600 mb-3">Controlla la scheda prima di decidere come gestire questi lotti.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {daVerificare.map((l) => <LottoCard key={l.id} lotto={l} stato="da_verificare" onDettaglio={setSchedaLottoId} />)}
+          </div>
+        </section>
+      )}
 
       {schedaLottoId && (
         <SchedaLottoModal lottoId={schedaLottoId} onClose={() => setSchedaLottoId(null)}
