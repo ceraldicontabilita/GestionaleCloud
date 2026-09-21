@@ -1649,6 +1649,159 @@ def _risolvi_rivendicazioni_movimenti(
     return provvisori
 
 
+def _classifica_provvisorio_fattura(
+    fattura: Dict[str, Any],
+    metodo_per_piva: Dict[str, str],
+) -> tuple[str, str, str]:
+    """Classificazione condivisa fra conteggi e vista completa Provvisori."""
+    piva = str(
+        fattura.get("supplier_vat") or fattura.get("cedente_piva") or ""
+    ).strip()
+    assegni_collegati = [
+        link for link in (fattura.get("assegni_collegati") or [])
+        if isinstance(link, dict)
+    ]
+    assegno_specifico = (
+        fattura.get("metodo_pagamento_previsto") == "assegno"
+        or fattura.get("metodo_pagamento_override_source") == "assegno_compilato"
+        or bool(assegni_collegati)
+    )
+    metodo_previsto_fattura = normalizza_metodo_pagamento(
+        fattura.get("metodo_pagamento_previsto")
+    )
+    fonte_metodo = "fornitore"
+    stato_pag = fattura.get("stato_pagamento", "")
+
+    if (
+        str(fattura.get("metodo_pagamento_previsto") or "").lower()
+        == "da_decidere"
+        and fattura.get("metodo_pagamento_override_source")
+        == "operatore_prima_nota"
+    ):
+        return "sospesa", "in_attesa", "operatore_prima_nota"
+    if assegno_specifico:
+        return "banca", "in_attesa_estratto_conto", "assegno_compilato"
+    if (
+        metodo_previsto_fattura == "banca"
+        and fattura.get("metodo_pagamento_override_source")
+        == "operatore_prima_nota"
+    ):
+        return "banca", "in_attesa_estratto_conto", "operatore_prima_nota"
+    if stato_pag == "sospesa":
+        return "sospesa", "in_attesa", fonte_metodo
+
+    suggerimento = classifica_metodo_fornitore(metodo_per_piva.get(piva, ""))
+    stato_match = "confermato" if suggerimento != "sospesa" else "in_attesa"
+    return suggerimento, stato_match, fonte_metodo
+
+
+async def get_conteggi_fatture_provvisorie(anno: int = Query(...)) -> Dict[str, Any]:
+    """Conteggi leggeri del tab Provvisori, senza DDT/XML o registro completo."""
+    db = Database.get_db()
+    fatture_tutte = await db["invoices"].find(
+        {
+            "status": {"$nin": ["deleted", "archived"]},
+            "entity_status": {"$ne": "deleted"},
+            "$or": [
+                {"invoice_date": {"$regex": f"^{anno}"}},
+                {"data_documento": {"$regex": f"^{anno}"}},
+                {"data_fattura": {"$regex": f"^{anno}"}},
+            ],
+        },
+        {
+            "_id": 0,
+            "id": 1, "invoice_key": 1,
+            "invoice_date": 1, "data_documento": 1, "data_fattura": 1,
+            "total_amount": 1, "importo_totale": 1,
+            "importo_ritenuta": 1, "ritenuta_importo": 1,
+            "withholding_amount": 1, "pagamento_rate_totale": 1,
+            "pagamento_rate": 1,
+            "supplier_vat": 1, "cedente_piva": 1,
+            "metodo_pagamento_previsto": 1,
+            "metodo_pagamento_override_source": 1,
+            "stato_pagamento": 1, "assegni_collegati": 1,
+            "esclusa_da_cassa_banca": 1,
+            **{campo: 1 for campo in CAMPI_ID_PRIMA_NOTA},
+        },
+    ).to_list(None)
+    fatture_tutte = _dedupe_invoices([
+        f for f in fatture_tutte
+        if float(f.get("total_amount") or f.get("importo_totale") or 0) > 0
+    ])
+
+    fatture_ids = [str(f.get("id")) for f in fatture_tutte if f.get("id")]
+    ritenute_per_fattura = {}
+    if fatture_ids:
+        async for ritenuta in db["ritenute_acconto"].find(
+            {"fattura_id": {"$in": fatture_ids}},
+            {"_id": 0, "fattura_id": 1, "importo": 1},
+        ):
+            try:
+                ritenute_per_fattura[str(ritenuta.get("fattura_id"))] = abs(
+                    float(ritenuta.get("importo") or 0)
+                )
+            except (TypeError, ValueError):
+                continue
+    for fattura in fatture_tutte:
+        importo_ritenuta = ritenute_per_fattura.get(str(fattura.get("id")))
+        if importo_ritenuta:
+            fattura["ritenuta_importo"] = importo_ritenuta
+
+    fatture_aperte = await fatture_senza_pagamento_contabile_confermato(
+        db, fatture_tutte,
+    )
+
+    metodo_per_piva: Dict[str, str] = {}
+    esclusi_cassa_banca = set()
+    async for supplier in db["fornitori"].find(
+        {},
+        {
+            "_id": 0, "partita_iva": 1, "piva": 1, "vat_number": 1,
+            "metodo_pagamento": 1, "esclude_cassa_banca": 1, "cessato": 1,
+        },
+    ):
+        metodo = supplier.get("metodo_pagamento", "")
+        for valore in (
+            supplier.get("partita_iva"),
+            supplier.get("piva"),
+            supplier.get("vat_number"),
+        ):
+            if not valore:
+                continue
+            chiave = str(valore).strip()
+            if metodo:
+                metodo_per_piva[chiave] = metodo
+            if supplier.get("esclude_cassa_banca") or supplier.get("cessato"):
+                esclusi_cassa_banca.add(chiave)
+
+    da_decidere = 0
+    attesa_banca = 0
+    escluse = 0
+    for fattura in fatture_aperte:
+        piva = str(
+            fattura.get("supplier_vat") or fattura.get("cedente_piva") or ""
+        ).strip()
+        if fattura.get("esclusa_da_cassa_banca") or piva in esclusi_cassa_banca:
+            escluse += 1
+            continue
+        suggerimento, _stato, _fonte = _classifica_provvisorio_fattura(
+            fattura, metodo_per_piva,
+        )
+        if suggerimento == "banca":
+            attesa_banca += 1
+        else:
+            da_decidere += 1
+
+    return {
+        "anno": anno,
+        "totale_da_decidere": da_decidere,
+        "totale_in_attesa_banca": attesa_banca,
+        "totale_aperti_mostrati": da_decidere + attesa_banca,
+        "totale_escluse_cassa_banca": escluse,
+        "caricato": True,
+    }
+
+
 async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
     """
     Lista fatture NON ancora registrate in Prima Nota.
@@ -1829,51 +1982,9 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
         assegni_collegati = [
             link for link in (f.get("assegni_collegati") or []) if isinstance(link, dict)
         ]
-        assegno_specifico = (
-            f.get("metodo_pagamento_previsto") == "assegno"
-            or f.get("metodo_pagamento_override_source") == "assegno_compilato"
-            or bool(assegni_collegati)
+        suggerimento, stato_match, fonte_metodo = _classifica_provvisorio_fattura(
+            f, metodo_per_piva,
         )
-        metodo_previsto_fattura = normalizza_metodo_pagamento(
-            f.get("metodo_pagamento_previsto")
-        )
-        fonte_metodo = "fornitore"
-        stato_pag = f.get("stato_pagamento", "")
-
-        # PRIORITÀ 0: la scelta esplicita sulla singola fattura prevale sul
-        # metodo abituale del fornitore, anche se cassa o misto.
-        if (
-            str(f.get("metodo_pagamento_previsto") or "").lower() == "da_decidere"
-            and f.get("metodo_pagamento_override_source") == "operatore_prima_nota"
-        ):
-            suggerimento = "sospesa"
-            stato_match = "in_attesa"
-            fonte_metodo = "operatore_prima_nota"
-        elif assegno_specifico:
-            suggerimento = "banca"
-            stato_match = "in_attesa_estratto_conto"
-            fonte_metodo = "assegno_compilato"
-        # Una scelta esplicita dell'operatore sulla singola fattura stabilisce
-        # soltanto il canale ATTESO. Non prova il pagamento e non crea una riga
-        # in Prima Nota Banca: quella nascera' esclusivamente dalla
-        # riconciliazione con un movimento reale dell'estratto conto.
-        elif (
-            metodo_previsto_fattura == "banca"
-            and f.get("metodo_pagamento_override_source") == "operatore_prima_nota"
-        ):
-            suggerimento = "banca"
-            stato_match = "in_attesa_estratto_conto"
-            fonte_metodo = "operatore_prima_nota"
-        # PRIORITÀ 1: Se la fattura è stata marcata come sospesa dall'utente
-        elif stato_pag == "sospesa":
-            suggerimento = "sospesa"
-            stato_match = "in_attesa"
-        # PRIORITÀ 2: Metodo dal fornitore in anagrafica, con la
-        # STESSA classificazione usata dal job automatico (classifica_metodo_fornitore)
-        # REGOLA: il metodo XML della fattura NON viene MAI usato
-        else:
-            suggerimento = classifica_metodo_fornitore(metodo_per_piva.get(piva, ""))
-            stato_match = "confermato" if suggerimento != "sospesa" else "in_attesa"
         
         # Se banca: cerca INTELLIGENTEMENTE nell'estratto conto
         movimento_match = None
