@@ -106,9 +106,9 @@ export default function ImpostazioniPersonaleView() {
     }
   };
 
-  const carica = useCallback(async (sincronizza = false) => {
+  const carica = useCallback(async () => {
     try {
-      const r = await axios.get(`${API}/tablet-operatori`, { params: { tutti: 1, ...(sincronizza ? { sincronizza: 1 } : {}) } });
+      const r = await axios.get(`${API}/tablet-operatori`, { params: { tutti: 1 } });
       const lista = Array.isArray(r.data) ? r.data : [];
       setOperatori(lista);
       setValori((prev) => {
@@ -129,22 +129,22 @@ export default function ImpostazioniPersonaleView() {
     }
   }, []);
 
-  useEffect(() => { carica(true); caricaAzienda(); }, [carica, caricaAzienda]);
-
-  const riallinea = async () => {
+  const riallinea = useCallback(async (notifica = true) => {
     setSincronizzando(true);
     try {
       const r = await axios.post(`${API}/tablet-operatori/sincronizza-hr`, {});
       const e = r.data || {};
       if (e.esito === "hr_non_configurato") toast.error("Anagrafica HR non raggiungibile");
-      else toast.success(`Allineato all'anagrafica HR: ${e.creati || 0} nuovi, ${e.disattivati || 0} non più in carico`);
-      await carica(false);
+      else if (notifica) toast.success(`Allineato all'anagrafica HR: ${e.creati || 0} nuovi, ${e.disattivati || 0} non più in carico`);
     } catch (e) {
       toast.error(apiError(e, "Allineamento non riuscito"));
     } finally {
+      await carica();
       setSincronizzando(false);
     }
-  };
+  }, [carica]);
+
+  useEffect(() => { riallinea(false); caricaAzienda(); }, [riallinea, caricaAzienda]);
 
   const setCampo = (id, campo, val) =>
     setValori((s) => ({ ...s, [id]: { ...s[id], [campo]: val } }));
@@ -274,7 +274,7 @@ export default function ImpostazioniPersonaleView() {
           <span style={pill(riepilogo.inScadenza ? "#fbf0dd" : "#f4f8f3", riepilogo.inScadenza ? WARN : SALVIA)}>{riepilogo.inScadenza} in scadenza</span>
           <span style={pill(riepilogo.scaduti ? "#f7e0db" : "#f4f8f3", riepilogo.scaduti ? DANGER : SALVIA)}>{riepilogo.scaduti} scaduti</span>
           {riepilogo.senzaPin > 0 && <span style={pill("#fbf0dd", WARN)}>{riepilogo.senzaPin} senza PIN (impostalo nella scheda HR)</span>}
-          <button onClick={riallinea} disabled={sincronizzando} title="Rilegge subito l'anagrafica HR (succede comunque da solo ogni 10 minuti)"
+          <button onClick={() => riallinea()} disabled={sincronizzando} title="Rilegge subito l'anagrafica HR (succede comunque da solo ogni 10 minuti)"
             style={{ ...btn("transparent"), color: SALVIA, border: `1px solid ${LINE}`, marginLeft: "auto", padding: "8px 12px", opacity: sincronizzando ? 0.6 : 1 }}>
             <RefreshCw size={14} /> {sincronizzando ? "Allineo…" : "Riallinea con HR"}
           </button>
