@@ -133,65 +133,91 @@ def test_il_turno_dice_cosa_resta_da_fare(archivio):
 # ── La firma ─────────────────────────────────────────────────────────────────
 
 def test_senza_pin_la_rilevazione_resta_non_firmata(monkeypatch):
-    from app.lotti.servizi.firma_operatore import firma_da_pin
+    from app.lotti.servizi.firma_dipendente import firma_da_pin
 
     firma = run(firma_da_pin("", "Tizio Qualunque"))
 
     assert firma["firma_verificata"] is False
     assert firma["operatore"] == "Tizio Qualunque"
-    assert firma["operatore_id"] == ""
+    assert firma["dipendente_id"] == ""
 
 
 def test_col_pin_il_nome_lo_mette_l_anagrafica(monkeypatch):
     """Non quello scritto nella query: il registro non puo' portare un nome
     che in azienda e' scritto in un altro modo, o che non esiste."""
-    from app.lotti.servizi import firma_operatore
+    from app.lotti.servizi import firma_dipendente
 
-    async def per_pin(_pin):
-        return [{"dipendente_id": "hr-7", "nome": "Pocci Salvatore"}]
+    async def per_pin(_pin, solo_operatori_lotti=False):
+        assert solo_operatori_lotti is True
+        return [{"id": "hr-7", "cognome": "Pocci", "nome": "Salvatore"}]
 
     monkeypatch.setattr(
-        "app.lotti.routers.tablet_operatori.trova_operatori_per_pin", per_pin
+        "app.hr.services.auth_dipendenti.trova_dipendente_per_pin", per_pin
     )
 
-    firma = run(firma_operatore.firma_da_pin("1234", "chiunque"))
+    firma = run(firma_dipendente.firma_da_pin("1234", "chiunque"))
 
     assert firma == {
         "operatore": "Pocci Salvatore",
-        "operatore_id": "hr-7",
+        "dipendente_id": "hr-7",
         "firma_verificata": True,
     }
 
 
+def test_rilevazioni_firmate_salvano_id_dipendente(archivio, monkeypatch):
+    import app.lotti.routers.temperature_positive as positive
+    import app.lotti.routers.temperature_negative as negative
+    from app.lotti.servizi import firma_dipendente
+
+    db, oggi = archivio
+    monkeypatch.setattr(positive, "db", db)
+    monkeypatch.setattr(negative, "db", db)
+
+    async def firma(_pin, _nome):
+        return {"operatore": "Pocci Salvatore", "dipendente_id": "hr-7", "firma_verificata": True}
+
+    monkeypatch.setattr(firma_dipendente, "firma_da_pin", firma)
+    run(positive.registra_temperatura(oggi.year, 1, oggi.month, oggi.day,
+                                     temperatura=2.0, operatore="", pin="1234", note="", azione_correttiva=""))
+    run(negative.registra_temperatura(oggi.year, 1, oggi.month, oggi.day,
+                                     temperatura=-20.0, operatore="", pin="1234", note=""))
+    for collection, campo in ((db.temperature_positive, "frigorifero_numero"),
+                              (db.temperature_negative, "congelatore_numero")):
+        scheda = run(collection.find_one({campo: 1}))
+        record = scheda["temperature"][str(oggi.month)][str(oggi.day)]
+        assert record["dipendente_id"] == "hr-7"
+        assert "operatore_id" not in record
+
+
 def test_un_pin_sbagliato_non_registra_niente(monkeypatch):
     """Meglio una registrazione mancante che una firmata da nessuno."""
-    from app.lotti.servizi import firma_operatore
+    from app.lotti.servizi import firma_dipendente
 
-    async def nessuno(_pin):
+    async def nessuno(_pin, solo_operatori_lotti=False):
         return []
 
     monkeypatch.setattr(
-        "app.lotti.routers.tablet_operatori.trova_operatori_per_pin", nessuno
+        "app.hr.services.auth_dipendenti.trova_dipendente_per_pin", nessuno
     )
 
     with pytest.raises(HTTPException) as errore:
-        run(firma_operatore.firma_da_pin("0000", "Pocci Salvatore"))
+        run(firma_dipendente.firma_da_pin("0000", "Pocci Salvatore"))
 
     assert errore.value.status_code == 401
 
 
 def test_un_pin_di_due_persone_non_sceglie_a_caso(monkeypatch):
-    from app.lotti.servizi import firma_operatore
+    from app.lotti.servizi import firma_dipendente
 
-    async def due(_pin):
-        return [{"dipendente_id": "hr-7", "nome": "Uno"}, {"dipendente_id": "hr-9", "nome": "Due"}]
+    async def due(_pin, solo_operatori_lotti=False):
+        return [{"id": "hr-7", "nome": "Uno"}, {"id": "hr-9", "nome": "Due"}]
 
     monkeypatch.setattr(
-        "app.lotti.routers.tablet_operatori.trova_operatori_per_pin", due
+        "app.hr.services.auth_dipendenti.trova_dipendente_per_pin", due
     )
 
     with pytest.raises(HTTPException) as errore:
-        run(firma_operatore.firma_da_pin("1111"))
+        run(firma_dipendente.firma_da_pin("1111"))
 
     assert errore.value.status_code == 409
 
@@ -200,9 +226,9 @@ def test_il_pin_non_finisce_mai_nel_record():
     """La firma non conserva il PIN: serve a riconoscere, poi si butta."""
     import inspect
 
-    from app.lotti.servizi import firma_operatore
+    from app.lotti.servizi import firma_dipendente
 
-    sorgente = inspect.getsource(firma_operatore.firma_da_pin)
+    sorgente = inspect.getsource(firma_dipendente.firma_da_pin)
     assert '"pin"' not in sorgente and "'pin'" not in sorgente, (
         "Il PIN comparirebbe in un campo salvato."
     )
@@ -218,7 +244,7 @@ def test_una_chiamata_diretta_senza_pin_non_esplode():
     """
     from fastapi import Query
 
-    from app.lotti.servizi.firma_operatore import firma_da_pin
+    from app.lotti.servizi.firma_dipendente import firma_da_pin
 
     firma = run(firma_da_pin(Query(default=""), "Mario"))
 

@@ -206,7 +206,7 @@ async def registra_temperatura(
     # stringa che chiunque puo' scrivere. Col PIN il nome arriva da HR ed e'
     # marcato `firma_verificata`; con un PIN sbagliato la rilevazione NON si
     # salva, perche' una firma falsa e' peggio di una registrazione mancante.
-    from app.lotti.servizi.firma_operatore import firma_da_pin
+    from app.lotti.servizi.firma_dipendente import firma_da_pin
 
     firma = await firma_da_pin(pin, operatore)
     record = {
@@ -217,8 +217,8 @@ async def registra_temperatura(
     }
     if firma["operatore"]:
         record["operatore"] = firma["operatore"]
-    if firma["operatore_id"]:
-        record["operatore_id"] = firma["operatore_id"]
+    if firma["dipendente_id"]:
+        record["dipendente_id"] = firma["dipendente_id"]
 
     # Verifica allarme CON LE SOGLIE VALIDE ORA — e le CONGELA nel record.
     # AUDIT 24/07/2026 (tranche 6): senza soglie salvate, un cambio retroattivo
