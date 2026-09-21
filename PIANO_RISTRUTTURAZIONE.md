@@ -240,7 +240,7 @@ Prima di migrare: conteggi per stato/anno, originali/hash, relazioni, saldi, bac
 
 | ID | Stato | Attività e verifica |
 |---|---|---|
-| RST-0401 | 🟡 | Inventario ingressi/token: verificatore admin in parte condiviso, sessioni non ancora unificate |
+| RST-0401 | 🟡 | Riscrittura avviata: introdotto motore canonico `app/services/pin_authentication.py`; il router ERP delega identità/ruolo al servizio unico e `utenti_pin.py` non usa più `ADMIN_PIN` in chiaro per le collisioni. Attende CI/E2E/rilascio; HR/Lotti/Menu saranno migrati una micro-tranche alla volta |
 | RST-0402 | ⚪ | RBAC comune per admin, amministrazione, HR, responsabile, HACCP, Menu e sola lettura |
 | RST-0403 | ⚪ | Sessione unica, controlli server per dominio e identità stabile |
 | RST-0404 | ⚪ | Eliminare login amministrativo HR autonomo dopo cutover verificato |
@@ -441,6 +441,7 @@ Il conteggio dei tre moduli report/batch è 1.186 righe rimosse. Non aggiungerlo
 | 2026-09-21 | FASE-1B-PUBBLICATA | 🟢 | `335d1f7a83959c1cb2015e849f88b6f3f5cae513`: falsi router Distinte BPM e Libro Unico eliminati, service canonici attivi; CI 35567802880 e Produzione 35567802918 verdi |
 | 2026-09-21 | FASE-1C-PUBBLICATA | 🟢 | `5d66bb25807bf09fa3fb36f2120e7232a862a40c`: router POS accredito e Dati Provvisori eliminati; CI 35571155357 e Produzione 35571155286 verdi |
 | 2026-09-21 | RST-0006-V2 | 🟢 | PR #595 / merge `d4b918807845b417d4438fb6f8994b97b5717bd7`: congelati 6 costruttori DB autonomi legacy; CI 35571750093 e Produzione 35571750023 verdi |\n| 2026-09-21 | RST-0007 | 🟢 | PR #596 / merge `d481a80c126bba116a3321dcc5ff30446db72b1a`: census AST+runtime dei router; CI 35579221334 e Produzione 35579221330 verdi, commit servito e smoke superato |\n| 2026-09-21 | RST-0004 | 🟢 | PR #597 / merge `07335e5c0fc331da0f97b86e1c4c8f8a1ca28458`: schema catalogo v3 e guardie React; CI 35588456000 e Produzione 35588455965 verdi, commit servito e smoke superato |
+| 2026-09-21 | RST-0401-PIN-CANONICO | 🟡 | branch `ristrutturazione/rst-0401-pin-auth-canonica`: nuovo motore PIN, router ERP alleggerito, `ADMIN_PIN` legacy rimosso da utenti PIN; attende CI/E2E |
 | 2026-09-21 | FASE-1C-20260921 | 🟡 | branch `ristrutturazione/fase-1c-router-morti-20260921`: eliminati router POS accredito e Dati Provvisori senza chiamanti; utility/service vivi preservati; attende CI/rilascio |
 | 2026-09-21 | FASE-1B-V5 | 🟡 | branch `ristrutturazione/fase-1b-falsi-router-v5`: Distinte BPM e workflow ERP Libro Unico spostati nei servizi; vecchi router eliminati; attende CI/rilascio |
 
