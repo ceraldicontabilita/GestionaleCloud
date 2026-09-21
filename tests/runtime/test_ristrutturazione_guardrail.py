@@ -245,7 +245,7 @@ def test_codice_morto_eliminato_non_ritorna():
 def test_importatori_documentali_non_sono_router_http():
     for path in (
         ROOT / "app/services/distinte_bpm.py",
-        ROOT / "app/services/libro_unico_parser.py",
+        ROOT / "app/services/libro_unico_workflow.py",
     ):
         source = path.read_text(encoding="utf-8")
         assert "APIRouter" not in source
