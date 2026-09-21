@@ -159,10 +159,6 @@ export default function TabletHome({ onEntra, preselectReparto }) {
   const [repSel, setRepSel] = useState(preselectReparto && REPARTI.find(r => r.id === preselectReparto) ? preselectReparto : null);
   const [showAdminEsci, setShowAdminEsci] = useState(false);
 
-  useEffect(() => {
-    axios.get(`${API}/tablet-operatori/verifica`, { timeout: 8000 }).catch(() => {});
-  }, []);
-
   const handleSuccess = (operatore) => {
     const repartoCorrente = repSel;
     // Il ruolo entrato dal tablet è la fonte di verità anche per il gestionale:

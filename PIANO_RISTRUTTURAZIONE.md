@@ -5,9 +5,9 @@
 - Baseline iniziale dell'audit: `8cf52bd269d8d1facb478e4a585fa8b01a5ec3ff`.
 - Baseline della bonifica misurata: `e283400164c0b9fb88ece13eb401fcde9cba1c42`.
 - Avanzamenti concorrenti preservati: `31943965f382018d87047637e16fe815d1b93318` (public_api) e `4ad3ffa4cbfd5612e6a4b179d583a419582f2c09` (report/batch).
-- Ultima tranche conclusa: [PR #609](https://github.com/ceraldicontabilita/GestionaleCloud/pull/609), autorizzazione amministrativa Lotti nel controllo centrale del token operativo.
-- Codice pubblicato e verificato: **`11bd29bb5af4dd87e51d4f8a103f968cb12aa7c0`**.
-- Prova di produzione: [workflow 35620706870](https://github.com/ceraldicontabilita/GestionaleCloud/actions/runs/35620706870), tutti i job superati, inclusa verifica commit servito e smoke.
+- Ultima tranche conclusa: [PR #610](https://github.com/ceraldicontabilita/GestionaleCloud/pull/610), ritiro del logout tablet senza stato server.
+- Codice pubblicato e verificato: **`7bfaa43d11d980395cc2a0a3d610c987bbdd8adb`**.
+- Prova di produzione: [workflow 35622017393](https://github.com/ceraldicontabilita/GestionaleCloud/actions/runs/35622017393), tutti i job superati, inclusa verifica commit servito e smoke.
 - **Stato complessivo: IN CORSO.** La fusione ERP, HR, Lotti e Menu non è completata. La bonifica pubblicata non certifica ogni funzione e ogni dato contabile.
 - **Priorità operativa aperta:** date Banca [#573](https://github.com/ceraldicontabilita/GestionaleCloud/issues/573) e contatori Provvisori [#575](https://github.com/ceraldicontabilita/GestionaleCloud/issues/575).
 
@@ -452,8 +452,9 @@ Il conteggio dei tre moduli report/batch è 1.186 righe rimosse. Non aggiungerlo
 | 2026-09-21 | RST-0403A-LOGIN-TABLET | 🟢 | PR #607 / merge `9fb39865d025aff4e59e9ce5727fcdbc8e1f4e68`: unico percorso PIN Lotti `/tablet-operatori/login`, token e sessione tablet con `dipendente_id` HR, duplicato `/auth/login` eliminato; CI 35618108658 e Produzione 35618108690 verdi, commit servito e smoke superato. Storico HACCP non riscritto |
 | 2026-09-21 | RST-0403B-PERSONALE-TABLET | 🟢 | PR #608 / merge `4a7c825403304a73ab49a7f99c4e3e562a84025b`: elenco e modifica HACCP del personale tablet usano `dipendente_id` HR nell'API e nella UI; ID della proiezione resta interno, righe non collegate a HR restano visibili senza identità attribuita. CI 35619415305 e Produzione 35619415160 verdi, commit servito e smoke superato |
 | 2026-09-21 | RST-0403C-ADMIN-LOTTI | 🟢 | PR #609 / merge `11bd29bb5af4dd87e51d4f8a103f968cb12aa7c0`: eliminati endpoint duplicato `/ordini-fornitori/verifica-admin`, verifica privata negli ordini e header `X-Admin-Pin`; ordini e fatture usano `require_admin` con token operativo. CI 35620706849 e Produzione 35620706870 verdi, commit servito e smoke superato |
-| 2026-09-21 | RST-0403D-LOGOUT-TABLET | 🟡 | Eliminare la rotta `/tablet-operatori/logout` che rispondeva `ok` senza chiudere alcuna sessione server; la sessione tablet si chiude nel browser e i due chiamanti vivi non devono inviare la richiesta inutile. CI/E2E/Produzione da verificare |
+| 2026-09-21 | RST-0403D-LOGOUT-TABLET | 🟢 | PR #610 / merge `7bfaa43d11d980395cc2a0a3d610c987bbdd8adb`: eliminati `/tablet-operatori/logout` senza stato server e i due chiamanti; sessione tablet chiusa nel browser. CI 35622017388 e Produzione 35622017393 verdi, commit servito e smoke superato |
+| 2026-09-21 | RST-0403E-HEALTH-LOTTI | 🟡 | Rimuovere `/tablet-operatori/verifica`, endpoint che rispondeva sempre `ok`; unico ping globale Lotti verso `/api/health`, che controlla l'archivio persistente. CI/E2E/Produzione da verificare |
 | 2026-09-21 | FASE-1C-20260921 | 🟡 | branch `ristrutturazione/fase-1c-router-morti-20260921`: eliminati router POS accredito e Dati Provvisori senza chiamanti; utility/service vivi preservati; attende CI/rilascio |
 | 2026-09-21 | FASE-1B-V5 | 🟡 | branch `ristrutturazione/fase-1b-falsi-router-v5`: Distinte BPM e workflow ERP Libro Unico spostati nei servizi; vecchi router eliminati; attende CI/rilascio |
 
-**Rilascio verificato:** RST-0403C della PR #609 è pubblicato e accessibile live con `11bd29bb`; le PR #603-#608 e le precedenti PR #599-#602 restano pubblicate. **Non sono concluse** la qualificazione completa della Prima Nota, la gestione PIN centralizzata dalla UI, l'identità unica con mapping HR/Lotti per tutto lo storico, l'unificazione dati/outbox né la fusione HR/Lotti/Menu/frontend. Nessuna di queste attività va dichiarata completata per effetto della sola bonifica.
+**Rilascio verificato:** RST-0403D della PR #610 è pubblicato e accessibile live con `7bfaa43d`; le PR #603-#609 e le precedenti PR #599-#602 restano pubblicate. **Non sono concluse** la qualificazione completa della Prima Nota, la gestione PIN centralizzata dalla UI, l'identità unica con mapping HR/Lotti per tutto lo storico, l'unificazione dati/outbox né la fusione HR/Lotti/Menu/frontend. Nessuna di queste attività va dichiarata completata per effetto della sola bonifica.
