@@ -238,3 +238,65 @@ def test_codice_morto_eliminato_non_ritorna():
     assert not presenti, (
         "File morti gia' eliminati sono ricomparsi: " + ", ".join(presenti)
     )
+
+
+# Costruttori DB autonomi ancora presenti prima della fusione ERP+HR+Lotti+Menu.
+# La lista può solo accorciarsi: un nuovo client fa fallire la CI.
+CLIENT_DB_LEGACY_TEMPORANEI = {
+    ("app/hr/database.py", "AsyncIOMotorClient"),
+    ("app/hr/db_supabase.py", "asyncpg.create_pool"),
+    ("app/hr/config.py", "MongoClient"),
+    ("app/menu/supabase_client.py", "create_client"),
+    ("app/lotti/db.py", "AsyncMongoMockClient"),
+    ("app/lotti/supabase_document_store.py", "AsyncMongoMockClient"),
+}
+
+
+def _costruttori_db_autonomi():
+    trovati = set()
+    semplici = {
+        "AsyncIOMotorClient",
+        "MongoClient",
+        "create_client",
+        "AsyncMongoMockClient",
+    }
+    for path in APP.rglob("*.py"):
+        rel = path.relative_to(ROOT).as_posix()
+        source = path.read_text(encoding="utf-8")
+        try:
+            tree = ast.parse(source, filename=str(path))
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            if isinstance(func, ast.Name) and func.id in semplici:
+                trovati.add((rel, func.id))
+            elif (
+                isinstance(func, ast.Attribute)
+                and func.attr == "create_pool"
+                and isinstance(func.value, ast.Name)
+                and func.value.id == "asyncpg"
+            ):
+                trovati.add((rel, "asyncpg.create_pool"))
+    return trovati
+
+
+def test_nessun_nuovo_client_database_autonomo():
+    trovati = _costruttori_db_autonomi()
+    nuovi = sorted(trovati - CLIENT_DB_LEGACY_TEMPORANEI)
+    assert not nuovi, (
+        "Nuovi client/database autonomi vietati durante la fusione: "
+        + ", ".join(f"{p}:{costruttore}" for p, costruttore in nuovi)
+    )
+
+
+def test_whitelist_client_db_puo_solo_accorciarsi():
+    trovati = _costruttori_db_autonomi()
+    rimossi = sorted(CLIENT_DB_LEGACY_TEMPORANEI - trovati)
+    assert not rimossi, (
+        "Questi client legacy non esistono più: rimuoverli dalla whitelist "
+        "per mantenerla stretta: "
+        + ", ".join(f"{p}:{costruttore}" for p, costruttore in rimossi)
+    )
