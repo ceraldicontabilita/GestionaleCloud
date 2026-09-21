@@ -5,7 +5,6 @@ Salva e recupera eventi di produzione (ricetta, quantità, data, costo).
 
 from datetime import datetime, timezone
 from typing import Optional
-import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
@@ -17,55 +16,8 @@ from app.lotti.servizi.annullamento_produzione_service import annulla_produzione
 router = APIRouter(prefix="/produzioni", tags=["Produzioni"])
 
 
-class ProduzioneCrea(BaseModel):
-    ricetta_id: str
-    ricetta_nome: str
-    pezzi: int
-    moltiplicatore: float = 1.0
-    peso_totale_g: float = 0
-    costo_totale: float = 0
-    note: str = ""
-
-
-class ProduzioneResponse(ProduzioneCrea):
-    id: str
-    data: str
-
-
 class AnnullamentoProduzione(BaseModel):
     motivo: str = Field(min_length=3)
-
-
-@router.post("/", response_model=ProduzioneResponse)
-async def registra_produzione(produzione: ProduzioneCrea):
-    """Registra un evento di produzione nel database e aggiunge automaticamente al banco"""
-    doc = produzione.model_dump()
-    doc["id"] = str(uuid.uuid4())
-    doc["data"] = datetime.now(timezone.utc).isoformat()
-
-    await db.produzioni.insert_one(doc)
-
-    # ── Aggiungi automaticamente alla vendita banco (reparto pasticceria) ──────
-    # usa la stessa collection "vendite_banco" usata dal VenditaBancoView
-    await db.vendite_banco.insert_one(
-        {
-            "id": str(uuid.uuid4()),
-            "prodotto_id": produzione.ricetta_id,
-            "prodotto_nome": produzione.ricetta_nome,
-            "reparto": "pasticceria",
-            "pezzi_prodotti": produzione.pezzi,
-            "pezzi_venduti": 0,
-            "data": datetime.now(timezone.utc).isoformat().split("T")[0],
-            "fonte": "produzione",
-            "costo_totale": produzione.costo_totale,
-            "stato": "aperto",
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }
-    )
-
-    if "_id" in doc:
-        del doc["_id"]
-    return doc
 
 
 @router.get("/per-oggi")
