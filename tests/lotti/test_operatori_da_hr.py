@@ -154,7 +154,7 @@ def test_login_tablet_usa_il_pin_della_scheda_hr(basi):
     with pytest.raises(HTTPException):
         run(t.login_pin(t.PinLogin(pin=PIN_B)))
     # PIN amministratore centrale: pagine admin si', firma no
-    assert run(t.pin_amministratore_valido(PIN_ADMIN_TEST))
+    assert run(t.verifica_admin(t.PinAdmin(pin=PIN_ADMIN_TEST)))["ok"] is True
     with pytest.raises(HTTPException) as exc:
         run(t.login_pin(t.PinLogin(pin=PIN_ADMIN_TEST)))
     assert "personale" in exc.value.detail

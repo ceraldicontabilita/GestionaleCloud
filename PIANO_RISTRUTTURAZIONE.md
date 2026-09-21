@@ -240,7 +240,7 @@ Prima di migrare: conteggi per stato/anno, originali/hash, relazioni, saldi, bac
 
 | ID | Stato | Attività e verifica |
 |---|---|---|
-| RST-0401 | 🟡 | Motore PIN canonico ERP pubblicato con PR #599 / `87efac99`; HR admin pubblicato con PR #600 / `b34a78cc` e usa anche il lockout condiviso. Lotti/Menu restano da migrare |
+| RST-0401 | 🟡 | Motore PIN canonico ERP pubblicato con PR #599 / `87efac99`; HR admin pubblicato con PR #600 / `b34a78cc`. Lotti è ora riscritto per usare direttamente il servizio canonico, eliminando il helper locale e la dipendenza `auth -> router`; attende CI/rilascio. Menu resta da migrare |
 | RST-0402 | ⚪ | RBAC comune per admin, amministrazione, HR, responsabile, HACCP, Menu e sola lettura |
 | RST-0403 | ⚪ | Sessione unica, controlli server per dominio e identità stabile |
 | RST-0404 | ⚪ | Eliminare login amministrativo HR autonomo dopo cutover verificato |
@@ -443,6 +443,7 @@ Il conteggio dei tre moduli report/batch è 1.186 righe rimosse. Non aggiungerlo
 | 2026-09-21 | RST-0006-V2 | 🟢 | PR #595 / merge `d4b918807845b417d4438fb6f8994b97b5717bd7`: congelati 6 costruttori DB autonomi legacy; CI 35571750093 e Produzione 35571750023 verdi |\n| 2026-09-21 | RST-0007 | 🟢 | PR #596 / merge `d481a80c126bba116a3321dcc5ff30446db72b1a`: census AST+runtime dei router; CI 35579221334 e Produzione 35579221330 verdi, commit servito e smoke superato |\n| 2026-09-21 | RST-0004 | 🟢 | PR #597 / merge `07335e5c0fc331da0f97b86e1c4c8f8a1ca28458`: schema catalogo v3 e guardie React; CI 35588456000 e Produzione 35588455965 verdi, commit servito e smoke superato |
 | 2026-09-21 | RST-0401-PIN-CANONICO | 🟢 | PR #599 / merge `87efac99936cf575cb03d0a24998fd89abb9bcc8`: nuovo motore PIN canonico, router ERP alleggerito, `ADMIN_PIN` legacy rimosso da utenti PIN; CI 35592364449 e Produzione 35592364329 verdi, commit servito e smoke superato |
 | 2026-09-21 | RST-0401B-HR-PIN | 🟢 | PR #600 / merge `b34a78cc86cf6f1f242f1a20a01b196e829a9d00`: login admin HR sul motore PIN canonico e lockout condiviso; CI 35593567666 e Produzione 35593567689 verdi, commit servito e smoke superato |
+| 2026-09-21 | RST-0401C-LOTTI-PIN | 🟡 | branch `ristrutturazione/rst-0401-lotti-pin-canonico`: eliminato helper PIN admin locale; `auth.py`, tablet e ordini usano direttamente il servizio canonico; attende CI/E2E/rilascio |
 | 2026-09-21 | FASE-1C-20260921 | 🟡 | branch `ristrutturazione/fase-1c-router-morti-20260921`: eliminati router POS accredito e Dati Provvisori senza chiamanti; utility/service vivi preservati; attende CI/rilascio |
 | 2026-09-21 | FASE-1B-V5 | 🟡 | branch `ristrutturazione/fase-1b-falsi-router-v5`: Distinte BPM e workflow ERP Libro Unico spostati nei servizi; vecchi router eliminati; attende CI/rilascio |
 

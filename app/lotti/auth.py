@@ -33,6 +33,7 @@ from typing import Optional
 import jwt
 from jwt import PyJWKClient
 from fastapi import APIRouter, HTTPException, Request
+from app.services import pin_authentication
 from pydantic import BaseModel
 
 ALG = "HS256"
@@ -288,13 +289,8 @@ async def require_admin(request: Request):
         request.state.user = data
         return
     pin = (request.headers.get("X-Admin-Pin") or "").strip()
-    if pin:
-        try:
-            from app.lotti.routers.tablet_operatori import pin_amministratore_valido
-            if await pin_amministratore_valido(pin):
-                return
-        except Exception:
-            pass
+    if pin and pin_authentication.admin_pin_matches(pin):
+        return
     raise HTTPException(status_code=403, detail="Operazione riservata all'amministratore")
 
 
