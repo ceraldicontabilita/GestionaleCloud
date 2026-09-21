@@ -109,6 +109,7 @@ export const TabletView = ({ reparto: repartoIniziale = "pasticceria", onBack })
         return {
           ...prodotto,
           foto_fallback_url: ricettaBase.foto_url,
+          foto_fallback_source: ricettaBase.foto_source,
           foto_fallback_nome: ricettaBase.nome,
         };
       });

@@ -246,6 +246,10 @@ function TabRicette({ solaLetturaOperatore = false }) {
                   background:"rgba(0,0,0,.55)",color:"#fff",borderRadius:6,padding:"3px 8px"}}>
                   {soloLettura ? (r.tipo_archivio === "component" ? "Preparazione base" : "Pasticceria") : (r.reparto || "—")}
                 </span>
+                {r.foto_source === "illustrazione_ai" && <span style={{position:"absolute",bottom:8,left:8,fontSize:10,fontWeight:800,
+                  background:"rgba(255,255,255,.95)",color:"#3f5a4e",borderRadius:6,padding:"3px 8px"}}>
+                  Immagine AI illustrativa
+                </span>}
               </div>
               {/* Corpo */}
               <div style={{padding:"12px 14px",display:"flex",flexDirection:"column",gap:8,flex:1}}>

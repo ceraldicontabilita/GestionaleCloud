@@ -24,7 +24,7 @@ GET  /api/ricette-ripubblica-menu/stato
 GET  /api/tablet/{reparto}          — prodotti per vista tablet
 """
 
-from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Body, Depends
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form, Body, Depends
 from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 from typing import List, Optional, Any
@@ -2205,7 +2205,8 @@ async def create_ricetta(item: RicettaCreate):
             doc["foto_url"] = foto_variante
 
     # Ritorna il doc completo (non obj che non ha i campi extra)
-    return {**doc, "id": doc["id"], "menu_sync": await _sincronizza_menu(doc["id"])}
+    salvata = await db.ricette.find_one({"id": doc["id"]}, {"_id": 0})
+    return {**salvata, "menu_sync": await _sincronizza_menu(doc["id"])}
 
 
 @router.put("/ricette/{ricetta_id}", response_model=Ricetta)
@@ -2903,7 +2904,10 @@ async def aggiorna_reparto(ricetta_id: str, reparto: str = Query(...)):
 
 @router.put("/ricette/{ricetta_id}/foto")
 async def aggiorna_foto(ricetta_id: str, foto_url: str = Query(...)):
-    r = await db.ricette.update_one({"id": ricetta_id}, {"$set": {"foto_url": foto_url}})
+    r = await db.ricette.update_one({"id": ricetta_id}, {
+        "$set": {"foto_url": foto_url, "foto_source": "url_manuale"},
+        "$unset": {"foto_id": "", "foto_filename": "", "foto_content_type": "", "foto_sha256": ""},
+    })
     if r.matched_count == 0:
         raise HTTPException(404, "Ricetta non trovata")
     # Come POST /upload-foto: la foto cambia anche nel Menu digitale. Prima
@@ -2929,7 +2933,7 @@ async def _clona_foto_tra_ricette(
 ) -> Optional[str]:
     """Copia bytes e metadati in un foto_id nuovo, poi collega la destinazione."""
     origine = await db.ricette.find_one(
-        {"id": ricetta_origine_id}, {"_id": 0, "foto_url": 1, "nome": 1}
+        {"id": ricetta_origine_id}, {"_id": 0, "foto_url": 1, "nome": 1, "foto_source": 1}
     )
     foto_origine_id = _foto_id_da_url((origine or {}).get("foto_url"))
     if not foto_origine_id:
@@ -2941,20 +2945,31 @@ async def _clona_foto_tra_ricette(
     safe_dest = ricetta_destinazione_id.replace("/", "_")
     nuovo_foto_id = f"ricetta_{safe_dest}_{uuid.uuid4().hex[:12]}"
     versione = int(datetime.now(timezone.utc).timestamp())
+    dati_foto = bytes(foto["data"])
+    foto_source = (origine or {}).get("foto_source") or foto.get("fonte") or "upload_manuale"
+    foto_sha256 = hashlib.sha256(dati_foto).hexdigest()
     await db.foto_files.insert_one({
         "_id": nuovo_foto_id,
         "mime": foto.get("mime", "image/jpeg"),
-        "data": bytes(foto["data"]),
+        "data": dati_foto,
         "ricetta_id": ricetta_destinazione_id,
         "versione": versione,
-        "fonte": fonte,
+        "fonte": foto_source,
+        "sha256": foto_sha256,
+        "filename": foto.get("filename"),
+        "tipo_copia": fonte,
         "copiata_da_ricetta_id": ricetta_origine_id,
         "copiata_da_foto_id": foto_origine_id,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     })
     foto_url = f"/api/foto/{nuovo_foto_id}?v={versione}"
     await db.ricette.update_one(
-        {"id": ricetta_destinazione_id}, {"$set": {"foto_url": foto_url}}
+        {"id": ricetta_destinazione_id}, {"$set": {
+            "foto_url": foto_url, "foto_id": nuovo_foto_id,
+            "foto_filename": foto.get("filename"),
+            "foto_content_type": foto.get("mime", "image/jpeg"),
+            "foto_sha256": foto_sha256, "foto_source": foto_source,
+        }}
     )
     return foto_url
 
@@ -3039,7 +3054,11 @@ async def separa_foto_varianti(
 
 
 @router.post("/ricette/{ricetta_id}/upload-foto")
-async def upload_foto(ricetta_id: str, file: UploadFile = File(...)):
+async def upload_foto(
+    ricetta_id: str,
+    file: UploadFile = File(...),
+    illustrazione_ai: bool = Form(False),
+):
     if not await db.ricette.find_one({"id": ricetta_id}, {"_id": 1}):
         raise HTTPException(404, "Ricetta non trovata")
     mime = file.content_type or ""
@@ -3062,18 +3081,26 @@ async def upload_foto(ricetta_id: str, file: UploadFile = File(...)):
     # stesso URL vedevano cambiare insieme la foto. Il nuovo id elimina alla
     # radice quel collegamento condiviso.
     foto_id = f"ricetta_{safe_id}_{uuid.uuid4().hex[:12]}"
+    foto_source = "illustrazione_ai" if illustrazione_ai else "upload_manuale"
+    foto_sha256 = hashlib.sha256(contenuto).hexdigest()
     await db.foto_files.insert_one({
         "_id": foto_id, "mime": mime, "data": contenuto,
         "ricetta_id": ricetta_id, "versione": versione,
-        "fonte": "upload_manuale",
+        "fonte": foto_source, "sha256": foto_sha256,
+        "filename": file.filename,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     })
     # foto_url servito dall'endpoint GET /api/foto/{id} (legge da Mongo); ?v cambia
     # ad ogni upload per invalidare cache browser/React sulla stessa ricetta.
     foto_url = f"/api/foto/{foto_id}?v={versione}"
-    await db.ricette.update_one({"id": ricetta_id}, {"$set": {"foto_url": foto_url}})
+    await db.ricette.update_one({"id": ricetta_id}, {"$set": {
+        "foto_url": foto_url, "foto_id": foto_id,
+        "foto_filename": file.filename, "foto_content_type": mime,
+        "foto_sha256": foto_sha256, "foto_source": foto_source,
+    }})
     # Stessa immagine anche nel Menu digitale (copia su Storage + aggiornamento riga).
-    return {"success": True, "foto_url": foto_url, "menu_sync": await _sincronizza_menu(ricetta_id)}
+    return {"success": True, "foto_url": foto_url, "foto_source": foto_source,
+            "foto_sha256": foto_sha256, "menu_sync": await _sincronizza_menu(ricetta_id)}
 
 
 @router.get("/foto/{foto_id}")
