@@ -174,3 +174,41 @@ def test_erp_non_scrive_sulle_collezioni_giacenza_legacy_neanche_via_alias():
         "Scritture ERP vietate sulla vecchia giacenza o fuori dai writer "
         "canonici transitori di warehouse_inventory:\n" + "\n".join(offenders)
     )
+
+
+def test_public_api_storico_non_puo_ritornare():
+    assert not (APP / "routers" / "public_api.py").exists(), (
+        "public_api.py e' stato eliminato: non ricreare un router contenitore storico"
+    )
+
+
+def test_endpoint_estratti_hanno_owner_canonico():
+    app = FastAPI()
+    register_all_routers(app)
+    per_chiave = {}
+    for route in _routes(app):
+        for method in route.methods:
+            if method in {"HEAD", "OPTIONS"}:
+                continue
+            per_chiave[(method, route.path)] = route
+
+    attesi = {
+        ("GET", "/api/pianificazione/events"): "app.routers.pianificazione",
+        ("POST", "/api/pianificazione/events"): "app.routers.pianificazione",
+        ("GET", "/api/ricerca-globale"): "app.routers.ricerca_globale",
+        ("GET", "/api/v1/fatture"): "app.routers.external_api_v1",
+        ("GET", "/api/v1/movimenti"): "app.routers.external_api_v1",
+        ("GET", "/api/v1/stats"): "app.routers.external_api_v1",
+    }
+    errori = []
+    for chiave, modulo in attesi.items():
+        route = per_chiave.get(chiave)
+        if route is None:
+            errori.append(f"manca {chiave[0]} {chiave[1]}")
+            continue
+        reale = getattr(route.endpoint, "__module__", "")
+        if reale != modulo:
+            errori.append(
+                f"{chiave[0]} {chiave[1]} owner={reale}, atteso={modulo}"
+            )
+    assert not errori, "Endpoint senza owner canonico:\n" + "\n".join(errori)
