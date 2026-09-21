@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { saveToken, saveRuolo, setAdminGateOk, adminGateStillValid, setGateOk } from "@/auth";
+import { saveToken, saveRuolo, setGateOk } from "../../auth";
 import axios from "axios";
 import { Lock } from "lucide-react";
 import { apiError } from "../../utils/apiError";
@@ -60,13 +60,13 @@ function PinKeypad({ titolo, sottotitolo, colore = "#5b7a6b", onSuccess, onCance
         const res = await axios.post(`${API}/tablet-operatori/login`, { pin }, { timeout: 15000 });
         const op = res.data?.operatore;
         if (!op) throw new Error("Operatore non valido");
-        if (res.data?.token) saveToken(res.data.token);  // token per le letture sotto enforce
         if (onlyAdmin && op.ruolo !== "amministratore") {
           setErrore("PIN non autorizzato");
           setDigits("");
           setLoading(false);
           return;
         }
+        if (res.data?.token) saveToken(res.data.token);
         buzz(20);
         setOkNome(op?.nome || "");
         setTimeout(() => onSuccess(op), 180);
@@ -158,6 +158,8 @@ function Orologio() {
 export default function TabletHome({ onEntra, preselectReparto }) {
   const [repSel, setRepSel] = useState(preselectReparto && REPARTI.find(r => r.id === preselectReparto) ? preselectReparto : null);
   const [showAdminEsci, setShowAdminEsci] = useState(false);
+  const [erroreGestionale, setErroreGestionale] = useState("");
+  const [verificaGestionale, setVerificaGestionale] = useState(false);
   const sessione = getTabletSession();
   const [richiesteOrdini, setRichiesteOrdini] = useState(0);
 
@@ -190,7 +192,6 @@ export default function TabletHome({ onEntra, preselectReparto }) {
   };
 
   const handleEsciAdmin = () => {
-    setAdminGateOk(); // PIN admin verificato ORA: vale 2 ore, niente richiesta ripetuta
     // Serve anche il ruolo salvato: il gestionale ora si apre SOLO da
     // amministratore (25/07/2026), altrimenti si tornerebbe subito al kiosk.
     saveRuolo("amministratore");
@@ -204,11 +205,29 @@ export default function TabletHome({ onEntra, preselectReparto }) {
     window.dispatchEvent(new Event("tablet-auth"));
   };
 
-  // Se il PIN admin è già stato verificato nelle ultime 2 ore, esci subito
-  // senza richiederlo di nuovo (richiesta Enzo 03/07/2026).
-  const chiediEsciAdmin = () => {
-    if (adminGateStillValid()) handleEsciAdmin();
-    else setShowAdminEsci(true);
+  const chiediEsciAdmin = async () => {
+    if (verificaGestionale) return;
+    const corrente = getTabletSession();
+    if (corrente?.ruolo !== "amministratore") {
+      setShowAdminEsci(true);
+      return;
+    }
+    setVerificaGestionale(true);
+    setErroreGestionale("");
+    try {
+      const risposta = await axios.get(`${API}/auth/me`);
+      const utente = risposta.data?.user;
+      if (utente?.ruolo === "amministratore" && utente?.dipendente_id === corrente.dipendente_id) {
+        handleEsciAdmin();
+      } else {
+        setShowAdminEsci(true);
+      }
+    } catch (err) {
+      if (err?.response?.status === 401) setShowAdminEsci(true);
+      else setErroreGestionale(apiError(err, "Verifica non disponibile, riprova"));
+    } finally {
+      setVerificaGestionale(false);
+    }
   };
 
   const colorePin = repSel === "pasticceria" ? "var(--warning)" : repSel === "rosticceria" ? "var(--info)" : repSel === "bar" ? "#b45309" : repSel === "vendita" ? "#f97316" : "var(--success)";
@@ -251,7 +270,8 @@ export default function TabletHome({ onEntra, preselectReparto }) {
           </button>
         ))}
       </div>
-      <button onClick={chiediEsciAdmin} style={{ position: "absolute", bottom: 20, right: 20, padding: "8px 16px", borderRadius: 10, border: "1px solid #4a463c", background: "transparent", color: "#8a8478", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>🔒 Gestionale — solo titolare</button>
+      {erroreGestionale && <div role="alert" style={{ position: "absolute", bottom: 60, right: 20, color: "#fff" }}>{erroreGestionale}</div>}
+      <button onClick={chiediEsciAdmin} disabled={verificaGestionale} style={{ position: "absolute", bottom: 20, right: 20, padding: "8px 16px", borderRadius: 10, border: "1px solid #4a463c", background: "transparent", color: "#8a8478", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>🔒 Gestionale — solo titolare</button>
       {repSel && (() => {
         const rep = REPARTI.find(r => r.id === repSel);
         return (
