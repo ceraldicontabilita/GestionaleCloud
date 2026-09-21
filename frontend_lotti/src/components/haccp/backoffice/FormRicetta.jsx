@@ -904,7 +904,7 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
             background:"var(--info-soft)",border:"1.5px solid var(--info-border)",borderRadius:10}}>
             <span style={{fontSize:12,fontWeight:700,color:"var(--info-text)",flex:1,minWidth:180}}>
               Dosi bloccate: questa è la ricetta ufficiale. Per produrre di più o di meno
-              usa <b>Dose di oggi</b> — qui si cambia solo la ricetta.
+              usa il moltiplicatore nella scheda <b>Ricette</b> — qui si cambia solo la ricetta.
             </span>
             <button onClick={() => setChiediPinDosi(true)}
               style={{padding:"9px 14px",borderRadius:10,border:"none",background:"var(--info)",color:"#fff",

@@ -636,6 +636,24 @@ def test_dose_di_produzione_riso_per_gli_arancini(dbmock):
     assert per_nome == {"Riso": 3000, "Ragù": 1800, "Pangrattato": 900}
 
 
+def test_moltiplicatore_nella_scheda_ricetta_non_modifica_la_ricetta(dbmock):
+    import app.lotti.routers.food_cost as fc
+
+    ricetta = {
+        "id": "R-moltiplicatore", "nome": "Cornetti", "porzioni": 20,
+        "ingredienti_dettaglio": [
+            {"nome": "Farina 00", "quantita": 1, "unita_misura": "kg"},
+            {"nome": "Burro", "quantita": 250, "unita_misura": "g"},
+        ],
+    }
+    run(dbmock.ricette.insert_one(ricetta))
+    out = run(fc.dose_produzione("R-moltiplicatore", fc.DoseProduzioneReq(moltiplicatore=2)))
+    assert out["fattore"] == 2
+    assert {i["nome"]: i["quantita"] for i in out["ingredienti"]} == {"Farina 00": 2, "Burro": 500}
+    assert out["porzioni_stimate"] == 40
+    assert run(dbmock.ricette.find_one({"id": "R-moltiplicatore"}))["ingredienti_dettaglio"] == ricetta["ingredienti_dettaglio"]
+
+
 def test_dose_di_produzione_senza_dosi_lo_dice(dbmock):
     import app.lotti.routers.food_cost as fc
     from fastapi import HTTPException

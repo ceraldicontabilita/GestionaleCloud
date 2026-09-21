@@ -1368,9 +1368,10 @@ def normalizza_a_un_kg(ingredienti: list[dict], riferimento_g: float = 1000.0) -
 
 
 class DoseProduzioneReq(BaseModel):
-    """Quanto se ne produce OGGI, espresso sull'ingrediente di riferimento."""
-    quantita_base: float
+    """Dose di lavoro: un moltiplicatore oppure la quantità dell'ingrediente base."""
+    quantita_base: float | None = None
     unita: str = "kg"
+    moltiplicatore: float | None = None
 
 
 @router.post("/ricetta/{ricetta_id}/dose-produzione")
@@ -1394,9 +1395,16 @@ async def dose_produzione(ricetta_id: str, req: DoseProduzioneReq):
     if not ingredienti:
         raise HTTPException(400, "La ricetta non ha ingredienti con dosi")
 
-    grammi_voluti = _in_grammi(req.quantita_base, req.unita)
+    if req.moltiplicatore is not None:
+        if not 0 < req.moltiplicatore <= 1000:
+            raise HTTPException(400, "Il moltiplicatore deve essere maggiore di zero e al massimo 1000")
+        base = _scegli_ingrediente_base(ingredienti)
+        base_g = _in_grammi(base.get("quantita") or 0, base.get("unita")) if base else 0
+        grammi_voluti = base_g * req.moltiplicatore
+    else:
+        grammi_voluti = _in_grammi(req.quantita_base or 0, req.unita)
     if grammi_voluti <= 0:
-        raise HTTPException(400, "Indica quanto ingrediente base usi oggi (kg o g)")
+        raise HTTPException(400, "Indica un moltiplicatore o la quantità dell'ingrediente base")
 
     norm = normalizza_a_un_kg(ingredienti, riferimento_g=grammi_voluti)
     if not norm["base"]:

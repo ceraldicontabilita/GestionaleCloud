@@ -8,8 +8,7 @@
  * gestionale: da quando il gestionale è riservato al titolare, per un
  * dipendente quel bottone finiva contro il tastierino. Qui la ricetta si legge
  * e basta: ingredienti con le dosi, resa, conservazione, allergeni, note.
- * Per cambiare le quantità della giornata c'è la card «Dose di oggi»; per
- * modificare la ricetta serve il PIN del titolare.
+ * Il moltiplicatore calcola la dose di lavoro senza modificare la ricetta.
  */
 import { useEffect, useState } from "react";
 import axios from "axios";
@@ -28,6 +27,9 @@ export default function SchedaRicettaKiosk({ ricettaId, nome, onClose, modificab
   const [errore, setErrore] = useState("");
   const [caricando, setCaricando] = useState(true);
   const [modifica, setModifica] = useState(false);
+  const [moltiplicatore, setMoltiplicatore] = useState("1");
+  const [doseLavoro, setDoseLavoro] = useState(null);
+  const [erroreDose, setErroreDose] = useState("");
 
   useEffect(() => {
     let vivo = true;
@@ -40,12 +42,36 @@ export default function SchedaRicettaKiosk({ ricettaId, nome, onClose, modificab
     return () => { vivo = false; };
   }, [ricettaId]);
 
+  useEffect(() => {
+    setMoltiplicatore("1");
+    setDoseLavoro(null);
+    setErroreDose("");
+  }, [ricettaId]);
+
+  useEffect(() => {
+    if (!ricetta?.id || !(ricetta.ingredienti_dettaglio || []).length) return;
+    const valore = Number(moltiplicatore);
+    if (!Number.isFinite(valore) || valore <= 0 || valore > 1000) {
+      setDoseLavoro(null);
+      setErroreDose("Inserisci un moltiplicatore maggiore di zero e al massimo 1000.");
+      return;
+    }
+    let attivo = true;
+    const timer = setTimeout(() => {
+      axios.post(`${API}/food-cost/ricetta/${ricetta.id}/dose-produzione`, { moltiplicatore: valore })
+        .then(({ data }) => { if (attivo) { setDoseLavoro(data); setErroreDose(""); } })
+        .catch((e) => { if (attivo) { setDoseLavoro(null); setErroreDose(apiError(e, "Dose non calcolabile")); } });
+    }, 200);
+    return () => { attivo = false; clearTimeout(timer); };
+  }, [ricetta, moltiplicatore]);
+
   // Le dosi stanno in `ingredienti_dettaglio`; `ingredienti` è solo l'elenco
   // dei nomi (ricette vecchie o compilate a mano).
   const dettaglio = Array.isArray(ricetta?.ingredienti_dettaglio) ? ricetta.ingredienti_dettaglio : [];
   const soloNomi = Array.isArray(ricetta?.ingredienti) ? ricetta.ingredienti : [];
-  const righe = dettaglio.length
-    ? dettaglio.map((i) => ({
+  const ingredientiVisualizzati = doseLavoro?.ingredienti || dettaglio;
+  const righe = ingredientiVisualizzati.length
+    ? ingredientiVisualizzati.map((i) => ({
         nome: i?.nome || "",
         dose: [i?.quantita, i?.unita_misura || i?.unita].filter((v) => v !== null && v !== undefined && v !== "").join(" "),
       }))
@@ -142,6 +168,17 @@ export default function SchedaRicettaKiosk({ ricettaId, nome, onClose, modificab
               <h3 style={{ margin: "0 0 8px", fontSize: 15, fontWeight: 900, color: C.testo }}>
                 Ingredienti
               </h3>
+              {dettaglio.length > 0 && <div style={{ background: C.card, border: `1px solid ${C.bordo}`, borderRadius: 12, padding: 12, marginBottom: 12 }}>
+                <label htmlFor="moltiplicatore-ricetta" style={{ fontWeight: 800, color: C.testo }}>Moltiplicatore della dose</label>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
+                  <button onClick={() => setMoltiplicatore(String(Math.max(0.1, (Number(moltiplicatore) || 1) - 0.5)))} aria-label="Riduci dose" style={{ minWidth: 44, minHeight: 44 }}>−</button>
+                  <input id="moltiplicatore-ricetta" type="number" min="0.1" max="1000" step="0.1" value={moltiplicatore} onChange={(e) => { setDoseLavoro(null); setMoltiplicatore(e.target.value); }}
+                    style={{ width: 100, minHeight: 44, textAlign: "center", fontSize: 18, fontWeight: 800 }} />
+                  <button onClick={() => setMoltiplicatore(String((Number(moltiplicatore) || 0) + 0.5))} aria-label="Aumenta dose" style={{ minWidth: 44, minHeight: 44 }}>+</button>
+                </div>
+                {doseLavoro && <small>Ingrediente base: {doseLavoro.base} · dose ×{doseLavoro.fattore} · circa {doseLavoro.porzioni_stimate} pezzi</small>}
+                {erroreDose && <p role="alert" style={{ color: "#8f3829", margin: "8px 0 0" }}>{erroreDose}</p>}
+              </div>}
               {righe.length === 0 ? (
                 <p style={{
                   margin: 0, padding: 14, background: C.card, border: `1px dashed ${C.bordo}`,
@@ -216,10 +253,7 @@ export default function SchedaRicettaKiosk({ ricettaId, nome, onClose, modificab
               ) : null}
 
               <p style={{ margin: "18px 0 0", fontSize: 12.5, color: C.tenue, lineHeight: 1.5 }}>
-                Devi produrre una quantità diversa da quella scritta qui? Usa la
-                card <strong>«Dose di oggi»</strong>: cambi l'ingrediente
-                principale e tutti gli altri si adeguano da soli. Per cambiare la
-                ricetta serve il PIN del titolare.
+                Il calcolo vale solo per questa lavorazione. La ricetta ufficiale non cambia.
               </p>
             </>
           )}

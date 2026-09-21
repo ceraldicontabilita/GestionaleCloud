@@ -7,7 +7,7 @@ import TabletHome, { REPARTI_SOLO_ADMIN } from "../components/haccp/TabletHome";
 import { VenditaBancoView } from "../components/haccp/VenditaBancoView";
 import MagazzinoBarView from "../components/haccp/MagazzinoBarView";
 import OrdiniView from "../components/haccp/OrdiniView";
-import DoseProduzioneView from "../components/haccp/tablet/DoseProduzioneView";
+import RicetteKioskView from "../components/haccp/tablet/RicetteKioskView";
 import { clearTabletSession, getTabletSession, moveTabletSessionTo } from "../utils/tabletSession";
 
 export default function KioskLayout({ hash }) {
@@ -54,9 +54,7 @@ export default function KioskLayout({ hash }) {
   // Card portate nel kiosk il 25/07/2026 (il gestionale è ora solo del
   // titolare): la Lavagna delle richieste e gli Ordini ai fornitori.
   if (reparto === "lavagna") return <MagazzinoBarView onBack={tornaReparti} soloLavagna />;
-  // "Dose di oggi": il pasticciere decide quanto ingrediente base usa e tutte
-  // le altre dosi si adeguano (Enzo 25/07/2026). Non modifica la ricetta.
-  if (reparto === "dosi") return <DoseProduzioneView onBack={() => { window.location.hash = "tablet/home"; }} />;
+  if (reparto === "ricette") return <RicetteKioskView onBack={tornaReparti} />;
   if (reparto === "ordini") {
     // OrdiniView è nata nel gestionale e non ha un "indietro": nel kiosk gliene
     // mettiamo uno sopra, altrimenti dal tablet non si tornerebbe alle card.
