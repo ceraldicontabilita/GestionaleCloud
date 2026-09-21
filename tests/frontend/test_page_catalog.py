@@ -14,6 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 CATALOG = json.loads((ROOT / "page_catalog.json").read_text(encoding="utf-8"))
 PAGES = CATALOG["pages"]
+REDIRECTS = CATALOG.get("redirects", [])
 MAIN = (ROOT / "frontend/src/main.jsx").read_text(encoding="utf-8")
 
 
@@ -22,6 +23,71 @@ def test_catalogo_contiene_esattamente_le_64_schermate_numerate():
     assert len({page["path"] for page in PAGES}) == 64
     assert all(page["audit_status"] in {"unverified", "in_review", "verified"} for page in PAGES)
 
+
+
+def _forma_route(path: str) -> str:
+    """Confronta route dinamiche ignorando il nome del parametro."""
+    return re.sub(r"\{?\:[^/}]+\}?", ":param", path)
+
+
+def test_catalogo_dichiara_tipo_di_superficie_e_redirect():
+    assert CATALOG["schema_version"] >= 3
+    assert all(page["route_kind"] in {"page", "tab", "detail"} for page in PAGES)
+
+    for page in PAGES:
+        kind = page["route_kind"]
+        if kind == "tab":
+            assert "/pages/hub/" in page["entry"], (
+                f"Pagina {page['id']} {page['path']}: route_kind=tab ma entry non e un Hub"
+            )
+        elif kind == "detail":
+            assert ":" in page["path"], (
+                f"Pagina {page['id']} {page['path']}: un dettaglio deve avere parametro dinamico"
+            )
+            assert page.get("e2e_path") and ":" not in page["e2e_path"], (
+                f"Pagina {page['id']} {page['path']}: manca un e2e_path concreto"
+            )
+        else:
+            assert page["entry"] == "frontend/src/main.jsx", (
+                f"Pagina {page['id']} {page['path']}: pagina diretta senza entry main.jsx"
+            )
+
+    for redirect in REDIRECTS:
+        assert set(redirect) == {"from", "to"}
+        assert redirect["from"].startswith("/") and redirect["to"].startswith("/")
+        assert redirect["from"] != redirect["to"]
+
+
+def test_redirect_react_e_catalogo_restano_allineati():
+    trovati = {
+        (
+            "/" + source.lstrip("/"),
+            target,
+        )
+        for source, target in re.findall(
+            r'\{\s*path:\s*"([^"]+)"\s*,\s*element:\s*<Navigate\s+to="([^"]+)"',
+            MAIN,
+        )
+    }
+    attesi = {(item["from"], item["to"]) for item in REDIRECTS}
+    assert trovati == attesi, (
+        "Redirect React e page_catalog.json divergono: "
+        f"react={sorted(trovati)} catalogo={sorted(attesi)}"
+    )
+
+
+def test_dettagli_dinamici_del_catalogo_hanno_una_route_react_reale():
+    react_dynamic = {
+        _forma_route("/" + raw.lstrip("/"))
+        for raw in re.findall(r'path:\s*"([^"]+)"', MAIN)
+        if ":" in raw
+    }
+    for page in PAGES:
+        if page["route_kind"] != "detail":
+            continue
+        assert _forma_route(page["path"]) in react_dynamic, (
+            f"Dettaglio catalogato senza route React compatibile: {page['path']}"
+        )
 
 def test_ogni_schermata_ha_un_componente_raggiungibile_dal_suo_entrypoint():
     for page in PAGES:
