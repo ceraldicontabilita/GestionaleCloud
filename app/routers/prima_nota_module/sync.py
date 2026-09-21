@@ -817,6 +817,8 @@ async def registra_pagamento_fattura(
 
     movimento_base = {
         "data": data_fattura,
+        "data_documento": data_fattura,
+        "data_fattura": data_fattura,
         "tipo": tipo_movimento,
         "categoria": categoria,
         "riferimento": riferimento,
@@ -874,6 +876,9 @@ async def registra_pagamento_fattura(
                         "numero_fattura": numero_fattura, "fornitore": fornitore,
                         "fornitore_piva": fornitore_piva, "fattura_id": fattura_id,
                         "tipo_documento": fattura.get("tipo_documento"),
+                        "data_documento": data_fattura,
+                        "data_fattura": data_fattura,
+                        **_campi_data_evidenza_banca(movimento_bancario),
                         "estratto_conto_id": evidenza_id,
                         "movimento_bancario_id": evidenza_id,
                         "riconciliato": True,
@@ -898,7 +903,17 @@ async def registra_pagamento_fattura(
         }
         if collection == COLLECTION_PRIMA_NOTA_BANCA and movimento_bancario:
             evidenza_id = movimento_bancario.get("id") or movimento_bancario.get("movimento_id")
+            campi_data_banca = _campi_data_evidenza_banca(movimento_bancario)
+            if not campi_data_banca.get("data"):
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "Movimento bancario senza data operazione/contabile/valuta: "
+                        "non posso usare la data della fattura come data bancaria."
+                    ),
+                )
             mov.update({
+                **campi_data_banca,
                 "estratto_conto_id": evidenza_id,
                 "movimento_bancario_id": evidenza_id,
                 "riconciliato": True,
@@ -2843,6 +2858,11 @@ async def conferma_fattura_provvisoria(data: Dict = Body(...)) -> Dict:
             )
 
         now_iso = datetime.now(timezone.utc).isoformat()
+        data_pagamento_effettiva = (
+            _campi_data_evidenza_banca(movimento_bancario).get("data")
+            if metodo == "banca" and movimento_bancario
+            else now_iso[:10]
+        )
         campi_fattura = {
             "stato_pagamento": "pagata",
             "payment_status": "paid",
@@ -2859,7 +2879,7 @@ async def conferma_fattura_provvisoria(data: Dict = Body(...)) -> Dict:
             "prima_nota_id": pn_id,
             f"prima_nota_{metodo}_id": pn_id,
             "metodo_pagamento_effettivo": metodo,
-            "data_pagamento": now_iso[:10],
+            "data_pagamento": data_pagamento_effettiva,
             "updated_at": now_iso,
         }
         if metodo == "cassa" and approvazione_cassa_esplicita:
