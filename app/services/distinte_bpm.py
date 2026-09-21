@@ -100,7 +100,7 @@ def parse_importo(value: str) -> float:
 
 
 async def import_distinte_bpm(
-    file: UploadFile = File(...),
+    file: UploadFile,
     solo_anteprima: bool = False
 ):
     """
