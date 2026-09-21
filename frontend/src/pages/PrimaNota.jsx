@@ -451,7 +451,7 @@ export function CartaNexi({ anno }) {
     setStato(null);
     carica();
     return () => { richiestaRef.current += 1; };
-  }, [anno]);
+  }, [anno, sezione]);
 
   const v = stato?.verifica;
   if (!v || v.addebiti_trovati === 0) return null;
