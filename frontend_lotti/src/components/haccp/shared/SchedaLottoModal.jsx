@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import {
@@ -9,6 +9,7 @@ import Button from "../../ui/Button";
 import { API, withToken } from "../../../utils/constants";
 import { apiError } from "../../../utils/apiError";
 import { getOperatoreNome } from "../../../auth";
+import { getTabletSession } from "../../../utils/tabletSession";
 import { SceltaMotivo, MOTIVI } from "./SceltaMotivo";
 import { apriLottiConRicerca } from "../../../utils/apriLotti";
 
@@ -44,6 +45,7 @@ export function AzioneModal({ lotto, azione, attrezzature, onClose, onFatto }) {
   const [motivo, setMotivo] = useState("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
+  const operationId = useRef(crypto.randomUUID());
 
   const opzioniPerTipo = tipoPos === "congelatore" ? attrezzature.congelatori : attrezzature.frigoriferi;
 
@@ -54,7 +56,9 @@ export function AzioneModal({ lotto, azione, attrezzature, onClose, onFatto }) {
 
   const conferma = async () => {
     setSaving(true);
-    const operatore_nome = getOperatoreNome();
+    const sessione = getTabletSession();
+    const operatore_nome = sessione?.nome || getOperatoreNome();
+    const operatore_id = sessione?.dipendente_id || undefined;
     try {
       if (azione === "sposta") {
         if (!numero.trim()) { toast.error("Indica il frigo/congelatore/reparto di destinazione"); setSaving(false); return; }
@@ -68,12 +72,12 @@ export function AzioneModal({ lotto, azione, attrezzature, onClose, onFatto }) {
         toast.success("Lotto congelato: scadenza aggiornata");
       } else if (azione === "recupera") {
         await axios.post(`${API}/lotti/${lotto.id}/recupera`, null, {
-          params: { quantita, motivo: motivo || "Recuperato in nuova produzione", operatore_nome },
+          params: { quantita, motivo: motivo || "Recuperato in nuova produzione", operatore_id, operatore_nome, operation_id: operationId.current },
         });
         toast.success("Recupero registrato");
       } else if (azione === "banco") {
         await axios.post(`${API}/lotti/${lotto.id}/manda-al-banco`, null, {
-          params: { pezzi: quantita, reparto, operatore_nome },
+          params: { pezzi: quantita, reparto, operatore_id, operatore_nome, operation_id: operationId.current },
         });
         toast.success("Mandato al banco");
       } else if (azione === "smalti") {

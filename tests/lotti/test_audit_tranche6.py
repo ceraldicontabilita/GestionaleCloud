@@ -26,7 +26,7 @@ os.environ.setdefault("MONGO_URL", "mongodb://localhost:27017")
 os.environ.setdefault("DB_NAME", "Gestionale_Test")  # SOLO db di prova
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 import pytest
 from mongomock_motor import AsyncMongoMockClient
@@ -187,7 +187,7 @@ def test_catena_completa_chiavi_reali(dbmock):
     lotto = run(crea_lotto({
         "prodotto": "Pane di prova", "numero_lotto": "PANE-001-10pz-24072026",
         "quantita": 10, "unita_misura": "pz", "data_produzione": "24/07/2026",
-        "data_scadenza": "26/07/2026", "frigo_numero": "Frigo 1",
+        "data_scadenza": (datetime.now() + timedelta(days=2)).strftime("%d/%m/%Y"), "frigo_numero": "Frigo 1",
         "lotti_fornitori": esito, "operatore_id": "op1", "operatore_nome": "Mario",
     }, origine="produzione"))
     mov = run(dbmock.movimenti_lotto.find({"lotto_id": lotto["id"]}).to_list(10))
