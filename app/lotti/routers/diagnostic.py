@@ -6,6 +6,7 @@ _LOG_INIT = logging.getLogger("uvicorn.error")
 from fastapi import APIRouter, Depends
 from app.lotti.auth import require_admin
 from app.lotti.db import database as db
+from app.lotti.servizi.stati_anomalia import conta_anomalie_aperte
 
 router = APIRouter(prefix="/diagnostic", tags=["diagnostic"])
 
@@ -293,7 +294,7 @@ async def registro_haccp_riepilogo():
     # Lotti attivi: sistema lotti UNICO (db.lotti, non esauriti)
     lotti_attivi = await _count("lotti", {"esaurito": {"$ne": True}})
     # Anomalie aperte
-    anomalie_aperte = await _count("anomalie", {"stato": {"$ne": "risolta"}})
+    anomalie_aperte = await conta_anomalie_aperte(db.anomalie)
     # Sanificazione oggi: X segnate oggi nella scheda mensile reale
     sanif_oggi = 0
     try:
