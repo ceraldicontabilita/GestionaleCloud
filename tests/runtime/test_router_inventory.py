@@ -11,6 +11,7 @@ import ast
 import sys
 from pathlib import Path
 
+from fastapi import APIRouter
 from fastapi.routing import APIRoute, APIWebSocketRoute
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -103,15 +104,20 @@ def _mounted_router_modules(candidates: set[str]) -> set[str]:
     # Non importiamo moduli ulteriori solo per censirli, evitando side effect.
     for module_name in candidates:
         module = sys.modules.get(module_name)
-        router = getattr(module, "router", None) if module is not None else None
-        if router is None:
+        if module is None:
             continue
-        endpoint_ids = {
-            id(route.endpoint)
-            for route in getattr(router, "routes", ())
-            if isinstance(route, (APIRoute, APIWebSocketRoute))
-            and getattr(route, "endpoint", None) is not None
-        }
+
+        endpoint_ids: set[int] = set()
+        for value in vars(module).values():
+            if not isinstance(value, APIRouter):
+                continue
+            endpoint_ids.update(
+                id(route.endpoint)
+                for route in getattr(value, "routes", ())
+                if isinstance(route, (APIRoute, APIWebSocketRoute))
+                and getattr(route, "endpoint", None) is not None
+            )
+
         if endpoint_ids & reachable:
             mounted.add(module_name)
 
