@@ -24,6 +24,7 @@ const {
   getTabletSession,
   saveTabletSession,
 } = require("../utils/tabletSession");
+const { saveToken } = require("../auth");
 
 global.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -35,6 +36,7 @@ describe("navigazione kiosk senza richieste PIN inutili", () => {
     localStorage.clear();
     sessionStorage.clear();
     clearTabletSession();
+    saveToken("token-di-test");
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);

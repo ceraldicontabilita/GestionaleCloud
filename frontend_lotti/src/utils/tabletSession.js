@@ -1,8 +1,7 @@
-import { logout } from "../auth";
+import { getToken, logout } from "../auth";
 
 const SESSION_KEY = "tablet_operatore";
 
-export const TABLET_SESSION_MS = 2 * 60 * 60 * 1000;
 export const TABLET_ACTION_AUTH_MS = 10 * 60 * 1000;
 
 function readRaw() {
@@ -24,18 +23,17 @@ export function clearTabletSession() {
   try { sessionStorage.removeItem(SESSION_KEY); } catch { /* no-op */ }
 }
 
-export function getTabletSession({ allowExpired = false } = {}) {
+export function getTabletSession() {
   const session = readRaw();
+  if (!getToken()) {
+    if (session) clearTabletSession();
+    return null;
+  }
   if (!session?.dipendente_id || !session?.nome) {
     if (session) {
       clearTabletSession();
       logout();
     }
-    return null;
-  }
-  const expiresAt = Number(session.expiresAt || 0);
-  if (!allowExpired && (!expiresAt || expiresAt <= Date.now())) {
-    clearTabletSession();
     return null;
   }
   return session;
@@ -52,7 +50,6 @@ export function saveTabletSession(operatore, reparto, { actionVerified = false }
     reparto: reparto || previous.reparto || "",
     startedAt: sameOperator ? Number(previous.startedAt || now) : now,
     lastSeenAt: now,
-    expiresAt: now + TABLET_SESSION_MS,
     actionVerifiedAt: actionVerified
       ? now
       : (sameOperator ? Number(previous.actionVerifiedAt || 0) : 0),

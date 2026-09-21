@@ -14,6 +14,7 @@ describe("tabletSession", () => {
     localStorage.clear();
     sessionStorage.clear();
     clearTabletSession();
+    saveToken("token-di-test");
   });
 
   test("mantiene la persona quando cambia reparto", () => {
@@ -62,6 +63,19 @@ describe("tabletSession", () => {
     expect(localStorage.getItem("tablet_operatore")).toBeNull();
     expect(sessionStorage.getItem("tablet_operatore")).toBeNull();
     expect(getToken()).toBe("");
+  });
+
+  test("non richiede di nuovo il PIN dopo due ore se il token è ancora presente", () => {
+    saveTabletSession({ dipendente_id: "hr-1", nome: "Operatore Uno", ruolo: "operatore" }, "pasticceria");
+    const stored = getTabletSession();
+    localStorage.setItem("tablet_operatore", JSON.stringify({ ...stored, expiresAt: Date.now() - 1 }));
+    expect(getTabletSession()).toMatchObject({ dipendente_id: "hr-1", nome: "Operatore Uno" });
+  });
+
+  test("senza token la sessione tablet non apre i reparti", () => {
+    saveTabletSession({ dipendente_id: "hr-1", nome: "Operatore Uno", ruolo: "operatore" }, "pasticceria");
+    localStorage.removeItem("lotti_token");
+    expect(getTabletSession()).toBeNull();
   });
 
   test("la vecchia sessione persistita cancella anche il token", () => {
