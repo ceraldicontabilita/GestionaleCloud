@@ -238,3 +238,19 @@ def test_codice_morto_eliminato_non_ritorna():
     assert not presenti, (
         "File morti gia' eliminati sono ricomparsi: " + ", ".join(presenti)
     )
+
+
+ROUTER_MORTI_FASE_1C = {
+    "app/routers/bank/pos_accredito.py",
+    "app/routers/dati_provvisori.py",
+}
+
+
+def test_router_morti_fase_1c_non_ritornano():
+    presenti = [p for p in sorted(ROUTER_MORTI_FASE_1C) if (ROOT / p).exists()]
+    assert not presenti, "Router morti Fase 1C ricomparsi: " + ", ".join(presenti)
+
+
+def test_servizi_vivi_fase_1c_restano_disponibili():
+    assert (ROOT / "app/utils/pos_accredito.py").exists()
+    assert (ROOT / "app/services/dati_provvisori_service.py").exists()
