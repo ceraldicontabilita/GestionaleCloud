@@ -6,9 +6,9 @@ poi completati e inviati dall'amministratore via listino-prezzi-merci.
 """
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from app.lotti.auth import require_admin
+from app.lotti.auth import request_actor, require_admin
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Literal
 import re
 import uuid
 from datetime import datetime, timezone, timedelta
@@ -853,13 +853,23 @@ async def conferma_righe(ordine_id: str, payload: dict, request: Request = None)
     return {"ok": True, "stato": nuovo_stato, "righe_confermate": n_conf, "righe_totali": len(prodotti)}
 
 
+class InvioConfermato(BaseModel):
+    canale: Literal["email", "whatsapp"]
+    destinatario: str
+
+
 @router.post("/{ordine_id}/invia")
-async def invia_ordine_confermato(ordine_id: str, request: Request = None):
+async def invia_ordine_confermato(ordine_id: str, payload: InvioConfermato, request: Request):
     await require_admin(request)
-    """Invia al fornitore SOLO le righe confermate. Le righe non confermate
-    restano in una bozza residua (stesso fornitore/fonte). L'email parte con
-    le sole righe confermate; lo stato dell'ordine inviato diventa
-    'inviato_fornitori' (settato dal modulo email a invio riuscito)."""
+    """Registra l'invio che il titolare ha completato nel client email/WhatsApp.
+
+    Le righe non confermate restano in una bozza residua. Nessun messaggio
+    viene spedito dal server: l'azione e il destinatario restano tracciati.
+    """
+    destinatario = payload.destinatario.strip()
+    if not destinatario:
+        raise HTTPException(400, "Destinatario mancante")
+    actor = request_actor(request)
     # CLAIM ATOMICO dell'invio: solo la PRIMA richiesta che porta l'ordine a
     # "inviato_fornitori" prosegue. Un doppio tap su "Invia" (o due schede
     # aperte) trovava l'ordine ancora non inviato in entrambe le richieste e
@@ -872,12 +882,21 @@ async def invia_ordine_confermato(ordine_id: str, request: Request = None):
     pre = await db.ordini_fornitori.find_one({"id": ordine_id}, {"_id": 0, "prodotti": 1, "stato": 1})
     if not pre:
         raise HTTPException(404, "Ordine non trovato")
-    if pre.get("stato") != "inviato_fornitori" and not any(p.get("confermato") for p in pre.get("prodotti") or []):
+    if pre.get("stato") == "inviato_fornitori":
+        return {"success": True, "gia_inviato": True}
+    if pre.get("stato") != "confermato":
+        raise HTTPException(409, "Conferma prima le righe dell'ordine")
+    if not any(p.get("confermato") for p in pre.get("prodotti") or []):
         raise HTTPException(400, "Nessuna riga confermata: conferma le righe da inviare")
+    fornitori = {str(p.get("fornitore") or "").strip() for p in pre.get("prodotti") or [] if p.get("confermato")}
+    if len(fornitori) != 1 or not next(iter(fornitori)) or "DA ASSEGNARE" in fornitori:
+        raise HTTPException(409, "Le righe da inviare devono appartenere a un solo fornitore assegnato")
 
     ordine = await db.ordini_fornitori.find_one_and_update(
-        {"id": ordine_id, "stato": {"$ne": "inviato_fornitori"}},
-        {"$set": {"stato": "inviato_fornitori", "inviato_at": now, "updated_at": now}},
+        {"id": ordine_id, "stato": "confermato"},
+        {"$set": {"stato": "inviato_fornitori", "inviato_at": now, "updated_at": now,
+                  "invio_canale": payload.canale, "invio_destinatario": destinatario,
+                  "inviato_da_dipendente_id": (actor or {}).get("id", "")}},
     )
     if not ordine:
         # è già stato inviato da una richiesta concorrente
@@ -902,8 +921,8 @@ async def invia_ordine_confermato(ordine_id: str, request: Request = None):
         }
         await db.ordini_fornitori.insert_one(residua)
 
-    # Invio automatico (PEC/email) rimosso: l'ordine viene segnato come confermato
-    # e va inviato manualmente al fornitore scaricando il PDF (GET .../pdf).
+    # Il titolare ha attestato l'invio nel client scelto. Solo ora la
+    # riconciliazione merce/fattura può vedere questo ordine come inviato.
     await db.ordini_fornitori.update_one(
         {"id": ordine_id},
         # Stato CANONICO del flusso (bozza→confermato→inviato_fornitori).
@@ -919,7 +938,7 @@ async def invia_ordine_confermato(ordine_id: str, request: Request = None):
         "ordine_id": ordine_id, "fornitore": ordine.get("fornitore", ""),
         "righe": len(confermate),
     })
-    return {"ok": True, "esito_email": {"inviato": False, "motivo": "Invio automatico rimosso: scarica il PDF e invia manualmente"},
+    return {"ok": True, "canale": payload.canale, "destinatario": destinatario,
             "bozza_residua_id": bozza_residua_id,
             "righe_inviate": len(confermate), "righe_rimaste_bozza": len(residue)}
 

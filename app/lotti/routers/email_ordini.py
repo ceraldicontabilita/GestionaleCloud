@@ -267,6 +267,8 @@ async def scarica_pdf_ordine(ordine_id: str, fornitore: Optional[str] = None):
         raise HTTPException(404, "Ordine non trovato")
 
     prodotti = ordine.get("prodotti") or []
+    if any(p.get("confermato") for p in prodotti):
+        prodotti = [p for p in prodotti if p.get("confermato")]
     if fornitore:
         prodotti = [p for p in prodotti if (p.get("fornitore") or "") == fornitore]
         nome_fornitore = fornitore
