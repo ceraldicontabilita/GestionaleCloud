@@ -1,7 +1,7 @@
-"""Un router dismesso non deve sopravvivere negli import o nei soli test.
+"""Il codice dismesso non sopravvive negli import o nei soli test.
 
-La bonifica riguarda solo i moduli qui elencati, non gli export dei domini
-vivi, la riconciliazione bancaria canonica o il servizio trattenute.
+Preserva export dei domini vivi, riconciliazione bancaria e servizio
+trattenute. Il filtro del batch dismesso non diventa un servizio orfano.
 """
 from pathlib import Path
 
@@ -14,24 +14,25 @@ RIMOSSI = (
     "app/routers/reports/simple_exports.py",
     "app/routers/batch_operations.py",
     "app/routers/trattenute_verbali.py",
+    "app/services/riconciliazione_filters.py",
 )
 
 
 @pytest.mark.parametrize("relativo", RIMOSSI)
-def test_il_router_dismesso_non_ricompare(relativo):
+def test_il_componente_dismesso_non_ricompare(relativo):
     assert not (RADICE / relativo).exists(), (
-        f"{relativo}: usare il dominio canonico, non ripristinare il router dismesso"
+        f"{relativo}: usare il dominio vivo, non ripristinare codice dismesso"
     )
 
 
-def test_nessun_import_residuo_dei_router_dismessi():
+def test_nessun_import_residuo_dei_componenti_dismessi():
     importati = _importati(_sorgenti())
     moduli = {".".join(Path(p).with_suffix("").parts) for p in RIMOSSI}
     residui = sorted(
         nome for nome in importati
         if any(nome == modulo or nome.startswith(modulo + ".") for modulo in moduli)
     )
-    assert not residui, f"Import residui verso router rimossi: {residui}"
+    assert not residui, f"Import residui verso componenti rimossi: {residui}"
 
 
 def test_reports_carica_solo_la_dashboard_attiva():

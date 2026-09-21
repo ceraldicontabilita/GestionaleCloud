@@ -110,10 +110,8 @@ def _register_accounting(app: FastAPI):
     app.include_router(centri_costo.router, prefix="/api/centri-costo", tags=["Centri di Costo"])
     app.include_router(contabilita_avanzata.router, prefix="/api/contabilita", tags=["Contabilita Avanzata"])
     app.include_router(regole_categorizzazione.router, prefix="/api/regole", tags=["Regole"])
-    # batch_operations: smontato (audit 14/07/2026, piano residuo op.2) — zero
-    # chiamanti verificati (frontend/scheduler/interno/test). File conservato in
-    # git: tests/test_p0_02_auto_riconcilia.py importa ancora l'helper puro
-    # filtro_uscite_da_riconciliare direttamente dal modulo.
+    # Il vecchio batch_operations non montato e' stato eliminato in Fase 1.
+    # Il solo filtro riutilizzabile vive in services/riconciliazione_filters.py.
     app.include_router(contabilita_italiana.router, prefix="/api/contabilita", tags=["Contabilità Italiana"])
     app.include_router(fiscalita_italiana.router, prefix="/api/fiscalita", tags=["Fiscalità Italiana"])
     from app.routers import fiscal_control
@@ -238,9 +236,7 @@ def _register_employees(app: FastAPI):
 
 
 # ─── Reports Module ──────────────────────────────────────────────────────────
-# report_pdf, simple_exports: smontati (audit 14/07/2026, piano residuo
-# op.9/op.4) — zero chiamanti verificati (frontend/scheduler/interno/test).
-# File conservati in git, non montati in produzione.
+# I vecchi report_pdf/simple_exports non montati sono stati eliminati in Fase 1.
 def _register_reports(app: FastAPI):
     from app.routers.reports import dashboard
 
@@ -372,10 +368,7 @@ def _register_noleggio(app: FastAPI):
     app.include_router(verbali_noleggio.router, tags=["Verbali Noleggio"])
     app.include_router(verbali_noleggio_api.router, prefix="/api/verbali-noleggio", tags=["Verbali API"])
     app.include_router(verbali_riconciliazione.router, prefix="/api/verbali-riconciliazione", tags=["Verbali Riconciliazione"])
-    # trattenute_verbali: smontato (audit 14/07/2026, piano residuo op.10) —
-    # tutti i 7 endpoint del router erano "verificare" (zero chiamanti); solo
-    # retro-verifica aveva un servizio vivo dietro (verifica_trattenute_retroattiva,
-    # già chiamata direttamente dallo scheduler, non tramite questa route).
-    # File conservato in git, non montato in produzione.
+    # Le trattenute verbali non hanno un router HTTP dedicato: resta soltanto
+    # il service vivo usato da scheduler e pipeline cedolini.
     from app.routers import admin_export
     app.include_router(admin_export.router, prefix="/api", tags=["Admin Export"])
