@@ -25,6 +25,7 @@ from app.hr.services.auth_dipendenti import (
     elenco_dipendenti_per_login,
 )
 from app.services import pin_authentication
+from app.services.workforce_tokens import create_workforce_token
 from app.utils import login_lockout
 
 logger = logging.getLogger(__name__)
@@ -148,19 +149,15 @@ async def pin_login(
     user_repo = identity.user_repo
 
     user_id = str(user.get("id") or user.get("_id"))
-    expire = datetime.now(timezone.utc) + timedelta(minutes=PIN_TOKEN_EXPIRE_MINUTES)
-    token = jwt.encode(
-        {
-            "sub": user_id,
-            "email": user.get("email", ""),
-            "name": user.get("name"),
-            "role": user.get("role", "admin"),
-            "exp": expire,
-            "iat": datetime.now(timezone.utc),
-            "auth_method": "pin",
-        },
-        settings.SECRET_KEY,
+    token = create_workforce_token(
+        sub=user_id,
+        name=user.get("name") or "Amministratore",
+        role="admin",
+        email=user.get("email", ""),
+        secret=settings.SECRET_KEY,
         algorithm=settings.ALGORITHM,
+        expires_in=timedelta(minutes=PIN_TOKEN_EXPIRE_MINUTES),
+        auth_method="pin",
     )
 
     try:

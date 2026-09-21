@@ -445,6 +445,7 @@ Il conteggio dei tre moduli report/batch è 1.186 righe rimosse. Non aggiungerlo
 | 2026-09-21 | RST-0401B-HR-PIN | 🟢 | PR #600 / merge `b34a78cc86cf6f1f242f1a20a01b196e829a9d00`: login admin HR sul motore PIN canonico e lockout condiviso; CI 35593567666 e Produzione 35593567689 verdi, commit servito e smoke superato |
 | 2026-09-21 | RST-0401C-LOTTI-PIN | 🟢 | PR #601 / merge `ab8c4afe89952575b908346a238b74e4969fb72c`: eliminato helper PIN admin locale; `auth.py`, tablet e ordini usano direttamente il servizio canonico; CI 35596972887 e Produzione 35596972923 verdi, commit servito e smoke superato |
 | 2026-09-21 | RST-0401D-MENU-PIN | 🟢 | PR #602 / merge `1b6d396c5e6245cf549d107c21a523948818a175`: login Menu su `pin_authentication`; CI 35597930235 e Produzione 35597930222 verdi, commit servito e smoke superato |
+| 2026-09-21 | RST-0402-SESSIONE-OPERATIVA | 🟡 | branch `ristrutturazione/rst-0402-sessione-operativa-canonica`: unico emettitore token per HR/Lotti, tre emissioni duplicate rimosse; attende CI/E2E/rilascio |
 | 2026-09-21 | FASE-1C-20260921 | 🟡 | branch `ristrutturazione/fase-1c-router-morti-20260921`: eliminati router POS accredito e Dati Provvisori senza chiamanti; utility/service vivi preservati; attende CI/rilascio |
 | 2026-09-21 | FASE-1B-V5 | 🟡 | branch `ristrutturazione/fase-1b-falsi-router-v5`: Distinte BPM e workflow ERP Libro Unico spostati nei servizi; vecchi router eliminati; attende CI/rilascio |
 

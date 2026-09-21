@@ -15,6 +15,7 @@ import jwt
 import pytest
 
 from app.services.sessione_unica import normalizza, verifica_token_condiviso
+from app.services.workforce_tokens import create_workforce_token
 
 ALG = "HS256"
 
@@ -178,3 +179,49 @@ def test_un_token_senza_ruolo_non_ne_riceve_uno_di_ripiego(caso, payload):
     assert dati["ruolo"] == "" and dati["role"] == "", (
         f"{caso}: il token ha ricevuto il ruolo «{dati['role']}» che non aveva."
     )
+
+
+def test_emettitore_canonico_produce_payload_leggibile_da_hr_e_lotti(segreti):
+    lotti, portale = segreti
+    token = create_workforce_token(
+        sub="hr-7",
+        name="Pocci Salvatore",
+        role="dipendente",
+        secret=portale,
+        expires_in=timedelta(hours=2),
+        auth_method="pin_dipendente",
+    )
+    dati = verifica_token_condiviso(token)
+    assert dati is not None
+    assert dati["sub"] == "hr-7"
+    assert dati["name"] == dati["nome"] == "Pocci Salvatore"
+    assert dati["role"] == "dipendente"
+    assert dati["ruolo"] == "operatore"
+    assert dati["via"] == "pin_dipendente"
+
+
+def test_emettitore_canonico_non_promuove_ruoli_sconosciuti(segreti):
+    _lotti, portale = segreti
+    token = create_workforce_token(
+        sub="x",
+        name="X",
+        role="capo_supremo",
+        secret=portale,
+        expires_in=timedelta(hours=1),
+        auth_method="test",
+    )
+    dati = verifica_token_condiviso(token)
+    assert dati["role"] == "capo_supremo"
+    assert dati["ruolo"] == "capo_supremo"
+
+
+def test_emettitore_canonico_non_accetta_segreto_vuoto():
+    with pytest.raises(ValueError):
+        create_workforce_token(
+            sub="x",
+            name="X",
+            role="dipendente",
+            secret="",
+            expires_in=timedelta(minutes=5),
+            auth_method="test",
+        )
