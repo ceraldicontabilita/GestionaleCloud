@@ -110,10 +110,8 @@ def _register_accounting(app: FastAPI):
     app.include_router(centri_costo.router, prefix="/api/centri-costo", tags=["Centri di Costo"])
     app.include_router(contabilita_avanzata.router, prefix="/api/contabilita", tags=["Contabilita Avanzata"])
     app.include_router(regole_categorizzazione.router, prefix="/api/regole", tags=["Regole"])
-    # batch_operations: smontato (audit 14/07/2026, piano residuo op.2) — zero
-    # chiamanti verificati (frontend/scheduler/interno/test). File conservato in
-    # git: tests/test_p0_02_auto_riconcilia.py importa ancora l'helper puro
-    # filtro_uscite_da_riconciliare direttamente dal modulo.
+    # Il vecchio batch_operations non montato e' stato eliminato in Fase 1.
+    # Il solo filtro riutilizzabile vive in services/riconciliazione_filters.py.
     app.include_router(contabilita_italiana.router, prefix="/api/contabilita", tags=["Contabilità Italiana"])
     app.include_router(fiscalita_italiana.router, prefix="/api/fiscalita", tags=["Fiscalità Italiana"])
     from app.routers import fiscal_control
