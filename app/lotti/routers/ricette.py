@@ -2179,6 +2179,102 @@ async def restore_ricetta(voce_id: str, _admin=Depends(require_admin)):
     }
 
 
+@router.post("/ricette-cestino/migra-foto-drive")
+async def migra_foto_cestino_drive(
+    applica: bool = Query(False),
+    limite: int = Query(10, ge=1, le=25),
+    _admin=Depends(require_admin),
+):
+    """Migra in lotti riprendibili i blob ancora richiamati dal cestino.
+
+    L'endpoint e' limitato alla migrazione RST-0508AN e verra' eliminato con
+    il fallback ``foto_files`` dopo il conteggio riferimenti=0. Ogni voce viene
+    persistita subito dopo l'upload, quindi un rilancio non duplica i file gia'
+    completati.
+    """
+    voci = await db.ricette_cestino.find(
+        {"ricetta.foto_url": {"$regex": r"/api/foto/"}},
+        {"_id": 1, "ricetta": 1},
+    ).to_list(5000)
+    gruppi: dict[str, list[dict]] = {}
+    for voce in voci:
+        ricetta = voce.get("ricetta") or {}
+        if ricetta.get("foto_drive_id"):
+            continue
+        legacy_id = _foto_id_da_url(ricetta.get("foto_url"))
+        if legacy_id:
+            gruppi.setdefault(legacy_id, []).append(voce)
+
+    if not applica:
+        mancanti = 0
+        for legacy_id in gruppi:
+            if not await db.foto_files.find_one({"_id": legacy_id}, {"_id": 1}):
+                mancanti += 1
+        return {
+            "dry_run": True,
+            "voci_da_migrare": sum(len(x) for x in gruppi.values()),
+            "foto_distinte_da_migrare": len(gruppi),
+            "foto_legacy_mancanti": mancanti,
+        }
+
+    if await db.ricette_cestino_foto_backup_20260922.count_documents({}) == 0:
+        originali = await db.ricette_cestino.find({}, {"_id": 0}).to_list(5000)
+        if originali:
+            await db.ricette_cestino_foto_backup_20260922.insert_many(originali)
+
+    from app.lotti.servizi import drive_foto_ricette
+    folder = await drive_foto_ricette.risolvi_folder_id(db)
+    migrate = list(gruppi.items())[:limite]
+    foto_migrate = 0
+    voci_aggiornate = 0
+    mancanti: list[str] = []
+    for legacy_id, riferimenti in migrate:
+        foto = await db.foto_files.find_one({"_id": legacy_id})
+        if not foto or not foto.get("data"):
+            mancanti.append(legacy_id)
+            continue
+        contenuto = bytes(foto["data"])
+        mime = str(foto.get("mime") or "image/jpeg")
+        ricetta_id = str((riferimenti[0].get("ricetta") or {}).get("id") or legacy_id)
+        caricata = await asyncio.to_thread(
+            drive_foto_ricette.carica,
+            ricetta_id=f"cestino-{ricetta_id}",
+            contenuto=contenuto,
+            mime=mime,
+            filename=foto.get("filename") or f"{legacy_id}.img",
+            folder_id=folder,
+        )
+        drive_id = caricata["id"]
+        versione = int(datetime.now(timezone.utc).timestamp())
+        campi = {
+            "ricetta.foto_url": f"/api/foto/{drive_id}?v={versione}",
+            "ricetta.foto_id": drive_id,
+            "ricetta.foto_drive_id": drive_id,
+            "ricetta.foto_drive_folder_id": folder,
+            "ricetta.foto_content_type": mime,
+            "ricetta.foto_filename": foto.get("filename") or f"{ricetta_id}{drive_foto_ricette._estensione(mime)}",
+            "ricetta.foto_sha256": caricata["sha256"],
+            "ricetta.foto_source": (riferimenti[0].get("ricetta") or {}).get("foto_source") or foto.get("fonte") or "legacy_migrata",
+            "ricetta.foto_migrated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        for voce in riferimenti:
+            esito = await db.ricette_cestino.update_one({"_id": voce["_id"]}, {"$set": campi})
+            voci_aggiornate += esito.modified_count
+        foto_migrate += 1
+
+    restanti = await db.ricette_cestino.count_documents({
+        "ricetta.foto_url": {"$regex": r"/api/foto/"},
+        "ricetta.foto_drive_id": {"$exists": False},
+    })
+    return {
+        "dry_run": False,
+        "foto_migrate": foto_migrate,
+        "voci_aggiornate": voci_aggiornate,
+        "foto_legacy_mancanti": mancanti,
+        "voci_restanti": restanti,
+    }
+
+
 _BASE_NOME_RE = re.compile(r"\s*\(\s*base\s*\)\s*$", re.IGNORECASE)
 
 
@@ -2470,11 +2566,44 @@ async def _clona_foto_tra_ricette(
 ) -> Optional[str]:
     """Copia bytes e metadati in un foto_id nuovo, poi collega la destinazione."""
     origine = await db.ricette.find_one(
-        {"id": ricetta_origine_id}, {"_id": 0, "foto_url": 1, "nome": 1, "foto_source": 1}
+        {"id": ricetta_origine_id},
+        {"_id": 0, "foto_url": 1, "nome": 1, "foto_source": 1,
+         "foto_drive_id": 1, "foto_drive_folder_id": 1},
     )
     foto_origine_id = _foto_id_da_url((origine or {}).get("foto_url"))
     if not foto_origine_id:
         return None
+    drive_id = str((origine or {}).get("foto_drive_id") or "").strip()
+    if drive_id:
+        from app.lotti.servizi import drive_foto_ricette
+        folder = str((origine or {}).get("foto_drive_folder_id") or "").strip()
+        dati_foto, mime, metadata = await asyncio.to_thread(
+            drive_foto_ricette.leggi, drive_id, folder_id=folder
+        )
+        caricata = await asyncio.to_thread(
+            drive_foto_ricette.carica,
+            ricetta_id=ricetta_destinazione_id,
+            contenuto=dati_foto,
+            mime=mime,
+            filename=metadata.get("name"),
+            folder_id=folder,
+        )
+        versione = int(datetime.now(timezone.utc).timestamp())
+        nuovo_foto_id = caricata["id"]
+        foto_url = f"/api/foto/{nuovo_foto_id}?v={versione}"
+        await db.ricette.update_one(
+            {"id": ricetta_destinazione_id}, {"$set": {
+                "foto_url": foto_url, "foto_id": nuovo_foto_id,
+                "foto_drive_id": nuovo_foto_id, "foto_drive_folder_id": folder,
+                "foto_filename": metadata.get("name"), "foto_content_type": mime,
+                "foto_sha256": caricata["sha256"],
+                "foto_source": (origine or {}).get("foto_source") or "copia_ricetta",
+                "foto_copiata_da_ricetta_id": ricetta_origine_id,
+            }}
+        )
+        return foto_url
+
+    # Fallback solo per i record non ancora migrati; rimosso a riferimenti=0.
     foto = await db.foto_files.find_one({"_id": foto_origine_id})
     if not foto or not foto.get("data"):
         return None
