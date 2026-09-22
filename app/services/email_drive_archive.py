@@ -11,7 +11,6 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app.services.drive_folder_registry import get_folder_id, get_generic_documents_folder_id
-from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -127,10 +126,7 @@ def archive_document_copy(doc: dict[str, Any], tipo: str) -> dict[str, Any]:
     folder_id = get_folder_id(area)
     service = None
     if not folder_id:
-        ledger_root = str(settings.GOOGLE_SHEETS_LEDGER_FOLDER_ID or "").strip()
-        root_id = ledger_root or get_generic_documents_folder_id()
-        if area != "partenopay":
-            root_id = get_generic_documents_folder_id() or ledger_root
+        root_id = get_generic_documents_folder_id()
         if not root_id:
             return {"status": "not_configured", "area": area}
         service = _drive_service()

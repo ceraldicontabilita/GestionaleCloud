@@ -50,12 +50,11 @@ def test_fail_fast_rifiuta_cors_wildcard_con_credenziali(monkeypatch):
 
 
 def test_fail_fast_rifiuta_backend_non_supabase(monkeypatch):
-    """Supabase e' l'unico backend supportato: il vecchio 'sheets' e
-    qualunque altro valore restano invalidi."""
+    """Supabase e' l'unico backend supportato: ogni altro valore e' invalido."""
     monkeypatch.setenv("FAIL_FAST_SECRETS", "true")
     cfg = Settings(
         ENVIRONMENT="production", SECRET_KEY="x" * 64,
-        DATA_BACKEND="sheets", CORS_ALLOWED_ORIGINS="",
+        DATA_BACKEND="memory", CORS_ALLOWED_ORIGINS="",
     )
     with pytest.raises(RuntimeError, match="DATA_BACKEND non supportato"):
         cfg.validate_startup()

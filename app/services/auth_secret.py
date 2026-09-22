@@ -43,7 +43,6 @@ async def initialize_auth_secret(db, cfg: Settings = settings) -> str:
     # `archivio`: la chiave viene dall'archivio condiviso (`sistema_stato` su
     # Supabase), non dall'ambiente. Il valore e' solo un'etichetta in memoria,
     # letta da `Settings.auth_secret_source`: non finisce mai su disco.
-    # Si chiamava `sheets` da quando l'archivio era Google Sheets.
     cfg.set_runtime_auth_secret(value, source="archivio")
     logger.info("Chiave JWT inizializzata dall'archivio condiviso")
     return "archivio"

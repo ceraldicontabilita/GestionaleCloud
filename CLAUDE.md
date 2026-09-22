@@ -169,8 +169,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - **Supabase è l'unico archivio, senza eccezioni**: un solo progetto
   `GestionaleCloud`, `render.yaml` impone `DATA_BACKEND=supabase` ed è
   l'unico valore accettato dal codice. Drive resta la fonte degli
-  **originali documentali**, non il database. Del runtime Google Sheets non
-  esiste più niente, nemmeno come fallback di sviluppo.
+  **originali documentali**, non il database.
 - Schemi: `gestionale` (ERP: `documents`, `blobs`, `collection_versions`,
   `protocollo_drive`, `runtime_scheduler_leases`), `hr` (tabelle `app_*`,
   `id text` + `doc jsonb`), `lotti` (`lotti_documents` + RPC `lotti_*`),

@@ -31,6 +31,24 @@ def test_routing_drive_documenti_amministrativi():
     assert route_for_document_type("altro") is None
 
 
+def test_archivio_email_usa_la_radice_documentale_canonica(monkeypatch):
+    chiamate = []
+    monkeypatch.setattr(email_drive_archive, "get_folder_id", lambda _area: None)
+    monkeypatch.setattr(email_drive_archive, "get_generic_documents_folder_id", lambda: "documenti-root")
+    monkeypatch.setattr(email_drive_archive, "_drive_service", lambda: object())
+    monkeypatch.setattr(
+        email_drive_archive, "_get_or_create_folder",
+        lambda _service, root, label: chiamate.append((root, label)) or "area-root",
+    )
+
+    esito = email_drive_archive.archive_document_copy(
+        {"id": "doc-1", "filename": "documento.pdf", "content": b""}, "partenopay"
+    )
+
+    assert chiamate == [("documenti-root", "PARTENOPAY")]
+    assert esito == {"status": "error", "area": "partenopay", "reason": "contenuto_mancante"}
+
+
 def test_registry_risolve_alias_senza_esporre_id(monkeypatch):
     monkeypatch.setattr(
         drive_folder_registry.settings,
