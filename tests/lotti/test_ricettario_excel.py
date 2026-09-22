@@ -122,6 +122,55 @@ def test_eliminazione_salva_copia_recuperabile(monkeypatch):
     assert trash["motivo"] == "eliminazione manuale dall'elenco ricette"
 
 
+def test_cestino_ripristina_stesso_id_e_secondo_tentativo_non_duplica(monkeypatch):
+    database = AsyncMongoMockClient()["Gestionale_Test"]
+    monkeypatch.setattr(mod, "db", database)
+
+    async def scenario():
+        await database.ricette.insert_one({
+            "id": "r1", "nome": "Ricetta prova", "foto_url": "/api/foto/originale",
+            "procedimento_testo": "Procedimento operativo", "ingredienti_dettaglio": [{"nome": "Farina"}],
+        })
+        await mod.delete_ricetta("r1", {"nome": "Admin"})
+        cestino = await mod.get_ricette_cestino({"nome": "Admin"})
+        prima = await mod.restore_ricetta(cestino[0]["id"], {"nome": "Admin"})
+        seconda = await mod.restore_ricetta(cestino[0]["id"], {"nome": "Admin"})
+        ricetta = await database.ricette.find_one({"id": "r1"}, {"_id": 0})
+        voce = await database.ricette_cestino.find_one({"id": cestino[0]["id"]}, {"_id": 0})
+        return cestino, prima, seconda, ricetta, voce, await database.ricette.count_documents({})
+
+    cestino, prima, seconda, ricetta, voce, totale = run(scenario())
+    assert len(cestino) == 1
+    assert cestino[0]["nome"] == "Ricetta prova"
+    assert prima["id"] == seconda["id"] == "r1"
+    assert prima["ripristinata"] is True
+    assert seconda["ripristinata"] is False
+    assert totale == 1
+    assert ricetta["foto_url"] == "/api/foto/originale"
+    assert ricetta["procedimento_testo"] == "Procedimento operativo"
+    assert voce["ripristinata_da"] == "Admin"
+    assert run(mod.get_ricette_cestino({"nome": "Admin"})) == []
+
+
+def test_ripristino_variante_senza_base_conserva_la_copia_nel_cestino(monkeypatch):
+    database = AsyncMongoMockClient()["Gestionale_Test"]
+    monkeypatch.setattr(mod, "db", database)
+
+    async def scenario():
+        await database.ricette_cestino.insert_one({
+            "id": "voce-1", "ricetta_id": "variante", "motivo": "eliminazione manuale",
+            "ricetta": {"id": "variante", "nome": "Variante", "ricetta_base_id": "base"},
+        })
+        with pytest.raises(HTTPException) as errore:
+            await mod.restore_ricetta("voce-1", {"nome": "Admin"})
+        return errore.value, await database.ricette.count_documents({}), await database.ricette_cestino.count_documents({})
+
+    errore, ricette, copie = run(scenario())
+    assert errore.status_code == 409
+    assert ricette == 0
+    assert copie == 1
+
+
 def test_eliminazione_base_con_varianti_non_orfana_le_varianti(monkeypatch):
     database = AsyncMongoMockClient()["Gestionale_Test"]
     monkeypatch.setattr(mod, "db", database)

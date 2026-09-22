@@ -15,6 +15,7 @@ import { stampaDoc } from "../../utils/stampa";
 import { ModalRegistraLotto } from "./tablet/ModalRegistraLotto";
 import { SchedaEditorModal, VerificaDisponibilitaModal } from "./RicetteDashboardView";
 import SchedaRicettaChiaraModal from "./SchedaRicettaChiaraModal";
+import RicetteCestino from "./backoffice/RicetteCestino";
 import FormRicetta, { REPARTI } from "./backoffice/FormRicetta";
 import TabProdotti from "./backoffice/TabProdotti";
 import TabFornitori from "./backoffice/TabFornitori";
@@ -50,6 +51,7 @@ function TabRicette({ solaLetturaOperatore = false }) {
   const [dettaglioR, setDettaglioR] = useState(null);   // scheda chiara unica
   const [cambiandoVisibilita, setCambiandoVisibilita] = useState(null);
   const [eliminandoRicetta, setEliminandoRicetta] = useState(null);
+  const [mostraCestino, setMostraCestino] = useState(false);
   // Frigoriferi/congelatori REALI configurati (Attrezzature), non la lista
   // generica di fallback — richiesta Enzo 20/07/2026.
   const [attrezzature, setAttrezzature] = useState({ frigoriferi: [], congelatori: [] });
@@ -99,8 +101,8 @@ function TabRicette({ solaLetturaOperatore = false }) {
 
   const eliminaRicetta = async (ricetta) => {
     if (!ricetta?.id || eliminandoRicetta) return;
-    const confermata = await conferma(
-      `Eliminare definitivamente “${ricetta.nome}” dalle ricette operative?\n\nLa copia completa resterà recuperabile nel cestino.`,
+      const confermata = await conferma(
+        `Rimuovere “${ricetta.nome}” dalle ricette operative?\n\nLa copia completa resterà recuperabile nel cestino.`,
       { titolo: "Elimina ricetta", ok: "Elimina ricetta", pericolo: true },
     );
     if (!confermata) return;
@@ -229,9 +231,13 @@ function TabRicette({ solaLetturaOperatore = false }) {
           style={{padding:"8px 18px",border:"none",borderRadius:10,background:"var(--primary-grad)",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"var(--font)",whiteSpace:"nowrap"}}>
           + Nuova ricetta
         </button>}
+        {!solaLetturaOperatore && <button type="button" onClick={() => setMostraCestino(visibile => !visibile)} aria-pressed={mostraCestino}
+          style={{padding:"8px 12px",border:"1.5px solid var(--border)",borderRadius:10,background:mostraCestino?"var(--primary-soft)":"var(--card)",color:"var(--text-2)",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"var(--font)"}}>
+          {mostraCestino ? "Torna alle ricette" : "Cestino ricette"}
+        </button>}
       </div>
 
-      {loading ? (
+      {mostraCestino ? <RicetteCestino onRipristinata={carica} /> : loading ? (
         <div style={{textAlign:"center",padding:"40px",color:"var(--text-3)"}}>Caricamento…</div>
       ) : (
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(210px, 1fr))",gap:14}}>
