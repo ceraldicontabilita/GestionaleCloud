@@ -2275,6 +2275,34 @@ async def migra_foto_cestino_drive(
     }
 
 
+async def completa_migrazione_foto_cestino_drive(limite: int = 25) -> dict:
+    """Completa la migrazione RST-0508AN in lotti idempotenti.
+
+    Il deploy la esegue in background usando le credenziali gia' configurate
+    del servizio. La funzione termina soltanto quando nessuna voce del cestino
+    richiama piu' un blob legacy; un blob assente o un giro senza avanzamento
+    viene trattato come errore esplicito, non come migrazione riuscita.
+    """
+    totali = {"foto_migrate": 0, "voci_aggiornate": 0, "giri": 0}
+    while True:
+        esito = await migra_foto_cestino_drive(True, limite, {})
+        totali["giri"] += 1
+        totali["foto_migrate"] += int(esito.get("foto_migrate") or 0)
+        totali["voci_aggiornate"] += int(esito.get("voci_aggiornate") or 0)
+        mancanti = list(esito.get("foto_legacy_mancanti") or [])
+        restanti = int(esito.get("voci_restanti") or 0)
+        if mancanti:
+            raise RuntimeError(
+                f"Migrazione foto cestino interrotta: {len(mancanti)} blob legacy mancanti"
+            )
+        if restanti == 0:
+            return {**totali, "voci_restanti": 0}
+        if not esito.get("foto_migrate"):
+            raise RuntimeError(
+                f"Migrazione foto cestino senza avanzamento: {restanti} voci restanti"
+            )
+
+
 _BASE_NOME_RE = re.compile(r"\s*\(\s*base\s*\)\s*$", re.IGNORECASE)
 
 
