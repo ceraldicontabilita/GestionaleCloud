@@ -9,7 +9,7 @@ os.environ.setdefault("DB_NAME", "Gestionale_Test")
 
 from mongomock_motor import AsyncMongoMockClient
 
-from app.lotti.routers import saima_ricettari as mod
+from app.lotti.routers import ingredienti, lotti_fornitori, saima_ricettari as mod
 from app.lotti.scripts.genera_ricette_saima import _parse_ingredients
 
 _TEST_LOOP = asyncio.new_event_loop()
@@ -52,41 +52,45 @@ def test_dosi_italiane_con_punto_migliaia_non_diventano_decimali():
     assert rows[1]["quantita"] == 1.5
 
 
-def test_sostituzioni_solo_nella_stessa_famiglia(monkeypatch):
+def test_disponibilita_usa_la_chiave_canonica_unica(monkeypatch):
     database = AsyncMongoMockClient()["Gestionale_Test"]
     monkeypatch.setattr(mod, "db", database)
+    monkeypatch.setattr(lotti_fornitori, "db", database)
+    monkeypatch.setattr(ingredienti, "db", database)
 
     async def scenario():
         await database.ricette.insert_one({
-            "id": "ricetta-interna-croissant",
-            "nome": "Croissant pistacchio",
-            "porzioni": 40,
+            "id": "ricetta-interna-baccala",
+            "nome": "Baccalà alla Napoletana",
+            "porzioni": 1,
             "ingredienti_dettaglio": [
-                {"nome": "Lievito di birra", "quantita": 40, "unita_misura": "g"},
+                {"nome": "Olio di arachidi per friggere", "quantita": 500, "unita_misura": "ml"},
+                {"nome": "Prezzemolo fresco", "quantita": 10, "unita_misura": "g"},
+                {"nome": "Capperi sotto sale", "quantita": 20, "unita_misura": "g"},
                 {"nome": "Mèlange perfetto Gateaux", "quantita": 500, "unita_misura": "g"},
-                {"nome": "Acqua", "quantita": 450, "unita_misura": "g"},
-                {"nome": "Pasta mandarino tardivo", "quantita": 50, "unita_misura": "g"},
             ],
         })
         await database.lotti_fornitori.insert_many([
-            {"id": "b1", "prodotto_nome": "Burro classico", "prodotto_nome_norm": "burro classico", "quantita_disponibile": 5, "unita_misura": "KG", "fornitore": "Fornitore A", "esaurito": False},
-            {"id": "a1", "prodotto_nome": "Aroma arancia", "prodotto_nome_norm": "aroma arancia", "quantita_disponibile": 2, "unita_misura": "KG", "fornitore": "Fornitore B", "esaurito": False},
-            {"id": "a2", "prodotto_nome": "Aroma zuppa inglese", "prodotto_nome_norm": "aroma zuppa inglese", "quantita_disponibile": 1, "unita_misura": "KG", "fornitore": "Fornitore B", "esaurito": False},
+            {"id": "o1", "prodotto_nome": "Olio di girasole", "quantita_disponibile": 2, "unita_misura": "L", "fornitore": "Fornitore A", "esaurito": False},
+            {"id": "p1", "prodotto_nome": "Prezzemolo", "quantita_disponibile": 100, "unita_misura": "g", "fornitore": "Fornitore A", "esaurito": False},
+            {"id": "c1", "prodotto_nome": "Capperi", "quantita_disponibile": 100, "unita_misura": "g", "fornitore": "Fornitore A", "esaurito": False},
+            {"id": "b1", "prodotto_nome": "Burro classico", "quantita_disponibile": 5, "unita_misura": "KG", "fornitore": "Fornitore A", "esaurito": False},
         ])
         return await mod.verifica_disponibilita_ricetta(
-            "ricetta-interna-croissant", mod.VerificaDisponibilitaPayload(pezzi=80)
+            "ricetta-interna-baccala", mod.VerificaDisponibilitaPayload(pezzi=1)
         )
 
     out = run(scenario())
     rows = {item["ingrediente"]: item for item in out["righe"]}
-    assert rows["Acqua"]["stato"] == "disponibile"
-    assert rows["Lievito di birra"]["stato"] == "da_acquistare"
-    assert not rows["Lievito di birra"]["alternative"]
-    assert rows["Mèlange perfetto Gateaux"]["stato"] == "sostituibile"
-    assert rows["Mèlange perfetto Gateaux"]["alternative"][0]["nome"] == "Burro classico"
-    assert rows["Pasta mandarino tardivo"]["stato"] == "sostituibile"
-    assert any("arancia" in item["nome"].lower() for item in rows["Pasta mandarino tardivo"]["alternative"])
-    assert rows["Lievito di birra"]["richiesta"]["valore"] == 80
+    assert rows["Olio di arachidi per friggere"]["stato"] == "disponibile"
+    assert rows["Olio di arachidi per friggere"]["prodotto"]["nome"] == "Olio di girasole"
+    assert rows["Prezzemolo fresco"]["stato"] == "disponibile"
+    assert rows["Prezzemolo fresco"]["prodotto"]["nome"] == "Prezzemolo"
+    assert rows["Capperi sotto sale"]["stato"] == "disponibile"
+    assert rows["Capperi sotto sale"]["prodotto"]["nome"] == "Capperi"
+    assert rows["Mèlange perfetto Gateaux"]["stato"] == "da_acquistare"
+    assert not rows["Mèlange perfetto Gateaux"]["alternative"]
+    assert out["totali"] == {"disponibili": 3, "sostituibili": 0, "da_acquistare": 1}
 
 
 def test_ricettari_fornitore_non_scrivono_nelle_ricette_interne(monkeypatch):
@@ -106,6 +110,8 @@ def test_ricettari_fornitore_non_scrivono_nelle_ricette_interne(monkeypatch):
 def test_lista_spesa_aggiunge_solo_veri_mancanti(monkeypatch):
     database = AsyncMongoMockClient()["Gestionale_Test"]
     monkeypatch.setattr(mod, "db", database)
+    monkeypatch.setattr(lotti_fornitori, "db", database)
+    monkeypatch.setattr(ingredienti, "db", database)
 
     async def scenario():
         await database.ricette.insert_one({

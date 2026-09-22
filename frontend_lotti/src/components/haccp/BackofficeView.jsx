@@ -272,7 +272,7 @@ function TabRicette({ solaLetturaOperatore = false }) {
                   background:"rgba(255,255,255,.95)",color:"#3f5a4e",borderRadius:6,padding:"3px 8px"}}>
                   Immagine AI illustrativa
                 </span>}
-                {!solaLetturaOperatore && !soloLettura && !riferimentoFornitore && <button type="button"
+                {!solaLetturaOperatore && <button type="button"
                   aria-label={`Elimina ricetta ${r.nome}`}
                   title="Elimina ricetta"
                   disabled={eliminandoRicetta===r.id}

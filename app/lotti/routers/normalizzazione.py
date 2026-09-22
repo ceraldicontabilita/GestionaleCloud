@@ -34,6 +34,8 @@ SINONIMI_STATICI: dict[str, dict] = {
     "olio extra vergine": {"nome_canc": "Olio Extravergine di Oliva", "categoria": "Condimenti"},
     "olio di oliva": {"nome_canc": "Olio di Oliva", "categoria": "Condimenti"},
     "olio di semi": {"nome_canc": "Olio di Semi", "categoria": "Condimenti"},
+    "olio di arachidi": {"nome_canc": "Olio di Semi", "categoria": "Condimenti"},
+    "olio di girasole": {"nome_canc": "Olio di Semi", "categoria": "Condimenti"},
     # Farine
     "farina 00": {"nome_canc": "Farina 00", "categoria": "Farine e Cereali"},
     "farina 0": {"nome_canc": "Farina 0", "categoria": "Farine e Cereali"},
@@ -79,6 +81,8 @@ SINONIMI_STATICI: dict[str, dict] = {
     "limoni": {"nome_canc": "Limoni", "categoria": "Frutta e Verdura"},
     "mele": {"nome_canc": "Mele", "categoria": "Frutta e Verdura"},
     "fragole": {"nome_canc": "Fragole", "categoria": "Frutta e Verdura"},
+    "prezzemolo": {"nome_canc": "Prezzemolo", "categoria": "Frutta e Verdura"},
+    "capperi": {"nome_canc": "Capperi", "categoria": "Conserve e Condimenti"},
     # Cioccolato e cacao
     "cacao": {"nome_canc": "Cacao in Polvere", "categoria": "Cioccolato e Cacao"},
     "cioccolato fondente": {"nome_canc": "Cioccolato Fondente", "categoria": "Cioccolato e Cacao"},

@@ -10,7 +10,6 @@ import logging
 import re
 import unicodedata
 import uuid
-from difflib import SequenceMatcher
 from typing import Optional
 _LOG_INIT = logging.getLogger("uvicorn.error")
 from bs4 import BeautifulSoup
@@ -235,39 +234,19 @@ def _norm(value: str) -> str:
     return " ".join(re.sub(r"[^a-z0-9]+", " ", value).split())
 
 
-_STOP = {"di", "del", "della", "al", "alla", "con", "per", "in", "e", "o", "fresco", "classico"}
 
+async def _chiave_ingrediente_canonica(nome: str) -> str:
+    """Restituisce la chiave del matcher unico Lotti.
 
-def _tokens(value: str) -> set[str]:
-    return {x for x in _norm(value).split() if len(x) > 2 and x not in _STOP}
+    Ricette, righe XML e lotti residui convergono sullo stesso ingrediente
+    canonico. Non vengono create equivalenze per somiglianza testuale.
+    """
+    from app.lotti.routers.ingredienti import _consolida_canonico, match_livello2
+    from app.lotti.routers.lotti_fornitori import calcola_nome_canonico
 
-
-def _famiglia(value: str) -> str:
-    text = _norm(value)
-    rules = (
-        ("acqua", ("acqua",)),
-        ("lieviti", ("lievito", "levain", "starter")),
-        ("grassi", ("burro", "margarina", "melange", "grasso", "strutto")),
-        ("aromi", ("aroma", "emulsione", "pasta mandarino", "pasta arancia", "pasta limone", "vaniglia")),
-        ("farine", ("farina", "semola", "amido", "fecola")),
-        ("zuccheri", ("zucchero", "destrosio", "saccarosio", "glucosio", "miele")),
-        ("cioccolato", ("cioccolato", "copertura", "cacao")),
-        ("latticini", ("latte", "panna", "ricotta", "mascarpone")),
-        ("uova", ("uova", "uovo", "tuorlo", "albume")),
-        ("frutta", ("amarena", "mandarino", "arancia", "limone", "fragola", "mango", "frutta")),
-        ("creme", ("crema", "farcitura", "variegato")),
-    )
-    for family, words in rules:
-        if any(word in text for word in words):
-            return family
-    return "specifico"
-
-
-def _similarita(a: str, b: str) -> float:
-    na, nb = _norm(a), _norm(b)
-    ta, tb = _tokens(a), _tokens(b)
-    overlap = len(ta & tb) / max(1, len(ta | tb))
-    return round(100 * (0.62 * SequenceMatcher(None, na, nb).ratio() + 0.38 * overlap), 1)
+    canonico = await calcola_nome_canonico(nome, usa_llm=False)
+    canonico = match_livello2(canonico or nome) or canonico or nome
+    return _norm(_consolida_canonico(canonico))
 
 
 def _quantita_richiesta(ingredient: dict, factor: float) -> dict:
@@ -299,129 +278,159 @@ class VerificaDisponibilitaPayload(BaseModel):
 
 @router.post("/ricette/{ricetta_id}/verifica-disponibilita")
 async def verifica_disponibilita_ricetta(ricetta_id: str, body: VerificaDisponibilitaPayload):
-    """Confronta la ricetta con giacenze da fatture e propone sostituti prudenti.
+    """Confronta ricetta e giacenze con il matcher canonico dei Lotti.
 
-    Le alternative non vengono mai applicate automaticamente: sono suggerimenti
-    della stessa famiglia merceologica e richiedono conferma dell'operatore.
+    Una fattura prova l'acquisto storico; solo un lotto residuo prova la
+    disponibilità. Il confronto usa il nome canonico comune, senza suggerire
+    sostituzioni generiche che modificherebbero ricetta, gusto o allergeni.
     """
     ricetta = await db.ricette.find_one({"id": ricetta_id}, {"_id": 0})
     if not ricetta:
         raise HTTPException(404, "Ricetta non trovata")
+
     base = float(ricetta.get("porzioni") or ricetta.get("pezzi_ricetta_base") or 0)
     pezzi = float(body.pezzi or base or 0)
     factor = (pezzi / base) if base > 0 and pezzi > 0 else 1.0
-
     lotti = await db.lotti_fornitori.find(
         {"esaurito": {"$ne": True}, "quantita_disponibile": {"$gt": 0}},
-        {"_id": 0, "id": 1, "prodotto_nome": 1, "prodotto_nome_norm": 1,
-         "quantita_disponibile": 1, "unita_misura": 1, "fornitore": 1,
-         "fattura_ref": 1, "data_fattura": 1},
+        {
+            "_id": 0,
+            "id": 1,
+            "prodotto_nome": 1,
+            "prodotto_nome_norm": 1,
+            "quantita_disponibile": 1,
+            "unita_misura": 1,
+            "fornitore": 1,
+            "fattura_ref": 1,
+            "data_fattura": 1,
+        },
     ).to_list(12000)
 
-    # Una sola voce per nome, sommando i residui reali delle fatture.
-    disponibili = {}
+    disponibili: dict[str, dict] = {}
+    chiavi_lotti: dict[str, str] = {}
     for lotto in lotti:
-        name = lotto.get("prodotto_nome") or lotto.get("prodotto_nome_norm") or ""
-        key = _norm(name)
-        if not key:
+        nome = lotto.get("prodotto_nome_norm") or lotto.get("prodotto_nome") or ""
+        nome_norm = _norm(nome)
+        if not nome_norm:
             continue
-        value, base_unit = _quantita_base(lotto.get("quantita_disponibile") or 0, lotto.get("unita_misura") or "")
-        if key not in disponibili:
-            disponibili[key] = {**lotto, "prodotto_nome": name, "quantita_disponibile": 0.0, "quantita_base": 0.0, "unita_base": base_unit, "fatture": []}
-        if disponibili[key].get("unita_base") == base_unit:
-            disponibili[key]["quantita_base"] += value
-            disponibili[key]["quantita_disponibile"] += float(lotto.get("quantita_disponibile") or 0)
-        ref = lotto.get("fattura_ref")
-        if ref and ref not in disponibili[key]["fatture"]:
-            disponibili[key]["fatture"].append(ref)
+        if nome_norm not in chiavi_lotti:
+            chiavi_lotti[nome_norm] = await _chiave_ingrediente_canonica(nome)
+        chiave = chiavi_lotti[nome_norm]
+        if not chiave:
+            continue
+
+        valore, unita_base = _quantita_base(
+            lotto.get("quantita_disponibile") or 0,
+            lotto.get("unita_misura") or "",
+        )
+        aggregato = disponibili.setdefault(
+            chiave,
+            {
+                **lotto,
+                "prodotto_nome": nome,
+                "ingrediente_canonico": chiave,
+                "quantita_disponibile": 0.0,
+                "quantita_base": 0.0,
+                "unita_base": unita_base,
+                "fatture": [],
+            },
+        )
+        if aggregato.get("unita_base") == unita_base:
+            aggregato["quantita_base"] += valore
+            aggregato["quantita_disponibile"] += float(lotto.get("quantita_disponibile") or 0)
+        riferimento = lotto.get("fattura_ref")
+        if riferimento and riferimento not in aggregato["fatture"]:
+            aggregato["fatture"].append(riferimento)
 
     righe = []
-    for ingredient in ricetta.get("ingredienti_dettaglio") or []:
-        name = (ingredient.get("nome") or "").strip()
-        if not name:
+    for ingrediente in ricetta.get("ingredienti_dettaglio") or []:
+        nome = (ingrediente.get("nome") or "").strip()
+        if not nome:
             continue
-        family = _famiglia(name)
-        required = _quantita_richiesta(ingredient, factor)
-        if family == "acqua":
-            righe.append({
-                "ingrediente": name, "stato": "disponibile", "famiglia": family,
-                "richiesta": required, "prodotto": {"nome": "Acqua di laboratorio", "fonte": "disponibilità interna"},
-                "alternative": [],
-            })
+        richiesta = _quantita_richiesta(ingrediente, factor)
+        if _norm(nome) == "acqua":
+            righe.append(
+                {
+                    "ingrediente": nome,
+                    "stato": "disponibile",
+                    "richiesta": richiesta,
+                    "prodotto": {"nome": "Acqua di laboratorio", "fonte": "disponibilità interna"},
+                    "alternative": [],
+                }
+            )
             continue
 
-        scored = sorted(
-            ((_similarita(name, item["prodotto_nome"]), item) for item in disponibili.values()),
-            key=lambda row: row[0], reverse=True,
-        )
-        exact = next((item for score, item in scored if score >= 66 and (_tokens(name) & _tokens(item["prodotto_nome"]))), None)
-        required_base, required_unit = _quantita_base(required["valore"], required["unita"])
-        enough = bool(exact) and (
-            required_base <= 0
-            or not required_unit
+        chiave = await _chiave_ingrediente_canonica(nome)
+        disponibile = disponibili.get(chiave)
+        richiesta_base, unita_richiesta = _quantita_base(richiesta["valore"], richiesta["unita"])
+        sufficiente = bool(disponibile) and (
+            richiesta_base <= 0
+            or not unita_richiesta
             or (
-                required_unit == exact.get("unita_base")
-                and float(exact.get("quantita_base") or 0) >= required_base
+                unita_richiesta == disponibile.get("unita_base")
+                and float(disponibile.get("quantita_base") or 0) >= richiesta_base
             )
         )
-        if exact and enough:
-            righe.append({
-                "ingrediente": name, "stato": "disponibile", "famiglia": family, "richiesta": required,
-                "prodotto": {
-                    "id": exact.get("id"), "nome": exact.get("prodotto_nome"),
-                    "quantita_disponibile": round(exact.get("quantita_disponibile", 0), 3),
-                    "unita": exact.get("unita_misura", ""), "fornitore": exact.get("fornitore", ""),
-                    "fatture": exact.get("fatture", [])[:5],
-                },
-                "alternative": [],
-            })
+        if sufficiente:
+            righe.append(
+                {
+                    "ingrediente": nome,
+                    "stato": "disponibile",
+                    "richiesta": richiesta,
+                    "prodotto": {
+                        "id": disponibile.get("id"),
+                        "nome": disponibile.get("prodotto_nome"),
+                        "ingrediente_canonico": chiave,
+                        "quantita_disponibile": round(disponibile.get("quantita_disponibile", 0), 3),
+                        "unita": disponibile.get("unita_misura", ""),
+                        "fornitore": disponibile.get("fornitore", ""),
+                        "fatture": disponibile.get("fatture", [])[:5],
+                    },
+                    "alternative": [],
+                }
+            )
             continue
 
-        if exact and not enough:
-            righe.append({
-                "ingrediente": name, "stato": "da_acquistare", "famiglia": family, "richiesta": required,
-                "prodotto": {
-                    "id": exact.get("id"), "nome": exact.get("prodotto_nome"),
-                    "quantita_disponibile": round(exact.get("quantita_base", 0), 3),
-                    "unita": exact.get("unita_base", ""), "fornitore": exact.get("fornitore", ""),
-                    "fatture": exact.get("fatture", [])[:5], "insufficiente": True,
-                },
-                "motivo": "Giacenza insufficiente per la quantità richiesta.",
-                "mancante": {
-                    "valore": round(max(0, required_base - float(exact.get("quantita_base") or 0)), 3),
-                    "unita": required_unit,
-                },
-                "alternative": [],
-            })
+        if disponibile:
+            righe.append(
+                {
+                    "ingrediente": nome,
+                    "stato": "da_acquistare",
+                    "richiesta": richiesta,
+                    "prodotto": {
+                        "id": disponibile.get("id"),
+                        "nome": disponibile.get("prodotto_nome"),
+                        "ingrediente_canonico": chiave,
+                        "quantita_disponibile": round(disponibile.get("quantita_base", 0), 3),
+                        "unita": disponibile.get("unita_base", ""),
+                        "fornitore": disponibile.get("fornitore", ""),
+                        "fatture": disponibile.get("fatture", [])[:5],
+                        "insufficiente": True,
+                    },
+                    "motivo": "Giacenza insufficiente per la quantità richiesta.",
+                    "mancante": {
+                        "valore": round(
+                            max(0, richiesta_base - float(disponibile.get("quantita_base") or 0)),
+                            3,
+                        ),
+                        "unita": unita_richiesta,
+                    },
+                    "alternative": [],
+                }
+            )
             continue
 
-        alternatives = []
-        if family != "specifico":
-            for score, item in scored:
-                if _famiglia(item["prodotto_nome"]) != family:
-                    continue
-                if any(a["nome"] == item["prodotto_nome"] for a in alternatives):
-                    continue
-                alternatives.append({
-                    "id": item.get("id"), "nome": item.get("prodotto_nome"),
-                    "quantita_disponibile": round(item.get("quantita_disponibile", 0), 3),
-                    "unita": item.get("unita_misura", ""), "fornitore": item.get("fornitore", ""),
-                    "compatibilita": score,
-                    "motivo": f"Stessa famiglia: {family}. Verificare resa e gusto prima dell'uso.",
-                })
-                if len(alternatives) >= 3:
-                    break
-        righe.append({
-            "ingrediente": name,
-            "stato": "sostituibile" if alternatives else "da_acquistare",
-            "famiglia": family,
-            "richiesta": required,
-            "prodotto": None,
-            "alternative": alternatives,
-        })
+        righe.append(
+            {
+                "ingrediente": nome,
+                "stato": "da_acquistare",
+                "richiesta": richiesta,
+                "prodotto": None,
+                "alternative": [],
+            }
+        )
 
-    da_acquistare = [row for row in righe if row["stato"] == "da_acquistare"]
-    sostituibili = [row for row in righe if row["stato"] == "sostituibile"]
+    da_acquistare = [riga for riga in righe if riga["stato"] == "da_acquistare"]
     return {
         "ricetta_id": ricetta_id,
         "ricetta_nome": ricetta.get("nome"),
@@ -429,16 +438,15 @@ async def verifica_disponibilita_ricetta(ricetta_id: str, body: VerificaDisponib
         "resa_base": base or None,
         "resa_da_impostare": base <= 0,
         "moltiplicatore": round(factor, 4),
-        "realizzabile_subito": not da_acquistare and not sostituibili,
-        "realizzabile_con_sostituzioni": not da_acquistare and bool(sostituibili),
+        "realizzabile_subito": not da_acquistare,
+        "realizzabile_con_sostituzioni": False,
         "righe": righe,
         "totali": {
-            "disponibili": len([row for row in righe if row["stato"] == "disponibile"]),
-            "sostituibili": len(sostituibili),
+            "disponibili": len([riga for riga in righe if riga["stato"] == "disponibile"]),
+            "sostituibili": 0,
             "da_acquistare": len(da_acquistare),
         },
     }
-
 
 class ListaSpesaPayload(BaseModel):
     pezzi: Optional[float] = None
