@@ -200,3 +200,82 @@ def test_lista_fatture_compatibile_con_store_supabase(bridge):
     assert result[0]["has_xml"] is True
     assert "prodotti" not in result[0]
     assert "xml_raw" not in result[0]
+
+
+def test_invoice_query_riconosce_la_copia_con_piva_diversa(bridge):
+    """Fiorentino 1/163 era in Lotti con P.IVA troncata «03473»: la chiave
+    solo-P.IVA non combaciava e il ponte creava un secondo documento. Ora
+    basta numero + fornitore + data."""
+    module, database = bridge
+    run(database.fatture.insert_one({
+        "id": "vecchia", "numero_fattura": "1/163", "piva": "03473",
+        "fornitore": "F.lli Fiorentino Srl", "data_fattura": "05/01/2026",
+        "prodotti": [{"descrizione": "Farina"}],
+    }))
+    item = {
+        "invoice_number": "1/163", "invoice_date": "2026-01-05",
+        "supplier_name": "F.lli Fiorentino Srl", "supplier_vat": "01637290634",
+    }
+    trovata = run(database.fatture.find_one(module._invoice_query(item), {"_id": 0, "id": 1}))
+    assert trovata == {"id": "vecchia"}
+    # la stessa chiave trova anche la copia con la P.IVA giusta
+    run(database.fatture.insert_one({
+        "id": "nuova", "numero_fattura": "2/200", "piva": "01637290634",
+        "fornitore": "F.LLI FIORENTINO", "data_fattura": "06/01/2026",
+    }))
+    item2 = {"invoice_number": "2/200", "invoice_date": "2026-01-06",
+             "supplier_name": "Fiorentino diverso", "supplier_vat": "01637290634"}
+    assert run(database.fatture.find_one(module._invoice_query(item2), {"_id": 0, "id": 1})) == {"id": "nuova"}
+    # senza P.IVA resta la sola chiave fornitore+numero+data
+    query = module._invoice_query({"invoice_number": "3/1", "invoice_date": "2026-02-01", "supplier_name": "X"})
+    assert query == {"numero_fattura": "3/1", "fornitore": "X", "data_fattura": "01/02/2026"}
+    # un numero diverso non combacia con nessun ramo
+    assert run(database.fatture.find_one(module._invoice_query({**item, "invoice_number": "9/9"}))) is None
+
+
+def test_invoice_query_non_usa_identita_incomplete(bridge):
+    module, _database = bridge
+    solo_piva = module._invoice_query({
+        "invoice_number": "10", "supplier_vat": "01234567890",
+        "supplier_name": "", "invoice_date": "",
+    })
+    assert solo_piva == {"numero_fattura": "10", "piva": "01234567890"}
+
+    solo_fornitore = module._invoice_query({
+        "invoice_number": "11", "supplier_name": "Fornitore",
+        "invoice_date": "2026-09-22", "supplier_vat": "",
+    })
+    assert solo_fornitore == {
+        "numero_fattura": "11", "fornitore": "Fornitore",
+        "data_fattura": "22/09/2026",
+    }
+
+    # Il source_id è l'unico ripiego forte: non si costruiscono query con
+    # fornitore/data vuoti che potrebbero unire fatture diverse.
+    assert module._invoice_query({
+        "invoice_number": "12", "source_id": "documento-erp-12",
+    }) == {"gestionale_source_id": "documento-erp-12"}
+
+
+def test_annullare_il_doppione_non_chiude_i_lotti_della_copia_buona(bridge):
+    """Annullare la copia vecchia di 1/163 chiudeva tutti i lotti con quel
+    numero e fornitore, anche quelli della copia buona."""
+    import app.lotti.routers.fatture as fatture
+    _module, database = bridge
+    for fid in ("vecchia", "buona"):
+        run(database.fatture.insert_one({"id": fid, "numero_fattura": "1/163",
+                                         "fornitore": "F.lli Fiorentino Srl"}))
+    run(database.lotti_fornitori.insert_one({"id": "L1", "fattura_ref": "1/163",
+                                             "fornitore": "F.lli Fiorentino Srl"}))
+    esito = run(fatture.annulla_fattura("vecchia", motivo="doppione del ponte", _admin=None))
+    assert esito["lotti_chiusi"] == 0 and esito["duplicato_di"] == "buona"
+    lotto = run(database.lotti_fornitori.find_one({"id": "L1"}))
+    assert lotto.get("esaurito") is not True
+    assert run(database.fatture.find_one({"id": "vecchia"}))["annullata"] is True
+    # l'eliminazione del doppione e' rifiutata: i lotti sono anche della copia buona
+    with pytest.raises(Exception) as err:
+        run(fatture.delete_fattura("vecchia", conferma=True, _admin=None))
+    assert getattr(err.value, "status_code", None) == 409 or "copia" in str(err.value)
+    # l'ultima copia rimasta si annulla come prima: chiude i suoi lotti
+    esito = run(fatture.annulla_fattura("buona", motivo="reso", _admin=None))
+    assert esito["lotti_chiusi"] == 1

@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, Query
 
 from app.lotti.auth import require_admin
 from app.lotti.db import database as db
+from app.lotti.servizi.identita_fatture import query_identita_fattura
 
 
 router = APIRouter(prefix="/gestionale-fatture", tags=["GestionaleCloud Fatture"])
@@ -50,18 +51,32 @@ def _usa_ponte_http() -> bool:
 
 
 def _invoice_query(item: dict[str, Any]) -> dict[str, Any]:
+    """La stessa fattura come la conosce Lotti, con **tutte** le identita'.
+
+    Prima, se il gestionale aveva la P.IVA, si cercava solo `numero + piva`.
+    Misurato il 22/09/2026: due fatture (Fiorentino 1/163, Vandemoortele
+    8528000340) erano gia' in Lotti dall'import di gennaio con una P.IVA
+    troncata o diversa («03473», il codice fiscale al posto della partita
+    IVA), la chiave non combaciava e il ponte le ha create una seconda volta.
+    Ora basta che combaci una delle due identita': numero + P.IVA, oppure
+    numero + fornitore + data. Un `$or` su chiavi assenti non passa mai da
+    solo, perche' ogni ramo esige il numero.
+    """
     number = str(item.get("invoice_number") or "").strip()
     vat = str(item.get("supplier_vat") or "").strip()
-    if vat:
-        return {"numero_fattura": number, "piva": vat}
     date = str(item.get("invoice_date") or "").strip()
     if len(date) >= 10 and date[4:5] == "-":
         date = f"{date[8:10]}/{date[5:7]}/{date[:4]}"
-    return {
-        "numero_fattura": number,
-        "fornitore": str(item.get("supplier_name") or "").strip(),
-        "data_fattura": date,
-    }
+    query = query_identita_fattura(
+        numero=number,
+        piva=vat,
+        fornitore=item.get("supplier_name"),
+        data=date,
+        source_id=item.get("source_id"),
+    )
+    if query is None:
+        raise ValueError("Fattura senza identità completa")
+    return query
 
 
 def _xml_from_projection(item: dict[str, Any]) -> str:

@@ -10,7 +10,7 @@ import logging
 import hashlib
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, BackgroundTasks, Request, Depends, Query
 from fastapi.responses import HTMLResponse
@@ -148,6 +148,21 @@ async def impatto_fattura(fattura_id: str):
     return await _impatto_fattura(f)
 
 
+async def _altra_copia_attiva(fattura_id: str, f: dict) -> Optional[dict]:
+    """Un'altra fattura non annullata con lo stesso numero e fornitore.
+
+    I lotti di una fattura sono legati a `fattura_ref` (il numero) e al
+    fornitore, non all'id del documento. Se la stessa fattura esiste due volte
+    (doppione del ponte), i lotti appartengono a entrambe: annullare o
+    eliminare il doppione non deve chiuderli, o si butta via la merce vera.
+    """
+    return await db.fatture.find_one(
+        {"numero_fattura": f.get("numero_fattura"), "fornitore": f.get("fornitore"),
+         "id": {"$ne": fattura_id}, "annullata": {"$ne": True}},
+        {"_id": 0, "id": 1},
+    )
+
+
 async def _impatto_fattura(f: dict) -> dict:
     lotti = await db.lotti_fornitori.find(
         {"fattura_ref": f.get("numero_fattura"), "fornitore": f.get("fornitore")},
@@ -175,6 +190,11 @@ async def delete_fattura(fattura_id: str, conferma: bool = Query(False), _admin=
     f = await db.fatture.find_one({"id": fattura_id}, {"_id": 0, "numero_fattura": 1, "fornitore": 1})
     if not f:
         raise HTTPException(404, "Fattura non trovata")
+    if await _altra_copia_attiva(fattura_id, f):
+        raise HTTPException(409,
+            "Esiste un'altra copia attiva di questa fattura: i lotti appartengono "
+            "anche a lei. Usa l'annullamento logico del doppione "
+            f"(POST /fatture/{fattura_id}/annulla), che non tocca i lotti.")
     imp = await _impatto_fattura(f)
     if imp["movimentati"]:
         raise HTTPException(409,
@@ -202,6 +222,14 @@ async def annulla_fattura(fattura_id: str, motivo: str = Query(..., min_length=3
     if not f:
         raise HTTPException(404, "Fattura non trovata")
     adesso = datetime.now(timezone.utc).isoformat()
+    superstite = await _altra_copia_attiva(fattura_id, f)
+    if superstite:
+        # doppione: si annulla il documento, i lotti restano alla copia buona
+        await db.fatture.update_one({"id": fattura_id}, {"$set": {
+            "annullata": True, "annullata_il": adesso, "annullata_motivo": motivo,
+            "duplicato_di": superstite["id"]}})
+        return {"success": True, "annullata": True, "lotti_chiusi": 0,
+                "duplicato_di": superstite["id"]}
     await db.fatture.update_one({"id": fattura_id}, {"$set": {
         "annullata": True, "annullata_il": adesso, "annullata_motivo": motivo}})
     r = await db.lotti_fornitori.update_many(
@@ -590,20 +618,24 @@ async def importa_fattura_xml(files: List[UploadFile] = File(...), job_id: str =
             # effetto additivo (giacenze, numero acquisti, lotti) riconosciamo lo
             # stesso XML tramite SHA-256 e usciamo senza rielaborarlo.
             xml_sha256 = hashlib.sha256(content).hexdigest()
-            if fattura_data.get("piva"):
-                chiave_esistente = {
-                    "numero_fattura": fattura_data.get("numero_fattura", ""),
-                    "piva": fattura_data.get("piva", ""),
-                }
-            else:
-                chiave_esistente = {
-                    "fornitore": fattura_data.get("fornitore", ""),
-                    "numero_fattura": fattura_data.get("numero_fattura", ""),
-                    "data_fattura": data_fmt,
-                }
-            esistente = await db.fatture.find_one(
-                chiave_esistente,
-                {"_id": 0, "id": 1, "xml_raw": 1, "haccp_xml_sha256": 1},
+            # Stessa regola del ponte (`gestionale_fatture._invoice_query`):
+            # basta che combaci numero + P.IVA **oppure** numero + fornitore +
+            # data. Cercare solo per P.IVA perdeva la copia con la P.IVA
+            # troncata dell'import di gennaio e creava un secondo documento.
+            from app.lotti.servizi.identita_fatture import query_identita_fattura
+            chiave_esistente = query_identita_fattura(
+                numero=fattura_data.get("numero_fattura"),
+                piva=fattura_data.get("piva"),
+                fornitore=fattura_data.get("fornitore"),
+                data=data_fmt,
+            )
+            esistente = (
+                await db.fatture.find_one(
+                    chiave_esistente,
+                    {"_id": 0, "id": 1, "xml_raw": 1, "haccp_xml_sha256": 1},
+                )
+                if chiave_esistente is not None
+                else None
             )
             hash_esistente = (esistente or {}).get("haccp_xml_sha256", "")
             if not hash_esistente and (esistente or {}).get("xml_raw"):
@@ -612,7 +644,7 @@ async def importa_fattura_xml(files: List[UploadFile] = File(...), job_id: str =
                 ).hexdigest()
             if esistente and hash_esistente == xml_sha256:
                 await db.fatture.update_one(
-                    chiave_esistente,
+                    {"id": esistente.get("id")} if esistente.get("id") else chiave_esistente,
                     {"$set": {
                         "haccp_xml_sha256": xml_sha256,
                         "haccp_pipeline_version": 1,
