@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, Query
 
 from app.lotti.auth import require_admin
 from app.lotti.db import database as db
+from app.lotti.servizi.identita_fatture import query_identita_fattura
 
 
 router = APIRouter(prefix="/gestionale-fatture", tags=["GestionaleCloud Fatture"])
@@ -66,14 +67,16 @@ def _invoice_query(item: dict[str, Any]) -> dict[str, Any]:
     date = str(item.get("invoice_date") or "").strip()
     if len(date) >= 10 and date[4:5] == "-":
         date = f"{date[8:10]}/{date[5:7]}/{date[:4]}"
-    per_fornitore = {
-        "numero_fattura": number,
-        "fornitore": str(item.get("supplier_name") or "").strip(),
-        "data_fattura": date,
-    }
-    if not vat:
-        return per_fornitore
-    return {"$or": [{"numero_fattura": number, "piva": vat}, per_fornitore]}
+    query = query_identita_fattura(
+        numero=number,
+        piva=vat,
+        fornitore=item.get("supplier_name"),
+        data=date,
+        source_id=item.get("source_id"),
+    )
+    if query is None:
+        raise ValueError("Fattura senza identità completa")
+    return query
 
 
 def _xml_from_projection(item: dict[str, Any]) -> str:

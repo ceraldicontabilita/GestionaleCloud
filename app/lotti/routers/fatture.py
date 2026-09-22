@@ -622,24 +622,20 @@ async def importa_fattura_xml(files: List[UploadFile] = File(...), job_id: str =
             # basta che combaci numero + P.IVA **oppure** numero + fornitore +
             # data. Cercare solo per P.IVA perdeva la copia con la P.IVA
             # troncata dell'import di gennaio e creava un secondo documento.
-            chiave_fornitore = {
-                "fornitore": fattura_data.get("fornitore", ""),
-                "numero_fattura": fattura_data.get("numero_fattura", ""),
-                "data_fattura": data_fmt,
-            }
-            if fattura_data.get("piva"):
-                chiave_esistente = {"$or": [
-                    {
-                        "numero_fattura": fattura_data.get("numero_fattura", ""),
-                        "piva": fattura_data.get("piva", ""),
-                    },
-                    chiave_fornitore,
-                ]}
-            else:
-                chiave_esistente = chiave_fornitore
-            esistente = await db.fatture.find_one(
-                chiave_esistente,
-                {"_id": 0, "id": 1, "xml_raw": 1, "haccp_xml_sha256": 1},
+            from app.lotti.servizi.identita_fatture import query_identita_fattura
+            chiave_esistente = query_identita_fattura(
+                numero=fattura_data.get("numero_fattura"),
+                piva=fattura_data.get("piva"),
+                fornitore=fattura_data.get("fornitore"),
+                data=data_fmt,
+            )
+            esistente = (
+                await db.fatture.find_one(
+                    chiave_esistente,
+                    {"_id": 0, "id": 1, "xml_raw": 1, "haccp_xml_sha256": 1},
+                )
+                if chiave_esistente is not None
+                else None
             )
             hash_esistente = (esistente or {}).get("haccp_xml_sha256", "")
             if not hash_esistente and (esistente or {}).get("xml_raw"):

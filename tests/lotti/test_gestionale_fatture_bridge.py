@@ -233,6 +233,30 @@ def test_invoice_query_riconosce_la_copia_con_piva_diversa(bridge):
     assert run(database.fatture.find_one(module._invoice_query({**item, "invoice_number": "9/9"}))) is None
 
 
+def test_invoice_query_non_usa_identita_incomplete(bridge):
+    module, _database = bridge
+    solo_piva = module._invoice_query({
+        "invoice_number": "10", "supplier_vat": "01234567890",
+        "supplier_name": "", "invoice_date": "",
+    })
+    assert solo_piva == {"numero_fattura": "10", "piva": "01234567890"}
+
+    solo_fornitore = module._invoice_query({
+        "invoice_number": "11", "supplier_name": "Fornitore",
+        "invoice_date": "2026-09-22", "supplier_vat": "",
+    })
+    assert solo_fornitore == {
+        "numero_fattura": "11", "fornitore": "Fornitore",
+        "data_fattura": "22/09/2026",
+    }
+
+    # Il source_id è l'unico ripiego forte: non si costruiscono query con
+    # fornitore/data vuoti che potrebbero unire fatture diverse.
+    assert module._invoice_query({
+        "invoice_number": "12", "source_id": "documento-erp-12",
+    }) == {"gestionale_source_id": "documento-erp-12"}
+
+
 def test_annullare_il_doppione_non_chiude_i_lotti_della_copia_buona(bridge):
     """Annullare la copia vecchia di 1/163 chiudeva tutti i lotti con quel
     numero e fornitore, anche quelli della copia buona."""
