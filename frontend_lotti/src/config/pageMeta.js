@@ -44,7 +44,7 @@ export const PAGE_META = {
   registro_haccp: { sub: "Registro unico HACCP", colore: SAGE, icona: "✅" },
   manuale: { sub: "Manuale di autocontrollo HACCP", colore: SAGE, icona: "📗" },
   personale: { sub: "Dati azienda e personale", colore: SAGE, icona: "👤" },
-  gelati: { sub: "Gestione gelati e semilavorati", colore: SAGE, icona: "🍨" },
+  gelati: { sub: "Calcola dosi, registra produzioni e consulta acquisti documentati", colore: SAGE, icona: "🍨" },
   cataloghi_esterni: { sub: "Cataloghi e fonti dei fornitori", colore: SAGE, icona: "🌐" },
   collaudi: { sub: "Verifiche manuali successive alle modifiche", colore: SAGE, icona: "🧪" },
   attrezzature: { sub: "Nomi degli apparecchi, aggiunta, rimozione e guasti", colore: SAGE, icona: "🧊" },

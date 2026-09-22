@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { Plus, Trash2, RefreshCw } from "lucide-react";
+import { Calculator, ChartNoAxesColumn, ClipboardList, IceCreamBowl, PackageSearch, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { API, withToken } from "../../utils/constants";
 import TouchNumberInput from "./shared/TouchNumberInput";
 import { calcolaProduzione, scalaIngredienti } from "./gelati/calcoloProduzione";
@@ -173,26 +173,31 @@ const labelCls = "mb-1 block text-xs font-bold uppercase tracking-wide text-ston
 
 function Tabs({ tab, setTab }) {
   const items = [
-    ["calcolo", "🧮 Calcolo ricetta"],
-    ["invenduti", "🍨 Invenduti"],
-    ["produzioni", "📒 Produzioni"],
-    ["report", "📊 Riepilogo"],
-    ["prodotti", "📦 Prodotti Galatea"],
+    ["calcolo", "Calcolo ricetta", Calculator],
+    ["invenduti", "Invenduti", IceCreamBowl],
+    ["produzioni", "Produzioni", ClipboardList],
+    ["report", "Riepilogo", ChartNoAxesColumn],
+    ["prodotti", "Prodotti Galatea", PackageSearch],
   ];
   return (
-    <div className="flex flex-wrap gap-2 rounded-2xl border border-stone-200 bg-white p-1.5 shadow-sm">
-      {items.map(([k, label]) => (
+    <nav aria-label="Sezioni gelati" className="grid grid-cols-2 gap-1.5 rounded-2xl border border-stone-200 bg-white p-1.5 shadow-sm sm:grid-cols-5">
+      {items.map(([k, label, Icon]) => (
         <button
           key={k}
+          type="button"
           onClick={() => setTab(k)}
-          className={`flex-1 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-bold transition ${
-            tab === k ? "bg-[#5b7a6b] text-white shadow" : "text-stone-500 hover:bg-stone-50"
+          aria-pressed={tab === k}
+          className={`flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-bold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3f5a4e] ${
+            k === "prodotti" ? "col-span-2 sm:col-span-1" : ""
+          } ${
+            tab === k ? "bg-[#5b7a6b] text-white shadow" : "text-stone-700 hover:bg-stone-50"
           }`}
         >
-          {label}
+          <Icon size={17} aria-hidden="true" />
+          <span>{label}</span>
         </button>
       ))}
-    </div>
+    </nav>
   );
 }
 
@@ -757,33 +762,70 @@ export function ProdottiTab() {
     const numero = Number(valore);
     return Number.isFinite(numero) ? numero.toLocaleString("it-IT", { maximumFractionDigits: 4 }) : String(valore);
   };
+  const prezzo = (valore) => valore === null || valore === undefined || valore === "" ? "—" : `${formatoNumero(valore)} €`;
+  const apriFattura = (id) => window.open(
+    withToken(`${API}/fatture/${encodeURIComponent(id)}/visualizza`), "_blank", "noopener,noreferrer"
+  );
+  const provenienza = (riga) => riga.fattura_id ? (
+    <button type="button" className="min-h-11 text-left font-bold text-[#3f5a4e] underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3f5a4e]" onClick={() => apriFattura(riga.fattura_id)} aria-label={`Apri fattura ${riga.numero_fattura || "senza numero"}`}>
+      Fatt. {riga.numero_fattura || "—"}
+    </button>
+  ) : <span>Fatt. {riga.numero_fattura || "—"}</span>;
   return (
-    <div className="rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h3 className="m-0 text-lg font-black text-stone-900">Prodotti Galatea acquistati</h3>
-          <p className="mt-1 text-sm text-stone-600">Righe delle fatture di {dati?.fornitore || "GELINOVA GROUP SRL"}. L'acquisto non prova la giacenza residua.</p>
+    <section aria-labelledby="galatea-titolo" className="overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-sm">
+      <div className="border-b border-stone-200 bg-[#faf7f0] p-5 sm:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="m-0 text-xs font-extrabold uppercase tracking-wider text-[#3f5a4e]">Acquisti documentati</p>
+            <h3 id="galatea-titolo" className="mb-0 mt-1 text-xl font-black tracking-tight text-stone-900">Prodotti Galatea</h3>
+            <p className="mb-0 mt-2 text-sm text-stone-700">Fornitore in fattura: {dati?.fornitore || "GELINOVA GROUP SRL"}</p>
+          </div>
+          <button type="button" onClick={carica} disabled={caricando} className="flex min-h-11 items-center gap-2 rounded-xl border border-stone-300 bg-white px-4 text-sm font-bold text-stone-800 hover:bg-stone-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3f5a4e] disabled:opacity-50">
+            <RefreshCw size={16} aria-hidden="true" /> Aggiorna
+          </button>
         </div>
-        <button type="button" onClick={carica} disabled={caricando} className="rounded-xl border border-stone-300 px-3 py-2 text-sm font-bold text-stone-700 disabled:opacity-50">Aggiorna</button>
+        {!caricando && !errore && <div className="mt-5 flex flex-wrap gap-2" aria-label="Riepilogo delle fatture Galatea">
+          <span className="rounded-full border border-stone-200 bg-white px-3 py-1.5 text-sm font-bold text-stone-900">{dati?.righe || 0} righe da {dati?.fatture || 0} {dati?.fatture === 1 ? "fattura" : "fatture"}</span>
+          <span className="rounded-full border border-[#d6bd92] bg-[#f3ead9] px-3 py-1.5 text-sm font-semibold text-[#56442d]">Scorta residua non verificata</span>
+        </div>}
       </div>
-      {caricando && <p className="mt-5 text-sm text-stone-600">Caricamento fatture…</p>}
-      {errore && <p role="alert" className="mt-5 text-sm text-rose-700">Impossibile leggere le fatture. Riprova con Aggiorna.</p>}
+      {caricando && <p role="status" className="p-5 text-sm text-stone-700">Caricamento fatture…</p>}
+      {errore && <p role="alert" className="p-5 text-sm font-semibold text-[#a53f32]">Impossibile leggere le fatture. Riprova con Aggiorna.</p>}
       {!caricando && !errore && <>
-        <p className="mt-4 text-sm text-stone-600">{dati?.righe || 0} righe da {dati?.fatture || 0} {dati?.fatture === 1 ? "fattura" : "fatture"}. Descrizioni, codici e prezzi provengono dalle fatture; allergeni e diciture “senza lattosio” non sono verificati qui.</p>
-        {(dati?.righe || 0) > 0 && <input type="search" value={cerca} onChange={(evento) => setCerca(evento.target.value)} placeholder="Cerca descrizione o codice" aria-label="Cerca prodotti Galatea" className={`${inputCls} mt-4 max-w-md`} />}
-        {(dati?.righe || 0) === 0 ? <p className="mt-5 text-sm text-stone-600">Nessuna riga acquistata trovata per il fornitore verificato.</p> :
-          <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm">
-            <thead><tr className="border-b border-stone-200 text-stone-600"><th className="p-2">Prodotto in fattura</th><th className="p-2">Codice</th><th className="p-2 text-right">Quantità</th><th className="p-2 text-right">€/unità</th><th className="p-2">Provenienza</th></tr></thead>
-            <tbody>{prodotti.map((riga) => <tr key={riga.id} className="border-b border-stone-100">
-              <td className="p-2 font-semibold text-stone-900">{riga.descrizione}</td>
-              <td className="p-2">{riga.codice_articolo || "—"}</td>
-              <td className="p-2 text-right">{formatoNumero(riga.quantita)} {riga.unita_misura}</td>
-              <td className="p-2 text-right">{formatoNumero(riga.prezzo_unitario)}</td>
-              <td className="p-2">{riga.fattura_id ? <button type="button" className="font-semibold text-[#426855] underline" onClick={() => window.open(withToken(`${API}/fatture/${encodeURIComponent(riga.fattura_id)}/visualizza`), "_blank", "noopener,noreferrer")}>Fatt. {riga.numero_fattura || "—"}</button> : `Fatt. ${riga.numero_fattura || "—"}`}<span className="ml-1 text-stone-500">{riga.data_fattura || ""}</span></td>
-            </tr>)}</tbody>
-          </table>{prodotti.length === 0 && <p className="p-3 text-sm text-stone-600">Nessuna riga corrisponde alla ricerca.</p>}</div>}
+        <div className="p-5 sm:p-6">
+          <p className="m-0 text-sm leading-relaxed text-stone-700">Descrizioni, codici, quantità e prezzi vengono dalle fatture. Allergeni e diciture “senza lattosio” non sono verificati qui.</p>
+          {(dati?.righe || 0) > 0 && <div className="mt-5 max-w-md">
+            <label htmlFor="galatea-cerca" className={labelCls}>Cerca nelle righe acquistate</label>
+            <input id="galatea-cerca" type="search" value={cerca} onChange={(evento) => setCerca(evento.target.value)} placeholder="Nome o codice articolo" aria-label="Cerca prodotti Galatea" className={inputCls} />
+            <p className="mb-0 mt-2 text-xs font-semibold text-stone-600" aria-live="polite">{prodotti.length} {prodotti.length === 1 ? "riga trovata" : "righe trovate"}</p>
+          </div>}
+          {(dati?.righe || 0) === 0 ? <p className="mt-5 text-sm text-stone-700">Nessuna riga acquistata trovata per il fornitore verificato.</p> : prodotti.length === 0 ?
+            <p className="mt-5 rounded-xl bg-stone-50 p-4 text-sm text-stone-700">Nessuna riga corrisponde alla ricerca. Prova con un altro nome o codice.</p> : <>
+              <div className="mt-5 space-y-3 lg:hidden">
+                {prodotti.map((riga) => <article key={riga.id} className="rounded-2xl border border-stone-200 bg-[#fffefb] p-4">
+                  <h4 className="m-0 text-base font-extrabold leading-snug text-stone-900">{riga.descrizione}</h4>
+                  <p className="mb-0 mt-1 text-xs font-bold text-stone-600">Codice {riga.codice_articolo || "non indicato"}</p>
+                  <dl className="mb-0 mt-4 grid grid-cols-2 gap-3 border-t border-stone-200 pt-3 text-sm">
+                    <div><dt className="text-xs font-bold uppercase tracking-wide text-stone-600">Acquistato</dt><dd className="m-0 mt-1 font-extrabold text-stone-900">{formatoNumero(riga.quantita)} {riga.unita_misura}</dd></div>
+                    <div><dt className="text-xs font-bold uppercase tracking-wide text-stone-600">Prezzo unitario</dt><dd className="m-0 mt-1 font-extrabold text-stone-900">{prezzo(riga.prezzo_unitario)}</dd></div>
+                  </dl>
+                  <div className="mt-3 flex flex-wrap items-center gap-x-2 border-t border-stone-200 pt-2 text-sm text-stone-700">{provenienza(riga)}<span>{riga.data_fattura || ""}</span></div>
+                </article>)}
+              </div>
+              <div className="mt-5 hidden lg:block"><table className="w-full table-fixed text-left text-sm">
+                <thead><tr className="border-b border-stone-300 bg-stone-50 text-stone-700"><th scope="col" className="w-[38%] p-3">Prodotto in fattura</th><th scope="col" className="w-[12%] p-3">Codice</th><th scope="col" className="w-[15%] p-3 text-right">Acquistato</th><th scope="col" className="w-[13%] p-3 text-right">€/unità</th><th scope="col" className="w-[22%] p-3">Provenienza</th></tr></thead>
+                <tbody>{prodotti.map((riga) => <tr key={riga.id} className="border-b border-stone-100 align-top hover:bg-stone-50">
+                  <td className="break-words p-3 font-semibold text-stone-900">{riga.descrizione}</td>
+                  <td className="break-words p-3 text-stone-700">{riga.codice_articolo || "—"}</td>
+                  <td className="p-3 text-right tabular-nums text-stone-900">{formatoNumero(riga.quantita)} {riga.unita_misura}</td>
+                  <td className="p-3 text-right tabular-nums text-stone-900">{formatoNumero(riga.prezzo_unitario)}</td>
+                  <td className="p-3 text-stone-700">{provenienza(riga)}<span className="block text-xs">{riga.data_fattura || ""}</span></td>
+                </tr>)}</tbody>
+              </table></div>
+            </>}
+        </div>}
       </>}
-    </div>
+    </section>
   );
 }
 
