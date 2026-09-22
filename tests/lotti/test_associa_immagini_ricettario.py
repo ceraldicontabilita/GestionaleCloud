@@ -107,6 +107,31 @@ def test_mappatura_esplicita_non_sovrascrive_una_foto_esistente(tmp_path):
     assert result["associazioni"] == []
 
 
+def test_mappatura_esplicita_puo_sostituire_solo_se_dichiarato(tmp_path):
+    image_path = tmp_path / "foto.png"
+    image_path.write_bytes(b"image")
+    indexed = Immagine(image_path, "foto", frozenset({"foto"}), "digest")
+    mapping_path = tmp_path / "mapping.json"
+    mapping_path.write_text(json.dumps([{
+        "id": "r1",
+        "file": str(image_path),
+        "sostituisci_esistente": True,
+        "foto_source": "catalogo_napoletano_verificato",
+    }]), encoding="utf-8")
+
+    result = applica_mappature_esplicite(
+        {"associazioni": [], "gia_con_foto": [], "non_associate": []},
+        [{"id": "r1", "nome": "Ricetta", "foto_url": "/api/foto/vecchia"}],
+        [indexed],
+        mapping_path,
+    )
+
+    match = result["associazioni"][0]
+    assert match["sostituisci_esistente"] is True
+    assert match["foto_source"] == "catalogo_napoletano_verificato"
+    assert match["foto_prima"] == "/api/foto/vecchia"
+
+
 def test_mappatura_rifiuta_file_fuori_indice(tmp_path):
     mapping_path = tmp_path / "mapping.json"
     mapping_path.write_text(

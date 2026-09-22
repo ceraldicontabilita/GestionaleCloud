@@ -77,3 +77,33 @@ def test_cartella_ricette_rifiuta_record_senza_provenienza(monkeypatch):
     }))
     with pytest.raises(RuntimeError, match="registro canonico"):
         asyncio.run(foto_drive.risolvi_folder_id(db))
+
+
+def test_cestina_verifica_cartella_prima_di_spostare_il_file():
+    metadata = {
+        "id": "foto-1", "name": "foto.png", "mimeType": "image/png",
+        "size": "3", "parents": ["cartella-ricette"], "trashed": False,
+    }
+
+    class _Update:
+        def execute(self):
+            return {**metadata, "trashed": True}
+
+    class _FilesConUpdate(_Files):
+        def __init__(self, payload):
+            super().__init__(payload)
+            self.updated = None
+
+        def update(self, **kwargs):
+            self.updated = kwargs
+            return _Update()
+
+    files = _FilesConUpdate(metadata)
+    service = type("Service", (), {"files": lambda self: files})()
+
+    result = foto_drive.cestina(
+        "foto-1", folder_id="cartella-ricette", service=service
+    )
+
+    assert result == {"id": "foto-1", "trashed": True}
+    assert files.updated["body"] == {"trashed": True}

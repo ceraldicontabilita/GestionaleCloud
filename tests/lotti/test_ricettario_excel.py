@@ -163,7 +163,7 @@ def test_illustrazione_per_id_non_ricrea_la_ricetta_eliminata(monkeypatch):
     )
 
     with pytest.raises(HTTPException) as errore:
-        run(mod.upload_foto("ricetta-eliminata", file, True))
+        run(mod.upload_foto("ricetta-eliminata", file, "upload_manuale", False))
 
     assert errore.value.status_code == 404
     assert run(database.ricette.count_documents({})) == 0
