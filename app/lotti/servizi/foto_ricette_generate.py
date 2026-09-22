@@ -21,6 +21,8 @@ ILLUSTRAZIONI_GENERATE = (
     ("Bagna Curitiba", "bagna_curitiba.webp"),
     ("CURITIBA", "curitiba.webp"),
     ("Tramezzino al Prosciutto", "tramezzino_al_prosciutto.webp"),
+    ("Tramezzino al Tonno", "tramezzino_al_tonno.webp"),
+    ("Tramezzino Caprese", "tramezzino_caprese.webp"),
 )
 
 # Queste due voci erano documentate nel bundle Ceraldi ma non ancora presenti
