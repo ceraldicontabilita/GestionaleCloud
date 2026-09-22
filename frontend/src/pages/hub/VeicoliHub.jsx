@@ -6,9 +6,11 @@ import { PageLoader } from '../../components/ds';
 
 const FlottaContent = lazy(() => import('../NoleggioAuto.jsx'));
 const VerbaliContent = lazy(() => import('../VerbaliRiconciliazione.jsx'));
+const PosizioneContent = lazy(() => import('../PosizioneNoleggio.jsx'));
 
 const TABS = [
   { id: 'flotta', label: '🚗 Flotta Auto', color: '#5b7a6b' },
+  { id: 'posizione', label: 'Posizione auto e driver', color: '#3f5a4e' },
   { id: 'verbali', label: '📋 Verbali Noleggio', color: '#8a6f47' },
   { id: 'costi', label: '💰 Riepilogo Costi', color: '#10b981' },
 ];
@@ -352,6 +354,12 @@ export default function VeicoliHub() {
           {loadedTabs.has('flotta') && (
             <div style={{ display: activeTab === 'flotta' ? 'block' : 'none' }}>
               <FlottaContent />
+            </div>
+          )}
+          {/* Posizione auto/driver: partita doppia costi ↔ prove di pagamento */}
+          {loadedTabs.has('posizione') && (
+            <div style={{ display: activeTab === 'posizione' ? 'block' : 'none' }}>
+              <PosizioneContent />
             </div>
           )}
           {/* Verbali: carica solo se visitato, poi mantieni montato */}
