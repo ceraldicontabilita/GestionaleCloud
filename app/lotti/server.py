@@ -259,6 +259,28 @@ async def startup_event():
     except Exception as e:
         logging.warning(f"[STARTUP] avvio migrazione foto cestino: {e}")
 
+    # RST-0508AT: applica una volta sola la mappa ID->foto verificata dei
+    # prodotti napoletani. Il worker usa l'upload canonico (Drive + Supabase +
+    # Menu), salva il collegamento precedente e riprende dagli hash mancanti.
+    try:
+        from app.lotti.servizi.migrazione_foto_napoletane import migra_foto_napoletane
+
+        async def _migra_foto_napoletane_rilascio():
+            try:
+                esito = await migra_foto_napoletane()
+                logging.info("[STARTUP] migrazione foto napoletane: %s", esito)
+            except Exception:
+                logging.exception("[STARTUP] migrazione foto napoletane fallita")
+
+        task = asyncio.create_task(
+            _migra_foto_napoletane_rilascio(),
+            name="rst-0508at-migrazione-foto-napoletane",
+        )
+        _startup_background_tasks.add(task)
+        task.add_done_callback(_startup_background_tasks.discard)
+    except Exception as e:
+        logging.warning(f"[STARTUP] avvio migrazione foto napoletane: {e}")
+
     # Completa in background le schede prodotto usando esclusivamente le pagine
     # ufficiali dei fornitori. Il worker e' idempotente: ad ogni deploy riprende
     # soltanto i documenti che non hanno ancora la versione corrente.
