@@ -32,7 +32,7 @@ export const RICETTE = {
   // approssimata (1 L ≈ 1 kg), non una temperatura o una pesata prescritta.
   "Sorbetto Limone Easy Galatea": {
     base: 5000, gruppo: "Galatea · Sorbetti rapidi", cat: "frutta",
-    ing: { "Easy Limone / Set_Core Easy Frutta Completa (76001)": 1500,
+    ing: { "Easy Limone Libera (76001)": 1500,
       "Acqua calda (1 L ≈ 1 kg)": 3500 },
     prep: "Formula del produttore: 1,5 kg di base + 3,5 L di acqua calda. Misura l'acqua in litri; il peso mostrato è approssimato. Il PDF non specifica temperatura in °C, tempi né grammi di succo di limone fresco. Questa è una formula di riferimento, non una produzione o una giacenza registrata.",
     fonte: "Galatea, brochure Core_Inside Frutta, p. 4; Catalogo generale 2024, p. 6-7 (cod. 76001).",

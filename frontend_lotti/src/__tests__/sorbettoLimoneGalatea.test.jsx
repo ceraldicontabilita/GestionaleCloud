@@ -29,7 +29,7 @@ test("il sorbetto Limone Easy scala la formula documentata senza inventare succo
       Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(ricette, "Sorbetto Limone Easy Galatea");
       ricette.dispatchEvent(new Event("change", { bubbles: true }));
     });
-    expect(node.textContent).toContain("Easy Limone / Set_Core Easy Frutta Completa");
+    expect(node.textContent).toContain("Easy Limone Libera (76001)");
     expect(node.textContent).toContain("Acqua calda");
     expect(node.textContent).toContain("Misura l'acqua: 3,5 L calda");
     expect(node.textContent).toContain("Fonte: Galatea, brochure Core_Inside Frutta");
