@@ -10,7 +10,7 @@ import logging
 import hashlib
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, BackgroundTasks, Request, Depends, Query
 from fastapi.responses import HTMLResponse
@@ -148,6 +148,21 @@ async def impatto_fattura(fattura_id: str):
     return await _impatto_fattura(f)
 
 
+async def _altra_copia_attiva(fattura_id: str, f: dict) -> Optional[dict]:
+    """Un'altra fattura non annullata con lo stesso numero e fornitore.
+
+    I lotti di una fattura sono legati a `fattura_ref` (il numero) e al
+    fornitore, non all'id del documento. Se la stessa fattura esiste due volte
+    (doppione del ponte), i lotti appartengono a entrambe: annullare o
+    eliminare il doppione non deve chiuderli, o si butta via la merce vera.
+    """
+    return await db.fatture.find_one(
+        {"numero_fattura": f.get("numero_fattura"), "fornitore": f.get("fornitore"),
+         "id": {"$ne": fattura_id}, "annullata": {"$ne": True}},
+        {"_id": 0, "id": 1},
+    )
+
+
 async def _impatto_fattura(f: dict) -> dict:
     lotti = await db.lotti_fornitori.find(
         {"fattura_ref": f.get("numero_fattura"), "fornitore": f.get("fornitore")},
@@ -175,6 +190,11 @@ async def delete_fattura(fattura_id: str, conferma: bool = Query(False), _admin=
     f = await db.fatture.find_one({"id": fattura_id}, {"_id": 0, "numero_fattura": 1, "fornitore": 1})
     if not f:
         raise HTTPException(404, "Fattura non trovata")
+    if await _altra_copia_attiva(fattura_id, f):
+        raise HTTPException(409,
+            "Esiste un'altra copia attiva di questa fattura: i lotti appartengono "
+            "anche a lei. Usa l'annullamento logico del doppione "
+            f"(POST /fatture/{fattura_id}/annulla), che non tocca i lotti.")
     imp = await _impatto_fattura(f)
     if imp["movimentati"]:
         raise HTTPException(409,
@@ -202,6 +222,14 @@ async def annulla_fattura(fattura_id: str, motivo: str = Query(..., min_length=3
     if not f:
         raise HTTPException(404, "Fattura non trovata")
     adesso = datetime.now(timezone.utc).isoformat()
+    superstite = await _altra_copia_attiva(fattura_id, f)
+    if superstite:
+        # doppione: si annulla il documento, i lotti restano alla copia buona
+        await db.fatture.update_one({"id": fattura_id}, {"$set": {
+            "annullata": True, "annullata_il": adesso, "annullata_motivo": motivo,
+            "duplicato_di": superstite["id"]}})
+        return {"success": True, "annullata": True, "lotti_chiusi": 0,
+                "duplicato_di": superstite["id"]}
     await db.fatture.update_one({"id": fattura_id}, {"$set": {
         "annullata": True, "annullata_il": adesso, "annullata_motivo": motivo}})
     r = await db.lotti_fornitori.update_many(

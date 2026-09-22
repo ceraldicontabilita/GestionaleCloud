@@ -231,3 +231,27 @@ def test_invoice_query_riconosce_la_copia_con_piva_diversa(bridge):
     assert query == {"numero_fattura": "3/1", "fornitore": "X", "data_fattura": "01/02/2026"}
     # un numero diverso non combacia con nessun ramo
     assert run(database.fatture.find_one(module._invoice_query({**item, "invoice_number": "9/9"}))) is None
+
+
+def test_annullare_il_doppione_non_chiude_i_lotti_della_copia_buona(bridge):
+    """Annullare la copia vecchia di 1/163 chiudeva tutti i lotti con quel
+    numero e fornitore, anche quelli della copia buona."""
+    import app.lotti.routers.fatture as fatture
+    _module, database = bridge
+    for fid in ("vecchia", "buona"):
+        run(database.fatture.insert_one({"id": fid, "numero_fattura": "1/163",
+                                         "fornitore": "F.lli Fiorentino Srl"}))
+    run(database.lotti_fornitori.insert_one({"id": "L1", "fattura_ref": "1/163",
+                                             "fornitore": "F.lli Fiorentino Srl"}))
+    esito = run(fatture.annulla_fattura("vecchia", motivo="doppione del ponte", _admin=None))
+    assert esito["lotti_chiusi"] == 0 and esito["duplicato_di"] == "buona"
+    lotto = run(database.lotti_fornitori.find_one({"id": "L1"}))
+    assert lotto.get("esaurito") is not True
+    assert run(database.fatture.find_one({"id": "vecchia"}))["annullata"] is True
+    # l'eliminazione del doppione e' rifiutata: i lotti sono anche della copia buona
+    with pytest.raises(Exception) as err:
+        run(fatture.delete_fattura("vecchia", conferma=True, _admin=None))
+    assert getattr(err.value, "status_code", None) == 409 or "copia" in str(err.value)
+    # l'ultima copia rimasta si annulla come prima: chiude i suoi lotti
+    esito = run(fatture.annulla_fattura("buona", motivo="reso", _admin=None))
+    assert esito["lotti_chiusi"] == 1
