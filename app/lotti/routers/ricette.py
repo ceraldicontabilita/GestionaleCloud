@@ -52,7 +52,7 @@ _RICETTARIO_EXCEL_PATH = Path(__file__).resolve().parent.parent / "data" / "rice
 
 
 def _chiave_ricetta(nome: str) -> str:
-    """Chiave prudente per collegare l'archivio documentale alle ricette operative."""
+    """Normalizza i nomi per ricerca e import, senza attribuire identita' per nome."""
     testo = unicodedata.normalize("NFKD", str(nome or ""))
     testo = "".join(ch for ch in testo if not unicodedata.combining(ch)).lower()
     return re.sub(r"[^a-z0-9]+", " ", testo).strip()
@@ -108,38 +108,6 @@ def _carica_archivio_dolce() -> dict:
         return {"meta": {}, "recipes": [], "components": []}
     with _ARCHIVIO_DOLCE_PATH.open("r", encoding="utf-8") as handle:
         return json.load(handle)
-
-
-def _righe_ingredienti_archivio(value: str) -> List[dict]:
-    """Converte le righe leggibili dell'archivio in ingredienti modificabili.
-
-    La fonte resta comunque conservata integralmente in ``ingredienti_testo``:
-    questo parser e volutamente prudente e non inventa quantita quando una riga
-    e un titolo di sezione o un numero di pagina.
-    """
-    risultato = []
-    unita_rx = r"kg|g|gr|mg|l|lt|ml|cl|pz|pezzi|n|%"
-    for raw in str(value or "").splitlines():
-        riga = " ".join(raw.strip().split())
-        if not riga or riga.endswith(":") or re.fullmatch(r"\d+", riga):
-            continue
-        match = re.match(
-            rf"^(.*?)(?:\s+)(\d+(?:[.,]\d+)?)\s*({unita_rx})\.?$",
-            riga,
-            flags=re.IGNORECASE,
-        )
-        if match:
-            nome, quantita, unita = match.groups()
-            risultato.append({
-                "nome": nome.strip(),
-                "quantita": float(quantita.replace(",", ".")),
-                "unita_misura": "pz" if unita.lower() in {"n", "pezzi"} else unita.lower(),
-            })
-        else:
-            risultato.append({"nome": riga, "quantita": 0, "unita_misura": ""})
-    return risultato
-
-
 
 
 # ── Seed una-tantum 23/07/2026 (dettatura Enzo): ricette col SOLO NOME ───────
@@ -901,34 +869,15 @@ async def importa_ricettari_excel(
 
 @router.get("/ricette-archivio")
 async def get_ricette_archivio():
-    """Archivio professionale consultabile, collegato senza duplicare le ricette operative.
-
-    Il file importato resta immutabile e conserva foglio/riga/hash della fonte. Quando
-    una ricetta ha lo stesso nome di una ricetta Ceraldi, restituiamo il suo id: il
-    frontend può aprire l'editor, produrre e stampare con i flussi già esistenti.
-    """
+    """Archivio documentale consultabile, separato dalle ricette operative."""
     archivio = _carica_archivio_dolce()
     acquistati = await _chiavi_prodotti_acquistati()
-    operative = [r for r in await db.ricette.find(
-        {}, {"_id": 0, "id": 1, "nome": 1, "reparto": 1, "foto_url": 1}
-    ).to_list(1000) if _chiave_ricetta(r.get("nome")) not in acquistati]
-    per_nome = {_chiave_ricetta(r.get("nome")): r for r in operative if r.get("nome")}
-
-    def collega(item: dict) -> dict:
-        risultato = dict(item)
-        ricetta = per_nome.get(_chiave_ricetta(item.get("name")))
-        if ricetta:
-            risultato["ricetta_operativa"] = ricetta
-        return risultato
-
-    recipes = [collega(item) for item in archivio.get("recipes", []) if _chiave_ricetta(item.get("name")) not in acquistati]
-    components = [collega(item) for item in archivio.get("components", []) if _chiave_ricetta(item.get("name")) not in acquistati]
+    recipes = [item for item in archivio.get("recipes", []) if _chiave_ricetta(item.get("name")) not in acquistati]
+    components = [item for item in archivio.get("components", []) if _chiave_ricetta(item.get("name")) not in acquistati]
     return {
         "meta": archivio.get("meta", {}),
         "recipes": recipes,
         "components": components,
-        "ricette_operative": len(operative),
-        "collegate": sum(1 for item in recipes if item.get("ricetta_operativa")),
     }
 
 
@@ -946,14 +895,6 @@ async def get_ricette_unificate(search: Optional[str] = Query(None)):
         for ricetta in await db.ricette.find({}, {"_id": 0}).sort("nome", 1).to_list(2000)
         if _chiave_ricetta(ricetta.get("nome")) not in acquistati
     ]
-    archivio = _carica_archivio_dolce()
-    per_nome = {_chiave_ricetta(ricetta.get("nome")): ricetta for ricetta in operative if ricetta.get("nome")}
-    for item in [*(archivio.get("recipes") or []), *(archivio.get("components") or [])]:
-        ricetta = per_nome.get(_chiave_ricetta(item.get("name")))
-        if ricetta:
-            ricetta.setdefault("documentazioni_archivio", []).append(item)
-            ricetta.setdefault("documentazione_archivio", item)
-            ricetta["origine"] = ricetta.get("origine") or "ceraldi"
     if search:
         chiave = _chiave_ricetta(search)
         operative = [

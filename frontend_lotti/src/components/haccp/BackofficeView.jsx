@@ -365,7 +365,6 @@ function TabRicette({ solaLetturaOperatore = false }) {
       {dettaglioR && (
         <SchedaRicettaChiaraModal
           ricetta={dettaglioR}
-          tutte={ricette}
           onClose={() => setDettaglioR(null)}
           onProduci={(r) => { setDettaglioR(null); setProduciR(r); }}
           onModifica={solaLetturaOperatore ? undefined : (r) => { setDettaglioR(null); setEditRicetta(r); setShowForm(true); }}

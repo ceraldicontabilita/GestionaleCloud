@@ -24,27 +24,28 @@ ARCHIVIO = {
 }
 
 
-def test_parser_archivio_esclude_pagine_e_conserva_dosi():
-    from app.lotti.routers.ricette import _righe_ingredienti_archivio
-    righe = _righe_ingredienti_archivio(ARCHIVIO["recipes"][0]["ingredients"])
-    assert [r["nome"] for r in righe] == ["Uova", "Zucchero", "Farina"]
-    assert righe[0]["quantita"] == 30
-    assert righe[0]["unita_misura"] == "pz"
-    assert righe[1]["quantita"] == 750
-
-
-def test_lista_unificata_collega_senza_duplicare(monkeypatch):
+def test_nome_uguale_non_associa_archivio_a_ricetta_operativa(monkeypatch):
     import app.lotti.routers.ricette as ricette
     database = AsyncMongoMockClient()["Gestionale_Test"]
     monkeypatch.setattr(ricette, "db", database)
     monkeypatch.setattr(ricette, "_carica_archivio_dolce", lambda: ARCHIVIO)
-    run(database.ricette.insert_one({"id": "CER-1", "nome": "Biscotti savoiardi", "reparto": "pasticceria"}))
+    run(database.ricette.insert_one({
+        "id": "CER-1", "nome": "Biscotti savoiardi", "reparto": "pasticceria",
+        "procedimento_testo": "Procedimento operativo verificato.",
+    }))
 
     risultato = run(ricette.get_ricette_unificate(search=None))
+    archivio = run(ricette.get_ricette_archivio())
 
     assert len(risultato) == 1
     assert risultato[0]["id"] == "CER-1"
-    assert risultato[0]["documentazione_archivio"]["procedure"] == "Montare e cuocere."
+    assert risultato[0]["procedimento_testo"] == "Procedimento operativo verificato."
+    assert "documentazione_archivio" not in risultato[0]
+    assert "documentazioni_archivio" not in risultato[0]
+    assert "origine" not in risultato[0]
+    assert len(archivio["recipes"]) == 1
+    assert archivio["recipes"][0]["procedure"] == "Montare e cuocere."
+    assert "ricetta_operativa" not in archivio["recipes"][0]
 
 
 def test_archivio_non_ricrea_card_dopo_eliminazione(monkeypatch):
