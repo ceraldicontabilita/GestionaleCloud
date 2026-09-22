@@ -50,6 +50,7 @@ function TabRicette({ solaLetturaOperatore = false }) {
   const [dettaglioR, setDettaglioR] = useState(null);   // scheda chiara unica
   const [promuovendo, setPromuovendo] = useState(false);
   const [cambiandoVisibilita, setCambiandoVisibilita] = useState(null);
+  const [eliminandoRicetta, setEliminandoRicetta] = useState(null);
   // Frigoriferi/congelatori REALI configurati (Attrezzature), non la lista
   // generica di fallback — richiesta Enzo 20/07/2026.
   const [attrezzature, setAttrezzature] = useState({ frigoriferi: [], congelatori: [] });
@@ -95,6 +96,27 @@ function TabRicette({ solaLetturaOperatore = false }) {
       return true;
     } catch { toast("Impossibile cambiare la visibilità della ricetta", "err"); return false; }
     finally { setCambiandoVisibilita(null); }
+  };
+
+  const eliminaRicetta = async (ricetta) => {
+    if (!ricetta?.id || eliminandoRicetta) return;
+    const confermata = await conferma(
+      `Eliminare definitivamente “${ricetta.nome}” dalle ricette operative?\n\nLa copia completa resterà recuperabile nel cestino.`,
+      { titolo: "Elimina ricetta", ok: "Elimina ricetta", pericolo: true },
+    );
+    if (!confermata) return;
+    setEliminandoRicetta(ricetta.id);
+    try {
+      await axios.delete(`${API}/ricette/${ricetta.id}`);
+      setRicette(correnti => correnti.filter(r => r.id !== ricetta.id));
+      toast("Ricetta eliminata; una copia è nel cestino");
+    } catch (error) {
+      const detail = error?.response?.data?.detail;
+      const testo = typeof detail === "string" ? detail : detail?.messaggio;
+      toast(testo || "Impossibile eliminare la ricetta", "err");
+    } finally {
+      setEliminandoRicetta(null);
+    }
   };
 
   const [importando, setImportando] = useState(false);
@@ -299,6 +321,12 @@ function TabRicette({ solaLetturaOperatore = false }) {
                     onClick={() => impostaVisibilita(r, esclusa)}
                     style={{width:"100%",minHeight:44,border:"1px solid #cfdfd5",borderRadius:8,background:"#f2f6f3",color:"#3f5a4e",fontFamily:"var(--font)",fontSize:13,fontWeight:800,cursor:"pointer"}}>
                     {cambiandoVisibilita===r.id ? "Aggiorno…" : esclusa ? "↩ Ripristina nei reparti" : "⊘ Escludi dai reparti"}
+                  </button>}
+                  {!solaLetturaOperatore && !soloLettura && !riferimentoFornitore && <button type="button"
+                    disabled={eliminandoRicetta===r.id}
+                    onClick={() => eliminaRicetta(r)}
+                    style={{width:"100%",minHeight:44,border:"1px solid #fecaca",borderRadius:8,background:"#fff1f2",color:"#b42318",fontFamily:"var(--font)",fontSize:13,fontWeight:800,cursor:eliminandoRicetta===r.id?"wait":"pointer"}}>
+                    {eliminandoRicetta===r.id ? "Elimino…" : "🗑 Elimina ricetta"}
                   </button>}
                 </div>
               </div>
