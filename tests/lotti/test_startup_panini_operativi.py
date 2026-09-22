@@ -23,7 +23,6 @@ def test_riavvio_non_rigenera_panino_eliminato_o_modificato(monkeypatch):
         ("app.lotti.routers.scheduler", "setup_scheduler", nessuna_azione),
         ("app.lotti.routers.tablet_operatori", "seed_operatori", nessuna_scrittura),
         ("app.lotti.routers.magazzino_bar", "seed_magazzino_bar", nessuna_scrittura),
-        ("app.lotti.routers.ricette", "seed_ricette_solo_nome", nessuna_scrittura),
         ("app.lotti.routers.catalogo_forno", "inizializza_cataloghi_precaricati", nessuna_scrittura),
         ("app.lotti.routers.acquaviva", "inizializza_mapping_vandemoortele_2026", nessuna_scrittura),
         ("app.lotti.routers.indici", "crea_indici", nessuna_scrittura),
@@ -43,6 +42,7 @@ def test_riavvio_non_rigenera_panino_eliminato_o_modificato(monkeypatch):
         await server.startup_event()
         assert await database.ricette.count_documents({}) == 1
         assert await database.ricette.find_one({"nome": "Panino Caprese"}) is None
+        assert await database.ricette.find_one({"nome": "Spritz"}) is None
         panino = await database.ricette.find_one({"id": "id-operativo"})
         assert panino["note"] == "Procedimento corretto internamente"
 
