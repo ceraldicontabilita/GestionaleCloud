@@ -234,24 +234,6 @@ async def startup_event():
         logging.warning(f"[STARTUP] seed ricette solo-nome: {e}")
 
     try:
-        from app.lotti.routers.ricette import _importa_ricettario_excel, _sincronizza_menu
-        from app.lotti.servizi.foto_ricette_generate import (
-            collega_illustrazioni_generate,
-            promuovi_ricette_generate_mancanti,
-        )
-
-        ricette_generate = await promuovi_ricette_generate_mancanti(
-            db, _importa_ricettario_excel
-        )
-        foto_generate = await collega_illustrazioni_generate(db, _sincronizza_menu)
-        logging.info("[STARTUP] ricette generate: %s", ricette_generate)
-        logging.info("[STARTUP] foto ricette generate: %s", foto_generate)
-    except Exception as e:
-        # Le immagini vengono ritentate al deploy successivo; un guasto del
-        # ponte Menu non deve impedire l'accesso operativo a Lotti.
-        logging.warning("[STARTUP] foto ricette generate: %s: %s", type(e).__name__, e)
-
-    try:
         from app.lotti.routers.catalogo_forno import inizializza_cataloghi_precaricati
         risultati = await inizializza_cataloghi_precaricati()
         logging.info(f"[STARTUP] cataloghi fornitori: {risultati}")
