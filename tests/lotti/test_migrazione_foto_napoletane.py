@@ -37,7 +37,7 @@ def test_migrazione_usa_solo_id_esatti_ed_e_idempotente(monkeypatch, tmp_path):
         }})
         return {
             "foto_sha256": digest, "foto_url": "/api/foto/nuova",
-            "backup_id": "backup-1", "foto_precedente_cestinata": True,
+            "backup_id": "backup-1", "foto_precedente_eliminata": True,
             "menu_sync": {"esito": "aggiornato"},
         }
 

@@ -2746,6 +2746,7 @@ async def upload_foto(
         {"id": ricetta_id},
         {
             "_id": 0, "id": 1, "nome": 1, "foto_url": 1, "foto_id": 1,
+            "foto_storage_bucket": 1, "foto_storage_path": 1,
             "foto_drive_id": 1, "foto_drive_folder_id": 1,
             "foto_filename": 1, "foto_content_type": 1, "foto_sha256": 1,
             "foto_source": 1,
@@ -2769,22 +2770,23 @@ async def upload_foto(
     fonti_ammesse = {"upload_manuale", "catalogo_napoletano_verificato"}
     if foto_source not in fonti_ammesse:
         raise HTTPException(400, "Provenienza foto non ammessa")
-    from app.lotti.servizi import drive_foto_ricette
-    foto_drive_folder_id = await drive_foto_ricette.risolvi_folder_id(db)
+    from app.lotti.servizi import supabase_foto_ricette
     caricata = await asyncio.to_thread(
-        drive_foto_ricette.carica,
+        supabase_foto_ricette.carica,
         ricetta_id=ricetta_id,
         contenuto=contenuto,
         mime=mime,
         filename=file.filename,
-        folder_id=foto_drive_folder_id,
     )
     foto_id = caricata["id"]
     foto_sha256 = caricata["sha256"]
-    # foto_url servito dall'endpoint GET /api/foto/{id} (legge da Drive); ?v cambia
+    foto_storage_path = caricata["path"]
+    # foto_url servito dall'endpoint GET /api/foto/{id} (legge da Supabase); ?v cambia
     # ad ogni upload per invalidare cache browser/React sulla stessa ricetta.
     foto_url = f"/api/foto/{foto_id}?v={versione}"
-    precedente_id = str(esistente.get("foto_drive_id") or "").strip()
+    precedente_storage_path = str(esistente.get("foto_storage_path") or "").strip()
+    precedente_drive_id = str(esistente.get("foto_drive_id") or "").strip()
+    precedente_id = str(esistente.get("foto_id") or precedente_drive_id).strip()
     backup_id = None
     if precedente_id and precedente_id != foto_id:
         backup_id = str(uuid.uuid4())
@@ -2798,64 +2800,91 @@ async def upload_foto(
                 chiave: esistente.get(chiave)
                 for chiave in (
                     "foto_url", "foto_id", "foto_drive_id", "foto_drive_folder_id",
+                    "foto_storage_bucket", "foto_storage_path",
                     "foto_filename", "foto_content_type", "foto_sha256", "foto_source",
                 )
             },
             "foto_nuova": {
                 "foto_url": foto_url, "foto_id": foto_id,
-                "foto_drive_id": foto_id, "foto_drive_folder_id": foto_drive_folder_id,
+                "foto_storage_bucket": caricata["bucket"],
+                "foto_storage_path": foto_storage_path,
                 "foto_filename": file.filename, "foto_content_type": mime,
                 "foto_sha256": foto_sha256, "foto_source": foto_source,
             },
         })
     await db.ricette.update_one({"id": ricetta_id}, {"$set": {
         "foto_url": foto_url, "foto_id": foto_id,
-        "foto_drive_id": foto_id,
-        "foto_drive_folder_id": foto_drive_folder_id,
+        "foto_storage_bucket": caricata["bucket"],
+        "foto_storage_path": foto_storage_path,
         "foto_filename": file.filename, "foto_content_type": mime,
         "foto_sha256": foto_sha256, "foto_source": foto_source,
-    }})
-    # Stessa immagine anche nel Menu digitale (copia su Storage + aggiornamento riga).
+    }, "$unset": {"foto_drive_id": "", "foto_drive_folder_id": ""}})
+    # Il Menu digitale punta allo stesso oggetto Storage e aggiorna la sua riga.
     menu_sync = await _sincronizza_menu(ricetta_id)
-    precedente_cestinata = False
+    precedente_eliminata = False
     if cestina_precedente and precedente_id and precedente_id != foto_id:
-        riferimenti_attivi = await db.ricette.count_documents({
-            "foto_drive_id": precedente_id,
-            "id": {"$ne": ricetta_id},
-        })
-        riferimenti_cestino = await db.ricette_cestino.count_documents({
-            "ricetta.foto_drive_id": precedente_id,
-        })
+        if precedente_storage_path:
+            riferimenti_attivi = await db.ricette.count_documents({
+                "foto_storage_path": precedente_storage_path, "id": {"$ne": ricetta_id},
+            })
+            riferimenti_cestino = await db.ricette_cestino.count_documents({
+                "ricetta.foto_storage_path": precedente_storage_path,
+            })
+        else:
+            riferimenti_attivi = await db.ricette.count_documents({
+                "foto_drive_id": precedente_drive_id, "id": {"$ne": ricetta_id},
+            })
+            riferimenti_cestino = await db.ricette_cestino.count_documents({
+                "ricetta.foto_drive_id": precedente_drive_id,
+            })
         if riferimenti_attivi + riferimenti_cestino == 0:
-            precedente_folder = str(esistente.get("foto_drive_folder_id") or "").strip()
-            if precedente_folder:
+            if precedente_storage_path:
                 await asyncio.to_thread(
-                    drive_foto_ricette.cestina,
-                    precedente_id,
-                    folder_id=precedente_folder,
+                    supabase_foto_ricette.elimina, precedente_storage_path,
                 )
-                precedente_cestinata = True
+                precedente_eliminata = True
+            elif precedente_drive_id:
+                from app.lotti.servizi import drive_foto_ricette
+                precedente_folder = str(esistente.get("foto_drive_folder_id") or "").strip()
+                if precedente_folder:
+                    await asyncio.to_thread(
+                        drive_foto_ricette.cestina,
+                        precedente_drive_id,
+                        folder_id=precedente_folder,
+                    )
+                    precedente_eliminata = True
     return {
         "success": True,
         "foto_url": foto_url,
         "foto_source": foto_source,
         "foto_sha256": foto_sha256,
         "backup_id": backup_id,
-        "foto_precedente_cestinata": precedente_cestinata,
+        "foto_precedente_eliminata": precedente_eliminata,
         "menu_sync": menu_sync,
     }
 
 
 @router.get("/foto/{foto_id}")
 async def leggi_foto(foto_id: str):
-    """Serve l'immagine persistita su Drive. URL con ?v=<versione>: contenuto di una
+    """Serve l'immagine persistita su Supabase Storage. URL con ?v=<versione>: contenuto di una
     specifica versione è immutabile, quindi cache lunga e forte è sicura — un
     aggiornamento foto genera un nuovo ?v e quindi un URL (e una cache) diversi."""
     ricetta = await db.ricette.find_one(
-        {"foto_drive_id": foto_id},
-        {"_id": 0, "foto_content_type": 1, "foto_drive_folder_id": 1},
+        {"$or": [{"foto_id": foto_id}, {"foto_drive_id": foto_id}]},
+        {"_id": 0, "foto_content_type": 1, "foto_storage_path": 1,
+         "foto_drive_id": 1, "foto_drive_folder_id": 1},
     )
-    if ricetta:
+    if ricetta and ricetta.get("foto_storage_path"):
+        from app.lotti.servizi import supabase_foto_ricette
+        try:
+            contenuto = await asyncio.to_thread(
+                supabase_foto_ricette.leggi, str(ricetta["foto_storage_path"])
+            )
+        except Exception as exc:
+            raise HTTPException(404, "Foto non trovata") from exc
+        return Response(content=contenuto, media_type=ricetta.get("foto_content_type") or "image/jpeg",
+                        headers={"Cache-Control": "public, max-age=31536000, immutable"})
+    if ricetta and ricetta.get("foto_drive_id"):
         from app.lotti.servizi import drive_foto_ricette
         try:
             contenuto, mime, _ = await asyncio.to_thread(
