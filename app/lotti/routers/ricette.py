@@ -2619,6 +2619,17 @@ async def delete_ricetta(ricetta_id: str, _admin=Depends(require_admin)):
     existing = await db.ricette.find_one({"id": ricetta_id}, {"_id": 0})
     if not existing:
         raise HTTPException(404, "Ricetta non trovata")
+    varianti = await db.ricette.find(
+        {"ricetta_base_id": ricetta_id}, {"_id": 0, "id": 1, "nome": 1}
+    ).to_list(5000)
+    if varianti:
+        raise HTTPException(
+            409,
+            {
+                "messaggio": "Prima assegna le varianti a un'altra ricetta base oppure elimina le varianti.",
+                "varianti": [{"id": r.get("id"), "nome": r.get("nome")} for r in varianti],
+            },
+        )
     # La × toglie la ricetta dall'app, ma prima ne conserva una copia
     # recuperabile: foto, ingredienti e riferimenti storici non vanno persi.
     await db.ricette_cestino.insert_one({
@@ -2627,6 +2638,7 @@ async def delete_ricetta(ricetta_id: str, _admin=Depends(require_admin)):
         "ricetta": existing,
         "eliminata_at": datetime.now(timezone.utc).isoformat(),
         "eliminata_da": (_admin or {}).get("nome") or (_admin or {}).get("sub"),
+        "motivo": "eliminazione manuale dall'elenco ricette",
     })
     r = await db.ricette.delete_one({"id": ricetta_id})
     if r.deleted_count == 0:

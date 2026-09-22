@@ -1,6 +1,9 @@
 import asyncio
 import os
 
+import pytest
+from fastapi import HTTPException
+
 os.environ.setdefault("AUTH_SECRET", "test-secret-non-usare-in-prod")
 os.environ.setdefault("MONGO_URL", "mongodb://localhost:27017")
 os.environ.setdefault("DB_NAME", "Gestionale_Test")
@@ -116,6 +119,27 @@ def test_eliminazione_salva_copia_recuperabile(monkeypatch):
     assert live is None
     assert trash["ricetta"]["foto_url"] == "/foto.jpg"
     assert trash["eliminata_da"] == "Admin"
+    assert trash["motivo"] == "eliminazione manuale dall'elenco ricette"
+
+
+def test_eliminazione_base_con_varianti_non_orfana_le_varianti(monkeypatch):
+    database = AsyncMongoMockClient()["Gestionale_Test"]
+    monkeypatch.setattr(mod, "db", database)
+
+    async def scenario():
+        await database.ricette.insert_many([
+            {"id": "base", "nome": "Arancino base"},
+            {"id": "variante", "nome": "Arancino ai funghi", "ricetta_base_id": "base"},
+        ])
+        with pytest.raises(HTTPException) as errore:
+            await mod.delete_ricetta("base", {"nome": "Admin"})
+        return errore.value, await database.ricette.find_one({"id": "base"}), await database.ricette.find_one({"id": "variante"})
+
+    errore, base, variante = run(scenario())
+    assert errore.status_code == 409
+    assert errore.detail["varianti"] == [{"id": "variante", "nome": "Arancino ai funghi"}]
+    assert base is not None
+    assert variante["ricetta_base_id"] == "base"
 
 
 def test_prodotto_acquistato_non_ritorna_nelle_ricette_al_reimport(monkeypatch):

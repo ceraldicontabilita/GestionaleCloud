@@ -50,6 +50,7 @@ function TabRicette({ solaLetturaOperatore = false }) {
   const [dettaglioR, setDettaglioR] = useState(null);   // scheda chiara unica
   const [promuovendo, setPromuovendo] = useState(false);
   const [cambiandoVisibilita, setCambiandoVisibilita] = useState(null);
+  const [eliminandoRicetta, setEliminandoRicetta] = useState(null);
   // Frigoriferi/congelatori REALI configurati (Attrezzature), non la lista
   // generica di fallback — richiesta Enzo 20/07/2026.
   const [attrezzature, setAttrezzature] = useState({ frigoriferi: [], congelatori: [] });
@@ -95,6 +96,27 @@ function TabRicette({ solaLetturaOperatore = false }) {
       return true;
     } catch { toast("Impossibile cambiare la visibilità della ricetta", "err"); return false; }
     finally { setCambiandoVisibilita(null); }
+  };
+
+  const eliminaRicetta = async (ricetta) => {
+    if (!ricetta?.id || eliminandoRicetta) return;
+    const confermata = await conferma(
+      `Eliminare definitivamente “${ricetta.nome}” dalle ricette operative?\n\nLa copia completa resterà recuperabile nel cestino.`,
+      { titolo: "Elimina ricetta", ok: "Elimina ricetta", pericolo: true },
+    );
+    if (!confermata) return;
+    setEliminandoRicetta(ricetta.id);
+    try {
+      await axios.delete(`${API}/ricette/${ricetta.id}`);
+      setRicette(correnti => correnti.filter(r => r.id !== ricetta.id));
+      toast("Ricetta eliminata; una copia è nel cestino");
+    } catch (error) {
+      const detail = error?.response?.data?.detail;
+      const testo = typeof detail === "string" ? detail : detail?.messaggio;
+      toast(testo || "Impossibile eliminare la ricetta", "err");
+    } finally {
+      setEliminandoRicetta(null);
+    }
   };
 
   const [importando, setImportando] = useState(false);
@@ -250,6 +272,14 @@ function TabRicette({ solaLetturaOperatore = false }) {
                   background:"rgba(255,255,255,.95)",color:"#3f5a4e",borderRadius:6,padding:"3px 8px"}}>
                   Immagine AI illustrativa
                 </span>}
+                {!solaLetturaOperatore && !soloLettura && !riferimentoFornitore && <button type="button"
+                  aria-label={`Elimina ricetta ${r.nome}`}
+                  title="Elimina ricetta"
+                  disabled={eliminandoRicetta===r.id}
+                  onClick={() => eliminaRicetta(r)}
+                  style={{position:"absolute",right:8,top:8,width:32,height:32,border:"1px solid #fecaca",borderRadius:"50%",background:"rgba(255,255,255,.96)",color:"#b42318",fontSize:22,fontWeight:900,lineHeight:1,cursor:eliminandoRicetta===r.id?"wait":"pointer",boxShadow:"0 1px 4px rgba(0,0,0,.2)"}}>
+                  ×
+                </button>}
               </div>
               {/* Corpo */}
               <div style={{padding:"12px 14px",display:"flex",flexDirection:"column",gap:8,flex:1}}>
