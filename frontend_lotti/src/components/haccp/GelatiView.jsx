@@ -8,7 +8,7 @@ import { calcolaProduzione, scalaIngredienti } from "./gelati/calcoloProduzione"
 
 // Ricette base Ceraldi/Galatea — le quantità scalano linearmente su `base` (= somma g ricetta).
 // `gruppo` raggruppa la tendina; `prep` = preparazione Galatea; un ingrediente "qb" non scala.
-const RICETTE = {
+export const RICETTE = {
   // ───────────────────── Basi Ceraldi (riferimento 5000 g) ─────────────────────
   "Frutta / Paste grasse – nocciola o pistacchio": {
     base: 5000, gruppo: "Basi Ceraldi",
@@ -25,6 +25,17 @@ const RICETTE = {
   "Base zuccherine / Superbiscotto": {
     base: 5000, gruppo: "Basi Ceraldi",
     ing: { "Set_Core Velluto 540": 1455, Acqua: 2636, "Panna 38%": 682, "Pasta Superbiscotto": 227 },
+  },
+
+  // Galatea, Core_Inside Frutta p. 4; catalogo 2024 p. 6-7, codice 76001.
+  // La fonte dosa l'acqua in litri: i grammi qui sono un'equivalenza operativa
+  // approssimata (1 L ≈ 1 kg), non una temperatura o una pesata prescritta.
+  "Sorbetto Limone Easy Galatea": {
+    base: 5000, gruppo: "Galatea · Sorbetti rapidi", cat: "frutta",
+    ing: { "Easy Limone / Set_Core Easy Frutta Completa (76001)": 1500,
+      "Acqua calda (1 L ≈ 1 kg)": 3500 },
+    prep: "Formula del produttore: 1,5 kg di base + 3,5 L di acqua calda. Misura l'acqua in litri; il peso mostrato è approssimato. Il PDF non specifica temperatura in °C, tempi né grammi di succo di limone fresco. Questa è una formula di riferimento, non una produzione o una giacenza registrata.",
+    fonte: "Galatea, brochure Core_Inside Frutta, p. 4; Catalogo generale 2024, p. 6-7 (cod. 76001).",
   },
 
   // ───────────── Galatea · Cioccolato Selection (al latte) — per 1 kg ─────────────
@@ -114,6 +125,15 @@ const RICETTE = {
   },
 };
 const RICETTE_KEYS = Object.keys(RICETTE);
+const FONTE_CIOCCOLATO = "Galatea, brochure Core_Inside Cioccolato";
+const fonteRicetta = (nome, ricetta) => {
+  if (ricetta.fonte) return ricetta.fonte;
+  if (ricetta.gruppo === "Galatea · Selection al latte") return `${FONTE_CIOCCOLATO}, p. 7.`;
+  if (ricetta.gruppo === "Galatea · Gourmet fondente") return `${FONTE_CIOCCOLATO}, p. 9.`;
+  if (nome.startsWith("Supreme Dolce Croccante")) return `${FONTE_CIOCCOLATO}, p. 10.`;
+  if (ricetta.gruppo === "Galatea · Emotion / creativo") return `${FONTE_CIOCCOLATO}, p. 11.`;
+  return null;
+};
 // Tendina raggruppata per `gruppo` (preserva l'ordine di inserimento).
 const RICETTE_GRUPPI = RICETTE_KEYS.reduce((acc, k) => {
   const g = RICETTE[k].gruppo || "Altre";
@@ -177,7 +197,7 @@ function Tabs({ tab, setTab }) {
 }
 
 // ───────────────────────── Calcolo ─────────────────────────
-function CalcoloTab({ onProdotto }) {
+export function CalcoloTab({ onProdotto }) {
   const [recipeT, setRecipeT] = useState(RICETTE_KEYS[0]);
   const [totale, setTotale] = useState(5000);
   const [fruttaT, setFruttaT] = useState("Fragola");
@@ -303,7 +323,7 @@ function CalcoloTab({ onProdotto }) {
           </div>
           <div>
             <label className={labelCls}>Peso totale da produrre (g)</label>
-            <TouchNumberInput value={totale} onChange={setTotale} min={1} title="Peso totale da produrre" presets={[1000, 2000, 3000, 5000]} />
+            <TouchNumberInput value={totale} onChange={setTotale} min={1} title="Peso totale da produrre" presets={recipeT === "Sorbetto Limone Easy Galatea" ? [1000, 2500, 5000, 10000] : [1000, 2000, 3000, 5000]} />
           </div>
         </div>
         {baseAccettaFrutta(recipeT) && (
@@ -365,10 +385,19 @@ function CalcoloTab({ onProdotto }) {
               </tbody>
             </table></div>
 
+            {recipeT === "Sorbetto Limone Easy Galatea" && (
+              <p className="mt-2 text-sm font-semibold text-stone-700">
+                Misura l'acqua: {(nuovo * 0.7 / 1000).toLocaleString("it-IT", { maximumFractionDigits: 2 })} L calda per {fmtG(nuovo)} di miscela nuova.
+              </p>
+            )}
+
             {RICETTE[recipeT].prep && (
               <div className="mt-3 rounded-xl border-l-4 border-[#5b7a6b] bg-[#eef3ef] p-3 text-sm text-stone-700">
                 <span className="font-bold text-[#5b7a6b]">Preparazione Galatea:</span> {RICETTE[recipeT].prep}
               </div>
+            )}
+            {fonteRicetta(recipeT, RICETTE[recipeT]) && (
+              <p className="mt-2 text-xs text-stone-500">Fonte: {fonteRicetta(recipeT, RICETTE[recipeT])}</p>
             )}
 
             {/* Recupero gelato rientrato dagli invenduti */}
