@@ -48,7 +48,6 @@ function TabRicette({ solaLetturaOperatore = false }) {
   const [verificaR,  setVerificaR]  = useState(null);   // fatture/magazzino/sostituzioni
   const [schedaR,    setSchedaR]    = useState(null);   // ricetta di cui compilare la scheda
   const [dettaglioR, setDettaglioR] = useState(null);   // scheda chiara unica
-  const [promuovendo, setPromuovendo] = useState(false);
   const [cambiandoVisibilita, setCambiandoVisibilita] = useState(null);
   const [eliminandoRicetta, setEliminandoRicetta] = useState(null);
   // Frigoriferi/congelatori REALI configurati (Attrezzature), non la lista
@@ -187,20 +186,7 @@ function TabRicette({ solaLetturaOperatore = false }) {
     return true;
   }).sort((a,b) => (a.nome||"").localeCompare(b.nome||"","it"));
 
-  const rendiOperativa = async (ricetta) => {
-    if (!ricetta?.archivio_id || promuovendo) return;
-    setPromuovendo(true);
-    try {
-      const r = await axios.post(`${API}/ricette-archivio/${ricetta.tipo_archivio || "recipe"}/${ricetta.archivio_id}/rendi-operativa`);
-      const operativa = r.data?.ricetta;
-      toast(r.data?.creata ? "Ricetta inserita: ora puoi modificarla e produrla" : "La ricetta operativa esiste già");
-      await carica();
-      if (operativa) setDettaglioR(operativa);
-    } catch (e) {
-      const dettaglio = e?.response?.data?.detail;
-      toast(typeof dettaglio === "string" ? dettaglio : "Errore inserimento ricetta", "err");
-    } finally { setPromuovendo(false); }
-  };
+
 
   return (
     <div>
@@ -314,16 +300,11 @@ function TabRicette({ solaLetturaOperatore = false }) {
                     style={{width:"100%",padding:"8px 0",border:"1.5px solid var(--border)",borderRadius:8,background:"var(--card)",fontFamily:"var(--font)",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                     📖 Apri scheda
                   </button>
-                  {!solaLetturaOperatore && (!soloLettura ? <button
+                  {!solaLetturaOperatore && !soloLettura && <button
                     onClick={() => { setEditRicetta(r); setShowForm(true); }}
                     style={{width:"100%",padding:"8px 0",border:"1.5px solid #b9cec1",borderRadius:8,background:"#edf4ef",color:"#3f5a4e",fontFamily:"var(--font)",fontSize:13,fontWeight:800,cursor:"pointer"}}>
                     {riferimentoFornitore ? "✏️ Usa in ricetta" : "✏️ Modifica nome e ingredienti"}
-                  </button> : <button
-                    onClick={() => rendiOperativa(r)}
-                    disabled={promuovendo}
-                    style={{width:"100%",padding:"8px 0",border:"1.5px solid #b9cec1",borderRadius:8,background:"#edf4ef",color:"#3f5a4e",fontFamily:"var(--font)",fontSize:13,fontWeight:800,cursor:promuovendo?"wait":"pointer"}}>
-                    ✏️ Rendi modificabile
-                  </button>)}
+                  </button>}
                   {!solaLetturaOperatore && !soloLettura && !riferimentoFornitore && <button type="button"
                     disabled={cambiandoVisibilita===r.id}
                     onClick={() => impostaVisibilita(r, esclusa)}
@@ -385,9 +366,7 @@ function TabRicette({ solaLetturaOperatore = false }) {
         <SchedaRicettaChiaraModal
           ricetta={dettaglioR}
           tutte={ricette}
-          occupato={promuovendo}
           onClose={() => setDettaglioR(null)}
-          onRendiOperativa={solaLetturaOperatore ? undefined : rendiOperativa}
           onProduci={(r) => { setDettaglioR(null); setProduciR(r); }}
           onModifica={solaLetturaOperatore ? undefined : (r) => { setDettaglioR(null); setEditRicetta(r); setShowForm(true); }}
         />

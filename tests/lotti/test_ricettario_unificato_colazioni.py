@@ -47,19 +47,13 @@ def test_lista_unificata_collega_senza_duplicare(monkeypatch):
     assert risultato[0]["documentazione_archivio"]["procedure"] == "Montare e cuocere."
 
 
-def test_promozione_archivio_e_idempotente(monkeypatch):
+def test_archivio_non_ricrea_card_dopo_eliminazione(monkeypatch):
     import app.lotti.routers.ricette as ricette
     database = AsyncMongoMockClient()["Gestionale_Test"]
     monkeypatch.setattr(ricette, "db", database)
     monkeypatch.setattr(ricette, "_carica_archivio_dolce", lambda: ARCHIVIO)
 
-    prima = run(ricette.rendi_ricetta_archivio_operativa("recipe", "r-1", _admin={}))
-    seconda = run(ricette.rendi_ricetta_archivio_operativa("recipe", "r-1", _admin={}))
-
-    assert prima["creata"] is True
-    assert seconda["creata"] is False
-    assert prima["ricetta"]["id"] == seconda["ricetta"]["id"]
-    assert run(database.ricette.count_documents({})) == 1
+    assert run(ricette.get_ricette_unificate(search=None)) == []
 
 
 def test_popolamento_quattro_stagioni_non_sovrascrive(monkeypatch):

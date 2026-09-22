@@ -140,31 +140,6 @@ def _righe_ingredienti_archivio(value: str) -> List[dict]:
     return risultato
 
 
-def _voce_archivio_unificata(item: dict) -> dict:
-    """Adatta una voce documentale alla stessa forma delle ricette Ceraldi."""
-    kind = item.get("kind") or "recipe"
-    dettagli = _righe_ingredienti_archivio(item.get("ingredients"))
-    return {
-        "id": f"archivio:{kind}:{item.get('id')}",
-        "nome": item.get("name") or "Ricetta senza nome",
-        "reparto": "pasticceria",
-        "origine": "archivio",
-        "archivio_id": item.get("id"),
-        "tipo_archivio": kind,
-        "ingredienti": [r["nome"] for r in dettagli],
-        "ingredienti_dettaglio": dettagli,
-        "ingredienti_testo": item.get("ingredients") or "",
-        "procedimento_testo": item.get("procedure") or "",
-        "note_archivio": item.get("notes") or "",
-        "fonte_archivio": item.get("source") or "",
-        "provenienza_archivio": item.get("provenance") or {},
-        "numero_archivio": item.get("number"),
-        "parent_recipe": item.get("parentRecipe"),
-        "componenti_testo": item.get("components") or "",
-        "documentazione_archivio": item,
-        "sola_lettura": True,
-        "porzioni": 0,
-    }
 
 
 # ── Seed una-tantum 23/07/2026 (dettatura Enzo): ricette col SOLO NOME ───────
@@ -959,104 +934,39 @@ async def get_ricette_archivio():
 
 @router.get("/ricette-unificate")
 async def get_ricette_unificate(search: Optional[str] = Query(None)):
-    """Un solo ricettario: ricette operative e fonte importata nella stessa lista.
+    """Restituisce le sole ricette operative persistite.
 
-    A parita di nome la ricetta Ceraldi e il record proprietario e riceve la
-    documentazione della fonte; non viene creata una seconda copia. Le voci
-    senza corrispondenza restano consultabili e possono essere rese operative
-    con l'endpoint dedicato.
+    L'archivio documentale resta consultabile separatamente: non genera card
+    nell'app. Una ricetta archiviata con la X quindi non può ricomparire dopo
+    il refresh attraverso una proiezione derivata dal file storico.
     """
     acquistati = await _chiavi_prodotti_acquistati()
-    operative = [r for r in await db.ricette.find({}, {"_id": 0}).sort("nome", 1).to_list(2000)
-                 if _chiave_ricetta(r.get("nome")) not in acquistati]
-    per_nome = {_chiave_ricetta(r.get("nome")): r for r in operative if r.get("nome")}
+    operative = [
+        ricetta
+        for ricetta in await db.ricette.find({}, {"_id": 0}).sort("nome", 1).to_list(2000)
+        if _chiave_ricetta(ricetta.get("nome")) not in acquistati
+    ]
     archivio = _carica_archivio_dolce()
-    sole_per_nome = {}
+    per_nome = {_chiave_ricetta(ricetta.get("nome")): ricetta for ricetta in operative if ricetta.get("nome")}
     for item in [*(archivio.get("recipes") or []), *(archivio.get("components") or [])]:
-        chiave = _chiave_ricetta(item.get("name"))
-        if chiave in acquistati:
-            continue
-        operativa = per_nome.get(chiave)
-        if operativa:
-            docs = operativa.setdefault("documentazioni_archivio", [])
-            docs.append(item)
-            operativa.setdefault("documentazione_archivio", item)
-            operativa["origine"] = operativa.get("origine") or "ceraldi"
-        else:
-            esistente = sole_per_nome.get(chiave)
-            if esistente:
-                esistente.setdefault("documentazioni_archivio", []).append(item)
-            else:
-                voce = _voce_archivio_unificata(item)
-                voce["documentazioni_archivio"] = [item]
-                sole_per_nome[chiave] = voce
-
-    tutte = [*operative, *sole_per_nome.values()]
+        ricetta = per_nome.get(_chiave_ricetta(item.get("name")))
+        if ricetta:
+            ricetta.setdefault("documentazioni_archivio", []).append(item)
+            ricetta.setdefault("documentazione_archivio", item)
+            ricetta["origine"] = ricetta.get("origine") or "ceraldi"
     if search:
-        q = _chiave_ricetta(search)
-        tutte = [r for r in tutte if q in _chiave_ricetta(
-            " ".join([
-                str(r.get("nome") or ""),
-                str(r.get("ingredienti_testo") or ""),
-                str(r.get("procedimento_testo") or ""),
-            ])
-        )]
-    tutte.sort(key=lambda r: _chiave_ricetta(r.get("nome")))
-    return tutte
+        chiave = _chiave_ricetta(search)
+        operative = [
+            ricetta for ricetta in operative
+            if chiave in _chiave_ricetta(" ".join([
+                str(ricetta.get("nome") or ""),
+                str(ricetta.get("ingredienti_testo") or ""),
+                str(ricetta.get("procedimento_testo") or ""),
+            ]))
+        ]
+    operative.sort(key=lambda ricetta: _chiave_ricetta(ricetta.get("nome")))
+    return operative
 
-
-@router.post("/ricette-archivio/{kind}/{archivio_id}/rendi-operativa")
-async def rendi_ricetta_archivio_operativa(
-    kind: str,
-    archivio_id: str,
-    _admin=Depends(require_admin),
-):
-    """Crea una ricetta modificabile dalla fonte, in modo idempotente."""
-    if kind not in {"recipe", "component"}:
-        raise HTTPException(400, "Tipo archivio non valido")
-    archivio = _carica_archivio_dolce()
-    chiave_lista = "recipes" if kind == "recipe" else "components"
-    item = next(
-        (x for x in archivio.get(chiave_lista, []) if str(x.get("id")) == archivio_id),
-        None,
-    )
-    if not item:
-        raise HTTPException(404, "Ricetta non trovata nell'archivio")
-
-    chiave_nome = _chiave_ricetta(item.get("name"))
-    for esistente in await db.ricette.find({}, {"_id": 0}).to_list(3000):
-        if _chiave_ricetta(esistente.get("nome")) == chiave_nome:
-            return {"creata": False, "ricetta": esistente}
-
-    dettagli = _righe_ingredienti_archivio(item.get("ingredients"))
-    nomi = [r.get("nome") for r in dettagli if r.get("nome")]
-    from app.lotti.routers.utils import _rileva_allergeni
-    allergeni = (_rileva_allergeni(nomi) or {}).get("allergeni_presenti", []) if nomi else []
-    now = datetime.now(timezone.utc).isoformat()
-    doc = {
-        "id": str(uuid.uuid4()),
-        "nome": item.get("name") or "Ricetta importata",
-        "reparto": "pasticceria",
-        "ingredienti": nomi,
-        "ingredienti_dettaglio": dettagli,
-        "porzioni": 1,
-        "note": "\n\n".join(x for x in [item.get("procedure"), item.get("notes")] if x),
-        "procedimento_testo": item.get("procedure") or "",
-        "ingredienti_testo": item.get("ingredients") or "",
-        "origine": "archivio_importato",
-        "archivio_id": item.get("id"),
-        "tipo_archivio": kind,
-        "fonte_archivio": item.get("source") or "",
-        "provenienza_archivio": item.get("provenance") or {},
-        "allergeni_auto": allergeni,
-        "allergeni": allergeni,
-        "allergeni_verificato": bool(nomi),
-        "allergeni_da_confermare": bool(nomi),
-        "created_at": now,
-    }
-    await db.ricette.insert_one(doc)
-    doc.pop("_id", None)
-    return {"creata": True, "ricetta": doc}
 
 
 def _prezzo_tavolo_deciso(valore: Any) -> bool:

@@ -1,9 +1,9 @@
-import { BookOpen, ChefHat, Pencil, Plus, X } from "lucide-react";
+import { BookOpen, ChefHat, Pencil, X } from "lucide-react";
 import DosiRicetta from "./shared/DosiRicetta";
 
 const righe = (value) => String(value || "").split(/\r?\n/).map(x => x.trim()).filter(Boolean);
 
-export default function SchedaRicettaChiaraModal({ ricetta, tutte = [], onClose, onProduci, onModifica, onRendiOperativa, occupato }) {
+export default function SchedaRicettaChiaraModal({ ricetta, tutte = [], onClose, onProduci, onModifica }) {
   if (!ricetta) return null;
   const documento = ricetta.documentazione_archivio || null;
   const soloLettura = ricetta.origine === "archivio" || ricetta.sola_lettura;
@@ -66,16 +66,10 @@ export default function SchedaRicettaChiaraModal({ ricetta, tutte = [], onClose,
             )}
 
             <div className="grid gap-2 sm:grid-cols-2">
-              {soloLettura ? (onRendiOperativa &&
-                <button onClick={() => onRendiOperativa?.(ricetta)} disabled={occupato} className="col-span-full flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-[#5b7a6b] px-5 py-3 font-black text-white disabled:opacity-60">
-                  <Plus size={18} /> {occupato ? "Inserimento…" : "Inserisci nel ricettario operativo"}
-                </button>
-              ) : (
-                <>
-                  {onProduci && <button onClick={() => onProduci(ricetta)} className="flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-[#5b7a6b] px-5 py-3 font-black text-white"><ChefHat size={18} /> Produci</button>}
-                  {onModifica && <button onClick={() => onModifica(ricetta)} className="flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-[#b9cec1] bg-white px-5 py-3 font-black text-[#3f5a4e]"><Pencil size={17} /> Modifica</button>}
-                </>
-              )}
+              {!soloLettura && <>
+                {onProduci && <button onClick={() => onProduci(ricetta)} className="flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-[#5b7a6b] px-5 py-3 font-black text-white"><ChefHat size={18} /> Produci</button>}
+                {onModifica && <button onClick={() => onModifica(ricetta)} className="flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-[#b9cec1] bg-white px-5 py-3 font-black text-[#3f5a4e]"><Pencil size={17} /> Modifica</button>}
+              </>}
             </div>
             {!soloLettura && documento && <p className="m-0 flex items-center gap-2 text-xs font-bold text-[#5b7a6b]"><BookOpen size={14} /> La documentazione di origine è collegata a questa ricetta, senza duplicarla.</p>}
           </section>
