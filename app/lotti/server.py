@@ -5,7 +5,6 @@ Solo configurazione DB, registrazione router e middleware.
 
 from fastapi import FastAPI, APIRouter, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from datetime import datetime, timezone
 from app.lotti.deploy_info import get_deploy_info
 import asyncio
 import os
@@ -178,43 +177,6 @@ async def health():
     }
 
 
-def _ing(nome, qta, unita="g", allergeni=None):
-    return {"nome": nome, "quantita": qta, "unita": unita, "allergeni": allergeni or [], "fonte": "fattura_xml_o_magazzino"}
-
-
-def _panino(nome, ingredienti, foto, note):
-    allergeni = sorted({a for i in ingredienti for a in i.get("allergeni", [])})
-    return {
-        "nome": nome,
-        "reparto": "rosticceria",
-        "categoria": "panini",
-        "tipo_produzione": "produzione_giornaliera",
-        "porzioni": 1,
-        "ingredienti": [i["nome"] for i in ingredienti],
-        "ingredienti_dettaglio": ingredienti,
-        "componenti": [{"tipo": "materia_prima", "nome": i["nome"], "quantita": i["quantita"], "unita_misura": i["unita"], "fonte": i["fonte"]} for i in ingredienti],
-        "allergeni": allergeni,
-        "allergeni_auto": allergeni,
-        "foto_url": foto,
-        "note": note,
-        "approvata": True,
-        "stagionale": False,
-        "updated_at": datetime.now(timezone.utc),
-    }
-
-
-async def seed_panini_rosticceria():
-    panini = [
-        _panino("Panino Caprese", [_ing("Panuozzo", 1, "pz", ["glutine"]), _ing("Fiordilatte", 80, "g", ["latte"]), _ing("Pomodoro", 70), _ing("Insalata", 20), _ing("Olio extravergine di oliva", 5), _ing("Basilico", 1), _ing("Sale", 1)], "/images/ricette/panino-caprese.jpg", "Panuozzo caprese con fiordilatte, pomodoro e insalata."),
-        _panino("Panino Prosciutto Crudo e Fiordilatte", [_ing("Panuozzo", 1, "pz", ["glutine"]), _ing("Prosciutto crudo", 70), _ing("Fiordilatte", 80, "g", ["latte"]), _ing("Insalata", 20), _ing("Olio extravergine di oliva", 5)], "/images/ricette/panino-crudo-fiordilatte.jpg", "Panuozzo con prosciutto crudo, fiordilatte e insalata."),
-        _panino("Panino Prosciutto Cotto e Fiordilatte", [_ing("Panuozzo", 1, "pz", ["glutine"]), _ing("Prosciutto cotto", 70), _ing("Fiordilatte", 80, "g", ["latte"]), _ing("Insalata", 20), _ing("Olio extravergine di oliva", 5)], "/images/ricette/panino-cotto-fiordilatte.jpg", "Panuozzo con prosciutto cotto, fiordilatte e insalata."),
-    ]
-    for p in panini:
-        p["id"] = "seed-" + p["nome"].lower().replace(" ", "-")
-        p["created_at"] = datetime.now(timezone.utc)
-        await db.ricette.update_one({"nome": p["nome"]}, {"$set": p}, upsert=True)
-
-
 @app.on_event("startup")
 async def startup_event():
     logging.info(f"[STARTUP] DB: {DB_NAME} ({STORAGE})")
@@ -226,7 +188,6 @@ async def startup_event():
     await seed_operatori()
     from app.lotti.routers.magazzino_bar import seed_magazzino_bar
     await seed_magazzino_bar()
-    await seed_panini_rosticceria()
     try:
         from app.lotti.routers.ricette import seed_ricette_solo_nome
         await seed_ricette_solo_nome()
