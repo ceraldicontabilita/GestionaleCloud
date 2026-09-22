@@ -1,6 +1,6 @@
 """
 Router Gelateria: gestione gelati invenduti (da riutilizzare) e memoria delle
-produzioni di gelato. Collezioni MongoDB condivise (DB Gestionale):
+produzioni di gelato. In produzione i documenti sono persistiti su Supabase:
   - gelati_invenduti
   - gelati_produzioni
 Il calcolo ricette è lato frontend (ricette base Ceraldi/Galatea); qui si
@@ -20,6 +20,10 @@ from app.lotti.servizi.lotti_service import crea_lotto
 router = APIRouter(prefix="/gelati", tags=["gelati"])
 
 CATEGORIE = {"crema", "frutta", "cioccolato"}
+
+# Identità fiscale verificata sulla fattura 001852/2 del 14/05/2026:
+# il marchio Galatea compare nelle righe, il cedente è GELINOVA GROUP SRL.
+GELINOVA_PIVA = "03762010266"
 
 
 def _now() -> str:
@@ -89,6 +93,45 @@ async def lista_gusti():
             visti[nome.lower()] = {"nome": nome, "categoria": d.get("categoria") or "crema"}
     gusti = sorted(visti.values(), key=lambda x: x["nome"].lower())
     return {"gusti": gusti, "totale": len(gusti)}
+
+
+@router.get("/prodotti-galatea")
+async def prodotti_galatea_acquistati():
+    """Righe acquistate dal fornitore fiscale del marchio Galatea.
+
+    La fattura è evidenza d'acquisto, non di giacenza, categoria alimentare,
+    allergeni o dichiarazione senza lattosio. Non importa né modifica dati.
+    """
+    fatture = await db.fatture.find(
+        {"piva": GELINOVA_PIVA, "annullata": {"$ne": True}},
+        {"_id": 0, "id": 1, "fornitore": 1, "numero_fattura": 1,
+         "data_fattura": 1, "gestionale_source_id": 1, "prodotti": 1},
+    ).to_list(5000)
+    righe = []
+    for fattura in fatture:
+        for indice, prodotto in enumerate(fattura.get("prodotti") or [], start=1):
+            descrizione = str(prodotto.get("descrizione") or "").strip()
+            if not descrizione:
+                continue
+            righe.append({
+                "id": f"{fattura.get('id')}:{indice}",
+                "descrizione": descrizione,
+                "codice_articolo": str(prodotto.get("codice_articolo") or "").strip(),
+                "quantita": prodotto.get("quantita"),
+                "unita_misura": prodotto.get("unita_misura") or "",
+                "prezzo_unitario": prodotto.get("prezzo_unitario") if prodotto.get("prezzo_unitario") is not None else prodotto.get("prezzo"),
+                "fattura_id": fattura.get("id"),
+                "numero_fattura": fattura.get("numero_fattura"),
+                "data_fattura": fattura.get("data_fattura"),
+                "gestionale_source_id": fattura.get("gestionale_source_id"),
+            })
+    return {
+        "fornitore": fatture[0].get("fornitore") if fatture else None,
+        "piva": GELINOVA_PIVA,
+        "fatture": len(fatture),
+        "righe": len(righe),
+        "prodotti": righe,
+    }
 
 
 # ── Gelati invenduti ──────────────────────────────────────────────────────

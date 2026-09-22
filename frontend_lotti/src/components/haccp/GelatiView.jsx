@@ -2,13 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import { Plus, Trash2, RefreshCw } from "lucide-react";
-import { API } from "../../utils/constants";
+import { API, withToken } from "../../utils/constants";
 import TouchNumberInput from "./shared/TouchNumberInput";
 import { calcolaProduzione, scalaIngredienti } from "./gelati/calcoloProduzione";
 
 // Ricette base Ceraldi/Galatea — le quantità scalano linearmente su `base` (= somma g ricetta).
 // `gruppo` raggruppa la tendina; `prep` = preparazione Galatea; un ingrediente "qb" non scala.
-const RICETTE = {
+export const RICETTE = {
   // ───────────────────── Basi Ceraldi (riferimento 5000 g) ─────────────────────
   "Frutta / Paste grasse – nocciola o pistacchio": {
     base: 5000, gruppo: "Basi Ceraldi",
@@ -25,6 +25,17 @@ const RICETTE = {
   "Base zuccherine / Superbiscotto": {
     base: 5000, gruppo: "Basi Ceraldi",
     ing: { "Set_Core Velluto 540": 1455, Acqua: 2636, "Panna 38%": 682, "Pasta Superbiscotto": 227 },
+  },
+
+  // Galatea, Core_Inside Frutta p. 4; catalogo 2024 p. 6-7, codice 76001.
+  // La fonte dosa l'acqua in litri: i grammi qui sono un'equivalenza operativa
+  // approssimata (1 L ≈ 1 kg), non una temperatura o una pesata prescritta.
+  "Sorbetto Limone Easy Galatea": {
+    base: 5000, gruppo: "Galatea · Sorbetti rapidi", cat: "frutta",
+    ing: { "Easy Limone Libera (76001)": 1500,
+      "Acqua calda (1 L ≈ 1 kg)": 3500 },
+    prep: "Formula del produttore: 1,5 kg di base + 3,5 L di acqua calda. Misura l'acqua in litri; il peso mostrato è approssimato. Il PDF non specifica temperatura in °C, tempi né grammi di succo di limone fresco. Questa è una formula di riferimento, non una produzione o una giacenza registrata.",
+    fonte: "Galatea, brochure Core_Inside Frutta, p. 4; Catalogo generale 2024, p. 6-7 (cod. 76001).",
   },
 
   // ───────────── Galatea · Cioccolato Selection (al latte) — per 1 kg ─────────────
@@ -114,6 +125,15 @@ const RICETTE = {
   },
 };
 const RICETTE_KEYS = Object.keys(RICETTE);
+const FONTE_CIOCCOLATO = "Galatea, brochure Core_Inside Cioccolato";
+const fonteRicetta = (nome, ricetta) => {
+  if (ricetta.fonte) return ricetta.fonte;
+  if (ricetta.gruppo === "Galatea · Selection al latte") return `${FONTE_CIOCCOLATO}, p. 7.`;
+  if (ricetta.gruppo === "Galatea · Gourmet fondente") return `${FONTE_CIOCCOLATO}, p. 9.`;
+  if (nome.startsWith("Supreme Dolce Croccante")) return `${FONTE_CIOCCOLATO}, p. 10.`;
+  if (ricetta.gruppo === "Galatea · Emotion / creativo") return `${FONTE_CIOCCOLATO}, p. 11.`;
+  return null;
+};
 // Tendina raggruppata per `gruppo` (preserva l'ordine di inserimento).
 const RICETTE_GRUPPI = RICETTE_KEYS.reduce((acc, k) => {
   const g = RICETTE[k].gruppo || "Altre";
@@ -177,7 +197,7 @@ function Tabs({ tab, setTab }) {
 }
 
 // ───────────────────────── Calcolo ─────────────────────────
-function CalcoloTab({ onProdotto }) {
+export function CalcoloTab({ onProdotto }) {
   const [recipeT, setRecipeT] = useState(RICETTE_KEYS[0]);
   const [totale, setTotale] = useState(5000);
   const [fruttaT, setFruttaT] = useState("Fragola");
@@ -303,7 +323,7 @@ function CalcoloTab({ onProdotto }) {
           </div>
           <div>
             <label className={labelCls}>Peso totale da produrre (g)</label>
-            <TouchNumberInput value={totale} onChange={setTotale} min={1} title="Peso totale da produrre" presets={[1000, 2000, 3000, 5000]} />
+            <TouchNumberInput value={totale} onChange={setTotale} min={1} title="Peso totale da produrre" presets={recipeT === "Sorbetto Limone Easy Galatea" ? [1000, 2500, 5000, 10000] : [1000, 2000, 3000, 5000]} />
           </div>
         </div>
         {baseAccettaFrutta(recipeT) && (
@@ -365,10 +385,19 @@ function CalcoloTab({ onProdotto }) {
               </tbody>
             </table></div>
 
+            {recipeT === "Sorbetto Limone Easy Galatea" && (
+              <p className="mt-2 text-sm font-semibold text-stone-700">
+                Misura l'acqua: {(nuovo * 0.7 / 1000).toLocaleString("it-IT", { maximumFractionDigits: 2 })} L calda per {fmtG(nuovo)} di miscela nuova.
+              </p>
+            )}
+
             {RICETTE[recipeT].prep && (
               <div className="mt-3 rounded-xl border-l-4 border-[#5b7a6b] bg-[#eef3ef] p-3 text-sm text-stone-700">
                 <span className="font-bold text-[#5b7a6b]">Preparazione Galatea:</span> {RICETTE[recipeT].prep}
               </div>
+            )}
+            {fonteRicetta(recipeT, RICETTE[recipeT]) && (
+              <p className="mt-2 text-xs text-stone-500">Fonte: {fonteRicetta(recipeT, RICETTE[recipeT])}</p>
             )}
 
             {/* Recupero gelato rientrato dagli invenduti */}
@@ -701,22 +730,59 @@ function ProduzioniTab() {
   );
 }
 
-// ───────────────────────── Prodotti Galatea (in arrivo) ─────────────────────────
-function ProdottiTab() {
-  const cats = ["Basi (latte e frutta)", "Paste (pistacchio, nocciola, mandorla, arachide, noce)", "Variegati", "Salse", "Polveri aromatizzanti"];
+// ───────────────────────── Acquisti Galatea documentati ─────────────────────────
+export function ProdottiTab() {
+  const [dati, setDati] = useState(null);
+  const [caricando, setCaricando] = useState(true);
+  const [errore, setErrore] = useState(false);
+  const [cerca, setCerca] = useState("");
+  const carica = useCallback(async () => {
+    setCaricando(true);
+    setErrore(false);
+    try {
+      const risposta = await axios.get(`${API}/gelati/prodotti-galatea`);
+      setDati(risposta.data);
+    } catch {
+      setErrore(true);
+    } finally {
+      setCaricando(false);
+    }
+  }, []);
+  useEffect(() => { carica(); }, [carica]);
+  const prodotti = (dati?.prodotti || []).filter((riga) =>
+    `${riga.descrizione} ${riga.codice_articolo}`.toLocaleLowerCase("it-IT").includes(cerca.toLocaleLowerCase("it-IT"))
+  );
+  const formatoNumero = (valore) => {
+    if (valore === null || valore === undefined || valore === "") return "—";
+    const numero = Number(valore);
+    return Number.isFinite(numero) ? numero.toLocaleString("it-IT", { maximumFractionDigits: 4 }) : String(valore);
+  };
   return (
     <div className="rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
-      <h3 className="m-0 mb-2 text-lg font-black text-stone-900">Catalogo Galatea</h3>
-      <p className="m-0 text-sm text-stone-500">
-        Il catalogo completo dei prodotti Galatea (con allergeni e voci “senza lattosio”) verrà popolato dai prodotti realmente acquistati nelle fatture e dal sito. Categorie:
-      </p>
-      <ul className="mt-3 space-y-1.5 text-sm font-semibold text-stone-700">
-        {cats.map((c) => (
-          <li key={c} className="flex items-center gap-2">
-            <span className="h-1.5 w-1.5 rounded-full bg-[#5b7a6b]" /> {c}
-          </li>
-        ))}
-      </ul>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="m-0 text-lg font-black text-stone-900">Prodotti Galatea acquistati</h3>
+          <p className="mt-1 text-sm text-stone-600">Righe delle fatture di {dati?.fornitore || "GELINOVA GROUP SRL"}. L'acquisto non prova la giacenza residua.</p>
+        </div>
+        <button type="button" onClick={carica} disabled={caricando} className="rounded-xl border border-stone-300 px-3 py-2 text-sm font-bold text-stone-700 disabled:opacity-50">Aggiorna</button>
+      </div>
+      {caricando && <p className="mt-5 text-sm text-stone-600">Caricamento fatture…</p>}
+      {errore && <p role="alert" className="mt-5 text-sm text-rose-700">Impossibile leggere le fatture. Riprova con Aggiorna.</p>}
+      {!caricando && !errore && <>
+        <p className="mt-4 text-sm text-stone-600">{dati?.righe || 0} righe da {dati?.fatture || 0} {dati?.fatture === 1 ? "fattura" : "fatture"}. Descrizioni, codici e prezzi provengono dalle fatture; allergeni e diciture “senza lattosio” non sono verificati qui.</p>
+        {(dati?.righe || 0) > 0 && <input type="search" value={cerca} onChange={(evento) => setCerca(evento.target.value)} placeholder="Cerca descrizione o codice" aria-label="Cerca prodotti Galatea" className={`${inputCls} mt-4 max-w-md`} />}
+        {(dati?.righe || 0) === 0 ? <p className="mt-5 text-sm text-stone-600">Nessuna riga acquistata trovata per il fornitore verificato.</p> :
+          <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm">
+            <thead><tr className="border-b border-stone-200 text-stone-600"><th className="p-2">Prodotto in fattura</th><th className="p-2">Codice</th><th className="p-2 text-right">Quantità</th><th className="p-2 text-right">€/unità</th><th className="p-2">Provenienza</th></tr></thead>
+            <tbody>{prodotti.map((riga) => <tr key={riga.id} className="border-b border-stone-100">
+              <td className="p-2 font-semibold text-stone-900">{riga.descrizione}</td>
+              <td className="p-2">{riga.codice_articolo || "—"}</td>
+              <td className="p-2 text-right">{formatoNumero(riga.quantita)} {riga.unita_misura}</td>
+              <td className="p-2 text-right">{formatoNumero(riga.prezzo_unitario)}</td>
+              <td className="p-2">{riga.fattura_id ? <button type="button" className="font-semibold text-[#426855] underline" onClick={() => window.open(withToken(`${API}/fatture/${encodeURIComponent(riga.fattura_id)}/visualizza`), "_blank", "noopener,noreferrer")}>Fatt. {riga.numero_fattura || "—"}</button> : `Fatt. ${riga.numero_fattura || "—"}`}<span className="ml-1 text-stone-500">{riga.data_fattura || ""}</span></td>
+            </tr>)}</tbody>
+          </table>{prodotti.length === 0 && <p className="p-3 text-sm text-stone-600">Nessuna riga corrisponde alla ricerca.</p>}</div>}
+      </>}
     </div>
   );
 }
