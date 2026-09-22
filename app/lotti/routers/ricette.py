@@ -30,6 +30,7 @@ from pydantic import BaseModel, Field, ConfigDict, field_validator
 from typing import List, Optional, Any
 from datetime import datetime, timezone
 from pathlib import Path
+import asyncio
 import uuid
 import hashlib
 import logging
@@ -2600,11 +2601,9 @@ async def upload_foto(
     mime = file.content_type or ""
     if not mime.startswith("image/"):
         raise HTTPException(400, "File non è un'immagine")
-    # Salvataggio nel document store Supabase (persiste ai restart di Render).
     contenuto = await file.read()
     if len(contenuto) > 15 * 1024 * 1024:
         raise HTTPException(400, "Immagine troppo grande (max 15MB)")
-    safe_id = ricetta_id.replace("/", "_")
     # Versione = timestamp di questo upload. Bug corretto 01/07/2026: foto_url era
     # SEMPRE la stessa stringa per una data ricetta (solo /api/foto/{id}), quindi un
     # aggiornamento foto non cambiava l'URL — né il browser (Cache-Control 24h) né
@@ -2612,25 +2611,26 @@ async def upload_foto(
     # continuavano a mostrare la foto vecchia. Ora l'URL include ?v=<versione>: cambia
     # ad ogni upload, quindi forza sempre un fetch fresco della nuova immagine.
     versione = int(datetime.now(timezone.utc).timestamp())
-    # Ogni caricamento usa un id immutabile e specifico della ricetta. In
-    # passato l'id era solo ``ricetta_id``: più schede che avevano ereditato lo
-    # stesso URL vedevano cambiare insieme la foto. Il nuovo id elimina alla
-    # radice quel collegamento condiviso.
-    foto_id = f"ricetta_{safe_id}_{uuid.uuid4().hex[:12]}"
     foto_source = "illustrazione_ai" if illustrazione_ai else "upload_manuale"
-    foto_sha256 = hashlib.sha256(contenuto).hexdigest()
-    await db.foto_files.insert_one({
-        "_id": foto_id, "mime": mime, "data": contenuto,
-        "ricetta_id": ricetta_id, "versione": versione,
-        "fonte": foto_source, "sha256": foto_sha256,
-        "filename": file.filename,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-    })
-    # foto_url servito dall'endpoint GET /api/foto/{id} (legge da Supabase); ?v cambia
+    from app.lotti.servizi import drive_foto_ricette
+    foto_drive_folder_id = await drive_foto_ricette.risolvi_folder_id(db)
+    caricata = await asyncio.to_thread(
+        drive_foto_ricette.carica,
+        ricetta_id=ricetta_id,
+        contenuto=contenuto,
+        mime=mime,
+        filename=file.filename,
+        folder_id=foto_drive_folder_id,
+    )
+    foto_id = caricata["id"]
+    foto_sha256 = caricata["sha256"]
+    # foto_url servito dall'endpoint GET /api/foto/{id} (legge da Drive); ?v cambia
     # ad ogni upload per invalidare cache browser/React sulla stessa ricetta.
     foto_url = f"/api/foto/{foto_id}?v={versione}"
     await db.ricette.update_one({"id": ricetta_id}, {"$set": {
         "foto_url": foto_url, "foto_id": foto_id,
+        "foto_drive_id": foto_id,
+        "foto_drive_folder_id": foto_drive_folder_id,
         "foto_filename": file.filename, "foto_content_type": mime,
         "foto_sha256": foto_sha256, "foto_source": foto_source,
     }})
@@ -2641,13 +2641,31 @@ async def upload_foto(
 
 @router.get("/foto/{foto_id}")
 async def leggi_foto(foto_id: str):
-    """Serve l'immagine persistita su Supabase. URL con ?v=<versione>: contenuto di una
+    """Serve l'immagine persistita su Drive. URL con ?v=<versione>: contenuto di una
     specifica versione è immutabile, quindi cache lunga e forte è sicura — un
     aggiornamento foto genera un nuovo ?v e quindi un URL (e una cache) diversi."""
+    ricetta = await db.ricette.find_one(
+        {"foto_drive_id": foto_id},
+        {"_id": 0, "foto_content_type": 1, "foto_drive_folder_id": 1},
+    )
+    if ricetta:
+        from app.lotti.servizi import drive_foto_ricette
+        try:
+            contenuto, mime, _ = await asyncio.to_thread(
+                drive_foto_ricette.leggi,
+                foto_id,
+                folder_id=str(ricetta.get("foto_drive_folder_id") or ""),
+            )
+        except FileNotFoundError:
+            raise HTTPException(404, "Foto non trovata")
+        return Response(content=contenuto, media_type=mime,
+                        headers={"Cache-Control": "public, max-age=31536000, immutable"})
+
+    # Compatibilità strettamente temporanea durante la migrazione delle foto
+    # già collegate. Verrà rimossa dopo il cut-over e il conteggio riferimenti=0.
     doc = await db.foto_files.find_one({"_id": foto_id})
     if not doc or not doc.get("data"):
         raise HTTPException(404, "Foto non trovata")
-    from fastapi.responses import Response
     return Response(content=bytes(doc["data"]), media_type=doc.get("mime", "image/jpeg"),
                     headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
