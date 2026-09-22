@@ -45,7 +45,7 @@ INGREDIENTI_CANONICI: dict[str, list[str]] = {
     "Semola": ["semola rimacinata", "semola", "semolato", "semolino"],
     "Farina": ["farina"],
     "Olio extravergine": ["olio extravergine", "olio evo", "evo", "extravergine", "olio oliva"],
-    "Olio di semi": ["olio semi", "olio arachide", "olio girasole", "olio vegetale", "olio soia"],
+    "Olio di semi": ["olio di arachidi", "olio di girasole", "olio di semi", "olio semi", "olio arachide", "olio girasole", "olio vegetale", "olio soia"],
     "Olio": ["olio"],
     "Burro": ["burro", "burro piadi", "beurre"],
     "Margarina": ["margarina"],
