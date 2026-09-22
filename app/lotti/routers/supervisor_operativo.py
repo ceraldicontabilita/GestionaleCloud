@@ -8,6 +8,7 @@ Documentazione: /app/SUPERVISORE.md
 """
 
 import logging
+import hashlib
 from datetime import datetime, timezone, timedelta, date
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -880,7 +881,7 @@ SOGLIE_PRODOTTI = {
     "lievito madre": 20,
 }
 SOGLIA_DEFAULT_GG = 60  # giorni senza acquisto → alert
-SOGLIA_DOPPIO_ACQUISTO_GG = 30  # finestra per rilevare doppio acquisto nello stesso mese
+SOGLIA_ORDINI_RIPETUTI_GG = 30
 
 
 async def check_prodotti_non_acquistati(alerts: list):
@@ -958,68 +959,61 @@ async def check_prodotti_non_acquistati(alerts: list):
         alerts.append(a)
 
 
-async def check_doppio_acquisto_mese(alerts: list):
+async def check_ordini_ripetuti(alerts: list):
+    """Segnala lo stesso prodotto in ordini distinti dello stesso giorno.
+
+    Una riga di lotto/fattura non è un ordine. Servono ID ordine e prodotto
+    persistiti: nomi simili, più righe nella stessa fattura e reimport non
+    sono prove di un doppio ordine.
     """
-    Alert SOLO per veri sospetti di doppio ordine: stesso prodotto, stesso
-    fornitore, STESSO GIORNO, 2+ righe. Comprare uova 40 volte al mese è la
-    normalità di una pasticceria, non un'anomalia (Enzo, 13/06/2026).
-    """
-    oggi = datetime.now(timezone.utc).replace(tzinfo=None)
-    inizio_finestra = oggi - timedelta(days=SOGLIA_DOPPIO_ACQUISTO_GG)
-
-    # Conta acquisti per prodotto nel mese corrente guardando lotti_fornitori
-    pipeline = [
-        {
-            "$match": {
-                "data_fattura": {"$exists": True, "$ne": ""},
-                "created_at": {"$gte": inizio_finestra.isoformat()},
-            }
-        },
-        {
-            "$group": {
-                "_id": {
-                    "prodotto": "$prodotto_nome_norm",
-                    "fornitore": "$fornitore",
-                    "giorno": "$data_fattura",
-                },
-                "conteggio": {"$sum": 1},
-                "prodotto_nome": {"$first": "$prodotto_nome"},
-                "date": {"$push": "$data_fattura"},
-            }
-        },
-        {"$match": {"conteggio": {"$gte": 2}}},
-        {"$sort": {"conteggio": -1}},
-        {"$limit": 10},
-    ]
-
-    try:
-        cursor = db.lotti_fornitori.aggregate(pipeline)
-        duplicati = await cursor.to_list(20)
-    except Exception:
-        return
-
-    for d in duplicati:
-        nome = (d.get("prodotto_nome") or d["_id"].get("prodotto") or "").strip().title()
-        n = d["conteggio"]
-        date_acq = sorted(set(d.get("date", [])))
-        fornitore = d["_id"].get("fornitore", "")
-
-        if not nome or len(nome) < 3:
+    oggi = datetime.now(timezone.utc).date()
+    inizio = oggi - timedelta(days=SOGLIA_ORDINI_RIPETUTI_GG)
+    ordini = await db.ordini_fornitori.find(
+        {"data_ordine": {"$gte": inizio.isoformat()},
+         "stato": {"$in": ["bozza", "confermato", "inviato_fornitori",
+                           "inviato_manualmente", "inviato", "ricevuto_parziale",
+                           "ricevuto"]}},
+        {"_id": 0, "id": 1, "data_ordine": 1, "fornitore": 1,
+         "prodotti": 1},
+    ).to_list(2000)
+    gruppi = {}
+    for ordine in ordini:
+        ordine_id = str(ordine.get("id") or "").strip()
+        giorno = str(ordine.get("data_ordine") or "")[:10]
+        if not ordine_id or not (inizio.isoformat() <= giorno <= oggi.isoformat()):
             continue
+        for prodotto in ordine.get("prodotti") or []:
+            prodotto_id = str(prodotto.get("prodotto_id") or "").strip()
+            fornitore = str(prodotto.get("fornitore") or ordine.get("fornitore") or "").strip()
+            if not prodotto_id or not fornitore:
+                continue
+            chiave = (giorno, fornitore.casefold(), prodotto_id)
+            gruppo = gruppi.setdefault(chiave, {
+                "nome": prodotto.get("nome") or prodotto_id,
+                "fornitore": fornitore,
+                "ordini": set(),
+            })
+            gruppo["ordini"].add(ordine_id)
 
-        alerts.append(
-            _alert(
-                f"DOPPIO_ACQ_{nome[:20].upper().replace(' ','_')}",
-                f"Possibile doppio ordine: {nome} {n} volte lo stesso giorno",
-                (
-                    f"'{nome}' (da {fornitore}) compare {n} volte in data {date_acq[0] if date_acq else '?'}. "
-                    f"Verifica se è un doppio ordine per errore."
-                ),
-                "bassa",
-                "ordini",
-                n,
-            )
+    ripetuti = [(chiave, gruppo) for chiave, gruppo in gruppi.items()
+                if len(gruppo["ordini"]) > 1]
+    ripetuti.sort(key=lambda item: (-len(item[1]["ordini"]), item[0]))
+    for (giorno, fornitore_norm, prodotto_id), gruppo in ripetuti[:10]:
+        nome = gruppo["nome"]
+        ids = sorted(gruppo["ordini"])
+        impronta = hashlib.sha256(
+            f"{giorno}|{fornitore_norm}|{prodotto_id}".encode("utf-8")
+        ).hexdigest()[:12]
+        alert = _alert(
+            f"ORDINI_RIPETUTI_{impronta}",
+            f"Possibile ordine ripetuto: {nome} in {len(ids)} ordini",
+            f"{len(ids)} ordini distinti del {giorno} contengono {nome} "
+            f"per {gruppo['fornitore']}. Verifica gli ordini prima di intervenire.",
+            "bassa", "ordini", len(ids),
         )
+        alert["items"] = [{"id": ordine_id, "nome": f"Ordine {ordine_id}"}
+                          for ordine_id in ids]
+        alerts.append(alert)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1076,7 +1070,7 @@ async def esegui_tutti_i_controlli() -> dict:
     await check_ricezione_merce_oggi(alerts)
     # Frequenza acquisti
     await check_prodotti_non_acquistati(alerts)
-    await check_doppio_acquisto_mese(alerts)
+    await check_ordini_ripetuti(alerts)
     await check_alert_prezzi_ingredienti(alerts)
     await check_qualifiche_fornitori_scadenza(alerts)
     await check_ordini_da_convalidare(alerts)
