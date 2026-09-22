@@ -971,7 +971,8 @@ async def check_ordini_ripetuti(alerts: list):
     ordini = await db.ordini_fornitori.find(
         {"data_ordine": {"$gte": inizio.isoformat()},
          "stato": {"$in": ["bozza", "confermato", "inviato_fornitori",
-                           "inviato_manualmente", "inviato", "ricevuto"]}},
+                           "inviato_manualmente", "inviato", "ricevuto_parziale",
+                           "ricevuto"]}},
         {"_id": 0, "id": 1, "data_ordine": 1, "fornitore": 1,
          "prodotti": 1},
     ).to_list(2000)
