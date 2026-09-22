@@ -590,17 +590,25 @@ async def importa_fattura_xml(files: List[UploadFile] = File(...), job_id: str =
             # effetto additivo (giacenze, numero acquisti, lotti) riconosciamo lo
             # stesso XML tramite SHA-256 e usciamo senza rielaborarlo.
             xml_sha256 = hashlib.sha256(content).hexdigest()
+            # Stessa regola del ponte (`gestionale_fatture._invoice_query`):
+            # basta che combaci numero + P.IVA **oppure** numero + fornitore +
+            # data. Cercare solo per P.IVA perdeva la copia con la P.IVA
+            # troncata dell'import di gennaio e creava un secondo documento.
+            chiave_fornitore = {
+                "fornitore": fattura_data.get("fornitore", ""),
+                "numero_fattura": fattura_data.get("numero_fattura", ""),
+                "data_fattura": data_fmt,
+            }
             if fattura_data.get("piva"):
-                chiave_esistente = {
-                    "numero_fattura": fattura_data.get("numero_fattura", ""),
-                    "piva": fattura_data.get("piva", ""),
-                }
+                chiave_esistente = {"$or": [
+                    {
+                        "numero_fattura": fattura_data.get("numero_fattura", ""),
+                        "piva": fattura_data.get("piva", ""),
+                    },
+                    chiave_fornitore,
+                ]}
             else:
-                chiave_esistente = {
-                    "fornitore": fattura_data.get("fornitore", ""),
-                    "numero_fattura": fattura_data.get("numero_fattura", ""),
-                    "data_fattura": data_fmt,
-                }
+                chiave_esistente = chiave_fornitore
             esistente = await db.fatture.find_one(
                 chiave_esistente,
                 {"_id": 0, "id": 1, "xml_raw": 1, "haccp_xml_sha256": 1},
@@ -612,7 +620,7 @@ async def importa_fattura_xml(files: List[UploadFile] = File(...), job_id: str =
                 ).hexdigest()
             if esistente and hash_esistente == xml_sha256:
                 await db.fatture.update_one(
-                    chiave_esistente,
+                    {"id": esistente.get("id")} if esistente.get("id") else chiave_esistente,
                     {"$set": {
                         "haccp_xml_sha256": xml_sha256,
                         "haccp_pipeline_version": 1,

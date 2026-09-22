@@ -200,3 +200,34 @@ def test_lista_fatture_compatibile_con_store_supabase(bridge):
     assert result[0]["has_xml"] is True
     assert "prodotti" not in result[0]
     assert "xml_raw" not in result[0]
+
+
+def test_invoice_query_riconosce_la_copia_con_piva_diversa(bridge):
+    """Fiorentino 1/163 era in Lotti con P.IVA troncata «03473»: la chiave
+    solo-P.IVA non combaciava e il ponte creava un secondo documento. Ora
+    basta numero + fornitore + data."""
+    module, database = bridge
+    run(database.fatture.insert_one({
+        "id": "vecchia", "numero_fattura": "1/163", "piva": "03473",
+        "fornitore": "F.lli Fiorentino Srl", "data_fattura": "05/01/2026",
+        "prodotti": [{"descrizione": "Farina"}],
+    }))
+    item = {
+        "invoice_number": "1/163", "invoice_date": "2026-01-05",
+        "supplier_name": "F.lli Fiorentino Srl", "supplier_vat": "01637290634",
+    }
+    trovata = run(database.fatture.find_one(module._invoice_query(item), {"_id": 0, "id": 1}))
+    assert trovata == {"id": "vecchia"}
+    # la stessa chiave trova anche la copia con la P.IVA giusta
+    run(database.fatture.insert_one({
+        "id": "nuova", "numero_fattura": "2/200", "piva": "01637290634",
+        "fornitore": "F.LLI FIORENTINO", "data_fattura": "06/01/2026",
+    }))
+    item2 = {"invoice_number": "2/200", "invoice_date": "2026-01-06",
+             "supplier_name": "Fiorentino diverso", "supplier_vat": "01637290634"}
+    assert run(database.fatture.find_one(module._invoice_query(item2), {"_id": 0, "id": 1})) == {"id": "nuova"}
+    # senza P.IVA resta la sola chiave fornitore+numero+data
+    query = module._invoice_query({"invoice_number": "3/1", "invoice_date": "2026-02-01", "supplier_name": "X"})
+    assert query == {"numero_fattura": "3/1", "fornitore": "X", "data_fattura": "01/02/2026"}
+    # un numero diverso non combacia con nessun ramo
+    assert run(database.fatture.find_one(module._invoice_query({**item, "invoice_number": "9/9"}))) is None

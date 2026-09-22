@@ -701,7 +701,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 
 ### Lotti — HACCP, magazzino, prezzi
 
-- **Un solo punto d'ingresso per le fatture** e deduplica sempre attiva (fornitore + numero + data). Il
+- **Un solo punto d'ingresso per le fatture** e deduplica sempre attiva: numero + P.IVA **oppure** numero + fornitore + data (una P.IVA troncata nell'import di gennaio creava doppioni). Il
   ponte dal gestionale vede **tutte** le fatture dell'anno: il tetto per giro vale sulle **ancora da
   prendere**, mai sull'elenco intero, che arriva ordinato per data — tagliarlo butta le più recenti (erano
   444 dal 30/06) e il buco cresce da solo. Quante restano lo dice `arretrato`.
