@@ -29,3 +29,32 @@ test("la scheda operativa non prende procedimento e provenienza da un archivio o
     node.remove();
   }
 });
+
+test("la scheda raccoglie modifica e visibilita senza duplicare azioni sulla card", async () => {
+  const node = document.createElement("div");
+  document.body.appendChild(node);
+  const root = createRoot(node);
+  const onModifica = jest.fn();
+  const onVisibilita = jest.fn();
+  const ricetta = { id: "cer-2", nome: "Babà", ingredienti: [] };
+  try {
+    await act(async () => root.render(<SchedaRicettaChiaraModal
+      ricetta={ricetta}
+      onClose={() => {}}
+      onModifica={onModifica}
+      onVisibilita={onVisibilita}
+    />));
+    const bottoni = [...node.querySelectorAll("button")];
+    const modifica = bottoni.find(b => b.textContent.includes("Modifica nome e ingredienti"));
+    const escludi = bottoni.find(b => b.textContent.includes("Escludi dai reparti ed elimina dalla pagina"));
+    expect(modifica).toBeTruthy();
+    expect(escludi).toBeTruthy();
+    await act(async () => modifica.click());
+    await act(async () => escludi.click());
+    expect(onModifica).toHaveBeenCalledWith(ricetta);
+    expect(onVisibilita).toHaveBeenCalledWith(ricetta);
+  } finally {
+    await act(async () => root.unmount());
+    node.remove();
+  }
+});
