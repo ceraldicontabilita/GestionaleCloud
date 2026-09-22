@@ -2822,6 +2822,7 @@ async def upload_foto(
     # Il Menu digitale punta allo stesso oggetto Storage e aggiorna la sua riga.
     menu_sync = await _sincronizza_menu(ricetta_id)
     precedente_eliminata = False
+    precedente_errore = None
     if cestina_precedente and precedente_id and precedente_id != foto_id:
         if precedente_storage_path:
             riferimenti_attivi = await db.ricette.count_documents({
@@ -2838,21 +2839,28 @@ async def upload_foto(
                 "ricetta.foto_drive_id": precedente_drive_id,
             })
         if riferimenti_attivi + riferimenti_cestino == 0:
-            if precedente_storage_path:
-                await asyncio.to_thread(
-                    supabase_foto_ricette.elimina, precedente_storage_path,
-                )
-                precedente_eliminata = True
-            elif precedente_drive_id:
-                from app.lotti.servizi import drive_foto_ricette
-                precedente_folder = str(esistente.get("foto_drive_folder_id") or "").strip()
-                if precedente_folder:
+            try:
+                if precedente_storage_path:
                     await asyncio.to_thread(
-                        drive_foto_ricette.cestina,
-                        precedente_drive_id,
-                        folder_id=precedente_folder,
+                        supabase_foto_ricette.elimina, precedente_storage_path,
                     )
                     precedente_eliminata = True
+                elif precedente_drive_id:
+                    from app.lotti.servizi import drive_foto_ricette
+                    precedente_folder = str(esistente.get("foto_drive_folder_id") or "").strip()
+                    if precedente_folder:
+                        await asyncio.to_thread(
+                            drive_foto_ricette.cestina,
+                            precedente_drive_id,
+                            folder_id=precedente_folder,
+                        )
+                        precedente_eliminata = True
+            except Exception as exc:
+                # Il nuovo oggetto, il record operativo e il Menu sono già
+                # coerenti: non rispondere 500 facendo credere che l'upload sia
+                # fallito. L'errore della sola pulizia resta esplicito e
+                # verificabile dal chiamante.
+                precedente_errore = f"{type(exc).__name__}: {exc}"
     return {
         "success": True,
         "foto_url": foto_url,
@@ -2860,6 +2868,7 @@ async def upload_foto(
         "foto_sha256": foto_sha256,
         "backup_id": backup_id,
         "foto_precedente_eliminata": precedente_eliminata,
+        "foto_precedente_errore": precedente_errore,
         "menu_sync": menu_sync,
     }
 

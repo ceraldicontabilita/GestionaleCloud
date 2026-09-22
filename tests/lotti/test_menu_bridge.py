@@ -401,6 +401,32 @@ def test_sostituzione_non_elimina_una_foto_ancora_condivisa(ambiente):
     assert dopo["foto_precedente_eliminata"] is False
 
 
+def test_errore_pulizia_precedente_non_nega_upload_gia_persistito(ambiente, monkeypatch):
+    ricette, database, _ = ambiente
+    from app.lotti.servizi import supabase_foto_ricette
+    creata = run(ricette.create_ricetta(ricette.RicettaCreate(**_payload())))
+    prima = run(ricette.upload_foto(
+        creata["id"], _file_png(b"prima"), "upload_manuale", False
+    ))
+    prima_id = ricette._foto_id_da_url(prima["foto_url"])
+    monkeypatch.setattr(
+        supabase_foto_ricette, "elimina",
+        lambda _path: (_ for _ in ()).throw(PermissionError("oggetto non eliminabile")),
+    )
+
+    dopo = run(ricette.upload_foto(
+        creata["id"], _file_png(b"nuova"), "catalogo_napoletano_verificato", True
+    ))
+
+    assert dopo["success"] is True
+    assert dopo["foto_precedente_eliminata"] is False
+    assert dopo["foto_precedente_errore"] == "PermissionError: oggetto non eliminabile"
+    assert ricette._foto_id_da_url(dopo["foto_url"]) != prima_id
+    salvata = run(database.ricette.find_one({"id": creata["id"]}))
+    assert salvata["foto_sha256"] == hashlib.sha256(b"nuova").hexdigest()
+    assert dopo["menu_sync"]["esito"] == "aggiornato"
+
+
 # ---------- scelta del titolare: menu_pubblico -> visible ----------
 
 def test_patch_menu_pubblico_aggiorna_visible(ambiente):

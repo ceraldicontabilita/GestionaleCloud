@@ -109,6 +109,7 @@ async def migra_foto_napoletane(database: Any = None) -> dict:
                 "foto_url": esito.get("foto_url"),
                 "backup_id": esito.get("backup_id"),
                 "foto_precedente_eliminata": esito.get("foto_precedente_eliminata"),
+                "foto_precedente_errore": esito.get("foto_precedente_errore"),
                 "menu_sync": menu_sync.get("esito"),
             })
         except Exception as exc:
