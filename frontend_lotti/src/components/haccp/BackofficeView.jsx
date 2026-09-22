@@ -272,6 +272,14 @@ function TabRicette({ solaLetturaOperatore = false }) {
                   background:"rgba(255,255,255,.95)",color:"#3f5a4e",borderRadius:6,padding:"3px 8px"}}>
                   Immagine AI illustrativa
                 </span>}
+                {!solaLetturaOperatore && !soloLettura && !riferimentoFornitore && <button type="button"
+                  aria-label={`Elimina ricetta ${r.nome}`}
+                  title="Elimina ricetta"
+                  disabled={eliminandoRicetta===r.id}
+                  onClick={() => eliminaRicetta(r)}
+                  style={{position:"absolute",right:8,top:8,width:32,height:32,border:"1px solid #fecaca",borderRadius:"50%",background:"rgba(255,255,255,.96)",color:"#b42318",fontSize:22,fontWeight:900,lineHeight:1,cursor:eliminandoRicetta===r.id?"wait":"pointer",boxShadow:"0 1px 4px rgba(0,0,0,.2)"}}>
+                  ×
+                </button>}
               </div>
               {/* Corpo */}
               <div style={{padding:"12px 14px",display:"flex",flexDirection:"column",gap:8,flex:1}}>
@@ -321,12 +329,6 @@ function TabRicette({ solaLetturaOperatore = false }) {
                     onClick={() => impostaVisibilita(r, esclusa)}
                     style={{width:"100%",minHeight:44,border:"1px solid #cfdfd5",borderRadius:8,background:"#f2f6f3",color:"#3f5a4e",fontFamily:"var(--font)",fontSize:13,fontWeight:800,cursor:"pointer"}}>
                     {cambiandoVisibilita===r.id ? "Aggiorno…" : esclusa ? "↩ Ripristina nei reparti" : "⊘ Escludi dai reparti"}
-                  </button>}
-                  {!solaLetturaOperatore && !soloLettura && !riferimentoFornitore && <button type="button"
-                    disabled={eliminandoRicetta===r.id}
-                    onClick={() => eliminaRicetta(r)}
-                    style={{width:"100%",minHeight:44,border:"1px solid #fecaca",borderRadius:8,background:"#fff1f2",color:"#b42318",fontFamily:"var(--font)",fontSize:13,fontWeight:800,cursor:eliminandoRicetta===r.id?"wait":"pointer"}}>
-                    {eliminandoRicetta===r.id ? "Elimino…" : "🗑 Elimina ricetta"}
                   </button>}
                 </div>
               </div>
