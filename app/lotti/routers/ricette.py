@@ -2217,11 +2217,10 @@ async def migra_foto_cestino_drive(
             "foto_legacy_mancanti": mancanti,
         }
 
-    backup_collection = db["ricette_cestino_foto_backup_20260922"]
-    if await backup_collection.count_documents({}) == 0:
+    if await db.ricette_cestino_foto_backup_20260922.count_documents({}) == 0:
         originali = await db.ricette_cestino.find({}, {"_id": 0}).to_list(5000)
         if originali:
-            await backup_collection.insert_many(originali)
+            await db.ricette_cestino_foto_backup_20260922.insert_many(originali)
 
     from app.lotti.servizi import drive_foto_ricette
     folder = await drive_foto_ricette.risolvi_folder_id(db)
