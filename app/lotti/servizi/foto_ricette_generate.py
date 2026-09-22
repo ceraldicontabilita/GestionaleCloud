@@ -23,9 +23,73 @@ ILLUSTRAZIONI_GENERATE = (
     ("Tramezzino al Prosciutto", "tramezzino_al_prosciutto.webp"),
 )
 
+# Queste due voci erano documentate nel bundle Ceraldi ma non ancora presenti
+# nel ricettario operativo. La promozione e' una tantum: il marcatore impedisce
+# che una futura eliminazione volontaria venga annullata da un riavvio.
+RICETTE_DA_PROMUOVERE = (
+    ("Bagna Curitiba", "bagna curitiba"),
+    ("CURITIBA", "curitiba"),
+)
+
 
 def _slug(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", value.casefold()).strip("_")
+
+
+async def promuovi_ricette_generate_mancanti(
+    db,
+    importa_ricettario: Callable[..., Awaitable[dict]],
+    ricette=RICETTE_DA_PROMUOVERE,
+) -> dict:
+    """Rende operative una sola volta le ricette richieste dal titolare."""
+    esito = {"promosse": [], "gia_presenti": [], "gia_promosse": [], "in_attesa": []}
+    now = datetime.now(timezone.utc).isoformat()
+
+    for nome, chiave in ricette:
+        stato_key = f"ricetta_ai_promossa:{_slug(nome)}"
+        if await db.sistema_stato.find_one({"chiave": stato_key}, {"_id": 1}):
+            esito["gia_promosse"].append(nome)
+            continue
+
+        candidati = await db.ricette.find(
+            {"nome": {"$regex": f"^{re.escape(nome)}$", "$options": "i"}},
+            {"_id": 0, "id": 1, "nome": 1},
+        ).to_list(2)
+        import_esito = None
+        if not candidati:
+            import_esito = await importa_ricettario(
+                anteprima=False,
+                admin={"nome": "startup immagini ricette"},
+                chiave=chiave,
+            )
+            candidati = await db.ricette.find(
+                {"nome": {"$regex": f"^{re.escape(nome)}$", "$options": "i"}},
+                {"_id": 0, "id": 1, "nome": 1},
+            ).to_list(2)
+
+        if len(candidati) != 1:
+            motivo = "ricetta non creata" if not candidati else "nome ricetta ambiguo"
+            esito["in_attesa"].append({"nome": nome, "motivo": motivo})
+            continue
+
+        await db.sistema_stato.update_one(
+            {"chiave": stato_key},
+            {"$set": {
+                "chiave": stato_key,
+                "nome_ricetta": candidati[0]["nome"],
+                "ricetta_id": candidati[0]["id"],
+                "chiave_ricettario": chiave,
+                "quando": now,
+            }},
+            upsert=True,
+        )
+        destinazione = "promosse" if import_esito is not None else "gia_presenti"
+        esito[destinazione].append({
+            "nome": candidati[0]["nome"],
+            "ricetta_id": candidati[0]["id"],
+        })
+
+    return esito
 
 
 async def collega_illustrazioni_generate(

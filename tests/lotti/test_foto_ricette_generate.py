@@ -77,3 +77,33 @@ def test_errore_menu_non_marca_completato_e_viene_ritentato(monkeypatch, tmp_pat
     assert tentativi == ["r-curitiba", "r-curitiba"]
     assert run(database.foto_files.count_documents({})) == 1
     assert run(database.sistema_stato.count_documents({})) == 0
+
+
+def test_promozione_mirata_non_resuscita_ricetta_eliminata():
+    from app.lotti.servizi import foto_ricette_generate as module
+
+    database = AsyncMongoMockClient()["Gestionale_Test"]
+    importazioni = []
+
+    async def importa_ricettario(*, anteprima, admin, chiave):
+        importazioni.append((anteprima, admin["nome"], chiave))
+        await database.ricette.insert_one({
+            "id": "r-bagna",
+            "nome": "Bagna Curitiba",
+            "ingredienti_dettaglio": [{"nome": "Acqua", "quantita": 500}],
+        })
+        return {"ok": True, "create": 1}
+
+    richieste = (("Bagna Curitiba", "bagna curitiba"),)
+    prima = run(module.promuovi_ricette_generate_mancanti(
+        database, importa_ricettario, richieste
+    ))
+    run(database.ricette.delete_one({"id": "r-bagna"}))
+    seconda = run(module.promuovi_ricette_generate_mancanti(
+        database, importa_ricettario, richieste
+    ))
+
+    assert prima["promosse"] == [{"nome": "Bagna Curitiba", "ricetta_id": "r-bagna"}]
+    assert seconda["gia_promosse"] == ["Bagna Curitiba"]
+    assert importazioni == [(False, "startup immagini ricette", "bagna curitiba")]
+    assert run(database.ricette.count_documents({})) == 0
