@@ -143,12 +143,33 @@ class _SupabaseRotto:
 @pytest.fixture
 def ambiente(monkeypatch):
     import app.lotti.routers.ricette as ricette
+    from app.lotti.servizi import drive_foto_ricette
 
     monkeypatch.setenv("MENU_SUPABASE_URL", "https://menu.test.supabase.co")
     finto = _FakeSupabase()
     monkeypatch.setattr(menu_bridge, "supabase", finto)
     database = AsyncMongoMockClient()["Gestionale_Test"]
     monkeypatch.setattr(ricette, "db", database)
+    foto_drive = {}
+
+    async def risolvi_folder_id(_db):
+        return "cartella-ricette"
+
+    def carica_drive(*, ricetta_id, contenuto, mime, filename=None, folder_id, service=None):
+        assert folder_id == "cartella-ricette"
+        digest = hashlib.sha256(contenuto).hexdigest()
+        file_id = f"drive-{ricetta_id}-{digest[:12]}"
+        foto_drive[file_id] = (contenuto, mime)
+        return {"id": file_id, "sha256": digest, "filename": filename}
+
+    def leggi_drive(file_id, *, folder_id, service=None):
+        assert folder_id == "cartella-ricette"
+        contenuto, mime = foto_drive[file_id]
+        return contenuto, mime, {"id": file_id, "mimeType": mime}
+
+    monkeypatch.setattr(drive_foto_ricette, "carica", carica_drive)
+    monkeypatch.setattr(drive_foto_ricette, "leggi", leggi_drive)
+    monkeypatch.setattr(drive_foto_ricette, "risolvi_folder_id", risolvi_folder_id)
     return ricette, database, finto
 
 
@@ -263,6 +284,9 @@ def test_upload_foto_copia_immagine_nel_menu(ambiente):
     esito = run(ricette.upload_foto(creata["id"], _file_png(), False))
     foto_id = ricette._foto_id_da_url(esito["foto_url"])
     assert esito["menu_sync"]["esito"] == "aggiornato"
+    risposta_foto = run(ricette.leggi_foto(foto_id))
+    assert risposta_foto.body == b"\x89PNG-finto"
+    assert risposta_foto.media_type == "image/png"
 
     assert len(finto.upload) == 1
     caricato = finto.upload[0]
@@ -288,19 +312,18 @@ def test_upload_foto_copia_immagine_nel_menu(ambiente):
     assert finto.tabelle["menu_products"][0]["image"].endswith(f"/lotti/{foto_id2}.png")
 
 
-def test_illustrazione_ai_conserva_provenienza_e_hash_nella_ricetta_e_nel_file(ambiente):
+def test_illustrazione_ai_conserva_provenienza_hash_e_id_drive_nella_ricetta(ambiente):
     ricette, database, _ = ambiente
     creata = run(ricette.create_ricetta(ricette.RicettaCreate(**_payload())))
     contenuto = b"\x89PNG-illustrazione"
 
     esito = run(ricette.upload_foto(creata["id"], _file_png(contenuto), True))
     salvata = run(database.ricette.find_one({"id": creata["id"]}))
-    foto = run(database.foto_files.find_one({"_id": salvata["foto_id"]}))
-
-    assert esito["foto_source"] == salvata["foto_source"] == foto["fonte"] == "illustrazione_ai"
-    assert salvata["foto_sha256"] == foto["sha256"] == hashlib.sha256(contenuto).hexdigest()
+    assert esito["foto_source"] == salvata["foto_source"] == "illustrazione_ai"
+    assert salvata["foto_sha256"] == hashlib.sha256(contenuto).hexdigest()
     assert salvata["foto_url"] == esito["foto_url"]
-    assert foto["ricetta_id"] == creata["id"]
+    assert salvata["foto_drive_id"] == salvata["foto_id"]
+    assert run(database.foto_files.count_documents({})) == 0
 
 
 def test_upload_multipart_distingue_illustrazione_ai_da_foto_manuale(ambiente):

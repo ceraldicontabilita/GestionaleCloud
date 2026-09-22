@@ -438,6 +438,16 @@ def _rimuovi_sync(lotti_ref: str) -> dict:
 # ================== API asincrona usata dal router ricette ==================
 
 async def _foto_ricetta(ricetta: dict, db: Any) -> Optional[dict]:
+    drive_id = str(ricetta.get("foto_drive_id") or "").strip()
+    if drive_id:
+        from app.lotti.servizi import drive_foto_ricette
+        contenuto, mime, _ = await asyncio.to_thread(
+            drive_foto_ricette.leggi,
+            drive_id,
+            folder_id=str(ricetta.get("foto_drive_folder_id") or ""),
+        )
+        return {"_id": drive_id, "mime": mime, "data": contenuto,
+                "sha256": ricetta.get("foto_sha256")}
     foto_id = _foto_id_da_url(ricetta.get("foto_url"))
     if not foto_id or db is None:
         return None
