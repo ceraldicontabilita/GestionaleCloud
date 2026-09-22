@@ -23,7 +23,7 @@ export default function PageHeader({
   const emoji = icona || (reparto ? tema.emoji : "");
 
   return (
-    <div
+    <header
       style={{
         background: sfondo,
         borderRadius: 18,
@@ -41,6 +41,7 @@ export default function PageHeader({
       <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
         {emoji && (
           <div
+            aria-hidden="true"
             style={{
               width: compatta ? 42 : 52,
               height: compatta ? 42 : 52,
@@ -56,8 +57,9 @@ export default function PageHeader({
           </div>
         )}
         <div style={{ minWidth: 0 }}>
-          <div
+          <h1
             style={{
+              margin: 0,
               fontWeight: 800,
               fontSize: compatta ? 20 : 26,
               lineHeight: 1.15,
@@ -66,7 +68,7 @@ export default function PageHeader({
             }}
           >
             {titolo}
-          </div>
+          </h1>
           {sottotitolo && (
             <div style={{ fontSize: 13, opacity: 0.9, marginTop: 4, fontWeight: 500 }}>
               {sottotitolo}
@@ -79,6 +81,6 @@ export default function PageHeader({
           {azioni}
         </div>
       )}
-    </div>
+    </header>
   );
 }
