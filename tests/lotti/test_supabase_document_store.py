@@ -1,6 +1,6 @@
 import asyncio
 
-from app.lotti.supabase_document_store import PersistentDatabase
+from app.lotti.supabase_document_store import PersistentDatabase, SupabaseRpcStore
 
 
 class FakeStore:
@@ -121,3 +121,43 @@ def test_aggiornamenti_diversi_vengono_persistiti_in_un_solo_lotto():
     assert store.upsert_calls == chiamate_prima + 1
     assert store.docs["prodotti"]["1"]["descrizione"] == "Descrizione A"
     assert store.docs["prodotti"]["2"]["descrizione"] == "Descrizione B"
+
+
+def test_rpc_ripristina_doc_id_nei_documenti_storici_senza_id():
+    store = SupabaseRpcStore.__new__(SupabaseRpcStore)
+    store.secret = "segreto-test"
+
+    async def rpc(nome, payload):
+        if nome == "lotti_list_docs":
+            return {
+                "items": [{"doc_id": "voce-1", "data": {"id": "voce-1", "nome": "Babà"}}],
+                "total": 1,
+            }
+        if nome == "lotti_get_doc":
+            return {"id": "voce-1", "nome": "Babà"}
+        raise AssertionError(nome)
+
+    store._rpc = rpc
+
+    elenco = run(store.list_docs("ricette_cestino"))
+    singolo = run(store.get_doc("ricette_cestino", "voce-1"))
+
+    assert elenco == [{"_id": "voce-1", "id": "voce-1", "nome": "Babà"}]
+    assert singolo == {"_id": "voce-1", "id": "voce-1", "nome": "Babà"}
+
+
+def test_update_di_documento_storico_non_crea_una_seconda_identita():
+    store = FakeStore()
+    store.docs["ricette_cestino"] = {
+        "voce-1": {"_id": "voce-1", "id": "voce-1", "nome": "Babà"},
+    }
+    db = PersistentDatabase(store, "Gestionale")
+
+    esito = run(db.ricette_cestino.update_one(
+        {"_id": "voce-1"},
+        {"$set": {"foto_drive_id": "drive-1"}},
+    ))
+
+    assert esito.modified_count == 1
+    assert list(store.docs["ricette_cestino"]) == ["voce-1"]
+    assert store.docs["ricette_cestino"]["voce-1"]["foto_drive_id"] == "drive-1"

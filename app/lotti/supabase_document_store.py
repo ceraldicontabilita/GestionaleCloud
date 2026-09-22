@@ -112,7 +112,16 @@ class SupabaseRpcStore:
                 },
             )
             rows = (page or {}).get("items") or []
-            items.extend(_json_restore(row.get("data") or {}) for row in rows)
+            for row in rows:
+                doc = _json_restore(row.get("data") or {})
+                # ``doc_id`` e' l'identita' persistente della riga Supabase.
+                # I documenti storici possono non avere ancora ``_id`` dentro
+                # il JSON: senza reiniettarlo mongomock ne generava uno nuovo e
+                # il primo update creava una seconda riga invece di sostituire
+                # quella originale.
+                if doc.get("_id") is None:
+                    doc["_id"] = row.get("doc_id")
+                items.append(doc)
             offset += len(rows)
             if not rows or offset >= int((page or {}).get("total") or 0):
                 return items
@@ -126,7 +135,12 @@ class SupabaseRpcStore:
                 "p_doc_id": str(doc_id),
             },
         )
-        return _json_restore(result) if result is not None else None
+        if result is None:
+            return None
+        doc = _json_restore(result)
+        if doc.get("_id") is None:
+            doc["_id"] = str(doc_id)
+        return doc
 
     async def upsert_docs(self, collection: str, docs: Iterable[dict]) -> int:
         rows = []
