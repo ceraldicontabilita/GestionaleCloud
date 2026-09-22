@@ -46,7 +46,7 @@ PROIEZIONE = {
     "_id": 0, "id": 1, "nome": 1, "reparto": 1,
     "prezzo_vendita": 1, "prezzo_tavolo": 1, "descrizione": 1,
     "allergeni": 1, "allergeni_auto": 1, "foto_url": 1,
-    "menu_pubblico": 1, "menu_category_id": 1, "menu_subcategory_id": 1,
+    "menu_pubblico": 1,
 }
 
 LIMITE_RICETTE = 5000

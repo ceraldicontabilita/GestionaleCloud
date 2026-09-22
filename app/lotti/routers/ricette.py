@@ -138,11 +138,6 @@ class Ricetta(BaseModel):
     # Riga breve per il Menu digitale, distinta da `note` (che e' il
     # procedimento interno e non esce mai verso i clienti).
     descrizione: Optional[str] = None
-    # Categoria/sottocategoria del Menu scelte dal titolare
-    # (app/lotti/routers/menu_categorie.py). Vuote = categoria storica
-    # "Produzione Ceraldi" + sottocategoria per reparto.
-    menu_category_id: Optional[int] = None
-    menu_subcategory_id: Optional[int] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -160,14 +155,9 @@ class RicettaCreate(BaseModel):
     prezzo_vendita: Optional[float] = None       # prezzo AL BANCO
     prezzo_tavolo: Optional[float] = None        # prezzo AL TAVOLO (Menu digitale)
     descrizione: Optional[str] = None            # riga breve per il Menu
-    menu_category_id: Optional[int] = None
-    menu_subcategory_id: Optional[int] = None
     reparto: Optional[str] = None
     foto_url: Optional[str] = None
     stagionale: Optional[bool] = False
-    allergeni_auto: Optional[List[str]] = []  # allergeni calcolati dal frontend
-    allergeni: Optional[List[str]] = []  # allergeni manuali
-    allergeni_confermati: bool = False  # True solo dopo una modifica umana esplicita
     # Menu digitale (richiesta titolare 03/09/2026): la ricetta e' sempre
     # replicata nel Menu, questo flag decide se compare nel menu PUBBLICO.
     # None in aggiornamento = lascia il valore gia' salvato; in creazione = False.
@@ -1665,13 +1655,12 @@ async def get_ricetta(ricetta_id: str):
 
 @router.post("/ricette", response_model=Ricetta)
 async def create_ricetta(item: RicettaCreate):
-    from app.lotti.allergeni import estrai_nomi_ingredienti, normalizza_allergeni, rileva_allergeni
+    from app.lotti.allergeni import estrai_nomi_ingredienti, rileva_allergeni
 
     # Calcola allergeni automaticamente dagli ingredienti se non arrivano dal frontend
     item_data = item.model_dump()
     nomi_ing = estrai_nomi_ingredienti(item_data)
     allergeni_calc, _ = rileva_allergeni(nomi_ing)
-    allergeni_manuali = normalizza_allergeni(item.allergeni) if item.allergeni_confermati else []
 
     # Assegna reparto automatico se non fornito
     reparto = item.reparto or _categorizza_reparto(
@@ -1682,18 +1671,22 @@ async def create_ricetta(item: RicettaCreate):
 
     obj = Ricetta(**item.model_dump())
     doc = obj.model_dump()
+    # Gli allergeni appartengono agli ingredienti: eventuali valori inviati da
+    # client vecchi non costituiscono una seconda fonte editabile.
     doc.pop("allergeni_confermati", None)
+    doc.pop("menu_category_id", None)
+    doc.pop("menu_subcategory_id", None)
     doc["created_at"] = doc["created_at"].isoformat()
     doc["allergeni_auto"] = allergeni_calc
-    doc["allergeni"] = allergeni_manuali if item.allergeni_confermati else allergeni_calc
+    doc["allergeni"] = allergeni_calc
     # Distingue "controllato, zero allergeni trovati" da "mai controllato" (nessun
     # ingrediente presente): l'alert del Supervisore guarda questo flag, non se
     # "allergeni" è vuoto — altrimenti una ricetta senza allergeni REALI (es.
     # "Funghi trifolati") resterebbe segnalata per sempre come "mancante".
-    doc["allergeni_verificato"] = bool(nomi_ing) or item.allergeni_confermati
+    doc["allergeni_verificato"] = bool(nomi_ing)
     # Compilati dall'automatismo alla creazione: restano "da confermare" finché
     # Enzo non li salva dal tab allergeni (decisione 04/07/2026).
-    doc["allergeni_da_confermare"] = bool(nomi_ing) and not item.allergeni_confermati
+    doc["allergeni_da_confermare"] = bool(nomi_ing)
     doc["reparto"] = reparto
     doc["menu_pubblico"] = bool(item.menu_pubblico)
     doc.setdefault("visibile_tablet", True)
@@ -1722,38 +1715,33 @@ async def create_ricetta(item: RicettaCreate):
 
 @router.put("/ricette/{ricetta_id}", response_model=Ricetta)
 async def update_ricetta(ricetta_id: str, item: RicettaCreate, _admin=Depends(require_admin)):
-    from app.lotti.allergeni import estrai_nomi_ingredienti, normalizza_allergeni, rileva_allergeni
+    from app.lotti.allergeni import estrai_nomi_ingredienti, rileva_allergeni
 
     precedente = await db.ricette.find_one({"id": ricetta_id}, {"_id": 0})
     if not precedente:
         raise HTTPException(404, "Ricetta non trovata")
 
     payload = item.model_dump()
-    allergeni_confermati = bool(payload.pop("allergeni_confermati", False))
+    payload.pop("allergeni_confermati", None)
+    payload.pop("menu_category_id", None)
+    payload.pop("menu_subcategory_id", None)
     # Flag Menu non inviato = non toccare la scelta gia' fatta dal titolare.
     if payload.get("menu_pubblico") is None:
         payload.pop("menu_pubblico", None)
-    # Stessa regola per i campi del Menu aggiunti il 19/09/2026: un form che
-    # non li manda (pagine vecchie, salvataggi parziali) non deve azzerare
-    # prezzo al tavolo, descrizione o categoria gia' scelti. Per svuotarli si
-    # usa la PATCH, dove il valore arriva esplicito.
-    for campo_menu in ("prezzo_tavolo", "descrizione", "menu_category_id", "menu_subcategory_id"):
+    # Un form che non manda prezzo al tavolo o descrizione non li azzera. Per
+    # svuotarli si usa la PATCH, dove il valore arriva esplicito.
+    for campo_menu in ("prezzo_tavolo", "descrizione"):
         if payload.get(campo_menu) is None:
             payload.pop(campo_menu, None)
 
-    # Ricalcola SEMPRE gli allergeni dagli ingredienti (auto), salvo override manuale esplicito
+    # Ricalcola sempre gli allergeni dalla fonte canonica: gli ingredienti.
     nomi_ing = estrai_nomi_ingredienti(payload)
     allergeni_calc, _ = rileva_allergeni(nomi_ing)
     payload["allergeni_auto"] = allergeni_calc
-    if allergeni_confermati:
-        payload["allergeni"] = normalizza_allergeni(payload.get("allergeni"))
-    else:
-        payload["allergeni"] = allergeni_calc
+    payload["allergeni"] = allergeni_calc
     # Vedi create_ricetta: distingue "verificato, zero trovati" da "mai verificato".
-    payload["allergeni_verificato"] = bool(nomi_ing) or allergeni_confermati
-    # Allergeni scritti a mano nel form = confermati da un umano; auto-derivati =
-    # restano da confermare (decisione Enzo 04/07/2026).
-    payload["allergeni_da_confermare"] = bool(nomi_ing) and not allergeni_confermati
+    payload["allergeni_verificato"] = bool(nomi_ing)
+    payload["allergeni_da_confermare"] = bool(nomi_ing)
 
     # Salvare dal form «Ricette» trasforma il riferimento ufficiale del
     # fornitore in una ricetta operativa Ceraldi, senza perdere la provenienza.
@@ -2839,25 +2827,21 @@ async def aggiorna_ingredienti_dettaglio(ricetta_id: str, ingredienti_dettaglio:
             continue
         puliti.append({**voce, "nome": nome})
         nomi.append(nome)
-    esistente = await db.ricette.find_one(
-        {"id": ricetta_id}, {"_id": 0, "allergeni": 1, "allergeni_auto": 1}
-    )
+    esistente = await db.ricette.find_one({"id": ricetta_id}, {"_id": 1})
     if not esistente:
         raise HTTPException(404, "Ricetta non trovata")
-    from app.lotti.routers.utils import _rileva_allergeni
-    allergeni_auto = _rileva_allergeni(nomi).get("allergeni_presenti", []) if nomi else []
+    from app.lotti.allergeni import rileva_allergeni
+    allergeni_auto, _ = rileva_allergeni(nomi)
     aggiornamento = {
         "ingredienti_dettaglio": puliti,
         "ingredienti": nomi,
         "origine_ingredienti": "manuale",
         "ingredienti_updated_at": datetime.now(timezone.utc).isoformat(),
         "allergeni_auto": allergeni_auto,
+        "allergeni": allergeni_auto,
         "allergeni_verificato": bool(nomi),
         "allergeni_da_confermare": bool(nomi),
     }
-    # Un override umano degli allergeni non viene perso.
-    if not esistente.get("allergeni") or esistente.get("allergeni") == esistente.get("allergeni_auto"):
-        aggiornamento["allergeni"] = allergeni_auto
     await db.ricette.update_one({"id": ricetta_id}, {"$set": aggiornamento})
     return await db.ricette.find_one({"id": ricetta_id}, {"_id": 0})
 
@@ -2879,8 +2863,6 @@ async def aggiorna_campo_ricetta(ricetta_id: str, body: dict):
         "reparto",
         "prezzo_vendita",
         "prezzo_tavolo",
-        "menu_category_id",
-        "menu_subcategory_id",
         "componenti",
         "foto_url",
         "stagionale",

@@ -45,7 +45,6 @@ const sfogliatella = (extra = {}) => ({
   menu_pubblico: true, foto_url: "/api/foto/sfogliatella",
   descrizione: "Pasta sfoglia croccante, ricotta e canditi",
   prezzo_vendita: 1.8, prezzo_tavolo: 2.5,
-  menu_category_id: 1000010, menu_subcategory_id: 1000011,
   allergeni: ["Cereali contenenti glutine", "Latte", "Uova"],
   ...extra,
 });
@@ -70,41 +69,15 @@ describe("prezzo che il Menu espone", () => {
 });
 
 describe("dove finisce la ricetta nel Menu", () => {
-  test("categoria e sottocategoria scelte vengono rispettate", () => {
+  test("la destinazione deriva sempre dal reparto", () => {
     expect(destinazioneMenu(sfogliatella(), CATEGORIE)).toEqual({
-      origine: "scelta", categoria: "Colazioni", sottocategoria: "Sfogliate",
+      origine: "automatica", categoria: CATEGORIA_PREDEFINITA, sottocategoria: "Pasticceria",
     });
   });
 
-  test("senza scelta si ricade sulla categoria storica, sezione per reparto", () => {
-    expect(destinazioneMenu(sfogliatella({ menu_category_id: null, menu_subcategory_id: null }), CATEGORIE))
-      .toEqual({ origine: "predefinita", categoria: CATEGORIA_PREDEFINITA, sottocategoria: "Pasticceria" });
-  });
-
-  test("categoria scelta senza sottocategoria: dentro quella categoria, sezione del reparto", () => {
-    expect(destinazioneMenu(sfogliatella({ menu_subcategory_id: null }), CATEGORIE))
-      .toEqual({ origine: "scelta_senza_sottocategoria", categoria: "Colazioni", sottocategoria: "Pasticceria" });
-  });
-
-  test("una sottocategoria di un'ALTRA categoria non vale", () => {
-    expect(destinazioneMenu(sfogliatella({ menu_subcategory_id: 1000002 }), CATEGORIE).origine)
-      .toBe("scelta_senza_sottocategoria");
-  });
-
-  test("una categoria di Qromo non è agganciabile: si ricade sulla predefinita", () => {
-    const d = destinazioneMenu(sfogliatella({ menu_category_id: 7, menu_subcategory_id: null }), CATEGORIE);
-    expect(d.origine).toBe("scelta_non_valida");
-    expect(d.categoria).toBe(CATEGORIA_PREDEFINITA);
-  });
-
-  test("una categoria cancellata è una scelta non più valida", () => {
-    expect(destinazioneMenu(sfogliatella({ menu_category_id: 999999 }), CATEGORIE).origine)
-      .toBe("scelta_non_valida");
-  });
-
-  test("finché le categorie non sono caricate non si accusa la ricetta", () => {
-    const vuoto = indicizzaCategorie(null);
-    expect(destinazioneMenu(sfogliatella(), vuoto).origine).toBe("scelta");
+  test("i vecchi campi manuali non cambiano la destinazione", () => {
+    expect(destinazioneMenu(sfogliatella({ menu_category_id: 7, menu_subcategory_id: 1000002 }), CATEGORIE))
+      .toEqual({ origine: "automatica", categoria: CATEGORIA_PREDEFINITA, sottocategoria: "Pasticceria" });
   });
 
   test("un reparto sconosciuto finisce nella sezione Altro", () => {
@@ -133,10 +106,10 @@ describe("cosa c'è da sistemare", () => {
       .toEqual(["senza_descrizione"]);
   });
 
-  test("foto e categoria non valida si sommano, in ordine di gravità", () => {
+  test("foto, prezzo e descrizione mancanti si sommano", () => {
     const rotta = sfogliatella({ foto_url: "", menu_category_id: 7, prezzo_tavolo: null, descrizione: "" });
     expect(problemiRicettaMenu(rotta, CATEGORIE))
-      .toEqual(["categoria_non_valida", "prezzo_banco", "senza_descrizione", "senza_foto"]);
+      .toEqual(["prezzo_banco", "senza_descrizione", "senza_foto"]);
   });
 });
 
@@ -161,7 +134,6 @@ describe("elenco e riepilogo della vetrina", () => {
     expect(conteggio.senza_descrizione).toBe(1);
     expect(conteggio.senza_foto).toBe(1);
     expect(conteggio.senza_prezzo).toBe(0);
-    expect(conteggio.categoria_non_valida).toBe(0);
   });
 
   test("le ricette da sistemare vengono prima, le complete in fondo", () => {
