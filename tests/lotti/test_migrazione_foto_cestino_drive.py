@@ -67,3 +67,59 @@ def test_migrazione_foto_cestino_drive_e_riprendibile(monkeypatch):
     secondo_giro = run(ricette.migra_foto_cestino_drive(True, 10, {}))
     assert secondo_giro["foto_migrate"] == 0
     assert secondo_giro["voci_aggiornate"] == 0
+
+
+def test_worker_completa_tutti_i_lotti_senza_duplicare(monkeypatch):
+    import app.lotti.routers.ricette as ricette
+
+    esiti = iter([
+        {
+            "foto_migrate": 25,
+            "voci_aggiornate": 50,
+            "foto_legacy_mancanti": [],
+            "voci_restanti": 7,
+        },
+        {
+            "foto_migrate": 7,
+            "voci_aggiornate": 12,
+            "foto_legacy_mancanti": [],
+            "voci_restanti": 0,
+        },
+    ])
+
+    async def migra(applica, limite, admin):
+        assert applica is True
+        assert limite == 25
+        assert admin == {}
+        return next(esiti)
+
+    monkeypatch.setattr(ricette, "migra_foto_cestino_drive", migra)
+
+    risultato = run(ricette.completa_migrazione_foto_cestino_drive())
+    assert risultato == {
+        "foto_migrate": 32,
+        "voci_aggiornate": 62,
+        "giri": 2,
+        "voci_restanti": 0,
+    }
+
+
+def test_worker_non_dichiara_successo_senza_avanzamento(monkeypatch):
+    import app.lotti.routers.ricette as ricette
+
+    async def fermo(applica, limite, admin):
+        return {
+            "foto_migrate": 0,
+            "voci_aggiornate": 0,
+            "foto_legacy_mancanti": [],
+            "voci_restanti": 3,
+        }
+
+    monkeypatch.setattr(ricette, "migra_foto_cestino_drive", fermo)
+
+    try:
+        run(ricette.completa_migrazione_foto_cestino_drive())
+    except RuntimeError as exc:
+        assert "senza avanzamento" in str(exc)
+    else:
+        raise AssertionError("Il worker non deve dichiarare completata una migrazione ferma")
