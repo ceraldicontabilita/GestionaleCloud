@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import { Plus, Trash2, RefreshCw } from "lucide-react";
-import { API } from "../../utils/constants";
+import { API, withToken } from "../../utils/constants";
 import TouchNumberInput from "./shared/TouchNumberInput";
 import { calcolaProduzione, scalaIngredienti } from "./gelati/calcoloProduzione";
 
@@ -701,22 +701,59 @@ function ProduzioniTab() {
   );
 }
 
-// ───────────────────────── Prodotti Galatea (in arrivo) ─────────────────────────
-function ProdottiTab() {
-  const cats = ["Basi (latte e frutta)", "Paste (pistacchio, nocciola, mandorla, arachide, noce)", "Variegati", "Salse", "Polveri aromatizzanti"];
+// ───────────────────────── Acquisti Galatea documentati ─────────────────────────
+export function ProdottiTab() {
+  const [dati, setDati] = useState(null);
+  const [caricando, setCaricando] = useState(true);
+  const [errore, setErrore] = useState(false);
+  const [cerca, setCerca] = useState("");
+  const carica = useCallback(async () => {
+    setCaricando(true);
+    setErrore(false);
+    try {
+      const risposta = await axios.get(`${API}/gelati/prodotti-galatea`);
+      setDati(risposta.data);
+    } catch {
+      setErrore(true);
+    } finally {
+      setCaricando(false);
+    }
+  }, []);
+  useEffect(() => { carica(); }, [carica]);
+  const prodotti = (dati?.prodotti || []).filter((riga) =>
+    `${riga.descrizione} ${riga.codice_articolo}`.toLocaleLowerCase("it-IT").includes(cerca.toLocaleLowerCase("it-IT"))
+  );
+  const formatoNumero = (valore) => {
+    if (valore === null || valore === undefined || valore === "") return "—";
+    const numero = Number(valore);
+    return Number.isFinite(numero) ? numero.toLocaleString("it-IT", { maximumFractionDigits: 4 }) : String(valore);
+  };
   return (
     <div className="rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
-      <h3 className="m-0 mb-2 text-lg font-black text-stone-900">Catalogo Galatea</h3>
-      <p className="m-0 text-sm text-stone-500">
-        Il catalogo completo dei prodotti Galatea (con allergeni e voci “senza lattosio”) verrà popolato dai prodotti realmente acquistati nelle fatture e dal sito. Categorie:
-      </p>
-      <ul className="mt-3 space-y-1.5 text-sm font-semibold text-stone-700">
-        {cats.map((c) => (
-          <li key={c} className="flex items-center gap-2">
-            <span className="h-1.5 w-1.5 rounded-full bg-[#5b7a6b]" /> {c}
-          </li>
-        ))}
-      </ul>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="m-0 text-lg font-black text-stone-900">Prodotti Galatea acquistati</h3>
+          <p className="mt-1 text-sm text-stone-600">Righe delle fatture di {dati?.fornitore || "GELINOVA GROUP SRL"}. L'acquisto non prova la giacenza residua.</p>
+        </div>
+        <button type="button" onClick={carica} disabled={caricando} className="rounded-xl border border-stone-300 px-3 py-2 text-sm font-bold text-stone-700 disabled:opacity-50">Aggiorna</button>
+      </div>
+      {caricando && <p className="mt-5 text-sm text-stone-600">Caricamento fatture…</p>}
+      {errore && <p role="alert" className="mt-5 text-sm text-rose-700">Impossibile leggere le fatture. Riprova con Aggiorna.</p>}
+      {!caricando && !errore && <>
+        <p className="mt-4 text-sm text-stone-600">{dati?.righe || 0} righe da {dati?.fatture || 0} {dati?.fatture === 1 ? "fattura" : "fatture"}. Descrizioni, codici e prezzi provengono dalle fatture; allergeni e diciture “senza lattosio” non sono verificati qui.</p>
+        {(dati?.righe || 0) > 0 && <input type="search" value={cerca} onChange={(evento) => setCerca(evento.target.value)} placeholder="Cerca descrizione o codice" aria-label="Cerca prodotti Galatea" className={`${inputCls} mt-4 max-w-md`} />}
+        {(dati?.righe || 0) === 0 ? <p className="mt-5 text-sm text-stone-600">Nessuna riga acquistata trovata per il fornitore verificato.</p> :
+          <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm">
+            <thead><tr className="border-b border-stone-200 text-stone-600"><th className="p-2">Prodotto in fattura</th><th className="p-2">Codice</th><th className="p-2 text-right">Quantità</th><th className="p-2 text-right">€/unità</th><th className="p-2">Provenienza</th></tr></thead>
+            <tbody>{prodotti.map((riga) => <tr key={riga.id} className="border-b border-stone-100">
+              <td className="p-2 font-semibold text-stone-900">{riga.descrizione}</td>
+              <td className="p-2">{riga.codice_articolo || "—"}</td>
+              <td className="p-2 text-right">{formatoNumero(riga.quantita)} {riga.unita_misura}</td>
+              <td className="p-2 text-right">{formatoNumero(riga.prezzo_unitario)}</td>
+              <td className="p-2">{riga.fattura_id ? <button type="button" className="font-semibold text-[#426855] underline" onClick={() => window.open(withToken(`${API}/fatture/${encodeURIComponent(riga.fattura_id)}/visualizza`), "_blank", "noopener,noreferrer")}>Fatt. {riga.numero_fattura || "—"}</button> : `Fatt. ${riga.numero_fattura || "—"}`}<span className="ml-1 text-stone-500">{riga.data_fattura || ""}</span></td>
+            </tr>)}</tbody>
+          </table>{prodotti.length === 0 && <p className="p-3 text-sm text-stone-600">Nessuna riga corrisponde alla ricerca.</p>}</div>}
+      </>}
     </div>
   );
 }

@@ -7,8 +7,8 @@ tabella JSONB privata su Supabase.
 
 Vincoli intenzionali:
 * una sola istanza applicativa (il servizio Render corrente);
-* RLS chiusa sulle tabelle; l'accesso avviene solo tramite RPC autenticate con
-  un segreto applicativo;
+* accesso applicativo tramite RPC con segreto; le policy delle tabelle
+  vanno verificate separatamente e non sono garantite da questo adattatore;
 * caricamento pigro per collezione e serializzazione delle scritture, così i
   restart di Render non perdono dati.
 """
@@ -452,8 +452,8 @@ class PersistentDatabase:
 
 
 def build_supabase_database() -> PersistentDatabase:
-    # Variabili prefissate LOTTI_: il progetto Supabase di Lotti e' distinto da
-    # quello di GestionaleCloud (che usa SUPABASE_URL per conto proprio).
+    # Variabili prefissate LOTTI_: stessa istanza Supabase in produzione,
+    # credenziali RPC distinte dal client delle altre aree.
     missing = [
         key for key in ("LOTTI_SUPABASE_URL", "LOTTI_SUPABASE_ANON_KEY", "LOTTI_DB_SECRET")
         if not os.environ.get(key)
