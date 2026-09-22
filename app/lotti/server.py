@@ -189,12 +189,6 @@ async def startup_event():
     from app.lotti.routers.magazzino_bar import seed_magazzino_bar
     await seed_magazzino_bar()
     try:
-        from app.lotti.routers.ricette import seed_ricette_solo_nome
-        await seed_ricette_solo_nome()
-    except Exception as e:
-        logging.warning(f"[STARTUP] seed ricette solo-nome: {e}")
-
-    try:
         from app.lotti.routers.catalogo_forno import inizializza_cataloghi_precaricati
         risultati = await inizializza_cataloghi_precaricati()
         logging.info(f"[STARTUP] cataloghi fornitori: {risultati}")
