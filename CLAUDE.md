@@ -6,7 +6,7 @@ reviewed_at: 2026-09-20
 storage_architecture: supabase
 -->
 
-Aggiornato il 20/09/2026 sul codice di `main` del repository canonico
+Aggiornato il 22/09/2026 sul codice di `main` del repository canonico
 `ceraldicontabilita/GestionaleCloud`.
 
 **Questo file e `README.md` sono gli unici due documenti del repository.**
@@ -650,12 +650,21 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   uguale al centesimo, mai solo importo o data vicina. L'importo si legge dal
   PDF. `pagato_attesa_fattura` è il legacy di `pagato_attesa_quietanza`.
 - Associazione automatica driver: targa normalizzata più data/ora infrazione
-  più storico assegnazioni. Le assegnazioni hanno un intervallo temporale: il
-  driver è quello attivo **alla data/ora del fatto**.
-- Se targa, driver, verbale o pagamento non sono univoci, conservare il
-  documento e chiedere una scelta manuale. Le schede veicolo incomplete vanno
-  in coda di qualità, non nel flusso normale.
+  più storico assegnazioni (`assegnazioni` del veicolo, `driver_alla_data`): il
+  driver è quello attivo **alla data/ora del fatto**. Se targa, driver, verbale
+  o pagamento non sono univoci, conservare il documento e chiedere una scelta.
 - Il verbale genera un promemoria operativo a 5 giorni dalla scoperta.
+- **Posizione auto/driver in un posto solo**: `app/services/noleggio/posizione.py`
+  (`GET /api/noleggio/posizione`, tab «Posizione auto e driver»). DARE = costi documentati
+  (fatture per categoria, verbali con importo verificato); AVERE = **solo prove strutturate**
+  (allocazioni bancarie confermate, Prima Nota Banca **con** estratto conto, quietanze
+  PartenoPay/Mooney/PayPal/PagoPA agganciate al verbale). Prima Nota senza estratto conto =
+  dichiarato, non chiude il saldo. Un SDD cumulativo si spartisce con le quote delle allocazioni
+  al centesimo; il pagamento pesa sul driver **alla data del costo**. Un'uscita verso noleggiatore
+  o Comune di Napoli senza relazione resta candidato, mai attribuita.
+- Lo scan fatture noleggio legge solo le fatture attive (`FILTRO_FATTURA_ATTIVA`: fuori
+  `archived`/`archiviata`/`deleted`, archivio storico, collisioni): ogni fattura 2026 esisteva in
+  due copie e i costi erano doppi. Aliquota 0 (bollo, N1) resta 0: `0.0 or 22` inventava il 22%.
 
 ## Sicurezza
 
@@ -801,44 +810,37 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   restano stabili. Escludere significa «non richiede la dichiarazione», non
   «nascondilo dal menu»: è conformità, si conserva e si revoca.
 
-## Stato attuale (al 20/09/2026 — riscrivere sul posto)
+## Stato attuale (al 22/09/2026 — riscrivere sul posto)
 
 - Ogni merge su `main` fa ridistribuire Render e ricaricare ~77.000 righe: per qualche minuto la
   produzione è `degraded`. Non si accodano merge.
-- TFR: `hr.app_tfr_accantonamenti` è vuota, il codice vivo scrive in `tfr_accantonamenti` (1.175 righe, 42
-  dipendenti, 273.025,37 €); l'ingest cedolini trova 0 file su 49 caselle.
+- TFR: `hr.app_tfr_accantonamenti` vuota, il codice scrive in `tfr_accantonamenti` (1.175 righe, 273.025,37 €); ingest cedolini 0 file su 49 caselle.
 - **Spento**: `PROTOCOLLO_DRIVE_ENABLED=false` (RAM a 1,57 GB su 2). **Acceso**: scheduler, ingest Drive
   (fatture, estratti conto, cedolini, bonifici), ponte pagamenti HR, dedup fatture, dichiarazioni fiscali.
 - Fatture **1.431**, tutte del 2026 (0 orfani, 0 collisioni): il pre-2026 è in
   `fatture_pre2026_rimosse_20260920`.
-- **Gli XML di fattura 2026 arrivano su Drive a blocchi manuali** dal portale AdE: il ritardo è a monte,
-  non nostro.
+- **Gli XML di fattura 2026 arrivano su Drive a blocchi manuali** dal portale AdE: il ritardo è a monte.
 - **Corrispettivi 187, ultimo giorno 27/08/2026**, tutti del 2026 (agosto: 19 giornate, 19 righe). Dal
   28/08 non ne arrivano più: il PC del negozio è fermo, 23 giornate fuori dai conti.
 - **Nessuna liquidazione IVA calcolata**: `/api/iva/liquidazioni` torna vuoto; giugno e luglio sono
   calcolabili ma con **zero** acquisti (tutti `detraibilita_da_verificare`). LIPE 2026 (tre periodi,
   quadrati): marzo combacia al centesimo, a gennaio mancano **5.005,88 €** di IVA detraibile. Nessun F24
   IVA 2026.
-- Solo 108 prodotti del Menu su 325 hanno allergeni: obbligo di legge. Il cron Render
-  `gestionalecloud-calderone-15min`, sospeso, va cancellato dal pannello.
-- **Lotti fermo**: l'ultima fattura entrata è del 26/05 e l'ultimo lotto di produzione del 14/09 (0 lotti
-  attivi). 119 lotti fornitori su 344 hanno un'unità che il FIFO non sa convertire (95 in KAR) e nessuno
-  ha `nome_canonico`: il ramo preciso del FIFO non aggancia, resta il ripiego a espressione regolare. Solo
-  15 su 344 hanno la scadenza.
+- Solo 108 prodotti del Menu su 325 hanno allergeni (obbligo di legge). Cron Render `gestionalecloud-calderone-15min`, sospeso, da cancellare dal pannello.
+- **Lotti fermo**: ultima fattura entrata 26/05, ultimo lotto di produzione 14/09 (0 attivi). 119 lotti
+  fornitori su 344 hanno un'unità che il FIFO non converte (95 in KAR) e nessuno ha `nome_canonico`: il
+  ramo preciso non aggancia, resta il ripiego a espressione regolare. Solo 15 su 344 hanno la scadenza.
 
 ## Aperto (togliere la voce quando si chiude)
 
 - Compute Supabase **Micro** insufficiente (`documents` 1.172 MB, database 2.111 MB): Postgres caduto il
-  17/09, connessioni rifiutate il 20/09. **Da fare Small**: è la causa degli `statement timeout` che
-  fermano il ponte fatture verso Lotti.
+  17/09, connessioni rifiutate il 20/09. **Da fare Small**: causa degli `statement timeout` che fermano il ponte verso Lotti.
 - `legacy_staging` (56 tabelle, **197 MB** su 2.111 di database): nessun codice lo legge piu', il giro che
   ne ripescava ogni 6 ore e' stato tolto. Da cancellare **dopo un backup scaricato**, non prima.
-- **Tre strade scrivono `corrispettivi`** (`ingest_corrispettivo_parsed`, `CorrispettiviService`, import
-  CSV), ognuna con la sua dedup: vanno ridotte a una.
+- **Tre strade scrivono `corrispettivi`** (`ingest_corrispettivo_parsed`, `CorrispettiviService`, import CSV), ognuna con la sua dedup: ridurle a una.
 - **Da lanciare**: `registra-pregresso` per le **21 giornate** 31/03–30/07 tenute fuori dal giornale dal
   non riscosso (67.856,00 €); fuori restano 3 giornate a incasso zero (giusto) e il **02/08**, XML che non quadra di 0,90 €.
-- Endpoint sincroni oltre i 5 minuti, da portare a lotti riprendibili: `/api/fatture/drive/quadratura`,
-  `/api/paypal-api/riconcilia`, `/account-ids-non-mappati` e `riallinea-pagamenti-fatture`.
+- Endpoint sincroni oltre i 5 minuti, da portare a lotti riprendibili: `/api/fatture/drive/quadratura`, `/api/paypal-api/riconcilia`, `/account-ids-non-mappati`, `riallinea-pagamenti-fatture`.
 - Note di credito TD04 legacy (~20): costo/IVA/debito aumentati anziché ridotti.
 - **Nessuno dei 187 fornitori ha `metodo_pagamento`** (41 hanno un IBAN): così 1.379 fatture restano
   `sospese` e nulla va in Prima Nota Banca. Serve una fonte vera, non dedotta dalle fatture.
@@ -849,14 +851,13 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - HR: 38 bonifici con `cedolino_id` orfano, 119 in «bonifici da associare», 10 tabelle attese dall'app
   assenti (turni_config, onomastici, richieste…), Iazzetta senza IBAN; Appuhamy, Aurigemma, Vitiello,
   Dell'Aquila da creare cessati; UNILAV Moscato e Pocci.
-- Verbali: i 105 in archivio nascono da una riga di fattura PartenoPay e non hanno importo, targa né data,
-  quindi il motore strict non ne aggancia nessuno; la trattenuta la propone solo la quietanza caricata a mano.
+- Noleggio: `veicoli_noleggio` è **vuota** in produzione (nessun driver né storico; le 4 targhe GX037HJ
+  ALD, GW980EP Arval, HB411GV Leasys, GG782PN cessata vivono solo nelle fatture); i 105 verbali in archivio
+  non hanno importo, targa né data; bonifici al Comune e pagamenti Mooney via PayPal sono candidati senza verbale.
 - L'alert scadenze F24 di `FiscaleSentinella` legge `data_scadenza`, che **nessun** F24 ha: non è mai
   partito. La scadenza va derivata dal codice tributo (`codici_tributo_db`), mai inventata.
-- Drill-down «Verifica campi e F24»: agganciato al vecchio indice Drive, che non esiste più;
-  `/api/download` serve `./downloads`, che nessuno popola.
-- A mano, dal titolare: **far ripartire `sync_rt_to_drive.py`** (fermo dal 28/08); password Postgres; DNS
-  ceraldiapp.it.
+- Drill-down «Verifica campi e F24» punta al vecchio indice Drive (non esiste più); `/api/download` serve `./downloads`, mai popolato.
+- A mano, dal titolare: **far ripartire `sync_rt_to_drive.py`** (fermo dal 28/08); password Postgres; DNS ceraldiapp.it.
 - Fork `app/hr/`: **cinque** sottopercorsi ancora duplicati (`routers/auth.py`,
   `routers/employees/dipendenti.py`, `routers/pin_login.py`, `routers/tfr.py`, `utils/dependencies.py`):
   ogni correzione va cercata anche nel gemello.

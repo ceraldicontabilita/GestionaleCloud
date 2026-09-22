@@ -829,6 +829,35 @@ async def get_riepilogo_controlli(
     }
 
 
+@router.get("/posizione")
+@handle_errors
+async def get_posizione_noleggio(
+    anno: Optional[int] = Query(None, description="Anno delle fatture e dei movimenti (vuoto = tutto)"),
+    targa: Optional[str] = Query(None, description="Solo questa targa"),
+    driver_id: Optional[str] = Query(None, description="Solo le auto di questo driver"),
+) -> Dict[str, Any]:
+    """Posizione in partita doppia di ogni auto e di ogni driver: costi in
+    DARE (fatture del noleggiatore per categoria, verbali dalla posta), prove
+    di pagamento in AVERE (allocazioni bancarie, movimenti Banca BPM,
+    quietanze PartenoPay/Mooney/PayPal/PagoPA agganciate ai verbali), saldo
+    aperto. Motore unico in `app/services/noleggio/posizione.py`; qui solo
+    il filtro per targa o per driver."""
+    from app.services.noleggio.posizione import costruisci_posizione_noleggio
+
+    db = Database.get_db()
+    posizione = await costruisci_posizione_noleggio(db, anno=anno)
+    if targa:
+        targa_upper = targa.strip().upper()
+        posizione["veicoli"] = [v for v in posizione["veicoli"] if v["targa"] == targa_upper]
+        if not posizione["veicoli"]:
+            raise HTTPException(status_code=404, detail=f"Veicolo {targa_upper} non trovato")
+    if driver_id:
+        posizione["driver"] = [d for d in posizione["driver"] if str(d.get("driver_id") or "") == driver_id]
+        targhe = {t for d in posizione["driver"] for t in d.get("veicoli", [])}
+        posizione["veicoli"] = [v for v in posizione["veicoli"] if v["targa"] in targhe]
+    return posizione
+
+
 @router.get("/fornitori")
 @handle_errors
 async def get_fornitori() -> Dict[str, Any]:

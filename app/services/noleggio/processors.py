@@ -25,6 +25,19 @@ from .parsers import (
 
 logger = logging.getLogger(__name__)
 
+#: «Fattura attiva» con lo stesso vocabolario del recupero pregresso e del
+#: libro giornale: fuori le copie archiviate (`archived`/`archiviata`), le
+#: cancellate, l'archivio storico e le collisioni di identita' aperte.
+#: Misurato il 22/09/2026: ogni fattura di noleggio 2026 esisteva due volte,
+#: la copia `archived` dell'import XML e quella attiva da Drive, e lo scan le
+#: sommava entrambe (59 fatture per 41.681 € invece di ~33).
+#: `$nin` su un campo assente passa (regola 11): e' voluto, assente = attiva.
+FILTRO_FATTURA_ATTIVA: Dict[str, Any] = {
+    "status": {"$nin": ["archived", "archiviata", "deleted"]},
+    "stato_import": {"$nin": ["archivio_storico", "collisione_identita_da_verificare"]},
+    "deleted": {"$ne": True},
+}
+
 
 def scegli_veicolo_per_fattura(
     fattura: dict,
@@ -295,7 +308,14 @@ async def _processa_linee_fattura(
         # Estrai importi
         prezzo_totale = float(linea.get("prezzo_totale") or linea.get("PrezzoTotale") or
                               linea.get("prezzo_unitario") or linea.get("PrezzoUnitario") or 0)
-        aliquota_iva = float(linea.get("aliquota_iva") or linea.get("AliquotaIVA") or 22)
+        # `0.0 or 22` fa 22: una riga esente (bollo, tassa di proprieta',
+        # riaddebito verbale, natura N1) con aliquota 0 riceveva il 22% di IVA
+        # inventata (126,90 di bollo diventavano 154,82). L'aliquota si legge
+        # come sta; 22 vale solo se la riga non la dichiara affatto.
+        aliquota_dichiarata = linea.get("aliquota_iva")
+        if aliquota_dichiarata in (None, ""):
+            aliquota_dichiarata = linea.get("AliquotaIVA")
+        aliquota_iva = float(aliquota_dichiarata) if aliquota_dichiarata not in (None, "") else 22.0
 
         # Categorizza con metadata (o usa override per linee sintetiche)
         if linea.get("_categoria_override"):
@@ -458,16 +478,18 @@ async def scan_fatture_noleggio(anno: Optional[int] = None) -> Tuple[Dict[str, A
     
     # Query per P.IVA fornitori con proiezione per performance
     query: Dict[str, Any] = {
-        "supplier_vat": {"$in": list(FORNITORI_NOLEGGIO.values())}
+        "supplier_vat": {"$in": list(FORNITORI_NOLEGGIO.values())},
+        **FILTRO_FATTURA_ATTIVA,
     }
-    
+
     # Se anno specificato, filtra per quell'anno
     if anno is not None:
         query["invoice_date"] = {"$regex": f"^{anno}"}
-    
+
     # Proiezione per ridurre il payload (escludi xml_content e altri campi pesanti)
     projection = {
         "_id": 1,
+        "id": 1,
         "invoice_number": 1,
         "invoice_date": 1,
         "supplier_name": 1,
@@ -508,8 +530,12 @@ async def scan_fatture_noleggio(anno: Optional[int] = None) -> Tuple[Dict[str, A
         invoice_date = invoice.get("invoice_date", "")
         supplier = invoice.get("supplier_name", "")
         supplier_vat = invoice.get("supplier_vat", "")
+        # I collegamenti manuali fattura-veicolo sono chiavati su `_id`
+        # (associations.py); le relazioni di pagamento citano invece `id`.
+        # Qui resta `_id`, e chi incrocia i pagamenti (posizione.py) riconosce
+        # entrambi: `id` e' in proiezione per questo.
         invoice_id = str(invoice.get("_id", ""))
-        
+
         is_nota_credito = check_nota_credito(invoice)
         codice_cliente = estrai_codice_cliente(invoice, supplier)
         numero_contratto = estrai_numero_contratto(invoice)
