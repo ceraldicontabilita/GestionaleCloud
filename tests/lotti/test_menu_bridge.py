@@ -281,7 +281,7 @@ def test_upload_foto_copia_immagine_nel_menu(ambiente):
     creata = run(ricette.create_ricetta(ricette.RicettaCreate(**_payload())))
     assert finto.tabelle["menu_products"][0]["image"] is None
 
-    esito = run(ricette.upload_foto(creata["id"], _file_png(), False))
+    esito = run(ricette.upload_foto(creata["id"], _file_png(), "upload_manuale", False))
     foto_id = ricette._foto_id_da_url(esito["foto_url"])
     assert esito["menu_sync"]["esito"] == "aggiornato"
     risposta_foto = run(ricette.leggi_foto(foto_id))
@@ -305,28 +305,32 @@ def test_upload_foto_copia_immagine_nel_menu(ambiente):
     assert finto.tabelle["menu_products"][0]["description_it"] == "Babà classico napoletano"  # le note/procedimento non vanno nel menu
 
     # Una nuova foto (nuovo foto_id) viene caricata e sostituisce l'immagine
-    esito2 = run(ricette.upload_foto(creata["id"], _file_png(b"seconda"), False))
+    esito2 = run(ricette.upload_foto(
+        creata["id"], _file_png(b"seconda"), "upload_manuale", False
+    ))
     foto_id2 = ricette._foto_id_da_url(esito2["foto_url"])
     assert foto_id2 != foto_id
     assert len(finto.upload) == 2
     assert finto.tabelle["menu_products"][0]["image"].endswith(f"/lotti/{foto_id2}.png")
 
 
-def test_illustrazione_ai_conserva_provenienza_hash_e_id_drive_nella_ricetta(ambiente):
+def test_catalogo_verificato_conserva_provenienza_hash_e_id_drive_nella_ricetta(ambiente):
     ricette, database, _ = ambiente
     creata = run(ricette.create_ricetta(ricette.RicettaCreate(**_payload())))
-    contenuto = b"\x89PNG-illustrazione"
+    contenuto = b"\x89PNG-catalogo"
 
-    esito = run(ricette.upload_foto(creata["id"], _file_png(contenuto), True))
+    esito = run(ricette.upload_foto(
+        creata["id"], _file_png(contenuto), "catalogo_napoletano_verificato", False
+    ))
     salvata = run(database.ricette.find_one({"id": creata["id"]}))
-    assert esito["foto_source"] == salvata["foto_source"] == "illustrazione_ai"
+    assert esito["foto_source"] == salvata["foto_source"] == "catalogo_napoletano_verificato"
     assert salvata["foto_sha256"] == hashlib.sha256(contenuto).hexdigest()
     assert salvata["foto_url"] == esito["foto_url"]
     assert salvata["foto_drive_id"] == salvata["foto_id"]
     assert run(database.foto_files.count_documents({})) == 0
 
 
-def test_upload_multipart_distingue_illustrazione_ai_da_foto_manuale(ambiente):
+def test_upload_multipart_registra_catalogo_napoletano_verificato(ambiente):
     ricette, database, _ = ambiente
     creata = run(ricette.create_ricetta(ricette.RicettaCreate(**_payload())))
     app = FastAPI()
@@ -335,13 +339,68 @@ def test_upload_multipart_distingue_illustrazione_ai_da_foto_manuale(ambiente):
 
     risposta = client.post(
         f"/api/ricette/{creata['id']}/upload-foto",
-        data={"illustrazione_ai": "true"},
-        files={"file": ("amaretti.png", b"\x89PNG-illustrazione", "image/png")},
+        data={"foto_source": "catalogo_napoletano_verificato"},
+        files={"file": ("amaretti.png", b"\x89PNG-catalogo", "image/png")},
     )
     assert risposta.status_code == 200
     salvata = run(database.ricette.find_one({"id": creata["id"]}))
-    assert salvata["foto_source"] == "illustrazione_ai"
+    assert salvata["foto_source"] == "catalogo_napoletano_verificato"
     assert salvata["foto_filename"] == "amaretti.png"
+
+
+def test_sostituzione_salva_backup_e_cestina_solo_foto_non_condivisa(ambiente, monkeypatch):
+    ricette, database, _ = ambiente
+    from app.lotti.servizi import drive_foto_ricette
+    creata = run(ricette.create_ricetta(ricette.RicettaCreate(**_payload())))
+    prima = run(ricette.upload_foto(
+        creata["id"], _file_png(b"prima"), "upload_manuale", False
+    ))
+    prima_id = ricette._foto_id_da_url(prima["foto_url"])
+    cestinate = []
+
+    def cestina(file_id, *, folder_id, service=None):
+        cestinate.append((file_id, folder_id))
+        return {"id": file_id, "trashed": True}
+
+    monkeypatch.setattr(drive_foto_ricette, "cestina", cestina)
+    dopo = run(ricette.upload_foto(
+        creata["id"], _file_png(b"dopo"), "catalogo_napoletano_verificato", True
+    ))
+
+    backup = run(database.ricette_foto_backup.find_one({"id": dopo["backup_id"]}))
+    assert backup["tipo"] == "sostituzione_foto"
+    assert backup["foto_precedente"]["foto_drive_id"] == prima_id
+    assert dopo["foto_precedente_cestinata"] is True
+    assert cestinate == [(prima_id, "cartella-ricette")]
+
+
+def test_sostituzione_non_cestina_una_foto_ancora_condivisa(ambiente, monkeypatch):
+    ricette, database, _ = ambiente
+    from app.lotti.servizi import drive_foto_ricette
+    creata = run(ricette.create_ricetta(ricette.RicettaCreate(**_payload())))
+    prima = run(ricette.upload_foto(
+        creata["id"], _file_png(b"condivisa"), "upload_manuale", False
+    ))
+    prima_id = ricette._foto_id_da_url(prima["foto_url"])
+    run(database.ricette.insert_one({
+        "id": "altra-ricetta",
+        "nome": "Altra",
+        "foto_drive_id": prima_id,
+        "foto_drive_folder_id": "cartella-ricette",
+    }))
+    cestinate = []
+    monkeypatch.setattr(
+        drive_foto_ricette,
+        "cestina",
+        lambda *args, **kwargs: cestinate.append((args, kwargs)),
+    )
+
+    dopo = run(ricette.upload_foto(
+        creata["id"], _file_png(b"nuova"), "catalogo_napoletano_verificato", True
+    ))
+
+    assert dopo["foto_precedente_cestinata"] is False
+    assert cestinate == []
 
 
 # ---------- scelta del titolare: menu_pubblico -> visible ----------

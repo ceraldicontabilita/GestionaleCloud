@@ -168,11 +168,22 @@ class LottiClient:
         path.write_bytes(response.content)
         return path
 
-    def upload(self, recipe_id: str, image: Immagine):
+    def upload(
+        self,
+        recipe_id: str,
+        image: Immagine,
+        *,
+        foto_source: str = "upload_manuale",
+        cestina_precedente: bool = False,
+    ):
         mime = mimetypes.guess_type(image.path.name)[0] or "image/jpeg"
         with image.path.open("rb") as stream:
             response = self.session.post(
                 f"{self.api}/ricette/{recipe_id}/upload-foto",
+                data={
+                    "foto_source": foto_source,
+                    "cestina_precedente": str(cestina_precedente).lower(),
+                },
                 files={"file": (image.path.name, stream, mime)},
                 timeout=180,
             )
@@ -231,7 +242,8 @@ def applica_mappature_esplicite(
         recipe = recipes_by_id.get(recipe_id)
         if not recipe:
             raise ValueError(f"Ricetta inesistente nella mappatura: {recipe_id}")
-        if recipe.get("foto_url"):
+        sostituisci = bool(mapping.get("sostituisci_esistente"))
+        if recipe.get("foto_url") and not sostituisci:
             continue
 
         requested_path = Path(str(mapping.get("file") or "")).resolve()
@@ -245,8 +257,16 @@ def applica_mappature_esplicite(
             "reparto": recipe.get("reparto"),
             "file": str(image.path),
             "motivo": mapping.get("motivo") or "mappatura esplicita verificata",
+            "sostituisci_esistente": sostituisci,
+            "foto_source": mapping.get("foto_source") or "upload_manuale",
+            "foto_prima": recipe.get("foto_url"),
         }
         unresolved_by_id.pop(recipe_id, None)
+        if sostituisci:
+            piano["gia_con_foto"] = [
+                item for item in piano["gia_con_foto"]
+                if str(item.get("id")) != recipe_id
+            ]
 
     piano["associazioni"] = sorted(
         matches_by_id.values(), key=lambda item: (item.get("reparto") or "", item.get("nome") or "")
@@ -264,6 +284,11 @@ def main() -> int:
     parser.add_argument("--backup-dir", type=Path, default=Path("backup_ricette"))
     parser.add_argument("--mapping-file", type=Path)
     parser.add_argument(
+        "--only-explicit",
+        action="store_true",
+        help="Considera esclusivamente gli ID presenti nella mappatura esplicita",
+    )
+    parser.add_argument(
         "--apply-departments",
         action="store_true",
         help="Applica anche la riclassificazione dei reparti (mai implicita)",
@@ -277,8 +302,15 @@ def main() -> int:
     images = indicizza_immagini(args.images_dir)
     client = LottiClient(args.api, pin)
     recipes = client.get_json("/ricette")
+    if args.only_explicit and not args.mapping_file:
+        raise SystemExit("--only-explicit richiede --mapping-file")
+    piano_iniziale = (
+        {"associazioni": [], "gia_con_foto": [], "non_associate": []}
+        if args.only_explicit
+        else costruisci_piano(recipes, images)
+    )
     plan = applica_mappature_esplicite(
-        costruisci_piano(recipes, images), recipes, images, args.mapping_file
+        piano_iniziale, recipes, images, args.mapping_file
     )
     report = {
         "modalita": "applica" if args.apply else "anteprima",
@@ -292,10 +324,14 @@ def main() -> int:
         uploads = []
         image_by_path = {str(image.path): image for image in images}
         for match in plan["associazioni"]:
-            result = client.upload(match["id"], image_by_path[match["file"]])
-            uploads.append({**match, "foto_url": result.get("foto_url")})
+            result = client.upload(
+                match["id"],
+                image_by_path[match["file"]],
+                foto_source=match.get("foto_source") or "upload_manuale",
+                cestina_precedente=bool(match.get("sostituisci_esistente")),
+            )
+            uploads.append({**match, "esito": result})
         report["caricate"] = uploads
-        report["varianti_separate"] = client.post_json("/ricette/separa-foto-varianti?applica=true")
         if args.apply_departments:
             category_plan = client.post_json("/ricette/auto-assegna-reparti?applica=false")
             report["reparti_anteprima"] = category_plan
@@ -313,7 +349,6 @@ def main() -> int:
         "non_associate": len(plan["non_associate"]),
         "report": str(report_path),
         "backup": report.get("backup"),
-        "varianti_separate": (report.get("varianti_separate") or {}).get("aggiornate", 0),
         "reparti_spostati": (report.get("reparti_applicati") or {}).get("aggiornate", 0),
     }, ensure_ascii=False, indent=2))
     return 0

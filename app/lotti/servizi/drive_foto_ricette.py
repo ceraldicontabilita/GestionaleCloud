@@ -115,3 +115,16 @@ def carica(
     if int(verified.get("size") or -1) != len(contenuto):
         raise RuntimeError("Dimensione immagine Drive diversa dai byte caricati")
     return {**verified, "sha256": digest, "filename": filename or nome}
+
+
+def cestina(file_id: str, *, folder_id: str, service: Any = None) -> dict:
+    """Sposta nel cestino Drive una foto canonica, dopo averne verificato la cartella."""
+    service = service or build_drive_service()
+    _metadata(service, file_id, folder_id=folder_id)
+    service.files().update(
+        fileId=file_id,
+        body={"trashed": True},
+        fields="id,name,mimeType,size,parents,trashed",
+        supportsAllDrives=True,
+    ).execute()
+    return {"id": file_id, "trashed": True}

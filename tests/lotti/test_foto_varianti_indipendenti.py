@@ -18,7 +18,7 @@ def test_creazione_variante_clona_foto_in_un_id_autonomo(monkeypatch):
     run(database.ricette.insert_one({
         "id": "base-coda", "nome": "Coda di aragosta",
         "foto_url": "/api/foto/foto-base?v=1", "reparto": "pasticceria",
-        "foto_source": "illustrazione_ai",
+        "foto_source": "catalogo_napoletano_verificato",
     }))
     run(database.foto_files.insert_one({
         "_id": "foto-base", "mime": "image/webp", "data": b"foto-base",
@@ -38,8 +38,8 @@ def test_creazione_variante_clona_foto_in_un_id_autonomo(monkeypatch):
     assert photo["data"] == b"foto-base"
     assert photo["ricetta_id"] == created["id"]
     assert photo["copiata_da_foto_id"] == "foto-base"
-    assert photo["fonte"] == "illustrazione_ai"
-    assert created["foto_source"] == "illustrazione_ai"
+    assert photo["fonte"] == "catalogo_napoletano_verificato"
+    assert created["foto_source"] == "catalogo_napoletano_verificato"
 
 
 def test_migrazione_separa_solo_varianti_che_usano_la_base(monkeypatch):
