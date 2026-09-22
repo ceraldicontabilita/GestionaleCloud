@@ -7,8 +7,6 @@ import { Globe } from "lucide-react";
 import { conferma } from "../../../utils/conferma";
 import { stampaDoc } from "../../../utils/stampa";
 import PinKeypad from "../shared/PinKeypad";
-import SceltaCategoriaMenu from "./SceltaCategoriaMenu";
-import { isAdmin } from "../../../auth";
 
 // Riga breve mostrata nel Menu digitale: una frase, non un tema. Oltre questa
 // misura il testo sborda dalla card del Menu su telefono.
@@ -161,7 +159,6 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
     if (!ricetta) {
       return { nome:"", reparto:"pasticceria", porzioni:10, metodo_conservazione:"frigo",
                prezzo_vendita:"", prezzo_tavolo:"", descrizione:"",
-               menu_category_id:null, menu_subcategory_id:null,
                note:"", ingredienti:[], fornitore_rivendita:"" };
     }
     // Converte ingredienti_dettaglio (o la lista legacy) nel formato editabile
@@ -185,8 +182,6 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
       // controllato al primo carattere.
       prezzo_tavolo: ricetta.prezzo_tavolo ?? "",
       descrizione: ricetta.descrizione ?? "",
-      menu_category_id: ricetta.menu_category_id ?? null,
-      menu_subcategory_id: ricetta.menu_subcategory_id ?? null,
     };
   });
   const [saving, setSaving] = useState(false);
@@ -258,9 +253,8 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
     finally { setEreditando(false); }
   };
 
-  // Sezione "Costo, allergeni & nutrizione" (richiede ricetta salvata)
-  const [allergeni, setAllergeni] = useState(ricetta?.allergeni || []);
-  const [allSugg, setAllSugg]     = useState(null);
+  // Sezione "Costo e nutrizione" (richiede ricetta salvata). Gli allergeni
+  // non hanno un editor separato: il server li deriva dagli ingredienti.
   const [costo, setCosto]         = useState(ricetta?.costo_totale != null ? { costo_totale: ricetta.costo_totale, costo_porzione: ricetta.costo_porzione } : null);
   const [nutri, setNutri]         = useState(ricetta?.nutrizionale || null);
   const [busyFc, setBusyFc]       = useState("");
@@ -314,22 +308,6 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
     try { const r = await axios.get(`${API}/food-cost/calcola/${ricetta.id}`); setCosto(r.data); }
     catch { toast("Errore calcolo food cost", "err"); }
     finally { setBusyFc(""); }
-  };
-  const rilevaAllergeni = async () => {
-    setBusyFc("all");
-    try {
-      const r = await axios.post(`${API}/food-cost/auto-rileva-allergeni-ricetta/${ricetta.id}`);
-      const suggeriti = r.data?.allergeni_suggeriti || [];
-      setAllSugg(suggeriti);
-      if (suggeriti.length > 0) setAllergeni(suggeriti); // evidenzia subito, resta modificabile a mano
-    }
-    catch { toast("Errore rilevamento allergeni", "err"); }
-    finally { setBusyFc(""); }
-  };
-  const salvaAllergeni = async (lista) => {
-    try { await axios.post(`${API}/food-cost/aggiorna-allergeni-ricetta`, { ricetta_id: ricetta.id, allergeni: lista });
-      setAllergeni(lista); setAllSugg(null); toast("Allergeni salvati ✅"); }
-    catch { toast("Errore salvataggio allergeni", "err"); }
   };
   const calcolaNutri = async () => {
     setBusyFc("nutri");
@@ -513,8 +491,6 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
     const daAzzerare = {};
     if (ricetta.prezzo_tavolo != null && numOpz(form.prezzo_tavolo) === null) daAzzerare.prezzo_tavolo = null;
     if ((ricetta.descrizione || "").trim() && !(form.descrizione || "").trim()) daAzzerare.descrizione = null;
-    if (ricetta.menu_category_id != null && form.menu_category_id == null) daAzzerare.menu_category_id = null;
-    if (ricetta.menu_subcategory_id != null && form.menu_subcategory_id == null) daAzzerare.menu_subcategory_id = null;
     if (!Object.keys(daAzzerare).length) return null;
     try {
       const r = await axios.patch(`${API}/ricette/${id}`, daAzzerare);
@@ -543,8 +519,6 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
         // Riga breve del Menu: distinta da `note`, che è il procedimento
         // interno e non esce mai verso i clienti.
         descrizione: (form.descrizione || "").trim().slice(0, MAX_DESCRIZIONE_MENU) || null,
-        menu_category_id: form.menu_category_id ?? null,
-        menu_subcategory_id: form.menu_subcategory_id ?? null,
         metodo_conservazione: form.metodo_conservazione || "frigo",
         foto_url: form.foto_url || "",
         note: typeof form.note === "string" ? form.note : "",
@@ -760,18 +734,16 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
             </div>
           </div>
 
-          <SceltaCategoriaMenu
-            categoriaId={form.menu_category_id}
-            sottocategoriaId={form.menu_subcategory_id}
-            adminAbilitato={isAdmin()}
-            onChange={(cat, sub) => setForm(f => ({...f, menu_category_id: cat, menu_subcategory_id: sub}))}
-            avviso={form.menu_pubblico && !form.prezzo_tavolo ? (
-              <div style={{fontSize:12,fontWeight:700,color:"var(--warning-text)",background:"var(--warning-soft)",
-                border:"1.5px solid var(--warning-border)",borderRadius:10,padding:"8px 10px"}}>
-                Attenzione: senza prezzo al tavolo il Menu mostra ai clienti il prezzo al banco.
-              </div>
-            ) : null}
-          />
+          <div style={{fontSize:12,fontWeight:700,color:"var(--text-2)",background:"var(--bg)",
+            border:"1.5px solid var(--border)",borderRadius:10,padding:"9px 11px"}}>
+            Categoria Menu automatica: <strong>Produzione Ceraldi</strong>, nella sezione del reparto scelto.
+          </div>
+          {form.menu_pubblico && !form.prezzo_tavolo ? (
+            <div style={{fontSize:12,fontWeight:700,color:"var(--warning-text)",background:"var(--warning-soft)",
+              border:"1.5px solid var(--warning-border)",borderRadius:10,padding:"8px 10px"}}>
+              Attenzione: senza prezzo al tavolo il Menu mostra ai clienti il prezzo al banco.
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -920,16 +892,16 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
         </button>}
       </div>
 
-      {/* Costo, allergeni & nutrizione (sezione richiudibile) */}
+      {/* Costo e nutrizione (sezione richiudibile) */}
       <div style={{border:"1px solid var(--border)",borderRadius:12,marginBottom:16,overflow:"hidden"}}>
         <button onClick={()=>setOpenExtra(o=>!o)}
           style={{all:"unset",cursor:"pointer",display:"flex",alignItems:"center",gap:8,fontWeight:800,color:"var(--text)",fontSize:14,padding:"12px 14px",width:"100%",boxSizing:"border-box",background:"var(--bg)"}}>
-          🧮 Costo, allergeni & valori nutrizionali {openExtra ? "▲" : "▼"}
+          🧮 Costo e valori nutrizionali {openExtra ? "▲" : "▼"}
         </button>
         {openExtra && (
           <div style={{padding:"14px"}}>
             {!ricetta?.id ? (
-              <div style={{fontSize:13,color:"var(--text-2)"}}>Salva prima la ricetta, poi qui calcoli costo, allergeni e valori nutrizionali.</div>
+              <div style={{fontSize:13,color:"var(--text-2)"}}>Salva prima la ricetta, poi qui calcoli costo e valori nutrizionali.</div>
             ) : (
               <div style={{display:"flex",flexDirection:"column",gap:16}}>
                 {/* Food cost */}
@@ -947,39 +919,6 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
                       <span>Per porzione: <b>€ {Number(costo.costo_porzione||0).toFixed(2)}</b></span>
                     </div>
                   )}
-                </div>
-                {/* Allergeni */}
-                <div>
-                  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6,flexWrap:"wrap"}}>
-                    <b style={{fontSize:13,color:"var(--text)"}}>Allergeni</b>
-                    <button onClick={rilevaAllergeni} disabled={busyFc==="all"}
-                      style={{padding:"5px 12px",borderRadius:8,border:"1px solid var(--border)",background:"var(--card)",fontSize:12,fontWeight:700,cursor:"pointer"}}>
-                      {busyFc==="all"?"Rilevo…":"Rileva dagli ingredienti"}
-                    </button>
-                  </div>
-                  <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                    {["Glutine","Crostacei","Uova","Pesce","Arachidi","Soia","Latte","Frutta a guscio","Sedano","Senape","Sesamo","Anidride solforosa","Lupini","Molluschi"].map(a => {
-                      const on = allergeni.includes(a);
-                      return (
-                        <button key={a} onClick={()=>setAllergeni(l=> on ? l.filter(x=>x!==a) : [...l,a])}
-                          style={{padding:"4px 10px",borderRadius:14,fontSize:12,fontWeight:600,cursor:"pointer",
-                            border:on?"none":"1px solid var(--border)",
-                            background:on?"#b45309":"var(--card)",color:on?"#fff":"var(--text-2)"}}>
-                          {a}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {allSugg && (
-                    <div style={{marginTop:8,fontSize:12,color:"var(--text-2)"}}>
-                      Suggeriti dagli ingredienti: <b>{allSugg.join(", ") || "nessuno"}</b>
-                      {allSugg.length>0 && <button onClick={()=>setAllergeni(allSugg)} style={{marginLeft:8,padding:"3px 10px",borderRadius:8,border:"none",background:"var(--primary)",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}>Usa questi</button>}
-                    </div>
-                  )}
-                  <button onClick={()=>salvaAllergeni(allergeni)}
-                    style={{marginTop:8,padding:"6px 14px",borderRadius:8,border:"none",background:"#5b7a6b",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>
-                    Salva allergeni
-                  </button>
                 </div>
                 {/* Nutrizione */}
                 <div>

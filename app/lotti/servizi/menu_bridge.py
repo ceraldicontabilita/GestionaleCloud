@@ -24,10 +24,9 @@ nascosta (``visible = false``): senza prezzo il carrello del Menu la
 conterebbe 0 euro. Il caso e' segnalato nell'esito (``prezzo_mancante``,
 ``motivo_nascosto``) e contato dal backfill.
 
-Categoria: se la ricetta ha ``menu_category_id`` (scelto dal titolare fra le
-categorie del Menu create da Lotti, vedi ``app/lotti/routers/menu_categorie.py``)
-il prodotto va li'; senza scelta resta il comportamento storico, categoria unica
-"Produzione Ceraldi" con una sottocategoria per reparto.
+Categoria: ogni ricetta operativa va nella categoria canonica "Produzione
+Ceraldi" e nella sottocategoria derivata dal reparto. Non esiste una seconda
+classificazione manuale concorrente.
 
 Il ponte non deve MAI far fallire un endpoint di Lotti: le funzioni pubbliche
 restituiscono sempre un dizionario ``{"esito": ...}`` e non sollevano
@@ -302,38 +301,13 @@ def _categoria_di_lotti(categoria_id: int) -> Optional[dict]:
     return riga if riga and riga.get("origine") else None
 
 
-def _sottocategoria_di_lotti(sottocategoria_id: int, categoria_id: int) -> Optional[dict]:
-    res = (
-        supabase.table(TABELLA_SOTTOCATEGORIE).select("id,category_id,name,name_it,origine")
-        .eq("id", sottocategoria_id).limit(1).execute()
-    )
-    riga = res.data[0] if res.data else None
-    if not riga or not riga.get("origine"):
-        return None
-    return riga if int(riga.get("category_id") or 0) == int(categoria_id) else None
-
-
 def _destinazione_menu(ricetta: dict) -> tuple[int, int, str]:
     """(category_id, subcategory_id, origine_della_scelta).
 
-    Con ``menu_category_id`` valorizzato e valido si usa quello; senza scelta
-    (o con una scelta non piu' valida, es. categoria cancellata) si ricade
-    esattamente sul comportamento storico: categoria unica "Produzione
-    Ceraldi" e sottocategoria per reparto. Cosi' nessuna ricetta gia' in
-    archivio si sposta da sola."""
-    scelta = _intero(ricetta.get("menu_category_id"))
-    origine_scelta = "predefinita"
-    if scelta is not None:
-        if _categoria_di_lotti(scelta):
-            sotto_scelta = _intero(ricetta.get("menu_subcategory_id"))
-            if sotto_scelta is not None and _sottocategoria_di_lotti(sotto_scelta, scelta):
-                return scelta, sotto_scelta, "scelta"
-            # Categoria scelta ma sottocategoria assente o non sua: dentro la
-            # categoria scelta si ricrea la sezione del reparto.
-            return scelta, _sottocategoria_lotti_id(scelta, ricetta.get("reparto")), "scelta_senza_sottocategoria"
-        origine_scelta = "scelta_non_valida"
+    La destinazione dipende soltanto dal reparto canonico della ricetta. I
+    vecchi campi di scelta non sono letti."""
     categoria_id = _categoria_lotti_id()
-    return categoria_id, _sottocategoria_lotti_id(categoria_id, ricetta.get("reparto")), origine_scelta
+    return categoria_id, _sottocategoria_lotti_id(categoria_id, ricetta.get("reparto")), "automatica"
 
 
 def _riga_esistente(lotti_ref: str) -> Optional[dict]:

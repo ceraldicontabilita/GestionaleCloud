@@ -19,30 +19,29 @@ describe("modifica rapida ricetta dal tablet", () => {
       porzioni: "12",
       metodo_conservazione: "frigo",
       ingredienti: [{ nome: "Farina", quantita: "500,5", unita: "g" }],
-      allergeni: "Glutine, Uova",
       procedimento: "Impastare e cuocere.",
       note: "Servire caldo",
     }, { foto_url: "/api/foto/bollino", componenti: [{ ref_id: "x" }] });
 
     expect(payload.porzioni).toBe(12);
     expect(payload.ingredienti_dettaglio[0]).toEqual({ nome: "Farina", quantita: 500.5, unita_misura: "g" });
-    expect(payload.allergeni).toEqual(["Glutine", "Uova"]);
-    expect(payload.allergeni_confermati).toBe(false);
+    expect(payload.allergeni).toBeUndefined();
+    expect(payload.allergeni_confermati).toBeUndefined();
     expect(payload.procedimento_testo).toBe("Impastare e cuocere.");
     expect(payload.foto_url).toBe("/api/foto/bollino");
     expect(payload.componenti).toEqual([{ ref_id: "x" }]);
   });
 
-  test("marca gli allergeni come manuali solo dopo una conferma esplicita", () => {
+  test("non accetta una seconda fonte manuale per gli allergeni", () => {
     const payload = payloadRicettaDaBozza({
       nome: "Crema",
       reparto: "pasticceria",
       porzioni: 1,
       ingredienti: [{ nome: "Latte", quantita: 500, unita: "g" }],
       allergeni: "Latte",
-    }, {}, true);
+    });
 
-    expect(payload.allergeni).toEqual(["Latte"]);
-    expect(payload.allergeni_confermati).toBe(true);
+    expect(payload.allergeni).toBeUndefined();
+    expect(payload.allergeni_confermati).toBeUndefined();
   });
 });

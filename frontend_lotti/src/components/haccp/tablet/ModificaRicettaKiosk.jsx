@@ -1,6 +1,6 @@
 import { useState } from "react";
 import axios from "axios";
-import { Calculator, Plus, Save, Trash2, X } from "lucide-react";
+import { Plus, Save, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { API } from "../../../utils/constants";
 import { apiError } from "../../../utils/apiError";
@@ -36,7 +36,6 @@ export function creaBozzaRicetta(ricetta = {}) {
     porzioni: ricetta.porzioni ?? 1,
     metodo_conservazione: ricetta.metodo_conservazione || "",
     ingredienti,
-    allergeni: (Array.isArray(ricetta.allergeni) ? ricetta.allergeni : []).filter(Boolean).join(", "),
     procedimento: testoProcedimento(ricetta),
     note: typeof ricetta.note === "string" ? ricetta.note : "",
   };
@@ -48,7 +47,7 @@ function numero(v) {
   return Number.isFinite(n) ? n : 0;
 }
 
-export function payloadRicettaDaBozza(bozza, originale = {}, allergeniConfermati = false) {
+export function payloadRicettaDaBozza(bozza, originale = {}) {
   const ingredienti = (bozza.ingredienti || [])
     .filter((i) => String(i?.nome || "").trim())
     .map((i) => ({
@@ -63,11 +62,6 @@ export function payloadRicettaDaBozza(bozza, originale = {}, allergeniConfermati
     metodo_conservazione: String(bozza.metodo_conservazione || "").trim(),
     ingredienti: ingredienti.map((i) => i.nome),
     ingredienti_dettaglio: ingredienti,
-    allergeni: String(bozza.allergeni || "")
-      .split(/[,;\n]/)
-      .map((a) => a.trim())
-      .filter(Boolean),
-    allergeni_confermati: allergeniConfermati,
     procedimento_testo: String(bozza.procedimento || "").trim(),
     note: String(bozza.note || "").trim(),
     componenti: Array.isArray(originale.componenti) ? originale.componenti : [],
@@ -84,8 +78,6 @@ export function payloadRicettaDaBozza(bozza, originale = {}, allergeniConfermati
 export default function ModificaRicettaKiosk({ ricetta, onAnnulla, onSalvata }) {
   const [bozza, setBozza] = useState(() => creaBozzaRicetta(ricetta));
   const [salvando, setSalvando] = useState(false);
-  const [rilevando, setRilevando] = useState(false);
-  const [allergeniConfermati, setAllergeniConfermati] = useState(false);
 
   const aggiornaIngrediente = (indice, campo, valore) => {
     setBozza((corrente) => ({
@@ -110,7 +102,7 @@ export default function ModificaRicettaKiosk({ ricetta, onAnnulla, onSalvata }) 
     try {
       const risposta = await axios.put(
         `${API}/ricette/${ricetta.id}`,
-        payloadRicettaDaBozza(bozza, ricetta, allergeniConfermati),
+        payloadRicettaDaBozza(bozza, ricetta),
       );
       toast.success("Ricetta aggiornata");
       onSalvata(risposta.data);
@@ -118,27 +110,6 @@ export default function ModificaRicettaKiosk({ ricetta, onAnnulla, onSalvata }) 
       toast.error(apiError(errore, "Non è stato possibile salvare la ricetta"));
     } finally {
       setSalvando(false);
-    }
-  };
-
-  const rilevaAllergeni = async () => {
-    setRilevando(true);
-    try {
-      const ingredienti = bozza.ingredienti
-        .map((ingrediente) => ({ nome: String(ingrediente?.nome || "").trim() }))
-        .filter((ingrediente) => ingrediente.nome);
-      const risposta = await axios.post(
-        `${API}/food-cost/auto-rileva-allergeni-ricetta/${ricetta.id}`,
-        { ingredienti_dettaglio: ingredienti },
-      );
-      const suggeriti = risposta.data?.allergeni_suggeriti || [];
-      setBozza((corrente) => ({ ...corrente, allergeni: suggeriti.join(", ") }));
-      setAllergeniConfermati(false);
-      toast.success(suggeriti.length ? `Rilevati ${suggeriti.length} allergeni` : "Nessun allergene rilevato");
-    } catch (errore) {
-      toast.error(apiError(errore, "Rilevamento allergeni non riuscito"));
-    } finally {
-      setRilevando(false);
     }
   };
 
@@ -194,18 +165,9 @@ export default function ModificaRicettaKiosk({ ricetta, onAnnulla, onSalvata }) 
         </div>
       </div>
 
-      <Campo titolo="Allergeni" aiuto="Si aggiornano automaticamente dagli ingredienti al salvataggio">
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-          <input value={bozza.allergeni} onChange={(e) => {
-              setBozza({ ...bozza, allergeni: e.target.value });
-              setAllergeniConfermati(true);
-            }}
-            placeholder="Glutine, Latte, Uova…" style={{ ...inputStyle, flex: "1 1 220px" }} />
-          <button type="button" onClick={rilevaAllergeni} disabled={rilevando} style={secondaryButton}>
-            <Calculator size={15} /> {rilevando ? "Analisi…" : "Rileva dagli ingredienti"}
-          </button>
-        </div>
-      </Campo>
+      <p style={{ margin: 0, color: "#6b7669", fontSize: 12.5, lineHeight: 1.5 }}>
+        Gli allergeni vengono ricalcolati automaticamente dagli ingredienti quando salvi.
+      </p>
       <Campo titolo="Modo di preparazione">
         <textarea value={bozza.procedimento} onChange={(e) => setBozza({ ...bozza, procedimento: e.target.value })}
           rows={6} placeholder="Descrivi i passaggi della lavorazione" style={{ ...inputStyle, resize: "vertical", lineHeight: 1.5 }} />

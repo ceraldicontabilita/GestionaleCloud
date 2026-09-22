@@ -10,8 +10,8 @@
 // Se una delle due cambia, cambiano entrambe: il frontend deve mostrare
 // esattamente ciò che il Menu pubblicherà, non una seconda interpretazione.
 
-// Categoria/sottocategorie storiche usate quando la ricetta non ne sceglie una
-// (menu_bridge.CATEGORIA_NOME_IT e SOTTOCATEGORIE_REPARTO).
+// Destinazione canonica usata dal ponte Menu: una sola categoria e una
+// sottocategoria derivata dal reparto operativo.
 export const CATEGORIA_PREDEFINITA = "Produzione Ceraldi";
 export const SOTTOCATEGORIA_PER_REPARTO = {
   pasticceria: "Pasticceria",
@@ -42,15 +42,10 @@ export const PROBLEMI = {
     aiuto: "Nel Menu il prodotto compare senza immagine.",
     gravita: "avviso",
   },
-  categoria_non_valida: {
-    etichetta: "Categoria non più valida",
-    aiuto: "La categoria scelta non esiste più (o è di Qromo): la ricetta ricade nella categoria predefinita.",
-    gravita: "pericolo",
-  },
 };
 
 export const ORDINE_PROBLEMI = [
-  "senza_prezzo", "categoria_non_valida", "prezzo_banco", "senza_descrizione", "senza_foto",
+  "senza_prezzo", "prezzo_banco", "senza_descrizione", "senza_foto",
 ];
 
 const intero = (v) => {
@@ -88,7 +83,7 @@ export function indicizzaCategorie(payload) {
 export const nomeCategoria = (voce) =>
   testo(voce?.name_it) || testo(voce?.name) || (voce?.id != null ? `Categoria ${voce.id}` : "");
 
-/** Sottocategoria storica di una ricetta senza scelta esplicita: il suo reparto. */
+/** Sottocategoria canonica della ricetta: il suo reparto operativo. */
 export const sottocategoriaPerReparto = (reparto) =>
   SOTTOCATEGORIA_PER_REPARTO[String(reparto || "").trim().toLowerCase()] || SOTTOCATEGORIA_ALTRO;
 
@@ -107,39 +102,14 @@ export function prezzoPerMenu(ricetta) {
 
 /**
  * Dove finisce la ricetta nel Menu — gemello di `menu_bridge._destinazione_menu`.
- * Una categoria è agganciabile solo se è di Lotti (`selezionabile`): quelle di
- * Qromo vengono cancellate e ricreate dalla sincronizzazione.
- * @returns {{origine: "scelta"|"scelta_senza_sottocategoria"|"predefinita"|"scelta_non_valida",
+ * @returns {{origine: "automatica",
  *            categoria: string, sottocategoria: string}}
  */
-export function destinazioneMenu(ricetta, indice) {
-  const predefinita = {
+export function destinazioneMenu(ricetta) {
+  return {
     categoria: CATEGORIA_PREDEFINITA,
     sottocategoria: sottocategoriaPerReparto(ricetta?.reparto),
-  };
-  const scelta = intero(ricetta?.menu_category_id);
-  if (scelta === null) return { ...predefinita, origine: "predefinita" };
-
-  const voce = indice?.perId?.get(scelta);
-  if (!voce || voce.selezionabile !== true) {
-    // Finché le categorie non sono state caricate non si può dire che la
-    // scelta sia sbagliata: si resta sul dato salvato, senza allarmi falsi.
-    if (!indice?.caricato) {
-      return { origine: "scelta", categoria: `Categoria ${scelta}`, sottocategoria: "" };
-    }
-    return { ...predefinita, origine: "scelta_non_valida" };
-  }
-
-  const categoria = nomeCategoria(voce);
-  const sottoScelta = intero(ricetta?.menu_subcategory_id);
-  const sotto = sottoScelta === null ? null : indice.sottoPerId.get(sottoScelta);
-  if (sotto && sotto.category_id === scelta) {
-    return { origine: "scelta", categoria, sottocategoria: nomeCategoria(sotto) };
-  }
-  return {
-    origine: "scelta_senza_sottocategoria",
-    categoria,
-    sottocategoria: sottocategoriaPerReparto(ricetta?.reparto),
+    origine: "automatica",
   };
 }
 
@@ -155,14 +125,11 @@ export const allergeniRicetta = (r) =>
     .filter(Boolean);
 
 /** Cosa c'è da sistemare su questa ricetta, in ordine di gravità. */
-export function problemiRicettaMenu(ricetta, indice) {
+export function problemiRicettaMenu(ricetta) {
   const problemi = [];
   const { origine } = prezzoPerMenu(ricetta);
   if (origine === "assente") problemi.push("senza_prezzo");
   else if (origine === "banco") problemi.push("prezzo_banco");
-  if (destinazioneMenu(ricetta, indice).origine === "scelta_non_valida") {
-    problemi.push("categoria_non_valida");
-  }
   if (!testo(ricetta?.descrizione)) problemi.push("senza_descrizione");
   if (!fotoRicetta(ricetta)) problemi.push("senza_foto");
   return ORDINE_PROBLEMI.filter((codice) => problemi.includes(codice));

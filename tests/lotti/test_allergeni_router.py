@@ -77,7 +77,7 @@ def test_bulk_non_sovrascrive_una_conferma_umana_anche_se_vuota(monkeypatch):
     assert salvata["allergeni_da_confermare"] is False
 
 
-def test_modifica_ricetta_ricalcola_salvo_conferma_manualizzata(monkeypatch):
+def test_modifica_ricetta_ricalcola_sempre_dagli_ingredienti(monkeypatch):
     from app.lotti.routers import ricette as mod
 
     database = AsyncMongoMockClient()["Gestionale_Test"]
@@ -96,11 +96,11 @@ def test_modifica_ricetta_ricalcola_salvo_conferma_manualizzata(monkeypatch):
     assert aggiornata["allergeni_auto"] == ["Latte"]
     assert aggiornata["allergeni_da_confermare"] is True
 
-    manuale = mod.RicettaCreate(
+    client_vecchio = mod.RicettaCreate(
         nome="Impasto", ingredienti=["Latte"], allergeni=["Soia"],
         allergeni_confermati=True,
     )
-    aggiornata = run(mod.update_ricetta("r3", manuale, _admin={"nome": "Admin"}))
-    assert aggiornata["allergeni"] == ["Soia"]
+    aggiornata = run(mod.update_ricetta("r3", client_vecchio, _admin={"nome": "Admin"}))
+    assert aggiornata["allergeni"] == ["Latte"]
     assert aggiornata["allergeni_auto"] == ["Latte"]
-    assert aggiornata["allergeni_da_confermare"] is False
+    assert aggiornata["allergeni_da_confermare"] is True

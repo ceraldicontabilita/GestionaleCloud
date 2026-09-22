@@ -154,7 +154,7 @@ def test_senza_scelta_resta_il_comportamento_di_oggi(ambiente):
     assert _riga_menu(finto)["category_id"] == categorie[0]["id"]
 
 
-def test_la_categoria_scelta_viene_usata(ambiente):
+def test_i_vecchi_campi_categoria_non_creano_una_seconda_classificazione(ambiente):
     ricette, _, finto = ambiente
     creata_cat = run(menu_bridge.crea_categoria_menu("Colazioni"))
     categoria_id = creata_cat["categoria"]["id"]
@@ -166,26 +166,26 @@ def test_la_categoria_scelta_viene_usata(ambiente):
         menu_subcategory_id=sottocategoria_id))))
 
     riga = _riga_menu(finto)
-    assert riga["category_id"] == categoria_id
-    assert riga["subcategory_id"] == sottocategoria_id
-    # Non e' nata nessuna "Produzione Ceraldi"
-    assert [c["name_it"] for c in finto.tabelle["menu_categories"]] == ["Colazioni"]
+    produzione = [c for c in finto.tabelle["menu_categories"] if c["name_it"] == "Produzione Ceraldi"][0]
+    assert riga["category_id"] == produzione["id"]
+    assert riga["subcategory_id"] != sottocategoria_id
 
 
-def test_categoria_scelta_senza_sottocategoria_usa_il_reparto_dentro_quella_categoria(ambiente):
+def test_categoria_automatica_usa_il_reparto(ambiente):
     ricette, _, finto = ambiente
     categoria_id = run(menu_bridge.crea_categoria_menu("Colazioni"))["categoria"]["id"]
     creata = run(ricette.create_ricetta(ricette.RicettaCreate(**_payload(
         nome="Cornetto", reparto="bar", menu_category_id=categoria_id))))
 
-    assert creata["menu_sync"]["categoria_origine"] == "scelta_senza_sottocategoria"
+    assert creata["menu_sync"]["categoria_origine"] == "automatica"
     sottocategorie = finto.tabelle["menu_subcategories"]
     assert [s["name_it"] for s in sottocategorie] == ["Bar"]
-    assert sottocategorie[0]["category_id"] == categoria_id
-    assert _riga_menu(finto)["category_id"] == categoria_id
+    produzione = [c for c in finto.tabelle["menu_categories"] if c["name_it"] == "Produzione Ceraldi"][0]
+    assert sottocategorie[-1]["category_id"] == produzione["id"]
+    assert _riga_menu(finto)["category_id"] == produzione["id"]
 
 
-def test_categoria_di_qromo_non_e_agganciabile_e_si_ricade_sul_default(ambiente):
+def test_categoria_di_qromo_non_viene_mai_letta_dalla_ricetta(ambiente):
     """Una categoria senza ``origine`` viene cancellata e reinserita a ogni
     sync Qromo: appenderci un prodotto di Lotti farebbe fallire quella
     cancellazione per vincolo di chiave esterna."""
@@ -195,7 +195,7 @@ def test_categoria_di_qromo_non_e_agganciabile_e_si_ricade_sul_default(ambiente)
 
     creata = run(ricette.create_ricetta(ricette.RicettaCreate(
         **_payload(menu_category_id=7))))
-    assert creata["menu_sync"]["categoria_origine"] == "scelta_non_valida"
+    assert creata["menu_sync"]["categoria_origine"] == "automatica"
     nomi = [c["name_it"] for c in finto.tabelle["menu_categories"]]
     assert "Produzione Ceraldi" in nomi
     assert _riga_menu(finto)["category_id"] != 7
@@ -259,7 +259,8 @@ def test_categoria_creata_da_lotti_sopravvive_alla_sync_qromo(ambiente, monkeypa
     assert categorie["Colazioni"]["id"] == categoria_id
     nostri = [p for p in finto.tabelle["menu_products"]
               if p.get("lotti_ref") == f"ricetta:{creata['id']}"]
-    assert len(nostri) == 1 and nostri[0]["category_id"] == categoria_id
+    assert len(nostri) == 1
+    assert nostri[0]["category_id"] == categorie["Produzione Ceraldi"]["id"]
     # La categoria di Qromo e' stata sostituita, non duplicata
     assert sum(1 for c in finto.tabelle["menu_categories"] if c["id"] == 1) == 1
 

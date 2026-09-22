@@ -22,7 +22,7 @@ import {
 import { conferma } from "../../utils/conferma";
 import { isAdmin } from "../../auth";
 import { toast } from "./backoffice/toastBackoffice";
-import { useCategorieMenu } from "./backoffice/SceltaCategoriaMenu";
+import { useCategorieMenu } from "../../hooks/useCategorieMenu";
 import {
   ORDINE_PROBLEMI, PROBLEMI, allergeniRicetta, destinazioneMenu, fotoRicetta,
   ordinaPerUrgenza, prezzoPerMenu, problemiRicettaMenu, riepilogoProblemi, ricetteInMenu,
@@ -133,12 +133,7 @@ function CardInMenu({ ricetta, indice, onApri }) {
           <span>
             {dest.categoria}
             {dest.sottocategoria ? <> <ChevronRight size={11} style={{ verticalAlign: "-1px" }} aria-hidden="true" /> {dest.sottocategoria}</> : null}
-            {dest.origine === "predefinita" && (
-              <span style={{ fontWeight: 600, color: "var(--text-3)" }}> · categoria predefinita</span>
-            )}
-            {dest.origine === "scelta_senza_sottocategoria" && (
-              <span style={{ fontWeight: 600, color: "var(--text-3)" }}> · sezione per reparto</span>
-            )}
+            <span style={{ fontWeight: 600, color: "var(--text-3)" }}> · assegnata automaticamente</span>
           </span>
         </div>
 
