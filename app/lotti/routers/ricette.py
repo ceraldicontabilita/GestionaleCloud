@@ -341,7 +341,7 @@ async def _cerca_foto_commons(client, termine: str):
 
 async def importa_foto_da_web(solo_senza_foto: bool = True) -> dict:
     """Scarica una foto per ogni ricetta dettata ancora SENZA foto e la salva
-    su Mongo (foto_files) come ogni altra foto dell'app. Best-effort."""
+    nel document store Supabase (foto_files) come ogni altra foto dell'app. Best-effort."""
     import httpx
     esiti = {"caricate": [], "senza_risultato": [], "gia_con_foto": [], "senza_termine": []}
     async with httpx.AsyncClient(timeout=30, headers=_UA_COMMONS, follow_redirects=True) as client:
@@ -2942,7 +2942,7 @@ async def upload_foto(
     mime = file.content_type or ""
     if not mime.startswith("image/"):
         raise HTTPException(400, "File non è un'immagine")
-    # Salvataggio su MongoDB (persiste ai restart di Render, niente disco effimero).
+    # Salvataggio nel document store Supabase (persiste ai restart di Render).
     contenuto = await file.read()
     if len(contenuto) > 15 * 1024 * 1024:
         raise HTTPException(400, "Immagine troppo grande (max 15MB)")
@@ -2968,7 +2968,7 @@ async def upload_foto(
         "filename": file.filename,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     })
-    # foto_url servito dall'endpoint GET /api/foto/{id} (legge da Mongo); ?v cambia
+    # foto_url servito dall'endpoint GET /api/foto/{id} (legge da Supabase); ?v cambia
     # ad ogni upload per invalidare cache browser/React sulla stessa ricetta.
     foto_url = f"/api/foto/{foto_id}?v={versione}"
     await db.ricette.update_one({"id": ricetta_id}, {"$set": {
@@ -2983,7 +2983,7 @@ async def upload_foto(
 
 @router.get("/foto/{foto_id}")
 async def leggi_foto(foto_id: str):
-    """Serve l'immagine salvata su MongoDB. URL con ?v=<versione>: contenuto di una
+    """Serve l'immagine persistita su Supabase. URL con ?v=<versione>: contenuto di una
     specifica versione è immutabile, quindi cache lunga e forte è sicura — un
     aggiornamento foto genera un nuovo ?v e quindi un URL (e una cache) diversi."""
     doc = await db.foto_files.find_one({"_id": foto_id})

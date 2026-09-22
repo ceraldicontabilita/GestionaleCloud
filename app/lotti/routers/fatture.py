@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/fatture", tags=["Fatture"])
 
-# MongoDB connection (stessa logica degli altri router)
+# Archivio Lotti tramite adattatore Supabase in produzione.
 # XSL per visualizzazione Assosoftware
 XSL_PATH = Path(__file__).parent.parent / "static" / "FoglioStileAssoSoftware.xsl"
 
@@ -37,10 +37,10 @@ def set_database(database):
 
 # ──────────────────────────────────────────────────────────────────────────────
 # ARCHIVIO OPERATIVO LOTTI
-# GestionaleCloud e Lotti usano database separati. Il ponte in
+# GestionaleCloud e Lotti usano schemi/archivi applicativi distinti. Il ponte in
 # routers/gestionale_fatture.py riceve una proiezione read-only con source_id e
-# source_hash; questo router applica poi la normale pipeline HACCP sul database
-# di Lotti. Non esiste più alcuna dipendenza da una collection condivisa.
+# source_hash; questo router applica poi la normale pipeline HACCP allo schema
+# Lotti nello stesso progetto Supabase. Non dipende da una collection condivisa.
 # ──────────────────────────────────────────────────────────────────────────────
 
 # ── Modello ──────────────────────────────────────────────────────────────────

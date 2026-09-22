@@ -1,15 +1,15 @@
 """Archivio condiviso dai router Lotti.
 
-In produzione usa il document store Supabase dedicato a Lotti (progetto
-DIVERSO da quello di GestionaleCloud, per questo le variabili sono prefissate
-``LOTTI_``):
+In produzione usa il document store nello schema Lotti del progetto Supabase
+GestionaleCloud. Le variabili restano prefissate ``LOTTI_`` per distinguere
+le credenziali delle RPC dai client delle altre aree:
 
-  LOTTI_SUPABASE_URL        URL del progetto Supabase di Lotti
+  LOTTI_SUPABASE_URL        URL del progetto Supabase GestionaleCloud
   LOTTI_SUPABASE_ANON_KEY   chiave anon del progetto
   LOTTI_DB_SECRET           segreto applicativo richiesto dalle RPC ``lotti_*``
   LOTTI_DB_NAME             nome logico del database (default ``Gestionale``)
 
-Senza ``LOTTI_SUPABASE_URL`` l'archivio e' un Mongo finto in memoria
+Senza ``LOTTI_SUPABASE_URL`` l'archivio e' un mock compatibile Mongo in memoria
 (``mongomock-motor``): utile per test e collaudi locali, ma i dati NON
 sopravvivono al riavvio del processo. Nessuna connessione Motor/pymongo verso
 un server reale viene mai aperta.
