@@ -9,11 +9,10 @@ con ``origine = "lotti"`` e chiave idempotente ``lotti_ref = "ricetta:<id>"``.
 La colonna ``visible`` replica il flag ``menu_pubblico`` della ricetta: il
 titolare la vede nell'area admin del Menu e decide se mostrarla ai clienti.
 
-Immagini: i byte della foto (collezione ``foto_files`` di Lotti) vengono
-copiati nel bucket Storage ``menu-images`` al percorso ``lotti/<foto_id>.<ext>``
-e il prodotto Menu usa l'URL pubblico. L'id foto e' immutabile per contenuto
-(un nuovo upload in Lotti crea un nuovo id), quindi se la riga Menu punta gia'
-allo stesso ``foto_id`` non si ricarica nulla.
+Immagini: i nuovi upload di Lotti sono persistiti direttamente nel bucket
+Supabase Storage ``menu-images`` sotto ``lotti/ricette`` e il prodotto Menu
+usa lo stesso oggetto, senza copie concorrenti. Il lettore Drive resta solo
+per le immagini storiche finche' la loro migrazione non e' completata.
 
 Prezzo (decisione del titolare 19/09/2026): la ricetta ha due prezzi, al banco
 (``prezzo_vendita``, quello del food cost) e al tavolo (``prezzo_tavolo``). Il
@@ -326,10 +325,13 @@ def _carica_immagine(foto: dict) -> str:
 
 
 def _immagine_per_prodotto(ricetta: dict, foto: Optional[dict], esistente: Optional[dict]) -> Optional[str]:
-    """URL da scrivere in ``image``: la foto Lotti copiata su Storage (senza
-    ricaricarla se la riga punta gia' allo stesso foto_id), altrimenti un
-    eventuale URL assoluto gia' pubblico, altrimenti quello gia' presente."""
+    """URL da scrivere in ``image``: lo stesso oggetto Storage di Lotti;
+    per una foto storica copia i byte una sola volta, altrimenti conserva un
+    eventuale URL assoluto gia' pubblico o quello gia' presente."""
     if foto and foto.get("data"):
+        if foto.get("storage_path"):
+            from app.lotti.servizi import supabase_foto_ricette
+            return supabase_foto_ricette.url_pubblico(str(foto["storage_path"]))
         foto_id = str(foto["_id"])
         attuale = (esistente or {}).get("image") or ""
         if f"/{STORAGE_PREFIX}/{foto_id}." in attuale:
@@ -412,6 +414,17 @@ def _rimuovi_sync(lotti_ref: str) -> dict:
 # ================== API asincrona usata dal router ricette ==================
 
 async def _foto_ricetta(ricetta: dict, db: Any) -> Optional[dict]:
+    storage_path = str(ricetta.get("foto_storage_path") or "").strip()
+    if storage_path:
+        from app.lotti.servizi import supabase_foto_ricette
+        contenuto = await asyncio.to_thread(supabase_foto_ricette.leggi, storage_path)
+        return {
+            "_id": str(ricetta.get("foto_id") or storage_path),
+            "mime": str(ricetta.get("foto_content_type") or "image/jpeg"),
+            "data": contenuto,
+            "sha256": ricetta.get("foto_sha256"),
+            "storage_path": storage_path,
+        }
     drive_id = str(ricetta.get("foto_drive_id") or "").strip()
     if drive_id:
         from app.lotti.servizi import drive_foto_ricette

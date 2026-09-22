@@ -110,6 +110,18 @@ class _Bucket:
     def get_public_url(self, percorso):
         return f"https://storage.test/object/public/{self.nome}/{percorso}"
 
+    def download(self, percorso):
+        for voce in reversed(self.registro):
+            if voce["bucket"] == self.nome and voce["path"] == percorso:
+                return voce["data"]
+        raise FileNotFoundError(percorso)
+
+    def remove(self, percorsi):
+        self.registro[:] = [
+            voce for voce in self.registro
+            if not (voce["bucket"] == self.nome and voce["path"] in percorsi)
+        ]
+
 
 class _Storage:
     def __init__(self, registro):
@@ -144,10 +156,12 @@ class _SupabaseRotto:
 def ambiente(monkeypatch):
     import app.lotti.routers.ricette as ricette
     from app.lotti.servizi import drive_foto_ricette
+    from app.lotti.servizi import supabase_foto_ricette
 
     monkeypatch.setenv("MENU_SUPABASE_URL", "https://menu.test.supabase.co")
     finto = _FakeSupabase()
     monkeypatch.setattr(menu_bridge, "supabase", finto)
+    monkeypatch.setattr(supabase_foto_ricette, "supabase", finto)
     database = AsyncMongoMockClient()["Gestionale_Test"]
     monkeypatch.setattr(ricette, "db", database)
     foto_drive = {}
@@ -291,12 +305,12 @@ def test_upload_foto_copia_immagine_nel_menu(ambiente):
     assert len(finto.upload) == 1
     caricato = finto.upload[0]
     assert caricato["bucket"] == "menu-images"
-    assert caricato["path"] == f"lotti/{foto_id}.png"
+    assert caricato["path"] == f"lotti/ricette/{foto_id}.png"
     assert caricato["data"] == b"\x89PNG-finto"
-    assert caricato["opzioni"] == {"content-type": "image/png", "upsert": "true"}
+    assert caricato["opzioni"] == {"content-type": "image/png", "upsert": "false"}
 
     riga = finto.tabelle["menu_products"][0]
-    assert riga["image"] == f"https://storage.test/object/public/menu-images/lotti/{foto_id}.png"
+    assert riga["image"] == f"https://storage.test/object/public/menu-images/lotti/ricette/{foto_id}.png"
     assert esito["menu_sync"]["image"] == riga["image"]
 
     # Una modifica successiva NON ricarica la stessa foto
@@ -311,10 +325,10 @@ def test_upload_foto_copia_immagine_nel_menu(ambiente):
     foto_id2 = ricette._foto_id_da_url(esito2["foto_url"])
     assert foto_id2 != foto_id
     assert len(finto.upload) == 2
-    assert finto.tabelle["menu_products"][0]["image"].endswith(f"/lotti/{foto_id2}.png")
+    assert finto.tabelle["menu_products"][0]["image"].endswith(f"/lotti/ricette/{foto_id2}.png")
 
 
-def test_catalogo_verificato_conserva_provenienza_hash_e_id_drive_nella_ricetta(ambiente):
+def test_catalogo_verificato_conserva_provenienza_hash_e_path_supabase_nella_ricetta(ambiente):
     ricette, database, _ = ambiente
     creata = run(ricette.create_ricetta(ricette.RicettaCreate(**_payload())))
     contenuto = b"\x89PNG-catalogo"
@@ -326,7 +340,9 @@ def test_catalogo_verificato_conserva_provenienza_hash_e_id_drive_nella_ricetta(
     assert esito["foto_source"] == salvata["foto_source"] == "catalogo_napoletano_verificato"
     assert salvata["foto_sha256"] == hashlib.sha256(contenuto).hexdigest()
     assert salvata["foto_url"] == esito["foto_url"]
-    assert salvata["foto_drive_id"] == salvata["foto_id"]
+    assert salvata["foto_storage_bucket"] == "menu-images"
+    assert salvata["foto_storage_path"].endswith(f"/{salvata['foto_id']}.png")
+    assert "foto_drive_id" not in salvata
     assert run(database.foto_files.count_documents({})) == 0
 
 
@@ -348,35 +364,26 @@ def test_upload_multipart_registra_catalogo_napoletano_verificato(ambiente):
     assert salvata["foto_filename"] == "amaretti.png"
 
 
-def test_sostituzione_salva_backup_e_cestina_solo_foto_non_condivisa(ambiente, monkeypatch):
+def test_sostituzione_salva_backup_ed_elimina_solo_foto_non_condivisa(ambiente):
     ricette, database, _ = ambiente
-    from app.lotti.servizi import drive_foto_ricette
     creata = run(ricette.create_ricetta(ricette.RicettaCreate(**_payload())))
     prima = run(ricette.upload_foto(
         creata["id"], _file_png(b"prima"), "upload_manuale", False
     ))
     prima_id = ricette._foto_id_da_url(prima["foto_url"])
-    cestinate = []
-
-    def cestina(file_id, *, folder_id, service=None):
-        cestinate.append((file_id, folder_id))
-        return {"id": file_id, "trashed": True}
-
-    monkeypatch.setattr(drive_foto_ricette, "cestina", cestina)
     dopo = run(ricette.upload_foto(
         creata["id"], _file_png(b"dopo"), "catalogo_napoletano_verificato", True
     ))
 
     backup = run(database.ricette_foto_backup.find_one({"id": dopo["backup_id"]}))
     assert backup["tipo"] == "sostituzione_foto"
-    assert backup["foto_precedente"]["foto_drive_id"] == prima_id
-    assert dopo["foto_precedente_cestinata"] is True
-    assert cestinate == [(prima_id, "cartella-ricette")]
+    assert backup["foto_precedente"]["foto_id"] == prima_id
+    assert backup["foto_precedente"]["foto_storage_path"].endswith(f"/{prima_id}.png")
+    assert dopo["foto_precedente_eliminata"] is True
 
 
-def test_sostituzione_non_cestina_una_foto_ancora_condivisa(ambiente, monkeypatch):
+def test_sostituzione_non_elimina_una_foto_ancora_condivisa(ambiente):
     ricette, database, _ = ambiente
-    from app.lotti.servizi import drive_foto_ricette
     creata = run(ricette.create_ricetta(ricette.RicettaCreate(**_payload())))
     prima = run(ricette.upload_foto(
         creata["id"], _file_png(b"condivisa"), "upload_manuale", False
@@ -385,22 +392,13 @@ def test_sostituzione_non_cestina_una_foto_ancora_condivisa(ambiente, monkeypatc
     run(database.ricette.insert_one({
         "id": "altra-ricetta",
         "nome": "Altra",
-        "foto_drive_id": prima_id,
-        "foto_drive_folder_id": "cartella-ricette",
+        "foto_storage_path": f"lotti/ricette/{prima_id}.png",
     }))
-    cestinate = []
-    monkeypatch.setattr(
-        drive_foto_ricette,
-        "cestina",
-        lambda *args, **kwargs: cestinate.append((args, kwargs)),
-    )
-
     dopo = run(ricette.upload_foto(
         creata["id"], _file_png(b"nuova"), "catalogo_napoletano_verificato", True
     ))
 
-    assert dopo["foto_precedente_cestinata"] is False
-    assert cestinate == []
+    assert dopo["foto_precedente_eliminata"] is False
 
 
 # ---------- scelta del titolare: menu_pubblico -> visible ----------
