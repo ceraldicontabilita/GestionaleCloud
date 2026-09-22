@@ -1,7 +1,7 @@
 {
   "meta": {
     "nome": "Ceraldi ERP — Logica completa per la chat intelligente",
-    "versione": "5.0-drive-sheets-operational",
+    "versione": "5.0",
     "aggiornato_al": "2026-08-20",
     "azienda": {
       "nome": "Ceraldi Caffe / Ceraldi Group SRL",
@@ -808,7 +808,6 @@
         "Il backend carica le regole pertinenti della base di conoscenza.",
         "Il modello AI riceve domanda, contesto e strumenti autorizzati.",
         "Il modello richiede al backend i dati necessari tramite strumenti controllati.",
-        "Il backend interroga i registri Sheets e legge gli originali autorizzati da Drive.",
         "Il modello costruisce una risposta motivata con fonti, affidabilità e dati mancanti.",
         "Il backend salva domanda, risposta, strumenti usati e decisioni.",
         "Il frontend mostra la risposta e le eventuali azioni proposte."
@@ -850,7 +849,7 @@
           "Ogni chiamata deve essere registrata.",
           "Gli strumenti di lettura devono essere separati da quelli con effetti sui dati.",
           "Gli strumenti con effetti devono richiedere conferma esplicita dell'utente.",
-          "Il modello non può costruire query libere contro Sheets o Drive."
+          "Il modello non può costruire query libere contro gli archivi."
         ],
         "strumenti_minimi": [
           "cerca_documenti",
@@ -1085,19 +1084,6 @@
       "La chiave Anthropic non è esposta al frontend o al repository.",
       "La pagina frontend non è più vuota ed è collegata agli endpoint backend.",
       "Le risposte rispettano le regole specifiche di ogni dominio."
-    ]
-  },
-  "storage_operativo": {
-    "stato_corrente": "google_drive_sheets",
-    "backend_predefinito": "sheets",
-    "compatibilita": "nessun_backend_alternativo",
-    "regola": "La chat interroga soltanto strumenti backend autorizzati. Drive/Sheets è l'unico archivio operativo; non esiste fallback alternativo.",
-    "cartelle_canoniche": [
-      "REGISTRO DATI",
-      "PARTENOPAY",
-      "CODICI TRIBUTO",
-      "QUIETANZE",
-      "DICHIARAZIONI"
     ]
   }
 }

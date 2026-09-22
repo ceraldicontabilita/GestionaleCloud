@@ -55,9 +55,6 @@ def test_render_serves_the_combined_app_with_health_check():
     assert service["healthCheckPath"] == "/api/health"
     assert _environment_values(service)["PROCESS_ROLE"] == "combined"
     assert _environment_values(service)["ENABLE_SCHEDULER"] == "true"
-    assert "GOOGLE_SHEETS_LEDGER_FOLDER_ID" not in {
-        item["key"] for item in service.get("envVars", [])
-    }
 
 
 def test_render_pins_a_python_runtime_compatible_with_rapidocr():

@@ -132,11 +132,6 @@ class Settings(BaseSettings):
     GOOGLE_DRIVE_ESTRATTI_FOLDER_IDS: Optional[str] = None     # piu radici, separate da virgola
     GOOGLE_DRIVE_BONIFICI_FOLDER_ID: Optional[str] = None      # stessa radice dei fascicoli: <COGNOME NOME>/BONIFICI/DA ELABORARE = bonifici
     GOOGLE_DRIVE_BONIFICI_FOLDER_IDS: Optional[str] = None     # piu radici bonifici separate da virgola (fascicoli + 03/BONIFICI generici)
-    # Cartella Drive storica del registro portatile (ora dismesso). Resta
-    # come radice di fallback per l'archiviazione delle copie documentali
-    # (app/services/email_drive_archive.py) quando l'area non ha una
-    # cartella dedicata configurata: NON e' piu' legata a Supabase.
-    GOOGLE_SHEETS_LEDGER_FOLDER_ID: Optional[str] = None
     # Nuovi canali documentali (scelta utente 12-07-2026): cartelle Drive
     # dedicate. Gli ID vanno su Render; ogni cartella condivisa con la
     # client_email del service account che la legge.
@@ -437,7 +432,7 @@ class Settings(BaseSettings):
 
         backend = self.DATA_BACKEND.strip().lower()
         # Supabase e' l'unico backend supportato dal runtime. Qualunque altro
-        # valore (incluso il vecchio 'sheets', rimosso) resta invalido.
+        # valore diverso da supabase resta invalido.
         if backend != "supabase":
             errors.append("DATA_BACKEND non supportato: il runtime corrente supporta esclusivamente 'supabase' (Postgres).")
 

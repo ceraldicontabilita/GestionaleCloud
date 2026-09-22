@@ -5,19 +5,6 @@ documenti che il runtime tiene in memoria, usando solo la libreria standard.
 **Non parla con nessun archivio**: la persistenza e' di chi lo usa, oggi
 `supabase_runtime_database.py` (Supabase, unico archivio del gruppo).
 
-Si chiamava `sheets_document_store.py` e la sua docstring diceva che «la
-sorgente persistente resta Google Sheets». Era falso da quando il runtime
-Sheets e' stato rimosso (19/09/2026): zero chiamate a Google in tutto il
-file, verificato. Un nome che mente costa piu' di un nome brutto — chi legge
-`sheets_document_store` in cima a un modulo importato da 158 file crede che
-Google Sheets sia ancora nel giro, e CLAUDE.md dice il contrario.
-
-Il 20/09/2026 sono state rinominate anche le quattro classi che mentivano
-allo stesso modo, in un commit che non fa altro (585 occorrenze in 156 file):
-`SheetDatabase` -> `ArchivioDocumenti`, `MemorySheetsClient` ->
-`ClientArchivioMemoria`, `SheetTable` -> `CollezioneDocumenti`,
-`SheetCursor` -> `CursoreDocumenti`. Nessun alias all'indietro: due nomi per
-la stessa classe sono il doppione che CLAUDE.md vieta.
 """
 from __future__ import annotations
 
@@ -714,7 +701,7 @@ class CollezioneDocumenti:
         copy_documents: bool = True,
         append: bool = False,
     ) -> int:
-        """Carica in blocco una tabella vuota durante l'avvio da Sheets.
+        """Carica in blocco una collezione vuota durante l'idratazione.
 
         L'idratazione parte sempre da una cache effimera vuota. Usare gli
         upsert ordinari per ogni riga farebbe scandire ripetutamente la lista
@@ -733,8 +720,8 @@ class CollezioneDocumenti:
                 str(document.get("_id")) for document in self._documents
             }
             for document in documents:
-                # Durante restore_all il payload e' appena decodificato da
-                # Sheets e viene ceduto alla cache: copiarlo nuovamente
+                # Durante restore_all il payload e' appena decodificato e
+                # viene ceduto alla cache: copiarlo nuovamente
                 # raddoppiava il picco di memoria dei registri POS. Il default
                 # resta difensivo per gli altri chiamanti.
                 stored = _clone(document) if copy_documents else document
@@ -742,7 +729,7 @@ class CollezioneDocumenti:
                 record_id = str(stored["_id"])
                 if record_id in seen_ids:
                     raise DuplicateRecordError(
-                        f"Valore _id duplicato nel foglio {self.name}: {record_id}"
+                        f"Valore _id duplicato nella collezione {self.name}: {record_id}"
                     )
                 seen_ids.add(record_id)
                 stored_documents.append(stored)
