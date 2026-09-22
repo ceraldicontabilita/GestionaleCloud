@@ -457,7 +457,9 @@ export const ImportDropdown = ({ activeTab, onTabChange }) => {
   return (
     <>
       <button ref={btnRef} onClick={handleToggle}
-        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-all whitespace-nowrap text-xs ${
+        aria-expanded={open}
+        aria-current={isActive ? "page" : undefined}
+        className={`flex min-h-[44px] items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-all whitespace-nowrap text-xs ${
           isActive ? "bg-[#5b7a6b] text-white shadow-md" : "bg-white text-gray-600 hover:bg-gray-100 border"
         }`}
         data-testid="import-dropdown-btn"
@@ -479,7 +481,8 @@ export const ImportDropdown = ({ activeTab, onTabChange }) => {
               {i > 0 && <div className="border-t border-gray-100" />}
               <button
                 onClick={() => { onTabChange(item.id); setOpen(false); }}
-                className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-xs font-medium transition-colors ${item.hoverCls} ${activeTab === item.id ? item.activeCls : "text-gray-700"}`}
+                aria-current={activeTab === item.id ? "page" : undefined}
+                className={`w-full flex min-h-[44px] items-center gap-2.5 px-3 py-2.5 text-xs font-medium transition-colors ${item.hoverCls} ${activeTab === item.id ? item.activeCls : "text-gray-700"}`}
                 data-testid={item.testid}
               >
                 {item.icon} {item.label}

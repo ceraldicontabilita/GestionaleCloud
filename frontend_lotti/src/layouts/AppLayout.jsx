@@ -111,6 +111,7 @@ export default function AppLayout({ activeTab, onTabChange, ordiniPendenti, onSu
               data-tour={tab.id}
               onClick={() => onTabChange(tab.id)}
               className={`g-nav-btn${activeTab === tab.id ? " active" : ""}`}
+              aria-current={activeTab === tab.id ? "page" : undefined}
             >
               <tab.icon size={13} />
               {tab.label}

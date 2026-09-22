@@ -748,14 +748,14 @@ h1, .g-page-title { font-weight: 800; }
   min-width: 100%;
 }
 
-/* Pulsante nav — compatto */
+/* Pulsante nav — area tattile costante su tutte le pagine */
 .g-nav-btn {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 5px 10px;
+  padding: 10px 12px;
   border-radius: 8px;
-  font-size: 11.5px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-2);
   cursor: pointer;
@@ -764,7 +764,7 @@ h1, .g-page-title { font-weight: 800; }
   transition: all .15s;
   white-space: nowrap;
   font-family: var(--font);
-  min-height: 30px;
+  min-height: 44px;
   position: relative;
 }
 .g-nav-btn svg { width: 13px; height: 13px; flex-shrink: 0; }

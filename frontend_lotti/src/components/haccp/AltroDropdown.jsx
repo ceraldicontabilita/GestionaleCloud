@@ -36,6 +36,9 @@ export function AltroDropdown({ tabs, activeTab, onTabChange }) {
         ref={btnRef}
         onClick={() => setOpen((o) => !o)}
         data-testid="altro-dropdown-btn"
+        aria-expanded={open}
+        aria-current={isActive ? "page" : undefined}
+        aria-label="Altre pagine"
         className={`g-nav-btn${isActive ? " active" : ""}`}
         style={{ display: "flex", alignItems: "center", gap: 4 }}
       >
@@ -79,6 +82,7 @@ export function AltroDropdown({ tabs, activeTab, onTabChange }) {
                   <button
                     onClick={() => { onTabChange(tab.id); setOpen(false); }}
                     data-testid={`altro-menu-${tab.id}`}
+                    aria-current={activeTab === tab.id ? "page" : undefined}
                     className={`g-dropdown-item${activeTab === tab.id ? " active" : ""}`}
                   >
                     <tab.icon size={15} />
