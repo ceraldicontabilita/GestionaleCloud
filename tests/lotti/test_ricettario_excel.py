@@ -1,8 +1,10 @@
 import asyncio
+import io
 import os
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
+from starlette.datastructures import Headers
 
 os.environ.setdefault("AUTH_SECRET", "test-secret-non-usare-in-prod")
 os.environ.setdefault("MONGO_URL", "mongodb://localhost:27017")
@@ -150,6 +152,22 @@ def test_cestino_ripristina_stesso_id_e_secondo_tentativo_non_duplica(monkeypatc
     assert ricetta["procedimento_testo"] == "Procedimento operativo"
     assert voce["ripristinata_da"] == "Admin"
     assert run(mod.get_ricette_cestino({"nome": "Admin"})) == []
+
+
+def test_illustrazione_per_id_non_ricrea_la_ricetta_eliminata(monkeypatch):
+    database = AsyncMongoMockClient()["Gestionale_Test"]
+    monkeypatch.setattr(mod, "db", database)
+    file = UploadFile(
+        file=io.BytesIO(b"immagine"), filename="ricetta.png",
+        headers=Headers({"content-type": "image/png"}),
+    )
+
+    with pytest.raises(HTTPException) as errore:
+        run(mod.upload_foto("ricetta-eliminata", file, True))
+
+    assert errore.value.status_code == 404
+    assert run(database.ricette.count_documents({})) == 0
+    assert run(database.foto_files.count_documents({})) == 0
 
 
 def test_ripristino_variante_senza_base_conserva_la_copia_nel_cestino(monkeypatch):
