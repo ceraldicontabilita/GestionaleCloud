@@ -197,7 +197,6 @@ def test_prodotto_acquistato_scompare_dalle_due_proiezioni_del_ricettario(monkey
     assert operative == []
     assert not any(r.get("nome") == "Aranciata" for r in unificate)
     assert archivio["recipes"] == []
-    assert archivio["ricette_operative"] == 0
 
 
 def test_variante_arancini_identica_confluisce_nella_base_senza_perdere_fonti():

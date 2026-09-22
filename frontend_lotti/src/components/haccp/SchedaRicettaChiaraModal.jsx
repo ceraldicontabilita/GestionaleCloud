@@ -1,22 +1,18 @@
-import { BookOpen, ChefHat, Pencil, X } from "lucide-react";
+import { ChefHat, Pencil, X } from "lucide-react";
 import DosiRicetta from "./shared/DosiRicetta";
 
 const righe = (value) => String(value || "").split(/\r?\n/).map(x => x.trim()).filter(Boolean);
 
-export default function SchedaRicettaChiaraModal({ ricetta, tutte = [], onClose, onProduci, onModifica }) {
+export default function SchedaRicettaChiaraModal({ ricetta, onClose, onProduci, onModifica }) {
   if (!ricetta) return null;
-  const documento = ricetta.documentazione_archivio || null;
   const soloLettura = ricetta.origine === "archivio" || ricetta.sola_lettura;
-  const dallaFonte = righe(ricetta.ingredienti_testo || documento?.ingredients);
+  const dallaFonte = righe(ricetta.ingredienti_testo);
   const procedimento = soloLettura
-    ? (ricetta.procedimento_testo || documento?.procedure || "Procedimento non indicato nella fonte.")
-    : (ricetta.note || ricetta.procedimento_testo || documento?.procedure || "Procedimento non ancora indicato.");
-  const note = soloLettura ? (ricetta.note_archivio || documento?.notes || "") : (documento?.notes || "");
-  const fonte = ricetta.fonte_archivio || documento?.source || "Ricettario Ceraldi";
-  const provenienza = ricetta.provenienza_archivio || documento?.provenance || {};
-  const collegate = ricetta.tipo_archivio === "recipe"
-    ? tutte.filter(x => x.tipo_archivio === "component" && x.parent_recipe === ricetta.nome && x.fonte_archivio === ricetta.fonte_archivio)
-    : [];
+    ? (ricetta.procedimento_testo || "Procedimento non indicato nella fonte.")
+    : (ricetta.procedimento_testo || "Procedimento non ancora indicato.");
+  const note = ricetta.note || ricetta.note_archivio || "";
+  const fonte = ricetta.fonte_archivio || "Ricetta Ceraldi";
+  const provenienza = ricetta.provenienza_archivio || {};
 
   return (
     <div className="fixed inset-0 z-[150] flex items-end justify-center bg-black/55 p-2 md:items-center md:p-6" onClick={onClose}>
@@ -41,14 +37,6 @@ export default function SchedaRicettaChiaraModal({ ricetta, tutte = [], onClose,
               </ul>
             ) : <p className="rounded-2xl bg-stone-100 p-4 text-sm text-stone-500">Ingredienti non ancora indicati.</p>}
 
-            {collegate.length > 0 && (
-              <div className="mt-5">
-                <h3 className="mb-2 font-serif text-lg font-bold">Preparazioni collegate</h3>
-                <div className="flex flex-wrap gap-2">
-                  {collegate.map(c => <span key={c.id} className="rounded-full border border-[#b9cec1] bg-[#edf4ef] px-3 py-2 text-xs font-black text-[#3f5a4e]">{c.nome}</span>)}
-                </div>
-              </div>
-            )}
           </section>
 
           <section className="space-y-6">
@@ -57,11 +45,10 @@ export default function SchedaRicettaChiaraModal({ ricetta, tutte = [], onClose,
               <p className="m-0 whitespace-pre-line rounded-2xl border border-[#e7ddd0] bg-white p-5 text-[15px] leading-7 text-stone-700">{procedimento}</p>
             </div>
             {note && <div><h3 className="mb-2 font-serif text-lg font-bold">Note</h3><p className="m-0 whitespace-pre-line rounded-2xl bg-[#f2eee6] p-4 text-sm leading-6 text-stone-700">{note}</p></div>}
-            {(provenienza.sheet || documento) && (
+            {provenienza.sheet && (
               <div className="rounded-2xl border border-dashed border-[#b9a994] p-4 text-xs leading-5 text-stone-500">
-                <strong className="text-stone-700">Provenienza:</strong> {provenienza.sheet || "Ricettario Ceraldi"}{provenienza.row ? `, riga ${provenienza.row}` : ""}<br />
+                <strong className="text-stone-700">Provenienza:</strong> {provenienza.sheet}{provenienza.row ? `, riga ${provenienza.row}` : ""}<br />
                 {provenienza.sourceSheet && <>Foglio fonte: {provenienza.sourceSheet}{provenienza.sourceRow ? `, riga ${provenienza.sourceRow}` : ""}<br /></>}
-                Archivio: Ricettario_Completo_v6.xlsx
               </div>
             )}
 
@@ -71,7 +58,6 @@ export default function SchedaRicettaChiaraModal({ ricetta, tutte = [], onClose,
                 {onModifica && <button onClick={() => onModifica(ricetta)} className="flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-[#b9cec1] bg-white px-5 py-3 font-black text-[#3f5a4e]"><Pencil size={17} /> Modifica</button>}
               </>}
             </div>
-            {!soloLettura && documento && <p className="m-0 flex items-center gap-2 text-xs font-bold text-[#5b7a6b]"><BookOpen size={14} /> La documentazione di origine è collegata a questa ricetta, senza duplicarla.</p>}
           </section>
         </div>
       </article>

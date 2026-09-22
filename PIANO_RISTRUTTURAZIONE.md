@@ -1,15 +1,15 @@
 # Piano di ristrutturazione di GestionaleCloud
 
-**Documento operativo vivo, aggiornato il 21 settembre 2026.**
+**Documento operativo vivo, aggiornato il 22 settembre 2026.**
 
 - Baseline iniziale dell'audit: `8cf52bd269d8d1facb478e4a585fa8b01a5ec3ff`.
 - Baseline della bonifica misurata: `e283400164c0b9fb88ece13eb401fcde9cba1c42`.
 - Avanzamenti concorrenti preservati: `31943965f382018d87047637e16fe815d1b93318` (public_api) e `4ad3ffa4cbfd5612e6a4b179d583a419582f2c09` (report/batch).
-- Ultima tranche conclusa: [PR #619](https://github.com/ceraldicontabilita/GestionaleCloud/pull/619), Ricette tablet con dose nella scheda.
-- Codice pubblicato e verificato: **`221bd46203fc53079dbaea83f0255600dad5fb4e`**.
-- Prova di produzione: [workflow 35635520387](https://github.com/ceraldicontabilita/GestionaleCloud/actions/runs/35635520387), E2E isolato, audit layout, smoke runtime e verifica del commit servito; [CI 35635519197](https://github.com/ceraldicontabilita/GestionaleCloud/actions/runs/35635519197) verde.
+- Ultima tranche conclusa: [PR #642](https://github.com/ceraldicontabilita/GestionaleCloud/pull/642), registrate le verifiche live delle Ricette #640 e #641.
+- Codice pubblicato e verificato: **`7124927f64f960c150bba9fbe406c4b956b72c46`**.
+- Prova di produzione: [workflow 35680124678](https://github.com/ceraldicontabilita/GestionaleCloud/actions/runs/35680124678), E2E isolato, audit layout e smoke del commit servito tramite `/lotti/api/health`; [CI 35680011844](https://github.com/ceraldicontabilita/GestionaleCloud/actions/runs/35680011844) verde.
 - **Stato complessivo: IN CORSO.** La fusione ERP, HR, Lotti e Menu non è completata. La bonifica pubblicata non certifica ogni funzione e ogni dato contabile.
-- **Priorità operativa aperta:** date Banca [#573](https://github.com/ceraldicontabilita/GestionaleCloud/issues/573) e contatori Provvisori [#575](https://github.com/ceraldicontabilita/GestionaleCloud/issues/575).
+- **Priorità operativa aperta:** rimuovere le associazioni Ricette ↔ archivio dedotte dal solo nome; proseguire con cestino recuperabile, coerenza dei riferimenti e foto mancanti senza modificare gli originali.
 
 ## 1. Regole di avanzamento e pubblicazione
 
@@ -485,7 +485,9 @@ Il conteggio dei tre moduli report/batch è 1.186 righe rimosse. Non aggiungerlo
 | 2026-09-22 | RST-0508W-ELIMINAZIONE-RICETTE | 🟢 | PR #639 / merge `accbd03b34d1727c4ca92aa1cde84ded0b36a58a`: DELETE recuperabile e protezione delle varianti. Il completamento UI e la persistenza dopo refresh sono verificati con le tranche X/Y. La scheda duplicata «Babà Napoletano al Rum» è assente dal vivo (404), mentre la ricetta con procedimento resta disponibile. |
 | 2026-09-22 | RST-0508X-DISPONIBILITA-INGREDIENTI-CANONICA | 🟢 | PR #640 / merge `c0857b24bcb324cda9760f511eddd447a4190ed2`: eliminato il confronto per famiglia/somiglianza e riusato il matcher unico dei Lotti. «Olio di arachidi per friggere»/«olio di girasole», «prezzemolo fresco»/«prezzemolo» e «capperi sotto sale»/«capperi» convergono sui nomi canonici. CI 35672919480 e Produzione 35672919448 verdi; commit servito e build locale verificata. |
 | 2026-09-22 | RST-0508Y-ELIMINAZIONE-PERSISTENTE | 🟢 | PR #641 / merge `7569095e622a6464d0a0685c7c1a23f1c4108c03`: rimossa la proiezione archivio che rigenerava card dopo l'eliminazione e ritirati rendering/promozione senza chiamanti vivi. CI 35677634822 e Produzione 35677634761 verdi. Verifica live: 519 card unificate = 519 record operativi, 0 card archivio, 0 card senza record; health serve il merge esatto. |
+| 2026-09-22 | RST-0508Z-REGISTRO-RICETTE | 🟢 | PR #642 / merge `7124927f64f960c150bba9fbe406c4b956b72c46`: registrate le prove live delle PR #640 e #641. CI 35680011844 ed E2E/Produzione manuale 35680124678 verdi; `/lotti/api/health` ha confermato il merge esatto. Nessuna modifica ai dati. |
+| 2026-09-22 | RST-0508AA-ARCHIVIO-SEPARATO | 🟡 | In corso: le ricette operative restano prive di procedimenti/provenienze inferiti da un archivio omonimo; l'archivio rimane un endpoint documentale distinto. Rimossi il collegamento per nome, il parser senza chiamanti e la vista archivio non montata. Test comportamentali mirati verdi; attende PR, CI, E2E, merge e conferma health. |
 | 2026-09-21 | FASE-1C-20260921 | 🟡 | branch `ristrutturazione/fase-1c-router-morti-20260921`: eliminati router POS accredito e Dati Provvisori senza chiamanti; utility/service vivi preservati; attende CI/rilascio |
 | 2026-09-21 | FASE-1B-V5 | 🟡 | branch `ristrutturazione/fase-1b-falsi-router-v5`: Distinte BPM e workflow ERP Libro Unico spostati nei servizi; vecchi router eliminati; attende CI/rilascio |
 
-**Rilascio verificato:** RST-0508W della PR #639 è pubblicato e accessibile live con `accbd03b`; le PR #603-#637 e le precedenti PR #599-#602 restano pubblicate. La correzione puntuale delle due schede HR amministratore/dipendente in produzione è stata verificata con login tablet e `dipendente_id` distinti; i PIN non sono conservati nel piano. **Non sono concluse** la qualificazione completa della Prima Nota, la gestione PIN centralizzata dalla UI, l'identità unica con mapping HR/Lotti per tutto lo storico, l'unificazione dati/outbox né la fusione HR/Lotti/Menu/frontend. Nessuna di queste attività va dichiarata completata per effetto della sola bonifica.
+**Rilascio verificato:** RST-0508Z della PR #642 è pubblicato e accessibile live con `7124927f64f960c150bba9fbe406c4b956b72c46`; il commit è confermato da `/lotti/api/health`. La correzione puntuale delle due schede HR amministratore/dipendente in produzione è stata verificata con login tablet e `dipendente_id` distinti; i PIN non sono conservati nel piano. **Non sono concluse** la qualificazione completa della Prima Nota, la gestione PIN centralizzata dalla UI, l'identità unica con mapping HR/Lotti per tutto lo storico, l'unificazione dati/outbox né la fusione HR/Lotti/Menu/frontend. Nessuna di queste attività va dichiarata completata per effetto della sola bonifica.
