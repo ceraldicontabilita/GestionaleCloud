@@ -41,6 +41,7 @@ import re
 
 from app.lotti.db import database as db
 from app.lotti.auth import require_admin, require_automation_or_admin
+from app.lotti.servizi.cestino_ricette import archivia_ricetta, elenca_cestino, ripristina_ricetta
 from app.lotti.servizi.reparti_ricette import _categorizza_reparto, _reparto_finale_auto
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -2481,22 +2482,41 @@ async def delete_ricetta(ricetta_id: str, _admin=Depends(require_admin)):
                 "varianti": [{"id": r.get("id"), "nome": r.get("nome")} for r in varianti],
             },
         )
-    # La × toglie la ricetta dall'app, ma prima ne conserva una copia
-    # recuperabile: foto, ingredienti e riferimenti storici non vanno persi.
-    await db.ricette_cestino.insert_one({
-        "id": str(uuid.uuid4()),
-        "ricetta_id": ricetta_id,
-        "ricetta": existing,
-        "eliminata_at": datetime.now(timezone.utc).isoformat(),
-        "eliminata_da": (_admin or {}).get("nome") or (_admin or {}).get("sub"),
-        "motivo": "eliminazione manuale dall'elenco ricette",
-    })
-    r = await db.ricette.delete_one({"id": ricetta_id})
-    if r.deleted_count == 0:
+    eliminata = await archivia_ricetta(
+        db, existing,
+        attore=(_admin or {}).get("nome") or (_admin or {}).get("sub"),
+        motivo="eliminazione manuale dall'elenco ricette",
+    )
+    if not eliminata:
         raise HTTPException(404, "Ricetta non trovata")
     return {
         "message": "Eliminata con successo", "recuperabile": True,
         "menu_sync": await _rimuovi_dal_menu(ricetta_id),
+    }
+
+
+@router.get("/ricette-cestino")
+async def get_ricette_cestino(_admin=Depends(require_admin)):
+    return await elenca_cestino(db)
+
+
+@router.post("/ricette-cestino/{voce_id}/ripristina")
+async def restore_ricetta(voce_id: str, _admin=Depends(require_admin)):
+    stato, ricetta_id = await ripristina_ricetta(
+        db, voce_id, attore=(_admin or {}).get("nome") or (_admin or {}).get("sub")
+    )
+    if stato == "non_trovata":
+        raise HTTPException(404, "Voce del cestino non trovata")
+    if stato == "copia_incompleta":
+        raise HTTPException(409, "La copia nel cestino non contiene l'ID della ricetta")
+    if stato == "id_occupato":
+        raise HTTPException(409, "L'ID della ricetta è già presente tra le ricette operative")
+    if stato == "base_assente":
+        raise HTTPException(409, "Ripristina prima la ricetta base di questa variante")
+    return {
+        "id": ricetta_id,
+        "ripristinata": stato == "ripristinata",
+        "menu_sync": await _sincronizza_menu(ricetta_id) if stato == "ripristinata" else None,
     }
 
 
@@ -2673,18 +2693,13 @@ async def deduplica_ricette_base(
                 {"$set": {"ricetta_base_id": vincitore["id"], "ricetta_base_nome": vincitore.get("nome")}},
             )
             varianti_ricollegate += risultato_varianti.modified_count
-            await db.ricette_cestino.insert_one({
-                "id": str(uuid.uuid4()),
-                "ricetta_id": loser_id,
-                "ricetta": record,
-                "eliminata_at": now,
-                "eliminata_da": (_actor or {}).get("nome") or "amministratore",
-                "motivo": "duplicato Nome / Nome (Base)",
-                "unita_in": vincitore["id"],
-                "backup_id": backup_id,
-            })
-            esito = await db.ricette.delete_one({"id": loser_id})
-            eliminate += esito.deleted_count
+            rimossa = await archivia_ricetta(
+                db, record,
+                attore=(_actor or {}).get("nome") or "amministratore",
+                motivo="duplicato Nome / Nome (Base)",
+                unita_in=vincitore["id"], backup_id=backup_id,
+            )
+            eliminate += int(rimossa)
 
     return {
         "ok": True, "applicato": True, "backup_id": backup_id,
