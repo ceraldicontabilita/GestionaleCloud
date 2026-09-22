@@ -3,7 +3,7 @@ import DosiRicetta from "./shared/DosiRicetta";
 
 const righe = (value) => String(value || "").split(/\r?\n/).map(x => x.trim()).filter(Boolean);
 
-export default function SchedaRicettaChiaraModal({ ricetta, onClose, onProduci, onModifica }) {
+export default function SchedaRicettaChiaraModal({ ricetta, onClose, onProduci, onModifica, onVisibilita, cambiandoVisibilita = false }) {
   if (!ricetta) return null;
   const soloLettura = ricetta.origine === "archivio" || ricetta.sola_lettura;
   const dallaFonte = righe(ricetta.ingredienti_testo);
@@ -55,7 +55,10 @@ export default function SchedaRicettaChiaraModal({ ricetta, onClose, onProduci, 
             <div className="grid gap-2 sm:grid-cols-2">
               {!soloLettura && <>
                 {onProduci && <button onClick={() => onProduci(ricetta)} className="flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-[#5b7a6b] px-5 py-3 font-black text-white"><ChefHat size={18} /> Produci</button>}
-                {onModifica && <button onClick={() => onModifica(ricetta)} className="flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-[#b9cec1] bg-white px-5 py-3 font-black text-[#3f5a4e]"><Pencil size={17} /> Modifica</button>}
+                {onModifica && <button onClick={() => onModifica(ricetta)} className="flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-[#b9cec1] bg-white px-5 py-3 font-black text-[#3f5a4e]"><Pencil size={17} /> Modifica nome e ingredienti</button>}
+                {onVisibilita && <button type="button" disabled={cambiandoVisibilita} onClick={() => onVisibilita(ricetta)} className="flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-[#cfdfd5] bg-[#f2f6f3] px-5 py-3 font-black text-[#3f5a4e] disabled:opacity-50 sm:col-span-2">
+                  {cambiandoVisibilita ? "Aggiorno…" : ricetta.visibile_tablet === false ? "↩ Ripristina nei reparti e nella pagina" : "⊘ Escludi dai reparti ed elimina dalla pagina"}
+                </button>}
               </>}
             </div>
           </section>

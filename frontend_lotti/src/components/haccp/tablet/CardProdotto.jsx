@@ -155,11 +155,6 @@ function CardProdotto({ prodotto, reparto, onTap, onCambiaFoto, hasVarianti, onV
             FOTO BASE
           </div>
         )}
-        {(prodotto.foto_source === "illustrazione_ai" || (!prodotto.foto_url && prodotto.foto_fallback_source === "illustrazione_ai")) && (
-          <div style={{ position: "absolute", bottom: 33, left: 6, background: "rgba(255,255,255,0.94)", color: "#3f5a4e", borderRadius: 8, padding: "3px 6px", fontSize: 9, fontWeight: 800 }}>
-            Immagine AI illustrativa
-          </div>
-        )}
         {onCambiaFoto && (
           <button onClick={(e) => { e.stopPropagation(); onCambiaFoto(prodotto); }}
             style={{ position: "absolute", bottom: 6, right: 6, background: "rgba(0,0,0,0.55)", border: "none", borderRadius: 8, padding: "4px 7px", color: "#fff", fontSize: 11, cursor: "pointer" }}

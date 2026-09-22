@@ -13,7 +13,7 @@ import { withToken } from "../../utils/constants";
 import { getOperatoreNome } from "../../auth";
 import { stampaDoc } from "../../utils/stampa";
 import { ModalRegistraLotto } from "./tablet/ModalRegistraLotto";
-import { SchedaEditorModal, VerificaDisponibilitaModal } from "./RicetteDashboardView";
+import { SchedaEditorModal } from "./RicetteDashboardView";
 import SchedaRicettaChiaraModal from "./SchedaRicettaChiaraModal";
 import RicetteCestino from "./backoffice/RicetteCestino";
 import FormRicetta, { REPARTI } from "./backoffice/FormRicetta";
@@ -46,7 +46,6 @@ function TabRicette({ solaLetturaOperatore = false }) {
   const [editRicetta,setEditRicetta]= useState(null);   // null=lista, {}=nuova, {id}=modifica
   const [showForm,   setShowForm]   = useState(false);
   const [produciR,   setProduciR]   = useState(null);   // ricetta da produrre (modal)
-  const [verificaR,  setVerificaR]  = useState(null);   // fatture/magazzino/sostituzioni
   const [schedaR,    setSchedaR]    = useState(null);   // ricetta di cui compilare la scheda
   const [dettaglioR, setDettaglioR] = useState(null);   // scheda chiara unica
   const [cambiandoVisibilita, setCambiandoVisibilita] = useState(null);
@@ -260,10 +259,6 @@ function TabRicette({ solaLetturaOperatore = false }) {
                   background:"rgba(0,0,0,.55)",color:"#fff",borderRadius:6,padding:"3px 8px"}}>
                   {soloLettura ? (r.tipo_archivio === "component" ? "Preparazione base" : "Pasticceria") : (r.reparto || "—")}
                 </span>
-                {r.foto_source === "illustrazione_ai" && <span style={{position:"absolute",bottom:8,left:8,fontSize:10,fontWeight:800,
-                  background:"rgba(255,255,255,.95)",color:"#3f5a4e",borderRadius:6,padding:"3px 8px"}}>
-                  Immagine AI illustrativa
-                </span>}
                 {!solaLetturaOperatore && <button type="button"
                   aria-label={`Elimina ricetta ${r.nome}`}
                   title="Elimina ricetta"
@@ -289,34 +284,13 @@ function TabRicette({ solaLetturaOperatore = false }) {
                   Ricetta fornitore: non compare in produzione finché non la adatti e salvi
                 </div>}
                 {esclusa && <div style={{fontSize:12,fontWeight:800,color:"#3f5a4e",background:"#edf4ef",borderRadius:8,padding:"6px 8px"}}>Esclusa dalle card dei reparti</div>}
-                {/* Azioni visibili richieste: produzione, modifica immediata e scheda. */}
+                {/* Una sola entrata: produzione e amministrazione vivono nella scheda. */}
                 <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:"auto"}}>
-                  {!soloLettura && !riferimentoFornitore && !esclusa && <button
-                    onClick={() => setProduciR(r)}
-                    style={{width:"100%",padding:"9px 0",border:"none",borderRadius:8,background:"var(--primary-grad)",color:"#fff",fontFamily:"var(--font)",fontSize:13,fontWeight:800,cursor:"pointer"}}>
-                    🏭 Produci
-                  </button>}
-                  {!solaLetturaOperatore && !soloLettura && !riferimentoFornitore && !esclusa && <button
-                    onClick={() => setVerificaR(r)}
-                    style={{width:"100%",padding:"9px 0",border:"none",borderRadius:8,background:"#16835c",color:"#fff",fontFamily:"var(--font)",fontSize:13,fontWeight:800,cursor:"pointer"}}>
-                    ✅ Posso produrla?
-                  </button>}
                   <button
                     onClick={() => setDettaglioR(r)}
                     style={{width:"100%",padding:"8px 0",border:"1.5px solid var(--border)",borderRadius:8,background:"var(--card)",fontFamily:"var(--font)",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                     📖 Apri scheda
                   </button>
-                  {!solaLetturaOperatore && !soloLettura && <button
-                    onClick={() => { setEditRicetta(r); setShowForm(true); }}
-                    style={{width:"100%",padding:"8px 0",border:"1.5px solid #b9cec1",borderRadius:8,background:"#edf4ef",color:"#3f5a4e",fontFamily:"var(--font)",fontSize:13,fontWeight:800,cursor:"pointer"}}>
-                    {riferimentoFornitore ? "✏️ Usa in ricetta" : "✏️ Modifica nome e ingredienti"}
-                  </button>}
-                  {!solaLetturaOperatore && !soloLettura && !riferimentoFornitore && <button type="button"
-                    disabled={cambiandoVisibilita===r.id}
-                    onClick={() => impostaVisibilita(r, esclusa)}
-                    style={{width:"100%",minHeight:44,border:"1px solid #cfdfd5",borderRadius:8,background:"#f2f6f3",color:"#3f5a4e",fontFamily:"var(--font)",fontSize:13,fontWeight:800,cursor:"pointer"}}>
-                    {cambiandoVisibilita===r.id ? "Aggiorno…" : esclusa ? "↩ Ripristina nei reparti" : "⊘ Escludi dai reparti"}
-                  </button>}
                 </div>
               </div>
             </div>
@@ -361,19 +335,17 @@ function TabRicette({ solaLetturaOperatore = false }) {
           onSaved={() => { setSchedaR(null); carica(); }}
         />
       )}
-      {verificaR && (
-        <VerificaDisponibilitaModal
-          ricetta={verificaR}
-          onClose={() => setVerificaR(null)}
-          onRicetteUpdate={carica}
-        />
-      )}
       {dettaglioR && (
         <SchedaRicettaChiaraModal
           ricetta={dettaglioR}
           onClose={() => setDettaglioR(null)}
           onProduci={(r) => { setDettaglioR(null); setProduciR(r); }}
           onModifica={solaLetturaOperatore ? undefined : (r) => { setDettaglioR(null); setEditRicetta(r); setShowForm(true); }}
+          onVisibilita={solaLetturaOperatore ? undefined : async (r) => {
+            const aggiornata = await impostaVisibilita(r, r.visibile_tablet === false);
+            if (aggiornata) setDettaglioR(null);
+          }}
+          cambiandoVisibilita={cambiandoVisibilita===dettaglioR.id}
         />
       )}
     </div>

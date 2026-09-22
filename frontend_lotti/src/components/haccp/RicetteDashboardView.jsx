@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, CheckCircle2, Pencil, Plus, Printer, RefreshCw, Save, Search, ShoppingCart, Trash2, X } from "lucide-react";
+import { Pencil, Plus, Printer, RefreshCw, Save, Search, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import axios from "axios";
 import ModalRevisioneDizionario from "./shared/ModalRevisioneDizionario";
@@ -93,7 +93,7 @@ function CategoryStrip({ active, setActive, counts }) {
   );
 }
 
-function RecipeCard({ r, onOpen, onClone, onScheda, onCompila, onVerifica }) {
+function RecipeCard({ r, onOpen, onClone, onScheda, onCompila }) {
   const ing = r.ingredienti_dettaglio?.length || r.ingredienti?.length || 0;
   const allergeni = r.allergeni?.length || r.allergeni_auto?.length || 0;
   const reparto = r.reparto || "altro";
@@ -111,95 +111,11 @@ function RecipeCard({ r, onOpen, onClone, onScheda, onCompila, onVerifica }) {
         <p className="m-0 mt-1 text-xs font-bold uppercase tracking-wide text-stone-400">{ing} ingredienti · {allergeni} allergeni</p>
         {r.fonte_archivio?.toLowerCase().includes("saima") && <p className="m-0 mt-1 text-[10px] font-black uppercase tracking-wide text-[#5b7a6b]">Ricettario SAIMA · pagina {r.pagina_fonte || "—"}</p>}
         <div className="mt-3 flex flex-wrap gap-2">
-          <button onClick={() => onVerifica(r)} className="flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-black text-white"><CheckCircle2 size={12} /> Posso produrla?</button>
           <button onClick={() => onOpen(r, "allergeni")} className="rounded-full bg-amber-100 px-3 py-1.5 text-xs font-black text-amber-800">Allergeni</button>
           <button onClick={() => onOpen(r, "ingredienti")} className="rounded-full bg-amber-100 px-3 py-1.5 text-xs font-black text-amber-800">Ingredienti</button>
           <button onClick={() => onClone(r)} className="rounded-full bg-[#e8efe9] px-3 py-1.5 text-xs font-black text-[#3f5a4e]">Clona</button>
           <button onClick={() => onCompila(r)} className="flex items-center gap-1 rounded-full bg-stone-100 px-3 py-1.5 text-xs font-black text-stone-700"><Pencil size={12} /> Compila</button>
           <button onClick={() => onScheda(r)} className="rounded-full bg-emerald-100 px-3 py-1.5 text-xs font-black text-emerald-800">Stampa scheda</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export function VerificaDisponibilitaModal({ ricetta, onClose, onRicetteUpdate }) {
-  const resaSalvata = Number(ricetta.porzioni || ricetta.pezzi_ricetta_base || 0);
-  const [pezzi, setPezzi] = useState(resaSalvata > 0 ? resaSalvata : "");
-  const [esito, setEsito] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [aggiungendo, setAggiungendo] = useState(false);
-
-  const verifica = async () => {
-    const n = Number(pezzi);
-    if (!Number.isFinite(n) || n <= 0) {
-      toast.error("Indica quanti pezzi vuoi ottenere");
-      return;
-    }
-    setLoading(true);
-    try {
-      if (resaSalvata <= 0) {
-        await axios.post(`${API}/food-cost/salva-porzioni-ricetta`, null, { params: { ricetta_id: ricetta.id, porzioni_base: Math.round(n) } });
-        toast.success(`Resa base salvata: ${Math.round(n)} pezzi`);
-        onRicetteUpdate?.();
-      }
-      const response = await axios.post(`${API}/saima/ricettari/ricette/${encodeURIComponent(ricetta.id)}/verifica-disponibilita`, { pezzi: n });
-      setEsito(response.data);
-    } catch (error) {
-      toast.error(error?.response?.data?.detail || "Verifica non disponibile");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const aggiungiMancanti = async () => {
-    setAggiungendo(true);
-    try {
-      const response = await axios.post(`${API}/saima/ricettari/ricette/${encodeURIComponent(ricetta.id)}/aggiungi-mancanti-carrello`, { pezzi: Number(pezzi) });
-      toast.success(response.data.aggiunti ? `${response.data.aggiunti} ingredienti aggiunti al carrello` : "Gli ingredienti erano già nel carrello");
-    } catch (error) {
-      toast.error(error?.response?.data?.detail || "Non riesco ad aggiornare il carrello");
-    } finally {
-      setAggiungendo(false);
-    }
-  };
-
-  const statusStyle = {
-    disponibile: "border-emerald-200 bg-emerald-50",
-    sostituibile: "border-amber-200 bg-amber-50",
-    da_acquistare: "border-rose-200 bg-rose-50",
-  };
-
-  return (
-    <div className="fixed inset-0 z-[80] flex items-end justify-center bg-stone-900/60 p-2 sm:items-center sm:p-4" onClick={onClose}>
-      <div className="max-h-[94vh] w-full max-w-3xl overflow-y-auto rounded-t-[28px] bg-[#fffdf8] shadow-2xl sm:rounded-[28px]" onClick={e => e.stopPropagation()}>
-        <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-stone-200 bg-[#fffdf8]/95 p-5 backdrop-blur">
-          <div><p className="m-0 text-xs font-black uppercase tracking-wider text-[#5b7a6b]">Verifica fatture e magazzino</p><h3 className="m-0 mt-1 text-2xl font-black text-stone-900">{ricetta.nome}</h3></div>
-          <button onClick={onClose} className="grid h-10 w-10 place-items-center rounded-full bg-stone-100"><X size={18} /></button>
-        </div>
-        <div className="space-y-4 p-5">
-          <div className="rounded-2xl border border-[#cfdfd5] bg-white p-4">
-            <label className="block text-sm font-black text-stone-800">Quanti pezzi vuoi produrre?</label>
-            <p className="mb-3 mt-1 text-xs font-semibold text-stone-500">{resaSalvata > 0 ? `La ricetta base produce ${resaSalvata} pezzi; le dosi saranno scalate.` : "Prima volta: questo numero verrà salvato come resa dell'impasto base."}</p>
-            <div className="flex gap-2"><input inputMode="numeric" type="number" min="1" step="1" value={pezzi} onChange={e => setPezzi(e.target.value)} className="min-h-12 flex-1 rounded-2xl border border-stone-200 px-4 text-xl font-black outline-none focus:ring-2 focus:ring-[#b8d0c2]" placeholder="es. 40" /><button onClick={verifica} disabled={loading} className="min-h-12 rounded-2xl bg-[#5b7a6b] px-5 font-black text-white disabled:opacity-50">{loading ? "Controllo…" : "Controlla"}</button></div>
-          </div>
-
-          {esito && <>
-            <div className={`rounded-2xl border p-4 ${esito.realizzabile_subito ? "border-emerald-300 bg-emerald-50" : esito.realizzabile_con_sostituzioni ? "border-amber-300 bg-amber-50" : "border-rose-300 bg-rose-50"}`}>
-              <h4 className="m-0 text-lg font-black">{esito.realizzabile_subito ? "Realizzabile subito" : esito.realizzabile_con_sostituzioni ? "Realizzabile confermando le alternative" : "Mancano alcuni ingredienti"}</h4>
-              <p className="m-0 mt-1 text-sm font-semibold text-stone-600">Disponibili {esito.totali.disponibili} · alternative {esito.totali.sostituibili} · da acquistare {esito.totali.da_acquistare}</p>
-            </div>
-            <div className="space-y-2">
-              {esito.righe.map((row, idx) => <div key={`${row.ingrediente}-${idx}`} className={`rounded-2xl border p-4 ${statusStyle[row.stato]}`}>
-                <div className="flex items-start justify-between gap-3"><div><strong className="block text-sm text-stone-900">{row.ingrediente}</strong><span className="text-xs font-semibold text-stone-500">Richiesta: {row.richiesta.valore || "q.b."} {row.richiesta.unita}</span></div><span className="rounded-full bg-white/80 px-2 py-1 text-[10px] font-black uppercase">{row.stato === "disponibile" ? "Disponibile" : row.stato === "sostituibile" ? "Alternativa" : "Da acquistare"}</span></div>
-                {row.prodotto && <p className="mb-0 mt-2 text-xs font-bold text-emerald-800">Abbiamo: {row.prodotto.nome}{row.prodotto.fornitore ? ` · ${row.prodotto.fornitore}` : ""}</p>}
-                {row.motivo && <p className="mb-0 mt-1 text-xs font-bold text-rose-700">{row.motivo}{row.mancante ? ` Da acquistare: ${row.mancante.valore} ${row.mancante.unita}.` : ""}</p>}
-                {row.alternative?.length > 0 && <div className="mt-3 rounded-xl bg-white/75 p-3"><p className="m-0 mb-2 text-xs font-black text-amber-900">Possibili sostituti da confermare:</p>{row.alternative.map(alt => <p key={alt.id || alt.nome} className="m-0 border-b border-amber-100 py-1 text-xs font-semibold last:border-0">{alt.nome} · disponibile {alt.quantita_disponibile} {alt.unita}<span className="block font-normal text-stone-500">{alt.motivo}</span></p>)}</div>}
-              </div>)}
-            </div>
-            {esito.totali.da_acquistare > 0 && <button onClick={aggiungiMancanti} disabled={aggiungendo} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-rose-600 px-4 font-black text-white disabled:opacity-50"><ShoppingCart size={17} /> {aggiungendo ? "Aggiungo…" : "Aggiungi solo i mancanti al carrello"}</button>}
-            <p className="rounded-2xl bg-stone-100 p-3 text-xs font-semibold text-stone-500"><AlertTriangle className="mr-1 inline" size={14} /> Le alternative non modificano la ricetta e non vengono usate automaticamente: il pasticciere deve confermare compatibilità, gusto e resa.</p>
-          </>}
         </div>
       </div>
     </div>
@@ -423,7 +339,6 @@ export default function RicetteDashboardView({ ricette = [], loadingRicette = fa
   const [categoria, setCategoria] = useState("tutte");
   const [revisione, setRevisione] = useState(false);
   const [scheda, setScheda] = useState(null);
-  const [verificaRicetta, setVerificaRicetta] = useState(null);
   const [editor, setEditor] = useState(null);
   const q = (searchRicette || "").toLowerCase().trim();
   const filtrate = useMemo(() => ricette
@@ -460,7 +375,6 @@ export default function RicetteDashboardView({ ricette = [], loadingRicette = fa
 
       {revisione && <ModalRevisioneDizionario onClose={() => setRevisione(false)} />}
       {scheda && <SchedaModal ricetta={scheda} onClose={() => setScheda(null)} />}
-      {verificaRicetta && <VerificaDisponibilitaModal ricetta={verificaRicetta} onClose={() => setVerificaRicetta(null)} onRicetteUpdate={onRicetteUpdate} />}
       {editor && <SchedaEditorModal ricetta={editor} onClose={() => setEditor(null)} onSaved={onRicetteUpdate} onAnteprima={(r) => { setEditor(null); setScheda(r); }} />}
 
       <CategoryStrip active={categoria} setActive={setCategoria} counts={counts} />
@@ -475,7 +389,7 @@ export default function RicetteDashboardView({ ricette = [], loadingRicette = fa
       <div id="lista-ricette" className="rounded-[30px] border border-stone-200 bg-white/95 p-4 shadow-sm">
         <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"><div><h2 className="m-0 text-xl font-black text-stone-900">Ricette operative</h2><p className="m-0 text-sm font-semibold text-stone-500">Tocca una ricetta per produrla o modificarla.</p></div><button onClick={onNuovaRicetta} className="rounded-2xl bg-[#5b7a6b] px-4 py-3 text-sm font-black text-white shadow-sm"><Plus size={16} className="inline" /> Nuova ricetta</button></div>
         <div className="mb-4 flex flex-col gap-2 sm:flex-row"><div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" size={16} /><input value={searchRicette || ""} onChange={e => setSearchRicette(e.target.value)} placeholder="Cerca ricetta..." className="w-full rounded-2xl border border-stone-200 bg-white py-3 pl-10 pr-3 text-sm font-semibold outline-none focus:ring-2 focus:ring-[#dce8e0]" /></div><div className="flex flex-wrap gap-2">{reparti.map(r => <button key={r} onClick={() => setFiltro(r)} className={`rounded-2xl border px-3 py-2 text-xs font-black ${filtro === r ? "border-[#b8d0c2] bg-[#e8efe9] text-[#3f5a4e]" : "border-stone-200 bg-white text-stone-600"}`}>{repartoLabel(r)}</button>)}</div></div>
-        {loadingRicette ? <div className="py-12 text-center text-stone-400"><RefreshCw className="mx-auto mb-2 animate-spin" />Caricamento ricette...</div> : filtrate.length === 0 ? <div className="py-12 text-center text-stone-400">Nessuna ricetta trovata.</div> : <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">{filtrate.map(r => <RecipeCard key={r.id || r.nome} r={r} onOpen={onOpenRicetta} onClone={onCloneRicetta} onScheda={setScheda} onCompila={setEditor} onVerifica={setVerificaRicetta} />)}</div>}
+        {loadingRicette ? <div className="py-12 text-center text-stone-400"><RefreshCw className="mx-auto mb-2 animate-spin" />Caricamento ricette...</div> : filtrate.length === 0 ? <div className="py-12 text-center text-stone-400">Nessuna ricetta trovata.</div> : <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">{filtrate.map(r => <RecipeCard key={r.id || r.nome} r={r} onOpen={onOpenRicetta} onClone={onCloneRicetta} onScheda={setScheda} onCompila={setEditor} />)}</div>}
       </div>
     </div>
   );
