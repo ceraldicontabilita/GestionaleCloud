@@ -390,6 +390,9 @@ async def applica_pagamenti_dichiarati(
                 "motivo": motivo,
             })
 
+    # Il report dell'Agenzia elenca a volte la stessa fattura due volte (il
+    # file .xml e il .xml.p7m): la seconda riga non e' un secondo pagamento.
+    fatture_viste: set = set()
     for riga in righe:
         metodo = riga["metodo_pagamento_titolare"]
         if not riga.get("pagata_titolare"):
@@ -404,7 +407,9 @@ async def applica_pagamenti_dichiarati(
                 await _salva_esito(db, riga, "fattura_non_ancora_arrivata")
             continue
         fattura = aperte.get(fattura_id)
-        if fattura is None:
+        doppione = fattura_id in fatture_viste
+        fatture_viste.add(fattura_id)
+        if fattura is None or doppione:
             annota(riga, "gia_pagata")
             if not dry_run:
                 await _salva_esito(db, riga, "gia_pagata")

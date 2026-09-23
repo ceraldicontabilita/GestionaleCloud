@@ -2789,6 +2789,19 @@ def _fiscal_category_from_archive_path(archive_path: str) -> str | None:
     return info[0] if info else None
 
 
+async def _process_zip_upload_a_blocchi(filename: str, content: bytes) -> Dict[str, Any]:
+    """Uno ZIP fiscale puo generare centinaia di versioni, pagine e prove.
+    Il runtime Drive/Supabase sa consolidarle per collezione e scriverle in
+    blocchi; senza questo contesto ogni singola pagina consuma una richiesta e
+    supera rapidamente la quota Google di 60 write/minuto."""
+    db = Database.get_db()
+    batch_writes = getattr(db, "batch_writes", None)
+    if callable(batch_writes):
+        async with batch_writes():
+            return await _process_zip_upload(filename, content)
+    return await _process_zip_upload(filename, content)
+
+
 async def _process_zip_upload(filename: str, content: bytes) -> Dict[str, Any]:
     """Espande un archivio solo dopo controlli anti zip-bomb.
 
@@ -3236,12 +3249,7 @@ async def upload_documento_automatico(
         # Il runtime Drive/Supabase sa consolidarle per collezione e scriverle in
         # blocchi; senza questo contesto ogni singola pagina consuma una
         # richiesta e supera rapidamente la quota Google di 60 write/minuto.
-        db = Database.get_db()
-        batch_writes = getattr(db, "batch_writes", None)
-        if callable(batch_writes):
-            async with batch_writes():
-                return await _process_zip_upload(filename, content)
-        return await _process_zip_upload(filename, content)
+        return await _process_zip_upload_a_blocchi(filename, content)
 
     # Se non riconosciuto, salva in inbox
     if tipo_rilevato == 'auto':
@@ -3936,19 +3944,25 @@ async def accoda_upload_documento_voluminoso(
     preview_token: Optional[str] = Header(None, alias="X-Document-Preview-Token"),
     _admin: Dict[str, Any] = Depends(get_current_admin_user),
 ) -> Dict[str, Any]:
-    """Accoda gli export POS voluminosi senza tenere aperto il gateway HTTP."""
+    """Accoda gli import voluminosi (export POS, archivi ZIP) senza tenere
+    aperto il gateway HTTP: la pagina ne segue l'esito su /upload-auto/jobs."""
     filename = Path(file.filename or "documento").name
     content = await file.read()
     if not content:
         raise HTTPException(status_code=400, detail=f"File vuoto: {filename}")
-    if len(content) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail=f"File oltre il limite di 50 MB: {filename}")
+    limite = MAX_ZIP_UPLOAD_BYTES if filename.lower().endswith(".zip") else MAX_UPLOAD_BYTES
+    if len(content) > limite:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File oltre il limite di {limite // (1024 * 1024)} MB: {filename}",
+        )
 
     tipo_rilevato = detect_document_type(filename, content)
-    if tipo_rilevato != "pos_terminal" or "commissioni_" in filename.lower():
+    pos = tipo_rilevato == "pos_terminal" and "commissioni_" not in filename.lower()
+    if not pos and tipo_rilevato != "archivio_zip":
         raise HTTPException(
             status_code=400,
-            detail="La coda asincrona e' riservata agli export transazioni POS.",
+            detail="La coda asincrona e' riservata agli export POS e agli archivi ZIP.",
         )
 
     from app.services.document_import_preview import verify_confirmation_token
@@ -3961,6 +3975,25 @@ async def accoda_upload_documento_voluminoso(
             status_code=428,
             detail="Anteprima obbligatoria mancante, scaduta o riferita a un file diverso.",
         )
+
+    if tipo_rilevato == "archivio_zip":
+        from app.services.document_import_jobs import enqueue_zip_import
+
+        job = await enqueue_zip_import(
+            Database.get_db(), content=content, filename=filename,
+            process=_process_zip_upload_a_blocchi,
+        )
+        return {
+            "success": True,
+            "tipo_rilevato": tipo_rilevato,
+            "workflow": "ARCHIVIO_ZIP_ASYNC",
+            "message": (
+                "Archivio ZIP elaborato."
+                if job.get("status") == "completed"
+                else "Archivio ZIP in elaborazione; la pagina controlla automaticamente l'esito."
+            ),
+            **job,
+        }
 
     from app.services.document_import_jobs import enqueue_pos_import
 
@@ -3994,6 +4027,9 @@ async def stato_upload_documento_voluminoso(
         raise HTTPException(status_code=404, detail="Import non trovato")
     return {
         "success": job.get("status") == "completed",
-        "workflow": "POS_NUMIA_ASYNC_OPERATION_ID_V2",
+        "workflow": (
+            "ARCHIVIO_ZIP_ASYNC" if job.get("document_type") == "archivio_zip"
+            else "POS_NUMIA_ASYNC_OPERATION_ID_V2"
+        ),
         **job,
     }
