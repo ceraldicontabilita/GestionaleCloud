@@ -6,6 +6,7 @@ import { apiError } from "../../utils/apiError";
 import { API } from "../../utils/constants";
 import { isAdmin } from "../../auth";
 import { BookMarked, RefreshCw, Search, Check, X, DatabaseZap, Layers } from "lucide-react";
+import ProposteArticoliPanel from "./ProposteArticoliPanel";
 
 const SAGE = "#5b7a6b";
 const inputCls =
@@ -159,6 +160,7 @@ export default function DizionarioIngredientiView() {
   const LIMIT = 100;
 
   const carica = useCallback(async (nuovoSkip = 0) => {
+    if (vista === "proposte") return; // la vista proposte carica da sola
     setLoading(true);
     try {
       const { data } = await axios.get(`${API}/food-cost/dizionario`, {
@@ -284,7 +286,7 @@ export default function DizionarioIngredientiView() {
           />
         </div>
         <div className="flex overflow-hidden rounded-xl border border-stone-200">
-          {[["da_associare", "Da associare"], ["tutte", "Tutte"], ["escluse", "Escluse"]].map(([id, lab]) => (
+          {[["proposte", "Proposte web"], ["da_associare", "Da associare"], ["tutte", "Tutte"], ["escluse", "Escluse"]].map(([id, lab]) => (
             <button
               key={id}
               onClick={() => setVista(id)}
@@ -359,7 +361,9 @@ export default function DizionarioIngredientiView() {
         )}
       </div>
 
-      {loading ? (
+      {vista === "proposte" ? (
+        <ProposteArticoliPanel canonici={canonici} />
+      ) : loading ? (
         <div className="py-10 text-center text-stone-500">Caricamento…</div>
       ) : prodotti.length === 0 ? (
         <div className="rounded-xl border border-stone-200 bg-[#eef3ef] py-10 text-center text-stone-500">

@@ -1189,3 +1189,121 @@ async def pulisci_falsi_positivi_sottostringa(applica: bool = False, _admin=Depe
         "rimossi": len(ids_del) if applica else 0,
         "esempi": preview,
     }
+
+
+# ─── Articoli di fattura: proposte dalla ricerca web e conferme ─────────────
+# Una sola tabella (`nome_mapping`) lega la descrizione di fattura all'articolo
+# di casa; il FIFO usa solo le righe confermate (servizi/articoli_fattura.py).
+
+_CAMPI_PROPOSTA = ("cosa_e", "fonte_url", "confidenza", "categoria", "fornitore", "note")
+
+
+@router.post("/proposte-web")
+async def importa_proposte_web(payload: dict = Body(...), _admin=Depends(require_admin)):
+    """Carica le proposte della ricerca web: {voci: [{descrizione, nome_usuale,
+    ingredienti_ricetta, alimentare, cosa_e, fonte_url, confidenza, ...}]}.
+
+    Idempotente per descrizione. **Non tocca mai una riga confermata**: la
+    conferma di una persona vince su qualunque proposta successiva.
+    """
+    from app.lotti.servizi.articoli_fattura import (
+        chiave_descrizione, ingredienti_da_testo, invalida_cache,
+    )
+    voci = payload.get("voci") or []
+    if not isinstance(voci, list) or not voci:
+        raise HTTPException(status_code=400, detail="voci obbligatorie (lista)")
+    esito = {"ricevute": len(voci), "inserite": 0, "aggiornate": 0,
+             "confermate_intatte": 0, "scartate": 0}
+    adesso = datetime.now(timezone.utc).isoformat()
+    for v in voci:
+        chiave = chiave_descrizione(v.get("descrizione"))
+        nome = str(v.get("nome_usuale") or "").strip()
+        if not chiave or not nome:
+            esito["scartate"] += 1
+            continue
+        esistente = await db.nome_mapping.find_one({"descrizione_key": chiave}, {"_id": 0, "confermato": 1})
+        if esistente and esistente.get("confermato") is True:
+            esito["confermate_intatte"] += 1
+            continue
+        campi = {
+            "descrizione_key": chiave,
+            "descrizione_originale": str(v.get("descrizione") or "").strip(),
+            "nome_canc": nome,
+            "ingredienti_ricetta": ingredienti_da_testo(v.get("ingredienti_ricetta")),
+            "alimentare": v.get("alimentare") is not False,
+            "fonte": "web",
+            "confermato": False,
+            "proposto_at": adesso,
+            **{k: v.get(k) for k in _CAMPI_PROPOSTA if v.get(k) not in (None, "")},
+        }
+        await db.nome_mapping.update_one({"descrizione_key": chiave}, {"$set": campi}, upsert=True)
+        esito["aggiornate" if esistente else "inserite"] += 1
+    invalida_cache()
+    return esito
+
+
+@router.get("/proposte-web")
+async def lista_proposte_articoli(stato: str = Query("da_confermare"), limit: int = Query(500, le=2000)):
+    """Le associazioni descrizione → articolo, per la pagina di conferma.
+
+    ``stato``: ``da_confermare`` (proposte web o AI non confermate),
+    ``confermate``, ``tutte``. Le alimentari prima, le incerte in cima.
+    """
+    filtro: dict = {}
+    if stato == "da_confermare":
+        filtro = {"confermato": {"$ne": True}, "fonte": "web"}
+    elif stato == "confermate":
+        filtro = {"confermato": True}
+    righe = await db.nome_mapping.find(filtro, {"_id": 0}).to_list(limit)
+    ordine = {"bassa": 0, "media": 1, "alta": 2}
+    righe.sort(key=lambda r: (r.get("alimentare") is False, ordine.get(r.get("confidenza"), 1),
+                              str(r.get("nome_canc") or "")))
+    return {"totale": len(righe), "voci": righe}
+
+
+@router.post("/conferma-articolo")
+async def conferma_articolo(payload: dict = Body(...)):
+    """Conferma (o corregge) l'articolo di una descrizione di fattura.
+
+    Body: {descrizione, nome_canc, ingredienti_ricetta?: [...], alimentare?: bool}.
+    Da qui il FIFO scarica quei lotti per gli ingredienti indicati, e i lotti
+    con quella descrizione ricevono il nome canonico. Aggiorna solo per id.
+    """
+    from app.lotti.servizi.articoli_fattura import (
+        chiave_descrizione, ingredienti_da_testo, invalida_cache,
+    )
+    chiave = chiave_descrizione(payload.get("descrizione") or payload.get("descrizione_key"))
+    alimentare = payload.get("alimentare") is not False
+    nome = str(payload.get("nome_canc") or "").strip()
+    if not chiave or (alimentare and not nome):
+        raise HTTPException(status_code=400, detail="descrizione e nome_canc obbligatori")
+    adesso = datetime.now(timezone.utc).isoformat()
+    ingredienti = ingredienti_da_testo(payload.get("ingredienti_ricetta"))
+    if alimentare and nome.lower() not in ingredienti:
+        ingredienti.insert(0, nome.lower())
+    await db.nome_mapping.update_one(
+        {"descrizione_key": chiave},
+        {"$set": {
+            "descrizione_key": chiave,
+            "nome_canc": nome or "Non alimentare",
+            "ingredienti_ricetta": ingredienti if alimentare else [],
+            "alimentare": alimentare,
+            "confermato": True,
+            "confermato_at": adesso,
+            "aggiornato_at": adesso,
+        }},
+        upsert=True,
+    )
+    invalida_cache()
+    # I lotti con questa descrizione prendono il nome canonico (per id).
+    aggiornati = 0
+    lotti = await db.lotti_fornitori.find({}, {"_id": 0, "id": 1, "prodotto_nome": 1}).to_list(20000)
+    for lotto in lotti:
+        if lotto.get("id") and chiave_descrizione(lotto.get("prodotto_nome")) == chiave:
+            await db.lotti_fornitori.update_one(
+                {"id": lotto["id"]},
+                {"$set": {"nome_canonico": nome if alimentare else "", "articolo_confermato": alimentare}},
+            )
+            aggiornati += 1
+    return {"success": True, "descrizione_key": chiave, "nome_canc": nome,
+            "ingredienti_ricetta": ingredienti, "lotti_aggiornati": aggiornati}
