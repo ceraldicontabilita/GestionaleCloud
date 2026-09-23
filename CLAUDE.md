@@ -413,12 +413,12 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   risultato d'esercizio resta con segno, con guardia anti-doppia chiusura.
 - Ricavi: **solo corrispettivi RT**. Le fatture ricevute sono costi; gli
   accrediti POS e i payout non sono nuovi ricavi.
-- Corrispettivi: in cassa entra **solo la quota contanti**, la quota POS va in
-  Prima Nota Banca. Mai il totale. Il **non riscosso** (sospesi, buoni, fattura)
-  è ricavo ma non è denaro: terza gamba del DARE sui crediti (`01.02.01` → CEE
-  15.05), e solo se il documento lo **dichiara** e cassa + POS + non riscosso fa
-  il totale al centesimo — mai per differenza, o un incasso non registrato
-  sparisce lì dentro. Ignorarlo scarta la giornata intera, non una riga.
+- Corrispettivi: in cassa entra **solo la quota contanti**, la quota POS va in Prima Nota Banca. Mai il
+  totale. Il **non riscosso** (sospesi, buoni, fattura) è ricavo ma non è denaro: terza gamba del DARE sui
+  crediti (`01.02.01` → CEE 15.05), e solo se il documento lo **dichiara** e cassa + POS + non riscosso fa il
+  totale al centesimo — mai per differenza, o un incasso non registrato sparisce lì dentro. Ignorarlo scarta
+  la giornata intera, non una riga. Il totale del corrispettivo XML è l'**incassato** (contanti +
+  elettronico): lo scarto verso imponibile + IVA senza voce dichiarata si scarta.
 - POS: corrispettivo XML, chiusura terminale e accredito bancario sono tre
   fatti distinti. SumUp corrente dall'API; Numia corrente dalla chiusura
   manuale serale; Numia storico ricostruito dagli export del gestore,
