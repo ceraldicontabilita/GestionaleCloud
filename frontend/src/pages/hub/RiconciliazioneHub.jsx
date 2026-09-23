@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../../api';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
 import { HubTabs, PageLoader } from '../../components/ds';
+import { sezioneRiconciliazione } from './sezioneRiconciliazione';
 
 const RiconciliazioneContent = lazy(() => import('../RiconciliazioneUnificata.jsx'));
 const MovimentiBancaContent = lazy(() => import('../VerificaMovimentiBanca.jsx'));
@@ -31,7 +32,7 @@ export default function RiconciliazioneHub() {
   const { anno } = useAnnoGlobale();
   const location = useLocation();
   const navigate = useNavigate();
-  const path = location.pathname;
+  const sezione = sezioneRiconciliazione(location.pathname);
   const [paypalRefreshKey, setPaypalRefreshKey] = useState(0);
 
   const tabs = [
@@ -49,29 +50,7 @@ export default function RiconciliazioneHub() {
     { id: 'regole-banca', label: 'Regole banca', Icon: Banknote, to: '/riconciliazione/regole-banca' },
   ];
 
-  const activeTab = path.includes('/movimenti-banca')
-    ? 'movimenti-banca'
-    : path.includes('/stipendi')
-      ? 'stipendi'
-      : path.includes('/documenti')
-        ? 'documenti'
-        : path.includes('/f24')
-          ? 'f24'
-          : path.includes('/pagopa')
-            ? 'pagopa'
-            : path.includes('/archivio-bonifici')
-              ? 'bonifici'
-              : path.includes('/gestione-assegni') || path.includes('/assegni')
-                ? 'assegni'
-                : path.includes('/paypal')
-                  ? 'paypal'
-                  : path.includes('/coerenza-pos')
-                    ? 'coerenza-pos'
-                    : path.includes('/regole-banca')
-                      ? 'regole-banca'
-                      : path.includes('/banca')
-                        ? 'banca'
-                        : 'bancaria';
+  const activeTab = sezione === '' ? 'bancaria' : sezione;
 
   useEffect(() => {
     if (activeTab !== 'paypal') return undefined;
@@ -95,31 +74,31 @@ export default function RiconciliazioneHub() {
   }, [activeTab, anno]);
 
   const getContent = () => {
-    if (path.includes('/movimenti-banca')) {
+    if (sezione === 'movimenti-banca') {
       return <MovimentiBancaContent key={`movimenti-banca-${anno}`} />;
     }
-    if (path.includes('/f24')) {
+    if (sezione === 'f24') {
       return <RiconciliazioneContent key={`f24-${anno}`} />;
     }
-    if (path.includes('/pagopa')) {
+    if (sezione === 'pagopa') {
       return <PagoPAContent key={`pagopa-${anno}`} />;
     }
-    if (path.includes('/archivio-bonifici')) {
+    if (sezione === 'bonifici') {
       return <BonificiContent key={`bonifici-${anno}`} />;
     }
-    if (path.includes('/gestione-assegni') || path.includes('/assegni')) {
+    if (sezione === 'assegni') {
       return <AssegniContent key={`assegni-${anno}`} />;
     }
-    if (path.includes('/paypal')) {
+    if (sezione === 'paypal') {
       return <PaypalContent key={`paypal-${anno}-${paypalRefreshKey}`} />;
     }
-    if (path.includes('/coerenza-pos')) {
+    if (sezione === 'coerenza-pos') {
       return <CoerenzaPOSContent key={`coerenza-pos-${anno}`} />;
     }
-    if (path.includes('/regole-banca')) {
+    if (sezione === 'regole-banca') {
       return <RegoleRiconoscimentoBancaContent key="regole-banca" />;
     }
-    return <RiconciliazioneContent key={`riconciliazione-${anno}`} />;
+    return <RiconciliazioneContent key={`riconciliazione-${anno}-${sezione || 'riepilogo'}`} />;
   };
 
   return (

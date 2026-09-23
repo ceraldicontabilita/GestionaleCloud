@@ -28,6 +28,11 @@ describe('navigazione visibile della riconciliazione', () => {
     expect(tabs).not.toContain('<option');
   });
 
+  it('non usa includes sul pezzo banca', () => {
+    expect(hub).not.toContain("includes('/banca')");
+    expect(hub).toContain('sezioneRiconciliazione');
+  });
+
   it('sincronizza PayPal automaticamente quando si apre il tab', () => {
     expect(hub).toContain("api.get('/api/paypal-api/status')");
     expect(hub).toContain("api.post('/api/paypal-api/sync'");
