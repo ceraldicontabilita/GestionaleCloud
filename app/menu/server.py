@@ -3,10 +3,10 @@ from fastapi.responses import FileResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from starlette.staticfiles import StaticFiles
-import os
 import logging
 from pathlib import Path
 
+from app.config import settings
 from app.menu.routes.qrcode_routes import router as qrcode_router
 from app.menu.routes.admin_routes import router as admin_router
 from app.menu.routes.allergeni_routes import router as allergeni_router
@@ -24,11 +24,12 @@ load_dotenv(ROOT_DIR / '.env')
 
 app = FastAPI(title="Menu Ceraldi", version="1.0.0")
 
-# CORS
+# CORS: stesso contratto dell'ERP. Wildcard + credentials e' vietato.
+# In produzione Menu e' same-origin sotto gestionalecloud.onrender.com/menu.
 app.add_middleware(
     CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_credentials=settings.ALLOW_CREDENTIALS,
+    allow_origins=settings.get_cors_origins(),
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -59,12 +60,6 @@ async def health():
     return {"status": "ok", "service": "menu-ceraldi"}
 
 # ================== Frontend (build React servito dallo stesso servizio) ==================
-# Se presente, il build della SPA viene servito da qui: un solo servizio Render,
-# un solo URL, niente CORS da gestire in produzione.
-# Dentro GestionaleCloud il build sta in <repo>/frontend_menu/build (PUBLIC_URL=/menu):
-# questa app viene montata a /menu, quindi "/static" qui equivale a "/menu/static"
-# dall'esterno e il catch-all restituisce index.html anche per i deep link
-# (/menu/admin/...) gestiti dal router lato client.
 FRONTEND_BUILD_DIR = Path(__file__).resolve().parents[2] / "frontend_menu" / "build"
 
 if FRONTEND_BUILD_DIR.exists():
