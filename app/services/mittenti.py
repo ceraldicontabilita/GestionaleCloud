@@ -77,6 +77,11 @@ BUILTIN_MITTENTI = (
         "tipo_documento": "f24",
         "descrizione": "Studio Marotta - F24 e documenti fiscali",
     },
+    {
+        "pattern": "noreply@ordersender.biz",
+        "tipo_documento": "scheda_tecnica",
+        "descrizione": "ME.PA. Alimentari (Order Sender) - schede tecniche dei prodotti acquistati",
+    },
 )
 
 

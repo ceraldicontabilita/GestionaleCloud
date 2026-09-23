@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import {
   FileText, Search, ExternalLink, Check, Trash2, Plus, X, AlertCircle, Bell,
 } from "lucide-react";
-import { API } from "../../utils/constants";
+import { API, withToken } from "../../utils/constants";
 
 const SALVIA = "#3f5a4e";
 const SAGE = "#5b7a6b";
@@ -93,6 +93,44 @@ function ModalScheda({ prodotto, onClose, onSaved }) {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+const ETICHETTE_NUTRIZIONE = [
+  ["energia_kcal", "Energia", "kcal"], ["grassi_g", "Grassi", "g"], ["grassi_saturi_g", "di cui saturi", "g"],
+  ["carboidrati_g", "Carboidrati", "g"], ["zuccheri_g", "di cui zuccheri", "g"], ["fibre_g", "Fibre", "g"],
+  ["proteine_g", "Proteine", "g"], ["sale_g", "Sale", "g"],
+];
+
+const NOMI_ALLERGENI = {
+  glutine: "glutine", crostacei: "crostacei", uova: "uova", pesce: "pesce", arachidi: "arachidi",
+  soia: "soia", latte: "latte", frutta_guscio: "frutta a guscio", sedano: "sedano", senape: "senape",
+  sesamo: "sesamo", solfiti: "solfiti", lupini: "lupini", molluschi: "molluschi",
+};
+const nomiAllergeni = (ids) => ids.map((a) => NOMI_ALLERGENI[a] || a).join(", ");
+
+// Allergeni e valori letti dal PDF del fornitore: solo quelli scritti, mai dedotti.
+export function DatiScheda({ s }) {
+  const nutrizione = s.valori_nutrizionali_100g || {};
+  const valori = ETICHETTE_NUTRIZIONE.filter(([k]) => nutrizione[k]);
+  return (
+    <div style={{ marginTop: 8, fontSize: 12, color: "#2a3329", background: "#faf7f0", border: "1px solid #e6e0d4", borderRadius: 8, padding: "6px 10px" }}>
+      <div>
+        <strong>Allergeni: </strong>
+        {s.allergeni_stato === "da_verificare"
+          ? <span style={{ color: "#c4894a", fontWeight: 700 }}>da verificare sul PDF</span>
+          : (s.allergeni || []).length ? nomiAllergeni(s.allergeni) : "nessuno dichiarato"}
+        {(s.allergeni_tracce || []).length > 0 && <span> · può contenere tracce di {nomiAllergeni(s.allergeni_tracce)}</span>}
+      </div>
+      {valori.length > 0 ? (
+        <div style={{ marginTop: 2 }}>
+          <strong>Per 100 g: </strong>
+          {valori.map(([k, lab, um]) => `${lab} ${nutrizione[k]} ${um}`).join(" · ")}
+        </div>
+      ) : (
+        <div style={{ marginTop: 2, color: "#c4894a" }}>Valori nutrizionali da verificare sul PDF</div>
+      )}
     </div>
   );
 }
@@ -211,12 +249,15 @@ export default function SchedeTecnicheView() {
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
                 {p.schede.map((s, i) => (
                   <div key={i} style={{ display: "flex", alignItems: "center", gap: 4, background: CREAM, border: `1px solid ${LINE}`, borderRadius: 8, padding: "4px 8px" }}>
-                    <a href={s.url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: SAGE, fontWeight: 600, textDecoration: "none", display: "flex", alignItems: "center", gap: 4 }}>
-                      <ExternalLink size={12} /> {s.tipo === "sicurezza" ? "Sicurezza" : "Tecnica"}
+                    <a href={s.url?.startsWith("/lotti/api/") ? withToken(s.url) : s.url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: SAGE, fontWeight: 600, textDecoration: "none", display: "flex", alignItems: "center", gap: 4 }}>
+                      <ExternalLink size={12} /> {s.fonte === "email_fornitore" ? "PDF del fornitore" : s.tipo === "sicurezza" ? "Sicurezza" : "Tecnica"}
                     </a>
-                    <button onClick={() => elimina(p.prodotto_key, s.tipo)} style={{ background: "none", border: "none", cursor: "pointer", color: "#c7cfc2", padding: 0, display: "flex" }}>
-                      <Trash2 size={12} />
-                    </button>
+                    {/* l'originale arrivato dal fornitore è la prova per l'ASL: non si toglie da qui */}
+                    {s.fonte !== "email_fornitore" && (
+                      <button onClick={() => elimina(p.prodotto_key, s.tipo)} aria-label="Elimina scheda" style={{ background: "none", border: "none", cursor: "pointer", color: "#c7cfc2", padding: 0, display: "flex" }}>
+                        <Trash2 size={12} />
+                      </button>
+                    )}
                   </div>
                 ))}
                 <button onClick={() => setModalProd(p)} style={btn(CREAM, SAGE, { fontSize: 11, padding: "4px 8px", border: `1px solid ${LINE}` })}>
@@ -224,6 +265,9 @@ export default function SchedeTecnicheView() {
                 </button>
               </div>
             )}
+            {p.schede.filter((s) => s.allergeni_stato).map((s, i) => (
+              <DatiScheda key={`dati-${i}`} s={s} />
+            ))}
           </div>
         ))}
         {!loading && filtrati.length === 0 && (

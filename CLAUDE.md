@@ -292,12 +292,10 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   variabili d'ambiente di Render, non in questo file.
 - Le fatture elettroniche arrivano dal canale Drive/SDI configurato. Una
   fattura italiana trovata per email è un'anomalia, non una seconda fonte.
-- Gmail/IMAP acquisisce F24, quietanze, cedolini e verbali **solo** dai
-  mittenti autorizzati. I mittenti non si cablano per indirizzo: regole
-  versionate su indirizzo, dominio, oggetto, intestazioni PEC e tipo di
-  allegato (`app/services/mittenti.py`; i builtin sono solo una base
-  rigenerabile). Un solo downloader: la scansione `ALL_FOLDERS` di
-  `email_full_download.py`, mai un secondo su `INBOX`.
+- Gmail/IMAP acquisisce F24, quietanze, cedolini, verbali e schede tecniche **solo** dai
+  mittenti autorizzati, mai cablati nel codice: regole versionate su indirizzo, dominio, oggetto,
+  intestazioni PEC e tipo di allegato (`app/services/mittenti.py`; i builtin sono una base rigenerabile). Un
+  solo downloader: la scansione `ALL_FOLDERS` di `email_full_download.py`, mai uno su `INBOX`.
 - Le ricerche email usano `in:anywhere`, preservano message ID, thread ID e
   SHA-256, e **non spostano né cancellano gli originali**. Mai marcare letto,
   etichettare o rispondere automaticamente. Paginare fino a esaurimento, mai
@@ -722,13 +720,15 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   senza conferme, parola intera e fuori i lotti che una prova dice altro («olive in acqua e sale» non è sale).
 - **Le bevande e gli alcolici del reparto bar** (acqua, birre, vino, prosecco, liquori, amari, sciroppi,
   succhi, bibite) si acquistano e si confrontano a cartone o a unità, **mai a chilo o a litro**.
-- Conversioni reali: uovo 60 g, tuorlo 19 g, albume 33 g; pezzi e chili si convertono con il peso del
-  pezzo.
+- Conversioni reali: uovo 60 g, tuorlo 19 g, albume 33 g; pezzi e chili col peso del pezzo.
 - Ogni riga d'ordine dice **chi l'ha inserita** (dipendente, lavagna, riordino automatico, produzione,
   colazione). Le righe-nota (omaggi, riferimenti) non diventano prodotti di magazzino. Soglia minima e
   quantità di riordino a 1.
-- Nomi di campo vincolanti: `ingredienti_dettaglio[].unita_misura` (non `unita`), `lotti.data_scadenza` in
-  gg/mm/aaaa, `fornitori` ha per chiave `nome` e non `id`.
+- Campi vincolanti: `ingredienti_dettaglio[].unita_misura` (non `unita`), `lotti.data_scadenza` gg/mm/aaaa,
+  `fornitori` per `nome` e non `id`.
+- **Schede tecniche ME.PA.** (`servizi/schede_fornitore.py`): la descrizione nella mail è la riga di fattura
+  e fa da chiave. Il PDF per l'ASL non si elimina né si sovrascrive; allergeni e valori per 100 g solo se
+  scritti, in etichetta solo da articolo confermato o lotto consumato con la stessa descrizione.
 - Spostando un lotto si scrivono **sempre** sia `posizione` sia `frigo_numero`; per azioni reali sui lotti
   di un'attrezzatura si usa il match esatto sul nome, mai uno snapshot troncato («Frigorifero N°2» e «N°9»
   si confondono).

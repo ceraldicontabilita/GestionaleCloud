@@ -45,6 +45,9 @@ CATEGORY_COLLECTIONS = {
     "cartella_esattoriale": "cartelle_email_attachments",
     "avviso_bonario": "avvisi_bonari_email_attachments",
     "dichiarazione_iva": "dichiarazioni_iva_email_attachments",
+    # schede tecniche dei produttori (ME.PA.): il PDF originale per l'ASL; la
+    # lettura (allergeni, nutrizionali) sta in app/lotti/servizi/schede_fornitore.py
+    "scheda_tecnica": "schede_tecniche_email_attachments",
     "altro": "documenti_non_associati"  # Documenti da associare manualmente
 }
 
@@ -285,6 +288,71 @@ class EmailFullDownloader:
         self._cached_keywords = default_keywords
         logger.info(f"Usando {len(default_keywords)} parole chiave di default")
         return default_keywords
+
+    async def _load_mittenti_per_tipo(self, tipo_documento: str) -> set:
+        """Indirizzi attivi di ``mittenti_email`` con quel tipo documento."""
+        cache = getattr(self, "_cache_mittenti_per_tipo", None)
+        if cache is None:
+            cache = self._cache_mittenti_per_tipo = {}
+        if tipo_documento in cache:
+            return cache[tipo_documento]
+        indirizzi: set = set()
+        try:
+            from app.services.mittenti import _addr
+            async for m in self.db["mittenti_email"].find({"attivo": True, "tipo_documento": tipo_documento}):
+                a = _addr(m)
+                if a:
+                    indirizzi.add(a.lower())
+        except Exception as e:
+            logger.warning(f"Mittenti '{tipo_documento}' non caricati: {type(e).__name__}: {e}")
+        cache[tipo_documento] = indirizzi
+        return indirizzi
+
+    async def _archivia_schede_tecniche(self, msg, email_uid, subject: str, from_addr: str,
+                                        date_str: str, body: str, source_folder: str) -> int:
+        """Salva il PDF della scheda (dedup SHA-256) e la registra in Lotti."""
+        email_info = {
+            "uid": email_uid.decode() if isinstance(email_uid, bytes) else str(email_uid),
+            "subject": subject, "from": from_addr, "date": date_str, "source_folder": source_folder,
+        }
+        # la descrizione del prodotto sta nel corpo: testo e HTML insieme, perche'
+        # Order Sender non la mette sempre nella parte testo
+        parti = [body or ""]
+        for part in (msg.walk() if msg.is_multipart() else []):
+            if part.get_content_type() == "text/html":
+                try:
+                    parti.append(part.get_payload(decode=True).decode("utf-8", errors="replace"))
+                except Exception as e:
+                    logger.debug(f"[Gmail] parte HTML della scheda illeggibile: {type(e).__name__}: {e}")
+        corpo = "\n".join(parti)
+        salvati = 0
+        for filename, content in self.extract_pdfs_from_email(msg):
+            doc_id = await self.save_pdf_to_db(
+                pdf_content=content, filename=filename, category="scheda_tecnica",
+                email_info=email_info, period_info={},
+            )
+            if not doc_id:
+                continue  # stesso PDF gia' archiviato
+            salvati += 1
+            try:
+                from app.lotti.db import database as db_lotti
+                from app.lotti.servizi.schede_fornitore import registra_scheda_tecnica
+                from app.services.pdf_text_extraction import extract_pdf_text
+                testo = extract_pdf_text(content)
+                await self.db[CATEGORY_COLLECTIONS["scheda_tecnica"]].update_one(
+                    {"id": doc_id}, {"$set": {"testo_estratto": testo[:20000], "email_body": corpo[:4000]}})
+                esito = await registra_scheda_tecnica(
+                    db_lotti, documento_id=doc_id, pdf_sha256=hashlib.sha256(content).hexdigest(),
+                    testo_pdf=testo, oggetto=subject, corpo=corpo,
+                    email_uid=email_info["uid"], email_data=date_str,
+                )
+                logger.info(f"[Gmail] scheda tecnica {filename}: {esito}")
+            except Exception as e:
+                # il PDF resta archiviato: la scheda si ricostruisce da
+                # /lotti/api/schede-tecniche/ricostruisci-da-email
+                logger.warning(f"[Gmail] scheda tecnica {filename} non registrata in Lotti: "
+                               f"{type(e).__name__}: {e}")
+        return salvati
 
     async def _load_trusted_senders_generico(self) -> set:
         """
@@ -547,6 +615,14 @@ class EmailFullDownloader:
         # Carica le parole chiave configurate dall'utente in /admin
         # ============================================================
         admin_keywords = await self._load_admin_keywords()
+
+        # Schede tecniche dei fornitori (mittente autorizzato con tipo
+        # «scheda_tecnica»): non passano dalle parole chiave amministrative,
+        # che non le conoscono, e hanno uno smistamento proprio.
+        mittenti_schede = await self._load_mittenti_per_tipo("scheda_tecnica")
+        if mittenti_schede and any(s in from_addr.lower() for s in mittenti_schede):
+            return await self._archivia_schede_tecniche(
+                msg, email_uid, subject, from_addr, date_str, body, source_folder)
 
         # Combina testo ricercabile: oggetto + corpo + nomi allegati + NOME CARTELLA
         # Il nome della cartella è fondamentale: se l'utente ha spostato

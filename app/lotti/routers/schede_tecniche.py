@@ -23,6 +23,7 @@ from fastapi import APIRouter, Body, HTTPException, Query, Depends
 
 from app.lotti.db import database as db
 from app.lotti.auth import require_admin
+from app.lotti.servizi.schede_fornitore import FONTE_EMAIL_FORNITORE
 
 router = APIRouter(prefix="/schede-tecniche", tags=["Schede Tecniche"])
 
@@ -99,6 +100,13 @@ async def lista_prodotti_con_schede(
         if not key or key in visti:
             continue
         visti.add(key)
+        # la scheda del fornitore porta la descrizione di fattura, che è il
+        # nome originale: stessa riga, non un secondo prodotto
+        originale = _key(p.get("nome_originale"))
+        if originale and originale != key and originale in per_key:
+            per_key.setdefault(key, [])
+            per_key[key] = per_key[key] + [s for s in per_key.pop(originale) if s not in per_key[key]]
+            visti.add(originale)
         if not includi_non_alimentari and _is_non_alimentare(nome):
             continue
         sk = per_key.get(key, [])
@@ -115,8 +123,106 @@ async def lista_prodotti_con_schede(
             "ha_scheda": len(sk) > 0,
         })
 
+    # Schede arrivate dal fornitore per prodotti non ancora nel dizionario
+    # (le fatture ME.PA. arrivano a Lotti dopo le schede): si vedono lo stesso.
+    for key, sk in per_key.items():
+        if key in visti:
+            continue
+        nome = sk[0].get("nome_prodotto") or key
+        if q and q.lower() not in nome.lower():
+            continue
+        out.append({"prodotto_key": key, "nome": nome, "fornitore": sk[0].get("fornitore", ""),
+                    "categoria": "", "schede": sk, "ha_scheda": True})
+
     out.sort(key=lambda x: (x["ha_scheda"], x["nome"]))
     return {"totale": len(out), "prodotti": out[:limit]}
+
+
+# ── Schede ricevute dal fornitore per posta (PDF originale) ─────────────────
+_COLL_PDF_SCHEDE = "schede_tecniche_email_attachments"
+
+
+@router.get("/pdf/{documento_id}")
+async def pdf_scheda(documento_id: str):
+    """Il PDF originale della scheda, come arrivato dal fornitore (per l'ASL)."""
+    import base64
+    from fastapi.responses import Response
+    from app.database import Database
+
+    doc = await Database.get_db()[_COLL_PDF_SCHEDE].find_one(
+        {"id": documento_id}, {"_id": 0, "pdf_data": 1, "filename": 1})
+    if not doc or not doc.get("pdf_data"):
+        raise HTTPException(404, "Scheda non trovata")
+    nome = re.sub(r"[^A-Za-z0-9._-]", "_", doc.get("filename") or "scheda.pdf")
+    return Response(content=base64.b64decode(doc["pdf_data"]), media_type="application/pdf",
+                    headers={"Content-Disposition": f'inline; filename="{nome}"'})
+
+
+_RICOSTRUZIONE: dict = {"in_corso": False, "esito": None}
+
+
+async def _ricostruisci_schede(limit: int) -> dict:
+    import base64
+    import hashlib
+    from app.database import Database
+    from app.lotti.servizi.schede_fornitore import registra_scheda_tecnica
+    from app.services.pdf_text_extraction import extract_pdf_text
+
+    erp = Database.get_db()[_COLL_PDF_SCHEDE]
+    ids = [d["id"] for d in await erp.find({}, {"_id": 0, "id": 1}).to_list(limit) if d.get("id")]
+    esiti = {"lette": 0, "registrate": 0, "errori": [], "iniziato_at": datetime.now(timezone.utc).isoformat()}
+    for doc_id in ids:
+        doc = await erp.find_one({"id": doc_id}, {"_id": 0})
+        if not doc or not doc.get("pdf_data"):
+            continue
+        esiti["lette"] += 1
+        try:
+            contenuto = base64.b64decode(doc["pdf_data"])
+            testo = extract_pdf_text(contenuto)
+            await erp.update_one({"id": doc_id}, {"$set": {"testo_estratto": testo[:20000]}})
+            esito = await registra_scheda_tecnica(
+                db, documento_id=doc_id, pdf_sha256=hashlib.sha256(contenuto).hexdigest(),
+                testo_pdf=testo, oggetto=doc.get("email_subject", ""), corpo=doc.get("email_body", ""),
+                email_uid=doc.get("email_uid", ""), email_data=doc.get("email_date", ""),
+            )
+            if esito.get("registrata"):
+                esiti["registrate"] += 1
+        except Exception as exc:  # noqa: BLE001 — si conta e si prosegue
+            esiti["errori"].append({"documento_id": doc_id, "errore": f"{type(exc).__name__}: {exc}"})
+    esiti["finito_at"] = datetime.now(timezone.utc).isoformat()
+    return esiti
+
+
+async def _giro_ricostruzione(limit: int) -> None:
+    try:
+        _RICOSTRUZIONE["esito"] = await _ricostruisci_schede(limit)
+    except Exception as exc:  # noqa: BLE001 — l'esito lo dice, il processo resta su
+        _RICOSTRUZIONE["esito"] = {"errore": f"{type(exc).__name__}: {exc}"}
+    finally:
+        _RICOSTRUZIONE["in_corso"] = False
+
+
+@router.post("/ricostruisci-da-email")
+async def ricostruisci_schede_da_email(limit: int = Query(500, le=2000), _admin=Depends(require_admin)):
+    """Rilegge le schede già archiviate dalla posta e le registra di nuovo.
+
+    Serve dopo un miglioramento del lettore o se la registrazione era fallita:
+    il PDF resta l'originale, cambiano solo i dati letti. Payload per id, in
+    background; l'esito su ``GET /schede-tecniche/ricostruisci-da-email/stato``.
+    """
+    import asyncio
+
+    if _RICOSTRUZIONE["in_corso"]:
+        return {"ok": True, "stato": "in_corso"}
+    _RICOSTRUZIONE["in_corso"] = True
+    _RICOSTRUZIONE["task"] = asyncio.create_task(_giro_ricostruzione(limit))
+    return {"ok": True, "stato": "avviata",
+            "stato_url": "/lotti/api/schede-tecniche/ricostruisci-da-email/stato"}
+
+
+@router.get("/ricostruisci-da-email/stato")
+async def stato_ricostruzione_schede(_admin=Depends(require_admin)):
+    return {"in_corso": _RICOSTRUZIONE["in_corso"], "esito": _RICOSTRUZIONE["esito"]}
 
 
 @router.post("/salva")
@@ -142,9 +248,10 @@ async def salva_scheda(payload: dict = Body(...)):
         "fonte": urlparse(url).netloc,
         "aggiornato_at": datetime.now(timezone.utc).isoformat(),
     }
-    # Upsert per (prodotto_key + tipo): una tecnica e una sicurezza per prodotto
+    # Upsert per (prodotto_key + tipo): una tecnica e una sicurezza per prodotto.
+    # La scheda arrivata dal fornitore per posta resta accanto, mai sovrascritta.
     await db.schede_tecniche.update_one(
-        {"prodotto_key": key, "tipo": tipo},
+        {"prodotto_key": key, "tipo": tipo, "fonte": {"$ne": FONTE_EMAIL_FORNITORE}},
         {"$set": doc},
         upsert=True,
     )
@@ -153,7 +260,9 @@ async def salva_scheda(payload: dict = Body(...)):
 
 @router.delete("/elimina")
 async def elimina_scheda(prodotto_key: str = Query(...), tipo: str = Query("tecnica"), _admin=Depends(require_admin)):
-    res = await db.schede_tecniche.delete_one({"prodotto_key": _key(prodotto_key), "tipo": tipo})
+    # l'originale del fornitore è la prova per un controllo ASL: non si elimina
+    res = await db.schede_tecniche.delete_one(
+        {"prodotto_key": _key(prodotto_key), "tipo": tipo, "fonte": {"$ne": FONTE_EMAIL_FORNITORE}})
     return {"ok": True, "eliminati": res.deleted_count}
 
 
