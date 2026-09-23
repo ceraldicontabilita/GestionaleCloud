@@ -120,7 +120,7 @@ export default function SchedaRicettaKiosk({ ricettaId, nome, onClose, modificab
               />
             ) : <>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
-                {ricetta.porzioni ? (
+                {ricetta.porzioni && ricetta.resa_verificata ? (
                   <Etichetta testo={`Resa: ${ricetta.porzioni} pezzi`} />
                 ) : null}
                 {ricetta.reparto ? <Etichetta testo={ricetta.reparto} /> : null}

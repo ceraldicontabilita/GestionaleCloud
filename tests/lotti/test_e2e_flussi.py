@@ -694,7 +694,7 @@ def test_dose_di_produzione_riscala_sulla_farina(dbmock):
     assert per_nome["Farina 00"] == 6.5      # 6,5 kg, resta in kg
     assert per_nome["Burro"] == 1625         # 250 g × 6,5
     assert per_nome["Uova"] == 26            # 4 pz × 6,5
-    assert out["porzioni_stimate"] == 130    # 20 × 6,5
+    assert out["porzioni_stimate"] is None  # manca il peso del pezzo e dell'uovo
 
 
 def test_dose_di_produzione_riso_per_gli_arancini(dbmock):
@@ -727,8 +727,53 @@ def test_moltiplicatore_nella_scheda_ricetta_non_modifica_la_ricetta(dbmock):
     out = run(fc.dose_produzione("R-moltiplicatore", fc.DoseProduzioneReq(moltiplicatore=2)))
     assert out["fattore"] == 2
     assert {i["nome"]: i["quantita"] for i in out["ingredienti"]} == {"Farina 00": 2, "Burro": 500}
-    assert out["porzioni_stimate"] == 40
+    assert out["porzioni_stimate"] is None
     assert run(dbmock.ricette.find_one({"id": "R-moltiplicatore"}))["ingredienti_dettaglio"] == ricetta["ingredienti_dettaglio"]
+
+
+def test_cornetto_1kg_farina_impasto_pieghe_e_pezzi(dbmock):
+    import app.lotti.routers.food_cost as fc
+    run(dbmock.ricette.insert_one({
+        "id": "R-cornetto-pieghe", "nome": "Cornetto Classico",
+        "porzioni": 20, "peso_pezzo_g": 80, "peso_uovo_g": 50,
+        "ingredienti_dettaglio": [
+            {"nome": "Farina 00", "quantita": 1000, "unita_misura": "g"},
+            {"nome": "Zucchero", "quantita": 150, "unita_misura": "g"},
+            {"nome": "Burro", "quantita": 150, "unita_misura": "g"},
+            {"nome": "Uova intere", "quantita": 3, "unita_misura": "pz"},
+            {"nome": "Sale", "quantita": 20, "unita_misura": "g"},
+            {"nome": "Miglioratore", "quantita": 20, "unita_misura": "g"},
+            {"nome": "Acqua", "quantita": 300, "unita_misura": "ml"},
+            {"nome": "Lievito", "quantita": 10, "unita_misura": "g"},
+            {"nome": "Burro per pieghe", "quantita": 540, "unita_misura": "g", "fase": "pieghe"},
+        ],
+    }))
+    out = run(fc.dose_produzione("R-cornetto-pieghe", fc.DoseProduzioneReq(moltiplicatore=1, normalizza_1kg=True)))
+    assert out["peso_impasto_g"] == 1800
+    assert out["peso_pieghe_g"] == 540
+    assert out["peso_totale_g"] == 2340
+    assert out["porzioni_stimate"] == 29
+    assert out["peso_pezzo_g"] == 80
+
+
+def test_scheda_normalizza_a_un_kg_la_farina_esplicita(dbmock):
+    import app.lotti.routers.food_cost as fc
+    run(dbmock.ricette.insert_one({
+        "id": "R-farina-esplicita", "nome": "Impasto sfogliato",
+        "ingrediente_base_nome": "Farina 00", "peso_pezzo_g": 80,
+        "ingredienti_dettaglio": [
+            {"nome": "Farina 00", "quantita": 500, "unita_misura": "g"},
+            {"nome": "Acqua", "quantita": 600, "unita_misura": "ml"},
+            {"nome": "Sale", "quantita": None, "unita_misura": "g"},
+        ],
+    }))
+    out = run(fc.dose_produzione("R-farina-esplicita", fc.DoseProduzioneReq(moltiplicatore=1, normalizza_1kg=True)))
+    assert out["base"] == "Farina 00"
+    assert out["fattore"] == 2
+    assert out["ingredienti"][0]["quantita"] == 1000
+    assert out["ingredienti"][1]["quantita"] == 1200
+    assert out["porzioni_stimate"] is None
+    assert out["ingredienti_senza_massa"] == ["Sale"]
 
 
 def test_dose_di_produzione_senza_dosi_lo_dice(dbmock):

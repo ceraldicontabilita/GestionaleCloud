@@ -44,4 +44,20 @@ describe("modifica rapida ricetta dal tablet", () => {
     expect(payload.allergeni).toBeUndefined();
     expect(payload.allergeni_confermati).toBeUndefined();
   });
+
+  test("conserva fase delle pieghe e peso unitario quando modifica le dosi", () => {
+    const originale = {
+      nome: "Cornetto", porzioni: 29, peso_pezzo_g: 80, peso_uovo_g: 50,
+      ingrediente_base_nome: "Farina 00",
+      ingredienti_dettaglio: [
+        { nome: "Farina 00", quantita: 1000, unita_misura: "g" },
+        { nome: "Burro per pieghe", quantita: 540, unita_misura: "g", fase: "pieghe" },
+      ],
+    };
+    const payload = payloadRicettaDaBozza(creaBozzaRicetta(originale), originale);
+    expect(payload.peso_pezzo_g).toBe(80);
+    expect(payload.peso_uovo_g).toBe(50);
+    expect(payload.ingrediente_base_nome).toBe("Farina 00");
+    expect(payload.ingredienti_dettaglio[1].fase).toBe("pieghe");
+  });
 });
