@@ -9,7 +9,7 @@
  * rilegge con Aggiorna.
  */
 import React, { useState, useCallback } from 'react';
-import api from '../api';
+import api, { messaggioErrore } from '../api';
 import { toast } from 'sonner';
 import { Button, Card, Badge } from './ds';
 import { useConfirm } from './ui/ConfirmDialog';
@@ -25,8 +25,8 @@ export const RIPARAZIONI = [
       'in Prima Nota risultano vuoti. Ripubblica lo stesso evento sugli stessi ' +
       'handler, che sono idempotenti: non crea doppioni.',
     poi: 'Dopo questo, lancia «Registra il pregresso».',
-    esegui: '/admin/fatture/ripubblica-evento-created',
-    stato: '/admin/fatture/ripubblica-evento-created/stato',
+    esegui: '/api/admin/fatture/ripubblica-evento-created',
+    stato: '/api/admin/fatture/ripubblica-evento-created/stato',
   },
   {
     id: 'registra-pregresso',
@@ -35,7 +35,7 @@ export const RIPARAZIONI = [
       'Porta nel libro giornale i documenti gia\' in archivio che non hanno una ' +
       'registrazione contabile. Va lanciato DOPO la ripubblicazione, altrimenti ' +
       'registra fatture a cui manca ancora la partita.',
-    esegui: '/piano-conti/registra-pregresso',
+    esegui: '/api/piano-conti/registra-pregresso',
     stato: null,
   },
   {
@@ -46,7 +46,7 @@ export const RIPARAZIONI = [
       'trasferimento POS del giorno non nasce e gli accrediti in banca non hanno ' +
       'niente da agganciare. Ricostruisce la chiusura sommando gli accrediti per ' +
       'giorno operativo (DEL gg/mm/aa), come da regola del titolare.',
-    esegui: '/pos-corrispettivi/chiusure-giornaliere/ricostruisci-numia',
+    esegui: '/api/pos-corrispettivi/chiusure-giornaliere/ricostruisci-numia',
     stato: null,
   },
   {
@@ -56,8 +56,8 @@ export const RIPARAZIONI = [
       'Le fatture fornitore non hanno scadenza: decide il titolare quando pagare. ' +
       'Quelle in archivio le ha scritte il vecchio import leggendo l\'XML, ed e\' ' +
       'quel numero a far comparire «scaduto» dove non c\'e\' nessun impegno.',
-    esegui: '/admin/fatture/azzera-scadenze',
-    stato: '/admin/fatture/azzera-scadenze/stato',
+    esegui: '/api/admin/fatture/azzera-scadenze',
+    stato: '/api/admin/fatture/azzera-scadenze/stato',
   },
   {
     id: 'lipe',
@@ -66,7 +66,7 @@ export const RIPARAZIONI = [
       'La LIPE e\' il documento canonico dell\'IVA mensile. Senza, al confronto ' +
       'con il commercialista manca la colonna di mezzo. Un periodo la cui ' +
       'aritmetica del quadro VP non quadra non viene depositato.',
-    esegui: '/iva/lipe/importa',
+    esegui: '/api/iva/lipe/importa',
     stato: null,
   },
 ];
@@ -82,8 +82,8 @@ function Riga({ lavoro, confirm }) {
       setEsito({ dryRun, data });
       toast.success(dryRun ? 'Conteggio eseguito, niente scritto' : 'Avviato');
     } catch (e) {
-      const msg = e?.response?.data?.detail || e.message || 'errore';
-      setEsito({ dryRun, errore: String(msg) });
+      const msg = messaggioErrore(e);
+      setEsito({ dryRun, errore: msg });
       toast.error(`Non riuscito: ${msg}`);
     } finally {
       setInCorso(null);
@@ -97,7 +97,7 @@ function Riga({ lavoro, confirm }) {
       const { data } = await api.get(lavoro.stato);
       setEsito({ stato: true, data });
     } catch (e) {
-      toast.error(e?.response?.data?.detail || e.message || 'errore');
+      toast.error(messaggioErrore(e));
     } finally {
       setInCorso(null);
     }

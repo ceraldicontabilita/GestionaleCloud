@@ -20,7 +20,8 @@ import {
 } from './RiconciliazioneUnificata';
 import { ROTTE_CONTROPARTITA, movimentoEstrattoContoDi, rottaDocumentoOrigine } from '../components/LinkContropartita';
 
-vi.mock('../api', () => ({
+vi.mock('../api', async (importOriginal) => ({
+  messaggioErrore: (await importOriginal()).messaggioErrore,
   default: { get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn(), defaults: { baseURL: '' } },
 }));
 vi.mock('../contexts/AnnoContext', () => ({

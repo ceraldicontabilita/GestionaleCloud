@@ -12,7 +12,8 @@ import { MemoryRouter } from 'react-router-dom';
 import api from '../api';
 import PannelloRiparazioni, { RIPARAZIONI } from './PannelloRiparazioni';
 
-vi.mock('../api', () => ({
+vi.mock('../api', async (importOriginal) => ({
+  messaggioErrore: (await importOriginal()).messaggioErrore,
   default: { get: vi.fn(), post: vi.fn() },
 }));
 
@@ -34,6 +35,13 @@ describe('Riparazioni una tantum', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     confermaRisposta = true;
+  });
+
+  it('ogni lavoro chiama il backend sotto /api (senza, la SPA rispondeva 405)', () => {
+    RIPARAZIONI.forEach((l) => {
+      expect(l.esegui.startsWith('/api/')).toBe(true);
+      if (l.stato) expect(l.stato.startsWith('/api/')).toBe(true);
+    });
   });
 
   it('elenca tutti i lavori, col pregresso per primo', () => {

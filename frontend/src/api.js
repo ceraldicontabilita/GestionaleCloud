@@ -84,6 +84,32 @@ export function isAuthenticated() {
   return !!localStorage.getItem('auth_token');
 }
 
+/**
+ * Messaggio leggibile da un errore Axios, in un posto solo.
+ *
+ * Contratto del backend (app/middleware/error_handler.py): `message` e' il
+ * testo per l'utente, `detail` resta quello che l'endpoint ha sollevato
+ * (stringa oppure oggetto con i suoi campi), `correlation_id` serve a
+ * ritrovare la riga nei log. Una risposta HTML (pagina della SPA: la
+ * chiamata e' finita fuori da /api) non e' un messaggio: si dice cos'e'.
+ */
+export function messaggioErrore(e, predefinito = 'Operazione non riuscita') {
+  const data = e?.response?.data;
+  let testo = '';
+  if (data && typeof data === 'object') {
+    const d = data.detail;
+    testo = data.message
+      || (typeof d === 'string' ? d : '')
+      || (d && typeof d === 'object' && typeof d.message === 'string' ? d.message : '');
+  } else if (typeof data === 'string' && data.trim().startsWith('<')) {
+    testo = 'Il server ha risposto con una pagina invece che con dei dati';
+  }
+  if (!testo && e?.response?.status === 405) testo = 'Operazione non disponibile a questo indirizzo';
+  if (!testo) testo = e?.message || predefinito;
+  const rif = data && typeof data === 'object' ? data.correlation_id : null;
+  return rif ? `${testo} (rif. ${rif})` : testo;
+}
+
 export async function health() {
   const r = await api.get('/api/health');
   return r.data;

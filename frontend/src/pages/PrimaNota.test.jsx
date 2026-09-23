@@ -1,7 +1,7 @@
 import React from 'react';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import api from '../api';
@@ -19,9 +19,11 @@ import {
   nomeFornitoreMovimento,
   movimentoContaNelSaldo,
   normalizzaDescrizioneMovimento,
+  useStatoFonti,
 } from './PrimaNota';
 
-vi.mock('../api', () => ({
+vi.mock('../api', async (importOriginal) => ({
+  messaggioErrore: (await importOriginal()).messaggioErrore,
   default: { get: vi.fn(), post: vi.fn(), put: vi.fn() },
 }));
 
@@ -838,5 +840,30 @@ describe('Deep link tra sezioni contabili', () => {
     expect(filtraMovimentiPrimaNota(movimenti, {
       testo: 'EC-2026-08-07-23.10-d2ef4678',
     })).toHaveLength(1);
+  });
+});
+
+describe('Stato delle fonti di Prima Nota', () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it('legge le fonti ferme dal percorso /api', async () => {
+    api.get.mockResolvedValue({ data: { ferme: [{ fonte: 'rt', etichetta: 'Corrispettivi RT' }] } });
+    const { result } = renderHook(() => useStatoFonti());
+    await waitFor(() => expect(result.current.fontiFerme).toHaveLength(1));
+    expect(api.get).toHaveBeenCalledWith('/api/prima-nota/stato-fonti');
+    expect(result.current.errore).toBeNull();
+  });
+
+  it('una risposta HTML (chiamata finita nella SPA) e\' un errore, non «nessuna fonte ferma»', async () => {
+    api.get.mockResolvedValue({ data: '<!doctype html><html></html>' });
+    const { result } = renderHook(() => useStatoFonti());
+    await waitFor(() => expect(result.current.errore).toBe('risposta non riconosciuta'));
+    expect(result.current.fontiFerme).toEqual([]);
+  });
+
+  it('un errore del backend si vede, col messaggio del contratto', async () => {
+    api.get.mockRejectedValue({ response: { status: 500, data: { message: 'Errore interno', correlation_id: 'x1' } } });
+    const { result } = renderHook(() => useStatoFonti());
+    await waitFor(() => expect(result.current.errore).toBe('Errore interno (rif. x1)'));
   });
 });

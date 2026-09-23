@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import api from '../api';
+import api, { messaggioErrore } from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { formatEuroD, formatDateIT, useIsMobile } from '../lib/utils';
 import { useHashState } from '../hooks/useHashState';
@@ -607,29 +607,44 @@ export function MovimentoModal({ tipo, movimento, onClose, onSaved }) {
   );
 }
 
+/**
+ * Fonti ferme: se l'estratto conto o i corrispettivi non arrivano piu', i
+ * totali della pagina sono parziali e va detto prima di mostrarli.
+ * Una fonte puo' anche arrivare regolare con i movimenti senza categoria
+ * (`copertura_categoria_banca`): stesso banner. Se lo stato non si legge
+ * non si sa se i numeri sono completi: `errore`, mai «nessuna fonte ferma».
+ */
+export function useStatoFonti() {
+  const [stato, setStato] = useState({ fontiFerme: [], coperturaCategoria: null, errore: null });
+  useEffect(() => {
+    let vivo = true;
+    api.get('/api/prima-nota/stato-fonti')
+      .then((r) => {
+        if (!vivo) return;
+        if (!r.data || typeof r.data !== 'object' || !Array.isArray(r.data.ferme)) {
+          setStato({ fontiFerme: [], coperturaCategoria: null, errore: 'risposta non riconosciuta' });
+          return;
+        }
+        setStato({
+          fontiFerme: r.data.ferme,
+          coperturaCategoria: r.data.copertura_categoria_banca || null,
+          errore: null,
+        });
+      })
+      .catch((e) => {
+        if (vivo) setStato({ fontiFerme: [], coperturaCategoria: null, errore: messaggioErrore(e) });
+      });
+    return () => { vivo = false; };
+  }, []);
+  return stato;
+}
+
 /* ------------------------------- registro ------------------------------- */
 function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRiporto }) {
   const isMobile = useIsMobile();
   const [pagina, setPagina] = useState(1);
   const [righePerPagina, setRighePerPagina] = useState(RIGHE_PER_PAGINA_DEFAULT);
-  // Fonti ferme: se l'estratto conto o i corrispettivi non arrivano piu', i
-  // totali della pagina sono parziali e va detto prima di mostrarli.
-  const [fontiFerme, setFontiFerme] = useState([]);
-  // 19/09/2026: una fonte puo' arrivare regolare e i suoi movimenti restare
-  // comunque senza categoria — problema diverso da una fonte ferma, stesso
-  // banner (non un secondo avviso separato).
-  const [coperturaCategoria, setCoperturaCategoria] = useState(null);
-  useEffect(() => {
-    let vivo = true;
-    api.get('/prima-nota/stato-fonti')
-      .then((r) => {
-        if (!vivo) return;
-        setFontiFerme(r.data?.ferme || []);
-        setCoperturaCategoria(r.data?.copertura_categoria_banca || null);
-      })
-      .catch(() => { if (vivo) { setFontiFerme([]); setCoperturaCategoria(null); } });
-    return () => { vivo = false; };
-  }, []);
+  const { fontiFerme, coperturaCategoria, errore: statoFontiErrore } = useStatoFonti();
   const coperturaSopraSoglia = !!coperturaCategoria?.sopra_soglia;
   const [cerca, setCerca] = useState(selectedId);
   const [fNumeroFattura, setFNumeroFattura] = useState('');
@@ -977,6 +992,18 @@ function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRip
           i suoi movimenti restano senza categoria (e quindi fuori da Prima
           Nota Banca) oltre la soglia — non e' lo stesso problema, ma l'esito
           per chi legge la pagina e' identico: il saldo non e' completo. */}
+      {statoFontiErrore && (
+        <div
+          role="alert"
+          style={{
+            background: '#fbf3e8', border: '1px solid #c4894a', borderLeft: '5px solid #c4894a',
+            borderRadius: 10, padding: '10px 14px', marginBottom: 10, fontSize: 13, color: '#6b4a22',
+          }}
+        >
+          <b>Stato delle fonti non disponibile</b> ({statoFontiErrore}): non si puo' dire se
+          estratto conto e corrispettivi sono aggiornati, quindi i numeri qui sotto potrebbero essere incompleti.
+        </div>
+      )}
       {(fontiFerme.length > 0 || coperturaSopraSoglia) && (
         <div
           role="alert"

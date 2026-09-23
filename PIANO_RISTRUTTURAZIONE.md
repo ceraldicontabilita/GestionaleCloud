@@ -737,7 +737,8 @@ I numeri qui sotto sono la baseline dichiarata dall'audit del 22/09, **non** anc
 
 | Data | ID/perimetro | Stato | Commit/PR e prova |
 |---|---|---|---|
-| 2026-09-23 | RST-DRV-00-PIANO-UNICO | 🟡 | Piano A–K trascritto in §7-bis; CLAUDE.md e `tests/runtime/test_claude_md.py` riallineati (`impresasemplice.online` vivo, tre documenti ammessi). PR in attesa dell'OK del titolare |
+| 2026-09-23 | RST-DRV-00-PIANO-UNICO | 🟢 | [PR #687](https://github.com/ceraldicontabilita/GestionaleCloud/pull/687), merge `5686948a7bc0fb246051a6421271528c3fb100cc`: piano A–K trascritto in §7-bis; CLAUDE.md e `tests/runtime/test_claude_md.py` riallineati (`impresasemplice.online` vivo, tre documenti ammessi). CI (Test backend, frontend ERP, E2E isolato, audit layout) verde; `/api/health` e `/lotti/api/health` su entrambi i domini servono il merge esatto |
+| 2026-09-23 | RST-AV3-01-CONTRATTO-ERRORI | 🟡 | Rimisurato dal vivo: i 5 lavori di Riparazioni (7 URL) chiamavano senza `/api` (POST → 405) e `/prima-nota/stato-fonti` riceveva la pagina HTML della SPA, trasformata in «nessuna fonte ferma»; l'handler errori toglieva `detail`, letto in 264 punti del frontend. Contratto `code/message/details/correlation_id` con `detail` invariato e intestazioni conservate; helper unico `messaggioErrore`; hook `useStatoFonti` con errore visibile; test di contratto esteso ai percorsi senza `/api` e agli URL di Riparazioni (fallisce sul codice di main). In attesa di PR, CI e OK del titolare |
 | 2026-09-21 | PLAN-0001 | 🟢 | Piano iniziale, audit 8cf52bd; storia in Git |
 | 2026-09-21 | PLAN-0002 | 🟢 | Priorità Prima Nota e PIN centrale aggiunte |
 | 2026-09-21 | FASE-0A-LIVE | 🟢 | #566, b71f62d; precedente registro Produzione 35543104234; non qualifica tutti i casi contabili |
