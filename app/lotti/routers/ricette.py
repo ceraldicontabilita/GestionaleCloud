@@ -1675,6 +1675,12 @@ async def create_ricetta(item: RicettaCreate):
     # Gli allergeni appartengono agli ingredienti: eventuali valori inviati da
     # client vecchi non costituiscono una seconda fonte editabile.
     doc.pop("allergeni_confermati", None)
+    from app.lotti.servizi.procedimento_ricetta import CAMPI_PROVENIENZA
+    for campo in CAMPI_PROVENIENZA:
+        doc.pop(campo, None)
+    if str(doc.get("procedimento_testo") or "").strip():
+        doc["procedimento_origine"] = "manuale"
+        doc["procedimento_da_verificare"] = False
     doc.pop("menu_category_id", None)
     doc.pop("menu_subcategory_id", None)
     doc["created_at"] = doc["created_at"].isoformat()
@@ -1731,6 +1737,9 @@ async def update_ricetta(ricetta_id: str, item: RicettaCreate, _admin=Depends(re
     payload = item.model_dump()
     payload.pop("descrizione_origine", None)
     payload.pop("allergeni_confermati", None)
+    # Provenienza del procedimento: la decide il server, mai il client.
+    from app.lotti.servizi.procedimento_ricetta import campi_su_modifica
+    payload.update(campi_su_modifica(precedente, payload))
     payload.pop("menu_category_id", None)
     payload.pop("menu_subcategory_id", None)
     # Flag Menu non inviato = non toccare la scelta gia' fatta dal titolare.
@@ -2986,6 +2995,65 @@ async def aggiorna_ingredienti_dettaglio(ricetta_id: str, ingredienti_dettaglio:
         from app.lotti.servizi.descrizione_ricetta import descrizione_da_ingredienti
         aggiornamento["descrizione"] = descrizione_da_ingredienti(aggiornamento)
     await db.ricette.update_one({"id": ricetta_id}, {"$set": aggiornamento})
+    return await db.ricette.find_one({"id": ricetta_id}, {"_id": 0})
+
+
+@router.post("/ricette/procedimenti-web")
+async def importa_procedimenti_web(body: dict, _admin=Depends(require_admin)):
+    """Procedimenti presi da fonti web tracciate, per le ricette che non ne hanno.
+
+    Scrive **solo** dove il procedimento manca: uno gia' presente (manuale o
+    web) non si tocca mai, quindi la seconda esecuzione non cambia niente.
+    Ogni voce porta la fonte e resta ``procedimento_da_verificare``.
+    ``dry_run`` e' vero per difetto: conta senza scrivere.
+    """
+    from app.lotti.servizi.procedimento_ricetta import campi_da_web, ha_procedimento, valida_voce_web
+
+    voci = body.get("voci")
+    if not isinstance(voci, list) or not voci:
+        raise HTTPException(400, "Servono le voci da importare")
+    if len(voci) > 500:
+        raise HTTPException(400, "Al massimo 500 voci per volta")
+    dry_run = body.get("dry_run", True) is not False
+    esito = {"dry_run": dry_run, "scritte": 0, "gia_presenti": 0, "scartate": 0, "dettaglio": []}
+    for voce in voci:
+        pulita, motivo = valida_voce_web(voce)
+        rid = (voce or {}).get("ricetta_id") if isinstance(voce, dict) else None
+        if not pulita:
+            esito["scartate"] += 1
+            esito["dettaglio"].append({"ricetta_id": rid, "esito": "scartata", "motivo": motivo})
+            continue
+        ricetta = await db.ricette.find_one({"id": pulita["ricetta_id"]}, {"_id": 0})
+        if not ricetta:
+            esito["scartate"] += 1
+            esito["dettaglio"].append({"ricetta_id": rid, "esito": "scartata", "motivo": "ricetta non trovata"})
+            continue
+        if ha_procedimento(ricetta):
+            esito["gia_presenti"] += 1
+            esito["dettaglio"].append({"ricetta_id": rid, "nome": ricetta.get("nome"), "esito": "gia_presente"})
+            continue
+        if not dry_run:
+            await db.ricette.update_one({"id": pulita["ricetta_id"]}, {"$set": campi_da_web(pulita)})
+        esito["scritte"] += 1
+        esito["dettaglio"].append({
+            "ricetta_id": rid, "nome": ricetta.get("nome"),
+            "esito": "da_scrivere" if dry_run else "scritta", "fonte": pulita["fonte"]["url"],
+        })
+    return esito
+
+
+@router.post("/ricette/{ricetta_id}/procedimento/conferma")
+async def conferma_procedimento(ricetta_id: str, _admin=Depends(require_admin)):
+    """Il titolare ha letto il procedimento preso dal web e lo tiene."""
+    ricetta = await db.ricette.find_one({"id": ricetta_id}, {"_id": 0})
+    if not ricetta:
+        raise HTTPException(404, "Ricetta non trovata")
+    if not str(ricetta.get("procedimento_testo") or "").strip():
+        raise HTTPException(400, "La ricetta non ha un procedimento da confermare")
+    adesso = datetime.now(timezone.utc).isoformat()
+    await db.ricette.update_one({"id": ricetta_id}, {"$set": {
+        "procedimento_da_verificare": False, "procedimento_confermato_il": adesso,
+    }})
     return await db.ricette.find_one({"id": ricetta_id}, {"_id": 0})
 
 

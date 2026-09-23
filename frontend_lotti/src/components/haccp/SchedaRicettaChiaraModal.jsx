@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { AlertTriangle, ChefHat, Pencil, X } from "lucide-react";
+import { AlertTriangle, ChefHat, ExternalLink, Pencil, X } from "lucide-react";
 import { API } from "../../utils/constants";
 import { apiError } from "../../utils/apiError";
 import DosiRicetta from "./shared/DosiRicetta";
@@ -23,6 +23,9 @@ export default function SchedaRicettaChiaraModal({
   const [caricata, setCaricata] = useState(null);
   const [errore, setErrore] = useState("");
   const [inModifica, setInModifica] = useState(false);
+  const [confermato, setConfermato] = useState(false);
+  const [confermando, setConfermando] = useState(false);
+  const [erroreConferma, setErroreConferma] = useState("");
   const daCaricare = !ricettaData && Boolean(ricettaId);
 
   useEffect(() => {
@@ -46,6 +49,22 @@ export default function SchedaRicettaChiaraModal({
   const fonte = ricetta?.fonte_archivio || "Ricetta Ceraldi";
   const provenienza = ricetta?.provenienza_archivio || {};
   const allergeni = Array.isArray(ricetta?.allergeni) ? ricetta.allergeni.filter(Boolean) : [];
+  const fonteWeb = ricetta?.procedimento_origine === "web" ? (ricetta.procedimento_fonte || {}) : null;
+  const daVerificare = Boolean(fonteWeb) && ricetta?.procedimento_da_verificare !== false && !confermato;
+  const puoConfermare = Boolean(onModifica || modificaRapida);
+  const confermaProcedimento = async () => {
+    setConfermando(true);
+    setErroreConferma("");
+    try {
+      await axios.post(`${API}/ricette/${ricetta.id}/procedimento/conferma`);
+      setConfermato(true);
+      onSalvato?.(ricetta);
+    } catch (e) {
+      setErroreConferma(apiError(e, "Conferma non riuscita"));
+    } finally {
+      setConfermando(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-[500] flex items-end justify-center bg-black/55 p-2 md:items-center md:p-6" onClick={() => { if (!inModifica) onClose(); }}>
@@ -102,6 +121,26 @@ export default function SchedaRicettaChiaraModal({
             <section className="space-y-6">
               <div>
                 <h3 className="mb-3 font-serif text-xl font-bold text-stone-900">Modo di preparazione</h3>
+                {fonteWeb && (
+                  <div className="mb-3 rounded-2xl border border-[#e8d5b0] bg-[#fdf4e6] p-3 text-sm leading-6 text-[#6b4a22]">
+                    <strong>{daVerificare ? "Preso dal web, da verificare" : "Preso dal web, confermato"}</strong>
+                    {" · "}
+                    {fonteWeb.url ? (
+                      <a href={fonteWeb.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-bold text-[#6b4a22] underline">
+                        {fonteWeb.titolo || fonteWeb.sito || "fonte"} <ExternalLink size={13} />
+                      </a>
+                    ) : "fonte non indicata"}
+                    {fonteWeb.compatibilita && <div className="mt-1 text-xs">Differenze con la nostra ricetta: {fonteWeb.compatibilita}</div>}
+                    <div className="mt-1 text-xs">Le dosi sono quelle della scheda, non della fonte.</div>
+                    {daVerificare && puoConfermare && (
+                      <button type="button" disabled={confermando} onClick={confermaProcedimento}
+                        className="mt-2 flex min-h-11 items-center justify-center rounded-xl border border-[#b9cec1] bg-white px-4 font-black text-[#3f5a4e] disabled:opacity-50">
+                        {confermando ? "Confermo…" : "Confermo il procedimento"}
+                      </button>
+                    )}
+                    {erroreConferma && <div role="alert" className="mt-1 text-[#8f3829]">{erroreConferma}</div>}
+                  </div>
+                )}
                 <p className="m-0 whitespace-pre-line rounded-2xl border border-[#e7ddd0] bg-white p-5 text-[15px] leading-7 text-stone-700">{procedimento}</p>
               </div>
               {note && <div><h3 className="mb-2 font-serif text-lg font-bold">Note</h3><p className="m-0 whitespace-pre-line rounded-2xl bg-[#f2eee6] p-4 text-sm leading-6 text-stone-700">{note}</p></div>}
