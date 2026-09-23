@@ -2390,7 +2390,7 @@ export default function Fornitori() {
         </div>
 
         {/* Cards Grid */}
-        {loading ? (
+        {loading && suppliers.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '60px' }}>
             <div
               style={{
