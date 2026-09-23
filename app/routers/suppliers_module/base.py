@@ -416,13 +416,34 @@ async def list_suppliers(
         # Prima cedente_piva mancava: i fornitori con sole fatture in schema
         # italiano risultavano "0 fatture / mai fatturato".
         try:
+            # Solo i campi dei contatori. Il documento fattura intero (XML
+            # compreso) faceva restare la pagina su «Caricamento» per decine
+            # di secondi. Il tetto è alto abbastanza da non tagliare l'archivio
+            # 2026; i campi non letti non viaggiano.
             invoice_rows = await db["invoices"].find(
                 {"$or": [
                     {"supplier_vat": {"$exists": True, "$nin": [None, ""]}},
                     {"cedente_piva": {"$exists": True, "$nin": [None, ""]}},
                     {"fornitore_partita_iva": {"$exists": True, "$nin": [None, ""]}},
-                ]}, {"_id": 0},
-            ).to_list(10000)
+                ]},
+                {
+                    "_id": 0,
+                    "supplier_vat": 1,
+                    "cedente_piva": 1,
+                    "fornitore_partita_iva": 1,
+                    "importo_totale": 1,
+                    "total_amount": 1,
+                    "totale_documento": 1,
+                    "totale": 1,
+                    "importo_documento": 1,
+                    "importo": 1,
+                    "stato_pagamento": 1,
+                    "pagato": 1,
+                    "esclusa_da_cassa_banca": 1,
+                    "data_documento": 1,
+                    "invoice_date": 1,
+                },
+            ).to_list(200000)
             grouped_stats: Dict[str, Dict[str, Any]] = {}
             for invoice in invoice_rows:
                 piva = (invoice.get("supplier_vat") or invoice.get("cedente_piva")
