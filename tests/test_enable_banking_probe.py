@@ -61,6 +61,7 @@ def _reset_state():
     main._viewer_token = None
     main._letture.clear()
     main._confronto = None
+    main._csv_caricato = None
     main._last_result = {
         "connected": False,
         "session": {},
@@ -351,3 +352,44 @@ def test_dettagli_e_csv_solo_dal_browser_che_ha_collegato_il_conto(monkeypatch):
     with TestClient(main.app, base_url="https://testserver") as estraneo:
         pagina = estraneo.get("/result").text
         assert "IT60****3456" not in pagina and "12,50" not in pagina
+
+
+def test_rileggere_rifa_il_confronto_col_csv_gia_caricato(monkeypatch):
+    """Il 23/09 «Rileggi» dopo il caricamento buttava via il confronto."""
+    _reset_state()
+    main._csv_caricato = None
+    monkeypatch.setattr(main, "APPLICATION_ID", "application-id")
+    monkeypatch.setattr(main, "PRIVATE_KEY_PEM", "private-key")
+    monkeypatch.setattr(main, "_api_headers", lambda: {"Authorization": "Bearer test"})
+    monkeypatch.setattr(main.httpx, "AsyncClient", FakeEnableBankingClient)
+
+    with TestClient(main.app, base_url="https://testserver") as client:
+        client.get("/")
+        csrf = client.cookies.get("__Host-banco_bpm_probe_csrf")
+        client.post("/connect", data={"csrf_token": csrf})
+        state = next(iter(main._pending_states))
+        client.get(f"/callback?code=c&state={state}", follow_redirects=False)
+        client.post("/confronta-csv", files={"csv": ("e.csv", CSV_BPM)}, follow_redirects=False)
+        assert main._confronto["csv_movimenti"] == 4
+        client.post("/retest", data={"giorni": "700"}, follow_redirects=False)
+        assert main._confronto is not None and main._confronto["csv_movimenti"] == 4
+        assert "Confronto con il CSV" in client.get("/result").text and "Periodo confrontato" in client.get("/result").text
+    main._csv_caricato = None
+
+
+def test_false_della_banca_non_e_il_nome_del_conto():
+    assert main._account_meta({"uid": "u", "name": "false", "account_id": {"iban": "IT13X0503403406000000005462"}}) == {
+        "iban_mascherato": "IT13****5462", "nome": "",
+    }
+
+
+def test_stesso_riferimento_banca_e_gia_presente_non_ambiguo():
+    """Collaudo 23/09: API e CSV scrivono lo stesso bonifico con code diverse."""
+    csv_mov = [{
+        "data": "2026-08-14", "importo": Decimal("-5000.00"), "tipo": "uscita", "banca": "Banco BPM",
+        "descrizione_originale": "VOSTRA DISPOSIZIONE - VS.DISP. RIF. MB0B04742006/90192364 FAVORE X - ADD.TOT - STIPENDIO",
+    }]
+    api = [lettura.normalizza_api(_tx("s", "2026-08-14", "5000", testo=(
+        "VOSTRA DISPOSIZIONE - VS.DISP. RIF. MB0B04742006/90192364 FAVORE X - ADD.TOT NR. BONIFICO SEPA: MB0B04742")), "c", "t")]
+    esito = lettura.confronta(api, csv_mov)
+    assert len(esito["gia_presenti"]) == 1 and esito["ambigui"] == []
