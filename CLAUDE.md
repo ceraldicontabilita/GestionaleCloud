@@ -438,7 +438,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   documento ammesse dal codice.
 - Riga bancaria canonica = riferimento esterno **oppure** fingerprint data+valuta+importo+causale+progressivo;
   due export **dello stesso conto** con parole diverse si confrontano per giorno, segno, importo e conteggio
-  (`doppioni_estratto_conto.accoppia`). Assegni con numero o data diversi **non sono duplicati**. Le regole SDD
+  (`doppioni_estratto_conto.accoppia`), prima per **riferimento banca** (in ordine, due commissioni uguali si incrociano). Assegni con numero o data diversi **non sono duplicati**. Le regole SDD
   creano un pagamento solo con identità, periodo e importo compatibili; altrimenti candidati.
 - Categorizzazione movimenti banca: un solo motore,
   `app/services/categorizzazione_movimenti.py` (parole chiave su
