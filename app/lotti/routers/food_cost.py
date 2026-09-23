@@ -2722,9 +2722,13 @@ async def auto_rileva_allergeni_tutte(force: bool = False):
         },
     ).to_list(2000)
 
+    from app.lotti.routers.ricette import _sincronizza_menu
+
     aggiornate = 0
     skippate = 0
     risultati = []
+    menu_riallineati = 0
+    menu_errori: list = []
 
     for ricetta in ricette:
         nomi_ing = estrai_nomi_ingredienti(ricetta)
@@ -2748,6 +2752,14 @@ async def auto_rileva_allergeni_tutte(force: bool = False):
             aggiornamento["allergeni_da_confermare"] = bool(nomi_ing)
         await db.ricette.update_one({"id": ricetta["id"]}, {"$set": aggiornamento})
         aggiornate += 1
+        # Il Menu dichiara gli allergeni per legge: se la lista vigente e'
+        # cambiata, il prodotto va riallineato subito, non al prossimo
+        # salvataggio della ricetta.
+        if "allergeni" in aggiornamento and aggiornamento["allergeni"] != ricetta.get("allergeni"):
+            esito = await _sincronizza_menu(ricetta["id"])
+            menu_riallineati += 1
+            if esito.get("esito") == "errore":
+                menu_errori.append({"ricetta_id": ricetta["id"], "errore": esito.get("errore")})
         if allergeni_trovati:
             risultati.append({"nome": ricetta.get("nome"), "allergeni": allergeni_trovati})
         else:
@@ -2758,6 +2770,8 @@ async def auto_rileva_allergeni_tutte(force: bool = False):
         "aggiornate": aggiornate,
         "con_allergeni": len(risultati),
         "senza_allergeni_trovati": skippate,
+        "menu_riallineati": menu_riallineati,
+        "menu_errori": menu_errori,
         "dettaglio": risultati,
     }
 
@@ -2808,7 +2822,11 @@ async def aggiorna_allergeni_ricetta(data: dict):
     )
     if result.matched_count == 0:
         raise HTTPException(404, "Ricetta non trovata")
-    return {"status": "ok", "allergeni": allergeni}
+    # La conferma del titolare vale per il Menu nello stesso momento: senza
+    # questo il prodotto pubblicato restava con gli allergeni di prima.
+    from app.lotti.routers.ricette import _sincronizza_menu
+
+    return {"status": "ok", "allergeni": allergeni, "menu_sync": await _sincronizza_menu(ricetta_id)}
 
 
 @router.post("/backfill-allergeni-da-confermare")

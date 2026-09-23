@@ -104,3 +104,92 @@ def test_modifica_ricetta_ricalcola_sempre_dagli_ingredienti(monkeypatch):
     assert aggiornata["allergeni"] == ["Latte"]
     assert aggiornata["allergeni_auto"] == ["Latte"]
     assert aggiornata["allergeni_da_confermare"] is True
+
+
+# ─── Allergeni e Menu (RST-AV3-10) ───────────────────────────────────────────
+# Il Menu dichiara gli allergeni per legge (Reg. UE 1169/2011): una conferma
+# del titolare deve arrivarci subito e non puo' essere cancellata da un
+# salvataggio che non cambia gli ingredienti.
+
+def _registra_sync(monkeypatch):
+    from app.lotti.routers import ricette as ricette_mod
+
+    chiamate = []
+
+    async def finto_sync(ricetta_id):
+        chiamate.append(ricetta_id)
+        return {"esito": "aggiornato"}
+
+    monkeypatch.setattr(ricette_mod, "_sincronizza_menu", finto_sync)
+    return chiamate
+
+
+def test_ponte_pubblica_nessun_allergene_se_confermato_vuoto():
+    from app.lotti.servizi.menu_bridge import allergeni_da_pubblicare
+
+    confermata = {"allergeni": [], "allergeni_auto": ["Latte"], "allergeni_da_confermare": False}
+    assert allergeni_da_pubblicare(confermata) == []
+    # Solo una ricetta che il campo non l'ha mai avuto ripiega sul calcolo.
+    assert allergeni_da_pubblicare({"allergeni_auto": ["Latte"]}) == ["Latte"]
+
+
+def test_modifica_senza_cambiare_ingredienti_conserva_la_conferma(monkeypatch):
+    from app.lotti.routers import ricette as mod
+
+    database = AsyncMongoMockClient()["Gestionale_Test"]
+    monkeypatch.setattr(mod, "db", database)
+    _registra_sync(monkeypatch)
+    run(database.ricette.insert_one({
+        "id": "r4", "nome": "Crema", "ingredienti": ["Latte", "Zucchero"],
+        "allergeni": [], "allergeni_auto": ["Latte"],
+        "allergeni_verificato": True, "allergeni_da_confermare": False,
+    }))
+
+    # Stessi ingredienti, in ordine diverso: la conferma resta.
+    stessa = mod.RicettaCreate(nome="Crema", ingredienti=["zucchero", "Latte"], prezzo_vendita=2.5)
+    aggiornata = run(mod.update_ricetta("r4", stessa, _admin={"nome": "Admin"}))
+    assert aggiornata["allergeni"] == []
+    assert aggiornata["allergeni_da_confermare"] is False
+    assert aggiornata["allergeni_auto"] == ["Latte"]
+
+    # Ingredienti cambiati: la conferma non vale piu'.
+    cambiata = mod.RicettaCreate(nome="Crema", ingredienti=["Latte", "Uova"])
+    aggiornata = run(mod.update_ricetta("r4", cambiata, _admin={"nome": "Admin"}))
+    assert aggiornata["allergeni"] == ["Uova", "Latte"]
+    assert aggiornata["allergeni_da_confermare"] is True
+
+
+def test_conferma_manuale_aggiorna_subito_il_menu(monkeypatch):
+    from app.lotti.routers import food_cost as mod
+
+    database = AsyncMongoMockClient()["Gestionale_Test"]
+    monkeypatch.setattr(mod, "db", database)
+    chiamate = _registra_sync(monkeypatch)
+    run(database.ricette.insert_one({"id": "r5", "nome": "Crema", "ingredienti": ["Latte"]}))
+
+    esito = run(mod.aggiorna_allergeni_ricetta({"ricetta_id": "r5", "allergeni": []}))
+
+    assert chiamate == ["r5"]
+    assert esito["menu_sync"] == {"esito": "aggiornato"}
+
+
+def test_rilevamento_massivo_riallinea_il_menu_solo_dove_cambia(monkeypatch):
+    from app.lotti.routers import food_cost as mod
+
+    database = AsyncMongoMockClient()["Gestionale_Test"]
+    monkeypatch.setattr(mod, "db", database)
+    chiamate = _registra_sync(monkeypatch)
+    run(database.ricette.insert_many([
+        {"id": "cambia", "nome": "A", "ingredienti": ["Farina"], "allergeni": []},
+        {"id": "uguale", "nome": "B", "ingredienti": ["Latte"], "allergeni": ["Latte"]},
+        {"id": "confermata", "nome": "C", "ingredienti": ["Uova"], "allergeni": [],
+         "allergeni_verificato": True, "allergeni_da_confermare": False},
+    ]))
+
+    primo = run(mod.auto_rileva_allergeni_tutte())
+    assert chiamate == ["cambia"]
+    assert primo["menu_riallineati"] == 1
+
+    secondo = run(mod.auto_rileva_allergeni_tutte())
+    assert chiamate == ["cambia"]
+    assert secondo["menu_riallineati"] == 0

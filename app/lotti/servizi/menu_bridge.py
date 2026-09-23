@@ -121,6 +121,23 @@ def mappa_allergeni(allergeni: Optional[list]) -> list[str]:
     return risultato
 
 
+def allergeni_da_pubblicare(ricetta: dict) -> list:
+    """Gli allergeni che il Menu deve dichiarare per la ricetta.
+
+    ``allergeni`` e' la lista vigente: calcolata dagli ingredienti oppure
+    confermata a mano dal titolare. Una lista **vuota** e' una risposta
+    («nessun allergene»), non un dato mancante: ripiegare su
+    ``allergeni_auto`` quando e' vuota pubblicava gli allergeni rilevati
+    in automatico proprio sulle ricette che il titolare aveva dichiarato
+    senza allergeni. Il ripiego vale solo per le ricette vecchie che il
+    campo non l'hanno mai avuto.
+    """
+    vigenti = ricetta.get("allergeni")
+    if isinstance(vigenti, list):
+        return vigenti
+    return ricetta.get("allergeni_auto") or []
+
+
 def prezzo_menu(prezzo: Any) -> Optional[str]:
     """Formato del seed originale del Menu (``"3.50€"``); None se assente."""
     if prezzo in (None, ""):
@@ -377,7 +394,7 @@ def _pubblica_sync(ricetta: dict, foto: Optional[dict], visibile: bool) -> dict:
         "price": prezzo or "",
         "description": descrizione,
         "description_it": descrizione,
-        "allergens": mappa_allergeni(ricetta.get("allergeni") or ricetta.get("allergeni_auto")),
+        "allergens": mappa_allergeni(allergeni_da_pubblicare(ricetta)),
         "image": immagine,
         "origine": ORIGINE_LOTTI,
         "lotti_ref": lotti_ref,
