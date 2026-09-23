@@ -107,8 +107,11 @@ def test_connect_and_callback_keep_only_sanitized_results(monkeypatch):
             data={"csrf_token": csrf},
             follow_redirects=False,
         )
-        assert connect.status_code == 303
-        assert connect.headers["location"] == "https://auth.enablebanking.com/start"
+        # Pagina che naviga da se': un 303 dal POST viola form-action 'self'
+        assert connect.status_code == 200
+        assert 'content="0;url=https://auth.enablebanking.com/start"' in connect.text
+        assert 'href="https://auth.enablebanking.com/start"' in connect.text
+        assert "form-action 'self'" in connect.headers["content-security-policy"]
 
         state = next(iter(main._pending_states))
         callback = client.get(
