@@ -76,6 +76,9 @@ class FakeRestSupabase(SupabaseRuntimeDatabase):
             start = payload.get("p_offset", 0)
             return documents[start:start + payload["p_limit"]]
         if function_name == "gc_fetch_documents_exact":
+            # Come la RPC vera: da 1 a 500 valori, altrimenti 400.
+            if not 1 <= len(payload["p_values"]) <= 500:
+                raise RuntimeError("valori lookup non validi")
             field = payload["p_field"]
             values = set(payload["p_values"])
             documents = []
@@ -866,3 +869,27 @@ def test_mirror_elimina_obsoleti_e_verifica_impronta():
     assert check["coincide"] is True
     assert check["impronta_origine"] == documents_digest(source)
     assert check["impronta_destinazione"] == documents_digest(source)
+
+
+def test_insert_many_oltre_500_documenti_spezza_il_lookup(monkeypatch):
+    """Un estratto conto BPM con piu' di 500 movimenti nuovi falliva tutto:
+    il controllo dei doppioni mandava ogni id in una sola RPC (tetto 500)."""
+    runtime = FakeRestSupabase({"estratto_conto_movimenti": []})
+    calls = []
+    original_rpc = runtime._rpc
+
+    async def rpc(function, payload):
+        if function == "gc_fetch_documents_exact":
+            calls.append(len(payload["p_values"]))
+        return await original_rpc(function, payload)
+
+    monkeypatch.setattr(runtime, "_rpc", rpc)
+    movimenti = [
+        {"_id": f"mov-{n:04d}", "id": f"mov-{n:04d}", "importo": -1.0}
+        for n in range(1200)
+    ]
+    asyncio.run(runtime["estratto_conto_movimenti"].insert_many(movimenti, ordered=False))
+
+    assert len(runtime.remote["estratto_conto_movimenti"]) == 1200
+    assert calls and max(calls) <= 500
+    assert sum(calls) == 1200

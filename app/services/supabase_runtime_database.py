@@ -1204,30 +1204,40 @@ class SupabaseRuntimeDatabase(ArchivioDocumenti):
         values: list[str],
         excluded_fields: list[str] | None = None,
     ) -> list[dict[str, Any]]:
-        """Legge soltanto i documenti identificati da un vincolo esatto."""
+        """Legge soltanto i documenti identificati da un vincolo esatto.
+
+        La RPC accetta al massimo ``_MAX_EXACT_LOOKUP_VALUES`` valori: oltre
+        risponde 400 «valori lookup non validi». Un estratto conto con piu' di
+        500 movimenti nuovi faceva fallire l'intero import; qui si spezza.
+        """
         merged: dict[str, dict[str, Any]] = {}
         locations = self._document_locations.setdefault(collection_name, {})
+        lotti = [
+            values[inizio:inizio + _MAX_EXACT_LOOKUP_VALUES]
+            for inizio in range(0, len(values), _MAX_EXACT_LOOKUP_VALUES)
+        ]
         for physical_name in self._physical_collections(collection_name):
-            result = await self._rpc(
-                "gc_fetch_documents_exact",
-                {
-                    "p_collection": physical_name,
-                    "p_field": field,
-                    "p_values": values,
-                    "p_exclude_fields": excluded_fields or [],
-                },
-            )
-            if not isinstance(result, list):
-                raise RuntimeError(
-                    f"Risposta Supabase puntuale non valida per {collection_name}"
+            for lotto in lotti:
+                result = await self._rpc(
+                    "gc_fetch_documents_exact",
+                    {
+                        "p_collection": physical_name,
+                        "p_field": field,
+                        "p_values": lotto,
+                        "p_exclude_fields": excluded_fields or [],
+                    },
                 )
-            for document in result:
-                document_id = document.get("_id")
-                if document_id is None:
-                    continue
-                key = str(document_id)
-                merged[key] = document
-                locations[key] = physical_name
+                if not isinstance(result, list):
+                    raise RuntimeError(
+                        f"Risposta Supabase puntuale non valida per {collection_name}"
+                    )
+                for document in result:
+                    document_id = document.get("_id")
+                    if document_id is None:
+                        continue
+                    key = str(document_id)
+                    merged[key] = document
+                    locations[key] = physical_name
         return list(merged.values())
 
     async def align_processed_document_status(self) -> int:

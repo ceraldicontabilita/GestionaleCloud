@@ -390,6 +390,9 @@ async def applica_pagamenti_dichiarati(
                 "motivo": motivo,
             })
 
+    # Il report dell'Agenzia elenca a volte la stessa fattura due volte (il
+    # file .xml e il .xml.p7m): la seconda riga non e' un secondo pagamento.
+    fatture_viste: set = set()
     for riga in righe:
         metodo = riga["metodo_pagamento_titolare"]
         if not riga.get("pagata_titolare"):
@@ -404,7 +407,9 @@ async def applica_pagamenti_dichiarati(
                 await _salva_esito(db, riga, "fattura_non_ancora_arrivata")
             continue
         fattura = aperte.get(fattura_id)
-        if fattura is None:
+        doppione = fattura_id in fatture_viste
+        fatture_viste.add(fattura_id)
+        if fattura is None or doppione:
             annota(riga, "gia_pagata")
             if not dry_run:
                 await _salva_esito(db, riga, "gia_pagata")
@@ -550,4 +555,14 @@ async def stato(db) -> Dict[str, Any]:
     if not documento:
         return {"stato": "mai_avviato"}
     documento.pop("chiave", None)
+    in_esecuzione = _job_lock.locked() or (_job_task is not None and not _job_task.done())
+    if documento.get("stato") == "in_corso" and not in_esecuzione:
+        # Un deploy riavvia il processo e uccide il giro a meta': lo stato
+        # salvato resterebbe «in_corso» per sempre. Le righe senza esito le
+        # riprende il giro dei 30 minuti (sono idempotenti).
+        documento["stato"] = "interrotto"
+        documento["nota"] = (
+            "Giro interrotto da un riavvio: le righe senza esito le riprende "
+            "la riconciliazione automatica, oppure rilancia questo comando."
+        )
     return documento

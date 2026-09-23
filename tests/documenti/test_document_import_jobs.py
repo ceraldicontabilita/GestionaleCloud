@@ -99,3 +99,35 @@ def test_enqueue_risponde_prima_di_persistire_nell_archivio(monkeypatch):
     assert visible["status"] == "queued"
     assert calls_before_response == []
     assert [status for _, status in save_calls] == ["running", "completed"]
+
+
+def test_zip_in_coda_salva_l_esito_e_non_si_rielabora(monkeypatch):
+    """Uno ZIP da 400 fatture superava i 2 minuti del browser: il server si
+    fermava con 3 fatture importate su 400. In coda l'esito resta salvato."""
+    async def scenario():
+        db = ClientArchivioMemoria()["document-import-zip-test"]
+        chiamate = []
+
+        async def process(filename, content):
+            chiamate.append((filename, content))
+            return {"success": True, "imported": 398, "duplicates": 2, "errors": 0}
+
+        primo = await document_import_jobs.enqueue_zip_import(
+            db, content=b"PK-zip", filename="20260923_ExportFattureRicevute.zip",
+            process=process,
+        )
+        await document_import_jobs.wait_for_import_job(primo["job_id"])
+        stato = await document_import_jobs.get_import_job(db, primo["job_id"])
+        secondo = await document_import_jobs.enqueue_zip_import(
+            db, content=b"PK-zip", filename="stesso.zip", process=process,
+        )
+        return primo, stato, secondo, chiamate
+
+    primo, stato, secondo, chiamate = asyncio.run(scenario())
+
+    assert primo["queued"] is True
+    assert stato["status"] == "completed"
+    assert stato["document_type"] == "archivio_zip"
+    assert stato["result"]["imported"] == 398
+    assert secondo["queued"] is False
+    assert chiamate == [("20260923_ExportFattureRicevute.zip", b"PK-zip")]

@@ -94,10 +94,10 @@ export async function attendiImportDocumentale(jobId, maxWaitMs = 15 * 60 * 1000
     });
     const job = response.data || {};
     if (job.status === 'completed') return job.result || {};
-    if (job.status === 'failed') throw new Error(job.error || 'Import POS non riuscito');
+    if (job.status === 'failed') throw new Error(job.error || 'Import non riuscito');
     await sleep(2000);
   }
-  throw new Error('Import POS ancora in corso oltre il tempo previsto. Puoi ricaricare la pagina senza duplicare i dati.');
+  throw new Error('Import ancora in corso oltre il tempo previsto. Puoi ricaricare la pagina senza duplicare i dati.');
 }
 
 /**
@@ -247,7 +247,10 @@ export default function ImportDocumenti() {
           fileInfo.preview?.tipo_rilevato === 'pos_terminal' &&
           !fileInfo.name.toLowerCase().includes('commissioni_') &&
           operazioniPos >= 500;
-        const endpoint = usaCodaPos
+        // Uno ZIP con centinaia di fatture supera i 2 minuti del browser e i
+        // 5 del proxy: va in coda e la pagina ne segue l'esito.
+        const usaCodaZip = fileInfo.preview?.tipo_rilevato === 'archivio_zip';
+        const endpoint = usaCodaPos || usaCodaZip
           ? '/api/documenti/upload-auto/queue'
           : '/api/documenti/upload-auto';
         const res = await api.post(endpoint, formData, {
@@ -258,7 +261,12 @@ export default function ImportDocumenti() {
         });
 
         let importData = res.data || {};
-        if (usaCodaPos && importData.status !== 'completed') {
+        if (usaCodaZip && importData.job_id) {
+          const completed = importData.status === 'completed'
+            ? importData.result || {}
+            : await attendiImportDocumentale(importData.job_id, 30 * 60 * 1000);
+          importData = { ...completed, tipo_rilevato: 'archivio_zip' };
+        } else if (usaCodaPos && importData.status !== 'completed') {
           const completed = await attendiImportDocumentale(importData.job_id);
           importData = {
             ...importData,

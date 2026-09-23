@@ -159,9 +159,46 @@ describe('Import documenti - corrispettivo duplicato', () => {
     fireEvent.click(screen.getByTestId('upload-btn'));
     await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2));
     const [importUrl, , config] = api.post.mock.calls[1];
-    expect(importUrl).toBe('/api/documenti/upload-auto');
+    expect(importUrl).toBe('/api/documenti/upload-auto/queue');
     expect(config.headers['X-Document-Preview-Token']).toBe('token-archivio_zip');
     expect((await screen.findAllByText('Archivio ZIP')).length).toBeGreaterThan(0);
+  });
+
+  it('accoda gli ZIP grandi e mostra l\'esito quando il server ha finito', async () => {
+    mockPreviewThenImport('archivio_zip', {
+      success: true,
+      tipo_rilevato: 'archivio_zip',
+      workflow: 'ARCHIVIO_ZIP_ASYNC',
+      status: 'queued',
+      job_id: 'DOC-IMPORT-zip',
+    });
+    api.get.mockResolvedValue({
+      data: {
+        status: 'completed',
+        result: {
+          success: true,
+          imported: 398,
+          duplicates: 2,
+          errors: 0,
+          message: 'ZIP elaborato: 398 importati, 2 duplicati, 0 errori, 0 ignorati',
+        },
+      },
+    });
+    render(<ImportDocumenti />);
+
+    const zip = new File(['PK-test'], '20260923_ExportFattureRicevute.zip', { type: 'application/zip' });
+    fireEvent.change(screen.getByTestId('zip-file-input'), { target: { files: [zip] } });
+    fireEvent.click(await screen.findByTestId('upload-btn'));
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByTestId('upload-btn'));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2));
+    expect(api.post.mock.calls[1][0]).toBe('/api/documenti/upload-auto/queue');
+    expect(api.get).toHaveBeenCalledWith(
+      '/api/documenti/upload-auto/jobs/DOC-IMPORT-zip',
+      expect.objectContaining({ timeout: 10000 }),
+    );
+    expect(await screen.findByText(/398 importati/)).toBeInTheDocument();
   });
 
   it('accoda gli export POS grandi e mostra automaticamente il risultato finale', async () => {

@@ -12,7 +12,7 @@ import asyncio
 import hashlib
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict
+from typing import Any, Awaitable, Callable, Dict
 
 from app.services.pos_terminal_import import importa_pos_terminal_file
 
@@ -59,35 +59,48 @@ async def _save_job(db, job_id: str, values: Dict[str, Any]) -> None:
     )
 
 
-async def _run_pos_job(
-    db, *, job_id: str, content: bytes, filename: str,
-    drive_file_id: str | None = None,
+async def _run_job(
+    db, *, job_id: str, filename: str,
+    runner: Callable[[], Awaitable[Dict[str, Any]]],
 ) -> None:
+    """Un solo esecutore per ogni import accodato (POS, archivi ZIP)."""
     try:
         async with _POS_IMPORT_LOCK:
             await _save_job(db, job_id, {
                 "status": "running", "started_at": _now(), "error": None,
             })
-            result = await importa_pos_terminal_file(
-                db, content, filename, drive_file_id=drive_file_id,
-            )
+            result = await runner()
             await _save_job(db, job_id, {
                 "status": "completed", "completed_at": _now(),
                 "result": result, "error": None,
             })
-            logger.info(
-                "Import documentale asincrono completato: %s (%s nuove, %s gia presenti)",
-                filename, result.get("inserted", 0), result.get("unchanged", 0),
-            )
+            logger.info("Import documentale asincrono completato: %s", filename)
     except Exception as exc:
-        logger.exception("Import documentale asincrono fallito: %s", filename)
+        logger.exception(
+            "Import documentale asincrono fallito: %s (%s)", filename, type(exc).__name__,
+        )
         try:
             await _save_job(db, job_id, {
                 "status": "failed", "failed_at": _now(),
-                "error": str(exc)[:2000],
+                "error": (str(exc) or type(exc).__name__)[:2000],
             })
-        except Exception:
-            logger.exception("Impossibile registrare il fallimento del job %s", job_id)
+        except Exception as exc_stato:
+            logger.exception(
+                "Impossibile registrare il fallimento del job %s (%s)",
+                job_id, type(exc_stato).__name__,
+            )
+
+
+async def _run_pos_job(
+    db, *, job_id: str, content: bytes, filename: str,
+    drive_file_id: str | None = None,
+) -> None:
+    await _run_job(
+        db, job_id=job_id, filename=filename,
+        runner=lambda: importa_pos_terminal_file(
+            db, content, filename, drive_file_id=drive_file_id,
+        ),
+    )
 
 
 def _forget_task(job_id: str, task: asyncio.Task) -> None:
@@ -97,22 +110,17 @@ def _forget_task(job_id: str, task: asyncio.Task) -> None:
         _PENDING_JOBS.pop(job_id, None)
 
 
-async def _run_pos_job_after_ack(
-    db, *, job_id: str, content: bytes, filename: str,
-    drive_file_id: str | None = None,
-) -> None:
+async def _after_ack(job: Callable[[], Awaitable[None]]) -> None:
     """Lascia al gateway il tempo di inviare il 202 prima di scrivere nell'archivio."""
     await asyncio.sleep(_JOB_START_DELAY_SECONDS)
-    await _run_pos_job(
-        db, job_id=job_id, content=content, filename=filename,
-        drive_file_id=drive_file_id,
-    )
+    await job()
 
 
-async def enqueue_pos_import(
-    db, *, content: bytes, filename: str, drive_file_id: str | None = None,
+async def _enqueue(
+    db, *, content: bytes, filename: str, document_type: str,
+    job: Callable[[str], Awaitable[None]],
 ) -> Dict[str, Any]:
-    """Accoda un export POS, riusando il job deterministico del file."""
+    """Accoda un import riusando il job deterministico del contenuto."""
     digest = hashlib.sha256(content).hexdigest()
     job_id = job_id_for_content(content)
     existing = await db[COLLECTION].find_one({"id": job_id}, {"_id": 0})
@@ -132,7 +140,7 @@ async def enqueue_pos_import(
         "operation_id": f"document-import:{digest}",
         "status": "queued",
         "filename": filename,
-        "document_type": "pos_terminal",
+        "document_type": document_type,
         "content_sha256": digest,
         "attempts": attempts,
         "created_at": created_at,
@@ -145,10 +153,7 @@ async def enqueue_pos_import(
     }
     _PENDING_JOBS[job_id] = queued_record
     task = asyncio.create_task(
-        _run_pos_job_after_ack(
-            db, job_id=job_id, content=content, filename=filename,
-            drive_file_id=drive_file_id,
-        ),
+        _after_ack(lambda: job(job_id)),
         name=f"document-import-{job_id}",
     )
     _ACTIVE_TASKS[job_id] = task
@@ -157,6 +162,36 @@ async def enqueue_pos_import(
         "queued": True,
         **(public_job(queued_record) or {"job_id": job_id, "status": "queued"}),
     }
+
+
+async def enqueue_pos_import(
+    db, *, content: bytes, filename: str, drive_file_id: str | None = None,
+) -> Dict[str, Any]:
+    """Accoda un export POS, riusando il job deterministico del file."""
+    return await _enqueue(
+        db, content=content, filename=filename, document_type="pos_terminal",
+        job=lambda job_id: _run_pos_job(
+            db, job_id=job_id, content=content, filename=filename,
+            drive_file_id=drive_file_id,
+        ),
+    )
+
+
+async def enqueue_zip_import(
+    db, *, content: bytes, filename: str,
+    process: Callable[[str, bytes], Awaitable[Dict[str, Any]]],
+) -> Dict[str, Any]:
+    """Accoda un archivio ZIP: centinaia di file superano i 5 minuti del
+    proxy Render e i 2 del browser, e un upload interrotto si fermava a meta'.
+    ``process`` e' l'elaborazione canonica dell'upload (la stessa di sempre),
+    passata dalla rotta per non importare il router da qui."""
+    return await _enqueue(
+        db, content=content, filename=filename, document_type="archivio_zip",
+        job=lambda job_id: _run_job(
+            db, job_id=job_id, filename=filename,
+            runner=lambda: process(filename, content),
+        ),
+    )
 
 
 async def get_import_job(db, job_id: str) -> Dict[str, Any] | None:
