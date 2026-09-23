@@ -25,7 +25,7 @@ test("il moltiplicatore nella scheda #ricette mostra le dosi calcolate dal serve
       node.querySelector('[aria-label="Aumenta dose"]').click();
       await new Promise((resolve) => setTimeout(resolve, 250));
     });
-    expect(post).toHaveBeenCalledWith(expect.stringContaining("/ricetta/ricetta-1/dose-produzione"), { moltiplicatore: 2 });
+    expect(post).toHaveBeenCalledWith(expect.stringContaining("/ricetta/ricetta-1/dose-produzione"), { moltiplicatore: 2, normalizza_1kg: true });
     expect(node.textContent).toContain("500 g");
   } finally {
     await act(async () => root.unmount());

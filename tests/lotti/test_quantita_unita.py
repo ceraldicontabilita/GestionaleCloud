@@ -96,7 +96,17 @@ def test_farina_150g_diventa_un_chilo_e_il_resto_si_riscala():
     per_nome = {i["nome"]: i["quantita"] for i in out["ingredienti"]}
     assert per_nome["Farina 00"] == 1000
     assert per_nome["Zucchero"] == 200
-    assert per_nome["Uova"] == 13  # 2 × 6,67 arrotondato
+    assert per_nome["Uova"] == 13.33  # quantità proporzionale; nessun arrotondamento anticipato
+
+
+def test_dose_incompleta_non_inventa_quantita():
+    ric = [
+        {"nome": "Farina", "quantita": 500, "unita": "g"},
+        {"nome": "Aroma", "quantita": "q.b.", "unita": "q.b."},
+    ]
+    out = normalizza_a_un_kg(ric)
+    assert out["ingredienti"][0]["quantita"] == 1000
+    assert out["ingredienti"][1]["quantita"] == "q.b."
 
 
 def test_arancini_500g_di_riso_diventano_un_chilo():

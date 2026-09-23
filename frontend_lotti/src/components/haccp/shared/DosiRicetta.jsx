@@ -28,7 +28,7 @@ export default function DosiRicetta({ ricetta }) {
     }
     let attivo = true;
     const timer = setTimeout(() => {
-      axios.post(`${API}/food-cost/ricetta/${ricetta.id}/dose-produzione`, { moltiplicatore: valore })
+      axios.post(`${API}/food-cost/ricetta/${ricetta.id}/dose-produzione`, { moltiplicatore: valore, normalizza_1kg: true })
         .then(({ data }) => { if (attivo) { setCalcolata(data); setErrore(""); } })
         .catch((e) => { if (attivo) { setCalcolata(null); setErrore(apiError(e, "Dose non calcolabile")); } });
     }, 200);
@@ -44,14 +44,21 @@ export default function DosiRicetta({ ricetta }) {
 
   return <div>
     {dettaglio.length > 0 && <div style={{ background: "#fff", border: "1px solid #e6e0d4", borderRadius: 12, padding: 12, marginBottom: 12 }}>
-      <label htmlFor={`moltiplicatore-${ricetta.id}`} style={{ fontWeight: 800 }}>Moltiplicatore della dose</label>
+      <label htmlFor={`moltiplicatore-${ricetta.id}`} style={{ fontWeight: 800 }}>Dose per 1 kg dell’ingrediente principale</label>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
         <button onClick={() => cambia(Math.max(0.1, (Number(moltiplicatore) || 1) - 0.5))} aria-label="Riduci dose" style={{ minWidth: 44, minHeight: 44 }}>−</button>
         <input id={`moltiplicatore-${ricetta.id}`} type="number" min="0.1" max="1000" step="0.1" value={moltiplicatore} onChange={(e) => cambia(e.target.value)}
           style={{ width: 100, minHeight: 44, textAlign: "center", fontSize: 18, fontWeight: 800 }} />
         <button onClick={() => cambia((Number(moltiplicatore) || 0) + 0.5)} aria-label="Aumenta dose" style={{ minWidth: 44, minHeight: 44 }}>+</button>
       </div>
-      {calcolata && <small>Ingrediente base: {calcolata.base} · dose ×{calcolata.fattore} · circa {calcolata.porzioni_stimate} pezzi</small>}
+      {calcolata && <div style={{ marginTop: 8, fontSize: 13 }}>
+        <div>Ingrediente principale: {calcolata.base} · {moltiplicatore} kg</div>
+        {calcolata.peso_totale_g > 0 && <div>Impasto {calcolata.peso_impasto_g} g{calcolata.peso_pieghe_g > 0 ? ` + pieghe ${calcolata.peso_pieghe_g} g` : ""} = {calcolata.peso_totale_g} g</div>}
+        {calcolata.porzioni_stimate != null
+          ? <strong>{calcolata.porzioni_stimate} pezzi interi da {calcolata.peso_pezzo_g} g</strong>
+          : <div>Resa in pezzi da completare: indica peso del pezzo e dosi mancanti nella ricetta.</div>}
+        {calcolata.ingredienti_senza_massa?.length > 0 && <div>Dosi o pesi mancanti: {calcolata.ingredienti_senza_massa.join(", ")}</div>}
+      </div>}
       {errore && <p role="alert" style={{ color: "#8f3829", margin: "8px 0 0" }}>{errore}</p>}
     </div>}
     {righe.length === 0 ? <p>Questa ricetta non ha ancora ingredienti.</p> : righe.map((r, i) =>

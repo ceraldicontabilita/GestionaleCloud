@@ -21,6 +21,8 @@ export function creaBozzaRicetta(ricetta = {}) {
   const soloNomi = Array.isArray(ricetta.ingredienti) ? ricetta.ingredienti : [];
   const ingredienti = dettaglio.length
     ? dettaglio.map((i) => ({
+        ...(i?.fase && { fase: i.fase }),
+        ...(i?.peso_unitario_g && { peso_unitario_g: i.peso_unitario_g }),
         nome: i?.nome || "",
         quantita: i?.quantita ?? "",
         unita: i?.unita_misura || i?.unita || "g",
@@ -33,7 +35,10 @@ export function creaBozzaRicetta(ricetta = {}) {
   return {
     nome: ricetta.nome || "",
     reparto: ricetta.reparto || "pasticceria",
-    porzioni: ricetta.porzioni ?? 1,
+    porzioni: ricetta.porzioni || "",
+    peso_pezzo_g: ricetta.peso_pezzo_g ?? "",
+    peso_uovo_g: ricetta.peso_uovo_g ?? "",
+    ingrediente_base_nome: ricetta.ingrediente_base_nome || "",
     metodo_conservazione: ricetta.metodo_conservazione || "",
     ingredienti,
     procedimento: testoProcedimento(ricetta),
@@ -47,18 +52,30 @@ function numero(v) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function dose(v) {
+  if (v == null || String(v).trim() === "") return null;
+  if (String(v).trim().toLowerCase() === "q.b.") return "q.b.";
+  const n = Number(String(v).replace(",", "."));
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
 export function payloadRicettaDaBozza(bozza, originale = {}) {
   const ingredienti = (bozza.ingredienti || [])
     .filter((i) => String(i?.nome || "").trim())
     .map((i) => ({
+      ...(i.fase && { fase: i.fase }),
+      ...(i.peso_unitario_g && { peso_unitario_g: numero(i.peso_unitario_g) }),
       nome: String(i.nome).trim(),
-      quantita: numero(i.quantita),
+      quantita: dose(i.quantita),
       unita_misura: i.unita || "g",
     }));
   return {
     nome: String(bozza.nome || "").trim(),
     reparto: bozza.reparto || "pasticceria",
-    porzioni: Math.max(1, Math.round(numero(bozza.porzioni) || 1)),
+    porzioni: Math.round(numero(bozza.porzioni)) || 0,
+    peso_pezzo_g: numero(bozza.peso_pezzo_g) || null,
+    peso_uovo_g: numero(bozza.peso_uovo_g) || null,
+    ingrediente_base_nome: bozza.ingrediente_base_nome || null,
     metodo_conservazione: String(bozza.metodo_conservazione || "").trim(),
     ingredienti: ingredienti.map((i) => i.nome),
     ingredienti_dettaglio: ingredienti,
@@ -124,6 +141,20 @@ export default function ModificaRicettaKiosk({ ricetta, onAnnulla, onSalvata }) 
           <input type="number" inputMode="numeric" min="1" value={bozza.porzioni}
             onChange={(e) => setBozza({ ...bozza, porzioni: e.target.value })} style={inputStyle} />
         </Campo>
+        <Campo titolo="Peso del pezzo (g)">
+          <input type="number" inputMode="decimal" min="1" value={bozza.peso_pezzo_g}
+            onChange={(e) => setBozza({ ...bozza, peso_pezzo_g: e.target.value })} style={inputStyle} />
+        </Campo>
+        <Campo titolo="Peso uovo senza guscio (g)">
+          <input type="number" inputMode="decimal" min="1" value={bozza.peso_uovo_g}
+            onChange={(e) => setBozza({ ...bozza, peso_uovo_g: e.target.value })} style={inputStyle} />
+        </Campo>
+        <Campo titolo="Ingrediente principale">
+          <select value={bozza.ingrediente_base_nome} onChange={(e) => setBozza({ ...bozza, ingrediente_base_nome: e.target.value })} style={inputStyle}>
+            <option value="">Rileva dalle dosi</option>
+            {bozza.ingredienti.filter(i => i.nome).map((i, n) => <option key={`${i.nome}-${n}`} value={i.nome}>{i.nome}</option>)}
+          </select>
+        </Campo>
         <Campo titolo="Reparto">
           <select value={bozza.reparto} onChange={(e) => setBozza({ ...bozza, reparto: e.target.value })} style={inputStyle}>
             {REPARTI.map(([valore, etichetta]) => <option key={valore} value={valore}>{etichetta}</option>)}
@@ -156,6 +187,14 @@ export default function ModificaRicettaKiosk({ ricetta, onAnnulla, onSalvata }) 
                 onChange={(e) => aggiornaIngrediente(indice, "unita", e.target.value)} style={{ ...inputStyle, padding: "10px 5px", flex: "0 0 72px" }}>
                 {UNITA.map((u) => <option key={u} value={u}>{u}</option>)}
               </select>
+              <select aria-label={`Fase ${ingrediente.nome || indice + 1}`} value={ingrediente.fase || "impasto"}
+                onChange={(e) => aggiornaIngrediente(indice, "fase", e.target.value)} style={{ ...inputStyle, flex: "0 0 105px" }}>
+                <option value="impasto">Impasto</option><option value="pieghe">Pieghe</option><option value="finitura">Finitura</option>
+              </select>
+              {ingrediente.unita === "pz" && <input type="number" min="1" step="0.1" inputMode="decimal"
+                aria-label={`Peso unitario ${ingrediente.nome || indice + 1}`} value={ingrediente.peso_unitario_g ?? ""}
+                onChange={(e) => aggiornaIngrediente(indice,"peso_unitario_g",e.target.value)} placeholder="g/pezzo"
+                style={{ ...inputStyle, flex: "0 0 90px" }}/>}
               <button type="button" onClick={() => eliminaIngrediente(indice)} aria-label={`Elimina ${ingrediente.nome || "ingrediente"}`}
                 style={{ minWidth: 40, minHeight: 42, border: "1px solid #fecaca", borderRadius: 10, background: "#fff1f2", color: "#b91c1c", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
                 <Trash2 size={16} />

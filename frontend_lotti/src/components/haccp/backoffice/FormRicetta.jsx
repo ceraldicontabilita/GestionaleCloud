@@ -127,8 +127,8 @@ function RigaIngrediente({ ing, idx, onChange, onRemove, bloccato = false }) {
       </div>
       {/* Quantità */}
       <input
-        type="number" min="0" step="0.01"
-        value={ing.quantita || ""}
+        type="text" inputMode="decimal"
+        value={ing.quantita ?? ""}
         onChange={e => onChange(idx,"quantita",e.target.value)}
         placeholder="Qtà"
         readOnly={bloccato}
@@ -144,6 +144,15 @@ function RigaIngrediente({ ing, idx, onChange, onRemove, bloccato = false }) {
         style={{padding:"10px 8px",border:"1.5px solid var(--border)",borderRadius:9,fontSize:15,fontFamily:"var(--font)",background:"#fff"}}>
         {UNITA_OPTIONS.map(u => <option key={u}>{u}</option>)}
       </select>
+      {ing.unita === "pz" && <input type="number" min="1" step="0.1" aria-label={`Peso unitario ${ing.nome || idx+1}`}
+        value={ing.peso_unitario_g ?? ""} onChange={e=>onChange(idx,"peso_unitario_g",e.target.value)}
+        placeholder="g/pezzo" readOnly={bloccato}
+        style={{width:82,padding:"10px 8px",border:"1.5px solid var(--border)",borderRadius:9,fontSize:13}}/>}
+      <select aria-label={`Fase ${ing.nome || idx+1}`} value={ing.fase || "impasto"} disabled={bloccato}
+        onChange={e => onChange(idx,"fase",e.target.value)}
+        style={{padding:"10px 8px",border:"1.5px solid var(--border)",borderRadius:9,fontSize:13,background:"#fff"}}>
+        <option value="impasto">Impasto</option><option value="pieghe">Pieghe</option><option value="finitura">Finitura</option>
+      </select>
       {/* Elimina */}
       {!bloccato && <button onClick={() => onRemove(idx)} title="Rimuovi ingrediente"
         style={{width:34,height:34,flexShrink:0,border:"none",borderRadius:9,background:"var(--danger-soft)",color:"var(--danger)",fontWeight:800,fontSize:18,cursor:"pointer",display:"grid",placeItems:"center"}}>
@@ -157,7 +166,7 @@ function RigaIngrediente({ ing, idx, onChange, onRemove, bloccato = false }) {
 function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita, ricette = [] }) {
   const [form, setForm] = useState(() => {
     if (!ricetta) {
-      return { nome:"", reparto:"pasticceria", porzioni:10, metodo_conservazione:"frigo",
+      return { nome:"", reparto:"pasticceria", porzioni:"", peso_pezzo_g:"", peso_uovo_g:"", metodo_conservazione:"frigo",
                prezzo_vendita:"", prezzo_tavolo:"", descrizione:"",
                note:"", ingredienti:[], fornitore_rivendita:"" };
     }
@@ -168,7 +177,8 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
     if (det.length) {
       ingredienti = det.map(i => (typeof i === "string"
         ? { nome: i, quantita: "", unita: "g" }
-        : { nome: i.nome || "", quantita: i.quantita ?? "", unita: i.unita_misura || i.unita || "g" }));
+        : { nome: i.nome || "", quantita: i.quantita ?? "", unita: i.unita_misura || i.unita || "g",
+            ...(i.fase && { fase: i.fase }), ...(i.peso_unitario_g && { peso_unitario_g: i.peso_unitario_g }) }));
     } else if (Array.isArray(ricetta.ingredienti)) {
       ingredienti = ricetta.ingredienti.map(x => (typeof x === "string"
         ? { nome: x, quantita: "", unita: "g" }
@@ -474,6 +484,12 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
     const n = parseFloat(String(v).replace(",", "."));
     return Number.isFinite(n) ? n : 0;
   };
+  const dose = (v) => {
+    if (v == null || String(v).trim() === "") return null;
+    if (String(v).trim().toLowerCase() === "q.b.") return "q.b.";
+    const n = Number(String(v).replace(",", "."));
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  };
   // Come `num`, ma «vuoto» resta vuoto: sui campi Menu lo zero non è un prezzo
   // e un `null` in PUT lascia intatto il valore già salvato (per svuotarlo
   // davvero si usa la PATCH, vedi `svuotaCampiMenu`).
@@ -510,7 +526,10 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
       const payload = {
         nome: form.nome.trim(),
         reparto: form.reparto || "pasticceria",
-        porzioni: parseInt(form.porzioni) || 10,
+        porzioni: parseInt(form.porzioni) || 0,
+        peso_pezzo_g: num(form.peso_pezzo_g) || null,
+        peso_uovo_g: num(form.peso_uovo_g) || null,
+        ingrediente_base_nome: form.ingrediente_base_nome || null,
         // Due prezzi come in ogni bar (titolare 19/09/2026): `prezzo_vendita`
         // resta il prezzo AL BANCO (base di food cost e margine),
         // `prezzo_tavolo` è quello che il Menu digitale mostra ai clienti.
@@ -526,8 +545,10 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
         ingredienti_dettaglio: form.ingredienti
           .filter(i => (i.nome || "").trim())
           .map(i=>({
+            ...(i.fase && { fase: i.fase }),
+            ...(i.peso_unitario_g && { peso_unitario_g: num(i.peso_unitario_g) }),
             nome: i.nome.trim(),
-            quantita: num(i.quantita),
+            quantita: dose(i.quantita),
             unita_misura: i.unita || "g",
           })),
         // Memoria manuale/automatica/ereditata (richiesta Enzo 23/07/2026)
@@ -667,7 +688,22 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
           </div>
           <div>
             <label style={lbl}>Pezzi base</label>
-            <input type="number" min="1" value={form.porzioni} onChange={e=>setField("porzioni",e.target.value)} style={inp}/>
+            <input type="number" min="1" value={form.porzioni ?? ""} onChange={e=>setField("porzioni",e.target.value)} placeholder="Da verificare" style={inp}/>
+          </div>
+          <div>
+            <label style={lbl}>Peso di un pezzo (g)</label>
+            <input type="number" min="1" step="0.1" value={form.peso_pezzo_g ?? ""} onChange={e=>setField("peso_pezzo_g",e.target.value)} placeholder="Es. 80" style={inp}/>
+          </div>
+          <div>
+            <label style={lbl}>Peso uovo senza guscio (g)</label>
+            <input type="number" min="1" step="0.1" value={form.peso_uovo_g ?? ""} onChange={e=>setField("peso_uovo_g",e.target.value)} placeholder="Se usi uova a pezzi" style={inp}/>
+          </div>
+          <div>
+            <label style={lbl}>Ingrediente principale</label>
+            <select value={form.ingrediente_base_nome || ""} onChange={e=>setField("ingrediente_base_nome",e.target.value)} style={{...inp,background:"var(--card)"}}>
+              <option value="">Rileva dalle dosi</option>
+              {form.ingredienti.filter(i=>i.nome).map((i,n)=><option key={`${i.nome}-${n}`} value={i.nome}>{i.nome}</option>)}
+            </select>
           </div>
           {/* Due prezzi distinti (titolare 19/09/2026): al banco e al tavolo.
               Il banco resta `prezzo_vendita` — food cost e margine si calcolano

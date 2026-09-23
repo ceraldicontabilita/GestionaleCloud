@@ -1319,11 +1319,15 @@ def _scegli_ingrediente_base(ingredienti: list[dict]) -> dict | None:
     """L'ingrediente su cui si calcola il riferimento di 1 kg: quello che pesa
     di più. A parità sostanziale di peso (entro il 20%) vince quello che dà il
     nome alla lavorazione, secondo INGREDIENTI_BASE_PRIORITA."""
-    pesabili = [
-        i for i in ingredienti
-        if (i.get("unita") or i.get("unita_misura") or "g").lower().strip() in _UNITA_PESO_NORM
-        and float(i.get("quantita") or 0) > 0
-    ]
+    pesabili = []
+    for i in ingredienti:
+        unita = str(i.get("unita") or i.get("unita_misura") or "").lower().strip()
+        try:
+            quantita = float(i.get("quantita") or 0)
+        except (TypeError, ValueError):
+            continue
+        if unita in _UNITA_PESO_NORM and quantita > 0:
+            pesabili.append(i)
     if not pesabili:
         return None
     peso = lambda i: _in_grammi(i.get("quantita") or 0, i.get("unita") or i.get("unita_misura"))  # noqa: E731
@@ -1333,15 +1337,30 @@ def _scegli_ingrediente_base(ingredienti: list[dict]) -> dict | None:
     return min(vicini, key=lambda i: (_priorita_nome(i.get("nome")), -peso(i)))
 
 
-def normalizza_a_un_kg(ingredienti: list[dict], riferimento_g: float = 1000.0) -> dict:
+def _base_esplicita(ingredienti: list[dict], nome: str | None) -> dict | None:
+    if not nome:
+        return None
+    for i in ingredienti:
+        if str(i.get("nome") or "").casefold() != nome.casefold():
+            continue
+        try:
+            if _in_grammi(float(i.get("quantita") or 0), i.get("unita") or i.get("unita_misura")) > 0:
+                return i
+        except (TypeError, ValueError):
+            pass
+    return None
+
+
+def normalizza_a_un_kg(ingredienti: list[dict], riferimento_g: float = 1000.0,
+                      ingrediente_base_nome: str | None = None) -> dict:
     """Riscala TUTTE le quantità così che l'ingrediente base arrivi a 1 kg.
 
     Esempi voluti dal titolare: 150 g di farina → 1 kg (tutto ×6,67);
     500 g di riso → 1 kg (tutto ×2).
-    Gli ingredienti a pezzi vengono moltiplicati e arrotondati a intero (mai
-    sotto 1). Ritorna {ingredienti, base, fattore}: se non c'è una base
+    Gli ingredienti a pezzi restano proporzionali, anche quando sono frazionari.
+    Ritorna {ingredienti, base, fattore}: se non c'è una base
     pesabile non si tocca niente (mai conversioni inventate)."""
-    base = _scegli_ingrediente_base(ingredienti or [])
+    base = _base_esplicita(ingredienti or [], ingrediente_base_nome) or _scegli_ingrediente_base(ingredienti or [])
     if not base:
         return {"ingredienti": ingredienti, "base": None, "fattore": 1.0}
     base_g = _in_grammi(base.get("quantita") or 0, base.get("unita") or base.get("unita_misura"))
@@ -1353,7 +1372,10 @@ def normalizza_a_un_kg(ingredienti: list[dict], riferimento_g: float = 1000.0) -
 
     fuori = []
     for i in ingredienti:
-        q = float(i.get("quantita") or 0)
+        try:
+            q = float(i.get("quantita") or 0)
+        except (TypeError, ValueError):
+            q = 0
         u = (i.get("unita") or i.get("unita_misura") or "g").lower().strip()
         nuovo = dict(i)
         if q > 0:
@@ -1361,8 +1383,9 @@ def normalizza_a_un_kg(ingredienti: list[dict], riferimento_g: float = 1000.0) -
                 val = q * fattore
                 nuovo["quantita"] = round(val, 1 if val < 100 else 0)
             else:
-                # pezzi/confezioni: si moltiplicano e si arrotondano
-                nuovo["quantita"] = max(1, int(round(q * fattore)))
+                # Un uovo (o un altro ingrediente contato) non va arrotondato
+                # durante un calcolo intermedio: la dose resta proporzionale.
+                nuovo["quantita"] = round(q * fattore, 2)
         fuori.append(nuovo)
     return {"ingredienti": fuori, "base": base.get("nome"), "fattore": round(fattore, 3)}
 
@@ -1372,6 +1395,50 @@ class DoseProduzioneReq(BaseModel):
     quantita_base: float | None = None
     unita: str = "kg"
     moltiplicatore: float | None = None
+    normalizza_1kg: bool = False
+
+
+def _massa_impasto(ingredienti: list[dict], peso_uovo_g: float = 0) -> dict:
+    """Massa calcolabile della dose, distinguendo impasto e pieghe.
+
+    Una quantità senza peso o una guarnizione non viene inventata nel totale.
+    Il numero di pezzi è affidabile solo se ogni ingrediente dell'impasto ha
+    massa nota e la scheda dichiara il peso del singolo pezzo.
+    """
+    impasto = pieghe = 0.0
+    incompleti = []
+    for ingrediente in ingredienti:
+        nome = str(ingrediente.get("nome") or "").strip()
+        fase = str(ingrediente.get("fase") or "impasto").lower().strip()
+        if fase in {"finitura", "guarnizione", "cottura"}:
+            continue
+        try:
+            quantita = float(ingrediente.get("quantita") or 0)
+        except (TypeError, ValueError):
+            quantita = 0
+        unita = str(ingrediente.get("unita") or ingrediente.get("unita_misura") or "").lower().strip()
+        if quantita <= 0:
+            incompleti.append(nome)
+            continue
+        if unita in _UNITA_PESO_NORM:
+            massa = _in_grammi(quantita, unita)
+        elif unita in {"pz", "pezzi", "n", "n°"}:
+            peso_unitario = ingrediente.get("peso_unitario_g") or (peso_uovo_g if "uov" in nome.lower() else 0)
+            massa = quantita * float(peso_unitario or 0)
+        else:
+            massa = 0
+        if massa <= 0:
+            incompleti.append(nome)
+        elif fase == "pieghe":
+            pieghe += massa
+        else:
+            impasto += massa
+    return {
+        "peso_impasto_g": round(impasto, 1),
+        "peso_pieghe_g": round(pieghe, 1),
+        "peso_totale_g": round(impasto + pieghe, 1),
+        "ingredienti_senza_massa": incompleti,
+    }
 
 
 @router.post("/ricetta/{ricetta_id}/dose-produzione")
@@ -1387,10 +1454,9 @@ async def dose_produzione(ricetta_id: str, req: DoseProduzioneReq):
     if not ric:
         raise HTTPException(404, "Ricetta non trovata")
     ingredienti = [
-        {"nome": i.get("nome"), "quantita": i.get("quantita"),
-         "unita": i.get("unita_misura") or i.get("unita") or "g"}
+        {**i, "unita": i.get("unita_misura") or i.get("unita") or ""}
         for i in (ric.get("ingredienti_dettaglio") or [])
-        if (i.get("nome") or "").strip()
+        if isinstance(i, dict) and str(i.get("nome") or "").strip()
     ]
     if not ingredienti:
         raise HTTPException(400, "La ricetta non ha ingredienti con dosi")
@@ -1398,27 +1464,33 @@ async def dose_produzione(ricetta_id: str, req: DoseProduzioneReq):
     if req.moltiplicatore is not None:
         if not 0 < req.moltiplicatore <= 1000:
             raise HTTPException(400, "Il moltiplicatore deve essere maggiore di zero e al massimo 1000")
-        base = _scegli_ingrediente_base(ingredienti)
+        base = _base_esplicita(ingredienti, ric.get("ingrediente_base_nome")) or _scegli_ingrediente_base(ingredienti)
         base_g = _in_grammi(base.get("quantita") or 0, base.get("unita")) if base else 0
-        grammi_voluti = base_g * req.moltiplicatore
+        grammi_voluti = (1000 if req.normalizza_1kg else base_g) * req.moltiplicatore
     else:
         grammi_voluti = _in_grammi(req.quantita_base or 0, req.unita)
     if grammi_voluti <= 0:
         raise HTTPException(400, "Indica un moltiplicatore o la quantità dell'ingrediente base")
 
-    norm = normalizza_a_un_kg(ingredienti, riferimento_g=grammi_voluti)
+    norm = normalizza_a_un_kg(ingredienti, riferimento_g=grammi_voluti,
+                              ingrediente_base_nome=ric.get("ingrediente_base_nome"))
     if not norm["base"]:
         raise HTTPException(
             400,
             "Non riesco a capire l'ingrediente di riferimento: nessun ingrediente "
             "ha un peso (kg/g/l/ml). Correggi le dosi della ricetta.",
         )
-    porzioni_base = float(ric.get("porzioni") or 1) or 1
+    massa = _massa_impasto(norm["ingredienti"], float(ric.get("peso_uovo_g") or 0))
+    peso_pezzo = float(ric.get("peso_pezzo_g") or 0)
+    pezzi = (int(massa["peso_totale_g"] // peso_pezzo)
+             if peso_pezzo > 0 and not massa["ingredienti_senza_massa"] else None)
     return {
         "ricetta": ric.get("nome"),
         "base": norm["base"],
         "fattore": norm["fattore"],
-        "porzioni_stimate": max(1, int(round(porzioni_base * norm["fattore"]))),
+        "porzioni_stimate": pezzi,
+        "peso_pezzo_g": peso_pezzo or None,
+        **massa,
         "ingredienti": norm["ingredienti"],
     }
 
