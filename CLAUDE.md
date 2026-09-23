@@ -9,9 +9,9 @@ storage_architecture: supabase
 Aggiornato il 23/09/2026 sul codice di `main` del repository canonico
 `ceraldicontabilita/GestionaleCloud`.
 
-**Questo file e `README.md` sono gli unici due documenti del repository.**
-Audit, mappe generate, changelog e diari raccontano com'erano le cose in una
-certa data e impediscono di capire quali logiche siano in vigore: non si tengono.
+**Gli unici documenti sono questo file, `README.md` e `PIANO_RISTRUTTURAZIONE.md`** (registro del
+programma e piano approvato). Audit, mappe generate, changelog e diari raccontano com'erano le cose
+in una certa data e impediscono di capire quali logiche siano in vigore: non si tengono.
 
 ## Come si tiene questo file
 
@@ -30,8 +30,8 @@ certa data e impediscono di capire quali logiche siano in vigore: non si tengono
 
 ## Il gruppo Ceraldi è un solo servizio
 
-Un unico servizio Render (`gestionalecloud.onrender.com`, deploy automatico da
-`main`, health check `/api/health`) e un unico progetto Supabase servono tutto:
+Un unico servizio Render (`gestionalecloud.onrender.com`, anche su `impresasemplice.online`; deploy
+automatico da `main`, health check `/api/health`) e un unico progetto Supabase servono tutto:
 
 | Cosa | Dove vive | Codice |
 | --- | --- | --- |
@@ -49,9 +49,8 @@ dell'ERP e chi apre `/lotti` si ritrova nel gestionale.
 - **L'unico repository vivo è questo.** `AppDipendenti`, `Lotti` e `Menu` sono
   l'archivio del sorgente originale; `Gestionale` una riscrittura abbandonata.
 - **Siti spenti, da non riaprire né citare**: `appdipendenti.onrender.com`,
-  `lotti-frontend.onrender.com`, `lotti-backend-2wwb.onrender.com`,
-  `www.ceraldiapp.it`, `impresasemplice.online`. Ogni riferimento residuo è una
-  voce CORS o un refuso.
+  `lotti-frontend.onrender.com`, `lotti-backend-2wwb.onrender.com`, `www.ceraldiapp.it`.
+  `impresasemplice.online` invece è vivo: dominio dello stesso servizio.
 - Prima di intervenire confronta sempre `HEAD` con `origin/main`. Il worktree
   può contenere modifiche dell'utente: non cancellarle, non ripristinarle e
   non includerle nei commit. **Mai `git add -A`**: solo i file pertinenti.
@@ -330,6 +329,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 
 ### Drive, struttura canonica
 
+- **In migrazione** (PIANO §7-bis) a 6 aree piatte e inbox `00_PIPELINE`; un canale non migrato segue quanto sotto.
 - `05_PERSONALE_E_CEDOLINI/DIPENDENTI/<COGNOME NOME>/` è il **fascicolo unico**
   della persona: cedolini (profondità 2), `BONIFICI/` (profondità 3, il canale
   bonifico legge solo dentro `BONIFICI`), `CERTIFICAZIONI UNICHE/`. I bonifici

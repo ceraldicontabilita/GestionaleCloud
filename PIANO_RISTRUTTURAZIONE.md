@@ -1,6 +1,6 @@
 # Piano di ristrutturazione di GestionaleCloud
 
-**Documento operativo vivo, aggiornato il 22 settembre 2026.**
+**Documento operativo vivo, aggiornato il 23 settembre 2026.**
 
 - Baseline iniziale dell'audit: `8cf52bd269d8d1facb478e4a585fa8b01a5ec3ff`.
 - Baseline della bonifica misurata: `e283400164c0b9fb88ece13eb401fcde9cba1c42`.
@@ -10,7 +10,8 @@
 - Prova di produzione: [CI 35706223965](https://github.com/ceraldicontabilita/GestionaleCloud/actions/runs/35706223965) e [Produzione/E2E 35706224041](https://github.com/ceraldicontabilita/GestionaleCloud/actions/runs/35706224041) verdi; `/lotti/api/health` su `gestionalecloud.onrender.com` e `impresasemplice.online` ha restituito il commit di merge esatto. La revisione UX di tutte le pagine resta aperta in RST-0906.
 - Registro della prova: [PR #646](https://github.com/ceraldicontabilita/GestionaleCloud/pull/646), merge `7cba24cba1a287a47350e603d9ee2ce6a30b8163`, CI 35683619681 e Produzione manuale 35683635453 verdi; `/lotti/api/health` ha confermato anche questo commit documentale.
 - **Stato complessivo: IN CORSO.** La fusione ERP, HR, Lotti e Menu non è completata. La bonifica pubblicata non certifica ogni funzione e ogni dato contabile.
-- **Priorità operativa aperta:** verificare il ripristino delle ricette su un caso reale autorizzato e la coerenza dei riferimenti; completare le foto mancanti mediante caricamento sulla ricetta identificata per ID, senza sovrascrivere immagini manuali o inferire identità dal solo nome. Qualificare i residui strutturali dell'adattatore dati compatibile Mongo in memoria prima di riscriverli in forma canonica Supabase.
+- **Programma approvato il 23/09/2026:** Drive documentale canonico, integrazione Minisito fiscale, riconciliazione F24 ↔ banca e backlog audit v3 in §7-bis (ordine in §7-bis H). Ogni PR si unisce su main solo dopo l'OK esplicito del titolare.
+- **Priorità operativa precedente:** verificare il ripristino delle ricette su un caso reale autorizzato e la coerenza dei riferimenti; completare le foto mancanti mediante caricamento sulla ricetta identificata per ID, senza sovrascrivere immagini manuali o inferire identità dal solo nome. Qualificare i residui strutturali dell'adattatore dati compatibile Mongo in memoria prima di riscriverli in forma canonica Supabase.
 
 ## 1. Regole di avanzamento e pubblicazione
 
@@ -425,10 +426,318 @@ Chiusura finale: backend/frontend modulari realmente unificati; autorizzazioni c
 
 Il conteggio dei tre moduli report/batch è 1.186 righe rimosse. Non aggiungerlo nuovamente alla riduzione cumulativa. Le rinomine o il taglio del piano Markdown non sono snellimento applicativo.
 
+## 7-bis. Programma documentale, fiscale e audit v3 (piano approvato il 23/09/2026)
+
+### Contesto
+
+Piano approvato dal titolare il 23/09/2026, trascritto qui per intero perché nessuna sessione ne perda un pezzo. Copre quattro richieste: riorganizzazione Drive, PROMPT MASTER del 23/09 (audit v3 compreso), integrazione del Minisito fiscale, riconciliazione F24 ↔ banca. La sezione **I** dice dove sta ogni capitolo; la **H** l'ordine. Gli ID (`DRV-xx`, `RST-F24B`, `MINI-xx`, `AV3-xx`) sono stabili: il registro §8 li cita.
+
+Il titolare vuole un Drive minimale, con un solo file per documento, relazioni solo nel DB e
+una sola pipeline `DA_ELABORARE → archivio / DA_VERIFICARE / ERRORI` integrata con il gestionale.
+Ha chiesto anche di verificare il PROMPT MASTER del 23/09. Sono stati fatti solo controlli in
+lettura: repository (`main` = `1b7da72`), Supabase `lohczjdiawjryuopncwc`, Drive dalla radice GESTIONALE
+(`GOOGLE_DRIVE_GESTIONALE_ROOT_FOLDER_ID`).
+
+**Decisioni del titolare (23/09):**
+1. Nuovo albero a 6 aree.
+2. Una sola inbox, con un router che riconosce il tipo dal contenuto; la cartella `Elaborate` sparisce.
+3. I duplicati byte-per-byte vanno nel **Cestino** Drive, mai cancellati in modo permanente.
+
+### A. Il prompt master è corretto? Cosa è superato e cosa contraddice
+
+| Punto del prompt | Stato reale | Esito |
+|---|---|---|
+| PR #683 aperta, tranche ricette da chiudere per prima | Fusa: `52422c2` su main, poi #684 e #685 | **Superato**: la sezione ricette non blocca più nulla |
+| Collaudo su `impresasemplice.online` | Verificato il 23/09: `/lotti/api/health` risponde con lo stesso servizio Render (`srv-d92emmgjs32c738octfg`) e lo stesso commit `1b7da72` di `gestionalecloud.onrender.com` | **Dominio vivo**: CLAUDE.md e `tests/runtime/test_claude_md.py` lo davano per spento, corretti in DRV-00 |
+| `PIANO_RISTRUTTURAZIONE.md` è la fonte canonica | Esiste ed è ammesso dal test; CLAUDE.md diceva «unici due documenti» | Corretto in DRV-00 |
+| Handoff Drive: zero residui in pipeline, quarantena `DUPLICATI_ESATTI_2026-09-22` | Il protocollo (fermo al 17/09) conta 13.367 file in cartelle `DA ELABORARE/Elaborate/Errori`. La quarantena ha **replicato l'intero albero**: oltre 100 cartelle vuote `ERRORI/DA ELABORARE/ELABORATE` create il 22/09 alle 08:25 | Il protocollo è **stantio**; la quarantena è un nuovo labirinto |
+| Indici `1AH7…`, `1Kn0…`, `1hm0…` | Esistono. In radice ci sono però anche i vecchi `INDICE_GESTIONALE.html` e `_drive_map.json` del 03/09, più un MANIFEST e un RIEPILOGO | Indici doppi: da ridurre a uno |
+| «Non imporre una nuova tassonomia» | Il titolare ha scelto l'albero nuovo | Decisione del titolare: vince lui |
+| Nessuna eliminazione definitiva | Coerente con la scelta del Cestino | OK |
+| Sezione F24 «aggancio automatico quietanze ↔ banca» | Stessa richiesta del messaggio F24 del titolare: il motore esiste già in forma parziale | Coperta in **G** (RST-F24B), dentro il repository e non offline |
+| Ordine audit v3: il motore Drive unico era al punto 10 | Il titolare lo porta in testa | Registrato qui, ordine in **H** |
+
+### B. Debito tecnico: cosa esiste già, cosa manca
+
+**Già fatto (da riusare, non da rifare)**
+
+| Componente | Dove |
+|---|---|
+| Inventario completo di Drive, con stato `attivo/rimosso`, `duplicato_di`, guardie anti-DELETE | `gestionale.protocollo_drive` (`app/services/drive_protocollo.py`, `supabase/migrations/20260914180000_protocollo_drive.sql`) |
+| Endpoint duplicati e quarantena | `app/routers/documenti.py:219-322` |
+| Download Drive unico | `app/services/drive_download.py:12` (`scarica_bytes`) |
+| Cartelle del ciclo di lavorazione | `app/services/drive_lifecycle_tree.py` |
+| Tabella dei canali | `drive_documenti_ingest.CANALI:36-100` |
+| Documenti fiscali con sha256, versioni, pagine e versione del parser (`fiscal-ingestion-v2-ocr`) | `app/services/fiscal_evidence.py`, `fiscal_document_ingestion.py` |
+| Grafo relazioni generico | `app/services/entity_relations.py` |
+| `drive_file_id` + hash sulle fatture | 1.395 su 1.457 |
+| `drive_file_id` + hash su F24 e quietanze | 100% |
+| Originali F24 e cedolini aperti per `drive_file_id` | `f24_originale.carica_originale`, `cedolino_originale.carica_originale` |
+
+**Da fare (misurato oggi)**
+
+| # | Debito | Numeri |
+|---|---|---|
+| D1 | Motori paralleli: fatture, cedolini, corrispettivi, quietanze, F24, estratti, documenti | 7 motori di ingest, 21 moduli chiamano Drive, 13 `build("drive")`, 6 costruttori di credenziali più il monkeypatch in `services/__init__.py:21-99`, 4 funzioni di download, 9 di listing |
+| D2 | Il registro non ha sha256, stato di elaborazione, parser, errore, tentativi, confidenza | `protocollo_drive`: 14.325 righe, solo md5; ultimo giro 17/09 (`PROTOCOLLO_DRIVE_ENABLED=false` per la RAM) |
+| D3 | Relazioni sparse | Solo 2.399 file su 14.325 collegati; 0 per fatture e corrispettivi. `collegamento_*` e i campi ad hoc di `documents_inbox` non stanno in `entity_relations`, che non conosce il tipo `documento` |
+| D4 | Record senza originale | `cedolini` 3.256 con 0 `drive_file_id` e 0 hash; `verbali_noleggio` 105 senza nulla; `corrispettivi` 616 senza `drive_file_id`; `documents_inbox` 910 su 4.132 |
+| D5 | Il Drive id ha cinque nomi | `drive_id`, `drive_file_id`, `source_document_id`, e `drive_document_id` che non è nemmeno un id Drive (è l'ID dell'indice Excel) |
+| D6 | «Apri originale» rotto | `/api/documenti/documento/{id}/download` (`documenti.py:1071`) e `/api/fiscal/documents/{id}/content` (`fiscal_control.py:588`) danno 404 sui documenti presenti solo su Drive. `/api/download` serve `./downloads`, mai popolata |
+| D7 | Indice Excel legacy ancora letto | `drive_document_index.py` (`INDICE_DOCUMENTALE_DRIVE.xlsx`), usato da Situazione fiscale e da due upload |
+| D8 | Configurazione | Circa 20 variabili di cartella, solo 5 in `render.yaml`. Folder ID cablati come default (dichiarazioni, radice fiscale, radice indice). Variabili morte: `DRIVE_PRESENZE_FOLDER_ID`, `DRIVE_NOLEGGIO_FOLDER_ID`. `sync_incremental` mai chiamato |
+| D9 | Errori senza traccia per file | Nessun codice errore né contatore tentativi per file; gli errori degli estratti conto non vengono salvati |
+| D10 | Labirinto Drive | Mirror di quarantena; 89 gruppi md5 duplicati nel protocollo; aree non previste dal target: `FOTO E IMMAGINI` (1.346 file), `_GESTIONALE_APP`, `PROGETTI`, `07_CONTRATTI`, `11_DOCUMENTI_SOCIETARI` |
+
+### C. Architettura target
+
+**Albero Drive** (sotto la radice GESTIONALE):
+
+```
+00_PIPELINE/     DA_ELABORARE  DA_VERIFICARE  ERRORI
+01_FISCALE/      AGENZIA_ENTRATE  AGENZIA_ENTRATE_RISCOSSIONE  F24  DICHIARAZIONI_FISCALI
+02_CONTABILITA/  FATTURE_RICEVUTE  CORRISPETTIVI  BANCA  BONIFICI  PAGOPA  PAYPAL
+03_PERSONALE/    CEDOLINI  DOCUMENTI_PERSONALE
+04_VEICOLI_E_VERBALI/  VERBALI  PAGAMENTI_VERBALI  DOCUMENTI_VEICOLI
+05_EXCEL_E_EXPORT/
+90_ARCHIVIO_LEGACY/   (solo durante la migrazione, ogni elemento con motivazione)
+```
+
+- Archivi **piatti**: anno, fornitore, dipendente e periodo stanno nel DB.
+- Nome canonico `AAAA-MM-GG__TIPO__SOGGETTO__IDENTIFICATIVO.ext`, applicato con `files.update`: lo stesso Drive ID viene conservato. Il nome originale resta nel registro.
+
+**Registro documentale unico = `gestionale.protocollo_drive`, esteso.** Si estende la tabella esistente invece di crearne una nuova: è l'unico inventario completo, relazionale e protetto dalle cancellazioni. La migrazione aggiunge:
+- `sha256`, `nome_originale`
+- `tipo`, `sottotipo`, `anno_fiscale`, `data_documento`
+- `stato_elaborazione` (`DA_ELABORARE | IN_ELABORAZIONE | ELABORATO | DA_VERIFICARE | ERRORE`)
+- `parser`, `parser_versione`, `confidenza`
+- `errore_codice`, `errore_motivo`, `tentativi`, `ultimo_tentativo`, `verificato_il`
+
+Rinomina `drive_id` → `drive_file_id`, così il nome è uno solo in tutto il sistema. `fiscal_documents` resta per versioni, pagine ed evidenze fiscali e punta al `drive_file_id`.
+
+**Relazioni:** un solo grafo, `entity_relations`, con il nuovo tipo sorgente `documento` (chiave `drive_file_id`) verso fattura, fornitore, F24, quietanza, cedolino, dipendente, movimento, verbale, veicolo, pagamento, dichiarazione. Stati `CONFERMATA | CANDIDATA | DA_VERIFICARE | RIFIUTATA`. `collegamento_tipo/id` e i campi ad hoc vengono migrati lì e poi tolti.
+
+**Motore unico** `app/services/drive_pipeline.py` più il client unico `app/services/drive_client.py`, che concentra credenziali, list, get, download, move e trash. I passi:
+1. elenca `00_PIPELINE/DA_ELABORARE`, paginato, con tetto per giro; i rinviati non bloccano la coda;
+2. scarica e calcola lo SHA-256;
+3. fa l'upsert nel registro;
+4. un hash già noto è un doppione: il file va nel Cestino dopo la verifica dei byte, e la provenienza entra nel registro;
+5. il **router per contenuto** smista così:
+   - XML `FatturaElettronica` → `process_xml_bytes`
+   - `DatiCorrispettivi` → `ingest_corrispettivo_parsed`
+   - F24 e quietanza → `importa_modello_bytes` / `importa_quietanza_bytes`
+   - cedolino → parser cedolini
+   - dichiarazioni, AdE, AdER → `FiscalDocumentIngestionService` / `classify_document`
+   - verbale → `process_verbale_document`
+   - estratto conto → riconoscitori nell'ordine Nexi → PayPal → mutuo → banca
+   - xls/csv → `05_EXCEL`
+6. scrive le relazioni;
+7. **solo dopo la persistenza verificata** sposta il file nell'archivio dell'area (stesso ID) e imposta `ELABORATO`;
+8. se il router non è sicuro → `DA_VERIFICARE`, con i candidati; se c'è un guasto → `ERRORI`, con codice, motivo e tentativi;
+9. `POST /api/documenti/pipeline/riprova` rimette in coda a lotti, con `dry_run`.
+
+**Apertura unica dell'originale:** `GET /api/documenti/originale/{drive_file_id}`, autenticata e in streaming tramite `drive_download`, più la risoluzione `record → relazione → drive_file_id`. Tutte le pagine passano da lì.
+
+### D. Micro-tranche
+
+Ogni tranche segue lo stesso ciclo: una PR, test, `git diff --check`, revisione avversariale, merge **uno alla volta** (ogni merge ricarica 77.000 righe), `/api/health` sul commit, verifica live. Ognuna entra in PIANO come `RST-DRV-xx`.
+
+| ID | Tranche | Contenuto | Criterio di chiusura |
+|---|---|---|---|
+| DRV-00 | Riallineamento documenti | Risolvere le contraddizioni di A in CLAUDE.md e PIANO. Registrare le 3 decisioni, il nuovo albero e il programma DRV | Test `test_claude_md` verde |
+| DRV-01 | Client Drive unico | `drive_client.py` con un solo costruttore di credenziali; migrare i 21 moduli; eliminare il monkeypatch, i 4 download e i 9 listing duplicati. Nessun cambio di comportamento | Suite `tests/documenti`, `fatture`, `fiscale`, `hr` verdi; 1 solo `build("drive")` |
+| DRV-02 | Registro esteso | Migrazione `protocollo_drive` (colonne più rinomina). Sync del protocollo in streaming e a pagine, perché oggi carica tutto in RAM; poi riaccensione di `PROTOCOLLO_DRIVE_ENABLED`. Backfill sha256 in background a lotti, con cursore in `sistema_stato` | Un giro completo senza superare la RAM; sha256 ≥ 99% |
+| DRV-03 | Relazioni documentali | Tipo `documento` in `entity_relations`. Backfill da `drive_file_id` di invoices, F24, quietanze, inbox ed estratti e da `collegamento_*`. Cedolini: impronte già note, `drive_file_id` scritto sul cedolino; i casi ambigui vanno in `DA_VERIFICARE`. Prima `dry_run`, poi autorizzazione | Seconda esecuzione: 0 nuove relazioni |
+| DRV-04 | Apertura originale unica | Nuovo endpoint e un componente frontend unico; migrare `documenti.py:1071`, `fiscal_control.py:588`, `/api/download` e il visualizzatore; togliere `drive_document_index` dai tab di Situazione fiscale | Ogni pagina che apre un documento lo apre davvero (test E2E più prova live) |
+| DRV-05 | Motore pipeline e router | `drive_pipeline.py` su `00_PIPELINE`, con un job scheduler e una pagina «Documenti > Drive» (stato, coda, ultimo giro, errori, riprova). Test sul router per ogni tipo, compreso l'ambiguo | Doppione reinserito → `nuovi=0`; file rotto → ERRORI con codice |
+| DRV-06…12 | Migrazione di un canale per PR | Ordine: fatture (quadratura e ricostruzione leggono il **registro**, non più `Elaborate/<anno>`), F24 e quietanze, dichiarazioni/AdE/AdER, cedolini e bonifici, corrispettivi (più il nuovo target di `sync_rt_to_drive.py`, variabile locale `RT_DRIVE_INBOX`), estratti/PayPal/PagoPA, verbali. Ogni PR **elimina** il vecchio modulo, il suo job e la sua variabile | Stessi file di prova, stesso esito; 0 riferimenti residui |
+| DRV-13 | Spostamento fisico per area | Manifest in simulazione (id, percorso vecchio → nuovo, nome, sha256) → **autorizzazione** → `files.update` (stesso ID) → il registro vede il nuovo percorso | Seconda esecuzione: 0 spostamenti |
+| DRV-14 | Duplicati | Gruppi SHA-256 con confronto dei byte. Si escludono i file referenziati o prima si fanno convergere le relazioni sul canonico; poi Cestino. Log nel registro (`stato='duplicato_cestinato'`, `duplicato_di`, vecchi id). Gruppi md5 senza sha256 uguale → `DA_VERIFICARE` | 0 duplicati non giustificati |
+| DRV-15 | Excel | Tutto in `05_EXCEL_E_EXPORT` piatto; `sottotipo` nel DB tramite le intestazioni dei fogli; se sconosciuto → `DA_VERIFICARE` | — |
+| DRV-16 | Pulizia legacy | Cestinare le cartelle vuote del mirror di quarantena (solo dopo un listing che provi 0 file). Gli indici vecchi e le aree fuori target (`FOTO E IMMAGINI`, `_GESTIONALE_APP`, `PROGETTI`, `07`, `11`) vanno riclassificati o in `90`, con motivo. Togliere i folder ID cablati, le variabili morte, `sync_incremental`, `drive_pulizia` per anno e `drive_document_index` | 0 folder ID obsoleti |
+| DRV-17 | Integrità ed E2E | `GET /api/documenti/integrita` calcola gli 11 indicatori «= 0» del brief (file Drive senza record, record con ID inesistente, bloccati, ERRORI senza errore, doppia presenza…). E2E con documenti reali dei 10 tipi, compreso il reinserimento di un documento già importato. Report PRIMA/DOPO | Tutti gli indicatori a 0, salvo esclusioni motivate |
+
+**Baseline PRIMA** (da riconfermare in DRV-02 con un giro fresco):
+- 18 cartelle in radice più 7 file indice/manifest;
+- profondità massima 9;
+- 14.325 file nel protocollo (dato del 17/09);
+- 89 gruppi md5 duplicati;
+- 2.399 file collegati;
+- 13.367 file in cartelle di lavorazione (dato del 17/09).
+
+**Cancelli di sicurezza:**
+- Ogni spostamento, cestinamento o backfill in produzione richiede, al momento dell'azione: manifest, conteggi prima, `dry_run` e autorizzazione esplicita.
+- Nessun `git add -A`.
+- Render: all'avvio dell'esecuzione serve il workspace (lo sceglie il titolare). Le variabili nuove e quelle da togliere vanno in `render.yaml` con `sync: false`.
+
+### E. Verifica
+
+1. Locale: `python -m pytest -q tests/documenti tests/fatture tests/fiscale tests/hr tests/runtime`, poi i test nuovi:
+   - router per tipo;
+   - idempotenza (secondo giro a 0);
+   - apertura originale;
+   - integrità.
+2. Frontend: `yarn test && yarn build` in `frontend/`.
+3. CI verde, merge, `/api/health` e `/lotti/api/health` con il commit esatto.
+4. Live, in sola lettura: SQL su `protocollo_drive` / `entity_relations` per gli indicatori; Drive MCP per controllare cartelle e percorsi.
+5. E2E reali, solo con autorizzazione: un file per tipo in `00_PIPELINE/DA_ELABORARE`, controllo di registro, relazione, archivio e apertura dal gestionale; poi reinserimento dello stesso file → `nuovi=0`, file nel Cestino.
+6. Produzione: https://gestionalecloud.onrender.com
+
+### F. Integrazione del «Minisito fiscale» (programma RST-MINI)
+
+**Decisioni del titolare (23/09):**
+- Archivio = albero a 6 aree: il classificatore del minisito diventa il router di DRV-05 e i suoi tipi vanno in `tipo/sottotipo`.
+- Regola 1–10 solo come **proposta** (candidato più conferma manuale prioritaria); la regola del 25 resta per la competenza.
+- Mappa, dedup e piano in PIANO, niente `docs/*.md`. Una PR per tranche, **unita su main solo dopo l'OK esplicito** del titolare.
+- Pacchetto completo e estratti conto 2019–2024 **caricati dal titolare su Drive**.
+
+**Punti del prompt minisito corretti dai fatti:**
+- Non esistono `PROMPT_MASTER`, `AGENTS.md`, `REGOLA_FISSA_ATTESE` né `docs/`.
+- La persistenza è Supabase, non Drive/Sheets.
+- `impresasemplice.online` è vivo (vedi A), non spento.
+- Il branch `claude/integrazione-indice-relazionale` non esiste: si lavora sul branch designato.
+
+**Riuso obbligatorio, niente copie accanto.** Ogni funzione del minisito va nel modulo che c'è già:
+
+| Minisito | Modulo del repository |
+|---|---|
+| `extract_lib`, `build_manifest`: F24 e quietanze AdE | `f24_parser.py` / `parser_f24.py` → `f24_canonico.py`, `quietanze_import.py` |
+| `extract_lib`, `build_manifest`: LIPE | `lipe_parser.py` + `lipe_deposito.py` |
+| `extract_lib`, `build_manifest`: dichiarazioni, 36-bis/54-bis, compliance | `fiscal_document_ingestion.py` |
+| Codici tributo, TEFA/TEFN/TEFZ | `codici_tributo_f24.py` + `codici_tributo_db.py` |
+| `build_crossref`: LIPE↔F24, IRAP, IVA annuale, 54-bis | `/api/iva/confronto-commercialista`, `f24_controllo_incrociato.py` |
+| `build_crossref`: alert 6099 e periodo | come sopra |
+| Cedolini (3 template, NETTO DEL MESE, varianti, rettifiche, 97 LUL `null`) | `hr_cedolini_lettura.py`, `cedolini_canonico.py`, stati di `stati_netto.py` |
+| Bonifici (CRO, 1–10 come candidato, `confermato_manuale`) | `associa_bonifici_stipendi`, `stipendi_bonifici.py`, `bonifici_pdf_ingest.py` |
+| Indice relazionale | vista su `entity_relations` (DRV-03) con export xlsx/csv/json |
+| Protocollo (1.125 righe, 1.060 file, OCR, ricerca, allocazioni dubbie) | registro `protocollo_drive` con `accounting_scope=personal_family`, `accounting_excluded=true`; ricerca in `drive_protocollo.cerca()` |
+| `classifica_contenuto`, `piano_riclassificazione` | router di DRV-05 |
+
+**Dedup F24 a due livelli** (decisione da riportare in PIANO):
+- hash identico = duplicato certo;
+- stesso protocollo con hash diverso = «duplicato per protocollo, da confermare»;
+- protocollo illeggibile con tributi identici = candidato.
+
+Mai sommati due volte.
+
+| ID | Tranche | Dipende da |
+|---|---|---|
+| MINI-00 | Lettura del pacchetto da Drive. Mappa funzione→modulo in PIANO. Golden JSON (`manifest_final`, `cedolini_canonici`, `protocollo_data`) nella cartella dei test come dati di regressione, **senza dati personali in chiaro** oltre quelli già nel repository privato | pacchetto caricato |
+| MINI-01 | Schemi: campo `fonte` obbligatorio e `stato` esplicito su documento fiscale, cedolino, ricevuta bonifico, riga di protocollo, alert (estensione degli schemi esistenti) | DRV-02 |
+| MINI-02 | Parser F24/LIPE/dichiarazioni allineati ai golden; ogni differenza spiegata in PIANO. Fallback pikepdf/OCR | MINI-01 |
+| MINI-03 | Cedolini: 3 template, varianti, rettifiche; i 97 LUL restano `NETTO_NON_PRESENTE_O_NON_LEGGIBILE` con un TODO nel codice | MINI-01 |
+| MINI-04 | Incroci e alert: LIPE↔F24, IRAP, IVA annuale, 54-bis per codice e anno, `POSSIBILE_COMPENSAZIONE_6099`, `POSSIBILE_ERRORE_PERIODO_IMPUTAZIONE`, file rotti; guardia aritmetica | MINI-02 |
+| MINI-05 | Bonifici stipendio: CRO visibile, candidato 1–10, avviso multi-dipendente, `confermato_manuale` | MINI-03 |
+| MINI-06 | Indice relazionale ed export | DRV-03, MINI-05 |
+| MINI-07 | Protocollo personale e familiare: import del registro, OCR, ricerca AND con snippet («tari enzo 2023», «cosap 2019», verbale, targa, cartella), ponte solo informativo verso la contabilità | DRV-05 |
+| MINI-08 | Frontend: viste 1.6 come route React stabili (`/fiscale/f24/:id`, `/fiscale/tributi/:codice`, `/personale/cedolini/:id`, `/protocollo/:id`), filtro anno globale, importo versato → apre la quietanza tramite DRV-04, legenda delle regole. E2E Playwright sui 4 casi del prompt | MINI-04…07 |
+
+**Aperti che non si risolvono inventando:**
+- i 97 importi LUL;
+- 6 quietanze danneggiate da riscaricare;
+- quietanze bancarie 2018–2020 in formato banca;
+- IVA precompilata: da chiedere prima di scaricare.
+
+### G. Riconciliazione F24 ↔ banca a livelli (RST-F24B)
+
+**Stato reale:**
+- `app/services/f24_bank_reconciliation.py::riconcilia_f24_tributi_banca` esiste già, ma produce solo match **certi e univoci** su `f24_unificato`.
+- `quietanze_f24`: 459 righe (2019–2026), 0 collegate a un movimento.
+- `estratto_conto_movimenti`: 2.017 righe, solo dal 03/02/2025 al 24/08/2026; 32 con causale fiscale, 3 riconciliate.
+- Senza gli estratti 2019–2024 la maggior parte delle quietanze finirà in «nessun match» **per mancanza di estratto**: va detto così, non come pagamento mancante.
+
+**Estensione dello stesso motore, niente script paralleli:**
+- **Un solo esito per coppia**, con `livello` e `motivazione` (importo, date e causale confrontati, con la loro fonte):
+  - `CERTO` → riconciliato: importo esatto, data entro 2 giorni lavorativi, causale F24/I24/Delega/Erario/Agenzia oppure CRO/TRN coincidente;
+  - `PROBABILE` → DA_VERIFICARE: importo e data uguali, causale generica;
+  - `PARZIALE` → DA_VERIFICARE, con la differenza in euro (soglia configurabile, default 5 €);
+  - `NESSUN_MATCH` → alert, con la verifica esplicita «estratto del periodo presente sì/no»;
+  - `MOVIMENTO_ORFANO` → «probabile quietanza da riscaricare».
+- Solo `CERTO` scrive il pagamento. Gli altri livelli scrivono una relazione `CANDIDATA` o `DA_VERIFICARE` in `entity_relations`, **mai** un pagamento: resta la regola «quietanza e modello non sostituiscono la prova bancaria».
+- Quietanza e modello restano entità distinte: il match usa il totale addebitato (debito meno compensazione) della quietanza e si aggancia all'F24 per protocollo.
+- **Estrazione movimenti**: nessun nuovo parser se il formato è già supportato (`estratto_conto_bpm_parser.py`, riconoscitori Nexi/PayPal/mutuo/banca). Un formato nuovo si aggiunge al motore estratti esistente, dopo aver visto un file reale.
+- **Vista**: sezione «Riconciliazione F24» in `/riconciliazione`, con filtro anno/conto, badge con testo per livello, link a quietanza ed estratto tramite DRV-04, e l'elenco dei periodi senza estratto.
+- **Tono**: solo fatti e discrepanze, «da verificare con il commercialista».
+- **Test**: un caso per ogni livello, più ambiguità (due F24 con lo stesso importo), festivi nei 2 giorni lavorativi, idempotenza (seconda esecuzione a 0).
+
+### H. Ordine d'esecuzione complessivo
+
+1. **DRV-00**: CLAUDE.md, il test e **tutto questo piano** (A–K) scritti in PIANO, così ogni nuova chat li trova nel repository.
+2. **AV3-01** (errori, Riparazioni, stato-fonti) e **AV3-10** (allergeni: obbligo di legge).
+3. **AV3-02** (estratti conto), poi **RST-F24B** (riconciliazione F24 a livelli).
+4. **DRV-01…04** (client, registro, relazioni, apertura originale), che assorbono anche AV3-07 per la parte indice.
+5. **AV3-06** (F24 unico e posta), poi **MINI-00…06**, appena il pacchetto è su Drive.
+6. **AV3-03** e **AV3-08** (IVA e veicoli), dopo la conferma del commercialista; poi AV3-04 e AV3-05.
+7. **DRV-05…12** (pipeline e canali), poi **AV3-09**, **MINI-07** e **MINI-08**.
+8. **DRV-13…17** (spostamenti, duplicati, pulizia, integrità).
+9. **AV3-11…15** (FIFO, residui ricette, codice morto, route, sicurezza).
+
+Ogni PR si unisce su main **solo dopo l'OK esplicito del titolare**.
+
+### I. Copertura di TUTTI i prompt ricevuti
+
+| Prompt | Capitolo | Dove sta nel piano |
+|---|---|---|
+| 1. Riorganizzazione Drive (messaggio del 23/09) | Tutti i 13 punti | A–E (programma DRV) |
+| 2. PROMPT MASTER | Metodo, micro-tranche, cancelli di sicurezza, checkpoint, report finale | Regole trasversali (vedi J) |
+| 2. PROMPT MASTER | Drive, archivio documentale, importazione unica, hash/dedup | DRV |
+| 2. PROMPT MASTER | Archivio Relazionale nativo, componente «documenti collegati» | DRV-03, DRV-04, MINI-06 |
+| 2. PROMPT MASTER | Tranche ricette (#683) | Chiusa; i residui sono in AV3-12 |
+| 2. PROMPT MASTER | Audit v3 (11 famiglie) | **K** (programma AV3), finora mancante |
+| 2. PROMPT MASTER | Pacchetto PartenoPay storico | AV3-09 |
+| 2. PROMPT MASTER | Posta/PEC, Learning Machine | AV3-06 |
+| 2. PROMPT MASTER | Audit route e navigazione, API, osservabilità | AV3-14 |
+| 2. PROMPT MASTER | Sicurezza, MFA, RBAC | AV3-15 |
+| 2. PROMPT MASTER | Specifica F24 ↔ banca | G |
+| 3. Minisito fiscale | Tutto | F (programma MINI) |
+| 4. Riconciliazione F24 ↔ banca | Tutto | G (RST-F24B) |
+
+### J. Regole trasversali del PROMPT MASTER (valgono per ogni tranche)
+
+- **Avvio di ogni sessione**:
+  - fetch;
+  - confronto fra `HEAD`, worktree, `origin/main`, PR aperte e commit servito (`/api/health`);
+  - lettura di PIANO;
+  - checkpoint iniziale.
+- **Checkpoint dopo ogni tranche**:
+  - obiettivo, stato iniziale, causa reale, soluzione;
+  - file eliminati o migrati;
+  - dati toccati con conteggi prima/dopo, backup, `dry_run`, rollback;
+  - test distinti per tipo;
+  - PR, CI, merge, deploy, commit servito;
+  - voci `DA_VERIFICARE`;
+  - aggiornamento di PIANO.
+- **Esiti ammessi**: `VERIFICATO`, `PARZIALE`, `NON_ESEGUITO`, `NON_VERIFICABILE`, `ERRORE`. Mai «completato» o «funzionante» senza la prova corrispondente.
+- **Scritture reali in produzione**: ambiente e record identificati, conteggi prima, `dry_run`, backup con rollback provato, autorizzazione al momento. Un backup non provato si dichiara `RIPRISTINABILITÀ NON VERIFICATA`.
+- **Legacy**: non si aggiungono guardrail o whitelist permanenti. Un adattatore transitorio ha proprietario e condizione di ritiro.
+
+### K. Backlog audit v3 (programma AV3) — da riconfermare sui dati prima di ogni tranche
+
+I numeri qui sotto sono la baseline dichiarata dall'audit del 22/09, **non** ancora prove. Ogni tranche comincia rimisurandoli.
+
+| ID | Famiglia | Contenuto essenziale | Cancello |
+|---|---|---|---|
+| AV3-01 | Contratto errori | `error_handler` con `code/message/details/correlation_id` più `detail` transitorio; `messaggioErrore(e)` unico in `frontend/src/api.js`; `PannelloRiparazioni` e `/prima-nota/stato-fonti` con prefisso `/api`; test di contratto esteso ai percorsi senza `/api` | nessuno (solo codice) |
+| AV3-02 | Estratti conto | I rinviati pre-2026 non bloccano la coda; test di regressione. Precondizione per G con gli estratti 2019–2024 | nessuno |
+| AV3-03 | IVA | Servizio unico `classifica_e_calcola_iva` (centro di costo → % → campi IVA → stato), chiamato da handler, ricostruzione, endpoint singolo e massivo; job su `da_ricalcolare`; regole 100/40 per veicolo/50 telefonia/«da confermare». Backfill di 786 fatture senza IVA e 925 senza centro di costo; poi `registra-pregresso` | conferma del commercialista sulle percentuali; autorizzazione per il backfill |
+| AV3-04 | Scadenze e alert | Togliere gli scrittori del `+30` (`handlers/scadenziario.py`, `fatture_estera_verifica.py`) e azzerare `scadenziario_fornitori`. Alert: bottone «Risolvi» con stato terminale coerente e link al record; `CED_DUPLICATO` solo per hash (≈2.066 falsi); chiusura per ID di ≈827 `FAT_DA_PAGARE_SCADUTA` | autorizzazione modifica massiva |
+| AV3-05 | Libro giornale | `registra_pagamento(operation_id)` unico per cassa, banca, salari e F24; riportare gli scrittori paralleli su `scritture_contabili`; Bilancio da `movimenti_contabili`; bottone «Senza metodo» sul vocabolario unico | — |
+| AV3-06 | F24 da email e F24 unico | `post_download_pipeline` delega a `importa_modello_bytes` / `importa_quietanza_bytes` (bug `parsed["success"]`, modelli passati al parser quietanze). Un solo ingresso F24 (oggi 6 parser e 14 scrittori). Dedup per identità business; scadenze dal codice tributo (anche `FiscaleSentinella`). Riconciliazione F24/banca senza «primo della lista». Posta/PEC idempotente, Learning Machine solo propositiva | — |
+| AV3-07 | Situazione fiscale | 4 tab fuori dal vecchio indice Excel (coincide con DRV-04 e DRV-16). «Apri dichiarazione» per `drive_file_id`; campi strutturati delle dichiarazioni. LIPE: `lipe_verifica` sostituita dal confronto canonico, «Riapri» con motivo, UI decisioni IVA, «Notifica email» vera o rimossa | — |
+| AV3-08 | Veicoli, fringe, addebiti | Anagrafica veicoli unica con storico assegnazioni (GW980EP Arval → Antonietta; HB411GV Leasys e GX037HJ ALD → amministratori; GG782PN cessata tolta dal codice); tipo d'uso → IVA/IRES per veicolo. Fringe benefit letto dal cedolino. Righe dei noleggiatori classificate per riga (bollo, multa rinotificata, rinotifica, penale). Dedup delle fatture ALD/Arval/Leasys per `content_hash_canonico`. Entità `addebiti_busta` → riepilogo presenze → verifica sul cedolino | percentuali da confermare col commercialista |
+| AV3-09 | Verbali e PartenoPay | I 105 verbali ricostruiti dal PDF (`process_verbale_document`), con job una tantum con anteprima; un solo collegamento verbale→fattura; `data_violazione` unica; `driver_alla_data` unica; fix `/` nei numeri, IUV, `upload-quietanza`. Pacchetto PartenoPay: verifica di hash e manifest, import tramite pipeline, seconda esecuzione a 0 | autorizzazione import |
+| AV3-10 | Ricette → Menu allergeni | `allergeni_confermati` non perso al salvataggio; ponte Menu a ogni scrittura allergeni rispettando «nessuno» confermato (108 prodotti su 325 hanno allergeni: obbligo di legge, **priorità alta**) | — |
+| AV3-11 | FIFO e costi | Un motore di costo, un FIFO atomico con `operation_id`, conversione KAR/confezioni, `prodotto_dizionario_id` stabile, `q.b.` esplicito, prezzo di vendita unico, Salva Menu admin reale o rimosso | — |
+| AV3-12 | Residui ricette (ex #683) | Riconfermare dopo #682 (descrizioni già live?): procedimenti leggibili, mancanti solo da fonti tracciate, 36 collegamenti Menu per ID esatto, nessuna pubblicazione implicita | autorizzazione scritture |
+| AV3-13 | Codice morto | 1.128 route senza chiamanti frontend: rimozione una responsabilità per commit, solo dopo la verifica di scheduler, script, agent e webhook (elenco candidati del prompt) | — |
+| AV3-14 | Route e navigazione | Inventario generato dal router reale, `/mappa-gestionale` automatica, classificazione FUNZIONANTE/404/…, prove sugli URL reali (anche `impresasemplice.online`, che è vivo); osservabilità import → parser → DB → relazioni | — |
+| AV3-15 | Sicurezza | Sessioni, CSRF, rate limit, lockout PIN, MFA vera (PIN + token dallo stesso PIN non è MFA), autorizzazioni su HR e finanza, niente segreti nei log | decisione del titolare sul fattore MFA |
+
 ## 8. Registro avanzamento
 
 | Data | ID/perimetro | Stato | Commit/PR e prova |
 |---|---|---|---|
+| 2026-09-23 | RST-DRV-00-PIANO-UNICO | 🟡 | Piano A–K trascritto in §7-bis; CLAUDE.md e `tests/runtime/test_claude_md.py` riallineati (`impresasemplice.online` vivo, tre documenti ammessi). PR in attesa dell'OK del titolare |
 | 2026-09-21 | PLAN-0001 | 🟢 | Piano iniziale, audit 8cf52bd; storia in Git |
 | 2026-09-21 | PLAN-0002 | 🟢 | Priorità Prima Nota e PIN centrale aggiunte |
 | 2026-09-21 | FASE-0A-LIVE | 🟢 | #566, b71f62d; precedente registro Produzione 35543104234; non qualifica tutti i casi contabili |

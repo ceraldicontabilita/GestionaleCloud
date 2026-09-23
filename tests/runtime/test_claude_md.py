@@ -34,7 +34,7 @@ def _markdown_tracciati() -> set[str]:
 def test_solo_documenti_canonici_nel_repository() -> None:
     trovati = _markdown_tracciati()
     assert trovati == AMMESSI, (
-        "I soli .md ammessi sono CLAUDE.md e README.md. In piu' o in meno: "
+        "I soli .md ammessi sono CLAUDE.md, README.md e PIANO_RISTRUTTURAZIONE.md. In piu' o in meno: "
         f"{sorted(trovati.symmetric_difference(AMMESSI))}"
     )
 
@@ -69,9 +69,11 @@ def test_sezioni_vive_presenti() -> None:
 def test_nessun_sito_spento_nel_codice() -> None:
     """I domini morti erano rimasti nei workflow di verifica della produzione e
     in un link di Lotti: il collaudo interrogava un host spento e il bottone
-    «Gestionale» portava nel vuoto. Qui non devono tornare."""
+    «Gestionale» portava nel vuoto. Qui non devono tornare.
+
+    `impresasemplice.online` non e' in elenco: e' un dominio vivo dello stesso
+    servizio Render (verificato il 23/09/2026 con `/lotti/api/health`)."""
     spenti = (
-        "impresasemplice.online",
         "ceraldiapp.it",
         "appdipendenti.onrender.com",
         "lotti-frontend.onrender.com",
