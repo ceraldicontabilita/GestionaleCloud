@@ -6,7 +6,7 @@ reviewed_at: 2026-09-20
 storage_architecture: supabase
 -->
 
-Aggiornato il 22/09/2026 sul codice di `main` del repository canonico
+Aggiornato il 23/09/2026 sul codice di `main` del repository canonico
 `ceraldicontabilita/GestionaleCloud`.
 
 **Questo file e `README.md` sono gli unici due documenti del repository.**
@@ -598,11 +598,12 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - Fornitore univoco per P.IVA → CF → id esterno verificato; gli alias sono solo di supporto.
   `canonical_id` stabile: un cambio di ragione sociale non crea una seconda anagrafica, e un merge
   conserva alias, IBAN, id precedenti, documenti e audit.
-- Il metodo di pagamento si legge **solo dall'anagrafica fornitore**, mai dedotto dalla fattura; se non
-  configurato la fattura resta `sospesa`, mai con un default «bonifico» **né un ripiego in cassa**: un
-  pagamento in contanti senza prova è un'uscita inventata. Le righe storiche
-  `source="metodo_fornitore_assente_provvisorio"` restano in archivio per audit ma sono escluse da elenchi
-  e saldi (`SOURCES_ESCLUSE` in `app/routers/prima_nota_module/common.py`).
+- Il metodo di pagamento si legge **solo dall'anagrafica fornitore**, mai dedotto dalla fattura; se non configurato
+  la fattura resta `sospesa`, mai con un default «bonifico» **né un ripiego in cassa**: le righe storiche di quel
+  ripiego restano per audit, fuori da elenchi e saldi (`SOURCES_ESCLUSE` in `prima_nota_module/common.py`).
+- **Come è stata pagata una fattura lo dice il titolare** (report «Fatture ricevute» con colonne metodo/carta/assegno,
+  Documenti > Import): `pagamenti_dichiarati_titolare.py` usa solo i motori esistenti e ricava il metodo del fornitore
+  (uno → quello, più → `misto`). La cassa d'ufficio `metodo_fornitore_assente_provvisorio` non prova un pagamento.
 - «Metodo di pagamento non configurato» ha un vocabolario solo, `app/constants/metodi_pagamento.py`:
   `sospesa` (quello che scrive l'import), `da_configurare`, `none`, vuoto e campo assente valgono uguale.
   Chi tiene la propria lista si perde il caso più frequente.
@@ -812,7 +813,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   restano stabili. Escludere significa «non richiede la dichiarazione», non
   «nascondilo dal menu»: è conformità, si conserva e si revoca.
 
-## Stato attuale (al 22/09/2026 — riscrivere sul posto)
+## Stato attuale (al 23/09/2026 — riscrivere sul posto)
 
 - Ogni merge su `main` fa ridistribuire Render e ricaricare ~77.000 righe: per qualche minuto la
   produzione è `degraded`. Non si accodano merge.
@@ -843,8 +844,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   non riscosso (67.856,00 €); fuori restano 3 giornate a incasso zero (giusto) e il **02/08**, XML che non quadra di 0,90 €.
 - Endpoint sincroni oltre i 5 minuti, da portare a lotti riprendibili: `/api/fatture/drive/quadratura`, `/api/paypal-api/riconcilia`, `/account-ids-non-mappati`, `riallinea-pagamenti-fatture`.
 - Note di credito TD04 legacy (~20): costo/IVA/debito aumentati anziché ridotti.
-- **Nessuno dei 187 fornitori ha `metodo_pagamento`** (41 hanno un IBAN): così 1.379 fatture restano
-  `sospese` e nulla va in Prima Nota Banca. Serve una fonte vera, non dedotta dalle fatture.
+- Pagamenti 2026 e metodi fornitore dal report del titolare: esito live da verificare (`/api/admin/fatture/pagamenti-dichiarati/stato`).
 - **Pregresso fatture**: 296 attive (173.184,83 €) senza partita aperta, 280 fuori dal giornale. Prima
   `ripubblica-evento-created`, poi `registra-pregresso`. Con `dry_run`: `azzera-scadenze` (642 fatture,
   971 partite inventate), `lipe/importa`, `ricostruisci-numia`.

@@ -5,7 +5,10 @@ gli stessi motori idempotenti; nessun handler implementa matching alternativo.
 """
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, Optional
+
+logger = logging.getLogger(__name__)
 
 
 async def riconcilia_documenti_e_pagamenti(
@@ -67,6 +70,18 @@ async def riconcilia_documenti_e_pagamenti(
     allocazioni_fatture_banca = await reconcile_deterministic_invoice_allocations(
         db, anno=anno, movement_ids=movimento_ids,
     )
+    # Il report del titolare dice come e' stata pagata ogni fattura: qui si
+    # ripassano solo le righe ancora in attesa (XML arrivato dopo, assegno
+    # comparso nel nuovo estratto conto).
+    from app.services.pagamenti_dichiarati_titolare import applica_pagamenti_dichiarati
+
+    try:
+        pagamenti_dichiarati = await applica_pagamenti_dichiarati(db, solo_pendenti=True)
+    except Exception as exc:  # noqa: BLE001 - gli altri agganci restano validi
+        logger.exception(
+            "Pagamenti dichiarati del titolare non ripassati (%s)", type(exc).__name__,
+        )
+        pagamenti_dichiarati = {"errore": f"{type(exc).__name__}: {exc}"}
     return {
         "assegni_intenti": assegni_intenti,
         "assegni_auto": assegni_auto,
@@ -86,6 +101,7 @@ async def riconcilia_documenti_e_pagamenti(
         "versamenti_contanti": versamenti,
         "proiezione_banca": proiezione_banca,
         "allocazioni_fatture_banca": allocazioni_fatture_banca,
+        "pagamenti_dichiarati": pagamenti_dichiarati,
     }
 
 

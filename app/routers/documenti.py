@@ -3698,6 +3698,17 @@ async def upload_documento_automatico(
             )
             result.update(report_result)
             result["tipo_rilevato"] = "report_fatture_ricevute"
+            if report_result.get("pagamenti_dichiarati"):
+                # Il titolare ha scritto come ha pagato: le Prime Note si
+                # aggiornano in background (sono centinaia di fatture).
+                from app.services import pagamenti_dichiarati_titolare
+
+                result["pagamenti_dichiarati_job"] = await pagamenti_dichiarati_titolare.avvia(db)
+                result["message"] += (
+                    f"; {report_result['pagamenti_dichiarati']} pagamenti dichiarati "
+                    "in registrazione su Prima Nota (esito: GET "
+                    "/api/admin/fatture/pagamenti-dichiarati/stato)"
+                )
 
         elif tipo_rilevato == 'pagamenti_buoni':
             # Registro dedicato: resta dietro Documenti e deduplica per

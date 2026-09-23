@@ -4,6 +4,10 @@ Il file esportato dal portale fiscale non contiene gli XML: e' un indice
 ufficiale che permette di misurare gli XML mancanti e di proporre collegamenti
 senza inventare una fattura completa.  Le righe restano quindi separate dalla
 collezione canonica ``invoices`` finche' non arriva il relativo XML.
+
+Il titolare aggiunge al report tre colonne sue (metodo con cui ha pagato,
+«carta di credito», numero dell'assegno): sono i dati veri del pagamento e li
+porta in Prima Nota ``pagamenti_dichiarati_titolare``.
 """
 
 from __future__ import annotations
@@ -31,6 +35,29 @@ REQUIRED_COLUMNS = {
     "Metodo di pagamento",
     "Totale documento",
     "Netto a pagare",
+}
+
+# Colonne che il titolare aggiunge al report: si cercano per nome, senza
+# badare a maiuscole e spazi («assegno numero » nel file vero).
+COLONNE_TITOLARE = {
+    "metodo": ("metodo di pagamento canonico", "metodo pagamento titolare"),
+    "carta": ("carta di credito",),
+    "assegno": ("assegno numero", "numero assegno"),
+}
+
+# Stesso criterio di «fattura attiva» del giornale: una copia archiviata o
+# in collisione non riceve pagamenti. `$nin` su un campo assente passa.
+FILTRO_FATTURE_ATTIVE = {
+    "status": {"$nin": ["archived", "archiviata", "deleted"]},
+    "stato_import": {"$nin": ["archivio_storico", "collisione_identita_da_verificare"]},
+    "entity_status": {"$ne": "deleted"},
+    "deleted": {"$ne": True},
+}
+
+_PROIEZIONE_IDENTITA = {
+    "_id": 0, "id": 1, "filename": 1, "invoice_number": 1, "numero_fattura": 1,
+    "invoice_date": 1, "data_documento": 1, "data_fattura": 1,
+    "supplier_vat": 1, "cedente_piva": 1, "fornitore_partita_iva": 1,
 }
 
 
@@ -123,6 +150,59 @@ def _row_identity(row: Dict[str, Any]) -> Tuple[str, str, str]:
     })
 
 
+def _nome_colonna(nome: Any) -> str:
+    return " ".join(str(nome or "").lower().split())
+
+
+async def _indice_fatture_attive(db):
+    fatture = await db["invoices"].find(
+        FILTRO_FATTURE_ATTIVE, _PROIEZIONE_IDENTITA,
+    ).to_list(50000)
+    per_nome_file = {
+        _text(f.get("filename")).lower(): f for f in fatture if _text(f.get("filename"))
+    }
+    per_identita = {
+        _invoice_identity(f): f for f in fatture if all(_invoice_identity(f))
+    }
+    return per_nome_file, per_identita
+
+
+async def collega_righe_a_fatture(
+    db, righe: List[Dict[str, Any]], *, salva: bool = True,
+) -> int:
+    """Riaggancia le righe del report alle fatture attive di adesso.
+
+    L'XML puo' arrivare dopo il report, o la copia agganciata puo' essere
+    stata archiviata dalla dedup: l'aggancio si rifa' a ogni giro invece di
+    fidarsi di quello salvato all'import. Aggiorna le righe in memoria e sul
+    database; ritorna quante sono cambiate.
+    """
+    per_nome_file, per_identita = await _indice_fatture_attive(db)
+    cambiate = 0
+    for riga in righe:
+        naturale = (
+            _vat(riga.get("supplier_vat")),
+            re.sub(r"[^A-Z0-9]", "", _text(riga.get("numero_fattura")).upper()),
+            _text(riga.get("data_documento"))[:10],
+        )
+        trovata = (
+            per_nome_file.get(_text(riga.get("filename_xml")).lower())
+            or per_identita.get(naturale)
+        )
+        invoice_id = trovata.get("id") if trovata else None
+        if invoice_id != riga.get("invoice_id"):
+            riga["invoice_id"] = invoice_id
+            riga["xml_presente"] = bool(invoice_id)
+            cambiate += 1
+            if not salva:
+                continue
+            await db[COLLECTION_REPORT].update_one(
+                {"report_key": riga["report_key"]},
+                {"$set": {"invoice_id": invoice_id, "xml_presente": bool(invoice_id)}},
+            )
+    return cambiate
+
+
 def _read_report(content: bytes, filename: str) -> pd.DataFrame:
     suffix = Path(filename or "").suffix.lower()
     engine = "xlrd" if suffix == ".xls" else "openpyxl"
@@ -164,32 +244,14 @@ async def importa_report_fatture_ricevute(
     source_hash = hashlib.sha256(content).hexdigest()
     now = datetime.now(timezone.utc).isoformat()
 
-    existing_invoices = await db["invoices"].find(
-        {"entity_status": {"$ne": "deleted"}},
-        {
-            "_id": 0,
-            "id": 1,
-            "filename": 1,
-            "invoice_number": 1,
-            "numero_fattura": 1,
-            "invoice_date": 1,
-            "data_documento": 1,
-            "data_fattura": 1,
-            "supplier_vat": 1,
-            "cedente_piva": 1,
-            "fornitore_partita_iva": 1,
-        },
-    ).to_list(50000)
-    invoices_by_filename = {
-        _text(invoice.get("filename")).lower(): invoice
-        for invoice in existing_invoices
-        if _text(invoice.get("filename"))
+    from app.services.pagamenti_dichiarati_titolare import normalizza_metodo_titolare
+
+    invoices_by_filename, invoices_by_identity = await _indice_fatture_attive(db)
+    colonne = {
+        chiave: next((c for c in frame.columns if _nome_colonna(c) in nomi), None)
+        for chiave, nomi in COLONNE_TITOLARE.items()
     }
-    invoices_by_identity = {
-        _invoice_identity(invoice): invoice
-        for invoice in existing_invoices
-        if all(_invoice_identity(invoice))
-    }
+    con_titolare = 0
 
     imported = updated = invalid = xml_present = 0
     details: List[Dict[str, Any]] = []
@@ -219,6 +281,21 @@ async def importa_report_fatture_ricevute(
         stable = sdi_id or "|".join(natural)
         report_key = hashlib.sha256(stable.encode("utf-8")).hexdigest()
         method = _text(raw.get("Metodo di pagamento"))
+        titolare = {}
+        if colonne["metodo"]:
+            metodo_titolare = normalizza_metodo_titolare(
+                raw.get(colonne["metodo"]),
+                raw.get(colonne["carta"]) if colonne["carta"] else None,
+            )
+            assegno = _text(raw.get(colonne["assegno"])) if colonne["assegno"] else ""
+            titolare = {
+                "metodo_pagamento_titolare": metodo_titolare,
+                "metodo_pagamento_titolare_testo": _text(raw.get(colonne["metodo"])),
+                "assegno_numero_titolare": assegno,
+                "pagata_titolare": _text(raw.get("Pagamenti")).lower() == "pagata",
+            }
+            if metodo_titolare:
+                con_titolare += 1
         document = {
             "id": f"AEFR-{report_key[:24]}",
             "report_key": report_key,
@@ -247,6 +324,7 @@ async def importa_report_fatture_ricevute(
             "source_report_filename": Path(filename).name,
             "source_hash": source_hash,
             "last_seen_at": now,
+            **titolare,
         }
         result = await db[COLLECTION_REPORT].update_one(
             {"report_key": report_key},
@@ -283,6 +361,7 @@ async def importa_report_fatture_ricevute(
         "xml_present": xml_present,
         "xml_missing": missing_xml,
         "details": details,
+        "pagamenti_dichiarati": con_titolare,
         "message": (
             f"Report fatture indicizzato: {imported + updated} righe, "
             f"{xml_present} XML presenti e {missing_xml} XML da acquisire"
