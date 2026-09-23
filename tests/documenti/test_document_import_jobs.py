@@ -112,14 +112,15 @@ def test_zip_in_coda_salva_l_esito_e_non_si_rielabora(monkeypatch):
             chiamate.append((filename, content))
             return {"success": True, "imported": 398, "duplicates": 2, "errors": 0}
 
-        primo = await document_import_jobs.enqueue_zip_import(
+        primo = await document_import_jobs.enqueue_import(
             db, content=b"PK-zip", filename="20260923_ExportFattureRicevute.zip",
-            process=process,
+            document_type="archivio_zip", process=process,
         )
         await document_import_jobs.wait_for_import_job(primo["job_id"])
         stato = await document_import_jobs.get_import_job(db, primo["job_id"])
-        secondo = await document_import_jobs.enqueue_zip_import(
-            db, content=b"PK-zip", filename="stesso.zip", process=process,
+        secondo = await document_import_jobs.enqueue_import(
+            db, content=b"PK-zip", filename="stesso.zip",
+            document_type="archivio_zip", process=process,
         )
         return primo, stato, secondo, chiamate
 

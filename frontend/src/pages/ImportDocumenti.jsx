@@ -247,10 +247,12 @@ export default function ImportDocumenti() {
           fileInfo.preview?.tipo_rilevato === 'pos_terminal' &&
           !fileInfo.name.toLowerCase().includes('commissioni_') &&
           operazioniPos >= 500;
-        // Uno ZIP con centinaia di fatture supera i 2 minuti del browser e i
-        // 5 del proxy: va in coda e la pagina ne segue l'esito.
-        const usaCodaZip = fileInfo.preview?.tipo_rilevato === 'archivio_zip';
-        const endpoint = usaCodaPos || usaCodaZip
+        // Uno ZIP con centinaia di fatture o un anno di estratto conto
+        // superano i 2 minuti del browser e i 5 del proxy: vanno in coda e la
+        // pagina ne segue l'esito.
+        const tipoInCoda = fileInfo.preview?.tipo_rilevato;
+        const usaCodaLunga = tipoInCoda === 'archivio_zip' || tipoInCoda === 'estratto_conto';
+        const endpoint = usaCodaPos || usaCodaLunga
           ? '/api/documenti/upload-auto/queue'
           : '/api/documenti/upload-auto';
         const res = await api.post(endpoint, formData, {
@@ -261,11 +263,11 @@ export default function ImportDocumenti() {
         });
 
         let importData = res.data || {};
-        if (usaCodaZip && importData.job_id) {
+        if (usaCodaLunga && importData.job_id) {
           const completed = importData.status === 'completed'
             ? importData.result || {}
             : await attendiImportDocumentale(importData.job_id, 30 * 60 * 1000);
-          importData = { ...completed, tipo_rilevato: 'archivio_zip' };
+          importData = { ...completed, tipo_rilevato: tipoInCoda };
         } else if (usaCodaPos && importData.status !== 'completed') {
           const completed = await attendiImportDocumentale(importData.job_id);
           importData = {

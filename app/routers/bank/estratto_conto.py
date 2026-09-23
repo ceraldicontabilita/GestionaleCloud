@@ -781,10 +781,13 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
         return normalizza_descrizione_ec(desc)
 
     existing_by_key: Dict[Any, List[Dict[str, Any]]] = defaultdict(list)
+    existing_all: List[Dict[str, Any]] = []
+    existing_usati: set = set()
     existing_operation_keys = set()
     existing_card_by_base: Dict[Any, List[Dict[str, Any]]] = defaultdict(list)
     from app.services.nexi_carta import _nexi_description, nexi_operation_identity
     async for rec in existing_cursor:
+        existing_all.append(rec)
         dstr = rec.get("data", "")[:10]
         imp  = abs(float(rec.get("importo", 0)))
         desc = _norm_desc(rec.get("descrizione_originale") or rec.get("descrizione") or "")
@@ -859,6 +862,8 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
                     existing.get("id"), operation_key, operation_id, occurrence,
                     identity_version,
                 ))
+            if existing.get("id"):
+                existing_usati.add(existing["id"])
             if fonte_ufficiale and not (
                 existing.get("evidenza_bancaria_ufficiale") is True
                 or existing.get("livello_evidenza") == EVIDENZA_UFFICIALE
@@ -905,6 +910,29 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
             **evidenza,
             "created_at": datetime.now(timezone.utc).isoformat()
         })
+
+    # Stesso conto, altro export: la banca scrive la stessa operazione con
+    # parole diverse (categoria davanti, assegno «VOSTRO ASSEGNO N.» contro
+    # «PRELIEVO ASSEGNO … NUM:»). Il 23/09/2026 cosi' gennaio–agosto BPM e'
+    # entrato due volte. Ultimo controllo prima di scrivere: giorno, segno,
+    # importo e quante volte compare, mai due assegni con numeri diversi.
+    if records_to_insert:
+        from app.services.doppioni_estratto_conto import accoppia, conto_del_movimento
+
+        liberi = [
+            rec for rec in existing_all
+            if rec.get("id") not in existing_usati and conto_del_movimento(rec) == "bpm"
+        ]
+        coppie = accoppia(
+            [rec for rec in records_to_insert if conto_del_movimento(rec) == "bpm"],
+            liberi,
+        )
+        if coppie:
+            gia_presenti = {id(nuovo) for nuovo, _ in coppie}
+            records_to_insert = [
+                rec for rec in records_to_insert if id(rec) not in gia_presenti
+            ]
+            duplicates += len(coppie)
 
     promoted_ids = [record.get("id") for record in records_promossi if record.get("id")]
     async with _write_batch(db):

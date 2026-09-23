@@ -435,11 +435,10 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - Prima Nota Banca non è la copia dell'estratto conto: una riga entra quando è
   nota la causale contabile oppure appartiene alle categorie bancarie senza
   documento ammesse dal codice.
-- Riga bancaria canonica = riferimento esterno **oppure** fingerprint
-  data+valuta+importo+causale+progressivo: reimportare lo stesso estratto non
-  duplica. Assegni di importo ricorrente uguale ma numero o data diversi
-  **non sono duplicati**. Le regole SDD creano un pagamento solo con
-  identità, periodo e importo compatibili; altrimenti candidati.
+- Riga bancaria canonica = riferimento esterno **oppure** fingerprint data+valuta+importo+causale+progressivo;
+  due export **dello stesso conto** con parole diverse si confrontano per giorno, segno, importo e conteggio
+  (`doppioni_estratto_conto.accoppia`). Assegni con numero o data diversi **non sono duplicati**. Le regole SDD
+  creano un pagamento solo con identità, periodo e importo compatibili; altrimenti candidati.
 - Categorizzazione movimenti banca: un solo motore,
   `app/services/categorizzazione_movimenti.py` (parole chiave su
   F24/Commissioni/Utenze/Fatture). Sopra le parole chiave, **regole

@@ -2789,6 +2789,51 @@ def _fiscal_category_from_archive_path(archive_path: str) -> str | None:
     return info[0] if info else None
 
 
+async def _importa_estratto_conto_file(filename: str, content: bytes) -> Dict[str, Any]:
+    """Un estratto conto dal caricamento manuale: lo stesso motore dell'upload
+    diretto e della coda (un anno di BPM supera i 2 minuti del browser)."""
+    from app.routers.bank.estratto_conto import import_estratto_conto
+
+    class _FakeUpload:
+        pass
+
+    upload = _FakeUpload()
+    upload.filename = filename
+
+    async def _read():
+        return content
+
+    upload.read = _read
+    esito: Dict[str, Any] = {"tipo_rilevato": "estratto_conto"}
+    try:
+        ec_result = await import_estratto_conto(upload)
+        stats = ec_result.get("stats", {})
+        nuovi = stats.get("nuovi", 0)
+        dup = stats.get("duplicati", 0)
+        esito.update({
+            "success": True,
+            "message": (
+                f"Estratto conto importato: {nuovi} movimenti nuovi, "
+                f"{dup} duplicati saltati."
+            ),
+            "imported": nuovi,
+            "duplicates": dup,
+            "movimenti_nuovi": nuovi,
+            "duplicati_saltati": dup,
+            "totale_letti": stats.get("totale_letti", nuovi + dup),
+            "riconciliazione": ec_result.get("riconciliazione_summary"),
+        })
+    except Exception as ec_err:
+        logger.error(
+            "Import estratto conto fallito: %s (%s)", ec_err, type(ec_err).__name__,
+        )
+        esito.update({
+            "success": False,
+            "message": f"Errore import estratto conto: {str(ec_err)}",
+        })
+    return esito
+
+
 async def _process_zip_upload_a_blocchi(filename: str, content: bytes) -> Dict[str, Any]:
     """Uno ZIP fiscale puo generare centinaia di versioni, pagine e prove.
     Il runtime Drive/Supabase sa consolidarle per collezione e scriverle in
@@ -3857,33 +3902,7 @@ async def upload_documento_automatico(
 
         elif tipo_rilevato == 'estratto_conto':
             # Import diretto estratto conto CSV Banco BPM → estratto_conto_movimenti
-            from app.routers.bank.estratto_conto import import_estratto_conto
-
-            _orig_filename = filename
-            _orig_content  = content
-
-            class _FakeUpload:
-                filename = _orig_filename
-                async def read(self):
-                    return _orig_content
-
-            try:
-                ec_result = await import_estratto_conto(_FakeUpload())
-                stats = ec_result.get("stats", {})
-                nuovi = stats.get("nuovi", 0)
-                dup   = stats.get("duplicati", 0)
-                result["message"] = (
-                    f"Estratto conto importato: {nuovi} movimenti nuovi, "
-                    f"{dup} duplicati saltati."
-                )
-                result["movimenti_nuovi"]     = nuovi
-                result["duplicati_saltati"]   = dup
-                result["totale_letti"]        = stats.get("totale_letti", nuovi + dup)
-                result["riconciliazione"]     = ec_result.get("riconciliazione_summary")
-            except Exception as ec_err:
-                logger.error(f"Import estratto conto fallito: {ec_err}")
-                result["success"] = False
-                result["message"] = f"Errore import estratto conto: {str(ec_err)}"
+            result.update(await _importa_estratto_conto_file(filename, content))
 
         elif tipo_rilevato == 'bonifici':
             # Salva e processa nello stesso flusso canonico dell'Archivio
@@ -3937,6 +3956,14 @@ async def upload_documento_automatico(
     return result
 
 
+# Import che superano i 2 minuti del browser e i 5 del proxy Render: vanno in
+# coda (`document_import_jobs`) con lo stesso motore dell'upload diretto.
+ELABORATORI_IN_CODA = {
+    "archivio_zip": _process_zip_upload_a_blocchi,
+    "estratto_conto": _importa_estratto_conto_file,
+}
+
+
 @router.post("/upload-auto/queue", status_code=202)
 @handle_errors
 async def accoda_upload_documento_voluminoso(
@@ -3959,10 +3986,10 @@ async def accoda_upload_documento_voluminoso(
 
     tipo_rilevato = detect_document_type(filename, content)
     pos = tipo_rilevato == "pos_terminal" and "commissioni_" not in filename.lower()
-    if not pos and tipo_rilevato != "archivio_zip":
+    if not pos and tipo_rilevato not in ELABORATORI_IN_CODA:
         raise HTTPException(
             status_code=400,
-            detail="La coda asincrona e' riservata agli export POS e agli archivi ZIP.",
+            detail="La coda asincrona e' riservata a export POS, archivi ZIP ed estratti conto.",
         )
 
     from app.services.document_import_preview import verify_confirmation_token
@@ -3976,21 +4003,22 @@ async def accoda_upload_documento_voluminoso(
             detail="Anteprima obbligatoria mancante, scaduta o riferita a un file diverso.",
         )
 
-    if tipo_rilevato == "archivio_zip":
-        from app.services.document_import_jobs import enqueue_zip_import
+    if tipo_rilevato in ELABORATORI_IN_CODA:
+        from app.services.document_import_jobs import enqueue_import
 
-        job = await enqueue_zip_import(
+        job = await enqueue_import(
             Database.get_db(), content=content, filename=filename,
-            process=_process_zip_upload_a_blocchi,
+            document_type=tipo_rilevato,
+            process=ELABORATORI_IN_CODA[tipo_rilevato],
         )
         return {
             "success": True,
             "tipo_rilevato": tipo_rilevato,
-            "workflow": "ARCHIVIO_ZIP_ASYNC",
+            "workflow": "IMPORT_IN_CODA",
             "message": (
-                "Archivio ZIP elaborato."
+                "Import completato."
                 if job.get("status") == "completed"
-                else "Archivio ZIP in elaborazione; la pagina controlla automaticamente l'esito."
+                else "Import in elaborazione; la pagina controlla automaticamente l'esito."
             ),
             **job,
         }
@@ -4028,7 +4056,7 @@ async def stato_upload_documento_voluminoso(
     return {
         "success": job.get("status") == "completed",
         "workflow": (
-            "ARCHIVIO_ZIP_ASYNC" if job.get("document_type") == "archivio_zip"
+            "IMPORT_IN_CODA" if job.get("document_type") in ELABORATORI_IN_CODA
             else "POS_NUMIA_ASYNC_OPERATION_ID_V2"
         ),
         **job,

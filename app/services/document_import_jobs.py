@@ -177,16 +177,17 @@ async def enqueue_pos_import(
     )
 
 
-async def enqueue_zip_import(
-    db, *, content: bytes, filename: str,
+async def enqueue_import(
+    db, *, content: bytes, filename: str, document_type: str,
     process: Callable[[str, bytes], Awaitable[Dict[str, Any]]],
 ) -> Dict[str, Any]:
-    """Accoda un archivio ZIP: centinaia di file superano i 5 minuti del
-    proxy Render e i 2 del browser, e un upload interrotto si fermava a meta'.
-    ``process`` e' l'elaborazione canonica dell'upload (la stessa di sempre),
-    passata dalla rotta per non importare il router da qui."""
+    """Accoda un import voluminoso (archivio ZIP, estratto conto): centinaia
+    di righe superano i 5 minuti del proxy Render e i 2 del browser, e un
+    upload interrotto si fermava a meta'. ``process`` e' l'elaborazione
+    canonica dell'upload (la stessa di sempre), passata dalla rotta per non
+    importare il router da qui."""
     return await _enqueue(
-        db, content=content, filename=filename, document_type="archivio_zip",
+        db, content=content, filename=filename, document_type=document_type,
         job=lambda job_id: _run_job(
             db, job_id=job_id, filename=filename,
             runner=lambda: process(filename, content),
