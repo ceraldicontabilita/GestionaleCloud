@@ -1,5 +1,7 @@
 import os
 import secrets
+import json
+import logging
 from typing import Any
 from urllib.parse import urlencode
 
@@ -10,6 +12,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from .bootstrap import bootstrap, sanitized, runtime
 
 app = FastAPI(title="GestionaleCloud - OBP Sandbox Probe", version="2.0.0")
+logger = logging.getLogger("obp_sandbox_probe")
 
 OBP_BASE_URL = os.getenv("OBP_BASE_URL", "https://apisandbox.openbankproject.com").rstrip("/")
 OBP_VERSION = os.getenv("OBP_VERSION", "v7.0.0")
@@ -26,6 +29,7 @@ _oauth_token: dict[str, Any] | None = None
 async def run_bootstrap() -> None:
     # Sandbox only. No database writes, no ERP integration.
     await bootstrap()
+    logger.info("OBP_BOOTSTRAP_DIAGNOSTIC %s", json.dumps(_public_runtime(), ensure_ascii=False))
 
 
 def _public_runtime() -> dict[str, Any]:
