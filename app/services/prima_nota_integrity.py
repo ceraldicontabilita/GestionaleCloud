@@ -27,6 +27,14 @@ CAMPI_EVIDENZA_BANCA = (
     "carta_transaction_id",
 )
 
+# Righe di Prima Nota che non provano un pagamento. ``metodo_fornitore_
+# assente_provvisorio`` e' la cassa scritta d'ufficio quando il fornitore non
+# aveva un metodo (ramo spento il 15/09/2026): e' gia' fuori da saldi ed
+# elenchi (``prima_nota_module/common.py::SOURCES_ESCLUSE``), ma qui contava
+# ancora come pagamento. Cosi' 466 fatture risultavano pagate, sparivano dai
+# Provvisori e la conferma rispondeva «gia' registrata».
+SOURCES_NON_PAGAMENTO = ("metodo_fornitore_assente_provvisorio",)
+
 
 def totale_pagabile_al_fornitore(fattura: Dict[str, Any]) -> float:
     """Importo finanziario da saldare al fornitore, al netto ritenuta.
@@ -187,7 +195,7 @@ async def fatture_senza_pagamento_contabile_confermato(
     }
     projection = {
         "_id": 0, "id": 1, "fattura_id": 1, "invoice_id": 1,
-        "importo": 1,
+        "importo": 1, "source": 1,
         "riferimento": 1, **{campo: 1 for campo in CAMPI_EVIDENZA_BANCA},
     }
     # Una fattura puo' essere pagata in piu' passaggi (per esempio una quota
@@ -209,6 +217,8 @@ async def fatture_senza_pagamento_contabile_confermato(
     for collection in COLLEZIONI_PRIMA_NOTA:
         righe = await db[collection].find(filtro, projection).to_list(10000)
         for movimento in righe:
+            if movimento.get("source") in SOURCES_NON_PAGAMENTO:
+                continue
             if collection == "prima_nota_banca" and not any(
                 movimento.get(campo) not in (None, "")
                 for campo in CAMPI_EVIDENZA_BANCA

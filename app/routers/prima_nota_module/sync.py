@@ -28,6 +28,7 @@ from app.services.scritture_contabili import scrivi_movimento
 from app.services.prima_nota_integrity import (
     CAMPI_EVIDENZA_BANCA,
     CAMPI_ID_PRIMA_NOTA,
+    SOURCES_NON_PAGAMENTO,
     fatture_senza_pagamento_contabile_confermato,
     totale_pagabile_al_fornitore,
 )
@@ -842,6 +843,30 @@ async def registra_pagamento_fattura(
                 ],
                 "status": {"$nin": ["deleted", "archived"]},
             }, session=session)
+            if existing and existing.get("source") in SOURCES_NON_PAGAMENTO:
+                # La cassa scritta d'ufficio senza metodo non e' un pagamento.
+                # Confermata la Cassa, diventa la riga vera (stesso id, gia'
+                # citato dalla fattura) invece di restare accanto a una nuova.
+                if collection == COLLECTION_PRIMA_NOTA_CASSA:
+                    await db[collection].update_one(
+                        {"id": existing["id"]},
+                        {"$set": {
+                            **{k: v for k, v in movimento_base.items()
+                               if k != "created_at"},
+                            "importo": float(importo),
+                            "descrizione": desc,
+                            "metodo_pagamento": "cassa",
+                            "metodo_pagamento_effettivo": "cassa",
+                            "provvisorio": False,
+                            "source_precedente": existing.get("source"),
+                            "updated_at": now,
+                        },
+                         "$unset": {"stato": "", "canonico": "",
+                                    "motivo_provvisorio": ""}},
+                        session=session,
+                    )
+                    return (existing["id"], False)
+                existing = None
             if existing:
                 return (existing.get("id") or str(existing.get("_id")), True)
 
@@ -2991,10 +3016,15 @@ async def conferma_fattura_provvisoria(data: Dict = Body(...)) -> Dict:
             )
 
         now_iso = datetime.now(timezone.utc).isoformat()
+        # Per la Cassa la data e' quella dichiarata da chi ha pagato (per
+        # esempio il report pagamenti del titolare); senza, resta oggi.
+        data_dichiarata = str(data.get("data_pagamento") or "")[:10]
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", data_dichiarata):
+            data_dichiarata = now_iso[:10]
         data_pagamento_effettiva = (
             _campi_data_evidenza_banca(movimento_bancario).get("data")
             if metodo == "banca" and movimento_bancario
-            else now_iso[:10]
+            else data_dichiarata
         )
         campi_fattura = {
             "stato_pagamento": "pagata",
@@ -3064,6 +3094,22 @@ async def conferma_fattura_provvisoria(data: Dict = Body(...)) -> Dict:
         )
     except Exception:
         logger.exception("Audit conferma provvisoria fallito")
+
+    # Stesso evento del motore bancario: chiude partita aperta e alert
+    # «metodo non definito». Mai bloccante: la scrittura e' gia' fatta.
+    try:
+        from app.services.event_bus import EventTypes, propagate_event
+        await propagate_event(EventTypes.FATTURA_PAGATA, {
+            "fattura_id": fattura_id,
+            "metodo_pagamento": metodo,
+            "data_pagamento": data_pagamento_effettiva,
+            "movimento_id": pn_id,
+            "importo": importo,
+        }, db, source_module="prima_nota_provvisori")
+    except Exception as exc:
+        logger.exception(
+            "fattura.pagata non propagata per %s (%s)", fattura_id, type(exc).__name__,
+        )
 
     return {
         "success": True,

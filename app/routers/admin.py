@@ -474,6 +474,40 @@ async def fatture_ripubblica_evento_created_stato(
 
 
 @router.post(
+    "/fatture/pagamenti-dichiarati",
+    summary="Registra in Prima Nota i pagamenti del report fatture del titolare",
+)
+async def fatture_pagamenti_dichiarati(
+    dry_run: bool = Query(True, description="Se True conta soltanto, senza scrivere"),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Il report «Fatture ricevute» caricato da Documenti > Import con le
+    colonne del titolare (metodo, carta, numero assegno) parte da solo dopo
+    l'import. Questa rotta lo rilancia sulle righe gia' caricate: cassa
+    confermata, assegni collegati all'addebito, bonifici in attesa della
+    banca, metodo dei fornitori. Idempotente. Esito su
+    `GET /fatture/pagamenti-dichiarati/stato`.
+    """
+    richiedi_admin(current_user)
+    from app.services import pagamenti_dichiarati_titolare
+
+    return await pagamenti_dichiarati_titolare.avvia(Database.get_db(), dry_run=dry_run)
+
+
+@router.get(
+    "/fatture/pagamenti-dichiarati/stato",
+    summary="Esito dell'ultima registrazione dei pagamenti dichiarati",
+)
+async def fatture_pagamenti_dichiarati_stato(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    richiedi_admin(current_user)
+    from app.services import pagamenti_dichiarati_titolare
+
+    return await pagamenti_dichiarati_titolare.stato(Database.get_db())
+
+
+@router.post(
     "/fatture/azzera-scadenze",
     summary="Toglie le scadenze inventate dalle fatture fornitore e dalle partite",
 )
