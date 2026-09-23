@@ -98,7 +98,9 @@ async function testaViewport(browser, vp) {
 
   // /documenti apre il punto unico di caricamento. Il viewer appartiene
   // all'Archivio: attraversiamo la stessa azione visibile usata dall'operatore.
-  await page.getByRole('link', { name: /Archivio documenti/i }).click();
+  // Dentro il contenuto della pagina: la stessa voce sta anche nella colonna
+  // di navigazione, e un clic senza ambito troverebbe due link.
+  await page.getByTestId('page-content').getByRole('link', { name: /Archivio documenti/i }).click();
   await page.waitForTimeout(500);
 
   const bottoneVedi = page.getByRole('button', { name: 'Vedi', exact: true }).first();
