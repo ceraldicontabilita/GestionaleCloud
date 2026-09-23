@@ -142,3 +142,61 @@ def test_contanti_diversi_non_provano_la_stessa_chiusura():
     esito, righe = asyncio.run(scenario())
     assert esito["action"] == "created" and not esito.get("sostituisce")
     assert len(righe) == 2
+
+
+def test_ricaricare_completa_una_sostituzione_interrotta():
+    """Riavvio a meta' (23/09/2026, 16:21): la chiusura XML era entrata ma la
+    giornata storica no ritirata. Ricaricare lo stesso file la ritira."""
+    async def scenario():
+        db = _db()
+        await _storica(db, "2026-07-07", 1762.40, 595.10, 1167.30, id_=605)
+        await db["corrispettivi"].insert_one({
+            "id": "xml-0707", "data": "2026-07-07", "totale": 1762.40, "pagato_contanti": 595.10,
+            "corrispettivo_key": f"04523831214_2026-07-07_{RT}_2583", "matricola_rt": RT,
+            "numero_documento": "2583", "status": "imported",
+        })
+        esito = await ingest_corrispettivo_parsed(db, _xml("2026-07-07", "2583", 595.10, 1167.30))
+        vecchia = await db["corrispettivi"].find_one({"id": 605})
+        return esito, vecchia, await _attivi(db, "2026-07-07")
+
+    esito, vecchia, righe = asyncio.run(scenario())
+    assert esito["action"] == "duplicate"
+    assert vecchia["status"] == "deleted" and vecchia["sostituito_da"] == "xml-0707"
+    assert [r["id"] for r in righe] == ["xml-0707"]
+
+
+def test_il_ritiro_toglie_la_cassa_ricreata_per_la_giornata_ritirata():
+    async def scenario():
+        db = _db()
+        await db["corrispettivi"].insert_one({
+            "id": 606, "data": "2026-07-08", "totale": 2082.50, "pagato_contanti": 730.40,
+            "status": "deleted", "deleted_reason": "sostituita_da_chiusura_xml",
+        })
+        await db["prima_nota_cassa"].insert_one({
+            "id": "pn-ricreata", "data": "2026-07-08", "categoria": "Corrispettivi",
+            "importo": 730.40, "corrispettivo_id": "606",
+        })
+        esito = await ritira_giornate_superate(db, dry_run=False)
+        return esito, await _cassa(db, "2026-07-08")
+
+    esito, cassa = asyncio.run(scenario())
+    assert esito["prima_nota_ritirate_rimosse"] == 1
+    assert cassa == []
+
+
+def test_il_giro_della_prima_nota_salta_le_giornate_ritirate(monkeypatch):
+    from app.routers.prima_nota_module import sync as modulo
+
+    db = _db()
+    monkeypatch.setattr(modulo.Database, "get_db", staticmethod(lambda: db))
+
+    async def scenario():
+        await db["corrispettivi"].insert_one({
+            "id": 606, "data": "2026-07-08", "anno": 2026, "totale": 2082.50,
+            "pagato_contanti": 730.40, "status": "deleted",
+            "deleted_reason": "sostituita_da_chiusura_xml",
+        })
+        await modulo._sync_corrispettivi_impl(2026)
+        return await _cassa(db, "2026-07-08")
+
+    assert asyncio.run(scenario()) == []

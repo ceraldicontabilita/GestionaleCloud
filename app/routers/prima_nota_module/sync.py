@@ -1185,6 +1185,12 @@ async def _sync_corrispettivi_impl(anno: int = None) -> Dict:
             await stack.enter_async_context(batch_writes())
 
         for c in corrispettivi:
+            # Una giornata ritirata (sostituita dalla sua chiusura XML) o
+            # archiviata non ha piu' movimenti: rigenerarli contava i contanti
+            # due volte (08, 10, 25, 28 e 30/07/2026, ricreati il 23/09).
+            if (c.get("status") in ("deleted", "archived", "archiviata")
+                    or c.get("entity_status") == "deleted"):
+                continue
             corr_id = c.get("id", "")
 
             # Bug corretto 17/07/2026 (verificato live: cassa da 428k a 4,3M in
