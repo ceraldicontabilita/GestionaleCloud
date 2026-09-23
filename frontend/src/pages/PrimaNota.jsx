@@ -13,6 +13,8 @@ import LinkContropartita, {
   ROTTE_CONTROPARTITA, movimentoEstrattoContoDi,
 } from '../components/LinkContropartita';
 import FinanziamentoSoci from './FinanziamentoSoci';
+import { PageHeader } from '../components/ds/PageHeader';
+import { voceDi } from '../navigation.config';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import {
   Banknote,
@@ -290,7 +292,7 @@ export function BadgeCategoria({ categoria }) {
 }
 
 /* ------------------------------ card numero ------------------------------ */
-function Card({ titolo, valore, colore, onEdit, testId }) {
+function Card({ titolo, valore, colore }) {
   return (
     <div
       style={{
@@ -298,25 +300,9 @@ function Card({ titolo, valore, colore, onEdit, testId }) {
         borderLeft: `4px solid ${colore}`, padding: '10px 14px', minWidth: 0,
       }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
-        <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
-          {titolo}
-        </span>
-        {onEdit && (
-          <button
-            onClick={onEdit}
-            data-testid={testId}
-            title="Modifica"
-            style={{
-              background: '#fef3c7', border: '1px solid #d97706', borderRadius: 6,
-              width: 40, height: 40, display: 'inline-flex', alignItems: 'center',
-              justifyContent: 'center', padding: 0, cursor: 'pointer',
-            }}
-          >
-            <Pencil size={18} />
-          </button>
-        )}
-      </div>
+      <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+        {titolo}
+      </span>
       <div
         style={{
           fontSize: 17, fontWeight: 800, color: colore, whiteSpace: 'nowrap',
@@ -2296,12 +2282,60 @@ export default function PrimaNota() {
   const saldoFinale = (datiAttivi.saldo_precedente || 0) +
     (datiAttivi.movimenti || []).reduce((s, m) => s + (m.tipo === 'entrata' ? 1 : -1) * Math.abs(m.importo || 0), 0);
 
+  // Le pastiglie della testata rispondono a «come sta questo conto?»: sono gli
+  // stessi quattro numeri che prima stavano nei riquadri sotto le schede,
+  // calcolati allo stesso modo. Il colore c'è solo dove c'è un giudizio: un
+  // saldo negativo di cassa o di banca va guardato.
+  const pastiglieTestata = (() => {
+    if (loading || loadError) return null;
+    if (sezione === 'cassa' || sezione === 'banca') {
+      const conto = sezione === 'cassa' ? 'Cassa' : 'Banca';
+      return [
+        {
+          etichetta: `Riporto al 01/01/${anno}`,
+          valore: eur(datiAttivi.saldo_precedente),
+          nota: `Saldo ${conto.toLowerCase()} di fine ${anno - 1}`,
+          azione: {
+            etichetta: `Modifica il saldo iniziale ${conto}`,
+            onClick: () => modificaRiporto(sezione),
+            testId: `modifica-riporto-${sezione}`,
+          },
+        },
+        { etichetta: `Entrate ${anno}`, valore: eur(datiAttivi.totale_entrate), nota: `${conto}, Dare` },
+        { etichetta: `Uscite ${anno}`, valore: eur(datiAttivi.totale_uscite), nota: `${conto}, Avere` },
+        {
+          etichetta: `Saldo ${conto}`,
+          valore: eur(saldoFinale),
+          nota: 'Riporto + entrate − uscite',
+          tono: saldoFinale < 0 ? 'male' : 'neutro',
+        },
+      ];
+    }
+    if (sezione === 'provvisori' && conteggiProvvisori.caricato) {
+      const daDecidere = conteggiProvvisori.totale_da_decidere || 0;
+      const inAttesa = conteggiProvvisori.totale_in_attesa_banca || 0;
+      return [
+        {
+          etichetta: 'Da decidere', valore: String(daDecidere),
+          nota: 'Fatture aperte: cassa o banca lo decidi tu', tono: daDecidere > 0 ? 'attenzione' : 'ok',
+        },
+        {
+          etichetta: 'In attesa della banca', valore: String(inAttesa),
+          nota: "Fatture da pagare in banca, senza ancora l'addebito", tono: inAttesa > 0 ? 'attenzione' : 'ok',
+        },
+      ];
+    }
+    return null;
+  })();
+
   const tab = (chiave, etichetta) => (
     <button
       key={chiave}
       onClick={() => setHs('sezione', chiave)}
       style={{
-        flex: 1, padding: '11px 8px', borderRadius: 10, fontSize: 13.5, fontWeight: 700, cursor: 'pointer',
+        // flex-basis automatica: su telefono le schede vanno a capo invece di
+        // restringersi fino a tagliare il nome («Cass», «Banc»).
+        flex: '1 1 auto', padding: '11px 8px', borderRadius: 10, fontSize: 13.5, fontWeight: 700, cursor: 'pointer',
         background: sezione === chiave ? BLU : 'white',
         color: sezione === chiave ? 'white' : '#64748b',
         border: `1px solid ${sezione === chiave ? BLU : '#e2e8f0'}`,
@@ -2314,6 +2348,13 @@ export default function PrimaNota() {
 
   return (
     <div style={{ padding: '14px clamp(10px, 3vw, 28px)', maxWidth: 1280, margin: '0 auto' }}>
+      <PageHeader
+        title="Prima nota"
+        subtitle="Ogni euro entrato o uscito da cassa e banca, giorno per giorno, e il saldo che ne risulta."
+        famiglia={voceDi('/prima-nota')?.gruppo}
+        pastiglie={pastiglieTestata}
+        style={{ marginBottom: 14 }}
+      />
       <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
         {tab('cassa', `💵 Cassa ${anno}`)}
         {tab('banca', `🏦 Banca ${anno}`)}
@@ -2355,17 +2396,7 @@ export default function PrimaNota() {
 
       {!loading && !loadError && sezione !== 'provvisori' && sezione !== 'soci' && sezione !== 'sumup' && (
         <>
-          {/* 4 numeri, nessuna card doppia */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
-            <Card
-              titolo="Riporto 01/01" valore={datiAttivi.saldo_precedente} colore="#6b7280"
-              onEdit={() => modificaRiporto(sezione)} testId={`modifica-riporto-${sezione}`}
-            />
-            <Card titolo={`Entrate (Dare) ${anno}`} valore={datiAttivi.totale_entrate} colore={VERDE} />
-            <Card titolo={`Uscite (Avere) ${anno}`} valore={datiAttivi.totale_uscite} colore={ROSSO} />
-            <Card titolo="Saldo" valore={saldoFinale} colore={saldoFinale >= 0 ? BLU : ROSSO} />
-          </div>
-
+          {/* Riporto, entrate, uscite e saldo stanno nella testata della pagina. */}
           {sezione === 'banca' && <InAttesaDocumento anno={anno} onRicarica={carica} />}
           {sezione === 'banca' && <CartaNexi anno={anno} />}
 
