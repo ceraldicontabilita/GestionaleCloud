@@ -57,6 +57,9 @@ class Check:
 
 BACKEND_CHECKS = [
     Check("backend", "health", f"{BACKEND_URL}/api/health"),
+    Check("hr", "health", f"{BACKEND_URL}/hr/api/health"),
+    Check("menu", "health", f"{BACKEND_URL}/menu/api/health"),
+    Check("lotti", "health", f"{BACKEND_URL}/lotti/api/health"),
     Check("fornitori", "suppliers compat", f"{BACKEND_URL}/api/suppliers?limit=5", protected=True),
     Check("fornitori", "fornitori alias", f"{BACKEND_URL}/api/fornitori?limit=5", protected=True),
     Check("dashboard", "bilancio istantaneo", f"{BACKEND_URL}/api/dashboard/bilancio-istantaneo?anno={SMOKE_ANNO}", protected=True),
@@ -213,8 +216,6 @@ def main() -> int:
     for path in FRONTEND_PATHS:
         results.append(run_frontend_check(path))
 
-    # Almeno un asset JavaScript reale deve essere scaricabile. Senza questo
-    # check anche un index.html vecchio o monco risulterebbe consegnato.
     _, index_body = http_request(f"{FRONTEND_URL}/", accept="text/html")
     scripts = re.findall(r'<script[^>]+src="([^"]+)"', index_body)
     if scripts:
