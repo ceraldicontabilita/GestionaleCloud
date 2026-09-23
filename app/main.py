@@ -253,6 +253,15 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.exception("Pulizia doppioni estratto conto non avviata")
 
+    # Giornate di corrispettivi senza documento rimaste accanto alla loro
+    # chiusura XML (contanti due volte in Prima Nota Cassa). Una volta sola.
+    try:
+        from app.routers.invoices.corrispettivi_helpers import avvia_ritiro_giornate_superate
+
+        avvia_ritiro_giornate_superate(Database.get_db())
+    except Exception:
+        logger.exception("Ritiro giornate corrispettivi superate non avviato")
+
     # Operazione una tantum autorizzata: elimina i dati operativi antecedenti
     # al 2026 solo in produzione Render, dopo backup separato per collection.
     # Cedolini, prima nota salari e bonifici collegati sono esclusi e verificati.

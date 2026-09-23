@@ -17,7 +17,13 @@ from app.services import scritture_contabili as sc
 
 def _match(doc, query):
     for k, v in query.items():
+        if k == "$or":
+            if not any(_match(doc, sub) for sub in v):
+                return False
+            continue
         if isinstance(v, dict):
+            if "$exists" in v and (k in doc) != bool(v["$exists"]):
+                return False
             if "$in" in v and doc.get(k) not in v["$in"]:
                 return False
             if "$nin" in v and doc.get(k) in v["$nin"]:
