@@ -146,7 +146,7 @@ describe('Import documenti - corrispettivo duplicato', () => {
     render(<ImportDocumenti />);
 
     const zip = new File(['PK-test'], 'documenti.zip', { type: 'application/zip' });
-    fireEvent.change(screen.getByTestId('zip-file-input'), { target: { files: [zip] } });
+    fireEvent.change(screen.getByTestId('file-input'), { target: { files: [zip] } });
 
     expect(await screen.findByText('1 file in coda')).toBeInTheDocument();
     expect(screen.getByText('documenti.zip')).toBeInTheDocument();
@@ -187,7 +187,7 @@ describe('Import documenti - corrispettivo duplicato', () => {
     render(<ImportDocumenti />);
 
     const zip = new File(['PK-test'], '20260923_ExportFattureRicevute.zip', { type: 'application/zip' });
-    fireEvent.change(screen.getByTestId('zip-file-input'), { target: { files: [zip] } });
+    fireEvent.change(screen.getByTestId('file-input'), { target: { files: [zip] } });
     fireEvent.click(await screen.findByTestId('upload-btn'));
     await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByTestId('upload-btn'));
@@ -281,7 +281,7 @@ describe('Import documenti - corrispettivo duplicato', () => {
     render(<ImportDocumenti />);
 
     const zip = new File(['PK-test'], 'corrispettivi.zip', { type: 'application/zip' });
-    fireEvent.change(screen.getByTestId('zip-file-input'), { target: { files: [zip] } });
+    fireEvent.change(screen.getByTestId('file-input'), { target: { files: [zip] } });
     expect(screen.getByTestId('upload-btn')).toHaveTextContent('1. Controlla e prepara importazione');
 
     fireEvent.click(screen.getByTestId('upload-btn'));

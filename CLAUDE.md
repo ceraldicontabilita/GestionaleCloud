@@ -706,7 +706,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   444 dal 30/06) e il buco cresce da solo. Quante restano lo dice `arretrato`.
 - **Una fattura che entra nel gestionale alimenta Lotti subito**: l'handler `fattura.created` importa
   **quella sola** fattura (mai un ripasso d'archivio: il giro Drive ne porta 25 per volta). Lotti è a
-  valle, quindi un suo guasto non fa mai fallire l'import contabile. Il giro dei 15 minuti resta come rete.
+  valle: un suo guasto o la sua lentezza non fermano l'import contabile (coda in sottofondo). Il giro dei 15 minuti è la rete.
 - **«Fattura attiva» si decide in un posto solo**, e per Lotti vale lo stesso criterio del libro giornale:
   fuori `deleted`, `archived`/`archiviata`, `archivio_storico` e le collisioni di identità aperte. Un
   filtro parallelo che guardava solo `deleted` mandava a Lotti 1.444 fatture invece di 889.

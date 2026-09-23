@@ -195,6 +195,30 @@ async def enqueue_import(
     )
 
 
+MESSAGGIO_INTERROTTO = (
+    "Import interrotto da un riavvio del servizio: ricarica lo stesso file, "
+    "i documenti gia' importati vengono saltati."
+)
+
+
+async def segna_interrotti_all_avvio(db) -> int:
+    """Un job «in corso» all'avvio non ha piu' nessuno che lo lavora: il
+    contenuto viveva nella memoria del processo spento. Senza questo la pagina
+    lo seguiva per sempre (23/09/2026: due ZIP «running» dopo tre deploy)."""
+    interrotti = 0
+    for job in await db[COLLECTION].find(
+        {"status": {"$in": ["queued", "running"]}}, {"_id": 0, "id": 1},
+    ).to_list(None):
+        if not job.get("id") or job["id"] in _ACTIVE_TASKS:
+            continue
+        await db[COLLECTION].update_one({"id": job["id"]}, {"$set": {
+            "status": "failed", "failed_at": _now(), "updated_at": _now(),
+            "error": MESSAGGIO_INTERROTTO,
+        }})
+        interrotti += 1
+    return interrotti
+
+
 async def get_import_job(db, job_id: str) -> Dict[str, Any] | None:
     active = _ACTIVE_TASKS.get(job_id)
     pending = _PENDING_JOBS.get(job_id)

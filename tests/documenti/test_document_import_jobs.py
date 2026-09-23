@@ -132,3 +132,26 @@ def test_zip_in_coda_salva_l_esito_e_non_si_rielabora(monkeypatch):
     assert stato["result"]["imported"] == 398
     assert secondo["queued"] is False
     assert chiamate == [("20260923_ExportFattureRicevute.zip", b"PK-zip")]
+
+
+def test_all_avvio_un_import_rimasto_in_corso_diventa_interrotto():
+    """Un job «running» all'avvio non ha piu' nessuno che lo lavori: la pagina
+    deve dire di ricaricare il file invece di seguirlo per sempre."""
+    import asyncio
+
+    from app.services import document_import_jobs as jobs
+    from app.services.archivio_documenti_memoria import ClientArchivioMemoria
+
+    db = ClientArchivioMemoria()["import_interrotti"]
+
+    async def scenario():
+        await db[jobs.COLLECTION].insert_one({"id": "DOC-IMPORT-a", "status": "running"})
+        await db[jobs.COLLECTION].insert_one({"id": "DOC-IMPORT-b", "status": "completed"})
+        n = await jobs.segna_interrotti_all_avvio(db)
+        return n, {j["id"]: j for j in await db[jobs.COLLECTION].find({}).to_list(10)}
+
+    n, righe = asyncio.run(scenario())
+    assert n == 1
+    assert righe["DOC-IMPORT-a"]["status"] == "failed"
+    assert "ricarica lo stesso file" in righe["DOC-IMPORT-a"]["error"]
+    assert righe["DOC-IMPORT-b"]["status"] == "completed"
