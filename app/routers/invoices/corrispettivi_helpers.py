@@ -107,6 +107,34 @@ def _build_corrispettivo_doc(parsed: Dict[str, Any], filename: str, source: str)
     }
 
 
+def _ha_identita_documento(doc: Dict[str, Any]) -> bool:
+    """Una riga con chiave XML, registratore o progressivo e' una chiusura.
+    Senza nessuno dei quattro e' una giornata registrata senza documento
+    (chiusura storica, manuale): il suo XML la sostituisce."""
+    return any(str(doc.get(campo) or "").strip() for campo in (
+        "corrispettivo_key", "matricola_rt", "id_dispositivo", "progressivo",
+        "numero_documento",
+    ))
+
+
+def _stessi_contanti(storica: Dict[str, Any], contanti_xml: Any) -> bool:
+    """Prova che la giornata storica e' la stessa chiusura dell'XML: i
+    contanti coincidono al centesimo. Il totale non basta (la chiusura storica
+    sommava imponibile e IVA, l'XML conta contanti + elettronico) e la sola
+    data nemmeno: senza contanti dichiarati la riga resta dov'e'."""
+    if storica.get("pagato_contanti") in (None, ""):
+        return False
+    return to_cents(storica.get("pagato_contanti")) == to_cents(contanti_xml)
+
+
+def _altra_chiusura(existing: Dict[str, Any], key: str) -> bool:
+    """Due chiavi XML diverse sono due chiusure distinte dello stesso giorno
+    (il 06/09/2026 lo stesso RT ne ha trasmesse due, 597,40 e 1.599,50 EUR):
+    si sommano, non si scartano come doppione."""
+    altra = str(existing.get("corrispettivo_key") or "").strip()
+    return bool(key and altra and altra != key)
+
+
 async def _find_existing_corrispettivo(db, corr_doc: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
     Anti-duplicato a più livelli.
@@ -125,27 +153,76 @@ async def _find_existing_corrispettivo(db, corr_doc: Dict[str, Any]) -> Optional
         if existing:
             return existing
 
-    # Livello 2: stessa data + stessa matricola (stesso registratore)
+    # Livello 2: stessa data + stessa matricola (stesso registratore), ma
+    # solo se la riga trovata non e' un'altra chiusura con la sua chiave.
     if data and matricola:
-        existing = await db["corrispettivi"].find_one({
+        for existing in await db["corrispettivi"].find({
             "data": data,
             "matricola_rt": matricola,
             **not_deleted,
-        })
-        if existing:
-            return existing
+        }).to_list(50):
+            if not _altra_chiusura(existing, key):
+                return existing
 
     # Livello 3: stessa data + totale ±0.01 (stesso incasso giornaliero da provvisorio/manuale)
     if data and totale > 0:
-        existing = await db["corrispettivi"].find_one({
+        for existing in await db["corrispettivi"].find({
             "data": data,
             "totale": {"$gte": totale - 0.01, "$lte": totale + 0.01},
             **not_deleted,
-        })
-        if existing:
-            return existing
+        }).to_list(50):
+            if not _altra_chiusura(existing, key):
+                return existing
+
+    # Livello 4: la giornata senza documento dello stesso giorno, anche con un
+    # totale diverso di pochi euro (la chiusura storica sommava imponibile e
+    # IVA, l'XML conta contanti + elettronico): e' la stessa giornata, e
+    # tenerle entrambe contava i contanti due volte in Prima Nota Cassa
+    # (08, 10, 25, 28 e 30/07/2026). Una chiusura XML vuota non sostituisce nulla.
+    if key and data and totale > 0:
+        for existing in await db["corrispettivi"].find({"data": data, **not_deleted}).to_list(50):
+            if (not _ha_identita_documento(existing)
+                    and _stessi_contanti(existing, corr_doc.get("pagato_contanti"))):
+                return existing
 
     return None
+
+
+async def sostituisci_giornata_senza_documento(
+    db, vecchia: Dict[str, Any], nuovo_id: str,
+) -> Dict[str, Any]:
+    """Ritira la riga senza documento superata dalla chiusura XML.
+
+    La riga resta (``status: deleted``, ``sostituito_da``) per l'audit; le
+    sue righe di Prima Nota escono per id e la sua scrittura a giornale, se
+    c'e', si storna. Idempotente: una riga gia' ritirata non si ritocca.
+    """
+    vecchio_id = vecchia.get("id")
+    esito = {"corrispettivo_id": vecchio_id, "sostituito_da": nuovo_id,
+             "prima_nota_rimosse": 0, "giornale": None}
+    if vecchio_id in (None, "") or vecchia.get("status") == "deleted":
+        return esito
+    ids = list(dict.fromkeys([vecchio_id, str(vecchio_id)]))
+    for collezione in ("prima_nota_cassa", "prima_nota_banca"):
+        righe = await db[collezione].find(
+            {"corrispettivo_id": {"$in": ids}}, {"_id": 0, "id": 1},
+        ).to_list(50)
+        for riga in righe:
+            if riga.get("id"):
+                await db[collezione].delete_one({"id": riga["id"]})
+                esito["prima_nota_rimosse"] += 1
+    from app.services.registrazione_contabile import storna_registrazione_corrispettivo
+    esito["giornale"] = (await storna_registrazione_corrispettivo(
+        db, vecchio_id, "giornata sostituita dalla chiusura XML")).get("stato")
+    await db["corrispettivi"].update_one({"id": vecchio_id}, {"$set": {
+        "status": "deleted",
+        "deleted_reason": "sostituita_da_chiusura_xml",
+        "sostituito_da": nuovo_id,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }})
+    logger.info("[Corrispettivi] giornata %s senza documento (id %s) sostituita da %s: %s",
+                vecchia.get("data"), vecchio_id, nuovo_id, esito)
+    return esito
 
 
 async def _delete_prima_nota_for_corrispettivo(db, corrispettivo_id: str, data: str) -> None:
@@ -165,7 +242,12 @@ async def _delete_prima_nota_for_corrispettivo(db, corrispettivo_id: str, data: 
                     "corrispettivo_import", "corrispettivo_pos",
                     "xml_import", "sincronizzazione", "corrispettivi_sync",
                     "zip_upload", "manual_entry", "manual", "corrispettivo_manuale",
-                ]}, "categoria": "Corrispettivi"},
+                ]}, "categoria": "Corrispettivi",
+                 # Solo le righe senza corrispettivo o di QUESTO corrispettivo:
+                 # la seconda chiusura dello stesso giorno non cancella la
+                 # cassa della prima.
+                 "$or": [{"corrispettivo_id": {"$exists": False}},
+                         {"corrispettivo_id": {"$in": [None, "", corrispettivo_id]}}]},
                 {"categoria": "Corrispettivi", "corrispettivo_id": {"$in": [None, ""]}},
                 # Bug A (segnalato dall'utente 14/07/2026): la quick-form
                 # "💳 POS" di Prima Nota (PrimaNota.jsx::handleSavePos) crea
@@ -277,6 +359,15 @@ async def ingest_corrispettivo_parsed(
             # Forziamo update_if_exists anche se il chiamante non l'ha chiesto:
             # promuovere provvisorio → definitivo è sempre sicuro
             update_if_exists = True
+
+    # Giornata senza documento (chiusura storica) superata dall'XML: la
+    # chiusura entra come riga propria e la vecchia si ritira dopo, cosi'
+    # l'incasso non manca in nessun momento.
+    da_sostituire = None
+    if (existing and source == "xml" and not was_manuale_provvisorio
+            and totale > 0 and not _ha_identita_documento(existing)
+            and _stessi_contanti(existing, corr_doc.get("pagato_contanti"))):
+        da_sostituire, existing = existing, None
 
     if existing:
         if not update_if_exists:
@@ -420,8 +511,13 @@ async def ingest_corrispettivo_parsed(
     await _check_coerenza_pos(db, corr_doc)
     await _registra_in_partita_doppia(db, corr_doc)
 
+    sostituzione = None
+    if da_sostituire:
+        sostituzione = await sostituisci_giornata_senza_documento(db, da_sostituire, corrispettivo_id)
+
     return {
         "action": "created",
+        "sostituisce": sostituzione,
         "corrispettivo_id": corrispettivo_id,
         "data": data_str,
         "totale": totale,
@@ -584,3 +680,72 @@ async def cleanup_duplicate_corrispettivi(db, anno: Optional[int] = None) -> Dic
             groups += 1
 
     return {"gruppi_duplicati": groups, "corrispettivi_eliminati": deleted, "anno": anno}
+
+
+MARCATORE_GIORNATE_SUPERATE = "corrispettivi_giornate_superate_da_xml_20260923_v1"
+_task_giornate_superate = None
+
+
+async def ritira_giornate_superate(db, *, dry_run: bool = True) -> Dict[str, Any]:
+    """Giornate senza documento rimaste accanto alla loro chiusura XML.
+
+    Prima della regola «livello 4» l'XML con un totale diverso di pochi euro
+    non riconosceva la chiusura storica dello stesso giorno: due righe, e i
+    contanti due volte in Prima Nota Cassa. Qui la chiusura XML (con chiave e
+    importo) sostituisce la riga senza documento, come fa ora l'import.
+    """
+    righe = await db["corrispettivi"].find(
+        {"status": {"$nin": ["deleted", "archived"]}, "entity_status": {"$ne": "deleted"}},
+        {"_id": 0, "id": 1, "data": 1, "totale": 1, "status": 1, "corrispettivo_key": 1,
+         "matricola_rt": 1, "id_dispositivo": 1, "progressivo": 1, "numero_documento": 1,
+         "pagato_contanti": 1},
+    ).to_list(None)
+    per_giorno: Dict[str, list] = {}
+    for riga in righe:
+        per_giorno.setdefault(str(riga.get("data") or "")[:10], []).append(riga)
+    esiti = []
+    for giorno, del_giorno in sorted(per_giorno.items()):
+        xml = [r for r in del_giorno
+               if str(r.get("corrispettivo_key") or "").strip() and _to_float(r.get("totale")) > 0]
+        contanti_xml = sum(to_cents(r.get("pagato_contanti")) for r in xml) / 100
+        senza = [r for r in del_giorno
+                 if not _ha_identita_documento(r) and _stessi_contanti(r, contanti_xml)]
+        if not giorno or not xml or not senza:
+            continue
+        for vecchia in senza:
+            voce = {"data": giorno, "corrispettivo_id": vecchia.get("id"),
+                    "totale": vecchia.get("totale"), "sostituito_da": xml[0].get("id"),
+                    "totale_xml": round(sum(_to_float(r.get("totale")) for r in xml), 2)}
+            if not dry_run:
+                voce.update(await sostituisci_giornata_senza_documento(db, vecchia, xml[0].get("id")))
+            esiti.append(voce)
+    return {"dry_run": dry_run, "giornate": len(esiti), "dettaglio": esiti}
+
+
+async def _ritira_giornate_superate_una_tantum(db) -> None:
+    corrente = await db["migration_runs"].find_one({"id": MARCATORE_GIORNATE_SUPERATE})
+    if corrente and corrente.get("status") == "completed":
+        return
+    stato = "failed"
+    try:
+        risultato = await ritira_giornate_superate(db, dry_run=False)
+        stato = "completed"
+    except Exception as exc:  # noqa: BLE001 - l'esito resta in migration_runs
+        logger.exception("Giornate corrispettivi superate non ritirate (%s)", type(exc).__name__)
+        risultato = {"success": False, "reason": f"{type(exc).__name__}: {exc}"}
+    await db["migration_runs"].update_one(
+        {"id": MARCATORE_GIORNATE_SUPERATE},
+        {"$set": {"id": MARCATORE_GIORNATE_SUPERATE, "status": stato,
+                  "finished_at": datetime.now(timezone.utc).isoformat(), "result": risultato}},
+        upsert=True,
+    )
+
+
+def avvia_ritiro_giornate_superate(db) -> None:
+    """All'avvio, in background e una volta sola (migration_runs)."""
+    import asyncio
+
+    global _task_giornate_superate
+    if db is None or (_task_giornate_superate is not None and not _task_giornate_superate.done()):
+        return
+    _task_giornate_superate = asyncio.create_task(_ritira_giornate_superate_una_tantum(db))

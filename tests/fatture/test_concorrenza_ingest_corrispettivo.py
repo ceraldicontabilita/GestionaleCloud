@@ -54,6 +54,15 @@ class _RaceyColl:
         await asyncio.sleep(0)
         self.docs.append(dict(doc))
 
+    def find(self, query, *a, **k):
+        coll = self
+
+        class _Cursore:
+            async def to_list(self, _n=None):
+                await asyncio.sleep(0)
+                return [dict(d) for d in coll.docs if _match(d, query)]
+        return _Cursore()
+
     async def update_one(self, query, update, *a, **k):
         await asyncio.sleep(0)
         for d in self.docs:
