@@ -168,7 +168,7 @@ describe('Import documenti - corrispettivo duplicato', () => {
     mockPreviewThenImport('archivio_zip', {
       success: true,
       tipo_rilevato: 'archivio_zip',
-      workflow: 'ARCHIVIO_ZIP_ASYNC',
+      workflow: 'IMPORT_IN_CODA',
       status: 'queued',
       job_id: 'DOC-IMPORT-zip',
     });
@@ -199,6 +199,38 @@ describe('Import documenti - corrispettivo duplicato', () => {
       expect.objectContaining({ timeout: 10000 }),
     );
     expect(await screen.findByText(/398 importati/)).toBeInTheDocument();
+  });
+
+  it('accoda l\'estratto conto e non mostra un timeout quando i dati sono entrati', async () => {
+    mockPreviewThenImport('estratto_conto', {
+      success: true,
+      tipo_rilevato: 'estratto_conto',
+      workflow: 'IMPORT_IN_CODA',
+      status: 'queued',
+      job_id: 'DOC-IMPORT-ec',
+    });
+    api.get.mockResolvedValue({
+      data: {
+        status: 'completed',
+        result: {
+          success: true,
+          imported: 87,
+          duplicates: 1185,
+          message: 'Estratto conto importato: 87 movimenti nuovi, 1185 duplicati saltati.',
+        },
+      },
+    });
+    render(<ImportDocumenti />);
+
+    const csv = new File(['csv'], 'ElencoEntrateUsciteAndamento.csv', { type: 'text/csv' });
+    fireEvent.change(screen.getByTestId('file-input'), { target: { files: [csv] } });
+    fireEvent.click(await screen.findByTestId('upload-btn'));
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByTestId('upload-btn'));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2));
+    expect(api.post.mock.calls[1][0]).toBe('/api/documenti/upload-auto/queue');
+    expect(await screen.findByText(/87 movimenti nuovi/)).toBeInTheDocument();
   });
 
   it('accoda gli export POS grandi e mostra automaticamente il risultato finale', async () => {

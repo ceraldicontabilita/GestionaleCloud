@@ -243,6 +243,16 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.exception("Bonifiche doppioni Prima Nota all'avvio non eseguite")
 
+    # Pulizia autorizzata dal titolare il 23/09/2026: il CSV BPM di quel
+    # giorno ha reimportato gennaio–agosto con descrizioni diverse. In
+    # background e una volta sola (migration_runs).
+    try:
+        from app.services.doppioni_estratto_conto import avvia_in_background
+
+        avvia_in_background(Database.get_db())
+    except Exception:
+        logger.exception("Pulizia doppioni estratto conto non avviata")
+
     # Operazione una tantum autorizzata: elimina i dati operativi antecedenti
     # al 2026 solo in produzione Render, dopo backup separato per collection.
     # Cedolini, prima nota salari e bonifici collegati sono esclusi e verificati.
