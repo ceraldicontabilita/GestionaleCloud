@@ -29,7 +29,9 @@ _oauth_token: dict[str, Any] | None = None
 async def run_bootstrap() -> None:
     # Sandbox only. No database writes, no ERP integration.
     await bootstrap()
-    logger.info("OBP_BOOTSTRAP_DIAGNOSTIC %s", json.dumps(_public_runtime(), ensure_ascii=False))
+    diagnostic_json = json.dumps(_public_runtime(), ensure_ascii=False)
+    logger.info("OBP_BOOTSTRAP_DIAGNOSTIC %s", diagnostic_json)
+    print("OBP_BOOTSTRAP_DIAGNOSTIC " + diagnostic_json, flush=True)
 
 
 def _public_runtime() -> dict[str, Any]:
