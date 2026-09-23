@@ -555,4 +555,14 @@ async def stato(db) -> Dict[str, Any]:
     if not documento:
         return {"stato": "mai_avviato"}
     documento.pop("chiave", None)
+    in_esecuzione = _job_lock.locked() or (_job_task is not None and not _job_task.done())
+    if documento.get("stato") == "in_corso" and not in_esecuzione:
+        # Un deploy riavvia il processo e uccide il giro a meta': lo stato
+        # salvato resterebbe «in_corso» per sempre. Le righe senza esito le
+        # riprende il giro dei 30 minuti (sono idempotenti).
+        documento["stato"] = "interrotto"
+        documento["nota"] = (
+            "Giro interrotto da un riavvio: le righe senza esito le riprende "
+            "la riconciliazione automatica, oppure rilancia questo comando."
+        )
     return documento

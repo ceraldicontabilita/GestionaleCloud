@@ -293,3 +293,16 @@ def test_la_stessa_fattura_due_volte_nel_report_non_e_un_errore(db):
     righe = asyncio.run(db["prima_nota_cassa"].find(
         {"fattura_id": "f-siro-cassa", "status": {"$ne": "deleted"}}, {"_id": 0}).to_list(10))
     assert len(righe) == 1
+
+
+def test_giro_ucciso_da_un_riavvio_si_dichiara_interrotto():
+    """Un deploy a meta' giro lasciava lo stato «in_corso» per sempre."""
+    async def scenario():
+        db = ClientArchivioMemoria()["test_stato_interrotto"]
+        await db["sistema_stato"].insert_one({
+            "chiave": pagamenti.CHIAVE_JOB, "stato": "in_corso",
+            "iniziato_at": "2026-09-23T06:55:56+00:00",
+        })
+        return await pagamenti.stato(db)
+
+    assert asyncio.run(scenario())["stato"] == "interrotto"
