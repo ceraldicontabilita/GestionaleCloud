@@ -22,3 +22,8 @@ Enable Banking's regulated PSD2 account-information flow.
 The production application in Enable Banking must whitelist this callback:
 
 `https://gestionalecloud-banco-bpm-probe.onrender.com/callback`
+
+Registration support pages:
+
+- Privacy: `https://gestionalecloud-banco-bpm-probe.onrender.com/privacy`
+- Terms: `https://gestionalecloud-banco-bpm-probe.onrender.com/terms`

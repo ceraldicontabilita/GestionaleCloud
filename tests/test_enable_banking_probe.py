@@ -65,6 +65,17 @@ def test_health_is_explicitly_isolated():
     assert health["session_present_in_memory"] is False
 
 
+def test_registration_pages_are_available_without_configuration():
+    _reset_state()
+    with TestClient(main.app, base_url="https://testserver") as client:
+        privacy = client.get("/privacy")
+        terms = client.get("/terms")
+    assert privacy.status_code == 200
+    assert "non utilizza Supabase" in privacy.text
+    assert terms.status_code == 200
+    assert "sola lettura" in terms.text
+
+
 def test_connect_and_callback_keep_only_sanitized_results(monkeypatch):
     _reset_state()
     monkeypatch.setattr(main, "APPLICATION_ID", "application-id")

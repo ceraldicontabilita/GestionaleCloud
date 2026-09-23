@@ -252,6 +252,44 @@ async def health() -> dict[str, Any]:
     }
 
 
+@app.get("/privacy", response_class=HTMLResponse)
+async def privacy() -> str:
+    content = """
+      <h1>Informativa privacy · prova Banco BPM</h1>
+      <div class="card">
+        <p>Questa applicazione è una prova tecnica interna di Ceraldi Group SRL per
+        leggere, con consenso esplicito, i propri conti Banco BPM tramite Enable Banking.</p>
+        <p>Le credenziali bancarie, i PIN e i codici OTP non sono raccolti
+        dall'applicazione. L'autenticazione avviene sui sistemi di Banco BPM ed Enable Banking.</p>
+        <p>Il probe non utilizza Supabase o il database di GestionaleCloud. Identificativi
+        di sessione e conto restano nella memoria volatile del processo e vengono eliminati
+        al riavvio. La pagina diagnostica espone soltanto esiti e conteggi.</p>
+        <p>Il contatto per la protezione dei dati è quello indicato nella registrazione
+        dell'applicazione Enable Banking.</p>
+      </div>
+      <a class="button" href="/">Home</a>
+    """
+    return _page("Privacy · Banco BPM Real Probe", content)
+
+
+@app.get("/terms", response_class=HTMLResponse)
+async def terms() -> str:
+    content = """
+      <h1>Condizioni d'uso · prova Banco BPM</h1>
+      <div class="card">
+        <p>Servizio destinato esclusivamente alla verifica tecnica interna dei conti
+        Banco BPM appartenenti all'organizzazione che gestisce l'applicazione.</p>
+        <p>Il servizio è di sola lettura: non avvia pagamenti, bonifici o altre operazioni
+        dispositive. Il collegamento può essere autorizzato soltanto dal titolare del conto
+        attraverso il flusso ufficiale Banco BPM ed Enable Banking.</p>
+        <p>L'accesso può essere interrotto chiudendo la sessione o revocando il consenso
+        attraverso i canali messi a disposizione dal provider o dalla banca.</p>
+      </div>
+      <a class="button" href="/">Home</a>
+    """
+    return _page("Condizioni · Banco BPM Real Probe", content)
+
+
 async def _parse_form(request: Request) -> dict[str, str]:
     content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
     if content_type != "application/x-www-form-urlencoded":
