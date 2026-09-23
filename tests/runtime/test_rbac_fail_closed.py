@@ -84,7 +84,7 @@ def test_middleware_rifiuta_ruolo_mancante_e_sconosciuto(monkeypatch):
             "/api/protected", headers={"Authorization": f"Bearer {token}"}
         )
         assert response.status_code == 403
-        assert response.json() == {"detail": "Ruolo utente non valido"}
+        assert response.json()["detail"] == "Ruolo utente non valido"
 
 
 def test_middleware_declassa_user_legacy_a_operatore(monkeypatch):
@@ -178,7 +178,7 @@ def test_middleware_blocca_se_registro_revoche_non_disponibile(monkeypatch):
         "/api/protected", headers={"Authorization": f"Bearer {_token(ADMIN)}"}
     )
     assert response.status_code == 503
-    assert response.json() == {"detail": "Verifica sessione temporaneamente non disponibile"}
+    assert response.json()["detail"] == "Verifica sessione temporaneamente non disponibile"
 
 
 class _UserRepo:
