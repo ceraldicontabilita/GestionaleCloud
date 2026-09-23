@@ -1656,6 +1656,7 @@ async def get_ricetta(ricetta_id: str):
 @router.post("/ricette", response_model=Ricetta)
 async def create_ricetta(item: RicettaCreate):
     from app.lotti.allergeni import estrai_nomi_ingredienti, rileva_allergeni
+    from app.lotti.servizi.descrizione_ricetta import descrizione_da_ingredienti
 
     # Calcola allergeni automaticamente dagli ingredienti se non arrivano dal frontend
     item_data = item.model_dump()
@@ -1688,6 +1689,11 @@ async def create_ricetta(item: RicettaCreate):
     # Enzo non li salva dal tab allergeni (decisione 04/07/2026).
     doc["allergeni_da_confermare"] = bool(nomi_ing)
     doc["reparto"] = reparto
+    if str(doc.get("descrizione") or "").strip():
+        doc["descrizione_origine"] = "manuale"
+    else:
+        doc["descrizione"] = descrizione_da_ingredienti(doc)
+        doc["descrizione_origine"] = "automatica" if doc["descrizione"] else None
     doc["menu_pubblico"] = bool(item.menu_pubblico)
     doc.setdefault("visibile_tablet", True)
     doc.setdefault("ricetta_operativa", True)
@@ -1716,12 +1722,14 @@ async def create_ricetta(item: RicettaCreate):
 @router.put("/ricette/{ricetta_id}", response_model=Ricetta)
 async def update_ricetta(ricetta_id: str, item: RicettaCreate, _admin=Depends(require_admin)):
     from app.lotti.allergeni import estrai_nomi_ingredienti, rileva_allergeni
+    from app.lotti.servizi.descrizione_ricetta import descrizione_da_ingredienti
 
     precedente = await db.ricette.find_one({"id": ricetta_id}, {"_id": 0})
     if not precedente:
         raise HTTPException(404, "Ricetta non trovata")
 
     payload = item.model_dump()
+    payload.pop("descrizione_origine", None)
     payload.pop("allergeni_confermati", None)
     payload.pop("menu_category_id", None)
     payload.pop("menu_subcategory_id", None)
@@ -1733,6 +1741,20 @@ async def update_ricetta(ricetta_id: str, item: RicettaCreate, _admin=Depends(re
     for campo_menu in ("prezzo_tavolo", "descrizione"):
         if payload.get(campo_menu) is None:
             payload.pop(campo_menu, None)
+
+    descrizione_inviata = str(payload.get("descrizione") or "").strip()
+    descrizione_precedente = str(precedente.get("descrizione") or "").strip()
+    origine_precedente = precedente.get("descrizione_origine")
+    if descrizione_inviata and not (
+        origine_precedente == "automatica" and descrizione_inviata == descrizione_precedente
+    ):
+        payload["descrizione"] = descrizione_inviata
+        payload["descrizione_origine"] = "manuale"
+    elif origine_precedente == "automatica" or (
+        not descrizione_precedente and origine_precedente != "manuale_vuota"
+    ):
+        payload["descrizione"] = descrizione_da_ingredienti(payload)
+        payload["descrizione_origine"] = "automatica" if payload["descrizione"] else None
 
     # Ricalcola sempre gli allergeni dalla fonte canonica: gli ingredienti.
     nomi_ing = estrai_nomi_ingredienti(payload)
@@ -2927,7 +2949,7 @@ async def aggiorna_ingredienti_dettaglio(ricetta_id: str, ingredienti_dettaglio:
             continue
         puliti.append({**voce, "nome": nome})
         nomi.append(nome)
-    esistente = await db.ricette.find_one({"id": ricetta_id}, {"_id": 1})
+    esistente = await db.ricette.find_one({"id": ricetta_id}, {"_id": 0})
     if not esistente:
         raise HTTPException(404, "Ricetta non trovata")
     from app.lotti.allergeni import rileva_allergeni
@@ -2942,6 +2964,9 @@ async def aggiorna_ingredienti_dettaglio(ricetta_id: str, ingredienti_dettaglio:
         "allergeni_verificato": bool(nomi),
         "allergeni_da_confermare": bool(nomi),
     }
+    if esistente.get("descrizione_origine") == "automatica":
+        from app.lotti.servizi.descrizione_ricetta import descrizione_da_ingredienti
+        aggiornamento["descrizione"] = descrizione_da_ingredienti(aggiornamento)
     await db.ricette.update_one({"id": ricetta_id}, {"$set": aggiornamento})
     return await db.ricette.find_one({"id": ricetta_id}, {"_id": 0})
 
@@ -2974,6 +2999,15 @@ async def aggiorna_campo_ricetta(ricetta_id: str, body: dict):
     update = {k: v for k, v in body.items() if k in campi_permessi}
     if not update:
         raise HTTPException(400, "Nessun campo valido da aggiornare")
+    if "descrizione" in update:
+        update["descrizione_origine"] = (
+            "manuale" if str(update["descrizione"] or "").strip() else "manuale_vuota"
+        )
+    elif "ingredienti" in update:
+        esistente = await db.ricette.find_one({"id": ricetta_id}, {"_id": 0})
+        if esistente and esistente.get("descrizione_origine") == "automatica":
+            from app.lotti.servizi.descrizione_ricetta import descrizione_da_ingredienti
+            update["descrizione"] = descrizione_da_ingredienti({**esistente, **update})
     if "menu_pubblico" in update:
         update["menu_pubblico"] = bool(update["menu_pubblico"])
     # Stessa nozione di «prezzo valido» degli endpoint dedicati: niente

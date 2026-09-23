@@ -17,6 +17,7 @@ from mongomock_motor import AsyncMongoMockClient
 from starlette.datastructures import Headers
 
 from app.lotti.servizi import menu_bridge
+from app.lotti.servizi.descrizione_ricetta import descrizione_da_ingredienti
 
 
 def run(coro):
@@ -232,6 +233,53 @@ def test_percorso_storage_da_mime():
 
 
 # ---------- creazione ricetta -> riga Menu ----------
+
+def test_descrizione_automatica_usa_solo_ingredienti_e_non_note():
+    ricetta = {
+        "nome": "Coda d'aragosta",
+        "note": "Procedimento interno riservato",
+        "ingredienti_dettaglio": [
+            {"nome": "Farina 00"}, {"nome": "Ricotta"}, {"nome": "Canditi"},
+        ],
+    }
+    assert descrizione_da_ingredienti(ricetta) == "Preparato con Farina 00, Ricotta, Canditi."
+    assert menu_bridge._descrizione(ricetta) == descrizione_da_ingredienti(ricetta)
+    assert menu_bridge._descrizione({**ricetta, "descrizione_origine": "manuale_vuota"}) is None
+    assert descrizione_da_ingredienti({"nome": "Senza formula"}) is None
+
+
+def test_descrizione_automatica_si_salva_si_aggiorna_e_rispetta_manuale(ambiente):
+    ricette, database, finto = ambiente
+    payload = _payload(descrizione=None)
+    creata = run(ricette.create_ricetta(ricette.RicettaCreate(**payload)))
+    assert creata["descrizione_origine"] == "automatica"
+    assert creata["descrizione"] == "Preparato con Farina, Latte, Uova, Rum."
+    assert finto.tabelle["menu_products"][0]["description_it"] == creata["descrizione"]
+
+    nuovi_ingredienti = [
+        {"nome": "Farina", "quantita": 500, "unita_misura": "g"},
+        {"nome": "Ricotta", "quantita": 200, "unita_misura": "g"},
+    ]
+    aggiornata = run(ricette.update_ricetta(
+        creata["id"], ricette.RicettaCreate(**_payload(
+            descrizione=creata["descrizione"], ingredienti=["Farina", "Ricotta"],
+            ingredienti_dettaglio=nuovi_ingredienti,
+        )), _admin={"nome": "Admin"},
+    ))
+    assert aggiornata["descrizione"] == "Preparato con Farina, Ricotta."
+    assert aggiornata["descrizione_origine"] == "automatica"
+
+    run(ricette.aggiorna_campo_ricetta(creata["id"], {"descrizione": "Ricotta fresca."}))
+    manuale = run(database.ricette.find_one({"id": creata["id"]}))
+    assert manuale["descrizione_origine"] == "manuale"
+    run(ricette.aggiorna_ingredienti_dettaglio(creata["id"], [{"nome": "Uova"}]))
+    assert run(database.ricette.find_one({"id": creata["id"]}))["descrizione"] == "Ricotta fresca."
+
+    run(ricette.aggiorna_campo_ricetta(creata["id"], {"descrizione": None}))
+    svuotata = run(database.ricette.find_one({"id": creata["id"]}))
+    assert svuotata["descrizione_origine"] == "manuale_vuota"
+    assert finto.tabelle["menu_products"][0]["description_it"] is None
+
 
 def test_create_ricetta_pubblica_nel_menu_nascosta_per_default(ambiente):
     ricette, database, finto = ambiente

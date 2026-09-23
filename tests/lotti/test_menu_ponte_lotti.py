@@ -60,8 +60,8 @@ def test_descrizione_arriva_nel_menu_e_le_note_no(ambiente):
     ricette, _, finto = ambiente
     senza = run(ricette.create_ricetta(ricette.RicettaCreate(
         **_payload(nome="Sfogliatella", descrizione=None, note="Sfogliare a 2 mm, forno 210°"))))
-    assert _riga_menu(finto)["description_it"] is None
-    assert _riga_menu(finto)["description"] is None
+    assert _riga_menu(finto)["description_it"] == "Preparato con Farina, Latte, Uova, Rum."
+    assert _riga_menu(finto)["description"] == _riga_menu(finto)["description_it"]
 
     run(ricette.aggiorna_campo_ricetta(
         senza["id"], {"descrizione": "Riccia, ricotta e canditi, calda al mattino"}))
