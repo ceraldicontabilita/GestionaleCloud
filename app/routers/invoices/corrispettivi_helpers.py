@@ -188,6 +188,25 @@ async def _find_existing_corrispettivo(db, corr_doc: Dict[str, Any]) -> Optional
     return None
 
 
+async def _ritira_storiche_superate_da(db, chiusura: Dict[str, Any]) -> list:
+    """Ritira le giornate senza documento dello stesso giorno che la chiusura
+    XML gia' registrata prova (stessi contanti al centesimo)."""
+    if not str(chiusura.get("corrispettivo_key") or "").strip():
+        return []
+    if _to_float(chiusura.get("totale")) <= 0 or not chiusura.get("data"):
+        return []
+    esiti = []
+    for riga in await db["corrispettivi"].find({
+        "data": chiusura.get("data"),
+        "entity_status": {"$ne": "deleted"},
+        "status": {"$nin": ["deleted", "archived"]},
+    }).to_list(50):
+        if (not _ha_identita_documento(riga)
+                and _stessi_contanti(riga, chiusura.get("pagato_contanti"))):
+            esiti.append(await sostituisci_giornata_senza_documento(db, riga, chiusura.get("id")))
+    return esiti
+
+
 async def sostituisci_giornata_senza_documento(
     db, vecchia: Dict[str, Any], nuovo_id: str,
 ) -> Dict[str, Any]:
@@ -397,6 +416,11 @@ async def ingest_corrispettivo_parsed(
                 # Stessa idempotenza per il libro giornale: un vecchio import
                 # interrotto puo' aver lasciato il corrispettivo senza scrittura.
                 await _registra_in_partita_doppia(db, existing)
+                # E un import interrotto fra «crea la chiusura» e «ritira la
+                # giornata storica» (riavvio del 23/09/2026 alle 16:21) si
+                # completa qui, al primo ricaricamento dello stesso file.
+                if source == "xml":
+                    await _ritira_storiche_superate_da(db, existing)
             return {
                 "action": "duplicate",
                 "corrispettivo_id": existing.get("id"),
@@ -682,7 +706,7 @@ async def cleanup_duplicate_corrispettivi(db, anno: Optional[int] = None) -> Dic
     return {"gruppi_duplicati": groups, "corrispettivi_eliminati": deleted, "anno": anno}
 
 
-MARCATORE_GIORNATE_SUPERATE = "corrispettivi_giornate_superate_da_xml_20260923_v1"
+MARCATORE_GIORNATE_SUPERATE = "corrispettivi_giornate_superate_da_xml_20260923_v2"
 _task_giornate_superate = None
 
 
@@ -719,7 +743,28 @@ async def ritira_giornate_superate(db, *, dry_run: bool = True) -> Dict[str, Any
             if not dry_run:
                 voce.update(await sostituisci_giornata_senza_documento(db, vecchia, xml[0].get("id")))
             esiti.append(voce)
-    return {"dry_run": dry_run, "giornate": len(esiti), "dettaglio": esiti}
+    prima_nota_ritirate = 0 if dry_run else await _pulisci_prima_nota_delle_ritirate(db)
+    return {"dry_run": dry_run, "giornate": len(esiti), "dettaglio": esiti,
+            "prima_nota_ritirate_rimosse": prima_nota_ritirate}
+
+
+async def _pulisci_prima_nota_delle_ritirate(db) -> int:
+    """Cassa e banca di una giornata ritirata escono per id: il giro della
+    Prima Nota le aveva ricreate finche' leggeva anche le righe ritirate."""
+    ritirate = await db["corrispettivi"].find(
+        {"deleted_reason": "sostituita_da_chiusura_xml"}, {"_id": 0, "id": 1},
+    ).to_list(None)
+    rimosse = 0
+    for corr in ritirate:
+        ids = list(dict.fromkeys([corr.get("id"), str(corr.get("id"))]))
+        for collezione in ("prima_nota_cassa", "prima_nota_banca"):
+            for riga in await db[collezione].find(
+                {"corrispettivo_id": {"$in": ids}}, {"_id": 0, "id": 1},
+            ).to_list(50):
+                if riga.get("id"):
+                    await db[collezione].delete_one({"id": riga["id"]})
+                    rimosse += 1
+    return rimosse
 
 
 async def _ritira_giornate_superate_una_tantum(db) -> None:
