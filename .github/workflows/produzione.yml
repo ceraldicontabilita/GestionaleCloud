@@ -1,5 +1,6 @@
-# I collaudi isolati girano anche sulle PR, prima della fusione.
-# La verifica del servizio pubblico gira esclusivamente su main.
+# I collaudi isolati (dati finti) girano anche sulle PR, prima della fusione.
+# La verifica live gira solo su main e parla unicamente con
+# https://gestionalecloud.onrender.com (ERP + HR + Menu + Lotti).
 name: Produzione
 
 on:
@@ -138,10 +139,13 @@ jobs:
         run: node scripts/audit-viewer.cjs
 
   deploy:
-    name: La produzione serve questo commit
+    name: GestionaleCloud live serve questo commit
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    concurrency:
+      group: produzione-live-gestionalecloud
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -187,10 +191,12 @@ jobs:
             echo "Asset non ancora stabile dopo deploy, ritento ($i/12)"
             sleep 10
           done
+          SHORT=${GITHUB_SHA:0:8}
           for i in $(seq 1 12); do
             HEALTH=$(curl -sSf --max-time 20 "$PROD_URL/api/health" || true)
             if [ -n "$HEALTH" ]; then
               printf '%s' "$HEALTH" | head -c 500
+              echo
               break
             fi
             if [ "$i" = "12" ]; then
@@ -199,6 +205,29 @@ jobs:
             fi
             echo "Health transitoriamente non disponibile dopo deploy, ritento ($i/12)"
             sleep 10
+          done
+          echo "$HEALTH" | grep -q "\"deploy_commit\":\"$SHORT\"" || {
+            echo "::error::/api/health non dichiara deploy_commit=$SHORT"
+            echo "$HEALTH"
+            exit 1
+          }
+          for path in /hr/api/health /menu/api/health /lotti/api/health; do
+            echo "== $PROD_URL$path"
+            OK=0
+            for i in $(seq 1 8); do
+              BODY=$(curl -sSf --max-time 20 "$PROD_URL$path" || true)
+              if [ -n "$BODY" ]; then
+                printf '%s' "$BODY" | head -c 400
+                echo
+                OK=1
+                break
+              fi
+              sleep 5
+            done
+            if [ "$OK" != "1" ]; then
+              echo "::error::$path non risponde su GestionaleCloud"
+              exit 1
+            fi
           done
       - name: Smoke runtime
         env:
