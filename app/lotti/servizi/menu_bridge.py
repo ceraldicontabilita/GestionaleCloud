@@ -198,7 +198,13 @@ def _descrizione(ricetta: dict) -> Optional[str]:
     # Solo `descrizione`: il campo `note` della ricetta e' "Note / Procedimento"
     # (FormRicetta.jsx) e non deve finire nel menu pubblico dei clienti.
     testo = str(ricetta.get("descrizione") or "").strip()
-    return testo or None
+    if testo:
+        return testo
+    if ricetta.get("descrizione_origine") == "manuale_vuota":
+        return None
+    from app.lotti.servizi.descrizione_ricetta import descrizione_da_ingredienti
+
+    return descrizione_da_ingredienti(ricetta)
 
 
 # ================== Accesso al Menu (client sincrono, eseguito in thread) ==================
