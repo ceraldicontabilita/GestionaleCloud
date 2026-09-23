@@ -66,6 +66,43 @@ def test_il_movimento_in_piu_nello_stesso_giorno_resta_nuovo():
     assert {o["id"] for _, o in coppie} == {"old-0", "old-1", "old-2"}
 
 
+def test_stesso_giorno_e_importo_vince_il_riferimento_della_banca():
+    """Collaudo API Banco BPM ↔ CSV del 23/09/2026: in ordine le due
+    commissioni da 1,10 del 14/08 finivano incrociate."""
+    vecchi = [
+        _vecchio(1, "2026-08-14", -1.10, "COMM.SU BONIFICI - RIF.MBVT40187878 COMM.BON. TELEMATICO SCT/IST"),
+        _vecchio(2, "2026-08-14", -1.10, "COMM.SU BONIFICI - RIF.MBVT40188610 COMM.BON. TELEMATICO SCT/IST"),
+    ]
+    nuovi = [
+        _nuovo(1, "2026-08-14", -1.10, "COMM.SU BONIFICI - RIF.MBVT40188610 COMM.BON. TELEMATICO SCT/ IST"),
+        _nuovo(2, "2026-08-14", -1.10, "COMM.SU BONIFICI - RIF.MBVT40187878 COMM.BON. TELEMATICO SCT/ IST"),
+    ]
+    coppie = doppioni.accoppia(nuovi, vecchi)
+    assert sorted((n["id"], o["id"]) for n, o in coppie) == [("EC-new-1", "old-2"), ("EC-new-2", "old-1")]
+
+
+def test_codice_spezzato_da_uno_spazio_e_lo_stesso():
+    api = _nuovo(1, "2026-07-02", 59.48, "BONIF. VS. FAVORE - BON.DA AMAZON PAYMENTS EUROPE S.C.A. AMAZON 1 "
+                 "71-0500632-9988359 AMZN Mktp IT 2AD9AH9EL9S1C NR. BONIFICO SEPA: MB0B8325")
+    altro = _vecchio(1, "2026-07-02", 59.48, "BONIF. VS. FAVORE - BON.DA AMAZON PAYMENTS EUROPE S.C.A. AMAZON - "
+                     "171-0500632-9988359 AMZN Mktp IT 5LETHEEYYFCOQL92")
+    giusto = _vecchio(2, "2026-07-02", 59.48, "BONIF. VS. FAVORE - BON.DA AMAZON PAYMENTS EUROPE S.C.A. AMAZON - "
+                      "171-0500632-9988359 AMZN Mktp IT 2AD9AH9EL9S1C8CO")
+    assert [(n["id"], o["id"]) for n, o in doppioni.accoppia([api], [altro, giusto])] == [("EC-new-1", "old-2")]
+    paypal_api = _nuovo(2, "2026-08-17", 7.80, "BONIF. VS. FAVORE - BON.DA PayPal Europe S.a.r.l. et Cie S.C.A "
+                        "YY W1052371461387/PAYPAL NR. BONIFICO SEPA: MB0B05044174")
+    paypal_csv = _vecchio(3, "2026-08-17", 7.80, "BONIF. VS. FAVORE - BON.DA PayPal Europe S.a.r.l. et Cie S.C.A - "
+                          "YYW1052371461387/PAYPAL")
+    assert doppioni.stesso_riferimento(paypal_api, paypal_csv)
+
+
+def test_numeri_di_sole_cifre_non_sono_un_riferimento():
+    """Il numero d'ordine Amazon e le date li condividono operazioni diverse."""
+    a = _vecchio(1, "2026-07-02", 59.48, "AMAZON 171-0500632-9988359 DEL 20/07/2026")
+    b = _vecchio(2, "2026-07-02", 59.48, "AMAZON 171-0500632-9988359 DEL 20/07/2026 ALTRO")
+    assert not doppioni.stesso_riferimento(a, b)
+
+
 def test_segno_e_conto_diversi_non_si_accoppiano():
     carta = _vecchio(1, "2026-02-01", -30.00, "AMAZON", banca="Nexi")
     entrata = _vecchio(2, "2026-02-01", 30.00, "AMAZON")
