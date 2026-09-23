@@ -14,6 +14,7 @@ Cosa aggiungono:
 3. Audit log dell'operazione
 4. Risoluzione alert quando la fattura viene pagata
 """
+import asyncio
 import logging
 from typing import Dict, Any, Optional
 from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
@@ -356,20 +357,56 @@ async def on_fattura_created_alimenta_lotti(event: Dict[str, Any], db) -> Option
 
     Non blocca mai l'import contabile: Lotti e' un consumatore a valle, e una
     sua indisponibilita' non deve far fallire la registrazione della fattura.
+    Nemmeno la sua lentezza: il 23/09/2026 uno ZIP di 400 fatture e' rimasto
+    fermo 14 minuti su una sola fattura perche' il bus aspetta ogni handler e
+    Lotti ricalcolava le ricette. Qui la fattura si accoda e l'import prosegue;
+    la coda lavora una fattura alla volta, in sottofondo.
     """
     fattura_id = event.get("fattura_id")
     if not fattura_id:
         return None
-    try:
-        from app.lotti.routers.gestionale_fatture import alimenta_lotti_da_fattura
+    task = asyncio.create_task(_alimenta_lotti(str(fattura_id)))
+    _CODA_LOTTI.add(task)
+    task.add_done_callback(_CODA_LOTTI.discard)
+    return {"action": "lotti_accodato", "fattura_id": fattura_id}
 
-        esito = await alimenta_lotti_da_fattura(str(fattura_id))
-    except Exception as exc:  # noqa: BLE001 - il motivo va scritto, non ingoiato
-        logger.warning(
-            "[lotti] fattura %s non alimentata: %s: %s",
-            fattura_id, type(exc).__name__, exc,
-        )
-        return None
+
+_CODA_LOTTI: set = set()
+_LUCCHETTI_LOTTI: Dict[int, asyncio.Lock] = {}
+
+
+def _lucchetto_lotti() -> asyncio.Lock:
+    """Un lucchetto per event loop: uno legato a un loop chiuso non serve."""
+    loop_id = id(asyncio.get_running_loop())
+    lucchetto = _LUCCHETTI_LOTTI.get(loop_id)
+    if lucchetto is None:
+        _LUCCHETTI_LOTTI.clear()
+        lucchetto = _LUCCHETTI_LOTTI[loop_id] = asyncio.Lock()
+    return lucchetto
+
+
+async def attendi_alimentazione_lotti() -> None:
+    """Attende le fatture ancora in coda verso Lotti (test, spegnimento)."""
+    loop = asyncio.get_running_loop()
+    while True:
+        in_coda = [t for t in _CODA_LOTTI if t.get_loop() is loop and not t.done()]
+        if not in_coda:
+            return
+        await asyncio.gather(*in_coda, return_exceptions=True)
+
+
+async def _alimenta_lotti(fattura_id: str) -> Optional[Dict]:
+    async with _lucchetto_lotti():
+        try:
+            from app.lotti.routers.gestionale_fatture import alimenta_lotti_da_fattura
+
+            esito = await alimenta_lotti_da_fattura(fattura_id)
+        except Exception as exc:  # noqa: BLE001 - il motivo va scritto, non ingoiato
+            logger.warning(
+                "[lotti] fattura %s non alimentata: %s: %s",
+                fattura_id, type(exc).__name__, exc,
+            )
+            return None
     if esito.get("stato") != "alimentata":
         logger.info(
             "[lotti] fattura %s non alimentata (%s)",

@@ -162,11 +162,17 @@ def test_l_handler_non_fa_fallire_l_import_se_lotti_non_risponde(monkeypatch):
         "app.lotti.routers.gestionale_fatture.alimenta_lotti_da_fattura", esplode
     )
 
-    esito = run(fattura_handlers.on_fattura_created_alimenta_lotti(
-        {"fattura_id": "f-1"}, db=None
-    ))
+    async def scenario():
+        esito = await fattura_handlers.on_fattura_created_alimenta_lotti(
+            {"fattura_id": "f-1"}, db=None
+        )
+        await fattura_handlers.attendi_alimentazione_lotti()
+        return esito
 
-    assert esito is None  # non solleva: l'import contabile prosegue
+    esito = run(scenario())
+
+    # non solleva e non aspetta Lotti: l'import contabile prosegue
+    assert esito == {"action": "lotti_accodato", "fattura_id": "f-1"}
 
 
 def test_l_handler_lavora_una_sola_fattura(monkeypatch):
@@ -186,9 +192,47 @@ def test_l_handler_lavora_una_sola_fattura(monkeypatch):
         "app.lotti.routers.gestionale_fatture.alimenta_lotti_da_fattura", finta
     )
 
-    run(fattura_handlers.on_fattura_created_alimenta_lotti({"fattura_id": "f-7"}, db=None))
+    async def scenario():
+        await fattura_handlers.on_fattura_created_alimenta_lotti({"fattura_id": "f-7"}, db=None)
+        await fattura_handlers.attendi_alimentazione_lotti()
+
+    run(scenario())
 
     assert chiamate == ["f-7"], (
         f"L'handler ha toccato {chiamate}: deve alimentare SOLO la fattura "
         "dell'evento, mai l'archivio."
     )
+
+
+def test_l_import_contabile_non_aspetta_lotti(monkeypatch):
+    """23/09/2026: il bus aspetta ogni handler, e con Lotti lento uno ZIP di
+    fatture restava fermo 14 minuti su una fattura. L'handler accoda e torna."""
+    import asyncio
+
+    from app.services.handlers import fattura_handlers
+
+    lotti_in_corso = asyncio.Event
+    stato = {}
+
+    async def lenta(source_id):
+        stato["partita"] = True
+        await stato["sblocca"].wait()
+        return {"stato": "alimentata", "fattura_id": source_id}
+
+    monkeypatch.setattr(
+        "app.lotti.routers.gestionale_fatture.alimenta_lotti_da_fattura", lenta
+    )
+
+    async def scenario():
+        stato["sblocca"] = lotti_in_corso()
+        esito = await asyncio.wait_for(
+            fattura_handlers.on_fattura_created_alimenta_lotti({"fattura_id": "f-9"}, db=None),
+            timeout=1,
+        )
+        stato["sblocca"].set()
+        await fattura_handlers.attendi_alimentazione_lotti()
+        return esito
+
+    esito = run(scenario())
+    assert esito["action"] == "lotti_accodato"
+    assert stato.get("partita") is True

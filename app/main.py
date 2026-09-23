@@ -262,6 +262,15 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.exception("Ritiro giornate corrispettivi superate non avviato")
 
+    # Import documentali rimasti «in corso» dal processo spento: nessuno li
+    # lavora piu', la pagina deve dire di ricaricare il file.
+    try:
+        from app.services.document_import_jobs import segna_interrotti_all_avvio
+
+        asyncio.create_task(segna_interrotti_all_avvio(Database.get_db()))
+    except Exception:
+        logger.exception("Segnalazione import interrotti non avviata")
+
     # Operazione una tantum autorizzata: elimina i dati operativi antecedenti
     # al 2026 solo in produzione Render, dopo backup separato per collection.
     # Cedolini, prima nota salari e bonifici collegati sono esclusi e verificati.
