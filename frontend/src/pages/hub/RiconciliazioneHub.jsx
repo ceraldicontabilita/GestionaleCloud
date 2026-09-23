@@ -35,9 +35,12 @@ export default function RiconciliazioneHub() {
   const [paypalRefreshKey, setPaypalRefreshKey] = useState(0);
 
   const tabs = [
-    { id: 'bancaria', label: 'Riconciliazione', Icon: Landmark, to: '/riconciliazione' },
-    { id: 'movimenti-banca', label: 'Indice operazioni', Icon: Banknote, to: '/riconciliazione/movimenti-banca' },
+    { id: 'bancaria', label: 'Riepilogo', Icon: Landmark, to: '/riconciliazione' },
+    { id: 'banca', label: 'Banca', Icon: Landmark, to: '/riconciliazione/banca' },
+    { id: 'stipendi', label: 'Stipendi', Icon: Banknote, to: '/riconciliazione/stipendi' },
+    { id: 'documenti', label: 'Documenti', Icon: Receipt, to: '/riconciliazione/documenti' },
     { id: 'f24', label: 'F24', Icon: Receipt, to: '/riconciliazione/f24' },
+    { id: 'movimenti-banca', label: 'Indice operazioni', Icon: Banknote, to: '/riconciliazione/movimenti-banca' },
     { id: 'pagopa', label: 'PagoPA', Icon: Receipt, to: '/riconciliazione/pagopa' },
     { id: 'bonifici', label: 'Bonifici', Icon: ArrowLeftRight, to: '/riconciliazione/archivio-bonifici' },
     { id: 'assegni', label: 'Assegni', Icon: ScrollText, to: '/riconciliazione/assegni' },
@@ -48,21 +51,27 @@ export default function RiconciliazioneHub() {
 
   const activeTab = path.includes('/movimenti-banca')
     ? 'movimenti-banca'
-    : path.includes('/f24')
-      ? 'f24'
-      : path.includes('/pagopa')
-        ? 'pagopa'
-        : path.includes('/archivio-bonifici')
-          ? 'bonifici'
-          : path.includes('/gestione-assegni') || path.includes('/assegni')
-            ? 'assegni'
-            : path.includes('/paypal')
-              ? 'paypal'
-              : path.includes('/coerenza-pos')
-                ? 'coerenza-pos'
-                : path.includes('/regole-banca')
-                  ? 'regole-banca'
-                  : 'bancaria';
+    : path.includes('/stipendi')
+      ? 'stipendi'
+      : path.includes('/documenti')
+        ? 'documenti'
+        : path.includes('/f24')
+          ? 'f24'
+          : path.includes('/pagopa')
+            ? 'pagopa'
+            : path.includes('/archivio-bonifici')
+              ? 'bonifici'
+              : path.includes('/gestione-assegni') || path.includes('/assegni')
+                ? 'assegni'
+                : path.includes('/paypal')
+                  ? 'paypal'
+                  : path.includes('/coerenza-pos')
+                    ? 'coerenza-pos'
+                    : path.includes('/regole-banca')
+                      ? 'regole-banca'
+                      : path.includes('/banca')
+                        ? 'banca'
+                        : 'bancaria';
 
   useEffect(() => {
     if (activeTab !== 'paypal') return undefined;
@@ -77,8 +86,6 @@ export default function RiconciliazioneHub() {
         await api.post('/api/paypal-api/sync', { start_date: start, end_date: end });
         if (!annullato) setPaypalRefreshKey(valore => valore + 1);
       } catch (errore) {
-        // La pagina PayPal gestisce gia lo stato di errore dei servizi.
-        // La sincronizzazione automatica non deve impedire la consultazione.
         console.error('Sincronizzazione automatica PayPal non riuscita', errore);
       }
     };
