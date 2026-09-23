@@ -1467,6 +1467,8 @@ async def registra_produzione_e_crea_lotto(
                             {"$set": {"scadenza_giorni_override": giorni_custom}})
 
     allergeni_info = _rileva_allergeni(ingredienti_nomi)
+    from app.lotti.servizi.schede_fornitore import completa_allergeni_con_schede
+    allergeni_info = await completa_allergeni_con_schede(db, ingredienti_nomi, allergeni_info)
 
     lotto_doc = {
         "id": str(uuid.uuid4()),
@@ -1718,6 +1720,11 @@ async def genera_lotto_da_ricetta(
             ingredienti_per_scadenza.append(ingrediente)
 
     allergeni_info = _rileva_allergeni(ingredienti_per_scadenza + ingredienti_dettaglio)
+    from app.lotti.servizi.schede_fornitore import completa_allergeni_con_schede
+    # nomi di ricetta (per le associazioni confermate) e descrizioni dei lotti
+    # FIFO (la scheda dello stesso articolo si aggancia per descrizione)
+    allergeni_info = await completa_allergeni_con_schede(
+        db, list(ingredienti_totali) + ingredienti_per_scadenza, allergeni_info)
     scadenza_info = _calcola_scadenza(ingredienti_per_scadenza, data_produzione, nome_prodotto=ricetta.get("nome", ""))
     data_scad_frigo, data_scad_abb, ing_critico, giorni_frigo, giorni_abb, mesi_abb = scadenza_info
     data_scad_frigo, giorni_frigo = _scadenza_con_override(ricetta, data_produzione, data_scad_frigo, giorni_frigo)
