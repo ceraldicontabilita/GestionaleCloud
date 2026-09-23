@@ -1,6 +1,14 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { Navigate } from 'react-router-dom';
 import api, { setAuthToken, clearAuthToken, getAuthToken } from '../api';
+import {
+  INTERVALLO_GUSCIO_MS,
+  attesaProssimoGiro,
+  leggiCacheGuscio,
+  scriviCacheGuscio,
+} from '../lib/cacheGuscio';
+
+const CHIAVE_VERIFY = '/api/auth/verify';
 
 const AuthContext = createContext(null);
 
@@ -20,26 +28,61 @@ export function AuthProvider({ children }) {
       mfa_verified: !!data.mfa_verified,
     };
     setUser(userData);
+    scriviCacheGuscio(CHIAVE_VERIFY, userData);
     return data;
   }, []);
 
-  // Verifica token all'avvio
-  useEffect(() => {
-    const token = getAuthToken();
-    if (token) {
-      api.get('/api/auth/verify')
-        .then(res => {
-          setUser(res.data.user);
-        })
-        .catch(() => {
+  // All'avvio ogni errore chiude la sessione (come prima); nel giro
+  // periodico solo un rifiuto del backend, non un 502 durante un deploy.
+  const verifica = useCallback((avvio = false) => (
+    api.get(CHIAVE_VERIFY)
+      .then(res => {
+        scriviCacheGuscio(CHIAVE_VERIFY, res.data.user);
+        setUser(res.data.user);
+      })
+      .catch(e => {
+        const status = e?.response?.status;
+        if (avvio || status === 401 || status === 403) {
           clearAuthToken();
           setUser(null);
-        })
-        .finally(() => setLoading(false));
-    } else {
+        }
+      })
+  ), []);
+
+  // Verifica token all'avvio: una sola chiamata, o nessuna se la stessa
+  // sessione l'ha verificata meno di 120 s fa (ricaricamento della pagina).
+  useEffect(() => {
+    const token = getAuthToken();
+    if (!token) {
       setLoading(false);
+      return;
     }
-  }, []);
+    const copia = leggiCacheGuscio(CHIAVE_VERIFY);
+    if (copia) {
+      setUser(copia.dati);
+      setLoading(false);
+    } else {
+      verifica(true).finally(() => setLoading(false));
+    }
+  }, [verifica]);
+
+  // Poi un giro ogni 120 s finché la sessione è aperta.
+  const autenticato = !!user;
+  useEffect(() => {
+    if (!autenticato) return undefined;
+    let timer;
+    let chiuso = false;
+    const giro = async () => {
+      if (!getAuthToken()) return;
+      await verifica();
+      if (!chiuso) timer = setTimeout(giro, INTERVALLO_GUSCIO_MS);
+    };
+    timer = setTimeout(giro, attesaProssimoGiro(CHIAVE_VERIFY) || INTERVALLO_GUSCIO_MS);
+    return () => {
+      chiuso = true;
+      clearTimeout(timer);
+    };
+  }, [autenticato, verifica]);
 
   const login = useCallback(async (email, password) => {
     const res = await api.post('/api/auth/login', { email, password });
