@@ -823,9 +823,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - Fatture **1.431**, tutte del 2026 (0 orfani, 0 collisioni): il pre-2026 è in
   `fatture_pre2026_rimosse_20260920`.
 - **Gli XML di fattura 2026 arrivano su Drive a blocchi manuali** dal portale AdE: il ritardo è a monte.
-- **Corrispettivi fino al 18/09/2026** (ZIP delle chiusure RT caricato a mano il 23/09): il PC del negozio
-  non li manda dal 28/08. 08, 10, 14 e 17/09 senza chiusura: l'RT le ha chiuse col giorno dopo (progressivi
-  consecutivi), non sono buchi.
+- **Corrispettivi fino al 18/09/2026** (ZIP RT caricato a mano il 23/09; il PC del negozio tace dal 28/08).
+  08, 10, 14 e 17/09 non sono buchi: l'RT le ha chiuse col giorno dopo (progressivi consecutivi).
 - **Nessuna liquidazione IVA calcolata**: `/api/iva/liquidazioni` torna vuoto; giugno e luglio sono
   calcolabili ma con **zero** acquisti (tutti `detraibilita_da_verificare`). LIPE 2026 (tre periodi,
   quadrati): marzo combacia al centesimo, a gennaio mancano **5.005,88 €** di IVA detraibile. Nessun F24
