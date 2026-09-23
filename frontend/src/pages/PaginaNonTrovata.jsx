@@ -1,7 +1,8 @@
 import React, { useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Compass } from 'lucide-react';
-import { NAV_TUTTE } from '../navigation.config';
+import { gruppiVisibili } from '../navigation.config';
+import { useAuth } from '../contexts/AuthContext.jsx';
 
 /**
  * Pagina 404 reale. Prima qualunque route sconosciuta veniva reindirizzata
@@ -11,6 +12,7 @@ import { NAV_TUTTE } from '../navigation.config';
  */
 export default function PaginaNonTrovata() {
   const location = useLocation();
+  const { isAdmin } = useAuth();
   const url = location.pathname + location.search + location.hash;
 
   useEffect(() => {
@@ -53,30 +55,39 @@ export default function PaginaNonTrovata() {
           Se ci sei arrivato da un bottone o un link interno, segnalalo: è un
           collegamento da correggere, non un tuo errore.
         </p>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
-          {NAV_TUTTE.filter(i => i.to).map(i => (
-            <Link
-              key={i.to}
-              to={i.to}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '7px 12px',
-                borderRadius: 8,
-                border: '1px solid #e2e8f0',
-                color: '#2a3329',
-                textDecoration: 'none',
-                fontSize: 13,
-                fontWeight: 600,
-                background: '#f8fafc',
-              }}
-            >
-              <i.Icon size={14} />
-              {i.label}
-            </Link>
-          ))}
-        </div>
+        {/* Le stesse sezioni, negli stessi gruppi, della colonna di navigazione */}
+        {gruppiVisibili(isAdmin).map(gruppo => (
+          <div key={gruppo.id} style={{ marginTop: 12 }}>
+            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.06em', color: '#64748b', marginBottom: 6 }}>
+              <span aria-hidden="true" style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: gruppo.colore, marginRight: 6 }} />
+              {gruppo.titolo}
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
+              {gruppo.voci.filter(i => i.to).map(i => (
+                <Link
+                  key={i.to}
+                  to={i.to}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '7px 12px',
+                    borderRadius: 8,
+                    border: '1px solid #e2e8f0',
+                    color: '#2a3329',
+                    textDecoration: 'none',
+                    fontSize: 13,
+                    fontWeight: 600,
+                    background: '#f8fafc',
+                  }}
+                >
+                  <i.Icon size={14} />
+                  {i.label}
+                </Link>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );

@@ -1,28 +1,29 @@
 import React, { useState } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import ErrorBoundary from "./components/ErrorBoundary";
 import TopNav from "./components/layout/TopNav";
+import ColonnaNavigazione from "./components/layout/ColonnaNavigazione";
 import { UploadProvider } from "./contexts/UploadContext";
 import { UploadStatusBar } from "./components/UploadStatusBar";
 import ChatIntelligente from "./components/ChatIntelligente";
 import { useWebSocketNotifications } from "./hooks/useWebSocket";
 import "./styles/topnav.css";
 
-// Navigazione: FONTE UNICA in navigation.config.js, condivisa con TopNav.jsx.
-// Prima qui c'erano due elenchi mantenuti a mano (MOBILE_NAV/ALL_NAV_ITEMS)
-// già andati fuori sincrono col desktop (voci ed etichette diverse).
-import { NAV_TUTTE as NAV_TUTTE_RAW, NAV_MOBILE_BAR } from "./navigation.config";
+// Navigazione: FONTE UNICA in navigation.config.js, condivisa con la colonna
+// desktop (ColonnaNavigazione) e con la pagina 404.
+import { gruppiVisibili, NAV_MOBILE_BAR, voceDi } from "./navigation.config";
 import { useAuth } from "./contexts/AuthContext.jsx";
 import { useGuscio } from "./contexts/GuscioContext.jsx";
 
 export default function App() {
   const { isAdmin, isReadOnly } = useAuth();
   // Voci solo-admin (Utenti, Admin) nascoste agli altri ruoli anche nel menù mobile.
-  const NAV_TUTTE = NAV_TUTTE_RAW.filter(i => !i.adminOnly || isAdmin);
+  const gruppi = gruppiVisibili(isAdmin);
+  const location = useLocation();
+  const attiva = voceDi(location.pathname)?.voce;
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const { alertCommercialista: statoCommercialista } = useGuscio();
   const [, setChiusure] = useState(0);
-  const location = useLocation();
 
   // Connessione WebSocket real-time gestisce notifiche push dallo scheduler
   useWebSocketNotifications();
@@ -58,8 +59,9 @@ export default function App() {
         {/* Upload Status Bar */}
         <UploadStatusBar />
 
-        {/* TOP NAVIGATION - Primary */}
+        {/* Barra in alto (marchio, anno, avvisi) e colonna delle sezioni */}
         <TopNav />
+        <ColonnaNavigazione />
 
         {/* SECONDARY TABS rimossi */}
 
@@ -101,7 +103,7 @@ export default function App() {
             <div className="mobile-menu" onClick={(e) => e.stopPropagation()}>
               <div className="mobile-menu-header">
                 <div className="brand-square">CG</div>
-                <span style={{ fontWeight: 700, fontSize: 16, color: '#1a40b5' }}>Ceraldi ERP</span>
+                <span style={{ fontWeight: 700, fontSize: 16, color: '#2a3329' }}>Ceraldi ERP</span>
                 <button
                   className="mobile-menu-close"
                   onClick={() => setShowMobileMenu(false)}
@@ -109,32 +111,42 @@ export default function App() {
                   ✕
                 </button>
               </div>
-              <div className="mobile-menu-items">
-                {NAV_TUTTE.map((item) => (
-                  item.external ? (
-                    <a
-                      key={item.href}
-                      href={item.href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mobile-menu-item"
-                      onClick={() => setShowMobileMenu(false)}
-                    >
-                      <item.Icon size={20} />
-                      <span>{item.label}</span>
-                    </a>
-                  ) : (
-                    <NavLink
-                      key={item.to}
-                      to={item.to}
-                      end={item.to === '/'}
-                      className={({ isActive }) => `mobile-menu-item ${isActive ? "active" : ""}`}
-                      onClick={() => setShowMobileMenu(false)}
-                    >
-                      <item.Icon size={20} />
-                      <span>{item.label}</span>
-                    </NavLink>
-                  )
+              <div className="mobile-menu-gruppi">
+                {gruppi.map((gruppo) => (
+                  <section key={gruppo.id}>
+                    <h2 className="mobile-menu-titolo">
+                      <span style={{ background: gruppo.colore }} aria-hidden="true" />
+                      {gruppo.titolo}
+                    </h2>
+                    <div className="mobile-menu-items">
+                      {gruppo.voci.map((item) => (
+                        item.external ? (
+                          <a
+                            key={item.href}
+                            href={item.href}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mobile-menu-item"
+                            onClick={() => setShowMobileMenu(false)}
+                          >
+                            <item.Icon size={20} />
+                            <span>{item.label}</span>
+                          </a>
+                        ) : (
+                          <Link
+                            key={item.to}
+                            to={item.to}
+                            aria-current={attiva?.to === item.to ? "page" : undefined}
+                            className={`mobile-menu-item ${attiva?.to === item.to ? "active" : ""}`}
+                            onClick={() => setShowMobileMenu(false)}
+                          >
+                            <item.Icon size={20} />
+                            <span>{item.label}</span>
+                          </Link>
+                        )
+                      ))}
+                    </div>
+                  </section>
                 ))}
               </div>
             </div>
@@ -255,10 +267,30 @@ export default function App() {
             justify-content: center;
           }
           
-          .mobile-menu-items {
-            padding: 12px;
+          .mobile-menu-gruppi {
+            padding: 4px 12px 16px;
             overflow-y: auto;
             max-height: calc(85vh - 80px);
+          }
+
+          .mobile-menu-titolo {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            margin: 14px 4px 6px;
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.06em;
+            color: #64748b;
+          }
+
+          .mobile-menu-titolo span {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+          }
+
+          .mobile-menu-items {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
             gap: 8px;
@@ -289,7 +321,7 @@ export default function App() {
           
           .mobile-menu-item:hover,
           .mobile-menu-item.active {
-            background: #1a40b5;
+            background: #2a3329;
             color: white;
           }
         `}</style>

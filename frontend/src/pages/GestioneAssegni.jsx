@@ -1961,7 +1961,8 @@ export default function GestioneAssegni() {
           style={{
             position: 'fixed',
             top: 60,
-            left: isMobile ? 12 : 200,
+            // Accanto alla colonna di navigazione, non sotto.
+            left: isMobile ? 12 : 'calc(var(--colonna-nav-larghezza) + 20px)',
             right: isMobile ? 12 : 20,
             zIndex: 100,
             background: COLORS.bgAlt,

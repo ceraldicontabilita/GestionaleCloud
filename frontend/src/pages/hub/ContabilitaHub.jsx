@@ -1,10 +1,5 @@
 import React, { lazy, Suspense, useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import {
-  BarChart3, TrendingUp, BadgeCheck, CalendarCheck, Calendar,
-  Building2, Banknote, Lock, ClipboardList, Landmark, Wrench,
-  Target, Package, BookOpen, Gauge,
-} from 'lucide-react';
+import { useLocation } from 'react-router-dom';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
 import { HubTabs, PageLoader } from '../../components/ds';
 
@@ -24,27 +19,13 @@ const UtileObiettivoContent = lazy(() => import('../UtileObiettivo.jsx'));
 const PrevisioniAcquistiContent = lazy(() => import('../PrevisioniAcquisti.jsx'));
 const DatiIsaContent = lazy(() => import('../DatiIsa.jsx'));
 
-// Design system Ceraldi ERP: un solo colore attivo (navy #2a3329), icone
-// Lucide, niente arcobaleno di colori per-tab (era incoerente col resto
-// del sito e illeggibile).
-const TABS = [
-  { id: 'piano-conti', label: 'Piano dei Conti', Icon: BarChart3 },
-  { id: 'bilancio', label: 'Bilancio', Icon: TrendingUp },
-  { id: 'verifica', label: 'Verifica Bilancio', Icon: BadgeCheck },
-  { id: 'giornale', label: 'Libro Giornale', Icon: BookOpen },
-  { id: 'controllo', label: 'Controllo Mensile', Icon: CalendarCheck },
-  { id: 'calendario', label: 'Calendario Fiscale', Icon: Calendar },
-  { id: 'cespiti', label: 'Cespiti', Icon: Building2 },
-  { id: 'finanziaria', label: 'Finanziaria', Icon: Banknote },
-  { id: 'chiusura', label: 'Chiusura Esercizio', Icon: Lock },
-  { id: 'budget', label: 'Budget', Icon: ClipboardList },
-  { id: 'mutui', label: 'Mutui', Icon: Landmark },
-  { id: 'avanzata', label: 'Contab. Avanzata', Icon: Wrench },
-  { id: 'utile', label: 'Utile Obiettivo', Icon: Target },
-  { id: 'previsioni-acquisti', label: 'Previsioni Acquisti', Icon: Package },
-  { id: 'dati-isa', label: 'Dati ISA', Icon: Gauge },
+// Le sezioni di Contabilità: le voci con nome e icona stanno nella colonna
+// di navigazione (navigation.config.js), qui serve solo sapere quali esistono.
+const SEZIONI = [
+  'piano-conti', 'bilancio', 'verifica', 'giornale', 'controllo', 'calendario',
+  'cespiti', 'finanziaria', 'chiusura', 'budget', 'mutui', 'avanzata', 'utile',
+  'previsioni-acquisti', 'dati-isa',
 ];
-
 
 const getTabFromPath = pathname => {
   if (pathname.includes('/piano-dei-conti') || pathname.includes('/contabilita/piano-conti'))
@@ -71,16 +52,14 @@ const getTabFromPath = pathname => {
     return 'dati-isa';
   if (pathname.includes('/contabilita/')) {
     const m = pathname.match(/\/contabilita\/([\w-]+)/);
-    if (m && TABS.find(t => t.id === m[1])) return m[1];
+    if (m && SEZIONI.includes(m[1])) return m[1];
   }
   return 'piano-conti';
 };
 
 export default function ContabilitaHub() {
   const { anno } = useAnnoGlobale();
-  const navigate = useNavigate();
   const location = useLocation();
-  const [error, setError] = useState(null);
 
   // UNICA fonte di verità per il tab attivo: il PATH. (Prima c'era anche un
   // hash "#tab=..." aggiornato in parallelo: stato duplicato, URL incoerenti
@@ -115,22 +94,13 @@ export default function ContabilitaHub() {
     setVisitedTabs(new Set([getTabFromPath(location.pathname)]));
   }, [anno]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleTabChange = tabId => {
-    setError(null);
-    navigate(tabId === 'piano-conti' ? '/contabilita' : `/contabilita/${tabId}`);
-  };
-
   return (
     <div style={{ width: '100%' }}>
-      {/* Tab Bar — design system: navy attivo. Tutti i tab SEMPRE visibili
-          (a capo automatico): niente scroll orizzontale che nasconde le voci. */}
-      <HubTabs
-        testIdPrefix="tab-contabilita"
-        activeId={activeTab}
-        onSelect={tab => handleTabChange(tab.id)}
-        tabs={TABS}
-        style={{ marginBottom: 0 }}
-      />
+      {/* Solo «Indietro»: le quindici sezioni stanno tutte nella colonna di
+          navigazione a sinistra (gruppi «La sintesi», «Il registro» e «I
+          controlli»). Ripeterle qui in una fila di schede era un doppione, e
+          la tendina che c'era prima ne nascondeva quattordici. */}
+      <HubTabs testIdPrefix="tab-contabilita" style={{ marginBottom: 0 }} />
 
       {/* Tab Content - mount-once */}
       <div style={{ padding: '16px 0 0 0' }}>
@@ -150,19 +120,6 @@ export default function ContabilitaHub() {
             ⚠️ La sezione «{location.pathname.replace('/contabilita/', '')}» non esiste:
             viene mostrato il Piano dei Conti. Se ci sei arrivato da un link interno,
             segnalalo.
-          </div>
-        )}
-        {error && (
-          <div
-            style={{
-              padding: 16,
-              background: '#fef2f2',
-              borderRadius: 8,
-              color: '#dc2626',
-              marginBottom: 16,
-            }}
-          >
-            Errore: {error}
           </div>
         )}
         {[

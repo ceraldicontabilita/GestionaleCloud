@@ -68,6 +68,7 @@
   --t-normal: 160ms ease;
 
   --topnav-height: 54px;
+  --colonna-nav-larghezza: 220px;
 }
 
 /* ---- Reset essenziale ---- */
@@ -148,14 +149,18 @@ code {
   min-height: 100vh; width: 100%; max-width: 100vw; overflow-x: hidden;
   background: var(--c-bg); color: var(--c-text);
 }
+/* A sinistra la colonna delle sezioni, sempre visibile su desktop. In fondo
+   120px (150px su telefono, sopra la barra in basso): il bottone rotondo
+   dell'assistente, fisso in basso a destra, non copre l'ultima riga. */
 .topnav-layout .page-content {
   width: 100%; max-width: 100%;
-  padding: 16px 24px 40px 24px;
+  padding: 16px 24px 120px 24px;
   padding-top: calc(var(--topnav-height) + 16px);
+  padding-left: calc(var(--colonna-nav-larghezza) + 24px);
   min-height: calc(100vh - var(--topnav-height));
   box-sizing: border-box; overflow-x: hidden;
 }
-@media (max-width: 768px) { .topnav-layout .page-content { padding: 10px 12px 84px 12px; padding-top: calc(var(--topnav-height) + 8px); } }
+@media (max-width: 768px) { .topnav-layout .page-content { padding: 10px 12px 150px 12px; padding-top: calc(var(--topnav-height) + 8px); } }
 
 /* Top-nav navy fissa (superficie brand) */
 .topnav-primary {
@@ -354,10 +359,7 @@ table td.text-right, table th.text-right { text-align: right; }
    ================================================================ */
 @media (max-width: 768px) {
   /* Nota: <nav> reale ha solo data-testid="topnav-primary", non la classe
-     .topnav-primary — teniamo entrambi i selettori per non rompere il
-     comportamento mobile esistente. */
-  .topnav-primary .topnav-items,
-  [data-testid="topnav-primary"] .topnav-items { display: none !important; }
+     .topnav-primary — teniamo entrambi i selettori. */
   .topnav-primary,
   [data-testid="topnav-primary"] { padding-left: 10px !important; padding-right: 10px !important; gap: 6px !important; }
   .page-content > * { min-width: 0; max-width: 100%; }
