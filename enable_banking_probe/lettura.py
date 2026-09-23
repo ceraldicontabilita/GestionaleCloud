@@ -254,8 +254,8 @@ def confronta(api: List[Dict[str, Any]], csv_bpm: List[Dict[str, Any]]) -> Dict[
     """nuovi / gia' presenti / ambigui, sul solo periodo coperto da entrambi.
 
     Le coppie le trova ``accoppia`` del gestionale (giorno, segno, importo al
-    centesimo e quante volte compaiono). Una coppia confermata da descrizione
-    o numero d'assegno e' «gia' presente»; una coppia fatta solo per data e
+    centesimo e quante volte compaiono). Una coppia confermata da riferimento
+    della banca, descrizione o numero d'assegno e' «gia' presente»; una coppia fatta solo per data e
     importo e' «ambigua» (DA_VERIFICARE): data e importo da soli non provano
     che sia la stessa operazione.
     """
@@ -275,7 +275,8 @@ def confronta(api: List[Dict[str, Any]], csv_bpm: List[Dict[str, Any]]) -> Dict[
         abbinati_csv.add(id(esistente))
         a_nuovo, a_esistente = doppioni.numero_assegno(nuovo), doppioni.numero_assegno(esistente)
         certo = (
-            doppioni.descrizione_canonica(nuovo) == doppioni.descrizione_canonica(esistente)
+            doppioni.stesso_riferimento(nuovo, esistente)
+            or doppioni.descrizione_canonica(nuovo) == doppioni.descrizione_canonica(esistente)
             or (a_nuovo and a_nuovo == a_esistente)
         )
         (gia if certo else ambigui).append({"api": nuovo, "csv": esistente})

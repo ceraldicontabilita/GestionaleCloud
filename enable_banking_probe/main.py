@@ -50,6 +50,9 @@ _viewer_token: str | None = None
 # solo in memoria, spariscono al riavvio come la sessione.
 _letture: dict[str, dict[str, Any]] = {}
 _confronto: dict[str, Any] | None = None
+# Il CSV caricato resta finche' il processo vive: ogni rilettura rifa' il
+# confronto invece di buttarlo (prima «Rileggi» cancellava il risultato).
+_csv_caricato: dict[str, Any] | None = None
 _last_result: dict[str, Any] = {
     "connected": False,
     "session": {},
@@ -388,7 +391,7 @@ def _saldi(body: dict[str, Any] | None) -> list[dict[str, str]]:
 async def _probe_accounts(
     client: httpx.AsyncClient, request: Request | None = None, giorni: int = PERIODO_GIORNI_DEFAULT,
 ) -> dict[str, Any]:
-    global _last_result, _confronto
+    global _last_result
     accounts_total = len(_account_uids)
     balance_ok = 0
     transactions_ok = 0
@@ -399,7 +402,6 @@ async def _probe_accounts(
     psu = _psu_headers(request)
     acquisito_il = lettura.oggi_iso()
     _letture.clear()
-    _confronto = None
 
     for account_uid in _account_uids:
         safe_uid = quote(account_uid, safe="")
@@ -469,7 +471,23 @@ async def _probe_accounts(
             and transactions_ok == accounts_total
         ),
     }
+    _ricalcola_confronto()
     return _last_result
+
+
+def _ricalcola_confronto() -> None:
+    global _confronto
+    if not _csv_caricato:
+        _confronto = None
+        return
+    api = [m for esito in _letture.values() for m in esito.get("movimenti", [])]
+    _confronto = {
+        **lettura.confronta(api, _csv_caricato["movimenti"]),
+        "csv_movimenti": len(_csv_caricato["movimenti"]),
+        "csv_illeggibili": _csv_caricato["illeggibili"],
+        "api_movimenti": len(api),
+        "csv_periodo": lettura.riepilogo_periodo(_csv_caricato["movimenti"]),
+    }
 
 
 def _is_viewer(request: Request) -> bool:
@@ -485,12 +503,19 @@ def _require_viewer(request: Request) -> None:
         )
 
 
+def _testo_conto(valore: Any) -> str:
+    """Banco BPM manda ``"false"`` al posto del nome del conto: non e' un nome."""
+    if not isinstance(valore, str) or valore.strip().lower() in {"", "false", "true", "none", "null"}:
+        return ""
+    return valore.strip()[:80]
+
+
 def _account_meta(account: dict[str, Any]) -> dict[str, str]:
     ident = account.get("account_id") or {}
     iban = ident.get("iban") if isinstance(ident, dict) else None
     return {
         "iban_mascherato": lettura.maschera_iban(iban or ""),
-        "nome": str(account.get("name") or account.get("product") or "")[:80],
+        "nome": _testo_conto(account.get("name")) or _testo_conto(account.get("product")),
     }
 
 
@@ -576,7 +601,7 @@ def _file_da_multipart(request_content_type: str, body: bytes) -> bytes:
 
 @app.post("/confronta-csv")
 async def confronta_csv(request: Request) -> RedirectResponse:
-    global _confronto
+    global _csv_caricato
     _require_viewer(request)
     content_type = request.headers.get("content-type", "")
     if not content_type.lower().startswith("multipart/form-data"):
@@ -588,14 +613,8 @@ async def confronta_csv(request: Request) -> RedirectResponse:
         letto = lettura.leggi_csv_bpm(_file_da_multipart(content_type, body))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    api = [m for esito in _letture.values() for m in esito.get("movimenti", [])]
-    _confronto = {
-        **lettura.confronta(api, letto["movimenti"]),
-        "csv_movimenti": len(letto["movimenti"]),
-        "csv_illeggibili": letto["illeggibili"],
-        "api_movimenti": len(api),
-        "csv_periodo": lettura.riepilogo_periodo(letto["movimenti"]),
-    }
+    _csv_caricato = letto
+    _ricalcola_confronto()
     return RedirectResponse("/result#confronto", status_code=303)
 
 
@@ -711,7 +730,7 @@ def _sezione_confronto() -> str:
       <b>Fuori dal periodo comune:</b> API <code>{c['fuori_periodo_api']}</code>, CSV <code>{c['fuori_periodo_csv']}</code>
       <table>
         <tr><th>Nuovi (solo API)</th><td><b>{len(c['nuovi'])}</b></td></tr>
-        <tr><th>Gia' presenti (stessa descrizione o assegno)</th><td><b>{len(c['gia_presenti'])}</b></td></tr>
+        <tr><th>Gia' presenti (stesso riferimento banca, descrizione o assegno)</th><td><b>{len(c['gia_presenti'])}</b></td></tr>
         <tr><th>Ambigui, DA_VERIFICARE (solo data e importo)</th><td><b>{len(c['ambigui'])}</b></td></tr>
         <tr><th>Solo nel CSV (mancano dall'API)</th><td><b>{len(c['solo_nel_csv'])}</b></td></tr>
       </table>

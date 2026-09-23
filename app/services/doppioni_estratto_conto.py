@@ -58,6 +58,35 @@ def numero_assegno(mov: Dict[str, Any]) -> Optional[str]:
     return trovato.group(1) if trovato else None
 
 
+# Riferimento della banca («RIF. MB0B04742006/90192364», «RIF.MBVT40188610»)
+# e codici lunghi della causale («W1052371461387/PAYPAL»): le due fonti li
+# scrivono con parole e spazi diversi (l'API spezza la causale a larghezza
+# fissa, il CSV aggiunge la nota del titolare), ma il codice e' quello.
+_RIFERIMENTO = re.compile(r"RIF\.?\s*:?\s*([A-Z0-9][A-Z0-9/]{7,})")
+_CODICE = re.compile(r"[A-Z0-9][A-Z0-9/\-]{9,}")
+
+
+def codici(mov: Dict[str, Any]) -> set:
+    """Codici che identificano l'operazione: lettere e cifre insieme, almeno
+    10 caratteri. Restano fuori date, importi e numeri d'ordine di sole cifre,
+    che due operazioni diverse possono condividere."""
+    testo = _testo(mov)
+    trovati = set()
+    for token in _RIFERIMENTO.findall(testo) + _CODICE.findall(testo):
+        token = token.strip("/-")
+        cifre = sum(c.isdigit() for c in token)
+        if len(token) >= 10 and cifre >= 3 and any(c.isalpha() for c in token):
+            trovati.add(token)
+    return trovati
+
+
+def stesso_riferimento(a: Dict[str, Any], b: Dict[str, Any]) -> bool:
+    """Un codice dell'uno compare nel testo dell'altro (spazi esclusi)."""
+    compatto_a = re.sub(r"\s+", "", _testo(a))
+    compatto_b = re.sub(r"\s+", "", _testo(b))
+    return any(c in compatto_b for c in codici(a)) or any(c in compatto_a for c in codici(b))
+
+
 def _segno(mov: Dict[str, Any]) -> str:
     tipo = str(mov.get("tipo") or "").lower()
     if tipo in {"uscita", "entrata"}:
@@ -83,7 +112,9 @@ def accoppia(
 
     Ogni esistente si usa una volta sola: tre addebiti uguali nello stesso
     giorno restano tre, e solo quelli in piu' rispetto all'altra fonte sono
-    movimenti nuovi.
+    movimenti nuovi. Dentro il giorno vince prima il riferimento della banca:
+    due commissioni da 1,10 dello stesso giorno, abbinate in ordine, finivano
+    incrociate (ognuna col riferimento dell'altra).
     """
     per_giorno: Dict[Tuple, List[Dict[str, Any]]] = defaultdict(list)
     for mov in esistenti:
@@ -98,13 +129,15 @@ def accoppia(
         if not liberi or chiave[2] < 0:
             continue
         rimasti = []
-        for passo in ("testo", "assegno", "ordine"):
+        for passo in ("riferimento", "testo", "assegno", "ordine"):
             ancora = []
-            for nuovo in (candidati if passo == "testo" else rimasti):
+            for nuovo in (candidati if passo == "riferimento" else rimasti):
                 scelta = None
                 for esistente in liberi:
                     a_nuovo, a_esistente = numero_assegno(nuovo), numero_assegno(esistente)
                     if a_nuovo and a_esistente and a_nuovo != a_esistente:
+                        continue
+                    if passo == "riferimento" and not stesso_riferimento(nuovo, esistente):
                         continue
                     if passo == "testo" and descrizione_canonica(nuovo) != descrizione_canonica(esistente):
                         continue
