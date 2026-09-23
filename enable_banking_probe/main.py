@@ -325,8 +325,8 @@ async def _parse_form(request: Request) -> dict[str, str]:
     return {key: values[0] for key, values in parsed.items() if values}
 
 
-@app.post("/connect")
-async def connect(request: Request) -> RedirectResponse:
+@app.post("/connect", response_class=HTMLResponse)
+async def connect(request: Request) -> HTMLResponse:
     if not _configured():
         raise HTTPException(status_code=503, detail="Enable Banking is not configured.")
     fields = await _parse_form(request)
@@ -337,7 +337,20 @@ async def connect(request: Request) -> RedirectResponse:
         authorization_url = await _start_authorization()
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
-    return RedirectResponse(authorization_url, status_code=303)
+    # Niente redirect 303 dal POST: la CSP ``form-action 'self'`` vale anche
+    # per i redirect di un form, e Chrome bloccava il passaggio alla banca
+    # lasciando l'utente fermo sulla home. Una pagina normale che naviga da
+    # se' (meta refresh) non e' un invio di form, e la CSP resta stretta.
+    destinazione = html.escape(authorization_url, quote=True)
+    content = f"""
+      <meta http-equiv="refresh" content="0;url={destinazione}">
+      <h1>Ti porto alla banca…</h1>
+      <div class="card">
+        <p>Se entro qualche secondo non si apre la pagina di Banco BPM, premi il pulsante.</p>
+        <a class="button" href="{destinazione}" rel="noreferrer">Vai a Banco BPM</a>
+      </div>
+    """
+    return HTMLResponse(_page("Collegamento Banco BPM", content))
 
 
 def _psu_headers(request: Request | None) -> dict[str, str]:
