@@ -2,13 +2,13 @@ import React, { useState, useRef, useCallback, memo, useEffect } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 import { Bell, LogOut } from 'lucide-react';
 import { toast } from 'sonner';
-import api from '../../api';
 import { AnnoSelector } from '../../contexts/AnnoContext';
 import { COLORS, SHADOWS, useIsMobile } from '../../lib/utils';
 import InstallAppButton from '../InstallAppButton';
 // Le sezioni non stanno piu' qui: le elenca tutte ColonnaNavigazione, a
 // sinistra. Questa barra tiene marchio, anno, avvisi e uscita.
 import { useAuth } from '../../contexts/AuthContext.jsx';
+import { useGuscio } from '../../contexts/GuscioContext.jsx';
 
 /* Stili (definiti fuori dal componente — creati una volta sola) */
 const S = {
@@ -210,13 +210,18 @@ const BottoneEsci = memo(function BottoneEsci() {
 });
 
 /*     Campana notifiche  usa /api/alerts/summary (sistema relazionale)     */
+const SUMMARY_VUOTO = {
+  totale_aperti: 0,
+  per_severita: { critical: 0, warning: 0, info: 0 },
+  critical_recenti: [],
+  per_modulo: {},
+};
+
 const NotificationBellMinimal = memo(function NotificationBellMinimal() {
-  const [summary, setSummary] = useState({
-    totale_aperti: 0,
-    per_severita: { critical: 0, warning: 0, info: 0 },
-    critical_recenti: [],
-    per_modulo: {},
-  });
+  // Il riepilogo lo legge il guscio (GuscioContext): una volta all'apertura,
+  // poi ogni 120 s. Qui si mostra soltanto.
+  const { alertsSummary } = useGuscio();
+  const summary = alertsSummary || SUMMARY_VUOTO;
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
 
@@ -230,29 +235,9 @@ const NotificationBellMinimal = memo(function NotificationBellMinimal() {
     return () => document.removeEventListener('mousedown', handle);
   }, [open]);
 
-  const fetchSummary = useCallback(async () => {
-    try {
-      const r = await api.get('/api/alerts/summary');
-      setSummary(
-        r.data || { totale_aperti: 0, per_severita: {}, critical_recenti: [], per_modulo: {} }
-      );
-    } catch (e) {
-      // Silenzioso: se non autenticati il badge resta a 0
-    }
-  }, []);
-
-  // Polling ogni 60s + fetch iniziale
-  useEffect(() => {
-    fetchSummary();
-    const interval = setInterval(fetchSummary, 60000);
-    return () => clearInterval(interval);
-  }, [fetchSummary]);
-
   const handleOpen = useCallback(() => {
     setOpen(prev => !prev);
-    // Refresh immediato all'apertura
-    if (!open) fetchSummary();
-  }, [open, fetchSummary]);
+  }, []);
 
   const critical = summary.per_severita?.critical || 0;
   const warning = summary.per_severita?.warning || 0;

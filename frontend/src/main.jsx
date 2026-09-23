@@ -8,6 +8,7 @@ import "./index.css";
 import "./styles/ds/ds.css"; // Ceraldi design-system tokens (canonical) — authoritative
 import { AnnoProvider } from "./contexts/AnnoContext.jsx";
 import { AuthProvider, RequireAuth, RequireAdmin } from "./contexts/AuthContext.jsx";
+import { GuscioProvider } from "./contexts/GuscioContext.jsx";
 import { queryClient } from "./lib/queryClient.js";
 import { ConfirmProvider } from "./components/ui/ConfirmDialog.jsx";
 import { Toaster } from "./components/ui/sonner.jsx";
@@ -69,7 +70,9 @@ const LazyPage = ({ children }) => (
 const AuthenticatedApp = () => (
   <RequireAuth>
     <AnnoProvider>
-      <App />
+      <GuscioProvider>
+        <App />
+      </GuscioProvider>
     </AnnoProvider>
   </RequireAuth>
 );

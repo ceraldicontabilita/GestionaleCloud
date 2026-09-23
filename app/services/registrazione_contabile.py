@@ -449,6 +449,53 @@ async def registra_fattura(db, fattura: Dict[str, Any], *, force: bool = False,
     return {"stato": "registrato", "movimento": mov}
 
 
+async def _scrivi_storno(db, originale: Dict[str, Any], motivo: str, tipo: str,
+                         riferimenti: Dict[str, Any], idempotency_key: str) -> Dict[str, Any]:
+    """Scrittura di storno: stesse righe dell'originale con DARE e AVERE
+    invertiti. L'originale resta, marcato ``stornato``: giornale e bilancio
+    sommano tutte le scritture e le due si annullano."""
+    righe_storno = []
+    saldi = []
+    for riga in originale.get("righe") or []:
+        dare = float(riga.get("avere") or 0)
+        avere = float(riga.get("dare") or 0)
+        righe_storno.append({**riga, "dare": dare, "avere": avere,
+                             "descrizione": f"Storno: {riga.get('descrizione') or ''}".strip()})
+        if dare:
+            saldi.append((riga.get("conto_codice"), dare, "dare"))
+        if avere:
+            saldi.append((riga.get("conto_codice"), avere, "avere"))
+    now = _now()
+    anno = originale.get("anno") or _anno_da_data(originale.get("data"))
+    storno = {
+        "id": str(uuid.uuid4()),
+        "numero_registrazione": await _prossimo_numero(db, anno),
+        "tipo": tipo,
+        "storno_di": originale.get("id"),
+        "fonte_documento": originale.get("fonte_documento"),
+        **riferimenti,
+        "descrizione": f"Storno {originale.get('descrizione') or ''} - {motivo}".strip(),
+        "motivo_storno": motivo,
+        "data": originale.get("data"), "data_documento": originale.get("data_documento"),
+        "data_competenza": originale.get("data_competenza"),
+        "data_registrazione": now,
+        "anno": anno,
+        "importo_totale": originale.get("importo_totale"),
+        "imponibile": originale.get("imponibile"), "iva": originale.get("iva"),
+        "righe": righe_storno,
+        "totale_dare": originale.get("totale_avere"),
+        "totale_avere": originale.get("totale_dare"),
+        "stato": "registrato", "created_at": now,
+        "idempotency_key": idempotency_key,
+    }
+    mov = await _scrivi_movimento(db, storno, saldi)
+    await db[COLL_MOVIMENTI].update_one(
+        {"id": originale.get("id")},
+        {"$set": {"stato": "stornato", "stornato_da": mov.get("id"),
+                  "stornato_at": now, "motivo_storno": motivo}})
+    return mov
+
+
 async def storna_registrazione_fattura(db, fattura_id: str, motivo: str) -> Dict[str, Any]:
     """Storna la scrittura di una fattura acquisto che NON doveva stare nel
     libro giornale (17/09/2026: 9 fatture 2026 registrate due volte, copia
@@ -472,45 +519,10 @@ async def storna_registrazione_fattura(db, fattura_id: str, motivo: str) -> Dict
         return {"stato": "gia_stornato", "movimento_id": originale.get("id"),
                 "storno_id": originale.get("stornato_da")}
 
-    righe_storno = []
-    saldi = []
-    for riga in originale.get("righe") or []:
-        dare = float(riga.get("avere") or 0)
-        avere = float(riga.get("dare") or 0)
-        righe_storno.append({**riga, "dare": dare, "avere": avere,
-                             "descrizione": f"Storno: {riga.get('descrizione') or ''}".strip()})
-        if dare:
-            saldi.append((riga.get("conto_codice"), dare, "dare"))
-        if avere:
-            saldi.append((riga.get("conto_codice"), avere, "avere"))
-    now = _now()
-    anno = originale.get("anno") or _anno_da_data(originale.get("data"))
-    storno = {
-        "id": str(uuid.uuid4()),
-        "numero_registrazione": await _prossimo_numero(db, anno),
-        "tipo": "storno_fattura_acquisto",
-        "storno_di": originale.get("id"),
-        "fonte_documento": originale.get("fonte_documento"),
-        "fattura_id": fattura_id,
-        "descrizione": f"Storno {originale.get('descrizione') or ''} - {motivo}".strip(),
-        "motivo_storno": motivo,
-        "data": originale.get("data"), "data_documento": originale.get("data_documento"),
-        "data_competenza": originale.get("data_competenza"),
-        "data_registrazione": now,
-        "anno": anno,
-        "importo_totale": originale.get("importo_totale"),
-        "imponibile": originale.get("imponibile"), "iva": originale.get("iva"),
-        "righe": righe_storno,
-        "totale_dare": originale.get("totale_avere"),
-        "totale_avere": originale.get("totale_dare"),
-        "stato": "registrato", "created_at": now,
-        "idempotency_key": chiave_idempotenza("storno-fattura", fattura_id),
-    }
-    mov = await _scrivi_movimento(db, storno, saldi)
-    await db[COLL_MOVIMENTI].update_one(
-        {"id": originale.get("id")},
-        {"$set": {"stato": "stornato", "stornato_da": mov.get("id"),
-                  "stornato_at": now, "motivo_storno": motivo}})
+    mov = await _scrivi_storno(db, originale, motivo, "storno_fattura_acquisto",
+                               {"fattura_id": fattura_id},
+                               chiave_idempotenza("storno-fattura", fattura_id))
+    now = mov.get("created_at") or _now()
     await db["invoices"].update_one(
         {"id": fattura_id},
         {"$set": {"registrata_contabilita": False,
@@ -518,6 +530,32 @@ async def storna_registrazione_fattura(db, fattura_id: str, motivo: str) -> Dict
                   "movimento_contabile_stornato_id": originale.get("id")},
          "$unset": {"movimento_contabile_id": ""}})
     await _audit(db, "stornato", originale.get("id"), f"storno fattura {fattura_id}: {motivo}")
+    return {"stato": "stornato", "movimento_id": originale.get("id"), "storno_id": mov.get("id")}
+
+
+async def storna_registrazione_corrispettivo(db, corrispettivo_id: Any, motivo: str) -> Dict[str, Any]:
+    """Storna la scrittura di un corrispettivo sostituito (riga storica senza
+    documento superata dalla chiusura XML). Stesse regole dello storno
+    fattura: l'originale resta, marcato ``stornato``, e nasce la scrittura
+    inversa (``reg:storno-corrispettivo:<id>``)."""
+    if corrispettivo_id in (None, ""):
+        return {"stato": "saltato", "motivo": "corrispettivo senza id"}
+    originale = None
+    for valore in dict.fromkeys([corrispettivo_id, str(corrispettivo_id)]):
+        originale = await db[COLL_MOVIMENTI].find_one(
+            {"tipo": "corrispettivo", "corrispettivo_id": valore}, {"_id": 0})
+        if originale:
+            break
+    if not originale:
+        return {"stato": "saltato", "motivo": "nessuna scrittura da stornare"}
+    if originale.get("stato") == "stornato":
+        return {"stato": "gia_stornato", "movimento_id": originale.get("id"),
+                "storno_id": originale.get("stornato_da")}
+    mov = await _scrivi_storno(db, originale, motivo, "storno_corrispettivo",
+                               {"corrispettivo_id": originale.get("corrispettivo_id")},
+                               chiave_idempotenza("storno-corrispettivo", str(corrispettivo_id)))
+    await _audit(db, "stornato", originale.get("id"),
+                 f"storno corrispettivo {corrispettivo_id}: {motivo}")
     return {"stato": "stornato", "movimento_id": originale.get("id"), "storno_id": mov.get("id")}
 
 

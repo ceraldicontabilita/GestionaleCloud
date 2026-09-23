@@ -361,8 +361,9 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - Una coda che non cala e importa zero **non è un guasto**: i già importati
   risultano doppioni e vengono solo spostati. A dirlo è la quadratura, non la coda.
 - **Corrispettivi: una riga senza `progressivo` né `id_dispositivo` non è una
-  chiusura**, è una giornata senza documento, e il suo XML la **sostituisce**;
-  due chiusure vere dello stesso giorno invece si sommano. Confonderli conta i
+  chiusura**, è una giornata senza documento, e il suo XML la **sostituisce** quando i contanti
+  coincidono al centesimo (il totale no: lo storico sommava imponibile e IVA); due chiusure vere dello
+  stesso giorno — chiavi XML diverse, anche sullo stesso RT — invece si sommano. Confonderli conta i
   ricavi due volte, o li raddoppia dentro una riga sola.
 - **«Processo interrotto durante il parsing» non è un errore del file**: è il
   marcatore che la ricostruzione scrive quando il worker muore mentre lo legge,
@@ -822,8 +823,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - Fatture **1.431**, tutte del 2026 (0 orfani, 0 collisioni): il pre-2026 è in
   `fatture_pre2026_rimosse_20260920`.
 - **Gli XML di fattura 2026 arrivano su Drive a blocchi manuali** dal portale AdE: il ritardo è a monte.
-- **Corrispettivi 187, ultimo giorno 27/08/2026**, tutti del 2026 (agosto: 19 giornate, 19 righe). Dal
-  28/08 non ne arrivano più: il PC del negozio è fermo, 23 giornate fuori dai conti.
+- **Corrispettivi fino al 18/09/2026** (ZIP RT caricato a mano il 23/09; il PC del negozio tace dal 28/08).
+  08, 10, 14 e 17/09 non sono buchi: l'RT le ha chiuse col giorno dopo (progressivi consecutivi).
 - **Nessuna liquidazione IVA calcolata**: `/api/iva/liquidazioni` torna vuoto; giugno e luglio sono
   calcolabili ma con **zero** acquisti (tutti `detraibilita_da_verificare`). LIPE 2026 (tre periodi,
   quadrati): marzo combacia al centesimo, a gennaio mancano **5.005,88 €** di IVA detraibile. Nessun F24

@@ -1074,6 +1074,12 @@ async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Opti
             # di visibile in Prima Nota (caso reale 03/04/2026).
             "status": {"$nin": ["deleted", "archived"]},
             "entity_status": {"$ne": "deleted"},
+            # La guardia per data/matricola vale per le righe senza
+            # corrispettivo o di questo stesso: la cassa di un'altra chiusura
+            # dello stesso giorno (06/09/2026, due chiusure RT) non la blocca.
+            **({"$or": [{"corrispettivo_id": {"$exists": False}},
+                        {"corrispettivo_id": {"$in": [None, "", corr_doc.get("id")]}}]}
+               if corr_doc.get("id") else {}),
         },
         {
             "corrispettivo_id": corr_doc.get("id"),

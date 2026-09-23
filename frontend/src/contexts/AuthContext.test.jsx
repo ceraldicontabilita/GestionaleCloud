@@ -29,6 +29,7 @@ function Probe() {
 describe('Sessione frontend fail-closed', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    sessionStorage.clear();
     localStorage.setItem('auth_token', 'token-sintetico');
   });
 
@@ -60,5 +61,22 @@ describe('Sessione frontend fail-closed', () => {
     expect(await screen.findByTestId('role')).toHaveTextContent('non_autorizzato');
     expect(screen.getByTestId('admin')).toHaveTextContent('false');
     expect(screen.getByTestId('write')).toHaveTextContent('false');
+  });
+
+  it('un ricaricamento entro 120 s riusa la verifica, un token diverso no', async () => {
+    api.get.mockResolvedValue({ data: { user: { role: 'operatore', email: 'test@example.invalid' } } });
+    const primo = render(<AuthProvider><Probe /></AuthProvider>);
+    expect(await screen.findByTestId('role')).toHaveTextContent('operatore');
+    expect(api.get).toHaveBeenCalledTimes(1);
+    primo.unmount();
+
+    const secondo = render(<AuthProvider><Probe /></AuthProvider>);
+    expect(await screen.findByTestId('role')).toHaveTextContent('operatore');
+    expect(api.get).toHaveBeenCalledTimes(1);
+    secondo.unmount();
+
+    localStorage.setItem('auth_token', 'altro-token-sintetico');
+    render(<AuthProvider><Probe /></AuthProvider>);
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(2));
   });
 });
