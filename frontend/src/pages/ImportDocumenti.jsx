@@ -17,6 +17,8 @@ import {
   Loader2,
   FolderUp,
   Sparkles,
+  Mail,
+  Users,
 } from 'lucide-react';
 
 export function classificaEsitoUpload(data = {}) {
@@ -122,7 +124,6 @@ export default function ImportDocumenti() {
   const [previewComplete, setPreviewComplete] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef(null);
-  const zipInputRef = useRef(null);
 
   const previewAndApply = async ({ previewUrl, applyUrl, title, describe }) => {
     try {
@@ -159,11 +160,6 @@ export default function ImportDocumenti() {
   }, []);
 
   const handleFileSelect = async e => {
-    await processIncomingFiles(Array.from(e.target.files));
-    e.target.value = '';
-  };
-
-  const handleZipSelect = async e => {
     await processIncomingFiles(Array.from(e.target.files));
     e.target.value = '';
   };
@@ -491,9 +487,9 @@ export default function ImportDocumenti() {
             background: dragOver ? COLORS.infoLight : COLORS.card,
             border: dragOver ? `3px dashed ${COLORS.info}` : `3px dashed ${COLORS.borderDark}`,
             borderRadius: BORDER_RADIUS.xl,
-            padding: 50,
+            padding: 24,
             textAlign: 'center',
-            marginBottom: 20,
+            marginBottom: 12,
             transition: 'all 0.2s',
             cursor: 'pointer',
           }}
@@ -508,53 +504,35 @@ export default function ImportDocumenti() {
             data-testid="file-input"
           />
           <FolderUp
-            size={56}
-            style={{ marginBottom: 12, opacity: 0.5, color: dragOver ? COLORS.info : COLORS.textMuted }}
+            size={36}
+            style={{ marginBottom: 6, opacity: 0.5, color: dragOver ? COLORS.info : COLORS.textMuted }}
           />
-          <div style={{ fontSize: 17, fontWeight: 600, color: COLORS.gray[700], marginBottom: 6 }}>
+          <div style={{ fontSize: 15, fontWeight: 600, color: COLORS.gray[700], marginBottom: 4 }}>
             {dragOver ? 'Rilascia qui i file' : 'Trascina i file o clicca per selezionare'}
           </div>
           <div style={{ fontSize: 13, color: COLORS.textMuted }}>
-            PDF, Excel, XML, CSV, ZIP • Singoli o multipli
+            PDF, Excel, XML, CSV, ZIP • anche più file insieme • gli ZIP li controlla il server
           </div>
         </div>
 
-        {/* Pulsante ZIP (opzionale) */}
+        {/* Azioni sulla posta già scaricata: una riga compatta */}
         <div
           style={{
-            marginBottom: 20,
+            marginBottom: 16,
             display: 'flex',
             flexWrap: 'wrap',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: 10,
+            gap: 8,
           }}
         >
-          <input
-            type="file"
-            ref={zipInputRef}
-            accept=".zip"
-            multiple
-            onChange={handleZipSelect}
-            style={{ display: 'none' }}
-            data-testid="zip-file-input"
-          />
-          <Button
-            variant="warning"
-            onClick={() => zipInputRef.current?.click()}
-            disabled={uploading}
-            data-testid="upload-zip-btn"
-          >
-            Carica ZIP
-          </Button>
-          <span style={{ fontSize: 12, color: COLORS.textMuted }}>
-            ZIP controllati lato server (dimensioni, numero file e duplicati)
-          </span>
-
+          <span style={{ fontSize: 12, color: COLORS.textMuted }}>Dalla posta:</span>
           {/* Auto-classify documenti Gmail/PEC */}
           <Button
             type="button"
             variant="info"
+            size="sm"
+            iconLeft={<Sparkles size={14} />}
             onClick={async () => {
               const r = await previewAndApply({
                 previewUrl: '/api/documenti-inbox/auto-classify?solo_non_classificati=false&dry_run=true',
@@ -577,12 +555,14 @@ export default function ImportDocumenti() {
             data-testid="auto-classify-btn"
             title="Scansiona documents_inbox (Gmail/PEC) e classifica automaticamente F24, cedolini, CU, verbali, PEC…"
           >
-            🧠 Auto-classifica Gmail/PEC
+            Classifica Gmail/PEC
           </Button>
 
           <Button
             type="button"
             variant="warning"
+            size="sm"
+            iconLeft={<Mail size={14} />}
             onClick={async () => {
               const r = await previewAndApply({
                 previewUrl: '/api/documenti-inbox/import-f24-from-inbox?dry_run=true',
@@ -598,12 +578,14 @@ export default function ImportDocumenti() {
             }}
             data-testid="import-f24-btn"
           >
-            📧 Importa F24 da inbox
+            F24 dalla posta
           </Button>
 
           <Button
             type="button"
             variant="success"
+            size="sm"
+            iconLeft={<Users size={14} />}
             onClick={async () => {
               const r = await previewAndApply({
                 previewUrl: '/api/documenti-inbox/import-dipendenti-from-cu?dry_run=true',
@@ -621,7 +603,7 @@ export default function ImportDocumenti() {
             }}
             data-testid="import-dipendenti-cu-btn"
           >
-            👤 Importa dipendenti da CU
+            Dipendenti dalle CU
           </Button>
         </div>
 
