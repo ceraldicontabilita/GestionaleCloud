@@ -8,11 +8,22 @@ const tabs = readFileSync(resolve(process.cwd(), 'src/components/ds/HubTabs.jsx'
 
 describe('navigazione visibile della riconciliazione', () => {
   it('espone le destinazioni principali senza select di navigazione', () => {
-    for (const label of ['Riconciliazione', 'Indice operazioni', 'F24', 'PagoPA', 'Bonifici', 'Assegni', 'PayPal', 'Coerenza POS']) {
+    for (const label of [
+      'Riepilogo',
+      'Banca',
+      'Stipendi',
+      'Documenti',
+      'Indice operazioni',
+      'F24',
+      'PagoPA',
+      'Bonifici',
+      'Assegni',
+      'PayPal',
+      'Coerenza POS',
+    ]) {
       expect(hub).toContain(`label: '${label}'`);
     }
     expect(tabs).toContain('role="tablist"');
-    // Tutte visibili, a capo quando non ci stanno: nessuna tendina.
     expect(tabs).toContain("flexWrap: 'wrap'");
     expect(tabs).not.toContain('<option');
   });
