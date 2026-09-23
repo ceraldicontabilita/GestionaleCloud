@@ -1756,14 +1756,32 @@ async def update_ricetta(ricetta_id: str, item: RicettaCreate, _admin=Depends(re
         payload["descrizione"] = descrizione_da_ingredienti(payload)
         payload["descrizione_origine"] = "automatica" if payload["descrizione"] else None
 
-    # Ricalcola sempre gli allergeni dalla fonte canonica: gli ingredienti.
+    # Il calcolo dagli ingredienti si rifa' sempre. La lista confermata a mano
+    # dal titolare (allergeni_da_confermare=False) resta finche' gli
+    # ingredienti non cambiano: salvare il form per correggere un prezzo o il
+    # procedimento non deve cancellare una conferma data per legge. Se cambiano
+    # gli ingredienti la conferma non vale piu' e si torna al calcolo.
     nomi_ing = estrai_nomi_ingredienti(payload)
     allergeni_calc, _ = rileva_allergeni(nomi_ing)
     payload["allergeni_auto"] = allergeni_calc
-    payload["allergeni"] = allergeni_calc
-    # Vedi create_ricetta: distingue "verificato, zero trovati" da "mai verificato".
-    payload["allergeni_verificato"] = bool(nomi_ing)
-    payload["allergeni_da_confermare"] = bool(nomi_ing)
+    confermati_a_mano = (
+        precedente.get("allergeni_verificato") is True
+        and precedente.get("allergeni_da_confermare") is False
+        and isinstance(precedente.get("allergeni"), list)
+    )
+    stessi_ingredienti = (
+        {n.casefold() for n in nomi_ing}
+        == {n.casefold() for n in estrai_nomi_ingredienti(precedente)}
+    )
+    if confermati_a_mano and stessi_ingredienti:
+        payload["allergeni"] = precedente["allergeni"]
+        payload["allergeni_verificato"] = True
+        payload["allergeni_da_confermare"] = False
+    else:
+        payload["allergeni"] = allergeni_calc
+        # Vedi create_ricetta: distingue "verificato, zero trovati" da "mai verificato".
+        payload["allergeni_verificato"] = bool(nomi_ing)
+        payload["allergeni_da_confermare"] = bool(nomi_ing)
 
     # Salvare dal form «Ricette» trasforma il riferimento ufficiale del
     # fornitore in una ricetta operativa Ceraldi, senza perdere la provenienza.
