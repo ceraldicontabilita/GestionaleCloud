@@ -451,30 +451,6 @@ export default function ImportDocumenti() {
           <AnnoImportazioneCard />
         </div>
 
-        {/* Info Box */}
-        <div
-          style={{
-            marginBottom: 20,
-            padding: 16,
-            background: COLORS.infoLight,
-            borderRadius: BORDER_RADIUS.lg,
-            border: `1px solid ${COLORS.info}`,
-            display: 'flex',
-            alignItems: 'flex-start',
-            gap: 12,
-          }}
-        >
-          <Sparkles size={20} color={COLORS.info} style={{ flexShrink: 0, marginTop: 2 }} />
-          <div style={{ fontSize: 13, color: COLORS.info }}>
-            <strong>Riconoscimento Automatico</strong>
-            <br />
-            Carica qualsiasi documento: F24, quietanze, PagoPA/CBILL, Libro Unico, Fatture XML,
-            Estratti Conto, Bonifici, ecc.
-            <br />
-            Il sistema riconosce il tipo e lo elabora con il workflow completo.
-          </div>
-        </div>
-
         {/* Area Drop */}
         {/* Nota: div nativo (non Card) perché deve portare data-testid="drop-zone" sul nodo esatto */}
         <div
@@ -511,6 +487,10 @@ export default function ImportDocumenti() {
             {dragOver ? 'Rilascia qui i file' : 'Trascina i file o clicca per selezionare'}
           </div>
           <div style={{ fontSize: 13, color: COLORS.textMuted }}>
+            F24, quietanze, PagoPA, Libro Unico, fatture XML, estratti conto, bonifici: il tipo
+            lo riconosce il gestionale
+          </div>
+          <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 2 }}>
             PDF, Excel, XML, CSV, ZIP • anche più file insieme • gli ZIP li controlla il server
           </div>
         </div>
