@@ -27,10 +27,9 @@ REDIRECT_URL = os.getenv(
 COUNTRY = "IT"
 PSU_TYPE = "business"
 ACCESS_DAYS = min(max(int(os.getenv("ENABLE_BANKING_ACCESS_DAYS", "90")), 1), 180)
-CSRF_TTL_SECONDS = 10 * 60
+CSRF_TTL_SECONDS = 30 * 60
 STATE_TTL_SECONDS = 15 * 60
 
-_csrf_tokens: dict[str, float] = {}
 _pending_states: dict[str, float] = {}
 _session_id: str | None = None
 _account_uids: list[str] = []
@@ -93,17 +92,15 @@ def _clean_expired(values: dict[str, float], ttl: int) -> None:
 
 
 def _new_csrf() -> str:
-    _clean_expired(_csrf_tokens, CSRF_TTL_SECONDS)
-    token = secrets.token_urlsafe(32)
-    _csrf_tokens[token] = time.monotonic()
-    return token
+    return secrets.token_urlsafe(32)
 
 
 def _consume_csrf(cookie_token: str | None, form_token: str) -> bool:
-    if not cookie_token or not secrets.compare_digest(cookie_token, form_token):
-        return False
-    created = _csrf_tokens.pop(form_token, None)
-    return created is not None and time.monotonic() - created <= CSRF_TTL_SECONDS
+    return bool(
+        cookie_token
+        and form_token
+        and secrets.compare_digest(cookie_token, form_token)
+    )
 
 
 def _app_jwt() -> str:

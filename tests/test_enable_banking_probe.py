@@ -42,7 +42,6 @@ class FakeEnableBankingClient:
 
 
 def _reset_state():
-    main._csrf_tokens.clear()
     main._pending_states.clear()
     main._session_id = None
     main._account_uids = []
@@ -133,3 +132,11 @@ def test_connect_rejects_invalid_csrf(monkeypatch):
         response = client.post("/connect", data={"csrf_token": "invalid"})
     assert response.status_code == 400
     assert not FakeEnableBankingClient.calls
+
+
+def test_csrf_validation_does_not_depend_on_process_memory():
+    token = main._new_csrf()
+
+    assert main._consume_csrf(token, token) is True
+    assert main._consume_csrf(token, token) is True
+    assert main._consume_csrf(token, "different") is False
