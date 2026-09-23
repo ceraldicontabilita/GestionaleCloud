@@ -30,21 +30,8 @@
   font-size: 13px;
 }
 
-.topnav-layout .page-content {
-  padding: 16px 24px 40px 24px;
-  padding-top: calc(var(--topnav-height) + 16px);
-  min-height: calc(100vh - var(--topnav-height));
-  width: 100%;
-  max-width: 100%;
-  box-sizing: border-box;
-}
-
-@media (max-width: 768px) {
-  .topnav-layout .page-content {
-    padding: 12px 14px 84px 14px;
-    padding-top: calc(var(--topnav-height) + 10px);
-  }
-}
+/* Margini del contenuto (colonna a sinistra, spazio per l'assistente):
+   stanno in index.css, in un posto solo. */
 
 /* ─── TOP NAV PRIMARY ─── */
 .topnav-primary {

@@ -1,14 +1,13 @@
 import React, { useState, useRef, useCallback, memo, useEffect } from 'react';
-import { Link, NavLink, useLocation } from 'react-router-dom';
-import { ChevronDown, Bell, MoreHorizontal, LogOut } from 'lucide-react';
+import { Link, NavLink } from 'react-router-dom';
+import { Bell, LogOut } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '../../api';
 import { AnnoSelector } from '../../contexts/AnnoContext';
 import { COLORS, SHADOWS, useIsMobile } from '../../lib/utils';
 import InstallAppButton from '../InstallAppButton';
-// Navigazione: FONTE UNICA in navigation.config.js (condivisa col menù mobile
-// di App.jsx — prima erano 4 elenchi separati che andavano fuori sincrono).
-import { NAV_PRINCIPALI as NAV_ITEMS, NAV_ALTRO as ALTRO_ITEMS_RAW } from '../../navigation.config';
+// Le sezioni non stanno piu' qui: le elenca tutte ColonnaNavigazione, a
+// sinistra. Questa barra tiene marchio, anno, avvisi e uscita.
 import { useAuth } from '../../contexts/AuthContext.jsx';
 
 /* Stili (definiti fuori dal componente — creati una volta sola) */
@@ -56,60 +55,6 @@ const S = {
     letterSpacing: 0.3,
     whiteSpace: 'nowrap',
   },
-  items: {
-    alignItems: 'center',
-    flex: 1,
-    gap: 1,
-    overflowX: 'auto',
-    scrollbarWidth: 'none',
-  },
-  navItem: isActive => ({
-    display: 'flex',
-    alignItems: 'center',
-    gap: 5,
-    padding: '6px 10px',
-    borderRadius: 8,
-    background: isActive ? 'rgba(255,255,255,0.18)' : 'transparent',
-    color: isActive ? '#fff' : 'rgba(255,255,255,0.78)',
-    fontWeight: isActive ? 700 : 500,
-    fontSize: 13,
-    textDecoration: 'none',
-    whiteSpace: 'nowrap',
-    transition: 'background 0.15s, color 0.15s',
-    cursor: 'pointer',
-    border: 'none',
-    flexShrink: 0,
-  }),
-  dropdownWrap: {
-    position: 'relative',
-    flexShrink: 0,
-  },
-  dropdownMenu: {
-    position: 'fixed',
-    top: 54,
-    right: 'auto',
-    background: COLORS.card,
-    borderRadius: 10,
-    boxShadow: SHADOWS.xl,
-    minWidth: 200,
-    padding: '6px 0',
-    zIndex: 2000,
-    animation: 'navDropIn 0.15s ease',
-    border: `1px solid ${COLORS.border}`,
-  },
-  dropItem: isActive => ({
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    padding: '9px 16px',
-    color: isActive ? COLORS.primary : COLORS.gray[700],
-    fontWeight: isActive ? 700 : 500,
-    fontSize: 13,
-    background: isActive ? COLORS.primarySoft : 'transparent',
-    textDecoration: 'none',
-    transition: 'background 0.12s',
-    cursor: 'pointer',
-  }),
   right: {
     display: 'flex',
     alignItems: 'center',
@@ -149,110 +94,18 @@ const S = {
   },
 };
 
-/*     Dropdown "Altro"  memoizzato separatamente per evitare re-render del nav     */
-const AltroDropdown = memo(function AltroDropdown({ isAltroActive }) {
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef(null);
-  const { isAdmin } = useAuth();
-  // Le voci solo-admin (Utenti, Admin) non compaiono agli altri ruoli.
-  const ALTRO_ITEMS = ALTRO_ITEMS_RAW.filter(i => !i.adminOnly || isAdmin);
-
-  // Chiudi se si clicca fuori
-  useEffect(() => {
-    if (!open) return;
-    const handle = e => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
-    };
-    document.addEventListener('mousedown', handle);
-    return () => document.removeEventListener('mousedown', handle);
-  }, [open]);
-
-  return (
-    <div ref={wrapRef} style={S.dropdownWrap}>
-      <button
-        style={S.navItem(isAltroActive || open)}
-        data-testid="nav-altro-btn"
-        aria-expanded={open}
-        onClick={() => setOpen(v => !v)}
-      >
-        <MoreHorizontal size={14} />
-        <span>Altro</span>
-        <ChevronDown
-          size={11}
-          style={{
-            opacity: 0.7,
-            marginLeft: 1,
-            transform: open ? 'rotate(180deg)' : 'none',
-            transition: 'transform 0.2s',
-          }}
-        />
-      </button>
-      {open && (
-        <div style={S.dropdownMenu} data-testid="nav-altro-menu">
-          {ALTRO_ITEMS.map(({ to, href, label, Icon, external }) =>
-            external ? (
-              <a
-                key={label}
-                href={href}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={S.dropItem(false)}
-                onClick={() => setOpen(false)}
-                data-testid={`nav-altro-${label.toLowerCase().replace(/\s+/g, '-')}`}
-              >
-                <Icon size={14} />
-                {label}
-              </a>
-            ) : (
-              <NavLink
-                key={to}
-                to={to}
-                style={({ isActive }) => S.dropItem(isActive)}
-                onClick={() => setOpen(false)}
-                data-testid={`nav-altro-${label.toLowerCase().replace(/\s+/g, '-')}`}
-              >
-                <Icon size={14} />
-                {label}
-              </NavLink>
-            )
-          )}
-        </div>
-      )}
-    </div>
-  );
-});
-
 /*     TopNav principale  React.memo per evitare re-render da parent     */
 const TopNav = memo(function TopNav() {
-  const location = useLocation();
   const isMobile = useIsMobile(768);
-
-  // NB: usa la lista a livello di modulo (ALTRO_ITEMS_RAW). La variante filtrata
-  // per admin (ALTRO_ITEMS) vive solo dentro AltroDropdown: referenziarla qui
-  // causava "ALTRO_ITEMS is not defined". Per l'evidenziazione del tab va bene la
-  // lista completa (il confronto è solo sul pathname).
-  const isAltroActive = ALTRO_ITEMS_RAW.some(
-    item =>
-      item.to && (location.pathname === item.to || location.pathname.startsWith(item.to + '/'))
-  );
 
   return (
     <>
-      {/* Stile globale per animazione dropdown  iniettato UNA volta */}
+      {/* Animazione del pannello avvisi: iniettata una volta sola */}
       <style>{`
         @keyframes navDropIn {
           from { opacity: 0; transform: translateY(-6px); }
           to   { opacity: 1; transform: translateY(0); }
         }
-        .topnav-link:hover {
-          background: rgba(255,255,255,0.12) !important;
-          color: #fff !important;
-        }
-        .topnav-drop-item:hover {
-          background: ${COLORS.primarySoft} !important;
-        }
-        /* scrollbar nascosta nella barra nav */
-        .topnav-items-scroll::-webkit-scrollbar { display: none; }
       `}</style>
 
       <nav style={S.nav} data-testid="topnav-primary">
@@ -261,41 +114,6 @@ const TopNav = memo(function TopNav() {
           <div style={S.brandSquare}>CG</div>
           <span style={S.brandName}>Ceraldi ERP</span>
         </NavLink>
-
-        {/* Link principali */}
-        <div style={S.items} className="topnav-items-scroll topnav-items">
-          {NAV_ITEMS.map(({ to, href, label, Icon, external }) =>
-            external ? (
-              /* Link esterno (es. HR   AppDipendenti) */
-              <a
-                key={label}
-                href={href}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={S.navItem(false)}
-                className="topnav-link"
-                data-testid={`nav-${label.toLowerCase().replace(/\s+/g, '-')}`}
-              >
-                <Icon size={14} />
-                <span>{label}</span>
-              </a>
-            ) : (
-              <NavLink
-                key={to}
-                to={to}
-                end={to === '/'}
-                style={({ isActive }) => S.navItem(isActive)}
-                className="topnav-link"
-                data-testid={`nav-${label.toLowerCase().replace(/\s+/g, '-')}`}
-              >
-                <Icon size={14} />
-                <span>{label}</span>
-              </NavLink>
-            )
-          )}
-          {/* Dropdown "Altro"  ultimo item nella nav */}
-          <AltroDropdown isAltroActive={isAltroActive} />
-        </div>
 
         {/* Destra: Anno + Notifiche + Avatar */}
         <div style={S.right} className="topnav-right">

@@ -128,7 +128,6 @@ export default function RiconciliazioneHub() {
         activeId={activeTab}
         onSelect={tab => navigate(tab.to)}
         tabs={tabs}
-        mode="visible"
       />
       <Suspense fallback={<PageLoader />}>{getContent()}</Suspense>
     </div>

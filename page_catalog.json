@@ -847,6 +847,32 @@
       "documentation_file": "memoria/pagine/situazione-fiscale.json",
       "component_status": "reachable_from_router",
       "route_kind": "page"
+    },
+    {
+      "id": 65,
+      "label": "Regole banca",
+      "path": "/riconciliazione/regole-banca",
+      "component": "frontend/src/pages/RegoleRiconoscimentoBanca.jsx",
+      "entry": "frontend/src/pages/hub/RiconciliazioneHub.jsx",
+      "access": "authenticated",
+      "audit_status": "unverified",
+      "module": "riconciliazione",
+      "documentation_file": "memoria/pagine/regole-banca.json",
+      "component_status": "reachable_from_router",
+      "route_kind": "tab"
+    },
+    {
+      "id": 66,
+      "label": "Posizione auto e driver",
+      "path": "/noleggio/posizione",
+      "component": "frontend/src/pages/PosizioneNoleggio.jsx",
+      "entry": "frontend/src/pages/hub/VeicoliHub.jsx",
+      "access": "authenticated",
+      "audit_status": "unverified",
+      "module": "noleggio",
+      "documentation_file": "memoria/pagine/noleggio-posizione.json",
+      "component_status": "reachable_from_router",
+      "route_kind": "tab"
     }
   ],
   "redirects": [
