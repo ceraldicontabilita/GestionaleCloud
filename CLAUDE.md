@@ -717,7 +717,9 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - **Prezzi solo da acquisti reali in fattura XML.** Gli ordini hanno totali veri: prezzo di riga, aliquota
   IVA dall'XML, imponibile, IVA e totale che si ricalcolano a ogni variazione, con le stesse colonne nel
   PDF.
-- **FIFO consuma sempre il lotto con la data fattura più vecchia.**
+- **FIFO: il lotto con la fattura più vecchia**, fra tutti i fornitori dello stesso articolo. Descrizione di fattura →
+  articolo in `nome_mapping` (`servizi/articoli_fattura.py`): vince la riga **confermata** (Dizionario, «Proposte web»);
+  senza conferme, parola intera e fuori i lotti che una prova dice altro («olive in acqua e sale» non è sale).
 - **Le bevande e gli alcolici del reparto bar** (acqua, birre, vino, prosecco, liquori, amari, sciroppi,
   succhi, bibite) si acquistano e si confrontano a cartone o a unità, **mai a chilo o a litro**.
 - Conversioni reali: uovo 60 g, tuorlo 19 g, albume 33 g; pezzi e chili si convertono con il peso del
@@ -827,9 +829,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   quadrati): marzo combacia al centesimo, a gennaio mancano **5.005,88 €** di IVA detraibile. Nessun F24
   IVA 2026.
 - Solo 108 prodotti del Menu su 325 hanno allergeni (obbligo di legge). Cron Render `gestionalecloud-calderone-15min`, sospeso, da cancellare dal pannello.
-- **Lotti fermo**: ultima fattura entrata 26/05, ultimo lotto di produzione 14/09 (0 attivi). 119 lotti
-  fornitori su 344 hanno un'unità che il FIFO non converte (95 in KAR) e nessuno ha `nome_canonico`: il
-  ramo preciso non aggancia, resta il ripiego a espressione regolare. Solo 15 su 344 hanno la scadenza.
+- **Lotti fermo**: ultima fattura 26/05, ultimo lotto di produzione 14/09. 119 lotti su 344 in unità non convertibili
+  (95 KAR); 320 descrizioni con proposta web da confermare; scadenza su 15 lotti su 580, lotto vero su 27.
 
 ## Aperto (togliere la voce quando si chiude)
 
@@ -856,8 +857,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   non hanno importo, targa né data; bonifici al Comune e pagamenti Mooney via PayPal sono candidati senza verbale.
 - L'alert scadenze F24 di `FiscaleSentinella` legge `data_scadenza`, che **nessun** F24 ha: non è mai
   partito. La scadenza va derivata dal codice tributo (`codici_tributo_db`), mai inventata.
-- Drill-down «Verifica campi e F24» punta al vecchio indice Drive (non esiste più); `/api/download` serve `./downloads`, mai popolato.
-- A mano, dal titolare: **far ripartire `sync_rt_to_drive.py`** (fermo dal 28/08); password Postgres; DNS ceraldiapp.it.
+- Drill-down «Verifica campi e F24» punta al vecchio indice Drive; `/api/download` serve `./downloads`, mai popolato. A mano, dal titolare: **far ripartire `sync_rt_to_drive.py`** (fermo dal 28/08); password Postgres; DNS ceraldiapp.it.
 - Fork `app/hr/`: **cinque** sottopercorsi ancora duplicati (`routers/auth.py`,
   `routers/employees/dipendenti.py`, `routers/pin_login.py`, `routers/tfr.py`, `utils/dependencies.py`):
   ogni correzione va cercata anche nel gemello.

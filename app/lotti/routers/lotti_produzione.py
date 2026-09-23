@@ -867,7 +867,7 @@ async def _candidati_lotti_fifo(ing: dict) -> tuple:
     puo' dire un fornitore diverso da quello che si sta consumando."""
     nome_ing = (ing.get("nome") or "").strip()
     if not nome_ing:
-        return []
+        return [], []
     nome_norm = nome_ing.lower().strip()
     parole = [p for p in nome_norm.split() if len(p) > 2]
 
@@ -912,6 +912,39 @@ async def _candidati_lotti_fifo(ing: dict) -> tuple:
         "data_fattura": 1, "data_scadenza": 1, "esaurito": 1,
         "fattura_ref": 1, "allergeni_testo": 1,
     }
+
+    # 1) ASSOCIAZIONE CONFERMATA: la descrizione di fattura del lotto e'
+    #    legata da una persona all'articolo che serve questo ingrediente
+    #    («OLVA THERMO CREMA» → Margarina). E' l'unica strada certa, e quando
+    #    esiste si usa lei sola: FIFO fra TUTTI i fornitori dello stesso
+    #    articolo (finito il sale Fiorentino si passa al sale MEPA).
+    from app.lotti.servizi.articoli_fattura import (
+        carica_associazioni, chiave_descrizione, esclude_ingrediente, serve_ingrediente,
+    )
+    associazioni = await carica_associazioni(db)
+    lotti_attivi = await db.lotti_fornitori.find(
+        {"esaurito": {"$ne": True}, "quantita_disponibile": {"$gt": 0}}, _proj,
+    ).to_list(5000)
+
+    def _associazione(lotto_f):
+        return associazioni.get(chiave_descrizione(lotto_f.get("prodotto_nome")))
+
+    for lotto_f in lotti_attivi:
+        a = _associazione(lotto_f)
+        if a and a.get("confermato") and serve_ingrediente(a, nome_ing, canonico):
+            lotti_candidati.append({**lotto_f, "abbinamento": "confermato"})
+
+    # 2) RIPIEGO PER NOME, solo senza conferme. Parola intera, mai pezzo di
+    #    parola («uova» non trova «nUOVA Biancalieve»), e fuori i lotti che
+    #    una prova dice essere altro («olive in acqua e SALE» non e' sale).
+    def _ammesso(lotto_f) -> bool:
+        return not esclude_ingrediente(_associazione(lotto_f), nome_ing, canonico)
+
+    def _parola_intera(pattern: str) -> str:
+        return rf"(?<![a-zà-ù]){re.escape(pattern)}(?![a-zà-ù])"
+
+    if lotti_candidati:
+        canonico = ""  # la conferma basta: niente ripiego
     if canonico:
         can_low = canonico.lower().strip()
         lotti_can = (
@@ -928,8 +961,10 @@ async def _candidati_lotti_fifo(ing: dict) -> tuple:
             ).to_list(2000)
         )
         for lotto_f in lotti_can:
+            if not _ammesso(lotto_f):
+                continue
             if not any(x["id"] == lotto_f["id"] for x in lotti_candidati):
-                lotti_candidati.append(lotto_f)
+                lotti_candidati.append({**lotto_f, "abbinamento": "da_confermare"})
 
     if not lotti_candidati:
         for pattern in search_patterns:
@@ -940,14 +975,16 @@ async def _candidati_lotti_fifo(ing: dict) -> tuple:
                     {
                         "esaurito": {"$ne": True},
                         "quantita_disponibile": {"$gt": 0},
-                        "prodotto_nome_norm": {"$regex": re.escape(pattern), "$options": "i"},
+                        "prodotto_nome_norm": {"$regex": _parola_intera(pattern), "$options": "i"},
                     },
                     _proj,
                 ).to_list(2000)
             )
             for lotto_f in lotti_trovati:
+                if not _ammesso(lotto_f):
+                    continue
                 if not any(x["id"] == lotto_f["id"] for x in lotti_candidati):
-                    lotti_candidati.append(lotto_f)
+                    lotti_candidati.append({**lotto_f, "abbinamento": "da_confermare"})
             if lotti_candidati:
                 break
 
@@ -1157,6 +1194,9 @@ async def scala_lotti_fornitori_per_ricetta(
                     "quantita_rimasta": round(qt_nuova, 3),
                     "unita": unita_lotto,
                     "esaurito": esaurito,
+                    # «confermato» = articolo associato da una persona;
+                    # «da_confermare» = trovato per nome, da ricontrollare
+                    "abbinamento": lotto.get("abbinamento", "da_confermare"),
                 }
             )
             if esaurito:
