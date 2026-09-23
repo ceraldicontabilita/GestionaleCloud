@@ -935,27 +935,12 @@ export default function ControlloMensile() {
                 <Th align="right" style={{ padding: 12 }}>
                   Diff. Banca
                 </Th>
-                <Th align="right" style={{ padding: 12 }}>
-                  Corrisp. Auto
-                </Th>
-                <Th align="right" style={{ padding: 12 }}>
-                  Corrisp. Man.
-                </Th>
-                <Th align="right" style={{ padding: 12 }}>
-                  Diff. Corr.
-                </Th>
-                <Th align="right" style={{ padding: 12 }}>
-                  Versamento
-                </Th>
-                <Th align="right" style={{ padding: 12 }}>
-                  Saldo Cassa
-                </Th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <Td colSpan="11" align="center" style={{ padding: 40 }}>
+                  <Td colSpan="6" align="center" style={{ padding: 40 }}>
                     ⏳ Caricamento dati...
                   </Td>
                 </tr>
@@ -1026,47 +1011,6 @@ export default function ControlloMensile() {
                         '-'
                       )}
                     </Td>
-                    <Td align="right" mono>
-                      {row.corrispettivoAuto > 0 ? formatEuro(row.corrispettivoAuto) : '-'}
-                    </Td>
-                    <Td align="right" mono>
-                      {row.corrispettivoManual > 0 ? formatEuro(row.corrispettivoManual) : '-'}
-                    </Td>
-                    <Td
-                      align="right"
-                      mono
-                      style={{
-                        fontWeight: Math.abs(row.corrispettivoDiff) > 1 ? 'bold' : 'normal',
-                        color:
-                          Math.abs(row.corrispettivoDiff) > 1
-                            ? row.corrispettivoDiff > 0
-                              ? COLORS.success
-                              : COLORS.danger
-                            : COLORS.textMuted,
-                      }}
-                    >
-                      {Math.abs(row.corrispettivoDiff) > 0.01 ? (
-                        <span>
-                          {row.corrispettivoDiff > 0 ? '+' : ''}
-                          {formatEuro(row.corrispettivoDiff)}
-                        </span>
-                      ) : (
-                        '-'
-                      )}
-                    </Td>
-                    <Td align="right" mono>
-                      {row.versamento > 0 ? formatEuro(row.versamento) : '-'}
-                    </Td>
-                    <Td
-                      align="right"
-                      mono
-                      style={{
-                        fontWeight: 'bold',
-                        color: row.saldoCassa >= 0 ? COLORS.success : COLORS.danger,
-                      }}
-                    >
-                      {formatEuro(row.saldoCassa)}
-                    </Td>
                   </tr>
                 ))
               )}
@@ -1090,21 +1034,6 @@ export default function ControlloMensile() {
                 </td>
                 <td style={{ padding: 12, textAlign: 'right', fontFamily: MONO }}>
                   {formatEuro(dailyComparison.reduce((s, d) => s + d.posBancaDiff, 0))}
-                </td>
-                <td style={{ padding: 12, textAlign: 'right', fontFamily: MONO }}>
-                  {formatEuro(dailyComparison.reduce((s, d) => s + d.corrispettivoAuto, 0))}
-                </td>
-                <td style={{ padding: 12, textAlign: 'right', fontFamily: MONO }}>
-                  {formatEuro(dailyComparison.reduce((s, d) => s + d.corrispettivoManual, 0))}
-                </td>
-                <td style={{ padding: 12, textAlign: 'right', fontFamily: MONO }}>
-                  {formatEuro(dailyComparison.reduce((s, d) => s + d.corrispettivoDiff, 0))}
-                </td>
-                <td style={{ padding: 12, textAlign: 'right', fontFamily: MONO }}>
-                  {formatEuro(dailyComparison.reduce((s, d) => s + d.versamento, 0))}
-                </td>
-                <td style={{ padding: 12, textAlign: 'right', fontFamily: MONO }}>
-                  {formatEuro(dailyComparison.reduce((s, d) => s + d.saldoCassa, 0))}
                 </td>
               </tr>
             </tfoot>
