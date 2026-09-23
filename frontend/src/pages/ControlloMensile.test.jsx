@@ -90,8 +90,8 @@ describe('ControlloMensile', () => {
     expect(urls).toContain('/api/contabilita-gestionale/bilancio-verifica?anno=2026');
     expect(urls.some(url => url.includes('/api/bank-statement/movements'))).toBe(false);
     expect(urls.some(url => url.includes('limit=500'))).toBe(false);
-    expect(screen.getByText('Fatture da registrare')).toBeInTheDocument();
-    expect(screen.getByText('3')).toBeInTheDocument();
+    expect(screen.getByText(/Fatture da registrare/)).toBeInTheDocument();
+    expect(screen.getByText(/Fatture da registrare 3/)).toBeInTheDocument();
   });
 
   it('non tratta XML maggiore del POS reale come errore se il backend lo certifica ok', async () => {

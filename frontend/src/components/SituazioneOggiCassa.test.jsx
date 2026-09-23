@@ -45,7 +45,7 @@ describe('SituazioneOggiCassa',
       expect(api.delete).not.toHaveBeenCalled();
 
       const blocco = await screen.findByTestId('situazione-oggi');
-      expect(blocco).toHaveTextContent('Cassa di oggi');
+      await waitFor(() => expect(blocco).toHaveTextContent('Cassa di oggi'));
       expect(blocco).toHaveTextContent('Corrispettivi');
       expect(blocco).toHaveTextContent('POS verso banca');
       expect(screen.getByRole('link', { name: 'Apri registro' })).toHaveAttribute(
@@ -58,7 +58,7 @@ describe('SituazioneOggiCassa',
       api.get.mockResolvedValue({ data: { movimenti: [], saldo: 0 } });
       monta('2026-09-23');
       const blocco = await screen.findByTestId('situazione-oggi');
-      expect(blocco).toHaveTextContent('Cassa di oggi');
+      await waitFor(() => expect(blocco).toHaveTextContent('Cassa di oggi'));
       expect(api.post).not.toHaveBeenCalled();
     });
 
