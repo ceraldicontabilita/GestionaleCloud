@@ -47,6 +47,21 @@ CALL = re.compile(
 )
 
 
+# Qualunque chiamata del client con un percorso letterale assoluto. Il client
+# ha ``baseURL: ''``: un percorso che non comincia con /api finisce nella SPA
+# (405 sui POST, pagina HTML sui GET) e il regex ``CALL`` qui sopra non lo
+# vedeva nemmeno, perche' pretendeva gia' il prefisso.
+QUALSIASI = re.compile(
+    r"\bapi\.(get|post|put|delete|patch)\(\s*([`\"'])(?P<path>/[^`\"']*)\2",
+    re.IGNORECASE,
+)
+
+# I lavori del pannello Riparazioni sono URL in una tabella, non chiamate
+# letterali: stesso controllo, letto dalla tabella.
+RIPARAZIONI = ROOT / "components" / "PannelloRiparazioni.jsx"
+VOCE_RIPARAZIONE = re.compile(r"\b(esegui|stato):\s*'(?P<path>/[^']*)'")
+
+
 def _normalizza(path: str) -> str | None:
     """Riduce URL template a segmenti senza perdere la forma della route."""
     path = path.split("?", 1)[0]
@@ -86,7 +101,7 @@ def _calls_frontend():
                 yield path.relative_to(ROOT), match.group(1).upper(), normalized
 
 
-def test_ogni_chiamata_frontend_literalmente_risolta_ha_route_backend():
+def _route_montate():
     app = FastAPI()
     register_all_routers(app)
     routes = [
@@ -97,6 +112,35 @@ def test_ogni_chiamata_frontend_literalmente_risolta_ha_route_backend():
     ]
     # Sono montate direttamente dall'app principale, non dal router registry.
     routes.append(("GET", "/api/health"))
+    return routes
+
+
+def test_nessuna_chiamata_del_client_fuori_da_api():
+    fuori = []
+    for path in ROOT.rglob("*.*"):
+        if path.suffix not in {".js", ".jsx", ".ts", ".tsx"} or ".test." in path.name:
+            continue
+        for match in QUALSIASI.finditer(path.read_text(encoding="utf-8")):
+            if not match.group("path").startswith("/api/"):
+                fuori.append(f"{path.relative_to(ROOT)}: {match.group(1).upper()} {match.group('path')}")
+    assert not fuori, "Chiamate senza prefisso /api (finiscono nella SPA):\n" + "\n".join(fuori)
+
+
+def test_riparazioni_puntano_a_route_montate():
+    routes = _route_montate()
+    voci = [(m.group(1), m.group("path")) for m in VOCE_RIPARAZIONE.finditer(RIPARAZIONI.read_text(encoding="utf-8"))]
+    assert voci, "Nessun lavoro letto dal pannello Riparazioni: regex da aggiornare"
+    mancanti = []
+    for chiave, path in voci:
+        metodo = "POST" if chiave == "esegui" else "GET"
+        normalizzato = _normalizza(path)
+        if not any(metodo == m and _route_match(normalizzato, e) for m, e in routes):
+            mancanti.append(f"{metodo} {path}")
+    assert not mancanti, "Riparazioni senza route montata:\n" + "\n".join(mancanti)
+
+
+def test_ogni_chiamata_frontend_literalmente_risolta_ha_route_backend():
+    routes = _route_montate()
 
     mancanti = []
     for source, method, path in _calls_frontend():

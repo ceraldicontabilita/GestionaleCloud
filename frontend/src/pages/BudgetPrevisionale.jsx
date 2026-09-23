@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
-import api from '../api';
+import api, { messaggioErrore } from '../api';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { COLORS, BORDER_RADIUS, FONT, formatEuro, useIsMobile } from '../lib/utils';
@@ -145,7 +145,7 @@ export default function BudgetPrevisionale() {
       resetForm();
       loadAll();
     } catch (err) {
-      toast.error('Errore', { description: err.response?.data?.error || err.message });
+      toast.error('Errore', { description: messaggioErrore(err) });
     } finally {
       setSaving(false);
     }
