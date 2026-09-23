@@ -24,7 +24,7 @@ import { ModalRegistraLotto } from "./tablet/ModalRegistraLotto";
 import { ModalAlpha }         from "./tablet/ModalAlpha";
 import ModalRichiediMerce     from "./tablet/ModalRichiediMerce";
 import CardProdotto           from "./tablet/CardProdotto";
-import SchedaRicettaKiosk     from "./tablet/SchedaRicettaKiosk";
+import SchedaRicettaChiaraModal from "./SchedaRicettaChiaraModal";
 import PannelloReparti        from "./tablet/PannelloReparti";
 import MagazzinoBarView      from "./MagazzinoBarView";
 import ColazioneAcquavivaView from "./ColazioneAcquavivaView";
@@ -332,10 +332,10 @@ export const TabletView = ({ reparto: repartoIniziale = "pasticceria", onBack })
       {/* Footer lotti */}
       {/* Modali */}
       {cambiaFotoProd && <ModalCambioFoto prodotto={cambiaFotoProd} onClose={()=>setCambiaFotoProd(null)} onSalvato={carica}/>}
-      {ricettaDaVedere && <SchedaRicettaKiosk
+      {ricettaDaVedere && <SchedaRicettaChiaraModal
         ricettaId={ricettaDaVedere.id}
         nome={ricettaDaVedere.nome}
-        modificabile={puoGestireRicette}
+        modificaRapida={puoGestireRicette}
         onSalvato={carica}
         onClose={()=>setRicettaDaVedere(null)}
       />}

@@ -13,7 +13,17 @@ export function apiError(e, fallback = "Errore imprevisto") {
     return "Server non raggiungibile: controlla la connessione o attendi il riavvio (circa un minuto).";
   }
   const status = e?.response?.status;
-  const d = e?.response?.data?.detail ?? e?.response?.data;
+  // Una pagina HTML non e' un messaggio: durante un riavvio il proxy di Render
+  // risponde con la sua pagina d'errore (502/503), e mostrarla faceva comparire
+  // «<!DOCTYPE html>…» dentro la scheda ricetta.
+  const grezzo = e?.response?.data;
+  if (typeof grezzo === "string" && /^\s*</.test(grezzo)) {
+    if (status >= 500 || !status) {
+      return "Il server si sta riavviando: riprova tra un minuto.";
+    }
+    return "Il server ha risposto con una pagina invece che con dei dati: riprova.";
+  }
+  const d = e?.response?.data?.detail ?? e?.response?.data?.message ?? e?.response?.data;
   if (status === 401) {
     return typeof d === "string" && d.trim() ? d : "Sessione scaduta: rientra col PIN.";
   }
