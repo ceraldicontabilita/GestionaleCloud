@@ -4,6 +4,7 @@ import api from '../api';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
+import { useGuscio } from '../contexts/GuscioContext';
 import { formatEuro, formatDateIT, COLORS, SHADOWS, BORDER_RADIUS, useIsMobile } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
 import { Button, Badge, Card, Input, Select, StatCard, Table, TableWrap, Th, Td } from '../components/ds';
@@ -42,7 +43,8 @@ export default function Commercialista() {
   const [sending, setSending] = useState(null);
   const [savingConfig, setSavingConfig] = useState(false);
   const [message, setMessage] = useState(null);
-  const [alertStatus, setAlertStatus] = useState(null);
+  // Stato dell'avviso: lo legge il guscio (GuscioContext), qui non si richiede.
+  const { alertCommercialista: alertStatus, ricaricaAlertCommercialista } = useGuscio();
   const [log, setLog] = useState([]);
   const [segnandoInviata, setSegnandoInviata] = useState(false);
 
@@ -71,13 +73,11 @@ export default function Commercialista() {
 
   const loadConfig = useCallback(async () => {
     try {
-      const [configRes, alertRes, logRes] = await Promise.all([
+      const [configRes, logRes] = await Promise.all([
         api.get('/api/commercialista/config'),
-        api.get('/api/commercialista/alert-status'),
         api.get('/api/commercialista/log?limit=20'),
       ]);
       setConfig(configRes.data);
-      setAlertStatus(alertRes.data);
       setLog(logRes.data.log || []);
     } catch (e) {
       console.error('Error loading config:', e);
@@ -97,7 +97,7 @@ export default function Commercialista() {
         type: 'success',
         text: `Prima Nota Cassa ${alertStatus.mese_nome} ${alertStatus.anno_pendente} segnata come inviata.`,
       });
-      await loadConfig();
+      await Promise.all([loadConfig(), ricaricaAlertCommercialista()]);
     } catch (e) {
       setMessage({ type: 'error', text: 'Errore nel segnare come inviata.' });
     } finally {
@@ -865,7 +865,8 @@ export default function Commercialista() {
 
       if (res.data.success) {
         showMessage(`✅ ${res?.data?.message}`);
-        loadConfig(); // Refresh log and alert status
+        loadConfig(); // Refresh log
+        ricaricaAlertCommercialista(); // L'invio cambia lo stato dell'avviso
       } else {
         showMessage(`❌ Errore: ${res?.data?.message}`, 'error');
       }

@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
-import api from "./api";
 import ErrorBoundary from "./components/ErrorBoundary";
 import TopNav from "./components/layout/TopNav";
 import { UploadProvider } from "./contexts/UploadContext";
@@ -14,36 +13,33 @@ import "./styles/topnav.css";
 // già andati fuori sincrono col desktop (voci ed etichette diverse).
 import { NAV_TUTTE as NAV_TUTTE_RAW, NAV_MOBILE_BAR } from "./navigation.config";
 import { useAuth } from "./contexts/AuthContext.jsx";
+import { useGuscio } from "./contexts/GuscioContext.jsx";
 
 export default function App() {
   const { isAdmin, isReadOnly } = useAuth();
   // Voci solo-admin (Utenti, Admin) nascoste agli altri ruoli anche nel menù mobile.
   const NAV_TUTTE = NAV_TUTTE_RAW.filter(i => !i.adminOnly || isAdmin);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
-  const [alertCommercialista, setAlertCommercialista] = useState(null);
+  const { alertCommercialista: statoCommercialista } = useGuscio();
+  const [, setChiusure] = useState(0);
   const location = useLocation();
 
   // Connessione WebSocket real-time gestisce notifiche push dallo scheduler
   useWebSocketNotifications();
 
-  // Load commercialista alert
-  useEffect(() => {
-    const loadAlertCommercialista = async () => {
-      try {
-        const res = await api.get('/api/commercialista/alert-status');
-        if (res.data.show_alert) {
-          // Controlla se l'utente ha già chiuso questo avviso (per mese/anno)
-          const dismissKey = `alert_dismissed_${res.data.mese_pendente}_${res.data.anno_pendente}`;
-          if (!localStorage.getItem(dismissKey)) {
-            setAlertCommercialista(res.data);
-          }
-        }
-      } catch (e) {
-        // Silently fail
-      }
-    };
-    loadAlertCommercialista();
-  }, []);
+  // Avviso commercialista: il dato arriva dal guscio (GuscioContext).
+  // Nascosto se l'utente l'ha già chiuso per quel mese/anno.
+  const chiaveChiusura = s => `alert_dismissed_${s.mese_pendente}_${s.anno_pendente}`;
+  const alertCommercialista = statoCommercialista?.show_alert
+    && !localStorage.getItem(chiaveChiusura(statoCommercialista))
+    ? statoCommercialista
+    : null;
+  const chiudiAlertCommercialista = () => {
+    if (alertCommercialista) {
+      localStorage.setItem(chiaveChiusura(alertCommercialista), '1');
+    }
+    setChiusure(n => n + 1);
+  };
 
   return (
     <UploadProvider>
@@ -174,24 +170,12 @@ export default function App() {
                   textDecoration: 'none',
                   fontSize: 13
                 }}
-                onClick={() => {
-                  if (alertCommercialista) {
-                    const dismissKey = `alert_dismissed_${alertCommercialista.mese_pendente}_${alertCommercialista.anno_pendente}`;
-                    localStorage.setItem(dismissKey, '1');
-                    setAlertCommercialista(null);
-                  }
-                }}
+                onClick={chiudiAlertCommercialista}
               >
                 Vai a Commercialista
               </NavLink>
               <button
-                onClick={() => {
-                  if (alertCommercialista) {
-                    const dismissKey = `alert_dismissed_${alertCommercialista.mese_pendente}_${alertCommercialista.anno_pendente}`;
-                    localStorage.setItem(dismissKey, '1');
-                  }
-                  setAlertCommercialista(null);
-                }}
+                onClick={chiudiAlertCommercialista}
                 style={{
                   background: 'transparent',
                   border: 'none',
