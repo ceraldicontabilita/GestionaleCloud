@@ -33,3 +33,28 @@ describe("foto nelle schede prodotto del tablet", () => {
     expect(amministratore).toContain("Escludi Baba");
   });
 });
+
+describe("Apri scheda sulle card di reparto", () => {
+  const prodotto = { id: "r1", nome: "Amaretti", foto_url: "/api/foto/a" };
+
+  test("la card con foto e quella testuale offrono «Apri scheda» a tutta larghezza", () => {
+    const conFoto = renderToStaticMarkup(
+      React.createElement(CardProdotto, { prodotto, reparto: "pasticceria", onTap: () => {}, onVediRicetta: () => {} }),
+    );
+    const testuale = renderToStaticMarkup(
+      React.createElement(CardProdotto, { prodotto: { ...prodotto, foto_url: "" }, reparto: "pasticceria", onTap: () => {}, onVediRicetta: () => {} }),
+    );
+    for (const html of [conFoto, testuale]) {
+      expect(html).toContain("Apri scheda");
+      expect(html).toContain("Apri la scheda di Amaretti");
+      expect(html).toContain("min-height:44px");
+    }
+  });
+
+  test("senza chi apre la scheda il bottone non compare", () => {
+    const html = renderToStaticMarkup(
+      React.createElement(CardProdotto, { prodotto, reparto: "pasticceria", onTap: () => {} }),
+    );
+    expect(html).not.toContain("Apri scheda");
+  });
+});

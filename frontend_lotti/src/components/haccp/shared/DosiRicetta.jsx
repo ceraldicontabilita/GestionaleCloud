@@ -9,6 +9,7 @@ export default function DosiRicetta({ ricetta }) {
   const [moltiplicatore, setMoltiplicatore] = useState("1");
   const [calcolata, setCalcolata] = useState(null);
   const [errore, setErrore] = useState("");
+  const [tentativo, setTentativo] = useState(0);
   const dettaglio = Array.isArray(ricetta?.ingredienti_dettaglio) ? ricetta.ingredienti_dettaglio : [];
   const soliNomi = Array.isArray(ricetta?.ingredienti) ? ricetta.ingredienti : [];
 
@@ -33,7 +34,7 @@ export default function DosiRicetta({ ricetta }) {
         .catch((e) => { if (attivo) { setCalcolata(null); setErrore(apiError(e, "Dose non calcolabile")); } });
     }, 200);
     return () => { attivo = false; clearTimeout(timer); };
-  }, [ricetta?.id, dettaglio.length, moltiplicatore]);
+  }, [ricetta?.id, dettaglio.length, moltiplicatore, tentativo]);
 
   const cambia = (valore) => { setCalcolata(null); setMoltiplicatore(String(valore)); };
   const ingredienti = calcolata?.ingredienti || dettaglio;
@@ -59,7 +60,13 @@ export default function DosiRicetta({ ricetta }) {
           : <div>Resa in pezzi da completare: indica peso del pezzo e dosi mancanti nella ricetta.</div>}
         {calcolata.ingredienti_senza_massa?.length > 0 && <div>Dosi o pesi mancanti: {calcolata.ingredienti_senza_massa.join(", ")}</div>}
       </div>}
-      {errore && <p role="alert" style={{ color: "#8f3829", margin: "8px 0 0" }}>{errore}</p>}
+      {errore && <div role="alert" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", margin: "8px 0 0" }}>
+        <span style={{ color: "#8f3829", flex: 1, minWidth: 0 }}>{errore}</span>
+        <button type="button" onClick={() => setTentativo((n) => n + 1)}
+          style={{ minHeight: 44, padding: "0 14px", borderRadius: 10, border: "1px solid #cfdfd5", background: "#f2f6f3", color: "#3f5a4e", fontWeight: 800, cursor: "pointer" }}>
+          Riprova
+        </button>
+      </div>}
     </div>}
     {righe.length === 0 ? <p>Questa ricetta non ha ancora ingredienti.</p> : righe.map((r, i) =>
       <div key={`${r.nome}-${i}`} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "10px 12px", borderBottom: "1px solid #eee7dd", background: "#fff" }}>

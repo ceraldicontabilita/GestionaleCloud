@@ -34,6 +34,31 @@ export function usaCardTestuale(prodotto, reparto) {
   return reparto === "pasticceria" && !(prodotto?.foto_url || prodotto?.foto_fallback_url);
 }
 
+// «Apri scheda» sulla card: la stessa scheda del ricettario (ingredienti,
+// dosi, allergeni, modo di preparazione). Bottone intero da 44px, non un
+// bollino sopra la foto: chi lavora al banco ha le mani sporche.
+function PulsanteApriScheda({ prodotto, onVediRicetta }) {
+  if (!onVediRicetta) return null;
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onVediRicetta(prodotto);
+      }}
+      title={`Apri la scheda di ${prodotto.nome}`}
+      style={{
+        width: "100%", minHeight: 44, border: "none", borderTop: "1px solid #cfdfd5",
+        background: "#fffefb", color: "#3f5a4e", cursor: "pointer", display: "flex",
+        alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12,
+        fontWeight: 800, fontFamily: "inherit",
+      }}
+    >
+      <BookOpen size={15} /> Apri scheda
+    </button>
+  );
+}
+
 function PulsanteEscludi({ prodotto, onEscludi, escludendo }) {
   if (!onEscludi) return null;
   return (
@@ -94,17 +119,11 @@ function CardProdotto({ prodotto, reparto, onTap, onCambiaFoto, hasVarianti, onV
             </div>
           </div>
           <div style={{ background: giacenza ? "#fff1e6" : hasVarianti ? "#fffbeb" : "#faf7f0", borderTop: `1px solid ${giacenza ? "#7c2d12" : hasVarianti ? "var(--warning-soft)" : "#f0ebe0"}`, padding: "5px 8px", display: "flex", alignItems: "center", gap: 6 }}>
-            <p style={{ margin: 0, flex: 1, minWidth: 0, fontSize: 10, color: giacenza ? "#7c2d12" : hasVarianti ? "var(--warning-text)" : "#9aa593", fontWeight: 600, textAlign: onVediRicetta ? "left" : "center" }}>
+            <p style={{ margin: 0, flex: 1, minWidth: 0, fontSize: 10, color: giacenza ? "#7c2d12" : hasVarianti ? "var(--warning-text)" : "#9aa593", fontWeight: 600, textAlign: "center" }}>
               {giacenza ? `🧊 ${giacenza} già in frigo/abbattitore` : "tocca → stampa etichetta"}
             </p>
-            {onVediRicetta && (
-              <button onClick={e => { e.stopPropagation(); onVediRicetta(prodotto); }}
-                title="Vedi la ricetta"
-                style={{ flexShrink: 0, background: "#f2f6f3", border: "1px solid #cfdfd5", borderRadius: 8, padding: "4px 8px", color: "#3f5a4e", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 800, fontFamily: "inherit" }}>
-                <BookOpen size={12} /> Ricetta
-              </button>
-            )}
           </div>
+          <PulsanteApriScheda prodotto={prodotto} onVediRicetta={onVediRicetta} />
           <PulsanteEscludi prodotto={prodotto} onEscludi={onEscludi} escludendo={escludendo} />
         </div>
         <GiacenzaBadge giacenza={giacenza} style={{ top: -8, left: 8 }} />
@@ -160,12 +179,6 @@ function CardProdotto({ prodotto, reparto, onTap, onCambiaFoto, hasVarianti, onV
             style={{ position: "absolute", bottom: 6, right: 6, background: "rgba(0,0,0,0.55)", border: "none", borderRadius: 8, padding: "4px 7px", color: "#fff", fontSize: 11, cursor: "pointer" }}
             title="Cambia foto">📷</button>
         )}
-        {/* Prima questa portava a #ricette, cioè al Backoffice: da quando il
-            gestionale è riservato al titolare, per un dipendente finiva
-            contro il tastierino. Ora apre la ricetta in sola lettura. */}
-        <button onClick={(e) => { e.stopPropagation(); onVediRicetta?.(prodotto); }}
-          style={{ position: "absolute", bottom: 6, left: 6, background: "rgba(0,0,0,0.55)", border: "none", borderRadius: 8, padding: "5px 8px", color: "#fff", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700, fontFamily: "inherit" }}
-          title="Vedi la ricetta"><BookOpen size={13} /> Ricetta</button>
       </div>
       <div onClick={() => onTap(prodotto)} style={{ padding: "10px 12px" }}>
         <p style={{ margin: 0, fontWeight: 700, fontSize: 13, textTransform: "capitalize", color: "#2a3329", lineHeight: 1.3, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{prodotto.nome}</p>
@@ -173,6 +186,7 @@ function CardProdotto({ prodotto, reparto, onTap, onCambiaFoto, hasVarianti, onV
           {giacenza ? `🧊 ${giacenza} già in frigo/abbattitore` : "Tocca → registra lotto"}
         </p>
       </div>
+      <PulsanteApriScheda prodotto={prodotto} onVediRicetta={onVediRicetta} />
       <PulsanteEscludi prodotto={prodotto} onEscludi={onEscludi} escludendo={escludendo} />
     </div>
   );

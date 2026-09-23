@@ -109,6 +109,32 @@ def risposta_errore(
     )
 
 
+# Testi storici in inglese che i middleware scrivono in ``detail``: il valore
+# resta identico (compatibilita'), all'utente arriva la frase italiana.
+TRADUZIONI = {
+    "Authentication required": "Accesso richiesto: entra con il PIN",
+    "Invalid or expired token": "Sessione scaduta: entra di nuovo con il PIN",
+    "Invalid token: missing user ID": "Sessione non valida: entra di nuovo con il PIN",
+    "Invalid WebSocket token": "Sessione non valida per il canale in tempo reale",
+}
+
+
+def errore_http(stato: int, detail: Any, headers: Optional[dict] = None) -> JSONResponse:
+    """Risposta d'errore scritta da un middleware, che non passa dagli
+    exception handler: stesso contratto, stesso ``correlation_id`` nel log."""
+    cid = uuid.uuid4().hex[:12]
+    logger.warning("[%s] middleware -> %s: %s", cid, stato, detail)
+    messaggio = TRADUZIONI.get(detail) if isinstance(detail, str) else None
+    return risposta_errore(
+        stato,
+        message=messaggio or _messaggio(stato, detail),
+        detail=detail,
+        details=detail if isinstance(detail, (dict, list)) else None,
+        correlation_id=cid,
+        headers=headers,
+    )
+
+
 def add_exception_handlers(app: FastAPI) -> None:
     """Registra gli handler del contratto unico sull'app FastAPI."""
 

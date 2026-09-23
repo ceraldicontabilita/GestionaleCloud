@@ -9,7 +9,7 @@ but this middleware acts as a safety net.
 from datetime import datetime, timedelta, timezone
 
 from fastapi import Request
-from fastapi.responses import JSONResponse
+from app.middleware.error_handler import errore_http
 from starlette.middleware.base import BaseHTTPMiddleware
 from jose import jwt, JWTError
 import hmac
@@ -123,15 +123,9 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             expected = (settings.RENDER_INGEST_SHARED_SECRET or "").strip()
             supplied = request.headers.get("X-Render-Ingest-Token", "").strip()
             if not expected:
-                return JSONResponse(
-                    status_code=503,
-                    content={"detail": "Render document ingest non configurato"},
-                )
+                return errore_http(503, "Render document ingest non configurato")
             if not supplied or not hmac.compare_digest(supplied, expected):
-                return JSONResponse(
-                    status_code=401,
-                    content={"detail": "Credenziale Render non valida"},
-                )
+                return errore_http(401, "Credenziale Render non valida")
             request.state.user_id = "render-document-ingest"
             request.state.user_email = "render-document-ingest@internal"
             request.state.user_role = "admin"
@@ -147,15 +141,9 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             expected = (os.environ.get("LOTTI_INTEGRATION_KEY") or "").strip()
             supplied = request.headers.get("X-Lotti-Key", "").strip()
             if not expected:
-                return JSONResponse(
-                    status_code=503,
-                    content={"detail": "Integrazione Lotti non configurata"},
-                )
+                return errore_http(503, "Integrazione Lotti non configurata")
             if not supplied or not hmac.compare_digest(supplied, expected):
-                return JSONResponse(
-                    status_code=401,
-                    content={"detail": "Chiave integrazione Lotti non valida"},
-                )
+                return errore_http(401, "Chiave integrazione Lotti non valida")
             request.state.user_id = "lotti-integration"
             request.state.user_email = "lotti-integration@internal"
             request.state.user_role = "admin"
@@ -179,24 +167,21 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         if request.headers.get("upgrade", "").lower() == "websocket":
             token = request.query_params.get("token")
             if not token:
-                return JSONResponse(
-                    status_code=401,
-                    content={"detail": "WebSocket authentication required: pass ?token=JWT"},
-                )
+                return errore_http(401, "WebSocket authentication required: pass ?token=JWT")
             try:
                 payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
                 user_id = payload.get("sub")
                 from app.utils.ruoli import normalizza_ruolo, RUOLI_VALIDI
                 ruolo = normalizza_ruolo(payload.get("role"))
                 if not user_id:
-                    return JSONResponse(status_code=401, content={"detail": "Invalid WebSocket token"})
+                    return errore_http(401, "Invalid WebSocket token")
                 if ruolo not in RUOLI_VALIDI:
-                    return JSONResponse(status_code=403, content={"detail": "Ruolo utente non valido"})
+                    return errore_http(403, "Ruolo utente non valido")
                 request.state.user_id = user_id
                 request.state.user_email = payload.get("email")
                 request.state.user_role = ruolo
             except JWTError:
-                return JSONResponse(status_code=401, content={"detail": "Invalid WebSocket token"})
+                return errore_http(401, "Invalid WebSocket token")
             return await call_next(request)
         
         # --- Require authentication for all other /api/ paths ---
@@ -210,11 +195,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             token = request.cookies.get("access_token")
 
         if not token:
-            return JSONResponse(
-                status_code=401,
-                content={"detail": "Authentication required"},
-                headers={"WWW-Authenticate": "Bearer"}
-            )
+            return errore_http(401, "Authentication required", headers={"WWW-Authenticate": "Bearer"})
 
         try:
             payload = jwt.decode(
@@ -225,11 +206,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
 
             user_id = payload.get("sub")
             if not user_id:
-                return JSONResponse(
-                    status_code=401,
-                    content={"detail": "Invalid token: missing user ID"},
-                    headers={"WWW-Authenticate": "Bearer"}
-                )
+                return errore_http(401, "Invalid token: missing user ID", headers={"WWW-Authenticate": "Bearer"})
 
             # Token revocato esplicitamente (logout) prima della scadenza
             # naturale. Controllato SOLO dopo che firma/scadenza sono già
@@ -240,16 +217,9 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             try:
                 revocato = await is_revocato(Database.get_db(), token)
             except TokenBlacklistUnavailable:
-                return JSONResponse(
-                    status_code=503,
-                    content={"detail": "Verifica sessione temporaneamente non disponibile"},
-                )
+                return errore_http(503, "Verifica sessione temporaneamente non disponibile")
             if revocato:
-                return JSONResponse(
-                    status_code=401,
-                    content={"detail": "Sessione terminata (logout)"},
-                    headers={"WWW-Authenticate": "Bearer"}
-                )
+                return errore_http(401, "Sessione terminata (logout)", headers={"WWW-Authenticate": "Bearer"})
 
             # --- CONTROLLO RUOLO (rete di sicurezza globale) ---
             # Sola lettura: nessuna scrittura. Operatore: fuori dagli endpoint
@@ -261,10 +231,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             )
             ruolo = normalizza_ruolo(payload.get("role"))
             if ruolo not in RUOLI_VALIDI:
-                return JSONResponse(
-                    status_code=403,
-                    content={"detail": "Ruolo utente non valido"},
-                )
+                return errore_http(403, "Ruolo utente non valido")
 
             # Store only normalized user info in request state.
             request.state.user_id = user_id
@@ -273,23 +240,13 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             # /logout resta sempre permesso (serve anche in sola lettura).
             if not path.startswith("/api/auth/"):
                 if ruolo == SOLA_LETTURA and method in METODI_SCRITTURA:
-                    return JSONResponse(
-                        status_code=403,
-                        content={"detail": "Account in sola lettura: operazione non consentita"},
-                    )
+                    return errore_http(403, "Account in sola lettura: operazione non consentita")
                 if ruolo != ADMIN and any(path.startswith(p) for p in PREFISSI_SOLO_ADMIN):
-                    return JSONResponse(
-                        status_code=403,
-                        content={"detail": "Operazione riservata all'amministratore"},
-                    )
+                    return errore_http(403, "Operazione riservata all'amministratore")
 
         except JWTError as e:
             logger.warning(f"Auth middleware: invalid token on {path}: {e}")
-            return JSONResponse(
-                status_code=401,
-                content={"detail": "Invalid or expired token"},
-                headers={"WWW-Authenticate": "Bearer"}
-            )
+            return errore_http(401, "Invalid or expired token", headers={"WWW-Authenticate": "Bearer"})
 
         response = await call_next(request)
 

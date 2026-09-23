@@ -101,3 +101,22 @@ def test_guasto_non_espone_l_eccezione():
 def test_handler_registrato_dall_app_vera():
     sorgente = (Path(__file__).resolve().parents[2] / "app" / "main.py").read_text(encoding="utf-8")
     assert "add_exception_handlers(app)" in sorgente
+
+
+def test_middleware_autenticazione_usa_il_contratto():
+    """Il middleware risponde prima degli exception handler: scriveva a mano
+    ``{"detail": ...}`` e restava fuori dal contratto."""
+    import json
+
+    from app.middleware.error_handler import errore_http
+
+    sorgente = (Path(__file__).resolve().parents[2] / "app" / "middleware" / "authentication.py").read_text(encoding="utf-8")
+    assert "JSONResponse(" not in sorgente
+
+    r = errore_http(401, "Authentication required", headers={"WWW-Authenticate": "Bearer"})
+    corpo = json.loads(r.body)
+    assert r.status_code == 401 and r.headers["www-authenticate"] == "Bearer"
+    assert CAMPI <= corpo.keys()
+    assert corpo["code"] == "NON_AUTENTICATO"
+    assert corpo["detail"] == "Authentication required"
+    assert corpo["message"] == "Accesso richiesto: entra con il PIN"
