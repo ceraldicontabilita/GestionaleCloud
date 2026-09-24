@@ -3,18 +3,17 @@ import { FileStack, Wallet } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
 import { HubTabs, PageLoader } from '../../components/ds';
+import { sezioneFatture } from './segmentiHub';
 
 const ArchivioContent = lazy(() => import('../ArchivioFattureRicevute.jsx'));
 const CorrispettiviContent = lazy(() => import('../Corrispettivi.jsx'));
-
 
 export default function FattureHub() {
   const { anno } = useAnnoGlobale();
   const location = useLocation();
   const navigate = useNavigate();
-  const isCorresp = location.pathname.includes('/corrispettivi');
+  const isCorresp = sezioneFatture(location.pathname) === 'corrispettivi';
 
-  // Mount-once: traccia quale vista è stata visitata
   const [visitedCorresp, setVisitedCorresp] = useState(isCorresp);
   const [visitedArchivio, setVisitedArchivio] = useState(!isCorresp);
 
@@ -23,8 +22,6 @@ export default function FattureHub() {
     else setVisitedArchivio(true);
   }, [isCorresp]);
 
-  // Al cambio anno resta montata solo la vista attiva: prima entrambe si
-  // rimontavano insieme (key legata all'anno) duplicando le richieste.
   useEffect(() => {
     setVisitedCorresp(isCorresp);
     setVisitedArchivio(!isCorresp);
