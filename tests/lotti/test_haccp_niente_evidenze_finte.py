@@ -44,6 +44,9 @@ MODULI_HACCP = [
     "app/lotti/routers/temperature_negative.py",
     "app/lotti/routers/sanificazione.py",
     "app/lotti/routers/anomalie.py",
+    # Il calendario chiusure alimenta le schede temperature: inventava giorni
+    # «FRIGO SPENTO - MANUTENZIONE» e «NON USATO» estratti a caso per anno.
+    "app/lotti/routers/chiusure.py",
 ]
 
 
@@ -147,4 +150,16 @@ def test_il_marcatore_dei_giorni_scoperti_non_inventa_la_temperatura():
     assert "MOTIVO_NON_RILEVATO" in sorgente, "Il buco deve portare il suo motivo."
     assert "operatore" not in sorgente, (
         "Un giorno non rilevato non ha un operatore: non l'ha fatto nessuno."
+    )
+
+
+def test_calendario_chiusure_senza_fermi_inventati():
+    import asyncio
+
+    from app.lotti.routers import chiusure
+
+    esito = asyncio.run(chiusure.get_tutte_chiusure(2026))
+    assert esito["stati_speciali"] == {"manutenzione": [], "non_usato": []}
+    assert not any(
+        c.get("is_manutenzione") or c.get("is_non_usato") for c in esito["chiusure"]
     )

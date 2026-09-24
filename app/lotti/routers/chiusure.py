@@ -15,9 +15,6 @@ from datetime import datetime, timezone, date, timedelta
 import logging
 import uuid
 
-# NOTE: random usato per generazione dati demo HACCP con seed fisso (riproducibilità). NON usato per operazioni di sicurezza.
-import random
-
 from app.lotti.db import database as db
 
 logger = logging.getLogger(__name__)
@@ -148,64 +145,12 @@ def get_chiusure_obbligatorie(anno: int) -> List[dict]:
 
 
 # ==================== STATI SPECIALI (MANUTENZIONE, NON USATO) ====================
-
-
-def genera_stati_speciali_random(anno: int, seed: int = None) -> Dict[str, List[dict]]:
-    """
-    Genera stati speciali random per l'anno:
-    - 2-3 periodi di "FRIGO SPENTO - MANUTENZIONE" (2-3 giorni ciascuno)
-    - 1-2 periodi di "NON USATO" (max 5 giorni ciascuno)
-
-    Returns: Dict con chiave "manutenzione" e "non_usato"
-    """
-    if seed:
-        random.seed(seed)
-    else:
-        random.seed(anno * 1000)  # Seed basato sull'anno per consistenza
-
-    stati = {"manutenzione": [], "non_usato": []}
-
-    # Mesi disponibili (escluso agosto per ferie)
-    mesi_disponibili = [1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12]
-
-    # Genera 2-3 periodi di manutenzione
-    num_manutenzioni = random.randint(2, 3)
-    mesi_manutenzione = random.sample(mesi_disponibili, num_manutenzioni)
-
-    for mese in mesi_manutenzione:
-        durata = random.randint(2, 3)
-        giorno_inizio = random.randint(5, 20)
-
-        for i in range(durata):
-            stati["manutenzione"].append(
-                {
-                    "data": date(anno, mese, giorno_inizio + i),
-                    "nome": "FRIGO SPENTO - MANUTENZIONE",
-                    "tipo": "manutenzione",
-                    "motivo": "Frigo spento per manutenzione",
-                }
-            )
-
-    # Genera 1-2 periodi di non usato
-    mesi_rimanenti = [m for m in mesi_disponibili if m not in mesi_manutenzione]
-    num_non_usato = random.randint(1, 2)
-    mesi_non_usato = random.sample(mesi_rimanenti, min(num_non_usato, len(mesi_rimanenti)))
-
-    for mese in mesi_non_usato:
-        durata = random.randint(3, 5)
-        giorno_inizio = random.randint(3, 18)
-
-        for i in range(durata):
-            stati["non_usato"].append(
-                {
-                    "data": date(anno, mese, giorno_inizio + i),
-                    "nome": f"NON USATO dal {giorno_inizio}/{mese} al {giorno_inizio + durata - 1}/{mese}",
-                    "tipo": "non_usato",
-                    "motivo": "Apparecchio non utilizzato",
-                }
-            )
-
-    return stati
+#
+# Qui c'era `genera_stati_speciali_random`: 2-3 periodi «FRIGO SPENTO -
+# MANUTENZIONE» e 1-2 «NON USATO» estratti a caso (seme = anno) e mostrati nelle
+# schede temperature come se fossero accaduti. Un registro HACCP registra solo
+# fatti: un fermo macchina si annota a mano (chiusure custom o rilevazione con
+# motivo), il codice non lo inventa.
 
 
 # ==================== MODELLI ====================
@@ -244,8 +189,8 @@ async def get_tutte_chiusure(anno: int):
     # Festività
     festivita = get_festivita_fisse(anno) + get_festivita_mobili(anno)
 
-    # Stati speciali
-    stati_speciali = genera_stati_speciali_random(anno)
+    # Stati speciali: nessuna fonte li registra ancora, quindi nessuno.
+    stati_speciali = {"manutenzione": [], "non_usato": []}
 
     # Chiusure custom dal DB
     chiusure_custom = await db.chiusure_custom.find({"anno": anno}, {"_id": 0}).to_list(100)
