@@ -13,7 +13,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, List, Optional
 
 import bcrypt
-from jose import jwt
 
 from app.hr.config import settings
 from app.hr.database import Database, Collections

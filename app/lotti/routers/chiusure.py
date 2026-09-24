@@ -10,7 +10,7 @@ Chiusure fisse:
 
 from fastapi import APIRouter, HTTPException, Query, Body
 from pydantic import BaseModel
-from typing import List, Optional, Dict
+from typing import List, Optional
 from datetime import datetime, timezone, date, timedelta
 import logging
 import uuid

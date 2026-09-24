@@ -10,7 +10,7 @@ RIFERIMENTI NORMATIVI:
 """
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, ConfigDict
-from datetime import datetime, timezone, date, timedelta
+from datetime import datetime, timezone, date
 from typing import List
 import re
 import uuid

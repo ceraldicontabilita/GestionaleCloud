@@ -25,8 +25,7 @@ import os
 import time
 import hashlib
 import hmac
-from datetime import datetime, timezone, timedelta
-from typing import Optional
+from datetime import timedelta
 
 import jwt
 from jwt import PyJWKClient

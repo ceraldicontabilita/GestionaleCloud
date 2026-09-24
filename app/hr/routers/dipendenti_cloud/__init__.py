@@ -4,7 +4,7 @@ Sistema HR completo per gestione personale
 """
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Body, Form
 from fastapi.responses import Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import uuid
 import re

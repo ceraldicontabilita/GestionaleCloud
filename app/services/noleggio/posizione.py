@@ -35,7 +35,7 @@ from decimal import Decimal
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from app.constants.stati_verbale import e_pagato
-from app.services.noleggio.constants import COLLECTION, FORNITORI_NOLEGGIO
+from app.services.noleggio.constants import FORNITORI_NOLEGGIO
 from app.services.noleggio.controlli import STATI_CONTRATTO_CHIUSI, driver_alla_data
 from app.services.verbali_evidence import amount_to_cents, sanitize_verbale_evidence
 

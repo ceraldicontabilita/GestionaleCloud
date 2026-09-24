@@ -5,11 +5,10 @@ Provides reusable dependencies for authentication, database, etc.
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional, Dict, Any
-from jose import jwt, JWTError
+from jose import JWTError
 from datetime import datetime, timezone
 import logging
 
-from app.hr.config import settings
 from app.hr.database import get_database
 from app.hr.exceptions import AuthenticationError
 
