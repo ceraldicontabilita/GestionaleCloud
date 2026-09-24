@@ -1010,6 +1010,49 @@ async def get_documenti_non_associati(
     return results[:limit]
 
 
+def _parole_nome(testo: Any) -> set:
+    import unicodedata
+    testo = unicodedata.normalize("NFKD", str(testo or "")).encode("ascii", "ignore").decode()
+    return {p for p in re.split(r"[^a-z0-9]+", testo.lower()) if p}
+
+
+async def _cedolino_unico_per_nome(db: ArchivioDocumenti, parole: List[str], mese, anno) -> Optional[Dict[str, Any]]:
+    """Il solo cedolino del periodo, ancora senza PDF, il cui dipendente
+    contiene tutte le parole del nome nel file. Nessuno o piu' d'uno: None."""
+    cercate = _parole_nome(" ".join(parole))
+    if not cercate or not mese or not anno:
+        return None
+    candidati = []
+    cursor = db["cedolini"].find({
+        "mese": mese,
+        "anno": anno,
+        "$or": [
+            {"pdf_data": None},
+            {"pdf_data": ""},
+            {"pdf_data": {"$exists": False}}
+        ]
+    })
+    nomi_anagrafica: Optional[Dict[str, str]] = None
+    async for doc in cursor:
+        nome_doc = doc.get("dipendente") or doc.get("dipendente_nome") or doc.get("nome_dipendente") or ""
+        if not isinstance(nome_doc, str) or not nome_doc.strip():
+            # Cedolino con il solo id del dipendente: il nome viene dall'anagrafica.
+            dip_id = doc.get("employee_id") or doc.get("dipendente_id")
+            if not dip_id:
+                continue
+            if nomi_anagrafica is None:
+                nomi_anagrafica = {}
+                async for d in db["dipendenti"].find({}, {"_id": 0, "id": 1, "nome_completo": 1, "nome": 1, "cognome": 1}):
+                    nomi_anagrafica[str(d.get("id"))] = (
+                        d.get("nome_completo") or f"{d.get('cognome', '')} {d.get('nome', '')}".strip())
+            nome_doc = nomi_anagrafica.get(str(dip_id), "")
+        if cercate <= _parole_nome(nome_doc):
+            candidati.append(doc)
+            if len(candidati) > 1:
+                return None
+    return candidati[0] if candidati else None
+
+
 async def smart_auto_associate(db: ArchivioDocumenti) -> Dict[str, int]:
     """
     Tenta di associare automaticamente i PDF ai documenti esistenti
@@ -1041,36 +1084,14 @@ async def smart_auto_associate(db: ArchivioDocumenti) -> Dict[str, int]:
                 anno = int(match.group(3))
                 mese = mesi_it.get(mese_str, pdf_doc.get("mese"))
 
-                # Cerca dipendente per nome/cognome
+                # GC-17: il cedolino si abbina solo al dipendente del file.
+                # Prima la prima ricerca prendeva un cedolino qualsiasi del
+                # mese senza PDF, di chiunque fosse, e il cognome da solo
+                # confondeva omonimi. Ora servono tutte le parole del nome e
+                # un solo candidato; altrimenti il PDF resta da associare.
                 parts = nome_completo.split()
                 if len(parts) >= 2:
-                    cognome = parts[0]
-                    # GC-17: il nome non entra nella ricerca del cedolino (solo cognome).
-                    nome = " ".join(parts[1:])  # noqa: F841
-
-                    # Cerca cedolino corrispondente
-                    cedolino = await db["cedolini"].find_one({
-                        "mese": mese,
-                        "anno": anno,
-                        "$or": [
-                            {"pdf_data": None},
-                            {"pdf_data": ""},
-                            {"pdf_data": {"$exists": False}}
-                        ]
-                    })
-
-                    if not cedolino:
-                        # Cerca anche per nome dipendente
-                        cedolino = await db["cedolini"].find_one({
-                            "dipendente": {"$regex": cognome, "$options": "i"},
-                            "mese": mese,
-                            "anno": anno,
-                            "$or": [
-                                {"pdf_data": None},
-                                {"pdf_data": ""},
-                                {"pdf_data": {"$exists": False}}
-                            ]
-                        })
+                    cedolino = await _cedolino_unico_per_nome(db, parts, mese, anno)
 
                     if cedolino:
                         # Associa
