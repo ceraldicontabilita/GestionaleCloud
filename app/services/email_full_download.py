@@ -1353,20 +1353,96 @@ async def sync_filesystem_pdfs_to_db(db: ArchivioDocumenti, base_dir: str = "/tm
     return stats
 
 
+_MESI_IT = {
+    "gennaio": 1, "febbraio": 2, "marzo": 3, "aprile": 4,
+    "maggio": 5, "giugno": 6, "luglio": 7, "agosto": 8,
+    "settembre": 9, "ottobre": 10, "novembre": 11, "dicembre": 12,
+}
+
+
+def _indizi_f24_da_nome(filename: str) -> Tuple[Optional[int], Optional[int], Optional[str]]:
+    """(mese, anno, tipo di tributo) leggibili dal nome di un file F24."""
+    nome = (filename or "").lower()
+    mese = anno = None
+    for parola, numero in _MESI_IT.items():
+        if parola in nome:
+            mese = numero
+            break
+    m = re.search(r"(?<!\d)(20[1-3]\d)(?!\d)", nome)
+    if m:
+        anno = int(m.group(1))
+    if mese is None:
+        # IVA_09_2025, IVA_11.25, 2025_09
+        for pattern, gm, ga in ((r"(?<!\d)(\d{1,2})[._-](20[1-3]\d|\d{2})(?!\d)", 1, 2),
+                                (r"(?<!\d)(20[1-3]\d)[._-](\d{1,2})(?!\d)", 2, 1)):
+            m = re.search(pattern, nome)
+            if m and 1 <= int(m.group(gm)) <= 12:
+                a = m.group(ga)
+                a = int(a) if len(a) == 4 else 2000 + int(a)
+                if 2010 <= a <= 2039 and (anno is None or anno == a):
+                    mese, anno = int(m.group(gm)), a
+                    break
+    if "iva" in nome:
+        tipo = "iva"
+    elif "ires" in nome or "irpef" in nome:
+        tipo = "imposte_reddito"
+    elif "inps" in nome:
+        tipo = "contributi"
+    elif "imu" in nome or "tasi" in nome:
+        tipo = "tributi_locali"
+    elif "1040" in nome or "ritenute" in nome:
+        tipo = "ritenute"
+    else:
+        tipo = None
+    return mese, anno, tipo
+
+
+def _f24_ha_tipo(doc: Dict[str, Any], tipo: str) -> bool:
+    if tipo == "contributi":
+        return bool(doc.get("sezione_inps"))
+    if tipo == "tributi_locali":
+        return bool(doc.get("sezione_imu") or doc.get("sezione_tributi_locali")
+                    or doc.get("sezione_imu_tributi_locali"))
+    codici = {
+        str(r.get("codice_tributo") or r.get("codice") or "")
+        for sez in ("sezione_erario", "sezione_regioni")
+        for r in (doc.get(sez) or []) if isinstance(r, dict)
+    }
+    prefissi = {"iva": ("60",), "imposte_reddito": ("20", "40"), "ritenute": ("10",)}[tipo]
+    return any(c.startswith(prefissi) for c in codici)
+
+
+async def _f24_unico_da_file(db: ArchivioDocumenti, filename: str) -> Optional[Dict[str, Any]]:
+    """L'unico F24 senza PDF del mese e anno del file e, se il nome lo dice,
+    del suo tipo di tributo. Nessuno, piu' d'uno o indizi insufficienti: None."""
+    mese, anno, tipo = _indizi_f24_da_nome(filename)
+    if not mese or not anno:
+        return None
+    candidati = []
+    cursor = db["f24_unificato"].find({
+        "mese": mese,
+        "anno": anno,
+        "$or": [
+            {"pdf_data": None},
+            {"pdf_data": ""},
+            {"pdf_data": {"$exists": False}}
+        ]
+    })
+    async for doc in cursor:
+        if tipo and not _f24_ha_tipo(doc, tipo):
+            continue
+        candidati.append(doc)
+        if len(candidati) > 1:
+            return None
+    return candidati[0] if candidati else None
+
+
 async def associate_f24_from_filesystem(db: ArchivioDocumenti) -> Dict[str, int]:
     """
     Associa i PDF F24 dal filesystem ai record f24_commercialista.
     Usa pattern matching su periodo e tipo tributo.
     """
     stats = {"associated": 0, "skipped": 0, "errors": 0}
-
-    # GC-17: i nomi dei mesi non vengono cercati nel nome del file, quindi
-    # "F24_giugno_2025.pdf" si abbina solo per anno.
-    mesi_it = {  # noqa: F841
-        "gennaio": 1, "febbraio": 2, "marzo": 3, "aprile": 4,
-        "maggio": 5, "giugno": 6, "luglio": 7, "agosto": 8,
-        "settembre": 9, "ottobre": 10, "novembre": 11, "dicembre": 12
-    }
 
     # Trova tutti gli F24 in documents_inbox con file esistente
     cursor = db["documents_inbox"].find({
@@ -1384,58 +1460,10 @@ async def associate_f24_from_filesystem(db: ArchivioDocumenti) -> Dict[str, int]
                 stats["skipped"] += 1
                 continue
 
-            # Estrai info dal filename
-            # Pattern comuni: F24_IVA_09_2025, F24_ravv_II_acc_Ires_2023
-
-            mese = None
-            anno = None
-            # GC-17: il tipo di tributo si riconosce ma non entra nella ricerca dell'F24.
-            tributo_pattern = None  # noqa: F841
-
-            # Pattern 1: mese numerico/anno (IVA_09_2025, IVA_11.25)
-            match = re.search(r'(\d{1,2})[._](\d{2,4})', filename)
-            if match:
-                m = int(match.group(1))
-                a = match.group(2)
-                if len(a) == 2:
-                    a = f"20{a}"
-                anno = int(a)
-                if 1 <= m <= 12:
-                    mese = m
-
-            # Pattern 2: anno esplicito
-            if not anno:
-                match = re.search(r'20(2[0-9])', filename)
-                if match:
-                    anno = int(f"20{match.group(1)}")
-
-            # Identifica tipo tributo
-            filename_lower = filename.lower()
-            if "iva" in filename_lower:
-                tributo_pattern = "iva"  # noqa: F841
-            elif "ires" in filename_lower or "irpef" in filename_lower:
-                tributo_pattern = "imposte_reddito"  # noqa: F841
-            elif "inps" in filename_lower:
-                tributo_pattern = "contributi"  # noqa: F841
-            elif "imu" in filename_lower or "tasi" in filename_lower:
-                tributo_pattern = "tributi_locali"  # noqa: F841
-            elif "1040" in filename_lower or "ritenute" in filename_lower:
-                tributo_pattern = "ritenute"  # noqa: F841
-
-            # Cerca F24 corrispondente
-            query = {"$or": [
-                {"pdf_data": None},
-                {"pdf_data": ""},
-                {"pdf_data": {"$exists": False}}
-            ]}
-
-            if mese and anno:
-                query["mese"] = mese
-                query["anno"] = anno
-            elif anno:
-                query["anno"] = anno
-
-            f24 = await db["f24_unificato"].find_one(query)
+            # GC-17: mese (anche in lettere), anno e tipo di tributo dal nome
+            # del file; il PDF va solo all'unico F24 che li rispetta tutti.
+            # Prima bastava l'anno, o niente, per prendere il primo F24 senza PDF.
+            f24 = await _f24_unico_da_file(db, filename)
 
             if f24:
                 # Leggi PDF e associa
