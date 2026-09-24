@@ -107,3 +107,22 @@ def test_pagamento_senza_quietanza_resta_in_attesa_quietanza(monkeypatch):
     verbale = asyncio.run(db["verbali_noleggio"].find_one({}))
     assert verbale["stato"] == "pagato_attesa_quietanza"
     assert verbale["quietanza_ricevuta"] is False
+
+
+def test_file_senza_sha256_dichiarato_non_e_verificato_e_non_scrive():
+    """GC-17: prima un file senza hash passava come verificato e finiva sul
+    documento ``partenopay_`` condiviso da tutti i file senza hash."""
+    content = _archive()
+    src = zipfile.ZipFile(io.BytesIO(content))
+    payload = json.loads(src.read("package_clean/data.json"))
+    payload["files"][0]["sha256"] = ""
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w") as dst:
+        for item in src.infolist():
+            data = json.dumps(payload) if item.filename.endswith("data.json") else src.read(item.filename)
+            dst.writestr(item.filename, data)
+    db = ClientArchivioMemoria()["test"]
+    result = asyncio.run(mod.import_partenopay_archive(db, out.getvalue(), dry_run=False))
+    assert result["success"] is False
+    assert result["integrity_errors"][0]["errore"] == "sha256_assente"
+    assert asyncio.run(db["documents_inbox"].count_documents({})) == 0
