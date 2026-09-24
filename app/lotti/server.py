@@ -61,6 +61,7 @@ from app.lotti.routers.farciture import router as r_farciture
 
 # ── Food cost e ingredienti ─────────────────────────────────────────────────
 from app.lotti.routers.food_cost import router as r_food_cost
+from app.lotti.routers.confronto_fornitori import router as r_confronto_fornitori
 from app.lotti.routers.ingredienti import router as r_ingredienti
 from app.lotti.routers.materie_prime import router as r_materie_prime
 from app.lotti.routers.normalizzazione import router as r_normalizzazione
@@ -130,7 +131,7 @@ for r in [
     r_haccp_auto, r_report_haccp, r_haccp_manuale_auto, r_chiusure, r_haccp_attendibilita,
     r_ricette, r_lotti, r_lotti_fornitori, r_lotti_produzione, r_produzioni,
     r_tracciabilita,
-    r_stampa, r_farciture, r_food_cost, r_ingredienti, r_materie_prime,
+    r_stampa, r_farciture, r_food_cost, r_confronto_fornitori, r_ingredienti, r_materie_prime,
     r_normalizzazione, r_etichette, r_schede_tecniche, r_fornitori, r_fornitori_anagrafica,
     r_fornitori_dedup, r_fornitori_schede, r_fornitori_qualifica, r_fatture,
     r_sconti, r_prodotti_vendita, r_acquaviva, r_colazione, r_vendita_banco, r_listino, r_azienda, r_magazzino_bar, r_magazzino_unificato,

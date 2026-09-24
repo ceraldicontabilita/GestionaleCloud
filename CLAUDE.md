@@ -719,8 +719,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - **FIFO: il lotto con la fattura più vecchia**, fra tutti i fornitori dello stesso articolo. Descrizione di fattura →
   articolo in `nome_mapping` (`servizi/articoli_fattura.py`): vince la riga **confermata** (Dizionario, «Proposte web»);
   senza conferme, parola intera e fuori i lotti che una prova dice altro («olive in acqua e sale» non è sale).
-- **Le bevande e gli alcolici del reparto bar** (acqua, birre, vino, prosecco, liquori, amari, sciroppi,
-  succhi, bibite) si acquistano e si confrontano a cartone o a unità, **mai a chilo o a litro**.
+- **Bevande e alcolici del bar** (acqua, birre, vino, prosecco, liquori, amari, sciroppi, succhi, bibite) si confrontano
+  a cartone o a pezzo, **mai a chilo o a litro**. Miglior fornitore: `servizi/confronto_fornitori.py` (righe XML, fornitore = P.IVA, accorpamento incerto deciso da una persona).
 - Conversioni reali: uovo 60 g, tuorlo 19 g, albume 33 g; pezzi e chili col peso del pezzo.
 - Ogni riga d'ordine dice **chi l'ha inserita** (dipendente, lavagna, riordino automatico, produzione,
   colazione). Le righe-nota (omaggi, riferimenti) non diventano prodotti di magazzino. Soglia minima e
