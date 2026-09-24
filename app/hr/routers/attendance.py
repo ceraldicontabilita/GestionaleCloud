@@ -364,7 +364,7 @@ async def crea_richiesta_assenza(payload: Dict[str, Any] = Body(...)) -> Dict[st
 
 @router.put("/richiesta-assenza/{richiesta_id}/approva")
 @handle_errors
-async def approva_richiesta_assenza(richiesta_id: str, payload: Dict[str, Any] = {}) -> Dict[str, Any]:
+async def approva_richiesta_assenza(richiesta_id: str, payload: Dict[str, Any] = Body(default_factory=dict)) -> Dict[str, Any]:
     """
     Approva una richiesta di assenza.
     """

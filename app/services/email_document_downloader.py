@@ -634,13 +634,15 @@ class EmailDocumentDownloader:
     def download_attachments_from_email(
         self,
         email_id: bytes,
-        allowed_extensions: List[str] = ['.pdf', '.xml', '.xlsx', '.xls', '.csv', '.p7m'],
+        allowed_extensions: Optional[List[str]] = None,
         search_keywords: List[str] = None
     ) -> List[Dict[str, Any]]:
         """
         Scarica allegati da una singola email.
         Ritorna lista di documenti scaricati.
         """
+        if allowed_extensions is None:
+            allowed_extensions = ['.pdf', '.xml', '.xlsx', '.xls', '.csv', '.p7m']
         if not self.connection:
             return []
 
