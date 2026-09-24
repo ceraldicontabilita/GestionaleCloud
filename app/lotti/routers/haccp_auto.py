@@ -6,7 +6,7 @@ Popola i dati nella struttura ESISTENTE del database (frigorifero_numero, temper
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 
 from app.lotti.auth import require_admin
 from pydantic import BaseModel
@@ -293,24 +293,12 @@ async def apri_rilevazioni_del_giorno(quando=None) -> dict:
     ts = adesso.isoformat()
 
     esito = {"aperte": 0, "gia_presenti": 0, "senza_responsabile": [],
-             "conformi_dichiarate": 0, "data": adesso.date().isoformat()}
+             "data": adesso.date().isoformat()}
 
-    # Il responsabile dell'attivita' puo' dichiarare che il controllo lo
-    # esegue lui di persona, girando i locali ogni N ore. In quel caso il
-    # registro annota l'ESITO di quel controllo — «conforme, entro soglia» —
-    # firmato col suo nome, e non un numero che nessuno ha letto: il valore si
-    # scrive solo quando c'e' un'anomalia, e lo scrive lui.
-    from app.lotti.azienda import get_azienda
-
-    azienda = await get_azienda()
-    responsabile = str(azienda.get("responsabile_haccp") or "").strip()
-    dichiara_conformita = (
-        str(azienda.get("controllo_visivo_responsabile") or "").strip().lower()
-        in ("1", "true", "si", "sì", "x")
-        and bool(responsabile)
-    )
-    ogni_ore = str(azienda.get("controllo_visivo_ogni_ore") or "2").strip()
-
+    # Qui il turno scriveva «conforme, entro soglia» firmato dal responsabile
+    # su ogni apparecchio, alle 07:00, prima che qualcuno avesse controllato.
+    # Il controllo visivo si dichiara DOPO il giro, firmato da chi lo fa:
+    # POST /haccp-auto/dichiara-conformi-oggi. Il turno apre solo le caselle.
     for tipo, collezione, chiave_numero in (
         ("frigo", db.temperature_positive, "frigorifero_numero"),
         ("congelatore", db.temperature_negative, "congelatore_numero"),
@@ -328,39 +316,17 @@ async def apri_rilevazioni_del_giorno(quando=None) -> dict:
             if (scheda.get("temperature") or {}).get(str(mese), {}).get(str(giorno)) is not None:
                 esito["gia_presenti"] += 1
                 continue
-            if not apparecchio.get("operatore_id") and not dichiara_conformita:
+            if not apparecchio.get("operatore_id"):
                 esito["senza_responsabile"].append(apparecchio.get("nome", f"{tipo} {numero}"))
 
-            if dichiara_conformita:
-                # Soglie della scheda, non costanti: sono quelle che valgono
-                # per QUESTO apparecchio, e restano scritte nel record cosi'
-                # un cambio successivo non riscrive il passato.
-                soglia_min = scheda.get("temp_min")
-                soglia_max = scheda.get("temp_max")
-                casella = {
-                    "temp": None,          # nessuna misura inventata
-                    "esito": "conforme",
-                    "stato": STATO_CONFORME,
-                    "soglie": {"min": soglia_min, "max": soglia_max},
-                    "metodo": METODO_CONTROLLO_VISIVO,
-                    "controllo_ogni_ore": ogni_ore,
-                    "operatore": responsabile,
-                    "operatore_nome": responsabile,
-                    "operatore_id": apparecchio.get("operatore_id", ""),
-                    "dichiarato_dal_responsabile": True,
-                    "allarme": False,
-                    "timestamp": ts,
-                }
-                esito["conformi_dichiarate"] += 1
-            else:
-                casella = {
-                    "temp": None,                       # la misura la fa una persona
-                    "stato": STATO_DA_RILEVARE,
-                    "operatore_id": apparecchio.get("operatore_id", ""),
-                    "operatore_nome": apparecchio.get("operatore_nome", ""),
-                    "aperta_il": ts,
-                    "allarme": False,
-                }
+            casella = {
+                "temp": None,                       # la misura la fa una persona
+                "stato": STATO_DA_RILEVARE,
+                "operatore_id": apparecchio.get("operatore_id", ""),
+                "operatore_nome": apparecchio.get("operatore_nome", ""),
+                "aperta_il": ts,
+                "allarme": False,
+            }
 
             await collezione.update_one(
                 {"_id": scheda["_id"]},
@@ -374,6 +340,75 @@ async def apri_rilevazioni_del_giorno(quando=None) -> dict:
 async def apri_rilevazioni_oggi(_admin=Depends(require_admin)):
     """Rifa' a mano il turno del mattino (se il servizio era spento alle 07:00)."""
     return {"success": True, **await apri_rilevazioni_del_giorno()}
+
+
+@router.post("/dichiara-conformi-oggi")
+async def dichiara_conformi_oggi(request: Request, pin: str = ""):
+    """Il responsabile, finito il giro, dichiara conformi le caselle ancora aperte.
+
+    Vale solo se nelle Impostazioni il metodo e' il controllo visivo del
+    responsabile. Firma chi tocca il pulsante (PIN o sessione verificata),
+    all'ora in cui lo tocca; una firma non verificata non dichiara niente.
+    Non tocca le caselle gia' registrate (una temperatura vera vince).
+    """
+    from app.lotti.azienda import get_azienda
+    from app.lotti.servizi.registro_haccp import firma_registrazione
+
+    azienda = await get_azienda()
+    if str(azienda.get("controllo_visivo_responsabile") or "").strip().lower() not in (
+        "1", "true", "si", "sì", "x"
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Il controllo visivo del responsabile non e' attivo nelle Impostazioni.",
+        )
+    firma = await firma_registrazione(request, pin, "")
+    if not firma.get("firma_verificata") or not firma.get("operatore"):
+        raise HTTPException(
+            status_code=401,
+            detail="Serve la firma di chi ha fatto il giro: entra col tuo PIN.",
+        )
+    adesso = datetime.now(timezone.utc)
+    ts = adesso.isoformat()
+    ogni_ore = str(azienda.get("controllo_visivo_ogni_ore") or "2").strip()
+    dichiarate = 0
+    for tipo, collezione, chiave_numero in (
+        ("frigo", db.temperature_positive, "frigorifero_numero"),
+        ("congelatore", db.temperature_negative, "congelatore_numero"),
+    ):
+        for apparecchio in await _apparecchi_attivi(tipo):
+            scheda = await collezione.find_one(
+                {"anno": adesso.year, chiave_numero: apparecchio.get("numero")},
+                {"_id": 1, "temperature": 1, "temp_min": 1, "temp_max": 1},
+            )
+            if not scheda:
+                continue
+            attuale = (scheda.get("temperature") or {}).get(str(adesso.month), {}).get(str(adesso.day))
+            if attuale is not None and not (
+                isinstance(attuale, dict) and attuale.get("stato") == STATO_DA_RILEVARE
+            ):
+                continue
+            casella = {
+                "temp": None,
+                "esito": "conforme",
+                "stato": STATO_CONFORME,
+                "soglie": {"min": scheda.get("temp_min"), "max": scheda.get("temp_max")},
+                "metodo": METODO_CONTROLLO_VISIVO,
+                "controllo_ogni_ore": ogni_ore,
+                "operatore": firma["operatore"],
+                "dipendente_id": firma.get("dipendente_id") or "",
+                "firma_verificata": True,
+                "firma_via": firma.get("firma_via") or "",
+                "dichiarato_dal_responsabile": True,
+                "allarme": False,
+                "timestamp": ts,
+            }
+            await collezione.update_one(
+                {"_id": scheda["_id"]},
+                {"$set": {f"temperature.{adesso.month}.{adesso.day}": casella, "updated_at": ts}},
+            )
+            dichiarate += 1
+    return {"success": True, "dichiarate": dichiarate, "firmato_da": firma["operatore"]}
 
 
 @router.get("/turno-oggi")

@@ -21,6 +21,7 @@ import { giorniNelMese } from "../../utils/dateUtils";
 import { printHtml } from "../../utils/printHtml";
 import { apiError } from "../../utils/apiError";
 import { testoFirmatari } from "../../utils/firmatari";
+import DichiaraConformiButton from "./DichiaraConformiButton";
 
 const AZIENDA_INFO = {
   nome: "Ceraldi Group S.R.L.",
@@ -483,6 +484,7 @@ export default function TemperaturePositiveView() {
           >
             🔧 Periodi
           </button>
+          <DichiaraConformiButton onFatto={fetchSchede} />
           <Button onClick={stampaScheda} variant="secondary" size="sm"><Printer size={16} /> Stampa</Button>
           <Button onClick={fetchSchede} variant="secondary" size="sm"><RefreshCw size={16} /> Ricarica</Button>
         </div>

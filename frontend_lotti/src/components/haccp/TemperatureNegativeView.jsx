@@ -10,6 +10,7 @@ import { API, MESI_IT } from "../../utils/constants";
 import SegnalaGuasto from "./shared/SegnalaGuasto";
 import { giorniNelMese } from "../../utils/dateUtils";
 import { testoFirmatari } from "../../utils/firmatari";
+import DichiaraConformiButton from "./DichiaraConformiButton";
 
 // Dati aziendali Ceraldi Group
 const AZIENDA_INFO = {
@@ -325,6 +326,7 @@ const TemperatureNegativeView = () => {
           >
             🔧 Periodi
           </button>
+          <DichiaraConformiButton onFatto={fetchSchede} />
           <Button onClick={stampaScheda} variant="secondary" size="sm">
             <Printer size={16}/> Stampa
           </Button>

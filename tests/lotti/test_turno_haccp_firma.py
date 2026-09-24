@@ -270,37 +270,70 @@ def responsabile(monkeypatch, archivio):
     return archivio
 
 
-def test_il_responsabile_registra_l_esito_non_una_temperatura(responsabile):
-    """Quello che chiede il titolare, nella forma che regge a un'ispezione.
+def test_il_turno_non_dichiara_conforme_niente(responsabile):
+    """Col controllo visivo attivo, alle 07:00 il turno apre solo le caselle.
 
-    Il registro annota che il controllo e' stato fatto e che l'apparecchio era
-    entro soglia, con il nome di chi se ne assume la responsabilita'. Non
-    annota un numero che nessuno ha letto: quello si scrive solo quando c'e'
-    un'anomalia, e lo scrive lui.
+    Prima scriveva «conforme» firmato dal responsabile su ogni apparecchio,
+    prima che qualcuno avesse fatto il giro.
     """
     from app.lotti.routers.haccp_auto import apri_rilevazioni_del_giorno
 
     db, oggi = responsabile
-    esito = run(apri_rilevazioni_del_giorno())
+    run(apri_rilevazioni_del_giorno())
+    casella = run(db.temperature_positive.find_one({"frigorifero_numero": 1}))[
+        "temperature"][str(oggi.month)][str(oggi.day)]
+    assert casella["stato"] == "da_rilevare"
+    assert "esito" not in casella and "operatore" not in casella
 
-    assert esito["conformi_dichiarate"] == 3
-    scheda = run(db.temperature_positive.find_one({"frigorifero_numero": 1}))
-    casella = scheda["temperature"][str(oggi.month)][str(oggi.day)]
 
+def test_il_responsabile_dichiara_l_esito_dopo_il_giro_firmato(responsabile, monkeypatch):
+    """L'esito del controllo visivo, firmato da chi l'ha fatto e all'ora vera."""
+    import app.lotti.auth as auth
+    from app.lotti.routers.haccp_auto import apri_rilevazioni_del_giorno, dichiara_conformi_oggi
+
+    db, oggi = responsabile
+    run(apri_rilevazioni_del_giorno())
+    monkeypatch.setattr(auth, "request_actor", lambda _r: {
+        "id": "hr-1", "nome": "Ceraldi Vincenzo", "ruolo": "amministratore", "via": "pin"})
+    esito = run(dichiara_conformi_oggi(request=object(), pin=""))
+    assert esito["dichiarate"] == 3
+
+    casella = run(db.temperature_positive.find_one({"frigorifero_numero": 1}))[
+        "temperature"][str(oggi.month)][str(oggi.day)]
     assert casella["temp"] is None, "nessun numero inventato"
     assert casella["esito"] == "conforme"
     assert casella["soglie"] == {"min": 0, "max": 4}, "le soglie vere della scheda"
     assert casella["operatore"] == "Ceraldi Vincenzo"
-    assert casella["dichiarato_dal_responsabile"] is True
+    assert casella["firma_verificata"] is True
     assert "controllo visivo" in casella["metodo"]
 
 
-def test_col_responsabile_nessun_apparecchio_resta_senza_firma(responsabile):
-    """Il Frigorifero N°2 non ha un responsabile assegnato, ma il controllo
-    lo fa il titolare: non e' un buco."""
-    from app.lotti.routers.haccp_auto import apri_rilevazioni_del_giorno
+def test_senza_firma_verificata_non_si_dichiara_niente(responsabile, monkeypatch):
+    import app.lotti.auth as auth
+    from app.lotti.routers.haccp_auto import dichiara_conformi_oggi
 
-    assert run(apri_rilevazioni_del_giorno())["senza_responsabile"] == []
+    monkeypatch.setattr(auth, "request_actor", lambda _r: None)
+    with pytest.raises(HTTPException) as e:
+        run(dichiara_conformi_oggi(request=object(), pin=""))
+    assert e.value.status_code == 401
+
+
+def test_la_dichiarazione_non_copre_una_temperatura_vera(responsabile, monkeypatch):
+    import app.lotti.auth as auth
+    from app.lotti.routers.haccp_auto import apri_rilevazioni_del_giorno, dichiara_conformi_oggi
+
+    db, oggi = responsabile
+    run(apri_rilevazioni_del_giorno())
+    run(db.temperature_positive.update_one(
+        {"frigorifero_numero": 1},
+        {"$set": {f"temperature.{oggi.month}.{oggi.day}": {"temp": 10.0, "allarme": True}}},
+    ))
+    monkeypatch.setattr(auth, "request_actor", lambda _r: {
+        "id": "hr-1", "nome": "Ceraldi Vincenzo", "ruolo": "amministratore", "via": "pin"})
+    assert run(dichiara_conformi_oggi(request=object(), pin=""))["dichiarate"] == 2
+    casella = run(db.temperature_positive.find_one({"frigorifero_numero": 1}))[
+        "temperature"][str(oggi.month)][str(oggi.day)]
+    assert casella["temp"] == 10.0
 
 
 def test_l_anomalia_trovata_sostituisce_la_conformita(responsabile):
