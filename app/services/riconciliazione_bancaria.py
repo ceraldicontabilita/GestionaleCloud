@@ -1044,28 +1044,6 @@ def extract_assegno_number(descrizione: str) -> Optional[str]:
     return None
 
 
-def extract_supplier_name(descrizione: str) -> Optional[str]:
-    """Estrae nome fornitore dalla descrizione."""
-    if not descrizione:
-        return None
-
-    desc_upper = descrizione.upper()
-
-    patterns = [
-        r'(?:BENEF(?:ICIARIO)?|A FAVORE DI|VERSO|PER|FAVORE)[\s:]+([A-Z][A-Z\s\.\']+(?:S\.?R\.?L\.?|S\.?P\.?A\.?|S\.?A\.?S\.?|S\.?N\.?C\.?)?)',
-        r'([A-Z][A-Z\s\']+(?:S\.?R\.?L\.?|S\.?P\.?A\.?))',
-    ]
-
-    for pattern in patterns:
-        match = re.search(pattern, desc_upper)
-        if match:
-            name = match.group(1).strip()
-            if len(name) > 3:
-                return name
-
-    return None
-
-
 async def riconcilia_movimenti_banca(
     movimento_ids: Optional[List[str]] = None,
     data_dal: Optional[str] = None,
@@ -1402,9 +1380,8 @@ async def riconcilia_movimenti_banca(
             if tipo == "uscita" and not match_found and not blocca_match_singolo:
                 num_fattura_ec = extract_invoice_number(descrizione)
                 num_assegno = extract_assegno_number(descrizione)
-                # GC-17: il fornitore letto dall'estratto conto non entra
-                # nella ricerca; resta calcolato finche' il titolare non decide.
-                supplier_name_ec = extract_supplier_name(descrizione)  # noqa: F841
+                # Il fornitore entra nel punteggio (match_fornitore_descrizione)
+                # e nel filtro duro sotto (_evidenza_*_banca, soggetto pagante).
 
                 # RICERCA MIGLIORATA:
                 # 1. Match esatto importo (±0.05€)
