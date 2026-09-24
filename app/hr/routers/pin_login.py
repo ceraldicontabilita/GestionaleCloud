@@ -10,12 +10,11 @@ Flow:
   -> {"access_token": "...", "token_type": "bearer", ...}
 """
 from fastapi import APIRouter, HTTPException, Body, Request, status
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from typing import Dict, Any
 import logging
 import os
 
-from jose import jwt
 
 from app.hr.config import settings
 from app.hr.database import Database, Collections

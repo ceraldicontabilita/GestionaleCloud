@@ -299,7 +299,7 @@ async def upload_f24_pdf(
 
         richiedi_quadratura_f24(parsed)
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     # Get database
     db = Database.get_db()
@@ -389,28 +389,6 @@ async def upload_f24_pdf(
 
     # Create F24 record
     f24_id = str(uuid.uuid4())
-    f24_record = {
-        "id": f24_id,
-        "data_scadenza": data_scadenza,
-        "scadenza_display": data_scadenza,
-        "codice_fiscale": parsed.get("dati_generali", {}).get("codice_fiscale"),
-        "contribuente": parsed.get("dati_generali", {}).get("ragione_sociale"),
-        "banca": parsed.get("dati_generali", {}).get("banca"),
-        "tipo_f24": parsed.get("dati_generali", {}).get("tipo_f24", "F24"),
-        "tributi_erario": tributi_erario,
-        "tributi_inps": tributi_inps,
-        "tributi_regioni": tributi_regioni,
-        "tributi_imu": tributi_imu,
-        "totale_debito": totali.get("totale_debito", 0),
-        "totale_credito": totali.get("totale_credito", 0),
-        "saldo_finale": totali.get("saldo_finale", 0),
-        "has_ravvedimento": parsed.get("has_ravvedimento", False),
-        "pagato": False,
-        "filename": file.filename,
-        "pdf_data": base64.b64encode(pdf_bytes).decode('utf-8'),
-        "source": "pdf_upload",
-        "created_at": datetime.now(timezone.utc).isoformat()
-    }
 
     # Check for duplicates nella collezione unificata
     existing = await db[F24_COLLECTION].find_one({
@@ -624,7 +602,7 @@ async def upload_f24_pdf_overwrite(
 
         richiedi_quadratura_f24(parsed)
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     db = Database.get_db()
 

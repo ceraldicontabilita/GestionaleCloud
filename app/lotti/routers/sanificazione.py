@@ -6,14 +6,18 @@ SEZIONI:
 1. Sanificazione Attrezzature (giornaliera)
 2. Sanificazione Apparecchi Refrigeranti (frigoriferi/congelatori) - ogni 7-10 giorni
 
+Ogni registrazione e' firmata da chi la esegue (PIN o sessione verificata, vedi
+`servizi/registro_haccp.py`). L'operatore designato e' un incarico, non una
+firma: non viene mai scritto da solo su una registrazione.
+
 RIFERIMENTI NORMATIVI:
 - Reg. CE 852/2004 - Igiene dei prodotti alimentari
 - D.Lgs. 193/2007 - Attuazione delle direttive CE
 
-OPERATORE DESIGNATO: SANKAPALA ARACHCHILAGE JANANIE AYACHANA DISSANAYAKA
+OPERATORE DESIGNATO (incarico, non firma): SANKAPALA ARACHCHILAGE JANANIE AYACHANA DISSANAYAKA
 """
 
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, Query, HTTPException, Request
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Dict
 from datetime import datetime, timezone
@@ -25,7 +29,15 @@ import uuid
 # per farle sembrare autentiche. Le due funzioni che lo usavano erano orfane —
 # nessuno le chiamava piu' — e sono state tolte il 20/09/2026.
 
+from html import escape as html_escape
+
 from app.lotti.auth import require_admin
+from app.lotti.servizi.registro_haccp import (
+    conserva_precedente,
+    firma_registrazione,
+    giorno_registrabile,
+    verifica_nessun_futuro,
+)
 
 router = APIRouter(prefix="/sanificazione", tags=["Sanificazione"])
 
@@ -47,7 +59,7 @@ class SchedaSanificazione(BaseModel):
     area: str = "Sala e Servizi"
     # {attrezzatura: {giorno: "X" o ""}}
     registrazioni: Dict[str, Dict[str, str]] = {}
-    operatore_responsabile: str = OPERATORE_SANIFICAZIONE
+    operatore_responsabile: str = ""
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
@@ -60,7 +72,7 @@ class SchedaSanificazioneApparecchi(BaseModel):
     anno: int
     azienda: str = "Ceraldi Group S.R.L."
     indirizzo: str = "Piazza Carità 14, 80134 Napoli (NA)"
-    operatore: str = OPERATORE_SANIFICAZIONE
+    operatore: str = ""
     # {apparecchio_id: [{data: "DD/MM/YYYY", eseguita: bool, note: str}]}
     registrazioni_frigoriferi: Dict[str, List[dict]] = {}
     registrazioni_congelatori: Dict[str, List[dict]] = {}
@@ -126,7 +138,8 @@ async def get_or_create_scheda(mese: int, anno: int) -> dict:
             "indirizzo": "Piazza Carità 14 Napoli",
             "area": "Sala e Servizi",
             "registrazioni": {attr: {} for attr in ATTREZZATURE_SANIFICAZIONE},
-            "operatore_responsabile": OPERATORE_SANIFICAZIONE,
+            # nessun nome di default: il responsabile e' chi firma le registrazioni
+            "operatore_responsabile": "",
             "created_at": datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
@@ -161,38 +174,67 @@ async def get_scheda_mensile(anno: int, mese: int):
     return scheda
 
 
+def _segna_firma(scheda: dict, attrezzatura: str, giorno: int, valore: str, firma: dict) -> None:
+    """Chi ha segnato la casella, accanto alla casella (la «X» resta com'era)."""
+    firme = scheda.setdefault("firme", {}).setdefault(attrezzatura, {})
+    voce = {
+        "valore": valore,
+        "operatore": firma.get("operatore") or "",
+        "dipendente_id": firma.get("dipendente_id") or "",
+        "firma_verificata": bool(firma.get("firma_verificata")),
+        "firma_via": firma.get("firma_via") or "",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    precedente = firme.get(str(giorno))
+    if precedente is None and scheda["registrazioni"].get(attrezzatura, {}).get(str(giorno)):
+        precedente = {"valore": scheda["registrazioni"][attrezzatura][str(giorno)]}
+    conserva_precedente(voce, precedente, firma)
+    firme[str(giorno)] = voce
+    if firma.get("firma_verificata") and firma.get("operatore"):
+        scheda["operatore_responsabile"] = firma["operatore"]
+
+
 @router.post("/scheda/{anno}/{mese}/registra")
 async def registra_sanificazione(
-    anno: int, mese: int, giorno: int, attrezzatura: str, eseguita: bool = True, operatore: str = ""
+    anno: int, mese: int, giorno: int, attrezzatura: str, eseguita: bool = True,
+    operatore: str = "", pin: str = Query(default="", description="PIN personale: e' la firma"),
+    request: Request = None,
 ):
-    """Registra una sanificazione per un giorno specifico"""
+    """Registra una sanificazione per un giorno specifico, con la firma di chi l'ha fatta."""
+    giorno_registrabile(anno, mese, giorno)
+    firma = await firma_registrazione(request, pin, operatore)
     scheda = await get_or_create_scheda(mese, anno)
 
     if attrezzatura not in scheda["registrazioni"]:
         scheda["registrazioni"][attrezzatura] = {}
 
-    scheda["registrazioni"][attrezzatura][str(giorno)] = "X" if eseguita else ""
+    valore = "X" if eseguita else ""
+    _segna_firma(scheda, attrezzatura, giorno, valore, firma)
+    scheda["registrazioni"][attrezzatura][str(giorno)] = valore
     scheda["updated_at"] = datetime.now(timezone.utc).isoformat()
-    if operatore:
-        scheda["operatore_responsabile"] = operatore
 
     await db.sanificazione_schede.update_one({"mese": mese, "anno": anno}, {"$set": scheda})
 
     return {
         "success": True,
         "message": f"Sanificazione registrata per {attrezzatura} giorno {giorno}",
+        "firma_verificata": firma["firma_verificata"],
     }
 
 
 @router.put("/scheda/{anno}/{mese}")
 async def aggiorna_scheda_completa(anno: int, mese: int, data: AggiornaSchedaRequest):
     """Aggiorna l'intera scheda mensile"""
+    # Riscrittura intera: niente giorni futuri, e il nome dichiarato non
+    # diventa il responsabile (non e' una firma verificata).
+    verifica_nessun_futuro(data.registrazioni, anno, mese)
     scheda = await get_or_create_scheda(mese, anno)
 
     scheda["registrazioni"] = data.registrazioni
     scheda["updated_at"] = datetime.now(timezone.utc).isoformat()
+    scheda["riscritta_il"] = scheda["updated_at"]
     if data.operatore:
-        scheda["operatore_responsabile"] = data.operatore
+        scheda["operatore_dichiarato"] = data.operatore
 
     await db.sanificazione_schede.update_one({"mese": mese, "anno": anno}, {"$set": scheda})
 
@@ -200,20 +242,29 @@ async def aggiorna_scheda_completa(anno: int, mese: int, data: AggiornaSchedaReq
 
 
 @router.post("/scheda/{anno}/{mese}/giorno-completo")
-async def registra_giorno_completo(anno: int, mese: int, giorno: int, operatore: str = ""):
-    """Registra tutte le sanificazioni per un giorno (tutte X)"""
+async def registra_giorno_completo(
+    anno: int, mese: int, giorno: int, operatore: str = "",
+    pin: str = Query(default="", description="PIN personale: e' la firma"),
+    request: Request = None,
+):
+    """Registra tutte le sanificazioni di un giorno (tutte X), firmate da chi le ha fatte."""
+    giorno_registrabile(anno, mese, giorno)
+    firma = await firma_registrazione(request, pin, operatore)
     scheda = await get_or_create_scheda(mese, anno)
 
     for attr in scheda["registrazioni"]:
+        _segna_firma(scheda, attr, giorno, "X", firma)
         scheda["registrazioni"][attr][str(giorno)] = "X"
 
     scheda["updated_at"] = datetime.now(timezone.utc).isoformat()
-    if operatore:
-        scheda["operatore_responsabile"] = operatore
 
     await db.sanificazione_schede.update_one({"mese": mese, "anno": anno}, {"$set": scheda})
 
-    return {"success": True, "message": f"Tutte le sanificazioni registrate per giorno {giorno}"}
+    return {
+        "success": True,
+        "message": f"Tutte le sanificazioni registrate per giorno {giorno}",
+        "firma_verificata": firma["firma_verificata"],
+    }
 
 
 @router.get("/attrezzature")
@@ -272,7 +323,7 @@ async def get_sanificazioni_frigorifero(anno: int, numero: int):
         "anno": anno,
         "frigorifero": numero,
         "nome": f"Frigorifero N°{numero}",
-        "operatore": OPERATORE_SANIFICAZIONE,
+        "operatore_designato": OPERATORE_SANIFICAZIONE,
         "sanificazioni": sanificazioni,
         "totale": len(sanificazioni),
         "eseguite": len([s for s in sanificazioni if s.get("eseguita", False)]),
@@ -292,7 +343,7 @@ async def get_sanificazioni_congelatore(anno: int, numero: int):
         "anno": anno,
         "congelatore": numero,
         "nome": f"Congelatore N°{numero}",
-        "operatore": OPERATORE_SANIFICAZIONE,
+        "operatore_designato": OPERATORE_SANIFICAZIONE,
         "sanificazioni": sanificazioni,
         "totale": len(sanificazioni),
         "eseguite": len([s for s in sanificazioni if s.get("eseguita", False)]),
@@ -322,7 +373,7 @@ async def get_sanificazioni_mese(anno: int, mese: int):
     return {
         "anno": anno,
         "mese": mese,
-        "operatore": OPERATORE_SANIFICAZIONE,
+        "operatore_designato": OPERATORE_SANIFICAZIONE,
         "sanificazioni": sanificazioni_mese,
     }
 
@@ -336,9 +387,34 @@ async def registra_sanificazione_apparecchio(
     mese: int = Query(...),
     eseguita: bool = Query(default=True),
     note: str = Query(default=""),
+    prodotto: str = Query(default="", description="Prodotto usato, come scritto da chi sanifica"),
+    operatore: str = Query(default=""),
+    pin: str = Query(default="", description="PIN personale: e' la firma"),
+    request: Request = None,
 ):
-    """Registra manualmente una sanificazione per un apparecchio"""
+    """Registra una sanificazione di un apparecchio, firmata da chi l'ha eseguita.
+
+    Prima l'operatore era sempre quello designato e il prodotto sempre
+    «Detergente alimentare professionale», chiunque avesse sanificato e con
+    qualunque prodotto: il registro attestava una persona e un prodotto che
+    nessuno aveva dichiarato.
+    """
+    if tipo not in ("frigorifero", "congelatore"):
+        raise HTTPException(status_code=422, detail="tipo deve essere frigorifero o congelatore")
+    giorno_registrabile(anno, mese, giorno)
+    firma = await firma_registrazione(request, pin, operatore)
     scheda = await get_or_create_scheda_apparecchi(anno)
+    if scheda.get("stato") == "DA_VERIFICARE":
+        # prima registrazione dell'anno: la scheda nasce qui, vuota
+        scheda = {
+            "id": str(uuid.uuid4()),
+            "anno": anno,
+            "operatore": "",
+            "registrazioni_frigoriferi": {},
+            "registrazioni_congelatori": {},
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await db.sanificazione_apparecchi.insert_one(dict(scheda))
 
     chiave = str(numero)
     data_str = f"{giorno:02d}/{mese:02d}/{anno}"
@@ -348,9 +424,12 @@ async def registra_sanificazione_apparecchio(
         "giorno": giorno,
         "mese": mese,
         "eseguita": eseguita,
-        "operatore": OPERATORE_SANIFICAZIONE,
+        "operatore": firma.get("operatore") or "",
+        "dipendente_id": firma.get("dipendente_id") or "",
+        "firma_verificata": bool(firma.get("firma_verificata")),
+        "firma_via": firma.get("firma_via") or "",
         "note": note,
-        "prodotto": "Detergente alimentare professionale" if eseguita else "",
+        "prodotto": prodotto.strip() if eseguita else "",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -417,7 +496,7 @@ async def get_statistiche_sanificazione(anno: int):
 
     return {
         "anno": anno,
-        "operatore": OPERATORE_SANIFICAZIONE,
+        "operatore_designato": OPERATORE_SANIFICAZIONE,
         "frigoriferi": {
             "totale_sanificazioni": tot_frigo,
             "eseguite": eseguite_frigo,
@@ -480,9 +559,18 @@ async def export_pdf_sanificazione(anno: int, mese: int):
     scheda = await db.sanificazione_schede.find_one({"mese": mese, "anno": anno}, {"_id": 0})
 
     if not scheda:
-        scheda = {"registrazioni": {}, "operatore_responsabile": OPERATORE_SANIFICAZIONE}
+        scheda = {"registrazioni": {}}
 
     registrazioni = scheda.get("registrazioni", {})
+    # In stampa firma chi ha firmato davvero (PIN o sessione verificata), non
+    # l'operatore designato: prima ogni mese usciva col suo nome anche vuoto.
+    firmatari = sorted({
+        v.get("operatore")
+        for righe in (scheda.get("firme") or {}).values()
+        for v in (righe or {}).values()
+        if isinstance(v, dict) and v.get("firma_verificata") and v.get("operatore")
+    })
+    firmato_da = ", ".join(firmatari) if firmatari else "nessuna firma verificata"
 
     # Giorni nel mese
     if mese in [1, 3, 5, 7, 8, 10, 12]:
@@ -517,7 +605,7 @@ async def export_pdf_sanificazione(anno: int, mese: int):
         <div class="header">
             <h1>📋 REGISTRO SANIFICAZIONE ATTREZZATURE</h1>
             <p><strong>Ceraldi Group S.R.L.</strong> | {MESI_IT[mese-1]} {anno}</p>
-            <p>Operatore: {scheda.get('operatore_responsabile', OPERATORE_SANIFICAZIONE)}</p>
+            <p>Firmato da: {html_escape(firmato_da)}</p>
         </div>
         
         <table>

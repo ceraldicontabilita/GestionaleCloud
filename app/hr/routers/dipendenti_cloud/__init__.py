@@ -4,7 +4,7 @@ Sistema HR completo per gestione personale
 """
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Body, Form
 from fastapi.responses import Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import uuid
 import re
@@ -294,7 +294,7 @@ async def cessa_dipendente(dipendente_id: str, data: CessazioneCloud):
         campi = stato_rapporto.campi_cessazione(data.data_cessazione, data.motivo, data.riferimento or "",
                                                 data.note or "", fonte="anagrafica")
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     if data.motivo not in stato_rapporto.MOTIVI_CESSAZIONE:
         raise HTTPException(status_code=400, detail="Motivo non valido: " + ", ".join(stato_rapporto.MOTIVI_CESSAZIONE))
     nome = dip.get("nome_completo") or f"{dip.get('cognome','')} {dip.get('nome','')}".strip()
@@ -345,7 +345,7 @@ async def imposta_pin_dipendente(dipendente_id: str, payload: PinCloud):
     try:
         ok = await auth_dipendenti.imposta_pin(dipendente_id, str(payload.pin or "").strip())
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     if not ok:
         raise HTTPException(status_code=404, detail="Dipendente non trovato")
     return {"ok": True, "pin_impostato": True}
@@ -407,16 +407,16 @@ async def modifica_pagamento_esito(key: str, data: dict = Body(...)):
     try:
         mese = int(data.get("mese") or esito.get("mese"))
         anno = int(data.get("anno") or esito.get("anno"))
-    except (TypeError, ValueError):
-        raise HTTPException(status_code=400, detail="mese/anno non validi")
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="mese/anno non validi") from exc
     if not (1 <= mese <= 14) or anno < 2000:
         raise HTTPException(status_code=400, detail="mese deve essere 1-14, anno >= 2000")
     importo = esito.get("importo")
     if data.get("importo") not in (None, ""):
         try:
             importo = round(float(data["importo"]), 2)
-        except (TypeError, ValueError):
-            raise HTTPException(status_code=400, detail="importo non valido")
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail="importo non valido") from exc
         if importo <= 0:
             raise HTTPException(status_code=400, detail="importo deve essere positivo")
     vecchio = (int(esito.get("anno") or 0), int(esito.get("mese") or 0))
@@ -448,8 +448,8 @@ async def modifica_importo_busta(data: dict = Body(...)):
     try:
         anno, mese = int(anno), int(mese)
         importo = round(float(data.get("importo_busta")), 2)
-    except (TypeError, ValueError):
-        raise HTTPException(status_code=400, detail="importo_busta non valido")
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="importo_busta non valido") from exc
     if importo < 0:
         raise HTTPException(status_code=400, detail="importo_busta non puo' essere negativo")
     db = get_db()
@@ -833,7 +833,7 @@ async def importa_excel_salari(file: UploadFile = File(...)):
     try:
         wb = openpyxl.load_workbook(io.BytesIO(data), data_only=True)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Excel non leggibile: {e}")
+        raise HTTPException(status_code=400, detail=f"Excel non leggibile: {e}") from e
     ws = wb.active
 
     dips = await get_db().dipendenti.find({}, {"_id": 0}).to_list(1000)
@@ -1699,7 +1699,7 @@ async def importa_da_email(cartella: Optional[str] = None, solo_non_letti: bool 
         M = imaplib.IMAP4_SSL(host, port)
         M.login(user, pwd)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Connessione/login IMAP fallito ({host}:{port}): {e}")
+        raise HTTPException(status_code=502, detail=f"Connessione/login IMAP fallito ({host}:{port}): {e}") from e
 
     pdf_items, errori, cartelle_lette = [], [], []
     try:
@@ -2068,7 +2068,7 @@ def _pdf_riepilogo_periodi(anno, mese, giorni, righe):
     pagine A4 verticali (si estende da sola se i periodi sono tanti)."""
     import fitz
     W, H = 595, 842  # A4 verticale
-    mL, mR, mT, mB = 32, 32, 70, 40
+    mL, _mR, mT, mB = 32, 32, 70, 40
     pdf = fitz.open()
     page = pdf.new_page(width=W, height=H)
     y = [mT]
@@ -2204,7 +2204,7 @@ async def presenze_pdf_riepilogo(data: dict = Body(...)):
     try:
         pdf_bytes = _pdf_riepilogo_periodi(anno, mese, giorni, righe)
     except Exception as e:
-        raise HTTPException(500, f"Errore generazione documento: {e}")
+        raise HTTPException(500, f"Errore generazione documento: {e}") from e
     fname = f"presenze_riepilogo_{anno}_{str(mese).zfill(2)}.pdf"
     return StreamingResponse(_io.BytesIO(pdf_bytes), media_type="application/pdf",
                              headers={"Content-Disposition": f'attachment; filename="{fname}"'})
@@ -2222,7 +2222,7 @@ async def presenze_pdf(data: dict = Body(...)):
     try:
         pdf_bytes = _pdf_presenze(anno, mese, giorni, righe)
     except Exception as e:
-        raise HTTPException(500, f"Errore generazione PDF: {e}")
+        raise HTTPException(500, f"Errore generazione PDF: {e}") from e
     fname = f"presenze_{anno}_{str(mese).zfill(2)}.pdf"
     return StreamingResponse(_io.BytesIO(pdf_bytes), media_type="application/pdf",
                              headers={"Content-Disposition": f'attachment; filename="{fname}"'})
@@ -2311,7 +2311,7 @@ async def invia_presenze_commercialista(data: dict = Body(...)):
         # bloccata dall'hosting, timeout...) va nei log di Render, il messaggio
         # corto va all'utente.
         logger.exception("Invio presenze al commercialista fallito")
-        raise HTTPException(502, f"Invio email fallito: {type(e).__name__}: {e}")
+        raise HTTPException(502, f"Invio email fallito: {type(e).__name__}: {e}") from e
 
     # Salva lo storico dell'invio (a chi, quando)
     rec = {"id": generate_id(), "anno": anno, "mese": mese, "periodo": periodo,
@@ -2473,7 +2473,7 @@ async def update_turno(turno_id: str, turno: TurnoCloud):
 
 @router.delete("/turni/{turno_id}")
 async def delete_turno(turno_id: str):
-    result = await get_db().turni_cloud.delete_one({"id": turno_id})
+    await get_db().turni_cloud.delete_one({"id": turno_id})
     await get_db().assegnazioni_turni_cloud.delete_many({"turno_id": turno_id})
     return {"message": "Turno eliminato"}
 
@@ -2746,8 +2746,8 @@ async def onomastici_settimana(settimana: str):
     ISO). Esclude stranieri, esclusi (attivo=False) e la domenica (bar chiuso)."""
     try:
         lun = datetime.strptime(settimana, "%Y-%m-%d")
-    except ValueError:
-        raise HTTPException(status_code=400, detail="settimana deve essere YYYY-MM-DD (lunedì)")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="settimana deve essere YYYY-MM-DD (lunedì)") from exc
     voci = await get_onomastici()
     giorni_sett = [(lun + timedelta(days=i)) for i in range(7)]
     out = []
@@ -2866,7 +2866,7 @@ async def importa_prima_nota(file: UploadFile = File(...)):
     try:
         wb = openpyxl.load_workbook(io.BytesIO(raw), data_only=True, read_only=True)
     except Exception as e:
-        raise HTTPException(400, f"Excel non valido: {e}")
+        raise HTTPException(400, f"Excel non valido: {e}") from e
     ws = wb["Salari"] if "Salari" in wb.sheetnames else wb[wb.sheetnames[0]]
     rows = list(ws.iter_rows(values_only=True))
     if not rows:
@@ -2991,7 +2991,7 @@ async def importa_storico_pagamenti(file: UploadFile = File(...)):
     try:
         wb = openpyxl.load_workbook(io.BytesIO(raw), data_only=True, read_only=True)
     except Exception as e:
-        raise HTTPException(400, f"Excel non valido: {e}")
+        raise HTTPException(400, f"Excel non valido: {e}") from e
 
     def norm(s):
         return re.sub(r"\s+", " ", str(s or "").strip()).lower()
@@ -3699,7 +3699,6 @@ async def get_buste_paga(anno: Optional[int] = None, mese: Optional[int] = None,
     if dipendente_id:
         dip = await get_db().dipendenti_cloud.find_one({"id": dipendente_id})
         if dip:
-            nome_completo = f"{dip.get('nome', '')} {dip.get('cognome', '')}".strip().upper()
             query["$or"] = [
                 {"dipendente_id": dipendente_id},
                 {"nome_dipendente": {"$regex": dip.get('cognome', ''), "$options": "i"}}

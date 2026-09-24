@@ -845,7 +845,6 @@ async def smart_search_prodotti(
         unita = (prod.get("unita_misura") or "").strip().upper()
 
         # Calcola prezzo totale riga
-        prezzo_riga = round(prezzo_unit * quantita, 2) if quantita > 0 else prezzo_unit
 
         # Estrai pezzi per cartone dal nome (es. "X 24", "x24")
         match_pz = re.search(r"[xX]\s*(\d+)", desc)
@@ -1170,8 +1169,8 @@ async def cerca_openfoodfacts(q: str = Query(..., min_length=2, description="Tes
 
     try:
         data = await asyncio.to_thread(_fetch)
-    except Exception:
-        raise HTTPException(502, "Open Food Facts non raggiungibile, riprova")
+    except Exception as exc:
+        raise HTTPException(502, "Open Food Facts non raggiungibile, riprova") from exc
 
     risultati = []
     for p in (data.get("products") or [])[:6]:

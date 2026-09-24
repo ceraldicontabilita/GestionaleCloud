@@ -109,8 +109,8 @@ async def scarica_documento(doc_id: str, identity: Dict[str, Any] = Depends(get_
         raise HTTPException(404, "Documento non trovato")
     try:
         raw = base64.b64decode(doc["file_data"])
-    except Exception:
-        raise HTTPException(500, "File corrotto")
+    except Exception as exc:
+        raise HTTPException(500, "File corrotto") from exc
     fname = doc.get("nome_file") or f"{doc.get('tipo','documento')}.pdf"
     return StreamingResponse(
         io.BytesIO(raw), media_type=doc.get("mime") or "application/octet-stream",

@@ -123,7 +123,7 @@ async def importa_snapshot(svuota: bool = Query(False, description="Svuota le co
     try:
         seed = json.loads(SEED_PATH.read_text(encoding="utf-8"))
     except Exception as e:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=f"Seed non leggibile: {e}")
+        raise HTTPException(status_code=500, detail=f"Seed non leggibile: {e}") from e
 
     risultati = {}
     for coll_name in ("invoices", "fornitori", "documents_inbox", "bonifici"):
@@ -583,7 +583,7 @@ async def paypal_transactions(start_date: str, end_date: str):
             r.raise_for_status()
             data = r.json()
     except httpx.HTTPError as e:
-        raise HTTPException(status_code=502, detail=f"Errore PayPal: {e}")
+        raise HTTPException(status_code=502, detail=f"Errore PayPal: {e}") from e
 
     tx = []
     for t in data.get("transaction_details", []):

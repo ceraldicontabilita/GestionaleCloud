@@ -156,7 +156,6 @@ def categorize_document(filename: str, subject: str = "", sender: str = "", sear
     """
     filename_lower = filename.lower()
     subject_lower = subject.lower()
-    sender_lower = sender.lower()
     # I nomi reali degli allegati usano spesso underscore o trattini al
     # posto degli spazi (es. ``ricevuta_f24.pdf``). Per le regole composte
     # manteniamo anche una versione lessicale normalizzata.
@@ -634,13 +633,15 @@ class EmailDocumentDownloader:
     def download_attachments_from_email(
         self,
         email_id: bytes,
-        allowed_extensions: List[str] = ['.pdf', '.xml', '.xlsx', '.xls', '.csv', '.p7m'],
+        allowed_extensions: Optional[List[str]] = None,
         search_keywords: List[str] = None
     ) -> List[Dict[str, Any]]:
         """
         Scarica allegati da una singola email.
         Ritorna lista di documenti scaricati.
         """
+        if allowed_extensions is None:
+            allowed_extensions = ['.pdf', '.xml', '.xlsx', '.xls', '.csv', '.p7m']
         if not self.connection:
             return []
 

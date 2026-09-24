@@ -661,7 +661,7 @@ async def import_libro_unico(
             try:
                 parsed = parse_libro_unico_completo(tmp_path)
             except Exception as pdf_err:
-                raise HTTPException(status_code=400, detail=f"Errore parsing PDF - file non valido o corrotto: {str(pdf_err)}")
+                raise HTTPException(status_code=400, detail=f"Errore parsing PDF - file non valido o corrotto: {str(pdf_err)}") from pdf_err
             
             importati = 0
             aggiornati = 0
@@ -1011,7 +1011,7 @@ async def import_libro_unico(
         raise
     except Exception as e:
         logger.error(f"Errore import Libro Unico: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # (route morte rimosse — vedi nota §13.2 sopra: /riconcilia-stipendi,

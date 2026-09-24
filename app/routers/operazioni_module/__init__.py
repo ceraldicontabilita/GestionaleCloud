@@ -6,8 +6,7 @@ Il sottomodulo "carta" (transazioni carta di credito + supervisione) è stato
 rimosso: zero chiamanti frontend, mai wired in UI (audit
 PROMPT_MASTER.md, sezioni 6 e 10).
 """
-from fastapi import APIRouter, Query, Body, HTTPException
-from typing import Optional, Dict, Any
+from fastapi import APIRouter, Body, HTTPException
 
 router = APIRouter()
 
@@ -17,7 +16,6 @@ from .smart import (
     riconcilia_manuale, conferma_f24_batch, analizza_anomalie_banca,
     cerca_fatture_per_associazione, cerca_stipendi_per_associazione, cerca_f24_per_associazione
 )
-from .common import RiconciliaManuale
 
 # === ROTTE STATICHE ===
 

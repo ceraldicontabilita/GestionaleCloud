@@ -45,7 +45,7 @@ PAYMENT_TERMS = [
 # (prima questa lista era un sottoinsieme divergente da quella di
 # suppliers/iban_service.py: "sepa"/"riba"/... risultavano bancari in un
 # flusso e non nell'altro).
-from app.engines.prima_nota_engine import METODI_RICHIEDONO_IBAN as METODI_BANCARI
+from app.engines.prima_nota_engine import METODI_RICHIEDONO_IBAN as METODI_BANCARI  # noqa: F401 (riesportato: iban.py, validation.py)
 
 
 def clean_record(doc: Dict[str, Any]) -> Dict[str, Any]:

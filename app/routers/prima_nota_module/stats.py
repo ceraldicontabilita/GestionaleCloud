@@ -62,8 +62,8 @@ async def set_saldo_iniziale(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]
         raise HTTPException(status_code=400, detail="anno obbligatorio")
     try:
         importo = float(importo)
-    except (TypeError, ValueError):
-        raise HTTPException(status_code=400, detail="importo non valido")
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="importo non valido") from exc
 
     db = Database.get_db()
     now = datetime.now(timezone.utc).isoformat()
@@ -307,8 +307,8 @@ async def export_prima_nota_excel(
     """Export Prima Nota in Excel."""
     try:
         import pandas as pd
-    except ImportError:
-        raise HTTPException(status_code=500, detail="pandas non installato")
+    except ImportError as exc:
+        raise HTTPException(status_code=500, detail="pandas non installato") from exc
     
     db = Database.get_db()
     query = {}

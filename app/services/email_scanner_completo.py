@@ -165,7 +165,6 @@ async def scarica_documenti_cartella(
             "errori": [...]
         }
     """
-    db = Database.get_db()
     mail = get_imap_connection()
     
     if not mail:

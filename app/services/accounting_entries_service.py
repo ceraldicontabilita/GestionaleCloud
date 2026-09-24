@@ -245,24 +245,8 @@ class AccountingEntriesService:
             
             return output
         
-        except ImportError:
-            raise ValidationError("openpyxl non installato. Impossibile creare Excel.")
-    
-    async def export_entries_pdf(
-        self,
-        start_date: date,
-        end_date: date
-    ) -> BytesIO:
-        """Export registrazioni in PDF."""
-        entries = await self.entries_repo.get_entries_by_date_range(
-            start_date=start_date,
-            end_date=end_date,
-            limit=10000
-        )
-        
-        # TODO: Implementare generazione PDF con reportlab
-        # Per ora ritorna None, da implementare quando serve
-        raise NotImplementedError("PDF export non ancora implementato")
+        except ImportError as exc:
+            raise ValidationError("openpyxl non installato. Impossibile creare Excel.") from exc
     
     async def get_account_balance(
         self,

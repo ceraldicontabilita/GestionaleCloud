@@ -92,7 +92,7 @@ async def esegui_backup_async() -> dict:
             c for c in await _db.list_collection_names() if not c.startswith("system.")
         )
     except Exception as e:
-        raise RuntimeError(f"Impossibile elencare le collezioni: {e}")
+        raise RuntimeError(f"Impossibile elencare le collezioni: {e}") from e
 
     meta = {
         "db": DB_NAME,
@@ -181,7 +181,7 @@ async def backup_manuale(_admin=Depends(require_admin)):
     try:
         return await esegui_backup_async()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # ── GET /api/backup/lista ─────────────────────────────────────────────────────
@@ -259,14 +259,14 @@ async def ripristina_backup(filename: str, _admin=Depends(require_admin)):
         backup_sicurezza = await esegui_backup_async()
         LOG.info(f"[RESTORE] Backup pre-restore: {backup_sicurezza['file']}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Impossibile creare backup di sicurezza: {e}")
+        raise HTTPException(status_code=500, detail=f"Impossibile creare backup di sicurezza: {e}") from e
 
     # 2. Carica il dump JSON-gzip
     try:
         with gzip.open(filepath, "rb") as fh:
             dump = json_util.loads(fh.read().decode("utf-8"))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Backup illeggibile: {e}")
+        raise HTTPException(status_code=500, detail=f"Backup illeggibile: {e}") from e
 
     # 3. Restore pure-Python: per ogni collezione drop + reinsert (niente mongorestore)
     start = datetime.now(timezone.utc)

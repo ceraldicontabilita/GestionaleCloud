@@ -550,8 +550,8 @@ async def genera_registro_lotti_asl(data_inizio: str = Query(...), data_fine: st
         dt_fine = datetime.strptime(data_fine, "%Y-%m-%d")
         data_inizio_it = dt_inizio.strftime("%d/%m/%Y")
         data_fine_it = dt_fine.strftime("%d/%m/%Y")
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Formato data non valido. Usa YYYY-MM-DD")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Formato data non valido. Usa YYYY-MM-DD") from exc
 
     # Limite alzato 2000→50000 (audit 24/07/2026): con più di 2000 lotti in
     # archivio il registro ASL perdeva i più VECCHI in silenzio (il registro

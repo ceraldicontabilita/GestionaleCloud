@@ -713,8 +713,8 @@ async def download_pdf_allegato(fattura_id: str, allegato_id: str) -> Response:
 
     try:
         pdf_data = base64.b64decode(allegato["base64_data"])
-    except Exception:
-        raise HTTPException(status_code=500, detail="Errore decodifica PDF")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Errore decodifica PDF") from exc
 
     filename = allegato.get("nome_file", f"allegato_{allegato_id}.pdf")
 

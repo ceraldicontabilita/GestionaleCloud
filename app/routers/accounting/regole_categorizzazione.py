@@ -473,7 +473,7 @@ async def upload_regole_excel(file: UploadFile = File(...)):
         
     except Exception as e:
         logger.error(f"Errore upload regole: {e}")
-        raise HTTPException(status_code=500, detail=f"Errore nel processamento del file: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Errore nel processamento del file: {str(e)}") from e
 
 
 @router.get("")

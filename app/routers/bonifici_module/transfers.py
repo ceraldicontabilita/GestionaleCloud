@@ -248,8 +248,8 @@ async def export_transfers(
         try:
             import pandas as pd
             from io import BytesIO
-        except ImportError:
-            raise HTTPException(status_code=500, detail="pandas non installato")
+        except ImportError as exc:
+            raise HTTPException(status_code=500, detail="pandas non installato") from exc
         
         rows = []
         for t in transfers:

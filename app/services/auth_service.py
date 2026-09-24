@@ -318,7 +318,7 @@ class AuthService:
             
         except jwt.JWTError as e:
             logger.error(f"Token verification failed: {e}")
-            raise AuthenticationError("Invalid token")
+            raise AuthenticationError("Invalid token") from e
     
     async def get_user_profile(self, user_id: str) -> Dict[str, Any]:
         """

@@ -825,7 +825,6 @@ async def dashboard_iva_mensile(anno: int, mese: int) -> Dict[str, Any]:
 
     from app.services.iva_liquidation_query import get_iva_period_snapshot
     snapshot = await get_iva_period_snapshot(db, anno=anno, mese=mese)
-    liq_doc = await db[COLL_LIQ].find_one({"periodo": periodo}, {"_id": 0}, sort=[("versione", -1)])
     iva_vendite_corr = snapshot.get("iva_vendite")
     from app.services.iva_f24_verifica import verifica_versamento_iva
 

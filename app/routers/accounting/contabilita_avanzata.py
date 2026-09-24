@@ -30,7 +30,7 @@ from reportlab.lib.units import cm
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+from reportlab.lib.enums import TA_CENTER
 from app.utils.error_handler import handle_errors
 
 logger = logging.getLogger(__name__)
@@ -255,7 +255,7 @@ async def calcola_imposte_realtime(
         }
     except Exception as e:
         logger.error(f"Errore calcolo imposte: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/bilancio-dettagliato")
@@ -531,7 +531,6 @@ async def export_pdf_dichiarazione(
     heading_style = ParagraphStyle('Heading', parent=styles['Heading2'], fontSize=14, spaceAfter=10, spaceBefore=15)
     subheading_style = ParagraphStyle('SubHeading', parent=styles['Heading3'], fontSize=12, spaceAfter=8)
     normal_style = ParagraphStyle('Normal', parent=styles['Normal'], fontSize=10)
-    right_style = ParagraphStyle('Right', parent=styles['Normal'], fontSize=10, alignment=TA_RIGHT)
 
     elements = []
 

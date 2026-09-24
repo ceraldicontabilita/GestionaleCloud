@@ -524,7 +524,6 @@ class ScaricoPayload(BaseModel):
 @router.post("/scarico")
 async def scarico_unificato(payload: ScaricoPayload):
     now = datetime.now(timezone.utc).isoformat()
-    mov_id = str(uuid.uuid4())
 
     if payload.source == "bar":
         # UNICA logica di scarico bar: delega a magazzino_bar.scarico

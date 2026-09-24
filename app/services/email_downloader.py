@@ -153,7 +153,7 @@ class EmailDownloader:
     def download_attachments(
         self, 
         email_id: bytes,
-        extensions: List[str] = ['.pdf']
+        extensions: Optional[List[str]] = None
     ) -> List[Dict[str, Any]]:
         """
         Scarica gli allegati di una email.
@@ -165,6 +165,8 @@ class EmailDownloader:
         Returns:
             Lista di allegati scaricati con info
         """
+        if extensions is None:
+            extensions = ['.pdf']
         attachments = []
         
         try:

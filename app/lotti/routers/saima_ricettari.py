@@ -536,7 +536,7 @@ async def proxy_pdf(url: str = Query(..., description="URL del PDF da proxare"))
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Errore download PDF: {str(e)}")
+        raise HTTPException(status_code=502, detail=f"Errore download PDF: {str(e)}") from e
 
 
 @router.post("/aggiorna")

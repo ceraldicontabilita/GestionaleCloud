@@ -55,7 +55,7 @@ async def elenco_categorie_menu():
     try:
         return await menu_bridge.elenco_categorie_menu()
     except Exception as exc:  # noqa: BLE001 - tradotto in errore HTTP parlante
-        raise _errore_menu(exc)
+        raise _errore_menu(exc) from exc
 
 
 @router.post("/menu-categorie")
@@ -73,7 +73,7 @@ async def crea_categoria_menu(body: CategoriaMenuCreate, _admin=Depends(require_
         return await menu_bridge.crea_categoria_menu(
             body.nome, nome=body.nome_en, immagine=body.immagine)
     except Exception as exc:  # noqa: BLE001
-        raise _errore_menu(exc)
+        raise _errore_menu(exc) from exc
 
 
 @router.post("/menu-categorie/{categoria_id}/sottocategorie")
@@ -85,4 +85,4 @@ async def crea_sottocategoria_menu(
         return await menu_bridge.crea_sottocategoria_menu(
             categoria_id, body.nome, nome=body.nome_en, immagine=body.immagine)
     except Exception as exc:  # noqa: BLE001
-        raise _errore_menu(exc)
+        raise _errore_menu(exc) from exc

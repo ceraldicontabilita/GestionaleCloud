@@ -7,8 +7,7 @@ Modulo suddiviso per funzionalità:
 - transfers: CRUD bonifici, export
 - riconciliazione: Riconciliazione con estratto conto, dashboard
 """
-from fastapi import APIRouter, UploadFile, File, Query, BackgroundTasks
-from typing import List, Optional
+from fastapi import APIRouter
 
 router = APIRouter()
 

@@ -1047,11 +1047,11 @@ async def candidati_banca_per_acconto(acconto_id: str) -> Dict[str, Any]:
     data_acconto_str = acconto.get("data", "")
     try:
         data_acconto = datetime.strptime(data_acconto_str, "%Y-%m-%d")
-    except (ValueError, TypeError):
+    except (ValueError, TypeError) as exc:
         raise HTTPException(
             status_code=400,
             detail=f"Data acconto non valida: {data_acconto_str}",
-        )
+        ) from exc
 
     tipo_bonifico = acconto.get("tipo_bonifico") or "standard"
 

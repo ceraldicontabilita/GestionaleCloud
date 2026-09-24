@@ -210,8 +210,8 @@ async def get_produzione_consigliata(data: Optional[str] = Query(None, descripti
     if data:
         try:
             data_target = date.fromisoformat(data)
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Formato data non valido, usa YYYY-MM-DD")
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Formato data non valido, usa YYYY-MM-DD") from exc
     else:
         data_target = date.today() + timedelta(days=1)
 

@@ -527,7 +527,6 @@ def _extract_json_from_response(response: str) -> Optional[Dict[str, Any]]:
 def _validate_f24_totals(data: Dict[str, Any]) -> Dict[str, Any]:
     """Valida che i totali F24 corrispondano alla somma delle sezioni."""
     try:
-        totali = data.get("totali", {})
         
         # Calcola totali dalle sezioni
         calcolati = {

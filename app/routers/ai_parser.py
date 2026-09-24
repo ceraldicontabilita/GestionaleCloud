@@ -115,7 +115,7 @@ async def parse_document(
         raise
     except Exception as e:
         logger.error(f"Errore parsing documento: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/parse-fattura")
@@ -187,7 +187,7 @@ async def parse_fattura_endpoint(
         
     except Exception as e:
         logger.error(f"Errore parsing fattura: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/parse-f24")
@@ -255,7 +255,7 @@ async def parse_f24_endpoint(
         raise
     except Exception as e:
         logger.error(f"Errore parsing F24: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/parse-busta-paga")
@@ -334,7 +334,7 @@ async def parse_busta_paga_endpoint(
         
     except Exception as e:
         logger.error(f"Errore parsing busta paga: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/batch-parse")

@@ -235,7 +235,7 @@ async def riconcilia_fatture_paypal() -> Dict[str, Any]:
         }
     except Exception as e:
         logger.error(f"Errore riconciliazione PayPal: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 async def lista_fatture_paypal() -> Dict[str, Any]:
@@ -280,4 +280,4 @@ async def import_paypal_file(file: UploadFile = File(...)) -> Dict[str, Any]:
         if isinstance(e, HTTPException):
             raise
         logger.error(f"Errore import PayPal: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e

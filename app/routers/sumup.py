@@ -262,11 +262,11 @@ async def sincronizza_sumup(
     for etichetta, valore in (("dal", dal), ("al", al)):
         try:
             date.fromisoformat(valore)
-        except ValueError:
+        except ValueError as exc:
             raise HTTPException(
                 status_code=400,
                 detail=f"Data '{etichetta}' non valida: {valore!r} (attesa AAAA-MM-GG)",
-            )
+            ) from exc
     if dal > al:
         raise HTTPException(status_code=400, detail="'dal' successivo ad 'al'")
 

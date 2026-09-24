@@ -312,8 +312,8 @@ async def crea_cedolino(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     try:
         mese_val = int(data["mese"])
         anno_val = int(data["anno"])
-    except (ValueError, TypeError):
-        raise HTTPException(status_code=400, detail="Mese e anno devono essere valori numerici")
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail="Mese e anno devono essere valori numerici") from exc
     
     if mese_val < 1 or mese_val > 12:
         raise HTTPException(status_code=400, detail="Mese deve essere compreso tra 1 e 12")
@@ -322,8 +322,8 @@ async def crea_cedolino(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     
     try:
         netto_val = float(data["netto"])
-    except (ValueError, TypeError):
-        raise HTTPException(status_code=400, detail="Il netto deve essere un valore numerico valido")
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail="Il netto deve essere un valore numerico valido") from exc
     
     if netto_val < 0:
         raise HTTPException(status_code=400, detail="Il netto non può essere negativo")

@@ -814,21 +814,21 @@ async def upsert_chiusure_giornaliere_batch(
         data = str(riga.get("data") or "")[:10]
         try:
             datetime.strptime(data, "%Y-%m-%d")
-        except (TypeError, ValueError):
+        except (TypeError, ValueError) as exc:
             raise HTTPException(
                 status_code=400,
                 detail=f"Data non valida alla riga {indice}: {data!r}",
-            )
+            ) from exc
         if data in date_viste:
             raise HTTPException(status_code=400, detail=f"Data duplicata: {data}")
         date_viste.add(data)
         try:
             importo = round(float(riga.get("importo")), 2)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError) as exc:
             raise HTTPException(
                 status_code=400,
                 detail=f"Importo non valido alla riga {indice}",
-            )
+            ) from exc
         if importo < 0:
             raise HTTPException(
                 status_code=400,

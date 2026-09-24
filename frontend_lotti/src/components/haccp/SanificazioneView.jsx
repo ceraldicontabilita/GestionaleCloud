@@ -1,13 +1,15 @@
 import { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { Sparkles, ChevronLeft, ChevronRight, Save, RefreshCw, Refrigerator, Snowflake, Check, X, Printer } from "lucide-react";
+import { Sparkles, ChevronLeft, ChevronRight, RefreshCw, Refrigerator, Snowflake, Check, X, Printer } from "lucide-react";
 import Button from "../ui/Button";
 import { API, MESI_IT, withToken } from "../../utils/constants";
 import { formattaDataItaliana, giorniNelMese } from "../../utils/dateUtils";
+import { apiError } from "../../utils/apiError";
 
-// Operatore sanificazione apparecchi
-const OPERATORE_SANIFICAZIONE = "SANKAPALA ARACHCHILAGE JANANIE AYACHANA DISSANAYAKA";
+// Ogni casella si salva subito, firmata da chi e' entrato nel tablet col PIN:
+// niente nome fisso dell'operatore, niente scheda riempita da sola, niente
+// giorni futuri (li rifiuta anche il server).
 
 const SanificazioneView = () => {
   const [mese, setMese] = useState(new Date().getMonth() + 1);
@@ -30,30 +32,9 @@ const SanificazioneView = () => {
         axios.get(`${API}/sanificazione/apparecchi/${anno}`)
       ]);
       
-      const schedaData = schedaRes.data;
-      
-      // Verifica se la scheda è vuota e popola automaticamente
-      const registrazioni = schedaData?.registrazioni || {};
-      const hasData = Object.values(registrazioni).some(attr => Object.keys(attr).length > 0);
-      
-      if (!hasData) {
-        // Scheda vuota - popola automaticamente
-        try {
-          const popolaRes = await axios.post(`${API}/haccp-auto/popola-sanificazione?anno=${anno}&mese=${mese}`);
-          if (popolaRes.data.success) {
-            toast.success(`Scheda sanificazione ${mese}/${anno} popolata automaticamente`);
-            // Ricarica la scheda dopo il popolamento
-            const nuovaScheda = await axios.get(`${API}/sanificazione/scheda/${anno}/${mese}`);
-            setScheda(nuovaScheda.data);
-          }
-        } catch (e) {
-          // Popolamento non necessario o già presente
-          setScheda(schedaData);
-        }
-      } else {
-        setScheda(schedaData);
-      }
-      
+      // Una scheda vuota resta vuota: prima qui partiva il «popolamento
+      // automatico», che segnava sanificazioni mai fatte.
+      setScheda(schedaRes.data);
       setAttrezzature(attrRes.data);
       setSchedaApparecchi(apparecchiRes.data);
     } catch (err) {
@@ -64,36 +45,39 @@ const SanificazioneView = () => {
 
   useEffect(() => { fetchScheda(); }, [fetchScheda]);
 
-  const toggleCella = (attr, giorno) => {
-    if (!scheda) return;
-    
-    const nuoveReg = { ...scheda.registrazioni };
-    if (!nuoveReg[attr]) nuoveReg[attr] = {};
-    
-    nuoveReg[attr][giorno] = nuoveReg[attr][giorno] === "X" ? "" : "X";
-    setScheda({ ...scheda, registrazioni: nuoveReg });
-  };
+  const oggi = new Date();
+  const giornoFuturo = (giorno) =>
+    new Date(anno, mese - 1, Number(giorno)) > new Date(oggi.getFullYear(), oggi.getMonth(), oggi.getDate());
 
-  const marcaTuttoGiorno = (giorno) => {
-    if (!scheda) return;
-    const nuoveReg = { ...scheda.registrazioni };
-    attrezzature.forEach(attr => {
-      if (!nuoveReg[attr]) nuoveReg[attr] = {};
-      nuoveReg[attr][giorno] = "X";
-    });
-    setScheda({ ...scheda, registrazioni: nuoveReg });
-  };
-
-  const salvaScheda = async () => {
+  const toggleCella = async (attr, giorno) => {
+    if (!scheda || saving || giornoFuturo(giorno)) return;
+    const eseguita = scheda.registrazioni?.[attr]?.[giorno] !== "X";
     setSaving(true);
     try {
-      await axios.put(`${API}/sanificazione/scheda/${anno}/${mese}`, {
-        registrazioni: scheda.registrazioni,
-        operatore: scheda.operatore_responsabile
+      const res = await axios.post(`${API}/sanificazione/scheda/${anno}/${mese}/registra`, null, {
+        params: { giorno: Number(giorno), attrezzatura: attr, eseguita },
       });
-      toast.success("Scheda salvata!");
+      if (res.data?.firma_verificata === false) {
+        toast.warning("Registrata senza firma verificata: entra nel tablet col tuo PIN.");
+      }
+      await fetchScheda();
     } catch (err) {
-      toast.error("Errore salvataggio");
+      toast.error(apiError(err, "Errore salvataggio sanificazione"));
+    }
+    setSaving(false);
+  };
+
+  const marcaTuttoGiorno = async (giorno) => {
+    if (!scheda || saving || giornoFuturo(giorno)) return;
+    setSaving(true);
+    try {
+      await axios.post(`${API}/sanificazione/scheda/${anno}/${mese}/giorno-completo`, null, {
+        params: { giorno: Number(giorno) },
+      });
+      toast.success(`Giorno ${giorno}: tutte le sanificazioni registrate`);
+      await fetchScheda();
+    } catch (err) {
+      toast.error(apiError(err, "Errore salvataggio sanificazione"));
     }
     setSaving(false);
   };
@@ -158,11 +142,6 @@ const SanificazioneView = () => {
           <Button onClick={() => window.open(withToken(`${API}/sanificazione/export-pdf/${anno}/${mese}`), '_blank')} variant="secondary" size="sm" data-testid="stampa-sanificazione-btn">
             <Printer size={16}/> PDF
           </Button>
-          {viewMode === "attrezzature" && (
-            <Button onClick={salvaScheda} disabled={saving}>
-              <Save size={16}/> {saving ? "Salvo..." : "Salva"}
-            </Button>
-          )}
         </div>
       </div>
 
@@ -201,7 +180,8 @@ const SanificazioneView = () => {
               <button
                 key={i+1}
                 onClick={() => marcaTuttoGiorno(String(i+1))}
-                className="px-2 py-1 text-xs bg-[#f2f6f3] hover:bg-[#dce8e0] text-[#5b7a6b] rounded"
+                disabled={saving || giornoFuturo(i+1)}
+                className="disabled:opacity-40 px-2 py-1 text-xs bg-[#f2f6f3] hover:bg-[#dce8e0] text-[#5b7a6b] rounded"
               >
                 {i+1}
               </button>
@@ -230,6 +210,7 @@ const SanificazioneView = () => {
                         <td key={g} className="px-1 py-1 text-center">
                           <button
                             onClick={() => toggleCella(attr, g)}
+                            disabled={saving || giornoFuturo(g)}
                             title={val === "N/D"
                               ? "Quel giorno non è stata registrata nessuna sanificazione (sistema non attivo). Tocca per registrarla ora."
                               : undefined}
@@ -254,7 +235,7 @@ const SanificazioneView = () => {
 
           {/* Footer Attrezzature */}
           <div className="flex items-center justify-between text-sm text-gray-500 bg-gray-50 p-3 rounded-lg">
-            <span>Responsabile: <strong>{scheda?.operatore_responsabile || "N/D"}</strong></span>
+            <span>Ultima firma verificata: <strong>{scheda?.operatore_responsabile || "nessuna"}</strong></span>
             <span>Ultimo aggiornamento: {formattaDataItaliana(scheda?.updated_at)}</span>
           </div>
         </>
@@ -263,9 +244,9 @@ const SanificazioneView = () => {
           {/* Sezione Apparecchi Refrigeranti */}
           <div className="bg-green-50 border border-green-200 rounded-lg p-4">
             <h3 className="font-semibold text-green-800 mb-2">
-              👷 Operatore Sanificazione Apparecchi
+              👷 Sanificazione Apparecchi
             </h3>
-            <p className="text-sm text-green-700">{OPERATORE_SANIFICAZIONE}</p>
+            <p className="text-sm text-green-700">Ogni sanificazione porta la firma di chi l'ha eseguita.</p>
             <p className="text-xs text-green-600 mt-1">
               Pulizia ogni 7-10 giorni per ogni apparecchio • Un solo apparecchio per giorno
             </p>

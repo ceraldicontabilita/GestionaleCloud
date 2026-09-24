@@ -277,11 +277,11 @@ async def search_by_piva(partita_iva: str) -> Dict[str, Any]:
             
             return result
                 
-        except httpx.TimeoutException:
-            raise HTTPException(status_code=504, detail="Timeout nella ricerca")
+        except httpx.TimeoutException as exc:
+            raise HTTPException(status_code=504, detail="Timeout nella ricerca") from exc
         except Exception as e:
             logger.error(f"Errore ricerca PIVA: {e}")
-            raise HTTPException(status_code=500, detail=f"Errore nella ricerca: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Errore nella ricerca: {str(e)}") from e
 
 
 @router.get("")
@@ -298,10 +298,8 @@ async def list_suppliers(
     use_cache: bool = Query(True)
 ) -> List[Dict[str, Any]]:
     """Lista fornitori con filtri e statistiche fatture."""
-    import time
     
     db = Database.get_db()
-    t_start = time.time()
     
     # Filtri avanzati disabilitano la cache
     advanced_filters_active = (
@@ -688,7 +686,7 @@ async def merge_fornitori_duplicati(
     try:
         return await merge_fornitori(target_id, duplicate_id, soft=soft)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.post("/duplicati/auto-merge")
@@ -1477,7 +1475,7 @@ async def get_fatture_fornitore(
         raise
     except Exception as e:
         logger.error(f"Errore recupero fatture fornitore {supplier_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 

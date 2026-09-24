@@ -85,7 +85,7 @@ async def on_fattura_righe_magazzino(event: Dict[str, Any], db) -> Optional[Dict
 
         else:
             # Crea nuovo prodotto
-            nuovo_id = await _crea_prodotto_nuovo(desc, qta, prezzo, udm, fornitore_id, fornitore_nome, db)
+            await _crea_prodotto_nuovo(desc, qta, prezzo, udm, fornitore_id, fornitore_nome, db)
             risultati["create"] += 1
 
     # Audit

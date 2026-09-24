@@ -7,7 +7,6 @@ domanda che fa un'ispezione. Qui si risponde a tutte e due.
 Il motore che legge le origini sta in `servizi/tracciabilita.py`: qui ci sono
 solo le rotte e il modo di contare.
 """
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 

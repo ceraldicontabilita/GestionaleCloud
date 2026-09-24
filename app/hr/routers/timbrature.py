@@ -222,8 +222,8 @@ async def imposta_sede(payload: Dict[str, Any] = Body(...),
     db = Database.get_db()
     try:
         lat = float(payload["lat"]); lng = float(payload["lng"])
-    except (KeyError, ValueError, TypeError):
-        raise HTTPException(400, "lat e lng obbligatori e numerici")
+    except (KeyError, ValueError, TypeError) as exc:
+        raise HTTPException(400, "lat e lng obbligatori e numerici") from exc
     raggio = int(payload.get("raggio_m") or RAGGIO_DEFAULT_M)
     await db[COLL_SET].update_one(
         {"chiave": "sede_lavoro"},

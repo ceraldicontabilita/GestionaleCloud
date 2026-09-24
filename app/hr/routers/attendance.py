@@ -120,8 +120,8 @@ async def registra_timbratura(payload: Dict[str, Any] = Body(...)) -> Dict[str, 
     if data_ora_str:
         try:
             data_ora = datetime.fromisoformat(data_ora_str.replace("Z", "+00:00"))
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Formato data_ora non valido")
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Formato data_ora non valido") from exc
     else:
         data_ora = datetime.now(timezone.utc)
     
@@ -313,7 +313,7 @@ async def crea_richiesta_assenza(payload: Dict[str, Any] = Body(...)) -> Dict[st
         ore_totali = giorni_totali * ore
         
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=f"Formato date non valido: {e}")
+        raise HTTPException(status_code=400, detail=f"Formato date non valido: {e}") from e
     
     # Verifica sovrapposizioni
     sovrapposizione = await db["attendance_assenze"].find_one({
@@ -364,7 +364,7 @@ async def crea_richiesta_assenza(payload: Dict[str, Any] = Body(...)) -> Dict[st
 
 @router.put("/richiesta-assenza/{richiesta_id}/approva")
 @handle_errors
-async def approva_richiesta_assenza(richiesta_id: str, payload: Dict[str, Any] = {}) -> Dict[str, Any]:
+async def approva_richiesta_assenza(richiesta_id: str, payload: Dict[str, Any] = Body(default_factory=dict)) -> Dict[str, Any]:
     """
     Approva una richiesta di assenza.
     """
@@ -1441,10 +1441,10 @@ async def genera_pdf_consulente(data: Dict[str, Any]):
         from reportlab.lib.pagesizes import A4, landscape
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
         from reportlab.lib.units import mm
-        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
-        from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
-    except ImportError:
-        raise HTTPException(500, "reportlab non installato. Eseguire: pip install reportlab")
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.lib.enums import TA_CENTER
+    except ImportError as exc:
+        raise HTTPException(500, "reportlab non installato. Eseguire: pip install reportlab") from exc
     
     db = Database.get_db()
     

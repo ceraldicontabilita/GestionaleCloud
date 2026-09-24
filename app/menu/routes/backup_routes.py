@@ -1,8 +1,10 @@
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from fastapi.responses import FileResponse
 from datetime import datetime
-import subprocess
 import json
+import re
+import shutil
+import tarfile
 from pathlib import Path
 
 from app.menu.supabase_client import supabase
@@ -31,6 +33,51 @@ BACKUP_TABLES = [
 INTEGER_ID_TABLES = {"menu_categories", "menu_subcategories", "menu_products"}
 
 
+# Solo archivi nati da create_backup: niente nomi arbitrari su disco.
+_NOME_BACKUP = re.compile(r"^ceraldi_backup_\d{8}_\d{6}\.tar\.gz$")
+
+
+def _file_backup(filename: str) -> Path:
+    if not _NOME_BACKUP.match(filename or ""):
+        raise HTTPException(status_code=400, detail="Invalid backup file")
+    file_path = BACKUP_DIR / filename
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Backup not found")
+    return file_path
+
+
+def _archivia(cartella: Path, archivio: Path) -> None:
+    with tarfile.open(archivio, "w:gz") as tar:
+        tar.add(cartella, arcname=cartella.name)
+
+
+def _leggi_archivio(archivio: Path) -> dict:
+    """Legge le tabelle dall'archivio senza estrarre file su disco.
+
+    Accetta solo `<cartella>/<tabella>.json` delle tabelle note: niente
+    percorsi assoluti o `..` (tar slip) e niente tabelle estranee.
+    """
+    tabelle = {}
+    with tarfile.open(archivio, "r:gz") as tar:
+        for membro in tar.getmembers():
+            if not membro.isfile():
+                continue
+            parti = Path(membro.name).parts
+            if len(parti) != 2 or not parti[0].startswith("ceraldi_backup_"):
+                continue
+            tabella = Path(parti[1]).stem
+            if tabella not in BACKUP_TABLES or not parti[1].endswith(".json"):
+                continue
+            with tar.extractfile(membro) as f:
+                righe = json.load(f)
+            if not isinstance(righe, list):
+                raise ValueError(f"{tabella}: contenuto non valido")
+            tabelle[tabella] = righe
+    if not tabelle:
+        raise ValueError("No backup directory found in archive")
+    return tabelle
+
+
 def _delete_all_rows(table: str):
     if table in INTEGER_ID_TABLES:
         supabase.table(table).delete().neq("id", -1).execute()
@@ -46,8 +93,10 @@ class BackupInfo:
         self.created_at = datetime.fromtimestamp(path.stat().st_mtime).isoformat() if path.exists() else None
 
 
+# Le chiamate a Supabase e la compressione sono sincrone: con `def` FastAPI le
+# esegue in un thread; con `async def` fermavano il server per tutti.
 @router.post("/create")
-async def create_backup(
+def create_backup(
     background_tasks: BackgroundTasks,
     username: str = Depends(verify_token)
 ):
@@ -67,13 +116,10 @@ async def create_backup(
         archive_name = f"{backup_name}.tar.gz"
         archive_path = BACKUP_DIR / archive_name
 
-        tar_cmd = ['tar', '-czf', str(archive_path), '-C', str(BACKUP_DIR), backup_name]
-        tar_result = subprocess.run(tar_cmd, capture_output=True, text=True, timeout=60)
-
-        if tar_result.returncode != 0:
-            raise Exception(f"Archive creation failed: {tar_result.stderr}")
-
-        subprocess.run(['rm', '-rf', str(backup_dir)])
+        try:
+            _archivia(backup_dir, archive_path)
+        finally:
+            shutil.rmtree(backup_dir, ignore_errors=True)
 
         backup_info = BackupInfo(archive_name, archive_path)
 
@@ -88,10 +134,8 @@ async def create_backup(
             }
         }
 
-    except subprocess.TimeoutExpired:
-        raise HTTPException(status_code=500, detail="Backup timeout - database too large")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Backup failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Backup failed: {str(e)}") from e
 
 
 @router.get("/list")
@@ -114,20 +158,14 @@ async def list_backups(username: str = Depends(verify_token)):
             "total": len(backups)
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/download/{filename}")
 async def download_backup(filename: str, username: str = Depends(verify_token)):
     """Download a backup file"""
     try:
-        file_path = BACKUP_DIR / filename
-
-        if not file_path.exists():
-            raise HTTPException(status_code=404, detail="Backup not found")
-
-        if not filename.endswith('.tar.gz'):
-            raise HTTPException(status_code=400, detail="Invalid backup file")
+        file_path = _file_backup(filename)
 
         return FileResponse(
             path=str(file_path),
@@ -137,20 +175,14 @@ async def download_backup(filename: str, username: str = Depends(verify_token)):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/public-download/{filename}")
 async def public_download_backup(filename: str, _username: str = Depends(verify_token)):
     """Legacy URL retained for clients, but downloads are always authenticated."""
     try:
-        file_path = BACKUP_DIR / filename
-
-        if not file_path.exists():
-            raise HTTPException(status_code=404, detail="Backup not found")
-
-        if not filename.endswith('.tar.gz'):
-            raise HTTPException(status_code=400, detail="Invalid backup file")
+        file_path = _file_backup(filename)
 
         return FileResponse(
             path=str(file_path),
@@ -160,75 +192,52 @@ async def public_download_backup(filename: str, _username: str = Depends(verify_
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.delete("/delete/{filename}")
 async def delete_backup(filename: str, username: str = Depends(verify_token)):
     """Delete a backup file"""
     try:
-        file_path = BACKUP_DIR / filename
-
-        if not file_path.exists():
-            raise HTTPException(status_code=404, detail="Backup not found")
-
+        file_path = _file_backup(filename)
         file_path.unlink()
 
         return {
             "success": True,
             "message": f"Backup '{filename}' deleted successfully"
         }
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/restore/{filename}")
-async def restore_backup(filename: str, username: str = Depends(verify_token)):
-    """Restore database from a JSON backup (Supabase)"""
+def restore_backup(filename: str, username: str = Depends(verify_token)):
+    """Restore database from a JSON backup (Supabase).
+
+    L'archivio si legge e si controlla tutto PRIMA di cancellare: prima le
+    tabelle venivano svuotate e solo dopo si scopriva un archivio illeggibile.
+    """
+    file_path = _file_backup(filename)
     try:
-        file_path = BACKUP_DIR / filename
+        tabelle = _leggi_archivio(file_path)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Restore failed: {str(e)}") from e
 
-        if not file_path.exists():
-            raise HTTPException(status_code=404, detail="Backup not found")
-
-        extract_dir = BACKUP_DIR / "temp_restore"
-        extract_dir.mkdir(exist_ok=True)
-
-        tar_cmd = ['tar', '-xzf', str(file_path), '-C', str(extract_dir)]
-        subprocess.run(tar_cmd, check=True, timeout=60)
-
-        backup_dirs = list(extract_dir.glob("ceraldi_backup_*"))
-        if not backup_dirs:
-            raise Exception("No backup directory found in archive")
-
-        backup_dir = backup_dirs[0]
-
-        # Ripristina in ordine inverso di dipendenza (figli prima dei genitori per il delete,
-        # genitori prima dei figli per l'insert)
-        delete_order = list(reversed(BACKUP_TABLES))
-        insert_order = BACKUP_TABLES
-
-        for table in delete_order:
+    try:
+        # Figli prima dei genitori per il delete, genitori prima dei figli per l'insert
+        for table in reversed(BACKUP_TABLES):
             _delete_all_rows(table)
-
-        for table in insert_order:
-            json_path = backup_dir / f"{table}.json"
-            if not json_path.exists():
-                continue
-            with open(json_path) as f:
-                rows = json.load(f)
+        for table in BACKUP_TABLES:
+            rows = tabelle.get(table)
             if rows:
                 supabase.table(table).insert(rows).execute()
-
-        subprocess.run(['rm', '-rf', str(extract_dir)])
 
         return {
             "success": True,
             "message": "Database restored successfully",
             "restored_by": username
         }
-
-    except subprocess.TimeoutExpired:
-        raise HTTPException(status_code=500, detail="Restore timeout")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Restore failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Restore failed: {str(e)}") from e

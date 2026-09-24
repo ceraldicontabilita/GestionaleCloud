@@ -300,7 +300,6 @@ async def get_kpi_gestionali(anno: int) -> Dict[str, Any]:
     """
     KPI gestionali principali.
     """
-    db = Database.get_db()
     
     # Dati annuali
     analisi = await get_analisi_costi_ricavi(anno=anno)

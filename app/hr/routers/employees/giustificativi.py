@@ -636,7 +636,6 @@ async def get_saldo_ferie_dipendente(
         raise HTTPException(status_code=404, detail="Dipendente non trovato")
     
     # Parametri contrattuali (default CCNL Commercio)
-    ore_settimanali = float(employee.get("ore_settimanali", 40))
     giorni_ferie_annuali = 26  # Giorni
     ore_ferie_annuali = giorni_ferie_annuali * 8  # 208 ore
     ore_rol_annuali = 72  # Ore
@@ -1311,7 +1310,7 @@ async def upload_libro_unico_pdf(file: UploadFile = File(...)) -> Dict[str, Any]
     
     except Exception as e:
         logger.error(f"Errore upload Libro Unico: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/sync-giustificativi-da-cedolini")

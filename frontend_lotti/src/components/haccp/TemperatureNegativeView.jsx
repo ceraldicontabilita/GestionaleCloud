@@ -9,6 +9,9 @@ import Button from "../ui/Button";
 import { API, MESI_IT } from "../../utils/constants";
 import SegnalaGuasto from "./shared/SegnalaGuasto";
 import { giorniNelMese } from "../../utils/dateUtils";
+import { testoFirmatari } from "../../utils/firmatari";
+import DichiaraConformiButton from "./DichiaraConformiButton";
+import { CellaTemperatura, ModalAzioneCorrettiva } from "./shared/CellaTemperatura";
 
 // Dati aziendali Ceraldi Group
 const AZIENDA_INFO = {
@@ -23,7 +26,6 @@ const RIFERIMENTI_NORMATIVI = {
 };
 
 // Operatori Temperature
-const OPERATORI_TEMPERATURE = ["Pocci Salvatore", "Vincenzo Ceraldi"];
 
 // ─── Intestazione colonna congelatore con rinomina inline ────────────────────
 const ColonnaCongelatore = ({ numero, nome, onRinomina, onElimina }) => {
@@ -116,6 +118,7 @@ const TemperatureNegativeView = () => {
   const [mese, setMese] = useState(new Date().getMonth() + 1);
   const [anno, setAnno] = useState(new Date().getFullYear());
   const [schedeCongelatori, setSchedeCongelatori] = useState({});
+  const [azioneModal, setAzioneModal] = useState(null); // {congNum, giorno, temperatura} — fuori soglia
   const [chiusure, setChiusure] = useState({});
   const [loading, setLoading] = useState(true);
   const [nomiCongelatori, setNomiCongelatori] = useState({}); // { 1: "Cella A", 2: "Surgelatore", ... }
@@ -186,7 +189,10 @@ const TemperatureNegativeView = () => {
   const isGiornoChiuso = (giorno) => {
     if (!chiusure?.chiusure) return false;
     return chiusure.chiusure.some(c => {
-      const parts = c.data_formattata?.split('/');
+      // L'API chiusure restituisce `data` (GG/MM/AAAA): cercando solo
+      // `data_formattata` nessun giorno chiuso compariva mai nella scheda.
+      if (c.is_chiuso === false) return false;
+      const parts = (c.data_formattata || c.data)?.split('/');
       if (!parts) return false;
       return parseInt(parts[0]) === giorno && parseInt(parts[1]) === mese;
     });
@@ -203,6 +209,33 @@ const TemperatureNegativeView = () => {
     
     if (!record) return null;
     return record;
+  };
+
+  // Registrazione dal tablet: prima la scheda congelatori era di sola lettura
+  // e nessuna pagina poteva scrivere una temperatura.
+  const oggi = new Date();
+  const giornoFuturo = (giorno) =>
+    new Date(anno, mese - 1, giorno) > new Date(oggi.getFullYear(), oggi.getMonth(), oggi.getDate());
+
+  const salvaTemperatura = async (congNum, giorno, tempRaw, azione = "") => {
+    const temperatura = Number(String(tempRaw).replace(",", ".").trim());
+    if (Number.isNaN(temperatura)) { toast.error("Valore temperatura non valido"); return; }
+    try {
+      const params = { mese, giorno, temperatura };
+      if (azione) params.azione_correttiva = azione;
+      const res = await axios.post(
+        `${API}/temperature-negative/scheda/${anno}/${congNum}/registra`, null, { params, timeout: 30000 },
+      );
+      if (res.data?.serve_azione_correttiva) {
+        setAzioneModal({ congNum, giorno, temperatura });
+      } else {
+        toast.success(azione ? "Azione correttiva registrata" : `${getNomeCongelatore(congNum)} · ${giorno}/${mese}: ${temperatura}°C`);
+        setAzioneModal(null);
+      }
+      fetchSchede();
+    } catch (err) {
+      toast.error(apiError(err, "Errore salvataggio temperatura"));
+    }
   };
 
   // Determina display e classe per una cella
@@ -289,7 +322,7 @@ const TemperatureNegativeView = () => {
         <table><thead><tr><th>G</th>${Array.from({length:12},(_,i)=>`<th>C${i+1}</th>`).join('')}</tr></thead>
         <tbody>${righe}</tbody></table>
         <div class="footer">
-          <p><strong>Operatori:</strong> ${OPERATORI_TEMPERATURE.join(', ')}</p>
+          <p><strong>Firme verificate:</strong> ${testoFirmatari(schedeCongelatori, mese)}</p>
           <p><strong>Rif:</strong> ${RIFERIMENTI_NORMATIVI.principale} - ${RIFERIMENTI_NORMATIVI.secondario}</p>
           <p><strong>Legenda:</strong> Chiuso | Manutenzione | Non usato</p>
         </div>
@@ -325,6 +358,7 @@ const TemperatureNegativeView = () => {
           >
             🔧 Periodi
           </button>
+          <DichiaraConformiButton onFatto={fetchSchede} />
           <Button onClick={stampaScheda} variant="secondary" size="sm">
             <Printer size={16}/> Stampa
           </Button>
@@ -342,9 +376,9 @@ const TemperatureNegativeView = () => {
           </p>
         </div>
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-          <h4 className="font-semibold text-amber-800 text-sm">👷 Operatori</h4>
+          <h4 className="font-semibold text-amber-800 text-sm">👷 Firme verificate del mese</h4>
           <p className="text-xs text-amber-700 mt-1">
-            {OPERATORI_TEMPERATURE.join(', ')}
+            {testoFirmatari(schedeCongelatori, mese)}
           </p>
         </div>
       </div>
@@ -388,12 +422,12 @@ const TemperatureNegativeView = () => {
                       
                       return (
                         <td key={congNum} className="px-1 py-1 text-center">
-                          <div 
-                            className={`w-full h-6 rounded flex items-center justify-center text-xs ${cell.class}`}
-                            title={cell.title}
-                          >
-                            {cell.value}
-                          </div>
+                          <CellaTemperatura
+                            display={{ value: cell.value, className: cell.class, title: cell.title }}
+                            tempValue={(() => { const r = getTemperatura(congNum, giorno); return r && typeof r === "object" ? (r.temp ?? null) : null; })()}
+                            disabled={isChiuso || giornoFuturo(giorno)}
+                            onSave={(v) => salvaTemperatura(congNum, giorno, v)}
+                          />
                         </td>
                       );
                     })}
@@ -423,6 +457,21 @@ const TemperatureNegativeView = () => {
           <span className="w-4 h-4 bg-gray-200 border rounded"></span> Non usato
         </span>
       </div>
+      {azioneModal && (
+        <ModalAzioneCorrettiva
+          dati={azioneModal}
+          apparecchio="Congelatore"
+          azioni={[
+            "Merce spostata in altro congelatore funzionante",
+            "Chiamato tecnico di manutenzione",
+            "Regolato il termostato",
+            "Prodotti scongelati eliminati",
+            "Verificata chiusura porta / guarnizione",
+          ]}
+          onSalva={(azione) => salvaTemperatura(azioneModal.congNum, azioneModal.giorno, azioneModal.temperatura, azione)}
+          onChiudi={() => setAzioneModal(null)}
+        />
+      )}
     </div>
   );
 };

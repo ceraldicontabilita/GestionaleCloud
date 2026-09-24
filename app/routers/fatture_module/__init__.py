@@ -11,8 +11,7 @@ Il vecchio import_xml.py di questo modulo era una pipeline duplicata mai
 collegata al frontend (nessun bottone la chiamava) che registrava anche
 lotti HACCP nel gestionale: rimossa.
 """
-from fastapi import APIRouter, UploadFile, File, Query
-from typing import Dict, Any, List, Optional
+from fastapi import APIRouter
 
 router = APIRouter()
 

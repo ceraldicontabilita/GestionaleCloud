@@ -172,6 +172,15 @@ async def load_temperature(collection, anno, mese, kind):
     return apps, flat
 
 
+def _firmatario(rec) -> str:
+    """Nome in stampa: chi ha firmato, e se la firma non e' verificata si dice."""
+    if not isinstance(rec, dict) or not rec.get("operatore"):
+        return "non firmata"
+    if rec.get("firma_verificata"):
+        return rec["operatore"]
+    return f"{rec['operatore']} (non verificata)"
+
+
 async def load_sanificazioni(anno, mese):
     rows = []
 
@@ -179,7 +188,10 @@ async def load_sanificazioni(anno, mese):
         500
     )
     for doc in schede:
-        operatore = doc.get("operatore_responsabile") or doc.get("operatore") or "-"
+        # Chi ha firmato quel giorno, riga per riga. Prima ogni «X» usciva col
+        # nome del responsabile della scheda (l'operatore designato, scritto di
+        # default), anche dove nessuno aveva firmato.
+        firme = doc.get("firme") or {}
         for area, giorni in (doc.get("registrazioni") or {}).items():
             if not isinstance(giorni, dict):
                 continue
@@ -193,7 +205,7 @@ async def load_sanificazioni(anno, mese):
                             "area": area,
                             "giorno": str(giorno),
                             "prodotto": doc.get("prodotto") or "Registrato in scheda sanificazione",
-                            "operatore": operatore,
+                            "operatore": _firmatario((firme.get(area) or {}).get(str(giorno))),
                             "conforme": True,
                         }
                     )
@@ -204,8 +216,16 @@ async def load_sanificazioni(anno, mese):
             ("registrazioni_frigoriferi", "Frigorifero"),
             ("registrazioni_congelatori", "Congelatore"),
         ):
-            for idx, lista in enumerate(doc.get(campo) or [], start=1):
+            # Le registrazioni sono {numero apparecchio: [sanificazioni]}:
+            # scorrere il dizionario come lista dava le chiavi, e ogni
+            # sanificazione di frigoriferi e congelatori spariva dal report.
+            gruppi = doc.get(campo) or {}
+            if isinstance(gruppi, list):
+                gruppi = {str(i): v for i, v in enumerate(gruppi, start=1)}
+            for idx, lista in gruppi.items():
                 for rec in lista or []:
+                    if not isinstance(rec, dict):
+                        continue
                     rec_mese = rec.get("mese")
                     if rec_mese is None:
                         parsed = parse_date(rec.get("data"))
@@ -224,7 +244,7 @@ async def load_sanificazioni(anno, mese):
                                 )
                             ),
                             "prodotto": rec.get("prodotto") or rec.get("prodotto_usato") or "-",
-                            "operatore": rec.get("operatore") or "-",
+                            "operatore": _firmatario(rec),
                             "conforme": bool(rec.get("eseguita", True)),
                         }
                     )

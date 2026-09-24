@@ -539,7 +539,6 @@ class EmailFullDownloader:
         if msg.is_multipart():
             for part in msg.walk():
                 content_type = part.get_content_type()
-                content_disposition = str(part.get("Content-Disposition", ""))
 
                 # Verifica se è un PDF
                 filename = part.get_filename()
@@ -1011,6 +1010,49 @@ async def get_documenti_non_associati(
     return results[:limit]
 
 
+def _parole_nome(testo: Any) -> set:
+    import unicodedata
+    testo = unicodedata.normalize("NFKD", str(testo or "")).encode("ascii", "ignore").decode()
+    return {p for p in re.split(r"[^a-z0-9]+", testo.lower()) if p}
+
+
+async def _cedolino_unico_per_nome(db: ArchivioDocumenti, parole: List[str], mese, anno) -> Optional[Dict[str, Any]]:
+    """Il solo cedolino del periodo, ancora senza PDF, il cui dipendente
+    contiene tutte le parole del nome nel file. Nessuno o piu' d'uno: None."""
+    cercate = _parole_nome(" ".join(parole))
+    if not cercate or not mese or not anno:
+        return None
+    candidati = []
+    cursor = db["cedolini"].find({
+        "mese": mese,
+        "anno": anno,
+        "$or": [
+            {"pdf_data": None},
+            {"pdf_data": ""},
+            {"pdf_data": {"$exists": False}}
+        ]
+    })
+    nomi_anagrafica: Optional[Dict[str, str]] = None
+    async for doc in cursor:
+        nome_doc = doc.get("dipendente") or doc.get("dipendente_nome") or doc.get("nome_dipendente") or ""
+        if not isinstance(nome_doc, str) or not nome_doc.strip():
+            # Cedolino con il solo id del dipendente: il nome viene dall'anagrafica.
+            dip_id = doc.get("employee_id") or doc.get("dipendente_id")
+            if not dip_id:
+                continue
+            if nomi_anagrafica is None:
+                nomi_anagrafica = {}
+                async for d in db["dipendenti"].find({}, {"_id": 0, "id": 1, "nome_completo": 1, "nome": 1, "cognome": 1}):
+                    nomi_anagrafica[str(d.get("id"))] = (
+                        d.get("nome_completo") or f"{d.get('cognome', '')} {d.get('nome', '')}".strip())
+            nome_doc = nomi_anagrafica.get(str(dip_id), "")
+        if cercate <= _parole_nome(nome_doc):
+            candidati.append(doc)
+            if len(candidati) > 1:
+                return None
+    return candidati[0] if candidati else None
+
+
 async def smart_auto_associate(db: ArchivioDocumenti) -> Dict[str, int]:
     """
     Tenta di associare automaticamente i PDF ai documenti esistenti
@@ -1042,35 +1084,14 @@ async def smart_auto_associate(db: ArchivioDocumenti) -> Dict[str, int]:
                 anno = int(match.group(3))
                 mese = mesi_it.get(mese_str, pdf_doc.get("mese"))
 
-                # Cerca dipendente per nome/cognome
+                # GC-17: il cedolino si abbina solo al dipendente del file.
+                # Prima la prima ricerca prendeva un cedolino qualsiasi del
+                # mese senza PDF, di chiunque fosse, e il cognome da solo
+                # confondeva omonimi. Ora servono tutte le parole del nome e
+                # un solo candidato; altrimenti il PDF resta da associare.
                 parts = nome_completo.split()
                 if len(parts) >= 2:
-                    cognome = parts[0]
-                    nome = " ".join(parts[1:])
-
-                    # Cerca cedolino corrispondente
-                    cedolino = await db["cedolini"].find_one({
-                        "mese": mese,
-                        "anno": anno,
-                        "$or": [
-                            {"pdf_data": None},
-                            {"pdf_data": ""},
-                            {"pdf_data": {"$exists": False}}
-                        ]
-                    })
-
-                    if not cedolino:
-                        # Cerca anche per nome dipendente
-                        cedolino = await db["cedolini"].find_one({
-                            "dipendente": {"$regex": cognome, "$options": "i"},
-                            "mese": mese,
-                            "anno": anno,
-                            "$or": [
-                                {"pdf_data": None},
-                                {"pdf_data": ""},
-                                {"pdf_data": {"$exists": False}}
-                            ]
-                        })
+                    cedolino = await _cedolino_unico_per_nome(db, parts, mese, anno)
 
                     if cedolino:
                         # Associa
@@ -1332,18 +1353,96 @@ async def sync_filesystem_pdfs_to_db(db: ArchivioDocumenti, base_dir: str = "/tm
     return stats
 
 
+_MESI_IT = {
+    "gennaio": 1, "febbraio": 2, "marzo": 3, "aprile": 4,
+    "maggio": 5, "giugno": 6, "luglio": 7, "agosto": 8,
+    "settembre": 9, "ottobre": 10, "novembre": 11, "dicembre": 12,
+}
+
+
+def _indizi_f24_da_nome(filename: str) -> Tuple[Optional[int], Optional[int], Optional[str]]:
+    """(mese, anno, tipo di tributo) leggibili dal nome di un file F24."""
+    nome = (filename or "").lower()
+    mese = anno = None
+    for parola, numero in _MESI_IT.items():
+        if parola in nome:
+            mese = numero
+            break
+    m = re.search(r"(?<!\d)(20[1-3]\d)(?!\d)", nome)
+    if m:
+        anno = int(m.group(1))
+    if mese is None:
+        # IVA_09_2025, IVA_11.25, 2025_09
+        for pattern, gm, ga in ((r"(?<!\d)(\d{1,2})[._-](20[1-3]\d|\d{2})(?!\d)", 1, 2),
+                                (r"(?<!\d)(20[1-3]\d)[._-](\d{1,2})(?!\d)", 2, 1)):
+            m = re.search(pattern, nome)
+            if m and 1 <= int(m.group(gm)) <= 12:
+                a = m.group(ga)
+                a = int(a) if len(a) == 4 else 2000 + int(a)
+                if 2010 <= a <= 2039 and (anno is None or anno == a):
+                    mese, anno = int(m.group(gm)), a
+                    break
+    if "iva" in nome:
+        tipo = "iva"
+    elif "ires" in nome or "irpef" in nome:
+        tipo = "imposte_reddito"
+    elif "inps" in nome:
+        tipo = "contributi"
+    elif "imu" in nome or "tasi" in nome:
+        tipo = "tributi_locali"
+    elif "1040" in nome or "ritenute" in nome:
+        tipo = "ritenute"
+    else:
+        tipo = None
+    return mese, anno, tipo
+
+
+def _f24_ha_tipo(doc: Dict[str, Any], tipo: str) -> bool:
+    if tipo == "contributi":
+        return bool(doc.get("sezione_inps"))
+    if tipo == "tributi_locali":
+        return bool(doc.get("sezione_imu") or doc.get("sezione_tributi_locali")
+                    or doc.get("sezione_imu_tributi_locali"))
+    codici = {
+        str(r.get("codice_tributo") or r.get("codice") or "")
+        for sez in ("sezione_erario", "sezione_regioni")
+        for r in (doc.get(sez) or []) if isinstance(r, dict)
+    }
+    prefissi = {"iva": ("60",), "imposte_reddito": ("20", "40"), "ritenute": ("10",)}[tipo]
+    return any(c.startswith(prefissi) for c in codici)
+
+
+async def _f24_unico_da_file(db: ArchivioDocumenti, filename: str) -> Optional[Dict[str, Any]]:
+    """L'unico F24 senza PDF del mese e anno del file e, se il nome lo dice,
+    del suo tipo di tributo. Nessuno, piu' d'uno o indizi insufficienti: None."""
+    mese, anno, tipo = _indizi_f24_da_nome(filename)
+    if not mese or not anno:
+        return None
+    candidati = []
+    cursor = db["f24_unificato"].find({
+        "mese": mese,
+        "anno": anno,
+        "$or": [
+            {"pdf_data": None},
+            {"pdf_data": ""},
+            {"pdf_data": {"$exists": False}}
+        ]
+    })
+    async for doc in cursor:
+        if tipo and not _f24_ha_tipo(doc, tipo):
+            continue
+        candidati.append(doc)
+        if len(candidati) > 1:
+            return None
+    return candidati[0] if candidati else None
+
+
 async def associate_f24_from_filesystem(db: ArchivioDocumenti) -> Dict[str, int]:
     """
     Associa i PDF F24 dal filesystem ai record f24_commercialista.
     Usa pattern matching su periodo e tipo tributo.
     """
     stats = {"associated": 0, "skipped": 0, "errors": 0}
-
-    mesi_it = {
-        "gennaio": 1, "febbraio": 2, "marzo": 3, "aprile": 4,
-        "maggio": 5, "giugno": 6, "luglio": 7, "agosto": 8,
-        "settembre": 9, "ottobre": 10, "novembre": 11, "dicembre": 12
-    }
 
     # Trova tutti gli F24 in documents_inbox con file esistente
     cursor = db["documents_inbox"].find({
@@ -1361,57 +1460,10 @@ async def associate_f24_from_filesystem(db: ArchivioDocumenti) -> Dict[str, int]
                 stats["skipped"] += 1
                 continue
 
-            # Estrai info dal filename
-            # Pattern comuni: F24_IVA_09_2025, F24_ravv_II_acc_Ires_2023
-
-            mese = None
-            anno = None
-            tributo_pattern = None
-
-            # Pattern 1: mese numerico/anno (IVA_09_2025, IVA_11.25)
-            match = re.search(r'(\d{1,2})[._](\d{2,4})', filename)
-            if match:
-                m = int(match.group(1))
-                a = match.group(2)
-                if len(a) == 2:
-                    a = f"20{a}"
-                anno = int(a)
-                if 1 <= m <= 12:
-                    mese = m
-
-            # Pattern 2: anno esplicito
-            if not anno:
-                match = re.search(r'20(2[0-9])', filename)
-                if match:
-                    anno = int(f"20{match.group(1)}")
-
-            # Identifica tipo tributo
-            filename_lower = filename.lower()
-            if "iva" in filename_lower:
-                tributo_pattern = "iva"
-            elif "ires" in filename_lower or "irpef" in filename_lower:
-                tributo_pattern = "imposte_reddito"
-            elif "inps" in filename_lower:
-                tributo_pattern = "contributi"
-            elif "imu" in filename_lower or "tasi" in filename_lower:
-                tributo_pattern = "tributi_locali"
-            elif "1040" in filename_lower or "ritenute" in filename_lower:
-                tributo_pattern = "ritenute"
-
-            # Cerca F24 corrispondente
-            query = {"$or": [
-                {"pdf_data": None},
-                {"pdf_data": ""},
-                {"pdf_data": {"$exists": False}}
-            ]}
-
-            if mese and anno:
-                query["mese"] = mese
-                query["anno"] = anno
-            elif anno:
-                query["anno"] = anno
-
-            f24 = await db["f24_unificato"].find_one(query)
+            # GC-17: mese (anche in lettere), anno e tipo di tributo dal nome
+            # del file; il PDF va solo all'unico F24 che li rispetta tutti.
+            # Prima bastava l'anno, o niente, per prendere il primo F24 senza PDF.
+            f24 = await _f24_unico_da_file(db, filename)
 
             if f24:
                 # Leggi PDF e associa

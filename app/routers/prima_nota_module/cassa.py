@@ -281,8 +281,8 @@ async def update_prima_nota_cassa(
     if "importo" in data:
         try:
             importo = float(data["importo"])
-        except (TypeError, ValueError):
-            raise HTTPException(status_code=422, detail="importo non valido")
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail="importo non valido") from exc
         if importo <= 0:
             raise HTTPException(status_code=422, detail="importo deve essere > 0")
 
@@ -426,9 +426,6 @@ async def analisi_movimenti_bancari_errati_in_cassa() -> Dict[str, Any]:
         logger.warning("analisi_movimenti_bancari_errati_in_cassa: raggiunto il tetto di 50000 documenti, possibile troncamento")
 
     # Categorie SICURAMENTE legittime in cassa
-    categorie_cassa_ok = {'Corrispettivi', 'POS', 'Versamento', 'Finanziamento', 
-                          'Finanziamento soci', 'Nota credito contanti'}
-    sources_cassa_ok = {'corrispettivi_sync', 'manual', 'user'}
     
     legittimi = []
     bancari_errati = []

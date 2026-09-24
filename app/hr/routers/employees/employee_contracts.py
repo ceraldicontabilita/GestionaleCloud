@@ -360,7 +360,7 @@ async def ccnl_retribuzione(ccnl_id: str, livello: str,
     try:
         return retribuzione_per_livello(livello, ccnl_id, ore_settimanali, scatti)
     except CCNLNonDisponibile as e:
-        raise HTTPException(422, str(e))
+        raise HTTPException(422, str(e)) from e
 
 
 @router.get("/ccnl/verifica-tranche")
@@ -379,7 +379,7 @@ async def ccnl_verifica_tranche(ccnl: str = "turismo_pubblici_esercizi",
     try:
         return await verifica_tranche(db, ccnl, mesi)
     except CCNLNonDisponibile as e:
-        raise HTTPException(422, str(e))
+        raise HTTPException(422, str(e)) from e
 
 
 @router.post("/cedolini/importa-libro-unico")
@@ -446,7 +446,7 @@ async def ccnl_suggerisci(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
                                   data.get("ccnl"),
                                   data.get("ore_settimanali"))
     except CCNLNonDisponibile as e:
-        raise HTTPException(422, str(e))
+        raise HTTPException(422, str(e)) from e
 
 
 @router.get("/templates")
@@ -621,7 +621,7 @@ async def generate_contract(employee_id: str, data: Dict[str, Any] = Body(...)) 
         logger.error(f"Error generating contract: {e}")
         import traceback
         logger.error(traceback.format_exc())
-        raise HTTPException(status_code=500, detail="Errore nella generazione del contratto. Riprova o contatta l'assistenza.")
+        raise HTTPException(status_code=500, detail="Errore nella generazione del contratto. Riprova o contatta l'assistenza.") from e
 
 
 def _deduci_tipo(employee: Dict[str, Any], ore_sett: Optional[float]) -> str:
@@ -1092,7 +1092,7 @@ def _docx_bytes_to_pdf(docx_bytes: bytes, filename: str = "contratto.docx") -> b
         return docx_to_pdf(docx_bytes, filename)
     except DocxConversionError as e:
         # 503: configurazione/servizio mancante (azionabile dal titolare).
-        raise HTTPException(503, str(e))
+        raise HTTPException(503, str(e)) from e
 
 
 async def _get_contract_pdf(contract: Dict[str, Any]) -> bytes:
@@ -1154,9 +1154,9 @@ async def avvia_firma(contract_id: str, data: Dict[str, Any] = Body(default={}))
             title=f"Documenti di assunzione — {contract.get('contract_name','')}",
             filename=fname)
     except OpenAPIConfigError as e:
-        raise HTTPException(503, str(e))
+        raise HTTPException(503, str(e)) from e
     except OpenAPIError as e:
-        raise HTTPException(502, f"OpenAPI: {e}")
+        raise HTTPException(502, f"OpenAPI: {e}") from e
 
     req_id = sig.get("id") or sig.get("request_id")
     await db["employee_contracts"].update_one(
@@ -1191,7 +1191,7 @@ async def stato_firma(contract_id: str) -> Dict[str, Any]:
     try:
         res = await client.get_signature_status(req_id)
     except OpenAPIError as e:
-        raise HTTPException(502, f"OpenAPI: {e}")
+        raise HTTPException(502, f"OpenAPI: {e}") from e
 
     stato_raw = str(res.get("status") or "").lower()
     updates: Dict[str, Any] = {"firma_check_il": datetime.now(timezone.utc).isoformat()}
@@ -1232,9 +1232,9 @@ async def invia_pec(contract_id: str, data: Dict[str, Any] = Body(default={})) -
             body="In allegato il contratto di assunzione con marca temporale e firma per accettazione.",
             attachments=[{"filename": pdf_name, "content": pdf_bytes}])
     except OpenAPIConfigError as e:
-        raise HTTPException(503, str(e))
+        raise HTTPException(503, str(e)) from e
     except OpenAPIError as e:
-        raise HTTPException(502, f"OpenAPI: {e}")
+        raise HTTPException(502, f"OpenAPI: {e}") from e
 
     await db["employee_contracts"].update_one(
         {"id": contract_id},

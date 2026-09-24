@@ -22,7 +22,6 @@ elimina i problemi di ordine di caricamento del file .env.
 """
 from fastapi import APIRouter, HTTPException, Body, Request, Response, status
 from typing import Dict, Any
-import os
 import logging
 
 from app.config import settings

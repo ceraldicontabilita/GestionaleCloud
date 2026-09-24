@@ -1667,7 +1667,7 @@ async def leggi_ingredienti_foto(req: LeggiFotoReq):
             )
         txt = "".join(b.get("text", "") for b in (r.json().get("content") or []) if b.get("type") == "text")
     except Exception as e:
-        raise HTTPException(502, f"AI-visione fallita: {str(e)[:120]}")
+        raise HTTPException(502, f"AI-visione fallita: {str(e)[:120]}") from e
     m = re.search(r"\[.*\]", txt or "", re.S)
     if not m:
         return {"ok": False, "fonte": "ai-foto", "ingredienti": [],
@@ -3818,7 +3818,6 @@ async def calcola_nutrizionale_ricetta(ricetta_id: str):
     ]
 
     # Calcola peso totale usato (g) - solo ingredienti con unita peso
-    UNITA_PESO = {"g", "gr", "kg", "ml", "cl", "dl", "l", "lt", "litri", "grammi", "chili"}
 
     peso_totale_g = 0.0
     contributi = []  # lista di (nome, gram_g, voce_usda | None)

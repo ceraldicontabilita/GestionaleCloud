@@ -162,7 +162,6 @@ async def genera_task_giornalieri():
     Non sovrascrive task già esistenti per oggi.
     """
     oggi = date.today().isoformat()
-    ieri = (date.today() - timedelta(days=1)).isoformat()
     ora = datetime.now(timezone.utc)
 
     # Conta task già presenti oggi

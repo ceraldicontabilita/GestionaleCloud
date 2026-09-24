@@ -104,7 +104,6 @@ def _coordinate_quietanza(doc) -> dict[str, Any]:
                 if debit == 0 and credit == 0:
                     continue
                 period = _period_from_words(words)
-                by_x = {round(x): token for x, token in words}
                 common = {
                     **period,
                     "importo_debito": debit,

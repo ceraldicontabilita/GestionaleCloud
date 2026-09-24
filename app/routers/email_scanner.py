@@ -60,7 +60,7 @@ async def avvia_scansione(
         }
     except Exception as e:
         logger.error(f"Errore scansione: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/associa")
@@ -78,7 +78,7 @@ async def associa_documenti() -> Dict[str, Any]:
         }
     except Exception as e:
         logger.error(f"Errore associazione: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/statistiche")
@@ -125,4 +125,4 @@ async def scansiona_e_associa(
         
     except Exception as e:
         logger.error(f"Errore scansione e associazione: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e

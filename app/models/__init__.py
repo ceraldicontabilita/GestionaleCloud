@@ -110,3 +110,5 @@ from .accounting_extended import (
     ChartOfAccountCreate,
     ChartOfAccountUpdate
 )
+
+__all__ += ["ChartOfAccount", "ChartOfAccountCreate", "ChartOfAccountUpdate"]

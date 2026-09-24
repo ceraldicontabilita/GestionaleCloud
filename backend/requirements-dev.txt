@@ -1,0 +1,19 @@
+# Strumenti di sviluppo e test: non servono in produzione (Render installa
+# solo requirements.txt). La CI installa questo file.
+-r requirements.txt
+black==26.3.1
+flake8==7.3.0
+iniconfig==2.3.0
+isort==8.0.1
+librt==0.8.1
+mccabe==0.7.0
+mypy==1.20.0
+mypy_extensions==1.1.0
+pathspec==1.0.4
+platformdirs==4.9.6
+pluggy==1.6.0
+pycodestyle==2.14.0
+pyflakes==3.4.0
+Pygments==2.20.0
+pytest==9.0.3
+pytokens==0.4.1

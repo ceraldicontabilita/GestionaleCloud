@@ -160,11 +160,11 @@ def validate_date_format(date_str: str, field_name: str = "date") -> None:
     
     try:
         datetime.strptime(date_str, "%Y-%m-%d")
-    except ValueError:
+    except ValueError as exc:
         raise ValidationError(
             f"Invalid date format for {field_name}. Expected YYYY-MM-DD, got: {date_str}",
             details={"field": field_name, "value": date_str, "expected_format": "YYYY-MM-DD"}
-        )
+        ) from exc
 
 
 def validate_numeric_range(

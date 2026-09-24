@@ -5,11 +5,10 @@ Provides reusable dependencies for authentication, database, etc.
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional, Dict, Any
-from jose import jwt, JWTError
+from jose import JWTError
 from datetime import datetime, timezone
 import logging
 
-from app.hr.config import settings
 from app.hr.database import get_database
 from app.hr.exceptions import AuthenticationError
 
@@ -79,13 +78,13 @@ async def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"}
-        )
+        ) from e
     except AuthenticationError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=str(e),
             headers={"WWW-Authenticate": "Bearer"}
-        )
+        ) from e
 
 
 async def get_current_admin_user(
@@ -302,20 +301,20 @@ def date_range_params(
     if date_from:
         try:
             result["date_from"] = datetime.strptime(date_from, "%Y-%m-%d")
-        except ValueError:
+        except ValueError as exc:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid date_from format. Expected YYYY-MM-DD, got: {date_from}"
-            )
+            ) from exc
     
     if date_to:
         try:
             result["date_to"] = datetime.strptime(date_to, "%Y-%m-%d")
-        except ValueError:
+        except ValueError as exc:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid date_to format. Expected YYYY-MM-DD, got: {date_to}"
-            )
+            ) from exc
     
     # Validate date range
     if result["date_from"] and result["date_to"]:
@@ -351,7 +350,7 @@ def _decode_or_401(credentials: HTTPAuthorizationCredentials) -> Dict[str, Any]:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Sessione scaduta o token non valido. Effettua di nuovo l'accesso.",
             headers={"WWW-Authenticate": "Bearer"},
-        )
+        ) from e
 
 
 async def require_admin(

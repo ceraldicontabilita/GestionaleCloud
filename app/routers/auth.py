@@ -91,10 +91,10 @@ async def _decode_token(request: Request) -> dict:
 
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Sessione scaduta")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Token non valido")
+    except jwt.ExpiredSignatureError as exc:
+        raise HTTPException(status_code=401, detail="Sessione scaduta") from exc
+    except jwt.InvalidTokenError as exc:
+        raise HTTPException(status_code=401, detail="Token non valido") from exc
 
     # Blacklist controllata SOLO dopo che firma/scadenza sono già valide
     # (review Codex su PR #65, stesso fix già fatto nel middleware globale

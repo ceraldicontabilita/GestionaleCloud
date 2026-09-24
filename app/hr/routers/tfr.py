@@ -1092,11 +1092,11 @@ async def candidati_banca_per_acconto(acconto_id: str) -> Dict[str, Any]:
     data_acconto_str = acconto.get("data", "")
     try:
         data_acconto = datetime.strptime(data_acconto_str, "%Y-%m-%d")
-    except (ValueError, TypeError):
+    except (ValueError, TypeError) as exc:
         raise HTTPException(
             status_code=400,
             detail=f"Data acconto non valida: {data_acconto_str}",
-        )
+        ) from exc
 
     tipo_bonifico = acconto.get("tipo_bonifico") or "standard"
 
@@ -2061,8 +2061,8 @@ async def aggiungi_periodo_simulazione(dipendente_id: str, input_data: PeriodoSi
     try:
         data_inizio = _parse_data_tfr(data_inizio_str)
         data_fine = _parse_data_tfr(input_data.data_fine) if input_data.data_fine else None
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Date non valide, usa il formato YYYY-MM-DD")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Date non valide, usa il formato YYYY-MM-DD") from exc
 
     if data_fine and data_fine <= data_inizio:
         raise HTTPException(status_code=400, detail="La data di fine deve essere successiva alla data di inizio")
@@ -2138,8 +2138,8 @@ async def modifica_periodo_simulazione(dipendente_id: str, periodo_id: str,
     try:
         nuova_inizio = _parse_data_tfr(nuova_inizio_str)
         nuova_fine = _parse_data_tfr(nuova_fine_str) if nuova_fine_str else None
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Date non valide, usa il formato YYYY-MM-DD")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Date non valide, usa il formato YYYY-MM-DD") from exc
 
     if nuova_fine and nuova_fine <= nuova_inizio:
         raise HTTPException(status_code=400, detail="La data di fine deve essere successiva alla data di inizio")
@@ -2392,8 +2392,8 @@ async def salva_liquidazione_override(dipendente_id: str, body: Dict[str, Any] =
         else:
             try:
                 campi[k] = round(float(str(v).replace(",", ".")), 2)
-            except ValueError:
-                raise HTTPException(status_code=400, detail=f"Valore non valido per {k}")
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=f"Valore non valido per {k}") from exc
     if not campi:
         raise HTTPException(status_code=400, detail="Nessun campo da salvare")
     da_settare = {k: v for k, v in campi.items() if v is not None}

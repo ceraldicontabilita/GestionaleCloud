@@ -789,30 +789,6 @@ async def _genera_manuale_impl(
     operatori_html += "</table></div>"
 
     # Footer con firme
-    footer = f"""
-    <div class="section page-break">
-        <h2>✍️ FIRME E APPROVAZIONE</h2>
-        <p>Il presente Manuale di Autocontrollo è stato redatto in conformità al Reg. CE 852/2004 e viene approvato dal Responsabile HACCP.</p>
-        
-        <div style="margin-top:40px; text-align:center;">
-            <div class="firma-box">
-                <div class="firma-line">Il Responsabile HACCP</div>
-            </div>
-            <div class="firma-box">
-                <div class="firma-line">Il Titolare/Legale Rappresentante</div>
-            </div>
-        </div>
-        
-        <p style="margin-top:40px; text-align:center;">
-            <strong>Data:</strong> ____________________
-        </p>
-    </div>
-    
-    <div class="footer">
-        <p>Manuale HACCP - {DATI_AZIENDA['ragione_sociale']} - Rev. {datetime.now().strftime('%d/%m/%Y')}</p>
-        <p>Documento generato dal Sistema di Gestione HACCP</p>
-    </div>
-    """
 
     # ── SEZIONI DINAMICHE PER PERIODO (lotti, temperature) ────────────────────
     # Queste registrazioni reali vanno DOPO la copertina e PRIMA delle pagine

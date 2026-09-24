@@ -995,7 +995,6 @@ async def get_movimenti_per_conto(
     codice = codici_operativi[0]
 
     cat  = (conto.get("categoria") or "").lower()
-    nome = conto.get("nome", "") or ""
 
     movimenti: list = []
     fonte: str      = "nessuna"

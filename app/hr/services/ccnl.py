@@ -318,8 +318,8 @@ def suggerisci_livello(importo_mensile: Any, ccnl_id: Optional[str] = None,
         raise CCNLNonDisponibile(c.get("nota") or f"Tabelle non caricate per {c['nome']}")
     try:
         importo = float(str(importo_mensile).replace(",", "."))
-    except (TypeError, ValueError):
-        raise CCNLNonDisponibile(f"Importo non valido: {importo_mensile!r}")
+    except (TypeError, ValueError) as exc:
+        raise CCNLNonDisponibile(f"Importo non valido: {importo_mensile!r}") from exc
 
     candidati = []
     for lv in sorted(c["livelli"], key=_ordine_livello):

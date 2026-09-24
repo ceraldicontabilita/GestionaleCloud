@@ -214,68 +214,20 @@ def build_pos_html(lotto: dict, allergeni: list, ingredienti: list, nutri_html: 
         "ingredienti_non_trovati"
     ) or []
 
-    sezione_trac = ""
-    if lotti_scalati:
-        righe_scalati = []
-        for ls in lotti_scalati:
-            is_fat = (ls.get("lotto_id_fornitore") or "").startswith("FAT-")
-            is_diz = ls.get("da_dizionario") is True
-            num = (ls.get("lotto_id_fornitore") or "N/D").replace("FAT-", "")
-            if is_diz:
-                badge = f'<span class="trac-lotto" style="background:#e0f2fe;color:#000;">MAG: {num}</span>'
-            elif is_fat:
-                badge = f'<span class="trac-lotto" style="background:#fef3c7;color:#000;">FAT: {num}</span>'
-            else:
-                badge = f'<span class="trac-lotto">LOT: {num}</span>'
-            scad_html = (
-                f'<span class="trac-scad"> | Scad: {ls["data_scadenza"]}</span>'
-                if ls.get("data_scadenza")
-                else ""
-            )
-            fat_data_html = (
-                f'<span style="font-size:6pt;color:#000;font-weight:700;"> | Data Fattura: {ls["data_fattura"]}</span>'
-                if is_fat and ls.get("data_fattura")
-                else ""
-            )
-            qtà_used = ls.get("quantita_consumata")
-            qtà_rim = ls.get("quantita_rimasta")
-            unita = ls.get("unita") or ""
-            esaurito = " · ⚠ ESAURITO" if ls.get("esaurito") else ""
-            qty_txt = f"Qtà usata: {qtà_used} {unita} · " if qtà_used is not None else ""
-            qty_txt += (
-                f"Rimasto in magazzino: {qtà_rim if qtà_rim is not None else '—'} {unita}{esaurito}"
-            )
-            semi_html = (
-                f'<div style="font-size:5pt;color:#000;">↳ da semilavorato: {ls["_semilavorato"]}</div>'
-                if ls.get("_semilavorato")
-                else ""
-            )
-            row_style = ' style="margin-left:3mm;border-left:2px solid #bae6fd;padding-left:1.5mm;"' if ls.get("_semilavorato") else ""
-            righe_scalati.append(f"""<div class="trac-row"{row_style}>
-  {semi_html}{badge}{scad_html}{fat_data_html}
-  <br/><span class="trac-fornitore">{ls.get("fornitore") or "—"}</span>
-  <br/><span>{ls.get("prodotto") or ls.get("ingrediente") or "—"}</span>
-  <br/><span style="font-size:5.5pt;font-weight:bold;">{qty_txt}</span>
-</div>""")
-        non_trac_html = (
-            f'<div class="trac-non-trovati">Non tracciati: {", ".join(ingredienti_non_trovati)}</div>'
-            if ingredienti_non_trovati
-            else ""
+    # L'etichetta dichiarava sempre «TRACCIABILITA' REGISTRATA», anche con
+    # ingredienti non tracciati o senza nessun lotto fornitore scalato: la
+    # sezione con i dettagli veniva costruita e poi mai stampata. Ora il
+    # timbro dice lo stato vero; i fornitori per ingrediente restano nella
+    # sezione INGREDIENTI.
+    if ingredienti_non_trovati:
+        timbro_trac = (
+            "&#9888; TRACCIABILITÀ INCOMPLETA · non tracciati: "
+            + ", ".join(str(i) for i in ingredienti_non_trovati)
         )
-        sezione_trac = f"""<div class="sep-dash"></div>
-<div class="trac-title">Tracciabilità Fornitori (Controllo a Ritroso · Reg. CE 178/2002)</div>
-{"".join(righe_scalati)}{non_trac_html}"""
-    elif ingredienti:
-        righe_ing_fb = []
-        for nome_ing in ingredienti:
-            righe_ing_fb.append(f"""<div class="trac-row">
-  <span class="trac-lotto" style="background:#f3f4f6;color:#374151;">ING</span>
-  <br/><span>{nome_ing}</span>
-  <br/><span style="font-size:5.5pt;color:#6b7280;">Rimanenza magazzino: verificare manualmente</span>
-</div>""")
-        sezione_trac = f"""<div class="sep-dash"></div>
-<div class="trac-title">Ingredienti (Tracciabilità in elaborazione — Reg. CE 178/2002)</div>
-{"".join(righe_ing_fb)}"""
+    elif lotti_scalati:
+        timbro_trac = "&#10003; TRACCIABILITÀ REGISTRATA · Reg. CE 178/2002"
+    else:
+        timbro_trac = "Tracciabilità fornitori in elaborazione · Reg. CE 178/2002"
 
     # ── Campi lotto ────────────────────────────────────────────────────────
     prodotto = lotto.get("prodotto") or lotto.get("prodotto_nome") or ""
@@ -316,7 +268,7 @@ def build_pos_html(lotto: dict, allergeni: list, ingredienti: list, nutri_html: 
   {nutri_html}
   {sezione_allergeni}
   <div class="etichetta-finale">
-    &#10003; TRACCIABILITÀ REGISTRATA · Reg. CE 178/2002
+    {timbro_trac}
   </div>
   <div class="footer">
     Stampato: {data_ora}<br/>

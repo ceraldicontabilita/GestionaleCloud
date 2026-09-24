@@ -244,8 +244,8 @@ async def visualizza_fattura_html(fattura_id: str):
     """Trasforma la fattura XML con foglio stile Assosoftware."""
     try:
         from lxml import etree
-    except ImportError:
-        raise HTTPException(status_code=500, detail="lxml non disponibile")
+    except ImportError as exc:
+        raise HTTPException(status_code=500, detail="lxml non disponibile") from exc
 
     fattura = await db.fatture.find_one({"id": fattura_id})
     if not fattura:
@@ -974,7 +974,6 @@ async def importa_fattura_xml(files: List[UploadFile] = File(...), job_id: str =
 
                 if ingrediente_mappato:
                     allergeni = rileva_allergeni_materia(desc)
-                    descrizione_completa = f"{desc}  {allergeni} - {fattura_data['fornitore']} n° fatt {fattura_data['numero_fattura']} - {data_fmt}"
 
                     # Aggiorna allergeni_testo nel lotto fornitore corrispondente (se presente)
                     await db.lotti_fornitori.update_many(

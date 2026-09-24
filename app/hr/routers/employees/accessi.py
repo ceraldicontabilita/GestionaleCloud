@@ -50,7 +50,7 @@ async def set_pin(
     try:
         ok = await auth_dip.imposta_pin(dipendente_id, pin)
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, str(e)) from e
     if not ok:
         raise HTTPException(404, "Dipendente non trovato")
     return {"ok": True, "dipendente_id": dipendente_id, "pin_impostato": True}
@@ -74,7 +74,7 @@ async def set_ruolo(
     try:
         ok = await auth_dip.imposta_ruolo(dipendente_id, ruolo)
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, str(e)) from e
     if not ok:
         raise HTTPException(404, "Dipendente non trovato")
     return {"ok": True, "dipendente_id": dipendente_id, "ruolo_app": ruolo}

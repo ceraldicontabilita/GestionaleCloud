@@ -498,7 +498,7 @@ async def scan_emails_full(request: ScanRequest) -> Dict[str, Any]:
         mail.logout()
         
     except Exception as e:
-        raise HTTPException(500, f"Errore scansione: {str(e)}")
+        raise HTTPException(500, f"Errore scansione: {str(e)}") from e
     
     return {
         "success": True,

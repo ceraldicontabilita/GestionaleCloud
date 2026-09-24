@@ -1222,8 +1222,8 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
     try:
         async with db.transaction():
             outcome = await _do_import(None)
-    except DuplicateRecordError:
-        raise HTTPException(status_code=409, detail=duplicate_detail)
+    except DuplicateRecordError as exc:
+        raise HTTPException(status_code=409, detail=duplicate_detail) from exc
 
     invoice = outcome["invoice"]
     supplier_id = outcome["supplier_id"]
@@ -1628,8 +1628,8 @@ def extract_xml_from_zip(zip_content: bytes, zip_filename: str = "archive.zip") 
                 except Exception as e:
                     logger.warning(f"Errore estrazione {name}: {str(e)}")
                     continue
-    except zipfile.BadZipFile:
-        raise ValueError(f"File ZIP corrotto o non valido: {zip_filename}")
+    except zipfile.BadZipFile as exc:
+        raise ValueError(f"File ZIP corrotto o non valido: {zip_filename}") from exc
 
     return xml_files
 
@@ -3020,7 +3020,6 @@ async def recalculate_iva_all_invoices() -> Dict[str, Any]:
     db = Database.get_db()
 
     # Tipi documento Note Credito
-    NOTE_CREDITO_TYPES = ["TD04", "TD08"]
 
     updated_count = 0
     errors = []

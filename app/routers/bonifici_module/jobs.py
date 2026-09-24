@@ -267,8 +267,6 @@ async def _auto_associate_bonifici(db, job_id: str) -> tuple:
 
         for bonifico in new_bonifici:
             importo = abs(bonifico.get("importo", 0))
-            beneficiario_nome = ((bonifico.get("beneficiario") or {}).get("nome") or "").lower()
-            causale = (bonifico.get("causale") or "").lower()
 
             if importo <= 0:
                 continue

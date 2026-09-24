@@ -554,7 +554,6 @@ async def scan_fatture_noleggio(anno: Optional[int] = None) -> Tuple[Dict[str, A
             # Costruisci linee sintetiche dalla descrizione
             total = float(invoice.get("total_amount", 0) or 0)
             taxable = float(invoice.get("taxable_amount", 0) or 0) or round(total / 1.22, 2)
-            vat = round(total - taxable, 2)
             
             # Determina categoria dalla descrizione
             desc_lower = descrizione.lower()

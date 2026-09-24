@@ -168,7 +168,7 @@ async def merge_duplicato_dipendente(
     try:
         return await merge_dipendenti(target_id, duplicate_id, soft=soft)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.post("/duplicati/auto-merge")
@@ -1492,11 +1492,11 @@ async def upload_libro_unico(
             
             pdf_doc.close()
             
-        except ImportError:
-            raise HTTPException(status_code=500, detail="PyMuPDF non installato per parsing PDF")
+        except ImportError as exc:
+            raise HTTPException(status_code=500, detail="PyMuPDF non installato per parsing PDF") from exc
         except Exception as e:
             logger.error(f"Errore parsing PDF: {e}")
-            raise HTTPException(status_code=400, detail=f"Errore parsing PDF: {str(e)}")
+            raise HTTPException(status_code=400, detail=f"Errore parsing PDF: {str(e)}") from e
     
     elif filename.endswith(('.xlsx', '.xls')):
         # Parsing Excel
@@ -1559,7 +1559,7 @@ async def upload_libro_unico(
                     
         except Exception as e:
             logger.error(f"Errore parsing Excel: {e}")
-            raise HTTPException(status_code=400, detail=f"Errore parsing Excel: {str(e)}")
+            raise HTTPException(status_code=400, detail=f"Errore parsing Excel: {str(e)}") from e
     
     else:
         raise HTTPException(status_code=400, detail="Formato non supportato. Usa PDF o Excel.")
@@ -1846,7 +1846,7 @@ async def import_libretti_sanitari_excel(file: UploadFile = File(...)) -> Dict[s
         }
         
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Errore lettura file: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Errore lettura file: {str(e)}") from e
 
 
 @router.get("/libretti-sanitari/scadenze")
@@ -2262,7 +2262,7 @@ async def import_contratti_excel(file: UploadFile = File(...)) -> Dict[str, Any]
         }
         
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Errore lettura file: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Errore lettura file: {str(e)}") from e
 
 
 

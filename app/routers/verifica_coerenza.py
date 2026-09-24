@@ -32,7 +32,7 @@ async def verifica_completa(anno: int) -> Dict[str, Any]:
         return risultato
     except Exception as e:
         logger.error(f"Errore verifica completa: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/iva/{anno}/{mese}")
@@ -49,7 +49,7 @@ async def verifica_iva_mese(anno: int, mese: int) -> Dict[str, Any]:
         return risultato
     except Exception as e:
         logger.error(f"Errore verifica IVA: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/discrepanze/{anno}")
@@ -75,7 +75,7 @@ async def get_discrepanze(
         }
     except Exception as e:
         logger.error(f"Errore recupero discrepanze: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/widget")
@@ -245,7 +245,7 @@ async def confronto_iva_completo(anno: int) -> Dict[str, Any]:
         }
     except Exception as e:
         logger.error(f"Errore confronto IVA completo: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/verifica-bonifici-vs-banca/{anno}")
@@ -314,7 +314,7 @@ async def verifica_bonifici_vs_banca(anno: int) -> Dict[str, Any]:
         }
     except Exception as e:
         logger.error(f"Errore verifica bonifici: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/riepilogo-giornaliero")
@@ -351,4 +351,4 @@ async def riepilogo_verifiche_giornaliero() -> Dict[str, Any]:
         return verifica
     except Exception as e:
         logger.error(f"Errore riepilogo giornaliero: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e

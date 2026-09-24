@@ -53,13 +53,6 @@ class PayslipParserMultiFormat:
             return "lul"
         return "standard"
     
-    def _clean_zucchetti_s(self, text: str) -> str:
-        """Pulisce il testo Zucchetti con 's' al posto degli spazi."""
-        # Sostituisci 's' isolate con spazi
-        text = re.sub(r'(?<=[a-zA-Z])s(?=[A-Z])', ' ', text)
-        text = re.sub(r'(?<=[a-z])s(?=[a-z])', ' ', text)
-        return text
-    
     def _parse_amount(self, value: str) -> float:
         """Converte importo italiano in float."""
         if not value:
@@ -344,11 +337,10 @@ class PayslipParserMultiFormat:
                 if formato == "lul_presenze":
                     continue
                 
-                # Pulisci testo se formato Zucchetti con 's'
-                if formato == "zucchetti_s":
-                    text_clean = self._clean_zucchetti_s(text)
-                else:
-                    text_clean = text
+                # Il formato Zucchetti con 's' e' gestito dalle estrazioni
+                # (formato passato a _extract_nome/_extract_netto): il testo
+                # resta com'e'. GC-17: la vecchia pulizia trasformava ogni «s»
+                # fra minuscole in spazio («cassa» -> «cas a») ed e' stata tolta.
                 
                 # Estrai codice fiscale (indica busta paga valida)
                 cf = self._extract_cf(text)

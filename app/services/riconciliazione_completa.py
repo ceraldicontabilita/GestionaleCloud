@@ -15,163 +15,152 @@ from typing import Dict, Any
 logger = logging.getLogger(__name__)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Abbinamento documento → movimento bancario
+#
+# Le tre riconciliazioni qui sotto cercavano il PRIMO movimento che conteneva una
+# parola generica («pagopa», «riscossione», «TARI») e lo legavano a OGNI
+# documento, senza guardare l'importo (estratto dall'oggetto e mai usato) e
+# riusando lo stesso movimento per tutti: documenti segnati «riconciliati» con
+# un pagamento che non era il loro. Ora un documento si lega a un movimento solo
+# se il movimento e' uno, identificato dal numero (IUV / cartella) oppure
+# dall'importo esatto fra quelli della parola chiave, e non e' gia' usato.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_IMPORTO = re.compile(r"(\d{1,3}(?:\.\d{3})*,\d{2}|\d+[.,]\d{2})")
+
+
+def _importo_documento(doc: dict) -> float | None:
+    for campo in ("importo", "importo_totale", "importo_da_pagare"):
+        valore = doc.get(campo)
+        try:
+            if valore not in (None, ""):
+                return round(abs(float(valore)), 2)
+        except (TypeError, ValueError):
+            pass
+    testo = f"{doc.get('email_subject') or ''} {doc.get('filename') or ''}"
+    trovato = _IMPORTO.search(testo)
+    if not trovato:
+        return None
+    grezzo = trovato.group(1)
+    grezzo = grezzo.replace(".", "").replace(",", ".") if "," in grezzo else grezzo
+    try:
+        return round(abs(float(grezzo)), 2)
+    except ValueError:
+        return None
+
+
+async def _movimenti_gia_usati(db) -> set:
+    usati = set()
+    for coll in ("documenti_non_associati", "cartelle_email_attachments"):
+        async for d in db[coll].find(
+            {"riconciliato": True, "movimento_banca_id": {"$nin": [None, ""]}},
+            {"_id": 0, "movimento_banca_id": 1},
+        ):
+            usati.add(d["movimento_banca_id"])
+    return usati
+
+
+async def _abbina_movimento(db, *, identificativo: str | None, importo: float | None,
+                            parole: str, usati: set, solo_uscite: bool = True) -> tuple[dict | None, str]:
+    """Il movimento del documento, oppure (None, motivo). Mai il primo a caso."""
+    base = {"tipo": "uscita"} if solo_uscite else {}
+    candidati = []
+    if identificativo:
+        candidati = await db["estratto_conto_movimenti"].find(
+            {**base, "descrizione": {"$regex": re.escape(identificativo), "$options": "i"}}, {"_id": 0}
+        ).to_list(20)
+    if not candidati and importo is not None:
+        per_parola = await db["estratto_conto_movimenti"].find(
+            {**base, "descrizione": {"$regex": parole, "$options": "i"}}, {"_id": 0}
+        ).to_list(1000)
+        candidati = [m for m in per_parola if abs(abs(float(m.get("importo") or 0)) - importo) < 0.01]
+    candidati = [m for m in candidati if m.get("id") and m["id"] not in usati]
+    if not identificativo and importo is None:
+        return None, "senza_riferimenti"
+    if not candidati:
+        return None, "non_trovato"
+    if len(candidati) > 1:
+        return None, "ambiguo"
+    return candidati[0], "ok"
+
+
+async def _riconcilia_documenti(db, docs, *, parole: str, estrai_id, etichetta: str) -> Dict[str, Any]:
+    stats = {"analizzati": len(docs), "riconciliati": 0, "non_trovati": 0, "ambigui": 0, "senza_riferimenti": 0}
+    usati = await _movimenti_gia_usati(db)
+    for doc in docs:
+        mov, esito = await _abbina_movimento(
+            db, identificativo=estrai_id(doc), importo=_importo_documento(doc), parole=parole, usati=usati
+        )
+        if not mov:
+            stats["ambigui" if esito == "ambiguo" else "senza_riferimenti" if esito == "senza_riferimenti" else "non_trovati"] += 1
+            continue
+        coll = "cartelle_email_attachments" if doc.get("_da_cartelle") else "documenti_non_associati"
+        await db[coll].update_one(
+            {"id": doc["id"]},
+            {"$set": {
+                "riconciliato": True,
+                "riconciliato_con": "estratto_conto",
+                "movimento_banca_id": mov.get("id"),
+                "data_pagamento": mov.get("data_contabile"),
+                "importo_pagato": abs(float(mov.get("importo", 0))),
+            }},
+        )
+        usati.add(mov["id"])
+        stats["riconciliati"] += 1
+    logger.info(f"[{etichetta}] {stats}")
+    return stats
+
+
+def _numero(pattern: str):
+    def estrai(doc: dict) -> str | None:
+        trovato = re.search(pattern, doc.get("filename") or "")
+        return trovato.group(1) if trovato else None
+    return estrai
+
+
 async def riconcilia_pagopa_con_banca(db) -> Dict[str, Any]:
-    """
-    Riconcilia avvisi PagoPA (da Gmail Partenopay/Comune di Napoli)
-    con movimenti bancari che contengono keyword PagoPA.
-    """
-    stats = {"analizzati": 0, "riconciliati": 0, "non_trovati": 0}
-    
-    # Documenti PagoPA da Gmail
+    """Avvisi PagoPA (Comune di Napoli): per IUV, oppure per importo esatto."""
     docs = await db["documenti_non_associati"].find(
         {"categoria_mittente": "Comune di Napoli", "riconciliato": {"$ne": True}},
-        {"_id": 0, "pdf_data": 0}
+        {"_id": 0, "pdf_data": 0},
     ).to_list(200)
-    
-    stats["analizzati"] = len(docs)
-    
-    for doc in docs:
-        filename = doc.get("filename", "").lower()
-        subject = doc.get("email_subject", "").lower()
-        
-        # Estrai numero avviso o IUV dal filename
-        iuv_match = re.search(r'(\d{15,18})', doc.get("filename", ""))
-        importo_match = re.search(r'(\d+[.,]\d{2})', subject)
-        
-        # Cerca in estratto conto
-        search_terms = []
-        if iuv_match:
-            search_terms.append(iuv_match.group(1))
-        search_terms.extend(["pagopa", "partenopay", "comune.*napol"])
-        
-        for term in search_terms:
-            mov = await db["estratto_conto_movimenti"].find_one(
-                {"descrizione": {"$regex": re.escape(term), "$options": "i"}},
-                {"_id": 0}
-            )
-            if mov:
-                await db["documenti_non_associati"].update_one(
-                    {"id": doc["id"]},
-                    {"$set": {
-                        "riconciliato": True,
-                        "riconciliato_con": "estratto_conto",
-                        "movimento_banca_id": mov.get("id"),
-                        "data_pagamento": mov.get("data_contabile"),
-                        "importo_pagato": abs(float(mov.get("importo", 0))),
-                    }}
-                )
-                stats["riconciliati"] += 1
-                break
-        else:
-            stats["non_trovati"] += 1
-    
-    logger.info(f"[RICONCILIA-PAGOPA] {stats}")
-    return stats
+    return await _riconcilia_documenti(
+        db, docs, parole="pagopa|partenopay|comune.*napol", estrai_id=_numero(r"(\d{15,18})"),
+        etichetta="RICONCILIA-PAGOPA",
+    )
 
 
 async def riconcilia_cartelle_agenzia_entrate(db) -> Dict[str, Any]:
-    """
-    Riconcilia cartelle Agenzia Entrate/Riscossione con estratto conto.
-    Cerca: numero cartella, importo, keyword ADER/riscossione nella banca.
-    """
-    stats = {"analizzati": 0, "riconciliati": 0, "non_trovati": 0}
-    
+    """Cartelle Agenzia Entrate/Riscossione: per numero cartella, oppure per importo esatto."""
     docs = await db["documenti_non_associati"].find(
         {"categoria_mittente": "Agenzia Entrate", "riconciliato": {"$ne": True}},
-        {"_id": 0, "pdf_data": 0}
+        {"_id": 0, "pdf_data": 0},
     ).to_list(200)
-    
-    # Anche cartelle dalla collection dedicata
     cartelle = await db["cartelle_email_attachments"].find(
-        {"riconciliato": {"$ne": True}},
-        {"_id": 0, "pdf_data": 0}
+        {"riconciliato": {"$ne": True}}, {"_id": 0, "pdf_data": 0}
     ).to_list(200)
-    
-    all_docs = docs + cartelle
-    stats["analizzati"] = len(all_docs)
-    
-    for doc in all_docs:
-        filename = doc.get("filename", "")
-        subject = doc.get("email_subject", "")
-        
-        # Cerca numero cartella o riferimento
-        ref_match = re.search(r'(\d{10,20})', filename)
-        
-        search_terms = ["agenzia.*entrate", "agenzia.*riscossione", "ADER", "equitalia", "riscossione"]
-        if ref_match:
-            search_terms.insert(0, ref_match.group(1))
-        
-        found = False
-        for term in search_terms:
-            mov = await db["estratto_conto_movimenti"].find_one(
-                {"descrizione": {"$regex": re.escape(term), "$options": "i"}, "tipo": "uscita"},
-                {"_id": 0}
-            )
-            if mov:
-                coll = "documenti_non_associati" if "categoria_mittente" in doc else "cartelle_email_attachments"
-                await db[coll].update_one(
-                    {"id": doc["id"]},
-                    {"$set": {
-                        "riconciliato": True,
-                        "riconciliato_con": "estratto_conto",
-                        "movimento_banca_id": mov.get("id"),
-                        "data_pagamento": mov.get("data_contabile"),
-                        "importo_pagato": abs(float(mov.get("importo", 0))),
-                    }}
-                )
-                stats["riconciliati"] += 1
-                found = True
-                break
-        
-        if not found:
-            stats["non_trovati"] += 1
-    
-    logger.info(f"[RICONCILIA-ADER] {stats}")
-    return stats
+    for c in cartelle:
+        c["_da_cartelle"] = True
+    return await _riconcilia_documenti(
+        db, docs + cartelle, parole="agenzia.*entrate|agenzia.*riscossione|ADER|equitalia|riscossione",
+        estrai_id=_numero(r"(\d{10,20})"), etichetta="RICONCILIA-ADER",
+    )
 
 
 async def riconcilia_tari_con_banca(db) -> Dict[str, Any]:
-    """
-    Riconcilia avvisi TARI (tassa rifiuti) con estratto conto.
-    Cerca keyword: TARI, tassa rifiuti, Comune di Napoli.
-    """
-    stats = {"analizzati": 0, "riconciliati": 0, "non_trovati": 0}
-    
-    # Cerca documenti TARI in Gmail (possono essere in Comune di Napoli o in cartelle specifiche)
+    """Avvisi TARI: per numero avviso, oppure per importo esatto."""
     docs = await db["documenti_non_associati"].find(
         {"$or": [
             {"filename": {"$regex": "tari|TARI", "$options": "i"}},
             {"email_subject": {"$regex": "tari|tassa rifiuti", "$options": "i"}},
         ], "riconciliato": {"$ne": True}},
-        {"_id": 0, "pdf_data": 0}
+        {"_id": 0, "pdf_data": 0},
     ).to_list(100)
-    
-    stats["analizzati"] = len(docs)
-    
-    # Cerca pagamenti TARI in banca
-    movimenti_tari = await db["estratto_conto_movimenti"].find(
-        {"descrizione": {"$regex": "TARI|tassa rifiuti|tributi locali", "$options": "i"}},
-        {"_id": 0}
-    ).to_list(100)
-    
-    for doc in docs:
-        for mov in movimenti_tari:
-            await db["documenti_non_associati"].update_one(
-                {"id": doc["id"]},
-                {"$set": {
-                    "riconciliato": True,
-                    "riconciliato_con": "estratto_conto",
-                    "data_pagamento": mov.get("data_contabile"),
-                    "importo_pagato": abs(float(mov.get("importo", 0))),
-                }}
-            )
-            stats["riconciliati"] += 1
-            break
-        else:
-            stats["non_trovati"] += 1
-    
-    logger.info(f"[RICONCILIA-TARI] {stats}")
-    return stats
+    return await _riconcilia_documenti(
+        db, docs, parole="TARI|tassa rifiuti|tributi locali", estrai_id=_numero(r"(\d{10,20})"),
+        etichetta="RICONCILIA-TARI",
+    )
 
 
 async def confronta_pos_corrispettivi(db, anno: int = 2026) -> Dict[str, Any]:

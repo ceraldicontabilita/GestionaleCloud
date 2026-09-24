@@ -97,7 +97,7 @@ async def get_mutui(
 
     except Exception as e:
         logger.error(f"Errore get_mutui: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("", summary="Lista tutti i mutui", include_in_schema=False)
@@ -207,7 +207,7 @@ async def get_statistiche_mutui():
 
     except Exception as e:
         logger.error(f"Errore get_statistiche_mutui: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/{mutuo_id}", summary="Dettaglio mutuo")
@@ -235,7 +235,7 @@ async def get_mutuo_by_id(mutuo_id: str):
         raise
     except Exception as e:
         logger.error(f"Errore get_mutuo_by_id: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/{mutuo_id}/rate", summary="Rate del mutuo")
@@ -270,7 +270,7 @@ async def get_rate_mutuo(mutuo_id: str):
         raise
     except Exception as e:
         logger.error(f"Errore get_rate_mutuo: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # ============================================================================
@@ -466,7 +466,7 @@ async def riconcilia_mutui_con_estratto_conto(
 
     except Exception as e:
         logger.error(f"Errore riconcilia_mutui: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.put("/{mutuo_id}/rate/{numero_rata}/riconcilia", summary="Riconcilia singola rata manualmente")
@@ -551,7 +551,7 @@ async def riconcilia_rata_manuale(
         raise
     except Exception as e:
         logger.error(f"Errore riconcilia_rata_manuale: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # ============================================================================
@@ -591,7 +591,7 @@ async def create_mutuo(mutuo_data: dict):
         raise
     except Exception as e:
         logger.error(f"Errore create_mutuo: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.put("/{mutuo_id}", summary="Aggiorna mutuo")
@@ -627,7 +627,7 @@ async def update_mutuo(mutuo_id: str, update_data: dict):
         raise
     except Exception as e:
         logger.error(f"Errore update_mutuo: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.delete("/{mutuo_id}", summary="Elimina mutuo")
@@ -652,4 +652,4 @@ async def delete_mutuo(mutuo_id: str):
         raise
     except Exception as e:
         logger.error(f"Errore delete_mutuo: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e

@@ -300,8 +300,8 @@ def parse_libro_unico_pdf(pdf_bytes: bytes) -> Dict[str, Any]:
     """
     try:
         import pdfplumber
-    except ImportError:
-        raise ParsingError("pdfplumber non installato. Esegui: pip install pdfplumber")
+    except ImportError as exc:
+        raise ParsingError("pdfplumber non installato. Esegui: pip install pdfplumber") from exc
     
     if not pdf_bytes:
         raise ParsingError("Empty PDF bytes provided")

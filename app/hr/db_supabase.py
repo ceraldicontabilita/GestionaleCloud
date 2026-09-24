@@ -395,8 +395,8 @@ class _Cursore:
             self._iter = iter(await self._materializza())
         try:
             return next(self._iter)
-        except StopIteration:
-            raise StopAsyncIteration
+        except StopIteration as exc:
+            raise StopAsyncIteration from exc
 
 
 class _CursoreAggregato:
@@ -468,8 +468,8 @@ class _CursoreAggregato:
             self._iter = iter(await self._materializza())
         try:
             return next(self._iter)
-        except StopIteration:
-            raise StopAsyncIteration
+        except StopIteration as exc:
+            raise StopAsyncIteration from exc
 
 
 class SupabaseCollection:

@@ -257,7 +257,7 @@ async def import_distinte_bpm(
         
     except Exception as e:
         logger.error(f"Errore import distinte BPM: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # Importatore applicativo usato dalla pipeline Documenti. Nessuna route HTTP propria.

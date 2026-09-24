@@ -64,21 +64,28 @@ def inspect_partenopay_archive(content: bytes) -> Dict[str, Any]:
         file_rows = payload.get("files") or []
         errors = []
         verified = 0
+        file_sha256: Dict[str, str] = {}
         for row in file_rows:
             relative = _safe_name(row.get("file"))
             full = relative if relative.startswith(ROOT) else ROOT + relative
             if full not in names:
                 errors.append({"file": relative, "errore": "assente_nello_zip"})
                 continue
-            expected = str(row.get("sha256") or "").lower()
+            expected = str(row.get("sha256") or "").strip().lower()
             actual = hashlib.sha256(archive.read(full)).hexdigest()
-            if expected and expected != actual:
+            # GC-17: un file senza hash dichiarato non e' verificato; l'hash
+            # usato da qui in avanti e' quello calcolato sui byte veri.
+            if not expected:
+                errors.append({"file": relative, "errore": "sha256_assente"})
+            elif expected != actual:
                 errors.append({"file": relative, "errore": "sha256_non_coincide"})
             else:
                 verified += 1
+                file_sha256[str(row.get("file"))] = actual
         return {
             "payload": payload,
             "files_verified": verified,
+            "file_sha256": file_sha256,
             "integrity_errors": errors,
             "archive_sha256": hashlib.sha256(content).hexdigest(),
         }
@@ -97,8 +104,10 @@ def _record_identity(record: Dict[str, Any]) -> tuple[str, str | None, str | Non
 async def import_partenopay_archive(db, content: bytes, *, dry_run: bool = True) -> Dict[str, Any]:
     plan = inspect_partenopay_archive(content)
     if plan["integrity_errors"]:
-        return {"success": False, "dry_run": dry_run, **{k: v for k, v in plan.items() if k != "payload"}}
+        return {"success": False, "dry_run": dry_run,
+                **{k: v for k, v in plan.items() if k not in ("payload", "file_sha256")}}
     payload = plan.pop("payload")
+    file_sha256 = plan.pop("file_sha256")
     result: Dict[str, Any] = {
         "success": True,
         "dry_run": dry_run,
@@ -165,25 +174,25 @@ async def import_partenopay_archive(db, content: bytes, *, dry_run: bool = True)
         )
 
     file_by_path = {str(item.get("file")): item for item in payload.get("files") or []}
-    with zipfile.ZipFile(io.BytesIO(content)) as archive:
-        for relative, item in file_by_path.items():
-            full = relative if relative.startswith(ROOT) else ROOT + relative
-            sha = str(item.get("sha256") or "").lower()
-            doc_id = f"partenopay_{sha[:32]}"
-            await db["documents_inbox"].update_one(
-                {"id": doc_id},
-                {"$set": {
-                    "id": doc_id, "filename": item.get("nome") or posixpath.basename(relative),
-                    "file_hash": sha, "sha256": sha, "source": "partenopay_zip",
-                    "fonte": "partenopay_zip", "archive_path": relative,
-                    "archive_sha256": archive_sha, "categoria_partenopay": item.get("categoria"),
-                    "codice_avviso_estratto": item.get("codice_avviso"),
-                    "source_archive_id": import_run_id,
-                    "drive_archive_status": "contained_in_source_archive",
-                    "original_preserved": True, "updated_at": now_iso,
-                }, "$setOnInsert": {"created_at": now_iso, "processed": False, "status": "importato"}},
-                upsert=True,
-            )
+    # GC-17 (AV3-09): ogni file e' gia' stato riletto e confrontato con il
+    # manifest in inspect_partenopay_archive; qui si usa l'hash calcolato.
+    for relative, item in file_by_path.items():
+        sha = file_sha256[relative]
+        doc_id = f"partenopay_{sha[:32]}"
+        await db["documents_inbox"].update_one(
+            {"id": doc_id},
+            {"$set": {
+                "id": doc_id, "filename": item.get("nome") or posixpath.basename(relative),
+                "file_hash": sha, "sha256": sha, "source": "partenopay_zip",
+                "fonte": "partenopay_zip", "archive_path": relative,
+                "archive_sha256": archive_sha, "categoria_partenopay": item.get("categoria"),
+                "codice_avviso_estratto": item.get("codice_avviso"),
+                "source_archive_id": import_run_id,
+                "drive_archive_status": "contained_in_source_archive",
+                "original_preserved": True, "updated_at": now_iso,
+            }, "$setOnInsert": {"created_at": now_iso, "processed": False, "status": "importato"}},
+            upsert=True,
+        )
 
     for record in payload.get("records") or []:
         key, number, plate = _record_identity(record)
