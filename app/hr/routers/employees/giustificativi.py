@@ -1310,7 +1310,7 @@ async def upload_libro_unico_pdf(file: UploadFile = File(...)) -> Dict[str, Any]
     
     except Exception as e:
         logger.error(f"Errore upload Libro Unico: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/sync-giustificativi-da-cedolini")

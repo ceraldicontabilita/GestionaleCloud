@@ -862,8 +862,8 @@ async def export_bilancio_pdf(anno: int = Query(None), mese: int = Query(None, d
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
         from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
         from reportlab.lib.units import cm
-    except ImportError:
-        raise HTTPException(status_code=500, detail="reportlab non installato")
+    except ImportError as exc:
+        raise HTTPException(status_code=500, detail="reportlab non installato") from exc
 
     if not anno:
         anno = datetime.now().year
@@ -1176,8 +1176,8 @@ async def export_confronto_pdf(
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
         from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
         from reportlab.lib.units import cm
-    except ImportError:
-        raise HTTPException(status_code=500, detail="reportlab non installato")
+    except ImportError as exc:
+        raise HTTPException(status_code=500, detail="reportlab non installato") from exc
     
     # Ottieni dati confronto
     confronto = await get_confronto_annuale(anno_corrente=anno_corrente, anno_precedente=anno_precedente)

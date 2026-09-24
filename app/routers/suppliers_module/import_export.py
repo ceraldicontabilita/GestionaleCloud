@@ -111,7 +111,7 @@ async def upload_suppliers_excel(file: UploadFile = File(...)) -> Dict[str, Any]
         
     except Exception as e:
         logger.error(f"Error importing suppliers: {e}")
-        raise HTTPException(status_code=500, detail=f"Errore import: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Errore import: {str(e)}") from e
 
 
 @router.post("/import-excel")
@@ -233,4 +233,4 @@ async def import_suppliers_excel(file: UploadFile = File(...)) -> Dict[str, Any]
         
     except Exception as e:
         logger.error(f"Import fornitori fallito: {e}")
-        raise HTTPException(status_code=500, detail=f"Errore import: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Errore import: {str(e)}") from e

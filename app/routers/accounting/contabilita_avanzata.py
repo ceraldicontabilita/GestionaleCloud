@@ -255,7 +255,7 @@ async def calcola_imposte_realtime(
         }
     except Exception as e:
         logger.error(f"Errore calcolo imposte: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/bilancio-dettagliato")

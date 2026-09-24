@@ -104,7 +104,7 @@ def send_email_with_attachment(
         
     except Exception as e:
         logger.error(f"Failed to send email to {to_email}: {e}")
-        raise HTTPException(status_code=500, detail=f"Errore invio email: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Errore invio email: {str(e)}") from e
 
 
 @router.get("/config")

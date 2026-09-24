@@ -281,8 +281,8 @@ async def update_prima_nota_cassa(
     if "importo" in data:
         try:
             importo = float(data["importo"])
-        except (TypeError, ValueError):
-            raise HTTPException(status_code=422, detail="importo non valido")
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail="importo non valido") from exc
         if importo <= 0:
             raise HTTPException(status_code=422, detail="importo deve essere > 0")
 

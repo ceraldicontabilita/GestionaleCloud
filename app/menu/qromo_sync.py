@@ -294,7 +294,7 @@ async def sync_qromo(body: SyncQromoRequest, username: str = Depends(verify_toke
         return await sincronizza(dry_run=body.dry_run)
     except Exception as e:
         logger.exception("Sincronizzazione Qromo fallita")
-        raise HTTPException(status_code=502, detail=f"Sincronizzazione Qromo fallita: {e}")
+        raise HTTPException(status_code=502, detail=f"Sincronizzazione Qromo fallita: {e}") from e
 
 
 @router.get("/sync-qromo/preview")
@@ -304,4 +304,4 @@ async def sync_qromo_preview(username: str = Depends(verify_token)):
         return await sincronizza(dry_run=True)
     except Exception as e:
         logger.exception("Anteprima Qromo fallita")
-        raise HTTPException(status_code=502, detail=f"Anteprima Qromo fallita: {e}")
+        raise HTTPException(status_code=502, detail=f"Anteprima Qromo fallita: {e}") from e

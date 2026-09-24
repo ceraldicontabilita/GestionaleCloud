@@ -3141,8 +3141,8 @@ async def conferma_divisione_provvisoria(data: Dict = Body(...)) -> Dict:
     try:
         importo_cassa = round(float(data.get("importo_cassa", 0) or 0), 2)
         importo_banca = round(float(data.get("importo_banca", 0) or 0), 2)
-    except (ValueError, TypeError):
-        raise HTTPException(status_code=400, detail="importo_cassa/importo_banca non numerici")
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail="importo_cassa/importo_banca non numerici") from exc
 
     if not fattura_id:
         raise HTTPException(status_code=400, detail="fattura_id obbligatorio")

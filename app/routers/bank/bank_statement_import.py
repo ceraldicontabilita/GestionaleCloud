@@ -696,7 +696,7 @@ async def import_bank_statement(
             movements = extract_movements_from_excel(content, filename)
     except Exception as e:
         logger.error(f"Error extracting movements: {e}")
-        raise HTTPException(status_code=500, detail=f"Errore parsing file: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Errore parsing file: {str(e)}") from e
 
     if not movements:
         return {

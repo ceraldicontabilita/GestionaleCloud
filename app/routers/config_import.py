@@ -32,12 +32,12 @@ async def imposta_anno_importazione_attivo(
     anno = data.get("anno")
     try:
         anno = int(anno)
-    except (TypeError, ValueError):
-        raise HTTPException(status_code=400, detail="Campo 'anno' mancante o non valido")
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Campo 'anno' mancante o non valido") from exc
     try:
         return await set_anno_importazione_attivo(Database.get_db(), anno)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.post("/importa-anno")
@@ -51,8 +51,8 @@ async def importa_anno(
     anno = data.get("anno")
     try:
         anno = int(anno)
-    except (TypeError, ValueError):
-        raise HTTPException(status_code=400, detail="Campo 'anno' mancante o non valido")
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Campo 'anno' mancante o non valido") from exc
     if anno < 2000 or anno > 2100:
         raise HTTPException(status_code=400, detail="Anno non valido")
     return await avvia_import_anno(Database.get_db(), anno)

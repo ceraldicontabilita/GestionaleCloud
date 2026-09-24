@@ -182,7 +182,7 @@ async def parse_mutuo_pdf_endpoint(file: UploadFile = File(...)):
         raise
     except Exception as e:
         logger.error(f"Errore parsing PDF: {e}")
-        raise HTTPException(status_code=500, detail=f"Errore parsing PDF: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Errore parsing PDF: {str(e)}") from e
 
 
 @router.post("/import-pdf", summary="Importa mutuo da PDF nel database")
@@ -310,7 +310,7 @@ async def import_mutuo_from_pdf(
         raise
     except Exception as e:
         logger.error(f"Errore import PDF: {e}")
-        raise HTTPException(status_code=500, detail=f"Errore import: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Errore import: {str(e)}") from e
 
 
 @router.post("/parse-multiple", summary="Parsa multipli PDF")

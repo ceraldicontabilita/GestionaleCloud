@@ -135,7 +135,7 @@ def create_backup(
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Backup failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Backup failed: {str(e)}") from e
 
 
 @router.get("/list")
@@ -158,7 +158,7 @@ async def list_backups(username: str = Depends(verify_token)):
             "total": len(backups)
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/download/{filename}")
@@ -175,7 +175,7 @@ async def download_backup(filename: str, username: str = Depends(verify_token)):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/public-download/{filename}")
@@ -192,7 +192,7 @@ async def public_download_backup(filename: str, _username: str = Depends(verify_
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.delete("/delete/{filename}")
@@ -209,7 +209,7 @@ async def delete_backup(filename: str, username: str = Depends(verify_token)):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/restore/{filename}")
@@ -223,7 +223,7 @@ def restore_backup(filename: str, username: str = Depends(verify_token)):
     try:
         tabelle = _leggi_archivio(file_path)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Restore failed: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Restore failed: {str(e)}") from e
 
     try:
         # Figli prima dei genitori per il delete, genitori prima dei figli per l'insert
@@ -240,4 +240,4 @@ def restore_backup(filename: str, username: str = Depends(verify_token)):
             "restored_by": username
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Restore failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Restore failed: {str(e)}") from e

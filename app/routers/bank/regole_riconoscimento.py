@@ -88,7 +88,7 @@ async def crea_regola_da_movimento(
             creata_da=_nome_admin(_admin),
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     # Applicata subito al movimento che l'ha originata: e' il motivo per cui
     # il titolare l'ha scelto, non ha senso fargli aspettare il prossimo import.

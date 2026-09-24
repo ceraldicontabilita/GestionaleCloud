@@ -47,12 +47,12 @@ def verify_token(authorization: str = Header(None)):
         if username is None:
             raise HTTPException(status_code=401, detail="Invalid token")
         return username
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
+    except jwt.ExpiredSignatureError as exc:
+        raise HTTPException(status_code=401, detail="Token expired") from exc
+    except jwt.InvalidTokenError as exc:
         # PyJWT non ha JWTError (e' di python-jose): con quel nome un token
         # malformato usciva come AttributeError, cioe' 500 invece di 401.
-        raise HTTPException(status_code=401, detail="Invalid token")
+        raise HTTPException(status_code=401, detail="Invalid token") from exc
 
 
 @router.post("/login", response_model=AdminLoginResponse)

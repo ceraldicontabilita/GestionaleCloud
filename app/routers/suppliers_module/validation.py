@@ -195,4 +195,4 @@ async def aggiorna_dizionario_metodo(payload: Dict[str, Any] = Body(...)) -> Dic
         
     except Exception as e:
         logger.error(f"Errore aggiornamento dizionario metodi: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e

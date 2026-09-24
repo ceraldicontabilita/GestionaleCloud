@@ -54,7 +54,7 @@ async def upload_image(
             "message": f"Image '{filename}' uploaded successfully"
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 @router.get("/images")
 async def list_images(username: str = Depends(verify_token)):
@@ -76,7 +76,7 @@ async def list_images(username: str = Depends(verify_token)):
         images.sort(key=lambda i: i["uploaded_at"], reverse=True)
         return {"images": images}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 @router.delete("/images/{filename}")
 async def delete_image(filename: str, username: str = Depends(verify_token)):
@@ -87,7 +87,7 @@ async def delete_image(filename: str, username: str = Depends(verify_token)):
         supabase.storage.from_(STORAGE_BUCKET).remove([storage_path])
         return {"success": True, "message": f"Image '{filename}' deleted"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 # Tolti GET/PUT /products e POST /associate-image: rispondevano «success»
 # senza leggere ne' salvare niente, e nessuna pagina li chiamava. Prodotti e

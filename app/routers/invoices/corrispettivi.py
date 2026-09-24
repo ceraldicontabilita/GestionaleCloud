@@ -594,11 +594,11 @@ async def upload_corrispettivi_zip(file: UploadFile = File(...)) -> Dict[str, An
 
         return results
 
-    except zipfile.BadZipFile:
-        raise HTTPException(status_code=400, detail="File ZIP non valido o corrotto")
+    except zipfile.BadZipFile as exc:
+        raise HTTPException(status_code=400, detail="File ZIP non valido o corrotto") from exc
     except Exception as e:
         logger.error(f"Errore upload ZIP: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # ============== IMPORT CSV CORRISPETTIVI ==============
@@ -765,7 +765,7 @@ async def import_corrispettivi_csv(file: UploadFile = File(...)) -> Dict[str, An
         
     except Exception as e:
         logger.error(f"Errore import CSV: {e}")
-        raise HTTPException(status_code=500, detail=f"Errore parsing CSV: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Errore parsing CSV: {str(e)}") from e
 
 
 # ============== GIORNI DI CHIUSURA (ferie, ristrutturazione) ==============
@@ -799,7 +799,7 @@ async def registra_chiusura_attivita(
             data.get("motivo") or "chiusura", "manuale", note=data.get("note") or "",
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"success": True, "chiusura": esito}
 
 
@@ -1384,13 +1384,13 @@ async def inserisci_corrispettivo_manuale(data: Dict[str, Any] = Body(...)) -> D
         raise HTTPException(status_code=400, detail="Campo 'data' obbligatorio (YYYY-MM-DD)")
     try:
         data_dt = datetime.strptime(data_str, "%Y-%m-%d")
-    except (ValueError, TypeError):
-        raise HTTPException(status_code=400, detail=f"Data non valida: {data_str!r}")
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail=f"Data non valida: {data_str!r}") from exc
 
     try:
         totale = round(float(data.get("totale", 0) or 0), 2)
-    except (ValueError, TypeError):
-        raise HTTPException(status_code=400, detail="Campo 'totale' non numerico")
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail="Campo 'totale' non numerico") from exc
 
     if totale <= 0:
         raise HTTPException(status_code=400, detail="Il totale deve essere > 0")

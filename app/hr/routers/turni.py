@@ -64,8 +64,8 @@ async def genera(
     settimana = str(payload.get("settimana_inizio", "")).strip()
     try:
         base = datetime.strptime(settimana, "%Y-%m-%d")
-    except ValueError:
-        raise HTTPException(400, "settimana_inizio deve essere una data YYYY-MM-DD (lunedì)")
+    except ValueError as exc:
+        raise HTTPException(400, "settimana_inizio deve essere una data YYYY-MM-DD (lunedì)") from exc
     if base.weekday() != 0:
         raise HTTPException(400, "settimana_inizio deve essere un lunedì")
 
@@ -295,8 +295,8 @@ async def crea_disponibilita_bar(payload: Dict[str, Any] = Body(...),
     try:
         d1 = datetime.strptime(dal, "%Y-%m-%d").date()
         d2 = datetime.strptime(al, "%Y-%m-%d").date()
-    except ValueError:
-        raise HTTPException(400, "Date non valide (aaaa-mm-gg)")
+    except ValueError as exc:
+        raise HTTPException(400, "Date non valide (aaaa-mm-gg)") from exc
     if d2 < d1:
         raise HTTPException(400, "'Al' è prima di 'Dal'")
     if fascia not in ("mattina", "pomeriggio"):

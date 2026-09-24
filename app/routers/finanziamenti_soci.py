@@ -63,7 +63,7 @@ async def crea_movimento_manuale(payload: Dict[str, Any] = Body(...)) -> Dict[st
             source="manuale",
         )
     except (TypeError, ValueError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.delete("/movimento/{movimento_id}")

@@ -1667,7 +1667,7 @@ async def leggi_ingredienti_foto(req: LeggiFotoReq):
             )
         txt = "".join(b.get("text", "") for b in (r.json().get("content") or []) if b.get("type") == "text")
     except Exception as e:
-        raise HTTPException(502, f"AI-visione fallita: {str(e)[:120]}")
+        raise HTTPException(502, f"AI-visione fallita: {str(e)[:120]}") from e
     m = re.search(r"\[.*\]", txt or "", re.S)
     if not m:
         return {"ok": False, "fonte": "ai-foto", "ingredienti": [],

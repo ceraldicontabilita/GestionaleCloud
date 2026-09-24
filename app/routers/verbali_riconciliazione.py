@@ -379,7 +379,7 @@ async def get_verbali_dashboard() -> Dict[str, Any]:
         }
     except Exception as e:
         logger.error(f"Errore dashboard verbali: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/lista")
@@ -497,7 +497,7 @@ async def get_lista_verbali(
         }
     except Exception as e:
         logger.error(f"Errore lista verbali: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/scan-fatture-verbali")
@@ -621,7 +621,7 @@ async def scan_fatture_per_verbali() -> Dict[str, Any]:
         }
     except Exception as e:
         logger.error(f"Errore scan fatture verbali: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 def _punteggio_completezza(v: Dict[str, Any]) -> int:
@@ -924,7 +924,7 @@ async def riconcilia_verbale(
         raise
     except Exception as e:
         logger.error(f"Errore riconciliazione verbale: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/collega-driver-massivo")
@@ -1118,4 +1118,4 @@ async def collega_driver_massivo() -> Dict[str, Any]:
         }
     except Exception as e:
         logger.error(f"Errore collegamento driver massivo: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e

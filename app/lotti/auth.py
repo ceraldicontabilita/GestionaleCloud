@@ -362,8 +362,8 @@ def verify_google_id_token(id_token: str):
             audience=cid,
             issuer=["https://accounts.google.com", "accounts.google.com"],
         )
-    except Exception:
-        raise HTTPException(401, "Token Google non valido")
+    except Exception as exc:
+        raise HTTPException(401, "Token Google non valido") from exc
     if not data.get("email_verified"):
         raise HTTPException(401, "Email Google non verificata")
     allow = _google_allowed_emails()

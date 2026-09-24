@@ -910,8 +910,8 @@ async def import_listino_da_pdf(file: UploadFile = File(...), _admin=Depends(req
                                 "iva_pct": iva,
                             }
                         )
-    except ImportError:
-        raise HTTPException(500, "pdfplumber non disponibile. Contattare l'amministratore.")
+    except ImportError as exc:
+        raise HTTPException(500, "pdfplumber non disponibile. Contattare l'amministratore.") from exc
 
     if not prodotti:
         raise HTTPException(

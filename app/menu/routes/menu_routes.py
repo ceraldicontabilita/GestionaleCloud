@@ -135,7 +135,7 @@ async def get_full_menu():
             "allergens": allergens
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/categories", response_model=List[Category])
@@ -145,7 +145,7 @@ async def get_categories():
         categories, subcategories, products = _fetch_all()
         return _build_hierarchy(categories, subcategories, products)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/categories/{category_id}")

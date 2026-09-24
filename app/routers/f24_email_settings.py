@@ -236,7 +236,7 @@ async def esegui_scan_manuale() -> Dict[str, Any]:
             "success": False
         })
         
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/stato-sistema")

@@ -1373,7 +1373,7 @@ async def registra_produzione_e_crea_lotto(
             await db.operazioni_idempotenti.insert_one(
                 {"_id": f"prod_{operation_id}",
                  "creato": datetime.now(timezone.utc).isoformat()})
-        except DuplicateKeyError:
+        except DuplicateKeyError as exc:
             prec = await db.operazioni_idempotenti.find_one({"_id": f"prod_{operation_id}"})
             if prec and prec.get("risultato"):
                 return prec["risultato"]
@@ -1384,7 +1384,7 @@ async def registra_produzione_e_crea_lotto(
                 ricetta_precedente = await db.ricette.find_one(
                     {"id": originali["ricetta_id"]}, {"_id": 0})
                 if ricetta_precedente is None:
-                    raise HTTPException(404, "Ricetta della produzione non trovata")
+                    raise HTTPException(404, "Ricetta della produzione non trovata") from exc
                 vendita = await _registra_banco_da_produzione(
                     prec["lotto_creato"], ricetta_precedente, originali["ricetta_id"],
                     originali["pezzi"], originali["data_produzione"],
@@ -1394,7 +1394,7 @@ async def registra_produzione_e_crea_lotto(
                 await db.operazioni_idempotenti.update_one(
                     {"_id": f"prod_{operation_id}"}, {"$set": {"risultato": risposta}})
                 return risposta
-            raise HTTPException(409, "Produzione già in corso; riprova tra poco")
+            raise HTTPException(409, "Produzione già in corso; riprova tra poco") from exc
     ricetta = await db.ricette.find_one({"id": ricetta_id}, {"_id": 0})
     if not ricetta:
         raise HTTPException(status_code=404, detail=f"Ricetta con id '{ricetta_id}' non trovata")

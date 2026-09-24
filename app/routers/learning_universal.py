@@ -471,7 +471,7 @@ async def get_learning_results():
             return result
         return {"status": "no_results", "message": "Nessun apprendimento completato"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/suggestions/{module}")
@@ -551,7 +551,7 @@ async def get_suggestions(module: str):
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # ERP-001 (19/07/2026): soglia minima assoluta, non aggirabile dal chiamante.
@@ -680,7 +680,7 @@ async def apply_suggestions(
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 async def _audit_apply_suggestions(

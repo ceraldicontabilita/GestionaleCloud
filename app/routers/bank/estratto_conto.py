@@ -741,7 +741,7 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
                         })
                 wb.close()
         except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Errore parsing Excel: {str(e)}")
+            raise HTTPException(status_code=400, detail=f"Errore parsing Excel: {str(e)}") from e
     else:
         raise HTTPException(status_code=400, detail="Formato non supportato. Usa PDF, CSV o Excel.")
     

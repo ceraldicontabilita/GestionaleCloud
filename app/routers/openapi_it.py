@@ -143,7 +143,7 @@ async def connetti_conto_bancario(data: BankAccountConnect) -> Dict[str, Any]:
                 
     except httpx.HTTPError as e:
         logger.error(f"Errore AISP: {e}")
-        raise HTTPException(status_code=500, detail=f"Errore connessione AISP: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Errore connessione AISP: {str(e)}") from e
 
 
 @router.get("/aisp/movimenti")
@@ -199,7 +199,7 @@ async def get_movimenti_bancari(
                 
     except httpx.HTTPError as e:
         logger.error(f"Errore AISP movimenti: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # ============================================================
@@ -281,7 +281,7 @@ async def richiedi_bilancio_xbrl(data: BilancioXBRLRequest) -> Dict[str, Any]:
                 
     except httpx.HTTPError as e:
         logger.error(f"Errore HTTP richiesta XBRL: {e}")
-        raise HTTPException(status_code=500, detail=f"Errore connessione: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Errore connessione: {str(e)}") from e
 
 
 @router.get("/xbrl/bilancio/{request_id}")
@@ -377,7 +377,7 @@ async def get_bilancio_xbrl(request_id: str) -> Dict[str, Any]:
                 
     except httpx.HTTPError as e:
         logger.error(f"Errore HTTP recupero XBRL: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 _XBRL_FILE_FIELDS = {
@@ -400,7 +400,7 @@ async def _scarica_file_bilancio(request_id: str, tipo: str) -> Response:
             )
     except httpx.HTTPError as e:
         logger.error(f"Errore HTTP download XBRL: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
     if response.status_code != 200:
         raise HTTPException(status_code=response.status_code, detail="Errore recupero bilancio")
@@ -415,8 +415,8 @@ async def _scarica_file_bilancio(request_id: str, tipo: str) -> Response:
 
     try:
         contenuto = base64.b64decode(contenuto_b64)
-    except Exception:
-        raise HTTPException(status_code=500, detail="File ricevuto da OpenAPI.it non decodificabile")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="File ricevuto da OpenAPI.it non decodificabile") from exc
 
     filename = f"bilancio_{request_id}_{tipo}.{estensione}"
     return Response(
@@ -479,7 +479,7 @@ async def richiedi_bilancio_riclassificato(partita_iva: str = Query(...)) -> Dic
                 
     except httpx.HTTPError as e:
         logger.error(f"Errore riclassificato: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/xbrl/storico-richieste")
@@ -532,4 +532,4 @@ async def richiedi_visura_camerale(partita_iva: str = Query(...)) -> Dict[str, A
                 
     except httpx.HTTPError as e:
         logger.error(f"Errore visura: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e

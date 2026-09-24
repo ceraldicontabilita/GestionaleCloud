@@ -429,8 +429,8 @@ async def aggiorna_dipendente(dipendente_id: str, payload: AggiornaDipendente, _
         if scad:
             try:
                 datetime.strptime(scad[:10], "%Y-%m-%d")
-            except ValueError:
-                raise HTTPException(400, "Scadenza libretto non valida (aaaa-mm-gg)")
+            except ValueError as exc:
+                raise HTTPException(400, "Scadenza libretto non valida (aaaa-mm-gg)") from exc
             scad = scad[:10]
         upd["libretto_sanitario_scadenza"] = scad
     filtro = {"hr_id": dipendente_id, "gestionale_dipendente_id": dipendente_id, "attivo": True}

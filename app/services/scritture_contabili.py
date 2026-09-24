@@ -658,12 +658,12 @@ async def registra_chiusura_pos_reale(
     data = str(data or "")[:10]
     try:
         datetime.strptime(data, "%Y-%m-%d")
-    except (TypeError, ValueError):
-        raise ScritturaNonValida(f"data non valida: {data!r}")
+    except (TypeError, ValueError) as exc:
+        raise ScritturaNonValida(f"data non valida: {data!r}") from exc
     try:
         importo = round(float(importo), 2)
-    except (TypeError, ValueError):
-        raise ScritturaNonValida(f"importo non numerico: {importo!r}")
+    except (TypeError, ValueError) as exc:
+        raise ScritturaNonValida(f"importo non numerico: {importo!r}") from exc
     if importo < 0:
         raise ScritturaNonValida("l'importo POS reale non puo' essere negativo")
 

@@ -299,7 +299,7 @@ async def upload_f24_pdf(
 
         richiedi_quadratura_f24(parsed)
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     # Get database
     db = Database.get_db()
@@ -602,7 +602,7 @@ async def upload_f24_pdf_overwrite(
 
         richiedi_quadratura_f24(parsed)
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     db = Database.get_db()
 

@@ -456,7 +456,7 @@ async def scrape_scheda(payload: dict = Body(...)):
     try:
         dati = _scrape_composizione(url)
     except Exception as e:
-        raise HTTPException(502, f"scraping fallito: {str(e)[:120]}")
+        raise HTTPException(502, f"scraping fallito: {str(e)[:120]}") from e
 
     key = _key(payload.get("prodotto_key") or payload.get("nome_prodotto") or "")
     if key and payload.get("salva", True):
@@ -563,7 +563,7 @@ async def leggi_foto_ai(payload: dict = Body(...)):
             )
         txt = "".join(b.get("text", "") for b in (r.json().get("content") or []) if b.get("type") == "text")
     except Exception as e:
-        raise HTTPException(502, f"AI-visione fallita: {str(e)[:120]}")
+        raise HTTPException(502, f"AI-visione fallita: {str(e)[:120]}") from e
     txt = (txt or "").strip()
     if len(txt) < 5:
         return {"ok": False, "testo_ocr": txt, "nota": "Nessun testo leggibile dall'immagine"}
@@ -749,7 +749,7 @@ async def _identifica_con_ricerca_web(descrizione: str, fornitore: str = "",
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(502, f"ricerca web fallita: {str(e)[:120]}")
+        raise HTTPException(502, f"ricerca web fallita: {str(e)[:120]}") from e
     txt = "".join(b.get("text", "") for b in (data.get("content") or []) if b.get("type") == "text")
     res = _estrai_json(txt)
     if not res.get("prodotto_identificato"):

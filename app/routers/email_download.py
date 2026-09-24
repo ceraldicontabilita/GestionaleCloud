@@ -96,8 +96,8 @@ async def download_single_day(
     """
     try:
         target_date = datetime.strptime(date, "%Y-%m-%d")
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Formato data non valido. Usa YYYY-MM-DD")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Formato data non valido. Usa YYYY-MM-DD") from exc
 
     db = Database.get_db()
     downloader = EmailFullDownloader(db)

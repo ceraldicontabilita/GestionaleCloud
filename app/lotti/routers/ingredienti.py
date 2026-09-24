@@ -1169,8 +1169,8 @@ async def cerca_openfoodfacts(q: str = Query(..., min_length=2, description="Tes
 
     try:
         data = await asyncio.to_thread(_fetch)
-    except Exception:
-        raise HTTPException(502, "Open Food Facts non raggiungibile, riprova")
+    except Exception as exc:
+        raise HTTPException(502, "Open Food Facts non raggiungibile, riprova") from exc
 
     risultati = []
     for p in (data.get("products") or [])[:6]:

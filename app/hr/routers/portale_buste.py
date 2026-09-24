@@ -177,8 +177,8 @@ async def scarica_pdf(cedolino_id: str, request: Request,
         try:
             from app.services.cedolino_originale import carica_originale
             pdf_bytes = await carica_originale(doc)
-        except Exception:
-            raise HTTPException(500, "PDF corrotto")
+        except Exception as exc:
+            raise HTTPException(500, "PDF corrotto") from exc
     else:
         # Nessun PDF originale (es. busta importata dal Libro Unico): genero un
         # riepilogo leggibile coi dati disponibili, così è comunque scaricabile.

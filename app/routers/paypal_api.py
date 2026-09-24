@@ -142,7 +142,7 @@ async def sync_period(body: Dict[str, Any] = Body(...)):
         start = datetime.fromisoformat(body["start_date"]).replace(tzinfo=timezone.utc)
         end = datetime.fromisoformat(body["end_date"]).replace(tzinfo=timezone.utc)
     except (KeyError, ValueError) as e:
-        raise HTTPException(400, f"Formato data non valido: {e}")
+        raise HTTPException(400, f"Formato data non valido: {e}") from e
 
     db = Database.get_db()
     result = await sync_paypal_period(db, start, end)
@@ -176,7 +176,7 @@ async def sync_incremental():
         raise HTTPException(
             status_code=502,
             detail=f"PayPal non ha risposto correttamente: {exc}",
-        )
+        ) from exc
     return {**result, "reconciliation_applied": False}
 
 

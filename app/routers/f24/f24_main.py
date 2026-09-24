@@ -69,8 +69,8 @@ async def upload_f24_zip(
     try:
         zip_content = await file.read()
         zip_file = zipfile.ZipFile(io.BytesIO(zip_content))
-    except zipfile.BadZipFile:
-        raise HTTPException(status_code=400, detail="File ZIP non valido o corrotto")
+    except zipfile.BadZipFile as exc:
+        raise HTTPException(status_code=400, detail="File ZIP non valido o corrotto") from exc
 
     # Estrai info sui PDF nel ZIP
     pdf_files = [f for f in zip_file.namelist() if f.lower().endswith('.pdf') and not f.startswith('__MACOSX')]

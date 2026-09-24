@@ -1341,8 +1341,8 @@ async def import_csv_ricette(
 
     try:
         testo = file.decode("utf-8-sig").strip()
-    except Exception:
-        raise HTTPException(400, "File non decodificabile. Usare UTF-8.")
+    except Exception as exc:
+        raise HTTPException(400, "File non decodificabile. Usare UTF-8.") from exc
 
     aggiorna_omonime_confermato = aggiorna_omonime is True
 
@@ -1904,7 +1904,7 @@ async def importa_tracciabilita(sostituisci: bool = Query(True), _admin=Depends(
     try:
         ricette = _json.loads(path.read_text(encoding="utf-8"))
     except Exception as e:
-        raise HTTPException(500, f"JSON non leggibile: {e}")
+        raise HTTPException(500, f"JSON non leggibile: {e}") from e
 
     create = aggiornate = saltate = 0
     dettaglio = []
@@ -2551,8 +2551,8 @@ def _prezzo_da_salvare(prezzo: Any, etichetta: str) -> Optional[float]:
         return None
     try:
         valore = float(prezzo)
-    except (TypeError, ValueError):
-        raise HTTPException(400, f"{etichetta} non valido: serve un numero in euro")
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(400, f"{etichetta} non valido: serve un numero in euro") from exc
     if not math.isfinite(valore):
         raise HTTPException(400, f"{etichetta} non valido: serve un numero finito in euro")
     if valore < 0:
@@ -2950,8 +2950,8 @@ async def leggi_foto(foto_id: str):
                 foto_id,
                 folder_id=str(ricetta.get("foto_drive_folder_id") or ""),
             )
-        except FileNotFoundError:
-            raise HTTPException(404, "Foto non trovata")
+        except FileNotFoundError as exc:
+            raise HTTPException(404, "Foto non trovata") from exc
         return Response(content=contenuto, media_type=mime,
                         headers={"Cache-Control": "public, max-age=31536000, immutable"})
 

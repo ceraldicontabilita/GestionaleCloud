@@ -87,7 +87,7 @@ async def analizza_movimenti_smart(
         return risultati
     except Exception as e:
         logger.error(f"Errore analisi smart: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 async def analizza_singolo_movimento(movimento_id: str) -> Dict[str, Any]:
@@ -109,7 +109,7 @@ async def analizza_singolo_movimento(movimento_id: str) -> Dict[str, Any]:
         from app.services.riconciliazione_smart import semanticizza_risultato
         return semanticizza_risultato(await analizza_movimento(movimento), movimento)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 async def riconcilia_manuale(request: RiconciliaManuale) -> Dict[str, Any]:

@@ -125,8 +125,8 @@ async def correggi_importo_verbale(
         raise HTTPException(status_code=404, detail="Verbale non trovato")
     try:
         amount = round(float(data.get("importo")), 2)
-    except (TypeError, ValueError):
-        raise HTTPException(status_code=400, detail="Importo non valido")
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Importo non valido") from exc
     if amount <= 0 or amount > 100000:
         raise HTTPException(status_code=400, detail="Importo fuori intervallo")
     now = datetime.now(timezone.utc).isoformat()

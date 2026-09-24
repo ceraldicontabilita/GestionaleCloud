@@ -995,10 +995,10 @@ async def categorizza_articoli_ai(
         result = await aggiorna_dizionario_con_ai(db, limite=limite)
         return result
     except ImportError as e:
-        raise HTTPException(status_code=500, detail=f"Servizio AI non disponibile: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Servizio AI non disponibile: {str(e)}") from e
     except Exception as e:
         logger.error(f"Errore categorizzazione AI: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/non-classificati")

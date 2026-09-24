@@ -245,8 +245,8 @@ class AccountingEntriesService:
             
             return output
         
-        except ImportError:
-            raise ValidationError("openpyxl non installato. Impossibile creare Excel.")
+        except ImportError as exc:
+            raise ValidationError("openpyxl non installato. Impossibile creare Excel.") from exc
     
     async def get_account_balance(
         self,

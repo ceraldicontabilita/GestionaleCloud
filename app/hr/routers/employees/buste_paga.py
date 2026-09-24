@@ -77,10 +77,10 @@ async def upload_busta_paga(
         
     except ParsingError as e:
         logger.error(f"Parsing error: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
         logger.error(f"Error processing PDF: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Errore elaborazione PDF: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Errore elaborazione PDF: {str(e)}") from e
 
 
 @router.post("/salva")
@@ -144,7 +144,7 @@ async def salva_buste_paga(
         
     except Exception as e:
         logger.error(f"Error saving buste paga: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/lista")
@@ -177,7 +177,7 @@ async def lista_buste_paga(
         
     except Exception as e:
         logger.error(f"Error fetching buste paga: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/riepilogo-mensile/{competenza}")
@@ -317,7 +317,7 @@ async def riepilogo_mensile(competenza: str):
         raise
     except Exception as e:
         logger.error(f"Error fetching riepilogo: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/competenze")
@@ -360,7 +360,7 @@ async def lista_competenze():
         return {"competenze": competenze}
     except Exception as e:
         logger.error(f"Error fetching competenze: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.delete("/{competenza}/{nome}")
@@ -379,4 +379,4 @@ async def elimina_busta_paga(competenza: str, nome: str):
         raise
     except Exception as e:
         logger.error(f"Error deleting busta paga: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e

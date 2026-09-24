@@ -330,7 +330,7 @@ async def get_cedolino_pdf(
         pdf_bytes = await carica_originale(cedolino)
     except Exception as exc:
         logger.warning("PDF cedolino non decodificabile per record %s: %s", record_id, exc)
-        raise HTTPException(status_code=422, detail="PDF del cedolino non leggibile")
+        raise HTTPException(status_code=422, detail="PDF del cedolino non leggibile") from exc
 
     return StreamingResponse(
         io.BytesIO(pdf_bytes),
@@ -659,7 +659,7 @@ async def get_bonifico_pdf_salario(
         pdf_bytes = base64.b64decode(documento["pdf_data"], validate=True)
     except Exception as exc:
         logger.warning("PDF bonifico non decodificabile per record %s: %s", record_id, exc)
-        raise HTTPException(status_code=422, detail="PDF del bonifico non leggibile")
+        raise HTTPException(status_code=422, detail="PDF del bonifico non leggibile") from exc
     return StreamingResponse(
         io.BytesIO(pdf_bytes),
         media_type="application/pdf",
@@ -725,7 +725,7 @@ async def import_paghe(file: UploadFile = File(...)) -> Dict[str, Any]:
     try:
         df = pd.read_excel(io.BytesIO(content))
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Errore lettura Excel: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Errore lettura Excel: {str(e)}") from e
     
     # Normalizza nomi colonne
     df.columns = [c.strip().lower() for c in df.columns]
@@ -852,7 +852,7 @@ async def import_bonifici(file: UploadFile = File(...)) -> Dict[str, Any]:
     try:
         df = pd.read_excel(io.BytesIO(content))
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Errore lettura Excel: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Errore lettura Excel: {str(e)}") from e
     
     # Normalizza nomi colonne (rimuovi spazi extra)
     df.columns = [str(c).strip().lower() for c in df.columns]

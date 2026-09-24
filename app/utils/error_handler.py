@@ -48,25 +48,25 @@ def handle_errors(func: Callable) -> Callable:
             raise  # Rilancia HTTPException as-is
         except ValueError as e:
             logger.warning(f"{func.__name__}: ValueError - {e}")
-            raise HTTPException(status_code=400, detail=str(e))
+            raise HTTPException(status_code=400, detail=str(e)) from e
         except KeyError as e:
             logger.warning(f"{func.__name__}: KeyError - {e}")
-            raise HTTPException(status_code=400, detail=f"Campo mancante: {e}")
+            raise HTTPException(status_code=400, detail=f"Campo mancante: {e}") from e
         except TypeError as e:
             logger.warning(f"{func.__name__}: TypeError - {e}")
-            raise HTTPException(status_code=400, detail=f"Tipo non valido: {e}")
+            raise HTTPException(status_code=400, detail=f"Tipo non valido: {e}") from e
         except FileNotFoundError as e:
             logger.warning(f"{func.__name__}: FileNotFoundError - {e}")
-            raise HTTPException(status_code=404, detail=f"File non trovato: {e}")
+            raise HTTPException(status_code=404, detail=f"File non trovato: {e}") from e
         except PermissionError as e:
             logger.warning(f"{func.__name__}: PermissionError - {e}")
-            raise HTTPException(status_code=403, detail=f"Permesso negato: {e}")
+            raise HTTPException(status_code=403, detail=f"Permesso negato: {e}") from e
         except ConnectionError as e:
             logger.error(f"{func.__name__}: ConnectionError - {e}")
-            raise HTTPException(status_code=503, detail="Servizio temporaneamente non disponibile")
+            raise HTTPException(status_code=503, detail="Servizio temporaneamente non disponibile") from e
         except TimeoutError as e:
             logger.error(f"{func.__name__}: TimeoutError - {e}")
-            raise HTTPException(status_code=504, detail="Timeout nella richiesta")
+            raise HTTPException(status_code=504, detail="Timeout nella richiesta") from e
         except Exception as e:
             # Gestisci AppError custom (se importabile)
             if hasattr(e, 'status_code') and hasattr(e, 'message'):
@@ -74,10 +74,10 @@ def handle_errors(func: Callable) -> Callable:
                 raise HTTPException(
                     status_code=e.status_code,
                     detail=e.message
-                )
+                ) from e
             logger.error(f"{func.__name__}: {type(e).__name__} - {e}")
             logger.error(traceback.format_exc())
-            raise HTTPException(status_code=500, detail="Errore interno del server")
+            raise HTTPException(status_code=500, detail="Errore interno del server") from e
     return wrapper
 
 
@@ -95,19 +95,19 @@ def handle_errors_sync(func: Callable) -> Callable:
             raise
         except ValueError as e:
             logger.warning(f"{func.__name__}: ValueError - {e}")
-            raise HTTPException(status_code=400, detail=str(e))
+            raise HTTPException(status_code=400, detail=str(e)) from e
         except KeyError as e:
             logger.warning(f"{func.__name__}: KeyError - {e}")
-            raise HTTPException(status_code=400, detail=f"Campo mancante: {e}")
+            raise HTTPException(status_code=400, detail=f"Campo mancante: {e}") from e
         except Exception as e:
             if hasattr(e, 'status_code') and hasattr(e, 'message'):
                 logger.warning(f"{func.__name__}: {type(e).__name__} - {e.message}")
                 raise HTTPException(
                     status_code=e.status_code,
                     detail=e.message
-                )
+                ) from e
             logger.error(f"{func.__name__}: {type(e).__name__} - {e}")
-            raise HTTPException(status_code=500, detail="Errore interno del server")
+            raise HTTPException(status_code=500, detail="Errore interno del server") from e
     return wrapper
 
 

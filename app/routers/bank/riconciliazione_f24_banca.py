@@ -158,7 +158,7 @@ async def upload_estratto_conto_bpm(file: UploadFile = File(...)):
         raise
     except Exception as e:
         logger.error(f"Errore upload estratto conto: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/movimenti-f24-banca")
@@ -385,7 +385,7 @@ async def riconcilia_f24_con_banca():
         
     except Exception as e:
         logger.error(f"Errore riconciliazione F24: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/stato-riconciliazione")

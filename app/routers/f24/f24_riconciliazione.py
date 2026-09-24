@@ -108,7 +108,7 @@ async def upload_f24_commercialista(
         import base64
         pdf_base64 = base64.b64encode(content).decode('utf-8')
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Errore lettura file: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Errore lettura file: {str(e)}") from e
 
     # Parsing con PyMuPDF (parser principale, usa bytes)
     parser_used = "pymupdf"
@@ -150,7 +150,7 @@ async def upload_f24_commercialista(
 
     except Exception as e:
         logger.error(f"Errore parsing F24: {e}")
-        raise HTTPException(status_code=500, detail=f"Errore parsing: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Errore parsing: {str(e)}") from e
 
     if "error" in parsed:
         raise HTTPException(status_code=400, detail=parsed["error"])
@@ -159,7 +159,7 @@ async def upload_f24_commercialista(
 
         richiedi_quadratura_f24(parsed)
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     # Genera chiave univoca per rilevare duplicati
     # Basata su: filename + data_versamento + saldo

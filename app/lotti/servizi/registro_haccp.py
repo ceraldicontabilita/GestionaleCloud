@@ -31,8 +31,8 @@ def giorno_registrabile(anno: int, mese: int, giorno: int) -> date:
     """La data esiste e non e' nel futuro; altrimenti 422."""
     try:
         data = date(int(anno), int(mese), int(giorno))
-    except (TypeError, ValueError):
-        raise HTTPException(status_code=422, detail=f"Data non valida: {giorno}/{mese}/{anno}")
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=f"Data non valida: {giorno}/{mese}/{anno}") from exc
     if data > oggi_locale():
         raise HTTPException(
             status_code=422,

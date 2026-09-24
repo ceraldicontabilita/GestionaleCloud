@@ -983,7 +983,7 @@ async def scarica_documenti_email(
 
     except Exception as e:
         logger.error(f"Errore download documenti: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/task/{task_id}")
