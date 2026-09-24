@@ -188,6 +188,7 @@ async def registra_temperatura(
     operatore: str = Query(default=""),
     pin: str = Query(default="", description="PIN personale di chi rileva: e' la firma"),
     note: str = Query(default=""),
+    azione_correttiva: str = Query(default=""),
     request: Request = None,
 ):
     """
@@ -225,6 +226,14 @@ async def registra_temperatura(
     if firma["dipendente_id"]:
         record["dipendente_id"] = firma["dipendente_id"]
 
+    # Azione correttiva quando il congelatore sfora: stesso obbligo del frigo
+    # (Reg. 852/2004). Prima qui non si poteva registrare.
+    if not isinstance(azione_correttiva, str):  # chiamata diretta da codice
+        azione_correttiva = ""
+    if azione_correttiva:
+        record["azione_correttiva"] = azione_correttiva
+        record["azione_correttiva_ts"] = datetime.now(timezone.utc).isoformat()
+
     # Verifica allarme CON LE SOGLIE VALIDE ORA — e le CONGELA nel record.
     # AUDIT 24/07/2026 (tranche 6): senza soglie salvate, un cambio retroattivo
     # di temp_min/temp_max via /config faceva sparire (o comparire) le anomalie
@@ -250,6 +259,7 @@ async def registra_temperatura(
         "success": True,
         "message": f"Temperatura {temperatura}°C registrata",
         "allarme": allarme,
+        "serve_azione_correttiva": bool(allarme and not azione_correttiva),
     }
 
 

@@ -152,3 +152,18 @@ def test_sanificazione_firmata_e_stampata_con_chi_l_ha_fatta(db, sessione):
     frigo = [r for r in righe if r["area"].startswith("Frigorifero")]
     assert frigo and frigo[0]["prodotto"] == "Sgrassatore X"
     assert frigo[0]["operatore"] == "Pocci Salvatore"
+
+
+def test_congelatore_fuori_soglia_chiede_e_registra_l_azione_correttiva(db, sessione):
+    from app.lotti.routers import temperature_negative as neg
+
+    esito = run(neg.registra_temperatura(OGGI.year, 1, OGGI.month, OGGI.day, temperatura=-10.0,
+                                         operatore="", pin="", note="", request=sessione))
+    assert esito["allarme"] is True and esito["serve_azione_correttiva"] is True
+    run(neg.registra_temperatura(OGGI.year, 1, OGGI.month, OGGI.day, temperatura=-10.0,
+                                 operatore="", pin="", note="",
+                                 azione_correttiva="Merce spostata in altro congelatore",
+                                 request=sessione))
+    record = run(db.temperature_negative.find_one({"congelatore_numero": 1}))[
+        "temperature"][str(OGGI.month)][str(OGGI.day)]
+    assert record["azione_correttiva"] == "Merce spostata in altro congelatore"
