@@ -9,6 +9,7 @@ import Button from "../ui/Button";
 import { API, MESI_IT } from "../../utils/constants";
 import SegnalaGuasto from "./shared/SegnalaGuasto";
 import { giorniNelMese } from "../../utils/dateUtils";
+import { testoFirmatari } from "../../utils/firmatari";
 
 // Dati aziendali Ceraldi Group
 const AZIENDA_INFO = {
@@ -23,7 +24,6 @@ const RIFERIMENTI_NORMATIVI = {
 };
 
 // Operatori Temperature
-const OPERATORI_TEMPERATURE = ["Pocci Salvatore", "Vincenzo Ceraldi"];
 
 // ─── Intestazione colonna congelatore con rinomina inline ────────────────────
 const ColonnaCongelatore = ({ numero, nome, onRinomina, onElimina }) => {
@@ -289,7 +289,7 @@ const TemperatureNegativeView = () => {
         <table><thead><tr><th>G</th>${Array.from({length:12},(_,i)=>`<th>C${i+1}</th>`).join('')}</tr></thead>
         <tbody>${righe}</tbody></table>
         <div class="footer">
-          <p><strong>Operatori:</strong> ${OPERATORI_TEMPERATURE.join(', ')}</p>
+          <p><strong>Firme verificate:</strong> ${testoFirmatari(schedeCongelatori, mese)}</p>
           <p><strong>Rif:</strong> ${RIFERIMENTI_NORMATIVI.principale} - ${RIFERIMENTI_NORMATIVI.secondario}</p>
           <p><strong>Legenda:</strong> Chiuso | Manutenzione | Non usato</p>
         </div>
@@ -342,9 +342,9 @@ const TemperatureNegativeView = () => {
           </p>
         </div>
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-          <h4 className="font-semibold text-amber-800 text-sm">👷 Operatori</h4>
+          <h4 className="font-semibold text-amber-800 text-sm">👷 Firme verificate del mese</h4>
           <p className="text-xs text-amber-700 mt-1">
-            {OPERATORI_TEMPERATURE.join(', ')}
+            {testoFirmatari(schedeCongelatori, mese)}
           </p>
         </div>
       </div>

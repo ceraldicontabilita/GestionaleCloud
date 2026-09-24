@@ -10,10 +10,10 @@ RIFERIMENTI NORMATIVI:
 - Linee guida HACCP Regione Campania
 
 NOTA: La sanificazione dei congelatori è gestita nel modulo Sanificazione,
-con date casuali ogni 7-10 giorni per ogni apparecchio.
+registrata da chi la esegue (cadenza prevista: ogni 7-10 giorni per apparecchio).
 """
 
-from fastapi import APIRouter, Query, Depends, HTTPException
+from fastapi import Request, APIRouter, Query, Depends
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional, Dict
 from datetime import datetime, timezone
@@ -188,11 +188,15 @@ async def registra_temperatura(
     operatore: str = Query(default=""),
     pin: str = Query(default="", description="PIN personale di chi rileva: e' la firma"),
     note: str = Query(default=""),
+    request: Request = None,
 ):
     """
     Registra una temperatura per un congelatore.
     La sanificazione dei congelatori è gestita separatamente nel modulo Sanificazione.
     """
+    from app.lotti.servizi.registro_haccp import conserva_precedente, giorno_registrabile
+
+    giorno_registrabile(anno, mese, giorno)
     scheda = await get_or_create_scheda(anno, congelatore)
 
     mese_str = str(mese)
@@ -206,14 +210,15 @@ async def registra_temperatura(
     # stringa che chiunque puo' scrivere. Col PIN il nome arriva da HR ed e'
     # marcato `firma_verificata`; con un PIN sbagliato la rilevazione NON si
     # salva, perche' una firma falsa e' peggio di una registrazione mancante.
-    from app.lotti.servizi.firma_dipendente import firma_da_pin
+    from app.lotti.servizi.registro_haccp import firma_registrazione
 
-    firma = await firma_da_pin(pin, operatore)
+    firma = await firma_registrazione(request, pin, operatore)
     record = {
         "temp": temperatura,
         "note": note,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "firma_verificata": firma["firma_verificata"],
+        "firma_via": firma.get("firma_via", ""),
     }
     if firma["operatore"]:
         record["operatore"] = firma["operatore"]
@@ -233,6 +238,7 @@ async def registra_temperatura(
     record["allarme"] = allarme
     record["soglie"] = {"min": soglia_min, "max": soglia_max}
 
+    conserva_precedente(record, scheda["temperature"][mese_str].get(giorno_str), firma)
     scheda["temperature"][mese_str][giorno_str] = record
     scheda["updated_at"] = datetime.now(timezone.utc).isoformat()
 
@@ -253,8 +259,14 @@ async def aggiorna_scheda_completa(anno: int, congelatore: int, data: AggiornaTe
     """Aggiorna l'intera scheda"""
     scheda = await get_or_create_scheda(anno, congelatore)
 
+    from app.lotti.servizi.registro_haccp import verifica_nessun_futuro
+
+    verifica_nessun_futuro(data.temperature, anno)
     scheda["temperature"] = data.temperature
     scheda["updated_at"] = datetime.now(timezone.utc).isoformat()
+    # Riscrittura intera riservata all'amministratore: resta scritto che e'
+    # passata da qui, non dal timbro del giorno con la firma.
+    scheda["riscritta_da_amministratore_il"] = scheda["updated_at"]
     if data.nome:
         scheda["congelatore_nome"] = data.nome
 

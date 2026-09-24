@@ -47,6 +47,11 @@ MODULI_HACCP = [
     # Il calendario chiusure alimenta le schede temperature: inventava giorni
     # «FRIGO SPENTO - MANUTENZIONE» e «NON USATO» estratti a caso per anno.
     "app/lotti/routers/chiusure.py",
+    "app/lotti/routers/report_haccp.py",
+    "app/lotti/routers/temperature_cottura.py",
+    "app/lotti/routers/controllo_olio.py",
+    "app/lotti/routers/disinfestazione.py",
+    "app/lotti/servizi/registro_haccp.py",
 ]
 
 

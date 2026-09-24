@@ -432,16 +432,6 @@ const AnomalieView = () => {
     }
   };
 
-  // Genera nome attrezzatura basato su categoria
-  const generaNomeAttrezzatura = (categoria) => {
-    if (categoria === "Frigorifero") {
-      return `Frigorifero N°${Math.floor(Math.random() * 12) + 1}`;
-    } else if (categoria === "Congelatore") {
-      return `Congelatore N°${Math.floor(Math.random() * 12) + 1}`;
-    }
-    return "";
-  };
-
   const handleCategoriaChange = (cat) => {
     // Resetta attrezzatura quando cambia categoria
     setNuovaAnomalia({

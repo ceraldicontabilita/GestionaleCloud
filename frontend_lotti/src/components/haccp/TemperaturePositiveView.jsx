@@ -20,6 +20,7 @@ import SegnalaGuasto from "./shared/SegnalaGuasto";
 import { giorniNelMese } from "../../utils/dateUtils";
 import { printHtml } from "../../utils/printHtml";
 import { apiError } from "../../utils/apiError";
+import { testoFirmatari } from "../../utils/firmatari";
 
 const AZIENDA_INFO = {
   nome: "Ceraldi Group S.R.L.",
@@ -31,7 +32,6 @@ const RIFERIMENTI_NORMATIVI = {
   secondario: "D.Lgs. 193/2007",
 };
 
-const OPERATORI_TEMPERATURE = ["Pocci Salvatore", "Vincenzo Ceraldi"];
 const NUM_FRIGO_DEFAULT = 12;
 
 const ColonnaFrigo = ({ numero, nome, onRinomina, onElimina }) => {
@@ -440,7 +440,7 @@ export default function TemperaturePositiveView() {
       righe += "</tr>";
     }
 
-    printHtml(`<!DOCTYPE html><html><head><title>Temperature Frigoriferi - ${MESI_IT[mese - 1]} ${anno}</title><style>body{font-family:Arial;font-size:10pt;margin:15mm}h1{font-size:14pt}table{border-collapse:collapse;width:100%}th{background:#eee;padding:4px;border:1px solid #ccc}.footer{margin-top:20px;font-size:9pt;color:#555}</style></head><body><h1>SCHEDA TEMPERATURE FRIGORIFERI</h1><p><strong>${AZIENDA_INFO.nome}</strong> - ${AZIENDA_INFO.indirizzo}</p><p><strong>Mese:</strong> ${MESI_IT[mese - 1]} ${anno} | <strong>Range:</strong> 0°C / +4°C</p><table><thead><tr><th>G</th>${numeriFrigo.map((n) => `<th>F${n}</th>`).join("")}</tr></thead><tbody>${righe}</tbody></table><div class="footer"><p><strong>Operatori:</strong> ${OPERATORI_TEMPERATURE.join(", ")}</p><p><strong>Rif:</strong> ${RIFERIMENTI_NORMATIVI.principale} - ${RIFERIMENTI_NORMATIVI.secondario}</p><p><strong>Legenda:</strong> Chiuso | Manutenzione | Non usato</p></div></body></html>`);
+    printHtml(`<!DOCTYPE html><html><head><title>Temperature Frigoriferi - ${MESI_IT[mese - 1]} ${anno}</title><style>body{font-family:Arial;font-size:10pt;margin:15mm}h1{font-size:14pt}table{border-collapse:collapse;width:100%}th{background:#eee;padding:4px;border:1px solid #ccc}.footer{margin-top:20px;font-size:9pt;color:#555}</style></head><body><h1>SCHEDA TEMPERATURE FRIGORIFERI</h1><p><strong>${AZIENDA_INFO.nome}</strong> - ${AZIENDA_INFO.indirizzo}</p><p><strong>Mese:</strong> ${MESI_IT[mese - 1]} ${anno} | <strong>Range:</strong> 0°C / +4°C</p><table><thead><tr><th>G</th>${numeriFrigo.map((n) => `<th>F${n}</th>`).join("")}</tr></thead><tbody>${righe}</tbody></table><div class="footer"><p><strong>Firme verificate:</strong> ${testoFirmatari(schedeFrigoriferi, mese)}</p><p><strong>Rif:</strong> ${RIFERIMENTI_NORMATIVI.principale} - ${RIFERIMENTI_NORMATIVI.secondario}</p><p><strong>Legenda:</strong> Chiuso | Manutenzione | Non usato</p></div></body></html>`);
   };
 
   if (loading) {
@@ -501,8 +501,8 @@ export default function TemperaturePositiveView() {
           <p className="mt-1 text-xs text-orange-700">{RIFERIMENTI_NORMATIVI.principale} • {RIFERIMENTI_NORMATIVI.secondario}</p>
         </div>
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-          <h4 className="text-sm font-semibold text-amber-800">👷 Operatori</h4>
-          <p className="mt-1 text-xs text-amber-700">{OPERATORI_TEMPERATURE.join(", ")}</p>
+          <h4 className="text-sm font-semibold text-amber-800">👷 Firme verificate del mese</h4>
+          <p className="mt-1 text-xs text-amber-700">{testoFirmatari(schedeFrigoriferi, mese)}</p>
         </div>
       </div>
 
