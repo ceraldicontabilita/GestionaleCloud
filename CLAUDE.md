@@ -6,7 +6,7 @@ reviewed_at: 2026-09-20
 storage_architecture: supabase
 -->
 
-Aggiornato il 23/09/2026 sul codice di `main` del repository canonico
+Aggiornato il 24/09/2026 sul codice di `main` del repository canonico
 `ceraldicontabilita/GestionaleCloud`.
 
 **Gli unici documenti sono questo file, `README.md` e `PIANO_RISTRUTTURAZIONE.md`** (registro del
@@ -742,10 +742,10 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   «conforme, entro le soglie della scheda», firmato col suo nome — e **mai un valore numerico**: quello si
   scrive solo quando c'è un'anomalia, e lo scrive lui (valore vero, fuori servizio, assistenza).
   La misura la fa una persona dal tablet, e **la firma è il PIN**
-  (`servizi/firma_operatore.py`): col PIN il nome arriva da HR e il record è `firma_verificata`; con un PIN
+  (`servizi/firma_dipendente.py`): col PIN il nome arriva da HR e il record è `firma_verificata`; con un PIN
   sbagliato la rilevazione **non si salva**, perché una firma falsa è peggio di una registrazione mancante.
-  Un giorno senza lettura si **dichiara** «non rilevato» col motivo, mai riempito d'ufficio. Nessun modulo
-  HACCP può usare `random` né avere codice irraggiungibile (`tests/lotti/test_haccp_niente_evidenze_finte.py`).
+  Un giorno senza lettura si **dichiara** «non rilevato», mai riempito d'ufficio; lo storico **senza firma** resta
+  ma vale «n.a.» (`servizi/haccp_attendibilita.py`). Mai `random` né codice morto in HACCP (`test_haccp_niente_evidenze_finte.py`).
 - Stampa: coda più print agent locale sul PC del negozio, stampante scelta per tipo di documento, agent
   autenticato con il PIN di un operatore dedicato. Il fascicolo per un'ispezione si compone da
   `/lotti/api/manuale-haccp/stampa`: si spuntano le pagine (`SEZIONI_MANUALE`, le stesse che il generatore

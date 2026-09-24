@@ -47,6 +47,7 @@ from app.lotti.routers.haccp_auto import router as r_haccp_auto
 from app.lotti.routers.report_haccp import router as r_report_haccp
 from app.lotti.routers.haccp_manuale_auto import router as r_haccp_manuale_auto
 from app.lotti.routers.chiusure import router as r_chiusure
+from app.lotti.routers.haccp_attendibilita import router as r_haccp_attendibilita
 
 # ── Produzione e lotti ──────────────────────────────────────────────────────
 from app.lotti.routers.ricette import router as r_ricette
@@ -126,7 +127,7 @@ for r in [
     r_temperature_cottura, r_ricezione_merce, r_aggiornamento_ricette,
     r_prodotti_master, r_ordini_app, r_shelf_life, r_haccp_periodi,
     r_anomalie, r_reclami_fornitori, r_task_dipendenti, r_diagnostic, r_manuale,
-    r_haccp_auto, r_report_haccp, r_haccp_manuale_auto, r_chiusure,
+    r_haccp_auto, r_report_haccp, r_haccp_manuale_auto, r_chiusure, r_haccp_attendibilita,
     r_ricette, r_lotti, r_lotti_fornitori, r_lotti_produzione, r_produzioni,
     r_tracciabilita,
     r_stampa, r_farciture, r_food_cost, r_ingredienti, r_materie_prime,

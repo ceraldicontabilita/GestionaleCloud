@@ -32,6 +32,7 @@ import uuid
 from html import escape as html_escape
 
 from app.lotti.auth import require_admin
+from app.lotti.servizi.haccp_attendibilita import caselle_segnate, non_attendibile_in
 from app.lotti.servizi.registro_haccp import (
     conserva_precedente,
     firma_registrazione,
@@ -562,6 +563,8 @@ async def export_pdf_sanificazione(anno: int, mese: int):
         scheda = {"registrazioni": {}}
 
     registrazioni = scheda.get("registrazioni", {})
+    firme = scheda.get("firme") or {}
+    segnate = caselle_segnate(scheda)
     # In stampa firma chi ha firmato davvero (PIN o sessione verificata), non
     # l'operatore designato: prima ogni mese usciva col suo nome anche vuoto.
     firmatari = sorted({
@@ -597,6 +600,7 @@ async def export_pdf_sanificazione(anno: int, mese: int):
             th {{ background: #1976d2; color: white; }}
             .check {{ background: #e8f5e9; color: #2e7d32; font-weight: bold; }}
             .nd {{ background: #f4f1ea; color: #8a6f47; font-size: 9px; font-weight: bold; }}
+            .na {{ background: #faf7f0; color: #6b6358; border: 1px dashed #b8ad99; font-size: 8px; font-style: italic; }}
             .btn-print {{ padding: 10px 25px; background: #1976d2; color: white; border: none; border-radius: 5px; cursor: pointer; }}
             .footer {{ margin-top: 20px; font-size: 8pt; color: #999; }}
         </style>
@@ -628,6 +632,11 @@ async def export_pdf_sanificazione(anno: int, mese: int):
             # recupero automatico: davanti a un controllo "non fatto" e "nessuno
             # l'ha registrato" sono due cose diverse, e la cella vuota non lo
             # diceva (AUDIT_REGISTRI_STAMPE §4).
+            firma = (firme.get(attr) or {}).get(str(g))
+            if valore in ("X", "x") and non_attendibile_in(segnate, (attr, str(g)), firma):
+                # GC-02h: «X» senza firma verificata, conservata ma non attendibile
+                html += "<td class='na' title='Registrazione senza firma verificata'>n.a.</td>"
+                continue
             if valore == "X":
                 classe = "check"
             elif valore == "N/D":
@@ -644,6 +653,8 @@ async def export_pdf_sanificazione(anno: int, mese: int):
             <p><strong>X</strong> = sanificazione eseguita e registrata &nbsp;·&nbsp;
                <strong>N/D</strong> = nessuna registrazione per quel giorno
                (sistema non attivo) &nbsp;·&nbsp; cella vuota = giorno non ancora chiuso</p>
+            <p><strong>n.a.</strong> = valore in archivio senza firma verificata, non attendibile
+               (conservato nel sistema)</p>
             <p>Conforme a Reg. CE 852/2004 - Igiene prodotti alimentari</p>
             <p>Generato il: {datetime.now().strftime('%d/%m/%Y %H:%M')}</p>
         </div>
@@ -799,9 +810,12 @@ async def sanificazioni_scadute():
     piano = await _piano_salvato()
     oggi = _date.today()
     scheda = await db.sanificazione_schede.find_one(
-        {"anno": oggi.year, "mese": oggi.month}, {"_id": 0, "registrazioni": 1}
+        {"anno": oggi.year, "mese": oggi.month},
+        {"_id": 0, "registrazioni": 1, "firme": 1, "non_attendibili": 1},
     ) or {}
     registrazioni = scheda.get("registrazioni", {})
+    firme = scheda.get("firme") or {}
+    segnate = caselle_segnate(scheda)
 
     in_ritardo, senza_piano, in_regola = [], [], []
     for area in ATTREZZATURE_SANIFICAZIONE:
@@ -814,6 +828,7 @@ async def sanificazioni_scadute():
         fatti = [
             int(g) for g, v in (registrazioni.get(area) or {}).items()
             if str(g).isdigit() and v in ("X", "x", "1", True)
+            and not non_attendibile_in(segnate, (area, str(g)), (firme.get(area) or {}).get(str(g)))
         ]
         ultimo = max(fatti) if fatti else None
         giorni_passati = (oggi.day - ultimo) if ultimo else None

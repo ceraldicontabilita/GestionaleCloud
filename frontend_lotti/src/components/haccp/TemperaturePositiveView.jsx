@@ -21,6 +21,7 @@ import { giorniNelMese } from "../../utils/dateUtils";
 import { printHtml } from "../../utils/printHtml";
 import { apiError } from "../../utils/apiError";
 import { testoFirmatari } from "../../utils/firmatari";
+import { CLASSE_NA, LEGENDA_NA, STILE_NA_STAMPA, eNonAttendibile, titoloNa } from "../../utils/attendibilita";
 import DichiaraConformiButton from "./DichiaraConformiButton";
 import { CellaTemperatura, ModalAzioneCorrettiva } from "./shared/CellaTemperatura";
 
@@ -318,6 +319,8 @@ export default function TemperaturePositiveView() {
     const record = getTemperatura(frigoNum, giorno);
     const scheda = schedeFrigoriferi[frigoNum];
     if (!record) return { value: "-", className: "bg-gray-50 text-gray-400", title: "Nessun dato" };
+    // GC-02h: valore in archivio senza firma verificata, conservato ma non attendibile
+    if (eNonAttendibile(scheda, [mese, giorno], record)) return { value: "n.a.", className: CLASSE_NA, title: titoloNa(record), na: true };
 
     if (typeof record === "object") {
       if (record.is_chiuso || record.tipo === "chiusura") return { value: "🚫", className: "bg-gray-400 text-white", title: "CHIUSO" };
@@ -353,7 +356,7 @@ export default function TemperaturePositiveView() {
       righe += `<tr><td style="padding:4px;border:1px solid #ccc;font-weight:bold;">${g}</td>`;
       numeriFrigo.forEach((f) => {
         const cell = getCellDisplay(f, g);
-        const style = cell.className.includes("red") ? "background:#fee;color:#c00;" :
+        const style = cell.na ? STILE_NA_STAMPA : cell.className.includes("red") ? "background:#fee;color:#c00;" :
           cell.className.includes("gray-400") ? "background:#999;color:#fff;" :
           cell.className.includes("yellow") ? "background:#fff3bf;" :
           cell.className.includes("orange") ? "background:#fff7ed;" : "";
@@ -362,7 +365,7 @@ export default function TemperaturePositiveView() {
       righe += "</tr>";
     }
 
-    printHtml(`<!DOCTYPE html><html><head><title>Temperature Frigoriferi - ${MESI_IT[mese - 1]} ${anno}</title><style>body{font-family:Arial;font-size:10pt;margin:15mm}h1{font-size:14pt}table{border-collapse:collapse;width:100%}th{background:#eee;padding:4px;border:1px solid #ccc}.footer{margin-top:20px;font-size:9pt;color:#555}</style></head><body><h1>SCHEDA TEMPERATURE FRIGORIFERI</h1><p><strong>${AZIENDA_INFO.nome}</strong> - ${AZIENDA_INFO.indirizzo}</p><p><strong>Mese:</strong> ${MESI_IT[mese - 1]} ${anno} | <strong>Range:</strong> 0°C / +4°C</p><table><thead><tr><th>G</th>${numeriFrigo.map((n) => `<th>F${n}</th>`).join("")}</tr></thead><tbody>${righe}</tbody></table><div class="footer"><p><strong>Firme verificate:</strong> ${testoFirmatari(schedeFrigoriferi, mese)}</p><p><strong>Rif:</strong> ${RIFERIMENTI_NORMATIVI.principale} - ${RIFERIMENTI_NORMATIVI.secondario}</p><p><strong>Legenda:</strong> Chiuso | Manutenzione | Non usato</p></div></body></html>`);
+    printHtml(`<!DOCTYPE html><html><head><title>Temperature Frigoriferi - ${MESI_IT[mese - 1]} ${anno}</title><style>body{font-family:Arial;font-size:10pt;margin:15mm}h1{font-size:14pt}table{border-collapse:collapse;width:100%}th{background:#eee;padding:4px;border:1px solid #ccc}.footer{margin-top:20px;font-size:9pt;color:#555}</style></head><body><h1>SCHEDA TEMPERATURE FRIGORIFERI</h1><p><strong>${AZIENDA_INFO.nome}</strong> - ${AZIENDA_INFO.indirizzo}</p><p><strong>Mese:</strong> ${MESI_IT[mese - 1]} ${anno} | <strong>Range:</strong> 0°C / +4°C</p><p style="font-size:9pt">${LEGENDA_NA}</p><table><thead><tr><th>G</th>${numeriFrigo.map((n) => `<th>F${n}</th>`).join("")}</tr></thead><tbody>${righe}</tbody></table><div class="footer"><p><strong>Firme verificate:</strong> ${testoFirmatari(schedeFrigoriferi, mese)}</p><p><strong>Rif:</strong> ${RIFERIMENTI_NORMATIVI.principale} - ${RIFERIMENTI_NORMATIVI.secondario}</p><p><strong>Legenda:</strong> Chiuso | Manutenzione | Non usato | n.a.</p></div></body></html>`);
   };
 
   if (loading) {
@@ -456,7 +459,7 @@ export default function TemperaturePositiveView() {
                     {numeriFrigo.map((frigoNum) => {
                       const cell = getCellDisplay(frigoNum, giorno);
                       const rec = getTemperatura(frigoNum, giorno);
-                      const tempValue = (rec && typeof rec === "object" && rec.temp !== undefined && rec.temp !== null) ? rec.temp : null;
+                      const tempValue = (!cell.na && rec && typeof rec === "object" && rec.temp !== undefined && rec.temp !== null) ? rec.temp : null;
                       return (
                         <td key={frigoNum} className="px-1 py-1 text-center">
                           <CellaTemperatura
@@ -482,6 +485,7 @@ export default function TemperaturePositiveView() {
         <span className="flex items-center gap-1"><span className="h-4 w-4 rounded border bg-gray-400" /> Chiuso</span>
         <span className="flex items-center gap-1"><span className="h-4 w-4 rounded border bg-yellow-200" /> Manutenzione</span>
         <span className="flex items-center gap-1"><span className="h-4 w-4 rounded border bg-gray-200" /> Non usato</span>
+        <span className="flex items-center gap-1"><span className={`h-4 rounded px-1 text-[10px] ${CLASSE_NA}`}>n.a.</span> {LEGENDA_NA}</span>
       </div>
     </div>
       {azioneModal && (
