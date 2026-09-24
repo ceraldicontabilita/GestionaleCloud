@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { sezioneNoleggio } from './VeicoliHub.jsx';
+import { sezioneNoleggio } from './sezioneNoleggio';
 
 describe('sezioneNoleggio', () => {
-  it('non confonde i pezzi', () => {
+  it('non usa includes e ignora i suffissi', () => {
     expect(sezioneNoleggio('/noleggio')).toBe('flotta');
     expect(sezioneNoleggio('/noleggio/verbali')).toBe('verbali');
     expect(sezioneNoleggio('/noleggio/posizione')).toBe('posizione');
