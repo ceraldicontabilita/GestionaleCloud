@@ -636,7 +636,6 @@ async def get_saldo_ferie_dipendente(
         raise HTTPException(status_code=404, detail="Dipendente non trovato")
     
     # Parametri contrattuali (default CCNL Commercio)
-    ore_settimanali = float(employee.get("ore_settimanali", 40))
     giorni_ferie_annuali = 26  # Giorni
     ore_ferie_annuali = giorni_ferie_annuali * 8  # 208 ore
     ore_rol_annuali = 72  # Ore

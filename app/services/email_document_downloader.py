@@ -156,7 +156,6 @@ def categorize_document(filename: str, subject: str = "", sender: str = "", sear
     """
     filename_lower = filename.lower()
     subject_lower = subject.lower()
-    sender_lower = sender.lower()
     # I nomi reali degli allegati usano spesso underscore o trattini al
     # posto degli spazi (es. ``ricevuta_f24.pdf``). Per le regole composte
     # manteniamo anche una versione lessicale normalizzata.

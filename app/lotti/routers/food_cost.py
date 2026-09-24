@@ -3818,7 +3818,6 @@ async def calcola_nutrizionale_ricetta(ricetta_id: str):
     ]
 
     # Calcola peso totale usato (g) - solo ingredienti con unita peso
-    UNITA_PESO = {"g", "gr", "kg", "ml", "cl", "dl", "l", "lt", "litri", "grammi", "chili"}
 
     peso_totale_g = 0.0
     contributi = []  # lista di (nome, gram_g, voce_usda | None)

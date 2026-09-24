@@ -432,8 +432,6 @@ async def get_suggerimenti_utile(anno: int = Query(...)) -> Dict[str, Any]:
     priorita = "NORMALE"
     
     scostamento = stato["analisi"]["scostamento_ad_oggi"]
-    ricavi = stato["reale"]["ricavi_totali"]
-    costi = stato["reale"]["costi_totali"]
     
     if scostamento < 0:
         priorita = "ALTA" if abs(scostamento) > 5000 else "MEDIA"

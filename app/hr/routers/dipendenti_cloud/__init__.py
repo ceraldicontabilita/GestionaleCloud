@@ -2068,7 +2068,7 @@ def _pdf_riepilogo_periodi(anno, mese, giorni, righe):
     pagine A4 verticali (si estende da sola se i periodi sono tanti)."""
     import fitz
     W, H = 595, 842  # A4 verticale
-    mL, mR, mT, mB = 32, 32, 70, 40
+    mL, _mR, mT, mB = 32, 32, 70, 40
     pdf = fitz.open()
     page = pdf.new_page(width=W, height=H)
     y = [mT]
@@ -2473,7 +2473,7 @@ async def update_turno(turno_id: str, turno: TurnoCloud):
 
 @router.delete("/turni/{turno_id}")
 async def delete_turno(turno_id: str):
-    result = await get_db().turni_cloud.delete_one({"id": turno_id})
+    await get_db().turni_cloud.delete_one({"id": turno_id})
     await get_db().assegnazioni_turni_cloud.delete_many({"turno_id": turno_id})
     return {"message": "Turno eliminato"}
 
@@ -3699,7 +3699,6 @@ async def get_buste_paga(anno: Optional[int] = None, mese: Optional[int] = None,
     if dipendente_id:
         dip = await get_db().dipendenti_cloud.find_one({"id": dipendente_id})
         if dip:
-            nome_completo = f"{dip.get('nome', '')} {dip.get('cognome', '')}".strip().upper()
             query["$or"] = [
                 {"dipendente_id": dipendente_id},
                 {"nome_dipendente": {"$regex": dip.get('cognome', ''), "$options": "i"}}

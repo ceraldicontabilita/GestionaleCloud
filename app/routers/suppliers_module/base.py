@@ -298,10 +298,8 @@ async def list_suppliers(
     use_cache: bool = Query(True)
 ) -> List[Dict[str, Any]]:
     """Lista fornitori con filtri e statistiche fatture."""
-    import time
     
     db = Database.get_db()
-    t_start = time.time()
     
     # Filtri avanzati disabilitano la cache
     advanced_filters_active = (

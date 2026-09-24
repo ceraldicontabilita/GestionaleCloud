@@ -165,9 +165,12 @@ async def import_partenopay_archive(db, content: bytes, *, dry_run: bool = True)
         )
 
     file_by_path = {str(item.get("file")): item for item in payload.get("files") or []}
-    with zipfile.ZipFile(io.BytesIO(content)) as archive:
+    # GC-17 (AV3-09): lo zip viene riaperto ma i file non vengono riletti ne'
+    # confrontati con lo sha256 dichiarato nel manifest; si registra l'hash
+    # cosi' come arriva. Da decidere col titolare se verificarlo qui.
+    with zipfile.ZipFile(io.BytesIO(content)) as archive:  # noqa: F841
         for relative, item in file_by_path.items():
-            full = relative if relative.startswith(ROOT) else ROOT + relative
+            full = relative if relative.startswith(ROOT) else ROOT + relative  # noqa: F841
             sha = str(item.get("sha256") or "").lower()
             doc_id = f"partenopay_{sha[:32]}"
             await db["documents_inbox"].update_one(

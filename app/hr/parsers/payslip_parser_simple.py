@@ -139,7 +139,6 @@ def extract_netto(text: str) -> float:
     IMPORTANTE: Esclude valori in LIRE (vecchia valuta italiana)
     """
     lines = text.split('\n')
-    text_upper = text.upper()
     
     # Pattern 1: NETTO DEL MESE / NETTO A PAGARE / TOTALE NETTO
     for i, line in enumerate(lines):

@@ -201,8 +201,6 @@ async def fascicolo_dipendente(
 async def kpi_dipendente(dipendente_id: str) -> Dict[str, Any]:
     """KPI rapidi per l'header della scheda dipendente."""
     db = Database.get_db()
-    anno = datetime.now().year
-    mese = datetime.now().month
 
     dip = await db[Collections.EMPLOYEES].find_one(
         {"$or": [{"id": dipendente_id}, {"codice_fiscale": dipendente_id}]},

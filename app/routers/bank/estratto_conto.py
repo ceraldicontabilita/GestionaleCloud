@@ -1633,7 +1633,6 @@ async def force_reimport_estratto_conto(file: UploadFile = File(...), _admin: Di
         )
         existing_counts[(dstr, rec.get("tipo"), round(imp, 2), desc)] += 1
     
-    cancellati = 0  # Non cancelliamo nulla
     
     # Ordina per data contabile ascendente
     movimenti.sort(key=lambda x: x["data"].isoformat()[:10])

@@ -426,9 +426,6 @@ async def analisi_movimenti_bancari_errati_in_cassa() -> Dict[str, Any]:
         logger.warning("analisi_movimenti_bancari_errati_in_cassa: raggiunto il tetto di 50000 documenti, possibile troncamento")
 
     # Categorie SICURAMENTE legittime in cassa
-    categorie_cassa_ok = {'Corrispettivi', 'POS', 'Versamento', 'Finanziamento', 
-                          'Finanziamento soci', 'Nota credito contanti'}
-    sources_cassa_ok = {'corrispettivi_sync', 'manual', 'user'}
     
     legittimi = []
     bancari_errati = []

@@ -87,7 +87,6 @@ async def job_aggiorna_riferimenti_fatture():
                 nuovi.append(riga)
                 continue
 
-            num_old = m_fatt.group(1)
             fornitore_raw = m_forn.group(1).strip()
             nome_ing = riga.split("contiene")[0].split("non contiene")[0].strip()
 
@@ -588,7 +587,6 @@ async def _catchup_jobs_mancanti():
 
         tz = ZoneInfo("Europe/Rome")
         ora_it = datetime.now(tz)
-        oggi_ymd = ora_it.strftime("%Y-%m-%d")
         oggi_start = (
             datetime(ora_it.year, ora_it.month, ora_it.day, tzinfo=tz)
             .astimezone(timezone.utc)

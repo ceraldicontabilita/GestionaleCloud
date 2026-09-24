@@ -2024,7 +2024,6 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
             else totale_fattura
         )
         metodo_xml = f.get("payment_method", "")
-        metodo_code = f.get("payment_method_code", "")
         piva = (f.get("supplier_vat") or f.get("cedente_piva") or "").strip()
 
         # Fuori dal flusso finanziario, non fuori da contabilita'/IVA.
@@ -2801,7 +2800,6 @@ async def conferma_fattura_provvisoria(data: Dict = Body(...)) -> Dict:
         else totale_fattura
     )
     fornitore = fattura.get("supplier_name", "")
-    data_fatt = fattura.get("invoice_date", "")
     
     # SOSPESA: non creare movimento in prima nota, solo aggiorna stato fattura
     if metodo == "sospesa":
@@ -3538,7 +3536,6 @@ async def annulla_auto_conferma(
 
     ids_cassa = [m["id"] for m in movimenti_cassa]
     ids_banca = [m["id"] for m in movimenti_banca]
-    fatture_ids = list({m.get("fattura_id") for m in (movimenti_cassa + movimenti_banca) if m.get("fattura_id")})
 
     # Soft-delete movimenti
     if ids_cassa:

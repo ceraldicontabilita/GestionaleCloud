@@ -346,9 +346,10 @@ class PayslipParserMultiFormat:
                 
                 # Pulisci testo se formato Zucchetti con 's'
                 if formato == "zucchetti_s":
-                    text_clean = self._clean_zucchetti_s(text)
+                    # GC-17: il testo pulito non viene usato, le estrazioni sotto leggono `text`.
+                    text_clean = self._clean_zucchetti_s(text)  # noqa: F841
                 else:
-                    text_clean = text
+                    text_clean = text  # noqa: F841
                 
                 # Estrai codice fiscale (indica busta paga valida)
                 cf = self._extract_cf(text)

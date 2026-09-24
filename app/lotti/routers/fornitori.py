@@ -689,7 +689,6 @@ async def auto_classifica_fornitori():
     fornitori = await db.fornitori.find({"in_attesa": True}, {"_id": 0}).to_list(5000)
 
     # Anche quelli senza record esplicito (da fatture)
-    nomi_fatture = await db.fatture.distinct("fornitore")
     nomi_db = set()
     async for f in db.fornitori.find({}, {"nome": 1}):
         nomi_db.add((f.get("nome", "") or "").strip().lower())

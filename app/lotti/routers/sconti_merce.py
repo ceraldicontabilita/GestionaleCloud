@@ -417,7 +417,6 @@ async def valorizza_sconti_esistenti(_admin=Depends(require_admin)):
     non_trovati = 0
 
     for sconto in sconti_da_valorizzare:
-        num_fat = sconto.get("fattura_riferimento", "")
         fornitore = sconto.get("fornitore", "")
         nome_prodotto = sconto.get("prodotto", "").strip().upper()
         quantita = float(sconto.get("cartoni", 0) or sconto.get("pezzi_totali", 0) or 0)

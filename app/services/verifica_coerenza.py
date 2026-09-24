@@ -225,7 +225,6 @@ class VerificaCoerenza:
         Verifica che i versamenti registrati manualmente corrispondano 
         ai movimenti bancari effettivi.
         """
-        discrepanze_versamenti = []
         
         if mese:
             prefix = f"{anno}-{mese:02d}"

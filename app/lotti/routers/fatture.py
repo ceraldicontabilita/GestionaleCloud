@@ -974,7 +974,6 @@ async def importa_fattura_xml(files: List[UploadFile] = File(...), job_id: str =
 
                 if ingrediente_mappato:
                     allergeni = rileva_allergeni_materia(desc)
-                    descrizione_completa = f"{desc}  {allergeni} - {fattura_data['fornitore']} n° fatt {fattura_data['numero_fattura']} - {data_fmt}"
 
                     # Aggiorna allergeni_testo nel lotto fornitore corrispondente (se presente)
                     await db.lotti_fornitori.update_many(

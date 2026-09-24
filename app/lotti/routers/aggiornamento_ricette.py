@@ -133,7 +133,6 @@ async def aggiorna_ricette_da_fattura(fattura_doc: dict) -> dict:
     """
     fornitore = fattura_doc.get("fornitore", "")
     num_fattura = fattura_doc.get("numero_fattura", "")
-    data_fatt = fattura_doc.get("data_fattura", "")
     prodotti = fattura_doc.get("prodotti", [])
 
     if not prodotti:
@@ -172,7 +171,6 @@ async def aggiorna_ricette_da_fattura(fattura_doc: dict) -> dict:
         nome_ingrediente_forzato = mappa_confermata.get(desc_lower)
 
         for ricetta in ricette:
-            ricetta_id = ricetta.get("id", "")
             ricetta_nome = ricetta.get("nome", "")
             ingredienti_semplici = ricetta.get("ingredienti", [])  # lista stringhe
             ingredienti_dettaglio = ricetta.get("ingredienti_dettaglio", [])  # lista dict
@@ -287,9 +285,7 @@ async def rielabora_tutte(giorni: int = 30):
     e aggiorna gli ingredienti delle ricette.
     Da usare dopo aver configurato nuove mappature manuali.
     """
-    from datetime import timedelta
 
-    da = (datetime.now(timezone.utc) - timedelta(days=giorni)).strftime("%d/%m/%Y")
 
     fatture = await db.fatture.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
 

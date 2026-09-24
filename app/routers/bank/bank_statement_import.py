@@ -252,7 +252,6 @@ def extract_movements_from_pdf(content: bytes) -> List[Dict[str, Any]]:
                 if not table:
                     continue
 
-                header_found = False
                 for row in table:
                     if not row or len(row) < 3:
                         continue
@@ -261,7 +260,6 @@ def extract_movements_from_pdf(content: bytes) -> List[Dict[str, Any]]:
 
                     # Skip header rows
                     if any(h in row_text for h in ['DATA CONTABILE', 'DATA VALUTA', 'DESCRIZIONE', 'OPERAZIONE', 'SALDO']):
-                        header_found = True
                         continue
 
                     # Skip empty or summary rows
@@ -486,7 +484,6 @@ def extract_row_data(row, col_mapping: Dict[str, str]) -> Optional[Dict[str, Any
                 importo = abs(parsed)
                 # Determina tipo dalla categoria o descrizione
                 categoria = str(row.get(col_mapping.get("category", ""), "") or "").lower()
-                desc_lower = descrizione.lower() if descrizione else ""
                 desc_upper = descrizione.upper() if descrizione else ""
 
                 # ============ REGOLE TIPO MOVIMENTO ============

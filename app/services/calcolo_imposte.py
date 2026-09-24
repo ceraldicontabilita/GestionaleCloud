@@ -197,8 +197,6 @@ class CalcolatoreImposte:
         # 2. Calcola variazioni fiscali
         variazioni_aumento_ires = []
         variazioni_diminuzione_ires = []
-        variazioni_aumento_irap = []
-        variazioni_diminuzione_irap = []
 
         # === VARIAZIONI IN AUMENTO (costi non/parzialmente deducibili) ===
 

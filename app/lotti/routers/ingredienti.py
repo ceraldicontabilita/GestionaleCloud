@@ -845,7 +845,6 @@ async def smart_search_prodotti(
         unita = (prod.get("unita_misura") or "").strip().upper()
 
         # Calcola prezzo totale riga
-        prezzo_riga = round(prezzo_unit * quantita, 2) if quantita > 0 else prezzo_unit
 
         # Estrai pezzi per cartone dal nome (es. "X 24", "x24")
         match_pz = re.search(r"[xX]\s*(\d+)", desc)

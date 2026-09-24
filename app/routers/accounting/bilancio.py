@@ -673,7 +673,6 @@ async def get_conto_economico_dettagliato(
         totale_nc
     )
     
-    totale_costi = totale_costi_produzione + totale_C17
     
     # RISULTATO
     risultato_operativo = ricavi_vendite - totale_costi_produzione

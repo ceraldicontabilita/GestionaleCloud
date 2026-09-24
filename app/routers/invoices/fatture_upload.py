@@ -3020,7 +3020,6 @@ async def recalculate_iva_all_invoices() -> Dict[str, Any]:
     db = Database.get_db()
 
     # Tipi documento Note Credito
-    NOTE_CREDITO_TYPES = ["TD04", "TD08"]
 
     updated_count = 0
     errors = []

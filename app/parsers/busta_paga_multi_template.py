@@ -677,11 +677,6 @@ def parse_template_zucchetti_new(text: str) -> Dict[str, Any]:
 
     # TOTALE COMPETENZE - cerca valore numerico che termina con cifre grandi
     # Pattern: cerca riga con solo numero grande (>500) che potrebbe essere competenze
-    competenze_patterns = [
-        r'TOTALEsCOMPETENZE.*?(\d{1,3}[.,]\d{2})\s*$',  # Inline
-        r'(\d{1,3}[.,]\d{3}[.,]\d{2})\s*$',  # 1.228,13
-        r'\n(\d{3,4}[.,]\d{2})\n',  # Standalone come 1.228,13 su riga
-    ]
 
     # Cerca NETTO DEL MESE esplicito (più affidabile)
     # Pattern con segno negativo: "-32,85 €"

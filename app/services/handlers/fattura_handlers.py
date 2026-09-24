@@ -245,7 +245,6 @@ async def on_fattura_pagata_risolvi(event: Dict[str, Any], db) -> Optional[Dict]
             if importo_pagato is None or importo_pagato <= 0:
                 # Fallback: se l'evento non porta importo, chiudi con il residuo completo
                 importo_pagato = partita.get("residuo", 0)
-            metodo = event.get("metodo_pagamento", "manuale")
             source = event.get("source_module", "pagamento")
             match_id_sintetico = f"manual_{source}_{fattura_id}"
             partita_info = await chiudi_partita(

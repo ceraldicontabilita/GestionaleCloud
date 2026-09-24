@@ -382,7 +382,6 @@ async def associa_intelligente(
         # Ensure descrizione is a string
         if isinstance(descrizione, dict):
             descrizione = str(descrizione)
-        data_ass = ass.get("data")
         
         match_trovato = None
         match_tipo = None

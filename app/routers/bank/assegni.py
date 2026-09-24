@@ -2341,7 +2341,7 @@ async def conferma_proposta_associazione(proposta_id: str) -> Dict[str, Any]:
     if ha_beneficiario_reale:
         set_fields["stato"] = "compilato"
 
-    result = await db[COLLECTION_ASSEGNI].update_one(
+    await db[COLLECTION_ASSEGNI].update_one(
         {"id": proposta["assegno_id"]},
         {"$set": set_fields}
     )
@@ -2610,7 +2610,6 @@ async def ricostruisci_dati_assegni(
     
     # 5. Processa ogni assegno
     for ass in assegni:
-        ass_id = ass.get("id")
         importo = normalizza_importo_match(ass.get("importo"))
         descrizione = ass.get("descrizione", "")
         beneficiario = ass.get("beneficiario")

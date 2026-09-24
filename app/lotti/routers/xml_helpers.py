@@ -114,7 +114,6 @@ def parse_fattura_xml(xml_content: bytes) -> dict:
                 "codice_articolo": "",
                 "_lotto_data": {},
             }
-            altri_dati = []
             for child in elem:
                 child_tag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
                 if child_tag == "Descrizione":

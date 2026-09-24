@@ -739,9 +739,6 @@ async def import_listino_2026(payload: dict = Body(...), _admin=Depends(require_
             logging.exception(f"[acquaviva] Errore non gestito: {e}")
 
         # Prezzo per singolo pezzo
-        prezzo_singolo_calc = (
-            round(prezzo_ct / qty_cartone, 4) if qty_cartone > 0 and prezzo_ct > 0 else 0.0
-        )
 
         iva_pct = 10.0
         try:
@@ -1166,7 +1163,6 @@ async def calcola_magazzino_congelatore():
 
     anno = datetime.now(timezone.utc).year
     data_inizio_anno = f"{anno}-01-01"
-    oggi = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     # ── 1. ENTRATE: solo dalle ultime 2 fatture Vandemoortele ──────────────────
     # Le fatture precedenti sono già state consumate completamente.

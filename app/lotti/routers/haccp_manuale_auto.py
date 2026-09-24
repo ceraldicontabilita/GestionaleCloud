@@ -136,7 +136,6 @@ async def aggiorna_sezioni_manuale():
     ogni evento significativo (nuova fattura, nuova anomalia).
     """
     now = datetime.now(timezone.utc)
-    oggi = now.strftime("%d/%m/%Y %H:%M")
 
     # ── Carica dati aggiornati ────────────────────────────────────────────────
     fornitori_qualifica = await db.fornitori_qualifica.find({}, {"_id": 0}).to_list(500)

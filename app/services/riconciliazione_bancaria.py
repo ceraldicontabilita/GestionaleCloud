@@ -1402,7 +1402,9 @@ async def riconcilia_movimenti_banca(
             if tipo == "uscita" and not match_found and not blocca_match_singolo:
                 num_fattura_ec = extract_invoice_number(descrizione)
                 num_assegno = extract_assegno_number(descrizione)
-                supplier_name_ec = extract_supplier_name(descrizione)
+                # GC-17: il fornitore letto dall'estratto conto non entra
+                # nella ricerca; resta calcolato finche' il titolare non decide.
+                supplier_name_ec = extract_supplier_name(descrizione)  # noqa: F841
 
                 # RICERCA MIGLIORATA:
                 # 1. Match esatto importo (±0.05€)
@@ -1756,7 +1758,6 @@ async def riconcilia_movimenti_banca(
 
             # === 3. CERCA POS (per ENTRATE - accrediti) ===
             if tipo == "entrata" and not match_found:
-                desc_upper = descrizione.upper()
                 # NUMIA accredita separatamente bancomat, carte e Amex. La
                 # riconciliazione certa e' la somma delle componenti con il
                 # trasferimento POS del giorno di vendita, non la conferma

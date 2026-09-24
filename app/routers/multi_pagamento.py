@@ -292,7 +292,6 @@ async def fattura_pagata_multi_metodo(data: Dict[str, Any] = Body(...)) -> Dict[
         ]
     }
     """
-    db = Database.get_db()
 
     fattura_id = data.get("fattura_id")
     pagamenti_list = data.get("pagamenti", [])

@@ -227,10 +227,6 @@ async def crea_reclamo_da_ricezione(ricezione_doc: dict):
     Chiamata automaticamente quando una ricezione viene registrata come NON conforme.
     Crea il reclamo e triggera il check sospensione.
     """
-    gravita_map = {
-        False: "alta",  # temperatura non conforme = alta
-        True: "media",  # altri problemi = media
-    }
     temp_ok = ricezione_doc.get("temperatura_conforme", True)
     imb_ok = ricezione_doc.get("imballaggio_integro", True)
     eth_ok = ricezione_doc.get("etichetta_conforme", True)

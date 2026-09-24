@@ -97,7 +97,6 @@ async def cerca_transazioni_paypal(
                 for tx in transactions:
                     tx_info = tx.get("transaction_info", {})
                     payer = tx.get("payer_info", {})
-                    cart = tx.get("cart_info", {})
                     
                     amount = float(tx_info.get("transaction_amount", {}).get("value", 0))
                     tx_date = tx_info.get("transaction_initiation_date", "")

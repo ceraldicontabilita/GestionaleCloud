@@ -709,7 +709,6 @@ async def get_dashboard_scadenze() -> Dict[str, Any]:
     """
     db = Database.get_db()
     oggi = datetime.now()
-    oggi_str = oggi.strftime('%Y-%m-%d')
     limite_30 = (oggi + timedelta(days=30)).strftime('%Y-%m-%d')
 
     # Fatture da pagare

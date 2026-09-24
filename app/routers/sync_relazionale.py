@@ -518,7 +518,6 @@ async def api_update_fattura_everywhere(
     # 4. Se cambia metodo pagamento, sposta tra cassa e banca
     if "metodo_pagamento" in update_data:
         metodo = update_data["metodo_pagamento"]
-        fattura = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0})
         
         if metodo.lower() in ["cassa", "contanti"]:
             # Rimuovi da banca, aggiungi a cassa

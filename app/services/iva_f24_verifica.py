@@ -142,7 +142,6 @@ def verifica_versamento_iva_da_documenti(
     else:
         stato = principale["evidenza_pagamento"]["stato"]
 
-    importo_f24 = principale["importo_iva"] if principale else None
     importo_f24_cents = principale["importo_iva_cents"] if principale else None
     debito_liquidazione_cents = (
         money_cents(debito_liquidazione) if debito_liquidazione is not None else None

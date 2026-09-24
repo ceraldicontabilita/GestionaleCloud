@@ -539,7 +539,6 @@ class EmailFullDownloader:
         if msg.is_multipart():
             for part in msg.walk():
                 content_type = part.get_content_type()
-                content_disposition = str(part.get("Content-Disposition", ""))
 
                 # Verifica se è un PDF
                 filename = part.get_filename()
@@ -1046,7 +1045,8 @@ async def smart_auto_associate(db: ArchivioDocumenti) -> Dict[str, int]:
                 parts = nome_completo.split()
                 if len(parts) >= 2:
                     cognome = parts[0]
-                    nome = " ".join(parts[1:])
+                    # GC-17: il nome non entra nella ricerca del cedolino (solo cognome).
+                    nome = " ".join(parts[1:])  # noqa: F841
 
                     # Cerca cedolino corrispondente
                     cedolino = await db["cedolini"].find_one({
@@ -1339,7 +1339,9 @@ async def associate_f24_from_filesystem(db: ArchivioDocumenti) -> Dict[str, int]
     """
     stats = {"associated": 0, "skipped": 0, "errors": 0}
 
-    mesi_it = {
+    # GC-17: i nomi dei mesi non vengono cercati nel nome del file, quindi
+    # "F24_giugno_2025.pdf" si abbina solo per anno.
+    mesi_it = {  # noqa: F841
         "gennaio": 1, "febbraio": 2, "marzo": 3, "aprile": 4,
         "maggio": 5, "giugno": 6, "luglio": 7, "agosto": 8,
         "settembre": 9, "ottobre": 10, "novembre": 11, "dicembre": 12
@@ -1366,7 +1368,8 @@ async def associate_f24_from_filesystem(db: ArchivioDocumenti) -> Dict[str, int]
 
             mese = None
             anno = None
-            tributo_pattern = None
+            # GC-17: il tipo di tributo si riconosce ma non entra nella ricerca dell'F24.
+            tributo_pattern = None  # noqa: F841
 
             # Pattern 1: mese numerico/anno (IVA_09_2025, IVA_11.25)
             match = re.search(r'(\d{1,2})[._](\d{2,4})', filename)
@@ -1388,15 +1391,15 @@ async def associate_f24_from_filesystem(db: ArchivioDocumenti) -> Dict[str, int]
             # Identifica tipo tributo
             filename_lower = filename.lower()
             if "iva" in filename_lower:
-                tributo_pattern = "iva"
+                tributo_pattern = "iva"  # noqa: F841
             elif "ires" in filename_lower or "irpef" in filename_lower:
-                tributo_pattern = "imposte_reddito"
+                tributo_pattern = "imposte_reddito"  # noqa: F841
             elif "inps" in filename_lower:
-                tributo_pattern = "contributi"
+                tributo_pattern = "contributi"  # noqa: F841
             elif "imu" in filename_lower or "tasi" in filename_lower:
-                tributo_pattern = "tributi_locali"
+                tributo_pattern = "tributi_locali"  # noqa: F841
             elif "1040" in filename_lower or "ritenute" in filename_lower:
-                tributo_pattern = "ritenute"
+                tributo_pattern = "ritenute"  # noqa: F841
 
             # Cerca F24 corrispondente
             query = {"$or": [

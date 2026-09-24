@@ -1500,9 +1500,6 @@ async def sync_f24_automatico(
                     f24_data["id"] = await salva_f24(db, f24_data, source="email_sync")
 
                     # Salva anche in f24_models per la visualizzazione frontend
-                    # Usa pdf_data già disponibile da Drive/Supabase (architettura Drive/Supabase)
-                    pdf_base64 = pdf_data  # Già in base64
-
                     # Converti formato tributi per f24_models
                     tributi_erario = []
                     for t in parsed.get("sezione_erario", []):
@@ -1571,34 +1568,8 @@ async def sync_f24_automatico(
                         or parsed.get("dati_generali", {}).get("data_compilazione")
                     )
 
-                    f24_model_record = {
-                        "id": f24_data["id"],  # Usa lo stesso ID
-                        "data_scadenza": data_scadenza,
-                        "scadenza_display": data_scadenza,
-                        "codice_fiscale": parsed.get("dati_generali", {}).get("codice_fiscale"),
-                        "contribuente": parsed.get("dati_generali", {}).get("ragione_sociale"),
-                        "banca": parsed.get("dati_generali", {}).get("banca"),
-                        "tipo_f24": parsed.get("dati_generali", {}).get("tipo_f24", "F24"),
-                        "tributi_erario": tributi_erario,
-                        "tributi_inps": tributi_inps,
-                        "tributi_regioni": tributi_regioni,
-                        "tributi_imu": tributi_imu,
-                        "totale_debito": totali.get("totale_debito", 0),
-                        "totale_credito": totali.get("totale_credito", 0),
-                        "saldo_finale": totali.get("saldo_netto", 0) or totali.get("saldo_finale", 0),
-                        "has_ravvedimento": parsed.get("has_ravvedimento", False),
-                        "pagato": False,
-                        "filename": doc["filename"],
-                        "pdf_data": pdf_base64,
-                        "source": "email_sync",
-                        "email_source": f24_data.get("email_source"),
-                        "created_at": datetime.now(timezone.utc).isoformat()
-                    }
 
                     # Controlla duplicati in f24_models
-                    existing_model = await db["f24_unificato"].find_one({
-                        "filename": doc["filename"]
-                    })
 
                     # La vista frontend legge lo schema tollerante del record
                     # canonico appena salvato: non creare una seconda copia
