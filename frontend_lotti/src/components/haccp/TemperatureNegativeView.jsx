@@ -10,6 +10,7 @@ import { API, MESI_IT } from "../../utils/constants";
 import SegnalaGuasto from "./shared/SegnalaGuasto";
 import { giorniNelMese } from "../../utils/dateUtils";
 import { testoFirmatari } from "../../utils/firmatari";
+import { CLASSE_NA, LEGENDA_NA, STILE_NA_STAMPA, eNonAttendibile, titoloNa } from "../../utils/attendibilita";
 import DichiaraConformiButton from "./DichiaraConformiButton";
 import { CellaTemperatura, ModalAzioneCorrettiva } from "./shared/CellaTemperatura";
 
@@ -250,6 +251,10 @@ const TemperatureNegativeView = () => {
     if (!record) {
       return { value: "-", class: "bg-gray-50 text-gray-400", title: "Nessun dato" };
     }
+    // GC-02h: valore in archivio senza firma verificata, conservato ma non attendibile
+    if (eNonAttendibile(scheda, [mese, giorno], record)) {
+      return { value: "n.a.", class: CLASSE_NA, title: titoloNa(record), na: true };
+    }
     
     if (typeof record === 'object') {
       // Periodi speciali: supporta sia flag legacy che campo tipo/label dal backend
@@ -300,6 +305,7 @@ const TemperatureNegativeView = () => {
       for (let c = 1; c <= 12; c++) {
         const cell = getCellDisplay(c, g);
         righe += `<td style="padding:4px; border:1px solid #ccc; text-align:center; ${
+          cell.na ? STILE_NA_STAMPA :
           cell.class.includes('red') ? 'background:#fee;color:#c00;' : 
           cell.class.includes('gray-400') ? 'background:#999;color:#fff;' :
           cell.class.includes('yellow') ? 'background:#fef;' :
@@ -318,13 +324,14 @@ const TemperatureNegativeView = () => {
           <h1>SCHEDA TEMPERATURE CONGELATORI</h1>
           <p><strong>${AZIENDA_INFO.nome}</strong> - ${AZIENDA_INFO.indirizzo}</p>
           <p><strong>Mese:</strong> ${MESI_IT[mese-1]} ${anno} | <strong>Range:</strong> -22°C / -18°C</p>
+          <p style="font-size:9pt">${LEGENDA_NA}</p>
         </div>
         <table><thead><tr><th>G</th>${Array.from({length:12},(_,i)=>`<th>C${i+1}</th>`).join('')}</tr></thead>
         <tbody>${righe}</tbody></table>
         <div class="footer">
           <p><strong>Firme verificate:</strong> ${testoFirmatari(schedeCongelatori, mese)}</p>
           <p><strong>Rif:</strong> ${RIFERIMENTI_NORMATIVI.principale} - ${RIFERIMENTI_NORMATIVI.secondario}</p>
-          <p><strong>Legenda:</strong> Chiuso | Manutenzione | Non usato</p>
+          <p><strong>Legenda:</strong> Chiuso | Manutenzione | Non usato | n.a.</p>
         </div>
       </body></html>`);
   };
@@ -423,8 +430,8 @@ const TemperatureNegativeView = () => {
                       return (
                         <td key={congNum} className="px-1 py-1 text-center">
                           <CellaTemperatura
-                            display={{ value: cell.value, className: cell.class, title: cell.title }}
-                            tempValue={(() => { const r = getTemperatura(congNum, giorno); return r && typeof r === "object" ? (r.temp ?? null) : null; })()}
+                            display={{ value: cell.value, className: cell.class, title: cell.title, na: cell.na }}
+                            tempValue={(() => { const r = getTemperatura(congNum, giorno); return !cell.na && r && typeof r === "object" ? (r.temp ?? null) : null; })()}
                             disabled={isChiuso || giornoFuturo(giorno)}
                             onSave={(v) => salvaTemperatura(congNum, giorno, v)}
                           />
@@ -455,6 +462,9 @@ const TemperatureNegativeView = () => {
         </span>
         <span className="flex items-center gap-1">
           <span className="w-4 h-4 bg-gray-200 border rounded"></span> Non usato
+        </span>
+        <span className="flex items-center gap-1">
+          <span className={`h-4 rounded px-1 text-[10px] ${CLASSE_NA}`}>n.a.</span> {LEGENDA_NA}
         </span>
       </div>
       {azioneModal && (

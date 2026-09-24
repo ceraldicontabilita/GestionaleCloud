@@ -14,9 +14,19 @@ from fastapi.responses import HTMLResponse
 
 from app.lotti.db import database as db
 from app.lotti.azienda import get_azienda
+from app.lotti.servizi.haccp_attendibilita import (
+    caselle_segnate,
+    coordinata_apparecchio,
+    non_attendibile_in,
+)
 
 ROOT_DIR = Path(__file__).parent.parent
 router = APIRouter(prefix="/report-haccp", tags=["Report HACCP"])
+
+LEGENDA_NA = (
+    "n.a. = valore in archivio senza firma verificata, non attendibile "
+    "(conservato nel sistema). Escluso da conteggi e percentuali di conformita'."
+)
 
 MESI_IT = [
     "",
@@ -143,8 +153,14 @@ async def load_temperature(collection, anno, mese, kind):
         temp_max = float(rec.get("temp_max", default_max) or default_max)
         giorni_raw = (rec.get("temperature") or {}).get(str(mese), {})
         giorni = {}
+        segnate = caselle_segnate(rec)
 
         for giorno, value in giorni_raw.items():
+            if non_attendibile_in(segnate, (str(mese), str(giorno)), value):
+                # GC-02h: il valore resta in archivio ma non attesta niente:
+                # fuori dai conteggi di conformita'
+                giorni[str(giorno)] = {"non_attendibile": True, "originale": value}
+                continue
             item = normalize_temp(value)
             giorni[str(giorno)] = item
             rec_min, rec_max = limiti_record(item, temp_min, temp_max)
@@ -192,6 +208,7 @@ async def load_sanificazioni(anno, mese):
         # nome del responsabile della scheda (l'operatore designato, scritto di
         # default), anche dove nessuno aveva firmato.
         firme = doc.get("firme") or {}
+        segnate = caselle_segnate(doc)
         for area, giorni in (doc.get("registrazioni") or {}).items():
             if not isinstance(giorni, dict):
                 continue
@@ -200,18 +217,23 @@ async def load_sanificazioni(anno, mese):
                 # una sanificazione eseguita: prima qualunque valore non vuoto
                 # veniva contato come fatto.
                 if value in ("X", "x", "1", 1, True):
+                    firma = (firme.get(area) or {}).get(str(giorno))
                     rows.append(
                         {
                             "area": area,
                             "giorno": str(giorno),
                             "prodotto": doc.get("prodotto") or "Registrato in scheda sanificazione",
-                            "operatore": _firmatario((firme.get(area) or {}).get(str(giorno))),
+                            "operatore": _firmatario(firma),
                             "conforme": True,
+                            "non_attendibile": non_attendibile_in(
+                                segnate, (str(area), str(giorno)), firma
+                            ),
                         }
                     )
 
     apparecchi = await db.sanificazione_apparecchi.find({"anno": anno}, {"_id": 0}).to_list(500)
     for doc in apparecchi:
+        segnate = caselle_segnate(doc)
         for campo, prefisso in (
             ("registrazioni_frigoriferi", "Frigorifero"),
             ("registrazioni_congelatori", "Congelatore"),
@@ -246,6 +268,9 @@ async def load_sanificazioni(anno, mese):
                             "prodotto": rec.get("prodotto") or rec.get("prodotto_usato") or "-",
                             "operatore": _firmatario(rec),
                             "conforme": bool(rec.get("eseguita", True)),
+                            "non_attendibile": non_attendibile_in(
+                                segnate, (campo, str(idx), coordinata_apparecchio(rec) or ""), rec
+                            ),
                         }
                     )
 
@@ -276,6 +301,15 @@ def table_temperature(apps, anno, mese, default_min, default_max):
                 # Mai celle vuote: il giorno senza rilevazione è dichiarato
                 cells += '<td class="empty" title="Dato non disponibile">N/D</td>'
                 continue
+            if item.get("non_attendibile"):
+                originale = item.get("originale")
+                if isinstance(originale, dict):
+                    originale = originale.get("temp", "")
+                cells += (
+                    '<td class="na" title="Valore in archivio senza firma verificata: '
+                    f'{h(originale)}">n.a.</td>'
+                )
+                continue
             if item.get("non_rilevato"):
                 # Giorno marcato a database dal recupero: il motivo è scritto,
                 # non si finge che il dato non sia mai esistito.
@@ -305,7 +339,10 @@ def table_temperature(apps, anno, mese, default_min, default_max):
         cells += f'<td class="pct">{pct}%<br><small>{ok_count}/{total}</small></td>'
         body += f"<tr>{cells}</tr>"
 
-    legenda = '<div class="note" style="margin-top:4px">N/D = Dato non disponibile (nessuna rilevazione registrata per quel giorno).</div>'
+    legenda = (
+        '<div class="note" style="margin-top:4px">N/D = Dato non disponibile (nessuna rilevazione registrata per quel giorno).'
+        f"<br>{h(LEGENDA_NA)}</div>"
+    )
     return f'<table class="calendar"><thead><tr>{header}</tr></thead><tbody>{body}</tbody></table>{legenda}'
 
 
@@ -334,7 +371,9 @@ def table_sanificazioni(rows, anno, mese):
         cells = f'<td class="first"><b>{h(area)}</b></td>'
         for day in range(1, n_giorni + 1):
             rec = grouped[area].get(str(day))
-            if rec:
+            if rec and rec.get("non_attendibile"):
+                cells += '<td class="na" title="Registrazione senza firma verificata">n.a.</td>'
+            elif rec:
                 done += 1
                 cells += (
                     '<td class="ok">✓</td>'
@@ -351,9 +390,11 @@ def table_sanificazioni(rows, anno, mese):
         for r in sorted(
             details, key=lambda x: (int(x.get("giorno") or 0), str(x.get("area") or ""))
         )
+        if not r.get("non_attendibile")
     )
     detail_table = f"<table><thead><tr><th>Giorno</th><th>Area</th><th>Prodotto</th><th>Operatore</th></tr></thead><tbody>{detail_rows}</tbody></table>"
-    return f'<table class="calendar"><thead><tr>{header}</tr></thead><tbody>{body}</tbody></table><h3>Dettaglio sanificazioni</h3>{detail_table}'
+    legenda = f'<div class="note" style="margin-top:4px">{h(LEGENDA_NA)}</div>'
+    return f'<table class="calendar"><thead><tr>{header}</tr></thead><tbody>{body}</tbody></table>{legenda}<h3>Dettaglio sanificazioni</h3>{detail_table}'
 
 
 def table_anomalie(rows):
@@ -399,7 +440,10 @@ async def report_haccp_mensile(
     temp_neg_apps, temp_neg_flat = await load_temperature(
         db.temperature_negative, anno, mese, "negative"
     )
-    san_mese = await load_sanificazioni(anno, mese)
+    san_tutte = await load_sanificazioni(anno, mese)
+    # GC-02h: le registrazioni non attendibili restano nel calendario come
+    # «n.a.» ma non contano fra le sanificazioni fatte
+    san_mese = [r for r in san_tutte if not r.get("non_attendibile")]
 
     # Limiti alzati (audit 24/07/2026): 1000/2000 troncavano il registro appena
     # l'archivio cresceva — il report mensile perdeva righe in silenzio.
@@ -439,7 +483,7 @@ async def report_haccp_mensile(
       .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:14px 0 18px}.stat{border:1px solid #dbe4f0;background:#f8fafc;border-radius:7px;padding:10px;text-align:center}.stat b{display:block;font-size:21px;color:#273b7a}.stat span{display:block;font-size:9px;color:#64748b}.okstat{background:#ecfdf5;border-color:#a7f3d0}.warnstat{background:#fff7ed;border-color:#fed7aa}
       .section{margin:0 0 20px;page-break-inside:avoid}.title{background:#273b7a;color:#fff;padding:7px 10px;border-radius:6px 6px 0 0;font-size:12px;font-weight:bold;display:flex;justify-content:space-between}.green{background:#166534}.red{background:#b91c1c}.violet{background:#6d28d9}.orange{background:#c2410c}
       .note{background:#f8fafc;border-left:4px solid #94a3b8;padding:6px 9px;color:#475569;font-size:10px} table{width:100%;border-collapse:collapse} th{background:#eaf1fb;color:#273b7a;text-align:left;font-size:9px;padding:5px;border:1px solid #d7e0ec} td{font-size:9px;padding:5px;border:1px solid #e2e8f0;vertical-align:middle} tr:nth-child(even) td{background:#f8fafc}
-      .calendar{table-layout:fixed}.calendar th,.calendar td{text-align:center;padding:3px 1px}.calendar .first{width:135px;text-align:left;padding:5px}.calendar small{font-size:7px;color:#64748b}.ok{background:#bbf7d0!important;color:#166534;font-weight:bold}.ko{background:#fecaca!important;color:#991b1b;font-weight:bold}.empty{background:#f8fafc!important;color:#cbd5e1}.pct{font-weight:bold;color:#273b7a}.empty-msg{border:1px solid #e2e8f0;background:#f8fafc;padding:12px;color:#64748b;font-style:italic} h3{margin:10px 0 5px;font-size:11px;color:#273b7a}.firma{display:flex;justify-content:space-between;margin-top:35px}.firma div{border-top:1px solid #94a3b8;width:220px;text-align:center;padding-top:5px;color:#64748b}.print{position:fixed;right:20px;bottom:20px;background:#273b7a;color:white;border:0;border-radius:8px;padding:10px 16px;font-weight:bold;cursor:pointer}
+      .calendar{table-layout:fixed}.calendar th,.calendar td{text-align:center;padding:3px 1px}.calendar .first{width:135px;text-align:left;padding:5px}.calendar small{font-size:7px;color:#64748b}.ok{background:#bbf7d0!important;color:#166534;font-weight:bold}.ko{background:#fecaca!important;color:#991b1b;font-weight:bold}.empty{background:#f8fafc!important;color:#cbd5e1}.na{background:#faf7f0!important;color:#6b6358;border:1px dashed #b8ad99!important;font-style:italic}.pct{font-weight:bold;color:#273b7a}.empty-msg{border:1px solid #e2e8f0;background:#f8fafc;padding:12px;color:#64748b;font-style:italic} h3{margin:10px 0 5px;font-size:11px;color:#273b7a}.firma{display:flex;justify-content:space-between;margin-top:35px}.firma div{border-top:1px solid #94a3b8;width:220px;text-align:center;padding-top:5px;color:#64748b}.print{position:fixed;right:20px;bottom:20px;background:#273b7a;color:white;border:0;border-radius:8px;padding:10px 16px;font-weight:bold;cursor:pointer}
       @media print{.print{display:none}body{padding:8px}@page{size:A4 landscape;margin:10mm}}
     </style>
     """
@@ -463,7 +507,7 @@ async def report_haccp_mensile(
 </div>
 <div class="section"><div class="title green"><span>Temperature positive - frigoriferi</span><span>{len(temp_pos_flat)} rilevazioni</span></div><div class="note">Dati letti da temperature_positive, campo temperature[mese][giorno].temp oppure mattina/sera.</div>{table_temperature(temp_pos_apps, anno, mese, 0, 4)}</div>
 <div class="section"><div class="title red"><span>Temperature negative - congelatori</span><span>{len(temp_neg_flat)} rilevazioni</span></div><div class="note">Dati letti da temperature_negative, campo temperature[mese][giorno].temp oppure mattina/sera.</div>{table_temperature(temp_neg_apps, anno, mese, -22, -18)}</div>
-<div class="section"><div class="title violet"><span>Piano di sanificazione</span><span>{len(san_mese)} registrazioni</span></div><div class="note">Dati letti da sanificazione_schede e sanificazione_apparecchi.</div>{table_sanificazioni(san_mese, anno, mese)}</div>
+<div class="section"><div class="title violet"><span>Piano di sanificazione</span><span>{len(san_mese)} registrazioni</span></div><div class="note">Dati letti da sanificazione_schede e sanificazione_apparecchi.</div>{table_sanificazioni(san_tutte, anno, mese)}</div>
 <div class="section"><div class="title orange"><span>Anomalie e non conformita</span><span>{len(anomalie_mese)} registrate</span></div>{table_anomalie(anomalie_mese)}</div>
 <div class="section"><div class="title"><span>Lotti di produzione</span><span>{len(lotti_mese)} lotti</span></div>{table_lotti(lotti_mese)}</div>
 <div class="firma"><div>Responsabile HACCP</div><div>Titolare / Direttore</div></div>

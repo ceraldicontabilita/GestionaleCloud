@@ -30,7 +30,7 @@ export function CellaTemperatura({ display, tempValue, disabled, onSave }) {
     <div
       onClick={() => { if (!disabled) { setVal(orig); setEditing(true); } }}
       className={`flex h-6 w-full items-center justify-center rounded text-xs ${disabled ? "" : "cursor-pointer hover:ring-2 hover:ring-orange-300"} ${display.className}`}
-      title={disabled ? display.title : "Tocca per inserire / modificare la temperatura"}
+      title={disabled || display.na ? display.title : "Tocca per inserire / modificare la temperatura"}
     >
       {display.value}
     </div>

@@ -6,6 +6,9 @@ import Button from "../ui/Button";
 import { API, MESI_IT, withToken } from "../../utils/constants";
 import { formattaDataItaliana, giorniNelMese } from "../../utils/dateUtils";
 import { apiError } from "../../utils/apiError";
+import { CLASSE_NA, LEGENDA_NA, eNonAttendibile, titoloNa } from "../../utils/attendibilita";
+
+const CAMPO_APPARECCHI = { frigorifero: "registrazioni_frigoriferi", congelatore: "registrazioni_congelatori" };
 
 // Ogni casella si salva subito, firmata da chi e' entrato nel tablet col PIN:
 // niente nome fisso dell'operatore, niente scheda riempita da sola, niente
@@ -98,30 +101,34 @@ const SanificazioneView = () => {
     const registrazioni = tipo === "frigorifero" 
       ? schedaApparecchi.registrazioni_frigoriferi?.[chiave] || []
       : schedaApparecchi.registrazioni_congelatori?.[chiave] || [];
-    return registrazioni.find(s => s.mese === mese && s.giorno === giorno);
+    // la voce piu' recente vince: una sanificazione firmata dopo sostituisce
+    // quella vecchia senza firma dello stesso giorno
+    const voci = registrazioni.filter(s => s.mese === mese && s.giorno === giorno);
+    return voci.length ? voci[voci.length - 1] : null;
   };
+
+  // GC-02h: voce in archivio senza firma verificata, conservata ma non attendibile
+  const apparecchioNa = (tipo, numero, sanif) =>
+    Boolean(sanif) && eNonAttendibile(schedaApparecchi, [CAMPO_APPARECCHI[tipo], numero, `${sanif.mese}-${sanif.giorno}`], sanif);
 
   // Conta statistiche apparecchi
   const getStatisticheApparecchi = () => {
-    if (!schedaApparecchi) return { totale: 0, eseguite: 0, non_eseguite: 0 };
-    
-    let totale = 0, eseguite = 0;
-    
-    // Frigoriferi
-    for (const sanifs of Object.values(schedaApparecchi.registrazioni_frigoriferi || {})) {
-      const meseCorrente = sanifs.filter(s => s.mese === mese);
-      totale += meseCorrente.length;
-      eseguite += meseCorrente.filter(s => s.eseguita).length;
+    if (!schedaApparecchi) return { totale: 0, eseguite: 0, non_eseguite: 0, na: 0 };
+
+    let totale = 0, eseguite = 0, na = 0;
+
+    // Frigoriferi e congelatori; le voci n.a. restano fuori dai conteggi
+    for (const tipo of ["frigorifero", "congelatore"]) {
+      for (const [numero, sanifs] of Object.entries(schedaApparecchi[CAMPO_APPARECCHI[tipo]] || {})) {
+        for (const s of (sanifs || []).filter(v => v.mese === mese)) {
+          if (apparecchioNa(tipo, numero, s)) { na += 1; continue; }
+          totale += 1;
+          if (s.eseguita) eseguite += 1;
+        }
+      }
     }
-    
-    // Congelatori
-    for (const sanifs of Object.values(schedaApparecchi.registrazioni_congelatori || {})) {
-      const meseCorrente = sanifs.filter(s => s.mese === mese);
-      totale += meseCorrente.length;
-      eseguite += meseCorrente.filter(s => s.eseguita).length;
-    }
-    
-    return { totale, eseguite, non_eseguite: totale - eseguite };
+
+    return { totale, eseguite, non_eseguite: totale - eseguite, na };
   };
 
   if (loading) return <div className="text-center py-10"><RefreshCw className="animate-spin mx-auto" /></div>;
@@ -206,23 +213,28 @@ const SanificazioneView = () => {
                     {Array.from({length: numGiorni}, (_, i) => {
                       const g = String(i + 1);
                       const val = scheda?.registrazioni?.[attr]?.[g] || "";
+                      const na = (val === "X" || val === "x") && eNonAttendibile(scheda, [attr, g], scheda?.firme?.[attr]?.[g]);
                       return (
                         <td key={g} className="px-1 py-1 text-center">
                           <button
                             onClick={() => toggleCella(attr, g)}
                             disabled={saving || giornoFuturo(g)}
-                            title={val === "N/D"
+                            title={na
+                              ? titoloNa(val)
+                              : val === "N/D"
                               ? "Quel giorno non è stata registrata nessuna sanificazione (sistema non attivo). Tocca per registrarla ora."
                               : undefined}
                             className={`w-6 h-6 rounded text-xs font-bold transition-colors ${
-                              val === "X"
+                              na
+                                ? `${CLASSE_NA} text-[8px] leading-none whitespace-nowrap`
+                                : val === "X"
                                 ? "bg-[#5b7a6b] text-white"
                                 : val === "N/D"
                                   ? "bg-[#f4f1ea] text-[#8a6f47] text-[8px] leading-none whitespace-nowrap"
                                   : "bg-gray-100 hover:bg-gray-200 text-gray-400"
                             }`}
                           >
-                            {val === "X" ? "X" : val === "N/D" ? "N/D" : ""}
+                            {na ? "n.a." : val === "X" ? "X" : val === "N/D" ? "N/D" : ""}
                           </button>
                         </td>
                       );
@@ -232,6 +244,8 @@ const SanificazioneView = () => {
               </tbody>
             </table>
           </div>
+
+          <p className="text-xs text-gray-500">{LEGENDA_NA}</p>
 
           {/* Footer Attrezzature */}
           <div className="flex items-center justify-between text-sm text-gray-500 bg-gray-50 p-3 rounded-lg">
@@ -268,6 +282,12 @@ const SanificazioneView = () => {
             </div>
           </div>
 
+          {statsApparecchi.na > 0 && (
+            <p className="text-xs text-gray-500">
+              {statsApparecchi.na} registrazioni del mese senza firma verificata (n.a.): escluse dai conteggi.
+            </p>
+          )}
+
           {/* Tabella Frigoriferi - GIORNI come righe, FRIGO come colonne */}
           <div className="bg-white rounded-lg border overflow-hidden">
             <div className="bg-orange-50 px-4 py-2 flex items-center gap-2">
@@ -298,10 +318,15 @@ const SanificazioneView = () => {
                         {Array.from({length: 12}, (_, frigoIdx) => {
                           const numero = frigoIdx + 1;
                           const sanif = getSanificazioneGiorno("frigorifero", numero, giorno);
-                          
+                          const na = apparecchioNa("frigorifero", numero, sanif);
+
                           return (
                             <td key={numero} className="px-1 py-1 text-center">
-                              {sanif ? (
+                              {na ? (
+                                <div className={`h-6 mx-auto rounded flex items-center justify-center px-0.5 text-[8px] ${CLASSE_NA}`} title={titoloNa(sanif)}>
+                                  n.a.
+                                </div>
+                              ) : sanif ? (
                                 <div className={`w-6 h-6 mx-auto rounded flex items-center justify-center ${
                                   sanif.eseguita 
                                     ? "bg-green-500 text-white" 
@@ -353,10 +378,15 @@ const SanificazioneView = () => {
                         {Array.from({length: 12}, (_, congIdx) => {
                           const numero = congIdx + 1;
                           const sanif = getSanificazioneGiorno("congelatore", numero, giorno);
-                          
+                          const na = apparecchioNa("congelatore", numero, sanif);
+
                           return (
                             <td key={numero} className="px-1 py-1 text-center">
-                              {sanif ? (
+                              {na ? (
+                                <div className={`h-6 mx-auto rounded flex items-center justify-center px-0.5 text-[8px] ${CLASSE_NA}`} title={titoloNa(sanif)}>
+                                  n.a.
+                                </div>
+                              ) : sanif ? (
                                 <div className={`w-6 h-6 mx-auto rounded flex items-center justify-center ${
                                   sanif.eseguita 
                                     ? "bg-green-500 text-white" 
@@ -388,6 +418,9 @@ const SanificazioneView = () => {
             </span>
             <span className="flex items-center gap-1">
               <span className="w-4 h-4 bg-white border rounded"></span> Nessuna pulizia programmata
+            </span>
+            <span className="flex items-center gap-1">
+              <span className={`h-4 rounded px-1 text-[10px] ${CLASSE_NA}`}>n.a.</span> {LEGENDA_NA}
             </span>
           </div>
         </>
