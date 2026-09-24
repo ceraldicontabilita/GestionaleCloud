@@ -3,6 +3,7 @@ Auth Router — Ceraldi Group ERP
 Login/Logout con bcrypt + PyJWT httpOnly cookie.
 Singolo utente admin configurato via env.
 """
+import hmac
 import os
 import jwt
 import bcrypt
@@ -13,6 +14,7 @@ from dotenv import load_dotenv
 
 from app.hr.config import settings as _hr_settings
 from app.services.workforce_tokens import create_workforce_token
+from app.utils import login_lockout
 
 load_dotenv()
 
@@ -34,9 +36,13 @@ TOKEN_EXPIRE_HOURS  = 24 * 7   # 7 giorni
 
 
 def _check_password(plain: str) -> bool:
-    """Verifica password: prima in chiaro, poi bcrypt se hash configurato."""
+    """Verifica password: prima in chiaro, poi bcrypt se hash configurato.
+
+    Il confronto in chiaro e' a tempo costante: `==` si ferma al primo
+    carattere diverso e lascia misurare quanti ne sono giusti.
+    """
     if ADMIN_PASSWORD:
-        return plain == ADMIN_PASSWORD
+        return hmac.compare_digest(plain.encode(), ADMIN_PASSWORD.encode())
     if ADMIN_PASSWORD_HASH:
         try:
             return bcrypt.checkpw(plain.encode(), ADMIN_PASSWORD_HASH.encode())
@@ -81,43 +87,58 @@ def verify_token(request: Request) -> str:
         raise HTTPException(status_code=401, detail="Token non valido")
 
 
-@router.post("/login")
-async def login(body: LoginRequest, response: Response):
-    if body.email.lower() != ADMIN_EMAIL.lower():
-        raise HTTPException(status_code=401, detail="Credenziali errate")
-    if not _check_password(body.password):
-        raise HTTPException(status_code=401, detail="Credenziali errate")
+# Il cookie resta sotto /hr: con path "/" finiva anche sulle richieste del
+# gestionale, che legge un cookie con lo stesso nome firmato con un altro
+# segreto. `secure` segue lo schema reale (Render termina l'HTTPS davanti).
+_COOKIE_PATH = "/hr"
 
+
+def _https(request: Request) -> bool:
+    proto = request.headers.get("x-forwarded-proto") or request.url.scheme
+    return proto.split(",")[0].strip().lower() == "https"
+
+
+def _set_session_cookies(request: Request, response: Response, token: str) -> None:
+    secure = _https(request)
+    max_age = TOKEN_EXPIRE_HOURS * 3600
+    response.set_cookie(key="access_token", value=token, httponly=True, secure=secure,
+                        samesite="lax", max_age=max_age, path=_COOKIE_PATH)
+    response.set_cookie(key="session_active", value="1", httponly=False, secure=secure,
+                        samesite="lax", max_age=max_age, path=_COOKIE_PATH)
+
+
+def _clear_session_cookies(response: Response) -> None:
+    for nome in ("access_token", "session_active"):
+        response.delete_cookie(nome, path=_COOKIE_PATH)
+        response.delete_cookie(nome)  # cookie emessi prima con path "/"
+
+
+def _login_admin(request: Request, body: "LoginRequest", response: Response) -> str:
+    """Login email/password con lo stesso blocco tentativi del PIN."""
+    ip = login_lockout.client_ip(request)
+    attesa = login_lockout.seconds_locked(ip)
+    if attesa > 0:
+        raise HTTPException(status_code=429, detail=f"Troppi tentativi, riprova tra {attesa}s")
+    email_ok = hmac.compare_digest(body.email.strip().lower().encode(), ADMIN_EMAIL.lower().encode())
+    password_ok = _check_password(body.password)
+    if not (email_ok and password_ok):
+        login_lockout.register_failure(ip)
+        raise HTTPException(status_code=401, detail="Credenziali errate")
+    login_lockout.clear_failures(ip)
     token = _make_token(body.email)
+    _set_session_cookies(request, response, token)
+    return token
 
-    # Cookie httpOnly (sicuro, non accessibile da JS)
-    response.set_cookie(
-        key="access_token",
-        value=token,
-        httponly=True,
-        secure=False,      # True in produzione con HTTPS
-        samesite="lax",
-        max_age=TOKEN_EXPIRE_HOURS * 3600,
-        path="/",
-    )
-    # Cookie non httpOnly per il frontend (solo flag di sessione)
-    response.set_cookie(
-        key="session_active",
-        value="1",
-        httponly=False,
-        secure=False,
-        samesite="lax",
-        max_age=TOKEN_EXPIRE_HOURS * 3600,
-        path="/",
-    )
 
+@router.post("/login")
+async def login(body: LoginRequest, request: Request, response: Response):
+    _login_admin(request, body, response)
     return {"ok": True, "email": body.email}
 
 
 @router.post("/logout")
 async def logout(response: Response):
-    response.delete_cookie("access_token")
-    response.delete_cookie("session_active")
+    _clear_session_cookies(response)
     return {"ok": True}
 
 
@@ -139,17 +160,9 @@ async def verify(request: Request):
 
 
 @router.post("/auth/login")
-async def auth_login(body: LoginRequest, response: Response):
+async def auth_login(body: LoginRequest, request: Request, response: Response):
     """Alias /api/auth/login → /api/login per compatibilità frontend."""
-    if body.email.lower() != ADMIN_EMAIL.lower():
-        raise HTTPException(status_code=401, detail="Credenziali errate")
-    if not _check_password(body.password):
-        raise HTTPException(status_code=401, detail="Credenziali errate")
-    token = _make_token(body.email)
-    response.set_cookie(key="access_token", value=token, httponly=True,
-                        secure=False, samesite="lax", max_age=TOKEN_EXPIRE_HOURS * 3600, path="/")
-    response.set_cookie(key="session_active", value="1", httponly=False,
-                        secure=False, samesite="lax", max_age=TOKEN_EXPIRE_HOURS * 3600, path="/")
+    token = _login_admin(request, body, response)
     return {
         "ok":          True,
         "email":       body.email,
@@ -161,6 +174,5 @@ async def auth_login(body: LoginRequest, response: Response):
 @router.post("/auth/logout")
 async def auth_logout(response: Response):
     """Alias /api/auth/logout."""
-    response.delete_cookie("access_token")
-    response.delete_cookie("session_active")
+    _clear_session_cookies(response)
     return {"ok": True}
