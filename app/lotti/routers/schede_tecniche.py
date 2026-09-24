@@ -61,6 +61,18 @@ def _is_non_alimentare(nome: str) -> bool:
     return False
 
 
+
+# Prodotti finiti comprati (cornetti, sfogliatelle, tappi...): il loro canonico
+# resta il nome del prodotto, non il vocabolario ingredienti (vedi ricerca_web).
+# I confini di parola sono `\b` veri: prima erano caratteri backspace (0x08)
+# finiti nel sorgente, e «tappi» e «babà» non venivano mai riconosciuti.
+RX_PRODOTTO_FINITO = re.compile(
+    r"croissant|cornett|sfogliatell|\btapp[oi]\b|coda d.aragosta|ciambell|"
+    r"\bbab[aà]\b|brioche|saccottin|fagottin|treccia|danish|muffin|plumcake|"
+    r"donut|krapfen|bombolon|polacca|rustico|panzerott|panino|tramezzin",
+    re.IGNORECASE,
+)
+
 @router.get("/prodotti")
 async def lista_prodotti_con_schede(
     solo_senza: bool = Query(False, description="Solo prodotti senza scheda"),
@@ -819,13 +831,7 @@ async def ricerca_web(payload: dict = Body(...)):
         # primo test live: "CRNT MLTCER BER" prendeva canonico "Frutti di bosco"
         # (il gusto!) e le ricette coi frutti di bosco veri avrebbero pescato i
         # cornetti nel FIFO.
-        _RX_PRODOTTO_FINITO = re.compile(
-            r"croissant|cornett|sfogliatell|tapp[oi]|coda d.aragosta|ciambell|"
-            r"bab[aà]|brioche|saccottin|fagottin|treccia|danish|muffin|plumcake|"
-            r"donut|krapfen|bombolon|polacca|rustico|panzerott|panino|tramezzin",
-            re.IGNORECASE,
-        )
-        if _RX_PRODOTTO_FINITO.search(testo_match):
+        if RX_PRODOTTO_FINITO.search(testo_match):
             canonico = _consolida_canonico((res.get("nome_canonico") or "").strip()) or ""
         else:
             canonico = match_livello2(testo_match) or ""
