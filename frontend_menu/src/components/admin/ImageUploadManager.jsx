@@ -5,7 +5,6 @@ import { Input } from '../ui/input';
 import { toast } from '../../hooks/use-toast';
 import { Upload, Trash2, Image as ImageIcon, Check } from 'lucide-react';
 import axios from 'axios';
-import { menuCategories } from '../../mockData';
 
 const BACKEND_URL = process.env.REACT_APP_MENU_BACKEND_URL;
 
@@ -95,26 +94,29 @@ const ImageUploadManager = () => {
     }
   };
 
-  const autoAssociateImage = (filename) => {
-    // Try to match filename with product names
+  // Suggerisce il prodotto vero (dal database) a cui l'immagine puo' andare:
+  // prima confrontava il nome del file con i prodotti finti di mockData.js.
+  const autoAssociateImage = async (filename) => {
     const lowerFilename = filename.toLowerCase().replace(/[_-]/g, ' ');
-    
     let matched = false;
-    menuCategories.forEach(category => {
-      category.subcategories?.forEach(subcategory => {
-        subcategory.items?.forEach(item => {
-          const itemName = item.nameIT.toLowerCase();
-          if (lowerFilename.includes(itemName) || itemName.includes(lowerFilename.split('.')[0])) {
-            toast({
-              title: 'Associazione automatica',
-              description: `Immagine associabile a: ${item.nameIT}`,
-              duration: 5000
-            });
-            matched = true;
-          }
-        });
+    try {
+      const res = await axios.get(`${BACKEND_URL}/api/menu/admin/products/all`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('admin_token')}` }
       });
-    });
+      (res.data.products || []).forEach(item => {
+        const itemName = (item.nameIT || '').toLowerCase();
+        if (itemName && (lowerFilename.includes(itemName) || itemName.includes(lowerFilename.split('.')[0]))) {
+          toast({
+            title: 'Associazione suggerita',
+            description: `Immagine associabile a: ${item.nameIT} (salvala dalla scheda del prodotto)`,
+            duration: 5000
+          });
+          matched = true;
+        }
+      });
+    } catch {
+      // senza elenco prodotti nessun suggerimento: non si inventa
+    }
 
     if (!matched) {
       toast({

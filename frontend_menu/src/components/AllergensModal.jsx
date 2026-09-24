@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { Checkbox } from './ui/checkbox';
-import { allergensList } from '../mockData';
 import { Button } from './ui/button';
 import { Info } from 'lucide-react';
 
-const AllergensModal = ({ isOpen, onClose, selectedAllergens, onApply, language }) => {
+// La lista arriva dal database (MenuContext): prima il filtro usava mockData.js
+// e ignorava la lista passata dalla pagina.
+const AllergensModal = ({ isOpen, onClose, selectedAllergens, onApply, language, allergensList = [] }) => {
   const [tempSelected, setTempSelected] = useState(selectedAllergens);
 
   const handleToggle = (allergenId) => {

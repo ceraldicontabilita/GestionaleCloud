@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -9,16 +9,44 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { toast } from '../../hooks/use-toast';
 import { Edit, Save, X, Search, RefreshCw } from 'lucide-react';
 import axios from 'axios';
-import { menuCategories, allergensList } from '../../mockData';
 
 const BACKEND_URL = process.env.REACT_APP_MENU_BACKEND_URL;
 
+const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('admin_token')}` });
+
+// Prodotti e allergeni vengono dal database (Supabase) e si salvano li'.
+// Prima questa pagina leggeva mockData.js e il «Salva» scriveva solo nella
+// console del browser: le modifiche non arrivavano mai al menu.
 const ProductManager = () => {
-  const [selectedCategory, setSelectedCategory] = useState(null);
-  const [selectedSubcategory, setSelectedSubcategory] = useState(null);
+  const [products, setProducts] = useState([]);
+  const [allergensList, setAllergensList] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [syncingQromo, setSyncingQromo] = useState(false);
+
+  const loadProducts = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [prodRes, allRes] = await Promise.all([
+        axios.get(`${BACKEND_URL}/api/menu/admin/products/all`, { headers: authHeaders() }),
+        axios.get(`${BACKEND_URL}/api/menu/allergens`),
+      ]);
+      setProducts(prodRes.data.products || []);
+      setAllergensList(allRes.data || []);
+    } catch (error) {
+      toast({
+        title: 'Errore',
+        description: error.response?.data?.detail || 'Impossibile caricare i prodotti',
+        variant: 'destructive'
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadProducts(); }, [loadProducts]);
 
   // Aggiunta GestionaleCloud: replica il menu pubblicato su Qromo nelle tabelle menu_*
   const handleSyncQromo = async () => {
@@ -35,6 +63,7 @@ const ProductManager = () => {
         title: 'Sincronizzazione da Qromo completata',
         description: `${d.categories} categorie, ${d.subcategories} sottocategorie, ${d.products} prodotti`
       });
+      loadProducts();
     } catch (error) {
       toast({
         title: 'Errore',
@@ -46,30 +75,12 @@ const ProductManager = () => {
     }
   };
 
-  const getAllProducts = () => {
-    const products = [];
-    menuCategories.forEach(category => {
-      category.subcategories?.forEach(subcategory => {
-        subcategory.items?.forEach(item => {
-          products.push({
-            ...item,
-            categoryName: category.nameIT,
-            subcategoryName: subcategory.nameIT,
-            category_id: category.id,
-            subcategory_id: subcategory.id
-          });
-        });
-      });
-    });
-    return products;
-  };
-
-  const filteredProducts = getAllProducts().filter(product => {
+  const filteredProducts = products.filter(product => {
     const search = searchTerm.toLowerCase();
     return (
-      product.nameIT.toLowerCase().includes(search) ||
-      product.name.toLowerCase().includes(search) ||
-      product.price.toLowerCase().includes(search)
+      (product.nameIT || '').toLowerCase().includes(search) ||
+      (product.name || '').toLowerCase().includes(search) ||
+      (product.price || '').toLowerCase().includes(search)
     );
   });
 
@@ -77,16 +88,30 @@ const ProductManager = () => {
     setEditingProduct({ ...product });
   };
 
-  const handleSave = () => {
-    // In a real implementation, this would update MongoDB or backend
-    toast({
-      title: 'Info',
-      description: 'Per salvare le modifiche, aggiorna manualmente mockData.js o implementa MongoDB',
-      variant: 'default'
-    });
-    
-    console.log('Product to save:', editingProduct);
-    setEditingProduct(null);
+  const daLotti = (product) => product?.origine === 'lotti';
+
+  const handleSave = async () => {
+    if (!editingProduct || daLotti(editingProduct)) return;
+    setSaving(true);
+    try {
+      const { id, name, nameIT, price, description, descriptionIT, allergens, image, visible } = editingProduct;
+      await axios.put(
+        `${BACKEND_URL}/api/menu/admin/products/${id}`,
+        { name, nameIT, price, description, descriptionIT, allergens: allergens || [], image, visible },
+        { headers: authHeaders() }
+      );
+      toast({ title: 'Salvato', description: `${nameIT} aggiornato nel menu` });
+      setEditingProduct(null);
+      loadProducts();
+    } catch (error) {
+      toast({
+        title: 'Non salvato',
+        description: error.response?.data?.detail || 'Salvataggio non riuscito',
+        variant: 'destructive'
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const toggleAllergen = (allergenId) => {
@@ -129,7 +154,7 @@ const ProductManager = () => {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between gap-4">
-            <span>Tutti i Prodotti ({filteredProducts.length})</span>
+            <span>Tutti i Prodotti ({loading ? '…' : filteredProducts.length})</span>
             <Button size="sm" variant="outline" onClick={handleSyncQromo} disabled={syncingQromo}>
               <RefreshCw className={`w-4 h-4 mr-2 ${syncingQromo ? 'animate-spin' : ''}`} />
               {syncingQromo ? 'Sincronizzazione...' : 'Sincronizza da Qromo'}
@@ -271,18 +296,19 @@ const ProductManager = () => {
                 </div>
               </div>
 
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                <p className="text-sm text-yellow-800">
-                  <strong>Nota:</strong> Le modifiche verranno mostrate qui ma non salvate automaticamente.
-                  Per applicare le modifiche, aggiorna il file <code className="bg-yellow-100 px-1 rounded">mockData.js</code> con i nuovi valori
-                  o implementa un database MongoDB per la persistenza automatica.
-                </p>
-              </div>
+              {daLotti(editingProduct) && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                  <p className="text-sm text-yellow-800">
+                    Questo prodotto viene da una ricetta di Lotti: si modifica nella ricetta, che lo
+                    ripubblica qui a ogni salvataggio.
+                  </p>
+                </div>
+              )}
 
               <div className="flex gap-2 pt-4">
-                <Button onClick={handleSave} className="flex-1">
+                <Button onClick={handleSave} className="flex-1" disabled={saving || daLotti(editingProduct)}>
                   <Save className="w-4 h-4 mr-2" />
-                  Salva (Log Console)
+                  {saving ? 'Salvataggio…' : 'Salva'}
                 </Button>
                 <Button onClick={() => setEditingProduct(null)} variant="outline">
                   <X className="w-4 h-4 mr-2" />
