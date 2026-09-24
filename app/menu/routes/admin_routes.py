@@ -1,9 +1,7 @@
-from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form
-from typing import List, Optional
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
 from datetime import datetime
 import os
 import mimetypes
-from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/admin", tags=["Admin Management"])
 
@@ -28,27 +26,6 @@ def _public_url(filename: str) -> str:
     storage_path = f"{UPLOAD_PREFIX}/{filename}"
     return supabase.storage.from_(STORAGE_BUCKET).get_public_url(storage_path)
 
-
-class Product(BaseModel):
-    id: int
-    name: str
-    nameIT: str
-    price: str
-    description: Optional[str] = None
-    descriptionIT: Optional[str] = None
-    allergens: List[str] = []
-    image: Optional[str] = None
-    category_id: int
-    subcategory_id: int
-
-class ProductUpdate(BaseModel):
-    name: Optional[str] = None
-    nameIT: Optional[str] = None
-    price: Optional[str] = None
-    description: Optional[str] = None
-    descriptionIT: Optional[str] = None
-    allergens: Optional[List[str]] = None
-    image: Optional[str] = None
 
 @router.post("/upload-image")
 async def upload_image(
@@ -112,42 +89,6 @@ async def delete_image(filename: str, username: str = Depends(verify_token)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/products")
-async def get_all_products():
-    """Get all products from menu (public endpoint) — vedi /api/menu per la gestione reale."""
-    return {
-        "message": "I prodotti sono gestiti tramite /api/menu (Supabase)",
-    }
-
-@router.put("/products/{product_id}")
-async def update_product(
-    product_id: int,
-    product: ProductUpdate,
-    username: str = Depends(verify_token)
-):
-    """Deprecato: usare PUT /api/menu/admin/products/{product_id}"""
-    return {
-        "success": True,
-        "message": "Usare PUT /api/menu/admin/products/{product_id} per aggiornare i prodotti",
-    }
-
-@router.post("/associate-image")
-async def associate_image(
-    product_id: int = Form(...),
-    image_filename: str = Form(...),
-    username: str = Depends(verify_token)
-):
-    """Restituisce l'URL pubblico di un'immagine gia' caricata, da salvare sul prodotto."""
-    try:
-        filename = _safe_filename(image_filename)
-        image_url = _public_url(filename)
-
-        return {
-            "success": True,
-            "product_id": product_id,
-            "image_url": image_url,
-            "message": "Image associated with product",
-            "note": "Usare PUT /api/menu/admin/products/{product_id} per salvare l'immagine sul prodotto"
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+# Tolti GET/PUT /products e POST /associate-image: rispondevano «success»
+# senza leggere ne' salvare niente, e nessuna pagina li chiamava. Prodotti e
+# immagini si salvano con PUT /api/menu/admin/products/{product_id}.
