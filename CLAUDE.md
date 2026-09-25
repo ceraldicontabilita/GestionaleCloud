@@ -735,6 +735,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - Spostando un lotto si scrivono **sempre** sia `posizione` sia `frigo_numero`; per azioni reali sui lotti
   di un'attrezzatura si usa il match esatto sul nome, mai uno snapshot troncato («Frigorifero N°2» e «N°9»
   si confondono).
+- Foto ricette: archivio unico Supabase Storage; la copia in `GESTIONALE/FOTO E IMMAGINI/RICETTE` la scrive dal PC `scripts/esporta_foto_ricette.py` (Drive Desktop): l'account di servizio non ha spazio nel Drive del titolare.
 - `prodotti_master` è il catalogo canonico e `magazzino_unificato` il magazzino canonico;
   `prodotti_vendita` e `sconti_merce` sono domini diversi e non si fondono.
 - **Il registro HACCP non si scrive da solo.** Alle 07:00 il turno *apre* la casella del giorno su ogni
@@ -831,6 +832,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   calcolabili ma con **zero** acquisti (tutti `detraibilita_da_verificare`). LIPE 2026 (tre periodi,
   quadrati): marzo combacia al centesimo, a gennaio mancano **5.005,88 €** di IVA detraibile. Nessun F24
   IVA 2026.
+- Foto ricette Lotti: **302 su 327 rotte** (404), la cartella Drive `Ricettario_GestionaleCloud_Immagini` non esiste piu'; servono gli originali, mai un abbinamento per nome.
 - Solo 108 prodotti del Menu su 325 hanno allergeni (obbligo di legge). Cron Render `gestionalecloud-calderone-15min`, sospeso, da cancellare dal pannello.
 - **Lotti indietro**: 163 fatture alimentari da giugno bloccate dal ponte (conflitti d'impronta), ultimo lotto 14/09. 119 lotti su 344 in unità non convertibili
   (95 KAR); 320 descrizioni con proposta web da confermare; scadenza su 15 lotti su 580, lotto vero su 27.
@@ -858,11 +860,9 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - L'alert scadenze F24 di `FiscaleSentinella` legge `data_scadenza`, che **nessun** F24 ha: non è mai
   partito. La scadenza va derivata dal codice tributo (`codici_tributo_db`), mai inventata.
 - Drill-down «Verifica campi e F24» punta al vecchio indice Drive; `/api/download` serve `./downloads`, mai popolato. A mano, dal titolare: **far ripartire `sync_rt_to_drive.py`** (fermo dal 28/08); password Postgres; DNS ceraldiapp.it.
-- Fork `app/hr/`: **cinque** sottopercorsi ancora duplicati (`routers/auth.py`,
-  `routers/employees/dipendenti.py`, `routers/pin_login.py`, `routers/tfr.py`, `utils/dependencies.py`):
+- Fork `app/hr/`: **cinque** sottopercorsi ancora duplicati (`routers/auth.py`, `routers/employees/dipendenti.py`, `routers/pin_login.py`, `routers/tfr.py`, `utils/dependencies.py`):
   ogni correzione va cercata anche nel gemello.
-- `gestionale.blobs`: 216 PDF che **nessun documento cita**, leggibili solo da `blob_store.py`, mai
-  importato; come `bank_reconciliation_hub` (2.017 righe), scritta da un trigger e letta da nessuno.
+- `gestionale.blobs`: 216 PDF che **nessun documento cita**, leggibili solo da `blob_store.py`, mai importato; come `bank_reconciliation_hub` (2.017 righe), scritta da un trigger e letta da nessuno.
 
 ## Logica dentro al database
 
