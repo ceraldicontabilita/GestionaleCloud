@@ -106,6 +106,15 @@ services:
       # ELABORARE, bonifici in <COGNOME NOME>/BONIFICI/DA ELABORARE: le due
       # variabili puntano alla STESSA cartella, i canali si distinguono per
       # posizione (vedi app/services/drive_documenti_ingest.py, canale bonifico).
+      # --- Cartella unica «DATI SOCIETA CERALDI» (25/09/2026): DA ELABORARE /
+      # ELABORATE / ERRORI. Ogni documento passa dallo smistatore di Documenti >
+      # Import e «vedi documento» legge solo da ELABORATE
+      # (app/services/drive_cartella_unica.py). Id cartella, non un segreto;
+      # vuota = giro spento. Proprietario: titolare.
+      - key: GOOGLE_DRIVE_DATI_FOLDER_ID
+        sync: false
+      - key: DRIVE_CARTELLA_UNICA_BATCH
+        value: "25"
       - key: GOOGLE_DRIVE_CEDOLINI_FOLDER_ID
         sync: false
       - key: GOOGLE_DRIVE_BONIFICI_FOLDER_ID

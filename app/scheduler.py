@@ -587,6 +587,17 @@ def start_scheduler():
         except Exception as e:
             logger.error(f"[SCHEDULER-DRIVE-FATTURE] errore: {e}")
 
+    async def _drive_cartella_unica_job():
+        from app.database import Database
+        from app.services import drive_cartella_unica
+        if not drive_cartella_unica.attivo():
+            return
+        try:
+            result = await drive_cartella_unica.giro(Database.get_db())
+            logger.info(f"[SCHEDULER-DRIVE-CARTELLA-UNICA] { {k: result.get(k) for k in ('letti', 'elaborati', 'errori', 'doppioni_cestinati', 'errore', 'saltato')} }")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-DRIVE-CARTELLA-UNICA] errore: {type(e).__name__}: {e}")
+
     async def _drive_cedolini_job():
         from app.database import Database
         from app.services import drive_cedolini_ingest
@@ -922,6 +933,16 @@ def start_scheduler():
         misfire_grace_time=300,
         coalesce=True,
         id="drive_fatture_ingest", name="Import Fatture da Google Drive (ogni 15 min)",
+        replace_existing=True,
+    )
+
+    scheduler.add_job(
+        _drive_cartella_unica_job,
+        'interval', minutes=15,
+        next_run_time=avvio + timedelta(minutes=2),
+        misfire_grace_time=300,
+        coalesce=True,
+        id="drive_cartella_unica", name="Cartella unica Drive DATI SOCIETA CERALDI (ogni 15 min)",
         replace_existing=True,
     )
 

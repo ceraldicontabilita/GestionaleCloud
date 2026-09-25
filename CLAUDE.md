@@ -6,7 +6,7 @@ reviewed_at: 2026-09-20
 storage_architecture: supabase
 -->
 
-Aggiornato il 24/09/2026 sul codice di `main` del repository canonico
+Aggiornato il 25/09/2026 sul codice di `main` del repository canonico
 `ceraldicontabilita/GestionaleCloud`.
 
 **Gli unici documenti sono questo file, `README.md` e `PIANO_RISTRUTTURAZIONE.md`** (registro del
@@ -329,7 +329,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 
 ### Drive, struttura canonica
 
-- **In migrazione** (PIANO §7-bis) a 6 aree piatte e inbox `00_PIPELINE`; un canale non migrato segue quanto sotto.
+- **Cartella unica** (decisione del 25/09/2026, sostituisce l'albero a 6 aree del §7-bis): «DATI SOCIETA CERALDI» con `DA ELABORARE | ELABORATE | ERRORI` (`GOOGLE_DRIVE_DATI_FOLDER_ID`); ogni file passa dallo smistatore di Documenti > Import,
+  una copia byte-identica di un originale va nel Cestino, «vedi documento» legge solo da `ELABORATE` (`drive_cartella_unica.py`). Finché la migrazione non è finita i canali sotto restano accesi.
 - `05_PERSONALE_E_CEDOLINI/DIPENDENTI/<COGNOME NOME>/` è il **fascicolo unico**
   della persona: cedolini (profondità 2), `BONIFICI/` (profondità 3, il canale
   bonifico legge solo dentro `BONIFICI`), `CERTIFICAZIONI UNICHE/`. I bonifici

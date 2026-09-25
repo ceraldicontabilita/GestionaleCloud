@@ -3196,6 +3196,65 @@ async def upload_documento_render(
     )
 
 
+@router.get("/cartella-unica/stato")
+@handle_errors
+async def stato_cartella_unica(
+    _admin: Dict[str, Any] = Depends(richiedi_admin),
+) -> Dict[str, Any]:
+    """Ultimo giro della cartella unica Drive e conteggi del registro."""
+    from app.services import drive_cartella_unica as cu
+
+    db = Database.get_db()
+    stato = await db["sistema_stato"].find_one({"chiave": cu.CHIAVE_STATO}, {"_id": 0})
+    conteggi = {}
+    for cartella in (cu.ARCHIVIO, cu.ERRORI, "CESTINO"):
+        conteggi[cartella] = await db[cu.REGISTRO].count_documents({"cartella": cartella})
+    return {"attiva": cu.attivo(), "giro_in_corso": cu._lock.locked(),
+            "ultimo_giro": stato, "registro": conteggi}
+
+
+@router.post("/cartella-unica/giro")
+@handle_errors
+async def avvia_giro_cartella_unica(
+    background_tasks: BackgroundTasks,
+    _admin: Dict[str, Any] = Depends(richiedi_admin),
+) -> Dict[str, Any]:
+    """Un giro subito sulla cartella DA ELABORARE, in sottofondo."""
+    from app.services import drive_cartella_unica as cu
+
+    if not cu.attivo():
+        raise HTTPException(status_code=409, detail="GOOGLE_DRIVE_DATI_FOLDER_ID non impostata")
+    if cu._lock.locked():
+        return {"avviato": False, "motivo": "giro_in_corso"}
+    background_tasks.add_task(cu.giro, Database.get_db())
+    return {"avviato": True}
+
+
+@router.get("/originale")
+@handle_errors
+async def apri_originale_cartella_unica(
+    drive_file_id: Optional[str] = Query(None),
+    sha256: Optional[str] = Query(None),
+):
+    """«Vedi documento»: apre l'originale solo dalla cartella unica ELABORATE."""
+    from app.services import drive_cartella_unica as cu
+
+    if not drive_file_id and not sha256:
+        raise HTTPException(status_code=400, detail="Indicare drive_file_id oppure sha256")
+    trovato = await cu.originale(Database.get_db(), drive_file_id=drive_file_id, sha256=sha256)
+    if not trovato:
+        raise HTTPException(status_code=404, detail="Originale non presente nella cartella unica ELABORATE")
+    from urllib.parse import quote
+
+    nome_sicuro = re.sub(r'[\r\n"]+', " ", trovato["nome"] or "documento").strip()
+    nome_ascii = nome_sicuro.encode("ascii", "replace").decode("ascii")
+    return StreamingResponse(
+        iter([trovato["contenuto"]]), media_type=trovato["mime"] or "application/octet-stream",
+        headers={"Content-Disposition": (
+            f"inline; filename=\"{nome_ascii}\"; filename*=UTF-8''{quote(nome_sicuro)}")},
+    )
+
+
 @router.post("/upload-auto")
 @handle_errors
 async def upload_documento_automatico(
