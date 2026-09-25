@@ -162,6 +162,10 @@ class TestAllowlistCongelata:
         # tornerebbe 401 e il collegamento sparirebbe proprio dove serve.
         # E' la mappa del sito, la stessa che si legge nella barra indirizzi.
         "/api/sezioni", "/api/sezioni/",
+        # Ritorno da Banco BPM (Enable Banking): lo apre la banca, non il
+        # gestionale; vale solo con lo state monouso generato da «Collega»
+        # (15 minuti, impronta SHA-256), e non espone dati.
+        "/api/banca/enable-banking/callback",
     }
 
     ALLOWLIST_PREFISSI_ATTESA = ["/docs", "/redoc"]

@@ -141,6 +141,8 @@ def _register_bank(app: FastAPI):
 
     app.include_router(bank_statement_import.router, prefix="/api/bank-statement", tags=["Bank Statement"])
     app.include_router(estratto_conto.router, prefix="/api/estratto-conto-movimenti", tags=["Estratto Conto"])
+    from app.routers.bank import enable_banking as enable_banking_router
+    app.include_router(enable_banking_router.router, prefix="/api/banca/enable-banking", tags=["Banca Enable Banking"])
     app.include_router(regole_riconoscimento.router, prefix="/api/regole-riconoscimento-banca", tags=["Regole Riconoscimento Banca"])
     app.include_router(archivio_bonifici_router, prefix="/api/archivio-bonifici", tags=["Archivio Bonifici"])
     app.include_router(assegni.router, prefix="/api/assegni", tags=["Assegni"])

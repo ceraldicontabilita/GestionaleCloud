@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { RefreshCw, Database } from 'lucide-react';
-import api from '../api';
+import { RefreshCw, Database, Link2, Eye } from 'lucide-react';
+import api, { messaggioErrore } from '../api';
 import { COLORS } from '../lib/utils';
 
 /**
@@ -116,12 +116,82 @@ export default function AggiornamentoDati() {
                   ))}
                 </div>
                 {f.nota && <div style={S.nota}>{f.nota}</div>}
+                {f.enable_banking && <LetturaDiretta eb={f.enable_banking} />}
               </li>
             );
           })}
         </ol>
       )}
     </section>
+  );
+}
+
+/**
+ * Lettura diretta Banco BPM (Enable Banking) in modalita' ombra: collega il
+ * conto e mostra l'anteprima nuovi / gia' presenti / da verificare. Non scrive
+ * movimenti: l'importazione arriva col pulsante «Aggiorna ora».
+ */
+function LetturaDiretta({ eb }) {
+  const [anteprima, setAnteprima] = useState(null);
+  const [lavoro, setLavoro] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  let stato = 'Lettura diretta spenta';
+  if (eb.attivo && !eb.configurato) stato = 'Lettura diretta attiva, ma mancano le chiavi di Enable Banking su Render';
+  else if (eb.attivo && !eb.collegata) stato = 'Conto non collegato';
+  else if (eb.attivo) stato = `Conto collegato, permesso valido fino al ${giorno(eb.valida_fino)}`;
+
+  const collega = async () => {
+    setLavoro(true);
+    setMsg(null);
+    try {
+      const res = await api.post('/api/banca/enable-banking/collega', {}, { timeout: 30000 });
+      window.location.assign(res.data.url);
+    } catch (e) {
+      setMsg(messaggioErrore(e, 'Collegamento non avviato'));
+      setLavoro(false);
+    }
+  };
+
+  const leggi = async () => {
+    setLavoro(true);
+    setMsg(null);
+    try {
+      const res = await api.get('/api/banca/enable-banking/anteprima', { timeout: 90000 });
+      setAnteprima(res.data);
+    } catch (e) {
+      setMsg(messaggioErrore(e, 'Lettura dalla banca non riuscita'));
+    } finally {
+      setLavoro(false);
+    }
+  };
+
+  return (
+    <div style={S.diretta} data-testid="lettura-diretta">
+      <div style={S.testo}>{stato}</div>
+      {eb.attivo && eb.configurato && (
+        <div style={S.azioni}>
+          <button type="button" style={S.bottone} onClick={collega} disabled={lavoro}>
+            <Link2 size={14} /> {eb.collegata ? 'Ricollega Banco BPM' : 'Collega Banco BPM'}
+          </button>
+          {eb.collegata && (
+            <button type="button" style={S.bottone} onClick={leggi} disabled={lavoro}>
+              <Eye size={14} /> {lavoro ? 'Lettura…' : 'Anteprima (non scrive)'}
+            </button>
+          )}
+        </div>
+      )}
+      {msg && <div style={S.errore} role="alert">{msg}</div>}
+      {anteprima && (
+        <div style={S.dettagli} data-testid="anteprima-banca">
+          <span>Periodo: <strong>{giorno(anteprima.periodo?.[0])} – {giorno(anteprima.periodo?.[1])}</strong></span>
+          <span>letti: <strong>{anteprima.conteggi.letti}</strong></span>
+          <span>nuovi: <strong>{anteprima.conteggi.nuovi}</strong></span>
+          <span>già presenti: <strong>{anteprima.conteggi.gia_presenti}</strong></span>
+          <span>da verificare: <strong>{anteprima.conteggi.da_verificare}</strong></span>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -162,4 +232,6 @@ const S = {
     color: COLORS.danger, fontSize: 13, display: 'flex', flexWrap: 'wrap', gap: 8,
   },
   idRichiesta: { fontSize: 11, opacity: 0.8 },
+  diretta: { marginTop: 8, paddingTop: 8, borderTop: `1px dashed ${COLORS.border}` },
+  azioni: { display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 6 },
 };

@@ -138,5 +138,21 @@ services:
         sync: false
       - key: SUMUP_MERCHANT_CODE
         sync: false
+      # --- Banco BPM via Enable Banking (PSD2, sola lettura), modalita' ombra.
+      # Proprietario: titolare (Vincenzo Ceraldi). Spenta per default: senza
+      # ENABLE_BANKING_ENABLED=true le rotte /api/banca/enable-banking/*
+      # rispondono 503. ID e chiave sono gli stessi del servizio di prova
+      # (pannello Enable Banking); la chiave privata si ruota rigenerandola li'.
+      # La sessione della banca si salva cifrata con CREDENTIALS_ENCRYPTION_KEY.
+      # Si accende dalla dashboard Render (valore «true»); assente = spenta.
+      - key: ENABLE_BANKING_ENABLED
+        sync: false
+      - key: ENABLE_BANKING_APPLICATION_ID
+        sync: false
+      - key: ENABLE_BANKING_PRIVATE_KEY_PEM
+        sync: false
+      # Deve coincidere con il redirect URL registrato nel pannello Enable Banking.
+      - key: ENABLE_BANKING_REDIRECT_URL
+        value: "https://gestionalecloud.onrender.com/api/banca/enable-banking/callback"
       # Credenziali, archivio e integrazioni sono configurati nella dashboard.
       # Non aggiungere valori sensibili al repository.

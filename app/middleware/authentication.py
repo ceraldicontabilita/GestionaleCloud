@@ -59,6 +59,9 @@ PUBLIC_PATHS = {
     "/api/auth/pin-login",  # login PIN reale (pin_login.router montato su /api/auth): senza
                              # questo path esplicito NESSUNO può più fare login (review Codex, PR #65)
     "/api/auth/mfa/verify-login",  # challenge firmata + OTP, non ancora una sessione
+    # Ritorno da Banco BPM (Enable Banking): lo apre la banca, vale solo con
+    # lo state monouso generato da «Collega» (app/services/enable_banking.py).
+    "/api/banca/enable-banking/callback",
     # RIMOSSO: "/api/auth/register" — ora richiede autenticazione (admin crea utenti)
 
     # Pagine legali: già pubbliche in versione non-/api (bypass generico
