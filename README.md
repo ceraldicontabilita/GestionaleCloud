@@ -12,14 +12,14 @@ Un unico processo FastAPI (`app/main.py`) serve le API e i quattro frontend comp
 
 | App | Rotte | Backend | Frontend | Accesso |
 | --- | --- | --- | --- | --- |
-| ERP (contabilità) | `/`, `/api/*` | `app/` | `frontend/` (Vite) | login ERP |
-| HR / AppDipendenti | `/hr`, `/hr/portale`, `/hr/api/*` | `app/hr/` | `frontend_hr/` (Vite) | nome + PIN personale |
-| Menu | `/menu`, `/menu/admin`, `/menu/api/*` | `app/menu/` | `frontend_menu/` (CRA) | utente e password admin |
-| Lotti (HACCP) | `/lotti`, `/lotti/api/*` | `app/lotti/` | `frontend_lotti/` (CRA) | PIN operatore |
+| ERP (contabilità) | `/`, `/api/*` | `app/` | `frontend/` (Vite) | PIN amministratore + MFA (unico login admin) |
+| HR / AppDipendenti | `/hr`, `/hr/portale`, `/hr/api/*` | `app/hr/` | `frontend_hr/` (Vite) | dipendente: nome + PIN personale; admin: sessione ERP |
+| Menu | `/menu`, `/menu/admin`, `/menu/api/*` | `app/menu/` | `frontend_menu/` (CRA) | admin: sessione ERP |
+| Lotti (HACCP) | `/lotti`, `/lotti/api/*` | `app/lotti/` | `frontend_lotti/` (CRA) | operatore: PIN personale; admin: sessione ERP |
 
 Il codice Python sta in **`app/`**. **`backend/`** contiene solo `requirements.txt` di produzione.
 
-HR, Menu e Lotti sono montate in `app/main.py` **prima** del catch-all `/{full_path:path}` della SPA ERP, in quest'ordine: `/lotti`, `/saima`, `/menu`, `/hr`, `/assets`, poi la SPA. Controllato su `main`: l'ordine è quello.
+HR, Menu e Lotti sono montate in `app/main.py` **prima** del catch-all `/{full_path:path}` della SPA ERP, in quest'ordine: `/lotti`, `/saima`, `/menu`, `/hr`, `/assets`, poi la SPA.
 
 ## Dati
 

@@ -101,7 +101,7 @@ export default function StrumentiHub() {
 
       <div style={{ padding: '16px 0 0 0' }}>
         {error && (
-          <div style={{ padding: 16, background: '#faf7f0', borderRadius: 8, marginBottom: 16 }}>
+          <div role="alert" style={{ padding: 16, background: '#fef2f2', color: '#b91c1c', borderRadius: 8, marginBottom: 16 }}>
             Errore caricamento: {error}
           </div>
         )}
