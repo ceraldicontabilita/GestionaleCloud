@@ -6,6 +6,9 @@ gli stessi motori idempotenti; nessun handler implementa matching alternativo.
 from __future__ import annotations
 
 import logging
+import calendar
+import re
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
@@ -133,6 +136,52 @@ async def on_estratto_conto_importato_riprocessa(event: Dict[str, Any], db):
         if str(m.get("data") or "")[:4].isdigit()
     }
     anno = next(iter(anni)) if len(anni) == 1 else None
-    return await riconcilia_documenti_e_pagamenti(
+    # Un estratto bancario resta bancario anche quando contiene PayPal. Prima
+    # del matching acquisisce le transazioni ufficiali dei mesi interessati:
+    # il checkpoint incrementale della pagina PayPal non copre gli anni passati.
+    mesi_paypal = set()
+    for movimento in movimenti:
+        if not re.search(r"\bpaypal\b", str(movimento.get("descrizione") or ""), re.I):
+            continue
+        try:
+            giorno = datetime.strptime(str(movimento.get("data") or "")[:10], "%Y-%m-%d")
+        except ValueError:
+            continue
+        if giorno.replace(tzinfo=timezone.utc) <= datetime.now(timezone.utc):
+            mesi_paypal.add((giorno.year, giorno.month))
+
+    paypal_api = {"stato": "nessun_movimento_paypal", "periodi": []}
+    if mesi_paypal:
+        from app.config import settings
+
+        if not (settings.PAYPAL_CLIENT_ID and settings.PAYPAL_CLIENT_SECRET):
+            paypal_api = {"stato": "credenziali_assenti", "periodi": []}
+        else:
+            from app.services.paypal_api_sync import sync_paypal_period
+
+            paypal_api = {"stato": "sincronizzato", "periodi": [], "errori": []}
+            for year, month in sorted(mesi_paypal):
+                start = datetime(year, month, 1, tzinfo=timezone.utc)
+                last_day = calendar.monthrange(year, month)[1]
+                end = datetime(year, month, last_day, 23, 59, 59, tzinfo=timezone.utc)
+                end = min(end, datetime.now(timezone.utc))
+                try:
+                    result = await sync_paypal_period(db, start, end)
+                    paypal_api["periodi"].append(result)
+                except Exception as exc:  # La banca va comunque riconciliata.
+                    logger.warning(
+                        "Sync PayPal per estratto %04d-%02d fallita: %s",
+                        year, month, type(exc).__name__,
+                    )
+                    paypal_api["errori"].append({
+                        "mese": f"{year:04d}-{month:02d}",
+                        "tipo": type(exc).__name__,
+                    })
+            if paypal_api["errori"]:
+                paypal_api["stato"] = "parziale" if paypal_api["periodi"] else "errore"
+
+    result = await riconcilia_documenti_e_pagamenti(
         db, anno=anno, movimento_ids=ids or None,
     )
+    result["paypal_api"] = paypal_api
+    return result
