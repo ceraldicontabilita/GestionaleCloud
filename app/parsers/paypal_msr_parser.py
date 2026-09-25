@@ -304,21 +304,28 @@ _PAYPAL_ENGLISH_STATUSES = (
     'Completed', 'Pending', 'Cancelled', 'Canceled', 'Denied', 'Reversed',
     'Refunded', 'Processed', 'Placed', 'Removed', 'Unclaimed', 'Expired',
     'Failed', 'Cleared', 'Held', 'Partially Refunded',
+    'Completata', 'In sospeso', 'Rimosso', 'Annullata', 'Rimborsata',
 )
 
 
 def _classify_english_transaction(description: str, gross: float) -> str:
     normalized = description.lower()
-    if 'refund' in normalized:
+    if 'refund' in normalized or 'rimborso' in normalized:
         return 'rimborso'
-    if 'withdrawal' in normalized:
+    if 'withdrawal' in normalized or 'prelievo' in normalized:
         return 'prelievo'
-    if 'bank deposit' in normalized or 'card deposit' in normalized:
+    if any(marker in normalized for marker in (
+        'bank deposit', 'card deposit', 'versamento generico',
+    )):
         return 'accredito'
-    if 'payment' in normalized and gross < 0:
+    if 'bonifico bancario sul conto paypal' in normalized:
+        return 'bonifico_paypal'
+    if ('payment' in normalized or 'pagamento' in normalized) and gross < 0:
         if 'express checkout' in normalized:
             return 'express_checkout'
-        if 'preapproved' in normalized or 'bill user' in normalized:
+        if any(marker in normalized for marker in (
+            'preapproved', 'bill user', 'preautorizzato', 'utenza',
+        )):
             return 'pagamento_utenza'
         if 'website payment' in normalized:
             return 'pagamento_web'
@@ -327,7 +334,7 @@ def _classify_english_transaction(description: str, gross: float) -> str:
 
 
 def extract_transactions_from_english_text(text: str) -> List[Dict[str, Any]]:
-    """Estrae i report PayPal ``Transaction History`` annuali.
+    """Estrae i report PayPal annuali ``Transaction History``/``Cronologia transazioni``.
 
     In questo layout la descrizione precede la riga contabile; se il nome del
     fornitore va a capo, la continuazione compare tra data e stato. Il parser
@@ -352,17 +359,22 @@ def extract_transactions_from_english_text(text: str) -> List[Dict[str, Any]]:
         line = raw_line.strip()
         if not line:
             continue
-        if line == 'Date Description Status Currency Gross Fee Net':
+        if line in (
+            'Date Description Status Currency Gross Fee Net',
+            'Data Descrizione Stato Valuta Lordo Tariffa Netto',
+        ):
             in_table = True
             description_lines = []
             current_transaction = None
             continue
         if not in_table:
             continue
-        if line == 'Transaction History' or re.search(r'\sPage\s+\d+$', line):
+        if line in ('Transaction History', 'Cronologia transazioni') or re.search(
+            r'\s(?:Page|Pagina)\s+\d+$', line,
+        ):
             continue
 
-        id_match = re.fullmatch(r'ID:\s*(\S+)', line)
+        id_match = re.fullmatch(r'ID(?:/Codice)?:\s*(\S+)', line)
         if id_match:
             if current_transaction is not None:
                 current_transaction['transaction_id'] = id_match.group(1)
@@ -509,7 +521,12 @@ def parse_paypal_msr(file_path: str) -> Dict[str, Any]:
                     result['riepilogo_attivita'] = extract_activity_summary(text)
                 
                 # Pages with transaction history
-                if 'Cronologia transazioni' in text:
+                if (
+                    'Cronologia transazioni' in text
+                    and 'Data Descrizione Stato Valuta Lordo Tariffa Netto' in text
+                ):
+                    all_transactions.extend(extract_transactions_from_english_text(text))
+                elif 'Cronologia transazioni' in text:
                     tables = page.extract_tables()
                     for table in tables:
                         if table and len(table) > 1:

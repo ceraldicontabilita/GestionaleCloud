@@ -66,3 +66,32 @@ def test_dettaglio_senza_id_paypal_non_diventa_movimento():
     assert extract_single_transaction_detail(
         "Pagamento inviato a Fornitore\n29 aprile 2025 09:51:48 CEST\n-58,55 EUR"
     ) is None
+
+
+def test_report_annuale_italiano_legge_id_importi_e_versamenti_distinti():
+    text = """Cronologia transazioni
+dicembre 31, 2024 tramite agosto 04, 2025
+Data Descrizione Stato Valuta Lordo Tariffa Netto
+Pagamento preautorizzato utenza: Spotify AB
+12/01/2025 Completata EUR -17,99 0,00 -17,99
+ID/Codice: 7DR45019GN8991907
+Versamento generico con carta
+12/01/2025 Completata EUR 17,99 0,00 17,99
+ID/Codice: 5TW59825X4574884X
+Pagamento Express Checkout: Intesa Sanpaolo
+29/04/2025 S.p.A. Completata EUR -58,55 0,00 -58,55
+ID/Codice: 74418673ST3611131
+dicembre 31, 2024 tramite agosto 04, 2025 Pagina 1
+"""
+
+    transactions = extract_transactions_from_english_text(text)
+
+    assert len(transactions) == 3
+    assert [tx["transaction_id"] for tx in transactions] == [
+        "7DR45019GN8991907", "5TW59825X4574884X", "74418673ST3611131",
+    ]
+    assert [tx["lordo"] for tx in transactions] == [-17.99, 17.99, -58.55]
+    assert [tx["tipo"] for tx in transactions] == [
+        "pagamento_utenza", "accredito", "express_checkout",
+    ]
+    assert transactions[2]["nome_controparte"] == "Intesa Sanpaolo S.p.A."
