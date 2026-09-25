@@ -683,9 +683,12 @@ async def correggi_mapping(payload: dict = Body(...)):
         },
         upsert=True,
     )
-    # Propaga al dizionario prodotti
+    # Propaga al dizionario SOLO la riga con questa descrizione. Prima bastavano
+    # i primi 15 caratteri in qualunque punto del nome: confermare «PASTA DE
+    # CECCO SPAGHETTI» rinominava anche «PASTA DE CECCO PENNE LISCE».
+    esatta = {"$regex": f"^{re.escape(desc_key)}$", "$options": "i"}
     res = await db.dizionario_prodotti.update_many(
-        {"nome_normalizzato": {"$regex": re.escape(desc_key[:15]), "$options": "i"}},
+        {"$or": [{"nome_normalizzato": esatta}, {"nome_originale": esatta}]},
         {"$set": {"nome_canonico": nome_canc, "ingrediente_canonico": nome_canc}},
     )
     return {"success": True, "prodotti_aggiornati": res.modified_count}
