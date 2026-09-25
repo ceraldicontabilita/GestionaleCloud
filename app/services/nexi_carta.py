@@ -306,7 +306,12 @@ async def verifica_addebiti_nexi(db, anno: Optional[int] = None) -> Dict[str, An
                 await risolvi_alert("NEXI_ADDEBITO_NON_QUADRA", chiave, db)
                 await db[COLL_MOVIMENTI].update_one(
                     {"_id": doc["_id"]},
-                    {"$set": {"nexi_riconciliato": True, "nexi_periodo": periodo}},
+                    # Anche lo stato che leggono le pagine di riconciliazione:
+                    # col solo flag Nexi l'addebito quadrato restava «aperto».
+                    {"$set": {"nexi_riconciliato": True, "nexi_periodo": periodo,
+                              "riconciliato": True,
+                              "tipo_riconciliazione": "addebito_nexi_quadrato",
+                              "stato_riconciliazione": "riconciliato"}},
                 )
             else:
                 stats["non_quadrano"] += 1

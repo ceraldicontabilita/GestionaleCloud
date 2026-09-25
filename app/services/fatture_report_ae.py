@@ -244,7 +244,7 @@ async def importa_report_fatture_ricevute(
     source_hash = hashlib.sha256(content).hexdigest()
     now = datetime.now(timezone.utc).isoformat()
 
-    from app.services.pagamenti_dichiarati_titolare import normalizza_metodo_titolare
+    from app.services.pagamenti_dichiarati_titolare import normalizza_metodo_titolare, numero_da_data_excel
 
     invoices_by_filename, invoices_by_identity = await _indice_fatture_attive(db)
     colonne = {
@@ -287,7 +287,8 @@ async def importa_report_fatture_ricevute(
                 raw.get(colonne["metodo"]),
                 raw.get(colonne["carta"]) if colonne["carta"] else None,
             )
-            assegno = _text(raw.get(colonne["assegno"])) if colonne["assegno"] else ""
+            assegno_grezzo = raw.get(colonne["assegno"]) if colonne["assegno"] else None
+            assegno = (numero_da_data_excel(assegno_grezzo) or _text(assegno_grezzo)) if colonne["assegno"] else ""
             titolare = {
                 "metodo_pagamento_titolare": metodo_titolare,
                 "metodo_pagamento_titolare_testo": _text(raw.get(colonne["metodo"])),

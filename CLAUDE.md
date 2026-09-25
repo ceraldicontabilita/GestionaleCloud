@@ -258,9 +258,9 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 
 ## Identità, prove e attese
 
-- Nessuna entità si associa per solo importo. Una relazione certa richiede
-  identità/provenienza coerente e importo esatto al centesimo quando l'importo
-  fa parte della prova.
+- Nessuna entità si associa per solo importo: servono identità/provenienza coerente e importo al centesimo. Unica
+  eccezione, regola del titolare: un assegno paga la fattura di pari importo emessa nei 15 giorni prima dell'addebito,
+  se è l'unica (`REGOLA_TITOLARE_GIORNI_PRECEDENTI`); il numero scritto nel report «Fatture ricevute» vince sempre.
 - Nei casi ambigui mostra i candidati (`Scegli fattura`, `Scegli driver`,
   `Scegli verbale`) e non applicare il collegamento.
 - Fattura, disposizione, ricevuta, quietanza e movimento bancario sono prove
