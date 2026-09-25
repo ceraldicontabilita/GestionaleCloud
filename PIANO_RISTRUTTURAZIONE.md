@@ -428,6 +428,8 @@ Il conteggio dei tre moduli report/batch è 1.186 righe rimosse. Non aggiungerlo
 
 ## 7-bis. Programma documentale, fiscale e audit v3 (piano approvato il 23/09/2026)
 
+> **25/09/2026, decisione del titolare:** l'albero Drive a 6 aree e l'inbox `00_PIPELINE` sono sostituiti da una **cartella unica** «DATI SOCIETA CERALDI» (`DA ELABORARE | ELABORATE | ERRORI`, `app/services/drive_cartella_unica.py`). Restano validi motore unico, apertura unica dell'originale e zero doppioni; i canali per sezione si spengono dopo la migrazione dei file.
+
 ### Contesto
 
 Piano approvato dal titolare il 23/09/2026, trascritto qui per intero perché nessuna sessione ne perda un pezzo. Copre quattro richieste: riorganizzazione Drive, PROMPT MASTER del 23/09 (audit v3 compreso), integrazione del Minisito fiscale, riconciliazione F24 ↔ banca. La sezione **I** dice dove sta ogni capitolo; la **H** l'ordine. Gli ID (`DRV-xx`, `RST-F24B`, `MINI-xx`, `AV3-xx`) sono stabili: il registro §8 li cita.
