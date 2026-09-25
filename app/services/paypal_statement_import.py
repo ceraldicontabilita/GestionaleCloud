@@ -203,8 +203,14 @@ async def save_parsed_statement(
         "periodo_inizio": periodo.get("periodo_inizio"),
         "periodo_fine": periodo.get("periodo_fine"),
     }
+    identity_queries = [{"id": deterministic_id}, {"source_fingerprint": fingerprint}]
+    # La vecchia identita' per conto/periodo e' valida per MSR/CSR con conto
+    # dichiarato. Un dettaglio di transazione non dichiara il conto: due
+    # pagamenti nello stesso giorno non devono collassare in uno statement.
+    if account.get("codice_conto") and periodo.get("periodo_inizio") and periodo.get("periodo_fine"):
+        identity_queries.append(legacy_query)
     existing_statement = await db[COLL_STATEMENTS].find_one(
-        {"$or": [{"id": deterministic_id}, {"source_fingerprint": fingerprint}, legacy_query]},
+        {"$or": identity_queries},
         {"_id": 0, "id": 1},
     )
     statement_id = str((existing_statement or {}).get("id") or deterministic_id)

@@ -161,6 +161,26 @@ def test_reimport_stesso_pdf_e_idempotente_e_non_duplica_entita():
     assert db["paypal_transactions"].docs[0]["statement_ids"] == [first["statement_id"]]
 
 
+def test_due_dettagli_stesso_giorno_non_collassano_per_conto_assente():
+    db = _Db()
+    first_detail = _parsed(transaction_id="DETAIL-1")
+    second_detail = _parsed(transaction_id="DETAIL-2")
+    for detail in (first_detail, second_detail):
+        detail["tipo_documento"] = "DET"
+        detail["account_info"] = {"codice_conto": None, "email_paypal": None}
+        detail["periodo"] = {
+            "periodo_inizio": "2025-04-29", "periodo_fine": "2025-04-29",
+            "mese": 4, "anno": 2025,
+        }
+
+    first = _run(save_parsed_statement(db, first_detail, source="paypal_detail"))
+    second = _run(save_parsed_statement(db, second_detail, source="paypal_detail"))
+
+    assert first["statement_id"] != second["statement_id"]
+    assert len(db["paypal_statements"].docs) == 2
+    assert len(db["paypal_transactions"].docs) == 2
+
+
 def test_transazione_senza_id_usa_chiave_stabile_e_non_si_duplica():
     db = _Db()
     parsed = _parsed(transaction_id="")

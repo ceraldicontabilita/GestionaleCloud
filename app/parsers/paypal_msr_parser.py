@@ -304,21 +304,28 @@ _PAYPAL_ENGLISH_STATUSES = (
     'Completed', 'Pending', 'Cancelled', 'Canceled', 'Denied', 'Reversed',
     'Refunded', 'Processed', 'Placed', 'Removed', 'Unclaimed', 'Expired',
     'Failed', 'Cleared', 'Held', 'Partially Refunded',
+    'Completata', 'In sospeso', 'Rimosso', 'Annullata', 'Rimborsata',
 )
 
 
 def _classify_english_transaction(description: str, gross: float) -> str:
     normalized = description.lower()
-    if 'refund' in normalized:
+    if 'refund' in normalized or 'rimborso' in normalized:
         return 'rimborso'
-    if 'withdrawal' in normalized:
+    if 'withdrawal' in normalized or 'prelievo' in normalized:
         return 'prelievo'
-    if 'bank deposit' in normalized or 'card deposit' in normalized:
+    if any(marker in normalized for marker in (
+        'bank deposit', 'card deposit', 'versamento generico',
+    )):
         return 'accredito'
-    if 'payment' in normalized and gross < 0:
+    if 'bonifico bancario sul conto paypal' in normalized:
+        return 'bonifico_paypal'
+    if ('payment' in normalized or 'pagamento' in normalized) and gross < 0:
         if 'express checkout' in normalized:
             return 'express_checkout'
-        if 'preapproved' in normalized or 'bill user' in normalized:
+        if any(marker in normalized for marker in (
+            'preapproved', 'bill user', 'preautorizzato', 'utenza',
+        )):
             return 'pagamento_utenza'
         if 'website payment' in normalized:
             return 'pagamento_web'
@@ -327,7 +334,7 @@ def _classify_english_transaction(description: str, gross: float) -> str:
 
 
 def extract_transactions_from_english_text(text: str) -> List[Dict[str, Any]]:
-    """Estrae i report PayPal ``Transaction History`` annuali.
+    """Estrae i report PayPal annuali ``Transaction History``/``Cronologia transazioni``.
 
     In questo layout la descrizione precede la riga contabile; se il nome del
     fornitore va a capo, la continuazione compare tra data e stato. Il parser
@@ -352,17 +359,22 @@ def extract_transactions_from_english_text(text: str) -> List[Dict[str, Any]]:
         line = raw_line.strip()
         if not line:
             continue
-        if line == 'Date Description Status Currency Gross Fee Net':
+        if line in (
+            'Date Description Status Currency Gross Fee Net',
+            'Data Descrizione Stato Valuta Lordo Tariffa Netto',
+        ):
             in_table = True
             description_lines = []
             current_transaction = None
             continue
         if not in_table:
             continue
-        if line == 'Transaction History' or re.search(r'\sPage\s+\d+$', line):
+        if line in ('Transaction History', 'Cronologia transazioni') or re.search(
+            r'\s(?:Page|Pagina)\s+\d+$', line,
+        ):
             continue
 
-        id_match = re.fullmatch(r'ID:\s*(\S+)', line)
+        id_match = re.fullmatch(r'ID(?:/Codice)?:\s*(\S+)', line)
         if id_match:
             if current_transaction is not None:
                 current_transaction['transaction_id'] = id_match.group(1)
@@ -412,6 +424,57 @@ def extract_transactions_from_english_text(text: str) -> List[Dict[str, Any]]:
     return transactions
 
 
+_MESI_ITALIANI = {
+    'gennaio': 1, 'febbraio': 2, 'marzo': 3, 'aprile': 4,
+    'maggio': 5, 'giugno': 6, 'luglio': 7, 'agosto': 8,
+    'settembre': 9, 'ottobre': 10, 'novembre': 11, 'dicembre': 12,
+}
+
+
+def extract_single_transaction_detail(text: str) -> Optional[Dict[str, Any]]:
+    """Legge il PDF PayPal di dettaglio, distinto dagli estratti MSR/CSR.
+
+    L'ID nel permalink PayPal, la data estesa e l'importo con segno devono
+    essere tutti presenti: l'anteprima del browser ha una data propria che
+    non e' la data della transazione.
+    """
+    recipient = re.search(r'^Pagamento inviato a\s+(.+)$', text, re.I | re.M)
+    reference = re.search(
+        r'paypal\.com/unifiedtransactions/details/payment/([A-Z0-9]{10,})',
+        text, re.I,
+    )
+    date = re.search(
+        r'\b(\d{1,2})\s+(' + '|'.join(_MESI_ITALIANI) +
+        r')\s+(\d{4})\s+\d{1,2}:\d{2}:\d{2}\b',
+        text, re.I,
+    )
+    amount = re.search(r'(?<!\d)(-\s*[\d.,]+)\s*(?:€|\ufffd)?\s*EUR\b', text, re.I)
+    if not (recipient and reference and date and amount):
+        return None
+
+    day, month_name, year = date.groups()
+    try:
+        operation_date = datetime(int(year), _MESI_ITALIANI[month_name.casefold()], int(day))
+        gross = parse_italian_amount(amount.group(1).replace(' ', ''))
+    except ValueError:
+        return None
+    if gross >= 0:
+        return None
+    name = recipient.group(1).strip()
+    return {
+        'data': operation_date.strftime('%Y-%m-%d'),
+        'descrizione': f'Pagamento inviato a {name}',
+        'transaction_id': reference.group(1),
+        'nome_controparte': name,
+        'email_controparte': '',
+        'lordo': gross,
+        'tariffa': 0.0,
+        'netto': gross,
+        'tipo': 'pagamento',
+        'valuta': 'EUR',
+    }
+
+
 def parse_paypal_msr(file_path: str) -> Dict[str, Any]:
     """
     Parser principale per PDF PayPal MSR/CSR.
@@ -458,7 +521,12 @@ def parse_paypal_msr(file_path: str) -> Dict[str, Any]:
                     result['riepilogo_attivita'] = extract_activity_summary(text)
                 
                 # Pages with transaction history
-                if 'Cronologia transazioni' in text:
+                if (
+                    'Cronologia transazioni' in text
+                    and 'Data Descrizione Stato Valuta Lordo Tariffa Netto' in text
+                ):
+                    all_transactions.extend(extract_transactions_from_english_text(text))
+                elif 'Cronologia transazioni' in text:
                     tables = page.extract_tables()
                     for table in tables:
                         if table and len(table) > 1:
@@ -486,6 +554,12 @@ def parse_paypal_msr(file_path: str) -> Dict[str, Any]:
                     seen_ids.add(tid)
                 unique_transactions.append(tx)
             
+            if not unique_transactions:
+                detail = extract_single_transaction_detail(all_text)
+                if detail:
+                    unique_transactions = [detail]
+                    result['tipo_documento'] = 'DET'
+
             result['transazioni'] = unique_transactions
             result['totale_transazioni'] = len(unique_transactions)
             result['success'] = True
