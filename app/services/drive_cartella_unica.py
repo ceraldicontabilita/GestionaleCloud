@@ -43,6 +43,10 @@ logger = logging.getLogger(__name__)
 REGISTRO = "drive_cartella_unica"
 CHIAVE_STATO = "drive_cartella_unica_last_sync"
 INBOX, ARCHIVIO, ERRORI = "DA ELABORARE", "ELABORATE", "ERRORI"
+# Copie esatte che il Cestino non accetta: un file di proprieta' del titolare
+# puo' cestinarlo solo lui (Drive risponde 403 al service account). Restano
+# qui, fuori dall'archivio, finche' il titolare non svuota la cartella.
+DOPPIONI = "DOPPIONI"
 CARTELLA_MIME = "application/vnd.google-apps.folder"
 # Chiavi del risultato dello smistatore che identificano il record creato.
 _CHIAVI_RIFERIMENTO = (
@@ -83,7 +87,7 @@ def _service():
 def _cartelle(service, root: str) -> Dict[str, str]:
     from app.services.drive_invoice_ingest import _get_or_create_folder
 
-    return {nome: _get_or_create_folder(service, root, nome) for nome in (INBOX, ARCHIVIO, ERRORI)}
+    return {nome: _get_or_create_folder(service, root, nome) for nome in (INBOX, ARCHIVIO, ERRORI, DOPPIONI)}
 
 
 def _elenca(service, parent_id: str, campi: str, limite: Optional[int] = None) -> List[Dict[str, Any]]:
@@ -111,11 +115,18 @@ def _sposta(service, file_id: str, da: str, a: str, motivo: Optional[str] = None
     ).execute()
 
 
-def _cestina(service, file_id: str, copia_di: str) -> None:
-    service.files().update(
-        fileId=file_id, supportsAllDrives=True, fields="id, trashed",
-        body={"trashed": True, "description": f"Gestionale: copia identica di {copia_di}"},
-    ).execute()
+def _cestina(service, file_id: str, copia_di: str) -> bool:
+    """Cestino (mai eliminazione). Falso se Drive non lo consente (403)."""
+    try:
+        service.files().update(
+            fileId=file_id, supportsAllDrives=True, fields="id, trashed",
+            body={"trashed": True, "description": f"Gestionale: copia identica di {copia_di}"},
+        ).execute()
+        return True
+    except Exception as exc:
+        if getattr(getattr(exc, "resp", None), "status", None) == 403:
+            return False
+        raise
 
 
 class _FileCaricato:
@@ -208,11 +219,16 @@ async def _giro(db) -> Dict[str, Any]:
                     copia_di = candidato
                     break
             if copia_di:
-                await asyncio.to_thread(_cestina, service, fid, copia_di)
+                cartella = "CESTINO"
+                if not await asyncio.to_thread(_cestina, service, fid, copia_di):
+                    cartella = DOPPIONI
+                    await asyncio.to_thread(_sposta, service, fid, cartelle[INBOX], cartelle[DOPPIONI],
+                                            f"copia identica di {copia_di}")
                 await _registra(db, fid, nome=nome, sha256=sha256, esito="doppione_cestinato",
-                                cartella="CESTINO", duplicato_di=copia_di)
+                                cartella=cartella, duplicato_di=copia_di)
                 esito["doppioni_cestinati"] += 1
-                esito["dettagli"].append({"file": nome, "esito": "doppione", "copia_di": copia_di})
+                esito["dettagli"].append({"file": nome, "esito": "doppione", "copia_di": copia_di,
+                                          "cartella": cartella})
                 continue
 
             contesto = {"channel": "drive_cartella_unica", "drive_file_id": fid,

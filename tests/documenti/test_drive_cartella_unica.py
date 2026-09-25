@@ -22,12 +22,20 @@ class _Esegui:
         return self.valore() if callable(self.valore) else self.valore
 
 
+class _Http403(Exception):
+    """Come googleapiclient HttpError: il file e' del titolare, non del service account."""
+
+    class resp:
+        status = 403
+
+
 class DriveFinto:
     """Drive in memoria: file con parent, md5, contenuto, cestino."""
 
     def __init__(self):
         self.file = {}
         self.cestinati = []
+        self.cestino_vietato = False
         self.eliminati = []
 
     def aggiungi(self, fid, nome, contenuto, parent):
@@ -50,6 +58,8 @@ class DriveFinto:
                 assert f["parent"] == removeParents
                 f["parent"] = addParents
             if body and body.get("trashed"):
+                if self.cestino_vietato:
+                    raise _Http403()
                 f["trashed"] = True
                 self.cestinati.append(fileId)
             if body and body.get("description"):
@@ -65,7 +75,8 @@ class DriveFinto:
         return _Esegui({"name": f["name"], "mimeType": f["mimeType"]})
 
 
-CARTELLE = {cu.INBOX: "inbox", cu.ARCHIVIO: "elaborate", cu.ERRORI: "errori"}
+CARTELLE = {cu.INBOX: "inbox", cu.ARCHIVIO: "elaborate", cu.ERRORI: "errori",
+            cu.DOPPIONI: "doppioni"}
 
 
 @pytest.fixture
@@ -207,3 +218,18 @@ def test_tipo_ignoto_non_entra_in_documents_inbox(monkeypatch):
     esito = run(cu._smista("x.bin", b"???", {}))
     assert esito["tipo_rilevato"] == "non_riconosciuto" and not chiamato
     assert cu.esito_del_risultato(esito)[0] == cu.ERRORI
+
+
+def test_cestino_vietato_la_copia_va_in_doppioni_non_in_errori(ambiente):
+    drive, smistati, _ = ambiente
+    db = AsyncMongoMockClient()["t"]
+    drive.cestino_vietato = True
+    drive.aggiungi("orig", "a.xml", b"<xml>a</xml>", "elaborate")
+    drive.aggiungi("copia", "a copia.xml", b"<xml>a</xml>", "inbox")
+    esito = run(cu.giro(db))
+    assert esito["doppioni_cestinati"] == 1 and esito["errori"] == 0
+    assert drive.file["copia"]["parent"] == "doppioni" and not smistati
+    assert "copia identica di orig" in drive.file["copia"]["description"]
+    riga = run(db[cu.REGISTRO].find_one({"id": "copia"}))
+    assert riga["cartella"] == cu.DOPPIONI and riga["duplicato_di"] == "orig"
+    assert run(cu.originale(db, drive_file_id="copia")) is None
