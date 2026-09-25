@@ -19,7 +19,6 @@ export const PAGE_META = {
   fornitori: { sub: "Anagrafica e contatti dei fornitori", colore: SAGE, icona: "🚚" },
   lotti: { sub: "Tracciabilità lotti, scadenze e recall", colore: "linear-gradient(135deg,#c9a877,#8a6f47)", icona: "🏷️" },
   cosa_usare_oggi: { sub: "Lotti ordinati per scadenza e valore", colore: "linear-gradient(135deg,#e08e3e,#c4894a)", icona: "⏰" },
-  dashboard_economica: { sub: "Valore lotti, spreco, margini e fornitori", colore: SAGE, icona: "💶" },
   produzione_consigliata: { sub: "Suggerimenti basati su storico, invenduto e festività", colore: "linear-gradient(135deg,#c9a877,#8a6f47)", icona: "👨‍🍳" },
   mappa_tracciabilita: { sub: "Percorso del prodotto dalla fattura allo smaltimento", colore: SAGE, icona: "🗺️" },
   storico_produzioni: { sub: "Produzioni registrate", colore: SAGE, icona: "📦" },

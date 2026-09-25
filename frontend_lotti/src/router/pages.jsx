@@ -39,7 +39,6 @@ import CataloghiEsterniView from "../components/haccp/CataloghiEsterniView";
 import CollaudiView from "../components/haccp/CollaudiView";
 import AttrezzatureView from "../components/haccp/AttrezzatureView";
 import CosaUsareOggiView from "../components/haccp/CosaUsareOggiView";
-import DashboardEconomicaView from "../components/haccp/DashboardEconomicaView";
 import ProduzioneConsigliataView from "../components/haccp/ProduzioneConsigliataView";
 import MappaTracciabilitaView from "../components/haccp/MappaTracciabilitaView";
 import ControlloMagazzinoView from "../components/haccp/ControlloMagazzinoView";
@@ -88,7 +87,6 @@ const PAGINE = {
   },
   storico_produzioni: { render: () => <StoricoProduzioniView /> },
   cosa_usare_oggi: { render: () => <CosaUsareOggiView /> },
-  dashboard_economica: { render: () => <DashboardEconomicaView /> },
   produzione_consigliata: { render: () => <ProduzioneConsigliataView /> },
   mappa_tracciabilita: { render: (ctx) => <MappaTracciabilitaView onNavigate={ctx.handleTabChange} /> },
   // Moduli HACCP (senza ErrorBoundary: comportamento storico invariato)

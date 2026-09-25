@@ -155,20 +155,9 @@ function CardProposta({ p, onDecisa }) {
   );
 }
 
-// La Dashboard economica apre questa pagina con un ingrediente da cercare.
-function ricercaIniziale() {
-  try {
-    const v = sessionStorage.getItem("comparatore_search") || "";
-    sessionStorage.removeItem("comparatore_search");
-    return v;
-  } catch {
-    return "";
-  }
-}
-
 export default function ConfrontoProdottoView() {
-  const [q, setQ] = useState(ricercaIniziale);
-  const [vista, setVista] = useState(() => (q ? "tutti" : "confronti"));   // confronti | tutti | da_confermare
+  const [q, setQ] = useState("");
+  const [vista, setVista] = useState("confronti");   // confronti | tutti | da_confermare
   const [fornitore, setFornitore] = useState("");
   const [dati, setDati] = useState(null);
   const [proposte, setProposte] = useState(null);
