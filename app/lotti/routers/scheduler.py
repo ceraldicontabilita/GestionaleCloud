@@ -430,13 +430,21 @@ async def job_sync_gestionale_fatture():
             "conflitti": (res.get("conflitti") or [])[:10],
         })
     except Exception as e:
-        logger.warning(f"[scheduler] gestionale-fatture fallito: {e}")
-        await db.scheduler_logs.insert_one({
-            "job": "sync_gestionale_fatture",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "success": False,
-            "error": str(e)[:250],
-        })
+        # Un ReadTimeout di Supabase ha messaggio vuoto: senza il tipo il log
+        # diceva solo «fallito: ». E se il registro stesso non si scrive (stesso
+        # timeout) l'errore resta nel log invece di uscire dal job.
+        motivo = f"{type(e).__name__}: {e}"[:250]
+        logger.warning("[scheduler] gestionale-fatture fallito: %s", motivo)
+        try:
+            await db.scheduler_logs.insert_one({
+                "job": "sync_gestionale_fatture",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "success": False,
+                "error": motivo,
+            })
+        except Exception as exc:
+            logger.warning("[scheduler] registro gestionale-fatture non scritto: %s: %s",
+                           type(exc).__name__, exc)
 
 
 async def job_sincronizza_operatori_hr():
