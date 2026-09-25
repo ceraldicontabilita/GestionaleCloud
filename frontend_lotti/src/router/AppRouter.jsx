@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 import { API } from "../utils/constants";
 import KioskLayout from "../layouts/KioskLayout";
-import { isAdmin } from "../auth";
+import { isAdmin, ricordaPaginaRichiesta } from "../auth";
 import { getTabletSession } from "../utils/tabletSession";
 
 export default function AppRouter({ AppComponent }) {
@@ -46,7 +46,10 @@ export default function AppRouter({ AppComponent }) {
   // Questo è un filtro di comodità lato schermo — la sicurezza vera resta nel
   // backend (auth_dependency + require_admin sugli endpoint sensibili).
   if (!isAdmin()) {
-    if (!window.location.hash.startsWith("#tablet/")) window.location.hash = "tablet/home";
+    if (!window.location.hash.startsWith("#tablet/")) {
+      ricordaPaginaRichiesta();
+      window.location.hash = "tablet/home";
+    }
     return <KioskLayout hash="tablet/home" />;
   }
   return <AppComponent />;

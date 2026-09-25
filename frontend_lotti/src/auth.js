@@ -164,3 +164,18 @@ export function startTokenAutoRefresh() {
   };
   _refreshTimer = setInterval(tick, 60 * 60 * 1000); // ogni ora
 }
+
+// Pagina chiesta da un link (es. #attendibilita_haccp) da chi non era ancora
+// entrato come amministratore: il kiosk la sostituiva con #tablet/home e dopo
+// il PIN si finiva sulla dashboard, come se la pagina non esistesse.
+const PAGINA_RICHIESTA_KEY = "lotti_pagina_richiesta";
+export function ricordaPaginaRichiesta() {
+  const h = (window.location.hash || "").replace("#", "");
+  if (!h || h.startsWith("tablet")) return;
+  try { sessionStorage.setItem(PAGINA_RICHIESTA_KEY, h); } catch { /* no-op */ }
+}
+export function prendiPaginaRichiesta(ripiego = "dashboard") {
+  let h = "";
+  try { h = sessionStorage.getItem(PAGINA_RICHIESTA_KEY) || ""; sessionStorage.removeItem(PAGINA_RICHIESTA_KEY); } catch { /* no-op */ }
+  return h || ripiego;
+}

@@ -511,6 +511,10 @@ async def importa_fattura_xml(files: List[UploadFile]):
         "nuove_materie": 0,
         "match_ingredienti": [],
         "errori": [],
+        # Quale documento ogni XML ha prodotto o ritrovato: il ponte lo usa
+        # per agganciare la fattura del gestionale senza ricostruirne
+        # l'identita' (P.IVA e numero scritti diversamente la perdevano).
+        "fatture_ids": [],
     }
 
     fornitori_esclusi_docs = await db.fornitori.find({"escluso": True}, {"nome": 1}).to_list(5000)
@@ -647,10 +651,13 @@ async def importa_fattura_xml(files: List[UploadFile]):
                     }},
                 )
                 risultati["fatture_duplicate_saltate"] += 1
+                if esistente.get("id"):
+                    risultati["fatture_ids"].append(esistente["id"])
                 continue
 
             risultati["fatture_processate"] += 1
             risultati["prodotti_trovati"] += len(fattura_data["prodotti"])
+            collega_righe(fattura_data["prodotti"])
 
             fattura = FatturaImportata(
                 fornitore=fattura_data["fornitore"],
@@ -684,6 +691,7 @@ async def importa_fattura_xml(files: List[UploadFile]):
             # (potrebbe esistere per un precedente import): solo all'inserimento.
             set_doc = {k: v for k, v in fattura_dict.items() if k not in ("id", "created_at")}
             on_insert = {"id": fattura_dict.get("id"), "created_at": fattura_dict.get("created_at")}
+            chiave_salvata = chiave_fattura
             try:
                 await db.fatture.update_one(
                     chiave_fattura,
@@ -704,14 +712,13 @@ async def importa_fattura_xml(files: List[UploadFile]):
                     {"_id": 0, "fornitore": 1})
                 stesso_fornitore = esistente and _norm_f(esistente.get("fornitore")) == _norm_f(fattura.fornitore)
                 if fattura.piva or stesso_fornitore:
-                    await db.fatture.update_one(
-                        {"numero_fattura": fattura.numero_fattura, "piva": fattura.piva},
-                        {"$set": set_doc},
-                    )
+                    chiave_salvata = {"numero_fattura": fattura.numero_fattura, "piva": fattura.piva}
+                    await db.fatture.update_one(chiave_salvata, {"$set": set_doc})
                 else:
                     set2 = dict(set_doc)
                     set2["piva"] = ("ND:" + _norm_f(fattura.fornitore))[:60]
                     set2["verifica_richiesta"] = True
+                    chiave_salvata = {"numero_fattura": fattura.numero_fattura, "piva": set2["piva"]}
                     await db.fatture.update_one(
                         {"numero_fattura": fattura.numero_fattura, "piva": set2["piva"]},
                         {"$set": set2, "$setOnInsert": on_insert},
@@ -720,6 +727,10 @@ async def importa_fattura_xml(files: List[UploadFile]):
                     risultati["errori"].append(
                         f"Possibile duplicato — verifica richiesta: fattura {fattura.numero_fattura} "
                         f"di {fattura.fornitore} (numero già presente per un altro fornitore senza P.IVA; conservate entrambe)")
+
+            salvata = await db.fatture.find_one(chiave_salvata, {"_id": 0, "id": 1})
+            if salvata and salvata.get("id"):
+                risultati["fatture_ids"].append(salvata["id"])
 
             # Crea fornitore se nuovo
             if not await db.fornitori.find_one({"nome": fattura_data["fornitore"]}):
@@ -1630,36 +1641,44 @@ async def backfill_codici_articolo():
             "fatture_aggiornate": fatture_agg, "righe_con_codice": righe_agg}
 
 
-# ── Recupero link righe-fattura → prodotto ─────────────────────────────────────
-# Le fatture rimappate da invoices non portano i campi-link. Backfill idempotente:
-# imposta nome_canonico (via normalizzatore del progetto) sulle righe prive di
-# QUALSIASI campo-link, così "Righe fattura senza link prodotto" torna a posto.
+# ── Link righe-fattura → prodotto ──────────────────────────────────────────────
+# Ogni riga porta il suo nome canonico (normalizzatore del progetto) cosi'
+# "Righe fattura senza link prodotto" non cresce: lo scrive il motore d'import
+# a ogni fattura, e il giro delle 03:00 ricollega le righe vecchie.
+_CAMPI_LINK_RIGA = ("prodotto_master_id", "master_id", "prodotto_id", "prodotto_key",
+                    "prodotto_dizionario_id", "nome_canonico", "nome_canc")
+
+
+def collega_righe(prodotti) -> int:
+    """Scrive nome_canonico e prodotto_key sulle righe che non hanno nessun
+    campo-link. Non tocca le righe gia' collegate. Ritorna quante ne ha collegate."""
+    from app.lotti.routers.prodotti_master import normalize_nome
+
+    collegate = 0
+    for p in prodotti or []:
+        if not isinstance(p, dict) or any(p.get(k) for k in _CAMPI_LINK_RIGA):
+            continue
+        desc = (p.get("descrizione") or "").strip()
+        if len(desc) < 2:
+            continue
+        nc = normalize_nome(desc)
+        if not nc:
+            continue
+        p["nome_canonico"] = nc
+        p["prodotto_key"] = re.sub(r"[^a-z0-9]+", " ", nc.lower()).strip()
+        collegate += 1
+    return collegate
+
+
 @router.post("/ricollega-righe")
 async def ricollega_righe_fatture():
-    from app.lotti.routers.prodotti_master import normalize_nome
-    _LINK = ("prodotto_master_id", "master_id", "prodotto_id", "prodotto_key",
-             "prodotto_dizionario_id", "nome_canonico", "nome_canc")
     fatture_agg = 0
     righe_agg = 0
     async for f in db.fatture.find({}, {"id": 1, "prodotti": 1}):
         prods = f.get("prodotti") or []
-        changed = False
-        for p in prods:
-            if not isinstance(p, dict):
-                continue
-            if any(p.get(k) for k in _LINK):
-                continue
-            desc = (p.get("descrizione") or "").strip()
-            if len(desc) < 2:
-                continue
-            nc = normalize_nome(desc)
-            if not nc:
-                continue
-            p["nome_canonico"] = nc
-            p["prodotto_key"] = re.sub(r"[^a-z0-9]+", " ", nc.lower()).strip()
-            changed = True
-            righe_agg += 1
-        if changed and f.get("id"):
+        n = collega_righe(prods)
+        if n and f.get("id"):
             await db.fatture.update_one({"id": f["id"]}, {"$set": {"prodotti": prods}})
             fatture_agg += 1
+            righe_agg += n
     return {"ok": True, "fatture_aggiornate": fatture_agg, "righe_collegate": righe_agg}

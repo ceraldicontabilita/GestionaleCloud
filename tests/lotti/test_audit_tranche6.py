@@ -433,3 +433,18 @@ def test_export_sanificazione_tutte_le_righe(dbmock):
     for attr in ATTREZZATURE_SANIFICAZIONE:
         assert attr in html, f"riga attrezzatura '{attr}' assente dalla stampa"
     assert html.count("class='check'") == 2, "2 sanificazioni nel DB → 2 celle X in stampa"
+
+
+def test_import_collega_le_righe_e_dice_quale_fattura_ha_salvato(dbmock):
+    """Il ponte aggancia la fattura per id (non ricostruendo l'identita'), e
+    ogni riga nasce con il suo nome canonico: niente «righe senza link»."""
+    import app.lotti.routers.fatture as fat
+    ris = run(fat.importa_fattura_xml(files=[_upload("f.xml", _xml_fattura())]))
+    salvata = run(dbmock.fatture.find_one({}, {"_id": 0}))
+    assert ris["fatture_ids"] == [salvata["id"]]
+    assert salvata["prodotti"] and all(p.get("nome_canonico") and p.get("prodotto_key")
+                                       for p in salvata["prodotti"])
+    # re-import: stesso id, nessun documento in piu'
+    ris2 = run(fat.importa_fattura_xml(files=[_upload("f2.xml", _xml_fattura())]))
+    assert ris2["fatture_ids"] == [salvata["id"]]
+    assert run(dbmock.fatture.count_documents({})) == 1

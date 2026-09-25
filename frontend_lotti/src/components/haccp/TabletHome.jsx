@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { saveToken, saveRuolo, setGateOk } from "../../auth";
+import { saveToken, saveRuolo, setGateOk, prendiPaginaRichiesta } from "../../auth";
 import axios from "axios";
 import { Lock } from "lucide-react";
 import { apiError } from "../../utils/apiError";
@@ -201,7 +201,7 @@ export default function TabletHome({ onEntra, preselectReparto }) {
     // (trovato al collaudo del 25/07/2026).
     setGateOk();
     setShowAdminEsci(false);
-    window.location.hash = "dashboard";
+    window.location.hash = prendiPaginaRichiesta("dashboard");
     window.dispatchEvent(new Event("tablet-auth"));
   };
 

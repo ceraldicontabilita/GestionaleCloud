@@ -710,9 +710,9 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - **«Fattura attiva» si decide in un posto solo**, e per Lotti vale lo stesso criterio del libro giornale:
   fuori `deleted`, `archived`/`archiviata`, `archivio_storico` e le collisioni di identità aperte. Un
   filtro parallelo che guardava solo `deleted` mandava a Lotti 1.444 fatture invece di 889.
-- **Il registro delle ricevute non è una prova di presenza**: una riga vale solo se la fattura che dice di
-  aver preso esiste ancora in `fatture`. Altrimenti svuotare Lotti lascia il registro pieno, il ponte salta
-  tutto e il magazzino non si rialimenta più. Rialimentare non duplica: l'import è idempotente.
+- **Il registro delle ricevute non è una prova di presenza**: vale solo se la fattura esiste ancora in
+  `fatture`. **Un'impronta cambiata non è un conflitto** (il gestionale arricchisce righe e stati): conflitto è solo
+  XML diverso con la fattura già in Lotti; se manca si importa. Un fornitore escluso si salta, non è un errore.
 - **Prezzi solo da acquisti reali in fattura XML.** Gli ordini hanno totali veri: prezzo di riga, aliquota
   IVA dall'XML, imponibile, IVA e totale che si ricalcolano a ogni variazione, con le stesse colonne nel
   PDF.
@@ -830,7 +830,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   quadrati): marzo combacia al centesimo, a gennaio mancano **5.005,88 €** di IVA detraibile. Nessun F24
   IVA 2026.
 - Solo 108 prodotti del Menu su 325 hanno allergeni (obbligo di legge). Cron Render `gestionalecloud-calderone-15min`, sospeso, da cancellare dal pannello.
-- **Lotti fermo**: ultima fattura 26/05, ultimo lotto di produzione 14/09. 119 lotti su 344 in unità non convertibili
+- **Lotti indietro**: 163 fatture alimentari da giugno bloccate dal ponte (conflitti d'impronta), ultimo lotto 14/09. 119 lotti su 344 in unità non convertibili
   (95 KAR); 320 descrizioni con proposta web da confermare; scadenza su 15 lotti su 580, lotto vero su 27.
 
 ## Aperto (togliere la voce quando si chiude)

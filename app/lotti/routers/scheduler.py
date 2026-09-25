@@ -329,12 +329,17 @@ async def job_normalizza_nuovi_prodotti():
             totale += n
             if n == 0:
                 break
+        # righe di fattura senza nome canonico (arrivate prima che il motore
+        # lo scrivesse): si ricollegano qui, non con un bottone
+        from app.lotti.routers.fatture import ricollega_righe_fatture
+        ricollegate = await ricollega_righe_fatture()
         await db.scheduler_logs.insert_one(
             {
                 "job": "normalizza_nuovi_prodotti",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "success": True,
                 "processati": totale,
+                "righe_ricollegate": ricollegate.get("righe_collegate", 0),
             }
         )
         print(f"[Scheduler] Normalizzazione completata — {totale} prodotti classificati")
@@ -409,7 +414,9 @@ async def job_sync_gestionale_fatture():
         if not configurato():
             return
         res = await esegui_sync_gestionale(
-            anno=datetime.now().year, massimo=1000, anteprima=False
+            # 40 per giro: un giro deve finire prima del successivo, o
+            # APScheduler salta tutti i turni dopo (successo dal 23/09/2026).
+            anno=datetime.now().year, massimo=40, anteprima=False
         )
         await db.scheduler_logs.insert_one({
             "job": "sync_gestionale_fatture",
