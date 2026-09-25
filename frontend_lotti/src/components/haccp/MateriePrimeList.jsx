@@ -121,7 +121,7 @@ const MateriePrimeList = () => {
   const [gruppi, setGruppi] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [mesi, setMesi] = useState(12); // default ultimi 12 mesi
+  const [mesi, setMesi] = useState(3); // ultimi 3 mesi: gli acquisti che contano per ricette e ordini
 
   const fetch = useCallback(async () => {
     setLoading(true);

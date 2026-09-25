@@ -66,6 +66,6 @@ export const VALID_TABS = [
   ...PRIMARY_TABS.map((tab) => tab.id),
   ...SECONDARY_TABS.map((tab) => tab.id),
   ...HACCP_TABS.map((tab) => tab.id),
-  "fatture", "ricettario", "food_cost", "listino", "magazzino_prodotti",
+  "ricettario", "food_cost", "listino", "magazzino_prodotti",
   "sconti_merce", "backup", "stampanti",
 ];

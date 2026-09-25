@@ -414,6 +414,30 @@ async def sincronizza_hr(_admin=Depends(require_admin)):
     return {**esito, "pin_migrati": migrazione}
 
 
+class PinOperatore(BaseModel):
+    pin: str
+
+
+@router.post("/{dipendente_id}/pin")
+async def imposta_pin_operatore(dipendente_id: str, payload: PinOperatore, _admin=Depends(require_admin)):
+    """Il titolare imposta il PIN di un dipendente anche da qui. Il PIN resta
+    UNO, nella scheda HR (stesso servizio del portale: bcrypt + impronta, mai
+    due persone in forza con lo stesso PIN): questa non e' una seconda copia."""
+    filtro = {"hr_id": dipendente_id, "gestionale_dipendente_id": dipendente_id, "attivo": True}
+    if await db.tablet_operatori.count_documents(filtro) != 1:
+        raise HTTPException(404, "Dipendente HR non trovato in una proiezione Lotti attiva e univoca")
+    from app.hr.services import auth_dipendenti
+
+    try:
+        ok = await auth_dipendenti.imposta_pin(dipendente_id, str(payload.pin or "").strip())
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    if not ok:
+        raise HTTPException(404, "Dipendente non trovato nella scheda HR")
+    await sincronizza_operatori_da_hr()
+    return {"ok": True, "pin_impostato": True}
+
+
 @router.patch("/{dipendente_id}")
 async def aggiorna_dipendente(dipendente_id: str, payload: AggiornaDipendente, _admin=Depends(require_admin)):
     """Solo i dati HACCP (R6): postazione e scadenza libretto. Nome, ruolo,

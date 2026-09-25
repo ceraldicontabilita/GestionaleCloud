@@ -1,6 +1,6 @@
 """
 Iteration 53 Backend Tests
-Tests for: B01 (importa-xml 422), B02 (fatture visualizza 200),
+Tests for: B02 (fatture visualizza 200),
 B03 (pec/anteprima 200 via localhost), acquaviva prodotti foto_url,
 no duplicates, manuale-haccp genera-manuale 200
 """
@@ -10,22 +10,6 @@ from collections import Counter
 
 BASE_URL = "http://localhost:8001"
 EXT_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://gestionalecloud.onrender.com/lotti").rstrip("/")
-
-
-class TestB01ImportaXml:
-    """B01: POST /api/fatture/importa-xml deve rispondere 422 senza file (non 404)"""
-
-    def test_importa_xml_without_file_returns_422(self):
-        """B01: POST senza file deve essere 422 validation error, non 404"""
-        res = requests.post(f"{BASE_URL}/api/fatture/importa-xml")
-        assert res.status_code == 422, f"Expected 422 but got {res.status_code}: {res.text}"
-        print(f"PASS: POST /api/fatture/importa-xml senza file → {res.status_code} (422 atteso)")
-
-    def test_importa_xml_endpoint_exists_not_404(self):
-        """Il path /api/fatture/importa-xml esiste (non ritorna 404)"""
-        res = requests.post(f"{BASE_URL}/api/fatture/importa-xml")
-        assert res.status_code != 404, "Endpoint non trovato (404) - path errato!"
-        print(f"PASS: Endpoint /api/fatture/importa-xml esiste (non 404) → {res.status_code}")
 
 
 class TestB02FattureVisualizza:

@@ -375,7 +375,7 @@ async def _overview(limit_campioni: int) -> dict:
             total=fatture_totali,
             severity="critica",
             owner="Fatture",
-            route="#fatture",
+            route="#fornitori",
             action="Normalizzare anagrafica fornitori e riallineare le fatture importate.",
             samples=await _sample(
                 "fatture",
@@ -392,8 +392,8 @@ async def _overview(limit_campioni: int) -> dict:
             count=await _aggregate_count("fatture", righe_fattura_pipeline),
             severity="critica",
             owner="Fatture",
-            route="#fatture",
-            action="Salvare un riferimento prodotto canonico sulle righe fattura durante sync/import.",
+            route="#dizionario",
+            action="Automatico: il motore d'import collega ogni riga, il giro delle 03:00 ricollega le vecchie.",
             samples=await _aggregate_sample("fatture", righe_fattura_sample_pipeline, limit=limit_campioni),
         ),
         _build_issue(

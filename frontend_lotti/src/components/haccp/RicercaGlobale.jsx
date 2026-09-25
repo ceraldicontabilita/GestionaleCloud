@@ -4,7 +4,7 @@
 // ricerca universale dei lotti dentro LottiList.
 import { useState, useEffect } from "react";
 import axios from "axios";
-import { Search, X, Layers, ChefHat, Building2, Wheat, Refrigerator, FileText, ShoppingCart, Factory } from "lucide-react";
+import { Search, X, Layers, ChefHat, Building2, Wheat, Refrigerator, ShoppingCart, Factory } from "lucide-react";
 import { API } from "../../utils/constants";
 
 const TAB_PER_CATEGORIA = {
@@ -13,19 +13,18 @@ const TAB_PER_CATEGORIA = {
   fornitori: "fornitori",
   materie_prime: "dizionario",
   attrezzature: "cosa_usare_oggi",
-  fatture: "fatture",
   ordini: "ordini",
   produzioni: "storico_produzioni",
 };
 
 const ICONA_PER_CATEGORIA = {
   lotti: Layers, ricette: ChefHat, fornitori: Building2, materie_prime: Wheat, attrezzature: Refrigerator,
-  fatture: FileText, ordini: ShoppingCart, produzioni: Factory,
+  ordini: ShoppingCart, produzioni: Factory,
 };
 
 const LABEL_PER_CATEGORIA = {
   lotti: "Lotti", ricette: "Ricette", fornitori: "Fornitori", materie_prime: "Materie prime", attrezzature: "Frigoriferi/attrezzature",
-  fatture: "Fatture", ordini: "Ordini", produzioni: "Produzioni",
+  ordini: "Ordini", produzioni: "Produzioni",
 };
 
 function etichettaRisultato(cat, r) {
@@ -36,7 +35,6 @@ function etichettaRisultato(cat, r) {
   // riga risultava VUOTA nel menu della ricerca (audit visivo 24/07/2026).
   if (cat === "materie_prime") return r.nome_display || r.nome_canonico || r.nome_normalizzato || r.nome_originale || "(senza nome)";
   if (cat === "attrezzature") return `${r.nome}`;
-  if (cat === "fatture") return `${r.numero_fattura || "—"} · ${r.fornitore || ""}${r.data_fattura ? " · " + r.data_fattura : ""}`;
   if (cat === "ordini") return `${r.fornitore || "—"} · ${r.stato || ""}`;
   if (cat === "produzioni") return `${r.ricetta_nome || "—"} · ${r.numero_lotto || ""}${r.pezzi ? " · " + r.pezzi + " pz" : ""}`;
   return "";
@@ -80,7 +78,7 @@ export function RicercaGlobale({ onNavigate }) {
     setQ("");
   };
 
-  const categorie = ["lotti", "ricette", "fornitori", "materie_prime", "attrezzature", "fatture", "ordini", "produzioni"];
+  const categorie = ["lotti", "ricette", "fornitori", "materie_prime", "attrezzature", "ordini", "produzioni"];
 
   return (
     <div className="relative">

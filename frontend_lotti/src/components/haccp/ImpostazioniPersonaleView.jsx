@@ -12,13 +12,17 @@
  *    scadenza del libretto sanitario; chi non è più in carico sta in una
  *    sezione chiusa in fondo, con data e motivo letti da HR.
  */
-import { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { apiError } from "../../utils/apiError";
 import axios from "axios";
 import { toast } from "sonner";
-import { IdCard, Save, Users, Printer, ExternalLink, RefreshCw, ChevronDown, ChevronUp, AlertTriangle, KeyRound } from "lucide-react";
+import { IdCard, Save, Users, Printer, ExternalLink, RefreshCw, ChevronDown, ChevronUp, AlertTriangle, KeyRound, LockKeyhole, Delete, X } from "lucide-react";
 import { API } from "../../utils/constants";
 import StampantiConfigView from "./StampantiConfigView";
+import { createPinModal } from "../../../../frontend_shared/PinModal";
+
+// Tastierino condiviso: il PIN si digita, non si mostra e non si salva qui.
+const PinModal = createPinModal(React, { LockKeyhole, Delete, X });
 
 const SAGE = "#5b7a6b";
 const SALVIA = "#3f5a4e";
@@ -74,6 +78,7 @@ export default function ImpostazioniPersonaleView() {
   const [valori, setValori] = useState({});
   const [loading, setLoading] = useState(true);
   const [salvando, setSalvando] = useState(null);
+  const [pinPer, setPinPer] = useState(null); // operatore a cui si sta dando il PIN
   const [salvatoAlle, setSalvatoAlle] = useState({});
   const [sincronizzando, setSincronizzando] = useState(false);
   const [mostraNonInCarico, setMostraNonInCarico] = useState(false);
@@ -214,7 +219,13 @@ export default function ImpostazioniPersonaleView() {
             <span style={pill(badge.bg, badge.fg)}>{badge.txt}</span>
             {d.pin_impostato
               ? <span style={pill("#e7f0ea", OK)}><KeyRound size={11} style={{ verticalAlign: "-1px" }} /> PIN impostato</span>
-              : <span style={pill("#fbf0dd", WARN)}><KeyRound size={11} style={{ verticalAlign: "-1px" }} /> PIN da impostare in HR</span>}
+              : <span style={pill("#fbf0dd", WARN)}><KeyRound size={11} style={{ verticalAlign: "-1px" }} /> PIN da impostare</span>}
+            {d.dipendente_id && (
+              <button type="button" onClick={() => setPinPer(d)}
+                style={{ ...pill("#f4f8f3", SALVIA), border: `1px solid ${LINE}`, cursor: "pointer", minHeight: 44, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <KeyRound size={12} /> {d.pin_impostato ? "Cambia PIN" : "Imposta PIN"}
+              </button>
+            )}
             <a href={HR_ANAGRAFICA + (d.dipendente_id ? `?dip=${encodeURIComponent(d.dipendente_id)}` : "")} style={{ ...pill("#f4f8f3", SALVIA), textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4 }}>
               scheda HR <ExternalLink size={11} />
             </a>
@@ -396,6 +407,25 @@ export default function ImpostazioniPersonaleView() {
           </>
         )}
       </section>
+
+      {pinPer && (
+        <PinModal
+          title={`PIN di ${pinPer.nome}`}
+          subtitle="4-8 cifre. Vale per il portale HR e per firmare in Lotti."
+          color={SAGE}
+          onCancel={() => setPinPer(null)}
+          onVerify={async (pin) => {
+            try {
+              await axios.post(`${API}/tablet-operatori/${encodeURIComponent(pinPer.dipendente_id)}/pin`, { pin });
+            } catch (e) {
+              throw new Error(apiError(e, "PIN non salvato"));
+            }
+            toast.success(`PIN di ${pinPer.nome} salvato`);
+            setOperatori((l) => l.map((o) => (o.dipendente_id === pinPer.dipendente_id ? { ...o, pin_impostato: true } : o)));
+            setPinPer(null);
+          }}
+        />
+      )}
 
       {/* ── 4) Stampanti ───────────── */}
       <section style={sezione}>

@@ -264,3 +264,25 @@ def test_nessun_pin_scritto_nel_codice():
     src = inspect.getsource(t)
     assert "NOMI_DEFAULT" not in src
     assert "hashpw" not in src and "_hash_pin" not in src  # Lotti non salva piu' nessun PIN
+
+
+def test_il_titolare_imposta_il_pin_da_lotti_nella_scheda_hr(basi):
+    """Il PIN dato dalla pagina Personale di Lotti finisce nella scheda HR
+    (un PIN per persona) e vale subito per firmare sul tablet."""
+    t, db, hr = basi
+    run(hr.dipendenti.insert_many(_persone_hr()))
+    run(t.sincronizza_operatori_da_hr())
+
+    esito = run(t.imposta_pin_operatore("hr-pocci", t.PinOperatore(pin="8642"), _admin=None))
+    assert esito == {"ok": True, "pin_impostato": True}
+    scheda = run(hr.dipendenti.find_one({"id": "hr-pocci"}))
+    assert scheda["pin_hash"] and scheda["pin_lookup"] and "8642" not in str(scheda)
+    assert run(t.login_pin(t.PinLogin(pin="8642")))["operatore"]["dipendente_id"] == "hr-pocci"
+    # stesso PIN a un'altra persona in forza: rifiutato
+    with pytest.raises(HTTPException) as exc:
+        run(t.imposta_pin_operatore("hr-lesina", t.PinOperatore(pin="8642"), _admin=None))
+    assert exc.value.status_code == 400
+    # un cessato non riceve un PIN da qui
+    with pytest.raises(HTTPException) as exc:
+        run(t.imposta_pin_operatore("hr-moscato", t.PinOperatore(pin="7777"), _admin=None))
+    assert exc.value.status_code == 404

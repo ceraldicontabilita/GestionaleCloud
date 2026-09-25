@@ -6,7 +6,7 @@
 import { FileText, Wheat, ChefHat, Layers, Refrigerator, Store, RotateCcw, Trash2, ArrowRight } from "lucide-react";
 
 const NODI = [
-  { id: "fattura", label: "Fattura", sotto: "Import XML fornitori", icon: FileText, tono: "#8a6f47", tab: "fatture" },
+  { id: "fattura", label: "Fattura", sotto: "Arriva dal gestionale", icon: FileText, tono: "#8a6f47", tab: "fornitori" },
   { id: "materia_prima", label: "Materia prima", sotto: "Dizionario ingredienti", icon: Wheat, tono: "#8a6f47", tab: "dizionario" },
   { id: "ricetta", label: "Ricetta", sotto: "Food cost e allergeni", icon: ChefHat, tono: "#5b7a6b", tab: "ricette" },
   { id: "lotto", label: "Lotto", sotto: "Tracciabilità e scadenze", icon: Layers, tono: "#5b7a6b", tab: "lotti" },

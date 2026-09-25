@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import PinKeypad from "@/components/haccp/shared/PinKeypad";
 import GoogleLoginButton from "@/components/auth/GoogleLoginButton";
-import { fetchAuthConfig, cachedAuthConfig, gateStillValid, setGateOk, clearGate, isAdmin } from "@/auth";
+import { fetchAuthConfig, cachedAuthConfig, gateStillValid, setGateOk, clearGate, isAdmin, ricordaPaginaRichiesta } from "@/auth";
 import { getTabletSession, saveTabletSession } from "../../utils/tabletSession";
 
 /**
@@ -27,6 +27,7 @@ export default function LoginGate({ children }) {
     // hanno il loro login per reparto. Il titolare rientra dal bottone
     // "Gestionale — solo titolare" nella home del kiosk.
     if (!isAdmin()) {
+      ricordaPaginaRichiesta();
       window.location.hash = "tablet/home";
       setState("open");
       return;

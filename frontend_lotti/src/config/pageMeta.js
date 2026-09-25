@@ -7,7 +7,7 @@ export const PAGE_NAMES = (() => {
   const names = {};
   [...PRIMARY_TABS, ...SECONDARY_TABS, ...HACCP_TABS].forEach((tab) => { names[tab.id] = tab.label; });
   Object.assign(names, {
-    backup: "Backup", fatture: "Import fatture", ricettario: "Produzione",
+    backup: "Backup", ricettario: "Produzione",
     food_cost: "Produzione", listino: "Listino", magazzino_prodotti: "Giacenze",
     sconti_merce: "Sconti merce", stampanti: "Stampanti",
   });
@@ -22,7 +22,6 @@ export const PAGE_META = {
   produzione_consigliata: { sub: "Suggerimenti basati su storico, invenduto e festività", colore: "linear-gradient(135deg,#c9a877,#8a6f47)", icona: "👨‍🍳" },
   mappa_tracciabilita: { sub: "Percorso del prodotto dalla fattura allo smaltimento", colore: SAGE, icona: "🗺️" },
   storico_produzioni: { sub: "Produzioni registrate", colore: SAGE, icona: "📦" },
-  fatture: { sub: "Fatture XML e prodotti acquistati", colore: SAGE, icona: "🧾" },
   materie: { sub: "Materie prime e giacenze", colore: SAGE, icona: "🌾" },
   in_menu: { sub: "I prodotti che i clienti vedono nel Menu digitale: foto, descrizione, prezzo al tavolo e allergeni", colore: SAGE },
   prodotti: { sub: "Listini, cataloghi fornitori, prezzi banco e magazzino", colore: SAGE, icona: "📚" },

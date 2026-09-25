@@ -14,7 +14,6 @@ const LS_KEY = "lotti_tour_fatto";
 // pulsante [data-tour="<tab>"] visibile, viene evidenziato.
 const PASSI = [
   { tab: "dashboard",          titolo: "Dashboard",        testo: "Il quadro generale: scadenze, avvisi e numeri chiave. È la tua schermata di partenza." },
-  { tab: "fatture",            titolo: "Importa Fatture",  testo: "Carica gli XML delle fatture. Da qui nascono prodotti, lotti e giacenze. La barra in basso mostra l'avanzamento anche se cambi pagina." },
   { tab: "fornitori",          titolo: "Fornitori",        testo: "Classifica ogni fornitore: completo, solo magazzino, oppure escluso. Determina cosa entra in Materie Prime e ricette." },
   { tab: "materie",            titolo: "Materie Prime",    testo: "I prodotti reali per fornitore. Apri la scheda (icona documento) e indica sito o foto etichetta: il sistema estrae composizione e allergeni." },
   { tab: "ricette",            titolo: "Ricette",          testo: "Dosi, costi e allergeni. Ogni ingrediente mostra la provenienza FIFO e, se disponibile, la composizione del prodotto composto." },

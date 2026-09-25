@@ -9,8 +9,8 @@
    "scopo": "L'app si apre col tuo PIN personale. Una volta inserito, puoi passare liberamente tra Pasticceria, Rosticceria, Bar, Lavagna e Magazzino senza digitarlo a ogni cambio. La persona resta identificata per due ore; le pagine di amministrazione restano riservate agli amministratori.",
    "passi": [
     "Inserisci il PIN sul tastierino: con 6 cifre entra da solo, con 4 premi Conferma.",
-     "Il bottone «Esci» in alto a destra chiude tutto: al rientro serve di nuovo il PIN.",
-     "Sui tablet il PIN identifica la persona che lavora. Per «Preleva» e «OK preso» viene chiesta una nuova conferma solo se sono trascorsi più di 10 minuti dall'ultima conferma."
+    "Il bottone «Esci» in alto a destra chiude tutto: al rientro serve di nuovo il PIN.",
+    "Sui tablet il PIN identifica la persona che lavora. Per «Preleva» e «OK preso» viene chiesta una nuova conferma solo se sono trascorsi più di 10 minuti dall'ultima conferma."
    ],
    "bottoni": [
     [
@@ -93,7 +93,7 @@
    "passi": [
     "«Operazioni di oggi»: le card dei tablet di reparto (Pasticceria, Rosticceria, Bar, Banco vendita, Magazzino, Gelati, Lotti).",
     "«Cataloghi fornitori»: accessi diretti ad Acquaviva, SAIMA e MEPA.",
-    "«Area ufficio»: Ricette, Fatture XML, Acquisti & Ordini, Fornitori.",
+    "«Area ufficio»: Ricette, Acquisti & Ordini, Fornitori.",
     "«Archivio»: Materie prime, Lotti totali, Ricezione merce, e (solo admin) Impostazioni, Controllo Dati, Collaudi da fare, Listini e cataloghi.",
     "«Strumenti avanzati»: il Registro pesce si apre direttamente qui dentro."
    ],
@@ -106,67 +106,12 @@
     [
      "Card KPI (Spesa, Sotto scorta, Scaduti, Ordini, Prodotti oggi)",
      "aprono la pagina del dato",
-     "#fatture, #backoffice, #lotti, #ordini, #storico_produzioni"
+     "#backoffice, #lotti, #ordini, #storico_produzioni"
     ],
     [
      "Card «Collaudi da fare» (solo admin)",
      "la lista dei test da spuntare dopo ogni modifica",
      "#collaudi"
-    ]
-   ]
-  },
-  {
-   "id": "importa-fatture",
-   "gruppo": "Ufficio",
-   "titolo": "Importa Fatture",
-   "indirizzo": "#fatture",
-   "scopo": "Da ogni fattura XML nascono fornitori, prodotti, prezzi, giacenze e lotti. Puoi caricare i file a mano, anche più file insieme, oppure ricevere le fatture già registrate nel GestionaleCloud. Se la stessa fattura arriva più volte, viene riconosciuta e non viene duplicata.",
-   "passi": [
-    "Trascina i file nella zona tratteggiata (o toccala per sceglierli) e premi «Importa Fatture».",
-    "Se ci sono fornitori MAI visti prima, l'app te li mostra PRIMA di importare: per ognuno scegli «Completo» (magazzino + lotti + ricette), «Solo magazzino» (es. bibite) o «Escludi» (servizi, non-food).",
-    "La barra in basso mostra l'avanzamento e continua anche se cambi pagina.",
-    "In fondo trovi l'elenco delle fatture importate: «Assosoftware» le apre formattate come un documento vero."
-   ],
-   "bottoni": [
-    [
-     "Riquadro «Aggiornamento fatture»",
-     "mostra quante fatture sono state ricevute e l'ultimo aggiornamento",
-     ""
-    ],
-    [
-     "«Aggiorna ora»",
-     "controlla subito se nel GestionaleCloud ci sono nuove fatture",
-     ""
-    ],
-    [
-     "«Importa Fatture»",
-     "controlla i fornitori nuovi e poi importa in background",
-     "POST /api/fatture/prescan-fornitori + POST /api/fatture/importa-async"
-    ],
-    [
-     "«Salva e importa» (nel pannello fornitori nuovi)",
-     "salva le classificazioni scelte e parte",
-     "POST /api/fornitori/tipo-fornitura"
-    ],
-    [
-     "«Aggiorna Materie (ultimi 10 giorni)»",
-     "riallinea le materie prime dalle fatture recenti",
-     "POST /api/aggiorna-materie-da-fatture"
-    ],
-    [
-     "«Pulizia Dati Spazzatura»",
-     "toglie le righe non-prodotto da Materie/Dizionario/Lotti (chiede conferma)",
-     "POST /api/pulizia-dati-spazzatura"
-    ],
-    [
-     "«Assosoftware» / «Visualizza» (per fattura)",
-     "apre la fattura in bella copia in un'altra scheda",
-     "GET /api/fatture/{id}/visualizza"
-    ],
-    [
-     "Cestino (per fattura)",
-     "elimina la fattura (chiede conferma)",
-     "DELETE /api/fatture/{id}"
     ]
    ]
   },
@@ -545,7 +490,7 @@
      "POST /api/listino/sync-da-fatture"
     ],
     [
-      "«Aggiorna costi» (Prodotti e cataloghi)",
+     "«Aggiorna costi» (Prodotti e cataloghi)",
      "costi aggiornati dai food cost delle ricette",
      "POST /api/prodotti-vendita/sync-da-ricette"
     ],

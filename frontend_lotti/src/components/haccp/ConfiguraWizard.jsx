@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import axios from "axios";
 import { API } from "../../utils/constants";
 import {
-  Upload, Building2, Boxes, ChefHat, Users, ClipboardCheck,
+  Building2, Boxes, ChefHat, Users, ClipboardCheck,
   BookOpen, CheckCircle2, Circle, ArrowRight, RotateCcw, Landmark,
 } from "lucide-react";
 
@@ -10,15 +10,6 @@ import {
 // dell'app per impostare un nuovo punto vendita. I passi completati restano segnati
 // (localStorage) cosi' la checklist sopravvive ai cambi pagina e ai riavvii.
 const STEPS = [
-  {
-    id: "fatture",
-    tab: "fatture",
-    icon: Upload,
-    titolo: "Importa le fatture XML",
-    perche:
-      "E' il primo passo: dalle fatture elettroniche l'app crea prodotti, prezzi, lotti e giacenze. Senza import il resto resta vuoto.",
-    azione: "Vai a Importa fatture",
-  },
   {
     id: "azienda",
     tab: "personale",

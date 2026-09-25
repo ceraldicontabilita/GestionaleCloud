@@ -44,7 +44,6 @@ import MappaTracciabilitaView from "../components/haccp/MappaTracciabilitaView";
 import ControlloMagazzinoView from "../components/haccp/ControlloMagazzinoView";
 import ConfrontoProdottoView from "../components/haccp/ConfrontoProdottoView";
 import AttendibilitaHaccpView from "../components/haccp/AttendibilitaHaccpView";
-import { ImportaFatture } from "../components/haccp/ImportaFattureView";
 import ProdottiHubView from "../components/haccp/ProdottiHubView";
 import MenuVetrinaView from "../components/haccp/MenuVetrinaView";
 
@@ -56,7 +55,6 @@ export const ProdottiConTabFornitore = ProdottiHubView;
 const PAGINE = {
   dashboard: { safe: false, render: (ctx) => <DashboardView stats={ctx.stats} onRefresh={ctx.refreshAll} onNavigate={ctx.setActiveTab} /> },
   gelati: { render: () => <GelatiView /> },
-  fatture: { render: (ctx) => <ImportaFatture imp={ctx.imp} startImport={ctx.startImport} onImportComplete={ctx.onImportComplete} /> },
   fornitori: { safe: false, render: (ctx) => <FornitoriList fornitori={ctx.fornitori} onRefresh={ctx.fetchFornitori} /> },
   materie: { render: () => <MateriePrimeList /> },
   prodotti: { render: () => <ProdottiConTabFornitore /> },

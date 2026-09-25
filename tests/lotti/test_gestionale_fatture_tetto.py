@@ -112,7 +112,8 @@ def test_il_secondo_giro_prende_le_fatture_che_il_primo_ha_lasciato(ponte, monke
 
 def test_una_fattura_cambiata_non_viene_saltata_dal_prefiltro(ponte, monkeypatch):
     """Il prefiltro salta solo chi ha lo STESSO hash: un documento cambiato
-    dopo la ricezione deve continuare a diventare un conflitto visibile."""
+    dopo la ricezione viene riesaminato. Se in Lotti non c'e', si importa
+    (prima diventava un conflitto e restava fuori per sempre)."""
     module, database = ponte
     fattura = _fattura(1)
     _monta_elenco(module, monkeypatch, [fattura])
@@ -124,8 +125,8 @@ def test_una_fattura_cambiata_non_viene_saltata_dal_prefiltro(ponte, monkeypatch
     esito = run(module.esegui_sync_gestionale(anno=2026, massimo=1000, anteprima=True))
 
     assert esito["gia_ricevute"] == 0
-    assert len(esito["conflitti"]) == 1
-    assert esito["conflitti"][0]["source_id"] == fattura["source_id"]
+    assert esito["conflitti"] == []
+    assert esito["importabili"] == 1
 
 
 def test_un_errore_senza_messaggio_dice_almeno_di_che_tipo_e(ponte, monkeypatch):

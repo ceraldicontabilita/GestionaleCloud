@@ -78,16 +78,30 @@ def test_secondo_giro_non_duplica(bridge, monkeypatch):
     assert run(database.gestionale_fatture_ricevute.count_documents({})) == 1
 
 
-def test_hash_cambiato_diventa_conflitto_e_non_sovrascrive(bridge, monkeypatch):
+def _sha(testo):
+    import hashlib
+    return hashlib.sha256(testo.encode("utf-8")).hexdigest()
+
+
+def test_xml_cambiato_con_fattura_in_lotti_e_conflitto_e_non_sovrascrive(bridge, monkeypatch):
     module, database = bridge
     run(database.gestionale_fatture_ricevute.insert_one({
-        "source_id": "invoice-1", "source_hash": "hash-vecchio", "stato": "importata"
+        "source_id": "invoice-1", "source_hash": "hash-vecchio", "stato": "importata",
+        "fattura_id": "lotti-1",
+    }))
+    run(database.fatture.insert_one({
+        "id": "lotti-1", "numero_fattura": "42/A", "piva": "01234567890",
+        "haccp_xml_sha256": _sha("<vecchio/>"), "prodotti": [{"descrizione": "FARINA"}],
     }))
 
     async def elenco(_client, _anno):
         return [_item("hash-nuovo")], 1
 
+    async def dettaglio(_client, _path, **_params):
+        return {**_item("hash-nuovo"), "xml_raw": "<nuovo/>"}
+
     monkeypatch.setattr(module, "_elenco", elenco)
+    monkeypatch.setattr(module, "_get_json", dettaglio)
     result = run(module.esegui_sync_gestionale(anno=2026, anteprima=False))
 
     assert result["importate"] == 0
@@ -96,6 +110,92 @@ def test_hash_cambiato_diventa_conflitto_e_non_sovrascrive(bridge, monkeypatch):
     assert receipt["source_hash"] == "hash-vecchio"
     assert receipt["stato"] == "conflitto_hash"
     assert receipt["nuovo_source_hash"] == "hash-nuovo"
+
+
+def test_impronta_cambiata_ma_stesso_xml_si_riallinea(bridge, monkeypatch):
+    """Il gestionale arricchisce righe e stati: l'impronta cambia, l'XML no."""
+    module, database = bridge
+    run(database.gestionale_fatture_ricevute.insert_one({
+        "source_id": "invoice-1", "source_hash": "hash-vecchio", "stato": "importata",
+        "fattura_id": "lotti-1",
+    }))
+    run(database.fatture.insert_one({
+        "id": "lotti-1", "numero_fattura": "42/A", "piva": "01234567890",
+        "haccp_xml_sha256": _sha("<stesso/>"), "prodotti": [{"descrizione": "FARINA"}],
+    }))
+
+    async def elenco(_client, _anno):
+        return [_item("hash-nuovo")], 1
+
+    async def dettaglio(_client, _path, **_params):
+        return {**_item("hash-nuovo"), "xml_raw": "<stesso/>"}
+
+    monkeypatch.setattr(module, "_elenco", elenco)
+    monkeypatch.setattr(module, "_get_json", dettaglio)
+    result = run(module.esegui_sync_gestionale(anno=2026, anteprima=False))
+
+    assert result["conflitti"] == [] and result["riallineate"] == 1
+    receipt = run(database.gestionale_fatture_ricevute.find_one({"source_id": "invoice-1"}))
+    assert receipt["source_hash"] == "hash-nuovo"
+    assert run(database.fatture.count_documents({})) == 1
+    # il giro dopo la conta fra le gia' ricevute
+    assert run(module.esegui_sync_gestionale(anno=2026, anteprima=False))["gia_ricevute"] == 1
+
+
+def test_impronta_cambiata_e_fattura_assente_da_lotti_si_importa(bridge, monkeypatch):
+    """Prima: conflitto, e la fattura non entrava mai (163 fatture da giugno)."""
+    module, database = bridge
+    run(database.gestionale_fatture_ricevute.insert_one({
+        "source_id": "invoice-1", "source_hash": "hash-vecchio", "stato": "importata",
+        "fattura_id": "sparita",
+    }))
+
+    async def elenco(_client, _anno):
+        return [_item("hash-nuovo")], 1
+
+    async def dettaglio(_client, _path, **_params):
+        return {**_item("hash-nuovo"), "xml_raw": "<FatturaElettronica/>"}
+
+    async def importa(_files):
+        await database.fatture.insert_one({
+            "id": "lotti-2", "numero_fattura": "42/A", "piva": "IT01234567890",
+            "prodotti": [{"descrizione": "FARINA"}],
+        })
+        return {"fatture_processate": 1, "fatture_ids": ["lotti-2"]}
+
+    import app.lotti.routers.fatture as fatture
+    monkeypatch.setattr(module, "_elenco", elenco)
+    monkeypatch.setattr(module, "_get_json", dettaglio)
+    monkeypatch.setattr(fatture, "importa_fattura_xml", importa)
+    result = run(module.esegui_sync_gestionale(anno=2026, anteprima=False))
+
+    # la P.IVA salvata dal motore e' scritta diversamente: si aggancia per id
+    assert result["importate"] == 1 and result["errori"] == [] and result["conflitti"] == []
+    receipt = run(database.gestionale_fatture_ricevute.find_one({"source_id": "invoice-1"}))
+    assert receipt["fattura_id"] == "lotti-2" and receipt["source_hash"] == "hash-nuovo"
+    fattura = run(database.fatture.find_one({"id": "lotti-2"}))
+    assert fattura["gestionale_source_id"] == "invoice-1"
+
+
+def test_fornitore_escluso_non_e_un_errore_e_non_si_rilegge(bridge, monkeypatch):
+    module, database = bridge
+    run(database.fornitori.insert_one({"nome": "Fornitore Test Srl", "escluso": True}))
+    letti = []
+
+    async def elenco(_client, _anno):
+        return [_item()], 1
+
+    async def dettaglio(_client, path, **_params):
+        letti.append(path)
+        return {**_item(), "xml_raw": "<FatturaElettronica/>"}
+
+    monkeypatch.setattr(module, "_elenco", elenco)
+    monkeypatch.setattr(module, "_get_json", dettaglio)
+    result = run(module.esegui_sync_gestionale(anno=2026, anteprima=False))
+
+    assert result["escluse_fornitore"] == 1
+    assert result["errori"] == [] and result["ok"] is True
+    assert letti == []  # nessun dettaglio scaricato per un escluso
 
 
 def test_fattura_manualemente_presente_viene_solo_collegata(bridge, monkeypatch):
@@ -279,3 +379,58 @@ def test_annullare_il_doppione_non_chiude_i_lotti_della_copia_buona(bridge):
     # l'ultima copia rimasta si annulla come prima: chiude i suoi lotti
     esito = run(fatture.annulla_fattura("buona", motivo="reso", _admin=None))
     assert esito["lotti_chiusi"] == 1
+
+
+def test_conflitto_gia_segnalato_non_occupa_il_giro(bridge, monkeypatch):
+    """Con 40 fatture per giro, un conflitto riletto ogni volta bloccherebbe
+    per sempre quelle piu' recenti: una volta segnalato si conta e si salta."""
+    module, database = bridge
+    run(database.gestionale_fatture_ricevute.insert_one({
+        "source_id": "invoice-1", "source_hash": "hash-vecchio", "stato": "conflitto_hash",
+        "nuovo_source_hash": "hash-nuovo", "conflitto_verificato": True,
+    }))
+    letti = []
+
+    async def elenco(_client, _anno):
+        return [_item("hash-nuovo")], 1
+
+    async def dettaglio(_client, path, **_params):
+        letti.append(path)
+        return {}
+
+    monkeypatch.setattr(module, "_elenco", elenco)
+    monkeypatch.setattr(module, "_get_json", dettaglio)
+    result = run(module.esegui_sync_gestionale(anno=2026, massimo=40, anteprima=False))
+
+    assert result["conflitti_noti"] == 1 and result["esaminate"] == 0 and letti == []
+
+
+def test_vecchio_conflitto_senza_fattura_in_lotti_si_importa(bridge, monkeypatch):
+    """I 242 conflitti scritti dalla regola vecchia vanno riesaminati: quelli
+    senza fattura in Lotti sono proprio le fatture mancanti."""
+    module, database = bridge
+    run(database.gestionale_fatture_ricevute.insert_one({
+        "source_id": "invoice-1", "source_hash": "hash-vecchio", "stato": "conflitto_hash",
+        "nuovo_source_hash": "hash-nuovo",
+    }))
+
+    async def elenco(_client, _anno):
+        return [_item("hash-nuovo")], 1
+
+    async def dettaglio(_client, _path, **_params):
+        return {**_item("hash-nuovo"), "xml_raw": "<FatturaElettronica/>"}
+
+    async def importa(_files):
+        await database.fatture.insert_one({"id": "lotti-9", "numero_fattura": "42/A",
+                                           "piva": "01234567890", "prodotti": [{"descrizione": "UOVA"}]})
+        return {"fatture_processate": 1, "fatture_ids": ["lotti-9"]}
+
+    import app.lotti.routers.fatture as fatture
+    monkeypatch.setattr(module, "_elenco", elenco)
+    monkeypatch.setattr(module, "_get_json", dettaglio)
+    monkeypatch.setattr(fatture, "importa_fattura_xml", importa)
+    result = run(module.esegui_sync_gestionale(anno=2026, massimo=40, anteprima=False))
+
+    assert result["importate"] == 1 and result["conflitti_noti"] == 0
+    receipt = run(database.gestionale_fatture_ricevute.find_one({"source_id": "invoice-1"}))
+    assert receipt["stato"] == "importata" and receipt["fattura_id"] == "lotti-9"
