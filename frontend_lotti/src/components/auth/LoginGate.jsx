@@ -1,8 +1,8 @@
 import { useEffect, useState, useCallback } from "react";
-import PinKeypad from "@/components/haccp/shared/PinKeypad";
+import { LogIn } from "lucide-react";
 import GoogleLoginButton from "@/components/auth/GoogleLoginButton";
-import { fetchAuthConfig, cachedAuthConfig, gateStillValid, setGateOk, clearGate, isAdmin, ricordaPaginaRichiesta } from "@/auth";
-import { getTabletSession, saveTabletSession } from "../../utils/tabletSession";
+import { fetchAuthConfig, cachedAuthConfig, gateStillValid, setGateOk, clearGate, isAdmin, ricordaPaginaRichiesta, entraDalGestionale, loginGestionale } from "@/auth";
+import { getTabletSession } from "../../utils/tabletSession";
 
 /**
  * Cancello di accesso. Regole (riviste 13/06/2026 dopo i bug visti da Enzo):
@@ -21,6 +21,10 @@ export default function LoginGate({ children }) {
 
   const check = useCallback(async () => {
     if (isTablet() || (window.location.hash === "#ricette" && getTabletSession())) { setState("open"); return; }
+
+    // Sessione unica (25/09/2026): chi e' gia' entrato nel Gestionale apre
+    // Lotti da amministratore senza un secondo PIN.
+    if (!(isAdmin() && gateStillValid()) && await entraDalGestionale()) { setState("open"); return; }
 
     // Enzo 25/07/2026: chi non è amministratore non deve nemmeno vedere il
     // tastierino del gestionale — l'app si apre sulle card del tablet, che
@@ -78,13 +82,21 @@ export default function LoginGate({ children }) {
   return (
     <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "#faf7f0", padding: 16 }}>
       <div style={{ width: "min(420px, 94vw)" }}>
-        <PinKeypad
-          titolo="Accesso Lotti"
-          sottotitolo="Inserisci il tuo PIN"
-          maxLen={6}
-          onSuccess={(operatore) => { saveTabletSession(operatore, ""); setGateOk(); setState("open"); }}
-          onCancel={() => {}}
-        />
+        {/* Niente secondo tastierino: l'amministratore entra con il login del
+            Gestionale e torna qui (sessione unica). I dipendenti usano le card
+            del tablet, che hanno il loro PIN personale. */}
+        <div style={{ background: "#fffefb", border: "1px solid #e6e0d4", borderRadius: 16, padding: 24, textAlign: "center" }}>
+          <h1 style={{ margin: "0 0 6px", fontSize: 20, fontWeight: 800, color: "#2a3329", letterSpacing: "-0.02em" }}>Accesso Lotti</h1>
+          <p style={{ margin: "0 0 18px", fontSize: 14, color: "#6b6358" }}>
+            Entra dal Gestionale: dopo l'accesso torni qui, senza un secondo PIN.
+          </p>
+          <a href={loginGestionale()} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, minHeight: 48, padding: "0 22px", borderRadius: 12, background: "#5b7a6b", color: "#fffefb", fontWeight: 800, textDecoration: "none" }}>
+            <LogIn size={18} aria-hidden="true" /> Entra dal Gestionale
+          </a>
+          <p style={{ margin: "16px 0 0", fontSize: 13 }}>
+            <a href="#tablet/home" style={{ color: "#3f5a4e", fontWeight: 700 }}>Sono un dipendente: vai ai reparti</a>
+          </p>
+        </div>
         {cfg.google_enabled && cfg.google_client_id ? (
           <div style={{ marginTop: 20, textAlign: "center" }}>
             <div style={{ color: "#9a917f", fontSize: 13, marginBottom: 10 }}>oppure</div>

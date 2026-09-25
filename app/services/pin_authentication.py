@@ -75,7 +75,31 @@ async def authenticate_admin_pin(
     """
     if not admin_pin_matches(pin):
         return None
+    return await risolvi_identita_admin(
+        db,
+        users_collection=users_collection,
+        username=username,
+        repository_factory=repository_factory,
+        require_existing=require_existing,
+        require_active=require_active,
+        allow_synthetic=allow_synthetic,
+        synthetic_email=synthetic_email,
+    )
 
+
+async def risolvi_identita_admin(
+    db,
+    *,
+    users_collection: str = Collections.USERS,
+    username: str = PIN_ADMIN_USERNAME,
+    repository_factory=UserRepository,
+    require_existing: bool = False,
+    require_active: bool = False,
+    allow_synthetic: bool = True,
+    synthetic_email: str = PIN_ADMIN_EMAIL_DEFAULT,
+) -> PinIdentity | None:
+    """L'identita' amministrativa del dominio, senza verificare credenziali:
+    chi chiama ha gia' una prova (il PIN, oppure la sessione del Gestionale)."""
     user_repo = None
     user = None
     try:

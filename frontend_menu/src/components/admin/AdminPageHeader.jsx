@@ -2,14 +2,11 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, LogOut } from 'lucide-react';
 import { Button } from '../ui/button';
+import { esciDalGruppo } from '../../lib/sessioneGruppo';
 
 const AdminPageHeader = ({ title, subtitle }) => {
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    localStorage.removeItem('admin_token');
-    navigate('/admin/login');
-  };
 
   return (
     <div className="bg-[#4a5d4a] text-white shadow-lg">
@@ -23,7 +20,7 @@ const AdminPageHeader = ({ title, subtitle }) => {
             {subtitle && <p className="text-sm text-white/80">{subtitle}</p>}
           </div>
         </div>
-        <Button variant="ghost" onClick={handleLogout} className="text-white hover:bg-white/10">
+        <Button variant="ghost" onClick={esciDalGruppo} className="text-white hover:bg-white/10">
           <LogOut className="w-4 h-4 mr-2" />
           Esci
         </Button>

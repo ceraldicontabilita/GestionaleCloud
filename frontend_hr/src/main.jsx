@@ -1,9 +1,10 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import ReactDOM from 'react-dom/client'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import App from './App.jsx'
 import PortaleDipendente from './PortaleDipendente.jsx'
 import Landing from './Landing.jsx'
+import { entraDalGestionale, loginGestionale } from './sessioneGruppo.js'
 import './index.css'
 
 // Legge la scadenza (exp) dal JWT senza verificarne la firma (la verifica vera
@@ -20,21 +21,46 @@ function tokenValido(token) {
 
 // L'area gestione è riservata all'admin. Eccezione: il responsabile turni può
 // entrare SOLO nella pagina Turni dell'azienda (nient'altro).
-// Il gate controlla SIA il ruolo SIA la validità/scadenza del token: a sessione
-// scaduta si torna al PIN (la protezione reale resta comunque lato server).
-function RequireRole({ children, roles }) {
-  const hasWindow = typeof window !== 'undefined'
-  const role = hasWindow ? localStorage.getItem('pt_role') : null
-  const token = hasWindow ? localStorage.getItem('pt_token') : null
-  if (!roles.includes(role) || !tokenValido(token)) {
-    if (hasWindow && !tokenValido(token)) {
-      localStorage.removeItem('pt_token')
-      localStorage.removeItem('pt_role')
-      localStorage.removeItem('pt_name')
-    }
-    return <Navigate to="/portale" replace />
+// Il gate controlla SIA il ruolo SIA la validità/scadenza del token (la
+// protezione reale resta comunque lato server). Senza token valido
+// l'amministratore non digita un secondo PIN: si prova la sessione del
+// Gestionale e, se manca, si passa dal suo login che poi riporta qui.
+function sessioneValida(roles) {
+  const role = localStorage.getItem('pt_role')
+  const token = localStorage.getItem('pt_token')
+  if (!tokenValido(token)) {
+    localStorage.removeItem('pt_token')
+    localStorage.removeItem('pt_role')
+    localStorage.removeItem('pt_name')
+    return false
   }
-  return children
+  return roles.includes(role)
+}
+
+function RequireRole({ children, roles }) {
+  const { pathname } = useLocation()
+  const [stato, setStato] = useState(() => (sessioneValida(roles) ? 'ok' : 'verifica'))
+
+  useEffect(() => {
+    if (stato !== 'verifica') return
+    let vivo = true
+    entraDalGestionale().then((esito) => { if (vivo) setStato(esito) })
+    return () => { vivo = false }
+  }, [stato])
+
+  if (stato === 'ok' && sessioneValida(roles)) return children
+  if (stato === 'verifica') return <div className="muted" role="status" style={{ padding: 24, textAlign: 'center' }}>Verifica dell'accesso in corso…</div>
+  if (stato === 'non_disponibile') return (
+    <div style={{ padding: 24, textAlign: 'center' }}>
+      <p>Servizio temporaneamente non disponibile.</p>
+      <button className="btn" style={{ minHeight: 44 }} onClick={() => setStato('verifica')}>Riprova</button>
+    </div>
+  )
+  // Nessuna sessione del Gestionale: chi puo' entrare solo nei Turni torna al
+  // portale col proprio PIN, l'amministratore passa dal login del Gestionale.
+  if (roles.includes('responsabile_turni')) return <Navigate to="/portale" replace />
+  window.location.assign(loginGestionale(`/hr${pathname}`))
+  return null
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(

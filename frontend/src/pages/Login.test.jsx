@@ -38,3 +38,16 @@ describe('PIN condiviso e MFA ERP', () => {
     expect(screen.getByLabelText('PIN')).toHaveValue('');
   });
 });
+
+describe('ritorno dopo il login', () => {
+  it('accetta solo le app del gruppo', async () => {
+    const { destinazioneDopoLogin } = await import('./Login');
+    expect(destinazioneDopoLogin('?next=/lotti/')).toBe('/lotti/');
+    expect(destinazioneDopoLogin('?next=/hr')).toBe('/hr');
+    expect(destinazioneDopoLogin('?next=/menu/admin')).toBe('/menu/admin');
+    expect(destinazioneDopoLogin('?next=https://evil.example')).toBe('');
+    expect(destinazioneDopoLogin('?next=//evil.example/lotti')).toBe('');
+    expect(destinazioneDopoLogin('?next=/fatture')).toBe('');
+    expect(destinazioneDopoLogin('')).toBe('');
+  });
+});

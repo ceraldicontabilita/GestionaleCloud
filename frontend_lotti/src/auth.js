@@ -179,3 +179,36 @@ export function prendiPaginaRichiesta(ripiego = "dashboard") {
   try { h = sessionStorage.getItem(PAGINA_RICHIESTA_KEY) || ""; sessionStorage.removeItem(PAGINA_RICHIESTA_KEY); } catch { /* no-op */ }
   return h || ripiego;
 }
+
+// ── Sessione unica del gruppo ───────────────────────────────────────────────
+// Chi e' gia' entrato nel Gestionale (cookie di sessione dell'ERP, HttpOnly,
+// stesso dominio) apre Lotti senza un secondo PIN: il server lo verifica e
+// restituisce un token di Lotti. Istanza axios separata: l'intercettore
+// normale, su un 401, rilancerebbe il cancello all'infinito.
+const _senzaIntercettori = axios.create();
+
+export async function entraDalGestionale() {
+  try {
+    const r = await _senzaIntercettori.get(`${API}/auth/session`, { timeout: 10000, withCredentials: true });
+    const token = r.data && r.data.token;
+    if (!token) return false;
+    saveToken(token);
+    saveRuolo("amministratore");
+    saveOperatoreNome((r.data.operatore && r.data.operatore.nome) || "");
+    setGateOk();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Porta al login del Gestionale (separato per poterlo verificare nei test). */
+export function vaiAlLoginGestionale(destinazione) {
+  window.location.assign(loginGestionale(destinazione));
+}
+
+/** Login del Gestionale con ritorno alla pagina di Lotti richiesta. */
+export function loginGestionale(destinazione) {
+  const next = destinazione || `/lotti/${window.location.hash || ""}`;
+  return `/login?next=${encodeURIComponent(next)}`;
+}

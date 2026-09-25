@@ -80,10 +80,13 @@ async def firma_registrazione(
     from app.lotti.auth import request_actor
 
     attore = request_actor(request) if request is not None else None
-    if attore and attore.get("id") and attore.get("ruolo") != "automazione":
+    # Una sessione aperta dal Gestionale firma solo se porta l'identita' HR
+    # del titolare; un token «erp:...» apre le pagine ma non e' una persona.
+    anonima_erp = attore and attore.get("via") == "sessione_erp" and str(attore.get("id") or "").startswith("erp:")
+    if attore and attore.get("id") and attore.get("ruolo") != "automazione" and not anonima_erp:
         return {
             "operatore": attore.get("nome") or "",
-            "dipendente_id": attore["id"] if attore.get("via") == "pin" else "",
+            "dipendente_id": attore["id"] if attore.get("via") in ("pin", "sessione_erp") else "",
             "firma_verificata": True,
             "firma_via": attore.get("via") or "sessione",
         }

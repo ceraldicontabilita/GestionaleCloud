@@ -11,11 +11,19 @@ const labelFiltro = params => {
   if (params.get('id')) return 'Caso selezionato';
   if (params.get('severita')) return `Severità: ${params.get('severita')}`;
   if (params.get('modulo')) return `Modulo: ${params.get('modulo')}`;
-  return 'Tutti gli alert aperti';
+  return { aperto: 'Alert aperti', risolto: 'Alert risolti', tutti: 'Tutti gli alert' }[statoDa(params)];
+};
+
+// Aperti | Risolti | Tutti: la campana conta gli aperti, e la pagina parte da li'.
+const STATI = [['aperto', 'Aperti'], ['risolto', 'Risolti'], ['tutti', 'Tutti']];
+const statoDa = params => {
+  const s = params.get('stato');
+  return s === 'risolto' || s === 'tutti' ? s : 'aperto';
 };
 
 export default function Alerts() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const stato = statoDa(searchParams);
   const [alerts, setAlerts] = useState([]);
   const [total, setTotal] = useState(0);
   const [hasMore, setHasMore] = useState(false);
@@ -28,7 +36,7 @@ export default function Alerts() {
     try {
       const response = await api.get('/api/alerts/lista', {
         params: {
-          stato: 'aperto',
+          stato: stato === 'tutti' ? undefined : stato,
           severita: searchParams.get('severita') || undefined,
           modulo: searchParams.get('modulo') || undefined,
           alert_id: searchParams.get('id') || undefined,
@@ -53,6 +61,15 @@ export default function Alerts() {
     <div style={{ padding: 24 }}>
       <PageHeader title="Alert operativi" subtitle="Apri i casi reali e verifica quale prova o azione manca." />
       <Card style={{ padding: 18 }}>
+        <div role="tablist" aria-label="Stato degli alert" style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+          {STATI.map(([valore, etichetta]) => (
+            <Button key={valore} role="tab" aria-selected={stato === valore}
+              variant={stato === valore ? 'primary' : 'secondary'}
+              onClick={() => { const p = new URLSearchParams(searchParams); p.set('stato', valore); setSearchParams(p); }}>
+              {etichetta}
+            </Button>
+          ))}
+        </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           <div><strong>{labelFiltro(searchParams)}</strong> · {total} casi</div>
           {(searchParams.get('severita') || searchParams.get('modulo') || searchParams.get('id')) && <Link to="/dashboard/alerts">Rimuovi filtro</Link>}
@@ -60,7 +77,7 @@ export default function Alerts() {
       </Card>
 
       {error && <div role="alert" style={{ marginTop: 16, color: COLORS.danger }}>{error}</div>}
-      {!loading && !error && alerts.length === 0 && <Card style={{ marginTop: 16, padding: 24 }}>Nessun caso aperto per questo filtro.</Card>}
+      {!loading && !error && alerts.length === 0 && <Card style={{ marginTop: 16, padding: 24 }}>{stato === 'aperto' ? 'Nessun caso aperto per questo filtro.' : 'Nessun caso per questo filtro.'}</Card>}
       <div style={{ display: 'grid', gap: 12, marginTop: 16 }}>
         {alerts.map((alert, index) => {
           const detail = alert.dettaglio || alert.messaggio || 'Il sistema non ha fornito ulteriori dettagli.';

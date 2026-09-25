@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { saveToken, saveRuolo, setGateOk, prendiPaginaRichiesta } from "../../auth";
+import * as authLotti from "../../auth";
 import axios from "axios";
 import { Lock } from "lucide-react";
 import { apiError } from "../../utils/apiError";
@@ -157,7 +158,6 @@ function Orologio() {
 
 export default function TabletHome({ onEntra, preselectReparto }) {
   const [repSel, setRepSel] = useState(preselectReparto && REPARTI.find(r => r.id === preselectReparto) ? preselectReparto : null);
-  const [showAdminEsci, setShowAdminEsci] = useState(false);
   const [erroreGestionale, setErroreGestionale] = useState("");
   const [verificaGestionale, setVerificaGestionale] = useState(false);
   const sessione = getTabletSession();
@@ -200,16 +200,22 @@ export default function TabletHome({ onEntra, preselectReparto }) {
     // ricaricare la pagina per ritrovarsi il tastierino "Accesso Lotti"
     // (trovato al collaudo del 25/07/2026).
     setGateOk();
-    setShowAdminEsci(false);
     window.location.hash = prendiPaginaRichiesta("dashboard");
     window.dispatchEvent(new Event("tablet-auth"));
   };
 
   const chiediEsciAdmin = async () => {
     if (verificaGestionale) return;
+    // Sessione unica: se il titolare e' gia' entrato nel Gestionale, basta
+    // un tocco. Altrimenti si passa dal login del Gestionale e si torna qui:
+    // niente secondo tastierino per l'amministratore (25/09/2026).
+    setVerificaGestionale(true);
+    const dalGestionale = await authLotti.entraDalGestionale();
+    setVerificaGestionale(false);
+    if (dalGestionale) { handleEsciAdmin(); return; }
     const corrente = getTabletSession();
     if (corrente?.ruolo !== "amministratore") {
-      setShowAdminEsci(true);
+      authLotti.vaiAlLoginGestionale("/lotti/#dashboard");
       return;
     }
     setVerificaGestionale(true);
@@ -220,10 +226,10 @@ export default function TabletHome({ onEntra, preselectReparto }) {
       if (utente?.ruolo === "amministratore" && utente?.dipendente_id === corrente.dipendente_id) {
         handleEsciAdmin();
       } else {
-        setShowAdminEsci(true);
+        authLotti.vaiAlLoginGestionale("/lotti/#dashboard");
       }
     } catch (err) {
-      if (err?.response?.status === 401) setShowAdminEsci(true);
+      if (err?.response?.status === 401) authLotti.vaiAlLoginGestionale("/lotti/#dashboard");
       else setErroreGestionale(apiError(err, "Verifica non disponibile, riprova"));
     } finally {
       setVerificaGestionale(false);
@@ -286,7 +292,6 @@ export default function TabletHome({ onEntra, preselectReparto }) {
           />
         );
       })()}
-      {showAdminEsci && <PinKeypad titolo="PIN Amministratore" sottotitolo="Solo l'amministratore può uscire dal kiosk" colore="#b04a3a" maxLen={6} onlyAdmin onSuccess={handleEsciAdmin} onCancel={() => setShowAdminEsci(false)} />}
     </div>
   );
 }

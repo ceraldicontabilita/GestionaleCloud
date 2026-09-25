@@ -120,6 +120,7 @@ PUBLIC_PREFIXES = (
     "/api/auth/google",
     "/api/auth/config",
     "/api/auth/me",
+    "/api/auth/session",  # la sessione del Gestionale (cookie ERP) apre Lotti
     "/api/tablet-operatori/login",
     "/api/foto",  # immagini servite da Mongo: i tag <img> non mandano il token
 )
@@ -405,6 +406,34 @@ async def refresh_token(request: Request):
     nuovo = make_token(sub=data.get("sub", "op"), nome=data.get("nome", "Operatore"),
                        ruolo=data.get("ruolo", "operatore"), via=data.get("via", "pin"))
     return {"ok": True, "token": nuovo}
+
+
+@router.get("/session")
+async def sessione_dal_gestionale(request: Request):
+    """L'amministratore gia' entrato nel Gestionale apre Lotti senza PIN.
+
+    La prova e' il cookie di sessione dell'ERP (vedi
+    `app/services/group_session.py`). Lotti restituisce un proprio token, mai
+    quello dell'ERP. Il titolare e' l'unico operatore amministratore attivo
+    (anagrafica HR): con lui il token porta la sua identita' e vale anche per
+    firmare. Se non e' univoco, il token apre le pagine ma non firma."""
+    from app.lotti.db import database as db
+    from app.services.group_session import sessione_erp
+
+    identita = await sessione_erp(request)
+    if not identita:
+        raise HTTPException(status_code=401, detail="Nessuna sessione del Gestionale")
+    titolari = await db.tablet_operatori.find(
+        {"ruolo": "amministratore", "attivo": True}, {"_id": 0, "hr_id": 1, "nome": 1}
+    ).to_list(5)
+    if len(titolari) == 1 and titolari[0].get("hr_id"):
+        sub, nome, dipendente_id = titolari[0]["hr_id"], titolari[0].get("nome") or identita["name"], titolari[0]["hr_id"]
+    else:
+        sub, nome, dipendente_id = f"erp:{identita['user_id']}", identita["name"], None
+    return {
+        "token": make_token(sub, nome, "amministratore", via="sessione_erp"),
+        "operatore": {"nome": nome, "ruolo": "amministratore", "dipendente_id": dipendente_id},
+    }
 
 
 @router.get("/me")

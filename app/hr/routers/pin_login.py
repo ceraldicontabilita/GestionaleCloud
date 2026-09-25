@@ -186,3 +186,46 @@ async def pin_login_health() -> Dict[str, Any]:
         "admin_username": settings.PIN_ADMIN_USERNAME,
         "token_expire_minutes": PIN_TOKEN_EXPIRE_MINUTES,
     }
+
+
+@router.get("/session", summary="Sessione del Gestionale → accesso amministratore HR senza PIN")
+async def sessione_dal_gestionale(request: Request) -> Dict[str, Any]:
+    """L'amministratore gia' entrato nel Gestionale apre HR senza un secondo
+    PIN: prova la sessione (cookie ERP, `app/services/group_session.py`) e
+    riceve lo stesso token HR del login col PIN. Mai il token dell'ERP."""
+    from app.services.group_session import sessione_erp
+
+    if not await sessione_erp(request):
+        raise HTTPException(401, "Nessuna sessione del Gestionale")
+    identity = await pin_authentication.risolvi_identita_admin(
+        Database.get_db(),
+        users_collection=Collections.USERS,
+        username=settings.PIN_ADMIN_USERNAME,
+        repository_factory=HrUserRepository,
+        require_existing=True,
+        require_active=True,
+        allow_synthetic=False,
+    )
+    if identity is None:
+        raise HTTPException(401, "Amministratore HR non configurato")
+    user = identity.as_user()
+    user_id = str(user.get("id"))
+    token = create_workforce_token(
+        sub=user_id,
+        name=user.get("name") or "Amministratore",
+        role="admin",
+        email=user.get("email", ""),
+        secret=settings.SECRET_KEY,
+        algorithm=settings.ALGORITHM,
+        expires_in=timedelta(minutes=PIN_TOKEN_EXPIRE_MINUTES),
+        auth_method="sessione_erp",
+    )
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user_id": user_id,
+        "email": user.get("email", ""),
+        "name": user.get("name"),
+        "role": "admin",
+        "auth_method": "sessione_erp",
+    }
