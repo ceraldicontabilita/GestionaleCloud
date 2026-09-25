@@ -1321,10 +1321,11 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
             logger.error(f"Errore riconciliazione POS da estratto conto: {e}")
 
     # ── EVENTO: pubblica sul bus unico per matching automatico ──
+    paypal_api_sync = None
     try:
         from app.services.event_bus import propagate_event, EventTypes
         if fonte_ufficiale:
-            await propagate_event(EventTypes.ESTRATTO_CONTO_IMPORTATO, {
+            event_results = await propagate_event(EventTypes.ESTRATTO_CONTO_IMPORTATO, {
                 "movimenti": [
                     {
                         "id":          m.get("id"),
@@ -1338,6 +1339,11 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
                 "banca": records_to_insert[0].get("banca", "") if records_to_insert else "",
                 "inseriti": inserted,
             }, db, source_module="estratto_conto_import")
+            for event_result in event_results:
+                if event_result.get("handler") == "on_estratto_conto_importato_riprocessa":
+                    paypal_api_sync = (event_result.get("result") or {}).get("paypal_api")
+                    if not event_result.get("success"):
+                        paypal_api_sync = {"stato": "errore_riconciliazione"}
     except Exception as _ev:
         logger.debug(f"[EstrattoContoRouter] Event Bus: {_ev}")
 
@@ -1352,6 +1358,7 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
         "success": True,
         "message": "Importazione estratto conto completata",
         "nexi_verifica": nexi_verifica,
+        "paypal_api_sync": paypal_api_sync,
         "movimenti_trovati": len(movimenti),
         "movimenti_importati": inserted,
         "inseriti": inserted,
