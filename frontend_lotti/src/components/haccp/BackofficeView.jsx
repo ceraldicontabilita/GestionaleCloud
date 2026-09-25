@@ -16,6 +16,7 @@ import { ModalRegistraLotto } from "./tablet/ModalRegistraLotto";
 import { SchedaEditorModal } from "./RicetteDashboardView";
 import SchedaRicettaChiaraModal from "./SchedaRicettaChiaraModal";
 import RicetteCestino from "./backoffice/RicetteCestino";
+import ImportaFotoRicette from "./backoffice/ImportaFotoRicette";
 import FormRicetta, { REPARTI } from "./backoffice/FormRicetta";
 import TabProdotti from "./backoffice/TabProdotti";
 import TabFornitori from "./backoffice/TabFornitori";
@@ -235,6 +236,9 @@ function TabRicette({ solaLetturaOperatore = false }) {
           {mostraCestino ? "Torna alle ricette" : "Cestino ricette"}
         </button>}
       </div>
+
+      {!solaLetturaOperatore && !mostraCestino && !loading &&
+        <ImportaFotoRicette ricette={ricette} onCompletata={carica} />}
 
       {mostraCestino ? <RicetteCestino onRipristinata={carica} /> : loading ? (
         <div style={{textAlign:"center",padding:"40px",color:"var(--text-3)"}}>Caricamento…</div>
