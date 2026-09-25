@@ -1256,6 +1256,9 @@ async def lista_ambigui(
             "fornitore": inv.get("supplier_name") or inv.get("cedente_denominazione"),
             "fornitore_piva": inv.get("supplier_vat") or inv.get("cedente_piva"),
             "payment_status": inv.get("payment_status"),
+            "piano_rate_xml": proposta.get("piano_rate_xml"),
+            "modalita_pagamento_xml": proposta.get("modalita_pagamento_xml") or [],
+            "motivo_proposta": proposta.get("nota"),
         })
 
     ambigui_dettaglio = [v for v in per_assegno.values() if v.get("candidates")]
@@ -1294,14 +1297,14 @@ async def risolvi_ambiguo(
     importo_assegno = round(float(ass.get("importo") or 0), 2)
     if len(fatture) == 1:
         inv = fatture[0]
-        rate = [
-            round(float(r.get("importo") or 0), 2)
-            for r in (inv.get("pagamento_rate") or [])
-            if isinstance(r, dict)
-        ]
+        from app.services.assegni_fattura_intent import rata_assegno_disponibile
         importo_valido = (
             amounts_equal_to_cent(importo_assegno, inv["_residuo"])
-            or any(amounts_equal_to_cent(importo_assegno, rata) for rata in rate)
+            or rata_assegno_disponibile(
+                inv, importo_assegno,
+                data_pagamento=ass.get("data_incasso") or ass.get("data_emissione"),
+                max_scarto_centesimi=1,
+            ) is not None
         )
     else:
         importo_valido = amounts_equal_to_cent(

@@ -1542,6 +1542,17 @@ export default function GestioneAssegni() {
                 variant="ghost"
                 onClick={() => {
                   setShowAltroMenu(false);
+                  toggleAmbiguiSection();
+                }}
+                data-testid="ambigui-toggle"
+                style={menuItemStyle}
+              >
+                {ambiguiOpen ? '✕ Chiudi proposte fatture' : '📄 Verifica proposte fatture'}
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setShowAltroMenu(false);
                   handlePuliziaDuplicati(true);
                 }}
                 disabled={puliziaLoading}
@@ -1609,8 +1620,8 @@ export default function GestioneAssegni() {
                 ⚠ Assegni ambigui — serve la tua decisione
               </strong>
               <p style={{ margin: '4px 0 0', fontSize: 12, color: COLORS.warning }}>
-                Per questi assegni l'auto-matcher ha trovato più di una fattura candidata con lo
-                stesso importo. Seleziona quale collegare.
+                Questi assegni hanno fatture o rate candidate, ma manca una prova sufficiente
+                per collegarle automaticamente. Verifica XML, scadenza e fornitore prima di scegliere.
               </p>
             </div>
             <Button
@@ -1691,21 +1702,21 @@ export default function GestioneAssegni() {
                     if (selezionati.length === 0) return null;
                     const somma = (a.candidates || [])
                       .filter(c => selezionati.includes(c.fattura_id))
-                      .reduce((sum, c) => sum + (c.importo_residuo ?? c.importo_totale ?? c.importo ?? 0), 0);
+                      .reduce((sum, c) => sum + (c.piano_rate_xml?.importo_rata ?? c.importo_residuo ?? c.importo_totale ?? c.importo ?? 0), 0);
                     const diff = a.importo - somma;
                     return (
                       <div
                         style={{
                           display: 'flex', justifyContent: 'space-between', gap: 8,
                           padding: '6px 8px', marginBottom: 8, borderRadius: BORDER_RADIUS.sm,
-                          background: Math.abs(diff) < 1 ? COLORS.successLight : COLORS.warningLight,
+                          background: Math.abs(diff) < 0.005 ? COLORS.successLight : COLORS.warningLight,
                           fontSize: 12, fontWeight: 600,
                         }}
                       >
                         <span>Totale selezionato ({selezionati.length}):</span>
                         <span style={{ fontFamily: 'monospace' }}>
                           € {somma.toFixed(2)} · assegno € {a.importo.toFixed(2)} · diff{' '}
-                          <span style={{ color: Math.abs(diff) < 1 ? COLORS.success : COLORS.warning }}>
+                          <span style={{ color: Math.abs(diff) < 0.005 ? COLORS.success : COLORS.warning }}>
                             € {diff.toFixed(2)}
                           </span>
                         </span>
@@ -1740,6 +1751,21 @@ export default function GestioneAssegni() {
                           {c.data && <span style={{ color: COLORS.textMuted }}> · {formatDateIT(c.data)}</span>}
                           {c.fornitore && (
                             <span style={{ color: COLORS.textMuted }}> · {c.fornitore}</span>
+                          )}
+                          {c.piano_rate_xml && (
+                            <span style={{ color: COLORS.textMuted }}>
+                              {' '}· rata {c.piano_rate_xml.rata_numero}/{c.piano_rate_xml.numero_rate}
+                              {c.piano_rate_xml.data_scadenza && ` · scade ${formatDateIT(c.piano_rate_xml.data_scadenza)}`}
+                              {' '}· € {Number(c.piano_rate_xml.importo_rata).toFixed(2)}
+                              {c.piano_rate_xml.scarto_centesimi > 0 && (
+                                <> · assegno inferiore di € {(c.piano_rate_xml.scarto_centesimi / 100).toFixed(2)}: residuo da verificare</>
+                              )}
+                            </span>
+                          )}
+                          {!c.piano_rate_xml && c.modalita_pagamento_xml?.length > 0 && (
+                            <span style={{ color: COLORS.warning }}>
+                              {' '}· XML: {c.modalita_pagamento_xml.join(', ')}; strumento da verificare
+                            </span>
                           )}
                         </span>
                         <span style={{ fontFamily: 'monospace', color: COLORS.text }}>
