@@ -273,8 +273,34 @@ async def _overrides_map():
     docs = await db.magazzino_overrides.find({}, {"_id": 0}).to_list(5000)
     return {d["key"]: d for d in docs if d.get("key")}
 
-def _applica_override(u: dict, ov: dict):
-    """Applica nome normalizzato e categoria scelti manualmente."""
+async def _nomi_confermati() -> dict:
+    """Descrizione di fattura -> ingrediente, solo le righe CONFERMATE del
+    Dizionario (quelle non confermate sono proposte, non decisioni)."""
+    docs = await db.nome_mapping.find(
+        {"confermato": True}, {"_id": 0, "descrizione_key": 1, "nome_canc": 1}).to_list(10000)
+    return {d["descrizione_key"]: d["nome_canc"] for d in docs if d.get("descrizione_key") and d.get("nome_canc")}
+
+
+def _nome_ingrediente_auto(nome: str, confermati: dict) -> str:
+    """Il nome dell'ingrediente che si usa, ricavato dalla riga di fattura:
+    «AIA. WUDY GR.300 WURSTEL POLLO» -> «Würstel», «Ananas L. 055-000857-0003014»
+    -> «Ananas». Prima la conferma del Dizionario, poi il vocabolario degli
+    alimenti; se nessuno dei due e' sicuro resta il nome di fattura."""
+    from app.lotti.routers.ingredienti import match_livello2
+
+    chiave = (nome or "").lower().strip()[:200]
+    return confermati.get(chiave) or match_livello2(nome or "") or ""
+
+
+def _applica_override(u: dict, ov: dict, confermati: Optional[dict] = None):
+    """Applica nome e categoria scelti a mano; senza scelta, per le righe di
+    fattura, il nome dell'ingrediente riconosciuto in automatico."""
+    u.setdefault("nome_originale", u.get("nome", ""))
+    if confermati is not None and u.get("source") == "fornitori" and not (ov or {}).get("nome_norm"):
+        auto = _nome_ingrediente_auto(u["nome_originale"], confermati)
+        if auto:
+            u["nome"] = auto
+            u["nome_auto"] = True
     if ov:
         if ov.get("nome_norm"):
             u["nome"] = ov["nome_norm"]
@@ -286,7 +312,10 @@ def _visibile(u: dict, ov: dict) -> bool:
     """Il flag manuale ha priorità sul rilevamento automatico alimenti."""
     if ov and ov.get("visualizza") is not None:
         return bool(ov["visualizza"])
-    return _e_alimento(u["nome"], u.get("categoria", ""))
+    # si decide sulla riga di fattura (il nome ricavato «Würstel» da solo
+    # non basta al classificatore) oppure sul nome scelto
+    cat = u.get("categoria", "")
+    return _e_alimento(u.get("nome_originale") or u["nome"], cat) or _e_alimento(u["nome"], cat)
 
 
 @router.get("/prodotti-unificati")
@@ -300,6 +329,7 @@ async def prodotti_unificati(
 ):
     items = []
     ov_map = await _overrides_map()
+    confermati = await _nomi_confermati()
 
     # ── Bar — se vuota esegui seed automatico ────────────────────────────────
     # Con `anno` impostato il bar si salta: lo stock bar non ha un anno di
@@ -350,7 +380,7 @@ async def prodotti_unificati(
             u = _unifica_lotto(d)
             k = (d.get("prodotto_nome_norm") or _strip_accents(u["nome"])).strip()
             ov = ov_map.get(k)
-            u = _applica_override(u, ov)
+            u = _applica_override(u, ov, confermati)
             u["key"] = k
             if not gestione:
                 if not _visibile(u, ov):   # flag manuale o auto-alimenti
@@ -400,6 +430,7 @@ async def prodotti_unificati(
         items = [
             i for i in items
             if sa in _strip_accents(i["nome"])
+            or sa in _strip_accents(i.get("nome_originale", ""))
             or sa in _strip_accents(i["fornitore"])
             or sa in _strip_accents(i["categoria"])
         ]
@@ -676,11 +707,13 @@ async def gestione_prodotti(search: Optional[str] = None):
             continue
         visti.add(k)
         ov = ov_map.get(k, {})
-        auto_food = _e_alimento(u.get("nome", ""), u.get("categoria", ""))
+        auto_food = _visibile(u, None)
         out.append({
             "key": k,
-            "nome_originale": ov.get("nome_originale") or u["nome"],
+            "nome_originale": ov.get("nome_originale") or u.get("nome_originale") or u["nome"],
             "nome_norm": ov.get("nome_norm") or "",
+            # riconosciuto dal sistema: si usa gia' senza premere Salva
+            "nome_norm_auto": u["nome"] if u.get("nome_auto") else "",
             "nome_visualizzato": ov.get("nome_norm") or u["nome"],
             "categoria": u.get("categoria", "Altro"),
             "categoria_auto": _categoria_da_nome(u["nome"]) if u.get("source") == "fornitori" else u.get("categoria", "Altro"),
@@ -726,6 +759,7 @@ async def salva_override(payload: OverridePayload):
     if payload.nome_norm is not None:
         campi["nome_norm"] = payload.nome_norm.strip() or None
     await db.magazzino_overrides.update_one({"key": key}, {"$set": campi}, upsert=True)
+    _GESTIONE_CACHE["dati"] = None  # senza, ricaricando si rivedeva il dato di prima
     doc = await db.magazzino_overrides.find_one({"key": key}, {"_id": 0})
     return {"ok": True, "override": doc}
 
@@ -738,6 +772,7 @@ class ResetPayload(BaseModel):
 async def reset_override(payload: ResetPayload):
     """Rimuove l'override (robusto anche con key che contengono / o caratteri speciali)."""
     r = await db.magazzino_overrides.delete_one({"key": payload.key})
+    _GESTIONE_CACHE["dati"] = None
     return {"ok": True, "rimossi": r.deleted_count}
 
 
@@ -751,6 +786,7 @@ async def lista_override():
 async def azzera_override(key: str):
     """Rimuove l'override: il prodotto torna alla classificazione automatica."""
     r = await db.magazzino_overrides.delete_one({"key": key})
+    _GESTIONE_CACHE["dati"] = None
     return {"ok": True, "rimossi": r.deleted_count}
 
 

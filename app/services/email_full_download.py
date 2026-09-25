@@ -1053,6 +1053,11 @@ async def _cedolino_unico_per_nome(db: ArchivioDocumenti, parole: List[str], mes
     return candidati[0] if candidati else None
 
 
+async def _pdf_allegato(db, collezione: str, doc_id: str):
+    doc = await db[collezione].find_one({"id": doc_id}, {"_id": 0, "pdf_data": 1}) or {}
+    return doc.get("pdf_data")
+
+
 async def smart_auto_associate(db: ArchivioDocumenti) -> Dict[str, int]:
     """
     Tenta di associare automaticamente i PDF ai documenti esistenti
@@ -1068,7 +1073,9 @@ async def smart_auto_associate(db: ArchivioDocumenti) -> Dict[str, int]:
         "settembre": 9, "ottobre": 10, "novembre": 11, "dicembre": 12
     }
 
-    cursor = db["cedolini_email_attachments"].find({"associato": False})
+    # Allegati senza PDF: il PDF si legge per id solo quando c'e' davvero un
+    # abbinamento (scorrerli tutti col PDF dentro esauriva la memoria).
+    cursor = db["cedolini_email_attachments"].find({"associato": False}, {"_id": 0, "pdf_data": 0})
     async for pdf_doc in cursor:
         try:
             filename = pdf_doc.get("filename", "")
@@ -1094,6 +1101,7 @@ async def smart_auto_associate(db: ArchivioDocumenti) -> Dict[str, int]:
                     cedolino = await _cedolino_unico_per_nome(db, parts, mese, anno)
 
                     if cedolino:
+                        pdf_doc["pdf_data"] = await _pdf_allegato(db, "cedolini_email_attachments", pdf_doc["id"])
                         # Associa
                         await db["cedolini"].update_one(
                             {"id": cedolino["id"]},
@@ -1132,7 +1140,7 @@ async def smart_auto_associate(db: ArchivioDocumenti) -> Dict[str, int]:
             stats["errors"] += 1
 
     # ========== ASSOCIAZIONE F24 ==========
-    cursor = db["f24_email_attachments"].find({"associato": False})
+    cursor = db["f24_email_attachments"].find({"associato": False}, {"_id": 0, "pdf_data": 0})
     async for pdf_doc in cursor:
         try:
             filename = pdf_doc.get("filename", "")
@@ -1154,6 +1162,7 @@ async def smart_auto_associate(db: ArchivioDocumenti) -> Dict[str, int]:
             })
 
             if f24:
+                pdf_doc["pdf_data"] = await _pdf_allegato(db, "f24_email_attachments", pdf_doc["id"])
                 await db["f24_unificato"].update_one(
                     {"id": f24["id"]},
                     {"$set": {

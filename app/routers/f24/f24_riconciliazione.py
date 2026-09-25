@@ -1062,7 +1062,9 @@ async def riconcilia_tutto() -> Dict[str, Any]:
     ).to_list(1000)
 
     # Recupera tutte le quietanze
-    quietanze = await db[COLL_QUIETANZE].find({}, {"_id": 0}).to_list(1000)
+    # senza PDF: al confronto servono codici e importi, non 303 allegati in RAM
+    from app.document_repository import metadata_projection
+    quietanze = await db[COLL_QUIETANZE].find({}, metadata_projection(COLL_QUIETANZE)).to_list(1000)
 
     # Reset associazioni quietanze
     await db[COLL_QUIETANZE].update_many({}, {"$set": {"f24_associati": []}})
