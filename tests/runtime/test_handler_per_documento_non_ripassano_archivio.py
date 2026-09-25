@@ -36,6 +36,7 @@ MOTORI_GLOBALI = (
     "riprocessa_bonifici_pendenti",
     "riprocessa_intenti_assegni",
     "riprocessa_collegamenti_paypal",
+    "riconcilia_paypal_importato",
     "reconcile_deterministic_invoice_allocations",
     "riconcilia_documenti_e_pagamenti",
 )
@@ -103,11 +104,15 @@ def test_il_ripasso_completo_esiste_ancora_nel_giro_dei_30_minuti():
 
 def test_i_motori_globali_restano_dentro_il_ripasso_unico():
     """Il giro dei 30 minuti deve coprire tutti i motori tolti dall'handler."""
-    from app.services import reconciliation_orchestrator
+    from app.services import reconciliation_orchestrator, paypal_reconciliation_pipeline
 
     sorgente = inspect.getsource(
         reconciliation_orchestrator.riconcilia_documenti_e_pagamenti
     )
+    # Il sottopasso PayPal ora ha una sola implementazione condivisa dagli
+    # import, ma rimane chiamato dal ripasso periodico.
+    if "riconcilia_paypal_importato" in sorgente:
+        sorgente += inspect.getsource(paypal_reconciliation_pipeline.riconcilia_paypal_importato)
     mancanti = [
         m for m in MOTORI_GLOBALI
         if m != "riconcilia_documenti_e_pagamenti" and m not in sorgente
