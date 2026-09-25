@@ -219,20 +219,12 @@ async def aggiorna_metodi_pagamento_da_fornitori() -> Dict[str, Any]:
 
 
 async def riconcilia_fatture_paypal() -> Dict[str, Any]:
-    """Alias storico del motore PayPal canonico e idempotente."""
-    from app.services.paypal_reconciliation_links import riprocessa_collegamenti_paypal
-    from app.routers.paypal_statements import _auto_riconcilia
+    """Endpoint fatture che usa la stessa catena canonica degli import PayPal."""
+    from app.services.paypal_reconciliation_pipeline import riconcilia_paypal_importato
+
     db = Database.get_db()
     try:
-        collegamenti_prima = await riprocessa_collegamenti_paypal(db)
-        banca = await _auto_riconcilia(db, applica=True)
-        collegamenti_dopo = await riprocessa_collegamenti_paypal(db)
-        return {
-            "success": True,
-            "collegamenti_prima": collegamenti_prima,
-            "banca": banca,
-            "collegamenti_dopo": collegamenti_dopo,
-        }
+        return {"success": True, **(await riconcilia_paypal_importato(db))}
     except Exception as e:
         logger.error(f"Errore riconciliazione PayPal: {e}")
         raise HTTPException(status_code=500, detail=str(e)) from e

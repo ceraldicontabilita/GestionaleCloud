@@ -344,6 +344,8 @@ async def save_parsed_statement(
         "documento_duplicato": bool((source_document or {}).get("duplicate")),
         "statement_esistente": bool(existing_statement),
         "periodo": f"{periodo.get('periodo_inizio')} - {periodo.get('periodo_fine')}",
+        "periodo_inizio": periodo.get("periodo_inizio"),
+        "periodo_fine": periodo.get("periodo_fine"),
         "transazioni_inserite": inserted,
         "transazioni_ricollegate": linked_existing,
         # Compatibilita' con i contatori storici dell'endpoint.

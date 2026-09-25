@@ -814,10 +814,14 @@ async def import_paypal_pdf(file: UploadFile = File(...)):
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    result['collegamenti_prima'] = await riprocessa_collegamenti_paypal(db)
-    ric_result = await _auto_riconcilia(db, applica=True)
-    result['riconciliazione'] = ric_result
-    result['collegamenti_dopo'] = await riprocessa_collegamenti_paypal(db)
+    from app.services.paypal_reconciliation_pipeline import riconcilia_paypal_importato
+
+    links = await riconcilia_paypal_importato(
+        db, start_date=result.get('periodo_inizio'), end_date=result.get('periodo_fine'),
+    )
+    result['collegamenti_prima'] = links['collegamenti_prima']
+    result['riconciliazione'] = links['banca']
+    result['collegamenti_dopo'] = links['collegamenti_dopo']
 
     return result
 
@@ -852,10 +856,12 @@ async def import_all_local_pdfs():
         except Exception as e:
             results['errori'].append(f"{fname}: {str(e)}")
 
-    results['collegamenti_prima'] = await riprocessa_collegamenti_paypal(db)
-    ric_result = await _auto_riconcilia(db, applica=True)
-    results['riconciliazione'] = ric_result
-    results['collegamenti_dopo'] = await riprocessa_collegamenti_paypal(db)
+    from app.services.paypal_reconciliation_pipeline import riconcilia_paypal_importato
+
+    links = await riconcilia_paypal_importato(db)
+    results['collegamenti_prima'] = links['collegamenti_prima']
+    results['riconciliazione'] = links['banca']
+    results['collegamenti_dopo'] = links['collegamenti_dopo']
 
     return results
 
@@ -887,9 +893,9 @@ async def import_paypal_csv(file: UploadFile = File(...)):
         transazioni_inserite += save_result.get('transazioni_inserite', 0)
         transazioni_duplicate += save_result.get('transazioni_duplicate', 0)
 
-    collegamenti_prima = await riprocessa_collegamenti_paypal(db)
-    ric_result = await _auto_riconcilia(db, applica=True)
-    collegamenti_dopo = await riprocessa_collegamenti_paypal(db)
+    from app.services.paypal_reconciliation_pipeline import riconcilia_paypal_importato
+
+    links = await riconcilia_paypal_importato(db)
 
     return {
         "success": True,
@@ -898,9 +904,9 @@ async def import_paypal_csv(file: UploadFile = File(...)):
         "righe_scartate": parsed['righe_scartate'],
         "transazioni_inserite": transazioni_inserite,
         "transazioni_duplicate": transazioni_duplicate,
-        "collegamenti_prima": collegamenti_prima,
-        "riconciliazione": ric_result,
-        "collegamenti_dopo": collegamenti_dopo,
+        "collegamenti_prima": links['collegamenti_prima'],
+        "riconciliazione": links['banca'],
+        "collegamenti_dopo": links['collegamenti_dopo'],
     }
 
 
@@ -1472,15 +1478,11 @@ async def riprocessa_paypal_end_to_end(anno: Optional[int] = Query(None)) -> Dic
     db = Database.get_db()
     start_date = f"{anno}-01-01" if anno else None
     end_date = f"{anno}-12-31" if anno else None
-    prima = await riprocessa_collegamenti_paypal(
+    from app.services.paypal_reconciliation_pipeline import riconcilia_paypal_importato
+
+    return {"success": True, **(await riconcilia_paypal_importato(
         db, start_date=start_date, end_date=end_date,
-    )
-    banca = await _auto_riconcilia(db, anno=anno, applica=True)
-    dopo = await riprocessa_collegamenti_paypal(
-        db, start_date=start_date, end_date=end_date,
-    )
-    return {"success": True, "collegamenti_prima": prima, "banca": banca,
-            "collegamenti_dopo": dopo}
+    ))}
 
 
 
