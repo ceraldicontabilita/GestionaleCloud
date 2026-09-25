@@ -116,6 +116,60 @@ def rate_assegno_dichiarate(fattura: Dict[str, Any]) -> List[float]:
     return list(dict.fromkeys(rate))
 
 
+def rata_assegno_disponibile(
+    fattura: Dict[str, Any], importo: Any, *, data_pagamento: Any = None,
+    max_scarto_centesimi: int = 0,
+) -> Optional[Dict[str, Any]]:
+    """Rata XML MP02 non ancora impegnata, con posizione e scadenza originali.
+
+    Le rate uguali restano distinte: il numero delle occorrenze, non il valore
+    deduplicato, determina quante quote sono ancora associabili.
+    """
+    importo_cents = to_cents(importo)
+    rate = [
+        (indice, rata) for indice, rata in enumerate(fattura.get("pagamento_rate") or [])
+        if isinstance(rata, dict)
+        and str(rata.get("modalita") or "").strip().upper() in MODALITA_ASSEGNO
+        and to_cents(rata.get("importo")) > 0
+    ]
+    if importo_cents <= 0:
+        return None
+    candidate = []
+    for indice, rata in rate:
+        rata_cents = to_cents(rata.get("importo"))
+        scarto = rata_cents - importo_cents
+        if not 0 <= scarto <= max_scarto_centesimi:
+            continue
+        precedenti = sum(
+            1 for i, r in rate if i <= indice and to_cents(r.get("importo")) == rata_cents
+        )
+        gia_collegate = sum(
+            1 for link in (fattura.get("assegni_collegati") or [])
+            if isinstance(link, dict) and to_cents(link.get("quota")) == rata_cents
+        )
+        if gia_collegate >= precedenti:
+            continue
+        scadenza = str(rata.get("data_scadenza") or "")[:10]
+        data = str(data_pagamento or "")[:10]
+        try:
+            distanza = abs((datetime.fromisoformat(scadenza) - datetime.fromisoformat(data)).days)
+        except (TypeError, ValueError):
+            distanza = 999999
+        candidate.append((distanza, scarto, indice, rata))
+    if not candidate:
+        return None
+    _, scarto, indice, rata = min(candidate, key=lambda item: item[:3])
+    numero_rata = next(pos for pos, (originale, _) in enumerate(rate, 1) if originale == indice)
+    return {
+        "numero_rate": len(rate),
+        "rata_numero": numero_rata,
+        "data_scadenza": rata.get("data_scadenza"),
+        "importo_rata": round(to_cents(rata.get("importo")) / 100, 2),
+        "scarto_centesimi": scarto,
+        "modalita": "MP02",
+    }
+
+
 def importi_assegno_dichiarati(fattura: Dict[str, Any]) -> List[float]:
     """Importi delle rate MP02, con fallback prudente al netto/totale."""
     rate = rate_assegno_dichiarate(fattura)

@@ -146,6 +146,78 @@ def test_importo_univoco_senza_numero_fattura_resta_proposta():
     _run(scenario())
 
 
+def test_proposta_rata_xml_indica_numero_rate_scadenza_e_non_confonde_mp05():
+    async def scenario():
+        db = ClientArchivioMemoria().db
+        await db.invoices.insert_many([
+            {
+                "id": "fatt-mp02", "invoice_number": "20", "invoice_date": "2026-02-06",
+                "supplier_vat": "00000000001", "supplier_name": "DI MASSA",
+                "total_amount": 12000.01, "importo_pagato": 0,
+                "payment_status": "open", "pagato": False,
+                "pagamento_rate": [
+                    {"modalita": "MP02", "importo": "3000.00", "data_scadenza": "2026-02-28"},
+                    {"modalita": "MP02", "importo": "3000.00", "data_scadenza": "2026-03-30"},
+                    {"modalita": "MP02", "importo": "3000.00", "data_scadenza": "2026-04-23"},
+                    {"modalita": "MP02", "importo": "3000.01", "data_scadenza": "2026-05-30"},
+                ],
+            },
+            {
+                "id": "fatt-mp05", "invoice_number": "ALTRO", "invoice_date": "2026-02-06",
+                "supplier_vat": "00000000002", "supplier_name": "ALTRO",
+                "total_amount": 9000, "importo_pagato": 0,
+                "payment_status": "open", "pagato": False,
+                "pagamento_rate": [
+                    {"modalita": "MP05", "importo": "3000.00", "data_scadenza": "2026-02-28"},
+                ],
+            },
+        ])
+        primo = _mov(numero="0208770761", importo=3000, idx=761)
+        primo["data_pagamento"] = "2026-02-28"
+        ultimo = _mov(numero="0208770764", importo=3000, idx=764)
+        ultimo["data_pagamento"] = "2026-05-30"
+        await db.estratto_conto_movimenti.insert_many([primo, ultimo])
+        esito = await sincronizza_assegni_da_estratto_conto(db)
+        proposte = await db.proposte_associazione_assegni.find({}, {"_id": 0}).to_list(10)
+        return esito, {p["assegno_numero"]: p for p in proposte}
+
+    esito, proposte = _run(scenario())
+    assert esito["fatture_associate"] == 0
+    assert len(proposte) == 2
+    proposta = proposte["0208770761"]
+    assert proposta["fattura_id"] == "fatt-mp02"
+    assert proposta["piano_rate_xml"]["numero_rate"] == 4
+    assert proposta["piano_rate_xml"]["rata_numero"] == 1
+    assert proposta["piano_rate_xml"]["data_scadenza"] == "2026-02-28"
+    ultima = proposte["0208770764"]
+    assert ultima["piano_rate_xml"]["rata_numero"] == 4
+    assert ultima["piano_rate_xml"]["scarto_centesimi"] == 1
+    assert "residuo" in ultima["nota"]
+
+
+def test_assegno_inferiore_di_un_centesimo_non_chiude_la_fattura():
+    async def scenario():
+        db = ClientArchivioMemoria().db
+        await db.invoices.insert_one({
+            "id": "fatt-cent", "invoice_number": "20", "supplier_vat": "00000000001",
+            "supplier_name": "DI MASSA", "total_amount": 3000.01,
+            "importo_pagato": 0, "payment_status": "open", "pagato": False,
+            "pagamento_rate": [{"modalita": "MP02", "importo": "3000.01"}],
+        })
+        await db.estratto_conto_movimenti.insert_one(_mov(numero="0208770764", importo=3000, idx=764))
+        await sincronizza_assegni_da_estratto_conto(db)
+        assegno = await db.assegni.find_one({"numero": "0208770764"}, {"_id": 0})
+        fattura = await db.invoices.find_one({"id": "fatt-cent"}, {"_id": 0})
+        await collega_assegno_riconciliato_a_fattura(db, assegno, fattura)
+        return await db.invoices.find_one({"id": "fatt-cent"}, {"_id": 0})
+
+    fattura = _run(scenario())
+    assert fattura["importo_pagato"] == 3000
+    assert fattura["importo_residuo"] == 0.01
+    assert fattura["payment_status"] == "partial"
+    assert fattura["pagato"] is False
+
+
 def test_sync_limitata_non_riesamina_gli_assegni_storici():
     async def scenario():
         db = ClientArchivioMemoria().db
@@ -265,8 +337,8 @@ def test_due_assegni_uguali_restano_distinti_e_chiudono_due_rate():
             "importo_pagato": 0.0, "importo_residuo": 19520.0,
             "payment_status": "open", "pagato": False,
             "pagamento_rate": [
-                {"importo": "9760.00", "data_scadenza": "2026-06-30"},
-                {"importo": "9760.00", "data_scadenza": "2026-07-31"},
+                    {"modalita": "MP02", "importo": "9760.00", "data_scadenza": "2026-06-30"},
+                    {"modalita": "MP02", "importo": "9760.00", "data_scadenza": "2026-07-31"},
             ],
         })
         await db.estratto_conto_movimenti.insert_many([
