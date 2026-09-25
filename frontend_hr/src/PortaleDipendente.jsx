@@ -8,6 +8,7 @@ import {
 import "./portale.css";
 import { LockKeyhole, Delete, X } from "lucide-react";
 import { createPinModal } from "../../frontend_shared/PinModal";
+import { entraDalGestionale, loginGestionale } from "./sessioneGruppo.js";
 const PinModal = createPinModal(React, { LockKeyhole, Delete, X });
 
 const TK = "pt_token";
@@ -166,7 +167,8 @@ function Login({ onLogin }) {
   // uso era scomodissimo. Tocca il tuo nome -> tastierino PIN, come prima.
   const [elenco, setElenco] = useState(null);   // null = in caricamento
   const [elencoErr, setElencoErr] = useState(false);
-  const [sel, setSel] = useState(null);   // {admin:true} | {id, nome}
+  const [sel, setSel] = useState(null);   // {id, nome}
+  const [adminErr, setAdminErr] = useState("");
 
 
   // Estratta (non solo nell'effetto) per poterla richiamare dal bottone
@@ -186,8 +188,7 @@ function Login({ onLogin }) {
   const submit = async p => {
     let r;
     try {
-      const body = sel.admin ? { pin: p } : { dipendente_id: sel.id, pin: p };
-      r = await api.post("/auth/pin-login", body);
+      r = await api.post("/auth/pin-login", { dipendente_id: sel.id, pin: p });
     } catch (e) {
       const detail = e.response?.data?.detail;
       throw new Error(!e.response ? "Connessione assente — riprova"
@@ -200,6 +201,14 @@ function Login({ onLogin }) {
     localStorage.setItem("pt_name", r.data.name || sel.nome);
     if (r.data.role === "admin") { window.location.href = "/hr/dipendenti"; return; }
     onLogin();
+  };
+
+  const entraAdmin = async () => {
+    setAdminErr("");
+    const esito = await entraDalGestionale();
+    if (esito === "ok") { window.location.href = "/hr/dipendenti"; return; }
+    if (esito === "nessuna_sessione") { window.location.assign(loginGestionale("/hr/dipendenti")); return; }
+    setAdminErr("Servizio temporaneamente non disponibile: riprova");
   };
 
   if (!sel) return (
@@ -223,13 +232,15 @@ function Login({ onLogin }) {
           ))}
         </div>
       </div>
-      <button className="btn sec" onClick={() => setSel({ nome: "Amministratore", admin: true })}>
-        Accesso amministratore</button>
+      {/* L'amministratore non ha un tastierino qui: entra con la sessione del
+          Gestionale, o passa dal suo login che poi riporta alla gestione HR. */}
+      <button className="btn sec" onClick={entraAdmin}>Accesso amministratore</button>
+      {adminErr && <div className="muted" role="alert" style={{ textAlign: "center" }}>{adminErr}</div>}
     </div>
   );
 
-  return <PinModal title={sel.admin ? "Accesso HR" : sel.nome}
-    subtitle={sel.admin ? "Inserisci il PIN di GestionaleCloud" : "Inserisci il tuo PIN personale"}
+  return <PinModal title={sel.nome}
+    subtitle="Inserisci il tuo PIN personale"
     color="#5b7a6b" maxLength={12}
     onVerify={submit} onCancel={() => setSel(null)} />;
 }

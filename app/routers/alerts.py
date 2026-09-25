@@ -44,9 +44,11 @@ async def alerts_summary() -> Dict[str, Any]:
         {"$group": {"_id": "$severita", "count": {"$sum": 1}}}
     ]
     async for doc in db["alerts"].aggregate(pipeline_sev):
-        sev = doc["_id"] or "info"
-        if sev in per_severita:
-            per_severita[sev] = doc["count"]
+        # Si SOMMA: gli alert senza gravita' contano come info, e prima il loro
+        # conteggio (8) sovrascriveva quello degli info veri (3.201) — la
+        # campana diceva 3.023 aperti, la pagina 6.224 (25/09/2026).
+        sev = doc["_id"] if doc["_id"] in per_severita else "info"
+        per_severita[sev] += doc["count"]
 
     # Conteggio per modulo
     per_modulo: Dict[str, int] = {}
@@ -66,7 +68,9 @@ async def alerts_summary() -> Dict[str, Any]:
          "modulo": 1, "severita": 1, "created_at": 1, "entita_id": 1, "link": 1}
     ).sort("created_at", -1).limit(5).to_list(5)
 
-    totale = sum(per_severita.values())
+    # Il totale e' un conteggio diretto con lo stesso filtro della lista:
+    # campana e pagina non possono piu' dire due numeri diversi.
+    totale = await db["alerts"].count_documents(query_open)
 
     return {
         "totale_aperti": totale,

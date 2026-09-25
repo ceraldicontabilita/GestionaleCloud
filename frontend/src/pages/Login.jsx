@@ -3,6 +3,20 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import PinModal from '../components/PinModal';
 
+// Dopo il login si torna all'app del gruppo da cui si e' arrivati
+// (/login?next=/lotti/): una sessione sola, niente secondo PIN. Solo percorsi
+// interni delle app del gruppo, mai un indirizzo esterno.
+export function destinazioneDopoLogin(search = window.location.search) {
+  const next = new URLSearchParams(search).get('next') || '';
+  return /^\/(hr|lotti|menu)(\/|$)/.test(next) && !next.startsWith('//') ? next : '';
+}
+
+function vaiDopoLogin(navigate) {
+  const next = destinazioneDopoLogin();
+  if (next) window.location.assign(next);
+  else navigate('/', { replace: true });
+}
+
 export default function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -12,7 +26,7 @@ export default function Login() {
   const { loginWithPin, verifyMfaLogin, isAuthenticated } = useAuth();
 
   useEffect(() => {
-    if (isAuthenticated) navigate('/', { replace: true });
+    if (isAuthenticated) vaiDopoLogin(navigate);
   }, [isAuthenticated, navigate]);
 
   const submitPin = async pin => {
@@ -22,7 +36,7 @@ export default function Login() {
         setMfaChallenge(result.challenge_token);
         return;
       }
-      navigate('/', { replace: true });
+      vaiDopoLogin(navigate);
     } catch (err) {
       const status = err.response?.status;
       throw new Error(!err.response ? 'Connessione assente — riprova'
@@ -38,7 +52,7 @@ export default function Login() {
     setError('');
     try {
       await verifyMfaLogin(mfaChallenge, mfaCode.trim());
-      navigate('/', { replace: true });
+      vaiDopoLogin(navigate);
     } catch (err) {
       setError(err.response?.data?.detail || 'Codice MFA non valido');
       setMfaCode('');

@@ -539,8 +539,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   le pagine si limitano a pubblicare `dipendente.cessato`, non ripetono la pulizia a mano.
 - **Un PIN per persona, nella scheda HR**: vale per il portale e per firmare in Lotti (bcrypt più impronta
   HMAC; mai due persone in forza con lo stesso PIN; mai un cessato). Il **PIN amministratore è uno solo
-  per ERP, Menu, Lotti e HR** (`PIN_HASH_ADMIN`, verifica unica in `app/services/admin_pin.py`): apre le
-  pagine riservate ma non è un'identità di firma sul tablet.
+  per ERP, Menu, Lotti e HR** (`PIN_HASH_ADMIN`, `app/services/admin_pin.py`) e si digita **solo nel login ERP**:
+  HR, Lotti e Menu leggono quel cookie (`group_session.py`, `/auth/session`), senza tastierino admin proprio.
 - **Cedolini**: il gestionale li scarica (Drive e posta) e ne ricava la Prima Nota salari; l'archivio che
   si vede è **solo in HR** (`hr_cedolini_deposito`, richiamato dopo ogni scrittura, dedup per chiave o per
   CF+anno+mese+tipo, mai sovrascrittura; 13ª e 14ª restano buste distinte).

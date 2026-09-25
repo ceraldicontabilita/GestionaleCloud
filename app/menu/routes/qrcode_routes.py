@@ -90,6 +90,22 @@ async def admin_login(login_data: AdminPinLogin, request: Request):
     )
 
 
+@router.get("/session", response_model=AdminLoginResponse)
+async def sessione_dal_gestionale(request: Request):
+    """L'amministratore gia' entrato nel Gestionale apre l'amministrazione del
+    Menu senza PIN: prova la sessione (cookie ERP, vedi
+    `app/services/group_session.py`) e riceve un token del Menu, mai quello
+    dell'ERP."""
+    from app.services.group_session import sessione_erp
+
+    if not SECRET_KEY:
+        raise HTTPException(status_code=503, detail="Login amministratore non configurato")
+    if not await sessione_erp(request):
+        raise HTTPException(status_code=401, detail="Nessuna sessione del Gestionale")
+    token = create_access_token(data={"sub": ADMIN_USERNAME, "auth_method": "sessione_erp"})
+    return AdminLoginResponse(success=True, token=token, message="Accesso dal Gestionale")
+
+
 def _get_config_row():
     res = supabase.table("menu_qrcode_config").select("*").eq("id", CONFIG_ID).limit(1).execute()
     return res.data[0] if res.data else None

@@ -5,6 +5,7 @@ import { Button } from '../components/ui/button';
 import { LogOut, QrCode, Image, Package, Database, ClipboardList, ShoppingBag, ChefHat, Warehouse, DoorOpen } from 'lucide-react';
 import SelettoreSezioni from "../components/shared/SelettoreSezioni";
 import axios from 'axios';
+import { esciDalGruppo } from '../lib/sessioneGruppo';
 
 // Import existing QR Code management
 import AdminQRCodePage from './AdminQRCodePage';
@@ -42,10 +43,6 @@ const AdminDashboard = () => {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('admin_token');
-    navigate('/admin/login');
-  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -58,7 +55,7 @@ const AdminDashboard = () => {
           </div>
           <div className="flex items-center gap-1">
             <SelettoreSezioni sezioneCorrente="menu" />
-            <Button variant="ghost" onClick={handleLogout} className="text-white hover:bg-white/10">
+            <Button variant="ghost" onClick={esciDalGruppo} className="text-white hover:bg-white/10">
               <LogOut className="w-4 h-4 mr-2" />
               Esci
             </Button>

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
 const BACKEND_URL = process.env.REACT_APP_MENU_BACKEND_URL;
@@ -13,11 +13,12 @@ export function useAdminAuth() {
   const [authorized, setAuthorized] = useState(false);
   const [token, setToken] = useState(null);
   const navigate = useNavigate();
+  const { pathname } = useLocation();
 
   const checkAuth = useCallback(async () => {
     const saved = localStorage.getItem('admin_token');
     if (!saved) {
-      navigate('/admin/login');
+      navigate('/admin/login', { state: { da: pathname } });
       return;
     }
     try {
@@ -28,11 +29,11 @@ export function useAdminAuth() {
       setAuthorized(true);
     } catch (error) {
       localStorage.removeItem('admin_token');
-      navigate('/admin/login');
+      navigate('/admin/login', { state: { da: pathname } });
     } finally {
       setChecking(false);
     }
-  }, [navigate]);
+  }, [navigate, pathname]);
 
   useEffect(() => {
     checkAuth();

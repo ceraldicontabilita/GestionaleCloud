@@ -103,3 +103,7 @@ jobs:
       # 25/09/2026, TST-01): le dipendenze le ha gia' installate la build.
       - name: Test Lotti
         run: CI=true npm --prefix frontend_lotti test -- --watchAll=false
+      - name: Test HR
+        run: npm --prefix frontend_hr test
+      - name: Test Menu
+        run: CI=true npm --prefix frontend_menu test -- --watchAll=false
