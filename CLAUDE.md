@@ -832,7 +832,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   calcolabili ma con **zero** acquisti (tutti `detraibilita_da_verificare`). LIPE 2026 (tre periodi,
   quadrati): marzo combacia al centesimo, a gennaio mancano **5.005,88 €** di IVA detraibile. Nessun F24
   IVA 2026.
-- Foto ricette Lotti: **302 su 327 rotte** (404), la cartella Drive `Ricettario_GestionaleCloud_Immagini` non esiste piu'; servono gli originali, mai un abbinamento per nome.
+- Foto ricette Lotti: 20 su Storage, 307 su Drive in `FOTO E IMMAGINI/ricette_immagini_per_nome` (ricollegate per ID da `Mappa_immagini_ricette.csv`); da portare su Storage. **La cartella cedolini `GOOGLE_DRIVE_CEDOLINI_FOLDER_ID` non esiste piu'**: l'ingest cedolini non ha credenziali finche' non si aggiorna la variabile.
 - Solo 108 prodotti del Menu su 325 hanno allergeni (obbligo di legge). Cron Render `gestionalecloud-calderone-15min`, sospeso, da cancellare dal pannello.
 - **Lotti indietro**: 163 fatture alimentari da giugno bloccate dal ponte (conflitti d'impronta), ultimo lotto 14/09. 119 lotti su 344 in unità non convertibili
   (95 KAR); 320 descrizioni con proposta web da confermare; scadenza su 15 lotti su 580, lotto vero su 27.
