@@ -224,7 +224,7 @@ async def registra_sanificazione(
 
 
 @router.put("/scheda/{anno}/{mese}")
-async def aggiorna_scheda_completa(anno: int, mese: int, data: AggiornaSchedaRequest):
+async def aggiorna_scheda_completa(anno: int, mese: int, data: AggiornaSchedaRequest, _admin=Depends(require_admin)):
     """Aggiorna l'intera scheda mensile"""
     # Riscrittura intera: niente giorni futuri, e il nome dichiarato non
     # diventa il responsabile (non e' una firma verificata).
@@ -275,7 +275,7 @@ async def get_attrezzature():
 
 
 @router.post("/attrezzature")
-async def aggiungi_attrezzatura(nome: str):
+async def aggiungi_attrezzatura(nome: str, _admin=Depends(require_admin)):
     """Aggiunge una nuova attrezzatura"""
     if nome not in ATTREZZATURE_SANIFICAZIONE:
         ATTREZZATURE_SANIFICAZIONE.append(nome)
@@ -455,7 +455,7 @@ async def registra_sanificazione_apparecchio(
 
 
 @router.post("/apparecchi/{anno}/rigenera")
-async def rigenera_calendario_apparecchi(anno: int):
+async def rigenera_calendario_apparecchi(anno: int, _admin=Depends(require_admin)):
     raise HTTPException(
         status_code=410,
         detail="Bloccato: il calendario non puo attestare esiti o operatori non verificati.",

@@ -103,6 +103,7 @@ async def esegui_backup_async() -> dict:
     }
 
     totale_doc = 0
+    fallite: list = []
     # Scrittura streaming AMMORTIZZATA (fix 02/07/2026): la memoria era già a
     # posto (un documento alla volta), ma json.dumps+gzip giravano DENTRO
     # l'event loop: su ~119k documenti la CPU del free tier restava occupata
@@ -142,10 +143,18 @@ async def esegui_backup_async() -> dict:
                 if blocco:
                     await _aio.to_thread(_scrivi_blocco, fh, blocco)
             except Exception as e:
-                LOG.warning(f"[BACKUP] collezione {coll_name} parziale: {e}")
+                fallite.append(coll_name)
+                LOG.warning("[BACKUP] collezione %s parziale: %s: %s", coll_name, type(e).__name__, e)
             fh.write("]")
         fh.write("}")
 
+    if fallite:
+        # Un backup incompleto non si ripristina: il nome non combacia piu'
+        # con la regex del restore, e l'esito non e' un successo (audit
+        # 25/09/2026, PER-02: prima diceva success True anche cosi').
+        parziale = filepath.replace(".json.gz", "_PARZIALE.json.gz")
+        os.replace(filepath, parziale)
+        filepath, filename = parziale, os.path.basename(parziale)
     size_mb = round(os.path.getsize(filepath) / 1024 / 1024, 2)
     elapsed = (datetime.now(timezone.utc) - start).total_seconds()
 
@@ -162,7 +171,9 @@ async def esegui_backup_async() -> dict:
 
     LOG.info(f"[BACKUP] {filename} - {size_mb} MB - {totale_doc} doc - {elapsed:.1f}s")
     return {
-        "success": True,
+        "success": not fallite,
+        "parziale": bool(fallite),
+        "collezioni_fallite": fallite,
         "file": filename,
         "percorso": filepath,
         "dimensione": f"{size_mb} MB",
@@ -186,7 +197,7 @@ async def backup_manuale(_admin=Depends(require_admin)):
 
 # ── GET /api/backup/lista ─────────────────────────────────────────────────────
 @router.get("/lista")
-async def lista_backup():
+async def lista_backup(_admin=Depends(require_admin)):
     """Elenca tutti i backup disponibili con dimensione e data."""
     # makedirs puo fallire per permessi sul filesystem (es. Render): non deve
     # mandare in 500 la semplice lista. Se la dir non esiste/non e accessibile,
@@ -219,7 +230,7 @@ async def lista_backup():
 
 # ── GET /api/backup/stato ─────────────────────────────────────────────────────
 @router.get("/stato")
-async def stato_backup():
+async def stato_backup(_admin=Depends(require_admin)):
     """Ritorna lo stato dell'ultimo backup."""
     files = sorted(glob.glob(os.path.join(BACKUP_DIR, f"{DB_NAME}_*.gz")), reverse=True)
     if not files:
@@ -287,8 +298,10 @@ async def ripristina_backup(filename: str, _admin=Depends(require_admin)):
     elapsed = round((datetime.now(timezone.utc) - start).total_seconds(), 1)
     LOG.info(f"[RESTORE] Completato: {filename} in {elapsed}s")
 
+    errori = {c: v for c, v in ripristinate.items() if isinstance(v, str)}
     return {
-        "success": True,
+        "success": not errori,
+        "collezioni_con_errore": sorted(errori),
         "backup_ripristinato": filename,
         "backup_sicurezza": backup_sicurezza["file"],
         "collezioni_ripristinate": ripristinate,

@@ -132,17 +132,9 @@ PUBLIC_PREFIXES = (
 #  riscrive l'intero registro, la config e il DELETE lotto esigono token.)
 def _scrittura_tablet_consentita(path: str, method: str) -> bool:
     P = "/api"
-    # timbro singolo temperatura/sanificazione del giorno
-    if path.endswith("/registra") and (
-        path.startswith(P + "/temperature-positive/scheda")
-        or path.startswith(P + "/temperature-negative/scheda")
-        or path.startswith(P + "/sanificazione/scheda")
-    ):
-        return True
-    if path.startswith(P + "/sanificazione/scheda") and path.endswith("/giorno-completo"):
-        return True
-    if path.startswith(P + "/temperature-cottura") and method == "POST":
-        return True
+    # Le registrazioni HACCP (temperature, sanificazione, cottura) NON sono
+    # piu' qui: le fa solo chi ha una sessione, e senza token erano un
+    # oracolo anonimo per indovinare i PIN (audit 25/09/2026, SEC-01).
     # richiesta bar -> lavagna magazzino: crea(POST), evadi(PUT .../ok), cancella(DELETE)
     if path.startswith(P + "/magazzino-bar/richieste"):
         return True
@@ -311,6 +303,20 @@ def _lock_seconds() -> int:
         return int(os.environ.get("AUTH_LOCK_SECONDS", "300"))
     except ValueError:
         return 300
+
+
+def ip_richiesta(request) -> str:
+    """IP del client vero. Davanti al servizio ci sono Cloudflare e Render:
+    `request.client.host` e' il proxy, e contare li' i tentativi bloccava
+    tutti i tablet insieme (o nessuno). Cloudflare sovrascrive sempre
+    `CF-Connecting-IP`, quindi il client non puo' falsificarlo."""
+    if request is None:
+        return ""
+    h = request.headers
+    ip = (h.get("cf-connecting-ip") or (h.get("x-forwarded-for") or "").split(",")[0]).strip()
+    if ip:
+        return ip
+    return request.client.host if request.client else ""
 
 
 def check_lock(ip: str):

@@ -10,7 +10,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from fastapi import APIRouter, Body, HTTPException
+from app.lotti.auth import require_admin
+from fastapi import Depends, APIRouter, Body, HTTPException
 from pydantic import BaseModel
 
 from app.lotti.db import database as db
@@ -248,7 +249,7 @@ async def lista_collaudi(anche_fatti: bool = True):
 
 
 @router.post("")
-async def aggiungi_collaudo(payload: NuovoCollaudo = Body(...)):
+async def aggiungi_collaudo(payload: NuovoCollaudo = Body(...), _admin=Depends(require_admin)):
     """Usato dalle sessioni di sviluppo per registrare i test del proprio
     intervento (invece di dettarli in chat)."""
     doc = {
@@ -263,7 +264,7 @@ async def aggiungi_collaudo(payload: NuovoCollaudo = Body(...)):
 
 
 @router.post("/{collaudo_id}/stato")
-async def cambia_stato(collaudo_id: str, stato: str, operatore: str = ""):
+async def cambia_stato(collaudo_id: str, stato: str, operatore: str = "", _admin=Depends(require_admin)):
     if stato not in ("da_fare", "fatto", "fallito"):
         raise HTTPException(400, "Stato non valido (da_fare|fatto|fallito)")
     res = await db.collaudi.update_one(
@@ -278,7 +279,7 @@ async def cambia_stato(collaudo_id: str, stato: str, operatore: str = ""):
 
 
 @router.delete("/{collaudo_id}")
-async def elimina_collaudo(collaudo_id: str):
+async def elimina_collaudo(collaudo_id: str, _admin=Depends(require_admin)):
     res = await db.collaudi.delete_one({"id": collaudo_id})
     if not res.deleted_count:
         raise HTTPException(404, "Collaudo non trovato")

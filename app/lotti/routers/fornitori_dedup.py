@@ -8,7 +8,8 @@ i duplicati e permettono all'utente di fonderli da UI.
 Fa parte del gruppo tag "Fornitori" — condivide prefix "/fornitori".
 """
 
-from fastapi import APIRouter, HTTPException
+from app.lotti.auth import require_admin
+from fastapi import Depends, APIRouter, HTTPException
 from datetime import datetime, timezone
 from pydantic import BaseModel
 import re as _re
@@ -102,7 +103,7 @@ class MergeRequest(BaseModel):
 
 
 @router.post("/merge")
-async def merge_fornitori(payload: MergeRequest):
+async def merge_fornitori(payload: MergeRequest, _admin=Depends(require_admin)):
     """Unisce più fornitori duplicati in uno solo.
     - Trasferisce tutte le fatture dei duplicati al fornitore master
     - Elimina i record fornitori duplicati (solo se non ha P.IVA diversa)
@@ -228,7 +229,7 @@ async def merge_fornitori(payload: MergeRequest):
 
 
 @router.post("/dedup-record-identici")
-async def dedup_record_identici():
+async def dedup_record_identici(_admin=Depends(require_admin)):
     """Elimina automaticamente record fornitori con nome E piva identici.
     Mantiene quello con più campi valorizzati (o quello più recente).
     """
@@ -268,7 +269,7 @@ async def dedup_record_identici():
 
 
 @router.post("/auto-merge-normalizzati")
-async def auto_merge_fornitori_normalizzati():
+async def auto_merge_fornitori_normalizzati(_admin=Depends(require_admin)):
     """Fa automaticamente il merge di fornitori duplicati per P.IVA quando i nomi
     normalizzati (uppercase, senza punteggiatura, senza spazi multipli) sono identici.
     Es: "DRINK UP SRL" ≡ "Drink Up S.r.l." ≡ "DRINK UP S.R.L."

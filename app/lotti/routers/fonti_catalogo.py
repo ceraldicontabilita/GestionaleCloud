@@ -70,7 +70,7 @@ async def lista_fonti():
 
 
 @router.post("")
-async def crea_fonte(payload: NuovaFonte = Body(...)):
+async def crea_fonte(payload: NuovaFonte = Body(...), _admin=Depends(require_admin)):
     nome = payload.nome.strip()
     url = payload.url.strip()
     if not nome or not url:
@@ -274,7 +274,7 @@ async def _sincronizza_fonte(fonte: dict):
 
 
 @router.post("/{fonte_id}/sincronizza")
-async def sincronizza(fonte_id: str, background_tasks: BackgroundTasks):
+async def sincronizza(fonte_id: str, background_tasks: BackgroundTasks, _admin=Depends(require_admin)):
     fonte = await db.fonti_catalogo_esterne.find_one({"id": fonte_id}, {"_id": 0})
     if not fonte:
         raise HTTPException(404, "Fonte non trovata")

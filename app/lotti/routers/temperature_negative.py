@@ -395,26 +395,5 @@ async def get_riferimenti_normativi():
 
 
 
-# ── POST /pulisci-operatori — rimuove campo operatore da tutti i doc automatici ──
-@router.post("/pulisci-operatori")
-async def pulisci_operatori_automatici():
-    """Rimuove il campo 'operatore' da tutti i record temperatura automatici nel DB.
-    Le temperature sono rilevate automaticamente: non c'è un operatore reale."""
-    schede = await db.temperature_negative.find({}, {"_id": 1, "temperature": 1}).to_list(100)
-    modificate = 0
-    celle_pulite = 0
-    for scheda in schede:
-        aggiornata = False
-        temp = scheda.get("temperature", {})
-        for mese, giorni in temp.items():
-            for giorno, record in (giorni or {}).items():
-                if isinstance(record, dict) and "operatore" in record:
-                    del record["operatore"]
-                    aggiornata = True
-                    celle_pulite += 1
-        if aggiornata:
-            await db.temperature_negative.update_one(
-                {"_id": scheda["_id"]}, {"$set": {"temperature": temp}}
-            )
-            modificate += 1
-    return {"ok": True, "schede_modificate": modificate, "celle_pulite": celle_pulite}
+# /pulisci-operatori tolto (audit 25/09/2026, HAC-02): cancellava il nome
+# da ogni rilevazione del registro, firme comprese, senza traccia.

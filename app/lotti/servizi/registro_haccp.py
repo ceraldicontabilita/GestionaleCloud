@@ -71,7 +71,10 @@ async def firma_registrazione(
 ) -> Dict[str, Any]:
     """Chi firma: PIN personale, poi sessione verificata, poi nome dichiarato."""
     if isinstance(pin, str) and pin.strip():
-        firma = await firma_dipendente.firma_da_pin(pin, operatore_dichiarato)
+        from app.lotti.auth import ip_richiesta
+
+        firma = await firma_dipendente.firma_da_pin(
+            pin, operatore_dichiarato, chiave_tentativi=ip_richiesta(request))
         firma["firma_via"] = "pin"
         return firma
     from app.lotti.auth import request_actor

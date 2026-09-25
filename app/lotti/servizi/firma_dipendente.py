@@ -30,7 +30,7 @@ from fastapi import HTTPException
 
 
 async def firma_da_pin(
-    pin: Optional[str], operatore_dichiarato: str = ""
+    pin: Optional[str], operatore_dichiarato: str = "", chiave_tentativi: str = ""
 ) -> Dict[str, Any]:
     """Campi di firma da mettere nel record di una rilevazione.
 
@@ -56,9 +56,16 @@ async def firma_da_pin(
         }
 
     from app.hr.services.auth_dipendenti import trova_dipendente_per_pin
+    from app.lotti.auth import check_lock, clear_fails, register_fail
 
+    # Stesso limite del login: dopo N PIN sbagliati dallo stesso client, 429.
+    chiave = f"firma:{chiave_tentativi or 'sconosciuto'}"
+    check_lock(chiave)
     trovati = await trova_dipendente_per_pin(pin, solo_operatori_lotti=True)
+    if trovati:
+        clear_fails(chiave)
     if not trovati:
+        register_fail(chiave)
         raise HTTPException(
             status_code=401,
             detail="PIN non riconosciuto: la rilevazione non e' stata registrata. "

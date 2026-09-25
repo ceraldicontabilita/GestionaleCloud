@@ -173,7 +173,7 @@ def test_rilevazioni_firmate_salvano_id_dipendente(archivio, monkeypatch):
     monkeypatch.setattr(positive, "db", db)
     monkeypatch.setattr(negative, "db", db)
 
-    async def firma(_pin, _nome):
+    async def firma(_pin, _nome, **_kw):
         return {"operatore": "Pocci Salvatore", "dipendente_id": "hr-7", "firma_verificata": True}
 
     monkeypatch.setattr(firma_dipendente, "firma_da_pin", firma)

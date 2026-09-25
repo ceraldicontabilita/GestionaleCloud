@@ -8,7 +8,8 @@ Permette scarico da entrambe le fonti con tracciabilità operatore.
 
 import uuid
 from datetime import datetime, timezone, date
-from fastapi import APIRouter, HTTPException
+from app.lotti.auth import require_admin
+from fastapi import Depends, APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from app.lotti.db import database as db
@@ -744,7 +745,7 @@ class OverridePayload(BaseModel):
 
 
 @router.post("/override-prodotto")
-async def salva_override(payload: OverridePayload):
+async def salva_override(payload: OverridePayload, _admin=Depends(require_admin)):
     """Salva (upsert) il flag visualizza/categoria/nome normalizzato per un prodotto del magazzino."""
     key = (payload.key or "").strip()
     if not key:
@@ -769,7 +770,7 @@ class ResetPayload(BaseModel):
 
 
 @router.post("/reset-override")
-async def reset_override(payload: ResetPayload):
+async def reset_override(payload: ResetPayload, _admin=Depends(require_admin)):
     """Rimuove l'override (robusto anche con key che contengono / o caratteri speciali)."""
     r = await db.magazzino_overrides.delete_one({"key": payload.key})
     _GESTIONE_CACHE["dati"] = None
@@ -783,7 +784,7 @@ async def lista_override():
 
 
 @router.delete("/override-prodotto/{key}")
-async def azzera_override(key: str):
+async def azzera_override(key: str, _admin=Depends(require_admin)):
     """Rimuove l'override: il prodotto torna alla classificazione automatica."""
     r = await db.magazzino_overrides.delete_one({"key": key})
     _GESTIONE_CACHE["dati"] = None

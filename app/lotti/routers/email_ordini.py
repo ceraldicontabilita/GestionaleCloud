@@ -7,7 +7,8 @@ NOTA: l'invio automatico via PEC/SMTP/Gmail è stato RIMOSSO. Gli ordini si
 inviano manualmente scaricando il PDF (GET /ordini-fornitori/{id}/pdf).
 """
 
-from fastapi import APIRouter, HTTPException
+from app.lotti.auth import require_admin
+from fastapi import Depends, APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import io
@@ -236,7 +237,7 @@ async def get_suppliers_email(ordine_id: str):
 
 
 @router.post("/email-fornitore/salva")
-async def salva_email_fornitore(payload: SaveEmailFornitore):
+async def salva_email_fornitore(payload: SaveEmailFornitore, _admin=Depends(require_admin)):
     """Salva o aggiorna l'email commerciale di un fornitore."""
     await db.email_fornitori.update_one(
         {"nome_fornitore": payload.nome_fornitore},
