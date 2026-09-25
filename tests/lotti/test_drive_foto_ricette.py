@@ -107,3 +107,19 @@ def test_cestina_verifica_cartella_prima_di_spostare_il_file():
 
     assert result == {"id": "foto-1", "trashed": True}
     assert files.updated["body"] == {"trashed": True}
+
+
+def test_credenziale_provata_sulla_cartella_della_foto(monkeypatch):
+    """La foto non dipende dalla cartella di un altro canale (es. cedolini)."""
+    from app.services import drive_credential_probe
+
+    provate = []
+
+    def finta_probe(folder_id):
+        provate.append(folder_id)
+        return None, "nessun accesso"
+
+    monkeypatch.setattr(drive_credential_probe, "load_credentials_for_folder", finta_probe)
+    with pytest.raises(RuntimeError):
+        foto_drive.leggi("foto-1", folder_id="cartella-ricette")
+    assert provate == ["cartella-ricette"]
