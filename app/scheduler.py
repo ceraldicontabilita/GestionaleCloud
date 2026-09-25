@@ -6,7 +6,7 @@ import logging
 import uuid
 import asyncio
 import inspect
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -780,8 +780,10 @@ def start_scheduler():
             )
         except Exception as e:
             logger.error(f"[SCHEDULER-PAYPAL-BANCA] errore: {e}")
+        from app.database import Database
+        from app.services.aggiornamento_dati import registra_giro_riconciliazione
+        iniziato = datetime.now(timezone.utc)
         try:
-            from app.database import Database
             from app.services.reconciliation_orchestrator import (
                 riconcilia_documenti_e_pagamenti,
             )
@@ -793,8 +795,12 @@ def start_scheduler():
                 (r.get("f24") or {}).get("movimenti_associati", 0),
                 (r.get("bonifici_pdf") or {}).get("associati", 0),
             )
+            # L'esito resta in `sistema_stato`: lo legge il riquadro
+            # «Aggiornamento dati» della Dashboard.
+            await registra_giro_riconciliazione(Database.get_db(), iniziato_at=iniziato, risultato=r)
         except Exception as e:
-            logger.error(f"[SCHEDULER-DOCUMENTI-PAGAMENTI] errore: {e}")
+            logger.error("[SCHEDULER-DOCUMENTI-PAGAMENTI] errore: %s: %s", type(e).__name__, e)
+            await registra_giro_riconciliazione(Database.get_db(), iniziato_at=iniziato, errore=e)
         # Fase 0 (15/09/2026): sposta_fatture_cassa_pagate_in_banca spento —
         # senza il ramo cassa di auto_registra_prima_nota (punto 2) non ha
         # più righe cassa automatiche da spostare, e rischierebbe di

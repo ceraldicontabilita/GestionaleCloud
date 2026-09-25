@@ -27,6 +27,7 @@ import api from '../api';
 import { useAnnoGlobale, AnnoSelector } from '../contexts/AnnoContext';
 import { formatEuro, COLORS } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
+import AggiornamentoDati from '../components/AggiornamentoDati';
 
 /**
  * DASHBOARD — ricostruita da zero (11/07/2026, richiesta utente).
@@ -327,6 +328,8 @@ export default function Dashboard() {
       )}
 
       <FasciaEnergiaCard energia={energia} errore={erroreEnergia} />
+
+      <AggiornamentoDati />
 
       {loading ? (
         <div style={STILI.loading}>Caricamento di {etichettaPeriodo}…</div>

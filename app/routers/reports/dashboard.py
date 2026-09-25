@@ -734,3 +734,15 @@ async def get_bilancio_istantaneo(
             "documenti": {"fatture_ricevute": 0, "corrispettivi": 0},
             "error": str(e)
         }
+
+
+@router.get(
+    "/aggiornamento-dati",
+    summary="Stato delle fonti dati (banca, fatture, corrispettivi, cedolini/F24, riconciliazione)",
+)
+async def get_aggiornamento_dati() -> Dict[str, Any]:
+    """Sola lettura: ultimo giro, ultimo dato e conteggi di ogni fonte, letti
+    da dove i motori li scrivono gia' (`app/services/aggiornamento_dati.py`)."""
+    from app.services.aggiornamento_dati import stato_fonti
+
+    return await stato_fonti(Database.get_db())
