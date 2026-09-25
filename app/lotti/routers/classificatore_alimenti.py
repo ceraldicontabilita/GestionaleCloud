@@ -19,7 +19,10 @@ import unicodedata as _ud
 NON_MERCE_RE = _re.compile(
     r"rinnovo|dominio|\bservizio\b|servizio di|canone|abbonamento|hosting|"
     r"noleggio|assistenza|manutenzione|consulenz|\bspese\b|commission|"
-    r"\bbollo\b|interess|contributo|\.it\b|\.com\b|instant ink|firma digitale|"
+    # dominio web («rinnovo ceraldicaffe.it»), non «orig.it-F.691»: dopo
+    # l'estensione non deve continuare la parola (prima «Lamponi orig.it» usciva
+    # come non alimentare)
+    r"\bbollo\b|interess|contributo|\w\.(?:it|com)\b(?![\w./-])|instant ink|firma digitale|"
     r"licenz|vi rimettiamo fattura|anticipazione contrattuale|sponsorizzazione|"
     r"accise|locazione|tribunale|giudizio|\bcausa\b|forfait|restauro|"
     r"nota di credito|preventivo|detrarre|\bacconto\b|ns\.?\s*ft|\bddt\b|cancelleria|"
@@ -97,7 +100,7 @@ FOOD_WORDS = _re.compile(
         "margarina", "pectina", "aroma", "estratto", "tuorlo", "albume",
         "prosciutt", "salame", "mortadell", "wurstel", "carne", "pollo",
         "tonno", "acciugh", "verdur", "spinaci", "funghi", "carciof", "peperon",
-        "melanzan", "zucchin", "patate", "cipoll", "aglio", "basilico",
+        "melanzan", "zucchin", "patat", "cipoll", "aglio", "basilico",
         "origano", "pepe", "cannella", "the", "t\u00e8",
         "camomilla", "orzo", "riso", "couscous", "ceci", "fagioli",
         "lenticchie", "nutella", "gianduia", "praline", "torrone", "amaretti",
@@ -158,6 +161,23 @@ def e_alimento(nome: str, categoria: str = "") -> bool:
     if strip_accents(categoria) in _FOOD_CAT_NORM:
         return True
     return bool(FOOD_WORDS.search(nome))
+
+
+def motivo_non_pertinente_lotti(nome: str) -> str | None:
+    """Perche' una riga di fattura non e' un ingrediente di Lotti; None se puo' esserlo.
+
+    Il Dizionario ingredienti la toglie da solo dalla coda da battezzare.
+    Un servizio o una voce contabile (spese, bolli, consulenze, DDT, omaggi)
+    non lo e' mai. Un oggetto non alimentare (monouso, pulizia, edilizia) lo e'
+    solo se nel nome non c'e' anche una parola di cibo: «Miele millefiori
+    contenitore» resta a una persona, «Tovaglioli 25x25» esce da solo.
+    """
+    n = nome or ""
+    if NON_MERCE_RE.search(n):
+        return "servizio o voce contabile"
+    if (HARD_NONFOOD.search(n) or _BRAND_NONFOOD.search(n)) and not FOOD_WORDS.search(n):
+        return "non alimentare (monouso, pulizia, attrezzatura)"
+    return None
 
 
 def e_merce_alimentare(nome: str, categoria: str = "") -> bool:

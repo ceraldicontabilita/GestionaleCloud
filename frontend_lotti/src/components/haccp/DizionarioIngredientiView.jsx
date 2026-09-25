@@ -74,8 +74,8 @@ function RigaProdotto({ p, onSalva, onEscludi, vistaEsclusi = false }) {
           <div>{(p.ultima_fattura_data || "").slice(0, 10) || "—"}</div>
         </td>
         <td className="p-2.5 align-top text-xs text-stone-500" colSpan={2}>
-          Esclusa dal battesimo
-          {p.escluso_motivo ? ` · ${String(p.escluso_motivo).replace("famiglia:", "famiglia ")}` : ""}
+          {p.escluso_automatico ? "Esclusa in automatico: non è un ingrediente" : "Esclusa dal battesimo"}
+          {p.escluso_motivo ? ` · ${String(p.escluso_motivo).replace("famiglia:", "famiglia ").replace("automatico: ", "")}` : ""}
         </td>
         <td className="p-2.5 align-top text-right">
           <button
@@ -268,7 +268,8 @@ export default function DizionarioIngredientiView() {
         quantità e unità come in fattura. Il sistema PROPONE il nome canonico: tu lo
         confermi con un tocco o lo correggi ("van." → Vaniglia). Le righe nuove arrivano
         da sole a ogni fattura e il Supervisore ti ricorda quante ne restano da battezzare:
-        battezzarle tutte = collegamento esatto con le ricette.
+        battezzarle tutte = collegamento esatto con le ricette. Servizi, bolli, consulenze,
+        monouso e pulizia escono da soli e li ritrovi in «Escluse» con il motivo.
       </p>
       <datalist id="canonici-diz">
         {canonici.map((c) => <option key={c} value={c} />)}

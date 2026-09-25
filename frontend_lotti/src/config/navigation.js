@@ -4,7 +4,7 @@ import {
   Globe, HelpCircle, IceCreamBowl, Layers, Network, Package,
   Refrigerator, Scale, Settings, ShieldCheck, ShoppingCart, Snowflake,
   Sparkles, Tag, Thermometer, TrendingUp, Truck, UtensilsCrossed, Users,
-  Wallet, Wheat,
+  Wheat,
 } from "lucide-react";
 
 // Le cinque destinazioni più frequenti restano sempre visibili.
@@ -31,7 +31,6 @@ export const SECONDARY_TABS = [
   { section: "Acquisti e vendita", id: "comparatore", label: "Confronto prezzi", icon: Scale },
   { section: "Acquisti e vendita", id: "prodotti", label: "Listini e cataloghi", icon: Tag },
   { section: "Acquisti e vendita", id: "corrispettivi", label: "Corrispettivi", icon: TrendingUp },
-  { section: "Analisi", id: "dashboard_economica", label: "Dashboard economica", icon: Wallet },
   { section: "Analisi", id: "mappa_tracciabilita", label: "Mappa tracciabilità", icon: Network },
   { section: "Amministrazione", id: "controllo_dati", label: "Verifica dati", icon: ShieldCheck },
   { section: "Amministrazione", id: "cataloghi_esterni", label: "Cataloghi fornitori", icon: Globe },

@@ -118,7 +118,6 @@ from app.lotti.routers.cataloghi_prezzi import router as r_cataloghi_prezzi
 from app.lotti.routers.fonti_catalogo import router as r_fonti_catalogo
 from app.lotti.routers.collaudi import router as r_collaudi
 from app.lotti.routers.gestionale_fatture import router as r_gestionale_fatture
-from app.lotti.routers.dashboard_economica import router as r_dashboard_economica
 from app.lotti.routers.produzione_consigliata import router as r_produzione_consigliata
 from app.lotti.routers.ricerca_globale import router as r_ricerca_globale
 from app.lotti.routers.menu_categorie import router as r_menu_categorie
@@ -140,7 +139,7 @@ for r in [
     r_mepa, r_cataloghi_arricchimento, r_costi_giornalieri, r_corrispettivi, r_attrezzature, r_pipeline, r_scheduler,
     r_controllo_dati, r_backup, r_supervisor, r_tablet_operatori, r_log_attivita, r_utils, r_stampanti,
     r_gelati, r_auth, r_digest, r_catalogo_forno, r_cataloghi_prezzi, r_fornitori_rivendita, r_fonti_catalogo, r_collaudi,
-    r_dashboard_economica, r_produzione_consigliata, r_ricerca_globale,
+    r_produzione_consigliata, r_ricerca_globale,
     r_menu_categorie,
 ]:
     api_router.include_router(r)

@@ -140,8 +140,12 @@ async def get_dizionario(
     Le righe con escluso_ricette=true (escluse a mano o per famiglia: bevande,
     alcolici, vini — richiesta Enzo 23/07/2026) NON compaiono mai, tranne con
     solo_esclusi=true (la vista dedicata per rivederle e ripristinarle).
+    Escono da sole anche le righe che non sono ingredienti (servizi, bolli,
+    consulenze, monouso, pulizia: `motivo_non_pertinente_lotti`), con il motivo
+    «automatico». Una riga ripristinata a mano (escluso_ricette=false) resta
+    dentro: la scelta di una persona vince sulla regola.
     """
-    query = {"escluso_ricette": True} if solo_esclusi else {"escluso_ricette": {"$ne": True}}
+    query: dict = {}
     if solo_esclusi:
         senza_canonico = False  # la vista esclusi mostra tutte le escluse, associate o no
 
@@ -177,21 +181,26 @@ async def get_dizionario(
         ):
             if d.get("nome"):
                 nascosti.add(d["nome"].lower().strip())
-    cursor = db.dizionario_prodotti.find(query, {"_id": 0}).sort(
+    from app.lotti.routers.classificatore_alimenti import motivo_non_pertinente_lotti
+
+    candidati = await db.dizionario_prodotti.find(query, {"_id": 0}).sort(
         [("ultima_fattura_data", -1), ("nome_normalizzato", 1)]
-    )
-    if nascosti:
-        candidati_totale = await db.dizionario_prodotti.count_documents(query)
-        candidati = await cursor.to_list(max(candidati_totale, 1))
-        filtrati = [
-            p for p in candidati
-            if str(p.get("fornitore") or "").strip().lower() not in nascosti
-        ]
-        totale = len(filtrati)
-        prodotti = filtrati[skip:skip + limit]
-    else:
-        totale = await db.dizionario_prodotti.count_documents(query)
-        prodotti = await cursor.skip(skip).limit(limit).to_list(limit)
+    ).to_list(None)
+    filtrati = []
+    for p in candidati:
+        if str(p.get("fornitore") or "").strip().lower() in nascosti:
+            continue
+        escluso = p.get("escluso_ricette") is True
+        if p.get("escluso_ricette") is not False and not escluso:
+            motivo = motivo_non_pertinente_lotti(p.get("nome_originale") or p.get("nome_normalizzato") or "")
+            if motivo:
+                escluso = True
+                p["escluso_motivo"] = f"automatico: {motivo}"
+                p["escluso_automatico"] = True
+        if escluso == solo_esclusi:
+            filtrati.append(p)
+    totale = len(filtrati)
+    prodotti = filtrati[skip:skip + limit]
 
     # PROPOSTA di nome canonico per le righe scoperte: Enzo conferma con un
     # tocco o corregge ("van." → Vaniglia), senza dover riconoscere da solo

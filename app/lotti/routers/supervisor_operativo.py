@@ -476,11 +476,17 @@ async def check_dati_da_completare(alerts: list):
             {"$or": [{"nome_canonico": {"$in": [None, ""]}},
                      {"nome_canonico": {"$exists": False}}]},
         ]},
-        {"_id": 0, "id": 1, "nome_originale": 1, "nome_normalizzato": 1, "fornitore": 1},
+        {"_id": 0, "id": 1, "nome_originale": 1, "nome_normalizzato": 1, "fornitore": 1, "escluso_ricette": 1},
     ).to_list(2000)
+    from app.lotti.routers.classificatore_alimenti import motivo_non_pertinente_lotti
+
+    # le righe che non sono ingredienti escono da sole dal Dizionario: non si
+    # ricordano (stessa regola della pagina)
     scoperte = [
         d for d in scoperte
         if (d.get("fornitore") or "").strip().lower() not in nomi_nc
+        and (d.get("escluso_ricette") is False
+             or not motivo_non_pertinente_lotti(d.get("nome_originale") or d.get("nome_normalizzato") or ""))
     ]
     if scoperte:
         a = _alert(
