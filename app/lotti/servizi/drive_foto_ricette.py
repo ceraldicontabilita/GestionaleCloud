@@ -17,11 +17,12 @@ from typing import Any
 from app.config import settings
 
 
-def build_drive_service():
-    # Import locale: il servizio immagini non deve trascinare il catalogo Excel
-    # documentale (openpyxl) nei processi/test che gestiscono solo fotografie.
-    from app.services.drive_cedolini_ingest import _load_credentials_cedolini
-    creds, error = _load_credentials_cedolini()
+def build_drive_service(folder_id: str):
+    # La credenziale si sceglie provando l'accesso alla cartella delle foto,
+    # non a quella di un altro canale: sparita la cartella cedolini, il loader
+    # dei cedolini falliva e con lui ogni foto, anche se leggibile.
+    from app.services.drive_credential_probe import load_credentials_for_folder
+    creds, error = load_credentials_for_folder(folder_id)
     if creds is None:
         raise RuntimeError(f"Credenziali Google Drive non disponibili: {error}")
     from googleapiclient.discovery import build
@@ -77,7 +78,7 @@ def _metadata(service: Any, file_id: str, *, folder_id: str) -> dict:
 
 
 def leggi(file_id: str, *, folder_id: str, service: Any = None) -> tuple[bytes, str, dict]:
-    service = service or build_drive_service()
+    service = service or build_drive_service(folder_id)
     metadata = _metadata(service, file_id, folder_id=folder_id)
     from googleapiclient.http import MediaIoBaseDownload
 
@@ -96,7 +97,7 @@ def carica(
 ) -> dict:
     if not str(mime or "").lower().startswith("image/"):
         raise ValueError("File non è un'immagine")
-    service = service or build_drive_service()
+    service = service or build_drive_service(folder_id)
     digest = hashlib.sha256(contenuto).hexdigest()
     nome = _nome_file(ricetta_id, digest, mime)
     from googleapiclient.http import MediaIoBaseUpload
@@ -119,7 +120,7 @@ def carica(
 
 def cestina(file_id: str, *, folder_id: str, service: Any = None) -> dict:
     """Sposta nel cestino Drive una foto canonica, dopo averne verificato la cartella."""
-    service = service or build_drive_service()
+    service = service or build_drive_service(folder_id)
     _metadata(service, file_id, folder_id=folder_id)
     service.files().update(
         fileId=file_id,
