@@ -195,8 +195,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - Il download di un file Drive sta in un posto solo,
   `app/services/drive_download.py`: non è specifico di una sezione.
 - PostgREST esegue le RPC del runtime come ruolo `anon`, con
-  `statement_timeout` 20 s; `authenticator` resta a 8 s. Da rivedere se si
-  cambia compute o si riduce il payload di `documents`.
+  `statement_timeout` 20 s; `authenticator` resta a 8 s. Compute **Small** (90 connessioni,
+  database ~2,2 GB): i timeout si rivedono se si riduce il payload di `documents`.
 
 ### Regole per chi scrive codice sui dati
 
@@ -835,8 +835,6 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 
 ## Aperto (togliere la voce quando si chiude)
 
-- Compute Supabase **Micro** insufficiente (`documents` 1.172 MB, database 2.111 MB): Postgres caduto il
-  17/09, connessioni rifiutate il 20/09. **Da fare Small**: causa degli `statement timeout` che fermano il ponte verso Lotti.
 - `legacy_staging` (56 tabelle, **197 MB** su 2.111 di database): nessun codice lo legge piu', il giro che
   ne ripescava ogni 6 ore e' stato tolto. Da cancellare **dopo un backup scaricato**, non prima.
 - **Tre strade scrivono `corrispettivi`** (`ingest_corrispettivo_parsed`, `CorrispettiviService`, import CSV), ognuna con la sua dedup: ridurle a una.
