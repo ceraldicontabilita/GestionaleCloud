@@ -412,6 +412,57 @@ def extract_transactions_from_english_text(text: str) -> List[Dict[str, Any]]:
     return transactions
 
 
+_MESI_ITALIANI = {
+    'gennaio': 1, 'febbraio': 2, 'marzo': 3, 'aprile': 4,
+    'maggio': 5, 'giugno': 6, 'luglio': 7, 'agosto': 8,
+    'settembre': 9, 'ottobre': 10, 'novembre': 11, 'dicembre': 12,
+}
+
+
+def extract_single_transaction_detail(text: str) -> Optional[Dict[str, Any]]:
+    """Legge il PDF PayPal di dettaglio, distinto dagli estratti MSR/CSR.
+
+    L'ID nel permalink PayPal, la data estesa e l'importo con segno devono
+    essere tutti presenti: l'anteprima del browser ha una data propria che
+    non e' la data della transazione.
+    """
+    recipient = re.search(r'^Pagamento inviato a\s+(.+)$', text, re.I | re.M)
+    reference = re.search(
+        r'paypal\.com/unifiedtransactions/details/payment/([A-Z0-9]{10,})',
+        text, re.I,
+    )
+    date = re.search(
+        r'\b(\d{1,2})\s+(' + '|'.join(_MESI_ITALIANI) +
+        r')\s+(\d{4})\s+\d{1,2}:\d{2}:\d{2}\b',
+        text, re.I,
+    )
+    amount = re.search(r'(?<!\d)(-\s*[\d.,]+)\s*(?:€|\ufffd)?\s*EUR\b', text, re.I)
+    if not (recipient and reference and date and amount):
+        return None
+
+    day, month_name, year = date.groups()
+    try:
+        operation_date = datetime(int(year), _MESI_ITALIANI[month_name.casefold()], int(day))
+        gross = parse_italian_amount(amount.group(1).replace(' ', ''))
+    except ValueError:
+        return None
+    if gross >= 0:
+        return None
+    name = recipient.group(1).strip()
+    return {
+        'data': operation_date.strftime('%Y-%m-%d'),
+        'descrizione': f'Pagamento inviato a {name}',
+        'transaction_id': reference.group(1),
+        'nome_controparte': name,
+        'email_controparte': '',
+        'lordo': gross,
+        'tariffa': 0.0,
+        'netto': gross,
+        'tipo': 'pagamento',
+        'valuta': 'EUR',
+    }
+
+
 def parse_paypal_msr(file_path: str) -> Dict[str, Any]:
     """
     Parser principale per PDF PayPal MSR/CSR.
@@ -486,6 +537,12 @@ def parse_paypal_msr(file_path: str) -> Dict[str, Any]:
                     seen_ids.add(tid)
                 unique_transactions.append(tx)
             
+            if not unique_transactions:
+                detail = extract_single_transaction_detail(all_text)
+                if detail:
+                    unique_transactions = [detail]
+                    result['tipo_documento'] = 'DET'
+
             result['transazioni'] = unique_transactions
             result['totale_transazioni'] = len(unique_transactions)
             result['success'] = True

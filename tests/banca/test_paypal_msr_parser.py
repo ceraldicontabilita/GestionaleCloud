@@ -1,5 +1,6 @@
 from app.parsers.paypal_msr_parser import (
     extract_period_from_header,
+    extract_single_transaction_detail,
     extract_transactions_from_english_text,
 )
 
@@ -42,3 +43,26 @@ January 01, 2022 through December 31, 2022 Page 1
     assert transactions[1]["descrizione"].endswith("Example Entertainment S.r.l.s")
     assert transactions[1]["netto"] == -278.16
     assert transactions[1]["tipo"] == "express_checkout"
+
+
+def test_dettaglio_paypal_usa_data_operazione_e_id_non_data_visualizzazione():
+    text = """07/04/26, 11:14 Transazioni - PayPal
+Pagamento inviato a Intesa Sanpaolo SpA
+29 aprile 2025 09:51:48 CEST Pagamento 74418673ST3611131
+-58,55 � EUR
+Completato
+https://www.paypal.com/unifiedtransactions/details/payment/74418673ST3611131
+"""
+    tx = extract_single_transaction_detail(text)
+
+    assert tx["transaction_id"] == "74418673ST3611131"
+    assert tx["data"] == "2025-04-29"
+    assert tx["lordo"] == -58.55
+    assert tx["nome_controparte"] == "Intesa Sanpaolo SpA"
+    assert tx["tipo"] == "pagamento"
+
+
+def test_dettaglio_senza_id_paypal_non_diventa_movimento():
+    assert extract_single_transaction_detail(
+        "Pagamento inviato a Fornitore\n29 aprile 2025 09:51:48 CEST\n-58,55 EUR"
+    ) is None
