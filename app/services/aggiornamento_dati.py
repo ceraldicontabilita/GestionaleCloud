@@ -129,15 +129,33 @@ async def _banca(db, ora: datetime) -> Dict[str, Any]:
     if colore == VERDE and giorno and (ora.astimezone(ROMA).date() - giorno).days > 3:
         colore = GIALLO
         testo = f"Il giro gira, ma l'ultimo movimento in archivio e' del {giorno:%d/%m/%Y}"
-    return _fonte(
+    fonte = _fonte(
         1, "banca", "Banca Banco BPM", stato=colore, testo=testo,
         ultimo_aggiornamento=ultimo_giro, ultimo_dato=ultimo_movimento,
         conteggi={
             "movimenti": await _conta(db, "estratto_conto_movimenti"),
             "file_in_attesa": esito.get("pending"),
         },
-        nota="Oggi arriva dagli estratti conto caricati su Drive; la lettura diretta dalla banca non e' ancora collegata.",
     )
+    fonte["enable_banking"] = diretta = await _stato_enable_banking(db)
+    if not diretta["attivo"]:
+        fonte["nota"] = "Arriva dagli estratti conto caricati su Drive; la lettura diretta dalla banca e' spenta."
+    elif not diretta["collegata"]:
+        fonte["nota"] = "Lettura diretta dalla banca attiva ma conto non collegato."
+    else:
+        fonte["nota"] = "Lettura diretta dalla banca collegata (anteprima, senza scrivere movimenti)."
+    return fonte
+
+
+async def _stato_enable_banking(db) -> Dict[str, Any]:
+    from app.services import enable_banking as eb
+
+    try:
+        sessione = await eb.leggi_sessione(db)
+    except Exception as exc:
+        logger.warning("[aggiornamento-dati] sessione banca non letta: %s: %s", type(exc).__name__, exc)
+        sessione = {"collegata": False}
+    return {"attivo": eb.attivo(), "configurato": eb.configurato(), **sessione}
 
 
 async def _fatture(db, ora: datetime) -> Dict[str, Any]:

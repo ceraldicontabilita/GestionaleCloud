@@ -6,7 +6,8 @@ import api from '../api';
 import AggiornamentoDati, { dataOra, giorno } from './AggiornamentoDati';
 
 vi.mock('../api', () => ({
-  default: { get: vi.fn() },
+  default: { get: vi.fn(), post: vi.fn() },
+  messaggioErrore: (e, predefinito) => e?.message || predefinito,
 }));
 
 const FONTI = {
@@ -56,5 +57,34 @@ describe('Aggiornamento dati', () => {
     fireEvent.click(screen.getByRole('button', { name: /Rileggi/ }));
     await waitFor(() => expect(screen.getByTestId('fonte-banca')).toBeInTheDocument());
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+});
+
+describe('Lettura diretta Banco BPM nella riga banca', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const conBanca = (eb) => ({
+    ...FONTI,
+    fonti: [{ ...FONTI.fonti[0], enable_banking: eb }],
+  });
+
+  it('spenta: lo dice e non offre comandi', async () => {
+    api.get.mockResolvedValue({ data: conBanca({ attivo: false, configurato: false, collegata: false }) });
+    render(<AggiornamentoDati />);
+    const riga = await screen.findByTestId('lettura-diretta');
+    expect(riga).toHaveTextContent('Lettura diretta spenta');
+    expect(riga.querySelector('button')).toBeNull();
+  });
+
+  it('collegata: anteprima con i conteggi, senza scrivere', async () => {
+    api.get.mockResolvedValueOnce({ data: conBanca({ attivo: true, configurato: true, collegata: true, valida_fino: '2026-12-22T10:00:00+00:00' }) });
+    render(<AggiornamentoDati />);
+    expect(await screen.findByTestId('lettura-diretta')).toHaveTextContent('valido fino al 22/12/2026');
+    api.get.mockResolvedValueOnce({ data: { periodo: ['2026-06-27', '2026-09-24'], conteggi: { letti: 516, nuovi: 2, gia_presenti: 514, da_verificare: 0 } } });
+    fireEvent.click(screen.getByRole('button', { name: /Anteprima/ }));
+    const ant = await screen.findByTestId('anteprima-banca');
+    expect(ant).toHaveTextContent('nuovi: 2');
+    expect(ant).toHaveTextContent('già presenti: 514');
+    expect(api.get).toHaveBeenLastCalledWith('/api/banca/enable-banking/anteprima', { timeout: 90000 });
   });
 });
