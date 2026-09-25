@@ -15,7 +15,8 @@ fatturazione, e aggiornarlo qui aggiorna automaticamente tutti i PDF.
 import os
 import html as _html
 
-from fastapi import APIRouter, Body
+from app.lotti.auth import require_admin
+from fastapi import Depends, APIRouter, Body
 
 from app.lotti.db import database as db
 
@@ -132,6 +133,6 @@ async def leggi_azienda():
 
 
 @router.put("")
-async def aggiorna_azienda(payload: dict = Body(...)):
+async def aggiorna_azienda(payload: dict = Body(...), _admin=Depends(require_admin)):
     """Aggiorna i dati azienda (incl. il codice destinatario SDI)."""
     return await set_azienda(payload)

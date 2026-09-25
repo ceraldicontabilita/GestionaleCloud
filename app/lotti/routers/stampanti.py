@@ -7,7 +7,8 @@ inventa nulla, la lista parte da 4 stampanti predefinite con IP vuoto.
 """
 import uuid
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException, Request
+from app.lotti.auth import require_admin
+from fastapi import Depends, APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from app.lotti.db import database as db
@@ -50,14 +51,14 @@ async def lista_stampanti():
 
 
 @router.post("")
-async def crea_stampante(s: Stampante):
+async def crea_stampante(s: Stampante, _admin=Depends(require_admin)):
     d = s.dict()
     await COLL.insert_one(dict(d))
     return d
 
 
 @router.put("/{stampante_id}")
-async def aggiorna_stampante(stampante_id: str, dati: dict):
+async def aggiorna_stampante(stampante_id: str, dati: dict, _admin=Depends(require_admin)):
     dati.pop("id", None)
     dati.pop("_id", None)
     if "porta" in dati:
@@ -72,7 +73,7 @@ async def aggiorna_stampante(stampante_id: str, dati: dict):
 
 
 @router.delete("/{stampante_id}")
-async def elimina_stampante(stampante_id: str):
+async def elimina_stampante(stampante_id: str, _admin=Depends(require_admin)):
     r = await COLL.delete_one({"id": stampante_id})
     if r.deleted_count == 0:
         raise HTTPException(404, "Stampante non trovata")

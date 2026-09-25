@@ -528,7 +528,7 @@ class SoglieMassaReq(BaseModel):
     solo_mancanti: bool = True  # True: non sovrascrive le soglie gia' impostate a mano
 
 @router.post("/soglie-massa")
-async def soglie_massa(payload: SoglieMassaReq):
+async def soglie_massa(payload: SoglieMassaReq, _admin=Depends(require_admin)):
     """Imposta la soglia di riordino per intere categorie in un colpo.
     Con solo_mancanti=True rispetta le soglie gia' messe a mano (non le tocca)."""
     aggiornati = 0
@@ -670,7 +670,7 @@ class ColliBulkPayload(BaseModel):
 
 
 @router.post("/colli-bulk")
-async def configura_colli_bulk(payload: ColliBulkPayload):
+async def configura_colli_bulk(payload: ColliBulkPayload, _admin=Depends(require_admin)):
     """Configura in un'unica operazione i pezzi-per-collo di tutti i prodotti.
     Pensato per la schermata di setup iniziale: prosecco=6, Coca=24, acqua=6, ecc."""
     from pymongo import UpdateOne
@@ -853,7 +853,7 @@ async def riordina_sotto_soglia(operatore_nome: str = "Amministratore"):
 @router.post("/soglie-imposta-tutte")
 async def soglie_imposta_tutte(soglia: float = Query(1, ge=0),
                                quantita: float = Query(1, ge=0),
-                               solo_mancanti: bool = Query(False)):
+                               solo_mancanti: bool = Query(False), _admin=Depends(require_admin)):
     """Imposta soglia_minima e quantita_riordino su TUTTI i prodotti bar
     ("per semplicità metti ovunque soglia 1 e quantità 1"). Con
     solo_mancanti=true tocca solo i prodotti senza soglia."""
@@ -1018,7 +1018,7 @@ async def report_giacenze():
 
 # ── POST sincronizza prodotti default (aggiunge quelli mancanti) ──────────────
 @router.post("/sync-prodotti-default")
-async def sync_prodotti_default():
+async def sync_prodotti_default(_admin=Depends(require_admin)):
     """
     Aggiunge al DB i prodotti presenti in PRODOTTI_DEFAULT ma non ancora salvati.
     Non modifica quelli già esistenti. Usare dopo aggiornamenti al seed.
@@ -1096,7 +1096,7 @@ async def accorpa_categoria(payload: AccorpaCat, _admin=Depends(require_admin)):
 
 
 @router.delete("/accorpa-categoria/{da}")
-async def annulla_accorpamento(da: str):
+async def annulla_accorpamento(da: str, _admin=Depends(require_admin)):
     res = await db.magazzino_bar_cat_merge.delete_one({"da": da})
     return {"ok": True, "rimosse": res.deleted_count}
 
@@ -1134,7 +1134,7 @@ def _unita_collo_da_nome(nome: str):
 
 
 @router.post("/auto-configura-colli")
-async def auto_configura_colli():
+async def auto_configura_colli(_admin=Depends(require_admin)):
     """Imposta pezzi_per_collo per TUTTI i prodotti leggendo il dato dal nome (presente in fattura XML).
     Nessuna configurazione manuale: 'cassa 24pz' -> 24, 'cartone 6bt' -> 6, ecc."""
     prods = await db.magazzino_bar_prodotti.find(

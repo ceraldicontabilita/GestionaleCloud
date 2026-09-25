@@ -104,8 +104,14 @@ def test_rotte_pubbliche_passano_senza_token():
 
 
 def test_whitelist_tablet_solo_gesti_operativi():
-    # il timbro temperatura del tablet passa senza token…
-    assert _scrittura_tablet_consentita("/api/temperature-positive/scheda/2026/frigo1/registra", "POST")
+    # le registrazioni HACCP esigono una sessione: senza token erano un
+    # oracolo anonimo per indovinare i PIN (audit 25/09/2026, SEC-01)
+    for p in ("/api/temperature-positive/scheda/2026/1/registra",
+              "/api/temperature-negative/scheda/2026/1/registra",
+              "/api/sanificazione/scheda/2026/9/registra",
+              "/api/sanificazione/scheda/2026/9/giorno-completo",
+              "/api/temperature-cottura"):
+        assert not _scrittura_tablet_consentita(p, "POST"), p
     # …ma la RICONFIGURAZIONE della scheda (limiti temperatura) NO
     assert not _scrittura_tablet_consentita("/api/temperature-positive/scheda/2026/frigo1/config", "PUT")
     # creazione lotto da tablet sì, cancellazione no
@@ -198,3 +204,78 @@ def test_lotti_non_ha_import_fatture_manuale():
                "/fatture/importa-job-attivo", "/fatture/importa-annulla", "/fatture/importa-job/{job_id}"}
     assert not (percorsi & vietati), percorsi & vietati
     assert callable(fatture.importa_fattura_xml)  # il motore resta, lo usa il ponte
+
+
+def test_firma_con_pin_sbagliato_si_blocca_dopo_n_tentativi(monkeypatch):
+    """Il PIN della firma HACCP non e' un oracolo illimitato: dopo N errori
+    dallo stesso client arriva 429, anche col PIN giusto, fino allo sblocco."""
+    import app.hr.services.auth_dipendenti as hr
+    from app.lotti import auth
+    from app.lotti.servizi import firma_dipendente
+
+    async def trova(pin, solo_operatori_lotti=True):
+        return [{"id": "hr-1", "cognome": "Rossi", "nome": "Anna"}] if pin == "2468" else []
+
+    monkeypatch.setattr(hr, "trova_dipendente_per_pin", trova)
+    monkeypatch.setenv("AUTH_MAX_FAILS", "3")
+    auth._FAILS.clear()
+    for _ in range(3):
+        with pytest.raises(HTTPException) as exc:
+            _run(firma_dipendente.firma_da_pin("0000", chiave_tentativi="1.2.3.4"))
+        assert exc.value.status_code == 401
+    with pytest.raises(HTTPException) as exc:
+        _run(firma_dipendente.firma_da_pin("2468", chiave_tentativi="1.2.3.4"))
+    assert exc.value.status_code == 429
+    # un altro client non e' bloccato
+    assert _run(firma_dipendente.firma_da_pin("2468", chiave_tentativi="5.6.7.8"))["firma_verificata"] is True
+    auth._FAILS.clear()
+
+
+def test_ip_richiesta_usa_cloudflare_non_il_proxy():
+    from app.lotti.auth import ip_richiesta
+
+    class R:
+        def __init__(self, headers, host):
+            self.headers = headers
+            self.client = type("C", (), {"host": host})()
+
+    assert ip_richiesta(R({"cf-connecting-ip": "93.1.2.3"}, "10.0.0.1")) == "93.1.2.3"
+    assert ip_richiesta(R({"x-forwarded-for": "93.1.2.4, 10.0.0.9"}, "10.0.0.1")) == "93.1.2.4"
+    assert ip_richiesta(R({}, "10.0.0.1")) == "10.0.0.1"
+
+
+@pytest.mark.parametrize("modulo,funzioni", [
+    ("app.lotti.azienda", ["aggiorna_azienda"]),
+    ("app.lotti.routers.backup", ["lista_backup", "stato_backup"]),
+])
+def test_configurazione_e_backup_solo_amministratore(modulo, funzioni):
+    import importlib
+    mod = importlib.import_module(modulo)
+    for nome in funzioni:
+        assert _ha_require_admin(getattr(mod, nome)), f"{modulo}.{nome} senza require_admin"
+
+
+def test_scritture_di_configurazione_e_massa_solo_amministratore():
+    """Audit 25/09/2026 (SEC-02/03/04): queste scritture le poteva fare
+    qualunque dipendente con un token. Si contano sulle rotte montate."""
+    import app.lotti.server as server
+    attese = {
+        ("PUT", "/api/azienda"), ("POST", "/api/stampanti"), ("PUT", "/api/stampanti/{stampante_id}"),
+        ("DELETE", "/api/stampanti/{stampante_id}"), ("POST", "/api/collaudi"),
+        ("POST", "/api/collaudi/{collaudo_id}/stato"), ("DELETE", "/api/collaudi/{collaudo_id}"),
+        ("POST", "/api/fonti-catalogo"), ("POST", "/api/fonti-catalogo/{fonte_id}/sincronizza"),
+        ("POST", "/api/fornitori/merge"), ("POST", "/api/materie-prime/rebuild-lotti-fornitori"),
+        ("POST", "/api/materie-prime/migra-in-lotti-fornitori"), ("POST", "/api/magazzino-bar/colli-bulk"),
+        ("POST", "/api/magazzino/override-prodotto"), ("PUT", "/api/sanificazione/scheda/{anno}/{mese}"),
+        ("POST", "/api/haccp-periodi/applica-tutti"), ("GET", "/api/backup/lista"),
+    }
+    trovate = {}
+    for r in server.app.routes:
+        for m in getattr(r, "methods", set()) or set():
+            trovate[(m, getattr(r, "path", ""))] = r
+    mancanti = [k for k in attese if k not in trovate]
+    assert not mancanti, f"rotte non montate: {mancanti}"
+    senza = [k for k in attese if not _ha_require_admin(trovate[k].endpoint)]
+    assert not senza, f"senza require_admin: {senza}"
+    # e /pulisci-operatori non esiste piu'
+    assert not any(p.endswith("/pulisci-operatori") for (_m, p) in trovate)

@@ -9,7 +9,8 @@ POST /api/materie-prime/rebuild-lotti-fornitori  — ricostruzione da fatture (m
 POST /api/materie-prime/normalizza-unita         — bonifica unità (manuale)
 """
 
-from fastapi import APIRouter
+from app.lotti.auth import require_admin
+from fastapi import Depends, APIRouter
 from datetime import datetime, timezone, timedelta
 import re, uuid
 
@@ -285,7 +286,7 @@ async def get_materie_prime_da_fatture(mesi: int = 12):
 
 
 @router.post("/migra-in-lotti-fornitori")
-async def migra_materie_prime_in_lotti_fornitori(elimina_dopo: bool = False):
+async def migra_materie_prime_in_lotti_fornitori(elimina_dopo: bool = False, _admin=Depends(require_admin)):
     """MIGRAZIONE UNA TANTUM (unificazione 03/07/2026): copia i documenti
     storici della vecchia collection `materie_prime` dentro `lotti_fornitori`
     (fonte unica delle materie prime). Idempotente: salta i doc già presenti
@@ -342,7 +343,7 @@ async def migra_materie_prime_in_lotti_fornitori(elimina_dopo: bool = False):
 
 
 @router.post("/rebuild-lotti-fornitori")
-async def rebuild_lotti_fornitori_da_fatture(solo_nuove: bool = True):
+async def rebuild_lotti_fornitori_da_fatture(solo_nuove: bool = True, _admin=Depends(require_admin)):
     """Ricostruisce la collezione `lotti_fornitori` dalle fatture.
     - solo_nuove=True (default): aggiunge solo le righe fattura non ancora presenti
     - solo_nuove=False: cancella tutto e ripopola (full rebuild)

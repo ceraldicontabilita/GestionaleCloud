@@ -264,7 +264,8 @@ async def job_backup_notturno():
             {
                 "job": "backup_notturno",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
-                "success": True,
+                "success": bool(result.get("success")),
+                "collezioni_fallite": result.get("collezioni_fallite", []),
                 "file": result.get("file"),
                 "dimensione": result.get("dimensione"),
                 "eliminati": result.get("eliminati", []),

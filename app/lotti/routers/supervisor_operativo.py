@@ -81,39 +81,56 @@ async def check_temperature_oggi(alerts: list):
     ora = _ora_locale()
     if ora.hour < 7 or (ora.hour == 7 and ora.minute < 30):
         return
-    oggi = datetime.now(timezone.utc)
-    anno = oggi.year
-    mese_str = str(oggi.month)  # es. "3"
-    giorno_str = str(oggi.day)  # es. "30"
-    campo = f"temperature.{mese_str}.{giorno_str}"
+    # Data italiana: in UTC fra mezzanotte e le 02:00 si guardava il giorno prima.
+    oggi = ora
+    anno, mese_str, giorno_str = oggi.year, str(oggi.month), str(oggi.day)
 
-    # Temperature positive — basta che almeno UN frigorifero abbia la rilevazione odierna
-    doc_pos = await db.temperature_positive.find_one({"anno": anno, campo: {"$exists": True}})
-    if not doc_pos:
-        alerts.append(
-            _alert(
-                "T1",
-                "Temperature positive non registrate oggi",
-                f"Nessuna rilevazione temperatura frigo per il {oggi.strftime('%d/%m/%Y')}. "
-                "Il sistema le registra automaticamente ogni notte. Se mancano vai su Temp. Positive → compila manualmente.",
-                "critica",
-                "temp_positive",
-            )
+    # Vale solo una registrazione vera: una temperatura o l'esito firmato del
+    # controllo visivo (o un giorno dichiarato chiuso). La casella che il
+    # turno delle 07:00 apre vuota su ogni apparecchio NON e' una rilevazione:
+    # prima bastava che la chiave esistesse, e l'allarme non partiva mai.
+    for codice, collezione, chiave, nome, pagina in (
+        ("T1", db.temperature_positive, "frigorifero_numero", "frigo", "temp_positive"),
+        ("T2", db.temperature_negative, "congelatore_numero", "congelatori", "temp_negative"),
+    ):
+        schede = await collezione.find(
+            {"anno": anno}, {"_id": 0, chiave: 1, f"temperature.{mese_str}.{giorno_str}": 1}
+        ).to_list(200)
+        mancanti = []
+        for scheda in schede:
+            casella = ((scheda.get("temperature") or {}).get(mese_str) or {}).get(giorno_str)
+            if casella is None:
+                continue  # apparecchio senza casella oggi: non attivo per il turno
+            if not _rilevazione_vera(casella):
+                mancanti.append(str(scheda.get(chiave)))
+        aperte = any(
+            ((s.get("temperature") or {}).get(mese_str) or {}).get(giorno_str) is not None for s in schede
         )
+        if mancanti or not aperte:
+            elenco = f" (N° {', '.join(sorted(mancanti, key=lambda x: int(x) if x.isdigit() else 0))})" if mancanti else ""
+            alerts.append(
+                _alert(
+                    codice,
+                    f"Temperature {nome} non registrate oggi",
+                    f"Nessuna rilevazione vera per il {oggi.strftime('%d/%m/%Y')}{elenco}. "
+                    "Le temperature le scrive una persona: registrale con il tuo PIN, "
+                    "oppure, se hai fatto il giro, usa «Giro fatto: tutto conforme».",
+                    "critica",
+                    pagina,
+                )
+            )
 
-    # Temperature negative — basta che almeno UN congelatore abbia la rilevazione odierna
-    doc_neg = await db.temperature_negative.find_one({"anno": anno, campo: {"$exists": True}})
-    if not doc_neg:
-        alerts.append(
-            _alert(
-                "T2",
-                "Temperature negative non registrate oggi",
-                f"Nessuna rilevazione temperatura congelatore per il {oggi.strftime('%d/%m/%Y')}. "
-                "Vai su Temp. Negative → compila manualmente.",
-                "critica",
-                "temp_negative",
-            )
-        )
+
+def _rilevazione_vera(casella) -> bool:
+    if isinstance(casella, (int, float)) and not isinstance(casella, bool):
+        return True
+    if not isinstance(casella, dict):
+        return False
+    if casella.get("is_chiuso"):
+        return True
+    if casella.get("temp") is not None:
+        return True
+    return casella.get("stato") == "conforme" and casella.get("firma_verificata") is True
 
 
 async def check_sanificazione_oggi(alerts: list):

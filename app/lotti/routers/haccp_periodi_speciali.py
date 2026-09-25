@@ -28,7 +28,8 @@ STRUTTURA ANOMALIA:
 import uuid
 import logging
 from datetime import date, timedelta, datetime, timezone
-from fastapi import APIRouter
+from app.lotti.auth import require_admin
+from fastapi import Depends, APIRouter
 from app.lotti.db import database as db
 
 logger = logging.getLogger(__name__)
@@ -189,7 +190,7 @@ async def applica_periodo(
 
 
 @router.post("/applica-tutti")
-async def applica_tutti_periodi():
+async def applica_tutti_periodi(_admin=Depends(require_admin)):
     """
     Applica TUTTI i periodi speciali a frigoriferi e congelatori.
     Chiamato una volta sola (o per rieseguire dopo modifiche).

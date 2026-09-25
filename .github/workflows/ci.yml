@@ -99,3 +99,7 @@ jobs:
             frontend_menu/package-lock.json
       - name: Build
         run: bash scripts/build_frontends.sh --apps
+      # I test di Lotti esistevano ma nessuna pipeline li eseguiva (audit
+      # 25/09/2026, TST-01): le dipendenze le ha gia' installate la build.
+      - name: Test Lotti
+        run: CI=true npm --prefix frontend_lotti test -- --watchAll=false

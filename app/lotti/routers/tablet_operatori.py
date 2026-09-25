@@ -36,7 +36,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from app.lotti.auth import check_lock, clear_fails, make_token, register_fail, require_admin
+from app.lotti.auth import check_lock, clear_fails, ip_richiesta, make_token, register_fail, require_admin
 from app.lotti.db import database as db
 from app.services import pin_authentication
 
@@ -300,7 +300,7 @@ class PinAdmin(BaseModel):
 async def _richiedi_pin_amministratore(
     pin: str, request: Request = None, dettaglio: str = "PIN amministratore non valido"
 ) -> None:
-    ip = request.client.host if (request and request.client) else None
+    ip = ip_richiesta(request) or None
     if ip:
         check_lock(ip)
     if pin_authentication.admin_pin_matches(pin):
@@ -350,7 +350,7 @@ async def trova_operatori_per_pin(pin: str) -> List[Dict[str, Any]]:
 
 @router.post("/login")
 async def login_pin(payload: PinLogin, request: Request = None):
-    ip = (request.client.host if (request and request.client) else None)
+    ip = ip_richiesta(request) or None
     if ip:
         check_lock(ip)
     pin = (payload.pin or "").strip()
