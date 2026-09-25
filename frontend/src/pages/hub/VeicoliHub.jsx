@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import api from '../../api';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
 import { PageLoader } from '../../components/ds';
+import { sezioneNoleggio } from './sezioneNoleggio';
 
 const FlottaContent = lazy(() => import('../NoleggioAuto.jsx'));
 const VerbaliContent = lazy(() => import('../VerbaliRiconciliazione.jsx'));
@@ -16,15 +17,7 @@ const TABS = [
 ];
 
 
-const getTabFromPath = pathname => {
-  if (pathname.includes('/verbali')) return 'verbali';
-  if (pathname.includes('/costi')) return 'costi';
-  if (pathname.includes('/noleggio/')) {
-    const m = pathname.match(/\/noleggio\/([\w-]+)/);
-    if (m && TABS.find(t => t.id === m[1])) return m[1];
-  }
-  return 'flotta';
-};
+const getTabFromPath = sezioneNoleggio;
 
 export const totaleAltriCosti = valori =>
   ['totale_pedaggio', 'totale_costi_extra', 'totale_riparazioni'].reduce(

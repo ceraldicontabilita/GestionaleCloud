@@ -1,3 +1,4 @@
+import { sezioneDocumenti } from './segmentiHub';
 import React, { lazy, Suspense, useEffect, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Archive, ExternalLink, FileWarning, Search, Upload } from 'lucide-react';
@@ -43,15 +44,7 @@ const TABS = [
   },
 ];
 
-const getTabFromPath = pathname => {
-  if (pathname.includes('/documenti/atti')) return 'atti';
-  if (pathname.includes('/documenti/drive')) return 'drive';
-  if (pathname.includes('/documenti/archivio')) return 'archivio';
-  if (pathname.includes('/documenti/import') || pathname.includes('/import-documenti')) {
-    return 'import';
-  }
-  return 'import';
-};
+const getTabFromPath = sezioneDocumenti;
 
 export default function DocumentiHub() {
   const { anno } = useAnnoGlobale();

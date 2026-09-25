@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
+import { tabUnificataDaPath } from './hub/segmentiHub';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import api from '../api';
 import {
@@ -238,15 +239,9 @@ export default function RiconciliazioneUnificata() {
     return () => { attivo = false; };
   }, [movimentoRichiestoId]);
 
-  // Ottieni tab dall'URL (es. /riconciliazione-unificata/banca -> banca)
-  const getTabFromPath = () => {
-    const path = location.pathname;
-    const match = path.match(/\/riconciliazione(?:-unificata)?\/(\w+)/);
-    if (match && TABS.find(t => t.id === match[1])) {
-      return match[1];
-    }
-    return 'dashboard';
-  };
+  // Tab dall'URL (/riconciliazione/banca -> banca): un segmento intero,
+  // mai un pezzo di «movimenti-banca».
+  const getTabFromPath = () => tabUnificataDaPath(location.pathname);
 
   const [activeTab, setActiveTab] = useState(getTabFromPath());
   const [loading, setLoading] = useState(true);
