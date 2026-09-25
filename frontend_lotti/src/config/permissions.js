@@ -12,6 +12,8 @@ export const ADMIN_TABS = [
   // Rinominare un frigorifero riscrive il nome su tutti i controlli già
   // registrati: è una modifica ai registri, non una preferenza (25/07/2026).
   "attrezzature",
+  // Segna «n.a.» lo storico HACCP: una scrittura sui registri (GC-02h).
+  "attendibilita_haccp",
 ];
 
 export function tabRiservataAdmin(tabId) {
