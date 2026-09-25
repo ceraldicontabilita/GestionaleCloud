@@ -330,7 +330,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 ### Drive, struttura canonica
 
 - **Cartella unica** (decisione del 25/09/2026, sostituisce l'albero a 6 aree del §7-bis): «DATI SOCIETA CERALDI» con `DA ELABORARE | ELABORATE | ERRORI` (`GOOGLE_DRIVE_DATI_FOLDER_ID`); ogni file passa dallo smistatore di Documenti > Import,
-  una copia byte-identica di un originale va nel Cestino, «vedi documento» legge solo da `ELABORATE` (`drive_cartella_unica.py`). Finché la migrazione non è finita i canali sotto restano accesi.
+  una copia byte-identica di un originale va nel Cestino (in `DOPPIONI` se il file è del titolare: Drive nega il Cestino al service account), «vedi documento» legge solo da `ELABORATE` (`drive_cartella_unica.py`). Finché la migrazione non è finita i canali sotto restano accesi.
 - `05_PERSONALE_E_CEDOLINI/DIPENDENTI/<COGNOME NOME>/` è il **fascicolo unico**
   della persona: cedolini (profondità 2), `BONIFICI/` (profondità 3, il canale
   bonifico legge solo dentro `BONIFICI`), `CERTIFICAZIONI UNICHE/`. I bonifici
