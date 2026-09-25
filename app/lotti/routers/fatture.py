@@ -1,5 +1,5 @@
 """
-Router per gestione fatture: CRUD, importa-xml, visualizza fattura HTML, backfill lotti.
+Router per gestione fatture: CRUD, motore di import (solo dal ponte), visualizza fattura HTML, backfill lotti.
 """
 
 import re
@@ -12,7 +12,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, BackgroundTasks, Request, Depends, Query
+from fastapi import APIRouter, HTTPException, UploadFile, BackgroundTasks, Request, Depends, Query
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from pymongo.errors import DuplicateKeyError
@@ -494,9 +494,12 @@ def _estrai_xml(raw: bytes) -> bytes:
     return raw
 
 
-@router.post("/importa-xml")
-async def importa_fattura_xml(files: List[UploadFile] = File(...), job_id: str = None):
-    """Importa fatture XML e aggiorna automaticamente le materie prime."""
+async def importa_fattura_xml(files: List[UploadFile]):
+    """Importa fatture XML e aggiorna automaticamente le materie prime.
+
+    Non e' un endpoint: le fatture entrano solo dal gestionale, e l'unico
+    chiamante e' il ponte `gestionale_fatture.py` (handler `fattura.created`
+    e giro dei 15 minuti). Lotti non ha piu' un import manuale."""
     from app.lotti.routers.xml_helpers import parse_fattura_xml, fuzzy_match
 
     risultati = {
@@ -580,15 +583,7 @@ async def importa_fattura_xml(files: List[UploadFile] = File(...), job_id: str =
     if not _expanded and not risultati["errori"]:
         risultati["errori"].append("Nessun file .xml trovato negli allegati")
 
-    for _idx, file in enumerate(_expanded):
-        if job_id and _idx % 5 == 0:
-            try:
-                await db.import_jobs.update_one(
-                    {"id": job_id},
-                    {"$set": {"processed": _idx, "ok": risultati["fatture_processate"], "errori": risultati["errori"][-60:]}},
-                )
-            except Exception:
-                logger.debug("[fatture] errore non bloccante ignorato")
+    for file in _expanded:
         try:
             content = await file.read()
             fattura_data = parse_fattura_xml(content)
@@ -1078,158 +1073,12 @@ async def importa_fattura_xml(files: List[UploadFile] = File(...), job_id: str =
         except Exception as e:
             logger.warning(f"[fatture] Avvio pipeline post-import fallito: {e}")
 
-    if job_id:
-        try:
-            await db.import_jobs.update_one(
-                {"id": job_id},
-                {"$set": {"stato": "completato", "processed": len(_expanded),
-                          "ok": risultati["fatture_processate"], "errori": risultati["errori"],
-                          "fine": datetime.now(timezone.utc).isoformat()}},
-            )
-        except Exception:
-            logger.debug("[fatture] errore non bloccante ignorato")
     from app.lotti.eventi import publish
     await publish("FATTURA_IMPORTATA", {
         "fatture": risultati.get("fatture_processate", 0),
         "righe": risultati.get("prodotti_trovati", 0),
     })
     return risultati
-
-
-async def _run_import_job(job_id, f_list):
-    try:
-        await importa_fattura_xml(f_list, job_id=job_id)
-    except Exception as e:
-        try:
-            await db.import_jobs.update_one(
-                {"id": job_id},
-                {"$set": {"stato": "errore", "errore_fatale": str(e)[:200], "fine": datetime.now(timezone.utc).isoformat()}},
-            )
-        except Exception:
-            logger.debug("[fatture] errore non bloccante ignorato")
-
-
-@router.post("/prescan-fornitori")
-async def prescan_fornitori(files: List[UploadFile] = File(...)):
-    """Pre-scansione SENZA import: estrae i fornitori distinti dagli allegati
-    (XML / ZIP / .p7m) e ritorna quelli ancora DA CLASSIFICARE (sconosciuti, in
-    attesa o senza tipo_fornitura). Non scrive nulla: serve al frontend per far
-    classificare i fornitori nuovi PRIMA di importare (così non inquinano catalogo,
-    lotti e giacenze). La classificazione avviene poi via POST /fornitori/tipo-fornitura."""
-    from app.lotti.routers.xml_helpers import parse_fattura_xml
-
-    raws = []
-    for up in files:
-        raw = await up.read()
-        nome = (up.filename or "").lower()
-        if nome.endswith(".zip") or raw[:2] == b"PK":
-            try:
-                with zipfile.ZipFile(io.BytesIO(raw)) as zf:
-                    for zi in zf.namelist():
-                        low = zi.lower()
-                        if zi.endswith("/") or not (low.endswith(".xml") or low.endswith(".p7m")):
-                            continue
-                        raws.append(_estrai_xml(zf.read(zi)))
-            except Exception:
-                logger.debug("[fatture] prescan: zip non valido ignorato")
-        else:
-            raws.append(_estrai_xml(raw))
-
-    distinti = {}  # nome → piva (prima occorrenza)
-    for content in raws:
-        try:
-            d = parse_fattura_xml(content)
-        except Exception:
-            continue
-        nm = (d.get("fornitore") or "").strip()
-        if nm:
-            distinti.setdefault(nm, d.get("piva") or "")
-
-    da_classificare = []
-    for nm, piva in distinti.items():
-        info = await db.fornitori.find_one(
-            {"$or": [
-                {"nome": nm},
-                {"nome": {"$regex": f"^{re.escape(nm)}$", "$options": "i"}},
-            ]},
-            {"_id": 0, "nome": 1, "escluso": 1, "in_attesa": 1, "tipo_fornitura": 1, "approvato_il": 1},
-        )
-        if not info:
-            stato = "sconosciuto"
-        elif info.get("in_attesa"):
-            stato = "in_attesa"
-        elif not info.get("tipo_fornitura"):
-            stato = "non_classificato"
-        else:
-            stato = "ok"
-        if stato != "ok":
-            da_classificare.append({
-                "fornitore": nm,
-                "piva": piva,
-                "stato": stato,
-                "tipo_fornitura": (info or {}).get("tipo_fornitura") or "",
-            })
-    da_classificare.sort(key=lambda x: x["fornitore"].lower())
-    return {"totale_fornitori": len(distinti), "da_classificare": da_classificare}
-
-
-@router.post("/importa-async")
-async def importa_async(files: List[UploadFile] = File(...), background: BackgroundTasks = None):
-    """Avvia l'import in background e ritorna subito un job_id da interrogare via polling."""
-    f_list = [_UF(up.filename, await up.read()) for up in files]
-    job_id = str(uuid.uuid4())
-    await db.import_jobs.insert_one({
-        "id": job_id,
-        "total": len(f_list),
-        "processed": 0,
-        "ok": 0,
-        "errori": [],
-        "stato": "in_corso",
-        "inizio": datetime.now(timezone.utc).isoformat(),
-    })
-    if background is not None:
-        background.add_task(_run_import_job, job_id, f_list)
-    return {"job_id": job_id, "total": len(f_list)}
-
-
-@router.get("/importa-job-attivo")
-async def importa_job_attivo():
-    """Ultimo job di importazione ancora in corso (per riprendere la barra dopo un reload).
-    Auto-pulizia: i job 'in_corso' più vecchi di 30 minuti sono considerati
-    interrotti (es. riavvio/sleep del server su Render free che uccide il task in
-    background) e vengono chiusi, così la barra non resta accesa all'infinito."""
-    j = await db.import_jobs.find_one({"stato": "in_corso"}, {"_id": 0}, sort=[("inizio", -1)])
-    if not j:
-        return {}
-    try:
-        inizio = datetime.fromisoformat(str(j.get("inizio", "")).replace("Z", "+00:00"))
-        eta_min = (datetime.now(timezone.utc) - inizio).total_seconds() / 60
-    except Exception:
-        eta_min = 0
-    if eta_min > 30:
-        await db.import_jobs.update_one(
-            {"id": j["id"]},
-            {"$set": {"stato": "interrotto", "errore": "job stantio (riavvio server)"}},
-        )
-        return {}
-    return j
-
-
-@router.post("/importa-annulla")
-async def importa_annulla(_admin=Depends(require_admin)):
-    """Ferma/azzera i job di import 'in_corso' (sblocca una barra rimasta accesa)."""
-    r = await db.import_jobs.update_many(
-        {"stato": "in_corso"}, {"$set": {"stato": "interrotto", "errore": "annullato dall'utente"}}
-    )
-    return {"ok": True, "interrotti": r.modified_count}
-
-
-@router.get("/importa-job/{job_id}")
-async def importa_job_stato(job_id: str):
-    j = await db.import_jobs.find_one({"id": job_id}, {"_id": 0})
-    if not j:
-        raise HTTPException(status_code=404, detail="job non trovato")
-    return j
 
 
 @router.post("/dedup")

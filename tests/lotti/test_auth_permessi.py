@@ -135,7 +135,7 @@ def test_endpoint_distruttivi_dichiarano_require_admin():
     import importlib
     da_verificare = [
         ("app.lotti.routers.scheduler", ("/start", "/stop", "/run-pulizia-lotti-now")),
-        ("app.lotti.routers.fatture", ("/dedup", "/importa-annulla")),
+        ("app.lotti.routers.fatture", ("/dedup",)),
         ("app.lotti.routers.lotti_fornitori", ("/reimporta-da-fatture", "/pulizia-scaduti")),
         ("app.lotti.routers.temperature_positive", ("/scheda/{anno}/{frigorifero}/config",)),
         ("app.lotti.routers.temperature_negative", ("/scheda/{anno}/{congelatore}/config",)),
@@ -186,3 +186,15 @@ def test_endpoint_distruttivi_dichiarano_require_admin():
             assert idx > 0, f"{nome_modulo}: path {p} non trovato"
             blocco = src[idx: idx + 600]
             assert "require_admin" in blocco, f"{nome_modulo} {p}: manca require_admin"
+
+
+def test_lotti_non_ha_import_fatture_manuale():
+    """Le fatture entrano solo dal gestionale (ponte `gestionale_fatture`):
+    Lotti non espone piu' upload, job o prescan di XML."""
+    from app.lotti.routers import fatture
+
+    percorsi = {getattr(r, "path", "") for r in fatture.router.routes}
+    vietati = {"/fatture/importa-xml", "/fatture/importa-async", "/fatture/prescan-fornitori",
+               "/fatture/importa-job-attivo", "/fatture/importa-annulla", "/fatture/importa-job/{job_id}"}
+    assert not (percorsi & vietati), percorsi & vietati
+    assert callable(fatture.importa_fattura_xml)  # il motore resta, lo usa il ponte

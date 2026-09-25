@@ -12,7 +12,6 @@ import Breadcrumb from "../components/haccp/Breadcrumb";
 import HACCPPdfButton from "../components/haccp/HACCPPdfButton";
 import { HACCPDropdown } from "../components/haccp/HACCPDropdown";
 import { AltroDropdown } from "../components/haccp/AltroDropdown";
-import { ImportDropdown } from "../components/haccp/ImportaFattureView";
 import { SupervisoreBadge } from "../components/haccp/SupervisoreBadge";
 import { RicercaGlobale } from "../components/haccp/RicercaGlobale";
 
@@ -124,7 +123,6 @@ export default function AppLayout({ activeTab, onTabChange, ordiniPendenti, onSu
           <AltroDropdown tabs={SECONDARY_TABS} activeTab={activeTab} onTabChange={onTabChange} />
 
           <div className="g-divider-v" style={{ margin: "0 6px" }} />
-          <ImportDropdown activeTab={activeTab} onTabChange={onTabChange} />
           <HACCPPdfButton />
           <div className="g-divider-v" style={{ margin: "0 6px" }} />
 

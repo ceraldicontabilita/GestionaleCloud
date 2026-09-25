@@ -326,7 +326,7 @@ export default function DashboardView({ stats = {}, onRefresh, onNavigate }) {
         <section className="space-y-3">
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
             <KpiBig label="Spesa 30 giorni" value={`€${Math.round(cruscotto.kpi.spesa_mese).toLocaleString("it-IT")}`}
-              sub={`${cruscotto.kpi.fatture_mese} fatture`} color="#5b7a6b" icon={Wallet} onClick={() => navigate("fatture")} />
+              sub={`${cruscotto.kpi.fatture_mese} fatture`} color="#5b7a6b" icon={Wallet} />
             <KpiBig label="Sotto scorta" value={cruscotto.kpi.sotto_scorta}
               sub={cruscotto.kpi.esauriti ? `${cruscotto.kpi.esauriti} esauriti` : "tutto ok"} color={cruscotto.kpi.sotto_scorta ? "#c4894a" : "#3d8168"} icon={TrendingDown} onClick={() => navigate("backoffice")} />
             <KpiBig label="Lotti scaduti" value={cruscotto.kpi.lotti_scaduti}
@@ -363,7 +363,6 @@ export default function DashboardView({ stats = {}, onRefresh, onNavigate }) {
         <SectionTitle title="Area ufficio" subtitle="Gestione dati, cataloghi e fornitori." />
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <ActionCard icon={BookOpen} title="Ricette" subtitle="Ricettario, varianti, food cost e allergeni." badge={stats.ricette ? `${stats.ricette}` : ""} tone="salvia" onClick={() => navigate("ricette")} />
-          <ActionCard icon={FileText} title="Fatture XML" subtitle="Import fatture e aggiornamento prodotti." badge={stats.fatture ? `${stats.fatture}` : "Import"} tone="amber" onClick={() => navigate("fatture")} />
           <ActionCard icon={ShoppingCart} title="Acquisti & Ordini" subtitle="Catalogo, confronto prezzi, carrello e invio." badge={ordiniBozza ? `${ordiniBozza}` : "OK"} tone={ordiniBozza ? "amber" : "neutral"} onClick={() => navigate("ordini")} />
           <ActionCard icon={Building2} title="Fornitori" subtitle="Anagrafica, qualifica e schede ricevimento." badge="Rubrica" tone="green" onClick={() => navigate("fornitori")} />
           <ActionCard icon={Network} title="Mappa tracciabilità" subtitle="Il percorso di un prodotto, dalla fattura allo smaltimento." badge="Mappa" tone="neutral" onClick={() => navigate("mappa_tracciabilita")} />

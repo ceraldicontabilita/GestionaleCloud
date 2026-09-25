@@ -14,7 +14,6 @@ const LINE = "#e6e0d4";
 
 // Ogni voce porta alla sezione che svolge quella funzione.
 const _AZIONE_JOB = {
-  "Sincronizzazione fatture": "fatture",
   "Normalizzazione nomi prodotti": "magazzino_prodotti",
   "Pulizia lotti scaduti": "lotti",
   "Controllo scorte minime": "tablet/magazzino",
@@ -125,12 +124,12 @@ export default function StatoSistemaWidget() {
           {/* Conteggi */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8 }}>
             {[
-              { l: "Fatture", v: dati.conteggi.fatture, dest: "fatture" },
+              { l: "Fatture", v: dati.conteggi.fatture, dest: null },
               { l: "Lotti attivi", v: dati.conteggi.lotti_attivi, dest: "lotti" },
               { l: "Ordini bozza", v: dati.conteggi.ordini_bozza, dest: "ordini" },
               { l: "Prodotti", v: dati.conteggi.prodotti, dest: "magazzino_prodotti" },
             ].map((c, i) => (
-              <div key={i} onClick={() => { if (c.dest) window.location.hash = c.dest; }} style={{ textAlign: "center", padding: "10px 6px", background: "#f0ebe0", borderRadius: 10, cursor: "pointer" }}>
+              <div key={i} onClick={() => { if (c.dest) window.location.hash = c.dest; }} style={{ textAlign: "center", padding: "10px 6px", background: "#f0ebe0", borderRadius: 10, cursor: c.dest ? "pointer" : "default" }}>
                 <div style={{ fontSize: 20, fontWeight: 800, color: SAGE }}>{c.v}</div>
                 <div style={{ fontSize: 10, color: "#6b7669", fontWeight: 600 }}>{c.l}</div>
               </div>

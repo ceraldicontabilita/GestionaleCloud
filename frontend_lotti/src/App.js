@@ -1,13 +1,11 @@
 // App principale — dopo la fase 2 della ristrutturazione (24/07/2026) qui
-// restano SOLO: inizializzazione, stato condiviso (import fatture, dati),
+// restano SOLO: inizializzazione, stato condiviso (dati),
 // aggancio del router e provider globali (toast, conferme, tour).
 // La navigazione vive in config/ + hooks/useAppNavigation, il layout in
 // layouts/, le pagine in router/pages.jsx, il kiosk in layouts/KioskLayout.
 import { EVENTO_RICERCA_LOTTI } from "./utils/apriLotti";
 import { useState, useEffect } from "react";
 import axios from "axios";
-import { API } from "./utils/constants";
-import JSZip from "jszip";
 import "@/App.css";
 import { Toaster } from "sonner";
 import { FileText, X } from "lucide-react";
@@ -44,48 +42,6 @@ export const Modal = ({ isOpen, onClose, title, children }) => {
   );
 };
 
-// ── Barra di importazione globale (fissa, persiste cambiando pagina) ────────
-function BarraImport({ imp, onClose, onVai, onAnnulla }) {
-  const [apri, setApri] = useState(false);
-  if (!imp || (!imp.running && !imp.finished)) return null;
-  const pct = imp.total ? Math.min(100, Math.round((imp.done / imp.total) * 100)) : (imp.running ? 6 : 100);
-  const nErr = (imp.errori || []).length;
-  const btn = { background: "rgba(255,255,255,.14)", border: "none", color: "#fff", padding: "7px 12px", borderRadius: 8, fontWeight: 700, fontSize: 12, cursor: "pointer" };
-  return (
-    <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 10000, background: "#4a3f33", color: "#fff", boxShadow: "0 -2px 14px rgba(0,0,0,.28)" }}>
-      <div style={{ height: 4, background: "rgba(255,255,255,.18)" }}>
-        <div style={{ height: "100%", width: pct + "%", background: imp.running ? "#8a6f47" : (nErr ? "#c4894a" : "#3d8168"), transition: "width .3s" }} />
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", flexWrap: "wrap" }}>
-        <div style={{ flex: 1, minWidth: 170 }}>
-          <div style={{ fontWeight: 800, fontSize: 14 }}>
-            {imp.running ? "Importazione fatture in corso…" : (nErr ? "Importazione completata con avvisi" : "Importazione completata")}
-          </div>
-          <div style={{ fontSize: 12, opacity: .85 }}>
-            {imp.total ? `${imp.done}/${imp.total} file · ${imp.ok} salvate${imp.running && imp.fase ? ` · ${imp.fase}` : (nErr ? ` · ${nErr} avvisi` : "")}` : (imp.fase || "Lettura file…")}
-          </div>
-        </div>
-        {imp.running && <div style={{ fontWeight: 800, fontSize: 16 }}>{pct}%</div>}
-        {imp.running && (
-          <button onClick={onAnnulla} style={{ ...btn, background: "#d35f4e", fontWeight: 800 }}>Annulla</button>
-        )}
-        {!imp.running && (
-          <>
-            {nErr > 0 && <button onClick={() => setApri(v => !v)} style={btn}>{apri ? "Nascondi avvisi" : "Vedi avvisi"}</button>}
-            <button onClick={onVai} style={btn}>Vai alle fatture</button>
-            <button onClick={onClose} style={{ ...btn, background: "#8a6f47", fontWeight: 800 }}>Chiudi</button>
-          </>
-        )}
-      </div>
-      {!imp.running && apri && nErr > 0 && (
-        <div style={{ maxHeight: 160, overflowY: "auto", background: "rgba(0,0,0,.18)", padding: "8px 14px", fontSize: 11.5, lineHeight: 1.5 }}>
-          {(imp.errori || []).slice(0, 300).map((e, i) => <div key={i} style={{ opacity: .9 }}>• {e}</div>)}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function App() {
   const [loading, setLoading] = useState(true);
   const { activeTab, setActiveTab, handleTabChange } = useAppNavigation();
@@ -102,86 +58,6 @@ function App() {
   const [filtroSoloScaduti, setFiltroSoloScaduti] = useState(false);
   const [ordiniPendenti, setOrdiniPendenti] = useState(0);
 
-  // ── Importazione fatture in background (continua anche cambiando pagina) ──
-  const [imp, setImp] = useState({ running: false, total: 0, done: 0, ok: 0, errori: [], finished: false, fase: "" });
-
-  function pollJob(jobId, onDone) {
-    const base = process.env.REACT_APP_LOTTI_BACKEND_URL + "/api";
-    const tick = async () => {
-      let r = null;
-      try {
-        r = (await axios.get(`${base}/fatture/importa-job/${jobId}`, { timeout: 30000 })).data;
-      } catch (e) { setTimeout(tick, 4000); return; }
-      if (!r) { setTimeout(tick, 4000); return; }
-      const fin = r.stato && r.stato !== "in_corso";
-      setImp(s => ({
-        ...s, jobId,
-        total: r.total || s.total,
-        done: r.processed || 0,
-        ok: r.ok || 0,
-        errori: (r.errori && r.errori.length) ? r.errori : s.errori,
-        running: !fin,
-        finished: !!fin,
-        fase: fin ? (r.stato === "errore" ? "Errore sul server" : "Completato") : "Elaborazione sul server…",
-      }));
-      if (fin) { if (onDone) { try { onDone(); } catch (e) {} } return; }
-      setTimeout(tick, 3000);
-    };
-    tick();
-  }
-
-  const startImport = async (fileList, onDone) => {
-    const base = process.env.REACT_APP_LOTTI_BACKEND_URL + "/api";
-    setImp({ running: true, total: 0, done: 0, ok: 0, errori: [], finished: false, fase: "Avvio del server…" });
-    await axios.get(`${base}/fatture/stato-sync`, { timeout: 90000 }).catch(() => {});
-    setImp(s => ({ ...s, fase: "Lettura file…" }));
-    const xmls = [];
-    for (const f of Array.from(fileList || [])) {
-      const nl = (f.name || "").toLowerCase();
-      if (nl.endsWith(".zip")) {
-        try {
-          const z = await JSZip.loadAsync(f);
-          for (const path of Object.keys(z.files)) {
-            const ent = z.files[path];
-            const pl = path.toLowerCase();
-            if (ent.dir || !(pl.endsWith(".xml") || pl.endsWith(".p7m"))) continue;
-            const blob = await ent.async("blob");
-            xmls.push(new File([blob], path.split("/").pop(), { type: "application/octet-stream" }));
-          }
-        } catch (e) { xmls.push(f); }
-      } else {
-        xmls.push(f);
-      }
-    }
-    if (!xmls.length) { setImp(s => ({ ...s, running: false, finished: true, fase: "Nessun file XML trovato" })); return; }
-    setImp(s => ({ ...s, total: xmls.length, fase: "Invio al server…" }));
-    let jobId = null;
-    try {
-      const fd = new FormData();
-      xmls.forEach(x => fd.append("files", x));
-      const res = await axios.post(`${base}/fatture/importa-async`, fd, { timeout: 300000 });
-      jobId = res.data && res.data.job_id;
-    } catch (e) {
-      setImp(s => ({ ...s, running: false, finished: true, fase: "Errore invio", errori: [...s.errori, "Invio al server fallito: " + ((e && e.message) || "")] }));
-      return;
-    }
-    if (!jobId) { setImp(s => ({ ...s, running: false, finished: true, fase: "Errore avvio" })); return; }
-    setImp(s => ({ ...s, jobId, fase: "Elaborazione sul server…" }));
-    pollJob(jobId, onDone);
-  };
-
-  // Riprende la barra se un import è già in corso sul server (dopo reload o ritorno da background)
-  useEffect(() => {
-    const base = process.env.REACT_APP_LOTTI_BACKEND_URL + "/api";
-    axios.get(`${base}/fatture/importa-job-attivo`, { timeout: 30000 }).then(r => {
-      const j = r.data;
-      if (j && j.id && j.stato === "in_corso") {
-        setImp(s => ({ ...s, running: true, finished: false, jobId: j.id, total: j.total || 0, done: j.processed || 0, ok: j.ok || 0, errori: j.errori || [], fase: "Elaborazione sul server…" }));
-        pollJob(j.id);
-      }
-    }).catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
   // Modalità Laboratorio rimossa: la produzione veloce e ora dentro le card del kiosk tablet.
   // Pulizia per eventuali utenti rimasti col flag attivo in localStorage.
   if (localStorage.getItem("modo_laboratorio") === "1") localStorage.setItem("modo_laboratorio", "0");
@@ -252,8 +128,6 @@ function App() {
   // Stato e callback condivisi con le pagine (router/pages.jsx)
   const ctx = {
     stats, refreshAll, setActiveTab, handleTabChange,
-    imp, startImport,
-    onImportComplete: () => Promise.all([fetchStats(), fetchFornitori()]),
     fornitori, fetchFornitori,
     lotti, notifyLottiChanged,
     searchLotti, setSearchLotti,
@@ -279,14 +153,6 @@ function App() {
       >
         {renderPagina(activeTab, ctx)}
       </AppLayout>
-      <BarraImport imp={imp}
-        onClose={() => setImp(s => ({ ...s, finished: false }))}
-        onVai={() => handleTabChange("fatture")}
-        onAnnulla={async () => {
-          try { await axios.post(`${API}/fatture/importa-annulla`); } catch { /* ignore */ }
-          setImp(s => ({ ...s, running: false, finished: false, fase: "Import annullato" }));
-        }} />
-
       {/* Tour guidato passo-passo */}
       {tourOpen && (
         <TourInterattivo
