@@ -91,11 +91,35 @@ def metodo_fornitore(metodi: set) -> str:
     return gruppi.pop() if len(gruppi) == 1 else "misto"
 
 
+_EPOCA_EXCEL = datetime(1899, 12, 30)
+_DATA_EXCEL = re.compile(r"^(\d{4})-(\d{2})-(\d{2})(?:[ T]00:00:00)?$")
+
+
+def numero_da_data_excel(valore: Any) -> str:
+    """Excel scambia un numero d'assegno scritto a mano per una data: «860»
+    diventa il 09/05/1902 (860 giorni dal 30/12/1899). Una data prima del 1990
+    in quella colonna e' sempre un numero, e si riporta al numero."""
+    if isinstance(valore, datetime):
+        data = valore
+    else:
+        trovato = _DATA_EXCEL.match(str(valore or "").strip())
+        if not trovato:
+            return ""
+        try:
+            data = datetime(*(int(x) for x in trovato.groups()))
+        except ValueError:
+            return ""
+    if data.year >= 1990:
+        return ""
+    return str((data.replace(tzinfo=None) - _EPOCA_EXCEL).days)
+
+
 def cifre_assegno(numero: Any) -> str:
     """«334-07» → «334»: il titolare scrive le cifre finali del numero."""
     testo = str(numero or "").strip()
     if isinstance(numero, float) and numero.is_integer():
         testo = str(int(numero))
+    testo = numero_da_data_excel(numero) or testo
     parte = re.split(r"[-/\s]", testo)[0]
     cifre = re.sub(r"\D", "", parte)
     return cifre if len(cifre) >= 3 else ""
@@ -443,7 +467,11 @@ async def applica_pagamenti_dichiarati(
                 await _salva_esito(db, riga, "da_decidere", metodo="sumup")
             continue
 
-        if metodo == "assegno" and riga.get("assegno_numero_titolare"):
+        # Il numero d'assegno scritto dal titolare dice come ha pagato anche
+        # quando il metodo dice «banca» (l'assegno esce dal conto): senza
+        # questo le fatture 1/5716, 1/7786 e FEP 39_26 aspettavano un bonifico
+        # che non arrivera' mai.
+        if cifre_assegno(riga.get("assegno_numero_titolare")) and metodo in ("assegno", "banca"):
             chiave = (riga.get("supplier_vat") or "", str(riga["assegno_numero_titolare"]))
             gruppi_assegno[chiave].append((fattura, riga))
             continue

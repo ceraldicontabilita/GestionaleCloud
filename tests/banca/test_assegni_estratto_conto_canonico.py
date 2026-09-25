@@ -410,3 +410,80 @@ def test_assegno_gia_in_banca_puo_chiudere_due_fatture_senza_due_righe_banca():
         assert (await db.invoices.find_one({"id": "fatt-b"}))["pagato"] is True
 
     _run(scenario())
+
+
+def _scenario_tre_fatture_siro(scheda_assegno):
+    """Caso reale: assegno n.862 da 755,13 paga tre fatture SIRO del 22/04."""
+    async def scenario():
+        db = ClientArchivioMemoria().db
+        await db.estratto_conto_movimenti.insert_one(
+            {**_mov(numero="0208770862", importo=755.13, idx=862), "data": "2026-04-28"})
+        quote = {"f836": 578.01, "f837": 32.03, "f838": 145.09}
+        for fid, quota in quote.items():
+            await db.invoices.insert_one({
+                "id": fid, "invoice_number": "2/" + fid[1:], "invoice_date": "2026-04-22",
+                "supplier_name": "SIRO S.R.L.", "total_amount": quota, "importo_pagato": quota,
+                "payment_status": "paid", "status": "imported",
+                "assegni_collegati": [{"assegno_id": "a862", "numero": "0208770862", "quota": quota,
+                                       "match_livello": "EC_UNIVOCO", "banca_confermata": True}],
+            })
+        await db.assegni.insert_one({"id": "a862", "numero": "0208770862", "importo": 755.13,
+                                     "data": "2026-04-28", **scheda_assegno})
+        for _ in range(2):
+            await sincronizza_assegni_da_estratto_conto(db)
+        assegno = await db.assegni.find_one({"id": "a862"}, {"_id": 0})
+        movimento = await db.estratto_conto_movimenti.find_one({"id": "ec-862"}, {"_id": 0})
+        fatture = {f["id"]: f for f in await db.invoices.find({}, {"_id": 0}).to_list(None)}
+        return assegno, movimento, fatture, quote
+
+    return _run(scenario())
+
+
+def test_assegno_su_tre_fatture_non_si_riduce_alla_prima():
+    corretta = {"fattura_id": "f836", "fatture_collegate": [
+        {"fattura_id": f, "quota": q} for f, q in (("f836", 578.01), ("f837", 32.03), ("f838", 145.09))]}
+    assegno, movimento, fatture, quote = _scenario_tre_fatture_siro(corretta)
+    assert {l["fattura_id"]: l["quota"] for l in assegno["fatture_collegate"]} == quote
+    assert sorted(movimento["fattura_ids"]) == sorted(quote)
+    for fid, quota in quote.items():
+        assert fatture[fid]["importo_pagato"] == quota  # nessuna quota applicata due volte
+
+
+def test_scheda_ridotta_a_una_fattura_si_riallinea_alle_fatture():
+    # Lo stato trovato in produzione il 25/09/2026: una fattura, tutto l'importo.
+    rovinata = {"fattura_id": "f838", "fattura_collegata": "f838",
+                "fatture_collegate": [{"fattura_id": "f838", "quota": 755.13}]}
+    assegno, movimento, fatture, quote = _scenario_tre_fatture_siro(rovinata)
+    assert {l["fattura_id"]: l["quota"] for l in assegno["fatture_collegate"]} == quote
+    assert fatture["f838"]["importo_pagato"] == 145.09
+    assert all(fatture[f]["riconciliato"] for f in quote)
+
+
+def test_regola_del_titolare_assegno_paga_la_fattura_dei_giorni_prima():
+    """Eureka 646,72 € ogni mese: n.851 (17/04) → 26/D del 07/04, n.864 (27/04)
+    → 36/D del 24/04. La 25/D del 20/03 e' fuori finestra per entrambi; un
+    assegno con due fatture nella finestra resta una scelta del titolare."""
+    async def scenario():
+        db = ClientArchivioMemoria().db
+        for fid, numero, data in (("f25", "25/D", "2026-03-20"), ("f26", "26/D", "2026-04-07"),
+                                  ("f36", "36/D", "2026-04-24"),
+                                  ("fx1", "X1", "2026-05-20"), ("fx2", "X2", "2026-05-22")):
+            await db.invoices.insert_one({
+                "id": fid, "invoice_number": numero, "invoice_date": data,
+                "supplier_name": "Eureka Onlus", "supplier_vat": "01234567890",
+                "total_amount": 646.72, "status": "imported", "payment_status": "unpaid",
+            })
+        for idx, (num, data) in enumerate((("0208770851", "2026-04-17"),
+                                           ("0208770864", "2026-04-27"),
+                                           ("0208770999", "2026-05-25")), start=1):
+            await db.estratto_conto_movimenti.insert_one(
+                {**_mov(numero=num, importo=646.72, idx=idx), "data": data})
+        await sincronizza_assegni_da_estratto_conto(db)
+        await sincronizza_assegni_da_estratto_conto(db)
+        return {a["numero"]: a for a in await db.assegni.find({}, {"_id": 0}).to_list(None)}
+
+    assegni = _run(scenario())
+    assert assegni["0208770851"]["fattura_id"] == "f26"
+    assert assegni["0208770851"]["match_livello"] == "REGOLA_TITOLARE_GIORNI_PRECEDENTI"
+    assert assegni["0208770864"]["fattura_id"] == "f36"
+    assert not assegni["0208770999"].get("fattura_id")  # X1 e X2 nella finestra: decide il titolare

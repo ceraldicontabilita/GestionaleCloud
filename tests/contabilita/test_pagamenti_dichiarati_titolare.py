@@ -306,3 +306,57 @@ def test_giro_ucciso_da_un_riavvio_si_dichiara_interrotto():
         return await pagamenti.stato(db)
 
     assert asyncio.run(scenario())["stato"] == "interrotto"
+
+
+def test_numero_assegno_che_excel_ha_trasformato_in_data():
+    # Caso reale (report del 25/09/2026): l'assegno 860 salvato come «1902-05-09».
+    from datetime import datetime as dt
+    assert pagamenti.cifre_assegno("1902-05-09 00:00:00") == "860"
+    assert pagamenti.cifre_assegno(dt(1902, 5, 9)) == "860"
+    assert pagamenti.cifre_assegno(pd.Timestamp("1902-05-09")) == "860"
+    assert pagamenti.cifre_assegno("334-07") == "334"
+    # una data vera non e' un numero d'assegno
+    assert pagamenti.numero_da_data_excel("2026-04-21") == ""
+
+
+A2000 = "07000000001"
+
+
+def test_banca_con_numero_d_assegno_si_paga_con_quell_assegno(db):
+    """FEP 39_26: il titolare scrive «BANCA» ma anche l'assegno 985-07."""
+    from datetime import datetime as dt
+
+    async def scenario():
+        await db["invoices"].insert_one(_fattura(
+            "f-fep39", "FEP 39_26", A2000, "A 2000 Costruzioni S.r.l", "2026-04-28", 9760.00))
+        await db["invoices"].insert_one(_fattura(
+            "f-dicosmo", "8659/07", "05000000002", "DI COSMO S.R.L.", "2026-04-21", 1123.73))
+        for num, imp, data in (("0208770985", 9760.00, "2026-06-30"), ("0208770860", 1123.73, "2026-04-27")):
+            await db["estratto_conto_movimenti"].insert_one({
+                "id": f"ec-{num}", "data": data, "tipo": "uscita", "importo": -imp,
+                "descrizione": f"VOSTRO ASSEGNO N. {num}", "causale": f"VOSTRO ASSEGNO N. {num}",
+                "assegno_numero": num, "riconciliato": True,
+            })
+            await db["assegni"].insert_one({
+                "id": f"ass-{num[-3:]}", "numero": num, "importo": imp, "stato": "incassato",
+                "data": data, "data_incasso": data, "movimento_id": f"ec-{num}",
+                "movimento_estratto_conto_id": f"ec-{num}",
+                "evidenza_bancaria_ufficiale": True, "incassato_confermato_banca": True,
+            })
+        righe = [
+            _riga("FEP 39_26", A2000, "A 2000 Costruzioni S.r.l", "2026-04-28", 9760.00,
+                  "BANCA", assegno="985-07"),
+            # Excel ha scritto l'assegno 860 come data.
+            _riga("8659/07", "05000000002", "DI COSMO S.R.L.", "2026-04-21", 1123.73,
+                  "ASSEGNO", assegno=dt(1902, 5, 9)),
+        ]
+        await report_ae.importa_report_fatture_ricevute(db, _xlsx(righe), "report.xlsx")
+        salvata = await db[report_ae.COLLECTION_REPORT].find_one({"numero_fattura": "8659/07"})
+        await pagamenti.applica_pagamenti_dichiarati(db)
+        return (salvata, await db["assegni"].find_one({"id": "ass-985"}),
+                await db["assegni"].find_one({"id": "ass-860"}))
+
+    salvata, a985, a860 = asyncio.run(scenario())
+    assert salvata["assegno_numero_titolare"] == "860"
+    assert [l["fattura_id"] for l in a985["fatture_collegate"]] == ["f-fep39"]
+    assert [l["fattura_id"] for l in a860["fatture_collegate"]] == ["f-dicosmo"]
