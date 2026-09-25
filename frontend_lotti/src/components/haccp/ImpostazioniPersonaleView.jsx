@@ -379,6 +379,29 @@ export default function ImpostazioniPersonaleView() {
               </div>
             </div>
 
+            {(() => {
+              const attivo = ["1", "true", "si", "sì", "x"].includes(String(azienda.controllo_visivo_responsabile || "").trim().toLowerCase());
+              return (
+                <div style={{ background: "#f4f8f3", border: `1px solid ${LINE}`, borderRadius: 10, padding: "12px 14px", marginBottom: 14 }}>
+                  <label style={{ display: "flex", gap: 10, alignItems: "flex-start", cursor: "pointer", minHeight: 44 }}>
+                    <input type="checkbox" checked={attivo}
+                      onChange={(e) => setAz("controllo_visivo_responsabile", e.target.checked ? "si" : "no")}
+                      style={{ width: 22, height: 22, marginTop: 2, accentColor: SAGE }} />
+                    <span>
+                      <span style={{ display: "block", fontSize: 13, fontWeight: 700, color: SALVIA }}>
+                        Il responsabile HACCP fa di persona il controllo visivo di frigoriferi e congelatori
+                      </span>
+                      <span style={{ display: "block", fontSize: 11.5, color: MUTED, marginTop: 4 }}>
+                        Ogni mattina alle 07:00 si aprono le caselle del giorno. Finito il giro, nelle pagine Temperature tocchi
+                        «Giro fatto: tutto conforme» col tuo PIN: il registro annota l'esito firmato da te, all'ora vera, senza
+                        scrivere numeri. Una temperatura fuori soglia si scrive a mano col valore vero.
+                      </span>
+                    </span>
+                  </label>
+                </div>
+              );
+            })()}
+
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 12 }}>
               {CAMPI_AZIENDA.map(([campo, etichetta, inPdf]) => {
                 const vuoto = inPdf && !String(azienda[campo] || "").trim();

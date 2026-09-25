@@ -216,7 +216,7 @@ const AUTO_TASKS = [
     description: 'Classifica e processa documenti con intelligenza artificiale',
     icon: Zap,
     color: COLORS.warning,
-    endpoint: '/api/ai-parser/process-email-batch?limit=100',
+    endpoint: '/api/ai-parser/process-email-batch?limit=20',
     method: 'POST',
     autoRun: true,
   },

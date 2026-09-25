@@ -82,7 +82,7 @@ INGREDIENTI_CANONICI: dict[str, list[str]] = {
     "Mortadella": ["mortadella"],
     "Salame": ["salame"],
     "Bresaola": ["bresaola"],
-    "Salsiccia": ["salsiccia", "wurstel"],
+    "Salsiccia": ["salsiccia"],  # il wurstel e' un'altra cosa: vedi "Würstel"
     "Speck": ["speck"],
     "Mozzarella": ["mozzarella di bufala", "fior di latte", "mozzarella"],
     "Parmigiano": ["parmigiano reggiano", "grana padano", "grana"],
@@ -419,6 +419,9 @@ def _singolarizza(testo: str) -> str:
     return " ".join(out)
 
 
+_RX_KW: dict = {}
+
+
 def match_livello2(nome: str) -> Optional[str]:
     """
     Livello 2: keyword matching sul nome commerciale.
@@ -438,9 +441,15 @@ def match_livello2(nome: str) -> Optional[str]:
 
     def _kw_presente(kw: str) -> bool:
         k = kw.strip()
-        pre = r"(?<![a-zà-ÿ])"
-        suffisso = r"(?![a-zà-ÿ])" if len(k) <= 3 else ""
-        rx = re.compile(pre + re.escape(k) + suffisso)
+        # scarto veloce: senza la sottostringa la regola non puo' valere
+        # (prima ogni chiamata ricompilava centinaia di espressioni: 20 ms a nome)
+        if not any(k in v for v in varianti):
+            return False
+        rx = _RX_KW.get(k)
+        if rx is None:
+            pre = r"(?<![a-zà-ÿ])"
+            suffisso = r"(?![a-zà-ÿ])" if len(k) <= 3 else ""
+            rx = _RX_KW[k] = re.compile(pre + re.escape(k) + suffisso)
         return any(rx.search(v) for v in varianti)
 
     # Primo passaggio: match parziale ordinato per specificità (keyword più lunghe prima)

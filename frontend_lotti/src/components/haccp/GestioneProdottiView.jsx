@@ -123,8 +123,11 @@ export default function GestioneProdottiView() {
                   </select>
                 </div>
                 <div style={{ flex: "1 1 220px" }}>
-                  <label style={{ fontSize: 11, fontWeight: 700, color: "#6b7669" }}>Nome da usare (normalizzazione)</label>
-                  <input defaultValue={p.nome_norm || ""} placeholder={p.nome_originale}
+                  <label style={{ fontSize: 11, fontWeight: 700, color: "#6b7669" }}>
+                    Nome da usare (normalizzazione)
+                    {!p.nome_norm && p.nome_norm_auto ? <span style={{ color: "#3d8168" }}> · riconosciuto in automatico, gia' in uso</span> : null}
+                  </label>
+                  <input defaultValue={p.nome_norm || p.nome_norm_auto || ""} placeholder={p.nome_originale}
                     onChange={(e) => patchLocale(p.key, { nome_norm: e.target.value })} style={{ ...INPUT, marginTop: 3 }} />
                 </div>
               </div>

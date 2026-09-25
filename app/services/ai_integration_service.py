@@ -265,18 +265,25 @@ async def process_email_documents_batch(
     
     import base64
     
-    # Trova documenti non ancora processati con AI
-    docs = await db["documents_inbox"].find({
-        "ai_parsed": {"$ne": True},
-        "pdf_data": {"$exists": True}
-    }).limit(limit).to_list(limit)
-    
+    from app.document_repository import metadata_projection
+
+    # Elenco SENZA payload, poi un PDF per volta letto per id: caricare 100
+    # PDF insieme ha esaurito i 2 GB del server (OOM, 25/09/2026 05:18) e
+    # fatto cadere con lui Auto-Associazione e Riconciliazione F24.
+    docs = await db["documents_inbox"].find(
+        {"ai_parsed": {"$ne": True}, "pdf_data": {"$exists": True}},
+        metadata_projection("documents_inbox"),
+    ).limit(limit).to_list(limit)
+
     logger.info(f"Trovati {len(docs)} documenti da processare con AI")
-    
+
     for doc in docs:
         try:
-            # Decodifica PDF da base64
-            pdf_data = base64.b64decode(doc.get("pdf_data", ""))
+            completo = await db["documents_inbox"].find_one(
+                {"id": doc["id"]}, {"_id": 0, "pdf_data": 1}
+            ) or {}
+            pdf_data = base64.b64decode(completo.pop("pdf_data", "") or "")
+            del completo
             
             if not pdf_data:
                 continue
