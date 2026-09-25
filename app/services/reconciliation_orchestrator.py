@@ -28,9 +28,7 @@ async def riconcilia_documenti_e_pagamenti(
     from app.services.stipendi_bonifici import associa_bonifici_stipendi
     from app.services.versamenti_contanti import riconosci_versamenti
     from app.routers.pagopa import auto_associa_ricevute_db
-    from app.routers.paypal_statements import (
-        _auto_riconcilia, riprocessa_collegamenti_paypal,
-    )
+    from app.services.paypal_reconciliation_pipeline import riconcilia_paypal_importato
 
     assegni_intenti = await riprocessa_intenti_assegni(db, anno=anno)
     assegni_auto = await run_auto_match(db, dry_run=False, anno=anno)
@@ -41,11 +39,7 @@ async def riconcilia_documenti_e_pagamenti(
     )
     start_date = f"{anno}-01-01" if anno else None
     end_date = f"{anno}-12-31" if anno else None
-    paypal_fatture_prima = await riprocessa_collegamenti_paypal(
-        db, start_date=start_date, end_date=end_date,
-    )
-    paypal_banca = await _auto_riconcilia(db, anno=anno, applica=True)
-    paypal_fatture_dopo = await riprocessa_collegamenti_paypal(
+    paypal = await riconcilia_paypal_importato(
         db, start_date=start_date, end_date=end_date,
     )
     cbill = await auto_associa_ricevute_db(db)
@@ -92,9 +86,9 @@ async def riconcilia_documenti_e_pagamenti(
         "salari": salari,
         "f24": f24,
         "paypal": {
-            "fatture_prima": paypal_fatture_prima,
-            "banca": paypal_banca,
-            "fatture_dopo": paypal_fatture_dopo,
+            "fatture_prima": paypal["collegamenti_prima"],
+            "banca": paypal["banca"],
+            "fatture_dopo": paypal["collegamenti_dopo"],
         },
         "cbill_pagopa": cbill,
         "finanziamenti_soci": {

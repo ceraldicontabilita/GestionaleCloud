@@ -85,7 +85,10 @@ def test_riconcilia_intervallo_che_attraversa_due_anni(monkeypatch):
 
         from app.routers import paypal_statements
 
-        monkeypatch.setattr(api_router, "riprocessa_collegamenti_paypal", fake_links)
+        monkeypatch.setattr(
+            "app.services.paypal_reconciliation_links.riprocessa_collegamenti_paypal",
+            fake_links,
+        )
         monkeypatch.setattr(paypal_statements, "_auto_riconcilia", fake_bank)
         result = await api_router._riconcilia_intervallo_paypal(
             db,
@@ -98,6 +101,35 @@ def test_riconcilia_intervallo_che_attraversa_due_anni(monkeypatch):
         assert set(result["banca"]["per_anno"]) == {"2025", "2026"}
         assert result["banca"]["riconciliati"] == 2
         assert result["banca"]["proposte"] == 2
+
+    _run(scenario())
+
+
+def test_sync_api_applica_la_stessa_riconciliazione(monkeypatch):
+    async def scenario():
+        calls = []
+
+        async def sync(db, start, end):
+            calls.append("sync")
+            assert start.isoformat() == "2026-04-01T00:00:00+00:00"
+            assert end.isoformat() == "2026-04-30T23:59:59+00:00"
+            return {"total": 1}
+
+        async def reconcile(db, start, end):
+            calls.append("reconcile")
+            return {"banca": {"riconciliati": 1}}
+
+        monkeypatch.setattr(api_router.Database, "get_db", staticmethod(lambda: object()))
+        monkeypatch.setattr(api_router, "sync_paypal_period", sync)
+        monkeypatch.setattr(api_router, "_riconcilia_intervallo_paypal", reconcile)
+
+        result = await api_router.sync_period({
+            "start_date": "2026-04-01", "end_date": "2026-04-30",
+        })
+
+        assert calls == ["sync", "reconcile"]
+        assert result["reconciliation_applied"] is True
+        assert result["reconciliation"]["banca"]["riconciliati"] == 1
 
     _run(scenario())
 

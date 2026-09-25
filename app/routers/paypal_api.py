@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Body, Request, BackgroundTasks
 from fastapi.responses import FileResponse
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 from typing import Dict, Any, Optional
 import logging
 
@@ -13,40 +13,19 @@ from app.config import settings
 from app.services.paypal_api_sync import sync_paypal_incremental, sync_paypal_period
 from app.services.paypal_api_client import paypal_client
 from app.services.paypal_invoice_matching import business_name_matches
-from app.services.paypal_reconciliation_links import riprocessa_collegamenti_paypal
 
 router = APIRouter(tags=["PayPal API"])
 logger = logging.getLogger(__name__)
 
 
 async def _riconcilia_intervallo_paypal(db, start: datetime, end: datetime) -> Dict[str, Any]:
-    """Riprocessa fatture e banca per tutti gli anni toccati dall'intervallo."""
-    links = await riprocessa_collegamenti_paypal(
-        db, start_date=start.date().isoformat(), end_date=end.date().isoformat(),
-    )
-    from app.routers.paypal_statements import _auto_riconcilia
+    """Adapter delle API al motore PayPal condiviso dagli import PDF/Drive."""
+    from app.services.paypal_reconciliation_pipeline import riconcilia_paypal_importato
 
-    per_anno: Dict[str, Any] = {}
-    for anno in range(start.year, end.year + 1):
-        per_anno[str(anno)] = await _auto_riconcilia(db, anno=anno, applica=True)
-    await riprocessa_collegamenti_paypal(
+    result = await riconcilia_paypal_importato(
         db, start_date=start.date().isoformat(), end_date=end.date().isoformat(),
     )
-    return {
-        "collegamenti": links,
-        "banca": {
-            "per_anno": per_anno,
-            "riconciliati": sum(
-                int(esito.get("riconciliati") or 0) for esito in per_anno.values()
-            ),
-            "proposte": sum(
-                int(esito.get("proposte") or 0) for esito in per_anno.values()
-            ),
-            "ambigui": sum(
-                int(esito.get("ambigui") or 0) for esito in per_anno.values()
-            ),
-        },
-    }
+    return {"collegamenti": result["collegamenti_prima"], **result}
 
 # Popolato al momento della creazione del webhook su developer.paypal.com
 # (Applicazioni e credenziali > Webhook in tempo reale > Aggiungi Webhook,
@@ -128,25 +107,35 @@ async def ricevi_webhook(request: Request):
     end = (evento_dt + timedelta(days=1)).replace(hour=23, minute=59, second=59, microsecond=0)
 
     result = await sync_paypal_period(db, start, end)
+    reconciliation = await _riconcilia_intervallo_paypal(db, start, end)
     await db["paypal_webhook_events"].update_one(
         {"event_id": event_id},
-        {"$set": {"processed": True, "sync_result": result}},
+        {"$set": {"processed": True, "sync_result": result, "reconciliation": reconciliation}},
     )
     return {"success": True, "processato": True, "sync": result,
-            "reconciliation_applied": False}
+            "reconciliation_applied": True, "reconciliation": reconciliation}
 
 
 @router.post("/sync")
 async def sync_period(body: Dict[str, Any] = Body(...)):
     try:
-        start = datetime.fromisoformat(body["start_date"]).replace(tzinfo=timezone.utc)
-        end = datetime.fromisoformat(body["end_date"]).replace(tzinfo=timezone.utc)
+        start_raw = str(body["start_date"])
+        end_raw = str(body["end_date"])
+        start = datetime.fromisoformat(start_raw.replace("Z", "+00:00"))
+        end = datetime.fromisoformat(end_raw.replace("Z", "+00:00"))
+        if "T" not in end_raw and " " not in end_raw:
+            end = datetime.combine(end.date(), time(23, 59, 59))
+        start = start.replace(tzinfo=timezone.utc) if start.tzinfo is None else start.astimezone(timezone.utc)
+        end = end.replace(tzinfo=timezone.utc) if end.tzinfo is None else end.astimezone(timezone.utc)
+        if end < start:
+            raise ValueError("intervallo invertito")
     except (KeyError, ValueError) as e:
         raise HTTPException(400, f"Formato data non valido: {e}") from e
 
     db = Database.get_db()
     result = await sync_paypal_period(db, start, end)
-    return {**result, "reconciliation_applied": False}
+    reconciliation = await _riconcilia_intervallo_paypal(db, start, end)
+    return {**result, "reconciliation_applied": True, "reconciliation": reconciliation}
 
 
 @router.post("/sync/month")
@@ -159,7 +148,8 @@ async def sync_current_month():
 
     db = Database.get_db()
     result = await sync_paypal_period(db, start, end)
-    return {**result, "reconciliation_applied": False}
+    reconciliation = await _riconcilia_intervallo_paypal(db, start, end)
+    return {**result, "reconciliation_applied": True, "reconciliation": reconciliation}
 
 
 @router.post("/sync/incremental")
@@ -177,6 +167,11 @@ async def sync_incremental():
             status_code=502,
             detail=f"PayPal non ha risposto correttamente: {exc}",
         ) from exc
+    if result.get("status") == "updated" and result.get("period_start") and result.get("period_end"):
+        start = datetime.fromisoformat(result["period_start"])
+        end = datetime.fromisoformat(result["period_end"])
+        reconciliation = await _riconcilia_intervallo_paypal(db, start, end)
+        return {**result, "reconciliation_applied": True, "reconciliation": reconciliation}
     return {**result, "reconciliation_applied": False}
 
 
@@ -218,7 +213,7 @@ async def riconcilia_da_collection(
     from app.services.paypal_riconciliazione import (
         riconcilia_multe_pagopa,
     )
-    from app.routers.paypal_statements import _auto_riconcilia
+    from app.services.paypal_reconciliation_pipeline import riconcilia_paypal_importato
     from app.services.paypal_email_recovery import recupera_fatture_mancanti_email
 
     db = Database.get_db()
@@ -235,29 +230,18 @@ async def riconcilia_da_collection(
     txs = await db["paypal_transactions"].find(q, {"_id": 0}).to_list(5000)
     multe = [t for t in txs if t.get("is_pagopa")]
     r_multe = await riconcilia_multe_pagopa(db, multe)
-    r_fatt = await riprocessa_collegamenti_paypal(
-        db,
-        start_date=body.get("start_date"),
-        end_date=body.get("end_date"),
+    links = await riconcilia_paypal_importato(
+        db, start_date=body.get("start_date"), end_date=body.get("end_date"),
     )
-    # Un solo motore banca: il precedente percorso legacy usava un mandato
-    # fisso e non proteggeva dai pareggi. Il motore canonico richiede invece
-    # un match biunivoco e non riutilizza movimenti gia' riconciliati.
-    anno_banca = None
-    if body.get("start_date"):
-        try:
-            anno_banca = int(str(body["start_date"])[:4])
-        except (TypeError, ValueError):
-            anno_banca = None
-    r_banca = await _auto_riconcilia(db, anno=anno_banca, applica=True)
 
     if body.get("recupera_email", True):
         background_tasks.add_task(recupera_fatture_mancanti_email, db)
 
     return {
         "multe_pagopa": r_multe,
-        "fatture": r_fatt,
-        "banca": r_banca,
+        "fatture": links["collegamenti_prima"],
+        "banca": links["banca"],
+        "fatture_dopo": links["collegamenti_dopo"],
         "recupero_email_avviato": bool(body.get("recupera_email", True)),
     }
 

@@ -96,6 +96,46 @@ def test_upload_generico_duplicato_non_crea_una_seconda_copia(monkeypatch):
     asyncio.run(scenario())
 
 
+def test_upload_paypal_da_documenti_riconcilia_subito(monkeypatch):
+    async def scenario():
+        db = ClientArchivioMemoria()["documenti_paypal_import"]
+        calls = []
+
+        async def imported(_db, content, filename, **kwargs):
+            calls.append("import")
+            return {
+                "transazioni_inserite": 1, "transazioni_duplicate": 0,
+                "periodo_inizio": "2025-04-29", "periodo_fine": "2025-04-29",
+            }
+
+        async def reconciled(_db, **kwargs):
+            calls.append(("reconcile", kwargs))
+            return {"banca": {"riconciliati": 1}}
+
+        monkeypatch.setattr(documenti.Database, "get_db", staticmethod(lambda: db))
+        monkeypatch.setattr(
+            "app.utils.upload_validation.verifica_pdf_reale", lambda *_: None,
+        )
+        monkeypatch.setattr(
+            "app.services.paypal_statement_import.import_paypal_statement_pdf", imported,
+        )
+        monkeypatch.setattr(
+            "app.services.paypal_reconciliation_pipeline.riconcilia_paypal_importato", reconciled,
+        )
+        upload = UploadFile(filename="PayPal_dettaglio.pdf", file=io.BytesIO(b"%PDF-test"))
+        result = await documenti.upload_documento_automatico(file=upload)
+
+        assert calls == [
+            "import",
+            ("reconcile", {
+                "start_date": "2025-04-29", "end_date": "2025-04-29",
+            }),
+        ]
+        assert result["data"]["riconciliazione"]["banca"]["riconciliati"] == 1
+
+    asyncio.run(scenario())
+
+
 def test_zip_sospetto_viene_bloccato_prima_della_decompressione():
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:

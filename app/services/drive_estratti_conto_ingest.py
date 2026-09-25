@@ -626,9 +626,9 @@ async def sync(db) -> Dict[str, Any]:
             try:
                 # Una sola riconciliazione a fine lotto: evita N scansioni
                 # complete mentre vengono importati piu' mesi PayPal.
-                from app.routers.paypal_statements import _auto_riconcilia
+                from app.services.paypal_reconciliation_pipeline import riconcilia_paypal_importato
 
-                result["paypal_reconciliation"] = await _auto_riconcilia(db)
+                result["paypal_reconciliation"] = await riconcilia_paypal_importato(db)
             except Exception as exc:
                 logger.exception("Drive PayPal: riconciliazione finale fallita")
                 result["errors"].append({

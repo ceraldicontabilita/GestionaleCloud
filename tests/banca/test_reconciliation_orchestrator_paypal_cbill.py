@@ -70,7 +70,7 @@ def test_orchestratore_include_paypal_fatture_banca_e_cbill(monkeypatch):
         f24,
     )
     monkeypatch.setattr(
-        "app.routers.paypal_statements.riprocessa_collegamenti_paypal",
+        "app.services.paypal_reconciliation_links.riprocessa_collegamenti_paypal",
         paypal_fatture,
     )
     monkeypatch.setattr(

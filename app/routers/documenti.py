@@ -3898,15 +3898,21 @@ async def upload_documento_automatico(
 
         elif tipo_rilevato == 'estratto_conto_paypal':
             from app.services.paypal_statement_import import import_paypal_statement_pdf
+            from app.services.paypal_reconciliation_pipeline import riconcilia_paypal_importato
 
             paypal_result = await import_paypal_statement_pdf(
                 db, content, filename, source="documenti_upload_auto_paypal",
+            )
+            collegamenti = await riconcilia_paypal_importato(
+                db,
+                start_date=paypal_result.get("periodo_inizio"),
+                end_date=paypal_result.get("periodo_fine"),
             )
             result.update({
                 "workflow": "PAYPAL_STATEMENT_CANONICO",
                 "imported": paypal_result.get("transazioni_inserite", 0),
                 "duplicates": paypal_result.get("transazioni_duplicate", 0),
-                "data": paypal_result,
+                "data": {**paypal_result, "riconciliazione": collegamenti},
                 "message": (
                     f"Estratto PayPal importato: "
                     f"{paypal_result.get('transazioni_inserite', 0)} operazioni nuove, "
