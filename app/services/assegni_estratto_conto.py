@@ -18,7 +18,10 @@ from app.services.scritture_contabili import (
     FILTRO_MOVIMENTO_ATTIVO,
     scrivi_movimento_se_assente,
 )
-from app.services.assegni_fattura_intent import capienza_assegno_fattura
+from app.services.assegni_fattura_intent import (
+    capienza_assegno_fattura,
+    rata_assegno_disponibile,
+)
 from app.services.payment_allocation_validator import (
     is_credit_note,
     to_cents,
@@ -134,6 +137,8 @@ async def _fattura_da_numero_assegno_xml(
         for fattura in fatture:
             if not _invoice_date_compatibile(fattura, data_movimento):
                 continue
+            if importo > _f(fattura.get("_residuo")) + TOLL:
+                continue
             metodo = " ".join(str(fattura.get(campo) or "") for campo in (
                 "metodo_pagamento", "payment_method", "modalita_pagamento",
                 "metodo_pagamento_previsto",
@@ -156,6 +161,7 @@ async def _fattura_da_numero_assegno_xml(
 async def _fatture_aperte_stesso_importo(
     db, importo: float, data_movimento: str,
     per_piva: Optional[Dict[str, List[Dict[str, Any]]]] = None,
+    *, data_pagamento: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     if per_piva is None:
         per_piva = await _load_open_invoices_by_piva(db)
@@ -164,22 +170,15 @@ async def _fatture_aperte_stesso_importo(
         for fattura in fatture:
             if not _invoice_date_compatibile(fattura, data_movimento):
                 continue
+            if importo > _f(fattura.get("_residuo")) + TOLL:
+                continue
             residuo_esatto = abs(_f(fattura.get("_residuo")) - importo) <= TOLL
-            # Una fattura rateizzata resta candidata anche se il suo residuo e'
-            # maggiore del singolo assegno: la prova e' il DettaglioPagamento
-            # XML, non il totale documento. Ogni quota gia collegata consuma
-            # una rata dello stesso importo.
-            rate = [
-                round(_f(r.get("importo")), 2)
-                for r in fattura.get("pagamento_rate") or []
-                if isinstance(r, dict)
-            ]
-            rate_compatibili = sum(1 for rata in rate if abs(rata - importo) <= TOLL)
-            quote_collegate = sum(
-                1 for link in fattura.get("assegni_collegati") or []
-                if isinstance(link, dict) and abs(_f(link.get("quota")) - importo) <= TOLL
+            # Il piano rate e' prova di una quota solo se l'XML dichiara
+            # MP02 (assegno). Una rata MP05 non diventa assegno per importo.
+            rata_disponibile = rata_assegno_disponibile(
+                fattura, importo, data_pagamento=data_pagamento or data_movimento,
+                max_scarto_centesimi=1,
             )
-            rata_disponibile = rate_compatibili > quote_collegate
             if residuo_esatto or rata_disponibile:
                 candidate.append(fattura)
     # Una stessa fattura non deve diventare ambigua per dati duplicati in memoria.
@@ -188,12 +187,22 @@ async def _fatture_aperte_stesso_importo(
 
 async def _registra_proposte_ambigue(
     db, assegno: Dict[str, Any], candidate: Iterable[Dict[str, Any]], now: str,
+    data_pagamento: str,
 ) -> int:
     count = 0
     for fattura in candidate:
         fid = fattura.get("id")
         if not fid:
             continue
+        rata = rata_assegno_disponibile(
+            fattura, assegno.get("importo"), data_pagamento=data_pagamento,
+            max_scarto_centesimi=1,
+        )
+        modalita_xml = sorted({
+            str(r.get("modalita") or "").strip().upper()
+            for r in fattura.get("pagamento_rate") or [] if isinstance(r, dict)
+            and r.get("modalita")
+        })
         doc = {
             "id": f"EC-{assegno['id']}-{fid}",
             "assegno_id": assegno["id"],
@@ -202,11 +211,19 @@ async def _registra_proposte_ambigue(
             "fattura_numero": fattura.get("invoice_number") or fattura.get("numero_fattura"),
             "fornitore": fattura.get("supplier_name") or fattura.get("cedente_denominazione"),
             "importo": round(_f(assegno.get("importo")), 2),
-            "tipo_match": "estratto_conto_importo_ambiguo",
+            "tipo_match": "estratto_conto_rata_xml_mp02" if rata else "estratto_conto_importo_ambiguo",
+            "piano_rate_xml": rata,
+            "modalita_pagamento_xml": modalita_xml,
             "confidenza": 0.5,
             "nota": (
-                "Importo compatibile ma manca un riferimento esplicito alla fattura: "
+                "Rata XML MP02: assegno inferiore di 0,01 euro; conferma "
+                "manuale e residuo di 0,01 euro obbligatori"
+                if rata and rata["scarto_centesimi"] == 1 else
+                "Rata XML MP02 compatibile ma manca il numero fattura sul pagamento: "
                 "conferma manuale necessaria"
+                if rata else
+                "Solo importo compatibile; verificare anche la modalita' XML e "
+                "l'identita' del fornitore prima della conferma"
             ),
             "stato": "da_confermare",
             "source": "estratto_conto",
@@ -671,15 +688,19 @@ async def sincronizza_assegni_da_estratto_conto(
                     db, numero, importo, data_movimento, fatture_aperte_per_piva,
                 )
             if not fattura:
+                data_valuta = _data_iso(movimento.get("data_pagamento") or data_movimento)
                 candidate = await _fatture_aperte_stesso_importo(
                     db, importo, data_movimento, fatture_aperte_per_piva,
+                    data_pagamento=data_valuta,
                 )
                 # L'importo, anche se individua una sola fattura aperta, non e'
                 # prova sufficiente. Il collegamento automatico richiede un
                 # intento assegno->fattura gia' esplicito oppure una Prima Nota
                 # gia' collegata; qui si salvano soltanto proposte da confermare.
                 if candidate:
-                    risultati["proposte_ambigue"] += await _registra_proposte_ambigue(db, assegno, candidate, now)
+                    risultati["proposte_ambigue"] += await _registra_proposte_ambigue(
+                        db, assegno, candidate, now, data_valuta,
+                    )
 
             nuova_associazione = False
             if fattura:

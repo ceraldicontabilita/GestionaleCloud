@@ -12,6 +12,7 @@ from app.services.assegni_fattura_intent import (
     fattura_dichiara_assegno,
     importi_assegno_dichiarati,
     rate_assegno_dichiarate,
+    rata_assegno_disponibile,
 )
 
 
@@ -66,6 +67,43 @@ def test_le_rate_restituite_sono_solo_quelle_mp02():
         {"modalita": "MP02", "importo": 400},   # duplicata: una sola volta
     ])
     assert rate_assegno_dichiarate(fattura) == [400.0]
+
+
+def test_rata_disponibile_conserva_numero_scadenza_e_rate_uguali():
+    fattura = _fattura(pagamento_rate=[
+        {"modalita": "MP02", "importo": "3000.00", "data_scadenza": "2026-02-28"},
+        {"modalita": "MP02", "importo": "3000.00", "data_scadenza": "2026-03-30"},
+        {"modalita": "MP02", "importo": "3000.01", "data_scadenza": "2026-05-30"},
+    ])
+    assert rata_assegno_disponibile(fattura, 3000)["numero_rate"] == 3
+    assert rata_assegno_disponibile(fattura, 3000)["data_scadenza"] == "2026-02-28"
+    fattura["assegni_collegati"] = [{"assegno_id": "a1", "quota": 3000}]
+    assert rata_assegno_disponibile(fattura, 3000)["rata_numero"] == 2
+    fattura["assegni_collegati"].append({"assegno_id": "a2", "quota": 3000})
+    assert rata_assegno_disponibile(fattura, 3000) is None
+    assert rata_assegno_disponibile(fattura, 3000.01)["rata_numero"] == 3
+
+
+def test_rata_bonifico_non_e_una_rata_assegno():
+    fattura = _fattura(pagamento_rate=[
+        {"modalita": "MP05", "importo": "9760.00", "data_scadenza": "2026-05-28"},
+    ])
+    assert rata_assegno_disponibile(fattura, 9760) is None
+
+
+def test_scadenza_individua_ultima_rata_con_un_centesimo_residuo():
+    fattura = _fattura(pagamento_rate=[
+        {"modalita": "MP02", "importo": "3000.00", "data_scadenza": "2026-02-28"},
+        {"modalita": "MP02", "importo": "3000.00", "data_scadenza": "2026-03-30"},
+        {"modalita": "MP02", "importo": "3000.00", "data_scadenza": "2026-04-23"},
+        {"modalita": "MP02", "importo": "3000.01", "data_scadenza": "2026-05-30"},
+    ])
+    proposta = rata_assegno_disponibile(
+        fattura, 3000, data_pagamento="2026-05-30", max_scarto_centesimi=1,
+    )
+    assert proposta["rata_numero"] == 4
+    assert proposta["importo_rata"] == 3000.01
+    assert proposta["scarto_centesimi"] == 1
 
 
 def test_senza_rate_mp02_il_matching_non_riceve_alcun_importo():

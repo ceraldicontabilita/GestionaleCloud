@@ -264,6 +264,30 @@ describe('Stati e resa responsive della pagina Assegni', () => {
     expect(await screen.findByLabelText('Cerca e seleziona fornitore')).toBeInTheDocument();
   });
 
+  it('mostra il piano rate XML nelle proposte e confronta la quota della rata', async () => {
+    api.get.mockImplementation(url => {
+      if (url.includes('/api/assegni/ambigui')) return Promise.resolve({ data: {
+        ambigui: [{
+          assegno_id: 'a-rata', assegno_numero: '0208770763', importo: 3000,
+          candidates: [{
+            fattura_id: 'f-rata', numero: '20', importo_residuo: 12000.01,
+            fornitore: 'DI MASSA', piano_rate_xml: {
+              rata_numero: 3, numero_rate: 4, data_scadenza: '2026-04-23', importo_rata: 3000,
+            },
+          }],
+        }],
+      } });
+      return rispostaPagina([])(url);
+    });
+    renderPagina();
+    fireEvent.click(await screen.findByTestId('altro-menu-btn'));
+    fireEvent.click(screen.getByTestId('ambigui-toggle'));
+    expect(await screen.findByText(/rata 3\/4/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('checkbox'));
+    expect(screen.getByText(/Totale selezionato/).parentElement).toHaveTextContent('€ 3000.00');
+    expect(screen.getByText(/Totale selezionato/).parentElement).not.toHaveTextContent('€ 12000.01');
+  });
+
   it('riprocessa estratto conto e fatture senza aprire una scelta manuale', async () => {
     api.get.mockImplementation(rispostaPagina([
       { id: 'a1', numero: '0208770649', stato: 'incassato', importo: 977.38 },
