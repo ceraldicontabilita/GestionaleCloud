@@ -39,6 +39,8 @@ export const SECONDARY_TABS = [
   // 25/07/2026 — prima i nomi si cambiavano solo dall'intestazione delle
   // colonne in Temperature: qui c'è un elenco unico e trovabile.
   { section: "Amministrazione", id: "attrezzature", label: "Frigoriferi e congelatori", icon: Refrigerator },
+  // GC-02h: il titolare segna «n.a.» lo storico HACCP senza firma, col suo PIN
+  { section: "Amministrazione", id: "attendibilita_haccp", label: "Attendibilità registri HACCP", icon: ShieldCheck },
   { section: "Amministrazione", id: "backoffice", label: "Backoffice", icon: Settings },
   { section: "Amministrazione", id: "configura", label: "Configurazione", icon: ClipboardCheck },
   { section: "Amministrazione", id: "collaudi", label: "Collaudi", icon: FlaskConical },

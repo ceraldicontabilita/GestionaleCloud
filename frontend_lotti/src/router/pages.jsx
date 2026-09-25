@@ -44,6 +44,7 @@ import ProduzioneConsigliataView from "../components/haccp/ProduzioneConsigliata
 import MappaTracciabilitaView from "../components/haccp/MappaTracciabilitaView";
 import ControlloMagazzinoView from "../components/haccp/ControlloMagazzinoView";
 import ConfrontoProdottoView from "../components/haccp/ConfrontoProdottoView";
+import AttendibilitaHaccpView from "../components/haccp/AttendibilitaHaccpView";
 import { ImportaFatture } from "../components/haccp/ImportaFattureView";
 import ProdottiHubView from "../components/haccp/ProdottiHubView";
 import MenuVetrinaView from "../components/haccp/MenuVetrinaView";
@@ -117,6 +118,7 @@ const PAGINE = {
   collaudi: { render: () => <CollaudiView /> },
   listino: { render: () => <ProdottiConTabFornitore initialSub="listino" /> },
   comparatore: { render: () => <ConfrontoProdottoView /> },
+  attendibilita_haccp: { render: () => <AttendibilitaHaccpView /> },
 };
 
 export function renderPagina(activeTab, ctx) {
