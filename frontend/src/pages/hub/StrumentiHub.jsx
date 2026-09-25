@@ -1,4 +1,5 @@
 import React, { lazy, Suspense, useState, useEffect } from 'react';
+import { sezioneStrumenti } from './segmentiHub';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
 import { PageLoader } from '../../components/ds';
@@ -9,22 +10,13 @@ const PianificazioneContent = lazy(() => import('../Pianificazione.jsx'));
 const VisureContent = lazy(() => import('../Visure.jsx'));
 
 const TABS = [
-  { id: 'verifica', label: '🔍 Verifica Coerenza', color: '#5b7a6b' },
-  { id: 'commercialista', label: '📊 Commercialista', color: '#8a6f47' },
-  { id: 'pianificazione', label: '📅 Pianificazione', color: '#10b981' },
-  { id: 'visure', label: '🏛️ Visure', color: '#06b6d4' },
+  { id: 'verifica', label: 'Verifica coerenza', color: '#5b7a6b' },
+  { id: 'commercialista', label: 'Commercialista', color: '#8a6f47' },
+  { id: 'pianificazione', label: 'Pianificazione', color: '#10b981' },
+  { id: 'visure', label: 'Visure', color: '#5b7a6b' },
 ];
 
-const getTabFromPath = pathname => {
-  if (pathname.includes('/commercialista')) return 'commercialista';
-  if (pathname.includes('/pianificazione')) return 'pianificazione';
-  if (pathname.includes('/visure')) return 'visure';
-  if (pathname.includes('/strumenti/')) {
-    const m = pathname.match(/\/strumenti\/([\w-]+)/);
-    if (m && TABS.find(t => t.id === m[1])) return m[1];
-  }
-  return 'verifica';
-};
+const getTabFromPath = sezioneStrumenti;
 
 export default function StrumentiHub() {
   const { anno } = useAnnoGlobale();
@@ -37,7 +29,10 @@ export default function StrumentiHub() {
   );
 
   useEffect(() => {
-    if (location.pathname.includes('/strumenti/movimenti-banca')) {
+    if (
+      location.pathname === '/strumenti/movimenti-banca' ||
+      location.pathname.startsWith('/strumenti/movimenti-banca/')
+    ) {
       navigate('/riconciliazione/movimenti-banca', { replace: true });
     }
   }, [location.pathname, navigate]);
@@ -95,10 +90,8 @@ export default function StrumentiHub() {
               fontWeight: activeTab === tab.id ? 700 : 500,
               fontSize: 12,
               cursor: 'pointer',
-              transition: 'all 140ms ease',
               background: activeTab === tab.id ? tab.color : '#ffffff',
               color: activeTab === tab.id ? 'white' : '#64748b',
-              boxShadow: activeTab === tab.id ? '0 1px 2px rgba(42, 51, 41,0.08)' : 'none',
             }}
           >
             {tab.label}
@@ -108,15 +101,7 @@ export default function StrumentiHub() {
 
       <div style={{ padding: '16px 0 0 0' }}>
         {error && (
-          <div
-            style={{
-              padding: 16,
-              background: '#fef2f2',
-              borderRadius: 8,
-              color: '#dc2626',
-              marginBottom: 16,
-            }}
-          >
+          <div style={{ padding: 16, background: '#faf7f0', borderRadius: 8, marginBottom: 16 }}>
             Errore caricamento: {error}
           </div>
         )}
