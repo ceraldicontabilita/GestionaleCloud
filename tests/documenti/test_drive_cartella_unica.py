@@ -29,6 +29,11 @@ class _Http403(Exception):
         status = 403
 
 
+class _Http404(Exception):
+    class resp:
+        status = 404
+
+
 class DriveFinto:
     """Drive in memoria: file con parent, md5, contenuto, cestino."""
 
@@ -71,8 +76,10 @@ class DriveFinto:
         raise AssertionError("eliminazione permanente vietata")
 
     def get(self, fileId, **_):
+        if fileId not in self.file:
+            raise _Http404()
         f = self.file[fileId]
-        return _Esegui({"name": f["name"], "mimeType": f["mimeType"]})
+        return _Esegui({"name": f["name"], "mimeType": f["mimeType"], "trashed": f["trashed"]})
 
 
 CARTELLE = {cu.INBOX: "inbox", cu.ARCHIVIO: "elaborate", cu.ERRORI: "errori",
@@ -233,3 +240,17 @@ def test_cestino_vietato_la_copia_va_in_doppioni_non_in_errori(ambiente):
     riga = run(db[cu.REGISTRO].find_one({"id": "copia"}))
     assert riga["cartella"] == cu.DOPPIONI and riga["duplicato_di"] == "orig"
     assert run(cu.originale(db, drive_file_id="copia")) is None
+
+
+def test_originale_sparito_da_drive_diventa_rimosso(ambiente):
+    drive, _, _ = ambiente
+    db = AsyncMongoMockClient()["t"]
+    drive.aggiungi("f1", "a.xml", b"<xml>1</xml>", "inbox")
+    drive.aggiungi("f2", "b.xml", b"<xml>2</xml>", "inbox")
+    run(cu.giro(db))
+    del drive.file["f1"]                  # eliminato a mano dal titolare
+    drive.file["f2"]["trashed"] = True    # messo nel Cestino
+    for fid in ("f1", "f2"):
+        assert run(cu.originale(db, drive_file_id=fid)) is None
+        riga = run(db[cu.REGISTRO].find_one({"id": fid}))
+        assert riga["cartella"] == "RIMOSSO" and riga["rimosso_il"]

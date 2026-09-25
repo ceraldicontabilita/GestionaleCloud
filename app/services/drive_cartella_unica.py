@@ -301,9 +301,20 @@ async def originale(db, drive_file_id: Optional[str] = None,
     from app.services.drive_download import scarica_bytes
 
     service = await asyncio.to_thread(_service)
-    meta = await asyncio.to_thread(
-        lambda: service.files().get(fileId=drive_file_id, fields="name, mimeType",
-                                    supportsAllDrives=True).execute())
+    try:
+        meta = await asyncio.to_thread(
+            lambda: service.files().get(fileId=drive_file_id, fields="name, mimeType, trashed",
+                                        supportsAllDrives=True).execute())
+    except Exception as exc:
+        if getattr(getattr(exc, "resp", None), "status", None) != 404:
+            raise
+        meta = {"trashed": True}
+    if meta.get("trashed"):
+        # Un protocollo non dimentica: l'originale sparito da Drive resta nel
+        # registro come «rimosso», con la data, e non si apre piu'.
+        await _registra(db, drive_file_id, cartella="RIMOSSO", esito="rimosso",
+                        rimosso_il=datetime.now(timezone.utc).isoformat())
+        return None
     contenuto = await asyncio.to_thread(scarica_bytes, service, drive_file_id)
     return {"nome": meta.get("name") or riga.get("nome"), "mime": meta.get("mimeType"),
             "contenuto": contenuto}
