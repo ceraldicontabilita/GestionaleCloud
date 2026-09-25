@@ -160,10 +160,11 @@ def test_upload_automatico_primo_body_duplicato_secondo_nuovo_importa_comunque(m
     assert res["message"].startswith("Fattura importata: 21")
 
 
-def test_upload_automatico_tutti_duplicati_segnala_errore(monkeypatch):
-    """Caso simmetrico: se OGNI body è già presente, il comportamento resta
-    quello di oggi per un singolo duplicato (success=False, 409 propagato
-    fino al gestore generico)."""
+def test_upload_automatico_tutti_duplicati_segnala_doppione(monkeypatch):
+    """Caso simmetrico: se OGNI body è già presente non si importa nulla, e
+    l'esito è un doppione dichiarato (success=False, duplicate=True), non un
+    errore: la cartella unica Drive lo archivia in ELABORATE invece di
+    mandarlo in ERRORI."""
     xml = _xml(_body("20", "1000.00"), _body("21", "2000.00")).encode("utf-8")
     upload = UploadFile(filename="raggruppata.xml", file=io.BytesIO(xml))
 
@@ -178,6 +179,8 @@ def test_upload_automatico_tutti_duplicati_segnala_errore(monkeypatch):
     res = _run(documenti_mod.upload_documento_automatico(file=upload))
 
     assert res["success"] is False
+    assert res["duplicate"] is True and res["imported"] == 0
+    assert "Fattura duplicata: 21" in res["message"]
 
 
 def test_upload_automatico_decodifica_correttamente_xml_non_utf8(monkeypatch):

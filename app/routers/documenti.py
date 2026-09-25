@@ -3545,7 +3545,13 @@ async def upload_documento_automatico(
                     if len(importati) > 1:
                         result["message"] += f" (+{len(importati) - 1} fatture aggiuntive nello stesso file)"
                 else:
-                    raise ultimo_errore_duplicato
+                    # Tutte le fatture del file sono gia' in archivio: e' un
+                    # doppione, non un errore (chi smista l'esito lo archivia).
+                    result["success"] = False
+                    result["duplicate"] = True
+                    result["action"] = "duplicate"
+                    result["imported"] = 0
+                    result["message"] = str(ultimo_errore_duplicato.detail)
             else:
                 result["success"] = False
                 result["message"] = "Errore parsing XML fattura"
