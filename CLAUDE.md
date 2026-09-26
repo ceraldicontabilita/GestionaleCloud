@@ -413,10 +413,10 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   commissioni e fatture del gestore escluse; attesa mancante o multipla →
   `DA_VERIFICARE`, la banca non crea la chiusura. L'accredito ricostruito
   dalla causale è **derivato**: l'export del terminale vince.
-- Un versamento contanti genera uscita Cassa e corrispondente entrata Banca
-  con lo stesso `operation_id`. Un trasferimento banca↔cassa sono due
-  movimenti speculari collegati da `trasferimento_collegato_id` con categoria
-  `trasferimento_interno`, non un flag sul singolo movimento.
+- Versamento/prelievo contanti: uscita Cassa ed entrata Banca (o viceversa), stesso `operation_id`, collegate da
+  `trasferimento_collegato_id`, categoria `trasferimento_interno`. È **un'operazione della banca, non una riga
+  d'archivio**: le copie (vecchio archivio, CSV, Enable Banking) fanno una coppia sola, il numero vero è il massimo
+  per fonte nello stesso giorno e importo (`versamenti_contanti.py`); le gambe in più dei motori si tolgono per id.
 - Prima Nota Banca non è la copia dell'estratto conto: una riga entra quando è nota la causale contabile oppure
   appartiene alle categorie bancarie senza documento ammesse dal codice. Anche i movimenti letti dalla banca
   (Enable Banking, `services/enable_banking.py`, flag `ENABLE_BANKING_ENABLED`, sessione cifrata col solo
