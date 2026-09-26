@@ -490,7 +490,6 @@ def search_catalog(service=None, **filters: Any) -> dict[str, Any]:
 
 
 _ADMINISTRATIVE_AREA_TERMS = {
-    "verbali": ("verbali auto", "notifiche polizia locale", "notifica polizia locale"),
     "tributi_locali": ("tributi locali", "tari", "tares", "tarsu"),
     "riscossione": ("cartelle esattoriali", "agenzia riscossione", "ader"),
     "personale": ("dimission", "unilav"),

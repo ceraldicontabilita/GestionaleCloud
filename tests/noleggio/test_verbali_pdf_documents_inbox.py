@@ -59,3 +59,31 @@ def test_endpoint_dettaglio_path_include_pdf_inbox(monkeypatch):
 
     assert len(result["pdf_disponibili"]) == 1
     assert result["pdf_disponibili"][0]["source"] == "documents_inbox"
+    assert result["fascicolo"]["verbale"]["presente"] is True
+
+
+def test_endpoint_dettaglio_riunisce_quietanza_partenopay_e_banca(monkeypatch):
+    db, _ = _database()
+    asyncio.run(db["verbali_noleggio"].update_one(
+        {"numero_verbale": "VV/24990121765"},
+        {"$set": {
+            "movimento_banca_id": "mov-1",
+            "banca_verificata": True,
+            "quietanza_ricevuta": True,
+            "pagato_documentalmente": True,
+            "psp": "PartenoPay (Comune di Napoli)",
+            "source_files": ["documenti/02_quietanze/quietanza-verbale.pdf"],
+        }},
+    ))
+    asyncio.run(db["estratto_conto_movimenti"].insert_one({
+        "id": "mov-1", "data_contabile": "2026-03-30",
+        "importo": -51.64, "descrizione": "Pagamento verbale VV/24990121765",
+    }))
+    monkeypatch.setattr(verbali_noleggio.Database, "get_db", lambda: db)
+
+    result = asyncio.run(verbali_noleggio.get_dettaglio_verbale("VV/24990121765"))
+
+    assert result["fascicolo"]["pagamento_banca"]["presente"] is True
+    assert result["fascicolo"]["pagamento_banca"]["movimento"]["id"] == "mov-1"
+    assert result["fascicolo"]["quietanza"]["presente"] is True
+    assert result["fascicolo"]["quietanza"]["fonte"] == "PartenoPay (Comune di Napoli)"

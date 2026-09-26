@@ -129,7 +129,7 @@ def test_archivio_espone_anomalie_senza_correggere_record(monkeypatch):
     assert persisted["status"] == "errore"
 
 
-def test_atti_amministrativi_separa_totali_archivio_dai_risultati_filtrati(monkeypatch):
+def test_atti_amministrativi_esclude_i_verbali_destinati_ai_noleggi(monkeypatch):
     db = _db(monkeypatch)
     _run(db.documents_inbox.insert_many([
         {
@@ -147,18 +147,18 @@ def test_atti_amministrativi_separa_totali_archivio_dai_risultati_filtrati(monke
     ]))
 
     result = _run(documenti.lista_atti_amministrativi(
-        area="verbali",
+        area=None,
         anno=None,
-        search="inesistente",
+        search=None,
         review_only=False,
         limit=500,
     ))
 
-    assert result["total"] == 0
-    assert result["items"] == []
+    assert result["total"] == 1
+    assert [item["id"] for item in result["items"]] == ["tari-1"]
     assert result["overview"] == {
-        "counts": {"verbali": 1, "tributi_locali": 1, "riscossione": 0, "personale": 0, "famiglia": 0},
-        "total": 2,
+        "counts": {"tributi_locali": 1, "riscossione": 0, "personale": 0, "famiglia": 0},
+        "total": 1,
         "requires_review": 1,
     }
 
