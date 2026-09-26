@@ -253,7 +253,7 @@ Prima di migrare: conteggi per stato/anno, originali/hash, relazioni, saldi, bac
 | RST-0408 | ⚪ | Unica pagina Gestione PIN e accessi nel Gestionale |
 | RST-0409 | ⚪ | Rimuovere router/login duplicati dopo verifica e revoca centrali |
 | RST-0410 | ⚪ | Sostituire gestione manuale PIN_HASH_ADMIN in Render con rotazione centrale e bootstrap sicuro |
-| RST-0411 | 🟡 | Audit auth sul `main` `b1673d61`: rimosse le scritture anonime Lotti e il login PIN autonomo Menu; logout browser condiviso per ERP/HR/Lotti/Menu. Test mirati backend 48 verdi, ERP 4, Lotti 9, Menu 4 e build ERP/Lotti/Menu verdi. Restano aperti revoca server-side comune, token Lotti nelle query string ed elenco pubblico HR. Ramo `codex/audit-architettura`; nessuna PR, merge o prova live ancora dichiarata |
+| RST-0411 | 🟡 | Audit auth sul `main` `b1673d61`: rimosse le scritture anonime Lotti e il login PIN autonomo Menu; logout browser condiviso per ERP/HR/Lotti/Menu. Test mirati backend 48 verdi, ERP 4, intera suite Lotti 121, Menu 4 e build ERP/Lotti/Menu verdi. Restano aperti revoca server-side comune, token Lotti nelle query string ed elenco pubblico HR. PR #760 aperta; nessun merge o prova live ancora dichiarata |
 
 ### Fase 5: fattura e ciclo interdominio
 

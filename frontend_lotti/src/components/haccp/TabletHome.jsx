@@ -280,7 +280,7 @@ export default function TabletHome({ onEntra, preselectReparto }) {
         ))}
       </div>
       {erroreGestionale && <div role="alert" style={{ position: "absolute", bottom: 60, right: 20, color: "#fff" }}>{erroreGestionale}</div>}
-      <button onClick={chiediEsciAdmin} disabled={verificaGestionale} style={{ position: "absolute", bottom: 20, right: 20, padding: "8px 16px", borderRadius: 10, border: "1px solid #4a463c", background: "transparent", color: "#8a8478", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>🔒 Area amministratore</button>
+      <button onClick={chiediEsciAdmin} disabled={verificaGestionale} style={{ position: "absolute", bottom: 20, right: 20, padding: "8px 16px", borderRadius: 10, border: "1px solid #4a463c", background: "transparent", color: "#8a8478", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>🔒 Gestionale — area amministratore</button>
       {repSel && (() => {
         const rep = REPARTI.find(r => r.id === repSel);
         return (
