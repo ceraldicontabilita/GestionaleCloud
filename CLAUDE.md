@@ -587,7 +587,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   consultazione** (il `stato_import: archivio_storico` delle fatture e' stato tolto: erano 1.127 documenti
   e 52 MB fuori da ogni conto, che tornavano a ogni ricostruzione Drive). L'originale sta su Drive. Per
   rivedere un anno intero: cambiare l'anno attivo e rilanciare la ricostruzione, che rilegge tutti gli
-  XML.
+  XML. Gli **accrediti in entrata del 2023** (ricevuta «A VOSTRO CREDITO»: Satispay, giroconti, rimborsi)
+  non si registrano (`ANNI_ACCREDITI_NON_REGISTRATI`); i bonifici disposti di ogni anno restano.
 - Modali HR: solo il componente `Modal` di `frontend_hr/src/App.jsx` (WCAG 2.1 AA: focus intrappolato,
   Esc, focus restituito). Campi dentro `<label>`, `aria-label` sui bottoni ripetuti, focus visibile
   salvia.
