@@ -639,6 +639,62 @@ def _normalizza_piva(piva: str) -> str:
     return base[2:] if base.startswith("IT") else base
 
 
+class _PerPiva(dict):
+    """Dizionario per P.IVA che confronta sempre la forma normalizzata
+    (senza «IT», senza spazi), qualunque forma arrivi dalla fattura."""
+
+    def __setitem__(self, chiave, valore):
+        super().__setitem__(_normalizza_piva(str(chiave)), valore)
+
+    def get(self, chiave, predefinito=None):
+        return super().get(_normalizza_piva(str(chiave or "")), predefinito)
+
+    def __contains__(self, chiave):
+        return super().__contains__(_normalizza_piva(str(chiave or "")))
+
+
+class _InsiemePiva(set):
+    """Insieme di P.IVA con lo stesso confronto normalizzato di `_PerPiva`."""
+
+    def add(self, chiave):
+        super().add(_normalizza_piva(str(chiave)))
+
+    def __contains__(self, chiave):
+        return super().__contains__(_normalizza_piva(str(chiave or "")))
+
+
+CAMPI_PIVA_FORNITORE = ("partita_iva", "piva", "vat_number", "vat")
+
+
+async def mappa_fornitori_per_piva(db):
+    """Metodo di pagamento ed esclusione da Cassa/Banca per ogni P.IVA.
+
+    Un solo punto per tutta la Prima Nota: prima la stessa mappa era
+    costruita quattro volte, ognuna leggendo campi diversi. La P.IVA si
+    legge da tutti i campi dell'anagrafica e si confronta normalizzata; un
+    doppione senza metodo non cancella il metodo del record buono."""
+    metodi = _PerPiva()
+    esclusi = _InsiemePiva()
+    proiezione = {"_id": 0, "metodo_pagamento": 1, "metodo_pagamento_predefinito": 1,
+                  "esclude_cassa_banca": 1, "cessato": 1}
+    proiezione.update({campo: 1 for campo in CAMPI_PIVA_FORNITORE})
+    async for fornitore in db["fornitori"].find({}, proiezione):
+        metodo = str(
+            fornitore.get("metodo_pagamento")
+            or fornitore.get("metodo_pagamento_predefinito")
+            or ""
+        ).strip()
+        for campo in CAMPI_PIVA_FORNITORE:
+            valore = fornitore.get(campo)
+            if not valore or not _normalizza_piva(str(valore)):
+                continue
+            if metodo or valore not in metodi:
+                metodi[valore] = metodo
+            if fornitore.get("esclude_cassa_banca") or fornitore.get("cessato"):
+                esclusi.add(valore)
+    return metodi, esclusi
+
+
 def determina_tipo_movimento_fattura(fattura: Dict) -> tuple:
     """Determina tipo movimento (entrata/uscita) e categoria dalla fattura.
 
@@ -1784,28 +1840,7 @@ async def get_conteggi_fatture_provvisorie(anno: int = Query(...)) -> Dict[str, 
     # lavoro e rendeva il "conteggio leggero" abbastanza lento da scadere.
     riepiloghi = await _riepilogo_prima_nota_per_fattura(db, fatture_tutte)
 
-    metodo_per_piva: Dict[str, str] = {}
-    esclusi_cassa_banca = set()
-    async for supplier in db["fornitori"].find(
-        {},
-        {
-            "_id": 0, "partita_iva": 1, "piva": 1, "vat_number": 1,
-            "metodo_pagamento": 1, "esclude_cassa_banca": 1, "cessato": 1,
-        },
-    ):
-        metodo = supplier.get("metodo_pagamento", "")
-        for valore in (
-            supplier.get("partita_iva"),
-            supplier.get("piva"),
-            supplier.get("vat_number"),
-        ):
-            if not valore:
-                continue
-            chiave = str(valore).strip()
-            if metodo:
-                metodo_per_piva[chiave] = metodo
-            if supplier.get("esclude_cassa_banca") or supplier.get("cessato"):
-                esclusi_cassa_banca.add(chiave)
+    metodo_per_piva, esclusi_cassa_banca = await mappa_fornitori_per_piva(db)
 
     da_decidere = 0
     attesa_banca = 0
@@ -1992,22 +2027,7 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
     # NB: i fornitori storici hanno la P.IVA in "piva" o "vat_number", non
     # solo in "partita_iva" — vanno letti tutti, altrimenti il metodo
     # impostato in scheda fornitore NON viene rispettato.
-    metodo_per_piva = {}
-    esclusi_cassa_banca = set()
-    async for s in db["fornitori"].find(
-        {},
-        {"_id": 0, "partita_iva": 1, "piva": 1, "vat_number": 1,
-         "metodo_pagamento": 1, "esclude_cassa_banca": 1, "cessato": 1}
-    ):
-        metodo = s.get("metodo_pagamento", "")
-        for k in (s.get("partita_iva"), s.get("piva"), s.get("vat_number")):
-            if not k:
-                continue
-            chiave = str(k).strip()
-            if metodo:
-                metodo_per_piva[chiave] = metodo
-            if s.get("esclude_cassa_banca") or s.get("cessato"):
-                esclusi_cassa_banca.add(chiave)
+    metodo_per_piva, esclusi_cassa_banca = await mappa_fornitori_per_piva(db)
 
     provvisori = []
     totale_escluse_cassa_banca = 0
