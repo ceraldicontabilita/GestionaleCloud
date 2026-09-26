@@ -331,36 +331,16 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 
 - **Cartella unica** (decisione del 25/09/2026, sostituisce l'albero a 6 aree del §7-bis): «DATI SOCIETA CERALDI» con `DA ELABORARE | ELABORATE | ERRORI` (`GOOGLE_DRIVE_DATI_FOLDER_ID`); ogni file passa dallo smistatore di Documenti > Import, sia da `DA ELABORARE` sia **sciolto nella radice** (il calderone del titolare),
   una copia byte-identica di un originale va nel Cestino (in `DOPPIONI` se il file è del titolare: Drive nega il Cestino al service account), «vedi documento» legge solo da `ELABORATE` (`drive_cartella_unica.py`). Dentro `GESTIONALE` restano solo lei e `FOTO E IMMAGINI` (immagini, cartella a parte): le cartelle dei canali sotto non esistono piu', e ogni loader prova la credenziale sulla **propria** cartella, mai su quella di un altro canale. Prima di migrare, la simulazione in sola lettura (`drive_cartella_unica_simulazione.py`, `DRIVE_SIMULAZIONE_RADICE`) dice come finirà ogni file. La pausa dell'import è `DRIVE_CARTELLA_UNICA_IMPORT=false`, **mai** togliere la cartella: le credenziali si provano su di lei.
-- `05_PERSONALE_E_CEDOLINI/DIPENDENTI/<COGNOME NOME>/` è il **fascicolo unico**
-  della persona: cedolini (profondità 2), `BONIFICI/` (profondità 3, il canale
-  bonifico legge solo dentro `BONIFICI`), `CERTIFICAZIONI UNICHE/`. I bonifici
-  non stipendio stanno in `03_BANCHE_E_PAGAMENTI/BONIFICI`.
-  **Attenzione**: non puntare `GOOGLE_DRIVE_BONIFICI_FOLDER_ID` a DIPENDENTI
-  con un backend che non vincoli la profondità: leggerebbe i cedolini come bonifici.
-- `10_BILANCI_DICHIARAZIONI/DICHIARAZIONI FISCALI`: canale
-  `dichiarazione_fiscale`, senza `category_hint` perché la cartella mescola
-  770/IVA/IRAP/LIPE/Redditi SC — decide `classify_document()` dal contenuto.
-  Si scartano per **nome file** i singoli quadri già contenuti nel PDF intero e
-  i documenti che hanno un canale proprio.
 - Il protocollo Drive (`gestionale.protocollo_drive`, tabella relazionale, non
   `documents`) riconcilia Drive con l'inventario: file nuovo → riga nuova,
   cambiato → aggiornata, sparito → `stato='rimosso'` con la data. Le impronte
   collegano ogni file al documento **per contenuto**, mai per nome, e una
   stessa impronta in più posizioni non crea un secondo documento: le
   provenienze stanno in `source_occurrences`.
-- Un solo motore di import per sezione: un documento storico si mette nella
-  cartella `DA ELABORARE` giusta, non si carica da una pagina parallela.
-- **Fatture ricevute**: `01_FATTURE_RICEVUTE/FATTURE/<anno>/` con le tre
-  cartelle `Da elaborare | Elaborate | Errori` per ogni anno. Tre motori, tre
-  mestieri diversi: il **giro ogni 15 minuti** (`drive_invoice_ingest.sync`)
-  svuota le sole inbox, 25 file per volta, e sposta in `Elaborate` anche i
-  doppioni; la **quadratura** (`/api/fatture/drive/quadratura`) ripassa le
-  `Elaborate` e importa i buchi; la **ricostruzione**
-  (`/api/fatture/drive/ricostruzione`) rilegge *tutto* a lotti riprendibili
-  con un cursore, ripresi ogni 2 minuti dallo scheduler. Nessuna sposta un
-  originale fuori dal suo anno, e l'anno lo decide il parser XML, mai il nome.
-- Una coda che non cala e importa zero **non è un guasto**: i già importati
-  risultano doppioni e vengono solo spostati. A dirlo è la quadratura, non la coda.
+- **I canali Drive per sezione sono smontati** (fatture, cedolini, corrispettivi, F24, quietanze, estratti conto,
+  documenti, protocollo, quadrature e ricostruzione fatture): le loro cartelle `01_…10_` non esistono piu' e lo
+  scheduler non li avvia. Restano la cartella unica e le foto ricette di Lotti; `fonti_ferme` e `cedolini_bloccati`
+  hanno un job proprio. I moduli restano perche' lo smistatore ne usa i parser.
 - **Corrispettivi: una riga senza `progressivo` né `id_dispositivo` non è una
   chiusura**, è una giornata senza documento, e il suo XML la **sostituisce** quando i contanti
   coincidono al centesimo (il totale no: lo storico sommava imponibile e IVA); due chiusure vere dello
@@ -832,7 +812,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   calcolabili ma con **zero** acquisti (tutti `detraibilita_da_verificare`). LIPE 2026 (tre periodi,
   quadrati): marzo combacia al centesimo, a gennaio mancano **5.005,88 €** di IVA detraibile. Nessun F24
   IVA 2026.
-- Foto ricette Lotti: 20 su Storage, 307 su Drive in `FOTO E IMMAGINI/ricette_immagini_per_nome` (ricollegate per ID da `Mappa_immagini_ricette.csv`); da portare su Storage. Canali Drive per sezione spenti su Render (`ENABLE_DRIVE_*_SYNC=false`, cartelle cancellate); resta acceso solo F24, senza interruttore. La radice di `DATI SOCIETA CERALDI` conteneva ~5.500 file sciolti (3.717 PDF, 1.375 XML): li smaltisce lo smistatore a lotti.
+- Foto ricette Lotti: 20 su Storage, 307 su Drive in `FOTO E IMMAGINI/ricette_immagini_per_nome` (ricollegate per ID da `Mappa_immagini_ricette.csv`); da portare su Storage. Canali Drive per sezione smontati dallo scheduler; su Render restano da cancellare a mano le loro variabili (`GOOGLE_DRIVE_*_FOLDER_ID`, `ENABLE_DRIVE_*_SYNC`, `DRIVE_F24_FOLDER_ID`, `DRIVE_*_BATCH_SIZE`). La radice di `DATI SOCIETA CERALDI` conteneva ~5.500 file sciolti (3.717 PDF, 1.375 XML): li smaltisce lo smistatore a lotti.
 - Solo 108 prodotti del Menu su 325 hanno allergeni (obbligo di legge). Cron Render `gestionalecloud-calderone-15min`, sospeso, da cancellare dal pannello.
 - **Lotti indietro**: 163 fatture alimentari da giugno bloccate dal ponte (conflitti d'impronta), ultimo lotto 14/09. 119 lotti su 344 in unità non convertibili
   (95 KAR); 320 descrizioni con proposta web da confermare; scadenza su 15 lotti su 580, lotto vero su 27.

@@ -87,10 +87,10 @@ def test_non_si_accavalla_a_un_sync_in_corso(db, lotto_finto):
     assert lotto_finto == []
 
 
-def test_il_job_e_registrato_nello_scheduler():
+def test_la_ripresa_non_gira_piu_nello_scheduler():
+    """La cartella fatture non esiste piu': tutto entra dalla cartella unica."""
     from pathlib import Path
 
     sorgente = Path(__file__).resolve().parents[2] / "app" / "scheduler.py"
     testo = sorgente.read_text(encoding="utf-8")
-    assert 'id="drive_fatture_ricostruzione_ripresa"' in testo
-    assert "riprendi_ricostruzione_se_incompleta" in testo
+    assert 'id="drive_fatture_ricostruzione_ripresa"' not in testo
