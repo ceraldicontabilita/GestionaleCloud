@@ -41,7 +41,10 @@ _LOG_INIT = logging.getLogger("uvicorn.error")
 import re
 
 from app.lotti.db import database as db
-from app.lotti.auth import require_admin, require_automation_or_admin
+from app.lotti.auth import (
+    require_admin, require_automation_or_admin, require_permesso, verifica_reparto,
+    verifica_reparto_ricetta,
+)
 from app.lotti.servizi.cestino_ricette import archivia_ricetta, elenca_cestino, ripristina_ricetta
 from app.lotti.servizi.reparti_ricette import _categorizza_reparto, _reparto_finale_auto
 
@@ -1654,7 +1657,7 @@ async def get_ricetta(ricetta_id: str):
 
 
 @router.post("/ricette", response_model=Ricetta)
-async def create_ricetta(item: RicettaCreate):
+async def create_ricetta(item: RicettaCreate, _ruolo=Depends(require_permesso("ricette"))):
     from app.lotti.allergeni import estrai_nomi_ingredienti, rileva_allergeni
     from app.lotti.servizi.descrizione_ricetta import descrizione_da_ingredienti
 
@@ -1669,6 +1672,7 @@ async def create_ricetta(item: RicettaCreate):
         ingredienti=nomi_ing,
         ricetta_base_nome=item.ricetta_base_nome,
     )
+    verifica_reparto(_ruolo, reparto)
 
     obj = Ricetta(**item.model_dump())
     doc = obj.model_dump()
@@ -1726,13 +1730,16 @@ async def create_ricetta(item: RicettaCreate):
 
 
 @router.put("/ricette/{ricetta_id}", response_model=Ricetta)
-async def update_ricetta(ricetta_id: str, item: RicettaCreate, _admin=Depends(require_admin)):
+async def update_ricetta(ricetta_id: str, item: RicettaCreate, _ruolo=Depends(require_permesso("ricette"))):
     from app.lotti.allergeni import estrai_nomi_ingredienti, rileva_allergeni
     from app.lotti.servizi.descrizione_ricetta import descrizione_da_ingredienti
 
     precedente = await db.ricette.find_one({"id": ricetta_id}, {"_id": 0})
     if not precedente:
         raise HTTPException(404, "Ricetta non trovata")
+    verifica_reparto(_ruolo, precedente.get("reparto"))
+    if item.reparto and item.reparto != precedente.get("reparto"):
+        verifica_reparto(_ruolo, item.reparto)
 
     payload = item.model_dump()
     payload.pop("descrizione_origine", None)
@@ -2588,12 +2595,18 @@ async def set_prezzo_tavolo(ricetta_id: str, prezzo: float = Query(...), _admin=
 
 
 @router.put("/ricette/{ricetta_id}/reparto")
-async def aggiorna_reparto(ricetta_id: str, reparto: str = Query(...)):
+async def aggiorna_reparto(ricetta_id: str, reparto: str = Query(...), _ruolo=Depends(require_permesso("ricette"))):
     # `bar` era accettato dal form e mappato dal ponte verso il Menu, ma qui
     # veniva rifiutato: i quattro valori prodotti da _categorizza_reparto sono
     # pasticceria, rosticceria, bar e altro.
     if reparto not in REPARTI_AMMESSI:
         raise HTTPException(400, "Reparto non valido")
+    # Un caporeparto sposta solo fra i propri reparti: la ricetta deve essere
+    # sua prima e dopo. Una ricetta ancora senza reparto la puo' prendere.
+    attuale = await db.ricette.find_one({"id": ricetta_id}, {"_id": 0, "reparto": 1})
+    if attuale and attuale.get("reparto"):
+        verifica_reparto(_ruolo, attuale["reparto"])
+    verifica_reparto(_ruolo, reparto)
     r = await db.ricette.update_one({"id": ricetta_id}, {"$set": {"reparto": reparto}})
     if r.matched_count == 0:
         raise HTTPException(404, "Ricetta non trovata")
@@ -2977,7 +2990,8 @@ async def leggi_foto(foto_id: str):
 
 
 @router.put("/ricette/{ricetta_id}/ingredienti-dettaglio")
-async def aggiorna_ingredienti_dettaglio(ricetta_id: str, ingredienti_dettaglio: List[dict]):
+async def aggiorna_ingredienti_dettaglio(ricetta_id: str, ingredienti_dettaglio: List[dict], _ruolo=Depends(require_permesso("ricette"))):
+    await verifica_reparto_ricetta(_ruolo, ricetta_id)
     puliti = []
     nomi = []
     for voce in ingredienti_dettaglio:
@@ -3070,7 +3084,7 @@ async def conferma_procedimento(ricetta_id: str, _admin=Depends(require_admin)):
 
 
 @router.patch("/ricette/{ricetta_id}")
-async def aggiorna_campo_ricetta(ricetta_id: str, body: dict):
+async def aggiorna_campo_ricetta(ricetta_id: str, body: dict, _ruolo=Depends(require_permesso("ricette"))):
     """Aggiornamento parziale di una ricetta (pezzi_ricetta_base, note, ecc.).
 
     NOTA centralizzazione dati: `pezzi_ricetta_base` e `porzioni` sono storicamente
@@ -3078,6 +3092,7 @@ async def aggiorna_campo_ricetta(ricetta_id: str, body: dict):
     Il frontend ha pagine che leggono uno o l'altro campo. Per evitare divergenze
     aggiorniamo SEMPRE entrambi i campi quando uno dei due viene passato.
     """
+    await verifica_reparto_ricetta(_ruolo, ricetta_id)
     campi_permessi = {
         "pezzi_ricetta_base",
         "porzioni",
@@ -3141,9 +3156,10 @@ class SchedaEditoriale(BaseModel):
 
 
 @router.put("/ricette/{ricetta_id}/scheda")
-async def aggiorna_scheda_editoriale(ricetta_id: str, payload: SchedaEditoriale = Body(...)):
+async def aggiorna_scheda_editoriale(ricetta_id: str, payload: SchedaEditoriale = Body(...), _ruolo=Depends(require_permesso("ricette"))):
     """Salva le sezioni editoriali della scheda. Scrive solo i campi inviati
     (None = invariato; lista vuota / stringa vuota = azzerato)."""
+    await verifica_reparto_ricetta(_ruolo, ricetta_id)
     update = {k: v for k, v in payload.model_dump(exclude_none=True).items()}
     if not update:
         raise HTTPException(400, "Nessuna sezione da salvare")

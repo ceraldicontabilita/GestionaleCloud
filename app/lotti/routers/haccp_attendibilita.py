@@ -7,7 +7,7 @@ che per difetto e' una simulazione e scrive davvero solo con
 """
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-from app.lotti.auth import request_actor, require_admin
+from app.lotti.auth import request_actor, require_admin, require_permesso
 from app.lotti.db import database as db
 from app.lotti.servizi import haccp_attendibilita
 
@@ -27,7 +27,7 @@ async def segna_non_attendibili(
     request: Request,
     dry_run: bool = Query(default=True, description="Simulazione: non scrive niente"),
     conferma: str = Query(default="", description=f"Per scrivere davvero: {CONFERMA}"),
-    _admin=Depends(require_admin),
+    _ruolo=Depends(require_permesso("haccp_registri")),
 ):
     """Mette il segno `non_attendibili` sui documenti. I valori non si toccano."""
     if not dry_run and conferma != CONFERMA:

@@ -34,6 +34,14 @@ const OK = "#3d8168";
 const MUTED = "#9aa593";
 
 const POSTAZIONI = ["laboratorio", "pasticceria", "sala", "bar"];
+// Ruoli di Lotti (decisione del titolare 26/09/2026). Si salvano sulla
+// scheda HR; il backend (servizi/ruoli.py) decide cosa permette ognuno.
+export const RUOLI_LOTTI = [
+  { id: "operatore", label: "Operatore", aiuto: "Produce, registra temperature e lotti." },
+  { id: "haccp", label: "Responsabile HACCP", aiuto: "In più: registri, anomalie, conformità, frigoriferi, smaltimento." },
+  { id: "caporeparto", label: "Caporeparto", aiuto: "In più: ricette e produzione del suo reparto, smaltimento lotti." },
+];
+export const REPARTI_CAPOREPARTO = ["pasticceria", "rosticceria", "bar", "altro"];
 const HR_ANAGRAFICA = "/hr/dipendenti/anagrafica";
 
 const inp = { padding: "9px 10px", borderRadius: 8, border: `1px solid ${LINE}`, fontSize: 14, fontFamily: "inherit", boxSizing: "border-box", minHeight: 44 };
@@ -201,6 +209,64 @@ export default function ImpostazioniPersonaleView() {
 
   if (loading) return <div style={{ textAlign: "center", padding: 60, color: MUTED }}>Caricamento…</div>;
 
+  const salvaRuolo = async (d, ruolo, reparti) => {
+    setSalvando(d.dipendente_id);
+    try {
+      const r = await axios.put(`${API}/tablet-operatori/${encodeURIComponent(d.dipendente_id)}/ruolo`, { ruolo, reparti });
+      if (r.data?.avviso) toast.warning(r.data.avviso);
+      else toast.success(`${d.nome}: ${r.data?.ruolo_etichetta || ruolo}`);
+      await carica();
+    } catch (e) {
+      toast.error(apiError(e, "Ruolo non salvato"));
+    } finally {
+      setSalvando(null);
+    }
+  };
+
+  const RuoloOperatore = ({ d }) => {
+    const ruolo = d.ruolo_lotti || "operatore";
+    const reparti = Array.isArray(d.reparti_lotti) ? d.reparti_lotti : [];
+    const occupato = salvando === d.dipendente_id;
+    const chip = (attivo) => ({
+      minHeight: 44, padding: "0 14px", borderRadius: 10, fontWeight: 700, fontSize: 13, fontFamily: "inherit",
+      cursor: occupato ? "default" : "pointer", border: `1px solid ${attivo ? SALVIA : LINE}`,
+      background: attivo ? SAGE : "#fff", color: attivo ? "#fff" : SALVIA,
+    });
+    return (
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ fontSize: 11, color: MUTED, fontWeight: 600, marginBottom: 4 }}>Ruolo in Lotti</div>
+        <div role="radiogroup" aria-label={`Ruolo di ${d.nome}`} style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {RUOLI_LOTTI.map((r) => (
+            <button key={r.id} type="button" role="radio" aria-checked={ruolo === r.id} title={r.aiuto} disabled={occupato}
+              onClick={() => ruolo !== r.id && salvaRuolo(d, r.id, r.id === "caporeparto" ? reparti : [])} style={chip(ruolo === r.id)}>
+              {r.label}
+            </button>
+          ))}
+        </div>
+        {ruolo === "caporeparto" && (
+          <div style={{ marginTop: 8 }}>
+            <div style={{ fontSize: 11, color: reparti.length ? MUTED : WARN, fontWeight: 600, marginBottom: 4 }}>
+              {reparti.length ? "Reparti di cui è caporeparto" : "Scegli il reparto: senza, non può modificare niente"}
+            </div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {REPARTI_CAPOREPARTO.map((rep) => {
+                const attivo = reparti.includes(rep);
+                return (
+                  <button key={rep} type="button" aria-pressed={attivo} disabled={occupato}
+                    onClick={() => salvaRuolo(d, "caporeparto", attivo ? reparti.filter((x) => x !== rep) : [...reparti, rep])}
+                    style={chip(attivo)}>
+                    {cap(rep)}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>{(RUOLI_LOTTI.find((r) => r.id === ruolo) || RUOLI_LOTTI[0]).aiuto}</div>
+      </div>
+    );
+  };
+
   const SchedaOperatore = ({ d }) => {
     const v = valori[d.dipendente_id] || {};
     const badge = statoLibretto(v.libretto_sanitario_scadenza);
@@ -231,6 +297,7 @@ export default function ImpostazioniPersonaleView() {
             </a>
           </div>
         </div>
+        {d.dipendente_id && d.in_carico !== false && <RuoloOperatore d={d} />}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, alignItems: "end" }}>
           <div>
             <label htmlFor={`postazione-${d.dipendente_id}`} style={{ fontSize: 11, color: MUTED, fontWeight: 600 }}>

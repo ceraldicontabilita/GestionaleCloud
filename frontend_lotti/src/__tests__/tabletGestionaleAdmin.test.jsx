@@ -70,11 +70,15 @@ describe("uscita dal tablet verso il gestionale", () => {
     saveRuolo("operatore");
     const get = jest.spyOn(axios, "get").mockResolvedValue({ data: { richieste: [] } });
     await act(async () => root.render(<TabletHome />));
+    // La home rilegge il ruolo di Lotti una volta; il tocco su «Gestionale»
+    // non deve verificare il dipendente come amministratore.
+    const letture = () => get.mock.calls.filter(([url]) => String(url).includes("/auth/me")).length;
+    const primaDelTocco = letture();
     await clicca();
     expect(window.location.hash).toBe("#tablet/home");
     expect(login).toHaveBeenCalledWith("/lotti/#dashboard");
     expect(node.textContent).not.toContain("PIN Amministratore");
-    expect(get).not.toHaveBeenCalledWith(expect.stringContaining("/auth/me"));
+    expect(letture()).toBe(primaDelTocco);
   });
 
   test("un token di altro dipendente non apre il gestionale", async () => {

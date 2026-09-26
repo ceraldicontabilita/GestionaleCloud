@@ -68,12 +68,12 @@ def test_modifica_a_mano_rende_il_procedimento_del_titolare(monkeypatch):
     # Stesso testo e client che prova a scrivere la provenienza: resta web.
     uguale = mod.RicettaCreate(nome="Pan di Spagna", ingredienti=["Uova"], procedimento_testo="Dal web.",
                                procedimento_origine="manuale", procedimento_da_verificare=False)
-    salvata = run(mod.update_ricetta("r", uguale, _admin={"nome": "Admin"}))
+    salvata = run(mod.update_ricetta("r", uguale, _ruolo={"ruolo": "amministratore"}))
     assert salvata["procedimento_origine"] == "web"
     assert salvata["procedimento_da_verificare"] is True
 
     riscritta = mod.RicettaCreate(nome="Pan di Spagna", ingredienti=["Uova"], procedimento_testo="Il mio.")
-    salvata = run(mod.update_ricetta("r", riscritta, _admin={"nome": "Admin"}))
+    salvata = run(mod.update_ricetta("r", riscritta, _ruolo={"ruolo": "amministratore"}))
     assert salvata["procedimento_origine"] == "manuale"
     assert salvata["procedimento_da_verificare"] is False
 

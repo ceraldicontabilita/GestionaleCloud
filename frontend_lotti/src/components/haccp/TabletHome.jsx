@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { saveToken, saveRuolo, setGateOk, prendiPaginaRichiesta } from "../../auth";
 import * as authLotti from "../../auth";
 import axios from "axios";
-import { LayoutDashboard, Lock, LogOut, Thermometer, CalendarClock } from "lucide-react";
+import { LayoutDashboard, Lock, LogOut, Thermometer, CalendarClock, ShieldCheck } from "lucide-react";
 import { cambiaOperatore } from "./tablet/BarraReparto";
 import { apiError } from "../../utils/apiError";
 import { allineaSessioneTitolare, getTabletSession, moveTabletSessionTo, saveTabletSession, sessioneTitolareAttiva } from "../../utils/tabletSession";
@@ -26,6 +26,9 @@ const REPARTI = [
   { id: "magazzino", label: "Magazzino", emoji: "📦", grad: "linear-gradient(135deg,#6f583a,#4a3f33)", shadow: "rgba(74,63,51,.5)" },
   { id: "lavagna", label: "Lavagna richieste", emoji: "📺", grad: "linear-gradient(135deg,#8a6f47,#6f583a)", shadow: "rgba(111,88,58,.5)" },
   { id: "ordini", label: "Ordini", emoji: "🛒", grad: "linear-gradient(135deg,#6f9180,#4f6d5f)", shadow: "rgba(79,109,95,.5)", soloAdmin: true },
+  // Registri, anomalie, conformità e apparecchi: si entra col PIN personale,
+  // e la pagina si apre solo al responsabile HACCP (ruolo sulla scheda HR).
+  { id: "haccp", label: "Registri HACCP", icona: ShieldCheck, grad: "linear-gradient(135deg,#5b7a6b,#2f4a3e)", shadow: "rgba(47,74,62,.5)", etichetta: "Responsabile HACCP" },
 ];
 
 // Stato del giorno sotto l'orologio, solo con una persona identificata (senza
@@ -236,6 +239,23 @@ export default function TabletHome({ onEntra, preselectReparto }) {
     return () => { attivo = false; clearInterval(timer); };
   }, [sessione?.ruolo]);
 
+  // Il ruolo di Lotti (HACCP, caporeparto) si rilegge dal server a ogni
+  // apertura della home: cambiato nella scheda HR, il tablet lo vede senza
+  // rifare il PIN. Il backend lo ricontrolla comunque a ogni operazione.
+  const sessioneId = sessione?.dipendente_id;
+  useEffect(() => {
+    if (!sessioneId || sessione?.ruolo === "amministratore") return;
+    let attivo = true;
+    axios.get(`${API}/auth/me`).then((r) => {
+      const attuale = getTabletSession();
+      if (attivo && r.data?.profilo && attuale?.dipendente_id === sessioneId) {
+        saveTabletSession({ ...attuale, profilo: r.data.profilo }, attuale.reparto);
+      }
+    }).catch(() => { /* resta il profilo del login */ });
+    return () => { attivo = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessioneId]);
+
   const handleSuccess = (operatore) => {
     const repartoCorrente = repSel;
     // Il ruolo entrato dal tablet è la fonte di verità anche per il gestionale:
@@ -344,7 +364,12 @@ export default function TabletHome({ onEntra, preselectReparto }) {
                 {richiesteOrdini} da valutare
               </span>
             )}
-            <span style={{ fontSize: 56 }}>{r.emoji}</span>
+            {r.etichetta && (
+              <span style={{ position: "absolute", top: 12, right: 12, display: "inline-flex", alignItems: "center", gap: 5, background: "rgba(0,0,0,.35)", borderRadius: 999, padding: "4px 10px", fontSize: 11, fontWeight: 800, letterSpacing: .3 }}>
+                <Lock size={12} /> {r.etichetta}
+              </span>
+            )}
+            {r.icona ? <r.icona size={56} aria-hidden="true" /> : <span style={{ fontSize: 56 }}>{r.emoji}</span>}
             <span style={{ fontSize: 20, fontWeight: 900 }}>{r.label}</span>
           </button>
         ))}

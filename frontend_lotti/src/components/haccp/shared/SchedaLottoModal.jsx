@@ -11,6 +11,7 @@ import { apriDocumentoAutenticato } from "../../../auth";
 import { apiError } from "../../../utils/apiError";
 import { getOperatoreNome } from "../../../auth";
 import { getTabletSession } from "../../../utils/tabletSession";
+import { puo } from "../../../utils/permessiRuolo";
 import { SceltaMotivo, MOTIVI } from "./SceltaMotivo";
 import { apriLottiConRicerca } from "../../../utils/apriLotti";
 
@@ -443,7 +444,7 @@ export function SchedaLottoModal({ lottoId, onClose, onCambiato }) {
                         {utilizzabile && <Button size="sm" variant="secondary" onClick={() => onCambiato("congela", l)}><Snowflake size={16}/> Congela</Button>}
                         {utilizzabile && <Button size="sm" variant="secondary" onClick={() => onCambiato("banco", l)}><Store size={16}/> Al banco</Button>}
                         {utilizzabile && <Button size="sm" variant="secondary" onClick={() => onCambiato("recupera", l)}><RotateCcw size={16}/> Recupera</Button>}
-                        <Button size="sm" variant="danger" onClick={() => onCambiato("smalti", l)}><Trash2 size={16}/> Smaltisci</Button>
+                        {puo("smaltimento") && <Button size="sm" variant="danger" onClick={() => onCambiato("smalti", l)}><Trash2 size={16}/> Smaltisci</Button>}
                       </>
                     )}
                   </div>

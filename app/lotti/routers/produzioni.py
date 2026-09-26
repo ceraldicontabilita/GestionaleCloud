@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from app.lotti.db import database as db
-from app.lotti.auth import require_admin, request_actor
+from app.lotti.auth import request_actor, require_permesso, verifica_reparto, verifica_reparto_ricetta
 from app.lotti.servizi.annullamento_produzione_service import annulla_produzione
 
 router = APIRouter(prefix="/produzioni", tags=["Produzioni"])
@@ -188,9 +188,15 @@ async def get_riepilogo_produzioni(giorni: int = Query(30, le=365)):
 @router.post("/{produzione_id}/annulla")
 async def annulla_produzione_route(
     produzione_id: str, body: AnnullamentoProduzione, request: Request,
-    _admin=Depends(require_admin),
+    _ruolo=Depends(require_permesso("produzione")),
 ):
     actor = request_actor(request)
     if not actor or not actor["id"]:
         raise HTTPException(401, "Sessione dipendente richiesta")
+    # Il caporeparto annulla solo le produzioni delle ricette del suo reparto.
+    produzione = await db.produzioni.find_one({"id": produzione_id}, {"_id": 0, "ricetta_id": 1})
+    if produzione and produzione.get("ricetta_id"):
+        await verifica_reparto_ricetta(_ruolo, produzione["ricetta_id"])
+    elif produzione:
+        verifica_reparto(_ruolo, None)
     return await annulla_produzione(produzione_id, body.motivo.strip(), actor)

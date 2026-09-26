@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 import uuid
 
 from app.lotti.db import database as db
-from app.lotti.auth import require_admin
+from app.lotti.auth import require_permesso
 
 router = APIRouter(prefix="/temperature-negative", tags=["Temperature Negative"])
 
@@ -278,7 +278,7 @@ async def registra_temperatura(
 
 @router.put("/scheda/{anno}/{congelatore}")
 async def aggiorna_scheda_completa(anno: int, congelatore: int, data: AggiornaTemperatureRequest,
-                                   _admin=Depends(require_admin)):
+                                   _ruolo=Depends(require_permesso("haccp_registri"))):
     """Aggiorna l'intera scheda"""
     scheda = await get_or_create_scheda(anno, congelatore)
 
@@ -303,7 +303,7 @@ async def aggiorna_scheda_completa(anno: int, congelatore: int, data: AggiornaTe
 @router.put("/scheda/{anno}/{congelatore}/config")
 async def configura_congelatore(
     anno: int, congelatore: int, nome: str = None, temp_min: float = None, temp_max: float = None
-, _admin=Depends(require_admin)):
+, _ruolo=Depends(require_permesso("frigoriferi"))):
     """Configura nome e limiti temperatura congelatore"""
     scheda = await get_or_create_scheda(anno, congelatore)
 
@@ -385,7 +385,7 @@ async def get_operatori():
 
 
 @router.post("/operatori")
-async def aggiungi_operatore(nome: str = Query(...), _admin=Depends(require_admin)):
+async def aggiungi_operatore(nome: str = Query(...), _ruolo=Depends(require_permesso("haccp_registri"))):
     """Aggiunge un nuovo operatore alla lista"""
     if nome not in OPERATORI_DEFAULT:
         OPERATORI_DEFAULT.append(nome)

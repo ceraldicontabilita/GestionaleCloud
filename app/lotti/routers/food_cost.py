@@ -13,7 +13,7 @@ router = APIRouter(prefix="/food-cost", tags=["Food Cost"])
 # CARTONE/UNITÀ, mai a kg/litro (segnalato da Enzo 02/07/2026 — un rum da
 # 2L si paga a bottiglia, non "al chilo"). Fonte UNICA in routers.utils.
 from app.lotti.routers.utils import CATEGORIE_BEVANDE_A_UNITA as CATEGORIE_VENDUTE_A_UNITA  # noqa: E402
-from app.lotti.auth import require_admin
+from app.lotti.auth import require_admin, require_permesso, verifica_reparto_ricetta
 from app.lotti.allergeni import (
     ALLERGENI_14,
     estrai_nomi_ingredienti,
@@ -2180,8 +2180,7 @@ async def ultimi_prodotti_ricevuti(limit: int = Query(20, le=100)):
 @router.post("/riallinea-ingredienti/{ricetta_id}")
 async def riallinea_ingredienti_ricetta(
     ricetta_id: str,
-    forza: bool = Query(False, description="Forza riallineamento ignorando finestra 15gg"),
-):
+    forza: bool = Query(False, description="Forza riallineamento ignorando finestra 15gg"), _ruolo=Depends(require_permesso("ricette"))):
     """
     Riallinea gli ingredienti della ricetta all'ultimo prodotto disponibile nel dizionario.
     Logica finestra 15 giorni:
@@ -2191,6 +2190,7 @@ async def riallinea_ingredienti_ricetta(
       di quella attualmente agganciata alla riga ricetta.
     Da chiamare all'apertura della ricetta (al volo).
     """
+    await verifica_reparto_ricetta(_ruolo, ricetta_id)
     ricetta = await db.ricette.find_one({"id": ricetta_id}, {"_id": 0})
     if not ricetta:
         raise HTTPException(status_code=404, detail="Ricetta non trovata")
@@ -2665,8 +2665,9 @@ async def get_registro_allergeni():
 
 
 @router.post("/aggiorna-ingredienti-ricetta")
-async def aggiorna_ingredienti_ricetta(data: AggiornaIngredienteRicetta):
+async def aggiorna_ingredienti_ricetta(data: AggiornaIngredienteRicetta, _ruolo=Depends(require_permesso("ricette"))):
     """Aggiorna gli ingredienti di una ricetta con quantità e riferimenti al dizionario."""
+    await verifica_reparto_ricetta(_ruolo, data.ricetta_id)
     ricetta = await db.ricette.find_one({"id": data.ricetta_id}, {"_id": 0})
     if not ricetta:
         raise HTTPException(status_code=404, detail="Ricetta non trovata")
@@ -2779,8 +2780,9 @@ async def rinomina_ingrediente(
 
 
 @router.post("/salva-porzioni-ricetta")
-async def salva_porzioni_ricetta(ricetta_id: str, porzioni_base: int):
+async def salva_porzioni_ricetta(ricetta_id: str, porzioni_base: int, _ruolo=Depends(require_permesso("ricette"))):
     """Salva il numero di pezzi/porzioni base della ricetta"""
+    await verifica_reparto_ricetta(_ruolo, ricetta_id)
     ricetta = await db.ricette.find_one({"id": ricetta_id})
     if not ricetta:
         raise HTTPException(status_code=404, detail="Ricetta non trovata")

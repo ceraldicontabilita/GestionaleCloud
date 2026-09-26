@@ -6,7 +6,8 @@ chiunque avesse un PIN, comprese cancellazioni, prezzi, approvazione dei
 fornitori, backfill e «dichiara tutto conforme».
 
 Regola: una rotta POST/PUT/PATCH/DELETE o dipende da ``require_admin``
-(o ``require_automation_or_admin``), oppure è elencata qui sotto fra le
+(o ``require_automation_or_admin``, o ``require_permesso`` per i ruoli HACCP e
+caporeparto di ``servizi/ruoli.py``), oppure è elencata qui sotto fra le
 **operazioni di reparto** (registrare un fatto HACCP, un lotto, un prelievo,
 una vendita). Una rotta nuova che non sta in nessuna delle due fa fallire la
 CI: chi la scrive deve decidere.
@@ -15,12 +16,11 @@ import ast
 from pathlib import Path
 
 RADICE = Path(__file__).resolve().parents[2] / "app" / "lotti" / "routers"
-GUARDIE = ("require_admin", "require_automation_or_admin")
+GUARDIE = ("require_admin", "require_automation_or_admin", "require_permesso")
 
 OPERAZIONI_DI_REPARTO = {
     "anomalie:registra_anomalia",
     "anomalie:sposta_lotti_massivo",
-    "anomalie:aggiorna_anomalia",
     "colazione:registra_colazione",
     "controllo_olio:registra_controllo_olio",
     "controllo_olio:aggiorna_controllo_olio",
@@ -30,10 +30,7 @@ OPERAZIONI_DI_REPARTO = {
     "food_cost:suggerisci_ingredienti",
     "food_cost:dose_produzione",
     "food_cost:leggi_ingredienti_foto",
-    "food_cost:riallinea_ingredienti_ricetta",
     "food_cost:auto_rileva_allergeni_singola",
-    "food_cost:aggiorna_ingredienti_ricetta",
-    "food_cost:salva_porzioni_ricetta",
     "food_cost:usa_ricetta",
     "food_cost:calcola_nutrizionale_ricetta",
     "fornitori_schede:salva_nota_ricevimento",
@@ -48,7 +45,6 @@ OPERAZIONI_DI_REPARTO = {
     "lotti:create_lotto",
     "lotti_produzione:marca_lotto_consumato",
     "lotti_produzione:manda_lotto_al_banco",
-    "lotti_produzione:smalti_lotto",
     "lotti_produzione:sposta_posizione_lotto",
     "lotti_produzione:congela_lotto",
     "lotti_produzione:recupera_lotto",
@@ -70,13 +66,8 @@ OPERAZIONI_DI_REPARTO = {
     "produzione_consigliata:registra_decisione",
     "reclami_fornitori:crea_reclamo",
     "reclami_fornitori:aggiorna_stato_reclamo",
-    "ricette:create_ricetta",
-    "ricette:aggiorna_reparto",
     "ricette:aggiorna_foto",
     "ricette:upload_foto",
-    "ricette:aggiorna_ingredienti_dettaglio",
-    "ricette:aggiorna_campo_ricetta",
-    "ricette:aggiorna_scheda_editoriale",
     "ricezione_merce:registra_ricezione",
     "ricezione_merce:aggiorna_ricezione",
     "saima_ricettari:verifica_disponibilita_ricetta",

@@ -31,7 +31,7 @@ import uuid
 
 from html import escape as html_escape
 
-from app.lotti.auth import require_admin
+from app.lotti.auth import require_permesso
 from app.lotti.servizi.haccp_attendibilita import caselle_segnate, non_attendibile_in
 from app.lotti.servizi.registro_haccp import (
     conserva_precedente,
@@ -224,7 +224,7 @@ async def registra_sanificazione(
 
 
 @router.put("/scheda/{anno}/{mese}")
-async def aggiorna_scheda_completa(anno: int, mese: int, data: AggiornaSchedaRequest, _admin=Depends(require_admin)):
+async def aggiorna_scheda_completa(anno: int, mese: int, data: AggiornaSchedaRequest, _ruolo=Depends(require_permesso("haccp_registri"))):
     """Aggiorna l'intera scheda mensile"""
     # Riscrittura intera: niente giorni futuri, e il nome dichiarato non
     # diventa il responsabile (non e' una firma verificata).
@@ -275,7 +275,7 @@ async def get_attrezzature():
 
 
 @router.post("/attrezzature")
-async def aggiungi_attrezzatura(nome: str, _admin=Depends(require_admin)):
+async def aggiungi_attrezzatura(nome: str, _ruolo=Depends(require_permesso("haccp_registri"))):
     """Aggiunge una nuova attrezzatura"""
     if nome not in ATTREZZATURE_SANIFICAZIONE:
         ATTREZZATURE_SANIFICAZIONE.append(nome)
@@ -469,7 +469,7 @@ async def registra_sanificazione_apparecchio(
 
 
 @router.post("/apparecchi/{anno}/rigenera")
-async def rigenera_calendario_apparecchi(anno: int, _admin=Depends(require_admin)):
+async def rigenera_calendario_apparecchi(anno: int, _ruolo=Depends(require_permesso("haccp_registri"))):
     raise HTTPException(
         status_code=410,
         detail="Bloccato: il calendario non puo attestare esiti o operatori non verificati.",
@@ -774,7 +774,7 @@ async def leggi_piano_sanificazione():
 
 @router.put("/piano")
 async def salva_piano_sanificazione(
-    voci: List[VoceDelPiano], _admin=Depends(require_admin),
+    voci: List[VoceDelPiano], _ruolo=Depends(require_permesso("haccp_registri")),
 ):
     """Imposta frequenza e prodotto per una o piu' aree."""
     salvato = await _piano_salvato()

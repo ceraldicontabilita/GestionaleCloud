@@ -1,5 +1,5 @@
 import logging
-from app.lotti.auth import require_admin
+from app.lotti.auth import require_admin, require_permesso
 from fastapi import Depends
 
 """
@@ -422,8 +422,7 @@ async def sposta_lotti_massivo(anomalia_id: str, body: SpostaLottiMassivoRequest
 
 @router.put("/{anomalia_id}")
 async def aggiorna_anomalia(
-    anomalia_id: str, data: AggiornaAnomaliaRequest, request: Request
-):
+    anomalia_id: str, data: AggiornaAnomaliaRequest, request: Request, _ruolo=Depends(require_permesso("haccp_anomalie"))):
     """Aggiorna un'anomalia e conserva la prova dell'intervento.
 
     Un'anomalia non puo' essere chiusa con il solo cambio di stato: servono
