@@ -275,24 +275,22 @@ describe('Fatture provvisorie in attesa banca', () => {
     expect(onRicarica).toHaveBeenCalledTimes(1);
   });
 
-  it('separa nel contatore le decisioni dai pagamenti gia in attesa banca', () => {
-    expect(etichettaTabProvvisori([{}, {}], [{}, {}, {}])).toBe(
-      '⚠️ Da decidere (2) · 🏦 Attesa banca (3)',
-    );
+  it('la scheda dice quante fatture restano da sistemare, senza emoji', () => {
+    // Da decidere e attesa banca restano separati nelle pastiglie della
+    // testata; la scheda porta un solo numero, il totale.
+    expect(etichettaTabProvvisori([{}, {}], [{}, {}, {}])).toBe('Fatture da sistemare (5)');
   });
 
   it('non mostra falsi zeri prima del caricamento dei conteggi', () => {
-    expect(etichettaTabProvvisori([], [], { caricato: false })).toBe(
-      '⚠️ Da decidere (…) · 🏦 Attesa banca (…)',
-    );
+    expect(etichettaTabProvvisori([], [], { caricato: false })).toBe('Fatture da sistemare');
   });
 
-  it('mostra zero solo dopo un conteggio realmente caricato', () => {
+  it('senza fatture aperte la scheda non porta numeri', () => {
     expect(etichettaTabProvvisori([], [], {
       caricato: true,
       totale_da_decidere: 0,
       totale_in_attesa_banca: 0,
-    })).toBe('⚠️ Da decidere (0) · 🏦 Attesa banca (0)');
+    })).toBe('Fatture da sistemare');
   });
 
   it('ricalcola i conteggi quando cambia scheda', () => {
@@ -451,7 +449,7 @@ describe('Fatture provvisorie in attesa banca', () => {
     />);
 
     fireEvent.click(screen.getByLabelText('Attiva selezione veloce'));
-    fireEvent.change(screen.getByPlaceholderText('Es. San Carlo'), {
+    fireEvent.change(screen.getByLabelText('Filtra per nome fornitore'), {
       target: { value: 'Carta' },
     });
     fireEvent.click(screen.getByRole('button', { name: /Cassa$/i }));
@@ -461,7 +459,7 @@ describe('Fatture provvisorie in attesa banca', () => {
       { fattura_id: 'cassa-1', metodo: 'cassa', approva_metodo_fattura: true },
     ));
     expect(onRicarica).toHaveBeenCalledWith({ silent: true });
-    expect(screen.getByPlaceholderText('Es. San Carlo')).toHaveValue('Carta');
+    expect(screen.getByLabelText('Filtra per nome fornitore')).toHaveValue('Carta');
   });
 
   it('registra la quota Cassa e lascia il residuo alla riconciliazione bancaria', async () => {
