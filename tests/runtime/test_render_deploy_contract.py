@@ -65,3 +65,18 @@ def test_render_pins_a_python_runtime_compatible_with_rapidocr():
     assert _environment_values(service)["PYTHON_VERSION"] == python_version
     assert tuple(map(int, python_version.split(".")[:2])) < (3, 13)
     assert "rapidocr_onnxruntime==1.4.4" in requirements.splitlines()
+
+
+def test_render_and_github_pin_the_same_node_runtime():
+    service = _production_service()
+    node_version = (ROOT / ".node-version").read_text(encoding="utf-8").strip()
+    workflows = [
+        (ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8")
+        for name in ("ci.yml", "produzione.yml")
+    ]
+
+    assert _environment_values(service)["NODE_VERSION"] == node_version
+    assert node_version.split(".", maxsplit=1)[0] == "20"
+    for workflow in workflows:
+        assert "node-version-file: .node-version" in workflow
+        assert "node-version: 20" not in workflow
