@@ -473,6 +473,13 @@ def _stato_movimento_sumup(riga: Dict[str, Any]) -> str:
     if riga.get("giroconto_operation_id"):
         return ("Giroconto verso BPM" if riga.get("estratto_bpm_id")
                 else "Giroconto, accredito BPM atteso")
+    # Esiti di abbina_movimenti_sumup (stessi motori del conto BPM).
+    if riga.get("stipendio_id"):
+        return "Stipendio abbinato alla busta"
+    if riga.get("fattura_id") or riga.get("fattura_ids"):
+        return "Fattura pagata"
+    if riga.get("prima_nota_banca_id"):
+        return "Registrato in Prima Nota"
     return "Da registrare"
 
 
@@ -489,7 +496,8 @@ async def _movimenti_conto_sumup(db, dal: str, al: str) -> list:
         {"_id": 0, "id": 1, "data": 1, "ora": 1, "tipo_transazione": 1,
          "riferimento": 1, "causale": 1, "importo": 1, "saldo": 1, "pid": 1,
          "payout_id": 1, "giroconto_operation_id": 1, "estratto_bpm_id": 1,
-         "iban_beneficiario": 1, "codice_transazione": 1},
+         "iban_beneficiario": 1, "codice_transazione": 1,
+         "stipendio_id": 1, "fattura_id": 1, "fattura_ids": 1, "prima_nota_banca_id": 1},
     )
     righe = await cursore.to_list(None) if hasattr(cursore, "to_list") else [r async for r in cursore]
     movimenti = []

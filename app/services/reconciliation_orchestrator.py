@@ -68,6 +68,14 @@ async def riconcilia_documenti_e_pagamenti(
     allocazioni_fatture_banca = await reconcile_deterministic_invoice_allocations(
         db, anno=anno, movement_ids=movimento_ids,
     )
+    # Carta SumUp: stessi motori di stipendi e fatture, sulla sua collezione.
+    from app.services.sumup_conto import abbina_movimenti_sumup
+
+    try:
+        carta_sumup = await abbina_movimenti_sumup(db, anno=anno)
+    except Exception as exc:  # noqa: BLE001 - gli altri agganci restano validi
+        logger.exception("Abbinamento carta SumUp non completato (%s)", type(exc).__name__)
+        carta_sumup = {"errore": f"{type(exc).__name__}: {exc}"}
     # Il report del titolare dice come e' stata pagata ogni fattura: qui si
     # ripassano solo le righe ancora in attesa (XML arrivato dopo, assegno
     # comparso nel nuovo estratto conto).
@@ -100,17 +108,23 @@ async def riconcilia_documenti_e_pagamenti(
         "proiezione_banca": proiezione_banca,
         "allocazioni_fatture_banca": allocazioni_fatture_banca,
         "pagamenti_dichiarati": pagamenti_dichiarati,
+        "carta_sumup": carta_sumup,
     }
 
 
 async def on_cedolino_importato_riprocessa(event: Dict[str, Any], db):
-    """Il cedolino conferma il maturato; il bonifico puo' essere gia' in banca."""
+    """Il cedolino conferma il maturato; il bonifico puo' essere gia' in banca,
+    sul conto BPM o partito dalla carta SumUp."""
     from app.services.stipendi_bonifici import associa_bonifici_stipendi
+    from app.services.sumup_conto import COLL_MOVIMENTI as COLL_CARTA_SUMUP
 
     anno = event.get("anno")
-    return await associa_bonifici_stipendi(
-        db, anno=int(anno) if str(anno or "").isdigit() else None,
+    anno = int(anno) if str(anno or "").isdigit() else None
+    esito = await associa_bonifici_stipendi(db, anno=anno)
+    esito["carta_sumup"] = await associa_bonifici_stipendi(
+        db, anno=anno, collezione_movimenti=COLL_CARTA_SUMUP, ripassa_collegati=False,
     )
+    return esito
 
 
 async def on_f24_acquisito_riprocessa(event: Dict[str, Any], db):

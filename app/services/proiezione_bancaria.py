@@ -18,6 +18,7 @@ from app.routers.bonifici_module.classification import (
 from app.services.finanziamenti_soci import classifica_finanziamento_ec
 from app.services.scritture_contabili import scrivi_movimento_se_assente
 from app.services.bank_reconciliation_rules import classify_bank_movement
+from app.services.conti_pos import CONTO_BPM as CONTO_BANCA_PREDEFINITO
 
 
 SOURCE = "proiezione_semantica_ec"
@@ -190,9 +191,11 @@ def classifica_movimento_ec(
     return _classifica_paypal(doc)
 
 
-def _chiave_operazione(data: str, importo: float, classificazione: Dict[str, Any]) -> tuple:
-    """Giorno, importo, verso, categoria e chi: la stessa operazione in ogni copia."""
+def _chiave_operazione(data: str, importo: float, classificazione: Dict[str, Any],
+                       conto: Optional[str] = None) -> tuple:
+    """Conto, giorno, importo, verso, categoria e chi: la stessa operazione in ogni copia."""
     return (
+        conto or CONTO_BANCA_PREDEFINITO,
         data, int(round(importo * 100)), classificazione.get("tipo"), classificazione.get("categoria"),
         str(classificazione.get("dipendente_id") or classificazione.get("socio_id")
             or classificazione.get("numero_mutuo") or classificazione.get("gestore_pagamento") or ""),
@@ -200,8 +203,10 @@ def _chiave_operazione(data: str, importo: float, classificazione: Dict[str, Any
 
 
 def _documento(movimento_ec: Dict[str, Any], classificazione: Dict[str, Any],
-               data: str, importo: float, ec_id: str) -> Dict[str, Any]:
+               data: str, importo: float, ec_id: str,
+               conto_contabile: str = None) -> Dict[str, Any]:
     return {
+        **({"conto_contabile": conto_contabile} if conto_contabile else {}),
         "data": data,
         "anno": int(data[:4]),
         "mese": int(data[5:7]),
@@ -223,8 +228,16 @@ def _documento(movimento_ec: Dict[str, Any], classificazione: Dict[str, Any],
 
 async def proietta_movimenti_bancari_semantici(
     db, *, anno: Optional[int] = None, movimento_ids=None,
+    collezione: str = Collections.BANK_STATEMENTS,
+    conto_contabile: str = CONTO_BANCA_PREDEFINITO,
 ) -> Dict[str, Any]:
-    """Scrive in Banca le sole prove con classificazione univoca e auditabile."""
+    """Scrive in Banca le sole prove con classificazione univoca e auditabile.
+
+    ``collezione`` e ``conto_contabile`` servono alla carta SumUp: stessi
+    criteri del conto BPM, righe di Prima Nota sul suo conto (19.01.05). Il
+    conto fa parte dell'identita' dell'operazione: un pagamento uguale sulla
+    carta e sul BPM sono due operazioni, mai una copia dell'altra.
+    """
     dipendenti = await db[Collections.EMPLOYEES].find(
         {}, {
             "_id": 0, "id": 1, "nome": 1, "cognome": 1,
@@ -251,7 +264,7 @@ async def proietta_movimenti_bancari_semantici(
     stats["doppioni_tolti"] = 0
     stats["rate_mutuo"] = 0
     candidati: list = []
-    cursore = db[Collections.BANK_STATEMENTS].find(query)
+    cursore = db[collezione].find(query)
     async for movimento_ec in cursore:
         if str(movimento_ec.get("status") or "") in {"deleted", "archived"}:
             continue
@@ -268,7 +281,7 @@ async def proietta_movimenti_bancari_semantici(
                 if movimento_ec.get("_id") is not None
                 else {"id": ec_id}
             )
-            await db[Collections.BANK_STATEMENTS].update_one(
+            await db[collezione].update_one(
                 source_query,
                 {"$set": {
                     "decisione_classificazione": "automatica",
@@ -299,16 +312,19 @@ async def proietta_movimenti_bancari_semantici(
 
     gruppi: Dict[tuple, list] = {}
     for voce in candidati:
-        gruppi.setdefault(_chiave_operazione(voce[2], voce[3], voce[1]), []).append(voce)
+        gruppi.setdefault(
+            _chiave_operazione(voce[2], voce[3], voce[1], conto_contabile), [],
+        ).append(voce)
 
     esistenti: Dict[tuple, list] = {}
     if gruppi:
         # Anche le righe scritte da altri canali (import dell'estratto conto,
         # registrazioni a mano) sono gia' l'operazione: contano, non si toccano.
         righe = await db["prima_nota_banca"].find(
-            {"categoria": {"$in": sorted({chiave[3] for chiave in gruppi})},
+            {"categoria": {"$in": sorted({chiave[4] for chiave in gruppi})},
              "status": {"$nin": ["deleted", "archived"]}},
             {"_id": 0, "id": 1, "data": 1, "importo": 1, "tipo": 1, "categoria": 1,
+             "conto_contabile": 1,
              "dipendente_id": 1, "socio_id": 1, "numero_mutuo": 1, "gestore_pagamento": 1,
              "estratto_conto_id": 1, "source": 1},
         ).to_list(None)
@@ -316,6 +332,7 @@ async def proietta_movimenti_bancari_semantici(
             chiave = _chiave_operazione(
                 str(riga.get("data") or "")[:10], _importo(riga),
                 {"tipo": riga.get("tipo"), "categoria": riga.get("categoria"), **riga},
+                riga.get("conto_contabile"),
             )
             esistenti.setdefault(chiave, []).append(riga)
 
@@ -361,7 +378,10 @@ async def proietta_movimenti_bancari_semantici(
                         {"movimento_bancario_id": ec_id},
                         {"movimento_banca_id": ec_id},
                     ]},
-                    _documento(movimento_ec, classificazione, data, importo, ec_id),
+                    _documento(
+                        movimento_ec, classificazione, data, importo, ec_id,
+                        conto_contabile if conto_contabile != CONTO_BANCA_PREDEFINITO else None,
+                    ),
                 )
                 riga = {"id": prima_nota_id, "estratto_conto_id": ec_id}
                 tenute.append(riga)
@@ -373,7 +393,7 @@ async def proietta_movimenti_bancari_semantici(
                     if movimento_ec.get("_id") is not None
                     else {"id": ec_id}
                 )
-                await db[Collections.BANK_STATEMENTS].update_one(
+                await db[collezione].update_one(
                     query_sorgente,
                     {"$set": {
                         "classificato_contabilmente": True,
