@@ -27,8 +27,17 @@ RIGHE = {
 }
 
 
+# Come sui dati veri: il modello porta la causale INAIL («P»), la quietanza no.
+INAIL_F24 = [{"causale": "P", "codice_sede": "33400", "importo_debito": 649.9,
+              "importo_debito_cents": 64990}]
+INAIL_QUIETANZA = [{"codice_atto": "902026|P", "codice_ufficio": "33400",
+                    "periodo_riferimento": "", "importo_debito": 649.9,
+                    "importo_debito_cents": 64990}]
+
+
 def _f24(fid, **extra):
-    return {"id": fid, "codice_fiscale": CF, "file_name": f"{fid}.pdf", **RIGHE, **extra}
+    return {"id": fid, "codice_fiscale": CF, "file_name": f"{fid}.pdf", **RIGHE,
+            "sezione_inail": INAIL_F24, **extra}
 
 
 def _quietanza(qid="q-apr"):
@@ -37,6 +46,7 @@ def _quietanza(qid="q-apr"):
         "data_pagamento": "2026-05-18", "saldo": 6469.23, "f24_associati": [],
         "stato_associazione": "f24_non_corrispondente",
         "stato_quietanza": "QUIETANZA_PRESENTE_F24_NON_CORRISPONDENTE", **RIGHE,
+        "sezione_inail": INAIL_QUIETANZA,
     }
 
 
@@ -122,6 +132,7 @@ def test_il_modello_arrivato_dopo_trova_subito_la_quietanza(monkeypatch):
     parsed = {
         "dati_generali": {"codice_fiscale": CF, "data_versamento": "2026-05-18"},
         **RIGHE,
+        "sezione_inail": INAIL_F24,
         "totali": {"totale_debito": 6404.82, "totale_credito": 0.0, "saldo_netto": 6404.82},
         "validazione": {"saldo_quadrato": True, "parser_version": "test-v1"},
     }
