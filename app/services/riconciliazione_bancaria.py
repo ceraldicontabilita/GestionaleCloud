@@ -1091,8 +1091,13 @@ async def riconcilia_movimenti_banca(
         from app.services.assegni_estratto_conto import (
             sincronizza_assegni_da_estratto_conto,
         )
+        # Anche da CSV e banca diretta: l'identita' e' il numero dell'assegno
+        # scritto nella causale, e la Prima Nota si deduplica per assegno.
+        # Dal 25/08/2026 nove assegni addebitati non entravano perche'
+        # l'estratto conto PDF non era ancora arrivato.
         esito_assegni = await sincronizza_assegni_da_estratto_conto(
             db, movimento_ids=movimento_ids, data_dal=data_dal,
+            include_provvisori=True,
         )
         results["assegni_sincronizzati"] = esito_assegni
         results["riconciliati_assegni"] = esito_assegni.get("assegni_riconciliati", 0)

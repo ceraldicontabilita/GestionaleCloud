@@ -157,3 +157,44 @@ def test_stato_in_prima_nota_sumup_dopo_l_abbinamento():
     assert _stato_movimento_sumup({"fattura_id": "f-1"}) == "Fattura pagata"
     assert _stato_movimento_sumup({"prima_nota_banca_id": "pn-1"}) == "Registrato in Prima Nota"
     assert _stato_movimento_sumup({}) == "Da registrare"
+
+
+def test_stesso_pagamento_su_carta_e_bpm_non_e_un_doppione():
+    """Stesso giorno, importo e dipendente sulla carta e sul conto BPM: sono
+    due operazioni, e il giro della carta non tocca la riga del BPM."""
+    from app.services.proiezione_bancaria import proietta_movimenti_bancari_semantici
+
+    db = ClientArchivioMemoria()["carta_e_bpm"]
+
+    async def scenario():
+        await db["dipendenti"].insert_one({
+            "id": "dip-1", "nome": "Giuliano", "cognome": "Guarino",
+            "nome_completo": "GUARINO GIULIANO", "iban": IBAN_DIP,
+        })
+        await db["estratto_conto_movimenti"].insert_one({
+            "id": "bpm-1", "data": "2026-09-12", "tipo": "uscita", "importo": -100.0,
+            "descrizione": f"VS.DISP. FAVORE GUARINO GIULIANO {IBAN_DIP} acconto",
+        })
+        await db[COLL_MOVIMENTI].insert_one({
+            **_movimento("C9ACC00001", "2026-09-12", "100.00",
+                         "GIULIANO GUARINO IT62Q0306903487 100000000123",
+                         "Acconto stipendio settembre", IBAN_DIP),
+            **campi_bancari({
+                "riferimento": "GIULIANO GUARINO IT62Q0306903487 100000000123",
+                "causale": "Acconto stipendio settembre", "importo": "-100.00",
+                "iban_beneficiario": IBAN_DIP,
+            }),
+        })
+        bpm = await proietta_movimenti_bancari_semantici(db)
+        carta = await proietta_movimenti_bancari_semantici(
+            db, collezione=COLL_MOVIMENTI, conto_contabile="19.01.05",
+        )
+        righe = await db["prima_nota_banca"].find(
+            {"status": {"$nin": ["deleted", "archived"]}}, {"_id": 0},
+        ).to_list(None)
+        return bpm, carta, righe
+
+    bpm, carta, righe = asyncio.run(scenario())
+    assert bpm["proiettati"] == 1
+    assert carta["proiettati"] == 1 and carta["doppioni_tolti"] == 0
+    assert sorted(r.get("conto_contabile") for r in righe) == ["19.01.01", "19.01.05"]

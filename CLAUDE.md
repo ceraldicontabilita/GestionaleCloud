@@ -417,10 +417,10 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   `trasferimento_collegato_id`, categoria `trasferimento_interno`. È **un'operazione della banca, non una riga
   d'archivio**: le copie (vecchio archivio, CSV, Enable Banking) fanno una coppia sola, il numero vero è il massimo
   per fonte nello stesso giorno e importo (`versamenti_contanti.py`); le gambe in più dei motori si tolgono per id.
+  Lo stesso per `proiezione_bancaria.py` (stipendi, commissioni, PayPal, soci, **rata mutuo** sul 31.03.05 dal numero del mutuo, quote capitale/interessi `da_verificare`) e per gli assegni, presi dal giro dei 30 minuti anche da CSV e banca diretta (identità = numero, riga `provvisoria` fino al PDF ufficiale).
 - Prima Nota Banca non è la copia dell'estratto conto: una riga entra quando è nota la causale contabile oppure
-  appartiene alle categorie bancarie senza documento ammesse dal codice. Anche i movimenti letti dalla banca
-  (Enable Banking, `services/enable_banking.py`, flag `ENABLE_BANKING_ENABLED`, sessione cifrata col solo
-  `session_id`) vanno in `estratto_conto_movimenti` (`accoppia`), mai in Prima Nota; entrano da soli alle 07:15 e 09:00 (`giro_automatico`), «Aggiorna ora» è in Prima Nota › Banca.
+  appartiene alle categorie bancarie senza documento ammesse dal codice. Anche i movimenti letti dalla banca (Enable Banking, `services/enable_banking.py`,
+  flag `ENABLE_BANKING_ENABLED`, sessione cifrata col solo `session_id`) vanno in `estratto_conto_movimenti` (`accoppia`), mai in Prima Nota; entrano da soli alle 07:15 e 09:00 (`giro_automatico`), «Aggiorna ora» è in Prima Nota › Banca.
 - Riga bancaria canonica = riferimento esterno **oppure** fingerprint data+valuta+importo+causale+progressivo;
   due export **dello stesso conto** con parole diverse si confrontano per giorno, segno, importo e conteggio
   (`doppioni_estratto_conto.accoppia`), prima per **riferimento banca** (in ordine, due commissioni uguali si incrociano). Assegni con numero o data diversi **non sono duplicati**. Le regole SDD
