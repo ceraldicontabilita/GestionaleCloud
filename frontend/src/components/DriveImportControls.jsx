@@ -4,22 +4,34 @@ import { toast } from 'sonner';
 import { Badge, Button, Card, Select, StatCard } from './ds';
 import { BORDER_RADIUS, COLORS, useIsMobile } from '../lib/utils';
 
+// Un solo ingresso Drive: la cartella unica «DATI SOCIETA CERALDI». I vecchi
+// canali per sezione (fatture, corrispettivi, ...) sono smontati: questa
+// scheda li interrogava ancora e mostrava «Non configurato» e zero trovati
+// mentre la cartella unica importava davvero.
+const formatoData = valore => (valore
+  ? new Date(valore).toLocaleString('it-IT', {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  })
+  : 'mai eseguito');
+
 export function DriveFattureImportCard() {
   const isMobile = useIsMobile();
-  const [driveStatus, setDriveStatus] = useState(null);
+  const [stato, setStato] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [message, setMessage] = useState(null);
 
   const loadStatus = async () => {
     try {
-      const response = await api.get('/api/fatture/drive/status');
-      setDriveStatus(response.data || null);
+      const response = await api.get('/api/documenti/cartella-unica/stato');
+      setStato(response.data || null);
+      return response.data || null;
     } catch (error) {
       setMessage({
         ok: false,
-        text: error.response?.data?.detail || 'Stato Google Drive non disponibile.',
+        text: error.response?.data?.detail || 'Stato della cartella Drive non disponibile.',
       });
+      return null;
     } finally {
       setLoading(false);
     }
@@ -29,69 +41,56 @@ export function DriveFattureImportCard() {
     loadStatus();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const syncNow = async () => {
-    setSyncing(true);
+  const importaTutto = async () => {
+    setImporting(true);
     setMessage(null);
     try {
-      const response = await api.post('/api/fatture/drive/sync');
-      const result = response.data || {};
-      if (result.status === 'not_configured' || result.status === 'error') {
-        setMessage({ ok: false, text: result.message || 'Sincronizzazione non avviata.' });
+      const response = await api.post('/api/documenti/cartella-unica/giro?tutto=true');
+      if (!response.data?.avviato && response.data?.motivo !== 'giro_in_corso') {
+        setMessage({ ok: false, text: 'Import non avviato.' });
         return;
       }
-
       const startedAt = Date.now();
-      let status = null;
-      while (Date.now() - startedAt < 15 * 60 * 1000) {
-        await new Promise(resolve => setTimeout(resolve, 4000));
-        try {
-          status = (await api.get('/api/fatture/drive/status')).data || null;
-          if (status && !status.sync_running) break;
-        } catch {
-          // Un errore transitorio non interrompe il controllo del processo avviato.
-        }
+      let attuale = null;
+      while (Date.now() - startedAt < 60 * 60 * 1000) {
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        attuale = await loadStatus();
+        if (attuale && !attuale.giro_in_corso) break;
       }
-
-      if (status) setDriveStatus(status);
-      if (status?.last_error) {
-        setMessage({ ok: false, text: `Sincronizzazione fallita: ${status.last_error}` });
-      } else if (status?.sync_running) {
-        setMessage({
-          ok: true,
-          text: 'Sincronizzazione ancora in corso. Lo stato si aggiornerà al prossimo caricamento.',
-        });
+      const ultimo = attuale?.ultimo_giro?.last_result || {};
+      if (attuale?.giro_in_corso) {
+        setMessage({ ok: true, text: 'Import ancora in corso: i numeri si aggiornano da soli.' });
+      } else if (attuale?.ultimo_giro?.last_error) {
+        setMessage({ ok: false, text: `Import fermato: ${attuale.ultimo_giro.last_error}` });
       } else {
-        const last = status?.last_result || {};
         setMessage({
-          ok: (last.errors || 0) === 0,
-          text:
-            `Completata: ${last.imported || 0} importate, ` +
-            `${last.duplicates || 0} già presenti, ${last.errors || 0} errori ` +
-            `(su ${last.total || 0} file trovati).`,
+          ok: (ultimo.errori || 0) === 0,
+          text: `Completato. In cartella restano ${ultimo.restanti ?? 0} file.`,
         });
       }
     } catch (error) {
       setMessage({
         ok: false,
-        text:
-          error.response?.data?.detail ||
-          error.response?.data?.message ||
-          `Errore durante la sincronizzazione (${error.response?.status || error.message}).`,
+        text: error.response?.data?.detail || `Errore durante l'import (${error.message}).`,
       });
     } finally {
-      setSyncing(false);
+      setImporting(false);
     }
   };
+
+  const ultimo = stato?.ultimo_giro?.last_result || {};
+  const registro = stato?.registro || {};
+  const inCorso = importing || stato?.giro_in_corso;
 
   return (
     <div data-testid="drive-fatture-card">
       <Card
         title={
           <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            Google Drive - Import fatture XML
+            Google Drive - cartella DATI SOCIETA CERALDI
             {!loading && (
-              <Badge variant={driveStatus?.configured ? 'success' : 'warning'}>
-                {driveStatus?.configured ? 'Configurato' : 'Non configurato'}
+              <Badge variant={stato?.attiva ? 'success' : 'warning'}>
+                {stato?.attiva ? 'Attiva' : 'Non attiva'}
               </Badge>
             )}
           </span>
@@ -101,20 +100,19 @@ export function DriveFattureImportCard() {
             variant="primary"
             size="sm"
             data-testid="drive-sync-btn"
-            onClick={syncNow}
-            disabled={loading || syncing || !driveStatus?.configured}
+            onClick={importaTutto}
+            disabled={loading || inCorso || !stato?.attiva}
           >
-            {syncing ? 'Sincronizzazione...' : 'Sincronizza ora'}
+            {inCorso ? 'Import in corso...' : 'Importa tutto da Drive'}
           </Button>
         }
       >
         <p style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 16 }}>
-          Legge le fatture XML e P7M dalla cartella di Google Drive e le importa.
-          Quelle già presenti non entrano una seconda volta.
+          Fatture XML, F24, quietanze, cedolini, estratti conto, corrispettivi: il gestionale
+          riconosce ogni file lasciato nella cartella e lo sposta in ELABORATE. Il giro automatico
+          ne prende un lotto ogni 15 minuti; il pulsante li importa tutti adesso.
         </p>
 
-        {/* L'esito dell'ultimo giro e' la cosa piu' importante della scheda:
-            quattro numeri con il loro nome, non una riga grigia in fondo. */}
         <div
           data-testid="drive-ultimo-giro"
           style={{
@@ -124,29 +122,19 @@ export function DriveFattureImportCard() {
             marginBottom: 12,
           }}
         >
-          <StatCard accent="none" label="Trovati" value={driveStatus?.last_result?.total ?? 0} />
-          <StatCard accent="none" label="Importati" value={driveStatus?.last_result?.imported ?? 0} />
-          <StatCard accent="none" label="Già presenti" value={driveStatus?.last_result?.duplicates ?? 0} />
+          <StatCard accent="none" label="Ancora in cartella" value={ultimo.restanti ?? 0} />
+          <StatCard accent="none" label="Elaborati (ultimo giro)" value={ultimo.elaborati ?? 0} />
+          <StatCard accent="none" label="Doppioni tolti" value={ultimo.doppioni_cestinati ?? 0} />
           <StatCard
-            accent={(driveStatus?.last_result?.errors || 0) > 0 ? 'danger' : 'none'}
-            label="Errori"
-            value={driveStatus?.last_result?.errors ?? 0}
+            accent={(ultimo.errori || 0) > 0 ? 'danger' : 'none'}
+            label="Errori (ultimo giro)"
+            value={ultimo.errori ?? 0}
           />
         </div>
 
         <div style={{ fontSize: 12.5, color: COLORS.textMuted, marginBottom: 12 }}>
-          {driveStatus?.total_imported ?? 0} fatture importate in tutto
-          {' · '}ultimo giro: {driveStatus?.last_sync
-            ? new Date(driveStatus.last_sync).toLocaleString('it-IT', {
-              day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
-            })
-            : 'mai eseguito'}
-          {' · '}
-          {/* L'id della cartella Drive e' rumore per chi legge: resta nel
-              suggerimento, per chi deve controllarlo. */}
-          <span title={driveStatus?.folder_id ? `Id della cartella: ${driveStatus.folder_id}` : undefined}>
-            {driveStatus?.folder_id ? 'cartella impostata' : 'cartella non impostata'}
-          </span>
+          {registro.ELABORATE ?? 0} file elaborati in tutto · {registro.ERRORI ?? 0} in ERRORI
+          {' · '}ultimo giro: {formatoData(stato?.ultimo_giro?.updated_at)}
         </div>
 
         {message && (
@@ -269,18 +257,9 @@ export function AnnoImportazioneCard() {
         >
           <div style={{ fontWeight: 600, marginBottom: 4 }}>Esito import {result.anno}</div>
           <div>
-            Drive fatture:{' '}
-            {result.sync_fatture?.importate ??
-              result.sync_fatture?.imported ??
-              result.sync_fatture?.skipped ??
-              JSON.stringify(result.sync_fatture)}
-          </div>
-          <div>
-            Drive corrispettivi:{' '}
-            {result.sync_corrispettivi?.importati ??
-              result.sync_corrispettivi?.imported ??
-              result.sync_corrispettivi?.skipped ??
-              JSON.stringify(result.sync_corrispettivi)}
+            Drive:{' '}
+            {result.drive?.saltato
+              ?? `${result.drive?.elaborati ?? 0} file elaborati, ${result.drive?.errori ?? 0} errori, ${result.drive?.restanti ?? 0} ancora in cartella`}
           </div>
           <div>
             Ripresi dall'archivio: {result.promozione_archivio?.corrispettivi_promossi ?? 0}{' '}

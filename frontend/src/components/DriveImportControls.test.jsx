@@ -19,28 +19,49 @@ vi.mock('sonner', () => ({
 describe('Controlli import Drive in Documenti', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('mostra stato e provenienza senza avviare import automaticamente', async () => {
+  it('legge la cartella unica e dice quanti file restano, senza avviare import', async () => {
     api.get.mockResolvedValue({
       data: {
-        configured: true,
-        folder_id: 'folder-documenti',
-        last_sync: '2026-08-11T18:48:38Z',
-        total_imported: 171,
+        attiva: true,
+        giro_in_corso: false,
+        ultimo_giro: {
+          updated_at: '2026-09-26T23:48:14Z',
+          last_result: { letti: 50, elaborati: 50, errori: 0, doppioni_cestinati: 0, restanti: 186 },
+        },
+        registro: { ELABORATE: 2215, ERRORI: 68 },
       },
     });
 
     render(<DriveFattureImportCard />);
 
     await waitFor(() =>
-      expect(api.get).toHaveBeenCalledWith('/api/fatture/drive/status')
+      expect(api.get).toHaveBeenCalledWith('/api/documenti/cartella-unica/stato')
     );
-    expect(await screen.findByText('Configurato')).toBeInTheDocument();
-    // L'id della cartella non si legge sulla pagina: resta nel suggerimento.
-    expect(screen.queryByText('folder-documenti')).not.toBeInTheDocument();
-    expect(screen.getByTitle('Id della cartella: folder-documenti')).toHaveTextContent('cartella impostata');
-    expect(screen.getByText(/171 fatture importate in tutto/)).toBeInTheDocument();
+    expect(await screen.findByText('Attiva')).toBeInTheDocument();
+    expect(screen.getByText('186')).toBeInTheDocument();
+    expect(screen.getByText(/2215 file elaborati in tutto/)).toBeInTheDocument();
+    expect(api.get).not.toHaveBeenCalledWith('/api/fatture/drive/status');
     expect(api.post).not.toHaveBeenCalled();
   });
+
+  it('importa tutto: svuota la cartella e poi dice cosa resta', async () => {
+    api.get
+      .mockResolvedValueOnce({ data: { attiva: true, giro_in_corso: false, ultimo_giro: {}, registro: {} } })
+      .mockResolvedValue({ data: {
+        attiva: true, giro_in_corso: false,
+        ultimo_giro: { last_result: { elaborati: 36, errori: 0, restanti: 0 } }, registro: {},
+      } });
+    api.post.mockResolvedValue({ data: { avviato: true, tutto: true } });
+
+    render(<DriveFattureImportCard />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Importa tutto da Drive' }));
+
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith('/api/documenti/cartella-unica/giro?tutto=true')
+    );
+    expect(await screen.findByText(/In cartella restano 0 file/, {}, { timeout: 7000 }))
+      .toBeInTheDocument();
+  }, 10000);
 
   it('carica l anno operativo senza importare file automaticamente', async () => {
     api.get.mockResolvedValue({ data: { anno: 2026 } });
@@ -59,8 +80,7 @@ describe('Controlli import Drive in Documenti', () => {
       .mockResolvedValueOnce({ data: { anno: 2025 } })
       .mockResolvedValueOnce({
         data: { stato: 'completato', anno: 2025, risultato: {
-          anno: 2025, sync_fatture: { imported: 1 },
-          sync_corrispettivi: { skipped: 'non configurato' },
+          anno: 2025, drive: { elaborati: 1, errori: 0, restanti: 0 },
           promozione_archivio: { fatture_promosse: 0, corrispettivi_promossi: 0 },
         } },
       });

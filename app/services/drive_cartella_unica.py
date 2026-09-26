@@ -246,6 +246,7 @@ async def _giro(db) -> Dict[str, Any]:
             _elenca, service, radice(), campi, None, True)]
         in_coda += [{**f, "_da": cartelle[INBOX]} for f in await asyncio.to_thread(
             _elenca, service, cartelle[INBOX], campi, None, True)]
+        esito["in_coda_totale"] = len(in_coda)
         in_coda = ordina_coda(in_coda)[:_batch()]
         archivio = await asyncio.to_thread(_elenca, service, cartelle[ARCHIVIO], "id, md5Checksum")
     except Exception as exc:
@@ -316,8 +317,45 @@ async def _giro(db) -> Dict[str, Any]:
                 logger.warning("[cartella-unica] %s non spostato in ERRORI: %s: %s",
                                nome, type(exc2).__name__, exc2)
     esito["dettagli"] = esito["dettagli"][:100]
+    esito["restanti"] = max(0, int(esito.get("in_coda_totale") or 0) - esito["letti"])
     await _salva_stato(db, esito)
     return esito
+
+
+_svuotamento: Dict[str, Any] = {"in_corso": False}
+
+
+def svuotamento_in_corso() -> bool:
+    return bool(_svuotamento.get("in_corso"))
+
+
+async def svuota(db, *, max_giri: int = 60) -> Dict[str, Any]:
+    """Un giro dopo l'altro finche' la cartella non e' vuota.
+
+    Il job dei 15 minuti prende un lotto per volta; questo e' il pulsante
+    «importa tutto adesso» di Documenti > Import. Si ferma quando non resta
+    niente, quando un giro non legge nulla o fallisce (un file che torna
+    sempre indietro non lo fa girare all'infinito).
+    """
+    if _svuotamento.get("in_corso"):
+        return {"saltato": "svuotamento_in_corso"}
+    _svuotamento["in_corso"] = True
+    totale = {"giri": 0, "letti": 0, "elaborati": 0, "errori": 0, "doppioni_cestinati": 0}
+    try:
+        for _ in range(max_giri):
+            esito = await giro(db)
+            if esito.get("saltato") or esito.get("errore"):
+                totale["fermato_da"] = esito.get("saltato") or esito.get("errore")
+                break
+            totale["giri"] += 1
+            for chiave in ("letti", "elaborati", "errori", "doppioni_cestinati"):
+                totale[chiave] += int(esito.get(chiave) or 0)
+            totale["restanti"] = int(esito.get("restanti") or 0)
+            if not esito.get("letti") or not totale["restanti"]:
+                break
+        return totale
+    finally:
+        _svuotamento["in_corso"] = False
 
 
 async def _salva_stato(db, esito: Dict[str, Any]) -> None:

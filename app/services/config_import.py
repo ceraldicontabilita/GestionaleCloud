@@ -136,33 +136,28 @@ async def promuovi_archivio_anno(db, anno: int) -> Dict[str, Any]:
 
 
 async def importa_anno_da_drive(db, anno: int) -> Dict[str, Any]:
-    """Import "pulito per anno" (bottone Admin, richiesta utente 16/07/2026):
+    """Import "pulito per anno" (bottone di Documenti > Import):
 
     1. imposta l'anno di importazione attivo;
-    2. lancia il sync Drive fatture e Drive corrispettivi (i file di anni
-       diversi finiscono in archivio storico, quelli dell'anno entrano);
-    3. promuove nel flusso attivo i documenti dell'anno già in archivio
-       (processati in passato quando era attivo un altro anno).
+    2. svuota la cartella unica Drive «DATI SOCIETA CERALDI», l'unico ingresso
+       Drive rimasto (i canali per sezione sono smontati: questo bottone li
+       chiamava ancora e rispondeva «Drive fatture non configurato»);
+    3. promuove nel flusso attivo i documenti dell'anno già in archivio.
     """
     await set_anno_importazione_attivo(db, anno)
 
-    from app.services import drive_invoice_ingest, drive_corrispettivi_ingest
+    from app.services import drive_cartella_unica
 
-    sync_fatture = None
-    sync_corrispettivi = None
-    if drive_invoice_ingest.is_configured():
-        sync_fatture = await drive_invoice_ingest.sync(db, target_year=anno)
-    if drive_corrispettivi_ingest.is_configured():
-        sync_corrispettivi = await drive_corrispettivi_ingest.sync(db)
+    if drive_cartella_unica.attivo():
+        drive = await drive_cartella_unica.svuota(db)
+    elif not drive_cartella_unica.radice():
+        drive = {"saltato": "cartella Drive non impostata (GOOGLE_DRIVE_DATI_FOLDER_ID)"}
+    else:
+        drive = {"saltato": "import Drive in pausa (DRIVE_CARTELLA_UNICA_IMPORT=false)"}
 
     promozione = await promuovi_archivio_anno(db, anno)
 
-    return {
-        "anno": anno,
-        "sync_fatture": sync_fatture or {"skipped": "Drive fatture non configurato"},
-        "sync_corrispettivi": sync_corrispettivi or {"skipped": "Drive corrispettivi non configurato"},
-        "promozione_archivio": promozione,
-    }
+    return {"anno": anno, "drive": drive, "promozione_archivio": promozione}
 
 
 async def _salva_stato_job(db, **campi) -> None:
