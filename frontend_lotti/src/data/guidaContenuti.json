@@ -6,7 +6,7 @@
    "gruppo": "Per iniziare",
    "titolo": "Come si entra (PIN, ruoli, uscita)",
    "indirizzo": "",
-   "scopo": "L'app si apre col tuo PIN personale. Una volta inserito, puoi passare liberamente tra Pasticceria, Rosticceria, Bar, Lavagna e Magazzino senza digitarlo a ogni cambio. La persona resta identificata per due ore; le pagine di amministrazione restano riservate agli amministratori.",
+   "scopo": "Il dipendente entra col proprio PIN personale e può passare tra Pasticceria, Rosticceria, Bar, Lavagna e Magazzino senza ridigitarlo a ogni cambio. L'amministratore entra dalla sessione del Gestionale, senza un secondo tastierino. La sessione termina con Esci o quando il server la rifiuta.",
    "passi": [
     "Inserisci il PIN sul tastierino: con 6 cifre entra da solo, con 4 premi Conferma.",
     "Il bottone «Esci» in alto a destra chiude tutto: al rientro serve di nuovo il PIN.",
@@ -895,7 +895,7 @@
    "indirizzo": "#personale — solo admin",
    "scopo": "I dati dell'azienda (finiscono su tutti i PDF), i PIN degli operatori, i nuovi dipendenti dal gestionale da abilitare al tablet, i libretti sanitari con le scadenze (l'app avvisa 30 giorni prima), e la configurazione delle stampanti.",
    "passi": [
-    "«Mostra PIN» (col PIN amministratore) fa vedere i PIN di tutti in chiaro.",
+    "Le funzioni riservate richiedono una sessione amministratore valida del Gestionale, non un secondo PIN.",
     "I dipendenti nuovi registrati sul Gestionale Cloud compaiono qui: assegni PIN e postazione con «Abilita»."
    ],
    "bottoni": [

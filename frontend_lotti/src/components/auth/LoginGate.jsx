@@ -36,8 +36,8 @@ export default function LoginGate({ children }) {
       setState("open");
       return;
     }
-    // PIN valido nelle ultime 2 ORE (localStorage): entra senza richiederlo,
-    // su qualunque pagina/scheda. Scadute le 2 ore → si richiede il PIN,
+    // Sessione locale valida: entra senza richiedere di nuovo il PIN,
+    // su qualunque pagina/scheda. Un vero 401 o «Esci» richiude il cancello,
     // anche se il token tecnicamente vive ancora. (richiesta Enzo 02/07/2026)
     if (gateStillValid()) { setState("open"); return; }
 

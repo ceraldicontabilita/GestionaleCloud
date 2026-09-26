@@ -45,6 +45,9 @@ describe('Sessione frontend fail-closed', () => {
   });
 
   it('cancella il token solo dopo logout confermato', async () => {
+    localStorage.setItem('admin_token', 'token-menu');
+    localStorage.setItem('pt_token', 'token-hr');
+    localStorage.setItem('lotti_token', 'token-lotti');
     api.get.mockResolvedValue({ data: { user: { role: 'admin', email: 'test@example.invalid' } } });
     api.post.mockResolvedValue({ data: { ok: true } });
     render(<AuthProvider><Probe /></AuthProvider>);
@@ -52,6 +55,9 @@ describe('Sessione frontend fail-closed', () => {
     await screen.findByText('admin');
     fireEvent.click(screen.getByRole('button', { name: 'Logout' }));
     await waitFor(() => expect(localStorage.getItem('auth_token')).toBeNull());
+    expect(localStorage.getItem('admin_token')).toBeNull();
+    expect(localStorage.getItem('pt_token')).toBeNull();
+    expect(localStorage.getItem('lotti_token')).toBeNull();
   });
 
   it('un ruolo sconosciuto non ottiene privilegi nel frontend', async () => {

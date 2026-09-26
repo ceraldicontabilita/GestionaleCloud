@@ -1,7 +1,7 @@
 // Layout dell'app principale: header, barra di navigazione e cornice pagina.
 // Estratto da App.js (fase 2 ristrutturazione 24/07/2026) — SOLO presentazione:
 // stato e logica restano in App.js / useAppNavigation.
-import { FileText, HelpCircle, LayoutDashboard, LogOut } from "lucide-react";
+import { ArrowLeft, FileText, HelpCircle, LayoutDashboard, LogOut } from "lucide-react";
 import SelettoreSezioni from "../components/shared/SelettoreSezioni";
 import { isAdmin, logout } from "../auth";
 import { conferma } from "../utils/conferma";
@@ -56,6 +56,16 @@ export default function AppLayout({ activeTab, onTabChange, ordiniPendenti, onSu
 
         {/* Azioni header */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          <a
+            href="/"
+            title="Torna al Gestionale"
+            aria-label="Torna al Gestionale"
+            data-testid="btn-torna-gestionale"
+            style={{ ...btnHeaderStyle, textDecoration: "none" }}
+          >
+            <ArrowLeft size={15} />
+            <span className="g-header-btn-label" style={{ whiteSpace: "nowrap" }}>Gestionale</span>
+          </a>
           {!amministratore && <button onClick={() => { window.location.hash = "tablet/home"; }} style={btnHeaderStyle}>← Reparti</button>}
           {amministratore && <>
           {activeTab !== "dashboard" && (

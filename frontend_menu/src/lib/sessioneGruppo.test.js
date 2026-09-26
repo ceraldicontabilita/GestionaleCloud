@@ -29,4 +29,5 @@ describe('ingresso amministratore Menu dal Gestionale', () => {
   test('il login del Gestionale riporta alla gestione del menu', () => {
     expect(loginGestionale()).toBe('/login?next=%2Fmenu%2Fadmin');
   });
+
 });

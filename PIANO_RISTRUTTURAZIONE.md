@@ -1,6 +1,6 @@
 # Piano di ristrutturazione di GestionaleCloud
 
-**Documento operativo vivo, aggiornato il 23 settembre 2026.**
+**Documento operativo vivo, aggiornato il 26 settembre 2026.**
 
 - Baseline iniziale dell'audit: `8cf52bd269d8d1facb478e4a585fa8b01a5ec3ff`.
 - Baseline della bonifica misurata: `e283400164c0b9fb88ece13eb401fcde9cba1c42`.
@@ -253,6 +253,7 @@ Prima di migrare: conteggi per stato/anno, originali/hash, relazioni, saldi, bac
 | RST-0408 | ⚪ | Unica pagina Gestione PIN e accessi nel Gestionale |
 | RST-0409 | ⚪ | Rimuovere router/login duplicati dopo verifica e revoca centrali |
 | RST-0410 | ⚪ | Sostituire gestione manuale PIN_HASH_ADMIN in Render con rotazione centrale e bootstrap sicuro |
+| RST-0411 | 🟡 | Audit auth sul `main` `b1673d61`: rimosse le scritture anonime Lotti e il login PIN autonomo Menu; logout browser condiviso per ERP/HR/Lotti/Menu. Test mirati backend 48 verdi, ERP 4, Lotti 9, Menu 4 e build ERP/Lotti/Menu verdi. Restano aperti revoca server-side comune, token Lotti nelle query string ed elenco pubblico HR. Ramo `codex/audit-architettura`; nessuna PR, merge o prova live ancora dichiarata |
 
 ### Fase 5: fattura e ciclo interdominio
 
@@ -333,7 +334,7 @@ Accettazione: stesso ID visibile da HR, fascicolo, salari, TFR e banca; reimport
 | RST-0903 | ⚪ | Una toolchain Vite |
 | RST-0904 | ⚪ | Client API/query comune e invalidazione cache |
 | RST-0905 | ⚪ | Unico AuthProvider/RBAC |
-| RST-0906 | 🟡 | Design system, form, errori, toast/dialog comuni. Revisione UX estesa a tutte le pagine e sezioni ERP, HR, Lotti e Menu: gerarchia, scopo, stati vuoti/errore, provenienza dei dati, leggibilità, focus/tocco e mobile. Partire dai componenti e flussi vivi, verificando ogni area; la singola vista Galatea non chiude questa voce |
+| RST-0906 | 🟡 | Design system, form, errori, toast/dialog comuni. Revisione UX estesa a tutte le pagine e sezioni ERP, HR, Lotti e Menu: gerarchia, scopo, stati vuoti/errore, provenienza dei dati, leggibilità, focus/tocco e mobile. Nel ramo `codex/audit-architettura` Impostazioni/Controllo dati Lotti sono sempre visibili all'admin e «Torna al Gestionale» è presente nel layout e nel kiosk, con 2 regressioni UI verdi; nessuna prova live ancora. La singola vista Galatea non chiude questa voce |
 | RST-0907 | ⚪ | PinModal nel vero shared, senza nuove copie |
 
 ### Fase 9B: porting

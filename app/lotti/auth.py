@@ -125,30 +125,6 @@ PUBLIC_PREFIXES = (
     "/api/foto",  # immagini servite da Mongo: i tag <img> non mandano il token
 )
 
-# Scritture che gli operatori fanno DA TABLET senza login JWT (entrano col PIN
-# del kiosk, non con token). Restano aperte finché il fronte non propaga il
-# token anche lì; tutte le ALTRE scritture invece esigono token da subito.
-# Solo il GESTO OPERATIVO del tablet, non l'amministrazione delle schede.
-# (es: /scheda/.../registra apre il singolo timbro; il PUT /scheda/... che
-#  riscrive l'intero registro, la config e il DELETE lotto esigono token.)
-def _scrittura_tablet_consentita(path: str, method: str) -> bool:
-    P = "/api"
-    # Le registrazioni HACCP (temperature, sanificazione, cottura) NON sono
-    # piu' qui: le fa solo chi ha una sessione, e senza token erano un
-    # oracolo anonimo per indovinare i PIN (audit 25/09/2026, SEC-01).
-    # richiesta bar -> lavagna magazzino: crea(POST), evadi(PUT .../ok), cancella(DELETE)
-    if path.startswith(P + "/magazzino-bar/richieste"):
-        return True
-    # creazione lotto / produzione da tablet (POST puro, NON delete/put admin)
-    if path == P + "/lotti" and method == "POST":
-        return True
-    if path == P + "/gelati/produzioni" and method == "POST":
-        return True
-    if path.startswith(P + "/vendita-banco") and method == "POST":
-        return True
-    return False
-
-
 def _percorso_api(request: Request) -> str:
     """Percorso della richiesta RELATIVO all'app Lotti.
 
@@ -209,14 +185,15 @@ def automation_secret_valid(request: Request) -> bool:
 
 
 async def auth_dependency(request: Request):
-    """Gate selettivo:
+    """Gate unico dell'app Lotti:
       - preflight CORS e rotte pubbliche: passano
-      - GET (letture): passano (nessuno resta chiuso fuori)
-      - scritture nelle aree-tablet (WRITE_PUBLIC): passano finché il fronte non
-        propaga il token, ma SOLO quelle
-      - ogni ALTRA scrittura (POST/PUT/DELETE): esige token valido SEMPRE,
-        anche se AUTH_ENFORCE è spento -> la porta è chiusa a chiave da subito
+      - ogni scrittura esige sempre un token valido, anche se AUTH_ENFORCE è
+        spento per un'emergenza sulle sole letture
       - se AUTH_ENFORCE è attivo: anche le letture esigono token
+
+    Il frontend tablet installa l'interceptor Axios prima di mostrare le aree
+    operative: non esiste più alcuna compatibilità che giustifichi mutazioni
+    anonime. L'identità dell'operatore deve accompagnare ogni dato HACCP.
     """
     if request.method == "OPTIONS":
         return
@@ -246,10 +223,6 @@ async def auth_dependency(request: Request):
     metodo_di_scrittura = request.method in ("POST", "PUT", "DELETE", "PATCH")
 
     if metodo_di_scrittura:
-        # scrittura senza token: ammessa solo per il gesto operativo del tablet
-        if _scrittura_tablet_consentita(path, request.method):
-            return
-        # tutto il resto delle scritture è BLINDATO subito
         raise HTTPException(status_code=401, detail="Autenticazione richiesta per questa operazione")
 
     # è una lettura (GET/HEAD): blocca solo se l'enforcement è acceso

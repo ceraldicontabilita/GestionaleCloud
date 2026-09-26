@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { pulisciSessioneGruppoBrowser } from '../../../frontend_shared/SessioneGruppo';
 
 // Sessione unica del gruppo: l'amministratore entra nel Gestionale una volta
 // (PIN piu' MFA) e da li' apre il Menu senza un secondo PIN. Il backend legge
@@ -29,11 +30,11 @@ export function loginGestionale(destinazione = DESTINAZIONE_ADMIN) {
 // togliere solo il token del Menu non farebbe uscire nessuno, perche' la
 // pagina d'ingresso lo ricreerebbe dal cookie del Gestionale.
 export async function esciDalGruppo() {
-  localStorage.removeItem('admin_token');
   try {
     await axios.post('/api/auth/logout', {}, { withCredentials: true, timeout: 10000 });
   } catch {
-    // il token del Menu e' gia' tolto: il login del Gestionale resta la via d'uscita
+    // La pulizia locale resta necessaria anche se il backend non risponde.
   }
+  pulisciSessioneGruppoBrowser();
   window.location.assign('/login');
 }
