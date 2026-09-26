@@ -348,6 +348,9 @@ async def importa_pdf_bonifico(
         }
         if isinstance(aggiornamento.get("data"), datetime):
             aggiornamento["data"] = aggiornamento["data"].isoformat()
+        aggiornamento["parser_completo"] = bool(
+            aggiornamento.get("importo") and beneficiario.get("nome") and aggiornamento.get("data")
+        )
         aggiornamento["source_file"] = filename
         aggiornamento["updated_at"] = datetime.now(timezone.utc).isoformat()
         await db["bonifici_transfers"].update_one(

@@ -230,6 +230,19 @@ def _extract_transfer_table_row(lines: List[str]) -> Dict[str, Any]:
     return {}
 
 
+def _nome_senza_indirizzo(value: Optional[str]) -> Optional[str]:
+    """Toglie CAP e citta' scritti sulla stessa riga del nome.
+
+    Nella ricevuta Banco BPM «REGISTRIAMO A VOSTRO DEBITO A FAVORE DI:» la
+    riga del beneficiario e' ``Russo Carmine  80100 napoli``: con il CAP
+    dentro il nome veniva scartato come non valido e il bonifico restava
+    senza beneficiario. Si taglia al primo doppio spazio o al CAP.
+    """
+    if not value:
+        return value
+    return re.split(r"\s{2,}|\s+\d{5}\b", value.strip(), maxsplit=1)[0].strip() or None
+
+
 def _is_invalid_person_value(value: Optional[str]) -> bool:
     """Valida un nome senza intervalli Unicode dipendenti dalla codifica."""
     if not value:
@@ -296,9 +309,9 @@ def extract_transfers_from_text(text: str, filename: str = "") -> List[Dict[str,
     # Cerca nomi
     ord_nome = None
     ben_nome = None
-    ben_nome = table_row.get("beneficiario_nome") or _value_after_label(
+    ben_nome = table_row.get("beneficiario_nome") or _nome_senza_indirizzo(_value_after_label(
         lines, r"beneficiario|a\s+favore\s+di|destinatario|intestatario\s+beneficiario"
-    )
+    ))
     if _is_invalid_person_value(ben_nome):
         ben_nome = metadata_file.get("beneficiario_nome")
     ord_nome = _value_after_label(lines, r"ordinante|disponente|intestatario\s+conto")
