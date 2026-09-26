@@ -299,10 +299,15 @@ def confronta_con_archivio(api: List[Dict[str, Any]], archivio: List[Dict[str, A
     """nuovi / gia' presenti / DA_VERIFICARE contro ``estratto_conto_movimenti``.
 
     Le coppie le trova ``accoppia`` (giorno, segno, importo al centesimo e
-    quante volte compaiono). Una coppia confermata da riferimento della banca,
-    descrizione o numero d'assegno e' «gia' presente»; una coppia fatta solo per
-    data e importo e' DA_VERIFICARE. Il confronto vale sul periodo che la banca
-    ha restituito: prima di quella data l'archivio non si giudica.
+    quante volte compaiono): e' la regola dei due export dello stesso conto,
+    e le parole diverse non la smentiscono — la banca scrive «VERS. CONTANTI»,
+    il vecchio archivio «VERSAMENTO CONTANTI». Fino al 26/09/2026 una coppia
+    senza testo uguale restava fuori come DA_VERIFICARE: 41 movimenti gia' in
+    archivio segnalati come «non importati» a ogni lettura. Resta dubbia solo
+    la coppia che si **contraddice**: entrambe le righe portano codici della
+    banca e nessuno e' in comune (gli assegni con numeri diversi non si
+    accoppiano nemmeno). Il confronto vale sul periodo che la banca ha
+    restituito: prima di quella data l'archivio non si giudica.
     """
     from app.services import doppioni_estratto_conto as doppioni
 
@@ -315,13 +320,11 @@ def confronta_con_archivio(api: List[Dict[str, Any]], archivio: List[Dict[str, A
     gia, dubbi, abbinati = [], [], set()
     for nuovo, esistente in doppioni.accoppia(api, archivio_p):
         abbinati.add(id(nuovo))
-        a_n, a_e = doppioni.numero_assegno(nuovo), doppioni.numero_assegno(esistente)
-        certo = (
-            doppioni.stesso_riferimento(nuovo, esistente)
-            or doppioni.descrizione_canonica(nuovo) == doppioni.descrizione_canonica(esistente)
-            or (a_n and a_n == a_e)
+        contraddice = (
+            doppioni.codici(nuovo) and doppioni.codici(esistente)
+            and not doppioni.stesso_riferimento(nuovo, esistente)
         )
-        (gia if certo else dubbi).append({"banca": nuovo, "archivio_id": esistente.get("id")})
+        (dubbi if contraddice else gia).append({"banca": nuovo, "archivio_id": esistente.get("id")})
     return {
         "periodo": [inizio, fine],
         "nuovi": [m for m in api if id(m) not in abbinati],
@@ -526,8 +529,8 @@ async def importa_nuovi(
 ) -> Dict[str, Any]:
     """Importa soltanto i movimenti che il confronto giudica realmente nuovi.
 
-    Le coppie ``DA_VERIFICARE`` restano fuori: giorno e importo non bastano per
-    decidere che una riga sia nuova o duplicata. La fonte API e' operativa e
+    Le coppie ``DA_VERIFICARE`` (riferimenti della banca in contraddizione)
+    restano fuori: non si decide a caso se sia nuova o duplicata. La fonte API e' operativa e
     resta provvisoria finche' non arriva l'estratto conto ufficiale PDF.
     """
     from app.routers.bank.estratto_conto import bank_operation_identity

@@ -149,10 +149,8 @@ def test_anteprima_col_motore_dei_doppioni_e_nessuna_scrittura():
     prima = run(db.estratto_conto_movimenti.count_documents({}))
     esito = run(eb.anteprima(db, banca, giorni=5))
     assert esito["dry_run"] is True
-    assert esito["conteggi"] == {"letti": 3, "nuovi": 1, "gia_presenti": 1, "da_verificare": 1}
+    assert esito["conteggi"] == {"letti": 3, "nuovi": 1, "gia_presenti": 2, "da_verificare": 0}
     assert esito["nuovi"][0]["descrizione_originale"] == "ACCREDITO NUOVO"
-    # stessa data e importo ma nessun riferimento comune: DA_VERIFICARE, non «gia' presente»
-    assert esito["da_verificare"][0]["archivio_id"] == "b"
     assert run(db.estratto_conto_movimenti.count_documents({})) == prima
 
 
@@ -173,7 +171,7 @@ def test_importa_solo_nuovi_esclude_dubbi_ed_e_idempotente():
 
     primo = run(eb.importa_nuovi(db, banca, giorni=5))
     assert primo["importati"] == 1
-    assert primo["da_verificare_esclusi"] == 1
+    assert primo["gia_presenti"] == 1 and primo["da_verificare_esclusi"] == 0
     importato = run(db.estratto_conto_movimenti.find_one({"fonte": "enable_banking"}))
     assert importato["descrizione_originale"] == "ACCREDITO NUOVO"
     assert importato["livello_evidenza"] == "provvisoria"
@@ -235,3 +233,40 @@ def test_giro_automatico_limite_della_banca_non_rompe(monkeypatch):
     esito = run(eb.giro_automatico(db, banca))
     assert esito["errore"] == "limite_banca"
     assert run(eb.leggi_sessione(db))["giro_automatico"]["errore"] == "limite_banca"
+
+
+# ── stesso conto, parole diverse (26/09/2026: 41 «non importati» gia' in archivio)
+
+def _a(id_, data, importo, tipo, testo):
+    return {"id": id_, "data": data, "importo": importo, "tipo": tipo,
+            "banca": "Banco BPM", "descrizione": testo}
+
+
+def _b(data, importo, tipo, testo):
+    return {"data": data, "importo": importo if tipo == "entrata" else -importo,
+            "tipo": tipo, "descrizione_originale": testo}
+
+
+def test_parole_diverse_stesso_giorno_e_importo_sono_gia_presenti():
+    archivio = [_a("L1", "2026-07-10", 4600.0, "entrata", "VERSAMENTO CONTANTI"),
+                _a("L2", "2026-07-11", 1.1, "uscita", "COMM. SU BONIFICO")]
+    api = [_b("2026-07-10", 4600.0, "entrata", "VERS. CONTANTI"),
+           _b("2026-07-11", 1.1, "uscita", "COMMISSIONI - COMMISSIONI SU BONIFICI")]
+    esito = eb.confronta_con_archivio(api, archivio)
+    assert len(esito["gia_presenti"]) == 2
+    assert esito["da_verificare"] == [] and esito["nuovi"] == []
+
+
+def test_il_secondo_movimento_uguale_dello_stesso_giorno_resta_nuovo():
+    archivio = [_a("L1", "2026-07-10", 1.1, "uscita", "COMMISSIONI")]
+    api = [_b("2026-07-10", 1.1, "uscita", "COMMISSIONI"),
+           _b("2026-07-10", 1.1, "uscita", "COMMISSIONI")]
+    esito = eb.confronta_con_archivio(api, archivio)
+    assert len(esito["gia_presenti"]) == 1 and len(esito["nuovi"]) == 1
+
+
+def test_riferimenti_della_banca_diversi_restano_da_verificare():
+    archivio = [_a("L1", "2026-07-10", 500.0, "uscita", "BONIFICO RIF. MB0B11111111/90000001 ROSSI")]
+    api = [_b("2026-07-10", 500.0, "uscita", "BONIFICO RIF. MB0B22222222/90000002 BIANCHI")]
+    esito = eb.confronta_con_archivio(api, archivio)
+    assert len(esito["da_verificare"]) == 1 and esito["gia_presenti"] == []
