@@ -23,6 +23,20 @@ def _run(c):
         loop.close()
 
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _anno_attivo_2026(monkeypatch):
+    """Le fatture di prova sono del 2026: l'anno attivo non si legge dal db finto."""
+    import app.services.config_import as config_import
+
+    async def _anno(db):
+        return 2026
+
+    monkeypatch.setattr(config_import, "get_anno_importazione_attivo", _anno)
+
+
 class _FakeDb:
     def __getitem__(self, name):
         raise AssertionError(f"non atteso accesso diretto a db[{name!r}] in questo test")
@@ -217,3 +231,22 @@ def test_upload_automatico_decodifica_correttamente_xml_non_utf8(monkeypatch):
     _run(documenti_mod.upload_documento_automatico(file=upload))
 
     assert "Società Àccentata" in xml_raw_ricevuto["value"]
+
+
+def test_upload_automatico_fattura_di_altro_anno_non_entra(monkeypatch):
+    """Stessa regola del giro Drive: solo l'anno attivo entra nel gestionale,
+    l'originale di un altro anno resta su Drive e non e' un errore."""
+    xml = _xml(_body("30", "100.00")).replace("2026-07-01", "2024-03-10").encode("utf-8")
+    upload = UploadFile(filename="vecchia.xml", file=io.BytesIO(xml))
+    monkeypatch.setattr(documenti_mod.Database, "get_db", staticmethod(lambda: _FakeDb()))
+
+    async def _mai(*a, **k):
+        raise AssertionError("una fattura del 2024 non deve arrivare al motore")
+
+    import app.routers.invoices.fatture_upload as fu_mod
+    monkeypatch.setattr(fu_mod, "process_fattura_to_db", _mai)
+
+    res = _run(documenti_mod.upload_documento_automatico(file=upload))
+
+    assert res["success"] is True and res["imported"] == 0
+    assert res["skipped_altro_anno"] == 1 and "2024" in res["message"]

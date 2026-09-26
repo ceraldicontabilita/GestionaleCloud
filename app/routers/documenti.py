@@ -3230,6 +3230,17 @@ async def avvia_giro_cartella_unica(
     return {"avviato": True}
 
 
+@router.get("/cartella-unica/simulazione")
+@handle_errors
+async def riepilogo_simulazione_cartella_unica(
+    _admin: Dict[str, Any] = Depends(richiedi_admin),
+) -> Dict[str, Any]:
+    """Come finirebbe ogni file se si migrasse oggi: per tipo, esito, non riconosciuti."""
+    from app.services import drive_cartella_unica_simulazione as sim
+
+    return await sim.riepilogo(Database.get_db())
+
+
 @router.get("/originale")
 @handle_errors
 async def apri_originale_cartella_unica(
@@ -3530,7 +3541,19 @@ async def upload_documento_automatico(
                 altri_body = parsed.pop("_altri_body", None) or []
                 importati = []
                 ultimo_errore_duplicato = None
+                # Stessa regola del giro Drive (process_xml_bytes): nel
+                # gestionale entra solo l'anno attivo, l'originale di un altro
+                # anno resta su Drive (decisione del titolare, 20/09/2026).
+                from app.services.config_import import get_anno_importazione_attivo
+
+                anno_attivo = await get_anno_importazione_attivo(db)
+                altro_anno = []
                 for body in [parsed] + altri_body:
+                    data_fattura = str(body.get("invoice_date") or "")
+                    anno_fattura = int(data_fattura[:4]) if data_fattura[:4].isdigit() else None
+                    if anno_fattura and anno_fattura != anno_attivo:
+                        altro_anno.append(anno_fattura)
+                        continue
                     try:
                         saved = await process_fattura_to_db(db, body, filename, xml_raw=xml_content)
                         importati.append(saved)
@@ -3544,6 +3567,13 @@ async def upload_documento_automatico(
                     result["imported"] = len(importati)
                     if len(importati) > 1:
                         result["message"] += f" (+{len(importati) - 1} fatture aggiuntive nello stesso file)"
+                elif altro_anno and ultimo_errore_duplicato is None:
+                    result["imported"] = 0
+                    result["skipped_altro_anno"] = len(altro_anno)
+                    result["message"] = (
+                        f"Fattura del {altro_anno[0]}: l'anno attivo e' il {anno_attivo}, "
+                        "non entra nel gestionale e l'originale resta su Drive"
+                    )
                 else:
                     # Tutte le fatture del file sono gia' in archivio: e' un
                     # doppione, non un errore (chi smista l'esito lo archivia).

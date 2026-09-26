@@ -115,6 +115,14 @@ services:
         sync: false
       - key: DRIVE_CARTELLA_UNICA_BATCH
         value: "25"
+      # Simulazione della migrazione (sola lettura): radice Drive da percorrere,
+      # vuota = spenta. Cambiare EDIZIONE rilegge tutto dopo una correzione.
+      - key: DRIVE_SIMULAZIONE_RADICE
+        sync: false
+      - key: DRIVE_SIMULAZIONE_EDIZIONE
+        value: "1"
+      - key: DRIVE_SIMULAZIONE_BATCH
+        value: "40"
       - key: GOOGLE_DRIVE_CEDOLINI_FOLDER_ID
         sync: false
       - key: GOOGLE_DRIVE_BONIFICI_FOLDER_ID
