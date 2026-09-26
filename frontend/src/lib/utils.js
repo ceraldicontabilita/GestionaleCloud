@@ -53,7 +53,7 @@ export const COLORS = {
   white: '#ffffff',
   grayLight: '#e6e3d9',
   grayBg: '#f2f0e9',
-  purple: '#6f583a',   // non nel design system ufficiale, mantenuto per pagine legacy che lo referenziano
+  bruno: '#6f583a',    // bruno caldo per le pagine che volevano un colore in piu' (si chiamava «purple»)
 };
 
 /* Theme alias: usato in diverse pagine legacy */

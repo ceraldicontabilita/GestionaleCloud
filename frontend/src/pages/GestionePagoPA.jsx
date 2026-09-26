@@ -404,8 +404,8 @@ export default function GestionePagoPA() {
                 style={{
                   padding: 16,
                   borderRadius: 8,
-                  border: '2px solid #e9d5ff',
-                  background: '#faf5ff',
+                  border: '2px solid #f7ebe4',
+                  background: '#f7ebe4',
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>

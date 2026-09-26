@@ -62,7 +62,7 @@ function AgenteCard({ agente, onRun }) {
           height="22"
           viewBox="0 0 24 24"
           fill="none"
-          stroke="#7dd3fc"
+          stroke="#3d8168"
           strokeWidth="2"
         >
           <circle cx="12" cy="12" r="3" />

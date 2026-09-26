@@ -6,7 +6,7 @@ import { PageHeader } from '../components/ds/PageHeader';
 import { useAuth } from '../contexts/AuthContext';
 
 const card = { background: '#fff', border: '1px solid #e6e3d9', borderRadius: 12, padding: 22, maxWidth: 760, margin: '0 auto' };
-const button = { border: 0, borderRadius: 8, background: '#0f2a4a', color: '#fff', padding: '11px 16px', fontWeight: 800, cursor: 'pointer' };
+const button = { border: 0, borderRadius: 8, background: '#2c2b28', color: '#fff', padding: '11px 16px', fontWeight: 800, cursor: 'pointer' };
 const input = { width: '100%', boxSizing: 'border-box', border: '1px solid #d0ccbe', borderRadius: 8, padding: '12px 14px', fontSize: 17, letterSpacing: 1, margin: '12px 0' };
 const setupActionRow = { display: 'flex', alignItems: 'stretch', flexWrap: 'wrap', gap: 10, marginTop: 12 };
 

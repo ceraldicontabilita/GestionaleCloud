@@ -7,17 +7,17 @@
 .documenti-hub__drive { margin: 0 0 1rem; padding: 1rem; border: 1px solid #e6e3d9; border-radius: 18px; background: #fff; }
 .documenti-hub__drive-card div { display: flex; flex-direction: column; gap: .2rem; min-width: 0; }
 .documenti-hub__drive-card small { color: #7a776e; }
-.documenti-hub__drive-sync { display: inline-flex; align-items: center; justify-content: center; gap: .45rem; min-height: 2.4rem; padding: .45rem .8rem; border: 1px solid #b8d4ee; border-radius: 10px; background: #f2f8ff; color: #155fa0; font: inherit; font-size: .86rem; font-weight: 700; cursor: pointer; }
-.documenti-hub__drive-sync:hover:not(:disabled) { border-color: #6ea7d7; background: #e7f3ff; }
+.documenti-hub__drive-sync { display: inline-flex; align-items: center; justify-content: center; gap: .45rem; min-height: 2.4rem; padding: .45rem .8rem; border: 1px solid #efd3c5; border-radius: 10px; background: #f7ebe4; color: #c15f3c; font: inherit; font-size: .86rem; font-weight: 700; cursor: pointer; }
+.documenti-hub__drive-sync:hover:not(:disabled) { border-color: #c15f3c; background: #f7ebe4; }
 .documenti-hub__drive-sync:focus-visible { outline: 3px solid rgba(91, 122, 107, .25); outline-offset: 2px; }
 .documenti-hub__drive-sync:disabled { cursor: wait; opacity: .7; }
 .documenti-hub__drive-sync .is-spinning { animation: documenti-drive-spin 900ms linear infinite; }
 .documenti-hub__drive-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: .6rem; }
-.documenti-hub__drive-card { display: flex; align-items: center; gap: .65rem; min-width: 0; padding: .7rem .8rem; border: 1px solid transparent; border-radius: 12px; background: #f6f8fa; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.documenti-hub__drive-card { display: flex; align-items: center; gap: .65rem; min-width: 0; padding: .7rem .8rem; border: 1px solid transparent; border-radius: 12px; background: #faf9f5; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .documenti-hub__drive-card:hover { border-color: #6f9180; background: #eef3ef; box-shadow: 0 5px 15px rgba(91, 122, 107, .10); }
 .documenti-hub__drive-card:focus-visible { outline: 3px solid rgba(91, 122, 107, .28); outline-offset: 2px; }
 .documenti-hub__drive-card strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.documenti-hub__drive-external { margin-left: auto; flex: 0 0 auto; color: #8896a4; }
+.documenti-hub__drive-external { margin-left: auto; flex: 0 0 auto; color: #a19d92; }
 .documenti-hub__drive-card:hover .documenti-hub__drive-external { color: #5b7a6b; }
 @keyframes documenti-drive-spin { to { transform: rotate(360deg); } }
 @media (max-width: 680px) {

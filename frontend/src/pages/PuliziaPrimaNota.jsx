@@ -509,7 +509,7 @@ function DuplicateList({ title, registro, groups }) {
 
 function MovementRow({ label, registro, movement }) {
   return (
-    <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #dbe3ee', fontSize: 12, lineHeight: 1.55 }}>
+    <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #e6e3d9', fontSize: 12, lineHeight: 1.55 }}>
       <strong>{label}:</strong> {movement.data || 'data assente'} · {formatEuroD(movement.importo || 0)} · {movement.numero_fattura || movement.fattura_id || movement.riferimento || 'senza riferimento'}
       <br />{movement.descrizione || 'descrizione assente'}
       <br /><span style={{ color: '#7a776e' }}>ID {movement.id || 'assente'} · fonte {movement.source || 'non indicata'}</span>

@@ -136,7 +136,7 @@ export default function AssociaMovimentoBanca({ fattura, onChiudi, onAssociato }
               disabled={Boolean(inCorso)}
               style={{
                 padding: '8px 14px', borderRadius: 8, border: 'none',
-                background: '#0f2a4a', color: '#fff', fontWeight: 700,
+                background: '#2c2b28', color: '#fff', fontWeight: 700,
                 fontSize: 12.5, cursor: inCorso ? 'wait' : 'pointer',
                 opacity: inCorso && inCorso !== m.id ? 0.5 : 1,
               }}

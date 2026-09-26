@@ -12,7 +12,7 @@ import { useConfirm } from '../components/ui/ConfirmDialog';
  * automatico dall'estratto conto (idempotente) leggendo la causale.
  */
 
-const BLU = '#c15f3c';
+const TERRACOTTA = '#c15f3c';
 const VERDE = '#16a34a';
 const ROSSO = '#dc2626';
 const eur = v => formatEuroD(v || 0);
@@ -101,7 +101,7 @@ export default function FinanziamentoSoci() {
         <button
           onClick={() => carica(true)} disabled={scanning}
           data-testid="scan-finanziamenti-soci"
-          style={{ background: BLU, color: 'white', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: scanning ? 0.6 : 1 }}
+          style={{ background: TERRACOTTA, color: 'white', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: scanning ? 0.6 : 1 }}
         >
           {scanning ? '⏳ Scansione…' : '🔄 Aggiorna da estratto conto'}
         </button>
@@ -131,9 +131,9 @@ export default function FinanziamentoSoci() {
               <div
                 key={s.socio_id}
                 data-testid={`scheda-socio-${s.socio_id}`}
-                style={{ background: 'white', borderRadius: 12, border: '1px solid #e6e3d9', borderLeft: `4px solid ${s.saldo >= 0 ? BLU : ROSSO}`, padding: '11px 14px' }}
+                style={{ background: 'white', borderRadius: 12, border: '1px solid #e6e3d9', borderLeft: `4px solid ${s.saldo >= 0 ? TERRACOTTA : ROSSO}`, padding: '11px 14px' }}
               >
-                <div style={{ fontWeight: 800, color: BLU, fontSize: 14.5 }}>👤 {s.nome}</div>
+                <div style={{ fontWeight: 800, color: TERRACOTTA, fontSize: 14.5 }}>👤 {s.nome}</div>
                 <div style={{ display: 'grid', gap: 3, margin: '8px 0' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
                     <span style={{ color: '#7a776e' }}>Apporti</span>
@@ -145,7 +145,7 @@ export default function FinanziamentoSoci() {
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, borderTop: '1px dashed #e6e3d9', paddingTop: 4 }}>
                     <span style={{ fontWeight: 700, color: '#4c4a44' }}>Credito residuo</span>
-                    <b style={{ color: s.saldo >= 0 ? BLU : ROSSO, fontFamily: 'ui-monospace, Menlo, monospace' }}>{eur(s.saldo)}</b>
+                    <b style={{ color: s.saldo >= 0 ? TERRACOTTA : ROSSO, fontFamily: 'ui-monospace, Menlo, monospace' }}>{eur(s.saldo)}</b>
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 6 }}>
@@ -158,7 +158,7 @@ export default function FinanziamentoSoci() {
                   <button
                     onClick={() => { setManuale({ socio_id: s.socio_id, nome: s.nome }); setErrore(''); }}
                     title="Aggiungi movimento manuale"
-                    style={{ background: BLU, color: 'white', border: 'none', borderRadius: 7, padding: '6px 10px', fontSize: 12, cursor: 'pointer', fontWeight: 700 }}
+                    style={{ background: TERRACOTTA, color: 'white', border: 'none', borderRadius: 7, padding: '6px 10px', fontSize: 12, cursor: 'pointer', fontWeight: 700 }}
                   >
                     ➕
                   </button>
@@ -201,7 +201,7 @@ export default function FinanziamentoSoci() {
             <span style={{ display: 'flex', gap: 14, fontFamily: 'ui-monospace, Menlo, monospace' }}>
               <span style={{ color: VERDE }}>+{eur(totale.apporti)}</span>
               <span style={{ color: ROSSO }}>−{eur(totale.rimborsi)}</span>
-              <b style={{ color: totale.saldo >= 0 ? BLU : ROSSO }}>= {eur(totale.saldo)}</b>
+              <b style={{ color: totale.saldo >= 0 ? TERRACOTTA : ROSSO }}>= {eur(totale.saldo)}</b>
             </span>
           </div>
         </>
@@ -213,7 +213,7 @@ export default function FinanziamentoSoci() {
           style={{ position: 'fixed', inset: 0, background: 'rgba(20, 20, 19,0.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 14 }}
         >
           <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: 14, padding: 18, width: '100%', maxWidth: 400 }}>
-            <h3 style={{ margin: '0 0 10px', fontSize: 15, color: BLU }}>➕ Movimento — {manuale.nome}</h3>
+            <h3 style={{ margin: '0 0 10px', fontSize: 15, color: TERRACOTTA }}>➕ Movimento — {manuale.nome}</h3>
             <div style={{ display: 'grid', gap: 9 }}>
               <select value={form.tipo} onChange={e => setForm({ ...form, tipo: e.target.value })} style={campo}>
                 <option value="apporto">Apporto (il socio finanzia)</option>
@@ -235,7 +235,7 @@ export default function FinanziamentoSoci() {
                 <button onClick={() => setManuale(null)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #d0ccbe', background: 'white', cursor: 'pointer' }}>
                   Annulla
                 </button>
-                <button onClick={salvaManuale} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: BLU, color: 'white', fontWeight: 700, cursor: 'pointer' }}>
+                <button onClick={salvaManuale} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: TERRACOTTA, color: 'white', fontWeight: 700, cursor: 'pointer' }}>
                   💾 Salva
                 </button>
               </div>

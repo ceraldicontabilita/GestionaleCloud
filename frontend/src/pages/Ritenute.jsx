@@ -11,7 +11,7 @@ import { PageHeader } from '../components/ds/PageHeader';
  * puntuale, con ravvedimento (8906+1989), in ritardo senza ravvedimento.
  */
 
-const BLU = '#c15f3c';
+const TERRACOTTA = '#c15f3c';
 const STATI = {
   da_pagare: { label: 'Da pagare', bg: '#f7eeda', fg: '#92400e' },
   scaduta_da_versare: { label: '⚠️ SCADUTA da versare', bg: '#f8e5e2', fg: '#991b1b' },
@@ -67,7 +67,7 @@ export default function Ritenute() {
         actions={
           <button
             onClick={carica} disabled={loading}
-            style={{ background: BLU, color: 'white', border: 'none', borderRadius: 8, padding: '9px 16px', fontWeight: 700, cursor: 'pointer', opacity: loading ? 0.6 : 1 }}
+            style={{ background: TERRACOTTA, color: 'white', border: 'none', borderRadius: 8, padding: '9px 16px', fontWeight: 700, cursor: 'pointer', opacity: loading ? 0.6 : 1 }}
           >
             {loading ? 'Aggiornamento…' : 'Aggiorna vista'}
           </button>
@@ -89,14 +89,14 @@ export default function Ritenute() {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 14 }}>
-        <div style={{ background: 'white', border: '1px solid #e6e3d9', borderLeft: `4px solid ${BLU}`, borderRadius: 12, padding: '10px 14px' }}>
+        <div style={{ background: 'white', border: '1px solid #e6e3d9', borderLeft: `4px solid ${TERRACOTTA}`, borderRadius: 12, padding: '10px 14px' }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: '#7a776e', textTransform: 'uppercase' }}>Ritenute {anno}</div>
-          <div style={{ fontSize: 17, fontWeight: 800, color: BLU }}>{tutteLeRighe.length} — {eur(dati.totale_importo)}</div>
+          <div style={{ fontSize: 17, fontWeight: 800, color: TERRACOTTA }}>{tutteLeRighe.length} — {eur(dati.totale_importo)}</div>
         </div>
         {Object.entries(dati.per_stato || {}).map(([st, n]) => (
           <div key={st} style={{ background: 'white', border: '1px solid #e6e3d9', borderRadius: 12, padding: '10px 14px' }}>
             <div style={{ marginBottom: 4 }}>{badge(st)}</div>
-            <div style={{ fontSize: 17, fontWeight: 800, color: BLU }}>{n}</div>
+            <div style={{ fontSize: 17, fontWeight: 800, color: TERRACOTTA }}>{n}</div>
           </div>
         ))}
       </div>
@@ -116,7 +116,7 @@ export default function Ritenute() {
           {righe.map(r => (
             <div key={r.id} style={{ background: 'white', border: '1px solid #e6e3d9', borderLeft: '4px solid #d97706', borderRadius: 11, padding: '10px 12px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                <b style={{ fontSize: 13, color: BLU }}>{r.fornitore || '—'}</b>
+                <b style={{ fontSize: 13, color: TERRACOTTA }}>{r.fornitore || '—'}</b>
                 <b style={{ fontFamily: 'ui-monospace, Menlo, monospace' }}>{eur(r.importo)}</b>
               </div>
               <div style={{ fontSize: 12, color: '#7a776e', margin: '4px 0' }}>

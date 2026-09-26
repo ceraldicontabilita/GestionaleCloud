@@ -539,7 +539,7 @@ export default function GestioneCespiti() {
                   {fmt(riepilogoCespiti.totali.fondo_ammortamento)}
                 </p>
               </div>
-              <div style={styles.statBox('#faf5ff')}>
+              <div style={styles.statBox('#f7ebe4')}>
                 <p style={styles.statLabel()}>Netto</p>
                 <p style={styles.statValue()}>
                   {fmt(riepilogoCespiti.totali.valore_netto_contabile)}
@@ -919,7 +919,7 @@ export default function GestioneCespiti() {
           {riepilogoTFR && (
             <>
               <div style={{ ...styles.grid3, marginBottom: 12 }}>
-                <div style={styles.statBox('#eef2ff')}>
+                <div style={styles.statBox('#f7ebe4')}>
                   <p style={styles.statLabel()}>Fondo TFR</p>
                   <p style={styles.statValue()}>{fmt(riepilogoTFR.totale_fondo_tfr)}</p>
                 </div>

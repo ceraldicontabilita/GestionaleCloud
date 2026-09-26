@@ -545,7 +545,7 @@ export default function SituazioneFiscale() {
           <a href="/archivio-fiscale-drive.html" target="_blank" rel="noreferrer" style={{ padding: '9px 14px', borderRadius: 8, background: '#c15f3c', color: '#fff', textDecoration: 'none', fontWeight: 700 }}>Apri pagina HTML Drive</a>
         </div>}
         {tab === 'codici-tributo' && <>
-          {taxCodeMeta && <div style={{ margin: '0 0 14px', padding: '12px 14px', borderRadius: 10, background: '#eef6ff', border: '1px solid #c2ddd0' }}>
+          {taxCodeMeta && <div style={{ margin: '0 0 14px', padding: '12px 14px', borderRadius: 10, background: '#f7ebe4', border: '1px solid #c2ddd0' }}>
             <strong>Catalogo Agenzia delle Entrate:</strong> {taxCodeMeta.record_count} classificazioni · {taxCodeMeta.distinct_codes} codici distinti · acquisito il {taxCodeMeta.acquired_at || 'dato non disponibile'}
           </div>}
           <form onSubmit={event => { event.preventDefault(); setTaxCodeFilters({ query: taxCodeQuery, taxType: taxCodeType, context: taxCodeContext }); }}
@@ -581,7 +581,7 @@ export default function SituazioneFiscale() {
           </label>
           <Button variant="secondary" onClick={resetListFilters} disabled={!listQuery && !listYear && !listStatus}>Azzera filtri</Button>
         </section>
-        {tab === 'ader' && tabMeta && <div style={{ margin: '0 0 14px', padding: '12px 14px', borderRadius: 10, background: '#eef6ff', border: '1px solid #c2ddd0' }}>
+        {tab === 'ader' && tabMeta && <div style={{ margin: '0 0 14px', padding: '12px 14px', borderRadius: 10, background: '#f7ebe4', border: '1px solid #c2ddd0' }}>
           <strong>Ultimo archivio verificato:</strong> snapshot {tabMeta.snapshot_date || 'data non disponibile'} · {tabMeta.analytic_count || 0} posizioni · SHA-256 {String(tabMeta.dataset_sha256 || '').slice(0, 16)}…
         </div>}
         {tab === 'ader' && (aderRelated.ratePlans.length > 0 || aderRelated.settlements.length > 0) && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', gap: 12, marginBottom: 16 }}>

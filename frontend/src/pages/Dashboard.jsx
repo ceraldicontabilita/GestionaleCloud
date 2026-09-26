@@ -496,7 +496,7 @@ export default function Dashboard() {
                     {trend.chart_data.labels.map((l, i) => (
                       <Cell
                         key={l}
-                        fill={mese === i + 1 ? COLORS.primary : '#93b4d8'}
+                        fill={mese === i + 1 ? COLORS.primary : '#efd3c5'}
                         cursor="pointer"
                       />
                     ))}

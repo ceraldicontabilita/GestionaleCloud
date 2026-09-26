@@ -349,7 +349,7 @@ export function CartaSumUp({ dati, anno }) {
                 <th scope="col" style={{ padding: '9px 14px', textAlign: 'right' }}>Netto</th>
               </tr></thead>
               <tbody>{vendite.map(giorno => (
-                <tr key={giorno.data} style={{ borderTop: '1px solid #eef2f7', color: '#4c4a44', fontSize: 13 }}>
+                <tr key={giorno.data} style={{ borderTop: '1px solid #f6f4ee', color: '#4c4a44', fontSize: 13 }}>
                   <td style={{ padding: '10px 14px' }}>{formatDateIT(giorno.data)}</td>
                   <td style={{ padding: '10px 14px', textAlign: 'center' }}>{giorno.transazioni}</td>
                   <td style={{ padding: '10px 14px', textAlign: 'right' }}>{eur(giorno.vendite)}</td>
@@ -388,7 +388,7 @@ export function CartaSumUp({ dati, anno }) {
               </thead>
               <tbody>
                 {giorni.map(giorno => (
-                  <tr key={giorno.data} style={{ borderTop: '1px solid #eef2f7', color: '#4c4a44', fontSize: 13 }}>
+                  <tr key={giorno.data} style={{ borderTop: '1px solid #f6f4ee', color: '#4c4a44', fontSize: 13 }}>
                     <td style={{ padding: '10px 14px' }}>{formatDateIT(giorno.data)}</td>
                     <td style={{ padding: '10px 14px' }}>{(giorno.payout_ids || []).join(', ') || '—'}</td>
                     <td style={{ padding: '10px 14px', textAlign: 'center' }}>{giorno.numero_payout}</td>
@@ -1165,7 +1165,7 @@ function Registro({ tipo, dati, mese, onMese, selectedId = '', onRicarica, onMod
                 <React.Fragment key={m.id}>
                 {(i === 0 || righe[i - 1]?.data !== m.data) && (
                   <tr data-testid={`giorno-${m.data}`}>
-                    <td colSpan={tipo === 'cassa' ? 10 : 9} style={{ padding: '10px 12px 6px', background: '#e8eef6' }}>
+                    <td colSpan={tipo === 'cassa' ? 10 : 9} style={{ padding: '10px 12px 6px', background: '#f2f0e9' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: TERRACOTTA, color: 'white', borderRadius: 9, padding: '8px 12px', fontWeight: 800 }}>
                         <span>📅 {formatDateIT(m.data)}</span>
                         <span style={{ fontFamily: 'ui-monospace, Menlo, monospace' }}>

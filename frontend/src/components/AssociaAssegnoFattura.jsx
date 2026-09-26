@@ -116,7 +116,7 @@ export default function AssociaAssegnoFattura({
           alignItems: 'center',
           justifyContent: 'center',
           whiteSpace: 'nowrap',
-          background: '#f5f3ff',
+          background: '#f7ebe4',
           color: '#6f583a',
           border: '1px solid #d9c6a3',
           borderRadius: 7,
@@ -144,7 +144,7 @@ export default function AssociaAssegnoFattura({
         >
           <div style={{
             width: 'min(680px, 100%)', maxHeight: 'calc(100vh - 32px)', overflowY: 'auto',
-            background: '#faf5ff', border: '1px solid #d9c6a3',
+            background: '#f7ebe4', border: '1px solid #d9c6a3',
             borderRadius: 12, padding: 16, textAlign: 'left',
             boxShadow: '0 24px 70px rgba(20, 20, 19, 0.28)',
           }}>
@@ -173,7 +173,7 @@ export default function AssociaAssegnoFattura({
               value={frammento}
               onChange={e => setFrammento(formattaFinaleAssegno(e.target.value))}
               style={{
-                minHeight: 40, flex: '1 1 240px', border: '1px solid #a78bfa',
+                minHeight: 40, flex: '1 1 240px', border: '1px solid #efd3c5',
                 borderRadius: 8, padding: '7px 10px', fontSize: 12.5,
               }}
             />
