@@ -34,6 +34,7 @@ PAYPAL = "paypal"
 NEXI = "nexi"
 MUTUO = "mutuo"
 BANCA = "bank"
+SUMUP = "sumup"
 
 # Estensioni che questa area sa trattare. Tutto il resto (zip, immagini,
 # documenti di testo) non viene nemmeno preso in carico.
@@ -141,6 +142,11 @@ def route_da_testo(testo: str) -> Optional[str]:
     testo = _pulisci(testo)
     if not testo:
         return None
+
+    # Carta Mastercard SumUp (conto 19.01.05): ha colonne «data», «saldo» e
+    # «IBAN» come un estratto bancario, ma non e' il conto BPM.
+    if "estratto conto sumup" in testo or re.search(r"\bie\d{2}sumu\d{14}\b", testo):
+        return SUMUP
 
     if "nexi payments" in testo or "estratto conto nexi" in testo:
         return NEXI

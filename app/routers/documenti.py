@@ -2685,6 +2685,7 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
             "nexi": "estratto_conto_nexi",
             "paypal": "estratto_conto_paypal",
             "mutuo": "estratto_conto_mutuo",
+            "sumup": "estratto_conto_sumup",
             "bank": "estratto_conto",
         }.get(statement_route)
         if routed_type:
@@ -4112,6 +4113,23 @@ async def upload_documento_automatico(
                     "Estratto Nexi già presente; verifica aggiornata."
                     if nexi_result.get("duplicate")
                     else f"Estratto Nexi importato: {nexi_result.get('operazioni', 0)} operazioni."
+                ),
+            })
+
+        elif tipo_rilevato == 'estratto_conto_sumup':
+            from app.services.sumup_conto import importa_estratto_sumup_pdf
+
+            sumup_result = await importa_estratto_sumup_pdf(db, filename, content)
+            result.update({
+                "workflow": "SUMUP_CONTO_CANONICO",
+                "duplicate": bool(sumup_result.get("duplicate")),
+                "imported": sumup_result.get("nuovi", 0),
+                "data": sumup_result,
+                "message": (
+                    "Estratto SumUp già presente."
+                    if sumup_result.get("duplicate")
+                    else f"Estratto SumUp importato: {sumup_result.get('nuovi', 0)} movimenti nuovi, "
+                         f"{sumup_result.get('gia_presenti', 0)} già presenti."
                 ),
             })
 
