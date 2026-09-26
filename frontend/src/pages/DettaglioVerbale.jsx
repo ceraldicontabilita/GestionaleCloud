@@ -19,6 +19,7 @@ export default function DettaglioVerbale() {
   const [pdfUploading, setPdfUploading] = useState(false);
   const [recalculating, setRecalculating] = useState(false);
   const [drivers, setDrivers] = useState([]);
+  const [showDriverTools, setShowDriverTools] = useState(false);
   const [selectedDriver, setSelectedDriver] = useState('');
   const [linkingDriver, setLinkingDriver] = useState(false);
   const [correctedAmount, setCorrectedAmount] = useState('');
@@ -76,12 +77,17 @@ export default function DettaglioVerbale() {
     }
   };
 
-  useEffect(() => {
-    api.get('/api/dipendenti').then(res => {
+  const openDriverTools = async () => {
+    setShowDriverTools(true);
+    if (drivers.length > 0) return;
+    try {
+      const res = await api.get('/api/dipendenti');
       const items = res.data?.dipendenti || res.data;
       setDrivers(Array.isArray(items) ? items : []);
-    }).catch(() => {});
-  }, []);
+    } catch {
+      toast.error('Elenco driver non disponibile');
+    }
+  };
 
   useEffect(() => () => {
     if (pdfViewer?.src) URL.revokeObjectURL(pdfViewer.src);
@@ -213,6 +219,35 @@ export default function DettaglioVerbale() {
 
   const pdfCount = verbale?.pdf_disponibili?.length || 0;
   const stato = verbale?.stato_pagamento || verbale?.stato || 'n/d';
+  const fascicolo = verbale?.fascicolo || {};
+  const hasStructuredFile = Boolean(verbale?.fascicolo);
+  const evidence = [
+    {
+      key: 'verbale', title: 'Verbale originale',
+      present: hasStructuredFile ? fascicolo.verbale?.presente : pdfCount > 0,
+      detail: fascicolo.verbale?.documento?.filename || 'PDF originale non ancora collegato',
+      document: fascicolo.verbale?.documento || (!hasStructuredFile ? verbale?.pdf_disponibili?.[0] : null),
+    },
+    {
+      key: 'notifica', title: 'Notifica scaricata',
+      present: fascicolo.notifica?.presente,
+      detail: fascicolo.notifica?.documento?.filename || fascicolo.notifica?.riferimento_archivio || fascicolo.notifica?.data || 'Non presente',
+      document: fascicolo.notifica?.documento,
+    },
+    {
+      key: 'banca', title: 'Pagamento in banca',
+      present: fascicolo.pagamento_banca?.presente,
+      detail: fascicolo.pagamento_banca?.movimento
+        ? `${fascicolo.pagamento_banca.movimento.data_contabile || fascicolo.pagamento_banca.movimento.data || 'Data non disponibile'} · ${formatEuro(Math.abs(fascicolo.pagamento_banca.movimento.importo || 0))} · ${fascicolo.pagamento_banca.movimento.descrizione || 'Movimento bancario'}`
+        : 'Nessun movimento bancario collegato',
+    },
+    {
+      key: 'quietanza', title: 'Quietanza PartenoPay / PagoPA',
+      present: fascicolo.quietanza?.presente,
+      detail: fascicolo.quietanza?.documento?.filename || fascicolo.quietanza?.riferimento_archivio || fascicolo.quietanza?.fonte || 'Non presente',
+      document: fascicolo.quietanza?.documento,
+    },
+  ];
 
   return (
     <PageLayout
@@ -233,6 +268,35 @@ export default function DettaglioVerbale() {
           <div><strong>Stato</strong><div><Badge variant={stato === 'pagato' ? 'success' : stato === 'sospeso' ? 'warning' : 'neutral'}>{stato}</Badge></div></div>
           <div><strong>Importo</strong><div>{formatEuro(verbale?.importo || verbale?.totale || 0)}</div></div>
           <div><strong>PDF disponibili</strong><div>{pdfCount}</div></div>
+        </div>
+      </PageSection>
+
+      <PageSection title="Fascicolo del verbale">
+        <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}>
+          {evidence.map((item) => (
+            <div key={item.key} style={{ border: `1px solid ${COLORS.border}`, borderRadius: BORDER_RADIUS.md, padding: 14 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+                <strong>{item.title}</strong>
+                <Badge variant={item.present ? 'success' : 'neutral'}>{item.present ? 'Presente' : 'Mancante'}</Badge>
+              </div>
+              <div style={{ marginTop: 8, minHeight: 38, fontSize: 13, color: COLORS.textMuted, overflowWrap: 'anywhere' }}>{item.detail}</div>
+              {item.document && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  style={{ marginTop: 10 }}
+                  disabled={openingPdf === item.document.indice}
+                  onClick={() => openPdf(item.document, item.document.indice || 0)}
+                  data-testid={`open-verbale-pdf-${item.document.indice ?? 0}`}
+                >
+                  {openingPdf === item.document.indice ? 'Apertura…' : 'Apri documento'}
+                </Button>
+              )}
+            </div>
+          ))}
+        </div>
+        <div style={{ marginTop: 10, fontSize: 12, color: COLORS.textMuted }}>
+          Le quattro prove restano separate: la quietanza non sostituisce il movimento bancario e un movimento bancario non sostituisce la quietanza.
         </div>
       </PageSection>
 
@@ -281,17 +345,23 @@ export default function DettaglioVerbale() {
         ) : (
           <div style={{ display: 'grid', gap: 10 }}>
             <div><strong>Targa:</strong> {verbale.targa} · <strong>Driver:</strong> {verbale.driver_nome || verbale.driver || verbale.driver_dettaglio?.nome || 'non associato'}</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              <select value={selectedDriver} onChange={e => setSelectedDriver(e.target.value)} aria-label="Driver per la targa">
-                <option value="">Scegli driver…</option>
-                {drivers.map(d => <option key={d.id} value={d.id}>{d.nome_completo || d.name || `${d.nome || ''} ${d.cognome || ''}`.trim()}</option>)}
-              </select>
-              <Button variant="primary" disabled={!selectedDriver || linkingDriver} onClick={() => linkDriver(false)}>Associa alla targa</Button>
-              <Button variant="outline" disabled={linkingDriver} onClick={() => linkDriver(true)}>Trova dalla fattura noleggio</Button>
-            </div>
-            <div style={{ fontSize: 12, color: COLORS.textMuted }}>
-              L’automatismo si applica a tutti i verbali della stessa targa solo se una fattura cita in modo univoco targa e driver; più candidati richiedono scelta manuale.
-            </div>
+            {!showDriverTools ? (
+              <Button variant="outline" onClick={openDriverTools}>Modifica associazione driver</Button>
+            ) : (
+              <>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  <select value={selectedDriver} onChange={e => setSelectedDriver(e.target.value)} aria-label="Driver per la targa">
+                    <option value="">Scegli driver…</option>
+                    {drivers.map(d => <option key={d.id} value={d.id}>{d.nome_completo || d.name || `${d.nome || ''} ${d.cognome || ''}`.trim()}</option>)}
+                  </select>
+                  <Button variant="primary" disabled={!selectedDriver || linkingDriver} onClick={() => linkDriver(false)}>Associa alla targa</Button>
+                  <Button variant="outline" disabled={linkingDriver} onClick={() => linkDriver(true)}>Trova dalla fattura noleggio</Button>
+                </div>
+                <div style={{ fontSize: 12, color: COLORS.textMuted }}>
+                  L’automatismo si applica a tutti i verbali della stessa targa solo se una fattura cita in modo univoco targa e driver; più candidati richiedono scelta manuale.
+                </div>
+              </>
+            )}
           </div>
         )}
       </PageSection>
@@ -322,41 +392,6 @@ export default function DettaglioVerbale() {
                 </ul>
               </div>
             )}
-          </div>
-        </PageSection>
-      )}
-
-      {pdfCount > 0 && (
-        <PageSection title="Documenti PDF">
-          <div style={{ display: 'grid', gap: 8 }}>
-            {verbale.pdf_disponibili.map((pdf, idx) => (
-              <div
-                key={pdf.id || idx}
-                style={{
-                  padding: 12,
-                  border: `1px solid ${COLORS.border}`,
-                  borderRadius: BORDER_RADIUS.md,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 12,
-                }}
-              >
-                <div>
-                  <div style={{ fontWeight: 700 }}>{pdf.nome || pdf.filename || `PDF ${idx + 1}`}</div>
-                  <div style={{ fontSize: 12, color: COLORS.textMuted }}>{pdf.descrizione || 'Documento associato al verbale'}</div>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={openingPdf === (pdf.indice ?? idx)}
-                  onClick={() => openPdf(pdf, idx)}
-                  data-testid={`open-verbale-pdf-${pdf.indice ?? idx}`}
-                >
-                  {openingPdf === (pdf.indice ?? idx) ? 'Apertura…' : 'Apri'}
-                </Button>
-              </div>
-            ))}
           </div>
         </PageSection>
       )}

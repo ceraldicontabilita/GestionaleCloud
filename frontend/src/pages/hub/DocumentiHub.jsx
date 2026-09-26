@@ -17,7 +17,7 @@ const TABS = [
   {
     id: 'atti',
     label: 'Atti amministrativi',
-    description: 'Verbali, TARI, AdeR e dimissioni con provenienza',
+    description: 'TARI, AdeR e dimissioni con provenienza',
     to: '/documenti/atti',
     Icon: FileWarning,
   },
@@ -66,6 +66,7 @@ export default function DocumentiHub() {
   // L'hub consulta soltanto il catalogo. Le sincronizzazioni massive non
   // vengono mai avviate implicitamente all'apertura della pagina.
   useEffect(() => {
+    if (activeTab !== 'drive') return undefined;
     let active = true;
 
     const loadAndSyncDrive = async () => {
@@ -82,11 +83,12 @@ export default function DocumentiHub() {
 
     loadAndSyncDrive();
     return () => { active = false; };
-  }, []);
+  }, [activeTab]);
 
   // Link Drive reali (webViewLink + nome live): endpoint riservato agli admin.
   // Chi non e' admin resta con la sola ricerca interna (fallback sotto).
   useEffect(() => {
+    if (activeTab !== 'drive') return undefined;
     let active = true;
 
     const loadFolderLinks = async () => {
@@ -105,7 +107,7 @@ export default function DocumentiHub() {
 
     loadFolderLinks();
     return () => { active = false; };
-  }, []);
+  }, [activeTab]);
 
   const contents = {
     archivio: ArchivioContent,
@@ -134,7 +136,7 @@ export default function DocumentiHub() {
         ))}
       </nav>
 
-      {driveCatalog?.total > 0 && (
+      {activeTab === 'drive' && driveCatalog?.total > 0 && (
         <section className="documenti-hub__drive" aria-label="Cartelle Google Drive collegate">
           <div className="documenti-hub__drive-heading">
             <div>
@@ -161,6 +163,10 @@ export default function DocumentiHub() {
                   className="documenti-hub__drive-card"
                   key={folder.area}
                   onClick={() => {
+                    if (folder.area === 'verbali_auto' || /verbali/i.test(folder.label)) {
+                      navigate('/noleggio/verbali');
+                      return;
+                    }
                     if (link?.url) {
                       window.open(link.url, '_blank', 'noopener,noreferrer');
                     } else {

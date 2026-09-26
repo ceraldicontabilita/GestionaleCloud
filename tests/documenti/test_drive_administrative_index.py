@@ -1,7 +1,7 @@
 from app.services import drive_document_index as index
 
 
-def test_indice_drive_classifica_solo_pdf_amministrativi(monkeypatch):
+def test_indice_drive_esclude_i_verbali_destinati_ai_noleggi(monkeypatch):
     records = [
         {"ID documento": "v1", "Dominio": "VERBALI AUTO", "Categoria": "NOTIFICHE POLIZIA LOCALE", "Anno": "2026", "Nome file": "verbale.pdf", "Estensione": "pdf", "SHA-256": "a", "Percorso Drive": "VERBALI AUTO/verbale.pdf", "Stato": "VERIFICATO"},
         {"ID documento": "t1", "Dominio": "TRIBUTI LOCALI - TARI TARES TARSU", "Categoria": "TARI", "Anno": "2024", "Nome file": "tari.pdf", "Estensione": "pdf", "SHA-256": "b", "Percorso Drive": "TRIBUTI LOCALI/tari.pdf", "Stato": "DA VERIFICARE"},
@@ -13,11 +13,11 @@ def test_indice_drive_classifica_solo_pdf_amministrativi(monkeypatch):
     payload = index.list_administrative_documents()
 
     assert payload["overview"] == {
-        "counts": {"verbali": 1, "tributi_locali": 1, "riscossione": 0, "personale": 0, "famiglia": 0},
-        "total": 2,
+        "counts": {"tributi_locali": 1, "riscossione": 0, "personale": 0, "famiglia": 0},
+        "total": 1,
         "requires_review": 1,
     }
-    assert [item["id"] for item in payload["items"]] == ["v1", "t1"]
+    assert [item["id"] for item in payload["items"]] == ["t1"]
     assert all(item["source_kind"] == "drive_index" for item in payload["items"])
 
 

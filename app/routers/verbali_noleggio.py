@@ -345,18 +345,72 @@ async def get_dettaglio_verbale(numero_verbale: str) -> Dict[str, Any]:
         )
         risultato["fattura_info"] = fattura
 
-    # Carica movimento bancario se riconciliato
+    # Carica il movimento bancario dalla sorgente canonica usata dal motore di
+    # riconciliazione. Il vecchio archivio prima_nota_banca resta un fallback
+    # di sola lettura per i record storici.
     if verbale.get("movimento_banca_id"):
-        movimento = await db["prima_nota_banca"].find_one(
-            {"id": verbale["movimento_banca_id"]},
+        movimento_id = verbale["movimento_banca_id"]
+        movimento = await db["estratto_conto_movimenti"].find_one(
+            {"$or": [{"id": movimento_id}, {"_id": movimento_id}]},
             {"_id": 0}
         )
+        if not movimento:
+            movimento = await db["prima_nota_banca"].find_one(
+                {"id": movimento_id}, {"_id": 0}
+            )
         risultato["movimento_info"] = movimento
 
     from app.services.verbali_pdf_service import collect_verbale_pdfs, pdf_metadata
-    risultato["pdf_disponibili"] = pdf_metadata(
-        await collect_verbale_pdfs(db, verbale, include_content=False)
-    )
+    documenti = pdf_metadata(await collect_verbale_pdfs(
+        db, verbale, include_content=False
+    ))
+    risultato["pdf_disponibili"] = documenti
+
+    def _documento_per(*termini: str):
+        for documento in documenti:
+            testo = " ".join(str(documento.get(campo) or "") for campo in (
+                "tipo", "filename", "descrizione", "source"
+            )).casefold()
+            if any(termine in testo for termine in termini):
+                return documento
+        return None
+
+    source_files = [str(path) for path in (verbale.get("source_files") or [])]
+    quietanza_archivio = next((path for path in source_files if any(
+        token in path.casefold() for token in ("quietanz", "ricevut", "pagamento")
+    )), None)
+    notifica_archivio = next((path for path in source_files if "notific" in path.casefold()), None)
+    documento_quietanza = _documento_per("quietanz", "ricevut", "partenopay", "pagopa")
+    documento_notifica = _documento_per("notific")
+    documento_verbale = _documento_per("verbale") or next((
+        documento for documento in documenti
+        if documento is not documento_quietanza and documento is not documento_notifica
+    ), None)
+
+    risultato["fascicolo"] = {
+        "verbale": {
+            "presente": bool(documento_verbale),
+            "documento": documento_verbale,
+        },
+        "notifica": {
+            "presente": bool(documento_notifica or notifica_archivio or verbale.get("data_ricezione_notifica")),
+            "data": verbale.get("data_ricezione_notifica") or verbale.get("data_notifica"),
+            "documento": documento_notifica,
+            "riferimento_archivio": notifica_archivio,
+        },
+        "pagamento_banca": {
+            "presente": bool(risultato.get("movimento_info")),
+            "verificato": bool(verbale.get("banca_verificata")),
+            "movimento": risultato.get("movimento_info"),
+        },
+        "quietanza": {
+            "presente": bool(documento_quietanza or quietanza_archivio or verbale.get("quietanza_ricevuta")),
+            "fonte": verbale.get("psp") or verbale.get("fonte_pagamento"),
+            "documento": documento_quietanza,
+            "riferimento_archivio": quietanza_archivio,
+            "pagamento_documentale_verificato": bool(verbale.get("pagato_documentalmente")),
+        },
+    }
 
     # Non inviare dati binari pesanti nel response JSON
     risultato.pop("pdf_data", None)

@@ -6,7 +6,6 @@ import { Badge, Button, Card, StatCard } from '../components/ds';
 
 const AREAS = [
   ['tutti', 'Tutti'],
-  ['verbali', 'Verbali e PagoPA'],
   ['tributi_locali', 'TARI e tributi locali'],
   ['riscossione', 'Riscossione AdeR'],
   ['personale', 'Dimissioni e cessazioni'],
@@ -36,7 +35,7 @@ const identityFor = item => {
   if (item.administrative_area === 'riscossione') {
     return (metadata.numeri_cartella || []).join(', ') || 'Atto AdeR da verificare';
   }
-  return metadata.numero_verbale || metadata.codice_avviso || item.category_label || 'Verbale';
+  return item.category_label || 'Atto amministrativo';
 };
 
 const expectationLabel = expectation => {
@@ -44,9 +43,6 @@ const expectationLabel = expectation => {
     ESITO_DEFINIZIONE_AGEVOLATA: 'Esito AdER',
     PIANO_O_IMPORTO_DEFINIZIONE: 'Piano/importo dovuto',
     PAGAMENTO_CARTELLA: 'Pagamento cartella',
-    DECISIONE_VERBALE: 'Decisione entro la scadenza',
-    EVIDENZA_PAGAMENTO_VERBALE: 'Ricevuta di pagamento',
-    RISCONTRO_FINANZIARIO_VERBALE: 'Riscontro finanziario',
   };
   return labels[expectation.expectation_type] || expectation.expectation_type;
 };
@@ -128,7 +124,6 @@ export default function AttiAmministrativi() {
     <div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 12, marginBottom: 16 }}>
         <StatCard label="Atti in archivio" value={overview.total ?? payload.total ?? 0} subtext="Apri tutti" accent="primary" onClick={() => openSection('tutti')} />
-        <StatCard label="Verbali/PagoPA" value={overviewCounts.verbali || 0} subtext="Apri sezione" accent="danger" onClick={() => openSection('verbali')} />
         <StatCard label="TARI" value={overviewCounts.tributi_locali || 0} subtext="Apri sezione" accent="warning" onClick={() => openSection('tributi_locali')} />
         <StatCard label="AdeR" value={overviewCounts.riscossione || 0} subtext="Apri sezione" accent="primary" onClick={() => openSection('riscossione')} />
         <StatCard label="Dimissioni" value={overviewCounts.personale || 0} subtext="Apri sezione" accent="accent" onClick={() => openSection('personale')} />
@@ -203,12 +198,6 @@ export default function AttiAmministrativi() {
               {metadata.soggetto_richiedente_ruolo && <> ({metadata.soggetto_richiedente_ruolo})</>}
               {metadata.ricevuta_presentazione && <> · ricevuta {metadata.ricevuta_presentazione}</>}
               {(metadata.numeri_cartella || []).length > 0 && <><br />Cartelle: <strong>{metadata.numeri_cartella.join(', ')}</strong>{metadata.tutti_i_carichi ? ' · tutti i carichi' : ''}</>}
-            </div>}
-            {item.administrative_area === 'verbali' && <div style={{ marginTop: 8, color: '#334155' }}>
-              Verbale {metadata.numero_verbale || item.numero_verbale_estratto || 'da verificare'}
-              {(metadata.numero_registro || metadata.numero_atto) && <> · registro {metadata.numero_registro || metadata.numero_atto}</>}
-              {(metadata.targa || item.targa_estratta) && <> · targa <strong>{metadata.targa || item.targa_estratta}</strong></>}
-              {(metadata.importo_ridotto || metadata.importo_ordinario || item.importo_ridotto || item.importo_ordinario) && <><br />Ridotto {(metadata.importo_ridotto || item.importo_ridotto) ? `€ ${metadata.importo_ridotto || item.importo_ridotto}` : 'da verificare'} · ordinario {(metadata.importo_ordinario || item.importo_ordinario) ? `€ ${metadata.importo_ordinario || item.importo_ordinario}` : 'da verificare'}</>}
             </div>}
             {(metadata.workflow_expectations || item.workflow_expectations || []).length > 0 && <div style={{ marginTop: 10, padding: 10, borderRadius: 8, background: '#fff7ed', color: '#7c2d12' }}>
               <strong>Informazioni e prove attese</strong>
