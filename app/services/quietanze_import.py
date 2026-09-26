@@ -15,6 +15,7 @@ import base64
 import hashlib
 import logging
 import uuid
+from decimal import Decimal, InvalidOperation
 from datetime import datetime, timezone
 from typing import Any, Dict
 
@@ -360,17 +361,12 @@ async def importa_quietanza_bytes(
         # (stato dedicato) e nasce un alert bloccante che chiede il modello.
         # P2-I: distinguo "nessun F24 del soggetto" (vero Caso 3) da "un F24 del
         # soggetto esiste ma non combacia" (verificare importi/periodo).
-        cf_norm = (codice_fiscale or "").strip().upper()
-        esiste_f24_soggetto = bool(cf_norm) and any(
-            (((f.get("dati_generali", {}) or {}).get("codice_fiscale") or f.get("codice_fiscale") or "")
-             .strip().upper() == cf_norm)
-            for f in f24_da_pagare_tutti
-        )
+        stato_senza_modello, _ = stato_quietanza_senza_modello(quietanza_doc, f24_da_pagare_tutti)
         if len(candidati_match) > 1:
             warning = "Più F24 coincidono al centesimo: associazione automatica sospesa."
             stato = "f24_ambiguo"
             stato_canonico = "QUIETANZA_PRESENTE_F24_AMBIGUO"
-        elif esiste_f24_soggetto:
+        elif stato_senza_modello == "f24_non_corrispondente":
             warning = "F24 presente ma non corrispondente: verificare importi/periodo/codici."
             stato = "f24_non_corrispondente"
             # stato canonico del prompt §9.3: F24 del soggetto esiste ma non combacia
@@ -427,6 +423,41 @@ async def importa_quietanza_bytes(
     return risultato
 
 
+def saldo_cents(doc: dict) -> int:
+    """Saldo del versamento in centesimi, da modello o quietanza; 0 se ignoto."""
+    totali = doc.get("totali") or {}
+    if totali.get("saldo_netto_cents") not in (None, ""):
+        return int(totali["saldo_netto_cents"])
+    for valore in (
+        totali.get("saldo_netto"), doc.get("saldo"),
+        (doc.get("dati_generali") or {}).get("saldo_delega"),
+    ):
+        if valore not in (None, ""):
+            try:
+                return int((Decimal(str(valore)) * 100).quantize(Decimal("1")))
+            except (InvalidOperation, ValueError):
+                continue
+    return 0
+
+
+def stato_quietanza_senza_modello(quietanza: dict, modelli: list) -> tuple:
+    """«Non corrispondente» solo se c'e' un modello dello stesso contribuente
+    con lo stesso saldo: e' quello da guardare. Altrimenti il modello manca, e
+    la cosa da fare e' caricarlo. Prima bastava un qualunque F24 del
+    contribuente, e 25 quietanze del 2026 senza modello risultavano
+    «non corrispondenti» invece che «F24 mancante»."""
+    dg = quietanza.get("dati_generali") or {}
+    cf = str(quietanza.get("codice_fiscale") or dg.get("codice_fiscale") or "").strip().upper()
+    saldo = saldo_cents(quietanza)
+    for f24 in modelli:
+        cf_f24 = str(
+            (f24.get("dati_generali") or {}).get("codice_fiscale") or f24.get("codice_fiscale") or ""
+        ).strip().upper()
+        if saldo and saldo_cents(f24) == saldo and (not cf or not cf_f24 or cf == cf_f24):
+            return ("f24_non_corrispondente", "QUIETANZA_PRESENTE_F24_NON_CORRISPONDENTE")
+    return ("f24_mancante", "QUIETANZA_PRESENTE_F24_MANCANTE")
+
+
 def _stato_banca_verificato(f24: dict) -> bool:
     return bool(
         f24.get("pagamento_verificato_banca")
@@ -455,11 +486,18 @@ async def abbina_quietanza_a_f24(db, quietanza: dict) -> Dict[str, Any]:
     cf_quietanza = str(quietanza.get("codice_fiscale") or dg.get("codice_fiscale") or "").strip().upper()
 
     tributi_quietanza = estrai_tributi_dettaglio(quietanza)
-    quietanza_lookup = {}
+    # Righe come insieme di (codice, periodo, centesimi): lo stesso codice e
+    # periodo puo' comparire piu' volte con importi diversi (3847 05/2026 per
+    # 55,55 e 19,26 EUR, due righe comunali). Un dizionario per (codice,
+    # periodo) teneva solo l'ultima e il modello di maggio 2026 risultava
+    # «non corrispondente» pur coincidendo riga per riga.
+    righe_quietanza = {
+        (t["codice"], t["periodo"], t["importo_cents"]) for t in tributi_quietanza
+    }
+    saldo_q_cents = saldo_cents(quietanza)
     codici_ravv = []
     importo_ravv = 0
     for t in tributi_quietanza:
-        quietanza_lookup[(t["codice"], t["periodo"])] = t["importo_cents"]
         if t["codice"] in CODICI_RAVVEDIMENTO:
             codici_ravv.append(t["codice"])
             importo_ravv += t["importo_cents"]
@@ -486,10 +524,16 @@ async def abbina_quietanza_a_f24(db, quietanza: dict) -> Dict[str, Any]:
         if cf_quietanza and cf_f24 and cf_quietanza != cf_f24:
             return False
         principali = _principali(f24)
-        return bool(principali) and all(
-            quietanza_lookup.get((item["codice"], item["periodo"])) == item["importo_cents"]
+        if not principali or not all(
+            (item["codice"], item["periodo"], item["importo_cents"]) in righe_quietanza
             for item in principali
-        )
+        ):
+            return False
+        # Il saldo chiude il confronto: righe uguali ma un saldo diverso non
+        # sono lo stesso versamento. Con il ravvedimento la quietanza paga di
+        # piu' (sanzioni e interessi), e il saldo non si confronta.
+        saldo_f24 = saldo_cents(f24)
+        return bool(codici_ravv) or not (saldo_f24 and saldo_q_cents) or saldo_f24 == saldo_q_cents
 
     candidati = [f for f in esaminati if _combacia(f)]
     esito: Dict[str, Any] = {
@@ -571,9 +615,19 @@ async def ricollega_quietanze_orfane(db) -> Dict[str, Any]:
         if not q.get("f24_associati")
     ]
     collegate = 0
+    rietichettate = 0
     for quietanza in orfane:
         esito = await abbina_quietanza_a_f24(db, quietanza)
         if not esito["f24_matchati"]:
+            # Lo stato dice cosa fare: caricare il modello o guardarne uno.
+            if len(esito["candidati"]) > 1:
+                continue
+            stato, canonico = stato_quietanza_senza_modello(quietanza, esito["f24_esaminati"])
+            if stato != quietanza.get("stato_associazione"):
+                rietichettate += 1
+                await db[COLL_QUIETANZE].update_one({"id": quietanza["id"]}, {"$set": {
+                    "stato_associazione": stato, "stato_quietanza": canonico,
+                }})
             continue
         collegate += 1
         # Come all'import riuscito: associata, e lo stato «F24 mancante» o
@@ -593,4 +647,4 @@ async def ricollega_quietanze_orfane(db) -> Dict[str, Any]:
                 "risolto_at": datetime.now(timezone.utc).isoformat(),
                 "risolto_da": "ricollega_quietanze_orfane",
             }})
-    return {"orfane": len(orfane), "collegate": collegate}
+    return {"orfane": len(orfane), "collegate": collegate, "rietichettate": rietichettate}
