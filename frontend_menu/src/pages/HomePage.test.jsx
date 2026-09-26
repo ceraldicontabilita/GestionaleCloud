@@ -132,10 +132,26 @@ test('il «Rifiuto» sui cookie resta registrato dopo una nuova visita', async (
   expect(contenitore.querySelector('[data-testid="banner-cookie"]')).toBeNull();
 });
 
-test('i collegamenti non configurati non si mostrano', async () => {
+test('in home i social veri e le informative del Menu, mai un link a #', async () => {
   await montaHome();
-  expect(contenitore.querySelector('[data-testid="collegamenti-esterni"]')).toBeNull();
+  const hrefs = Array.from(contenitore.querySelectorAll('[data-testid="collegamenti-esterni"] a')).map((a) => a.getAttribute('href'));
+  expect(hrefs).toEqual([
+    'https://www.facebook.com/ceraldicaffe/',
+    'https://www.instagram.com/ceraldicaffe/',
+    '/cookie',
+    '/privacy',
+  ]);
   expect(contenitore.querySelector('a[href="#"]')).toBeNull();
+  // le informative sono pagine del Menu: si aprono nella stessa scheda
+  const privacy = contenitore.querySelector('a[href="/privacy"]');
+  expect(privacy.getAttribute('target')).toBeNull();
+});
+
+test('i collegamenti non configurati non si mostrano', async () => {
+  await monta(
+    <CollegamentiEsterni language="it" collegamenti={{ facebook: null, instagram: '#', cookiePolicy: '//fuori.it', privacyPolicy: '' }} />
+  );
+  expect(contenitore.querySelector('[data-testid="collegamenti-esterni"]')).toBeNull();
 });
 
 test('un collegamento configurato si mostra, gli altri no', async () => {

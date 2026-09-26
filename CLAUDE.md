@@ -751,8 +751,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   sbagliato la rilevazione **non si salva**, perché una firma falsa è peggio di una registrazione mancante.
   Un giorno senza lettura si **dichiara** «non rilevato», mai riempito d'ufficio; lo storico **senza firma** resta
   ma vale «n.a.» (`servizi/haccp_attendibilita.py`). Mai `random` né codice morto in HACCP (`test_haccp_niente_evidenze_finte.py`).
-- Stampa: coda più print agent locale sul PC del negozio, stampante scelta per tipo di documento, agent
-  autenticato con il PIN di un operatore dedicato. Il fascicolo per un'ispezione si compone da
+- Stampa: coda più print agent locale sul PC del negozio (`scripts/print_agent.py`, PIN in `LOTTI_PRINT_AGENT_PIN`,
+  variabile **locale**, mai su Render), stampante scelta per tipo di documento, token solo in `Authorization` e solo verso Lotti. Il fascicolo per un'ispezione si compone da
   `/lotti/api/manuale-haccp/stampa`: si spuntano le pagine (`SEZIONI_MANUALE`, le stesse che il generatore
   sa produrre — un test lo verifica) e il frontespizio con i dati dell'azienda c'è sempre.
 - **Un PIN per entrare, non per ogni sezione**: magazzino e portale dipendenti condividono la verifica (`services/workforce_tokens.py`,
@@ -833,7 +833,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   IVA 2026.
 - Foto ricette Lotti: 20 su Storage, 307 su Drive in `FOTO E IMMAGINI/ricette_immagini_per_nome` (ricollegate per ID da `Mappa_immagini_ricette.csv`); da portare su Storage. Canali Drive per sezione smontati dallo scheduler; su Render restano da cancellare a mano le loro variabili (`GOOGLE_DRIVE_*_FOLDER_ID`, `ENABLE_DRIVE_*_SYNC`, `DRIVE_F24_FOLDER_ID`, `DRIVE_*_BATCH_SIZE`). La radice di `DATI SOCIETA CERALDI` conteneva ~5.500 file sciolti (3.717 PDF, 1.375 XML): li smaltisce lo smistatore a lotti.
 - Solo 108 prodotti del Menu su 325 hanno allergeni (obbligo di legge). Cron Render `gestionalecloud-calderone-15min`, sospeso, da cancellare dal pannello.
-  Menu clienti: il QR legge solo `menu_qrcode_config.menu_url`; social, privacy e cookie restano nascosti finché non si scrive l'URL vero in `frontend_menu/src/lib/collegamentiPubblici.js`.
+  Menu clienti: il QR legge solo `menu_qrcode_config.menu_url`; social in `collegamentiPubblici.js`, privacy e cookie sono pagine del Menu (`/menu/privacy`, `/menu/cookie`) col titolare da `/api/menu/titolare`.
 - **Lotti indietro**: 163 fatture alimentari da giugno bloccate dal ponte (conflitti d'impronta), ultimo lotto 14/09. 119 lotti su 344 in unità non convertibili
   (95 KAR); 320 descrizioni con proposta web da confermare; scadenza su 15 lotti su 580, lotto vero su 27.
 

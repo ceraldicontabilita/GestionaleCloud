@@ -73,3 +73,4 @@ yarn-error.log*
 .idea/
 .vscode/
 .claude/settings.local.json
+scripts/print_agent_config.json

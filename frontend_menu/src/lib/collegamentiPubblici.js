@@ -1,15 +1,16 @@
-// Collegamenti esterni del menu pubblico: l'unico punto dove si scrivono.
+// Collegamenti del menu pubblico: l'unico punto dove si scrivono.
 //
-// Oggi nessun indirizzo e' configurato: nel repository e nel database del Menu
-// non c'e' un URL reale per le pagine social o per le informative, e un link
-// che punta a `#` sembra funzionare ma non porta da nessuna parte. Finche' un
-// valore resta `null` il link non si mostra. Per attivarlo basta scrivere qui
-// l'indirizzo vero (https), senza toccare le pagine.
+// - Social: gli account ufficiali del locale (Instagram «Ceraldi Caffè
+//   (@ceraldicaffe)», pagina Facebook «ceraldicaffe»), verificati il
+//   26/09/2026. Un valore `null` nasconde il link.
+// - Informative: pagine del Menu stesso (`/privacy`, `/cookie`), scritte su cio'
+//   che questo codice fa davvero. Il sito ceraldicaffe.it non ne pubblica una
+//   raggiungibile, e un link a `#` sembra funzionare ma non porta da nessuna parte.
 export const COLLEGAMENTI_PUBBLICI = {
-  facebook: null,
-  instagram: null,
-  cookiePolicy: null,
-  privacyPolicy: null,
+  facebook: 'https://www.facebook.com/ceraldicaffe/',
+  instagram: 'https://www.instagram.com/ceraldicaffe/',
+  cookiePolicy: '/cookie',
+  privacyPolicy: '/privacy',
 };
 
 /** Vero solo per un indirizzo https completo: `#`, vuoto o `null` non valgono. */
@@ -21,4 +22,15 @@ export function urlConfigurato(url) {
   } catch {
     return false;
   }
+}
+
+/** Pagina interna del Menu (`/privacy`): mai `//dominio`, che porterebbe fuori. */
+export function percorsoInterno(valore) {
+  return typeof valore === 'string' && /^\/[a-z0-9-]+$/i.test(valore.trim());
+}
+
+/** Indirizzo da mettere nell'href: le pagine interne stanno sotto `/menu`. */
+export function hrefCollegamento(valore) {
+  if (percorsoInterno(valore)) return `${process.env.PUBLIC_URL || ''}${valore.trim()}`;
+  return urlConfigurato(valore) ? valore.trim() : null;
 }

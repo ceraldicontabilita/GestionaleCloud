@@ -1,6 +1,7 @@
 import "./App.css";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import HomePage from "./pages/HomePage";
+import InformativaPage from "./pages/InformativaPage";
 import AdminLoginPage from "./pages/AdminLoginPage";
 import AdminDashboard from "./pages/AdminDashboard";
 import OrdersPage from "./pages/admin/OrdersPage";
@@ -20,6 +21,8 @@ function App() {
           <BrowserRouter basename={process.env.PUBLIC_URL || ''}>
             <Routes>
               <Route path="/" element={<HomePage />} />
+              <Route path="/privacy" element={<InformativaPage tipo="privacy" />} />
+              <Route path="/cookie" element={<InformativaPage tipo="cookie" />} />
               <Route path="/admin/login" element={<AdminLoginPage />} />
               <Route path="/admin" element={<AdminDashboard />} />
               {/* Il QR del menu clienti sta nella dashboard: il vecchio indirizzo ci rimanda. */}
