@@ -494,12 +494,31 @@ async def riepilogo_mensile_pos_corrispettivi(
     accrediti_anno = await _carica_accrediti_banca_pos(
         db, f"{anno}-01-01", f"{anno}-12-31"
     )
-    pos_manuali = await _carica_pos_manuale_per_data(db)
+    # I due terminali restano separati: NUMIA accredita su BPM, SumUp paga
+    # sulla carta Mastercard SumUp. La banca BPM si confronta quindi con il
+    # solo NUMIA; sommarci anche SumUp segnava come mancante, da agosto, una
+    # cifra pari al venduto SumUp. Lo stesso ripiego del controllo a due fasi:
+    # un giorno NUMIA senza chiusura esplicita vale l'accredito BPM del giorno.
+    pos_per_circuito = await _carica_pos_per_circuito(db)
+    for giorno, evidenza in accrediti_anno.items():
+        pos_per_circuito.setdefault(giorno, {}).setdefault(
+            conti_pos.NUMIA, round(float(evidenza.get("totale") or 0), 2)
+        )
+    payout_sumup = [
+        payout async for payout in db["sumup_payouts"].find(
+            {"data": {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31T23:59:59"}},
+            {"_id": 0, "data": 1, "netto": 1, "commissione": 1},
+        )
+    ]
 
     mesi = []
     totale_anno_elettronico = 0
     totale_anno_pos_terminale = 0
     totale_anno_pos = 0
+    totale_anno_numia = 0.0
+    totale_anno_sumup = 0.0
+    totale_anno_sumup_pagato = 0.0
+    totale_anno_sumup_commissioni = 0.0
     totale_movimenti_banca = 0
     totale_movimenti_banca_raw = 0
     totale_duplicati_unificati = 0
@@ -533,11 +552,27 @@ async def riepilogo_mensile_pos_corrispettivi(
         corr_result = await db["corrispettivi"].aggregate(pipeline_corr).to_list(1)
         
         elettronico = corr_result[0]["elettronico"] if corr_result else 0
-        pos_terminale = round(sum(
-            float(importo or 0)
-            for data, importo in pos_manuali.items()
+        giorni_mese = [
+            per_circuito for data, per_circuito in pos_per_circuito.items()
             if data_da <= data <= data_a
+        ]
+        pos_numia = round(sum(
+            float(c.get(conti_pos.NUMIA) or 0) for c in giorni_mese
         ), 2)
+        pos_sumup = round(sum(
+            float(c.get(conti_pos.SUMUP) or 0) for c in giorni_mese
+        ), 2)
+        # Il registratore somma tutto l'elettronico, qualunque terminale:
+        # si confronta con NUMIA + SumUp.
+        pos_terminale = round(pos_numia + pos_sumup, 2)
+        payout_mese = [
+            p for p in payout_sumup
+            if data_da <= str(p.get("data") or "")[:10] <= data_a
+        ]
+        sumup_pagato = round(sum(float(p.get("netto") or 0) for p in payout_mese), 2)
+        sumup_commissioni = round(
+            sum(float(p.get("commissione") or 0) for p in payout_mese), 2
+        )
         evidenze_mese = [
             evidenza for data, evidenza in accrediti_anno.items()
             if data_da <= data <= data_a
@@ -547,9 +582,13 @@ async def riepilogo_mensile_pos_corrispettivi(
         movimenti_banca_raw = sum(int(e.get("numero_movimenti_raw") or 0) for e in evidenze_mese)
         duplicati_unificati = sum(int(e.get("duplicati_unificati") or 0) for e in evidenze_mese)
         differenza_xml_pos = round(elettronico - pos_terminale, 2)
-        differenza_pos_banca = round(pos - pos_terminale, 2)
-        
+        differenza_pos_banca = round(pos - pos_numia, 2)
+
         totale_anno_elettronico += elettronico
+        totale_anno_numia += pos_numia
+        totale_anno_sumup += pos_sumup
+        totale_anno_sumup_pagato += sumup_pagato
+        totale_anno_sumup_commissioni += sumup_commissioni
         totale_anno_pos_terminale += pos_terminale
         totale_anno_pos += pos
         totale_movimenti_banca += movimenti_banca
@@ -566,6 +605,12 @@ async def riepilogo_mensile_pos_corrispettivi(
             "contanti": round(corr_result[0]["contanti"] if corr_result else 0, 2),
             "elettronico_xml": round(elettronico, 2),
             "pos_terminale": pos_terminale,
+            "pos_numia": pos_numia,
+            "pos_sumup": pos_sumup,
+            # Payout SumUp per data del pagamento sulla carta: un payout puo'
+            # coprire piu' giorni di vendita e non si ripartisce.
+            "sumup_pagato": sumup_pagato,
+            "sumup_commissioni": sumup_commissioni,
             "pos_accreditato": round(pos, 2),
             "differenza_xml_pos": differenza_xml_pos,
             "differenza_pos_banca": differenza_pos_banca,
@@ -589,14 +634,16 @@ async def riepilogo_mensile_pos_corrispettivi(
         "totali": {
             "elettronico_xml": round(totale_anno_elettronico, 2),
             "pos_terminale": round(totale_anno_pos_terminale, 2),
+            "pos_numia": round(totale_anno_numia, 2),
+            "pos_sumup": round(totale_anno_sumup, 2),
+            "sumup_pagato": round(totale_anno_sumup_pagato, 2),
+            "sumup_commissioni": round(totale_anno_sumup_commissioni, 2),
             "pos_accreditato": round(totale_anno_pos, 2),
             "differenza_xml_pos": round(
                 totale_anno_elettronico - totale_anno_pos_terminale, 2
             ),
-            "differenza_pos_banca": round(
-                totale_anno_pos - totale_anno_pos_terminale, 2
-            ),
-            "differenza": round(totale_anno_pos - totale_anno_pos_terminale, 2),
+            "differenza_pos_banca": round(totale_anno_pos - totale_anno_numia, 2),
+            "differenza": round(totale_anno_pos - totale_anno_numia, 2),
             "movimenti_banca": totale_movimenti_banca,
             "movimenti_banca_raw": totale_movimenti_banca_raw,
             "duplicati_banca_unificati": totale_duplicati_unificati,
@@ -1006,12 +1053,6 @@ async def _carica_pos_per_circuito(db) -> Dict[str, Dict[str, float]]:
 
     return {g: {c: round(v, 2) for c, v in per_circuito.items()}
             for g, per_circuito in componenti.items()}
-
-
-async def _carica_pos_manuale_per_data(db) -> Dict[str, float]:
-    """Totale del POS reale per giorno: la somma dei circuiti."""
-    return {giorno: round(sum(per_circuito.values()), 2)
-            for giorno, per_circuito in (await _carica_pos_per_circuito(db)).items()}
 
 
 async def _carica_fonti_pos_per_circuito(db) -> Dict[str, Dict[str, str]]:

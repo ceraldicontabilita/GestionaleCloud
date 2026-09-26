@@ -294,6 +294,53 @@ def test_controllo_due_fasi_non_certifica_un_importo_solo_trascritto(monkeypatch
     _run(scenario())
 
 
+def test_riepilogo_mensile_confronta_bpm_col_solo_numia(monkeypatch):
+    """SumUp non accredita su BPM ma sulla carta SumUp: la banca si confronta
+    con il solo NUMIA. Sommando anche SumUp il mese risultava con una
+    mancanza in banca pari al venduto SumUp."""
+    async def scenario():
+        db = ClientArchivioMemoria()["test_riepilogo_mensile_due_terminali"]
+        await db["corrispettivi"].insert_one({
+            "data": "2026-08-03", "totale": 2000.00, "pagato_contanti": 370.50,
+            "pagato_elettronico": 1629.50, "stato": "definitivo_xml",
+            "entity_status": "active",
+        })
+        await db["chiusure_pos_manuali"].insert_many([
+            {"data": "2026-08-03", "importo": 867.30, "gestore": "numia",
+             "source": "inserimento_manuale_terminale"},
+            {"data": "2026-08-03", "importo": 721.30, "gestore": "sumup",
+             "source": "api_gestore_pos"},
+        ])
+        await db["estratto_conto_movimenti"].insert_one({
+            "id": "EC-1", "data": "2026-08-04", "importo": 867.30,
+            "descrizione_originale": (
+                "INC.POS CARTE CREDIT - NUMIA-INTER DEL 03/08/26 PDV 3757283/0001"
+            ),
+        })
+        await db["sumup_payouts"].insert_one({
+            "payout_id": "P-1", "data": "2026-08-04", "netto": 707.55,
+            "commissione": 13.75, "giorni": ["2026-08-03"],
+        })
+        monkeypatch.setattr(pc.Database, "get_db", staticmethod(lambda: db))
+
+        result = await pc.riepilogo_mensile_pos_corrispettivi(anno=2026)
+        agosto = result["mesi"][7]
+
+        assert agosto["pos_numia"] == 867.30
+        assert agosto["pos_sumup"] == 721.30
+        assert agosto["pos_terminale"] == 1588.60
+        assert agosto["differenza_xml_pos"] == 40.90
+        assert agosto["pos_accreditato"] == 867.30
+        assert agosto["differenza_pos_banca"] == 0.00
+        assert agosto["sumup_pagato"] == 707.55
+        assert agosto["sumup_commissioni"] == 13.75
+        assert agosto["stato"] == "ok"
+        assert result["totali"]["differenza_pos_banca"] == 0.00
+        assert result["totali"]["pos_sumup"] == 721.30
+
+    _run(scenario())
+
+
 def test_due_fasi_separa_numia_da_sumup_e_non_usa_xml_come_pos(monkeypatch):
     async def scenario():
         db = ClientArchivioMemoria()["test_due_circuiti_reali"]

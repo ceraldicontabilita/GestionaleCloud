@@ -3,7 +3,25 @@ import api from '../api';
 import { formatEuro, COLORS, FONT, SHADOWS, BORDER_RADIUS, formatDateIT } from '../lib/utils';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { PageLayout } from '../components/PageLayout';
-import { Button, StatCard, TableWrap, Table, Th, Td } from '../components/ds';
+import { Button, Esito, StatCard, TableWrap, Table, Th, Td } from '../components/ds';
+
+/**
+ * I due terminali restano separati: NUMIA (chiusura serale scritta a mano)
+ * accredita su BPM, SumUp (letto dall'app) paga sulla carta Mastercard
+ * SumUp. La banca BPM si confronta quindi col solo NUMIA; il registratore,
+ * che somma tutto l'elettronico, con NUMIA + SumUp.
+ */
+export function circuitiGiorno(g) {
+  const c = (g && g.pos_per_circuito) || {};
+  return { numia: parseFloat(c.numia) || 0, sumup: parseFloat(c.sumup) || 0 };
+}
+
+/** Esito di un giorno o di un mese secondo la regola unica del colore. */
+export function esitoRiga({ hasData, intervento, verificare }) {
+  if (intervento) return 'intervento';
+  if (verificare) return 'verificare';
+  return hasData ? 'chiuso' : 'nessun_dato';
+}
 
 const MONO = FONT.mono;
 
@@ -184,7 +202,9 @@ export default function ControlloMensile() {
     const monthly = [];
     let yearPosAuto = 0,
       yearPosManual = 0,
-      yearPosBanca = 0;
+      yearPosBanca = 0,
+      yearPosNumia = 0,
+      yearPosSumup = 0;
     let yearCorrispAuto = 0,
       yearCorrispManual = 0;
     let yearVersamenti = 0,
@@ -218,6 +238,8 @@ export default function ControlloMensile() {
         (sum, g) => sum + (parseFloat(g.accredito_banca) || 0),
         0
       );
+      const posNumia = monthPos.reduce((sum, g) => sum + circuitiGiorno(g).numia, 0);
+      const posSumup = monthPos.reduce((sum, g) => sum + circuitiGiorno(g).sumup, 0);
 
       // ============ DOCUMENTI COMMERCIALI (da Corrispettivi XML) ============
       // Numero totale di scontrini/ricevute emessi nel mese
@@ -295,6 +317,16 @@ export default function ControlloMensile() {
       const posBankIssue = monthPos.some(g =>
         ['mancante', 'differenza', 'extra'].includes(g.stato_accredito)
       );
+      const esitoRegistratore = esitoRiga({
+        hasData: monthPos.length > 0,
+        intervento: monthPos.some(g => g.stato_serale === 'differenza_in_piu_da_registrare'),
+        verificare: monthPos.some(g => g.stato_serale === 'in_attesa_xml'),
+      });
+      const esitoBanca = esitoRiga({
+        hasData: posNumia > 0,
+        intervento: monthPos.some(g => g.stato_accredito === 'mancante'),
+        verificare: monthPos.some(g => ['differenza', 'extra'].includes(g.stato_accredito)),
+      });
 
       const hasData =
         posAuto > 0 ||
@@ -311,6 +343,10 @@ export default function ControlloMensile() {
         posAuto,
         posManual,
         posBanca,
+        posNumia,
+        posSumup,
+        esitoRegistratore,
+        esitoBanca,
         posDiff,
         posBancaDiff,
         posFiscalIssue,
@@ -339,6 +375,8 @@ export default function ControlloMensile() {
       yearPosAuto += posAuto;
       yearPosManual += posManual;
       yearPosBanca += posBanca;
+      yearPosNumia += posNumia;
+      yearPosSumup += posSumup;
       yearCorrispAuto += corrispAuto;
       yearCorrispManual += corrispManual;
       yearVersamenti += versamenti;
@@ -356,6 +394,8 @@ export default function ControlloMensile() {
       posAuto: yearPosAuto,
       posManual: yearPosManual,
       posBanca: yearPosBanca,
+      posNumia: yearPosNumia,
+      posSumup: yearPosSumup,
       corrispettiviAuto: yearCorrispAuto,
       corrispettiviManual: yearCorrispManual,
       versamenti: yearVersamenti,
@@ -451,6 +491,8 @@ export default function ControlloMensile() {
       dayData.posAuto = parseFloat(dayPos?.xml_elettronico) || 0;
       dayData.posManual = parseFloat(dayPos?.pos_manuale) || 0;
       dayData.posBanca = parseFloat(dayPos?.accredito_banca) || 0;
+      dayData.posNumia = circuitiGiorno(dayPos).numia;
+      dayData.posSumup = circuitiGiorno(dayPos).sumup;
       dayData.posDiff = parseFloat(dayPos?.diff_serale) || 0;
       dayData.posBancaDiff = parseFloat(dayPos?.diff_accredito) || 0;
       dayData.statoSerale = dayPos?.stato_serale || 'no_dati';
@@ -510,6 +552,11 @@ export default function ControlloMensile() {
         ['differenza_in_piu_da_registrare', 'in_attesa_xml'].includes(dayData.statoSerale) ||
         ['mancante', 'differenza', 'extra'].includes(dayData.statoBanca) ||
         Math.abs(dayData.corrispettivoDiff) > 1;
+      dayData.esito = esitoRiga({
+        hasData: dayData.hasData,
+        intervento: dayData.statoSerale === 'differenza_in_piu_da_registrare' || dayData.statoBanca === 'mancante',
+        verificare: dayData.hasDiscrepancy,
+      });
 
       // Debug info
       dayData._debug = {
@@ -776,9 +823,10 @@ export default function ControlloMensile() {
         </p>
       )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 12 }}>
-        <StatCard label="POS registratore" value={formatEuro(yearTotals.posAuto)} accent="primary" />
-        <StatCard label="POS chiusura serale" value={formatEuro(yearTotals.posManual)} accent="primary" />
-        <StatCard label="POS in banca" value={formatEuro(yearTotals.posBanca || 0)} accent="primary" />
+        <StatCard label="Elettronico secondo il registratore" value={formatEuro(yearTotals.posAuto)} accent="primary" />
+        <StatCard label="POS Numia, chiusura serale" value={formatEuro(yearTotals.posNumia || 0)} accent="primary" />
+        <StatCard label="POS SumUp, dall'app" value={formatEuro(yearTotals.posSumup || 0)} accent="primary" />
+        <StatCard label="Accreditato su BPM" subtext="Solo Numia: SumUp paga sulla sua carta" value={formatEuro(yearTotals.posBanca || 0)} accent="primary" />
       </div>
       <p style={{ margin: '0 0 16px', fontSize: 13, color: COLORS.textMuted }}>
         Fatture da registrare {(completezzaRegistro.fatture_da_registrare || 0).toLocaleString('it-IT')}
@@ -804,8 +852,8 @@ export default function ControlloMensile() {
         >
           <span style={{ fontSize: 24 }}>⚠️</span>
           <div>
-            <strong>Attenzione!</strong> Ci sono discrepanze tra i dati automatici (XML) e manuali.
-            Le righe evidenziate in giallo richiedono verifica.
+            <strong>Attenzione:</strong> alcuni {viewMode === 'anno' ? 'mesi' : 'giorni'} non tornano.
+            La colonna «Esito» dice quali: «Da sistemare» serve un intervento, «Da verificare» va guardato.
           </div>
         </div>
       )}
@@ -826,18 +874,19 @@ export default function ControlloMensile() {
             <thead>
               <tr>
                 <Th>Mese</Th>
-                <Th align="right">POS registratore</Th>
-                <Th align="right">POS chiusura serale</Th>
-                <Th align="right">POS in banca</Th>
-                <Th align="center">Esito registratore</Th>
-                <Th align="center">Esito banca</Th>
+                <Th align="right">Elettronico secondo il registratore</Th>
+                <Th align="right">POS Numia, chiusura serale</Th>
+                <Th align="right">POS SumUp, dall'app</Th>
+                <Th align="right">Accreditato su BPM</Th>
+                <Th align="center">Registratore contro terminali</Th>
+                <Th align="center">BPM contro Numia</Th>
                 <Th align="center"></Th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <Td colSpan="7" align="center" style={{ padding: 40 }}>
+                  <Td colSpan="8" align="center" style={{ padding: 40 }}>
                     Caricamento dei dati…
                   </Td>
                 </tr>
@@ -845,14 +894,7 @@ export default function ControlloMensile() {
                 monthlyData.map(row => (
                   <tr
                     key={row.month}
-                    style={{
-                      background: row.hasDiscrepancy
-                        ? COLORS.warningLight
-                        : row.hasData
-                          ? COLORS.card
-                          : COLORS.bgAlt,
-                      opacity: row.hasData ? 1 : 0.5,
-                    }}
+                    style={{ background: COLORS.card, borderBottom: `1px solid ${COLORS.border}` }}
                     data-testid={`row-month-${row.month}`}
                   >
                     <Td style={{ fontWeight: 600 }}>{row.monthName}</Td>
@@ -860,13 +902,16 @@ export default function ControlloMensile() {
                       {row.posAuto > 0 ? formatEuro(row.posAuto) : '-'}
                     </Td>
                     <Td align="right" mono>
-                      {row.posManual > 0 ? formatEuro(row.posManual) : '-'}
+                      {row.posNumia > 0 ? formatEuro(row.posNumia) : '-'}
+                    </Td>
+                    <Td align="right" mono>
+                      {row.posSumup > 0 ? formatEuro(row.posSumup) : '-'}
                     </Td>
                     <Td align="right" mono>
                       {row.posBanca > 0 ? formatEuro(row.posBanca) : '-'}
                     </Td>
-                    <Td align="center">{row.posFiscalIssue ? 'Da vedere' : row.hasData ? 'Ok' : '—'}</Td>
-                    <Td align="center">{row.posBankIssue ? 'Da vedere' : row.hasData ? 'Ok' : '—'}</Td>
+                    <Td align="center"><Esito esito={row.esitoRegistratore} /></Td>
+                    <Td align="center"><Esito esito={row.esitoBanca} /></Td>
                     <Td align="center">
                       {row.hasData && (
                         <Button
@@ -890,7 +935,8 @@ export default function ControlloMensile() {
               >
                 <td style={{ padding: 10 }}>TOTALE {anno}</td>
                 <td style={{ padding: 10, textAlign: 'right', fontFamily: MONO }}>{formatEuro(yearTotals.posAuto)}</td>
-                <td style={{ padding: 10, textAlign: 'right', fontFamily: MONO }}>{formatEuro(yearTotals.posManual)}</td>
+                <td style={{ padding: 10, textAlign: 'right', fontFamily: MONO }}>{formatEuro(yearTotals.posNumia || 0)}</td>
+                <td style={{ padding: 10, textAlign: 'right', fontFamily: MONO }}>{formatEuro(yearTotals.posSumup || 0)}</td>
                 <td style={{ padding: 10, textAlign: 'right', fontFamily: MONO }}>{formatEuro(yearTotals.posBanca || 0)}</td>
                 <td></td>
                 <td></td>
@@ -917,27 +963,19 @@ export default function ControlloMensile() {
             <thead>
               <tr>
                 <Th style={{ padding: 12 }}>Data</Th>
-                <Th align="right" style={{ padding: 12 }}>
-                  POS registratore
-                </Th>
-                <Th align="right" style={{ padding: 12 }}>
-                  POS chiusura serale
-                </Th>
-                <Th align="right" style={{ padding: 12 }}>
-                  POS in banca
-                </Th>
-                <Th align="right" style={{ padding: 12 }}>
-                  Registratore − chiusura
-                </Th>
-                <Th align="right" style={{ padding: 12 }}>
-                  Banca − chiusura
-                </Th>
+                <Th align="right" style={{ padding: 12 }}>Elettronico secondo il registratore</Th>
+                <Th align="right" style={{ padding: 12 }}>POS Numia, chiusura serale</Th>
+                <Th align="right" style={{ padding: 12 }}>POS SumUp, dall'app</Th>
+                <Th align="right" style={{ padding: 12 }}>Accreditato su BPM</Th>
+                <Th align="right" style={{ padding: 12 }}>Registratore − (Numia + SumUp)</Th>
+                <Th align="right" style={{ padding: 12 }}>BPM − Numia</Th>
+                <Th align="center" style={{ padding: 12 }}>Esito</Th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <Td colSpan="6" align="center" style={{ padding: 40 }}>
+                  <Td colSpan="8" align="center" style={{ padding: 40 }}>
                     Caricamento dei dati…
                   </Td>
                 </tr>
@@ -945,69 +983,21 @@ export default function ControlloMensile() {
                 dailyComparison.map(row => (
                   <tr
                     key={row.date}
-                    style={{
-                      background: row.hasDiscrepancy
-                        ? COLORS.warningLight
-                        : row.hasData
-                          ? COLORS.card
-                          : COLORS.bgAlt,
-                      opacity: row.hasData ? 1 : 0.5,
-                    }}
+                    style={{ background: COLORS.card, borderBottom: `1px solid ${COLORS.border}` }}
                     data-testid={`row-${row.date}`}
                   >
                     <Td style={{ fontWeight: 500 }}>{formatDate(row.date)}</Td>
+                    <Td align="right" mono>{row.posAuto > 0 ? formatEuro(row.posAuto) : '-'}</Td>
+                    <Td align="right" mono>{row.posNumia > 0 ? formatEuro(row.posNumia) : '-'}</Td>
+                    <Td align="right" mono>{row.posSumup > 0 ? formatEuro(row.posSumup) : '-'}</Td>
+                    <Td align="right" mono>{row.posBanca > 0 ? formatEuro(row.posBanca) : '-'}</Td>
                     <Td align="right" mono>
-                      {row.posAuto > 0 ? formatEuro(row.posAuto) : '-'}
+                      {Math.abs(row.posDiff) > 0.01 ? `${row.posDiff > 0 ? '+' : ''}${formatEuro(row.posDiff)}` : '-'}
                     </Td>
                     <Td align="right" mono>
-                      {row.posManual > 0 ? formatEuro(row.posManual) : '-'}
+                      {Math.abs(row.posBancaDiff) > 0.01 ? `${row.posBancaDiff > 0 ? '+' : ''}${formatEuro(row.posBancaDiff)}` : '-'}
                     </Td>
-                    <Td align="right" mono>
-                      {row.posBanca > 0 ? formatEuro(row.posBanca) : '-'}
-                    </Td>
-                    <Td
-                      align="right"
-                      mono
-                      style={{
-                        fontWeight: Math.abs(row.posDiff) > 1 ? 'bold' : 'normal',
-                        color:
-                          Math.abs(row.posDiff) > 1
-                            ? row.posDiff > 0
-                              ? COLORS.success
-                              : COLORS.danger
-                            : COLORS.textMuted,
-                      }}
-                    >
-                      {Math.abs(row.posDiff) > 0.01 ? (
-                        <span>
-                          {row.posDiff > 0 ? '+' : ''}
-                          {formatEuro(row.posDiff)}
-                        </span>
-                      ) : (
-                        '-'
-                      )}
-                    </Td>
-                    <Td
-                      align="right"
-                      mono
-                      style={{
-                        fontWeight: ['mancante', 'differenza', 'extra'].includes(row.statoBanca)
-                          ? 'bold'
-                          : 'normal',
-                        color: ['mancante', 'differenza', 'extra'].includes(row.statoBanca)
-                          ? COLORS.danger
-                          : COLORS.textMuted,
-                      }}
-                    >
-                      {Math.abs(row.posBancaDiff) > 0.01 ? (
-                        <span>
-                          {row.posBancaDiff > 0 ? '+' : ''}
-                          {formatEuro(row.posBancaDiff)}
-                        </span>
-                      ) : (
-                        '-'
-                      )}
-                    </Td>
+                    <Td align="center"><Esito esito={row.esito} /></Td>
                   </tr>
                 ))
               )}
@@ -1017,21 +1007,12 @@ export default function ControlloMensile() {
                 <td style={{ padding: 12 }}>
                   TOTALE {monthNames[meseSelezionato - 1].toUpperCase()}
                 </td>
-                <td style={{ padding: 12, textAlign: 'right', fontFamily: MONO }}>
-                  {formatEuro(dailyComparison.reduce((s, d) => s + d.posAuto, 0))}
-                </td>
-                <td style={{ padding: 12, textAlign: 'right', fontFamily: MONO }}>
-                  {formatEuro(dailyComparison.reduce((s, d) => s + d.posManual, 0))}
-                </td>
-                <td style={{ padding: 12, textAlign: 'right', fontFamily: MONO }}>
-                  {formatEuro(dailyComparison.reduce((s, d) => s + d.posBanca, 0))}
-                </td>
-                <td style={{ padding: 12, textAlign: 'right', fontFamily: MONO }}>
-                  {formatEuro(dailyComparison.reduce((s, d) => s + d.posDiff, 0))}
-                </td>
-                <td style={{ padding: 12, textAlign: 'right', fontFamily: MONO }}>
-                  {formatEuro(dailyComparison.reduce((s, d) => s + d.posBancaDiff, 0))}
-                </td>
+                {['posAuto', 'posNumia', 'posSumup', 'posBanca', 'posDiff', 'posBancaDiff'].map(k => (
+                  <td key={k} style={{ padding: 12, textAlign: 'right', fontFamily: MONO }}>
+                    {formatEuro(dailyComparison.reduce((s, d) => s + (d[k] || 0), 0))}
+                  </td>
+                ))}
+                <td />
               </tr>
             </tfoot>
           </table>
