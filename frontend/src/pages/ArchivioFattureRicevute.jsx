@@ -29,10 +29,12 @@ import {
   Th,
   Td,
 } from '../components/ds';
-import { ChevronLeft, ChevronRight, Eye, FileText, ArrowLeftRight } from 'lucide-react';
+import { Eye, FileText, ArrowLeftRight } from 'lucide-react';
 import { ePagata } from '../utils/statoFattura';
 
-const PER_PAGINA = 50;
+// Come nell'artefatto: 200 righe, poi «Mostra altre 200 · N rimanenti».
+// `pagina` conta i blocchi gia' mostrati.
+const PER_PAGINA = 200;
 
 const NOMI_TIPO_DOCUMENTO = {
   TD01: 'Fattura',
@@ -409,11 +411,11 @@ export default function ArchivioFatture() {
     fetchFornitori();
   }, []);
 
-  const totalePagine = Math.max(1, Math.ceil(fatture.length / PER_PAGINA));
   const fattureVisibili = useMemo(
-    () => fatture.slice((pagina - 1) * PER_PAGINA, pagina * PER_PAGINA),
+    () => fatture.slice(0, pagina * PER_PAGINA),
     [fatture, pagina]
   );
+  const fattureRimanenti = Math.max(0, fatture.length - fattureVisibili.length);
   const fornitoriFiltrati = useMemo(() => {
     const query = ricercaFornitore.trim().toLowerCase();
     if (!query) return fornitori;
@@ -1069,31 +1071,15 @@ export default function ArchivioFatture() {
           </TableWrap>
         )}
       </Card>
-      {fatture.length > PER_PAGINA && (
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 12, marginTop: 16, padding: 12, background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: BORDER_RADIUS.md }}>
+      {fattureRimanenti > 0 && (
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: 16 }}>
           <Button
             variant="secondary"
-            onClick={() => setPagina(p => Math.max(1, p - 1))}
-            disabled={pagina === 1}
-            aria-label="Pagina precedente"
-            style={{ width: 44, height: 44, padding: 0, justifyContent: 'center' }}
+            onClick={() => setPagina(p => p + 1)}
+            data-testid="mostra-altre-fatture"
+            style={{ minHeight: 44 }}
           >
-            <ChevronLeft size={21} />
-          </Button>
-          <div style={{ minWidth: 150, textAlign: 'center', fontSize: 13, color: COLORS.gray[700] }}>
-            <strong>Pagina {pagina} di {totalePagine}</strong>
-            <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 2 }}>
-              {fatture.length} fatture totali
-            </div>
-          </div>
-          <Button
-            variant="secondary"
-            onClick={() => setPagina(p => Math.min(totalePagine, p + 1))}
-            disabled={pagina === totalePagine}
-            aria-label="Pagina successiva"
-            style={{ width: 44, height: 44, padding: 0, justifyContent: 'center' }}
-          >
-            <ChevronRight size={21} />
+            Mostra altre {Math.min(PER_PAGINA, fattureRimanenti)} · {fattureRimanenti.toLocaleString('it-IT')} rimanenti
           </Button>
         </div>
       )}
