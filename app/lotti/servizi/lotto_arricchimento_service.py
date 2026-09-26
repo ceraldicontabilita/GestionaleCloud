@@ -65,6 +65,10 @@ def calcola_valore_economico(lotto: dict) -> Optional[float]:
         costo_pezzo = float(costo_pezzo)
     except (TypeError, ValueError):
         return None
+    # Un costo di produzione a zero non esiste: è lo 0 fisso che il tablet
+    # mandava fino al 26/09/2026. Vale «non noto», non «gratis».
+    if costo_pezzo <= 0:
+        return None
     quantita = lotto.get("quantita")
     try:
         quantita = float(quantita) if quantita is not None else 0.0

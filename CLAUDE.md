@@ -413,10 +413,10 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   commissioni e fatture del gestore escluse; attesa mancante o multipla →
   `DA_VERIFICARE`, la banca non crea la chiusura. L'accredito ricostruito
   dalla causale è **derivato**: l'export del terminale vince.
-- Un versamento contanti genera uscita Cassa e corrispondente entrata Banca
-  con lo stesso `operation_id`. Un trasferimento banca↔cassa sono due
-  movimenti speculari collegati da `trasferimento_collegato_id` con categoria
-  `trasferimento_interno`, non un flag sul singolo movimento.
+- Versamento/prelievo contanti: uscita Cassa ed entrata Banca (o viceversa), stesso `operation_id`, collegate da
+  `trasferimento_collegato_id`, categoria `trasferimento_interno`. È **un'operazione della banca, non una riga
+  d'archivio**: le copie (vecchio archivio, CSV, Enable Banking) fanno una coppia sola, il numero vero è il massimo
+  per fonte nello stesso giorno e importo (`versamenti_contanti.py`); le gambe in più dei motori si tolgono per id.
 - Prima Nota Banca non è la copia dell'estratto conto: una riga entra quando è nota la causale contabile oppure
   appartiene alle categorie bancarie senza documento ammesse dal codice. Anche i movimenti letti dalla banca
   (Enable Banking, `services/enable_banking.py`, flag `ENABLE_BANKING_ENABLED`, sessione cifrata col solo
@@ -717,9 +717,9 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - **Il registro delle ricevute non è una prova di presenza**: vale solo se la fattura esiste ancora in
   `fatture`. **Un'impronta cambiata non è un conflitto** (il gestionale arricchisce righe e stati): conflitto è solo
   XML diverso con la fattura già in Lotti; se manca si importa. Un fornitore escluso si salta, non è un errore.
+- **Un numero che non si conosce non è zero**: KPI senza fonte = «Dato non disponibile»; spesa = `total_amount` del gestionale per identità (`spesa_da_gestionale`); costo lotto = consumo × prezzo di fattura (`costo_da_consumo`), altrimenti `None` col motivo; spese, sconti e trasporto non entrano in giacenza.
 - **Prezzi solo da acquisti reali in fattura XML.** Gli ordini hanno totali veri: prezzo di riga, aliquota
-  IVA dall'XML, imponibile, IVA e totale che si ricalcolano a ogni variazione, con le stesse colonne nel
-  PDF.
+  IVA dall'XML, imponibile, IVA e totale che si ricalcolano a ogni variazione, con le stesse colonne nel PDF.
 - **FIFO: il lotto con la fattura più vecchia**, fra tutti i fornitori dello stesso articolo. Descrizione di fattura →
   articolo in `nome_mapping` (`servizi/articoli_fattura.py`): vince la riga **confermata** (Dizionario, «Proposte web»);
   senza conferme, parola intera e fuori i lotti che una prova dice altro («olive in acqua e sale» non è sale).

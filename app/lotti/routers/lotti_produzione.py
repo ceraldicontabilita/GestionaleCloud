@@ -973,7 +973,7 @@ async def _candidati_lotti_fifo(ing: dict) -> tuple:
         "_id": 0, "id": 1, "lotto_id_fornitore": 1, "fornitore": 1,
         "prodotto_nome": 1, "quantita_disponibile": 1, "unita_misura": 1,
         "data_fattura": 1, "data_scadenza": 1, "esaurito": 1,
-        "fattura_ref": 1, "allergeni_testo": 1,
+        "fattura_ref": 1, "allergeni_testo": 1, "prezzo_unitario": 1,
     }
 
     # 1) ASSOCIAZIONE CONFERMATA: la descrizione di fattura del lotto e'
@@ -1256,6 +1256,8 @@ async def scala_lotti_fornitori_per_ricetta(
                     "quantita_consumata": round(qt_da_consumare, 3),
                     "quantita_rimasta": round(qt_nuova, 3),
                     "unita": unita_lotto,
+                    # prezzo di fattura per unità del lotto: base del costo vero
+                    "prezzo_unitario": lotto.get("prezzo_unitario"),
                     "esaurito": esaurito,
                     # «confermato» = articolo associato da una persona;
                     # «da_confermare» = trovato per nome, da ricontrollare
@@ -1291,6 +1293,48 @@ async def scala_lotti_fornitori_per_ricetta(
         "conversioni_non_disponibili": conversioni_non_disponibili,
         "lotti_da_smaltire": lotti_da_smaltire,
     }
+
+
+def costo_da_consumo(lotti_info: dict) -> tuple:
+    """Costo della produzione dai lotti davvero scalati: quantità consumata per
+    prezzo di fattura del lotto (``Decimal``).
+
+    Il tablet mandava sempre ``costo_totale=0`` e il server lo salvava: ogni
+    lotto prodotto valeva 0,00 € in «Cosa usare oggi». Ora il costo lo decide
+    il server, e se non è calcolabile — ingrediente non trovato o insufficiente,
+    unità non convertibile, lotto senza prezzo — resta ``None`` col motivo:
+    mai uno zero o un costo parziale spacciato per intero.
+    Restituisce ``(costo_totale | None, motivo | None)``.
+    """
+    from decimal import Decimal, InvalidOperation
+
+    motivi = []
+    if lotti_info.get("ingredienti_non_trovati"):
+        motivi.append("ingredienti senza lotto: " + ", ".join(lotti_info["ingredienti_non_trovati"][:5]))
+    if lotti_info.get("ingredienti_insufficienti"):
+        motivi.append("giacenza insufficiente: " + ", ".join(
+            i.get("ingrediente", "") for i in lotti_info["ingredienti_insufficienti"][:5]))
+    if lotti_info.get("conversioni_non_disponibili"):
+        motivi.append("unità non convertibili: " + ", ".join(
+            sorted({c.get("ingrediente", "") for c in lotti_info["conversioni_non_disponibili"]})[:5]))
+    totale = Decimal("0")
+    senza_prezzo = []
+    for s in lotti_info.get("lotti_scalati") or []:
+        try:
+            prezzo = Decimal(str(s.get("prezzo_unitario"))) if s.get("prezzo_unitario") not in (None, "") else None
+        except InvalidOperation:
+            prezzo = None
+        if prezzo is None or prezzo <= 0:
+            senza_prezzo.append(s.get("prodotto") or s.get("ingrediente") or "?")
+            continue
+        totale += prezzo * Decimal(str(s.get("quantita_consumata") or 0))
+    if senza_prezzo:
+        motivi.append("lotti senza prezzo in fattura: " + ", ".join(senza_prezzo[:5]))
+    if not lotti_info.get("lotti_scalati"):
+        motivi.append("nessun lotto scalato")
+    if motivi:
+        return None, "; ".join(motivi)
+    return float(totale.quantize(Decimal("0.01"))), None
 
 
 async def _riordini_post_produzione(lotti_scalati, ricetta_nome: str):
@@ -1425,7 +1469,7 @@ async def registra_produzione_e_crea_lotto(
     ricetta_id: str = Query(...),
     pezzi: int = Query(...),
     pezzi_base: int = Query(...),
-    costo_totale: float = Query(...),
+    costo_totale: Optional[float] = Query(None, description="Ignorato: il costo lo calcola il server dal consumo"),
     data_produzione: str = Query(...),
     frigo_numero: str = Query(None),
     lotti_componenti_json: Optional[str] = Query(None),
@@ -1560,6 +1604,9 @@ async def registra_produzione_e_crea_lotto(
     except Exception:
         lotti_info["da_riordinare"] = []
 
+    costo_totale, costo_da_verificare = costo_da_consumo(lotti_info)
+    costo_pezzo = round(costo_totale / pezzi, 4) if (costo_totale is not None and pezzi > 0) else None
+
     lotto_doc = {
         "id": str(uuid.uuid4()),
         "prodotto": ricetta["nome"],
@@ -1573,7 +1620,8 @@ async def registra_produzione_e_crea_lotto(
         "quantita": pezzi,
         "unita_misura": unita,
         "costo_totale": costo_totale,
-        "costo_pezzo": round(costo_totale / pezzi, 4) if pezzi > 0 else 0,
+        "costo_pezzo": costo_pezzo,
+        "costo_da_verificare": costo_da_verificare,
         "progressivo": progressivo,
         "destinazione": destinazione,
         "posizione": posizione_iniziale,
@@ -1609,7 +1657,8 @@ async def registra_produzione_e_crea_lotto(
             "data": data_fmt,
             "data_iso": data_produzione,
             "costo_totale": costo_totale,
-            "costo_pezzo": round(costo_totale / pezzi, 4) if pezzi > 0 else 0,
+            "costo_pezzo": costo_pezzo,
+            "costo_da_verificare": costo_da_verificare,
             "numero_lotto": numero_lotto,
             "lotti_fornitori_scalati": len(lotti_info["lotti_scalati"]),
             # Dettaglio originale dello scarico, conservato per la tracciabilità
