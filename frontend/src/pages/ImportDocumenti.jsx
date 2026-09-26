@@ -10,16 +10,20 @@ import {
   DriveFattureImportCard,
 } from '../components/DriveImportControls';
 import {
-  Upload,
   FileText,
   CheckCircle,
   AlertCircle,
   Loader2,
   FolderUp,
+  Upload,
   Sparkles,
   Mail,
   Users,
 } from 'lucide-react';
+
+const TITOLO_ORIGINE = {
+  margin: '18px 0 8px', fontSize: 15, fontWeight: 700, color: COLORS.text,
+};
 
 export function classificaEsitoUpload(data = {}) {
   const message = data?.message || '';
@@ -274,7 +278,7 @@ export default function ImportDocumenti() {
             imported: completed.inserted || 0,
             duplicates: completed.unchanged || 0,
             data: completed,
-            message: `POS Numia importato: ${completed.inserted || 0} operazioni nuove, ${completed.updated || 0} aggiornate, ${completed.unchanged || 0} gia presenti.`,
+            message: `POS Numia importato: ${completed.inserted || 0} operazioni nuove, ${completed.updated || 0} aggiornate, ${completed.unchanged || 0} già presenti.`,
           };
         } else if (usaCodaPos && importData.status === 'completed') {
           const completed = importData.result || {};
@@ -437,20 +441,12 @@ export default function ImportDocumenti() {
   ];
 
   return (
-    <PageLayout
-      title="Import Documenti"
-      icon={<Upload size={22} />}
-      description="Carica file e il sistema li elabora automaticamente"
-    >
+    <PageLayout title="Importa documenti">
       <div style={{ maxWidth: 900, margin: '0 auto' }}>
-        <div
-          data-testid="drive-import-controls"
-          style={{ display: 'grid', gap: 16, marginBottom: 20 }}
-        >
-          <DriveFattureImportCard />
-          <AnnoImportazioneCard />
-        </div>
-
+        {/* Una domanda sola: da dove arriva il documento? Tre risposte, non
+            otto bottoni di quattro colori. Il riquadro per trascinare i file
+            e' l'unica azione piena: e' quella che si usa nove volte su dieci. */}
+        <h2 style={TITOLO_ORIGINE}>Dal computer</h2>
         {/* Area Drop */}
         {/* Nota: div nativo (non Card) perché deve portare data-testid="drop-zone" sul nodo esatto */}
         <div
@@ -495,22 +491,32 @@ export default function ImportDocumenti() {
           </div>
         </div>
 
-        {/* Azioni sulla posta già scaricata: una riga compatta */}
+        <h2 style={TITOLO_ORIGINE}>Da Google Drive</h2>
+        <div
+          data-testid="drive-import-controls"
+          style={{ display: 'grid', gap: 16, marginBottom: 20 }}
+        >
+          <DriveFattureImportCard />
+          <AnnoImportazioneCard />
+        </div>
+
+        <h2 style={TITOLO_ORIGINE}>Dalla posta</h2>
+        <p style={{ margin: '0 0 8px', fontSize: 12.5, color: COLORS.textMuted }}>
+          Gmail e PEC già scaricate: si vede prima che cosa succederebbe, poi si conferma.
+        </p>
         <div
           style={{
             marginBottom: 16,
             display: 'flex',
             flexWrap: 'wrap',
             alignItems: 'center',
-            justifyContent: 'center',
             gap: 8,
           }}
         >
-          <span style={{ fontSize: 12, color: COLORS.textMuted }}>Dalla posta:</span>
           {/* Auto-classify documenti Gmail/PEC */}
           <Button
             type="button"
-            variant="info"
+            variant="secondary"
             size="sm"
             iconLeft={<Sparkles size={14} />}
             onClick={async () => {
@@ -535,12 +541,12 @@ export default function ImportDocumenti() {
             data-testid="auto-classify-btn"
             title="Scansiona documents_inbox (Gmail/PEC) e classifica automaticamente F24, cedolini, CU, verbali, PEC…"
           >
-            Classifica Gmail/PEC
+            Classifica la posta
           </Button>
 
           <Button
             type="button"
-            variant="warning"
+            variant="secondary"
             size="sm"
             iconLeft={<Mail size={14} />}
             onClick={async () => {
@@ -563,7 +569,7 @@ export default function ImportDocumenti() {
 
           <Button
             type="button"
-            variant="success"
+            variant="secondary"
             size="sm"
             iconLeft={<Users size={14} />}
             onClick={async () => {
