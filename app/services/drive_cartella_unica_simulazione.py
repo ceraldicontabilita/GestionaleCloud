@@ -38,6 +38,10 @@ _GOOGLE_NATIVO = "application/vnd.google-apps."
 # saperlo costa tempo e memoria.
 FORMATI_GESTITI = (".pdf", ".xml", ".p7m", ".zip", ".xls", ".xlsx", ".xlsm", ".csv")
 
+# Campi dell'esito di una lettura: una nuova edizione li toglie prima di rileggere.
+_ESITO = ("tipo", "esito_previsto", "motivo", "errori", "gia_presente", "anno",
+          "fuori_anno", "sha256", "pagine", "fornitore", "numero")
+
 _lock = asyncio.Lock()
 
 
@@ -180,7 +184,9 @@ async def _giro(db, root: str) -> Dict[str, Any]:
         if cu.radice():
             escluse = set((await asyncio.to_thread(cu._cartelle, service, cu.radice())).values())
         file = await asyncio.to_thread(_inventario, service, root, escluse)
-        noti = {r["id"] for r in await db[REGISTRO].find({}, {"_id": 0, "id": 1}).to_list(None)}
+        gia = await db[REGISTRO].find({}, {"_id": 0, "id": 1, "radice": 1}).to_list(None)
+        noti = {r["id"] for r in gia}
+        noti_radice = {r["id"] for r in gia if r.get("radice") == root}
         ora = _ora()
         righe = [{"id": f["id"], "radice": root, "nome": f.get("name"),
                   "percorso": f["percorso"], "md5": f.get("md5Checksum"),
@@ -189,8 +195,15 @@ async def _giro(db, root: str) -> Dict[str, Any]:
         nuove = [r for r in righe if r["id"] not in noti]
         if nuove:
             await db[REGISTRO].insert_many(nuove)
+        # Le righe gia' note tornano in coda con UN aggiornamento: una scrittura
+        # per riga su 23.000 file teneva il giro fermo per ore.
+        await db[REGISTRO].update_many(
+            {"radice": root},
+            {"$set": {"stato": "da_leggere", "aggiornato_il": ora},
+             "$unset": {k: "" for k in _ESITO}},
+        )
         for r in righe:
-            if r["id"] in noti:
+            if r["id"] in noti and r["id"] not in noti_radice:
                 await db[REGISTRO].update_one({"id": r["id"]}, {"$set": r})
         stato = {"chiave": CHIAVE_STATO, "radice": root, "edizione": edizione(),
                  "fase": "lettura", "file_totali": len(file), "iniziata_il": ora}
