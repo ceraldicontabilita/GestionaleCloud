@@ -2,20 +2,21 @@
  * TabletView.jsx — Vista kiosk dopo il login PIN
  *
  * SICUREZZA KIOSK:
- *  - Nessun pulsante porta fuori dal kiosk senza PIN admin
+ *  - Nessun pulsante porta fuori dal kiosk: il gestionale si apre solo dal
+ *    login del Gestionale (sessione unica), mai da un tastierino qui dentro
  *  - Il ritorno ai reparti è libero e conserva l'operatore identificato
- *  - L'ingresso nel gestionale resta protetto dalla home kiosk
  *  - I dipendenti restano sempre nel kiosk
  *
  * REPARTI:
- *  - Pasticceria: prodotti, lotti, acquaviva, SAIMA/MEPA ordini, giacenze calanti → ordine automatico
- *  - Rosticceria: prodotti, lotti, produzione mattina
+ *  - Pasticceria e Rosticceria: si apre il cruscotto del reparto
+ *    (tablet/DashboardReparto), da lì «Produci» porta alle card dei prodotti
+ *  - Bar: le card dei prodotti
  *  - Magazzino:   giacenze materie prime, alert sottoscorta, conferma riordini
  */
 import { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { User } from "lucide-react";
+import { LayoutDashboard, User } from "lucide-react";
 import { norm } from "../../utils/textNormalize";
 import { apiError } from "../../utils/apiError";
 
@@ -27,13 +28,15 @@ import CardProdotto           from "./tablet/CardProdotto";
 import SchedaRicettaChiaraModal from "./SchedaRicettaChiaraModal";
 import PannelloReparti        from "./tablet/PannelloReparti";
 import MagazzinoBarView      from "./MagazzinoBarView";
+import DashboardReparto       from "./tablet/DashboardReparto";
 import ColazioneAcquavivaView from "./ColazioneAcquavivaView";
 import { API, fotoSrc }       from "../../utils/constants";
 import { clearTabletSession, getTabletSession } from "../../utils/tabletSession";
+import { logout } from "../../auth";
 
 const REPARTI_INFO = {
-  pasticceria: { emoji:"🍰", label:"Pasticceria", grad:"linear-gradient(135deg,#fb923c,#ea580c)" },
-  rosticceria: { emoji:"🥙", label:"Rosticceria", grad:"linear-gradient(135deg,#86efac,#22c55e)" },
+  pasticceria: { emoji:"🍰", label:"Pasticceria", grad:"linear-gradient(135deg,#fb923c,#ea580c)", colore:"#c2410c", cruscotto:true },
+  rosticceria: { emoji:"🥙", label:"Rosticceria", grad:"linear-gradient(135deg,#86efac,#22c55e)", colore:"#2f7a4d", cruscotto:true },
   bar:         { emoji:"☕", label:"Bar",         grad:"linear-gradient(135deg,#b45309,#78350f)" },
   magazzino:   { emoji:"📦", label:"Magazzino",   grad:"linear-gradient(135deg,#6f583a,#4a3f33)" },
 };
@@ -66,6 +69,9 @@ export const TabletView = ({ reparto: repartoIniziale = "pasticceria", onBack })
   const [idConVarianti,       setIdConVarianti]       = useState(new Set());
   const [taskOggi,            setTaskOggi]            = useState([]);
   const [showTask,            setShowTask]            = useState(false);
+  // Pasticceria e Rosticceria si aprono sul cruscotto del reparto; le card
+  // dei prodotti sono la vista «Produci».
+  const [vista,               setVista]               = useState(REPARTI_INFO[repartoIniziale]?.cruscotto ? "cruscotto" : "prodotti");
   // Frigoriferi/congelatori REALI configurati dal titolare (Attrezzature),
   // non l'elenco generico di fallback — richiesta Enzo 20/07/2026: "non mi
   // fa scegliere in quale congelatore o frigo, mancano".
@@ -162,6 +168,13 @@ export const TabletView = ({ reparto: repartoIniziale = "pasticceria", onBack })
     }
   };
 
+  // Cambio turno: il prossimo che tocca un reparto mette il suo PIN.
+  const cambiaOperatore = () => {
+    clearTabletSession();
+    logout();
+    window.location.hash = "tablet/home";
+  };
+
   const esciAdmin = () => {
     clearTabletSession();
     if (onBack) onBack();
@@ -183,7 +196,7 @@ export const TabletView = ({ reparto: repartoIniziale = "pasticceria", onBack })
 
       {/* Header */}
       <div style={{background:info.grad,padding:"14px 16px",boxShadow:"0 4px 16px rgba(0,0,0,.18)",flexShrink:0}}>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:reparto!=="magazzino"?14:0,flexWrap:"wrap",gap:8}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:vista==="prodotti"?14:0,flexWrap:"wrap",gap:8}}>
 
           {/* Sinistra: emoji + nome */}
           <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -201,7 +214,13 @@ export const TabletView = ({ reparto: repartoIniziale = "pasticceria", onBack })
           {/* Destra: azioni — l'operatore vede SOLO Colazione + Esci.
               Acquaviva/Alpha e Aggiungi prodotto NON sono più qui (gestione da sezione dedicata). */}
           <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-            {reparto === "pasticceria" && (
+            {info.cruscotto && vista === "prodotti" && (
+              <button onClick={()=>setVista("cruscotto")} data-testid="torna-cruscotto"
+                style={{minHeight:44,padding:"9px 16px",border:"none",borderRadius:12,background:"#fff",color:"#2a3329",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(0,0,0,.15)",display:"inline-flex",alignItems:"center",gap:6}}>
+                <LayoutDashboard size={16} aria-hidden="true" /> Cruscotto
+              </button>
+            )}
+            {vista === "prodotti" && reparto === "pasticceria" && (
               <>
                 <button onClick={()=>setShowColazione(true)}
                   style={{padding:"9px 16px",border:"none",borderRadius:12,background:"#fff",color:"#2a3329",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(0,0,0,.15)"}}>
@@ -215,7 +234,7 @@ export const TabletView = ({ reparto: repartoIniziale = "pasticceria", onBack })
             )}
 
             {/* Richiedi merce — UNICO modo di chiedere al magazzino, da ogni reparto */}
-            {reparto !== "magazzino" && (
+            {vista === "prodotti" && (
               <button onClick={()=>setShowRichiediMerce(true)}
                 style={{padding:"9px 16px",border:"none",borderRadius:12,background:"#fff",color:"#7c2d12",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(0,0,0,.15)"}}>
                 📦 Richiedi merce
@@ -231,7 +250,7 @@ export const TabletView = ({ reparto: repartoIniziale = "pasticceria", onBack })
         </div>
 
         {/* Ricerca — solo per reparti prodotti */}
-        {reparto !== "magazzino" && (
+        {vista === "prodotti" && (
           <div style={{position:"relative"}}>
             <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",color:"rgba(255,255,255,.7)",fontSize:16}}>🔍</span>
             <input
@@ -245,8 +264,26 @@ export const TabletView = ({ reparto: repartoIniziale = "pasticceria", onBack })
         )}
       </div>
 
+      {vista === "cruscotto" && (
+        <div style={{flex:1,minHeight:0,overflowY:"auto"}}>
+          <DashboardReparto
+            reparto={reparto}
+            label={info.label}
+            colore={info.colore}
+            operatore={operatore}
+            onProduci={()=>setVista("prodotti")}
+            onRicette={()=>{ window.location.hash = "ricette"; }}
+            onRichiediMerce={()=>setShowRichiediMerce(true)}
+            onColazione={reparto === "pasticceria" ? ()=>setShowColazione(true) : undefined}
+            onAlpha={reparto === "pasticceria" ? ()=>setShowAlpha(true) : undefined}
+            onCambiaOperatore={cambiaOperatore}
+            onReparti={()=>{ window.location.hash = "tablet/home"; }}
+          />
+        </div>
+      )}
+
       {/* Corpo */}
-      {(
+      {vista === "prodotti" && (
         <div style={{flex:1,minHeight:0,padding:"14px 16px",overflowY:"auto"}}>
 
           {/* Widget task del giorno */}

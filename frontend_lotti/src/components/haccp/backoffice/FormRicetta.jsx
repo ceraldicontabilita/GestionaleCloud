@@ -6,7 +6,7 @@ import axios from "axios";
 import { Globe } from "lucide-react";
 import { conferma } from "../../../utils/conferma";
 import { stampaDoc } from "../../../utils/stampa";
-import PinKeypad from "../shared/PinKeypad";
+import { isAdmin, vaiAlLoginGestionale } from "../../../auth";
 
 // Riga breve mostrata nel Menu digitale: una frase, non un tema. Oltre questa
 // misura il testo sborda dalla card del Menu su telefono.
@@ -132,7 +132,7 @@ function RigaIngrediente({ ing, idx, onChange, onRemove, bloccato = false }) {
         onChange={e => onChange(idx,"quantita",e.target.value)}
         placeholder="Qtà"
         readOnly={bloccato}
-        title={bloccato ? "Ricetta bloccata: per cambiare le dosi usa «Sblocca dosi» col PIN amministratore" : undefined}
+        title={bloccato ? "Ricetta bloccata: per cambiare le dosi usa «Sblocca dosi» (solo titolare)" : undefined}
         style={{width:72,padding:"10px 8px",border:"1.5px solid var(--border)",borderRadius:9,fontSize:15,fontWeight:700,textAlign:"center",fontFamily:"var(--font)",
           background: bloccato ? "#f0ebe0" : "#fff", color: bloccato ? "#7a7266" : "inherit", cursor: bloccato ? "not-allowed" : "auto"}}
       />
@@ -362,11 +362,18 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
 
   // ── DOSI BLOCCATE (richiesta Enzo 25/07/2026) ──────────────────────────────
   // Una ricetta già salvata nasce BLOCCATA: le dosi non si toccano per sbaglio
-  // con le freccette. Per correggerle serve il PIN amministratore. Le ricette
-  // nuove restano libere finché non vengono salvate la prima volta.
+  // con le freccette. Le sblocca solo il titolare, che è già entrato dal
+  // Gestionale: niente tastierino amministratore qui, basta una conferma
+  // (26/09/2026). Le ricette nuove restano libere finché non vengono salvate
+  // la prima volta.
   const [doseSbloccata, setDoseSbloccata] = useState(!ricetta?.id);
-  const [chiediPinDosi, setChiediPinDosi] = useState(false);
   const doseBloccata = !doseSbloccata;
+  const sbloccaDosi = async () => {
+    if (!isAdmin()) { vaiAlLoginGestionale(); return; }
+    if (!(await conferma("Sbloccare le dosi della ricetta ufficiale? Le correzioni valgono per le produzioni future."))) return;
+    setDoseSbloccata(true);
+    toast("Dosi sbloccate: ora puoi correggere la ricetta");
+  };
 
   // Intelligenza: propone gli ingredienti tipici dal NOME della ricetta.
   const [proponendo, setProponendo] = useState(false);
@@ -914,7 +921,7 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
               Dosi bloccate: questa è la ricetta ufficiale. Per produrre di più o di meno
               usa il moltiplicatore nella scheda <b>Ricette</b> — qui si cambia solo la ricetta.
             </span>
-            <button onClick={() => setChiediPinDosi(true)}
+            <button onClick={sbloccaDosi}
               style={{padding:"9px 14px",borderRadius:10,border:"none",background:"var(--info)",color:"#fff",
                 fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"var(--font)",whiteSpace:"nowrap"}}>
               🔓 Sblocca dosi
@@ -1006,15 +1013,6 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
       )}
       </div>
     </div>
-    {chiediPinDosi && (
-      <PinKeypad
-        titolo="Sblocca le dosi"
-        sottotitolo="Solo l'amministratore può correggere la ricetta ufficiale"
-        soloAdmin
-        onSuccess={() => { setChiediPinDosi(false); setDoseSbloccata(true); toast("Dosi sbloccate: ora puoi correggere la ricetta"); }}
-        onCancel={() => setChiediPinDosi(false)}
-      />
-    )}
     </div>
   );
 }

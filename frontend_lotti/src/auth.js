@@ -53,7 +53,7 @@ export const getRuolo = () => { try { return localStorage.getItem(RUOLO_KEY) || 
 export const isAdmin = () => getRuolo() === "amministratore";
 
 /** Logout completo: cancella token e ruolo, azzera il flag di sessione del
- *  cancello e notifica l'app così il LoginGate torna a chiedere il PIN/Google.
+ *  cancello e notifica l'app così il LoginGate torna a chiedere l'accesso.
  *  Usato dal bottone "Esci" dell'app principale e dallo switch operatore. */
 export function logout() {
   clearToken();
@@ -64,7 +64,7 @@ export function logout() {
 }
 
 /** Config già nota in cache, LETTA SUBITO (sincrona): la usiamo per mostrare
- *  il keypad senza aspettare il backend freddo. */
+ *  il cancello senza aspettare il backend freddo. */
 export function cachedAuthConfig() {
   try {
     const c = localStorage.getItem("lotti_auth_cfg");
@@ -111,7 +111,7 @@ export async function fetchAuthConfig() {
   for (let i = 0; i < 2; i++) {
     try {
       const r = await axios.get(`${API}/auth/config`, { timeout: 15000 });
-      const cfg = r.data || { enforce: true, google_enabled: false };
+      const cfg = r.data || { enforce: true };
       // Cache SOLO risposte vere del server. Mai memorizzare un fallback:
       // un {enforce:false} di ripiego, se finiva in cache, apriva per sempre
       // l'app senza PIN. (bug visto da Enzo il 14/06/2026)
@@ -129,7 +129,7 @@ export async function fetchAuthConfig() {
     }
   } catch { /* no-op */ }
   // Nessuna config reale disponibile: default PRUDENTE = serve il PIN.
-  return { enforce: true, google_enabled: false };
+  return { enforce: true };
 }
 
 /** Verifica il token lato server.
@@ -187,16 +187,19 @@ export function prendiPaginaRichiesta(ripiego = "dashboard") {
 // normale, su un 401, rilancerebbe il cancello all'infinito.
 const _senzaIntercettori = axios.create();
 
+/** Restituisce l'operatore amministratore (nome, dipendente_id se il titolare
+ *  ha una scheda HR univoca) oppure false se non c'e' sessione del Gestionale. */
 export async function entraDalGestionale() {
   try {
     const r = await _senzaIntercettori.get(`${API}/auth/session`, { timeout: 10000, withCredentials: true });
     const token = r.data && r.data.token;
     if (!token) return false;
+    const operatore = { ...(r.data.operatore || {}), ruolo: "amministratore" };
     saveToken(token);
     saveRuolo("amministratore");
-    saveOperatoreNome((r.data.operatore && r.data.operatore.nome) || "");
+    saveOperatoreNome(operatore.nome || "");
     setGateOk();
-    return true;
+    return operatore;
   } catch {
     return false;
   }

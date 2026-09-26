@@ -7,7 +7,7 @@ import TabletHome, { REPARTI_SOLO_ADMIN } from "../components/haccp/TabletHome";
 import { VenditaBancoView } from "../components/haccp/VenditaBancoView";
 import MagazzinoBarView from "../components/haccp/MagazzinoBarView";
 import OrdiniView from "../components/haccp/OrdiniView";
-import { clearTabletSession, getTabletSession, moveTabletSessionTo } from "../utils/tabletSession";
+import { clearTabletSession, getTabletSession, moveTabletSessionTo, sessioneTitolareAttiva } from "../utils/tabletSession";
 
 export default function KioskLayout({ hash }) {
   const reparto = hash.split("/")[1] || "home";
@@ -21,14 +21,19 @@ export default function KioskLayout({ hash }) {
   let opObj = getTabletSession();
 
   // Reparti riservati al titolare (Enzo 25/07/2026: «il dipendente deve solo
-  // produrre e vedere le ricette»). Il controllo non sta solo nel tastierino:
-  // chi arriva col link diretto #tablet/ordini, o chi ha cambiato reparto con
-  // una sessione da dipendente ancora valida, viene rimandato alle card.
-  if (opObj && REPARTI_SOLO_ADMIN.includes(reparto) && opObj.ruolo !== "amministratore") {
-    // Non cancellare l'identità del dipendente: se ha toccato per errore una
-    // card riservata, può annullare e continuare negli altri reparti senza
-    // reinserire il PIN.
-    opObj = null;
+  // produrre e vedere le ricette»). Il titolare si riconosce dalla sessione
+  // del Gestionale (token amministratore) o dalla sua identità sul tablet;
+  // chi arriva col link diretto #tablet/ordini senza, torna alle card, che
+  // provano la sessione del Gestionale o rimandano al suo login.
+  // L'identità del dipendente non si cancella: può continuare negli altri
+  // reparti senza reinserire il PIN.
+  if (REPARTI_SOLO_ADMIN.includes(reparto)) {
+    // Con una persona identificata sul tablet conta la sua identità, non il
+    // ruolo salvato nel browser.
+    const titolare = opObj ? opObj.ruolo === "amministratore" : sessioneTitolareAttiva();
+    if (!titolare) {
+      return <TabletHome onEntra={(rep) => { window.location.hash = rep === "ricette" ? "ricette" : `tablet/${rep}`; }} preselectReparto={reparto} />;
+    }
   }
 
   // Il cambio reparto non è un cambio persona: aggiorna soltanto la sezione.
@@ -36,7 +41,7 @@ export default function KioskLayout({ hash }) {
     opObj = moveTabletSessionTo(reparto);
   }
 
-  if (!opObj) {
+  if (!opObj && !REPARTI_SOLO_ADMIN.includes(reparto)) {
     // Nessuna sessione (o reparto diverso) → home con reparto pre-selezionato
     return <TabletHome onEntra={(rep) => { window.location.hash = rep === "ricette" ? "ricette" : `tablet/${rep}`; }} preselectReparto={reparto} />;
   }
@@ -78,5 +83,6 @@ export default function KioskLayout({ hash }) {
       </div>
     );
   }
-  return <TabletView reparto={reparto} onBack={esciGestionale} />;
+  // key: cambiando reparto il cruscotto riparte da capo, senza stato vecchio.
+  return <TabletView key={reparto} reparto={reparto} onBack={esciGestionale} />;
 }

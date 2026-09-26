@@ -19,7 +19,7 @@ import { Landmark, Boxes, Users, UtensilsCrossed, ArrowUpRight } from "lucide-re
  */
 const ICONE = { Landmark, Boxes, Users, UtensilsCrossed };
 
-export default function SelettoreSezioni({ sezioneCorrente }) {
+export default function SelettoreSezioni({ sezioneCorrente, escludi = [] }) {
   const [sezioni, setSezioni] = useState([]);
 
   useEffect(() => {
@@ -33,7 +33,7 @@ export default function SelettoreSezioni({ sezioneCorrente }) {
     return () => { vivo = false; };
   }, []);
 
-  const altre = sezioni.filter((s) => s.id !== sezioneCorrente);
+  const altre = sezioni.filter((s) => s.id !== sezioneCorrente && !escludi.includes(s.id));
   if (!altre.length) return null;
 
   return (
