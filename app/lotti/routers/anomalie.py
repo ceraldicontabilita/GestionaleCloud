@@ -202,6 +202,16 @@ async def registra_anomalia(data: NuovaAnomaliaRequest):
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
+    apparecchio = await db.attrezzature_config.find_one(
+        {"nome": data.attrezzatura, "attivo": {"$ne": False}},
+        {"_id": 0, "tipo": 1, "numero": 1, "nome": 1},
+    )
+    categoria_freddo = data.categoria in {"Frigorifero", "Congelatore", "Abbattitore"}
+    tipo_atteso = "frigo" if data.categoria == "Frigorifero" else "congelatore"
+    if categoria_freddo and (not apparecchio or apparecchio.get("tipo") != tipo_atteso):
+        raise HTTPException(422, "Scegli un'attrezzatura del freddo censita e attiva")
+    if apparecchio:
+        nuova_anomalia["attrezzatura_ref"] = apparecchio
 
     await db.anomalie.insert_one(nuova_anomalia)
 
@@ -221,12 +231,22 @@ async def registra_anomalia(data: NuovaAnomaliaRequest):
             or "temperatura" in (data.tipo or "").lower()
         )
         if is_temperatura:
+            from app.lotti.routers.utils import FILTRO_LOTTO_APERTO
+            filtro_posizione = {
+                "frigo_numero": {"$regex": f"^{re.escape(data.attrezzatura)}$", "$options": "i"},
+            }
+            if apparecchio:
+                tipi = (["frigo"] if apparecchio["tipo"] == "frigo"
+                        else ["congelatore", "abbattitore"])
+                filtro_posizione = {"$or": [
+                    {"posizione.numero": str(apparecchio["numero"]),
+                     "posizione.tipo": {"$in": tipi}},
+                    filtro_posizione,
+                ]}
             lotti_coinvolti = await db.lotti.find(
                 {
-                    "frigo_numero": {"$regex": data.attrezzatura[:6], "$options": "i"},
-                    "consumato": {"$ne": True},
-                    "esaurito": {"$ne": True},
-                    "stato": {"$nin": ["smaltito", "esaurito"]},
+                    **filtro_posizione,
+                    **FILTRO_LOTTO_APERTO,
                 },
                 {
                     "_id": 0,
@@ -290,11 +310,19 @@ async def lotti_attuali_anomalia(anomalia_id: str):
     # "Frigorifero N°9" — qui la query deve restare corretta perché è quella
     # su cui si basa lo spostamento massivo vero e proprio.
     from app.lotti.routers.utils import FILTRO_LOTTO_APERTO
+    ref = anomalia.get("attrezzatura_ref") or {}
+    filtro_posizione = {
+        "frigo_numero": {"$regex": f"^{re.escape(attrezzatura)}$", "$options": "i"},
+    }
+    if ref.get("numero") is not None:
+        tipi = (["frigo"] if ref.get("tipo") == "frigo"
+                else ["congelatore", "abbattitore"])
+        filtro_posizione = {"$or": [
+            {"posizione.numero": str(ref["numero"]), "posizione.tipo": {"$in": tipi}},
+            filtro_posizione,
+        ]}
     items = await db.lotti.find(
-        {
-            "frigo_numero": {"$regex": f"^{re.escape(attrezzatura)}$", "$options": "i"},
-            **FILTRO_LOTTO_APERTO,
-        },
+        {**filtro_posizione, **FILTRO_LOTTO_APERTO},
         {"_id": 0},
     ).to_list(200)
     from app.lotti.servizi.lotto_arricchimento_service import arricchisci_lotto
@@ -328,8 +356,11 @@ async def sposta_lotti_massivo(anomalia_id: str, body: SpostaLottiMassivoRequest
         raise HTTPException(status_code=404, detail="Anomalia non trovata")
     if not body.lotti_ids:
         raise HTTPException(status_code=400, detail="Nessun lotto selezionato")
+    if body.tipo not in {"frigo", "congelatore", "abbattitore"}:
+        raise HTTPException(status_code=422, detail="Scegli un frigorifero o congelatore censito")
 
-    from app.lotti.servizi.movimenti_lotto_service import costruisci_posizione, registra_movimento
+    from app.lotti.routers.lotti_produzione import _posizione_produzione
+    from app.lotti.servizi.movimenti_lotto_service import registra_movimento
 
     spostati = []
     for lotto_id in body.lotti_ids:
@@ -337,16 +368,18 @@ async def sposta_lotti_massivo(anomalia_id: str, body: SpostaLottiMassivoRequest
         if not lotto:
             continue
         posizione_da = lotto.get("posizione")
-        posizione_a = costruisci_posizione(
-            tipo=body.tipo, numero=body.numero or body.nome, nome=body.nome or body.numero,
-            reparto=body.reparto, operatore_id=body.operatore_id, operatore_nome=body.operatore_nome,
-            quantita=lotto.get("quantita"),
+        posizione_a = await _posizione_produzione(
+            "frigo" if body.tipo == "frigo" else "abbattitore",
+            body.numero or body.nome, body.reparto, body.operatore_id,
+            body.operatore_nome, lotto.get("quantita"),
         )
+        if body.tipo == "congelatore":
+            posizione_a["tipo"] = "congelatore"
         if posizione_a is None:
             raise HTTPException(status_code=400, detail="Tipo o numero posizione di destinazione mancante")
 
         update = {"posizione": posizione_a}
-        update["frigo_numero"] = posizione_a["numero"] if posizione_a["tipo"] in ("frigo", "congelatore", "abbattitore") else ""
+        update["frigo_numero"] = posizione_a["nome"]
         await db.lotti.update_one({"id": lotto_id}, {"$set": update})
 
         try:
@@ -359,9 +392,16 @@ async def sposta_lotti_massivo(anomalia_id: str, body: SpostaLottiMassivoRequest
                 motivo=body.motivo or f"Spostamento massivo da anomalia su {anomalia.get('attrezzatura', '')}",
                 azione_correttiva_haccp=body.azione_correttiva_haccp or None,
                 documento_collegato={"tipo": "anomalia", "id": anomalia_id},
+                operation_id=f"anomalia_{anomalia_id}_{lotto_id}_{body.tipo}_{posizione_a['numero']}",
             )
-        except Exception:
-            logger.exception("[anomalie] registrazione movimento spostamento massivo fallita (non bloccante)")
+        except Exception as exc:
+            await db.lotti.update_one(
+                {"id": lotto_id},
+                {"$set": {"posizione": posizione_da,
+                          "frigo_numero": lotto.get("frigo_numero", "")}},
+            )
+            logger.exception("[anomalie] spostamento annullato: audit non disponibile")
+            raise HTTPException(503, "Spostamento non registrato: riprovare") from exc
         spostati.append(lotto_id)
 
     await db.anomalie.update_one(

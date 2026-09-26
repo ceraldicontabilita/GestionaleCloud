@@ -420,7 +420,7 @@ async def giacenza_prodotti_finiti(nomi: list) -> dict:
             "frigo_numero": {"$nin": [None, ""]},
             "consumato": {"$ne": True},
             "esaurito": {"$ne": True},
-            "stato": {"$nin": ["smaltito", "esaurito"]},
+            "stato": {"$nin": ["smaltito", "esaurito", "annullato", "bloccato_richiamo", "bloccato_audit"]},
         },
         {"_id": 0, "id": 1, "prodotto": 1, "quantita": 1, "unita_misura": 1,
          "numero_lotto": 1, "frigo_numero": 1, "data_produzione": 1, "data_scadenza": 1},
@@ -442,42 +442,69 @@ async def giacenza_prodotti_finiti(nomi: list) -> dict:
     return out
 
 
+async def _posizione_produzione(destinazione: str, frigo_numero: str,
+                                reparto: str, operatore_id: str,
+                                operatore_nome: str, quantita: float) -> dict:
+    """Traduce la scelta semplice del tablet nella posizione canonica.
+
+    Frigoriferi e congelatori devono essere quelli censiti: una stringa libera
+    o il primo apparecchio scelto implicitamente renderebbero falsa la
+    tracciabilita. Il banco non richiede un secondo campo.
+    """
+    from app.lotti.servizi.movimenti_lotto_service import costruisci_posizione
+
+    if destinazione == "banco":
+        return costruisci_posizione(
+            tipo="banco", nome="Banco", reparto=reparto,
+            operatore_id=operatore_id or "", operatore_nome=operatore_nome or "",
+            quantita=quantita,
+        )
+
+    tipo_config = "frigo" if destinazione == "frigo" else "congelatore"
+    nome = (frigo_numero or "").strip()
+    if not nome:
+        raise HTTPException(422, "Scegli il frigorifero o congelatore di destinazione")
+    apparecchio = await db.attrezzature_config.find_one(
+        {"tipo": tipo_config, "nome": nome, "attivo": {"$ne": False}},
+        {"_id": 0, "numero": 1, "nome": 1},
+    )
+    if not apparecchio:
+        raise HTTPException(422, "Destinazione non censita o fuori servizio")
+    return costruisci_posizione(
+        tipo="frigo" if destinazione == "frigo" else "abbattitore",
+        numero=str(apparecchio.get("numero", "")), nome=apparecchio["nome"],
+        reparto=reparto, operatore_id=operatore_id or "",
+        operatore_nome=operatore_nome or "", quantita=quantita,
+    )
+
+
 @router.patch("/lotti/{lotto_id}/consuma")
 async def marca_lotto_consumato(
     lotto_id: str,
     quantita: Optional[float] = Query(None),
     operatore_id: Optional[str] = Query(None),
     operatore_nome: Optional[str] = Query(None),
+    operation_id: str = Query(...),
 ):
     """Marca il lotto come consumato/esaurito senza eliminarlo dal registro
     storico. Con `quantita` valorizzata consuma solo QUELLA quantità (consumo
     parziale, es. "mando 3 dei 5 babà in frigo al banco"): il lotto resta
     attivo con la quantità residua, `consumato=True` solo quando arriva a 0."""
-    lotto = await db.lotti.find_one({"$or": [{"id": lotto_id}, {"lotto_id": lotto_id}]}, {"_id": 0})
-    if not lotto:
-        raise HTTPException(status_code=404, detail="Lotto non trovato")
-    disponibile = lotto.get("quantita") or 0
-    if quantita is None or quantita >= disponibile:
-        quantita_consumata = disponibile
-        update = {"consumato": True, "data_consumo": datetime.now(timezone.utc).isoformat(), "quantita": 0}
-    else:
-        if quantita <= 0:
-            raise HTTPException(status_code=400, detail="quantita deve essere positiva")
-        quantita_consumata = quantita
-        update = {"quantita": round(disponibile - quantita, 3)}
-    await db.lotti.update_one({"$or": [{"id": lotto_id}, {"lotto_id": lotto_id}]}, {"$set": update})
-    try:
-        from app.lotti.servizi.movimenti_lotto_service import registra_movimento
-        await registra_movimento(
-            lotto.get("id", lotto_id), "uso",
-            numero_lotto=lotto.get("numero_lotto", ""),
-            quantita=quantita_consumata,
-            operatore_id=operatore_id or "", operatore_nome=operatore_nome or "",
-            motivo="Consumo lotto",
-        )
-    except Exception:
-        _LOG_INIT.exception("[lotti_produzione] registrazione movimento consumo fallita (non bloccante)")
-    return {"message": "Lotto marcato come consumato", "quantita_residua": update.get("quantita", 0)}
+    from app.lotti.servizi.prelievo_lotto_service import preleva_lotto, conclude_prelievo
+    prelievo = await preleva_lotto(lotto_id, quantita, "uso", operation_id)
+    if "risultato" in prelievo:
+        return prelievo["risultato"]
+    lotto = prelievo["lotto"]
+    from app.lotti.servizi.movimenti_lotto_service import registra_movimento
+    await registra_movimento(
+        lotto_id, "uso", numero_lotto=lotto.get("numero_lotto", ""),
+        posizione_da=lotto.get("posizione"), quantita=prelievo["quantita"],
+        operatore_id=operatore_id or "", operatore_nome=operatore_nome or "",
+        motivo="Consumo lotto", operation_id=f"uso_{operation_id}",
+    )
+    risposta = {"message": "Consumo registrato", "quantita_residua": prelievo["residua"]}
+    await conclude_prelievo(prelievo["chiave"], risposta)
+    return risposta
 
 
 @router.post("/lotti/{lotto_id}/manda-al-banco")
@@ -494,7 +521,14 @@ async def manda_lotto_al_banco(
     all'operatore quando tenta di produrre un prodotto già in giacenza,
     invece di fargliene produrre altro."""
     from app.lotti.servizi.prelievo_lotto_service import preleva_lotto, conclude_prelievo
-    prelievo = await preleva_lotto(lotto_id, pezzi, "banco", operation_id)
+    from app.lotti.servizi.movimenti_lotto_service import costruisci_posizione
+    posizione_banco = costruisci_posizione(
+        tipo="banco", nome="Banco", reparto=reparto,
+        operatore_id=operatore_id or "", operatore_nome=operatore_nome or "",
+        quantita=pezzi,
+    )
+    prelievo = await preleva_lotto(
+        lotto_id, pezzi, "banco", operation_id, posizione_a=posizione_banco)
     if "risultato" in prelievo:
         return prelievo["risultato"]
     lotto = prelievo["lotto"]
@@ -512,15 +546,12 @@ async def manda_lotto_al_banco(
     ), operation_id=f"banco_{operation_id}" if operation_id else None)
     movimento_id = None
     try:
-        from app.lotti.servizi.movimenti_lotto_service import registra_movimento, costruisci_posizione
+        from app.lotti.servizi.movimenti_lotto_service import registra_movimento
         mov = await registra_movimento(
             lotto_id, "banco",
             numero_lotto=lotto.get("numero_lotto", ""),
             posizione_da=lotto.get("posizione"),
-            posizione_a=costruisci_posizione(tipo="banco", reparto=reparto,
-                                              operatore_id=operatore_id or "",
-                                              operatore_nome=operatore_nome or "",
-                                              quantita=pezzi),
+            posizione_a=posizione_banco,
             quantita=pezzi,
             operatore_id=operatore_id or "", operatore_nome=operatore_nome or "",
             motivo="Mandato al banco",
@@ -647,6 +678,7 @@ async def sposta_posizione_lotto(
     motivo: str = Query(""),
     operatore_id: Optional[str] = Query(None),
     operatore_nome: Optional[str] = Query(None),
+    operation_id: str = Query(...),
 ):
     """Sposta un lotto da una posizione all'altra (Tranche 1 — Cosa usare
     oggi / Gemello digitale del lotto). Aggiorna `posizione` strutturata E
@@ -655,21 +687,30 @@ async def sposta_posizione_lotto(
     lotto = await db.lotti.find_one({"id": lotto_id}, {"_id": 0})
     if not lotto:
         raise HTTPException(status_code=404, detail="Lotto non trovato")
+    if (lotto.get("quantita") or 0) <= 0 or lotto.get("consumato") or lotto.get("esaurito") \
+            or lotto.get("stato") in {"smaltito", "esaurito", "annullato", "bloccato_richiamo", "bloccato_audit"}:
+        raise HTTPException(status_code=409, detail="Lotto non spostabile")
 
-    from app.lotti.servizi.movimenti_lotto_service import costruisci_posizione, registra_movimento
+    from app.lotti.servizi.movimenti_lotto_service import registra_movimento
+
+    if tipo not in {"frigo", "congelatore", "abbattitore"}:
+        raise HTTPException(422, "Per il banco usa 'Manda al banco'; scegli qui solo un apparecchio")
 
     posizione_da = lotto.get("posizione")
-    posizione_a = costruisci_posizione(
-        tipo=tipo, numero=numero or nome, nome=nome or numero, reparto=reparto,
-        operatore_id=operatore_id or "", operatore_nome=operatore_nome or "",
-        quantita=lotto.get("quantita"),
-    )
+    if tipo in {"frigo", "congelatore", "abbattitore"}:
+        destinazione = "frigo" if tipo == "frigo" else "abbattitore"
+        posizione_a = await _posizione_produzione(
+            destinazione, numero or nome, reparto, operatore_id,
+            operatore_nome, lotto.get("quantita"),
+        )
+        if tipo == "congelatore":
+            posizione_a["tipo"] = "congelatore"
     if posizione_a is None:
         raise HTTPException(status_code=400, detail="Tipo o numero posizione mancante")
 
     update = {"posizione": posizione_a}
     # frigo_numero storico: valorizzato per frigo/congelatore/abbattitore, svuotato per banco/magazzino
-    update["frigo_numero"] = posizione_a["numero"] if posizione_a["tipo"] in ("frigo", "congelatore", "abbattitore") else ""
+    update["frigo_numero"] = posizione_a["nome"] if posizione_a["tipo"] in ("frigo", "congelatore", "abbattitore") else ""
     await db.lotti.update_one({"id": lotto_id}, {"$set": update})
 
     try:
@@ -680,9 +721,15 @@ async def sposta_posizione_lotto(
             quantita=lotto.get("quantita"),
             operatore_id=operatore_id or "", operatore_nome=operatore_nome or "",
             motivo=motivo or "Spostamento posizione",
+            operation_id=f"spostamento_{operation_id}",
         )
-    except Exception:
-        _LOG_INIT.exception("[lotti_produzione] registrazione movimento spostamento fallita (non bloccante)")
+    except Exception as exc:
+        await db.lotti.update_one(
+            {"id": lotto_id},
+            {"$set": {"posizione": posizione_da, "frigo_numero": lotto.get("frigo_numero", "")}},
+        )
+        _LOG_INIT.exception("[lotti_produzione] spostamento annullato: audit non disponibile")
+        raise HTTPException(503, "Spostamento non registrato: riprovare") from exc
     return {"status": "ok", "lotto_id": lotto_id, "posizione": posizione_a}
 
 
@@ -694,6 +741,7 @@ async def congela_lotto(
     motivo: str = Query(""),
     operatore_id: Optional[str] = Query(None),
     operatore_nome: Optional[str] = Query(None),
+    operation_id: str = Query(...),
 ):
     """Congela un lotto già prodotto: sposta in congelatore e allunga la
     scadenza al valore da abbattitore negativo. Se il lotto è nato da
@@ -704,6 +752,9 @@ async def congela_lotto(
     lotto = await db.lotti.find_one({"id": lotto_id}, {"_id": 0})
     if not lotto:
         raise HTTPException(status_code=404, detail="Lotto non trovato")
+    if (lotto.get("quantita") or 0) <= 0 or lotto.get("consumato") or lotto.get("esaurito") \
+            or lotto.get("stato") in {"smaltito", "esaurito", "annullato", "bloccato_richiamo", "bloccato_audit"}:
+        raise HTTPException(status_code=409, detail="Lotto non congelabile")
 
     nuova_scadenza = lotto.get("scadenza_abbattuto")
     if not nuova_scadenza:
@@ -714,19 +765,21 @@ async def congela_lotto(
                 ingredienti_nomi, lotto.get("data_produzione") or datetime.now().strftime("%d/%m/%Y"),
                 nome_prodotto=lotto.get("prodotto", ""), metodo_conservazione="abbattitore_negativo",
             )
-            nuova_scadenza = scad[1] or scad[0]
-        except Exception:
+            nuova_scadenza = scad[1]
+        except Exception as exc:
             _LOG_INIT.exception("[lotti_produzione] ricalcolo scadenza congelamento fallito")
-            nuova_scadenza = lotto.get("data_scadenza")
+            raise HTTPException(422, "Scadenza da congelamento non determinabile") from exc
+    if not nuova_scadenza:
+        raise HTTPException(422, "Scadenza da congelamento non determinabile")
 
-    from app.lotti.servizi.movimenti_lotto_service import costruisci_posizione, registra_movimento
+    from app.lotti.servizi.movimenti_lotto_service import registra_movimento
 
     posizione_da = lotto.get("posizione")
-    posizione_a = costruisci_posizione(
-        tipo="congelatore", numero=numero or nome, nome=nome or numero,
-        operatore_id=operatore_id or "", operatore_nome=operatore_nome or "",
-        quantita=lotto.get("quantita"),
+    posizione_a = await _posizione_produzione(
+        "abbattitore", numero or nome, lotto.get("reparto", ""),
+        operatore_id, operatore_nome, lotto.get("quantita"),
     )
+    posizione_a["tipo"] = "congelatore"
     update = {
         "data_scadenza_pre_congelamento": lotto.get("data_scadenza"),
         "data_scadenza": nuova_scadenza,
@@ -734,7 +787,7 @@ async def congela_lotto(
     }
     if posizione_a:
         update["posizione"] = posizione_a
-        update["frigo_numero"] = posizione_a["numero"]
+        update["frigo_numero"] = posizione_a["nome"]
     await db.lotti.update_one({"id": lotto_id}, {"$set": update})
 
     try:
@@ -745,9 +798,19 @@ async def congela_lotto(
             quantita=lotto.get("quantita"),
             operatore_id=operatore_id or "", operatore_nome=operatore_nome or "",
             motivo=motivo or f"Congelato — nuova scadenza {nuova_scadenza}",
+            operation_id=f"congelamento_{operation_id}",
         )
-    except Exception:
-        _LOG_INIT.exception("[lotti_produzione] registrazione movimento congelamento fallita (non bloccante)")
+    except Exception as exc:
+        await db.lotti.update_one(
+            {"id": lotto_id},
+            {"$set": {"posizione": posizione_da,
+                      "frigo_numero": lotto.get("frigo_numero", ""),
+                      "data_scadenza": lotto.get("data_scadenza"),
+                      "data_scadenza_pre_congelamento": lotto.get("data_scadenza_pre_congelamento"),
+                      "congelato_il": lotto.get("congelato_il")}},
+        )
+        _LOG_INIT.exception("[lotti_produzione] congelamento annullato: audit non disponibile")
+        raise HTTPException(503, "Congelamento non registrato: riprovare") from exc
     return {"status": "ok", "lotto_id": lotto_id, "data_scadenza": nuova_scadenza, "posizione": posizione_a}
 
 
@@ -1342,6 +1405,21 @@ async def _registra_banco_da_produzione(
     ), operation_id=f"produzione-banco:{lotto['id']}")
 
 
+async def _chiudi_lotto_creato_al_banco(lotto: dict) -> dict:
+    """Evita che la stessa produzione risulti disponibile sia nel lotto sia
+    nel registro banco. Il lotto resta come genealogia, con residuo zero."""
+    posizione = dict(lotto.get("posizione") or {})
+    posizione["quantita"] = 0
+    adesso = datetime.now(timezone.utc).isoformat()
+    await db.lotti.update_one(
+        {"id": lotto["id"], "consumato": {"$ne": True}},
+        {"$set": {"quantita": 0, "consumato": True, "data_consumo": adesso,
+                  "posizione": posizione, "frigo_numero": ""}},
+    )
+    return {**lotto, "quantita": 0, "consumato": True,
+            "data_consumo": adesso, "posizione": posizione, "frigo_numero": ""}
+
+
 @router.post("/registra-produzione-lotto")
 async def registra_produzione_e_crea_lotto(
     ricetta_id: str = Query(...),
@@ -1364,40 +1442,49 @@ async def registra_produzione_e_crea_lotto(
     2. Scala i lotti fornitori in modo FIFO
     3. Crea un lotto di produzione
     """
-    if destinazione not in (None, "banco", "frigo", "abbattitore"):
+    if destinazione not in ("banco", "frigo", "abbattitore"):
         raise HTTPException(422, "Destinazione produzione non valida")
-    if destinazione == "banco" and not operation_id:
-        raise HTTPException(422, "ID operazione richiesto per la produzione al banco")
+    if pezzi <= 0 or pezzi_base <= 0:
+        raise HTTPException(422, "La quantita prodotta deve essere positiva")
+    if not operation_id:
+        raise HTTPException(422, "ID operazione richiesto per registrare la produzione")
     if operation_id:
-        try:
-            await db.operazioni_idempotenti.insert_one(
-                {"_id": f"prod_{operation_id}",
-                 "creato": datetime.now(timezone.utc).isoformat()})
-        except DuplicateKeyError as exc:
-            prec = await db.operazioni_idempotenti.find_one({"_id": f"prod_{operation_id}"})
-            if prec and prec.get("risultato"):
-                return prec["risultato"]
-            # Il lotto esiste già, ma la vendita al banco può essere fallita:
-            # completa la stessa operazione senza produrre né scalare due volte.
-            if prec and prec.get("lotto_creato") and prec.get("destinazione") == "banco":
-                originali = prec["parametri_banco"]
-                ricetta_precedente = await db.ricette.find_one(
-                    {"id": originali["ricetta_id"]}, {"_id": 0})
-                if ricetta_precedente is None:
-                    raise HTTPException(404, "Ricetta della produzione non trovata") from exc
-                vendita = await _registra_banco_da_produzione(
-                    prec["lotto_creato"], ricetta_precedente, originali["ricetta_id"],
-                    originali["pezzi"], originali["data_produzione"],
-                    originali["operatore_id"], originali["operatore_nome"],
-                )
-                risposta = {**prec["lotto_creato"], "vendita_banco": vendita}
-                await db.operazioni_idempotenti.update_one(
-                    {"_id": f"prod_{operation_id}"}, {"$set": {"risultato": risposta}})
-                return risposta
-            raise HTTPException(409, "Produzione già in corso; riprova tra poco") from exc
+        prec = await db.operazioni_idempotenti.find_one({"_id": f"prod_{operation_id}"})
+        if prec and prec.get("risultato"):
+            return prec["risultato"]
+        # Il lotto esiste già, ma la vendita al banco può essere fallita:
+        # completa la stessa operazione senza produrre né scalare due volte.
+        if prec and prec.get("lotto_creato") and prec.get("destinazione") == "banco":
+            originali = prec["parametri_banco"]
+            ricetta_precedente = await db.ricette.find_one(
+                {"id": originali["ricetta_id"]}, {"_id": 0})
+            if ricetta_precedente is None:
+                raise HTTPException(404, "Ricetta della produzione non trovata")
+            vendita = await _registra_banco_da_produzione(
+                prec["lotto_creato"], ricetta_precedente, originali["ricetta_id"],
+                originali["pezzi"], originali["data_produzione"],
+                originali["operatore_id"], originali["operatore_nome"],
+            )
+            lotto_banco = await _chiudi_lotto_creato_al_banco(prec["lotto_creato"])
+            risposta = {**lotto_banco, "vendita_banco": vendita}
+            await db.operazioni_idempotenti.update_one(
+                {"_id": f"prod_{operation_id}"}, {"$set": {"risultato": risposta}})
+            return risposta
+        if prec:
+            raise HTTPException(409, "Produzione già in corso; riprova tra poco")
     ricetta = await db.ricette.find_one({"id": ricetta_id}, {"_id": 0})
     if not ricetta:
         raise HTTPException(status_code=404, detail=f"Ricetta con id '{ricetta_id}' non trovata")
+    try:
+        posizione_iniziale = await _posizione_produzione(
+            destinazione, frigo_numero, ricetta.get("reparto", ""),
+            operatore_id, operatore_nome, pezzi,
+        )
+    except Exception:
+        if operation_id:
+            await db.operazioni_idempotenti.delete_one(
+                {"_id": f"prod_{operation_id}", "risultato": {"$exists": False}})
+        raise
 
     try:
         dt = datetime.strptime(data_produzione, "%Y-%m-%d")
@@ -1408,30 +1495,11 @@ async def registra_produzione_e_crea_lotto(
     porzioni_base = float(ricetta.get("porzioni", pezzi_base) or pezzi_base)
     moltiplicatore = pezzi / porzioni_base if porzioni_base > 0 else 1
 
-    # Scala lotti fornitori
-    lotti_info = await scala_lotti_fornitori_per_ricetta(ricetta, moltiplicatore, "TEMP")
-    # Punto 3: se in produzione si esaurisce l'ULTIMO lotto di un prodotto → bozza ordine automatica
-    try:
-        lotti_info["da_riordinare"] = await _riordini_post_produzione(lotti_info.get("lotti_scalati", []), ricetta.get("nome", ""))
-    except Exception:
-        lotti_info["da_riordinare"] = []
-
-    # Genera lotto
+    # Genera prima il numero reale: lo scarico FIFO lo scrive direttamente
+    # nello storico, senza il vecchio placeholder TEMP da correggere dopo.
     progressivo = await get_prossimo_progressivo(ricetta["nome"])
     unita = determina_unita_misura(ricetta["nome"])
     numero_lotto = genera_codice_lotto(ricetta["nome"], progressivo, pezzi, unita, data_produzione)
-
-    # Aggiorna numero lotto nei lotti scalati: lo scarico FIFO è avvenuto con
-    # placeholder "TEMP" (il numero si genera solo ora) — senza questo update
-    # lo storico_utilizzi restava "TEMP" per sempre e il RECALL per lotto
-    # fornitore non risaliva mai ai lotti di produzione coinvolti.
-    for ls in lotti_info["lotti_scalati"]:
-        await db.lotti_fornitori.update_one(
-            {"id": ls["lotto_id"]},
-            {"$set": {"ricetta_ultimo_utilizzo": ricetta["nome"],
-                      "storico_utilizzi.$[u].lotto_produzione": numero_lotto}},
-            array_filters=[{"u.lotto_produzione": "TEMP"}],
-        )
 
     from app.lotti.routers.utils import _calcola_scadenza, _rileva_allergeni
 
@@ -1455,20 +1523,42 @@ async def registra_produzione_e_crea_lotto(
     if data_scadenza:
         dt_scad = _parse_data_prod(data_scadenza)
         dt_prod = _parse_data_prod(data_produzione)
-        if dt_scad:
-            data_scad_frigo = dt_scad.strftime("%d/%m/%Y")
-            if dt_prod:
-                giorni_custom = (dt_scad - dt_prod).days
-                if giorni_custom > 0:
-                    giorni_frigo = giorni_custom
-                    if memorizza_durata and giorni_custom <= 730:
-                        await db.ricette.update_one(
-                            {"id": ricetta_id},
-                            {"$set": {"scadenza_giorni_override": giorni_custom}})
+        if not dt_scad or not dt_prod:
+            raise HTTPException(422, "Data di produzione o scadenza non valida")
+        giorni_custom = (dt_scad - dt_prod).days
+        if giorni_custom < 0:
+            raise HTTPException(422, "La scadenza non puo precedere la produzione")
+        data_scad_frigo = dt_scad.strftime("%d/%m/%Y")
+        giorni_frigo = giorni_custom
+        if memorizza_durata and 0 < giorni_custom <= 730:
+            await db.ricette.update_one(
+                {"id": ricetta_id},
+                {"$set": {"scadenza_giorni_override": giorni_custom}})
 
     allergeni_info = _rileva_allergeni(ingredienti_nomi)
     from app.lotti.servizi.schede_fornitore import completa_allergeni_con_schede
     allergeni_info = await completa_allergeni_con_schede(db, ingredienti_nomi, allergeni_info)
+
+    if destinazione == "abbattitore" and not data_scadenza:
+        if not data_scad_abb:
+            raise HTTPException(422, "Scadenza da abbattimento non determinabile: verifica la ricetta")
+        data_scad_frigo = data_scad_abb
+
+    # Solo dopo che destinazione, quantita e scadenza sono valide si toccano
+    # le giacenze dei fornitori. Lo storico nasce gia col numero lotto vero.
+    try:
+        await db.operazioni_idempotenti.insert_one(
+            {"_id": f"prod_{operation_id}",
+             "creato": datetime.now(timezone.utc).isoformat()})
+    except DuplicateKeyError as exc:
+        raise HTTPException(409, "Produzione già in corso; riprova tra poco") from exc
+    lotti_info = await scala_lotti_fornitori_per_ricetta(
+        ricetta, moltiplicatore, numero_lotto)
+    try:
+        lotti_info["da_riordinare"] = await _riordini_post_produzione(
+            lotti_info.get("lotti_scalati", []), ricetta.get("nome", ""))
+    except Exception:
+        lotti_info["da_riordinare"] = []
 
     lotto_doc = {
         "id": str(uuid.uuid4()),
@@ -1485,7 +1575,9 @@ async def registra_produzione_e_crea_lotto(
         "costo_totale": costo_totale,
         "costo_pezzo": round(costo_totale / pezzi, 4) if pezzi > 0 else 0,
         "progressivo": progressivo,
-        "frigo_numero": frigo_numero or "",
+        "destinazione": destinazione,
+        "posizione": posizione_iniziale,
+        "frigo_numero": posizione_iniziale.get("nome", "") if destinazione != "banco" else "",
         "lotti_fornitori": lotti_info,
         "scadenza_abbattuto": data_scad_abb,
         "mesi_abbattuto": mesi_abb,
@@ -1526,6 +1618,8 @@ async def registra_produzione_e_crea_lotto(
             "operatore_id": operatore_id or "",  # ← chi ha prodotto
             "operatore_nome": operatore_nome or "",
             "reparto": ricetta.get("reparto", ""),
+            "destinazione": destinazione,
+            "posizione": posizione_iniziale,
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
     )
@@ -1549,12 +1643,14 @@ async def registra_produzione_e_crea_lotto(
             lotto_doc, ricetta, ricetta_id, pezzi, data_produzione,
             operatore_id, operatore_nome,
         )
+        lotto_doc = await _chiudi_lotto_creato_al_banco(lotto_doc)
         lotto_doc["vendita_banco"] = vendita
 
     if operation_id:
         _snap = {k: lotto_doc.get(k) for k in
                  ("id", "numero_lotto", "prodotto", "quantita", "data_scadenza",
-                  "frigo_numero", "lotti_fornitori")}
+                  "frigo_numero", "lotti_fornitori", "destinazione", "posizione",
+                  "consumato", "data_consumo")}
         if destinazione == "banco":
             _snap["vendita_banco"] = lotto_doc["vendita_banco"]
         _snap["gia_eseguita"] = True

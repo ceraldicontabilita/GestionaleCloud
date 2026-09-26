@@ -70,8 +70,13 @@ def test_retry_completa_banco_senza_riprodurre_lotto(monkeypatch):
             assert filtro == {"id": "ricetta-1"}
             return {"id": "ricetta-1", "nome": "Babà", "reparto": "pasticceria"}
 
+    class Lotti:
+        async def update_one(self, filtro, aggiornamento):
+            assert filtro["id"] == "lotto-1"
+            lotto.update(aggiornamento["$set"])
+
     monkeypatch.setattr(lotti_produzione, "db", SimpleNamespace(
-        operazioni_idempotenti=Operazioni(), ricette=Ricette()))
+        operazioni_idempotenti=Operazioni(), ricette=Ricette(), lotti=Lotti()))
     chiamate = []
 
     async def registra_banco(*args):
@@ -89,6 +94,8 @@ def test_retry_completa_banco_senza_riprodurre_lotto(monkeypatch):
             operation_id="stessa-operazione", destinazione="banco",
         )
         assert risultato["id"] == "lotto-1"
+        assert risultato["quantita"] == 0
+        assert risultato["consumato"] is True
         assert risultato["vendita_banco"]["id"] == "vendita-1"
         assert chiamate[0][3:] == (12, "2026-09-21", "dip-1", "Operatore")
         secondo = await lotti_produzione.registra_produzione_e_crea_lotto(

@@ -12,21 +12,15 @@ export function ModalRegistraLotto({ prodotto, reparto, onClose, onSuccess, onHo
   const [pezzi, setPezzi]               = useState(1);
   const [unita, setUnita]               = useState("pz");
   const [frigo, setFrigo]               = useState("");
-  const [destinazione, setDestinazione] = useState("frigo");
-  // Scrittura libera della posizione: serve solo per un apparecchio non ancora
-  // censito. Il caso normale è SCEGLIERE dall'elenco (vedi selettore sotto).
-  const [posizioneAMano, setPosizioneAMano] = useState(false);
+  const [destinazione, setDestinazione] = useState("");
   const [stampare, setStampare]         = useState(true);
   const [loading, setLoading]           = useState(false);
   const [lottoCreato, setLottoCreato]   = useState(null);
   const [codiceLottoPreview, setCodiceLottoPreview] = useState(null);
 
-  // ── Posizione obbligatoria con blocco morbido (decisione Enzo 04/07/2026):
-  // frigo/abbattitore senza apparecchio indicato blocca la registrazione a
-  // meno che l'operatore non confermi esplicitamente di voler procedere
-  // comunque — stesso principio già usato per la giacenza (soft block, mai
-  // impedimento definitivo: in cucina può esserci un motivo legittimo).
-  const [confermaSenzaPosizione, setConfermaSenzaPosizione] = useState(false);
+  // La destinazione e' una scelta unica e obbligatoria: nessun ripiano,
+  // nessun testo libero e nessuna preselezione che possa attribuire il lotto
+  // all'apparecchio sbagliato.
 
   // ── Giacenza già in frigo/abbattitore (richiesta Enzo 03/07/2026): prima
   // di far produrre di nuovo, mostra cosa c'è già e lascia mandarlo al banco.
@@ -44,8 +38,8 @@ export function ModalRegistraLotto({ prodotto, reparto, onClose, onSuccess, onHo
   });
   const giacenzaTotale = giacenzaLotti.reduce((s, l) => s + (l.quantita || 0), 0);
   const bloccatoDaGiacenza = giacenzaTotale > 0 && !confermaComunque;
-  const posizioneMancante = (destinazione === "frigo" || destinazione === "abbattitore") && !frigo.trim();
-  const bloccatoDaPosizioneMancante = posizioneMancante && !confermaSenzaPosizione;
+  const posizioneMancante = !destinazione || ((destinazione === "frigo" || destinazione === "abbattitore") && !frigo.trim());
+  const bloccatoDaPosizioneMancante = posizioneMancante;
 
   // ── Farciture (richiesta Enzo 03/07/2026): per prodotti-base come
   // "Cornetto Vuoto", dividi la giacenza nei gusti secondo Colazione invece
@@ -347,29 +341,16 @@ export function ModalRegistraLotto({ prodotto, reparto, onClose, onSuccess, onHo
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prodotto?.id]);
 
-  const opzioniFrigo = frigoriferi.length > 0
-    ? frigoriferi.map(f => f.label || f.nome)
-    : ["Frigo 1","Frigo 2","Frigo 3","Cella Frigo A","Cella Frigo B"];
-  const opzioniCongelatori = congelatori.length > 0
-    ? congelatori.map(c => c.label || c.nome)
-    : ["Congelatore 1","Congelatore 2","Abbattitore 1","Surgelatore"];
-
-  // Pre-seleziona la prima posizione (frigo/abbattitore) così l'etichetta ha
-  // già un luogo: zero digitazione nel caso comune. L'operatore può cambiarla.
-  useEffect(() => {
-    if (destinazione === "frigo" && !frigo && opzioniFrigo.length) setFrigo(opzioniFrigo[0]);
-    if (destinazione === "abbattitore" && !frigo && opzioniCongelatori.length) setFrigo(opzioniCongelatori[0]);
-    setPosizioneAMano(false);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [destinazione]);
+  const opzioniFrigo = frigoriferi.map(f => f.label || f.nome).filter(Boolean);
+  const opzioniCongelatori = congelatori.map(c => c.label || c.nome).filter(Boolean);
 
   const handleRegistra = async () => {
     if (giacenzaLotti.length > 0 && !confermaComunque) {
       toast.error("Ci sono già scorte in frigo/abbattitore: mandale al banco o conferma che vuoi produrne comunque.");
       return;
     }
-    if (posizioneMancante && !confermaSenzaPosizione) {
-      toast.error("Indica il frigo/congelatore di destinazione, o conferma di voler procedere senza.");
+    if (posizioneMancante) {
+      toast.error("Scegli con un tocco dove va il lotto.");
       return;
     }
     if (bomComponenti.length > 0 && stepRegistrazione === "base") {
@@ -625,10 +606,7 @@ export function ModalRegistraLotto({ prodotto, reparto, onClose, onSuccess, onHo
               destinazione={destinazione} setDestinazione={setDestinazione}
               frigo={frigo} setFrigo={setFrigo}
               opzioniFrigo={opzioniFrigo} opzioniCongelatori={opzioniCongelatori}
-              posizioneAMano={posizioneAMano} setPosizioneAMano={setPosizioneAMano}
               posizioneMancante={posizioneMancante}
-              confermaSenzaPosizione={confermaSenzaPosizione}
-              setConfermaSenzaPosizione={setConfermaSenzaPosizione}
             />
 
             {/* Stampa */}
@@ -803,7 +781,7 @@ export function ModalRegistraLotto({ prodotto, reparto, onClose, onSuccess, onHo
                 {loading ? "..." : (stepRegistrazione === "base" && bloccatoDaGiacenza)
                   ? "🧊 Manda al banco o conferma sopra"
                   : (stepRegistrazione === "base" && bloccatoDaPosizioneMancante)
-                  ? "📍 Indica la posizione o conferma sopra"
+                  ? "📍 Scegli dove va"
                   : stepRegistrazione === "componenti"
                   ? "Conferma Registrazione"
                   : destinazione === "banco"
