@@ -138,6 +138,20 @@ async def get_full_menu():
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
+# Dati del titolare per l'informativa privacy del menu clienti. Una sola fonte:
+# l'anagrafica azienda che si modifica in Lotti > Impostazioni
+# (`app/lotti/azienda.py`). Solo i campi che un'informativa deve mostrare.
+CAMPI_TITOLARE = ("ragione_sociale", "indirizzo", "partita_iva", "email", "telefono")
+
+
+@router.get("/titolare")
+async def titolare_del_trattamento():
+    from app.lotti.azienda import get_azienda
+
+    azienda = await get_azienda()
+    return {campo: (azienda.get(campo) or "") for campo in CAMPI_TITOLARE}
+
+
 @router.get("/categories", response_model=List[Category])
 async def get_categories():
     """Get all categories with their subcategories and products"""

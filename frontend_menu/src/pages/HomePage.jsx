@@ -9,7 +9,7 @@ import {
   leggiLingua, salvaLingua, leggiConsenso, salvaConsenso,
   CONSENSO_ACCETTATO, CONSENSO_RIFIUTATO,
 } from '../lib/preferenzeCliente';
-import { COLLEGAMENTI_PUBBLICI, urlConfigurato } from '../lib/collegamentiPubblici';
+import { COLLEGAMENTI_PUBBLICI, urlConfigurato, percorsoInterno, hrefCollegamento } from '../lib/collegamentiPubblici';
 
 // Percorso del cliente: categorie -> sottocategorie -> prodotti, tutto nella
 // stessa pagina. Il livello sta nell'hash (`#categoria=3&sottocategoria=12`):
@@ -43,7 +43,7 @@ export const CollegamentiEsterni = ({ language, collegamenti = COLLEGAMENTI_PUBB
   const informative = [
     { chiave: 'cookiePolicy', etichetta: t('Politica sui cookie', 'Cookie policy') },
     { chiave: 'privacyPolicy', etichetta: t('Informativa sulla privacy', 'Privacy policy') },
-  ].filter((s) => urlConfigurato(collegamenti[s.chiave]));
+  ].filter((s) => hrefCollegamento(collegamenti[s.chiave]));
 
   if (!social.length && !informative.length) return null;
 
@@ -70,9 +70,8 @@ export const CollegamentiEsterni = ({ language, collegamenti = COLLEGAMENTI_PUBB
           {informative.map(({ chiave, etichetta }) => (
             <a
               key={chiave}
-              href={collegamenti[chiave]}
-              target="_blank"
-              rel="noopener noreferrer"
+              href={hrefCollegamento(collegamenti[chiave])}
+              {...(percorsoInterno(collegamenti[chiave]) ? {} : { target: '_blank', rel: 'noopener noreferrer' })}
               className={`inline-flex items-center min-h-[44px] text-white/70 hover:text-white transition-colors rounded ${FOCUS_SALVIA}`}
             >
               {etichetta}
