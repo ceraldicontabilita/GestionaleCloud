@@ -130,11 +130,14 @@ async def processa_f24_da_email(db: ArchivioDocumenti) -> Dict[str, Any]:
 # ============================================================
 
 async def processa_cedolini_da_email(db: ArchivioDocumenti) -> Dict[str, Any]:
+    """Cedolini PDF scaricati dalla posta: li legge e li scrive il motore unico.
+
+    Qui c'era un secondo lettore (modello AI con ripiego sul parser) e un
+    secondo scrittore su ``cedolini`` con una sua chiave ``dedup_key``: la
+    stessa busta poteva entrare due volte, una per strada, con numeri diversi.
     """
-    Processa cedolini PDF scaricati da Gmail.
-    Estrae dati dipendente (nome, CF, netto, lordo, mese/anno).
-    Aggiorna/crea record in 'cedolini' e li linka ai dipendenti.
-    """
+    from app.services.cedolini_manager import processa_tutti_cedolini_pdf
+
     stats = {"processati": 0, "errori": 0, "nuovi_cedolini": 0, "aggiornati": 0}
 
     cursor = db["cedolini_email_attachments"].find({"processed": {"$ne": True}})
@@ -142,143 +145,31 @@ async def processa_cedolini_da_email(db: ArchivioDocumenti) -> Dict[str, Any]:
     logger.info(f"[PIPELINE-CEDOLINI] {len(docs)} cedolini da processare")
 
     for doc in docs:
+        pdf_data = doc.get("pdf_data")
+        if not pdf_data:
+            continue
+        filename = doc.get("filename", "cedolino.pdf")
         try:
-            pdf_data = doc.get("pdf_data")
-            if not pdf_data:
-                continue
-
-            pdf_bytes = base64.b64decode(pdf_data)
-            filename = doc.get("filename", "cedolino.pdf")
-
-            # Parse con enhanced parser
-            parsed = None
-            try:
-                from app.services.enhanced_document_parser import parse_cedolino_enhanced
-                parsed = await parse_cedolino_enhanced(pdf_bytes, "application/pdf")
-            except Exception as e:
-                logger.debug(f"[PIPELINE-CEDOLINI] Parser: {e}")
-
-            # Fallback: parse base da testo
-            if not parsed or not parsed.get("success"):
-                try:
-                    from app.services.cedolini_manager import processa_tutti_cedolini_pdf
-                    parsed = await processa_tutti_cedolini_pdf(db, pdf_data, filename)
-                except Exception as e:
-                    logger.debug(f"[PIPELINE-CEDOLINI] Base parser: {e}")
-
-            if parsed and parsed.get("success"):
-                cedolini_data = parsed.get("cedolini", [parsed.get("data", {})])
-
-                for ced_data in cedolini_data:
-                    cf = ced_data.get("codice_fiscale", "")
-                    mese = ced_data.get("mese") or doc.get("mese")
-                    anno = ced_data.get("anno") or doc.get("anno")
-
-                    if cf and mese and anno:
-                        # Cerca cedolino esistente
-                        dedup_key = f"{cf}_{mese:02d}_{anno}" if isinstance(mese, int) else f"{cf}_{mese}_{anno}"
-                        existing = await db["cedolini"].find_one({"dedup_key": dedup_key})
-
-                        if existing:
-                            # Aggiorna con PDF
-                            await db["cedolini"].update_one(
-                                {"dedup_key": dedup_key},
-                                {"$set": {
-                                    "pdf_data": pdf_data,
-                                    "pdf_filename": filename,
-                                    "pdf_hash": doc.get("pdf_hash"),
-                                    "updated_at": datetime.now(timezone.utc).isoformat()
-                                }}
-                            )
-                            stats["aggiornati"] += 1
-                            # HR e' l'archivio che gli utenti vedono: la busta (ora
-                            # con il PDF) va depositata anche in app_cedolini se
-                            # ancora manca la'. Mai bloccante.
-                            try:
-                                from app.services.hr_cedolini_deposito import deposita_cedolino_in_hr
-                                await deposita_cedolino_in_hr({
-                                    **existing, "pdf_data": pdf_data, "pdf_filename": filename,
-                                })
-                            except Exception:
-                                logger.exception("[PIPELINE-CEDOLINI] deposito HR fallito (aggiornamento)")
-                        else:
-                            # Prima di questo fix il ramo "nuovo cedolino"
-                            # incrementava solo il contatore senza mai salvare
-                            # il documento: il cedolino non risultava mai
-                            # creato in DB nonostante l'anagrafica dipendente
-                            # venisse comunque aggiornata sotto.
-                            nuovo_cedolino_id = str(uuid.uuid4())
-                            nuovo_cedolino = {
-                                "id": nuovo_cedolino_id,
-                                "dedup_key": dedup_key,
-                                "codice_fiscale": cf,
-                                "nome_dipendente": ced_data.get("nome_dipendente") or ced_data.get("dipendente_nome"),
-                                "mese": mese,
-                                "anno": anno,
-                                "tipo_cedolino": ced_data.get("tipo_cedolino"),
-                                "netto": ced_data.get("netto"),
-                                "lordo": ced_data.get("lordo"),
-                                "pagata": False,
-                                "pdf_data": pdf_data,
-                                "pdf_filename": filename,
-                                "pdf_hash": doc.get("pdf_hash"),
-                                "source": "email_pipeline",
-                                "created_at": datetime.now(timezone.utc).isoformat(),
-                            }
-                            # Registro del gestionale (serve alla Prima Nota salari);
-                            # l'archivio che gli utenti vedono e' l'app HR, sotto.
-                            await db["cedolini"].insert_one(dict(nuovo_cedolino))
-                            stats["nuovi_cedolini"] += 1
-                            try:
-                                from app.services.hr_cedolini_deposito import deposita_cedolino_in_hr
-                                await deposita_cedolino_in_hr(nuovo_cedolino)
-                            except Exception:
-                                logger.exception("[PIPELINE-CEDOLINI] deposito HR fallito (nuovo cedolino)")
-
-                            # Propaga CEDOLINO_IMPORTATO (crea partita aperta stipendio +
-                            # alert dipendente non trovato) — prima solo il percorso di
-                            # inserimento manuale (dipendenti.py) lo faceva; il canale
-                            # email, quello realmente usato, non era mai agganciato al
-                            # sistema relazionale. Vedi memoria/moduli/CEDOLINI.md.
-                            try:
-                                dipendente = await db["dipendenti"].find_one(
-                                    {"codice_fiscale": cf}, {"_id": 0, "id": 1, "nome_completo": 1, "nome": 1, "cognome": 1}
-                                )
-                                from app.services.event_bus import propagate_event, EventTypes
-                                await propagate_event(EventTypes.CEDOLINO_IMPORTATO, {
-                                    "cedolino_id": nuovo_cedolino_id,
-                                    "dipendente_id": (dipendente or {}).get("id"),
-                                    "dipendente_nome": (dipendente or {}).get("nome_completo")
-                                        or f"{(dipendente or {}).get('nome', '')} {(dipendente or {}).get('cognome', '')}".strip(),
-                                    "netto": ced_data.get("netto"),
-                                    "lordo": ced_data.get("lordo"),
-                                    "mese": mese,
-                                    "anno": anno,
-                                }, db, source_module="pipeline_cedolini_email")
-                            except Exception:
-                                logger.exception(f"[PIPELINE-CEDOLINI] Errore propagazione evento per {cf}")
-
-                    # Aggiorna dipendente con ultimo cedolino
-                    if cf:
-                        await db["dipendenti"].update_one(
-                            {"codice_fiscale": cf},
-                            {"$set": {
-                                "ultimo_cedolino": f"{mese:02d}/{anno}" if isinstance(mese, int) else f"{mese}/{anno}",
-                                "ultimo_netto": ced_data.get("netto"),
-                                "updated_at": datetime.now(timezone.utc).isoformat()
-                            }}
-                        )
-
-            # Marca come processato
-            await db["cedolini_email_attachments"].update_one(
-                {"id": doc["id"]},
-                {"$set": {"processed": True, "processed_at": datetime.now(timezone.utc).isoformat()}}
+            esito = await processa_tutti_cedolini_pdf(
+                db, pdf_data, filename,
+                source_path=doc.get("source_path") or filename,
+                source_file_hash=doc.get("file_hash") or doc.get("pdf_hash") or "",
             )
-            stats["processati"] += 1
-
-        except Exception as e:
-            logger.error(f"[PIPELINE-CEDOLINI] Errore: {e}")
+        except Exception as exc:
+            logger.error("[PIPELINE-CEDOLINI] %s: %s: %s", filename, type(exc).__name__, exc)
             stats["errori"] += 1
+            continue
+        if not esito.get("success"):
+            stats["errori"] += 1
+            logger.warning("[PIPELINE-CEDOLINI] %s: %s", filename, esito.get("motivo") or esito.get("errori"))
+            continue
+        stats["nuovi_cedolini"] += esito.get("cedolini_processati", 0)
+        await db["cedolini_email_attachments"].update_one(
+            {"id": doc["id"]},
+            {"$set": {"processed": True, "processed_at": datetime.now(timezone.utc).isoformat(),
+                      "esito_motore": esito.get("esito")}},
+        )
+        stats["processati"] += 1
 
     logger.info(f"[PIPELINE-CEDOLINI] Completato: {stats}")
     return stats

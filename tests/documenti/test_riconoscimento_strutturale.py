@@ -36,17 +36,17 @@ def test_una_sola_casella_non_basta(monkeypatch):
     assert documenti.detect_document_type("regolamento.pdf", b"%PDF-1.4") == "auto"
 
 
-def _upload_cedolino(monkeypatch, dati_lul):
+def _upload_cedolino(monkeypatch, esito_motore):
     async def scenario():
         db = ClientArchivioMemoria()["cedolino_zucchetti"]
         monkeypatch.setattr(documenti.Database, "get_db", staticmethod(lambda: db))
         monkeypatch.setattr("app.utils.upload_validation.verifica_pdf_reale", lambda *_: None)
         monkeypatch.setattr(documenti, "_pdf_text_for_detection", lambda *_: TESTO_ZUCCHETTI)
 
-        async def lul(file, aggiorna_esistenti=True):
-            return {"success": True, "message": "Workflow LUL completato", "data": dati_lul}
+        async def motore(db, pdf_data, filename, **_):
+            return esito_motore
 
-        monkeypatch.setattr("app.services.libro_unico_workflow.import_libro_unico", lul)
+        monkeypatch.setattr("app.services.cedolini_manager.processa_tutti_cedolini_pdf", motore)
         upload = UploadFile(filename="Rossi Mario - Aprile 2024.pdf", file=io.BytesIO(b"%PDF-1.4"))
         return await documenti.upload_documento_automatico(file=upload)
 
@@ -54,17 +54,34 @@ def _upload_cedolino(monkeypatch, dati_lul):
 
 
 def test_cedolino_senza_buste_lette_non_e_importato(monkeypatch):
-    # ``totale_dipendenti`` sono pagine divise per due: non prova una lettura.
-    esito = _upload_cedolino(monkeypatch, {"totale_dipendenti": 1, "buste_importate": 0,
-                                           "buste_aggiornate": 0})
+    esito = _upload_cedolino(monkeypatch, {"success": False, "esito": "illeggibile",
+                                           "motivo": "nessuna busta e nessun foglio presenze riconosciuto",
+                                           "cedolini_processati": 0, "buste_senza_netto": 0})
     assert esito["success"] is False and esito["imported"] == 0
     assert "nessuna" in esito["message"]
 
 
 def test_cedolino_con_busta_scritta_e_importato(monkeypatch):
-    esito = _upload_cedolino(monkeypatch, {"totale_dipendenti": 1, "buste_importate": 1,
-                                           "buste_aggiornate": 0})
+    esito = _upload_cedolino(monkeypatch, {"success": True, "esito": "buste",
+                                           "cedolini_processati": 1, "buste_senza_netto": 1})
     assert esito["success"] is True and esito["imported"] == 1
+    assert "2 buste" in esito["message"]
+
+
+def test_foglio_presenze_letto_non_e_un_errore(monkeypatch):
+    esito = _upload_cedolino(monkeypatch, {"success": True, "esito": "presenze",
+                                           "motivo": "foglio presenze (1 pagine), nessuna busta",
+                                           "cedolini_processati": 0, "buste_senza_netto": 0})
+    assert esito["success"] is True and esito["imported"] == 0
+    assert "presenze" in esito["message"]
+
+
+def test_contratto_di_lavoro_non_e_un_cedolino(monkeypatch):
+    monkeypatch.setattr(
+        documenti, "_pdf_text_for_detection",
+        lambda *_: "CONTRATTO INDIVIDUALE DI LAVORO SUBORDINATO ... LA RETRIBUZIONE RISULTA DALLA BUSTA PAGA",
+    )
+    assert documenti.detect_document_type("Contratto di Lavoro - Rossi Mario.pdf", b"%PDF") == "auto"
 
 
 def test_contabile_bonifico_con_banca_del_beneficiario_non_e_un_estratto(monkeypatch):

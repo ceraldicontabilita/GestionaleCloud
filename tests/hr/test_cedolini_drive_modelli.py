@@ -119,7 +119,7 @@ def test_drive_cedolino_usa_parser_multi_template_e_propagazione_pdf(monkeypatch
     )
 
     assert risultato["success"] is True
-    assert risultato["metodo"] == "multi_template"
+    assert risultato["metodo"] == "motore_unico"
     assert risultato["cedolini_processati"] == 1
     assert ricevuto["cedolino_data"]["formato_rilevato"] == "teamsystem"
     assert ricevuto["cedolino_data"]["netto_mese"] == 1234.56
@@ -129,7 +129,7 @@ def test_drive_cedolino_usa_parser_multi_template_e_propagazione_pdf(monkeypatch
 
 def test_fascicolo_multipagina_separa_dipendenti_e_conserva_pagine(monkeypatch):
     from app.parsers import busta_paga_multi_template as multi
-    from app.services import cedolini_manager
+    from app.services import cedolini_motore
 
     source = fitz.open()
     for text in ("DIPENDENTE_A", "CONTINUAZIONE_A", "DIPENDENTE_B"):
@@ -161,7 +161,7 @@ def test_fascicolo_multipagina_separa_dipendenti_e_conserva_pagine(monkeypatch):
     monkeypatch.setattr(multi, "parse_busta_paga_from_bytes", fake_parse)
     monkeypatch.setattr(multi, "extract_summary", lambda parsed: parsed.get("summary", {}))
 
-    units = cedolini_manager._parse_multi_template_units(pdf_bytes)
+    units = cedolini_motore._parse_multi_template_units(pdf_bytes)
 
     assert len(units) == 2
     assert [(unit["source_page_start"], unit["source_page_end"]) for unit in units] == [(1, 2), (3, 3)]

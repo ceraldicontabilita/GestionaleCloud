@@ -553,9 +553,13 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   descrizione»: un omonimo o due buste uguali nello stesso mese bastano ad attaccare il movimento
   sbagliato. Lo stesso per gli F24: `riconcilia_f24_tributi_banca`. Un movimento vale come prova solo se
   ha **evidenza bancaria ufficiale** e non è `in_attesa_estratto_ufficiale`.
-- Il Libro Unico ERP si legge da un workflow unico (`app/services/libro_unico_workflow.py`, chiamato dalla pipeline
-  documentale): oltre a presenze e busta salva le voci codificate del cedolino e i **dati chiave** (ratei
-  13ª e 14ª, indennità L.207/24, trattamento integrativo L.21). Una voce assente resta nulla.
+- **Un solo motore per ogni cedolino** (posta, Drive, Documenti > Import, pipeline email): legge
+  `services/cedolini_motore.leggi_pdf` (Zucchetti classico e «s», Libro Unico, Teamsystem anche 13ª/14ª
+  «14a MENS.», CSC), scrive solo `cedolini_manager.processa_tutti_cedolini_pdf`. Niente Document AI, regex
+  storico o Libro Unico a parte. L'esito è sempre dichiarato: `buste`, `presenze` (foglio Aut. 301, non è
+  una busta), `fuori_periodo` (prima del 2018), `non_cedolino` (contratti), `illeggibile`. Una busta con
+  la cella del netto vuota entra **solo in HR** col netto nullo, mai in Prima Nota. Voci codificate e
+  **dati chiave** (ratei 13ª e 14ª, L.207/24, trattamento integrativo L.21) da `parsers/cedolino_voci.py`.
 - Duplicato di cedolino **solo con hash del PDF uguale**: stesso dipendente, mese e importo non bastano
   (mensilità aggiuntive, arretrati, conguagli).
 - Una cessazione letta in una busta vale solo se non esiste una busta successiva della stessa persona.

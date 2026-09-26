@@ -116,6 +116,11 @@ services:
         value: "1"
       - key: DRIVE_SIMULAZIONE_BATCH
         value: "40"
+      # Collaudo di un lettore: con un tipo (es. cedolino) la nuova edizione
+      # rilegge solo i file che la precedente aveva dato di quel tipo. Vuoto =
+      # tutti. Proprietario: titolare; si svuota a collaudo finito.
+      - key: DRIVE_SIMULAZIONE_SOLO_TIPO
+        value: ""
       # Censimento doppioni della cartella GESTIONALE (stessa radice della
       # simulazione): off | censisci (solo elenco) | marca (rinomina le copie
       # «DUPLICATO DA ELIMINARE - …»; non cancella ne' sposta). Proprietario: titolare.

@@ -12,6 +12,12 @@ import fitz  # PyMuPDF
 
 from app.utils.numeri_italiani import parse_importo_ita
 
+#: Le etichette della cella del netto (CLAUDE.md, «Personale»), anche con gli
+#: spazi scritti «s» del tracciato Zucchetti.
+RIQUADRO_NETTO = re.compile(
+    r"NETTO[s\s]*DEL[s\s]*MESE|NETTO[s\s]*BUSTA|NETTO[s\s]*IN[s\s]*BUSTA|TOTALE[s\s]*NETTO"
+)
+
 
 def detect_template(text: str) -> str:
     """Rileva quale template è in uso basandosi sul contenuto del PDF."""
@@ -367,6 +373,18 @@ def parse_template_teamsystem(text: str) -> Dict[str, Any]:
             result["periodo"]["mese_nome"] = mese.capitalize()
             result["periodo"]["anno"] = int(match.group(1))
             break
+
+    # Mensilita' aggiuntiva: al posto del mese la testata dice «14a MENS. 2022».
+    # Il CCNL Pubblici Esercizi paga la tredicesima a dicembre e la
+    # quattordicesima a luglio: e' quello il mese della busta.
+    aggiuntiva = re.search(r'\b(13|14)\s*[aA^]\s+MENS\.?\s+((?:19|20)\d{2})\b', text)
+    if aggiuntiva:
+        tredicesima = aggiuntiva.group(1) == "13"
+        result["tipo_cedolino"] = "tredicesima" if tredicesima else "quattordicesima"
+        if not result["periodo"].get("mese"):
+            result["periodo"]["mese"] = 12 if tredicesima else 7
+            result["periodo"]["mese_nome"] = "Dicembre" if tredicesima else "Luglio"
+            result["periodo"]["anno"] = int(aggiuntiva.group(2))
 
     # Nome dipendente (pattern: dopo anno, es "20     1   5124776507 91431211 24       15  ARIANTE MARCELLA")
     nome_match = re.search(r'\d{4}\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+([A-Z][A-Z\'\s]+)', text)
@@ -1093,6 +1111,12 @@ def parse_busta_paga_multi(pdf_path: str) -> Dict[str, Any]:
     if not has_netto and not has_lordo and not is_solo_trattenute and not is_foglio_presenze:
         result["parse_success"] = False
         result["parse_error"] = "Nessun importo estratto"
+    # Il riquadro del netto stampato dice che il documento e' una busta anche
+    # quando la sua cella e' vuota (mese a zero, solo arrotondamento): allora
+    # la busta si registra col netto nullo, non si scarta.
+    result["riquadro_netto"] = bool(
+        not is_foglio_presenze and RIQUADRO_NETTO.search(cedolino_text)
+    )
 
     # `cedolino_text` copre tutte le pagine: netto, elementi retributivi e
     # anticipi TFR stanno spesso sulla seconda, non su quella usata per

@@ -47,7 +47,6 @@ class _DbSpia:
 def test_la_copia_hr_e_un_re_export_del_modulo_unico():
     for nome in (
         "riconcilia_stipendio_automatico",
-        "processa_cedolino_completo",
         "processa_tutti_cedolini_pdf",
         "get_anagrafica_dipendenti",
         "get_riepilogo_dipendente",

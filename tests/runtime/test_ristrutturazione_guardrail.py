@@ -230,6 +230,9 @@ FILE_MORTI_ELIMINATI = {
     "app/routers/reports/report_pdf.py",
     "app/routers/reports/simple_exports.py",
     "app/routers/batch_operations.py",
+    # Secondo motore dei cedolini: le sue letture stanno in
+    # app/parsers/cedolino_voci.py, il suo scrittore non c'e' piu'.
+    "app/services/libro_unico_workflow.py",
 }
 
 
@@ -250,7 +253,7 @@ def test_importatori_documentali_vivono_solo_nei_servizi():
 
     for path in (
         ROOT / "app/services/distinte_bpm.py",
-        ROOT / "app/services/libro_unico_workflow.py",
+        ROOT / "app/parsers/cedolino_voci.py",
     ):
         source = path.read_text(encoding="utf-8")
         assert "APIRouter" not in source

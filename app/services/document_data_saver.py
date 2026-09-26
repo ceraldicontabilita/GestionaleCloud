@@ -4,7 +4,7 @@ Salva i dati estratti dai documenti nelle collection appropriate del gestionale.
 
 Mapping tipo_documento -> collection:
 - F24 -> f24_models
-- BUSTA_PAGA -> cedolini / anagrafica_dipendenti
+- BUSTA_PAGA -> nessuna scrittura: il cedolino si legge solo dal PDF col motore unico
 - ESTRATTO_CONTO -> estratto_conto_movimenti
 - BONIFICO -> bonifici_stipendi / archivio_bonifici
 - VERBALE -> verbali_noleggio
@@ -78,81 +78,6 @@ async def save_f24_to_gestionale(db, data: Dict[str, Any], source_info: Dict[str
 
     except Exception as e:
         logger.error(f"Errore salvataggio F24: {e}")
-        return {"status": "error", "message": str(e)}
-
-
-async def save_busta_paga_to_gestionale(db, data: Dict[str, Any], source_info: Dict[str, Any] = None) -> Dict[str, Any]:
-    """Salva busta paga nella collection cedolini e aggiorna anagrafica dipendente."""
-    try:
-        dipendente = data.get("dipendente", {})
-        azienda = data.get("azienda", {})
-        periodo = data.get("periodo", {})
-        retribuzione = data.get("retribuzione", {})
-
-        # Documento cedolino
-        doc = {
-            "dipendente_cf": dipendente.get("codice_fiscale"),
-            "dipendente_nome": dipendente.get("nome_cognome"),
-            "dipendente_matricola": dipendente.get("matricola"),
-            "azienda_cf": azienda.get("codice_fiscale"),
-            "azienda_denominazione": azienda.get("denominazione"),
-            "mese": periodo.get("mese"),
-            "anno": periodo.get("anno"),
-            "lordo": parse_amount(retribuzione.get("lordo")),
-            "netto": parse_amount(retribuzione.get("netto")),
-            "trattenute_inps": parse_amount(retribuzione.get("trattenute_inps")),
-            "trattenute_irpef": parse_amount(retribuzione.get("trattenute_irpef")),
-            "addizionale_regionale": parse_amount(retribuzione.get("addizionale_regionale")),
-            "addizionale_comunale": parse_amount(retribuzione.get("addizionale_comunale")),
-            "ore_lavorate": data.get("ore_lavorate"),
-            "giorni_lavorati": data.get("giorni_lavorati"),
-            "tfr_maturato": parse_amount(data.get("tfr_maturato")),
-            "source": "document_ai",
-            "source_info": source_info or {},
-            "created_at": datetime.now(timezone.utc).isoformat()
-        }
-
-        # Evita duplicati
-        existing = await db["cedolini"].find_one({
-            "dipendente_cf": doc["dipendente_cf"],
-            "mese": doc["mese"],
-            "anno": doc["anno"]
-        })
-
-        if existing:
-            return {"status": "duplicate", "message": "Cedolino già presente", "id": str(existing.get("_id"))}
-
-        # Registro del gestionale (Prima Nota salari); l'archivio che gli utenti
-        # vedono e' l'app HR: deposito in app_cedolini, mai bloccante.
-        result = await db["cedolini"].insert_one(doc)
-        try:
-            from app.services.hr_cedolini_deposito import deposita_cedolino_in_hr
-            await deposita_cedolino_in_hr(doc)
-        except Exception:
-            logger.exception("Deposito cedolino in HR fallito (Document AI): flusso invariato")
-
-        # Aggiorna/crea anagrafica dipendente
-        if dipendente.get("codice_fiscale"):
-            await db["dipendenti"].update_one(
-                {"codice_fiscale": dipendente.get("codice_fiscale")},
-                {
-                    "$set": {
-                        "nome_cognome": dipendente.get("nome_cognome"),
-                        "matricola": dipendente.get("matricola"),
-                        "last_cedolino": f"{periodo.get('mese')}/{periodo.get('anno')}",
-                        "updated_at": datetime.now(timezone.utc).isoformat()
-                    },
-                    "$setOnInsert": {
-                        "created_at": datetime.now(timezone.utc).isoformat()
-                    }
-                },
-                upsert=True
-            )
-
-        return {"status": "saved", "collection": "cedolini", "id": str(result.inserted_id)}
-
-    except Exception as e:
-        logger.error(f"Errore salvataggio busta paga: {e}")
         return {"status": "error", "message": str(e)}
 
 
@@ -424,10 +349,11 @@ async def save_fattura_to_gestionale(db, data: Dict[str, Any], source_info: Dict
         return {"status": "error", "message": str(e)}
 
 
-# Mapping tipo documento -> funzione di salvataggio
+# Mapping tipo documento -> funzione di salvataggio. La busta paga non c'e':
+# un cedolino si registra solo dal suo PDF, col motore unico
+# (`services/cedolini_motore.py` + `cedolini_manager.processa_tutti_cedolini_pdf`).
 SAVE_FUNCTIONS = {
     "F24": save_f24_to_gestionale,
-    "BUSTA_PAGA": save_busta_paga_to_gestionale,
     "BONIFICO": save_bonifico_to_gestionale,
     "ESTRATTO_CONTO": save_estratto_conto_to_gestionale,
     "VERBALE": save_verbale_to_gestionale,
