@@ -115,6 +115,10 @@ services:
         sync: false
       - key: DRIVE_CARTELLA_UNICA_BATCH
         value: "25"
+      # Pausa del solo import della cartella unica (la cartella resta configurata,
+      # simulazione e «vedi documento» continuano). Proprietario: titolare.
+      - key: DRIVE_CARTELLA_UNICA_IMPORT
+        sync: false
       # Simulazione della migrazione (sola lettura): radice Drive da percorrere,
       # vuota = spenta. Cambiare EDIZIONE rilegge tutto dopo una correzione.
       - key: DRIVE_SIMULAZIONE_RADICE
