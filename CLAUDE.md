@@ -313,7 +313,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   con anteprima e autorizzazione esplicita.
 - Estratti conto: inbox unica per sei fonti; riconoscimento nell'ordine
   percorso → nome file (solo segni esclusivi) → contenuto, e il contenuto si
-  prova Nexi → PayPal → mutuo → banca. «estratto conto» da solo non è un
+  prova SumUp → Nexi → PayPal → mutuo → banca. «estratto conto» da solo non è un
   segno. Non riconosciuto → cartella Errori col motivo scritto, **mai
   indovinato**: indovinare significa registrare le spese Nexi come uscite dal
   conto. Arretrato pre-2026 fermo per scelta del titolare
@@ -846,7 +846,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   non riscosso (67.856,00 €); fuori restano 3 giornate a incasso zero (giusto) e il **02/08**, XML che non quadra di 0,90 €.
 - Endpoint sincroni oltre i 5 minuti, da portare a lotti riprendibili: `/api/fatture/drive/quadratura`, `/api/paypal-api/riconcilia`, `/account-ids-non-mappati`, `riallinea-pagamenti-fatture`.
 - Note di credito TD04 legacy (~20): costo/IVA/debito aumentati anziché ridotti.
-- **Estratto conto SumUp** (PDF, conto 19.01.05, paga anche fornitori e stipendi): nessun lettore, e i motori bancari scrivono su 19.01.01 se il movimento non porta il conto.
+- **Estratto conto SumUp** (conto 19.01.05): il lettore (`sumup_conto.py`, saldi verificati riga per riga) scrive in `sumup_conto_movimenti`, **mai** in `estratto_conto_movimenti` (lì i motori lo leggerebbero come BPM su 19.01.01); stipendi e fornitori pagati dalla carta non sono ancora abbinati a cedolini e fatture.
 - **Pregresso fatture**: 296 attive (173.184,83 €) senza partita aperta, 280 fuori dal giornale. Prima
   `ripubblica-evento-created`, poi `registra-pregresso`. Con `dry_run`: `azzera-scadenze` (642 fatture,
   971 partite inventate), `lipe/importa`, `ricostruisci-numia`.
