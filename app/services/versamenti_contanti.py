@@ -161,6 +161,19 @@ SOURCES_MOTORE = frozenset({
 #: la banca contabilizzi: porta la data del negozio, non quella della banca.
 SOURCE_ATTESA_BANCA = "versamento_cassa_in_attesa"
 MOTIVO_DOPPIONE = "doppione_versamento_contanti"
+MOTIVO_NON_NOSTRO = "versamento_non_nostro_stornato_dalla_banca"
+
+#: Versamenti che la banca ha accreditato per errore sul nostro conto e poi
+#: stornato: il contante non e' mai uscito dalla nostra cassa, quindi non
+#: nasce nessuna gamba. Si elencano uno per uno, per decisione del titolare:
+#: uno storno non si abbina da solo a un versamento per solo importo.
+#: Chiave: (giorno di contabilizzazione, importo in centesimi, verso).
+VERSAMENTI_ANNULLATI = {
+    # Titolare, 26/09/2026: il cassiere di un altro cliente lo ha versato sul
+    # nostro conto; stornato il 13/07 con «STORNO SCRITTURE - STORNO PER
+    # ERRATO CONTO». «Elimina questo movimento, non serve averlo».
+    ("2026-07-10", 310000, "versamento"): "errore del cassiere BPM, stornato il 13/07/2026",
+}
 
 _ATTIVO = {"status": {"$nin": ["deleted", "archived"]}}
 _CAMPI_PRIMA_NOTA = {
@@ -251,12 +264,13 @@ def _quante_operazioni(righe: List[Dict[str, Any]]) -> int:
     return max(per_fonte.values())
 
 
-async def _togli_doppione(db, collezione: str, riga: Dict[str, Any], adesso: str) -> None:
+async def _togli_doppione(db, collezione: str, riga: Dict[str, Any], adesso: str,
+                          motivo: str = MOTIVO_DOPPIONE) -> None:
     """Soft delete per id: la riga resta per audit, esce da elenchi e saldi."""
     await db[collezione].update_one(
         {"id": riga["id"]},
         {"$set": {"status": "deleted", "deleted_at": adesso,
-                  "deleted_reason": MOTIVO_DOPPIONE, "deleted_by": "versamenti_contanti"}},
+                  "deleted_reason": motivo, "deleted_by": "versamenti_contanti"}},
     )
 
 
@@ -280,6 +294,7 @@ async def riconosci_versamenti(
         "gambe_cassa_create": 0, "gambe_cassa_collegate": 0, "gambe_banca_create": 0,
         "gia_registrati": 0, "senza_data_o_importo": 0,
         "doppioni_banca_tolti": 0, "doppioni_cassa_tolti": 0, "da_verificare": 0,
+        "annullati_dal_titolare": 0,
     }
     gruppi = _gruppi(movimenti, anno, conteggi, esiti)
     if not gruppi:
@@ -297,8 +312,15 @@ async def riconosci_versamenti(
     for (data, centesimi, tipo), righe in sorted(gruppi.items()):
         importo = centesimi / 100
         n = _quante_operazioni(righe)
-        conteggi["versamenti" if tipo == "versamento" else "prelievi"] += n
         conteggi["copie_estratto_conto"] += len(righe) - n
+        annullato = VERSAMENTI_ANNULLATI.get((data, centesimi, tipo))
+        if annullato:
+            n -= 1
+            conteggi["annullati_dal_titolare"] += 1
+            esiti.append({"tipo": tipo, "data": data, "importo": importo,
+                          "esito": "annullato_dal_titolare", "motivo": annullato})
+        motivo_extra = MOTIVO_NON_NOSTRO if annullato else MOTIVO_DOPPIONE
+        conteggi["versamenti" if tipo == "versamento" else "prelievi"] += n
         tipo_cassa, tipo_banca = ("uscita", "entrata") if tipo == "versamento" else ("entrata", "uscita")
         righe = sorted(righe, key=lambda r: (_fonte_ec(r) != "enable_banking", _id_ec(r)))
         descrizione = str(righe[0].get("descrizione_originale") or righe[0].get("descrizione") or "")
@@ -322,7 +344,7 @@ async def riconosci_versamenti(
                 esiti.append({"tipo": tipo, "data": data, "importo": importo,
                               "esito": "doppione_banca_tolto", "id": extra.get("id")})
                 if not dry_run:
-                    await _togli_doppione(db, "prima_nota_banca", extra, adesso)
+                    await _togli_doppione(db, "prima_nota_banca", extra, adesso, motivo_extra)
             else:
                 conteggi["da_verificare"] += 1
                 esiti.append({"tipo": tipo, "data": data, "importo": importo,
@@ -354,7 +376,7 @@ async def riconosci_versamenti(
                 esiti.append({"tipo": tipo, "data": data, "importo": importo,
                               "esito": "doppione_cassa_tolto", "id": extra.get("id")})
                 if not dry_run:
-                    await _togli_doppione(db, "prima_nota_cassa", extra, adesso)
+                    await _togli_doppione(db, "prima_nota_cassa", extra, adesso, motivo_extra)
             else:
                 conteggi["da_verificare"] += 1
                 esiti.append({"tipo": tipo, "data": data, "importo": importo,

@@ -420,3 +420,27 @@ def test_la_simulazione_non_toglie_niente(db):
 
     assert esito["doppioni_banca_tolti"] == 2
     assert len(_attive(db, "prima_nota_banca")) == 3
+
+
+def test_il_versamento_annullato_dal_titolare_non_ha_gambe(db):
+    """10/07/2026: versamento di un altro cliente accreditato per errore e
+    stornato dalla banca il 13/07. Il contante non e' mai uscito dalla cassa."""
+    run(_prepara(db, _copie("2026-07-10", 3100.0, ["legacy_staging_2026"])
+                 + _copie("2026-07-10", 4600.0, ["legacy_staging_2026"])))
+    run(db["prima_nota_banca"].insert_one({
+        "id": "B-3100", "data": "2026-07-10", "importo": 3100.0, "tipo": "entrata",
+        "categoria": "trasferimento_interno", "source": "estratto_conto_versamento",
+        "operation_id": "versamento:v", "trasferimento_collegato_id": "C-3100"}))
+    run(db["prima_nota_cassa"].insert_one({
+        "id": "C-3100", "data": "2026-07-10", "importo": 3100.0, "tipo": "uscita",
+        "categoria": "trasferimento_interno", "source": "estratto_conto_versamento",
+        "operation_id": "versamento:v", "trasferimento_collegato_id": "B-3100"}))
+
+    esito = run(riconosci_versamenti(db, dry_run=False))
+
+    assert esito["annullati_dal_titolare"] == 1 and esito["versamenti"] == 1
+    assert [c["importo"] for c in _attive(db, "prima_nota_cassa")] == [4600.0]
+    assert [b["importo"] for b in _attive(db, "prima_nota_banca")] == [4600.0]
+    tolta = run(db["prima_nota_cassa"].find_one({"id": "C-3100"}))
+    assert tolta["deleted_reason"] == "versamento_non_nostro_stornato_dalla_banca"
+    assert run(riconosci_versamenti(db, dry_run=False))["gambe_cassa_create"] == 0
