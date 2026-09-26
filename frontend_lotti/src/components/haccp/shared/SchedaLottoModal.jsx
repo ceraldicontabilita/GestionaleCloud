@@ -47,7 +47,10 @@ export function AzioneModal({ lotto, azione, attrezzature, onClose, onFatto }) {
   const [saving, setSaving] = useState(false);
   const operationId = useRef(crypto.randomUUID());
 
-  const opzioniPerTipo = tipoPos === "congelatore" ? attrezzature.congelatori : attrezzature.frigoriferi;
+  const destinazioniConservazione = [
+    ...(attrezzature.frigoriferi || []).map((a) => ({ tipo: "frigo", nome: a.nome })),
+    ...(attrezzature.congelatori || []).map((a) => ({ tipo: "congelatore", nome: a.nome })),
+  ];
 
   const titoli = {
     sposta: "Sposta di posizione", congela: "Congela lotto", recupera: "Recupera in nuova produzione",
@@ -63,12 +66,12 @@ export function AzioneModal({ lotto, azione, attrezzature, onClose, onFatto }) {
       if (azione === "sposta") {
         if (!numero.trim()) { toast.error("Indica il frigo/congelatore/reparto di destinazione"); setSaving(false); return; }
         await axios.post(`${API}/lotti/${lotto.id}/sposta-posizione`, null, {
-          params: { tipo: tipoPos, numero, reparto, motivo, operatore_nome },
+          params: { tipo: tipoPos, numero, reparto, motivo, operatore_id, operatore_nome, operation_id: operationId.current },
         });
         toast.success("Lotto spostato");
       } else if (azione === "congela") {
         if (!numero.trim()) { toast.error("Indica il congelatore"); setSaving(false); return; }
-        await axios.post(`${API}/lotti/${lotto.id}/congela`, null, { params: { numero, motivo, operatore_nome } });
+        await axios.post(`${API}/lotti/${lotto.id}/congela`, null, { params: { numero, motivo, operatore_id, operatore_nome, operation_id: operationId.current } });
         toast.success("Lotto congelato: scadenza aggiornata");
       } else if (azione === "recupera") {
         await axios.post(`${API}/lotti/${lotto.id}/recupera`, null, {
@@ -113,53 +116,36 @@ export function AzioneModal({ lotto, azione, attrezzature, onClose, onFatto }) {
             </label>
           )}
 
-          {(azione === "sposta") && (
-            <label className="block text-sm">
-              Tipo posizione
-              <select value={tipoPos} onChange={(e) => { setTipoPos(e.target.value); setNumero(""); }}
-                className="w-full mt-1 px-3 py-2 border border-stone-200 rounded-lg text-sm bg-white">
-                <option value="frigo">Frigorifero</option>
-                <option value="congelatore">Congelatore</option>
-                <option value="abbattitore">Abbattitore</option>
-                <option value="banco">Banco</option>
-                <option value="magazzino">Magazzino</option>
-              </select>
-            </label>
-          )}
-
-          {(azione === "sposta" && (tipoPos === "frigo" || tipoPos === "congelatore")) && (
-            <label className="block text-sm">
-              Apparecchio
-              <input list="azione-attrezzature" value={numero} onChange={(e) => setNumero(e.target.value)}
-                placeholder="es. Frigorifero N°1"
-                className="w-full mt-1 px-3 py-2 border border-stone-200 rounded-lg text-sm" />
-              <datalist id="azione-attrezzature">
-                {opzioniPerTipo.map((a) => <option key={a.numero} value={a.nome} />)}
-              </datalist>
-            </label>
-          )}
-          {(azione === "sposta" && (tipoPos === "banco" || tipoPos === "magazzino" || tipoPos === "abbattitore")) && (
-            <label className="block text-sm">
-              Reparto / dettaglio
-              <input value={numero} onChange={(e) => setNumero(e.target.value)}
-                placeholder="es. Banco pasticceria"
-                className="w-full mt-1 px-3 py-2 border border-stone-200 rounded-lg text-sm" />
-            </label>
+          {azione === "sposta" && (
+            <div>
+              <p className="text-sm mb-2">Nuova posizione</p>
+              <div className="grid grid-cols-2 gap-2">
+                {destinazioniConservazione.map((a) => {
+                  const scelta = tipoPos === a.tipo && numero === a.nome;
+                  return <button type="button" key={`${a.tipo}:${a.nome}`}
+                    onClick={() => { setTipoPos(a.tipo); setNumero(a.nome); }}
+                    className={`min-h-12 rounded-lg border-2 px-2 text-sm font-bold ${scelta ? "border-[#5b7a6b] bg-[#f2f6f3]" : "border-stone-200 bg-white"}`}>
+                    {scelta ? "✓ " : ""}{a.nome}
+                  </button>;
+                })}
+              </div>
+            </div>
           )}
 
           {azione === "congela" && (
-            <label className="block text-sm">
-              Congelatore
-              <input list="azione-congelatori" value={numero} onChange={(e) => setNumero(e.target.value)}
-                placeholder="es. Congelatore N°1"
-                className="w-full mt-1 px-3 py-2 border border-stone-200 rounded-lg text-sm" />
-              <datalist id="azione-congelatori">
-                {attrezzature.congelatori.map((a) => <option key={a.numero} value={a.nome} />)}
-              </datalist>
-            </label>
+            <div>
+              <p className="text-sm mb-2">Congelatore / abbattitore</p>
+              <div className="grid grid-cols-2 gap-2">
+                {(attrezzature.congelatori || []).map((a) =>
+                  <button type="button" key={a.numero} onClick={() => setNumero(a.nome)}
+                    className={`min-h-12 rounded-lg border-2 px-2 text-sm font-bold ${numero === a.nome ? "border-[#5b7a6b] bg-[#f2f6f3]" : "border-stone-200 bg-white"}`}>
+                    {numero === a.nome ? "✓ " : ""}{a.nome}
+                  </button>)}
+              </div>
+            </div>
           )}
 
-          {(azione === "sposta" || azione === "banco") && (
+          {azione === "banco" && (
             <label className="block text-sm">
               Reparto
               <select value={reparto} onChange={(e) => setReparto(e.target.value)}

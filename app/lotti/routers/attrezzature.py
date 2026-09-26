@@ -114,8 +114,9 @@ async def _build_list(tipo: str, fallback_tipo: str) -> list[dict]:
             for d in docs
         ]
 
-    # Fallback finale se nessuna config
-    numeri = sorted(haccp_numeri.keys()) or list(range(1, 3))
+    # Nessun apparecchio inventato: senza configurazione o scheda HACCP reale
+    # il tablet deve chiedere di censirlo.
+    numeri = sorted(haccp_numeri.keys())
     return [
         {
             "tipo": tipo,

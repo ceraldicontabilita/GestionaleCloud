@@ -109,7 +109,8 @@ async def crea_lotto(doc: dict, *, origine: str = "manuale") -> dict:
         "data_scadenza": lotto.get("data_scadenza", ""),
     })
 
-    # Registro movimenti: mai bloccare la creazione del lotto se questo fallisce.
+    # Un lotto senza evento iniziale sarebbe operativo senza audit. Se il
+    # registro non e' disponibile lo blocchiamo e facciamo fallire la richiesta.
     try:
         from app.lotti.servizi.movimenti_lotto_service import registra_movimento
         await registra_movimento(
@@ -123,6 +124,12 @@ async def crea_lotto(doc: dict, *, origine: str = "manuale") -> dict:
             motivo=f"Lotto creato (origine: {origine})",
         )
     except Exception:
-        _LOG.exception("[lotti_service] registrazione movimento creazione fallita (non bloccante)")
+        await db.lotti.update_one(
+            {"id": lotto["id"]},
+            {"$set": {"stato": "bloccato_audit", "audit_incompleto": True,
+                      "audit_errore_il": _adesso()}},
+        )
+        _LOG.exception("[lotti_service] lotto bloccato: movimento di creazione mancante")
+        raise
 
     return lotto

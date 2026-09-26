@@ -7,19 +7,12 @@ import { API, withToken } from "../../utils/constants";
 import { apiError } from "../../utils/apiError";
 import { getOperatoreNome } from "../../auth";
 
-// Mappa attrezzature suggerite per categoria
+// Le attrezzature del freddo arrivano dal censimento reale. Questa mappa resta
+// solo per le categorie che non hanno ancora un'anagrafica dedicata.
 const ATTREZZATURE_PER_CATEGORIA = {
-  "Frigorifero": [
-    "Frigo 1","Frigo 2","Frigo 3","Frigo 4","Frigo 5",
-    "Cella Frigo A","Cella Frigo B","Frigorifero Vetrina","Frigorifero Banco"
-  ],
-  "Congelatore": [
-    "Congelatore 1","Congelatore 2","Surgelatore 1","Surgelatore 2",
-    "Cella Surgelati","Freezer Banco"
-  ],
-  "Abbattitore": [
-    "Abbattitore 1","Abbattitore 2","Abbattitore Pasticceria","Abbattitore Rosticceria"
-  ],
+  "Frigorifero": [],
+  "Congelatore": [],
+  "Abbattitore": [],
   "Forno": [
     "Forno 1","Forno 2","Forno Pasticceria","Forno Rosticceria","Forno Statico","Forno Ventilato"
   ],
@@ -240,10 +233,9 @@ function SpostaMassivoModal({ anomalia, onClose, onFatto }) {
   const [selezionati, setSelezionati] = useState({});
   const [tipo, setTipo] = useState("frigo");
   const [numero, setNumero] = useState("");
-  const [reparto, setReparto] = useState("pasticceria");
-  const [motivo, setMotivo] = useState("");
   const [azioneCorrettiva, setAzioneCorrettiva] = useState("");
   const [saving, setSaving] = useState(false);
+  const [destinazioni, setDestinazioni] = useState([]);
 
   useEffect(() => {
     axios.get(`${API}/anomalie/${anomalia.id}/lotti-attuali`).then((r) => {
@@ -255,6 +247,16 @@ function SpostaMassivoModal({ anomalia, onClose, onFatto }) {
     }).catch((e) => toast.error(apiError(e, "Impossibile caricare i lotti attuali"))).finally(() => setLoading(false));
   }, [anomalia.id]);
 
+  useEffect(() => {
+    axios.get(`${API}/attrezzature/`).then((r) => {
+      const dati = r.data || {};
+      setDestinazioni([
+        ...(dati.frigoriferi || []).map((a) => ({ tipo: "frigo", nome: a.nome })),
+        ...(dati.congelatori || []).map((a) => ({ tipo: "congelatore", nome: a.nome })),
+      ].filter((a) => a.nome !== anomalia.attrezzatura));
+    }).catch(() => setDestinazioni([]));
+  }, [anomalia.attrezzatura]);
+
   const idsSelezionati = Object.entries(selezionati).filter(([, v]) => v).map(([k]) => k);
 
   const conferma = async () => {
@@ -264,7 +266,8 @@ function SpostaMassivoModal({ anomalia, onClose, onFatto }) {
     setSaving(true);
     try {
       const res = await axios.post(`${API}/anomalie/${anomalia.id}/sposta-lotti-massivo`, {
-        lotti_ids: idsSelezionati, tipo, numero, reparto, motivo,
+        lotti_ids: idsSelezionati, tipo, numero, reparto: "",
+        motivo: `Spostamento per anomalia su ${anomalia.attrezzatura}`,
         azione_correttiva_haccp: azioneCorrettiva, operatore_nome: getOperatoreNome(),
       });
       toast.success(`${res.data.spostati} lotti spostati`);
@@ -304,41 +307,28 @@ function SpostaMassivoModal({ anomalia, onClose, onFatto }) {
             </div>
           )}
 
-          <label className="block text-sm">
-            Nuova posizione — tipo
-            <select value={tipo} onChange={(e) => setTipo(e.target.value)}
-              className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white">
-              <option value="frigo">Frigorifero</option>
-              <option value="congelatore">Congelatore</option>
-              <option value="abbattitore">Abbattitore</option>
-              <option value="banco">Banco</option>
-              <option value="magazzino">Magazzino</option>
-            </select>
-          </label>
-          <label className="block text-sm">
-            Apparecchio / dettaglio destinazione
-            <input value={numero} onChange={(e) => setNumero(e.target.value)}
-              placeholder="es. Frigorifero N°5" className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm" />
-          </label>
-          <label className="block text-sm">
-            Reparto
-            <select value={reparto} onChange={(e) => setReparto(e.target.value)}
-              className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white">
-              <option value="pasticceria">Pasticceria</option>
-              <option value="rosticceria">Rosticceria</option>
-              <option value="bar">Bar</option>
-            </select>
-          </label>
-          <label className="block text-sm">
-            Motivo (facoltativo)
-            <input value={motivo} onChange={(e) => setMotivo(e.target.value)}
-              placeholder="es. guasto in corso" className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm" />
-          </label>
+          <div>
+            <p className="text-sm font-medium mb-2">Dove li sposto?</p>
+            <div className="grid grid-cols-2 gap-2">
+              {destinazioni.map((a) => {
+                const scelta = tipo === a.tipo && numero === a.nome;
+                return <button type="button" key={`${a.tipo}:${a.nome}`}
+                  onClick={() => { setTipo(a.tipo); setNumero(a.nome); }}
+                  className={`min-h-12 rounded-lg border-2 px-2 text-sm font-bold ${scelta ? "border-[#5b7a6b] bg-[#f2f6f3]" : "border-stone-200 bg-white"}`}>
+                  {scelta ? "✓ " : ""}{a.nome}
+                </button>;
+              })}
+            </div>
+          </div>
           <label className="block text-sm">
             Azione correttiva HACCP (obbligatoria)
-            <textarea value={azioneCorrettiva} onChange={(e) => setAzioneCorrettiva(e.target.value)} rows={3}
-              placeholder="es. prodotti trasferiti entro 10 minuti, temperatura verificata"
-              className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm resize-none" />
+            <select value={azioneCorrettiva} onChange={(e) => setAzioneCorrettiva(e.target.value)}
+              className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white">
+              <option value="">— scegli —</option>
+              <option>Prodotti trasferiti in apparecchio funzionante</option>
+              <option>Prodotti verificati e trasferiti</option>
+              <option>Prodotti non conformi isolati</option>
+            </select>
           </label>
 
           <div className="flex gap-2 pt-2">
@@ -362,6 +352,7 @@ const AnomalieView = () => {
   const [expandedId, setExpandedId] = useState(null);
   const [risoluzioneId, setRisoluzioneId] = useState(null);
   const [spostaMassivoAnomalia, setSpostaMassivoAnomalia] = useState(null);
+  const [attrezzatureFreddo, setAttrezzatureFreddo] = useState({ frigoriferi: [], congelatori: [] });
   
   // Form state
   const [nuovaAnomalia, setNuovaAnomalia] = useState({
@@ -392,6 +383,22 @@ const AnomalieView = () => {
   }, [filtroStato, filtroCategoria]);
 
   useEffect(() => { fetchAnomalie(); }, [fetchAnomalie]);
+  useEffect(() => {
+    axios.get(`${API}/attrezzature/`)
+      .then((r) => setAttrezzatureFreddo(r.data || { frigoriferi: [], congelatori: [] }))
+      .catch(() => setAttrezzatureFreddo({ frigoriferi: [], congelatori: [] }));
+  }, []);
+
+  const attrezzatureCategoria = (() => {
+    if (nuovaAnomalia.categoria === "Frigorifero") {
+      return (attrezzatureFreddo.frigoriferi || []).map((a) => a.nome).filter(Boolean);
+    }
+    if (["Congelatore", "Abbattitore"].includes(nuovaAnomalia.categoria)) {
+      return (attrezzatureFreddo.congelatori || []).map((a) => a.nome).filter(Boolean);
+    }
+    return ATTREZZATURE_PER_CATEGORIA[nuovaAnomalia.categoria] || [];
+  })();
+  const categoriaFreddo = ["Frigorifero", "Congelatore", "Abbattitore"].includes(nuovaAnomalia.categoria);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -504,24 +511,35 @@ const AnomalieView = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Attrezzatura *</label>
-                <input
-                  type="text"
-                  value={nuovaAnomalia.attrezzatura}
-                  onChange={(e) => setNuovaAnomalia({...nuovaAnomalia, attrezzatura: e.target.value})}
-                  className="w-full border rounded px-3 py-2 text-sm"
-                  placeholder="Nome attrezzatura"
-                  list={`attrezzature-${nuovaAnomalia.categoria.replace(/\s/g,'-')}`}
-                />
+                {categoriaFreddo ? (
+                  <select
+                    value={nuovaAnomalia.attrezzatura}
+                    onChange={(e) => setNuovaAnomalia({...nuovaAnomalia, attrezzatura: e.target.value})}
+                    className="w-full border rounded px-3 py-2 text-sm bg-white"
+                  >
+                    <option value="">— scegli un'attrezzatura censita —</option>
+                    {attrezzatureCategoria.map((a) => <option key={a} value={a}>{a}</option>)}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={nuovaAnomalia.attrezzatura}
+                    onChange={(e) => setNuovaAnomalia({...nuovaAnomalia, attrezzatura: e.target.value})}
+                    className="w-full border rounded px-3 py-2 text-sm"
+                    placeholder="Nome attrezzatura"
+                    list={`attrezzature-${nuovaAnomalia.categoria.replace(/\s/g,'-')}`}
+                  />
+                )}
                 {/* Datalist contestuale per categoria */}
                 <datalist id={`attrezzature-${nuovaAnomalia.categoria.replace(/\s/g,'-')}`}>
-                  {(ATTREZZATURE_PER_CATEGORIA[nuovaAnomalia.categoria] || []).map(a => (
+                  {attrezzatureCategoria.map(a => (
                     <option key={a} value={a} />
                   ))}
                 </datalist>
                 {/* Chips rapide per la categoria selezionata */}
-                {(ATTREZZATURE_PER_CATEGORIA[nuovaAnomalia.categoria] || []).length > 0 && (
+                {attrezzatureCategoria.length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-1.5">
-                    {(ATTREZZATURE_PER_CATEGORIA[nuovaAnomalia.categoria] || []).slice(0, 6).map(a => (
+                    {attrezzatureCategoria.slice(0, 6).map(a => (
                       <button
                         key={a}
                         type="button"

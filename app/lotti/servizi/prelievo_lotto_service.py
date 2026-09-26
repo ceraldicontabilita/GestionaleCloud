@@ -10,9 +10,10 @@ from app.lotti.servizi.lotto_arricchimento_service import calcola_stato_scadenza
 
 
 async def preleva_lotto(lotto_id: str, quantita: float | None, tipo: str,
-                       operation_id: str | None = None) -> dict:
+                       operation_id: str | None = None,
+                       posizione_a: dict | None = None) -> dict:
     """Scala una quantità una sola volta; un retry riprende gli effetti successivi."""
-    if tipo not in {"banco", "recupero"}:
+    if tipo not in {"banco", "recupero", "uso"}:
         raise ValueError("Tipo prelievo non supportato")
     chiave = f"{tipo}_{operation_id}" if operation_id else None
     if chiave:
@@ -33,8 +34,8 @@ async def preleva_lotto(lotto_id: str, quantita: float | None, tipo: str,
     lotto = await db.lotti.find_one({"id": lotto_id}, {"_id": 0})
     if not lotto:
         raise HTTPException(404, "Lotto non trovato")
-    if lotto.get("stato") == "bloccato_richiamo":
-        raise HTTPException(423, "Lotto bloccato da richiamo")
+    if lotto.get("stato") in {"bloccato_richiamo", "bloccato_audit"}:
+        raise HTTPException(423, "Lotto bloccato: verificare richiamo o audit")
     giorni = calcola_stato_scadenza(lotto.get("data_scadenza"))["giorni_alla_scadenza"]
     if giorni is None or giorni < 0:
         raise HTTPException(409, "Lotto scaduto o scadenza da verificare: non utilizzare")
@@ -53,9 +54,19 @@ async def preleva_lotto(lotto_id: str, quantita: float | None, tipo: str,
                 "creato": datetime.now(timezone.utc).isoformat(),
             })
         except DuplicateKeyError:
-            return await preleva_lotto(lotto_id, quantita, tipo, operation_id)
+            return await preleva_lotto(
+                lotto_id, quantita, tipo, operation_id, posizione_a=posizione_a)
 
     modifica = {"quantita": residua}
+    posizione_corrente = lotto.get("posizione")
+    if residua == 0 and posizione_a:
+        posizione_finale = dict(posizione_a)
+        posizione_finale["quantita"] = 0
+        modifica.update({"posizione": posizione_finale, "frigo_numero": ""})
+    elif posizione_corrente:
+        posizione_residua = dict(posizione_corrente)
+        posizione_residua["quantita"] = residua
+        modifica["posizione"] = posizione_residua
     if residua == 0:
         modifica.update({"consumato": True, "data_consumo": datetime.now(timezone.utc).isoformat()})
     filtro = {"id": lotto_id, "quantita": disponibile,

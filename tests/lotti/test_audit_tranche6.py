@@ -219,11 +219,15 @@ def test_registra_produzione_scrive_produzioni_e_lotto_collegati(dbmock):
         "id": "R1", "nome": "Torta di prova", "porzioni": 10,
         "ingredienti_dettaglio": [{"nome": "Polvere di unicorno", "quantita": 100,
                                    "unita_misura": "g"}]}))
+    run(dbmock.attrezzature_config.insert_one({
+        "tipo": "frigo", "numero": 2, "nome": "Frigo 2", "attivo": True,
+    }))
     lotto = run(lp.registra_produzione_e_crea_lotto(
         ricetta_id="R1", pezzi=10, pezzi_base=10, costo_totale=5.0,
         data_produzione="2026-07-24", frigo_numero="Frigo 2",
         lotti_componenti_json=None, operatore_id="op1", operatore_nome="Mario",
-        data_scadenza=None, memorizza_durata=False, operation_id=None))
+        data_scadenza=None, memorizza_durata=False, operation_id="produzione-r1",
+        destinazione="frigo"))
     assert lotto.get("numero_lotto")
     prod = run(dbmock.produzioni.find_one({}))
     assert prod["numero_lotto"] == lotto["numero_lotto"], \
