@@ -3348,6 +3348,31 @@ async def apri_originale_cartella_unica(
     )
 
 
+async def _chiusura_fuori_anno(db, parsed: Dict[str, Any], result: Dict[str, Any]) -> bool:
+    """Vero se la chiusura RT e' di un anno diverso da quello attivo.
+
+    Dello storico interessano solo cedolini e F24: una chiusura di un altro
+    anno non entra nei corrispettivi ne' in Prima Nota. Il 26/09/2026 una
+    chiusura del 14/03/2023 arrivata dalla cartella unica era entrata, con i
+    suoi contanti in cassa. Data mancante: resta nel flusso, come fa il motore.
+    """
+    from app.services.config_import import get_anno_importazione_attivo
+
+    data_rt = str(parsed.get("data") or "")
+    anno_rt = int(data_rt[:4]) if data_rt[:4].isdigit() else None
+    anno_attivo = await get_anno_importazione_attivo(db)
+    if not anno_rt or anno_rt == anno_attivo:
+        return False
+    result["imported"] = 0
+    result["skipped_altro_anno"] = 1
+    result["tipo_documento"] = "corrispettivo"
+    result["message"] = (
+        f"Chiusura RT del {data_rt}: l'anno attivo e' il {anno_attivo}, "
+        "non entra nel gestionale e l'originale resta su Drive"
+    )
+    return True
+
+
 @router.post("/upload-auto")
 @handle_errors
 async def upload_documento_automatico(
@@ -3549,6 +3574,10 @@ async def upload_documento_automatico(
                 if parsed.get("error"):
                     result["success"] = False
                     result["message"] = f"Errore parsing corrispettivo: {parsed['error']}"
+                elif await _chiusura_fuori_anno(db, parsed, result):
+                    # Stessa regola delle fatture qui sotto: nel gestionale
+                    # entra solo l'anno attivo, l'originale resta su Drive.
+                    pass
                 else:
                     parsed["sha256"] = hashlib.sha256(content).hexdigest()
                     parsed["parser_version"] = "corrispettivi_xml_v2_cents"

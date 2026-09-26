@@ -11,6 +11,11 @@ from app.routers.invoices import corrispettivi_helpers
 def test_upload_auto_dichiara_esplicitamente_il_corrispettivo_duplicato(monkeypatch):
     monkeypatch.setattr(documenti_mod, "detect_document_type", lambda *_: "corrispettivo")
     monkeypatch.setattr(documenti_mod.Database, "get_db", lambda: object())
+
+    async def anno_attivo(_db):
+        return 2026
+
+    monkeypatch.setattr("app.services.config_import.get_anno_importazione_attivo", anno_attivo)
     monkeypatch.setattr(
         corrispettivi_parser,
         "parse_corrispettivo_xml",

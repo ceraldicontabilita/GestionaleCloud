@@ -200,3 +200,40 @@ def test_il_giro_della_prima_nota_salta_le_giornate_ritirate(monkeypatch):
         return await _cassa(db, "2026-07-08")
 
     assert asyncio.run(scenario()) == []
+
+
+def test_una_chiusura_fuori_anno_non_entra_e_quella_entrata_si_ritira(monkeypatch):
+    """26/09/2026: la chiusura del 14/03/2023 e' entrata dalla cartella unica
+    con 1.772,20 euro di contanti in cassa. Dello storico interessano solo
+    cedolini e F24."""
+    from app.routers import documenti
+    from app.routers.invoices.corrispettivi_helpers import ritira_corrispettivi_fuori_anno
+    from app.services import config_import
+
+    async def anno_attivo(db):
+        return 2026
+
+    monkeypatch.setattr(config_import, "get_anno_importazione_attivo", anno_attivo)
+
+    async def scenario():
+        db = _db()
+        esito = {"success": True}
+        fuori = await documenti._chiusura_fuori_anno(db, {"data": "2023-03-14"}, esito)
+        dentro = await documenti._chiusura_fuori_anno(db, {"data": "2026-09-06"}, {})
+        await ingest_corrispettivo_parsed(db, _xml("2023-03-14", "1428", 1772.20, 491.00))
+        await ingest_corrispettivo_parsed(db, _xml("2026-09-06", "2637", 132.30, 465.10))
+        anteprima = await ritira_corrispettivi_fuori_anno(db, dry_run=True)
+        fatto = await ritira_corrispettivi_fuori_anno(db, dry_run=False)
+        ancora = await ritira_corrispettivi_fuori_anno(db, dry_run=False)
+        return (fuori, dentro, esito, anteprima, fatto, ancora,
+                await _attivi(db, "2023-03-14"), await _cassa(db, "2023-03-14"),
+                await _attivi(db, "2026-09-06"), await _cassa(db, "2026-09-06"))
+
+    (fuori, dentro, esito, anteprima, fatto, ancora,
+     righe_2023, cassa_2023, righe_2026, cassa_2026) = asyncio.run(scenario())
+    assert fuori is True and dentro is False
+    assert esito["imported"] == 0 and esito["success"] is True
+    assert anteprima["ritirate"] == 1 and fatto["ritirate"] == 1 and ancora["ritirate"] == 0
+    assert fatto["dettaglio"][0]["deleted_reason"] == "fuori_anno_attivo"
+    assert righe_2023 == [] and cassa_2023 == []
+    assert len(righe_2026) == 1 and cassa_2026 == [132.30]
