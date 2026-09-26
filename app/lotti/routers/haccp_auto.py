@@ -8,7 +8,7 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Depends, Request
 
-from app.lotti.auth import require_admin
+from app.lotti.auth import require_admin, require_permesso
 from pydantic import BaseModel
 
 from app.lotti.db import database as db
@@ -212,7 +212,7 @@ async def marca_giorni_non_rilevati(giorni_indietro: int = 45) -> dict:
 
 @router.post("/marca-giorni-non-rilevati")
 async def marca_giorni_non_rilevati_endpoint(
-    giorni_indietro: int = 45, _admin=Depends(require_admin)
+    giorni_indietro: int = 45, _ruolo=Depends(require_permesso("haccp_registri"))
 ):
     """Dichiara a database i giorni passati senza rilevazione. Non riscrive
     nulla di esistente e non inventa temperature."""
@@ -353,13 +353,13 @@ async def apri_rilevazioni_del_giorno(quando=None) -> dict:
 
 
 @router.post("/apri-rilevazioni-oggi")
-async def apri_rilevazioni_oggi(_admin=Depends(require_admin)):
+async def apri_rilevazioni_oggi(_ruolo=Depends(require_permesso("haccp_registri"))):
     """Rifa' a mano il turno del mattino (se il servizio era spento alle 07:00)."""
     return {"success": True, **await apri_rilevazioni_del_giorno()}
 
 
 @router.post("/dichiara-conformi-oggi")
-async def dichiara_conformi_oggi(request: Request, pin: str = "", _admin=Depends(require_admin)):
+async def dichiara_conformi_oggi(request: Request, pin: str = "", _ruolo=Depends(require_permesso("haccp_conformita"))):
     """Il responsabile, finito il giro, dichiara conformi le caselle ancora aperte.
 
     Vale solo se nelle Impostazioni il metodo e' il controllo visivo del

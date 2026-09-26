@@ -153,7 +153,7 @@ def test_dopo_ogni_uso_e_una_frequenza_salvabile(dbmock):
     run(salva_piano_sanificazione(
         [VoceDelPiano(area="Tagliere, Coltelli", frequenza="dopo_ogni_uso",
                       prodotto="Disinfettante a base di cloro", diluizione="2%")],
-        _admin={"ruolo": "admin"},
+        _ruolo={"ruolo": "amministratore"},
     ))
 
     piano = run(leggi_piano_sanificazione())

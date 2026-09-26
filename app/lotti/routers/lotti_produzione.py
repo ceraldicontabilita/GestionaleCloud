@@ -16,7 +16,7 @@ from fastapi.responses import HTMLResponse, Response
 
 from app.lotti.db import database as db
 from pymongo.errors import DuplicateKeyError
-from app.lotti.auth import require_admin
+from app.lotti.auth import require_admin, require_permesso
 from app.lotti.servizi.lotti_service import crea_lotto
 
 router = APIRouter(tags=["Lotti Produzione"])
@@ -583,8 +583,7 @@ async def smalti_lotto(
     motivo: str = "smaltito_scaduto",
     note: str = "",
     operatore_id: Optional[str] = Query(None),
-    operatore_nome: Optional[str] = Query(None),
-):
+    operatore_nome: Optional[str] = Query(None), _ruolo=Depends(require_permesso("smaltimento"))):
     """
     Smaltisce formalmente un lotto scaduto o non conforme.
     Cambia stato in 'smaltito' e registra data + motivo per la tracciabilità HACCP.
@@ -628,7 +627,7 @@ async def smalti_batch_lotti(
     payload: dict,
     motivo: str = "smaltito_scaduto",
     operatore_id: Optional[str] = Query(None),
-    operatore_nome: Optional[str] = Query(None), _admin=Depends(require_admin),
+    operatore_nome: Optional[str] = Query(None), _ruolo=Depends(require_permesso("smaltimento")),
 ):
     """
     Smaltisce in batch i lotti IDs forniti.

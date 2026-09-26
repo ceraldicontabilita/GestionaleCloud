@@ -243,7 +243,7 @@ def test_descrizione_automatica_si_salva_si_aggiorna_e_rispetta_manuale(ambiente
         creata["id"], ricette.RicettaCreate(**_payload(
             descrizione=creata["descrizione"], ingredienti=["Farina", "Ricotta"],
             ingredienti_dettaglio=nuovi_ingredienti,
-        )), _admin={"nome": "Admin"},
+        )), _ruolo={"ruolo": "amministratore"},
     ))
     assert aggiornata["descrizione"] == "Preparato con Farina, Ricotta."
     assert aggiornata["descrizione_origine"] == "automatica"
@@ -478,7 +478,7 @@ def test_put_senza_flag_conserva_la_scelta_e_aggiorna_nome_prezzo(ambiente):
     creata = run(ricette.create_ricetta(ricette.RicettaCreate(**_payload(menu_pubblico=True))))
 
     aggiornata = run(ricette.update_ricetta(
-        creata["id"], ricette.RicettaCreate(**_payload(nome="Babà grande", prezzo_vendita=4)), _admin={"nome": "Admin"},
+        creata["id"], ricette.RicettaCreate(**_payload(nome="Babà grande", prezzo_vendita=4)), _ruolo={"ruolo": "amministratore"},
     ))
     assert aggiornata["menu_pubblico"] is True
     assert aggiornata["menu_sync"]["esito"] == "aggiornato"
@@ -488,7 +488,7 @@ def test_put_senza_flag_conserva_la_scelta_e_aggiorna_nome_prezzo(ambiente):
     assert riga["visible"] is True
 
     run(ricette.update_ricetta(
-        creata["id"], ricette.RicettaCreate(**_payload(menu_pubblico=False)), _admin={"nome": "Admin"},
+        creata["id"], ricette.RicettaCreate(**_payload(menu_pubblico=False)), _ruolo={"ruolo": "amministratore"},
     ))
     assert finto.tabelle["menu_products"][0]["visible"] is False
 
@@ -511,8 +511,11 @@ def test_menu_non_configurato_esito_e_endpoint_200(monkeypatch):
     database = AsyncMongoMockClient()["Gestionale_Test"]
     monkeypatch.setattr(ricette, "db", database)
 
+    from app.lotti.auth import require_permesso
+
     app = FastAPI()
     app.include_router(ricette.router, prefix="/api")
+    app.dependency_overrides[require_permesso("ricette")] = lambda: {"ruolo": "amministratore"}
     client = TestClient(app)
     risposta = client.post("/api/ricette", json=_payload())
     assert risposta.status_code == 200, risposta.text

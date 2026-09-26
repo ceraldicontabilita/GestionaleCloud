@@ -10,10 +10,12 @@ import OrdiniView from "../components/haccp/OrdiniView";
 import { clearTabletSession, getTabletSession, moveTabletSessionTo, sessioneTitolareAttiva } from "../utils/tabletSession";
 import BarraReparto from "../components/haccp/tablet/BarraReparto";
 import ErrorBoundary from "../components/ErrorBoundary";
+import RegistriHaccpTablet from "../components/haccp/tablet/RegistriHaccpTablet";
 
 const TITOLI = {
   pasticceria: "Pasticceria", rosticceria: "Rosticceria", bar: "Bar",
   vendita: "Produzioni al banco", magazzino: "Magazzino", lavagna: "Lavagna richieste", ordini: "Ordini",
+  haccp: "Registri HACCP",
 };
 
 // Ogni reparto: la stessa barra fissa sopra, e un errore di una pagina non
@@ -72,6 +74,7 @@ export default function KioskLayout({ hash }) {
   const tornaReparti = () => { window.location.hash = "tablet/home"; };
 
   if (reparto === "vendita") return <ConBarra reparto={reparto}><VenditaBancoView onBack={tornaReparti} /></ConBarra>;
+  if (reparto === "haccp") return <ConBarra reparto={reparto}><RegistriHaccpTablet /></ConBarra>;
   if (reparto === "magazzino") return <ConBarra reparto={reparto}><MagazzinoBarView onBack={tornaReparti} /></ConBarra>;
   // Card portate nel kiosk il 25/07/2026 (il gestionale è ora solo del
   // titolare): la Lavagna delle richieste e gli Ordini ai fornitori.

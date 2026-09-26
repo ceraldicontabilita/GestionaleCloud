@@ -194,7 +194,10 @@ def test_endpoint_distruttivi_dichiarano_require_admin():
             idx = src.find(ago)
             assert idx > 0, f"{nome_modulo}: path {p} non trovato"
             blocco = src[idx: idx + 600]
-            assert "require_admin" in blocco, f"{nome_modulo} {p}: manca require_admin"
+            # Riservata: al titolare, o a un ruolo di servizi/ruoli.py
+            # (responsabile HACCP per registri e frigoriferi, 26/09/2026).
+            assert "require_admin" in blocco or "require_permesso(" in blocco, \
+                f"{nome_modulo} {p}: manca require_admin/require_permesso"
 
 
 def test_lotti_non_ha_import_fatture_manuale():
@@ -302,7 +305,7 @@ def test_scritture_di_configurazione_e_massa_solo_amministratore():
         ("POST", "/api/fonti-catalogo"), ("POST", "/api/fonti-catalogo/{fonte_id}/sincronizza"),
         ("POST", "/api/fornitori/merge"), ("POST", "/api/materie-prime/rebuild-lotti-fornitori"),
         ("POST", "/api/materie-prime/migra-in-lotti-fornitori"), ("POST", "/api/magazzino-bar/colli-bulk"),
-        ("POST", "/api/magazzino/override-prodotto"), ("PUT", "/api/sanificazione/scheda/{anno}/{mese}"),
+        ("POST", "/api/magazzino/override-prodotto"),
         ("GET", "/api/backup/lista"),
     }
     trovate = {}
@@ -313,6 +316,10 @@ def test_scritture_di_configurazione_e_massa_solo_amministratore():
     assert not mancanti, f"rotte non montate: {mancanti}"
     senza = [k for k in attese if not _ha_require_admin(trovate[k].endpoint)]
     assert not senza, f"senza require_admin: {senza}"
+    # Correggere il registro di sanificazione: titolare o responsabile HACCP.
+    from app.lotti.auth import require_permesso
+    sanificazione = trovate[("PUT", "/api/sanificazione/scheda/{anno}/{mese}")]
+    assert require_permesso("haccp_registri") in [d.call for d in sanificazione.dependant.dependencies]
     # e /pulisci-operatori non esiste piu'
     assert not any(p.endswith("/pulisci-operatori") for (_m, p) in trovate)
 

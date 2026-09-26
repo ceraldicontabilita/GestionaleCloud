@@ -9,7 +9,7 @@ import {
 export const SEZIONI_IMPOSTAZIONI = [
   { id: "azienda", titolo: "Azienda", testo: "Ragione sociale, indirizzo, P.IVA e responsabile HACCP stampati sui registri.", icona: Building2, vai: "personale" },
   { id: "operatori", titolo: "Operatori e PIN", testo: "Chi lavora oggi, postazione e PIN (uno per persona, dalla scheda HR).", icona: Users, vai: "personale" },
-  { id: "ruoli", titolo: "Ruoli e visibilità", testo: "Oggi i ruoli sono due: amministratore (tu, dal Gestionale) e operatore (PIN personale).", icona: ShieldCheck, vai: "personale" },
+  { id: "ruoli", titolo: "Ruoli e visibilità", testo: "Operatore, responsabile HACCP e caporeparto (col suo reparto): si scelgono qui, sulla scheda di ogni persona.", icona: ShieldCheck, vai: "personale" },
   { id: "reparti", titolo: "Reparti", testo: "Reparto di ogni ricetta e prodotti mostrati sui tablet.", icona: LayoutGrid, vai: "backoffice" },
   { id: "frigoriferi", titolo: "Frigoriferi e congelatori", testo: "Apparecchi censiti, nomi, responsabile del controllo, fuori servizio.", icona: Refrigerator, vai: "attrezzature" },
   { id: "stampanti", titolo: "Stampanti", testo: "Stampante per ogni tipo di documento e coda del print agent del negozio.", icona: Printer, vai: "stampanti" },

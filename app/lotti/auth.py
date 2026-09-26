@@ -22,6 +22,7 @@ Env usate (tutte opzionali, con default sicuri):
   AUTH_MAX_FAILS_GLOBALI  PIN sbagliati da qualunque client in 15 minuti prima del blocco di tutti (default 40)
 """
 
+import functools
 import os
 import time
 import hashlib
@@ -268,6 +269,95 @@ async def require_admin(request: Request):
     raise HTTPException(status_code=403, detail="Operazione riservata all'amministratore")
 
 
+async def profilo_da_token(data: dict) -> dict | None:
+    """Ruolo e reparti ATTUALI di chi ha il token, dalla proiezione HR.
+
+    Il token dice chi sei, non cosa puoi fare: il ruolo si rilegge a ogni
+    operazione riservata, così un ruolo tolto nella scheda HR vale subito.
+    Un operatore non più in carico non ha profilo (fallisce chiuso)."""
+    from app.lotti.servizi import ruoli
+
+    if not data:
+        return None
+    if data.get("ruolo") == ruoli.AMMINISTRATORE:
+        return {"ruolo": ruoli.AMMINISTRATORE, "reparti": list(ruoli.REPARTI)}
+    sub = str(data.get("sub") or "")
+    if not sub:
+        return None
+    from app.lotti.db import database as db
+
+    op = await db.tablet_operatori.find_one(
+        {"attivo": True, "hr_id": sub, "gestionale_dipendente_id": sub},
+        {"_id": 0, "ruolo_lotti": 1, "reparti_lotti": 1})
+    if not op:
+        return None
+    return {"ruolo": ruoli.normalizza_ruolo(op.get("ruolo_lotti")),
+            "reparti": ruoli.normalizza_reparti(op.get("reparti_lotti"))}
+
+
+@functools.lru_cache(maxsize=None)
+def require_permesso(permesso: str):
+    """Gate di ruolo per le operazioni riservate (vedi ``servizi/ruoli.py``).
+
+    Il titolare passa sempre; gli altri passano solo se il ruolo attuale
+    della loro scheda HR ha quel permesso. 401 senza token valido, 403 con
+    ``X-Error-Code: RUOLO_NON_AUTORIZZATO`` se il ruolo non basta. Per i
+    permessi di reparto la rotta chiama poi ``verifica_reparto``. Una
+    dipendenza per permesso (cache): si puo' sostituire nei test con
+    ``app.dependency_overrides[require_permesso("ricette")]``."""
+    from app.lotti.servizi import ruoli
+
+    if permesso not in ruoli.PERMESSI:
+        raise KeyError(f"Permesso sconosciuto: {permesso}")
+
+    async def dipendenza(request: Request):
+        data = await _token_valido_e_non_revocato(request)
+        if not data:
+            raise HTTPException(status_code=401, detail="Autenticazione richiesta per questa operazione")
+        profilo = await profilo_da_token(data)
+        if not profilo or not ruoli.ha_permesso(profilo["ruolo"], permesso):
+            raise HTTPException(
+                status_code=403,
+                detail=f"Non puoi {ruoli.ETICHETTE_PERMESSO[permesso]}: serve il ruolo giusto nella scheda HR",
+                headers={"X-Error-Code": "RUOLO_NON_AUTORIZZATO"},
+            )
+        request.state.user = data
+        request.state.profilo = profilo
+        return profilo
+
+    dipendenza.__name__ = f"require_permesso_{permesso}"
+    return dipendenza
+
+
+def verifica_reparto(profilo: dict, reparto) -> None:
+    """Dopo ``require_permesso`` (che restituisce il profilo): 403 se il
+    reparto non è di chi opera. Il titolare lavora su tutti."""
+    from app.lotti.servizi import ruoli
+
+    if not isinstance(profilo, dict):
+        # Chiamata interna (non HTTP): il parametro e' ancora il ``Depends``
+        # di default. Le rotte HTTP ricevono sempre il profilo dal gate.
+        return
+    if not ruoli.reparto_ammesso(profilo.get("ruolo", ""), profilo.get("reparti") or [], reparto):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Reparto «{reparto or 'non indicato'}» non tuo: lo può modificare il suo caporeparto o il titolare",
+            headers={"X-Error-Code": "REPARTO_NON_AUTORIZZATO"},
+        )
+
+
+async def verifica_reparto_ricetta(profilo: dict, ricetta_id: str) -> None:
+    """Come ``verifica_reparto``, col reparto letto dalla ricetta. Una
+    ricetta che non esiste passa: la rotta risponde 404 da sé."""
+    if not isinstance(profilo, dict) or profilo.get("ruolo") == "amministratore":
+        return
+    from app.lotti.db import database as db
+
+    ricetta = await db.ricette.find_one({"id": ricetta_id}, {"_id": 0, "reparto": 1})
+    if ricetta is not None:
+        verifica_reparto(profilo, ricetta.get("reparto"))
+
+
 async def require_automation_or_admin(request: Request):
     if automation_secret_valid(request):
         return {
@@ -438,7 +528,12 @@ async def me(request: Request):
     data = await _token_valido_e_non_revocato(request)
     if not data:
         raise HTTPException(401, "Token assente o non valido")
-    return {"ok": True, "user": {"dipendente_id": data.get("sub"), "nome": data.get("nome"), "ruolo": data.get("ruolo"), "via": data.get("via")}}
+    from app.lotti.servizi import ruoli
+
+    profilo = await profilo_da_token(data)
+    return {"ok": True,
+            "user": {"dipendente_id": data.get("sub"), "nome": data.get("nome"), "ruolo": data.get("ruolo"), "via": data.get("via")},
+            "profilo": ruoli.profilo_ruolo(profilo["ruolo"], profilo["reparti"]) if profilo else None}
 
 
 @router.get("/config")

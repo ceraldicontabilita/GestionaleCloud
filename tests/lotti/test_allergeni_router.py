@@ -91,7 +91,7 @@ def test_modifica_ricetta_ricalcola_sempre_dagli_ingredienti(monkeypatch):
         nome="Impasto", ingredienti=["Latte"], allergeni=["Glutine"],
         allergeni_confermati=False,
     )
-    aggiornata = run(mod.update_ricetta("r3", automatico, _admin={"nome": "Admin"}))
+    aggiornata = run(mod.update_ricetta("r3", automatico, _ruolo={"ruolo": "amministratore"}))
     assert aggiornata["allergeni"] == ["Latte"]
     assert aggiornata["allergeni_auto"] == ["Latte"]
     assert aggiornata["allergeni_da_confermare"] is True
@@ -100,7 +100,7 @@ def test_modifica_ricetta_ricalcola_sempre_dagli_ingredienti(monkeypatch):
         nome="Impasto", ingredienti=["Latte"], allergeni=["Soia"],
         allergeni_confermati=True,
     )
-    aggiornata = run(mod.update_ricetta("r3", client_vecchio, _admin={"nome": "Admin"}))
+    aggiornata = run(mod.update_ricetta("r3", client_vecchio, _ruolo={"ruolo": "amministratore"}))
     assert aggiornata["allergeni"] == ["Latte"]
     assert aggiornata["allergeni_auto"] == ["Latte"]
     assert aggiornata["allergeni_da_confermare"] is True
@@ -147,14 +147,14 @@ def test_modifica_senza_cambiare_ingredienti_conserva_la_conferma(monkeypatch):
 
     # Stessi ingredienti, in ordine diverso: la conferma resta.
     stessa = mod.RicettaCreate(nome="Crema", ingredienti=["zucchero", "Latte"], prezzo_vendita=2.5)
-    aggiornata = run(mod.update_ricetta("r4", stessa, _admin={"nome": "Admin"}))
+    aggiornata = run(mod.update_ricetta("r4", stessa, _ruolo={"ruolo": "amministratore"}))
     assert aggiornata["allergeni"] == []
     assert aggiornata["allergeni_da_confermare"] is False
     assert aggiornata["allergeni_auto"] == ["Latte"]
 
     # Ingredienti cambiati: la conferma non vale piu'.
     cambiata = mod.RicettaCreate(nome="Crema", ingredienti=["Latte", "Uova"])
-    aggiornata = run(mod.update_ricetta("r4", cambiata, _admin={"nome": "Admin"}))
+    aggiornata = run(mod.update_ricetta("r4", cambiata, _ruolo={"ruolo": "amministratore"}))
     assert aggiornata["allergeni"] == ["Uova", "Latte"]
     assert aggiornata["allergeni_da_confermare"] is True
 

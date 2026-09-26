@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { API } from "../../utils/constants";
 import { apriDocumentoAutenticato } from "../../auth";
+import { puo } from "../../utils/permessiRuolo";
 import { SchedaLottoModal, AzioneModal } from "./shared/SchedaLottoModal";
 import { getOperatoreNome, isAdmin } from "../../auth";
 // Refactor 25/07/2026: primitivi UI, costanti allergeni e i modali pesanti
@@ -358,7 +359,7 @@ const LottiList = ({
         )}
 
         {/* Banner Lotti Scaduti — smaltimento batch */}
-        {lottiFiltrati_scaduti.length > 0 && (
+        {lottiFiltrati_scaduti.length > 0 && puo("smaltimento") && (
           <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex items-center gap-3 flex-wrap">
             <AlertTriangle size={18} className="text-red-600 flex-shrink-0" />
             <div className="flex-1 min-w-[180px]">
@@ -641,7 +642,7 @@ const LottiList = ({
                         <button onClick={() => handlePrint(item)} className="p-2 text-[#5b7a6b] hover:bg-[#f2f6f3] rounded-lg" title="Stampa">
                           <Printer size={18} />
                         </button>
-                        {scadutaOggi && item.stato !== "smaltito" && !annullato && !item.consumato && (
+                        {scadutaOggi && item.stato !== "smaltito" && !annullato && !item.consumato && puo("smaltimento") && (
                           <button
                             onClick={() => setSmaltimentoId(item.id)}
                             className="p-2 text-red-500 hover:bg-red-50 rounded-lg"

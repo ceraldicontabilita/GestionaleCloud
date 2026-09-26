@@ -305,7 +305,7 @@ def test_allarme_non_sparisce_cambiando_le_soglie(dbmock):
 
     # l'admin ALLARGA le soglie a posteriori (0..10): l'anomalia storica RESTA
     run(tpos.configura_frigorifero(anno, 1, nome=None, temp_min=None,
-                                   temp_max=10.0, _admin=None))
+                                   temp_max=10.0, _ruolo=None))
     allarmi2 = run(tpos.get_allarmi(anno))
     assert len(allarmi2) == 1, \
         "REGOLA TASSATIVA: l'anomalia non deve sparire cambiando le soglie retroattivamente"
@@ -315,7 +315,7 @@ def test_allarme_non_sparisce_cambiando_le_soglie(dbmock):
     run(tpos.registra_temperatura(anno, 1, mese=7, giorno=11, temperatura=3.0,
                                   operatore="Mario", note="", azione_correttiva=""))
     run(tpos.configura_frigorifero(anno, 1, nome=None, temp_min=None,
-                                   temp_max=2.0, _admin=None))
+                                   temp_max=2.0, _ruolo=None))
     allarmi3 = run(tpos.get_allarmi(anno))
     assert len(allarmi3) == 1, "la lettura 3.0 (conforme quando fu presa) non deve diventare anomalia"
 
@@ -327,7 +327,7 @@ def test_allarme_congelatore_congela_soglie(dbmock):
                                       operatore="Mario", note=""))
     assert r["allarme"] is True
     run(tneg.configura_congelatore(anno, 1, nome=None, temp_min=None,
-                                   temp_max=-10.0, _admin=None))
+                                   temp_max=-10.0, _ruolo=None))
     assert len(run(tneg.get_allarmi(anno))) == 1
 
 
