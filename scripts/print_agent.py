@@ -16,8 +16,8 @@ Regole:
   - se il token scade durante un lavoro, l'agente rientra col PIN e riprova una
     volta sola;
   - il backend e' ``https://gestionalecloud.onrender.com/lotti``. Una vecchia
-    configurazione che punta a ``lotti-backend-2wwb.onrender.com`` (sito
-    spento) viene corretta all'avvio, con un avviso.
+    configurazione che punta al backend Render separato di Lotti (sito spento)
+    viene corretta all'avvio, con un avviso.
 
 Installazione (Windows):
   1. Python 3.9+ e SumatraPDF (stampa silenziosa dei PDF; nel PATH oppure in
@@ -50,8 +50,7 @@ QUI = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(QUI, "print_agent_config.json")
 
 BACKEND_PREDEFINITO = "https://gestionalecloud.onrender.com/lotti"
-# Siti spenti: una configurazione che li nomina non stamperebbe mai nulla.
-HOST_SPENTI = {"lotti-backend-2wwb.onrender.com", "lotti-frontend.onrender.com"}
+HOST_VIVO = "gestionalecloud.onrender.com"
 VARIABILE_PIN = "LOTTI_PRINT_AGENT_PIN"
 
 
@@ -62,8 +61,12 @@ def normalizza_backend(url: str) -> str:
     lo riceve, perche' Lotti e' montato li' dentro."""
     url = (url or "").strip().rstrip("/") or BACKEND_PREDEFINITO
     parti = urlsplit(url)
-    if parti.hostname in HOST_SPENTI:
-        print(f"[AVVISO] {parti.hostname} e' spento: uso {BACKEND_PREDEFINITO}")
+    # Su Render l'unico servizio vivo e' il gestionale: ogni altro host
+    # *.onrender.com (i vecchi backend e frontend separati di Lotti) e' spento,
+    # e una configurazione che lo nomina non stamperebbe mai nulla.
+    host = parti.hostname or ""
+    if host.endswith(".onrender.com") and host != HOST_VIVO:
+        print(f"[AVVISO] {host} e' spento: uso {BACKEND_PREDEFINITO}")
         return BACKEND_PREDEFINITO
     if parti.scheme != "https":
         raise ValueError(f"backend_url deve essere https: {url}")

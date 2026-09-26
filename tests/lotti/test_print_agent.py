@@ -2,7 +2,7 @@
 
 Il backend non legge piu' `?token=`: l'agente deve autenticarsi solo con
 l'intestazione `Authorization`, mandare il token solo al backend di Lotti e mai
-in chiaro, e puntare al servizio vivo (il vecchio `lotti-backend-2wwb` e' spento).
+in chiaro, e puntare al servizio vivo (i vecchi backend Render separati sono spenti).
 """
 import importlib.util
 import io
@@ -50,7 +50,7 @@ def _sessione(monkeypatch, rispondi):
 
 
 @pytest.mark.parametrize("configurato,atteso", [
-    ("https://lotti-backend-2wwb.onrender.com", BACKEND),
+    ("https://vecchio-backend-lotti.onrender.com", BACKEND),
     ("https://gestionalecloud.onrender.com", BACKEND),
     ("https://gestionalecloud.onrender.com/lotti/", BACKEND),
     ("", BACKEND),
