@@ -73,6 +73,9 @@ def _inventario(service, root: str, escluse: set) -> List[Dict[str, Any]]:
             ).execute()
             for f in risposta.get("files", []):
                 if f.get("mimeType") == cu.CARTELLA_MIME:
+                    # Le immagini hanno la loro cartella e il loro canale.
+                    if (f.get("name") or "").strip().upper() == "FOTO E IMMAGINI":
+                        continue
                     if f["id"] not in escluse:
                         coda.append((f["id"], f"{percorso}/{f.get('name') or f['id']}"))
                     continue

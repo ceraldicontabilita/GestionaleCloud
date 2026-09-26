@@ -60,6 +60,8 @@ def albero(monkeypatch):
     drive.file("g1", "Nota", "radice", mime="application/vnd.google-apps.document")
     drive.cartella("unica", "DA ELABORARE", "radice")
     drive.file("u1", "gia_in_coda.pdf", "unica")
+    drive.cartella("foto", "FOTO E IMMAGINI", "radice")
+    drive.file("img", "torta.jpg", "foto")
 
     monkeypatch.setenv("DRIVE_SIMULAZIONE_RADICE", "radice")
     monkeypatch.setenv("DRIVE_SIMULAZIONE_BATCH", "2")
