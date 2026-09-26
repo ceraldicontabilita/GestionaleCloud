@@ -57,7 +57,7 @@ describe('Conto SumUp separato dalla Banca', () => {
     expect(screen.getByText('€ 834,20')).toBeInTheDocument();
     expect(screen.getByText('€ 100,00')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Vendite SumUp acquisite' })).toBeInTheDocument();
-    expect(screen.getByText('11-08-2026')).toBeInTheDocument();
+    expect(screen.getByText('11/08/2026')).toBeInTheDocument();
     expect(screen.getAllByText('€ 116,90').length).toBeGreaterThan(0);
   });
 
@@ -585,7 +585,7 @@ describe('Fatture provvisorie in attesa banca', () => {
       onRicarica={vi.fn()}
     />);
 
-    expect(screen.getByText(/DDT DDT862 del 17-04-2026 · 13 gg prima/)).toBeInTheDocument();
+    expect(screen.getByText(/DDT DDT862 del 17\/04\/2026 · 13 gg prima/)).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Filtra per numero DDT'), { target: { value: '999' } });
     expect(screen.getByText('Nessuna fattura provvisoria corrisponde ai filtri.')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Filtra per numero DDT'), { target: { value: '862' } });

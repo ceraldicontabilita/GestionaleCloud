@@ -648,10 +648,7 @@ export default function ControlloMensile() {
   };
 
   return (
-    <PageLayout
-      title="Controllo POS"
-      subtitle="Registratore, chiusura serale e banca."
-    >
+    <PageLayout title="Controllo mensile">
       {fontiErrore.length > 0 && (
         <div
           style={{
@@ -829,11 +826,11 @@ export default function ControlloMensile() {
             <thead>
               <tr>
                 <Th>Mese</Th>
-                <Th align="right">Registratore</Th>
-                <Th align="right">Chiusura</Th>
-                <Th align="right">Banca</Th>
-                <Th align="center">RT</Th>
-                <Th align="center">Banca</Th>
+                <Th align="right">POS secondo il registratore</Th>
+                <Th align="right">POS secondo la chiusura serale</Th>
+                <Th align="right">POS accreditato in banca</Th>
+                <Th align="center">Registratore e chiusura</Th>
+                <Th align="center">Banca e chiusura</Th>
                 <Th align="center"></Th>
               </tr>
             </thead>
@@ -841,7 +838,7 @@ export default function ControlloMensile() {
               {loading ? (
                 <tr>
                   <Td colSpan="7" align="center" style={{ padding: 40 }}>
-                    ⏳ Caricamento dati...
+                    Caricamento dei dati…
                   </Td>
                 </tr>
               ) : (
@@ -921,19 +918,19 @@ export default function ControlloMensile() {
               <tr>
                 <Th style={{ padding: 12 }}>Data</Th>
                 <Th align="right" style={{ padding: 12 }}>
-                  POS RT (XML)
+                  POS secondo il registratore
                 </Th>
                 <Th align="right" style={{ padding: 12 }}>
-                  POS Reale (Tuo)
+                  POS secondo la chiusura serale
                 </Th>
                 <Th align="right" style={{ padding: 12 }}>
-                  POS Banca
+                  POS accreditato in banca
                 </Th>
                 <Th align="right" style={{ padding: 12 }}>
-                  Diff. RT
+                  Registratore meno chiusura
                 </Th>
                 <Th align="right" style={{ padding: 12 }}>
-                  Diff. Banca
+                  Banca meno chiusura
                 </Th>
               </tr>
             </thead>
@@ -941,7 +938,7 @@ export default function ControlloMensile() {
               {loading ? (
                 <tr>
                   <Td colSpan="6" align="center" style={{ padding: 40 }}>
-                    ⏳ Caricamento dati...
+                    Caricamento dei dati…
                   </Td>
                 </tr>
               ) : (

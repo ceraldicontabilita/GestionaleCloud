@@ -414,18 +414,19 @@ export function badge(type) {
 /* ================================================================
    FORMATTAZIONE ITALIANA
    ================================================================ */
-// FORMATO DATA UNICO dell'app: gg-mm-aaaa (solo visualizzazione — nel DB e
-// nelle query le date restano ISO aaaa-mm-gg).
+// FORMATO DATA UNICO dell'app: gg/mm/aaaa, come nell'artefatto e come si
+// scrive in Italia (solo visualizzazione — nel DB e nelle query le date
+// restano ISO aaaa-mm-gg).
 export function formatDateIT(dateStr) {
   if (!dateStr) return '-';
   try {
     const datePart = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
-    // ISO aaaa-mm-gg → gg-mm-aaaa
+    // ISO aaaa-mm-gg → gg/mm/aaaa
     let parts = datePart.split('-');
-    if (parts.length === 3 && parts[0].length === 4) return `${parts[2]}-${parts[1]}-${parts[0]}`;
-    // gg/mm/aaaa (record legacy) → gg-mm-aaaa
+    if (parts.length === 3 && parts[0].length === 4) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    // gg/mm/aaaa (record legacy): gia' nel formato giusto
     parts = datePart.split('/');
-    if (parts.length === 3) return `${parts[0]}-${parts[1]}-${parts[2]}`;
+    if (parts.length === 3) return `${parts[0]}/${parts[1]}/${parts[2]}`;
     return dateStr;
   } catch {
     return dateStr;
@@ -437,7 +438,7 @@ export function formatDateIT(dateStr) {
 export function formatDateGGMM(dateStr) {
   const full = formatDateIT(dateStr);
   if (!full || full === '-') return full;
-  const parts = full.split('-');
+  const parts = full.split('/');
   if (parts.length === 3) return `${parts[0]}/${parts[1]}`;
   return full;
 }
@@ -465,25 +466,31 @@ export function parseDateIT(dateStr) {
 // con 2 decimali e simbolo prima, stessa identica logica di formatEuroD
 // qui sotto: un importo contabile senza centesimi visibili nasconde
 // discrepanze reali, meglio sempre "€ 0,00" che "€ 0".
+// Un negativo si scrive fra parentesi, come si usa in contabilita' italiana e
+// come fa l'artefatto: «(€ 1.234,56)», mai «€ -1.234,56». Un importo che
+// arrotondato fa zero non porta il segno.
+function euroContabile(v) {
+  const cifre = new Intl.NumberFormat('it-IT', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+    useGrouping: true,
+  }).format(Math.abs(v));
+  return v < 0 && cifre !== '0,00' ? `(€ ${cifre})` : `€ ${cifre}`;
+}
+
 export function formatEuro(amount) {
   if (amount === null || amount === undefined) return '€ 0,00';
   const v = parseFloat(amount);
   if (isNaN(v)) return '€ 0,00';
-  return `€ ${new Intl.NumberFormat('it-IT', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-    useGrouping: true,
-  }).format(v)}`;
+  return euroContabile(v);
 }
 
 // formatEuroD — con decimali, per tabelle dettaglio e tooltip
 export function formatEuroD(amount) {
   if (amount === null || amount === undefined) return '€ 0,00';
-  return `€ ${new Intl.NumberFormat('it-IT', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-    useGrouping: true,
-  }).format(parseFloat(amount))}`;
+  const v = parseFloat(amount);
+  if (isNaN(v)) return '€ NaN';
+  return euroContabile(v);
 }
 
 export function formatDateTimeIT(dateStr) {
@@ -495,7 +502,7 @@ export function formatDateTimeIT(dateStr) {
     const mm = String(date.getMonth() + 1).padStart(2, '0');
     const hh = String(date.getHours()).padStart(2, '0');
     const min = String(date.getMinutes()).padStart(2, '0');
-    return `${gg}-${mm}-${date.getFullYear()} ${hh}:${min}`;
+    return `${gg}/${mm}/${date.getFullYear()} ${hh}:${min}`;
   } catch {
     return dateStr;
   }
@@ -506,7 +513,7 @@ export function formatDateShort(dateStr) {
   try {
     const datePart = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
     const parts = datePart.split('-');
-    if (parts.length === 3) return `${parts[2]}-${parts[1]}`;
+    if (parts.length === 3) return `${parts[2]}/${parts[1]}`;
     return dateStr;
   } catch {
     return dateStr;
