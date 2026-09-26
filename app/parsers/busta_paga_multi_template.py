@@ -109,14 +109,50 @@ def _detect_tipo_cedolino(text: str) -> str:
     Nei cedolini ordinari compaiono quasi sempre le voci ``rateo
     tredicesima`` e ``rateo quattordicesima``. Cercare le sole parole nel
     testo completo classificherebbe quindi ogni mensilita come speciale.
-    Limitiamo il controllo alle prime righe e richiediamo un'indicazione di
-    testata/periodo, escludendo le comuni voci di maturazione e riepilogo.
+    Per le diciture generiche controlliamo la testata, escludendo le comuni
+    voci di maturazione e riepilogo. I codici retributivi Zucchetti di 13a/14a
+    vengono invece cercati nell'intera busta, anche sulle continuazioni.
     """
-    righe = [re.sub(r'\s+', ' ', riga).strip().upper()
-             for riga in text.splitlines() if riga.strip()][:80]
+    tutte_le_righe = [re.sub(r'\s+', ' ', riga).strip().upper()
+                      for riga in text.splitlines() if riga.strip()]
+    righe = tutte_le_righe[:80]
+
+    # Nei Libri Unici Zucchetti la mensilita aggiuntiva non e' sempre
+    # dichiarata nell'intestazione. Il consulente la stampa invece come voce
+    # retributiva principale, con un codice stabile:
+    #
+    #   Z50000 13ma Mensilita'
+    #   Z50022 14ma Mensilita'
+    #
+    # E' un segnale diverso dai comuni RATEI presenti nei cedolini mensili.
+    # Serve anche a separare correttamente, nello stesso PDF, la pagina della
+    # mensilita ordinaria da quella della 13a/14a dello stesso dipendente.
+    voci_aggiuntive = (
+        ("quattordicesima", re.compile(r'\bZ50022\b.*\b(?:14\s*MA|QUATTORDICESIMA)\b')),
+        ("tredicesima", re.compile(r'\bZ50000\b.*\b(?:13\s*MA|TREDICESIMA)\b')),
+    )
+    tipi_da_voci = {
+        tipo
+        for riga in tutte_le_righe
+        for tipo, pattern in voci_aggiuntive
+        if pattern.search(riga)
+    }
+    if tipi_da_voci:
+        # Un cedolino ordinario o di cessazione puo' liquidare ratei di 13a e
+        # 14a insieme ad altre competenze. In quel caso il netto e' unico e
+        # non va attribuito per intero a una sola mensilita aggiuntiva.
+        retribuzione_ordinaria = any(
+            re.search(r'\bZ00001\b\s+RETRIBUZIONE\b', riga)
+            for riga in tutte_le_righe
+        )
+        cessazione = detect_cessazione(text).get("cessato", False)
+        if len(tipi_da_voci) == 1 and not retribuzione_ordinaria and not cessazione:
+            return next(iter(tipi_da_voci))
+        return "mensile"
+
     rumore = (
         "RATEO", "RATEI", "MATURAT", "RESIDU", "ACCANTON",
-        "PROGRESSIV", "IMPONIBILE", "FERIE", "PERMESS",
+        "PROGRESSIV", "IMPONIBILE", "FERIE", "PERMESS", "RECUPERO", "STORNO",
     )
     intestazione = re.compile(
         r'\b(?:CEDOLINO|BUSTA\s+PAGA|MENSILIT[ÀA]|'
@@ -1268,6 +1304,7 @@ def extract_summary(parsed_data: Dict[str, Any]) -> Dict[str, Any]:
         "stato_netto": totali.get("stato_netto"),
         "netto_letto": totali.get("netto_letto"),
         "netto_calcolato": totali.get("netto_calcolato"),
+        "retribuzione": parsed_data.get("retribuzione") or {},
         "ore_lavorate": periodo.get("ore_lavorate") or ore_ferie.get("ore_lavorate_mese"),
         "giorni_lavorati": periodo.get("giorni_lavorati") or ore_ferie.get("giorni_lavorati_mese"),
         "inps_dipendente": totali.get("inps_dipendente"),

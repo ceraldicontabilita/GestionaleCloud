@@ -94,3 +94,27 @@ def test_associazioni_espongono_chiave_e_flag_manuali(hr):
     riga = out["righe"][0]
     assert riga["busta_manuale"] is True and riga["busta_originale"] == 1250.0
     assert riga["bonifici"][0]["key"] == "ecm:m-1" and riga["bonifici"][0]["modificato"] is False
+
+
+def test_quattordicesima_crea_un_attesa_separata_dal_mese_ordinario(hr):
+    from app.hr.services.sincronizza_paghe_mensili import sincronizza
+
+    _run(hr.paghe_mensili.delete_many({}))
+    _run(hr.pagamenti_esiti.delete_many({}))
+    _run(hr.cedolini.insert_many([
+        {"id": "ced-luglio", "dipendente_id": "dip-1", "anno": 2026, "mese": 7,
+         "netto": 1250.0, "tipo_cedolino": "ordinario"},
+        {"id": "ced-14ma", "dipendente_id": "dip-1", "anno": 2026, "mese": 7,
+         "netto": 600.0, "tipo_cedolino": "quattordicesima"},
+    ]))
+
+    ris = _run(sincronizza(hr, 2026))
+
+    assert ris["creati"] == 2
+    ordinario = _run(hr.paghe_mensili.find_one({"dipendente_id": "dip-1", "anno": 2026, "mese": 7}))
+    quattordicesima = _run(hr.paghe_mensili.find_one({"dipendente_id": "dip-1", "anno": 2026, "mese": 14}))
+    assert ordinario["stato_pagamento"] == "in_attesa_pagamento"
+    assert quattordicesima["stato_pagamento"] == "in_attesa_pagamento"
+    assert quattordicesima["saldo"] == 600.0
+    assert quattordicesima["mese_competenza"] == 7
+    assert quattordicesima["tipo_cedolino"] == "quattordicesima"

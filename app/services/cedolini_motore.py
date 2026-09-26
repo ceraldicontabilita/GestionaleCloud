@@ -89,6 +89,7 @@ def _summary_cedolino(
         "ore_lavorate": summary.get("ore_lavorate"),
         "giorni_lavorati": summary.get("giorni_lavorati"),
         "livello": summary.get("livello"),
+        "retribuzione": summary.get("retribuzione") or {},
         "formato_rilevato": summary.get("template") or "multi_template",
         "ferie_permessi": {
             "ferie_residuo": summary.get("ferie_residuo"),
@@ -197,15 +198,23 @@ def _parse_multi_template_units(file_content: bytes) -> List[Dict[str, Any]]:
                 starts.append((index, key, summary))
                 current_key = key
 
-        units: List[Dict[str, Any]] = []
-        seen_keys = set()
-        for position, (start, expected_key, page_summary) in enumerate(starts):
-            if expected_key in seen_keys:
-                continue
-            seen_keys.add(expected_key)
-            end = starts[position + 1][0] - 1 if position + 1 < len(starts) else page_count - 1
+        # Un foglio presenze precede normalmente la busta dello stesso
+        # dipendente. Non deve finire in coda alla busta precedente solo
+        # perche' non e' un candidato contabile. Le altre pagine non
+        # riconosciute restano invece continuazioni della busta precedente.
+        adjusted_starts: List[Tuple[int, Tuple[str, int, int, str], Dict[str, Any]]] = []
+        for position, (start, key, summary) in enumerate(starts):
+            adjusted = start
+            lower_bound = starts[position - 1][0] + 1 if position else 0
+            while adjusted > lower_bound and detect_template(raw_pages[adjusted - 1]) == "zucchetti_presenze":
+                adjusted -= 1
             if position == 0:
-                start = 0
+                adjusted = 0
+            adjusted_starts.append((adjusted, key, summary))
+
+        units: List[Dict[str, Any]] = []
+        for position, (start, expected_key, page_summary) in enumerate(adjusted_starts):
+            end = adjusted_starts[position + 1][0] - 1 if position + 1 < len(adjusted_starts) else page_count - 1
             chunk = page_bytes(start, end)
             parsed = parse_busta_paga_from_bytes(chunk)
             summary = extract_summary(parsed)
