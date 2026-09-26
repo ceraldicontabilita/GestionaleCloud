@@ -1251,7 +1251,7 @@ function PresenzePage({ dipendenti, reload }) {
   const [turniMese, setTurniMese] = useState([]);
   const [tipiTurno, setTipiTurno] = useState([]);
 
-  const mesi = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"];
+  const mesi = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre","13ª","14ª"];
   const daysInMonth = new Date(anno, mese, 0).getDate();
   const firstDayOfWeek = new Date(anno, mese - 1, 1).getDay();
 
@@ -4301,7 +4301,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
     setImporting(true); setImportMsg(null);
     try {
       const fd = new FormData(); fs.forEach(f => fd.append("files", f));
-      const res = await axios.post(`${API}/paghe/importa-lul`, fd, { headers: { "Content-Type": "multipart/form-data" } });
+      const res = await axios.post(`${API}/paghe/importa-libro-unico-canonico`, fd, { headers: { "Content-Type": "multipart/form-data" } });
       setImportMsg(res.data); vaiAlMese(res.data); await load();
     } catch (err) { setImportMsg({ errore: err.response?.data?.detail || "Errore durante l'import" }); }
     finally { setImporting(false); if (fileRef.current) fileRef.current.value = ""; }
