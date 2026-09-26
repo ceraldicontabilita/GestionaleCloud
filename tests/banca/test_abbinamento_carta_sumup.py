@@ -148,3 +148,12 @@ def test_busta_arrivata_dopo_il_bonifico_della_carta():
     assert prima["stipendi_abbinati"] == 0
     assert esito["carta_sumup"]["bonifici_associati"] == 1
     assert movimento["stipendio_id"] == "sal-2"
+
+
+def test_stato_in_prima_nota_sumup_dopo_l_abbinamento():
+    from app.routers.prima_nota_module.banca import _stato_movimento_sumup
+
+    assert _stato_movimento_sumup({"stipendio_id": "sal-1"}) == "Stipendio abbinato alla busta"
+    assert _stato_movimento_sumup({"fattura_id": "f-1"}) == "Fattura pagata"
+    assert _stato_movimento_sumup({"prima_nota_banca_id": "pn-1"}) == "Registrato in Prima Nota"
+    assert _stato_movimento_sumup({}) == "Da registrare"

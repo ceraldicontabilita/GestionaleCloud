@@ -50,15 +50,29 @@ export class ErrorBoundary extends Component {
       }
 
       return (
-        <div className="p-8 text-center">
-          <p className="text-red-600 font-bold mb-2">Errore nel componente</p>
-          <p className="text-gray-500 text-sm mb-4">{this.state.error?.message}</p>
-          <button
-            onClick={() => this.setState({ hasError: false, error: null, retryCount: 0 })}
-            className="px-5 py-2.5 bg-[#5b7a6b] text-white rounded-xl text-sm font-semibold hover:bg-[#4d6a5c]"
-          >
-            Riprova
-          </button>
+        <div className="p-8 text-center" role="alert">
+          <p className="text-red-600 font-bold mb-2">Questa pagina si è interrotta per un errore</p>
+          <p className="text-gray-500 text-sm mb-4">
+            I dati già salvati non sono persi. Dettaglio tecnico: {this.state.error?.message || "errore senza messaggio"}
+          </p>
+          <div className="flex flex-wrap justify-center gap-2">
+            <button
+              onClick={() => this.setState({ hasError: false, error: null, retryCount: 0 })}
+              className="min-h-[44px] px-5 py-2.5 bg-[#5b7a6b] text-white rounded-xl text-sm font-semibold hover:bg-[#4d6a5c]"
+            >
+              Riprova
+            </button>
+            <button
+              onClick={() => {
+                const tablet = window.location.hash.startsWith("#tablet/");
+                window.location.hash = tablet ? "tablet/home" : "dashboard";
+                this.setState({ hasError: false, error: null, retryCount: 0 });
+              }}
+              className="min-h-[44px] px-5 py-2.5 border border-[#e6e0d4] bg-white text-[#2a3329] rounded-xl text-sm font-semibold"
+            >
+              Torna all'inizio
+            </button>
+          </div>
         </div>
       );
     }

@@ -865,3 +865,30 @@ describe('Stato delle fonti di Prima Nota', () => {
     await waitFor(() => expect(result.current.errore).toBe('Errore interno (rif. x1)'));
   });
 });
+
+describe('Movimenti del conto SumUp', () => {
+  it('mostra ogni movimento nel suo giorno, con lo stato scritto', () => {
+    render(<CartaSumUp
+      anno={2026}
+      dati={{
+        saldo_estratto_sumup: 645.11,
+        movimenti_conto: [
+          { id: 'a', data: '2026-09-25', ora: '11:42', tipo_transazione: 'Bonifico bancario in uscita',
+            controparte: 'Fornitore Prova Srl', causale: 'fattura 11358', importo: -893.73,
+            saldo_disponibile: 645.11, stato: 'Da registrare' },
+          { id: 'b', data: '2026-09-15', ora: '15:11', tipo_transazione: 'Bonifico bancario in uscita',
+            controparte: 'Ceraldi Group srl', causale: 'Giroconto', importo: -10000,
+            saldo_disponibile: 2000, stato: 'Giroconto verso BPM' },
+        ],
+      }}
+    />);
+
+    expect(screen.getByRole('heading', { name: 'Movimenti del conto SumUp' })).toBeInTheDocument();
+    expect(screen.getAllByTestId('giorno-conto-sumup')).toHaveLength(2);
+    expect(screen.getByText('25/09/2026')).toBeInTheDocument();
+    expect(screen.getByText('Fornitore Prova Srl')).toBeInTheDocument();
+    expect(screen.getByText('Da registrare')).toBeInTheDocument();
+    expect(screen.getByText('Giroconto verso BPM')).toBeInTheDocument();
+    expect(screen.getByText('Saldo da estratto SumUp')).toBeInTheDocument();
+  });
+});

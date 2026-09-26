@@ -279,9 +279,9 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   crea l'attesa prima della prova; il reimport non duplica; la prova certa
   conserva gli ID; la prova ambigua non inventa dati; la chiusura fallisce con
   un'attesa aperta.
-- Un alert mostra sempre l'elenco dei record coinvolti. Un comando di
-  manutenzione che l'utente deve ripetere per correggere duplicati prevedibili
-  è un difetto: la prevenzione per ID/hash sta nel flusso di importazione.
+- Un alert mostra sempre l'elenco dei record coinvolti. Un comando di manutenzione che l'utente deve ripetere
+  per correggere duplicati prevedibili è un difetto: la prevenzione per ID/hash sta nel flusso di importazione.
+- **L'abbinamento parte all'arrivo del secondo pezzo, in tutti e due i sensi**, mai aspettando un giro: F24 ↔ quietanza ↔ banca (`cerca_controparti_f24`), fattura ↔ report del titolare ↔ banca (`applica_per_fattura_arrivata`, `riprocessa_estratto_dopo_import_fattura`). I giri restano solo come rete.
 
 ## Ingresso documenti
 
@@ -762,7 +762,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   contatto. Niente valori di ripiego — un detergente scritto a caso rimanda a una scheda di sicurezza che
   non c'entra. `/sanificazione/scadute` dice cosa è in ritardo e cosa è ancora da compilare.
 - Accessi: token 12 h, rinnovi al massimo 7 giorni dal PIN (admin 24 h, `auth_at`); PIN sbagliati contati in `pin_tentativi`, per client **e** globali; sui tablet condivisi il magazzino chiude dopo 10 minuti. Ogni scrittura o dipende da `require_admin` o è fra le operazioni di reparto di `test_scritture_riservate.py`; un URL da fuori si scarica solo con `servizi/fetch_sicuro.py`. Il JWT solo nell'header, **mai in `?token=`**: i documenti con `apriDocumentoAutenticato`.
-- Backup Lotti: mai sul disco del servizio. Parti verificate (SHA-256) in `gestionale.blobs` più manifesto (`servizi/backup_archivio.py`, registro `backup_registro`); il ripristino è simulazione → backup di sicurezza verificato → sostituzione per id.
+- Backup Lotti: mai sul disco del servizio. Parti verificate (SHA-256) in `gestionale.blobs` più manifesto (`servizi/backup_archivio.py`, registro `backup_registro`); il ripristino è simulazione → backup di sicurezza verificato → sostituzione per id. Navigazione: ogni reparto del tablet ha la stessa `BarraReparto` (Indietro, Reparti, Gestionale solo titolare, Cambia operatore), ogni pagina il suo `ErrorBoundary`, un indirizzo sconosciuto «Pagina non trovata», la configurazione passa da `#impostazioni`.
 
 ### Menu — allergeni
 
@@ -846,7 +846,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   non riscosso (67.856,00 €); fuori restano 3 giornate a incasso zero (giusto) e il **02/08**, XML che non quadra di 0,90 €.
 - Endpoint sincroni oltre i 5 minuti, da portare a lotti riprendibili: `/api/fatture/drive/quadratura`, `/api/paypal-api/riconcilia`, `/account-ids-non-mappati`, `riallinea-pagamenti-fatture`.
 - Note di credito TD04 legacy (~20): costo/IVA/debito aumentati anziché ridotti.
-- **Estratto conto SumUp** (conto 19.01.05): il lettore (`sumup_conto.py`, saldi verificati riga per riga) scrive in `sumup_conto_movimenti`, **mai** in `estratto_conto_movimenti` (lì i motori lo leggerebbero come BPM su 19.01.01). Stipendi e fatture si abbinano con **gli stessi motori** del conto BPM puntati sulla carta (`abbina_movimenti_sumup`, nel giro dei 30 minuti e all'arrivo di un cedolino); la collezione la dice l'id (`collezione_del_movimento`). Aperto: i bonifici «Stipendio Agosto» aspettano le buste di agosto, e la coda «Scegli fattura» non apre ancora i movimenti della carta.
+- **Estratto conto SumUp** (conto 19.01.05, PDF o CSV «Resoconto transazioni»): un lettore solo (`sumup_conto.py`, saldi verificati riga per riga) scrive in `sumup_conto_movimenti`, **mai** in `estratto_conto_movimenti` (lì i motori lo leggerebbero come BPM su 19.01.01); il payout si cita per `payout_id`, il bonifico a Ceraldi Group è un giroconto a due gambe verso BPM. Stipendi e fatture si abbinano con **gli stessi motori** del conto BPM puntati sulla carta (`abbina_movimenti_sumup`: dopo l'import, nel giro dei 30 minuti e all'arrivo di un cedolino); la collezione la dice l'id (`collezione_del_movimento`). Aperto: i bonifici «Stipendio Agosto» aspettano le buste di agosto, e la coda «Scegli fattura» non apre ancora i movimenti della carta.
 - **Pregresso fatture**: 296 attive (173.184,83 €) senza partita aperta, 280 fuori dal giornale. Prima
   `ripubblica-evento-created`, poi `registra-pregresso`. Con `dry_run`: `azzera-scadenze` (642 fatture,
   971 partite inventate), `lipe/importa`, `ricostruisci-numia`.

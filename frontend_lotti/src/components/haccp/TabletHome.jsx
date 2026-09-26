@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { saveToken, saveRuolo, setGateOk, prendiPaginaRichiesta } from "../../auth";
 import * as authLotti from "../../auth";
 import axios from "axios";
-import { Lock } from "lucide-react";
+import { LayoutDashboard, Lock, LogOut, Thermometer, CalendarClock } from "lucide-react";
+import { cambiaOperatore } from "./tablet/BarraReparto";
 import { apiError } from "../../utils/apiError";
 import { allineaSessioneTitolare, getTabletSession, moveTabletSessionTo, saveTabletSession, sessioneTitolareAttiva } from "../../utils/tabletSession";
 
@@ -26,6 +27,39 @@ const REPARTI = [
   { id: "lavagna", label: "Lavagna richieste", emoji: "📺", grad: "linear-gradient(135deg,#8a6f47,#6f583a)", shadow: "rgba(111,88,58,.5)" },
   { id: "ordini", label: "Ordini", emoji: "🛒", grad: "linear-gradient(135deg,#6f9180,#4f6d5f)", shadow: "rgba(79,109,95,.5)", soloAdmin: true },
 ];
+
+// Stato del giorno sotto l'orologio, solo con una persona identificata (senza
+// token le API rispondono 401). Un dato che non arriva si dice, non diventa 0.
+function StatoGiorno({ attivo }) {
+  const [stato, setStato] = useState(null);
+  useEffect(() => {
+    if (!attivo) return undefined;
+    let vivo = true;
+    const leggi = async () => {
+      const [turno, scadenze] = await Promise.allSettled([
+        axios.get(`${API}/haccp-auto/turno-oggi`, { timeout: 15000 }),
+        axios.get(`${API}/supervisor/lotti-in-scadenza`, { params: { giorni: 2, limit: 1 }, timeout: 15000 }),
+      ]);
+      if (!vivo) return;
+      setStato({
+        daRilevare: turno.status === "fulfilled" ? turno.value.data?.quante_da_rilevare ?? null : null,
+        inScadenza: scadenze.status === "fulfilled" ? scadenze.value.data?.totale ?? null : null,
+      });
+    };
+    leggi();
+    const t = setInterval(leggi, 5 * 60 * 1000);
+    return () => { vivo = false; clearInterval(t); };
+  }, [attivo]);
+  if (!attivo || !stato) return null;
+  const nd = "dato non disponibile";
+  const voce = { display: "inline-flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,.08)", border: "1px solid #3a4a40", borderRadius: 12, padding: "8px 12px", color: "#e6e0d4", fontSize: 14, fontWeight: 700 };
+  return (
+    <div data-testid="stato-giorno" style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center", marginTop: -28, marginBottom: 32 }}>
+      <span style={voce}><Thermometer size={16} aria-hidden="true" /> Temperature da rilevare: {stato.daRilevare ?? nd}</span>
+      <span style={voce}><CalendarClock size={16} aria-hidden="true" /> Lotti in scadenza entro 2 giorni: {stato.inScadenza ?? nd}</span>
+    </div>
+  );
+}
 
 // Elenco usato anche da KioskLayout: se qualcuno arriva col link diretto
 // (#tablet/ordini) senza essere amministratore, viene rimandato alle card.
@@ -295,6 +329,7 @@ export default function TabletHome({ onEntra, preselectReparto }) {
         <div style={{ fontSize: 13, color: "#6b7669", fontWeight: 800, letterSpacing: 4, textTransform: "uppercase" }}>Ceraldi Group</div>
         <div style={{ fontSize: 12, color: "#8a8478", marginTop: 5 }}>{sessione ? `Seleziona reparto · ${sessione.nome}` : "Seleziona reparto e inserisci il tuo PIN"}</div>
       </div>
+      <StatoGiorno attivo={!!sessione} />
       <div style={{ display: "flex", gap: 20, flexWrap: "wrap", justifyContent: "center", maxWidth: 760, marginBottom: 48 }}>
         {REPARTI.map(r => (
           <button key={r.id} onClick={() => scegliReparto(r)}
@@ -321,7 +356,21 @@ export default function TabletHome({ onEntra, preselectReparto }) {
         </div>
       )}
       {erroreGestionale && <div role="alert" style={{ position: "absolute", bottom: 60, right: 20, color: "#fff" }}>{erroreGestionale}</div>}
-      <button onClick={chiediEsciAdmin} disabled={verificaGestionale} style={{ position: "absolute", bottom: 20, right: 20, minHeight: 44, padding: "8px 16px", borderRadius: 10, border: "1px solid #4a463c", background: "transparent", color: "#8a8478", fontSize: 12, fontWeight: 700, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, fontFamily: "inherit" }}><Lock size={13} aria-hidden="true" /> Gestionale — solo titolare</button>
+      {/* Cambio operatore e Gestionale: due bottoni grandi e sempre visibili
+          (prima il Gestionale era un bottoncino nell'angolo e per cambiare
+          persona bisognava entrare in un reparto). */}
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", justifyContent: "center" }}>
+        {sessione && (
+          <button onClick={cambiaOperatore} data-testid="home-cambia-operatore"
+            style={{ minHeight: 56, padding: "0 22px", borderRadius: 16, border: "1px solid #4a5a50", background: "#2a3329", color: "#f5f2ea", fontSize: 16, fontWeight: 800, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 8, fontFamily: "inherit" }}>
+            <LogOut size={18} aria-hidden="true" /> Cambia operatore · {sessione.nome}
+          </button>
+        )}
+        <button onClick={chiediEsciAdmin} disabled={verificaGestionale} data-testid="home-gestionale"
+          style={{ minHeight: 56, padding: "0 22px", borderRadius: 16, border: "1px solid #4a5a50", background: "transparent", color: "#e6e0d4", fontSize: 16, fontWeight: 800, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 8, fontFamily: "inherit" }}>
+          <LayoutDashboard size={18} aria-hidden="true" /> Gestionale <Lock size={14} aria-hidden="true" /> solo titolare
+        </button>
+      </div>
       {repSel && (() => {
         const rep = REPARTI.find(r => r.id === repSel);
         return (

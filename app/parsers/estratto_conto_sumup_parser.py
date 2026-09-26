@@ -292,3 +292,109 @@ def verifica_saldi(estratto: EstrattoSumUp) -> None:
             f"Totali del riepilogo diversi dalle righe: entrate {entrate} contro "
             f"{estratto.totale_entrate}, uscite {uscite} contro {estratto.totale_uscite}"
         )
+
+
+# --- Resoconto transazioni in CSV ------------------------------------------
+#
+# Lo stesso conto si scarica anche come «Resoconto_transazioni_<utente>_<data>.csv».
+# Due stranezze che un ``csv.DictReader`` ingenuo non regge:
+#
+# - data e ora sono separate da una virgola libera (``26/09/26, 07:42,...``),
+#   quindi finiscono in due campi;
+# - una riga la cui causale contiene virgole arriva racchiusa per intero fra
+#   virgolette, con quelle interne raddoppiate.
+#
+# Il CSV non ha il riepilogo del PDF: saldo iniziale e totali si ricavano
+# dalle righe, e la prova resta la catena dei saldi riga per riga.
+
+_COLONNE_RESOCONTO = ("codice transazione", "tipo transazione", "saldo disponibile")
+# Stati in cui il denaro si e' mosso: un pagamento rifiutato o in attesa no.
+_STATI_MOVIMENTATI = {"approvato", "pagamento in entrata", "rimborsata", "completato"}
+
+
+def e_resoconto_sumup_csv(testo: str) -> bool:
+    """Vero se la prima riga ha le colonne del resoconto SumUp."""
+    prima = (testo or "").lstrip("﻿").splitlines()[:1]
+    intestazione = prima[0].casefold() if prima else ""
+    return all(colonna in intestazione for colonna in _COLONNE_RESOCONTO)
+
+
+def _righe_csv(testo: str) -> List[List[str]]:
+    import csv
+    import io
+
+    righe = []
+    for riga in csv.reader(io.StringIO(testo.lstrip("﻿"))):
+        if len(riga) == 1 and "," in riga[0]:
+            # Riga intera fra virgolette: il contenuto e' a sua volta un CSV.
+            riga = next(csv.reader(io.StringIO(riga[0])))
+        if any(campo.strip() for campo in riga):
+            righe.append([campo.strip() for campo in riga])
+    return righe
+
+
+def leggi_resoconto_sumup_csv(contenuto: bytes) -> EstrattoSumUp:
+    """Legge il CSV e verifica la catena dei saldi. Solleva se non torna."""
+    testo = None
+    for codifica in ("utf-8-sig", "latin-1"):
+        try:
+            testo = contenuto.decode(codifica)
+            break
+        except UnicodeDecodeError:
+            continue
+    if not testo or not e_resoconto_sumup_csv(testo):
+        raise EstrattoSumUpNonValido("Non è un resoconto transazioni SumUp")
+
+    righe_csv = _righe_csv(testo)
+    intestazione = righe_csv[0]
+    righe: List[RigaSumUp] = []
+    for campi_riga in righe_csv[1:]:
+        ora = ""
+        if len(campi_riga) == len(intestazione) + 1:
+            # «26/09/26, 07:42» spezzato in due campi.
+            ora = campi_riga[1]
+            campi_riga = [campi_riga[0]] + campi_riga[2:]
+        if len(campi_riga) != len(intestazione):
+            raise EstrattoSumUpNonValido(
+                f"Riga con {len(campi_riga)} colonne invece di {len(intestazione)}: "
+                f"{','.join(campi_riga)[:80]}"
+            )
+        campi = dict(zip(intestazione, campi_riga))
+        stato = campi.get("Stato", "")
+        if stato.casefold() not in _STATI_MOVIMENTATI:
+            continue
+        data = campi.get("Data transazione", "")
+        if not re.match(r"\d{2}/\d{2}/\d{2}", data):
+            raise EstrattoSumUpNonValido(f"Data illeggibile: {data!r}")
+        riferimento = re.sub(r"\s+", " ", campi.get("Riferimento", "")).strip()
+        causale = re.sub(r"\s+", " ", campi.get("Causale pagamento", "")).strip()
+        pid = _PID.search(f"{riferimento} {causale}")
+        righe.append(RigaSumUp(
+            data=_data_iso(data), ora=ora or data[10:].strip(),
+            codice=campi.get("Codice transazione", ""),
+            tipo_transazione=campi.get("Tipo transazione", ""),
+            riferimento=riferimento, causale=causale, stato=stato,
+            uscita=_decimale(campi.get("Importo transazione in uscita") or "0"),
+            entrata=_decimale(campi.get("Importo transazione in entrata") or "0"),
+            commissione=_decimale(campi.get("Commissione") or "0"),
+            saldo=_decimale(campi.get("Saldo disponibile") or "0"),
+            pid=pid.group(0) if pid else None,
+        ))
+    if not righe:
+        raise EstrattoSumUpNonValido("Nessuna riga di movimento trovata")
+    if any(not riga.codice for riga in righe):
+        raise EstrattoSumUpNonValido("Riga senza codice transazione")
+
+    # Le righe vanno dalla più recente alla più vecchia, come nel PDF.
+    piu_vecchia = righe[-1]
+    estratto = EstrattoSumUp(
+        iban=None, id_utente=None, numero_carta=None,
+        periodo_dal=piu_vecchia.data, periodo_al=righe[0].data,
+        saldo_iniziale=piu_vecchia.saldo - piu_vecchia.importo_netto,
+        saldo_finale=righe[0].saldo,
+        totale_entrate=sum((r.entrata for r in righe), Decimal("0")),
+        totale_uscite=sum((r.uscita + r.commissione for r in righe), Decimal("0")),
+        righe=righe,
+    )
+    verifica_saldi(estratto)
+    return estratto
