@@ -11,10 +11,12 @@ def run(coro):
     return asyncio.run(coro)
 
 
-def test_public_qr_config_redacts_wifi_password():
+def test_public_qr_endpoint_exposes_only_the_menu_url():
+    """L'unico endpoint pubblico della configurazione QR restituisce l'indirizzo
+    del menu, mai la riga intera (che contiene anche la password Wi-Fi)."""
     source = (ROOT / "app/menu/routes/qrcode_routes.py").read_text(encoding="utf-8")
-    assert 'wifi.pop("password", None)' in source
-    assert "return _public_config(config)" in source
+    assert '@router.get("/config")' not in source
+    assert 'return {"url": url, "updated_at": config.get("updated_at"), "updated_by": config.get("updated_by")}' in source
 
 
 def test_wifi_qr_and_legacy_backup_download_require_admin_token():
@@ -32,7 +34,9 @@ def test_reseed_requires_admin_token():
 def test_no_wifi_password_is_hardcoded_in_source():
     source = (ROOT / "app/menu/routes/qrcode_routes.py").read_text(encoding="utf-8")
     assert "ceraldi2024" not in source
-    assert "MENU_WIFI_PASSWORD" in source
+    # La password Wi-Fi vive solo nella riga del database: il codice non ne
+    # scrive una di ripiego.
+    assert '"password":' not in source
 
 
 def test_daily_haccp_reports_expected_readings_without_writing_them():
