@@ -201,3 +201,37 @@ def test_rotte_riservate_all_admin_tranne_il_ritorno_dalla_banca():
     assert "/api/banca/enable-banking/callback" in PUBLIC_PATHS
     assert not any(p.startswith("/api/banca/enable-banking/") and not p.endswith("/callback")
                    for p in PUBLIC_PATHS)
+
+
+def test_giro_automatico_importa_i_nuovi_e_lascia_l_esito():
+    db = AsyncMongoMockClient()["t"]
+    banca = Banca()
+    oggi = __import__("datetime").date.today().isoformat()
+
+    # non collegato: salta e lo scrive
+    esito = run(eb.giro_automatico(db, banca))
+    assert esito["saltato"] == "non_collegato"
+
+    run(eb.avvia_collegamento(db, banca))
+    run(eb.completa_collegamento(db, banca, code="c", state=banca.state))
+    banca.pagine = [[_tx(oggi, "5.00", False, "ACCREDITO NUOVO", ref="RIFNUOVO123")]]
+    primo = run(eb.giro_automatico(db, banca))
+    assert primo["importati"] == 1 and primo["giorni"] == eb.GIORNI_PRIMO_GIRO
+    stato = run(eb.leggi_sessione(db))
+    assert stato["giro_automatico"]["importati"] == 1
+    assert "session_id" not in str(stato)
+
+    secondo = run(eb.giro_automatico(db, banca))
+    assert secondo["importati"] == 0 and secondo["giorni"] == eb.GIORNI_GIRO
+    assert run(db.estratto_conto_movimenti.count_documents({"fonte": "enable_banking"})) == 1
+
+
+def test_giro_automatico_limite_della_banca_non_rompe(monkeypatch):
+    db = AsyncMongoMockClient()["t"]
+    banca = Banca()
+    run(eb.avvia_collegamento(db, banca))
+    run(eb.completa_collegamento(db, banca, code="c", state=banca.state))
+    banca.errori = [httpx.Response(429, json={"error": "ASPSP_RATE_LIMIT_EXCEEDED"})]
+    esito = run(eb.giro_automatico(db, banca))
+    assert esito["errore"] == "limite_banca"
+    assert run(eb.leggi_sessione(db))["giro_automatico"]["errore"] == "limite_banca"

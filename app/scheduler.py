@@ -1269,6 +1269,28 @@ def start_scheduler():
         replace_existing=True
     )
 
+    async def enable_banking_giro_task():
+        """Banco BPM: importa da solo i movimenti certamente nuovi."""
+        try:
+            import httpx
+            from app.database import Database
+            from app.services import enable_banking as eb
+            if not eb.attivo():
+                return
+            async with httpx.AsyncClient(timeout=90.0, follow_redirects=False) as client:
+                esito = await eb.giro_automatico(Database.get_db(), client)
+            logger.info(f"[SCHEDULER-BANCA] giro Enable Banking: {esito}")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-BANCA] giro Enable Banking non riuscito: {type(e).__name__}: {e}")
+
+    scheduler.add_job(
+        enable_banking_giro_task,
+        CronTrigger(hour="7,19", minute=15, timezone=ZoneInfo("Europe/Rome")),
+        id="enable_banking_giro",
+        name="Banco BPM: movimenti nuovi dalla banca (07:15 e 19:15 Europe/Rome)",
+        replace_existing=True,
+    )
+
     async def controllo_canoni_noleggio_task():
         try:
             from app.services.noleggio import controlla_regolarita_canoni

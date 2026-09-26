@@ -95,3 +95,21 @@ def test_corrispettivi_fermi_solo_per_chiusura_sono_verdi():
     run(prepara())
     corr = _per_codice(run(ad.stato_fonti(db, datetime(2026, 8, 24, 9, tzinfo=timezone.utc))))["corrispettivi"]
     assert corr["stato"] == ad.VERDE
+
+
+def test_una_fonte_lenta_non_blocca_il_riquadro(monkeypatch):
+    """26/09/2026: una lettura lenta faceva scadere tutto il riquadro dopo 20 s."""
+    db = AsyncMongoMockClient()["t"]
+
+    async def lenta(db, ora):
+        await asyncio.sleep(5)
+
+    lenta.__name__ = "_fatture"
+    monkeypatch.setattr(ad, "_fatture", lenta)
+    monkeypatch.setattr(ad, "TEMPO_MAX_FONTE_SECONDI", 0.2)
+    esito = run(ad.stato_fonti(db, ORA))
+    per = _per_codice(esito)
+    assert [f["ordine"] for f in esito["fonti"]] == [1, 2, 3, 4, 5]
+    assert per["fatture"]["stato"] == ad.NON_DISPONIBILE
+    assert "lenta" in per["fatture"]["testo"]
+    assert per["banca"]["testo"]  # le altre fonti ci sono comunque

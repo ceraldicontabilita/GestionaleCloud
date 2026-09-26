@@ -11,6 +11,7 @@ banca, fatture, corrispettivi, cedolini e F24, riconciliazione.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
@@ -137,13 +138,14 @@ async def _banca(db, ora: datetime) -> Dict[str, Any]:
             "file_in_attesa": esito.get("pending"),
         },
     )
-    fonte["enable_banking"] = diretta = await _stato_enable_banking(db)
+    diretta = await _stato_enable_banking(db)
     if not diretta["attivo"]:
         fonte["nota"] = "Arriva dagli estratti conto caricati su Drive; la lettura diretta dalla banca e' spenta."
     elif not diretta["collegata"]:
-        fonte["nota"] = "Lettura diretta dalla banca attiva ma conto non collegato."
+        fonte["nota"] = "Lettura diretta dalla banca attiva ma conto non collegato: si collega da Prima Nota › Banca."
     else:
-        fonte["nota"] = "Lettura diretta dalla banca collegata (anteprima, senza scrivere movimenti)."
+        fonte["nota"] = ("Lettura diretta dalla banca collegata: i movimenti nuovi entrano da soli alle 07:15 "
+                         "e alle 19:15 (Prima Nota › Banca per aggiornare subito).")
     return fonte
 
 
@@ -252,17 +254,32 @@ async def _riconciliazione(db, ora: datetime) -> Dict[str, Any]:
     )
 
 
+# Ogni fonte ha un tempo massimo: una sola lettura lenta (cache fredda dopo un
+# deploy, database carico) faceva scadere l'intero riquadro dopo 20 secondi e
+# la Dashboard mostrava solo «Servizio non disponibile».
+TEMPO_MAX_FONTE_SECONDI = 8.0
+
+
 async def stato_fonti(db, ora: Optional[datetime] = None) -> Dict[str, Any]:
     ora = ora or datetime.now(timezone.utc)
-    fonti: List[Dict[str, Any]] = []
-    for lettore in (_banca, _fatture, _corrispettivi, _cedolini_f24, _riconciliazione):
+    lettori = (_banca, _fatture, _corrispettivi, _cedolini_f24, _riconciliazione)
+
+    async def leggi(ordine: int, lettore) -> Dict[str, Any]:
+        codice = lettore.__name__.strip("_")
         try:
-            fonti.append(await lettore(db, ora))
+            return await asyncio.wait_for(lettore(db, ora), TEMPO_MAX_FONTE_SECONDI)
+        except asyncio.TimeoutError:
+            logger.warning("[aggiornamento-dati] %s oltre %ss", codice, TEMPO_MAX_FONTE_SECONDI)
+            testo = "Lettura troppo lenta in questo momento: premi Rileggi tra poco"
         except Exception as exc:
             logger.warning("[aggiornamento-dati] %s non letto: %s: %s",
-                           lettore.__name__, type(exc).__name__, exc)
-            fonti.append(_fonte(len(fonti) + 1, lettore.__name__.strip("_"), lettore.__name__.strip("_"),
-                                stato=NON_DISPONIBILE, testo="Stato non leggibile in questo momento"))
+                           codice, type(exc).__name__, exc)
+            testo = "Stato non leggibile in questo momento"
+        return _fonte(ordine, codice, codice, stato=NON_DISPONIBILE, testo=testo)
+
+    fonti: List[Dict[str, Any]] = list(await asyncio.gather(
+        *(leggi(i, lettore) for i, lettore in enumerate(lettori, start=1))
+    ))
     return {"generato_at": ora.isoformat(), "fonti": fonti}
 
 

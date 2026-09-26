@@ -421,7 +421,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - Prima Nota Banca non è la copia dell'estratto conto: una riga entra quando è nota la causale contabile oppure
   appartiene alle categorie bancarie senza documento ammesse dal codice. Anche i movimenti letti dalla banca
   (Enable Banking, `services/enable_banking.py`, flag `ENABLE_BANKING_ENABLED`, sessione cifrata col solo
-  `session_id`) vanno in `estratto_conto_movimenti`, confrontati con `accoppia`: mai in Prima Nota.
+  `session_id`) vanno in `estratto_conto_movimenti` (`accoppia`), mai in Prima Nota; entrano da soli alle 07:15 e 19:15 (`giro_automatico`), «Aggiorna ora» è in Prima Nota › Banca.
 - Riga bancaria canonica = riferimento esterno **oppure** fingerprint data+valuta+importo+causale+progressivo;
   due export **dello stesso conto** con parole diverse si confrontano per giorno, segno, importo e conteggio
   (`doppioni_estratto_conto.accoppia`), prima per **riferimento banca** (in ordine, due commissioni uguali si incrociano). Assegni con numero o data diversi **non sono duplicati**. Le regole SDD
