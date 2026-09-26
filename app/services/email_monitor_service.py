@@ -113,12 +113,13 @@ async def _check_mittente(db, from_addr: str, canale: str) -> Optional[Dict]:
 
 async def _build_gmail_credentials(db):
     """Determinazione credenziali Gmail senza esporre segreti nei log."""
-    from app.config import settings
+    from app.services.gmail_credentials import get_gmail_environment_credentials
     from app.utils.crypto import decrypt_credential
 
+    env = get_gmail_environment_credentials()
     email_user = None
     email_password = None
-    imap_host = settings.IMAP_HOST or "imap.gmail.com"
+    imap_host = env.host
 
     try:
         gmail_cfg = await db["settings"].find_one({"chiave": "gmail"}, {"_id": 0})
@@ -130,9 +131,9 @@ async def _build_gmail_credentials(db):
         pass
 
     if not email_user:
-        email_user = settings.IMAP_USER or settings.EMAIL_USER
+        email_user = env.user
     if not email_password:
-        email_password = settings.IMAP_PASSWORD or settings.EMAIL_PASSWORD
+        email_password = env.password
 
     return email_user, email_password, imap_host
 

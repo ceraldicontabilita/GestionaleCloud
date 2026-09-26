@@ -88,6 +88,7 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: Optional[str] = None
     SMTP_FROM_EMAIL: Optional[str] = None
     FROM_EMAIL: Optional[str] = None
+    ADMIN_EMAIL: Optional[str] = None
 
     # Gmail IMAP
     GMAIL_IMAP_ENABLED: bool = False
@@ -221,6 +222,7 @@ class Settings(BaseSettings):
     # le credenziali IMAP. NB: il parser F24 email non è ancora validato su
     # F24 reali — controllare i primi risultati prima di fidarsi.
     ENABLE_EMAIL_F24_SYNC: bool = True
+    ENABLE_EMAIL_CEDOLINI_SYNC: bool = True
     ENABLE_EMAIL_VERBALI_SYNC: bool = True
     # Ora locale Europe/Rome del controllo giornaliero verbali.
     VERBALI_EMAIL_SCAN_HOUR: int = 6
@@ -250,6 +252,8 @@ class Settings(BaseSettings):
     # (13/07/2026): coerente con i canali email attivi (cedolini/F24/verbali).
     # Metterlo a False ferma TUTTA l'ingestione email dallo scheduler.
     ENABLE_GMAIL_IMAP: bool = True
+    GMAIL_SCAN_ALL_FOLDERS: bool = True
+    GMAIL_SCAN_LOOKBACK_DAYS: int = 30
     ENABLE_DOCUMENT_AI: bool = False
     ENABLE_ASYNC_IMPORTS: bool = True
     ENABLE_CACHING: bool = True

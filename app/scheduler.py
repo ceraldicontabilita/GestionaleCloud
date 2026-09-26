@@ -79,9 +79,12 @@ async def scan_verbali_email_task():
     """
     Task eseguito ogni ora.
     Scansiona le email per trovare nuovi verbali e completare quelli sospesi.
-    Gated da ENABLE_EMAIL_VERBALI_SYNC (interruttore canale email verbali).
+    Gated dagli interruttori Gmail generale e del canale verbali.
     """
     from app.config import settings
+    if not getattr(settings, "ENABLE_GMAIL_IMAP", True):
+        logger.info("🚗 [SCHEDULER] Scan email verbali saltato (Gmail spento).")
+        return
     if not getattr(settings, "ENABLE_EMAIL_VERBALI_SYNC", True):
         logger.info("🚗 [SCHEDULER] Scan email verbali saltato (canale spento).")
         return
@@ -414,6 +417,10 @@ async def check_fornitori_duplicati_task():
 
 async def paypal_recupera_fatture_email_task():
     """Task eseguito ogni giorno alle 5:30."""
+    from app.config import settings
+    if not getattr(settings, "ENABLE_GMAIL_IMAP", True):
+        logger.info("💳 [SCHEDULER] Recupero fatture PayPal saltato (Gmail spento).")
+        return
     logger.info("💳 [SCHEDULER] Recupero fatture PayPal mancanti dalla posta...")
     try:
         from app.database import Database
@@ -443,9 +450,11 @@ async def gmail_full_scan_task():
     try:
         db = Database.get_db()
         downloader = EmailFullDownloader(db)
+        folder = "ALL_FOLDERS" if getattr(settings, "GMAIL_SCAN_ALL_FOLDERS", True) else "INBOX"
+        days_back = max(1, min(3650, int(getattr(settings, "GMAIL_SCAN_LOOKBACK_DAYS", 30))))
         result = await downloader.download_all_emails(
-            folder="ALL_FOLDERS",
-            days_back=30,
+            folder=folder,
+            days_back=days_back,
             batch_size=50
         )
         stats = result.get("stats", {})
@@ -561,6 +570,13 @@ def start_scheduler():
             logger.error("[SCHEDULER-AI-COMPLIANCE] errore: %s", exc)
 
     async def _scan_gmail_verbali_job():
+        from app.config import settings
+        if not getattr(settings, "ENABLE_GMAIL_IMAP", True):
+            logger.info("[SCHEDULER-VERBALI-GMAIL] saltato: Gmail spento")
+            return
+        if not getattr(settings, "ENABLE_EMAIL_VERBALI_SYNC", True):
+            logger.info("[SCHEDULER-VERBALI-GMAIL] saltato: canale verbali spento")
+            return
         from app.database import Database
         from app.services.verbali_gmail_scanner import scan_gmail_verbali
         try:
