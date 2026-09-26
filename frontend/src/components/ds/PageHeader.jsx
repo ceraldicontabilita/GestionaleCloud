@@ -1,5 +1,7 @@
-import React from 'react';
+import React, { useContext } from 'react';
+import { UNSAFE_LocationContext } from 'react-router-dom';
 import { Pencil } from 'lucide-react';
+import { voceDi } from '../../navigation.config';
 import { COLORS, SHADOWS, BORDER_RADIUS, FONT } from '../../lib/utils';
 
 /**
@@ -18,6 +20,12 @@ import { COLORS, SHADOWS, BORDER_RADIUS, FONT } from '../../lib/utils';
  *    default). Il colore non è mai l'unica informazione: l'etichetta c'è sempre.
  *
  * I numeri li calcola la pagina: la testata li mostra e basta.
+ *
+ * Famiglia e perche', se la pagina non li passa, vengono dalla mappa di
+ * navigazione (`voceDi` sull'indirizzo corrente): una sola fonte, e nessuna
+ * pagina resta senza. Un'`icon` scritta come testo (un'emoji) non si mostra:
+ * nell'artefatto il titolo e' solo parole, e le emoji su Android prendono i
+ * colori del sistema. Un componente (icona Lucide) invece si', se passato.
  */
 const TONI = {
   ok: COLORS.success,
@@ -76,10 +84,24 @@ function Pastiglia({ etichetta, valore, nota, tono = 'neutro', azione }) {
   );
 }
 
+/** L'indirizzo corrente, anche fuori da un Router (test, anteprime): null. */
+function usePercorso() {
+  return useContext(UNSAFE_LocationContext)?.location?.pathname || null;
+}
+
 export function PageHeader({
-  title, subtitle = null, icon = null, actions = null, style = {},
-  famiglia = null, pastiglie = null,
+  title, subtitle, icon = null, actions = null, style = {},
+  famiglia, pastiglie = null,
 }) {
+  const percorso = usePercorso();
+  const dallaMappa = percorso ? voceDi(percorso) : null;
+  // `undefined` = la pagina non ha detto niente: si prende dalla mappa.
+  // `null` = la pagina ha scelto di non mostrarla.
+  const fam = famiglia === undefined ? (dallaMappa?.gruppo || null) : famiglia;
+  const perche = subtitle === undefined
+    ? (dallaMappa && dallaMappa.voce.to === (percorso.replace(/\/+$/, '') || '/') ? dallaMappa.voce.perche : null)
+    : subtitle;
+  const iconaVisibile = icon && typeof icon !== 'string' ? icon : null;
   const conPastiglie = Array.isArray(pastiglie) && pastiglie.length > 0;
   return (
     <div
@@ -88,7 +110,7 @@ export function PageHeader({
         padding: '16px 20px',
         background: COLORS.card,
         border: `1px solid ${COLORS.border}`,
-        borderLeft: `4px solid ${famiglia?.colore || COLORS.primary}`,
+        borderLeft: `4px solid ${fam?.colore || COLORS.primary}`,
         borderRadius: BORDER_RADIUS.md,
         boxShadow: SHADOWS.sm,
         ...style,
@@ -96,7 +118,7 @@ export function PageHeader({
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <div style={{ minWidth: 0 }}>
-          {famiglia && (
+          {fam && (
             <div
               data-testid="testata-famiglia"
               style={{
@@ -104,8 +126,8 @@ export function PageHeader({
                 fontSize: 10.5, fontWeight: 800, letterSpacing: '0.06em', color: COLORS.textMuted,
               }}
             >
-              <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: '50%', background: famiglia.colore }} />
-              {famiglia.titolo}
+              <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: '50%', background: fam.colore }} />
+              {fam.titolo}
             </div>
           )}
           <h1 style={{
@@ -113,11 +135,11 @@ export function PageHeader({
             letterSpacing: '-0.3px', display: 'flex', alignItems: 'center', gap: 10,
             fontFamily: FONT.family,
           }}>
-            {icon}{title}
+            {iconaVisibile}{title}
           </h1>
-          {subtitle && (
-            <p style={{ margin: '2px 0 0 0', fontSize: 13, color: COLORS.textMuted, fontWeight: 500 }}>
-              {subtitle}
+          {perche && (
+            <p style={{ margin: '4px 0 0 0', fontSize: 13.5, color: COLORS.textMuted, fontWeight: 400, maxWidth: '72ch' }}>
+              {perche}
             </p>
           )}
         </div>

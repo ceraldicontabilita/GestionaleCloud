@@ -38,16 +38,6 @@ const RiconciliazionePaypalLazy = lazy(() => import('./RiconciliazionePaypal.jsx
  * - URL con tab: /riconciliazione/banca, /riconciliazione/assegni, etc.
  */
 
-const TABS = [
-  { id: 'dashboard', label: '📊 Dashboard', color: '#141413' },
-  { id: 'banca', label: '🏦 Banca', color: '#141413' },
-  { id: 'assegni', label: '📝 Prelievi Assegno', color: '#141413' },
-  { id: 'f24', label: '📄 F24', color: '#141413' },
-  { id: 'stipendi', label: '👤 Stipendi', color: '#141413' },
-  { id: 'documenti', label: '📎 Documenti', color: '#141413' },
-  { id: 'paypal', label: '💳 PayPal', color: '#141413' },
-];
-
 const RENTAL_RECONCILIATION_TERMS = [
   'leasys',
   'ald automotive',
@@ -698,31 +688,9 @@ export default function RiconciliazioneUnificata() {
   if (loading) {
     return (
       <div style={{ padding: 'clamp(12px, 3vw, 20px)' }}>
-        {/* Header con Gradiente anche durante il caricamento */}
-        <div
-          style={{
-            marginBottom: 20,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            padding: '15px 20px',
-            background: '#c15f3c',
-            borderRadius: 8,
-            color: 'white',
-          }}
-        >
-          <div>
-            <h1 style={{ margin: 0, fontSize: 'clamp(18px, 4vw, 22px)', fontWeight: 'bold' }}>
-              🔗 Riconciliazione Unificata
-            </h1>
-            <p style={{ margin: '4px 0 0', opacity: 0.9, fontSize: 13 }}>
-              Associa movimenti bancari a fatture, F24, stipendi e assegni
-            </p>
-          </div>
-        </div>
+        {/* La testata la mette l'hub, sopra: qui solo l'attesa. */}
         <div style={{ padding: 40, textAlign: 'center', background: 'white', borderRadius: 8, border: '1px solid #e6e3d9' }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>⏳</div>
-          <div style={{ color: '#7a776e' }}>Caricamento riconciliazione...</div>
+          <div style={{ color: COLORS.textMuted }}>Caricamento della riconciliazione…</div>
         </div>
       </div>
     );
@@ -1064,71 +1032,10 @@ export default function RiconciliazioneUnificata() {
         </div>
       )}
 
-      {/* Tab Navigation — stessa grafica delle barre tab degli hub:
-          attivo navy pieno, inattivo bianco con bordo. Su mobile i bottoni
-          riempiono la riga in modo uniforme con font ridotto.
-          PAGINA F24 (richiesta utente 10/07): quando si è su /riconciliazione/f24
-          si vedono SOLO gli F24 — niente barra tab (dashboard, banca, stipendi,
-          documenti, PayPal hanno il loro posto altrove) e F24 non compare
-          nemmeno come tab della pagina Riconciliazione. */}
-      {activeTab !== 'f24' && (
-      <div
-        style={{
-          display: 'flex',
-          gap: isMobile ? 6 : 8,
-          marginBottom: 20,
-          flexWrap: 'wrap',
-          background: 'white',
-          padding: 8,
-          borderRadius: 8,
-          border: '1px solid #e6e3d9',
-        }}
-      >
-        {TABS.filter(t => t.id !== 'f24').map(tab => {
-          const count = tab.id === 'dashboard' ? null : (stats[tab.id] ?? null);
-          const attivo = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => handleTabChange(tab.id)}
-              style={{
-                padding: isMobile ? '8px 8px' : '9px 13px',
-                minHeight: 40,
-                flex: isMobile ? '1 1 auto' : '0 1 auto',
-                justifyContent: 'center',
-                background: attivo ? tab.color : '#fff',
-                color: attivo ? 'white' : '#7a776e',
-                border: `1px solid ${attivo ? tab.color : '#e6e3d9'}`,
-                borderRadius: 6,
-                fontWeight: attivo ? 700 : 500,
-                cursor: 'pointer',
-                fontSize: isMobile ? 11.5 : 12,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {tab.label}
-              {count !== null && (
-                <span
-                  style={{
-                    background: attivo ? 'rgba(255,255,255,0.3)' : tab.color,
-                    color: 'white',
-                    padding: '2px 8px',
-                    borderRadius: 10,
-                    fontSize: 11,
-                  }}
-                >
-                  {count}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-      )}
-
+      {/* Le schede stanno una volta sola, nella barra dell'hub sopra questa
+          pagina (Riepilogo, Banca, Stipendi, Documenti, …). La seconda barra
+          che stava qui portava agli stessi indirizzi: era un doppione. I suoi
+          conteggi sono nel Riepilogo. */}
       {/* Tab Content */}
       <div
         style={{
@@ -1139,7 +1046,12 @@ export default function RiconciliazioneUnificata() {
         }}
       >
         {activeTab === 'dashboard' && (
-          <DashboardTab stats={stats} reconciliationStats={reconciliationStats} />
+          <DashboardTab
+            stats={stats}
+            reconciliationStats={reconciliationStats}
+            loading={loading}
+            onApri={tabId => handleTabChange(tabId)}
+          />
         )}
         {activeTab === 'banca' && movimentoRichiestoId && (
           <PannelloMovimentoRichiesto
@@ -1262,39 +1174,81 @@ export default function RiconciliazioneUnificata() {
 // TAB COMPONENTS
 // ============================================
 
-function DashboardTab({ stats, reconciliationStats }) {
+/* Il Riepilogo non e' piu' un menu travestito da pagina («Seleziona una
+   sezione dal menu»): come il cruscotto dell'artefatto elenca le cose da
+   sistemare, ognuna col suo numero e un «Apri» che porta alle righe. I numeri
+   sono quelli che la pagina gia' carica: qui non si calcola niente. */
+function DashboardTab({ stats, reconciliationStats, loading, onApri }) {
+  const numero = v => (loading ? '…' : Number(v || 0).toLocaleString('it-IT'));
+  const voci = [
+    {
+      id: 'banca',
+      titolo: 'Movimenti della banca da abbinare',
+      nota: 'Righe dell\'estratto conto ancora senza il documento che le giustifica.',
+      valore: stats.totale_righe,
+    },
+    {
+      id: 'stipendi',
+      titolo: 'Stipendi da abbinare',
+      nota: 'Bonifici di stipendio in attesa del cedolino o della conferma.',
+      valore: stats.stipendi,
+    },
+    {
+      id: 'documenti',
+      titolo: 'Documenti senza movimento',
+      nota: 'Ricevute e documenti di pagamento che non hanno ancora trovato la riga di banca.',
+      valore: stats.documenti,
+    },
+    {
+      id: 'f24',
+      titolo: 'F24 da abbinare',
+      nota: 'Si contano quando si apre la sezione: la ricerca è lunga.',
+      valore: null,
+    },
+  ];
   return (
-    <div style={{ padding: 24, textAlign: 'center' }}>
+    <div data-testid="riepilogo-riconciliazione">
       <div
         style={{
-          padding: 40,
-          background: '#c15f3c',
-          borderRadius: 8,
-          color: 'white',
-          maxWidth: 500,
-          margin: '0 auto',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8,
+          padding: '14px 18px', borderBottom: `1px solid ${COLORS.border}`,
         }}
       >
-        <div style={{ fontSize: 48, marginBottom: 16 }}>📊</div>
-        <div style={{ fontSize: 20, fontWeight: 600, marginBottom: 8 }}>Riconciliazione</div>
-        <div style={{ fontSize: 14, opacity: 0.9, marginBottom: 16 }}>
-          Seleziona una sezione dal menu per iniziare la riconciliazione
-        </div>
-        {reconciliationStats.matched > 0 && (
-          <div
+        <strong style={{ fontSize: 14, color: COLORS.text }}>Da sistemare</strong>
+        <span style={{ fontSize: 12.5, color: COLORS.textMuted }}>
+          Collegamenti già registrati: <b style={{ color: COLORS.success }}>{numero(reconciliationStats.matched)}</b>
+        </span>
+      </div>
+      {voci.map(v => (
+        <div
+          key={v.id}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px',
+            borderBottom: `1px solid ${COLORS.border}`,
+          }}
+        >
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 14, color: COLORS.text }}>{v.titolo}</div>
+            <div style={{ fontSize: 12.5, color: COLORS.textMuted, marginTop: 2 }}>{v.nota}</div>
+          </div>
+          {v.valore !== null && (
+            <span style={{ fontWeight: 800, fontSize: 15, fontVariantNumeric: 'tabular-nums', color: COLORS.text }}>
+              {numero(v.valore)}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => onApri(v.id)}
+            data-testid={`riepilogo-apri-${v.id}`}
             style={{
-              fontSize: 13,
-              marginTop: 16,
-              padding: '8px 16px',
-              background: 'rgba(255,255,255,0.2)',
-              borderRadius: 8,
-              display: 'inline-block',
+              minHeight: 44, padding: '8px 12px', border: 'none', background: 'transparent',
+              color: COLORS.primary, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
             }}
           >
-            ✅ {reconciliationStats.matched} collegamenti già registrati
-          </div>
-        )}
-      </div>
+            Apri →
+          </button>
+        </div>
+      ))}
     </div>
   );
 }

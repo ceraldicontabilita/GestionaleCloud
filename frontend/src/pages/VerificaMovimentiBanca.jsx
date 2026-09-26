@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { PageHeader } from '../components/ds/PageHeader';
 import {
   CheckCircle2,
   ChevronDown,
@@ -245,13 +246,12 @@ export default function VerificaMovimentiBanca() {
         @media(max-width:760px){.operation-index-hero{padding:13px;display:grid}.manual-only-badge{width:max-content}.operation-filters{grid-template-columns:1fr 1fr}.operation-search{grid-column:1/-1}.operation-table-shell{border:0;background:transparent;overflow:visible}.operation-table{display:block;min-width:0}.operation-table thead{display:none}.operation-table tbody{display:grid;gap:8px}.operation-table tr{display:grid;grid-template-columns:1fr auto;gap:7px;background:#fff;border:1px solid #dbe5ef;border-radius:10px;padding:11px}.operation-table td{border:0;padding:0}.operation-table td:nth-child(1),.operation-table td:nth-child(2){display:inline-block}.operation-table td:nth-child(3){grid-column:1/-1}.operation-table td:nth-child(4){grid-column:2;grid-row:1;text-align:right!important}.operation-table td:nth-child(5),.operation-table td:nth-child(6){grid-column:1/-1}.row-action{width:100%;justify-content:center}.category-grid{grid-template-columns:1fr 1fr}.operation-index-modal-backdrop{padding:0;align-items:flex-end}.operation-index-modal{border-radius:14px 14px 0 0;max-height:96vh}.operation-index-modal-footer{flex-wrap:wrap}.operation-index-modal-footer>div{width:100%}.primary-button,.secondary-button{flex:1}}
       `}</style>
 
-      <section className="operation-index-hero">
-        <div>
-          <h1>Eccezioni da riconciliare</h1>
-          <p>I movimenti gia riconciliati da una prova bancaria non richiedono alcuna azione. Qui restano solo le righe per cui l’estratto conto non identifica con certezza il documento o il soggetto.</p>
-        </div>
-        <div className="manual-only-badge"><ShieldCheck size={16} /> Automatico con prova · manuale per eccezione</div>
-      </section>
+      <PageHeader
+        title="Eccezioni da riconciliare"
+        subtitle="Qui restano solo i movimenti per cui l'estratto conto non dice con certezza a quale documento o soggetto appartengono."
+        style={{ marginBottom: 14 }}
+        actions={<div className="manual-only-badge"><ShieldCheck size={16} /> Automatico con prova · manuale per eccezione</div>}
+      />
 
       <div className="operation-filters">
         <div className="operation-search">

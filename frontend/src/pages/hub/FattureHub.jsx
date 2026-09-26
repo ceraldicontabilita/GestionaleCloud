@@ -3,6 +3,7 @@ import { FileStack, Wallet } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
 import { HubTabs, PageLoader } from '../../components/ds';
+import { PageHeader } from '../../components/ds/PageHeader';
 import { sezioneFatture } from './segmentiHub';
 
 const ArchivioContent = lazy(() => import('../ArchivioFattureRicevute.jsx'));
@@ -29,6 +30,8 @@ export default function FattureHub() {
 
   return (
     <div style={{ width: '100%' }}>
+      {/* I corrispettivi hanno la loro testata; l'archivio fatture la prende qui. */}
+      {!isCorresp && <PageHeader title="Fatture ricevute" style={{ marginBottom: 14 }} />}
       <HubTabs
         testIdPrefix="tab-fatture"
         activeId={isCorresp ? 'corrispettivi' : 'archivio'}

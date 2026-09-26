@@ -17,6 +17,7 @@ import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
 import { Alert, AlertDescription } from '../components/ui/alert';
 import { PageLayout } from '../components/PageLayout';
+import { PageHeader } from '../components/ds/PageHeader';
 import DocumentViewerModal from '../components/DocumentViewerModal';
 import {
   FileText,
@@ -114,28 +115,11 @@ export default function GestionePagoPA() {
   return (
     <PageLayout>
       <div style={{ maxWidth: 1400, margin: '0 auto' }} data-testid="gestione-pagopa">
-        {/* Header */}
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: 20,
-            padding: '15px 20px',
-            background: '#c15f3c',
-            borderRadius: 12,
-            color: 'white',
-            flexWrap: 'wrap',
-            gap: 10,
-          }}
-        >
-          <div>
-            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 'bold', color: 'white' }}>💳 Gestione PagoPA</h1>
-            <p style={{ margin: '4px 0 0 0', fontSize: 13, opacity: 0.9 }}>
-              Associa ricevute PagoPA ai movimenti bancari
-            </p>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <PageHeader
+          title="PagoPA"
+          style={{ marginBottom: 20 }}
+          actions={(
+            <>
             <button
               onClick={() => {
                 fetchStats();
@@ -144,9 +128,9 @@ export default function GestionePagoPA() {
               disabled={loading}
               style={{
                 padding: '10px 20px',
-                background: 'rgba(255,255,255,0.95)',
-                color: '#4c4a44',
-                border: 'none',
+                background: COLORS.card,
+                color: COLORS.text,
+                border: `1px solid ${COLORS.borderDark}`,
                 borderRadius: 8,
                 cursor: loading ? 'not-allowed' : 'pointer',
                 fontWeight: '600',
@@ -154,14 +138,14 @@ export default function GestionePagoPA() {
               }}
               data-testid="refresh-pagopa-btn"
             >
-              🔄 Aggiorna
+              Aggiorna
             </button>
             <button
               onClick={handleAutoAssocia}
               disabled={autoAssociaLoading}
               style={{
                 padding: '10px 20px',
-                background: '#10b981',
+                background: COLORS.primary,
                 color: 'white',
                 border: 'none',
                 borderRadius: 8,
@@ -171,10 +155,11 @@ export default function GestionePagoPA() {
               }}
               data-testid="auto-associa-pagopa-btn"
             >
-              🔗 Auto-Associa
+              Associa in automatico
             </button>
-          </div>
-        </div>
+            </>
+          )}
+        />
 
         {/* Stats Cards */}
         {stats && (

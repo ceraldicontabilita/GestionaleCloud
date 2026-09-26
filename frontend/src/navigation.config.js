@@ -11,6 +11,10 @@
  *
  * `colore` del gruppo: un punto accanto all'intestazione, che resta sempre
  * scritta — il colore aiuta a riconoscere la famiglia, non la sostituisce.
+ *
+ * `perche`: la riga grigia sotto il titolo di ogni pagina (al massimo venti
+ * parole, senza sigle). La testata la legge da qui se la pagina non ne
+ * passa una sua: una pagina che non dice perche' esiste non si capisce.
  */
 import {
   LayoutDashboard,
@@ -63,8 +67,8 @@ export const NAV_GRUPPI = [
     titolo: 'IN PRIMO PIANO',
     colore: '#141413',
     voci: [
-      { to: '/', label: 'Dashboard', Icon: LayoutDashboard },
-      { to: '/dashboard/alerts', label: 'Alert', Icon: Bell },
+      { to: '/', label: 'Dashboard', Icon: LayoutDashboard, perche: "Dove sta l'attività adesso: liquidità, incassi, spese, e le cose che chiedono una risposta." },
+      { to: '/dashboard/alerts', label: 'Alert', Icon: Bell, perche: "Le segnalazioni aperte, ognuna con i record che la causano." },
     ],
   },
   {
@@ -72,8 +76,8 @@ export const NAV_GRUPPI = [
     titolo: 'SI ENTRA',
     colore: '#c15f3c',
     voci: [
-      { to: '/rapido', label: 'Inserisci', Icon: PlusCircle },
-      { to: '/documenti/import', label: 'Importa', Icon: Upload },
+      { to: '/rapido', label: 'Inserisci', Icon: PlusCircle, perche: "Una riga alla volta, con il minimo indispensabile: data, importo, conto, categoria." },
+      { to: '/documenti/import', label: 'Importa', Icon: Upload, perche: "La porta unica dei documenti: ogni file entra da qui, e l'impronta impedisce che entri due volte." },
     ],
   },
   {
@@ -81,19 +85,19 @@ export const NAV_GRUPPI = [
     titolo: 'I DOCUMENTI',
     colore: '#2f7a4f',
     voci: [
-      { to: '/fatture', label: 'Fatture', Icon: FileText },
-      { to: '/fatture/corrispettivi', label: 'Corrispettivi', Icon: Wallet },
-      { to: '/fornitori', label: 'Fornitori', Icon: Building2 },
-      { to: '/documenti/atti', label: 'Atti amministrativi', Icon: BookMarked },
-      { to: '/documenti/archivio', label: 'Archivio documenti', Icon: FolderOpen },
-      { to: '/documenti/drive', label: 'Cartelle Google Drive', Icon: HardDrive },
-      { to: '/riconciliazione/f24', label: 'F24', Icon: Receipt },
-      { to: '/scadenze', label: 'Scadenze', Icon: Clock },
-      { to: '/ritenute', label: 'Ritenute', Icon: Receipt },
-      { to: '/noleggio', label: 'Noleggi', Icon: Car },
-      { to: '/piano-tributi', label: 'Piano tributi', Icon: CalendarCheck, adminOnly: true },
-      { to: '/situazione-fiscale', label: 'Situazione fiscale', Icon: FileBarChart, adminOnly: true },
-      { to: '/strumenti/visure', label: 'Visure', Icon: Search },
+      { to: '/fatture', label: 'Fatture', Icon: FileText, perche: "Le fatture ricevute dell'anno, con fornitore, importo e stato del pagamento." },
+      { to: '/fatture/corrispettivi', label: 'Corrispettivi', Icon: Wallet, perche: "Le chiusure giornaliere del registratore di cassa: l'unica fonte dei ricavi." },
+      { to: '/fornitori', label: 'Fornitori', Icon: Building2, perche: "Chi ti fattura, con partita IVA, metodo di pagamento e quanto hai comprato." },
+      { to: '/documenti/atti', label: 'Atti amministrativi', Icon: BookMarked, perche: "Gli atti amministrativi ricevuti: avvisi, cartelle, comunicazioni degli enti." },
+      { to: '/documenti/archivio', label: 'Archivio documenti', Icon: FolderOpen, perche: "Tutti i documenti archiviati, cercabili per nome, tipo e data." },
+      { to: '/documenti/drive', label: 'Cartelle Google Drive', Icon: HardDrive, perche: "Le cartelle di Google Drive da cui il gestionale legge i documenti." },
+      { to: '/riconciliazione/f24', label: 'F24', Icon: Receipt, perche: "Deleghe e quietanze. Un modello F24 non è una prova di pagamento: la prova è il movimento in banca." },
+      { to: '/scadenze', label: 'Scadenze', Icon: Clock, perche: "Che cosa va pagato o presentato, e entro quando." },
+      { to: '/ritenute', label: 'Ritenute', Icon: Receipt, perche: "Le ritenute d'acconto sulle fatture dei professionisti e il loro versamento con F24." },
+      { to: '/noleggio', label: 'Noleggi', Icon: Car, perche: "Le auto a noleggio: contratti, costi, verbali e chi le guidava." },
+      { to: '/piano-tributi', label: 'Piano tributi', Icon: CalendarCheck, adminOnly: true, perche: "I tributi ricorrenti attesi per periodo, soddisfatti solo dall'addebito in banca." },
+      { to: '/situazione-fiscale', label: 'Situazione fiscale', Icon: FileBarChart, adminOnly: true, perche: "Che cosa risulta dovuto, che cosa è stato versato, che cosa è rimasto aperto." },
+      { to: '/strumenti/visure', label: 'Visure', Icon: Search, perche: "Le visure delle aziende con cui lavori, lette dal registro imprese." },
     ],
   },
   {
@@ -101,9 +105,9 @@ export const NAV_GRUPPI = [
     titolo: 'IL REGISTRO',
     colore: '#5b7a6b',
     voci: [
-      { to: '/prima-nota', label: 'Prima nota', Icon: BookOpen },
-      { to: '/riconciliazione/movimenti-banca', label: 'Movimenti', Icon: Banknote },
-      { to: '/contabilita/giornale', label: 'Libro giornale', Icon: BookOpen },
+      { to: '/prima-nota', label: 'Prima nota', Icon: BookOpen, perche: "Un conto alla volta, in ordine, con il saldo che cammina." },
+      { to: '/riconciliazione/movimenti-banca', label: 'Movimenti', Icon: Banknote, perche: "I movimenti dell'estratto conto come li ha scritti la banca." },
+      { to: '/contabilita/giornale', label: 'Libro giornale', Icon: BookOpen, perche: "Le scritture in partita doppia, in ordine di registrazione: dare e avere sempre in pari." },
     ],
   },
   {
@@ -111,13 +115,13 @@ export const NAV_GRUPPI = [
     titolo: 'LE PROVE',
     colore: '#b07d1a',
     voci: [
-      { to: '/riconciliazione', label: 'Riconciliazione', Icon: Landmark },
-      { to: '/riconciliazione/coerenza-pos', label: 'Coerenza POS', Icon: Banknote },
-      { to: '/riconciliazione/assegni', label: 'Assegni', Icon: ScrollText },
-      { to: '/riconciliazione/archivio-bonifici', label: 'Bonifici', Icon: ArrowLeftRight },
-      { to: '/riconciliazione/pagopa', label: 'PagoPA', Icon: Receipt },
-      { to: '/riconciliazione/paypal', label: 'PayPal', Icon: CreditCard },
-      { to: '/riconciliazione/regole-banca', label: 'Regole banca', Icon: ListChecks },
+      { to: '/riconciliazione', label: 'Riconciliazione', Icon: Landmark, perche: "Ogni movimento della banca contro il documento che lo giustifica. Se i candidati sono più d'uno non si sceglie." },
+      { to: '/riconciliazione/coerenza-pos', label: 'Coerenza POS', Icon: Banknote, perche: "Il registratore di cassa, il terminale e la banca devono raccontare lo stesso giorno." },
+      { to: '/riconciliazione/assegni', label: 'Assegni', Icon: ScrollText, perche: "Gli assegni emessi, la fattura che pagano e il giorno in cui la banca li ha addebitati." },
+      { to: '/riconciliazione/archivio-bonifici', label: 'Bonifici', Icon: ArrowLeftRight, perche: "I bonifici disposti, con la ricevuta e la fattura o lo stipendio che pagano." },
+      { to: '/riconciliazione/pagopa', label: 'PagoPA', Icon: Receipt, perche: "I pagamenti PagoPA e l'avviso che chiudono." },
+      { to: '/riconciliazione/paypal', label: 'PayPal', Icon: CreditCard, perche: "PayPal non è un conto, è un passaggio: ogni acquisto ha il pagamento e la provvista." },
+      { to: '/riconciliazione/regole-banca', label: 'Regole banca', Icon: ListChecks, perche: "Le regole imparate per riconoscere da sole le causali della banca." },
     ],
   },
   {
@@ -125,21 +129,21 @@ export const NAV_GRUPPI = [
     titolo: 'LA SINTESI',
     colore: '#8a6f47',
     voci: [
-      { to: '/iva', label: 'Gestione IVA', Icon: Receipt },
-      { to: '/contabilita', label: 'Piano dei conti', Icon: BarChart3 },
-      { to: '/contabilita/bilancio', label: 'Bilancio', Icon: TrendingUp },
-      { to: '/contabilita/calendario', label: 'Calendario fiscale', Icon: Calendar },
-      { to: '/contabilita/cespiti', label: 'Cespiti', Icon: Building2 },
-      { to: '/contabilita/finanziaria', label: 'Finanziaria', Icon: Banknote },
-      { to: '/contabilita/mutui', label: 'Mutui', Icon: Landmark },
-      { to: '/contabilita/budget', label: 'Budget', Icon: ClipboardList },
-      { to: '/contabilita/utile', label: 'Utile obiettivo', Icon: Target },
-      { to: '/contabilita/previsioni-acquisti', label: 'Previsioni acquisti', Icon: Package },
-      { to: '/contabilita/dati-isa', label: 'Dati ISA', Icon: Gauge },
-      { to: '/contabilita/avanzata', label: 'Contabilità avanzata', Icon: Wrench },
-      { to: '/contabilita/chiusura', label: 'Chiusura esercizio', Icon: Lock },
-      { to: '/strumenti/commercialista', label: 'Commercialista', Icon: Briefcase },
-      { to: '/strumenti/pianificazione', label: 'Pianificazione', Icon: CalendarRange },
+      { to: '/iva', label: 'Gestione IVA', Icon: Receipt, perche: "Liquidazioni, LIPE, credito e debito periodo per periodo." },
+      { to: '/contabilita', label: 'Piano dei conti', Icon: BarChart3, perche: "Il piano dei conti CEE su cui si registra ogni scrittura." },
+      { to: '/contabilita/bilancio', label: 'Bilancio', Icon: TrendingUp, perche: "Stato patrimoniale e conto economico, letti dal libro giornale." },
+      { to: '/contabilita/calendario', label: 'Calendario fiscale', Icon: Calendar, perche: "Le scadenze fiscali dell'anno, una per riga, con quello che le soddisfa." },
+      { to: '/contabilita/cespiti', label: 'Cespiti', Icon: Building2, perche: "I beni che durano più di un anno e la quota di ammortamento di ognuno." },
+      { to: '/contabilita/finanziaria', label: 'Finanziaria', Icon: Banknote, perche: "Liquidità, debiti e crediti in un colpo d'occhio." },
+      { to: '/contabilita/mutui', label: 'Mutui', Icon: Landmark, perche: "I mutui e i finanziamenti, rata per rata, con il debito che resta." },
+      { to: '/contabilita/budget', label: 'Budget', Icon: ClipboardList, perche: "Quanto pensavi di spendere e incassare, contro quanto è successo." },
+      { to: '/contabilita/utile', label: 'Utile obiettivo', Icon: Target, perche: "Quanto manca all'utile che ti sei dato come obiettivo." },
+      { to: '/contabilita/previsioni-acquisti', label: 'Previsioni acquisti', Icon: Package, perche: "Che cosa comprerai nei prossimi mesi, stimato da quello che hai comprato." },
+      { to: '/contabilita/dati-isa', label: 'Dati ISA', Icon: Gauge, perche: "I dati che servono agli indici sintetici di affidabilità fiscale." },
+      { to: '/contabilita/avanzata', label: 'Contabilità avanzata', Icon: Wrench, perche: "Gli strumenti di contabilità meno frequenti, per chi sa cosa cerca." },
+      { to: '/contabilita/chiusura', label: 'Chiusura esercizio', Icon: Lock, perche: "La chiusura dell'esercizio: checklist, anteprima, conferma." },
+      { to: '/strumenti/commercialista', label: 'Commercialista', Icon: Briefcase, perche: "Quello che serve al commercialista, pronto da mandare." },
+      { to: '/strumenti/pianificazione', label: 'Pianificazione', Icon: CalendarRange, perche: "Le attività programmate e il loro stato." },
     ],
   },
   {
@@ -147,9 +151,9 @@ export const NAV_GRUPPI = [
     titolo: 'I CONTROLLI',
     colore: '#b0362b',
     voci: [
-      { to: '/contabilita/controllo', label: 'Controllo mensile', Icon: CalendarCheck },
-      { to: '/contabilita/verifica', label: 'Verifica bilancio', Icon: BadgeCheck },
-      { to: '/strumenti', label: 'Verifica coerenza', Icon: ShieldCheck },
+      { to: '/contabilita/controllo', label: 'Controllo mensile', Icon: CalendarCheck, perche: "Il registratore di cassa, il terminale POS e la banca devono raccontare lo stesso mese. Qui si vede dove non lo fanno." },
+      { to: '/contabilita/verifica', label: 'Verifica bilancio', Icon: BadgeCheck, perche: "Il saldo di ogni conto, dare contro avere: se non quadra, qui si vede dove." },
+      { to: '/strumenti', label: 'Verifica coerenza', Icon: ShieldCheck, perche: "I controlli di coerenza fra archivi: quello che dovrebbe coincidere e non coincide." },
     ],
   },
   {
@@ -170,12 +174,12 @@ export const NAV_GRUPPI = [
     titolo: 'IMPOSTAZIONI',
     colore: '#7a776e',
     voci: [
-      { to: '/utenti', label: 'Utenti', Icon: Users, adminOnly: true },
-      { to: '/admin', label: 'Admin', Icon: Settings, adminOnly: true },
-      { to: '/admin/mfa', label: 'Sicurezza MFA', Icon: ShieldCheck, adminOnly: true },
-      { to: '/admin/elaborazioni', label: 'Elaborazioni', Icon: Workflow, adminOnly: true },
-      { to: '/integrazioni/mittenti-email', label: 'Mittenti email', Icon: Mail, adminOnly: true },
-      { to: '/impostazioni-ai', label: 'Assistente AI', Icon: Bot, adminOnly: true },
+      { to: '/utenti', label: 'Utenti', Icon: Users, adminOnly: true, perche: "Chi può entrare nel gestionale e con quale ruolo." },
+      { to: '/admin', label: 'Admin', Icon: Settings, adminOnly: true, perche: "La configurazione tecnica: integrazioni, scheduler, manutenzione." },
+      { to: '/admin/mfa', label: 'Sicurezza MFA', Icon: ShieldCheck, adminOnly: true, perche: "Il secondo fattore di accesso per gli amministratori." },
+      { to: '/admin/elaborazioni', label: 'Elaborazioni', Icon: Workflow, adminOnly: true, perche: "Le elaborazioni in sottofondo: che cosa gira, che cosa è finito, che cosa è fallito." },
+      { to: '/integrazioni/mittenti-email', label: 'Mittenti email', Icon: Mail, adminOnly: true, perche: "Da quali indirizzi il gestionale accetta documenti per posta." },
+      { to: '/impostazioni-ai', label: 'Assistente AI', Icon: Bot, adminOnly: true, perche: "Come si comporta l'assistente e che cosa può leggere." },
     ],
   },
 ];

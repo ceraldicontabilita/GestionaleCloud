@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 
 import api from '../api';
 import { PageLayout } from '../components/PageLayout';
+import { PageHeader } from '../components/ds/PageHeader';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { useIsMobile } from '../hooks/useData';
 
@@ -178,14 +179,17 @@ export default function RiconciliazionePaypal() {
   return (
     <PageLayout>
       <main style={{ maxWidth: 1400, margin: '0 auto', padding: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
-          <div>
-            <h1 style={{ margin: 0 }}>PayPal</h1>
-            <p style={{ margin: '6px 0 0', color: '#7a776e' }}>
-              Sincronizzazione automatica all'apertura. I documenti si acquisiscono solo da Documenti.
-            </p>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <PageHeader
+          title="PayPal"
+          style={{ marginBottom: 16 }}
+          pastiglie={[
+            { etichetta: 'Transazioni', valore: String(dashboard.total_transactions ?? transazioni.length) },
+            { etichetta: 'Movimenti banca', valore: String(dashboard.movimenti_banca_paypal ?? movimentiBanca.length) },
+            { etichetta: 'Riconciliati', valore: String(riconciliati), tono: 'ok' },
+            { etichetta: 'Da verificare', valore: String(daVerificare), tono: daVerificare > 0 ? 'attenzione' : 'ok' },
+          ]}
+          actions={(
+            <>
           <span data-testid="paypal-sync-status" style={{ color: '#5f5c55', fontSize: 13 }}>
             {sincronizzazione === 'in_corso' ? 'Sincronizzazione incrementale…' :
               sincronizzazione === 'completata' ? `Aggiornato${statoApi?.ultimo_sync ? ` alle ${new Date(statoApi.ultimo_sync).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}` : ''}` :
@@ -195,8 +199,9 @@ export default function RiconciliazionePaypal() {
           <button type="button" onClick={riprocessaStorico} disabled={loading} style={buttonStyle}>
             Riprocessa {anno}
           </button>
-          </div>
-        </div>
+            </>
+          )}
+        />
 
         {riprocessamento && <div data-testid="paypal-reprocess-result" style={{ ...messageStyle, background: '#ecfdf5', color: '#166534' }}>{riprocessamento}</div>}
 
@@ -208,12 +213,6 @@ export default function RiconciliazionePaypal() {
           </div>
         )}
 
-        <section style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(150px, 1fr))', gap: 10, marginBottom: 16 }}>
-          <div style={card}><small>Transazioni</small><strong style={value}>{dashboard.total_transactions ?? transazioni.length}</strong></div>
-          <div style={card}><small>Movimenti banca</small><strong style={value}>{dashboard.movimenti_banca_paypal ?? movimentiBanca.length}</strong></div>
-          <div style={card}><small>Riconciliati</small><strong style={value}>{riconciliati}</strong></div>
-          <div style={card}><small>Da verificare</small><strong style={value}>{daVerificare}</strong></div>
-        </section>
 
         <section data-testid="paypal-relation-flow" aria-label="Stato collegamenti PayPal" style={{ ...card, gridTemplateColumns: 'repeat(5, minmax(120px, 1fr))', marginBottom: 16, overflowX: 'auto' }}>
           {[
