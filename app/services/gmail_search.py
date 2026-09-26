@@ -12,7 +12,6 @@ d'ambiente EMAIL_USER / EMAIL_APP_PASSWORD.
 """
 import imaplib
 import logging
-import os
 from email.header import decode_header
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import quote
@@ -32,9 +31,9 @@ async def get_gmail_credentials(db) -> Tuple[Optional[str], Optional[str], str]:
             return acc["email"], decrypt_credential(acc["app_password"]), acc.get("imap_server") or "imap.gmail.com"
     except Exception:
         logger.exception("Errore lettura account email da config")
-    user = os.environ.get("EMAIL_USER") or os.environ.get("EMAIL_ADDRESS")
-    pwd = os.environ.get("EMAIL_APP_PASSWORD") or os.environ.get("EMAIL_PASSWORD")
-    return user, pwd, "imap.gmail.com"
+    from app.services.gmail_credentials import get_gmail_environment_credentials
+    env = get_gmail_environment_credentials()
+    return env.user, env.password, env.host
 
 
 def _decode(s: Optional[str]) -> str:

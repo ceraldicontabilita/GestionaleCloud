@@ -175,6 +175,7 @@ export const NAV_GRUPPI = [
       { to: '/admin/mfa', label: 'Sicurezza MFA', Icon: ShieldCheck, adminOnly: true },
       { to: '/admin/elaborazioni', label: 'Elaborazioni', Icon: Workflow, adminOnly: true },
       { to: '/integrazioni/mittenti-email', label: 'Mittenti email', Icon: Mail, adminOnly: true },
+      { to: '/impostazioni-f24-email', label: 'Email automatica', Icon: Mail, adminOnly: true },
       { to: '/impostazioni-ai', label: 'Assistente AI', Icon: Bot, adminOnly: true },
     ],
   },
