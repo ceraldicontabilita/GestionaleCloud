@@ -2450,6 +2450,22 @@ def _spreadsheet_text_for_detection(filename: str, file_content: bytes) -> str:
     except Exception:
         return ""
 
+# Il cedolino Zucchetti (busta e stampa di controllo del Libro Unico) nel
+# livello testo scrive gli spazi come «s»: «NETTOsDELsMESE». La struttura
+# si riconosce da tre caselle insieme, mai dal nome file, che spesso e' solo
+# «Cognome Nome - Mese Anno».
+_ZUCCHETTI_CASELLE = (
+    re.compile(r"NETTOS?DELS?MESE"),
+    re.compile(r"TOTALES?COMPETENZE"),
+    re.compile(r"TOTALES?TRATTENUTE"),
+    re.compile(r"PERIODOS?DIS?RETRIBUZIONE"),
+)
+
+
+def _e_cedolino_zucchetti(marker_pdf_text: str) -> bool:
+    return sum(bool(c.search(marker_pdf_text)) for c in _ZUCCHETTI_CASELLE) >= 3
+
+
 def detect_document_type(filename: str, file_content: bytes) -> str:
     """Classifica solo con prove documentali sufficienti.
 
@@ -2519,6 +2535,15 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
         "DIFFERENZE CONTRIBUTIVE",
     )):
         return "nota_rettifica_inps"
+    if _e_cedolino_zucchetti(marker_pdf_text):
+        return "cedolino"
+    # Contabile di un bonifico disposto: cita la banca del beneficiario
+    # («Banca Nazionale del Lavoro») e il classificatore degli estratti la
+    # prendeva per un estratto BNL, con il nome file solo «Cognome_data_EUR».
+    if "ILSEGUENTEBONIFICO" in marker_pdf_text and (
+        "REGISTRIAMOAVOSTRODEBITO" in marker_pdf_text or "IBANBENEFICIARIO" in marker_pdf_text
+    ):
+        return "bonifici"
     if all(marker in compact_pdf_text for marker in (
         "SEZIONE 1", "LAVORATORE", "RECESSO DAL RAPPORTO DI LAVORO",
     )) or "MODULO RECESSO RAPPORTO DI LAVORO" in compact_pdf_text:
@@ -3779,7 +3804,21 @@ async def upload_documento_automatico(
                 result["message"] = lul_result.get("message", "Libro Unico importato con workflow completo")
                 result["data"] = lul_result.get("data", {})
                 result["workflow"] = "LUL_COMPLETO"
-                result["imported"] = 1
+                dati_lul = result["data"] or {}
+                # ``totale_dipendenti`` sono le pagine divise per due, non
+                # buste lette: la prova e' cio' che e' stato scritto.
+                lette = (dati_lul.get("buste_importate") or 0) + (dati_lul.get("buste_aggiornate") or 0)
+                if lette:
+                    result["imported"] = 1
+                else:
+                    # Nessuna busta letta non e' un cedolino importato: senza
+                    # questo il file finiva fra le ELABORATE senza lasciare dati.
+                    result["success"] = False
+                    result["imported"] = 0
+                    result["message"] = (
+                        "Cedolino riconosciuto ma il Libro Unico non ne ha letto nessuna "
+                        "busta: niente e' stato registrato"
+                    )
             except HTTPException as he:
                 result["success"] = False
                 result["message"] = f"Errore import LUL: {he.detail}"
