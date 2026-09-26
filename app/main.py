@@ -66,6 +66,11 @@ async def lifespan(app: FastAPI):
     """Application lifecycle: startup, yield, shutdown."""
     logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
 
+    # Sentinella del processo: scrive nel log chi tiene fermo l'event loop.
+    from app.services import sorveglianza_loop
+
+    sorveglianza_loop.avvia()
+
     # Fail closed: senza l'archivio operativo configurato il gestionale non
     # puo' garantire letture o scritture contabili coerenti.
     await Database.connect_db()
@@ -678,6 +683,7 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("Shutting down...")
+    sorveglianza_loop.arresta()
     if not badge_alignment_task.done():
         badge_alignment_task.cancel()
         with suppress(asyncio.CancelledError):

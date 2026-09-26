@@ -16,7 +16,7 @@ from .common import (
     logger
 )
 from app.services.payment_allocation_validator import allocation_summary, is_credit_note
-from app.services.payment_evidence_projection import project_invoice_payment_evidence
+from app.services.payment_evidence_projection import project_payment_evidence_many
 
 router = APIRouter()
 
@@ -1434,13 +1434,13 @@ async def get_fatture_fornitore(
         
         estratto = []
         totale_importo = 0
-        for f in fatture:
+        prove_per_fattura = await project_payment_evidence_many(db, fatture)
+        for f, evidence in zip(fatture, prove_per_fattura):
             importo = _invoice_amount(f)
             imponibile = float(f.get("imponibile") or f.get("importo_imponibile") or f.get("taxable_amount") or 0)
             iva = float(f.get("iva") or f.get("importo_iva") or f.get("vat_amount") or 0)
             tipo_doc = f.get("tipo_documento", "TD01")
             is_nc = tipo_doc in ("TD04", "TD05", "TD08", "NC")
-            evidence = await project_invoice_payment_evidence(db, f)
             estratto.append({
                 "id": f.get("id"),
                 "data": f.get("data_documento") or f.get("invoice_date") or "",

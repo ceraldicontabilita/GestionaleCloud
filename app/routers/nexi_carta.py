@@ -1,7 +1,7 @@
 """
 CARTA NEXI — endpoint (richiesta utente 18/07/2026).
 
-GET  /api/nexi/stato       → addebiti Nexi in EC bancario, quadrature, alert
+GET  /api/nexi/stato       → ultima verifica salvata (addebiti, quadrature), senza ricalcolo
 POST /api/nexi/verifica    → rilancia il controllo (genera/risolve gli alert)
 POST /api/nexi/upload-pdf  → allega manualmente uno statement carta Nexi (PDF)
 GET  /api/nexi/movimenti   → operazioni carta di un periodo (YYYY-MM)
@@ -15,7 +15,9 @@ from app.database import Database
 from app.services.nexi_carta import (
     COLL_ESTRATTI,
     COLL_MOVIMENTI,
+    filtra_verifica_per_anno,
     importa_estratto_nexi_pdf,
+    leggi_verifica_nexi,
     verifica_addebiti_nexi,
 )
 from app.utils.error_handler import handle_errors
@@ -27,8 +29,9 @@ router = APIRouter()
 @router.get("/stato")
 @handle_errors
 async def stato_nexi(anno: Optional[int] = Query(None)) -> Dict[str, Any]:
+    # Sola lettura: l'ultima verifica salvata, non un ricalcolo a ogni apertura.
     db = Database.get_db()
-    verifica = await verifica_addebiti_nexi(db, anno=anno)
+    verifica = await leggi_verifica_nexi(db, anno=anno)
     estratti = await db[COLL_ESTRATTI].find(
         {}, {"_id": 0, "pdf_data": 0}
     ).sort("import_date", -1).to_list(100)
@@ -38,8 +41,9 @@ async def stato_nexi(anno: Optional[int] = Query(None)) -> Dict[str, Any]:
 @router.post("/verifica")
 @handle_errors
 async def verifica_nexi(anno: Optional[int] = Query(None)) -> Dict[str, Any]:
+    # Sempre su tutti gli anni, cosi' l'istantanea letta da /stato si aggiorna.
     db = Database.get_db()
-    return await verifica_addebiti_nexi(db, anno=anno)
+    return filtra_verifica_per_anno(await verifica_addebiti_nexi(db), anno)
 
 
 @router.post("/upload-pdf")
