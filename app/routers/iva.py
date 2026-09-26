@@ -1047,8 +1047,9 @@ async def lipe_importa(
     """Le LIPE inventariate si riscaricano da Drive, si leggono e i loro
     periodi finiscono in `lipe_periodi`, uno per mese.
 
-    Un periodo la cui aritmetica non torna (`VP6 = VP5 - VP4`,
-    `VP14 = VP6 + VP8 - VP7`) non viene depositato: finisce fra gli scartati.
+    Un periodo la cui aritmetica a segni non torna (`VP6 = VP4 - VP5`,
+    `VP14 = VP6 + VP7 - VP8 - VP9 - VP10 - VP11 + VP12 - VP13`) non viene
+    depositato: finisce fra gli scartati.
     Una comunicazione ritrasmessa (protocollo piu' alto) sostituisce la
     precedente sullo stesso periodo.
     """

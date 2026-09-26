@@ -33,7 +33,12 @@ COLL_LIPE = "lipe_periodi"
 COLL_INBOX = "documents_inbox"
 
 _NOME_LIPE = re.compile(r"lipe", re.IGNORECASE)
-_PROTOCOLLO = re.compile(r"LIPE[_\- ]*(\d{4})[_\- ]*(\d+)", re.IGNORECASE)
+# Nomi veri: `LIPE_2026_407141844.pdf` e, dal Cassetto Fiscale 2021-2025,
+# `LIPE_2024_Itrim_358048737.pdf` / `LIPE_2022_IItrim_322737558.pdf`: il
+# trimestre sta fra anno e protocollo. `LIPE_2026_T1.pdf` non ha protocollo.
+_PROTOCOLLO = re.compile(
+    r"LIPE[_\- ]*(\d{4})[_\- ]*(?:[IV]+\s*trim[_\- ]*)?(\d+)", re.IGNORECASE,
+)
 
 
 def e_una_lipe(nome_file: Optional[str]) -> bool:

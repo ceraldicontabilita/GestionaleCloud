@@ -21,13 +21,15 @@ Tutto il resto della riga (le spunte a x ~= 323 e 467, le parole «o a
 credito», «Metodo») non e' un valore e non va raccolto.
 
 **La prova che la lettura e' giusta non e' il parser, e' l'aritmetica del
-modulo**: `VP6 = VP5 - VP4` e `VP14 = VP6 + VP8 - VP7`. `quadra()` la
+modulo**, a segni: `VP6 = VP4 - VP5` e
+`VP14 = VP6 + VP7 - VP8 - VP9 - VP10 - VP11 + VP12 - VP13`. `quadra()` la
 verifica su ogni periodo; se non torna, il periodo esce con
 `quadratura_ok = False` e non si usa come fonte.
 
 Una cella vuota resta `None`, mai zero: febbraio 2026 ha VP2 (operazioni
 attive) in bianco, ed e' un fatto del documento, non un difetto di lettura.
 """
+from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 
 __all__ = [
@@ -63,7 +65,7 @@ ANCORA_CREDITI = (532.0, 536.0, 551.0)
 
 _TOLLERANZA_X = 4.0
 _TOLLERANZA_RIGA = 6.0
-_CENTESIMI_TOLLERATI = 0.02
+_CENTESIMI_TOLLERATI = Decimal("0.01")
 
 
 def _vicino(valore: float, ancora: float) -> bool:
@@ -111,23 +113,47 @@ def _importo(coppia: Tuple[Optional[float], Optional[float]]) -> Optional[float]
 def quadra(periodo: Dict[str, Any]) -> bool:
     """L'aritmetica del modulo: se non torna, la lettura non si usa.
 
-    `VP6 = VP5 - VP4` (in valore assoluto: il segno lo da' la colonna) e
-    `VP14 = VP6 + VP8 - VP7`. Un rigo assente vale zero solo qui dentro, per
-    il controllo: sul dato resta `None`.
+    I righi si sommano **col loro segno**, come nelle istruzioni del modello:
+
+    - `VP6 = VP4 - VP5`: positivo = IVA dovuta (colonna debiti), negativo =
+      credito del mese (colonna crediti);
+    - `VP14 = VP6 + VP7 - VP8 - VP9 - VP10 - VP11 + VP12 - VP13`: VP7 e' un
+      debito riportato, VP8 e VP9 crediti riportati, VP10 e VP11 versamenti e
+      crediti d'imposta, VP12 interessi trimestrali, VP13 l'acconto versato.
+
+    Sommare i valori assoluti (come si faceva prima) scambiava un credito
+    riportato per un debito: un mese che partiva da un credito di VP8 risultava
+    «non quadrato» e la LIPE vera veniva scartata come fonte. Un rigo assente
+    vale zero solo qui dentro, per il controllo: sul dato resta `None`.
     """
-    def n(chiave: str) -> float:
+    def n(chiave: str) -> Decimal:
         valore = periodo.get(chiave)
-        return 0.0 if valore is None else float(valore)
+        return Decimal("0") if valore is None else Decimal(str(valore))
 
-    atteso_vp6 = abs(n("iva_detratta") - n("iva_esigibile"))
-    if abs(atteso_vp6 - n("iva_dovuta_o_credito")) > _CENTESIMI_TOLLERATI:
+    def firmato(chiave: str) -> Optional[Decimal]:
+        """Il valore letto col segno della colonna; senza colonna nota, None."""
+        segno = periodo.get(f"{chiave}_segno")
+        if segno is None:
+            return None
+        return -n(chiave) if segno == "credito" else n(chiave)
+
+    atteso_vp6 = n("iva_esigibile") - n("iva_detratta")
+    if abs(abs(atteso_vp6) - n("iva_dovuta_o_credito")) > _CENTESIMI_TOLLERATI:
         return False
+    letto_vp6 = firmato("iva_dovuta_o_credito")
+    if letto_vp6 is not None and abs(letto_vp6 - atteso_vp6) > _CENTESIMI_TOLLERATI:
+        return False  # il valore e' giusto ma sta nella colonna sbagliata
 
-    atteso_vp14 = abs(
-        n("iva_dovuta_o_credito") + n("credito_periodo_precedente")
-        - n("debito_periodo_precedente")
+    atteso_vp14 = (
+        atteso_vp6
+        + n("debito_periodo_precedente") - n("credito_periodo_precedente")
+        - n("credito_anno_precedente") - n("versamenti_auto") - n("crediti_imposta")
+        + n("interessi_trimestrali") - n("acconto_dovuto")
     )
-    return abs(atteso_vp14 - n("iva_da_versare_o_credito")) <= _CENTESIMI_TOLLERATI
+    letto_vp14 = firmato("iva_da_versare_o_credito")
+    if letto_vp14 is None:
+        return abs(abs(atteso_vp14) - n("iva_da_versare_o_credito")) <= _CENTESIMI_TOLLERATI
+    return abs(letto_vp14 - atteso_vp14) <= _CENTESIMI_TOLLERATI
 
 
 def _mese(parole: List[Dict[str, Any]]) -> Optional[str]:
@@ -185,6 +211,13 @@ def parse_lipe(pdf_bytes: bytes) -> Dict[str, Any]:
                     periodo[nome] = None
                     continue
                 coppia = valori_riga(parole, righi[rigo])
+                if rigo == "VP13":
+                    # L'acconto sta sempre nella colonna di destra: a sinistra
+                    # c'e' la casella «Metodo», il cui codice (1-4) cade proprio
+                    # sull'ascissa dei decimali dei debiti. Dicembre 2023:
+                    # metodo 3 letto come 0,30 EUR al posto di 1.671,64.
+                    periodo[nome] = coppia[1]
+                    continue
                 periodo[nome] = _importo(coppia)
                 if rigo in ("VP6", "VP14"):
                     debiti, _crediti = coppia
