@@ -715,7 +715,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - Spostando un lotto si scrivono **sempre** sia `posizione` sia `frigo_numero`; per azioni reali sui lotti
   di un'attrezzatura si usa il match esatto sul nome, mai uno snapshot troncato («Frigorifero N°2» e «N°9»
   si confondono).
-- Foto ricette: archivio unico Supabase Storage; la copia in `GESTIONALE/FOTO E IMMAGINI/RICETTE` la scrive dal PC `scripts/esporta_foto_ricette.py` (Drive Desktop): l'account di servizio non ha spazio nel Drive del titolare.
+- Foto ricette: archivio unico Supabase Storage, anche per il cestino e le copie delle varianti; Drive si **legge** soltanto (foto già collegate, cartella scritta sul record), mai si scrive. La copia in `GESTIONALE/FOTO E IMMAGINI/RICETTE` la scrive dal PC `scripts/esporta_foto_ricette.py` (Drive Desktop): l'account di servizio non ha spazio nel Drive del titolare.
 - `prodotti_master` è il catalogo canonico e `magazzino_unificato` il magazzino canonico;
   `prodotti_vendita` e `sconti_merce` sono domini diversi e non si fondono.
 - **Il registro HACCP non si scrive da solo.** Alle 07:00 il turno *apre* la casella del giorno su ogni

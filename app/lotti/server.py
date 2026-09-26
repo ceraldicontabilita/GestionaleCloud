@@ -237,16 +237,15 @@ async def startup_event():
     except Exception as e:
         logging.warning(f"[STARTUP] Errore creazione indici: {e}")
 
-    # RST-0508AN: completa in modo riprendibile il passaggio delle foto ancora
-    # richiamate dal cestino al repository Drive canonico. Non blocca la salute
-    # del servizio; il worker persiste ogni gruppo subito dopo l'upload e al
-    # deploy successivo riparte esclusivamente dai riferimenti rimasti legacy.
+    # Porta su Supabase Storage le foto del cestino ancora nel vecchio archivio
+    # ``foto_files``. Non blocca la salute del servizio; ogni gruppo si salva
+    # subito dopo l'upload, e a lavoro finito il giro trova zero voci ed esce.
     try:
-        from app.lotti.routers.ricette import completa_migrazione_foto_cestino_drive
+        from app.lotti.routers.ricette import completa_migrazione_foto_cestino
 
         async def _migra_foto_cestino_rilascio():
             try:
-                esito = await completa_migrazione_foto_cestino_drive()
+                esito = await completa_migrazione_foto_cestino()
                 logging.info("[STARTUP] migrazione foto cestino completata: %s", esito)
             except Exception:
                 logging.exception("[STARTUP] migrazione foto cestino fallita")

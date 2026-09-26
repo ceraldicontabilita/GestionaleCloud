@@ -9,9 +9,9 @@ def run(coro):
     return asyncio.run(coro)
 
 
-def test_migrazione_foto_cestino_drive_e_riprendibile(monkeypatch):
+def test_migrazione_foto_cestino_su_storage_e_riprendibile(monkeypatch):
     import app.lotti.routers.ricette as ricette
-    from app.lotti.servizi import drive_foto_ricette
+    from app.lotti.servizi import supabase_foto_ricette
 
     database = AsyncMongoMockClient()["Gestionale_Test"]
     monkeypatch.setattr(ricette, "db", database)
@@ -34,18 +34,18 @@ def test_migrazione_foto_cestino_drive_e_riprendibile(monkeypatch):
         "id": "voce-senza-foto", "ricetta": {"id": "senza", "nome": "Senza"},
     }))
 
-    async def folder_id(_db):
-        return "cartella-ricette"
+    caricamenti = []
 
-    def carica(*, ricetta_id, contenuto, mime, filename, folder_id, service=None):
+    def carica(*, ricetta_id, contenuto, mime, filename):
         assert ricetta_id == "cestino-ricetta-0"
-        assert folder_id == "cartella-ricette"
-        return {"id": "drive-cestino-1", "sha256": hashlib.sha256(contenuto).hexdigest()}
+        caricamenti.append(ricetta_id)
+        return {"id": "storage-cestino-1", "bucket": "menu-images",
+                "path": "lotti/ricette/storage-cestino-1.png",
+                "sha256": hashlib.sha256(contenuto).hexdigest(), "filename": filename}
 
-    monkeypatch.setattr(drive_foto_ricette, "risolvi_folder_id", folder_id)
-    monkeypatch.setattr(drive_foto_ricette, "carica", carica)
+    monkeypatch.setattr(supabase_foto_ricette, "carica", carica)
 
-    anteprima = run(ricette.migra_foto_cestino_drive(False, 10, {}))
+    anteprima = run(ricette.migra_foto_cestino_storage(False, 10, {}))
     assert anteprima == {
         "dry_run": True,
         "voci_da_migrare": 2,
@@ -53,20 +53,22 @@ def test_migrazione_foto_cestino_drive_e_riprendibile(monkeypatch):
         "foto_legacy_mancanti": 0,
     }
 
-    esito = run(ricette.migra_foto_cestino_drive(True, 10, {}))
+    esito = run(ricette.migra_foto_cestino_storage(True, 10, {}))
     assert esito["foto_migrate"] == 1
     assert esito["voci_aggiornate"] == 2
     assert esito["voci_restanti"] == 0
     assert run(database.ricette_cestino_foto_backup_20260922.count_documents({})) == 3
     migrate = run(database.ricette_cestino.find(
-        {"ricetta.foto_drive_id": "drive-cestino-1"}
+        {"ricetta.foto_storage_path": "lotti/ricette/storage-cestino-1.png"}
     ).to_list(10))
     assert len(migrate) == 2
-    assert all(v["ricetta"]["foto_drive_folder_id"] == "cartella-ricette" for v in migrate)
+    assert all(v["ricetta"]["foto_url"].startswith("/api/foto/storage-cestino-1?v=") for v in migrate)
+    assert all("foto_drive_id" not in v["ricetta"] for v in migrate)
 
-    secondo_giro = run(ricette.migra_foto_cestino_drive(True, 10, {}))
+    secondo_giro = run(ricette.migra_foto_cestino_storage(True, 10, {}))
     assert secondo_giro["foto_migrate"] == 0
     assert secondo_giro["voci_aggiornate"] == 0
+    assert caricamenti == ["cestino-ricetta-0"]
 
 
 def test_worker_completa_tutti_i_lotti_senza_duplicare(monkeypatch):
@@ -93,9 +95,9 @@ def test_worker_completa_tutti_i_lotti_senza_duplicare(monkeypatch):
         assert admin == {}
         return next(esiti)
 
-    monkeypatch.setattr(ricette, "migra_foto_cestino_drive", migra)
+    monkeypatch.setattr(ricette, "migra_foto_cestino_storage", migra)
 
-    risultato = run(ricette.completa_migrazione_foto_cestino_drive())
+    risultato = run(ricette.completa_migrazione_foto_cestino())
     assert risultato == {
         "foto_migrate": 32,
         "voci_aggiornate": 62,
@@ -115,10 +117,10 @@ def test_worker_non_dichiara_successo_senza_avanzamento(monkeypatch):
             "voci_restanti": 3,
         }
 
-    monkeypatch.setattr(ricette, "migra_foto_cestino_drive", fermo)
+    monkeypatch.setattr(ricette, "migra_foto_cestino_storage", fermo)
 
     try:
-        run(ricette.completa_migrazione_foto_cestino_drive())
+        run(ricette.completa_migrazione_foto_cestino())
     except RuntimeError as exc:
         assert "senza avanzamento" in str(exc)
     else:

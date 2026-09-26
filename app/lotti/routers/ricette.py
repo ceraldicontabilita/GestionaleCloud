@@ -2216,18 +2216,20 @@ async def restore_ricetta(voce_id: str, _admin=Depends(require_admin)):
     }
 
 
-@router.post("/ricette-cestino/migra-foto-drive")
-async def migra_foto_cestino_drive(
+@router.post("/ricette-cestino/migra-foto-storage")
+async def migra_foto_cestino_storage(
     applica: bool = Query(False),
     limite: int = Query(10, ge=1, le=25),
     _admin=Depends(require_admin),
 ):
-    """Migra in lotti riprendibili i blob ancora richiamati dal cestino.
+    """Porta su Supabase Storage, in lotti riprendibili, le foto del cestino
+    ancora nel vecchio archivio ``foto_files``.
 
-    L'endpoint e' limitato alla migrazione RST-0508AN e verra' eliminato con
-    il fallback ``foto_files`` dopo il conteggio riferimenti=0. Ogni voce viene
-    persistita subito dopo l'upload, quindi un rilancio non duplica i file gia'
-    completati.
+    E' lo stesso archivio delle ricette attive: una ricetta ripristinata dal
+    cestino torna con ``foto_storage_path`` e ``GET /api/foto`` la serve senza
+    passare da Drive (l'account di servizio non ha spazio nel Drive del
+    titolare, e la vecchia cartella foto non esiste piu'). Ogni voce si salva
+    subito dopo l'upload: un rilancio non ricarica le foto gia' portate.
     """
     voci = await db.ricette_cestino.find(
         {"ricetta.foto_url": {"$regex": r"/api/foto/"}},
@@ -2236,7 +2238,7 @@ async def migra_foto_cestino_drive(
     gruppi: dict[str, list[dict]] = {}
     for voce in voci:
         ricetta = voce.get("ricetta") or {}
-        if ricetta.get("foto_drive_id"):
+        if ricetta.get("foto_storage_path") or ricetta.get("foto_drive_id"):
             continue
         legacy_id = _foto_id_da_url(ricetta.get("foto_url"))
         if legacy_id:
@@ -2259,8 +2261,7 @@ async def migra_foto_cestino_drive(
         if originali:
             await db.ricette_cestino_foto_backup_20260922.insert_many(originali)
 
-    from app.lotti.servizi import drive_foto_ricette
-    folder = await drive_foto_ricette.risolvi_folder_id(db)
+    from app.lotti.servizi import supabase_foto_ricette
     migrate = list(gruppi.items())[:limite]
     foto_migrate = 0
     voci_aggiornate = 0
@@ -2274,22 +2275,21 @@ async def migra_foto_cestino_drive(
         mime = str(foto.get("mime") or "image/jpeg")
         ricetta_id = str((riferimenti[0].get("ricetta") or {}).get("id") or legacy_id)
         caricata = await asyncio.to_thread(
-            drive_foto_ricette.carica,
+            supabase_foto_ricette.carica,
             ricetta_id=f"cestino-{ricetta_id}",
             contenuto=contenuto,
             mime=mime,
             filename=foto.get("filename") or f"{legacy_id}.img",
-            folder_id=folder,
         )
-        drive_id = caricata["id"]
+        foto_id = caricata["id"]
         versione = int(datetime.now(timezone.utc).timestamp())
         campi = {
-            "ricetta.foto_url": f"/api/foto/{drive_id}?v={versione}",
-            "ricetta.foto_id": drive_id,
-            "ricetta.foto_drive_id": drive_id,
-            "ricetta.foto_drive_folder_id": folder,
+            "ricetta.foto_url": f"/api/foto/{foto_id}?v={versione}",
+            "ricetta.foto_id": foto_id,
+            "ricetta.foto_storage_bucket": caricata["bucket"],
+            "ricetta.foto_storage_path": caricata["path"],
             "ricetta.foto_content_type": mime,
-            "ricetta.foto_filename": foto.get("filename") or f"{ricetta_id}{drive_foto_ricette._estensione(mime)}",
+            "ricetta.foto_filename": foto.get("filename") or f"{ricetta_id}.{supabase_foto_ricette._estensione(mime)}",
             "ricetta.foto_sha256": caricata["sha256"],
             "ricetta.foto_source": (riferimenti[0].get("ricetta") or {}).get("foto_source") or foto.get("fonte") or "legacy_migrata",
             "ricetta.foto_migrated_at": datetime.now(timezone.utc).isoformat(),
@@ -2301,6 +2301,7 @@ async def migra_foto_cestino_drive(
 
     restanti = await db.ricette_cestino.count_documents({
         "ricetta.foto_url": {"$regex": r"/api/foto/"},
+        "ricetta.foto_storage_path": {"$exists": False},
         "ricetta.foto_drive_id": {"$exists": False},
     })
     return {
@@ -2312,7 +2313,7 @@ async def migra_foto_cestino_drive(
     }
 
 
-async def completa_migrazione_foto_cestino_drive(limite: int = 25) -> dict:
+async def completa_migrazione_foto_cestino(limite: int = 25) -> dict:
     """Completa la migrazione RST-0508AN in lotti idempotenti.
 
     Il deploy la esegue in background usando le credenziali gia' configurate
@@ -2322,7 +2323,7 @@ async def completa_migrazione_foto_cestino_drive(limite: int = 25) -> dict:
     """
     totali = {"foto_migrate": 0, "voci_aggiornate": 0, "giri": 0}
     while True:
-        esito = await migra_foto_cestino_drive(True, limite, {})
+        esito = await migra_foto_cestino_storage(True, limite, {})
         totali["giri"] += 1
         totali["foto_migrate"] += int(esito.get("foto_migrate") or 0)
         totali["voci_aggiornate"] += int(esito.get("voci_aggiornate") or 0)
@@ -2633,25 +2634,35 @@ async def _clona_foto_tra_ricette(
     origine = await db.ricette.find_one(
         {"id": ricetta_origine_id},
         {"_id": 0, "foto_url": 1, "nome": 1, "foto_source": 1,
-         "foto_drive_id": 1, "foto_drive_folder_id": 1},
+         "foto_drive_id": 1, "foto_drive_folder_id": 1,
+         "foto_storage_path": 1, "foto_content_type": 1, "foto_filename": 1},
     )
     foto_origine_id = _foto_id_da_url((origine or {}).get("foto_url"))
     if not foto_origine_id:
         return None
+    storage_path = str((origine or {}).get("foto_storage_path") or "").strip()
     drive_id = str((origine or {}).get("foto_drive_id") or "").strip()
-    if drive_id:
-        from app.lotti.servizi import drive_foto_ricette
-        folder = str((origine or {}).get("foto_drive_folder_id") or "").strip()
-        dati_foto, mime, metadata = await asyncio.to_thread(
-            drive_foto_ricette.leggi, drive_id, folder_id=folder
-        )
+    if storage_path or drive_id:
+        from app.lotti.servizi import supabase_foto_ricette
+        if storage_path:
+            dati_foto = await asyncio.to_thread(supabase_foto_ricette.leggi, storage_path)
+            mime = str((origine or {}).get("foto_content_type") or "image/jpeg")
+            nome_file = (origine or {}).get("foto_filename")
+        else:
+            from app.lotti.servizi import drive_foto_ricette
+            folder = str((origine or {}).get("foto_drive_folder_id") or "").strip()
+            dati_foto, mime, metadata = await asyncio.to_thread(
+                drive_foto_ricette.leggi, drive_id, folder_id=folder
+            )
+            nome_file = metadata.get("name")
+        # La copia va sempre su Supabase Storage, l'archivio delle foto nuove:
+        # nel Drive del titolare l'account di servizio non ha spazio.
         caricata = await asyncio.to_thread(
-            drive_foto_ricette.carica,
+            supabase_foto_ricette.carica,
             ricetta_id=ricetta_destinazione_id,
             contenuto=dati_foto,
             mime=mime,
-            filename=metadata.get("name"),
-            folder_id=folder,
+            filename=nome_file,
         )
         versione = int(datetime.now(timezone.utc).timestamp())
         nuovo_foto_id = caricata["id"]
@@ -2659,12 +2670,13 @@ async def _clona_foto_tra_ricette(
         await db.ricette.update_one(
             {"id": ricetta_destinazione_id}, {"$set": {
                 "foto_url": foto_url, "foto_id": nuovo_foto_id,
-                "foto_drive_id": nuovo_foto_id, "foto_drive_folder_id": folder,
-                "foto_filename": metadata.get("name"), "foto_content_type": mime,
+                "foto_storage_bucket": caricata["bucket"],
+                "foto_storage_path": caricata["path"],
+                "foto_filename": nome_file, "foto_content_type": mime,
                 "foto_sha256": caricata["sha256"],
                 "foto_source": (origine or {}).get("foto_source") or "copia_ricetta",
                 "foto_copiata_da_ricetta_id": ricetta_origine_id,
-            }}
+            }, "$unset": {"foto_drive_id": "", "foto_drive_folder_id": ""}}
         )
         return foto_url
 

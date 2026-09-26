@@ -168,9 +168,6 @@ class Settings(BaseSettings):
     GOOGLE_DRIVE_QUARANTENA_FOLDER_ID: Optional[str] = None
     PROTOCOLLO_DRIVE_ENABLED: bool = True
     GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON: Optional[str] = None
-    # Archivio canonico delle immagini ricette. I byte non vivono nel
-    # document store operativo: Supabase conserva solo metadati e riferimenti.
-    GOOGLE_DRIVE_RICETTE_IMAGES_FOLDER_ID: Optional[str] = None
 
     # Service account DEDICATI per cartella (scelta utente: un account per
     # canale). Se valorizzato, il canale usa il suo; altrimenti ricade su
