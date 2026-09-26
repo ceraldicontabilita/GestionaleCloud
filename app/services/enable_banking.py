@@ -362,6 +362,9 @@ async def leggi_sessione(db) -> Dict[str, Any]:
         "valida_fino": doc.get("valida_fino"),
         "collegata_il": doc.get("collegata_il"),
         "ultima_lettura": doc.get("ultima_lettura"),
+        "ultimo_import": doc.get("ultimo_import"),
+        "ultimo_import_esito": doc.get("ultimo_import_esito"),
+        "giro_automatico": doc.get("giro_automatico"),
     }
 
 
@@ -635,5 +638,43 @@ async def importa_nuovi(
             "importati": esito["importati"],
             "da_verificare_esclusi": esito["da_verificare_esclusi"],
         }}},
+    )
+    return esito
+
+
+# ── giro automatico ─────────────────────────────────────────────────────────
+
+# Senza l'utente presente la banca concede poche letture al giorno (PSD2):
+# due giri bastano, e uno lasciato libero serve a «Aggiorna ora».
+GIORNI_GIRO = 10
+GIORNI_PRIMO_GIRO = 90
+
+
+async def giro_automatico(db, client) -> Dict[str, Any]:
+    """Importa da solo i movimenti certamente nuovi (scheduler, Europe/Rome).
+
+    Stesso motore di «Importa»: i DA_VERIFICARE restano fuori, niente doppioni.
+    L'esito, anche il salto o l'errore, resta in ``sistema_stato`` perche'
+    Prima Nota Banca e il riquadro Aggiornamento dati lo mostrino.
+    """
+    adesso = datetime.now(timezone.utc).isoformat()
+    stato = await leggi_sessione(db) if attivo() and configurato() else {}
+    if not attivo() or not configurato():
+        esito: Dict[str, Any] = {"eseguito_il": adesso, "saltato": "spento"}
+    elif not stato.get("collegata"):
+        esito = {"eseguito_il": adesso, "saltato": "non_collegato"}
+    else:
+        giorni = GIORNI_GIRO if stato.get("ultimo_import") else GIORNI_PRIMO_GIRO
+        try:
+            risultato = await importa_nuovi(db, client, giorni=giorni)
+            esito = {"eseguito_il": adesso, "giorni": giorni,
+                     "importati": risultato["importati"],
+                     "gia_presenti": risultato["gia_presenti"],
+                     "da_verificare_esclusi": risultato["da_verificare_esclusi"]}
+        except ErroreLettura as exc:
+            esito = {"eseguito_il": adesso, "giorni": giorni, "errore": exc.stato}
+            logger.warning("[enable-banking] giro automatico non riuscito: %s", exc)
+    await db["sistema_stato"].update_one(
+        {"chiave": CHIAVE_SESSIONE}, {"$set": {"giro_automatico": esito}}, upsert=True,
     )
     return esito

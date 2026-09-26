@@ -9,6 +9,7 @@ import AssociaMovimentoBanca from '../components/AssociaMovimentoBanca';
 import AssociaAssegnoFattura from '../components/AssociaAssegnoFattura';
 import DocumentViewerModal from '../components/DocumentViewerModal';
 import DocumentImportLink from '../components/DocumentImportLink';
+import BancaDiretta from '../components/BancaDiretta';
 import FinanziamentoSoci from './FinanziamentoSoci';
 import { PageHeader } from '../components/ds/PageHeader';
 import { voceDi } from '../navigation.config';
@@ -949,6 +950,10 @@ function Registro({ tipo, dati, mese, onMese, selectedId = '', onRicarica, onMod
           </button>
         )}
       </div>
+
+      {/* Banco BPM letto dalla banca: i movimenti nuovi entrano da soli (07:15 e
+          19:15) nell'archivio estratti conto; «Aggiorna ora» fa lo stesso subito. */}
+      {tipo === 'banca' && <BancaDiretta />}
 
       {/* 18/09/2026: la pagina mostrava un saldo progressivo su una prima nota
           ferma al 24/08 senza dirlo, e righe POS «da verificare» che non

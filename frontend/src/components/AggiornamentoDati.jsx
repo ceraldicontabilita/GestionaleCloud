@@ -1,8 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { RefreshCw, Database, Link2, Eye, Download } from 'lucide-react';
-import api, { messaggioErrore } from '../api';
+import { RefreshCw, Database } from 'lucide-react';
+import api from '../api';
 import { COLORS } from '../lib/utils';
-import { useConfirm } from './ui/ConfirmDialog';
 
 /**
  * Riquadro «Aggiornamento dati» della Dashboard — SOLA LETTURA.
@@ -117,131 +116,12 @@ export default function AggiornamentoDati() {
                   ))}
                 </div>
                 {f.nota && <div style={S.nota}>{f.nota}</div>}
-                {f.enable_banking && <LetturaDiretta eb={f.enable_banking} />}
               </li>
             );
           })}
         </ol>
       )}
     </section>
-  );
-}
-
-/**
- * Lettura diretta Banco BPM (Enable Banking): collega il conto, mostra
- * l'anteprima e importa solo le righe certamente nuove dopo conferma.
- */
-function LetturaDiretta({ eb }) {
-  const confirm = useConfirm();
-  const [anteprima, setAnteprima] = useState(null);
-  const [esitoImport, setEsitoImport] = useState(null);
-  const [lavoro, setLavoro] = useState(false);
-  const [msg, setMsg] = useState(null);
-
-  let stato = 'Lettura diretta spenta';
-  if (eb.attivo && !eb.configurato) stato = 'Lettura diretta attiva, ma mancano le chiavi di Enable Banking su Render';
-  else if (eb.attivo && !eb.collegata) stato = 'Conto non collegato';
-  else if (eb.attivo) stato = `Conto collegato, permesso valido fino al ${giorno(eb.valida_fino)}`;
-
-  const collega = async () => {
-    setLavoro(true);
-    setMsg(null);
-    try {
-      const res = await api.post('/api/banca/enable-banking/collega', {}, { timeout: 30000 });
-      window.location.assign(res.data.url);
-    } catch (e) {
-      setMsg(messaggioErrore(e, 'Collegamento non avviato'));
-      setLavoro(false);
-    }
-  };
-
-  const leggi = async () => {
-    setLavoro(true);
-    setMsg(null);
-    try {
-      const res = await api.get('/api/banca/enable-banking/anteprima', { timeout: 90000 });
-      setAnteprima(res.data);
-    } catch (e) {
-      setMsg(messaggioErrore(e, 'Lettura dalla banca non riuscita'));
-    } finally {
-      setLavoro(false);
-    }
-  };
-
-  const importa = async () => {
-    const nuovi = Number(anteprima?.conteggi?.nuovi || 0);
-    if (!nuovi) return;
-    const dubbi = Number(anteprima?.conteggi?.da_verificare || 0);
-    const confermato = await confirm({
-      title: 'Importa i nuovi movimenti Banco BPM',
-      message: `Saranno importati ${nuovi} movimenti certamente nuovi.\n${dubbi} movimenti da verificare resteranno esclusi.\nL'importazione sarà provvisoria fino all'estratto conto ufficiale PDF.`,
-      confirmText: `Importa ${nuovi}`,
-      cancelText: 'Annulla',
-    });
-    if (!confermato) return;
-    setLavoro(true);
-    setMsg(null);
-    setEsitoImport(null);
-    try {
-      const res = await api.post(
-        '/api/banca/enable-banking/importa',
-        { conferma: true, giorni: 90 },
-        { timeout: 120000 },
-      );
-      setEsitoImport(res.data);
-      setAnteprima(prev => prev ? {
-        ...prev,
-        conteggi: {
-          ...prev.conteggi,
-          nuovi: Math.max(0, Number(prev.conteggi.nuovi || 0) - Number(res.data.importati || 0)),
-          gia_presenti: Number(prev.conteggi.gia_presenti || 0) + Number(res.data.importati || 0),
-        },
-      } : prev);
-    } catch (e) {
-      setMsg(messaggioErrore(e, 'Importazione dalla banca non riuscita'));
-    } finally {
-      setLavoro(false);
-    }
-  };
-
-  return (
-    <div style={S.diretta} data-testid="lettura-diretta">
-      <div style={S.testo}>{stato}</div>
-      {eb.attivo && eb.configurato && (
-        <div style={S.azioni}>
-          <button type="button" style={S.bottone} onClick={collega} disabled={lavoro}>
-            <Link2 size={14} /> {eb.collegata ? 'Ricollega Banco BPM' : 'Collega Banco BPM'}
-          </button>
-          {eb.collegata && (
-            <button type="button" style={S.bottone} onClick={leggi} disabled={lavoro}>
-              <Eye size={14} /> {lavoro ? 'Lettura…' : 'Anteprima (non scrive)'}
-            </button>
-          )}
-        </div>
-      )}
-      {msg && <div style={S.errore} role="alert">{msg}</div>}
-      {anteprima && (
-        <div style={S.dettagli} data-testid="anteprima-banca">
-          <span>Periodo: <strong>{giorno(anteprima.periodo?.[0])} – {giorno(anteprima.periodo?.[1])}</strong></span>
-          <span>letti: <strong>{anteprima.conteggi.letti}</strong></span>
-          <span>nuovi: <strong>{anteprima.conteggi.nuovi}</strong></span>
-          <span>già presenti: <strong>{anteprima.conteggi.gia_presenti}</strong></span>
-          <span>da verificare: <strong>{anteprima.conteggi.da_verificare}</strong></span>
-          {Number(anteprima.conteggi.nuovi || 0) > 0 && (
-            <button type="button" style={S.bottone} onClick={importa} disabled={lavoro}>
-              <Download size={14} /> Importa {anteprima.conteggi.nuovi} nuovi
-            </button>
-          )}
-        </div>
-      )}
-      {esitoImport && (
-        <div style={S.successo} data-testid="esito-import-banca">
-          Importati <strong>{esitoImport.importati}</strong> movimenti.{' '}
-          Esclusi <strong>{esitoImport.da_verificare_esclusi}</strong> movimenti da verificare.
-          Restano provvisori fino al PDF ufficiale.
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -281,11 +161,5 @@ const S = {
     marginTop: 10, padding: 10, borderRadius: 8, background: COLORS.dangerLight,
     color: COLORS.danger, fontSize: 13, display: 'flex', flexWrap: 'wrap', gap: 8,
   },
-  successo: {
-    marginTop: 8, padding: '9px 11px', borderRadius: 8,
-    color: COLORS.success, background: COLORS.successLight, fontSize: 12,
-  },
   idRichiesta: { fontSize: 11, opacity: 0.8 },
-  diretta: { marginTop: 8, paddingTop: 8, borderTop: `1px dashed ${COLORS.border}` },
-  azioni: { display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 6 },
 };
