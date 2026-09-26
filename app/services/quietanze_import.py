@@ -306,117 +306,11 @@ async def importa_quietanza_bytes(
         logger.exception("Errore riconciliazione AdeR quietanza %s", file_id)
         riconciliazione_ader = {"matched": False, "reason": "errore_riconciliazione_ader"}
 
-    # ── MATCHING AUTOMATICO CON F24 COMMERCIALISTA (v3) ──────────────────
-    tributi_quietanza = estrai_tributi_dettaglio(parsed)
-    quietanza_lookup = {}
-    codici_ravv = []
-    importo_ravv = 0
-    for t in tributi_quietanza:
-        quietanza_lookup[(t["codice"], t["periodo"])] = t["importo_cents"]
-        if t["codice"] in CODICI_RAVVEDIMENTO:
-            codici_ravv.append(t["codice"])
-            importo_ravv += t["importo_cents"]
-
-    f24_da_pagare = await db[COLL_F24_COMMERCIALISTA].find({
-        "status": "da_pagare",
-        "riconciliato": False
-    }, {"_id": 0}).to_list(1000)
-
-    # Il match automatico e' ammesso soltanto se il modello e' univoco. Il
-    # confronto usa centesimi interi, codice, periodo e identita' contribuente
-    # quando disponibile; nessuna tolleranza monetaria e nessun first-match.
-    cf_quietanza = str(codice_fiscale or "").strip().upper()
-
-    def _matches_exact(f24: dict) -> bool:
-        cf_f24 = str(
-            (f24.get("dati_generali") or {}).get("codice_fiscale")
-            or f24.get("codice_fiscale") or ""
-        ).strip().upper()
-        if cf_quietanza and cf_f24 and cf_quietanza != cf_f24:
-            return False
-        principali = [
-            item for item in estrai_tributi_dettaglio(f24)
-            if item["codice"] not in CODICI_RAVVEDIMENTO
-        ]
-        return bool(principali) and all(
-            quietanza_lookup.get((item["codice"], item["periodo"])) == item["importo_cents"]
-            for item in principali
-        )
-
-    f24_da_pagare_tutti = list(f24_da_pagare)
-    candidati_match = [item for item in f24_da_pagare_tutti if _matches_exact(item)]
-    f24_da_pagare = candidati_match if len(candidati_match) == 1 else []
-
-    f24_matchati = []
-    for f24 in f24_da_pagare:
-        tributi_f24 = estrai_tributi_dettaglio(f24)
-        tributi_f24_principali = [t for t in tributi_f24 if t["codice"] not in CODICI_RAVVEDIMENTO]
-        if not tributi_f24_principali:
-            continue
-
-        tributi_trovati = 0
-        for t in tributi_f24_principali:
-            key = (t["codice"], t["periodo"])
-            if key in quietanza_lookup and t["importo_cents"] == quietanza_lookup[key]:
-                tributi_trovati += 1
-
-        if tributi_trovati != len(tributi_f24_principali):
-            continue
-
-        # MATCH TROVATO
-        saldo_f24 = f24.get("totali", {}).get("saldo_netto", 0)
-        is_ravveduto = len(codici_ravv) > 0
-        update_data = {
-            **patch_quietanza_associata(
-                quietanza_id=file_id,
-                protocollo=protocollo,
-                data_quietanza=data_pagamento,
-            ),
-            "match_tributi_trovati": tributi_trovati,
-            "match_tributi_totali": len(tributi_f24_principali),
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }
-        if is_ravveduto:
-            update_data["ravveduto"] = True
-            update_data["importo_ravvedimento_cents"] = importo_ravv
-            update_data["importo_ravvedimento"] = importo_ravv / 100
-            update_data["codici_ravvedimento"] = codici_ravv
-
-        await db[COLL_F24_COMMERCIALISTA].update_one({"id": f24["id"]}, {"$set": update_data})
-        await db[COLL_QUIETANZE].update_one(
-            {"id": file_id}, {"$push": {"f24_associati": f24["id"]}}
-        )
-        try:
-            await record_f24_receipt_link(
-                db,
-                f24=f24,
-                receipt_id=file_id,
-                protocol=protocollo,
-                amount=saldo_quietanza,
-                matched_tributes=tributi_trovati,
-                total_tributes=len(tributi_f24_principali),
-            )
-        except Exception:
-            logger.exception(
-                "Errore registrazione relazione quietanza %s / F24 %s",
-                file_id,
-                f24.get("id"),
-            )
-        # La quietanza collega il documento, ma la scadenza diventa completata
-        # solo dopo l'addebito bancario. Prima il calendario veniva chiuso qui,
-        # creando falsi pagamenti.
-        scadenze_completate = []
-        f24_matchati.append({
-            "f24_id": f24["id"],
-            "f24_filename": f24.get("file_name"),
-            "importo_f24": saldo_f24,
-            "importo_quietanza": saldo_quietanza,
-            "tributi_matchati": f"{tributi_trovati}/{len(tributi_f24_principali)}",
-            "ravveduto": is_ravveduto,
-            "importo_ravvedimento": importo_ravv / 100 if is_ravveduto else 0,
-            "scadenze_completate": scadenze_completate,
-        })
-        break  # Un F24 per quietanza (one-to-one)
+    # ── MATCHING AUTOMATICO CON F24 (v3) ─────────────────────────────────
+    abbinamento = await abbina_quietanza_a_f24(db, quietanza_doc)
+    f24_matchati = abbinamento["f24_matchati"]
+    candidati_match = abbinamento["candidati"]
+    f24_da_pagare_tutti = abbinamento["f24_esaminati"]
 
     risultato = {
         "success": True,
@@ -526,3 +420,172 @@ async def importa_quietanza_bytes(
             risultato["ritenute_aggiornate"] = {"errore": True}
 
     return risultato
+
+
+def _stato_banca_verificato(f24: dict) -> bool:
+    return bool(
+        f24.get("pagamento_verificato_banca")
+        or str(f24.get("status") or "").lower() == "pagato"
+    )
+
+
+async def abbina_quietanza_a_f24(db, quietanza: dict) -> Dict[str, Any]:
+    """Collega una quietanza al suo modello F24, se ce n'e' uno solo.
+
+    Candidati: ogni F24 non eliminato **ancora senza quietanza**, qualunque sia
+    il suo stato. Prima si guardavano solo i «da pagare»: un F24 gia'
+    riscontrato in banca (aprile 2026, 6.469,23 EUR) non riceveva piu' la sua
+    quietanza, e dalla tabella F24 si arrivava solo all'estratto conto. Il
+    confronto e' esatto: codice, periodo e importo al centesimo di ogni riga,
+    contribuente se noto; con due candidati non si collega niente.
+
+    A un F24 gia' pagato in banca si aggiungono solo i campi della quietanza:
+    ``patch_quietanza_associata`` lo riporterebbe «da verificare in banca».
+    """
+    file_id = quietanza["id"]
+    dg = quietanza.get("dati_generali") or {}
+    protocollo = quietanza.get("protocollo_telematico") or dg.get("protocollo_telematico") or ""
+    data_pagamento = quietanza.get("data_pagamento") or dg.get("data_pagamento")
+    saldo_quietanza = quietanza.get("saldo") or dg.get("saldo_delega") or 0
+    cf_quietanza = str(quietanza.get("codice_fiscale") or dg.get("codice_fiscale") or "").strip().upper()
+
+    tributi_quietanza = estrai_tributi_dettaglio(quietanza)
+    quietanza_lookup = {}
+    codici_ravv = []
+    importo_ravv = 0
+    for t in tributi_quietanza:
+        quietanza_lookup[(t["codice"], t["periodo"])] = t["importo_cents"]
+        if t["codice"] in CODICI_RAVVEDIMENTO:
+            codici_ravv.append(t["codice"])
+            importo_ravv += t["importo_cents"]
+
+    esaminati = [
+        f for f in await db[COLL_F24_COMMERCIALISTA].find(
+            {}, {"_id": 0, "pdf_data": 0},
+        ).to_list(5000)
+        if not f.get("quietanza_id")
+        and str(f.get("status") or "").lower() not in ("eliminato", "deleted", "archiviato")
+    ]
+
+    def _principali(f24: dict) -> list:
+        return [
+            item for item in estrai_tributi_dettaglio(f24)
+            if item["codice"] not in CODICI_RAVVEDIMENTO
+        ]
+
+    def _combacia(f24: dict) -> bool:
+        cf_f24 = str(
+            (f24.get("dati_generali") or {}).get("codice_fiscale")
+            or f24.get("codice_fiscale") or ""
+        ).strip().upper()
+        if cf_quietanza and cf_f24 and cf_quietanza != cf_f24:
+            return False
+        principali = _principali(f24)
+        return bool(principali) and all(
+            quietanza_lookup.get((item["codice"], item["periodo"])) == item["importo_cents"]
+            for item in principali
+        )
+
+    candidati = [f for f in esaminati if _combacia(f)]
+    esito: Dict[str, Any] = {
+        "f24_matchati": [], "candidati": candidati, "f24_esaminati": esaminati,
+    }
+    if len(candidati) != 1:
+        return esito
+
+    f24 = candidati[0]
+    principali = _principali(f24)
+    campi_quietanza = patch_quietanza_associata(
+        quietanza_id=file_id, protocollo=protocollo, data_quietanza=data_pagamento,
+    )
+    if _stato_banca_verificato(f24):
+        campi_quietanza = {
+            k: v for k, v in campi_quietanza.items()
+            if k in ("quietanza_id", "protocollo_quietanza",
+                     "data_pagamento_quietanza", "riconciliato_quietanza")
+        }
+    update_data = {
+        **campi_quietanza,
+        "match_tributi_trovati": len(principali),
+        "match_tributi_totali": len(principali),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    is_ravveduto = len(codici_ravv) > 0
+    if is_ravveduto:
+        update_data["ravveduto"] = True
+        update_data["importo_ravvedimento_cents"] = importo_ravv
+        update_data["importo_ravvedimento"] = importo_ravv / 100
+        update_data["codici_ravvedimento"] = codici_ravv
+
+    await db[COLL_F24_COMMERCIALISTA].update_one({"id": f24["id"]}, {"$set": update_data})
+    await db[COLL_QUIETANZE].update_one(
+        {"id": file_id}, {"$push": {"f24_associati": f24["id"]}}
+    )
+    try:
+        await record_f24_receipt_link(
+            db,
+            f24=f24,
+            receipt_id=file_id,
+            protocol=protocollo,
+            amount=saldo_quietanza,
+            matched_tributes=len(principali),
+            total_tributes=len(principali),
+        )
+    except Exception:
+        logger.exception(
+            "Errore registrazione relazione quietanza %s / F24 %s", file_id, f24.get("id"),
+        )
+    # La quietanza collega il documento, ma la scadenza diventa completata
+    # solo dopo l'addebito bancario.
+    esito["f24_matchati"].append({
+        "f24_id": f24["id"],
+        "f24_filename": f24.get("file_name"),
+        "importo_f24": (f24.get("totali") or {}).get("saldo_netto", 0),
+        "importo_quietanza": saldo_quietanza,
+        "tributi_matchati": f"{len(principali)}/{len(principali)}",
+        "ravveduto": is_ravveduto,
+        "importo_ravvedimento": importo_ravv / 100 if is_ravveduto else 0,
+        "scadenze_completate": [],
+    })
+    return esito
+
+
+async def ricollega_quietanze_orfane(db) -> Dict[str, Any]:
+    """Ripassa le quietanze rimaste senza F24 (giro di riconciliazione).
+
+    Un modello arrivato dopo la sua quietanza, o gia' pagato in banca quando
+    la quietanza e' arrivata, si ricollega qui senza nessun comando a mano.
+    """
+    orfane = [
+        q for q in await db[COLL_QUIETANZE].find(
+            {"stato_associazione": {"$in": [
+                "f24_mancante", "f24_non_corrispondente", "f24_ambiguo",
+            ]}},
+            {"_id": 0, "pdf_data": 0},
+        ).to_list(2000)
+        if not q.get("f24_associati")
+    ]
+    collegate = 0
+    for quietanza in orfane:
+        esito = await abbina_quietanza_a_f24(db, quietanza)
+        if not esito["f24_matchati"]:
+            continue
+        collegate += 1
+        # Come all'import riuscito: associata, e lo stato «F24 mancante» o
+        # «non corrispondente» non vale piu'.
+        await db[COLL_QUIETANZE].update_one({"id": quietanza["id"]}, {
+            "$set": {"stato_associazione": "associata", "calcolo_fiscale_sospeso": False},
+            "$unset": {"stato_quietanza": ""},
+        })
+        alert = await db[COLL_F24_ALERTS].find_one(
+            {"tipo": "quietanza_senza_match", "quietanza_id": quietanza["id"],
+             "status": "pending"},
+            {"_id": 0, "id": 1},
+        )
+        if alert:
+            await db[COLL_F24_ALERTS].update_one({"id": alert["id"]}, {"$set": {
+                "status": "risolto",
+                "risolto_at": datetime.now(timezone.utc).isoformat(),
+                "risolto_da": "ricollega_quietanze_orfane",
+            }})
+    return {"orfane": len(orfane), "collegate": collegate}

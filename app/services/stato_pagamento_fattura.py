@@ -167,3 +167,15 @@ def con_non_pagate(filtro: Mapping[str, Any] | None = None) -> Dict[str, Any]:
     if not base:
         return dict(FILTRO_NON_PAGATE)
     return {"$and": [base, dict(FILTRO_NON_PAGATE)]}
+
+
+#: Pagate per dichiarazione del titolare (report «Fatture ricevute»), con la
+#: riga gia' in Prima Nota Banca ma senza ancora il movimento dell'estratto
+#: conto. Per l'utente sono pagate; per i motori bancari restano da
+#: riscontrare, altrimenti nessuno le abbinerebbe mai al loro addebito.
+FILTRO_ATTESA_RISCONTRO: Dict[str, Any] = {"in_attesa_riscontro_banca": True}
+
+#: I candidati di un motore che abbina movimenti bancari e fatture.
+FILTRO_DA_RISCONTRARE: Dict[str, Any] = {
+    "$or": [dict(FILTRO_NON_PAGATE), dict(FILTRO_ATTESA_RISCONTRO)]
+}

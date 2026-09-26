@@ -35,6 +35,13 @@ CAMPI_EVIDENZA_BANCA = (
 # Provvisori e la conferma rispondeva «gia' registrata».
 SOURCES_NON_PAGAMENTO = ("metodo_fornitore_assente_provvisorio",)
 
+# Riga di Prima Nota Banca scritta dal report del titolare («pagata in banca,
+# carta, PayPal, assegno»): e' in Prima Nota da subito, ma senza movimento
+# dell'estratto conto non e' una prova. Quando il movimento arriva, la riga
+# che il motore bancario scrive **la sostituisce** (``assorbi_righe_
+# dichiarate``): mai due uscite per lo stesso pagamento.
+CAMPO_RIGA_DICHIARATA = "dichiarato_titolare"
+
 
 def totale_pagabile_al_fornitore(fattura: Dict[str, Any]) -> float:
     """Importo finanziario da saldare al fornitore, al netto ritenuta.
@@ -352,3 +359,65 @@ async def ripristina_fattura_senza_movimento_attivo(
         },
     )
     return bool(getattr(result, "modified_count", 0))
+
+
+def _ha_evidenza_banca(riga: Dict[str, Any]) -> bool:
+    return any(riga.get(campo) not in (None, "") for campo in CAMPI_EVIDENZA_BANCA)
+
+
+async def assorbi_righe_dichiarate(
+    db, quote_per_fattura: Dict[str, float], *, sostituita_da: str,
+    movimento_id: str,
+) -> int:
+    """La prova bancaria e' arrivata: la riga dichiarata lascia il posto.
+
+    ``quote_per_fattura`` e' quanto il movimento paga di ogni fattura. Se copre
+    la riga dichiarata, quella si storna (soft delete per id, con il
+    riferimento alla riga che la sostituisce); se ne copre solo una parte, la
+    riga dichiarata scende del pagato e resta per il residuo. Ritorna quante
+    righe dichiarate ha toccato.
+    """
+    ora = datetime.now(timezone.utc).isoformat()
+    toccate = 0
+    for fattura_id, quota in quote_per_fattura.items():
+        if not fattura_id:
+            continue
+        righe = await db["prima_nota_banca"].find(
+            {"fattura_id": str(fattura_id), CAMPO_RIGA_DICHIARATA: True,
+             "status": {"$nin": ["deleted", "archived"]}},
+            {"_id": 0},
+        ).to_list(20)
+        residuo = round(abs(float(quota or 0)), 2)
+        for riga in righe:
+            if residuo <= 0.009 or _ha_evidenza_banca(riga) or riga.get("id") == sostituita_da:
+                continue
+            importo = round(abs(float(riga.get("importo") or 0)), 2)
+            if importo - residuo > 0.01:
+                await db["prima_nota_banca"].update_one({"id": riga["id"]}, {"$set": {
+                    "importo": round(importo - residuo, 2),
+                    "parzialmente_riscontrata_da": sostituita_da,
+                    "updated_at": ora,
+                }})
+                residuo = 0.0
+            else:
+                await db["prima_nota_banca"].update_one({"id": riga["id"]}, {"$set": {
+                    "status": "deleted",
+                    "deleted_reason": f"riscontrata_da_estratto_conto:{movimento_id}",
+                    "deleted_at": ora,
+                    "sostituita_da": sostituita_da,
+                }})
+                residuo = round(residuo - importo, 2)
+            toccate += 1
+        if righe:
+            ancora = await db["prima_nota_banca"].find_one(
+                {"fattura_id": str(fattura_id), CAMPO_RIGA_DICHIARATA: True,
+                 "status": {"$nin": ["deleted", "archived"]}},
+                {"_id": 0, "id": 1},
+            )
+            if not ancora:
+                await db["invoices"].update_one({"id": str(fattura_id)}, {"$set": {
+                    "in_attesa_riscontro_banca": False,
+                    "riscontro_banca_at": ora,
+                    "riscontro_banca_movimento_id": movimento_id,
+                }})
+    return toccate
