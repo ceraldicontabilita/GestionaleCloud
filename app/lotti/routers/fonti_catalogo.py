@@ -38,6 +38,7 @@ from pydantic import BaseModel
 
 from app.lotti.db import database as db
 from app.lotti.auth import require_admin
+from app.lotti.servizi.fetch_sicuro import Risposta, UrlNonAmmesso, controlla_forma, scarica
 
 logger = logging.getLogger("uvicorn.error")
 router = APIRouter(prefix="/fonti-catalogo", tags=["fonti_catalogo"])
@@ -77,6 +78,10 @@ async def crea_fonte(payload: NuovaFonte = Body(...), _admin=Depends(require_adm
         raise HTTPException(400, "Nome e indirizzo sono obbligatori")
     if not url.startswith("http"):
         url = "https://" + url
+    try:
+        controlla_forma(url)
+    except UrlNonAmmesso as exc:
+        raise HTTPException(400, f"Indirizzo non ammesso: {exc}") from exc
     fornitore_key = _slugify(payload.fornitore_key or nome)
     esiste = await db.fonti_catalogo_esterne.find_one({"fornitore_key": fornitore_key})
     if esiste:
@@ -108,15 +113,31 @@ async def elimina_fonte(fonte_id: str, elimina_prodotti: bool = False, _admin=De
     return {"ok": True}
 
 
+def _domini_fonte(base_url: str) -> list:
+    """Una fonte si legge solo sul proprio sito (e sottodomini): una sitemap che
+    rimanda altrove, o alla rete interna, non viene seguita."""
+    host = (urlparse(base_url).hostname or "").lower()
+    return [host[4:] if host.startswith("www.") else host]
+
+
+async def _get(client: httpx.AsyncClient, url: str, domini: list) -> Optional[Risposta]:
+    try:
+        return await scarica(url, domini=domini, headers=HEADERS, client=client)
+    except UrlNonAmmesso as exc:
+        logger.info("[fonti_catalogo] %s scartato: %s", url[:120], exc)
+        return None
+
+
 async def _trova_url_prodotti(client: httpx.AsyncClient, base_url: str) -> list:
     """Cerca una sitemap; se assente, prova a leggere i link della homepage."""
     origine = f"{urlparse(base_url).scheme}://{urlparse(base_url).netloc}"
+    domini = _domini_fonte(base_url)
     urls_prodotto = []
 
     for path in SITEMAP_CANDIDATI:
         try:
-            r = await client.get(origine + path, headers=HEADERS, timeout=20)
-            if r.status_code != 200 or "<" not in r.text:
+            r = await _get(client, origine + path, domini)
+            if r is None or r.status_code != 200 or "<" not in r.text:
                 continue
             soup = BeautifulSoup(r.text, "xml")
             locs = [loc.get_text(strip=True) for loc in soup.find_all("loc")]
@@ -126,23 +147,23 @@ async def _trova_url_prodotti(client: httpx.AsyncClient, base_url: str) -> list:
             sotto_sitemap = [l for l in locs if l.endswith(".xml") and any(p in l.lower() for p in PAROLE_PRODOTTO)]
             if sotto_sitemap and not any(p in path for p in ("product",)):
                 for sm in sotto_sitemap[:5]:
-                    try:
-                        r2 = await client.get(sm, headers=HEADERS, timeout=20)
-                        soup2 = BeautifulSoup(r2.text, "xml")
-                        urls_prodotto += [loc.get_text(strip=True) for loc in soup2.find_all("loc")]
-                    except Exception:
+                    r2 = await _get(client, sm, domini)
+                    if r2 is None:
                         continue
+                    soup2 = BeautifulSoup(r2.text, "xml")
+                    urls_prodotto += [loc.get_text(strip=True) for loc in soup2.find_all("loc")]
             else:
                 urls_prodotto += [l for l in locs if any(p in l.lower() for p in PAROLE_PRODOTTO)]
             if urls_prodotto:
                 break
-        except Exception:
+        except Exception as exc:
+            logger.info("[fonti_catalogo] sitemap %s illeggibile: %s %s", path, type(exc).__name__, exc)
             continue
 
     if not urls_prodotto:
         # Fallback: leggo i link della homepage, tengo quelli che sembrano schede prodotto
-        try:
-            r = await client.get(base_url, headers=HEADERS, timeout=20)
+        r = await _get(client, base_url, domini)
+        if r is not None:
             soup = BeautifulSoup(r.text, "html.parser")
             visti = set()
             for a in soup.find_all("a", href=True):
@@ -152,8 +173,6 @@ async def _trova_url_prodotti(client: httpx.AsyncClient, base_url: str) -> list:
                 if any(p in href.lower() for p in PAROLE_PRODOTTO):
                     visti.add(href)
                     urls_prodotto.append(href)
-        except Exception:
-            pass
 
     # dedup preservando l'ordine, tetto di sicurezza
     visti = set()
@@ -230,14 +249,15 @@ async def _sincronizza_fonte(fonte: dict):
     trovati = 0
     errore = None
     try:
-        async with httpx.AsyncClient(follow_redirects=True) as client:
+        domini = _domini_fonte(fonte["url"])
+        async with httpx.AsyncClient(follow_redirects=False) as client:
             urls = await _trova_url_prodotti(client, fonte["url"])
             if not urls:
                 errore = "Nessuna pagina prodotto trovata (sitemap assente e homepage senza link riconoscibili)"
             for u in urls:
                 try:
-                    r = await client.get(u, headers=HEADERS, timeout=20)
-                    if r.status_code != 200:
+                    r = await _get(client, u, domini)
+                    if r is None or r.status_code != 200:
                         continue
                     prodotto = _estrai_prodotto_da_html(r.text, u)
                     if not prodotto:
@@ -259,7 +279,7 @@ async def _sincronizza_fonte(fonte: dict):
             if trovati == 0 and not errore:
                 errore = "Pagine trovate ma nessuna con dati Schema.org/Open Graph riconoscibili"
     except Exception as e:
-        errore = str(e)
+        errore = f"{type(e).__name__}: {e}"
 
     await db.fonti_catalogo_esterne.update_one(
         {"id": fonte_id},

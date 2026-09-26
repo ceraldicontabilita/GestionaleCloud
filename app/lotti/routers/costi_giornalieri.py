@@ -10,6 +10,8 @@ from datetime import datetime, timezone
 
 from app.lotti.routers.date_utils import oggi_iso as oggi_str
 from app.lotti.db import database as db
+from app.lotti.auth import require_admin
+from fastapi import Depends
 
 router = APIRouter(prefix="/costi-giornalieri", tags=["Costi Giornalieri"])
 
@@ -51,7 +53,7 @@ async def get_costi(data: str = None):
 
 
 @router.post("/salva")
-async def salva_costi(payload: CostiGiornalieriPayload):
+async def salva_costi(payload: CostiGiornalieriPayload, _admin=Depends(require_admin)):
     """Salva o aggiorna i costi giornalieri per una data."""
     target = payload.data or oggi_str()
     doc = {

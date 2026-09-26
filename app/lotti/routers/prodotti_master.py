@@ -38,6 +38,8 @@ from typing import Optional
 from fastapi import APIRouter, Query, HTTPException, BackgroundTasks, Body
 from app.lotti.db import database as db
 from app.lotti.dizionario_categorie import classifica
+from app.lotti.auth import require_admin
+from fastapi import Depends
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/prodotti-master", tags=["Prodotti Master"])
@@ -637,7 +639,7 @@ async def stats():
 
 
 @router.post("/riclassifica")
-async def riclassifica():
+async def riclassifica(_admin=Depends(require_admin)):
     """Ri-applica il dizionario di classificazione a tutti i prodotti master.
     Es. sposta i set di calici da 'Bevande e Bottiglie' a 'Attrezzature'."""
     cursor = db.prodotti_master.find(
@@ -654,7 +656,7 @@ async def riclassifica():
 
 
 @router.post("/escludi")
-async def escludi(payload: dict = Body(...)):
+async def escludi(payload: dict = Body(...), _admin=Depends(require_admin)):
     """Escludi (o ripristina) un prodotto dalla visualizzazione del catalogo.
     Aggancio per nome_canonico: gli id di /catalogo-app non sono stabili.
     Body: {"nome": "...", "escluso": true|false}."""
@@ -1100,7 +1102,7 @@ async def _run_rebuild_background():
 
 
 @router.post("/rebuild")
-async def rebuild(background: BackgroundTasks):
+async def rebuild(background: BackgroundTasks, _admin=Depends(require_admin)):
     """Avvia il rebuild del catalogo in background (l'operazione è pesante e supererebbe
     il timeout HTTP). Risponde subito; lo stato si legge da GET /prodotti-master/stato-rebuild."""
     background.add_task(_run_rebuild_background)
@@ -1110,7 +1112,7 @@ async def rebuild(background: BackgroundTasks):
 
 
 @router.post("/collega-righe-fatture")
-async def collega_righe_fatture():
+async def collega_righe_fatture(_admin=Depends(require_admin)):
     """Aggancia ogni riga fattura (fatture.prodotti[]) al catalogo: scrive
     prodotto_key = key_canonica(descrizione) — la STESSA chiave usata dal rebuild,
     quindi la riga punta al prodotto master corrispondente — e, quando risolvibile,

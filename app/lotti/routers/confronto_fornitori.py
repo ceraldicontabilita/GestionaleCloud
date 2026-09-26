@@ -18,6 +18,8 @@ from pydantic import BaseModel
 from app.lotti.auth import request_actor
 from app.lotti.db import database as db
 from app.lotti.servizi import confronto_fornitori as cf
+from app.lotti.auth import require_admin
+from fastapi import Depends
 
 router = APIRouter(prefix="/confronto-fornitori", tags=["Confronto fornitori"])
 
@@ -112,7 +114,7 @@ class Decisione(BaseModel):
 
 
 @router.post("/decisione")
-async def registra_decisione(body: Decisione, request: Request):
+async def registra_decisione(body: Decisione, request: Request, _admin=Depends(require_admin)):
     """«Stesso articolo» o «articoli diversi» per una coppia proposta."""
     if body.esito not in ("stesso", "diverso"):
         raise HTTPException(status_code=422, detail="esito deve essere «stesso» o «diverso»")

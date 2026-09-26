@@ -12,7 +12,7 @@ router = APIRouter(prefix="/diagnostic", tags=["diagnostic"])
 
 
 @router.get("/db-overview")
-async def db_overview():
+async def db_overview(_admin=Depends(require_admin)):
     coll_names = await db.list_collection_names()
     risultato = {}
     for c in sorted(coll_names):
@@ -26,7 +26,7 @@ async def db_overview():
                     sample = {k: str(doc.get(k))[:60] for k in keys}
             risultato[c] = {"count": n, "sample_keys": sample}
         except Exception as e:
-            risultato[c] = {"error": str(e)[:100]}
+            risultato[c] = {"error": type(e).__name__}
     return risultato
 
 
@@ -71,7 +71,7 @@ _CANDIDATE_CESTINO = [
 
 
 @router.get("/pulizia-collezioni-proposta")
-async def pulizia_collezioni_proposta():
+async def pulizia_collezioni_proposta(_admin=Depends(require_admin)):
     """Calcola la proposta di pulizia: collezioni VUOTE non protette (drop senza
     rischio) + resti morti Lotti noti (rinomina reversibile in cestino_*).
     Solo lettura: il pannello Controllo Dati la mostra, Enzo conferma."""
@@ -374,7 +374,7 @@ async def registro_haccp_riepilogo():
 
 
 @router.get("/integrazioni")
-async def stato_integrazioni():
+async def stato_integrazioni(_admin=Depends(require_admin)):
     """Stato di configurazione delle integrazioni esterne.
 
     Riporta SOLO la presenza/assenza delle variabili d'ambiente (booleani),
@@ -418,7 +418,7 @@ async def stato_integrazioni():
 
 
 @router.get("/env-keys")
-async def env_keys():
+async def env_keys(_admin=Depends(require_admin)):
     """Elenca i NOMI (mai i valori) delle variabili d'ambiente presenti che
     riguardano le integrazioni, per diagnosticare nomi diversi da quelli attesi
     dal codice. Non espone alcun valore."""

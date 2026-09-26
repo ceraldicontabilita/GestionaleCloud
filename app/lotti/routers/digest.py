@@ -20,6 +20,8 @@ Env (tutte opzionali):
 
 import os
 import logging
+from app.lotti.auth import require_admin
+from fastapi import Depends
 _LOG_INIT = logging.getLogger("uvicorn.error")
 import re
 from datetime import datetime, timezone, timedelta
@@ -147,6 +149,6 @@ async def anteprima(giorni: int = Query(7, ge=1, le=60)):
 
 
 @router.post("/invia-ora")
-async def invia_ora(giorni: int = Query(7, ge=1, le=60)):
+async def invia_ora(giorni: int = Query(7, ge=1, le=60), _admin=Depends(require_admin)):
     """Calcola e invia subito il promemoria (test on-demand)."""
     return {"ok": True, **(await calcola_e_invia(giorni))}

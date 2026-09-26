@@ -305,7 +305,7 @@ async def registra_richiamo_eseguito(
     payload: dict,
     motivo: str = Query(""),
     operatore_id: Optional[str] = Query(None),
-    operatore_nome: Optional[str] = Query(None),
+    operatore_nome: Optional[str] = Query(None), _admin=Depends(require_admin),
 ):
     """Body: {"ingrediente": str, "filtri": {...}, "lotti_ids": [...]}
     (stessi dati già in mano al frontend dopo una ricerca /recall/cerca)."""
@@ -382,7 +382,7 @@ async def lista_richiami_eseguiti(stato: Optional[str] = Query(None), limit: int
 
 
 @router.patch("/lotti/recall/eseguiti/{richiamo_id}/concludi")
-async def concludi_richiamo(richiamo_id: str, azione_correttiva: str = Query(...)):
+async def concludi_richiamo(richiamo_id: str, azione_correttiva: str = Query(...), _admin=Depends(require_admin)):
     richiamo = await db.richiami_eseguiti.find_one({"id": richiamo_id}, {"_id": 0})
     if not richiamo:
         raise HTTPException(status_code=404, detail="Richiamo non trovato")
@@ -628,7 +628,7 @@ async def smalti_batch_lotti(
     payload: dict,
     motivo: str = "smaltito_scaduto",
     operatore_id: Optional[str] = Query(None),
-    operatore_nome: Optional[str] = Query(None),
+    operatore_nome: Optional[str] = Query(None), _admin=Depends(require_admin),
 ):
     """
     Smaltisce in batch i lotti IDs forniti.
@@ -2054,7 +2054,7 @@ th{{background:#1565c0;color:white;padding:10px}}td{{border:1px solid #ddd;paddi
 
 
 @router.post("/lotti/ricalcola-tracciabilita")
-async def ricalcola_tracciabilita_lotti(solo_mancanti: bool = True):
+async def ricalcola_tracciabilita_lotti(solo_mancanti: bool = True, _admin=Depends(require_admin)):
     """
     Ricalcola lotti_scalati per i lotti di produzione che non hanno tracciabilità.
     Se solo_mancanti=True (default) processa solo quelli senza lotti_scalati.
@@ -2165,7 +2165,7 @@ async def ricalcola_tracciabilita_lotti(solo_mancanti: bool = True):
 
 
 @router.post("/lotti/ricalcola-scadenze", tags=["Lotti Produzione"])
-async def endpoint_ricalcola_scadenze_lotti():
+async def endpoint_ricalcola_scadenze_lotti(_admin=Depends(require_admin)):
     """Ricalcola le scadenze per i lotti che le hanno vuote o mancanti."""
     return await ricalcola_scadenze_lotti()
 

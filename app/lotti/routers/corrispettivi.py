@@ -22,6 +22,8 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from app.lotti.db import database as db
+from app.lotti.auth import require_admin
+from fastapi import Depends
 
 router = APIRouter(prefix="/corrispettivi", tags=["Corrispettivi"])
 
@@ -151,7 +153,7 @@ def _parse_corrispettivo_xml(content: bytes) -> dict:
 
 
 @router.post("/importa-xml")
-async def importa_xml(files: list[UploadFile] = File(...)):
+async def importa_xml(files: list[UploadFile] = File(...), _admin=Depends(require_admin)):
     """Import manuale dei corrispettivi telematici (XML COR10), idempotente per
     data. Stessa logica delle fatture: i dati entrano in modo esplicito nel
     perimetro di Lotti, non sincronizzati dall'ERP."""
@@ -539,7 +541,7 @@ class CorrispettivoManuale(BaseModel):
 
 
 @router.post("")
-async def upsert_corrispettivo(payload: CorrispettivoManuale):
+async def upsert_corrispettivo(payload: CorrispettivoManuale, _admin=Depends(require_admin)):
     """Inserimento/aggiornamento manuale, idempotente per data (logica fatture)."""
     g = _parse_data(payload.data)
     if not g:

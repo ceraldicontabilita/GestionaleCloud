@@ -200,7 +200,7 @@ async def _sincronizza_menu(ricetta_id: str) -> dict:
         )
     except Exception as e:
         _LOG_INIT.exception("Lotti->Menu: sincronizzazione ricetta %s fallita", ricetta_id)
-        return {"esito": "errore", "errore": str(e)}
+        return {"esito": "errore", "errore": f"pubblicazione nel Menu non riuscita ({type(e).__name__})"}
 
 
 async def _rimuovi_dal_menu(ricetta_id: str) -> dict:
@@ -210,7 +210,7 @@ async def _rimuovi_dal_menu(ricetta_id: str) -> dict:
         return await menu_bridge.rimuovi_prodotto_dal_menu(menu_bridge.lotti_ref_ricetta(ricetta_id))
     except Exception as e:
         _LOG_INIT.exception("Lotti->Menu: rimozione ricetta %s fallita", ricetta_id)
-        return {"esito": "errore", "errore": str(e)}
+        return {"esito": "errore", "errore": f"rimozione dal Menu non riuscita ({type(e).__name__})"}
 
 
 _ORIGINI_RICETTARI_FORNITORI = {
@@ -1807,7 +1807,7 @@ async def update_ricetta(ricetta_id: str, item: RicettaCreate, _admin=Depends(re
 
 
 @router.post("/backfill-allergeni-verificato")
-async def backfill_allergeni_verificato():
+async def backfill_allergeni_verificato(_admin=Depends(require_admin)):
     """Una tantum: applica il rilevamento automatico allergeni (già usato da
     create/update) a tutte le ricette esistenti create prima di questo fix,
     e segna allergeni_verificato così l'alert del Supervisore smette di
@@ -2562,7 +2562,7 @@ def _prezzo_da_salvare(prezzo: Any, etichetta: str) -> Optional[float]:
 
 
 @router.put("/ricette/{ricetta_id}/prezzo-vendita")
-async def set_prezzo_vendita(ricetta_id: str, prezzo: float = Query(...)):
+async def set_prezzo_vendita(ricetta_id: str, prezzo: float = Query(...), _admin=Depends(require_admin)):
     """Prezzo AL BANCO: e' la base del food cost e del margine.
     Il Menu digitale mostra invece il prezzo al tavolo (vedi sotto).
     ``prezzo = 0`` toglie il prezzo; negativi, ``nan`` e ``inf`` sono 400."""
@@ -2575,7 +2575,7 @@ async def set_prezzo_vendita(ricetta_id: str, prezzo: float = Query(...)):
 
 
 @router.put("/ricette/{ricetta_id}/prezzo-tavolo")
-async def set_prezzo_tavolo(ricetta_id: str, prezzo: float = Query(...)):
+async def set_prezzo_tavolo(ricetta_id: str, prezzo: float = Query(...), _admin=Depends(require_admin)):
     """Prezzo AL TAVOLO: e' quello che il Menu digitale mostra ai clienti.
     ``prezzo = 0`` toglie il prezzo al tavolo (il Menu torna a esporre quello
     al banco); negativi, ``nan`` e ``inf`` sono 400."""
@@ -3249,7 +3249,7 @@ async def pulisci_ingredienti(_admin=Depends(require_admin)):
 
 
 @router.post("/ricette/collega-ingredienti-canonico")
-async def collega_ingredienti_canonico():
+async def collega_ingredienti_canonico(_admin=Depends(require_admin)):
     """Collega ogni ingrediente di ogni ricetta (ingredienti_dettaglio[].nome) a un
     nome_canonico riconosciuto, riusando lo STESSO matcher già testato per le
     fatture (match_livello1 = nome_mapping esatto, match_livello2 =
@@ -3311,7 +3311,7 @@ async def collega_ingredienti_canonico():
 
 
 @router.post("/ricette/popola-quantita-esempio")
-async def popola_quantita_esempio():
+async def popola_quantita_esempio(_admin=Depends(require_admin)):
     _QS = {
         "farina": {"quantita": 500, "unita": "g"},
         "uova": {"quantita": 4, "unita": "pz"},
@@ -3500,7 +3500,7 @@ async def get_bom_ricetta(ricetta_id: str, porzioni: float = Query(None)):
 
 # ── APPROVAZIONE ─────────────────────────────────────────────────────────────
 @router.patch("/ricette/{ricetta_id}/approva")
-async def approva_ricetta(ricetta_id: str):
+async def approva_ricetta(ricetta_id: str, _admin=Depends(require_admin)):
     """Imposta approvata=True sulla ricetta. Rimuove il badge 'NUOVA'."""
     r = await db.ricette.find_one({"id": ricetta_id}, {"_id": 0, "id": 1})
     if not r:

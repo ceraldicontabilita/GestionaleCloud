@@ -221,9 +221,10 @@ export default function TabletHome({ onEntra, preselectReparto }) {
     // Serve anche il ruolo salvato: il gestionale ora si apre SOLO da
     // amministratore (25/07/2026), altrimenti si tornerebbe subito al kiosk.
     saveRuolo("amministratore");
-    // Apre anche il cancello del gestionale per 2 ore: senza, bastava
-    // ricaricare la pagina per ritrovarsi il tastierino "Accesso Lotti"
-    // (trovato al collaudo del 25/07/2026).
+    // Apre anche il cancello del gestionale: senza, bastava ricaricare la
+    // pagina per ritrovarsi il tastierino "Accesso Lotti" (collaudo del
+    // 25/07/2026). Quanto dura lo decide il server: il token si rinnova da
+    // solo al massimo 24 ore dall'ingresso dell'amministratore, poi 401.
     setGateOk();
     window.location.hash = prendiPaginaRichiesta("dashboard");
     window.dispatchEvent(new Event("tablet-auth"));

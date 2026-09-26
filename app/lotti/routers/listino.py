@@ -224,7 +224,7 @@ async def get_categorie():
 
 # ── POST crea prodotto ─────────────────────────────────────────────────────────
 @router.post("/prodotti")
-async def crea_prodotto(p: ProdottoCreate):
+async def crea_prodotto(p: ProdottoCreate, _admin=Depends(require_admin)):
     nome_norm = _norm(p.nome)
     exists = await db.listino_prodotti.find_one({"nome": nome_norm}, {"_id": 0, "id": 1})
     if exists:
@@ -246,7 +246,7 @@ async def crea_prodotto(p: ProdottoCreate):
 
 # ── PUT aggiorna prodotto ──────────────────────────────────────────────────────
 @router.put("/prodotti/{prodotto_id}")
-async def aggiorna_prodotto(prodotto_id: str, p: ProdottoUpdate):
+async def aggiorna_prodotto(prodotto_id: str, p: ProdottoUpdate, _admin=Depends(require_admin)):
     upd: dict = {"updated_at": datetime.now(timezone.utc).isoformat()}
     if p.nome is not None:
         upd["nome"] = _norm(p.nome)
@@ -270,7 +270,7 @@ async def aggiorna_prodotto(prodotto_id: str, p: ProdottoUpdate):
 
 # ── PATCH aggiorna prezzo singolo fornitore ────────────────────────────────────
 @router.patch("/prodotti/{prodotto_id}/prezzo")
-async def aggiorna_prezzo(prodotto_id: str, fornitore: str, prezzo: float):
+async def aggiorna_prezzo(prodotto_id: str, fornitore: str, prezzo: float, _admin=Depends(require_admin)):
     doc = await db.listino_prodotti.find_one({"id": prodotto_id}, {"_id": 0})
     if not doc:
         raise HTTPException(404, "Prodotto non trovato")
@@ -295,7 +295,7 @@ async def aggiorna_prezzo(prodotto_id: str, fornitore: str, prezzo: float):
 
 # ── PATCH toggle preferito ────────────────────────────────────────────────────
 @router.patch("/prodotti/{prodotto_id}/preferito")
-async def toggle_preferito(prodotto_id: str):
+async def toggle_preferito(prodotto_id: str, _admin=Depends(require_admin)):
     doc = await db.listino_prodotti.find_one({"id": prodotto_id}, {"_id": 0})
     if not doc:
         raise HTTPException(404, "Prodotto non trovato")
@@ -306,7 +306,7 @@ async def toggle_preferito(prodotto_id: str):
 
 # ── DELETE prodotto ────────────────────────────────────────────────────────────
 @router.delete("/prodotti/{prodotto_id}")
-async def elimina_prodotto(prodotto_id: str):
+async def elimina_prodotto(prodotto_id: str, _admin=Depends(require_admin)):
     r = await db.listino_prodotti.delete_one({"id": prodotto_id})
     if r.deleted_count == 0:
         raise HTTPException(404, "Prodotto non trovato")
@@ -588,7 +588,7 @@ async def genera_pdf(req: GenPdfReq):
 
 
 @router.post("/invia")
-async def invia_listino(req: InviaListinoReq):
+async def invia_listino(req: InviaListinoReq, _admin=Depends(require_admin)):
     """Invio email rimosso: il listino va scaricato come PDF (GET .../listino/pdf)
     e inviato manualmente. L'endpoint resta per compatibilità del frontend."""
     prodotti = await _prodotti_listino(req.categoria)

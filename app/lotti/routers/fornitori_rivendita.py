@@ -18,6 +18,8 @@ from typing import Optional, List
 import uuid
 
 from app.lotti.db import database as db
+from app.lotti.auth import require_admin
+from fastapi import Depends
 
 router = APIRouter(prefix="/fornitori-rivendita", tags=["fornitori_rivendita"])
 
@@ -85,7 +87,7 @@ async def lista(tipo: Optional[str] = None, includi_inattivi: bool = False):
 
 
 @router.post("")
-async def crea(payload: dict = Body(...)):
+async def crea(payload: dict = Body(...), _admin=Depends(require_admin)):
     await _ensure_seed()
     nome = (payload.get("nome") or "").strip()
     colazione = bool(payload.get("colazione"))
@@ -111,7 +113,7 @@ async def crea(payload: dict = Body(...)):
 
 
 @router.put("/{fid}")
-async def aggiorna(fid: str, payload: dict = Body(...)):
+async def aggiorna(fid: str, payload: dict = Body(...), _admin=Depends(require_admin)):
     campi = {}
     for k in ("nome", "fonte", "match_fattura"):
         if k in payload:
@@ -128,7 +130,7 @@ async def aggiorna(fid: str, payload: dict = Body(...)):
 
 
 @router.delete("/{fid}")
-async def disattiva(fid: str):
+async def disattiva(fid: str, _admin=Depends(require_admin)):
     """Soft-delete: disattiva il fornitore. Lo storico vendite/lotti NON viene toccato."""
     r = await db.fornitori_rivendita.update_one({"id": fid}, {"$set": {"attivo": False}})
     if r.matched_count == 0:

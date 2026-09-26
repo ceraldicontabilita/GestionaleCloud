@@ -360,6 +360,28 @@ class PersistentCollection:
                 await self.database.store.upsert_docs(self.name, docs)
             return len(docs)
 
+    async def sostituisci_per_id(self, documents: Iterable[dict]) -> dict:
+        """Rende la collezione uguale a ``documents`` senza mai svuotarla.
+
+        Usata dal ripristino dei backup: prima si scrivono (upsert per id) i
+        documenti nuovi, poi si tolgono per id quelli che non ci sono. Se il
+        giro si interrompe, su Supabase resta un'unione dei due stati, mai una
+        collezione vuota.
+        """
+        docs = [copy.deepcopy(d) for d in documents]
+        async with self._write_lock:
+            await self._ensure_loaded()
+            attuali = {str(d["_id"]) for d in await self.raw.find({}, {"_id": 1}).to_list(None)}
+            nuovi = {_doc_id(d) for d in docs}
+            await self.database.store.upsert_docs(self.name, docs)
+            da_togliere = sorted(attuali - nuovi)
+            if da_togliere:
+                await self.database.store.delete_docs(self.name, da_togliere)
+            await self.raw.delete_many({})
+            if docs:
+                await self.raw.insert_many(docs)
+            return {"scritti": len(docs), "rimossi": len(da_togliere)}
+
     async def replace_one(self, query, replacement, *args, **kwargs):
         async with self._write_lock:
             await self._ensure_loaded()

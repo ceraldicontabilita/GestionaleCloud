@@ -980,7 +980,7 @@ async def set_prezzi_prodotto(
     prodotto_id: str,
     prezzo_vendita: Optional[float] = Query(None),
     prezzo_acquisto_confezione: Optional[float] = Query(None),
-    pz_confezione: Optional[float] = Query(None),
+    pz_confezione: Optional[float] = Query(None), _admin=Depends(require_admin),
 ):
     """Aggiorna prezzi e pezzi per confezione di un prodotto semilavorato."""
     upd = {"updated_at": datetime.now(timezone.utc).isoformat()}

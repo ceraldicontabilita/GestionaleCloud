@@ -761,8 +761,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - Piano di sanificazione per area (`/sanificazione/piano`): frequenza, prodotto, diluizione, tempo di
   contatto. Niente valori di ripiego — un detergente scritto a caso rimanda a una scheda di sicurezza che
   non c'entra. `/sanificazione/scadute` dice cosa è in ritardo e cosa è ancora da compilare.
-- Accessi: PIN valido 2 ore; i dipendenti entrano ovunque tranne le pagine di amministrazione. Sui tablet
-  condivisi il magazzino chiude la sessione dopo 10 minuti. Il JWT solo nell'header, **mai in `?token=`**: i documenti si aprono con `apriDocumentoAutenticato` (`auth.js`).
+- Accessi: token 12 h, rinnovi al massimo 7 giorni dal PIN (admin 24 h, `auth_at`); PIN sbagliati contati in `pin_tentativi`, per client **e** globali; sui tablet condivisi il magazzino chiude dopo 10 minuti. Ogni scrittura o dipende da `require_admin` o è fra le operazioni di reparto di `test_scritture_riservate.py`; un URL da fuori si scarica solo con `servizi/fetch_sicuro.py`. Il JWT solo nell'header, **mai in `?token=`**: i documenti con `apriDocumentoAutenticato`.
+- Backup Lotti: mai sul disco del servizio. Parti verificate (SHA-256) in `gestionale.blobs` più manifesto (`servizi/backup_archivio.py`, registro `backup_registro`); il ripristino è simulazione → backup di sicurezza verificato → sostituzione per id.
 
 ### Menu — allergeni
 
@@ -862,7 +862,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - Drill-down «Verifica campi e F24» punta al vecchio indice Drive; `/api/download` serve `./downloads`, mai popolato. A mano, dal titolare: **far ripartire `sync_rt_to_drive.py`** (fermo dal 28/08); password Postgres; DNS ceraldiapp.it.
 - Fork `app/hr/`: **quattro** sottopercorsi ancora duplicati (`routers/employees/dipendenti.py`, `routers/pin_login.py`,
   `routers/tfr.py`, `utils/dependencies.py`): ogni correzione va cercata anche nel gemello.
-- `gestionale.blobs`: 216 PDF che **nessun documento cita**, leggibili solo da `blob_store.py`, mai importato; come `bank_reconciliation_hub` (2.017 righe), scritta da un trigger e letta da nessuno.
+- `gestionale.blobs`: oltre ai backup di Lotti, 216 PDF che **nessun documento cita**; come `bank_reconciliation_hub` (2.017 righe), scritta da un trigger e letta da nessuno.
 
 ## Logica dentro al database
 

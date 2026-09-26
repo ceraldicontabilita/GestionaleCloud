@@ -514,7 +514,7 @@ async def ripristina_lotto(lotto_id: str, body: RettificaLotto, request: Request
 
 
 @router.post("/archivia-scaduti")
-async def archivia_scaduti(giorni: int = Query(30, ge=0, le=3650)):
+async def archivia_scaduti(giorni: int = Query(30, ge=0, le=3650), _admin=Depends(require_admin)):
     """Marca 'esaurito' i lotti scaduti da più di N giorni (default 30).
     Escono da promemoria e FIFO ma restano in archivio per la tracciabilità:
     nessun dato viene cancellato."""

@@ -16,6 +16,8 @@ import logging
 import uuid
 
 from app.lotti.db import database as db
+from app.lotti.auth import require_admin
+from fastapi import Depends
 
 logger = logging.getLogger(__name__)
 
@@ -301,7 +303,7 @@ async def get_stato_giorno(anno: int, mese: int, giorno: int):
 
 
 @router.post("/custom")
-async def aggiungi_chiusura_custom(chiusura: ChiusuraCustom, anno: int = Query(...)):
+async def aggiungi_chiusura_custom(chiusura: ChiusuraCustom, anno: int = Query(...), _admin=Depends(require_admin)):
     """Aggiunge una chiusura custom"""
     doc = {
         "id": str(uuid.uuid4()),
@@ -319,7 +321,7 @@ async def aggiungi_chiusura_custom(chiusura: ChiusuraCustom, anno: int = Query(.
 
 
 @router.delete("/custom/{data}")
-async def rimuovi_chiusura_custom(data: str, anno: int = Query(...)):
+async def rimuovi_chiusura_custom(data: str, anno: int = Query(...), _admin=Depends(require_admin)):
     """Rimuove una chiusura custom"""
     result = await db.chiusure_custom.delete_one({"anno": anno, "data": data})
 
@@ -361,7 +363,7 @@ async def get_giorno_non_produttivo_oggi():
 
 
 @router.post("/giorno-non-produttivo/oggi")
-async def segna_giorno_non_produttivo(payload: dict = Body(default={})):
+async def segna_giorno_non_produttivo(payload: dict = Body(default={}), _admin=Depends(require_admin)):
     """Marca/demarks oggi come giorno non produttivo."""
     oggi = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     attivo = payload.get("attivo", True)

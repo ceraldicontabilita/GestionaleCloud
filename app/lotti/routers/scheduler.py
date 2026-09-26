@@ -254,8 +254,12 @@ async def job_genera_haccp_giornaliero():
 
 
 async def job_backup_notturno():
-    """Ogni notte alle 02:30 (Roma). Backup DB con rotazione 7 giorni."""
+    """Ogni notte alle 02:30 (Roma): backup su Supabase, verificato, rotazione 7.
+
+    Un backup non riuscito o incompleto manda un avviso Telegram: senza,
+    ci si accorge che mancano i backup solo il giorno in cui servono."""
     print(f"[Scheduler] {datetime.now()} - Backup notturno...")
+    errore = None
     try:
         from app.lotti.routers.backup import esegui_backup_async
 
@@ -265,6 +269,7 @@ async def job_backup_notturno():
                 "job": "backup_notturno",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "success": bool(result.get("success")),
+                "verificato": bool(result.get("verificato")),
                 "collezioni_fallite": result.get("collezioni_fallite", []),
                 "file": result.get("file"),
                 "dimensione": result.get("dimensione"),
@@ -272,16 +277,27 @@ async def job_backup_notturno():
             }
         )
         print(f"[Scheduler] Backup: {result.get('file')} ({result.get('dimensione')})")
+        if not result.get("success"):
+            errore = "backup incompleto, collezioni: " + ", ".join(result.get("collezioni_fallite") or [])
     except Exception as e:
+        errore = f"{type(e).__name__}: {e}"
         await db.scheduler_logs.insert_one(
             {
                 "job": "backup_notturno",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "success": False,
-                "error": str(e),
+                "error": errore,
             }
         )
-        print(f"[Scheduler] Errore backup: {e}")
+        print(f"[Scheduler] Errore backup: {errore}")
+    if errore:
+        try:
+            from app.services.telegram_notifications import notifica_errore_critico
+
+            await notifica_errore_critico(f"Backup notturno di Lotti non riuscito: {errore[:300]}",
+                                          contesto="Lotti › Backup")
+        except Exception as e:
+            print(f"[Scheduler] Avviso Telegram backup non inviato: {type(e).__name__}: {e}")
 
 
 # ── JOB 04:00 — Pipeline aggiornamento ───────────────────────────────────────
@@ -685,7 +701,7 @@ async def stop_scheduler(_admin=Depends(require_admin)):
 
 
 @router.post("/run-aggiorna-fatture-now")
-async def run_aggiorna_fatture_now():
+async def run_aggiorna_fatture_now(_admin=Depends(require_admin)):
     """Aggiorna subito i riferimenti fattura nei lotti (>30gg)."""
     await job_aggiorna_riferimenti_fatture()
     return {"success": True, "message": "Riferimenti fatture aggiornati"}

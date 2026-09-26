@@ -343,7 +343,7 @@ async def apri_rilevazioni_oggi(_admin=Depends(require_admin)):
 
 
 @router.post("/dichiara-conformi-oggi")
-async def dichiara_conformi_oggi(request: Request, pin: str = ""):
+async def dichiara_conformi_oggi(request: Request, pin: str = "", _admin=Depends(require_admin)):
     """Il responsabile, finito il giro, dichiara conformi le caselle ancora aperte.
 
     Vale solo se nelle Impostazioni il metodo e' il controllo visivo del

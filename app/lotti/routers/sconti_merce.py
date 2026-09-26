@@ -86,7 +86,7 @@ async def get_sconti(
 
 
 @router.post("/", response_model=ScontoResponse)
-async def crea_sconto(sconto: ScontoMerce):
+async def crea_sconto(sconto: ScontoMerce, _admin=Depends(require_admin)):
     """Registra un nuovo sconto merce"""
     doc = sconto.model_dump()
     doc["id"] = str(uuid.uuid4())
@@ -125,7 +125,7 @@ async def crea_sconto(sconto: ScontoMerce):
 
 
 @router.put("/{sconto_id}")
-async def aggiorna_sconto(sconto_id: str, sconto: ScontoMerce):
+async def aggiorna_sconto(sconto_id: str, sconto: ScontoMerce, _admin=Depends(require_admin)):
     """Aggiorna uno sconto esistente"""
     existing = await db.sconti_merce.find_one({"id": sconto_id})
     if not existing:
@@ -154,7 +154,7 @@ async def aggiorna_sconto(sconto_id: str, sconto: ScontoMerce):
 
 
 @router.delete("/{sconto_id}")
-async def elimina_sconto(sconto_id: str):
+async def elimina_sconto(sconto_id: str, _admin=Depends(require_admin)):
     """Elimina uno sconto"""
     result = await db.sconti_merce.delete_one({"id": sconto_id})
     if result.deleted_count == 0:

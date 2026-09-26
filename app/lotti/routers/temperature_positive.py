@@ -370,7 +370,7 @@ async def get_operatori():
 
 
 @router.post("/operatori")
-async def aggiungi_operatore(nome: str = Query(...)):
+async def aggiungi_operatore(nome: str = Query(...), _admin=Depends(require_admin)):
     """Aggiunge un nuovo operatore alla lista"""
     if nome not in OPERATORI_DEFAULT:
         OPERATORI_DEFAULT.append(nome)

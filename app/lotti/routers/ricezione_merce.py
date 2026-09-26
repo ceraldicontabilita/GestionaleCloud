@@ -11,6 +11,8 @@ import logging
 import re
 
 from app.lotti.db import database as db
+from app.lotti.auth import require_admin
+from fastapi import Depends
 
 logger = logging.getLogger(__name__)
 
@@ -214,7 +216,7 @@ async def aggiorna_ricezione(ricezione_id: str, payload: dict = Body(...)):
 
 
 @router.delete("/{ricezione_id}")
-async def elimina_ricezione(ricezione_id: str):
+async def elimina_ricezione(ricezione_id: str, _admin=Depends(require_admin)):
     await db.ricezioni_merce.delete_one({"id": ricezione_id})
     return {"success": True}
 
