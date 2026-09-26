@@ -208,12 +208,15 @@ async def tabella_analisi(anno: Optional[int] = Query(None, ge=2000, le=2100)) -
                 "quietanza_id": quietanza_id,
                 "protocollo_quietanza": d.get("protocollo_quietanza"),
                 "quietanza_fonte": fonte,
+                # Il file vero, mai la scheda JSON: per le quietanze in
+                # `quietanze_f24` il PDF lo serve lo stesso lettore dell'F24.
                 "quietanza_url": (
                     f"/api/fiscal/documents/{quietanza_id}/content"
                     if fonte == "fiscal_documents"
-                    else f"/api/f24-riconciliazione/quietanze/{quietanza_id}"
+                    else f"/api/f24-public/pdf/{quietanza_id}"
                     if fonte == "quietanze_f24" else None
                 ),
+                "f24_pdf_url": f"/api/f24-public/pdf/{d.get('id')}" if d.get("id") else None,
                 "movimento_bancario_id": movimenti_banca[0] if movimenti_banca else None,
                 "movimenti_bancari_ids": movimenti_banca,
                 "pagamento_verificato_banca": bool(d.get("pagamento_verificato_banca")),
