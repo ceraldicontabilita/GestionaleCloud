@@ -156,7 +156,6 @@ class _SupabaseRotto:
 @pytest.fixture
 def ambiente(monkeypatch):
     import app.lotti.routers.ricette as ricette
-    from app.lotti.servizi import drive_foto_ricette
     from app.lotti.servizi import supabase_foto_ricette
 
     monkeypatch.setenv("MENU_SUPABASE_URL", "https://menu.test.supabase.co")
@@ -165,26 +164,6 @@ def ambiente(monkeypatch):
     monkeypatch.setattr(supabase_foto_ricette, "supabase", finto)
     database = AsyncMongoMockClient()["Gestionale_Test"]
     monkeypatch.setattr(ricette, "db", database)
-    foto_drive = {}
-
-    async def risolvi_folder_id(_db):
-        return "cartella-ricette"
-
-    def carica_drive(*, ricetta_id, contenuto, mime, filename=None, folder_id, service=None):
-        assert folder_id == "cartella-ricette"
-        digest = hashlib.sha256(contenuto).hexdigest()
-        file_id = f"drive-{ricetta_id}-{digest[:12]}"
-        foto_drive[file_id] = (contenuto, mime)
-        return {"id": file_id, "sha256": digest, "filename": filename}
-
-    def leggi_drive(file_id, *, folder_id, service=None):
-        assert folder_id == "cartella-ricette"
-        contenuto, mime = foto_drive[file_id]
-        return contenuto, mime, {"id": file_id, "mimeType": mime}
-
-    monkeypatch.setattr(drive_foto_ricette, "carica", carica_drive)
-    monkeypatch.setattr(drive_foto_ricette, "leggi", leggi_drive)
-    monkeypatch.setattr(drive_foto_ricette, "risolvi_folder_id", risolvi_folder_id)
     return ricette, database, finto
 
 

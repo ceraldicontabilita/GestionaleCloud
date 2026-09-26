@@ -65,3 +65,41 @@ def test_migrazione_separa_solo_varianti_che_usano_la_base(monkeypatch):
     assert run(database.ricette.find_one({"id": "v-propria"}))["foto_url"] == "/api/foto/own-photo?v=1"
     assert module._foto_id_da_url(run(database.ricette.find_one({"id": "v-senza"}))["foto_url"]) != "base-photo"
     assert run(database.ricette_foto_backup.count_documents({})) == 1
+
+
+def test_variante_di_una_ricetta_con_foto_su_storage_riceve_una_copia_su_storage(monkeypatch):
+    """Una base con foto su Supabase Storage non lascia la variante senza foto."""
+    import app.lotti.routers.ricette as module
+    from app.lotti.servizi import supabase_foto_ricette
+
+    database = AsyncMongoMockClient()["Gestionale_Test"]
+    monkeypatch.setattr(module, "db", database)
+    archivio = {"lotti/ricette/base.webp": b"foto-storage"}
+
+    def leggi(percorso):
+        return archivio[percorso]
+
+    def carica(*, ricetta_id, contenuto, mime, filename=None):
+        percorso = f"lotti/ricette/{ricetta_id}-copia.webp"
+        archivio[percorso] = contenuto
+        return {"id": f"{ricetta_id}-copia", "bucket": "menu-images", "path": percorso,
+                "sha256": "x", "filename": filename}
+
+    monkeypatch.setattr(supabase_foto_ricette, "leggi", leggi)
+    monkeypatch.setattr(supabase_foto_ricette, "carica", carica)
+    run(database.ricette.insert_one({
+        "id": "base", "nome": "Babà", "reparto": "pasticceria",
+        "foto_url": "/api/foto/base-storage?v=1", "foto_id": "base-storage",
+        "foto_storage_path": "lotti/ricette/base.webp", "foto_content_type": "image/webp",
+        "foto_filename": "baba.webp",
+    }))
+    run(database.ricette.insert_one({"id": "variante", "nome": "Babà al limone"}))
+
+    foto_url = run(module._clona_foto_tra_ricette("base", "variante", fonte="test"))
+
+    assert foto_url.startswith("/api/foto/variante-copia?v=")
+    variante = run(database.ricette.find_one({"id": "variante"}))
+    assert variante["foto_storage_path"] == "lotti/ricette/variante-copia.webp"
+    assert variante["foto_content_type"] == "image/webp"
+    assert "foto_drive_id" not in variante
+    assert archivio["lotti/ricette/variante-copia.webp"] == b"foto-storage"
