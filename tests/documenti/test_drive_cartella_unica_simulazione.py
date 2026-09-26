@@ -110,8 +110,9 @@ def test_nuova_edizione_rilegge_tutto(albero, monkeypatch):
         run(sim.giro(db))
     monkeypatch.setenv("DRIVE_SIMULAZIONE_EDIZIONE", "2")
     assert run(sim.giro(db)) == {"inventario": 5}
-    assert run(db[sim.REGISTRO].count_documents({"stato": "da_leggere"})) == 5
     assert run(db[sim.REGISTRO].count_documents({})) == 5   # nessun doppione nel registro
+    assert run(sim.riepilogo(db))["letti"] == 0             # i vecchi esiti non contano
+    assert run(sim.giro(db)) == {"letti": 2, "restanti": 3}
 
 
 def test_spenta_senza_radice(monkeypatch):
@@ -154,15 +155,30 @@ def test_riepilogo_riservato_all_admin():
     assert richiedi_admin in [d.call for d in rotta.dependant.dependencies]
 
 
-def test_nuova_edizione_toglie_gli_esiti_vecchi_in_un_colpo(albero, monkeypatch):
+def test_nuova_edizione_non_riscrive_il_registro(albero, monkeypatch):
+    """Rimettere in coda 23.000 righe in un colpo bloccava il processo."""
     db = AsyncMongoMockClient()["t"]
     for _ in range(5):
         run(sim.giro(db))
-    assert run(db[sim.REGISTRO].count_documents({"tipo": {"$exists": True}})) == 5
+    run(db[sim.REGISTRO].update_one({"nome": "fattura.xml"}, {"$set": {"buste_lul": 1}}))
+    scritture = []
+    originale = type(db[sim.REGISTRO]).update_many
+
+    async def conta(self, *a, **k):
+        scritture.append(a)
+        return await originale(self, *a, **k)
+
+    monkeypatch.setattr(type(db[sim.REGISTRO]), "update_many", conta)
     monkeypatch.setenv("DRIVE_SIMULAZIONE_EDIZIONE", "3")
     run(sim.giro(db))
-    assert run(db[sim.REGISTRO].count_documents({"tipo": {"$exists": True}})) == 0
-    assert run(db[sim.REGISTRO].count_documents({"stato": "da_leggere"})) == 5
+    assert scritture == []
+    for _ in range(3):
+        run(sim.giro(db))
+    r = run(sim.riepilogo(db))
+    assert r["letti"] == 5 and r["per_tipo"]["fattura"] == 1
+    # Un esito vecchio che la nuova lettura non ha non sopravvive.
+    riga = run(db[sim.REGISTRO].find_one({"nome": "fattura.xml"}, {"_id": 0}))
+    assert riga["letto_edizione"] == "3" and "buste_lul" not in riga
 
 
 def test_cedolino_che_l_import_non_legge_e_un_errore_previsto(monkeypatch):
