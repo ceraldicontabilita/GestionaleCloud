@@ -383,7 +383,7 @@ async def elimina_lotto(lotto_id: str, _admin=Depends(require_admin)):
 
 @router.post("/normalizza-nomi")
 async def normalizza_nomi_lotti(
-    solo_vuoti: bool = False, usa_llm: bool = False, batch: int = 500
+    solo_vuoti: bool = False, usa_llm: bool = False, batch: int = 500, _admin=Depends(require_admin)
 ):
     """
     Ricalcola `prodotto_nome_norm` e `nome_canonico` per i lotti fornitori, usando il

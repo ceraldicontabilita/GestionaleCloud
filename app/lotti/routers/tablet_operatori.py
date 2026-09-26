@@ -336,21 +336,18 @@ async def trova_operatori_per_pin(pin: str) -> List[Dict[str, Any]]:
 
 @router.post("/login")
 async def login_pin(payload: PinLogin, request: Request = None):
-    ip = ip_richiesta(request) or None
-    if ip:
-        check_lock(ip)
+    ip = ip_richiesta(request)
+    await check_lock(ip)
     pin = (payload.pin or "").strip()
     if len(pin) < 4:
         raise HTTPException(400, "PIN non valido")
     docs = await trova_operatori_per_pin(pin)
     if docs:
-        if ip:
-            clear_fails(ip)
+        await clear_fails(ip)
         if len(docs) > 1:
             raise HTTPException(409, "PIN associato a piu' dipendenti: correggere gli accessi HR")
         return _op_response(docs[0])
-    if ip:
-        register_fail(ip)
+    await register_fail(ip)
     raise HTTPException(401, "PIN non riconosciuto")
 
 

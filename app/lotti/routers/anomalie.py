@@ -1,4 +1,6 @@
 import logging
+from app.lotti.auth import require_admin
+from fastapi import Depends
 
 """
 Router per la gestione delle Anomalie e Non Conformità.
@@ -513,7 +515,7 @@ async def aggiorna_anomalia(
 
 
 @router.delete("/{anomalia_id}")
-async def elimina_anomalia(anomalia_id: str):
+async def elimina_anomalia(anomalia_id: str, _admin=Depends(require_admin)):
     """Elimina un'anomalia"""
     result = await db.anomalie.delete_one({"id": anomalia_id})
     if result.deleted_count == 0:

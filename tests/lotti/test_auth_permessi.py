@@ -221,7 +221,7 @@ def test_firma_con_pin_sbagliato_si_blocca_dopo_n_tentativi(monkeypatch):
 
     monkeypatch.setattr(hr, "trova_dipendente_per_pin", trova)
     monkeypatch.setenv("AUTH_MAX_FAILS", "3")
-    auth._FAILS.clear()
+    _run(auth._tentativi().delete_many({}))
     for _ in range(3):
         with pytest.raises(HTTPException) as exc:
             _run(firma_dipendente.firma_da_pin("0000", chiave_tentativi="1.2.3.4"))
@@ -231,7 +231,40 @@ def test_firma_con_pin_sbagliato_si_blocca_dopo_n_tentativi(monkeypatch):
     assert exc.value.status_code == 429
     # un altro client non e' bloccato
     assert _run(firma_dipendente.firma_da_pin("2468", chiave_tentativi="5.6.7.8"))["firma_verificata"] is True
-    auth._FAILS.clear()
+    _run(auth._tentativi().delete_many({}))
+
+
+def test_blocco_pin_globale_anche_cambiando_ip(monkeypatch):
+    """Il login di Lotti e' solo PIN e l'IP viene da intestazioni scrivibili
+    dal client: cambiando IP a ogni tentativo si scavalcava il limite. Oltre
+    la soglia globale il login si ferma per tutti, e il conto sta
+    nell'archivio (sopravvive a un riavvio), non nella memoria."""
+    from app.lotti import auth
+
+    monkeypatch.setenv("AUTH_MAX_FAILS", "100")
+    monkeypatch.setenv("AUTH_MAX_FAILS_GLOBALI", "5")
+    _run(auth._tentativi().delete_many({}))
+    for i in range(5):
+        _run(auth.register_fail(f"10.9.9.{i}"))
+    with pytest.raises(HTTPException) as exc:
+        _run(auth.check_lock("198.51.100.7"))
+    assert exc.value.status_code == 429
+    salvato = _run(auth._tentativi().find_one({"_id": auth.CHIAVE_GLOBALE}))
+    assert salvato["bloccato_fino"] > 0
+    _run(auth._tentativi().delete_many({}))
+
+
+def test_ip_vuoto_non_salta_il_controllo(monkeypatch):
+    from app.lotti import auth
+
+    monkeypatch.setenv("AUTH_MAX_FAILS", "2")
+    monkeypatch.setenv("AUTH_MAX_FAILS_GLOBALI", "100")
+    _run(auth._tentativi().delete_many({}))
+    _run(auth.register_fail(""))
+    _run(auth.register_fail(""))
+    with pytest.raises(HTTPException):
+        _run(auth.check_lock(""))
+    _run(auth._tentativi().delete_many({}))
 
 
 def test_ip_richiesta_usa_cloudflare_non_il_proxy():
@@ -338,3 +371,32 @@ def test_coda_stampa_non_conserva_token_negli_url():
         == "https://x.it/lotti/api/r?mese=9&anno=2026"
     )
     assert _senza_token("/lotti/api/stampa/lotto/L1") == "/lotti/api/stampa/lotto/L1"
+
+
+def test_rinnovo_sessione_ha_una_fine(monkeypatch):
+    """/auth/refresh rinnovava senza limite: un token rubato restava valido per
+    sempre. Ora la catena si misura dall'ingresso vero (``auth_at``)."""
+    import time as _time
+    from app.lotti import auth
+
+    class Req:
+        def __init__(self, token):
+            self.headers = {"authorization": f"Bearer {token}"}
+            self.state = type("S", (), {})()
+
+    async def ammesso(data):
+        return True
+
+    monkeypatch.setattr("app.services.group_session.token_di_gruppo_ammesso", ammesso)
+    fresco = auth.make_token("op-1", "Anna", "operatore")
+    nuovo = _run(auth.refresh_token(Req(fresco)))["token"]
+    assert auth.verify_token(nuovo)["auth_at"] == auth.verify_token(fresco)["auth_at"]
+
+    vecchio = auth.make_token("op-1", "Anna", "operatore", auth_at=int(_time.time()) - 8 * 24 * 3600)
+    with pytest.raises(HTTPException) as exc:
+        _run(auth.refresh_token(Req(vecchio)))
+    assert exc.value.status_code == 401
+
+    admin = auth.make_token("adm", "Enzo", "amministratore", auth_at=int(_time.time()) - 25 * 3600)
+    with pytest.raises(HTTPException):
+        _run(auth.refresh_token(Req(admin)))

@@ -13,6 +13,8 @@ import os, re, xml.etree.ElementTree as ET, logging
 from datetime import datetime, timezone
 
 from app.lotti.db import database as db
+from app.lotti.auth import require_admin
+from fastapi import Depends
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/fornitori-anagrafica", tags=["Anagrafica Fornitori"])
@@ -127,7 +129,7 @@ async def lista_anagrafica():
 
 
 @router.put("/{nome_fornitore}")
-async def aggiorna_contatto(nome_fornitore: str, payload: ContattoFornitore):
+async def aggiorna_contatto(nome_fornitore: str, payload: ContattoFornitore, _admin=Depends(require_admin)):
     """Salva o aggiorna email e cellulare di un fornitore.
     Se email_verificata=True, l'import-da-fatture non sovrascriverà più l'email."""
     cel_norm = _normalize_phone(payload.cellulare or "")
@@ -224,7 +226,7 @@ async def get_contatto(nome_fornitore: str):
 
 
 @router.post("/import-da-fatture")
-async def import_da_fatture(sovrascrivi_sbagliate: bool = True):
+async def import_da_fatture(sovrascrivi_sbagliate: bool = True, _admin=Depends(require_admin)):
     """
     Popola/aggiorna fornitori_anagrafica leggendo l'email del FORNITORE dal campo
     xml_raw delle fatture (collection fatture), dal nodo CedentePrestatore.

@@ -153,7 +153,7 @@ async def stagione_attiva():
 
 # ── PUT: aggiorna il periodo (date) di una stagione ─────────────────────────────
 @router.put("/preset/{nome}/periodo")
-async def aggiorna_periodo_stagione(nome: str, data: dict = Body(...)):
+async def aggiorna_periodo_stagione(nome: str, data: dict = Body(...), _admin=Depends(require_admin)):
     """Enzo può correggere le date standard (equinozi/solstizi) se il suo
     'periodo estivo' reale non coincide con quello astronomico."""
     inizio, fine = data.get("data_inizio"), data.get("data_fine")
@@ -206,7 +206,7 @@ async def prodotti_piu_usati(limit: int = 10):
 
 # ── POST: copia un preset nelle altre stagioni ────────────────────────────────
 @router.post("/copia-preset")
-async def copia_preset(data: dict = Body(...)):
+async def copia_preset(data: dict = Body(...), _admin=Depends(require_admin)):
     """Copia il menù di una stagione nelle altre (Enzo 23/07/2026: "copia
     colazione primavera in tutte le stagioni"). SOSTITUISCE gli items delle
     stagioni di destinazione con quelli della sorgente (periodi e note dei
@@ -250,7 +250,7 @@ async def lista_preferiti():
 
 
 @router.post("/preferito")
-async def toggle_preferito(data: dict = Body(...)):
+async def toggle_preferito(data: dict = Body(...), _admin=Depends(require_admin)):
     pid = data.get("prodotto_id")
     if not pid:
         raise HTTPException(400, "prodotto_id obbligatorio")
@@ -320,7 +320,7 @@ async def get_colazione(nome: Optional[str] = None):
 
 # ── PUT: salva/aggiorna un preset (chiave = template.nome) ─────────────────────
 @router.put("")
-async def salva_colazione(template: ColazioneTemplate):
+async def salva_colazione(template: ColazioneTemplate, _admin=Depends(require_admin)):
     now = datetime.now(timezone.utc).isoformat()
     doc = template.dict()
     doc["ultima_modifica"] = now
@@ -332,7 +332,7 @@ async def salva_colazione(template: ColazioneTemplate):
 
 # ── DELETE: elimina un preset ──────────────────────────────────────────────────
 @router.delete("/preset/{nome}")
-async def elimina_preset(nome: str):
+async def elimina_preset(nome: str, _admin=Depends(require_admin)):
     r = await db.colazione_template.delete_one({"nome": nome})
     if r.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Preset non trovato")
@@ -341,7 +341,7 @@ async def elimina_preset(nome: str):
 
 # ── POST: aggiungi (o aggiorna qty) un prodotto in un preset ───────────────────
 @router.post("/aggiungi-prodotto")
-async def aggiungi_prodotto_a_preset(data: dict = Body(...)):
+async def aggiungi_prodotto_a_preset(data: dict = Body(...), _admin=Depends(require_admin)):
     preset = (data.get("preset") or "").strip()
     pid = data.get("prodotto_id")
     nome = data.get("prodotto_nome")

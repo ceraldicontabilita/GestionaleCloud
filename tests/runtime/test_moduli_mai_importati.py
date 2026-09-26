@@ -32,13 +32,7 @@ RADICE = Path(__file__).resolve().parents[2]
 ESCLUSI = ("__pycache__", ".claude", "node_modules", ".git")
 
 # Moduli orfani tollerati, con il motivo. Può solo accorciarsi.
-TOLLERATI = {
-    # Unico codice che sa leggere `gestionale.blobs` (216 PDF, 4 MB). Nessun
-    # documento cita una chiave `sha256:`, quindi l'archivio è già scollegato:
-    # o lo si riaggancia, o si tolgono tabella e modulo insieme. Finché i dati
-    # sono lì, la chiave per rileggerli resta.
-    "app/services/blob_store.py",
-}
+TOLLERATI: set = set()
 
 
 @lru_cache(maxsize=1)

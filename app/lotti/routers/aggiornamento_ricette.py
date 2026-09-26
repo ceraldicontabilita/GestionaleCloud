@@ -28,6 +28,8 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter
 from app.lotti.db import database as db
+from app.lotti.auth import require_admin
+from fastapi import Depends
 
 try:
     from rapidfuzz import fuzz as _fuzz
@@ -263,7 +265,7 @@ async def aggiorna_ricette_da_fattura(fattura_doc: dict) -> dict:
 
 
 @router.post("/da-fattura/{fattura_id}")
-async def aggiorna_da_fattura(fattura_id: str):
+async def aggiorna_da_fattura(fattura_id: str, _admin=Depends(require_admin)):
     """
     Forza l'aggiornamento degli ingredienti delle ricette
     a partire da una fattura già importata.
@@ -279,7 +281,7 @@ async def aggiorna_da_fattura(fattura_id: str):
 
 
 @router.post("/rielabora-tutte")
-async def rielabora_tutte(giorni: int = 30):
+async def rielabora_tutte(giorni: int = 30, _admin=Depends(require_admin)):
     """
     Rielabora tutte le fatture degli ultimi N giorni
     e aggiorna gli ingredienti delle ricette.
@@ -317,7 +319,7 @@ async def get_mappature(solo_auto: bool = False):
 
 
 @router.put("/mappature/conferma")
-async def conferma_mappatura(payload: dict):
+async def conferma_mappatura(payload: dict, _admin=Depends(require_admin)):
     """
     Conferma o corregge una mappatura manualmente.
     Payload: { nome_fattura, nome_ricetta, confermata: true/false }

@@ -11,6 +11,8 @@ from fastapi import APIRouter, HTTPException
 from datetime import datetime, timezone, timedelta
 
 from app.lotti.db import database as db
+from app.lotti.auth import require_admin
+from fastapi import Depends
 
 router = APIRouter(prefix="/fornitori", tags=["Fornitori"])
 
@@ -44,7 +46,7 @@ async def get_qualifica_in_attesa():
 
 
 @router.patch("/qualifica/{piva}/approva")
-async def approva_qualifica_fornitore(piva: str, includi: bool = True):
+async def approva_qualifica_fornitore(piva: str, includi: bool = True, _admin=Depends(require_admin)):
     """Approva o esclude un fornitore dalla qualifica HACCP."""
     nuovo_stato = "qualificato" if includi else "escluso"
     await db.fornitori_qualifica.update_one(
@@ -62,7 +64,7 @@ async def approva_qualifica_fornitore(piva: str, includi: bool = True):
 
 
 @router.post("/qualifica/approva-batch")
-async def approva_batch_qualifica(payload: dict):
+async def approva_batch_qualifica(payload: dict, _admin=Depends(require_admin)):
     """Approva in batch. Body: {"pive": ["IT123", "IT456"], "includi": true}"""
     pive = payload.get("pive", [])
     includi = payload.get("includi", True)
@@ -86,7 +88,7 @@ async def approva_batch_qualifica(payload: dict):
 
 
 @router.post("/qualifica/auto-qualifica-tutti")
-async def auto_qualifica_tutti_attivi():
+async def auto_qualifica_tutti_attivi(_admin=Depends(require_admin)):
     """Qualifica automatica di tutti i fornitori in 'in_attesa_verifica'.
     Ogni fornitore con fatture inviate è considerato qualificato.
     Solo esclusi manualmente rimangono esclusi.
@@ -170,7 +172,7 @@ async def get_scadenze_rinnovo_qualifica(giorni_soglia: int = 30):
 
 
 @router.post("/qualifica/{piva}/rinnova")
-async def rinnova_qualifica_fornitore(piva: str, note: str = ""):
+async def rinnova_qualifica_fornitore(piva: str, note: str = "", _admin=Depends(require_admin)):
     """Rinnova la qualifica annuale (resetta il timer 12 mesi)."""
     ora = datetime.now(timezone.utc)
     r = await db.fornitori_qualifica.update_one(

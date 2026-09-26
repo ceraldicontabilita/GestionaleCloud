@@ -820,7 +820,7 @@ async def get_soglie():
 
 
 @router.put("/soglia")
-async def set_soglia(payload: SogliaPayload):
+async def set_soglia(payload: SogliaPayload, _admin=Depends(require_admin)):
     """Imposta (o azzera con <=0) la scorta minima di una materia prima per nome
     normalizzato, su dizionario_prodotti.scorta_minima (fonte unica §4/§7)."""
     nome_norm = (payload.prodotto_nome_norm or "").strip()

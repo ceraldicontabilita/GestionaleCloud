@@ -14,6 +14,7 @@ import uuid
 from datetime import datetime, timezone, timedelta
 
 from app.lotti.db import database as db
+from fastapi import Depends
 
 router = APIRouter(prefix="/ordini-fornitori", tags=["Ordini Fornitori"])
 
@@ -277,7 +278,7 @@ async def aggiungi_a_bozza_riordino(nome: str, prodotto_id: str, quantita: float
 
 
 @router.post("/pulisci-e-rigenera-riordini")
-async def pulisci_e_rigenera_riordini(request: Request, conferma: bool = False):
+async def pulisci_e_rigenera_riordini(request: Request, conferma: bool = False, _admin=Depends(require_admin)):
     """PULIZIA ARRETRATO BOZZE AUTOMATICHE (02/07/2026): i vecchi job doppioni
     hanno accumulato ~149 bozze auto-generate mai riviste (dal 15/06). Sono
     proposte rigenerabili: questo endpoint le elimina (SOLO source automatiche,
@@ -305,7 +306,7 @@ async def pulisci_e_rigenera_riordini(request: Request, conferma: bool = False):
 
 
 @router.post("/genera-riordino")
-async def genera_riordino_automatico(request: Request, dry_run: bool = False):
+async def genera_riordino_automatico(request: Request, dry_run: bool = False, _admin=Depends(require_admin)):
     """RIORDINO AUTOMATICO: scandisce il magazzino bar e per ogni prodotto con
     stock <= soglia_minima propone la quantita' di riordino. Crea bozze per
     fornitore (source='riordino_auto') che il titolare valuta su 'Da inviare'.
@@ -691,7 +692,7 @@ async def rimuovi_richiesta_acquisto(richiesta_id: str, request: Request):
 
 
 @router.put("/carrello-sospesi")
-async def set_carrello_sospesi(payload: CarrelloSospesiPayload):
+async def set_carrello_sospesi(payload: CarrelloSospesiPayload, _admin=Depends(require_admin)):
     """Salva (upsert) il carrello sospesi lato server."""
     await db.carrello_sospesi.update_one(
         {"_id": "default"},
@@ -713,7 +714,7 @@ async def get_task_produzione_oggi():
     except Exception as e:
         import logging, traceback
         logging.getLogger("ordini").error("task-produzione-oggi: %s\n%s", e, traceback.format_exc())
-        return {"tasks": [], "totale": 0, "errore": str(e)}
+        return {"tasks": [], "totale": 0, "errore": f"task non calcolati ({type(e).__name__})"}
 
 
 async def _task_produzione_oggi_impl():
@@ -753,7 +754,7 @@ async def _task_produzione_oggi_impl():
 
 
 @router.delete("/{ordine_id}")
-async def elimina_ordine(ordine_id: str):
+async def elimina_ordine(ordine_id: str, _admin=Depends(require_admin)):
     res = await db.ordini_fornitori.delete_one({"id": ordine_id})
     if res.deleted_count == 0:
         raise HTTPException(404, "Ordine non trovato")
@@ -803,7 +804,7 @@ async def lista_ordini_automatici():
 
 
 @router.put("/{ordine_id}/conferma")
-async def conferma_ordine(ordine_id: str, request: Request = None):
+async def conferma_ordine(ordine_id: str, request: Request = None, _admin=Depends(require_admin)):
     await require_admin(request)
     """
     Conferma una bozza → stato 'confermato' (NON inviato).
@@ -826,7 +827,7 @@ async def conferma_ordine(ordine_id: str, request: Request = None):
 
 
 @router.put("/{ordine_id}/conferma-righe")
-async def conferma_righe(ordine_id: str, payload: dict, request: Request = None):
+async def conferma_righe(ordine_id: str, payload: dict, request: Request = None, _admin=Depends(require_admin)):
     await require_admin(request)
     """Segna confermate SOLO alcune righe. Payload: {prodotto_ids: [...]}.
     Le righe non in lista vengono s-confermate. Stato: 'confermato' se almeno
@@ -859,7 +860,7 @@ class InvioConfermato(BaseModel):
 
 
 @router.post("/{ordine_id}/invia")
-async def invia_ordine_confermato(ordine_id: str, payload: InvioConfermato, request: Request):
+async def invia_ordine_confermato(ordine_id: str, payload: InvioConfermato, request: Request, _admin=Depends(require_admin)):
     await require_admin(request)
     """Registra l'invio che il titolare ha completato nel client email/WhatsApp.
 
@@ -944,7 +945,7 @@ async def invia_ordine_confermato(ordine_id: str, payload: InvioConfermato, requ
 
 
 @router.put("/{ordine_id}/modifica-quantita")
-async def modifica_quantita_ordine(ordine_id: str, payload: dict):
+async def modifica_quantita_ordine(ordine_id: str, payload: dict, _admin=Depends(require_admin)):
     """
     Admin modifica le quantità prima della conferma.
     Payload: { prodotti: [{ prodotto_id, quantita }] }
@@ -976,7 +977,7 @@ async def modifica_quantita_ordine(ordine_id: str, payload: dict):
 
 
 @router.put("/{ordine_id}/sostituisci-prodotti")
-async def sostituisci_prodotti_ordine(ordine_id: str, payload: dict):
+async def sostituisci_prodotti_ordine(ordine_id: str, payload: dict, _admin=Depends(require_admin)):
     """
     Sostituisce l'intera lista prodotti dell'ordine (per modificare quantità
     ED eliminare singole righe prima dell'invio).

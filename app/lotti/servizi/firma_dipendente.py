@@ -60,12 +60,12 @@ async def firma_da_pin(
 
     # Stesso limite del login: dopo N PIN sbagliati dallo stesso client, 429.
     chiave = f"firma:{chiave_tentativi or 'sconosciuto'}"
-    check_lock(chiave)
+    await check_lock(chiave)
     trovati = await trova_dipendente_per_pin(pin, solo_operatori_lotti=True)
     if trovati:
-        clear_fails(chiave)
+        await clear_fails(chiave)
     if not trovati:
-        register_fail(chiave)
+        await register_fail(chiave)
         raise HTTPException(
             status_code=401,
             detail="PIN non riconosciuto: la rilevazione non e' stata registrata. "

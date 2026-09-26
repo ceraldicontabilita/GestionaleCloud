@@ -9,6 +9,8 @@ from datetime import datetime, timezone
 import uuid
 
 from app.lotti.db import database as db
+from app.lotti.auth import require_admin
+from fastapi import Depends
 
 router = APIRouter(prefix="/temperature-cottura", tags=["Temperature Cottura"])
 
@@ -83,7 +85,7 @@ async def aggiorna_temperatura_cottura(cottura_id: str, payload: dict = Body(...
 
 
 @router.delete("/{cottura_id}")
-async def elimina_temperatura_cottura(cottura_id: str):
+async def elimina_temperatura_cottura(cottura_id: str, _admin=Depends(require_admin)):
     await db.temperature_cottura.delete_one({"id": cottura_id})
     return {"success": True}
 

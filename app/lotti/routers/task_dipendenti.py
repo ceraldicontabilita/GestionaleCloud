@@ -90,7 +90,7 @@ async def get_task_oggi(reparto: Optional[str] = None):
 
 
 @router.post("")
-async def crea_task(payload: TaskIn):
+async def crea_task(payload: TaskIn, _admin=Depends(require_admin)):
     """Crea un task manuale per i dipendenti."""
     oggi = date.today().isoformat()
     doc = {
@@ -155,7 +155,7 @@ async def annulla_task(task_id: str, motivo: str = Query(...), _admin=Depends(re
 
 
 @router.post("/genera-oggi")
-async def genera_task_giornalieri():
+async def genera_task_giornalieri(_admin=Depends(require_admin)):
     """
     Genera automaticamente i task del giorno.
     Chiamata dallo scheduler alle 07:00.

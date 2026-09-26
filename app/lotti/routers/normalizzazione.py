@@ -469,7 +469,7 @@ async def get_o_crea_mapping(descrizione: str) -> dict:
 
 
 @router.post("/processa-nuovi-prodotti")
-async def processa_nuovi_prodotti(limit: int = 50):
+async def processa_nuovi_prodotti(limit: int = 50, _admin=Depends(require_admin)):
     """
     Normalizza i prodotti del dizionario che non hanno ancora un nome canonico.
     Processa solo i NUOVI (non ancora presenti nel nome_mapping).
@@ -583,7 +583,7 @@ async def processa_nuovi_prodotti(limit: int = 50):
 
 
 @router.post("/processa-tutti-aliases")
-async def processa_tutti_aliases(limit: int = 200):
+async def processa_tutti_aliases(limit: int = 200, _admin=Depends(require_admin)):
     """
     One-shot: per ogni voce dizionario_prodotti, cerca il mapping in nome_mapping
     e propaga nome_canonico + popola aliases[] con nome_normalizzato come alias.
@@ -658,7 +658,7 @@ async def mapping_da_revisionare(limit: int = 100):
 
 
 @router.post("/correggi-mapping")
-async def correggi_mapping(payload: dict = Body(...)):
+async def correggi_mapping(payload: dict = Body(...), _admin=Depends(require_admin)):
     """
     Correzione manuale di un mapping commerciale → nome usuale.
     Body: {descrizione_key, nome_canc, categoria}
@@ -723,7 +723,7 @@ async def nomi_usuali_disponibili():
 
 
 @router.post("/cambia-ingrediente-massa")
-async def cambia_ingrediente_massa(payload: dict = Body(...)):
+async def cambia_ingrediente_massa(payload: dict = Body(...), _admin=Depends(require_admin)):
     """
     Sostituisce un ingrediente in più ricette selezionate (flag).
     Body: {
@@ -870,7 +870,7 @@ async def correggi_peso_prodotto(
     nome_normalizzato: str,
     peso_kg: float,
     unita: str = "kg",
-    tipo_quantita: str = "totale",
+    tipo_quantita: str = "totale", _admin=Depends(require_admin),
 ):
     """Corregge manualmente il peso di un prodotto nel dizionario — è la regola
     permanente per fornitore+prodotto: da qui in poi ogni fattura futura con questo
@@ -904,7 +904,7 @@ async def correggi_peso_prodotto(
 
 
 @router.post("/aggiungi-fornitore-speciale")
-async def aggiungi_fornitore_speciale(fornitore: str, tipo: str = "prezzo_per_kg"):
+async def aggiungi_fornitore_speciale(fornitore: str, tipo: str = "prezzo_per_kg", _admin=Depends(require_admin)):
     """
     Aggiunge un fornitore alla configurazione speciale salvata in MongoDB.
     tipo: 'prezzo_per_kg' = Qt=confezioni, Prezzo=€/kg
@@ -1037,7 +1037,7 @@ async def _costruisci_dizionario_da_fatture(usa_ai: bool = True):
 
 
 @router.post("/costruisci-da-fatture")
-async def costruisci_dizionario_da_fatture(background: BackgroundTasks, usa_ai: bool = True):
+async def costruisci_dizionario_da_fatture(background: BackgroundTasks, usa_ai: bool = True, _admin=Depends(require_admin)):
     """Costruisce/aggiorna il DIZIONARIO UNIVERSALE leggendo ogni riga-prodotto di tutte
     le fatture e mappando ciascuna descrizione all'ingrediente madre (db.nome_mapping).
     Avvio in background; stato live su GET /normalizzazione/costruisci-da-fatture/stato."""
@@ -1265,7 +1265,7 @@ async def lista_proposte_articoli(stato: str = Query("da_confermare"), limit: in
 
 
 @router.post("/conferma-articolo")
-async def conferma_articolo(payload: dict = Body(...)):
+async def conferma_articolo(payload: dict = Body(...), _admin=Depends(require_admin)):
     """Conferma (o corregge) l'articolo di una descrizione di fattura.
 
     Body: {descrizione, nome_canc, ingredienti_ricetta?: [...], alimentare?: bool}.

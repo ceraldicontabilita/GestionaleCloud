@@ -15,6 +15,7 @@ Collection: schede_tecniche
   - aggiornato_at: ISO timestamp
 """
 
+import logging
 import re
 from datetime import datetime, timezone
 from urllib.parse import urlparse
@@ -24,6 +25,8 @@ from fastapi import APIRouter, Body, HTTPException, Query, Depends
 from app.lotti.db import database as db
 from app.lotti.auth import require_admin
 from app.lotti.servizi.schede_fornitore import FONTE_EMAIL_FORNITORE
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/schede-tecniche", tags=["Schede Tecniche"])
 
@@ -346,8 +349,9 @@ async def query_ricerca(nome: str = Query(...)):
 # sistema fa scraping per estrarre composizione/ingredienti/coloranti/allergeni,
 # da ereditare poi nel prodotto finito (modello allergeni a cascata).
 # ════════════════════════════════════════════════════════════════════════════
-import urllib.request as _urlreq
 import html as _html
+
+from app.lotti.servizi.fetch_sicuro import UrlNonAmmesso, scarica as _scarica_sicuro
 
 _ALLERGENI_KW = {
     "glutine": "Glutine", "frumento": "Glutine", "grano": "Glutine", "orzo": "Glutine",
@@ -402,10 +406,15 @@ def _estrai_da_testo(txt: str) -> dict:
     }
 
 
-def _scrape_composizione(url: str) -> dict:
-    """Scarica la pagina e prova a estrarre la dichiarazione ingredienti in modo euristico."""
-    req = _urlreq.Request(url, headers={"User-Agent": "Mozilla/5.0 (LottiHACCP scraper)"})
-    raw = _urlreq.urlopen(req, timeout=20).read().decode("utf-8", "replace")
+async def _scrape_composizione(url: str) -> dict:
+    """Scarica la pagina e prova a estrarre la dichiarazione ingredienti in modo euristico.
+
+    L'indirizzo arriva da fuori (utente o ricerca web): passa da ``fetch_sicuro``,
+    che rifiuta la rete interna e rivalida ogni reindirizzamento."""
+    risposta = await _scarica_sicuro(url, headers={"User-Agent": "Mozilla/5.0 (LottiHACCP scraper)"})
+    if risposta.status_code != 200:
+        raise ValueError(f"HTTP {risposta.status_code}")
+    raw = risposta.text
     txt = re.sub(r"(?is)<(script|style)[^>]*>.*?</\1>", " ", raw)
     txt = re.sub(r"(?is)<[^>]+>", " ", txt)
     return _estrai_da_testo(txt)
@@ -446,17 +455,21 @@ async def prodotti_senza_produttore(limit: int = Query(500, le=2000), q: str = Q
 
 
 @router.post("/scrape")
-async def scrape_scheda(payload: dict = Body(...)):
+async def scrape_scheda(payload: dict = Body(...), _admin=Depends(require_admin)):
     """Scarica la pagina del produttore ed estrae composizione/coloranti/allergeni.
     Se prodotto_key e' presente (e salva!=False) salva il risultato come scheda tipo='produttore'.
     Body: {url, prodotto_key?, nome_prodotto?, produttore?, salva?}"""
     url = (payload.get("url") or "").strip()
     if not url.startswith("http"):
-        raise HTTPException(400, "URL non valido (deve iniziare con http)")
+        raise HTTPException(400, "URL non valido (deve iniziare con https)")
     try:
-        dati = _scrape_composizione(url)
+        dati = await _scrape_composizione(url)
+    except UrlNonAmmesso as e:
+        raise HTTPException(400, f"indirizzo non ammesso: {e}") from e
     except Exception as e:
-        raise HTTPException(502, f"scraping fallito: {str(e)[:120]}") from e
+        logger.warning("[schede-tecniche] scraping %s fallito: %s %s", urlparse(url).netloc,
+                       type(e).__name__, e)
+        raise HTTPException(502, "scraping fallito: pagina non raggiungibile o non leggibile") from e
 
     key = _key(payload.get("prodotto_key") or payload.get("nome_prodotto") or "")
     if key and payload.get("salva", True):
@@ -563,7 +576,8 @@ async def leggi_foto_ai(payload: dict = Body(...)):
             )
         txt = "".join(b.get("text", "") for b in (r.json().get("content") or []) if b.get("type") == "text")
     except Exception as e:
-        raise HTTPException(502, f"AI-visione fallita: {str(e)[:120]}") from e
+        logger.warning("[schede-tecniche] AI-visione fallita: %s %s", type(e).__name__, e)
+        raise HTTPException(502, f"AI-visione fallita ({type(e).__name__}): riprova o compila a mano") from e
     txt = (txt or "").strip()
     if len(txt) < 5:
         return {"ok": False, "testo_ocr": txt, "nota": "Nessun testo leggibile dall'immagine"}
@@ -749,7 +763,8 @@ async def _identifica_con_ricerca_web(descrizione: str, fornitore: str = "",
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(502, f"ricerca web fallita: {str(e)[:120]}") from e
+        logger.warning("[schede-tecniche] ricerca web fallita: %s %s", type(e).__name__, e)
+        raise HTTPException(502, f"ricerca web fallita ({type(e).__name__})") from e
     txt = "".join(b.get("text", "") for b in (data.get("content") or []) if b.get("type") == "text")
     res = _estrai_json(txt)
     if not res.get("prodotto_identificato"):
@@ -759,7 +774,7 @@ async def _identifica_con_ricerca_web(descrizione: str, fornitore: str = "",
 
 
 @router.post("/ricerca-web")
-async def ricerca_web(payload: dict = Body(...)):
+async def ricerca_web(payload: dict = Body(...), _admin=Depends(require_admin)):
     """Identifica un prodotto partendo dalla descrizione ESATTA della fattura XML
     tramite ricerca web, e (se confidenza alta) salva scheda tecnica con link +
     impara il mapping descrizione→canonico. Body: {descrizione, fornitore?, salva?}.
@@ -846,9 +861,10 @@ async def ricerca_web(payload: dict = Body(...)):
         dati = _estrai_da_testo("Ingredienti: " + res["ingredienti_testo"])
     if (not dati or not dati.get("composizione")) and url.startswith("http"):
         try:
-            import asyncio as _aio
-            dati = await _aio.to_thread(_scrape_composizione, url)
-        except Exception:
+            dati = await _scrape_composizione(url)
+        except Exception as e:
+            logger.info("[schede-tecniche] composizione da %s non letta: %s %s",
+                        urlparse(url).netloc, type(e).__name__, e)
             dati = dati or None
 
     salvato_scheda = False
@@ -1071,7 +1087,7 @@ async def esegui_ricerca_web_batch(limit: int = 3, q: str = None, budget_s: int 
 @router.post("/ricerca-web-batch")
 async def ricerca_web_batch(
     limit: int = Query(3, le=5, description="Quanti prodotti processare (budget tempo Render)"),
-    q: str = Query(None, description="Filtro testo sul nome"),
+    q: str = Query(None, description="Filtro testo sul nome"), _admin=Depends(require_admin),
 ):
     """Esegue la ricerca web sulle righe fattura in coda (le più frequenti prima).
     Max 5 per chiamata e stop dopo ~65s per il timeout Render; lo stesso motore
@@ -1080,7 +1096,7 @@ async def ricerca_web_batch(
 
 
 @router.post("/ricerca-web-flag")
-async def ricerca_web_flag(payload: dict = Body(...)):
+async def ricerca_web_flag(payload: dict = Body(...), _admin=Depends(require_admin)):
     """Applica il file-checklist di Enzo: `cerca` = righe DA cercare (rientrano
     in coda anche se erano state sospese: tentativi azzerati), `escludi` =
     righe da NON cercare MAI (flag manuale permanente, vince su tutto).

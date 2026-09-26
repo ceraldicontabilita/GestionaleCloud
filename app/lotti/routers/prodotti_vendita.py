@@ -146,7 +146,7 @@ async def get_prodotto(prodotto_id: str):
 
 
 @router.post("/")
-async def create_prodotto(prodotto: ProdottoVendita):
+async def create_prodotto(prodotto: ProdottoVendita, _admin=Depends(require_admin)):
     """Crea nuovo prodotto in vendita"""
 
     # Se collegato a ricetta, prendi costo e allergeni
@@ -187,7 +187,7 @@ async def create_prodotto(prodotto: ProdottoVendita):
 
 
 @router.put("/{prodotto_id}")
-async def aggiorna_prodotto(prodotto_id: str, prodotto: ProdottoVendita):
+async def aggiorna_prodotto(prodotto_id: str, prodotto: ProdottoVendita, _admin=Depends(require_admin)):
     """Aggiorna prodotto completo (nome, categoria, prezzi, ecc.)"""
     existing = await db.prodotti_vendita.find_one({"id": prodotto_id}, {"_id": 0})
     if not existing:
@@ -236,7 +236,7 @@ async def aggiorna_prodotto(prodotto_id: str, prodotto: ProdottoVendita):
 
 
 @router.put("/{prodotto_id}/prezzo")
-async def aggiorna_prezzo_prodotto(prodotto_id: str, prezzo_vendita: float, iva: float = 10):
+async def aggiorna_prezzo_prodotto(prodotto_id: str, prezzo_vendita: float, iva: float = 10, _admin=Depends(require_admin)):
     """Aggiorna rapidamente solo il prezzo di vendita"""
     prodotto = await db.prodotti_vendita.find_one({"id": prodotto_id}, {"_id": 0})
     if not prodotto:
@@ -395,7 +395,7 @@ async def delete_prodotto_cascade(
 
 
 @router.delete("/{prodotto_id}")
-async def delete_prodotto(prodotto_id: str):
+async def delete_prodotto(prodotto_id: str, _admin=Depends(require_admin)):
     """Elimina prodotto"""
     result = await db.prodotti_vendita.delete_one({"id": prodotto_id})
     if result.deleted_count == 0:
@@ -407,7 +407,7 @@ async def delete_prodotto(prodotto_id: str):
 
 
 @router.post("/sync-acquaviva")
-async def sync_prodotti_acquaviva():
+async def sync_prodotti_acquaviva(_admin=Depends(require_admin)):
     """
     Sincronizza i prodotti Acquaviva dal dizionario prodotti.
     Crea un prodotto vendita per ogni voce del dizionario con fornitore Acquaviva.
@@ -471,7 +471,7 @@ async def sync_prodotti_acquaviva():
 
 
 @router.post("/ricalcola-costi-acquaviva")
-async def ricalcola_costi_acquaviva():
+async def ricalcola_costi_acquaviva(_admin=Depends(require_admin)):
     """
     Ricalcola il costo per PEZZO di tutti i prodotti Acquaviva che hanno
     pezzi_cartone > 0 usando la formula: costo_pezzo = prezzo_cartone / pezzi_cartone.
@@ -542,7 +542,7 @@ async def ricalcola_costi_acquaviva():
 
 
 @router.post("/sync-da-ricette")
-async def sync_prodotti_da_ricette():
+async def sync_prodotti_da_ricette(_admin=Depends(require_admin)):
     """
     Sincronizza prodotti vendita dalle ricette esistenti.
     Crea un prodotto vendita per ogni ricetta che non ne ha già uno.
@@ -657,7 +657,7 @@ async def sync_prodotti_da_ricette():
 
 @router.post("/imposta-prezzi-da-margine")
 async def imposta_prezzi_da_margine(
-    margine_percentuale: float = 30.0, solo_senza_prezzo: bool = True
+    margine_percentuale: float = 30.0, solo_senza_prezzo: bool = True, _admin=Depends(require_admin)
 ):
     """
     Imposta automaticamente il prezzo di vendita per tutti i prodotti
@@ -711,7 +711,7 @@ async def imposta_prezzi_da_margine(
 
 
 @router.post("/auto-categorie")
-async def auto_categorie():
+async def auto_categorie(_admin=Depends(require_admin)):
     """
     Assegna automaticamente una categoria ai prodotti interni senza categoria,
     analizzando il nome del prodotto.

@@ -10,14 +10,16 @@ Modello:
   - L'amministratore entra solo dal Gestionale (`/auth/session`, cookie
     ERP): il suo token porta il `sid` della sessione ERP e il logout del
     Gestionale lo revoca (`group_session.sessione_derivata_valida`).
-  - Anti brute-force: lockout in memoria per IP.
+  - Anti brute-force: tentativi persistiti su Supabase, per client e globali.
 
 Env usate (tutte opzionali, con default sicuri):
   AUTH_SECRET          segreto per firmare i JWT (consigliato impostarlo)
   AUTH_ENFORCE         "false" per disattivare l'enforcement delle letture in emergenza (default: true)
   AUTH_TOKEN_TTL_H     durata token in ore (default 12)
+  LOTTI_SESSIONE_MAX_ORE / _ADMIN  durata massima dei rinnovi dal PIN (default 168 / 24)
   AUTH_MAX_FAILS       tentativi PIN prima del lock (default 8)
   AUTH_LOCK_SECONDS    durata lock in secondi (default 300)
+  AUTH_MAX_FAILS_GLOBALI  PIN sbagliati da qualunque client in 15 minuti prima del blocco di tutti (default 40)
 """
 
 import os
@@ -85,7 +87,8 @@ def _load_or_create_persistent_secret() -> str:
     return _secrets.token_hex(32)
 
 
-def make_token(sub: str, nome: str, ruolo: str, via: str = "pin", ore: int = None, sid: str = "") -> str:
+def make_token(sub: str, nome: str, ruolo: str, via: str = "pin", ore: int = None, sid: str = "",
+               auth_at: int = None) -> str:
     return create_workforce_token(
         sub=sub,
         name=nome,
@@ -95,7 +98,20 @@ def make_token(sub: str, nome: str, ruolo: str, via: str = "pin", ore: int = Non
         expires_in=timedelta(hours=ore if ore else _ttl_hours()),
         auth_method=via,
         sid=sid,
+        auth_at=auth_at,
     )
+
+
+def _sessione_max_ore(ruolo: str) -> int:
+    """Durata massima di una sessione dal PIN (o dall'ingresso admin): oltre,
+    il rinnovo automatico si ferma e serve rientrare. Il tablet di reparto
+    resta aperto una settimana; l'amministratore un giorno."""
+    nome = "LOTTI_SESSIONE_MAX_ORE_ADMIN" if ruolo == "amministratore" else "LOTTI_SESSIONE_MAX_ORE"
+    predefinito = 24 if ruolo == "amministratore" else 168
+    try:
+        return int(os.environ.get(nome, str(predefinito)))
+    except ValueError:
+        return predefinito
 
 
 def verify_token(token: str):
@@ -264,8 +280,16 @@ async def require_automation_or_admin(request: Request):
     return request_actor(request)
 
 
-# ── Anti brute-force (in memoria, per IP) ──────────────────────────────────
-_FAILS: dict = {}
+# ── Anti brute-force (persistente, per client e globale) ────────────────────
+# I tentativi falliti stanno nella collezione ``pin_tentativi`` (archivio
+# Supabase di Lotti), non nella memoria del processo: un riavvio o un deploy
+# non azzerano più il conto. Oltre al limite per client c'è un limite
+# **globale**: il login di Lotti è solo PIN (nessun nome), e l'IP arriva da
+# intestazioni che un client può scrivere da sé, quindi senza un tetto
+# complessivo bastava cambiare intestazione a ogni tentativo.
+COLL_TENTATIVI = "pin_tentativi"
+CHIAVE_GLOBALE = "globale"
+CHIAVE_SCONOSCIUTA = "sconosciuto"
 
 
 def _max_fails() -> int:
@@ -282,6 +306,22 @@ def _lock_seconds() -> int:
         return 300
 
 
+def _max_fails_globali() -> int:
+    try:
+        return int(os.environ.get("AUTH_MAX_FAILS_GLOBALI", "40"))
+    except ValueError:
+        return 40
+
+
+FINESTRA_GLOBALE_S = 900
+
+
+def _tentativi():
+    from app.lotti.db import database
+
+    return database[COLL_TENTATIVI]
+
+
 def ip_richiesta(request) -> str:
     """IP del client vero. Davanti al servizio ci sono Cloudflare e Render:
     `request.client.host` e' il proxy, e contare li' i tentativi bloccava
@@ -296,24 +336,49 @@ def ip_richiesta(request) -> str:
     return request.client.host if request.client else ""
 
 
-def check_lock(ip: str):
-    rec = _FAILS.get(ip)
-    if rec and rec[1] > time.time():
-        wait = int(rec[1] - time.time())
-        raise HTTPException(status_code=429, detail=f"Troppi tentativi. Riprova tra {wait}s")
+async def check_lock(chiave: str):
+    """429 se il client o l'intero login sono bloccati. Una chiave vuota non
+    salta il controllo: conta come «sconosciuto»."""
+    ora = time.time()
+    for k in (chiave or CHIAVE_SCONOSCIUTA, CHIAVE_GLOBALE):
+        rec = await _tentativi().find_one({"_id": k})
+        fino = float((rec or {}).get("bloccato_fino") or 0)
+        if fino > ora:
+            raise HTTPException(status_code=429, detail=f"Troppi tentativi. Riprova tra {int(fino - ora)}s")
 
 
-def register_fail(ip: str):
-    rec = _FAILS.get(ip, [0, 0.0])
-    rec[0] += 1
-    if rec[0] >= _max_fails():
-        rec[1] = time.time() + _lock_seconds()
-        rec[0] = 0
-    _FAILS[ip] = rec
+async def register_fail(chiave: str):
+    ora = time.time()
+    coll = _tentativi()
+    k = chiave or CHIAVE_SCONOSCIUTA
+    rec = await coll.find_one({"_id": k}) or {}
+    conto = int(rec.get("conto") or 0) + 1
+    fino = float(rec.get("bloccato_fino") or 0)
+    if conto >= _max_fails():
+        fino, conto = ora + _lock_seconds(), 0
+    await coll.update_one({"_id": k}, {"$set": {"conto": conto, "bloccato_fino": fino, "ultimo": ora}},
+                          upsert=True)
+
+    glob = await coll.find_one({"_id": CHIAVE_GLOBALE}) or {}
+    inizio = float(glob.get("inizio_finestra") or 0)
+    conto_g = int(glob.get("conto") or 0)
+    if ora - inizio > FINESTRA_GLOBALE_S:
+        inizio, conto_g = ora, 0
+    conto_g += 1
+    fino_g = float(glob.get("bloccato_fino") or 0)
+    if conto_g >= _max_fails_globali():
+        fino_g, conto_g, inizio = ora + _lock_seconds(), 0, ora
+        import logging
+        logging.getLogger(__name__).warning(
+            "[lotti auth] %s PIN sbagliati in %ss: login bloccato per tutti per %ss",
+            _max_fails_globali(), FINESTRA_GLOBALE_S, _lock_seconds())
+    await coll.update_one({"_id": CHIAVE_GLOBALE},
+                          {"$set": {"conto": conto_g, "inizio_finestra": inizio, "bloccato_fino": fino_g}},
+                          upsert=True)
 
 
-def clear_fails(ip: str):
-    _FAILS.pop(ip, None)
+async def clear_fails(chiave: str):
+    await _tentativi().delete_one({"_id": chiave or CHIAVE_SCONOSCIUTA})
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -326,11 +391,17 @@ async def refresh_token(request: Request):
     data = await _token_valido_e_non_revocato(request)
     if not data:
         raise HTTPException(401, "Token assente o scaduto")
+    # La catena dei rinnovi ha una fine: si misura dal momento dell'ingresso
+    # vero (``auth_at``; per i token nati prima, il loro ``iat``).
+    ruolo = data.get("ruolo", "operatore")
+    auth_at = int(data.get("auth_at") or data.get("iat") or 0)
+    if not auth_at or time.time() - auth_at > _sessione_max_ore(ruolo) * 3600:
+        raise HTTPException(401, "Sessione scaduta: rientra col PIN")
     # Il rinnovo conserva il legame con la sessione del Gestionale: senza
     # `sid` un token rinnovato sopravviverebbe al logout.
     nuovo = make_token(sub=data.get("sub", "op"), nome=data.get("nome", "Operatore"),
-                       ruolo=data.get("ruolo", "operatore"), via=data.get("via", "pin"),
-                       sid=data.get("sid", ""))
+                       ruolo=ruolo, via=data.get("via", "pin"),
+                       sid=data.get("sid", ""), auth_at=auth_at)
     return {"ok": True, "token": nuovo}
 
 
