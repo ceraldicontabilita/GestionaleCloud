@@ -487,3 +487,39 @@ def test_regola_del_titolare_assegno_paga_la_fattura_dei_giorni_prima():
     assert assegni["0208770851"]["match_livello"] == "REGOLA_TITOLARE_GIORNI_PRECEDENTI"
     assert assegni["0208770864"]["fattura_id"] == "f36"
     assert not assegni["0208770999"].get("fattura_id")  # X1 e X2 nella finestra: decide il titolare
+
+
+def test_assegno_da_csv_entra_provvisorio_e_la_copia_ufficiale_lo_conferma():
+    """Dal 25/08/2026 nove assegni addebitati restavano fuori dalla Prima Nota
+    perche' arrivati solo da CSV e banca diretta."""
+    async def scenario():
+        db = ClientArchivioMemoria().db
+        csv = _mov(numero="0208769486", importo=1496.95, idx=1)
+        csv.update({"livello_evidenza": "provvisoria", "evidenza_bancaria_ufficiale": False,
+                    "in_attesa_estratto_ufficiale": True})
+        await db.estratto_conto_movimenti.insert_one(csv)
+        await sincronizza_assegni_da_estratto_conto(db, include_provvisori=True)
+        provvisoria = await db.prima_nota_banca.find_one({}, {"_id": 0})
+
+        ufficiale = _mov(numero="0208769486", importo=1496.95, idx=2)
+        await db.estratto_conto_movimenti.insert_one(ufficiale)
+        await sincronizza_assegni_da_estratto_conto(db, include_provvisori=True)
+        righe = await db.prima_nota_banca.find({}, {"_id": 0}).to_list(10)
+        return provvisoria, righe
+
+    provvisoria, righe = _run(scenario())
+    assert provvisoria["livello_evidenza"] == "provvisoria"
+    assert provvisoria["in_attesa_estratto_ufficiale"] is True
+    assert len(righe) == 1, "una copia in piu' dello stesso assegno non scrive una seconda riga"
+    assert righe[0]["estratto_conto_id"] == "ec-2"
+    assert righe[0]["livello_evidenza"] == "ufficiale"
+    assert righe[0]["in_attesa_estratto_ufficiale"] is False
+
+
+def test_il_giro_automatico_include_gli_assegni_provvisori():
+    import inspect
+
+    from app.services import riconciliazione_bancaria
+
+    sorgente = inspect.getsource(riconciliazione_bancaria.riconcilia_movimenti_banca)
+    assert "include_provvisori=True" in sorgente

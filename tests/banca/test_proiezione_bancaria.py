@@ -114,3 +114,96 @@ def test_proiezione_semantica_e_idempotente_senza_match_per_solo_importo():
     assert _run(db["estratto_conto_movimenti"].count_documents({
         "classificato_contabilmente": True,
     })) == 7
+
+
+# ── una riga per operazione, non per copia dell'estratto conto ──────────────
+# Produzione, 26/09/2026: lo stesso stipendio arrivava dal vecchio archivio e
+# da un CSV della banca, e ogni copia scriveva la sua riga (23 stipendi due
+# volte, 27.076,00 EUR di uscite in piu').
+
+def _db_dipendente():
+    db = ClientArchivioMemoria()["proiezione_copie"]
+    _run(db["dipendenti"].insert_one({
+        "id": "dip-valerio", "nome": "Valerio", "cognome": "Ceraldi",
+        "nome_completo": "Valerio Ceraldi", "codice_fiscale": "CRLVLR88H14F839O",
+    }))
+    return db
+
+
+def _stipendio(id_, fonte, data="2026-08-07", importo=1400.0):
+    return {"id": id_, "data": data, "tipo": "uscita", "importo": importo,
+            "descrizione_originale": "VOSTRA DISPOSIZIONE FAVORE CERALDI VALERIO CRLVLR88H14F839O stipendio",
+            "source_filename" if fonte.endswith(".csv") else "fonte": fonte}
+
+
+def _attive(db):
+    return _run(db["prima_nota_banca"].find({"status": {"$nin": ["deleted", "archived"]}}).to_list(100))
+
+
+def test_due_copie_dello_stesso_stipendio_fanno_una_riga():
+    db = _db_dipendente()
+    _run(db["estratto_conto_movimenti"].insert_many([
+        _stipendio("ec-legacy", "legacy_staging_2026"), _stipendio("ec-csv", "export.csv"),
+    ]))
+    _run(proietta_movimenti_bancari_semantici(db))
+    righe = _attive(db)
+    assert len(righe) == 1
+    copie = _run(db["estratto_conto_movimenti"].find({}).to_list(10))
+    assert {c["prima_nota_banca_id"] for c in copie} == {righe[0]["id"]}
+
+
+def test_il_doppione_gia_scritto_si_toglie_e_resta_uno():
+    db = _db_dipendente()
+    _run(db["estratto_conto_movimenti"].insert_many([
+        _stipendio("ec-legacy", "legacy_staging_2026"), _stipendio("ec-csv", "export.csv"),
+    ]))
+    for ec in ("ec-legacy", "ec-csv"):
+        _run(db["prima_nota_banca"].insert_one({
+            "id": f"pn-{ec}", "data": "2026-08-07", "tipo": "uscita", "importo": 1400.0,
+            "categoria": "Stipendi", "dipendente_id": "dip-valerio",
+            "source": "proiezione_semantica_ec", "estratto_conto_id": ec,
+        }))
+    esito = _run(proietta_movimenti_bancari_semantici(db))
+    assert esito["doppioni_tolti"] == 1
+    assert len(_attive(db)) == 1
+
+
+def test_due_stipendi_uguali_nello_stesso_export_restano_due():
+    db = _db_dipendente()
+    _run(db["estratto_conto_movimenti"].insert_many([
+        _stipendio("a1", "export.csv"), _stipendio("a2", "export.csv"),
+        _stipendio("l1", "legacy_staging_2026"), _stipendio("l2", "legacy_staging_2026"),
+    ]))
+    _run(proietta_movimenti_bancari_semantici(db))
+    assert len(_attive(db)) == 2
+
+
+def test_la_riga_di_un_altro_canale_conta_e_non_si_tocca():
+    db = _db_dipendente()
+    _run(db["estratto_conto_movimenti"].insert_one(_stipendio("ec-csv", "export.csv")))
+    _run(db["prima_nota_banca"].insert_one({
+        "id": "a-mano", "data": "2026-08-07", "tipo": "uscita", "importo": 1400.0,
+        "categoria": "Stipendi", "dipendente_id": "dip-valerio", "source": "manuale",
+    }))
+    esito = _run(proietta_movimenti_bancari_semantici(db))
+    assert esito["proiettati"] == 0 and esito["doppioni_tolti"] == 0
+    assert [r["id"] for r in _attive(db)] == ["a-mano"]
+
+
+def test_la_rata_del_mutuo_entra_in_banca_col_numero_e_senza_quote_inventate():
+    db = _db_dipendente()
+    _run(db["estratto_conto_movimenti"].insert_many([
+        {"id": "m1", "data": "2026-09-24", "tipo": "uscita", "importo": 512.35, "fonte": "enable_banking",
+         "descrizione_originale": "RIMBORSO FINANZ. - MUTUO N.1788 4851906 RATA 24/09/2026"},
+        {"id": "m2", "data": "2026-06-24", "tipo": "uscita", "importo": 512.39, "fonte": "legacy_staging_2026",
+         "descrizione_originale": "MUTUO N.1788 4851906 RATA 24/06/2026"},
+        {"id": "m3", "data": "2026-06-24", "tipo": "entrata", "importo": 30000.0,
+         "descrizione_originale": "EROGAZIONE MUTUO N.1788 4851906"},
+    ]))
+    esito = _run(proietta_movimenti_bancari_semantici(db))
+    assert esito["rate_mutuo"] == 2
+    rate = sorted(_attive(db), key=lambda r: r["data"])
+    assert [r["categoria"] for r in rate] == ["Rata mutuo", "Rata mutuo"]
+    assert {r["numero_mutuo"] for r in rate} == {"1788 4851906"}
+    assert all(r["ripartizione_capitale_interessi"] == "da_verificare" for r in rate)
+    assert all("quota_interessi" not in r and "quota_capitale" not in r for r in rate)
