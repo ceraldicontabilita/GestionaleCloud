@@ -290,3 +290,15 @@ def test_i_file_sciolti_nella_radice_passano_dallo_smistatore(ambiente):
     assert drive.file["i1"]["parent"] == "elaborate"
     # Secondo giro: la radice e' vuota, niente da rileggere.
     assert run(cu.giro(db))["letti"] == 0
+
+
+def test_import_in_pausa_senza_togliere_la_cartella(monkeypatch):
+    """La pausa ferma lo smistatore ma lascia la cartella: la simulazione e le
+    credenziali la usano ancora."""
+    monkeypatch.setenv("GOOGLE_DRIVE_DATI_FOLDER_ID", "radice")
+    monkeypatch.setenv("DRIVE_CARTELLA_UNICA_IMPORT", "false")
+    assert cu.radice() == "radice" and cu.attivo() is False
+    esito = run(cu.giro(AsyncMongoMockClient()["t"]))
+    assert "pausa" in esito["saltato"]
+    monkeypatch.setenv("DRIVE_CARTELLA_UNICA_IMPORT", "true")
+    assert cu.attivo() is True

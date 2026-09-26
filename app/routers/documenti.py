@@ -3223,8 +3223,10 @@ async def avvia_giro_cartella_unica(
     """Un giro subito sulla cartella DA ELABORARE, in sottofondo."""
     from app.services import drive_cartella_unica as cu
 
-    if not cu.attivo():
+    if not cu.radice():
         raise HTTPException(status_code=409, detail="GOOGLE_DRIVE_DATI_FOLDER_ID non impostata")
+    if not cu.import_attivo():
+        raise HTTPException(status_code=409, detail="Import in pausa (DRIVE_CARTELLA_UNICA_IMPORT=false)")
     if cu._lock.locked():
         return {"avviato": False, "motivo": "giro_in_corso"}
     background_tasks.add_task(cu.giro, Database.get_db())

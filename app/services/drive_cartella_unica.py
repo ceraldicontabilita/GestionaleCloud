@@ -62,8 +62,18 @@ def radice() -> Optional[str]:
     return os.getenv("GOOGLE_DRIVE_DATI_FOLDER_ID", "").strip() or None
 
 
+def import_attivo() -> bool:
+    """Interruttore del solo import (``DRIVE_CARTELLA_UNICA_IMPORT=false``).
+
+    Mette in pausa lo smistatore senza togliere la cartella: credenziali,
+    «vedi documento» e simulazione continuano a usarla.
+    """
+    return os.getenv("DRIVE_CARTELLA_UNICA_IMPORT", "true").strip().lower() not in (
+        "false", "0", "no", "off")
+
+
 def attivo() -> bool:
-    return bool(radice())
+    return bool(radice()) and import_attivo()
 
 
 def _batch() -> int:
@@ -179,8 +189,10 @@ async def _registra(db, file_id: str, **campi) -> None:
 
 async def giro(db) -> Dict[str, Any]:
     """Un giro su DA ELABORARE e poi sulla radice: al piu' ``DRIVE_CARTELLA_UNICA_BATCH`` file."""
-    if not attivo():
+    if not radice():
         return {"saltato": "GOOGLE_DRIVE_DATI_FOLDER_ID non impostata"}
+    if not import_attivo():
+        return {"saltato": "import in pausa (DRIVE_CARTELLA_UNICA_IMPORT=false)"}
     if _lock.locked():
         return {"saltato": "giro_in_corso"}
     async with _lock:
