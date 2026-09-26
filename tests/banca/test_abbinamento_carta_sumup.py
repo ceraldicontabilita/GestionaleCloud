@@ -198,3 +198,30 @@ def test_stesso_pagamento_su_carta_e_bpm_non_e_un_doppione():
     assert bpm["proiettati"] == 1
     assert carta["proiettati"] == 1 and carta["doppioni_tolti"] == 0
     assert sorted(r.get("conto_contabile") for r in righe) == ["19.01.01", "19.01.05"]
+
+
+def test_esito_dell_abbinamento_resta_in_sistema_stato():
+    from app.services.sumup_conto import CHIAVE_STATO_ABBINAMENTO
+
+    db = ClientArchivioMemoria()["stato_abbinamento"]
+
+    async def scenario():
+        await abbina_movimenti_sumup(db)
+        return await db["sistema_stato"].find_one({"chiave": CHIAVE_STATO_ABBINAMENTO})
+
+    stato = asyncio.run(scenario())
+    assert stato["terminato_at"]
+    assert stato["esito"]["movimenti"] == 0
+
+
+def test_estratto_gia_presente_riaccoda_l_abbinamento():
+    """Il ramo di Documenti > Import accoda l'abbinamento anche senza righe nuove."""
+    import inspect
+
+    from app.routers import documenti
+
+    sorgente = inspect.getsource(documenti)
+    inizio = sorgente.index("elif tipo_rilevato == 'estratto_conto_sumup':")
+    ramo = sorgente[inizio:sorgente.index("elif tipo_rilevato", inizio + 10)]
+    assert "accoda_abbinamento(db)" in ramo
+    assert 'if sumup_result.get("nuovi")' not in ramo
