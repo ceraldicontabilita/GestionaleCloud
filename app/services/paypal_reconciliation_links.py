@@ -111,10 +111,11 @@ async def _invoice_is_available(db, invoice_id: str, transaction_id: str) -> boo
         linked_ids.add(str(invoice["paypal_transaction_id"]))
     if linked_ids - {transaction_id}:
         return False
+    # Pagata per dichiarazione del titolare: aspetta proprio questa prova.
     if (
         invoice.get("pagato") is True
         or str(invoice.get("stato_pagamento") or "").lower() in {"pagata", "paid"}
-    ) and transaction_id not in linked_ids:
+    ) and transaction_id not in linked_ids and not invoice.get("in_attesa_riscontro_banca"):
         return False
     other = await db[COLL_TRANSACTIONS].find_one({
         "fattura_associata.fattura_id": invoice_id,

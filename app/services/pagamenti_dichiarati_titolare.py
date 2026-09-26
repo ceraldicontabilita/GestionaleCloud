@@ -11,12 +11,13 @@ passando **solo dai motori che esistono gia'**, nessuna scrittura diretta.
 - Assegno → l'addebito sull'estratto conto con lo stesso numero (le cifre
   finali che il titolare scrive) e l'importo al centesimo della somma delle
   fatture pagate con quell'assegno, univoco; poi
-  ``collega_assegno_riconciliato_a_fatture``. Senza addebito univoco la
-  fattura aspetta la banca.
-- Banca, carta, PayPal → la fattura aspetta la banca
-  (``imposta_fattura_in_attesa_banca``) e la chiude il motore unico
-  ``reconcile_deterministic_invoice_allocations`` quando trova il movimento:
-  il metodo dichiarato non e' la prova che il denaro sia uscito.
+  ``collega_assegno_riconciliato_a_fatture``.
+- Banca, carta, PayPal, assegno non ancora trovato → la fattura entra subito
+  in Prima Nota Banca con una riga **dichiarata** (``dichiarato_titolare``) ed
+  e' pagata; resta ``in_attesa_riscontro_banca`` finche' un motore bancario
+  (bonifico, carta Nexi, PayPal, assegno) non trova il movimento: la sua riga
+  con la prova sostituisce quella dichiarata (``assorbi_righe_dichiarate``),
+  mai due uscite per lo stesso pagamento.
 - SumUp → nessun motore sa registrare un fornitore pagato con la carta SumUp:
   resta aperta con il metodo dichiarato scritto, e decide il titolare.
 - Non pagata → non si tocca.
@@ -242,18 +243,54 @@ async def _conferma_cassa(fattura: Dict[str, Any], riga: Dict[str, Any]) -> Dict
     })
 
 
-async def _attendi_banca(db, fattura: Dict[str, Any], riga: Dict[str, Any]) -> None:
-    from app.routers.prima_nota_module.sync import imposta_fattura_in_attesa_banca
+async def _scrivi_banca_dichiarata(db, fattura: Dict[str, Any], riga: Dict[str, Any]) -> str:
+    """Il titolare dice «pagata in banca»: la fattura va in Prima Nota Banca.
 
-    if fattura.get("stato_finanziario") != "aperta_in_attesa_banca":
-        await imposta_fattura_in_attesa_banca({
-            "fattura_id": fattura["id"], "performed_by": ATTORE,
-        })
+    La riga nasce dal writer unico (``registra_pagamento_fattura``, ramo
+    banca senza movimento) e porta ``dichiarato_titolare``: per l'utente la
+    fattura e' pagata, ma finche' non arriva il movimento dell'estratto conto
+    (bonifico, carta Nexi, PayPal, assegno) resta ``in_attesa_riscontro_banca``
+    e i motori bancari la cercano ancora. Quando lo trovano, la loro riga con
+    la prova sostituisce questa (``assorbi_righe_dichiarate``): mai due uscite.
+    """
+    from app.routers.prima_nota_module.sync import registra_pagamento_fattura
+    from app.services.prima_nota_integrity import CAMPO_RIGA_DICHIARATA
+
+    metodo = riga.get("metodo_pagamento_titolare")
+    data = riga.get("data_pagamento_report") or str(fattura.get("invoice_date") or "")[:10]
+    esito = await registra_pagamento_fattura(
+        fattura, "banca", source=ATTORE, allow_provisional_bank=True,
+    )
+    pn_id = esito.get("banca")
+    if not pn_id:
+        raise HTTPException(status_code=409, detail="Riga di Prima Nota Banca non scritta")
+    await db["prima_nota_banca"].update_one({"id": pn_id}, {"$set": {
+        CAMPO_RIGA_DICHIARATA: True,
+        "data": data,
+        "metodo_pagamento_dichiarato": metodo,
+        "assegno_numero_dichiarato": riga.get("assegno_numero_titolare") or None,
+        "motivo_provvisorio": "dichiarata_dal_titolare_in_attesa_estratto_conto",
+        "updated_at": _oggi(),
+    }})
     await db["invoices"].update_one({"id": fattura["id"]}, {"$set": {
-        "metodo_pagamento_dichiarato": riga.get("metodo_pagamento_titolare"),
+        "pagato": True,
+        "paid": True,
+        "stato_pagamento": "pagata",
+        "payment_status": "paid",
+        "stato_finanziario": "pagata_dichiarata_in_attesa_banca",
+        "pagamento_dichiarato_titolare": True,
+        "in_attesa_riscontro_banca": True,
+        "metodo_pagamento": "banca",
+        "metodo_pagamento_dichiarato": metodo,
         "assegno_numero_dichiarato": riga.get("assegno_numero_titolare") or None,
         "metodo_pagamento_override_source": ATTORE,
+        "prima_nota_id": pn_id,
+        "prima_nota_banca_id": pn_id,
+        "prima_nota_tipo": "banca",
+        "data_pagamento": data,
+        "updated_at": _oggi(),
     }})
+    return pn_id
 
 
 def _numero_assegno_movimento(movimento: Dict[str, Any]) -> str:
@@ -369,6 +406,29 @@ async def _paga_con_assegni(
             for f, _ in membri:
                 esiti[f["id"]] = f"assegno_non_collegato: {dettaglio}"
     return esiti
+
+
+async def _registra_banca_dichiarata(
+    db, fattura, riga, metodo, annota, *, dry_run: bool, motivo: Optional[str] = None,
+) -> None:
+    """Scrive la riga dichiarata una volta sola: il giro dei 30 minuti ripassa
+    queste righe per cercare l'assegno o il bonifico, non per riscriverle."""
+    gia_scritta = bool(
+        fattura.get("in_attesa_riscontro_banca") and fattura.get("prima_nota_banca_id")
+    )
+    if dry_run or gia_scritta:
+        annota(riga, "in_attesa_banca", fattura, motivo=motivo)
+        return
+    await _storna_cassa_provvisoria(db, fattura, metodo)
+    try:
+        pn_id = await _scrivi_banca_dichiarata(db, fattura, riga)
+    except HTTPException as exc:
+        annota(riga, "errore", fattura, motivo=str(exc.detail))
+        await _salva_esito(db, riga, "errore", metodo=metodo, motivo=str(exc.detail))
+        return
+    annota(riga, "in_attesa_banca", fattura, motivo=motivo)
+    await _salva_esito(db, riga, "in_attesa_banca", metodo=metodo, motivo=motivo,
+                       prima_nota_banca_dichiarata_id=pn_id)
 
 
 async def applica_pagamenti_dichiarati(
@@ -490,12 +550,9 @@ async def applica_pagamenti_dichiarati(
             gruppi_assegno[chiave].append((fattura, riga))
             continue
 
-        # Banca, carta, PayPal, assegno senza numero: la prova e' la banca.
-        annota(riga, "in_attesa_banca", fattura)
-        if not dry_run:
-            await _storna_cassa_provvisoria(db, fattura, metodo)
-            await _attendi_banca(db, fattura, riga)
-            await _salva_esito(db, riga, "in_attesa_banca", metodo=metodo)
+        # Banca, carta, PayPal, assegno senza numero: in Prima Nota Banca
+        # subito, come dichiarata; la prova la porta l'estratto conto.
+        await _registra_banca_dichiarata(db, fattura, riga, metodo, annota, dry_run=dry_run)
 
     esiti_assegno = await _paga_con_assegni(db, gruppi_assegno, dry_run=dry_run)
     for fattura_id, esito in esiti_assegno.items():
@@ -506,18 +563,17 @@ async def applica_pagamenti_dichiarati(
             if not dry_run:
                 await _salva_esito(db, riga, "registrata", metodo="assegno")
             continue
-        annota(riga, "in_attesa_banca", fattura, motivo=esito)
-        if not dry_run:
-            await _storna_cassa_provvisoria(db, fattura, "assegno")
-            await _attendi_banca(db, fattura, riga)
-            await _salva_esito(db, riga, "in_attesa_banca", metodo="assegno", motivo=esito)
+        await _registra_banca_dichiarata(db, fattura, riga, "assegno", annota,
+                                         dry_run=dry_run, motivo=esito)
 
-    # Le fatture pagate in banca le chiude l'unico motore bonifico ↔ fattura.
-    if not dry_run and conteggi.get("in_attesa_banca") and not solo_pendenti:
-        from app.services.bank_payment_allocations import (
-            reconcile_deterministic_invoice_allocations,
-        )
-        risultato["riconciliazione_banca"] = await reconcile_deterministic_invoice_allocations(db)
+    # Le fatture pagate in banca le chiude l'unico motore bonifico ↔ fattura;
+    # il giro dei 30 minuti lo esegue gia' per conto suo.
+    if not dry_run and conteggi.get("in_attesa_banca"):
+        if not solo_pendenti:
+            from app.services.bank_payment_allocations import (
+                reconcile_deterministic_invoice_allocations,
+            )
+            risultato["riconciliazione_banca"] = await reconcile_deterministic_invoice_allocations(db)
         await _ricontrolla_attese(db, righe, risultato)
 
     risultato.update({

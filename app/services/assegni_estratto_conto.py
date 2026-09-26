@@ -539,6 +539,19 @@ async def collega_assegno_riconciliato_a_fatture(
     pn_id = await _garantisci_prima_nota(
         db, assegno_aggiornato, movimento, singola_id, now,
     )
+    # La riga che il titolare aveva dichiarato per queste fatture lascia il
+    # posto a quella dell'assegno addebitato: una sola uscita.
+    from app.services.prima_nota_integrity import assorbi_righe_dichiarate
+
+    quote_per_fattura: Dict[str, float] = {}
+    for link in links:
+        if link["quota"] > 0:
+            quote_per_fattura[link["fattura_id"]] = round(
+                quote_per_fattura.get(link["fattura_id"], 0.0) + link["quota"], 2,
+            )
+    await assorbi_righe_dichiarate(
+        db, quote_per_fattura, sostituita_da=pn_id, movimento_id=movimento_id,
+    )
     for fattura_id in fattura_ids:
         await db["invoices"].update_one({"id": fattura_id}, {"$set": {
             "riconciliato": True,

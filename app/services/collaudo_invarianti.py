@@ -61,7 +61,10 @@ def gruppo_multi_fattura_valido(
 async def check_fatture_banca_senza_ec(db) -> Dict[str, Any]:
     """REGOLA UTENTE 18/07: una fattura risulta pagata per banca SOLO se
     riconciliata con un movimento reale (estratto conto / PayPal / carta)."""
-    from app.services.prima_nota_integrity import CAMPI_EVIDENZA_BANCA
+    from app.services.prima_nota_integrity import (
+        CAMPI_EVIDENZA_BANCA,
+        CAMPO_RIGA_DICHIARATA,
+    )
 
     esempi, count = [], 0
     projection = {
@@ -69,6 +72,7 @@ async def check_fatture_banca_senza_ec(db) -> Dict[str, Any]:
         "data": 1, "importo": 1,
         "descrizione": 1, "source": 1,
         **{campo: 1 for campo in CAMPI_EVIDENZA_BANCA},
+        CAMPO_RIGA_DICHIARATA: 1,
     }
     righe = await db["prima_nota_banca"].find(
         {**_ATTIVO, "tipo": "uscita", "$or": [
@@ -77,8 +81,14 @@ async def check_fatture_banca_senza_ec(db) -> Dict[str, Any]:
         ]},
         projection,
     ).to_list(5000)
+    dichiarate = 0
     for r in righe:
         if any(r.get(campo) not in (None, "") for campo in CAMPI_EVIDENZA_BANCA):
+            continue
+        if r.get(CAMPO_RIGA_DICHIARATA):
+            # Dichiarata dal titolare nel report «Fatture ricevute»: la regola
+            # e' sua, e la riga aspetta il movimento che la sostituira'.
+            dichiarate += 1
             continue
         count += 1
         if len(esempi) < 5:
@@ -86,7 +96,8 @@ async def check_fatture_banca_senza_ec(db) -> Dict[str, Any]:
     return {"nome": "fatture_banca_senza_estratto_conto", "violazioni": count,
             "descrizione": "Pagamenti fattura in Prima Nota Banca senza movimento "
                            "di estratto conto collegato (regola 18/07: mai pagata "
-                           "banca senza riscontro)", "esempi": esempi}
+                           "banca senza riscontro)", "esempi": esempi,
+            "dichiarate_titolare_in_attesa": dichiarate}
 
 
 async def check_ec_dangling_e_duplicati(db) -> Dict[str, Any]:
