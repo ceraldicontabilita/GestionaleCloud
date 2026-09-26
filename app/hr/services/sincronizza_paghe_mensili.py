@@ -46,8 +46,20 @@ def _stato_e_saldo(busta: float, bonifico: float) -> Dict[str, Any]:
     return {"stato_pagamento": stato, "saldo": round(busta - bonifico, 2)}
 
 
+def _mese_registro(c: Dict[str, Any]) -> int:
+    """Mese tecnico usato dalla pagina Paghe: 13 e 14 restano separati."""
+    tipo = str(c.get("tipo_cedolino") or "ordinario").strip().lower()
+    if tipo == "tredicesima":
+        return 13
+    if tipo == "quattordicesima":
+        return 14
+    return int(c["mese"])
+
+
 async def sincronizza(db, anno: int = None) -> Dict[str, Any]:
-    filtro_ced: Dict[str, Any] = {"tipo_cedolino": {"$in": ["ordinario", None]}}
+    filtro_ced: Dict[str, Any] = {
+        "tipo_cedolino": {"$in": ["ordinario", "mensile", "tredicesima", "quattordicesima", None]}
+    }
     if anno:
         filtro_ced["anno"] = anno
     cedolini = await db[Collections.PAYSLIPS].find(filtro_ced, {"_id": 0, "pdf_data": 0}).to_list(3000)
@@ -96,7 +108,9 @@ async def sincronizza(db, anno: int = None) -> Dict[str, Any]:
     creati = aggiornati = saltati_manuali = 0
 
     for c in cedolini:
-        dip, anno_c, mese_c = c["dipendente_id"], int(c["anno"]), int(c["mese"])
+        dip, anno_c = c["dipendente_id"], int(c["anno"])
+        mese_competenza = int(c["mese"])
+        mese_c = _mese_registro(c)
         esistente = esistenti_idx.get((dip, anno_c, mese_c))
         if esistente and esistente.get("origine") not in (None, "cedolino"):
             saltati_manuali += 1
@@ -115,6 +129,8 @@ async def sincronizza(db, anno: int = None) -> Dict[str, Any]:
 
         doc = {
             "dipendente_id": dip, "anno": anno_c, "mese": mese_c,
+            "mese_competenza": mese_competenza,
+            "tipo_cedolino": str(c.get("tipo_cedolino") or "ordinario").strip().lower(),
             "importo_busta": c["netto"],
             "bonifico_ricevuto": bonifico_importo > 0,
             "bonifico_importo": bonifico_importo or None,

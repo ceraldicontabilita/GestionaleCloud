@@ -21,6 +21,22 @@ def test_tipo_cedolino_rileva_intestazioni_speciali_senza_confondere_i_ratei():
     assert _detect_tipo_cedolino("MENSILITA QUATTORDICESIMA 2026\nRATEO TREDICESIMA") == "quattordicesima"
 
 
+def test_tipo_cedolino_rileva_le_voci_zucchetti_di_13ma_e_14ma():
+    from app.parsers.busta_paga_multi_template import _detect_tipo_cedolino
+
+    quattordicesima = """PERIODO DI RETRIBUZIONE\nLuglio 2025 AGG.\n* * Z50022 14ma Mensilita' 8,60913 28,66666 ORE 246,80"""
+    tredicesima = """PERIODO DI RETRIBUZIONE\nDicembre 2025 AGG.\n* * Z50000 13ma Mensilita' 8,60913 172,00000 ORE 1.480,77"""
+    solo_recupero = """PERIODO DI RETRIBUZIONE\nGennaio 2026\n* * Z50001 Recupero 13ma Mensilita' 50,00"""
+    ordinario_con_aggiuntive = """PERIODO DI RETRIBUZIONE\nGiugno 2026\n* * Z00001 Retribuzione 1.291,71\n* * Z50000 13ma Mensilita' 126,21\n* * Z50022 14ma Mensilita' 126,21"""
+    cessazione_con_14ma = """PERIODO DI RETRIBUZIONE\nGiugno 2026\n13-06-2025 12-06-2026\nOPE\n* * Z50022 14ma Mensilita' 86,89\nLicenz."""
+
+    assert _detect_tipo_cedolino(quattordicesima) == "quattordicesima"
+    assert _detect_tipo_cedolino(tredicesima) == "tredicesima"
+    assert _detect_tipo_cedolino(solo_recupero) == "mensile"
+    assert _detect_tipo_cedolino(ordinario_con_aggiuntive) == "mensile"
+    assert _detect_tipo_cedolino(cessazione_con_14ma) == "mensile"
+
+
 def test_teamsystem_legge_totali_dalle_celle_e_non_dalla_riga_precedente():
     from app.parsers.busta_paga_multi_template import _parse_teamsystem_layout
 
@@ -173,6 +189,83 @@ def test_fascicolo_multipagina_separa_dipendenti_e_conserva_pagine(monkeypatch):
         split_pages.append(len(document))
         document.close()
     assert split_pages == [2, 1]
+
+
+def test_foglio_presenze_precede_la_busta_dello_stesso_dipendente(monkeypatch):
+    from app.parsers import busta_paga_multi_template as multi
+    from app.services import cedolini_motore
+
+    presenza = "Autorizzazione Inail n. 301 del 15/01/2009\nGIUSTIFICATIVI\nTIMBRATURE"
+    source = fitz.open()
+    for text in (f"{presenza}\nPRESENZE_A", "BUSTA_A", f"{presenza}\nPRESENZE_B", "BUSTA_B"):
+        page = source.new_page()
+        page.insert_text((72, 72), text, fontsize=7)
+    pdf_bytes = source.tobytes()
+    source.close()
+
+    def fake_parse(content):
+        document = fitz.open(stream=content, filetype="pdf")
+        text = "\n".join(page.get_text() for page in document)
+        document.close()
+        marker = "A" if "BUSTA_A" in text else "B" if "BUSTA_B" in text else None
+        if marker is None:
+            return {"parse_success": False, "summary": {}}
+        return {
+            "parse_success": True,
+            "tipo_documento": "cedolino",
+            "summary": {
+                "dipendente_nome": f"DIPENDENTE {marker}",
+                "codice_fiscale": f"CODICEFISCALE{marker}",
+                "mese": 6,
+                "anno": 2026,
+                "netto": 1000,
+                "template": "test",
+            },
+        }
+
+    monkeypatch.setattr(multi, "parse_busta_paga_from_bytes", fake_parse)
+    monkeypatch.setattr(multi, "extract_summary", lambda parsed: parsed.get("summary", {}))
+
+    units = cedolini_motore._parse_multi_template_units(pdf_bytes)
+
+    assert [(unit["source_page_start"], unit["source_page_end"]) for unit in units] == [(1, 2), (3, 4)]
+
+
+def test_due_buste_con_stessa_identita_documentale_non_vengono_scartate(monkeypatch):
+    from app.parsers import busta_paga_multi_template as multi
+    from app.services import cedolini_motore
+
+    source = fitz.open()
+    for text in ("BUSTA_A_1", "BUSTA_B", "BUSTA_A_2"):
+        page = source.new_page()
+        page.insert_text((72, 72), text)
+    pdf_bytes = source.tobytes()
+    source.close()
+
+    def fake_parse(content):
+        document = fitz.open(stream=content, filetype="pdf")
+        text = "\n".join(page.get_text() for page in document)
+        document.close()
+        marker = "B" if "BUSTA_B" in text else "A"
+        return {
+            "parse_success": True,
+            "tipo_documento": "cedolino",
+            "summary": {
+                "dipendente_nome": f"DIPENDENTE {marker}",
+                "codice_fiscale": f"CODICEFISCALE{marker}",
+                "mese": 7,
+                "anno": 2026,
+                "netto": 1000,
+                "template": "test",
+            },
+        }
+
+    monkeypatch.setattr(multi, "parse_busta_paga_from_bytes", fake_parse)
+    monkeypatch.setattr(multi, "extract_summary", lambda parsed: parsed.get("summary", {}))
+
+    units = cedolini_motore._parse_multi_template_units(pdf_bytes)
+
+    assert [(unit["source_page_start"], unit["source_page_end"]) for unit in units] == [(1, 1), (2, 2), (3, 3)]
 
 
 class _Collection:

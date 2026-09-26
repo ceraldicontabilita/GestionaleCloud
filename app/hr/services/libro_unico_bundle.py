@@ -12,45 +12,13 @@ pagina presenze, senza elementi retributivi: qui vengono segnalate e saltate,
 non e' questo il documento da cui prendere il loro netto (arrivano gia'
 riconciliate dalla cartella Drive "Cedolini Paga/Elaborate").
 """
-import base64
-import re
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 import fitz  # PyMuPDF
 
 from app.hr.database import Collections
-from app.hr.parsers.busta_paga_multi_template import parse_busta_paga_from_bytes
-
-_CF = re.compile(r"[A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z]")
-
-
-def _pagine_per_dipendente(pdf_bytes: bytes) -> List[Dict[str, Any]]:
-    """Raggruppa le pagine consecutive che condividono lo stesso codice fiscale."""
-    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    gruppi: List[Dict[str, Any]] = []
-    corrente: Optional[str] = None
-    for i in range(doc.page_count):
-        testo = doc[i].get_text()
-        m = _CF.search(testo)
-        cf = m.group(0) if m else None
-        if cf and cf != corrente:
-            gruppi.append({"codice_fiscale": cf, "pagine": [i]})
-            corrente = cf
-        elif cf == corrente and gruppi:
-            gruppi[-1]["pagine"].append(i)
-        # pagine senza CF riconoscibile restano nel gruppo aperto (es. intestazioni)
-        elif gruppi:
-            gruppi[-1]["pagine"].append(i)
-
-    for g in gruppi:
-        sotto = fitz.open()
-        sotto.insert_pdf(doc, from_page=g["pagine"][0], to_page=g["pagine"][-1])
-        g["pdf_bytes"] = sotto.tobytes()
-        sotto.close()
-    doc.close()
-    return gruppi
 
 
 async def dividi_e_registra(db, pdf_bytes: bytes, filename: str = "") -> Dict[str, Any]:
@@ -60,7 +28,15 @@ async def dividi_e_registra(db, pdf_bytes: bytes, filename: str = "") -> Dict[st
     stesso anno/mese, lo salta. I dipendenti senza pagina retributiva (solo
     presenze — gli amministratori) vengono segnalati, non registrati da qui.
     """
-    gruppi = _pagine_per_dipendente(pdf_bytes)
+    # Usa il motore canonico: distingue piu' buste dello stesso dipendente,
+    # conserva le continuazioni multipagina e legge il netto dalla sua cella.
+    # Il vecchio raggruppamento solo per CF fondeva, per esempio, una 14a con
+    # il cedolino ordinario o spezzava la seconda pagina con il netto.
+    from app.services.cedolini_motore import leggi_pdf
+
+    lettura = leggi_pdf(pdf_bytes)
+    buste = lettura.get("buste") or []
+    presenze = lettura.get("presenze") or []
 
     dipendenti = await db[Collections.EMPLOYEES].find(
         {}, {"_id": 0}).to_list(500)
@@ -74,33 +50,33 @@ async def dividi_e_registra(db, pdf_bytes: bytes, filename: str = "") -> Dict[st
     adesso = datetime.now(timezone.utc).isoformat()
     inseriti, saltati, senza_paga, senza_anagrafica = [], [], [], []
 
-    for g in gruppi:
-        cf = g["codice_fiscale"]
-        try:
-            r = parse_busta_paga_from_bytes(g["pdf_bytes"])
-        except Exception as e:
-            senza_paga.append({"codice_fiscale": cf, "errore": str(e)})
+    for busta in buste:
+        cf = str(busta.get("codice_fiscale") or "").upper()
+        if not cf:
+            senza_paga.append({"codice_fiscale": None, "errore": "codice fiscale non letto"})
             continue
-
-        t = r.get("totali") or {}
-        p = r.get("periodo") or {}
-        d = r.get("dipendente") or {}
-        if r.get("tipo_documento") == "foglio_presenze" or t.get("netto") is None:
-            # Solo presenze, senza pagina di elementi retributivi (amministratori):
-            # non c'e' un netto da registrare qui.
-            senza_paga.append({"codice_fiscale": cf, "nome": d.get("nome_completo")})
+        if busta.get("netto") is None:
+            senza_paga.append({
+                "codice_fiscale": cf,
+                "nome": busta.get("nome_dipendente"),
+                "errore": "netto non leggibile",
+            })
             continue
 
         dip = per_cf.get(cf)
         if not dip:
-            senza_anagrafica.append({"codice_fiscale": cf, "nome": d.get("nome_completo")})
+            senza_anagrafica.append({"codice_fiscale": cf, "nome": busta.get("nome_dipendente")})
             continue
 
-        anno, mese = p.get("anno"), p.get("mese")
-        tipo = r.get("tipo_cedolino") or "ordinario"
+        anno, mese = busta.get("anno"), busta.get("mese")
+        tipo_gestionale = str(busta.get("tipo_cedolino") or "mensile").strip().lower()
+        tipo = "ordinario" if tipo_gestionale in ("", "mensile") else tipo_gestionale
         if (dip["id"], anno, mese, tipo) in esistenti:
             saltati.append({"dipendente": dip["nome_completo"], "competenza": f"{anno}-{mese}"})
             continue
+
+        pagina_da = int(busta.get("source_page_start") or 1)
+        pagina_a = int(busta.get("source_page_end") or pagina_da)
 
         doc = {
             "id": str(uuid.uuid4()),
@@ -110,13 +86,18 @@ async def dividi_e_registra(db, pdf_bytes: bytes, filename: str = "") -> Dict[st
             "codice_fiscale": cf,
             "mese": mese, "anno": anno, "competenza": f"{anno}-{mese:02d}" if anno and mese else None,
             "tipo_cedolino": tipo,
-            "filename": f"{filename} (pagine {g['pagine'][0]+1}-{g['pagine'][-1]+1})" if filename else None,
-            "pdf_data": base64.b64encode(g["pdf_bytes"]).decode("ascii"),
-            "netto": t.get("netto"), "lordo": t.get("lordo"),
-            "trattenute": t.get("trattenute"), "competenze": t.get("competenze"),
-            "stato_netto": t.get("stato_netto"),
-            "livello": str(d["livello"]) if d.get("livello") else None,
-            "retribuzione": r.get("retribuzione") or {},
+            "filename": f"{filename} (pagine {pagina_da}-{pagina_a})" if filename else None,
+            "pdf_data": busta.get("_pdf_data"),
+            "netto": busta.get("netto"), "lordo": busta.get("lordo"),
+            "trattenute": busta.get("totale_trattenute"),
+            "competenze": busta.get("lordo"),
+            "stato_netto": busta.get("stato_netto"),
+            "livello": str(busta["livello"]) if busta.get("livello") else None,
+            "retribuzione": busta.get("retribuzione") or {},
+            "dati_chiave": busta.get("dati_chiave") or {},
+            "source_page_start": pagina_da,
+            "source_page_end": pagina_a,
+            "source_document_pages": busta.get("source_document_pages"),
             "fonte": "libro_unico_bundle",
             "created_at": adesso,
         }
@@ -124,11 +105,29 @@ async def dividi_e_registra(db, pdf_bytes: bytes, filename: str = "") -> Dict[st
         await db[Collections.PAYSLIPS].insert_one(doc)
         esistenti.add((dip["id"], anno, mese, tipo))
         inseriti.append({"dipendente": dip["nome_completo"], "competenza": f"{anno}-{mese}",
-                         "netto": t.get("netto")})
+                         "tipo_cedolino": tipo, "netto": busta.get("netto")})
+
+    cf_con_busta = {str(b.get("codice_fiscale") or "").upper() for b in buste}
+    presenze_senza_busta = {}
+    for presenza in presenze:
+        cf = str(presenza.get("codice_fiscale") or "").upper()
+        if cf and cf not in cf_con_busta:
+            presenze_senza_busta.setdefault(cf, {
+                "codice_fiscale": cf,
+                "nome": presenza.get("nome_dipendente"),
+            })
+    senza_paga.extend(presenze_senza_busta.values())
+
+    documento = fitz.open(stream=pdf_bytes, filetype="pdf")
+    try:
+        pagine_totali = len(documento)
+    finally:
+        documento.close()
+    cf_documento = cf_con_busta | {str(p.get("codice_fiscale") or "").upper() for p in presenze if p.get("codice_fiscale")}
 
     return {
-        "pagine_totali": sum(len(g["pagine"]) for g in gruppi),
-        "dipendenti_nel_documento": len(gruppi),
+        "pagine_totali": pagine_totali,
+        "dipendenti_nel_documento": len(cf_documento),
         "inseriti": inseriti, "gia_presenti": saltati,
         "senza_pagina_retributiva": senza_paga,
         "senza_anagrafica": senza_anagrafica,
