@@ -573,8 +573,8 @@ def get_descrizione_causale_inps(causale: str) -> str:
 def get_descrizione_tributo_regioni(codice: str) -> str:
     """Descrizione codici tributo regionali."""
     descrizioni = {
-        "3801": "Addizionale regionale IRPEF - sostituto d'imposta",
-        "3802": "Addizionale regionale IRPEF",
+        "3801": "Addizionale regionale IRPEF - autotassazione",
+        "3802": "Addizionale regionale IRPEF - sostituto d'imposta",
         "3805": "Addizionale regionale IRPEF - rata",
         "3843": "Addizionale regionale IRPEF - autotassazione",
     }

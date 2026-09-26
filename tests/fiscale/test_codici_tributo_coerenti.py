@@ -9,9 +9,10 @@ dal router email F24).
 Le due rimaste avevano 50 codici in comune e **35 discordanti**. Quasi tutte
 differenze di parole, ma due no:
 
-- **IRES ruotata di uno** nella tabella del parser: 2001 dava «acconto prima
-  rata», 2003 dava «saldo». Ogni F24 IRES mostrava un acconto al posto di un
-  saldo e viceversa.
+- **IRES**: il 19/09/2026 la tabella del parser e' stata «corretta» nel verso
+  sbagliato (2001 saldo). La fonte, la ricerca guidata codici tributo
+  dell'Agenzia delle Entrate, dice 2001 acconto prima rata, 2002 acconto
+  seconda rata o unica soluzione, 2003 saldo.
 - **1631** dava «Credito d'imposta art. 3 DL 73/2021» nella tabella del
   router.
 
@@ -32,30 +33,37 @@ def _descrizione(voce):
     return str(voce)
 
 
-# ── I codici IRES, che erano ruotati ──────────────────────────────────────
+# ── I codici IRES ─────────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("codice, atteso", [
-    ("2001", "saldo"),
-    ("2002", "acconto prima rata"),
-    ("2003", "acconto seconda rata"),
-])
+IRES = [
+    ("2001", "acconto prima rata"),
+    ("2002", "acconto seconda rata"),
+    ("2003", "saldo"),
+]
+
+
+@pytest.mark.parametrize("codice, atteso", IRES)
 def test_ires_nella_tabella_del_parser(codice, atteso):
-    """Fonte: Agenzia delle Entrate. 2001 e' il SALDO."""
+    """Fonte: Agenzia delle Entrate. 2003 e' il SALDO."""
     assert atteso in _descrizione(CODICI_TRIBUTO_F24[codice]).lower()
 
 
-@pytest.mark.parametrize("codice, atteso", [
-    ("2001", "saldo"),
-    ("2002", "acconto prima rata"),
-    ("2003", "acconto seconda rata"),
-])
+@pytest.mark.parametrize("codice, atteso", IRES)
 def test_ires_nella_tabella_delle_scadenze(codice, atteso):
     assert atteso in _descrizione(CODICI_TRIBUTO_ERARIO[codice]).lower()
 
 
 def test_il_saldo_ires_non_e_un_acconto():
-    """La controprova del difetto: prima 2001 conteneva «acconto»."""
-    assert "acconto" not in _descrizione(CODICI_TRIBUTO_F24["2001"]).lower()
+    assert "acconto" not in _descrizione(CODICI_TRIBUTO_F24["2003"]).lower()
+    assert "saldo" not in _descrizione(CODICI_TRIBUTO_F24["2001"]).lower()
+
+
+# ── Addizionale regionale: 3802 e' quella del sostituto d'imposta ─────────
+
+@pytest.mark.parametrize("tabella", [CODICI_TRIBUTO_F24, CODICI_TRIBUTO_ERARIO])
+def test_3802_e_il_sostituto_3801_l_autotassazione(tabella):
+    assert "sostituto" in _descrizione(tabella["3802"]).lower()
+    assert "autotassazione" in _descrizione(tabella["3801"]).lower()
 
 
 # ── Il 1631 ───────────────────────────────────────────────────────────────

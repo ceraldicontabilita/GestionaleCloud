@@ -91,6 +91,7 @@ export const NAV_GRUPPI = [
       { to: '/scadenze', label: 'Scadenze', Icon: Clock },
       { to: '/ritenute', label: 'Ritenute', Icon: Receipt },
       { to: '/noleggio', label: 'Noleggi', Icon: Car },
+      { to: '/piano-tributi', label: 'Piano tributi', Icon: CalendarCheck, adminOnly: true },
       { to: '/situazione-fiscale', label: 'Situazione fiscale', Icon: FileBarChart, adminOnly: true },
       { to: '/strumenti/visure', label: 'Visure', Icon: Search },
     ],

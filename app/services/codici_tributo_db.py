@@ -94,18 +94,18 @@ CODICI_TRIBUTO_ERARIO = {
     
     # Addizionali IRPEF
     "3801": {
+        "descrizione": "Addizionale regionale IRPEF - autotassazione",
+        "categoria": "Addizionale",
+        "tipo": "autotassazione",
+        "scadenza": "30 giugno",
+        "periodicita": "annuale"
+    },
+    "3802": {
         "descrizione": "Addizionale regionale IRPEF - sostituto d'imposta",
         "categoria": "Addizionale",
         "tipo": "ritenuta",
         "scadenza": "16 del mese successivo",
         "periodicita": "mensile"
-    },
-    "3802": {
-        "descrizione": "Addizionale regionale IRPEF",
-        "categoria": "Addizionale",
-        "tipo": "autotassazione",
-        "scadenza": "30 giugno",
-        "periodicita": "annuale"
     },
     "3843": {
         "descrizione": "Addizionale comunale IRPEF - acconto",
@@ -159,26 +159,26 @@ CODICI_TRIBUTO_ERARIO = {
         "periodicita": "variabile"
     },
     
-    # IRES
+    # IRES (fonte: Agenzia delle Entrate)
     "2001": {
-        "descrizione": "IRES saldo",
-        "categoria": "IRES",
-        "tipo": "saldo",
-        "scadenza": "30 giugno",
-        "periodicita": "annuale"
-    },
-    "2002": {
         "descrizione": "IRES acconto prima rata",
         "categoria": "IRES",
         "tipo": "acconto",
         "scadenza": "30 giugno",
         "periodicita": "annuale"
     },
-    "2003": {
+    "2002": {
         "descrizione": "IRES acconto seconda rata o unica soluzione",
         "categoria": "IRES",
         "tipo": "acconto",
         "scadenza": "30 novembre",
+        "periodicita": "annuale"
+    },
+    "2003": {
+        "descrizione": "IRES saldo",
+        "categoria": "IRES",
+        "tipo": "saldo",
+        "scadenza": "30 giugno",
         "periodicita": "annuale"
     },
     # Nuovi codici 2025 Legge di Bilancio
