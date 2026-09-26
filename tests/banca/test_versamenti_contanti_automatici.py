@@ -283,3 +283,140 @@ def test_chi_non_dichiara_niente_non_viene_agganciato(db):
 
     assert esito["gambe_cassa_collegate"] == 0
     assert esito["gambe_cassa_create"] == 1
+
+
+# ── lo stesso versamento arriva da piu' export ─────────────────────────────
+# Produzione, 26/09/2026: ogni versamento era in archivio due o tre volte
+# (vecchio archivio, CSV della banca, lettura diretta Enable Banking) e il
+# motore scriveva una coppia per copia: 44 uscite di cassa per 27 versamenti,
+# 80 entrate in banca. Il contante risultava uscito due volte.
+
+def _copie(data, importo, fonti):
+    righe = []
+    for n, fonte in enumerate(fonti):
+        righe.append({"id": f"{fonte}-{data}-{importo}-{n}", "descrizione_originale": "VERS. CONTANTI - VVVVV",
+                      "importo": importo, "tipo": "entrata", "data": data,
+                      "source_filename" if fonte.endswith(".csv") else "fonte": fonte})
+    return righe
+
+
+def _attive(db, collezione):
+    return run(db[collezione].find({"status": {"$nin": ["deleted", "archived"]}}).to_list(100))
+
+
+def test_tre_copie_dello_stesso_versamento_sono_un_versamento(db):
+    run(_prepara(db, _copie("2026-09-18", 2760.0, ["legacy_staging_2026", "export.csv", "enable_banking"])))
+
+    esito = run(riconosci_versamenti(db, dry_run=False))
+
+    assert esito["versamenti"] == 1 and esito["copie_estratto_conto"] == 2
+    assert len(_attive(db, "prima_nota_cassa")) == 1
+    assert len(_attive(db, "prima_nota_banca")) == 1
+    secondo = run(riconosci_versamenti(db, dry_run=False))
+    assert secondo["gia_registrati"] == 1
+    assert secondo["gambe_cassa_create"] == secondo["gambe_banca_create"] == 0
+
+
+def test_la_copia_arrivata_dopo_non_scrive_un_secondo_versamento(db):
+    """Enable Banking lo porta subito, il CSV ufficiale settimane dopo."""
+    run(_prepara(db, _copie("2026-09-23", 4000.0, ["enable_banking"])))
+    run(riconosci_versamenti(db, dry_run=False))
+    run(_prepara(db, _copie("2026-09-23", 4000.0, ["export.csv"])))
+
+    run(riconosci_versamenti(db, dry_run=False))
+
+    assert len(_attive(db, "prima_nota_cassa")) == 1
+    assert len(_attive(db, "prima_nota_banca")) == 1
+
+
+def test_due_versamenti_uguali_lo_stesso_giorno_restano_due(db):
+    """23/03/2026: due versamenti da 5.000 €, in ognuna delle due fonti."""
+    run(_prepara(db, _copie("2026-03-23", 5000.0, ["legacy_staging_2026", "legacy_staging_2026",
+                                                   "export.csv", "export.csv"])))
+
+    esito = run(riconosci_versamenti(db, dry_run=False))
+
+    assert esito["versamenti"] == 2
+    assert len(_attive(db, "prima_nota_cassa")) == 2
+    assert len(_attive(db, "prima_nota_banca")) == 2
+
+
+def test_i_doppioni_gia_scritti_dai_motori_si_tolgono(db):
+    run(_prepara(db, _copie("2026-01-12", 3510.0, ["legacy_staging_2026", "export.csv"])))
+    run(db["prima_nota_banca"].insert_many([
+        {"id": "B-LEGACY", "data": "2026-01-12", "importo": 3510.0, "tipo": "entrata",
+         "categoria": "Versamento Banca", "source": "legacy_versamenti"},
+        {"id": "B-RIC", "data": "2026-01-12", "importo": 3510.0, "tipo": "entrata",
+         "categoria": "Versamento Banca", "source": "riconciliazione_ec_versamento"},
+        {"id": "B-EC1", "data": "2026-01-12", "importo": 3510.0, "tipo": "entrata",
+         "categoria": "trasferimento_interno", "source": "estratto_conto_versamento",
+         "operation_id": "versamento:x1", "trasferimento_collegato_id": "C-LEGACY"},
+        {"id": "B-EC2", "data": "2026-01-12", "importo": 3510.0, "tipo": "entrata",
+         "categoria": "trasferimento_interno", "source": "estratto_conto_versamento",
+         "operation_id": "versamento:x2", "trasferimento_collegato_id": "C-EC2"},
+    ]))
+    run(db["prima_nota_cassa"].insert_many([
+        {"id": "C-LEGACY", "data": "2026-01-12", "importo": 3510.0, "tipo": "uscita",
+         "categoria": "trasferimento_interno", "source": "legacy_versamenti",
+         "operation_id": "versamento:x1", "trasferimento_collegato_id": "B-EC1"},
+        {"id": "C-EC2", "data": "2026-01-12", "importo": 3510.0, "tipo": "uscita",
+         "categoria": "trasferimento_interno", "source": "estratto_conto_versamento",
+         "operation_id": "versamento:x2", "trasferimento_collegato_id": "B-EC2"},
+    ]))
+
+    esito = run(riconosci_versamenti(db, dry_run=False))
+
+    banca = _attive(db, "prima_nota_banca")
+    cassa = _attive(db, "prima_nota_cassa")
+    assert [b["id"] for b in banca] == ["B-EC1"]
+    assert [c["id"] for c in cassa] == ["C-LEGACY"]
+    assert esito["doppioni_banca_tolti"] == 3 and esito["doppioni_cassa_tolti"] == 1
+    tolta = run(db["prima_nota_banca"].find_one({"id": "B-RIC"}))
+    assert tolta["status"] == "deleted" and tolta["deleted_reason"] == "doppione_versamento_contanti"
+
+
+def test_una_riga_scritta_a_mano_in_piu_non_si_tocca(db):
+    run(_prepara(db, _copie("2026-03-10", 1000.0, ["export.csv"])))
+    run(db["prima_nota_banca"].insert_many([
+        {"id": "MANO-1", "data": "2026-03-10", "importo": 1000.0, "tipo": "entrata",
+         "categoria": "Versamento Banca", "source": "manuale"},
+        {"id": "MANO-2", "data": "2026-03-10", "importo": 1000.0, "tipo": "entrata",
+         "categoria": "Versamento Banca", "source": "manuale"},
+    ]))
+
+    esito = run(riconosci_versamenti(db, dry_run=False))
+
+    assert len(_attive(db, "prima_nota_banca")) == 2
+    assert esito["da_verificare"] == 1 and esito["doppioni_banca_tolti"] == 0
+
+
+def test_l_attesa_bancaria_della_cassa_manuale_si_chiude_non_si_duplica(db):
+    """Cassa scritta a mano il 9 con la sua gamba bancaria in attesa; la banca il 10."""
+    run(db["prima_nota_cassa"].insert_one({
+        "id": "C-MANO", "data": "2026-03-09", "importo": 800.0, "tipo": "uscita",
+        "categoria": "Versamento Banca", "trasferimento_collegato_id": "B-ATTESA"}))
+    run(db["prima_nota_banca"].insert_one({
+        "id": "B-ATTESA", "data": "2026-03-09", "importo": 800.0, "tipo": "entrata",
+        "categoria": "Versamento Banca", "source": "versamento_cassa_in_attesa",
+        "trasferimento_collegato_id": "C-MANO", "provvisorio": True}))
+    run(_prepara(db, _copie("2026-03-10", 800.0, ["enable_banking"])))
+
+    run(riconosci_versamenti(db, dry_run=False))
+
+    assert [c["id"] for c in _attive(db, "prima_nota_cassa")] == ["C-MANO"]
+    banca = _attive(db, "prima_nota_banca")
+    assert [b["id"] for b in banca] == ["B-ATTESA"]
+    assert banca[0]["data"] == "2026-03-10" and banca[0]["provvisorio"] is False
+
+
+def test_la_simulazione_non_toglie_niente(db):
+    run(_prepara(db, _copie("2026-01-12", 3510.0, ["export.csv"])))
+    run(db["prima_nota_banca"].insert_many([
+        {"id": f"B{i}", "data": "2026-01-12", "importo": 3510.0, "tipo": "entrata",
+         "categoria": "Versamento Banca", "source": "legacy_versamenti"} for i in range(3)
+    ]))
+
+    esito = run(riconosci_versamenti(db))
+
+    assert esito["doppioni_banca_tolti"] == 2
+    assert len(_attive(db, "prima_nota_banca")) == 3
