@@ -11,7 +11,7 @@
 # Su Render il Build Command del servizio (impostato in dashboard, che NON
 # recepisce render.yaml) e' rimasto:
 #   pip install -r backend/requirements.txt &&
-#   yarn --cwd frontend install --frozen-lockfile &&
+#   yarn --cwd frontend install --frozen-lockfile --production=false &&
 #   yarn --cwd frontend build
 # Per questo `yarn --cwd frontend build` (frontend/package.json) richiama
 # questo script con --apps dopo `vite build`: le app vengono
