@@ -79,14 +79,19 @@ async def _duplicate_sources(db, sha256: str, md5: str) -> list[dict[str, Any]]:
 
 def _f24_preview(content: bytes, document_kind: str) -> dict[str, Any]:
     from app.services.f24_fiscal_evidence import (
-        PARSER_KIND_MODELLO,
+        PARSER_KIND_PRINTABLE,
         PARSER_KIND_QUIETANZA,
         normalize_f24_evidence_rows,
         parse_f24_evidence,
     )
 
-    kind = PARSER_KIND_QUIETANZA if document_kind == "quietanza_f24" else PARSER_KIND_MODELLO
-    parsed = parse_f24_evidence(content, document_kind=kind)
+    kind = PARSER_KIND_QUIETANZA if document_kind == "quietanza_f24" else PARSER_KIND_PRINTABLE
+    try:
+        parsed = parse_f24_evidence(content, document_kind=kind)
+    except ValueError as exc:
+        # F24 illeggibile o non quadrato: e' un errore bloccante dell'anteprima,
+        # non un guasto che la faccia cadere.
+        return {"error": str(exc)}
     rows = normalize_f24_evidence_rows(parsed)
     from app.services.fiscal_accounting_policy import build_journal_proposal
 

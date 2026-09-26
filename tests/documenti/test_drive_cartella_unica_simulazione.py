@@ -58,6 +58,7 @@ def albero(monkeypatch):
     drive.file("f2", "sconosciuto.pdf", "a", b"%PDF-?")
     drive.file("f3", "copia.pdf", "radice", b"%PDF-?", md5="f2")
     drive.file("g1", "Nota", "radice", mime="application/vnd.google-apps.document")
+    drive.file("t1", "appunti.txt", "radice", b"x", mime="text/plain")
     drive.cartella("unica", "DA ELABORARE", "radice")
     drive.file("u1", "gia_in_coda.pdf", "unica")
     drive.cartella("foto", "FOTO E IMMAGINI", "radice")
@@ -84,30 +85,33 @@ def albero(monkeypatch):
 
 def test_inventario_poi_lotti_riprendibili_e_riepilogo(albero):
     db = AsyncMongoMockClient()["t"]
-    assert run(sim.giro(db)) == {"inventario": 4}   # DA ELABORARE della cartella unica esclusa
+    assert run(sim.giro(db)) == {"inventario": 5}   # DA ELABORARE e FOTO E IMMAGINI escluse
     righe = run(db[sim.REGISTRO].find({}, {"_id": 0}).to_list(None))
     assert {r["percorso"] for r in righe} == {"/01_FATTURE/2026", "/01_FATTURE", "/"}
 
-    assert run(sim.giro(db)) == {"letti": 2, "restanti": 2}
-    assert run(sim.giro(db)) == {"letti": 2, "restanti": 0}
+    assert run(sim.giro(db)) == {"letti": 2, "restanti": 3}
+    assert run(sim.giro(db)) == {"letti": 2, "restanti": 1}
+    assert run(sim.giro(db)) == {"letti": 1, "restanti": 0}
     assert run(sim.giro(db)) == {"saltato": "simulazione_completata"}
 
     r = run(sim.riepilogo(db))
-    assert r["file"] == 4 and r["letti"] == 4
-    assert r["per_tipo"] == {"non_riconosciuto": 2, "fattura": 1, "documento_google": 1}
+    assert r["file"] == 5 and r["letti"] == 5
+    assert r["per_tipo"] == {"non_riconosciuto": 2, "fattura": 1, "documento_google": 1,
+                             "formato_non_gestito": 1}
     assert r["gia_presenti"] == 1 and r["copie_identiche"] == 1
     assert r["fatture_fuori_anno"] == {2024: 1}
-    assert {d["nome"] for d in r["da_guardare"]} == {"sconosciuto.pdf", "copia.pdf", "Nota"}
+    assert {d["nome"] for d in r["da_guardare"]} == {"sconosciuto.pdf", "copia.pdf", "Nota",
+                                                    "appunti.txt"}
 
 
 def test_nuova_edizione_rilegge_tutto(albero, monkeypatch):
     db = AsyncMongoMockClient()["t"]
-    for _ in range(4):
+    for _ in range(5):
         run(sim.giro(db))
     monkeypatch.setenv("DRIVE_SIMULAZIONE_EDIZIONE", "2")
-    assert run(sim.giro(db)) == {"inventario": 4}
-    assert run(db[sim.REGISTRO].count_documents({"stato": "da_leggere"})) == 4
-    assert run(db[sim.REGISTRO].count_documents({})) == 4   # nessun doppione nel registro
+    assert run(sim.giro(db)) == {"inventario": 5}
+    assert run(db[sim.REGISTRO].count_documents({"stato": "da_leggere"})) == 5
+    assert run(db[sim.REGISTRO].count_documents({})) == 5   # nessun doppione nel registro
 
 
 def test_spenta_senza_radice(monkeypatch):

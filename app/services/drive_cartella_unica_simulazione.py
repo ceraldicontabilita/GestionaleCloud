@@ -33,6 +33,10 @@ CHIAVE_STATO = "drive_cartella_unica_simulazione"
 # leggera anche con la RAM del servizio vicina al limite.
 MAX_BYTES = 25 * 1024 * 1024
 _GOOGLE_NATIVO = "application/vnd.google-apps."
+# Solo questi formati hanno un motore in Documenti > Import: gli altri (codice,
+# appunti, immagini, Word) finirebbero comunque in ERRORI, e scaricarli per
+# saperlo costa tempo e memoria.
+FORMATI_GESTITI = (".pdf", ".xml", ".p7m", ".zip", ".xls", ".xlsx", ".xlsm", ".csv")
 
 _lock = asyncio.Lock()
 
@@ -201,6 +205,9 @@ async def _giro(db, root: str) -> Dict[str, Any]:
         if str(riga.get("mime") or "").startswith(_GOOGLE_NATIVO):
             esito = {"tipo": "documento_google", "esito_previsto": cu.ERRORI,
                      "motivo": "file nativo Google (Documenti/Fogli): va esportato in PDF o Excel"}
+        elif not str(riga.get("nome") or "").lower().endswith(FORMATI_GESTITI):
+            esito = {"tipo": "formato_non_gestito", "esito_previsto": cu.ERRORI,
+                     "motivo": "formato che il gestionale non importa"}
         elif riga.get("size", 0) > MAX_BYTES:
             esito = {"tipo": "troppo_grande", "esito_previsto": "da_verificare",
                      "motivo": f"oltre {MAX_BYTES // (1024 * 1024)} MB, non letto in simulazione"}
