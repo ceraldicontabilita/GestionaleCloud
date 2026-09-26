@@ -1,6 +1,8 @@
 import base64
 import asyncio
 
+from mongomock_motor import AsyncMongoMockClient
+
 import fitz
 
 
@@ -112,7 +114,7 @@ def test_drive_cedolino_usa_parser_multi_template_e_propagazione_pdf(monkeypatch
 
     risultato = asyncio.run(
         cedolini_manager.processa_tutti_cedolini_pdf(
-            db=object(),
+            db=AsyncMongoMockClient()["t"],
             pdf_data=base64.b64encode(pdf_bytes).decode(),
             filename="cedolino_test.pdf",
         )

@@ -233,6 +233,17 @@ async def importa_quietanza_bytes(
 
     dg = parsed.get("dati_generali", {})
     protocollo = dg.get("protocollo_telematico", "")
+    if str(protocollo or "").strip():
+        # Stesso protocollo telematico = stessa quietanza, anche da un altro PDF.
+        stessa = await db[COLL_QUIETANZE].find_one(
+            {"protocollo_telematico": protocollo}, {"_id": 0, "id": 1},
+        )
+        if stessa:
+            await db[COLL_QUIETANZE].update_one(
+                {"id": stessa["id"]}, {"$addToSet": {"source_occurrences": occurrence}},
+            )
+            return {"success": True, "duplicate": True, "quietanza_id": stessa["id"],
+                    "filename": filename, "motivo": "stesso protocollo telematico"}
     saldo_quietanza = dg.get("saldo_delega", 0) or parsed.get("totali", {}).get("saldo_netto", 0)
     data_pagamento = dg.get("data_pagamento")
     codice_fiscale = dg.get("codice_fiscale", "")

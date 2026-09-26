@@ -564,8 +564,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   la cella del netto vuota entra **solo in HR** col netto nullo, mai in Prima Nota. Voci codificate e
   **dati chiave** (ratei 13ª e 14ª, L.207/24, trattamento integrativo L.21) da `parsers/cedolino_voci.py`.
 - **Ogni PDF letto è una scheda Markdown** (`schede_markdown.py`); registro per anno riscritto a ogni scheda; ricarica dalle schede, mai dai PDF.
-- Duplicato di cedolino **solo con hash del PDF uguale**: stesso dipendente, mese e importo non bastano
-  (mensilità aggiuntive, arretrati, conguagli).
+- **Doppioni d'archivio** (`doppioni_archivio.py`): stessa busta (CF, periodo, tipo, netto, lordo, trattenute), quietanza
+  (protocollo) o bonifico (CRO+importo) non si riscrive; le copie vanno in `<collezione>_quarantena`, resta la pagata.
 - Una cessazione letta in una busta vale solo se non esiste una busta successiva della stessa persona.
 - **Pagamenti stipendio**: un solo ponte gestionale→HR (`hr_pagamenti_deposito`). Dipendente da CF → nome
   completo univoco → cognome univoco: la corrispondenza univoca **basta da sola** («il nome di un
