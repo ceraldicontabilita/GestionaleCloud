@@ -57,3 +57,47 @@ def test_import_hr_conserva_ordinario_e_quattordicesima_dello_stesso_periodo(mon
     assert {(c["source_page_start"], c["source_page_end"]) for c in inseriti} == {(1, 2), (3, 3)}
     quattordicesima = next(c for c in inseriti if c["tipo_cedolino"] == "quattordicesima")
     assert quattordicesima["retribuzione"] == {"paga_base": 750.0}
+
+
+def test_endpoint_libro_unico_canonico_sincronizza_attese_14a(monkeypatch):
+    from app.hr.routers import dipendenti_cloud
+    from app.hr.services import libro_unico_bundle, sincronizza_paghe_mensili
+
+    db = object()
+    monkeypatch.setattr(dipendenti_cloud, "get_db", lambda: db)
+    monkeypatch.setattr(
+        dipendenti_cloud,
+        "_espandi_in_pdf",
+        lambda nome, data: ([(nome, data)], []),
+    )
+
+    async def dividi(db_arg, pdf_bytes, nome):
+        assert db_arg is db
+        assert pdf_bytes == b"pdf"
+        return {
+            "inseriti": [{
+                "dipendente": "Rossi Mario", "competenza": "2025-07",
+                "tipo_cedolino": "quattordicesima", "netto": 607.0,
+            }],
+            "gia_presenti": [], "senza_pagina_retributiva": [], "senza_anagrafica": [],
+        }
+
+    async def sincronizza(db_arg):
+        assert db_arg is db
+        return {"creati": 1, "aggiornati": 0, "saltati_manuali": 0}
+
+    monkeypatch.setattr(libro_unico_bundle, "dividi_e_registra", dividi)
+    monkeypatch.setattr(sincronizza_paghe_mensili, "sincronizza", sincronizza)
+
+    class File:
+        filename = "libro-unico.pdf"
+
+        async def read(self):
+            return b"pdf"
+
+    esito = _run(dipendenti_cloud.importa_libro_unico_canonico([File()]))
+
+    assert esito["totale_associati"] == 1
+    assert esito["associati"][0]["mese"] == 14
+    assert esito["associati"][0]["mese_competenza"] == 7
+    assert esito["sincronizzazione_paghe"]["creati"] == 1

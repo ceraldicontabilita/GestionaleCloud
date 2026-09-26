@@ -1679,6 +1679,81 @@ async def importa_libro_unico(files: List[UploadFile] = File(...), forza: bool =
     return await _importa_documenti(pdf_items, errori, forza=forza)
 
 
+@router.post("/paghe/importa-libro-unico-canonico")
+async def importa_libro_unico_canonico(files: List[UploadFile] = File(...)):
+    """Importa Libri Unici col motore cedolini canonico e aggiorna Paghe.
+
+    Questo e' il percorso della voce UI «Libro Unico»: conserva buste distinte
+    dello stesso periodo (ordinaria, 13a e 14a), continuazioni multipagina e
+    PDF ritagliati. Dopo il deposito sincronizza il registro, che resta in
+    attesa finche' non esiste un pagamento reale collegato.
+    """
+    from app.hr.services import libro_unico_bundle, sincronizza_paghe_mensili
+
+    pdf_items, errori = [], []
+    for uf in files:
+        nome = uf.filename or ""
+        try:
+            data = await uf.read()
+        except Exception:
+            errori.append(f"{nome}: lettura fallita")
+            continue
+        items, err = _espandi_in_pdf(nome, data)
+        pdf_items.extend(items)
+        errori.extend(err)
+    if not pdf_items:
+        raise HTTPException(
+            status_code=400,
+            detail="Nessun PDF valido trovato. " + ("; ".join(errori) if errori else ""),
+        )
+
+    db = get_db()
+    associati, duplicati, da_controllare = [], [], []
+    for nome, pdf_bytes in pdf_items:
+        try:
+            esito = await libro_unico_bundle.dividi_e_registra(db, pdf_bytes, nome)
+        except Exception as exc:
+            errori.append(f"{nome}: {exc}")
+            continue
+        for record in esito.get("inseriti") or []:
+            tipo = record.get("tipo_cedolino") or "ordinario"
+            mese = 13 if tipo == "tredicesima" else 14 if tipo == "quattordicesima" else None
+            anno, mese_competenza = (record.get("competenza") or "-").split("-", 1)
+            associati.append({
+                "dipendente": record.get("dipendente"),
+                "netto": record.get("netto"),
+                "tipo_cedolino": tipo,
+                "anno": int(anno) if anno.isdigit() else None,
+                "mese": mese or (int(mese_competenza) if mese_competenza.isdigit() else None),
+                "mese_competenza": int(mese_competenza) if mese_competenza.isdigit() else None,
+                "metodo": "codice fiscale",
+            })
+        duplicati.extend(esito.get("gia_presenti") or [])
+        da_controllare.extend(esito.get("senza_pagina_retributiva") or [])
+        da_controllare.extend(esito.get("senza_anagrafica") or [])
+
+    sincronizzazione = await sincronizza_paghe_mensili.sincronizza(db)
+    mesi_set = sorted({(a["anno"], a["mese"]) for a in associati if a.get("anno") and a.get("mese")})
+    mesi = [
+        {"anno": anno, "mese": mese, "n": sum(1 for a in associati if a.get("anno") == anno and a.get("mese") == mese)}
+        for anno, mese in mesi_set
+    ]
+    return {
+        "associati": associati,
+        "da_controllare": da_controllare,
+        "totale_associati": len(associati),
+        "file_pdf": len(pdf_items),
+        "mesi": mesi,
+        "errori": errori,
+        "duplicati": duplicati,
+        "sincronizzazione_paghe": sincronizzazione,
+        "bonifici": [],
+        "presenze": [],
+        "tfr": [],
+        "prestiti": [],
+    }
+
+
 @router.post("/paghe/importa-email")
 async def importa_da_email(cartella: Optional[str] = None, solo_non_letti: bool = False):
     """Scarica gli allegati PDF dalla casella di posta (INBOX + tutte le cartelle) e li
