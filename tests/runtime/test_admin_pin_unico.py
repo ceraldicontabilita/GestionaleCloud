@@ -101,7 +101,7 @@ def test_hr_rifiuta_pin_alternativo_e_non_promuove_utente(monkeypatch):
 
 
 @pytest.mark.parametrize("admin_pin", [PIN, "872461938274"])
-def test_hr_admin_personale_non_aggira_pin_centrale(monkeypatch, admin_pin):
+def test_hr_admin_non_entra_dal_login_dipendente(monkeypatch, admin_pin):
     from mongomock_motor import AsyncMongoMockClient
     from app.hr.services import auth_dipendenti as module
     db = AsyncMongoMockClient()["hr_dip_pin_test"]
@@ -110,11 +110,14 @@ def test_hr_admin_personale_non_aggira_pin_centrale(monkeypatch, admin_pin):
 
     async def scenario():
         await db[module.Collections.EMPLOYEES].insert_one({"id": "admin", "nome_completo": "Admin test", "ruolo_app": "admin", "pin_hash": module.hash_pin(OLD_PIN)})
+        # Il PIN amministratore si digita solo nel login del Gestionale: dal
+        # login dipendente un amministratore non entra, ne' col PIN centrale
+        # ne' col suo PIN personale (quello serve alla firma HACCP).
         assert await module.login_dipendente("admin", OLD_PIN) is None
-        assert (await module.login_dipendente("admin", admin_pin))["role"] == "admin"
-        assert (await module.login_dipendente_per_nome("Admin test", admin_pin))["role"] == "admin"
-        await db[module.Collections.EMPLOYEES].update_one({"id": "admin"}, {"$set": {"attivo": False}})
         assert await module.login_dipendente("admin", admin_pin) is None
+        assert await module.login_dipendente_per_nome("Admin test", admin_pin) is None
+        assert await module.login_dipendente_per_nome("Admin test", OLD_PIN) is None
+        assert await module.login_dipendente_da_chiave(module.chiave_login("admin"), admin_pin) is None
     asyncio.run(scenario())
 
 

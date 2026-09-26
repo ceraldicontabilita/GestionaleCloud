@@ -177,6 +177,8 @@ body, .dc-app, input, select, textarea, button { font-family: 'Plus Jakarta Sans
   display: flex;
   flex-direction: column;
   overflow-x: hidden;
+  /* clip non crea un contenitore di scorrimento: la testata resta sticky */
+  overflow-x: clip;
 }
 
 /* Breadcrumb */
@@ -201,6 +203,92 @@ body, .dc-app, input, select, textarea, button { font-family: 'Plus Jakarta Sans
   color: #5b7a6b;
   font-weight: 500;
 }
+
+/* Testata fissa: ritorno al Gestionale a sinistra, ruolo e ingranaggio a destra */
+.dc-breadcrumb {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  flex-wrap: wrap;
+  row-gap: 0.25rem;
+}
+
+.dc-topbar-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 14px;
+  margin-right: 0.5rem;
+  border-radius: 10px;
+  background: #5b7a6b;
+  color: #fffefb;
+  font-weight: 700;
+  font-size: 0.875rem;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.dc-topbar-link:hover { background: #3f5a4e; }
+
+.dc-badge-ruolo {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #eef1ea;
+  border: 1px solid #e6e0d4;
+  color: #3f5a4e;
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.dc-gear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  color: #3f5a4e;
+  border: 1px solid #e6e0d4;
+  background: #fffefb;
+}
+.dc-gear:hover { background: #eef1ea; }
+
+.dc-topbar-link:focus-visible, .dc-gear:focus-visible, .dc-sidebar-logo:focus-visible,
+.dc-impostazioni-voce:focus-visible {
+  outline: 3px solid #5b7a6b;
+  outline-offset: 2px;
+}
+
+/* Il logo e' un link alla home HR: stesso aspetto di prima */
+a.dc-sidebar-logo {
+  color: inherit;
+  text-decoration: none;
+  min-height: 44px;
+}
+
+/* Impostazioni: indice delle pagine che tengono ogni regola */
+.dc-impostazioni-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+.dc-impostazioni-voce {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  color: #2a3329;
+  text-decoration: none;
+}
+.dc-impostazioni-voce > svg:first-child { color: #5b7a6b; flex-shrink: 0; }
+.dc-impostazioni-voce > div { flex: 1; min-width: 0; }
+.dc-impostazioni-titolo { font-weight: 700; margin-bottom: 2px; }
+.dc-impostazioni-testo { font-size: 0.85rem; color: #6b7669; }
 
 /* Content */
 .dc-content {
@@ -981,7 +1069,18 @@ body, .dc-app, input, select, textarea, button { font-family: 'Plus Jakarta Sans
     background: rgba(255,255,255,.14); border: none; border-radius: 9px; cursor: pointer;
   }
   .dc-hamburger span { display: block; height: 2.5px; background: #fff; border-radius: 2px; }
-  .dc-mobile-title { font-weight: 700; font-size: 17px; }
+  .dc-mobile-title {
+    font-weight: 700; font-size: 17px; flex: 1; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  /* Su telefono la testata del contenuto lascia il posto alla barra mobile,
+     che porta gia' titolo, ritorno al Gestionale e ingranaggio. */
+  .dc-breadcrumb { display: none; }
+  .dc-topbar-link-scuro { margin-right: 0; padding: 0 10px; background: rgba(255,255,255,.16); }
+  .dc-topbar-link-scuro:hover { background: rgba(255,255,255,.26); }
+  .dc-gear-scuro { color: #fffefb; background: rgba(255,255,255,.16); border-color: transparent; }
+  .dc-gear-scuro:hover { background: rgba(255,255,255,.26); }
+  .dc-mobile-topbar { gap: 10px; }
 
   .dc-mobile-overlay {
     display: block; position: fixed; inset: 0;

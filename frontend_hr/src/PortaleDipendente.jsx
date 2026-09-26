@@ -161,13 +161,14 @@ const fmt = (d) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : "-");
 
 /* ---------------- LOGIN ---------------- */
 function Login({ onLogin }) {
-  // Selettore a tocco: elenco nomi (GET pubblico, solo id+nome) invece di
+  // Selettore a tocco: elenco nomi (GET pubblico: nome da mostrare + chiave
+  // opaca che vale solo per questo login, mai l'id dell'anagrafica) invece di
   // digitare il cognome — decisione esplicita del titolare per un dispositivo
   // condiviso in negozio (cucina/pasticceria), dove ridigitare il nome ad ogni
   // uso era scomodissimo. Tocca il tuo nome -> tastierino PIN, come prima.
   const [elenco, setElenco] = useState(null);   // null = in caricamento
   const [elencoErr, setElencoErr] = useState(false);
-  const [sel, setSel] = useState(null);   // {id, nome}
+  const [sel, setSel] = useState(null);   // {chiave, nome}
   const [adminErr, setAdminErr] = useState("");
 
 
@@ -188,7 +189,7 @@ function Login({ onLogin }) {
   const submit = async p => {
     let r;
     try {
-      r = await api.post("/auth/pin-login", { dipendente_id: sel.id, pin: p });
+      r = await api.post("/auth/pin-login", { dipendente_id: sel.chiave, pin: p });
     } catch (e) {
       const detail = e.response?.data?.detail;
       throw new Error(!e.response ? "Connessione assente — riprova"
@@ -199,7 +200,6 @@ function Login({ onLogin }) {
     localStorage.setItem(TK, r.data.access_token);
     localStorage.setItem("pt_role", r.data.role);
     localStorage.setItem("pt_name", r.data.name || sel.nome);
-    if (r.data.role === "admin") { window.location.href = "/hr/dipendenti"; return; }
     onLogin();
   };
 
@@ -228,7 +228,7 @@ function Login({ onLogin }) {
         )}
         <div className="nomi-grid">
           {(elenco || []).map((d) => (
-            <button key={d.id} className="btn nome-tile" onClick={() => setSel(d)}>{d.nome}</button>
+            <button key={d.chiave} className="btn nome-tile" onClick={() => setSel(d)}>{d.nome}</button>
           ))}
         </div>
       </div>

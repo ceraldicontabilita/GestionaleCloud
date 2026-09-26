@@ -20,7 +20,7 @@ from app.hr.config import settings
 from app.hr.database import Database, Collections
 from app.hr.repositories import UserRepository as HrUserRepository
 from app.hr.services.auth_dipendenti import (
-    login_dipendente, login_dipendente_per_nome,
+    login_dipendente_da_chiave, login_dipendente_per_nome,
     elenco_dipendenti_per_login,
 )
 from app.services import pin_authentication
@@ -52,11 +52,13 @@ _clear_failures = login_lockout.clear_failures
 
 @router.get("/dipendenti-attivi", summary="Nomi per il selettore di login del portale")
 async def dipendenti_attivi() -> Dict[str, Any]:
-    """Elenco pubblico (nessuna autenticazione) di id+nome dei dipendenti
-    attivi, per il tocca-il-tuo-nome in login — niente digitazione. Include
-    anche chi usa solo il PIN condiviso della cassa (nessun pin_hash proprio),
-    perché login_dipendente() accetta entrambe le fonti. Solo id+nome: nessun
-    altro dato (PIN, ruolo, mansione...) esposto qui."""
+    """Elenco pubblico (nessuna autenticazione) per il tocca-il-tuo-nome in
+    login: i nomi sono pubblici per decisione del titolare, gli id interni no.
+    Per ogni dipendente in forza con un PIN personale solo il nome da mostrare
+    e una chiave opaca che vale soltanto per `/pin-login` (vedi
+    `auth_dipendenti.chiave_login`). Nessun altro dato (id, PIN, ruolo,
+    mansione...) esposto qui; gli amministratori non compaiono: entrano con la
+    sessione del Gestionale (`/session`)."""
     return {"dipendenti": await elenco_dipendenti_per_login()}
 
 
@@ -76,8 +78,8 @@ async def pin_login(
     dipendente_id = payload.get("dipendente_id")
     nome = str(payload.get("nome", "")).strip()
 
-    # --- Ramo dipendente: cognome (o nome e cognome) + PIN personale.
-    # Nessun elenco di nomi viene mai esposto prima dell'autenticazione. ---
+    # --- Ramo dipendente: cognome (o nome e cognome) scritto + PIN personale.
+    # Il selettore a tocco (`/dipendenti-attivi`) espone i nomi, mai gli id. ---
     if nome and not dipendente_id:
         result = await login_dipendente_per_nome(nome, pin)
         if not result:
@@ -98,9 +100,10 @@ async def pin_login(
         logger.info(f"PIN-login per nome OK · IP {ip} · {result['user_id']} · {result['role']}")
         return result
 
-    # --- Ramo dipendente (legacy): dipendente_id + PIN personale ---
+    # --- Ramo dipendente: chiave opaca del selettore + PIN personale. Il campo
+    # si chiama ancora `dipendente_id`, ma un id interno qui non vale piu'. ---
     if dipendente_id:
-        result = await login_dipendente(str(dipendente_id), pin)
+        result = await login_dipendente_da_chiave(str(dipendente_id), pin)
         if not result:
             _register_failure(ip)
             logger.warning(f"PIN-login dipendente fallito da IP {ip}")
