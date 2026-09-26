@@ -732,6 +732,20 @@ def start_scheduler():
         except Exception as e:
             logger.error(f"[SCHEDULER-DEDUP-FATTURE] errore: {e}")
 
+    async def _quietanze_orfane_job():
+        """Quietanze F24 rimaste senza modello: si ricollegano al loro F24,
+        anche gia' pagato in banca. Job a se': dentro «Automazioni Prima
+        Nota», che in produzione dura ore e riparte a ogni deploy, non ci
+        arrivava mai."""
+        try:
+            from app.database import Database
+            from app.services.quietanze_import import ricollega_quietanze_orfane
+            r = await ricollega_quietanze_orfane(Database.get_db())
+            logger.info("[SCHEDULER-QUIETANZE-ORFANE] orfane=%s collegate=%s",
+                        r.get("orfane"), r.get("collegate"))
+        except Exception as e:
+            logger.error("[SCHEDULER-QUIETANZE-ORFANE] errore: %s: %s", type(e).__name__, e)
+
     async def _automazioni_prima_nota_job():
         from datetime import datetime as _dt
         anno_corrente = _dt.now().year
@@ -1208,6 +1222,16 @@ def start_scheduler():
         coalesce=True,
         id="dedup_fatture",
         name="Dedup fatture: identita' dall'XML, doppioni per hash, storni (ogni 30 min)",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        _quietanze_orfane_job,
+        'interval', minutes=30,
+        next_run_time=avvio + timedelta(minutes=3),
+        misfire_grace_time=300,
+        coalesce=True,
+        id="quietanze_orfane",
+        name="Quietanze F24 senza modello: ricollega al loro F24 (ogni 30 min)",
         replace_existing=True,
     )
     scheduler.add_job(
