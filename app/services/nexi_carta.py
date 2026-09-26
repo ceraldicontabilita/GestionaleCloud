@@ -20,6 +20,7 @@ operazioni carta dentro `estratto_conto_movimenti` con `tipo="carta_credito"`.
 Questo endpoint aggiunge solo la via MANUALE (allegare da Prima Nota
 quando l'email non è arrivata) più il controllo di quadratura.
 """
+import asyncio
 import logging
 import re
 import hashlib
@@ -176,8 +177,10 @@ async def verifica_addebiti_nexi(db, anno: Optional[int] = None) -> Dict[str, An
         metadata = dict(statement.get("metadata") or {})
         if not metadata.get("totale_addebito") and statement.get("pdf_data"):
             try:
-                parsed = parse_estratto_conto_nexi(
-                    base64.b64decode(statement["pdf_data"])
+                # Il parser PDF e' lavoro pesante e sincrono: in un thread,
+                # cosi' non tiene fermo il processo mentre gira.
+                parsed = await asyncio.to_thread(
+                    parse_estratto_conto_nexi, base64.b64decode(statement["pdf_data"]),
                 )
                 if parsed.get("success"):
                     metadata = parsed.get("metadata") or metadata
@@ -326,7 +329,88 @@ async def verifica_addebiti_nexi(db, anno: Optional[int] = None) -> Dict[str, An
                 )
         stats["dettagli"].append(dettaglio_row)
 
+    if anno is None:
+        await _salva_istantanea(db, stats)
     return stats
+
+
+# ---------------------------------------------------------------------------
+# Istantanea della verifica. La verifica legge tutti gli estratti (PDF compresi)
+# e tutti i movimenti di banca: farla a ogni apertura della Prima Nota Banca
+# costava da 10 a 68 secondi. Si rifà quando cambia un dato (posta, estratto
+# conto, PDF Nexi: chi la chiama gia'), e la pagina legge l'ultimo risultato.
+# ---------------------------------------------------------------------------
+CHIAVE_ISTANTANEA = "nexi_verifica_istantanea"
+ISTANTANEA_VALIDA_SECONDI = 30 * 60
+_ricalcolo_in_corso: Dict[str, Any] = {"task": None}
+
+
+async def _salva_istantanea(db, stats: Dict[str, Any]) -> None:
+    try:
+        await db["sistema_stato"].update_one(
+            {"chiave": CHIAVE_ISTANTANEA},
+            {"$set": {"chiave": CHIAVE_ISTANTANEA, "verifica": stats,
+                      "calcolata_at": datetime.now(timezone.utc).isoformat()}},
+            upsert=True,
+        )
+    except Exception as exc:
+        logger.warning("Istantanea verifica Nexi non salvata: %s: %s", type(exc).__name__, exc)
+
+
+def filtra_verifica_per_anno(verifica: Dict[str, Any], anno: Optional[int]) -> Dict[str, Any]:
+    """La verifica di un anno, ricavata da quella di tutti gli anni.
+
+    I dettagli sono gli stessi che la verifica con ``anno`` produrrebbe (stesso
+    filtro sulla data dell'addebito, stesso ordine); i conteggi si rifanno sui
+    dettagli. I duplicati ignorati non si possono attribuire a un anno: restano
+    vuoti, non si inventano.
+    """
+    if not anno:
+        return verifica
+    dettagli = [d for d in verifica.get("dettagli") or []
+                if str(d.get("data_addebito") or "").startswith(f"{anno}-")]
+    conta = Counter(d.get("stato") for d in dettagli)
+    return {
+        "addebiti_trovati": len(dettagli),
+        "estratti_mancanti": conta.get("estratto_mancante", 0),
+        "riconciliati": conta.get("riconciliato", 0),
+        "non_quadrano": conta.get("non_quadra", 0),
+        "duplicati_ignorati": None,
+        "dettagli": dettagli,
+    }
+
+
+async def _ricalcola_in_sottofondo(db) -> None:
+    try:
+        await verifica_addebiti_nexi(db)
+    except Exception as exc:
+        logger.warning("Ricalcolo verifica Nexi non riuscito: %s: %s", type(exc).__name__, exc)
+
+
+async def leggi_verifica_nexi(db, anno: Optional[int] = None) -> Dict[str, Any]:
+    """La verifica dall'istantanea; la prima volta la calcola.
+
+    Se l'istantanea e' piu' vecchia di ``ISTANTANEA_VALIDA_SECONDI`` si risponde
+    subito con quella e la si rifà in sottofondo, uno alla volta.
+    """
+    doc = await db["sistema_stato"].find_one({"chiave": CHIAVE_ISTANTANEA}, {"_id": 0}) or {}
+    verifica = doc.get("verifica")
+    if not verifica:
+        verifica = await verifica_addebiti_nexi(db)
+        salvata = await db["sistema_stato"].find_one({"chiave": CHIAVE_ISTANTANEA}, {"_id": 0}) or {}
+        calcolata_at = salvata.get("calcolata_at") or datetime.now(timezone.utc).isoformat()
+    else:
+        calcolata_at = doc.get("calcolata_at")
+        try:
+            eta = (datetime.now(timezone.utc) - datetime.fromisoformat(str(calcolata_at))).total_seconds()
+        except (TypeError, ValueError):
+            eta = ISTANTANEA_VALIDA_SECONDI + 1
+        task = _ricalcolo_in_corso["task"]
+        if eta > ISTANTANEA_VALIDA_SECONDI and (task is None or task.done()):
+            _ricalcolo_in_corso["task"] = asyncio.create_task(
+                _ricalcola_in_sottofondo(db), name="ricalcolo_verifica_nexi",
+            )
+    return {**filtra_verifica_per_anno(verifica, anno), "calcolata_at": calcolata_at}
 
 
 async def importa_estratto_nexi_pdf(
