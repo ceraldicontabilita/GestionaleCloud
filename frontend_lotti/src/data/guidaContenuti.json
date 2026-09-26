@@ -15,7 +15,7 @@
    "bottoni": [
     [
      "«Esci» (in alto a destra)",
-     "chiude la sessione e azzera il cancello delle 2 ore (chiede conferma)",
+      "chiude la sessione di tutte le applicazioni del gruppo (chiede conferma)",
      "logout completo"
     ],
     [
