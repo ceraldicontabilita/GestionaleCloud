@@ -1,5 +1,6 @@
 export { Button } from './Button';
 export { Badge } from './Badge';
+export { Esito, ESITI } from './Esito';
 export { StatCard } from './StatCard';
 export { Input } from './Input';
 export { Select } from './Select';

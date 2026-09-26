@@ -18,7 +18,7 @@ import {
   BORDER_RADIUS,
 } from '../lib/utils';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
-import { Button, Badge, StatCard, Tabs, Input, TableWrap, Table, Th, Td } from '../components/ds';
+import { Button, Badge, Esito, StatCard, Tabs, Input, TableWrap, Table, Th, Td } from '../components/ds';
 import {
   CreditCard,
   AlertTriangle,
@@ -120,15 +120,6 @@ export default function CoerenzaPOSCorrispettivi() {
     }
   };
 
-  const statoBadgeVariant = stato =>
-    ({
-      ok: 'success',
-      mancante: 'danger',
-      differenza: 'warning',
-      extra: 'accent',
-      warning: 'warning',
-      error: 'danger',
-    })[stato] || 'neutral';
 
   if (loading) {
     return (
@@ -277,11 +268,11 @@ export default function CoerenzaPOSCorrispettivi() {
           <Table>
             <thead>
               <tr>
-                <Th>DATA</Th>
-                <Th align="right">ELETTR. XML</Th>
-                <Th align="right">POS BANCA</Th>
-                <Th align="right">DIFF.</Th>
-                <Th align="center">STATO</Th>
+                <Th>Data</Th>
+                <Th align="right">Elettronico secondo il registratore</Th>
+                <Th align="right">Accreditato su BPM</Th>
+                <Th align="right">Differenza</Th>
+                <Th align="center">Esito</Th>
               </tr>
             </thead>
             <tbody>
@@ -296,34 +287,14 @@ export default function CoerenzaPOSCorrispettivi() {
                         {g.giorno_settimana}
                       </span>
                     </Td>
-                    <Td align="right" style={{ color: COLORS.info }}>
-                      {formatEuro(g.elettronico_xml)}
-                    </Td>
-                    <Td align="right" style={{ color: COLORS.bruno }}>
-                      {formatEuro(g.pos_accreditato)}
-                    </Td>
-                    <Td
-                      align="right"
-                      style={{
-                        fontWeight: 600,
-                        color:
-                          g.differenza > 10
-                            ? COLORS.danger
-                            : g.differenza < -10
-                              ? COLORS.info
-                              : COLORS.success,
-                      }}
-                    >
+                    <Td align="right">{formatEuro(g.elettronico_xml)}</Td>
+                    <Td align="right">{formatEuro(g.pos_accreditato)}</Td>
+                    <Td align="right">
                       {g.differenza > 0 ? '+' : ''}
                       {formatEuro(g.differenza)}
                     </Td>
                     <Td align="center">
-                      <Badge
-                        variant={statoBadgeVariant(g.stato)}
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                      >
-                        {getStatoIcon(g.stato)} {g.stato}
-                      </Badge>
+                      <Esito esito={esitoGiorno(g.stato)}>{TESTO_STATO[g.stato] || g.stato}</Esito>
                     </Td>
                   </tr>
                 ))}
@@ -332,89 +303,11 @@ export default function CoerenzaPOSCorrispettivi() {
         </TableWrap>
       )}
 
-      {/* Tab Mensile */}
+      {/* Tab Mensile — NUMIA e SumUp separati: NUMIA accredita su BPM, SumUp
+          paga sulla carta Mastercard SumUp. Il registratore somma tutto
+          l'elettronico, quindi si confronta con NUMIA + SumUp. */}
       {tab === 'mensile' && riepilogoMensile?.mesi && (
-        <TableWrap>
-          <Table>
-            <thead>
-              <tr>
-                <Th>MESE</Th>
-                <Th align="right">CORRISPETTIVI</Th>
-                <Th align="right">CONTANTI</Th>
-                <Th align="right">ELETTR. XML</Th>
-                <Th align="right">POS TERMINALE</Th>
-                <Th align="right">DIFF. XML−POS</Th>
-                <Th align="right">ACCREDITO BANCA</Th>
-                <Th align="right">DIFF. BANCA−POS</Th>
-                <Th align="center">STATO</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {riepilogoMensile.mesi.map(m => (
-                <tr key={m.mese} style={{ borderBottom: `1px solid ${COLORS.gray[100]}` }}>
-                  <Td style={{ fontWeight: 600 }}>
-                    {m.nome} {anno}
-                  </Td>
-                  <Td align="right">{formatEuro(m.totale_corrispettivi)}</Td>
-                  <Td align="right" style={{ color: COLORS.success }}>
-                    {formatEuro(m.contanti)}
-                  </Td>
-                  <Td align="right" style={{ color: COLORS.info }}>
-                    {formatEuro(m.elettronico_xml)}
-                  </Td>
-                  <Td align="right">{formatEuro(m.pos_terminale)}</Td>
-                  <Td align="right" style={{ color: COLORS.bruno }}>
-                    {formatEuroConSegno(m.differenza_xml_pos)}
-                  </Td>
-                  <Td align="right" style={{ color: COLORS.bruno }}>
-                    {formatEuro(m.pos_accreditato)}
-                  </Td>
-                  <Td
-                    align="right"
-                    style={{
-                      fontWeight: 600,
-                      color: Math.abs(m.differenza_pos_banca) > 0.5 ? COLORS.danger : COLORS.success,
-                    }}
-                  >
-                    {formatEuroConSegno(m.differenza_pos_banca)}
-                  </Td>
-                  <Td align="center">
-                    <Badge variant={statoBadgeVariant(m.stato)}>{m.stato}</Badge>
-                  </Td>
-                </tr>
-              ))}
-              {/* Totale */}
-              <tr style={{ background: COLORS.bgAlt, fontWeight: 700 }}>
-                <Td style={{ fontWeight: 700 }}>TOTALE {anno}</Td>
-                <Td align="right">-</Td>
-                <Td align="right">-</Td>
-                <Td align="right" style={{ color: COLORS.info, fontWeight: 700 }}>
-                  {formatEuro(riepilogoMensile.totali.elettronico_xml)}
-                </Td>
-                <Td align="right" style={{ fontWeight: 700 }}>
-                  {formatEuro(riepilogoMensile.totali.pos_terminale)}
-                </Td>
-                <Td align="right" style={{ fontWeight: 700 }}>
-                  {formatEuroConSegno(riepilogoMensile.totali.differenza_xml_pos)}
-                </Td>
-                <Td align="right" style={{ color: COLORS.bruno, fontWeight: 700 }}>
-                  {formatEuro(riepilogoMensile.totali.pos_accreditato)}
-                </Td>
-                <Td
-                  align="right"
-                  style={{
-                    fontWeight: 700,
-                    color:
-                      Math.abs(riepilogoMensile.totali.differenza_pos_banca) > 0.5 ? COLORS.danger : COLORS.success,
-                  }}
-                >
-                  {formatEuroConSegno(riepilogoMensile.totali.differenza_pos_banca)}
-                </Td>
-                <Td />
-              </tr>
-            </tbody>
-          </Table>
-        </TableWrap>
+        <RiepilogoMensilePos riepilogo={riepilogoMensile} anno={anno} />
       )}
 
       {/* Tab Anomalie */}
@@ -736,24 +629,24 @@ function ControlloDueFasi({ dati, isMobile, onReload, focusProblemiRequest = 0 }
                 Stato
               </Th>
               <Th colSpan={6} align="center" style={{ color: '#fff', background: 'transparent', borderLeft: '2px solid #fff', borderRight: '2px solid #fff' }}>
-                FASE 1: RT vs POS reale
+                Registratore contro terminali
               </Th>
               <Th colSpan={3} align="center" style={{ color: '#fff', background: 'transparent' }}>
-                FASE 2: NUMIA verso BPM / SUMUP verso Mastercard
+                Dove arrivano i soldi: Numia su BPM, SumUp sulla sua carta
               </Th>
             </tr>
             <tr style={{ background: COLORS.gray[800] }}>
               <Th style={{ color: '#fff', background: 'transparent' }} />
-              <Th align="center" style={{ color: '#fff', background: 'transparent', fontSize: 11, borderLeft: '2px solid #fff' }}>Corrisp.</Th>
-              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>XML elettr. (confronto)</Th>
-              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>POS NUMIA</Th>
-              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>POS SUMUP</Th>
-              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>NUMIA manuale (modifica)</Th>
-              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11, borderRight: '2px solid #fff' }}>Diff. XML − POS</Th>
-              <Th align="right" style={{ color: '#fff', background: COLORS.accent, fontSize: 11 }}>TOTALE POS GIORNALIERO (NUMIA + SUMUP)</Th>
-              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>NUMIA verso BPM</Th>
-              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>SUMUP verso Mastercard</Th>
-              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>Saldo NUMIA</Th>
+              <Th align="center" style={{ color: '#fff', background: 'transparent', fontSize: 11, borderLeft: '2px solid #fff' }}>Corrispettivo</Th>
+              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>Elettronico secondo il registratore</Th>
+              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>POS Numia, chiusura serale</Th>
+              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>POS SumUp, dall'app</Th>
+              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>Numia scritto a mano (modifica)</Th>
+              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11, borderRight: '2px solid #fff' }}>Registratore − (Numia + SumUp)</Th>
+              <Th align="right" style={{ color: '#fff', background: COLORS.accent, fontSize: 11 }}>POS totale (Numia + SumUp)</Th>
+              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>Accreditato su BPM</Th>
+              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>Pagato sulla carta SumUp</Th>
+              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>Saldo BPM − Numia</Th>
             </tr>
           </thead>
           <tbody>
@@ -810,10 +703,10 @@ function TabellaSettimanale({ settimane }) {
     );
   }
   const statoLabel = {
-    ok: 'OK', in_attesa: 'In attesa', mancante: 'Mancante', differenza: 'Differenza',
+    ok: 'Chiuso', in_attesa: "In attesa dell'accredito", mancante: 'Manca in banca', differenza: 'Differenza',
   };
-  const statoVariant = {
-    ok: 'success', in_attesa: 'info', mancante: 'danger', differenza: 'warning',
+  const statoEsito = {
+    ok: 'chiuso', in_attesa: 'nessun_dato', mancante: 'intervento', differenza: 'verificare',
   };
   return (
     <TableWrap>
@@ -821,10 +714,10 @@ function TabellaSettimanale({ settimane }) {
         <thead>
           <tr style={{ background: COLORS.primary }}>
             <Th style={{ color: '#fff', background: 'transparent' }}>Settimana</Th>
-            <Th align="right" style={{ color: '#fff', background: 'transparent' }}>POS NUMIA</Th>
-            <Th align="right" style={{ color: '#fff', background: 'transparent' }}>Accredito BPM</Th>
-            <Th align="right" style={{ color: '#fff', background: 'transparent' }}>POS SUMUP</Th>
-            <Th align="right" style={{ color: '#fff', background: 'transparent' }}>Differenza NUMIA</Th>
+            <Th align="right" style={{ color: '#fff', background: 'transparent' }}>POS Numia</Th>
+            <Th align="right" style={{ color: '#fff', background: 'transparent' }}>Accreditato su BPM</Th>
+            <Th align="right" style={{ color: '#fff', background: 'transparent' }}>POS SumUp</Th>
+            <Th align="right" style={{ color: '#fff', background: 'transparent' }}>BPM − Numia</Th>
             <Th align="center" style={{ color: '#fff', background: 'transparent' }}>Stato</Th>
           </tr>
         </thead>
@@ -846,14 +739,11 @@ function TabellaSettimanale({ settimane }) {
               <Td align="right" style={{ fontWeight: 600 }}>
                 {sw.pos_sumup_totale > 0 ? formatEuro(sw.pos_sumup_totale) : '—'}
               </Td>
-              <Td align="right" style={{
-                fontWeight: 700,
-                color: sw.stato === 'in_attesa' ? COLORS.info : sw.diff_totale >= 0 ? COLORS.success : COLORS.danger,
-              }}>
+              <Td align="right" style={{ fontWeight: 700 }}>
                 {sw.stato === 'in_attesa' ? '—' : formatEuro(sw.diff_totale)}
               </Td>
               <Td align="center">
-                <Badge variant={statoVariant[sw.stato] || 'neutral'}>{statoLabel[sw.stato] || sw.stato}</Badge>
+                <Esito esito={statoEsito[sw.stato] || 'nessun_dato'}>{statoLabel[sw.stato] || sw.stato}</Esito>
               </Td>
             </tr>
           ))}
@@ -1386,7 +1276,7 @@ function ModalChiusuraSerale({ onClose, onSaved }) {
             placeholder="es. 450,00 (opzionale)"
           />
           <div style={{ fontSize: 11, color: COLORS.textSubtle, marginTop: 4 }}>
-            Facoltativo ma consigliato: il totale battuto al POS fisico (per il controllo FASE 1).
+            Facoltativo ma consigliato: il totale battuto al POS fisico (per il confronto con il registratore).
           </div>
         </div>
 
@@ -1564,5 +1454,90 @@ export function ModalImportTotaliPos({ onClose, onSaved }) {
         </div>
       </div>
     </div>
+  );
+}
+
+
+/** Stato della riga giornaliera → esito della regola unica del colore. */
+export function esitoGiorno(stato) {
+  if (stato === 'ok') return 'chiuso';
+  if (stato === 'mancante') return 'intervento';
+  if (stato === 'differenza' || stato === 'extra') return 'verificare';
+  return 'nessun_dato';
+}
+
+const TESTO_STATO = {
+  ok: 'Chiuso',
+  mancante: 'Manca in banca',
+  differenza: 'Differenza',
+  extra: 'Più del POS',
+};
+
+/** Esito del mese secondo la regola unica del colore. */
+export function esitoMese(mese) {
+  if (mese.stato === 'vuoto') return 'nessun_dato';
+  if (mese.stato === 'error') return 'intervento';
+  if (mese.stato === 'warning') return 'verificare';
+  return 'chiuso';
+}
+
+export function RiepilogoMensilePos({ riepilogo, anno }) {
+  const [tutte, setTutte] = useState(false);
+  const cifra = { fontVariantNumeric: 'tabular-nums' };
+  const colonne = [
+    { chiave: 'elettronico_xml', titolo: 'Elettronico secondo il registratore' },
+    { chiave: 'pos_numia', titolo: 'POS Numia, chiusura serale' },
+    { chiave: 'pos_sumup', titolo: "POS SumUp, dall'app" },
+    { chiave: 'pos_accreditato', titolo: 'Accreditato su BPM' },
+    { chiave: 'sumup_pagato', titolo: 'Pagato sulla carta SumUp' },
+    { chiave: 'differenza_xml_pos', titolo: 'Registratore − (Numia + SumUp)', segno: true, extra: true },
+    { chiave: 'differenza_pos_banca', titolo: 'BPM − Numia', segno: true, extra: true },
+    { chiave: 'sumup_commissioni', titolo: 'Commissioni SumUp', extra: true },
+    { chiave: 'contanti', titolo: 'Contanti', extra: true },
+    { chiave: 'totale_corrispettivi', titolo: 'Corrispettivi', extra: true },
+  ].filter(c => tutte || !c.extra);
+  const valore = (riga, c) => {
+    const v = riga[c.chiave];
+    if (v === undefined || v === null) return '—';
+    return c.segno ? formatEuroConSegno(v) : formatEuro(v);
+  };
+  return (
+    <>
+      <p style={{ margin: '0 0 10px', fontSize: 13, color: COLORS.textMuted }}>
+        NUMIA si confronta con gli accrediti su BPM; SumUp con i pagamenti sulla sua carta, per data
+        del pagamento (un pagamento può coprire più giorni di vendita e non si divide).
+      </p>
+      <Button variant="secondary" size="sm" onClick={() => setTutte(v => !v)} style={{ marginBottom: 10, minHeight: 44 }}
+        data-testid="mensile-tutte-colonne">
+        {tutte ? 'Mostra meno colonne' : 'Mostra tutte le colonne'}
+      </Button>
+      <TableWrap>
+        <Table>
+          <thead>
+            <tr>
+              <Th>Mese</Th>
+              {colonne.map(c => <Th key={c.chiave} align="right">{c.titolo}</Th>)}
+              <Th align="center">Esito</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {riepilogo.mesi.map(m => (
+              <tr key={m.mese} style={{ borderBottom: `1px solid ${COLORS.gray[100]}` }} data-testid={`mensile-${m.mese}`}>
+                <Td style={{ fontWeight: 600 }}>{m.nome} {anno}</Td>
+                {colonne.map(c => <Td key={c.chiave} align="right" style={cifra}>{valore(m, c)}</Td>)}
+                <Td align="center"><Esito esito={esitoMese(m)} /></Td>
+              </tr>
+            ))}
+            <tr style={{ background: COLORS.bgAlt, fontWeight: 700 }}>
+              <Td style={{ fontWeight: 700 }}>Totale {anno}</Td>
+              {colonne.map(c => (
+                <Td key={c.chiave} align="right" style={{ ...cifra, fontWeight: 700 }}>{valore(riepilogo.totali || {}, c)}</Td>
+              ))}
+              <Td />
+            </tr>
+          </tbody>
+        </Table>
+      </TableWrap>
+    </>
   );
 }

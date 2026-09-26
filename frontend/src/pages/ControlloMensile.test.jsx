@@ -39,6 +39,7 @@ const controlloPos = {
         data: '2026-01-02',
         xml_elettronico: 70,
         pos_manuale: 65,
+        pos_per_circuito: { numia: 65, sumup: null },
         accredito_banca: 65,
         diff_serale: 5,
         diff_accredito: 0,
@@ -106,8 +107,9 @@ describe('ControlloMensile', () => {
     fireEvent.click(await screen.findByTestId('view-month-1'));
 
     const table = await screen.findByTestId('monthly-table');
-    expect(within(table).getByText('POS in banca')).toBeInTheDocument();
-    expect(within(table).getByText('Banca − chiusura')).toBeInTheDocument();
+    expect(within(table).getByText('Accreditato su BPM')).toBeInTheDocument();
+    expect(within(table).getByText('BPM − Numia')).toBeInTheDocument();
+    expect(within(table).getByText("POS SumUp, dall'app")).toBeInTheDocument();
     expect(await screen.findByTestId('row-2026-01-02')).toBeInTheDocument();
     expect(api.get.mock.calls.some(([url]) =>
       url.includes('controllo-due-fasi?data_da=2026-01-01&data_a=2026-01-31')
@@ -126,5 +128,24 @@ describe('ControlloMensile', () => {
 
     expect(await screen.findByText(/Errore nel caricamento di: Controllo POS-banca/)).toBeInTheDocument();
     await waitFor(() => expect(screen.getByTestId('row-month-1')).toBeInTheDocument());
+  });
+  it('separa Numia e SumUp: la banca BPM si confronta col solo Numia', async () => {
+    api.get.mockImplementation(url => {
+      if (url.includes('/api/pos-corrispettivi/controllo-due-fasi')) {
+        return Promise.resolve({ data: { giorni: [{
+          data: '2026-01-02', xml_elettronico: 1629.5, pos_manuale: 1588.6,
+          pos_per_circuito: { numia: 867.3, sumup: 721.3 },
+          accredito_banca: 867.3, diff_serale: 40.9, diff_accredito: 0,
+          stato_serale: 'ok', stato_accredito: 'ok',
+        }] } });
+      }
+      return rispostaPerUrl(url);
+    });
+    render(<ControlloMensile />);
+
+    const gennaio = await screen.findByTestId('row-month-1');
+    expect(within(gennaio).getAllByText('€ 867,30')).toHaveLength(2);
+    expect(within(gennaio).getByText('€ 721,30')).toBeInTheDocument();
+    expect(within(gennaio).getAllByText('Chiuso')).toHaveLength(2);
   });
 });

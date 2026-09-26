@@ -210,10 +210,14 @@ describe('Vista canonica POS e banca', () => {
     expect(await screen.findByText(/Fonti bancarie duplicate unificate:/)).toHaveTextContent('2');
     fireEvent.click(screen.getByRole('button', { name: 'Mensile' }));
 
-    expect(screen.getByText('POS TERMINALE')).toBeInTheDocument();
-    expect(screen.getByText('DIFF. XML−POS')).toBeInTheDocument();
-    expect(screen.getByText('ACCREDITO BANCA')).toBeInTheDocument();
-    expect(screen.getByText('DIFF. BANCA−POS')).toBeInTheDocument();
+    expect(screen.getByText('POS Numia, chiusura serale')).toBeInTheDocument();
+    expect(screen.getByText("POS SumUp, dall'app")).toBeInTheDocument();
+    expect(screen.getByText('Accreditato su BPM')).toBeInTheDocument();
+    expect(screen.getByText('Pagato sulla carta SumUp')).toBeInTheDocument();
+    // Le due differenze stanno dietro «Mostra tutte le colonne».
+    fireEvent.click(screen.getByTestId('mensile-tutte-colonne'));
+    expect(screen.getByText('Registratore − (Numia + SumUp)')).toBeInTheDocument();
+    expect(screen.getByText('BPM − Numia')).toBeInTheDocument();
   });
 
   it('apre dai contatori la lista esatta dei giorni con problemi', async () => {
