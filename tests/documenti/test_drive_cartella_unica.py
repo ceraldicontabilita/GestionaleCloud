@@ -284,7 +284,7 @@ def test_i_file_sciolti_nella_radice_passano_dallo_smistatore(ambiente):
 
     esito = run(cu.giro(db))
     assert (esito["letti"], esito["elaborati"], esito["errori"]) == (3, 2, 1)
-    assert smistati[0][0] == "fattura.xml"  # prima la coda esplicita, poi la radice
+    assert smistati[0][0] == "fattura.xml"  # gli XML passano davanti ai PDF
     assert drive.file["r1"]["parent"] == "elaborate"
     assert drive.file["r2"]["parent"] == "errori"
     assert drive.file["i1"]["parent"] == "elaborate"
@@ -302,3 +302,28 @@ def test_import_in_pausa_senza_togliere_la_cartella(monkeypatch):
     assert "pausa" in esito["saltato"]
     monkeypatch.setenv("DRIVE_CARTELLA_UNICA_IMPORT", "true")
     assert cu.attivo() is True
+
+
+def test_prima_la_radice_poi_da_elaborare_e_gli_xml_in_testa(ambiente, monkeypatch):
+    """26/09/2026: fatture e chiusure RT messe nella radice restavano dietro
+    centinaia di PDF, e il tetto per giro non le raggiungeva mai."""
+    drive, smistati, _ = ambiente
+    monkeypatch.setenv("DRIVE_CARTELLA_UNICA_BATCH", "3")
+    db = AsyncMongoMockClient()["t"]
+    drive.aggiungi("i1", "bonifico-inbox.pdf", b"%PDF i1", "inbox")
+    drive.aggiungi("r1", "bonifico-1.pdf", b"%PDF r1", "radice")
+    drive.aggiungi("r2", "bonifico-2.pdf", b"%PDF r2", "radice")
+    drive.aggiungi("i2", "IT01234567890_abc.xml", b"<xml>i2</xml>", "inbox")
+    drive.aggiungi("r3", "3611930537_04523831214.xml", b"<xml>r3</xml>", "radice")
+    drive.aggiungi("r4", "IT_vecchia_2023.xml", b"<xml>r4</xml>", "radice")
+    drive.file["r4"]["createdTime"] = "2023-01-10T00:00:00Z"
+    drive.file["r3"]["createdTime"] = "2026-09-26T16:22:52Z"
+    drive.file["i2"]["createdTime"] = "2026-09-26T16:41:02Z"
+
+    run(cu.giro(db))
+    # l'XML caricato per ultimo per primo; il vecchio del 2023 dopo
+    assert [n for n, _ in smistati] == [
+        "IT01234567890_abc.xml", "3611930537_04523831214.xml", "IT_vecchia_2023.xml"]
+    run(cu.giro(db))
+    # poi i PDF: prima la radice, poi DA ELABORARE
+    assert [n for n, _ in smistati][3:] == ["bonifico-1.pdf", "bonifico-2.pdf", "bonifico-inbox.pdf"]

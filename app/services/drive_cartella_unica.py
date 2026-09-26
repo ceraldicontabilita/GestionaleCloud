@@ -188,6 +188,26 @@ def esito_del_risultato(risultato: Dict[str, Any]) -> tuple[str, str]:
     return ERRORI, str(risultato.get("message") or risultato.get("error") or "registrazione non riuscita")[:500]
 
 
+_ESTENSIONI_XML = (".xml", ".xml.p7m", ".p7m", ".zip")
+
+
+def ordina_coda(coda: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Prima XML (fatture, chiusure RT) e ZIP, i piu' recenti in testa; poi il resto.
+
+    Un XML si registra in un attimo e fa i conti del mese; un PDF bancario puo'
+    tenere il giro per minuti. Fra gli XML vince l'ultimo caricato: nella radice
+    ce ne sono oltre mille di vecchi, e le fatture appena messe dal titolare non
+    devono aspettare quelle. Il resto mantiene l'ordine di elenco (radice prima
+    di DA ELABORARE, il piu' vecchio prima).
+    """
+    def xml(f):
+        return str(f.get("name") or "").lower().endswith(_ESTENSIONI_XML)
+
+    recenti = sorted((f for f in coda if xml(f)),
+                     key=lambda f: str(f.get("createdTime") or ""), reverse=True)
+    return recenti + [f for f in coda if not xml(f)]
+
+
 async def _registra(db, file_id: str, **campi) -> None:
     campi["aggiornato_il"] = datetime.now(timezone.utc).isoformat()
     await db[REGISTRO].update_one(
@@ -196,7 +216,7 @@ async def _registra(db, file_id: str, **campi) -> None:
 
 
 async def giro(db) -> Dict[str, Any]:
-    """Un giro su DA ELABORARE e poi sulla radice: al piu' ``DRIVE_CARTELLA_UNICA_BATCH`` file."""
+    """Un giro sulla radice e poi su DA ELABORARE: al piu' ``DRIVE_CARTELLA_UNICA_BATCH`` file."""
     if not radice():
         return {"saltato": "GOOGLE_DRIVE_DATI_FOLDER_ID non impostata"}
     if not import_attivo():
@@ -216,15 +236,17 @@ async def _giro(db) -> Dict[str, Any]:
     try:
         service = await asyncio.to_thread(_service)
         cartelle = await asyncio.to_thread(_cartelle, service, radice())
-        campi = "id, name, md5Checksum, size, mimeType"
-        in_coda = [{**f, "_da": cartelle[INBOX]} for f in await asyncio.to_thread(
-            _elenca, service, cartelle[INBOX], campi, _batch(), True)]
-        # Anche i file lasciati sciolti nella radice sono in coda: il titolare
-        # usa la cartella unica come calderone e non deve smistarli a mano in
-        # DA ELABORARE. Le sottocartelle restano escluse da _elenca.
-        if len(in_coda) < _batch():
-            in_coda += [{**f, "_da": radice()} for f in await asyncio.to_thread(
-                _elenca, service, radice(), campi, _batch() - len(in_coda), True)]
+        campi = "id, name, md5Checksum, size, mimeType, createdTime"
+        # Prima i file lasciati sciolti nella radice, poi DA ELABORARE
+        # (decisione del titolare, 26/09/2026): la cartella unica si usa come
+        # calderone e nessuno deve smistare a mano. Le sottocartelle restano
+        # escluse da _elenca. Si elenca tutto (solo metadati) per poter mettere
+        # in testa le fatture e le chiusure RT: erano dietro centinaia di PDF.
+        in_coda = [{**f, "_da": radice()} for f in await asyncio.to_thread(
+            _elenca, service, radice(), campi, None, True)]
+        in_coda += [{**f, "_da": cartelle[INBOX]} for f in await asyncio.to_thread(
+            _elenca, service, cartelle[INBOX], campi, None, True)]
+        in_coda = ordina_coda(in_coda)[:_batch()]
         archivio = await asyncio.to_thread(_elenca, service, cartelle[ARCHIVIO], "id, md5Checksum")
     except Exception as exc:
         esito["errore"] = f"{type(exc).__name__}: {exc}"

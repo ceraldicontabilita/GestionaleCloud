@@ -1,6 +1,6 @@
 import asyncio
 
-from app.services.reconciliation_orchestrator import on_estratto_conto_importato_riprocessa
+from app.services.reconciliation_orchestrator import riprocessa_estratto_conto
 
 
 def test_bank_import_syncs_historical_paypal_before_matching(monkeypatch):
@@ -22,7 +22,7 @@ def test_bank_import_syncs_historical_paypal_before_matching(monkeypatch):
         reconcile,
     )
 
-    result = asyncio.run(on_estratto_conto_importato_riprocessa({"movimenti": [
+    result = asyncio.run(riprocessa_estratto_conto({"movimenti": [
         {"id": "a", "data": "2025-04-10", "descrizione": "SDD PayPal Europe", "tipo": "uscita"},
         {"id": "b", "data": "2025-04-15", "descrizione": "BON.DA PAYPAL", "tipo": "entrata"},
         {"id": "c", "data": "2025-05-01", "descrizione": "Assegno 123", "tipo": "uscita"},
@@ -44,7 +44,7 @@ def test_other_movements_do_not_trigger_paypal_sync(monkeypatch):
         "app.services.reconciliation_orchestrator.riconcilia_documenti_e_pagamenti",
         reconcile,
     )
-    result = asyncio.run(on_estratto_conto_importato_riprocessa({"movimenti": [
+    result = asyncio.run(riprocessa_estratto_conto({"movimenti": [
         {"id": "a", "data": "2026-08-13", "descrizione": "Giroconto da Mastercard SumUp"},
     ]}, object()))
     assert result["paypal_api"]["stato"] == "nessun_movimento_paypal"
@@ -64,7 +64,7 @@ def test_paypal_api_failure_does_not_hide_bank_import(monkeypatch):
         "app.services.reconciliation_orchestrator.riconcilia_documenti_e_pagamenti",
         reconcile,
     )
-    result = asyncio.run(on_estratto_conto_importato_riprocessa({"movimenti": [
+    result = asyncio.run(riprocessa_estratto_conto({"movimenti": [
         {"id": "a", "data": "2026-01-20", "descrizione": "SDD CORE PayPal"},
     ]}, object()))
     assert result["matched_existing_evidence"] == 1
@@ -72,3 +72,36 @@ def test_paypal_api_failure_does_not_hide_bank_import(monkeypatch):
         "stato": "errore", "periodi": [],
         "errori": [{"mese": "2026-01", "tipo": "RuntimeError"}],
     }
+
+
+def test_l_import_non_aspetta_il_ripasso_e_gli_estratti_si_sommano(monkeypatch):
+    """26/09/2026: il giro Drive e' rimasto 46 minuti su un estratto conto."""
+    from app.services import reconciliation_orchestrator as orch
+
+    chiamate = []
+    via = asyncio.Event()
+
+    async def reconcile(db, *, anno=None, movimento_ids=None):
+        await via.wait()
+        chiamate.append((anno, sorted(movimento_ids or [])))
+        return {}
+
+    monkeypatch.setattr(orch, "riconcilia_documenti_e_pagamenti", reconcile)
+
+    async def scenario():
+        primo = await orch.on_estratto_conto_importato_riprocessa(
+            {"movimenti": [{"id": "a", "data": "2026-09-01", "descrizione": "x"}]}, object())
+        await asyncio.sleep(0)
+        secondo = await orch.on_estratto_conto_importato_riprocessa(
+            {"movimenti": [{"id": "b", "data": "2026-09-02", "descrizione": "y"}]}, object())
+        terzo = await orch.on_estratto_conto_importato_riprocessa(
+            {"movimenti": [{"id": "c", "data": "2026-09-03", "descrizione": "z"}]}, object())
+        assert chiamate == []  # nessuno ha aspettato il ripasso
+        via.set()
+        await orch.attendi_riconciliazione_estratti()
+        return primo, secondo, terzo
+
+    primo, secondo, terzo = asyncio.run(scenario())
+    assert primo["action"] == secondo["action"] == terzo["action"] == "riconciliazione_accodata"
+    # il primo gira da solo, i due arrivati nel frattempo in un ripasso unico
+    assert chiamate == [(2026, ["a"]), (2026, ["b", "c"])]

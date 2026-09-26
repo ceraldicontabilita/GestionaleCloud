@@ -211,7 +211,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
    handler per-documento**: `fattura.created` nasce una volta per fattura e il
    giro Drive ne importa 25, quindi il costo si moltiplica per il lotto. Il
    ripasso completo sta solo in `riconcilia_documenti_e_pagamenti`, nel giro
-   dei 30 minuti.
+   dei 30 minuti; l'estratto conto lo **accoda in sottofondo**, mai lo aspetta.
 5. Migrazioni DDL su `gestionale.documents` a database scarico o con
    `create index concurrently`. Ogni DDL fa ricaricare lo schema a PostgREST
    (503 per minuti): l'HR fa DDL solo se la tabella manca davvero.
@@ -329,7 +329,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 
 ### Drive, struttura canonica
 
-- **Cartella unica** (decisione del 25/09/2026, sostituisce l'albero a 6 aree del §7-bis): «DATI SOCIETA CERALDI» con `DA ELABORARE | ELABORATE | ERRORI` (`GOOGLE_DRIVE_DATI_FOLDER_ID`); ogni file passa dallo smistatore di Documenti > Import, sia da `DA ELABORARE` sia **sciolto nella radice** (il calderone del titolare),
+- **Cartella unica** (decisione del 25/09/2026, sostituisce l'albero a 6 aree del §7-bis): «DATI SOCIETA CERALDI» con `DA ELABORARE | ELABORATE | ERRORI` (`GOOGLE_DRIVE_DATI_FOLDER_ID`); ogni file passa dallo smistatore di Documenti > Import, prima **sciolto nella radice** (il calderone del titolare) poi da `DA ELABORARE`, con gli XML in testa e i più recenti primi,
   una copia byte-identica di un originale va nel Cestino (in `DOPPIONI` se il file è del titolare: Drive nega il Cestino al service account), «vedi documento» legge solo da `ELABORATE` (`drive_cartella_unica.py`). Dentro `GESTIONALE` restano solo lei e `FOTO E IMMAGINI` (immagini, cartella a parte): le cartelle dei canali sotto non esistono piu', e ogni loader prova la credenziale sulla **propria** cartella, mai su quella di un altro canale. Prima di migrare, la simulazione in sola lettura (`drive_cartella_unica_simulazione.py`, `DRIVE_SIMULAZIONE_RADICE`) dice come finirà ogni file. La pausa dell'import è `DRIVE_CARTELLA_UNICA_IMPORT=false`, **mai** togliere la cartella: le credenziali si provano su di lei.
 - **Censimento doppioni** della cartella GESTIONALE (`drive_censimento_doppioni.py`, `DRIVE_CENSIMENTO_DOPPIONI`
   off|censisci|marca): copie esatte (MD5 + dimensione Drive) e file tecnici si **rinominano soltanto**

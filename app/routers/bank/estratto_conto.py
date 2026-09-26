@@ -1341,7 +1341,10 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
             }, db, source_module="estratto_conto_import")
             for event_result in event_results:
                 if event_result.get("handler") == "on_estratto_conto_importato_riprocessa":
-                    paypal_api_sync = (event_result.get("result") or {}).get("paypal_api")
+                    esito_ripasso = event_result.get("result") or {}
+                    paypal_api_sync = esito_ripasso.get("paypal_api")
+                    if esito_ripasso.get("action") == "riconciliazione_accodata":
+                        paypal_api_sync = {"stato": "in_sottofondo"}
                     if not event_result.get("success"):
                         paypal_api_sync = {"stato": "errore_riconciliazione"}
     except Exception as _ev:
