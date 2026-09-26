@@ -4,9 +4,9 @@ import api from '../api';
 import CopiaTesto from '../components/CopiaTesto';
 import { useAuth } from '../contexts/AuthContext';
 
-const card = { background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: 22, maxWidth: 760, margin: '0 auto' };
+const card = { background: '#fff', border: '1px solid #e6e3d9', borderRadius: 12, padding: 22, maxWidth: 760, margin: '0 auto' };
 const button = { border: 0, borderRadius: 8, background: '#0f2a4a', color: '#fff', padding: '11px 16px', fontWeight: 800, cursor: 'pointer' };
-const input = { width: '100%', boxSizing: 'border-box', border: '1px solid #cbd5e1', borderRadius: 8, padding: '12px 14px', fontSize: 17, letterSpacing: 1, margin: '12px 0' };
+const input = { width: '100%', boxSizing: 'border-box', border: '1px solid #d0ccbe', borderRadius: 8, padding: '12px 14px', fontSize: 17, letterSpacing: 1, margin: '12px 0' };
 const setupActionRow = { display: 'flex', alignItems: 'stretch', flexWrap: 'wrap', gap: 10, marginTop: 12 };
 
 export default function MFAAdmin() {
@@ -92,14 +92,14 @@ export default function MFAAdmin() {
     <div style={{ padding: 20 }}>
       <div style={card}>
         <h2 style={{ marginTop: 0 }}>Sicurezza e MFA</h2>
-        <p style={{ color: '#475569', lineHeight: 1.55 }}>
+        <p style={{ color: '#5f5c55', lineHeight: 1.55 }}>
           La verifica in due passaggi protegge l'accesso amministratore e rende obbligatoria una sessione MFA per approvare o rifiutare decisioni AI.
         </p>
         <div style={{ padding: 12, borderRadius: 8, background: status.enabled ? '#ecfdf5' : '#fff7ed', color: status.enabled ? '#166534' : '#9a3412', fontWeight: 800 }}>
           {status.enabled ? 'MFA attiva' : 'MFA non ancora configurata'}
           {status.enabled && ` · ${status.recovery_codes_remaining} codici di recupero disponibili`}
         </div>
-        {message && <div style={{ marginTop: 14, padding: 10, background: '#f1f5f9', borderRadius: 8 }}>{message}</div>}
+        {message && <div style={{ marginTop: 14, padding: 10, background: '#f2f0e9', borderRadius: 8 }}>{message}</div>}
 
         {!status.enabled && !setup && <button style={{ ...button, marginTop: 18 }} disabled={busy} onClick={() => start(false)}>Configura MFA</button>}
 
@@ -107,18 +107,18 @@ export default function MFAAdmin() {
           <div style={{ marginTop: 20 }}>
             <h3>1. Scansiona il codice</h3>
             {setup.setup_id && (
-              <div style={{ marginBottom: 12, padding: 10, borderRadius: 8, background: '#eef3ef', color: '#3f5a4e', fontWeight: 800 }}>
+              <div style={{ marginBottom: 12, padding: 10, borderRadius: 8, background: '#eef3ef', color: '#4c4a44', fontWeight: 800 }}>
                 Configurazione: {setup.setup_id}. Nell'app usa esclusivamente la voce "Amministratore [{setup.setup_id}]".
               </div>
             )}
-            <div style={{ background: '#fff', padding: 14, width: 'fit-content', border: '1px solid #e2e8f0' }}><QRCodeSVG value={setup.otpauth_uri} size={190} /></div>
-            <p style={{ color: '#64748b', fontSize: 13 }}>Se non puoi scansionarlo, inserisci manualmente questa chiave. Non condividerla.</p>
+            <div style={{ background: '#fff', padding: 14, width: 'fit-content', border: '1px solid #e6e3d9' }}><QRCodeSVG value={setup.otpauth_uri} size={190} /></div>
+            <p style={{ color: '#7a776e', fontSize: 13 }}>Se non puoi scansionarlo, inserisci manualmente questa chiave. Non condividerla.</p>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-              <code style={{ flex: '1 1 260px', wordBreak: 'break-all', background: '#f8fafc', padding: 10 }}>{setup.secret}</code>
+              <code style={{ flex: '1 1 260px', wordBreak: 'break-all', background: '#f6f4ee', padding: 10 }}>{setup.secret}</code>
               <CopiaTesto testo={setup.secret} label="Copia chiave" data-testid="copia-chiave-mfa" />
             </div>
             <h3>2. Conferma il primo codice</h3>
-            <p style={{ color: '#475569', lineHeight: 1.5 }}>
+            <p style={{ color: '#5f5c55', lineHeight: 1.5 }}>
               Apri l'app Authenticator e inserisci qui esclusivamente il codice numerico temporaneo di 6 cifre. Non incollare la chiave lunga in questo campo.
             </p>
             <div style={setupActionRow}>
@@ -140,11 +140,11 @@ export default function MFAAdmin() {
                 Attiva MFA
               </button>
             </div>
-            <p style={{ color: '#475569', fontSize: 13, margin: '8px 0 0' }}>
+            <p style={{ color: '#5f5c55', fontSize: 13, margin: '8px 0 0' }}>
               Dopo le 6 cifre premi <strong>Attiva MFA</strong> oppure il tasto Invio.
             </p>
             <button
-              style={{ ...button, marginTop: 14, background: '#475569' }}
+              style={{ ...button, marginTop: 14, background: '#5f5c55' }}
               disabled={busy}
               onClick={() => start(true)}
             >
@@ -176,10 +176,10 @@ export default function MFAAdmin() {
         {status.enabled && (
           <div style={{ marginTop: 20 }}>
             <h3>{status.verified_in_session ? 'Sessione MFA verificata' : 'Verifica questa sessione'}</h3>
-            {!status.verified_in_session && <p style={{ color: '#64748b' }}>Inserisci un codice per abilitare le approvazioni AI senza uscire dal gestionale.</p>}
+            {!status.verified_in_session && <p style={{ color: '#7a776e' }}>Inserisci un codice per abilitare le approvazioni AI senza uscire dal gestionale.</p>}
             <input style={input} value={code} onChange={event => setCode(event.target.value.toUpperCase())} autoComplete="one-time-code" placeholder="Codice MFA o recupero" />
             {!status.verified_in_session && <button style={button} disabled={busy || code.trim().length < 6} onClick={stepUp}>Verifica sessione</button>}
-            <button style={{ ...button, background: '#b91c1c', marginLeft: status.verified_in_session ? 0 : 10 }} disabled={busy || code.trim().length < 6} onClick={disable}>Disattiva MFA</button>
+            <button style={{ ...button, background: '#b0362b', marginLeft: status.verified_in_session ? 0 : 10 }} disabled={busy || code.trim().length < 6} onClick={disable}>Disattiva MFA</button>
           </div>
         )}
       </div>

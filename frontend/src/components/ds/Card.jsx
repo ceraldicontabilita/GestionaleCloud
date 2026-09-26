@@ -24,7 +24,7 @@ export function Card({ title, icon = null, actions = null, children, style = {},
         }}>
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8,
-            fontSize: 14, fontWeight: 700, color: COLORS.primary,
+            fontSize: 14, fontWeight: 700, color: COLORS.text,
           }}>
             {icon}{title}
           </div>

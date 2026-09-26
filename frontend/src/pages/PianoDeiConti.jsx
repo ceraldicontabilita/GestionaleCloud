@@ -245,7 +245,7 @@ export default function PianoDeiConti() {
       <div style={{ maxWidth: 1400, margin: '0 auto' }}>
         {/* Header */}
         <div style={{ marginBottom: 20, borderLeft: `4px solid ${COLORS.primary}`, paddingLeft: 14 }}>
-          <h1 style={{ margin: 0, fontSize: 'clamp(20px, 5vw, 28px)', color: COLORS.primary }}>
+          <h1 style={{ margin: 0, fontSize: 'clamp(20px, 5vw, 28px)', color: COLORS.text }}>
             📒 Piano dei Conti
           </h1>
           <p style={{ color: COLORS.textMuted, margin: '5px 0 0 0' }}>

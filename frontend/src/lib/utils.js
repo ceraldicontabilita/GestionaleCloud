@@ -4,7 +4,7 @@ import { clsx } from 'clsx';
 /* ================================================================
    CERALDI ERP — DESIGN SYSTEM UNIFICATO
    Inline styles only · No Tailwind · No CSS-in-JS runtime
-   Palette: Navy + Oro sobrio (contabile / professionale)
+   Palette: crema, inchiostro e terracotta (artefatto «Gestore Attività»)
    ================================================================ */
 
 export function cn(...inputs) {
@@ -12,49 +12,47 @@ export function cn(...inputs) {
 }
 
 /* ================================================================
-   TOKEN TEMA UFFICIALE — Navy #2a3329 + Oro #b8860b
+   TOKEN TEMA UFFICIALE — i colori dell'artefatto «Gestore Attività»:
+   crema #faf9f5, inchiostro #141413, terracotta #c15f3c. Niente blu né grigi freddi
    Font di sistema · densità 13px. Non modificare i valori qui sotto
    senza aggiornare anche frontend/src/index.css (stessa fonte 1:1).
    ================================================================ */
 
 /* ---------- PALETTE CHIAVE ---------- */
 export const COLORS = {
-  /* Inchiostro del gruppo. Si chiamava «Brand navy» e il navy era rimasto
-     solo nelle tre varianti: `primary` era gia' stato portato all'inchiostro
-     verde, le altre no. Il bottone primario era quindi verde a riposo e
-     BLU al passaggio del mouse (`Button.jsx` usa primaryLight sull'hover).
-     Un nome non dice mai un colore che non contiene. */
-  primary: '#2a3329',
-  primaryLight: '#3f5a4e',
-  primaryDark: '#1a211a',
-  primarySoft: '#e2efe8',
+  /* `primary` e' il colore delle azioni e dello stato attivo: la terracotta
+     dell'artefatto. I titoli e il testo stanno in `text` (inchiostro). */
+  primary: '#c15f3c',
+  primaryLight: '#a94f30',
+  primaryDark: '#8f4128',
+  primarySoft: '#f7ebe4',
   /* Accent oro (sobrio) */
-  accent: '#b8860b',
-  accentLight: '#d4a017',
-  accentSoft: '#fdf6e3',
+  accent: '#b07d1a',
+  accentLight: '#c99a3c',
+  accentSoft: '#f7eeda',
   /* Stato — zero ambiguità cromatica */
-  success: '#15803d', successLight: '#dcfce7',
-  warning: '#b45309', warningLight: '#fef3c7',
-  danger:  '#b91c1c', dangerLight: '#fee2e2',
-  info:    '#3f5a4e', infoLight: '#e2efe8',
-  /* Neutri / superfici (slate) */
-  bg: '#f1f5f9',
-  bgAlt: '#f8fafc',
+  success: '#2f7a4f', successLight: '#e2f0e7',
+  warning: '#8a6410', warningLight: '#f7eeda',
+  danger:  '#b0362b', dangerLight: '#f8e5e2',
+  info:    '#8a6f47', infoLight: '#f2ece2',
+  /* Neutri / superfici (crema e sabbia) */
+  bg: '#faf9f5',
+  bgAlt: '#f6f4ee',
   card: '#ffffff',
-  border: '#e2e8f0',
-  borderDark: '#cbd5e1',
-  text: '#0f172a',
-  textMuted: '#64748b',
-  textSubtle: '#94a3b8',
-  /* Scala grigi slate */
+  border: '#e6e3d9',
+  borderDark: '#d0ccbe',
+  text: '#141413',
+  textMuted: '#7a776e',
+  textSubtle: '#a19d92',
+  /* Scala dei neutri caldi (il nome `gray` resta per le pagine che la usano) */
   gray: {
-    50: '#f8fafc', 100: '#f1f5f9', 200: '#e2e8f0', 300: '#cbd5e1', 400: '#94a3b8',
-    500: '#64748b', 600: '#475569', 700: '#334155', 800: '#1e293b', 900: '#0f172a',
+    50: '#f6f4ee', 100: '#f2f0e9', 200: '#e6e3d9', 300: '#d0ccbe', 400: '#a19d92',
+    500: '#7a776e', 600: '#5f5c55', 700: '#4c4a44', 800: '#2c2b28', 900: '#141413',
   },
   /* Legacy aliases */
   white: '#ffffff',
-  grayLight: '#e2e8f0',
-  grayBg: '#f1f5f9',
+  grayLight: '#e6e3d9',
+  grayBg: '#f2f0e9',
   purple: '#6f583a',   // non nel design system ufficiale, mantenuto per pagine legacy che lo referenziano
 };
 
@@ -77,16 +75,16 @@ export const THEME = {
 /* ---------- SPAZIATURE ---------- */
 export const SPACING = { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32 };
 
-/* ---------- OMBRE (tinta navy, mai nere) ---------- */
+/* ---------- OMBRE (tinta calda, mai nere) ---------- */
 export const SHADOWS = {
-  sm: '0 1px 2px rgba(42, 51, 41,0.06)',
-  md: '0 2px 8px rgba(42, 51, 41,0.08)',
-  lg: '0 6px 16px rgba(42, 51, 41,0.10)',
-  xl: '0 12px 32px rgba(42, 51, 41,0.14)',
-  nav: '0 2px 8px rgba(42, 51, 41,0.18)',
-  // Ombra forte per modali/dialog in overlay — stessa tinta navy della scala
+  sm: '0 1px 2px rgba(20, 20, 19,0.06)',
+  md: '0 2px 8px rgba(20, 20, 19,0.08)',
+  lg: '0 6px 16px rgba(20, 20, 19,0.10)',
+  xl: '0 12px 32px rgba(20, 20, 19,0.14)',
+  nav: '0 2px 8px rgba(20, 20, 19,0.18)',
+  // Ombra forte per modali/dialog in overlay — stessa tinta calda della scala
   // sopra, non nera: prima ogni pagina la scriveva a mano come rgba(0,0,0,...).
-  modal: '0 20px 50px rgba(42, 51, 41,0.28)',
+  modal: '0 20px 50px rgba(20, 20, 19,0.28)',
 };
 
 /* ---------- RADIUS (contenuto: ≤8px dati, ≤14px contenitori) ---------- */

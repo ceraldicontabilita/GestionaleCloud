@@ -195,10 +195,10 @@ export default function CalendarioFiscale() {
     const colors = {
       iva: '#5b7a6b',
       f24: '#dc2626',
-      dichiarazione: '#2a3329',
+      dichiarazione: '#c15f3c',
       imu: '#d97706',
-      comunicazione: '#64748b',
-      default: '#64748b',
+      comunicazione: '#7a776e',
+      default: '#7a776e',
     };
     return colors[tipo] || colors.default;
   };
@@ -323,42 +323,42 @@ export default function CalendarioFiscale() {
 
           {/* KPI Cards */}
           <PageGrid cols={4} gap={16} minWidth={160}>
-            <Card style={{ borderLeft: '4px solid #2a3329', borderRadius: 8 }}>
+            <Card style={{ borderLeft: '4px solid #c15f3c', borderRadius: 8 }}>
               <CardContent style={{ padding: 16 }}>
-                <div style={{ fontSize: 24, fontWeight: 700, color: '#2a3329' }}>
+                <div style={{ fontSize: 24, fontWeight: 700, color: '#141413' }}>
                   {calendario?.totale_scadenze || 0}
                 </div>
-                <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}>
+                <div style={{ fontSize: 11, color: '#7a776e', textTransform: 'uppercase' }}>
                   Scadenze Totali
                 </div>
               </CardContent>
             </Card>
-            <Card style={{ borderLeft: '4px solid #2a3329', borderRadius: 8 }}>
+            <Card style={{ borderLeft: '4px solid #c15f3c', borderRadius: 8 }}>
               <CardContent style={{ padding: 16 }}>
                 <div style={{ fontSize: 24, fontWeight: 700, color: '#16a34a' }}>
                   {calendario?.completate || 0}
                 </div>
-                <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}>
+                <div style={{ fontSize: 11, color: '#7a776e', textTransform: 'uppercase' }}>
                   Completate
                 </div>
               </CardContent>
             </Card>
-            <Card style={{ borderLeft: '4px solid #2a3329', borderRadius: 8 }}>
+            <Card style={{ borderLeft: '4px solid #c15f3c', borderRadius: 8 }}>
               <CardContent style={{ padding: 16 }}>
                 <div style={{ fontSize: 24, fontWeight: 700, color: '#d97706' }}>
                   {(calendario?.totale_scadenze || 0) - (calendario?.completate || 0)}
                 </div>
-                <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}>
+                <div style={{ fontSize: 11, color: '#7a776e', textTransform: 'uppercase' }}>
                   Da Completare
                 </div>
               </CardContent>
             </Card>
-            <Card style={{ borderLeft: '4px solid #2a3329', borderRadius: 8 }}>
+            <Card style={{ borderLeft: '4px solid #c15f3c', borderRadius: 8 }}>
               <CardContent style={{ padding: 16 }}>
                 <div style={{ fontSize: 24, fontWeight: 700, color: '#dc2626' }}>
                   {scadenzeImminenti.length}
                 </div>
-                <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}>
+                <div style={{ fontSize: 11, color: '#7a776e', textTransform: 'uppercase' }}>
                   Prossime 7 gg
                 </div>
               </CardContent>
@@ -406,8 +406,8 @@ export default function CalendarioFiscale() {
                         {scad.data?.substring(8, 10)}
                       </div>
                       <div>
-                        <div style={{ fontWeight: 600, color: '#1e293b' }}>{scad.descrizione}</div>
-                        <div style={{ fontSize: 13, color: '#64748b' }}>
+                        <div style={{ fontWeight: 600, color: '#2c2b28' }}>{scad.descrizione}</div>
+                        <div style={{ fontSize: 13, color: '#7a776e' }}>
                           {formatDate(scad.data)} - {scad.tipo?.toUpperCase()}
                         </div>
                       </div>
@@ -459,7 +459,7 @@ export default function CalendarioFiscale() {
                 padding: '8px 12px',
                 minHeight: 40,
                 borderRadius: 6,
-                border: '1px solid #e2e8f0',
+                border: '1px solid #e6e3d9',
                 background: 'white',
                 fontSize: 13,
               }}
@@ -478,7 +478,7 @@ export default function CalendarioFiscale() {
                 padding: '8px 12px',
                 minHeight: 40,
                 borderRadius: 6,
-                border: '1px solid #e2e8f0',
+                border: '1px solid #e6e3d9',
                 background: 'white',
                 fontSize: 13,
               }}
@@ -488,7 +488,7 @@ export default function CalendarioFiscale() {
               <option value="completate">Completate</option>
             </select>
 
-            <div style={{ marginLeft: 'auto', fontSize: 14, color: '#64748b' }}>
+            <div style={{ marginLeft: 'auto', fontSize: 14, color: '#7a776e' }}>
               {scadenzeFiltrate.length} scadenze visualizzate
             </div>
           </div>
@@ -504,11 +504,11 @@ export default function CalendarioFiscale() {
                   <thead>
                     <tr
                       style={{
-                        background: '#f8fafc',
-                        borderBottom: '1px solid #e2e8f0',
+                        background: '#f6f4ee',
+                        borderBottom: '1px solid #e6e3d9',
                         fontSize: 11,
                         textTransform: 'uppercase',
-                        color: '#64748b',
+                        color: '#7a776e',
                       }}
                     >
                       <th style={{ padding: '12px 16px', textAlign: 'left' }}>Data</th>
@@ -524,7 +524,7 @@ export default function CalendarioFiscale() {
                       <tr
                         key={scad.id || idx}
                         style={{
-                          borderBottom: '1px solid #f1f5f9',
+                          borderBottom: '1px solid #f2f0e9',
                           background: scad.completato
                             ? '#f0fdf4'
                             : isScaduta(scad.data)
@@ -540,12 +540,12 @@ export default function CalendarioFiscale() {
                         <td data-label="Descrizione" style={{ padding: '12px 16px' }}>
                           <div style={{ fontWeight: 500 }}>{scad.descrizione}</div>
                           {scad.note && (
-                            <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+                            <div style={{ fontSize: 12, color: '#7a776e', marginTop: 2 }}>
                               {scad.note}
                             </div>
                           )}
                           {scad.applicabilita === 'da_verificare' && (
-                            <div style={{ fontSize: 11, color: '#b45309', marginTop: 4 }}>
+                            <div style={{ fontSize: 11, color: '#8a6410', marginTop: 4 }}>
                               Applicabilita da verificare
                             </div>
                           )}
@@ -607,7 +607,7 @@ export default function CalendarioFiscale() {
                           )}
                         </td>
                         <td data-label="Evidenza" style={{ padding: '12px 16px', textAlign: 'center' }}>
-                          <span style={{ color: scad.livello_evidenza === 'documentale' ? '#15803d' : scad.livello_evidenza === 'da_verificare' ? '#b45309' : '#64748b' }}>
+                          <span style={{ color: scad.livello_evidenza === 'documentale' ? '#2f7a4f' : scad.livello_evidenza === 'da_verificare' ? '#8a6410' : '#7a776e' }}>
                             {getProvenienzaLabel(scad)}
                           </span>
                         </td>
@@ -631,7 +631,7 @@ export default function CalendarioFiscale() {
                               {completando === scad.id ? '...' : 'Riapri'}
                             </Button>
                           ) : (
-                            <span style={{ fontSize: 12, color: '#64748b' }}>Protetta da F24</span>
+                            <span style={{ fontSize: 12, color: '#7a776e' }}>Protetta da F24</span>
                           )}
                         </td>
                       </tr>

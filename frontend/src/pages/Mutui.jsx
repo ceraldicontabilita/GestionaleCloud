@@ -141,7 +141,7 @@ export default function Mutui() {
               <div style={{ fontSize: 11, color: COLORS.textMuted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
                 Importo Totale Accordato
               </div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: COLORS.primary, fontFamily: MONO }}>
+              <div style={{ fontSize: 22, fontWeight: 700, color: COLORS.text, fontFamily: MONO }}>
                 {formatEuro(stats.importo_totale_accordato)}
               </div>
               <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 4 }}>
@@ -201,7 +201,7 @@ export default function Mutui() {
               }}
             >
               <div style={{ fontSize: 11, color: COLORS.textMuted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Completamento</div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: COLORS.primary, fontFamily: MONO }}>
+              <div style={{ fontSize: 22, fontWeight: 700, color: COLORS.text, fontFamily: MONO }}>
                 {stats.percentuale_completamento?.toFixed(1) || 0}%
               </div>
               <div
@@ -317,7 +317,7 @@ export default function Mutui() {
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: 13, color: COLORS.textMuted }}>Importo accordato</div>
-                    <div style={{ fontSize: 22, fontWeight: 700, color: COLORS.primary, fontFamily: MONO }}>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: COLORS.text, fontFamily: MONO }}>
                       {formatEuro(mutuo.importo_accordato)}
                     </div>
                   </div>
@@ -537,7 +537,7 @@ export default function Mutui() {
                       <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 4 }}>
                         Totale Versato
                       </div>
-                      <div style={{ fontSize: 18, fontWeight: 700, color: COLORS.primary, fontFamily: MONO }}>
+                      <div style={{ fontSize: 18, fontWeight: 700, color: COLORS.text, fontFamily: MONO }}>
                         {formatEuro(mutuo.totale_pagato)}
                       </div>
                     </div>

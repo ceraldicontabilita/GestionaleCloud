@@ -2834,7 +2834,7 @@ export default function GestioneAssegni() {
                         disabled={loadingFattureEdit || fattureEditFornitore.length === 0}
                         style={{
                           width: '100%', minHeight: 34, padding: '5px 8px', fontSize: 11.5,
-                          border: '1px solid #cbd5e1', borderRadius: 7, background: 'white',
+                          border: '1px solid #d0ccbe', borderRadius: 7, background: 'white',
                         }}
                       >
                         <option value="">
@@ -3093,7 +3093,7 @@ export default function GestioneAssegni() {
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(42, 51, 41,0.5)',
+            background: 'rgba(20, 20, 19,0.5)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -3190,7 +3190,7 @@ export default function GestioneAssegni() {
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(42, 51, 41,0.35)',
+            background: 'rgba(20, 20, 19,0.35)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',

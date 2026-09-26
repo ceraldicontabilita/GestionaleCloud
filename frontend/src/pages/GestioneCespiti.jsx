@@ -44,19 +44,19 @@ const styles = {
   title: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#1e293b',
+    color: '#2c2b28',
     display: 'flex',
     alignItems: 'center',
     gap: 8,
   },
-  label: { fontSize: 11, fontWeight: '500', color: '#475569', marginBottom: 4, display: 'block' },
+  label: { fontSize: 11, fontWeight: '500', color: '#5f5c55', marginBottom: 4, display: 'block' },
   grid2: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8 },
   grid3: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8 },
   grid4: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8 },
   card: {
     background: 'white',
     borderRadius: 8,
-    border: '1px solid #e2e8f0',
+    border: '1px solid #e6e3d9',
     boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
     marginBottom: 12,
   },
@@ -68,62 +68,62 @@ const styles = {
   // neutro quando non indicati.
   statBox: (bg = 'white') => ({
     background: bg,
-    border: '1px solid #e2e8f0',
-    borderLeft: '4px solid #2a3329',
+    border: '1px solid #e6e3d9',
+    borderLeft: '4px solid #c15f3c',
     padding: '8px 10px',
     borderRadius: 8,
     textAlign: 'left',
   }),
-  statLabel: (color = '#64748b') => ({
+  statLabel: (color = '#7a776e') => ({
     fontSize: 10,
     color,
     fontWeight: 600,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   }),
-  statValue: (color = '#2a3329') => ({ fontSize: 22, fontWeight: 700, color, fontFamily: MONO }),
+  statValue: (color = '#c15f3c') => ({ fontSize: 22, fontWeight: 700, color, fontFamily: MONO }),
   table: { width: '100%', fontSize: 12, borderCollapse: 'collapse' },
   th: {
     padding: '8px',
     textAlign: 'left',
-    background: '#f8fafc',
+    background: '#f6f4ee',
     fontWeight: '600',
     fontSize: 11,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    color: '#64748b',
+    color: '#7a776e',
   },
   thRight: {
     padding: '8px',
     textAlign: 'right',
-    background: '#f8fafc',
+    background: '#f6f4ee',
     fontWeight: '600',
     fontSize: 11,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    color: '#64748b',
+    color: '#7a776e',
   },
   thCenter: {
     padding: '8px',
     textAlign: 'center',
-    background: '#f8fafc',
+    background: '#f6f4ee',
     fontWeight: '600',
     fontSize: 11,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    color: '#64748b',
+    color: '#7a776e',
   },
-  td: { padding: '8px', borderBottom: '1px solid #f1f5f9', fontSize: 13 },
+  td: { padding: '8px', borderBottom: '1px solid #f2f0e9', fontSize: 13 },
   tdRight: {
     padding: '8px',
-    borderBottom: '1px solid #f1f5f9',
+    borderBottom: '1px solid #f2f0e9',
     textAlign: 'right',
     fontSize: 13,
     fontFamily: MONO,
   },
   tdCenter: {
     padding: '8px',
-    borderBottom: '1px solid #f1f5f9',
+    borderBottom: '1px solid #f2f0e9',
     textAlign: 'center',
     fontSize: 13,
   },
@@ -131,7 +131,7 @@ const styles = {
   icon: { width: 12, height: 12 },
   iconMd: { width: 16, height: 16 },
   iconLg: { width: 20, height: 20 },
-  small: { fontSize: 11, color: '#64748b' },
+  small: { fontSize: 11, color: '#7a776e' },
   urgentBox: {
     background: '#fef2f2',
     border: '1px solid #fecaca',
@@ -141,7 +141,7 @@ const styles = {
   },
   formCard: {
     background: 'white',
-    border: '1px solid #e2e8f0',
+    border: '1px solid #e6e3d9',
     borderRadius: 8,
     padding: 8,
     marginBottom: 12,
@@ -485,7 +485,7 @@ export default function GestioneCespiti() {
           {verificaAmmortamenti && verificaAmmortamenti.stato !== 'coerente' && (
             <div role="alert" data-testid="verifica-ammortamenti" style={styles.urgentBox}>
               <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                <AlertTriangle style={{ ...styles.iconMd, color: '#b91c1c', flexShrink: 0 }} />
+                <AlertTriangle style={{ ...styles.iconMd, color: '#b0362b', flexShrink: 0 }} />
                 <div style={{ fontSize: 12, color: '#7f1d1d' }}>
                   <strong>Verifica ammortamenti {anno}:</strong>{' '}
                   {verificaAmmortamenti.cespiti_ammortizzati}/{verificaAmmortamenti.cespiti_attivi}{' '}
@@ -514,7 +514,7 @@ export default function GestioneCespiti() {
                       superiore al massimo fiscale; richiedono rettifica controllata.
                     </span>
                   )}
-                  <div style={{ marginTop: 4, color: '#64748b' }}>
+                  <div style={{ marginTop: 4, color: '#7a776e' }}>
                     Controllo in sola lettura: nessuna scrittura viene generata aprendo la pagina.
                   </div>
                 </div>
@@ -525,7 +525,7 @@ export default function GestioneCespiti() {
             <div style={{ ...styles.grid4, marginBottom: 12 }}>
               <div style={styles.statBox('#eef3ef')}>
                 <p style={styles.statLabel('#5b7a6b')}>Cespiti</p>
-                <p style={styles.statValue('#3f5a4e')}>{riepilogoCespiti?.totali?.num_cespiti}</p>
+                <p style={styles.statValue('#a94f30')}>{riepilogoCespiti?.totali?.num_cespiti}</p>
               </div>
               <div style={styles.statBox('#f0fdf4')}>
                 <p style={styles.statLabel('#16a34a')}>Val. Acq.</p>
@@ -535,7 +535,7 @@ export default function GestioneCespiti() {
               </div>
               <div style={styles.statBox('#fffbeb')}>
                 <p style={styles.statLabel('#d97706')}>Fondo</p>
-                <p style={styles.statValue('#b45309')}>
+                <p style={styles.statValue('#8a6410')}>
                   {fmt(riepilogoCespiti.totali.fondo_ammortamento)}
                 </p>
               </div>
@@ -547,7 +547,7 @@ export default function GestioneCespiti() {
               </div>
               <div style={styles.statBox('#fef2f2')}>
                 <p style={styles.statLabel('#dc2626')}>Da verificare</p>
-                <p style={styles.statValue('#b91c1c')}>
+                <p style={styles.statValue('#b0362b')}>
                   {riepilogoCespiti.totali.entrata_funzione_da_verificare || 0}
                   {' / '}
                   {riepilogoCespiti.totali.documento_acquisto_da_verificare || 0}
@@ -686,7 +686,7 @@ export default function GestioneCespiti() {
                   {cespiti.map(c => (
                     <div
                       key={c.id}
-                      style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: 10 }}
+                      style={{ border: '1px solid #e6e3d9', borderRadius: 8, padding: 10 }}
                     >
                       {editingCespite === c.id ? (
                         <div style={{ display: 'grid', gap: 8 }}>
@@ -736,7 +736,7 @@ export default function GestioneCespiti() {
                               {c.data_entrata_funzione ? (
                                 formatDateIT(c.data_entrata_funzione)
                               ) : (
-                                <strong style={{ color: '#b91c1c' }}>Da verificare</strong>
+                                <strong style={{ color: '#b0362b' }}>Da verificare</strong>
                               )}
                             </div>
                             <div>
@@ -796,7 +796,7 @@ export default function GestioneCespiti() {
                                   style={{ height: 24, fontSize: 11 }}
                                 />
                               </td>
-                              <td style={{ ...styles.td, color: '#475569' }}>{c.categoria}</td>
+                              <td style={{ ...styles.td, color: '#5f5c55' }}>{c.categoria}</td>
                               <td style={styles.td}>
                                 <Input
                                   type="date"
@@ -853,7 +853,7 @@ export default function GestioneCespiti() {
                                     style={{ height: 24, width: 24, padding: 0 }}
                                     onClick={handleCancelEdit}
                                   >
-                                    <X style={{ width: 12, height: 12, color: '#64748b' }} />
+                                    <X style={{ width: 12, height: 12, color: '#7a776e' }} />
                                   </Button>
                                 </div>
                               </td>
@@ -861,12 +861,12 @@ export default function GestioneCespiti() {
                           ) : (
                             <>
                               <td style={{ ...styles.td, fontWeight: '500' }}>{c.descrizione}</td>
-                              <td style={{ ...styles.td, color: '#475569' }}>{c.categoria}</td>
+                              <td style={{ ...styles.td, color: '#5f5c55' }}>{c.categoria}</td>
                               <td style={styles.td}>
                                 {c.data_entrata_funzione ? (
                                   formatDateIT(c.data_entrata_funzione)
                                 ) : (
-                                  <span style={{ color: '#b91c1c', fontWeight: 600 }}>
+                                  <span style={{ color: '#b0362b', fontWeight: 600 }}>
                                     Da verificare
                                   </span>
                                 )}
@@ -888,7 +888,7 @@ export default function GestioneCespiti() {
                                     onClick={() => handleEditCespite(c)}
                                     title="Modifica"
                                   >
-                                    <Pencil style={{ width: 12, height: 12, color: '#2a3329' }} />
+                                    <Pencil style={{ width: 12, height: 12, color: '#141413' }} />
                                   </Button>
                                   <Button
                                     size="sm"
@@ -931,13 +931,13 @@ export default function GestioneCespiti() {
                 </div>
                 <div style={styles.statBox('#fef2f2')}>
                   <p style={styles.statLabel('#dc2626')}>Liquidato {anno}</p>
-                  <p style={styles.statValue('#b91c1c')}>
+                  <p style={styles.statValue('#b0362b')}>
                     {fmt(riepilogoTFR.liquidazioni_anno.totale_netto)}
                   </p>
                 </div>
               </div>
               <div style={styles.card}>
-                <div style={{ padding: '4px 8px', borderBottom: '1px solid #f1f5f9' }}>
+                <div style={{ padding: '4px 8px', borderBottom: '1px solid #f2f0e9' }}>
                   <span style={{ fontSize: 12, fontWeight: '600' }}>
                     Registro TFR per Dipendente
                   </span>
@@ -960,7 +960,7 @@ export default function GestioneCespiti() {
                               justifyContent: 'space-between',
                               alignItems: 'center',
                               padding: '6px 8px',
-                              background: '#f8fafc',
+                              background: '#f6f4ee',
                               borderRadius: 4,
                               fontSize: 12,
                               cursor: 'pointer',
@@ -975,7 +975,7 @@ export default function GestioneCespiti() {
                               {d.nome}
                             </span>
                             <span
-                              style={{ fontWeight: 'bold', color: '#2a3329', fontFamily: MONO }}
+                              style={{ fontWeight: 'bold', color: '#141413', fontFamily: MONO }}
                             >
                               {fmt(d.tfr_accantonato)}
                             </span>
@@ -985,7 +985,7 @@ export default function GestioneCespiti() {
                               style={{
                                 padding: '6px 8px 6px 24px',
                                 background: '#fff',
-                                border: '1px solid #f1f5f9',
+                                border: '1px solid #f2f0e9',
                                 borderTop: 'none',
                                 borderRadius: '0 0 4px 4px',
                               }}
@@ -1047,7 +1047,7 @@ export default function GestioneCespiti() {
                   display: 'flex',
                   alignItems: 'center',
                   gap: 8,
-                  color: '#b91c1c',
+                  color: '#b0362b',
                   fontSize: 12,
                   fontWeight: '600',
                   marginBottom: 8,
@@ -1061,7 +1061,7 @@ export default function GestioneCespiti() {
                   style={{ background: 'white', padding: 6, borderRadius: 4, textAlign: 'center' }}
                 >
                   <p style={styles.statLabel('#dc2626')}>Scadute</p>
-                  <p style={{ fontWeight: 'bold', color: '#b91c1c' }}>
+                  <p style={{ fontWeight: 'bold', color: '#b0362b' }}>
                     {urgenti.num_scadute} | {fmt(urgenti.totale_scaduto)}
                   </p>
                 </div>
@@ -1069,7 +1069,7 @@ export default function GestioneCespiti() {
                   style={{ background: 'white', padding: 6, borderRadius: 4, textAlign: 'center' }}
                 >
                   <p style={styles.statLabel('#d97706')}>In Scadenza</p>
-                  <p style={{ fontWeight: 'bold', color: '#b45309' }}>
+                  <p style={{ fontWeight: 'bold', color: '#8a6410' }}>
                     {urgenti.num_urgenti - urgenti.num_scadute} |{' '}
                     {fmt(urgenti.totale_urgente - urgenti.totale_scaduto)}
                   </p>
@@ -1080,33 +1080,33 @@ export default function GestioneCespiti() {
           {scadenzario && (
             <>
               <div style={{ ...styles.grid4, marginBottom: 12 }}>
-                <div style={styles.statBox('#f8fafc')}>
-                  <p style={styles.statLabel('#475569')}>Fatture</p>
-                  <p style={styles.statValue('#1e293b')}>
+                <div style={styles.statBox('#f6f4ee')}>
+                  <p style={styles.statLabel('#5f5c55')}>Fatture</p>
+                  <p style={styles.statValue('#2c2b28')}>
                     {scadenzario?.riepilogo?.totale_fatture}
                   </p>
                 </div>
                 <div style={styles.statBox('#eef3ef')}>
                   <p style={styles.statLabel('#5b7a6b')}>Da Pagare</p>
-                  <p style={styles.statValue('#3f5a4e')}>
+                  <p style={styles.statValue('#a94f30')}>
                     {fmt(scadenzario.riepilogo.totale_da_pagare)}
                   </p>
                 </div>
                 <div style={styles.statBox('#fef2f2')}>
                   <p style={styles.statLabel('#dc2626')}>Scaduto</p>
-                  <p style={styles.statValue('#b91c1c')}>
+                  <p style={styles.statValue('#b0362b')}>
                     {fmt(scadenzario.riepilogo.totale_scaduto)}
                   </p>
                 </div>
                 <div style={styles.statBox('#fffbeb')}>
                   <p style={styles.statLabel('#d97706')}>7gg</p>
-                  <p style={styles.statValue('#b45309')}>
+                  <p style={styles.statValue('#8a6410')}>
                     {scadenzario?.riepilogo?.num_prossimi_7gg}
                   </p>
                 </div>
               </div>
               <div style={styles.card}>
-                <div style={{ padding: '4px 8px', borderBottom: '1px solid #f1f5f9' }}>
+                <div style={{ padding: '4px 8px', borderBottom: '1px solid #f2f0e9' }}>
                   <span style={{ fontSize: 12, fontWeight: '600' }}>Top Fornitori</span>
                 </div>
                 <div style={styles.cardContent}>
@@ -1119,7 +1119,7 @@ export default function GestioneCespiti() {
                           justifyContent: 'space-between',
                           alignItems: 'center',
                           padding: '6px 8px',
-                          background: '#f8fafc',
+                          background: '#f6f4ee',
                           borderRadius: 4,
                           marginBottom: 4,
                           fontSize: 12,
@@ -1133,7 +1133,7 @@ export default function GestioneCespiti() {
                             maxWidth: 200,
                           }}
                         >
-                          {f.fornitore} <span style={{ color: '#94a3b8' }}>({f.num_fatture})</span>
+                          {f.fornitore} <span style={{ color: '#a19d92' }}>({f.num_fatture})</span>
                         </span>
                         <span style={{ fontWeight: 'bold', fontFamily: MONO }}>
                           {fmt(f.totale)}

@@ -700,7 +700,7 @@ export default function ArchivioFatture() {
           style={{
             position: 'sticky', top: 8, zIndex: 20,
             display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-            background: '#2a3329', color: 'white',
+            background: '#c15f3c', color: 'white',
             borderRadius: BORDER_RADIUS.lg, padding: '10px 14px',
             marginBottom: 12, boxShadow: SHADOWS.md,
           }}
@@ -766,7 +766,7 @@ export default function ArchivioFatture() {
                 type="checkbox"
                 checked={fatture.length > 0 && selezionate.size === fatture.length}
                 onChange={toggleSelezionaTutte}
-                style={{ width: 18, height: 18, accentColor: '#2a3329' }}
+                style={{ width: 18, height: 18, accentColor: '#c15f3c' }}
                 data-testid="seleziona-tutte-fatture"
               />
               Seleziona tutte ({fatture.length})
@@ -841,7 +841,7 @@ export default function ArchivioFatture() {
                       type="checkbox"
                       checked={selezionate.has(f.id)}
                       onChange={() => toggleSelezione(f.id)}
-                      style={{ width: 20, height: 20, marginTop: 1, flexShrink: 0, accentColor: '#2a3329' }}
+                      style={{ width: 20, height: 20, marginTop: 1, flexShrink: 0, accentColor: '#c15f3c' }}
                       data-testid={`seleziona-fattura-${f.id}`}
                     />
                     <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
@@ -928,7 +928,7 @@ export default function ArchivioFatture() {
                       type="checkbox"
                       checked={fatture.length > 0 && selezionate.size === fatture.length}
                       onChange={toggleSelezionaTutte}
-                      style={{ width: 16, height: 16, accentColor: '#2a3329', cursor: 'pointer' }}
+                      style={{ width: 16, height: 16, accentColor: '#c15f3c', cursor: 'pointer' }}
                       title="Seleziona tutte"
                       data-testid="seleziona-tutte-fatture"
                     />
@@ -979,7 +979,7 @@ export default function ArchivioFatture() {
                           type="checkbox"
                           checked={selezionate.has(f.id)}
                           onChange={() => toggleSelezione(f.id)}
-                          style={{ width: 16, height: 16, accentColor: '#2a3329', cursor: 'pointer' }}
+                          style={{ width: 16, height: 16, accentColor: '#c15f3c', cursor: 'pointer' }}
                           data-testid={`seleziona-fattura-${f.id}`}
                         />
                       </Td>

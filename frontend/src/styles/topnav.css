@@ -3,19 +3,19 @@
    ================================================================ */
 
 :root {
-  --ceraldi-primary:       #2a3329;
-  --ceraldi-primary-dark:  #1a211a;
-  --ceraldi-primary-light: #3f5a4e;
-  --ceraldi-secondary:     #3f5a4e;
-  --ceraldi-bg:            #f1f5f9;
-  --ceraldi-text:          #0f172a;
-  --ceraldi-text-muted:    #64748b;
+  --ceraldi-primary:       #c15f3c;
+  --ceraldi-primary-dark:  #8f4128;
+  --ceraldi-primary-light: #a94f30;
+  --ceraldi-secondary:     #a94f30;
+  --ceraldi-bg:            #f2f0e9;
+  --ceraldi-text:          #141413;
+  --ceraldi-text-muted:    #7a776e;
   --ceraldi-text-nav:      #ffffff;
-  --ceraldi-border:        #e2e8f0;
-  --ceraldi-border-light:  #f1f5f9;
-  --ceraldi-success:       #15803d;
-  --ceraldi-warning:       #b45309;
-  --ceraldi-error:         #b91c1c;
+  --ceraldi-border:        #e6e3d9;
+  --ceraldi-border-light:  #f2f0e9;
+  --ceraldi-success:       #2f7a4f;
+  --ceraldi-warning:       #8a6410;
+  --ceraldi-error:         #b0362b;
   --ceraldi-error-light:   #ef4444;
 
   --topnav-height: 54px;
@@ -45,7 +45,7 @@
   position: fixed !important;
   top: 0; left: 0; right: 0;
   z-index: 1000;
-  box-shadow: 0 2px 8px rgba(42, 51, 41, 0.18);
+  box-shadow: 0 2px 8px rgba(20, 20, 19, 0.18);
 }
 
 .topnav-brand {
@@ -126,7 +126,7 @@
   color: #fff !important;
 }
 .topnav-drop-item:hover {
-  background: rgba(42, 51, 41, 0.06) !important;
+  background: rgba(20, 20, 19, 0.06) !important;
 }
 
 .topnav-items-scroll::-webkit-scrollbar { display: none; }

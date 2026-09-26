@@ -11,7 +11,7 @@ const PosizioneContent = lazy(() => import('../PosizioneNoleggio.jsx'));
 
 const TABS = [
   { id: 'flotta', label: '🚗 Flotta Auto', color: '#5b7a6b' },
-  { id: 'posizione', label: 'Posizione auto e driver', color: '#3f5a4e' },
+  { id: 'posizione', label: 'Posizione auto e driver', color: '#4c4a44' },
   { id: 'verbali', label: '📋 Verbali Noleggio', color: '#8a6f47' },
   { id: 'costi', label: '💰 Riepilogo Costi', color: '#10b981' },
 ];
@@ -41,7 +41,7 @@ function RiepilogoCosti({ anno }) {
   if (loading) return <PageLoader />;
   if (!data)
     return (
-      <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>
+      <div style={{ padding: 40, textAlign: 'center', color: '#a19d92' }}>
         Nessun dato disponibile
       </div>
     );
@@ -57,7 +57,7 @@ function RiepilogoCosti({ anno }) {
     { key: 'totale_verbali', label: 'Verbali', icon: '🚨', color: '#ef4444' },
     { key: 'totale_bollo', label: 'Bollo', icon: '📝', color: '#f59e0b' },
     { key: 'totale_costi_extra', label: 'Costi Extra', icon: '💳', color: '#ff9800' },
-    { key: 'totale_riparazioni', label: 'Riparazioni', icon: '🔧', color: '#6b7280' },
+    { key: 'totale_riparazioni', label: 'Riparazioni', icon: '🔧', color: '#7a776e' },
   ];
 
   return (
@@ -65,7 +65,7 @@ function RiepilogoCosti({ anno }) {
       {/* Header */}
       <div
         style={{
-          background: '#15803d',
+          background: '#2f7a4f',
           borderRadius: 12,
           padding: 20,
           color: 'white',
@@ -127,7 +127,7 @@ function RiepilogoCosti({ anno }) {
             <div
               style={{
                 fontSize: 11,
-                color: '#6b7280',
+                color: '#7a776e',
                 fontWeight: 600,
                 textTransform: 'uppercase',
               }}
@@ -150,13 +150,13 @@ function RiepilogoCosti({ anno }) {
           boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
         }}
       >
-        <h3 style={{ margin: '0 0 16px', fontSize: 16, color: '#3f5a4e' }}>
+        <h3 style={{ margin: '0 0 16px', fontSize: 16, color: '#4c4a44' }}>
           📊 Dettaglio per Veicolo
         </h3>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
-              <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+              <tr style={{ background: '#f6f4ee', borderBottom: '2px solid #e6e3d9' }}>
                 {[
                   'Targa',
                   'Veicolo',
@@ -174,7 +174,7 @@ function RiepilogoCosti({ anno }) {
                       textAlign: i >= 3 ? 'right' : 'left',
                       fontWeight: 700,
                       fontSize: 11,
-                      color: '#64748b',
+                      color: '#7a776e',
                       textTransform: 'uppercase',
                     }}
                   >
@@ -193,7 +193,7 @@ function RiepilogoCosti({ anno }) {
                   (v.totale_costi_extra || 0) +
                   (v.totale_riparazioni || 0);
                 return (
-                  <tr key={v.targa || i} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                  <tr key={v.targa || i} style={{ borderBottom: '1px solid #f2f0e9' }}>
                     <td style={{ padding: '10px 12px', fontWeight: 700, color: '#5b7a6b' }}>
                       {v.targa}
                     </td>
@@ -215,7 +215,7 @@ function RiepilogoCosti({ anno }) {
                       style={{
                         padding: '10px 12px',
                         textAlign: 'right',
-                        color: (v.totale_verbali || 0) > 0 ? '#ef4444' : '#6b7280',
+                        color: (v.totale_verbali || 0) > 0 ? '#ef4444' : '#7a776e',
                       }}
                     >
                       {fmt(v.totale_verbali)}
@@ -232,7 +232,7 @@ function RiepilogoCosti({ anno }) {
                         textAlign: 'right',
                         fontWeight: 700,
                         fontSize: 14,
-                        color: '#3f5a4e',
+                        color: '#4c4a44',
                       }}
                     >
                       {fmt(tot)}
@@ -241,8 +241,8 @@ function RiepilogoCosti({ anno }) {
                 );
               })}
               {/* Totale */}
-              <tr style={{ borderTop: '2px solid #3f5a4e', background: '#eef3ef' }}>
-                <td colSpan={3} style={{ padding: '12px', fontWeight: 700, color: '#3f5a4e' }}>
+              <tr style={{ borderTop: '2px solid #a94f30', background: '#eef3ef' }}>
+                <td colSpan={3} style={{ padding: '12px', fontWeight: 700, color: '#4c4a44' }}>
                   TOTALE
                 </td>
                 <td
@@ -267,7 +267,7 @@ function RiepilogoCosti({ anno }) {
                     textAlign: 'right',
                     fontWeight: 700,
                     fontSize: 16,
-                    color: '#3f5a4e',
+                    color: '#4c4a44',
                   }}
                 >
                   {fmt(stats.totale_generale)}
@@ -312,7 +312,7 @@ export default function VeicoliHub() {
           gap: 6,
           padding: '8px 16px',
           background: 'white',
-          borderBottom: '1px solid #e2e8f0',
+          borderBottom: '1px solid #e6e3d9',
           borderRadius: '8px 8px 0 0',
           flexWrap: 'wrap',
         }}
@@ -325,14 +325,14 @@ export default function VeicoliHub() {
             style={{
               padding: '7px 13px',
               borderRadius: 6,
-              border: `1px solid ${activeTab === tab.id ? tab.color : '#e2e8f0'}`,
+              border: `1px solid ${activeTab === tab.id ? tab.color : '#e6e3d9'}`,
               fontWeight: activeTab === tab.id ? 700 : 500,
               fontSize: 12,
               cursor: 'pointer',
               transition: 'all 140ms ease',
               background: activeTab === tab.id ? tab.color : '#ffffff',
-              color: activeTab === tab.id ? 'white' : '#64748b',
-              boxShadow: activeTab === tab.id ? '0 1px 2px rgba(42, 51, 41,0.08)' : 'none',
+              color: activeTab === tab.id ? 'white' : '#7a776e',
+              boxShadow: activeTab === tab.id ? '0 1px 2px rgba(20, 20, 19,0.08)' : 'none',
             }}
           >
             {tab.label}

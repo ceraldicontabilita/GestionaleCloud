@@ -12,7 +12,7 @@ import { useConfirm } from '../components/ui/ConfirmDialog';
  * automatico dall'estratto conto (idempotente) leggendo la causale.
  */
 
-const BLU = '#2a3329';
+const BLU = '#c15f3c';
 const VERDE = '#16a34a';
 const ROSSO = '#dc2626';
 const eur = v => formatEuroD(v || 0);
@@ -87,14 +87,14 @@ export default function FinanziamentoSoci() {
     }
   };
 
-  const campo = { width: '100%', padding: '9px 10px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, boxSizing: 'border-box' };
+  const campo = { width: '100%', padding: '9px 10px', border: '1px solid #d0ccbe', borderRadius: 8, fontSize: 14, boxSizing: 'border-box' };
 
   const totale = dati?.totale || { apporti: 0, rimborsi: 0, saldo: 0 };
 
   return (
     <div style={{ marginTop: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
-        <div style={{ fontSize: 13, color: '#475569' }}>
+        <div style={{ fontSize: 13, color: '#5f5c55' }}>
           👥 Prima nota finanziamenti: apporti e rimborsi dei soci letti
           dall'estratto conto (causale per causale).
         </div>
@@ -108,7 +108,7 @@ export default function FinanziamentoSoci() {
       </div>
 
       {scan && (
-        <div style={{ fontSize: 12.5, color: '#475569', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 9, padding: '7px 11px', marginBottom: 10 }}>
+        <div style={{ fontSize: 12.5, color: '#5f5c55', background: '#f6f4ee', border: '1px solid #e6e3d9', borderRadius: 9, padding: '7px 11px', marginBottom: 10 }}>
           Scansione: {scan.righe_esaminate} righe EC esaminate — {scan.apporti_nuovi} apporti
           e {scan.rimborsi_nuovi} rimborsi nuovi, {scan.uscite_ignorate_causale} uscite ignorate
           (causale non di rimborso, es. stipendi)
@@ -122,7 +122,7 @@ export default function FinanziamentoSoci() {
         </div>
       )}
 
-      {loading && <div style={{ padding: 30, textAlign: 'center', color: '#6b7280' }}>⏳ Caricamento…</div>}
+      {loading && <div style={{ padding: 30, textAlign: 'center', color: '#7a776e' }}>⏳ Caricamento…</div>}
 
       {!loading && (
         <>
@@ -131,27 +131,27 @@ export default function FinanziamentoSoci() {
               <div
                 key={s.socio_id}
                 data-testid={`scheda-socio-${s.socio_id}`}
-                style={{ background: 'white', borderRadius: 12, border: '1px solid #e2e8f0', borderLeft: `4px solid ${s.saldo >= 0 ? BLU : ROSSO}`, padding: '11px 14px' }}
+                style={{ background: 'white', borderRadius: 12, border: '1px solid #e6e3d9', borderLeft: `4px solid ${s.saldo >= 0 ? BLU : ROSSO}`, padding: '11px 14px' }}
               >
                 <div style={{ fontWeight: 800, color: BLU, fontSize: 14.5 }}>👤 {s.nome}</div>
                 <div style={{ display: 'grid', gap: 3, margin: '8px 0' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
-                    <span style={{ color: '#64748b' }}>Apporti</span>
+                    <span style={{ color: '#7a776e' }}>Apporti</span>
                     <b style={{ color: VERDE, fontFamily: 'ui-monospace, Menlo, monospace' }}>{eur(s.apporti)}</b>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
-                    <span style={{ color: '#64748b' }}>Rimborsi</span>
+                    <span style={{ color: '#7a776e' }}>Rimborsi</span>
                     <b style={{ color: ROSSO, fontFamily: 'ui-monospace, Menlo, monospace' }}>{eur(s.rimborsi)}</b>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, borderTop: '1px dashed #e2e8f0', paddingTop: 4 }}>
-                    <span style={{ fontWeight: 700, color: '#334155' }}>Credito residuo</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, borderTop: '1px dashed #e6e3d9', paddingTop: 4 }}>
+                    <span style={{ fontWeight: 700, color: '#4c4a44' }}>Credito residuo</span>
                     <b style={{ color: s.saldo >= 0 ? BLU : ROSSO, fontFamily: 'ui-monospace, Menlo, monospace' }}>{eur(s.saldo)}</b>
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 6 }}>
                   <button
                     onClick={() => setAperta(aperta === s.socio_id ? null : s.socio_id)}
-                    style={{ flex: 1, background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 7, padding: '6px 8px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}
+                    style={{ flex: 1, background: '#f2f0e9', border: '1px solid #e6e3d9', borderRadius: 7, padding: '6px 8px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}
                   >
                     {aperta === s.socio_id ? '▲ Chiudi' : `▼ Movimenti (${s.movimenti.length})`}
                   </button>
@@ -166,10 +166,10 @@ export default function FinanziamentoSoci() {
                 {aperta === s.socio_id && (
                   <div style={{ marginTop: 8, display: 'grid', gap: 5 }}>
                     {s.movimenti.length === 0 && (
-                      <div style={{ fontSize: 12, color: '#6b7280' }}>Nessun movimento{dati?.anno ? ` nel ${dati.anno}` : ''}.</div>
+                      <div style={{ fontSize: 12, color: '#7a776e' }}>Nessun movimento{dati?.anno ? ` nel ${dati.anno}` : ''}.</div>
                     )}
                     {s.movimenti.map(m => (
-                      <div key={m.id} style={{ border: '1px solid #f1f5f9', borderRadius: 8, padding: '6px 9px', fontSize: 12 }}>
+                      <div key={m.id} style={{ border: '1px solid #f2f0e9', borderRadius: 8, padding: '6px 9px', fontSize: 12 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
                           <span style={{ fontWeight: 700, color: m.tipo === 'apporto' ? VERDE : ROSSO }}>
                             {m.tipo === 'apporto' ? '↧ Apporto' : '↥ Rimborso'} · {formatDateIT(m.data)}
@@ -185,7 +185,7 @@ export default function FinanziamentoSoci() {
                             </button>
                           </span>
                         </div>
-                        <div style={{ color: '#64748b', marginTop: 2, wordBreak: 'break-word' }}>
+                        <div style={{ color: '#7a776e', marginTop: 2, wordBreak: 'break-word' }}>
                           {m.descrizione || '—'}{m.source === 'manuale' ? ' · (manuale)' : ''}
                         </div>
                       </div>
@@ -196,8 +196,8 @@ export default function FinanziamentoSoci() {
             ))}
           </div>
 
-          <div style={{ marginTop: 10, background: 'white', borderRadius: 11, border: '1px solid #e2e8f0', padding: '9px 13px', display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', fontSize: 13 }}>
-            <span style={{ color: '#334155', fontWeight: 700 }}>Totale finanziamento soci</span>
+          <div style={{ marginTop: 10, background: 'white', borderRadius: 11, border: '1px solid #e6e3d9', padding: '9px 13px', display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', fontSize: 13 }}>
+            <span style={{ color: '#4c4a44', fontWeight: 700 }}>Totale finanziamento soci</span>
             <span style={{ display: 'flex', gap: 14, fontFamily: 'ui-monospace, Menlo, monospace' }}>
               <span style={{ color: VERDE }}>+{eur(totale.apporti)}</span>
               <span style={{ color: ROSSO }}>−{eur(totale.rimborsi)}</span>
@@ -210,7 +210,7 @@ export default function FinanziamentoSoci() {
       {manuale && (
         <div
           onClick={() => setManuale(null)}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(42, 51, 41,0.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 14 }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(20, 20, 19,0.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 14 }}
         >
           <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: 14, padding: 18, width: '100%', maxWidth: 400 }}>
             <h3 style={{ margin: '0 0 10px', fontSize: 15, color: BLU }}>➕ Movimento — {manuale.nome}</h3>
@@ -232,7 +232,7 @@ export default function FinanziamentoSoci() {
               />
               {errore && <div style={{ color: ROSSO, fontSize: 13 }}>{errore}</div>}
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                <button onClick={() => setManuale(null)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #d1d5db', background: 'white', cursor: 'pointer' }}>
+                <button onClick={() => setManuale(null)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #d0ccbe', background: 'white', cursor: 'pointer' }}>
                   Annulla
                 </button>
                 <button onClick={salvaManuale} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: BLU, color: 'white', fontWeight: 700, cursor: 'pointer' }}>

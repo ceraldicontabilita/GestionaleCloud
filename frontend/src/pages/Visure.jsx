@@ -85,7 +85,7 @@ export default function Visure() {
           alignItems: 'flex-start',
           marginBottom: 24,
           paddingBottom: 24,
-          borderBottom: '1px solid #e5e7eb',
+          borderBottom: '1px solid #e6e3d9',
         }}
       >
         <div>
@@ -93,7 +93,7 @@ export default function Visure() {
             style={{
               fontSize: 24,
               fontWeight: 700,
-              color: '#111827',
+              color: '#141413',
               margin: 0,
               display: 'flex',
               alignItems: 'center',
@@ -105,7 +105,7 @@ export default function Visure() {
           </h2>
           <p
             style={{
-              color: '#6b7280',
+              color: '#7a776e',
               margin: '8px 0 0',
               fontSize: 14,
             }}
@@ -127,7 +127,7 @@ export default function Visure() {
               borderRadius: 20,
               fontSize: 13,
               fontWeight: 600,
-              background: data.activityStatus === 'ATTIVA' ? '#dcfce7' : '#fee2e2',
+              background: data.activityStatus === 'ATTIVA' ? '#e2f0e7' : '#f8e5e2',
               color: data.activityStatus === 'ATTIVA' ? '#166534' : '#991b1b',
             }}
           >
@@ -153,16 +153,16 @@ export default function Visure() {
         <div
           style={{
             padding: 16,
-            background: '#f8fafc',
+            background: '#f6f4ee',
             borderRadius: 12,
-            border: '1px solid #e2e8f0',
+            border: '1px solid #e6e3d9',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
             <MapPin size={18} style={{ color: '#5b7a6b' }} />
-            <span style={{ fontWeight: 600, color: '#374151' }}>Sede Legale</span>
+            <span style={{ fontWeight: 600, color: '#4c4a44' }}>Sede Legale</span>
           </div>
-          <p style={{ margin: 0, color: '#4b5563', fontSize: 14, lineHeight: 1.6 }}>
+          <p style={{ margin: 0, color: '#5f5c55', fontSize: 14, lineHeight: 1.6 }}>
             {data.address?.registeredOffice?.streetName || '-'}
             <br />
             {data.address?.registeredOffice?.zipCode} {data.address?.registeredOffice?.town} (
@@ -174,16 +174,16 @@ export default function Visure() {
         <div
           style={{
             padding: 16,
-            background: '#f8fafc',
+            background: '#f6f4ee',
             borderRadius: 12,
-            border: '1px solid #e2e8f0',
+            border: '1px solid #e6e3d9',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
             <Mail size={18} style={{ color: '#5b7a6b' }} />
-            <span style={{ fontWeight: 600, color: '#374151' }}>Contatti</span>
+            <span style={{ fontWeight: 600, color: '#4c4a44' }}>Contatti</span>
           </div>
-          <p style={{ margin: 0, color: '#4b5563', fontSize: 14, lineHeight: 1.6 }}>
+          <p style={{ margin: 0, color: '#5f5c55', fontSize: 14, lineHeight: 1.6 }}>
             <strong>SDI:</strong> {data.sdiCode || mappedData?.codice_sdi || '-'}
             <br />
             <strong>PEC:</strong> {mappedData?.pec || '-'}
@@ -194,16 +194,16 @@ export default function Visure() {
         <div
           style={{
             padding: 16,
-            background: '#f8fafc',
+            background: '#f6f4ee',
             borderRadius: 12,
-            border: '1px solid #e2e8f0',
+            border: '1px solid #e6e3d9',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
             <FileText size={18} style={{ color: '#5b7a6b' }} />
-            <span style={{ fontWeight: 600, color: '#374151' }}>Attività</span>
+            <span style={{ fontWeight: 600, color: '#4c4a44' }}>Attività</span>
           </div>
-          <p style={{ margin: 0, color: '#4b5563', fontSize: 14, lineHeight: 1.6 }}>
+          <p style={{ margin: 0, color: '#5f5c55', fontSize: 14, lineHeight: 1.6 }}>
             <strong>ATECO:</strong> {mappedData?.codice_ateco || '-'}
             <br />
             <span style={{ fontSize: 12 }}>{mappedData?.descrizione_ateco || '-'}</span>
@@ -225,7 +225,7 @@ export default function Visure() {
             <div
               style={{
                 padding: 16,
-                background: '#f8fafc',
+                background: '#f6f4ee',
                 borderRadius: 12,
               }}
             >
@@ -243,15 +243,15 @@ export default function Visure() {
             <div
               style={{
                 padding: 16,
-                background: '#e2efe8',
+                background: '#f7ebe4',
                 borderRadius: 12,
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                 <Users size={18} style={{ color: '#5b7a6b' }} />
-                <span style={{ fontWeight: 600, color: '#3f5a4e' }}>Dipendenti</span>
+                <span style={{ fontWeight: 600, color: '#4c4a44' }}>Dipendenti</span>
               </div>
-              <p style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#3f5a4e' }}>
+              <p style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#4c4a44' }}>
                 {mappedData.numero_dipendenti}
               </p>
             </div>
@@ -264,7 +264,7 @@ export default function Visure() {
         style={{
           marginTop: 24,
           paddingTop: 24,
-          borderTop: '1px solid #e5e7eb',
+          borderTop: '1px solid #e6e3d9',
           display: 'flex',
           justifyContent: 'flex-end',
           gap: 12,
@@ -275,7 +275,7 @@ export default function Visure() {
           disabled={loading}
           style={{
             padding: '12px 24px',
-            background: '#15803d',
+            background: '#2f7a4f',
             color: 'white',
             border: 'none',
             borderRadius: 10,
@@ -302,13 +302,13 @@ export default function Visure() {
           style={{
             fontSize: 28,
             fontWeight: 700,
-            color: '#111827',
+            color: '#141413',
             margin: '0 0 8px 0',
           }}
         >
           🔍 Visure Aziendali
         </h1>
-        <p style={{ color: '#6b7280', margin: 0 }}>
+        <p style={{ color: '#7a776e', margin: 0 }}>
           Cerca informazioni su aziende italiane tramite Camera di Commercio
         </p>
       </div>
@@ -320,9 +320,9 @@ export default function Visure() {
             onClick={() => setSearchType('piva')}
             style={{
               padding: '10px 20px',
-              border: searchType === 'piva' ? '2px solid #5b7a6b' : '2px solid #e5e7eb',
+              border: searchType === 'piva' ? '2px solid #5b7a6b' : '2px solid #e6e3d9',
               background: searchType === 'piva' ? '#eef3ef' : 'white',
-              color: searchType === 'piva' ? '#5b7a6b' : '#6b7280',
+              color: searchType === 'piva' ? '#5b7a6b' : '#7a776e',
               borderRadius: 10,
               cursor: 'pointer',
               fontWeight: 600,
@@ -334,9 +334,9 @@ export default function Visure() {
             onClick={() => setSearchType('nome')}
             style={{
               padding: '10px 20px',
-              border: searchType === 'nome' ? '2px solid #5b7a6b' : '2px solid #e5e7eb',
+              border: searchType === 'nome' ? '2px solid #5b7a6b' : '2px solid #e6e3d9',
               background: searchType === 'nome' ? '#eef3ef' : 'white',
-              color: searchType === 'nome' ? '#5b7a6b' : '#6b7280',
+              color: searchType === 'nome' ? '#5b7a6b' : '#7a776e',
               borderRadius: 10,
               cursor: 'pointer',
               fontWeight: 600,
@@ -356,7 +356,7 @@ export default function Visure() {
             style={{
               flex: 1,
               padding: '14px 18px',
-              border: '2px solid #e5e7eb',
+              border: '2px solid #e6e3d9',
               borderRadius: 12,
               fontSize: 16,
               fontFamily: searchType === 'piva' ? 'monospace' : 'inherit',
@@ -368,7 +368,7 @@ export default function Visure() {
             disabled={loading}
             style={{
               padding: '14px 28px',
-              background: loading ? '#9ca3af' : '#3f5a4e',
+              background: loading ? '#a19d92' : '#a94f30',
               color: 'white',
               border: 'none',
               borderRadius: 12,
@@ -429,23 +429,23 @@ export default function Visure() {
                   }}
                   style={{
                     padding: 16,
-                    border: '1px solid #e5e7eb',
+                    border: '1px solid #e6e3d9',
                     borderRadius: 10,
                     cursor: 'pointer',
                     transition: 'all 0.2s',
                   }}
-                  onMouseEnter={e => (e.target.style.background = '#f8fafc')}
+                  onMouseEnter={e => (e.target.style.background = '#f6f4ee')}
                   onMouseLeave={e => (e.target.style.background = 'white')}
                 >
                   <strong>{r.companyName || `ID: ${r.id}`}</strong>
                   {r.vatCode && (
-                    <span style={{ marginLeft: 12, color: '#6b7280' }}>P.IVA: {r.vatCode}</span>
+                    <span style={{ marginLeft: 12, color: '#7a776e' }}>P.IVA: {r.vatCode}</span>
                   )}
                 </div>
               ))}
             </div>
           ) : (
-            <p style={{ color: '#6b7280' }}>Nessun risultato trovato. Prova con la Partita IVA.</p>
+            <p style={{ color: '#7a776e' }}>Nessun risultato trovato. Prova con la Partita IVA.</p>
           )}
         </div>
       )}

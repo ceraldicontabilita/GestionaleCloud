@@ -61,7 +61,7 @@ export const NAV_GRUPPI = [
   {
     id: 'inizio',
     titolo: 'IN PRIMO PIANO',
-    colore: '#2a3329',
+    colore: '#141413',
     voci: [
       { to: '/', label: 'Dashboard', Icon: LayoutDashboard },
       { to: '/dashboard/alerts', label: 'Alert', Icon: Bell },
@@ -70,7 +70,7 @@ export const NAV_GRUPPI = [
   {
     id: 'si-entra',
     titolo: 'SI ENTRA',
-    colore: '#15803d',
+    colore: '#c15f3c',
     voci: [
       { to: '/rapido', label: 'Inserisci', Icon: PlusCircle },
       { to: '/documenti/import', label: 'Importa', Icon: Upload },
@@ -79,7 +79,7 @@ export const NAV_GRUPPI = [
   {
     id: 'documenti',
     titolo: 'I DOCUMENTI',
-    colore: '#b45309',
+    colore: '#2f7a4f',
     voci: [
       { to: '/fatture', label: 'Fatture', Icon: FileText },
       { to: '/fatture/corrispettivi', label: 'Corrispettivi', Icon: Wallet },
@@ -99,7 +99,7 @@ export const NAV_GRUPPI = [
   {
     id: 'registro',
     titolo: 'IL REGISTRO',
-    colore: '#3f5a4e',
+    colore: '#5b7a6b',
     voci: [
       { to: '/prima-nota', label: 'Prima nota', Icon: BookOpen },
       { to: '/riconciliazione/movimenti-banca', label: 'Movimenti', Icon: Banknote },
@@ -109,7 +109,7 @@ export const NAV_GRUPPI = [
   {
     id: 'prove',
     titolo: 'LE PROVE',
-    colore: '#b8860b',
+    colore: '#b07d1a',
     voci: [
       { to: '/riconciliazione', label: 'Riconciliazione', Icon: Landmark },
       { to: '/riconciliazione/coerenza-pos', label: 'Coerenza POS', Icon: Banknote },
@@ -123,7 +123,7 @@ export const NAV_GRUPPI = [
   {
     id: 'sintesi',
     titolo: 'LA SINTESI',
-    colore: '#1a211a',
+    colore: '#8a6f47',
     voci: [
       { to: '/iva', label: 'Gestione IVA', Icon: Receipt },
       { to: '/contabilita', label: 'Piano dei conti', Icon: BarChart3 },
@@ -145,7 +145,7 @@ export const NAV_GRUPPI = [
   {
     id: 'controlli',
     titolo: 'I CONTROLLI',
-    colore: '#b91c1c',
+    colore: '#b0362b',
     voci: [
       { to: '/contabilita/controllo', label: 'Controllo mensile', Icon: CalendarCheck },
       { to: '/contabilita/verifica', label: 'Verifica bilancio', Icon: BadgeCheck },
@@ -155,7 +155,7 @@ export const NAV_GRUPPI = [
   {
     id: 'app',
     titolo: 'LE ALTRE APP',
-    colore: '#5b7a6b',
+    colore: '#7a776e',
     // App del gruppo portate pari pari dentro il gestionale: ognuna ha il
     // proprio login ed e' servita a pagina intera dal backend montato a
     // /menu, /hr, /lotti. Si aprono in una scheda nuova.
@@ -168,7 +168,7 @@ export const NAV_GRUPPI = [
   {
     id: 'impostazioni',
     titolo: 'IMPOSTAZIONI',
-    colore: '#8a6f47',
+    colore: '#7a776e',
     voci: [
       { to: '/utenti', label: 'Utenti', Icon: Users, adminOnly: true },
       { to: '/admin', label: 'Admin', Icon: Settings, adminOnly: true },

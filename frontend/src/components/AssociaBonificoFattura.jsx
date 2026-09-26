@@ -100,20 +100,20 @@ export default function AssociaBonificoFattura({
         <div role="dialog" aria-modal="true" aria-label={`Bonifici candidati per la fattura ${dati.numero}`}
           onMouseDown={e => e.target === e.currentTarget && setAperto(false)}
           style={{ position: 'fixed', inset: 0, zIndex: 1200, display: 'flex', alignItems: 'center',
-            justifyContent: 'center', padding: 16, background: 'rgba(42, 51, 41, 0.52)' }}>
+            justifyContent: 'center', padding: 16, background: 'rgba(20, 20, 19, 0.52)' }}>
           <div style={{ width: 'min(760px, 100%)', maxHeight: 'calc(100vh - 32px)', overflowY: 'auto',
-            background: '#f8fafc', border: '1px solid #6ee7b7', borderRadius: 12, padding: 16,
-            boxShadow: '0 24px 70px rgba(42, 51, 41, 0.28)' }}>
+            background: '#f6f4ee', border: '1px solid #6ee7b7', borderRadius: 12, padding: 16,
+            boxShadow: '0 24px 70px rgba(20, 20, 19, 0.28)' }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
               <div style={{ flex: 1 }}>
                 <div style={{ color: '#065f46', fontWeight: 800 }}>Bonifici per fattura {dati.numero}</div>
-                <div style={{ color: '#64748b', fontSize: 12, marginTop: 3 }}>Residuo: {formatEuroD(residuo)}. L’importo da solo non chiude la fattura.</div>
+                <div style={{ color: '#7a776e', fontSize: 12, marginTop: 3 }}>Residuo: {formatEuroD(residuo)}. L’importo da solo non chiude la fattura.</div>
               </div>
               <button type="button" onClick={() => setAperto(false)} aria-label="Chiudi bonifici candidati"
                 style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid #a7f3d0', background: 'white', cursor: 'pointer' }}>×</button>
             </div>
             {loading && <div style={{ marginTop: 14 }}>Ricerca nell’estratto conto…</div>}
-            {errore && <div role="alert" style={{ color: '#b91c1c', marginTop: 12 }}>{errore}</div>}
+            {errore && <div role="alert" style={{ color: '#b0362b', marginTop: 12 }}>{errore}</div>}
             {!loading && !errore && candidati.length === 0 && (
               <div role="status" style={{ marginTop: 14, padding: 12, background: 'white', borderRadius: 8 }}>
                 Nessun movimento in uscita con importo esatto trovato dopo la data fattura.
@@ -125,7 +125,7 @@ export default function AssociaBonificoFattura({
                 <div style={{ display: 'flex', gap: 10, justifyContent: 'space-between', flexWrap: 'wrap' }}>
                   <div style={{ flex: '1 1 420px' }}>
                     <b>{formatDateIT(candidato.data)} · {formatEuroD(candidato.importo)}</b>
-                    <div style={{ color: '#334155', marginTop: 4, overflowWrap: 'anywhere' }}>{candidato.descrizione || 'Senza causale'}</div>
+                    <div style={{ color: '#4c4a44', marginTop: 4, overflowWrap: 'anywhere' }}>{candidato.descrizione || 'Senza causale'}</div>
                     <div style={{ color: candidato.livello === 'solo_importo' ? '#92400e' : '#047857', fontSize: 12, fontWeight: 700, marginTop: 6 }}>
                       {etichettaLivello(candidato.livello)}
                     </div>

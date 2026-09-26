@@ -1330,7 +1330,7 @@ function ModalChiusuraSerale({ onClose, onSaved }) {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-          <h3 style={{ margin: 0, fontSize: 17, color: COLORS.primary }}>
+          <h3 style={{ margin: 0, fontSize: 17, color: COLORS.text }}>
             Chiusura serale
           </h3>
           <Button
@@ -1519,7 +1519,7 @@ export function ModalImportTotaliPos({ onClose, onSaved }) {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-          <h3 style={{ margin: 0, fontSize: 17, color: COLORS.primary }}>Importa totali POS giornalieri</h3>
+          <h3 style={{ margin: 0, fontSize: 17, color: COLORS.text }}>Importa totali POS giornalieri</h3>
           <Button variant="ghost" size="sm" onClick={onClose} aria-label="Chiudi importazione POS">
             <X size={18} color={COLORS.textMuted} />
           </Button>

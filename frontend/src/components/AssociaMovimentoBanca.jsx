@@ -65,7 +65,7 @@ export default function AssociaMovimentoBanca({ fattura, onChiudi, onAssociato }
     <div
       onClick={onChiudi}
       style={{
-        position: 'fixed', inset: 0, background: 'rgba(42, 51, 41,0.55)', zIndex: 1100,
+        position: 'fixed', inset: 0, background: 'rgba(20, 20, 19,0.55)', zIndex: 1100,
         display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 14,
       }}
     >
@@ -78,13 +78,13 @@ export default function AssociaMovimentoBanca({ fattura, onChiudi, onAssociato }
         }}
       >
         <h3 style={{ margin: '0 0 4px' }}>Associa il pagamento in banca</h3>
-        <p style={{ margin: '0 0 14px', color: '#64748b', fontSize: 13 }}>
+        <p style={{ margin: '0 0 14px', color: '#7a776e', fontSize: 13 }}>
           {fattura.fornitore || '—'} — Fatt. {fattura.fattura_numero || '—'} ·{' '}
           <b>{euro(fattura.importo)}</b>
         </p>
 
-        {errore && <p style={{ color: '#b91c1c' }}>{errore}</p>}
-        {!dati && !errore && <p style={{ color: '#64748b' }}>Cerco nell’estratto conto…</p>}
+        {errore && <p style={{ color: '#b0362b' }}>{errore}</p>}
+        {!dati && !errore && <p style={{ color: '#7a776e' }}>Cerco nell’estratto conto…</p>}
 
         {dati && candidati.length === 0 && (
           <p style={{ color: '#92400e', background: '#fffbeb', padding: 12, borderRadius: 8 }}>
@@ -99,7 +99,7 @@ export default function AssociaMovimentoBanca({ fattura, onChiudi, onAssociato }
             style={{
               display: 'flex', justifyContent: 'space-between', gap: 10,
               alignItems: 'center', flexWrap: 'wrap',
-              border: '1px solid #e2e8f0', borderRadius: 10,
+              border: '1px solid #e6e3d9', borderRadius: 10,
               padding: '10px 12px', marginBottom: 8,
             }}
           >
@@ -107,7 +107,7 @@ export default function AssociaMovimentoBanca({ fattura, onChiudi, onAssociato }
               <div style={{ fontWeight: 700, fontSize: 13 }}>
                 {dataIT(m.data)} · {euro(Math.abs(m.importo))}
               </div>
-              <div style={{ fontSize: 12.5, color: '#475569' }}>
+              <div style={{ fontSize: 12.5, color: '#5f5c55' }}>
                 {(m.descrizione || m.descrizione_originale || '').slice(0, 110)}
               </div>
               <div style={{ fontSize: 11.5, marginTop: 4 }}>
@@ -121,7 +121,7 @@ export default function AssociaMovimentoBanca({ fattura, onChiudi, onAssociato }
                       key={p}
                       style={{
                         display: 'inline-block', marginRight: 6, padding: '2px 7px',
-                        borderRadius: 6, background: '#dcfce7', color: '#15803d',
+                        borderRadius: 6, background: '#e2f0e7', color: '#2f7a4f',
                         fontWeight: 600,
                       }}
                     >
@@ -150,8 +150,8 @@ export default function AssociaMovimentoBanca({ fattura, onChiudi, onAssociato }
           <button
             onClick={onChiudi}
             style={{
-              padding: '8px 14px', borderRadius: 8, border: '1px solid #cbd5e1',
-              background: '#fff', color: '#334155', fontWeight: 600, cursor: 'pointer',
+              padding: '8px 14px', borderRadius: 8, border: '1px solid #d0ccbe',
+              background: '#fff', color: '#4c4a44', fontWeight: 600, cursor: 'pointer',
             }}
           >
             Chiudi

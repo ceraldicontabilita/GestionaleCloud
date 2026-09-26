@@ -386,7 +386,7 @@ export default function SituazioneFiscale() {
       <nav aria-label="Sezioni situazione fiscale" className="fiscal-tabs">
         {TABS.map(([id, label]) => <Link key={id} to={`/situazione-fiscale/${id}`}
           style={{ padding: '8px 12px', borderRadius: 8, textDecoration: 'none', fontWeight: 700,
-            background: tab === id ? '#2a3329' : '#e2e8f0', color: tab === id ? '#fff' : '#2a3329' }}>{label}</Link>)}
+            background: tab === id ? '#c15f3c' : '#e6e3d9', color: tab === id ? '#fff' : '#c15f3c' }}>{label}</Link>)}
       </nav>
       <div className="fiscal-stats">
         <StatCard label="F24 in Drive" value={driveCounts.f24_documents || 0} accent="primary" />
@@ -542,7 +542,7 @@ export default function SituazioneFiscale() {
           </select></label>
           <input ref={declarationInput} type="file" accept="application/pdf,.pdf" hidden onChange={uploadDeclaration} disabled={uploading} />
           <Button variant="primary" disabled={uploading} onClick={() => declarationInput.current?.click()}>{uploading ? 'Caricamento…' : 'Inserisci dichiarazione'}</Button>
-          <a href="/archivio-fiscale-drive.html" target="_blank" rel="noreferrer" style={{ padding: '9px 14px', borderRadius: 8, background: '#2a3329', color: '#fff', textDecoration: 'none', fontWeight: 700 }}>Apri pagina HTML Drive</a>
+          <a href="/archivio-fiscale-drive.html" target="_blank" rel="noreferrer" style={{ padding: '9px 14px', borderRadius: 8, background: '#c15f3c', color: '#fff', textDecoration: 'none', fontWeight: 700 }}>Apri pagina HTML Drive</a>
         </div>}
         {tab === 'codici-tributo' && <>
           {taxCodeMeta && <div style={{ margin: '0 0 14px', padding: '12px 14px', borderRadius: 10, background: '#eef6ff', border: '1px solid #c2ddd0' }}>
@@ -585,16 +585,16 @@ export default function SituazioneFiscale() {
           <strong>Ultimo archivio verificato:</strong> snapshot {tabMeta.snapshot_date || 'data non disponibile'} · {tabMeta.analytic_count || 0} posizioni · SHA-256 {String(tabMeta.dataset_sha256 || '').slice(0, 16)}…
         </div>}
         {tab === 'ader' && (aderRelated.ratePlans.length > 0 || aderRelated.settlements.length > 0) && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', gap: 12, marginBottom: 16 }}>
-          <section aria-labelledby="ader-rate-plans" style={{ padding: 14, borderRadius: 10, border: '1px solid #cbd5e1', background: '#f8fafc' }}>
+          <section aria-labelledby="ader-rate-plans" style={{ padding: 14, borderRadius: 10, border: '1px solid #d0ccbe', background: '#f6f4ee' }}>
             <h4 id="ader-rate-plans" style={{ margin: '0 0 10px' }}>Piani rateali</h4>
             {aderRelated.ratePlans.length === 0 && <p style={{ margin: 0 }}>Nessun piano importato.</p>}
-            {aderRelated.ratePlans.map(plan => <div key={plan.id} style={{ padding: '10px 0', borderTop: '1px solid #e2e8f0' }}>
+            {aderRelated.ratePlans.map(plan => <div key={plan.id} style={{ padding: '10px 0', borderTop: '1px solid #e6e3d9' }}>
               <strong>{plan.plan_reference}</strong>{' '}
               {plan.requires_review && <Badge variant="warning">Riferimenti da verificare</Badge>}
-              <div style={{ marginTop: 5, color: '#475569' }}>
+              <div style={{ marginTop: 5, color: '#5f5c55' }}>
                 {plan.installment_count ?? 'N.'} rate · totale {euro(plan.total_plan_amount)} · prima rata {euro(plan.first_installment_amount)} il {plan.first_installment_due_date || 'data non disponibile'}
               </div>
-              {(plan.payment_modules || []).map(module => <div key={module.id} style={{ marginTop: 5, color: '#475569' }}>
+              {(plan.payment_modules || []).map(module => <div key={module.id} style={{ marginTop: 5, color: '#5f5c55' }}>
                 Modulo {module.document_number || module.source_filename}: {(module.installments || []).map(rate => `${rate.number}ª ${rate.due_date} ${euro(rate.amount)}`).join(' · ') || 'rate non leggibili'}
               </div>)}
               {(plan.reconciled_installments || []).map(rate => <div key={rate.id} style={{ marginTop: 7, padding: '7px 9px', borderRadius: 7, background: '#ecfdf5', color: '#166534' }}>
@@ -675,12 +675,12 @@ export default function SituazioneFiscale() {
             {item.official_description && <div className="fiscal-muted">{item.official_description}</div>}
             {tab === 'codici-tributo' && <div style={{ marginTop: 6 }}>
               <strong>{item.codice_tributo}</strong> · {item.descrizione}
-              <div style={{ marginTop: 4, color: '#475569' }}>
+              <div style={{ marginTop: 4, color: '#5f5c55' }}>
                 {item.tipo_imposta || 'Tipo non indicato'} · {item.tipo_contribuente || 'Contribuente non indicato'} · {item.contesto_uso || 'Contesto non indicato'}
               </div>
               {item.url_esempio_compilazione && <a href={item.url_esempio_compilazione} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: 5 }}>Esempio ufficiale di compilazione</a>}
             </div>}
-            {tab === 'f24' && <div style={{ marginTop: 6, color: '#475569' }}>
+            {tab === 'f24' && <div style={{ marginTop: 6, color: '#5f5c55' }}>
               Debito {euro(item.debit_amount)} · Credito {euro(item.credit_amount)} · {item.payment_date || 'data non indicata'}
               {item.protocol && <> · protocollo {item.protocol}</>}
               {item.filename && <div style={{ marginTop: 4 }}>{item.filename}</div>}
@@ -692,13 +692,13 @@ export default function SituazioneFiscale() {
               <div className="fiscal-evidence"><strong>{item.documentary_payment_status === 'QUIETANZA_PRESENTE' ? 'Quietanza documentale presente' : 'Modello F24 presente'} · riscontro bancario da verificare</strong></div>
               <div className="fiscal-actions"><Button size="sm" variant="secondary" disabled={!item.document_id} onClick={() => openDriveDocument(item.document_id)}>Apri PDF Drive</Button></div>
             </div>}
-            {tab === 'dichiarazioni' && <div style={{ marginTop: 8, color: '#475569' }}>
+            {tab === 'dichiarazioni' && <div style={{ marginTop: 8, color: '#5f5c55' }}>
               <div>Anno d'imposta {item.tax_year || 'da verificare'}{item.protocol && <> · protocollo {item.protocol}</>}</div>
               <div>{item.filename}</div>
               {item.source_kind === 'DRIVE_EXCEL_INDEX_DECLARATION'
                 ? <Button size="sm" variant="secondary" style={{ marginTop: 8 }} disabled={!item.document_id} onClick={() => openDriveDocument(item.document_id)}>Apri originale Drive</Button>
                 : <Button size="sm" variant="secondary" style={{ marginTop: 8 }} onClick={() => openDocument(item.id)}>Apri dichiarazione</Button>}
-              {(item.f24_links || []).map(link => <div key={link.f24_id} style={{ marginTop: 10, padding: 10, border: '1px solid #cbd5e1', borderRadius: 8 }}>
+              {(item.f24_links || []).map(link => <div key={link.f24_id} style={{ marginTop: 10, padding: 10, border: '1px solid #d0ccbe', borderRadius: 8 }}>
                 <strong>F24 {link.filename || link.f24_id}</strong>{' '}<Badge variant={link.link_status === 'CONFIRMED' ? 'success' : 'warning'}>{link.link_status === 'CONFIRMED' ? 'Collegato' : 'Candidato da verificare'}</Badge>
                 <div>{(link.tax_rows || []).map(row => `${row.tax_code} ${row.reference_period || ''}`).join(' · ')}</div>
                 <div>Quietanza: {link.documentary_payment_status} · Banca: {link.bank_status}</div>
@@ -710,7 +710,7 @@ export default function SituazioneFiscale() {
               </div>)}
               {(item.f24_links || []).length === 0 && <div style={{ marginTop: 8 }}>Nessun F24 compatibile trovato. Non viene creato alcun pagamento per inferenza.</div>}
             </div>}
-            {tab === 'ader' && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 8, marginTop: 10, color: '#334155' }}>
+            {tab === 'ader' && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 8, marginTop: 10, color: '#4c4a44' }}>
               <span><small>Stato portale</small><br /><strong>{item.portal_status || 'Non indicato'}</strong></span>
               <span><small>Residuo totale</small><br /><strong>{euro(item.total_residual)}</strong></span>
               <span><small>Sospeso</small><br /><strong>{euro(item.suspended_amount)}</strong></span>

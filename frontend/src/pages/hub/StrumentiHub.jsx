@@ -73,7 +73,7 @@ export default function StrumentiHub() {
           gap: 6,
           padding: '8px 16px',
           background: 'white',
-          borderBottom: '1px solid #e2e8f0',
+          borderBottom: '1px solid #e6e3d9',
           borderRadius: '8px 8px 0 0',
           flexWrap: 'wrap',
         }}
@@ -86,12 +86,12 @@ export default function StrumentiHub() {
             style={{
               padding: '7px 13px',
               borderRadius: 6,
-              border: `1px solid ${activeTab === tab.id ? tab.color : '#e2e8f0'}`,
+              border: `1px solid ${activeTab === tab.id ? tab.color : '#e6e3d9'}`,
               fontWeight: activeTab === tab.id ? 700 : 500,
               fontSize: 12,
               cursor: 'pointer',
               background: activeTab === tab.id ? tab.color : '#ffffff',
-              color: activeTab === tab.id ? 'white' : '#64748b',
+              color: activeTab === tab.id ? 'white' : '#7a776e',
             }}
           >
             {tab.label}
@@ -101,7 +101,7 @@ export default function StrumentiHub() {
 
       <div style={{ padding: '16px 0 0 0' }}>
         {error && (
-          <div role="alert" style={{ padding: 16, background: '#fef2f2', color: '#b91c1c', borderRadius: 8, marginBottom: 16 }}>
+          <div role="alert" style={{ padding: 16, background: '#fef2f2', color: '#b0362b', borderRadius: 8, marginBottom: 16 }}>
             Errore caricamento: {error}
           </div>
         )}

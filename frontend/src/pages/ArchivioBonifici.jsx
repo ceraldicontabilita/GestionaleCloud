@@ -463,7 +463,7 @@ export default function ArchivioBonifici() {
           style={{
             padding: '8px 14px',
             minHeight: 40,
-            background: '#2a3329',
+            background: '#c15f3c',
             color: 'white',
             fontWeight: 600,
             fontSize: 13,
@@ -485,8 +485,8 @@ export default function ArchivioBonifici() {
             padding: '8px 14px',
             minHeight: 40,
             background: 'white',
-            color: '#1e293b',
-            border: '1px solid #e2e8f0',
+            color: '#2c2b28',
+            border: '1px solid #e6e3d9',
             borderRadius: 6,
             cursor: 'pointer',
             fontSize: 13,
@@ -510,18 +510,18 @@ export default function ArchivioBonifici() {
             background: 'white',
             padding: 16,
             borderRadius: 8,
-            border: '1px solid #e2e8f0',
-            borderLeft: '4px solid #2a3329',
+            border: '1px solid #e6e3d9',
+            borderLeft: '4px solid #c15f3c',
           }}
         >
-          <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}>
+          <div style={{ fontSize: 11, color: '#7a776e', textTransform: 'uppercase' }}>
             Bonifici Totali in DB
           </div>
           <div
             style={{
               fontSize: 24,
               fontWeight: 700,
-              color: '#1e293b',
+              color: '#2c2b28',
               fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
             }}
           >
@@ -533,18 +533,18 @@ export default function ArchivioBonifici() {
             background: 'white',
             padding: 16,
             borderRadius: 8,
-            border: '1px solid #e2e8f0',
-            borderLeft: '4px solid #2a3329',
+            border: '1px solid #e6e3d9',
+            borderLeft: '4px solid #c15f3c',
           }}
         >
-          <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}>
+          <div style={{ fontSize: 11, color: '#7a776e', textTransform: 'uppercase' }}>
             Bonifici Filtrati
           </div>
           <div
             style={{
               fontSize: 24,
               fontWeight: 700,
-              color: '#1e293b',
+              color: '#2c2b28',
               fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
             }}
           >
@@ -556,18 +556,18 @@ export default function ArchivioBonifici() {
             background: 'white',
             padding: 16,
             borderRadius: 8,
-            border: '1px solid #e2e8f0',
-            borderLeft: '4px solid #2a3329',
+            border: '1px solid #e6e3d9',
+            borderLeft: '4px solid #c15f3c',
           }}
         >
-          <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}>
+          <div style={{ fontSize: 11, color: '#7a776e', textTransform: 'uppercase' }}>
             Totale Importi Filtrati
           </div>
           <div
             style={{
               fontSize: 22,
               fontWeight: 700,
-              color: '#1e293b',
+              color: '#2c2b28',
               fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
             }}
           >
@@ -580,11 +580,11 @@ export default function ArchivioBonifici() {
             background: 'white',
             padding: 16,
             borderRadius: 8,
-            border: '1px solid #e2e8f0',
-            borderLeft: '4px solid #2a3329',
+            border: '1px solid #e6e3d9',
+            borderLeft: '4px solid #c15f3c',
           }}
         >
-          <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}>
+          <div style={{ fontSize: 11, color: '#7a776e', textTransform: 'uppercase' }}>
             ✓ Riconciliati
           </div>
           <div
@@ -597,7 +597,7 @@ export default function ArchivioBonifici() {
           >
             {riconciliazioneStats?.riconciliati || 0}/{riconciliazioneStats?.totale || 0}
           </div>
-          <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
+          <div style={{ fontSize: 12, color: '#7a776e', marginTop: 4 }}>
             {riconciliazioneStats?.percentuale || 0}%
           </div>
         </div>
@@ -606,7 +606,7 @@ export default function ArchivioBonifici() {
       {/* Pulsante Riconciliazione */}
       <div
         style={{
-          background: '#2a3329',
+          background: '#c15f3c',
           padding: 16,
           borderRadius: 8,
           marginBottom: 24,
@@ -633,8 +633,8 @@ export default function ArchivioBonifici() {
             padding: '12px 24px',
             minHeight: 40,
             borderRadius: 6,
-            background: riconciliando ? '#94a3b8' : 'white',
-            color: '#2a3329',
+            background: riconciliando ? '#a19d92' : 'white',
+            color: '#141413',
             border: 'none',
             cursor: riconciliando ? 'not-allowed' : 'pointer',
             fontWeight: 'bold',
@@ -653,11 +653,11 @@ export default function ArchivioBonifici() {
             background: 'white',
             padding: 16,
             borderRadius: 8,
-            border: '1px solid #e2e8f0',
+            border: '1px solid #e6e3d9',
             marginBottom: 24,
           }}
         >
-          <h3 style={{ fontSize: 14, fontWeight: 'bold', marginBottom: 12, color: '#2a3329' }}>
+          <h3 style={{ fontSize: 14, fontWeight: 'bold', marginBottom: 12, color: '#141413' }}>
             📅 Riepilogo per Anno
           </h3>
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
@@ -671,13 +671,13 @@ export default function ArchivioBonifici() {
                     padding: '8px 16px',
                     minHeight: 40,
                     borderRadius: 6,
-                    border: '1px solid #e2e8f0',
+                    border: '1px solid #e6e3d9',
                   }}
                 >
                   <div
                     style={{
                       fontWeight: 'bold',
-                      color: '#2a3329',
+                      color: '#141413',
                       display: 'flex',
                       alignItems: 'center',
                       gap: 8,
@@ -685,7 +685,7 @@ export default function ArchivioBonifici() {
                   >
                     {year}
                   </div>
-                  <div style={{ fontSize: 12, color: '#64748b' }}>
+                  <div style={{ fontSize: 12, color: '#7a776e' }}>
                     {data.count} bonifici • {formatEuro(data.total)}
                   </div>
                 </div>
@@ -700,7 +700,7 @@ export default function ArchivioBonifici() {
           background: 'white',
           padding: 16,
           borderRadius: 8,
-          border: '1px solid #e2e8f0',
+          border: '1px solid #e6e3d9',
           marginBottom: 24,
           display: 'flex',
           gap: 12,
@@ -720,7 +720,7 @@ export default function ArchivioBonifici() {
             padding: '8px 12px',
             minHeight: 40,
             borderRadius: 6,
-            border: '1px solid #e2e8f0',
+            border: '1px solid #e6e3d9',
             fontSize: 13,
             minWidth: 200,
           }}
@@ -732,7 +732,7 @@ export default function ArchivioBonifici() {
             padding: '8px 16px',
             minHeight: 40,
             borderRadius: 6,
-            background: '#2a3329',
+            background: '#c15f3c',
             color: 'white',
             border: 'none',
             cursor: 'pointer',
@@ -752,7 +752,7 @@ export default function ArchivioBonifici() {
             padding: '8px 12px',
             minHeight: 40,
             borderRadius: 6,
-            border: '1px solid #e2e8f0',
+            border: '1px solid #e6e3d9',
             fontSize: 13,
             minWidth: 150,
           }}
@@ -766,7 +766,7 @@ export default function ArchivioBonifici() {
             padding: '8px 12px',
             minHeight: 40,
             borderRadius: 6,
-            border: '1px solid #e2e8f0',
+            border: '1px solid #e6e3d9',
             fontSize: 13,
             minWidth: 150,
           }}
@@ -781,7 +781,7 @@ export default function ArchivioBonifici() {
             padding: '8px 12px',
             minHeight: 40,
             borderRadius: 6,
-            border: '1px solid #e2e8f0',
+            border: '1px solid #e6e3d9',
             fontSize: 13,
             width: 120,
           }}
@@ -800,8 +800,8 @@ export default function ArchivioBonifici() {
               minHeight: 40,
               borderRadius: 6,
               background: 'white',
-              color: '#64748b',
-              border: '1px solid #e2e8f0',
+              color: '#7a776e',
+              border: '1px solid #e6e3d9',
               cursor: 'pointer',
               fontSize: 13,
             }}
@@ -821,8 +821,8 @@ export default function ArchivioBonifici() {
           style={{
             padding: '12px 24px',
             minHeight: 40,
-            background: activeTab === 'da_associare' ? '#2a3329' : '#f1f5f9',
-            color: activeTab === 'da_associare' ? 'white' : '#475569',
+            background: activeTab === 'da_associare' ? '#c15f3c' : '#f2f0e9',
+            color: activeTab === 'da_associare' ? 'white' : '#5f5c55',
             border: 'none',
             borderRadius: '8px 8px 0 0',
             cursor: 'pointer',
@@ -837,7 +837,7 @@ export default function ArchivioBonifici() {
           Da Associare
           <span
             style={{
-              background: activeTab === 'da_associare' ? 'rgba(255,255,255,0.2)' : '#e2e8f0',
+              background: activeTab === 'da_associare' ? 'rgba(255,255,255,0.2)' : '#e6e3d9',
               padding: '2px 8px',
               borderRadius: 10,
               fontSize: 12,
@@ -851,8 +851,8 @@ export default function ArchivioBonifici() {
           style={{
             padding: '12px 24px',
             minHeight: 40,
-            background: activeTab === 'associati' ? '#2a3329' : '#f1f5f9',
-            color: activeTab === 'associati' ? 'white' : '#475569',
+            background: activeTab === 'associati' ? '#c15f3c' : '#f2f0e9',
+            color: activeTab === 'associati' ? 'white' : '#5f5c55',
             border: 'none',
             borderRadius: '8px 8px 0 0',
             cursor: 'pointer',
@@ -868,8 +868,8 @@ export default function ArchivioBonifici() {
           ✅ Associati
           <span
             style={{
-              background: activeTab === 'associati' ? 'rgba(255,255,255,0.2)' : '#e2e8f0',
-              color: activeTab === 'associati' ? 'white' : '#475569',
+              background: activeTab === 'associati' ? 'rgba(255,255,255,0.2)' : '#e6e3d9',
+              color: activeTab === 'associati' ? 'white' : '#5f5c55',
               padding: '2px 8px',
               borderRadius: 10,
               fontSize: 12,
@@ -887,20 +887,20 @@ export default function ArchivioBonifici() {
         style={{
           background: 'white',
           borderRadius: '0 8px 8px 8px',
-          border: '1px solid #e2e8f0',
+          border: '1px solid #e6e3d9',
           overflow: 'hidden',
         }}
       >
         {loading ? (
-          <div style={{ padding: 40, textAlign: 'center', color: '#64748b' }}>
+          <div style={{ padding: 40, textAlign: 'center', color: '#7a776e' }}>
             ⏳ Caricamento...
           </div>
         ) : loadError ? (
-          <div style={{ padding: 40, textAlign: 'center', color: '#b91c1c' }}>
+          <div style={{ padding: 40, textAlign: 'center', color: '#b0362b' }}>
             ⚠️ Errore nel caricamento dei bonifici. Riprova con «Aggiorna».
           </div>
         ) : transfersToShow.length === 0 ? (
-          <div style={{ padding: 40, textAlign: 'center', color: '#64748b' }}>
+          <div style={{ padding: 40, textAlign: 'center', color: '#7a776e' }}>
             {activeTab === 'da_associare'
               ? '🎉 Tutti i bonifici sono stati associati!'
               : 'Nessun bonifico associato. Seleziona il tab "Da Associare" per iniziare.'}
@@ -929,7 +929,7 @@ export default function ArchivioBonifici() {
                         ✅
                       </span>
                     ) : (
-                      <span style={{ color: '#d1d5db', fontSize: 14 }}>—</span>
+                      <span style={{ color: '#d0ccbe', fontSize: 14 }}>—</span>
                     ),
                 },
                 {
@@ -1014,7 +1014,7 @@ export default function ArchivioBonifici() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           <span
                             style={{
-                              background: '#dcfce7',
+                              background: '#e2f0e7',
                               color: '#16a34a',
                               padding: '4px 8px',
                               borderRadius: 6,
@@ -1044,8 +1044,8 @@ export default function ArchivioBonifici() {
                             onClick={() => toggleAssociaDropdown(t.id)}
                             style={{
                               padding: '4px 10px',
-                              background: associaDropdown === t.id ? '#2a3329' : '#f1f5f9',
-                              color: associaDropdown === t.id ? 'white' : '#475569',
+                              background: associaDropdown === t.id ? '#c15f3c' : '#f2f0e9',
+                              color: associaDropdown === t.id ? 'white' : '#5f5c55',
                               border: 'none',
                               borderRadius: 6,
                               cursor: 'pointer',
@@ -1065,7 +1065,7 @@ export default function ArchivioBonifici() {
                                 left: 0,
                                 zIndex: 100,
                                 background: 'white',
-                                border: '1px solid #e2e8f0',
+                                border: '1px solid #e6e3d9',
                                 borderRadius: 8,
                                 boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
                                 minWidth: 300,
@@ -1092,7 +1092,7 @@ export default function ArchivioBonifici() {
                                 </div>
                               )}
                               {loadingOperazioni ? (
-                                <div style={{ padding: 16, textAlign: 'center', color: '#6b7280' }}>
+                                <div style={{ padding: 16, textAlign: 'center', color: '#7a776e' }}>
                                   ⏳ Caricamento...
                                 </div>
                               ) : operazioniCompatibili.length === 0 ? (
@@ -1100,7 +1100,7 @@ export default function ArchivioBonifici() {
                                   style={{
                                     padding: 16,
                                     textAlign: 'center',
-                                    color: '#6b7280',
+                                    color: '#7a776e',
                                     fontSize: 11,
                                   }}
                                 >
@@ -1115,13 +1115,13 @@ export default function ArchivioBonifici() {
                                     onClick={() => handleAssocia(t.id, op.id)}
                                     style={{
                                       padding: '10px 12px',
-                                      borderBottom: '1px solid #f1f5f9',
+                                      borderBottom: '1px solid #f2f0e9',
                                       cursor: 'pointer',
                                       transition: 'background 0.1s',
                                       background: '#ecfdf5',
                                     }}
                                     onMouseOver={e =>
-                                      (e.currentTarget.style.background = '#dcfce7')
+                                      (e.currentTarget.style.background = '#e2f0e7')
                                     }
                                     onMouseOut={e =>
                                       (e.currentTarget.style.background = '#ecfdf5')
@@ -1142,7 +1142,7 @@ export default function ArchivioBonifici() {
                                       >
                                         <span
                                           style={{
-                                            background: '#dcfce7',
+                                            background: '#e2f0e7',
                                             color: '#166534',
                                             padding: '2px 6px',
                                             borderRadius: 4,
@@ -1157,7 +1157,7 @@ export default function ArchivioBonifici() {
                                     <div
                                       style={{
                                         fontSize: 10,
-                                        color: '#6b7280',
+                                        color: '#7a776e',
                                         marginTop: 4,
                                         display: 'flex',
                                         justifyContent: 'space-between',
@@ -1200,8 +1200,8 @@ export default function ArchivioBonifici() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           <span
                             style={{
-                              background: '#e2efe8',
-                              color: '#3f5a4e',
+                              background: '#f7ebe4',
+                              color: '#4c4a44',
                               padding: '4px 8px',
                               borderRadius: 6,
                               fontSize: 10,
@@ -1235,7 +1235,7 @@ export default function ArchivioBonifici() {
                             display: 'inline-block',
                             padding: '4px 8px',
                             borderRadius: 6,
-                            background: '#fef3c7',
+                            background: '#f7eeda',
                             color: '#92400e',
                             fontSize: 10,
                             fontWeight: 700,
@@ -1250,8 +1250,8 @@ export default function ArchivioBonifici() {
                             onClick={() => toggleAssociaFatturaDropdown(t.id)}
                             style={{
                               padding: '4px 10px',
-                              background: associaFatturaDropdown === t.id ? '#2a3329' : '#f1f5f9',
-                              color: associaFatturaDropdown === t.id ? 'white' : '#475569',
+                              background: associaFatturaDropdown === t.id ? '#c15f3c' : '#f2f0e9',
+                              color: associaFatturaDropdown === t.id ? 'white' : '#5f5c55',
                               border: 'none',
                               borderRadius: 6,
                               cursor: 'pointer',
@@ -1271,7 +1271,7 @@ export default function ArchivioBonifici() {
                                 left: 0,
                                 zIndex: 100,
                                 background: 'white',
-                                border: '1px solid #e2e8f0',
+                                border: '1px solid #e6e3d9',
                                 borderRadius: 8,
                                 boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
                                 minWidth: 300,
@@ -1280,7 +1280,7 @@ export default function ArchivioBonifici() {
                               }}
                             >
                               {loadingFatture ? (
-                                <div style={{ padding: 16, textAlign: 'center', color: '#6b7280' }}>
+                                <div style={{ padding: 16, textAlign: 'center', color: '#7a776e' }}>
                                   ⏳ Caricamento...
                                 </div>
                               ) : fattureCompatibili.length === 0 ? (
@@ -1288,7 +1288,7 @@ export default function ArchivioBonifici() {
                                   style={{
                                     padding: 16,
                                     textAlign: 'center',
-                                    color: '#6b7280',
+                                    color: '#7a776e',
                                     fontSize: 11,
                                   }}
                                 >
@@ -1301,7 +1301,7 @@ export default function ArchivioBonifici() {
                                     onClick={() => handleAssociaFattura(t.id, f.id, f.collection)}
                                     style={{
                                       padding: '10px 12px',
-                                      borderBottom: '1px solid #f1f5f9',
+                                      borderBottom: '1px solid #f2f0e9',
                                       cursor: 'pointer',
                                       transition: 'background 0.1s',
                                     }}
@@ -1325,10 +1325,10 @@ export default function ArchivioBonifici() {
                                         style={{
                                           background:
                                             f.compatibilita_score >= 70
-                                              ? '#dcfce7'
+                                              ? '#e2f0e7'
                                               : f.compatibilita_score >= 40
-                                                ? '#fef3c7'
-                                                : '#fee2e2',
+                                                ? '#f7eeda'
+                                                : '#f8e5e2',
                                           color:
                                             f.compatibilita_score >= 70
                                               ? '#16a34a'
@@ -1347,7 +1347,7 @@ export default function ArchivioBonifici() {
                                     <div
                                       style={{
                                         fontSize: 10,
-                                        color: '#6b7280',
+                                        color: '#7a776e',
                                         marginTop: 4,
                                         display: 'flex',
                                         justifyContent: 'space-between',
@@ -1405,7 +1405,7 @@ export default function ArchivioBonifici() {
                             style={{
                               padding: 4,
                               borderRadius: 4,
-                              border: '1px solid #e2e8f0',
+                              border: '1px solid #e6e3d9',
                               fontSize: 11,
                               width: 80,
                             }}
@@ -1432,7 +1432,7 @@ export default function ArchivioBonifici() {
                             }}
                             style={{
                               padding: '2px 6px',
-                              background: '#94a3b8',
+                              background: '#a19d92',
                               color: 'white',
                               border: 'none',
                               borderRadius: 4,
@@ -1451,7 +1451,7 @@ export default function ArchivioBonifici() {
                           }}
                           style={{
                             cursor: 'pointer',
-                            color: t.note ? '#2a3329' : '#94a3b8',
+                            color: t.note ? '#141413' : '#a19d92',
                             fontSize: 11,
                           }}
                           title="Clicca per modificare"

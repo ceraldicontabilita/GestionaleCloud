@@ -187,8 +187,8 @@ export default function BatchReprocessing() {
           <div className="grid md:grid-cols-2 gap-4">
             <div className="rounded-lg bg-[#eef3ef] p-4">
               <h4 className="font-semibold text-[#234d3d]">Simulazione</h4>
-              <p className="text-sm text-[#3f5a4e] mt-1 mb-3">Rilegge i documenti e mostra l'esito senza salvare modifiche.</p>
-              <button onClick={() => avvia(true)} disabled={caricamento || stato?.running} className="flex items-center gap-2 px-4 py-2 bg-[#3f5a4e] text-white rounded-lg disabled:opacity-50">
+              <p className="text-sm text-[#a94f30] mt-1 mb-3">Rilegge i documenti e mostra l'esito senza salvare modifiche.</p>
+              <button onClick={() => avvia(true)} disabled={caricamento || stato?.running} className="flex items-center gap-2 px-4 py-2 bg-[#a94f30] text-white rounded-lg disabled:opacity-50">
                 <Play size={16} /> Simula rielaborazione
               </button>
             </div>

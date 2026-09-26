@@ -775,7 +775,7 @@ export default function NoleggioAuto() {
               <h3 style={{ margin: '0 0 8px 0', fontSize: 14, color: COLORS.textMuted }}>
                 Totale {annoFiltro || 'tutti gli anni'}
               </h3>
-              <div style={{ fontSize: 24, fontWeight: 'bold', color: COLORS.primary }}>
+              <div style={{ fontSize: 24, fontWeight: 'bold', color: COLORS.text }}>
                 {formatEuro(selectedVeicolo.totale_generale)}
               </div>
             </div>
@@ -1834,7 +1834,7 @@ export default function NoleggioAuto() {
                 marginBottom: 8,
               }}
             >
-              <h2 style={{ margin: 0, fontSize: 18, color: COLORS.primary }}>
+              <h2 style={{ margin: 0, fontSize: 18, color: COLORS.text }}>
                 📋 Fatture Non Associate ({modalFattureNonAssociate.fatture.length})
               </h2>
               <Button

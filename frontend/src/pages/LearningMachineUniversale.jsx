@@ -152,10 +152,10 @@ export default function LearningMachineUniversale() {
             borderRadius: 12,
             padding: 20,
             marginBottom: 24,
-            border: '1px solid #e2e8f0',
+            border: '1px solid #e6e3d9',
           }}
         >
-          <h3 style={{ margin: '0 0 16px', fontSize: 14, color: '#64748b', fontWeight: 600 }}>
+          <h3 style={{ margin: '0 0 16px', fontSize: 14, color: '#7a776e', fontWeight: 600 }}>
             📊 Dati disponibili per l'apprendimento
           </h3>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
@@ -164,18 +164,18 @@ export default function LearningMachineUniversale() {
                 key={name}
                 style={{
                   padding: '8px 16px',
-                  background: count > 0 ? '#dcfce7' : '#f1f5f9',
+                  background: count > 0 ? '#e2f0e7' : '#f2f0e9',
                   borderRadius: 8,
                   fontSize: 13,
                   fontWeight: 500,
-                  color: count > 0 ? '#16a34a' : '#94a3b8',
+                  color: count > 0 ? '#16a34a' : '#a19d92',
                 }}
               >
                 {name}: <strong>{count.toLocaleString()}</strong>
               </div>
             ))}
           </div>
-          <div style={{ marginTop: 12, fontSize: 13, color: '#64748b' }}>
+          <div style={{ marginTop: 12, fontSize: 13, color: '#7a776e' }}>
             Totale: <strong>{status.total_documents?.toLocaleString() || 0}</strong> documenti
           </div>
         </div>
@@ -189,7 +189,7 @@ export default function LearningMachineUniversale() {
               margin: '0 0 20px',
               fontSize: 18,
               fontWeight: 700,
-              color: '#1e293b',
+              color: '#2c2b28',
               display: 'flex',
               alignItems: 'center',
               gap: 8,
@@ -304,9 +304,9 @@ export default function LearningMachineUniversale() {
           style={{
             textAlign: 'center',
             padding: 60,
-            background: '#f8fafc',
+            background: '#f6f4ee',
             borderRadius: 16,
-            color: '#64748b',
+            color: '#7a776e',
           }}
         >
           <Brain size={64} style={{ opacity: 0.3, marginBottom: 16 }} />
@@ -337,7 +337,7 @@ function ResultCard({ icon, color, title, analyzed, insights, benefit }) {
         background: 'white',
         borderRadius: 12,
         padding: 20,
-        border: '1px solid #e2e8f0',
+        border: '1px solid #e6e3d9',
         borderLeft: `4px solid ${color}`,
       }}
     >
@@ -351,8 +351,8 @@ function ResultCard({ icon, color, title, analyzed, insights, benefit }) {
       >
         <div style={{ color }}>{icon}</div>
         <div>
-          <h4 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: '#1e293b' }}>{title}</h4>
-          <span style={{ fontSize: 12, color: '#64748b' }}>
+          <h4 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: '#2c2b28' }}>{title}</h4>
+          <span style={{ fontSize: 12, color: '#7a776e' }}>
             {analyzed.toLocaleString()} analizzati
           </span>
         </div>
@@ -363,7 +363,7 @@ function ResultCard({ icon, color, title, analyzed, insights, benefit }) {
           margin: '0 0 12px',
           padding: '0 0 0 16px',
           fontSize: 13,
-          color: '#475569',
+          color: '#5f5c55',
         }}
       >
         {insights.map((insight, i) => (

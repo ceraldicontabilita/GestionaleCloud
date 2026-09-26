@@ -12,11 +12,11 @@
 .calendario-info {
   border: 1px solid #c2ddd0;
   background: #eef3ef;
-  color: #3f5a4e;
+  color: #4c4a44;
 }
 
 .calendario-info a {
-  color: #3f5a4e;
+  color: #4c4a44;
   font-weight: 600;
 }
 
@@ -48,7 +48,7 @@
   .calendario-responsive-table tr {
     display: block;
     margin: 10px;
-    border: 1px solid #e2e8f0;
+    border: 1px solid #e6e3d9;
     border-radius: 10px;
     overflow: hidden;
   }
@@ -62,12 +62,12 @@
     min-height: 42px;
     padding: 9px 12px !important;
     text-align: left !important;
-    border-bottom: 1px solid #f1f5f9;
+    border-bottom: 1px solid #f2f0e9;
   }
 
   .calendario-responsive-table td::before {
     content: attr(data-label);
-    color: #64748b;
+    color: #7a776e;
     font-size: 10px;
     font-weight: 700;
     text-transform: uppercase;

@@ -122,7 +122,7 @@ export default function GestionePagoPA() {
             alignItems: 'center',
             marginBottom: 20,
             padding: '15px 20px',
-            background: '#2a3329',
+            background: '#c15f3c',
             borderRadius: 12,
             color: 'white',
             flexWrap: 'wrap',
@@ -145,7 +145,7 @@ export default function GestionePagoPA() {
               style={{
                 padding: '10px 20px',
                 background: 'rgba(255,255,255,0.95)',
-                color: '#3f5a4e',
+                color: '#4c4a44',
                 border: 'none',
                 borderRadius: 8,
                 cursor: loading ? 'not-allowed' : 'pointer',
@@ -203,7 +203,7 @@ export default function GestionePagoPA() {
                   borderLeft: '3px solid #5b7a6b',
                 }}
               >
-                <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>
+                <div style={{ fontSize: 11, color: '#7a776e', marginBottom: 4 }}>
                   📄 Ricevute Totali
                 </div>
                 <div
@@ -222,7 +222,7 @@ export default function GestionePagoPA() {
                   borderLeft: '3px solid #22c55e',
                 }}
               >
-                <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>✅ Associate</div>
+                <div style={{ fontSize: 11, color: '#7a776e', marginBottom: 4 }}>✅ Associate</div>
                 <div
                   style={{ fontSize: 18, fontWeight: 'bold', color: '#22c55e' }}
                   data-testid="stats-associate"
@@ -239,7 +239,7 @@ export default function GestionePagoPA() {
                   borderLeft: '3px solid #f97316',
                 }}
               >
-                <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>
+                <div style={{ fontSize: 11, color: '#7a776e', marginBottom: 4 }}>
                   ⏳ Da Associare
                 </div>
                 <div
@@ -251,7 +251,7 @@ export default function GestionePagoPA() {
               </div>
               <div
                 style={{
-                  background: '#3f5a4e',
+                  background: '#a94f30',
                   borderRadius: 8,
                   padding: '10px 12px',
                   color: 'white',
@@ -274,7 +274,7 @@ export default function GestionePagoPA() {
             borderRadius: 8,
             borderLeft: '4px solid #5b7a6b',
             fontSize: 13,
-            color: '#3f5a4e',
+            color: '#4c4a44',
             marginBottom: 20,
           }}
         >
@@ -295,14 +295,14 @@ export default function GestionePagoPA() {
           <div
             style={{
               padding: '16px 20px',
-              background: '#f8fafc',
-              borderBottom: '1px solid #e5e7eb',
+              background: '#f6f4ee',
+              borderBottom: '1px solid #e6e3d9',
             }}
           >
-            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#1f2937' }}>
+            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#2c2b28' }}>
               📋 Tipologie Pagamenti CBILL
             </h2>
-            <p style={{ margin: '4px 0 0 0', fontSize: 13, color: '#6b7280' }}>
+            <p style={{ margin: '4px 0 0 0', fontSize: 13, color: '#7a776e' }}>
               Pagamenti identificabili tramite codice CBILL per rateizzazioni e tributi
             </p>
           </div>
@@ -326,13 +326,13 @@ export default function GestionePagoPA() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
                   <span style={{ fontSize: 24 }}>🏛️</span>
                   <div>
-                    <h4 style={{ margin: 0, fontWeight: 600, color: '#3f5a4e' }}>Rateizzi INPS</h4>
+                    <h4 style={{ margin: 0, fontWeight: 600, color: '#4c4a44' }}>Rateizzi INPS</h4>
                     <p style={{ margin: 0, fontSize: 12, color: '#5b7a6b' }}>
                       Dilazioni contributive
                     </p>
                   </div>
                 </div>
-                <ul style={{ fontSize: 13, color: '#3f5a4e', margin: 0, paddingLeft: 16 }}>
+                <ul style={{ fontSize: 13, color: '#4c4a44', margin: 0, paddingLeft: 16 }}>
                   <li>Rateizzazione contributi</li>
                   <li>Avvisi di addebito</li>
                   <li>Sanzioni INPS</li>
@@ -444,18 +444,18 @@ export default function GestionePagoPA() {
                 style={{
                   padding: 16,
                   borderRadius: 8,
-                  border: '2px solid #e5e7eb',
-                  background: '#f9fafb',
+                  border: '2px solid #e6e3d9',
+                  background: '#f6f4ee',
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
                   <span style={{ fontSize: 24 }}>📄</span>
                   <div>
-                    <h4 style={{ margin: 0, fontWeight: 600, color: '#374151' }}>Altri Tributi</h4>
-                    <p style={{ margin: 0, fontSize: 12, color: '#6b7280' }}>Pagamenti vari</p>
+                    <h4 style={{ margin: 0, fontWeight: 600, color: '#4c4a44' }}>Altri Tributi</h4>
+                    <p style={{ margin: 0, fontSize: 12, color: '#7a776e' }}>Pagamenti vari</p>
                   </div>
                 </div>
-                <ul style={{ fontSize: 13, color: '#374151', margin: 0, paddingLeft: 16 }}>
+                <ul style={{ fontSize: 13, color: '#4c4a44', margin: 0, paddingLeft: 16 }}>
                   <li>IMU / TASI</li>
                   <li>Bollo auto</li>
                   <li>Multe e sanzioni</li>
@@ -485,7 +485,7 @@ export default function GestionePagoPA() {
                 style={{
                   width: '100%',
                   padding: '10px 12px',
-                  border: '1px solid #e5e7eb',
+                  border: '1px solid #e6e3d9',
                   borderRadius: 8,
                   fontSize: 14,
                 }}
@@ -498,9 +498,9 @@ export default function GestionePagoPA() {
                 onClick={() => setStatoFiltro('tutti')}
                 style={{
                   padding: '8px 16px',
-                  background: statoFiltro === 'tutti' ? '#3f5a4e' : 'white',
-                  color: statoFiltro === 'tutti' ? 'white' : '#6b7280',
-                  border: '1px solid #e5e7eb',
+                  background: statoFiltro === 'tutti' ? '#a94f30' : 'white',
+                  color: statoFiltro === 'tutti' ? 'white' : '#7a776e',
+                  border: '1px solid #e6e3d9',
                   borderRadius: 6,
                   cursor: 'pointer',
                   fontWeight: 500,
@@ -514,8 +514,8 @@ export default function GestionePagoPA() {
                 style={{
                   padding: '8px 16px',
                   background: statoFiltro === 'associati' ? '#22c55e' : 'white',
-                  color: statoFiltro === 'associati' ? 'white' : '#6b7280',
-                  border: '1px solid #e5e7eb',
+                  color: statoFiltro === 'associati' ? 'white' : '#7a776e',
+                  border: '1px solid #e6e3d9',
                   borderRadius: 6,
                   cursor: 'pointer',
                   fontWeight: 500,
@@ -529,8 +529,8 @@ export default function GestionePagoPA() {
                 style={{
                   padding: '8px 16px',
                   background: statoFiltro === 'non_associati' ? '#f97316' : 'white',
-                  color: statoFiltro === 'non_associati' ? 'white' : '#6b7280',
-                  border: '1px solid #e5e7eb',
+                  color: statoFiltro === 'non_associati' ? 'white' : '#7a776e',
+                  border: '1px solid #e6e3d9',
                   borderRadius: 6,
                   cursor: 'pointer',
                   fontWeight: 500,
@@ -555,14 +555,14 @@ export default function GestionePagoPA() {
           <div
             style={{
               padding: '16px 20px',
-              background: '#f8fafc',
-              borderBottom: '1px solid #e5e7eb',
+              background: '#f6f4ee',
+              borderBottom: '1px solid #e6e3d9',
             }}
           >
-            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#1f2937' }}>
+            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#2c2b28' }}>
               📄 Ricevute PagoPA
             </h2>
-            <p style={{ margin: '4px 0 0 0', fontSize: 13, color: '#6b7280' }}>
+            <p style={{ margin: '4px 0 0 0', fontSize: 13, color: '#7a776e' }}>
               {ricevuteFiltrate.length} ricevute {filtro && `(filtrate per "${filtro}")`}
             </p>
           </div>
@@ -574,12 +574,12 @@ export default function GestionePagoPA() {
                     width: 32,
                     height: 32,
                     animation: 'spin 1s linear infinite',
-                    color: '#9ca3af',
+                    color: '#a19d92',
                   }}
                 />
               </div>
             ) : ricevuteFiltrate.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: 32, color: '#9ca3af' }}>
+              <div style={{ textAlign: 'center', padding: 32, color: '#a19d92' }}>
                 <FileText style={{ width: 48, height: 48, margin: '0 auto 16px', opacity: 0.5 }} />
                 <p style={{ margin: 0 }}>Nessuna ricevuta PagoPA trovata</p>
                 <p style={{ fontSize: 13, marginTop: 8 }}>
@@ -590,13 +590,13 @@ export default function GestionePagoPA() {
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
-                    <tr style={{ borderBottom: '2px solid #e5e7eb', background: '#f9fafb' }}>
+                    <tr style={{ borderBottom: '2px solid #e6e3d9', background: '#f6f4ee' }}>
                       <th
                         style={{
                           textAlign: 'left',
                           padding: '12px 16px',
                           fontWeight: 500,
-                          color: '#6b7280',
+                          color: '#7a776e',
                           fontSize: 13,
                         }}
                       >
@@ -607,7 +607,7 @@ export default function GestionePagoPA() {
                           textAlign: 'left',
                           padding: '12px 16px',
                           fontWeight: 500,
-                          color: '#6b7280',
+                          color: '#7a776e',
                           fontSize: 13,
                         }}
                       >
@@ -618,7 +618,7 @@ export default function GestionePagoPA() {
                           textAlign: 'left',
                           padding: '12px 16px',
                           fontWeight: 500,
-                          color: '#6b7280',
+                          color: '#7a776e',
                           fontSize: 13,
                         }}
                       >
@@ -629,7 +629,7 @@ export default function GestionePagoPA() {
                           textAlign: 'right',
                           padding: '12px 16px',
                           fontWeight: 500,
-                          color: '#6b7280',
+                          color: '#7a776e',
                           fontSize: 13,
                         }}
                       >
@@ -640,7 +640,7 @@ export default function GestionePagoPA() {
                           textAlign: 'center',
                           padding: '12px 16px',
                           fontWeight: 500,
-                          color: '#6b7280',
+                          color: '#7a776e',
                           fontSize: 13,
                         }}
                       >
@@ -651,7 +651,7 @@ export default function GestionePagoPA() {
                           textAlign: 'center',
                           padding: '12px 16px',
                           fontWeight: 500,
-                          color: '#6b7280',
+                          color: '#7a776e',
                           fontSize: 13,
                         }}
                       >
@@ -661,7 +661,7 @@ export default function GestionePagoPA() {
                   </thead>
                   <tbody>
                     {ricevuteFiltrate.map((ricevuta, idx) => (
-                      <tr key={ricevuta._id || idx} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                      <tr key={ricevuta._id || idx} style={{ borderBottom: '1px solid #e6e3d9' }}>
                         <td style={{ padding: '12px 16px' }}>
                           📅 {ricevuta.data_pagamento ? formatDateIT(ricevuta.data_pagamento) : '-'}
                         </td>
@@ -672,7 +672,7 @@ export default function GestionePagoPA() {
                         <td style={{ padding: '12px 16px' }}>{ricevuta.beneficiario || '-'}</td>
                         <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 500 }}>
                           {formatEuro(paymentAmountParts(ricevuta).operation)}
-                          <div style={{ fontSize: 11, color: '#64748b', fontWeight: 400, marginTop: 3 }}>
+                          <div style={{ fontSize: 11, color: '#7a776e', fontWeight: 400, marginTop: 3 }}>
                             Commissione {formatEuro(paymentAmountParts(ricevuta).fee)}<br />
                             Addebito banca {formatEuro(paymentAmountParts(ricevuta).bankTotal)}
                           </div>
@@ -686,7 +686,7 @@ export default function GestionePagoPA() {
                             <span
                               style={{
                                 padding: '4px 8px',
-                                background: '#dcfce7',
+                                background: '#e2f0e7',
                                 color: '#166534',
                                 borderRadius: 4,
                                 fontSize: 12,
@@ -709,7 +709,7 @@ export default function GestionePagoPA() {
                               ⏳ Da Associare
                             </span>
                           )}
-                          {ricevuta.fiscal_target_id && <Link to="/situazione-fiscale/riscossione" style={{ fontSize: 11, color: '#3f5a4e' }}>
+                          {ricevuta.fiscal_target_id && <Link to="/situazione-fiscale/riscossione" style={{ fontSize: 11, color: '#4c4a44' }}>
                             Rata/cartelle collegate ({(ricevuta.cartelle_collegate || []).length})
                           </Link>}
                           </div>
@@ -728,7 +728,7 @@ export default function GestionePagoPA() {
                                   style={{
                                     padding: '6px 10px',
                                     background: 'transparent',
-                                    border: '1px solid #e5e7eb',
+                                    border: '1px solid #e6e3d9',
                                     borderRadius: 6,
                                     cursor: 'pointer',
                                   }}
@@ -743,7 +743,7 @@ export default function GestionePagoPA() {
                                   style={{
                                     padding: '6px 10px',
                                     background: 'transparent',
-                                    border: '1px solid #e5e7eb',
+                                    border: '1px solid #e6e3d9',
                                     borderRadius: 6,
                                     textDecoration: 'none',
                                   }}

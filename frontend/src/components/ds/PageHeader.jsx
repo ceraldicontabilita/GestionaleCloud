@@ -109,7 +109,7 @@ export function PageHeader({
             </div>
           )}
           <h1 style={{
-            margin: 0, fontSize: 20, fontWeight: 700, color: COLORS.primary,
+            margin: 0, fontSize: 20, fontWeight: 700, color: COLORS.text,
             letterSpacing: '-0.3px', display: 'flex', alignItems: 'center', gap: 10,
             fontFamily: FONT.family,
           }}>

@@ -55,8 +55,8 @@ export function ConfirmProvider({ children }) {
     if (!isConfirm) {
       return {
         ...base,
-        background: '#f1f5f9',
-        color: '#475569',
+        background: '#f2f0e9',
+        color: '#5f5c55',
       };
     }
 
@@ -105,7 +105,7 @@ export function ConfirmProvider({ children }) {
                 margin: '0 0 12px 0',
                 fontSize: 18,
                 fontWeight: 700,
-                color: '#1e293b',
+                color: '#2c2b28',
               }}
             >
               {confirmState.title}
@@ -114,7 +114,7 @@ export function ConfirmProvider({ children }) {
             <p
               style={{
                 margin: '0 0 20px 0',
-                color: '#64748b',
+                color: '#7a776e',
                 fontSize: 14,
                 lineHeight: 1.5,
                 whiteSpace: 'pre-line',

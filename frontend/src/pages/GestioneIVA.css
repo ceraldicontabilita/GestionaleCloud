@@ -31,11 +31,11 @@
 
 .iva-period-tabs button:hover {
   background: #eef3ef;
-  color: #2a3329;
+  color: #141413;
 }
 
 .iva-period-tabs button.is-active {
-  background: #2a3329;
+  background: #c15f3c;
   color: #fff;
   box-shadow: 0 2px 6px rgb(42, 51, 41 / 18%);
 }
@@ -98,7 +98,7 @@
 }
 
 .iva-kpi-grid strong {
-  color: #2a3329;
+  color: #141413;
   font-size: 17px;
   white-space: nowrap;
 }
@@ -126,7 +126,7 @@
 }
 
 .iva-section-heading h3 {
-  color: #2a3329;
+  color: #141413;
   font-size: 15px;
 }
 

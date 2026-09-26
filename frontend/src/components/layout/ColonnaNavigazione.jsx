@@ -28,7 +28,12 @@ const ColonnaNavigazione = memo(function ColonnaNavigazione() {
   return (
     <nav ref={colonna} className="colonna-nav" aria-label="Sezioni del gestionale" data-testid="colonna-navigazione">
       {gruppiVisibili(isAdmin).map(gruppo => (
-        <section key={gruppo.id} className="colonna-nav-gruppo" data-testid={`nav-gruppo-${gruppo.id}`}>
+        <section
+          key={gruppo.id}
+          className="colonna-nav-gruppo"
+          data-testid={`nav-gruppo-${gruppo.id}`}
+          style={{ '--banda': gruppo.colore }}
+        >
           <h2 className="colonna-nav-titolo">
             <span className="colonna-nav-punto" style={{ background: gruppo.colore }} aria-hidden="true" />
             {gruppo.titolo}
@@ -53,7 +58,6 @@ const ColonnaNavigazione = memo(function ColonnaNavigazione() {
                     to={to}
                     className="colonna-nav-voce"
                     aria-current={attiva?.to === to ? 'page' : undefined}
-                    style={attiva?.to === to ? { borderLeftColor: gruppo.colore } : undefined}
                     data-testid={`nav-${label.toLowerCase().replace(/\s+/g, '-')}`}
                   >
                     <Icon size={15} style={{ color: gruppo.colore }} />
@@ -99,17 +103,20 @@ const ColonnaNavigazione = memo(function ColonnaNavigazione() {
           gap: 8px;
           min-height: 32px;
           padding: 5px 8px;
-          border-left: 3px solid transparent;
+          border-left: 2px solid color-mix(in srgb, var(--banda) 26%, transparent);
           border-radius: 0 6px 6px 0;
-          color: ${COLORS.text};
-          font-size: 13px;
+          color: ${COLORS.gray[700]};
+          font-size: 13.5px;
           font-weight: 500;
           text-decoration: none;
         }
-        .colonna-nav-voce:hover { background: ${COLORS.bgAlt}; }
+        .colonna-nav-voce:hover { background: ${COLORS.bg}; border-left-color: var(--banda); }
         .colonna-nav-voce:focus-visible { outline: 2px solid ${COLORS.primaryLight}; outline-offset: -2px; }
+        /* Come nell'artefatto: la voce accesa prende il colore della sua famiglia. */
         .colonna-nav-voce[aria-current="page"] {
-          background: ${COLORS.primarySoft};
+          background: color-mix(in srgb, var(--banda) 13%, transparent);
+          color: var(--banda);
+          border-left-color: var(--banda);
           font-weight: 700;
         }
         .colonna-nav-esterno { margin-left: auto; color: ${COLORS.textSubtle}; }

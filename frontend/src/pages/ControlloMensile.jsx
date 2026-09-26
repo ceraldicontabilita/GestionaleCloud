@@ -552,7 +552,7 @@ export default function ControlloMensile() {
           left: 0,
           right: 0,
           bottom: 0,
-          background: 'rgba(42, 51, 41,0.5)',
+          background: 'rgba(20, 20, 19,0.5)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -581,7 +581,7 @@ export default function ControlloMensile() {
               marginBottom: 15,
             }}
           >
-            <h2 style={{ margin: 0, color: COLORS.primary }}>
+            <h2 style={{ margin: 0, color: COLORS.text }}>
               Dettaglio Versamenti - {monthNames[meseSelezionato - 1]} {anno}
             </h2>
             <Button

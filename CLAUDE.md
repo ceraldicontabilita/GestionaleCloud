@@ -96,7 +96,7 @@ resto del file.
 - Ogni variabile nuova richiede descrizione, default sicuro, proprietario,
   rotazione se segreta, e va tolta quando non ha più consumatori.
 
-### Design (vale per HR, Menu e Lotti; l'ERP ha il suo layout)
+### Design (salvia per HR, Menu e Lotti; l'ERP ha i colori dell'artefatto)
 - Salvia `#5b7a6b` (scuro `#3f5a4e`) su crema `#faf7f0`; card `#fffefb`,
   bordi sabbia `#e6e0d4`, inchiostro `#2a3329`.
 - Semantici caldi: pericolo `#d35f4e`, avviso `#c4894a`, successo `#3d8168`,
@@ -122,9 +122,9 @@ resto del file.
   colori di sistema non controllabili).
 - Ogni pagina centrata, **mai scroll orizzontale su smartphone**: le tabelle
   larghe diventano card impilate. Tocco minimo 44px.
-- L'ERP ha i suoi **colori** in `frontend/src/lib/utils.js` (slate freddo e
-  oro, 13px, raggi 6-10px) e usa `PageLayout`/`PageHeader`: non introdurre
-  Tailwind né un secondo sistema di token. Il font invece è condiviso. Il colore non è mai l'unica informazione: ogni badge ha anche testo.
+- L'ERP segue l'**artefatto «Gestore Attività»** (titolare, 26/09/2026): crema `#faf9f5`, inchiostro `#141413`, terracotta `#c15f3c`
+  per azioni e stato attivo; token solo in `lib/utils.js` e `index.css`, niente Tailwind né `gs-`; vietati anche qui blu, viola e grigi
+  freddi; il colore non è mai l'unica informazione (ogni badge ha testo). Ogni pagina: `PageHeader` (famiglia, titolo, perché, pastiglie), una riga di filtri, una tabella, 200 righe con «Mostra altre».
 - Le app portate pari pari mantengono il loro aspetto: nessuna contaminazione
   con il layout dell'ERP.
 

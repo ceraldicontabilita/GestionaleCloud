@@ -119,7 +119,7 @@ export default function InAttesaDocumento({ anno, onRicarica }) {
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <strong style={{ color: tuttoAPosto ? '#15803d' : '#92400e' }}>
+        <strong style={{ color: tuttoAPosto ? '#2f7a4f' : '#92400e' }}>
           {tuttoAPosto
             ? 'Nessun movimento presente nella coda documenti da collegare.'
             : `${quanti} movimenti dell'estratto conto aspettano il documento`}
@@ -156,7 +156,7 @@ export default function InAttesaDocumento({ anno, onRicarica }) {
       </div>
 
       {(dati.gia_collegati_da_allineare || 0) > 0 && (
-        <p style={{ margin: '7px 0 0', color: '#475569', fontSize: 12.5 }}>
+        <p style={{ margin: '7px 0 0', color: '#5f5c55', fontSize: 12.5 }}>
           {dati.gia_collegati_da_allineare} movimenti hanno gia' un documento collegato e non sono conteggiati tra i sospesi.
         </p>
       )}
@@ -184,11 +184,11 @@ export default function InAttesaDocumento({ anno, onRicarica }) {
                 <span>
                   <b>{dataIt(m.data)}</b> · {m.strumento_bancario?.label || m.categoria || 'Altro'}
                 </span>
-                <b style={{ color: m.tipo === 'entrata' ? '#15803d' : '#b91c1c' }}>
+                <b style={{ color: m.tipo === 'entrata' ? '#2f7a4f' : '#b0362b' }}>
                   {m.tipo === 'entrata' ? '+' : '-'} {euro(m.importo)}
                 </b>
               </div>
-              <div style={{ color: '#334155', fontSize: 12.5 }}>
+              <div style={{ color: '#4c4a44', fontSize: 12.5 }}>
                 {m.descrizione_originale || m.descrizione || 'Descrizione non disponibile'}
               </div>
               <div style={{ color: '#92400e', fontSize: 12.5, fontWeight: 700 }}>
@@ -200,7 +200,7 @@ export default function InAttesaDocumento({ anno, onRicarica }) {
                   style={{
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                     gap: 10, flexWrap: 'wrap', padding: '8px 9px', borderRadius: 8,
-                    background: '#f8fafc', border: '1px solid #e2e8f0',
+                    background: '#f6f4ee', border: '1px solid #e6e3d9',
                   }}
                 >
                   <span style={{ fontSize: 12.5 }}>
@@ -215,7 +215,7 @@ export default function InAttesaDocumento({ anno, onRicarica }) {
                     disabled={Boolean(busy)}
                     style={{
                       padding: '6px 10px', border: 0, borderRadius: 7,
-                      background: '#2a3329', color: '#fff', fontWeight: 700,
+                      background: '#c15f3c', color: '#fff', fontWeight: 700,
                       cursor: busy ? 'wait' : 'pointer',
                     }}
                   >
