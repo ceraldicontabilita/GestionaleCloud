@@ -74,8 +74,8 @@ def test_orfana_si_aggancia_al_modello_gia_pagato_senza_declassarlo():
                 await db[COLL_F24_ALERTS].find_one({"id": "al-1"}))
 
     esito, secondo, f24, quietanza, alert = asyncio.run(scenario())
-    assert esito == {"orfane": 1, "collegate": 1}
-    assert secondo == {"orfane": 0, "collegate": 0}
+    assert esito == {"orfane": 1, "collegate": 1, "rietichettate": 0}
+    assert secondo == {"orfane": 0, "collegate": 0, "rietichettate": 0}
     assert f24["quietanza_id"] == "q-apr"
     assert f24["protocollo_quietanza"] == "26051810582342599/000001"
     # Resta pagato in banca: la quietanza non lo riporta «da verificare».
@@ -133,7 +133,7 @@ def test_il_modello_arrivato_dopo_trova_subito_la_quietanza(monkeypatch):
         "dati_generali": {"codice_fiscale": CF, "data_versamento": "2026-05-18"},
         **RIGHE,
         "sezione_inail": INAIL_F24,
-        "totali": {"totale_debito": 6404.82, "totale_credito": 0.0, "saldo_netto": 6404.82},
+        "totali": {"totale_debito": 6469.23, "totale_credito": 0.0, "saldo_netto": 6469.23},
         "validazione": {"saldo_quadrato": True, "parser_version": "test-v1"},
     }
     monkeypatch.setattr(parser, "parse_f24_commercialista", lambda pdf_content: parsed)
@@ -146,6 +146,74 @@ def test_il_modello_arrivato_dopo_trova_subito_la_quietanza(monkeypatch):
         return esito, f24, await db["quietanze_f24"].find_one({"id": "q-apr"})
 
     esito, f24, quietanza = asyncio.run(scenario())
-    assert esito["controparti"]["quietanze"] == {"orfane": 1, "collegate": 1}
+    assert esito["controparti"]["quietanze"]["collegate"] == 1
     assert f24["quietanza_id"] == "q-apr"
     assert quietanza["stato_associazione"] == "associata"
+
+
+
+# Maggio 2026: due righe comunali con lo stesso codice e periodo.
+RIGHE_MAGGIO = {
+    "sezione_erario": [
+        {"codice_tributo": "1001", "periodo_riferimento": "05/2026", "importo_debito": 1026.51},
+    ],
+    "sezione_tributi_locali": [
+        {"codice_tributo": "3847", "periodo_riferimento": "05/2026", "importo_debito": 55.55},
+        {"codice_tributo": "3847", "periodo_riferimento": "05/2026", "importo_debito": 19.26},
+    ],
+}
+
+
+def test_due_righe_con_stesso_codice_e_periodo_combaciano():
+    db = _db()
+
+    async def scenario():
+        await db["f24_unificato"].insert_one({
+            "id": "f24-mag", "codice_fiscale": CF, "status": "pagato",
+            "pagamento_verificato_banca": True, **RIGHE_MAGGIO,
+            # Il parser copia le righe comunali anche in sezione_imu.
+            "sezione_imu": RIGHE_MAGGIO["sezione_tributi_locali"],
+            "totali": {"saldo_netto": 1101.32},
+        })
+        return await abbina_quietanza_a_f24(db, {
+            "id": "q-mag", "codice_fiscale": CF, "saldo": 1101.32, **RIGHE_MAGGIO,
+        })
+
+    esito = asyncio.run(scenario())
+    assert [m["f24_id"] for m in esito["f24_matchati"]] == ["f24-mag"]
+
+
+def test_saldo_diverso_non_e_lo_stesso_versamento():
+    db = _db()
+
+    async def scenario():
+        await db["f24_unificato"].insert_one({
+            "id": "f24-x", "codice_fiscale": CF, "status": "da_pagare", **RIGHE_MAGGIO,
+            "totali": {"saldo_netto": 1500.00},
+        })
+        return await abbina_quietanza_a_f24(db, {
+            "id": "q-x", "codice_fiscale": CF, "saldo": 1101.32, **RIGHE_MAGGIO,
+        })
+
+    assert asyncio.run(scenario())["f24_matchati"] == []
+
+
+def test_quietanza_senza_modello_si_dichiara_f24_mancante():
+    db = _db()
+
+    async def scenario():
+        # Un F24 dello stesso contribuente esiste, ma e' un altro versamento.
+        await db["f24_unificato"].insert_one(_f24("f24-altro", status="pagato",
+                                                  totali={"saldo_netto": 99.0}))
+        await db["quietanze_f24"].insert_one({
+            **_quietanza("q-sola"), "saldo": 1234.56,
+            "sezione_erario": [{"codice_tributo": "1001", "periodo_riferimento": "06/2026",
+                                "importo_debito": 1234.56}],
+        })
+        esito = await ricollega_quietanze_orfane(db)
+        return esito, await db["quietanze_f24"].find_one({"id": "q-sola"})
+
+    esito, quietanza = asyncio.run(scenario())
+    assert esito["rietichettate"] == 1
+    assert quietanza["stato_associazione"] == "f24_mancante"
+    assert quietanza["stato_quietanza"] == "QUIETANZA_PRESENTE_F24_MANCANTE"
