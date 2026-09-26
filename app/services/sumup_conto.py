@@ -16,21 +16,29 @@ conto, e una riga SumUp finirebbe su 19.01.01.
   (``sumup_payouts``): la riga lo cita (``payout_id``), non ne crea un secondo.
 - Un estratto la cui catena dei saldi non torna non si importa
   (``EstrattoSumUpNonValido``).
+- Lo stesso conto arriva anche come CSV («Resoconto_transazioni_…csv»):
+  stesso motore, stesse righe, stessa identità per codice transazione.
+- Un bonifico verso Ceraldi Group è un **giroconto** verso BPM, non una
+  spesa: due movimenti speculari in Prima Nota Banca (uscita 19.01.05,
+  entrata 19.01.01) collegati da ``trasferimento_collegato_id`` con lo
+  stesso ``operation_id``. L'entrata BPM si aggancia alla riga del suo
+  estratto conto solo se è una e una sola.
 """
 from __future__ import annotations
 
 import hashlib
 import logging
 import re
-from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from datetime import date, datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional
 
 from app.parsers.estratto_conto_sumup_parser import (
     EstrattoSumUp,
     RigaSumUp,
     leggi_estratto_sumup,
+    leggi_resoconto_sumup_csv,
 )
-from app.services.conti_pos import CONTO_SUMUP_MASTERCARD
+from app.services.conti_pos import CONTO_BPM, CONTO_SUMUP_MASTERCARD
 
 logger = logging.getLogger(__name__)
 
@@ -97,17 +105,20 @@ async def _payout_per_pid(db) -> Dict[str, str]:
     return mappa
 
 
-async def importa_estratto_sumup_pdf(
+async def importa_estratto_sumup(
     db,
     filename: str,
-    pdf_content: bytes,
+    contenuto: bytes,
     *,
     source: str = "documenti_upload_auto_sumup",
     drive_file_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Legge, verifica e salva l'estratto. Solleva se il PDF non torna."""
-    estratto = leggi_estratto_sumup(pdf_content)
-    sha256 = hashlib.sha256(pdf_content).hexdigest()
+    """Legge, verifica e salva l'estratto (PDF o CSV). Solleva se non torna."""
+    if str(filename or "").lower().endswith(".csv"):
+        estratto = leggi_resoconto_sumup_csv(contenuto)
+    else:
+        estratto = leggi_estratto_sumup(contenuto)
+    sha256 = hashlib.sha256(contenuto).hexdigest()
     estratto_id = f"sumup_statement:{sha256}"
     ora_import = datetime.now(timezone.utc).isoformat()
 
@@ -164,6 +175,8 @@ async def importa_estratto_sumup_pdf(
     for record in nuovi:
         await db[COLL_MOVIMENTI].insert_one(record)
 
+    giroconti = await registra_giroconti(db, [riga.codice for riga in estratto.righe])
+
     if payout_mancanti:
         logger.warning(
             "Estratto SumUp %s: %d accrediti senza payout registrato dall'API: %s",
@@ -180,5 +193,120 @@ async def importa_estratto_sumup_pdf(
         "gia_presenti": len(estratto.righe) - len(nuovi),
         "payout_collegati": payout_collegati,
         "payout_senza_api": payout_mancanti,
+        "giroconti": giroconti,
         "saldo_finale": str(estratto.saldo_finale),
     }
+
+
+# --- Giroconti verso il conto BPM -------------------------------------------
+
+CATEGORIA_GIROCONTO = "trasferimento_interno"
+SOURCE_GIROCONTO = "giroconto_sumup"
+_CONTROPARTE_PROPRIA = "CERALDI GROUP"
+_GIORNI_ARRIVO_BPM = 3
+
+
+def e_giroconto(movimento: Dict[str, Any]) -> bool:
+    """Bonifico in uscita verso la società stessa (conto BPM)."""
+    return (
+        str(movimento.get("tipo_transazione") or "").lower().startswith("bonifico")
+        and movimento.get("segno") == "uscita"
+        and _CONTROPARTE_PROPRIA in str(movimento.get("riferimento") or "").upper()
+    )
+
+
+def _descrizione_ec(riga: Dict[str, Any]) -> str:
+    return str(riga.get("descrizione_originale") or riga.get("descrizione") or "")
+
+
+async def _entrata_bpm(db, importo: float, giorno: date,
+                       operazione: str) -> Optional[Dict[str, Any]]:
+    """La riga dell'estratto BPM che riceve il giroconto, se è una sola."""
+    fine = (giorno + timedelta(days=_GIORNI_ARRIVO_BPM)).isoformat()
+    candidati = await db["estratto_conto_movimenti"].find({
+        "data": {"$gte": giorno.isoformat(), "$lte": fine},
+        "tipo": "entrata",
+    }, {"_id": 0, "id": 1, "importo": 1, "descrizione_originale": 1,
+        "descrizione": 1, "conto_contabile": 1, "riconciliato": 1,
+        "operation_id_giroconto": 1}).to_list(None)
+    trovati = [
+        riga for riga in candidati
+        # Una riga già spiegata da un'altra prova non si riusa.
+        if (not riga.get("riconciliato") or riga.get("operation_id_giroconto") == operazione)
+        and abs(abs(float(riga.get("importo") or 0)) - importo) <= 0.01
+        and _CONTROPARTE_PROPRIA in _descrizione_ec(riga).upper()
+        and riga.get("conto_contabile") in (None, CONTO_BPM)
+    ]
+    # Due entrate uguali nella stessa finestra: non si sceglie a caso.
+    return trovati[0] if len(trovati) == 1 else None
+
+
+async def registra_giroconto(db, movimento: Dict[str, Any]) -> Dict[str, Any]:
+    """Scrive (idempotente) le due gambe del giroconto SumUp -> BPM."""
+    from app.services.scritture_contabili import scrivi_movimento_se_assente
+
+    importo = abs(float(movimento.get("importo") or 0))
+    operazione = f"giroconto-sumup:{movimento['codice_transazione']}"
+    causale = movimento.get("causale") or "Giroconto"
+    comune = {
+        "data": movimento["data"], "importo": importo,
+        "categoria": CATEGORIA_GIROCONTO, "operation_id": operazione,
+        "source": SOURCE_GIROCONTO, "sumup_movimento_id": movimento["id"],
+    }
+    id_sumup, _ = await scrivi_movimento_se_assente(
+        db, "banca", {"operation_id": operazione, "conto_contabile": CONTO_SUMUP_MASTERCARD},
+        {**comune, "tipo": "uscita", "conto_contabile": CONTO_SUMUP_MASTERCARD,
+         "descrizione": f"Giroconto da Mastercard SumUp a Banco BPM — {causale}"},
+    )
+    bpm = await _entrata_bpm(
+        db, importo, date.fromisoformat(str(movimento["data"])[:10]), operazione,
+    )
+    gamba_bpm = {**comune, "tipo": "entrata", "conto_contabile": CONTO_BPM,
+                 "trasferimento_collegato_id": id_sumup,
+                 "descrizione": f"Giroconto da Mastercard SumUp — {causale}"}
+    if bpm:
+        gamba_bpm["estratto_conto_id"] = bpm["id"]
+    else:
+        # L'accredito BPM non si vede ancora: la gamba resta un'attesa.
+        gamba_bpm["in_attesa_estratto_ufficiale"] = True
+    id_bpm, gia_scritta = await scrivi_movimento_se_assente(
+        db, "banca", {"operation_id": operazione, "conto_contabile": CONTO_BPM}, gamba_bpm,
+    )
+    await db["prima_nota_banca"].update_one(
+        {"id": id_sumup}, {"$set": {"trasferimento_collegato_id": id_bpm}},
+    )
+    if bpm:
+        if gia_scritta:
+            # L'accredito BPM è arrivato dopo la gamba: ora la prova c'è.
+            await db["prima_nota_banca"].update_one({"id": id_bpm}, {"$set": {
+                "estratto_conto_id": bpm["id"], "in_attesa_estratto_ufficiale": False,
+            }})
+        await db["estratto_conto_movimenti"].update_one({"id": bpm["id"]}, {"$set": {
+            "riconciliato": True,
+            "tipo_riconciliazione": "giroconto",
+            "operation_id_giroconto": operazione,
+            "dettagli_riconciliazione": {"prima_nota_id": id_bpm},
+        }})
+    await db[COLL_MOVIMENTI].update_one({"id": movimento["id"]}, {"$set": {
+        "giroconto_operation_id": operazione,
+        "prima_nota_id": id_sumup,
+        "estratto_bpm_id": (bpm or {}).get("id"),
+    }})
+    return {"operation_id": operazione, "id_sumup": id_sumup, "id_bpm": id_bpm,
+            "estratto_bpm": (bpm or {}).get("id")}
+
+
+async def registra_giroconti(db, codici: List[str]) -> List[Dict[str, Any]]:
+    """Giroconti fra le righe indicate, anche quelle importate in passato:
+    un'entrata BPM arrivata dopo si aggancia al giro successivo."""
+    righe = await db[COLL_MOVIMENTI].find(
+        {"codice_transazione": {"$in": codici}}, {"_id": 0},
+    ).to_list(None)
+    esiti = []
+    for riga in righe:
+        if not e_giroconto(riga):
+            continue
+        if riga.get("giroconto_operation_id") and riga.get("estratto_bpm_id"):
+            continue
+        esiti.append(await registra_giroconto(db, riga))
+    return esiti

@@ -16,7 +16,7 @@ from app.parsers.estratto_conto_sumup_parser import (
 )
 from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 from app.services.classificazione_estratti import SUMUP, classifica, route_da_testo
-from app.services.sumup_conto import COLL_MOVIMENTI, importa_estratto_sumup_pdf
+from app.services.sumup_conto import COLL_MOVIMENTI, importa_estratto_sumup
 
 # Bordo alto di ogni colonna, come nel PDF di SumUp.
 _COLONNE = (
@@ -106,8 +106,8 @@ def test_import_idempotente_e_payout_citato():
     async def scenario():
         await db["sumup_payouts"].insert_one({"payout_id": "SUMUP PID111"})
         pdf = pdf_sumup()
-        primo = await importa_estratto_sumup_pdf(db, "sumup.pdf", pdf)
-        secondo = await importa_estratto_sumup_pdf(db, "sumup.pdf", pdf)
+        primo = await importa_estratto_sumup(db, "sumup.pdf", pdf)
+        secondo = await importa_estratto_sumup(db, "sumup.pdf", pdf)
         estratti = await db["sumup_conto_estratti"].count_documents({})
         movimenti = await db[COLL_MOVIMENTI].find({}, {"_id": 0}).to_list(None)
         return primo, secondo, movimenti, estratti

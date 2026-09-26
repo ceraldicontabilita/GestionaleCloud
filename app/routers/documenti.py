@@ -2758,6 +2758,8 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
         statement_route, _reason = classifica(filename, file_content)
         if statement_route == "pos":
             return "pos_terminal"
+        if statement_route == "sumup":
+            return "estratto_conto_sumup"
         if statement_route == "bank":
             return "estratto_conto"
         bank_name = any(keyword in lower for keyword in (
@@ -4117,9 +4119,9 @@ async def upload_documento_automatico(
             })
 
         elif tipo_rilevato == 'estratto_conto_sumup':
-            from app.services.sumup_conto import importa_estratto_sumup_pdf
+            from app.services.sumup_conto import importa_estratto_sumup
 
-            sumup_result = await importa_estratto_sumup_pdf(db, filename, content)
+            sumup_result = await importa_estratto_sumup(db, filename, content)
             result.update({
                 "workflow": "SUMUP_CONTO_CANONICO",
                 "duplicate": bool(sumup_result.get("duplicate")),

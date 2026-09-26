@@ -5,6 +5,7 @@ CRUD e operazioni per movimenti bancari.
 from fastapi import HTTPException, Query, Body
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
+import re
 import uuid
 
 from app.database import Database, Collections
@@ -411,6 +412,8 @@ async def list_prima_nota_sumup(
     for giorno in giorni:
         giorno["importo"] = round(giorno["importo"], 2)
 
+    movimenti_conto = await _movimenti_conto_sumup(db, dal, al)
+
     return {
         "anno": anno,
         "conto": conti_pos.CONTO_SUMUP_MASTERCARD,
@@ -430,7 +433,64 @@ async def list_prima_nota_sumup(
         "fonte_credito_sumup": "transazioni_e_payout_riconciliati",
         "saldo_mastercard": round(float(conto_mastercard.get("saldo") or 0), 2),
         "fonte_vendite": "sumup_transactions_archiviate",
+        # Ogni riga dell'estratto del conto SumUp, giorno per giorno: payout,
+        # bonifici a fornitori e dipendenti, giroconti, pagamenti con la carta.
+        "movimenti_conto": movimenti_conto,
+        "saldo_estratto_sumup": (
+            movimenti_conto[0]["saldo_disponibile"] if movimenti_conto else None
+        ),
     }
+
+
+def _stato_movimento_sumup(riga: Dict[str, Any]) -> str:
+    """Perche' la riga del conto SumUp e' gia' spiegata, o che cosa le manca."""
+    if riga.get("payout_id"):
+        return "Payout agganciato"
+    if riga.get("pid"):
+        return "Payout non registrato dall'API"
+    if riga.get("giroconto_operation_id"):
+        return ("Giroconto verso BPM" if riga.get("estratto_bpm_id")
+                else "Giroconto, accredito BPM atteso")
+    return "Da registrare"
+
+
+async def _movimenti_conto_sumup(db, dal: str, al: str) -> list:
+    """Righe dell'estratto del conto SumUp (``sumup_conto_movimenti``).
+
+    Ogni movimento del conto giorno per giorno: payout, bonifici a fornitori
+    e dipendenti, giroconti, pagamenti con la carta.
+    """
+    from app.services import sumup_conto
+
+    cursore = db[sumup_conto.COLL_MOVIMENTI].find(
+        {"data": {"$gte": dal, "$lte": al}},
+        {"_id": 0, "id": 1, "data": 1, "ora": 1, "tipo_transazione": 1,
+         "riferimento": 1, "causale": 1, "importo": 1, "saldo": 1, "pid": 1,
+         "payout_id": 1, "giroconto_operation_id": 1, "estratto_bpm_id": 1,
+         "iban_beneficiario": 1, "codice_transazione": 1},
+    )
+    righe = await cursore.to_list(None) if hasattr(cursore, "to_list") else [r async for r in cursore]
+    movimenti = []
+    for riga in righe:
+        iban = riga.get("iban_beneficiario")
+        controparte = re.sub(r"\bIT\d{2}[A-Z0-9 ]{20,}$", "", str(riga.get("riferimento") or "")).strip()
+        stato = _stato_movimento_sumup(riga)
+        movimenti.append({
+            "id": riga.get("id"),
+            "codice_transazione": riga.get("codice_transazione"),
+            "data": str(riga.get("data") or "")[:10],
+            "ora": riga.get("ora"),
+            "tipo_transazione": riga.get("tipo_transazione"),
+            "controparte": controparte,
+            "iban_beneficiario": iban,
+            "causale": riga.get("causale"),
+            "importo": round(float(riga.get("importo") or 0), 2),
+            "saldo_disponibile": round(float(riga.get("saldo") or 0), 2),
+            "stato": stato,
+            "da_registrare": stato == "Da registrare",
+        })
+    movimenti.sort(key=lambda m: (m["data"], m["ora"] or ""), reverse=True)
+    return movimenti
 
 
 async def create_prima_nota_banca(data: Dict[str, Any] = Body(...)) -> Dict[str, str]:

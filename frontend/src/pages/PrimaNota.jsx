@@ -283,6 +283,74 @@ function Card({ titolo, valore, colore }) {
   );
 }
 
+/* Stato di una riga dell'estratto SumUp: sempre testo, mai solo colore. */
+const STILE_STATO_SUMUP = {
+  'Payout agganciato': [COLORS.success, COLORS.successLight],
+  'Giroconto verso BPM': [COLORS.success, COLORS.successLight],
+  'Giroconto, accredito BPM atteso': [COLORS.info, COLORS.infoLight],
+  "Payout non registrato dall'API": [COLORS.warning, COLORS.warningLight],
+  'Da registrare': [COLORS.warning, COLORS.warningLight],
+};
+
+function BadgeStatoSumUp({ stato }) {
+  const [colore, sfondo] = STILE_STATO_SUMUP[stato] || [COLORS.textMuted, COLORS.bgAlt];
+  return (
+    <span style={{ display: 'inline-block', padding: '3px 8px', borderRadius: 999, fontSize: 11.5, fontWeight: 700, color: colore, background: sfondo, whiteSpace: 'nowrap' }}>
+      {stato}
+    </span>
+  );
+}
+
+/* Ogni movimento dell'estratto del conto SumUp, raggruppato per giorno. */
+export function MovimentiContoSumUp({ movimenti = [], anno }) {
+  const giorni = useMemo(() => {
+    const perGiorno = new Map();
+    for (const movimento of movimenti) {
+      if (!perGiorno.has(movimento.data)) perGiorno.set(movimento.data, []);
+      perGiorno.get(movimento.data).push(movimento);
+    }
+    return [...perGiorno.entries()];
+  }, [movimenti]);
+  return (
+    <div style={{ background: 'white', border: `1px solid ${COLORS.border}`, borderRadius: 12, overflow: 'hidden' }}>
+      <div style={{ padding: '12px 14px', borderBottom: `1px solid ${COLORS.border}` }}>
+        <h2 style={{ margin: 0, fontSize: 16, color: TERRACOTTA }}>Movimenti del conto SumUp</h2>
+        <p style={{ margin: '4px 0 0', color: COLORS.textMuted, fontSize: 13 }}>
+          Dall'estratto SumUp (PDF o CSV caricato in Documenti &gt; Import): payout, bonifici, giroconti e pagamenti con la carta, giorno per giorno.
+        </p>
+      </div>
+      {giorni.length === 0 ? (
+        <div style={{ padding: 22, textAlign: 'center', color: COLORS.textMuted }}>
+          Nessun estratto SumUp caricato per il {anno}.
+        </div>
+      ) : giorni.map(([data, righe]) => (
+        <div key={data} data-testid="giorno-conto-sumup" style={{ borderTop: `1px solid ${COLORS.border}` }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '8px 14px', background: COLORS.bgAlt, fontSize: 12.5, fontWeight: 700, color: COLORS.gray[600] }}>
+            <span>{formatDateIT(data)}</span>
+            <span>Saldo a fine giornata {eur(righe[0].saldo_disponibile)}</span>
+          </div>
+          {righe.map(riga => (
+            <div key={riga.id} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px 12px', padding: '10px 14px', borderTop: `1px solid ${COLORS.bgAlt}`, fontSize: 13, color: COLORS.gray[700] }}>
+              <div style={{ flex: '1 1 220px', minWidth: 0 }}>
+                <div style={{ fontWeight: 700, color: COLORS.text, overflowWrap: 'anywhere' }}>
+                  {riga.controparte || riga.tipo_transazione}
+                </div>
+                <div style={{ color: COLORS.textMuted, fontSize: 12, overflowWrap: 'anywhere' }}>
+                  {[riga.ora, riga.tipo_transazione, riga.causale].filter(Boolean).join(' · ')}
+                </div>
+              </div>
+              <BadgeStatoSumUp stato={riga.stato} />
+              <div style={{ minWidth: 110, textAlign: 'right', fontWeight: 800, fontFamily: 'ui-monospace, Menlo, monospace', fontVariantNumeric: 'tabular-nums', color: riga.importo < 0 ? ROSSO : VERDE }}>
+                {riga.importo < 0 ? '−' : '+'}{eur(Math.abs(riga.importo))}
+              </div>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* ------------------------- conto Mastercard SumUp ------------------------ */
 export function CartaSumUp({ dati, anno }) {
   const giorni = dati?.giorni || [];
@@ -295,6 +363,9 @@ export function CartaSumUp({ dati, anno }) {
         <Card titolo="Credito verso SumUp" valore={dati?.credito_sumup_aperto || 0} colore="#d97706" />
         <Card titolo={`Ricevuto su Mastercard ${anno}`} valore={dati?.totale_ricevuto || 0} colore={TERRACOTTA} />
         <Card titolo="Saldo Mastercard SumUp" valore={dati?.saldo_mastercard || 0} colore="#8a6f47" />
+        {dati?.saldo_estratto_sumup != null && (
+          <Card titolo="Saldo da estratto SumUp" valore={dati.saldo_estratto_sumup} colore={COLORS.info} />
+        )}
       </div>
 
       <div style={{ background: '#eef3ef', border: '1px solid #c2ddd0', borderRadius: 10, padding: '10px 12px', color: '#4c4a44', fontSize: 13 }}>
@@ -306,6 +377,8 @@ export function CartaSumUp({ dati, anno }) {
           Controllo richiesto: gli accrediti SumUp superano le vendite archiviate di {eur(Math.abs(dati.credito_sumup_aperto))}. Verificare il riporto iniziale e la copertura delle sincronizzazioni; il sistema non compensa automaticamente la differenza.
         </div>
       )}
+
+      <MovimentiContoSumUp movimenti={dati?.movimenti_conto || []} anno={anno} />
 
       <div style={{ background: 'white', border: '1px solid #e6e3d9', borderRadius: 12, overflow: 'hidden' }}>
         <div style={{ padding: '12px 14px', borderBottom: '1px solid #e6e3d9' }}>
