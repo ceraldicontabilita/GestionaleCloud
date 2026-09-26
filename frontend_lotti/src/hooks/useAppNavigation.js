@@ -5,7 +5,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { isAdmin } from "../auth";
-import { VALID_TABS } from "../config/navigation";
 import { PAGE_NAMES } from "../config/pageMeta";
 import { puoAprireTab, tabRiservataAdmin } from "../config/permissions";
 
@@ -15,7 +14,10 @@ const ALIAS_TAB = { ricettario: "ricette", food_cost: "ricette" };
 export function getInitialTab() {
   const hash = window.location.hash.replace("#", "").split("/")[0];
   if (ALIAS_TAB[hash]) return ALIAS_TAB[hash];
-  return VALID_TABS.includes(hash) ? hash : "dashboard";
+  if (!hash) return "dashboard";
+  // Un indirizzo sconosciuto resta tale: la pagina dice «non trovata» e
+  // riporta alla Home, invece di aprire la Home in silenzio.
+  return hash;
 }
 
 export function useAppNavigation() {

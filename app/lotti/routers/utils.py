@@ -526,7 +526,7 @@ async def root():
 
 
 @router.post("/aggiorna-materie-da-fatture")
-async def aggiorna_materie_da_fatture():
+async def aggiorna_materie_da_fatture(_admin=Depends(require_admin)):
     """Deprecato — le materie prime sono ora letti direttamente da lotti_fornitori."""
     count = await db.lotti_fornitori.count_documents({})
     return {

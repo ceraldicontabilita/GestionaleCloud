@@ -49,7 +49,7 @@ from app.services.identity_matching import (
 from app.services.payment_invoice_matching import amounts_equal_to_cent
 from app.services.prima_nota_integrity import totale_pagabile_al_fornitore
 from app.services.scritture_contabili import scrivi_movimento
-from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
+from app.services.stato_pagamento_fattura import FILTRO_ATTESA_RISCONTRO, FILTRO_NON_PAGATE
 
 # Fuzzy matching per nomi fornitori
 try:
@@ -397,6 +397,13 @@ async def _applica_pagamento_banca(db, fattura: Dict[str, Any], metodo_label: st
         update["prima_nota_id"] = pn_id
         update["prima_nota_tipo"] = "banca"
         update["prima_nota_banca_id"] = pn_id
+        if quota_da_applicare > 0:
+            # La riga dichiarata dal titolare lascia il posto a questa.
+            from app.services.prima_nota_integrity import assorbi_righe_dichiarate
+            await assorbi_righe_dichiarate(
+                db, {fattura_id: quota_da_applicare}, sostituita_da=pn_id,
+                movimento_id=str(mov_id or ""),
+            )
     except Exception:
         logger.exception(f"Errore registrazione prima nota banca per fattura {fattura_id}")
 
@@ -1084,8 +1091,13 @@ async def riconcilia_movimenti_banca(
         from app.services.assegni_estratto_conto import (
             sincronizza_assegni_da_estratto_conto,
         )
+        # Anche da CSV e banca diretta: l'identita' e' il numero dell'assegno
+        # scritto nella causale, e la Prima Nota si deduplica per assegno.
+        # Dal 25/08/2026 nove assegni addebitati non entravano perche'
+        # l'estratto conto PDF non era ancora arrivato.
         esito_assegni = await sincronizza_assegni_da_estratto_conto(
             db, movimento_ids=movimento_ids, data_dal=data_dal,
+            include_provvisori=True,
         )
         results["assegni_sincronizzati"] = esito_assegni
         results["riconciliati_assegni"] = esito_assegni.get("assegni_riconciliati", 0)
@@ -1200,10 +1212,12 @@ async def riconcilia_movimenti_banca(
             )
             if tipo == "uscita" and causale_indica_fatture:
                 riferimenti_dichiarati = _riferimenti_fattura_dichiarati(descrizione)
-                fatture_aperte = await db[Collections.INVOICES].find({
-                    **FILTRO_NON_PAGATE,
-                    "stato_pagamento": {"$nin": ["pagata", "paid", "sospesa"]},
-                }, {
+                fatture_aperte = await db[Collections.INVOICES].find({"$or": [
+                    {**FILTRO_NON_PAGATE,
+                     "stato_pagamento": {"$nin": ["pagata", "paid", "sospesa"]}},
+                    # pagate per dichiarazione, in attesa proprio di questa prova
+                    dict(FILTRO_ATTESA_RISCONTRO),
+                ]}, {
                     "id": 1, "invoice_number": 1, "numero_fattura": 1,
                     "numero_documento": 1, "supplier_vat": 1,
                     "cedente_piva": 1, "fornitore_piva": 1,
@@ -1390,11 +1404,16 @@ async def riconcilia_movimenti_banca(
                 # Query per fatture candidate (importo esatto O importo parziale)
                 fatture_candidate = await db[Collections.INVOICES].find({
                     "$and": [
-                        {**FILTRO_NON_PAGATE,},
                         # Coerenza: alcuni flussi marcano il pagamento solo qui.
                         # "sospesa" = bloccata manualmente in Prima Nota
-                        # Provvisoria, esclusa dal matching automatico.
-                        {"stato_pagamento": {"$nin": ["pagata", "paid", "sospesa"]}},
+                        # Provvisoria, esclusa dal matching automatico. Le
+                        # pagate per dichiarazione del titolare aspettano
+                        # proprio questa prova, quindi restano candidate.
+                        {"$or": [
+                            {**FILTRO_NON_PAGATE,
+                             "stato_pagamento": {"$nin": ["pagata", "paid", "sospesa"]}},
+                            dict(FILTRO_ATTESA_RISCONTRO),
+                        ]},
                         {"$or": [
                             # Match esatto
                             {"importo_totale": {"$gte": importo - 0.01, "$lte": importo + 0.01}},

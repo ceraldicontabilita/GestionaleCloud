@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 import uuid
 
 from app.lotti.db import database as db
-from app.lotti.auth import require_admin
+from app.lotti.auth import require_permesso
 
 router = APIRouter(prefix="/temperature-negative", tags=["Temperature Negative"])
 
@@ -91,6 +91,37 @@ MESI_IT = [
 # ==================== HELPER ====================
 
 
+def nuova_scheda(anno: int, congelatore: int) -> dict:
+    """Scheda annuale vuota: si salva solo alla prima registrazione."""
+    return {
+        "id": str(uuid.uuid4()),
+        "anno": anno,
+        "congelatore_numero": congelatore,
+        "congelatore_nome": f"Congelatore N°{congelatore}",
+        "azienda": "Ceraldi Group S.R.L.",
+        "indirizzo": "Piazza Carità 14, 80134 Napoli (NA)",
+        "piva": "04523831214",
+        "telefono": "+39 081 5523488",
+        "email": "info@ceraldicaffe.it",
+        "attivita": "Bar, Pasticceria, Gastronomia",
+        "temperature": {str(m): {} for m in range(1, 13)},
+        "temp_min": -22.0,
+        "temp_max": -18.0,
+        "riferimenti_normativi": RIFERIMENTI_NORMATIVI,
+        "operatori": OPERATORI_DEFAULT.copy(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+async def leggi_scheda(anno: int, congelatore: int) -> dict:
+    """Scheda in sola lettura: se non esiste torna vuota, senza crearla."""
+    scheda = await db.temperature_negative.find_one(
+        {"anno": anno, "congelatore_numero": congelatore}, {"_id": 0}
+    )
+    return scheda or nuova_scheda(anno, congelatore)
+
+
 async def get_or_create_scheda(anno: int, congelatore: int) -> dict:
     """Ottiene o crea la scheda annuale per un congelatore"""
     scheda = await db.temperature_negative.find_one(
@@ -98,27 +129,9 @@ async def get_or_create_scheda(anno: int, congelatore: int) -> dict:
     )
 
     if not scheda:
-        nuova_scheda = {
-            "id": str(uuid.uuid4()),
-            "anno": anno,
-            "congelatore_numero": congelatore,
-            "congelatore_nome": f"Congelatore N°{congelatore}",
-            "azienda": "Ceraldi Group S.R.L.",
-            "indirizzo": "Piazza Carità 14, 80134 Napoli (NA)",
-            "piva": "04523831214",
-            "telefono": "+39 081 5523488",
-            "email": "info@ceraldicaffe.it",
-            "attivita": "Bar, Pasticceria, Gastronomia",
-            "temperature": {str(m): {} for m in range(1, 13)},
-            "temp_min": -22.0,
-            "temp_max": -18.0,
-            "riferimenti_normativi": RIFERIMENTI_NORMATIVI,
-            "operatori": OPERATORI_DEFAULT.copy(),
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }
-        await db.temperature_negative.insert_one(nuova_scheda)
-        scheda = nuova_scheda
+        nuova_scheda_doc = nuova_scheda(anno, congelatore)
+        await db.temperature_negative.insert_one(nuova_scheda_doc)
+        scheda = nuova_scheda_doc
     else:
         # Aggiorna schede esistenti con i nuovi campi
         needs_update = False
@@ -165,17 +178,17 @@ async def get_scheda_congelatore(anno: int, congelatore: int):
     vuota bloccava il backend per >30s). Il popolamento avviene tramite il job
     scheduler giornaliero (`/api/scheduler/run-haccp-now`) o manualmente via UI.
     """
-    return await get_or_create_scheda(anno, congelatore)
+    return await leggi_scheda(anno, congelatore)
 
 
 @router.get("/schede/{anno}")
 async def get_tutte_schede(anno: int):
     """Ottiene tutte le schede congelatori per un anno"""
-    schede = []
-    for i in range(1, 13):
-        scheda = await get_or_create_scheda(anno, i)
-        schede.append(scheda)
-    return schede
+    # Gli apparecchi censiti (più chi ha rilevazioni nell'anno), una query sola,
+    # nessuna scheda creata: aprire la pagina non scrive nel registro.
+    from app.lotti.servizi.schede_temperature import schede_anno
+
+    return await schede_anno("congelatore", anno, nuova_scheda)
 
 
 @router.post("/scheda/{anno}/{congelatore}/registra")
@@ -265,7 +278,7 @@ async def registra_temperatura(
 
 @router.put("/scheda/{anno}/{congelatore}")
 async def aggiorna_scheda_completa(anno: int, congelatore: int, data: AggiornaTemperatureRequest,
-                                   _admin=Depends(require_admin)):
+                                   _ruolo=Depends(require_permesso("haccp_registri"))):
     """Aggiorna l'intera scheda"""
     scheda = await get_or_create_scheda(anno, congelatore)
 
@@ -290,7 +303,7 @@ async def aggiorna_scheda_completa(anno: int, congelatore: int, data: AggiornaTe
 @router.put("/scheda/{anno}/{congelatore}/config")
 async def configura_congelatore(
     anno: int, congelatore: int, nome: str = None, temp_min: float = None, temp_max: float = None
-, _admin=Depends(require_admin)):
+, _ruolo=Depends(require_permesso("frigoriferi"))):
     """Configura nome e limiti temperatura congelatore"""
     scheda = await get_or_create_scheda(anno, congelatore)
 
@@ -372,7 +385,7 @@ async def get_operatori():
 
 
 @router.post("/operatori")
-async def aggiungi_operatore(nome: str = Query(...)):
+async def aggiungi_operatore(nome: str = Query(...), _ruolo=Depends(require_permesso("haccp_registri"))):
     """Aggiunge un nuovo operatore alla lista"""
     if nome not in OPERATORI_DEFAULT:
         OPERATORI_DEFAULT.append(nome)

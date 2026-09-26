@@ -8,6 +8,8 @@ from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, timezone
 import logging
+from app.lotti.auth import require_admin
+from fastapi import Depends
 _LOG_INIT = logging.getLogger("uvicorn.error")
 
 router = APIRouter(prefix="/vendita-banco", tags=["vendita_banco"])
@@ -342,7 +344,7 @@ async def riapri_vendita(vendita_id: str, request: Request):
 
 
 @router.delete("/{vendita_id}")
-async def elimina_vendita(vendita_id: str):
+async def elimina_vendita(vendita_id: str, _admin=Depends(require_admin)):
     result = await db.vendite_banco.delete_one({"id": vendita_id})
     if result.deleted_count == 0:
         raise HTTPException(404, "Non trovata")

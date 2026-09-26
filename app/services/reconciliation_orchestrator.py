@@ -24,10 +24,8 @@ async def riconcilia_documenti_e_pagamenti(
     from app.services.f24_bank_reconciliation import riconcilia_f24_tributi_banca
     from app.services.finanziamenti_soci import scan_finanziamenti_da_ec
     from app.services.soci_accounting import riconcilia_attese_soci_da_ec
-    from app.services.proiezione_bancaria import proietta_movimenti_bancari_semantici
     from app.services.bank_payment_allocations import reconcile_deterministic_invoice_allocations
     from app.services.stipendi_bonifici import associa_bonifici_stipendi
-    from app.services.versamenti_contanti import riconosci_versamenti
     from app.routers.pagopa import auto_associa_ricevute_db
     from app.services.paypal_reconciliation_pipeline import riconcilia_paypal_importato
 
@@ -54,20 +52,22 @@ async def riconcilia_documenti_e_pagamenti(
     )
     finanziamenti_soci = await scan_finanziamenti_da_ec(db, anno=anno)
 
-    # Versamenti e prelievi di contante: la riga di estratto conto e' la
-    # prova, quindi le due gambe si scrivono da sole. Prima della proiezione,
-    # cosi' la gamba di cassa esiste gia' quando il resto la cerca. Non c'e'
-    # piu' nessun comando «ripara versamenti» da premere: quel bottone
-    # sbagliava perche' creava la cassa anche quando c'era gia', e il contante
-    # usciva due volte. Qui la cassa gia' scritta a mano si collega.
-    versamenti = await riconosci_versamenti(db, anno=anno, dry_run=False)
-
-    proiezione_banca = await proietta_movimenti_bancari_semantici(
-        db, anno=anno, movimento_ids=movimento_ids,
-    )
+    # Versamenti di contante e proiezione dei movimenti bancari non stanno
+    # piu' qui: hanno un job loro (``banca_versamenti_proiezione`` in
+    # scheduler.py), che gira pochi minuti dopo l'avvio. Questo giro dura ore e
+    # riparte a ogni deploy: il 26/09/2026 non ha finito un turno dalle 13:52,
+    # e le correzioni dei versamenti non arrivavano mai ai dati.
     allocazioni_fatture_banca = await reconcile_deterministic_invoice_allocations(
         db, anno=anno, movement_ids=movimento_ids,
     )
+    # Carta SumUp: stessi motori di stipendi e fatture, sulla sua collezione.
+    from app.services.sumup_conto import abbina_movimenti_sumup
+
+    try:
+        carta_sumup = await abbina_movimenti_sumup(db, anno=anno)
+    except Exception as exc:  # noqa: BLE001 - gli altri agganci restano validi
+        logger.exception("Abbinamento carta SumUp non completato (%s)", type(exc).__name__)
+        carta_sumup = {"errore": f"{type(exc).__name__}: {exc}"}
     # Il report del titolare dice come e' stata pagata ogni fattura: qui si
     # ripassano solo le righe ancora in attesa (XML arrivato dopo, assegno
     # comparso nel nuovo estratto conto).
@@ -96,21 +96,25 @@ async def riconcilia_documenti_e_pagamenti(
             "attese_riconciliate": soci_attese,
             "scan": finanziamenti_soci,
         },
-        "versamenti_contanti": versamenti,
-        "proiezione_banca": proiezione_banca,
         "allocazioni_fatture_banca": allocazioni_fatture_banca,
         "pagamenti_dichiarati": pagamenti_dichiarati,
+        "carta_sumup": carta_sumup,
     }
 
 
 async def on_cedolino_importato_riprocessa(event: Dict[str, Any], db):
-    """Il cedolino conferma il maturato; il bonifico puo' essere gia' in banca."""
+    """Il cedolino conferma il maturato; il bonifico puo' essere gia' in banca,
+    sul conto BPM o partito dalla carta SumUp."""
     from app.services.stipendi_bonifici import associa_bonifici_stipendi
+    from app.services.sumup_conto import COLL_MOVIMENTI as COLL_CARTA_SUMUP
 
     anno = event.get("anno")
-    return await associa_bonifici_stipendi(
-        db, anno=int(anno) if str(anno or "").isdigit() else None,
+    anno = int(anno) if str(anno or "").isdigit() else None
+    esito = await associa_bonifici_stipendi(db, anno=anno)
+    esito["carta_sumup"] = await associa_bonifici_stipendi(
+        db, anno=anno, collezione_movimenti=COLL_CARTA_SUMUP, ripassa_collegati=False,
     )
+    return esito
 
 
 async def on_f24_acquisito_riprocessa(event: Dict[str, Any], db):

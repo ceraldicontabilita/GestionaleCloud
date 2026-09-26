@@ -38,11 +38,9 @@ def _norm(value: str) -> str:
 
 
 def build_drive_service():
-    creds, error = _drive._load_credentials_cedolini()
-    if creds is None:
-        raise RuntimeError(f"Credenziali Google Drive non disponibili: {error}")
-    from googleapiclient.discovery import build
-    return build("drive", "v3", credentials=creds, cache_discovery=False)
+    from app.services.drive_document_index import build_drive_service as servizio
+
+    return servizio()
 
 
 def _discover_sync(service, root_id: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:

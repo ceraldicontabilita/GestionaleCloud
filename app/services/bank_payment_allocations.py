@@ -25,8 +25,9 @@ from app.services.bank_reconciliation_rules import classify_bank_movement
 from app.services.mapping_piano_conti import completa_conti_prima_nota
 from app.services.scadenze_rate_service import applica_quota_scadenze
 from app.services.scritture_contabili import FILTRO_MOVIMENTO_ATTIVO, scrivi_movimento_se_assente
-from app.services.prima_nota_integrity import totale_pagabile_al_fornitore
-from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
+from app.services.sumup_conto import collezione_del_movimento
+from app.services.prima_nota_integrity import assorbi_righe_dichiarate, totale_pagabile_al_fornitore
+from app.services.stato_pagamento_fattura import FILTRO_DA_RISCONTRARE, FILTRO_NON_PAGATE
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,7 @@ def _metodo_pagamento(movement: Dict[str, Any]) -> str:
 
 async def _aggiorna_partita_aperta(
     db, *, invoice_id: str, quota_cents: int, movement_id: str, now: str,
+    movement_collection: str = "estratto_conto_movimenti",
 ) -> Dict[str, Any] | None:
     """Chiude (o riduce) la partita aperta della fattura, una sola volta per
     movimento, e registra il match nella collezione letta dalla Dashboard
@@ -76,7 +78,7 @@ async def _aggiorna_partita_aperta(
         {"$setOnInsert": {
             "id": match_id,
             "movimento_id": movement_id,
-            "movimento_collection": "estratto_conto_movimenti",
+            "movimento_collection": movement_collection,
             "partita_id": partita["id"],
             "partita_collection": COLL_PARTITE,
             "tipo_match": "fattura_fornitore",
@@ -141,6 +143,11 @@ async def _proietta_prima_nota_banca(
         "data_riconciliazione": str(movement.get("data") or "")[:10],
         "updated_at": now,
     }
+    # Il conto di tesoreria lo dice il movimento: un pagamento dalla carta
+    # SumUp esce da 19.01.05, non dal conto BPM che il writer darebbe di
+    # ripiego a una riga senza conto.
+    if movement.get("conto_contabile"):
+        comuni["conto_contabile"] = movement["conto_contabile"]
     descrizione = (
         f"Pagamento {metodo} fattura {', '.join(n for n in numeri_fattura if n)}".strip()
     )
@@ -334,6 +341,18 @@ async def persist_bank_invoice_allocations(
         numeri_fattura=numeri_fattura,
     )
     prima_nota_id = prima_nota_ids[0] if len(prima_nota_ids) == 1 else None
+    # Le righe che il titolare aveva dichiarato per queste fatture lasciano il
+    # posto a quella con la prova: lo stesso pagamento non esce due volte.
+    quote_per_fattura: Dict[str, float] = {}
+    for item in allocations:
+        quote_per_fattura[item["fattura_id"]] = round(
+            quote_per_fattura.get(item["fattura_id"], 0.0)
+            + int(item.get("quota_cents") or 0) / 100, 2,
+        )
+    await assorbi_righe_dichiarate(
+        db, quote_per_fattura, sostituita_da=prima_nota_ids[0] if prima_nota_ids else "",
+        movimento_id=movement_id,
+    )
 
     for item in allocations:
         invoice_id = item["fattura_id"]
@@ -397,6 +416,7 @@ async def persist_bank_invoice_allocations(
             await _aggiorna_partita_aperta(
                 db, invoice_id=invoice_id, quota_cents=item["quota_cents"],
                 movement_id=movement_id, now=now,
+                movement_collection=collezione_del_movimento(movement),
             )
         except Exception:
             logger.exception("Partita aperta non aggiornata per la fattura %s", invoice_id)
@@ -427,7 +447,9 @@ async def persist_bank_invoice_allocations(
         "data_riconciliazione": now,
         "updated_at": now,
     }
-    await db["estratto_conto_movimenti"].update_one({"id": movement_id}, {"$set": movement_update})
+    await db[collezione_del_movimento(movement)].update_one(
+        {"id": movement_id}, {"$set": movement_update},
+    )
 
     return {
         "success": True,
@@ -610,17 +632,22 @@ async def _proponi_scelta_fattura(
 
 async def _reconcile_unique_identity_matches(
     db, movements: List[Dict[str, Any]], *, excluded_movement_ids=None,
+    proponi: bool = True,
 ) -> Dict[str, Any]:
-    """Abbina solo archi univoci movimento-fattura con identita' forte."""
+    """Abbina solo archi univoci movimento-fattura con identita' forte.
+
+    ``proponi=False`` non scrive la coda «Scegli fattura», che sa aprire
+    solo movimenti del conto BPM: le proposte tornano nell'esito.
+    """
     excluded = {str(value) for value in (excluded_movement_ids or [])}
     eligible_movements = [
         movement for movement in movements
         if str(movement.get("id")) not in excluded and _is_outgoing_invoice_candidate(movement)
     ]
-    invoices = await db["invoices"].find({
-        **FILTRO_NON_PAGATE,
-        "stato_pagamento": {"$ne": "pagata"},
-    }, {"_id": 0}).to_list(50000)
+    invoices = await db["invoices"].find({"$or": [
+        {**FILTRO_NON_PAGATE, "stato_pagamento": {"$ne": "pagata"}},
+        {"in_attesa_riscontro_banca": True},
+    ]}, {"_id": 0}).to_list(50000)
     invoices_by_residual: Dict[int, List[Dict[str, Any]]] = {}
     for invoice in invoices:
         residual = max(
@@ -632,6 +659,7 @@ async def _reconcile_unique_identity_matches(
     choices = []
     ambiguous_movements = 0
     proposed_movements = 0
+    proposte: List[Dict[str, Any]] = []
     for movement in eligible_movements:
         edges = []
         proposals = []
@@ -646,10 +674,17 @@ async def _reconcile_unique_identity_matches(
             if proposals:
                 # Nessuna prova forte: il candidato con soggetto pagante
                 # diverso va scelto da un operatore, mai applicato.
-                await _proponi_scelta_fattura(
-                    db, movement, [edge["invoice"] for edge in proposals],
-                    proposals[0].get("soggetto_causale"),
-                )
+                if proponi:
+                    await _proponi_scelta_fattura(
+                        db, movement, [edge["invoice"] for edge in proposals],
+                        proposals[0].get("soggetto_causale"),
+                    )
+                proposte.append({
+                    "movimento_id": movement.get("id"),
+                    "fatture_candidate": [
+                        edge["invoice"].get("id") for edge in proposals
+                    ],
+                })
                 proposed_movements += 1
             continue
         best_priority = max(edge["priority"] for edge in edges)
@@ -698,6 +733,7 @@ async def _reconcile_unique_identity_matches(
         "ambigui_movimento": ambiguous_movements,
         "ambigui_fattura": ambiguous_invoices,
         "proposte_soggetto_diverso": proposed_movements,
+        "proposte": proposte,
     }
 
 
@@ -722,11 +758,10 @@ async def reconcile_deterministic_invoice_allocations(
         ambiguous = False
         for ref in refs:
             candidates = await db["invoices"].find({
-                "$or": [
-                    {"invoice_number": ref},
-                    {"numero_fattura": ref},
+                "$and": [
+                    {"$or": [{"invoice_number": ref}, {"numero_fattura": ref}]},
+                    FILTRO_DA_RISCONTRARE,
                 ],
-                **FILTRO_NON_PAGATE,
             }, {"_id": 0}).to_list(2)
             if len(candidates) != 1:
                 ambiguous = True

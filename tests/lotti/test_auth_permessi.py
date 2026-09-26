@@ -194,7 +194,10 @@ def test_endpoint_distruttivi_dichiarano_require_admin():
             idx = src.find(ago)
             assert idx > 0, f"{nome_modulo}: path {p} non trovato"
             blocco = src[idx: idx + 600]
-            assert "require_admin" in blocco, f"{nome_modulo} {p}: manca require_admin"
+            # Riservata: al titolare, o a un ruolo di servizi/ruoli.py
+            # (responsabile HACCP per registri e frigoriferi, 26/09/2026).
+            assert "require_admin" in blocco or "require_permesso(" in blocco, \
+                f"{nome_modulo} {p}: manca require_admin/require_permesso"
 
 
 def test_lotti_non_ha_import_fatture_manuale():
@@ -221,7 +224,7 @@ def test_firma_con_pin_sbagliato_si_blocca_dopo_n_tentativi(monkeypatch):
 
     monkeypatch.setattr(hr, "trova_dipendente_per_pin", trova)
     monkeypatch.setenv("AUTH_MAX_FAILS", "3")
-    auth._FAILS.clear()
+    _run(auth._tentativi().delete_many({}))
     for _ in range(3):
         with pytest.raises(HTTPException) as exc:
             _run(firma_dipendente.firma_da_pin("0000", chiave_tentativi="1.2.3.4"))
@@ -231,7 +234,40 @@ def test_firma_con_pin_sbagliato_si_blocca_dopo_n_tentativi(monkeypatch):
     assert exc.value.status_code == 429
     # un altro client non e' bloccato
     assert _run(firma_dipendente.firma_da_pin("2468", chiave_tentativi="5.6.7.8"))["firma_verificata"] is True
-    auth._FAILS.clear()
+    _run(auth._tentativi().delete_many({}))
+
+
+def test_blocco_pin_globale_anche_cambiando_ip(monkeypatch):
+    """Il login di Lotti e' solo PIN e l'IP viene da intestazioni scrivibili
+    dal client: cambiando IP a ogni tentativo si scavalcava il limite. Oltre
+    la soglia globale il login si ferma per tutti, e il conto sta
+    nell'archivio (sopravvive a un riavvio), non nella memoria."""
+    from app.lotti import auth
+
+    monkeypatch.setenv("AUTH_MAX_FAILS", "100")
+    monkeypatch.setenv("AUTH_MAX_FAILS_GLOBALI", "5")
+    _run(auth._tentativi().delete_many({}))
+    for i in range(5):
+        _run(auth.register_fail(f"10.9.9.{i}"))
+    with pytest.raises(HTTPException) as exc:
+        _run(auth.check_lock("198.51.100.7"))
+    assert exc.value.status_code == 429
+    salvato = _run(auth._tentativi().find_one({"_id": auth.CHIAVE_GLOBALE}))
+    assert salvato["bloccato_fino"] > 0
+    _run(auth._tentativi().delete_many({}))
+
+
+def test_ip_vuoto_non_salta_il_controllo(monkeypatch):
+    from app.lotti import auth
+
+    monkeypatch.setenv("AUTH_MAX_FAILS", "2")
+    monkeypatch.setenv("AUTH_MAX_FAILS_GLOBALI", "100")
+    _run(auth._tentativi().delete_many({}))
+    _run(auth.register_fail(""))
+    _run(auth.register_fail(""))
+    with pytest.raises(HTTPException):
+        _run(auth.check_lock(""))
+    _run(auth._tentativi().delete_many({}))
 
 
 def test_ip_richiesta_usa_cloudflare_non_il_proxy():
@@ -269,8 +305,8 @@ def test_scritture_di_configurazione_e_massa_solo_amministratore():
         ("POST", "/api/fonti-catalogo"), ("POST", "/api/fonti-catalogo/{fonte_id}/sincronizza"),
         ("POST", "/api/fornitori/merge"), ("POST", "/api/materie-prime/rebuild-lotti-fornitori"),
         ("POST", "/api/materie-prime/migra-in-lotti-fornitori"), ("POST", "/api/magazzino-bar/colli-bulk"),
-        ("POST", "/api/magazzino/override-prodotto"), ("PUT", "/api/sanificazione/scheda/{anno}/{mese}"),
-        ("POST", "/api/haccp-periodi/applica-tutti"), ("GET", "/api/backup/lista"),
+        ("POST", "/api/magazzino/override-prodotto"),
+        ("GET", "/api/backup/lista"),
     }
     trovate = {}
     for r in server.app.routes:
@@ -280,6 +316,10 @@ def test_scritture_di_configurazione_e_massa_solo_amministratore():
     assert not mancanti, f"rotte non montate: {mancanti}"
     senza = [k for k in attese if not _ha_require_admin(trovate[k].endpoint)]
     assert not senza, f"senza require_admin: {senza}"
+    # Correggere il registro di sanificazione: titolare o responsabile HACCP.
+    from app.lotti.auth import require_permesso
+    sanificazione = trovate[("PUT", "/api/sanificazione/scheda/{anno}/{mese}")]
+    assert require_permesso("haccp_registri") in [d.call for d in sanificazione.dependant.dependencies]
     # e /pulisci-operatori non esiste piu'
     assert not any(p.endswith("/pulisci-operatori") for (_m, p) in trovate)
 
@@ -338,3 +378,32 @@ def test_coda_stampa_non_conserva_token_negli_url():
         == "https://x.it/lotti/api/r?mese=9&anno=2026"
     )
     assert _senza_token("/lotti/api/stampa/lotto/L1") == "/lotti/api/stampa/lotto/L1"
+
+
+def test_rinnovo_sessione_ha_una_fine(monkeypatch):
+    """/auth/refresh rinnovava senza limite: un token rubato restava valido per
+    sempre. Ora la catena si misura dall'ingresso vero (``auth_at``)."""
+    import time as _time
+    from app.lotti import auth
+
+    class Req:
+        def __init__(self, token):
+            self.headers = {"authorization": f"Bearer {token}"}
+            self.state = type("S", (), {})()
+
+    async def ammesso(data):
+        return True
+
+    monkeypatch.setattr("app.services.group_session.token_di_gruppo_ammesso", ammesso)
+    fresco = auth.make_token("op-1", "Anna", "operatore")
+    nuovo = _run(auth.refresh_token(Req(fresco)))["token"]
+    assert auth.verify_token(nuovo)["auth_at"] == auth.verify_token(fresco)["auth_at"]
+
+    vecchio = auth.make_token("op-1", "Anna", "operatore", auth_at=int(_time.time()) - 8 * 24 * 3600)
+    with pytest.raises(HTTPException) as exc:
+        _run(auth.refresh_token(Req(vecchio)))
+    assert exc.value.status_code == 401
+
+    admin = auth.make_token("adm", "Enzo", "amministratore", auth_at=int(_time.time()) - 25 * 3600)
+    with pytest.raises(HTTPException):
+        _run(auth.refresh_token(Req(admin)))

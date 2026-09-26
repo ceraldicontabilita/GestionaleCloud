@@ -38,6 +38,7 @@ from pydantic import BaseModel
 
 from app.lotti.auth import check_lock, clear_fails, ip_richiesta, make_token, register_fail, require_admin
 from app.lotti.db import database as db
+from app.lotti.servizi import ruoli
 
 router = APIRouter(prefix="/tablet-operatori", tags=["tablet_operatori"])
 
@@ -110,7 +111,7 @@ async def _persone_hr() -> Optional[List[Dict[str, Any]]]:
         {"merged_into": {"$exists": False}},
         {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "nome_completo": 1, "codice_fiscale": 1,
          "ruolo": 1, "qualifica_unilav": 1, "mansione": 1, "qualifica": 1, "ruolo_app": 1,
-         "attivo": 1, "in_carico": 1, "stato": 1, "data_fine_rapporto": 1, "data_cessazione": 1,
+         "attivo": 1, "in_carico": 1, "stato": 1, "lotti_ruolo": 1, "lotti_reparti": 1, "data_fine_rapporto": 1, "data_cessazione": 1,
          "data_dimissione": 1, "data_cessazione_prevista": 1, "motivo_cessazione": 1,
          "riferimento_cessazione": 1, "dimissioni": 1, "lotti_operatore": 1, "pin_hash": 1},
     ).to_list(1000)
@@ -133,6 +134,8 @@ async def _persone_hr() -> Optional[List[Dict[str, Any]]]:
             "stato": st["stato"], "data_fine_rapporto": st["data_fine_rapporto"],
             "motivo_cessazione": st["motivo_cessazione"], "motivo_etichetta": st["motivo_cessazione_etichetta"],
             "operatore_lotti": d.get("lotti_operatore") is not False,
+            "ruolo_lotti": ruoli.normalizza_ruolo(d.get("lotti_ruolo")),
+            "reparti_lotti": ruoli.normalizza_reparti(d.get("lotti_reparti")),
             "pin_impostato": bool(d.get("pin_hash")),
         })
     return persone
@@ -229,6 +232,7 @@ async def sincronizza_operatori_da_hr() -> Dict[str, Any]:
             "nome": p["nome_completo"], "cognome": p["cognome"], "nome_proprio": p["nome"],
             "mansione": p["ruolo_testo"],
             "ruolo": "amministratore" if p["amministratore"] else "operatore",
+            "ruolo_lotti": p["ruolo_lotti"], "reparti_lotti": p["reparti_lotti"],
             "attivo": in_forza, "in_carico": in_forza,
             "hr_stato": p["stato"], "operatore_lotti": p["operatore_lotti"],
             "data_fine_rapporto": p["data_fine_rapporto"], "motivo_fine_rapporto": p["motivo_cessazione"],
@@ -240,8 +244,12 @@ async def sincronizza_operatori_da_hr() -> Dict[str, Any]:
             agganciati.add(op["id"])
             if not op.get("postazione"):
                 valori["postazione"] = postazione_da_ruolo(p["ruolo_testo"])
-            await db.tablet_operatori.update_one({"id": op["id"]}, {"$set": valori, "$unset": dict(_CAMPI_PIN_LEGACY)})
-            esito["aggiornati"] += 1
+            # Ogni 10 minuti: si scrive solo se qualcosa e' cambiato davvero
+            # (l'ora di sincronizzazione da sola non vale una scrittura).
+            cambiato = any(op.get(k) != v for k, v in valori.items() if k != "sincronizzato_at")
+            if cambiato or any(k in op for k in _CAMPI_PIN_LEGACY):
+                await db.tablet_operatori.update_one({"id": op["id"]}, {"$set": valori, "$unset": dict(_CAMPI_PIN_LEGACY)})
+                esito["aggiornati"] += 1
         elif in_forza:
             await db.tablet_operatori.insert_one({
                 "id": str(uuid.uuid4()), **valori,
@@ -303,7 +311,12 @@ def _op_response(doc):
         ruolo = "operatore"
     op = {"dipendente_id": doc["dipendente_id"], "nome": doc.get("nome", "Operatore"), "ruolo": ruolo}
     token = make_token(sub=op["dipendente_id"], nome=op["nome"], ruolo=op["ruolo"], via="pin")
-    return {"ok": True, "token": token, "operatore": op}
+    # Il ruolo di Lotti (HACCP, caporeparto) non entra nel token: il backend lo
+    # rilegge a ogni operazione riservata. Qui serve al tablet per mostrare
+    # solo i comandi che la persona puo' usare.
+    profilo = ruoli.profilo_ruolo(ruoli.normalizza_ruolo(doc.get("ruolo_lotti")),
+                                  ruoli.normalizza_reparti(doc.get("reparti_lotti")))
+    return {"ok": True, "token": token, "operatore": {**op, "profilo": profilo}}
 
 
 async def trova_operatori_per_pin(pin: str) -> List[Dict[str, Any]]:
@@ -325,9 +338,10 @@ async def trova_operatori_per_pin(pin: str) -> List[Dict[str, Any]]:
         for p in persone:
             op = await db.tablet_operatori.find_one(
                 {"attivo": True, "$or": [{"hr_id": p["id"]}, {"gestionale_dipendente_id": p["id"]}]},
-                {"_id": 0, "nome": 1, "ruolo": 1})
+                {"_id": 0, "nome": 1, "ruolo": 1, "ruolo_lotti": 1, "reparti_lotti": 1})
             if op:
-                trovati.append({"dipendente_id": p["id"], "nome": op.get("nome"), "ruolo": op.get("ruolo")})
+                trovati.append({"dipendente_id": p["id"], "nome": op.get("nome"), "ruolo": op.get("ruolo"),
+                                "ruolo_lotti": op.get("ruolo_lotti"), "reparti_lotti": op.get("reparti_lotti")})
         if len(trovati) == len(persone) or tentativo:
             break
         await sincronizza_operatori_da_hr()
@@ -336,21 +350,18 @@ async def trova_operatori_per_pin(pin: str) -> List[Dict[str, Any]]:
 
 @router.post("/login")
 async def login_pin(payload: PinLogin, request: Request = None):
-    ip = ip_richiesta(request) or None
-    if ip:
-        check_lock(ip)
+    ip = ip_richiesta(request)
+    await check_lock(ip)
     pin = (payload.pin or "").strip()
     if len(pin) < 4:
         raise HTTPException(400, "PIN non valido")
     docs = await trova_operatori_per_pin(pin)
     if docs:
-        if ip:
-            clear_fails(ip)
+        await clear_fails(ip)
         if len(docs) > 1:
             raise HTTPException(409, "PIN associato a piu' dipendenti: correggere gli accessi HR")
         return _op_response(docs[0])
-    if ip:
-        register_fail(ip)
+    await register_fail(ip)
     raise HTTPException(401, "PIN non riconosciuto")
 
 
@@ -444,6 +455,48 @@ async def aggiorna_dipendente(dipendente_id: str, payload: AggiornaDipendente, _
     if res.matched_count == 0:
         raise HTTPException(404, "Operatore non trovato")
     return {"ok": True, "modificato": True, "salvato_alle": upd["aggiornato_at"]}
+
+
+class RuoloOperatore(BaseModel):
+    ruolo: str
+    reparti: List[str] = []
+
+
+@router.put("/{dipendente_id}/ruolo")
+async def imposta_ruolo_operatore(dipendente_id: str, payload: RuoloOperatore, request: Request,
+                                  _admin=Depends(require_admin)):
+    """Il titolare assegna il ruolo di Lotti. Si scrive sulla scheda HR
+    (``lotti_ruolo``, ``lotti_reparti``): l'anagrafica HR comanda, qui c'e'
+    solo la proiezione. Un responsabile HACCP o un caporeparto deve poter
+    entrare in Lotti, quindi diventa operatore Lotti."""
+    ruolo = str(payload.ruolo or "").strip().lower()
+    if ruolo not in ruoli.RUOLI_LOTTI:
+        raise HTTPException(400, "Ruolo non valido: " + ", ".join(ruoli.RUOLI_LOTTI))
+    reparti = ruoli.normalizza_reparti(payload.reparti)
+    scartati = [r for r in payload.reparti if str(r or "").strip().lower() not in ruoli.REPARTI]
+    if scartati:
+        raise HTTPException(400, "Reparto non valido: " + ", ".join(map(str, scartati)))
+    if ruolo != ruoli.CAPOREPARTO:
+        reparti = []
+    db_hr = _db_hr()
+    if db_hr is None:
+        raise HTTPException(503, "Anagrafica HR non disponibile")
+    persona = await db_hr["dipendenti"].find_one({"id": dipendente_id, "merged_into": {"$exists": False}},
+                                                 {"_id": 0, "id": 1})
+    if not persona:
+        raise HTTPException(404, "Dipendente non trovato nella scheda HR")
+    actor = getattr(request.state, "user", None) or {}
+    valori: Dict[str, Any] = {"lotti_ruolo": ruolo, "lotti_reparti": reparti,
+                              "lotti_ruolo_aggiornato_at": _now(),
+                              "lotti_ruolo_aggiornato_da": actor.get("nome") or "Titolare"}
+    if ruolo != ruoli.OPERATORE:
+        valori["lotti_operatore"] = True
+    await db_hr["dipendenti"].update_one({"id": dipendente_id}, {"$set": valori})
+    await sincronizza_operatori_da_hr()
+    avviso = None
+    if ruolo == ruoli.CAPOREPARTO and not reparti:
+        avviso = "Caporeparto senza reparto: finche' non ne scegli uno non puo' modificare niente"
+    return {"ok": True, **ruoli.profilo_ruolo(ruolo, reparti), "avviso": avviso}
 
 
 async def operatore_per_id(operatore_id: str) -> Optional[Dict[str, Any]]:

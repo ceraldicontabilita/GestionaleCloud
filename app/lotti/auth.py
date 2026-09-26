@@ -10,16 +10,19 @@ Modello:
   - L'amministratore entra solo dal Gestionale (`/auth/session`, cookie
     ERP): il suo token porta il `sid` della sessione ERP e il logout del
     Gestionale lo revoca (`group_session.sessione_derivata_valida`).
-  - Anti brute-force: lockout in memoria per IP.
+  - Anti brute-force: tentativi persistiti su Supabase, per client e globali.
 
 Env usate (tutte opzionali, con default sicuri):
   AUTH_SECRET          segreto per firmare i JWT (consigliato impostarlo)
   AUTH_ENFORCE         "false" per disattivare l'enforcement delle letture in emergenza (default: true)
   AUTH_TOKEN_TTL_H     durata token in ore (default 12)
+  LOTTI_SESSIONE_MAX_ORE / _ADMIN  durata massima dei rinnovi dal PIN (default 168 / 24)
   AUTH_MAX_FAILS       tentativi PIN prima del lock (default 8)
   AUTH_LOCK_SECONDS    durata lock in secondi (default 300)
+  AUTH_MAX_FAILS_GLOBALI  PIN sbagliati da qualunque client in 15 minuti prima del blocco di tutti (default 40)
 """
 
+import functools
 import os
 import time
 import hashlib
@@ -85,7 +88,8 @@ def _load_or_create_persistent_secret() -> str:
     return _secrets.token_hex(32)
 
 
-def make_token(sub: str, nome: str, ruolo: str, via: str = "pin", ore: int = None, sid: str = "") -> str:
+def make_token(sub: str, nome: str, ruolo: str, via: str = "pin", ore: int = None, sid: str = "",
+               auth_at: int = None) -> str:
     return create_workforce_token(
         sub=sub,
         name=nome,
@@ -95,7 +99,20 @@ def make_token(sub: str, nome: str, ruolo: str, via: str = "pin", ore: int = Non
         expires_in=timedelta(hours=ore if ore else _ttl_hours()),
         auth_method=via,
         sid=sid,
+        auth_at=auth_at,
     )
+
+
+def _sessione_max_ore(ruolo: str) -> int:
+    """Durata massima di una sessione dal PIN (o dall'ingresso admin): oltre,
+    il rinnovo automatico si ferma e serve rientrare. Il tablet di reparto
+    resta aperto una settimana; l'amministratore un giorno."""
+    nome = "LOTTI_SESSIONE_MAX_ORE_ADMIN" if ruolo == "amministratore" else "LOTTI_SESSIONE_MAX_ORE"
+    predefinito = 24 if ruolo == "amministratore" else 168
+    try:
+        return int(os.environ.get(nome, str(predefinito)))
+    except ValueError:
+        return predefinito
 
 
 def verify_token(token: str):
@@ -252,6 +269,95 @@ async def require_admin(request: Request):
     raise HTTPException(status_code=403, detail="Operazione riservata all'amministratore")
 
 
+async def profilo_da_token(data: dict) -> dict | None:
+    """Ruolo e reparti ATTUALI di chi ha il token, dalla proiezione HR.
+
+    Il token dice chi sei, non cosa puoi fare: il ruolo si rilegge a ogni
+    operazione riservata, così un ruolo tolto nella scheda HR vale subito.
+    Un operatore non più in carico non ha profilo (fallisce chiuso)."""
+    from app.lotti.servizi import ruoli
+
+    if not data:
+        return None
+    if data.get("ruolo") == ruoli.AMMINISTRATORE:
+        return {"ruolo": ruoli.AMMINISTRATORE, "reparti": list(ruoli.REPARTI)}
+    sub = str(data.get("sub") or "")
+    if not sub:
+        return None
+    from app.lotti.db import database as db
+
+    op = await db.tablet_operatori.find_one(
+        {"attivo": True, "hr_id": sub, "gestionale_dipendente_id": sub},
+        {"_id": 0, "ruolo_lotti": 1, "reparti_lotti": 1})
+    if not op:
+        return None
+    return {"ruolo": ruoli.normalizza_ruolo(op.get("ruolo_lotti")),
+            "reparti": ruoli.normalizza_reparti(op.get("reparti_lotti"))}
+
+
+@functools.lru_cache(maxsize=None)
+def require_permesso(permesso: str):
+    """Gate di ruolo per le operazioni riservate (vedi ``servizi/ruoli.py``).
+
+    Il titolare passa sempre; gli altri passano solo se il ruolo attuale
+    della loro scheda HR ha quel permesso. 401 senza token valido, 403 con
+    ``X-Error-Code: RUOLO_NON_AUTORIZZATO`` se il ruolo non basta. Per i
+    permessi di reparto la rotta chiama poi ``verifica_reparto``. Una
+    dipendenza per permesso (cache): si puo' sostituire nei test con
+    ``app.dependency_overrides[require_permesso("ricette")]``."""
+    from app.lotti.servizi import ruoli
+
+    if permesso not in ruoli.PERMESSI:
+        raise KeyError(f"Permesso sconosciuto: {permesso}")
+
+    async def dipendenza(request: Request):
+        data = await _token_valido_e_non_revocato(request)
+        if not data:
+            raise HTTPException(status_code=401, detail="Autenticazione richiesta per questa operazione")
+        profilo = await profilo_da_token(data)
+        if not profilo or not ruoli.ha_permesso(profilo["ruolo"], permesso):
+            raise HTTPException(
+                status_code=403,
+                detail=f"Non puoi {ruoli.ETICHETTE_PERMESSO[permesso]}: serve il ruolo giusto nella scheda HR",
+                headers={"X-Error-Code": "RUOLO_NON_AUTORIZZATO"},
+            )
+        request.state.user = data
+        request.state.profilo = profilo
+        return profilo
+
+    dipendenza.__name__ = f"require_permesso_{permesso}"
+    return dipendenza
+
+
+def verifica_reparto(profilo: dict, reparto) -> None:
+    """Dopo ``require_permesso`` (che restituisce il profilo): 403 se il
+    reparto non è di chi opera. Il titolare lavora su tutti."""
+    from app.lotti.servizi import ruoli
+
+    if not isinstance(profilo, dict):
+        # Chiamata interna (non HTTP): il parametro e' ancora il ``Depends``
+        # di default. Le rotte HTTP ricevono sempre il profilo dal gate.
+        return
+    if not ruoli.reparto_ammesso(profilo.get("ruolo", ""), profilo.get("reparti") or [], reparto):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Reparto «{reparto or 'non indicato'}» non tuo: lo può modificare il suo caporeparto o il titolare",
+            headers={"X-Error-Code": "REPARTO_NON_AUTORIZZATO"},
+        )
+
+
+async def verifica_reparto_ricetta(profilo: dict, ricetta_id: str) -> None:
+    """Come ``verifica_reparto``, col reparto letto dalla ricetta. Una
+    ricetta che non esiste passa: la rotta risponde 404 da sé."""
+    if not isinstance(profilo, dict) or profilo.get("ruolo") == "amministratore":
+        return
+    from app.lotti.db import database as db
+
+    ricetta = await db.ricette.find_one({"id": ricetta_id}, {"_id": 0, "reparto": 1})
+    if ricetta is not None:
+        verifica_reparto(profilo, ricetta.get("reparto"))
+
+
 async def require_automation_or_admin(request: Request):
     if automation_secret_valid(request):
         return {
@@ -264,8 +370,16 @@ async def require_automation_or_admin(request: Request):
     return request_actor(request)
 
 
-# ── Anti brute-force (in memoria, per IP) ──────────────────────────────────
-_FAILS: dict = {}
+# ── Anti brute-force (persistente, per client e globale) ────────────────────
+# I tentativi falliti stanno nella collezione ``pin_tentativi`` (archivio
+# Supabase di Lotti), non nella memoria del processo: un riavvio o un deploy
+# non azzerano più il conto. Oltre al limite per client c'è un limite
+# **globale**: il login di Lotti è solo PIN (nessun nome), e l'IP arriva da
+# intestazioni che un client può scrivere da sé, quindi senza un tetto
+# complessivo bastava cambiare intestazione a ogni tentativo.
+COLL_TENTATIVI = "pin_tentativi"
+CHIAVE_GLOBALE = "globale"
+CHIAVE_SCONOSCIUTA = "sconosciuto"
 
 
 def _max_fails() -> int:
@@ -282,6 +396,22 @@ def _lock_seconds() -> int:
         return 300
 
 
+def _max_fails_globali() -> int:
+    try:
+        return int(os.environ.get("AUTH_MAX_FAILS_GLOBALI", "40"))
+    except ValueError:
+        return 40
+
+
+FINESTRA_GLOBALE_S = 900
+
+
+def _tentativi():
+    from app.lotti.db import database
+
+    return database[COLL_TENTATIVI]
+
+
 def ip_richiesta(request) -> str:
     """IP del client vero. Davanti al servizio ci sono Cloudflare e Render:
     `request.client.host` e' il proxy, e contare li' i tentativi bloccava
@@ -296,24 +426,49 @@ def ip_richiesta(request) -> str:
     return request.client.host if request.client else ""
 
 
-def check_lock(ip: str):
-    rec = _FAILS.get(ip)
-    if rec and rec[1] > time.time():
-        wait = int(rec[1] - time.time())
-        raise HTTPException(status_code=429, detail=f"Troppi tentativi. Riprova tra {wait}s")
+async def check_lock(chiave: str):
+    """429 se il client o l'intero login sono bloccati. Una chiave vuota non
+    salta il controllo: conta come «sconosciuto»."""
+    ora = time.time()
+    for k in (chiave or CHIAVE_SCONOSCIUTA, CHIAVE_GLOBALE):
+        rec = await _tentativi().find_one({"_id": k})
+        fino = float((rec or {}).get("bloccato_fino") or 0)
+        if fino > ora:
+            raise HTTPException(status_code=429, detail=f"Troppi tentativi. Riprova tra {int(fino - ora)}s")
 
 
-def register_fail(ip: str):
-    rec = _FAILS.get(ip, [0, 0.0])
-    rec[0] += 1
-    if rec[0] >= _max_fails():
-        rec[1] = time.time() + _lock_seconds()
-        rec[0] = 0
-    _FAILS[ip] = rec
+async def register_fail(chiave: str):
+    ora = time.time()
+    coll = _tentativi()
+    k = chiave or CHIAVE_SCONOSCIUTA
+    rec = await coll.find_one({"_id": k}) or {}
+    conto = int(rec.get("conto") or 0) + 1
+    fino = float(rec.get("bloccato_fino") or 0)
+    if conto >= _max_fails():
+        fino, conto = ora + _lock_seconds(), 0
+    await coll.update_one({"_id": k}, {"$set": {"conto": conto, "bloccato_fino": fino, "ultimo": ora}},
+                          upsert=True)
+
+    glob = await coll.find_one({"_id": CHIAVE_GLOBALE}) or {}
+    inizio = float(glob.get("inizio_finestra") or 0)
+    conto_g = int(glob.get("conto") or 0)
+    if ora - inizio > FINESTRA_GLOBALE_S:
+        inizio, conto_g = ora, 0
+    conto_g += 1
+    fino_g = float(glob.get("bloccato_fino") or 0)
+    if conto_g >= _max_fails_globali():
+        fino_g, conto_g, inizio = ora + _lock_seconds(), 0, ora
+        import logging
+        logging.getLogger(__name__).warning(
+            "[lotti auth] %s PIN sbagliati in %ss: login bloccato per tutti per %ss",
+            _max_fails_globali(), FINESTRA_GLOBALE_S, _lock_seconds())
+    await coll.update_one({"_id": CHIAVE_GLOBALE},
+                          {"$set": {"conto": conto_g, "inizio_finestra": inizio, "bloccato_fino": fino_g}},
+                          upsert=True)
 
 
-def clear_fails(ip: str):
-    _FAILS.pop(ip, None)
+async def clear_fails(chiave: str):
+    await _tentativi().delete_one({"_id": chiave or CHIAVE_SCONOSCIUTA})
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -326,11 +481,17 @@ async def refresh_token(request: Request):
     data = await _token_valido_e_non_revocato(request)
     if not data:
         raise HTTPException(401, "Token assente o scaduto")
+    # La catena dei rinnovi ha una fine: si misura dal momento dell'ingresso
+    # vero (``auth_at``; per i token nati prima, il loro ``iat``).
+    ruolo = data.get("ruolo", "operatore")
+    auth_at = int(data.get("auth_at") or data.get("iat") or 0)
+    if not auth_at or time.time() - auth_at > _sessione_max_ore(ruolo) * 3600:
+        raise HTTPException(401, "Sessione scaduta: rientra col PIN")
     # Il rinnovo conserva il legame con la sessione del Gestionale: senza
     # `sid` un token rinnovato sopravviverebbe al logout.
     nuovo = make_token(sub=data.get("sub", "op"), nome=data.get("nome", "Operatore"),
-                       ruolo=data.get("ruolo", "operatore"), via=data.get("via", "pin"),
-                       sid=data.get("sid", ""))
+                       ruolo=ruolo, via=data.get("via", "pin"),
+                       sid=data.get("sid", ""), auth_at=auth_at)
     return {"ok": True, "token": nuovo}
 
 
@@ -367,7 +528,12 @@ async def me(request: Request):
     data = await _token_valido_e_non_revocato(request)
     if not data:
         raise HTTPException(401, "Token assente o non valido")
-    return {"ok": True, "user": {"dipendente_id": data.get("sub"), "nome": data.get("nome"), "ruolo": data.get("ruolo"), "via": data.get("via")}}
+    from app.lotti.servizi import ruoli
+
+    profilo = await profilo_da_token(data)
+    return {"ok": True,
+            "user": {"dipendente_id": data.get("sub"), "nome": data.get("nome"), "ruolo": data.get("ruolo"), "via": data.get("via")},
+            "profilo": ruoli.profilo_ruolo(profilo["ruolo"], profilo["reparti"]) if profilo else None}
 
 
 @router.get("/config")

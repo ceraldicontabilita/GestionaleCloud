@@ -439,7 +439,7 @@ async def _carico_magazzino_bar_da_fattura(prodotti, numero_fattura, fornitore):
     except Exception as e:
         import logging
         logging.getLogger("fatture").exception("carico bar da fattura: %s", e)
-        return {"errore": str(e)[:140]}
+        return {"errore": f"carico bar non riuscito ({type(e).__name__})"}
 
 
 class _UF:
@@ -798,9 +798,16 @@ async def importa_fattura_xml(files: List[UploadFile]):
                         )
             except Exception:
                 logger.debug("[fatture] errore non bloccante ignorato")
+            from app.lotti.routers.classificatore_alimenti import e_servizio
+
             for idx, prodotto in enumerate(fattura_data["prodotti"]):
                 desc = re.sub(r"\s+", " ", prodotto.get("descrizione", "").strip())
                 if not desc:
+                    continue
+                # Spese, sconti, trasporto, arrotondamenti: righe di costo, non
+                # merce. Restano nella fattura, non diventano un lotto in giacenza.
+                if e_servizio(desc):
+                    risultati["righe_non_merce"] = risultati.get("righe_non_merce", 0) + 1
                     continue
                 lotto_data = prodotto.get("_lotto_data", {})
                 lotto_id = lotto_data.get("lotto_id_fornitore") if lotto_data else None
@@ -812,20 +819,24 @@ async def importa_fattura_xml(files: List[UploadFile]):
                         giorni_scad = (dt_s - datetime.now()).days
                 except Exception:
                     logger.debug("[fatture] errore non bloccante ignorato")
+                # Quantità assente o illeggibile: nella fattura elettronica una
+                # riga senza <Quantita> vale 1 pezzo. Quantità zero o negativa
+                # (reso, storno, sconto in natura) invece NON è merce entrata:
+                # prima diventava +1 in giacenza.
+                grezza = prodotto.get("quantita")
                 try:
-                    qt = float(str(prodotto.get("quantita", "1") or "1").replace(",", ".").strip())
-                    if qt <= 0:
-                        qt = 1.0
+                    qt = float(str(grezza).replace(",", ".").strip()) if grezza not in (None, "") else 1.0
                 except (ValueError, TypeError):
                     qt = 1.0
+                if qt <= 0:
+                    risultati["righe_non_merce"] = risultati.get("righe_non_merce", 0) + 1
+                    continue
+                # Prezzo illeggibile: vuoto, non 0 € (un lotto a 0 € sembra un regalo).
                 try:
-                    prezzo = float(
-                        str(prodotto.get("prezzo_unitario") or prodotto.get("prezzo", "0") or "0")
-                        .replace(",", ".")
-                        .strip()
-                    )
+                    grezzo = prodotto.get("prezzo_unitario") or prodotto.get("prezzo")
+                    prezzo = float(str(grezzo).replace(",", ".").strip()) if grezzo not in (None, "") else None
                 except (ValueError, TypeError):
-                    prezzo = 0.0
+                    prezzo = None
                 # Chiave univoca: fattura + fornitore + descrizione prodotto
                 chiave = {
                     "fattura_ref": fattura_data.get("numero_fattura", ""),
@@ -1184,7 +1195,7 @@ async def _esegui_ricostruzione_giacenze():
 
 
 @router.post("/ricostruisci-giacenze-bar")
-async def ricostruisci_giacenze_bar(request: Request, background_tasks: BackgroundTasks, forza: bool = False):
+async def ricostruisci_giacenze_bar(request: Request, background_tasks: BackgroundTasks, forza: bool = False, _admin=Depends(require_admin)):
     """AVVIA in background la ricostruzione da zero delle giacenze bar sommando
     tutte le fatture XML in ordine di data. Risposta immediata; stato live su
     GET /fatture/ricostruisci-giacenze-bar/stato. Solo amministratore autenticato."""
@@ -1216,7 +1227,7 @@ def _norm_piva(v: str) -> str:
 
 
 @router.post("/backfill-fornitore-debole")
-async def backfill_fornitore_debole():
+async def backfill_fornitore_debole(_admin=Depends(require_admin)):
     """Ricollega le fatture con fornitore mancante/sconosciuto: ricava il NOME del
     fornitore dalla P.IVA usando (1) l'anagrafica db.fornitori e (2) — quando lì manca —
     ALTRE fatture con la STESSA P.IVA che hanno già il fornitore valorizzato (stesso
@@ -1285,7 +1296,7 @@ async def backfill_fornitore_debole():
 
 
 @router.post("/riparse-fornitore-mancante")
-async def riparse_fornitore_mancante():
+async def riparse_fornitore_mancante(_admin=Depends(require_admin)):
     """
     Recupera il NOME del fornitore per le fatture che hanno P.IVA ma fornitore
     vuoto, ri-parsando l'XML grezzo (xml_raw) col parser corretto: ora gestisce
@@ -1563,7 +1574,7 @@ async def aggiorna_dizionario_prodotto(prodotto: dict, fattura_data: dict, fattu
 
 # ── Backfill aliquote IVA dai XML già archiviati ──────────────────────────────
 @router.post("/backfill-iva")
-async def backfill_iva():
+async def backfill_iva(_admin=Depends(require_admin)):
     """Una tantum: rilegge gli xml_raw delle fatture archiviate, estrae
     l'AliquotaIVA di ogni riga e la salva su dizionario_prodotti.iva_pct
     (ultima aliquota vista per prodotto). Serve ai totali degli ordini."""
@@ -1597,7 +1608,7 @@ async def backfill_iva():
 
 # ── Backfill codici articolo dai XML già archiviati ───────────────────────────
 @router.post("/backfill-codici-articolo")
-async def backfill_codici_articolo():
+async def backfill_codici_articolo(_admin=Depends(require_admin)):
     """Una tantum: rilegge gli xml_raw delle fatture archiviate ed estrae il
     CodiceArticolo di ogni riga (il parser lo salva solo dagli import nuovi).
     Il codice del fornitore è identico a quello dei suoi cataloghi (Bindi,
@@ -1671,7 +1682,7 @@ def collega_righe(prodotti) -> int:
 
 
 @router.post("/ricollega-righe")
-async def ricollega_righe_fatture():
+async def ricollega_righe_fatture(_admin=Depends(require_admin)):
     fatture_agg = 0
     righe_agg = 0
     async for f in db.fatture.find({}, {"id": 1, "prodotti": 1}):

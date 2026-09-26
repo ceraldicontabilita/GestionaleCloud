@@ -76,6 +76,12 @@ def test_haccp_periodic_automation_never_creates_evidence():
     with pytest.raises(ModuleNotFoundError):
         importlib.import_module("app.lotti.routers.automatismi_haccp")
 
+    # Il «periodo speciale» timbrava CHIUSO/MANUTENZIONE su ogni cella,
+    # cancellando le letture vere, e firmava «Sistema»: tolto il 26/09/2026.
+    # Le chiusure vere stanno in /chiusure.
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("app.lotti.routers.haccp_periodi_speciali")
+
     scheduler = (ROOT / "app/lotti/routers/scheduler.py").read_text(encoding="utf-8")
     assert "automatismi_haccp" not in scheduler, (
         "Lo scheduler chiama ancora gli automatismi che fabbricavano il registro."

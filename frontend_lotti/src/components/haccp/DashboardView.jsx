@@ -156,6 +156,9 @@ export default function DashboardView({ stats = {}, onRefresh, onNavigate }) {
   const [cruscotto, setCruscotto] = useState(null);
   const [sommarioSupervisore, setSommarioSupervisore] = useState(null);
   const [produzioneDaDecidere, setProduzioneDaDecidere] = useState(0);
+  // Fonti che non hanno risposto: un numero mancante non è uno zero, e con
+  // anche una sola fonte giù la home non può dire «tutto in regola».
+  const [fontiMancanti, setFontiMancanti] = useState([]);
 
   const navigate = useCallback((tab) => {
     if (tab?.includes("/")) {
@@ -179,7 +182,11 @@ export default function DashboardView({ stats = {}, onRefresh, onNavigate }) {
         axios.get(`${API}/supervisor/sommario`, { timeout: 15000 }),
         axios.get(`${API}/produzione-consigliata`, { params: { data: domani.toISOString().slice(0, 10) }, timeout: 15000 }),
       ]);
-      if (crusc.status === "fulfilled") setCruscotto(crusc.value.data || null);
+      const nomi = ["lotti in scadenza", "produzioni di oggi", "banco di oggi", "ordini in bozza",
+        "ordini inviati", "cruscotto", "alert HACCP", "produzione consigliata"];
+      const esiti = [scadenze, produzioni, vendite, ordini, ordiniInv, crusc, sommario, prodConsigliata];
+      setFontiMancanti(esiti.map((e, i) => (e.status === "fulfilled" ? null : nomi[i])).filter(Boolean));
+      setCruscotto(crusc.status === "fulfilled" ? (crusc.value.data || null) : null);
       if (scadenze.status === "fulfilled") setLottiScadenza(scadenze.value.data?.lotti || []);
       if (produzioni.status === "fulfilled") setProduzioniOggi(produzioni.value.data || []);
       if (vendite.status === "fulfilled") setVenditeOggi(vendite.value.data || []);
@@ -264,7 +271,13 @@ export default function DashboardView({ stats = {}, onRefresh, onNavigate }) {
         if (produzioneDaDecidere > 0) {
           voci.push({ label: `${produzioneDaDecidere} suggerimenti di produzione da decidere per domani`, onClick: () => navigate("produzione_consigliata"), tono: "#c4894a" });
         }
-        if (voci.length === 0) {
+        if (fontiMancanti.length > 0) {
+          voci.push({ label: `Dato non disponibile: ${fontiMancanti.join(", ")} — tocca Aggiorna per riprovare`, onClick: null, tono: "#d35f4e" });
+        }
+        if (cruscotto?.kpi?.scorte_errore) {
+          voci.push({ label: `Scorte: dato non disponibile (${cruscotto.kpi.scorte_errore})`, onClick: null, tono: "#d35f4e" });
+        }
+        if (voci.length === 0 && !loading) {
           return (
             <section className="rounded-2xl border-2 border-emerald-200 bg-emerald-50 p-4 flex items-center gap-3">
               <ShieldCheck className="text-emerald-600 shrink-0" size={22} />
@@ -275,6 +288,7 @@ export default function DashboardView({ stats = {}, onRefresh, onNavigate }) {
             </section>
           );
         }
+        if (voci.length === 0) return null;
         return (
           <section className="rounded-2xl border-2 border-amber-200 bg-amber-50 p-4">
             <p className="m-0 font-black text-amber-900 mb-2">Cosa devo fare oggi</p>
@@ -322,22 +336,36 @@ export default function DashboardView({ stats = {}, onRefresh, onNavigate }) {
       </section>
 
       {/* ── CRUSCOTTO: colpo d'occhio del mattino ──────────────────────── */}
-      {cruscotto?.kpi && (
+      {!loading && (() => {
+        const k = cruscotto?.kpi || {};
+        const nd = "Dato non disponibile";
+        const conta = (v) => (v === null || v === undefined ? nd : v);
+        const spesa = k.spesa_mese === null || k.spesa_mese === undefined
+          ? nd
+          : `€${Number(k.spesa_mese).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        const subSpesa = !cruscotto ? "cruscotto non raggiungibile"
+          : k.spesa_errore ? k.spesa_errore
+          : `${k.fatture_mese} fatture${k.fatture_senza_importo ? ` · ${k.fatture_senza_importo} senza importo` : ""}`;
+        const subScorta = k.sotto_scorta === null || k.sotto_scorta === undefined ? (k.scorte_errore || "non letto")
+          : [k.esauriti ? `${k.esauriti} esauriti` : null, k.senza_soglia ? `${k.senza_soglia} senza soglia` : null]
+              .filter(Boolean).join(" · ") || "tutto ok";
+        return (
         <section className="space-y-3">
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-            <KpiBig label="Spesa 30 giorni" value={`€${Math.round(cruscotto.kpi.spesa_mese).toLocaleString("it-IT")}`}
-              sub={`${cruscotto.kpi.fatture_mese} fatture`} color="#5b7a6b" icon={Wallet} />
-            <KpiBig label="Sotto scorta" value={cruscotto.kpi.sotto_scorta}
-              sub={cruscotto.kpi.esauriti ? `${cruscotto.kpi.esauriti} esauriti` : "tutto ok"} color={cruscotto.kpi.sotto_scorta ? "#c4894a" : "#3d8168"} icon={TrendingDown} onClick={() => navigate("backoffice")} />
-            <KpiBig label="Lotti scaduti" value={cruscotto.kpi.lotti_scaduti}
-              sub={cruscotto.kpi.lotti_in_scadenza ? `${cruscotto.kpi.lotti_in_scadenza} in scadenza` : "nessuno"} color={cruscotto.kpi.lotti_scaduti ? "#d35f4e" : "#3d8168"} icon={AlertTriangle} onClick={() => navigate("lotti")} />
-            <KpiBig label="Ordini da convalidare" value={cruscotto.kpi.ordini_bozza}
-              sub={cruscotto.kpi.ordini_bozza ? "bozze in attesa" : "nessuno"} color={cruscotto.kpi.ordini_bozza ? "#8a6f47" : "#3d8168"} icon={ShoppingCart} onClick={() => navigate("ordini")} />
-            <KpiBig label="Prodotti oggi" value={loading ? "..." : fmt(riepilogo.pezziProdotti)}
+            <KpiBig label="Spesa 30 giorni" value={spesa}
+              sub={subSpesa} color="#5b7a6b" icon={Wallet} />
+            <KpiBig label="Sotto scorta" value={conta(k.sotto_scorta)}
+              sub={subScorta} color={k.sotto_scorta ? "#c4894a" : "#3d8168"} icon={TrendingDown} onClick={() => navigate("backoffice")} />
+            <KpiBig label="Lotti scaduti" value={conta(k.lotti_scaduti)}
+              sub={!cruscotto ? "non letto" : k.lotti_in_scadenza ? `${k.lotti_in_scadenza} in scadenza` : "nessuno"} color={k.lotti_scaduti ? "#d35f4e" : "#3d8168"} icon={AlertTriangle} onClick={() => navigate("lotti")} />
+            <KpiBig label="Ordini da convalidare" value={conta(k.ordini_bozza)}
+              sub={!cruscotto ? "non letto" : k.ordini_bozza ? "bozze in attesa" : "nessuno"} color={k.ordini_bozza ? "#8a6f47" : "#3d8168"} icon={ShoppingCart} onClick={() => navigate("ordini")} />
+            <KpiBig label="Prodotti oggi" value={fontiMancanti.includes("produzioni di oggi") ? nd : fmt(riepilogo.pezziProdotti)}
               sub="pezzi in produzione" color="#8a6f47" icon={ChefHat} onClick={() => navigate("storico_produzioni")} />
           </div>
         </section>
-      )}
+        );
+      })()}
 
 
       {/* Home più pulita: Area ufficio e Archivio (roba da scrivania, non
@@ -346,7 +374,7 @@ export default function DashboardView({ stats = {}, onRefresh, onNavigate }) {
         <section>
           <SectionTitle title="Amministrazione" subtitle="Configurazione sempre visibile per il titolare." />
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <QuickLink icon={Settings} title="Impostazioni" subtitle="Azienda, personale, permessi e stampanti" onClick={() => navigate("personale")} />
+            <QuickLink icon={Settings} title="Impostazioni" subtitle="Azienda, operatori, frigoriferi, stampanti, backup" onClick={() => navigate("impostazioni")} />
             <QuickLink icon={Network} title="Controllo dati" subtitle="Integrità, anomalie e manutenzione archivio" onClick={() => navigate("controllo_dati")} />
           </div>
         </section>
@@ -382,8 +410,8 @@ export default function DashboardView({ stats = {}, onRefresh, onNavigate }) {
       <section>
         <SectionTitle title="Archivio" subtitle="Accessi veloci ai dati strutturali." />
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <QuickLink icon={Package} title="Materie prime" subtitle={`${fmt(stats.materie_prime)} articoli`} onClick={() => navigate("materie")} />
-          <QuickLink icon={Layers} title="Lotti totali" subtitle={`${fmt(stats.lotti_totali)} registrazioni`} onClick={() => navigate("lotti")} />
+          <QuickLink icon={Package} title="Materie prime" subtitle={stats.materie_prime == null ? "Dato non disponibile" : `${fmt(stats.materie_prime)} articoli`} onClick={() => navigate("materie")} />
+          <QuickLink icon={Layers} title="Lotti totali" subtitle={stats.lotti_totali == null ? "Dato non disponibile" : `${fmt(stats.lotti_totali)} registrazioni`} onClick={() => navigate("lotti")} />
           <QuickLink icon={Truck} title="Ricezione merce" subtitle="Arrivi, controlli e fornitori" onClick={() => navigate("ricezione_merce")} />
           {isAdmin() && <QuickLink icon={ClipboardCheck} title="Collaudi da fare" subtitle="Test da spuntare dopo ogni modifica" onClick={() => navigate("collaudi")} />}
           <QuickLink icon={FileText} title="Listini e cataloghi" subtitle="Listini, cataloghi fornitori, prezzi banco e magazzino" onClick={() => navigate("prodotti")} />

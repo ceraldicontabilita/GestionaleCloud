@@ -122,50 +122,57 @@ def _ader_plan_preview(plan: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+_REGISTRO_TTL_SECONDI = 15.0
+_registro_letto: dict[str, Any] = {}
+
+
+async def _righe_registro(db) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Registro unico F24 (modelli, quietanze, addebiti) e le sue righe tributo.
+
+    La pagina chiede riepilogo e scheda insieme: una lettura sola per entrambi,
+    tenuta 15 secondi (le stesse del giro della cache del runtime).
+    """
+    import time
+
+    from app.services.f24_controllo_incrociato import carica_registro
+    from app.services.registro_fiscale_f24 import righe_da_registro
+
+    adesso = time.monotonic()
+    if _registro_letto.get("db") is db and adesso - _registro_letto.get("at", 0.0) < _REGISTRO_TTL_SECONDI:
+        return _registro_letto["registro"], _registro_letto["righe"]
+    registro = await carica_registro(db)
+    righe = righe_da_registro(registro)
+    _registro_letto.update({"db": db, "at": adesso, "registro": registro, "righe": righe})
+    return registro, righe
+
+
+def _fonti(righe: list[dict[str, Any]]) -> dict[str, Any]:
+    return {"registro_f24": len(righe), "canonical": "registro_f24"}
+
+
 @router.get("/summary")
 async def summary(_admin: Dict[str, Any] = Depends(get_current_admin_user)):
-    drive_index: dict[str, Any]
-    try:
-        from app.services.drive_document_index import get_overview
-        overview = await asyncio.to_thread(get_overview)
-        validation = overview.get("validation") or {}
-        drive_index = {
-            "available": True,
-            "verified": bool(validation.get("all_true")),
-            "counts": validation.get("counts") or {},
-            "semantics": overview.get("semantics") or {},
-        }
-    except (RuntimeError, ValueError) as exc:
-        drive_index = {"available": False, "verified": False, "counts": {}, "warning": str(exc)}
+    from app.services.registro_fiscale_f24 import conteggi
+
+    db = Database.get_db()
+    registro, righe = await _righe_registro(db)
+    dichiarazioni = await db[COLL_FISCAL_DOCUMENTS].count_documents(
+        {"company_id": _company(), "document_type": {"$in": sorted(DECLARATION_TYPES)}},
+    )
     return {
-        "company_id": _company(), "counts": {},
-        "requires_review": 0, "drive_index": drive_index,
-        "canonical_source": "google_drive",
+        "company_id": _company(), "counts": conteggi(registro, righe, dichiarazioni),
+        "requires_review": 0, "canonical_source": "registro_f24",
     }
 
 
 @router.get("/obligations")
 async def obligations(status: str | None = None, limit: int = Query(200, ge=1, le=5000),
                       _admin: Dict[str, Any] = Depends(get_current_admin_user)):
-    drive_warning = None
-    try:
-        from app.services.drive_document_index import list_tax_obligations
-        drive_payload = await asyncio.to_thread(
-            list_tax_obligations, status=status, offset=0, limit=limit,
-        )
-        drive_items = drive_payload["items"]
-        drive_total = drive_payload["total"]
-    except (RuntimeError, ValueError) as exc:
-        drive_items, drive_total, drive_warning = [], 0, str(exc)
-    return {
-        "items": drive_items,
-        "total": drive_total,
-        "sources": {
-            "drive_excel_index": len(drive_items),
-            "canonical": "google_drive",
-            "drive_warning": drive_warning,
-        },
-    }
+    from app.services.registro_fiscale_f24 import obblighi
+
+    _, righe = await _righe_registro(Database.get_db())
+    items = obblighi(righe, status)
+    return {"items": items[:limit], "total": len(items), "sources": _fonti(items)}
 
 
 @router.get("/f24-rows")
@@ -178,37 +185,18 @@ async def f24_rows(
     limit: int = Query(200, ge=1, le=5000),
     _admin: Dict[str, Any] = Depends(get_current_admin_user),
 ):
-    """Normalized F24 lines with a direct, reversible link to their PDF."""
-    drive_warning = None
-    try:
-        from app.services.drive_document_index import list_f24_rows
-        drive_payload = await asyncio.to_thread(
-            list_f24_rows, year=str(year) if year else None,
-            tax_code=tax_code, document_id=document_id,
-            credits_only=credits_only, offset=0, limit=5000,
-        )
-        drive_items = drive_payload["items"]
-        drive_total = drive_payload["total"]
-    except (RuntimeError, ValueError) as exc:
-        drive_items = []
-        drive_total = 0
-        drive_warning = str(exc)
+    """Righe F24 del registro, ognuna col suo modello o quietanza d'origine."""
+    from app.services.registro_fiscale_f24 import filtra_righe
 
-    drive_items.sort(key=lambda item: (
-        _fiscal_date_sort_key(item.get("payment_date")), str(item.get("filename") or ""),
-        int(item.get("ordinal") or 0),
-    ), reverse=True)
-    items = drive_items[offset:offset + limit]
+    _, righe = await _righe_registro(Database.get_db())
+    items = filtra_righe(righe, year=year, tax_code=tax_code, document_id=document_id,
+                         credits_only=credits_only)
     return {
-        "items": items,
-        "total": drive_total,
+        "items": items[offset:offset + limit],
+        "total": len(items),
         "offset": offset,
         "limit": limit,
-        "sources": {
-            "drive_excel_index": len(drive_items),
-            "canonical": "google_drive",
-            "drive_warning": drive_warning,
-        },
+        "sources": _fonti(items),
         "filters": {"tax_code": tax_code, "document_id": document_id, "year": year, "credits_only": credits_only},
     }
 
@@ -219,18 +207,8 @@ async def declarations(
     declaration_type: str | None = None,
     _admin: Dict[str, Any] = Depends(get_current_admin_user),
 ):
-    """770/IVA/IRAP/LIPE/Redditi SC gia' ingeriti in fiscal_documents (Drive
-    canale "dichiarazione_fiscale" + upload manuale), con i tributi F24/
-    quietanza gia' agganciati da ``list_declaration_dossiers``.
-
-    Sostituisce, per questo solo elenco, il read-through sul vecchio indice
-    Excel/Drive (``drive_document_index``): quella radice non esiste piu' su
-    Drive (vedi CLAUDE.md, 03/09/2026) e restituiva sempre lista vuota con
-    avviso. Il drill-down "Verifica campi e F24" (``/declarations/{id}/
-    field-certainty``) resta sul vecchio motore: e' una funzione piu' ampia
-    (estrazione campi + riconciliazione LIPE/770), non nel perimetro di
-    questa correzione.
-    """
+    """770/IVA/IRAP/LIPE/Redditi SC gia' ingeriti in fiscal_documents, con i
+    tributi F24/quietanza gia' agganciati da ``list_declaration_dossiers``."""
     if declaration_type and declaration_type not in DECLARATION_TYPES:
         raise HTTPException(400, "Tipo dichiarazione non valido")
     db = Database.get_db()
@@ -255,68 +233,49 @@ async def source_certainty(
     year: int | None = Query(None, ge=2000, le=2100),
     _admin: Dict[str, Any] = Depends(get_current_admin_user),
 ):
-    """Confronta F24 del commercialista e quietanze Drive su identita' fiscali forti."""
-    from app.services.drive_document_index import list_declarations as list_drive_declarations
-    from app.services.drive_document_index import list_tax_obligations
+    """Confronta modelli F24 del commercialista e quietanze su identita' fiscali forti."""
     from app.services.fiscal_source_certainty import (
         annotate_declaration_certainty,
         group_model_rows,
         reconcile_f24_sources,
     )
+    from app.services.registro_fiscale_f24 import obblighi
 
-    drive_payload = await asyncio.to_thread(
-        list_tax_obligations, offset=0, limit=5000,
-    )
-    declaration_payload = await asyncio.to_thread(
-        list_drive_declarations, year=str(year) if year else None, limit=5000,
-    )
-    all_rows = drive_payload["items"]
+    db = Database.get_db()
+    _, righe = await _righe_registro(db)
+    all_rows = obblighi(righe)
     if year:
         all_rows = [row for row in all_rows if str(row.get("payment_year") or "") == str(year)]
-    receipt_rows = [
-        row for row in all_rows
-        if row.get("documentary_payment_status") == "QUIETANZA_PRESENTE"
-    ]
-    model_rows = [
-        row for row in all_rows
-        if row.get("source_role") == "MODELLO_F24_COMMERCIALISTA"
-    ]
-    unattributed_model_rows = [
-        row for row in all_rows
-        if row.get("documentary_payment_status") != "QUIETANZA_PRESENTE"
-        and row.get("source_role") != "MODELLO_F24_COMMERCIALISTA"
-    ]
+    receipt_rows = [row for row in all_rows if row.get("documentary_payment_status") == "QUIETANZA_PRESENTE"]
+    model_rows = [row for row in all_rows if row.get("source_role") == "MODELLO_F24_COMMERCIALISTA"]
     accountant_documents = group_model_rows(model_rows)
     result = reconcile_f24_sources(receipt_rows, accountant_documents)
-    declarations = declaration_payload["results"]
+    declarations = await list_declaration_dossiers(db, company_id=_company(), year=year)
     declaration_items = annotate_declaration_certainty([{
-        "document_id": item.get("document_id"),
+        "document_id": item.get("id"),
         "document_type": item.get("document_type"),
         "filing_year": item.get("filing_year"),
         "tax_year": item.get("tax_year"),
         "filename": item.get("filename"),
         "protocol": item.get("protocol"),
-        "relation_state": item.get("relation_state"),
+        # Registrata in fiscal_documents con una versione: il deposito e'
+        # l'indice, e l'originale si legge per id, non per nome.
+        "relation_state": "CONFERMATA_NOME_UNIVOCO_E_INDICE_VERIFICATO"
+        if item.get("current_version_id") else None,
     } for item in declarations])
     result.update({
         "year": year,
         "sources": {
             "quietanza_drive_rows": len(receipt_rows),
             "commercialista_f24_documents": len(accountant_documents),
-            "unattributed_f24_model_documents": len({
-                str(row.get("document_id") or "") for row in unattributed_model_rows
-                if row.get("document_id")
-            }),
-            "unattributed_f24_model_rows": len(unattributed_model_rows),
+            "unattributed_f24_model_documents": 0,
+            "unattributed_f24_model_rows": 0,
             "declaration_documents": len(declarations),
-            "canonical": "google_drive",
+            "canonical": "registro_f24",
         },
         "declarations": {
             "documents": len(declarations),
-            "with_verified_identity": sum(
-                item.get("relation_state") == "CONFERMATA_NOME_UNIVOCO_E_INDICE_VERIFICATO"
-                for item in declarations
-            ),
+            "with_verified_identity": sum(bool(item.get("current_version_id")) for item in declarations),
             "ready_for_field_check": sum(
                 item.get("field_check_status") == "PRONTO_PER_VERIFICA_CAMPI"
                 for item in declaration_items
@@ -336,45 +295,56 @@ async def source_certainty(
     return result
 
 
+async def _originale_fiscale(db, document: dict[str, Any]) -> tuple[bytes, str]:
+    """PDF originale di un documento fiscale, dal deposito Documenti."""
+    inbox_id = (document.get("metadata") or {}).get("documents_inbox_id")
+    query = ({"id": inbox_id, "company_id": _company()} if inbox_id
+             else {"company_id": _company(), "fiscal_document_id": document.get("id")})
+    source = await db["documents_inbox"].find_one(query, {"_id": 0, "pdf_data": 1, "filename": 1})
+    if not source or not source.get("pdf_data"):
+        raise HTTPException(404, "Originale non disponibile nel deposito Documenti")
+    return base64.b64decode(source["pdf_data"]), str(source.get("filename") or "documento.pdf")
+
+
 @router.get("/declarations/{document_id}/field-certainty")
 async def declaration_field_certainty(
     document_id: str,
     _admin: Dict[str, Any] = Depends(get_current_admin_user),
 ):
-    """Estrae campi dichiarativi tracciati e li confronta con le righe F24 Drive."""
+    """Estrae campi dichiarativi tracciati e li confronta con le righe F24 del registro."""
+    import hashlib
+
     from app.services.declaration_field_certainty import (
         extract_declaration_fields,
         reconcile_770_management,
         reconcile_lipe_management,
         reconcile_declaration_tax_rows,
     )
-    from app.services.drive_document_index import (
-        build_drive_service,
-        list_tax_obligations,
-        load_declaration_pdf,
-    )
+    from app.services.declaration_registry import declaration_metadata
+    from app.services.registro_fiscale_f24 import obblighi
 
+    db = Database.get_db()
+    raw = await db[COLL_FISCAL_DOCUMENTS].find_one({"company_id": _company(), "id": document_id}, {"_id": 0})
+    if not raw or raw.get("document_type") not in DECLARATION_TYPES:
+        raise HTTPException(404, "Dichiarazione non trovata")
+    declaration = declaration_metadata(raw)
+    content, filename = await _originale_fiscale(db, raw)
+    sha256 = hashlib.sha256(content).hexdigest()
     try:
-        service = await asyncio.to_thread(build_drive_service)
-        source = await asyncio.to_thread(load_declaration_pdf, document_id, service)
         extraction = await asyncio.to_thread(
             extract_declaration_fields,
-            source["content"],
-            document_type=source["declaration"]["document_type"],
+            content,
+            document_type=declaration["document_type"],
             document_id=document_id,
-            filename=source["document"].get("filename"),
-            sha256=source["sha256"],
-            tax_year=source["declaration"].get("tax_year"),
-        )
-        f24_payload = await asyncio.to_thread(
-            list_tax_obligations, service, offset=0, limit=5000,
+            filename=declaration.get("filename") or filename,
+            sha256=sha256,
+            tax_year=declaration.get("tax_year"),
         )
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
-    except RuntimeError as exc:
-        raise HTTPException(503, str(exc)) from exc
+    _, righe = await _righe_registro(db)
 
-    reconciliation = reconcile_declaration_tax_rows(extraction, f24_payload["items"])
+    reconciliation = reconcile_declaration_tax_rows(extraction, obblighi(righe))
     management_reconciliation = None
     management_warning = None
     if extraction.get("document_type") == "LIPE":
@@ -386,7 +356,6 @@ async def declaration_field_certainty(
             if item.get("month") and tax_year
         })
         try:
-            db = Database.get_db()
             snapshots_list = await asyncio.gather(*[
                 get_iva_period_snapshot(db, anno=int(tax_year), mese=month)
                 for month in months
@@ -394,7 +363,7 @@ async def declaration_field_certainty(
             snapshots = {item["periodo"]: item for item in snapshots_list}
             management_reconciliation = reconcile_lipe_management(extraction, snapshots)
         except Exception as exc:  # la prova dichiarazione/F24 resta consultabile
-            management_warning = str(exc)
+            management_warning = f"{type(exc).__name__}: {exc}"
     elif extraction.get("document_type") == "MODELLO_770":
         periods = sorted({
             str(item.get("reference_period") or "")
@@ -402,7 +371,6 @@ async def declaration_field_certainty(
             if item.get("reference_period")
         })
         try:
-            db = Database.get_db()
             records = [] if not periods else await db["ritenute_acconto"].find(
                 {"periodo_ritenuta": {"$in": periods}},
                 {"_id": 0, "id": 1, "periodo_ritenuta": 1, "importo": 1,
@@ -410,15 +378,13 @@ async def declaration_field_certainty(
             ).to_list(10000)
             management_reconciliation = reconcile_770_management(extraction, records)
         except Exception as exc:  # la prova dichiarazione/F24 resta consultabile
-            management_warning = str(exc)
+            management_warning = f"{type(exc).__name__}: {exc}"
     return {
         "source": {
-            "document": source["document"],
-            "declaration": source["declaration"],
-            "drive_file_id": source["drive_file_id"],
-            "drive_url": source["drive_url"],
-            "sha256": source["sha256"],
-            "canonical": "google_drive",
+            "document": {"id": document_id, "filename": declaration.get("filename") or filename},
+            "declaration": {k: declaration.get(k) for k in ("document_type", "filing_year", "tax_year", "protocol")},
+            "sha256": sha256,
+            "canonical": "fiscal_documents",
         },
         "extraction": extraction,
         "reconciliation": reconciliation,
@@ -591,13 +557,8 @@ async def document_content(document_id: str, _admin: Dict[str, Any] = Depends(ge
     document = await db[COLL_FISCAL_DOCUMENTS].find_one({"company_id": _company(), "id": document_id}, {"_id": 0})
     if not document:
         raise HTTPException(404, "Documento fiscale non trovato")
-    inbox_id = (document.get("metadata") or {}).get("documents_inbox_id")
-    query = {"id": inbox_id, "company_id": _company()} if inbox_id else {"company_id": _company(), "fiscal_document_id": document_id}
-    source = await db["documents_inbox"].find_one(query, {"_id": 0, "pdf_data": 1, "filename": 1})
-    if not source or not source.get("pdf_data"):
-        raise HTTPException(404, "Originale non disponibile nel deposito Documenti")
-    content = base64.b64decode(source["pdf_data"])
-    safe_filename = str(source.get("filename") or "documento.pdf").replace('"', "_").replace("\r", "_").replace("\n", "_")
+    content, filename = await _originale_fiscale(db, document)
+    safe_filename = filename.replace('"', "_").replace("\r", "_").replace("\n", "_")
     return StreamingResponse(io.BytesIO(content), media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="{safe_filename}"'})
 
 

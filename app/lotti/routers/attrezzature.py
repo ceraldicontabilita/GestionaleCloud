@@ -34,7 +34,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from datetime import datetime, timezone
 
-from app.lotti.auth import require_admin
+from app.lotti.auth import require_admin, require_permesso
 from app.lotti.db import database as db
 
 router = APIRouter(prefix="/attrezzature", tags=["Attrezzature"])
@@ -52,7 +52,7 @@ async def _get_config(tipo: str) -> list[dict]:
     docs = (
         await db.attrezzature_config.find({"tipo": tipo, "attivo": {"$ne": False}}, {"_id": 0})
         .sort("numero", 1)
-        .to_list(50)
+        .to_list(None)
     )
     return docs
 
@@ -61,7 +61,7 @@ async def _next_numero(tipo: str) -> int:
     """Calcola il prossimo numero disponibile per il tipo indicato."""
     docs = await db.attrezzature_config.find(
         {"tipo": tipo, "attivo": {"$ne": False}}, {"_id": 0, "numero": 1}
-    ).to_list(50)
+    ).to_list(None)
     usati = {d["numero"] for d in docs}
     n = 1
     while n in usati:
@@ -75,48 +75,30 @@ def _label_default(tipo: str, numero: int) -> str:
 
 async def _build_list(tipo: str, fallback_tipo: str) -> list[dict]:
     """
-    Restituisce la lista degli elementi del tipo indicato.
-    Se non ci sono record personalizzati, genera defaults dai documenti HACCP.
-    In ogni caso, aggiunge automaticamente tutti i numeri presenti in HACCP
-    che non siano già nella config (sync automatico).
+    Restituisce la lista degli elementi del tipo indicato: quelli censiti in
+    `attrezzature_config`; se non ce n'e' nessuno, i numeri che hanno una
+    scheda HACCP reale (in sola lettura, senza censirli).
     """
-    # Sync automatico: importa da HACCP quelli non ancora in config
-    coll = db.temperature_positive if tipo == "frigo" else db.temperature_negative
-    campo_num = "frigorifero_numero" if tipo == "frigo" else "congelatore_numero"
-    campo_nome = "frigorifero_nome" if tipo == "frigo" else "congelatore_nome"
-    haccp_docs = await coll.find({}, {"_id": 0, campo_num: 1, campo_nome: 1}).to_list(200)
-    haccp_numeri = {}
-    for d in haccp_docs:
-        n = d.get(campo_num)
-        if n and n not in haccp_numeri:
-            haccp_numeri[n] = d.get(campo_nome) or _label_default(tipo, n)
-
-    existing = await db.attrezzature_config.find({"tipo": tipo}, {"_id": 0, "numero": 1}).to_list(
-        50
-    )
-    existing_numeri = {d["numero"] for d in existing}
-    for n, nome in haccp_numeri.items():
-        if n not in existing_numeri:
-            await db.attrezzature_config.insert_one(
-                {
-                    "tipo": tipo,
-                    "numero": n,
-                    "nome": nome,
-                    "attivo": True,
-                    "created_at": datetime.now(timezone.utc).isoformat(),
-                }
-            )
-
+    # Nessuna scrittura in lettura: prima qui un GET copiava in
+    # `attrezzature_config` ogni numero trovato nelle schede, comprese le 12
+    # schede vuote che la pagina temperature creava da sola. Un apparecchio
+    # si censisce solo da «Frigoriferi e congelatori».
     docs = await _get_config(tipo)
     if docs:
         return [
-            {"tipo": tipo, "numero": d["numero"], "nome": d["nome"], "label": d["nome"]}
+            {"tipo": tipo, "numero": d["numero"], "nome": d["nome"], "label": d["nome"],
+             "fuori_servizio": bool(d.get("fuori_servizio"))}
             for d in docs
         ]
 
+    coll = db.temperature_positive if tipo == "frigo" else db.temperature_negative
+    campo_num = "frigorifero_numero" if tipo == "frigo" else "congelatore_numero"
+    haccp_docs = await coll.find({}, {"_id": 0, campo_num: 1}).to_list(None)
+    haccp_numeri = {d.get(campo_num) for d in haccp_docs if d.get(campo_num)}
+
     # Nessun apparecchio inventato: senza configurazione o scheda HACCP reale
     # il tablet deve chiedere di censirlo.
-    numeri = sorted(haccp_numeri.keys())
+    numeri = sorted(haccp_numeri)
     return [
         {
             "tipo": tipo,
@@ -153,7 +135,7 @@ async def get_congelatori():
 
 # ─── AGGIUNGI ─────────────────────────────────────────────────────────────────
 @router.post("/frigo")
-async def aggiungi_frigo(body: NuovaAttrezzatura, _admin=Depends(require_admin)):
+async def aggiungi_frigo(body: NuovaAttrezzatura, _ruolo=Depends(require_permesso("frigoriferi"))):
     """Aggiunge un nuovo frigorifero. Il numero viene auto-assegnato se non indicato."""
     numero = body.numero or await _next_numero("frigo")
     # Verifica duplicati
@@ -176,7 +158,7 @@ async def aggiungi_frigo(body: NuovaAttrezzatura, _admin=Depends(require_admin))
 
 
 @router.post("/congelatore")
-async def aggiungi_congelatore(body: NuovaAttrezzatura, _admin=Depends(require_admin)):
+async def aggiungi_congelatore(body: NuovaAttrezzatura, _ruolo=Depends(require_permesso("frigoriferi"))):
     """Aggiunge un nuovo congelatore."""
     numero = body.numero or await _next_numero("congelatore")
     existing = await db.attrezzature_config.find_one(
@@ -199,7 +181,7 @@ async def aggiungi_congelatore(body: NuovaAttrezzatura, _admin=Depends(require_a
 
 # ─── RINOMINA ─────────────────────────────────────────────────────────────────
 @router.put("/frigo/{numero}/rinomina")
-async def rinomina_frigo(numero: int, nome: str = Query(...), _admin=Depends(require_admin)):
+async def rinomina_frigo(numero: int, nome: str = Query(...), _ruolo=Depends(require_permesso("frigoriferi"))):
     """Rinomina un frigorifero (anche in temperature_positive per retrocompatibilità)."""
     nome = nome.strip()
     if not nome:
@@ -228,7 +210,7 @@ async def rinomina_frigo(numero: int, nome: str = Query(...), _admin=Depends(req
 
 
 @router.put("/congelatore/{numero}/rinomina")
-async def rinomina_congelatore(numero: int, nome: str = Query(...), _admin=Depends(require_admin)):
+async def rinomina_congelatore(numero: int, nome: str = Query(...), _ruolo=Depends(require_permesso("frigoriferi"))):
     """Rinomina un congelatore."""
     nome = nome.strip()
     if not nome:
@@ -354,7 +336,7 @@ async def elenco_assegnazioni():
 
 @router.put("/{tipo}/{numero}/operatore")
 async def assegna_operatore(
-    tipo: str, numero: int, dati: AssegnaOperatore, _admin=Depends(require_admin),
+    tipo: str, numero: int, dati: AssegnaOperatore, _ruolo=Depends(require_permesso("frigoriferi")),
 ):
     """Assegna (o toglie) il responsabile di un apparecchio.
 
@@ -411,7 +393,7 @@ class FuoriServizio(BaseModel):
 
 @router.put("/{tipo}/{numero}/fuori-servizio")
 async def metti_fuori_servizio(
-    tipo: str, numero: int, dati: FuoriServizio, _admin=Depends(require_admin),
+    tipo: str, numero: int, dati: FuoriServizio, _ruolo=Depends(require_permesso("frigoriferi")),
 ):
     if tipo not in ("frigo", "congelatore"):
         raise HTTPException(status_code=400, detail="Tipo non valido: frigo o congelatore")
@@ -442,7 +424,7 @@ async def metti_fuori_servizio(
 
 
 @router.put("/{tipo}/{numero}/rientro-in-servizio")
-async def rientro_in_servizio(tipo: str, numero: int, _admin=Depends(require_admin)):
+async def rientro_in_servizio(tipo: str, numero: int, _ruolo=Depends(require_permesso("frigoriferi"))):
     """L'apparecchio torna in funzione: il turno ricomincia ad aprirgli le caselle."""
     if tipo not in ("frigo", "congelatore"):
         raise HTTPException(status_code=400, detail="Tipo non valido: frigo o congelatore")

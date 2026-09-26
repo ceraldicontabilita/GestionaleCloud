@@ -1904,6 +1904,11 @@ const STILI_STATO_F24 = {
   periodo_ignoto: { label: '❓ Periodo ignoto', bg: '#f2f0e9', color: '#7a776e' },
 };
 
+const bottoneFile = {
+  minHeight: 32, padding: '4px 10px', borderRadius: 6, border: '1px solid #c15f3c',
+  background: '#fff', color: '#c15f3c', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+};
+
 const STILI_DUP_F24 = {
   da_verificare: { label: '🚨 Da verificare', bg: '#f8e5e2', color: '#991b1b' },
   collegato_no_duplicato: { label: '🔗 Collegato (no doppio)', bg: '#f7ebe4', color: '#4c4a44' },
@@ -1916,6 +1921,7 @@ export function TabellaAnalisiF24({ anno }) {
   const [errore, setErrore] = useState(null);
   const [soloAnno, setSoloAnno] = useState(true);
   const [ricercaTributo, setRicercaTributo] = useState('');
+  const [pdfViewer, setPdfViewer] = useState(null); // {title, fetchUrl}
 
   const carica = async filtraAnno => {
     setLoading(true);
@@ -2065,35 +2071,42 @@ export function TabellaAnalisiF24({ anno }) {
                       {(r.causali_inps || []).join(', ') || '—'}
                     </td>
                     <td style={{ ...cella, whiteSpace: 'nowrap' }}>
-                      {/* F24 → quietanza (PDF) e → addebito in estratto conto
-                          (audit 03/09/2026 §6, PR 16; campi del registro
-                          unico F24/quietanze/banca, PR 12) */}
+                      {/* I file veri: il modello F24 e la sua quietanza, aperti
+                          nel lettore PDF. Niente rimando all'estratto conto:
+                          li' bisognava cercare l'operazione a mano. */}
                       <span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap' }}>
-                        {r.documento_collegato?.quietanza_id && (
-                          <LinkContropartita
-                            to={r.documento_collegato.quietanza_url}
-                            esterno
-                            compatto
-                            testId={`link-quietanza-${r.f24_id}`}
-                            title={`Quietanza ${r.documento_collegato.quietanza_id}${r.documento_collegato.protocollo_quietanza ? ` · protocollo ${r.documento_collegato.protocollo_quietanza}` : ''} · F24 ${r.periodo_competenza || ''}`}
+                        {r.documento_collegato?.f24_pdf_url && (
+                          <button
+                            type="button"
+                            onClick={() => setPdfViewer({
+                              title: `F24 ${r.periodo_competenza || ''} · ${r.file || ''}`,
+                              fetchUrl: r.documento_collegato.f24_pdf_url,
+                            })}
+                            data-testid={`apri-f24-${r.f24_id}`}
+                            style={bottoneFile}
                           >
-                            🧾 Quietanza
-                          </LinkContropartita>
+                            F24
+                          </button>
                         )}
-                        {r.documento_collegato?.quietanza_id && !r.documento_collegato?.quietanza_url && (
-                          <span title="Quietanza registrata sul modello ma non trovata nell'archivio documenti">🧾 Quietanza</span>
-                        )}
-                        {r.documento_collegato?.movimento_bancario_id && (
-                          <LinkContropartita
-                            to={ROTTE_CONTROPARTITA.movimentoBanca(r.documento_collegato.movimento_bancario_id)}
-                            compatto
-                            testId={`link-movimento-f24-${r.f24_id}`}
-                            title={`Addebito in estratto conto ${r.documento_collegato.movimento_bancario_id} · ${formatDateIT(r.documento_collegato.data_pagamento_effettivo || r.data_pagamento || '')} · ${r.documento_collegato.pagamento_verificato_banca ? 'verificato in banca' : 'da verificare'}`}
+                        {r.documento_collegato?.quietanza_url ? (
+                          <button
+                            type="button"
+                            onClick={() => setPdfViewer({
+                              title: `Quietanza F24 ${r.periodo_competenza || ''}${r.documento_collegato.protocollo_quietanza ? ` · protocollo ${r.documento_collegato.protocollo_quietanza}` : ''}`,
+                              fetchUrl: r.documento_collegato.quietanza_url,
+                            })}
+                            data-testid={`link-quietanza-${r.f24_id}`}
+                            style={bottoneFile}
                           >
-                            Banca
-                          </LinkContropartita>
+                            Quietanza
+                          </button>
+                        ) : (
+                          <span style={{ fontSize: 11, color: '#7a776e' }}>
+                            {r.documento_collegato?.quietanza_id
+                              ? 'Quietanza non trovata in archivio'
+                              : 'Quietanza non ancora arrivata'}
+                          </span>
                         )}
-                        {!r.documento_collegato?.quietanza_id && !r.documento_collegato?.movimento_bancario_id && '—'}
                       </span>
                     </td>
                     <td style={cella}>
@@ -2108,6 +2121,14 @@ export function TabellaAnalisiF24({ anno }) {
             </tbody>
           </table>
         </div>
+      )}
+      {pdfViewer && (
+        <DocumentViewerModal
+          title={pdfViewer.title}
+          fetchUrl={pdfViewer.fetchUrl}
+          documentType="f24"
+          onClose={() => setPdfViewer(null)}
+        />
       )}
     </div>
   );

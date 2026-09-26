@@ -702,6 +702,15 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
     if not piva:
         return None
 
+    # Regola del titolare: fino all'ultima operazione del suo report
+    # «Fatture ricevute» comanda il report, non il metodo del fornitore.
+    # Una fattura con quella data che arriva dopo resta Provvisoria.
+    from app.routers.prima_nota_module.sync import _data_fattura, data_limite_dichiarazioni
+    data_limite = await data_limite_dichiarazioni(db)
+    data_fattura = _data_fattura(invoice)
+    if data_limite and data_fattura and data_fattura <= data_limite:
+        return None
+
     forn = await db["fornitori"].find_one(
         {"$or": [{"partita_iva": piva}, {"piva": piva}, {"vat_number": piva}]},
         {"_id": 0, "metodo_pagamento": 1, "esclude_cassa_banca": 1, "cessato": 1},
@@ -849,6 +858,22 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
     return update
 
 
+async def _applica_report_titolare(db, invoice: Dict[str, Any]) -> bool:
+    """Il report «Fatture ricevute» puo' essere arrivato prima dell'XML: il
+    pagamento dichiarato si applica all'arrivo della fattura. Ritorna False
+    solo se il tentativo e' fallito."""
+    try:
+        from app.services.pagamenti_dichiarati_titolare import applica_per_fattura_arrivata
+        await applica_per_fattura_arrivata(db, invoice)
+        return True
+    except Exception as exc:  # noqa: BLE001 - l'import della fattura resta valido
+        logger.exception(
+            "Pagamento dichiarato non applicato all'arrivo di %s (%s)",
+            invoice.get("invoice_number"), type(exc).__name__,
+        )
+        return False
+
+
 async def riprocessa_estratto_dopo_import_fattura(
     db, invoice: Dict[str, Any],
 ) -> Dict[str, Any]:
@@ -864,8 +889,12 @@ async def riprocessa_estratto_dopo_import_fattura(
     metodo = normalizza_metodo_pagamento(invoice.get("metodo_pagamento"))
     now = datetime.now(timezone.utc).isoformat()
 
-    if metodo != "banca":
-        return {"eseguita": False, "motivo": "metodo_non_banca"}
+    # Solo il fornitore pagato in contanti non passa dalla banca. Un metodo
+    # ancora da decidere non e' un motivo per non guardare: il movimento con
+    # identita' e importo al centesimo e' la prova, qualunque cosa dica
+    # l'anagrafica.
+    if metodo == "cassa":
+        return {"eseguita": False, "motivo": "metodo_cassa"}
 
     importo = abs(float(invoice.get("total_amount") or invoice.get("importo_totale") or 0))
     numero = str(invoice.get("invoice_number") or invoice.get("numero_fattura") or "").strip()
@@ -903,6 +932,25 @@ async def riprocessa_estratto_dopo_import_fattura(
     if movimento_ids:
         from app.services.riconciliazione_bancaria import riconcilia_movimenti_banca
         risultato = await riconcilia_movimenti_banca(movimento_ids=movimento_ids)
+        # Distinte con i numeri fattura in causale e abbinamenti per identita'
+        # univoca: lo stesso motore del giro, ristretto a questi movimenti.
+        from app.services.bank_payment_allocations import (
+            reconcile_deterministic_invoice_allocations,
+        )
+        ancora_aperti = [
+            m["id"] for m in await db["estratto_conto_movimenti"].find(
+                {"id": {"$in": movimento_ids}, "riconciliato": {"$ne": True}},
+                {"_id": 0, "id": 1},
+            ).to_list(len(movimento_ids))
+        ]
+        if ancora_aperti:
+            deterministica = await reconcile_deterministic_invoice_allocations(
+                db, movement_ids=ancora_aperti,
+            )
+            risultato["allocazioni_deterministiche"] = (
+                int(deterministica.get("allocati") or 0)
+                + int(deterministica.get("allocati_identita") or 0)
+            )
 
     audit = {
         "ultima_scansione_estratto_conto_at": now,
@@ -1301,6 +1349,8 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
         await _riscontra_anticipo_pendente(db, invoice)
     except Exception:
         logger.exception(f"Riscontro anticipo pendente fallito per {invoice.get('invoice_number')}")
+
+    await _applica_report_titolare(db, invoice)
 
     try:
         await riprocessa_estratto_dopo_import_fattura(db, invoice)
@@ -2241,6 +2291,9 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
     except Exception:
         derivati_errori.append("evento_fattura_created")
         logger.exception(f"Errore propagazione evento fattura.created ({source})")
+
+    if not await _applica_report_titolare(db, invoice):
+        derivati_errori.append("pagamento_dichiarato_titolare")
 
     try:
         await riprocessa_estratto_dopo_import_fattura(db, invoice)

@@ -32,12 +32,18 @@ CLAUDE.md — non un flag sul singolo movimento.
 Uno **storno** non e' un secondo versamento: e' una rettifica della banca, e
 resta fuori.
 
-L'idempotenza e' sull'id della riga di estratto conto: rileggere lo stesso
-estratto non crea niente di nuovo. Non serve nessun comando di riparazione,
-perche' non c'e' niente da riparare.
+**Un versamento e' un'operazione della banca, non una riga d'archivio.** Lo
+stesso versamento arriva dal vecchio archivio, dai CSV «Elenco entrate/uscite»
+e dalla lettura diretta della banca: tre righe di estratto conto, un solo
+contante uscito. Fino al 26/09/2026 il motore scriveva una coppia per copia
+(44 uscite di cassa per 27 versamenti). Ora conta le operazioni vere per
+giorno e importo (il massimo per fonte), tiene altrettante coppie, toglie per
+id le gambe in piu' nate dai motori e non tocca quelle scritte a mano.
+
+Rileggere lo stesso estratto, o riceverne un'altra copia, non scrive niente.
 """
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from app.services.scritture_contabili import scrivi_movimento_se_assente
@@ -144,76 +150,89 @@ def _si_dichiara_trasferimento(riga: Dict[str, Any]) -> bool:
     return any(parola in testo for parola in PAROLE_TRASFERIMENTO)
 
 
-async def _gamba_di_cassa_gia_scritta(
-    db, *, data_banca: str, importo: float, tipo_cassa: str, giorni: int,
-) -> Optional[Dict[str, Any]]:
-    """La gamba di cassa gia' in archivio per questo versamento, se c'e'.
+#: Chi scrive le gambe da solo. Solo queste righe si possono togliere quando
+#: sono in piu' rispetto alle operazioni vere della banca: una riga scritta a
+#: mano non si tocca mai, si segnala.
+SOURCES_MOTORE = frozenset({
+    "estratto_conto_versamento", "estratto_conto_prelievo",
+    "legacy_versamenti", "riconciliazione_ec_versamento",
+})
+#: La gamba bancaria che nasce dalla registrazione manuale in cassa, prima che
+#: la banca contabilizzi: porta la data del negozio, non quella della banca.
+SOURCE_ATTESA_BANCA = "versamento_cassa_in_attesa"
+MOTIVO_DOPPIONE = "doppione_versamento_contanti"
+MOTIVO_NON_NOSTRO = "versamento_non_nostro_stornato_dalla_banca"
 
-    Tre condizioni insieme, tutte obbligatorie: la riga **si dichiara**
-    trasferimento (categoria o descrizione), ha l'importo esatto al centesimo,
-    e cade nella finestra di giorni attorno alla data della banca. In piu'
-    deve essere **libera**: una riga chiude un solo versamento.
+#: Versamenti che la banca ha accreditato per errore sul nostro conto e poi
+#: stornato: il contante non e' mai uscito dalla nostra cassa, quindi non
+#: nasce nessuna gamba. Si elencano uno per uno, per decisione del titolare:
+#: uno storno non si abbina da solo a un versamento per solo importo.
+#: Chiave: (giorno di contabilizzazione, importo in centesimi, verso).
+VERSAMENTI_ANNULLATI = {
+    # Titolare, 26/09/2026: il cassiere di un altro cliente lo ha versato sul
+    # nostro conto; stornato il 13/07 con «STORNO SCRITTURE - STORNO PER
+    # ERRATO CONTO». «Elimina questo movimento, non serve averlo».
+    ("2026-07-10", 310000, "versamento"): "errore del cassiere BPM, stornato il 13/07/2026",
+}
 
-    La dichiarazione e' la condizione che mancava. Senza, bastava l'importo
-    uguale per prendersi una riga di tutt'altra natura — un pagamento
-    fornitore in contanti — e sovrascriverne la categoria.
-    """
+_ATTIVO = {"status": {"$nin": ["deleted", "archived"]}}
+_CAMPI_PRIMA_NOTA = {
+    "_id": 0, "id": 1, "data": 1, "importo": 1, "tipo": 1, "categoria": 1,
+    "descrizione": 1, "description": 1, "causale": 1, "dettaglio": 1, "source": 1,
+    "operation_id": 1, "trasferimento_collegato_id": 1, "prima_nota_cassa_id": 1,
+    "estratto_conto_id": 1, "movimento_ec_id": 1, "provvisorio": 1,
+}
+
+
+def _fonte_ec(movimento_ec: Dict[str, Any]) -> str:
+    """Da quale export viene la riga: le copie di fonti diverse sono la stessa
+    operazione, le righe uguali della stessa fonte sono operazioni diverse."""
+    return str(
+        movimento_ec.get("source_filename")
+        or movimento_ec.get("fonte")
+        or movimento_ec.get("fonte_documento")
+        or ""
+    )
+
+
+def _nel_raggio(data: str, centro: str, giorni: int) -> bool:
     try:
-        riferimento = datetime.strptime(data_banca, "%Y-%m-%d")
+        a = datetime.strptime(data, "%Y-%m-%d")
+        b = datetime.strptime(centro, "%Y-%m-%d")
     except ValueError:
-        return None
-
-    finestra = {
-        (riferimento + timedelta(days=scarto)).strftime("%Y-%m-%d")
-        for scarto in range(-giorni, giorni + 1)
-    }
-    candidati = await db["prima_nota_cassa"].find(
-        {
-            "tipo": tipo_cassa,
-            "status": {"$nin": ["deleted", "archived"]},
-        },
-        {"_id": 0},
-    ).to_list(5000)
-
-    for riga in candidati:
-        if riga.get("trasferimento_collegato_id") or riga.get("operation_id"):
-            continue
-        if not _si_dichiara_trasferimento(riga):
-            continue
-        if _data_iso(riga) not in finestra:
-            continue
-        if abs(_importo(riga) - importo) > 0.005:
-            continue
-        return riga
-    return None
+        return False
+    return abs((a - b).days) <= giorni
 
 
-async def riconosci_versamenti(
-    db, *, anno: Optional[int] = None, dry_run: bool = True,
-    giorni_tolleranza: int = GIORNI_TOLLERANZA,
-) -> Dict[str, Any]:
-    """Scrive le due gambe per ogni versamento o prelievo dell'estratto conto.
+def _ordine_di_tenuta(riga: Dict[str, Any]) -> tuple:
+    """Quale gamba tenere quando ce ne sono piu' delle operazioni vere.
 
-    `dry_run` per difetto: dice cosa farebbe senza scrivere. Rieseguirlo non
-    duplica mai, perche' ogni gamba porta l'id della riga di estratto conto.
+    Prima quella scritta a mano (non e' nostra da togliere), poi quella gia'
+    collegata all'altra gamba, poi la piu' recente delle fonti automatiche
+    (la stessa che il giro scriverebbe oggi), infine l'id: stesso esito a ogni giro.
     """
-    from app.database import Collections
+    source = str(riga.get("source") or "")
+    rango = {"estratto_conto_versamento": 0, "estratto_conto_prelievo": 0,
+             "legacy_versamenti": 1, "riconciliazione_ec_versamento": 2}
+    return (
+        source in SOURCES_MOTORE,
+        not (riga.get("trasferimento_collegato_id") or riga.get("prima_nota_cassa_id")),
+        rango.get(source, 0),
+        str(riga.get("id") or ""),
+    )
 
-    movimenti = await db[Collections.BANK_STATEMENTS].find({}, {"_id": 0}).to_list(50000)
 
-    esiti: List[Dict[str, Any]] = []
-    conteggi = {
-        "esaminati": 0, "versamenti": 0, "prelievi": 0,
-        "gambe_cassa_create": 0, "gambe_cassa_collegate": 0,
-        "gia_registrati": 0, "senza_data_o_importo": 0,
-    }
-
+def _gruppi(movimenti: List[Dict[str, Any]], anno: Optional[int], conteggi: Dict[str, int],
+            esiti: List[Dict[str, Any]]) -> Dict[tuple, List[Dict[str, Any]]]:
+    """Le righe di estratto conto riconosciute, per operazione (giorno, importo, verso)."""
+    gruppi: Dict[tuple, List[Dict[str, Any]]] = {}
     for movimento_ec in movimenti:
+        if str(movimento_ec.get("status") or "") in {"deleted", "archived"}:
+            continue
         tipo = classifica(movimento_ec)
         if not tipo:
             continue
         conteggi["esaminati"] += 1
-
         data = _data_iso(movimento_ec)
         importo = _importo(movimento_ec)
         ec_id = _id_ec(movimento_ec)
@@ -225,80 +244,226 @@ async def riconosci_versamenti(
             continue
         if anno and not data.startswith(f"{anno}-"):
             continue
+        gruppi.setdefault((data, int(round(importo * 100)), tipo), []).append(movimento_ec)
+    return gruppi
 
-        conteggi["versamenti" if tipo == "versamento" else "prelievi"] += 1
-        operazione = f"{tipo}:{ec_id}"
-        descrizione = str(movimento_ec.get("descrizione_originale")
-                          or movimento_ec.get("descrizione") or "")
 
-        # Chi esce e chi entra, secondo il verso del contante.
-        if tipo == "versamento":
-            tipo_cassa, tipo_banca = "uscita", "entrata"
-        else:
-            tipo_cassa, tipo_banca = "entrata", "uscita"
+def _quante_operazioni(righe: List[Dict[str, Any]]) -> int:
+    """Quanti versamenti veri ci sono dietro le righe dello stesso giorno e importo.
 
-        comune = {
-            "data": data,
-            "importo": importo,
-            "categoria": CATEGORIA,
-            "descrizione": descrizione or f"{tipo.capitalize()} contanti",
-            "operation_id": operazione,
-            "movimento_ec_id": ec_id,
-            "source": f"estratto_conto_{tipo}",
-        }
+    Lo stesso versamento arriva dal vecchio archivio, dai CSV della banca e
+    dalla lettura diretta (Enable Banking): tre righe, un versamento. Due
+    versamenti uguali lo stesso giorno invece compaiono due volte **nello
+    stesso export**. Il numero vero e' quindi il massimo per fonte, come in
+    ``doppioni_estratto_conto.accoppia``.
+    """
+    per_fonte: Dict[str, int] = {}
+    for riga in righe:
+        chiave = _fonte_ec(riga)
+        per_fonte[chiave] = per_fonte.get(chiave, 0) + 1
+    return max(per_fonte.values())
 
-        cassa_esistente = await _gamba_di_cassa_gia_scritta(
-            db, data_banca=data, importo=importo, tipo_cassa=tipo_cassa,
-            giorni=giorni_tolleranza,
+
+async def _togli_doppione(db, collezione: str, riga: Dict[str, Any], adesso: str,
+                          motivo: str = MOTIVO_DOPPIONE) -> None:
+    """Soft delete per id: la riga resta per audit, esce da elenchi e saldi."""
+    await db[collezione].update_one(
+        {"id": riga["id"]},
+        {"$set": {"status": "deleted", "deleted_at": adesso,
+                  "deleted_reason": motivo, "deleted_by": "versamenti_contanti"}},
+    )
+
+
+async def riconosci_versamenti(
+    db, *, anno: Optional[int] = None, dry_run: bool = True,
+    giorni_tolleranza: int = GIORNI_TOLLERANZA,
+) -> Dict[str, Any]:
+    """Una coppia cassa/banca per ogni versamento o prelievo vero dell'estratto conto.
+
+    Per ogni operazione (giorno, importo, verso) conta quante ce ne sono
+    davvero (``_quante_operazioni``), tiene altrettante gambe gia' scritte,
+    toglie quelle in piu' nate dai motori e scrive le mancanti. Rieseguirlo
+    non scrive niente. ``dry_run`` per difetto: dice cosa farebbe.
+    """
+    from app.database import Collections
+
+    movimenti = await db[Collections.BANK_STATEMENTS].find({}, {"_id": 0}).to_list(50000)
+    esiti: List[Dict[str, Any]] = []
+    conteggi = {
+        "esaminati": 0, "versamenti": 0, "prelievi": 0, "copie_estratto_conto": 0,
+        "gambe_cassa_create": 0, "gambe_cassa_collegate": 0, "gambe_banca_create": 0,
+        "gia_registrati": 0, "senza_data_o_importo": 0,
+        "doppioni_banca_tolti": 0, "doppioni_cassa_tolti": 0, "da_verificare": 0,
+        "annullati_dal_titolare": 0,
+    }
+    gruppi = _gruppi(movimenti, anno, conteggi, esiti)
+    if not gruppi:
+        return {"dry_run": dry_run, "anno": anno, "giorni_tolleranza": giorni_tolleranza,
+                **conteggi, "movimenti": esiti[:500],
+                "eseguito_il": datetime.now(timezone.utc).isoformat()}
+
+    # Una lettura per registro, non una per movimento.
+    banca = await db["prima_nota_banca"].find(_ATTIVO, _CAMPI_PRIMA_NOTA).to_list(None)
+    cassa = await db["prima_nota_cassa"].find(_ATTIVO, _CAMPI_PRIMA_NOTA).to_list(None)
+    cassa_per_id = {r.get("id"): r for r in cassa if r.get("id")}
+    usate: set = set()
+    adesso = datetime.now(timezone.utc).isoformat()
+
+    for (data, centesimi, tipo), righe in sorted(gruppi.items()):
+        importo = centesimi / 100
+        n = _quante_operazioni(righe)
+        conteggi["copie_estratto_conto"] += len(righe) - n
+        annullato = VERSAMENTI_ANNULLATI.get((data, centesimi, tipo))
+        if annullato:
+            n -= 1
+            conteggi["annullati_dal_titolare"] += 1
+            esiti.append({"tipo": tipo, "data": data, "importo": importo,
+                          "esito": "annullato_dal_titolare", "motivo": annullato})
+        motivo_extra = MOTIVO_NON_NOSTRO if annullato else MOTIVO_DOPPIONE
+        conteggi["versamenti" if tipo == "versamento" else "prelievi"] += n
+        tipo_cassa, tipo_banca = ("uscita", "entrata") if tipo == "versamento" else ("entrata", "uscita")
+        righe = sorted(righe, key=lambda r: (_fonte_ec(r) != "enable_banking", _id_ec(r)))
+        descrizione = str(righe[0].get("descrizione_originale") or righe[0].get("descrizione") or "")
+
+        def _stessa(riga, verso):
+            return (riga.get("id") not in usate and riga.get("tipo") == verso
+                    and abs(_importo(riga) - importo) <= 0.005 and _si_dichiara_trasferimento(riga))
+
+        # ── gambe bancarie: stesso giorno; l'attesa manuale entro la finestra
+        candidati_banca = sorted(
+            (r for r in banca if _stessa(r, tipo_banca) and (
+                _data_iso(r) == data
+                or (r.get("source") == SOURCE_ATTESA_BANCA and not r.get("estratto_conto_id")
+                    and _nel_raggio(_data_iso(r), data, giorni_tolleranza)))),
+            key=_ordine_di_tenuta,
         )
-
-        if dry_run:
-            esiti.append({
-                "ec_id": ec_id, "tipo": tipo, "data": data, "importo": importo,
-                "esito": "collegherebbe" if cassa_esistente else "creerebbe",
-                "cassa_esistente_id": (cassa_esistente or {}).get("id", ""),
-            })
-            conteggi["gambe_cassa_collegate" if cassa_esistente else "gambe_cassa_create"] += 1
-            continue
-
-        # La gamba bancaria: la riga di estratto conto E' la prova.
-        id_banca, banca_gia_presente = await scrivi_movimento_se_assente(
-            db, "banca", {"operation_id": operazione},
-            {**comune, "tipo": tipo_banca},
-        )
-
-        if cassa_esistente:
-            # C'era gia': si collega, non si riscrive. E' il caso che il
-            # vecchio comando sbagliava, facendo uscire il contante due volte.
-            id_cassa = cassa_esistente["id"]
-            await db["prima_nota_cassa"].update_one(
-                {"id": id_cassa},
-                {"$set": {
-                    "operation_id": operazione,
-                    "movimento_ec_id": ec_id,
-                    "trasferimento_collegato_id": id_banca,
-                    "categoria": CATEGORIA,
-                }},
-            )
-            conteggi["gambe_cassa_collegate"] += 1
-            esito = "collegata"
-        else:
-            id_cassa, cassa_gia_presente = await scrivi_movimento_se_assente(
-                db, "cassa", {"operation_id": operazione},
-                {**comune, "tipo": tipo_cassa, "trasferimento_collegato_id": id_banca},
-            )
-            if cassa_gia_presente and banca_gia_presente:
-                conteggi["gia_registrati"] += 1
-                esito = "gia_registrato"
+        tenute_banca = candidati_banca[:n]
+        for extra in candidati_banca[n:]:
+            if extra.get("source") in SOURCES_MOTORE:
+                conteggi["doppioni_banca_tolti"] += 1
+                esiti.append({"tipo": tipo, "data": data, "importo": importo,
+                              "esito": "doppione_banca_tolto", "id": extra.get("id")})
+                if not dry_run:
+                    await _togli_doppione(db, "prima_nota_banca", extra, adesso, motivo_extra)
             else:
-                conteggi["gambe_cassa_create"] += 1
-                esito = "creata"
+                conteggi["da_verificare"] += 1
+                esiti.append({"tipo": tipo, "data": data, "importo": importo,
+                              "esito": "banca_in_piu_scritta_a_mano", "id": extra.get("id")})
+        usate.update(r.get("id") for r in candidati_banca)
 
-        await db["prima_nota_banca"].update_one(
-            {"id": id_banca}, {"$set": {"trasferimento_collegato_id": id_cassa}},
+        # ── gambe di cassa: quelle collegate alle gambe bancarie tenute, poi
+        # quelle dello stesso giorno che si dichiarano trasferimento.
+        collegate = []
+        for b in tenute_banca:
+            for cid in (b.get("trasferimento_collegato_id"), b.get("prima_nota_cassa_id")):
+                c = cassa_per_id.get(cid)
+                if c is not None and _stessa(c, tipo_cassa) and c not in collegate:
+                    collegate.append(c)
+        operazioni_tenute = {b.get("operation_id") for b in tenute_banca if b.get("operation_id")}
+        ids_banca_tenute = {b.get("id") for b in tenute_banca}
+        stesso_giorno = sorted(
+            (c for c in cassa if c not in collegate and _stessa(c, tipo_cassa) and (
+                _data_iso(c) == data
+                or c.get("trasferimento_collegato_id") in ids_banca_tenute
+                or (c.get("operation_id") and c.get("operation_id") in operazioni_tenute))),
+            key=_ordine_di_tenuta,
         )
-        esiti.append({"ec_id": ec_id, "tipo": tipo, "data": data, "importo": importo,
-                      "esito": esito, "id_cassa": id_cassa, "id_banca": id_banca})
+        candidati_cassa = collegate + stesso_giorno
+        tenute_cassa = candidati_cassa[:n]
+        for extra in candidati_cassa[n:]:
+            if extra.get("source") in SOURCES_MOTORE:
+                conteggi["doppioni_cassa_tolti"] += 1
+                esiti.append({"tipo": tipo, "data": data, "importo": importo,
+                              "esito": "doppione_cassa_tolto", "id": extra.get("id")})
+                if not dry_run:
+                    await _togli_doppione(db, "prima_nota_cassa", extra, adesso, motivo_extra)
+            else:
+                conteggi["da_verificare"] += 1
+                esiti.append({"tipo": tipo, "data": data, "importo": importo,
+                              "esito": "cassa_in_piu_scritta_a_mano", "id": extra.get("id")})
+        usate.update(c.get("id") for c in candidati_cassa)
+
+        # ── accoppia le tenute e scrive le mancanti
+        cassa_libere = list(tenute_cassa)
+        for indice in range(n):
+            b = tenute_banca[indice] if indice < len(tenute_banca) else None
+            c = None
+            if b is not None:
+                for candidata in cassa_libere:
+                    if candidata.get("id") in (b.get("trasferimento_collegato_id"), b.get("prima_nota_cassa_id")) \
+                            or candidata.get("trasferimento_collegato_id") == b.get("id"):
+                        c = candidata
+                        break
+            if c is None and cassa_libere:
+                # Una gamba di cassa gia' collegata a un'altra banca non si ruba.
+                c = next((x for x in cassa_libere if not x.get("trasferimento_collegato_id")
+                          or x.get("trasferimento_collegato_id") == (b or {}).get("id")), None)
+            if c is None:
+                # La cassa scritta a mano il giorno in cui il contante esce dal negozio.
+                c = next((x for x in cassa if x.get("id") not in usate and _stessa(x, tipo_cassa)
+                          and not x.get("trasferimento_collegato_id") and not x.get("operation_id")
+                          and _nel_raggio(_data_iso(x), data, giorni_tolleranza)), None)
+                if c is not None:
+                    usate.add(c.get("id"))
+            if c is not None and c in cassa_libere:
+                cassa_libere.remove(c)
+
+            ec = righe[indice] if indice < len(righe) else righe[0]
+            ec_id = _id_ec(ec)
+            operazione = ((b or {}).get("operation_id") or (c or {}).get("operation_id")
+                          or f"{tipo}:{ec_id}")
+            esito = {"ec_id": ec_id, "tipo": tipo, "data": data, "importo": importo}
+            if b is not None and b.get("source") == SOURCE_ATTESA_BANCA and not dry_run:
+                # L'attesa diventa il movimento: data della banca, prova collegata.
+                await db["prima_nota_banca"].update_one({"id": b["id"]}, {"$set": {
+                    "data": data, "estratto_conto_id": ec_id, "provvisorio": False,
+                    "riconciliato": True, "updated_at": adesso}})
+                b = {**b, "source": "", "estratto_conto_id": ec_id}
+            if b is not None and c is not None and b.get("trasferimento_collegato_id") == c.get("id") \
+                    and c.get("trasferimento_collegato_id") == b.get("id"):
+                conteggi["gia_registrati"] += 1
+                esiti.append({**esito, "esito": "gia_registrato", "id_cassa": c["id"], "id_banca": b["id"]})
+                continue
+
+            if dry_run:
+                esiti.append({**esito, "esito": "scriverebbe", "banca_esistente_id": (b or {}).get("id", ""),
+                              "cassa_esistente_id": (c or {}).get("id", "")})
+                continue
+
+            comune = {
+                "data": data, "importo": importo, "categoria": CATEGORIA,
+                "operation_id": operazione, "movimento_ec_id": ec_id,
+                "source": f"estratto_conto_{tipo}",
+            }
+            verso_banca = "contanti dalla cassa" if tipo == "versamento" else "contanti verso la cassa"
+            verso_cassa = "contanti in banca" if tipo == "versamento" else "contanti dalla banca"
+            if b is None:
+                id_banca, _ = await scrivi_movimento_se_assente(
+                    db, "banca", {"operation_id": operazione},
+                    {**comune, "tipo": tipo_banca,
+                     "descrizione": f"{tipo.capitalize()} {verso_banca} — {descrizione}".strip(" —")},
+                )
+                conteggi["gambe_banca_create"] += 1
+            else:
+                id_banca = b["id"]
+            if c is None:
+                id_cassa, _ = await scrivi_movimento_se_assente(
+                    db, "cassa", {"operation_id": operazione},
+                    {**comune, "tipo": tipo_cassa, "trasferimento_collegato_id": id_banca,
+                     "descrizione": f"{tipo.capitalize()} {verso_cassa} — {descrizione}".strip(" —")},
+                )
+                conteggi["gambe_cassa_create"] += 1
+                esito["esito"] = "creata"
+            else:
+                id_cassa = c["id"]
+                await db["prima_nota_cassa"].update_one({"id": id_cassa}, {"$set": {
+                    "operation_id": operazione, "movimento_ec_id": c.get("movimento_ec_id") or ec_id,
+                    "trasferimento_collegato_id": id_banca, "categoria": CATEGORIA}})
+                conteggi["gambe_cassa_collegate"] += 1
+                esito["esito"] = "collegata"
+            await db["prima_nota_banca"].update_one({"id": id_banca}, {"$set": {
+                "trasferimento_collegato_id": id_cassa, "operation_id": operazione}})
+            esiti.append({**esito, "id_cassa": id_cassa, "id_banca": id_banca})
 
     return {
         "dry_run": dry_run,
@@ -306,5 +471,5 @@ async def riconosci_versamenti(
         "giorni_tolleranza": giorni_tolleranza,
         **conteggi,
         "movimenti": esiti[:500],
-        "eseguito_il": datetime.now(timezone.utc).isoformat(),
+        "eseguito_il": adesso,
     }

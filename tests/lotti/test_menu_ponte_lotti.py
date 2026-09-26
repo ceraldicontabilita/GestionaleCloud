@@ -78,7 +78,7 @@ def test_put_senza_descrizione_non_cancella_quella_salvata(ambiente):
         **_payload(descrizione="Babà bagnato al rum"))))
     run(ricette.update_ricetta(
         creata["id"], ricette.RicettaCreate(**_payload(descrizione=None)),
-        _admin={"nome": "Admin"}))
+        _ruolo={"ruolo": "amministratore"}))
     assert _riga_menu(finto)["description_it"] == "Babà bagnato al rum"
     assert run(database.ricette.find_one({"id": creata["id"]}))["descrizione"] == "Babà bagnato al rum"
 

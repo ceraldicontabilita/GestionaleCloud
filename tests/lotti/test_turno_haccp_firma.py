@@ -15,7 +15,7 @@ sulla scheda HR, lo stesso PIN del portale dipendenti — quindi non c'e' un
 secondo elenco da tenere allineato.
 """
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime
 
 import pytest
 from fastapi import HTTPException
@@ -35,7 +35,10 @@ def archivio(monkeypatch):
     monkeypatch.setattr(haccp, "db", db)
     monkeypatch.setattr(attrezzature, "db", db)
 
-    oggi = datetime.now(timezone.utc)
+    # Il giorno del registro è quello di Napoli (FUSO), non UTC: fra mezzanotte
+    # e le 02:00 i due giorni differiscono.
+    from app.lotti.servizi.registro_haccp import FUSO
+    oggi = datetime.now(FUSO)
     run(db.attrezzature_config.insert_many([
         {"tipo": "frigo", "numero": 1, "nome": "Frigorifero N°1", "attivo": True,
          "operatore_id": "hr-7", "operatore_nome": "Pocci Salvatore"},

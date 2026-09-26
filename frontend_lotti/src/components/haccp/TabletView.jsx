@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import { LayoutDashboard, User } from "lucide-react";
 import { norm } from "../../utils/textNormalize";
 import { apiError } from "../../utils/apiError";
+import { puo } from "../../utils/permessiRuolo";
 
 import { ModalCambioFoto }    from "./tablet/ModalCambioFoto";
 import { ModalRegistraLotto } from "./tablet/ModalRegistraLotto";
@@ -141,6 +142,9 @@ export const TabletView = ({ reparto: repartoIniziale = "pasticceria", onBack })
     .sort((a,b)=>(a.nome||"").localeCompare(b.nome||"","it"));
 
   const puoGestireRicette = operatore?.ruolo === "amministratore";
+  // Modificare una ricetta: il titolare o il caporeparto di questo reparto
+  // (ruolo sulla scheda HR; il backend lo ricontrolla).
+  const puoModificareRicette = puo("ricette", reparto);
   const escludiRicetta = async (prodotto) => {
     if (!puoGestireRicette || !prodotto?.id || escludendoId) return;
     setEscludendoId(prodotto.id);
@@ -372,7 +376,7 @@ export const TabletView = ({ reparto: repartoIniziale = "pasticceria", onBack })
       {ricettaDaVedere && <SchedaRicettaChiaraModal
         ricettaId={ricettaDaVedere.id}
         nome={ricettaDaVedere.nome}
-        modificaRapida={puoGestireRicette}
+        modificaRapida={puoModificareRicette}
         onSalvato={carica}
         onClose={()=>setRicettaDaVedere(null)}
       />}

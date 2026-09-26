@@ -37,7 +37,12 @@ NON_MERCE_RE = _re.compile(
     r"cogenerazion|quota fissa|quota potenza|energia attiva|fascia f\d|"
     # righe-nota omaggi ("+ 1 CARTONE IN OMAGGIO", "1 CARTONE OMAGGIO ...")
     # NON sono prodotti: gli omaggi veri li traccia sconti_merce dalla fattura
-    r"\bomaggi?o\b",
+    r"\bomaggi?o\b|"
+    # righe di costo senza merce (misurate il 26/09/2026 su lotti_fornitori:
+    # 27 righe «Spese trasporto», «Costi di spedizione», «SCONTO PAGAMENTO»,
+    # «ADDEBITO ... PER ARROTONDAMENTO FISCALE», tutte entrate come 1 pezzo)
+    r"trasport|spedizion|\bsconto\b|arrotondament|\bconai\b|bancal|\bpallet\b|"
+    r"abbuono|\baddebito\b",
     _re.I,
 )
 

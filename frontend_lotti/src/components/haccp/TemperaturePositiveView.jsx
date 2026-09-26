@@ -24,6 +24,7 @@ import { testoFirmatari } from "../../utils/firmatari";
 import { CLASSE_NA, LEGENDA_NA, STILE_NA_STAMPA, eNonAttendibile, titoloNa } from "../../utils/attendibilita";
 import DichiaraConformiButton from "./DichiaraConformiButton";
 import { CellaTemperatura, ModalAzioneCorrettiva } from "./shared/CellaTemperatura";
+import { LEGENDA_STATI_HACCP, statoCellaHaccp } from "../../utils/statoCellaHaccp";
 
 const AZIENDA_INFO = {
   nome: "Ceraldi Group S.R.L.",
@@ -34,8 +35,6 @@ const RIFERIMENTI_NORMATIVI = {
   principale: "Reg. CE 852/2004",
   secondario: "D.Lgs. 193/2007",
 };
-
-const NUM_FRIGO_DEFAULT = 12;
 
 const ColonnaFrigo = ({ numero, nome, onRinomina, onElimina }) => {
   const [editing, setEditing] = useState(false);
@@ -168,12 +167,12 @@ export default function TemperaturePositiveView() {
 
   const numGiorni = giorniNelMese(mese, anno);
 
-  const numeriFrigo = useMemo(() => {
-    const nums = new Set(Array.from({ length: NUM_FRIGO_DEFAULT }, (_, i) => i + 1));
-    Object.keys(nomiFrigo).forEach((n) => nums.add(Number(n)));
-    Object.keys(schedeFrigoriferi).forEach((n) => nums.add(Number(n)));
-    return Array.from(nums).filter(Boolean).sort((a, b) => a - b);
-  }, [nomiFrigo, schedeFrigoriferi]);
+  // Gli apparecchi li decide il server (censiti + chi ha rilevazioni
+  // nell'anno): prima le colonne 1-12 c'erano sempre, anche eliminate.
+  const numeriFrigo = useMemo(
+    () => Object.keys(schedeFrigoriferi).map(Number).filter(Boolean).sort((a, b) => a - b),
+    [schedeFrigoriferi],
+  );
 
   const fetchNomiFrigo = useCallback(async () => {
     try {
@@ -250,6 +249,7 @@ export default function TemperaturePositiveView() {
       return next;
     });
     fetchNomiFrigo();
+    fetchSchede();
   };
 
   const getTemperatura = (frigoNum, giorno) => {
@@ -326,6 +326,8 @@ export default function TemperaturePositiveView() {
       if (record.is_chiuso || record.tipo === "chiusura") return { value: "🚫", className: "bg-gray-400 text-white", title: "CHIUSO" };
       if (record.is_manutenzione || record.tipo === "manutenzione") return { value: "🔧", className: "bg-yellow-200 text-yellow-800", title: "MANUTENZIONE" };
       if (record.is_non_usato) return { value: "⏸", className: "bg-gray-200 text-gray-600", title: "NON USATO" };
+      const stato = statoCellaHaccp(record);
+      if (stato) return stato;
       if (record.temp !== undefined && record.temp !== null) {
         const temp = Number(record.temp);
         const fuoriRange = temp > (scheda?.temp_max ?? 4) || temp < (scheda?.temp_min ?? 0);
@@ -356,16 +358,16 @@ export default function TemperaturePositiveView() {
       righe += `<tr><td style="padding:4px;border:1px solid #ccc;font-weight:bold;">${g}</td>`;
       numeriFrigo.forEach((f) => {
         const cell = getCellDisplay(f, g);
-        const style = cell.na ? STILE_NA_STAMPA : cell.className.includes("red") ? "background:#fee;color:#c00;" :
+        const style = cell.na ? STILE_NA_STAMPA : cell.stile ? cell.stile : cell.className.includes("red") ? "background:#fee;color:#c00;" :
           cell.className.includes("gray-400") ? "background:#999;color:#fff;" :
           cell.className.includes("yellow") ? "background:#fff3bf;" :
           cell.className.includes("orange") ? "background:#fff7ed;" : "";
-        righe += `<td style="padding:4px;border:1px solid #ccc;text-align:center;${style}">${cell.value}</td>`;
+        righe += `<td style="padding:4px;border:1px solid #ccc;text-align:center;${style}">${cell.stampa || cell.value}</td>`;
       });
       righe += "</tr>";
     }
 
-    printHtml(`<!DOCTYPE html><html><head><title>Temperature Frigoriferi - ${MESI_IT[mese - 1]} ${anno}</title><style>body{font-family:Arial;font-size:10pt;margin:15mm}h1{font-size:14pt}table{border-collapse:collapse;width:100%}th{background:#eee;padding:4px;border:1px solid #ccc}.footer{margin-top:20px;font-size:9pt;color:#555}</style></head><body><h1>SCHEDA TEMPERATURE FRIGORIFERI</h1><p><strong>${AZIENDA_INFO.nome}</strong> - ${AZIENDA_INFO.indirizzo}</p><p><strong>Mese:</strong> ${MESI_IT[mese - 1]} ${anno} | <strong>Range:</strong> 0°C / +4°C</p><p style="font-size:9pt">${LEGENDA_NA}</p><table><thead><tr><th>G</th>${numeriFrigo.map((n) => `<th>F${n}</th>`).join("")}</tr></thead><tbody>${righe}</tbody></table><div class="footer"><p><strong>Firme verificate:</strong> ${testoFirmatari(schedeFrigoriferi, mese)}</p><p><strong>Rif:</strong> ${RIFERIMENTI_NORMATIVI.principale} - ${RIFERIMENTI_NORMATIVI.secondario}</p><p><strong>Legenda:</strong> Chiuso | Manutenzione | Non usato | n.a.</p></div></body></html>`);
+    printHtml(`<!DOCTYPE html><html><head><title>Temperature Frigoriferi - ${MESI_IT[mese - 1]} ${anno}</title><style>body{font-family:Arial;font-size:10pt;margin:15mm}h1{font-size:14pt}table{border-collapse:collapse;width:100%}th{background:#eee;padding:4px;border:1px solid #ccc}.footer{margin-top:20px;font-size:9pt;color:#555}</style></head><body><h1>SCHEDA TEMPERATURE FRIGORIFERI</h1><p><strong>${AZIENDA_INFO.nome}</strong> - ${AZIENDA_INFO.indirizzo}</p><p><strong>Mese:</strong> ${MESI_IT[mese - 1]} ${anno} | <strong>Range:</strong> 0°C / +4°C</p><p style="font-size:9pt">${LEGENDA_NA}</p><table><thead><tr><th>G</th>${numeriFrigo.map((n) => `<th>F${n}</th>`).join("")}</tr></thead><tbody>${righe}</tbody></table><div class="footer"><p><strong>Firme verificate:</strong> ${testoFirmatari(schedeFrigoriferi, mese)}</p><p><strong>Rif:</strong> ${RIFERIMENTI_NORMATIVI.principale} - ${RIFERIMENTI_NORMATIVI.secondario}</p><p><strong>Legenda:</strong> ${LEGENDA_STATI_HACCP} · Chiuso | Manutenzione | Non usato | n.a.</p></div></body></html>`);
   };
 
   if (loading) {
@@ -394,20 +396,6 @@ export default function TemperaturePositiveView() {
           <button onClick={() => cambiaMese(-1)} className="rounded p-2 hover:bg-gray-100"><ChevronLeft size={20} /></button>
           <span className="min-w-[150px] text-center font-semibold">{MESI_IT[mese - 1]} {anno}</span>
           <button onClick={() => cambiaMese(1)} className="rounded p-2 hover:bg-gray-100"><ChevronRight size={20} /></button>
-          <button
-            onClick={async () => {
-              try {
-                await axios.post(`${API}/haccp-periodi/applica-tutti`, null, { timeout: 90000 });
-                toast.success("Periodi speciali applicati");
-                fetchSchede();
-              } catch {
-                toast.error("Errore applicazione periodi");
-              }
-            }}
-            className="rounded border border-yellow-300 bg-yellow-100 px-3 py-1.5 text-xs font-semibold text-yellow-800 hover:bg-yellow-200"
-          >
-            🔧 Periodi
-          </button>
           <DichiaraConformiButton onFatto={fetchSchede} />
           <Button onClick={stampaScheda} variant="secondary" size="sm"><Printer size={16} /> Stampa</Button>
           <Button onClick={fetchSchede} variant="secondary" size="sm"><RefreshCw size={16} /> Ricarica</Button>
@@ -481,6 +469,9 @@ export default function TemperaturePositiveView() {
 
       <div className="flex flex-wrap items-center gap-4 rounded-lg bg-gray-50 p-3 text-xs text-gray-600">
         <span className="flex items-center gap-1"><span className="h-4 w-4 rounded border bg-orange-50" /> Temp OK</span>
+        <span className="flex items-center gap-1"><span className="h-4 rounded bg-[#e6efe9] px-1 text-[10px] font-bold text-[#3d8168]">C</span> Conforme (controllo visivo firmato)</span>
+        <span className="flex items-center gap-1"><span className="h-4 rounded bg-[#f6ebe0] px-1 text-[10px] font-bold text-[#9a6a32]">N.R.</span> Non rilevato</span>
+        <span className="flex items-center gap-1"><span className="h-4 rounded border border-dashed border-[#c4894a] px-1 text-[10px] text-[#8a6f47]">…</span> Da rilevare</span>
         <span className="flex items-center gap-1"><span className="h-4 w-4 rounded border bg-red-100" /> Fuori range</span>
         <span className="flex items-center gap-1"><span className="h-4 w-4 rounded border bg-gray-400" /> Chiuso</span>
         <span className="flex items-center gap-1"><span className="h-4 w-4 rounded border bg-yellow-200" /> Manutenzione</span>

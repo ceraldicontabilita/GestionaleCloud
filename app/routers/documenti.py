@@ -2685,6 +2685,7 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
             "nexi": "estratto_conto_nexi",
             "paypal": "estratto_conto_paypal",
             "mutuo": "estratto_conto_mutuo",
+            "sumup": "estratto_conto_sumup",
             "bank": "estratto_conto",
         }.get(statement_route)
         if routed_type:
@@ -2710,6 +2711,12 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
             return "estratto_conto"
         if "BONIFICO" in content_str and ("IBAN" in content_str or "CRO" in content_str):
             return "bonifici"
+        # Un quadro del 770 stampato da solo e' un pezzo della dichiarazione
+        # gia' archiviata, non una seconda dichiarazione ne' un «da classificare».
+        from app.services.componenti_770 import TIPO as TIPO_COMPONENTE_770, quadro as quadro_770
+
+        if quadro_770(filename, pdf_text):
+            return TIPO_COMPONENTE_770
         # Dichiarazioni fiscali (770/IVA/IRAP/LIPE/Redditi SC): stesso
         # classificatore deterministico del canale Drive
         # "dichiarazione_fiscale" (app/services/drive_documenti_ingest.py),
@@ -2751,6 +2758,8 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
         statement_route, _reason = classifica(filename, file_content)
         if statement_route == "pos":
             return "pos_terminal"
+        if statement_route == "sumup":
+            return "estratto_conto_sumup"
         if statement_route == "bank":
             return "estratto_conto"
         bank_name = any(keyword in lower for keyword in (
@@ -3042,6 +3051,16 @@ async def _process_zip_upload(filename: str, content: bytes) -> Dict[str, Any]:
     }
 
 
+def _messaggio_componente_770(metadata: Dict[str, Any], *, gia_presente: bool) -> str:
+    quadro = metadata.get("quadro") or "?"
+    if metadata.get("dichiarazione_id"):
+        testo = f"Quadro {quadro} del 770 agganciato a {metadata.get('dichiarazione_filename')}"
+    else:
+        testo = (f"Quadro {quadro} del 770 conservato: manca il 770 intero "
+                 f"({metadata.get('identificativo_dichiarazione') or 'identificativo non leggibile'})")
+    return f"{testo} (era già in coda, riclassificato)" if gia_presente else testo
+
+
 async def _archive_non_payment_document(
     db, *, filename: str, content: bytes, document_type: str,
     metadata: Dict[str, Any] | None = None,
@@ -3080,6 +3099,7 @@ async def _archive_non_payment_document(
         "verbale_codice_strada": "Verbale Codice della strada",
         "visura_camerale": "Visura camerale",
         "documento_identita": "Documento di identita allegato",
+        "componente_770": "Quadro del 770",
     }
     negative_outcome = document_type == "esito_pagopa_negativo"
     evidence_roles = {
@@ -3091,6 +3111,7 @@ async def _archive_non_payment_document(
         "tari_istanza_compensazione": "istanza_amministrativa",
         "visura_camerale": "documento_anagrafico",
         "documento_identita": "allegato_identita",
+        "componente_770": "componente_dichiarazione",
     }
     if metadata is None and document_type in {
         "tari_avviso", "tari_istanza_compensazione", "visura_camerale",
@@ -3762,6 +3783,46 @@ async def upload_documento_automatico(
                 else "Dichiarazione fiscale archiviata e agganciata a F24/quietanze"
             )
 
+        elif tipo_rilevato == 'componente_770':
+            from app.services.componenti_770 import metadati as metadati_770
+
+            metadata = await metadati_770(
+                db, filename=filename, testo=_pdf_text_for_detection(content),
+            )
+            # Se lo stesso file e' gia' in coda come «da classificare» si
+            # riclassifica quella riga: niente seconda copia dell'originale.
+            from app.services.document_hash_lookup import find_one_by_hashes
+
+            digest = hashlib.sha256(content).hexdigest()
+            gia = await find_one_by_hashes(
+                db, "documents_inbox",
+                (("sha256", digest), ("file_hash", digest), ("file_hash", hashlib.md5(content).hexdigest())),
+                {"_id": 0, "id": 1, "filename": 1, "category": 1},
+            )
+            if gia:
+                await db["documents_inbox"].update_one({"id": gia["id"]}, {"$set": {
+                    "category": "componente_770", "document_type": "componente_770",
+                    "category_label": "Quadro del 770", "evidence_role": "componente_dichiarazione",
+                    "parsed_metadata": metadata, "obligation_status": "NON_APPLICABILE",
+                    "relation_keys": metadata["relation_keys"], "sha256": digest,
+                    "status": "archiviato" if metadata["dichiarazione_id"] else "da_verificare",
+                }})
+                return {
+                    "success": True, "duplicate": False, "imported": 0, "action": "riclassificato",
+                    "tipo_rilevato": tipo_rilevato, "doc_id": gia["id"], "filename": filename,
+                    "workflow": "COMPONENTE_DICHIARAZIONE", "payment_evidence": False,
+                    "parsed_metadata": metadata,
+                    "message": _messaggio_componente_770(metadata, gia_presente=True),
+                }
+            archived = await _archive_non_payment_document(
+                db, filename=filename, content=content, document_type=tipo_rilevato,
+                source_context=source_context, metadata=metadata,
+            )
+            if archived.get("success"):
+                archived["workflow"] = "COMPONENTE_DICHIARAZIONE"
+                archived["message"] = _messaggio_componente_770(metadata, gia_presente=False)
+            return archived
+
         elif tipo_rilevato in {
             'avviso_pagopa', 'nota_rettifica_inps', 'tari_avviso',
             'tari_istanza_compensazione', 'visura_camerale', 'documento_identita',
@@ -4054,6 +4115,27 @@ async def upload_documento_automatico(
                     "Estratto Nexi già presente; verifica aggiornata."
                     if nexi_result.get("duplicate")
                     else f"Estratto Nexi importato: {nexi_result.get('operazioni', 0)} operazioni."
+                ),
+            })
+
+        elif tipo_rilevato == 'estratto_conto_sumup':
+            from app.services.sumup_conto import accoda_abbinamento, importa_estratto_sumup
+
+            sumup_result = await importa_estratto_sumup(db, filename, content)
+            # Anche un estratto gia' presente riaccoda l'abbinamento: le righe
+            # importate prima di un motore nuovo (o in attesa di una busta,
+            # di una fattura) si ripassano senza aspettare il giro dei 30 minuti.
+            accoda_abbinamento(db)
+            result.update({
+                "workflow": "SUMUP_CONTO_CANONICO",
+                "duplicate": bool(sumup_result.get("duplicate")),
+                "imported": sumup_result.get("nuovi", 0),
+                "data": sumup_result,
+                "message": (
+                    "Estratto SumUp già presente."
+                    if sumup_result.get("duplicate")
+                    else f"Estratto SumUp importato: {sumup_result.get('nuovi', 0)} movimenti nuovi, "
+                         f"{sumup_result.get('gia_presenti', 0)} già presenti."
                 ),
             })
 

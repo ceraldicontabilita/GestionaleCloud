@@ -87,8 +87,14 @@ def create_workforce_token(
     algorithm: str = ALGORITHM,
     email: str = "",
     sid: str = "",
+    auth_at: Optional[int] = None,
 ) -> str:
-    """Crea un JWT leggibile in modo coerente sia da HR sia da Lotti."""
+    """Crea un JWT leggibile in modo coerente sia da HR sia da Lotti.
+
+    ``auth_at`` è il momento (epoch secondi) in cui la persona ha davvero
+    digitato il PIN o aperto la sessione: un rinnovo lo copia, così la
+    durata massima di una sessione si misura da lì e non si allunga a ogni
+    rinnovo."""
     if not secret:
         raise ValueError("Segreto sessione operativa mancante")
 
@@ -103,6 +109,7 @@ def create_workforce_token(
         "tipo": "admin" if payload["role"] == "admin" else "dipendente",
         "iat": now,
         "exp": now + expires_in,
+        "auth_at": int(auth_at) if auth_at else int(now.timestamp()),
     })
     if email:
         payload["email"] = email

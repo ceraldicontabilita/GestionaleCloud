@@ -82,13 +82,18 @@ export default function SchedaFonteModal({ prodotto, onClose }) {
   };
 
   const estraiDaSito = async () => {
-    if (!url.trim().startsWith("http")) { toast.error("Inserisci un URL valido (http...)"); return; }
+    if (!url.trim().startsWith("https://")) { toast.error("Inserisci un indirizzo https://"); return; }
     setBusy("scrape");
     try {
       const r = await axios.post(`${API}/schede-tecniche/scrape`, { url: url.trim(), prodotto_key: nome, nome_prodotto: nome });
       applica(r.data);
       toast.success(r.data?.salvato ? "Composizione estratta e salvata" : "Composizione estratta");
-    } catch { toast.error("Estrazione dal sito non riuscita"); }
+    } catch (e) {
+      const stato = e?.response?.status;
+      const dettaglio = e?.response?.data?.detail;
+      if (stato === 403) toast.error("Solo l'amministratore può estrarre dal sito del produttore");
+      else toast.error(typeof dettaglio === "string" ? dettaglio : "Estrazione dal sito non riuscita");
+    }
     finally { setBusy(""); }
   };
 

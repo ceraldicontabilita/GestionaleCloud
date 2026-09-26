@@ -415,6 +415,7 @@ export default function ImportDocumenti() {
       corrispettivi: 'Corrispettivi',
       pos: 'POS',
       archivio_zip: 'Archivio ZIP',
+      componente_770: 'Quadro del 770',
       non_riconosciuto: 'Da classificare',
     };
     return labels[tipo] || tipo;

@@ -820,7 +820,7 @@ async def get_soglie():
 
 
 @router.put("/soglia")
-async def set_soglia(payload: SogliaPayload):
+async def set_soglia(payload: SogliaPayload, _admin=Depends(require_admin)):
     """Imposta (o azzera con <=0) la scorta minima di una materia prima per nome
     normalizzato, su dizionario_prodotti.scorta_minima (fonte unica §4/§7)."""
     nome_norm = (payload.prodotto_nome_norm or "").strip()
@@ -852,6 +852,10 @@ async def set_soglia(payload: SogliaPayload):
 
 @router.get("/avvisi-scorte")
 async def avvisi_scorte(solo_critici: bool = False):
+    return await calcola_avvisi_scorte(solo_critici=solo_critici)
+
+
+async def calcola_avvisi_scorte(solo_critici: bool = False, prodotti: list = None) -> dict:
     """Cosa sta finendo, con quanto ne resta davvero.
 
     Legge la stessa giacenza che si vede a schermo (`prodotti_unificati`, che
@@ -859,7 +863,8 @@ async def avvisi_scorte(solo_critici: bool = False):
     diverso da quello del magazzino. Un prodotto senza soglia impostata non
     compare: non e' un avviso mancato, e' una soglia che nessuno ha scelto.
     """
-    prodotti = await prodotti_unificati(gestione=False, solo_disponibili=False)
+    if prodotti is None:
+        prodotti = await prodotti_unificati(gestione=False, solo_disponibili=False)
     critiche = await _carica_soglie_critiche()
 
     avvisi = []

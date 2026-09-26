@@ -21,6 +21,8 @@ from datetime import datetime, timezone, timedelta, date
 from fastapi import APIRouter
 
 from app.lotti.db import database as db
+from app.lotti.auth import require_admin
+from fastapi import Depends
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/pipeline", tags=["Pipeline Agente"])
@@ -415,7 +417,7 @@ async def esegui_pipeline_post_import(motivo: str = "manuale"):
 #  ENDPOINT REST
 # ─────────────────────────────────────────────────────────────────────────────
 @router.post("/esegui")
-async def trigger_pipeline(motivo: str = "manuale"):
+async def trigger_pipeline(motivo: str = "manuale", _admin=Depends(require_admin)):
     """Esegue l'intera pipeline di auto-miglioramento."""
     return await esegui_pipeline_post_import(motivo=motivo)
 

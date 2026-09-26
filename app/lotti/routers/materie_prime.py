@@ -452,7 +452,7 @@ async def rebuild_lotti_fornitori_da_fatture(solo_nuove: bool = True, _admin=Dep
 
 
 @router.post("/normalizza-unita")
-async def normalizza_unita_lotti():
+async def normalizza_unita_lotti(_admin=Depends(require_admin)):
     """Normalizza le unità di misura sporche in lotti_fornitori (LT→L, NR/NR./N.→PZ,
     kg→KG, Pezzi→PZ, ecc.). Mapping sicuro: le sigle ambigue restano invariate.
     Idempotente e veloce: usa distinct + update_many (poche operazioni bulk)."""

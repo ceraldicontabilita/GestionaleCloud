@@ -317,9 +317,10 @@ def test_router_scrive_solo_con_conferma(db):
 
 
 def test_router_riservato_all_amministratore():
+    """Segnare lo storico e' del titolare o del responsabile HACCP."""
     from app.lotti.routers import haccp_attendibilita as router
-    from app.lotti.auth import require_admin
+    from app.lotti.auth import require_admin, require_permesso
 
     for route in router.router.routes:
         dipendenze = [d.call for d in route.dependant.dependencies]
-        assert require_admin in dipendenze, route.path
+        assert require_admin in dipendenze or require_permesso("haccp_registri") in dipendenze, route.path

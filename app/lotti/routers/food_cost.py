@@ -13,7 +13,7 @@ router = APIRouter(prefix="/food-cost", tags=["Food Cost"])
 # CARTONE/UNITÀ, mai a kg/litro (segnalato da Enzo 02/07/2026 — un rum da
 # 2L si paga a bottiglia, non "al chilo"). Fonte UNICA in routers.utils.
 from app.lotti.routers.utils import CATEGORIE_BEVANDE_A_UNITA as CATEGORIE_VENDUTE_A_UNITA  # noqa: E402
-from app.lotti.auth import require_admin
+from app.lotti.auth import require_admin, require_permesso, verifica_reparto_ricetta
 from app.lotti.allergeni import (
     ALLERGENI_14,
     estrai_nomi_ingredienti,
@@ -260,7 +260,7 @@ def _regex_famiglia(famiglia: str):
 
 
 @router.post("/dizionario/escludi")
-async def dizionario_escludi_riga(payload: dict = Body(...)):
+async def dizionario_escludi_riga(payload: dict = Body(...), _admin=Depends(require_admin)):
     """Esclude (o ripristina, con escluso=false) UNA riga dal battesimo."""
     riga_id = (payload.get("id") or "").strip()
     escluso = bool(payload.get("escluso", True))
@@ -277,7 +277,7 @@ async def dizionario_escludi_riga(payload: dict = Body(...)):
 
 
 @router.post("/dizionario/escludi-famiglia")
-async def dizionario_escludi_famiglia(payload: dict = Body(...)):
+async def dizionario_escludi_famiglia(payload: dict = Body(...), _admin=Depends(require_admin)):
     """Esclude in blocco le righe che appartengono a una famiglia (bevande /
     alcolici / vini). Con anteprima=true NON scrive nulla: ritorna quante
     righe verrebbero escluse e alcuni esempi, così Enzo conferma a colpo
@@ -310,7 +310,7 @@ async def dizionario_escludi_famiglia(payload: dict = Body(...)):
 
 
 @router.post("/backfill-dati-riga-dizionario")
-async def backfill_dati_riga_dizionario(request: Request):
+async def backfill_dati_riga_dizionario(request: Request, _admin=Depends(require_admin)):
     """Una tantum (idempotente): riempie prezzo/quantità/unità DI RIGA sulle
     voci storiche del Dizionario leggendo la fattura più RECENTE che le cita.
     I campi nuovi (ultimo_prezzo_riga & co., 04/07/2026) si popolano da soli
@@ -452,7 +452,7 @@ async def dizionario_duplicati_preview():
 
 
 @router.post("/dizionario/dedup")
-async def dizionario_dedup(request: Request):
+async def dizionario_dedup(request: Request, _admin=Depends(require_admin)):
     """Unisce i doppioni nel record più ricco (solo amministratore, idempotente).
     Riempie i campi mancanti del keeper dagli altri, somma i conteggi acquisti,
     RIPUNTA i collegamenti delle ricette (prodotto_dizionario_id) sul keeper, poi
@@ -505,7 +505,7 @@ async def dizionario_dedup(request: Request):
 
 
 @router.post("/backfill-prezzo-kg-anomali")
-async def backfill_prezzo_kg_anomali(soglia_eur_kg: float = 500.0):
+async def backfill_prezzo_kg_anomali(soglia_eur_kg: float = 500.0, _admin=Depends(require_admin)):
     """Una tantum: ricalcola prezzo_kg SOLO per i prodotti con un valore
     palesemente implausibile (oltre soglia_eur_kg €/kg — quasi nessun
     ingrediente di pasticceria/bar costa così tanto), usando la logica
@@ -695,7 +695,7 @@ async def get_semilavorati_acquaviva(q: str = Query("", description="Ricerca per
 
 
 @router.post("/dizionario/manuale")
-async def aggiungi_prezzo_manuale(data: dict):
+async def aggiungi_prezzo_manuale(data: dict, _admin=Depends(require_admin)):
     """
     Aggiunge o aggiorna un ingrediente con prezzo manuale nel dizionario.
     Per ingredienti acquistati in contanti o non presenti nelle fatture.
@@ -1464,7 +1464,8 @@ async def leggi_ingredienti_foto(req: LeggiFotoReq):
             )
         txt = "".join(b.get("text", "") for b in (r.json().get("content") or []) if b.get("type") == "text")
     except Exception as e:
-        raise HTTPException(502, f"AI-visione fallita: {str(e)[:120]}") from e
+        logging.getLogger(__name__).warning("[food-cost] AI-visione fallita: %s %s", type(e).__name__, e)
+        raise HTTPException(502, f"AI-visione fallita ({type(e).__name__}): riprova o compila a mano") from e
     m = re.search(r"\[.*\]", txt or "", re.S)
     if not m:
         return {"ok": False, "fonte": "ai-foto", "ingredienti": [],
@@ -1509,7 +1510,7 @@ async def elimina_prezzo_manuale(nome_normalizzato: str, _admin=Depends(require_
 
 
 @router.post("/dizionario")
-async def add_prodotto_dizionario(prodotto: ProdottoDizionario):
+async def add_prodotto_dizionario(prodotto: ProdottoDizionario, _admin=Depends(require_admin)):
     """Aggiunge o aggiorna un prodotto nel dizionario"""
     prodotto_dict = prodotto.model_dump()
     prodotto_dict["ultimo_aggiornamento"] = datetime.now(timezone.utc).isoformat()
@@ -1528,7 +1529,7 @@ async def add_prodotto_dizionario(prodotto: ProdottoDizionario):
 
 
 @router.put("/dizionario/{prodotto_id}")
-async def update_prodotto_dizionario(prodotto_id: str, prodotto: ProdottoDizionario):
+async def update_prodotto_dizionario(prodotto_id: str, prodotto: ProdottoDizionario, _admin=Depends(require_admin)):
     """Aggiorna un prodotto esistente nel dizionario"""
     prodotto_dict = prodotto.model_dump()
     prodotto_dict["ultimo_aggiornamento"] = datetime.now(timezone.utc).isoformat()
@@ -1544,7 +1545,7 @@ async def update_prodotto_dizionario(prodotto_id: str, prodotto: ProdottoDiziona
 
 @router.patch("/dizionario/{prodotto_id}/scorta-minima")
 async def aggiorna_scorta_minima(
-    prodotto_id: str, scorta_minima: float = Query(..., ge=0, description="Scorta minima in kg")
+    prodotto_id: str, scorta_minima: float = Query(..., ge=0, description="Scorta minima in kg"), _admin=Depends(require_admin)
 ):
     """Aggiorna la scorta minima di un prodotto nel dizionario."""
     result = await db.dizionario_prodotti.update_one(
@@ -1630,7 +1631,7 @@ async def sincronizza_dizionario_da_fatture(
     request: Request,
     azzera: bool = Query(
         False, description="Se True, azzera il dizionario prima della sincronizzazione"
-    ),
+    ), _admin=Depends(require_admin),
 ):
     """
     Popola/aggiorna il dizionario prodotti dalle fatture.
@@ -2179,8 +2180,7 @@ async def ultimi_prodotti_ricevuti(limit: int = Query(20, le=100)):
 @router.post("/riallinea-ingredienti/{ricetta_id}")
 async def riallinea_ingredienti_ricetta(
     ricetta_id: str,
-    forza: bool = Query(False, description="Forza riallineamento ignorando finestra 15gg"),
-):
+    forza: bool = Query(False, description="Forza riallineamento ignorando finestra 15gg"), _ruolo=Depends(require_permesso("ricette"))):
     """
     Riallinea gli ingredienti della ricetta all'ultimo prodotto disponibile nel dizionario.
     Logica finestra 15 giorni:
@@ -2190,6 +2190,7 @@ async def riallinea_ingredienti_ricetta(
       di quella attualmente agganciata alla riga ricetta.
     Da chiamare all'apertura della ricetta (al volo).
     """
+    await verifica_reparto_ricetta(_ruolo, ricetta_id)
     ricetta = await db.ricette.find_one({"id": ricetta_id}, {"_id": 0})
     if not ricetta:
         raise HTTPException(status_code=404, detail="Ricetta non trovata")
@@ -2326,7 +2327,7 @@ async def riallinea_ingredienti_ricetta(
 
 
 @router.post("/ricalcola-costi-tutte-ricette")
-async def ricalcola_costi_tutte_ricette():
+async def ricalcola_costi_tutte_ricette(_admin=Depends(require_admin)):
     """Ricalcola e salva il costo di tutte le ricette nel DB."""
     prodotti = await db.dizionario_prodotti.find({"prezzo_kg": {"$gt": 0}}, {"_id": 0}).to_list(
         10000
@@ -2386,7 +2387,7 @@ async def ricalcola_costi_tutte_ricette():
 
 
 @router.post("/auto-mappa-ingredienti")
-async def auto_mappa_ingredienti(ricetta_id: Optional[str] = None):
+async def auto_mappa_ingredienti(ricetta_id: Optional[str] = None, _admin=Depends(require_admin)):
     """
     Mappa automaticamente gli ingredienti non mappati con il dizionario prodotti.
     Se ricetta_id è specificato, mappa solo quella ricetta.
@@ -2494,7 +2495,7 @@ async def auto_mappa_ingredienti(ricetta_id: Optional[str] = None):
 
 
 @router.post("/auto-rileva-allergeni-tutte")
-async def auto_rileva_allergeni_tutte(force: bool = False):
+async def auto_rileva_allergeni_tutte(force: bool = False, _admin=Depends(require_admin)):
     """
     Analizza automaticamente gli ingredienti di TUTTE le ricette e suggerisce
     gli allergeni presenti in base al nome degli ingredienti (Reg. UE 1169/2011).
@@ -2602,7 +2603,7 @@ async def auto_rileva_allergeni_singola(
 
 
 @router.post("/aggiorna-allergeni-ricetta")
-async def aggiorna_allergeni_ricetta(data: dict):
+async def aggiorna_allergeni_ricetta(data: dict, _admin=Depends(require_admin)):
     """Salva la lista degli allergeni (14 UE) e la dichiarazione nutrizionale per una ricetta."""
     ricetta_id = data.get("ricetta_id")
     allergeni = normalizza_allergeni(data.get("allergeni", []))
@@ -2627,7 +2628,7 @@ async def aggiorna_allergeni_ricetta(data: dict):
 
 
 @router.post("/backfill-allergeni-da-confermare")
-async def backfill_allergeni_da_confermare(request: Request):
+async def backfill_allergeni_da_confermare(request: Request, _admin=Depends(require_admin)):
     """Una tantum (idempotente): le ricette già marcate 'verificate' PRIMA della
     distinzione umano/automatismo (04/07/2026) non hanno traccia di CHI le ha
     verificate → per prudenza tornano tutte 'da confermare' una volta sola.
@@ -2664,8 +2665,9 @@ async def get_registro_allergeni():
 
 
 @router.post("/aggiorna-ingredienti-ricetta")
-async def aggiorna_ingredienti_ricetta(data: AggiornaIngredienteRicetta):
+async def aggiorna_ingredienti_ricetta(data: AggiornaIngredienteRicetta, _ruolo=Depends(require_permesso("ricette"))):
     """Aggiorna gli ingredienti di una ricetta con quantità e riferimenti al dizionario."""
+    await verifica_reparto_ricetta(_ruolo, data.ricetta_id)
     ricetta = await db.ricette.find_one({"id": data.ricetta_id}, {"_id": 0})
     if not ricetta:
         raise HTTPException(status_code=404, detail="Ricetta non trovata")
@@ -2737,7 +2739,7 @@ async def aggiorna_ingredienti_ricetta(data: AggiornaIngredienteRicetta):
 async def rinomina_ingrediente(
     nome_vecchio: str,
     nome_nuovo: str,
-    solo_ricette_ids: str = None,  # IDs separati da virgola, o None per tutte
+    solo_ricette_ids: str = None, _admin=Depends(require_admin),  # IDs separati da virgola, o None per tutte
 ):
     """
     Rinomina un ingrediente in tutte le ricette (o in un sottoinsieme).
@@ -2778,8 +2780,9 @@ async def rinomina_ingrediente(
 
 
 @router.post("/salva-porzioni-ricetta")
-async def salva_porzioni_ricetta(ricetta_id: str, porzioni_base: int):
+async def salva_porzioni_ricetta(ricetta_id: str, porzioni_base: int, _ruolo=Depends(require_permesso("ricette"))):
     """Salva il numero di pezzi/porzioni base della ricetta"""
+    await verifica_reparto_ricetta(_ruolo, ricetta_id)
     ricetta = await db.ricette.find_one({"id": ricetta_id})
     if not ricetta:
         raise HTTPException(status_code=404, detail="Ricetta non trovata")
@@ -3744,10 +3747,12 @@ async def get_storico_prezzi(nome: str, limit: int = 6):
             dt = datetime.fromisoformat(str(data_str)[:10])
         except Exception:
             continue
+        if d.get("prezzo_unitario") is None:
+            continue  # prezzo non letto in fattura: non è un punto dello storico
         voci.append(
             {
                 "data": dt.isoformat()[:10],
-                "prezzo": round(float(d.get("prezzo_unitario", 0)), 4),
+                "prezzo": round(float(d["prezzo_unitario"]), 4),
                 "fornitore": d.get("fornitore", ""),
             }
         )

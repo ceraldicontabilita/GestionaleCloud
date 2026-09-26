@@ -16,6 +16,8 @@ from pydantic import BaseModel
 
 from app.lotti.db import database as db
 from app.lotti.servizi.lotti_service import crea_lotto
+from app.lotti.auth import require_admin
+from fastapi import Depends
 
 router = APIRouter(prefix="/gelati", tags=["gelati"])
 
@@ -316,7 +318,7 @@ async def report_invenduti(
 
 
 @router.delete("/invenduti/{inv_id}")
-async def elimina_invenduto(inv_id: str):
+async def elimina_invenduto(inv_id: str, _admin=Depends(require_admin)):
     res = await db.gelati_invenduti.delete_one({"id": inv_id})
     return {"success": res.deleted_count > 0}
 
@@ -435,7 +437,7 @@ async def aggiungi_produzione(body: ProduzioneIn):
 
 
 @router.delete("/produzioni/{prod_id}")
-async def elimina_produzione(prod_id: str):
+async def elimina_produzione(prod_id: str, _admin=Depends(require_admin)):
     prod = await db.gelati_produzioni.find_one({"id": prod_id}, {"_id": 0})
     res = await db.gelati_produzioni.delete_one({"id": prod_id})
     if res.deleted_count == 0:

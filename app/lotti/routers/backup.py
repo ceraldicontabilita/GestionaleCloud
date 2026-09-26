@@ -1,38 +1,65 @@
 """
-backup.py — Backup e restore del database Gestionale.
+backup.py — Backup e ripristino dell'archivio di Lotti.
 
-Backup:
-  - dump gzip-JSON pure-Python di tutte le collezioni in BACKUP_DIR (/tmp su Render)
-  - Nome file: Gestionale_YYYY-MM-DD_HHMM.gz
-  - Rotazione: mantiene gli ultimi 7 backup
-  - Ogni notte alle 02:30 (scheduler)
+Backup (``esegui_backup_async``, anche ogni notte alle 02:30):
+  - dump gzip di Extended JSON di tutte le collezioni, scritto in streaming su
+    un file di appoggio temporaneo;
+  - il file va su Supabase (``servizi/backup_archivio``: parti verificate in
+    ``gestionale.blobs``, manifesto con SHA-256 e conteggi per collezione);
+    il file di appoggio si cancella. Un backup che non si rilegge identico
+    non esiste;
+  - rotazione: restano gli ultimi ``MAX_BACKUPS`` backup verificati.
 
-Restore:
-  - Seleziona un backup dalla lista
-  - Prima del restore crea automaticamente un backup di sicurezza
-  - restore pure-Python: per ogni collezione drop + reinsert
+Ripristino (``/ripristina/{file}``), in tre fasi:
+  1. ``dry_run`` (predefinito): per ogni collezione quanti documenti ci sono,
+     quanti ne porta il backup e quanti ne sparirebbero. Nessuna scrittura;
+  2. backup di sicurezza dello stato attuale, **verificato**: se non riesce il
+     ripristino non parte;
+  3. sostituzione per id: prima si scrivono i documenti del backup, poi si
+     tolgono per id quelli che il backup non ha. Una collezione non resta mai
+     vuota a metà strada; per tornare indietro si ripristina il backup di
+     sicurezza.
 
-Endpoint:
-  POST /api/backup/esegui          — backup immediato
-  GET  /api/backup/lista           — lista backup disponibili
-  GET  /api/backup/stato           — stato ultimo backup
-  POST /api/backup/ripristina/{f}  — restore da file specificato
+La collezione ``backup_registro`` (l'elenco dei backup) non si salva e non si
+ripristina: un ripristino non deve far dimenticare i backup fatti dopo.
+
+Endpoint (tutti amministratore):
+  POST /api/backup/esegui
+  GET  /api/backup/lista
+  GET  /api/backup/stato
+  POST /api/backup/ripristina/{f}?dry_run=true|false&conferma=<f>
+  GET  /api/backup/download/{f}
+  GET  /api/backup/export-json
 """
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from fastapi.responses import FileResponse, StreamingResponse
+from starlette.background import BackgroundTask
 from bson import json_util
 from datetime import datetime, timezone
-import os, glob, logging, re, json, gzip
+import os, logging, re, json, gzip, tempfile
 from app.lotti.db import database as _db, DB_NAME
 from app.lotti.auth import require_admin
+from app.lotti.servizi import backup_archivio
 
 router = APIRouter(prefix="/backup", tags=["Backup"])
-# Su Render il filesystem è di sola lettura tranne /tmp: il default /var/backups
-# dava "Permission denied". Si usa /tmp (sovrascrivibile con env BACKUP_DIR).
-BACKUP_DIR = os.environ.get("BACKUP_DIR", "/tmp/backups/ceraldi/db")
-MAX_BACKUPS = 7
+MAX_BACKUPS = backup_archivio.MAX_BACKUPS
+REGISTRO = backup_archivio.REGISTRO
 LOG = logging.getLogger("backup")
+# Appoggio locale del solo backup in corso: si cancella a fine giro.
+APPOGGIO_DIR = tempfile.gettempdir()
+
+
+def _nome_valido(filename: str) -> bool:
+    return bool(re.match(r"^" + re.escape(DB_NAME) + r"_\d{4}-\d{2}-\d{2}_\d{4,6}(?:-\d{1,3})?\.json\.gz$", filename))
+
+
+def _rimuovi(percorso: str) -> None:
+    try:
+        os.remove(percorso)
+    except OSError:
+        pass
+
 
 @router.get("/export-json")
 async def export_json_backup(_admin=Depends(require_admin)):
@@ -74,52 +101,18 @@ async def export_json_backup(_admin=Depends(require_admin)):
     )
 
 
-async def esegui_backup_async() -> dict:
-    """Backup pure-Python in STREAMING: scrive il dump gzip-JSON di TUTTE le
-    collezioni direttamente sul file, una collezione alla volta e un documento
-    alla volta. Memoria di picco = un documento (NON l'intero DB), per non
-    saturare i 512MB di Render. Niente mongodump. Rotazione MAX_BACKUPS.
-
-    Formato: oggetto JSON {"_meta": {...}, "<collezione>": [doc, ...], ...}
-    identico a prima, così il restore via json.loads resta compatibile."""
-    os.makedirs(BACKUP_DIR, exist_ok=True)
-    start = datetime.now(timezone.utc)
-    filename = f"{DB_NAME}_{start.strftime('%Y-%m-%d_%H%M')}.json.gz"
-    filepath = os.path.join(BACKUP_DIR, filename)
-
-    try:
-        collezioni = sorted(
-            c for c in await _db.list_collection_names() if not c.startswith("system.")
-        )
-    except Exception as e:
-        raise RuntimeError(f"Impossibile elencare le collezioni: {e}") from e
-
-    meta = {
-        "db": DB_NAME,
-        "exported_at": start.isoformat(),
-        "version": "2.1",
-        "tipo": "json-gzip-stream",
-        "collezioni": collezioni,
-    }
-
-    totale_doc = 0
-    fallite: list = []
-    # Scrittura streaming AMMORTIZZATA (fix 02/07/2026): la memoria era già a
-    # posto (un documento alla volta), ma json.dumps+gzip giravano DENTRO
-    # l'event loop: su ~119k documenti la CPU del free tier restava occupata
-    # ~45s di fila e TUTTE le API rispondevano 502 (verificato live l'1/07).
-    # Ora: i documenti si accumulano in blocchi da 500, la serializzazione+
-    # compressione del blocco gira in un THREAD (asyncio.to_thread) e tra un
-    # blocco e l'altro l'event loop respira (sleep breve) — le API restano
-    # reattive per tutta la durata del backup.
+async def _scrivi_dump(filepath: str, meta: dict, collezioni: list) -> tuple:
+    """Dump in streaming (un blocco da 500 documenti alla volta, serializzato
+    in un thread: l'event loop resta libero e le API rispondono)."""
     import asyncio as _aio
 
     def _scrivi_blocco(fh, items):
-        # serializzazione + compressione nel thread: l'event loop non le vede
         fh.write("".join(
             pref + json_util.dumps(d, ensure_ascii=False) for pref, d in items
         ))
 
+    conteggi: dict = {}
+    fallite: list = []
     with gzip.open(filepath, "wt", encoding="utf-8") as fh:
         fh.write("{")
         fh.write('"_meta":')
@@ -129,13 +122,14 @@ async def esegui_backup_async() -> dict:
             fh.write(json.dumps(coll_name))
             fh.write(":[")
             primo = True
+            n = 0
             try:
                 cursor = _db[coll_name].find({}).batch_size(500)
                 blocco = []
                 async for doc in cursor:
                     blocco.append(("" if primo else ",", doc))
                     primo = False
-                    totale_doc += 1
+                    n += 1
                     if len(blocco) >= 500:
                         await _aio.to_thread(_scrivi_blocco, fh, blocco)
                         blocco = []
@@ -145,37 +139,91 @@ async def esegui_backup_async() -> dict:
             except Exception as e:
                 fallite.append(coll_name)
                 LOG.warning("[BACKUP] collezione %s parziale: %s: %s", coll_name, type(e).__name__, e)
+            conteggi[coll_name] = n
             fh.write("]")
         fh.write("}")
+    return conteggi, fallite
 
-    if fallite:
-        # Un backup incompleto non si ripristina: il nome non combacia piu'
-        # con la regex del restore, e l'esito non e' un successo (audit
-        # 25/09/2026, PER-02: prima diceva success True anche cosi').
-        parziale = filepath.replace(".json.gz", "_PARZIALE.json.gz")
-        os.replace(filepath, parziale)
-        filepath, filename = parziale, os.path.basename(parziale)
-    size_mb = round(os.path.getsize(filepath) / 1024 / 1024, 2)
-    elapsed = (datetime.now(timezone.utc) - start).total_seconds()
 
-    # Rotazione: tiene solo gli ultimi MAX_BACKUPS
-    tutti = sorted(glob.glob(os.path.join(BACKUP_DIR, f"{DB_NAME}_*.gz")))
+async def _registro() -> list:
+    righe = await _db[REGISTRO].find({}, {"_id": 0}).to_list(None)
+    return sorted(righe, key=lambda r: str(r.get("creato_at") or ""), reverse=True)
+
+
+async def _ruota() -> list:
+    """Tiene gli ultimi MAX_BACKUPS verificati; gli altri si tolgono per chiave."""
     eliminati = []
-    while len(tutti) > MAX_BACKUPS:
-        vecchio = tutti.pop(0)
+    for vecchio in (await _registro())[MAX_BACKUPS:]:
         try:
-            os.remove(vecchio)
-            eliminati.append(os.path.basename(vecchio))
-        except OSError:
-            pass
+            await backup_archivio.elimina(vecchio)
+            await _db[REGISTRO].delete_one({"id": vecchio["id"]})
+            eliminati.append(vecchio["nome"])
+        except Exception as e:
+            LOG.error("[BACKUP] rotazione di %s non riuscita: %s %s", vecchio.get("nome"), type(e).__name__, e)
+    return eliminati
 
-    LOG.info(f"[BACKUP] {filename} - {size_mb} MB - {totale_doc} doc - {elapsed:.1f}s")
+
+async def esegui_backup_async() -> dict:
+    """Backup completo su Supabase, verificato. Solleva se non è persistente."""
+    start = datetime.now(timezone.utc)
+    base = f"{DB_NAME}_{start.strftime('%Y-%m-%d_%H%M%S')}"
+    filename = f"{base}.json.gz"
+    # Due backup nello stesso secondo (ripristino subito dopo un backup) non
+    # devono condividere nome, parti e riga di registro.
+    n = 1
+    while await _db[REGISTRO].find_one({"id": filename}, {"_id": 1}):
+        n += 1
+        filename = f"{base}-{n}.json.gz"
+    filepath = os.path.join(APPOGGIO_DIR, filename)
+
+    try:
+        collezioni = sorted(
+            c for c in await _db.list_collection_names()
+            if not c.startswith("system.") and c != REGISTRO
+        )
+    except Exception as e:
+        raise RuntimeError(f"Impossibile elencare le collezioni: {type(e).__name__}: {e}") from e
+
+    meta = {
+        "db": DB_NAME,
+        "exported_at": start.isoformat(),
+        "version": "2.2",
+        "tipo": "json-gzip-stream",
+        "collezioni": collezioni,
+    }
+    try:
+        conteggi, fallite = await _scrivi_dump(filepath, meta, collezioni)
+        if fallite:
+            # Un backup incompleto non si archivia e non si ripristina.
+            return {
+                "success": False, "parziale": True, "collezioni_fallite": fallite,
+                "file": filename, "timestamp": start.isoformat(),
+                "messaggio": "Backup incompleto: non archiviato",
+            }
+        totale_doc = sum(conteggi.values())
+        manifesto = await backup_archivio.salva(filename, filepath, {
+            "creato_at": start.isoformat(),
+            "documenti": totale_doc,
+            "collezioni": len(collezioni),
+            "conteggi": conteggi,
+        })
+    finally:
+        _rimuovi(filepath)
+
+    await _db[REGISTRO].insert_one({"id": filename, **manifesto})
+    eliminati = await _ruota()
+    size_mb = round(manifesto["bytes"] / 1024 / 1024, 2)
+    elapsed = (datetime.now(timezone.utc) - start).total_seconds()
+    LOG.info("[BACKUP] %s - %s MB - %s doc - %s parti verificate - %.1fs",
+             filename, size_mb, totale_doc, len(manifesto["parti"]), elapsed)
     return {
-        "success": not fallite,
-        "parziale": bool(fallite),
-        "collezioni_fallite": fallite,
+        "success": True,
+        "verificato": True,
+        "parziale": False,
+        "collezioni_fallite": [],
         "file": filename,
-        "percorso": filepath,
+        "sha256": manifesto["sha256"],
+        "parti": len(manifesto["parti"]),
         "dimensione": f"{size_mb} MB",
         "documenti": totale_doc,
         "collezioni": len(collezioni),
@@ -192,123 +240,155 @@ async def backup_manuale(_admin=Depends(require_admin)):
     try:
         return await esegui_backup_async()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        LOG.error("[BACKUP] manuale fallito: %s %s", type(e).__name__, e)
+        raise HTTPException(status_code=500, detail=f"Backup non riuscito: {type(e).__name__}") from e
+
+
+def _voce(r: dict) -> dict:
+    return {
+        "file": r.get("nome"),
+        "dimensione": f"{round(int(r.get('bytes') or 0) / 1024 / 1024, 2)} MB",
+        "data": r.get("creato_at"),
+        "size_bytes": r.get("bytes"),
+        "sha256": r.get("sha256"),
+        "verificato": bool(r.get("verificato")),
+        "verificato_at": r.get("verificato_at"),
+        "documenti": r.get("documenti"),
+        "archivio": "supabase",
+    }
 
 
 # ── GET /api/backup/lista ─────────────────────────────────────────────────────
 @router.get("/lista")
 async def lista_backup(_admin=Depends(require_admin)):
-    """Elenca tutti i backup disponibili con dimensione e data."""
-    # makedirs puo fallire per permessi sul filesystem (es. Render): non deve
-    # mandare in 500 la semplice lista. Se la dir non esiste/non e accessibile,
-    # restituiamo lista vuota (come fa /stato).
-    try:
-        os.makedirs(BACKUP_DIR, exist_ok=True)
-    except OSError:
-        pass
-    files = sorted(glob.glob(os.path.join(BACKUP_DIR, f"{DB_NAME}_*.gz")), reverse=True)
-    result = []
-    for f in files:
-        try:
-            stat = os.stat(f)
-        except OSError:
-            continue
-        result.append(
-            {
-                "file": os.path.basename(f),
-                "dimensione": f"{round(stat.st_size / 1024 / 1024, 2)} MB",
-                "data": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
-                "size_bytes": stat.st_size,
-            }
-        )
-    return {
-        "totale": len(result),
-        "max_keep": MAX_BACKUPS,
-        "backup": result,
-    }
+    """Elenca i backup archiviati su Supabase, il più recente per primo."""
+    righe = await _registro()
+    return {"totale": len(righe), "max_keep": MAX_BACKUPS, "backup": [_voce(r) for r in righe]}
 
 
 # ── GET /api/backup/stato ─────────────────────────────────────────────────────
 @router.get("/stato")
 async def stato_backup(_admin=Depends(require_admin)):
     """Ritorna lo stato dell'ultimo backup."""
-    files = sorted(glob.glob(os.path.join(BACKUP_DIR, f"{DB_NAME}_*.gz")), reverse=True)
-    if not files:
+    righe = await _registro()
+    if not righe:
         return {"ultimo_backup": None, "stato": "nessun_backup"}
-    ultimo = files[0]
-    stat = os.stat(ultimo)
+    ultimo = _voce(righe[0])
     return {
-        "stato": "ok",
-        "ultimo_backup": os.path.basename(ultimo),
-        "dimensione": f"{round(stat.st_size / 1024 / 1024, 2)} MB",
-        "data": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
-        "totale_backup": len(files),
+        "stato": "ok" if ultimo["verificato"] else "non_verificato",
+        "ultimo_backup": ultimo["file"],
+        "dimensione": ultimo["dimensione"],
+        "data": ultimo["data"],
+        "verificato": ultimo["verificato"],
+        "archivio": "supabase",
+        "totale_backup": len(righe),
     }
+
+
+async def _manifesto(filename: str) -> dict:
+    if not _nome_valido(filename):
+        raise HTTPException(status_code=400, detail="Nome file non valido")
+    manifesto = await _db[REGISTRO].find_one({"id": filename}, {"_id": 0})
+    if not manifesto:
+        raise HTTPException(status_code=404, detail=f"Backup non trovato: {filename}")
+    return manifesto
+
+
+async def _sostituisci_collezione(coll_name: str, docs: list) -> dict:
+    """Scrive i documenti del backup, poi toglie per id quelli che non ha."""
+    from app.lotti.supabase_document_store import PersistentCollection
+
+    coll = _db[coll_name]
+    if isinstance(coll, PersistentCollection):
+        return await coll.sostituisci_per_id(docs)
+    ids = [d["_id"] for d in docs]
+    for d in docs:
+        await coll.replace_one({"_id": d["_id"]}, d, upsert=True)
+    rimossi = await coll.delete_many({"_id": {"$nin": ids}})
+    return {"scritti": len(docs), "rimossi": rimossi.deleted_count}
 
 
 # ── POST /api/backup/ripristina/{filename} ────────────────────────────────────
 @router.post("/ripristina/{filename}")
-async def ripristina_backup(filename: str, _admin=Depends(require_admin)):
-    """
-    Ripristina il database da un backup specifico.
-    Flusso atomico:
-      1. Valida il nome file
-      2. Crea backup di sicurezza del DB attuale
-      3. restore pure-Python (drop + reinsert per collezione)
-      4. Ritorna esito dettagliato
-    """
-    # Validazione: accetta sia i vecchi .gz che i nuovi .json.gz
-    if not re.match(r"^Gestionale_[\d_]+(?:\.json)?\.gz$", filename):
-        raise HTTPException(status_code=400, detail="Nome file non valido")
-
-    filepath = os.path.join(BACKUP_DIR, filename)
-    if not os.path.exists(filepath):
-        raise HTTPException(status_code=404, detail=f"Backup non trovato: {filename}")
-
-    # 1. Backup di sicurezza PRIMA del restore
+async def ripristina_backup(
+    filename: str,
+    dry_run: bool = Query(True, description="Simulazione: solo conteggi, nessuna scrittura"),
+    conferma: str = Query(None, description="Per ripristinare davvero: ripetere il nome del file"),
+    _admin=Depends(require_admin),
+):
+    """Ripristino in tre fasi: simulazione, backup di sicurezza verificato,
+    sostituzione per id. Senza ``dry_run=false`` e ``conferma`` uguale al nome
+    del file non scrive nulla."""
+    manifesto = await _manifesto(filename)
+    appoggio = os.path.join(APPOGGIO_DIR, f"ripristino_{filename}")
     try:
-        backup_sicurezza = await esegui_backup_async()
-        LOG.info(f"[RESTORE] Backup pre-restore: {backup_sicurezza['file']}")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Impossibile creare backup di sicurezza: {e}") from e
-
-    # 2. Carica il dump JSON-gzip
-    try:
-        with gzip.open(filepath, "rb") as fh:
+        await backup_archivio.ricomponi(manifesto, appoggio)
+        with gzip.open(appoggio, "rb") as fh:
             dump = json_util.loads(fh.read().decode("utf-8"))
+    except backup_archivio.BackupNonPersistente as e:
+        raise HTTPException(status_code=409, detail=f"Backup non integro: {e}") from e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Backup illeggibile: {e}") from e
+        LOG.error("[RESTORE] %s illeggibile: %s %s", filename, type(e).__name__, e)
+        raise HTTPException(status_code=500, detail="Backup illeggibile") from e
+    finally:
+        _rimuovi(appoggio)
 
-    # 3. Restore pure-Python: per ogni collezione drop + reinsert (niente mongorestore)
+    dati = {c: docs for c, docs in dump.items()
+            if c not in ("_meta", REGISTRO) and isinstance(docs, list)}
+    piano = {}
+    for coll_name, docs in sorted(dati.items()):
+        attuali = {str(d["_id"]) for d in await _db[coll_name].find({}, {"_id": 1}).to_list(None)}
+        nel_backup = {str(d.get("_id")) for d in docs}
+        piano[coll_name] = {
+            "attuali": len(attuali),
+            "nel_backup": len(docs),
+            "da_togliere": len(attuali - nel_backup),
+            "da_aggiungere": len(nel_backup - attuali),
+        }
+    esistenti = set(await _db.list_collection_names()) - {REGISTRO}
+    non_toccate = sorted(c for c in esistenti - set(dati) if not c.startswith("system."))
+    riepilogo = {
+        "backup": filename,
+        "creato_at": manifesto.get("creato_at"),
+        "sha256": manifesto.get("sha256"),
+        "collezioni": piano,
+        "collezioni_non_nel_backup": non_toccate,
+        "documenti_da_togliere": sum(v["da_togliere"] for v in piano.values()),
+    }
+    if dry_run:
+        return {"dry_run": True, **riepilogo}
+    if conferma != filename:
+        raise HTTPException(status_code=400, detail="Per ripristinare ripeti il nome del file in «conferma»")
+
+    try:
+        sicurezza = await esegui_backup_async()
+    except Exception as e:
+        LOG.error("[RESTORE] backup di sicurezza fallito: %s %s", type(e).__name__, e)
+        raise HTTPException(status_code=500, detail="Backup di sicurezza non riuscito: ripristino annullato") from e
+    if not (sicurezza.get("success") and sicurezza.get("verificato")):
+        raise HTTPException(status_code=500, detail="Backup di sicurezza non verificato: ripristino annullato")
+
     start = datetime.now(timezone.utc)
-    ripristinate = {}
-    for coll_name, docs in dump.items():
-        if coll_name == "_meta" or not isinstance(docs, list):
-            continue
+    esiti, errori = {}, {}
+    for coll_name, docs in sorted(dati.items()):
         try:
-            await _db[coll_name].delete_many({})
-            # Inserimento a blocchi: evita un unico insert_many gigante in RAM.
-            for i in range(0, len(docs), 1000):
-                blocco = docs[i:i + 1000]
-                if blocco:
-                    await _db[coll_name].insert_many(blocco)
-            ripristinate[coll_name] = len(docs)
+            esiti[coll_name] = await _sostituisci_collezione(coll_name, docs)
         except Exception as e:
-            ripristinate[coll_name] = f"errore: {str(e)[:80]}"
+            errori[coll_name] = type(e).__name__
+            LOG.error("[RESTORE] %s: %s %s", coll_name, type(e).__name__, e)
     elapsed = round((datetime.now(timezone.utc) - start).total_seconds(), 1)
-    LOG.info(f"[RESTORE] Completato: {filename} in {elapsed}s")
-
-    errori = {c: v for c, v in ripristinate.items() if isinstance(v, str)}
+    LOG.info("[RESTORE] %s in %ss, errori: %s", filename, elapsed, sorted(errori))
     return {
+        "dry_run": False,
         "success": not errori,
         "collezioni_con_errore": sorted(errori),
         "backup_ripristinato": filename,
-        "backup_sicurezza": backup_sicurezza["file"],
-        "collezioni_ripristinate": ripristinate,
+        "backup_sicurezza": sicurezza["file"],
+        "collezioni_ripristinate": esiti,
         "durata_s": elapsed,
+        "piano": riepilogo,
         "messaggio": (
-            f"Database ripristinato da {filename}. "
-            f"Backup di sicurezza salvato: {backup_sicurezza['file']}"
+            f"Ripristinato {filename}. Per tornare indietro: ripristina {sicurezza['file']}."
         ),
     }
 
@@ -316,15 +396,18 @@ async def ripristina_backup(filename: str, _admin=Depends(require_admin)):
 # ── GET /api/backup/download/{filename} ──────────────────────────────────────
 @router.get("/download/{filename}")
 async def download_backup(filename: str, _admin=Depends(require_admin)):
-    """Scarica un file di backup specifico come download diretto."""
-    if not re.match(r"^Gestionale_[\d_]+(?:\.json)?\.gz$", filename):
-        raise HTTPException(status_code=400, detail="Nome file non valido")
-    filepath = os.path.join(BACKUP_DIR, filename)
-    if not os.path.exists(filepath):
-        raise HTTPException(status_code=404, detail=f"Backup non trovato: {filename}")
+    """Scarica un backup: ricomposto dalle parti e verificato con l'impronta."""
+    manifesto = await _manifesto(filename)
+    appoggio = os.path.join(APPOGGIO_DIR, f"download_{filename}")
+    try:
+        await backup_archivio.ricomponi(manifesto, appoggio)
+    except backup_archivio.BackupNonPersistente as e:
+        _rimuovi(appoggio)
+        raise HTTPException(status_code=409, detail=f"Backup non integro: {e}") from e
     return FileResponse(
-        path=filepath,
+        path=appoggio,
         filename=filename,
         media_type="application/gzip",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        background=BackgroundTask(_rimuovi, appoggio),
     )

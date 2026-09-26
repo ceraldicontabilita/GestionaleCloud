@@ -16,6 +16,8 @@ from datetime import datetime, timezone, timedelta, date
 from fastapi import APIRouter
 
 from app.lotti.db import database as db
+from app.lotti.auth import require_admin
+from fastapi import Depends
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/haccp-auto-manuale", tags=["HACCP Manuale Automatico"])
@@ -318,7 +320,7 @@ async def hook_nuova_anomalia(anomalia: dict):
 # ENDPOINT REST
 # ─────────────────────────────────────────────────────────────────────────────
 @router.post("/aggiorna")
-async def trigger_aggiornamento():
+async def trigger_aggiornamento(_admin=Depends(require_admin)):
     """Aggiorna manualmente tutte le sezioni dinamiche del Manuale HACCP."""
     sezioni = await aggiorna_sezioni_manuale()
     return {
@@ -332,7 +334,7 @@ async def trigger_aggiornamento():
 
 
 @router.post("/qualifica-fornitore")
-async def qualifica_fornitore_manuale(nome: str, approva: bool = True):
+async def qualifica_fornitore_manuale(nome: str, approva: bool = True, _admin=Depends(require_admin)):
     """Approva o sospende un fornitore nel registro qualifica."""
     stato = "approvato" if approva else "sospeso"
     res = await db.fornitori_qualifica.update_one(

@@ -4,6 +4,7 @@
 // permessi in config/permissions.js: qui SOLO il componente da renderizzare.
 // ctx = stato e callback condivisi passati da App.js (vedi renderPagina).
 import ErrorBoundary from "../components/ErrorBoundary";
+import PaginaNonTrovata from "../components/PaginaNonTrovata";
 import {
   DisinfestazioneView,
   SanificazioneView,
@@ -46,16 +47,18 @@ import ConfrontoProdottoView from "../components/haccp/ConfrontoProdottoView";
 import AttendibilitaHaccpView from "../components/haccp/AttendibilitaHaccpView";
 import ProdottiHubView from "../components/haccp/ProdottiHubView";
 import MenuVetrinaView from "../components/haccp/MenuVetrinaView";
+import ImpostazioniView from "../components/haccp/ImpostazioniView";
 
 export const ProdottiConTabFornitore = ProdottiHubView;
 
 // Mappa id → funzione di render. Ogni voce riceve ctx (stato condiviso da
-// App.js) e ritorna il JSX della pagina. safe=false → senza ErrorBoundary
-// (comportamento storico dei registri HACCP semplici, invariato).
+// App.js) e ritorna il JSX della pagina. Ogni pagina ha il suo ErrorBoundary:
+// prima i registri HACCP ne erano senza, e un errore in una scheda
+// temperature svuotava tutta l'app (audit 26/09/2026).
 const PAGINE = {
-  dashboard: { safe: false, render: (ctx) => <DashboardView stats={ctx.stats} onRefresh={ctx.refreshAll} onNavigate={ctx.setActiveTab} /> },
+  dashboard: { render: (ctx) => <DashboardView stats={ctx.stats} onRefresh={ctx.refreshAll} onNavigate={ctx.setActiveTab} /> },
   gelati: { render: () => <GelatiView /> },
-  fornitori: { safe: false, render: (ctx) => <FornitoriList fornitori={ctx.fornitori} onRefresh={ctx.fetchFornitori} /> },
+  fornitori: { render: (ctx) => <FornitoriList fornitori={ctx.fornitori} onRefresh={ctx.fetchFornitori} /> },
   materie: { render: () => <MateriePrimeList /> },
   prodotti: { render: () => <ProdottiConTabFornitore /> },
   magazzino_prodotti: { render: () => <ProdottiConTabFornitore initialSub="gestione" /> },
@@ -87,24 +90,25 @@ const PAGINE = {
   cosa_usare_oggi: { render: () => <CosaUsareOggiView /> },
   produzione_consigliata: { render: () => <ProduzioneConsigliataView /> },
   mappa_tracciabilita: { render: (ctx) => <MappaTracciabilitaView onNavigate={ctx.handleTabChange} /> },
-  // Moduli HACCP (senza ErrorBoundary: comportamento storico invariato)
-  disinfestazione: { safe: false, render: () => <DisinfestazioneView /> },
-  sanificazione: { safe: false, render: () => <SanificazioneView /> },
-  temp_negative: { safe: false, render: () => <TemperatureNegativeView /> },
-  temp_positive: { safe: false, render: () => <TemperaturePositiveView /> },
-  anomalie: { safe: false, render: () => <AnomalieView /> },
-  manuale: { safe: false, render: () => <ManualeHACCPView /> },
+  // Moduli HACCP
+  disinfestazione: { render: () => <DisinfestazioneView /> },
+  sanificazione: { render: () => <SanificazioneView /> },
+  temp_negative: { render: () => <TemperatureNegativeView /> },
+  temp_positive: { render: () => <TemperaturePositiveView /> },
+  anomalie: { render: () => <AnomalieView /> },
+  manuale: { render: () => <ManualeHACCPView /> },
   registro_haccp: { render: () => <RegistroHACCPView /> },
+  impostazioni: { render: (ctx) => <ImpostazioniView onNavigate={ctx.handleTabChange} /> },
   personale: { render: () => <ImpostazioniPersonaleView /> },
   stampanti: { render: () => <StampantiConfigView /> },
   guida: { render: () => <ManualeView /> },
   configura: { render: (ctx) => <ConfiguraWizard onNavigate={ctx.setActiveTab} /> },
   dizionario: { render: () => <DizionarioIngredientiView /> },
-  controllo_olio: { safe: false, render: () => <ControlloOlioView /> },
-  temp_cottura: { safe: false, render: () => <TemperatureCotturaView /> },
-  ricezione_merce: { safe: false, render: () => <RicezioneMerceView /> },
-  backup: { safe: false, render: (ctx) => <BackupView onBack={() => ctx.setActiveTab("dashboard")} /> },
-  allergeni: { safe: false, render: () => <RegistroAllergeniView /> },
+  controllo_olio: { render: () => <ControlloOlioView /> },
+  temp_cottura: { render: () => <TemperatureCotturaView /> },
+  ricezione_merce: { render: () => <RicezioneMerceView /> },
+  backup: { render: (ctx) => <BackupView onBack={() => ctx.setActiveTab("dashboard")} /> },
+  allergeni: { render: () => <RegistroAllergeniView /> },
   schede_tecniche: { render: () => <SchedeTecnicheView /> },
   ordini: { render: () => <OrdiniView /> },
   backoffice: { render: () => <BackofficeView /> },
@@ -117,9 +121,14 @@ const PAGINE = {
   attendibilita_haccp: { render: () => <AttendibilitaHaccpView /> },
 };
 
+export function paginaEsiste(activeTab) {
+  return Object.prototype.hasOwnProperty.call(PAGINE, activeTab);
+}
+
 export function renderPagina(activeTab, ctx) {
   const voce = PAGINE[activeTab];
-  if (!voce) return null;
-  const contenuto = voce.render(ctx);
-  return voce.safe === false ? contenuto : <ErrorBoundary>{contenuto}</ErrorBoundary>;
+  // Un indirizzo sconosciuto non è un'area vuota: dice che la pagina non
+  // c'è e riporta alla Home.
+  if (!voce) return <PaginaNonTrovata id={activeTab} onHome={() => ctx.handleTabChange("dashboard")} />;
+  return <ErrorBoundary key={activeTab}>{voce.render(ctx)}</ErrorBoundary>;
 }

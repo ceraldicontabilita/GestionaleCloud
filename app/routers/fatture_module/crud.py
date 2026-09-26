@@ -371,9 +371,10 @@ async def get_archivio_fatture(
 
     # Proiezione unica delle prove, sempre derivata dagli stessi collegamenti
     # canonici usati da Banca/Prima Nota. È read-only e non tocca il database.
-    from app.services.payment_evidence_projection import project_invoice_payment_evidence
-    for f in all_fatture:
-        f["payment_evidence"] = await project_invoice_payment_evidence(db, f)
+    # Tre letture in blocco per tutte le fatture, non tre per fattura.
+    from app.services.payment_evidence_projection import project_payment_evidence_many
+    for f, prove in zip(all_fatture, await project_payment_evidence_many(db, all_fatture)):
+        f["payment_evidence"] = prove
 
     # ── Arricchisci con metodo_pagamento DEL FORNITORE ────────────────────────
     # Legge l'anagrafica fornitori per P.IVA e popola `fornitore_metodo_pagamento`.

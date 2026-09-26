@@ -1,4 +1,6 @@
 import logging
+from app.lotti.auth import require_admin, require_permesso
+from fastapi import Depends
 
 """
 Router per la gestione delle Anomalie e Non Conformità.
@@ -420,8 +422,7 @@ async def sposta_lotti_massivo(anomalia_id: str, body: SpostaLottiMassivoRequest
 
 @router.put("/{anomalia_id}")
 async def aggiorna_anomalia(
-    anomalia_id: str, data: AggiornaAnomaliaRequest, request: Request
-):
+    anomalia_id: str, data: AggiornaAnomaliaRequest, request: Request, _ruolo=Depends(require_permesso("haccp_anomalie"))):
     """Aggiorna un'anomalia e conserva la prova dell'intervento.
 
     Un'anomalia non puo' essere chiusa con il solo cambio di stato: servono
@@ -513,7 +514,7 @@ async def aggiorna_anomalia(
 
 
 @router.delete("/{anomalia_id}")
-async def elimina_anomalia(anomalia_id: str):
+async def elimina_anomalia(anomalia_id: str, _admin=Depends(require_admin)):
     """Elimina un'anomalia"""
     result = await db.anomalie.delete_one({"id": anomalia_id})
     if result.deleted_count == 0:

@@ -25,6 +25,8 @@ from pydantic import BaseModel
 from pymongo import UpdateOne as PyUpdateOne
 
 from app.lotti.db import database as db
+from app.lotti.auth import require_admin
+from fastapi import Depends
 
 logger = logging.getLogger(__name__)
 
@@ -961,7 +963,7 @@ class ButtoPatch(BaseModel):
 
 
 @router.patch("/dizionario/{prodotto_id}/butto")
-async def set_butto(prodotto_id: str, payload: ButtoPatch):
+async def set_butto(prodotto_id: str, payload: ButtoPatch, _admin=Depends(require_admin)):
     """Imposta la percentuale di scarto (butto) per un prodotto del dizionario."""
     if not (0 <= payload.butto_percentuale < 100):
         raise HTTPException(status_code=400, detail="butto_percentuale deve essere 0-99.9")
@@ -987,7 +989,7 @@ class MappingManualePayload(BaseModel):
 
 
 @router.post("/mapping-manuale")
-async def salva_mapping_manuale(payload: MappingManualePayload):
+async def salva_mapping_manuale(payload: MappingManualePayload, _admin=Depends(require_admin)):
     """
     Salva un mapping confermato dall'utente (L1) e lo applica al prodotto nel dizionario.
     """
@@ -1028,7 +1030,7 @@ async def normalizza_batch(
     solo_mancanti: bool = Query(
         True, description="Processa solo prodotti senza ingrediente_canonico (False = sovrascrive tutto)"
     ),
-    limit: int = Query(0, description="Max prodotti da processare (0 = tutti)"),
+    limit: int = Query(0, description="Max prodotti da processare (0 = tutti)"), _admin=Depends(require_admin),
 ):
     """
     Job batch: normalizza i prodotti del dizionario assegnando ingrediente_canonico.
@@ -1124,7 +1126,7 @@ async def listino_fornitore(
 
 
 @router.post("/consolida-canonici")
-async def consolida_canonici(limit: int = Query(50000)):
+async def consolida_canonici(limit: int = Query(50000), _admin=Depends(require_admin)):
     """Sistema i dati esistenti: applica il consolidamento al campo
     ingrediente_canonico di dizionario_prodotti (es. 'margarina per croissant'
     → 'Margarina', minuscolo → maiuscolo coerente). Deterministico, niente LLM."""

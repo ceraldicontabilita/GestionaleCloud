@@ -89,7 +89,7 @@ async def lista_prodotti(
 
 # ── POST nuovo prodotto ───────────────────────────────────────────────────────
 @router.post("/prodotti")
-async def crea_prodotto(payload: NuovoProdotto):
+async def crea_prodotto(payload: NuovoProdotto, _admin=Depends(require_admin)):
     nome = payload.nome.strip()
     ppc = _pezzi_da_nome(nome) or (int(payload.pezzi_per_collo) if payload.pezzi_per_collo else 1) or 1
     doc = {
@@ -474,7 +474,7 @@ async def rettifica_inventario(prodotto_id: str, payload: RettificaInventario):
 
 
 @router.patch("/prodotti/{prodotto_id}/soglia")
-async def aggiorna_soglia(prodotto_id: str, payload: SogliaUpdate):
+async def aggiorna_soglia(prodotto_id: str, payload: SogliaUpdate, _admin=Depends(require_admin)):
     res = await db.magazzino_bar_prodotti.update_one(
         {"id": prodotto_id},
         {
@@ -597,7 +597,7 @@ class ApplicaSuggeriteReq(BaseModel):
     solo_mancanti: bool = True   # non sovrascrive le soglie gia' impostate
 
 @router.post("/soglie-suggerite/applica")
-async def applica_soglie_suggerite(payload: ApplicaSuggeriteReq = Body(...)):
+async def applica_soglie_suggerite(payload: ApplicaSuggeriteReq = Body(...), _admin=Depends(require_admin)):
     """Applica le soglie suggerite (dallo storico). Con solo_mancanti rispetta
     quelle gia' messe a mano. Calcola di nuovo i suggerimenti per sicurezza."""
     sugg = (await soglie_suggerite())["suggerimenti"]
@@ -641,7 +641,7 @@ class ColloUpdate(BaseModel):
 
 
 @router.patch("/prodotti/{prodotto_id}/collo")
-async def aggiorna_collo(prodotto_id: str, payload: ColloUpdate):
+async def aggiorna_collo(prodotto_id: str, payload: ColloUpdate, _admin=Depends(require_admin)):
     """Configura quanti pezzi singoli contiene un collo (es. Coca: 24, acqua: 6, prosecco: 6).
     Indispensabile perché il carico in casse venga convertito correttamente in pezzi."""
     campi = {

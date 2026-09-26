@@ -13,6 +13,7 @@ import { testoFirmatari } from "../../utils/firmatari";
 import { CLASSE_NA, LEGENDA_NA, STILE_NA_STAMPA, eNonAttendibile, titoloNa } from "../../utils/attendibilita";
 import DichiaraConformiButton from "./DichiaraConformiButton";
 import { CellaTemperatura, ModalAzioneCorrettiva } from "./shared/CellaTemperatura";
+import { LEGENDA_STATI_HACCP, statoCellaHaccp } from "../../utils/statoCellaHaccp";
 
 // Dati aziendali Ceraldi Group
 const AZIENDA_INFO = {
@@ -126,29 +127,31 @@ const TemperatureNegativeView = () => {
 
   const numGiorni = giorniNelMese(mese, anno);
 
+  // Una richiesta per l'anno (prima erano 12, più le chiusure, e se una sola
+  // falliva la griglia restava vuota). Gli apparecchi li decide il server:
+  // quelli censiti, più chi ha rilevazioni nell'anno.
   const fetchSchede = useCallback(async () => {
     setLoading(true);
-    try {
-      // Carica tutte le 12 schede congelatori + chiusure
-      const promises = [];
-      for (let i = 1; i <= 12; i++) {
-        promises.push(axios.get(`${API}/temperature-negative/scheda/${anno}/${i}`));
-      }
-      promises.push(axios.get(`${API}/chiusure/anno/${anno}`));
-      
-      const results = await Promise.all(promises);
-      
+    const [schedeRes, chiusureRes] = await Promise.allSettled([
+      axios.get(`${API}/temperature-negative/schede/${anno}`, { timeout: 60000 }),
+      axios.get(`${API}/chiusure/anno/${anno}`, { timeout: 30000 }),
+    ]);
+    if (schedeRes.status === "fulfilled") {
       const schede = {};
-      for (let i = 0; i < 12; i++) {
-        schede[i + 1] = results[i].data;
-      }
+      (schedeRes.value.data || []).forEach((s) => {
+        const n = Number(s.congelatore_numero);
+        if (n) schede[n] = s;
+      });
       setSchedeCongelatori(schede);
-      setChiusure(results[12].data);
-    } catch (err) {
-      toast.error("Errore caricamento schede");
+    } else {
+      toast.error(apiError(schedeRes.reason, "Errore caricamento schede congelatori"));
     }
+    if (chiusureRes.status === "fulfilled") setChiusure(chiusureRes.value.data || {});
+    else toast.error("Giorni di chiusura non caricati: le caselle chiuse non sono evidenziate");
     setLoading(false);
   }, [anno]);
+
+  const numeriCong = Object.keys(schedeCongelatori).map(Number).sort((a, b) => a - b);
 
   // Carica nomi personalizzati congelatori
   const fetchNomiCongelatori = useCallback(async () => {
@@ -171,9 +174,10 @@ const TemperatureNegativeView = () => {
       return next;
     });
     fetchNomiCongelatori();
+    fetchSchede();
   };
 
-  const getNomeCongelatore = (numero) => nomiCongelatori[numero] || `Congelatore N°${numero}`;
+  const getNomeCongelatore = (numero) => nomiCongelatori[numero] || schedeCongelatori[numero]?.congelatore_nome || `Congelatore N°${numero}`;
 
   useEffect(() => { fetchSchede(); fetchNomiCongelatori(); }, [fetchSchede, fetchNomiCongelatori]);
 
@@ -271,6 +275,8 @@ const TemperatureNegativeView = () => {
       if (isNonUsato) {
         return { value: "⏸", class: "bg-gray-200 text-gray-600", title: "NON USATO" };
       }
+      const stato = statoCellaHaccp(record);
+      if (stato) return { ...stato, class: stato.className };
       if (record.temp !== undefined && record.temp !== null) {
         const temp = record.temp;
         const fuoriRange = temp > (scheda?.temp_max || -18) || temp < (scheda?.temp_min || -22);
@@ -296,21 +302,19 @@ const TemperatureNegativeView = () => {
 
   // Stampa scheda
   const stampaScheda = () => {
-    const printWindow = window.open('', '_blank');
-    
     let righe = '';
     for (let g = 1; g <= numGiorni; g++) {
       righe += `<tr>
         <td style="padding:4px; border:1px solid #ccc; font-weight:bold;">${g}</td>`;
-      for (let c = 1; c <= 12; c++) {
+      for (const c of numeriCong) {
         const cell = getCellDisplay(c, g);
         righe += `<td style="padding:4px; border:1px solid #ccc; text-align:center; ${
-          cell.na ? STILE_NA_STAMPA :
+          cell.na ? STILE_NA_STAMPA : cell.stile ? cell.stile :
           cell.class.includes('red') ? 'background:#fee;color:#c00;' : 
           cell.class.includes('gray-400') ? 'background:#999;color:#fff;' :
           cell.class.includes('yellow') ? 'background:#fef;' :
           cell.class.includes('cyan') ? 'background:#e0f7fa;' : ''
-        }">${cell.value}</td>`;
+        }">${cell.stampa || cell.value}</td>`;
       }
       righe += '</tr>';
     }
@@ -326,12 +330,12 @@ const TemperatureNegativeView = () => {
           <p><strong>Mese:</strong> ${MESI_IT[mese-1]} ${anno} | <strong>Range:</strong> -22°C / -18°C</p>
           <p style="font-size:9pt">${LEGENDA_NA}</p>
         </div>
-        <table><thead><tr><th>G</th>${Array.from({length:12},(_,i)=>`<th>C${i+1}</th>`).join('')}</tr></thead>
+        <table><thead><tr><th>G</th>${numeriCong.map((n)=>`<th>C${n}</th>`).join('')}</tr></thead>
         <tbody>${righe}</tbody></table>
         <div class="footer">
           <p><strong>Firme verificate:</strong> ${testoFirmatari(schedeCongelatori, mese)}</p>
           <p><strong>Rif:</strong> ${RIFERIMENTI_NORMATIVI.principale} - ${RIFERIMENTI_NORMATIVI.secondario}</p>
-          <p><strong>Legenda:</strong> Chiuso | Manutenzione | Non usato | n.a.</p>
+          <p><strong>Legenda:</strong> ${LEGENDA_STATI_HACCP} · Chiuso | Manutenzione | Non usato | n.a.</p>
         </div>
       </body></html>`);
   };
@@ -352,19 +356,6 @@ const TemperatureNegativeView = () => {
           <button onClick={() => cambiaMese(-1)} className="p-2 hover:bg-gray-100 rounded"><ChevronLeft size={20}/></button>
           <span className="font-semibold min-w-[150px] text-center">{MESI_IT[mese-1]} {anno}</span>
           <button onClick={() => cambiaMese(1)} className="p-2 hover:bg-gray-100 rounded"><ChevronRight size={20}/></button>
-          <button
-            onClick={async () => {
-              try {
-                await axios.post(`${API}/haccp-periodi/applica-tutti`);
-                toast.success("Periodi speciali applicati — ricarico...");
-                fetchSchede();
-              } catch { toast.error("Errore applicazione periodi"); }
-            }}
-            className="px-3 py-1.5 bg-yellow-100 text-yellow-800 border border-yellow-300 rounded text-xs font-semibold hover:bg-yellow-200 flex items-center gap-1"
-            title="Riapplica MANUTENZIONE e CHIUSURA configurati"
-          >
-            🔧 Periodi
-          </button>
           <DichiaraConformiButton onFatto={fetchSchede} />
           <Button onClick={stampaScheda} variant="secondary" size="sm">
             <Printer size={16}/> Stampa
@@ -402,11 +393,11 @@ const TemperatureNegativeView = () => {
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-2 py-2 text-left font-medium text-gray-700 sticky left-0 bg-gray-50 min-w-[50px]">G</th>
-                {Array.from({length: 12}, (_, i) => (
-                  <th key={i+1} className="px-1 py-2 text-center font-medium text-gray-600 min-w-[56px]">
+                {numeriCong.map((numero) => (
+                  <th key={numero} className="px-1 py-2 text-center font-medium text-gray-600 min-w-[56px]">
                     <ColonnaCongelatore
-                      numero={i+1}
-                      nome={getNomeCongelatore(i+1)}
+                      numero={numero}
+                      nome={getNomeCongelatore(numero)}
                       onRinomina={handleRinominaCongelatore}
                       onElimina={handleEliminaCongelatore} />
                   </th>
@@ -423,8 +414,7 @@ const TemperatureNegativeView = () => {
                     <td className={`px-2 py-1 font-medium text-gray-800 sticky left-0 ${isChiuso ? 'bg-gray-100' : 'bg-white'}`}>
                       {giorno}
                     </td>
-                    {Array.from({length: 12}, (_, congIdx) => {
-                      const congNum = congIdx + 1;
+                    {numeriCong.map((congNum) => {
                       const cell = getCellDisplay(congNum, giorno);
                       
                       return (
@@ -448,6 +438,9 @@ const TemperatureNegativeView = () => {
 
       {/* Legenda */}
       <div className="flex items-center gap-4 text-xs text-gray-600 bg-gray-50 p-3 rounded-lg flex-wrap">
+        <span className="flex items-center gap-1"><span className="h-4 rounded bg-[#e6efe9] px-1 text-[10px] font-bold text-[#3d8168]">C</span> Conforme (controllo visivo firmato)</span>
+        <span className="flex items-center gap-1"><span className="h-4 rounded bg-[#f6ebe0] px-1 text-[10px] font-bold text-[#9a6a32]">N.R.</span> Non rilevato</span>
+        <span className="flex items-center gap-1"><span className="h-4 rounded border border-dashed border-[#c4894a] px-1 text-[10px] text-[#8a6f47]">…</span> Da rilevare</span>
         <span className="flex items-center gap-1">
           <span className="w-4 h-4 bg-[#f2f6f3] border rounded"></span> Temp OK
         </span>

@@ -1,13 +1,52 @@
-"""Proiezione read-only delle prove di pagamento collegate a una fattura."""
+"""Proiezione read-only delle prove di pagamento collegate a una fattura.
+
+Le prove collegate (assegni, bonifici, movimento di banca) si leggono **in
+blocco** per tutte le fatture della pagina: tre letture in tutto, non tre per
+fattura. La versione per fattura faceva fino a tre letture per ognuna delle
+~1.400 fatture dell'anno, e l'archivio Fatture impiegava da 3 a 46 secondi.
+La composizione della singola prova non cambia.
+"""
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, Iterable, List
 
 from app.services.payment_allocation_validator import allocation_status, to_cents
 
+# Solo i campi che la proiezione legge: niente payload.
+_CAMPI_ASSEGNO = {
+    "_id": 0, "id": 1, "data_incasso": 1, "data": 1, "numero": 1,
+    "movimento_estratto_conto_id": 1, "movimento_id": 1, "document_hash": 1, "sha256": 1,
+}
+_CAMPI_BONIFICO = {
+    "_id": 0, "id": 1, "movimento_estratto_conto_id": 1, "importo": 1, "data": 1,
+    "causale": 1, "transaction_code": 1, "document_hash": 1, "sha256": 1, "match_rule": 1,
+}
+_CAMPI_MOVIMENTO = {
+    "_id": 0, "id": 1, "importo": 1, "data": 1, "descrizione": 1, "document_hash": 1, "sha256": 1,
+}
 
-async def project_invoice_payment_evidence(db, invoice: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Restituisce prove navigabili senza creare o modificare record."""
+
+def _id_assegni(invoice: Dict[str, Any]) -> List[str]:
+    return [
+        str(x.get("assegno_id")) for x in (invoice.get("assegni_collegati") or [])
+        if isinstance(x, dict) and x.get("assegno_id")
+    ]
+
+
+def _id_bonifici(invoice: Dict[str, Any]) -> List[str]:
+    return [str(x) for x in (invoice.get("payment_document_ids") or invoice.get("bonifico_ids") or []) if x]
+
+
+async def _per_id(db, collezione: str, ids: Iterable[str], campi: Dict[str, int]) -> Dict[str, Dict[str, Any]]:
+    unici = sorted({i for i in ids if i})
+    if not unici:
+        return {}
+    righe = await db[collezione].find({"id": {"$in": unici}}, campi).to_list(len(unici) + 10)
+    return {str(r.get("id")): r for r in righe if r.get("id")}
+
+
+def _componi(invoice: Dict[str, Any], assegni: Dict[str, Dict[str, Any]],
+             bonifici: Dict[str, Dict[str, Any]], movimenti: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
     invoice_id = str(invoice.get("id") or "")
     status = allocation_status(invoice)
     result: List[Dict[str, Any]] = []
@@ -30,17 +69,11 @@ async def project_invoice_payment_evidence(db, invoice: Dict[str, Any]) -> List[
             "conflict_reason": raw.get("conflict_reason") if status == "conflicting" else None,
         })
 
-    assegni = invoice.get("assegni_collegati") or []
-    check_ids = [str(x.get("assegno_id")) for x in assegni if isinstance(x, dict) and x.get("assegno_id")]
-    checks = {}
-    if check_ids:
-        checks_raw = await db["assegni"].find({"id": {"$in": check_ids}}, {"_id": 0}).to_list(500)
-        checks = {str(x.get("id")): x for x in checks_raw if x.get("id")}
-    for link in assegni:
+    for link in invoice.get("assegni_collegati") or []:
         if not isinstance(link, dict):
             continue
         aid = str(link.get("assegno_id") or "")
-        check = checks.get(aid, {})
+        check = assegni.get(aid, {})
         result.append({
             "type": "assegno",
             "status": "confirmed" if link.get("banca_confermata") else "pending_bank",
@@ -56,29 +89,30 @@ async def project_invoice_payment_evidence(db, invoice: Dict[str, Any]) -> List[
             "conflict_reason": "quota_supera_totale_fattura" if status == "conflicting" else None,
         })
 
-    transfer_ids = [str(x) for x in (invoice.get("payment_document_ids") or invoice.get("bonifico_ids") or []) if x]
-    if transfer_ids:
-        transfers = await db["bonifici_transfers"].find({"id": {"$in": transfer_ids}}, {"_id": 0}).to_list(500)
-        for transfer in transfers:
-            tid = str(transfer.get("id"))
-            result.append({
-                "type": "bonifico_pdf",
-                "status": "confirmed" if transfer.get("movimento_estratto_conto_id") else "documented",
-                "amount_cents": abs(to_cents(transfer.get("importo") or 0)),
-                "date": str(transfer.get("data") or "")[:10],
-                "reference": transfer.get("causale") or transfer.get("transaction_code"),
-                "bank_movement_id": transfer.get("movimento_estratto_conto_id"),
-                "document_id": tid,
-                "source_hash": transfer.get("document_hash") or transfer.get("sha256"),
-                "allocation_id": f"bonifico:{tid}:{invoice_id}",
-                "rule": transfer.get("match_rule") or "payment_document_link",
-                "confidence": 1.0 if transfer.get("movimento_estratto_conto_id") else 0.7,
-                "conflict_reason": None,
-            })
+    # Stesso ordine di prima: quello in cui il database restituiva i bonifici,
+    # cioe' l'ordine degli id sulla fattura per quelli che esistono.
+    for tid in dict.fromkeys(_id_bonifici(invoice)):
+        transfer = bonifici.get(tid)
+        if transfer is None:
+            continue
+        result.append({
+            "type": "bonifico_pdf",
+            "status": "confirmed" if transfer.get("movimento_estratto_conto_id") else "documented",
+            "amount_cents": abs(to_cents(transfer.get("importo") or 0)),
+            "date": str(transfer.get("data") or "")[:10],
+            "reference": transfer.get("causale") or transfer.get("transaction_code"),
+            "bank_movement_id": transfer.get("movimento_estratto_conto_id"),
+            "document_id": tid,
+            "source_hash": transfer.get("document_hash") or transfer.get("sha256"),
+            "allocation_id": f"bonifico:{tid}:{invoice_id}",
+            "rule": transfer.get("match_rule") or "payment_document_link",
+            "confidence": 1.0 if transfer.get("movimento_estratto_conto_id") else 0.7,
+            "conflict_reason": None,
+        })
 
     if invoice.get("movimento_bancario_id"):
         movement_id = str(invoice["movimento_bancario_id"])
-        movement = await db["estratto_conto_movimenti"].find_one({"id": movement_id}, {"_id": 0})
+        movement = movimenti.get(movement_id)
         result.append({
             "type": "bank_movement",
             "status": "confirmed" if movement else "missing",
@@ -94,3 +128,20 @@ async def project_invoice_payment_evidence(db, invoice: Dict[str, Any]) -> List[
             "conflict_reason": "movimento_non_trovato" if not movement else None,
         })
     return result
+
+
+async def project_payment_evidence_many(db, invoices: List[Dict[str, Any]]) -> List[List[Dict[str, Any]]]:
+    """Le prove di tutte le fatture, nello stesso ordine: tre letture in tutto."""
+    assegni = await _per_id(db, "assegni", (i for f in invoices for i in _id_assegni(f)), _CAMPI_ASSEGNO)
+    bonifici = await _per_id(db, "bonifici_transfers", (i for f in invoices for i in _id_bonifici(f)), _CAMPI_BONIFICO)
+    movimenti = await _per_id(
+        db, "estratto_conto_movimenti",
+        (str(f["movimento_bancario_id"]) for f in invoices if f.get("movimento_bancario_id")),
+        _CAMPI_MOVIMENTO,
+    )
+    return [_componi(f, assegni, bonifici, movimenti) for f in invoices]
+
+
+async def project_invoice_payment_evidence(db, invoice: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Restituisce prove navigabili senza creare o modificare record."""
+    return (await project_payment_evidence_many(db, [invoice]))[0]

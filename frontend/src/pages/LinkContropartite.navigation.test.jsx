@@ -244,7 +244,7 @@ describe('Riconciliazione banca → fattura / prima nota, F24 → quietanza / ba
     expect(screen.getByTestId('movimento-richiesto')).toHaveTextContent('SDD AMAZON');
   });
 
-  it('nella tabella F24 collega quietanza (PDF) e addebito bancario', async () => {
+  it('nella tabella F24 apre i file veri: modello e quietanza, niente estratto conto', async () => {
     vi.clearAllMocks();
     api.get.mockResolvedValue({
       data: {
@@ -256,6 +256,7 @@ describe('Riconciliazione banca → fattura / prima nota, F24 → quietanza / ba
           documento_collegato: {
             quietanza_id: 'Q-1', protocollo_quietanza: '26010112345', quietanza_fonte: 'fiscal_documents',
             quietanza_url: '/api/fiscal/documents/Q-1/content',
+            f24_pdf_url: '/api/f24-public/pdf/f24-a',
             movimento_bancario_id: 'EC-2026-02-16-1500.00-aa', movimenti_bancari_ids: ['EC-2026-02-16-1500.00-aa'],
             pagamento_verificato_banca: true, data_pagamento_effettivo: '2026-02-16',
           },
@@ -268,9 +269,9 @@ describe('Riconciliazione banca → fattura / prima nota, F24 → quietanza / ba
     fireEvent.click(screen.getByTestId('btn-carica-analisi-f24'));
 
     const quietanza = await screen.findByTestId('link-quietanza-f24-a');
-    expect(quietanza).toHaveAttribute('href', '/api/fiscal/documents/Q-1/content');
-    expect(quietanza).toHaveAttribute('target', '_blank');
-    expect(screen.getByTestId('link-movimento-f24-f24-a'))
-      .toHaveAttribute('href', '/riconciliazione/banca?movimento=EC-2026-02-16-1500.00-aa');
+    expect(screen.getByTestId('apri-f24-f24-a')).toHaveTextContent('F24');
+    expect(screen.queryByTestId('link-movimento-f24-f24-a')).toBeNull();
+    fireEvent.click(quietanza);
+    expect(await screen.findByText(/Quietanza F24 01\/2026 · protocollo 26010112345/)).toBeInTheDocument();
   });
 });

@@ -31,7 +31,7 @@ import uuid
 
 from html import escape as html_escape
 
-from app.lotti.auth import require_admin
+from app.lotti.auth import require_permesso
 from app.lotti.servizi.haccp_attendibilita import caselle_segnate, non_attendibile_in
 from app.lotti.servizi.registro_haccp import (
     conserva_precedente,
@@ -224,7 +224,7 @@ async def registra_sanificazione(
 
 
 @router.put("/scheda/{anno}/{mese}")
-async def aggiorna_scheda_completa(anno: int, mese: int, data: AggiornaSchedaRequest, _admin=Depends(require_admin)):
+async def aggiorna_scheda_completa(anno: int, mese: int, data: AggiornaSchedaRequest, _ruolo=Depends(require_permesso("haccp_registri"))):
     """Aggiorna l'intera scheda mensile"""
     # Riscrittura intera: niente giorni futuri, e il nome dichiarato non
     # diventa il responsabile (non e' una firma verificata).
@@ -275,7 +275,7 @@ async def get_attrezzature():
 
 
 @router.post("/attrezzature")
-async def aggiungi_attrezzatura(nome: str, _admin=Depends(require_admin)):
+async def aggiungi_attrezzatura(nome: str, _ruolo=Depends(require_permesso("haccp_registri"))):
     """Aggiunge una nuova attrezzatura"""
     if nome not in ATTREZZATURE_SANIFICAZIONE:
         ATTREZZATURE_SANIFICAZIONE.append(nome)
@@ -308,7 +308,21 @@ async def get_scheda_apparecchi(anno: int):
     Ottiene la scheda annuale di sanificazione apparecchi refrigeranti.
     Include date di pulizia per frigoriferi e congelatori con intervallo 7-10 giorni.
     """
-    scheda = await get_or_create_scheda_apparecchi(anno)
+    from app.lotti.servizi.schede_temperature import apparecchi_attivi
+
+    scheda = dict(await get_or_create_scheda_apparecchi(anno))
+    # Le colonne sono gli apparecchi censiti più chi ha registrazioni
+    # nell'anno: non più 12 fissi.
+    for tipo, chiave, etichetta, campo in (
+        ("frigo", "frigoriferi", "Frigorifero", "registrazioni_frigoriferi"),
+        ("congelatore", "congelatori", "Congelatore", "registrazioni_congelatori"),
+    ):
+        voci = {int(a["numero"]): a.get("nome") or f"{etichetta} N°{a['numero']}"
+                for a in await apparecchi_attivi(tipo) if a.get("numero") is not None}
+        for n, regs in (scheda.get(campo) or {}).items():
+            if regs and str(n).isdigit():
+                voci.setdefault(int(n), f"{etichetta} N°{n}")
+        scheda[f"apparecchi_{chiave}"] = [{"numero": n, "nome": voci[n]} for n in sorted(voci)]
     return scheda
 
 
@@ -455,7 +469,7 @@ async def registra_sanificazione_apparecchio(
 
 
 @router.post("/apparecchi/{anno}/rigenera")
-async def rigenera_calendario_apparecchi(anno: int, _admin=Depends(require_admin)):
+async def rigenera_calendario_apparecchi(anno: int, _ruolo=Depends(require_permesso("haccp_registri"))):
     raise HTTPException(
         status_code=410,
         detail="Bloccato: il calendario non puo attestare esiti o operatori non verificati.",
@@ -760,7 +774,7 @@ async def leggi_piano_sanificazione():
 
 @router.put("/piano")
 async def salva_piano_sanificazione(
-    voci: List[VoceDelPiano], _admin=Depends(require_admin),
+    voci: List[VoceDelPiano], _ruolo=Depends(require_permesso("haccp_registri")),
 ):
     """Imposta frequenza e prodotto per una o piu' aree."""
     salvato = await _piano_salvato()

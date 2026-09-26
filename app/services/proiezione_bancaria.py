@@ -18,6 +18,7 @@ from app.routers.bonifici_module.classification import (
 from app.services.finanziamenti_soci import classifica_finanziamento_ec
 from app.services.scritture_contabili import scrivi_movimento_se_assente
 from app.services.bank_reconciliation_rules import classify_bank_movement
+from app.services.conti_pos import CONTO_BPM as CONTO_BANCA_PREDEFINITO
 
 
 SOURCE = "proiezione_semantica_ec"
@@ -95,6 +96,38 @@ def _classifica_paypal(doc: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     }
 
 
+# «RIMBORSO FINANZ. - MUTUO N.1788 4851906 RATA 24/09/2026» (export e banca
+# diretta), «MUTUO N.1788 4851906 RATA 24/06/2026» (vecchio archivio): il numero
+# del mutuo e la rata sono l'identita', non l'importo.
+_RATA_MUTUO = re.compile(
+    r"\bMUTUO\s+N\.?\s*(\d{3,5}[\s/]+[\d/]{5,})\s+RATA\s+(\d{2}/\d{2}/\d{4})",
+    re.IGNORECASE,
+)
+
+
+def _classifica_rata_mutuo(doc: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """La rata addebitata dalla banca sul mutuo che la causale nomina.
+
+    Esce davvero dal conto, quindi entra in Banca sul conto dei mutui
+    (``mapping_piano_conti``: «rata mutuo» -> 31.03.05). Quanto sia capitale e
+    quanto interessi lo dice il piano d'ammortamento della banca: finche' non
+    c'e', la ripartizione resta dichiarata da verificare, mai stimata.
+    """
+    if _verso(doc) != "uscita":
+        return None
+    trovato = _RATA_MUTUO.search(_testo(doc))
+    if not trovato:
+        return None
+    return {
+        "tipo": "uscita",
+        "categoria": "Rata mutuo",
+        "tipo_classificazione_contabile": "rata_mutuo",
+        "numero_mutuo": re.sub(r"[\s/]+", " ", trovato.group(1)).strip(),
+        "rata_scadenza": trovato.group(2),
+        "ripartizione_capitale_interessi": "da_verificare",
+    }
+
+
 def _classifica_dipendente(
     doc: Dict[str, Any], dipendenti: Iterable[Dict[str, Any]],
 ) -> Optional[Dict[str, Any]]:
@@ -149,16 +182,62 @@ def classifica_movimento_ec(
             "regola_versione": causale["rule_version"],
             "campi_estratti": causale.get("campi_estratti") or {},
         }
+    mutuo = _classifica_rata_mutuo(doc)
+    if mutuo:
+        return mutuo
     dipendente = _classifica_dipendente(doc, dipendenti)
     if dipendente:
         return dipendente
     return _classifica_paypal(doc)
 
 
+def _chiave_operazione(data: str, importo: float, classificazione: Dict[str, Any],
+                       conto: Optional[str] = None) -> tuple:
+    """Conto, giorno, importo, verso, categoria e chi: la stessa operazione in ogni copia."""
+    return (
+        conto or CONTO_BANCA_PREDEFINITO,
+        data, int(round(importo * 100)), classificazione.get("tipo"), classificazione.get("categoria"),
+        str(classificazione.get("dipendente_id") or classificazione.get("socio_id")
+            or classificazione.get("numero_mutuo") or classificazione.get("gestore_pagamento") or ""),
+    )
+
+
+def _documento(movimento_ec: Dict[str, Any], classificazione: Dict[str, Any],
+               data: str, importo: float, ec_id: str,
+               conto_contabile: str = None) -> Dict[str, Any]:
+    return {
+        **({"conto_contabile": conto_contabile} if conto_contabile else {}),
+        "data": data,
+        "anno": int(data[:4]),
+        "mese": int(data[5:7]),
+        "tipo": classificazione["tipo"],
+        "importo": importo,
+        "categoria": classificazione["categoria"],
+        "descrizione": _testo(movimento_ec),
+        "source": SOURCE,
+        "natura": "movimento_bancario_reale",
+        "estratto_conto_id": ec_id,
+        "movimento_estratto_conto_id": ec_id,
+        "movimento_bancario_id": ec_id,
+        "classificazione_automatica": True,
+        "tipo_classificazione_contabile": classificazione["tipo_classificazione_contabile"],
+        "classificato_at": datetime.now(timezone.utc).isoformat(),
+        **{k: v for k, v in classificazione.items() if k not in {"tipo", "categoria"} and v},
+    }
+
+
 async def proietta_movimenti_bancari_semantici(
     db, *, anno: Optional[int] = None, movimento_ids=None,
+    collezione: str = Collections.BANK_STATEMENTS,
+    conto_contabile: str = CONTO_BANCA_PREDEFINITO,
 ) -> Dict[str, Any]:
-    """Scrive in Banca le sole prove con classificazione univoca e auditabile."""
+    """Scrive in Banca le sole prove con classificazione univoca e auditabile.
+
+    ``collezione`` e ``conto_contabile`` servono alla carta SumUp: stessi
+    criteri del conto BPM, righe di Prima Nota sul suo conto (19.01.05). Il
+    conto fa parte dell'identita' dell'operazione: un pagamento uguale sulla
+    carta e sul BPM sono due operazioni, mai una copia dell'altra.
+    """
     dipendenti = await db[Collections.EMPLOYEES].find(
         {}, {
             "_id": 0, "id": 1, "nome": 1, "cognome": 1,
@@ -182,8 +261,13 @@ async def proietta_movimenti_bancari_semantici(
         "causali_deterministiche": 0,
         "commissioni_bancarie": 0,
     }
-    cursore = db[Collections.BANK_STATEMENTS].find(query)
+    stats["doppioni_tolti"] = 0
+    stats["rate_mutuo"] = 0
+    candidati: list = []
+    cursore = db[collezione].find(query)
     async for movimento_ec in cursore:
+        if str(movimento_ec.get("status") or "") in {"deleted", "archived"}:
+            continue
         data = _data_iso(movimento_ec)
         if anno and not data.startswith(f"{anno}-"):
             continue
@@ -191,13 +275,13 @@ async def proietta_movimenti_bancari_semantici(
         ec_id = _id_ec(movimento_ec)
         importo = _importo(movimento_ec)
         causale_classification = classify_bank_movement(movimento_ec)
-        if causale_classification and ec_id:
+        if causale_classification and ec_id and movimento_ec.get("classificazione_rule_id") != causale_classification["rule_id"]:
             source_query = (
                 {"_id": movimento_ec["_id"]}
                 if movimento_ec.get("_id") is not None
                 else {"id": ec_id}
             )
-            await db[Collections.BANK_STATEMENTS].update_one(
+            await db[collezione].update_one(
                 source_query,
                 {"$set": {
                     "decisione_classificazione": "automatica",
@@ -210,73 +294,133 @@ async def proietta_movimenti_bancari_semantici(
                     "classificato_at": datetime.now(timezone.utc).isoformat(),
                 }},
             )
+        if causale_classification and ec_id:
             stats["causali_deterministiche"] += 1
         classificazione = classifica_movimento_ec(movimento_ec, dipendenti)
         if not classificazione or not ec_id or not data or importo <= 0:
             stats["non_classificati"] += 1
             continue
+        candidati.append((movimento_ec, classificazione, data, importo, ec_id))
 
-        tipo_classificazione = classificazione["tipo_classificazione_contabile"]
-        documento = {
-            "data": data,
-            "anno": int(data[:4]),
-            "mese": int(data[5:7]),
-            "tipo": classificazione["tipo"],
-            "importo": importo,
-            "categoria": classificazione["categoria"],
-            "descrizione": _testo(movimento_ec),
-            "source": SOURCE,
-            "natura": "movimento_bancario_reale",
-            "estratto_conto_id": ec_id,
-            "movimento_estratto_conto_id": ec_id,
-            "movimento_bancario_id": ec_id,
-            "classificazione_automatica": True,
-            "tipo_classificazione_contabile": tipo_classificazione,
-            "classificato_at": datetime.now(timezone.utc).isoformat(),
-            **{k: v for k, v in classificazione.items() if k not in {"tipo", "categoria"} and v},
-        }
-        prima_nota_id, gia_esistente = await scrivi_movimento_se_assente(
-            db,
-            "banca",
-            {"$or": [
-                {"estratto_conto_id": ec_id},
-                {"movimento_estratto_conto_id": ec_id},
-                {"movimento_bancario_id": ec_id},
-                {"movimento_banca_id": ec_id},
-            ]},
-            documento,
+    # La stessa operazione arriva da piu' export (vecchio archivio, CSV,
+    # banca diretta): una riga in Banca per operazione, non per copia. Fino al
+    # 26/09/2026 ogni copia scriveva la sua: 23 stipendi contati due volte,
+    # 27.076,00 EUR di uscite in piu'. Il numero vero e' il massimo per fonte
+    # (``versamenti_contanti._quante_operazioni``); le righe in piu' scritte da
+    # questo motore si tolgono per id, solo nel giro completo.
+    from app.services.versamenti_contanti import _fonte_ec, _quante_operazioni
+
+    gruppi: Dict[tuple, list] = {}
+    for voce in candidati:
+        gruppi.setdefault(
+            _chiave_operazione(voce[2], voce[3], voce[1], conto_contabile), [],
+        ).append(voce)
+
+    esistenti: Dict[tuple, list] = {}
+    if gruppi:
+        # Anche le righe scritte da altri canali (import dell'estratto conto,
+        # registrazioni a mano) sono gia' l'operazione: contano, non si toccano.
+        righe = await db["prima_nota_banca"].find(
+            {"categoria": {"$in": sorted({chiave[4] for chiave in gruppi})},
+             "status": {"$nin": ["deleted", "archived"]}},
+            {"_id": 0, "id": 1, "data": 1, "importo": 1, "tipo": 1, "categoria": 1,
+             "conto_contabile": 1,
+             "dipendente_id": 1, "socio_id": 1, "numero_mutuo": 1, "gestore_pagamento": 1,
+             "estratto_conto_id": 1, "source": 1},
+        ).to_list(None)
+        for riga in righe:
+            chiave = _chiave_operazione(
+                str(riga.get("data") or "")[:10], _importo(riga),
+                {"tipo": riga.get("tipo"), "categoria": riga.get("categoria"), **riga},
+                riga.get("conto_contabile"),
+            )
+            esistenti.setdefault(chiave, []).append(riga)
+
+    adesso = datetime.now(timezone.utc).isoformat()
+    for chiave, voci in gruppi.items():
+        n = _quante_operazioni([voce[0] for voce in voci])
+        ec_del_gruppo = {voce[4] for voce in voci}
+        tenute = sorted(
+            esistenti.get(chiave, []),
+            key=lambda r: (r.get("source") == SOURCE,
+                           r.get("estratto_conto_id") not in ec_del_gruppo, str(r.get("id") or "")),
         )
-        query_sorgente = (
-            {"_id": movimento_ec["_id"]}
-            if movimento_ec.get("_id") is not None
-            else {"id": ec_id}
-        )
-        await db[Collections.BANK_STATEMENTS].update_one(
-            query_sorgente,
-            {"$set": {
-                "classificato_contabilmente": True,
-                "tipo_classificazione_contabile": tipo_classificazione,
-                "prima_nota_banca_id": prima_nota_id,
-                "proiezione_contabile_at": datetime.now(timezone.utc).isoformat(),
-                **{k: v for k, v in classificazione.items() if k in {
-                    "socio_id", "socio_nome", "dipendente_id", "dipendente_nome",
-                    "gestore_pagamento",
-                } and v},
-            }},
-        )
-        if gia_esistente:
-            stats["gia_presenti"] += 1
-        else:
-            stats["proiettati"] += 1
-        if tipo_classificazione.startswith("finanziamento_socio_"):
-            stats["finanziamenti_soci"] += 1
-        elif tipo_classificazione.startswith("commissione_bancaria:"):
-            stats["commissioni_bancarie"] += 1
-        elif tipo_classificazione in {"stipendio", "tfr", "paypal_sdd"}:
-            chiave_statistica = {
-                "stipendio": "stipendi",
-                "tfr": "tfr",
-                "paypal_sdd": "paypal_sdd",
-            }[tipo_classificazione]
-            stats[chiave_statistica] += 1
+        if movimento_ids is None:
+            for extra in tenute[n:]:
+                if extra.get("source") != SOURCE:
+                    continue
+                await db["prima_nota_banca"].update_one({"id": extra["id"]}, {"$set": {
+                    "status": "deleted", "deleted_at": adesso,
+                    "deleted_reason": "doppione_stessa_operazione_bancaria",
+                    "deleted_by": SOURCE,
+                }})
+                stats["doppioni_tolti"] += 1
+            tenute = tenute[:n] + [r for r in tenute[n:] if r.get("source") != SOURCE]
+        per_ec = {r.get("estratto_conto_id"): r for r in tenute if r.get("estratto_conto_id")}
+        libere = [r for r in tenute if r.get("estratto_conto_id") not in ec_del_gruppo]
+        voci = sorted(voci, key=lambda v: (v[4] not in per_ec, _fonte_ec(v[0]) == "enable_banking", v[4]))
+        for indice, (movimento_ec, classificazione, data, importo, ec_id) in enumerate(voci):
+            riga = per_ec.get(ec_id)
+            gia_esistente = riga is not None
+            if riga is None and libere:
+                riga = libere.pop(0)
+                gia_esistente = True
+            if riga is None and len(tenute) >= n and tenute:
+                # Una copia in piu' della stessa operazione: si aggancia, non scrive.
+                riga = tenute[indice % len(tenute)]
+                gia_esistente = True
+            if riga is None:
+                prima_nota_id, gia_esistente = await scrivi_movimento_se_assente(
+                    db, "banca",
+                    {"$or": [
+                        {"estratto_conto_id": ec_id},
+                        {"movimento_estratto_conto_id": ec_id},
+                        {"movimento_bancario_id": ec_id},
+                        {"movimento_banca_id": ec_id},
+                    ]},
+                    _documento(
+                        movimento_ec, classificazione, data, importo, ec_id,
+                        conto_contabile if conto_contabile != CONTO_BANCA_PREDEFINITO else None,
+                    ),
+                )
+                riga = {"id": prima_nota_id, "estratto_conto_id": ec_id}
+                tenute.append(riga)
+            prima_nota_id = riga["id"]
+            tipo_classificazione = classificazione["tipo_classificazione_contabile"]
+            if movimento_ec.get("prima_nota_banca_id") != prima_nota_id or not movimento_ec.get("classificato_contabilmente"):
+                query_sorgente = (
+                    {"_id": movimento_ec["_id"]}
+                    if movimento_ec.get("_id") is not None
+                    else {"id": ec_id}
+                )
+                await db[collezione].update_one(
+                    query_sorgente,
+                    {"$set": {
+                        "classificato_contabilmente": True,
+                        "tipo_classificazione_contabile": tipo_classificazione,
+                        "prima_nota_banca_id": prima_nota_id,
+                        "proiezione_contabile_at": adesso,
+                        **{k: v for k, v in classificazione.items() if k in {
+                            "socio_id", "socio_nome", "dipendente_id", "dipendente_nome",
+                            "gestore_pagamento",
+                        } and v},
+                    }},
+                )
+            if gia_esistente:
+                stats["gia_presenti"] += 1
+            else:
+                stats["proiettati"] += 1
+            if tipo_classificazione.startswith("finanziamento_socio_"):
+                stats["finanziamenti_soci"] += 1
+            elif tipo_classificazione.startswith("commissione_bancaria:"):
+                stats["commissioni_bancarie"] += 1
+            elif tipo_classificazione == "rata_mutuo":
+                stats["rate_mutuo"] += 1
+            elif tipo_classificazione in {"stipendio", "tfr", "paypal_sdd"}:
+                chiave_statistica = {
+                    "stipendio": "stipendi",
+                    "tfr": "tfr",
+                    "paypal_sdd": "paypal_sdd",
+                }[tipo_classificazione]
+                stats[chiave_statistica] += 1
     return stats

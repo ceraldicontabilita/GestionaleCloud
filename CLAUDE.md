@@ -192,8 +192,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   saltare il turno. Per lo stesso motivo `stop_scheduler` chiude con
   `shutdown(wait=False)`: i job sono coroutine dello stesso event loop, e
   aspettarli da dentro il loop impedisce allo spegnimento di arrivare in fondo.
-- Il download di un file Drive sta in un posto solo,
-  `app/services/drive_download.py`: non è specifico di una sezione.
+- Il download di un file Drive sta in un posto solo, `drive_download.py` (`scarica_originale` per id), e ogni servizio Drive che non è un canale prova la credenziale sulla cartella unica.
 - PostgREST esegue le RPC del runtime come ruolo `anon`, con
   `statement_timeout` 20 s; `authenticator` resta a 8 s. Compute **Small** (90 connessioni,
   database ~2,2 GB): i timeout si rivedono se si riduce il payload di `documents`.
@@ -280,9 +279,9 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   crea l'attesa prima della prova; il reimport non duplica; la prova certa
   conserva gli ID; la prova ambigua non inventa dati; la chiusura fallisce con
   un'attesa aperta.
-- Un alert mostra sempre l'elenco dei record coinvolti. Un comando di
-  manutenzione che l'utente deve ripetere per correggere duplicati prevedibili
-  è un difetto: la prevenzione per ID/hash sta nel flusso di importazione.
+- Un alert mostra sempre l'elenco dei record coinvolti. Un comando di manutenzione che l'utente deve ripetere
+  per correggere duplicati prevedibili è un difetto: la prevenzione per ID/hash sta nel flusso di importazione.
+- **L'abbinamento parte all'arrivo del secondo pezzo, in tutti e due i sensi**, mai aspettando un giro: F24 ↔ quietanza ↔ banca (`cerca_controparti_f24`), fattura ↔ report del titolare ↔ banca (`applica_per_fattura_arrivata`, `riprocessa_estratto_dopo_import_fattura`). I giri restano solo come rete.
 
 ## Ingresso documenti
 
@@ -314,7 +313,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   con anteprima e autorizzazione esplicita.
 - Estratti conto: inbox unica per sei fonti; riconoscimento nell'ordine
   percorso → nome file (solo segni esclusivi) → contenuto, e il contenuto si
-  prova Nexi → PayPal → mutuo → banca. «estratto conto» da solo non è un
+  prova SumUp → Nexi → PayPal → mutuo → banca. «estratto conto» da solo non è un
   segno. Non riconosciuto → cartella Errori col motivo scritto, **mai
   indovinato**: indovinare significa registrare le spese Nexi come uscite dal
   conto. Arretrato pre-2026 fermo per scelta del titolare
@@ -414,14 +413,14 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   commissioni e fatture del gestore escluse; attesa mancante o multipla →
   `DA_VERIFICARE`, la banca non crea la chiusura. L'accredito ricostruito
   dalla causale è **derivato**: l'export del terminale vince.
-- Un versamento contanti genera uscita Cassa e corrispondente entrata Banca
-  con lo stesso `operation_id`. Un trasferimento banca↔cassa sono due
-  movimenti speculari collegati da `trasferimento_collegato_id` con categoria
-  `trasferimento_interno`, non un flag sul singolo movimento.
+- Versamento/prelievo contanti: uscita Cassa ed entrata Banca (o viceversa), stesso `operation_id`, collegate da
+  `trasferimento_collegato_id`, categoria `trasferimento_interno`. È **un'operazione della banca, non una riga
+  d'archivio**: le copie (vecchio archivio, CSV, Enable Banking) fanno una coppia sola, il numero vero è il massimo
+  per fonte nello stesso giorno e importo (`versamenti_contanti.py`); le gambe in più dei motori si tolgono per id.
+  Lo stesso per `proiezione_bancaria.py` (stipendi, commissioni, PayPal, soci, **rata mutuo** sul 31.03.05 dal numero del mutuo, quote capitale/interessi `da_verificare`) e per gli assegni, presi dal giro dei 30 minuti anche da CSV e banca diretta (identità = numero, riga `provvisoria` fino al PDF ufficiale).
 - Prima Nota Banca non è la copia dell'estratto conto: una riga entra quando è nota la causale contabile oppure
-  appartiene alle categorie bancarie senza documento ammesse dal codice. Anche i movimenti letti dalla banca
-  (Enable Banking, `services/enable_banking.py`, flag `ENABLE_BANKING_ENABLED`, sessione cifrata col solo
-  `session_id`) vanno in `estratto_conto_movimenti` (`accoppia`), mai in Prima Nota; entrano da soli alle 07:15 e 19:15 (`giro_automatico`), «Aggiorna ora» è in Prima Nota › Banca.
+  appartiene alle categorie bancarie senza documento ammesse dal codice. Anche i movimenti letti dalla banca (Enable Banking, `services/enable_banking.py`,
+  flag `ENABLE_BANKING_ENABLED`, sessione cifrata col solo `session_id`) vanno in `estratto_conto_movimenti` (`accoppia`), mai in Prima Nota; entrano da soli alle 07:15 e 09:00 (`giro_automatico`), «Aggiorna ora» è in Prima Nota › Banca.
 - Riga bancaria canonica = riferimento esterno **oppure** fingerprint data+valuta+importo+causale+progressivo;
   due export **dello stesso conto** con parole diverse si confrontano per giorno, segno, importo e conteggio
   (`doppioni_estratto_conto.accoppia`), prima per **riferimento banca** (in ordine, due commissioni uguali si incrociano). Assegni con numero o data diversi **non sono duplicati**. Le regole SDD
@@ -503,6 +502,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   sono indeducibili, 1701/1704 sono crediti, non IVA né costo.
 - IRAP è un motore separato da IRES, non sottrae mai l'intero F24, e le
   aliquote sono versionate per periodo d'imposta.
+- **Situazione fiscale legge il registro unico F24** (`registro_fiscale_f24.py`), mai l'indice Excel su Drive; un quadro del 770 caricato da solo (`componenti_770.py`) si aggancia al 770 intero per «Identificativo dichiarazione», mai per nome o importo.
 - Il catalogo dei codici tributo è consultivo: una ricerca non crea F24,
   pagamenti o scritture. Le tabelle sono **due** —
   `services/codici_tributo_f24.py` (la legge il parser) e
@@ -606,8 +606,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   la fattura resta `sospesa`, mai con un default «bonifico» **né un ripiego in cassa**: le righe storiche di quel
   ripiego restano per audit, fuori da elenchi e saldi (`SOURCES_ESCLUSE` in `prima_nota_module/common.py`).
 - **Come è stata pagata una fattura lo dice il titolare** (report «Fatture ricevute» con colonne metodo/carta/assegno,
-  Documenti > Import): `pagamenti_dichiarati_titolare.py` usa solo i motori esistenti e ricava il metodo del fornitore
-  (uno → quello, più → `misto`). La cassa d'ufficio `metodo_fornitore_assente_provvisorio` non prova un pagamento.
+  Documenti > Import): `pagamenti_dichiarati_titolare.py` usa solo i motori esistenti; il metodo del fornitore (uno → quello, più → `misto`) lo scrive **solo se manca**. Fino all'ultima data del report (`data_limite_dichiarazioni`) comanda il report, poi il fornitore. La cassa d'ufficio `metodo_fornitore_assente_provvisorio` non prova un pagamento.
+  Banca/carta/PayPal/assegno dichiarati: riga Prima Nota Banca `dichiarato_titolare`, fattura pagata e `in_attesa_riscontro_banca`; il movimento trovato la **sostituisce** (`assorbi_righe_dichiarate`), mai affianca.
 - «Metodo di pagamento non configurato» ha un vocabolario solo, `app/constants/metodi_pagamento.py`:
   `sospesa` (quello che scrive l'import), `da_configurare`, `none`, vuoto e campo assente valgono uguale.
   Chi tiene la propria lista si perde il caso più frequente.
@@ -717,9 +717,9 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - **Il registro delle ricevute non è una prova di presenza**: vale solo se la fattura esiste ancora in
   `fatture`. **Un'impronta cambiata non è un conflitto** (il gestionale arricchisce righe e stati): conflitto è solo
   XML diverso con la fattura già in Lotti; se manca si importa. Un fornitore escluso si salta, non è un errore.
+- **Un numero che non si conosce non è zero**: KPI senza fonte = «Dato non disponibile»; spesa = `total_amount` del gestionale per identità (`spesa_da_gestionale`); costo lotto = consumo × prezzo di fattura (`costo_da_consumo`), altrimenti `None` col motivo; spese, sconti e trasporto non entrano in giacenza.
 - **Prezzi solo da acquisti reali in fattura XML.** Gli ordini hanno totali veri: prezzo di riga, aliquota
-  IVA dall'XML, imponibile, IVA e totale che si ricalcolano a ogni variazione, con le stesse colonne nel
-  PDF.
+  IVA dall'XML, imponibile, IVA e totale che si ricalcolano a ogni variazione, con le stesse colonne nel PDF.
 - **FIFO: il lotto con la fattura più vecchia**, fra tutti i fornitori dello stesso articolo. Descrizione di fattura →
   articolo in `nome_mapping` (`servizi/articoli_fattura.py`): vince la riga **confermata** (Dizionario, «Proposte web»);
   senza conferme, parola intera e fuori i lotti che una prova dice altro («olive in acqua e sale» non è sale).
@@ -750,19 +750,19 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   (`servizi/firma_dipendente.py`): col PIN il nome arriva da HR e il record è `firma_verificata`; con un PIN
   sbagliato la rilevazione **non si salva**, perché una firma falsa è peggio di una registrazione mancante.
   Un giorno senza lettura si **dichiara** «non rilevato», mai riempito d'ufficio; lo storico **senza firma** resta
-  ma vale «n.a.» (`servizi/haccp_attendibilita.py`). Mai `random` né codice morto in HACCP (`test_haccp_niente_evidenze_finte.py`).
+  ma vale «n.a.» (`servizi/haccp_attendibilita.py`). Mai `random` né codice morto in HACCP (`test_haccp_niente_evidenze_finte.py`). Apparecchi di un anno = censiti + chi ha rilevazioni (`schede_temperature.py`), mai 12 fissi; un GET non crea schede (le crea il turno); il giorno è quello di Roma; «conforme», «non rilevato» e «da rilevare» si vedono diversi anche in stampa.
 - Stampa: coda più print agent locale sul PC del negozio (`scripts/print_agent.py`, PIN in `LOTTI_PRINT_AGENT_PIN`,
   variabile **locale**, mai su Render), stampante scelta per tipo di documento, token solo in `Authorization` e solo verso Lotti. Il fascicolo per un'ispezione si compone da
   `/lotti/api/manuale-haccp/stampa`: si spuntano le pagine (`SEZIONI_MANUALE`, le stesse che il generatore
   sa produrre — un test lo verifica) e il frontespizio con i dati dell'azienda c'è sempre.
 - **Un PIN per entrare, non per ogni sezione**: magazzino e portale dipendenti condividono la verifica (`services/workforce_tokens.py`,
   prova `LOTTI_AUTH_SECRET` e `HR_JWT_SECRET`); l'ERP contabile resta fuori. La traduzione dei ruoli è **direzionale**
-  (`operatore`↔`dipendente`), mai verso `admin`, e un token **senza** ruolo non ne riceve uno di ripiego: fallisce chiuso.
+  (`operatore`↔`dipendente`), mai verso `admin`, e un token **senza** ruolo non ne riceve uno di ripiego: fallisce chiuso. Ruoli di Lotti (`servizi/ruoli.py`) sulla scheda HR (`lotti_ruolo`, `lotti_reparti`): **HACCP** registri, anomalie, conformità, apparecchi, smaltimento; **caporeparto** ricette e annullo produzione del suo reparto, smaltimento. Il token resta da operatore: `require_permesso` rilegge il ruolo a ogni scrittura (403 `RUOLO_NON_AUTORIZZATO`).
 - Piano di sanificazione per area (`/sanificazione/piano`): frequenza, prodotto, diluizione, tempo di
   contatto. Niente valori di ripiego — un detergente scritto a caso rimanda a una scheda di sicurezza che
   non c'entra. `/sanificazione/scadute` dice cosa è in ritardo e cosa è ancora da compilare.
-- Accessi: PIN valido 2 ore; i dipendenti entrano ovunque tranne le pagine di amministrazione. Sui tablet
-  condivisi il magazzino chiude la sessione dopo 10 minuti. Il JWT solo nell'header, **mai in `?token=`**: i documenti si aprono con `apriDocumentoAutenticato` (`auth.js`).
+- Accessi: token 12 h, rinnovi al massimo 7 giorni dal PIN (admin 24 h, `auth_at`); PIN sbagliati contati in `pin_tentativi`, per client **e** globali; sui tablet condivisi il magazzino chiude dopo 10 minuti. Ogni scrittura o dipende da `require_admin` o è fra le operazioni di reparto di `test_scritture_riservate.py`; un URL da fuori si scarica solo con `servizi/fetch_sicuro.py`. Il JWT solo nell'header, **mai in `?token=`**: i documenti con `apriDocumentoAutenticato`.
+- Backup Lotti: mai sul disco del servizio. Parti verificate (SHA-256) in `gestionale.blobs` più manifesto (`servizi/backup_archivio.py`, registro `backup_registro`); il ripristino è simulazione → backup di sicurezza verificato → sostituzione per id. Navigazione: ogni reparto del tablet ha la stessa `BarraReparto` (Indietro, Reparti, Gestionale solo titolare, Cambia operatore), ogni pagina il suo `ErrorBoundary`, un indirizzo sconosciuto «Pagina non trovata», la configurazione passa da `#impostazioni`.
 
 ### Menu — allergeni
 
@@ -846,7 +846,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   non riscosso (67.856,00 €); fuori restano 3 giornate a incasso zero (giusto) e il **02/08**, XML che non quadra di 0,90 €.
 - Endpoint sincroni oltre i 5 minuti, da portare a lotti riprendibili: `/api/fatture/drive/quadratura`, `/api/paypal-api/riconcilia`, `/account-ids-non-mappati`, `riallinea-pagamenti-fatture`.
 - Note di credito TD04 legacy (~20): costo/IVA/debito aumentati anziché ridotti.
-- **Estratto conto SumUp** (PDF, conto 19.01.05, paga anche fornitori e stipendi): nessun lettore, e i motori bancari scrivono su 19.01.01 se il movimento non porta il conto.
+- **Estratto conto SumUp** (conto 19.01.05, PDF o CSV «Resoconto transazioni»): un lettore solo (`sumup_conto.py`, saldi verificati riga per riga) scrive in `sumup_conto_movimenti`, **mai** in `estratto_conto_movimenti` (lì i motori lo leggerebbero come BPM su 19.01.01); il payout si cita per `payout_id`, il bonifico a Ceraldi Group è un giroconto a due gambe verso BPM. Stipendi e fatture si abbinano con **gli stessi motori** del conto BPM puntati sulla carta (`abbina_movimenti_sumup`: dopo l'import, nel giro dei 30 minuti e all'arrivo di un cedolino); la collezione la dice l'id (`collezione_del_movimento`). Aperto: i bonifici «Stipendio Agosto» aspettano le buste di agosto, e la coda «Scegli fattura» non apre ancora i movimenti della carta.
 - **Pregresso fatture**: 296 attive (173.184,83 €) senza partita aperta, 280 fuori dal giornale. Prima
   `ripubblica-evento-created`, poi `registra-pregresso`. Con `dry_run`: `azzera-scadenze` (642 fatture,
   971 partite inventate), `lipe/importa`, `ricostruisci-numia`.
@@ -859,10 +859,10 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   non hanno importo, targa né data; bonifici al Comune e pagamenti Mooney via PayPal sono candidati senza verbale.
 - L'alert scadenze F24 di `FiscaleSentinella` legge `data_scadenza`, che **nessun** F24 ha: non è mai
   partito. La scadenza va derivata dal codice tributo (`codici_tributo_db`), mai inventata.
-- Drill-down «Verifica campi e F24» punta al vecchio indice Drive; `/api/download` serve `./downloads`, mai popolato. A mano, dal titolare: **far ripartire `sync_rt_to_drive.py`** (fermo dal 28/08); password Postgres; DNS ceraldiapp.it.
+- `/api/download` serve `./downloads`, mai popolato. A mano, dal titolare: **far ripartire `sync_rt_to_drive.py`** (fermo dal 28/08); password Postgres; DNS ceraldiapp.it.
 - Fork `app/hr/`: **quattro** sottopercorsi ancora duplicati (`routers/employees/dipendenti.py`, `routers/pin_login.py`,
   `routers/tfr.py`, `utils/dependencies.py`): ogni correzione va cercata anche nel gemello.
-- `gestionale.blobs`: 216 PDF che **nessun documento cita**, leggibili solo da `blob_store.py`, mai importato; come `bank_reconciliation_hub` (2.017 righe), scritta da un trigger e letta da nessuno.
+- `gestionale.blobs`: oltre ai backup di Lotti, 216 PDF che **nessun documento cita**; come `bank_reconciliation_hub` (2.017 righe), scritta da un trigger e letta da nessuno.
 
 ## Logica dentro al database
 

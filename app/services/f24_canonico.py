@@ -16,9 +16,12 @@ verranno consolidati in una fase dedicata.
 """
 import base64
 import hashlib
+import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 from uuid import uuid4
+
+logger = logging.getLogger(__name__)
 
 COLL = "f24_unificato"
 COLL_QUIETANZE = "quietanze_f24"
@@ -61,6 +64,31 @@ async def importa_quietanza(
     return await importa_quietanza_bytes(
         db, content, filename, fonte=source, source_metadata=source_metadata,
     )
+
+
+async def cerca_controparti_f24(db) -> Dict[str, Any]:
+    """Un modello F24 appena arrivato cerca subito i suoi pezzi gia' presenti.
+
+    La quietanza puo' essere arrivata prima (e restare orfana) e l'addebito
+    puo' essere gia' nell'estratto conto: si guardano entrambi adesso, con gli
+    stessi motori del resto del gestionale, invece di aspettare un giro. Un
+    guasto qui non annulla l'import del modello: resta scritto nel log.
+    """
+    esito: Dict[str, Any] = {}
+    try:
+        from app.services.quietanze_import import ricollega_quietanze_orfane
+        esito["quietanze"] = await ricollega_quietanze_orfane(db)
+    except Exception as exc:  # noqa: BLE001 - il modello resta importato
+        logger.exception("F24 arrivato: quietanze orfane non ripassate (%s)", type(exc).__name__)
+        esito["quietanze"] = {"errore": type(exc).__name__}
+    try:
+        from app.services.f24_bank_reconciliation import riconcilia_f24_tributi_banca
+        banca = await riconcilia_f24_tributi_banca(db)
+        esito["banca"] = {k: banca.get(k) for k in ("f24_pagati", "f24_parziali", "movimenti_associati")}
+    except Exception as exc:  # noqa: BLE001 - il modello resta importato
+        logger.exception("F24 arrivato: addebito in banca non cercato (%s)", type(exc).__name__)
+        esito["banca"] = {"errore": type(exc).__name__}
+    return esito
 
 
 async def importa_modello_bytes(
@@ -118,6 +146,7 @@ async def importa_modello_bytes(
         {"f24_dedup_key": documento["f24_dedup_key"]}, {"_id": 0, "id": 1}
     )
     f24_id = await salva_f24(db, documento, source=source)
+    controparti = None if existing else await cerca_controparti_f24(db)
     rows = normalizza_righe_tributo(documento)
     from app.services.fiscal_accounting_policy import build_journal_proposal
 
@@ -138,6 +167,7 @@ async def importa_modello_bytes(
         "righe_credito": sum(1 for row in rows if row["credit_amount"] > 0),
         "validazione": validation,
         "journal_proposal": journal_proposal,
+        "controparti": controparti,
     }
 
 

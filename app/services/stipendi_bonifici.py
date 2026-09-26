@@ -38,6 +38,13 @@ from app.services.scritture_contabili import FILTRO_MOVIMENTO_ATTIVO
 
 logger = logging.getLogger(__name__)
 
+
+def _collezione_id(movimento_id: Any) -> str:
+    """Archivio del bonifico: conto BPM o carta SumUp, dall'identificativo."""
+    from app.services.sumup_conto import collezione_del_movimento
+
+    return collezione_del_movimento({"id": movimento_id})
+
 # Giorno del mese da cui un bonifico senza periodo in causale si riferisce al
 # mese corrente invece che al precedente (LOGICA_FUNZIONAMENTO.md §7).
 GIORNO_CAMBIO_COMPETENZA = 25
@@ -334,7 +341,7 @@ async def riallinea_competenza_bonifici_stipendi(
 
     async def _movimento(movimento_id: str) -> Optional[Dict[str, Any]]:
         if movimento_id not in movimenti_cache:
-            movimenti_cache[movimento_id] = await db["estratto_conto_movimenti"].find_one(
+            movimenti_cache[movimento_id] = await db[_collezione_id(movimento_id)].find_one(
                 {"id": movimento_id}, {"_id": 0}
             )
         return movimenti_cache[movimento_id]
@@ -436,7 +443,7 @@ async def riallinea_competenza_bonifici_stipendi(
     for spostamento in esito["spostamenti"]:
         movimento = movimenti_cache[spostamento["movimento_id"]]
         origine, destinazione = per_id[spostamento["da"]["id"]], per_id[spostamento["a"]["id"]]
-        await db["estratto_conto_movimenti"].update_one(
+        await db[_collezione_id(movimento["id"])].update_one(
             {"id": movimento["id"]},
             {"$set": {
                 "stipendio_id": destinazione["id"],
@@ -465,7 +472,7 @@ async def riallinea_competenza_bonifici_stipendi(
             )
 
     for riga, movimento, atteso in movimenti_da_staccare:
-        await db["estratto_conto_movimenti"].update_one(
+        await db[_collezione_id(movimento["id"])].update_one(
             {"id": movimento["id"]},
             {"$set": {
                 "riconciliato": False,
@@ -552,7 +559,7 @@ async def recupera_relazioni_stipendi_mancanti(
         movimenti: List[Dict[str, Any]] = []
         for movement_id in movement_ids:
             result["riferimenti_bancari_esaminati"] += 1
-            movimento = await db["estratto_conto_movimenti"].find_one(
+            movimento = await db[_collezione_id(movement_id)].find_one(
                 {"id": movement_id}, {"_id": 0}
             )
             if not movimento:
@@ -640,14 +647,23 @@ async def recupera_relazioni_stipendi_mancanti(
 async def associa_bonifici_stipendi(
     db, stipendio_id: Optional[str] = None, anno: Optional[int] = None,
     allow_partial: bool = True,
+    collezione_movimenti: str = "estratto_conto_movimenti",
+    ripassa_collegati: bool = True,
 ) -> Dict[str, Any]:
-    """Riconcilia solo match bancari certi e univoci."""
+    """Riconcilia solo match bancari certi e univoci.
+
+    ``collezione_movimenti`` e' la fonte dei bonifici: il conto BPM per
+    difetto, ``sumup_conto_movimenti`` per quelli partiti dalla carta SumUp.
+    Stesse regole, stesso motore. Riallineo della competenza e recupero delle
+    relazioni lavorano sulle buste e leggono ogni movimento dal suo archivio:
+    basta farli una volta per giro (``ripassa_collegati=False`` li salta).
+    """
     nomi_arricchiti = await arricchisci_nomi_salari_da_cedolini(db)
     # Prima di associare altro, i bonifici gia' collegati devono stare sul
     # periodo giusto (regola del giorno 25): e' lo stesso motore, non un
     # comando di manutenzione a parte. Solo nelle esecuzioni batch.
     riallineo_competenza: Optional[Dict[str, Any]] = None
-    if not stipendio_id:
+    if not stipendio_id and ripassa_collegati:
         try:
             riallineo_competenza = await riallinea_competenza_bonifici_stipendi(
                 db, dry_run=False, anno=anno, actor="associa_bonifici_stipendi",
@@ -656,8 +672,11 @@ async def associa_bonifici_stipendi(
             logger.exception("Riallineo competenza bonifici stipendi non completato")
             riallineo_competenza = {"errore": True}
     try:
-        recupero_relazioni = await recupera_relazioni_stipendi_mancanti(
-            db, anno=anno, stipendio_id=stipendio_id,
+        recupero_relazioni = (
+            await recupera_relazioni_stipendi_mancanti(
+                db, anno=anno, stipendio_id=stipendio_id,
+            )
+            if ripassa_collegati else None
         )
     except Exception:
         logger.exception("Errore generale nel recupero relazioni stipendio")
@@ -717,7 +736,7 @@ async def associa_bonifici_stipendi(
     }
     if anno:
         filtro_movimenti["data"] = {"$regex": rf"^{int(anno)}-"}
-    movimenti = await db["estratto_conto_movimenti"].find(
+    movimenti = await db[collezione_movimenti].find(
         filtro_movimenti,
         {"_id": 0},
     ).sort("data", 1).to_list(10000)
@@ -762,7 +781,7 @@ async def associa_bonifici_stipendi(
         pagato_totale = round(pagato_prima + importo, 2)
         saldo = round(atteso - pagato_totale, 2)
         completata = abs(saldo) <= 0.009
-        await db["estratto_conto_movimenti"].update_one(
+        await db[collezione_movimenti].update_one(
             {"id": movimento["id"]},
             {"$set": {
                 "riconciliato": True,
@@ -856,7 +875,7 @@ async def riconciliazione_salario_verificata(db, riga: Dict[str, Any]) -> bool:
     riga_verifica["importo_bonifico"] = 0.0
     totale_verificato = 0.0
     for movimento_id in movimento_ids:
-        movimento = await db["estratto_conto_movimenti"].find_one(
+        movimento = await db[_collezione_id(movimento_id)].find_one(
             {"id": movimento_id}, {"_id": 0}
         )
         if not movimento:

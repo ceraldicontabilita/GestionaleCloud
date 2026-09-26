@@ -498,49 +498,38 @@ async def proxy_pdf(url: str = Query(..., description="URL del PDF da proxare"))
     Proxy backend per visualizzare PDF SAIMA inline nell'app.
     Scarica il PDF da SAIMA e lo restituisce con gli header corretti per l'embedding.
     """
-    import urllib.parse
+    from fastapi.responses import Response
 
-    # Whitelist: domini autorizzati
-    DOMINI_AUTORIZZATI = {
-        "saimaspa.com",
-        "www.saimaspa.com",
-        "mepaalimentari.com",
-        "www.mepaalimentari.com",
-    }
-    parsed = urllib.parse.urlparse(url)
-    if parsed.netloc not in DOMINI_AUTORIZZATI:
-        raise HTTPException(status_code=403, detail=f"URL non autorizzato: {parsed.netloc}")
+    from app.lotti.servizi.fetch_sicuro import UrlNonAmmesso, scarica
 
+    # Solo i siti dei fornitori, anche dopo un reindirizzamento; i link storici
+    # in http si leggono in https.
+    if url.startswith("http://"):
+        url = "https://" + url[len("http://"):]
     try:
-        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
-            r = await client.get(url, headers=HEADERS)
-            if r.status_code != 200:
-                raise HTTPException(
-                    status_code=502, detail=f"PDF non disponibile: HTTP {r.status_code}"
-                )
-            content_type = r.headers.get("content-type", "application/pdf")
-            if "html" in content_type.lower():
-                raise HTTPException(
-                    status_code=502, detail="Il server ha restituito HTML invece del PDF"
-                )
-            from fastapi.responses import Response
-
-            return Response(
-                content=r.content,
-                media_type="application/pdf",
-                headers={
-                    "Content-Disposition": "inline",
-                    "Cache-Control": "public, max-age=3600",
-                },
-            )
-    except HTTPException:
-        raise
+        r = await scarica(url, domini=("saimaspa.com", "mepaalimentari.com"), headers=HEADERS,
+                          timeout=30, max_bytes=30 * 1024 * 1024)
+    except UrlNonAmmesso as e:
+        raise HTTPException(status_code=403, detail=f"URL non autorizzato: {e}") from e
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Errore download PDF: {str(e)}") from e
+        _LOG_INIT.warning("[saima pdf-proxy] download fallito: %s %s", type(e).__name__, e)
+        raise HTTPException(status_code=502, detail="Errore download PDF") from e
+    if r.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"PDF non disponibile: HTTP {r.status_code}")
+    if "html" in (r.content_type or "").lower():
+        raise HTTPException(status_code=502, detail="Il server ha restituito HTML invece del PDF")
+    return Response(
+        content=r.content,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": "inline",
+            "Cache-Control": "public, max-age=3600",
+        },
+    )
 
 
 @router.post("/aggiorna")
-async def aggiorna_ricettari(background_tasks: BackgroundTasks):
+async def aggiorna_ricettari(background_tasks: BackgroundTasks, _admin=Depends(require_admin)):
     """Tenta di recuperare ricettari aggiuntivi dal sito SAIMA (esegue in background)."""
 
     async def esegui():
@@ -604,7 +593,7 @@ class NuovoRicettario(BaseModel):
 
 
 @router.post("/aggiungi")
-async def aggiungi_ricettario(body: NuovoRicettario):
+async def aggiungi_ricettario(body: NuovoRicettario, _admin=Depends(require_admin)):
     """Aggiunge un ricettario SAIMA custom tramite URL PDF diretto."""
     import re, urllib.parse
 
@@ -629,7 +618,7 @@ async def aggiungi_ricettario(body: NuovoRicettario):
 
 
 @router.delete("/{ricettario_id}")
-async def elimina_ricettario(ricettario_id: str):
+async def elimina_ricettario(ricettario_id: str, _admin=Depends(require_admin)):
     """Elimina un ricettario custom dal DB (non quelli statici SAIMA)."""
     # Verifica non sia uno statico
     ids_statici = {r["id"] for r in ALL_RICETTARI_STATICI}

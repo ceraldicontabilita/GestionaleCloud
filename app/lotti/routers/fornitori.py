@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from typing import Optional
 import uuid
 import logging
+from app.lotti.auth import require_admin
+from fastapi import Depends
 _LOG_INIT = logging.getLogger("uvicorn.error")
 import re
 from app.lotti.routers.unita_misura import normalizza_unita_display
@@ -510,7 +512,7 @@ async def get_fornitori_in_attesa():
 
 @router.post("/approva")
 async def approva_fornitore(nome: str = Query(...), includi: bool = Query(...),
-                            piva: str = Query("")):
+                            piva: str = Query(""), _admin=Depends(require_admin)):
     """
     Approva un fornitore: includilo (attivo) o escludilo.
     Cerca per nome esatto, poi normalizzato, poi case-insensitive. Se non esiste, lo crea.
@@ -549,7 +551,7 @@ async def approva_fornitore(nome: str = Query(...), includi: bool = Query(...),
 
 
 @router.post("/escludi")
-async def toggle_esclusione_fornitore(nome: str = Query(...), escludi: bool = Query(...)):
+async def toggle_esclusione_fornitore(nome: str = Query(...), escludi: bool = Query(...), _admin=Depends(require_admin)):
     """Attiva/disattiva esclusione fornitore — cerca per nome normalizzato (senza virgolette, case-insensitive)"""
     # Normalizza il nome: rimuovi virgolette esterne e spazi
     nome_norm = nome.strip().strip('"').strip("'").strip()
@@ -596,7 +598,7 @@ async def toggle_esclusione_fornitore(nome: str = Query(...), escludi: bool = Qu
 
 
 @router.post("/tipo-fornitura")
-async def set_tipo_fornitura(nome: str = Query(...), tipo: str = Query(...)):
+async def set_tipo_fornitura(nome: str = Query(...), tipo: str = Query(...), _admin=Depends(require_admin)):
     """Imposta il tri-stato di un fornitore:
     - "completo": popola magazzino + lotti tracciabilita + ricette
     - "solo_magazzino": popola magazzino/ordini ma NON lotti ne ricette
@@ -635,7 +637,7 @@ async def set_tipo_fornitura(nome: str = Query(...), tipo: str = Query(...)):
 
 
 @router.post("/monitora-sconti")
-async def toggle_monitora_sconti(nome: str = Query(...), monitora: bool = Query(...)):
+async def toggle_monitora_sconti(nome: str = Query(...), monitora: bool = Query(...), _admin=Depends(require_admin)):
     """Attiva/disattiva il monitoraggio sconti di un fornitore.
     Flag INDIPENDENTE da 'escluso' (che riguarda l'import magazzino)."""
     nome_norm = nome.strip().strip('"').strip("'").strip()
@@ -679,7 +681,7 @@ async def get_fornitori_esclusi():
 
 
 @router.post("/auto-classifica-horeca")
-async def auto_classifica_fornitori():
+async def auto_classifica_fornitori(_admin=Depends(require_admin)):
     """
     Auto-classifica TUTTI i fornitori in attesa:
     - HORECA (alimentari/bevande) → inclusi automaticamente
@@ -1460,7 +1462,7 @@ async def get_anagrafica_fornitore(nome_fornitore: str, anno: str = None):
 
 
 @router.put("/{nome_fornitore}/anagrafica")
-async def aggiorna_anagrafica_fornitore(nome_fornitore: str, dati: dict):
+async def aggiorna_anagrafica_fornitore(nome_fornitore: str, dati: dict, _admin=Depends(require_admin)):
     """Aggiorna scheda anagrafica fornitore"""
     dati_clean = {k: v for k, v in dati.items() if k not in ["_id", "nome"]}
     dati_clean["nome"] = nome_fornitore
@@ -1471,7 +1473,7 @@ async def aggiorna_anagrafica_fornitore(nome_fornitore: str, dati: dict):
 
 
 @router.post("/note")
-async def aggiorna_note_fornitore(nome: str = Query(...), note: str = Query("")):
+async def aggiorna_note_fornitore(nome: str = Query(...), note: str = Query(""), _admin=Depends(require_admin)):
     """Aggiorna note di un fornitore"""
     await db.fornitori.update_one(
         {"nome": nome},
