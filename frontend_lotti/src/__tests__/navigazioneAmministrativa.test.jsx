@@ -19,6 +19,7 @@ jest.mock("../components/haccp/PesceTraceabilityCard", () => () => null);
 
 const DashboardView = require("../components/haccp/DashboardView").default;
 const AppLayout = require("../layouts/AppLayout").default;
+const guidaContenuti = require("../data/guidaContenuti.json");
 const axios = require("axios");
 
 global.IS_REACT_ACT_ENVIRONMENT = true;
@@ -60,5 +61,10 @@ describe("navigazione amministrativa sempre comprensibile", () => {
     expect(link).not.toBeNull();
     expect(link.getAttribute("href")).toBe("/");
     expect(link.getAttribute("aria-label")).toBe("Torna al Gestionale");
+  });
+
+  test("la guida non descrive piu una scadenza autonoma di due ore", () => {
+    const testo = JSON.stringify(guidaContenuti).toLowerCase();
+    expect(testo).not.toMatch(/cancello delle 2 ore|sessione.{0,30}(?:2|due) ore/);
   });
 });
