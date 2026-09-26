@@ -546,8 +546,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   alimenta Salari e bonifici, e la decisione si prende **solo** con `alimenta_salari()`, che fallisce
   **chiuso**: uno stato assente, vuoto o sconosciuto non passa. Su un dato che diventa un bonifico
   l'assenza di prova non vale come prova.
-  Zucchetti e CSC: la cella sta **sotto** l'etichetta (`_netto_dalla_cella`) e vince sul testo; competenze
-  meno trattenute è solo un controllo (`netto_calcolato` annotato), **mai** un netto.
+  Zucchetti/CSC: cella **sotto** l'etichetta (`_netto_dalla_cella`); competenze − trattenute è solo un controllo.
 - Sulla collection `cedolini` il campo è **`pagato`**, non `pagata`: il femminile non esiste su nessun
   documento e un filtro che lo cerca passa sempre.
 - **Un solo motore abbina bonifico e stipendio**: `associa_bonifici_stipendi` (identità completa, acconti,
@@ -562,6 +561,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   una busta), `fuori_periodo` (prima del 2018), `non_cedolino` (contratti), `illeggibile`. Una busta con
   la cella del netto vuota entra **solo in HR** col netto nullo, mai in Prima Nota. Voci codificate e
   **dati chiave** (ratei 13ª e 14ª, L.207/24, trattamento integrativo L.21) da `parsers/cedolino_voci.py`.
+- **Ogni PDF letto è una scheda Markdown** (`schede_markdown.py`); registro per anno riscritto a ogni scheda; ricarica dalle schede, mai dai PDF.
 - Duplicato di cedolino **solo con hash del PDF uguale**: stesso dipendente, mese e importo non bastano
   (mensilità aggiuntive, arretrati, conguagli).
 - Una cessazione letta in una busta vale solo se non esiste una busta successiva della stessa persona.
