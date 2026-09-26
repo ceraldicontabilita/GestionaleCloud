@@ -53,6 +53,7 @@ const LegacyRouteResolver = lazy(() => import("./pages/LegacyRouteResolver.jsx")
 const GestioneIVA = lazy(() => import("./pages/GestioneIVA.jsx"));
 const FattureEstereVerifica = lazy(() => import("./pages/FattureEstereVerifica.jsx"));
 const SituazioneFiscale = lazy(() => import("./pages/SituazioneFiscale.jsx"));
+const PianoTributi = lazy(() => import("./pages/PianoTributi.jsx"));
 
 // HR (AppDipendenti), Menu e Lotti NON sono pagine di questa SPA: sono app
 // portate pari pari, servite dal backend a /hr/, /menu/ e /lotti/ (link a
@@ -111,6 +112,7 @@ const router = createBrowserRouter([
       { path: "mappa-gestionale", element: <LazyPage><MappaGestionale /></LazyPage> },
       { path: "iva/*", element: <LazyPage><GestioneIVA /></LazyPage> },
       { path: "situazione-fiscale/*", element: <RequireAdmin><LazyPage><SituazioneFiscale /></LazyPage></RequireAdmin> },
+      { path: "piano-tributi", element: <RequireAdmin><LazyPage><PianoTributi /></LazyPage></RequireAdmin> },
       { path: "fatture-estere-verifica", element: <LazyPage><FattureEstereVerifica /></LazyPage> },
 
       // Un solo punto di compatibilità per vecchi preferiti; altrimenti 404 reale.

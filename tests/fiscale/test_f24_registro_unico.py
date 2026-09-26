@@ -80,8 +80,12 @@ def test_endpoint_verifica_codice_usa_il_registro_unico(monkeypatch):
     db = _db()
     _run(db.f24_unificato.insert_one(_f24("f-1", "2019-12-20", 100.0, [("1001", "10/2019", 100.0)])))
     monkeypatch.setattr(Database, "get_db", staticmethod(lambda: db))
+    from app.utils.dependencies import get_current_admin_user
+
     app = FastAPI()
     app.include_router(f24_riconciliazione.router, prefix="/api/f24-riconciliazione")
+    assert TestClient(app).get("/api/f24-riconciliazione/verifica-codice/1001").status_code in (401, 403)
+    app.dependency_overrides[get_current_admin_user] = lambda: {"role": "admin"}
     res = TestClient(app).get("/api/f24-riconciliazione/verifica-codice/1001?anno=2019&mese=10")
     assert res.status_code == 200, res.text
     corpo = res.json()

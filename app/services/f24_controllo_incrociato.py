@@ -700,8 +700,11 @@ async def verifica_codice(
         f"{filtro_mese:02d}/{filtro_anno}" if filtro_mese and filtro_anno
         else str(filtro_anno) if filtro_anno else "tutti"
     )
+    from app.services.codici_tributo_f24 import CODICI_TRIBUTO_F24
+
     return {
         "codice_tributo": codice,
+        "descrizione": (CODICI_TRIBUTO_F24.get(codice) or {}).get("descrizione"),
         "periodo_cercato": periodo_cercato,
         "pagato": any(r["pagamento_verificato_banca"] for r in risultati),
         "righe_f24": risultati,

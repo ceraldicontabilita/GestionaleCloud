@@ -6,7 +6,7 @@ reviewed_at: 2026-09-20
 storage_architecture: supabase
 -->
 
-Aggiornato il 25/09/2026 sul codice di `main` del repository canonico
+Aggiornato il 26/09/2026 sul codice di `main` del repository canonico
 `ceraldicontabilita/GestionaleCloud`.
 
 **Gli unici documenti sono questo file, `README.md` e `PIANO_RISTRUTTURAZIONE.md`** (registro del
@@ -503,8 +503,13 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   pagamenti o scritture. Le tabelle sono **due** —
   `services/codici_tributo_f24.py` (la legge il parser) e
   `services/codici_tributo_db.py` (con le scadenze) — e
-  `tests/fiscale/test_codici_tributo_coerenti.py` impedisce che tornino a dire
-  il contrario: nel 2026 l'IRES era ruotata di uno, 2001 dava «acconto».
+  `tests/fiscale/test_codici_tributo_coerenti.py` le fissa sulla fonte AdE: IRES 2001
+  acconto I, 2002 acconto II, 2003 saldo; 3802 addizionale regionale del sostituto, 3801
+  autotassazione. Un testo «di produzione» non vale come fonte: su entrambi era sbagliato.
+- **Piano tributi** (`services/piano_tributi.py`, `/api/f24/piano-tributi`): le voci ricorrenti
+  del titolare aprono un'attesa per periodo; la soddisfa solo l'addebito in banca, la quietanza
+  la lascia `DA_VERIFICARE`. Legge il registro unico F24, non ne tiene un secondo; l'importo
+  viene dal modello arrivato, mai stimato. 3802/3848 sono rate del saldo dell'anno prima.
 - Il **periodo di riferimento di un tributo sta sulla sua riga** (`anno`,
   `mese`), non sul modello: la data in cui l'F24 è stato pagato è un'altra
   cosa. L'IVA mensile sono i codici 6001–6012, uno per mese.

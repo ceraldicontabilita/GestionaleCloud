@@ -3,7 +3,7 @@ Sistema Riconciliazione F24
 Gestisce il flusso completo: F24 commercialista → Quietanza → Banca
 Con supporto per ravvedimento e F24 duplicati
 """
-from fastapi import APIRouter, HTTPException, UploadFile, File, Query, Body
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
@@ -13,6 +13,7 @@ from app.services.alert_engine import genera_alert
 import os
 import uuid
 import logging
+from app.utils.dependencies import get_current_admin_user
 from app.utils.error_handler import handle_errors
 from app.services.f24_payment_evidence import (
     patch_quietanza_associata,
@@ -801,7 +802,8 @@ async def ignora_alert(alert_id: str) -> Dict[str, Any]:
 async def verifica_codice_tributo(
     codice_tributo: str,
     anno: Optional[str] = Query(None),
-    mese: Optional[str] = Query(None)
+    mese: Optional[str] = Query(None),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
 ) -> Dict[str, Any]:
     """
     Verifica se un codice tributo è stato pagato, sul registro UNICO:
