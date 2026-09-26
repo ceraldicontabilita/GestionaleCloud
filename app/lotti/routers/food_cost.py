@@ -3745,10 +3745,12 @@ async def get_storico_prezzi(nome: str, limit: int = 6):
             dt = datetime.fromisoformat(str(data_str)[:10])
         except Exception:
             continue
+        if d.get("prezzo_unitario") is None:
+            continue  # prezzo non letto in fattura: non è un punto dello storico
         voci.append(
             {
                 "data": dt.isoformat()[:10],
-                "prezzo": round(float(d.get("prezzo_unitario", 0)), 4),
+                "prezzo": round(float(d["prezzo_unitario"]), 4),
                 "fornitore": d.get("fornitore", ""),
             }
         )

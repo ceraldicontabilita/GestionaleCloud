@@ -1202,6 +1202,108 @@ def invalida_cache_cruscotto():
     _CRUSCOTTO_CACHE["scade"] = 0.0
 
 
+async def spesa_da_gestionale(fatture: list) -> dict:
+    """Somma degli importi delle fatture Lotti, letti dal gestionale.
+
+    La fattura di Lotti non porta il totale (l'import salva solo le righe):
+    sommare ``importo_totale``/``totale`` dava sempre 0 € con le fatture
+    contate. L'importo vero è ``total_amount`` della stessa fattura nel
+    gestionale, trovata per **identità** — il collegamento del ponte
+    (``gestionale_source_id``), altrimenti numero + P.IVA, altrimenti numero +
+    data — e solo se la corrispondenza è unica: mai per importo. Una fattura
+    senza corrispondenza o senza importo non vale zero: è contata in
+    ``senza_importo``. Le note di credito riducono la spesa. Se il gestionale
+    non risponde, ``totale`` è ``None`` («Dato non disponibile»), mai 0.
+    """
+    from collections import defaultdict
+    from decimal import Decimal, InvalidOperation
+
+    from app.constants.tipi_documento import TIPI_NOTA_CREDITO
+
+    esito = {"totale": None, "senza_importo": 0, "errore": None}
+    if not fatture:
+        esito["totale"] = 0.0
+        return esito
+
+    def _num(v):
+        return str(v or "").strip().upper()
+
+    def _vat(v):
+        v = str(v or "").strip().upper()
+        return v[2:] if v.startswith("IT") else v
+
+    def _data(v):
+        v = str(v or "").strip()[:10]
+        return f"{v[8:10]}/{v[5:7]}/{v[:4]}" if len(v) == 10 and v[4:5] == "-" else v
+
+    try:
+        from app.routers.lotti_integration import _documents, _projection
+
+        per_id, per_piva, per_data = {}, defaultdict(list), defaultdict(list)
+        for doc in await _documents():
+            proj = _projection(doc, include_xml=False)
+            voce = (proj.get("total_amount"), proj.get("document_type"))
+            per_id[proj["source_id"]] = voce
+            numero = _num(proj.get("invoice_number"))
+            if numero:
+                if _vat(proj.get("supplier_vat")):
+                    per_piva[(numero, _vat(proj.get("supplier_vat")))].append(voce)
+                if proj.get("invoice_date"):
+                    per_data[(numero, _data(proj.get("invoice_date")))].append(voce)
+    except Exception as exc:
+        logger.warning("[cruscotto] fatture del gestionale non lette: %s %s", type(exc).__name__, exc)
+        esito["errore"] = f"fatture del gestionale non lette ({type(exc).__name__})"
+        return esito
+
+    def _voce(f):
+        if f.get("gestionale_source_id") and str(f["gestionale_source_id"]) in per_id:
+            return per_id[str(f["gestionale_source_id"])]
+        numero = _num(f.get("numero_fattura"))
+        for candidati in (per_piva.get((numero, _vat(f.get("piva")))),
+                          per_data.get((numero, _data(f.get("data_fattura"))))):
+            if candidati and len(candidati) == 1:
+                return candidati[0]
+        return (None, None)
+
+    totale = Decimal("0")
+    for f in fatture:
+        importo, tipo = _voce(f)
+        try:
+            valore = Decimal(str(importo)) if importo not in (None, "") else None
+        except InvalidOperation:
+            valore = None
+        if valore is None or valore == 0:
+            esito["senza_importo"] += 1
+            continue
+        valore = abs(valore)
+        totale += -valore if tipo in TIPI_NOTA_CREDITO else valore
+    esito["totale"] = float(totale.quantize(Decimal("0.01")))
+    return esito
+
+
+async def riepilogo_scorte() -> dict:
+    """Sotto scorta ed esauriti dal motore unico degli avvisi (bar e materie
+    prime), più i prodotti in magazzino senza soglia: senza soglia non esiste
+    un «poco», e contarli a parte è l'unico modo di non dire «0 sotto scorta»
+    quando nessuno ha scelto le soglie."""
+    from app.lotti.routers.magazzino_unificato import (
+        LIVELLO_ESAURITO, calcola_avvisi_scorte, prodotti_unificati,
+    )
+
+    esito = {"sotto_scorta": None, "esauriti": None, "senza_soglia": None, "errore": None}
+    try:
+        prodotti = await prodotti_unificati(gestione=False, solo_disponibili=False)
+        avvisi = (await calcola_avvisi_scorte(prodotti=prodotti))["avvisi"]
+    except Exception as exc:
+        logger.warning("[cruscotto] scorte non lette: %s %s", type(exc).__name__, exc)
+        esito["errore"] = f"scorte non lette ({type(exc).__name__})"
+        return esito
+    esito["sotto_scorta"] = len(avvisi)
+    esito["esauriti"] = sum(1 for a in avvisi if a["livello"] == LIVELLO_ESAURITO)
+    esito["senza_soglia"] = sum(1 for p in prodotti if float(p.get("soglia_minima") or 0) <= 0)
+    return esito
+
+
 @router.get("/cruscotto")
 async def cruscotto():
     """Tutti i numeri della home in una chiamata: KPI + serie temperature 7gg +
@@ -1212,24 +1314,25 @@ async def cruscotto():
     oggi = _ora_locale()
     anno = oggi.year
 
-    # 1) spesa ultimo mese (fatture)
+    # 1) spesa ultimi 30 giorni: importi VERI del gestionale
     cutoff = oggi - timedelta(days=30)
-    fatture = await db.fatture.find({}, {"_id": 0, "data_fattura": 1, "importo_totale": 1, "totale": 1}).to_list(3000)
+    fatture = await db.fatture.find(
+        {}, {"_id": 0, "data_fattura": 1, "gestionale_source_id": 1, "numero_fattura": 1, "piva": 1}
+    ).to_list(None)
     def _pd(s):
         for f in ("%d/%m/%Y", "%Y-%m-%d"):
             try: return datetime.strptime((s or "")[:10], f)
             except Exception: pass
         return None
-    spesa_mese = 0.0
-    for f in fatture:
-        d = _pd(f.get("data_fattura"))
-        if d and d.replace(tzinfo=None) >= cutoff.replace(tzinfo=None):
-            spesa_mese += float(f.get("importo_totale") or f.get("totale") or 0)
+    fatture_mese = [
+        f for f in fatture
+        if (d := _pd(f.get("data_fattura"))) and d.replace(tzinfo=None) >= cutoff.replace(tzinfo=None)
+    ]
+    spesa = await spesa_da_gestionale(fatture_mese)
 
-    # 2) giacenze: sotto scorta + esauriti
-    prods = await db.magazzino_bar_prodotti.find({}, {"_id": 0, "stock": 1, "soglia_minima": 1}).to_list(2000)
-    sotto = sum(1 for p in prods if float(p.get("soglia_minima") or 0) > 0 and float(p.get("stock") or 0) < float(p.get("soglia_minima") or 0))
-    esauriti = sum(1 for p in prods if float(p.get("stock") or 0) <= 0)
+    # 2) giacenze: lo stesso motore degli avvisi di magazzino (bar + materie
+    # prime), più chi una soglia non ce l'ha ancora
+    scorte = await riepilogo_scorte()
 
     # 3) lotti in scadenza (<=7gg) e scaduti
     lotti = await db.lotti.find(dict(FILTRO_LOTTO_APERTO), {"_id": 0, "data_scadenza": 1}).to_list(3000)
@@ -1262,10 +1365,14 @@ async def cruscotto():
 
     risultato = {
         "kpi": {
-            "spesa_mese": round(spesa_mese, 2),
-            "fatture_mese": sum(1 for f in fatture if (_pd(f.get("data_fattura")) and _pd(f.get("data_fattura")).replace(tzinfo=None) >= cutoff.replace(tzinfo=None))),
-            "sotto_scorta": sotto,
-            "esauriti": esauriti,
+            "spesa_mese": spesa["totale"],
+            "fatture_mese": len(fatture_mese),
+            "fatture_senza_importo": spesa["senza_importo"],
+            "spesa_errore": spesa["errore"],
+            "sotto_scorta": scorte["sotto_scorta"],
+            "esauriti": scorte["esauriti"],
+            "senza_soglia": scorte["senza_soglia"],
+            "scorte_errore": scorte["errore"],
             "lotti_scaduti": scaduti,
             "lotti_in_scadenza": in_scad,
             "ordini_bozza": ordini_bozza,
