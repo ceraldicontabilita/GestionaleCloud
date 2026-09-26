@@ -4122,8 +4122,10 @@ async def upload_documento_automatico(
             from app.services.sumup_conto import accoda_abbinamento, importa_estratto_sumup
 
             sumup_result = await importa_estratto_sumup(db, filename, content)
-            if sumup_result.get("nuovi"):
-                accoda_abbinamento(db)
+            # Anche un estratto gia' presente riaccoda l'abbinamento: le righe
+            # importate prima di un motore nuovo (o in attesa di una busta,
+            # di una fattura) si ripassano senza aspettare il giro dei 30 minuti.
+            accoda_abbinamento(db)
             result.update({
                 "workflow": "SUMUP_CONTO_CANONICO",
                 "duplicate": bool(sumup_result.get("duplicate")),

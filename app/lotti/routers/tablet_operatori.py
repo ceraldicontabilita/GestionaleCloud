@@ -244,8 +244,12 @@ async def sincronizza_operatori_da_hr() -> Dict[str, Any]:
             agganciati.add(op["id"])
             if not op.get("postazione"):
                 valori["postazione"] = postazione_da_ruolo(p["ruolo_testo"])
-            await db.tablet_operatori.update_one({"id": op["id"]}, {"$set": valori, "$unset": dict(_CAMPI_PIN_LEGACY)})
-            esito["aggiornati"] += 1
+            # Ogni 10 minuti: si scrive solo se qualcosa e' cambiato davvero
+            # (l'ora di sincronizzazione da sola non vale una scrittura).
+            cambiato = any(op.get(k) != v for k, v in valori.items() if k != "sincronizzato_at")
+            if cambiato or any(k in op for k in _CAMPI_PIN_LEGACY):
+                await db.tablet_operatori.update_one({"id": op["id"]}, {"$set": valori, "$unset": dict(_CAMPI_PIN_LEGACY)})
+                esito["aggiornati"] += 1
         elif in_forza:
             await db.tablet_operatori.insert_one({
                 "id": str(uuid.uuid4()), **valori,

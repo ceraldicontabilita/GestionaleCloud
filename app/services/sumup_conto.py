@@ -48,6 +48,7 @@ COLL_MOVIMENTI = "sumup_conto_movimenti"
 COLL_PAYOUT = "sumup_payouts"
 
 PREFISSO_ID = "sumup_conto:"
+CHIAVE_STATO_ABBINAMENTO = "abbinamento_carta_sumup"
 COLL_ESTRATTO_CONTO_BANCA = "estratto_conto_movimenti"
 
 _PID = re.compile(r"\bPID\d+\b")
@@ -338,6 +339,16 @@ async def abbina_movimenti_sumup(db, *, anno: Optional[int] = None) -> Dict[str,
         },
     }
     logger.info("Abbinamento carta SumUp: %s", {k: v for k, v in esito.items() if k != "fatture_dettaglio"})
+    # L'ultimo esito resta leggibile: chi collauda lo trova senza cercarlo nei log.
+    await db["sistema_stato"].update_one(
+        {"chiave": CHIAVE_STATO_ABBINAMENTO},
+        {"$set": {
+            "chiave": CHIAVE_STATO_ABBINAMENTO,
+            "terminato_at": datetime.now(timezone.utc).isoformat(),
+            "esito": esito,
+        }},
+        upsert=True,
+    )
     return esito
 
 
