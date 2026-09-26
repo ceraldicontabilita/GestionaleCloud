@@ -13,8 +13,8 @@
 :root {
   /* Azioni e stato attivo: terracotta */
   --c-primary:        #c15f3c;
-  --c-primary-light:  #a94f30;
-  --c-primary-dark:   #8f4128;
+  --c-primary-light:  #d4775a;
+  --c-primary-dark:   #a94f30;
   --c-primary-soft:   #f7ebe4;
 
   /* Accent oro (sobrio, solo enfasi/attenzione) */

@@ -23,8 +23,8 @@ export const COLORS = {
   /* `primary` e' il colore delle azioni e dello stato attivo: la terracotta
      dell'artefatto. I titoli e il testo stanno in `text` (inchiostro). */
   primary: '#c15f3c',
-  primaryLight: '#a94f30',
-  primaryDark: '#8f4128',
+  primaryLight: '#d4775a',
+  primaryDark: '#a94f30',
   primarySoft: '#f7ebe4',
   /* Accent oro (sobrio) */
   accent: '#b07d1a',
