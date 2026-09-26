@@ -11,7 +11,7 @@ import {
   ChevronRight, Plus, Check, X, Edit2, Trash2, 
   MapPin, Euro, Download, RefreshCw, ChevronLeft, Grid3X3,
   User, FolderOpen, Settings, LogOut, ArrowLeft, AlertTriangle,
-  Wallet, Receipt, Building2, Inbox, CheckCircle2, Link2, Activity, Send
+  Wallet, Receipt, Building2, Inbox, CheckCircle2, Link2, Activity, Send, ShieldCheck
 } from "lucide-react";
 import SelettoreSezioni from "./SelettoreSezioni";
 import "./App.css";
@@ -119,6 +119,9 @@ export default function DipendentiCloudApp({ page: pageProp }) {
   const role = typeof window !== "undefined" ? localStorage.getItem("pt_role") : null;
   // Il responsabile turni entra in azienda ma può stare SOLO sulla pagina Turni.
   const soloTurni = role === "responsabile_turni";
+  // Solo per l'interfaccia (ingranaggio, indicatore): i permessi veri li
+  // decide il backend su ogni chiamata.
+  const isAdmin = role === "admin";
   const currentPage = soloTurni ? "turni" : (pageProp || pageParam || "dashboard");
 
   const [dipendenti, setDipendenti] = useState([]);
@@ -213,6 +216,7 @@ export default function DipendentiCloudApp({ page: pageProp }) {
     documenti: "Documenti",
     assunzione: "Assunzione & Contratti",
     "bonifici-banca": "Bonifici effettuati",
+    impostazioni: "Impostazioni",
   };
 
   if (loading) {
@@ -255,6 +259,8 @@ export default function DipendentiCloudApp({ page: pageProp }) {
         return <AssunzionePage dipendenti={dipendenti} reload={loadData} />;
       case "bonifici-banca":
         return <BonificiContabPage />;
+      case "impostazioni":
+        return <ImpostazioniPage />;
       default:
         return <DashboardPage stats={stats} dipendenti={dipendenti} ferie={ferie} missioni={missioni} getDipendente={getDipendente} />;
     }
@@ -270,24 +276,41 @@ export default function DipendentiCloudApp({ page: pageProp }) {
   return (
     <div className="dc-app">
       <Toaster />
-      {/* Barra mobile con menu a tendina */}
+      {/* Barra mobile con menu a tendina: ritorno al Gestionale e ingranaggio
+          restano in testata anche qui, non chiusi dentro al menu. */}
       <div className="dc-mobile-topbar">
         <button className="dc-hamburger" onClick={() => setMobileMenuOpen(true)} aria-label="Apri menu">
           <span></span><span></span><span></span>
         </button>
-        <span className="dc-mobile-title">{menuItems.find(m => m.id === currentPage)?.label || "Dipendenti"}</span>
+        <span className="dc-mobile-title">{pageLabels[currentPage] || "Dipendenti"}</span>
+        {isAdmin && (
+          <a href="/" className="dc-topbar-link dc-topbar-link-scuro" aria-label="Torna al Gestionale">
+            <ArrowLeft size={16} aria-hidden="true" /> Gestionale
+          </a>
+        )}
+        {soloTurni && (
+          <a href="/hr/portale" className="dc-topbar-link dc-topbar-link-scuro" aria-label="Torna al portale dipendente">
+            <ArrowLeft size={16} aria-hidden="true" /> Portale
+          </a>
+        )}
+        {isAdmin && (
+          <Link to="/dipendenti/impostazioni" className="dc-gear dc-gear-scuro" aria-label="Impostazioni" title="Impostazioni">
+            <Settings size={20} aria-hidden="true" />
+          </Link>
+        )}
       </div>
       {mobileMenuOpen && <div className="dc-mobile-overlay" onClick={() => setMobileMenuOpen(false)} />}
       {/* Sidebar */}
       <aside className={`dc-sidebar ${mobileMenuOpen ? 'open' : ''}`}>
         <div className="dc-sidebar-header">
-          <div className="dc-sidebar-logo">
-            <Users size={28} />
+          {/* Il logo riporta alla home di HR, come in ogni app del gruppo. */}
+          <Link to="/" className="dc-sidebar-logo" aria-label="Home HR" onClick={() => setMobileMenuOpen(false)}>
+            <Users size={28} aria-hidden="true" />
             <div>
               <span className="dc-logo-title">Dipendenti</span>
               <span className="dc-logo-subtitle">nella nuvola</span>
             </div>
-          </div>
+          </Link>
         </div>
 
         <nav className="dc-sidebar-nav">
@@ -312,12 +335,12 @@ export default function DipendentiCloudApp({ page: pageProp }) {
 
         <SelettoreSezioni sezioneCorrente="hr" />
 
+        {/* Chi e' dentro lo dice la sessione, non un nome scritto nel codice. */}
         <div className="dc-sidebar-footer">
           <div className="dc-sidebar-user">
-            <div className="dc-avatar dc-avatar-sm" style={{ backgroundColor: "#10b981" }}>VC</div>
             <div className="dc-user-info">
-              <span className="dc-user-name">Vincenzo C.</span>
-              <span className="dc-user-role">Proprietario</span>
+              <span className="dc-user-name">{localStorage.getItem("pt_name") || "Utente"}</span>
+              <span className="dc-user-role">{isAdmin ? "Amministratore" : soloTurni ? "Responsabile turni" : ""}</span>
             </div>
           </div>
         </div>
@@ -325,13 +348,32 @@ export default function DipendentiCloudApp({ page: pageProp }) {
 
       {/* Main Content */}
       <main className="dc-main">
-        {/* Breadcrumb */}
-        <div className="dc-breadcrumb">
+        {/* Testata: ritorno al Gestionale sempre in vista a sinistra; a destra
+            l'indicatore del ruolo e l'ingranaggio, solo per l'amministratore. */}
+        <header className="dc-breadcrumb">
+          {isAdmin && (
+            <a href="/" className="dc-topbar-link" aria-label="Torna al Gestionale">
+              <ArrowLeft size={16} aria-hidden="true" /> Gestionale
+            </a>
+          )}
+          {soloTurni && (
+            <a href="/hr/portale" className="dc-topbar-link" aria-label="Torna al portale dipendente">
+              <ArrowLeft size={16} aria-hidden="true" /> Portale
+            </a>
+          )}
           <span>Gestione</span>
-          <ChevronRight size={14} />
+          <ChevronRight size={14} aria-hidden="true" />
           <span className="dc-breadcrumb-current">{pageLabels[currentPage] || currentPage}</span>
           <div className="dc-breadcrumb-company">Ceraldi Group SRL</div>
-        </div>
+          {isAdmin && (
+            <span className="dc-badge-ruolo"><ShieldCheck size={14} aria-hidden="true" /> Amministratore</span>
+          )}
+          {isAdmin && (
+            <Link to="/dipendenti/impostazioni" className="dc-gear" aria-label="Impostazioni" title="Impostazioni">
+              <Settings size={20} aria-hidden="true" />
+            </Link>
+          )}
+        </header>
 
         {/* Page Content */}
         <div className="dc-content">
@@ -387,6 +429,46 @@ function Modal({ title, onClose, large, wide, maxWidth, children }) {
           <button type="button" onClick={onClose} className="dc-modal-close" aria-label="Chiudi finestra"><X size={20} /></button>
         </div>
         {children}
+      </div>
+    </div>
+  );
+}
+
+// Impostazioni: un indice, non un secondo posto dove si configura. Ogni voce
+// porta alla pagina che quella regola la tiene davvero (un solo sistema per
+// funzione): sede e geofencing in Timbrature, sponde e riposi in Turni, PIN e
+// ruolo nella scheda del dipendente.
+const VOCI_IMPOSTAZIONI = [
+  { to: "/dipendenti/timbrature", icon: MapPin, titolo: "Sede e timbrature",
+    testo: "Indirizzo della sede, raggio ammesso e blocco delle timbrature fuori sede." },
+  { to: "/dipendenti/turni", icon: Grid3X3, titolo: "Configura turni",
+    testo: "Sala o bar, riposo fisso, giorni di Lunga, onomastici, chi può coprire il bar: dal pulsante «Configura turni»." },
+  { to: "/dipendenti/anagrafica", icon: User, titolo: "PIN e ruoli dei dipendenti",
+    testo: "Dalla scheda di ogni dipendente: PIN personale per il portale e la firma in Lotti, ruolo nell'app." },
+  { to: "/dipendenti/diagnostica", icon: Activity, titolo: "Diagnostica",
+    testo: "Controllo dal vivo di backend e pagine dell'app." },
+];
+
+function ImpostazioniPage() {
+  return (
+    <div className="dc-page">
+      <div className="dc-page-header">
+        <div>
+          <h1>Impostazioni</h1>
+          <p>L'accesso amministratore passa dal login del Gestionale: qui non c'è un PIN da impostare.</p>
+        </div>
+      </div>
+      <div className="dc-impostazioni-grid">
+        {VOCI_IMPOSTAZIONI.map(({ to, icon: Icona, titolo, testo }) => (
+          <Link key={to} to={to} className="dc-card dc-impostazioni-voce">
+            <Icona size={20} aria-hidden="true" />
+            <div>
+              <div className="dc-impostazioni-titolo">{titolo}</div>
+              <div className="dc-impostazioni-testo">{testo}</div>
+            </div>
+            <ChevronRight size={16} aria-hidden="true" />
+          </Link>
+        ))}
       </div>
     </div>
   );

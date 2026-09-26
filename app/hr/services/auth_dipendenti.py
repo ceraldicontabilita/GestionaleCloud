@@ -2,8 +2,8 @@
 Autenticazione per-dipendente via PIN personale.
 
 Ogni dipendente ha un PIN personale (salvato come hash sul suo documento, mai
-in chiaro) e un `ruolo_app`. Il login richiede dipendente_id + pin, così non ci
-sono collisioni tra PIN uguali. Emette un JWT coerente con il resto del portale
+in chiaro) e un `ruolo_app`. Il login richiede la persona (chiave opaca del
+selettore, mai l'id interno) + pin, così non ci sono collisioni tra PIN uguali. Emette un JWT coerente con il resto del portale
 (jose + settings), con role = ruolo_app.
 """
 import hashlib
@@ -16,7 +16,6 @@ import bcrypt
 
 from app.hr.config import settings
 from app.hr.database import Database, Collections
-from app.services.admin_pin import verify_admin_pin
 from app.services.workforce_tokens import create_workforce_token
 
 logger = logging.getLogger(__name__)
@@ -93,13 +92,13 @@ async def login_dipendente_per_nome(nome: str, pin: str) -> Optional[Dict[str, A
         completo = (d.get("nome_completo") or f"{d.get('nome', '')} {d.get('cognome', '')}").lower()
         if all(t in completo for t in tokens):
             candidati.append(d)
-    verificati = []
-    for dip in candidati:
-        is_admin = dip.get("ruolo_app") == "admin"
-        ok = (verify_admin_pin(pin) is True) if is_admin else (
-            _valid_pin_format(pin) and bool(dip.get("pin_hash")) and verify_pin(pin, dip["pin_hash"]))
-        if ok:
-            verificati.append(dip)
+    # Un amministratore non entra da qui (vedi login_dipendente): non e' un
+    # candidato, qualunque PIN scriva.
+    verificati = [
+        dip for dip in candidati
+        if dip.get("ruolo_app") != "admin" and _valid_pin_format(pin)
+        and bool(dip.get("pin_hash")) and verify_pin(pin, dip["pin_hash"])
+    ]
     if len(verificati) != 1:
         return None  # nessuno o ambiguo (stesso nome E stesso PIN): niente accesso
     dip = verificati[0]
@@ -130,25 +129,18 @@ async def login_dipendente(dipendente_id: str, pin: str) -> Optional[Dict[str, A
     """Valida il PIN personale del dipendente e ritorna il token, oppure None.
 
     Una sola fonte: ``pin_hash`` sulla scheda HR (lo stesso PIN che firma in
-    Lotti). Gli amministratori entrano nel portale solo col PIN centrale di
-    ERP/Menu (decisione 05/09/2026); il loro PIN personale serve alla firma
-    HACCP sul tablet, non a questo login.
+    Lotti). Un amministratore (``ruolo_app == "admin"``) non entra da qui con
+    nessun PIN: il PIN amministratore si digita solo nel login del Gestionale e
+    HR ne legge la sessione (``/auth/session``); il suo PIN personale serve
+    alla firma HACCP sul tablet, non a questo login.
     """
-    if not pin or not pin.isascii() or not pin.isdigit() or not 4 <= len(pin) <= 12:
+    if not _valid_pin_format(pin or ""):
         return None
     db = Database.get_db()
     dip = await db[Collections.EMPLOYEES].find_one({"id": dipendente_id})
-    if not dip or not _dipendente_eleggibile(dip):
+    if not dip or not _dipendente_eleggibile(dip) or dip.get("ruolo_app") == "admin":
         return None
-    ok = False
-    is_admin = dip.get("ruolo_app") == "admin"
-    if not is_admin and not _valid_pin_format(pin):
-        return None
-    if is_admin:
-        ok = verify_admin_pin(pin) is True
-    elif dip.get("pin_hash") and verify_pin(pin, dip["pin_hash"]):
-        ok = True
-    if not ok:
+    if not (dip.get("pin_hash") and verify_pin(pin, dip["pin_hash"])):
         return None
     token = crea_token_dipendente(dip)
     return {
@@ -162,25 +154,91 @@ async def login_dipendente(dipendente_id: str, pin: str) -> Optional[Dict[str, A
     }
 
 
+# Il selettore «tocca il tuo nome» non consegna gli id interni dell'anagrafica
+# (li usano i router HR, Lotti e i ponti del gestionale): per ogni nome da' una
+# chiave opaca, HMAC dell'id col segreto HR e un dominio proprio, che serve
+# SOLO a questo login. Senza il segreto non si ricava l'id dalla chiave ne' la
+# chiave dall'id, e nessun altro endpoint la accetta.
+_DOMINIO_CHIAVE_LOGIN = b"hr-portale-login-v1:"
+_LUNGHEZZA_CHIAVE_LOGIN = 32  # 128 bit in esadecimale
+_ESADECIMALE = frozenset("0123456789abcdef")
+
+
+def chiave_login(dipendente_id: str) -> str:
+    return hmac.new(
+        str(settings.SECRET_KEY).encode("utf-8"),
+        _DOMINIO_CHIAVE_LOGIN + str(dipendente_id).encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()[:_LUNGHEZZA_CHIAVE_LOGIN]
+
+
+def _selezionabile_al_login(d: Dict[str, Any]) -> bool:
+    """In forza, con un PIN personale e non amministratore. Il PIN
+    amministratore si digita solo nel login del Gestionale: l'amministratore
+    entra in HR con quella sessione (``/auth/session``), mai da questo elenco."""
+    return bool(
+        d.get("id") and _dipendente_eleggibile(d)
+        and d.get("pin_hash") and d.get("ruolo_app") != "admin"
+    )
+
+
+async def _selezionabili_al_login() -> List[Dict[str, Any]]:
+    db = Database.get_db()
+    return [d async for d in db[Collections.EMPLOYEES].find({"merged_into": {"$exists": False}})
+            if _selezionabile_al_login(d)]
+
+
+def _nomi_visualizzati(dips: List[Dict[str, Any]]) -> List[str]:
+    """Il nome di battesimo; fra omonimi si aggiunge l'iniziale del cognome e,
+    se non basta, il cognome intero. Senza nome e cognome separati resta il
+    nome completo dell'anagrafica (che e' «COGNOME NOME»)."""
+    parti = []
+    for d in dips:
+        nome = str(d.get("nome") or "").strip()
+        cognome = str(d.get("cognome") or "").strip()
+        completo = str(d.get("nome_completo") or f"{cognome} {nome}").strip()
+        parti.append((nome, cognome, completo))
+
+    etichette = [n if (n and c) else comp for n, c, comp in parti]
+    for distingui in (lambda n, c: f"{n} {c[0]}.", lambda n, c: f"{n} {c}"):
+        uso: Dict[str, int] = {}
+        for e in etichette:
+            uso[e.lower()] = uso.get(e.lower(), 0) + 1
+        etichette = [
+            distingui(n, c) if (n and c and uso[e.lower()] > 1) else e
+            for e, (n, c, _completo) in zip(etichette, parti)
+        ]
+    return etichette
+
+
 async def elenco_dipendenti_per_login() -> List[Dict[str, Any]]:
     """Nomi dei dipendenti in forza CON un PIN impostato, per il selettore di
     login del portale (tocca il tuo nome, poi il PIN). Decisione esplicita del
-    titolare (28/08/2026): l'elenco nomi e' pubblico, niente digitazione su un
-    dispositivo condiviso. Solo id+nome: nessun PIN, ruolo o altro dato.
-    Chi non ha ancora un PIN non compare (un nome selezionabile il cui PIN
-    verrebbe sempre rifiutato sarebbe un bug, non una comodita')."""
-    db = Database.get_db()
-    out = []
-    async for d in db[Collections.EMPLOYEES].find({"merged_into": {"$exists": False}}):
-        if not _dipendente_eleggibile(d):
-            continue
-        nome = d.get("nome_completo") or f"{d.get('nome', '')} {d.get('cognome', '')}".strip()
-        if not (nome and d.get("id")):
-            continue
-        if d.get("pin_hash") or d.get("ruolo_app") == "admin":
-            out.append({"id": d["id"], "nome": nome})
-    out.sort(key=lambda x: x["nome"])
+    titolare (28/08/2026): i nomi sono pubblici, niente digitazione su un
+    dispositivo condiviso. Per ogni nome solo la chiave opaca di login
+    (``chiave_login``) e il nome da mostrare: nessun id interno, PIN, ruolo o
+    altro dato. Chi non ha ancora un PIN non compare (un nome selezionabile il
+    cui PIN verrebbe sempre rifiutato sarebbe un bug, non una comodita')."""
+    dips = await _selezionabili_al_login()
+    out = [{"chiave": chiave_login(d["id"]), "nome": nome}
+           for d, nome in zip(dips, _nomi_visualizzati(dips))]
+    out.sort(key=lambda x: x["nome"].lower())
     return out
+
+
+async def login_dipendente_da_chiave(chiave: str, pin: str) -> Optional[Dict[str, Any]]:
+    """Login dal selettore: la chiave opaca si risolve qui, lato server, fra le
+    sole persone che l'elenco mostra. Una chiave inventata, un id interno al
+    posto della chiave, una chiave di un segreto ruotato o di chi non e' piu'
+    selezionabile non aprono niente."""
+    chiave = str(chiave or "").strip().lower()
+    if len(chiave) != _LUNGHEZZA_CHIAVE_LOGIN or not set(chiave) <= _ESADECIMALE:
+        return None
+    trovati = [d for d in await _selezionabili_al_login()
+               if hmac.compare_digest(chiave_login(d["id"]), chiave)]
+    if len(trovati) != 1:
+        return None
+    return await login_dipendente(trovati[0]["id"], pin)
 
 
 async def dipendente_con_pin_uguale(db, pin: str, escludi_id: str = "") -> Optional[Dict[str, Any]]:
