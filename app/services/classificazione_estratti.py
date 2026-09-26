@@ -147,6 +147,11 @@ def route_da_testo(testo: str) -> Optional[str]:
     # «IBAN» come un estratto bancario, ma non e' il conto BPM.
     if "estratto conto sumup" in testo or re.search(r"\bie\d{2}sumu\d{14}\b", testo):
         return SUMUP
+    # Lo stesso conto scaricato come «Resoconto transazioni» CSV: colonne sue.
+    if all(segno in testo for segno in (
+        "codice transazione", "tipo transazione", "saldo disponibile",
+    )):
+        return SUMUP
 
     if "nexi payments" in testo or "estratto conto nexi" in testo:
         return NEXI
