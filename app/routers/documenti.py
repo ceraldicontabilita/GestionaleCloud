@@ -4117,9 +4117,11 @@ async def upload_documento_automatico(
             })
 
         elif tipo_rilevato == 'estratto_conto_sumup':
-            from app.services.sumup_conto import importa_estratto_sumup_pdf
+            from app.services.sumup_conto import accoda_abbinamento, importa_estratto_sumup_pdf
 
             sumup_result = await importa_estratto_sumup_pdf(db, filename, content)
+            if sumup_result.get("nuovi"):
+                accoda_abbinamento(db)
             result.update({
                 "workflow": "SUMUP_CONTO_CANONICO",
                 "duplicate": bool(sumup_result.get("duplicate")),

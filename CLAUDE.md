@@ -846,7 +846,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   non riscosso (67.856,00 €); fuori restano 3 giornate a incasso zero (giusto) e il **02/08**, XML che non quadra di 0,90 €.
 - Endpoint sincroni oltre i 5 minuti, da portare a lotti riprendibili: `/api/fatture/drive/quadratura`, `/api/paypal-api/riconcilia`, `/account-ids-non-mappati`, `riallinea-pagamenti-fatture`.
 - Note di credito TD04 legacy (~20): costo/IVA/debito aumentati anziché ridotti.
-- **Estratto conto SumUp** (conto 19.01.05): il lettore (`sumup_conto.py`, saldi verificati riga per riga) scrive in `sumup_conto_movimenti`, **mai** in `estratto_conto_movimenti` (lì i motori lo leggerebbero come BPM su 19.01.01); stipendi e fornitori pagati dalla carta non sono ancora abbinati a cedolini e fatture.
+- **Estratto conto SumUp** (conto 19.01.05): il lettore (`sumup_conto.py`, saldi verificati riga per riga) scrive in `sumup_conto_movimenti`, **mai** in `estratto_conto_movimenti` (lì i motori lo leggerebbero come BPM su 19.01.01). Stipendi e fatture si abbinano con **gli stessi motori** del conto BPM puntati sulla carta (`abbina_movimenti_sumup`, nel giro dei 30 minuti e all'arrivo di un cedolino); la collezione la dice l'id (`collezione_del_movimento`). Aperto: i bonifici «Stipendio Agosto» aspettano le buste di agosto, e la coda «Scegli fattura» non apre ancora i movimenti della carta.
 - **Pregresso fatture**: 296 attive (173.184,83 €) senza partita aperta, 280 fuori dal giornale. Prima
   `ripubblica-evento-created`, poi `registra-pregresso`. Con `dry_run`: `azzera-scadenze` (642 fatture,
   971 partite inventate), `lipe/importa`, `ricostruisci-numia`.

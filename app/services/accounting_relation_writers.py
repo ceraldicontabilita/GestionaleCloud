@@ -68,8 +68,10 @@ async def record_bank_invoice_allocation(
         {"type": "allocation_id", "value": allocation.get("allocation_id")},
         {"type": "operation_id", "value": operation_id},
     ]
+    from app.services.sumup_conto import collezione_del_movimento
+
     provenance = {
-        "source_collection": "estratto_conto_movimenti",
+        "source_collection": collezione_del_movimento(movement),
         "target_collection": "invoices",
         "document_id": movement_id,
         "operation_id": operation_id,
@@ -103,7 +105,7 @@ async def record_bank_invoice_allocation(
                 "rule": "movimento_ufficiale_proiettato_in_prima_nota_banca",
                 "evidence": evidence,
                 "amount": amount,
-                "provenance": {"source_collection": "estratto_conto_movimenti",
+                "provenance": {"source_collection": provenance["source_collection"],
                                "operation_id": operation_id},
                 "actor": actor,
             },
@@ -206,6 +208,8 @@ async def record_salary_reconciliation(
     employee_name: str,
 ) -> List[str]:
     """Registra un bonifico stipendio identificato in modo univoco."""
+    from app.services.sumup_conto import collezione_del_movimento
+
     salary_id = _entity_id(salary_entry, "id")
     movement_id = _entity_id(movement, "id", "fingerprint")
     if not salary_id or not movement_id:
@@ -228,7 +232,7 @@ async def record_salary_reconciliation(
         "evidence": evidence,
         "amount": amount,
         "provenance": {
-            "source_collection": "estratto_conto_movimenti",
+            "source_collection": collezione_del_movimento(movement),
             "target_collection": "prima_nota_salari",
         },
     }]

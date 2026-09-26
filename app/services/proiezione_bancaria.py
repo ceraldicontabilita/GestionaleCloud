@@ -157,8 +157,14 @@ def classifica_movimento_ec(
 
 async def proietta_movimenti_bancari_semantici(
     db, *, anno: Optional[int] = None, movimento_ids=None,
+    collezione: str = Collections.BANK_STATEMENTS,
+    conto_contabile: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Scrive in Banca le sole prove con classificazione univoca e auditabile."""
+    """Scrive in Banca le sole prove con classificazione univoca e auditabile.
+
+    ``collezione`` e ``conto_contabile`` servono alla carta SumUp: stessi
+    criteri del conto BPM, righe di Prima Nota sul suo conto (19.01.05).
+    """
     dipendenti = await db[Collections.EMPLOYEES].find(
         {}, {
             "_id": 0, "id": 1, "nome": 1, "cognome": 1,
@@ -182,7 +188,7 @@ async def proietta_movimenti_bancari_semantici(
         "causali_deterministiche": 0,
         "commissioni_bancarie": 0,
     }
-    cursore = db[Collections.BANK_STATEMENTS].find(query)
+    cursore = db[collezione].find(query)
     async for movimento_ec in cursore:
         data = _data_iso(movimento_ec)
         if anno and not data.startswith(f"{anno}-"):
@@ -197,7 +203,7 @@ async def proietta_movimenti_bancari_semantici(
                 if movimento_ec.get("_id") is not None
                 else {"id": ec_id}
             )
-            await db[Collections.BANK_STATEMENTS].update_one(
+            await db[collezione].update_one(
                 source_query,
                 {"$set": {
                     "decisione_classificazione": "automatica",
@@ -233,6 +239,7 @@ async def proietta_movimenti_bancari_semantici(
             "classificazione_automatica": True,
             "tipo_classificazione_contabile": tipo_classificazione,
             "classificato_at": datetime.now(timezone.utc).isoformat(),
+            **({"conto_contabile": conto_contabile} if conto_contabile else {}),
             **{k: v for k, v in classificazione.items() if k not in {"tipo", "categoria"} and v},
         }
         prima_nota_id, gia_esistente = await scrivi_movimento_se_assente(
@@ -251,7 +258,7 @@ async def proietta_movimenti_bancari_semantici(
             if movimento_ec.get("_id") is not None
             else {"id": ec_id}
         )
-        await db[Collections.BANK_STATEMENTS].update_one(
+        await db[collezione].update_one(
             query_sorgente,
             {"$set": {
                 "classificato_contabilmente": True,
