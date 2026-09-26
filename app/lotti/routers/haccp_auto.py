@@ -12,6 +12,7 @@ from app.lotti.auth import require_admin
 from pydantic import BaseModel
 
 from app.lotti.db import database as db
+from app.lotti.servizi.registro_haccp import FUSO
 
 router = APIRouter(prefix="/haccp-auto", tags=["HACCP Automazione"])
 
@@ -136,7 +137,9 @@ def _giorni_scoperti(temperature: dict, anno: int, oggi, giorni_indietro: int):
 async def marca_giorni_non_rilevati(giorni_indietro: int = 45) -> dict:
     """Scrive a database i giorni passati senza lettura come "non rilevato".
     Girato all'avvio del server e ogni mattina dopo il job delle 07:00."""
-    oggi = datetime.now(timezone.utc).date()
+    # Il giorno del registro è quello di Napoli, non di Greenwich: fra
+    # mezzanotte e le 02:00 (ora legale) il giorno UTC era ancora ieri.
+    oggi = datetime.now(FUSO).date()
     anno = oggi.year
     ts = datetime.now(timezone.utc).isoformat()
     marcatore = {
@@ -287,7 +290,7 @@ async def apri_rilevazioni_del_giorno(quando=None) -> dict:
     il responsabile (quelli il cui registro restera' senza firma finche'
     qualcuno non li assegna).
     """
-    adesso = quando or datetime.now(timezone.utc)
+    adesso = quando or datetime.now(FUSO)
     anno, mese, giorno = adesso.year, adesso.month, adesso.day
     campo = f"temperature.{mese}.{giorno}"
     ts = adesso.isoformat()
@@ -312,7 +315,20 @@ async def apri_rilevazioni_del_giorno(quando=None) -> dict:
                 {"_id": 1, "temperature": 1, "temp_min": 1, "temp_max": 1},
             )
             if not scheda:
-                continue  # la scheda dell'anno la crea chi registra, non il turno
+                # Le pagine non creano più le schede quando le apri: la scheda
+                # dell'anno di un apparecchio attivo nasce qui, al primo turno,
+                # vuota (nessuna temperatura), così a gennaio le caselle si aprono.
+                if tipo == "frigo":
+                    from app.lotti.routers.temperature_positive import get_or_create_scheda
+                else:
+                    from app.lotti.routers.temperature_negative import get_or_create_scheda
+                await get_or_create_scheda(anno, numero)
+                scheda = await collezione.find_one(
+                    {"anno": anno, chiave_numero: numero},
+                    {"_id": 1, "temperature": 1, "temp_min": 1, "temp_max": 1},
+                )
+                if not scheda:
+                    continue
             if (scheda.get("temperature") or {}).get(str(mese), {}).get(str(giorno)) is not None:
                 esito["gia_presenti"] += 1
                 continue
@@ -368,7 +384,9 @@ async def dichiara_conformi_oggi(request: Request, pin: str = "", _admin=Depends
             status_code=401,
             detail="Serve la firma di chi ha fatto il giro: entra col tuo PIN.",
         )
-    adesso = datetime.now(timezone.utc)
+    # Giorno e mese sono quelli di Napoli: in UTC, dopo mezzanotte si
+    # dichiarava conforme la casella di ieri.
+    adesso = datetime.now(FUSO)
     ts = adesso.isoformat()
     ogni_ore = str(azienda.get("controllo_visivo_ogni_ore") or "2").strip()
     dichiarate = 0
@@ -413,8 +431,12 @@ async def dichiara_conformi_oggi(request: Request, pin: str = "", _admin=Depends
 
 @router.get("/turno-oggi")
 async def turno_di_oggi():
-    """Cosa resta da rilevare oggi, e a chi tocca. Lo leggono i tablet."""
-    adesso = datetime.now(timezone.utc)
+    """Cosa resta da rilevare oggi, e a chi tocca. Lo leggono i tablet.
+
+    Compilata = una temperatura, oppure l'esito «conforme» dichiarato dal
+    responsabile col controllo visivo (senza numero, per scelta). Prima una
+    casella dichiarata conforme risultava ancora «da rilevare»."""
+    adesso = datetime.now(FUSO)
     mese, giorno = str(adesso.month), str(adesso.day)
     da_fare, fatte = [], 0
     for tipo, collezione, chiave_numero in (
@@ -430,7 +452,8 @@ async def turno_di_oggi():
                 if casella is not None:
                     fatte += 1
                 continue
-            if casella.get("temp") is not None:
+            if casella.get("temp") is not None or casella.get("stato") == STATO_CONFORME \
+                    or casella.get("non_rilevato"):
                 fatte += 1
                 continue
             da_fare.append({

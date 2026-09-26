@@ -52,6 +52,12 @@ MODULI_HACCP = [
     "app/lotti/routers/controllo_olio.py",
     "app/lotti/routers/disinfestazione.py",
     "app/lotti/servizi/registro_haccp.py",
+    # Chi apre il turno, chi scrive il manuale, chi dice quali apparecchi ci
+    # sono e chi legge le schede: anche loro senza caso (audit 26/09/2026).
+    "app/lotti/servizi/automatismi_mattutini.py",
+    "app/lotti/routers/haccp_manuale_auto.py",
+    "app/lotti/routers/attrezzature.py",
+    "app/lotti/servizi/schede_temperature.py",
 ]
 
 

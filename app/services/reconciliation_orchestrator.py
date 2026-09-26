@@ -38,15 +38,6 @@ async def riconcilia_documenti_e_pagamenti(
     f24 = await riconcilia_f24_tributi_banca(
         db, anno=anno, movimento_ids=movimento_ids,
     )
-    # Quietanze rimaste senza modello: il modello puo' essere arrivato dopo,
-    # o era gia' pagato in banca quando e' arrivata la quietanza.
-    from app.services.quietanze_import import ricollega_quietanze_orfane
-
-    try:
-        quietanze_orfane = await ricollega_quietanze_orfane(db)
-    except Exception as exc:  # noqa: BLE001 - gli altri agganci restano validi
-        logger.exception("Quietanze orfane non ripassate (%s)", type(exc).__name__)
-        quietanze_orfane = {"errore": f"{type(exc).__name__}: {exc}"}
     start_date = f"{anno}-01-01" if anno else None
     end_date = f"{anno}-12-31" if anno else None
     paypal = await riconcilia_paypal_importato(
@@ -95,7 +86,6 @@ async def riconcilia_documenti_e_pagamenti(
         "bonifici_pdf": bonifici_pdf,
         "salari": salari,
         "f24": f24,
-        "quietanze_orfane": quietanze_orfane,
         "paypal": {
             "fatture_prima": paypal["collegamenti_prima"],
             "banca": paypal["banca"],

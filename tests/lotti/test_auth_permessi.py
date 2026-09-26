@@ -303,7 +303,7 @@ def test_scritture_di_configurazione_e_massa_solo_amministratore():
         ("POST", "/api/fornitori/merge"), ("POST", "/api/materie-prime/rebuild-lotti-fornitori"),
         ("POST", "/api/materie-prime/migra-in-lotti-fornitori"), ("POST", "/api/magazzino-bar/colli-bulk"),
         ("POST", "/api/magazzino/override-prodotto"), ("PUT", "/api/sanificazione/scheda/{anno}/{mese}"),
-        ("POST", "/api/haccp-periodi/applica-tutti"), ("GET", "/api/backup/lista"),
+        ("GET", "/api/backup/lista"),
     }
     trovate = {}
     for r in server.app.routes:

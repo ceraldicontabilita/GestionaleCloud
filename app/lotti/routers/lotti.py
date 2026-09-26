@@ -70,19 +70,28 @@ async def get_lotti(
     search: Optional[str] = Query(None),
     data_da: Optional[str] = Query(None),
     data_a: Optional[str] = Query(None),
-    limit: int = Query(1000),
+    limit: int = Query(1000, ge=1, le=10000),
 ):
-    """Lista lotti con ricerca e filtri data — normalizza entrambi gli schemi DB"""
+    """Lista lotti con ricerca e filtri data — normalizza entrambi gli schemi DB.
+
+    Il più recente per primo. Il tetto ``limit`` si applica **dopo** il filtro
+    per data: prima si prendevano i 1.000 lotti più recenti e poi si filtrava,
+    quindi una ricerca su un periodo più vecchio tornava vuota."""
     query: dict = {}
     if search:
+        # testo cercato come testo, non come espressione regolare
+        rx = {"$regex": re.escape(search), "$options": "i"}
         query["$or"] = [
-            {"prodotto": {"$regex": search, "$options": "i"}},
-            {"prodotto_nome": {"$regex": search, "$options": "i"}},
-            {"numero_lotto": {"$regex": search, "$options": "i"}},
-            {"lotto_id": {"$regex": search, "$options": "i"}},
+            {"prodotto": rx},
+            {"prodotto_nome": rx},
+            {"numero_lotto": rx},
+            {"lotto_id": rx},
         ]
 
-    items = await db.lotti.find(query, {"_id": 0}).sort("created_at", -1).to_list(limit)
+    filtro_data = bool(data_da or data_a)
+    items = await db.lotti.find(query, {"_id": 0}).sort("created_at", -1).to_list(
+        None if filtro_data else limit
+    )
 
     # Filtro data robusto: confronto su date reali (il campo data_produzione è stringa DD/MM/YYYY,
     # il confronto stringa $gte/$lte non rispetta l'ordine cronologico).
@@ -109,7 +118,7 @@ async def get_lotti(
             if d_a and dp > d_a:
                 continue
             filtrati.append(it)
-        items = filtrati
+        items = filtrati[:limit]
 
     return [_normalizza_lotto(it) for it in items]
 

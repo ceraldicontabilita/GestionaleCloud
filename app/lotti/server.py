@@ -40,7 +40,6 @@ from app.lotti.routers.diagnostic import router as r_diagnostic
 from app.lotti.routers.aggiornamento_ricette import router as r_aggiornamento_ricette
 from app.lotti.routers.prodotti_master import router as r_prodotti_master
 from app.lotti.routers.shelf_life import router as r_shelf_life
-from app.lotti.routers.haccp_periodi_speciali import router as r_haccp_periodi
 from app.lotti.routers.anomalie import router as r_anomalie
 from app.lotti.routers.manuale_haccp import router as r_manuale
 from app.lotti.routers.haccp_auto import router as r_haccp_auto
@@ -125,7 +124,7 @@ from app.lotti.routers.menu_categorie import router as r_menu_categorie
 for r in [
     r_disinfestazione, r_sanificazione, r_temp_neg, r_temp_pos, r_controllo_olio,
     r_temperature_cottura, r_ricezione_merce, r_aggiornamento_ricette,
-    r_prodotti_master, r_ordini_app, r_shelf_life, r_haccp_periodi,
+    r_prodotti_master, r_ordini_app, r_shelf_life,
     r_anomalie, r_reclami_fornitori, r_task_dipendenti, r_diagnostic, r_manuale,
     r_haccp_auto, r_report_haccp, r_haccp_manuale_auto, r_chiusure, r_haccp_attendibilita,
     r_ricette, r_lotti, r_lotti_fornitori, r_lotti_produzione, r_produzioni,
