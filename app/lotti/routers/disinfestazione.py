@@ -21,9 +21,9 @@ router = APIRouter(prefix="/disinfestazione", tags=["Disinfestazione"])
 # ==================== COSTANTI ====================
 
 # Lista frigoriferi e congelatori per monitoraggio
+# Frigoriferi e congelatori sono quelli censiti (`attrezzature_config`), non
+# dodici fissi: vedi `apparecchi_monitoraggio()`. Qui restano le aree.
 APPARECCHI_MONITORAGGIO = {
-    "frigoriferi": [f"Frigorifero N°{i}" for i in range(1, 13)],
-    "congelatori": [f"Congelatore N°{i}" for i in range(1, 13)],
     "altri": [
         "Cucina - Zona preparazione",
         "Laboratorio - Banco lavoro",
@@ -82,6 +82,16 @@ class SchedaDisinfestazione(BaseModel):
 # ==================== HELPER ====================
 
 
+async def apparecchi_monitoraggio() -> dict:
+    from app.lotti.servizi.schede_temperature import apparecchi_attivi
+
+    return {
+        "frigoriferi": [a["nome"] for a in await apparecchi_attivi("frigo")],
+        "congelatori": [a["nome"] for a in await apparecchi_attivi("congelatore")],
+        "altri": APPARECCHI_MONITORAGGIO["altri"],
+    }
+
+
 async def get_or_create_scheda_annuale(anno: int) -> dict:
     """Ottiene o crea la scheda annuale di disinfestazione"""
     scheda = await db.disinfestazione_annuale.find_one({"anno": anno}, {"_id": 0})
@@ -134,7 +144,7 @@ async def get_monitoraggio_anno(anno: int):
     return {
         "anno": anno,
         "monitoraggio": scheda.get("monitoraggio_apparecchi", {}),
-        "apparecchi_disponibili": APPARECCHI_MONITORAGGIO,
+        "apparecchi_disponibili": await apparecchi_monitoraggio(),
     }
 
 
@@ -228,7 +238,7 @@ async def registra_monitoraggio(
 @router.get("/apparecchi")
 async def get_apparecchi():
     """Lista tutti gli apparecchi monitorati"""
-    return APPARECCHI_MONITORAGGIO
+    return await apparecchi_monitoraggio()
 
 
 @router.get("/statistiche/{anno}")

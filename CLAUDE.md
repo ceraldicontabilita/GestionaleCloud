@@ -750,7 +750,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   (`servizi/firma_dipendente.py`): col PIN il nome arriva da HR e il record è `firma_verificata`; con un PIN
   sbagliato la rilevazione **non si salva**, perché una firma falsa è peggio di una registrazione mancante.
   Un giorno senza lettura si **dichiara** «non rilevato», mai riempito d'ufficio; lo storico **senza firma** resta
-  ma vale «n.a.» (`servizi/haccp_attendibilita.py`). Mai `random` né codice morto in HACCP (`test_haccp_niente_evidenze_finte.py`).
+  ma vale «n.a.» (`servizi/haccp_attendibilita.py`). Mai `random` né codice morto in HACCP (`test_haccp_niente_evidenze_finte.py`). Apparecchi di un anno = censiti + chi ha rilevazioni (`schede_temperature.py`), mai 12 fissi; un GET non crea schede (le crea il turno); il giorno è quello di Roma; «conforme», «non rilevato» e «da rilevare» si vedono diversi anche in stampa.
 - Stampa: coda più print agent locale sul PC del negozio (`scripts/print_agent.py`, PIN in `LOTTI_PRINT_AGENT_PIN`,
   variabile **locale**, mai su Render), stampante scelta per tipo di documento, token solo in `Authorization` e solo verso Lotti. Il fascicolo per un'ispezione si compone da
   `/lotti/api/manuale-haccp/stampa`: si spuntano le pagine (`SEZIONI_MANUALE`, le stesse che il generatore

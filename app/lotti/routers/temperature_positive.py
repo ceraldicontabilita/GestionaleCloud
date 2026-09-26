@@ -91,6 +91,37 @@ MESI_IT = [
 # ==================== HELPER ====================
 
 
+def nuova_scheda(anno: int, frigorifero: int) -> dict:
+    """Scheda annuale vuota: si salva solo alla prima registrazione."""
+    return {
+        "id": str(uuid.uuid4()),
+        "anno": anno,
+        "frigorifero_numero": frigorifero,
+        "frigorifero_nome": f"Frigorifero N°{frigorifero}",
+        "azienda": "Ceraldi Group S.R.L.",
+        "indirizzo": "Piazza Carità 14, 80134 Napoli (NA)",
+        "piva": "04523831214",
+        "telefono": "+39 081 5523488",
+        "email": "info@ceraldicaffe.it",
+        "attivita": "Bar, Pasticceria, Gastronomia",
+        "temperature": {str(m): {} for m in range(1, 13)},
+        "temp_min": 0.0,
+        "temp_max": 4.0,
+        "riferimenti_normativi": RIFERIMENTI_NORMATIVI,
+        "operatori": OPERATORI_DEFAULT.copy(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+async def leggi_scheda(anno: int, frigorifero: int) -> dict:
+    """Scheda in sola lettura: se non esiste torna vuota, senza crearla."""
+    scheda = await db.temperature_positive.find_one(
+        {"anno": anno, "frigorifero_numero": frigorifero}, {"_id": 0}
+    )
+    return scheda or nuova_scheda(anno, frigorifero)
+
+
 async def get_or_create_scheda(anno: int, frigorifero: int) -> dict:
     """Ottiene o crea la scheda annuale per un frigorifero"""
     scheda = await db.temperature_positive.find_one(
@@ -98,27 +129,9 @@ async def get_or_create_scheda(anno: int, frigorifero: int) -> dict:
     )
 
     if not scheda:
-        nuova_scheda = {
-            "id": str(uuid.uuid4()),
-            "anno": anno,
-            "frigorifero_numero": frigorifero,
-            "frigorifero_nome": f"Frigorifero N°{frigorifero}",
-            "azienda": "Ceraldi Group S.R.L.",
-            "indirizzo": "Piazza Carità 14, 80134 Napoli (NA)",
-            "piva": "04523831214",
-            "telefono": "+39 081 5523488",
-            "email": "info@ceraldicaffe.it",
-            "attivita": "Bar, Pasticceria, Gastronomia",
-            "temperature": {str(m): {} for m in range(1, 13)},
-            "temp_min": 0.0,
-            "temp_max": 4.0,
-            "riferimenti_normativi": RIFERIMENTI_NORMATIVI,
-            "operatori": OPERATORI_DEFAULT.copy(),
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }
-        await db.temperature_positive.insert_one(nuova_scheda)
-        scheda = nuova_scheda
+        nuova_scheda_doc = nuova_scheda(anno, frigorifero)
+        await db.temperature_positive.insert_one(nuova_scheda_doc)
+        scheda = nuova_scheda_doc
     else:
         # Aggiorna schede esistenti con i nuovi campi
         needs_update = False
@@ -163,17 +176,17 @@ async def get_scheda_frigorifero(anno: int, frigorifero: int):
     NOTA: l'auto-popolamento storico è stato disabilitato — generava timeout su
     schede vuote. Il popolamento avviene via job giornaliero o manualmente.
     """
-    return await get_or_create_scheda(anno, frigorifero)
+    return await leggi_scheda(anno, frigorifero)
 
 
 @router.get("/schede/{anno}")
 async def get_tutte_schede(anno: int):
     """Ottiene tutte le schede frigoriferi per un anno"""
-    schede = []
-    for i in range(1, 13):
-        scheda = await get_or_create_scheda(anno, i)
-        schede.append(scheda)
-    return schede
+    # Gli apparecchi censiti (più chi ha rilevazioni nell'anno), una query sola,
+    # nessuna scheda creata: aprire la pagina non scrive nel registro.
+    from app.lotti.servizi.schede_temperature import schede_anno
+
+    return await schede_anno("frigo", anno, nuova_scheda)
 
 
 @router.post("/scheda/{anno}/{frigorifero}/registra")
