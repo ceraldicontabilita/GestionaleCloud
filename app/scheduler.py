@@ -746,6 +746,39 @@ def start_scheduler():
         except Exception as e:
             logger.error("[SCHEDULER-QUIETANZE-ORFANE] errore: %s: %s", type(e).__name__, e)
 
+    async def _banca_versamenti_proiezione_job():
+        """Assegni, versamenti di contante e proiezione dei movimenti bancari
+        in Prima Nota. Pochi secondi, idempotenti: job a se', come le
+        quietanze, perche' dentro «Automazioni Prima Nota» (ore di lavoro,
+        riparte a ogni deploy) non ci arrivavano mai. L'ordine conta: la
+        gamba di cassa del versamento esiste gia' quando la proiezione la cerca."""
+        from app.database import Database
+        db = Database.get_db()
+        try:
+            from app.services.assegni_estratto_conto import sincronizza_assegni_da_estratto_conto
+            r = await sincronizza_assegni_da_estratto_conto(db, include_provvisori=True)
+            logger.info("[SCHEDULER-BANCA] assegni riconciliati=%s creati=%s",
+                        r.get("assegni_riconciliati"), r.get("assegni_creati"))
+        except Exception as e:
+            logger.error("[SCHEDULER-BANCA] assegni: %s: %s", type(e).__name__, e)
+        try:
+            from app.services.versamenti_contanti import riconosci_versamenti
+            r = await riconosci_versamenti(db, dry_run=False)
+            logger.info(
+                "[SCHEDULER-BANCA] versamenti=%s create_cassa=%s create_banca=%s doppioni=%s/%s",
+                r.get("versamenti"), r.get("gambe_cassa_create"), r.get("gambe_banca_create"),
+                r.get("doppioni_cassa_tolti"), r.get("doppioni_banca_tolti"),
+            )
+        except Exception as e:
+            logger.error("[SCHEDULER-BANCA] versamenti: %s: %s", type(e).__name__, e)
+        try:
+            from app.services.proiezione_bancaria import proietta_movimenti_bancari_semantici
+            r = await proietta_movimenti_bancari_semantici(db)
+            logger.info("[SCHEDULER-BANCA] proiezione proiettati=%s doppioni_tolti=%s rate_mutuo=%s",
+                        r.get("proiettati"), r.get("doppioni_tolti"), r.get("rate_mutuo"))
+        except Exception as e:
+            logger.error("[SCHEDULER-BANCA] proiezione: %s: %s", type(e).__name__, e)
+
     async def _automazioni_prima_nota_job():
         from datetime import datetime as _dt
         anno_corrente = _dt.now().year
@@ -1232,6 +1265,16 @@ def start_scheduler():
         coalesce=True,
         id="quietanze_orfane",
         name="Quietanze F24 senza modello: ricollega al loro F24 (ogni 30 min)",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        _banca_versamenti_proiezione_job,
+        'interval', minutes=30,
+        next_run_time=avvio + timedelta(minutes=2),
+        misfire_grace_time=300,
+        coalesce=True,
+        id="banca_versamenti_proiezione",
+        name="Banca: assegni, versamenti contanti e proiezione in Prima Nota (ogni 30 min)",
         replace_existing=True,
     )
     scheduler.add_job(

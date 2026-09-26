@@ -219,10 +219,14 @@ def test_l_orchestratore_lo_chiama_senza_bottoni():
     """Non c'e' piu' niente da premere: sta nel giro dei 30 minuti."""
     import inspect
 
-    from app.services import reconciliation_orchestrator as orchestratore
+    from app import scheduler
 
-    sorgente = inspect.getsource(orchestratore.riconcilia_documenti_e_pagamenti)
-    assert "riconosci_versamenti(db, anno=anno, dry_run=False)" in sorgente
+    sorgente = inspect.getsource(scheduler)
+    assert "riconosci_versamenti(db, dry_run=False)" in sorgente
+    assert 'id="banca_versamenti_proiezione"' in sorgente
+    # Il job parte pochi minuti dopo l'avvio: un deploy dopo l'altro non lo
+    # lascia mai a meta' come il giro lungo.
+    assert "next_run_time=avvio + timedelta(minutes=2)" in sorgente
 
 
 def test_il_vecchio_comando_di_riparazione_non_esiste_piu():
