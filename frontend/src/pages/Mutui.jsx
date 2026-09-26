@@ -4,6 +4,7 @@ import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { formatEuro, useIsMobile, RG, pagePad, formatDateIT, COLORS, SHADOWS, BORDER_RADIUS, FONT } from '../lib/utils';
 import { PageLayout, PageSection, PageLoading } from '../components/PageLayout';
+import { PageHeader } from '../components/ds/PageHeader';
 import { Button, Badge, TableWrap, Table, Th, Td } from '../components/ds';
 import {
   Landmark,
@@ -86,34 +87,22 @@ export default function Mutui() {
   return (
     <PageLayout>
       <PageSection>
-        {/* Header */}
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: 12,
-            marginBottom: 24,
-            paddingLeft: 12,
-            borderLeft: `4px solid ${COLORS.primary}`,
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <Landmark size={28} style={{ color: COLORS.primary }} />
-            <h1 style={{ fontSize: 24, fontWeight: 700, color: COLORS.gray[800] }}>Gestione Mutui</h1>
-          </div>
-          <Button
-            variant="primary"
-            size="lg"
-            onClick={riconciliaAutomatico}
-            disabled={riconciliaLoading}
-            data-testid="riconcilia-mutui-btn"
-            iconLeft={<RefreshCw size={18} className={riconciliaLoading ? 'animate-spin' : ''} />}
-          >
-            {riconciliaLoading ? 'Riconciliazione...' : 'Riconcilia Automaticamente'}
-          </Button>
-        </div>
+        <PageHeader
+          title="Mutui"
+          actions={
+            <Button
+              variant="primary"
+              size="lg"
+              onClick={riconciliaAutomatico}
+              disabled={riconciliaLoading}
+              data-testid="riconcilia-mutui-btn"
+              iconLeft={<RefreshCw size={18} className={riconciliaLoading ? 'animate-spin' : ''} />}
+            >
+              {riconciliaLoading ? 'Riconciliazione...' : 'Riconcilia Automaticamente'}
+            </Button>
+          }
+          style={{ marginBottom: 14 }}
+        />
 
         {/* Statistiche Cards */}
         {stats && (

@@ -15,6 +15,7 @@ import {
 } from '../lib/utils';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { PageLayout } from '../components/PageLayout';
+import { PageHeader } from '../components/ds/PageHeader';
 import ModalFattura from '../components/ModalFattura';
 import AssociaMovimentoBanca from '../components/AssociaMovimentoBanca';
 import { toast } from 'sonner';
@@ -379,15 +380,7 @@ export default function NoleggioAuto() {
 
   return (
     <div style={{ maxWidth: 1400, margin: '0 auto' }}>
-      {/* Header — stile uniforme al resto delle pagine (STYLES.header) */}
-      <div style={STYLES.header}>
-        <div>
-          <h1 style={STYLES.pageTitle}>🚗 Gestione Noleggio Auto</h1>
-          <p style={{ ...STYLES.pageSubtitle, marginTop: 4 }}>
-            Flotta aziendale • Dati estratti da fatture XML
-          </p>
-        </div>
-      </div>
+      <PageHeader title="Noleggi" style={{ marginBottom: 14 }} />
 
       {/* Pannello Controlli — cruscotto "cosa richiede attenzione".
           Compare solo se c'è almeno una segnalazione; API in errore o

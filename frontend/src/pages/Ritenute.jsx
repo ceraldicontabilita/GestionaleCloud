@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { formatEuroD, formatDateIT, useIsMobile } from '../lib/utils';
+import { PageHeader } from '../components/ds/PageHeader';
 
 /**
  * RITENUTE D'ACCONTO (richiesta utente 18/07/2026): le fatture con
@@ -61,15 +62,18 @@ export default function Ritenute() {
 
   return (
     <div style={{ padding: '14px clamp(10px, 3vw, 28px)', maxWidth: 1100, margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
-        <h2 style={{ margin: 0, color: BLU, fontSize: 19 }}>🧾 Ritenute d'acconto {anno}</h2>
-        <button
-          onClick={carica} disabled={loading}
-          style={{ background: BLU, color: 'white', border: 'none', borderRadius: 8, padding: '9px 16px', fontWeight: 700, cursor: 'pointer', opacity: loading ? 0.6 : 1 }}
-        >
-          {loading ? 'Aggiornamento…' : 'Aggiorna vista'}
-        </button>
-      </div>
+      <PageHeader
+        title="Ritenute"
+        actions={
+          <button
+            onClick={carica} disabled={loading}
+            style={{ background: BLU, color: 'white', border: 'none', borderRadius: 8, padding: '9px 16px', fontWeight: 700, cursor: 'pointer', opacity: loading ? 0.6 : 1 }}
+          >
+            {loading ? 'Aggiornamento…' : 'Aggiorna vista'}
+          </button>
+        }
+        style={{ marginBottom: 14 }}
+      />
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
         <label htmlFor="ritenute-stato" style={{ fontSize: 12, fontWeight: 700, color: '#5f5c55' }}>Stato</label>

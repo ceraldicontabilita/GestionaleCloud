@@ -4,6 +4,7 @@ import api from '../api';
 import { toast } from 'sonner';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { COLORS, formatDateIT, useIsMobile } from '../lib/utils.js';
+import { PageHeader } from '../components/ds/PageHeader';
 import LinkContropartita, {
   PALETTE_CONTROPARTITA, rottaDocumentoOrigine,
 } from '../components/LinkContropartita';
@@ -166,7 +167,18 @@ export default function LibroGiornale() {
 
   return (
     <div>
-      {/* Header azioni */}
+      <PageHeader
+        title="Libro giornale"
+        actions={
+          <button onClick={esporta} data-testid="export-giornale" style={btnGhost}
+            disabled={loading || !giornale}>
+            Esporta registro {anno}
+          </button>
+        }
+        style={{ marginBottom: 14 }}
+      />
+
+      {/* Scelta della vista */}
       <div style={{
         display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 14,
       }}>
@@ -178,14 +190,9 @@ export default function LibroGiornale() {
               background: vista === v ? COLORS.primary : 'transparent',
               color: vista === v ? '#fff' : COLORS.text,
             }}>
-            {v === 'giornale' ? '📖 Libro Giornale' : '📚 Libro Mastro'}
+            {v === 'giornale' ? 'Libro Giornale' : 'Libro Mastro'}
           </button>
         ))}
-        <div style={{ flex: 1 }} />
-        <button onClick={esporta} data-testid="export-giornale" style={btnGhost}
-          disabled={loading || !giornale}>
-          📥 Esporta registro {anno}
-        </button>
       </div>
 
       <p style={{ color: COLORS.textMuted, fontSize: 12, margin: '0 0 14px' }}>

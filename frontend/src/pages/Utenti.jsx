@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import api from '../api';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import { COLORS } from '../lib/utils.js';
+import { PageHeader } from '../components/ds/PageHeader';
 import { toast } from 'sonner';
 
 const RUOLI = [
@@ -109,7 +110,7 @@ export default function Utenti() {
   return (
     <div style={{ minHeight: '100vh', background: COLORS.bg, padding: 16 }}>
       <div style={{ maxWidth: 900, margin: '0 auto' }}>
-        <h1 style={{ color: COLORS.text, fontSize: 22, marginBottom: 4 }}>Utenti e accessi</h1>
+        <PageHeader title="Utenti e accessi" style={{ marginBottom: 14 }} />
         <p style={{ color: COLORS.textMuted, fontSize: 13, marginBottom: 20 }}>
           Crea account con PIN personale e ruolo. L'amministratore principale entra
           col PIN configurato sul server e non compare in questa lista.

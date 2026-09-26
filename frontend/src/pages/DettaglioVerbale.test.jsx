@@ -6,7 +6,8 @@ import api from '../api';
 import DettaglioVerbale from './DettaglioVerbale';
 
 vi.mock('../api', () => ({ default: { get: vi.fn(), post: vi.fn() } }));
-vi.mock('react-router-dom', () => ({
+vi.mock('react-router-dom', async importOriginal => ({
+  ...(await importOriginal()),
   useParams: () => ({ numeroVerbale: 'V-TEST-001' }),
   useNavigate: () => vi.fn(),
 }));

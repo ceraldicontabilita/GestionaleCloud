@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { Badge, Button, Card, StatCard } from '../components/ds';
+import { PageHeader } from '../components/ds/PageHeader';
 
 const AREAS = [
   ['tutti', 'Tutti'],
@@ -122,6 +123,7 @@ export default function AttiAmministrativi() {
 
   return (
     <div>
+      <PageHeader title="Atti amministrativi" style={{ marginBottom: 14 }} />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 12, marginBottom: 16 }}>
         <StatCard label="Atti in archivio" value={overview.total ?? payload.total ?? 0} subtext="Apri tutti" accent="primary" onClick={() => openSection('tutti')} />
         <StatCard label="TARI" value={overviewCounts.tributi_locali || 0} subtext="Apri sezione" accent="warning" onClick={() => openSection('tributi_locali')} />

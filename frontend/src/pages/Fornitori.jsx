@@ -7,7 +7,7 @@ import { useConfirm } from '../components/ui/ConfirmDialog';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import Portal from '../components/Portal';
 import ModalFattura from '../components/ModalFattura';
-import { PageLayout } from '../components/PageLayout';
+import { PageHeader } from '../components/ds/PageHeader';
 import {
   formatEuro,
   formatDateIT,
@@ -45,7 +45,6 @@ import {
   CreditCard,
   AlertCircle,
   Check,
-  Users,
   X,
   TrendingUp,
   RefreshCw,
@@ -1986,71 +1985,42 @@ export default function Fornitori() {
       }}
     >
       <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
-        {/* Action Bar - senza cornice blu */}
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'flex-end',
-            alignItems: 'center',
-            marginBottom: 16,
-            gap: 8,
-            flexWrap: 'wrap',
-          }}
-        >
-          <Button
-            variant="secondary"
-            onClick={reloadData}
-            disabled={loading}
-            style={{ minHeight: 40 }}
-          >
-            🔄 {loading ? 'Caricamento...' : 'Aggiorna'}
-          </Button>
-          <Button
-            variant="primary"
-            onClick={() => {
-              setCurrentSupplier(null);
-              setModalOpen(true);
-            }}
-            style={{ minHeight: 40 }}
-          >
-            <Plus size={18} /> Nuovo Fornitore
-          </Button>
-        </div>
-
-        {/* Stats */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-            gap: '12px',
-            marginBottom: '16px',
-          }}
-        >
-          <StatCard
-            icon={<Users size={18} />}
-            label="Totale Fornitori"
-            value={stats.total}
-            accent="primary"
-          />
-          <StatCard
-            icon={<FileText size={18} />}
-            label="Con Fatture"
-            value={stats.withInvoices}
-            accent="success"
-          />
-          <StatCard
-            icon={<AlertCircle size={18} />}
-            label="Dati Incompleti"
-            value={stats.incomplete}
-            accent="warning"
-          />
-          <StatCard
-            icon={<CreditCard size={18} />}
-            label="Pagamento Cassa"
-            value={stats.cash}
-            accent="primary"
-          />
-        </div>
+        <PageHeader
+          title="Fornitori"
+          actions={
+            <>
+              <Button
+                variant="secondary"
+                onClick={reloadData}
+                disabled={loading}
+                style={{ minHeight: 40 }}
+              >
+                {loading ? 'Caricamento...' : 'Aggiorna'}
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  setCurrentSupplier(null);
+                  setModalOpen(true);
+                }}
+                style={{ minHeight: 40 }}
+              >
+                <Plus size={18} /> Nuovo Fornitore
+              </Button>
+            </>
+          }
+          pastiglie={[
+            { etichetta: 'Totale fornitori', valore: stats.total },
+            { etichetta: 'Con fatture', valore: stats.withInvoices },
+            {
+              etichetta: 'Dati incompleti',
+              valore: stats.incomplete,
+              tono: stats.incomplete > 0 ? 'attenzione' : 'ok',
+            },
+            { etichetta: 'Pagamento cassa', valore: stats.cash },
+          ]}
+          style={{ marginBottom: 14 }}
+        />
 
         {/* PR #5e850c8: Badge contatori filtri avanzati (navy/gold) */}
         <div

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import api from '../api';
 import CopiaTesto from '../components/CopiaTesto';
+import { PageHeader } from '../components/ds/PageHeader';
 import { useAuth } from '../contexts/AuthContext';
 
 const card = { background: '#fff', border: '1px solid #e6e3d9', borderRadius: 12, padding: 22, maxWidth: 760, margin: '0 auto' };
@@ -90,8 +91,8 @@ export default function MFAAdmin() {
 
   return (
     <div style={{ padding: 20 }}>
+      <PageHeader title="Sicurezza MFA" style={{ maxWidth: 760, margin: '0 auto', marginBottom: 14 }} />
       <div style={card}>
-        <h2 style={{ marginTop: 0 }}>Sicurezza e MFA</h2>
         <p style={{ color: '#5f5c55', lineHeight: 1.55 }}>
           La verifica in due passaggi protegge l'accesso amministratore e rende obbligatoria una sessione MFA per approvare o rifiutare decisioni AI.
         </p>

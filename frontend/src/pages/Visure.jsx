@@ -14,6 +14,7 @@ import {
 import api from '../api';
 import { toast } from 'sonner';
 import { useIsMobile, STYLES } from '../lib/utils';
+import { PageHeader } from '../components/ds/PageHeader';
 
 export default function Visure() {
   const isMobile = useIsMobile();
@@ -296,22 +297,7 @@ export default function Visure() {
 
   return (
     <div style={{ padding: '24px 32px', maxWidth: 1200, margin: '0 auto' }}>
-      {/* Header */}
-      <div style={{ marginBottom: 32 }}>
-        <h1
-          style={{
-            fontSize: 28,
-            fontWeight: 700,
-            color: '#141413',
-            margin: '0 0 8px 0',
-          }}
-        >
-          🔍 Visure Aziendali
-        </h1>
-        <p style={{ color: '#7a776e', margin: 0 }}>
-          Cerca informazioni su aziende italiane tramite Camera di Commercio
-        </p>
-      </div>
+      <PageHeader title="Visure" style={{ marginBottom: 14 }} />
 
       {/* Search Box */}
       <div style={{ ...STYLES.card, padding: 24, marginBottom: 24 }}>
