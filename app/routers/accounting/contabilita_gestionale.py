@@ -1139,6 +1139,16 @@ async def get_libro_giornale(
     }
 
 
+@router.get("/libro-giornale/prove-fiscali")
+async def get_prove_fiscali_libro_giornale(
+    anno: int = Query(..., ge=2000, le=2100),
+) -> Dict[str, Any]:
+    """Prove IVA/F24/ADE collegate al giornale per periodo fiscale certo."""
+    from app.services.fiscal_relations_view import prove_fiscali_periodo
+
+    return await prove_fiscali_periodo(Database.get_db(), anno)
+
+
 @router.get("/libro-mastro")
 async def get_libro_mastro(
     data_da: Optional[str] = Query(None, description="Data inizio (YYYY-MM-DD)"),

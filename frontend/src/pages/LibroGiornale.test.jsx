@@ -45,8 +45,29 @@ const mastro = {
   mastrini: [],
 };
 
+const proveFiscali = {
+  anno: 2026,
+  periodi: [{
+    periodo: '2026-01',
+    stato_iva: 'PAGATA_E_VERIFICATA',
+    f24: [{
+      f24_id: 'F24-1', filename: 'F24 gennaio.pdf',
+      messaggio: 'IVA versata con F24: quietanza e movimento bancario verificati',
+      f24_url: '/api/f24/pdf/F24-1', quietanza_url: '/api/f24-riconciliazione/quietanze/Q-1',
+      movimento_bancario_id: 'EC-1', quietanza_presente: true, banca_verificata: true,
+    }],
+    avvisi_ade: [{
+      id: 'A-1', filename: 'Lettera gennaio 2026.pdf',
+      url: '/api/documenti/documento/A-1/download', associazione_certa: true,
+      messaggio_pagamento: 'Pagamento richiesto da Agenzia delle Entrate pagato — vedi quietanza',
+      quietanza_url: '/api/f24-riconciliazione/quietanze/Q-1',
+    }],
+  }],
+};
+
 function mockResponses({ controlloFallisce = false } = {}) {
   api.get.mockImplementation(url => {
+    if (url.includes('/libro-giornale/prove-fiscali?')) return Promise.resolve({ data: proveFiscali });
     if (url.includes('/libro-giornale?')) return Promise.resolve({ data: giornale });
     if (url.includes('/libro-mastro?')) return Promise.resolve({ data: mastro });
     if (url.endsWith('/controllo-60-giorni')) {
@@ -116,5 +137,22 @@ describe('LibroGiornale', () => {
     await screen.findByText('1 scritture');
     expect(screen.queryByTestId('import-giornale')).not.toBeInTheDocument();
     expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('mostra F24, quietanza, movimento e lettera ADE nella vista relazionale', async () => {
+    render(<MemoryRouter><LibroGiornale /></MemoryRouter>);
+    await screen.findByText('1 scritture');
+
+    fireEvent.click(screen.getByTestId('toggle-prove-fiscali'));
+
+    expect(screen.getByText('2026-01 · IVA pagata e verificata')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Apri F24/ })).toHaveAttribute('href', '/api/f24/pdf/F24-1');
+    expect(screen.getAllByRole('link', { name: /Vedi quietanza/ })[0])
+      .toHaveAttribute('href', '/api/f24-riconciliazione/quietanze/Q-1');
+    expect(screen.getByRole('link', { name: /Vedi movimento pagante/ }))
+      .toHaveAttribute('href', '/prima-nota#sezione=banca&selected=EC-1');
+    expect(screen.getByRole('link', { name: /Apri lettera/ }))
+      .toHaveAttribute('href', '/api/documenti/documento/A-1/download');
+    expect(screen.getByText(/Pagamento richiesto da Agenzia delle Entrate pagato/)).toBeInTheDocument();
   });
 });
